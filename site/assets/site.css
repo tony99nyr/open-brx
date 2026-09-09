@@ -102,12 +102,16 @@ pre .copy {
 }
 
 /* ---- tables ---- */
-/* the wrapper needs a height for a sticky <th> to have a scrollport; without one the sticky rule
-   was inert and a 39-row table scrolled its header off the top of the page. */
-.table-wrap { overflow: auto; max-height: 80vh; margin: 16px 0; }
+/* Short tables scroll with the page. Only a tall one (>15 rows, marked by the build) gets its own
+   scrollport, which is also what makes its sticky header work: capping every wrapper trapped the
+   wheel over 2-row tables on a phone. */
+.table-wrap { overflow-x: auto; margin: 16px 0; }
+.table-wrap.tall { overflow: auto; max-height: 80vh; }
+/* a sticky header only has a scrollport inside .tall; elsewhere it is inert, so do not pretend */
+.table-wrap.tall th { position: sticky; top: 0; }
 table { border-collapse: collapse; width: 100%; font-size: 15px; }
 th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
-th { background: var(--panel); position: sticky; top: 0; font-weight: 600; }
+th { background: var(--panel); font-weight: 600; }
 tbody tr:hover { background: var(--panel); }
 
 /* ---- generated tables ---- */

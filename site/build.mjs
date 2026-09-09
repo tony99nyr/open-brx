@@ -34,7 +34,10 @@ const PROTECTED = new Set(['mc', 'download']);
 
 // The old block DSL, so a half-converted page cannot ship. Anchored to line start and to the
 // names the DSL actually used, because prose legitimately contains bracketed words.
-const BLOCK_MARKER = /\[(hero|callout|steps|cards|table|data-table|spec-sheet|accordion|faq|image|diagram|code|bit-field|symptom-ladder|compare|stat-row|quote|timeline|pricing-tiers|download|under-construction|audio-player)(?::[a-z|]+)?(?:\s+[A-Z0-9-]+)?\]/;
+// A DSL marker anywhere on a line, but NOT an ordinary markdown link: `[download](url)` and
+// `[table][ref]` are legitimate prose, and 21 block names are common enough words to appear as link
+// text. The negative lookahead is what keeps the mid-line catch from failing honest markdown.
+const BLOCK_MARKER = /\[(hero|callout|steps|cards|table|data-table|spec-sheet|accordion|faq|image|diagram|code|bit-field|symptom-ladder|compare|stat-row|quote|timeline|pricing-tiers|download|under-construction|audio-player)(?::[a-z|]+)?(?:\s+[A-Z0-9-]+)?\](?![(\[])/;
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const slugify = s => s.toLowerCase().replace(/<[^>]*>/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
@@ -54,7 +57,7 @@ const assetFiles = fs.readdirSync(path.join(HERE, 'assets')).map(f => {
   return { src: f, out: `assets/${path.basename(f, ext)}.${createHash('sha256').update(buf).digest('hex').slice(0, 10)}${ext}`, buf };
 });
 const assetHref = name => '/' + assetFiles.find(a => a.src === name).out;
-for (const a of assetFiles) write(a.out, a.buf);
+// NB: assets are hashed here but WRITTEN below, after validation. See the validate-first block.
 
 // ---- parse: an H1, an optional Last verified line, then plain CommonMark ----------------------
 function readPage(p) {
@@ -85,7 +88,10 @@ renderer.heading = function ({ tokens, depth }) {
 renderer.table = function (token) {
   const head = `<tr>${token.header.map((c, i) => `<th${token.align[i] ? ` style="text-align:${token.align[i]}"` : ''}>${this.parser.parseInline(c.tokens)}</th>`).join('')}</tr>`;
   const rows = token.rows.map(r => `<tr>${r.map((c, i) => `<td${token.align[i] ? ` style="text-align:${token.align[i]}"` : ''}>${this.parser.parseInline(c.tokens)}</td>`).join('')}</tr>`).join('\n');
-  return `<div class="table-wrap"><table><thead>${head}</thead><tbody>${rows}</tbody></table></div>\n`;
+  // Only a genuinely tall table gets a capped, scrolling wrapper: capping every wrapper trapped
+  // 14 short tables on a phone, where a wheel over a 2-row table moved the page not at all.
+  const tall = token.rows.length > 15 ? ' tall' : '';
+  return `<div class="table-wrap${tall}"><table><thead>${head}</thead><tbody>${rows}</tbody></table></div>\n`;
 };
 renderer.code = function ({ text, lang }) {
   // the one extension: ```data\n<name>\n``` becomes a browser-rendered table (docs/site/FORMAT.md)
@@ -134,8 +140,6 @@ ${content}
 // ---- build -----------------------------------------------------------------------------------
 const weapons = buildWeapons(REPO);
 const sounds = buildSounds(REPO);
-write('data/weapons.json', JSON.stringify(weapons));
-write('data/sounds.json', JSON.stringify(sounds));
 
 const problems = [];
 const built = [];
@@ -150,9 +154,15 @@ for (const p of pages) {
   if (/^src:/m.test(p.source)) problems.push(`${p.file}: src: citation`);
 }
 if (problems.length) {
+  // Nothing has been written yet, and that is the point: the build used to emit the assets, the
+  // data files and every page and THEN exit 1, leaving a bad page and orphaned hashed assets in
+  // webapp/ for the next `git commit -a`.
   console.error('BUILD PROBLEMS (nothing written):\n' + problems.map(x => '  ' + x).join('\n'));
   process.exit(1);
 }
+for (const a of assetFiles) write(a.out, a.buf);
+write('data/weapons.json', JSON.stringify(weapons));
+write('data/sounds.json', JSON.stringify(sounds));
 for (const p of pages) {
   headings.length = 0;
   const content = marked.parse(p.body, { renderer, mangle: false, headerIds: false });

@@ -5,7 +5,7 @@
 <meta name="description" content="This is the interoperability spec for the BRX tagger and headset: transport, framing, every known command and event with its field map, the $WEAP / $GSET / $PSET / $SIR tables, the">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/dev/">
 <link rel="alternate" type="text/markdown" href="/manual/dev.md">
-<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.d0d9a04941.css">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.cd57c66481.css">
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top"><a class="brand" href="/">Open BRX</a><nav class="topnav"><a href="/manual/hardware/">Hardware</a><a href="/manual/operate/">Operate</a><a href="/manual/gameplay/">Gameplay</a><a href="/manual/sound/">Sound</a><a href="/manual/fix/">Fix</a><a href="/manual/dev/" aria-current="page">Developer</a><a href="/platform/">Platform</a><a href="/credits/">Credits</a></nav>
@@ -88,7 +88,7 @@ PANIC_SEQUENCE = [&quot;$CLEAR,*&quot;, &quot;$SP,99,*&quot;]</code></pre>
 <p><strong>How to read the tables.</strong> &quot;Direction&quot; is host to gun (<code>&gt;&gt;</code>) or gun to host (<code>&lt;&lt;</code>). Some commands were sent and received on hardware; others carry field names taken from the Callsign app&#39;s IL2CPP metadata (names certain, wire position = declaration order) or come from LaserTagMods sources and community captures without being reproduced by us. Each row says which. Commands the app knows but we have never sent sit in their own table at the end of this section. Where a command&#39;s field map has its own section (<code>$WEAP</code>, <code>$GSET</code>/<code>$PSET</code>, <code>$SIR</code>), the row says so.</p>
 </blockquote>
 <p><strong>Host to tagger: lifecycle and configuration</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Command</th><th>Dir</th><th>Args</th><th>Meaning</th></tr></thead><tbody><tr><td><code>$PING,*</code></td><td>&gt;&gt;</td><td>n/a</td><td>Connectivity check. Reply <code>$PONG,*</code>.</td></tr>
+<div class="table-wrap tall"><table><thead><tr><th>Command</th><th>Dir</th><th>Args</th><th>Meaning</th></tr></thead><tbody><tr><td><code>$PING,*</code></td><td>&gt;&gt;</td><td>n/a</td><td>Connectivity check. Reply <code>$PONG,*</code>.</td></tr>
 <tr><td><code>$STOP,*</code></td><td>&gt;&gt;</td><td>n/a</td><td>Stop. First frame the official app sends on every (re)connect; also part of the end-of-game tail.</td></tr>
 <tr><td><code>$PHONE,*</code></td><td>&gt;&gt;</td><td>n/a</td><td>App-controlled mode: opens the live event tap (buttons, <code>$VOLTS</code>), locks the on-gun menu. Reply <code>$BUT,3,0,*</code>.</td></tr>
 <tr><td><code>$CONNECT,*</code> / <code>$INIT,*</code></td><td>&gt;&gt;</td><td>n/a</td><td>On the known-safe list. Sent on v4.32: <strong>no observable reply</strong>.</td></tr>
@@ -220,7 +220,7 @@ $WEAP,1,,100,8,0,150,0,,,,,,,,1250,850,100,32768,2500,0,14,100,100,,14,,,E03,C15
 # A captured Shotgun (slot 1): the only stock weapon with the extra-headset block populated:
 $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*</code></pre>
 <p><strong>Token map</strong> (0-indexed: <code>$WEAP,&lt;t0&gt;,&lt;t1&gt;,…,*</code>; the slot is t0)</p>
-<div class="table-wrap"><table><thead><tr><th>tok</th><th>Field</th><th>AR</th><th>Charge Rifle</th><th>Meaning</th></tr></thead><tbody><tr><td>0</td><td>slot</td><td>0</td><td>1</td><td>Weapon slot 0-5. Slot 4 = melee by convention (gyro swing, <code>$BMAP,8,4</code>).</td></tr>
+<div class="table-wrap tall"><table><thead><tr><th>tok</th><th>Field</th><th>AR</th><th>Charge Rifle</th><th>Meaning</th></tr></thead><tbody><tr><td>0</td><td>slot</td><td>0</td><td>1</td><td>Weapon slot 0-5. Slot 4 = melee by convention (gyro swing, <code>$BMAP,8,4</code>).</td></tr>
 <tr><td>1</td><td>slotType / mode flag</td><td>n/a</td><td>n/a</td><td><code>2</code> on exactly the three weapons carrying an extra-headset payload (t12/t13/t42 populated); <code>1</code> on melee; <code>0</code> rail gun; empty otherwise. Not fire mode.</td></tr>
 <tr><td>2</td><td>n/a</td><td>100</td><td>100</td><td>(unknown)</td></tr>
 <tr><td>3</td><td>primaryDamageType</td><td>0</td><td>8</td><td><strong>The IR word&#39;s B field / <code>$SIR</code> protocol key.</strong> Writing a type here is echoed by the victim in <code>$HIR</code> token 2 and selects its <code>$SIR</code> row. DamageType enum: 0 Standard, 1 MedicHeal, 2 ActivateShield, 3 RallyPulse, 4 Radiation, 5 Cryogenic, 6 ArmorPiercing, 7 EMP, 8 Shrapnel, 9 StickyBomb, 10 StandardLethalExplosive, 11 NonLethalExplosive, 12 ShottyPellets, 13 MeleeDamage, 14 Plasma. Stock: 8 charge, 10 rocket, 11 gas, 13 melee. The wire position is bench-proven; the enum names come from the APK.</td></tr>
@@ -263,7 +263,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 <p><strong>Two positions that bit us.</strong> (1) The metadata&#39;s field order has <code>rateOfFire</code> before <code>weaponSwapDelay</code>; the wire has the <em>rate</em> at <strong>t14</strong> and the constant 850 at t15. A compiler that trusted the field order shipped every weapon at 10 shots/s. (2) Keying weapons by their fire sound (t27) silently merges distinct weapons.</p>
 </blockquote>
 <p><strong>Stock weapon signatures</strong> (fire sound to weapon to behaviour, as named by the operator at capture)</p>
-<div class="table-wrap"><table><thead><tr><th>t27</th><th>Weapon</th><th>Fire mode / notes</th></tr></thead><tbody><tr><td><code>R01</code></td><td>Assault Rifle</td><td>full auto</td></tr>
+<div class="table-wrap tall"><table><thead><tr><th>t27</th><th>Weapon</th><th>Fire mode / notes</th></tr></thead><tbody><tr><td><code>R01</code></td><td>Assault Rifle</td><td>full auto</td></tr>
 <tr><td><code>R18</code></td><td>Burst Rifle</td><td>3-round burst (t20=9, t23=275)</td></tr>
 <tr><td><code>R23</code></td><td>Force Rifle</td><td>3-round burst (t23=250), five-part reload</td></tr>
 <tr><td><code>R12</code></td><td>Bolt Rifle</td><td>single shot; carries no t28/t29</td></tr>

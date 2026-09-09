@@ -8,15 +8,17 @@ const PORT = Number(process.env.PORT || 4173);
 const TYPES = { '.html': 'text/html; charset=utf-8', '.md': 'text/markdown; charset=utf-8', '.txt': 'text/plain; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.xml': 'application/xml', '.apk': 'application/vnd.android.package-archive' };
 // Mirror Cloudflare's _redirects so the gate exercises real redirect behaviour, not the file's text.
 // Without this the suite passed while seven live pages sat in an infinite loop in production.
-const redirects = (() => {
+// Read PER REQUEST, not once at module load: playwright starts this server before globalSetup runs
+// the build, so a cached copy served the PREVIOUS build's rules and the guard missed its own bug.
+const readRedirects = () => {
   const f = path.join(ROOT, '_redirects');
   if (!fs.existsSync(f)) return [];
   return fs.readFileSync(f, 'utf8').split('\n').map(l => l.trim())
     .filter(l => l && !l.startsWith('#'))
     .map(l => { const [from, to, code] = l.split(/\s+/); return { from, to, code: Number(code) || 302 }; });
-})();
+};
 const redirectFor = p => {
-  for (const r of redirects) {
+  for (const r of readRedirects()) {
     if (r.from.endsWith('/*')) { const base = r.from.slice(0, -2); if (p === base || p.startsWith(base + '/')) return r; }
     else if (r.from === p) return r;
   }

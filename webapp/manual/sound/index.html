@@ -5,7 +5,7 @@
 <meta name="description" content="How BRX plays sound: what the gun does on its own, what a host has to trigger, the full sound bank, and how to change what you hear over USB or through a firmware update.">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/sound/">
 <link rel="alternate" type="text/markdown" href="/manual/sound.md">
-<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.d0d9a04941.css">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.cd57c66481.css">
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="top"><a class="brand" href="/">Open BRX</a><nav class="topnav"><a href="/manual/hardware/">Hardware</a><a href="/manual/operate/">Operate</a><a href="/manual/gameplay/">Gameplay</a><a href="/manual/sound/" aria-current="page">Sound</a><a href="/manual/fix/">Fix</a><a href="/manual/dev/">Developer</a><a href="/platform/">Platform</a><a href="/credits/">Credits</a></nav>
@@ -52,7 +52,7 @@
 <h2 id="voice-packs-and-announcers">Voice packs and announcers</h2>
 <p>A voice pack is seventeen slots. The BRX does not ship &quot;a male voice&quot; and &quot;a female voice&quot; as one big pack. A player profile lists one sound id per game event: death alarm, pain, respawn cry, kill line. The characters you pick in the app are just pre-filled sets of those ids.</p>
 <p>This is decoded from the app: the trailing tokens of a captured <code>$PSET</code> (e.g. <code>...,H44,JAD,V33,...,A10</code>) fill these slots in order.</p>
-<div class="table-wrap"><table><thead><tr><th>Slot</th><th>Event it fires on</th></tr></thead><tbody><tr><td>deathAlarm</td><td>You died (the loud beep/alarm)</td></tr>
+<div class="table-wrap tall"><table><thead><tr><th>Slot</th><th>Event it fires on</th></tr></thead><tbody><tr><td>deathAlarm</td><td>You died (the loud beep/alarm)</td></tr>
 <tr><td>stealthDeathScream</td><td>Death while stealthed / quiet death</td></tr>
 <tr><td>musicMixOnDeath</td><td>Death music sting (e.g. <code>JAD</code>)</td></tr>
 <tr><td>deathScream</td><td>The character&#39;s death cry</td></tr>
@@ -81,7 +81,7 @@
 </blockquote>
 <p><strong>Voice families in the bank</strong></p>
 <p>Prefixes and character names are restated from David Knox&#39;s audio map; counts come from the bank file.</p>
-<div class="table-wrap"><table><thead><tr><th>Prefix</th><th>Character / voice</th><th>Ids</th></tr></thead><tbody><tr><td><code>VA</code></td><td>Male (the default announcer; also the connect/countdown/game-over lines)</td><td>321</td></tr>
+<div class="table-wrap tall"><table><thead><tr><th>Prefix</th><th>Character / voice</th><th>Ids</th></tr></thead><tbody><tr><td><code>VA</code></td><td>Male (the default announcer; also the connect/countdown/game-over lines)</td><td>321</td></tr>
 <tr><td><code>VB</code></td><td>Scout / clean female (score &amp; lead lines such as <code>VB17</code> live here)</td><td>90</td></tr>
 <tr><td><code>VE</code></td><td>Clean male</td><td>9 (+13 <code>VEx</code> lines)</td></tr>
 <tr><td><code>VM</code></td><td>Clean female</td><td>9 (+12)</td></tr>
@@ -128,7 +128,7 @@
 </blockquote>
 <p><strong>Category map: every family in the app&#39;s list</strong></p>
 <p>Prefix meanings are restated from David Knox&#39;s audio map; counts are computed from the app&#39;s sound list. The on-gun catalog adds the <code>VX</code> and <code>VZ</code> voice families, <code>H102</code> to <code>H155</code> and more.</p>
-<div class="table-wrap"><table><thead><tr><th>Family</th><th>What it holds</th><th>Ids</th><th>Typical length</th></tr></thead><tbody><tr><td><code>VA</code> + <code>E_VA</code></td><td>Male voice: announcer, system lines, weapon callouts, countdowns</td><td>321 + 23</td><td>0.5-3 s (countdowns up to 11 s)</td></tr>
+<div class="table-wrap tall"><table><thead><tr><th>Family</th><th>What it holds</th><th>Ids</th><th>Typical length</th></tr></thead><tbody><tr><td><code>VA</code> + <code>E_VA</code></td><td>Male voice: announcer, system lines, weapon callouts, countdowns</td><td>321 + 23</td><td>0.5-3 s (countdowns up to 11 s)</td></tr>
 <tr><td><code>VB</code> + <code>E_VB</code></td><td>Scout / female-clean voice: score &amp; lead lines</td><td>90 + 64</td><td>1-2 s</td></tr>
 <tr><td><code>V0</code>-<code>V9</code></td><td>Character voice packs (Fury, Grenadier, Guardian, Heavy, Hive Queen, V5 not named, Infiltrator, Marauder, Medic, Raider)</td><td>23 each (255 total)</td><td>0.4-6 s</td></tr>
 <tr><td><code>V100</code>-<code>V144</code></td><td>CTF / Slayer / King-of-the-Hill callouts</td><td>34</td><td>1-2.4 s; three at 12-13 s</td></tr>
@@ -162,7 +162,7 @@
 <tr><td><code>O</code></td><td>Big guns / ordnance</td><td>6</td><td>1.5-2.5 s</td></tr></tbody></table></div>
 <p>Sums to 2,166, the app&#39;s list; the gun holds 2,477 files.</p>
 <p><strong>Thirty-odd ids worth knowing</strong></p>
-<div class="table-wrap"><table><thead><tr><th>Id</th><th>Family</th><th>Meaning</th><th>Length</th></tr></thead><tbody><tr><td><code>VA20</code></td><td>VA</td><td>&quot;Connection established&quot;: plays on every phone connect</td><td>1.27 s</td></tr>
+<div class="table-wrap tall"><table><thead><tr><th>Id</th><th>Family</th><th>Meaning</th><th>Length</th></tr></thead><tbody><tr><td><code>VA20</code></td><td>VA</td><td>&quot;Connection established&quot;: plays on every phone connect</td><td>1.27 s</td></tr>
 <tr><td><code>U16</code></td><td>U</td><td>Connect tone (paired with VA20)</td><td>0.43 s</td></tr>
 <tr><td><code>VA81</code></td><td>VA</td><td>3-2-1 spawn countdown (arena)</td><td>2.97 s</td></tr>
 <tr><td><code>VA33</code></td><td>VA</td><td>&quot;Game over&quot; + music</td><td>2.26 s</td></tr>
