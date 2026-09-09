@@ -323,24 +323,3 @@ One port, one `.BIN`. Firmware for the tagger, headset, hatchet, shield and side
 - **Bench / diagnostics:** 30 or lower keeps the neighbors happy and still confirms the command path (the gun echoes its state, you just won't hear it).
 
 > **Safety.** The boot chime plays at the gun's stored level before any host can lower it. A gun last used at 100 is loud at the next power-on. Set the volume down before you switch off if kids or a quiet venue are next. Voice lines and the death beep are uncomfortable held to the ear at 100. The official iOS app ships 69 for a reason.
-
-## Sources
-
-- protocol/brx-protocol.md
-- protocol/session-findings-2026-08.md
-- mcp/brx_mcp/sounds.py
-- protocol/callsign-extract/sound-bank.md
-- mcp/brx_mcp/data/sound_catalog.json
-- docs/reference/sound-catalog.md
-- mcp/brx_mcp/data/sound_ids.json
-- protocol/callsign-extract/protocol-classes.md
-- protocol/callsign-extract/apk-harvest.md
-- docs/reference/brx-extended-user-guide.md
-- docs/reference/brx-manual-notes.md
-- docs/reference/community-notes.md
-- docs/reference/grenade.md
-- docs/experiment-log.md
-- docs/FOLLOWUPS.md
-- docs/HANDOFF.md
-- docs/gotchas.md
-- CLAUDE.md

@@ -30,11 +30,6 @@ One or two plain sentences saying what this page covers.
 ## A section
 
 Plain CommonMark. Paragraphs, lists, tables, code fences, blockquotes, links.
-
-## Sources
-
-- docs/reference/brx-extended-user-guide.md
-- protocol/brx-protocol.md
 ```
 
 Rules, all of them:
@@ -44,7 +39,8 @@ Rules, all of them:
    the H1. Nothing else goes in the header.
 3. **Everything else is plain CommonMark.** No block markers, no badges, no `src:` lines, no page
    markers, no image manifests, no research backlogs, no audience or goal lines.
-4. **`## Sources` is the last section** if the page has one. A plain bulleted list of repo paths.
+4. **No per-page sources section.** A visitor does not care which repo file a fact came from. The
+   footer links the repository; the evidence lives in `docs/experiment-log/` and `docs/reference/`.
 5. **`##` headings get anchors and appear in the page's table of contents.** `###` and deeper do
    not. So `##` is the unit of navigation: one per thing a reader would link to. A page with two or
    fewer `##` headings gets no table of contents at all.

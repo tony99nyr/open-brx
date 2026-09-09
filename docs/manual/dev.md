@@ -56,7 +56,13 @@ $ + COMMAND + (, + token)* + ,*
 5. The official app's connect ritual (captured, fw v4.32) is `$STOP,*`, `$PLAYX,0,*`, `$VOL,69,0,*`, `$PLAY,VA20,3,6,,,,,*` ("connection established"), then once per session `$NAME,<name>,*` plus `$VERSION,*`. It never sends `$PHONE,*`.
 6. **The headset must be linked** or the gun will connect, answer a quick `$PING`, then drop within seconds and echo nothing to config. After a gun-initiated `$DISCONNECT,*`, back off at least 5 s before reconnecting.
 
-> **The safety model.** Three layers, in order of what they protect: (1) firmware is never written, so **a power-cycle always restores a tagger**; (2) a host should refuse malformed frames and require an explicit confirm for any command outside the **known-safe list** (below); (3) the **panic sequence** `$CLEAR,*` then `$SP,99,*` silences and stops a gun. **Note it leaves the gun with no `$SIR` table, so it cannot be hit until it is re-armed or power cycled**, which is intended for a panic stop but must not be mistaken for a playable state. Battle Company's official USB updater is the factory-restore path.
+> **The safety model.** Three layers, in order of what they protect:
+>
+> 1. **Firmware is never written**, so a power-cycle always restores a tagger.
+> 2. **A host refuses malformed frames** and requires an explicit confirm for any command outside the known-safe list (below).
+> 3. **The panic sequence** `$CLEAR,*` then `$SP,99,*` silences and stops a gun.
+>
+> The panic sequence leaves the gun with **no `$SIR` table, so it cannot be hit** until it is re-armed or power cycled. That is intended for a panic stop and must not be mistaken for a playable state. Battle Company's official USB updater is the factory-restore path.
 
 ```python
 # The known-safe list enforced by brx-mcp (mcp/brx_mcp/protocol.py).
@@ -180,7 +186,7 @@ The exact frame order that takes a tagger live, respawns it, and ends the game. 
 
 > **`$CLEAR` wipes the `$SIR` table and the gun then ignores every hit.** This is the single most confusing failure mode we have found: the gun arms, spawns, reports full pools, answers `$QUERY` normally and looks perfectly healthy, while every shot that reaches it is discarded. There is no `$HIR`, the headset stays dark, and the pools never move, so it presents as a broken headset or a dead sensor. It is neither. The `$SIR` matrix decides what an incoming IR word does to this gun, unmatched cells are silently ignored, and after `$CLEAR` there are no cells at all. Re-sending the `$SIR` rows alone restores it immediately. Bench-proven 2026-09-02: deterministic 5/5, and independent of how long you wait between `$CLEAR` and `$SPAWN` (tested 0.05 s to 1.0 s). Note the table SIZE does not matter, only its absence: a one-row table and the full ten-row table both registered 24/24 in an interleaved A/B.
 
-> This sequence was captured from the official iOS app driving a live game on firmware v4.32, then reproduced byte-for-byte by our own host on real taggers. Three pieces were missing from every earlier attempt: **`$AMMO` after spawn**, **`$BMAP` before *and* after spawn**, and the **empty token in `$SPAWN,,*`**.
+> This sequence is the official iOS app driving a live game on firmware v4.32, reproduced byte-for-byte on real taggers. Three pieces are easy to leave out, and the gun spawns wrong without them: **`$AMMO` after spawn**, **`$BMAP` before *and* after spawn**, and the **empty token in `$SPAWN,,*`**.
 
 ```text
 $CLEAR,*
@@ -304,7 +310,10 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | 41 | gunRangeIndoor | 75 | 75 | **The gun's INDOOR IR range**, as a percent. The APK field order places `gunRangeIndoor` here, between `ammoReserv` (t40) and `extraHeadsetRangeIndoor` (t42), and it reads 75 on all eighteen guns and **20 on melee**, which is the direction physics demands. `$GSET` token 2 selects whether the indoor or outdoor profile is live. **Lowering this is the most promising route to a weaker indoor beam** for tight spaces where bounced IR registers hits. Untested on the bench. |
 | 42 | extraHeadsetRangeIndoor | n/a | n/a | The **headset's** indoor range, separate from the gun's (t41). 30/30/40 on the three t1=2 weapons, blank elsewhere. There are four range fields in all: gun and headset, each with an indoor and an outdoor value. |
 
-> **Two positions that bit us.** (1) The metadata's field order has `rateOfFire` before `weaponSwapDelay`; the wire has the *rate* at **t14** and the constant 850 at t15. A compiler that trusted the field order shipped every weapon at 10 shots/s. (2) Keying weapons by their fire sound (t27) silently merges distinct weapons.
+> **Two positions to get right.**
+>
+> 1. The metadata's field order has `rateOfFire` before `weaponSwapDelay`, but the wire has the *rate* at **t14** and the constant 850 at t15. A compiler that trusts the field order ships every weapon at 10 shots/s.
+> 2. Keying weapons by their fire sound (t27) silently merges distinct weapons. The Rocket Launcher and the Rail Gun both fire `C03`.
 
 **Stock weapon signatures** (fire sound to weapon to behaviour, as named by the operator at capture)
 
@@ -334,7 +343,8 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 
 ### Can I build a semi-auto rifle?
 
-Yes: t20=7 is single-shot per pull. (An earlier note that semi-auto "may not exist" predates the t20 proof.)
+Yes. Set `$WEAP` t20 to `7`: one shot per trigger pull. The Shotgun and the Rocket Launcher both
+ship that way.
 
 ### What bounds a custom weapon?
 
@@ -353,9 +363,9 @@ These two frames set the on-gun rules and the player's pools, identity and voice
 | # | Field | Captured | Meaning |
 |---|---|---|---|
 | 1 | friendlyFire | 0 / 1 | **Firmware-enforced, both directions.** 0 blocks same-team damage *and* heals from enemies; 1 opens the gate. Replicated twice with alternating values plus control. |
-| 2 | outdoorMode | 0 | The **indoor/outdoor** setting, the same one the gun toggles natively on a 3 second ALT hold. Outdoor raises IR range, hit-LED brightness and blast radius; indoor shrinks them. See [Operating the BRX](/manual/operate). Field name and mapping are APK-decoded and **we have not yet set it over BLE and observed the change**. |
-| 3 | gunLaserRegion | 1 | **IR transmit power, as a regional legal limit** (USA vs International). This is the one field that looks like a direct power control, so it is the first thing to try if you want a weaker beam for indoor play. APK-decoded; **untested on the bench**, and we do not know whether it is two coarse levels or finer. |
-| 4 | autoAmbientLight | 0 | Ambient-light compensation, presumably the sunlight IR-noise filtering the user guide describes. APK field name; not exercised on the bench. |
+| 2 | outdoorMode | 0 | The **indoor/outdoor** setting, the same one the gun toggles natively on a 3 second ALT hold. Outdoor raises IR range, hit-LED brightness and blast radius; indoor shrinks them. See [Operating the BRX](/manual/operate). Field name and mapping are APK-decoded; **setting it over BLE and observing the change is untested**. |
+| 3 | gunLaserRegion | 1 | **IR transmit power, as a regional legal limit** (USA vs International). This is the one field that looks like a direct power control, so it is the first thing to try if you want a weaker beam for indoor play. APK-decoded; **untested on the bench**, and whether it is two coarse levels or finer is unmapped. |
+| 4 | autoAmbientLight | 0 | APK field name. The user guide describes a sunlight IR-noise filter; whether this field is that control is unmapped. Not exercised on the bench. |
 | 5 | gyroscope | 1 | APK field name; not exercised on the bench. |
 | 6 | secondaryBluetoothWeapons | 0 | APK field name; not exercised on the bench. |
 | 7 | criticalShotModifier | 50 | APK field name. **Not** score-to-win (byte-identical across captures with different win conditions). |
@@ -421,7 +431,7 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 | Add armor | 13, 15, 20, 22 | 0 to 20 to 40; overflow spills to shields | ally only (20 also strips enemy armor) |
 | Add shield | 11, 18 | 0 to 20 to 40 | ally only |
 | **`$ALCD` token-2 drop** | 23 | Registers a hit, no pool change; `$ALCD` token 2 drops 100 to 0 and recovers over about 6-8 s while the gun keeps firing. The state clears on `$SPAWN,,*`. | enemy |
-| Registers, no pool change | enemy 8, 24, 25, 26, 27, 28, 35 · ally 31, 32, 34 | `$HIR` fires, pools unchanged, no other frame. The enemy functions were verified identical on protocols 0/5/7/9/10, including **fn 28 on protocol 5**, which an earlier draft of the row below listed as non-registering. The ally functions were not protocol tested. **This row's reading is scoped, not general: two measurement artifacts apply.** The victim started every trial at full health: HP 45, armour 70. A heal or armour grant into full pools is clamped, so it reads as "no pool change". That is what mis-binned **fn 10**, which is separately confirmed as respawn plus add HP. The shield started at zero, so a function that drains only shield also read as no change. **That second artifact has since been closed by re-testing with a shield granted first, and it caught one wrong entry: fn 3 drains shield exactly as plain damage does, so it has moved to the damage class.** The seven functions left in this row moved no pool with 150 shield available, so for them the reading is real. | n/a |
+| Registers, no pool change | enemy 8, 24, 25, 26, 27, 28, 35 · ally 31, 32, 34 | `$HIR` fires, pools unchanged, no other frame. The enemy functions are identical on protocols 0/5/7/9/10, `fn 28` on protocol 5 included. The ally functions are not protocol tested. **The reading is scoped, not general.** The victim is at full health for these trials (HP 45, armour 70), and a heal or armour grant into a full pool is clamped, so it reads as no change: `fn 10` is respawn plus add HP and belongs in that class, not this one. The seven enemy functions here moved no pool with 150 shield available, so for them the reading is real. `fn 3` drains shield exactly as plain damage does and is classed as damage. | n/a |
 | No registration | 0, 39-45 | n/a. 0/39/40 re-measured 2026-08-27; 41-45 not re-tested. | n/a |
 
 > **Support functions are team-gated in firmware.** With `$GSET` friendlyFire = 0, heals/armor/shield grants register **only from a same-team source**, and damage registers only from another team. Set friendlyFire = 1 and everything lands from anyone. A medic gun enforces "allies only" with zero host logic.
@@ -473,7 +483,13 @@ Hits, health, HUD echoes, buttons and telemetry, plus the proof that the gun kee
 | `$VOLTS,<pack_mV>,<cell_mV>,<n3>,<n4>,*` | Battery every ~30 s in app mode. **Only reliably returned at good RSSI**. Weak-signal guns in a fleet sweep returned none. |
 | `$DISCONNECT,*` | The gun is hanging up (headset switched off, or the app closing). |
 
-> **The gun keeps no game state, proven three ways.** (1) Three captures at respawn 5/15/30 s: byte-identical config, nothing on the wire encodes respawn or clock. (2) The complete end-of-game tail is `$VOL`, `$HLED`, `$STOP`, `$CLEAR`, `$PLAY`, and **the app never asks the gun for a score**. (3) Reconnecting after out-of-range play yields zero frames, and bare `$UP,*` gets no reply. The phone tallies `$HIR`/`$HP` live; it is the only place the score ever existed. Anything needing respawn, a clock or scoring needs a host in range for the whole match.
+> **The gun keeps no game state.** Three separate proofs:
+>
+> 1. Three captures at respawn 5, 15 and 30 s produce byte-identical config. Nothing on the wire encodes a respawn time or a clock.
+> 2. The complete end-of-game tail is `$VOL`, `$HLED`, `$STOP`, `$CLEAR`, `$PLAY`. **The app never asks the gun for a score.**
+> 3. Reconnecting after out-of-range play yields zero frames, and a bare `$UP,*` gets no reply.
+>
+> The phone tallies `$HIR`/`$HP` live, and it is the only place the score ever existed. Anything needing respawn, a clock or scoring needs a host in range for the whole match.
 
 **Per-player attribution and native kill feedback over BLE: the recipe**
 
@@ -483,9 +499,9 @@ Hits, health, HUD echoes, buttons and telemetry, plus the proof that the gun kee
 4. Score lines go to every gun's announcer slot from its own host: on a lead change, `$PLAY,,4,6,VB17,,,,*` ("takes the lead"). Nothing propagates gun-to-gun; there is no nRF score channel to discover.
 5. Game end: `$PLAY,VSF,4,6,JAY,,,,*` on the winner's guns (victory sting plus "victory").
 
-### Why did earlier captures show shooter id 0,0?
+### Why does a capture show shooter id 0,0?
 
-Every gun sat on the default id. The field was always there; `$PSET` token 1 is what makes it vary.
+Every gun on that capture sat on the default id. The field is always present; `$PSET` token 1 is what makes it vary.
 
 ### Why is `$SFLASH` in the victim's capture "never near a hit"?
 
@@ -804,31 +820,3 @@ python -m brx_mcp.weapmap cap14.btsnoop cap15.btsnoop # token × weapon table fr
 5. Bound the sync to about 1800-2200 µs and require 25 bits plus `Z0 ≠ Z1`, or a TV remote will decode as a BRX frame.
 
 > **Measurement discipline that mattered.** Check the control *before* reading the result; one clean-looking run is not a result (everything that held was measured three times with alternating conditions, or came from a human's senses); a host-visible field that correlates with a state is not evidence of that state; damage is a property of the (weapon, victim `$SIR` table) pair, never of the weapon alone.
-
-## Sources
-
-- protocol/brx-protocol.md
-- protocol/session-findings-2026-08.md
-- protocol/brx-ir-protocol.md
-- protocol/callsign-extract/protocol-classes.md
-- protocol/callsign-extract/config-facts.md
-- protocol/callsign-extract/README.md
-- protocol/captures/README.md
-- docs/capture-runbook.md
-- docs/experiment-log.md
-- docs/experiment-log/2026-09.md
-- docs/gotchas.md
-- docs/FOLLOWUPS.md
-- docs/VISION.md
-- docs/reference/sound-catalog.md
-- docs/reference/grenade.md
-- README.md
-- CLAUDE.md
-- mcp/brx_mcp/protocol.py
-- mcp/brx_mcp/server.py
-- mcp/brx_mcp/__main__.py
-- mcp/brx_mcp/gameconfig.py
-- mcp/brx_mcp/btsnoop.py
-- mcp/brx_mcp/diag/
-- mcp/tests/test_diag.py
-- External, credited: LaserTagMods (JEDGE / JBOX / NRFL-Bases), Battle Company BRX Manual V7, and the owner community (Facebook group captures on fw v4.30).

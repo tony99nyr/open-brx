@@ -38,7 +38,7 @@ House style:
   Simplify the prose around a table, never the table.
 - **Never simplify a fact away.** Split the sentence instead.
 - `##` headings are the unit of navigation: one per thing a reader would link to.
-- A page may end with a `## Sources` list of repo paths. Individual sentences are not cited.
+- No per-page sources list and no per-sentence citation. The footer links the repository.
 
 ## How a fact gets in
 

@@ -306,19 +306,3 @@ What's in the box (typical retail kit):
 | Optional | 6xAA battery holder use, scope, phone bracket, smart grenade |
 
 > **Official documents** (linked, not rehosted): Battle Company's BRX Manual V7 (battlecompany.com, 2021) and the BRX Extended User Guide (Laser Tag Pro, 2018). The PDFs are the manufacturer's own word.
-
-## Sources
-
-- docs/reference/brx-manual-notes.md
-- docs/reference/brx-extended-user-guide.md
-- docs/reference/community-notes.md
-- docs/reference/grenade.md
-- docs/reference/edge-brp.md
-- docs/reference/lasertagmods.md
-- docs/gotchas.md
-- docs/field-process.md
-- docs/experiment-log.md
-- protocol/brx-protocol.md
-- protocol/session-findings-2026-08.md
-- protocol/brx-ir-protocol.md
-- protocol/callsign-extract/

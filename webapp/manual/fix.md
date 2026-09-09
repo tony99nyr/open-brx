@@ -12,10 +12,11 @@ first thing to check.
 It won't fire. Before you decide it is broken, check three things: the headset, the game state
 and the locks. Work the ladder in order and stop at the first check that says yes.
 
-> **Three things to know before any ladder.** (1) The tagger keeps no game state. If it is not in
-> a started game, it will not shoot anyone. (2) The gun locks when its headset disconnects
-> mid-game. That is anti-cheat. (3) A dead player's trigger only clicks. That is a game rule, not
-> a fault.
+> **Three things to know before any ladder.**
+>
+> 1. The tagger keeps no game state. If it is not in a started game, it will not shoot anyone.
+> 2. The gun locks when its headset disconnects mid-game. That is anti-cheat.
+> 3. A dead player's trigger only clicks. That is a game rule, not a fault.
 
 ### "Won't fire"
 
@@ -533,22 +534,3 @@ No. You set it only by holding the button on the device, and it stays set across
 
 There is no public BRX library yet. The reload-button STL circulates in the owners' group. Open
 BRX is building an open, versioned one.
-
-## Sources
-
-- docs/gotchas.md
-- docs/reference/community-notes.md
-- docs/reference/lasertagmods.md
-- docs/reference/jay-ecosystem.md
-- docs/reference/brx-manual-notes.md
-- docs/reference/brx-extended-user-guide.md
-- docs/reference/grenade.md
-- hardware/print-files.md
-- hardware/brx-companion-spec.md
-- hardware/brx-station-spec.md
-- docs/experiment-log.md
-- protocol/brx-protocol.md
-- protocol/session-findings-2026-08.md
-- docs/FOLLOWUPS.md
-- docs/VISION.md
-- CLAUDE.md

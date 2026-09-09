@@ -80,16 +80,3 @@ The limits that follow from this, measured on hardware except for the logical-te
 | Teams beyond 4 | unlimited logical teams, scored by Mission Control's roster; no on-gun friendly-fire protection in that mode |
 | Guns per node | exactly 1 |
 | Guns on one laptop Bluetooth radio | 3 proven for a synced start; the maximum is untested |
-
-## Sources
-
-- README.md
-- mcp/brx_mcp/
-- protocol/brx-protocol.md
-- docs/spec/contracts.md
-- docs/adr/0001-companion-rider-architecture.md
-- docs/adr/0002-laptop-mission-control-host.md
-- docs/adr/0003-native-app-over-web-bluetooth.md
-- hardware/brx-companion-spec.md
-- hardware/brx-station-spec.md
-- docs/experiment-log/2026-08.md

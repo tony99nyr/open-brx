@@ -414,24 +414,3 @@ Three modes stock BRX does not ship:
 - **Syphon and regenerating health**: the host credits the exact killer (every shot names its shooter) and tops up their pool. Or it refills anyone who has gone T seconds without taking damage. Both are pure host rules on top of the "heals add, never set" write.
 
 > **Honest limits.** Phones have no IR, so shoot-the-point needs a station or the grenade. One phone can hold only a handful of gun links. A field without WiFi means live global state needs a radio tier.
-
-## Sources
-
-Facts here are restated, never copied. Protocol discovery credit goes to LaserTagMods (JEDGE/JBOX).
-
-- docs/reference/weapons.md
-- docs/weapon-design.md
-- docs/reference/callsign-ui.md
-- protocol/callsign-extract/apk-harvest.md
-- protocol/callsign-extract/protocol-classes.md
-- protocol/callsign-extract/config-facts.md
-- mcp/brx_mcp/data/medals.json
-- docs/reference/brx-manual-notes.md
-- docs/reference/brx-extended-user-guide.md
-- docs/game-modes.md
-- docs/reference/grenade.md
-- docs/reference/community-notes.md
-- docs/manual/sound.md
-- docs/experiment-log.md
-- protocol/session-findings-2026-08.md
-- protocol/brx-ir-protocol.md

@@ -104,7 +104,24 @@ renderer.code = function ({ text, lang }) {
   return `<pre><button class="copy" type="button">Copy</button><code${lang ? ` class="language-${esc(lang)}"` : ''}>${esc(text)}</code></pre>\n`;
 };
 
-function shell(page, content, toc) {
+// A diagnostic ladder is the most useful thing on this site and the plainest in markdown: the
+// author writes `**Question?** -> yes -> do this`. Turn those pivots into visible branch marks so a
+// ladder can be scanned instead of read. Source stays plain markdown; nothing new to learn.
+// Skipped inside <pre>, where an arrow is data.
+function markBranches(html) {
+  return html.split(/(<pre[\s\S]*?<\/pre>)/).map(part => part.startsWith('<pre') ? part
+    : part
+        .replace(/\s*(?:→|-&gt;)\s*(yes|no)\s*(?:→|-&gt;)\s*/gi,
+          (_, w) => `<b class="br br-${w.toLowerCase()}">${w.toLowerCase()}</b>`)
+        // an unconditional rung ("**Still nothing?** -> it is the mainboard") has no yes/no. Mark
+        // the pivot quietly so it reads as deliberate beside the chips, and leave menu paths
+        // ("File -> Export") alone by only matching an arrow just after a bold lead-in.
+        .replace(/(<\/strong>(?:\s*\([^)]{0,90}\))?)\s*(?:→|-&gt;)\s*/g,
+          (_, lead) => `${lead}<span class="br-then" aria-hidden="true">→</span> `)
+  ).join('');
+}
+
+function shell(page, content) {
   const nav = PAGES.filter(p => p.nav).map(p =>
     `<a href="${p.slug}/"${p.slug === page.slug ? ' aria-current="page"' : ''}>${p.nav}</a>`).join('');
   const title = page.slug === '/' ? 'Open BRX: the BRX manual' : `${page.title} | Open BRX`;
@@ -125,7 +142,6 @@ function shell(page, content, toc) {
 <main id="main"><article>
 <h1>${esc(page.title)}</h1>
 ${page.lastVerified ? `<p class="meta">Last verified <time datetime="${page.lastVerified}">${page.lastVerified}</time></p>` : ''}
-${toc}
 ${content}
 </article></main>
 <footer><p>Open BRX is independent and is not endorsed by Battle Company. Protocol discovery credit: LaserTagMods (JEDGE / JBOX). <a href="/credits/">Credits and sources</a> &middot; <a href="${GITHUB}">Source on GitHub</a></p></footer>
@@ -149,6 +165,11 @@ for (const p of pages) {
   if (bm) problems.push(`${p.file}: leftover block marker ${bm[0]}`);
   for (const g of p.source.match(/[✅📖🔍👥🧪📐🚧]/gu) || []) problems.push(`${p.file}: provenance mark ${g}`);
   if (/^src:/m.test(p.source)) problems.push(`${p.file}: src: citation`);
+  // A visitor does not care which repo file a fact came from; the footer links the repository.
+  if (/^##+ Sources\s*$/m.test(p.source)) problems.push(`${p.file}: per-page Sources section`);
+  // the manual states what is true now, it does not narrate its own corrections
+  const hist = p.source.match(/\b(an? earlier (note|draft|reading|version)|we (got|were) (this )?wrong|predates the)\b/i);
+  if (hist) problems.push(`${p.file}: narrates its own history ("${hist[0]}")`);
 }
 if (problems.length) {
   // Nothing has been written yet, and that is the point: the build used to emit the assets, the
@@ -162,11 +183,17 @@ write('data/weapons.json', JSON.stringify(weapons));
 write('data/sounds.json', JSON.stringify(sounds));
 for (const p of pages) {
   headings.length = 0;
-  const content = marked.parse(p.body, { renderer, mangle: false, headerIds: false });
+  const content = markBranches(marked.parse(p.body, { renderer, mangle: false, headerIds: false }));
   const toc = headings.length > 2
     ? `<nav class="toc" aria-label="On this page"><p>On this page</p><ul>${headings.map(h => `<li><a href="#${h.id}">${h.text}</a></li>`).join('')}</ul></nav>`
     : '';
-  write(p.slug === '/' ? 'index.html' : p.slug.slice(1) + '/index.html', shell(p, content, toc));
+  // Say what the page is BEFORE offering to navigate it: the opening paragraph becomes a lead, and
+  // the contents box follows it rather than standing between the title and the first sentence.
+  const lead = content.match(/^\s*<p>[\s\S]*?<\/p>/);
+  const body = lead
+    ? `<p class="lead">${lead[0].replace(/^\s*<p>/, '').replace(/<\/p>$/, '')}</p>${toc}${content.slice(lead[0].length)}`
+    : toc + content;
+  write(p.slug === '/' ? 'index.html' : p.slug.slice(1) + '/index.html', shell(p, body));
   write(p.slug === '/' ? 'index.md' : p.slug.slice(1) + '.md', p.source); // the twin IS the source
   built.push(p);
 }

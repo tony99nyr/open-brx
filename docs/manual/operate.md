@@ -545,16 +545,3 @@ Keep it charged, keep it dry, and turn it off between rounds.
 > **Tip.** Sound and firmware updates go through the micro-USB Programing Port with a
 > SELECT-hold boot. The gun then shows up as a disk with an AUDIO folder. Keep a copy of the
 > originals before you swap anything. The full procedure is in Firmware and Sounds.
-
-## Sources
-
-- docs/reference/brx-manual-notes.md
-- docs/reference/brx-extended-user-guide.md
-- docs/reference/community-notes.md
-- docs/reference/grenade.md
-- docs/reference/callsign-ui.md
-- protocol/callsign-extract/apk-harvest.md
-- protocol/session-findings-2026-08.md
-- docs/gotchas.md
-- docs/field-process.md
-- docs/experiment-log.md
