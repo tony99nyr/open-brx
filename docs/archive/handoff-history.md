@@ -837,3 +837,51 @@ pattern: nothing was intermittent, the headset was simply linked sometimes and n
 - **LaserTagMods' repos carry no license** (all rights reserved). Their findings are
   restated independently in our docs — **do not copy their code** into this MIT project.
   Worth asking them to add a license; it would unlock a lot.
+
+
+---
+
+## Moved from HANDOFF 2026-09-09 — A16 parts 1+2, superseded once A16 was verified on a gun
+
+- **⭐ LEDs: A16 parts 1+2 (2026-09-07), the two retractions that produced it.**
+  `docs/led-language.md` is the design of record; `contracts.md` A16-A16.5 is the spec.
+  - **The native death flash was never missing — our own `$HLED,,6` was disabling it** for the rest of that
+    life, and it was the `in_play: dark` rest frame. In-play dark is `$HLED,9,0,,,10,,*`; **effect 6 is
+    teardown-only and must never be sent in play.** Deletes A11.8's `death_flash`. `$HLOOP,<1|2>,<ms>` is the
+    down signal, `$HLOOP,0,0` stops it, `$SPAWN` clears it; the node writes NOTHING at death and re-arms once.
+  - **Apply-gate 5 is OFF, not the "~1/3" believed since 2026-09-02** (retracted). Token 5 is the only
+    brightness and it is GLOBAL — which is why a half-step must BLINK and can never be a dim segment.
+    Night DIMS every gun frame (token 5 = 1); `blackout` empties the tables and the DOWN signal survives both.
+  - **`$TID` is 0-3 only (F35).** The IR team field is 2 bits, so a gun sends `tid & 3` while the victim
+    compares the FULL tid: at tid >= 4 teammates damage each other and a gun can kill itself off a surface
+    (observed). Team COLOUR is decoupled from the tid; FFA white (Q19).
+  - Headset **role states** survive hits (carrier, infected, vip, beacon, extracted); the last three have no
+    node trigger yet (S10). ⚠ **Phones are on a pre-`role` APK**, so `headset_frames()` still ships the legacy
+    `headset.carrier` key on purpose — delete it only once an APK with `role` is deployed.
+    `test_led_invariants.py` pins all of the above across every preset x team x night x ffa.
+
+
+
+## Moved from HANDOFF 2026-09-09 — repo hygiene detail, 2026-09-07
+
+- **Repo hygiene, 2026-09-07: ONE repo, decided on evidence.** Raw Callsign JSONs restated as our own data;
+  CONTRIBUTING + code of conduct; apks publish to a GitHub Release. The PDF and ten stale apk blobs are
+  **purged from history: pack 93 MB → 28 MB, every SHA changed. `git fetch && git reset --hard origin/main`,
+  do not pull.** Backup: `~/brx-backups/open-brx-pre-purge-2026-09-07.bundle`.
+- **⭐⭐ LEDs: A16 IS VERIFIED ON A GUN, 2026-09-09 — walked state by state with Tony.** Dim team rest ·
+  the readout reading as an EVENT over it ("way brighter") · the seven-level ladder 45→1→44, animating one
+  level per step in BOTH directions with the hue shifting · armour→health handover · critical red pulsing to
+  dark · rapid fire holding the 3-per-second ceiling (5 hits in 290 ms, no replayed blinks) · death hands-off
+  then `$HLOOP` · night mode · the 3-flash event burst. Evidence: `experiment-log/2026-09.md` 2026-09-09.
+  **A16.4** (2026-09-09, Tony): the in-play rest is the TEAM COLOUR at brightness 1, not dark — a transient
+  readout meant a dark rest left the gun unlit for nearly a whole match. Pregame stays full; the readout
+  paints at full, and that brightness gap is the only thing separating a settled bar from the resting gun
+  (F56 — three of four team colours share a hue with a pool; ⚠ at NIGHT both are dim and the gap is gone).
+  Shield is TEAL, matching its own `shield_up` burst. **A16.5**: an emptied pool HANDS OVER inward
+  (shield→armour→health) after draining to zero — found because armour hitting 0 painted DARK for 4 s while
+  the player was at 45/45, i.e. the strip read "nothing left" at full health.
+  ⚠️ **RETRACTED on the gun 2026-09-09: an EMPTY `$GLED` colour token is RED (0), not "keep this LED".**
+  `$GLED,,9,,0,10` on a purple strip gives red·dark·red. A16.3's blink half was built on the wrong reading
+  and painted red into every bar. **Write all three colour tokens, always.** The stage's LED SIMULATOR
+  encoded the same wrong rule and so drew it correctly — a simulator that encodes an assumption launders it
+  rather than testing it. `test_led_invariants` now forbids the shape.

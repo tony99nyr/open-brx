@@ -74,31 +74,18 @@
   ⚠ Three shipped bugs, all fixed: platform denied field games that happened, `_redirects` splats looped 7 of 9 live URLs, and the arsenal published rebalanced UI bars as Callsign wire values. Five guards
   were F40-shaped (read the artefact, never exercised the behaviour) and now fire.
 
-- **Repo hygiene, 2026-09-07: ONE repo, decided on evidence.** Raw Callsign JSONs restated as our own data;
-  CONTRIBUTING + code of conduct; apks publish to a GitHub Release. The PDF and ten stale apk blobs are
-  **purged from history: pack 93 MB → 28 MB, every SHA changed. `git fetch && git reset --hard origin/main`,
-  do not pull.** Backup: `~/brx-backups/open-brx-pre-purge-2026-09-07.bundle`.
-- **⭐ LEDs: A16 BUILT + COMMITTED (parts 1+2); a bench night retracted two beliefs.**
-  `docs/led-language.md` is the design of record; `contracts.md` A16/A16.2 is the spec.
-  - **The native death flash was never missing — our own `$HLED,,6` was disabling it** for the rest of
-    that life, and it was our `in_play: dark` rest frame. In-play dark is now `$HLED,9,0,,,10,,*`; effect 6
-    is teardown-only. Deletes the A11.8 `death_flash` scheme. `$HLOOP,<1|2>,<ms>` drives the loop over BLE,
-    `$HLOOP,0,0` stops it, `$SPAWN` clears it; the node writes NOTHING at death and re-arms once.
-  - **Gun body rests DARK** with a transient pool readout — **A16.3: SEVEN levels** + a drop animation
-    (shield TEAL, armour PURPLE, health GREEN/YELLOW/RED, innermost moved pool wins, 4 s hold). Half-steps
-    BLINK: per-LED brightness does not exist, the token is global. The blank must precede any paint, once
-    per life. **Night DIMS, it is not a blackout** (token 5 = 1; ⚠ apply-gate 5 is OFF, not the "~1/3"
-    believed since 2026-09-02 — retracted); `blackout` empties the tables, DOWN survives both.
-  - **`$TID` is 0-3 only (F35).** The IR team field is 2 bits so a gun sends `tid & 3` while the victim
-    compares the FULL tid: on tid >= 4 teammates damage each other and a gun can kill itself off a surface
-    (observed). Guarded. Team COLOUR is decoupled from the tid (team 3 = green on the wire, PURPLE painted);
-    FFA white (Q19).
-  - Headset **role states** survive hits (carrier WHITE, infected, vip, beacon, extracted); the last three
-    have no node trigger yet (S10). A ~600 ms hit-to-LED lag is gone: a full page-model rebuild sat on the
-    per-hit path, and under it `sounds.on_gun_ids()` re-derived 2477 ids per call. `state()` is now 0.04 ms warm (F51 closed 2026-09-07).
-  - ⚠ **Phones are on a pre-`role` APK**: `headset_frames()` still ships the legacy `headset.carrier`
-    key on purpose (delete only once an APK with `role` is deployed, S10). `test_led_invariants.py`
-    pins these facts across every preset x team x night x ffa, and across compiled bundles.
+- **Repo hygiene, 2026-09-07:** ONE repo (decided on evidence), binaries purged from history — pack
+  93 MB → 28 MB and **every SHA changed**, so `git fetch && git reset --hard origin/main`, do NOT pull.
+  Backup: `~/brx-backups/open-brx-pre-purge-2026-09-07.bundle`. Detail in `archive/handoff-history.md`.
+
+- **LEDs, the three facts from A16 parts 1+2 that still bite** (full block moved to
+  [`archive/handoff-history.md`](archive/handoff-history.md) 2026-09-09, now that A16 is verified):
+  **`$HLED,,6` must NEVER be sent in play** — it disables the firmware's death flash for the rest of the
+  life, silently, and that cost three days; in-play dark is `$HLED,9,0,,,10,,*` and `$HLOOP` is the down
+  signal. **`$TID` is 0-3 only (F35)** — the IR team field is 2 bits, so above 3 teammates damage each other
+  and a gun can kill itself off a surface. **Phones are on a pre-`role` APK**, so `headset_frames()` still
+  ships the legacy `headset.carrier` key on purpose (S10). `test_led_invariants.py` pins all of it.
+
 ## Next actions
 
 1. **Hear A15.3 on a gun** (10 min, one tagger + emitter): ARM, spawn/respawn a few times, take rifle and
@@ -106,19 +93,23 @@
    the damage, and a kill draws from the 5 takes.
 2. **Build and ship an APK carrying A16 + A17** (0.1.7 predates both). Until it ships, none of the LED work
    or the hit audio reaches a player, and the legacy `headset.carrier` key cannot be deleted (S10).
-3. **Verify the A16.3 SEVEN-LEVEL BAR on the gun** (`docs/bench-next-2026-09-07.md`, ~15 min): built tonight
-   across MC, node and stage, NEVER seen on hardware. Armour drains purple 3→2→1, then health goes
-   green→yellow→red, half-steps blinking, 4 s hold, then dark. ⚠ Read `gotchas.md`'s "emitter fires, nothing
-   registers" checklist BEFORE debugging any IR — and see **F49**, unexplained: a SAME-team shot registered
-   while an ENEMY one did not, through the stage's arm but not through `tools/ff_ab.py`.
-4. **Bench, gun body only** (`bench-flash-control-2026-09-05.md` §6 L10-L14, ~15 min): the down-signal
-   ladder L1-L9 is ANSWERED and mostly moot; what is left is a metered A/B of `$HLOOP,2,750` against a
-   native out-blink (the "might be brighter" call was one operator, one session, no meter), the rate's
-   usable range, a dim 2-of-3 held 60 s, and `$TID,4` purple. Plus **F50**: the A17 pain gate has never run
-   in a real node path — the stage is the only instrument that can close it (grunt on a HEALTH hit, silence
-   on an armour hit).
-5. **Build S5** (MC arms utility stations at muster), then run the `$WEAP` blind-token plan in
+3. **Decide the two OPEN LED design questions** (no bench needed, both framed by Tony 2026-09-09):
+   **(a)** should a partial level keep LOOP-BLINKING while settled? His brief reserves looped blinking and red
+   for CRITICAL; red already is (L1 only), the loop is not (L5 and L3 blink too). ⚠ For a SINGLE-HUE pool the
+   seven levels are only FOUR visual states — armour's L1/L2 are both `4,9,9`, L3/L4 both `4,4,9`, L5/L6 both
+   `4,4,4` — so the blink is the ONLY thing separating adjacent levels, and dropping it collapses armour and
+   shield to a 4-state bar. Health escapes it because its hue shifts. Compare on the stage: scene
+   `PROPOSED · partial settles SOLID (THE OPEN ONE)` against `DROP 5`. **(b)** should HEALING get its own
+   opening beat? Today a gain steps up with no lead and no blink (verified, and deliberately unlike a hit),
+   so it is easy to miss.
+4. **Bench, gun body only** (`bench-flash-control-2026-09-05.md` §6): a metered A/B of `$HLOOP,2,750`
+   against a native out-blink (the "might be brighter" call was one operator, no meter), that rate's usable
+   range, a dim 2-of-3 held 60 s, and `$TID,4` purple. Plus **F50**, the A17 pain gate in a real node path.
+5. **Build S5** (MC arms utility stations at muster), then the `$WEAP` blind-token plan in
    `docs/bench-weap-tokens-discovery-2026-09-04.md` (sensor damage F23 first).
+6. ⚠ **Nothing shield-shaped has EVER been on a gun** (F60): the pool is IR-only (P16) and no compiled mode
+   registers a medic word, so the teal bar and A16.5's shield→armour handover are unverifiable as things
+   stand. Decide whether a grant row belongs in the compiled `$SIR` table at all.
 
 **The bench queue** is the "Needs Tony at the bench" section of `FOLLOWUPS.md` plus one dated run
 sheet at a time (today: `bench-super-indoor-2026-09-07.md` on the Mac, the gun-body rungs above, then
