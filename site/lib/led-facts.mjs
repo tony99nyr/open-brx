@@ -6,6 +6,12 @@
 // F40 rule: a guard that cannot see its own fault is worse than none. So a pattern that no longer
 // matches is a HARD FAILURE, not a skip. If someone renames `SHIELD_COLOUR`, this breaks loudly
 // instead of quietly deciding everything is fine.
+//
+// ⚠ WHAT THIS DOES NOT PROVE. These checks establish that the PAGE AGREES WITH THE CODE. They say
+// nothing about whether the code is right. The bar drained the wrong way for a day and a half with
+// a passing test defending it, and had the page been written then, this guard would have certified
+// the wrong direction just as happily. Only the bench settles that. Treat a green build here as
+// "the manual is not lying about what we built", never as "what we built is correct".
 import fs from 'node:fs';
 import path from 'node:path';
 

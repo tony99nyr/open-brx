@@ -51,10 +51,18 @@
 - **IR rig:** emitter (board B, COM8) registers 6/6 at 3 ft, 10/10 at 6 ft, cliff at 10 ft; work at
   6 ft or less. Receiver (board A, COM7) fragments frames but `native_capture.py` stitches them (F12
   worked around). Never end a run on a bare `$CLEAR`: it wipes the `$SIR` table (F11).
-- **The public site is nine plain-markdown pages.** `docs/manual/*.md` is ordinary CommonMark
-  (contract: `docs/site/FORMAT.md`), rendered by a 233-line generator, gated by 18 browser steps
-  (`cd site && npm test`). No block syntax, no badges, no `src:` lines; the confidence record lives in
-  the log and FOLLOWUPS. ⚠ Built pages are STILL COMMITTED until the Cloudflare build command is set (B24).
+- **The public site is twelve plain-markdown pages** at open-brx.iamrossi.workers.dev. `docs/manual/*.md`
+  is ordinary CommonMark (contract: `docs/site/FORMAT.md`), rendered by a 597-line generator and gated
+  by 62 browser steps at desktop AND phone width (`cd site && npm test`). Eight pages are the BRX
+  manual, four are Open BRX (`/platform`, plus leds, modes, run-a-game). No block syntax, no badges, no
+  `src:` lines; confidence lives in the log and FOLLOWUPS. Search is generated per heading and lazy.
+  ⚠ Built pages are STILL COMMITTED until the Cloudflare build command is set to `npm run build:ci`
+  (B24). ⚠ The repo is PRIVATE, so the site publishes no link into it: flip `REPO_PUBLIC` in
+  `site/build.mjs` when that changes and every link returns at once.
+  `site/lib/led-facts.mjs` reads `SHIELD_COLOUR`, `ARMOUR_COLOUR`, `GUN_DEFAULT` and the drain
+  direction out of the live Python and FAILS THE SITE BUILD when a published LED fact disagrees. It
+  proves the page matches the code, never that the code is right.
+
 - **Environment:** WSL2 has no Bluetooth; run anything that touches a gun with
   `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe`. `mcp/pyproject.toml` pins `mcp>=2,<3`; the
   2.0 port is done. `~/.brx-mcp/armory.json` is never in git (headset PINs); stickers stay out of
@@ -71,8 +79,10 @@
   went from 528 lines of positioning to a 74-line page; the architecture tables it used to carry moved
   into `docs/architecture-topology.md`, which is internal. Every published `$` command in the developer
   reference survived (checked by set-diff; the 16 that vanished were all in the unpublished backlog).
-  ⚠ Three shipped bugs, all fixed: platform denied field games that happened, `_redirects` splats looped 7 of 9 live URLs, and the arsenal published rebalanced UI bars as Callsign wire values. Five guards
-  were F40-shaped (read the artefact, never exercised the behaviour) and now fire.
+  ⚠ **NINE guards could not see their own fault**, all one shape: read the artefact, never exercise
+  the behaviour. Worst was the gate having ONE viewport, which made half its phone assertions
+  unfalsifiable. Two were fixes for earlier ones on the same list. Every guard in `site/` has now
+  been broken on purpose and observed failing; see the 2026-09-09 (late) log entry.
 
 - **Repo hygiene, 2026-09-07:** ONE repo (decided on evidence), binaries purged from history — pack
   93 MB → 28 MB and **every SHA changed**, so `git fetch && git reset --hard origin/main`, do NOT pull.
