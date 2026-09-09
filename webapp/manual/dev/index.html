@@ -580,7 +580,8 @@ python -m brx_mcp identify &lt;addr&gt;  # $PING → generation check, firmware,
 python -m brx_mcp listen &lt;addr&gt;    # read-only live console: pull the trigger, watch $BUT/$HIR/$HP</code></pre>
 <pre><button class="copy" type="button">Copy</button><code class="language-bash"># ...and now actually play. Your laptop drives the guns directly over BLE,
 # so everyone stays within BLE range of it (a room or a yard).
-python -m brx_mcp play tdm &lt;addr1&gt; &lt;addr2&gt; volume=69   # a real Team Deathmatch with live scoring
+python -m brx_mcp play tdm &lt;addr1&gt; &lt;addr2&gt;             # a real Team Deathmatch with live scoring
+python -m brx_mcp play tdm &lt;addr1&gt; &lt;addr2&gt; outdoor=1 volume=90   # outdoors: louder, longer range
 #   modes: tdm ffa infection lms cs domination koth ctf extraction
 #   run `python -m brx_mcp` with no arguments for the full command list
 
@@ -596,7 +597,7 @@ claude mcp add brx -- python.exe -m brx_mcp</code></pre>
 <p><strong>CLI commands</strong></p>
 <div class="table-wrap"><table><thead><tr><th>Command</th><th>What it does</th></tr></thead><tbody><tr><td><code>scan</code> · <code>identify &lt;addr&gt;</code> · <code>listen &lt;addr&gt;</code> · <code>probe &lt;addr&gt;</code></td><td>Discover, check, watch, probe a single gun</td></tr>
 <tr><td><code>startgame &lt;addr&gt;</code> · <code>deathmatch &lt;addr&gt;</code> · <code>arena &lt;addr1&gt; &lt;addr2&gt;</code> · <code>fieldstart …</code></td><td>Single-purpose game drivers (the arm sequence)</td></tr>
-<tr><td><code>play &lt;mode&gt; &lt;addr…&gt; [volume=69]</code></td><td>Hosted match with live scoring; modes tdm ffa infection lms cs domination koth ctf extraction</td></tr>
+<tr><td><code>play &lt;mode&gt; &lt;addr…&gt; [volume=N]</code></td><td>Hosted match with live scoring; modes tdm ffa infection lms cs domination koth ctf extraction. Volume defaults to 80, the indoor play level; pass <code>outdoor=1 volume=90</code> outdoors</td></tr>
 <tr><td><code>game-sim &lt;mode&gt;</code> · <code>extraction-sim</code></td><td>Hardware-free narrated simulations</td></tr>
 <tr><td><code>diag &lt;addr&gt;</code> · <code>diagnose &lt;addr&gt;</code> · <code>diag-game &lt;addr&gt;</code> · <code>fleet</code></td><td>Diagnostics, fleet battery/reachability sweep</td></tr>
 <tr><td><code>usb-query [port]</code> · <code>enroll</code> · <code>armory</code> · <code>rename</code> · <code>reset</code></td><td>USB device record, armory enrolment, persistent <code>$NAME</code>, reset</td></tr>
@@ -622,7 +623,7 @@ claude mcp add brx -- python.exe -m brx_mcp</code></pre>
 <ol>
 <li><code>scan</code> to note the address. <code>identify</code> to confirm <code>$PONG</code> and read the <code>$VERSION</code> reply.</li>
 <li><code>listen</code> read-only: pull the trigger, get tagged by another gun, watch <code>$BUT</code>/<code>$HIR</code>/<code>$HP</code>. Send <strong>no</strong> config yet.</li>
-<li><code>play tdm … volume=69</code> on two guns; confirm each echoes <code>$LCD,45,70,0,0,36,216</code> on spawn.</li>
+<li><code>play tdm …</code> on two guns; confirm each echoes <code>$LCD,45,70,0,0,36,216</code> on spawn.</li>
 <li>If anything looks wrong: <code>panic</code>, then power-cycle. That always restores the tagger.</li>
 </ol>
 <h2 id="captures-recording-and-decoding-the-official-app">Captures: recording and decoding the official app</h2>

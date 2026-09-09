@@ -22,7 +22,7 @@ Which pool you are looking at:
 - The innermost pool that moved wins. A hit that strips the last of your shield and bites into armour
   shows armour, because armour is what you have left.
 - If that pool is now empty, the bar hands over inward to the next pool that still has something
-  (shield to armour, armour to health). The drain animates to zero first, so you see the loss, but
+  (armour to health; shield to armour once the shield pool is reachable). The drain animates to zero first, so you see the loss, but
   the strip never sits dark while you are alive.
 - Health emptying hands over to nothing. That is death.
 
@@ -119,6 +119,11 @@ Index 9 and above are dark, which is how a segment is switched off. Pools read l
 
 Only health changes hue as it falls. Shield and armour keep one colour and let the bar length carry
 the level.
+
+**You will not see a shield bar today.** The shield pool is IR-only on the BRX: it cannot be written
+over Bluetooth, and a real gun reports shield 0 on every life. The teal row above is what Open BRX
+paints when a shield exists, and it has never appeared on a gun. Everything else on this page has
+been watched on real hardware.
 
 Teams paint red (team 0), blue (team 1), yellow (team 2) and purple (team 3). Team 3 fights as green
 on the wire and paints purple, because green is what a headset flashes on a hit and out. Free-for-all

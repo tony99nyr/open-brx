@@ -67,7 +67,8 @@ python -m brx_mcp listen <addr>   # read-only live console: pull trigger, watch 
 
 # ...and now actually play. This is the hardware-proven Tier-0 path: your laptop drives the
 # guns directly over BLE, so everyone has to stay within BLE range of it (a room or a yard).
-python -m brx_mcp play tdm <addr1> <addr2> volume=69   # a real Team Deathmatch, live scoring
+python -m brx_mcp play tdm <addr1> <addr2>             # a real Team Deathmatch, live scoring
+python -m brx_mcp play tdm <addr1> <addr2> outdoor=1 volume=90   # outdoors: louder, longer range
 #   modes: tdm ffa infection lms cs domination koth ctf extraction
 #   run `python -m brx_mcp --help` for the full command list
 #   (bare `python -m brx_mcp` starts the MCP server and blocks; that is not the help)

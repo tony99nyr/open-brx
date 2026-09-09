@@ -20,7 +20,7 @@ Install it on the machine with the Bluetooth radio, then run a match:
 
 ```
 pip install -e ./mcp
-python -m brx_mcp play tdm <addr1> <addr2> volume=69
+python -m brx_mcp play tdm <addr1> <addr2>
 ```
 
 That is the command that ran the match above. With no guns to hand,

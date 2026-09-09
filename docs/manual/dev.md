@@ -713,7 +713,8 @@ python -m brx_mcp listen <addr>    # read-only live console: pull the trigger, w
 ```bash
 # ...and now actually play. Your laptop drives the guns directly over BLE,
 # so everyone stays within BLE range of it (a room or a yard).
-python -m brx_mcp play tdm <addr1> <addr2> volume=69   # a real Team Deathmatch with live scoring
+python -m brx_mcp play tdm <addr1> <addr2>             # a real Team Deathmatch with live scoring
+python -m brx_mcp play tdm <addr1> <addr2> outdoor=1 volume=90   # outdoors: louder, longer range
 #   modes: tdm ffa infection lms cs domination koth ctf extraction
 #   run `python -m brx_mcp` with no arguments for the full command list
 
@@ -737,7 +738,7 @@ claude mcp add brx -- python.exe -m brx_mcp
 |---|---|
 | `scan` · `identify <addr>` · `listen <addr>` · `probe <addr>` | Discover, check, watch, probe a single gun |
 | `startgame <addr>` · `deathmatch <addr>` · `arena <addr1> <addr2>` · `fieldstart …` | Single-purpose game drivers (the arm sequence) |
-| `play <mode> <addr…> [volume=69]` | Hosted match with live scoring; modes tdm ffa infection lms cs domination koth ctf extraction |
+| `play <mode> <addr…> [volume=N]` | Hosted match with live scoring; modes tdm ffa infection lms cs domination koth ctf extraction. Volume defaults to 80, the indoor play level; pass `outdoor=1 volume=90` outdoors |
 | `game-sim <mode>` · `extraction-sim` | Hardware-free narrated simulations |
 | `diag <addr>` · `diagnose <addr>` · `diag-game <addr>` · `fleet` | Diagnostics, fleet battery/reachability sweep |
 | `usb-query [port]` · `enroll` · `armory` · `rename` · `reset` | USB device record, armory enrolment, persistent `$NAME`, reset |
@@ -771,7 +772,7 @@ claude mcp add brx -- python.exe -m brx_mcp
 
 1. `scan` to note the address. `identify` to confirm `$PONG` and read the `$VERSION` reply.
 2. `listen` read-only: pull the trigger, get tagged by another gun, watch `$BUT`/`$HIR`/`$HP`. Send **no** config yet.
-3. `play tdm … volume=69` on two guns; confirm each echoes `$LCD,45,70,0,0,36,216` on spawn.
+3. `play tdm …` on two guns; confirm each echoes `$LCD,45,70,0,0,36,216` on spawn.
 4. If anything looks wrong: `panic`, then power-cycle. That always restores the tagger.
 
 ## Captures: recording and decoding the official app
