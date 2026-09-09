@@ -304,6 +304,30 @@ it('6d · a search box renders a query as text, never as markup', async ({ page 
   expect(await page.evaluate(() => !!window.__x), 'an injected handler ran').toBe(false);
 });
 
+it('6e · the phone menu opens, closes and keeps the header small', async ({ page }, testInfo) => {
+  const phone = testInfo.project.name === 'phone';
+  await page.goto('/manual/dev/', { waitUntil: 'networkidle' });
+  const burger = page.locator('.burger');
+  const nav = page.locator('.topnav');
+  if (!phone) {
+    expect(await burger.isVisible(), 'the burger should be a phone control only').toBe(false);
+    await expect(nav).toBeVisible();
+    return;
+  }
+  // nine links wrapped to three rows and made the header a quarter of the screen
+  const h = await page.evaluate(() => document.querySelector('.top').offsetHeight);
+  expect(h, `the header is ${h}px, too much of a 780px screen`).toBeLessThan(140);
+  await expect(nav).toBeHidden();
+  await burger.click();
+  await expect(nav).toBeVisible();
+  expect(await burger.getAttribute('aria-expanded')).toBe('true');
+  const small = await nav.locator('a').evaluateAll(as => as.filter(a => a.getBoundingClientRect().height < 44).length);
+  expect(small, 'nav links below a 44px tap target').toBe(0);
+  await page.keyboard.press('Escape');
+  await expect(nav).toBeHidden();
+  expect(await page.evaluate(() => document.activeElement?.className)).toContain('burger');
+});
+
 it('7 · the theme toggle changes the page and survives navigation', async ({ page }) => {
   await page.goto('/');
   const before = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);

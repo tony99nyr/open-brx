@@ -49,6 +49,25 @@ export function ledFacts(repo) {
   });
 }
 
+/**
+ * Which LED survives longest. The bar drained the WRONG WAY for a while and no colour check could
+ * have seen it, because every colour was right. `_lit_leds` is the one place the order is decided.
+ * Returns 'last' when the bar empties toward LED 3, 'first' when it empties toward LED 1.
+ */
+export function drainDirection(repo) {
+  const src = fs.readFileSync(path.join(repo, 'mcp/brx_mcp/poolgauge.py'), 'utf8');
+  // NB: the signature carries a return annotation, so do not stop at the closing paren.
+  const m = src.match(/def _lit_leds[\s\S]{0,200}?return \[([\s\S]{0,120}?)for /);
+  if (!m) {
+    throw new Error('led-facts: could not read _lit_leds from poolgauge.py. The LED page states a ' +
+      'drain direction and is asserted against it.');
+  }
+  // `i >= 3 - lit` lights the LAST n; `i < lit` lights the FIRST n
+  if (/i\s*>=\s*\d+\s*-\s*lit/.test(m[1])) return 'last';
+  if (/i\s*<\s*lit/.test(m[1])) return 'first';
+  throw new Error(`led-facts: _lit_leds has an unrecognised form: ${m[1].trim()}`);
+}
+
 /** The palette, so a page naming a colour index cannot drift from the gun's own order. */
 export function ledPalette(repo) {
   const src = fs.readFileSync(path.join(repo, 'mcp/brx_mcp/poolgauge.py'), 'utf8');

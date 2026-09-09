@@ -69,6 +69,8 @@ a { color: var(--accent); }
 .topnav a { color: var(--muted); text-decoration: none; padding: 6px 2px; min-height: 36px; display: inline-flex; align-items: center; }
 .topnav a:hover, .topnav a[aria-current="page"] { color: var(--ink); }
 .topnav a[aria-current="page"] { box-shadow: inset 0 -2px 0 var(--accent); }
+/* the nav is always visible on a wide screen; the burger is a phone control only */
+.burger { display: none; }
 .theme {
   display: inline-flex; align-items: center; justify-content: center;
   width: 38px; height: 38px; padding: 0; flex: none;
@@ -262,12 +264,25 @@ tbody tr:hover { background: var(--panel); }
   main { padding: 16px 14px 48px; }
   h1 { font-size: 1.6rem; }
   .toc ul { columns: 1; }
-  /* eight nav links wrap to three rows and eat the first screen; tighten rather than hide,
-     because a burger that opens a drawer is more machinery than this site needs */
-  .top { padding: 8px 14px; gap: 8px 12px; }
-  .topnav { gap: 4px 12px; font-size: 14px; order: 3; width: 100%; }
-  .find { flex: 1 1 auto; margin-left: 0; order: 2; }
+  /* Nine nav links wrapped to three rows and made the header 184px, a quarter of a phone screen,
+     on every page. They collapse behind the burger now and the header is one row. */
+  .top { padding: 8px 12px; gap: 8px 10px; }
+  .burger {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 38px; height: 38px; flex: none; padding: 0; cursor: pointer;
+    background: var(--bg); color: var(--muted);
+    border: 1px solid var(--line-strong); border-radius: 8px;
+  }
+  .burger[aria-expanded="true"] { color: var(--ink); border-color: var(--ink); }
+  .topnav {
+    display: none; order: 4; width: 100%; flex-direction: column; gap: 0;
+    margin: 6px -12px -8px; padding: 4px 12px 8px; border-top: 1px solid var(--line);
+  }
+  body.nav-open .topnav { display: flex; }
+  .topnav a { min-height: 44px; font-size: 16px; border-bottom: 1px solid var(--line); }
+  .topnav a:last-child { border-bottom: 0; }
+  .topnav a[aria-current="page"] { box-shadow: inset 3px 0 0 var(--accent); padding-left: 10px; }
+  .theme { width: 38px; height: 38px; }
+  .find { flex: 1 1 auto; margin-left: 0; order: 3; }
   .results { width: 100%; right: auto; left: 0; }
-  .topnav a { min-height: 32px; }
-  .theme { width: 34px; height: 34px; }
 }

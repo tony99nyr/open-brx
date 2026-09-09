@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { marked } from 'marked';
 import { buildWeapons, buildSounds } from './lib/data.mjs';
-import { ledFacts, ledPalette } from './lib/led-facts.mjs';
+import { ledFacts, ledPalette, drainDirection } from './lib/led-facts.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..');
@@ -180,7 +180,10 @@ function shell(page, content) {
 <a class="skip" href="#main">Skip to content</a>
 <header class="top">
 <a class="brand" href="/">${LOGO}<span>Open BRX</span></a>
-<nav class="topnav" aria-label="Sections">${nav}</nav>
+<button class="burger" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="topnav">
+<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+</button>
+<nav class="topnav" id="topnav" aria-label="Sections">${nav}</nav>
 <form class="find" role="search" onsubmit="return false">
   <label class="vh" for="q">Search the manual</label>
   <input id="q" type="search" role="combobox" autocomplete="off" aria-autocomplete="list"
@@ -232,6 +235,13 @@ for (const p of pages) {
       return m ? m[1].toLowerCase() : null;
     };
     const palette = ledPalette(REPO);
+    // Which LED is lost first. Every colour can be right while the bar drains backwards.
+    const dir = drainDirection(REPO);
+    const saysLast = /led\s*3\s+is\s+the\s+last|last\s+one\s+lit|empties\s+toward\s+the\s+muzzle/i.test(p.source);
+    const saysFirst = /led\s*1\s+is\s+the\s+last|led\s*3\s+goes\s+out\s+first/i.test(p.source);
+    if (dir === 'last' && !saysLast) problems.push(`${p.file}: the bar empties toward LED 3 in the source, and the page does not say so`);
+    if (dir === 'first' && !saysFirst) problems.push(`${p.file}: the bar empties toward LED 1 in the source, and the page does not say so`);
+    if (dir === 'last' && saysFirst) problems.push(`${p.file}: the page has the drain direction backwards`);
     for (const { name, value } of ledFacts(REPO)) {
       const pool = name.startsWith('shield') ? 'Shield' : name.startsWith('armour') ? 'Armour' : null;
       if (!pool) {

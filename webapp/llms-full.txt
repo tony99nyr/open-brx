@@ -3158,14 +3158,19 @@ Which pool you are looking at:
 
 The bar has seven levels, because half steps blink:
 
+**The bar empties toward the muzzle end.** LED 1 goes out first and LED 3 is the last one lit, which
+is the direction every stock game mode drains on the same gun. The half step is the leftmost lit
+segment blinking, because that is the one you are about to lose. On health, the colour rides the
+segments that are left, so the final surviving LED is the one that turns red.
+
 | Level | What you see | Health hue |
 |---|---|---|
-| 6 | 3 solid | green |
-| 5 | 2 solid, 3rd blinking | green |
-| 4 | 2 solid | green |
-| 3 | 1 solid, 2nd blinking | yellow |
-| 2 | 1 solid | yellow |
-| 1 | 1st blinking | red |
+| 6 | all three solid | green |
+| 5 | LEDs 2 and 3 solid, LED 1 blinking | green |
+| 4 | LEDs 2 and 3 solid | green |
+| 3 | LED 3 solid, LED 2 blinking | yellow |
+| 2 | LED 3 solid | yellow |
+| 1 | LED 3 blinking | red |
 | 0 | dark | (empty) |
 
 A pool with anything left in it never shows level 0, so 1 HP never looks like dead.
