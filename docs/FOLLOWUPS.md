@@ -1,6 +1,6 @@
 # Followups — open work only
 
-Updated: 2026-09-07. **Everything in this file is open.** Closed items are in
+Updated: 2026-09-09. **Everything in this file is open.** Closed items are in
 [`archive/followups-closed.md`](archive/followups-closed.md), verbatim and ordered by close date; the evidence
 behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date). Session close = strike or
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
@@ -569,9 +569,14 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 - **A10c** Extended Mags HUD max matches the `$AMMO,0` we write (64/768).
 - **B20**, **S4** (b)/(e)/muzzle LED, **S8** two-Pixel confirm, **F13** (2) headset state across the arming burst,
   **F21** on both Pixels, **F28/F29** in a match, **S2 6b** flash-LED ladder with an ND filter.
-- **S10** L-ladder: L1–L9 ANSWERED 2026-09-07 (the `$LED` pulsing scheme is deleted; `$HLOOP` is the down signal).
-  Left: a metered A/B of `$HLOOP,2,750` against a native out-blink, the rate's usable range, L10 dim 2-of-3 held
-  60 s, L11 purple `$TID,4`, L12–L14 (gun body dark paint vs blank, blank idempotency, dim after a blank).
+- **S10** L-ladder: **L1–L9 and L12–L14 ANSWERED 2026-09-07** (the `$LED` pulsing scheme is deleted, `$HLOOP` is
+  the down signal; a dark paint with NO prior blank does not suppress the breathing, the blank IS idempotent, and a
+  dim paint keeps its hue after a blank). ⚠ L14's frame as written in the ladder, `$GLED,3,3,3,5,10`, is now known
+  to BLANK the gun — gate 5 is off, not a dimmer — so the dim rung is token 5 = 1 and it passed. **Left: (a)** a
+  metered A/B of `$HLOOP,2,750` against a native out-blink (the "might be brighter" call was one operator, one
+  session, no meter), **(b)** that rate's usable range (750 and 2000 both work, the ends are unknown), **(c)** L10
+  dim 2-of-3 **held 60 s** — the render itself is confirmed, only the long hold is not, **(d)** L11 purple `$TID,4`
+  ⚠ F35: never leave the gun there.
 - Night mode: confirm a blanked gun stays dark once spawned (the S4 blank holds; only `$SPAWN` re-breathes).
 
 **Ears:** **P3** voice-pack token; the defeat line (`JAW`/`JAX` beside the confirmed `JAY`); **W4a** Energy Launcher fire
