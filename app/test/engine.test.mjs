@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine } from '../src/engine.js';
+import { Engine, handoverPool } from '../src/engine.js';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 
@@ -2135,4 +2135,76 @@ test('A16.3 graceful fallback: a `bands`-only readout (no `levels` key at all) i
   assert.deepEqual(h.delays, [], 'no lead/gap/step delays -- the bands path never touches `this.delay`');
   assert.equal(h.eng._roAnimating, false, 'the animation flag is never set on the bands path');
   assert.equal(h.eng._roLevel, null, 'the levels-mode state is never touched on the bands path');
+});
+
+// ── A16.5 (2026-09-09, found on the gun): the emptied-pool handover ────────────────────────────────────
+// A shot took armour 35 -> 0 while health sat untouched at 45/45. The strip animated armour all the way
+// down to the all-dark level-0 frame and HELD it for the whole hold_s -- reading "nothing left" at the
+// exact moment the player was at full health. `handoverPool` (mirrors `poolgauge.handover_pool`) and the
+// `settle` wiring in `_readoutAnimStart` fix that: an emptied pool hands over inward (shield -> armour ->
+// health) to whichever pool still has something, instead of holding the dark frame.
+test('A16.5: armour drains to 0 while health is FULL -> hands over to HEALTH instead of holding a dark strip', () => {
+  const h = levelHarness();
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,0,0,*');   // armour 70 -> 0, health untouched at 45/45
+  const gleds = h.writes.filter(f => f.startsWith('$GLED'));
+  assert.ok(gleds.includes('$GLED,A0,*'), 'the drain must still reach armour level 0 first -- losing it is never hidden');
+  assert.equal(gleds[gleds.length - 1], LEVELS_H[6][0], 'after the drain it hands over and paints HEALTH at its own level (full), not a dark hold');
+  assert.equal(h.eng._roPool, 'health', 'the readout now tracks health, not the emptied armour');
+  assert.equal(h.eng._roLevel, 6);
+  assert.equal(h.eng._readoutLastPool, 'health',
+    'a reload glance must re-show what is actually on the strip -- re-deriving armour (now 0) would repaint the very dark frame this feature exists to avoid');
+});
+
+test('A16.5: shield empties while armour still has value -> hands over to ARMOUR', () => {
+  const h = levelHarness();
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,70,20,*');   // grant: shield 0 -> 20 (armour/health untouched)
+  h.adv(1000); h.writes.length = 0; h.delays.length = 0;         // past the rapid window: a separate, later hit
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,70,0,*');    // shield drained back to 0, armour untouched at 70/70
+  const gleds = h.writes.filter(f => f.startsWith('$GLED'));
+  assert.ok(gleds.includes('$GLED,S0,*'), 'the drain must still reach shield level 0');
+  assert.equal(gleds[gleds.length - 1], '$GLED,A6,*', 'hands over to ARMOUR at its own (full) level, not a dark hold');
+  assert.equal(h.eng._roPool, 'armor');
+  assert.equal(h.eng._roLevel, 6);
+});
+
+test('A16.5: health emptying too hands over to NOTHING -- death is deliberately hands-off (A16)', () => {
+  // Structurally unreachable through the live engine: `_onHp` only ever calls `_gunPoolPaint` `if (hp > 0)`
+  // (mirrors stage.py's own `if hp > 0` guard) -- a hit that empties health never reaches the readout/
+  // handover machinery at all, because death's hands-off rule is enforced one level up, before this
+  // function is ever consulted. Exercised directly here instead, the same shape `poolgauge.handover_pool`
+  // documents: once nothing inward has anything left, the readout stays on the pool that emptied.
+  assert.equal(handoverPool('armor', { shield: 0, armor: 0, health: 0 }, ['shield', 'armor', 'health']), 'armor');
+  assert.equal(handoverPool('health', { shield: 0, armor: 0, health: 0 }, ['shield', 'armor', 'health']), 'health');
+});
+
+test('A16.5: a pool that still has something left settles normally -- no handover', () => {
+  const h = levelHarness();
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,20,0,*');   // armour 70 -> 20 (well above zero) -> level 2
+  const gleds = h.writes.filter(f => f.startsWith('$GLED'));
+  assert.equal(gleds[gleds.length - 1], '$GLED,A2,*', "settles on armour's own level, never hands over");
+  assert.equal(h.eng._roPool, 'armor');
+  assert.equal(h.eng._roLevel, 2);
+});
+
+test('A16.5: a death mid-handover-pause cancels it -- no stale write, no stale pool/level state', () => {
+  const h = levelHarness();
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,70,0,*');   // baseline: health/armour full, shield 0
+  const pending = [];
+  h.eng.delay = (ms, fn) => pending.push(fn);   // manual control so we can catch the handover's own pause queued
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,45,0,0,*');    // armour drains 70 -> 0, health untouched: drop begins
+  // Drive the drop by hand until it has settled at level 0 and queued the handover's one-`step_ms` pause.
+  // Armour 6 -> 0 writes exactly 8 $GLED frames (the from-freeze, the all-off blink, then one step per
+  // level 5..0) before the settle -- the one delay queued after that is the handover pause, not another
+  // drop step.
+  while (h.writes.filter(f => f.startsWith('$GLED')).length < 8) pending.shift()();
+  assert.equal(pending.length, 1, 'only the handover pause is queued once the drop itself has settled at 0');
+  assert.equal(h.eng._roPool, 'armor', 'still tracking armour -- the handover has not painted yet');
+  const staleHandover = pending.shift();
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');    // a lethal hit lands during the pause -- death
+  h.writes.length = 0;
+  staleHandover();                                              // the stale handover paint, fired late
+  assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'no stale handover write reaches the gun after death');
+  assert.equal(h.eng._roPool, null, 'death cleared the readout state outright -- the handover never got to set it');
+  assert.equal(h.eng._roLevel, null);
 });
