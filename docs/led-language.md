@@ -80,6 +80,21 @@ Shield is TEAL and armour PURPLE at every level; only health shifts hue as it sh
 from the 2026-09-07 review until 2026-09-09, when Tony chose teal: the `shield_up` burst was already teal, so
 the two disagreed about one fact, and white already carries FFA, carrier and extracted.) A partial level is two
 frames the node alternates at `blink_ms` (400): the solid frame, and the same frame with the top segment DARK.
+**DECIDED 2026-09-09 (Tony, at the bench, after watching the whole ladder on a gun) — do not re-open either:**
+
+- **A partial level KEEPS looping its blink while settled.** *"the loop blinking is ok in between stages"*.
+  An earlier brief said to reserve looped blinking for CRITICAL only, and a `PROPOSED · partial settles SOLID`
+  scene was built on the stage to compare. Rejected after seeing both. The reason it matters: for a
+  SINGLE-HUE pool the blink is the only thing separating adjacent levels — armour's L1/L2 are both
+  `$GLED,4,9,9`, L3/L4 both `4,4,9`, L5/L6 both `4,4,4` — so removing it collapses armour and shield from
+  seven levels to four. Health escapes that because its hue shifts. **The blink is carrying real
+  information, not decoration.** Red is separately already critical-only (it appears at L1 and nowhere else),
+  so "red = critical" holds without also reserving the blink.
+- **HEALING gets no opening beat.** *"healing is fine as is, no opening beat"*. A gain steps up immediately
+  with no lead freeze and no all-off blink, deliberately unlike a hit, and that asymmetry IS the signal: the
+  only difference between a fall and a rise is the direction, which is what makes it readable without being
+  taught. Verified on the gun the same evening (45 → 1 → 44, both directions, one level per step).
+
 ⚠️ **RETRACTED 2026-09-09 on the gun: an empty colour token is RED (0), NOT "keep this LED".** Controlled test on a strip held at three solid purple: `$GLED,,9,,0,10,,*` gave red · dark · red. The blink half used empty tokens on the old belief and painted red into every partial level of every bar. **Always write all three colour tokens** -- there is no way to move one segment without restating the others. The stage's LED simulator asserted the same wrong rule and so drew the blink correctly, which is how it reached hardware; `test_led_invariants` now forbids the shape outright.
 
 **The drop animation.** On a pool change: show the level you were on for `lead_ms` (180), all segments off for

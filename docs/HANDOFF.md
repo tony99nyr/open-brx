@@ -93,15 +93,11 @@
    the damage, and a kill draws from the 5 takes.
 2. **Build and ship an APK carrying A16 + A17** (0.1.7 predates both). Until it ships, none of the LED work
    or the hit audio reaches a player, and the legacy `headset.carrier` key cannot be deleted (S10).
-3. **Decide the two OPEN LED design questions** (no bench needed, both framed by Tony 2026-09-09):
-   **(a)** should a partial level keep LOOP-BLINKING while settled? His brief reserves looped blinking and red
-   for CRITICAL; red already is (L1 only), the loop is not (L5 and L3 blink too). ⚠ For a SINGLE-HUE pool the
-   seven levels are only FOUR visual states — armour's L1/L2 are both `4,9,9`, L3/L4 both `4,4,9`, L5/L6 both
-   `4,4,4` — so the blink is the ONLY thing separating adjacent levels, and dropping it collapses armour and
-   shield to a 4-state bar. Health escapes it because its hue shifts. Compare on the stage: scene
-   `PROPOSED · partial settles SOLID (THE OPEN ONE)` against `DROP 5`. **(b)** should HEALING get its own
-   opening beat? Today a gain steps up with no lead and no blink (verified, and deliberately unlike a hit),
-   so it is easy to miss.
+3. **The two LED design questions are DECIDED (2026-09-09) — recorded in `led-language.md`, do not re-open.**
+   A partial level KEEPS its settled loop-blink (it is the only thing separating adjacent levels on a
+   single-hue pool, so dropping it would collapse armour and shield from seven levels to four), and HEALING
+   gets no opening beat (a gain steps up immediately, and that asymmetry against a hit is the signal).
+
 4. **Bench, gun body only** (`bench-flash-control-2026-09-05.md` §6): a metered A/B of `$HLOOP,2,750`
    against a native out-blink (the "might be brighter" call was one operator, no meter), that rate's usable
    range, a dim 2-of-3 held 60 s, and `$TID,4` purple. Plus **F50**, the A17 pain gate in a real node path.

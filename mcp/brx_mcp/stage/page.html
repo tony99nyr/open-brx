@@ -396,15 +396,6 @@
         steps: [[S(0), 1200]] },
       { id: 'death',   name: 'DEATH (hands off)',      note: 'nothing is written for 2.5 s: the firmware’s own flash owns the gun',
         steps: [[restFrame(), 1400]] },
-      // ---- PROPOSED (Tony, 2026-09-09): immersion, not attention -------------------------------
-      // The rules: a glance must read without a tutorial · looped blinking ONLY when critical ·
-      // red ONLY when critical · the FALL is animated subtly, the RESTING state is steady.
-      // Today every ODD level settles into a sustained blink, so 3 of the 7 levels blink for the
-      // whole 4 s hold. These scenes show the alternative so the two can be compared by eye.
-      { id: 'p-settle', name: 'PROPOSED · partial settles SOLID (THE OPEN ONE)', note: 'The live design question, 2026-09-09. A partial level holds STEADY instead of looping. The half-step is carried by the FALL you just watched, not by a blink that keeps pulling the eye for 4 s.',
-        steps: [[S(6), lead], [S(0), gap], [S(5), step], [S(4), step], [S(3), 2000]] },
-      { id: 'p-crit',   name: 'PROPOSED · loop ONLY at critical', note: 'VERIFIED 2026-09-09: red is ALREADY critical-only (it appears at L1 and nowhere else). What is still open is the LOOP -- today L5 and L3 also blink for their whole hold, so blinking says \u201codd level\u201d rather than \u201cyou are in trouble\u201d. Compare against DROP 5.',
-        steps: [[S(2), 700], [S(1), 700], [S(0), 700], [S(1), 700], [S(0), 700], [S(1), 700]] },
       // ---- SHIELD -----------------------------------------------------------------------------
       // A driven breathe was prototyped here and REJECTED by Tony on 2026-09-09: the gun body has no
       // native animation (no token-4 value animates, and the firmware's own breathing is what our
