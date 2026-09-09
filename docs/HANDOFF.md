@@ -1,6 +1,6 @@
 # Handoff — Open BRX
 
-**State as of 2026-09-07 (late).** One screen. Open work lives in `FOLLOWUPS.md`; evidence in
+**State as of 2026-09-09.** One screen. Open work lives in `FOLLOWUPS.md`; evidence in
 `experiment-log.md`; the dated banners that used to live here are in
 [`archive/handoff-history.md`](archive/handoff-history.md) (newest first, verbatim).
 
@@ -35,10 +35,9 @@
   (`~/.brx-mcp/voice-verdicts.jsonl`). Start it WITHOUT `--gun` (S11: that flag blocks the web server until
   the gun answers) and press CONNECT.
 - **Utility station (A13):** a spare phone as a BLE-beacon respawn station is proven on hardware and
-  built on the phone side; **MC arming at muster (S5, A13.5) is not built.** A hosted game ignores the
+  built on the phone side; **MC arming at muster (S5, A13.5) is not built.** Hosted games ignore the
   grenade's IR station words (B23), so hosted respawn stations are node-defined.
-- **Sound bank:** all 2477 on-gun clips are off the gun and classified (`sound_catalog.json`,
-  `docs/reference/sound-catalog.md`); 148 ids audited by ear. The in-game sound pass is open (S9).
+- **Sound bank:** all 2477 on-gun clips are off the gun and classified (`sound_catalog.json`); 148 ids audited by ear. The in-game sound pass is open (S9).
 - **Hit audio (A17, ear-confirmed 2026-09-07):** metal for armour (`H02/H36/H37`), an energy note for
   shield (`H22`), **health deliberately SILENT** — real damage is where the metal stops and the pain
   grunt starts. Every id picked by acoustic SHAPE was rejected by ear (features separate tonal from
@@ -52,12 +51,28 @@
 - **IR rig:** emitter (board B, COM8) registers 6/6 at 3 ft, 10/10 at 6 ft, cliff at 10 ft; work at
   6 ft or less. Receiver (board A, COM7) fragments frames but `native_capture.py` stitches them (F12
   worked around). Never end a run on a bare `$CLEAR`: it wipes the `$SIR` table (F11).
+- **The public site is nine plain-markdown pages.** `docs/manual/*.md` is ordinary CommonMark
+  (contract: `docs/site/FORMAT.md`), rendered by a 233-line generator, gated by 18 browser steps
+  (`cd site && npm test`). No block syntax, no badges, no `src:` lines; the confidence record lives in
+  the log and FOLLOWUPS. ⚠ Built pages are STILL COMMITTED until the Cloudflare build command is set (B24).
 - **Environment:** WSL2 has no Bluetooth; run anything that touches a gun with
   `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe`. `mcp/pyproject.toml` pins `mcp>=2,<3`; the
   2.0 port is done. `~/.brx-mcp/armory.json` is never in git (headset PINs); stickers stay out of
   docs, use `Tactix-XXXX`.
 
-## What changed since the last handoff (2026-09-04 night to 2026-09-07)
+## What changed since the last handoff (2026-09-07 to 2026-09-09)
+
+- **⭐ The manual website was rebuilt around edit cost, 2026-09-09.** The block DSL is gone: 21 block
+  types, 1,524 badge glyphs, ~700 `src:` citations and 54 KB of unused image prompts deleted; 74 pages
+  became 9; the generator went 1,009 → 233 lines and the Playwright gate 779 → 146. Three defects the
+  complexity was causing are fixed: the markdown twins had been losing their table headers (12 tables,
+  and the twins are what `llms.txt` serves), a no-op rebuild dirtied four files with a timestamp, and
+  the published sound data was being enriched by scraping manual prose by column name. `07-platform.md`
+  went from 528 lines of positioning to a 74-line page; the architecture tables it used to carry moved
+  into `docs/architecture-topology.md`, which is internal. Every published `$` command in the developer
+  reference survived (checked by set-diff; the 16 that vanished were all in the unpublished backlog).
+  ⚠ The first `platform.md` said MC and the HUD had never run a full field game, which is false
+  (2026-08-30, 2026-09-01). Fixed: "don't overclaim" produced a false claim the other way.
 
 - **Repo hygiene, 2026-09-07: ONE repo, decided on evidence.** Raw Callsign JSONs restated as our own data;
   CONTRIBUTING + code of conduct; apks publish to a GitHub Release. The PDF and ten stale apk blobs are
@@ -70,7 +85,7 @@
     is teardown-only. Deletes the A11.8 `death_flash` scheme. `$HLOOP,<1|2>,<ms>` drives the loop over BLE,
     `$HLOOP,0,0` stops it, `$SPAWN` clears it; the node writes NOTHING at death and re-arms once.
   - **Gun body rests DARK** with a transient pool readout — **A16.3: SEVEN levels** + a drop animation
-    (shield WHITE, armour PURPLE, health GREEN/YELLOW/RED, innermost moved pool wins, 4 s hold). Half-steps
+    (shield TEAL, armour PURPLE, health GREEN/YELLOW/RED, innermost moved pool wins, 4 s hold). Half-steps
     BLINK: per-LED brightness does not exist, the token is global. The blank must precede any paint, once
     per life. **Night DIMS, it is not a blackout** (token 5 = 1; ⚠ apply-gate 5 is OFF, not the "~1/3"
     believed since 2026-09-02 — retracted); `blackout` empties the tables, DOWN survives both.
@@ -84,21 +99,6 @@
   - ⚠ **Phones are on a pre-`role` APK**: `headset_frames()` still ships the legacy `headset.carrier`
     key on purpose (delete only once an APK with `role` is deployed, S10). `test_led_invariants.py`
     pins these facts across every preset x team x night x ffa, and across compiled bundles.
-- **⭐ Python reviewed + deduped, 2026-09-07.** Suite 809 → **1020 passed / 0 failed / 46 skipped / 78 files** under system
-  python (**1066** under the venv, which runs the skips), plus **161** app tests. Real dedupe (CLI wire tables imported from `gameconfig`, one armed-pool
-  formula, one `_resend`, a `ScoredEngine` base, one event-loop policy for eleven hand-rolled helpers)
-  — but the duplication was NOT the problem. **Seven bugs a green suite was hiding:** five bench tools
-  AND the diag runner ending on a bare `$CLEAR`; `diag/cases.py` shipping 5 of 10 `$SIR` rows; `alert`
-  missing from `MC_KINDS` so every A11.4 alert was rejected at the node; the fallback compiler playing
-  the VICTORY sting at every game over; extraction crediting the wrong gun on a shared team.
-  **F40 is the lesson and it recurred four times: a guard that cannot see the fault it was built for**
-  (a teardown scan reading only `finally:` blocks, a sweep reading only named constants, an LED harvest
-  never importing the compiler, and an "ids are unique" check that saw 1 id out of 89 while three
-  sessions collided on F40-F42). Each was correct for where it looked. Remaining debt is **F42**; the
-  un-guardable half — wrong only against a bench measurement — is **F43**.
-- Docs consolidation: sticker ids swept (fc6d1e3); `docs/archive/` created; this file cut to one
-  screen; the bench queues, `unknowns.md` and `verification-checklist.md` folded into FOLLOWUPS §9/§10.
-
 ## Next actions
 
 1. **Hear A15.3 on a gun** (10 min, one tagger + emitter): ARM, spawn/respawn a few times, take rifle and

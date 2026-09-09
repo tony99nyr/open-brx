@@ -4,7 +4,7 @@ Every BRX game mode we know of, from all sources (V7 manual, Extended User Guide
 community), classified by **what infrastructure each needs to run at scale**, plus the hard ceilings every
 mode design has to respect and the design of the flagship Extraction mode. What is *built* and how far each
 objective mode is from playable is `utility-roadmap.md` §8; the MC config schema per mode is `spec/modes.md` §2;
-the grenade's own modes are `reference/grenade.md` and the public manual (`manual/03-gameplay.md`). Consolidated
+the grenade's own modes are `reference/grenade.md` and the public manual (`manual/gameplay.md`). Consolidated
 2026-09-06: the constraints ledger (`mode-limits.md`) and the grenade section moved out; the ceilings that
 survive are §Hard ceilings below.
 
@@ -13,8 +13,9 @@ Sources: `reference/brx-manual-notes.md`, `reference/brx-extended-user-guide.md`
 kills), CaptureTheFlag, SquadLeader.
 
 > **Tier note:** these are **infrastructure tiers** (what gear a mode needs). They are a *different axis* from
-> the public site's **spend tiers** ($0 → phones → Companions → stations → radio; `manual/07-platform.md`
-> /platform/build-tiers). A mode's infrastructure tier maps to whatever spend tier supplies that gear.
+> the **spend tiers** ($0 → phones → Companions → stations → radio) laid out in
+> `docs/architecture-topology.md` §8 (the public platform page, `manual/platform.md`, no longer carries
+> that ladder). A mode's infrastructure tier maps to whatever spend tier supplies that gear.
 
 ## The three infrastructure tiers
 
@@ -234,7 +235,7 @@ working pools.
 ## The grenade
 
 The Smart Grenade's five native objective modes (Frag / Assault / Hill / Respawn / CTF), what beacons over BLE,
-and its limits are documented once in `reference/grenade.md` and published in `manual/03-gameplay.md`
+and its limits are documented once in `reference/grenade.md` and published in `manual/gameplay.md`
 (Grenade modes). In **native** games it is a $0 single-point Hill / Respawn / Assault / CTF / bomb site; in
 **hosted** (MC) games the gun ignores its station words entirely (bench 2026-09-04), so the phone station
 supersedes it, and the B23 bridge (`utility-roadmap.md` §8) is how it could come back as a readable IR station.

@@ -10,7 +10,7 @@
 - **Ground truth (link, don't restate):** `protocol/brx-protocol.md` (§7e arm, §7p/§7q player id, §7o feedback,
   §7r bench 2026-08-25), `protocol/callsign-extract/protocol-classes.md` ($WEAP/$GSET/$PSET token maps),
   `protocol/callsign-extract/sound-bank.md` (voice families), `docs/game-modes.md` (mode catalog),
-  `docs/manual/03-gameplay.md` (the public arsenal page).
+  `docs/manual/gameplay.md` (the public arsenal page).
 
 M-MODES is **pure and transport-free**: data in → frames out, no BLE, no LAN, no clock. M-MC authors
 the config and pushes what M-MODES compiles; M-NODE writes it; M-MODES owns the *shapes and the compiler*.
@@ -126,7 +126,7 @@ Static data owned by M-MODES: **`mcp/brx_mcp/mc/weapons.json`** (22 rows: the 19
 the three A12 sidearms, melee), each row carrying `capture.frame` (the real frame Battle Company sent), a `wire`
 block naming only the balance tokens we overwrite, optional declared `overrides`, `htk`/`ttk_ms`, `tags`, `role`.
 **Why the numbers are what they are is `docs/weapon-design.md`** (the damage model, the rebalance table, the
-`$SIR` layer, the token appendix); the public arsenal page is `docs/manual/03-gameplay.md`.
+`$SIR` layer, the token appendix); the public arsenal page is `docs/manual/gameplay.md`.
 
 - `WeaponCatalog.resolve(weapon_id, slot) → "$WEAP,<slot>,<tail>"` — the base is the weapon's **own captured
   frame**, and only the balance tokens are overwritten: `t5` damage, `t14` fire interval, `t16`+`t39` mag,

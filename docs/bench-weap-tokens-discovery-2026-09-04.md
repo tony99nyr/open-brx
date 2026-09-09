@@ -18,7 +18,7 @@ Token numbering is the doc's: `$WEAP,<t0 slot>,<t1>,…`; `frame.split(',')[N+1]
 ## Two corrections to the earlier plan
 
 1. **t19 = 2 is the SHOTGUN (T01), not the Plasma Sniper.** The Plasma Sniper's `2` sits at t1
-   (iRSource). Our manual (`06-developer.md`) already had this right.
+   (iRSource). Our manual (`dev.md`) already had this right.
 2. **The arming block in the plan uses `$GSET,0,1,…` = outdoor profile; the golden bundle (and the
    actual tok15 bench) used `$GSET,0,0,…` = indoor.** Every Callsign capture we hold is indoor
    (28/28 `$GSET` frames). A t41 sweep under the outdoor profile would test the inert pair. Range
@@ -187,7 +187,7 @@ doc, ONE token changed per run; victim armed from the golden head (full `$SIR`, 
    can be trusted.
 
 Every result goes into `docs/experiment-log.md`, then the token table in
-`protocol/callsign-extract/protocol-classes.md` and `docs/manual/06-developer.md`.
+`protocol/callsign-extract/protocol-classes.md` and `docs/manual/dev.md`.
 
 ## External references worth keeping
 

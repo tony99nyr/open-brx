@@ -1,73 +1,89 @@
 <!doctype html>
-<html lang="en" data-theme="">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>The Open BRX platform | Open BRX</title>
-<meta name="description" content="Video game inspired tactical laser tag: open and self-hosted.">
+<meta name="description" content="Open BRX is open-source software  for stock Battle Company BRX taggers. It ties the guns you">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/platform/">
-<link rel="alternate" type="text/markdown" href="/platform.md" title="Markdown version">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/assets/site.de097c8a13.css">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<meta name="color-scheme" content="light dark">
-<script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
-<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"The Open BRX platform","description":"Video game inspired tactical laser tag: open and self-hosted.","url":"https://open-brx.iamrossi.workers.dev/platform/","dateModified":"2026-09-06","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX: The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"The Open BRX platform","item":"https://open-brx.iamrossi.workers.dev/platform/"}]}]}</script>
-</head>
-<body class="">
+<link rel="alternate" type="text/markdown" href="/platform.md">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.0641952723.css">
+</head><body>
 <a class="skip" href="#main">Skip to content</a>
-<header class="top">
-  <button class="nav-toggle" aria-label="Open navigation" aria-expanded="false" data-nav-toggle>&#9776;</button>
-  <a class="brand" href="/"><svg class="logo" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M8 4H4v16h4M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zm0 5v8m-4-4h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>OPEN BRX</span></a>
-  <nav class="topnav" aria-label="Primary"><a href="/manual/">Manual</a><a href="/platform/" aria-current="true">Platform</a><a href="/credits/">Credits</a><a href="/changelog/">Changelog</a></nav>
-  <div class="tools">
-    <button class="search-btn" data-search-open aria-label="Search the manual"><span>Search</span><kbd>⌘K</kbd></button>
-    <button class="theme-btn" data-theme-toggle aria-label="Toggle light and dark theme" aria-pressed="false">◐</button>
-    <a class="gh" href="https://github.com/tony99nyr/open-brx" rel="noopener" aria-label="GitHub repository">GitHub</a>
-  </div>
-</header>
-<div class="layout has-side has-toc">
-  <nav class="side" id="side" aria-label="Manual sections"><details class="side-sec" open><summary><span class="num">07</span> The Open BRX platform</summary><ul><li><a href="/platform/architecture/">How it's wired</a></li><li><a href="/platform/pieces/">The pieces</a></li><li><a href="/platform/modes/">Game modes</a></li><li><a href="/platform/build-tiers/">What you can build at each budget</a></li><li><a href="/platform/vs-edge/">Open BRX vs Edge</a></li><li><a href="/platform/status/">Status &amp; roadmap</a></li><li><a href="/platform/app/">Get the app</a></li><li><a href="/platform/get-involved/">Get involved</a></li><li><a href="/platform/faq/">FAQ</a></li></ul></details></nav>
-  <main id="main" class="main">
-    <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="sep">/</span><span aria-current="page">The Open BRX platform</span></nav>
-    <article class="page">
-<header class="page-head">
+<header class="top"><a class="brand" href="/">Open BRX</a><nav class="topnav"><a href="/manual/hardware/">Hardware</a><a href="/manual/operate/">Operate</a><a href="/manual/gameplay/">Gameplay</a><a href="/manual/sound/">Sound</a><a href="/manual/fix/">Fix</a><a href="/manual/dev/">Developer</a><a href="/platform/" aria-current="page">Platform</a><a href="/credits/">Credits</a></nav>
+<button class="theme" type="button" aria-label="Toggle theme">Theme</button></header>
+<main id="main"><article>
 <h1>The Open BRX platform</h1>
-<p class="subtitle">Video game inspired tactical laser tag: open and self-hosted.</p>
-<p class="meta"><span class="prov"><span class="badge b-bench" title="Verified on our bench"><span>bench</span></span><span class="badge b-spec" title="Specified only"><span>spec</span></span><span class="badge b-software" title="Built + software-tested"><span>software</span></span><span class="badge b-wip" title="Under construction"><span>under construction</span></span></span><span class="lv">Last verified <time datetime="2026-09-06">2026-09-06</time></span><a class="how" href="/credits/#how-we-know">How we know</a><a class="md-link" href="/platform.md">Markdown</a></p>
-</header>
-<section class="blk blk-hero" data-type="hero"><p class="hero-text" id="video-game-inspired-tactical-laser-tag-open-and-self-hosted"><strong>Video game inspired tactical laser tag: open and self-hosted.</strong> Open BRX is free, open-source (MIT) software for stock Battle Company BRX taggers. It ties your guns together into one game system. Today a laptop runs the game modes, live scoring and custom weapons. A laptop Mission Control and a phone HUD are still under construction. There is no subscription, no location lock and no venue Wi-Fi to set up. Stock firmware is never touched.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/VISION.md" rel="noopener">docs/VISION.md</a> §Naming, README.md</p></section>
-<section class="blk blk-image" data-type="image"><figure class="fig fig-generate fig-pending" id="PLAT-01" style="--ratio:16/9"><div class="ph ph-generate" role="img" aria-label="Night game: players scattered across a dark field, a dim HUD glow from phones on rifle forearms, faint IR-sight glints"><span class="ph-id">PLAT-01</span><span class="ph-kind">illustration pending</span></div><figcaption>Night game: players scattered across a dark field, a dim HUD glow from phones on rifle forearms, faint IR-sight glints</figcaption></figure></section>
-<section class="blk blk-stat-row" data-type="stat-row"><ul class="stats"><li><strong>$0</strong><span>to run your first full scored match (a laptop plus the guns you own) <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></span></li><li><strong>2 taggers</strong><span>played a full scored Team Deathmatch on 2026-08-25; a <strong>3-gun</strong> synced start is proven <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></span></li><li><strong>63</strong><span>player slots per game (wire ids 1–63; the gun accepts 0–63, 0 reserved) · <strong>4</strong> native hardware teams <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></span></li><li><strong>~$15</strong><span>in parts for the Companion rider (specified, not built) <span class="badge b-spec" title="Specified only"><span>spec</span></span></span></li><li><strong>2,477</strong><span>sound files on the tagger, every one catalogued <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></span></li></ul><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §3 + §7, <a href="https://github.com/tony99nyr/open-brx/blob/main/hardware/brx-companion-spec.md" rel="noopener">hardware/brx-companion-spec.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/sound-catalog.md" rel="noopener">docs/reference/sound-catalog.md</a></p></section>
-<section class="blk blk-callout co-info" data-type="callout"><aside class="callout info" role="note" id="the-problem-we-re-solving"><strong class="co-title">The problem we&#39;re solving.</strong><p>The official Edge engine costs <strong>$599.99 / 6 months to $1,599.99 / year</strong>. It is licensed to <strong>one computer at one location</strong>. It also expects the taggers to reach it over <strong>venue Wi-Fi</strong>. The BRX gun itself <strong>keeps no game state</strong>: no clock, no score, no respawn, no self-reported kills. So <em>everything</em> fun has to live off the gun. Open BRX puts that &quot;everything&quot; in open software you host yourself, on gear you already own.</p><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/reference/edge-brp.md" rel="noopener">docs/reference/edge-brp.md</a> §Pricing, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/VISION.md" rel="noopener">docs/VISION.md</a>, <a href="https://github.com/tony99nyr/open-brx/blob/main/protocol/session-findings-2026-08.md" rel="noopener">protocol/session-findings-2026-08.md</a> §7n</p></aside></section>
-<section class="blk blk-cards" data-type="cards"><h2 id="three-things-the-brx-can-t-do-alone-and-where-open-brx-puts-">Three things the BRX can&#39;t do alone, and where Open BRX puts them</h2><div class="cards"><ul>
-<li><strong>Keep score.</strong> The gun cannot tell a host about its own kills. A kill is only visible from the victim&#39;s side (<code>$HP,0</code> plus its last <code>$HIR</code>). → A per-player <strong>node</strong> on each gun is the scorekeeper. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></li>
-<li><strong>Run a clock or a respawn.</strong> Respawn time and game length are not in the protocol at all. The official app keeps them on the phone. → The node runs the match loop. <strong>Mission Control</strong> writes the game and adds up the results. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span></li>
-<li><strong>Reach a laptop across a field.</strong> BLE reaches about 1–30 m. Players spread out 50–100 m. → So the BLE link <em>rides the player</em>: a phone today, a Companion later. The laptop talks to the nodes over Wi-Fi, best-effort. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (constraint) / <span class="badge b-software" title="Built + software-tested"><span>software</span></span> (phone tier)</li>
+<p class="meta">Last verified <time datetime="2026-09-06">2026-09-06</time></p>
+<nav class="toc" aria-label="On this page"><p>On this page</p><ul><li><a href="#what-runs-today">What runs today</a></li><li><a href="#what-runs-but-is-not-finished">What runs, but is not finished</a></li><li><a href="#what-does-not-exist-yet">What does not exist yet</a></li><li><a href="#how-it-is-wired">How it is wired</a></li><li><a href="#sources">Sources</a></li></ul></nav>
+<p>Open BRX is open-source software (MIT) for stock Battle Company BRX taggers. It ties the guns you
+already own into one game system: game modes, live scoring and custom weapons. Stock firmware is
+never modified, so everything goes over the tagger&#39;s documented Bluetooth serial protocol, and you
+run the software yourself on your own laptop.</p>
+<h2 id="what-runs-today">What runs today</h2>
+<p>One part works on real hardware: <code>brx-mcp</code>, a Python package that is both a command-line tool and an
+MCP server. It drives taggers over Bluetooth LE from whichever machine owns the radio (Windows,
+macOS or Linux).</p>
+<p>On 2026-08-25 a laptop ran a full scored Team Deathmatch on two real taggers: spawn, live hit and
+death tracking, host-driven respawn, a frag limit, the correct winner, and the Bluetooth link held
+for the whole match. A three-gun synced start is proven on hardware too.</p>
+<p>Install it on the machine with the Bluetooth radio, then run a match:</p>
+<pre><button class="copy" type="button">Copy</button><code>pip install -e ./mcp
+python -m brx_mcp play tdm &lt;addr1&gt; &lt;addr2&gt; volume=69</code></pre>
+<p>That is the command that ran the match above. With no guns to hand,
+<code>python -m brx_mcp game-sim tdm</code> narrates one in your terminal.</p>
+<p><code>brx-mcp</code> also covers scan, identify and listen, per-tagger diagnostics (firmware, battery, health),
+custom <code>$WEAP</code> weapons, sound packs over USB, and the ESP32 IR capture and emit rig.</p>
+<h2 id="what-runs-but-is-not-finished">What runs, but is not finished</h2>
+<p>Mission Control (the laptop console that writes a game and adds up the results) and the BRX Combat
+HUD (the phone app that holds the Bluetooth link to one gun) have run whole matches in the field: a
+300 second free-for-all on 2026-08-30 with two iPhones and a MacBook host, and an outdoor Team
+Deathmatch on 2026-09-01 with two Android phones. They work. They are not finished, and they change
+week to week.</p>
+<p>Android debug builds are published for sideloading on the
+<a href="https://github.com/tony99nyr/open-brx/releases/latest">releases page</a>. They are test builds, not
+releases, and a given build can be behind the current game rules.</p>
+<h2 id="what-does-not-exist-yet">What does not exist yet</h2>
+<ul>
+<li>BRX Companion: a small ESP32-S3 rider that would take the phone&#39;s place on the gun. Specified,
+not built.</li>
+<li>Utility Box and objective stations: hill, flag, bomb site, extraction point, respawn. Design
+stage. Our ESP32 rig has put a synthetic IR shot into a stock tagger, so the emit side is real.</li>
+<li>Effect nodes: smoke, lights, DMX and music listening to the same event stream. No firmware is
+written.</li>
 </ul>
-</div><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/adr/0001-companion-rider-architecture.md" rel="noopener">docs/adr/0001-companion-rider-architecture.md</a> §Context, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/HANDOFF.md" rel="noopener">docs/HANDOFF.md</a> §ANSWERED, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/adr/0002-laptop-mission-control-host.md" rel="noopener">docs/adr/0002-laptop-mission-control-host.md</a></p></section>
-<section class="blk blk-diagram" data-type="diagram"><figure class="fig fig-svg fig-pending" id="PLAT-05" style="--ratio:16/9"><div class="ph ph-svg" role="img" aria-label="The match-time topology diagram"><span class="ph-id">PLAT-05</span><span class="ph-kind">diagram pending</span></div><figcaption>laptop Mission Control at the base, one phone (node) per gun in the field. The solid BLE line node↔gun must hold. The dashed Wi-Fi line node↔MC is allowed to drop. <strong>No line from the laptop to any gun during play</strong>. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> (Tier 0) / <span class="badge b-software" title="Built + software-tested"><span>software</span></span> (Tier 1)</figcaption></figure><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §2</p></section>
-<section class="blk blk-cards" data-type="cards"><h2 id="the-pieces">The pieces</h2><p class="lead">one works today, the rest are <span class="badge b-wip" title="Under construction"><span>under construction</span></span> under construction (brief §10)</p><div class="cards"><ul>
-<li><strong>brx-mcp</strong>: the CLI / MCP &quot;lab instrument&quot;. Scan, identify, listen, diagnose, and <code>play tdm …</code> a real match from a laptop. <span class="badge b-bench" title="Verified on our bench"><span>bench</span></span> <strong>Use it now</strong> → <a class="pl" href="/manual/dev/brx-mcp/">Getting started with brx-mcp</a></li>
-<li><strong>Mission Control</strong> <span class="badge b-wip" title="Under construction"><span>under construction</span></span>: the laptop console that writes a game and runs the match. Under construction.</li>
-<li><strong>BRX Combat HUD</strong> <span class="badge b-wip" title="Under construction"><span>under construction</span></span>: the native phone app, one gun per phone. Under construction, and there is an Android test build to sideload → <a class="pl" href="/platform/app/">Get the app</a></li>
-<li><strong>BRX Companion</strong> <span class="badge b-wip" title="Under construction"><span>under construction</span></span>: a small ESP32-S3 rider (~$15 in parts), designed to rebuild the gun&#39;s native kill flash and audio with no phone. Specified; bench kit in hand.</li>
-<li><strong>Utility Box / stations</strong> <span class="badge b-wip" title="Under construction"><span>under construction</span></span>: the open objective node (hill, flag, bomb site, extraction point, respawn). Design stage. Our ESP32 rig has already put a synthetic IR shot into a stock tagger.</li>
-<li><strong>Effect nodes</strong> <span class="badge b-wip" title="Under construction"><span>under construction</span></span>: smoke, lights, DMX and music as peers on the event stream. Design stage.</li>
+<h2 id="how-it-is-wired">How it is wired</h2>
+<p>Three facts decide the shape of the whole system.</p>
+<ol>
+<li><strong>The gun keeps no game state.</strong> No clock, no score, no respawn timer, and it cannot report its
+own kills. A kill is only visible from the victim&#39;s side. So everything a game needs has to live
+off the gun.</li>
+<li><strong>Bluetooth reaches about 1 to 30 m, and players spread out over 50 to 100 m.</strong> So the Bluetooth
+link has to ride the player: one node per gun, carried by that player, holding the link all
+match.</li>
+<li><strong>A laptop talks to those nodes over Wi-Fi, best effort.</strong> It never holds a Bluetooth link to a
+gun during play. Events queue on a node while it is out of range and flush when it returns. In
+practice that means you always know you died straight away, but you may not learn you got a kill
+until you walk back into range. A scoreboard can be late. The final result is not wrong.</li>
+</ol>
+<p>The limits that follow from this, all measured on hardware:</p>
+<div class="table-wrap"><table><thead><tr><th>Thing</th><th>Limit</th></tr></thead><tbody><tr><td>Players in one game</td><td>63 (the gun takes ids 0-63; id 0 is reserved)</td></tr>
+<tr><td>Native hardware teams</td><td>4 (the team field in each shot is 2 bits)</td></tr>
+<tr><td>Guns per node</td><td>exactly 1</td></tr>
+<tr><td>Guns on one laptop Bluetooth radio</td><td>3 proven for a synced start; the maximum is untested</td></tr></tbody></table></div>
+<h2 id="sources">Sources</h2>
+<ul>
+<li>README.md</li>
+<li>mcp/brx_mcp/</li>
+<li>protocol/brx-protocol.md</li>
+<li>docs/spec/contracts.md</li>
+<li>docs/adr/0001-companion-rider-architecture.md</li>
+<li>docs/adr/0002-laptop-mission-control-host.md</li>
+<li>docs/adr/0003-native-app-over-web-bluetooth.md</li>
+<li>hardware/brx-companion-spec.md</li>
+<li>hardware/brx-station-spec.md</li>
+<li>docs/experiment-log/2026-08.md</li>
 </ul>
-</div><p class="src"><span>Source:</span> README.md §Repo layout, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/spec/README.md" rel="noopener">docs/spec/README.md</a> §2, hardware/*.md</p></section>
-<section class="blk blk-callout co-tip" data-type="callout"><aside class="callout tip" role="note" id="start-in-one-command"><strong class="co-title">Start in one command.</strong><p>On the machine with the Bluetooth radio, run <code>pip install -e ./mcp</code>. Then run <code>python -m brx_mcp play tdm &lt;addr1&gt; &lt;addr2&gt; volume=69</code>. That exact command ran a full, scored Team Deathmatch on two real taggers. No guns to hand? <code>python -m brx_mcp game-sim tdm</code> narrates a match in your terminal.</p><p class="src"><span>Source:</span> README.md §brx-mcp quickstart, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/experiment-log.md" rel="noopener">docs/experiment-log.md</a> "FIRST LIVE M0 GAME"</p></aside></section>
-<section class="blk blk-quote" data-type="quote"><blockquote><p class="q">“A green test suite is not a working field.”</p><footer class="q-by">The project&#39;s own rule for what counts as proven.</footer></blockquote><p class="src"><span>Source:</span> <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/architecture-topology.md" rel="noopener">docs/architecture-topology.md</a> §7, <a href="https://github.com/tony99nyr/open-brx/blob/main/docs/FOLLOWUPS.md" rel="noopener">docs/FOLLOWUPS.md</a> B15</p></section>
 
-</article>
-  </main>
-  <aside class="toc" aria-label="On this page"><div class="toc-in"><p class="toc-h">On this page</p><ol><li><a href="#three-things-the-brx-can-t-do-alone-and-where-open-brx-puts-">Three things the BRX can't do alone, and where Open BRX puts them</a></li><li><a href="#the-pieces">The pieces</a></li></ol></div></aside>
-</div>
-<footer class="foot">
-  <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
-  <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
-</footer>
-<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input aria-label="Search the manual" placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
-<script src="/assets/site.b967e5eb88.js" defer></script>
-</body>
-</html>
+</article></main>
+<footer><p>Open BRX is independent and is not endorsed by Battle Company. Protocol discovery credit: LaserTagMods (JEDGE / JBOX). <a href="/credits/">Credits and sources</a> &middot; <a href="https://github.com/tony99nyr/open-brx">Source on GitHub</a></p></footer>
+<script src="/assets/site.e18b6ebf26.js"></script>
+</body></html>

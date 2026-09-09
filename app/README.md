@@ -124,7 +124,7 @@ APK_OUT_DIR=/tmp/brx-apk npm run android:apk    # same build, webapp/download/ u
 Then rebuild + test the site and commit, because **a push to `main` deploys `webapp/`**:
 
 ```bash
-cd ../site && npm run build && npm test      # /platform/app reads name, size, date + sha256 off the file
+cd ../site && npm run build && npm test      # /platform links straight to the GitHub Release now
 git add webapp/download webapp/platform docs/manual app && git commit -m "cut <version>" && git push
 ```
 
@@ -155,11 +155,12 @@ repo goes public, with no edit: the URL does not change, it just starts working 
   original date. The generator trusts the sidecar only while its `file` + `sha256` still match the
   APK, and fails the build if they drift. This script writes it; never hand-edit it.
 
-The page itself is `docs/manual/07-platform.md` → `### Page: Get the app (/platform/app)`, and the
-`[download]` block there is what renders the button + the fact table. With no APK present the block
-renders a visible TODO instead of a dead link, so a fresh clone that has never run this script still
-builds a correct site. `site/test/site.spec.mjs` steps **9** (the button hands over the committed
-bytes) and **9b** (no-APK and two-APK builds) are the gate.
+The page itself is `docs/manual/platform.md` (`/platform`). Since the 2026-09-09 manual rewrite this
+is a single plain page that just links out to the GitHub releases page rather than rendering a
+`[download]` block with a per-file fact table off the sidecar — that block markup and its dedicated
+`/platform/app` sub-page are gone. `webapp/download/build.json` is still the sidecar the release
+tooling writes and `mcp/tests/test_published_build.py` still checks (git provenance, branch, sidecar
+freshness); it just is not rendered into a name/size/date/sha256 table on the site anymore.
 
 The build is debug-signed. It sideloads fine, but a future release-signed build will **not**
 upgrade over it, and anyone who installed the debug build has to uninstall first. It is also

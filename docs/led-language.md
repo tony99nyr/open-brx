@@ -76,7 +76,9 @@ zero so 1 HP never looks like dead.
 | 1 | 1st blinking | red |
 | 0 | dark | — |
 
-Shield is WHITE and armour PURPLE at every level; only health shifts hue as it shortens. A partial level is two
+Shield is TEAL and armour PURPLE at every level; only health shifts hue as it shortens. (Shield was WHITE
+from the 2026-09-07 review until 2026-09-09, when Tony chose teal: the `shield_up` burst was already teal, so
+the two disagreed about one fact, and white already carries FFA, carrier and extracted.) A partial level is two
 frames the node alternates at `blink_ms` (400): the solid frame, and the same frame with the top segment DARK.
 Empty colour tokens keep an LED's colour, so the blink half only names the segment that changes.
 

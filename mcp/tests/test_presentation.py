@@ -138,13 +138,14 @@ def test_standard_bundle_carries_led_bursts_and_verified_cues():
     # (`gun.take`) and would fight it; the headset's white flash + spawn sound already mark a respawn.
     for ev in ("hit_taken", "died", "healed", "armour_up", "shield_up", "respawned"):
         assert ev not in b["leds"], ev
-    assert b["gun"]["rest"] == f"$GLED,{pg.DARK},{pg.DARK},{pg.DARK},0,10,,*", "dark by default"
+    # GUN_DEFAULT is "team" (Tony, 2026-09-09) -- the golden player is on "blue" (tid 1 -> BLUE).
+    assert b["gun"]["rest"] == f"$GLED,{pg.BLUE},{pg.BLUE},{pg.BLUE},0,10,,*", "team colour by default"
     # a burst still ends on the gun's rest frame for any event that DOES carry one -- "extraction_failed"
     # (default RED) stands in, since none of the player-status events keep a default burst any more.
     seq = b["leds"]["extraction_failed"]
     flashes = [f for f, _ in seq if f != b["gun"]["rest"] and not f.startswith("$LED")]
     assert len(flashes) == pg.BURST_FLASHES and all(f.startswith("$GLED,") for f in flashes)
-    assert seq[-1][0] == b["gun"]["rest"], "a burst ends on the gun's rest frame (dark by default)"
+    assert seq[-1][0] == b["gun"]["rest"], "a burst ends on the gun's rest frame (team colour by default)"
     assert b["cues"]["multi"] == "$PLAY,,4,6,VA7E,,,,*"          # "Double Kill", transcript-verified
     assert b["cues"]["first_blood"] == "$PLAY,,4,6,VA7H,,,,*"
     assert b["cues"]["objective_scored"] == f"$PLAY,,4,6,{snd.OBJECTIVE_SCORED},,,,*"
@@ -203,7 +204,8 @@ def test_night_dims_and_shortens_but_blackout_alone_empties_everything():
     day = _compile(None, night=False)
     night = _compile(None, night=True)
     assert night["leds"] != {}                                       # night is NOT a blackout any more
-    assert night["gun"]["rest"] == f"$GLED,{pg.DARK},{pg.DARK},{pg.DARK},0,{pg.BRIGHT_DIM},,*"
+    # GUN_DEFAULT is "team" (Tony, 2026-09-09) -- the fixture player is on "blue" (tid 1 -> BLUE).
+    assert night["gun"]["rest"] == f"$GLED,{pg.BLUE},{pg.BLUE},{pg.BLUE},0,{pg.BRIGHT_DIM},,*"
     assert night["gun"]["readout"]["hold_s"] < day["gun"]["readout"]["hold_s"]
     assert night["headset"]["down"] == day["headset"]["down"] == {
         "rearm": "$HLOOP,2,750,*", "stop": "$HLOOP,0,0,*", "rearm_after_ms": 2500}

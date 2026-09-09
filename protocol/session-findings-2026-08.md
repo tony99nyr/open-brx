@@ -3,7 +3,7 @@
 **What this is.** The dated session write-ups (§7a–§7r) that used to sit at the tail of
 `brx-protocol.md`. They were moved out on 2026-09-06 so the command reference states only the current
 reading of each fact. **Nothing here is maintained.** Every finding that still stands is restated in
-`brx-protocol.md` (the reference) and in `docs/manual/06-developer.md` (the published developer
+`brx-protocol.md` (the reference) and in `docs/manual/dev.md` (the published developer
 reference); the day-by-day evidence lives in `docs/experiment-log/2026-08.md`. Section ids (7a … 7r) are
 unchanged so that older citations (`§7o`, `§7r addendum`) still resolve here. The text below is verbatim,
 including claims that were later retracted; the table first says which ones.

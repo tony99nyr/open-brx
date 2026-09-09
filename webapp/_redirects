@@ -1,0 +1,13 @@
+# The site went from 74 pages to 9 on 2026-09-09. These rules keep every old link working.
+# Frozen history: the old URLs never change, so this file never needs editing again.
+/manual/hardware/*   /manual/hardware   301
+/manual/operate/*    /manual/operate    301
+/manual/gameplay/*   /manual/gameplay   301
+/manual/sound/*      /manual/sound      301
+/manual/fix/*        /manual/fix        301
+/manual/dev/*        /manual/dev        301
+/platform/*          /platform          301
+/manual              /manual/hardware   301
+/manual/             /manual/hardware   301
+/changelog           /                  301
+/changelog/          /                  301

@@ -79,5 +79,5 @@ def test_sound_ids_is_the_app_bank_not_the_gun_bank():
     assert n == 2166, (
         f"sound_ids.json holds {n} ids; the app's Sounds.json bank is 2166 (the gun's own bank is "
         "2477 and lives in sound_catalog.json). If the app list really changed, update this and the "
-        "counts published in docs/manual/04-sound.md in the same commit"
+        "counts published in docs/manual/sound.md in the same commit"
     )

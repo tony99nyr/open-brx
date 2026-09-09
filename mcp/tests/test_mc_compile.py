@@ -843,15 +843,19 @@ def test_voice_slots_pick_which_line_of_the_family_the_gun_holds():
 
 
 def test_gun_in_play_team_puts_the_blank_and_the_paint_right_after_every_spawn():
-    """A11.7 / S4: native leaves spawn/revive untouched; an opt-in inserts blank + rest after $SPAWN.
+    """A11.7 / S4: native leaves spawn/revive untouched; the DEFAULT `in_play` inserts blank + team-rest
+    right after $SPAWN.
 
-    led-language.md §3.1/§6 finding #5 (2026-09-07): the DEFAULT `in_play` changed from "team" to
-    "dark" -- the body rests dark and the transient readout is the standard feedback now, so this test
-    exercises "team" as an explicit opt-in rather than the default."""
+    Tony, 2026-09-09: "instead of going dark lets put the team color on the gun led" -- DEFAULT is
+    "team" again (presentation.GUN_DEFAULT's comment has the full back-and-forth: it was "team" until
+    the 2026-09-07 readout review moved it to "dark" on the theory that the transient readout made a
+    static paint redundant, which missed that the readout is transient and a dark rest reads as a dead
+    gun for the rest of the match). This test exercises "team" both as the default and as the explicit
+    config, since they are now the same path."""
     base = C.compile({**_cfg(), "presentation": {"gun": {"in_play": "native"}}}, _player(), _TEAMS)
     assert "gun" not in base and not any(f.startswith("$GLED,,,,5") for f in base["spawn"] + base["revive"])
-    dflt = C.compile(_cfg(), _player(), _TEAMS)         # the default rests DARK, no readout event bursts by default
-    assert dflt["gun"]["in_play"] == "dark" and dflt["gun"]["rest"] == "$GLED,9,9,9,0,10,,*"
+    dflt = C.compile(_cfg(), _player(), _TEAMS)         # the default rests on the TEAM colour, no readout event bursts by default
+    assert dflt["gun"]["in_play"] == "team" and dflt["gun"]["rest"] == "$GLED,1,1,1,0,10,,*"
     b = C.compile({**_cfg(), "presentation": {"gun": {"in_play": "team"}}}, _player(), _TEAMS)
     assert not any(f.startswith("$GLED") for f in b["spawn"] + b["revive"]), "a blank inside the spawn burst does not take (bench 2026-09-04)"
     assert b["gun"]["in_play"] == "team" and b["gun"]["blank"] == "$GLED,,,,5,,,*" and b["gun"]["rest"] == "$GLED,1,1,1,0,10,,*"

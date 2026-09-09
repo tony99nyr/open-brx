@@ -5,9 +5,11 @@ orchestrated laser-tag system — game modes, live scoring, objectives, powerups
 control — that is **moddable, self-hosted, and free of Edge's subscription and one-PC-one-location
 lock**, and that **works on large fields without venue WiFi** (which Edge assumes).
 
-The public, dated, status-marked version of the argument below is the manual's platform section
-(`docs/manual/07-platform.md`: /platform/vs-edge, /platform/status). The definitive-manual-as-website idea
-that used to live here shipped as that site (`docs/manual/README.md`). Trimmed 2026-09-06 to strategy + naming.
+The public platform page (`docs/manual/platform.md`: `/platform`) carries a short, current version of
+this pitch; it no longer carries the Edge comparison or the dated status board that used to back this
+argument in detail (see `docs/architecture-topology.md` §7-8 for that detail now). The
+definitive-manual-as-website idea that used to live here shipped as that site (`docs/manual/README.md`).
+Trimmed 2026-09-06 to strategy + naming.
 
 ## Can we supersede Edge? — honest verdict
 

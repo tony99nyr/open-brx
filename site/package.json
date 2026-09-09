@@ -6,7 +6,7 @@
   "scripts": {
     "build": "node build.mjs",
     "serve": "node serve.mjs",
-    "test": "node build.mjs && playwright test",
+    "test": "playwright test",
     "test:only": "playwright test"
   },
   "devDependencies": {

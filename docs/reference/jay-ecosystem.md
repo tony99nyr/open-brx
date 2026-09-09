@@ -135,9 +135,9 @@ War, and hosted Battle Royale need **base↔base networking** (ESP-NOW near, LoR
 
 ## 7. Feasibility in *our* tier system — and what an old phone can do
 
-Jay's ecosystem is the proof-of-existence for our `docs/manual/07-platform.md` spend ladder. Mapping:
+Jay's ecosystem is the proof-of-existence for our `docs/architecture-topology.md` §8 spend ladder. Mapping:
 
-| Our tier (`docs/manual/07-platform.md`) | Jay's proof it works | What we build (MIT, our own code) |
+| Our tier (`docs/architecture-topology.md` §8) | Jay's proof it works | What we build (MIT, our own code) |
 |---|---|---|
 | **$0 — phone/laptop + guns you own** | Callsign + BLE control; his BLE domination base scoring standalone | Web-Bluetooth per-player node + Mission Control (Tier 0 modes, incl. the new syphon/shield variants) |
 | **+ objective stations** | **JBOX Mini** = ESP32 + IR rx/tx + 1 RGB + resistors (~$5–10) | our objective-station node — one primitive covers KotH/CTF/Domination/Assault/CS |

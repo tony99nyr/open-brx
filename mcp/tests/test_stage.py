@@ -39,8 +39,8 @@ async def settle(st):
 def test_profile_drives_the_bundle_and_the_event_buttons():
     st, _ = mk()
     # 2026-09-07: untouched, the selector shows whatever the "standard" preset's OWN gun.in_play
-    # resolves to (GUN_DEFAULT is "dark") -- not a stage.py literal that can go stale under it.
-    assert st.profile["gun"] == "dark" and st.bundle["gun"]["in_play"] == "dark"
+    # resolves to (GUN_DEFAULT is "team", Tony 2026-09-09) -- not a stage.py literal that can go stale under it.
+    assert st.profile["gun"] == "team" and st.bundle["gun"]["in_play"] == "team"
     names = {e["event"] for e in st.event_catalog()}
     assert names == set(P.EVENTS)
     st.set_profile(gun="health", headset="team", preset="silenced", night=False)
@@ -49,10 +49,10 @@ def test_profile_drives_the_bundle_and_the_event_buttons():
     assert st.bundle["presentation"]["announcer"] is False       # silenced preset carried into the summary
     st.set_profile(mode="infection")
     assert st.config["mode"] == "infection" and st.bundle["presentation"]["preset"] == "custom"   # gun/headset edits still applied over the mode preset
-    # infection's own preset gun/headset are both GUN_DEFAULT/HEADSET_DEFAULT ("dark"/"dark") --
+    # infection's own preset gun/headset are both GUN_DEFAULT/HEADSET_DEFAULT ("team"/"dark") --
     # explicitly picking those SAME values must still read as "infection", not "custom", because it
     # is genuinely not a customisation any more, only a touched selector that happens to agree.
-    st.set_profile(gun="dark", headset="dark")
+    st.set_profile(gun="team", headset="dark")
     assert st.bundle["presentation"]["preset"] == "infection"                                     # back on the mode's own preset
     for bad in ({"gun": "breathe"}, {"mode": "cs2"}, {"preset": "loud"}, {"nope": 1}):
         try:

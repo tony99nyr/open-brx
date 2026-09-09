@@ -8,6 +8,25 @@ notes, environment, hardware facts) as they were on 2026-09-04.
 
 ---
 
+> ## 2026-09-07 (archived 2026-09-09 when HANDOFF rolled over)
+>
+> - **⭐ Python reviewed + deduped, 2026-09-07.** Suite 809 → **1020 passed / 0 failed / 46 skipped / 78 files** under system
+>   python (**1066** under the venv, which runs the skips), plus **161** app tests. Real dedupe (CLI wire tables imported from `gameconfig`, one armed-pool
+>   formula, one `_resend`, a `ScoredEngine` base, one event-loop policy for eleven hand-rolled helpers)
+>   — but the duplication was NOT the problem. **Seven bugs a green suite was hiding:** five bench tools
+>   AND the diag runner ending on a bare `$CLEAR`; `diag/cases.py` shipping 5 of 10 `$SIR` rows; `alert`
+>   missing from `MC_KINDS` so every A11.4 alert was rejected at the node; the fallback compiler playing
+>   the VICTORY sting at every game over; extraction crediting the wrong gun on a shared team.
+>   **F40 is the lesson and it recurred four times: a guard that cannot see the fault it was built for**
+>   (a teardown scan reading only `finally:` blocks, a sweep reading only named constants, an LED harvest
+>   never importing the compiler, and an "ids are unique" check that saw 1 id out of 89 while three
+>   sessions collided on F40-F42). Each was correct for where it looked. Remaining debt is **F42**; the
+>   un-guardable half — wrong only against a bench measurement — is **F43**.
+> - Docs consolidation: sticker ids swept (fc6d1e3); `docs/archive/` created; this file cut to one
+>   screen; the bench queues, `unknowns.md` and `verification-checklist.md` folded into FOLLOWUPS §9/§10.
+
+---
+
 > ## 🎛️ 2026-09-04 (evening/night) — SOUNDS & LIGHTS ARE A PER-GAME PROFILE (A11–A11.8) · EVENTS ARE HUD-DRIVEN · APK 0.1.6 = 83542f3, **0.1.7 REQUIRED** (gun take, A11.8 flash, A14, utility MC link)
 >
 > - **Presentation profile** (`mc/presentation.py`, contracts A11): presets `standard / silenced /

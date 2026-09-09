@@ -11,7 +11,11 @@ http.createServer((req, res) => {
   if (p.includes('..')) { res.writeHead(400); return res.end(); }
   let f = path.join(ROOT, p);
   if (fs.existsSync(f) && fs.statSync(f).isDirectory()) { if (!p.endsWith('/')) { res.writeHead(301, { Location: p + '/' }); return res.end(); } f = path.join(f, 'index.html'); }
-  if (!fs.existsSync(f)) { res.writeHead(404, { 'content-type': 'text/html' }); return res.end('<h1>404</h1>'); }
+  if (!fs.existsSync(f)) { // mirror Cloudflare's not_found_handling = 404-page
+    const nf = path.join(ROOT, '404.html');
+    res.writeHead(404, { 'content-type': 'text/html; charset=utf-8', 'x-site-root': ROOT });
+    return res.end(fs.existsSync(nf) ? fs.readFileSync(nf) : '<h1>404</h1>');
+  }
   res.writeHead(200, { 'content-type': TYPES[path.extname(f)] || 'application/octet-stream', 'cache-control': 'no-store', 'x-site-root': ROOT });
   fs.createReadStream(f).pipe(res);
 }).listen(PORT, () => console.log(`serving ${ROOT} on http://localhost:${PORT}`));

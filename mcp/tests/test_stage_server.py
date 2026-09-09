@@ -22,8 +22,8 @@ def test_page_state_and_actions():
     with _client() as c:
         assert c.get("/").status_code == 200 and "GUN STAGE" in c.get("/").text
         s = c.get("/api/state").json()
-        # untouched, the selector shows the "standard" preset's OWN gun.in_play (GUN_DEFAULT is "dark")
-        assert s["link"]["connected"] is False and s["events"] and s["profile"]["gun"] == "dark"
+        # untouched, the selector shows the "standard" preset's OWN gun.in_play (GUN_DEFAULT is "team")
+        assert s["link"]["connected"] is False and s["events"] and s["profile"]["gun"] == "team"
         r = c.post("/api/do", json={"action": "connect", "address": "FA:KE:00:00:00:01"}).json()
         assert r["link"]["connected"] is True
         r = c.post("/api/do", json={"action": "set_profile", "preset": "counter_strike"}).json()

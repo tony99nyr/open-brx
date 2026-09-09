@@ -2,7 +2,7 @@
 
 The IR capture/emit rig (the plan it grew from is archived at `docs/archive/hardware/ir-prototype-plan.md`;
 its three phases are done: capture, emit, and the `$SIR` effect sweep) and the eventual Claude↔hardware bridge for
-the `diag-game` block in `docs/manual/06-developer.md` (`diag-game ir`). Sketch(es) here are Arduino-IDE / arduino-esp32.
+the `diag-game` block in `docs/manual/dev.md` (`diag-game ir`). Sketch(es) here are Arduino-IDE / arduino-esp32.
 
 ## Parts (the ordered kit)
 - **ESP32-S3-DevKitC-1** (WROOM-1-N16R8) — 16 MB flash / 8 MB PSRAM.

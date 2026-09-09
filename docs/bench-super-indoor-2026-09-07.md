@@ -13,7 +13,7 @@ receiver needs the laptop, not the Windows box. Read `gotchas.md` ("Before a ben
 ## 1. What is already known — do not re-derive it
 
 - **`$WEAP` token 41 `gunRangeIndoor`** reads **75 on all eighteen guns and 20 on melee**
-  (`manual/06-developer.md` t41 row). Melee at 20 is the encouraging part: 20 on a weapon that must
+  (`manual/dev.md` t41 row). Melee at 20 is the encouraging part: 20 on a weapon that must
   only reach arm's length is what a real range-percent should look like.
 - **There is one prior positive** (`weapon-design.md` §5 **U2**, 2026-08-26): **t41 = 100 killed at
   max indoor distance**; the **t41 = 5 zeros were CONTAMINATED by rig degradation** and do not count
@@ -172,7 +172,7 @@ one. Do not pass 90 minutes; unfinished rungs become FOLLOWUPS rows as written.
    agree. If Q16 divergence data got taken, feed it to 2.4.
 3. **`HANDOFF.md`**: replace, do not stack. Also add the t41 row to `protocol/brx-protocol.md` (it is
    currently in the "unknown or unverified" list at the end of §6) and, **only if confirmed**, promote
-   the fact into `manual/02-operation.md` → *Indoor vs Outdoor Mode* per `manual/README.md`
+   the fact into `manual/operate.md` → *Indoor vs Outdoor Mode* per `manual/README.md`
    (**no em dashes in `manual/`**).
 
 ## 11. If it works — what gets built (do NOT build it at the bench)

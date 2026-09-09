@@ -80,9 +80,10 @@ Built tonight across MC, the node and the stage; **nothing below has been observ
 stage (`python -m brx_mcp stage`, connect, ARM, SPAWN) and take hits through it. Judge with your eyes,
 one question at a time, and say which of these is wrong rather than "it looks off":
 
-1. **At rest the gun body is DARK.** Not team colour, not breathing. If it is lit at rest, stop here.
+1. **At rest the gun body shows the TEAM COLOUR** (changed 2026-09-09 — it rested dark until then).
+   Solid, not breathing. The readout takes the strip on a hit and hands it back to this.
 2. **A hit shows a bar, then it goes dark again after about 4 s.** The bar is the pool that MOVED, innermost
-   first: armour PURPLE, then health GREEN → YELLOW → RED as it drains. Shield is WHITE.
+   first: armour PURPLE, then health GREEN → YELLOW → RED as it drains. Shield is TEAL.
 3. **The drop is animated, not a jump.** You should see: the OLD level held for a beat, one all-off blink,
    then segments stepping down one at a time, settling on the new level.
 4. **Half-steps BLINK.** Seven levels come out of three LEDs, so odd levels are N solid plus one blinking

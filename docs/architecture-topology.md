@@ -5,9 +5,10 @@ deciding where their change belongs. Read this before the spec.
 
 Open BRX is not one program. It is **three tiers of hardware that never all talk to each other at
 once**, and almost every design decision in this repo follows from that. This page draws the
-connections and says why. **The tables of links, counting limits, failure modes and proven-vs-specified status
-live once, dated and status-marked, in the public manual** (`manual/07-platform.md`, /platform/architecture
-and /platform/status); this page links them rather than restating them (2026-09-06).
+connections and says why, and it is the one place the link/limit/failure/status detail lives: the
+public manual's platform page was cut down to one short page on 2026-09-09 and no longer carries it
+(this page's tables and lists below are the same facts, dated and status-marked, moved across from
+the old `manual/07-platform.md`).
 
 > **Legend:** ✅ proven on real hardware · ⚠ partly proven · ⬜ specified and software-tested, **not**
 > yet run on hardware. The distinction is load-bearing here — see §7.
@@ -91,10 +92,32 @@ connect to anything.
 
 **There is deliberately no line from Mission Control to any gun during play.**
 
-**Every link, what limits it, and the counting limits** (guns per radio, players per game = 63, native teams =
-4): the two tables at `manual/07-platform.md` → /platform/architecture ("Every link" and "Counting limits"),
-each row status-marked and sourced. The wire itself is `spec/contracts.md` §5; the gun↔headset and
-config-survival facts are `protocol/session-findings-2026-08.md` §7r.
+**Every link, and what limits it**
+
+| Link | Transport | Limit | Status |
+|---|---|---|---|
+| Gun ↔ headset | vendor link | headset must be present or the gun drops BLE entirely | proven, bench |
+| **Node (phone) ↔ gun** | **BLE** | **exactly one gun per node**; link must hold all match | proven, single-gun bench |
+| Node ↔ Mission Control | Wi-Fi (WebSocket) | best-effort; buffered when down | proven, two phones over field Wi-Fi, two whole matches (2026-08-30, 2026-09-01) |
+| Operator ↔ Mission Control | HTTP on localhost / LAN | `:8765` UI, `:8766` node socket | software-tested only |
+| Gun → gun | **IR**, line of sight | the only player-to-player channel | proven |
+| Laptop ↔ gun | BLE | **setup and recap only**, never during play (Tier 0 excepted) | proven |
+| Laptop ↔ gun | USB | one-time armory setup per gun | proven |
+
+**Counting limits**
+
+| Thing | Limit | Why | Status |
+|---|---|---|---|
+| Guns per BLE radio | **3 proven**. Three guns held on one laptop radio for a synced start. The maximum is untested | one central radio shares connection events | 3 guns proven (FOLLOWUPS B10), max unmeasured |
+| Guns per phone node | **exactly 1** | the link rides one player | by design |
+| Players per game | **63** | the gun accepts `$PSET` ids 0–63 (bench-proven); Open BRX reserves wire id 0, so a match has ids 1–63 (`docs/spec/contracts.md` A5.1) | proven |
+| Native hardware teams | **4** | `$TID` is masked to 2 bits | proven, bench 2026-08-26 |
+| Teams beyond 4 | unlimited *logical* teams | MC scores by roster; players wear armbands; no on-gun friendly-fire protection in that mode | software-tested only |
+
+The wire itself is `spec/contracts.md` §5; the gun↔headset and config-survival facts are
+`protocol/session-findings-2026-08.md` §7r; the counting limits are also sourced to
+`docs/FOLLOWUPS.md` B10, `docs/spec/contracts.md` A5.1, `protocol/session-findings-2026-08.md` §7p
+and `docs/game-modes.md` §Team structure.
 
 ---
 
@@ -206,9 +229,16 @@ provisional until every node has flushed.
 
 ## 6. What happens when things break
 
-The failure table (Wi-Fi drops, BLE drops mid-match, a power-cycled gun, a dead phone, a node that never
-returns, a headset off) is at `manual/07-platform.md` → /platform/architecture ("What happens when things
-break"). The mechanisms behind each row: `spec/contracts.md` §5a (store-and-forward), `spec/node.md` §3.10
+| Failure | What happens | Status |
+|---|---|---|
+| Field Wi-Fi drops | Nodes keep playing; events queue locally and flush on return | software-tested only |
+| BLE drops mid-match | The node re-probes on reconnect; **the gun's config survives a BLE drop** | proven, bench |
+| Gun is power-cycled | Config is **wiped**; a zeroed `$LCD` echo is the node's tell to re-push | proven, bench |
+| Phone dies | That player is out. One phone = one gun = one node, with no backup | design |
+| Node never returns | Recap stays provisional; that player's kills are missing | design |
+| Headset off or asleep | The gun quietly refuses to join. A disconnected headset slow-blinks rainbow, which is a free visual muster check | proven, 2026-08-25 / 27 |
+
+The mechanisms behind each row: `spec/contracts.md` §5a (store-and-forward), `spec/node.md` §3.10
 (the live-rejoin reconcile: a 3 s disarmed re-arm that never heals; lobby/armed rejoins re-write the head),
 `protocol/session-findings-2026-08.md` §7r (config survives a BLE drop, a power-cycle wipes it, headset off
 drops the link).
@@ -217,8 +247,7 @@ drops the link).
 
 ## 7. Proven vs. specified — read this before trusting a diagram
 
-The dated status board is `manual/07-platform.md` → /platform/status (and its "Honest gaps" list). The
-resolution to trust, in one line: **Tier 0 is proven on two guns; one phone got as far as a try-out that
+The resolution to trust, in one line: **Tier 0 is proven on two guns; one phone got as far as a try-out that
 fired a real gun and a station that revived one; nobody has run a whole match on phones, and never a field of
 phones over a router-hosted LAN, a dispersed timed start, the local timed end, or store-and-forward recovery
 across a real outage.** The Companion is spec only; the Utility Box's IR emit is proven from the rig; the
@@ -227,12 +256,99 @@ utility *phone* station is built and bench-proven.
 **A green test suite is not a working field.** That distinction is stated in FOLLOWUPS B15 in the
 project's own words: "a green test ≠ 'works on real guns' — that's earned on the bench."
 
+**Status board**
+
+| Element | Status | Date / evidence |
+|---|---|---|
+| Remote game start over BLE (config → spawn → live → timed match → respawn) | proven | multiple sessions, 2026-08-23 → 25 |
+| Full Team Deathmatch: scoring, respawn, frag limit, correct winner, BLE held all match | proven, 2 guns | 2026-08-25 "FIRST LIVE M0 GAME" |
+| Synced start across guns (config-all-then-spawn barrier) | proven, 3 guns | 2026-08-25, FOLLOWUPS B10 |
+| Exact per-player attribution over BLE (`$PSET` id → `$HIR` shooter) | proven | 2026-08-25, `protocol/session-findings-2026-08.md` §7p/§7q |
+| Native kill feedback from our stack: green-sight flash (`$SFLASH`) + announcer (`$PLAY` slot 4) | proven | 2026-08-25 / 26 |
+| Four native teams; firmware-enforced friendly fire; live team flip | proven | 2026-08-26 |
+| `$WEAP` map: damage, fire interval, fire modes (auto / single / burst / charge / melee), overheat; all 19 Callsign weapons captured (20 frames) | proven | 2026-08-26 |
+| Config survives a BLE drop; a power-cycle wipes it (re-push tell) | proven | 2026-08-25 |
+| Headset must be on or the gun won't join; rainbow blink = disconnected | proven | 2026-08-25 / 27 |
+| Smart Grenade: 5 native modes, Hill/Respawn beacons readable, no BLE config | proven | exp-log #33–40 |
+| BRX IR word decoded (25 bits, timings, parity); **stock tagger accepts synthetic shots from our ESP32 rig** | proven | 2026-08-26 |
+| `$SIR` effects matrix (16 protocols × 4 subtypes) mapped: damage, heal, armor, shield, audio suppression | proven | 2026-08-26 / 27 |
+| The ×1.25 / ×2 multiplier rows (functions 36 and 37): fn 36 lands the **floor** of magnitude ×1.25, fn 37 lands magnitude ×2 | proven, 16 trials, 4 magnitudes, 8 row-tail shapes, fn 1 control in every trial | 2026-09-02 |
+| Native phone app: connects, drives `$SFLASH`, arms a full game, stable session | proven, single gun | 2026-08-25 |
+| Phone → Mission Control → gun: hello, roster bind, try-out fired a real gun | proven, single node, bench | 2026-08-25 night |
+| Mission Control full stack (Muster → Recap), FrameBundle compiler, operator auth, discovery, loadout policy, saved games | software-tested only | ~500 Python tests, 42 e2e, 2026-08-26 / 27 |
+| FFA / Infection / LMS / CS / Domination / KotH / CTF / Extraction engines | software-tested only | 156 sim scenarios; objective modes wait on a station |
+| **MC ↔ two phones over a real field Wi-Fi, a whole match** | proven, 2 phones | 2026-08-30 FFA (300 s, 12 kills) and 2026-09-01 outdoor TDM; more than two phones untested |
+| **Dispersed timed start on a real field** (players out of range before T-0) | never run | n/a |
+| **Store-and-forward recovery after real coverage loss** | never run | n/a |
+| 20-minute two-node soak (screen-lock, backgrounding, out of Wi-Fi range) | open | verification-checklist §NEXT 4 |
+| Loadout v2 (three slots: primary, secondary, perk; policy presets, phone picks) | software-tested only | 2026-08-27 and 2026-09-04, not bench-verified |
+| BRX Companion (ESP32-S3 rider) | specified only | ADR-0001 accepted 2026-08-25; bench kit arrived 2026-08-26 |
+| Utility Box / objective station | design only; the IR emit side is proven | build is "a packaging exercise" |
+| Effect nodes (relay, WLED, DMX) | specified only | `firmware/` empty |
+| Field radio (LoRa / the gun's nRF) | specified only | nRF unprobed (D1) |
+
+**Honest gaps (what is NOT proven yet)**, from `docs/archive/verification-checklist.md`:
+- **Mission Control ↔ more than two phones over a real field Wi-Fi**: two phones have played two whole matches (2026-08-30, 2026-09-01); larger fleets have not.
+- **A dispersed timed start on a real field** (players out of range before T-0): never run.
+- **Store-and-forward recovery after real coverage loss**: never run.
+- **20-minute two-node soak** with a screen-lock and a backgrounding, out of Wi-Fi range: open.
+- **Phone auto-rejoin** to a no-internet SSID after walking out of range: open, per OS.
+- **iOS locked-phone BLE**: do queued hits reach the engine on resume? Open.
+- **Hold-across-disperse**: a 2-minute hold is proven. The 5-minute run was interrupted and needs a re-run.
+- **Guns per BLE radio**: three held at once is the proven figure. The maximum has not been measured.
+- **FFA / Infection / LMS on real guns**: the logic is sim-proven (156 scenarios). On-gun LED colours, sounds, health and scoreboard are not yet confirmed live. The attribution fuse is not exercised.
+- **Objective modes (Domination / KotH / CTF / CS / Extraction) live**: the engines wait on a station or grenade to emit the IR events. Grenade CTF team-assign (G9) and thrown-blast `$GREN` (G10) are open.
+- **Health variants live** (Syphon, regen): `$LIFE` writes are confirmed, but the modes on top are not run live. The shield pool is IR-only (fn-11), and the node/app currently drop the shield token (Q12). A hit fully absorbed by a shield would go unreported.
+- **Config knobs on-gun**: outdoor mode, kid mode, volume levels, HP/armor start values; none flipped on the bench yet. (Night-mode LEDs-off is **done**: we ship Callsign's own frame `$GLED,,,,5,,,*`, verified 2026-08-30. It blanks all three body LEDs because its colour tokens are empty and token 4 = 5 applies them, which was measured 2026-09-02.)
+- **Loadout v2** (three slots: primary, secondary and a perk of its own; policy presets, phone picks): built 2026-08-27 and 2026-09-04, not bench-verified.
+- **Melee in a compiled game**: it did not work on the bench, even though our frames match Callsign's byte for byte (K4). A runtime or state question.
+- **ADR-0001 confirmation still owed**: that a host-armed game does *not* self-fire feedback once disconnected.
+- **Companion**: not built. Open items are the pairing/binding handshake, the mount (needs caliper measurements), the OTA flow, Wi-Fi + BLE coexistence, and the ESP-NOW mesh end to end.
+- **Utility Box**: emit is proven from the rig. The box itself is not built (enclosure, captive web config, ESP-NOW/LoRa coordination, IR range at each drive level, capture debounce). Station-arming persistence for respawn (B12) is open.
+- **Effect nodes**: no firmware. Music and stingers from the laptop are untested beyond design.
+- **Field radio / nRF**: the gun's built-in nRF is unprobed (D1). LoRa-standard adoption (D2) comes from community measurements, not ours.
+- **Gen 1 taggers** (Bluetooth Classic): unsupported. Guide to do.
+- **MacBook holds a BRX link**: prior sessions worked. Re-confirm before match day.
+- **Objective callout sound ids**: provisional (a by-ear session is needed). Medal and streak ids beyond "kill" are not yet heard on the bench.
+
+---
+
+## 8. What each budget buys
+
+Starting inventory assumed: 4 BRX taggers (+ headsets), 2 Smart Grenades, and a laptop or phone you
+already own. No mods, no builds, no purchases required beyond Tier 0.
+
+- **Tier 0 — $0, exactly what you own** (proven): a laptop in BLE range drives the guns directly, so
+  a room, a yard or a small field works. Setup, start, spawn, live hit/death tracking, host-driven
+  respawn and a synced start are proven. TDM is proven; FFA / Infection / LMS engines and the laptop
+  scoreboard are software-tested only. Custom weapons (`$WEAP`: damage, rate, mag, reload type,
+  per-fire sounds; all 19 Callsign weapons captured and rebalanced), diagnostics, and custom
+  on-tagger sound packs over USB are proven. Grenade objectives (Hill / Respawn / Assault / CTF / CS
+  bomb) are proven, with CTF team-assign still open. Limit: everyone stays in the laptop's BLE range,
+  and there is no per-player HUD.
+- **Tier 1 — old Android/iOS phones as nodes, ~$0 if you have them (else ~$30–50 used)**: the biggest
+  jump in capability for the least money, because the link rides the player. Full-field roaming for
+  every Tier-0 mode, a per-player HUD, offline play with results syncing at the base. Native app on
+  Android + iOS (ADR-0003), one phone per gun. Two phones have run two whole matches on real hardware
+  outdoors (2026-08-30, 2026-09-01); more than two phones is untested.
+- **Tier 2 — ESP32 Companion per tagger, ~$12–25 each** (specified, not built): a purpose-built,
+  rugged, phone-free node that rebuilds the native kill flash and audio. Power-ups (extra life,
+  faster fire, damage boost, shields) as decoded command sequences. ESP-NOW mesh between Companions
+  for instant field-wide kill-confirm. Optional +$5–7 loud custom audio, +$8–12 on-gun HUD.
+- **Tier 3 — objective stations, ~$5–15 each (+ paper QR ~$0)** (design stage; IR emit proven):
+  Domination (multi-point + live scoreboard), KotH, CTF variants, Assault, Extraction point, bomb
+  site, respawn stations (data-mule sync). Grenades cover single-objective modes for $0; stations are
+  for multi-point play, live ownership and scoring, and respawn.
+- **Tier 4 — field radio, LoRa ~$10/node (or the gun's own nRF, unprobed, maybe free)** (specified
+  only): live coordination on a large park with no Wi-Fi — "flag taken!" broadcast, live HQ
+  scoreboard, station status screens, Battle Royale.
+
 ---
 
 ## Where to go next
 
-- **You own guns and want to play** → `manual/07-platform.md` /platform/build-tiers for what each budget
-  buys, then the `brx-mcp` quickstart in the [root README](../README.md).
+- **You own guns and want to play** → §8 above for what each budget buys, then the `brx-mcp`
+  quickstart in the [root README](../README.md).
 - **You're running a match** → [`field-runbook-mc.md`](field-runbook-mc.md).
 - **You're changing the code** → [`spec/README.md`](spec/README.md), then
   [`spec/contracts.md`](spec/contracts.md).

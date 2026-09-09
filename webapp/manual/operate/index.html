@@ -1,44 +1,523 @@
 <!doctype html>
-<html lang="en" data-theme="">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Operating the BRX | The BRX Manual (Open BRX)</title>
-<meta name="description" content="get you from &quot;box on the table&quot; to &quot;a game running and understood&quot;. Every button hold, every LED and every voice line should mean something to you. Anything that needs a laptop, a cable, or the BLE protocol is pointed at the developer section, not explained here.">
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Operating the BRX | Open BRX</title>
+<meta name="description" content="This page covers stock BRX gear: a tagger, a headset, maybe a grenade, and the Callsign app. It">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/operate/">
-<link rel="alternate" type="text/markdown" href="/manual/operate.md" title="Markdown version">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/assets/site.de097c8a13.css">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<meta name="color-scheme" content="light dark">
-<script>try{var t=localStorage.getItem('brx-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
-<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"TechArticle","headline":"Operating the BRX","description":"get you from \"box on the table\" to \"a game running and understood\". Every button hold, every LED and every voice line should mean something to you. Anything that needs a laptop, a cable, or the BLE protocol is pointed at the developer section, not explained here.","url":"https://open-brx.iamrossi.workers.dev/manual/operate/","dateModified":"2026-08-27","author":{"@type":"Organization","name":"Open BRX"},"isPartOf":{"@type":"WebSite","name":"Open BRX: The BRX Manual","url":"https://open-brx.iamrossi.workers.dev/"}},{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://open-brx.iamrossi.workers.dev/"},{"@type":"ListItem","position":2,"name":"Manual","item":"https://open-brx.iamrossi.workers.dev/manual/"},{"@type":"ListItem","position":3,"name":"Operating the BRX","item":"https://open-brx.iamrossi.workers.dev/manual/operate/"}]}]}</script>
-</head>
-<body class="">
+<link rel="alternate" type="text/markdown" href="/manual/operate.md">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.0641952723.css">
+</head><body>
 <a class="skip" href="#main">Skip to content</a>
-<header class="top">
-  <button class="nav-toggle" aria-label="Open navigation" aria-expanded="false" data-nav-toggle>&#9776;</button>
-  <a class="brand" href="/"><svg class="logo" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M8 4H4v16h4M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zm0 5v8m-4-4h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>OPEN BRX</span></a>
-  <nav class="topnav" aria-label="Primary"><a href="/manual/" aria-current="true">Manual</a><a href="/platform/">Platform</a><a href="/credits/">Credits</a><a href="/changelog/">Changelog</a></nav>
-  <div class="tools">
-    <button class="search-btn" data-search-open aria-label="Search the manual"><span>Search</span><kbd>⌘K</kbd></button>
-    <button class="theme-btn" data-theme-toggle aria-label="Toggle light and dark theme" aria-pressed="false">◐</button>
-    <a class="gh" href="https://github.com/tony99nyr/open-brx" rel="noopener" aria-label="GitHub repository">GitHub</a>
-  </div>
-</header>
-<div class="layout has-side">
-  <nav class="side" id="side" aria-label="Manual sections"><details class="side-sec"><summary><span class="num">01</span> Meet the BRX</summary><ul><li><a href="/manual/hardware/">Overview</a></li><li><a href="/manual/hardware/overview/">The BRX at a glance</a></li><li><a href="/manual/hardware/tagger/">The tagger, part by part</a></li><li><a href="/manual/hardware/ir-and-sensors/">The IR emitter, the sight, and the sensors</a></li><li><a href="/manual/hardware/leds/">Lights and what they mean</a></li><li><a href="/manual/hardware/headset/">The headset</a></li><li><a href="/manual/hardware/battery/">Battery and power</a></li><li><a href="/manual/hardware/generations/">Generations: which BRX do you have?</a></li><li><a href="/manual/hardware/accessories/">Grenade and accessories</a></li><li><a href="/manual/hardware/spec-sheet/">Spec sheet and what's in the box</a></li></ul></details><details class="side-sec" open><summary><span class="num">02</span> Operating the BRX</summary><ul><li><a href="/manual/operate/" aria-current="page">Overview</a></li><li><a href="/manual/operate/quick-start/">Quick Start</a></li><li><a href="/manual/operate/power/">Charging &amp; Batteries</a></li><li><a href="/manual/operate/on-gun-menu/">The On-Gun Menu</a></li><li><a href="/manual/operate/indoor-outdoor/">Indoor vs Outdoor Mode</a></li><li><a href="/manual/operate/sighting/">Sighting the Laser</a></li><li><a href="/manual/operate/headset-pairing/">Pairing the Headset</a></li><li><a href="/manual/operate/accessories/">The Grenade &amp; Other Accessories</a></li><li><a href="/manual/operate/callsign-app/">The Callsign App</a></li><li><a href="/manual/operate/stock-game/">Running a Native Game on Stock Kit</a></li><li><a href="/manual/operate/range/">Range &amp; Line of Sight</a></li><li><a href="/manual/operate/care/">Care &amp; Storage</a></li></ul></details><details class="side-sec"><summary><span class="num">03</span> Gameplay</summary><ul><li><a href="/manual/gameplay/">Overview</a></li><li><a href="/manual/gameplay/overview/">What the BRX can play</a></li><li><a href="/manual/gameplay/weapons/">The complete Callsign arsenal</a></li><li><a href="/manual/gameplay/health/">Health, armor &amp; damage</a></li><li><a href="/manual/gameplay/how-a-kill-works/">How a kill actually works</a></li><li><a href="/manual/gameplay/modes/">Native game modes &amp; their settings</a></li><li><a href="/manual/gameplay/classes-and-perks/">Classes, factions, perks &amp; killstreaks</a></li><li><a href="/manual/gameplay/grenade-modes/">The Smart Grenade's game modes</a></li><li><a href="/manual/gameplay/open-brx-modes/">Beyond stock: the Open BRX mode catalog</a></li></ul></details><details class="side-sec"><summary><span class="num">04</span> Sound, voice &amp; updates</summary><ul><li><a href="/manual/sound/">Overview</a></li><li><a href="/manual/sound/how-it-works/">How BRX audio works</a></li><li><a href="/manual/sound/voice-packs/">Voice packs &amp; announcers</a></li><li><a href="/manual/sound/sound-bank/">The sound bank</a></li><li><a href="/manual/sound/custom-sounds/">Custom sounds over USB</a></li><li><a href="/manual/sound/firmware/">Firmware updates &amp; factory restore</a></li><li><a href="/manual/sound/volume/">Volume</a></li></ul></details><details class="side-sec"><summary><span class="num">05</span> Fix, mod &amp; accessorise</summary><ul><li><a href="/manual/fix/">Overview</a></li><li><a href="/manual/fix/diagnose/">Diagnose my tagger</a></li><li><a href="/manual/fix/pairing/">Headset, pairing &amp; Bluetooth</a></li><li><a href="/manual/fix/hits-sound-battery/">Hits, sound &amp; battery</a></li><li><a href="/manual/fix/repairs/">Repairs</a></li><li><a href="/manual/fix/mods/">Mods</a></li><li><a href="/manual/fix/accessories/">Accessories</a></li><li><a href="/manual/fix/community/">The community</a></li><li><a href="/manual/fix/faq/">FAQ</a></li></ul></details><details class="side-sec"><summary><span class="num">06</span> Developer reference</summary><ul><li><a href="/manual/dev/">Overview</a></li><li><a href="/manual/dev/transport/">Transport, framing &amp; safety</a></li><li><a href="/manual/dev/commands/">Command reference</a></li><li><a href="/manual/dev/arm-sequence/">The arm sequence: from $CLEAR to a live gun</a></li><li><a href="/manual/dev/weap/">$WEAP: the weapon definition</a></li><li><a href="/manual/dev/gset-pset/">$GSET and $PSET: game and player settings</a></li><li><a href="/manual/dev/sir/">$SIR: the incoming-IR effects matrix</a></li><li><a href="/manual/dev/events/">Events: what the gun tells you</a></li><li><a href="/manual/dev/ir/">The IR word: what a shot carries through the air</a></li><li><a href="/manual/dev/serial-console/">The USB serial console: QUERY and SETUP</a></li><li><a href="/manual/dev/headset-link/">Headset, link and what survives</a></li><li><a href="/manual/dev/brx-mcp/">Getting started with brx-mcp</a></li><li><a href="/manual/dev/captures/">Captures: recording and decoding the official app</a></li></ul></details></nav>
-  <main id="main" class="main">
-    <nav class="crumbs" aria-label="Breadcrumb"><a href="/">Home</a><span class="sep">/</span><a href="/manual/">Manual</a><span class="sep">/</span><span aria-current="page">Operating the BRX</span></nav>
-    <article class="page hub"><header class="page-head"><p class="kicker">Section 02</p><h1>Operating the BRX</h1><p class="subtitle">Get you from &quot;box on the table&quot; to &quot;a game running and understood&quot;</p><p class="meta"><span class="lv">Last verified <time datetime="2026-08-27">2026-08-27</time></span><a class="md-link" href="/manual/operate.md">Markdown</a></p></header><section class="blk blk-cards"><div class="cards"><ul><li><a href="/manual/operate/quick-start/"><strong>Quick Start</strong><br>From the box to your first &quot;TARGET MODE&quot; voice line in about fifteen minutes, plus a charge.</a></li><li><a href="/manual/operate/power/"><strong>Charging &amp; Batteries</strong><br>Two ports on the gun, two kinds of charger, one polarity trap.</a></li><li><a href="/manual/operate/on-gun-menu/"><strong>The On-Gun Menu</strong><br>Everything you can set without a phone, and what the gun remembers.</a></li><li><a href="/manual/operate/indoor-outdoor/"><strong>Indoor vs Outdoor Mode</strong><br>One three-second hold changes your range, your LEDs and your blast radius.</a></li><li><a href="/manual/operate/sighting/"><strong>Sighting the Laser</strong><br>Target mode makes the gun harmless, tireless, and honest about where it points.</a></li><li><a href="/manual/operate/headset-pairing/"><strong>Pairing the Headset</strong><br>The number one cause of &quot;my gun won't fire&quot;, and the fix for it.</a></li><li><a href="/manual/operate/accessories/"><strong>The Grenade &amp; Other Accessories</strong><br>Pair a thrown grenade, or use it as a respawn point, a hill or a flag. No app needed.</a></li><li><a href="/manual/operate/callsign-app/"><strong>The Callsign App</strong><br>Battle Company's official phone app: what it does, how you build a game, and the three things nobody tells you.</a></li><li><a href="/manual/operate/stock-game/"><strong>Running a Native Game on Stock Kit</strong><br>A walkthrough of a whole match, on-gun or app-hosted, and what every light and voice line means while it runs.</a></li><li><a href="/manual/operate/range/"><strong>Range &amp; Line of Sight</strong><br>What the numbers on the box mean once the sun comes out.</a></li><li><a href="/manual/operate/care/"><strong>Care &amp; Storage</strong><br>Keep it charged, keep it dry, and turn it off between rounds.</a></li></ul></div></section></article>
-  </main>
-  
-</div>
-<footer class="foot">
-  <p>Protocol discovered by <a href="https://github.com/LaserTagMods" rel="noopener">LaserTagMods</a> (JEDGE / JBOX) · Hardware by Battle Company · Fixes by the owner community.</p>
-  <p>Open BRX is an independent open-source project and is not affiliated with or endorsed by Battle Company. MIT licence. <a href="/credits/">Credits &amp; sourcing</a> · <a href="/changelog/">Changelog</a> · <a href="/llms.txt">llms.txt</a> · <a href="https://github.com/tony99nyr/open-brx" rel="noopener">GitHub</a></p>
-</footer>
-<div class="search-modal" data-search-modal hidden><div class="search-box" role="dialog" aria-label="Search"><input type="search" data-search-input aria-label="Search the manual" placeholder="Search pages, headings, weapons, sound ids, commands…" autocomplete="off"><div class="search-results" data-search-results aria-live="polite"><p class="muted">Type to search.</p></div><p class="search-hint">Esc to close</p></div></div>
-<script src="/assets/site.b967e5eb88.js" defer></script>
-</body>
-</html>
+<header class="top"><a class="brand" href="/">Open BRX</a><nav class="topnav"><a href="/manual/hardware/">Hardware</a><a href="/manual/operate/" aria-current="page">Operate</a><a href="/manual/gameplay/">Gameplay</a><a href="/manual/sound/">Sound</a><a href="/manual/fix/">Fix</a><a href="/manual/dev/">Developer</a><a href="/platform/">Platform</a><a href="/credits/">Credits</a></nav>
+<button class="theme" type="button" aria-label="Toggle theme">Theme</button></header>
+<main id="main"><article>
+<h1>Operating the BRX</h1>
+<p class="meta">Last verified <time datetime="2026-08-27">2026-08-27</time></p>
+<nav class="toc" aria-label="On this page"><p>On this page</p><ul><li><a href="#quick-start">Quick Start</a></li><li><a href="#charging-and-batteries">Charging and Batteries</a></li><li><a href="#the-on-gun-menu">The On-Gun Menu</a></li><li><a href="#indoor-vs-outdoor-mode">Indoor vs Outdoor Mode</a></li><li><a href="#sighting-the-laser">Sighting the Laser</a></li><li><a href="#pairing-the-headset">Pairing the Headset</a></li><li><a href="#the-grenade-and-other-accessories">The Grenade and Other Accessories</a></li><li><a href="#the-callsign-app">The Callsign App</a></li><li><a href="#running-a-native-game-on-stock-kit">Running a Native Game on Stock Kit</a></li><li><a href="#range-and-line-of-sight">Range and Line of Sight</a></li><li><a href="#care-and-storage">Care and Storage</a></li><li><a href="#sources">Sources</a></li></ul></nav>
+<p>This page covers stock BRX gear: a tagger, a headset, maybe a grenade, and the Callsign app. It
+gets you from box on the table to a game running, using no laptop, cable, or BLE protocol; that
+is covered in the developer reference.</p>
+<h2 id="quick-start">Quick Start</h2>
+<p>Go from box to your first &quot;TARGET MODE&quot; voice line in about fifteen minutes, plus a charge.</p>
+<p>Charge it, pair it, sight it, play.</p>
+<blockquote>
+<p><strong>What you are holding.</strong> The BRX is a rifle-style infrared tagger (Class 1, 980 nm IR laser).
+The wireless headset carries the hit sensors, and the gun has a sensor too. Out of the box it
+is a non-scoring system: the gun keeps no score and no clock, so scoring comes from the on-gun
+game or the phone app.</p>
+</blockquote>
+<p><strong>First power-on checklist:</strong></p>
+<ol>
+<li>Charge the gun first. Plug the two-cell 8.4 V smart charger into the round charging port. Do
+not use the micro-USB &quot;Programing Port&quot; next to it. The charger LED is red, then green when
+full. A full charge gives you roughly 8 h of play. The headset takes any USB 5 V supply.</li>
+<li>Power on the gun with the slide switch by the barrel. You should hear a startup sound. A
+&quot;pop&quot; from the speaker at boot means audio is alive. If it boots silently, you were holding
+SELECT: that is USB disk mode, so power off and try again.</li>
+<li>Power on the headset. Its LEDs cycle through colours (&quot;rainbow&quot;) while it is unpaired, then
+settle. Pairing is automatic. It can take up to 3 minutes when lots of taggers and Bluetooth
+devices are around.</li>
+<li>Watch the headset settle. A slow rainbow blink that never stops means it is not paired: see
+Pairing the Headset below. Once paired it shows the gun&#39;s team colour.</li>
+<li>Set indoor or outdoor mode for where you will play (hold ALT 3 s). It changes IR range and
+LED brightness, and it sticks across power cycles.</li>
+<li>Sight the laser in target mode before your first real game (hold LEFT while powering on).</li>
+<li>Pick a game on the gun with LEFT/RIGHT, pull the trigger to select, then pull the reload
+handle to start.</li>
+</ol>
+<p><strong>The controls, in one glance:</strong></p>
+<ul>
+<li><strong>Trigger</strong>: fire. In menus it selects, and it cycles weapons or characters.</li>
+<li><strong>ALT (orange)</strong>: alt-fire or perk. Hold 3 s to toggle indoor/outdoor. In the menu it cycles
+perks.</li>
+<li><strong>SELECT</strong>: steps through settings. Hold it at power-on for USB disk mode (firmware and
+sounds).</li>
+<li><strong>LEFT / RIGHT (D-pad)</strong>: cycle modes and teams. Hold LEFT at power-on for target mode. Hold
+RIGHT at power-on for accessory/headset pairing.</li>
+<li><strong>Reload handle</strong>: reloads in play. Pulling it starts an on-gun game.</li>
+<li><strong>Slide power switch</strong>: by the barrel.</li>
+</ul>
+<blockquote>
+<p><strong>Tip.</strong> Label each gun and its headset as a pair. Put a strip of tape or a sticker with the
+same mark on both. Stock taggers look identical and come unlabeled. A mixed-up pair is the
+number one reason for &quot;my gun won&#39;t fire&quot; at a party.</p>
+</blockquote>
+<h2 id="charging-and-batteries">Charging and Batteries</h2>
+<p>Two ports on the gun, two kinds of charger, one polarity trap.</p>
+<p><strong>Power at a glance:</strong></p>
+<div class="table-wrap"><table><thead><tr><th>Item</th><th>Value</th></tr></thead><tbody><tr><td>Gun pack</td><td>7.4 V Li-ion, ~2200 mAh, two cells, 2-pin connector</td></tr>
+<tr><td>Gun charger</td><td>the supplied 8.4 V two-cell smart charger; the LED is red while charging and green when done</td></tr>
+<tr><td>Run time</td><td>roughly 8 h of play per full charge</td></tr>
+<tr><td>Headset</td><td>charges from any USB 5 V source; the v2 headset runs on a single 18650 cell</td></tr>
+<tr><td>Fallback</td><td>the gun can run on an optional 6xAA holder; use alkaline only, never rechargeable AAs</td></tr></tbody></table></div>
+<blockquote>
+<p><strong>Warning.</strong> Battery polarity is reversed from the usual convention. Replacing the pack,
+building spares, or wiring an external charger? Check polarity with a meter before you connect
+anything. A reversed pack risks damaging the tagger. Some aftermarket packs have a 3-pin
+connector, and the BRX ignores the third (thermistor) pin.</p>
+</blockquote>
+<blockquote>
+<p><strong>Warning.</strong> Two ports, and you must not confuse them. The round charging port takes the
+charger. The micro-USB &quot;Programing Port&quot; next to it is only for firmware and sound updates
+(see Firmware and Sounds). It is not a charging input.</p>
+</blockquote>
+<p><strong>Swapping the gun battery:</strong></p>
+<ol>
+<li>Power off and unplug the charger.</li>
+<li>Remove the single screw near the reload switch to open the battery bay.</li>
+<li>Disconnect the old pack. Check the new pack&#39;s polarity against the old one before you plug it
+in.</li>
+<li>Close it up, power on, and listen for the startup sound.</li>
+</ol>
+<blockquote>
+<p><strong>Tip.</strong> Field practice from the owner community: keep a stack of charged spare packs and swap
+them in the field. That beats trying to top up a gun from a power bank. A spliced BRX AC
+adapter can charge packs outside the gun.</p>
+</blockquote>
+<blockquote>
+<p><strong>Low battery has a hidden cost.</strong> Below a certain charge the BRX firmware will not
+re-establish its Bluetooth link to a phone. If the app suddenly cannot reconnect late in a day
+of play, blame the battery before the phone.</p>
+</blockquote>
+<h2 id="the-on-gun-menu">The On-Gun Menu</h2>
+<p>Everything you can set without a phone, and what the gun remembers.</p>
+<blockquote>
+<p><strong>The gun&#39;s LED shows the mode.</strong> White is Free For All, red is Death Match, yellow is
+Generals, blue is Supremacy, pink is Commander, green is Survival, orange is The Swarm. During
+play the same LED shows ammo and health.</p>
+</blockquote>
+<p><strong>Navigating the root menu:</strong></p>
+<ol>
+<li>Power on. You land at the root menu. LEFT / RIGHT cycle game modes and the LED colour changes
+with each one. Trigger selects.</li>
+<li>Pick your team or faction with the D-pad. Trigger cycles weapons (or characters in
+Supremacy). ALT cycles perks, but only in modes that have them.</li>
+<li>Press SELECT to step through the game variables: lives, game time, respawn, volume. The
+D-pad changes each value and SELECT moves you on.</li>
+<li>Pull the reload handle to start. Anything you changed becomes the new default for that mode.</li>
+</ol>
+<p><strong>Game variables on the gun:</strong></p>
+<div class="table-wrap"><table><thead><tr><th>Setting</th><th>Values</th><th>Notes</th></tr></thead><tbody><tr><td>Game time</td><td>Off, 5, 10, 15, 20, 30 min</td><td></td></tr>
+<tr><td>Respawn</td><td>Off, 15, 30, 60 s, Ramp 45, Ramp 90</td><td>&quot;Ramp&quot; grows the penalty with each death, up to the cap</td></tr>
+<tr><td>Volume</td><td>1-5</td><td></td></tr></tbody></table></div>
+<blockquote>
+<p><strong>These variables live on the gun, per game mode.</strong> They are not the numbers the Callsign app
+uses. The app keeps its own clock and respawn timer on the phone, and it never writes these to
+the gun.</p>
+</blockquote>
+<p><strong>Button holds worth memorising:</strong></p>
+<ul>
+<li><strong>ALT, hold 3 s</strong>: toggle indoor / outdoor (it sticks).</li>
+<li><strong>LEFT at power-on</strong>: target mode, for sighting.</li>
+<li><strong>RIGHT at power-on</strong>: &quot;install accessory&quot; pairing mode (headset, grenade, sidearm and
+friends).</li>
+<li><strong>SELECT at power-on</strong>: USB disk mode. No startup sound.</li>
+<li><strong>LEFT + RIGHT, hold 5 s in a game</strong>: soft reset back to the menu.</li>
+<li><strong>LEFT + RIGHT, hold 3 s at the root menu</strong>: admin lock. It blocks mode changes and reset. Add
+SELECT for the stronger lock, which also freezes indoor/outdoor, weapon, team and perk. A
+locked gun cannot host.</li>
+<li><strong>Swing your elbow (gesture-enabled &quot;logo&quot; guns)</strong>: melee from the headset&#39;s front emitter.
+Other guns use RIGHT.</li>
+</ul>
+<p><strong>Stock modes selectable on the gun:</strong></p>
+<div class="table-wrap"><table><thead><tr><th>Mode</th><th>Teams</th><th>Weapons</th><th>Perks</th></tr></thead><tbody><tr><td>Free For All</td><td>none, friendly fire on</td><td>M-4, SMG-X3, MG-7, SR-100</td><td>none</td></tr>
+<tr><td>Team Death Match</td><td>Alpha / Bravo</td><td>+ TAC-87</td><td>Grenade Launcher, Med Kit, Concussion Grenade, Extended Mags, Body Armor</td></tr>
+<tr><td>Supremacy</td><td>Resistance (red) / Vanguard (green) / Nexus (blue)</td><td>9 characters are the loadout</td><td>per-character abilities</td></tr>
+<tr><td>Survival</td><td>Human / Infected</td><td>M-4, SMG-X3, MG-7, SR-100, TAC-87</td><td>none</td></tr></tbody></table></div>
+<p>Generals, Commander and The Swarm show up on newer firmware as Callsign-Live unlocks. Full stats
+and abilities are in the Gameplay section.</p>
+<h2 id="indoor-vs-outdoor-mode">Indoor vs Outdoor Mode</h2>
+<p>One three-second hold changes your range, your LEDs and your blast radius.</p>
+<p><strong>Switching modes:</strong></p>
+<ol>
+<li>Hold ALT for 3 seconds at any time. The gun announces the new mode.</li>
+<li>Leave it. The setting persists across power cycles, so you set it once per venue.</li>
+<li>Host from the Callsign app instead? Its per-game Outdoor mode toggle sets the same thing.</li>
+<li>Driving a gun from your own code? It is <code>$GSET</code> token 2, <code>outdoorMode</code>. A second field, token
+3 <code>gunLaserRegion</code>, carries the IR power limit. Both are in the developer reference.</li>
+</ol>
+<p><strong>What changes:</strong></p>
+<div class="table-wrap"><table><thead><tr><th></th><th>Indoor</th><th>Outdoor</th></tr></thead><tbody><tr><td>Green hit LEDs</td><td>dimmed</td><td>full brightness</td></tr>
+<tr><td>RGB headset LEDs</td><td>enabled</td><td>bright-sun visibility is poor on any headset</td></tr>
+<tr><td>Explosion / melee range</td><td>shrunk</td><td>full</td></tr>
+<tr><td>Station / respawn-signal reach</td><td>shorter, because the forward IR projection scales with mode</td><td>~18-20 ft to a respawn station</td></tr>
+<tr><td>Gun hit radius</td><td>n/a</td><td>bright sunlight cuts it roughly in half (IR noise filtering)</td></tr></tbody></table></div>
+<blockquote>
+<p><strong>Tip.</strong> Use indoor mode indoors, even in a big room. Full-power IR in a small space bounces
+off walls, and a bounce can land on your own headset. We have watched a gun drain its own
+armor by firing at a wall a few feet away.</p>
+</blockquote>
+<h2 id="sighting-the-laser">Sighting the Laser</h2>
+<p>Target mode makes the gun harmless, tireless, and honest about where it points.</p>
+<p><strong>Enter target mode:</strong></p>
+<ol>
+<li>Start with the gun off. Hold LEFT and slide the power on. Keep holding until you hear
+&quot;TARGET MODE&quot;.</li>
+<li>Check what the mode does: the gun is on the yellow team, does 0 damage, and has unlimited
+ammo. The headset will not pair, and that is expected.</li>
+<li>Have a helper wear a powered headset at your sighting distance, or prop one up. A direct hit
+flashes the headset green.</li>
+<li>Adjust the scope or sight until the flash lands where the reticle says it should.</li>
+<li>Power-cycle the gun to leave target mode.</li>
+</ol>
+<p><strong>Sighting distances the community uses:</strong></p>
+<div class="table-wrap"><table><thead><tr><th>Loadout</th><th>Sight at</th></tr></thead><tbody><tr><td>General indoor play</td><td>~20 ft</td></tr>
+<tr><td>General outdoor play</td><td>~300 ft</td></tr>
+<tr><td>Sniper (SR-100 class)</td><td>300-400 ft</td></tr>
+<tr><td>Shotgun / SMG</td><td>50-100 ft</td></tr></tbody></table></div>
+<blockquote>
+<p><strong>Why bursts hit and mag-dumps miss.</strong> The BRX simulates recoil. Rapid fire drags your
+accuracy down toward each weapon&#39;s floor. A &quot;miss&quot; still flashes the target&#39;s headset and
+plays a zip sound, but it does 0 damage. Fire in bursts and let your accuracy recover.</p>
+</blockquote>
+<h2 id="pairing-the-headset">Pairing the Headset</h2>
+<p>The number one cause of &quot;my gun won&#39;t fire&quot;, and the fix for it.</p>
+<blockquote>
+<p><strong>The headset is a separate radio device</strong>, and it carries most of the hit sensors. It pairs
+to one gun. A gun that boots with a headset and then loses it locks its trigger until the
+headset returns (anti-cheat).</p>
+</blockquote>
+<p><strong>Normal pairing (every day):</strong></p>
+<ol>
+<li>Turn the gun on, then the headset. The headset LEDs cycle rainbow while they search.</li>
+<li>Wait. Pairing can take up to 3 minutes when lots of taggers and Bluetooth devices are around.</li>
+<li>Watch for the LEDs to settle to the gun&#39;s team colour. That means you are paired.</li>
+</ol>
+<p><strong>Reading the headset LEDs:</strong></p>
+<div class="table-wrap"><table><thead><tr><th>Headset shows</th><th>It means</th></tr></thead><tbody><tr><td>Slow rainbow blink</td><td>Not paired / disconnected. The gun will not join a phone game, so re-pair before you start.</td></tr>
+<tr><td>Solid team colour (red / blue...)</td><td>Paired, in the menu or lobby. Pre-game only.</td></tr>
+<tr><td>Dark during play</td><td>Normal. The headset goes dark once a game starts.</td></tr></tbody></table></div>
+<p><strong>Re-pairing a headset that has lost its gun (Gen-3 procedure):</strong></p>
+<ol>
+<li>Turn the headset on. Its LEDs cycle colours.</li>
+<li>Press and hold the small headset button. Keep holding it through the whole procedure.</li>
+<li>Hold RIGHT on the D-pad while you slide the gun power on.</li>
+<li>Wait for the voice line &quot;PAIRING MODE&quot;.</li>
+<li>Pull the trigger once. You get &quot;HEADSET CONNECTED&quot; and the headset LEDs stop cycling.</li>
+<li>Pull the trigger a second time. It announces &quot;device paired&quot;. Now release the headset
+button.</li>
+</ol>
+<h3 id="alternative-quot-install-accessory-quot-route">Alternative: &quot;install accessory&quot; route</h3>
+<p>Boot the gun holding RIGHT (&quot;install accessory&quot;), power the headset, then press its button once.
+It is the same boot mode you use to pair a grenade or a sidearm.</p>
+<blockquote>
+<p><strong>Warning.</strong> Firmware updates can un-pair everything. Owners report the v4.30 update wipes
+settings and breaks headset pairing until you re-run setup. Battle Company&#39;s own fix involved
+a temporary downgrade. Re-pair after any firmware update, before a game day. Details are in
+Firmware and Sounds.</p>
+</blockquote>
+<p><strong>Headset troubleshooting:</strong></p>
+<h3 id="the-gun-charges-a-weapon-but-nothing-happens-on-the-trigger">The gun charges a weapon but nothing happens on the trigger</h3>
+<p>That is the classic headset lockout. Look at the headset: rainbow means re-pair it.</p>
+<h3 id="the-phone-app-connects-then-drops-within-a-couple-of-seconds">The phone app connects, then drops within a couple of seconds</h3>
+<p>The app needs a paired headset and quietly disconnects without one. The gun is fine. Get the
+headset lit before you open the app.</p>
+<h3 id="only-some-guns-joined-the-phone-game">Only some guns joined the phone game</h3>
+<p>A gun whose headset is off or unpaired (slow rainbow) refuses to join, and gives no error.
+Eyeball every headset before you start. Before the game a paired headset shows team colour, and
+it only goes dark once play begins.</p>
+<h3 id="it-paired-yesterday-and-not-today">It paired yesterday and not today</h3>
+<p>That is the headset battery. It charges from any USB 5 V.</p>
+<h2 id="the-grenade-and-other-accessories">The Grenade and Other Accessories</h2>
+<p>Pair a thrown grenade, or use it as a respawn point, a hill or a flag. No app needed.</p>
+<blockquote>
+<p><strong>Two different jobs, two different setups.</strong> A thrown grenade pairs to your gun, once. An
+objective device needs no pairing at all, because any gun talks to it over IR. That covers the
+respawn station, King of the Hill, Assault point and CTF flag. Do not use &quot;install accessory&quot;
+for objective modes.</p>
+</blockquote>
+<p><strong>Pairing accessories to your gun (grenade, sidearm, hatchet, shield):</strong></p>
+<ol>
+<li>Start with the gun off. Hold RIGHT and power on to reach &quot;install accessory&quot;.</li>
+<li>Power on the accessory. It accepts a new pairing for 30 seconds after power-up.</li>
+<li>Aim the gun at it and pull the trigger. The pairing code goes over IR, and the device flashes
+or chirps to confirm.</li>
+<li>Pair every accessory in the same session, without powering the gun off, then tap SELECT to
+finish. Adding a new accessory later means re-pairing all of them together.</li>
+</ol>
+<p><strong>Throwing a paired grenade:</strong></p>
+<ol>
+<li>Check that your headset is on and paired.</li>
+<li>Press the grenade&#39;s top button near your headset to arm it.</li>
+<li>Throw it. On detonation everyone in range takes the blast. Land it on a hill or a respawn
+point and your team captures that point instantly, at full charge.</li>
+</ol>
+<p><strong>Setting an objective mode on the grenade:</strong></p>
+<ol>
+<li>Power the grenade off, then on, and wait for the green ready LED.</li>
+<li>Hold the top button ~4 s until you hear a long loud beep. You are now in setup.</li>
+<li>Keep holding. It beeps fast and cycles colours. Release on the colour you want.</li>
+<li>Watch the LED go white to confirm the lock. The mode survives power-cycling, and on every
+boot it flashes the current mode&#39;s colour for about a second.</li>
+<li>Repeat from step 1 to change the mode.</li>
+</ol>
+<p><strong>Grenade mode colours:</strong></p>
+<div class="table-wrap"><table><thead><tr><th>Colour</th><th>Mode</th><th>How it plays</th></tr></thead><tbody><tr><td>Red</td><td>Frag</td><td>a plain blast grenade; throw it or trigger it with the button</td></tr>
+<tr><td>Green</td><td>Assault</td><td>shoot it to capture it for your team; the LED turns your colour (owners call it finicky)</td></tr>
+<tr><td>Blue</td><td>Hill (King of the Hill)</td><td>starts neutral white; shoot to claim it; every shot adds charge and the other team must out-shoot it to take it back; guns announce &quot;control point captured&quot;</td></tr>
+<tr><td>Yellow</td><td>Respawn station</td><td>starts neutral; shoot to claim it for a team; it then respawns that team&#39;s dead players</td></tr>
+<tr><td>White</td><td>CTF flag</td><td>shoot to grab it; a tagger carrying the flag plays the CTF music</td></tr></tbody></table></div>
+<p><strong>Using a respawn station:</strong></p>
+<ol>
+<li>Set the grenade to yellow, put it at your base, and have one player from the team shoot it.
+It turns that team&#39;s colour.</li>
+<li>Arm each tagger before kickoff. Press the grenade button near each player. Or have each
+player face the station with the front of the headset and pull the trigger. A tagger that
+never gets the station signal just self-respawns as normal.</li>
+<li>Send dead players back to base to respawn. They press the station button, which respawns
+everyone of that team nearby. Or they face it with the headset front and pull the trigger
+(about 18-20 ft, less indoors).</li>
+<li>Expect the other team to overrun it. They shoot it or grenade it to flip its colour.</li>
+<li>Missed the arming step? Pressing the station button near a gun during the game forces it
+into station-respawn mode too.</li>
+</ol>
+<blockquote>
+<p><strong>Tip.</strong> A spare tagger left in accessory-setup mode is a free &quot;announcer&quot;. It calls out the
+grenade&#39;s mode names as you cycle them. It also says &quot;respawn point enabled&quot; and a claim chime
+as the game runs. That is handy for setting up a field without staring at LED colours.</p>
+</blockquote>
+<blockquote>
+<p><strong>Everything you hear from a grenade is really played by the guns and headsets.</strong> The
+explosion, the flashbang, the CTF music and the respawn chime are all their answer to its IR
+signal. The grenade itself only chirps and flashes. That is why custom sound packs on the gun
+change &quot;grenade sounds&quot; too.</p>
+</blockquote>
+<p><strong>Grenade quirks owners run into:</strong></p>
+<h3 id="it-can-39-t-show-a-winner">It can&#39;t show a winner</h3>
+<p>Stock kit tallies hill and domination scoring nowhere, so a ref or host keeps score.</p>
+<h3 id="the-defending-team-captured-their-own-assault-point">The defending team captured their own Assault point</h3>
+<p>That is a known quirk. Treat Assault as low-reliability.</p>
+<h3 id="a-grenade-in-the-wrong-mode-triggered-odd-game-reactions">A grenade in the wrong mode triggered odd game reactions</h3>
+<p>CTF music in a deathmatch, for example. Check the boot-flash colour before every game.</p>
+<h3 id="the-usb-c-port-is-charge-only">The USB-C port is charge-only</h3>
+<p>There is no drive, no console and no update path on that port.</p>
+<h2 id="the-callsign-app">The Callsign App</h2>
+<p>Callsign is Battle Company&#39;s official phone app. It hosts games and pushes settings to the gun;
+this section covers building a game and the gotchas that catch new users.</p>
+<blockquote>
+<p><strong>What the app is.</strong> Callsign turns a phone into the game host. It keeps the clock, the score
+and the respawn timer. It also pushes weapons and settings to the gun over Bluetooth. The gun
+enforces none of the rules. Take the phone out of Bluetooth range and nobody respawns, and the
+round never ends.</p>
+</blockquote>
+<p><strong>Callsign at a glance:</strong></p>
+<ul>
+<li>Keep the phone within about 1 m of its gun for the whole match. It is the game engine.</li>
+<li>A hosted game typically takes about 1 minute to show up as joinable on a second phone. It
+round-trips through the cloud.</li>
+<li>The app sets the gun&#39;s internal volume to 69 out of 100 when it connects.</li>
+<li>Owners report the app only works on Android 10 or earlier. iOS is fine.</li>
+</ul>
+<p><strong>Building and starting a game:</strong></p>
+<ol>
+<li>Get the top-right connection icon green (&quot;connected&quot;). You cannot create a game until it is,
+and it will not go green without a paired headset.</li>
+<li>Tap SELECT A GAME and swipe the category carousel: Team Arena, Battle Royale, Battle Lines,
+Faction Wars, Infection.</li>
+<li>Tap SELECT GAME MODE. Under Team Arena, for example: Arena, Team Arena, Team Snipers,
+Capture the Flag.</li>
+<li>Fill in GAME SETTINGS: primary and secondary weapon, then the rules in the table below. Press
+CREATE. Some modes add a step for teams, starting health, or the players-remaining display.</li>
+<li>Wait in the lobby while other players join from their phones, pick weapons, and hit ready. On
+a single device, use Start Offline Game.</li>
+<li>Let the host launch. Every gun goes live together, and the in-game HUD shows health, shield,
+ammo and weapon.</li>
+</ol>
+<p><strong>Game settings the app exposes:</strong></p>
+<div class="table-wrap"><table><thead><tr><th>Setting</th><th>Choices</th></tr></thead><tbody><tr><td>Primary / Secondary weapon</td><td>~18-weapon roster (Assault Rifle, Sniper, Shotgun, SMG, Rail Gun, Rocket Launcher...); secondary removable</td></tr>
+<tr><td>Weapon respawn</td><td>30 s, 60 s, 90 s, 3 min</td></tr>
+<tr><td>Weapon pick-up</td><td>Scan, Player, Both</td></tr>
+<tr><td>Weapon selection</td><td>on / off</td></tr>
+<tr><td>Outdoor mode</td><td>on / off</td></tr>
+<tr><td>Voice</td><td>Male, Female</td></tr>
+<tr><td>Time</td><td>minutes</td></tr>
+<tr><td>Score to win</td><td>a number</td></tr>
+<tr><td>Respawn type</td><td>Scanner (respawn at a printed QR code), Auto (timed)</td></tr>
+<tr><td>Respawn time</td><td>seconds</td></tr>
+<tr><td>Lives</td><td>a count, or Unlimited</td></tr>
+<tr><td>Extra step (some modes)</td><td>Allow Teams / No Teams, Starting health Low/Medium/Full, Players remaining Show/Hide</td></tr></tbody></table></div>
+<blockquote>
+<p><strong>Field objectives in Callsign are printed QR codes.</strong> Respawn points, weapon pickups, control
+points and supply drops are all paper you scan or fire at, not boxes.</p>
+</blockquote>
+<blockquote>
+<p><strong>Volume.</strong> The app&#39;s whole global settings screen is one Sound slider. On connect it sets the
+gun to about 69 on its internal 0-100 scale. That is loud enough for weapon audio indoors and
+out. Anything much below 50 makes weapon sounds effectively silent; 30 measures as inaudible
+over room noise.</p>
+</blockquote>
+<blockquote>
+<p><strong>Gotcha 1: the app renames your gun.</strong> Every session Callsign writes the name &quot;Tactix2&quot; to
+the gun. Gave a gun a custom Bluetooth name with Open BRX tools? Opening Callsign on it
+silently resets that name.</p>
+</blockquote>
+<blockquote>
+<p><strong>Gotcha 2: &quot;the app is flaky&quot; is almost always the headset.</strong> With no headset paired, the app
+connects to the gun and drops it about a second later. There is no message, and the icon
+simply never turns green. Nothing is intermittent: it works exactly when the headset happens
+to be linked.</p>
+</blockquote>
+<blockquote>
+<p><strong>Gotcha 3: the firmware warning is soft.</strong> Newer guns show &quot;firmware v4.32 ... supported
+until v2.01e&quot;. The gun is ahead of the app&#39;s list, not behind it, and games still run. Do not
+downgrade firmware to satisfy that message.</p>
+</blockquote>
+<blockquote>
+<p><strong>Tip.</strong> The app shows player numbers as 1-64. The gun stores them 0-63. This only matters if
+you compare app numbers with developer tools.</p>
+</blockquote>
+<h2 id="running-a-native-game-on-stock-kit">Running a Native Game on Stock Kit</h2>
+<p>A walkthrough of a whole match, on-gun or app-hosted, and what every light and voice line means
+while it runs.</p>
+<p><strong>Option A: a game hosted on the gun (no phone):</strong></p>
+<ol>
+<li>Get every player set: gun on, headset on and settled, no rainbow.</li>
+<li>Have every player select the same mode with LEFT/RIGHT and pull the trigger.</li>
+<li>Pick your team with the D-pad, your weapon with the trigger, and your perk with ALT (Team
+Death Match only).</li>
+<li>Step through lives, time, respawn and volume with SELECT. Agree the values across all guns,
+because each gun runs its own clock.</li>
+<li>Count down together and pull the reload handle to start.</li>
+<li>Keep score by voice, by a ref, or by team flags. The guns do not tally kills.</li>
+</ol>
+<p><strong>Option B: a game hosted from Callsign:</strong></p>
+<ol>
+<li>Get every player set: headset paired, phone mounted on the gun, app icon green.</li>
+<li>Have the host create the game while the others join and ready up. Allow a minute for the
+lobby.</li>
+<li>Let the host launch. Guns spawn together and HUDs light up. You do not need the reload handle
+to start.</li>
+<li>Die, and the app respawns you after the set respawn time, or at a QR scanner.</li>
+<li>Hit the time or score limit, and the app ends the game with a voice line and stops the guns.
+Scores live on the phones.</li>
+</ol>
+<p><strong>During play: what you see and hear:</strong></p>
+<div class="table-wrap"><table><thead><tr><th>Signal</th><th>Meaning</th></tr></thead><tbody><tr><td>Gun LED</td><td>ammo and health indicator</td></tr>
+<tr><td>Headset dark</td><td>normal during a game</td></tr>
+<tr><td>Headset flashes, &quot;zip&quot; sound, no damage</td><td>a miss under the recoil-accuracy model</td></tr>
+<tr><td>Headset lit with team colour mid-game</td><td>that gun is still in the lobby; it never entered the game</td></tr>
+<tr><td>Headset slow rainbow</td><td>the headset dropped; that gun is locked until it re-pairs</td></tr>
+<tr><td>Trigger only reloads / chirps</td><td>you are in a menu, the game has not started, or the gun is locked</td></tr>
+<tr><td>&quot;Dead / out of ammo&quot; noise on trigger</td><td>you are dead and a respawn station is set up, so go to the station</td></tr></tbody></table></div>
+<blockquote>
+<p><strong>Where hits land.</strong> The headset carries sensor domes front, left, right and back, and the gun
+has a sensor of its own. At field distances the dome that catches the shot is the one you were
+facing with. Point-blank, IR floods every receiver and any dome can report it. The damage is
+the same either way, because a dome hit is a hit.</p>
+</blockquote>
+<blockquote>
+<p><strong>Dead means dead.</strong> A tagger that is dead (out of health) ignores all incoming IR. It cannot
+take a hit, be healed, or be armed by a station until it respawns.</p>
+</blockquote>
+<blockquote>
+<p><strong>Warning: the &quot;screamer&quot;.</strong> Owners widely report this in hosted or online play. After about
+an hour some guns fail with a loud buzz and need a reboot. They also report that a low battery
+stops Bluetooth re-pairing entirely. A game can cascade down to half its players. We reproduced
+the Bluetooth half on a gun left powered all day. Power guns off between rounds, keep packs
+topped up, and reboot a buzzing gun instead of fighting it.</p>
+</blockquote>
+<p><strong>Owner-invented rulesets that need no extra gear:</strong></p>
+<ul>
+<li><strong>Ribbon teams</strong>: run everyone on one team with friendly fire on, and tell teams apart by a
+coloured ribbon on a clip. Swap ribbons on death for infection or team-swap modes.</li>
+<li><strong>Respawn character</strong>: Generals, Commanders and Swarm modes give one player a mobile respawn
+point. Teammates revive at them with the trigger.</li>
+<li><strong>Ammo restock</strong>: a grenade, a perk slot, or the respawn character can hand out ammo in
+limited-ammo games.</li>
+</ul>
+<h2 id="range-and-line-of-sight">Range and Line of Sight</h2>
+<p>What the numbers on the box mean once the sun comes out.</p>
+<p><strong>Range at a glance:</strong></p>
+<ul>
+<li>The IR beam&#39;s rated maximum reach in daylight is about 600 ft (Battle Company).</li>
+<li>Bright direct sunlight shrinks the gun&#39;s hit radius by about 50%.</li>
+<li>The IR wavelength and carrier are 980 nm / 38 kHz. It is a Class 1 device, safe for eyes.</li>
+<li>A respawn station &quot;hears&quot; a headset-and-trigger request from about 18-20 ft outdoors.</li>
+</ul>
+<p><strong>Line-of-sight rules of thumb:</strong></p>
+<ul>
+<li><strong>IR is light.</strong> It needs a clear path to a sensor dome. It does not go through people, walls
+or dense foliage. Shade and dusk improve range, and full noon sun cuts it.</li>
+<li><strong>It bounces.</strong> In small rooms and near walls a shot can reflect back onto your own headset.
+Use indoor mode indoors.</li>
+<li><strong>The headset is the bigger target.</strong> Head-height domes on four sides catch far more than the
+gun&#39;s own sensor, so snipers aim for the head.</li>
+<li><strong>Close range is chaos.</strong> Point-blank, every dome reports. At distance the facing dome
+reports. Neither changes the damage.</li>
+<li><strong>Feedback fades in sun.</strong> The headset&#39;s green hit LEDs are hard to read in direct sun, so
+long-range tags look like misses. Listen for the target&#39;s hit sound instead.</li>
+</ul>
+<blockquote>
+<p><strong>Bluetooth range is not IR range.</strong> The phone hosting a game has to stay within Bluetooth
+reach of its gun. In practice that means mounted on it. IR shots still land at hundreds of
+feet. It is the game logic that stops working when the phone is out of range.</p>
+</blockquote>
+<h2 id="care-and-storage">Care and Storage</h2>
+<p>Keep it charged, keep it dry, and turn it off between rounds.</p>
+<p><strong>Between games:</strong></p>
+<ul>
+<li><strong>Power off between rounds.</strong> Guns left powered for many hours develop Bluetooth trouble
+(&quot;screamers&quot;), and a power-rest clears it.</li>
+<li><strong>Charge every pack after a game day</strong>, and top up before the next one. A low pack quietly
+breaks Bluetooth re-pairing.</li>
+<li><strong>Headsets on USB.</strong> Any 5 V USB source charges them. Check every headset before a game day.</li>
+<li><strong>Keep gun-and-headset pairs together.</strong> Same sticker on both, stored together.</li>
+</ul>
+<blockquote>
+<p><strong>Warning: water.</strong> Owners report guns usually survive a soaking after several days of drying
+with the battery out. Headsets usually do not. Treat the headset as the fragile half.</p>
+</blockquote>
+<blockquote>
+<p><strong>Warning: battery out before opening.</strong> If you ever open the gun for a repair or a mod,
+unplug the pack first. Owners have lost mainboards working on a gun with a live pack
+connected.</p>
+</blockquote>
+<p><strong>Wear items to watch:</strong></p>
+<div class="table-wrap"><table><thead><tr><th>Symptom</th><th>Part (as owners found it)</th><th>Owner fix</th></tr></thead><tbody><tr><td>Reload handle stiff or binding</td><td>handle track friction</td><td>thin nylon washer under the handle; light silicone lube on the track</td></tr>
+<tr><td>A D-pad button feels dead</td><td>cracked button plastic, a known wear failure</td><td>replace from Battle Company or a parts gun</td></tr>
+<tr><td>Gun powers on/off by itself</td><td>worn power switch</td><td>contact cleaner helps for a while; switch replacement</td></tr>
+<tr><td>No sound, but a &quot;pop&quot; at boot</td><td>loose or corrupt audio card</td><td>the speaker is fine; see Repairs</td></tr>
+<tr><td>Shots never register on anyone</td><td>the IR emitter has died (they do)</td><td>replaceable part; see Repairs</td></tr></tbody></table></div>
+<blockquote>
+<p><strong>Tip.</strong> Sound and firmware updates go through the micro-USB Programing Port with a
+SELECT-hold boot. The gun then shows up as a disk with an AUDIO folder. Keep a copy of the
+originals before you swap anything. The full procedure is in Firmware and Sounds.</p>
+</blockquote>
+<h2 id="sources">Sources</h2>
+<ul>
+<li>docs/reference/brx-manual-notes.md</li>
+<li>docs/reference/brx-extended-user-guide.md</li>
+<li>docs/reference/community-notes.md</li>
+<li>docs/reference/grenade.md</li>
+<li>docs/reference/callsign-ui.md</li>
+<li>protocol/callsign-extract/apk-harvest.md</li>
+<li>protocol/session-findings-2026-08.md</li>
+<li>docs/gotchas.md</li>
+<li>docs/field-process.md</li>
+<li>docs/experiment-log.md</li>
+</ul>
+
+</article></main>
+<footer><p>Open BRX is independent and is not endorsed by Battle Company. Protocol discovery credit: LaserTagMods (JEDGE / JBOX). <a href="/credits/">Credits and sources</a> &middot; <a href="https://github.com/tony99nyr/open-brx">Source on GitHub</a></p></footer>
+<script src="/assets/site.e18b6ebf26.js"></script>
+</body></html>

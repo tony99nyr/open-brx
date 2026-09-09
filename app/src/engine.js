@@ -1187,7 +1187,7 @@ export class Engine {
       case 'LCD': {
         this.hp = +t[1] || 0; this.armor = +t[2] || 0;
         // NOTE: do NOT write this.shield from $LCD token 3. Unlike $HP, $LCD's tokens 3-4 are
-        // UNDOCUMENTED (docs/manual/06-developer.md, protocol/brx-protocol.md "semantics TBD") and
+        // UNDOCUMENTED (docs/manual/dev.md, protocol/brx-protocol.md "semantics TBD") and
         // read 0 in every observed frame -- so writing it can only ZERO a live shield, never set one,
         // which silently recreates the Q12 bug this file just fixed. Re-add only once t3 is
         // bench-confirmed as the shield.

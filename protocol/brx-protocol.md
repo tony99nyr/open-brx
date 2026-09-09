@@ -4,7 +4,7 @@
 bench write-ups that produced it, with every retraction, are in
 [`session-findings-2026-08.md`](session-findings-2026-08.md) (frozen) and `docs/experiment-log/`
 (the live notebook). The published developer reference built from this file is
-`docs/manual/06-developer.md`.
+`docs/manual/dev.md`.
 **Credit:** Protocol knowledge originally discovered and proven by **LaserTagMods (JEDGE / JBOX projects)** — https://github.com/LaserTagMods. This document is a fresh, independent write-up of the protocol; no code is copied.
 **Scope:** Battle Company BRX taggers (Gen1, Gen2/3) over the serial link. The optical IR word is in
 [`brx-ir-protocol.md`](brx-ir-protocol.md); the Smart Grenade (an IR-only device with no serial link, mode
@@ -201,7 +201,7 @@ with no pool change.
 
 Six slots (0–5); slot 4 = melee by convention (gyro swing, `$BMAP,8,4`). The full 0-indexed token map with
 APK field names is in [`callsign-extract/protocol-classes.md`](callsign-extract/protocol-classes.md) and is
-rendered with per-token confidence in `docs/manual/06-developer.md`. Known-good frames:
+rendered with per-token confidence in `docs/manual/dev.md`. Known-good frames:
 
 ```
 Assault Rifle : $WEAP,0,,100,0,0,24,0,,,,,,,,100,850,32,32768,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,9999999,75,,*

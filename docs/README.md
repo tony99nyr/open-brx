@@ -6,7 +6,7 @@ specified. Then **[`manual/`](manual/)**, the confirmed-facts manual the public 
 
 | You are… | Read |
 |---|---|
-| **A BRX owner wondering if you can use this** | [`architecture-topology.md`](architecture-topology.md) §3 · [`manual/07-platform.md`](manual/07-platform.md) · the [root README](../README.md) |
+| **A BRX owner wondering if you can use this** | [`architecture-topology.md`](architecture-topology.md) §3 · [`manual/platform.md`](manual/platform.md) · the [root README](../README.md) |
 | **Running a match today** | [`field-runbook-mc.md`](field-runbook-mc.md) · [`field-process.md`](field-process.md) · [`field-issues.md`](field-issues.md) |
 | **Trying LEDs, sounds and events on ONE gun at the bench** | [`gun-stage.md`](gun-stage.md) (`python -m brx_mcp stage`) |
 | **Changing the code** | [`spec/README.md`](spec/README.md) → [`spec/contracts.md`](spec/contracts.md) · [`adr/`](adr/) |

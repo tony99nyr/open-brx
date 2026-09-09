@@ -1,16 +1,18 @@
 # Open BRX
 
 Open-source platform orchestrating Battle Company BRX laser taggers.
-**Strategy/vision:** `docs/VISION.md`; what-to-build-by-budget: `docs/manual/07-platform.md`; mode catalog:
+**Strategy/vision:** `docs/VISION.md`; mode catalog:
 `docs/game-modes.md`. **Spec of record: `docs/spec/`** (`contracts.md` = the node↔MC wire + game data
 model, amendments A1–A14 folded into the body; + the module docs) — the software is built + tested against it. Architecture
 decisions: `docs/adr/` (0001 per-player node · 0002 laptop Mission Control + local LAN · 0003 native app
 over Web Bluetooth). Ground truth for tagger I/O: `protocol/brx-protocol.md`.
 
 **Start with [`docs/README.md`](docs/README.md)** — the docs index. **BRX facts: `docs/manual/`** is the
-canonical, confirmed-facts manual (also the source the public website is built from) — read the section
-file there before digging through `reference/`/`protocol/`, and promote new confirmed facts into it
-(`docs/manual/README.md` → *How a fact gets in*). Before any hardware/protocol
+canonical, confirmed-facts manual (also the source the public website is built from) — read the page
+there before digging through `reference/`/`protocol/`, and promote new confirmed facts into it
+(`docs/manual/README.md` → *How a fact gets in*). It is **plain markdown**, nine files, one per page;
+the format contract is `docs/site/FORMAT.md`. There is no block syntax, no provenance badge and no
+per-sentence `src:` line: confidence lives in `docs/experiment-log/` and `docs/FOLLOWUPS.md`. Before any hardware/protocol
 work also read `docs/HANDOFF.md` (one screen of current state), `docs/FOLLOWUPS.md` (every open item,
 incl. **Needs Tony at the bench**), and the current month under `docs/experiment-log/` (lab notebook).
 **Session close is three writes:** one log entry, one FOLLOWUPS diff (strike or add rows, no prose), one
@@ -64,19 +66,18 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
 ## Layout
 
 `mcp/` Python MCP server (lab instrument) **+ `mcp/brx_mcp/mc/` = the Mission Control server** (M-MC: API.md is the server⇄UI contract; run `python -m brx_mcp.mc`) ·
-`app/` native phone app (Capacitor → Android + iOS; see `app/README.md` — `npm run android:apk` builds
-the APK the public site hands out into `webapp/download/`; **always rebuild the site after it**, since a
-version bump deletes the old APK and an un-rebuilt page would link a file that no longer exists) ·
+`app/` native phone app (Capacitor → Android + iOS; see `app/README.md` — `npm run android:apk` cuts a
+build and publishes it to the `app-v<version>` GitHub Release; the site links the releases page, not a
+pinned asset, so a new cut does not stale a manual page) ·
 `firmware/` PlatformIO ESP32 flavors · `webapp/mc/` the **Mission Control web UI** (Vite/React/TS; `npm run dev`, `?mock` for the in-browser demo; design brief `docs/spec/design/mission-control.md`) · `webapp/` legacy static harness (Web BT is not the player path — ADR-0003) ·
 `hardware/` STLs/BOM · `protocol/` + `docs/` reference · **`site/`** the static generator for the public
-website (`docs/manual/*.md` → `webapp/`; `cd site && npm run build && npm test` — the Playwright suite is
-the ui-build-verify checklist and refuses to run on a stale build; **a push to `main` deploys the site**
-(Cloudflare builds `webapp/` from the repo via the root `wrangler.toml`, so commit a fresh build or you
-publish a stale one); `webapp/mc/` is the separate MC UI and is never touched by the site build;
+website (`docs/manual/*.md` → `webapp/`, ~150 lines of `marked` plus one template; `cd site && npm test`
+builds and runs the gate; **a push to `main` deploys the site** (Cloudflare runs the root `npm run build`
+via `wrangler.toml`, so the pages are generated at deploy time and are not committed);
+`webapp/mc/` is the separate MC UI and is never touched by the site build;
 **`webapp/download/`** holds only the `build.json` sidecar: the APK itself is **git-ignored and lives on
 the `app-v<version>` GitHub Release** (a committed APK cost ~5 MB of history per cut). `npm run android:apk`
-builds it, publishes the release and writes the asset URL into the sidecar; the download page links that URL
-and reads every fact it states off the real bytes. `mcp/tests/test_published_build.py` fails if the sidecar
+builds it, publishes the release and writes the asset URL into the sidecar. `mcp/tests/test_published_build.py` fails if the sidecar
 goes stale, names a commit that does not exist, or an APK gets committed).
 **No em dashes in `docs/manual/`**: a test fails the build if one reaches a page. See
 `docs/manual/README.md` for the house style.

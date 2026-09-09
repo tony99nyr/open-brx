@@ -1,7 +1,7 @@
 # BRX Design — Mission Control (MacBook web app; tablet-friendly)
 
 **Package for:** the operator console (`webapp/mc/`, React/TS; server⇄UI contract `mcp/brx_mcp/mc/API.md`).
-Real weapon data is `mcp/brx_mcp/mc/weapons.json` (the public arsenal page is `docs/manual/03-gameplay.md`).
+Real weapon data is `mcp/brx_mcp/mc/weapons.json` (the public arsenal page is `docs/manual/gameplay.md`).
 The shipping UI is the visual source of truth; the 2026-08-25 Claude Design export it started from is archived
 at `docs/archive/design/mc-export/` for re-seeding the design tool (per Tony, 2026-08-26, the exports were
 inspiration, not definitive). Absorbed 2026-09-06: the shared foundation brief and the screen sections of the

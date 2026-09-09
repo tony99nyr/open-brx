@@ -2095,3 +2095,4 @@ stage's per-recompile views memoised, and `/api/state` given a 0.5 s TTL (it had
 session: `state()` **9.1 ms cold, 0.04 ms warm** (30 calls, max 0.11 ms); `on_gun_ids()` **0.014 ms warm** (200
 calls). The separate hit-path fix (`event()` split into `_event_now()`) is what removed the ~600 ms LED lag and
 is logged under its own entry.
+- 2026-09-09 **B9** manual website rebuilt: block DSL deleted, 74 pages to 9, generator 1,009 to 233 lines, Playwright gate 779 to 146 lines, all provenance badges and per-block `src:` lines removed from the published prose.
