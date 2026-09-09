@@ -164,16 +164,21 @@ it('10 \u00b7 every URL the old site published still resolves, by page or by red
     .split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'))
     .map(l => { const [from, to, code] = l.split(/\s+/); return { from, to, code }; });
   const live = new Set(urls().map(u => u.replace(/\/$/, '') || '/'));
-  const covered = u => {
-    const p = u.replace(/\/$/, '') || '/';
-    if (live.has(p)) return true;
-    return rules.some(r => r.from.endsWith('/*')
-      ? p.startsWith(r.from.slice(0, -2) + '/')
-      : (r.from.replace(/\/$/, '') || '/') === p);
-  };
+  const norm = u => u.replace(/\/$/, '') || '/';
+  const matches = (from, url) => from.endsWith('/*')
+    ? norm(url).startsWith(from.slice(0, -2) + '/') || norm(url) === norm(from.slice(0, -2))
+    : norm(from) === norm(url);
+  const covered = u => live.has(norm(u)) || rules.some(r => matches(r.from, u));
   const orphans = old.filter(u => !covered(u));
   expect(orphans, `old URLs that would 404: ${orphans.join(', ')}`).toEqual([]);
-  // and every redirect target must be a page that exists
+  // every redirect target must be a page that exists
   const badTargets = rules.filter(r => !live.has(r.to.replace(/\/$/, '') || '/'));
   expect(badTargets.map(r => `${r.from} -> ${r.to}`)).toEqual([]);
+  // A rule must never match a page that still exists. A splat like `/manual/dev/*` also matches
+  // `/manual/dev/` itself, which redirected the live page to itself and looped forever in production.
+  const selfMatch = [...live].filter(p => rules.some(r => matches(r.from, p)));
+  expect(selfMatch, `redirect rules that swallow a live page (loop): ${selfMatch.join(', ')}`).toEqual([]);
+  // no rule may point at another rule's source, which would chain
+  const chained = rules.filter(r => rules.some(o => matches(o.from, r.to)));
+  expect(chained.map(r => `${r.from} -> ${r.to}`), 'chained redirects').toEqual([]);
 });
