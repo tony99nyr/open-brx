@@ -43,6 +43,30 @@ const LOW_HEALTH_HP = 15;
 const MEDAL_GAP_MS = 2000;       // A11.4: medal lines are 1.5-2.5 s; play them back to back, not on top of each other   // A11: no two LED bursts inside a second (three flashes per second is the ceiling)
 const RELOAD_GRACE_MS = 600;     // a reload the gun never echoed still clears the takeover this long after reload_s
 const TEAM_KEY = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green' };
+// A16.5 (2026-09-09): outermost -> innermost, the order BRX depletes -- shield goes, then armour, then
+// health. Mirrors `poolgauge.py`'s `READOUT_POOL_INWARD`; kept as its own constant here too rather than
+// shipped through the bundle, so the phone and the bench stage can never silently disagree on it.
+const READOUT_POOL_INWARD = ['shield', 'armor', 'health'];
+
+/** A16.5: which pool the readout should actually SHOW, given that `pool` is the one that just moved and
+ *  settled at level 0. Mirrors `poolgauge.handover_pool` exactly -- see its docstring for the full
+ *  reasoning: a shot that took armour 35 -> 0 while health sat untouched at 45/45 left the gun body dark
+ *  for the whole hold, which read as "nothing left" at the exact moment the player was at full health.
+ *  Pure: takes the current pool values and which pools the bundle actually configured a readout for, and
+ *  returns `pool` unchanged when nothing inward has anything left (in particular: health emptying hands
+ *  over to nothing, because that is death, and death is deliberately hands-off, A16). */
+export function handoverPool(pool, values, configured) {
+  const vals = {}; for (const k of READOUT_POOL_INWARD) vals[k] = values[k] || 0;
+  if (vals[pool] > 0) return pool;
+  const start = READOUT_POOL_INWARD.indexOf(pool);
+  if (start < 0) return pool;
+  const allowed = configured ? new Set(configured) : null;
+  for (let i = start + 1; i < READOUT_POOL_INWARD.length; i++) {
+    const inner = READOUT_POOL_INWARD[i];
+    if (vals[inner] > 0 && (!allowed || allowed.has(inner))) return inner;
+  }
+  return pool;
+}
 
 export function toks(f) {
   let s = String(f).trim();
@@ -567,6 +591,16 @@ export class Engine {
     if (level === 0 && value > 0) level = 1;
     return level;
   }
+  /** A16.5: the node's own view of its pools, keyed the way `handoverPool` expects. Mirrors
+   *  `stage.py`'s `_pool_values`. */
+  _poolValues() { return { shield: this.shield, armor: this.armor, health: this.hp }; }
+  /** A16.5: names of every pool the bundle configured a readout for (`bands` or `levels`, either shape) --
+   *  `handoverPool` only hands over to a pool the current loadout actually has. Mirrors `stage.py`'s
+   *  `_readout_configured`. */
+  _readoutConfiguredPools() {
+    const readout = this.frames && this.frames.gun && this.frames.gun.readout;
+    return (readout && Array.isArray(readout.pools) ? readout.pools : []).map(p => p.pool);
+  }
   /** A16 §3.1: write the moved pool's band ONLY if it differs from the frame currently on the strip.
    *  Restarts the hold on every real change; a change that would repaint within READOUT_COALESCE_MS of the
    *  last WRITE is dropped (never queued, same shape as `_pain`'s PAIN_GAP_MS) but still restarts the hold,
@@ -656,14 +690,46 @@ export class Engine {
       (this._roLevels = this._roLevels || {})[pool] = lvl;   // per-pool memory: what THIS pool last showed
       if (f) { this._readoutFrame = f; this._write([f], `readout ${pool} anim ${why}`); }
     };
+    // A16.5 (2026-09-09, found on the gun): the drain has reached its target. If that target is level 0
+    // and something inward still has value, hand over and show THAT pool's own level instead of settling
+    // into (and holding, for the full `hold_s`) an all-dark strip -- mirrors `stage.py` `_level_animate`'s
+    // post-loop handover exactly, including the one-`step_ms`-beat pause first (so "it is gone" registers
+    // before the handover paints) and painting the inner pool SOLID -- it did not change, so it gets no
+    // drop animation of its own. Anything above zero settles normally, unchanged from before A16.5.
+    const settle = lvl => {
+      if (!ok()) return;
+      if (lvl === 0) {
+        const nxt = handoverPool(pool, this._poolValues(), this._readoutConfiguredPools());
+        const inner = nxt !== pool && readout.pools.find(p => p.pool === nxt);
+        if (inner && Array.isArray(inner.levels) && inner.levels.length === 7) {
+          this.delay(stepMs, () => {
+            if (!ok()) return;
+            const target = this._readoutLevel(inner);
+            const f = inner.levels[target] && inner.levels[target][0];
+            this._roPool = nxt; this._roLevel = target;
+            (this._roLevels = this._roLevels || {})[nxt] = target;
+            // The strip now shows the HANDED-OVER pool, not the one that emptied -- a reload glance must
+            // re-show what is actually on the strip (health), not re-derive the emptied pool (armor at 0),
+            // which would repaint the very dark frame this feature exists to avoid. `stage.py` has no
+            // reload path to expose this gap; the phone does, so this line is a deliberate addition on top
+            // of the mirror, not a divergence from it.
+            this._readoutLastPool = nxt;
+            if (f) { this._readoutFrame = f; this._write([f], `readout ${nxt} handover from ${pool}`); }
+            this._readoutSettle(gen, lg, readout, inner, nxt, target);
+          });
+          return;
+        }
+      }
+      this._readoutSettle(gen, lg, readout, entry, pool, lvl);
+    };
     const step = cur => {
       if (!ok()) return;
       const next = cur < to ? cur + 1 : cur > to ? cur - 1 : cur;
       paint(next, `step ${next}`);
-      if (next === to) { this._readoutSettle(gen, lg, readout, entry, pool, to); return; }
+      if (next === to) { settle(to); return; }
       this.delay(stepMs, () => step(next));
     };
-    if (to === from) { paint(to, 'settle'); this._readoutSettle(gen, lg, readout, entry, pool, to); return; }
+    if (to === from) { paint(to, 'settle'); settle(to); return; }
     if (to > from) { step(from); return; }   // gain: same steps, no initial lead/blink-gap
     // `rapid` = another change inside the min gap. Step straight down from where the strip already is,
     // skipping the lead freeze and the all-off blink: replaying those under automatic fire is what would

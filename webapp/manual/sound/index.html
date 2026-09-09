@@ -5,14 +5,17 @@
 <meta name="description" content="How BRX plays sound: what the gun does on its own, what a host has to trigger, the full sound bank, and how to change what you hear over USB or through a firmware update.">
 <link rel="canonical" href="https://open-brx.iamrossi.workers.dev/manual/sound/">
 <link rel="alternate" type="text/markdown" href="/manual/sound.md">
-<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.f3a9d7d141.css">
+<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/site.d0e361314b.css">
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
-<header class="top"><a class="brand" href="/">Open BRX</a><nav class="topnav"><a href="/manual/hardware/">Hardware</a><a href="/manual/operate/">Operate</a><a href="/manual/gameplay/">Gameplay</a><a href="/manual/sound/" aria-current="page">Sound</a><a href="/manual/fix/">Fix</a><a href="/manual/dev/">Developer</a><a href="/platform/">Platform</a><a href="/credits/">Credits</a></nav>
-<button class="theme" type="button" aria-label="Toggle theme">Theme</button></header>
+<header class="top">
+<a class="brand" href="/"><svg class="logo" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M8 4H4v16h4M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zm0 5v8m-4-4h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Open BRX</span></a>
+<nav class="topnav" aria-label="Sections"><a href="/manual/hardware/">Hardware</a><a href="/manual/operate/">Operate</a><a href="/manual/gameplay/">Gameplay</a><a href="/manual/sound/" aria-current="page">Sound</a><a href="/manual/fix/">Fix</a><a href="/manual/dev/">Developer</a><a href="/platform/">Platform</a><a href="/credits/">Credits</a></nav>
+<button class="theme" type="button" aria-label="Switch theme"><svg class="i-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 1.5v3M12 19.5v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1.5 12h3M19.5 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><svg class="i-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span class="vh">Switch theme</span></button>
+</header>
 <main id="main"><article>
 <h1>Sound, voice and updates</h1>
-<p class="meta">Last verified <time datetime="2026-09-06">2026-09-06</time></p>
+<p class="meta">Last verified <time datetime="2026-09-09">2026-09-09</time></p>
 <p class="lead">How BRX plays sound: what the gun does on its own, what a host has to trigger, the full sound bank, and how to change what you hear over USB or through a firmware update.</p><nav class="toc" aria-label="On this page"><p>On this page</p><ul><li><a href="#how-brx-audio-works">How BRX audio works</a></li><li><a href="#voice-packs-and-announcers">Voice packs and announcers</a></li><li><a href="#the-sound-bank">The sound bank</a></li><li><a href="#custom-sounds-over-usb">Custom sounds over USB</a></li><li><a href="#firmware-updates-and-factory-restore">Firmware updates and factory restore</a></li><li><a href="#volume">Volume</a></li></ul></nav>
 <h2 id="how-brx-audio-works">How BRX audio works</h2>
 <p>Every sound is an id. Your BRX stores 2,477 sound files (the official app&#39;s own list names 2,166 of them). The gun plays most of them by itself, the instant something happens. A host (the Callsign app, or Open BRX Mission Control) plays the rest with a single command. Knowing which is which tells you what you can change.</p>

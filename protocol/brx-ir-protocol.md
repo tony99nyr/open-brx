@@ -15,7 +15,9 @@ a pair that happens to differ.
 
 ## Frame: ~25-bit word, pulse-width encoded
 
-- **Carrier:** 38 kHz, 940/980 nm (a standard VS1838B/TSOP demod receiver recovers it).
+- **Carrier:** 38 kHz, 980 nm (the wavelength on the gun's Class 1 IEC 60825-1 label; not
+  measured here). A standard VS1838B/TSOP demod receiver recovers the carrier. Many hobby IR
+  parts are centred on 940 nm, so pick 980 nm-capable receivers.
 - **Sync/start:** a **~2 ms LOW pulse** precedes the frame (node1 gates on `pulseIn(pin, LOW) > 1500 µs`,
   "2 ms sync ± 500 µs"). Use it to detect frame start / reject non-BRX IR.
 - **MEASURED on our bench (2026-08-26, Tactix-FE30 @ ~1 m):** sync **1988–1991 µs** · one-marks

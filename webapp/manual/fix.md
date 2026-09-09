@@ -1,5 +1,5 @@
 # Fix, mod and accessorise
-Last verified: 2026-08-27
+Last verified: 2026-09-09
 
 Diagnose a tagger that won't fire, work through the fix ladders for pairing, sound and battery,
 and see what the community repairs, mods and accessories actually look like.

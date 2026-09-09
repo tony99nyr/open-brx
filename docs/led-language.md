@@ -80,7 +80,7 @@ Shield is TEAL and armour PURPLE at every level; only health shifts hue as it sh
 from the 2026-09-07 review until 2026-09-09, when Tony chose teal: the `shield_up` burst was already teal, so
 the two disagreed about one fact, and white already carries FFA, carrier and extracted.) A partial level is two
 frames the node alternates at `blink_ms` (400): the solid frame, and the same frame with the top segment DARK.
-Empty colour tokens keep an LED's colour, so the blink half only names the segment that changes.
+⚠️ **RETRACTED 2026-09-09 on the gun: an empty colour token is RED (0), NOT "keep this LED".** Controlled test on a strip held at three solid purple: `$GLED,,9,,0,10,,*` gave red · dark · red. The blink half used empty tokens on the old belief and painted red into every partial level of every bar. **Always write all three colour tokens** -- there is no way to move one segment without restating the others. The stage's LED simulator asserted the same wrong rule and so drew the blink correctly, which is how it reached hardware; `test_led_invariants` now forbids the shape outright.
 
 **The drop animation.** On a pool change: show the level you were on for `lead_ms` (180), all segments off for
 `blink_gap_ms` (80) — Tony's *"show current health in one blink"* — then step down one level per `step_ms` (120),

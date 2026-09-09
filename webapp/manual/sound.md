@@ -1,5 +1,5 @@
 # Sound, voice and updates
-Last verified: 2026-09-06
+Last verified: 2026-09-09
 
 How BRX plays sound: what the gun does on its own, what a host has to trigger, the full sound bank, and how to change what you hear over USB or through a firmware update.
 

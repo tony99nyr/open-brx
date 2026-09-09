@@ -1,5 +1,5 @@
 # Operating the BRX
-Last verified: 2026-08-27
+Last verified: 2026-09-09
 
 This page covers stock BRX gear: a tagger, a headset, maybe a grenade, and the Callsign app. It
 gets you from box on the table to a game running, using no laptop, cable, or BLE protocol; that

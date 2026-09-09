@@ -1132,6 +1132,56 @@ def test_death_stops_a_running_level_animation_even_without_a_generation_bump():
     asyncio.run(go())
 
 
+def test_an_emptied_pool_HANDS_OVER_to_the_pool_inward_instead_of_holding_a_dark_strip():
+    """A16.5, found on the gun 2026-09-09: a shot took armour 35 -> 0 while health was untouched at
+    45/45, and the body animated down to the all-dark level-0 frame and HELD it for the whole 4 s.
+    The strip read "nothing left" while the player was at full health -- false information at the one
+    moment it matters most. The drain still plays in full; the handover replaces the dead hold after it.
+
+    This test exists because the first cut of the feature shipped a `NameError` (`pg` vs `_pg`) that no
+    test caught -- the handover branch had no coverage at all, so the whole feature was dead on the gun
+    while the suite stayed green. It was found only because a background task logs its exceptions."""
+    async def go():
+        st, mgr = mk()
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st)
+        readout = install_levels_readout(st, max_=st.max_hp, hold_s=0.01, lead_ms=1, blink_gap_ms=1, step_ms=1, blink_ms=1)
+        readout["pools"].insert(0, {"pool": "armor", "max": 70, "levels": LEVELS7})
+        st._level_state = {"armor": 6, "health": 6}
+        st._gun_taken = True
+        st.hp, st.armor = st.max_hp, 70          # health FULL, armour about to be emptied
+        n = len(tx(mgr))
+        st._on_pools(st.max_hp, 0, st.shield)    # armour -> 0, health untouched
+        await settle(st)
+        new = [f for f in tx(mgr)[n:] if f.startswith("L") or f == "REST"]
+        assert "L0" in new, f"the drain must still reach level 0 -- losing the armour is not hidden: {new}"
+        assert new[-1] == "REST", new
+        # the LAST L0, not the first: index 1 is the all-off BLINK that opens every drop, and matching
+        # that instead of the drain's end made this test fail against a working handover.
+        after_zero = new[len(new) - 1 - new[::-1].index("L0") + 1:]
+        assert after_zero and after_zero[0] == "L6", (
+            f"after the drain it must hand over and paint HEALTH at its own level (full = L6), "
+            f"not hold the dark frame; got {new}")
+    asyncio.run(go())
+
+
+def test_a_pool_with_something_left_does_NOT_hand_over():
+    """The handover is for an EMPTIED pool only. A pool that still has anything keeps the strip."""
+    async def go():
+        st, mgr = mk()
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st)
+        install_levels_readout(st, max_=st.max_hp, hold_s=0.01, lead_ms=1, blink_gap_ms=1, step_ms=1, blink_ms=1)
+        st._level_state["health"] = 6
+        st._gun_taken = True
+        n = len(tx(mgr))
+        st._on_pools(30, st.armor, st.shield)    # 45 -> 30: level 4, nothing empty
+        await settle(st)
+        new = [f for f in tx(mgr)[n:] if f.startswith("L") or f == "REST"]
+        assert new == ["L6", "L0", "L5", "L4", "REST"], new    # the L0 here is the all-off BLINK, not a level
+    asyncio.run(go())
+
+
 def test_a_real_hit_drives_the_level_animation_through_gun_pool_paint():
     """The wiring, not just the isolated logic: a genuine `_on_pools` hit -- the same call a real $HP
     frame drives -- reaches `_level_animate` through `_gun_pool_paint` -> `_readout_paint` -> `_level_paint`."""

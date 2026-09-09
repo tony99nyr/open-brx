@@ -121,6 +121,12 @@ function markBranches(html) {
   ).join('');
 }
 
+// The mark: a sight reticle whose left side opens into a bracket. Same shape as the favicon.
+const LOGO = `<svg class="logo" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M8 4H4v16h4M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zm0 5v8m-4-4h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+// Two icons, one button: CSS shows whichever one names the action, so the control says what it does.
+const SUN = `<svg class="i-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 1.5v3M12 19.5v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M1.5 12h3M19.5 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
+const MOON = `<svg class="i-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`;
+
 function shell(page, content) {
   const nav = PAGES.filter(p => p.nav).map(p =>
     `<a href="${p.slug}/"${p.slug === page.slug ? ' aria-current="page"' : ''}>${p.nav}</a>`).join('');
@@ -137,8 +143,11 @@ function shell(page, content) {
 <link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="${assetHref('site.css')}">
 </head><body>
 <a class="skip" href="#main">Skip to content</a>
-<header class="top"><a class="brand" href="/">Open BRX</a><nav class="topnav">${nav}</nav>
-<button class="theme" type="button" aria-label="Toggle theme">Theme</button></header>
+<header class="top">
+<a class="brand" href="/">${LOGO}<span>Open BRX</span></a>
+<nav class="topnav" aria-label="Sections">${nav}</nav>
+<button class="theme" type="button" aria-label="Switch theme">${SUN}${MOON}<span class="vh">Switch theme</span></button>
+</header>
 <main id="main"><article>
 <h1>${esc(page.title)}</h1>
 ${page.lastVerified ? `<p class="meta">Last verified <time datetime="${page.lastVerified}">${page.lastVerified}</time></p>` : ''}

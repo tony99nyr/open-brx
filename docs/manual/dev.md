@@ -1,5 +1,5 @@
 # Developer reference
-Last verified: 2026-09-06
+Last verified: 2026-09-09
 
 This is the interoperability spec for the BRX tagger and headset: transport, framing, every known command and event with its field map, the `$WEAP` / `$GSET` / `$PSET` / `$SIR` tables, the optical IR word, the USB console, and a path from `pip install` to a live game. Every command, token, field name and wire value on this page is literal.
 

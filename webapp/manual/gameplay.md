@@ -1,5 +1,5 @@
 # Gameplay
-Last verified: 2026-08-27
+Last verified: 2026-09-09
 
 This page covers every weapon the BRX can fire, how health and damage work, every native game mode and its settings, the classes and perks the Callsign app models, and the Smart Grenade's objective modes.
 

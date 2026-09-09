@@ -1,5 +1,5 @@
 # The Open BRX platform
-Last verified: 2026-09-06
+Last verified: 2026-09-09
 
 Open BRX is open-source software (MIT) for stock Battle Company BRX taggers. It ties the guns you
 already own into one game system: game modes, live scoring and custom weapons. Stock firmware is

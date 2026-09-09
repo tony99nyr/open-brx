@@ -132,6 +132,29 @@ it('4a · the arsenal publishes CAPTURED wire values, never the rebalanced UI ba
   expect(by('Charge Rifle')).toMatchObject({ sound: 'E03', cycle_ms: 1250, heat: 14 });
 });
 
+it('4b · sound durations in the prose match the generated table cell for cell', async ({ request }) => {
+  // sound.md hand-lists ~31 notable ids with durations taken from the APP's Sounds.json, while the
+  // table below them is built from the real ON-GUN files. Seven disagreed, both visible at once.
+  const rows = await (await request.get('/data/sounds.json')).json();
+  const len = Object.fromEntries(rows.map(r => [r.id, r.len]));
+  const md = fs.readFileSync(path.resolve(WEB, '../docs/manual/sound.md'), 'utf8');
+  const bad = [];
+  let checked = 0;
+  for (const line of md.split('\n')) {
+    if (!line.startsWith('|')) continue;
+    const c = line.replace(/^\||\|$/g, '').split('|').map(x => x.trim());
+    const id = (c[0] || '').match(/^`?([A-Z][A-Z0-9_]{1,6})`?$/)?.[1];
+    if (!id || !(id in len)) continue;
+    const cell = c.find(x => /^\d+\.\d+\s*s$/.test(x));
+    if (!cell) continue;
+    checked++;
+    const stated = parseFloat(cell);
+    if (Math.abs(stated - len[id]) > 1e-9) bad.push(`${id}: prose ${stated}s, table ${len[id]}s`);
+  }
+  expect(checked, 'found no duration cells to check').toBeGreaterThan(20);
+  expect(bad, 'prose durations that disagree with the generated table').toEqual([]);
+});
+
 it('4 · the weapons table loads rows and filters', async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto('/manual/gameplay/');

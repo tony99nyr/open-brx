@@ -1,5 +1,5 @@
 # Meet the BRX
-Last verified: 2026-09-06
+Last verified: 2026-09-09
 
 This page names every part of the BRX tagger, headset and grenade. It explains what each button, port and light does, and it lists the specs for anyone building their own gear.
 

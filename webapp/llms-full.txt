@@ -22,7 +22,7 @@ running games on stock BRX guns from a laptop.
 <!-- https://open-brx.iamrossi.workers.dev/manual/hardware/ -->
 
 # Meet the BRX
-Last verified: 2026-09-06
+Last verified: 2026-09-09
 
 This page names every part of the BRX tagger, headset and grenade. It explains what each button, port and light does, and it lists the specs for anyone building their own gear.
 
@@ -336,7 +336,7 @@ What's in the box (typical retail kit):
 <!-- https://open-brx.iamrossi.workers.dev/manual/operate/ -->
 
 # Operating the BRX
-Last verified: 2026-08-27
+Last verified: 2026-09-09
 
 This page covers stock BRX gear: a tagger, a headset, maybe a grenade, and the Callsign app. It
 gets you from box on the table to a game running, using no laptop, cable, or BLE protocol; that
@@ -897,7 +897,7 @@ Keep it charged, keep it dry, and turn it off between rounds.
 <!-- https://open-brx.iamrossi.workers.dev/manual/gameplay/ -->
 
 # Gameplay
-Last verified: 2026-08-27
+Last verified: 2026-09-09
 
 This page covers every weapon the BRX can fire, how health and damage work, every native game mode and its settings, the classes and perks the Callsign app models, and the Smart Grenade's objective modes.
 
@@ -1323,7 +1323,7 @@ Three modes stock BRX does not ship:
 <!-- https://open-brx.iamrossi.workers.dev/manual/sound/ -->
 
 # Sound, voice and updates
-Last verified: 2026-09-06
+Last verified: 2026-09-09
 
 How BRX plays sound: what the gun does on its own, what a host has to trigger, the full sound bank, and how to change what you hear over USB or through a firmware update.
 
@@ -1655,7 +1655,7 @@ One port, one `.BIN`. Firmware for the tagger, headset, hatchet, shield and side
 <!-- https://open-brx.iamrossi.workers.dev/manual/fix/ -->
 
 # Fix, mod and accessorise
-Last verified: 2026-08-27
+Last verified: 2026-09-09
 
 Diagnose a tagger that won't fire, work through the fix ladders for pairing, sound and battery,
 and see what the community repairs, mods and accessories actually look like.
@@ -2204,7 +2204,7 @@ BRX is building an open, versioned one.
 <!-- https://open-brx.iamrossi.workers.dev/manual/dev/ -->
 
 # Developer reference
-Last verified: 2026-09-06
+Last verified: 2026-09-09
 
 This is the interoperability spec for the BRX tagger and headset: transport, framing, every known command and event with its field map, the `$WEAP` / `$GSET` / `$PSET` / `$SIR` tables, the optical IR word, the USB console, and a path from `pip install` to a live game. Every command, token, field name and wire value on this page is literal.
 
@@ -3032,7 +3032,7 @@ python -m brx_mcp.weapmap cap14.btsnoop cap15.btsnoop # token × weapon table fr
 <!-- https://open-brx.iamrossi.workers.dev/platform/ -->
 
 # The Open BRX platform
-Last verified: 2026-09-06
+Last verified: 2026-09-09
 
 Open BRX is open-source software (MIT) for stock Battle Company BRX taggers. It ties the guns you
 already own into one game system: game modes, live scoring and custom weapons. Stock firmware is
