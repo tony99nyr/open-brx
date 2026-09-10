@@ -263,8 +263,10 @@ A bare **`$WEAP` re-push RESETS mag/reserve to the frame's baked-in values.** Ev
 **`$BMAP` is mandatory** — without it the firmware reports the trigger as *disabled*.
 
 **"I set health and nothing happened."**
-`$LIFE` and `$BUMP` are **additive grants clamped at max**, not absolute sets. And **writes don't
-self-emit `$HP`** — the new value appears on the next hit or HUD refresh.
+⚠️ **CORRECTED 2026-09-09 (bench):** `$LIFE` is additive and clamped at max, **it DOES self-emit `$HP`**, and
+it **accepts NEGATIVES and drains** (per pool, floors at 0, no spill). **`$BUMP` is INERT** in both directions —
+use `$LIFE`. A `$LIFE` that empties a pool really kills the gun but emits `$LCD,0,0,0,0,…` and **never
+`$HP,0,0,0`**, so anything booking a death from `$HP,0` alone is blind to it (F64).
 
 **"`$SPAWN` cleared the effect, so I'll use it as a reset."**
 It also **restores health**. It is not a clean "clear one thing" tool.

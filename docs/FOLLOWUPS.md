@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F72 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F73 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S18.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -249,19 +249,18 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   fire from IR either. Decide whether a heal/grant row belongs in the compiled table at all — it may be that
   we simply do not want medic words in a hosted game, in which case say so and mark shield permanently
   node-granted — but today the gap is silent and looks like a bug from the bench. `build`.
-- **F64 🔴 A HOST-INFLICTED KILL IS INVISIBLE TO THE NODE.** Bench 2026-09-09: a `$LIFE` write that takes a pool
-  to zero really kills the gun (Tony, on Tactix-E20D: *"its dead, headset green blinking, trigger does nothing"*, and the
-  wire agreed — 15 `$BUT,0,1`/`0,0` pairs with no `$ALCD`, the documented dead-gun signature). But it emits
-  **`$LCD,0,0,0,0,32,192,*` and never `$HP,0,0,0`**: the frame shape SWAPS on the lethal write, where every
-  non-lethal `$LIFE` self-emits `$HP`. **Same-session control, and it is decisive:** twenty minutes later the
-  same gun was killed by six real IR words (a stray loopback burst) and that death emitted
-  **`$HP,0,0,0,*` FIRST and THEN `$LCD,0,0,0,0,32,384,*`** — both frames. So the missing `$HP` is specific to the
-  HOST write, not something about dying, and the two paths were compared on one gun in one sitting.
-  `engine.js _onHp` and `stage.py` both derive death from `$HP`, and
-  `spec/node.md` states "no death is inferred" as a deliberate anti-cheat. So a poison tick, a syphon drain or any
-  future host damage can kill a player while the HUD still says ALIVE and MC never scores it. Fix: treat a zeroed
-  `$LCD` as a death alongside `$HP,0`, in BOTH mirrors — and note the node already knows, because it sent the
-  write. Blocks any DoT shipping (S16). `build`.
+- **F64 🟢 CLOSED-AS-WRONG 2026-09-10 — a host-inflicted kill is NOT invisible; the node books it.** Filed 🔴 on
+  the strength of a real measurement (a lethal `$LIFE` emits `$LCD,0,0,0,0,32,192,*` and never `$HP,0,0,0`, with a
+  same-session IR-death control that emitted BOTH) plus a reading of the code that was simply wrong. I checked
+  `_onHp`, saw death booked from `$HP`, and never read the `$LCD` handler. **`engine.js:1265`, inside
+  `case 'LCD'`, is `if (this.phase === 'live' && this.hp === 0 && this.alive) this._death(wasResync);`** — a
+  zeroed `$LCD` books a death directly. `stage.py:1059` routes `cmd in ("HP","LCD")` through the same
+  `_on_pools`, which books death at `hp == 0` too, so the two mirrors agree. **The wire fact stands and is worth
+  keeping** (the frame shape really does swap on a lethal host write, which is why `protocol/brx-protocol.md`
+  documents it); what was wrong was the consequence. Caught by a code-impact reviewer, not by me.
+  ⚠ Residual, and the only thing left here: the `$LCD` death path skips `_onHp`, so a host-inflicted kill books
+  the death but produces no `hit_taken` fact and no damage attribution — fine today because nothing inflicts one,
+  but S16 (damage-over-time) must decide who gets credit for a tick that kills. Tracked there, not here.
 - **F65 🟢 `$BUMP` is inert on v4.32 — is that the command or our shape?** Bench 2026-09-09: `$BUMP,-5,0,0,*` on
   full HP and `$BUMP,0,5,0,*` on armour at 61 both did nothing, with the read validated either side (a real IR hit
   moved the pools and `$QUERY`'s `$LCD` tracked it). `$LIFE` with the identical arity worked in the same session, so
@@ -272,7 +271,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   proc once (a status cell, fn 8/24-28/35 — `$SIR,9,3,,24` already ships), the node reads the protocol off `$HIR`
   and runs the tick clock itself. Three things the bench pinned that the design must respect: a negative is
   **per-pool with no spill**, so the node walks shield → armour → health itself; the pool **floors at 0**, so
-  overkill is silent; and a lethal tick emits **no `$HP`**, so the node must book that death itself (**F64 first**).
+  overkill is silent; and a lethal tick emits **no `$HP`**, so the node books it via the `$LCD` path (F64, which was filed wrong and corrected) but produces **no `hit_taken` fact and no attribution** — S16 must decide who gets credit for a lethal tick.
   Also needs: who gets the kill credit for a tick, whether a DoT survives a respawn, and what the HUD shows while
   it ticks. Needs a spec section before code. `build`.
 - **F62 🟡 `$WEAP` t6 `primaryCritChance` — can we emit crits?** The crit bit reads 0 on every stock weapon,
@@ -721,6 +720,14 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   **Process note:** `reference/grenade.md` documented the charge mechanic and was not read before concluding.
   The house rule is to read the reference layer first; this is the second time in one session that skipping it
   produced an overreach.
+- **F72 🟠 The phone throws away every grenade/station beacon.** `app/src/engine.js:1272` opens the `$HIR`
+  handler with `if (t[2] === '15') break;` — protocol 15 is dropped before anything reads it. That predates
+  knowing what a beacon carries, and it is a SECOND blind spot stacked on the missing `$SIR` row (F70): fixing
+  the compiled table alone surfaces beacons to the gun and still not to the player. To read a hill or a respawn
+  point a node needs both. The beacon carries the owner (team bits) and the mode (magnitude 8 hill / 6 respawn),
+  so the handler should parse and route it rather than break. ⚠ It also needs a rate rule: a beacon lands every
+  ~5 s for as long as anyone stands there, so whatever the node does with it must not fire per beacon. Blocks the
+  KotH/Domination path in `utility-roadmap.md` §8. `build`.
 - **F71 🟠 The three headset weapons may do far more damage than we publish.** The catalog derives `dmg`, `htk`
   and `ttk_ms` from `$WEAP` **t5 alone**. But the shotgun's capture word went out at **magnitude 70** = its
   `t12` extraHeadsetDamage, alongside a t5 of 45 — so at headset range a shotgun may land **115, not 45**, and
@@ -732,7 +739,7 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   **Original entry:** Bench 2026-09-10, and it
   answers `bench-grenade.md` Q3 ("does a spawned gun in one of our games surface grenade beacons if we give it a
   `$SIR` row for protocol 15?") **YES** -- adding `$SIR,15,0,,24,0,0,1,,*` made the hill beacons appear
-  immediately as `$HIR,<sensor>,15,0,<owner>,8,0,0` with no pool change. The whole mechanic is native: **shoot
+  immediately as `$HIR,<sensor>,15,0,<owner>,8,0,0` with no pool change. ⚠️ **But "one row" is NOT the whole fix: `app/src/engine.js:1272` drops every `$HIR` with proto 15 before the phone sees it** (`if (t[2] === '15') break;`). The row makes the GUN report beacons; the PHONE still discards them (F72). The whole mechanic is native: **shoot
   the grenade to capture it** (the gun announces "hill captured"), the **owner team rides in the beacon's team
   bits**, **holding it plays a looping tick** on the owner's gun, and an **enemy-held hill damages intruders**
   (F69). Magnitude is the mode: **8 = hill, 6 = respawn**, and the periods differ (5 s vs ~2.5 s). So KotH,

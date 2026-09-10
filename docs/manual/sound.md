@@ -44,7 +44,7 @@ Score a kill in a game the app hosts, and your gun gets three things from the ho
 
 In a phoneless game started from the gun menu, the gun says "double kill" and other streak lines on its own, with no phone involved. How a gun learns enough about the other players to call a streak has not been established. Once a Bluetooth host is driving the gun, those native multikill lines go silent and the host has to play them.
 
-> **The one hit function that changes something without touching a pool.** Function 23 in the `$SIR` table leaves health, armor, ammo and the trigger alone: the victim keeps firing normally. What it does move is `$ALCD` token 2, which reads 100 in normal play, drops to 0 on a fn 23 hit and climbs back over roughly 6 to 8 s. A `$SPAWN,,*` resets it to 100 at once. What token 2 stands for is not known, and the guess that it is an audio mute has not been tested by taking a fn 23 hit and listening. Treat it as a timed state a host can trigger and read, not as a silence weapon.
+> **The one hit function that changes something without touching a pool.** Function 23 in the `$SIR` table leaves health, armor, ammo and the trigger alone: the victim keeps firing normally. What it does move is `$ALCD` token 2, which reads 100 in normal play, drops to 0 on a fn 23 hit and climbs back over roughly 6 to 8 s. A `$SPAWN,,*` resets it to 100 at once. **Token 2 is now known: it is the gun's live accuracy** (bench 2026-09-09), so a fn 23 hit forces your accuracy to zero, below whatever floor your weapon carries. The gun was also heard to go silent on a fn 23 hit, and that stands on its own, but the token 2 number was never evidence for it. Treat fn 23 as an accuracy debuff a host can trigger and read.
 
 ### Why does the gun play music when I die?
 

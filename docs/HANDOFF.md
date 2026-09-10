@@ -1,15 +1,20 @@
 # Handoff — Open BRX
 
-**State as of 2026-09-09.** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log.md`; old
-banners: [`archive/handoff-history.md`](archive/handoff-history.md).
+**State as of 2026-09-10.** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners:
+[`archive/handoff-history.md`](archive/handoff-history.md).
 
 ## What is true today
 
+- ⭐ **THE GRENADE IS A WORKING CONTROL POINT (2026-09-10, F70).** Hill beacons `proto=15 team=<owner> mag=8`
+  every ~5 s, **neutral is team 2**, shoot a neutral one to claim it. Hosted games read it with a `$SIR`
+  proto-15 row **plus** an `engine.js` fix (F72) — a shortcut to K1. 🔴 **F69: it also emits a `proto=0 mag=8`
+  damage word our standard row applies in full**, which killed the operator in ~106 s with nothing naming the
+  cause. ⚠ WHAT captures a point is unsettled. Programme: `bench-grenade.md`.
 - ⭐⭐ **SIMULATED RECOIL IS REAL AND OURS TO DRIVE (2026-09-09, F46 closed).** `$WEAP` **t21 = accuracy
-  ceiling · t22 = floor · `$ALCD` tok2 = live accuracy**; drops ~1/5 of the range per shot, races a native
-  recovery (**t14 sets how hard it bites**), resets on reload, and below the ceiling a shot emits **IR
-  magnitude 0** — a real miss, which reaches the PLAYER natively and our SOFTWARE not at all. **Stock
-  100/100 = OFF.** Ship via **S17** after **F68 🔴**. Mechanism: `protocol/brx-protocol.md`.
+  ceiling · t22 = floor · `$ALCD` tok2 = live accuracy**; falls in five steps toward the floor, races a native
+  recovery (**t14 sets how hard it bites**), resets on reload, and below the ceiling a shot emits **IR magnitude
+  0** — a real miss, reaching the PLAYER natively and our SOFTWARE not at all. **Stock 100/100 = OFF.** Ship via
+  **S17** after **F68 🔴**. Mechanism: `protocol/brx-protocol.md`.
 
 - **The stack runs whole matches on real hardware.** Mission Control (`mcp/brx_mcp/mc`, `python -m
   brx_mcp.mc`) compiles a per-player `FrameBundle`; each player's phone (`app/`, the Companion HUD)
@@ -89,9 +94,8 @@ banners: [`archive/handoff-history.md`](archive/handoff-history.md).
   unfalsifiable. Two were fixes for earlier ones on the same list. Every guard in `site/` has now
   been broken on purpose and observed failing; see the 2026-09-09 (late) log entry.
 
-- **Repo hygiene, 2026-09-07:** ONE repo (decided on evidence), binaries purged from history — pack
-  93 MB → 28 MB and **every SHA changed**, so `git fetch && git reset --hard origin/main`, do NOT pull.
-  Backup: `~/brx-backups/open-brx-pre-purge-2026-09-07.bundle`. Detail in `archive/handoff-history.md`.
+- **Repo hygiene, 2026-09-07:** ONE repo; history purged (93 → 28 MB, every SHA changed). If a clone still
+  predates it, `git fetch && git reset --hard origin/main`. Detail in `archive/handoff-history.md`.
 
 - **LEDs, the three facts from A16 parts 1+2 that still bite** (full block moved to
   [`archive/handoff-history.md`](archive/handoff-history.md) 2026-09-09, now that A16 is verified):
@@ -110,15 +114,11 @@ banners: [`archive/handoff-history.md`](archive/handoff-history.md).
    or the hit audio reaches a player, and the legacy `headset.carrier` key cannot be deleted (S10).
 3. **The two LED design questions are DECIDED (2026-09-09): the partial-level blink stays, healing gets no
    opening beat. Recorded in `led-language.md` with the reasoning — do not re-open.**
-
-4. **Bench, gun body only** (`bench-flash-control-2026-09-05.md` §6): a metered A/B of `$HLOOP,2,750`
-   against a native out-blink (the "might be brighter" call was one operator, no meter), that rate's usable
-   range, a dim 2-of-3 held 60 s, and `$TID,4` purple. Plus **F50**, the A17 pain gate in a real node path.
-5. **Build S5** (MC arms utility stations at muster), then the `$WEAP` blind-token plan in
-   `docs/bench-weap-tokens-discovery-2026-09-04.md` (sensor damage F23 first).
-6. ⚠ **Nothing shield-shaped has EVER been on a gun** (F60): the pool is IR-only (P16) and no compiled mode
-   registers a medic word, so the teal bar and A16.5's shield→armour handover are unverifiable as things
-   stand. Decide whether a grant row belongs in the compiled `$SIR` table at all.
+4. **Bench:** run sheet block E (LED metering) and D1 (**F23** sensor damage, the highest-value reading left);
+   plus **F50**, the A17 pain gate in a real node path. **5. Build S5** (MC arms stations at muster).
+6. ⚠ **Nothing shield-shaped has EVER been on a gun** (F60): shield is IR-only (P16) and no compiled mode
+   registers a grant word, so the teal bar and A16.5's handover are unverifiable. Decide whether a grant row
+   belongs in the compiled `$SIR` table — the grenade hill is now a natural reason to ship one (F70).
 
 **The bench queue is [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md)** — every open item in eight
 SETUP blocks with the command, reading, control and blocked-on-code per rung, plus the five traps that fake

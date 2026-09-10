@@ -129,8 +129,8 @@ Every known command, with args and meaning: host to tagger, tagger to host, and 
 | Command | Dir | Args | Meaning |
 |---|---|---|---|
 | `$SFLASH,*` | >> | n/a | **The shooter's green-sight kill-confirm flash.** The host sends exactly one per kill the holder scores, ~0.4 s after the trigger burst ends. (The APK lists it under notifications; on the wire the phone sends it.) |
-| `$LIFE,<hp>,<armor>,<shields>,*` | >> | addedHP, addedArmor, addedShields | Grant health. **Additive, clamped at the pool max**, not an absolute set. Writes do not self-emit `$HP`; the new value shows on the next hit/HUD refresh. |
-| `$BUMP,<hp>,<armor>,<shields>,*` | >> | hP, armor, shields | Adjust current pools. Same additive/clamped behaviour as `$LIFE`. |
+| `$LIFE,<hp>,<armor>,<shields>,*` | >> | addedHP, addedArmor, addedShields | Grant **or drain** a pool. Additive, clamped at the pool max, never an absolute set, and it **does self-emit `$HP`** (bench 2026-09-09). It **accepts negative values and drains**: `$LIFE,0,-5,0,*` took armour 66 to 61. A negative is per pool and floors at 0 with no spill into the next pool. A negative that empties health really kills the gun, but announces it with `$LCD,0,0,0,0,<mag>,<reserve>,*` and never `$HP,0,0,0`. |
+| `$BUMP,<hp>,<armor>,<shields>,*` | >> | hP, armor, shields | **Inert on v4.32.** Bench 2026-09-09: it does nothing in either direction, with a validated read either side. Use `$LIFE`. |
 | `$BHIT,<damage>,<isCrit>,<powerLevel>,*` | >> | damage, isCriticalShot, powerLevel | Four shapes sent on v4.32: each was echoed and **applied no damage**. |
 | `$HFIRE,…,*` | >> | Range, CountIRPulses, RateOfFire, FlashLED | Five shapes sent on v4.32: **zero IR emitted** (receiver control passing before and after). |
 | `$IRTX,…,*` | >> | iRPower, soundOnHit, rangeOutdoor, rangeIndoor | Five shapes sent on v4.32: **zero IR emitted** (receiver control passing before and after). |
@@ -341,13 +341,13 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 
 > **Overheat is a balance lever on any weapon.** Set t24 (heat per shot), t35 (overheat sound) and t37/t38 (enable/params, stock `20,150`), and the live heat gauge streams in `$ALCD` token 5, climbing about 8 per shot on the Charge Rifle, crossing 100 into lockout and decaying on idle. A HUD heat bar needs no new protocol.
 
-> **Accuracy is a live per-shot value, not a static stat.** `$ALCD` token 2 is a **hit probability**, not a threshold: a shot fired below the ceiling can still emit IR at magnitude 0, which is the miss the manual describes elsewhere. It starts each life at t21 and drops under sustained fire, roughly one fifth of the t21-to-t22 range per shot, until it reaches t22 and holds. It resets to t21 on reload. A native time-based recovery races the drop, so the fire interval decides how hard the model bites: single shots about 2 s apart at t22=0 held a flat 80 and never went lower, while a held trigger reached 0 in eight rounds. The recovery rate itself is not yet measured. Two full-magazine walks on the Assault Rifle (t14=100 ms, trigger held, t21=100):
+> **Accuracy is a live per-shot value, not a static stat.** `$ALCD` token 2 is a **hit probability**, not a threshold: a shot fired below the ceiling can still emit IR at magnitude 0, which is the miss the manual describes elsewhere. It starts each life at t21 and drops under sustained fire in five steps of one fifth of the t21-to-t22 range, until it reaches t22 and holds. The steps do not land one per shot: the two walks below reached their floor on shot 8 and shot 11. It resets to t21 on reload. A native time-based recovery races the drop, so the fire interval decides how hard the model bites: single shots about 2 s apart at t22=0 held a flat 80 and never went lower, while a held trigger reached 0 in eight rounds. The recovery rate itself is not yet measured. Two full-magazine walks on the Assault Rifle (t14=100 ms, trigger held, t21=100):
 >
 > - t22=100 (stock): token 2 held at 100 for all 32 rounds. No drift at all.
 > - t22=0: 80, 60, 40, 40, 40, 20, 20, 0, then 0 for the rest of the magazine.
 > - t22=50: 90, 90, 90, 90, 90, 80, 70, 70, 70, 60, 50, then 50 for the remaining 22 rounds.
 >
-> Both runs took about five to six shots to reach their floor: the drop is proportional to the ceiling-to-floor range, not a fixed step. Stock ships t21 = t22 = 100 on every weapon, which is why every capture ever taken of this model showed it inert. The exact hit probability at a given accuracy value is not calibrated; do not treat it as a percentage.
+> Each run fell in five steps, and each step is one fifth of that weapon's ceiling-to-floor range: steps of 20 when the floor is 0, steps of 10 when it is 50. The number of shots differed (8 and 11), so how many rounds it takes to reach the floor is not characterised from two runs. Stock ships t21 = t22 = 100 on every weapon, which is why every capture ever taken of this model showed it inert. The exact hit probability at a given accuracy value is not calibrated; do not treat it as a percentage.
 
 ### Can I build a semi-auto rifle?
 
@@ -484,7 +484,7 @@ Hits, health, HUD echoes, buttons and telemetry, plus the proof that the gun kee
 
 | Message | Decode |
 |---|---|
-| `$HP,<hp>,<armor>,<shield>,*` | Pools after the hit; same millisecond as its `$HIR`. `$HP,0,0,0` = death. Example run at 9/hit: armor 70 to 61 down to 0, then HP 45 to 43 to 34 down to 0. Writes (`$LIFE`/`$BUMP`) do not self-emit `$HP`. |
+| `$HP,<hp>,<armor>,<shield>,*` | Pools after the hit; same millisecond as its `$HIR`. `$HP,0,0,0` = death. Example run at 9/hit: armor 70 to 61 down to 0, then HP 45 to 43 to 34 down to 0. A `$LIFE` write does self-emit `$HP`, but only while it is non lethal: a `$LIFE` that empties a pool sends `$LCD,0,0,0,0,<mag>,<reserve>,*` instead, and no `$HP` at all. |
 | `$LCD,<hp>,<armor>,<t3>,<t4>,<mag>,<reserve>,*` | Health/armor HUD echo on `$START`/`$SPAWN`/death. Tokens 3-4: (unknown). |
 | `$ALCD,<mag>,<t2>,<slot>,<reserve>,<heat>,*` | Ammo/weapon HUD: one frame per round fired *and* per round reloaded; slot changes on alt-fire cycle (0 to 1 and back); melee (slot 4) appears as an isolated frame. Token 2 is live accuracy (see the `$WEAP` t21/t22 section). Heat is a raw level that exceeds 100. |
 | `$BUT,<id>,<state>,*` | 0 trigger · 1 alt-fire · 2 reload handle · 3 select · 4 left · 5 right; 1 press / 0 release. In phone mode pre-game the trigger reports but does not fire. |

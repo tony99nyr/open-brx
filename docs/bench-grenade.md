@@ -18,7 +18,8 @@ steps, about **25 minutes hands-on**, one gun, one grenade, the rig. Tool: `mcp/
 > **The beacon carries the owner.** Hill = `proto=15 team=<owner> mag=8` every ~5 s (respawn is `mag=6` at
 > ~2.5 s), and **neutral is team 2**. Shooting a neutral hill claims it: a red gun fired
 > `proto=0 player=5 team=0 mag=22` and the next ten beacons read `team=0`.
-> **A hosted game CAN see it — with one row.** `$SIR,15,0,,24,0,0,1,,*` and beacons arrive as
+> **A hosted game CAN see it — with one row, plus an engine fix (F72: `engine.js` drops proto 15 today).**
+> `$SIR,15,0,,24,0,0,1,,*` and beacons arrive as
 > `$HIR,<sensor>,15,0,<owner>,8,0,0`, no pool change. That answers Q3 **yes** and explains B23: our compiled
 > table ships no protocol-15 row, so the firmware discards every station word in silence.
 > **🔴 And a hosted game is already exposed to the damage.** A hill also emits an ordinary `proto=0 mag=8`

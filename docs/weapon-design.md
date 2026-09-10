@@ -445,10 +445,10 @@ arsenal on a guess is exactly the mistake the first pass made with `t14`.
 Bench-proven 2026-09-09 (see `docs/manual/dev.md`'s `$WEAP` token table for the full writeup and the
 measured walks): `t21` is the accuracy **ceiling** and `t22` is the accuracy **floor**. `$ALCD` token 2
 is a live per-shot accuracy value — not the "audio level" §6.3 used to call it (corrected there too).
-It starts each life at `t21`, drops under sustained fire toward `t22` (roughly a fifth of the
+It starts each life at `t21`, drops under sustained fire toward `t22` (five steps, each a fifth of the
 ceiling-to-floor range per shot), holds at the floor, and resets to the ceiling on reload. A native
 recovery races the drop, so `t14` (fire interval) decides how hard the model bites: a fast cycle
-reaches the floor in five to eight shots, a slow enough one never leaves the ceiling.
+reached the floor on shot 8 (floor 0) or shot 11 (floor 50) in the only two walks run, a slow enough one never leaves the ceiling. Shots-per-step is not characterised (n=2).
 
 That makes sustained-fire feel a **three-lever** design space, not two. `t5` (damage) and `t14` (rate of
 fire) already tune a single burst; `t21`/`t22` now tune what *staying* on the trigger costs you. A

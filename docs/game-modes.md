@@ -106,7 +106,7 @@ No. The gun resolves friend/enemy by **team id (`$TID`)** in the IR hit, so team
 
 Facts that used to be listed as pending and are now settled: per-player id over BLE (P2, 2026-08-25); four
 native teams and firmware FF (P9, 2026-08-26); `$HIR` tok5 = raw magnitude, damage = `$HP` delta (P10); no
-native regen (P11); `$LIFE`/`$BUMP` additive-clamped (exp-log #33); grenade Hill/Respawn beacons readable, a
+native regen (P11); `$LIFE` additive-clamped and negatives drain, `$BUMP` INERT (bench 2026-09-09); grenade Hill/Respawn beacons readable, a
 hosted gun ignores the grenade's station words (2026-09-04); a dead gun still reports the trigger (2026-09-04).
 
 ## Custom / advanced modes (all buildable — host rules over the same primitives)
@@ -212,16 +212,18 @@ are what remain — `utility-roadmap.md` §8.
 ## Health / regen variants (all Tier 0 — no props)
 
 These are rule tweaks on TDM/FFA, not new infrastructure. The gun exposes the write primitives
-directly: **`$LIFE,addedHP,addedArmor,addedShields`** and **`$BUMP,hP,armor,shields`** — **both are
-additive grants clamped at max** (hardware-confirmed, exp-log #33; neither is an absolute-set). The live test
+directly: **`$LIFE,addedHP,addedArmor,addedShields`**. ⚠️ **CORRECTED 2026-09-09 (bench): `$BUMP` is INERT
+on v4.32 — it does nothing in either direction. Use `$LIFE` only.** `$LIFE` is additive and clamped at max, it
+self-emits `$HP`, and it also **accepts NEGATIVES and drains** (per pool, floors at 0, no spill into the next
+pool) — which is what makes damage-over-time buildable at all (S16). The live test
 found **no native armor regen** (armor held through 30 s idle), so any "regen" must be **host-driven** (node
 watches `$HP`, refills). The shield pool is IR-only (Hard ceilings #7), so over BLE alone armor + HP are the
 working pools.
 
 | Variant | Mechanic | How (Tier 0) | Caveat |
 |---|---|---|---|
-| **Syphon** (Fortnite/CoD "health-on-kill") | killer regains HP on each kill | MC routes `$LIFE`/`$BUMP` to the **exact** killer's node via `apply{frames}` (`$HIR` tok3 names the shooter) | reaches the killer only while their node is in coverage (contracts A6.4) |
-| **Halo shields (regen after no-damage)** | health/armor refills to full after T s without taking damage | **node-driven** — the node watches its own gun's `$HP` stream and sends `$LIFE`/`$BUMP` (additive, clamped) once no decrease for T s. Works offline. | refills armor + HP; a station with an emitter can refill shields too |
+| **Syphon** (Fortnite/CoD "health-on-kill") | killer regains HP on each kill | MC routes `$LIFE` to the **exact** killer's node via `apply{frames}` (`$HIR` tok3 names the shooter) | reaches the killer only while their node is in coverage (contracts A6.4) |
+| **Halo shields (regen after no-damage)** | health/armor refills to full after T s without taking damage | **node-driven** — the node watches its own gun's `$HP` stream and sends **`$LIFE`** (additive, clamped; `$BUMP` is inert) once no decrease for T s. Works offline. | refills armor + HP; a station with an emitter can refill shields too |
 | **Overshield / powerup pickup** | grab an item → temporary extra pool | the node grants `$LIFE` armor on the pickup (roadmap K3) | an **armor** overshield over BLE; a true shield overshield needs fn-11 from a station |
 | **Medic / Lifesteal support role** | a role heals teammates | `$SIR` dual-polarity functions heal allies and damage enemies in firmware (`weapon-design.md` §6.3), or the node grants `$LIFE` | role logic like General/VIP |
 

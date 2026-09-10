@@ -205,14 +205,14 @@ the CLI/sim with synthetic objective events.
 
 ### ⭐ The grenade shortcut to K1 (bench 2026-09-10)
 
-**A $30 grenade is already a working control point, and one table row makes a hosted game read it.** K1 was
+**A $30 grenade is already a working control point, and two small changes make a hosted game read it** (a `$SIR` row, and stopping the phone discarding protocol 15). K1 was
 scoped as building a station; for Hill and Respawn the hardware exists and the protocol is decoded:
 
 | what K1 needs | the grenade already does it |
 |---|---|
 | a capturable point | shoot it to claim; **neutral is team 2**, then the beacon carries the owner |
 | possession broadcast | `proto=15 team=<owner> mag=8` every ~5 s (respawn: `mag=6`, ~2.5 s) |
-| the node knowing | **one row**: `$SIR,15,0,,24,0,0,1,,*` → `$HIR,<sensor>,15,0,<owner>,8,0,0`, no pool change |
+| the node knowing | `$SIR,15,0,,24,0,0,1,,*` → `$HIR,<sensor>,15,0,<owner>,8,0,0`, no pool change. ⚠️ **AND** an `engine.js` fix: the phone drops every proto-15 `$HIR` today (F72) |
 | holder feedback | the firmware already loops a tick on the owner's gun |
 | punishing intruders | the hill emits an ordinary `proto=0 mag=8` damage word (see the hazard below) |
 
