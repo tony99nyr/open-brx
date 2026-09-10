@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F75 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F76 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S18.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -748,6 +748,17 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   24 is enemy-only, so a gun sees only hills it does NOT own unless `$GSET` t1 = 1; decide how to read your own
   point. ⚠ And pick the row's `<soundID>` deliberately: a hit lands every 5 s for as long as anyone stands
   there. `build`.
+- **F75 🟡 Does a NON-capturing hit on a grenade emit anything? (native says "contested"; our wire says nothing.)**
+  Checked 2026-09-10 across four runs where a hill was shot and did NOT change hands (single rounds into a
+  45-charge hill; one shotgun shell): **the only protocol-15 traffic is the ordinary `mag=8` beacon.** The grenade
+  announces CAPTURES (`mag=50`), not hits. But native play says **"control point contested"** when you shoot an
+  enemy-held point without taking it (Tony), so either the native gun INFERS it the same way we would have to, or
+  there is a word we have not captured. **Why it matters:** a hosted "contested" callout must otherwise be
+  inferred from *I fired* + *enemy hill in range* + *no capture word followed*, and that cannot tell a hit from a
+  miss — firing past the grenade while standing in an enemy hill would produce a false callout. **Probe:** in a
+  NATIVE game, stand in an enemy-held hill and deliberately MISS the grenade. If it still says "contested",
+  native is inferring too and we lose nothing. If it stays silent, the grenade emits a hit word and board A should
+  be pointed at it during a deliberate near-miss to catch it. `grenade`.
 - **F74 🔴 A GUN CAN LATCH AN IR EVENT AND REPLAY IT FOREVER — with no IR in the air.** Bench 2026-09-10,
   measured from both directions. The gun emitted `$HIR,0,0,42,0,20,0,0` + `$HP` **every 5.07 s, indefinitely**,
   while **board A recorded ZERO bursts across an 18 s capture** — nothing was transmitting. The grenade was off,

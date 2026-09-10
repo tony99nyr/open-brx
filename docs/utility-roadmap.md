@@ -277,6 +277,36 @@ place: **fn 24 is enemy-only**, so a gun registers only hills it does NOT own; a
 needs an ally-side function (31/32/34) or friendly fire on — the same polarity split that would let a hill
 shield its holders.
 
+### The four native hill callouts, and whether a hosted game can reproduce them (2026-09-10)
+
+Tony's description of native play: a ticking timer while you hold it; silence when the other team holds it and
+you step in; "control point contested" when you shoot an enemy-held point without taking it; and a callout when
+it changes hands. Mapped against what the wire actually carries:
+
+| native behaviour | hosted? | how |
+|---|---|---|
+| ticking while YOU hold it | ✅ direct | beacon owner == my team → node plays a tick; the ~5 s beacon is a ready-made cadence |
+| silence while THEY hold it | ✅ direct | beacon owner != my team → play nothing; purely a node decision |
+| "hill lost" on a switch | ✅ direct | the `mag=50` capture word carries the NEW owner |
+| **"control point contested"** | ⚠️ **inferred, no signal exists** | node reasons: *I fired* (`$ALCD` decrement) + *enemy hill in range* + *no capture word followed* |
+
+**A non-capturing hit emits NOTHING** — checked across four runs where a hill was shot and did not change hands
+(single rounds into a 45-charge hill, and a shotgun shell): the only protocol-15 traffic is the ordinary `mag=8`
+beacon. The grenade announces CAPTURES, not HITS.
+
+So "contested" is a guess, and it fails in one specific way: **the node cannot tell whether the shot hit the
+grenade**, so firing past it while standing in an enemy hill produces a false "contested". Probably acceptable
+(you are on the point, shooting, and the game agrees something is happening) but it is inference, not
+observation, and it will misbehave exactly there.
+
+⚠ **Worth checking rather than assuming:** does NATIVE know about hits directly? If a native gun says "contested"
+even when you miss, it is inferring too and we lose nothing. If it only says it when you connect, the grenade is
+telling it something we have not captured, and that word is worth finding.
+
+**This is also the concrete case for FF on** (F73): three of the four need to know the hill is YOURS, and with
+`$GSET` t1=0 a gun cannot see its own hill at all. The tick and the "hill lost" callout are both impossible
+without it.
+
 **And a mode primitive we did not have: shield the holder.** Both grenade words carry the OWNER's team, and the
 firmware gates by polarity — damage lands only from an enemy, grants only from your own team. So `<0,0>` on fn 1
 punishes challengers while `<15,0>` on a grant function (fn 11/18) shields holders, with the firmware doing the
