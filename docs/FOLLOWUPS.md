@@ -786,7 +786,10 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   weapon in the loadout has a matching row, so a bundle that ships with NO protocol-15 row -- the exact
   condition that made station words silently vanish (F60, and the third instance of the F11 shape this week)
   -- raises nothing. A table is "covered" while being deaf to every beacon in the venue. Add a check that a
-  game whose config declares an objective also carries the cell that can hear it. `build`.
+  game whose config declares an objective also carries the cell that can hear it. ⏸ **Deliberately deferred,
+  not forgotten:** no compiled mode ships a protocol-15 row yet (F70/F72 is that work), so the check would
+  either be a no-op or fire on every config that legitimately has no objective support. **Write it in the same
+  commit that ships the row** -- a guard added before its feature is a guard nobody can test. `build`.
 - **F76 🟡 The reference page's per-weapon capture counts contradict the bench.** `reference/grenade.md`'s King
   of the Hill section says retaking costs *"at least as many ROUNDS back into it (2-3 rounds to 2-3 magazines
   depending on weapon; ~4 on an MG, ~10-12 on a shotgun)"*, and that section is labelled hardware-confirmed
