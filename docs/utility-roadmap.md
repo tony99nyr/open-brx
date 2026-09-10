@@ -235,6 +235,41 @@ shorter path to the first playable objective mode than building a station first.
    or rocket takes a point in one hit, a rifleman needs a burst — and the objective economy falls out of the
    weapon balance we already tune, with no separate capture stat. ⚠ Max charge still unmeasured.
 
+### How a hosted hill actually works (design, 2026-09-10)
+
+**What the node gets.** With the `$SIR` proto-15 row and the F72 engine fix, every node in range receives
+`$HIR,<sensor>,15,0,<owner>,8,0,0` about every 5 s. One frame, two facts: **who owns the point**, and **that
+this player is near it**.
+
+**Presence is a heartbeat, and timing is node-side.** Beacons arriving = in range; beacons stopping = gone. The
+node runs its own clock, accumulates "seconds in range while my team owned it", and reports totals to MC when it
+has coverage — so possession scoring **works offline**, which matches the node-is-the-engine architecture.
+Ownership scoring does not even need presence: any node in range can report "owned by team X at time T", so MC
+can build the ownership timeline from whoever is nearby.
+
+**Three limits to design around:**
+1. **Granularity is one beacon period (~5 s).** Entry and exit cannot be resolved finer, so a player dipping in
+   and out carries ±5 s. Fine for a hold timer, not for anything needing precise moments.
+2. **The hill's beacon RANGE is unmeasured** (the respawn beacon is ~18-20 ft; nobody has measured the hill).
+   That number IS the physical size of the objective — worth a tape-measure rung before a mode ships.
+3. **A node knows only about itself.** The beacon cannot say an enemy is also standing there, so "contested"
+   exists only once MC has several nodes' reports: best-effort, and possibly late.
+
+**What we control on the gun, and what we do not.** Ours: whether the beacon reports at all (the row exists),
+what it does (the function), and what it sounds like (the row's `<soundID>`, which REPLACES the `$PSET` pool
+sound). **Not ours:** the ~5 s beacon rate, and the fact that a *registered* hit drags a **headset flash and
+vibration** with it — the firmware's response to any registered IR event. Tony, standing in a hill with an fn-24
+row loaded: flash, hit sound and buzz every 5 s, **and it queues** (acknowledgements kept arriving after the
+grenade was switched off).
+
+⚠️ **The blocking question is whether any status function registers QUIETLY.** Only fn 24 has ever been tried.
+Nine register without moving a pool — enemy 8, 24, 25, 26, 27, 28, 35 and ally 31, 32, 34 — and nobody has
+characterised what each does to the player. That is **U11′** (bench queue 1.5), and it has just gone from a
+curiosity to the rung that decides whether a hill is playable or unbearable. Second constraint in the same
+place: **fn 24 is enemy-only**, so a gun registers only hills it does NOT own; a holder knowing they hold it
+needs an ally-side function (31/32/34) or friendly fire on — the same polarity split that would let a hill
+shield its holders.
+
 **And a mode primitive we did not have: shield the holder.** Both grenade words carry the OWNER's team, and the
 firmware gates by polarity — damage lands only from an enemy, grants only from your own team. So `<0,0>` on fn 1
 punishes challengers while `<15,0>` on a grant function (fn 11/18) shields holders, with the firmware doing the

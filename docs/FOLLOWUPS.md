@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F73 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F74 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S18.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -748,6 +748,17 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   24 is enemy-only, so a gun sees only hills it does NOT own unless `$GSET` t1 = 1; decide how to read your own
   point. ⚠ And pick the row's `<soundID>` deliberately: a hit lands every 5 s for as long as anyone stands
   there. `build`.
+- **F73 🟠 U11′ IS NOW A BLOCKING DESIGN QUESTION: does ANY status function register QUIETLY?** Raised from a
+  curiosity by the 2026-09-10 hill work. A `$SIR` row is the only way a hosted game can read a beacon (F70/F72),
+  but a *registered* hit drags a **headset flash and vibration** with it — the firmware's response to any
+  registered IR event, not something we can switch off. Standing in a hill with fn 24 loaded gives flash + hit
+  sound + buzz **every ~5 s for as long as you hold the point**, and Tony reports it **QUEUES** (acknowledgements
+  still arriving after the grenade was switched off). Nine functions register without moving a pool — enemy 8,
+  24, 25, 26, 27, 28, 35 and ally 31, 32, 34 — and **only fn 24 has ever been tried**. If one of the other eight
+  is quiet, King of the Hill is playable; if none is, every control-point mode ships with a buzzer. Run it as
+  bench 1.5 (`ally_remeasure.py` for the keyboard half first) and report per fn what you HEAR, SEE and FEEL.
+  ⚠ Also settle the polarity: fn 24 is enemy-only, so a gun registers only hills it does NOT own — a holder
+  needs an ally-side function or `$GSET` t1=1. `trigger` + `ears`.
 - **F72 🟠 The phone throws away every grenade/station beacon.** `app/src/engine.js:1272` opens the `$HIR`
   handler with `if (t[2] === '15') break;` — protocol 15 is dropped before anything reads it. That predates
   knowing what a beacon carries, and it is a SECOND blind spot stacked on the missing `$SIR` row (F70): fixing

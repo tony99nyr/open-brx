@@ -58,6 +58,27 @@ retaken at all, and that capture requires the extra-headset word (`$WEAP` t1=2) 
 simply out-charged four AR rounds at 36. The currency is **MAGNITUDE**: charge accumulates as the sum of the magnitudes fired into it and the higher total owns the point (1 AR round beat 9; 5 AR rounds beat 45; one shotgun `mag=70` shell beat 45). A weapon's capture power therefore equals its damage. ⚠ Max charge unmeasured.
 Power-cycling returns a grenade to neutral (team 2).
 
+⭐ **CAPTURE IS ANNOUNCED, not just inferred (bench 2026-09-10).** At the instant a grenade changes hands it
+emits a **transition PAIR** in the same burst as the capturing shot, before the periodic beacon resumes:
+
+| word | bits | meaning |
+|---|---|---|
+| `proto=15 team=<old> mag=53` | `1111000000100011010100001` (from neutral) | the state being **LEFT** |
+| `proto=15 team=<new> mag=50` | `1111000000010011001000010` (to team 1) | the owner being **ENTERED** |
+
+Byte-identical across three separate captures, two of the three decoding unambiguously, always in that order.
+**This is very likely why guns announce "hill captured"** — the grenade tells them, rather than each gun
+inferring it from a beacon whose team changed. A hosted game with the protocol-15 row hears it too, so a node can
+fire a capture callout at the moment it happens instead of up to 5 s later.
+⚠️ **Capture PROGRESS is not on the wire.** No charge value has ever been observed; the beacon carries owner and
+mode only. Progress lives inside the grenade, so a hosted mode learns the discrete transition and **cannot draw a
+capture bar**. Design around the event, not a percentage.
+⚠ **`mag=50` is confirmed for a TEAM-TO-TEAM takeover too**: a blue-held hill retaken by red emitted
+`proto=15 team=0 mag=50` with no `53` beside it. So `50` announces the incoming owner whatever it took over from.
+**`mag=53` is less clear**: it appeared in all three neutral→team captures and not in the team→team one — but
+those later windows were thin (the capture often opened after the transition), so that absence is weak evidence,
+not a finding. Whether `53` means "was neutral" specifically, or "the outgoing state" generally, is open.
+
 ⚠️ **A hosted game sees none of this unless we ship a protocol-15 `$SIR` row** — the firmware discards an
 unmatched cell in silence, which is why "station words do nothing in a host-driven game" (B23). One row
 (`$SIR,15,0,,24,0,0,1,,*`) makes beacons arrive as `$HIR,<sensor>,15,0,<owner>,<mode>,0,0` with no pool
