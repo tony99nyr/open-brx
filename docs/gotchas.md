@@ -336,6 +336,14 @@ mirror image of the same mistake.
   stops describing the contents — which is exactly what someone relies on months later. **Before committing a
   shared file, `git diff <path>` and read it**: if there are hunks you did not write, either wait, or say so in
   your commit message and name the symbols so a later `git log -S` lands somewhere that explains itself.
+- ⚠ **`git commit --only <path>` silently DISCARDS a staged `git rm --cached`.** It commits the working
+  TREE state of that path, so a file that is staged-for-deletion but still on disk gets re-added and the
+  deletion is dropped, with no warning. B24 shipped a commit whose docs said the generated site pages were
+  git-ignored while `git ls-files webapp` still returned 117 of them. Use `--only` for content edits;
+  for an UNTRACKING commit, stage the `git rm --cached` deletions, check `git diff --cached --name-only`
+  holds nothing but yours, and commit with **no pathspec** so the index is what lands. Then prove it with
+  `git ls-files <dir> | wc -l`, and `git check-ignore` a probe file in every directory your `.gitignore`
+  negations are meant to keep visible.
 - ⚠ **A one-character revert can leave Python running the OLD bytecode.** `.pyc` invalidation is
   (source mtime, source SIZE). Flipping `BURST_FLASHES = 3` to `4` to prove a guard fires, then copying
   the good file back within the same second, changes NEITHER: same size, same mtime second, so the
