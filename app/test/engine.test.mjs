@@ -94,6 +94,41 @@ test('F72: a proto-15 beacon does not hit-latch, does not emit hit_taken, does n
   assert.equal(hit.shooter_num, 19); assert.equal(hit.shooter_team, 2); assert.equal(hit.dmg, 9);
 });
 
+test('F85: a beacon caught by two sensors 14 ms apart (same protocol+magnitude+owner) is counted once', () => {
+  // Bench 2026-09-10, captured verbatim: $HIR,4,15,0,2,8,0,0 then $HIR,0,15,0,2,8,0,0 14 ms later --
+  // one physical hill transmission landing on the gun-body sensor AND a headset sensor.
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();  // live, alive
+  h.at(500000);
+  h.frame('$HIR,4,15,0,2,8,0,0,*');   // sensor 4, gun body
+  const first = h.eng.state().beacon;
+  assert.deepEqual(first, { owner_team: 2, magnitude: 8, sensor: 4, at: 500000 });
+  h.adv(14);
+  h.frame('$HIR,0,15,0,2,8,0,0,*');   // sensor 0, headset front -- SAME transmission
+  assert.deepEqual(h.eng.state().beacon, first, 'the duplicate frame must not overwrite the beacon -- still sensor 4, still at the first timestamp');
+});
+
+test('F85: a same-millisecond capture pair (different magnitude, different owner) is NOT collapsed -- both words are counted', () => {
+  // Bench 2026-09-10: $HIR,0,15,0,2,53,0,0 and $HIR,4,15,0,1,8,0,0 arrived in the SAME MILLISECOND on
+  // different sensors during a real capture -- the outgoing owner's word, then the new owner's. A
+  // time-only dedupe would drop one of these and could silently swallow the capture announcement.
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();  // live, alive
+  h.at(600000);
+  h.frame('$HIR,0,15,0,2,53,0,0,*');  // mag 53: the state being left (neutral)
+  assert.deepEqual(h.eng.state().beacon, { owner_team: 2, magnitude: 53, sensor: 0, at: 600000 }, 'the outgoing word must be accepted');
+  h.frame('$HIR,4,15,0,1,8,0,0,*');   // mag 8: the new owner's hill beacon, same millisecond, different sensor
+  assert.deepEqual(h.eng.state().beacon, { owner_team: 1, magnitude: 8, sensor: 4, at: 600000 }, 'the new-owner word must ALSO be accepted -- a time-only dedupe would have dropped this');
+});
+
+test('F85: an identical beacon repeated at the normal ~5 s cadence is not swallowed by the dedupe window', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();  // live, alive
+  h.at(700000);
+  h.frame('$HIR,4,15,0,2,8,0,0,*');
+  assert.equal(h.eng.state().beacon.at, 700000);
+  h.adv(5000);
+  h.frame('$HIR,4,15,0,2,8,0,0,*');   // same word, 5.0 s later -- a real repeat, not a duplicate frame
+  assert.equal(h.eng.state().beacon.at, 705000, 'a 5 s-later repeat must update the beacon, not be dropped as a dupe');
+});
+
 test('Q12: shield-absorbed damage still emits hit_taken (drain order shield->armor->HP)', () => {
   // Bench 2026-08-27: $HP is <hp>,<armor>,<shield> and damage drains the shield first.
   // Before the fix the engine summed only hp+armor, so a shield-absorbed hit computed

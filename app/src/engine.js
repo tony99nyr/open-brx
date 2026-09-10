@@ -112,6 +112,8 @@ export class Engine {
     this._lastHeadsetFlashAt = null; // A16 §C: node-initiated headset FLASH sequences (hit flash, role re-assert) share the gun burst's 1 s minimum — never the down rearm or the low-health alert
     this.latch = null;              // {shooter_num, shooter_team, at, ir_proto}
     this.beacon = null;             // F72: {owner_team, magnitude, sensor, at} — last grenade/station beacon (proto-15 $HIR)
+    this._lastBeaconKey = null;     // F85: `${owner_team}:${magnitude}` of the last beacon ACCEPTED (not merely seen), for dedupe below
+    this._lastBeaconAt = 0;         // F85: this.now() of that acceptance
     this.deadAt = 0; this.killedBy = null; this.lastHitAt = 0;
     this._deathBlinkAt = 0;         // when the headset out-blink was last (re)painted, so a long DOWN doesn't outlast the count
     this._downRearmSent = false;    // §3.2: `down.rearm` sent for THIS death — one write per death, reset on death and revive
@@ -1278,9 +1280,24 @@ export class Engine {
           // It repeats every ~5 s for as long as anyone stands on the point, so this is a STANDING
           // snapshot (read from state(), like `stations`), not a one-shot moment/event: re-deriving
           // it on every beacon must not re-trigger anything downstream.
+          //
+          // F85: the gun has multiple IR sensors (0-3 headset, 4 body) and ONE physical transmission
+          // can land on more than one of them, each reported as its own $HIR ~14 ms apart. Dedupe on
+          // IDENTITY (protocol 15 is implicit here + owner team + magnitude), never on time alone: a
+          // real capture bench-measured two DIFFERENT beacon words (the outgoing owner's word, then the
+          // new owner's) arriving in the SAME MILLISECOND on different sensors, and a time-only window
+          // would drop one of those — silently swallowing the capture. Sensor is deliberately NOT part
+          // of the key: a differing sensor is exactly what a duplicate looks like. The window (150 ms)
+          // sits comfortably above the 14 ms observed spread and well clear of the ~5 s beacon period,
+          // so a normal repeat of the same word is never mistaken for a duplicate of itself.
           const ownerTeam = parseInt(t[4], 10), magnitude = parseInt(t[5], 10);
           if (!Number.isNaN(ownerTeam)) {
-            this.beacon = { owner_team: ownerTeam, magnitude: Number.isNaN(magnitude) ? null : magnitude, sensor: parseInt(t[1], 10), at: this.now() };
+            const now = this.now(), key = `${ownerTeam}:${Number.isNaN(magnitude) ? 'null' : magnitude}`;
+            const isDupe = key === this._lastBeaconKey && (now - this._lastBeaconAt) < 150;
+            if (!isDupe) {
+              this.beacon = { owner_team: ownerTeam, magnitude: Number.isNaN(magnitude) ? null : magnitude, sensor: parseInt(t[1], 10), at: now };
+              this._lastBeaconKey = key; this._lastBeaconAt = now;
+            }
           }
           break;
         }

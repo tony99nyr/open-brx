@@ -828,18 +828,30 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   MEANS) will silently never fire once a hill or station is in play, because that is now the shortest ambient
   period on the wire. Audit every time constant in `mcp/brx_mcp/` against the 5 s hill period as a required
   check for every future objective, not only the two caught by hand this session. `build`.
-- **F85 🟠 ONE HILL BEACON CAN ARRIVE AS TWO `$HIR` FRAMES, AND ANYTHING COUNTING PER-FRAME WILL DOUBLE-COUNT.**
-  Bench 2026-09-10 evening. Captured verbatim, 14 ms apart:
+- **F85 ✅ CLOSED 2026-09-10 — deduped on IDENTITY, not on time alone.** Bench 2026-09-10 evening. Captured
+  verbatim, 14 ms apart:
   ```
   $HIR,4,15,0,2,8,0,0    <- sensor 4, gun body
   $HIR,0,15,0,2,8,0,0    <- sensor 0, headset front — SAME transmission
   ```
   Same protocol, owner and magnitude, on two different sensors on the same gun: one physical beacon, two
   frames on the wire. **Any node that ticks, scores or counts presence per `$HIR` will double-count**, and a
-  capture/possession timer driven per-frame would run at roughly double rate. Needs a dedupe window: same
-  protocol + magnitude + owner within ~100 ms collapses to one beacon. Cross-reference **F72** (the phone
-  throws away every proto-15 `$HIR` today, so this has not reached `engine.js` yet — but once F72 ships, the
-  phone's own handling needs the same dedupe, not only the node's). `build`.
+  capture/possession timer driven per-frame would run at roughly double rate. Cross-reference **F72** (the
+  phone throws away every proto-15 `$HIR` today, so this had not reached `engine.js` — but F72 has since
+  shipped, so the phone's own handling needed the same dedupe, not only the node's).
+  **Fixed in `app/src/engine.js`'s proto-15 `$HIR` branch.** The obvious fix — drop any beacon within
+  N ms of the last one, time alone — is wrong, and a second same-evening capture proves it: two DIFFERENT
+  beacon words arrived in the SAME MILLISECOND on different sensors during a real hill capture —
+  `$HIR,0,15,0,2,53,0,0` (mag 53: the state being left, neutral) and `$HIR,4,15,0,1,8,0,0` (mag 8: the new
+  owner's beacon). A time-only window would have dropped one of those and could silently swallow the
+  capture announcement, the single most important beacon event there is. So the key is **protocol (implicit,
+  this branch only runs on proto 15) + owner team + magnitude**, matched within a 150 ms window (comfortably
+  above the 14 ms observed spread, well clear of the ~5 s beacon period so a normal repeat is never mistaken
+  for a duplicate of itself); **sensor id is deliberately excluded from the key** — a differing sensor is
+  exactly what a duplicate looks like. Tests in `app/test/engine.test.mjs`: the true duplicate (14 ms apart,
+  same sensor pair as bench) collapses to one beacon; the same-millisecond capture pair (mag 53 → mag 8,
+  different owner) yields two distinct beacon updates, the regression guard against the time-only fix; a
+  normal 5.0 s repeat is not swallowed. `build`.
 - **F77 🟠 A REPLAYED HIT IS INDISTINGUISHABLE FROM A REAL ONE, AND BOTH SCORE.** F74's phantom loop
   (a gun replaying `$HIR`+`$HP` every 5.07 s with no IR in the air) reaches the scoring path unchallenged:
   `engine.js:1514` gates `hit_taken` only on `latch.at` being under 1 s old and `dmg > 0`, and
