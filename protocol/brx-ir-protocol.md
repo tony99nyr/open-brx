@@ -41,6 +41,23 @@ a pair that happens to differ.
 | **U** | 2 | 21–22 | **`$SIR` SUBTYPE → echoes `$HIR` tok7** *(node1 called this "unknown/reserved")* | rows pushed for subtypes 0/1/3; U=0/1/3 all registered and echoed, **U=2 — the only one without a row — was ignored** |
 | **Z** | 2 | 23–24 | **computed parity** over bits 0–22 (see below) | 4/4 frames match the rule |
 
+## The grenade beacon: protocol 15 carries an OWNER (bench 2026-09-10)
+
+A grenade emits a **beacon** on protocol 15 whose **magnitude is the MODE** and whose **team bits are the
+OWNER**: hill `mag=8` every ~5 s, respawn `mag=6` every ~2.5 s. **Neutral is team 2.** Shooting a neutral
+grenade claims it, and the very next beacon carries the shooter's team — measured end to end: neutral
+`proto=15 team=2 mag=8`, a red gun fires `proto=0 player=5 team=0 mag=22`, and every following beacon reads
+`proto=15 team=0 mag=8`, held for ten beacons.
+
+⚠️ **An OWNED grenade cannot be re-claimed by shooting it** — a red gun firing on a blue-held hill changed
+nothing over 60 s, while the same shot took a neutral one on the first round. Power-cycling returns it to
+neutral. Any capture-the-point mode has to supply its own contest rule.
+
+⚠️ **A hosted game sees none of this unless we ship a protocol-15 `$SIR` row** — the firmware discards an
+unmatched cell in silence, which is why "station words do nothing in a host-driven game" (B23). One row
+(`$SIR,15,0,,24,0,0,1,,*`) makes beacons arrive as `$HIR,<sensor>,15,0,<owner>,<mode>,0,0` with no pool
+change. Polarity applies: fn 24 is enemy-only, so a gun sees only hills it does NOT own unless `$GSET` t1 = 1.
+
 **B and U together are the `$SIR` composite key `<protocol, subtype>`** — the exact index a `$SIR`
 row is looked up by. 4 bits and 2 bits — 16 × 4 = **64 addressable effect cells, and the table is ours to write
 over BLE.** A victim registers an IR event **only if a row exists for that cell**; with no row the hit

@@ -188,7 +188,7 @@ Taped stations at 3/6/9/12…50 ft, reused by all three rungs.
 All receiver-first: run board A alone before involving a gun (that is how the Respawn words were
 found). Commands are already written in [`bench-grenade.md`](bench-grenade.md) §§0-1 and §5.
 
-- **3.2** the Hill BUFF word, board A mounted **on the standing gun's own headset**, through the
+- ✅ **3.2 DONE 2026-09-10 — the hill is a full KotH primitive** (F70): beacon `proto=15`, magnitude = mode, team bits = owner, **neutral is team 2**, shooting a neutral one claims it, an OWNED one cannot be re-taken by shooting, and one `$SIR,15,0,...` row makes it all visible to a hosted game (B23 explained). Hazard F69 🔴 opened. Original row: the Hill BUFF word, board A mounted **on the standing gun's own headset**, through the
   REAL HILL / boxed-SILENCE / REPLAY / ENEMY phases. The boxed phase is the built-in control.
 - **§8 captures**: the Hill/Assault/CTF/Frag mode words, the RF scan, and a headset-mounted capture
   of the three unexplained emissions.

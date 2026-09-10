@@ -1,12 +1,12 @@
 # Followups — open work only
 
-Updated: 2026-09-09. **Everything in this file is open.** Closed items are in
+Updated: 2026-09-10. **Everything in this file is open.** Closed items are in
 [`archive/followups-closed.md`](archive/followups-closed.md), verbatim and ordered by close date; the evidence
 behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date). Session close = strike or
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F69 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F71 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S18.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -116,7 +116,10 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   The two site items are gone with the old generator: the link check is now a real browser crawl, and per-section
   stamps no longer exist. `build`.
 - **B23 🔴** respawn station for HOSTED games = a node-defined "downed" state. A dead hosted gun hears no IR and native
-  station words do nothing in a host-driven game (2026-09-04). Design: on `$HP,0` re-spawn stunned (F15) ≥ 3 s later,
+  station words do nothing in a host-driven game (2026-09-04). ⭐ **WHY they do nothing is now known (2026-09-10): our
+  compiled `$SIR` table ships no protocol-15 row, so the firmware discards every station word in silence. One row
+  (`$SIR,15,0,,24,...`) makes them arrive as `$HIR` -- proven on a gun, see F70.** That removes the "can we even
+  hear a station" unknown from this design; what is left is the assembly. Design: on `$HP,0` re-spawn stunned (F15) ≥ 3 s later,
   node paints the dead look, station beacon arrives via the passthrough row, node checks team + delay, restores pools.
   Every link is proven separately; the assembly is not. Open: a downed gun still takes IR damage; FF must be ON for a
   same-team beacon. `build`.
@@ -684,6 +687,36 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   does. Fix needs a trigger that does not depend on damage: the node cannot see the miss at all, so either repaint on a
   timer/heartbeat while alive, or accept a dark headset and move team identity entirely to the gun body. **Also worth
   knowing for gameplay: a miss is VISUALLY IDENTICAL to a hit** (same green flash), so no observer can tell them apart. `build`.
+- **F69 🔴 A GRENADE HILL DAMAGES AND KILLS PLAYERS IN OUR GAMES TODAY, AND MC CANNOT SEE WHY.** Bench
+  2026-09-10. A grenade in HILL mode emits **two** words on the same ~5 s cycle: a beacon
+  (`proto=15 mag=8`, team = the OWNER) and a **standard damage word (`proto=0 mag=8`)**. Our compiled table
+  has no proto-15 row, so the beacon is discarded silently -- but `$SIR,0,0,,1` is our ordinary damage row, so
+  **the damage lands in full**. Measured: a player flipped to the non-owning team was killed by an unattended
+  hill in ~106 s, 8 damage a tick, 70 armour + 45 HP to zero, with no host involvement and nothing in the
+  event stream naming the cause. Anyone who brings a grenade in hill mode to a match today gets unexplained
+  deaths. Either ship the proto-15 row (see F70) so the node can name it, or document the hazard loudly. `build`.
+- **F70 🟠 KING OF THE HILL IS A NATIVE PRIMITIVE, FULLY MAPPED, AND WE CAN READ IT WITH ONE ROW.**
+  **The wire, bench 2026-09-10:** neutral hill beacons `proto=15 team=2 mag=8` every ~5 s. Shoot it with a gun
+  and the very next beacon carries THAT GUN'S TEAM: a red gun (`proto=0 player=5 team=0 mag=22`) fired at
+  07:59:58 and every beacon from 08:00:01 onward read `team=0`, held for ten straight beacons. **Neutral is
+  team 2** — which means an earlier capture the same night labelled "hill-neutral" reading `team=1` was in fact
+  a hill already OWNED by blue, and any inference from "neutral = team 1" is void.
+  ⚠ **AN OWNED HILL CANNOT BE TAKEN BY SHOOTING IT.** A red gun firing on a blue-held hill changed nothing
+  across a 60 s capture; the identical shot claimed a *neutral* hill on the first round. Hills do not change
+  hands on a hit, so a contest mechanic is missing and any KotH design must supply it (a neutralise step, a
+  dwell, or host-side rules). Power-cycling the grenade returns it to neutral.
+  **Original entry:** Bench 2026-09-10, and it
+  answers `bench-grenade.md` Q3 ("does a spawned gun in one of our games surface grenade beacons if we give it a
+  `$SIR` row for protocol 15?") **YES** -- adding `$SIR,15,0,,24,0,0,1,,*` made the hill beacons appear
+  immediately as `$HIR,<sensor>,15,0,<owner>,8,0,0` with no pool change. The whole mechanic is native: **shoot
+  the grenade to capture it** (the gun announces "hill captured"), the **owner team rides in the beacon's team
+  bits**, **holding it plays a looping tick** on the owner's gun, and an **enemy-held hill damages intruders**
+  (F69). Magnitude is the mode: **8 = hill, 6 = respawn**, and the periods differ (5 s vs ~2.5 s). So KotH,
+  Domination and respawn points are available with a $30 grenade, one table row and no station hardware -- Tier 1
+  of the mode catalog, unblocked. Node work: read the beacon, track the owner, drive the scoring. ⚠ Polarity: fn
+  24 is enemy-only, so a gun sees only hills it does NOT own unless `$GSET` t1 = 1; decide how to read your own
+  point. ⚠ And pick the row's `<soundID>` deliberately: a hit lands every 5 s for as long as anyone stands
+  there. `build`.
 - **F66 🟡 `$SIR` fn 23: one mechanism with two symptoms, or two effects?** The 2026-08-27 row called it an audio
   suppressor on the strength of `$ALCD` token 2 dropping 100 → 0. Token 2 is now bench-proven to be **live accuracy**
   (F46), so that number never evidenced the audio claim at all. Both observations stand on their own: the gun **was heard**
