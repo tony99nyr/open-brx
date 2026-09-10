@@ -474,6 +474,57 @@ def test_sir_guard_reports_each_weapon_once():
     assert len(warns) == 1, warns
 
 
+# ---- F70/F79: the objective/hill grenade beacon row -------------------------
+def test_koth_and_domination_ship_the_silent_beacon_row():
+    """F70: a hill's ambient `$HIR` is protocol 15, magnitude 8, owner team in the team field. It
+    registers through fn 28 (F73, ZERO player feedback), so the compiled head for an objective/hill
+    mode must carry exactly that row or the beacon lands on a gun with no matching cell and is
+    silently dropped (F60/F72's failure shape, one layer up)."""
+    for mode in ("koth", "domination"):
+        head = C.compile(_cfg(mode=mode), _player(), _TEAMS)["head"]
+        assert "$SIR,15,0,,28,0,0,1,,*" in head, f"{mode} head is missing the proto-15 beacon row: {head}"
+
+
+def test_non_objective_modes_do_not_gain_the_beacon_row():
+    """The row is specific to objective/hill configs -- an ordinary TDM head must not grow a cell it
+    has no use for."""
+    head = C.compile(_cfg(mode="tdm"), _player(), _TEAMS)["head"]
+    assert not any(f.startswith("$SIR,15,0,") for f in head), head
+
+
+def test_sir_covers_objective_guard_raises_when_the_beacon_row_is_missing():
+    """F79: `assert_sir_covers_weapons` only knows `$WEAP` cells -- it has no concept of this
+    non-weapon cell, so a config that declares an objective but ships no protocol-15 row must be
+    caught by a sibling guard instead of sailing through silently."""
+    import brx_mcp.mc.compile as CM
+    # direct unit check of the guard, independent of compile()'s own wiring:
+    try:
+        CM.assert_sir_covers_objective(["$CLEAR,*", "$SIR,0,0,,1,0,0,1,,*"], "koth")
+        assert False, "expected the F79 guard to raise on a koth head with no $SIR,15,0 row"
+    except ValueError as e:
+        assert "F79" in str(e) and "koth" in str(e)
+    # a covered head and a non-objective mode both pass clean
+    CM.assert_sir_covers_objective(["$SIR,15,0,,28,0,0,1,,*"], "koth")
+    CM.assert_sir_covers_objective(["$CLEAR,*"], "tdm")
+
+
+def test_compile_raises_via_the_objective_guard_if_the_beacon_row_were_ever_dropped():
+    """End-to-end: monkeypatch the row list to empty (simulating F79's exact bug -- an objective
+    config with nothing wired to protocol 15) and confirm `compile()` itself refuses to ship it,
+    not just the unit-level guard above."""
+    import brx_mcp.mc.compile as CM
+    orig = CM._OBJECTIVE_SIR_ROW
+    try:
+        CM._OBJECTIVE_SIR_ROW = "$SIR,0,0,,1,0,0,1,,*"   # a row that keys an EXISTING cell, not 15,0 -- the row silently "vanishes" as a beacon row
+        try:
+            C.compile(_cfg(mode="koth"), _player(), _TEAMS)
+            assert False, "expected the F79 guard to raise when no protocol-15 row reaches the head"
+        except ValueError as e:
+            assert "F79" in str(e)
+    finally:
+        CM._OBJECTIVE_SIR_ROW = orig
+
+
 # ---- the shared golden bundle (M10) --------------------------------------
 def test_golden_bundle_json_matches_the_compiler():
     """The checked-in fixture is consumed by the phone app's tests and its demo mode, so a compiler

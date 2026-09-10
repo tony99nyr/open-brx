@@ -79,6 +79,21 @@ test('hit_taken + death credit the fresh $HIR shooter', () => {
   assert.equal(death.shooter_num, 19); assert.equal(h.eng.alive, false); assert.equal(h.eng.deaths, 1);
 });
 
+test('F72: a proto-15 beacon does not hit-latch, does not emit hit_taken, does not touch pools, and surfaces owner+magnitude', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();  // live, alive
+  const hpBefore = h.eng.hp, armorBefore = h.eng.armor;
+  h.frame('$HIR,4,15,0,2,8,0,0,*');   // a neutral hill's ambient beacon: sensor 4, proto 15, ownerId 0, owner team 2, magnitude 8
+  assert.equal(h.eng.latch, null, 'a beacon must never set the hit latch');
+  assert.equal(h.facts.some(f => f.type === 'hit_taken'), false, 'a beacon must never emit hit_taken');
+  assert.equal(h.eng.hp, hpBefore); assert.equal(h.eng.armor, armorBefore);   // no $HP followed, so no pool move either
+  assert.deepEqual(h.eng.state().beacon, { owner_team: 2, magnitude: 8, sensor: 4, at: h.eng.now() });
+  // a real shot right after still latches and scores normally — the beacon did not wedge anything
+  h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,45,61,0,*');
+  const hit = h.facts.find(f => f.type === 'hit_taken');
+  assert.ok(hit, 'an ordinary hit after a beacon must still latch and score');
+  assert.equal(hit.shooter_num, 19); assert.equal(hit.shooter_team, 2); assert.equal(hit.dmg, 9);
+});
+
 test('Q12: shield-absorbed damage still emits hit_taken (drain order shield->armor->HP)', () => {
   // Bench 2026-08-27: $HP is <hp>,<armor>,<shield> and damage drains the shield first.
   // Before the fix the engine summed only hp+armor, so a shield-absorbed hit computed

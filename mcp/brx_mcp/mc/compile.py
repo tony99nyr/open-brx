@@ -234,6 +234,32 @@ def assert_sir_covers_weapons(head: list[str]) -> None:
             + ", ".join(f"slot {s} keys <{k[0]},{k[1]}>" for s, k in missing))
 
 
+# F70/F73 (bench 2026-09-10): a grenade in hill/respawn mode broadcasts a `$HIR` on protocol 15 every
+# ~5 s -- owner team in the team field, mode in the magnitude (8 hill, 6 respawn station). `$SIR,15,0`
+# registered through fn 28 with ZERO player feedback (no sound, no flash, no vibration) is the row that
+# lets a gun report the beacon at all without also making the player experience one every 5 s.
+_OBJECTIVE_SIR_ROW = "$SIR,15,0,,28,0,0,1,,*"
+# Modes whose objective IS this grenade beacon. `ctf`/`cs`/`bomb` also gate on a Tier-1 station source
+# (see `validate()`) but that source is unconfirmed to be this same proto-15/fn-28 mechanism -- do not
+# widen this set on the strength of that other gate alone.
+_OBJECTIVE_MODES = {"domination", "koth"}
+
+
+def assert_sir_covers_objective(head: list[str], mode: str) -> None:
+    """F79: `assert_sir_covers_weapons` only knows about `$WEAP` cells -- it has no concept of a
+    non-weapon cell, so a head for an objective/hill mode with no `$SIR,15,0` row sailed straight
+    through it. That is the exact condition that made a real gun discard every hill beacon in
+    silence (F60/F70/F72): no `$HIR`, no way for the node to ever see the point, while both ends
+    report healthy. Raises for any `_OBJECTIVE_MODES` config shipping no protocol-15 cell."""
+    if mode not in _OBJECTIVE_MODES:
+        return
+    cells = {c for c in _sir_cells([f for f in head if f.startswith("$SIR")]) if c != ("", "")}
+    if ("15", "0") not in cells:
+        raise ValueError(
+            f"F79 GUARD: mode {mode!r} declares an objective but this head ships no $SIR,15,0 row, "
+            "so a hill/station beacon is silently discarded while both ends report healthy")
+
+
 # $WEAP full-frame token indices (0-based over the comma-split of "$WEAP,<slot>,<tail>"),
 # protocol-classes §WEAP: 5=primaryDamage, 15=rateOfFire, 16=maxClip, 18=reloadSpeed(ms),
 # 39=clipStartingAmmo, 40=ammoReserv, 41=gunRange%.
@@ -764,8 +790,12 @@ class Compiler:
         play_hled = _headset_colour(tid, gc.leds, ffa, night) if hs.get("in_play") == "team" else []
         # A11.7 pregame: the armed gun body in the team colour (a paint holds before $SPAWN), like the headset.
         gun_pre = _pres.gun_pregame(prof, tid, night, gc.leds, ffa)
-        head += self.sir_table(plan, hits_rng, bool(config.get("hit_audio_class", False))) + bmap + gc._led_frames() + hled + gun_pre + [f"$TID,{tid},*"]   # §1.1: head ends with $TID
+        sir_rows = self.sir_table(plan, hits_rng, bool(config.get("hit_audio_class", False)))
+        if config["mode"] in _OBJECTIVE_MODES:
+            sir_rows = list(sir_rows) + [_OBJECTIVE_SIR_ROW]   # F70/F79: the silent proto-15 beacon row
+        head += sir_rows + bmap + gc._led_frames() + hled + gun_pre + [f"$TID,{tid},*"]   # §1.1: head ends with $TID
         assert_sir_covers_weapons(head)      # A17: no armed weapon may key a cell this head has no row for
+        assert_sir_covers_objective(head, config["mode"])   # F79: no objective mode may ship with no way to hear its own beacon
 
         pmag, pres = self.catalog.spawn_ammo(w0, mods)
         ammo = [f"$AMMO,0,{pmag},{pres},1,*"]

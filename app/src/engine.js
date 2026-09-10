@@ -111,6 +111,7 @@ export class Engine {
     this._activeRole = null;        // A16 §3.3: {name, tid} — the ONE headset role currently held (carrier|infected|vip|beacon|extracted), re-asserted after every hit, cleared on death
     this._lastHeadsetFlashAt = null; // A16 §C: node-initiated headset FLASH sequences (hit flash, role re-assert) share the gun burst's 1 s minimum — never the down rearm or the low-health alert
     this.latch = null;              // {shooter_num, shooter_team, at, ir_proto}
+    this.beacon = null;             // F72: {owner_team, magnitude, sensor, at} — last grenade/station beacon (proto-15 $HIR)
     this.deadAt = 0; this.killedBy = null; this.lastHitAt = 0;
     this._deathBlinkAt = 0;         // when the headset out-blink was last (re)painted, so a long DOWN doesn't outlast the count
     this._downRearmSent = false;    // §3.2: `down.rearm` sent for THIS death — one write per death, reset on death and revive
@@ -1270,7 +1271,19 @@ export class Engine {
         break;
       }
       case 'HIR': {
-        if (t[2] === '15') break; // grenade / station beacon
+        if (t[2] === '15') {
+          // A grenade/station BEACON (F70/F72), not a shot: $HIR,<sensor>,15,<ownerId=0>,<ownerTeam>,<magnitude>,0,<sub>.
+          // It rides the same $HIR command as a hit, but registers through the silent $SIR fn-28 row
+          // (F73) specifically so the player feels nothing — no latch, no hit_taken, no pool change.
+          // It repeats every ~5 s for as long as anyone stands on the point, so this is a STANDING
+          // snapshot (read from state(), like `stations`), not a one-shot moment/event: re-deriving
+          // it on every beacon must not re-trigger anything downstream.
+          const ownerTeam = parseInt(t[4], 10), magnitude = parseInt(t[5], 10);
+          if (!Number.isNaN(ownerTeam)) {
+            this.beacon = { owner_team: ownerTeam, magnitude: Number.isNaN(magnitude) ? null : magnitude, sensor: parseInt(t[1], 10), at: this.now() };
+          }
+          break;
+        }
         const num = parseInt(t[3], 10), team = parseInt(t[4], 10);
         // $HIR,<sensor>,<irProto>,<shooterId>,<shooterTeam>,<damage>,,<subtype> — with t[0] the command
         // word, sensor is t[1] and irProto is t[2]. `ir_proto` read t[1], so it had been reporting
@@ -1744,6 +1757,9 @@ export class Engine {
       respawnType: this.respawnType, killedBy: this.killedBy, underFire: this.alive && this.lastHitAt > 0 && (now - this.lastHitAt) < 2000, respawnIn: (!this.alive && this.deadAt && this.respawnType === 'auto') ? Math.max(0, Math.ceil((r - (now - this.deadAt)) / 1000)) : 0,   // scanner/none modes have no countdown
       // utility.md: the respawn station this player would use, how close it reads, and what the DOWN screen should say
       station: stationView(this._respawnStation()), respawnGate: this.respawnGate, respawnHint: this.respawnHint(now),
+      // F72: the most recent grenade/station beacon (proto-15 $HIR) — owner team + magnitude (8 hill, 6 respawn),
+      // null once nobody has reported one this life. Not `station` above: that is BLE advert presence, this is IR.
+      beacon: this.beacon || null,
       tMinusMs: this.phase === 'armed' && this.goLiveT ? Math.max(0, this.goLiveT - now) : null,
       clockMs: this.endT ? Math.max(0, this.endT - now) : (this.timeLimitMs || 0),
       ready: !!this.ready, tutorial: this.tutorial, tutorialWeapon: this.tutorialWeapon,
