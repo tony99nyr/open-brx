@@ -773,25 +773,30 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   replay; then bisect (emitter alone vs beacon alone). Also open: does it survive a BLE drop, and does a NODE
   see it as real (it should, which is the problem). Consider a node-side guard — identical `$HIR` at a fixed
   period with no `$ALCD` from any shooter is not a real hit. `trigger` + `build`.
-- **F73 🟠 U11′ IS NOW A BLOCKING DESIGN QUESTION: does ANY status function register QUIETLY?** Raised from a
-  curiosity by the 2026-09-10 hill work. A `$SIR` row is the only way a hosted game can read a beacon (F70/F72),
-  but a *registered* hit drags a **headset flash and vibration** with it — the firmware's response to any
-  registered IR event, not something we can switch off. Standing in a hill with fn 24 loaded gives flash + hit
-  sound + buzz **every ~5 s for as long as you hold the point**, and Tony reports it **QUEUES** (acknowledgements
-  still arriving after the grenade was switched off). Nine functions register without moving a pool — enemy 8,
-  24, 25, 26, 27, 28, 35 and ally 31, 32, 34 — and **only fn 24 has ever been tried**. If one of the other eight
-  is quiet, King of the Hill is playable; if none is, every control-point mode ships with a buzzer. Run it as
-  bench 1.5 (`ally_remeasure.py` for the keyboard half first) and report per fn what you HEAR, SEE and FEEL.
-  ⚠️ **METHOD, learned the hard way 2026-09-10: put ~3 ft between emitter and gun, and CHECK THE `$HIR` PROTOCOL
-  FIELD ON EVERY TRIAL.** A first attempt at a few inches was worthless: multipath made each emission register up
-  to THREE times on different sensors, with copies decoding as protocol 0 instead of the protocol under test — so
-  the operator heard several sounds per shot and some were plain damage from the wrong `$SIR` row (one took 20
-  armour off in a test meant to move no pools). A sensory reading counts only for a trial whose `$HIR` shows the
-  intended protocol exactly once. See `gotchas.md`. **Survives from that attempt: fn 8 registered SILENTLY**
-  (vibration + headset flash + muzzle flash, no sound) — re-confirm at distance, because if it holds, fn 8 is the
-  row to ship on protocol 15.
-  ⚠ Also settle the polarity: fn 24 is enemy-only, so a gun registers only hills it does NOT own — a holder
-  needs an ally-side function or `$GSET` t1=1. `trigger` + `ears`.
+- **F73 ✅ ANSWERED 2026-09-10 — `$SIR` fn 28 REGISTERS WITH ZERO PLAYER FEEDBACK.** The question was whether any
+  status function can be read by a node without the player experiencing it. **fn 28 can.** Swept enemy-side
+  8/24/25/26/27/28 on a free cell (`$SIR,5,0,,<fn>` as the ONLY row, so a mis-decoded word has no row and is
+  discarded), three spaced words each, `$HIR` protocol verified per trial:
+  | fn | registers | sound | headset flash | vibrate |
+  |---|---|---|---|---|
+  | 8 | ✓ | none | **yes** | **yes** |
+  | 24 / 25 / 26 / 27 | ✓ | a long grenade-ish clip (hiss → timer → explosion) | ? | ? |
+  | **28** | **✓ ×3** | **none** | **none** | **none** |
+  ⭐ **fn 28 is the row to ship on protocol 15**: a node reads the hill beacon every ~5 s and the player feels,
+  hears and sees nothing.
+  **Polarity, both directions measured.** fn 28 is **enemy-only** under `$GSET` t1=0 (three ally words → zero
+  registrations, silently rejected). With **`$GSET` t1=1** the gate lifts: the same ally words registered
+  `$HIR,0,5,42,**1**,20` ×3, **owner in the team field**. So:
+  **FF off** = you hear only hills you do NOT own (cheap, but "no beacon" is ambiguous between out-of-range and
+  we-own-it, and you miss your own captures, since the `mag=50` capture word carries the new owner's team).
+  **FF on** = every beacon and every capture, ownership read from `$HIR`, complete information — at the cost of
+  same-team IR registering elsewhere in the game. **A KotH mode wants FF on; that is a mode-level decision.**
+  ⚠ Also learned: the "varied sounds" across 24-27 are ONE long clip truncated by the next event, not several
+  clips — spacing shots 6 s apart let it play through to the explosion. Which clip it is remains unidentified
+  (not `A10`, not any of the five `$PSET` hit slots). And on fn 27 the first of three sounded genuinely different
+  in a way a leftover tail does not explain; unexplained, recorded rather than tidied away.
+  ⚠ Not swept: enemy 35, and the ally-side 31/32/34 — unnecessary now that fn 28 answers the question, but they
+  are the fallback if fn 28 turns out to have a side effect we have not looked for.
 - **F72 🟠 The phone throws away every grenade/station beacon.** `app/src/engine.js:1272` opens the `$HIR`
   handler with `if (t[2] === '15') break;` — protocol 15 is dropped before anything reads it. That predates
   knowing what a beacon carries, and it is a SECOND blind spot stacked on the missing `$SIR` row (F70): fixing

@@ -262,7 +262,14 @@ vibration** with it — the firmware's response to any registered IR event. Tony
 row loaded: flash, hit sound and buzz every 5 s, **and it queues** (acknowledgements kept arriving after the
 grenade was switched off).
 
-⚠️ **The blocking question is whether any status function registers QUIETLY.** Only fn 24 has ever been tried.
+✅ **ANSWERED 2026-09-10: `$SIR` fn 28 registers with ZERO player feedback** — no sound, no headset flash, no
+vibration — so a node can read a hill beacon every ~5 s and the player perceives nothing. **That is the row to
+ship on protocol 15**, and it removes the "a control point buzzes at you" objection entirely (F73).
+**One `$GSET` bit decides how much the node can see.** fn 28 is **enemy-only** with FF off, so you hear only
+hills you do NOT own — cheap, but "no beacon" is then ambiguous between out-of-range and we-own-it, and you miss
+your own captures. With **FF on** every beacon and capture registers and the owner arrives in `$HIR` token 4, so
+the node has complete information; the cost is same-team IR registering elsewhere. **KotH wants FF on.**
+~~The blocking question is whether any status function registers QUIETLY. Only fn 24 has ever been tried.~~
 Nine register without moving a pool — enemy 8, 24, 25, 26, 27, 28, 35 and ally 31, 32, 34 — and nobody has
 characterised what each does to the player. That is **U11′** (bench queue 1.5), and it has just gone from a
 curiosity to the rung that decides whether a hill is playable or unbearable. Second constraint in the same
