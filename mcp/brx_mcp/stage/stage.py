@@ -1205,8 +1205,11 @@ class GunStage:
         frame = cues[kind] if kind in cues else d["frame"]
         if not frame:
             return None, 0.0
-        ms = (self.bundle.get("cue_ms") or {}).get(kind)      # engine.js `frames.cue_ms`: a per-bundle override, in ms
-        return frame, (float(ms) / 1000.0 if ms else d["s"])
+        # `in`, not a truthiness test: a bundle deliberately setting `cue_ms[kind] = 0` means "this cue must
+        # not suppress the tick", and `if ms else` silently restored the default length instead. Mirrors the
+        # same fix in engine.js (`hasOwnProperty`), 2026-09-10.
+        cue_ms = self.bundle.get("cue_ms") or {}               # engine.js `frames.cue_ms`: a per-bundle override, in ms
+        return frame, (float(cue_ms[kind]) / 1000.0 if kind in cue_ms else d["s"])
 
     def _hill_audio_on(self) -> bool:
         """True while hill audio should be audible at all: in play, on our feet, and not a mode whose points we
@@ -1275,6 +1278,15 @@ class GunStage:
         it in this same handler. Nothing here starts a sequence, and nothing here waits for a second word."""
         if magnitude not in (HILL_MAG, HILL_CAPTURE_MAG, HILL_WAS_NEUTRAL_MAG):
             return                       # magnitude 6 is a respawn station, not a point (F84)
+        # F82 is explained HERE, on the first beacon, not from `_hill_callout` -- that is only reached when a
+        # transition would be announced, so a tid-2 roster that never witnessed a capture went silent with no
+        # reason in the log. The behaviour was always right (the tick is gated by `_hill_mine`); the diagnostic
+        # was missing. ⚠ And the stage's own default tdm roster is blue(1) + yellow(2), so at the bench this
+        # trap is ONE selector click away.
+        if self._hill_tid() == HILL_NEUTRAL_TEAM and not self._hill_team2_warned:
+            self._hill_team2_warned = True
+            self._log("F82: we are on tid 2, which is what a NEUTRAL hill broadcasts -- hill ownership is "
+                      "undecidable, so no hill audio will play", "warn")
         prev = self.hill
         prev_owner = prev["owner"] if prev else None
         fresh = bool(prev) and (now - prev["at"]) < HILL_PRESENCE_S
@@ -1286,6 +1298,12 @@ class GunStage:
             # we took it, and stop the tick. It refreshes presence and records that the capture started from
             # neutral; it announces nothing, and nothing ever waits for it -- on an enemy-to-enemy capture it
             # never arrives at all (n=2).
+            # ⚠ Only when we already knew the point. With no prior hill this used to write `{"owner": None}`,
+            # holding a 12 s presence window open for a point whose owner was never known and then logging
+            # "presence expired" for it -- and leaving `hill` non-None with a None owner, so every downstream
+            # reader had to test `owner` too. We simply did not see this capture; the next `mag=8` names it.
+            if not prev:
+                return
             self.hill = {"owner": prev_owner, "at": now, "from_neutral": True}
             return
 

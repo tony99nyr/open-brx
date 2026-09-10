@@ -1090,8 +1090,11 @@ export class Engine {
     const fromBundle = cues && Object.prototype.hasOwnProperty.call(cues, kind) ? cues[kind] : undefined;
     const frame = fromBundle !== undefined ? fromBundle : def.frame;
     if (!frame) return { frame: null, ms: 0 };
+    // `hasOwnProperty`, not `||`: a bundle deliberately setting `cue_ms[kind] = 0` means "this cue must not
+    // suppress the tick", and `||` silently replaced that zero with the default length instead.
     const cm = this.frames && this.frames.cue_ms;
-    return { frame, ms: (cm && cm[kind]) || def.ms };
+    const ms = cm && Object.prototype.hasOwnProperty.call(cm, kind) ? cm[kind] : def.ms;
+    return { frame, ms };
   }
   /** True while hill audio should be audible at all: live, on our feet, and not a mode whose points we
    *  cannot tell apart. Death is deliberately silent — A16 makes the DOWN window hands-off and the death
@@ -1147,6 +1150,14 @@ export class Engine {
    *  it in this same handler. Nothing here starts a sequence, and nothing here waits for a second word. */
   _onHillBeacon(ownerTeam, magnitude, now) {
     if (magnitude !== HILL_MAG && magnitude !== HILL_CAPTURE_MAG && magnitude !== HILL_WAS_NEUTRAL_MAG) return;   // magnitude 6 is a respawn station, not a point (F84)
+    // F82 is explained HERE, on the first beacon, not from `_hillCallout` — that is only reached when a
+    // transition would be announced, so a tid-2 roster that never witnessed a capture went silent with no
+    // reason in the log. The behaviour was always right (the tick is gated by `_hillMine`); the diagnostic
+    // was missing, and the stage's default roster is blue(1) + yellow(2), so this is one click away.
+    if (this.teamTid === HILL_NEUTRAL_TEAM && !this._hillTeam2Warned) {
+      this._hillTeam2Warned = true;
+      this.log('F82: we are on tid 2, which is what a NEUTRAL hill broadcasts — hill ownership is undecidable, so no hill audio will play', 'le');
+    }
     const prev = this.hill;
     const prevOwner = prev ? prev.owner : null;
     const fresh = !!prev && (now - prev.at) < HILL_PRESENCE_MS;
@@ -1157,6 +1168,11 @@ export class Engine {
       // writing it into `owner` would hand the point back to nobody a full beacon cycle after we took it.
       // It refreshes presence and records that the capture started from neutral; it announces nothing, and
       // nothing ever waits for it — on an enemy-to-enemy capture it never arrives at all (n=2).
+      // ⚠ Only when we already knew the point. With no prior hill this used to write `{owner: null}`, which
+      // held a 12 s presence window open for a point whose owner was never known and then logged "presence
+      // expired" for it — and left `state().hill` non-null with a null owner, so every downstream reader had
+      // to test `owner` as well. We simply did not see this capture; the next `mag=8` names the owner.
+      if (!prev) return;
       this.hill = { owner: prevOwner, at: now, from_neutral: true };
       this._changed();
       return;

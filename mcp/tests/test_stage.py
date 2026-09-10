@@ -1553,6 +1553,53 @@ def test_mag_53_refreshes_presence_but_never_writes_its_team_into_the_owner():
     asyncio.run(go())
 
 
+def test_a_lone_mag_53_with_no_point_known_does_not_invent_a_phantom():
+    """It used to write `{"owner": None, ...}`, holding a 12 s presence window open for a point whose owner
+    was never known and then logging "presence expired" for it -- and leaving `hill` non-None with a None
+    owner, so every downstream reader had to test `owner` too. Mirrors the same fix in engine.js."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        await in_play(st)
+        await feed(st, mgr, clock, [(0, "$HIR,0,15,0,2,53,0,0,*")])   # walked in as somebody captured
+        assert st.hill is None, "no point is known yet -- do not invent one with a None owner"
+        # the positive half: a mag=53 FOLLOWING a known point still does its job
+        await feed(st, mgr, clock, [(0, "$HIR,4,15,0,1,8,0,0,*"), (0, "$HIR,0,15,0,2,53,0,0,*")])
+        assert st.hill["owner"] == 1 and st.hill["from_neutral"] is True
+    asyncio.run(go())
+
+
+def test_a_cue_ms_of_zero_means_do_not_suppress_the_tick():
+    """`if ms else d["s"]` treated a deliberate 0 as absent and silently restored the default length."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        await in_play(st)
+        st.bundle["cue_ms"] = {"hill_captured": 0}
+        _, secs = st._hill_cue("hill_captured")
+        assert secs == 0.0, "a bundle asking for 0 must GET 0, not the catalogue length"
+        st.bundle["cue_ms"] = {"hill_captured": 3000}           # the control
+        _, secs2 = st._hill_cue("hill_captured")
+        assert secs2 == 3.0, "a real override is still honoured"
+    asyncio.run(go())
+
+
+def test_f82_is_explained_on_the_first_beacon_not_only_on_a_transition():
+    """The warning lived in `_hill_callout`, only reached when a capture changes hands, so a tid-2 roster
+    that never witnessed one went silent with no reason in the log. ⚠ The stage's OWN default tdm roster is
+    blue(1) + yellow(2), so at the bench this trap is one selector click away."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=2)
+        await in_play(st)
+        await feed(st, mgr, clock, [(0, "$HIR,4,15,0,1,8,0,0,*")])   # a plain beacon: nothing to announce
+        assert any("F82" in l["text"] for l in st.log), \
+            "a tid-2 roster must be TOLD why hill audio is silent, on the FIRST beacon"
+        # the control: a decidable roster has nothing to warn about
+        st2, mgr2, clock2 = mk_hill(tid=1)
+        await in_play(st2)
+        await feed(st2, mgr2, clock2, [(0, "$HIR,4,15,0,1,8,0,0,*")])
+        assert not any("F82" in l["text"] for l in st2.log)
+    asyncio.run(go())
+
+
 def test_from_neutral_is_derived_on_an_owner_change_and_never_inherited():
     """The bug this port FOUND, fixed on both sides 2026-09-10.
 

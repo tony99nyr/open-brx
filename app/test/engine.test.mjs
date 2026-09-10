@@ -143,6 +143,67 @@ const nWrites = (h, f) => h.writes.filter(x => x === f).length;
 function run(h, ms, step = 250) { const n = Math.round(ms / step); for (let i = 0; i < n; i++) { h.adv(step); h.eng.tick(); } }
 function koth() { const h = harness({ mode: 'koth' }).kit().config_().echo().start(0); h.adv(10); h.eng.tick(); return h; }
 
+test('hill: a lone mag=53 with no point already known does NOT invent a phantom', () => {
+  // It used to write {owner: null, at: now, from_neutral: true}, holding a 12 s presence window open for a
+  // point whose owner was never known, then logging "presence expired" for it — and leaving state().hill
+  // non-null with a null owner, so every downstream reader had to test `owner` too. We simply did not see
+  // this capture; the next mag=8 names the owner.
+  const h = koth();
+  h.frame('$HIR,0,15,0,2,53,0,0,*');            // walked in just as somebody captured it
+  assert.equal(h.eng.state().hill, null, 'no point is known yet — do not invent one with a null owner');
+  // the positive half: a mag=53 that FOLLOWS a known point still does its job
+  h.frame('$HIR,4,15,0,1,8,0,0,*');
+  h.frame('$HIR,0,15,0,2,53,0,0,*');
+  assert.equal(h.eng.state().hill.owner, 1, 'the known owner survives');
+  assert.equal(h.eng.state().hill.from_neutral, true, 'and mag=53 still records that it was neutral');
+});
+
+test('hill: cue_ms of 0 means "do not suppress the tick", not "use the default length"', () => {
+  // `(cm && cm[kind]) || def.ms` treated a deliberate 0 as absent and silently restored 1924 ms.
+  const h = harness({ mode: 'koth' }).kit().config_().echo().start(0);
+  h.eng.frames.cue_ms = { hill_captured: 0 };
+  h.adv(10); h.eng.tick();
+  h.frame('$HIR,4,15,0,2,8,0,0,*');
+  h.adv(50);
+  h.frame('$HIR,4,15,0,1,50,0,0,*');            // we capture: the callout plays
+  const n = nWrites(h, HILL_TICK_F);
+  run(h, 1500);
+  assert.ok(nWrites(h, HILL_TICK_F) > n, 'with cue_ms 0 the tick must NOT be suppressed');
+});
+
+test('hill CONTROL: a real cue_ms length DOES suppress the tick, so the zero case is not vacuous', () => {
+  const h = harness({ mode: 'koth' }).kit().config_().echo().start(0);
+  h.eng.frames.cue_ms = { hill_captured: 3000 };
+  h.adv(10); h.eng.tick();
+  h.frame('$HIR,4,15,0,2,8,0,0,*');
+  h.adv(50);
+  h.frame('$HIR,4,15,0,1,50,0,0,*');
+  const n = nWrites(h, HILL_TICK_F);
+  run(h, 1500);
+  assert.equal(nWrites(h, HILL_TICK_F), n, 'a 3 s callout owns the announcer: no tick inside it');
+});
+
+test('hill: F82 is explained on the FIRST beacon, not only when a transition would be announced', () => {
+  // The warning used to live in _hillCallout, which is only reached when a capture changes hands, so a
+  // tid-2 roster that never witnessed one went silent with no reason in the log. The stage's default tdm
+  // roster is blue(1) + yellow(2), so this is one selector click away at the bench.
+  const h = harness({ mode: 'koth' }).kit();
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, roster: h.roster,
+    team: { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 } } });
+  const logs = [];
+  h.eng.log = (m) => logs.push(String(m));       // the harness discards logs by default
+  h.config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$HIR,4,15,0,1,8,0,0,*');             // a plain beacon: no transition, nothing to announce
+  assert.ok(logs.some(m => m.includes('F82')),
+    'a tid-2 roster must be TOLD why hill audio is silent, on the FIRST beacon — not only if a capture happens');
+  // the control: a decidable roster must NOT be warned
+  const ok = harness({ mode: 'koth' }).kit();
+  const okLogs = []; ok.eng.log = (m) => okLogs.push(String(m));
+  ok.config_().echo().start(0); ok.adv(10); ok.eng.tick();
+  ok.frame('$HIR,4,15,0,1,8,0,0,*');
+  assert.ok(!okLogs.some(m => m.includes('F82')), 'a tid-1 roster has nothing to warn about');
+});
+
 test('hill: from_neutral is DERIVED on an owner change, never inherited from the previous owner', () => {
   // Found 2026-09-10 while porting this logic to the bench stage. `from_neutral` used to carry
   // `prev.from_neutral` through the plain-beacon path, so once a point had been taken FROM NEUTRAL every
