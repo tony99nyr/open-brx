@@ -107,11 +107,19 @@ grenade, not the shooter) is still worth doing for anyone repeating this on the 
 only ever occurs inside a shot's burst remains the risk F75 names — but the capture pair itself is no longer in
 that category.
 
-⚠ **`mag=50` is confirmed for a TEAM-TO-TEAM takeover too**: a blue-held hill retaken by red emitted
-`proto=15 team=0 mag=50` with no `53` beside it. So `50` announces the incoming owner whatever it took over from.
-**`mag=53` is less clear**: it appeared in all three neutral→team captures and not in the team→team one — but
-those later windows were thin (the capture often opened after the transition), so that absence is weak evidence,
-not a finding. Whether `53` means "was neutral" specifically, or "the outgoing state" generally, is open.
+✅ **SETTLED (2026-09-10 evening): `mag=53` means the point WAS NEUTRAL; `mag=50` announces the incoming owner
+on EVERY capture, neutral or enemy-to-enemy.** `mag=50` is confirmed for a team-to-team takeover too: with a
+gun on team 1 (blue) holding a hill, `$TID` was live-written to 0 (red) mid-session and the very next shot took
+it — `$HIR,4,15,0,0,50,0,0` (new owner = red), then ordinary `mag=8` beacons owned by red from then on, **with
+no `mag=53` anywhere in the stream**. Earlier the same session a neutral→blue capture, captured on the same
+continuous BLE connection, DID carry `mag=53` right alongside `mag=50`. The two runs differ in exactly one
+variable — whether the outgoing state was neutral — which settles it. **Method note, because it is why this
+settles what the IR rig runs could not:** this was a continuous BLE stream with the gun armed and listening
+before, during and after the transition, not a thin IR capture window that could plausibly have missed a word
+that was actually there. **Design consequence:** a node can tell "captured from neutral" apart from "stolen
+from an enemy" purely from whether `mag=53` shows up — which is exactly the distinction native needs to pick
+between callouts. And it reconfirms the capture-timing rule above: a node must fire on `mag=50` alone and never
+wait for `mag=53`, because on an enemy-to-enemy capture it never arrives at all.
 
 ⚠️ **A hosted game sees none of this unless we ship a protocol-15 `$SIR` row** — the firmware discards an
 unmatched cell in silence, which is why "station words do nothing in a host-driven game" (B23). One row makes
