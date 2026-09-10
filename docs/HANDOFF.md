@@ -8,10 +8,11 @@
 - ⭐ **THE GRENADE IS A WORKING CONTROL POINT (2026-09-10, F70).** Hill beacons `proto=15 team=<owner> mag=8`
   every ~5 s, **neutral is team 2**, shoot a neutral one to claim it. Hosted games read it with a `$SIR`
   proto-15 row **plus** an `engine.js` fix (F72) — a shortcut to K1. 🔴 **F69: it also emits a `proto=0 mag=8`
-  damage word our standard row applies in full**, killing the operator in ~106 s with nothing naming the cause
-  — and until 2026-09-10 **crediting the hill's owner with the kill** (wire 0; nothing enforced A5.1's "wire 0
-  is never a player"). Guarded in `modes/base.py`; **the damage is still live**. ✅ **Capture is CHARGE and any
-  weapon takes a point** (F70); ⚠ the CURRENCY is magnitude on n=1 and F76 contradicts it. `bench-grenade.md`.
+  damage word our row applies in full**, killing the operator in ~106 s, and it **credited the hill's owner with
+  the kill** until 2026-09-10. Guarded in `modes/base.py` at the cost of **F80** (a gun whose `$PSET` never
+  landed also sends wire 0 and now scores nothing — fix at arm time). **Damage still live; F81: the victim's
+  phone names the WRONG team as killer.** ✅ **Capture is CHARGE, any weapon, attacker wins ties** (F70);
+  🟠 what charge is PRICED IN is not settled — the magnitude trial is confounded and F76 disagrees.
 - ⭐⭐ **SIMULATED RECOIL IS REAL AND OURS TO DRIVE (2026-09-09, F46 closed).** `$WEAP` **t21 = accuracy
   ceiling · t22 = floor · `$ALCD` tok2 = live accuracy**; falls in five steps toward the floor, races a native
   recovery (**t14 sets how hard it bites**), resets on reload, and below the ceiling a shot emits **IR magnitude
@@ -109,9 +110,8 @@
 
 ## Next actions
 
-1. **Hear A15.3 on a gun** (10 min, one tagger + emitter): ARM, spawn/respawn a few times, take rifle and
-   BIG HIT (80) hits. Confirm the scream changes per life, the spawn line varies, short vs long pain match
-   the damage, and a kill draws from the 5 takes.
+1. **Hear A15.3 on a gun** (10 min, tagger + emitter): ARM, respawn, take rifle and BIG HIT (80) hits. Scream
+   changes per life? spawn line varies? pain length matches damage? kill draws from the 5 takes?
 2. **Build and ship an APK carrying A16 + A17** (0.1.7 predates both). Until it ships, none of the LED work
    or the hit audio reaches a player, and the legacy `headset.carrier` key cannot be deleted (S10).
 3. **LED design DECIDED (2026-09-09)**: partial-level blink stays, healing gets no opening beat. Do not re-open.
