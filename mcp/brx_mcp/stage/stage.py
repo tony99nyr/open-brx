@@ -1296,8 +1296,16 @@ class GunStage:
         # into range is not a capture: it is silent.
         announce = (prev_owner != owner_team) if magnitude == HILL_CAPTURE_MAG else (
             fresh and prev_owner is not None and prev_owner != owner_team)
+        # `from_neutral` is DERIVED on an owner change, never inherited -- mirrors engine.js, which carried
+        # `prev.from_neutral` through this path until 2026-09-10, so every later owner adopted via the
+        # "we missed the capture word" route still claimed it took the point from nobody. `modes/hillbeacon.py`
+        # splits its callouts on this field and derives it independently, so a leak makes MC disagree with
+        # the phone about the same capture.
+        same_owner = prev_owner == owner_team
         self.hill = {"owner": owner_team, "at": now,
-                     "from_neutral": False if magnitude == HILL_CAPTURE_MAG else (bool(prev["from_neutral"]) if prev else False)}
+                     "from_neutral": False if magnitude == HILL_CAPTURE_MAG
+                     else (bool(prev["from_neutral"]) if prev else False) if same_owner
+                     else prev_owner == HILL_NEUTRAL_TEAM}
         if announce:
             kind = self._hill_callout(prev_owner, owner_team)
             if kind and self._hill_audio_on():

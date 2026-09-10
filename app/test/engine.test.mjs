@@ -143,6 +143,46 @@ const nWrites = (h, f) => h.writes.filter(x => x === f).length;
 function run(h, ms, step = 250) { const n = Math.round(ms / step); for (let i = 0; i < n; i++) { h.adv(step); h.eng.tick(); } }
 function koth() { const h = harness({ mode: 'koth' }).kit().config_().echo().start(0); h.adv(10); h.eng.tick(); return h; }
 
+test('hill: from_neutral is DERIVED on an owner change, never inherited from the previous owner', () => {
+  // Found 2026-09-10 while porting this logic to the bench stage. `from_neutral` used to carry
+  // `prev.from_neutral` through the plain-beacon path, so once a point had been taken FROM NEUTRAL every
+  // later owner adopted via the "we missed the capture word" route still read `from_neutral: true` --
+  // claiming they took it from nobody when they in fact stole it from a team.
+  //
+  // Not cosmetic: `mcp/brx_mcp/modes/hillbeacon.py` splits its callouts on this field and derives the same
+  // fact independently (`from_neutral = previous == NEUTRAL`), so a leak here makes MC and the phone
+  // disagree about the same capture.
+  const h = koth();
+  h.frame('$HIR,4,15,0,2,8,0,0,*');             // neutral holds it
+  h.adv(50);
+  h.frame('$HIR,4,15,0,1,50,0,0,*');            // we take it: mag 50
+  h.adv(5000); h.eng.tick();
+  h.frame('$HIR,4,15,0,1,53,0,0,*');            // mag 53 lands 5 s later: it WAS neutral
+  assert.equal(h.eng.state().hill.from_neutral, true, 'a capture from neutral is confirmed by mag=53');
+
+  // Now RED takes it off us, and we only ever see the plain beacon (the mag=50 never reached us).
+  h.adv(5000); h.eng.tick();
+  h.frame('$HIR,4,15,0,0,8,0,0,*');
+  const st = h.eng.state().hill;
+  assert.equal(st.owner, 0, 'red owns it now');
+  assert.equal(st.from_neutral, false,
+    'red STOLE it from us -- inheriting the earlier true would claim red took it from nobody');
+});
+
+test('hill CONTROL: a plain beacon that changes nothing keeps from_neutral, so the fix did not just zero it', () => {
+  // The companion to the test above: "false" must not be satisfied by an engine that clears the field on
+  // every beacon. A heartbeat naming the SAME owner has to preserve what we already knew.
+  const h = koth();
+  h.frame('$HIR,4,15,0,2,8,0,0,*');
+  h.adv(50);
+  h.frame('$HIR,4,15,0,1,50,0,0,*');
+  h.adv(5000); h.eng.tick();
+  h.frame('$HIR,4,15,0,1,53,0,0,*');            // confirmed: from neutral
+  h.adv(5000); h.eng.tick();
+  h.frame('$HIR,4,15,0,1,8,0,0,*');             // a plain heartbeat, same owner, changes nothing
+  assert.equal(h.eng.state().hill.from_neutral, true, 'an unchanged owner keeps what we already knew');
+});
+
 test('hill: the possession tick plays once a second while MY team holds a fresh point', () => {
   const h = koth();
   h.frame('$HIR,4,15,0,1,8,0,0,*');            // blue (us) holds it

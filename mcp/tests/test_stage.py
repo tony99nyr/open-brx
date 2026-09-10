@@ -1553,6 +1553,43 @@ def test_mag_53_refreshes_presence_but_never_writes_its_team_into_the_owner():
     asyncio.run(go())
 
 
+def test_from_neutral_is_derived_on_an_owner_change_and_never_inherited():
+    """The bug this port FOUND, fixed on both sides 2026-09-10.
+
+    `engine.js` carried `prev.from_neutral` through the plain-beacon path, so once a point had been taken
+    from neutral, every LATER owner adopted via the "we missed the capture word" route still read
+    `from_neutral: True` -- claiming it took the point from nobody when it stole it from a team. Not
+    cosmetic: `modes/hillbeacon.py` splits its callouts on this field and derives the same fact
+    independently, so a leak makes MC and the phone disagree about the same capture.
+    """
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        await in_play(st)
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:3])       # neutral -> us, with the mag-53 confirmation
+        assert st.hill["from_neutral"] is True, "mag 53 confirms we took it from neutral"
+        # now RED takes it off us and only the plain beacon reaches us (the mag=50 never arrived)
+        clock.advance(5.0)
+        await feed(st, mgr, clock, [(0, "$HIR,4,15,0,0,8,0,0,*")])
+        assert st.hill["owner"] == 0, "red owns it now"
+        assert st.hill["from_neutral"] is False, \
+            "red STOLE it from us -- inheriting the earlier True would claim red took it from nobody"
+    asyncio.run(go())
+
+
+def test_a_heartbeat_that_changes_nothing_keeps_from_neutral():
+    """Control for the test above: `False` must not be satisfied by a stage that clears the field on every
+    beacon. A heartbeat naming the SAME owner has to preserve what we already knew."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        await in_play(st)
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:3])
+        assert st.hill["from_neutral"] is True
+        clock.advance(5.0)
+        await feed(st, mgr, clock, [(0, "$HIR,4,15,0,1,8,0,0,*")])   # same owner, changes nothing
+        assert st.hill["from_neutral"] is True, "an unchanged owner keeps what we already knew"
+    asyncio.run(go())
+
+
 def test_a_respawn_station_beacon_never_refreshes_a_hill_window():
     """F84, three times in one day: only a magnitude-8 HILL beacon refreshes presence. A respawn
     station's ~2.5 s mag-6 beacon would otherwise keep a 12 s window permanently fresh and a hill

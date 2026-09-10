@@ -1168,7 +1168,20 @@ export class Engine {
     // still fresh. Once presence has expired we were not watching, and adopting an owner on walking back
     // into range is not a capture: it is silent.
     const announce = magnitude === HILL_CAPTURE_MAG ? prevOwner !== ownerTeam : (fresh && prevOwner != null && prevOwner !== ownerTeam);
-    this.hill = { owner: ownerTeam, at: now, from_neutral: magnitude === HILL_CAPTURE_MAG ? false : (prev ? !!prev.from_neutral : false) };
+    // `from_neutral` is DERIVED on an owner change, never inherited. It used to carry `prev.from_neutral`
+    // through the plain-beacon path, so once a point had been taken from neutral, every LATER owner adopted
+    // via "we missed the capture word" still read `from_neutral: true` — claiming they took it from nobody
+    // when they stole it from a team. Found 2026-09-10 porting this to the bench stage, and it is not
+    // cosmetic: `modes/hillbeacon.py` splits its callouts on this field, and it computes the same fact
+    // independently (`from_neutral = previous == NEUTRAL`), so a leak here makes MC and the phone disagree
+    // about the same capture. A `mag=50` stays false until its `mag=53` confirms otherwise (that word
+    // arrives ~5 s later, or never on an enemy-to-enemy capture); a heartbeat that changes nothing keeps
+    // what we had; an owner CHANGE reads the previous owner, which is the only honest source.
+    const sameOwner = prevOwner === ownerTeam;
+    this.hill = { owner: ownerTeam, at: now,
+      from_neutral: magnitude === HILL_CAPTURE_MAG ? false
+                  : sameOwner ? (prev ? !!prev.from_neutral : false)
+                  : prevOwner === HILL_NEUTRAL_TEAM };
     if (announce) {
       const kind = this._hillCallout(prevOwner, ownerTeam);
       if (kind && this._hillAudioOn()) this._hillSay(kind, magnitude === HILL_CAPTURE_MAG
