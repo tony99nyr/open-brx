@@ -26,6 +26,8 @@ class DeathmatchEngine(ScoredEngine):
         self._last_shot: dict[str, tuple[int, float]] = {}  # victim_id → (shooter team, when)
         self._ffa = (config.mode == "ffa")
         self._last_damage: dict[str, float] = {}   # player_id → time last hit (for regen)
+        self._last_pools: dict[str, int] = {}      # player_id → hp+armor+shield, to tell a real
+                                                   # hit from a bare $HP echo (hill beacons emit one)
         self._regenerated: set[str] = set()        # players already refilled this idle
         # B18 killstreak/multikill announcer — fires only where a SPECIFIC killer gun
         # is resolved (FFA / unique team). Sound ids come from config if present.
@@ -50,9 +52,18 @@ class DeathmatchEngine(ScoredEngine):
         if hv is not None:
             if hv[0] == 0 and p.alive:                 # $HP,0 = died
                 return self._handle_death(player_id, now)
-            # a non-fatal $HP = took damage → (re)start the regen idle timer
-            self._last_damage[player_id] = now
-            self._regenerated.discard(player_id)
+            # A non-fatal $HP is NOT automatically damage (bench 2026-09-10). A grenade hill
+            # beacon registering through a protocol-15 $SIR row emits $HIR + $HP every ~5.0 s
+            # with pools UNCHANGED — and regen_delay_s is 6.0. Resetting the idle timer on the
+            # frame's arrival meant the delay never elapsed, so **anyone standing in a hill
+            # never regenerated, for the whole match**. Same shape as F69: a constant wider
+            # than the hill's period. Damage is a DROP in the pools, so measure the drop.
+            total = sum(hv)
+            prev = self._last_pools.get(player_id)
+            self._last_pools[player_id] = total
+            if prev is None or total < prev:
+                self._last_damage[player_id] = now
+                self._regenerated.discard(player_id)
         return []
 
     def _handle_death(self, victim_id: str, now: float) -> list[Action]:

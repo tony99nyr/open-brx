@@ -321,7 +321,12 @@ def is_death(ev: dict) -> bool:
 
 def hp_values(ev: dict) -> Optional[tuple[int, int, int]]:
     """($HP,<hp>,<armor>,<shield>) → (hp, armor, shield), or None if not an $HP.
-    An $HP is only emitted when the gun is HIT — so it's the 'took damage' signal."""
+
+    ⚠ **An `$HP` is NOT a 'took damage' signal, and treating it as one is a live bug.** It is
+    emitted on every REGISTERED IR word, damaging or not. Measured 2026-09-10 on hardware: a
+    grenade hill beacon registering through a `$SIR,15,0,,28` row emits `$HIR` **and** `$HP`
+    every ~5 s with the pools completely unchanged. Callers that want "took damage" must compare
+    the pools against the previous reading, not merely observe that a frame arrived."""
     if ev.get("command") != "HP":
         return None
     t = ev.get("tokens", [])

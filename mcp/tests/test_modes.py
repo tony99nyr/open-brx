@@ -89,6 +89,57 @@ def test_a_real_shot_still_scores_when_a_hill_is_also_ticking():
     assert _types(acts, Score)
 
 
+def hill_beacon_pair(owner_team=2, hp=45, armor=70):
+    """The exact pair a hill puts on a gun's BLE stream every ~5.0 s, captured 2026-09-10.
+
+    A `$SIR,15,0,,28` row makes the beacon REGISTER (that is the point — the host can read it),
+    and a registration emits `$HIR` **and** `$HP` even though no pool moved.
+    """
+    return ({"command": "HIR", "tokens": ["HIR", "4", "15", "0", str(owner_team), "8", "0", "0"]},
+            {"command": "HP", "tokens": ["HP", str(hp), str(armor), "0"]})
+
+
+def test_standing_in_a_hill_does_not_block_health_regen():
+    """A hill beacons every ~5.0 s and `regen_delay_s` is 6.0.
+
+    The engine used to restart the regen idle timer on any non-fatal `$HP`, on the premise that
+    "an $HP means you were hit". A beacon's `$HP` echo carries UNCHANGED pools, so that premise
+    made `now - last_damage` reset every 5 s and never reach 6 — **a player standing in a hill
+    never regenerated, for the entire match**, in any regen mode. Nothing damaged them; the
+    objective's own heartbeat did it. Same shape as F69: a constant wider than the hill's period.
+
+    Damage is a DROP in the pools, so the control below matters as much as the assertion: a real
+    hit must still suppress regen, or "regen works" would be satisfied by an engine that ignores
+    damage entirely.
+    """
+    hir, hp_echo = hill_beacon_pair()
+    e = DeathmatchEngine(GameConfig(mode="tdm", game_time_s=0, regen=True))
+    e.add_player("red", 1)
+    e.add_player("blue", 2)
+    e.on_event("red", hp_echo, now=0.0)                 # a genuine hit lands at t=0
+    heals = []
+    for i in range(1, 13):                              # 60 s parked on the point
+        t = i * 5.0
+        e.on_event("red", hir, now=t)
+        e.on_event("red", hp_echo, now=t)               # pools never move
+        heals += [a for a in e.tick(t + 0.1) if isinstance(a, Heal)]
+    assert heals, "the beacon's $HP echo suppressed regen for the whole match"
+
+
+def test_a_real_hit_still_suppresses_regen():
+    """Control for the test above: pools that actually DROP must still restart the idle timer."""
+    e = DeathmatchEngine(GameConfig(mode="tdm", game_time_s=0, regen=True))
+    e.add_player("red", 1)
+    e.add_player("blue", 2)
+    e.on_event("red", hp(45, 70), now=0.0)
+    heals = []
+    for i in range(1, 13):                              # taking a real hit every 5 s
+        t = i * 5.0
+        e.on_event("red", hp(45, 70 - i * 5), now=t)    # armour genuinely falling
+        heals += [a for a in e.tick(t + 0.1) if isinstance(a, Heal)]
+    assert not heals, "regen fired while the player was still being shot"
+
+
 def test_tdm_no_score_for_friendly_or_grenade():
     e = DeathmatchEngine(GameConfig(mode="tdm", game_time_s=0))
     e.add_player("red", 1)

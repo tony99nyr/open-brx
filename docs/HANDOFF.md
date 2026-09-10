@@ -82,24 +82,24 @@
   2.0 port is done. `~/.brx-mcp/armory.json` is never in git (headset PINs); stickers stay out of
   docs, use `Tactix-XXXX`.
 
-## What changed since the last handoff (2026-09-07 to 2026-09-09)
+## What changed since the last handoff (2026-09-09 to 2026-09-10)
 
-- **⭐ The manual website was rebuilt around edit cost, 2026-09-09.** The block DSL is gone: 21 block
-  types, 1,524 badge glyphs, ~700 `src:` citations and 54 KB of unused image prompts deleted; 74 pages
-  became 9; the generator went 1,009 → 233 lines and the Playwright gate 779 → 146. Three defects the
-  complexity was causing are fixed: the markdown twins had been losing their table headers (12 tables,
-  and the twins are what `llms.txt` serves), a no-op rebuild dirtied four files with a timestamp, and
-  the published sound data was being enriched by scraping manual prose by column name. `07-platform.md`
-  went from 528 lines of positioning to a 74-line page; the architecture tables it used to carry moved
-  into `docs/architecture-topology.md`, which is internal. Every published `$` command in the developer
-  reference survived (checked by set-diff; the 16 that vanished were all in the unpublished backlog).
-  ⚠ **NINE guards could not see their own fault**, all one shape: read the artefact, never exercise
-  the behaviour. Worst was the gate having ONE viewport, which made half its phone assertions
-  unfalsifiable. Two were fixes for earlier ones on the same list. Every guard in `site/` has now
-  been broken on purpose and observed failing; see the 2026-09-09 (late) log entry.
-
-- **Repo hygiene, 2026-09-07:** ONE repo; history purged (93 → 28 MB, every SHA changed). If a clone still
-  predates it, `git fetch && git reset --hard origin/main`. Detail in `archive/handoff-history.md`.
+- **⭐ Hosted hill audio proven end to end; `$SIR` fn 28's caveat resolved (2026-09-10 evening, rung S).**
+  Every hosted objective callout confirmed BY EAR at `$VOL,80`: `VA21/22/23`, `VA93` and the
+  **preferred `VB0N/O/P/Q` set** (one Halo-style announcer, capture/contest/lost/moved) play as
+  catalogued. `V8Q` was catalogued "Hill Confirmed" but says **"Kill Confirmed"** — a one-letter
+  transcript error that filed a kill-feed line under `voice:objective_hill`; fixed at source in
+  `soundbank_classify.py`'s `BY_EAR_CORRECTIONS`, not the generated JSON. Then `$SIR,15,0,,28,0,0,1,,*`
+  against the **real grenade** beaconed as `$HIR,4,15,0,2,8,0,0`, 20+ beacons, period 5.0 s, no drift —
+  **fn 28 confirmed on protocol 15 with a real beacon**, closing the "only measured in the ESP32 rig's
+  `<5,0>`" caveat. ⚠ Capture (a beacon flipping team under a real shot) is still unproven — the gun was
+  armed to receive only, no `$WEAP`, so it could not fire.
+- **✅ F84: a hidden regen bug, found and fixed the same session.** `deathmatch.py` restarted the regen
+  idle timer on ANY non-fatal `$HP`, wrongly treating arrival as damage — a hill beacon emits `$HP` every
+  ~5 s with pools unchanged, and `regen_delay_s` is 6.0, so **anyone standing in a hill never regenerated,
+  in any regen mode** (60 s in a hill = 0 heals vs 1 heal outside). Same shape as F69's `ATTRIB_FUSE_S`: a
+  host constant wider than the hill's period never expires. Fixed by measuring the pools' DROP
+  (`_last_pools`), covered by two new tests. `engine.js` already had this right; the Python engine did not.
 
 - **LEDs, the three facts from A16 parts 1+2 that still bite** (full block moved to
   [`archive/handoff-history.md`](archive/handoff-history.md) 2026-09-09, now that A16 is verified):

@@ -6,8 +6,9 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F83 · G11 · H7 ·
-K7 · P18 · Q20 · R3 · S18.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F85 · G11 · H7 ·
+K7 · P18 · Q20 · R3 · S18.** (2026-09-10 evening: F83/F84 taken — rotating-hill mode idea and the "constant wider
+than the hill's period" generalisation.) (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
 **Blocked on:** `trigger` · `eyes` · `ears` · `space` · `grenade` · `capture` · `decision` · `build`.
@@ -807,6 +808,26 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   the phone fix is not simply "drop the latch" — it is "say the killer is unknown when the shooter has no
   identity". The engine half (latch + the `hit_taken` fact) is ours; **the DOWN-screen copy belongs to the
   brx-hud session** and should be handed over rather than guessed at. `build`.
+- **F83 🟢 A ROTATING-HILL MODE IS BUILDABLE, AND THE GRENADE ALREADY SUPPORTS IT.** Tony's suggestion, bench
+  2026-09-10 evening: `VB0Q` "Hill Moved" is a real hosted callout (confirmed by ear, rung S) that is only
+  meaningful when the live point can change — several grenades set to HILL, with the node choosing which one
+  is currently "hot" and reading only that beacon (or all of them and scoring the one the node has picked).
+  Nothing hardware-side blocks it: each grenade beacons independently on its own `proto=15` cell, so the node
+  already has one wire per point and just needs the rotation logic and the `VB0Q` transition wired to it.
+  Not scoped or bench-tested; a new mode idea, not a finding. `build`.
+- **F84 🟠 A HOST CONSTANT WIDER THAN AN AMBIENT EMITTER'S PERIOD NEVER EXPIRES — THIS IS THE THIRD TIME IN ONE
+  DAY.** Bench 2026-09-10 evening. Two independent bugs, same shape, found hours apart: `ATTRIB_FUSE_S` (6.0 s)
+  kept hill-kill attribution permanently fresh against the hill's ~5 s beacon (F69's attribution half), and
+  `regen_delay_s` (6.0 s) meant `deathmatch.py` restarting the regen idle timer on *every* `$HP` — including the
+  hill's zero-damage echo — never let `now - last_damage` reach 6, so **a player standing in a hill never
+  regenerated, for the whole match, in any regen mode** (60 s in a hill = 0 heals; 60 s outside = 1 heal).
+  Fixed by measuring the pools' actual DROP rather than treating a frame's arrival as damage
+  (`mcp/brx_mcp/modes/deathmatch.py`, `_last_pools`; tests `test_standing_in_a_hill_does_not_block_health_regen`
+  + `test_a_real_hit_still_suppresses_regen`). **The generalisation, not yet acted on:** any timer or fuse in
+  `mcp/brx_mcp/` that is wider than ~5 s and resets on a frame's mere arrival (rather than on what the frame
+  MEANS) will silently never fire once a hill or station is in play, because that is now the shortest ambient
+  period on the wire. Audit every time constant in `mcp/brx_mcp/` against the 5 s hill period as a required
+  check for every future objective, not only the two caught by hand this session. `build`.
 - **F77 🟠 A REPLAYED HIT IS INDISTINGUISHABLE FROM A REAL ONE, AND BOTH SCORE.** F74's phantom loop
   (a gun replaying `$HIR`+`$HP` every 5.07 s with no IR in the air) reaches the scoring path unchallenged:
   `engine.js:1514` gates `hit_taken` only on `latch.at` being under 1 s old and `dmg > 0`, and
@@ -898,7 +919,12 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   | 24 / 25 / 26 / 27 | ✓ | a long grenade-ish clip (hiss → timer → explosion) | ? | ? |
   | **28** | **✓ ×3** | **none** | **none** | **none** |
   ⭐ **fn 28 is the row to ship on protocol 15**: a node reads the hill beacon every ~5 s and the player feels,
-  hears and sees nothing. ⚠️ **Measured in cell `<5,0>` with the ESP32 rig, NOT on a real beacon.** The whole sweep ran on `$SIR,5,0,,<fn>` with board B's synthetic words — the FF-on registration is `$HIR,0,5,42,1,20`, **protocol 5**, and that `team=1` is what board B transmitted, not a hill owner. Nobody has loaded `$SIR,15,0,,28` or watched a real ally beacon register. The function id is very likely the effect and the cell only the key, but **that is the assumption, not the measurement** — confirm it with the grenade before shipping (rung F73-b).
+  hears and sees nothing. ✅ **CONFIRMED on a real beacon, protocol 15, bench 2026-09-10 evening (rung F73-b
+  closed).** The original sweep ran fn 28 only in cell `<5,0>` with the ESP32 rig's synthetic words, so
+  "ship it on protocol 15" was an assumption. Armed a gun for real with `$SIR,15,0,,28,0,0,1,,*` against the
+  live grenade: the beacon arrived as `$HIR,4,15,0,2,8,0,0` (sensor 4, protocol 15, neutral team 2, mag 8 =
+  hill), 20+ consecutive beacons, period 5.0 s, no drift, zero misses. **The cell is the key, the function is
+  the effect — holds on real hardware, not only the rig's cell `<5,0>`.**
   **Polarity, both directions measured.** fn 28 is **enemy-only** under `$GSET` t1=0 (three ally words → zero
   registrations, silently rejected). With **`$GSET` t1=1** the gate lifts: the same ally words registered
   `$HIR,0,5,42,**1**,20` ×3, **owner in the team field**. So:

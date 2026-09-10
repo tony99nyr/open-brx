@@ -89,6 +89,24 @@ KNOWN_USES = {
     "U16": "tick used for the pre-game runway (provisional)",
 }
 
+# --------------------------------------------------------------------------- #
+# BY-EAR CORRECTIONS: where the Whisper transcript is WRONG.                   #
+#                                                                             #
+# These live here, in the generator, and NOT as a hand-edit to the generated   #
+# JSON -- that would be silently reverted the next time anyone re-runs this    #
+# script, which is exactly how a fixed bug comes back.                        #
+#                                                                             #
+# A wrong transcript is not cosmetic. `V8Q` was catalogued "Hill Confirmed",   #
+# says "KILL Confirmed", and was filed under voice:objective_hill -- so a hill #
+# mode picking callouts BY CATEGORY would have shipped a kill-feed line as a   #
+# hill announcement. One letter, and the classifier propagated it into the     #
+# category. Heard 2026-09-10, bench rung S.                                    #
+# --------------------------------------------------------------------------- #
+BY_EAR_CORRECTIONS = {
+    # id: (heard transcript, corrected category)
+    "V8Q": ("Kill Confirmed", "voice:kill_confirm"),
+}
+
 # --- announcer intents, first match wins ----------------------------------------- #
 INTENTS = [
     ("countdown",       r"^(three,? two,? one\.?|10,? 9|ten,? nine)"),
@@ -237,6 +255,14 @@ def main():
             if t:
                 entry["speech_untrusted"] = t
         entry["shape"] = {k: r.get(k) for k in ("envelope", "flatness", "centroid_hz", "onset_rate_hz", "pitch_hz", "rms_db", "attack_s")}
+        if r["id"] in BY_EAR_CORRECTIONS:
+            heard, cat = BY_EAR_CORRECTIONS[r["id"]]
+            entry["heard"] = heard
+            entry["description"] = heard
+            entry["transcript"] = heard
+            entry["category"] = cat
+            entry["verified_by_ear"] = True
+            entry["speech_untrusted"] = f"Whisper heard: {(r.get('speech') or {}).get('text', '')}"
         if r["id"] in KNOWN_USES:
             entry["known_use"] = KNOWN_USES[r["id"]]
         v = audit.get(r["id"])

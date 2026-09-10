@@ -8,6 +8,26 @@ notes, environment, hardware facts) as they were on 2026-09-04.
 
 ---
 
+> ## What changed 2026-09-07 to 2026-09-09 (archived 2026-09-10 when HANDOFF rolled over)
+>
+> - **⭐ The manual website was rebuilt around edit cost, 2026-09-09.** The block DSL is gone: 21 block
+>   types, 1,524 badge glyphs, ~700 `src:` citations and 54 KB of unused image prompts deleted; 74 pages
+>   became 9; the generator went 1,009 → 233 lines and the Playwright gate 779 → 146. Three defects the
+>   complexity was causing are fixed: the markdown twins had been losing their table headers (12 tables,
+>   and the twins are what `llms.txt` serves), a no-op rebuild dirtied four files with a timestamp, and
+>   the published sound data was being enriched by scraping manual prose by column name. `07-platform.md`
+>   went from 528 lines of positioning to a 74-line page; the architecture tables it used to carry moved
+>   into `docs/architecture-topology.md`, which is internal. Every published `$` command in the developer
+>   reference survived (checked by set-diff; the 16 that vanished were all in the unpublished backlog).
+>   ⚠ **NINE guards could not see their own fault**, all one shape: read the artefact, never exercise
+>   the behaviour. Worst was the gate having ONE viewport, which made half its phone assertions
+>   unfalsifiable. Two were fixes for earlier ones on the same list. Every guard in `site/` has now
+>   been broken on purpose and observed failing; see the 2026-09-09 (late) log entry.
+> - **Repo hygiene, 2026-09-07:** ONE repo; history purged (93 → 28 MB, every SHA changed). If a clone
+>   still predates it, `git fetch && git reset --hard origin/main`.
+
+---
+
 > ## 2026-09-07 (archived 2026-09-09 when HANDOFF rolled over)
 >
 > - **⭐ Python reviewed + deduped, 2026-09-07.** Suite 809 → **1020 passed / 0 failed / 46 skipped / 78 files** under system

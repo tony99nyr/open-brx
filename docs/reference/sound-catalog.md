@@ -125,7 +125,7 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | V113 | 2.1 | clock | One minute left. |
 | V114 | 1.1 | clock | 10 seconds! |
 | V115 | 2.9 | game_over | NEXT KILL WINS! |
-| V116 | 1.3 | line | Can't believe! |
+| V116 | 1.3 | line | gained the lead |
 | V117 | 1.1 | lead | lost the lead. |
 | V118 | 1.6 | game_over | Victory! |
 | V119 | 2.1 | game_over | Closing in on victory! |
@@ -1065,7 +1065,7 @@ The `$PSET` voice tail is six of these slots (death scream · boast · pain ×3 
 | V8N | 1.0 | line | Target locked. |
 | V8O | 0.7 | line | patched up |
 | V8P | 1.0 | kill_confirm | Kill confirmed. |
-| V8Q | 1.2 | objective_hill | Hill Confirmed |
+| V8Q | 1.2 | kill_confirm | Kill Confirmed |
 | V8R | 1.1 | kill_confirm | Kill confirmed. |
 | V8S | 1.0 | kill_confirm | All clear. |
 | V8T | 1.2 | kill_confirm | All clear. |

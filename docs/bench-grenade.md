@@ -52,17 +52,37 @@ grenade, or have the shooter fire across the receiver's view. ⚠ **Any word tha
 has been invisible to every capture ever taken**, which is exactly where F75's "hit but not captured" signal
 would hide. Gates B and F75.
 
-**S. Prove the hosted callouts by EAR (5 min, one gun, no grenade needed).**
-**CANDIDATE** ids, found by catalog search — which proves the FILES are on the gun, not that native play uses
-them, and this rung's own warning below says the catalog transcripts are untrusted. Treat every id here as a
-guess until it is heard:
-`VA23` "Control Point Captured." · `VA22` "Control Point Lost." · `VA21` "Control Point Contested." ·
-`V8Q` "Hill Confirmed" · `VA93` "King of the hill!" · `V108` the full KotH intro.
-Drive a scripted hill sequence to a connected gun with `$PLAY,<id>,4,6,,,,,*` — capture, a held-tick loop, a
-contested callout, then lost — and confirm by ear that a hosted game sounds like the native one. ⚠ The catalog's
-transcripts are **untrusted** (`V116` is catalogued "Can't believe!" and says "gained the lead"), so this run is
-also the audition that confirms each id. Pick the tick from `fx:ui_beep` (`U100`/`U104` are ~0.1 s, right for a
-5 s cadence).
+**S. ✅ ANSWERED 2026-09-10 (evening) — every hosted callout confirmed BY EAR, one catalogue entry was wrong.**
+Driven over BLE at `$VOL,80` (one gun, `Tactix-E20D`, no grenade needed):
+
+| id | catalogued | actually heard | verdict |
+|---|---|---|---|
+| `VA23` | "Control Point Captured." | as catalogued | ✅ |
+| `VA22` | "Control Point Lost." | as catalogued | ✅ |
+| `VA21` | "Control Point Contested." | as catalogued | ✅ |
+| `VA93` | "King of the hill!" | as catalogued | ✅ |
+| **`V8Q`** | **"Hill Confirmed"** | **"KILL Confirmed"** | 🔴 **wrong** |
+| `VB0N/O/P/Q` | Hill Captured / Contested / Lost! / Moved | as catalogued | ✅ **preferred** |
+| `U100`, `U104` | ui ticks | both tick; U100 more clock-like | ✅ `U100` chosen |
+
+`V8Q` was filed under `voice:objective_hill` off its Whisper transcript, so a hill mode picking callouts BY
+CATEGORY would have announced "Kill Confirmed" when someone took a point. Fixed at source in a new
+`BY_EAR_CORRECTIONS` table in `mcp/tools/soundbank_classify.py` — **that table is the source of truth for
+`V8Q` now, not a hand-edit to the generated catalog**, which the next regeneration would silently revert.
+Tony's preference, unprompted: the **`VB0*` set** ("like the Halo announcer, and they have dramatic music"),
+one female objectives announcer covering all four states, over the three male "Control Point" lines. `VB0Q`
+"Hill Moved" is only meaningful in a rotating-hill mode (several grenades, node picks which is live) — see
+FOLLOWUPS F83.
+
+The full chain was then proven live on real hardware: armed by hand with `$SIR,15,0,,28,0,0,1,,*`, `$GSET`
+t1=1 and `$TID,1` (not 2 — neutral broadcasts team 2, F82). The beacon arrived as `$HIR,4,15,0,2,8,0,0`,
+20+ consecutive beacons, period 5.0 s, no drift, zero misses — grenade beacons, gun registers silently, host
+reads it over BLE, host plays the cue.
+
+⚠ **The CAPTURE half is still unproven end to end.** Tony could not fire during this run — the gun was armed
+to RECEIVE but carried no `$WEAP`, so its magazine was 0. A live capture (beacon team flipping under a real
+shot, callout driven by the transition) remains untested. **A receive-only arm cannot shoot; include a
+`$WEAP` row with ammo when this rung is repeated to prove capture.**
 
 **F75. Does a non-capturing hit emit anything?** In a NATIVE game, stand in an enemy hill and deliberately MISS.
 Still says "contested" ⇒ native infers it too and we lose nothing. Silent ⇒ there is a hit word, and B0's
