@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F76 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F77 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S18.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -748,6 +748,17 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   24 is enemy-only, so a gun sees only hills it does NOT own unless `$GSET` t1 = 1; decide how to read your own
   point. ⚠ And pick the row's `<soundID>` deliberately: a hit lands every 5 s for as long as anyone stands
   there. `build`.
+- **F76 🟡 The reference page's per-weapon capture counts contradict the bench.** `reference/grenade.md`'s King
+  of the Hill section says retaking costs *"at least as many ROUNDS back into it (2-3 rounds to 2-3 magazines
+  depending on weapon; ~4 on an MG, ~10-12 on a shotgun)"*, and that section is labelled hardware-confirmed
+  (exp-log #37). **The 2026-09-10 bench measured the currency as MAGNITUDE** (F70): seeded 1 AR round → retaken
+  with 1; seeded 5 → retaken with 5; seeded 5 (45) → retaken by ONE shotgun shell (70). Under magnitude a shotgun
+  is among the FASTEST capturers; that figure makes it the slowest. **Both cannot be right.** Candidates: the
+  per-weapon counts came from video rather than the bench; or they describe a FULL hill, where a slow-firing
+  weapon takes longer in wall-clock even at high magnitude per round; or magnitude is not the whole story and
+  something weapon-specific also matters. Probe: fill a hill to max from one team, then time and count a retake
+  with an AR versus a shotgun. Until then the reference page says "do not use the per-weapon counts" — the
+  magnitude result has the stronger method (single-variable, `$ALCD`-verified, one round per beacon). `grenade`.
 - **F75 🟡 Does a NON-capturing hit on a grenade emit anything? (native says "contested"; our wire says nothing.)**
   Checked 2026-09-10 across four runs where a hill was shot and did NOT change hands (single rounds into a
   45-charge hill; one shotgun shell): **the only protocol-15 traffic is the ordinary `mag=8` beacon.** The grenade

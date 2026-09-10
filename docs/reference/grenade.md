@@ -172,10 +172,20 @@ you shoot to own. Described here for completeness.)*
 - **King of the Hill (blue):** **starts white/neutral until someone shoots it** (hardware-confirmed, same as
   Respawn — exp-log #37); on capture, all guns announce **"control point captured"**; the grenade
   **emits every ~3–4 s who holds it** (our BLE decode: `$HIR,0,15,0,<team>,8`), so nearby guns know
-  possession. It **charges**: each shot adds
-  charge up to a max; to retake, the other team must fire **at least as many rounds back into it**
-  (2–3 rounds to 2–3 magazines depending on weapon; ~4 on an MG, ~10–12 on a shotgun). The holder has
-  a rapid-refill advantage while defending. Win = possession at time / fully charged.
+  possession. It **charges** — ⭐ **and the currency is MAGNITUDE, not rounds (bench-measured 2026-09-10,
+  F70).** Charge accumulates as the sum of the magnitudes fired into it and the higher total owns the point.
+  Measured from a power-cycled neutral, one round at a time with a beacon read between each and counts confirmed
+  by `$ALCD`: seeded 1 AR round (mag 9) → retaken with **1**; seeded 5 (45) → retaken with **5**; seeded 5 (45) →
+  retaken by **ONE shotgun shell** (mag 70). So a weapon's capture power equals its damage, and **any** weapon
+  can take a point.
+  ⚠️ **This CONTRADICTS the per-weapon round counts below**, which are kept for provenance: *"to retake, the other
+  team must fire at least as many ROUNDS back into it (2–3 rounds to 2–3 magazines depending on weapon; ~4 on an
+  MG, ~10–12 on a shotgun)"*. Under a magnitude model a shotgun is among the FASTEST capturers, not the slowest —
+  the opposite of that figure. Both were labelled hardware-confirmed, so one of them is wrong: either those
+  counts came from video rather than the bench, or they measure something else (a FULL hill, where a slow weapon
+  takes longer in wall-clock even at high magnitude). **Do not use the per-weapon counts** until reconciled; the
+  magnitude result has the stronger method behind it (single-variable, `$ALCD`-verified, beacon-gated).
+  The holder has a rapid-refill advantage while defending. Win = possession at time / fully charged.
 - **A thrown grenade blast on the point instantly captures it 100%** for the thrower's team (full
   charge in one hit) — a deliberate quick-takeover mechanic.
 
