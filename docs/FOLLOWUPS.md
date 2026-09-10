@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F71 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F72 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S18.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -701,10 +701,27 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   07:59:58 and every beacon from 08:00:01 onward read `team=0`, held for ten straight beacons. **Neutral is
   team 2** — which means an earlier capture the same night labelled "hill-neutral" reading `team=1` was in fact
   a hill already OWNED by blue, and any inference from "neutral = team 1" is void.
-  ⚠ **AN OWNED HILL CANNOT BE TAKEN BY SHOOTING IT.** A red gun firing on a blue-held hill changed nothing
-  across a 60 s capture; the identical shot claimed a *neutral* hill on the first round. Hills do not change
-  hands on a hit, so a contest mechanic is missing and any KotH design must supply it (a neutralise step, a
-  dwell, or host-side rules). Power-cycling the grenade returns it to neutral.
+  ⭐ **CAPTURE REQUIRES THE EXTRA-HEADSET WORD — Tony's hypothesis, confirmed with a control 2026-09-10.** An
+  owned hill CAN be taken, but only by a weapon carrying the extra-headset block (`$WEAP` **t1 = 2**, with
+  `t12` extraHeadsetDamage and `t13`/`t42` its own shorter range). Proof, same config and range and session:
+  a **shotgun** (t1=2, t12=70) fired one word — captured on the rig as `proto=0 team=1 **mag=70**`, i.e. the
+  *extraHeadsetDamage* value, not its t5=45 primary — and flipped a RED hill to BLUE, confirmed over 3
+  following beacons. The **AR** (no headset block) then failed to take it back: **4 shots verifiably on the air**
+  (`proto=0 team=0 mag=9` ×4) and **13 beacons after, all still team 1**. Not an aim null. An earlier native
+  weapon at mag 22 had also failed, which is what produced the retracted claim that owned hills are locked.
+  **This is the firmware enforcing "stand on the point"** — the headset emission is deliberately short range
+  (t42 = 30 indoor on the shotgun versus 75 for the gun). ⚠ **Only THREE of our 22 weapons carry it** (shotgun,
+  plasma sniper, rocket launcher), so in a hosted game only those could take an objective — but t1/t12/t13/t42
+  are tokens WE write, so which weapons can capture is a per-weapon, per-mode design decision.
+  Power-cycling the grenade returns it to neutral (team 2).
+- **F71 🟠 The three headset weapons may do far more damage than we publish.** The catalog derives `dmg`, `htk`
+  and `ttk_ms` from `$WEAP` **t5 alone**. But the shotgun's capture word went out at **magnitude 70** = its
+  `t12` extraHeadsetDamage, alongside a t5 of 45 — so at headset range a shotgun may land **115, not 45**, and
+  the rocket (t12=115) and plasma sniper (t12=80) likewise. If so every hits-to-kill number we print for those
+  three is wrong at exactly the range they are built for, and `test_ttk_band` is validating a fiction. Same
+  family as **F23** (damage depends on the sensor). Probe: fire each of the three at a victim at headset range
+  and at gun range, and read the `$HP` delta against t5 and t5+t12. Only ONE word (`mag=70`) decoded on the
+  shotgun shot, so whether the primary goes out too is open — the second half of that burst was undecodable. `trigger`.
   **Original entry:** Bench 2026-09-10, and it
   answers `bench-grenade.md` Q3 ("does a spawned gun in one of our games surface grenade beacons if we give it a
   `$SIR` row for protocol 15?") **YES** -- adding `$SIR,15,0,,24,0,0,1,,*` made the hill beacons appear
