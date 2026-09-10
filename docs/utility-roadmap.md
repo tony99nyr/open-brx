@@ -328,6 +328,44 @@ telling it something we have not captured, and that word is worth finding.
 `$GSET` t1=0 a gun cannot see its own hill at all. The tick and the "hill lost" callout are both impossible
 without it.
 
+### Where the hill audio has to live
+
+**The gun CAN speak on a beacon, but only ONE sound, for ALL beacons.** A `$SIR` row's `<soundID>` field plays
+on the victim when that cell fires — so `$SIR,15,0,<soundID>,28,0,0,1,,*` would make every hill (and respawn)
+beacon audible on the gun with no node involved. The hard limit: **`$SIR` is keyed on `<irProtocol, subtype>`
+alone** — the B/U fields, 4 bits + 2 bits, 64 cells total (`protocol/brx-ir-protocol.md` "the `$SIR` composite
+key"; `protocol/brx-protocol.md` §5). Every captured hill beacon decodes as the same key, `<15,0>` — owner and
+mode ride in the IR word's team/magnitude fields, and **neither is part of the lookup**. One cell, one sound: the
+gun cannot play a different clip for captured / contested / lost / neutral, because it cannot key on any of
+those. The one bit of team-awareness available for free is polarity: under `$GSET` t1=0, fn 28 is enemy-only
+(§5, "Polarity measured both ways on fn 28"), so a gun-native beacon sound would only ever fire for hills you do
+**not** own — the inverse of the tick, which needs to fire while you **do** own it (t1=0 rejects that case
+outright). **Worth flagging as a side effect:** `docs/spec/contracts.md`'s `$PSET` note (also §5) says a
+non-empty `$SIR` `<soundID>` overrides the `$PSET` pool sound on the row that fired — untested for a
+no-pool-change function like 28, but a soundID here is not free of interaction with the rest of the audio table.
+
+**So the four team-aware callouts (`VB0N` Hill Captured, `VB0O` Hill Contested, `VB0P` Hill Lost, `U100` the
+possession tick) are phone work, not gun work** — they need to distinguish four+ states from one wire fact
+(owner) that changes over time, and a single `$SIR` cell cannot hold four sounds. Concretely, the node algorithm:
+
+- Every `$HIR,<sensor>,15,0,<owner>,<mode>,0,0` beacon updates two pieces of state, **`hill_owner`** and
+  **`last_beacon_at`** — nothing plays here directly.
+- A **separate** ~1 s timer checks that state and plays `U100` while `hill_owner == my_team` **and** the beacon
+  is fresh (see the next bullet for "fresh"). This is the only place the possession tick fires from; it is not
+  triggered by the beacon itself, because the beacon only arrives once per ~5 s.
+- **Presence expires after ≥ 2 missed beacons (~12 s)**, not one — `rung R` measured the beacon going
+  intermittent at the edge of range, so a single miss is normal reception, not "left the hill."
+- **Announce a capture on `mag=50` alone.** Never wait for `mag=53` — on an enemy-to-enemy capture it never
+  arrives at all (n=2, settled in `protocol/brx-ir-protocol.md`), so a node gated on both words would simply
+  never announce that class of capture.
+- **`mag=53` present vs. absent is the switch between callouts**: present means the point was neutral (play
+  `VB0N` Hill Captured); absent means it was stolen from an enemy (play `VB0O`/`VB0P` — contested/lost — for the
+  losing/gaining side respectively).
+- ⚠ **Never queue a multi-second audio sequence off a beacon.** F74 proved this gun really does replay long
+  events, and a beacon repeats every 5 s — a 15 s clip fired on three consecutive beacons stacks three deep.
+  `U100` is chosen precisely because it is ~0.1 s and cannot overlap its own 1 s cadence; a capture callout
+  (`VB0N`/`VB0O`/`VB0P`) is a one-shot per transition, not a per-beacon repeat, for the same reason.
+
 **And a mode primitive we did not have: shield the holder.** Both grenade words carry the OWNER's team, and the
 firmware gates by polarity — damage lands only from an enemy, grants only from your own team. So `<0,0>` on fn 1
 punishes challengers while `<15,0>` on a grant function (fn 11/18) shields holders, with the firmware doing the

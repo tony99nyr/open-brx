@@ -93,6 +93,22 @@ also produced: see the 2026-09-10 (evening) log entry and `protocol/brx-ir-proto
 ⚠ **Trap that cost the first pass: a receive-only arm cannot shoot.** Include a `$WEAP` row with ammo whenever
 this rung is repeated.
 
+**Y. ⚠ UNMEASURED — can the GUN itself play the beacon, and does polarity gate it as the docs predict?**
+Reasoning from the protocol docs alone (`protocol/brx-ir-protocol.md`, `protocol/brx-protocol.md` §5) says yes
+to a single fixed sound, gated by `$GSET` t1 — but nobody has armed a gun with a non-empty `<soundID>` on the
+proto-15 row and listened. Grenade set to HILL, gun armed with
+`$SIR,15,0,<someSoundId>,28,0,0,1,,*` (pick a short clip, not a long one — see the F74 warning in
+`docs/utility-roadmap.md` "Where the hill audio has to live"):
+1. **(a) Does it play on every beacon?** Stand in range, listen for the clip every ~5 s.
+2. **(b) `$GSET` t1=1 — does it play regardless of owner?** Confirm it fires whether the gun's team matches the
+   beacon's or not.
+3. **(c) `$GSET` t1=0 — is it enemy-only?** Confirm it plays only when the beacon's owner is NOT the gun's team,
+   and stays silent on your own hill (mirrors the fn-28-silent polarity result, F73, but now with sound).
+4. **Watch for the `$PSET` override side effect** (`protocol/brx-protocol.md` §`$PSET`, point (c)): a non-empty
+   `$SIR` soundID replaces the pool sound on the row that fired. fn 28 is a no-pool-change function, so whether
+   there is even a pool sound to override here is itself part of what this rung settles — note what, if
+   anything, changes about ordinary hit/heal audio while this row is loaded.
+
 **F75. Does a non-capturing hit emit anything?** In a NATIVE game, stand in an enemy hill and deliberately MISS.
 Still says "contested" ⇒ native infers it too and we lose nothing. Silent ⇒ there is a hit word, and B0's
 geometry is what will catch it.
