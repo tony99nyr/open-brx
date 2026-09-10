@@ -33,11 +33,12 @@ steps, about **25 minutes hands-on**, one gun, one grenade, the rig. Tool: `mcp/
 
 Ordered by value per bench-minute. **A-C need one gun; D needs two; E is receiver-only and can run any time.**
 
-**A. Settle F70 — what actually captures a point? (10 min, one gun + rig)**
-Empty a full AR magazine (32 × `mag=9` = 288 of charge) into an OWNED hill. Flips ⇒ capture is **charge** and
-the headset block is irrelevant. Does not flip while one shotgun word does ⇒ the **block** is real. Second
-control: rocket (t1=2, t12=115) against a bolt rifle at comparable magnitude with no block. **This gates every
-objective design**, because it decides whether a rifleman can take a point.
+**A. ✅ DONE 2026-09-10 — capture is CHARGE, any weapon can take a point.** One AR round claimed a neutral
+hill; an AR magazine retook that owned hill inside its first 13 rounds, no extra-headset emission involved. The
+"only three weapons can capture" worry is dead, and a rifleman can play the objective. ⚠ **Left open: the
+exchange rate** — 13 rounds is an upper bound, not a measurement, because beacons only arrive every ~5 s. To
+tune contest difficulty a mode needs charge-per-magnitude and the max: fire *n* rounds, WAIT for a beacon,
+repeat, against hills seeded with known charge.
 
 **B. The missing hill words (15 min, receiver only, then one gun)**
 Respawn has three words: boot (`mag=56`, announces the station and ARMS guns pre-game), beacon (`mag=6`), and

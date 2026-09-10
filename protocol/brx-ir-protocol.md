@@ -49,13 +49,14 @@ grenade claims it, and the very next beacon carries the shooter's team — measu
 `proto=15 team=2 mag=8`, a red gun fires `proto=0 player=5 team=0 mag=22`, and every following beacon reads
 `proto=15 team=0 mag=8`, held for ten beacons.
 
-⚠️ **An owned grenade CAN be retaken, but the mechanism is unsettled (F70).** A shotgun took a red hill with one
-word carrying `mag=70` (its `t12` extraHeadsetDamage, not its `t5` of 45); an AR then failed with four verified
-`mag=9` words on the air. Two explanations fit and were not separated: the extra-headset emission (`$WEAP` t1=2)
-being what captures, or simple CHARGE accumulation, which `docs/reference/grenade.md` already documents ("to
-retake, the other team must fire at least as many rounds back into it"). **Do not cite either as fact.** An
-earlier reading that owned hills cannot be retaken at all is RETRACTED. Power-cycling returns it to neutral
-(team 2).
+✅ **Capture is CHARGE, and ANY weapon can do it (bench 2026-09-10).** Shooting a grenade adds charge; enough
+charge flips it to the shooter's team. Measured end to end: one AR round (`mag=9`) claimed a neutral hill, and an
+AR magazine then retook that owned hill within its first 13 rounds — **with no extra-headset emission involved**.
+This confirms the charge mechanic `docs/reference/grenade.md` already documented, and matches native play, where
+every player captures regardless of weapon. Two earlier readings are RETRACTED: that owned hills cannot be
+retaken at all, and that capture requires the extra-headset word (`$WEAP` t1=2) — a shotgun's one `mag=70` word
+simply out-charged four AR rounds at 36. ⚠ The exchange rate (charge per magnitude, max charge) is unmeasured.
+Power-cycling returns a grenade to neutral (team 2).
 
 ⚠️ **A hosted game sees none of this unless we ship a protocol-15 `$SIR` row** — the firmware discards an
 unmatched cell in silence, which is why "station words do nothing in a host-driven game" (B23). One row

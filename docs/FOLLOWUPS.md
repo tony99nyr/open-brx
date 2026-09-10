@@ -706,32 +706,20 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   07:59:58 and every beacon from 08:00:01 onward read `team=0`, held for ten straight beacons. **Neutral is
   team 2** — which means an earlier capture the same night labelled "hill-neutral" reading `team=1` was in fact
   a hill already OWNED by blue, and any inference from "neutral = team 1" is void.
-  ⚠️⚠️ **AN OWNED HILL CAN BE RETAKEN (that much is solid) — but WHY is NOT settled.** Retracts the earlier
-  claim in this row that owned hills cannot be taken by shooting them.
-  **What was measured 2026-09-10:** a **shotgun** put ONE word on the rig, `proto=0 team=1 mag=70` — the value of
-  its `t12` extraHeadsetDamage, not its `t5` of 45 — and a RED hill became BLUE, held over the following beacons.
-  An **AR** then failed to take it back: 4 shots verifiably on the air (`proto=0 team=0 mag=9` ×4), 13 beacons
-  after, all still team 1. Not an aim null.
-  **Two explanations fit, and they are NOT equally weighted** (sharpened 2026-09-10 after a review pass):
-  **(a) the extra-headset word** (`$WEAP` t1=2, with `t12` and the shorter `t13`/`t42` range) is what captures,
-  which would be the firmware enforcing "stand on the point" — Tony's hypothesis; or
-  **(b) simple CHARGE**, which `docs/reference/grenade.md` §"King of the Hill" ALREADY documents from a prior
-  session: *"each shot adds charge up to a max; to retake, the other team must fire at least as many rounds back
-  into it"*, plus a thrown blast capturing 100% in one hit. One shotgun word is 70 of charge; four AR rounds are 36.
-  **The weapon block AND the magnitude both differed, which is the identical two-variable error that produced the
-  retraction above.** ⚠ Do not build on either reading — **but note they are not equal candidates.** Charge is
-  **already hardware-confirmed** (`reference/grenade.md:127` marks the whole KotH section confirmed by Tony,
-  exp-log #37) and it PREDICTS BOTH of tonight's observations without anything new: 70 of charge beats 36. The
-  extra-headset idea invokes an unproven mechanism to explain something an established one already covers, so it
-  carries the burden of proof. Phrase the discriminator accordingly: it is not "which of two", it is **"is there
-  any reason to invoke a second mechanism at all"**.
-  **Discriminator (10 min):** empty a full AR magazine (32 × mag 9 = 288 of charge) into an owned hill. Flips ⇒
-  charge alone explains everything and the headset block is irrelevant — **the expected result**. Does not flip,
-  while one shotgun word does ⇒ charge is refuted as sufficient and the block earns its place.
-  Second control: a rocket (t1=2, t12=115) against a bolt rifle at comparable magnitude with no block.
-  **Process note:** `reference/grenade.md` documented the charge mechanic and was not read before concluding.
-  The house rule is to read the reference layer first; this is the second time in one session that skipping it
-  produced an overreach.
+  ✅ **SETTLED 2026-09-10: CAPTURE IS CHARGE. Any weapon can take a point.** The extra-headset hypothesis is
+  DEAD and was never needed. Clean run, our config throughout: a NEUTRAL hill (`team=2`) was claimed by **one AR
+  round** (`proto=0 team=1 mag=9`), leaving it holding ~9 of charge; the shooter was then re-armed RED and
+  emptied a magazine at it, and the **first beacon 2.3 s later already read `team=0`** (13 AR rounds on the air),
+  staying red for the remaining 48 s. **A weapon with NO extra-headset block retook an owned point.**
+  This matches `reference/grenade.md`'s prior hardware-confirmed charge mechanic, and Tony's own observation that
+  in native play every player captures the hill regardless of weapon — which is what a three-weapon mechanism
+  could never explain. Last night's shotgun-vs-AR result was never evidence for a headset word: one shotgun word
+  is 70 of charge against four AR rounds at 36, so it simply out-charged it. Two variables differed and I picked
+  the wrong one, for the third time in one session.
+  ⚠ **Still unmeasured: the EXCHANGE RATE.** 13 rounds is an upper bound, not a measurement — beacons arrive only
+  every ~5 s and he was firing faster. Open questions: how much charge a magnitude buys, whether a fully-charged
+  hill costs proportionally more to flip, and what the max charge is. Probe: fire *n* rounds, WAIT for a beacon,
+  repeat, against hills seeded with known charge. Needed only if a mode wants to tune contest difficulty.
   **Original entry:** Bench 2026-09-10, and it
   answers `bench-grenade.md` Q3 ("does a spawned gun in one of our games surface grenade beacons if we give it a
   `$SIR` row for protocol 15?") **YES** -- adding `$SIR,15,0,,24,0,0,1,,*` made the hill beacons appear

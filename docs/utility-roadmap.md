@@ -227,9 +227,9 @@ shorter path to the first playable objective mode than building a station first.
 2. **The beacon row makes the gun ACKNOWLEDGE a hit every ~5 s** — vibration, flash, sound, for as long as
    anyone stands on the point. The row's `<soundID>` must be chosen deliberately (a `$SIR` sound REPLACES the
    `$PSET` pool sound) or the objective is unbearable within a minute.
-3. **Which weapons can capture is unsettled and may be ours to choose** (F70): capture may need the
-   extra-headset word (`$WEAP` t1=2), which only 3 of our 22 weapons carry — but those tokens are ours to write,
-   so "heavy weapons take points" is a design option rather than a constraint.
+3. ✅ **Any weapon can capture** (F70, settled 2026-09-10): it is CHARGE, not a special emission, so a rifleman
+   can play the objective and no weapon needs special tokens. ⚠ The exchange rate (charge per magnitude, max
+   charge) is unmeasured, so contest difficulty cannot be tuned yet.
 
 **And a mode primitive we did not have: shield the holder.** Both grenade words carry the OWNER's team, and the
 firmware gates by polarity — damage lands only from an enemy, grants only from your own team. So `<0,0>` on fn 1
