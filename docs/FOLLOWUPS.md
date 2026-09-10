@@ -722,11 +722,20 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   `$ALCD`, 32→31 and 32→27). Charge ACCUMULATES and costs the attacker exactly what the defender invested. That
   is a self-tuning objective: a lightly-touched point flips instantly, a defended one is genuinely expensive, and
   **a mode needs no host rules to make holding a point meaningful**.
-  ⚠ **Open: is the currency ROUNDS or MAGNITUDE?** Both sides fired `mag=9` throughout, so this measured rounds
-  at EQUAL magnitude. The shotgun evidence points at magnitude (one `mag=70` word took a hill four `mag=9` rounds
-  could not), which would make heavy weapons better at capturing — a real balance lever. **Probe (5 min):** seed
-  with 5 AR rounds (45), then contest with ONE shotgun word (70). Flips ⇒ magnitude is the currency. Also still
-  unmeasured: the max charge (does a hill cap, and how long does a full one take to build?).
+  ✅ **THE CURRENCY IS MAGNITUDE, NOT ROUNDS (2026-09-10).** Seeded 5 AR rounds (45), then ONE shotgun shell
+  (`mag=70`) retook it — confirmed on the wire, `$ALCD` 6→5, one shell against a hill holding 45. Every reading
+  now fits a single rule: **charge accumulates in MAGNITUDE and the higher total owns the point.**
+  | seeded | contested with | totals | result |
+  |---|---|---|---|
+  | 1 AR (9) | 1 AR | 9 v 9 | flipped |
+  | 5 AR (45) | 5 AR | 45 v 45 | flipped on the 5th |
+  | 5 AR (45) | **1 shotgun (70)** | 45 v **70** | **flipped on one shell** |
+  This also explains 2026-09-09 with nothing left over: the shotgun's `mag=70` word out-charged what was in the
+  hill while four AR rounds at 36 fell short. It was always charge. **Design consequence, and it is a good one:
+  a weapon's capture power EQUALS ITS DAMAGE, automatically.** A shotgun or rocket seizes a point in one hit, a
+  rifleman needs a burst, and a defended point costs an attacker exactly what the defender invested — a coherent
+  objective economy falling straight out of the weapon balance we already tune, with no separate capture stat and
+  no host rules. ⚠ Still unmeasured: the MAX charge (does a hill cap, and how long does a full one take to build?).
   **Original entry:** Bench 2026-09-10, and it
   answers `bench-grenade.md` Q3 ("does a spawned gun in one of our games surface grenade beacons if we give it a
   `$SIR` row for protocol 15?") **YES** -- adding `$SIR,15,0,,24,0,0,1,,*` made the hill beacons appear

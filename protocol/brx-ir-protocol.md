@@ -55,7 +55,7 @@ AR magazine then retook that owned hill within its first 13 rounds — **with no
 This confirms the charge mechanic `docs/reference/grenade.md` already documented, and matches native play, where
 every player captures regardless of weapon. Two earlier readings are RETRACTED: that owned hills cannot be
 retaken at all, and that capture requires the extra-headset word (`$WEAP` t1=2) — a shotgun's one `mag=70` word
-simply out-charged four AR rounds at 36. ⚠ The exchange rate (charge per magnitude, max charge) is unmeasured.
+simply out-charged four AR rounds at 36. The currency is **MAGNITUDE**: charge accumulates as the sum of the magnitudes fired into it and the higher total owns the point (1 AR round beat 9; 5 AR rounds beat 45; one shotgun `mag=70` shell beat 45). A weapon's capture power therefore equals its damage. ⚠ Max charge unmeasured.
 Power-cycling returns a grenade to neutral (team 2).
 
 ⚠️ **A hosted game sees none of this unless we ship a protocol-15 `$SIR` row** — the firmware discards an

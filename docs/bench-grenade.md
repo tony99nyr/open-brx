@@ -37,9 +37,9 @@ Ordered by value per bench-minute. **A-C need one gun; D needs two; E is receive
 hill; an AR magazine retook that owned hill inside its first 13 rounds, no extra-headset emission involved. The
 "only three weapons can capture" worry is dead, and a rifleman can play the objective. ✅ **And the exchange rate is 1:1 and LINEAR** (one-round-then-wait,
 from power-cycled neutral, counts confirmed by `$ALCD`): seeded 1 round → retaken with 1; seeded 5 → retaken
-with 5. Charge accumulates and costs exactly what was invested. ⚠ **Still open: rounds vs MAGNITUDE** — both
-sides fired mag 9, while the shotgun's one `mag=70` word suggests magnitude is the real currency. **5 min:** seed
-5 AR rounds (45), contest with ONE shotgun word (70). Also unmeasured: the max charge.
+with 5. Charge accumulates and costs exactly what was invested. ✅ **And the currency is MAGNITUDE, not round count:** one shotgun
+shell (70) retook a hill seeded with five AR rounds (45), `$ALCD` 6→5. So a weapon's capture power equals its
+damage. ⚠ Only the max charge is still unmeasured (does a hill cap, and how long does a full one take to build?).
 
 **B. The missing hill words (15 min, receiver only, then one gun)**
 Respawn has three words: boot (`mag=56`, announces the station and ARMS guns pre-game), beacon (`mag=6`), and

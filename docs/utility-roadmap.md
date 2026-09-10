@@ -230,9 +230,10 @@ shorter path to the first playable objective mode than building a station first.
 3. ✅ **Any weapon can capture, and the contest tunes itself** (F70, settled 2026-09-10). It is CHARGE, not a
    special emission, so a rifleman plays the objective and no weapon needs special tokens. The exchange is
    **1:1 and linear** — seeded 1 round, retaken with 1; seeded 5, retaken with 5 — so a defended point costs an
-   attacker exactly what the defender invested, **with no host rules needed to make holding it matter**. ⚠ Open:
-   whether the currency is rounds or MAGNITUDE (both sides fired mag 9; the shotgun evidence suggests magnitude),
-   which decides whether heavy weapons capture faster.
+   attacker exactly what the defender invested, **with no host rules needed to make holding it matter**. ✅ **The currency is MAGNITUDE**: one shotgun shell
+   (70) retook a hill holding five AR rounds (45). So **a weapon's capture power equals its damage** — a shotgun
+   or rocket takes a point in one hit, a rifleman needs a burst — and the objective economy falls out of the
+   weapon balance we already tune, with no separate capture stat. ⚠ Max charge still unmeasured.
 
 **And a mode primitive we did not have: shield the holder.** Both grenade words carry the OWNER's team, and the
 firmware gates by polarity — damage lands only from an enemy, grants only from your own team. So `<0,0>` on fn 1
