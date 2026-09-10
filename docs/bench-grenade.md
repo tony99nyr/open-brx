@@ -132,7 +132,59 @@ null: holding a hill (fn 28) does not change `$ALCD` cadence (102.0 vs 101.6 ms/
 measurement — the hill flipped teams mid-burst with no cadence change). Hosted-only; native cannot be
 instrumented this way. See `docs/experiment-log/2026-09.md` 2026-09-10 (evening, cont.) and bench-queue D7.**
 **Shield remains untested** for the same reason fn 28 answered nothing here — it grants nothing. Testing it
-still needs the grant-function design test above.
+still needs the grant-function design test above. ⚠ **And the grant-function design test cannot serve a
+rate-of-fire boost even if it works**, because an ally grant on `<15,0>` at t1 = 0 makes the gun deaf to
+enemy-held hills — one cell cannot both read every owner and grant only to the owner
+(`docs/utility-roadmap.md` "Why the firmware cannot grant it"). The hosted, node-side boost is **rung Z**.
+
+**Z. The hosted rate-of-fire boost, end to end (25 min, one gun; step 1 needs no grenade).** Rung D's
+motivating belief was "holding the hill makes you shoot faster." The hosted null (above) says the grenade will
+not do it, so the mode has to do it from the node: reduce `$WEAP` **t14** while your team owns the point, put it
+back when you lose it (design: `docs/utility-roadmap.md` "Rewarding the holder"; implementation **F87**). Three
+steps, each answering one thing, and step 1 is the one with value beyond KotH.
+
+**Z1. Sweep t14 and find the floor (10 min, NO grenade, one gun on BLE).** t14 is calibrated at ~1 ms/round but
+only at one point (t14 = 100 → 101.6/102.0 ms/round). Arm with `arm_sequence(...)`, AR in slot 0, then re-push
+slot 0 with **t14 = 100, then 70, then 50, then 30**, and after each push fire a full magazine with the trigger
+HELD. For each value record ms/round from `$ALCD` decrements and the first/last frame timestamps.
+Answers: **is t14 linear in ms/round across the range** (does 50 actually give ~50?), and **where is the
+floor** — the value at which measured ms/round stops tracking t14, which is either a firmware clamp or the IR
+emitter's own repetition limit. That number is what a boost ratio has to stay above, and nothing in the mode can
+be balanced without it. ⚠ Also watch `$ALCD` **token 2** (live accuracy) across the sweep if the loadout carries
+non-stock t21/t22 — a faster cadence is predicted to bite harder on the recoil model (F46) and this is the
+cheapest place anyone will ever see whether it does. With stock t21 = t22 = 100 the model is disabled, so run
+the sweep at stock first and only then, if there is time, with a t22 below 100.
+
+**Z2. Does the push/revert loop preserve ammo exactly? (5 min, NO grenade).** The exploit check. With a
+partially-spent magazine at a KNOWN count (fire n rounds, read `$ALCD`), push the boosted `$WEAP` followed
+immediately by `$AMMO,0,<that mag>,<that reserve>,1,*`, and read `$ALCD` back. Then revert the same way.
+Answers: **does the restore land the exact count** (a `$WEAP` re-push resets ammo to the frame's values, so
+without the restore this is a free reload every time a player steps onto their own hill), **how visible is the
+blip** between the two frames, and **what happens if the pair arrives mid-burst** — repeat once with the trigger
+held through the push, and look for a torn or duplicated `$ALCD` count. Also drop and restore the BLE link while
+boosted, to confirm the gun keeps the boosted `$WEAP` across a reconnect (§7 says weapon config survives), which
+is why the design reverts unconditionally on reconnect.
+
+**Z3. Fire it off a real beacon (10 min, grenade set to HILL).** The loop closed. `arm_sequence(..., extra_sir=
+("$SIR,15,0,,28,0,0,1,,*",), ...)` with `$GSET` t1 = 1, gun on the owning team; capture the hill, then let the
+node logic (or a hand-driven equivalent) apply the boost on the first `$HIR,...,15,0,<my team>,8,...` and revert
+when the point is taken back or the beacon goes stale (≥ 2 missed beacons, ~12 s — rung R). Answers: **does the
+transition land at a usable moment**, and **does the boost survive the ~5 s beacon granularity** without
+churning at the edge of range.
+
+⚠ **Method traps, all of which have already cost this project bench time:**
+- **Count `$ALCD` magazine decrements, never trigger pulls.** Under this gun's fire mode 14 a single `$BUT`
+  press sometimes releases TWO rounds (`$ALCD` 25→24 across two frames from one press, 2026-09-10). Every
+  ms/round number in Z1 is decrements over elapsed frame time, or it is not a number.
+- **`$SPAWN` before every arm.** A gun latches an IR event and replays it every ~5 s with nothing in the air
+  (F74) — that phantom is what voided the first U11′ sweep.
+- **Use `arm_sequence()` from `mcp/brx_mcp/gameconfig.py`; do not hand-roll frames.** A hand-rolled sequence
+  earlier on 2026-09-10 omitted `$AMMO` and `$BMAP` and used `$SPAWN,*` for `$SPAWN,,*`: the gun showed HP and
+  armour, looked armed, and the trigger fired nothing, three times. `arm_sequence()` validates itself before it
+  returns.
+- **Change ONE token.** Re-push the whole slot-0 frame with only t14 different — t15 (850) is the swap delay and
+  a compiler that trusts the APK field order writes the rate there and ships every weapon at 10 shots/s.
+- **Do not end on a bare `$CLEAR`.** Re-arm, or the gun is left with no `$SIR` table and cannot be hit.
 
 **X. Settle the capture currency (15 min, one gun).** The one trial that discriminates and has never been run.
 Every reading so far confounds magnitude with the extra-headset block, because the only high-magnitude word

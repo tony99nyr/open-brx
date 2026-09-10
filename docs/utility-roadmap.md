@@ -376,6 +376,120 @@ firmware gates by polarity — damage lands only from an enemy, grants only from
 punishes challengers while `<15,0>` on a grant function (fn 11/18) shields holders, with the firmware doing the
 team logic. Untested (see `bench-grenade.md` programme D), and it would be the first shield our stack can fill
 at all (F60).
+⚠ **But you cannot have both halves in one cell** — a grant on `<15,0>` costs you the READ of every enemy-held
+hill, which is the whole mode. The conflict is worked through in the next section; it applies to any
+firmware-granted hill reward, shield included, not just to rate of fire.
+
+### Rewarding the holder: a hosted rate-of-fire boost (design, 2026-09-10)
+
+Tony's ask: while your team holds the hill, your gun fires faster; when you lose it, it goes back to stock. He
+believes native KotH does this. Two facts frame the design, both from the 2026-09-10 evening bench.
+
+**1. The hill does not do it for us in a hosted game.** Measured, counting `$ALCD` decrements off the wire:
+**102.0 ms/round while the operator's team held the point, 101.6 ms/round while the enemy held it** — same gun,
+same `$WEAP`, same session, indistinguishable. Stronger than a plain A/B, because the hill flipped to the
+operator's team *partway through the enemy-held burst* and the inter-round cadence never broke: the control sits
+inside the single measurement. Expected, since fn 28 moves no pools. ⚠ **This does NOT say native has no RoF
+buff** — a native game drops the BLE link and cannot be instrumented this way, so a native buff would be
+invisible to this method. What is measured is that the grenade does not buff *our* guns through the row we ship.
+
+**2. So a boost has to be something WE apply**, from the node, over BLE — the same place the hill audio ended up
+(previous section), and for a related reason.
+
+#### Why the firmware cannot grant it: one cell, two jobs
+
+The obvious idea is to let the firmware do the team logic, exactly as the shield sketch above proposes: put an
+**ally-polarity** function on the hill's cell at `$GSET` t1 = 0, and the polarity gate grants only when the
+beacon's team matches the gun's own `$TID`. That is genuinely how the gate works. It still cannot be made to
+work here, and the reason is worth writing down because it constrains *every* firmware-granted hill reward:
+
+- **`$SIR` is keyed on `<irProtocol, subtype>` alone.** Every hill word — the `mag=8` possession beacon, the
+  `mag=50` capture announcement, `mag=53`, every owner — lands in the **single cell `<15,0>`**. Owner and mode
+  ride in the IR word's team/magnitude fields and **neither is part of the lookup** (`protocol/brx-protocol.md`
+  §5). One cell holds one function.
+- **At t1 = 0, an ally function in that cell would gate correctly and go blind.** Enemy-team beacons are
+  **silently rejected** — no `$HIR` at all — so the node stops seeing hills it does not own, stops seeing the
+  `mag=50` capture word for enemy captures, and loses capture detection entirely. That is the mode.
+- **At t1 = 1 the gate lifts and the grant stops discriminating.** Everything registers, the owner arrives in
+  `$HIR` token 4, the node has complete information — and the firmware would fire the grant on **any** beacon,
+  boosting a player standing in an **enemy** hill.
+
+**One cell cannot both read every owner and grant only to the owner.** So: **read** with fn 28 at `$GSET`
+t1 = 1 (already the documented KotH arm — see the FF-on argument above), and **apply the boost from the node**,
+which knows the owner from `$HIR` token 4 anyway.
+
+⚠ **The ally-function half is UNMEASURED, and the conflict does not depend on it.** No `$SIR` function anywhere
+in the map is known to change weapon cadence — the function classes are damage, armour-pierce, multipliers,
+heals, armour, shield, audio suppression, and register-only. fn **31 / 32 / 34** (the ally side of the
+register-only class) are still unswept for player effect (`docs/bench-queue-2026-09-09.md` D6, and the old 1.6
+"KotH rate-of-fire buff" item): they are known **pool-neutral**, but nobody has checked what they do to a gun's
+firing behaviour, so "an ally function that buffs RoF" is not ruled out — it is simply unevidenced. Either way
+the polarity conflict above stands, so the node-side design is the one to build.
+
+#### The mechanism
+
+The node already holds `hill_owner` and `last_beacon_at` for the audio timer (previous section). The boost
+hangs off the same two pieces of state, plus one more the phone already has: the live magazine, which
+`app/src/engine.js` reads from `$ALCD`.
+
+**On boost (my team owns the point AND the beacon is fresh):**
+
+1. `$WEAP,<slot>,…,*` — the player's own weapon frame from the bundle, with **t14 reduced** and every other
+   token identical.
+2. **Immediately** `$AMMO,<slot>,<live mag>,<live reserve>,1,*` using the counts the node read from `$ALCD`.
+
+**On revert (the point changes hands, or the beacon goes stale — ≥ 2 missed beacons, ~12 s, per rung R):** the
+same two frames with the **stock** `$WEAP` and, again, the live counts.
+
+🔴 **Step 2 is not optional, and skipping it is an exploit, not a cosmetic bug.** A `$WEAP` re-push **resets
+ammo to the frame's values** (`protocol/brx-protocol.md`: *"re-send `$AMMO` after any weapon swap"*). A boost
+that omits the `$AMMO` restore hands the player a **free full magazine every time they step onto their own
+hill** — mid-firefight, on demand, by walking. Worse, it is repeatable: step off, step back on. The restore is
+what makes the boost a reward instead of an infinite-ammo button.
+
+**Risks, plainly:**
+
+- **The ammo blip.** There is a window between the `$WEAP` and the `$AMMO` in which the gun holds the frame's
+  magazine. It is two frames on a link that carries them back to back, but it is not zero, and the HUD may see
+  one `$ALCD` frame with the wrong count. Do not treat that frame as a reload event.
+- **A write landing mid-burst.** Both transitions can arrive while the trigger is held. What a `$WEAP` re-push
+  does to an in-flight burst is **unmeasured** — the `$ALCD` count could tear, and the recoil model resets its
+  ceiling on a weapon change. Rung Z step 2 exists to look at exactly this.
+- **A dropped link leaves the player stuck.** If BLE drops while boosted, the gun keeps the boosted `$WEAP`
+  (weapon config survives a drop, §7) with no node to revert it; if it drops while the revert is in flight, the
+  player may be stuck slow. **The safe default is: revert on reconnect.** Push the stock `$WEAP` + live `$AMMO`
+  as part of the reconnect head, unconditionally, and let the next fresh beacon re-apply the boost. Stock is the
+  state you can always justify; boosted is not.
+- **Boost churn at the edge of range.** The ≥ 2-missed-beacons staleness rule is what keeps a player at the
+  fringe from being re-armed every 5 s. Never revert on a single miss.
+
+#### Balance: the arithmetic, and what is still unmeasured
+
+**t14 is milliseconds per round** (calibrated 2026-09-10, now in `protocol/brx-protocol.md` §6): an AR at
+t14 = 100 measured **101.6–102.0 ms/round**. So a boost is a straight ratio — halving t14 doubles the cadence —
+and stock cadences are all in the same units (burst 75, SMG 90, AR 100, sniper 300, shotgun 900, charge rifle
+1250). **Pick the boost as a percentage of the weapon's own t14, not as an absolute**, or the same rule turns a
+shotgun into a different gun and an SMG into nothing.
+
+**No number is proposed here, because two inputs are missing:**
+
+1. **The floor is UNKNOWN.** Nobody has measured how low t14 can go before the firmware clamps it, or before the
+   IR word stops keying reliably at that repetition rate. Rung Z sweeps 100 → 70 → 50 → 30 to find it. Until
+   that runs, any chosen ratio might silently land on a clamp and produce a boost the player cannot feel.
+2. **The boost interacts with the recoil model, and the direction is not obvious.** `$WEAP` **t21/t22** are the
+   simulated-recoil ceiling and floor (F46, bench-proven 2026-09-09), and accuracy is a **per-shot hit
+   probability** that decays under sustained fire and recovers with time between shots. A shorter t14 means less
+   recovery per round, so **a faster gun may also be a less accurate one** — the same finding notes that at
+   t22 = 0 single shots ~2 s apart held a flat 80 while a held trigger reached 0 in eight rounds. Whether that
+   makes the boost self-limiting (nice) or worthless (bad) depends on the t21/t22 the mode ships. ⚠ **Flag, not
+   assumption:** the interaction is predicted from two proven mechanisms, and the combination has never been
+   measured. Note that stock ships t21 = t22 = 100, which disables the model entirely — so on a stock-accuracy
+   loadout this concern does not arise at all.
+
+Everything else the mode needs is already decided: fn 28 on `<15,0>`, `$GSET` t1 = 1, node-side timing,
+`$SPAWN` before every arm. The boost is a small amount of node code sitting on state the hill audio already
+maintains — but it must not be written before **rung Z** (`docs/bench-grenade.md`) says what the floor is and
+that the push/revert loop preserves ammo exactly. Tracked as **F87**.
 
 **The grenade bridge (FOLLOWUPS B23).** Our phone stations are a hosted reimplementation of what the Smart
 Grenade does in native games: Respawn (yellow) ✅ built as the phone station; Hill (blue) and Assault (green) →

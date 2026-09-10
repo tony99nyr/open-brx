@@ -6,10 +6,10 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F87 · G11 · H7 ·
-K7 · P18 · Q20 · R3 · S18.** (2026-09-10 evening: F83/F84/F85/F86 taken — rotating-hill mode idea, the "constant
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F88 · G11 · H7 ·
+K7 · P18 · Q20 · R3 · S18.** (2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
 wider than the hill's period" generalisation, the double-`$HIR`-per-beacon dedupe finding (F85, closed same
-session), and the team-change-leaves-old-LED-colour finding.) (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
+session), the team-change-leaves-old-LED-colour finding, and the hosted hill rate-of-fire boost.) (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
 **Blocked on:** `trigger` · `eyes` · `ears` · `space` · `grenade` · `capture` · `decision` · `build`.
@@ -816,6 +816,27 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   Nothing hardware-side blocks it: each grenade beacons independently on its own `proto=15` cell, so the node
   already has one wire per point and just needs the rotation logic and the `VB0Q` transition wired to it.
   Not scoped or bench-tested; a new mode idea, not a finding. `build`.
+- **F87 🟢 GRANT A RATE-OF-FIRE BOOST TO THE TEAM HOLDING A HILL, FROM THE NODE.** Tony's ask; designed
+  2026-09-10 evening, not built. The grenade will not do it for us: holding a hill under fn 28 changes `$ALCD`
+  cadence not at all (102.0 ms/round owned vs 101.6 enemy-held, control inside the measurement, bench-queue D7).
+  ⚠ Hosted-only — a native game drops the BLE link, so this does not disprove a native buff. **And the firmware
+  cannot be made to grant it either:** every hill word lands in the single `$SIR` cell `<15,0>`, so an
+  ally-polarity grant at `$GSET` t1 = 0 would gate on the owner correctly and go **blind to enemy-held hills**
+  (rejected words emit no `$HIR`, so capture detection dies), while t1 = 1 lifts the gate and the grant fires on
+  ANY beacon, boosting a player standing in an ENEMY hill. **One cell cannot both read every owner and grant only
+  to the owner** — so read with fn 28 at t1 = 1 and apply the boost node-side. ⚠ Whether any ally function buffs
+  RoF at all is UNMEASURED (fn 31/32/34 unswept, bench-queue D6); the conflict stands either way.
+  **The build:** on "my team owns it and the beacon is fresh", push the player's `$WEAP` with a reduced **t14**
+  and then IMMEDIATELY `$AMMO,<slot>,<live mag>,<live reserve>,1,*` from the count `engine.js` already reads off
+  `$ALCD`; reverse both on loss or staleness (≥ 2 missed beacons, ~12 s). 🔴 **The `$AMMO` restore is not
+  cosmetic:** a `$WEAP` re-push resets ammo to the frame's values, so omitting it is a **free full magazine every
+  time a player steps onto their own hill**, repeatable at will. Revert unconditionally on BLE reconnect (stock is
+  the state you can always justify). **No boost value is proposed, and one must not be invented:** t14 is
+  calibrated at ~1 ms/round (`protocol/brx-protocol.md` §6) so the arithmetic is trivial, but **the floor is
+  unknown** — how low t14 can go before the firmware clamps or the IR stops keying — and a faster cadence
+  interacts with the t21/t22 recoil model (F46), so a boost may cost accuracy as a side effect. **Blocked on
+  `docs/bench-grenade.md` rung Z** (sweep t14 for the floor; prove the push/revert preserves ammo exactly; fire it
+  off a real beacon). Design: `docs/utility-roadmap.md` "Rewarding the holder". `build` + `bench`.
 - **F84 🟠 A HOST CONSTANT WIDER THAN AN AMBIENT EMITTER'S PERIOD NEVER EXPIRES — THIS IS THE THIRD TIME IN ONE
   DAY.** Bench 2026-09-10 evening. Two independent bugs, same shape, found hours apart: `ATTRIB_FUSE_S` (6.0 s)
   kept hill-kill attribution permanently fresh against the hill's ~5 s beacon (F69's attribution half), and
