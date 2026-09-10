@@ -330,19 +330,24 @@ without it.
 
 ### Where the hill audio has to live
 
-**The gun CAN speak on a beacon, but only ONE sound, for ALL beacons.** A `$SIR` row's `<soundID>` field plays
-on the victim when that cell fires — so `$SIR,15,0,<soundID>,28,0,0,1,,*` would make every hill (and respawn)
-beacon audible on the gun with no node involved. The hard limit: **`$SIR` is keyed on `<irProtocol, subtype>`
-alone** — the B/U fields, 4 bits + 2 bits, 64 cells total (`protocol/brx-ir-protocol.md` "the `$SIR` composite
-key"; `protocol/brx-protocol.md` §5). Every captured hill beacon decodes as the same key, `<15,0>` — owner and
-mode ride in the IR word's team/magnitude fields, and **neither is part of the lookup**. One cell, one sound: the
-gun cannot play a different clip for captured / contested / lost / neutral, because it cannot key on any of
-those. The one bit of team-awareness available for free is polarity: under `$GSET` t1=0, fn 28 is enemy-only
-(§5, "Polarity measured both ways on fn 28"), so a gun-native beacon sound would only ever fire for hills you do
-**not** own — the inverse of the tick, which needs to fire while you **do** own it (t1=0 rejects that case
-outright). **Worth flagging as a side effect:** `docs/spec/contracts.md`'s `$PSET` note (also §5) says a
-non-empty `$SIR` `<soundID>` overrides the `$PSET` pool sound on the row that fired — untested for a
-no-pool-change function like 28, but a soundID here is not free of interaction with the rest of the audio table.
+**✅ MEASURED 2026-09-10 (evening) — the gun CANNOT speak on a beacon, at least not through fn 28.** The
+reasoning below was the prediction going in (a `$SIR` row's `<soundID>` field plays on the victim when that
+cell fires, so `$SIR,15,0,<soundID>,28,0,0,1,,*` should make every hill beacon audible with no node involved);
+it does not hold. Armed live with `$SIR,15,0,U100,28,0,0,1,,*` — `U100` known audible, confirmed by ear the
+same evening — the row registered repeatedly (`$HIR,4,15,0,0,8,0,0`, no misses) and produced **no sound at
+all**. **fn 28 ignores the `<soundID>` field outright** — F73's "zero player feedback" is a property of the
+function, not of an empty sound slot. Full detail: `docs/bench-grenade.md` rung Y,
+`docs/experiment-log/2026-09.md` 2026-09-10 (evening, cont.).
+
+The keying limit below still stands as the reason no OTHER protocol-15 function is a better candidate, even
+though it never got exercised: **`$SIR` is keyed on `<irProtocol, subtype>` alone** — the B/U fields, 4 bits +
+2 bits, 64 cells total (`protocol/brx-ir-protocol.md` "the `$SIR` composite key"; `protocol/brx-protocol.md`
+§5). Every captured hill beacon decodes as the same key, `<15,0>` — owner and mode ride in the IR word's
+team/magnitude fields, and **neither is part of the lookup**. One cell, one sound at best: the gun could never
+have played a different clip for captured / contested / lost / neutral, because it cannot key on any of those.
+⚠ Still untested, because no sound played at all to observe it on: whether fn 28 or any other protocol-15
+function honours polarity WITH a sound loaded, and `docs/spec/contracts.md`'s `$PSET` note (also §5) that a
+non-empty `$SIR` `<soundID>` overrides the `$PSET` pool sound on the row that fired.
 
 **So the four team-aware callouts (`VB0N` Hill Captured, `VB0O` Hill Contested, `VB0P` Hill Lost, `U100` the
 possession tick) are phone work, not gun work** — they need to distinguish four+ states from one wire fact

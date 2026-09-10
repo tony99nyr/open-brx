@@ -93,21 +93,23 @@ also produced: see the 2026-09-10 (evening) log entry and `protocol/brx-ir-proto
 ⚠ **Trap that cost the first pass: a receive-only arm cannot shoot.** Include a `$WEAP` row with ammo whenever
 this rung is repeated.
 
-**Y. ⚠ UNMEASURED — can the GUN itself play the beacon, and does polarity gate it as the docs predict?**
-Reasoning from the protocol docs alone (`protocol/brx-ir-protocol.md`, `protocol/brx-protocol.md` §5) says yes
-to a single fixed sound, gated by `$GSET` t1 — but nobody has armed a gun with a non-empty `<soundID>` on the
-proto-15 row and listened. Grenade set to HILL, gun armed with
-`$SIR,15,0,<someSoundId>,28,0,0,1,,*` (pick a short clip, not a long one — see the F74 warning in
-`docs/utility-roadmap.md` "Where the hill audio has to live"):
-1. **(a) Does it play on every beacon?** Stand in range, listen for the clip every ~5 s.
-2. **(b) `$GSET` t1=1 — does it play regardless of owner?** Confirm it fires whether the gun's team matches the
-   beacon's or not.
-3. **(c) `$GSET` t1=0 — is it enemy-only?** Confirm it plays only when the beacon's owner is NOT the gun's team,
-   and stays silent on your own hill (mirrors the fn-28-silent polarity result, F73, but now with sound).
-4. **Watch for the `$PSET` override side effect** (`protocol/brx-protocol.md` §`$PSET`, point (c)): a non-empty
-   `$SIR` soundID replaces the pool sound on the row that fired. fn 28 is a no-pool-change function, so whether
-   there is even a pool sound to override here is itself part of what this rung settles — note what, if
-   anything, changes about ordinary hit/heal audio while this row is loaded.
+**Y. ✅ ANSWERED 2026-09-10 (evening) — the GUN cannot play the beacon: fn 28 ignores the `$SIR` `<soundID>` field.**
+Armed live (`arm_sequence()`, `$GSET` t1=1, AR in slot 0, grenade set to HILL):
+`$SIR,15,0,U100,28,0,0,1,,*` — fn 28 with a known-audible sound (`U100`, confirmed by ear the same evening via
+`$PLAY` at the same `$VOL,80`) in the `<soundID>` field. Over a run of several beacons, the row registered
+repeatedly and unambiguously (`$HIR,4,15,0,0,8,0,0`, ~5 s apart, no misses) and produced **no sound at all**.
+Operator, verbatim: *"havent heard a tick yet."*
+
+**So F73's "zero player feedback" is a property of the FUNCTION, not of leaving the sound slot empty** — fn 28
+ignores `<soundID>` outright. Reasoning from the protocol docs alone predicted (a) would play; it does not.
+**Design consequence: a gun-native beacon cue is not available through fn 28**, and the alternatives that do
+give feedback (fn 8: flash+vibrate, silent; fn 24-27: a long grenade-ish clip) trade away exactly the silence
+that makes fn 28 the row to ship. **All hill audio is therefore node/phone work** — `docs/utility-roadmap.md`
+"Where the hill audio has to live" updated to this measured answer.
+
+⚠ Scope: measured for **fn 28 only**. (b)/(c) polarity-with-sound and the `$PSET`-override side effect are
+both still untested — no sound played at all, so there was nothing to observe an override on or gate by
+polarity. Full detail: `docs/experiment-log/2026-09.md` 2026-09-10 (evening, cont.).
 
 **F75. Does a non-capturing hit emit anything?** In a NATIVE game, stand in an enemy hill and deliberately MISS.
 Still says "contested" ⇒ native infers it too and we lose nothing. Silent ⇒ there is a hit word, and B0's
@@ -125,6 +127,12 @@ on opposing teams, alternately capturing; watch each gun's view of the same beac
 `<15,0>` on a **grant** function (fn 11 add shield, or 18) with friendly fire OFF, so ally polarity should
 shield the HOLDER while `<0,0>` on fn 1 damages the challenger. ⚠ Arm from `$CLEAR` — an in-place `$SIR` row
 replacement is unverified and probably voided the first attempt.
+✅ **The rate-of-fire half of this rung's motivating belief is already answered — 2026-09-10 (evening), a clean
+null: holding a hill (fn 28) does not change `$ALCD` cadence (102.0 vs 101.6 ms/round, control inside the
+measurement — the hill flipped teams mid-burst with no cadence change). Hosted-only; native cannot be
+instrumented this way. See `docs/experiment-log/2026-09.md` 2026-09-10 (evening, cont.) and bench-queue D7.**
+**Shield remains untested** for the same reason fn 28 answered nothing here — it grants nothing. Testing it
+still needs the grant-function design test above.
 
 **X. Settle the capture currency (15 min, one gun).** The one trial that discriminates and has never been run.
 Every reading so far confounds magnitude with the extra-headset block, because the only high-magnitude word

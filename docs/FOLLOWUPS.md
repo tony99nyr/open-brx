@@ -983,6 +983,15 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   in a way a leftover tail does not explain; unexplained, recorded rather than tidied away.
   ⚠ Not swept: enemy 35, and the ally-side 31/32/34 — unnecessary now that fn 28 answers the question, but they
   are the fallback if fn 28 turns out to have a side effect we have not looked for.
+  **Extended 2026-09-10 (evening): fn 28 ignores the `$SIR` `<soundID>` field too.** Armed
+  `$SIR,15,0,U100,28,0,0,1,,*` — `U100` known audible, confirmed by ear the same evening at the same
+  `$VOL,80` — against the live grenade. The row registered repeatedly (`$HIR,4,15,0,0,8,0,0`, no misses) and
+  produced **no sound at all** ("havent heard a tick yet"). So "zero player feedback" is a property of the
+  FUNCTION, not of leaving the sound slot empty — no gun-native beacon cue is possible through fn 28.
+  **Design consequence:** hill audio is node/phone work, not gun work (`docs/utility-roadmap.md` "Where the
+  hill audio has to live" updated). ⚠ Still untested: whether any OTHER protocol-15 function honours
+  `<soundID>`, and the `$PSET`-override side effect — no sound played at all, so nothing to observe an
+  override on. `docs/bench-grenade.md` rung Y closed with this result.
 - **F72 🟠 The phone throws away every grenade/station beacon.** `app/src/engine.js:1273` opens the `$HIR`
   handler with `if (t[2] === '15') break;` — protocol 15 is dropped before anything reads it. That predates
   knowing what a beacon carries, and it is a SECOND blind spot stacked on the missing `$SIR` row (F70): fixing
