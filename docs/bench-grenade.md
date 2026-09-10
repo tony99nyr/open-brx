@@ -38,19 +38,23 @@ steps, about **25 minutes hands-on**, one gun, one grenade, the rig. Tool: `mcp/
 |---|---|
 | **Beacon** | `proto=15 team=<owner> mag=8` every ~5 s. **Neutral = team 2.** Respawn is `mag=6` at ~2.5 s, boot `mag=56`. Magnitude is a fixed MODE id, **not** a charge level. **Recounted from the capture logs 2026-09-10** (an earlier "84 decodes, three values" here was both miscounted and wrong about the spread): across every session, unambiguous proto-15 decodes are **mag=8 x96** (hill), **mag=6 x63** (respawn), **53 x4 / 50 x3** (capture announcement), **56 x1** (boot, a whole word), plus two lone stitched decodes -- **55** and **2** -- that are probably stitch artefacts; the mag=2 one carries `player=42`, which no other beacon does. The MODE values are the ones with hundreds of repeats behind them |
 | **Capture** | shoot it; **ANY weapon** (settled). Charge accumulates and **the attacker wins ties** — 1 AR took 9; 5 took 45; one shotgun shell (70) took 45. That the currency is MAGNITUDE is 🟠 only: ⚠ **The discriminating trial is CONFOUNDED:** the shotgun's `mag=70` is its `t12` **extraHeadsetDamage** (a `t1=2` weapon), so magnitude and weapon-block varied together and it cannot separate "magnitude is the currency" from "an extra-headset word captures out of proportion". ⚠ And both AR flips were at **exact equality** (9 v 9, 45 v 45), so what is measured is **the attacker wins ties**, not "the higher total owns the point". See F70/F76. |
-| **Announcement** | a transition PAIR in the same burst as the shot: `mag=53` (state left) + `mag=50` (owner entered). **Very likely** why guns say "hill captured" — the pair is measured, the causal link to the callout is not |
-| **Reading it in a hosted game** | `$SIR,15,0,,28` — **fn 28 registers with ZERO player feedback** (no sound, flash or vibration) + the `engine.js` fix (F72) |
+| **Announcement** | **NOT a pair in the same burst — corrected 2026-09-10 evening, confirmed cleanly on BLE.** `mag=50` (new owner) arrives ~50 ms after the capturing shot; `mag=53` (state left) arrives ~5 s later, on the NEXT beacon cycle. A node must not wait for both — `mag=50` alone is the capture signal. **Very likely** why guns say "hill captured" — the pair is measured, the causal link to the callout is not |
+| **Reading it in a hosted game** | `$SIR,15,0,,28` — **fn 28 registers with ZERO player feedback** (no sound, flash or vibration) + the `engine.js` fix (F72). Both now confirmed on a real beacon over BLE, not only the ESP32 rig |
 | **Polarity** | fn 28 is enemy-only at `$GSET` t1=0; **t1=1 lifts the gate** and ownership arrives in `$HIR` token 4. **KotH wants FF on** |
+| **Capture, end to end** | ✅ proven live: one AR round flipped a neutral hill, read over BLE, grenade confirmed blue + beeping by eye (2026-09-10 evening) |
 | **Non-capturing hit** | no **DECODABLE** word — the grenade appears to announce captures, not hits (F75). ⚠ NOT a proven silence: a reply inside the shooter's own burst is invisible to every capture taken so far, and that is exactly where a hit word would sit. Gated on **B0** |
 
 ### Still to run, in value order
 
 **B0. Geometry: receiver sees the GRENADE, not the SHOOTER (free, do first).**
-The grenade replies instantaneously, so its capture words always overlap the gun's word and only ever arrive as
-stitched bursts. No decoder separates two simultaneous transmitters — geometry does. Put board A behind the
-grenade, or have the shooter fire across the receiver's view. ⚠ **Any word that only occurs inside a shot's burst
-has been invisible to every capture ever taken**, which is exactly where F75's "hit but not captured" signal
-would hide. Gates B and F75.
+`mag=50`'s reply is essentially instantaneous (~50 ms), so on the IR rig alone it overlaps the gun's own word
+and only ever arrives stitched — a BLE stream sidesteps this by reading the host's decoded interpretation
+directly, which is how the capture pair timing got corrected (2026-09-10 evening: `mag=53` turned out to
+arrive 5 s later on the next beacon cycle, not in the same burst at all). For anyone repeating this on the IR
+rig alone, geometry still matters for `mag=50`: no decoder separates two simultaneous transmitters. Put board A
+behind the grenade, or have the shooter fire across the receiver's view. ⚠ **Any word that only occurs inside a
+shot's burst has been invisible to every capture ever taken on the rig**, which is exactly where F75's "hit but
+not captured" signal would hide. Gates B and F75.
 
 **S. ✅ ANSWERED 2026-09-10 (evening) — every hosted callout confirmed BY EAR, one catalogue entry was wrong.**
 Driven over BLE at `$VOL,80` (one gun, `Tactix-E20D`, no grenade needed):
@@ -79,10 +83,15 @@ t1=1 and `$TID,1` (not 2 — neutral broadcasts team 2, F82). The beacon arrived
 20+ consecutive beacons, period 5.0 s, no drift, zero misses — grenade beacons, gun registers silently, host
 reads it over BLE, host plays the cue.
 
-⚠ **The CAPTURE half is still unproven end to end.** Tony could not fire during this run — the gun was armed
-to RECEIVE but carried no `$WEAP`, so its magazine was 0. A live capture (beacon team flipping under a real
-shot, callout driven by the transition) remains untested. **A receive-only arm cannot shoot; include a
-`$WEAP` row with ammo when this rung is repeated to prove capture.**
+✅ **The CAPTURE half is now also proven end to end (2026-09-10, later the same evening).** The first pass of
+this rung could not fire — the gun was armed to RECEIVE but carried no `$WEAP`, so its magazine was 0 (kept
+below as a trap for next time). Re-armed with ammo: one AR round (`mag=24`) took a neutral hill, read live
+over BLE as `$HIR,4,15,0,1,50,0,0` (new owner = team 1) ~50 ms after the shot, followed 5 s later by
+`$HIR,0,15,0,2,53,0,0` (state left = team 2, on the next beacon cycle, sensor 0 not sensor 4). Operator
+confirmed by eye: the grenade turned blue and beeped. Full detail and the "same burst" correction this run
+also produced: see the 2026-09-10 (evening) log entry and `protocol/brx-ir-protocol.md`.
+⚠ **Trap that cost the first pass: a receive-only arm cannot shoot.** Include a `$WEAP` row with ammo whenever
+this rung is repeated.
 
 **F75. Does a non-capturing hit emit anything?** In a NATIVE game, stand in an enemy hill and deliberately MISS.
 Still says "contested" ⇒ native infers it too and we lose nothing. Silent ⇒ there is a hit word, and B0's

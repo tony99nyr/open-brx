@@ -58,31 +58,54 @@ retaken at all, and that capture requires the extra-headset word (`$WEAP` t1=2) 
 simply out-charged four AR rounds at 36. Charge accumulates, and **an EQUAL total flips it — the attacker wins ties** (1 AR round took a hill holding 9; 5 AR rounds took one holding 45; one shotgun `mag=70` shell took one holding 45). The currency LOOKS like **MAGNITUDE**, which would make a weapon's capture power equal its damage — but that is 🟠, not settled. ⚠ **The discriminating trial is CONFOUNDED:** the shotgun's `mag=70` is its `t12` **extraHeadsetDamage** (a `t1=2` weapon), so magnitude and weapon-block varied together and it cannot separate "magnitude is the currency" from "an extra-headset word captures out of proportion". ⚠ And both AR flips were at **exact equality** (9 v 9, 45 v 45), so what is measured is **the attacker wins ties**, not "the higher total owns the point". See F70/F76. ⚠ Max charge unmeasured. **Do not build an objective economy on the exchange rate until F76 resolves.**
 Power-cycling returns a grenade to neutral (team 2).
 
-⭐ **CAPTURE IS ANNOUNCED, not just inferred (bench 2026-09-10).** At the instant a grenade changes hands it
-emits a **transition PAIR** in the same burst as the capturing shot, before the periodic beacon resumes:
+⭐ **CAPTURE IS ANNOUNCED, not just inferred, and now CONFIRMED CLEANLY OVER BLE (bench 2026-09-10).** A grenade
+changing hands emits **two words**, `mag=53` and `mag=50` — but they are **two separate events roughly 5 s
+apart, not one pair in the same burst.** Read verbatim off a live BLE stream (gun on team 1, a neutral grenade,
+one AR round at `mag=24`):
 
-| word | bits | meaning |
-|---|---|---|
-| `proto=15 team=<old> mag=53` | `1111000000100011010100001` (from neutral) | the state being **LEFT** |
-| `proto=15 team=<new> mag=50` | `1111000000010011001000010` (to team 1) | the owner being **ENTERED** |
+```
+t=41769  $BUT,0,1  + $ALCD,31->30   <- operator's shot
+t=41770  $HIR,4,15,0,2,8,0,0        <- last NEUTRAL beacon (team 2)
+t=41820  $HIR,4,15,0,1,50,0,0       <- mag 50: NEW OWNER = team 1, ~50 ms after the shot
+t=46780  $HIR,0,15,0,2,53,0,0       <- mag 53: state LEFT = team 2, 5.0 s later, next beacon cycle
+t=46780  $HIR,4,15,0,1,8,0,0        <- first ordinary HILL beacon owned by team 1
+```
 
-Byte-identical across three separate captures, two of the three decoding unambiguously, always in that order.
+| word | bits | meaning | arrives |
+|---|---|---|---|
+| `proto=15 team=<new> mag=50` | `1111000000010011001000010` (to team 1) | the owner being **ENTERED** | **immediately** (~50 ms after the capturing shot) |
+| `proto=15 team=<old> mag=53` | `1111000000100011010100001` (from neutral) | the state being **LEFT** | **on the NEXT beacon cycle** (~5 s later) |
+
+**Design consequence: a node must not wait for both words before announcing a capture.** `mag=50` alone is the
+capture signal and arrives right away; `mag=53` is a late confirmation of what was left behind, not part of the
+same transaction. (One line also worth keeping: `mag=53` above rode in on **sensor 0**, the headset front, while
+the ordinary hill beacons ride **sensor 4**, the gun body — consistent with F85, one grenade transmission
+reaching more than one sensor.)
+
 **This is very likely why guns announce "hill captured"** — the grenade tells them, rather than each gun
 inferring it from a beacon whose team changed. A hosted game with the protocol-15 row hears it too, so a node can
 fire a capture callout at the moment it happens instead of up to 5 s later.
 ⚠️ **Capture PROGRESS is not on the wire.** No charge value has ever been observed; the beacon carries owner and
 mode only. Progress lives inside the grenade, so a hosted mode learns the discrete transition and **cannot draw a
 capture bar**. Design around the event, not a percentage.
-**Why the capture words only ever decode as STITCHED frames** (Tony, 2026-09-10): the grenade replies
-essentially instantaneously, so its words overlap the SHOOTER's word in the air. The burst the receiver splits
-literally contains all three — `word1/3` the gun's shot, `word2/3` `mag=53`, `word3/3` `mag=50`. The beacon, which
-is alone in the air, decodes whole 57 times across the same sessions. **This makes the capture-word evidence
-stronger, not weaker**: overlapping bursts do not reproduce byte-identical patterns across three independent
-captures by chance. ⚠ It also means better decode quality cannot fix it — no receiver separates two transmitters
-firing at once. **The fix is geometry: put the receiver where it sees the GRENADE but not the SHOOTER** (behind
-the grenade, or with the gun firing across rather than toward the board) so the reply arrives alone. Worth doing
-before trusting any capture-triggered callout, and worth doing anyway: a word that only ever occurs inside a
-shot's burst would have been invisible to every capture so far (see F75).
+
+🔴 **Correction (2026-09-10 evening): "a transition PAIR in the same burst as the shot" was wrong, and it is
+corrected here and everywhere else it was written down.** The original reading came from the ESP32 IR rig,
+where the words showed up STITCHED into one overlapping capture and read as simultaneous. **They are not
+simultaneous** — the BLE stream above shows `mag=50` 50 ms after the shot and `mag=53` a full beacon cycle
+(~5 s) later. **Why the words used to only decode as STITCHED frames on the IR rig** (Tony, 2026-09-10): the
+grenade's `mag=50` reply is essentially instantaneous, so it overlaps the SHOOTER's own word in the air; the
+burst the receiver split literally contained both — `word1/2` the gun's shot, `word2/2` `mag=50`. `mag=53`,
+arriving 5 s later on its own beacon cycle, was never really part of that burst at all; it only ever looked
+adjacent because the rig's capture window happened to span both. **This still correctly explains why the IR
+rig alone could never cleanly separate `mag=50` from the shooter's word** — that half of the finding stands —
+but it does not describe the actual timing, which the BLE stream now settles unambiguously. Decoding whole and
+unambiguous on a clean BLE capture, rather than only as byte-identical stitched fragments, is also a real
+upgrade in evidence tier for the words themselves, independent of the timing correction: they are no longer
+inferred from overlapping-burst artifacts, they are read directly off the wire. ⚠ Geometry (receiver behind the
+grenade, not the shooter) is still worth doing for anyone repeating this on the IR rig alone, and a word that
+only ever occurs inside a shot's burst remains the risk F75 names — but the capture pair itself is no longer in
+that category.
 
 ⚠ **`mag=50` is confirmed for a TEAM-TO-TEAM takeover too**: a blue-held hill retaken by red emitted
 `proto=15 team=0 mag=50` with no `53` beside it. So `50` announces the incoming owner whatever it took over from.
@@ -101,7 +124,12 @@ hosted game needs both (F72).
 `$SIR,15,0,,24,0,0,1,,*`, and it works — but **fn 24 gives the player a flash, a buzz and a long grenade-ish
 clip on every beacon**, which a hill emits every ~5 s for as long as anyone stands there. **fn 28 registers
 with NOTHING — no sound, no headset flash, no vibration** — so the host reads an IR event the player never
-perceives. That is what a beacon row wants: `$SIR,15,0,,28,0,0,1,,*`. ⚠️ **Measured in cell `<5,0>` with the ESP32 rig, NOT on a real beacon.** The whole sweep ran on `$SIR,5,0,,<fn>` with board B's synthetic words — the FF-on registration is `$HIR,0,5,42,1,20`, **protocol 5**, and that `team=1` is what board B transmitted, not a hill owner. Nobody has loaded `$SIR,15,0,,28` or watched a real ally beacon register. The function id is very likely the effect and the cell only the key, but **that is the assumption, not the measurement** — confirm it with the grenade before shipping (rung F73-b). Polarity applies to both: they are
+perceives. That is what a beacon row wants: `$SIR,15,0,,28,0,0,1,,*`. ✅ **Confirmed on a real beacon, protocol
+15, bench 2026-09-10 evening (rung F73-b closed).** The original sweep ran fn 28 only in cell `<5,0>` with the
+ESP32 rig's synthetic words, so "ship it on protocol 15" was an assumption. Armed a gun for real with
+`$SIR,15,0,,28,0,0,1,,*` against the live grenade: the beacon arrived as `$HIR,4,15,0,2,8,0,0`, 20+ consecutive
+beacons, period 5.0 s, no drift — the cell is the key, the function is the effect, and it holds on real
+hardware. Polarity applies to both: they are
 enemy-only under `$GSET` t1 = 0, so a gun sees only hills it does NOT own; **t1 = 1 lifts the gate** and the
 owner arrives in `$HIR` token 4, which is how a host reads who holds a point.
 
