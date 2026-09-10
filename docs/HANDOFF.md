@@ -1,18 +1,22 @@
 # Handoff — Open BRX
 
-**State as of 2026-09-09.** One screen. Open work lives in `FOLLOWUPS.md`; evidence in
-`experiment-log.md`; the dated banners that used to live here are in
-[`archive/handoff-history.md`](archive/handoff-history.md) (newest first, verbatim).
+**State as of 2026-09-09.** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log.md`; old
+banners: [`archive/handoff-history.md`](archive/handoff-history.md).
 
 ## What is true today
+
+- ⭐⭐ **SIMULATED RECOIL IS REAL AND OURS TO DRIVE (2026-09-09, F46 closed).** `$WEAP` **t21 = accuracy
+  ceiling · t22 = floor · `$ALCD` tok2 = live accuracy**; drops ~1/5 of the range per shot, races a native
+  recovery (**t14 sets how hard it bites**), resets on reload, and below the ceiling a shot emits **IR
+  magnitude 0** — a real miss, which reaches the PLAYER natively and our SOFTWARE not at all. **Stock
+  100/100 = OFF.** Ship via **S17** after **F68 🔴**. Mechanism: `protocol/brx-protocol.md`.
 
 - **The stack runs whole matches on real hardware.** Mission Control (`mcp/brx_mcp/mc`, `python -m
   brx_mcp.mc`) compiles a per-player `FrameBundle`; each player's phone (`app/`, the Companion HUD)
   drives its own gun over BLE and reports to MC over the LAN. Verified end to end: a 300 s FFA on
   2026-08-30 (two iPhones, MacBook host, 12 kills / 126 hits) and a TDM outdoors on 2026-09-01 (two
   Android HUDs). MC is setup, start and recap only; it is not BLE-connected to guns during play.
-- **APK 0.1.7 IS built and published** (`app-v0.1.7`, from `51cc20b`, 2026-09-07 18:46) — the
-  handoff said otherwise until 2026-09-07, which would have sent someone to rebuild what exists.
+- **APK 0.1.7 IS built and published** (`app-v0.1.7`, from `51cc20b`, 2026-09-07 18:46).
   ⚠ **It predates A16 + A17** (`976e35a`), so the LED language and the hit audio are NOT on any
   phone: dark rest, the pool readout, the `$HLOOP` down signal, headset roles and the material hit
   sounds all need a NEW build. `cd app && npm run android:apk`, then rebuild the site.
@@ -104,10 +108,8 @@
    the damage, and a kill draws from the 5 takes.
 2. **Build and ship an APK carrying A16 + A17** (0.1.7 predates both). Until it ships, none of the LED work
    or the hit audio reaches a player, and the legacy `headset.carrier` key cannot be deleted (S10).
-3. **The two LED design questions are DECIDED (2026-09-09) — recorded in `led-language.md`, do not re-open.**
-   A partial level KEEPS its settled loop-blink (it is the only thing separating adjacent levels on a
-   single-hue pool, so dropping it would collapse armour and shield from seven levels to four), and HEALING
-   gets no opening beat (a gain steps up immediately, and that asymmetry against a hit is the signal).
+3. **The two LED design questions are DECIDED (2026-09-09): the partial-level blink stays, healing gets no
+   opening beat. Recorded in `led-language.md` with the reasoning — do not re-open.**
 
 4. **Bench, gun body only** (`bench-flash-control-2026-09-05.md` §6): a metered A/B of `$HLOOP,2,750`
    against a native out-blink (the "might be brighter" call was one operator, no meter), that rate's usable
@@ -118,11 +120,9 @@
    registers a medic word, so the teal bar and A16.5's shield→armour handover are unverifiable as things
    stand. Decide whether a grant row belongs in the compiled `$SIR` table at all.
 
-**The bench queue is [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md)** — every open item in
-eight SETUP blocks (setup costs minutes, readings cost seconds) with the command, the reading and the
-control per rung, the rungs that are blocked on code, and the five traps that fake a result. Items 4-6
-above are its blocks E, D1 and "blocked on code". `FOLLOWUPS.md` §9 stays the register: ids there, order
-there. Read `gotchas.md` first; its "Before a bench session" block is the pre-flight.
+**The bench queue is [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md)** — every open item in eight
+SETUP blocks with the command, reading, control and blocked-on-code per rung, plus the five traps that fake
+a result. `FOLLOWUPS.md` §9 stays the register. Pre-flight: `gotchas.md`.
 
 ## Machine roles
 

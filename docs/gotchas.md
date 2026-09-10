@@ -20,7 +20,12 @@ produced them (carried in from the 2026-09-03 session sheet when it was archived
    `$PY mcp/tools/range_step.py <addr> "range check" COM8 6 COM7` (`$PY` = the Windows venv python;
    on the Mac, native `python3` and the Mac's serial device paths). Then `$PY mcp/tools/loopback.py
    COM8 COM7 12` to confirm both boards are ALIVE (it is not a decode benchmark, the receiver
-   fragments frames).
+   fragments frames). ⚠️ **Keep the victim gun OFF the board-B-to-board-A axis while you do this.** The
+   calibration shots are live IR: on 2026-09-09 a `loopback.py COM8 COM7 6` put six magnitude-20 words
+   into a gun parked in the beam and killed it (70 armour and 45 HP gone in 5.3 s), which then read as
+   `MARGINAL LINK -- 2/6 bit-exact` because the gun was OCCLUDING the receiver it was standing in front
+   of. A rig gate can fail because the subject is in the beam, so **look at what is between the boards
+   before you re-aim them**.
 4. **Never conclude "deaf" without reading the pools.** A dead gun and a `$SIR`-less gun are
    indistinguishable through `$HIR`. Tony: *"it isn't going to register a hit while dead. thats dead
    not deaf."* The tools check this themselves; a hand-run probe must too.

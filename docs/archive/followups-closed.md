@@ -2109,3 +2109,15 @@ is logged under its own entry.
   function is a DoT, so a node applying the tick is the only route. If it clamps, DoT is a HUD fiction and we
   stop designing it. Read via `$QUERY` (these writes do not self-emit `$HP`); the `+5` control is also our first
   measurement of the documented behaviour. 5 min, no rig. `trigger` (bench A1).
+
+
+# F46 · closed 2026-09-09 · bench C1 on Tactix-E20D
+*ANSWERED YES. Simulated recoil is REAL, live, and ours to drive: `$WEAP` t21 = the accuracy ceiling, t22 = the floor, `$ALCD` token 2 = the live per-shot accuracy (the doc's "audio level" was wrong), the drop is ~1/5 of the range per shot and races a native time-based recovery, it resets on reload, and a shot below the ceiling emits IR **magnitude 0** -- the manual's miss. Stock 100/100 makes ceiling = floor and disables it, which is why every capture ever taken looked inert. The miss reaches the PLAYER natively (vibration, near-miss sound, a green headset flash identical to a hit) and reaches our SOFTWARE not at all (no `$HIR`, no `$HP`). Opened F66, F67, F68 and S17; closed the `H06` half of F45.*
+
+- **F46 🟡 Weapon accuracy and near-miss audio** (Tony's question, 2026-09-07: "does our hosted game implement the
+  missed wizz shots? shot accuracy from holding the trigger?"). Answer today: NO. Accuracy exists only as a
+  SCOREBOARD stat (`scoring.py`, hits ÷ shots); nothing degrades accuracy while the trigger is held, and it cannot
+  be done host-side because the gun emits IR autonomously per pull. It would have to be `$WEAP` t21/t22 (APK-named
+  accuracy), both in the protocol doc's UNVERIFIED list. Probe: flip t21/t22 on one weapon and count `$HIR` against
+  `$ALCD` shots. If they gate the gun's own accuracy, the feature is: set the token, let the firmware miss, and the
+  victim hears `H07`/`H09` go past instead of a hit. `trigger`.

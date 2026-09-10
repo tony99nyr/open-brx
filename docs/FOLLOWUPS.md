@@ -6,8 +6,8 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F66 · G11 · H7 ·
-K7 · P18 · Q20 · R3 · S17.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F69 · G11 · H7 ·
+K7 · P18 · Q20 · R3 · S18.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
 **Blocked on:** `trigger` · `eyes` · `ears` · `space` · `grenade` · `capture` · `decision` · `build`.
@@ -250,7 +250,11 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   to zero really kills the gun (Tony, on Tactix-E20D: *"its dead, headset green blinking, trigger does nothing"*, and the
   wire agreed — 15 `$BUT,0,1`/`0,0` pairs with no `$ALCD`, the documented dead-gun signature). But it emits
   **`$LCD,0,0,0,0,32,192,*` and never `$HP,0,0,0`**: the frame shape SWAPS on the lethal write, where every
-  non-lethal `$LIFE` self-emits `$HP`. `engine.js _onHp` and `stage.py` both derive death from `$HP`, and
+  non-lethal `$LIFE` self-emits `$HP`. **Same-session control, and it is decisive:** twenty minutes later the
+  same gun was killed by six real IR words (a stray loopback burst) and that death emitted
+  **`$HP,0,0,0,*` FIRST and THEN `$LCD,0,0,0,0,32,384,*`** — both frames. So the missing `$HP` is specific to the
+  HOST write, not something about dying, and the two paths were compared on one gun in one sitting.
+  `engine.js _onHp` and `stage.py` both derive death from `$HP`, and
   `spec/node.md` states "no death is inferred" as a deliberate anti-cheat. So a poison tick, a syphon drain or any
   future host damage can kill a player while the HUD still says ALIVE and MC never scores it. Fix: treat a zeroed
   `$LCD` as a death alongside `$HP,0`, in BOTH mirrors — and note the node already knows, because it sent the
@@ -426,7 +430,14 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   what is left is the phone transport/render layer. Needs the phone's BLE frame ring (Share log before closing the app). `capture`.
 - **F5 decision** the AR ships at 140 ms / reserve 192, not the captured 100 / 384 (balance; 100 strictly dominates 10 of
   17 weapons). Stock feel = set `wire.fire_ms` to 100 and delete `test_ttk_band_and_no_strictly_dominant_weapon`. `decision`.
-- **F12 🟡** (header corrected 2026-09-06) the VS1838B capture firmware splits one frame into 2–4 pieces (a real gun 3/44
+- **F12 🟠** (raised from 🟡 2026-09-09) ⚠️ **the STITCH is not just lossy, it INVENTS parity-valid words.** Rig
+  qualification 2026-09-09, a real gun firing a known word (`proto=0 player=0 team=1 mag=9 sub=0`): every whole
+  read was correct, but the ambiguous stitches each offered a second candidate that ALSO passed parity —
+  `proto=4`, `proto=1`, `mag=137`, `mag=41`, `sub=1`, `sub=2`, `player=16`. Those are the exact fields F46
+  (magnitude 0) and F63 (protocol) measure, so an ambiguous stitch manufactures the signal. Only **7 of 45
+  bursts** were whole words, so this is the common case, not the edge. Until the firmware assembly bug below is
+  fixed, any word-content experiment must count `WORD`/unambiguous-`STITCH` lines only, and prefer a count
+  ("did a word arrive") over a decode where it can. Original row: the VS1838B capture firmware splits one frame into 2–4 pieces (a real gun 3/44
   whole). **Captures are no longer blocked**: `native_capture.py` stitches every split (a split loses exactly one
   duration, 2026-09-03) and the grenade session ran on it. Still open: the firmware assembly bug itself (log `micros()`
   at frame start/end, then raise `IDLE_GAP_US` past the measured hole or stitch in firmware), and the rule that
@@ -662,14 +673,41 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 - **F45 🟡 Audit the four `$PSET` tokens nobody has ever heard.** `missShotHit` (`H06`), `emptyUnboundButtonSound`
   (`U15`), `ammoOrGearPickUp` (`W71`) and `hitCrit` (`H43`, a shape pick and a placeholder, not a choice) all still
   ship inherited or unaudited ids. `W71` fires on every ammo/gear pickup in a real game and no one has heard it.
-  `H07`/`H09` were identified as bullet WHIZZ-BYS on 2026-09-07 and are the obvious `missShotHit` candidates. `ears`.
-- **F46 🟡 Weapon accuracy and near-miss audio** (Tony's question, 2026-09-07: "does our hosted game implement the
-  missed wizz shots? shot accuracy from holding the trigger?"). Answer today: NO. Accuracy exists only as a
-  SCOREBOARD stat (`scoring.py`, hits ÷ shots); nothing degrades accuracy while the trigger is held, and it cannot
-  be done host-side because the gun emits IR autonomously per pull. It would have to be `$WEAP` t21/t22 (APK-named
-  accuracy), both in the protocol doc's UNVERIFIED list. Probe: flip t21/t22 on one weapon and count `$HIR` against
-  `$ALCD` shots. If they gate the gun's own accuracy, the feature is: set the token, let the firmware miss, and the
-  victim hears `H07`/`H09` go past instead of a hit. `trigger`.
+  **`H06` IS ANSWERED (bench 2026-09-09):** fired a magnitude-0 IR word at a gun armed with our `$PSET` and Tony heard it by ear -- `H06` is a bullet near-miss and it is correctly placed in `missShotHit`. It is also now reachable in a real game for the first time (F46 proved a miss exists). ⚠ Spaced misses play it every time; three fired back-to-back played it once, so there is a rate gate or a batch collapse (F67). Still open here: `U15`, `W71` and `H43`. `ears`.
+- **F68 🔴 A MISS PERMANENTLY KILLS THE HEADSET TEAM COLOUR.** Bench-observed 2026-09-09, Tony watching a gun painted
+  blue: a magnitude-0 word makes the headset **flash green exactly like a hit and then go dark, and it stays dark**. Same
+  mechanism as the 2026-09-03 "a registered hit WIPES the headset" finding -- but a miss emits **no `$HIR` and no `$HP`**
+  (F46), and our repaint lives inside the `dmg > 0` branch (`engine.js:1494`, mirrored `stage.py:1101`), so the node never
+  learns and never repaints. **Consequence: the first miss of a life removes that player's team identity until the next
+  real hit or respawn** -- and A16.4 deliberately rests the GUN body on team colour for exactly the identity reason the
+  headset just lost. Invisible today only because misses cannot happen at stock 100/100, so this ships the moment S17
+  does. Fix needs a trigger that does not depend on damage: the node cannot see the miss at all, so either repaint on a
+  timer/heartbeat while alive, or accept a dark headset and move team identity entirely to the gun body. **Also worth
+  knowing for gameplay: a miss is VISUALLY IDENTICAL to a hit** (same green flash), so no observer can tell them apart. `build`.
+- **F66 🟡 `$SIR` fn 23: one mechanism with two symptoms, or two effects?** The 2026-08-27 row called it an audio
+  suppressor on the strength of `$ALCD` token 2 dropping 100 → 0. Token 2 is now bench-proven to be **live accuracy**
+  (F46), so that number never evidenced the audio claim at all. Both observations stand on their own: the gun **was heard**
+  to go silent, and its accuracy **was measured** at 0 for ~6-8 s. What is gone is the belief that one reading demonstrated
+  both. Re-run fn 23 and separate them: is the gun silent AND inaccurate, or did the silence have another cause? Note fn 23
+  forces accuracy to literal 0, below whatever `t22` floor the weapon ships, which no normal firing walk can do -- so it is
+  a genuine debuff primitive either way. `trigger` + `ears`.
+- **F67 🟡 The three numbers F46 did not pin.** The accuracy model is proven and drivable; these calibrate it.
+  **(a) The recovery rate.** A native time-based recovery races the per-shot drop: at t22=0, single shots ~2 s apart held a
+  flat 80 forever while a held trigger reached 0 in eight rounds. Nobody has measured how long one step back up takes, and
+  that number decides how long a burst pause has to be -- i.e. whether "fire in bursts" is real advice or theatre.
+  **(b) The hit probability per accuracy value.** Misses are probabilistic, not a threshold (floor 50 gave 4 × `mag=0` to
+  12 × `mag=9`; floor 0 gave 16 to 12), but those samples mix pre-floor and floored rounds. Clean probe: set **t21 = t22**
+  (e.g. 50/50) so accuracy is pinned from the first shot with no drift, then count `mag=0` against total rounds over 3-4
+  magazines. If accuracy is literally a percent-to-hit, the printed manual's per-weapon pairs (M-4 96/91, MG-7 66/45)
+  become directly meaningful to us.
+  **(c) The near-miss sound's rate gate.** Spaced misses play `missShotHit` every time; three back-to-back played it once. `trigger`.
+- **S17 ⬜ Ship the accuracy model per weapon** (unblocked by F46, 2026-09-09). We already write t21, t22 and t14 on every
+  weapon, so this is balance work and not plumbing: pick a ceiling/floor per weapon and the fire interval that decides how
+  fast it gets there. The catalog ships 100/100 today (model OFF) on all 22 rows, so adopting it is deliberate, per weapon,
+  and reversible. **Gated on F68** -- turning this on with the headset bug live would strip team identity from every player
+  who sprays. Design notes in `weapon-design.md` §4.4; the manual pages already describe the mechanic for players. Consider
+  also surfacing `$ALCD` token 2 on the HUD: it is a live per-shot accuracy number the phone can already read, and it would
+  make the mechanic legible instead of mysterious. `build`.
 - **F47 🟡 `get maxArmor()` turns an explicit 0 into 70.** `engine.js:195` is
   `(config.health.max_armor) || 70`, so a loadout that deliberately ships NO armour gets 70 instead. Two
   consequences: a no-armour class silently has armour, and A17.2's dropped `maxArmor > 0` guard could never

@@ -113,7 +113,7 @@ quick `$PING`, then drops within seconds and echoes nothing to config. After a g
 | `$DISCONNECT,*` | Gun-initiated disconnect notice | e.g. the moment its headset is switched off |
 | `$VOLTS,<pack_mV>,<cell_mV>,<t3>,<t4>,*` | Battery telemetry, ~every 30 s in app mode | `$VOLTS,7662,3921,55,70,*` = 7.662 V pack, 3.921 V cell; tokens 3–4 undecoded. Only reliably returned at good RSSI |
 | `$LCD,<hp>,<armor>,<t3>,<t4>,<mag>,<reserve>,*` | Health/armor HUD echo | `$START` → all zeros; `$SPAWN` → pools + current weapon's ammo; death → `$LCD,0,0,0,1,1,1,*`. A zeroed `$LCD` after `$SPAWN` means no config is loaded (the post-power-cycle tell). Tokens 3–4 undecoded |
-| `$ALCD,<mag>,<audio>,<slot>,<reserve>,<heat>,*` | Ammo/weapon HUD stream | One frame per round fired **and** per round reloaded (a reload is a burst of frames). Token 2 = the gun's audio level, 100 in normal play, driven to 0 by a `$SIR` fn-23 hit and recovering over ~6–8 s. Token 3 = weapon slot (alt-fire cycles 0↔1; melee slot 4 appears as an isolated frame on a gyro swing). Token 5 = **weapon heat** (raw, exceeds 100 at overheat; non-zero only on overheat weapons). Only streams on ammo events: silence is not "no change" |
+| `$ALCD,<mag>,<accuracy>,<slot>,<reserve>,<heat>,*` | Ammo/weapon HUD stream | One frame per round fired **and** per round reloaded (a reload is a burst of frames). ⭐ **Token 2 is the LIVE ACCURACY of the simulated-recoil model, bench-proven 2026-09-09** — not the "audio level" this row used to claim. It arms at `$WEAP` **t21** (the ceiling), drops ~**one fifth of the t21-to-t22 range per shot** under sustained fire, floors at `$WEAP` **t22**, recovers with time between shots, and **resets to t21 on reload**. Measured on the AR at t14=100 ms: t22=0 walked 80·60·40·40·40·20·20·0 and pinned at 0; t22=50 walked 90·90·90·90·90·80·70·70·70·60·50 and pinned at exactly 50 for the remaining 22 rounds; stock t21=t22=100 never moved off 100 across 32 rounds. ⚠️ The `$SIR` fn-23 "audio suppression" finding cited this token dropping 100→0 as its evidence. The silence was heard by ear so the effect is probably real, but the NUMBER quoted as proof was this accuracy field — re-read fn 23 before trusting its mechanism (F66). Token 3 = weapon slot (alt-fire cycles 0↔1; melee slot 4 appears as an isolated frame on a gyro swing). Token 5 = **weapon heat** (raw, exceeds 100 at overheat; non-zero only on overheat weapons). Only streams on ammo events: silence is not "no change" |
 | `$HIR,<sensor>,<irProto>,<shooterId>,<shooterTeam>,<magnitude>,<crit>,<subtype>,*` | **Hit received** | See §4.1 |
 | `$HP,<hp>,<armor>,<shield>,*` | Pools after a hit | Same millisecond as its `$HIR`. `$HP,0,0,0` = death. **A `$LIFE` write DOES self-emit it (bench 2026-09-09) — but only while the write is non-lethal.** A `$LIFE` that takes a pool to zero emits `$LCD,0,0,0,0,<mag>,<reserve>,*` INSTEAD, and no `$HP` at all: the frame shape swaps on the lethal write. ⚠️ Anything that books a death from `$HP,0` alone (`engine.js`, `stage.py`, `spec/node.md` "no death is inferred") is blind to a host-inflicted kill — F64 |
 | `$BUT,<id>,<state>,*` | Physical button event | id 0 trigger · 1 alt-fire · 2 reload handle · 3 select · 4 left · 5 right (matches `$BMAP`); state 1 press / 0 release. Streams only in app mode; pre-game the trigger reports but does not fire. A dead gun's trigger gives `$BUT` with no `$ALCD` decrement |
@@ -150,6 +150,15 @@ Format: `$SIR,<irProtocol>,<subtype>,<soundID>,<function>,<p5>,<p6>,<p7>,<p8>,*`
 - The IR word's 8-bit "damage" is a **magnitude**; the row's `<function>` decides what it applies to.
 - `<soundID>` plays on the victim when the row fires (`VA16` "armor suit", `VA8C` "shields online", `H29` stim-pack).
 - `<p5>`–`<p8>` do not scale damage (five shapes tried, all landed exactly the magnitude); their role is open.
+- ⭐ **A MAGNITUDE-0 WORD IS A MISS, AND IT IS INVISIBLE OVER BLE (bench-proven 2026-09-09).** The victim's gun
+  **vibrates and plays its `$PSET` `missShotHit` sound** (we ship `H06`; Tony confirmed by ear it is a bullet
+  near-miss, which also settles the H06 half of F45) but emits **NO `$HIR` and NO `$HP` at all**. Measured with a
+  same-aim control minutes apart: three magnitude-9 words gave two `$HIR` (sensors 2 and 4) plus `$HP` 70→61→52;
+  three magnitude-0 words gave zero events. Spaced single words play the sound every time; three fired
+  back-to-back played it once, so there is a rate gate or a batch collapse (F67). **Consequence for a host:** a
+  miss reaches the PLAYER (haptic + audio, natively, no work from us) and reaches the SOFTWARE not at all. Our
+  accuracy stat is accidentally correct because it counts shots from the shooter's `$ALCD` and hits from the
+  victim's `$HIR`, so a miss lands right by never arriving — but nothing can REACT to a miss, on either phone.
 - **Team-gated in firmware by polarity** while `$GSET` t1 = 0: damage lands only from an enemy team, support
   (heal / armor / shield grants) only from the victim's own team; a rejected frame emits no `$HIR`. With t1 = 1
   everything lands from anyone.
@@ -224,6 +233,7 @@ Shotgun (cap) : $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,
 | 15 | **weapon-swap delay (ms)** | 1700 doubled the swap, 425 halved it, 100 ran at 100; linear, no floor; the gun takes the larger of the two loaded slots' values (2026-09-04). Stock 850, melee 100 |
 | 16 / 39 / 40 / 17 | maxClip / clipStartingAmmo / ammoReserv / maxAmmo | t39 = t16 and t17 = 2 × t40 in every stock frame; 9999999 / 32768 = unlimited |
 | 20 | **fire mode** | `0` full-auto · `7` single-shot/bolt · `9` burst (cycle in t23) · `2` charge, auto-release (a tap also fires) · `3` hold-to-charge, auto-fire (a tap is sound only) · `14` tap-fire or charge-release · `13` melee. Proven by flipping only t20 on a captured sniper (7 → 0 went full-auto); the Burst Rifle (t20 = 9, t23 = 275) fires exactly three rounds per pull |
+| **21 / 22** | **maxAccuracy / singleShotAccuracy = the simulated-recoil CEILING and FLOOR** | ⭐ **BENCH-PROVEN 2026-09-09.** t21 is the accuracy ceiling (t21=0 armed `$ALCD` token 2 at 0 before a shot was fired); t22 is the FLOOR (t22=50 floored at exactly 50 and stayed for 22 more rounds; t22=0 floored at 0). Accuracy is a **per-shot hit probability**: a shot fired below the ceiling can emit **magnitude 0** — the manual's "miss" — and at floor 50 the recovered words were 4 × `mag=0` to 12 × `mag=9`, at floor 0 they were 16 × `mag=0` to 12 × `mag=9`. **Stock ships 100/100, which makes ceiling = floor and disables the model** — which is why every capture we and JEDGE ever took looked inert. The drop is ~1/5 of the range per shot and the decay races a native time-based recovery, so **t14 (fire interval) sets how hard it bites**: at t22=0, single shots ~2 s apart held a flat 80 while a held trigger reached 0 in eight rounds. Live value streams in `$ALCD` token 2 |
 | 23 | burstWeaponTime (ms) | 275 Burst Rifle, 250 Force Rifle, empty elsewhere |
 | 24 / 35 / 37 / 38 | overheat: heat per shot / overheat sound / enable-and-parameter pair | t24 and t35 are **inert on their own** (SMG, Energy Rifle, Plasma Sniper ship them and never overheat). t37/t38 (Charge Rifle stock `20,150`) switch the mechanism on: transplanting them onto the SMG brought its heat gauge alive. Which of t37/t38 is threshold vs cooldown is unmapped. Live heat streams in `$ALCD` token 5 |
 | 27 / 28 / 29 | fire sound / engage sound / release sound | t27 is a sound, not an identity (Rocket Launcher and Rail Gun both fire `C03`). `C…` in t28 = a charge sound; `D…` = extra reload parts; t29 present only when the weapon has a distinct release event |
@@ -232,7 +242,7 @@ Shotgun (cap) : $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,
 
 Unknown or unverified: t2 (100 on guns, 90 on melee), t19 (not simply reloadType), t25/t26 (Suppressor only),
 t41 (APK name gunRangeIndoor, 75 on every gun and 20 on melee; whether it changes emitted range is untested),
-t6 crit chance, t21/t22 accuracy.
+t6 crit chance. (**t21/t22 accuracy left this list 2026-09-09** — bench-proven, see the `$WEAP` table.)
 
 ## 7. What the gun does NOT hold
 

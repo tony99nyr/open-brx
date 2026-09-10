@@ -157,7 +157,7 @@ Every known command, with args and meaning: host to tagger, tagger to host, and 
 | `$DISCONNECT,*` | n/a | Gun-initiated disconnect notice (e.g. the moment its headset is switched off). |
 | `$VOLTS,<pack_mV>,<cell_mV>,<t3>,<t4>,*` | e.g. `7662,3921,55,70` | Battery telemetry, about every 30 s in app mode. Token 1 = pack millivolts (7.662 V), token 2 = cell millivolts (3.921 V). Tokens 3-4: (unknown). |
 | `$LCD,<hp>,<armor>,<t3>,<t4>,<mag>,<reserve>,*` | e.g. `45,70,0,0,36,216` | **Health/armor HUD echo.** `$START` gives all zeros; `$SPAWN` gives pools plus the current weapon's ammo; death gives `$LCD,0,0,0,1,1,1,*`. Tokens 3-4: (unknown). A zeroed `$LCD` after `$SPAWN` means "no config loaded" (post power-cycle tell). |
-| `$ALCD,<mag>,<t2>,<slot>,<reserve>,<heat>,*` | e.g. `36,100,0,108,0` | **Ammo/weapon HUD stream.** Per-round during fire *and* reload (mag 0, 1, 2 and up as reserve drains). Token 2: (unknown). It reads 100 in normal play and drops to 0 after a `$SIR` fn 23 hit. Token 3 = weapon slot. Token 5 = **weapon heat** (0-100+, only on overheat weapons). Only streams on ammo events. Silence is not "no change". |
+| `$ALCD,<mag>,<t2>,<slot>,<reserve>,<heat>,*` | e.g. `36,100,0,108,0` | **Ammo/weapon HUD stream.** Per-round during fire *and* reload (mag 0, 1, 2 and up as reserve drains). **Token 2 is live accuracy**, one value per round fired: it starts each life at the weapon's `$WEAP` t21 ceiling, walks down toward the t22 floor under sustained fire, and resets to the ceiling on reload. See the `$WEAP` t21/t22 rows above. It also drops to 0 after a `$SIR` fn 23 hit and recovers over about 6-8 s (see the `$SIR` function map). Token 3 = weapon slot. Token 5 = **weapon heat** (0-100+, only on overheat weapons). Only streams on ammo events. Silence is not "no change". |
 | `$HIR,<sensor>,<irProto>,<shooterId>,<shooterTeam>,<magnitude>,<crit>,<subtype>,*` | e.g. `4,0,19,2,9,0,3` | **Hit received.** See the events section for the full decode. |
 | `$HP,<hp>,<armor>,<shield>,*` | e.g. `43,0,0` | Pools after a hit; arrives in the same millisecond as its `$HIR`. `$HP,0,0,0` = death. |
 | `$BUT,<id>,<state>,*` | id 0-5, state 1 press / 0 release | Physical button event (ids match `$BMAP`). Streams only in app mode. `$BUT,4,0` is also returned by `$MELEE`. |
@@ -287,8 +287,8 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | 18 | reloadSpeed (ms) | 1400 | 2500 | Reload time. |
 | 19 | n/a | 0 | 0 | (unknown) |
 | 20 | **fire mode** | 0 | 14 | **Proven by one-field flip**: `0` full-auto, `7` single-shot/bolt, `9` burst (cycle in t23), `2` charge, auto-release (tap = weak shot), `3` hold-to-charge, auto-fire (tap = sound only), `14` tap-fire OR charge-release, `13` melee. |
-| 21 | maxAccuracy | 100 | 100 | |
-| 22 | singleShotAccuracy | 100 | 100 | |
+| 21 | maxAccuracy | 100 | 100 | **The accuracy ceiling.** `$ALCD` token 2 (live accuracy) starts each life here and never rises above it. Proven by one-field flip: t21=0 read 0 on `$ALCD` token 2 at arm time, before a shot was fired. |
+| 22 | singleShotAccuracy | 100 | 100 | **The accuracy floor.** Under sustained fire `$ALCD` token 2 walks down from the t21 ceiling toward this value and holds there; it does not go lower. Proven by one-field flip: t22=50 walked down and held at exactly 50, t22=0 walked to 0. Stock ships t21 = t22 = 100 on every weapon, which makes the ceiling equal the floor and disables the model. |
 | 23 | burstWeaponTime (ms) | n/a | n/a | Burst cycle: 275 Burst Rifle, 250 Force Rifle, empty on everything else. |
 | 24 | overheat (heat per shot) | 0 | 14 | SMG 5, Energy Rifle 6, Charge Rifle 14, Plasma Sniper 30. **Inert unless t37/t38 are set.** |
 | 25 | n/a | n/a | n/a | (unknown) |
@@ -340,6 +340,14 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | `M92` | Melee | gyro swing, protocol 13, magnitude 90 |
 
 > **Overheat is a balance lever on any weapon.** Set t24 (heat per shot), t35 (overheat sound) and t37/t38 (enable/params, stock `20,150`), and the live heat gauge streams in `$ALCD` token 5, climbing about 8 per shot on the Charge Rifle, crossing 100 into lockout and decaying on idle. A HUD heat bar needs no new protocol.
+
+> **Accuracy is a live per-shot value, not a static stat.** `$ALCD` token 2 is a **hit probability**, not a threshold: a shot fired below the ceiling can still emit IR at magnitude 0, which is the miss the manual describes elsewhere. It starts each life at t21 and drops under sustained fire, roughly one fifth of the t21-to-t22 range per shot, until it reaches t22 and holds. It resets to t21 on reload. A native time-based recovery races the drop, so the fire interval decides how hard the model bites: single shots about 2 s apart at t22=0 held a flat 80 and never went lower, while a held trigger reached 0 in eight rounds. The recovery rate itself is not yet measured. Two full-magazine walks on the Assault Rifle (t14=100 ms, trigger held, t21=100):
+>
+> - t22=100 (stock): token 2 held at 100 for all 32 rounds. No drift at all.
+> - t22=0: 80, 60, 40, 40, 40, 20, 20, 0, then 0 for the rest of the magazine.
+> - t22=50: 90, 90, 90, 90, 90, 80, 70, 70, 70, 60, 50, then 50 for the remaining 22 rounds.
+>
+> Both runs took about five to six shots to reach their floor: the drop is proportional to the ceiling-to-floor range, not a fixed step. Stock ships t21 = t22 = 100 on every weapon, which is why every capture ever taken of this model showed it inert. The exact hit probability at a given accuracy value is not calibrated; do not treat it as a percentage.
 
 ### Can I build a semi-auto rifle?
 
@@ -478,7 +486,7 @@ Hits, health, HUD echoes, buttons and telemetry, plus the proof that the gun kee
 |---|---|
 | `$HP,<hp>,<armor>,<shield>,*` | Pools after the hit; same millisecond as its `$HIR`. `$HP,0,0,0` = death. Example run at 9/hit: armor 70 to 61 down to 0, then HP 45 to 43 to 34 down to 0. Writes (`$LIFE`/`$BUMP`) do not self-emit `$HP`. |
 | `$LCD,<hp>,<armor>,<t3>,<t4>,<mag>,<reserve>,*` | Health/armor HUD echo on `$START`/`$SPAWN`/death. Tokens 3-4: (unknown). |
-| `$ALCD,<mag>,<t2>,<slot>,<reserve>,<heat>,*` | Ammo/weapon HUD (token 2: (unknown)): one frame per round fired *and* per round reloaded; slot changes on alt-fire cycle (0 to 1 and back); melee (slot 4) appears as an isolated frame. Heat is a raw level that exceeds 100. |
+| `$ALCD,<mag>,<t2>,<slot>,<reserve>,<heat>,*` | Ammo/weapon HUD: one frame per round fired *and* per round reloaded; slot changes on alt-fire cycle (0 to 1 and back); melee (slot 4) appears as an isolated frame. Token 2 is live accuracy (see the `$WEAP` t21/t22 section). Heat is a raw level that exceeds 100. |
 | `$BUT,<id>,<state>,*` | 0 trigger · 1 alt-fire · 2 reload handle · 3 select · 4 left · 5 right; 1 press / 0 release. In phone mode pre-game the trigger reports but does not fire. |
 | `$VOLTS,<pack_mV>,<cell_mV>,<n3>,<n4>,*` | Battery every ~30 s in app mode. **Only reliably returned at good RSSI**. Weak-signal guns in a fleet sweep returned none. |
 | `$DISCONNECT,*` | The gun is hanging up (headset switched off, or the app closing). |

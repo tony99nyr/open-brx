@@ -141,7 +141,7 @@ Battle Company's stock presets below are for phoneless play. The damage scale he
 | SR-100 | 140 | 44 | 100-90 | 4 | bolt, high damage, small mag |
 | TAC-87 | 120-40 | 150 | 95-80 | 8 | semi shotgun; hold reload to load shells; full damage only at melee range |
 
-Also described in the Extended Guide: the TAR-33 (semi-auto, medium) and a Silenced AR. The two accuracy numbers are Battle Company's simulated-recoil model: fire fast and your accuracy drifts toward the lower number. A miss still reaches the enemy (their headset lights up and they hear a zip), but they take 0 damage. Fire in bursts.
+Also described in the Extended Guide: the TAR-33 (semi-auto, medium) and a Silenced AR. The two accuracy numbers are that weapon's ceiling and floor: fire fast and your accuracy drifts down from the first number toward the second. A miss still reaches the enemy (their headset lights up and they hear a zip), but they take 0 damage. Fire in bursts, or reload, to bring your accuracy back up. See *How a kill actually works* for the mechanism.
 
 ## Health, armor and damage
 
@@ -193,7 +193,7 @@ A BRX "bullet" is a burst of infrared light 25 bits long, sent on a 38 kHz carri
 4. **Feedback.** The target's headset flashes green once on a hit, and blinks green steadily while they are out, and plays the pain or death sound. The gun reports the hit and the new health to any connected phone. Melee, explosive and other damage types each get their own hit sound.
 5. **Confirm.** On a kill the shooter's sight flashes green and the announcer says "kill". In a phoneless gun-menu game the guns do this on their own, with no phone involved. In an app-hosted game the phone scores the kill and drives the same flash and voice line.
 
-> **Why misses still make noise.** Battle Company's "simulated recoil" accuracy model means a rapid-fire miss still reaches the enemy. Their headset lights and they hear a zip, but 0 damage is applied. If someone's headset keeps flashing and they are not dying, you are missing. Fire in bursts.
+> **Why misses still make noise.** Every weapon carries a live accuracy model. It has a ceiling and a floor, and you start each life at the ceiling. Keep firing and your accuracy drifts down toward the floor, a bit more with every shot. Reload and you are back at the ceiling. Fire slower than a held trigger and a natural recovery keeps you nearer the ceiling, which is why bursts land more shots than a mag dump. A miss under this model still reaches the enemy: their headset lights and they hear a zip, but the hit carries 0 damage. If someone's headset keeps flashing and they are not dying, you are missing. Fire in bursts, and reload to reset your accuracy outright.
 
 | Event | Victim | Shooter |
 |---|---|---|

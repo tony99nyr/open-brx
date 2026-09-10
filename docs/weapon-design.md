@@ -440,6 +440,28 @@ arsenal on a guess is exactly the mistake the first pass made with `t14`.
   carries `C11`, and the Rail Gun carries `C08`.
 - **`t23` burst, `t24`/`t35` overheat, `t25`/`t26` muzzle flash** — all inherited.
 
+### 4.4 `t21`/`t22`: a third lever — the accuracy ceiling and floor
+
+Bench-proven 2026-09-09 (see `docs/manual/dev.md`'s `$WEAP` token table for the full writeup and the
+measured walks): `t21` is the accuracy **ceiling** and `t22` is the accuracy **floor**. `$ALCD` token 2
+is a live per-shot accuracy value — not the "audio level" §6.3 used to call it (corrected there too).
+It starts each life at `t21`, drops under sustained fire toward `t22` (roughly a fifth of the
+ceiling-to-floor range per shot), holds at the floor, and resets to the ceiling on reload. A native
+recovery races the drop, so `t14` (fire interval) decides how hard the model bites: a fast cycle
+reaches the floor in five to eight shots, a slow enough one never leaves the ceiling.
+
+That makes sustained-fire feel a **three-lever** design space, not two. `t5` (damage) and `t14` (rate of
+fire) already tune a single burst; `t21`/`t22` now tune what *staying* on the trigger costs you. A
+weapon with a wide ceiling-to-floor gap punishes mag-dumping without touching its damage or cycle
+numbers at all — a different route to the same "don't just hold the trigger" goal the Assault Rifle's
+cycle retune reached for by hand (§2, "Role identities").
+
+**Every weapon in the catalog ships `t21 = t22 = 100`** — the captured Battle Company default, carried
+through unchanged by `resolve()` (Appendix). The model is present on the wire and unused: turning it on
+for any weapon is a deliberate balance decision, not something the current roster does today. No
+per-weapon values are proposed here — that is future work, and it wants the recovery rate measured
+first.
+
 ---
 
 ## 5. Open unknowns
@@ -452,7 +474,7 @@ arsenal on a guess is exactly the mistake the first pass made with `t14`.
 | **U5** | **Does a held trigger retrigger the fire sample from zero, or ring under the next shot?** Decides whether sample duration constrains anything at all. | custom weapon sound design | Fire the AR (1.76 s sample, 190 ms cycle) and listen. |
 | **U6** | ~~victim behaviour per damage type~~ — **CLOSED 2026-08-26, then PARTLY REOPENED by the IR work (§6.2).** The hit-SFX half stands. The conclusion *"presentation only; damage is always t5"* does **not**: `t3`/`t4` are the `$SIR` composite key, and the table MC pushes maps two of the three subtypes in use to **multiplier** functions. Damage is `t5 × the row's multiplier`. The earlier test was sound — every row it exercised happened to be a standard-damage row. | §2's balance table (§6.2) | done — the multiplier values were confirmed 2026-09-02 (U10). |
 | **U10** | ~~REOPENED 2026-08-27 — what switches the fn 36/37 multipliers on?~~ ✅ **CLOSED 2026-09-02: the multipliers are REAL and unconditional. fn 36 = floor(magnitude × 1.25), fn 37 = magnitude × 2.** 16 trials across magnitudes 20/40/9/7 and 8 `$SIR` row-tail shapes, with an fn 1 control on subtype 0 in every trial. The ×1.25 **truncates** (7 × 1.25 = 8.75 → **8**). Row tails do not gate it. Nothing "switches it on" — it is the function. *Still unexplained:* the 2026-08-27 controlled matrix that read ×1.0 in all 24 cells with a correct fn 1 control is **outvoted, not explained**. | §2's balance — the five multiplied weapons are real and §6.2's retune/flatten decision is live | done |
-| **U11′** | **Which status function, if any, is a real STUN? — OPEN (reopened 2026-08-27).** fn 23 is eliminated: it is an **audio suppressor** (`$ALCD` token 2 = the audio level, driven 0 → 100 over ~6–8 s; the gun fires and emits IR normally, ammo and health preserved, `$SPAWN` clears it early). Category 10 remains unbuilt; next lead is capturing the native Sentinel EMP ability. The 2026-08-26 "it is an EMP" reading and its correction: `docs/experiment-log.md` 2026-08-26/27. | stun weapons | capture the Sentinel EMP |
+| **U11′** | **Which status function, if any, is a real STUN? — OPEN (reopened 2026-08-27).** fn 23 is eliminated as a stun: it **silences the gun AND zeroes its accuracy** — the silence was heard by ear (stands), while the `$ALCD` token 2 drop cited as its proof is live ACCURACY (bench-proven 2026-09-09, §4.4), not the audio level this row said. One number was doing duty for two claims; see F66. Getting hit with fn 23 forces it down and it recovers over ~6–8 s; the gun fires and emits IR normally, ammo and health preserved, `$SPAWN` clears it early. Category 10 remains unbuilt; next lead is capturing the native Sentinel EMP ability. The 2026-08-26 "it is an EMP" reading and its correction: `docs/experiment-log.md` 2026-08-26/27. | stun weapons | capture the Sentinel EMP |
 | **U7** | ~~Damage ceiling in the IR payload~~ ✅ **CLOSED 2026-08-26** — read straight off the wire on our own VS1838B: the field is **8 bits (max 255)** and the rocket's 115 decoded exactly. A 2× powerup is expressible on anything up to 127. | future powerups | **Now directly readable** — the `D8` field on a VS1838B capture (bench-plan Session 1½b). |
 | **U8** | **`t17` vs `t40`.** Every captured frame obeys `t17 == 2 × t40` and we preserve it, but *why* is unknown — is `t40` a per-magazine count and `t17` a total? | nothing today; would matter for a resupply powerup | Set them independently and watch `$ALCD`. |
 | **U9** | ~~reserve via $AMMO on re-push~~ ✅ **CLOSED 2026-08-26**: a bare $WEAP re-push resets mag/reserve to the frame's baked-in values — pickups MUST re-send $AMMO (exp-log). | — | done |
@@ -726,12 +748,19 @@ shifted baseline.)
 
 **Status effects — one has an observable effect, and it is not a stun.** A whole family registers a `$HIR`
 and moves no pool: enemy-side **3, 8, 23, 24, 25, 26, 27, 28, 35**; friendly-side **31, 32, 34** **[two-sided
-map]**. **`$SIR,<proto>,<sub>,,23` is an AUDIO SUPPRESSOR** (2026-08-27, Tony on the trigger): the victim keeps
+map]**. **`$SIR,<proto>,<sub>,,23` SILENCES THE GUN *AND* ZEROES ITS ACCURACY** (2026-08-27, Tony on the trigger;
+relabelled 2026-09-09 — §4.4). ⚠️ Read the relabel carefully rather than swapping one single-cause story for
+another. TWO things were observed in 2026-08-27 and only one of them was quantified: the gun **was heard** to
+go silent (by ear, and it stands), and `$ALCD` token 2 **was measured** dropping to 0. That number was cited as
+the proof of the audio effect, and it is now known to be live ACCURACY, so it never evidenced the silence at
+all. Both effects are real; what is gone is the belief that one number demonstrated both. Whether fn 23 has one
+mechanism with two symptoms or two separate effects is open (F66): the victim keeps
 firing and emitting IR (magazine decremented shot by shot; 14 / 21 / 14 IR frames before / during / after) but
-loses its gun audio for ~6–8 s — `$ALCD` token 2 is the audio level, driven 0 → 100 (2.5 s, 5.3 s, back to 100
+its accuracy is forced down for ~6–8 s — `$ALCD` token 2 driven 0 → 100 (2.5 s, 5.3 s, back to 100
 by 8.0 s, 3/3 reps); `$AMMO`/`$WEAP` re-pushes do not move it, `$SPAWN` clears it early; with a real loadout the
 frame is `$ALCD,32,0,0,192,0` (ammo and health preserved). A **sensory-disruption** weapon: no fire sound, no
-reload chain, no overheat cue. It works under protocols 0/5/7/10 alike, so it belongs to the function.
+reload chain, no overheat cue, but it forces your accuracy to zero without a shot fired, below whatever
+the weapon's own `t22` floor is. It works under protocols 0/5/7/10 alike, so it belongs to the function.
 **Category 10 "Stun" remains UNBUILT**: no `$SIR` function has produced a stun, `$STUN`-over-BLE is a no-op, and
 the live lead is to capture the native Sentinel EMP ability (U11′). The 2026-08-26 "fn 23 is an EMP / weapon
 disable" reading and its retraction are in `docs/experiment-log.md` 2026-08-26/27.
