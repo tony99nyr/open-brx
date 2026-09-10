@@ -60,6 +60,10 @@ export interface GameConfig {
    *  overheal is silently dropped -- show what was gained, not what was granted. No shield: that
    *  pool is IR-only (P16). Absent or {0,0} = off. */
   siphon?: { hp: number; armor: number };
+  /** F70: what is on the field emitting this game's objective — 'grenade' (a BRX Smart Grenade in hill
+   *  mode) or 'ir_station'. Present only for the modes that need one (koth/domination/ctf/cs/bomb), which
+   *  the server REFUSES to push without it. Server vocabulary: `mc/types.py` STATION_SOURCES. */
+  station_source?: string;
   loadout_policy: LoadoutPolicy;
   /** A11: sounds + lights per event (preset or custom). Optional — an older server never sends it. */
   presentation?: Record<string, unknown>;

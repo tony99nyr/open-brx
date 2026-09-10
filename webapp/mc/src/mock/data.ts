@@ -455,6 +455,12 @@ export const MODES: ModeInfo[] = [
     brief: 'Attackers push to the extraction point and hold it through the capture timer. Defenders deny until time expires. Sides swap between rounds.',
     teams_text: '2 TEAMS', win_text: 'HOLD TO CAPTURE', respawn_text: 'ON · TIMED',
     defaults: base('extraction', { scoring: { frag_limit: null, win_by: 'objective' } }) },
+  // F82: BLUE + GREEN (tids 1 and 3). Yellow is tid 2, which is what a NEUTRAL hill broadcasts, so a
+  // yellow roster would read every uncaptured point as its own — the server refuses it outright.
+  { mode: 'koth', name: 'KING OF THE HILL', abbr: 'KOTH', desc: 'Hold the hill; possession scores',
+    brief: 'One hill, and it is a real grenade on the field. Shoot the point and it flips to your team; every second your side holds it banks possession. A point your team does not own damages anyone standing on it, so taking one is a fight. Most possession time when the clock runs out takes the match.',
+    teams_text: '2 TEAMS', win_text: 'POSSESSION TIME', respawn_text: 'ON · TIMED',
+    defaults: base('koth', { teams: [TEAMS[0], TEAMS[3]], scoring: { frag_limit: null, win_by: 'objective' }, station_source: 'grenade' }) },
 ];
 
 // guns: sticker, tail, readiness class (g=green, r=red, a1=battery unread, a2=stale link), batt, link age s

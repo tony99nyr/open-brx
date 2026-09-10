@@ -98,7 +98,12 @@ export class MockBackend implements Api {
     return {
       session_id: this.session_id, phase: this.phase, t,
       lan: { mode: 'router', ssid: 'BRX-FIELD', ip: '192.168.8.10', port: 8765, ws_url: 'ws://192.168.8.10:8765/ws', qr: 'ws://192.168.8.10:8765/ws' },
-      nodes, readiness, config: clone(this.config), config_errors: [], config_warnings: [],
+      // The demo mirrors the server's own `SETUP: ` warning for a grenade objective (compile.py validate),
+      // so the KotH rail in `?mock` shows the same field step the real MC does.
+      nodes, readiness, config: clone(this.config), config_errors: [],
+      config_warnings: this.config.station_source === 'grenade'
+        ? ['SETUP: POWER-CYCLE THE GRENADE SO IT STARTS NEUTRAL, SET IT TO HILL MODE, AND PLACE IT — a hill that starts already owned skews the whole match, and only a power cycle guarantees neutral. ONE POINT ONLY (F88: a beacon carries no station id)']
+        : [],
       players: clone(this.players), teams: clone(TEAMS),
       kit: { kitted, total: this.players.length, trying: { ...this.trying }, browsing: { ...this.browsing } },
       loadout_pool: this.pool(),
@@ -321,7 +326,14 @@ export class MockBackend implements Api {
       base.preset = lp.preset === 'custom' ? 'custom' : presetOf(base);
       this.config.loadout_policy = base;
     }
-    void prevMode;
+    // The real server rebuilds the config from `default_config(mode)` whenever the MODE changes, so a
+    // key belonging to the old mode cannot survive the switch. `station_source` is the one such key
+    // today (F70: only the objective modes have one) — leaving a stale 'grenade' on a TDM game would
+    // show the demo a hill setup step the real MC would never send.
+    if (partial.mode && partial.mode !== prevMode && partial.station_source === undefined) {
+      const src = MODES.find(m => m.mode === partial.mode)?.defaults.station_source;
+      if (src) this.config.station_source = src; else delete this.config.station_source;
+    }
     this.applyPolicy();
     const errors: string[] = [];
     if (this.config.time_limit_s == null || this.config.time_limit_s <= 0) errors.push('time_limit_s is required on the phone path');

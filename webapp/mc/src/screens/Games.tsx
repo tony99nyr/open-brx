@@ -150,7 +150,9 @@ export function Games() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 5 }}>
               {[['TEAMS', mode?.teams_text ?? '—'], ['WIN', mode?.win_text ?? '—'], ['RESPAWN', cfg.respawn.type === 'none' ? 'OFF · LIVES' : `${cfg.respawn.type.toUpperCase()} · ${cfg.respawn.delay_s} S`],
                 ['TIME', cfg.time_limit_s ? `${Math.round(cfg.time_limit_s / 60)} MIN` : '—'], ['HEALTH', `HP ${cfg.health.max_hp} · ARMOR ${cfg.health.max_armor}`],
-                ['LOADOUT', rulesLine(cfg, weapons, perks) || '—'], ['VENUE', `${cfg.environment.toUpperCase()}${cfg.night ? ' · NIGHT OPS' : ''}`]].map(([l, v]) => (
+                ['LOADOUT', rulesLine(cfg, weapons, perks) || '—'], ['VENUE', `${cfg.environment.toUpperCase()}${cfg.night ? ' · NIGHT OPS' : ''}`],
+                // F70/F88: only the objective modes carry this, and a grenade drives exactly ONE point
+                ...(cfg.station_source ? [['OBJECTIVE', cfg.station_source === 'grenade' ? 'GRENADE HILL · ONE POINT' : cfg.station_source.toUpperCase()]] : [])].map(([l, v]) => (
                 <div key={l} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 14, background: T.panel, border: `1px solid ${T.line}`, padding: '7px 12px' }}>
                   <span style={{ font: F.mono(500, 10.5), letterSpacing: '.2em', color: T.dim, flex: 'none' }}>{l}</span>
                   <span style={{ font: F.chk(700, 12), letterSpacing: '.06em', textAlign: 'right', ...TAB }}>{v}</span>
@@ -162,7 +164,10 @@ export function Games() {
             </div>
             {(state.config_warnings?.length ?? 0) > 0 && (
               <div role="status" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {[...state.config_warnings!].filter(w => /LOADOUTS? RESET/i.test(w)).map((w, i) => <div key={i} style={{ font: F.chk(700, 12), letterSpacing: '.14em', color: T.accInk, background: T.warn, padding: '6px 10px', alignSelf: 'flex-start' }}>▲ {w.toUpperCase()}</div>)}
+                {/* `SETUP: ` = a PHYSICAL step on the field the operator must do before the push (F70: power-cycle
+                    the grenade so the hill starts NEUTRAL, set hill mode, place it). It is not a technical advisory
+                    like the $SIR/frag-limit warnings, which stay out of this rail — see mc/API.md. */}
+                {[...state.config_warnings!].filter(w => /LOADOUTS? RESET/i.test(w) || /^SETUP:/i.test(w)).map((w, i) => <div key={i} style={{ font: F.chk(700, 12), letterSpacing: '.14em', color: T.accInk, background: T.warn, padding: '6px 10px', alignSelf: 'flex-start' }}>▲ {w.toUpperCase()}</div>)}
               </div>
             )}
             {state.config_errors.length > 0 && <div style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.bad }}>▲ {state.config_errors.join(' · ').toUpperCase()}</div>}

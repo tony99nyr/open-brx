@@ -18,8 +18,8 @@ from .. import poolgauge as _pg
 from .. import voices as _voices
 from . import policy as _policy
 from .scoring import Scorer
-from .types import (DEFAULT_RUNWAY_S, MAX_PLAYERS, OFFLINE_AFTER_MS, STALE_AFTER_MS, SYNC_FRESH_MS, GameConfig, Player,
-                    ReadinessRow, ReadinessSnapshot, ScanRow, Team)
+from .types import (DEFAULT_RUNWAY_S, MAX_PLAYERS, OFFLINE_AFTER_MS, STALE_AFTER_MS, STATION_SOURCES, SYNC_FRESH_MS,
+                    GameConfig, Player, ReadinessRow, ReadinessSnapshot, ScanRow, Team)
 
 PHASES = ("muster", "build", "kit", "lobby", "armed", "live", "recap")
 
@@ -62,6 +62,22 @@ MODES = [
      "teams_text": "SOLO OR SQUADS", "win_text": "BANKED LOOT", "respawn_text": "ON · TIMED",
      "teams": ["blue", "yellow"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
      "preset": "extraction"},
+    # F70 (bench-proven end to end 2026-09-10): the hill is a BRX Smart Grenade in hill mode. It
+    # broadcasts protocol-15 beacons carrying its OWNER's team, `hillbeacon.py` reads them and
+    # `DominationEngine` scores possession, so the mode needs no station hardware at all -- hence
+    # `station_source: "grenade"` on the row (the operator can change it, `_CONFIG_KEYS`).
+    # 🔴 `teams` is BLUE + GREEN, tids 1 and 3, and the choice is load-bearing: YELLOW is tid 2,
+    # which is the team a NEUTRAL hill broadcasts, so a yellow roster would read every uncaptured
+    # point as its own and take no hill damage (F82). `assign_teams` defaults the same 1/3 pair, and
+    # both `DominationEngine.add_player` and `Compiler.validate` refuse a tid-2 hill roster outright.
+    # `win_by` is "objective" (possession time), the same value extraction already uses: MC has no
+    # objective scorer, so `scoring.py` reports the winner as `undecided` rather than inventing one
+    # from kills, and the UI renders that as "UNDECIDED — OBJECTIVE · HOST DECIDES" (Recap.tsx).
+    {"mode": "koth", "name": "KING OF THE HILL", "abbr": "KOTH", "desc": "Hold the hill; possession scores",
+     "brief": "One hill, and it is a real grenade on the field. Shoot the point and it flips to your team; every second your side holds it banks possession. A point your team does not own damages anyone standing on it, so taking one is a fight, and a defended hill costs an attacker exactly what the defenders put into it. Most possession time when the clock runs out takes the match.",
+     "teams_text": "2 TEAMS", "win_text": "POSSESSION TIME", "respawn_text": "ON · TIMED",
+     "teams": ["blue", "green"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
+     "preset": "standard", "station_source": "grenade"},
 ]
 
 
@@ -74,13 +90,19 @@ TRYOUT_TEARDOWN = ("$SPAWN,,*", "$PLAYX,0,*", "$STOP,*", "$CLEAR,*", "$HLOOP,0,0
 
 def default_config(mode: str = "tdm") -> GameConfig:
     m = next(x for x in MODES if x["mode"] == mode)
-    return {"config_id": uuid.uuid4().hex[:8], "mode": mode, "environment": "outdoor", "night": False,
-            "time_limit_s": 600, "respawn": dict(m["respawn"]),
-            "scoring": {"frag_limit": m["frag_limit"], "win_by": m["win_by"]},
-            "health": {"max_hp": 45, "max_armor": 70},
-            "teams": [dict(TEAM_DEFS[t]) for t in m["teams"]],
-            "loadout_policy": _policy.default_policy(mode),      # A10: ffa → no_heavies, else open
-            "presentation": _pres.profile_from_preset(m.get("preset", "standard"))}   # A11 / G3: the mode row's own preset
+    cfg: GameConfig = {"config_id": uuid.uuid4().hex[:8], "mode": mode, "environment": "outdoor", "night": False,
+                       "time_limit_s": 600, "respawn": dict(m["respawn"]),
+                       "scoring": {"frag_limit": m["frag_limit"], "win_by": m["win_by"]},
+                       "health": {"max_hp": 45, "max_armor": 70},
+                       "teams": [dict(TEAM_DEFS[t]) for t in m["teams"]],
+                       "loadout_policy": _policy.default_policy(mode),      # A10: ffa → no_heavies, else open
+                       "presentation": _pres.profile_from_preset(m.get("preset", "standard"))}   # A11 / G3: the mode row's own preset
+    # Only the modes that HAVE an objective emitter carry the key at all, so every other mode's config
+    # is byte-identical to what it was before the field existed (a saved game's identity is the whole
+    # config -- `gameSummary.ts` `gameSig` -- and a null nobody set would have re-keyed all of them).
+    if m.get("station_source"):
+        cfg["station_source"] = m["station_source"]
+    return cfg
 
 
 class Session:
@@ -717,7 +739,8 @@ class Session:
         return [{**m, "defaults": default_config(m["mode"])} for m in MODES]
 
     _CONFIG_KEYS = {"mode", "environment", "night", "time_limit_s", "respawn", "scoring",
-                    "health", "teams", "led", "player_num_base", "loadout_policy", "presentation"}
+                    "health", "teams", "led", "player_num_base", "loadout_policy", "presentation",
+                    "station_source"}
 
     def apply_preset(self, preset_id: str, config: dict) -> dict:
         """A10 §8: apply a saved game — same path as PUT /api/config, but the state remembers WHICH game is playing."""
@@ -847,6 +870,18 @@ class Session:
                 if v is not None and not isinstance(v, dict):
                     raise ValueError("led must be an object")
                 cfg[k] = v
+            elif k == "station_source":
+                # F70: what is on the field emitting this game's objective. A CLOSED vocabulary --
+                # the compiler used to accept any non-empty string, so a typo shipped a hill mode
+                # with nothing emitting anything. `null` clears it (and `validate()` then refuses
+                # the push for a station-gated mode, naming the valid values).
+                if v is not None and v not in STATION_SOURCES:
+                    raise ValueError("station_source must be null or one of: "
+                                     + ", ".join(f"{k2} ({d})" for k2, d in sorted(STATION_SOURCES.items())))
+                if v is None:
+                    cfg.pop(k, None)
+                else:
+                    cfg[k] = v
             elif k == "player_num_base":
                 if not (isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= MAX_PLAYERS):
                     raise ValueError("player_num_base must be 1..63")

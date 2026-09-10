@@ -20,7 +20,7 @@ from ..gameconfig import END_SEQUENCE, WEAPON_TAILS, _SIR_TABLE, GameConfig as _
 from .. import hitaudio as _ha
 from ..protocol import PANIC_SEQUENCE
 from .perks import PerkCatalog
-from .types import MAX_PLAYERS, FrameBundle, GameConfig, Player, Team, Weapon
+from .types import MAX_PLAYERS, STATION_SOURCES, FrameBundle, GameConfig, Player, Team, Weapon
 from . import presentation as _pres
 from .. import poolgauge as pg
 from .. import voices as _voices
@@ -244,6 +244,20 @@ _OBJECTIVE_SIR_ROW = "$SIR,15,0,,28,0,0,1,,*"
 # (see `validate()`) but that source is unconfirmed to be this same proto-15/fn-28 mechanism -- do not
 # widen this set on the strength of that other gate alone.
 _OBJECTIVE_MODES = {"domination", "koth"}
+
+# Every mode that cannot run without something on the field emitting its objective (modes §7).
+# `extraction` is deliberately absent: its objective runs MC-side off gun events, no emitter.
+_STATION_GATED_MODES = {"domination", "koth", "ctf", "cs", "bomb"}
+
+# `STATION_SOURCES` (imported from `.types`) is the objective-source vocabulary: it is part of the
+# GameConfig shape, so it lives beside it and both this module's `validate()` and `state.py`'s PUT
+# validator read the one table.
+
+
+def station_source_of(config: dict, opts: dict | None = None) -> str | None:
+    """Where this game's objective comes from: `opts` wins (the CLI/sim path passes it per call),
+    else the GameConfig field the MC operator sets (`state.py` `_CONFIG_KEYS`)."""
+    return (opts or {}).get("station_source") or config.get("station_source")
 
 
 def assert_sir_covers_objective(head: list[str], mode: str) -> None:
@@ -1056,8 +1070,35 @@ class Compiler:
         # station-gated objective modes need a Tier-1 station/objective source (modes §7).
         # `extraction` is deliberately NOT gated: its objective logic runs MC-side on gun events
         # (modes §2 — coverage-zone gameplay), no IR station required.
-        if mode in {"domination", "koth", "ctf", "cs", "bomb"} and not opts.get("station_source"):
-            errors.append(f"mode {mode!r} needs a station/objective source (Tier 1) — set opts.station_source")
+        src = station_source_of(config, opts)
+        vocab = ", ".join(f"{k!r} ({v})" for k, v in sorted(STATION_SOURCES.items()))
+        if mode in _STATION_GATED_MODES:
+            if not src:
+                errors.append(f"mode {mode!r} needs a station/objective source (Tier 1) — set "
+                              f"config.station_source to one of: {vocab}")
+            elif src not in STATION_SOURCES:
+                # This used to be a bare truthiness gate, so any string at all passed -- including a
+                # typo, which then shipped a match with nothing on the field emitting its objective.
+                errors.append(f"unknown station_source {src!r} for mode {mode!r} — valid values are: {vocab}")
+            elif src == "grenade" and mode in _OBJECTIVE_MODES:
+                # F88: a beacon carries NO station id, so one grenade is indistinguishable from
+                # another and the bridge can only ever speak for ONE point. KotH is exactly that;
+                # a multi-point Domination on grenades cannot be built at all.
+                points = config.get("control_points")
+                if isinstance(points, int) and not isinstance(points, bool) and points > 1:
+                    errors.append(
+                        f"F88: {points} control points on a grenade source is not buildable — a hill "
+                        "beacon carries no station id, so two grenades in range are indistinguishable "
+                        "on the wire and would fight over the same point. Run ONE point (koth), or "
+                        "supply a station source that names its point")
+                # The one physical setup step nothing in software can do for the operator. A hill that
+                # starts already-owned skews the whole match silently (its owner banks possession from
+                # t=0), and NEUTRAL is only guaranteed by a power cycle -- bench 2026-09-10 read team 2
+                # (neutral) straight after one, and read a stale owner without one.
+                warnings.append(
+                    "SETUP: POWER-CYCLE THE GRENADE SO IT STARTS NEUTRAL, SET IT TO HILL MODE, AND "
+                    "PLACE IT — a hill that starts already owned skews the whole match, and only a "
+                    "power cycle guarantees neutral. ONE POINT ONLY (F88: a beacon carries no station id)")
 
         # unknown weapon / perk ids; a perk rides BESIDE a secondary weapon (A14) -- the ALT-button pairing is refused by policy.py before it gets here
         for p in roster:

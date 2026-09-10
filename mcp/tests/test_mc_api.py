@@ -22,7 +22,15 @@ def test_state_and_modes_and_weapons():
     needs(HAVE, "starlette + httpx")
     c, s, net = _client()
     r = c.get("/api/state"); assert r.status_code == 200 and r.json()["phase"] == "muster"
-    assert len(c.get("/api/modes").json()) == 5 and len(c.get("/api/weapons").json()) == 18
+    # Count off the real MODES table, not a literal: this file is SKIPPED under system python (no
+    # starlette), so a hardcoded 5 turned "a new mode was added" into a failure only the venv run
+    # could see -- which is exactly the gate CLAUDE.md says not to lean on. What matters is that the
+    # route serves every catalogued mode, and that each row carries the fields the UI renders.
+    from brx_mcp.mc.state import MODES
+    modes = c.get("/api/modes").json()
+    assert [m["mode"] for m in modes] == [m["mode"] for m in MODES], [m["mode"] for m in modes]
+    assert all(m.get("abbr") and m.get("brief") and m.get("defaults") for m in modes), modes
+    assert len(c.get("/api/weapons").json()) == 18
 
 
 def test_player_flow_and_errors():

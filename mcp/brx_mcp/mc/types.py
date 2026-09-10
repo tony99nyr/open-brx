@@ -159,6 +159,23 @@ class PerkView(TypedDict):
     hidden: bool
 
 
+# What may be sitting on the field emitting the objective. This used to be a bare truthiness gate --
+# any non-empty string satisfied it, including a typo -- so an operator either got an unsatisfiable
+# error or "satisfied" it with a word that meant nothing. The value is what the node/host reads the
+# objective FROM, and the two are not the same mechanism:
+#   * `grenade`    -- a BRX Smart Grenade in hill mode. Protocol-15 `$HIR` beacons every ~5 s, owner
+#                     team in the team field, mode in the magnitude (8 hill, 6 respawn). Proven end
+#                     to end on hardware 2026-09-10 (F70) and read by `modes/hillbeacon.py`.
+#   * `ir_station` -- a Battle Company station / Utility Box emitting `$CAPTURE`-style objective
+#                     events (`modes/objectives.py`'s station path, which names its point). ⚠ NOT
+#                     confirmed to be this same proto-15/fn-28 mechanism, and we have never had one
+#                     on the bench -- it is accepted because that path exists in code, not measured.
+STATION_SOURCES = {
+    "grenade": "a BRX Smart Grenade in hill mode (protocol-15 beacons; bench-proven 2026-09-10)",
+    "ir_station": "a BRX station / Utility Box emitting $CAPTURE objective events (unproven on our bench)",
+}
+
+
 class GameConfig(TypedDict):
     config_id: str
     mode: str
@@ -172,6 +189,10 @@ class GameConfig(TypedDict):
     led: NotRequired[dict]
     player_num_base: NotRequired[int]   # A6.5
     siphon: NotRequired[Siphon]         # S14: heal-on-kill; absent or {0,0} = off
+    station_source: NotRequired[str]    # F70: what is emitting this game's objective -- `STATION_SOURCES` above
+    #                                     ("grenade" = a BRX Smart Grenade in hill mode, "ir_station" = a
+    #                                     $CAPTURE-speaking station). Present only for the modes that need one
+    #                                     (domination/koth/ctf/cs/bomb); `validate()` refuses those without it.
     loadout_policy: NotRequired[LoadoutPolicy]   # A10 (loadout.md §3); filled with the mode default when absent
     presentation: NotRequired[dict]              # A11 (mc/presentation.py): sounds + lights per event, preset or custom
     hit_audio_class: NotRequired[bool]           # A17: per-WEAPON $SIR sounds. DEFAULT OFF -- bench F38: a non-empty
