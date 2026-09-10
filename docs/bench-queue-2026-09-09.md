@@ -71,9 +71,10 @@ the syphon code already depends on.
 | A2 | **P4** | `$PY mcp/tools/sendframes.py <addr> '$AS,1,0,0,0,0,0,0,99,*' '$UP,1,*'` on a live gun. ⚠ Also try LaserTagMods' actual shape, `$UP,100,<n>,0,*` followed by `$UR,*` — `$UP,1,*` matches nothing any source documents and may just be an 8th silent shape rather than a probe | not "does it reply" (known: no, across 7 shapes) but does the GUN's behaviour change after: fire, reload, LEDs, anything | fire and reload normally for a minute BEFORE sending, same gun same session, so "no change" is established rather than assumed |
 | A3 | **1.5a (gates 1.5)** | `$PY mcp/tools/ally_remeasure.py <victim> COM8 10,11,9,15,31,32,34` | per-fn pool deltas against a **depleted** pool | fn 10/11 are the known heals: if they do not move, the rig or the team polarity is wrong, not the fn |
 
-**Why A1 first:** if `$BUMP` takes a negative, host-side damage-over-time (poison, burn, bleed) is
-real — the firmware has no DoT function, so the node applying the tick is the only route. If it
-clamps, DoT is a HUD fiction and we stop designing it.
+**Why A1 was first, and what it returned:** the firmware has no damage-over-time function, so a node applying
+the tick was the only possible route to poison/burn/bleed. ✅ **Answered 2026-09-09: `$LIFE` takes negatives and
+drains, so DoT is real** (S16). `$BUMP` — the command this rung was originally written around — turned out to be
+**inert in both directions** (F65), and `$LIFE` was the one that worked.
 
 ---
 

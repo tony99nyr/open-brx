@@ -258,9 +258,15 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   `_on_pools`, which books death at `hp == 0` too, so the two mirrors agree. **The wire fact stands and is worth
   keeping** (the frame shape really does swap on a lethal host write, which is why `protocol/brx-protocol.md`
   documents it); what was wrong was the consequence. Caught by a code-impact reviewer, not by me.
-  ⚠ Residual, and the only thing left here: the `$LCD` death path skips `_onHp`, so a host-inflicted kill books
-  the death but produces no `hit_taken` fact and no damage attribution — fine today because nothing inflicts one,
-  but S16 (damage-over-time) must decide who gets credit for a tick that kills. Tracked there, not here.
+  ⚠ **Two residuals.** (1) The `$LCD` death path skips `_onHp`, so a host-inflicted kill books the death but
+  produces no `hit_taken` fact and no damage attribution — fine today because nothing inflicts one, but S16
+  (damage-over-time) must decide who gets credit for a tick that kills. (2) ⚠ **The correction itself is a CODE
+  READ, not a bench replay.** The reviewer who caught it flagged this and is right: we have the real frame from
+  the bench (`$LCD,0,0,0,0,32,192,*` from a lethal `$LIFE`) and we have code that would handle it, but the two
+  have never been put together — that frame arrived in an MCP session, with no engine or stage consuming it. Given
+  that this session produced three retractions from exactly this kind of inference, replay the captured sequence
+  through `stage.py` and the phone engine before treating "the node books it" as proven. Cheap: the frame is in
+  the 2026-09-09 log.
 - **F65 🟢 `$BUMP` is inert on v4.32 — is that the command or our shape?** Bench 2026-09-09: `$BUMP,-5,0,0,*` on
   full HP and `$BUMP,0,5,0,*` on armour at 61 both did nothing, with the read validated either side (a real IR hit
   moved the pools and `$QUERY`'s `$LCD` tracked it). `$LIFE` with the identical arity worked in the same session, so
