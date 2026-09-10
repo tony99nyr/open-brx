@@ -15,7 +15,8 @@ def hp(hp_, armor, shield=0):
 
 
 def hir(shooter_team):
-    return {"command": "HIR", "tokens": ["HIR", "0", "0", "0", str(shooter_team), "9", "0", "3"]}
+    # token 3 = shooter wire id; 1, not 0 ("no identity", A5.1 -- never a player).
+    return {"command": "HIR", "tokens": ["HIR", "0", "0", "1", str(shooter_team), "9", "0", "3"]}
 
 
 def hir_grenade():
@@ -41,6 +42,51 @@ def test_tdm_scores_kill_by_team():
     sc = _types(acts, Score)
     assert sc and sc[0].total == 1
     assert e.team_score[2] == 1
+
+
+def hir_hill_damage(owner_team, mag=8):
+    """The ambient DAMAGE word a grenade hill puts on the air every ~5 s (F69).
+
+    Captured 2026-09-10 as `$HIR,0,0,0,1,8,0,0`: an ORDINARY protocol-0 shot -- not the
+    protocol-15 beacon -- carrying the hill owner's team and **shooter wire id 0**.
+    """
+    return {"command": "HIR",
+            "tokens": ["HIR", "0", "0", "0", str(owner_team), str(mag), "0", "0"]}
+
+
+def test_a_hill_that_kills_you_scores_for_nobody():
+    """F69: an unattended hill drained Tony to zero in ~106 s. Its damage word is a
+    normal protocol-0 shot, so the beacon check (`token2 == 15`) never saw it; it was
+    stored as `_last_shot`, and because ATTRIB_FUSE_S (6 s) is WIDER than the hill's ~5 s
+    period the attribution was always fresh. The hill's owning team was credited with a
+    kill it did not make -- a wrong scoreboard, not merely a missing one.
+
+    The guard is A5.1: wire 0 is "no identity ... never a player".
+    """
+    e = DeathmatchEngine(GameConfig(mode="tdm", game_time_s=0))
+    e.add_player("red", 1)
+    e.add_player("blue", 2)
+    # a red-held hill ticks blue down; every tick lands inside the 6 s fuse
+    for t in (0.0, 5.0, 10.0, 15.0):
+        e.on_event("blue", hir_hill_damage(owner_team=1), now=t)
+    acts = e.on_event("blue", death(), now=17.0)
+    assert e.team_score.get(1, 0) == 0, "the hill scored for its owning team"
+    assert not _types(acts, Score), "a hill kill must credit no score at all"
+    assert e.roster.get("red").kills == 0
+
+
+def test_a_real_shot_still_scores_when_a_hill_is_also_ticking():
+    """The control for the guard above: same engine, same fuse, a REAL shooter (wire 1)
+    interleaved with hill words still lands the kill. Without this, 'no score' would be
+    satisfied just as well by an engine that credits nothing at all."""
+    e = DeathmatchEngine(GameConfig(mode="tdm", game_time_s=0))
+    e.add_player("red", 1)
+    e.add_player("blue", 2)
+    e.on_event("blue", hir_hill_damage(owner_team=1), now=0.0)
+    e.on_event("blue", hir(1), now=1.0)                  # red actually shoots blue
+    acts = e.on_event("blue", death(), now=1.5)
+    assert e.team_score[1] == 1
+    assert _types(acts, Score)
 
 
 def test_tdm_no_score_for_friendly_or_grenade():

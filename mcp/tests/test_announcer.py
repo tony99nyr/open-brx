@@ -132,7 +132,8 @@ def test_all_actions_scoped_to_shooter():
 # Integration through the FFA engine                                          #
 # --------------------------------------------------------------------------- #
 def _hir(team):
-    return {"command": "HIR", "tokens": ["HIR", "4", "0", "0", str(team)]}
+    # token 3 = shooter wire id. 1, not 0: A5.1 reserves wire 0 for "no identity".
+    return {"command": "HIR", "tokens": ["HIR", "4", "0", "1", str(team)]}
 
 
 def _dead():

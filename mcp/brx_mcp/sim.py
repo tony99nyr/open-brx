@@ -87,7 +87,7 @@ class SimGame:
         return self
 
     def kill(self, victim: str, shooter_team: int, now: float = 0.0,
-             shooter_id: int = 0) -> "SimGame":
+             shooter_id: int = 1) -> "SimGame":
         """Shoot `victim` until down (one clean kill).
 
         `shooter_id` is the shooter's PLAYER id ($HIR token 3). Pass it to model a

@@ -96,7 +96,7 @@ class FakeTagger:
         # all other config frames (CLEAR/START/GSET/WEAP/SIR/BMAP/VOL/AMMO/PLAY…) accepted
 
     # -- IR hit → events ----------------------------------------------------- #
-    def receive_ir(self, shooter_team: int, shooter_id: int = 0) -> None:
+    def receive_ir(self, shooter_team: int, shooter_id: int = 1) -> None:
         """Take a hit from `shooter_team`: emit `$HIR` then `$HP` (0 = died).
         No-op if dead, or a same-team hit while friendly-fire is off (the real gun
         ignores teammate IR unless FF is enabled via $GSET). With FF on, a same-team

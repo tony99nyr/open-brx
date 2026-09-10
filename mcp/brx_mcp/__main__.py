@@ -1057,8 +1057,10 @@ def _build_config(mode: str, kvs: list[str]):
 
 
 # -- game-sim event factories (parsed-frame shapes the engines consume) ------ #
-def _hir(team):
-    return {"command": "HIR", "tokens": ["HIR", "0", "0", "0", str(team), "9", "0", "3"]}
+def _hir(team, wire=1):
+    # token 3 = shooter wire id. NOT 0: A5.1 reserves wire 0 for "no identity" and the
+    # engines now refuse to credit it, so a 0 here would sim a game nobody can score.
+    return {"command": "HIR", "tokens": ["HIR", "0", "0", str(wire), str(team), "9", "0", "3"]}
 
 
 def _death():

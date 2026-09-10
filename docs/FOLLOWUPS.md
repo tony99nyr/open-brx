@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F77 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F80 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S18.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -699,7 +699,15 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   **the damage lands in full**. Measured: a player flipped to the non-owning team was killed by an unattended
   hill in ~106 s, 8 damage a tick, 70 armour + 45 HP to zero, with no host involvement and nothing in the
   event stream naming the cause. Anyone who brings a grenade in hill mode to a match today gets unexplained
-  deaths. Either ship the proto-15 row (see F70) so the node can name it, or document the hazard loudly. `build`.
+  deaths. Either ship the proto-15 row (see F70) so the node can name it, or document the hazard loudly.
+  ⚠️ **It was WORSE than "cannot see why", and that half is now fixed (2026-09-10).** The hill's damage word
+  carries **shooter wire id 0**, and nothing in the attribution helpers enforced A5.1's "wire 0 is never a
+  player". So the word was stored as `_last_shot`; `ATTRIB_FUSE_S` (6 s) is WIDER than the hill's ~5 s period,
+  so the attribution never went stale; and `_handle_death` ran `team_score[owner] += 1`. **The hill was
+  crediting its owning team with kills.** `shooter_team()`/`shooter_player_id()` now return `None` on wire 0,
+  covered by `test_a_hill_that_kills_you_scores_for_nobody` plus a real-shooter control. The suite could not
+  see this because every fixture defaulted the shooter's wire id to 0 (see the log). **Still open: the DAMAGE
+  itself.** Players are still killed by an unattended hill with nothing naming the cause. `build`.
 - **F70 🟠 KING OF THE HILL IS A NATIVE PRIMITIVE, FULLY MAPPED, AND WE CAN READ IT WITH ONE ROW.**
   **The wire, bench 2026-09-10:** neutral hill beacons `proto=15 team=2 mag=8` every ~5 s. Shoot it with a gun
   and the very next beacon carries THAT GUN'S TEAM: a red gun (`proto=0 player=5 team=0 mag=22`) fired at
@@ -748,6 +756,30 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   24 is enemy-only, so a gun sees only hills it does NOT own unless `$GSET` t1 = 1; decide how to read your own
   point. ⚠ And pick the row's `<soundID>` deliberately: a hit lands every 5 s for as long as anyone stands
   there. `build`.
+- **F77 🟠 A REPLAYED HIT IS INDISTINGUISHABLE FROM A REAL ONE, AND BOTH SCORE.** F74's phantom loop
+  (a gun replaying `$HIR`+`$HP` every 5.07 s with no IR in the air) reaches the scoring path unchallenged:
+  `engine.js:1514` gates `hit_taken` only on `latch.at` being under 1 s old and `dmg > 0`, and
+  `mc/scoring.py:220-225` dedups on nothing at all -- it counts every `hit_taken` it is handed. So a latched
+  gun inflates the shooter's hit count and, once the replayed damage empties the victim, can book a phantom
+  death. ⚠ **Deliberately NOT fixed with a heuristic.** At frame level a replay looks exactly like genuine
+  repeated fire; a "same shooter + same dmg at a regular period" suppressor would silently eat real bursts,
+  which is worse than the bug it fixes. The honest fix is upstream: find why the gun latches (F74) so the
+  replay never reaches the wire, or get a per-shot sequence number out of the firmware. **Interim mitigation
+  that costs nothing: MC should FLAG the signature, not drop it** -- a run of identical `hit_taken` facts at a
+  near-constant period is a recap warning, so a match spoiled this way is at least visible after the fact.
+  `build` (detector) + `bench` (F74 root cause).
+- **F78 🟡 `fake.py` cannot model a single one of this week's grenade findings.** The fake tagger takes hits
+  only through `receive_ir(shooter_team, shooter_id)`, which always emits a protocol-0, magnitude-9 word. It
+  cannot produce a protocol-15 beacon, a hill's ambient damage word, a magnitude-0 miss, or a `$SIR` cell that
+  discards in silence -- so F69, F70, F72, F73, F74 and F75 are all invisible to the 1000-test suite by
+  construction. This is the `stage-must-mirror-the-phone` failure: the sim's fidelity ceiling, not its
+  coverage, is what let the F69 scoring bug sit green. **Scope it as: `receive_ir` grows a protocol/magnitude
+  argument, plus a `beacon()` helper.** `build`.
+- **F79 🟢 `assert_sir_covers_weapons` has no concept of a non-weapon `$SIR` cell.** It checks that every
+  weapon in the loadout has a matching row, so a bundle that ships with NO protocol-15 row -- the exact
+  condition that made station words silently vanish (F60, and the third instance of the F11 shape this week)
+  -- raises nothing. A table is "covered" while being deaf to every beacon in the venue. Add a check that a
+  game whose config declares an objective also carries the cell that can hear it. `build`.
 - **F76 🟡 The reference page's per-weapon capture counts contradict the bench.** `reference/grenade.md`'s King
   of the Hill section says retaking costs *"at least as many ROUNDS back into it (2-3 rounds to 2-3 magazines
   depending on weapon; ~4 on an MG, ~10-12 on a shotgun)"*, and that section is labelled hardware-confirmed

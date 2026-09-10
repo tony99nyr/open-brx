@@ -12,7 +12,8 @@ def _cfg(**kw):
 
 
 def hir(team):
-    return {"command": "HIR", "tokens": ["HIR", "0", "0", "0", str(team), "9", "0", "3"]}
+    # token 3 = shooter wire id; 1, not 0 ("no identity", A5.1 -- never a player).
+    return {"command": "HIR", "tokens": ["HIR", "0", "0", "1", str(team), "9", "0", "3"]}
 
 
 def death():

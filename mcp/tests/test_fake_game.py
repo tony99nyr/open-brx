@@ -25,7 +25,7 @@ def test_faketagger_hit_emits_hir_and_hp_then_dies():
     t = FakeTagger("AA:1", team=2, hp=45, armor=70, damage=25)
     t.receive_ir(shooter_team=1)                     # enemy hit
     out = t.drain()
-    assert any(o.startswith("$HIR,0,0,0,1,") for o in out)   # shooter team 1 in token4
+    assert any(o.startswith("$HIR,0,0,1,1,") for o in out)   # wire id 1, shooter team 1
     assert any(o.startswith("$HP,") for o in out)
     assert t.alive                                    # 25 dmg vs 70 armor → survives
     for _ in range(10):
@@ -205,7 +205,7 @@ def test_resetup_does_not_revive_a_dead_player():
     _run(drv.setup())
     # kill BB in the engine (long respawn_s so it stays dead)
     _run(drv.execute(drv.feed("BB", {"command": "HIR",
-         "tokens": ["HIR", "0", "0", "0", "1", "9", "0", "3"]}, 0.0)))
+         "tokens": ["HIR", "0", "0", "1", "1", "9", "0", "3"]}, 0.0)))
     _run(drv.execute(drv.feed("BB", {"command": "HP", "tokens": ["HP", "0", "0", "0"]}, 0.0)))
     assert not drv.engine.roster.get("BB").alive
 

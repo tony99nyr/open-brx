@@ -254,10 +254,25 @@ def is_hit(ev: dict) -> bool:
 
 
 def shooter_team(ev: dict) -> Optional[int]:
-    """$HIR token 4 = shooter team (grenade beacons have token2==15; skip those)."""
+    """$HIR token 4 = shooter team, or None when the hit has no creditable shooter.
+
+    TWO exclusions, and the second was missing until 2026-09-10:
+
+    * **token2 == 15** — a grenade/station BEACON. Never a player shot.
+    * **token3 == 0 — "no identity".** A5.1 reserves wire 0 for the "tutorial arms,
+      **unknown/environmental shooter**" case and `contracts.md` says it "is never a player";
+      `compile.py` arms try-outs at `$PSET,0` precisely so a stray hit is "never credited".
+      Nothing enforced it here, and a **grenade hill emits an ordinary `proto=0 mag=8` damage
+      word carrying player id 0 every ~5 s** (F69). It sailed past the beacon check, was recorded
+      as `_last_shot`, and — because `ATTRIB_FUSE_S` (6 s) is WIDER than the hill's ~5 s period, so
+      the attribution never went stale — **credited the hill's owning team with a kill** when the
+      ambient damage finally emptied a player. A wrong game outcome, not merely a blind spot.
+    """
     t = ev.get("tokens", [])
     if len(t) > 2 and t[2] == "15":
-        return None                     # grenade IR, not a player shot
+        return None                     # grenade/station beacon, not a player shot
+    if len(t) > 3 and str(t[3]).strip() == "0":
+        return None                     # A5.1 "no identity": environmental/unknown, never credited
     try:
         return int(t[4]) if len(t) > 4 else None
     except (ValueError, TypeError):
@@ -271,10 +286,16 @@ def shooter_player_id(ev: dict) -> Optional[int]:
     when it holds exactly one gun (FFA, 1v1), so team-based credit silently fails the
     moment two guns share a team, which is the normal case in TDM. Bench-confirmed
     2026-08-30: TDM 2v1 credited nobody, FFA and 1v1 credited correctly (Q17).
+
+    Returns None for a shot with no creditable shooter -- a beacon (token2 == 15) or
+    **wire id 0**, which A5.1 reserves for "no identity" and never assigns to a player.
+    A grenade hill's ambient damage word arrives as exactly that (F69).
     """
     t = ev.get("tokens", [])
     if len(t) > 2 and t[2] == "15":
-        return None                     # grenade IR, not a player shot
+        return None                     # grenade/station beacon, not a player shot
+    if len(t) > 3 and str(t[3]).strip() == "0":
+        return None                     # A5.1 "no identity": environmental/unknown
     try:
         return int(t[3]) if len(t) > 3 else None
     except (ValueError, TypeError):

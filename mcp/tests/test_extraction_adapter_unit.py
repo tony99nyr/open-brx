@@ -32,8 +32,11 @@ def _cfg(**kw):
     return GameConfig(mode="extraction", **kw)
 
 
-def hir(team, grenade=False, shooter_pid=0):
-    """`$HIR`: token 2 = 15 marks grenade IR, token 3 = shooter PLAYER id, token 4 = shooter team."""
+def hir(team, grenade=False, shooter_pid=1):
+    """`$HIR`: token 2 = 15 marks grenade IR, token 3 = shooter PLAYER id, token 4 = shooter team.
+
+    `shooter_pid` defaults to 1, not 0: A5.1 reserves wire 0 for "no identity" and MC assigns
+    real players 1-63, so a fixture built on 0 models a frame the platform never sends.""" 
     tok2 = "15" if grenade else "0"
     return {"command": "HIR", "tokens": ["HIR", "0", tok2, str(shooter_pid), str(team), "9", "0", "3"]}
 
