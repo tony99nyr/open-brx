@@ -29,61 +29,58 @@ steps, about **25 minutes hands-on**, one gun, one grenade, the rig. Tool: `mcp/
 > `mag=9` — extra-headset block or plain charge (**F70**); and the damage word appeared in one window and not
 > another with no dual-instrument control (**§ programme A** below).
 
-## Programme: everything still to extract from the grenade (2026-09-10)
+## Programme (rewritten 2026-09-10 after the hill sessions)
 
-Ordered by value per bench-minute. **A-C need one gun; D needs two; E is receiver-only and can run any time.**
+### ✅ Answered today — do not re-run
 
-**A. ✅ DONE 2026-09-10 — capture is CHARGE, any weapon can take a point.** One AR round claimed a neutral
-hill; an AR magazine retook that owned hill inside its first 13 rounds, no extra-headset emission involved. The
-"only three weapons can capture" worry is dead, and a rifleman can play the objective. ✅ **And the exchange rate is 1:1 and LINEAR** (one-round-then-wait,
-from power-cycled neutral, counts confirmed by `$ALCD`): seeded 1 round → retaken with 1; seeded 5 → retaken
-with 5. Charge accumulates and costs exactly what was invested. ✅ **And the currency is MAGNITUDE, not round count:** one shotgun
-shell (70) retook a hill seeded with five AR rounds (45), `$ALCD` 6→5. So a weapon's capture power equals its
-damage. ⚠ Only the max charge is still unmeasured (does a hill cap, and how long does a full one take to build?).
+| | finding |
+|---|---|
+| **Beacon** | `proto=15 team=<owner> mag=8` every ~5 s. **Neutral = team 2.** Respawn is `mag=6` at ~2.5 s, boot `mag=56`. Magnitude is a fixed MODE id, **not** a charge level (84 clean decodes, three values only) |
+| **Capture** | shoot it; **ANY weapon**; charge accumulates in **MAGNITUDE** and the higher total owns the point. 1 AR round beat 9; 5 beat 45; one shotgun shell (70) beat 45. **A weapon's capture power equals its damage** |
+| **Announcement** | a transition PAIR in the same burst as the shot: `mag=53` (state left) + `mag=50` (owner entered). This is why guns say "hill captured" |
+| **Reading it in a hosted game** | `$SIR,15,0,,28` — **fn 28 registers with ZERO player feedback** (no sound, flash or vibration) + the `engine.js` fix (F72) |
+| **Polarity** | fn 28 is enemy-only at `$GSET` t1=0; **t1=1 lifts the gate** and ownership arrives in `$HIR` token 4. **KotH wants FF on** |
+| **Non-capturing hit** | emits **nothing** — the grenade announces captures, not hits (F75) |
 
-**B0. Put the receiver where it sees the GRENADE but not the SHOOTER (do this first, it is free).**
-The grenade replies to a shot instantaneously, so its capture words always overlap the gun's word and the
-receiver only ever gets a stitched burst (`word1/3` the shot, `word2/3` `mag=53`, `word3/3` `mag=50`). Better
-decoding cannot fix two transmitters firing at once — geometry can. Put board A behind the grenade, or have the
-shooter fire across the receiver's view rather than into it. Then every grenade reply arrives alone and decodes
-whole. ⚠ Any word that only ever occurs INSIDE a shot's burst has been invisible to every capture so far, which
-is exactly where a "hit but not captured" signal would hide (F75).
+### Still to run, in value order
 
-**B. The missing hill words (15 min, receiver only, then one gun)**
-Respawn has three words: boot (`mag=56`, announces the station and ARMS guns pre-game), beacon (`mag=6`), and
-button (beacon + crit bit, arms mid-game). **Only the hill BEACON is captured.** Capture on power-up (the boot
-word) and on a button press, in HILL mode. If hill has a boot/arm word, a Utility Box can announce a point.
+**B0. Geometry: receiver sees the GRENADE, not the SHOOTER (free, do first).**
+The grenade replies instantaneously, so its capture words always overlap the gun's word and only ever arrive as
+stitched bursts. No decoder separates two simultaneous transmitters — geometry does. Put board A behind the
+grenade, or have the shooter fire across the receiver's view. ⚠ **Any word that only occurs inside a shot's burst
+has been invisible to every capture ever taken**, which is exactly where F75's "hit but not captured" signal
+would hide. Gates B and F75.
 
-**C. Both instruments on one window (10 min)**
-Board A beside the headset AND the gun on BLE, while a non-owner stands in the hill. Settles whether the
-`proto=0 mag=8` damage word is continuous or conditional — the control this session never had.
+**S. Prove the hosted callouts by EAR (5 min, one gun, no grenade needed).**
+The native lines are already in the bank, confirmed present by catalog search:
+`VA23` "Control Point Captured." · `VA22` "Control Point Lost." · `VA21` "Control Point Contested." ·
+`V8Q` "Hill Confirmed" · `VA93` "King of the hill!" · `V108` the full KotH intro.
+Drive a scripted hill sequence to a connected gun with `$PLAY,<id>,4,6,,,,,*` — capture, a held-tick loop, a
+contested callout, then lost — and confirm by ear that a hosted game sounds like the native one. ⚠ The catalog's
+transcripts are **untrusted** (`V116` is catalogued "Can't believe!" and says "gained the lead"), so this run is
+also the audition that confirms each id. Pick the tick from `fx:ui_beep` (`U100`/`U104` are ~0.1 s, right for a
+5 s cadence).
 
-**D. The contest, and Tony's shield design (20 min, TWO guns)**
-Both guns armed by us, both carrying a protocol-15 row, on opposing teams, alternately capturing. Watch each
-gun's view of the same beacon. Then the design test: `<15,0>` on a **grant** function (fn 11 add shield, or 18)
-with friendly fire OFF, so ally polarity should shield the HOLDER while `<0,0>` on fn 1 damages the challenger.
-⚠ Arm from `$CLEAR` — an in-place `$SIR` row replacement is unverified and probably voided the first attempt.
+**F75. Does a non-capturing hit emit anything?** In a NATIVE game, stand in an enemy hill and deliberately MISS.
+Still says "contested" ⇒ native infers it too and we lose nothing. Silent ⇒ there is a hit word, and B0's
+geometry is what will catch it.
 
-**E. The three silent modes (20 min, receiver only, no gun, no BLE)**
-`reference/grenade.md` says Assault (green), CTF (white) and Frag (red) do **not** beacon. Verify by capture,
-and find what they DO emit: a capture word when shot, a blast word when detonated (**G10**), the CTF team
-assignment (**G9**). If Assault/CTF are truly silent, a hosted game cannot read them and they are station work,
-not grenade work — worth knowing before anyone designs a mode around them.
+**R. Beacon RANGE (tape measure, 10 min).** Unmeasured for the hill; respawn is ~18-20 ft. **This number IS the
+physical size of the objective** and no mode can be designed without it.
 
-**F. The never-run basics**
-Q0: does the grenade emit over **Bluetooth/RF at all**? Nobody has scanned (`grenade_bench.py rf`). And the
-hill's **max charge / possession timer** is undocumented: time a capture-to-full and a full-hold win.
+**M. Max charge.** Does a hill cap, and how long does a full one take to build? Needed only to tune contest
+difficulty.
 
-## What it answers
+**B. The missing hill words (15 min).** Respawn has boot (`mag=56`, arms guns pre-game) and button (beacon +
+crit bit) words. **Only the hill BEACON and its capture pair are captured.** Look for a hill boot word on
+power-up and a button word on a press — a boot word would let a Utility Box announce a point.
 
-| # | Question | Decides |
-|---|---|---|
-| 0 | Does the grenade emit anything over Bluetooth? | RF vs IR-only. Everything observed so far is IR; nobody has scanned. |
-| 1 | What does each grenade mode actually put on the air, receiver only, no gun? | The raw word for every mode and for the button press, the frame length (25-bit shot word or a longer accessory word), and the beacon period. Never done: the receiver has only ever seen the gun's `$GREN` word. |
-| 2 | Does the beacon stop in a closed box, and does a gun's `$HIR` echo match the receiver's word? | Box = light blocked, radio not: quiet in the box means IR-only. The echo cross-check pins the replay word. |
-| 3 | Does a **spawned** gun in one of our games still surface grenade beacons if we give it a `$SIR` row for protocol 15? | Whether MC games can read hill/respawn state at all (exp-log #38 said to build this row). |
-| 4 | Can a **station-armed** dead gun be revived, and by what: grenade button, headset-front + trigger, our replayed beacon, host `$SPAWN`? | Respawn stations (B12). The 448-word brute force fired at a gun that was never armed; this is the missing half. |
-| 5 | Does our emitter's Hill word make the gun react like the real grenade? | Whether the Utility Box can impersonate a hill, extraction site, or bomb site. |
+**E. The three silent modes (20 min, receiver only).** `reference/grenade.md` says Assault (green), CTF (white)
+and Frag (red) do not beacon. Verify, and find what they DO emit: a capture word when shot, a blast word when
+detonated (**G10**), CTF team assignment (**G9**). If Assault/CTF are truly silent a hosted game cannot read
+them, which is worth knowing before anyone designs a mode around them.
+
+**F. Never run.** Q0: does the grenade emit over Bluetooth/RF at all (`grenade_bench.py rf`)?
 
 ## Setup (5 min)
 
