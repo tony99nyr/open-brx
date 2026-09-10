@@ -701,19 +701,26 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   07:59:58 and every beacon from 08:00:01 onward read `team=0`, held for ten straight beacons. **Neutral is
   team 2** — which means an earlier capture the same night labelled "hill-neutral" reading `team=1` was in fact
   a hill already OWNED by blue, and any inference from "neutral = team 1" is void.
-  ⭐ **CAPTURE REQUIRES THE EXTRA-HEADSET WORD — Tony's hypothesis, confirmed with a control 2026-09-10.** An
-  owned hill CAN be taken, but only by a weapon carrying the extra-headset block (`$WEAP` **t1 = 2**, with
-  `t12` extraHeadsetDamage and `t13`/`t42` its own shorter range). Proof, same config and range and session:
-  a **shotgun** (t1=2, t12=70) fired one word — captured on the rig as `proto=0 team=1 **mag=70**`, i.e. the
-  *extraHeadsetDamage* value, not its t5=45 primary — and flipped a RED hill to BLUE, confirmed over 3
-  following beacons. The **AR** (no headset block) then failed to take it back: **4 shots verifiably on the air**
-  (`proto=0 team=0 mag=9` ×4) and **13 beacons after, all still team 1**. Not an aim null. An earlier native
-  weapon at mag 22 had also failed, which is what produced the retracted claim that owned hills are locked.
-  **This is the firmware enforcing "stand on the point"** — the headset emission is deliberately short range
-  (t42 = 30 indoor on the shotgun versus 75 for the gun). ⚠ **Only THREE of our 22 weapons carry it** (shotgun,
-  plasma sniper, rocket launcher), so in a hosted game only those could take an objective — but t1/t12/t13/t42
-  are tokens WE write, so which weapons can capture is a per-weapon, per-mode design decision.
-  Power-cycling the grenade returns it to neutral (team 2).
+  ⚠️⚠️ **AN OWNED HILL CAN BE RETAKEN (that much is solid) — but WHY is NOT settled.** Retracts the earlier
+  claim in this row that owned hills cannot be taken by shooting them.
+  **What was measured 2026-09-10:** a **shotgun** put ONE word on the rig, `proto=0 team=1 mag=70` — the value of
+  its `t12` extraHeadsetDamage, not its `t5` of 45 — and a RED hill became BLUE, held over the following beacons.
+  An **AR** then failed to take it back: 4 shots verifiably on the air (`proto=0 team=0 mag=9` ×4), 13 beacons
+  after, all still team 1. Not an aim null.
+  **Two explanations fit equally and they were not separated:**
+  **(a) the extra-headset word** (`$WEAP` t1=2, with `t12` and the shorter `t13`/`t42` range) is what captures,
+  which would be the firmware enforcing "stand on the point" — Tony's hypothesis; or
+  **(b) simple CHARGE**, which `docs/reference/grenade.md` §"King of the Hill" ALREADY documents from a prior
+  session: *"each shot adds charge up to a max; to retake, the other team must fire at least as many rounds back
+  into it"*, plus a thrown blast capturing 100% in one hit. One shotgun word is 70 of charge; four AR rounds are 36.
+  **The weapon block AND the magnitude both differed, which is the identical two-variable error that produced the
+  retraction above.** ⚠ Do not build on either reading.
+  **Discriminator (10 min):** empty a full AR magazine (32 × mag 9 = 288 of charge) into an owned hill. Flips ⇒
+  it is CHARGE and the headset block is irrelevant. Does not flip, while one shotgun word does ⇒ the block is real.
+  Second control: a rocket (t1=2, t12=115) against a bolt rifle at comparable magnitude with no block.
+  **Process note:** `reference/grenade.md` documented the charge mechanic and was not read before concluding.
+  The house rule is to read the reference layer first; this is the second time in one session that skipping it
+  produced an overreach.
 - **F71 🟠 The three headset weapons may do far more damage than we publish.** The catalog derives `dmg`, `htk`
   and `ttk_ms` from `$WEAP` **t5 alone**. But the shotgun's capture word went out at **magnitude 70** = its
   `t12` extraHeadsetDamage, alongside a t5 of 45 — so at headset range a shotgun may land **115, not 45**, and

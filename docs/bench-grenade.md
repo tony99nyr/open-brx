@@ -10,9 +10,58 @@ steps, about **25 minutes hands-on**, one gun, one grenade, the rig. Tool: `mcp/
 > "THE RESPAWN STATION IS ONE IR WORD". Short form: Respawn beacon / button / boot words captured (all
 > 25-bit, proto 15); emitter arms + revives a native-game gun with the grenade out of the building (4/4,
 > team-gated); hosted games ignore every station word (→ FOLLOWUPS B23); passthrough row works.
-> **Still to run:** step 0 (BLE scan), step 1's Hill/Assault/CTF/Frag captures, step 5 (hill replay), and a
+> **Still to run:** step 0 (BLE scan), step 1's Assault/CTF/Frag captures, step 5 (hill replay), and a
 > receiver-on-the-HEADSET capture for the three unexplained emissions (death echo, self-hits after the
 > button word, dead-trigger request bursts).
+
+> ### ✅ Run 2026-09-10 (early) — the HILL is decoded, and it changes what a hosted game can do
+> **The beacon carries the owner.** Hill = `proto=15 team=<owner> mag=8` every ~5 s (respawn is `mag=6` at
+> ~2.5 s), and **neutral is team 2**. Shooting a neutral hill claims it: a red gun fired
+> `proto=0 player=5 team=0 mag=22` and the next ten beacons read `team=0`.
+> **A hosted game CAN see it — with one row.** `$SIR,15,0,,24,0,0,1,,*` and beacons arrive as
+> `$HIR,<sensor>,15,0,<owner>,8,0,0`, no pool change. That answers Q3 **yes** and explains B23: our compiled
+> table ships no protocol-15 row, so the firmware discards every station word in silence.
+> **🔴 And a hosted game is already exposed to the damage.** A hill also emits an ordinary `proto=0 mag=8`
+> word, which our standard `$SIR,0,0,,1` row applies in full — it killed the operator in ~106 s with nothing
+> in the event stream naming the cause (FOLLOWUPS **F69**).
+> **Unsettled:** why a shotgun retook an owned hill with one `mag=70` word while an AR failed with four
+> `mag=9` — extra-headset block or plain charge (**F70**); and the damage word appeared in one window and not
+> another with no dual-instrument control (**§ programme A** below).
+
+## Programme: everything still to extract from the grenade (2026-09-10)
+
+Ordered by value per bench-minute. **A-C need one gun; D needs two; E is receiver-only and can run any time.**
+
+**A. Settle F70 — what actually captures a point? (10 min, one gun + rig)**
+Empty a full AR magazine (32 × `mag=9` = 288 of charge) into an OWNED hill. Flips ⇒ capture is **charge** and
+the headset block is irrelevant. Does not flip while one shotgun word does ⇒ the **block** is real. Second
+control: rocket (t1=2, t12=115) against a bolt rifle at comparable magnitude with no block. **This gates every
+objective design**, because it decides whether a rifleman can take a point.
+
+**B. The missing hill words (15 min, receiver only, then one gun)**
+Respawn has three words: boot (`mag=56`, announces the station and ARMS guns pre-game), beacon (`mag=6`), and
+button (beacon + crit bit, arms mid-game). **Only the hill BEACON is captured.** Capture on power-up (the boot
+word) and on a button press, in HILL mode. If hill has a boot/arm word, a Utility Box can announce a point.
+
+**C. Both instruments on one window (10 min)**
+Board A beside the headset AND the gun on BLE, while a non-owner stands in the hill. Settles whether the
+`proto=0 mag=8` damage word is continuous or conditional — the control this session never had.
+
+**D. The contest, and Tony's shield design (20 min, TWO guns)**
+Both guns armed by us, both carrying a protocol-15 row, on opposing teams, alternately capturing. Watch each
+gun's view of the same beacon. Then the design test: `<15,0>` on a **grant** function (fn 11 add shield, or 18)
+with friendly fire OFF, so ally polarity should shield the HOLDER while `<0,0>` on fn 1 damages the challenger.
+⚠ Arm from `$CLEAR` — an in-place `$SIR` row replacement is unverified and probably voided the first attempt.
+
+**E. The three silent modes (20 min, receiver only, no gun, no BLE)**
+`reference/grenade.md` says Assault (green), CTF (white) and Frag (red) do **not** beacon. Verify by capture,
+and find what they DO emit: a capture word when shot, a blast word when detonated (**G10**), the CTF team
+assignment (**G9**). If Assault/CTF are truly silent, a hosted game cannot read them and they are station work,
+not grenade work — worth knowing before anyone designs a mode around them.
+
+**F. The never-run basics**
+Q0: does the grenade emit over **Bluetooth/RF at all**? Nobody has scanned (`grenade_bench.py rf`). And the
+hill's **max charge / possession timer** is undocumented: time a capture-to-full and a full-hold win.
 
 ## What it answers
 

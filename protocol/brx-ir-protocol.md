@@ -49,9 +49,13 @@ grenade claims it, and the very next beacon carries the shooter's team — measu
 `proto=15 team=2 mag=8`, a red gun fires `proto=0 player=5 team=0 mag=22`, and every following beacon reads
 `proto=15 team=0 mag=8`, held for ten beacons.
 
-⚠️ **An OWNED grenade cannot be re-claimed by shooting it** — a red gun firing on a blue-held hill changed
-nothing over 60 s, while the same shot took a neutral one on the first round. Power-cycling returns it to
-neutral. Any capture-the-point mode has to supply its own contest rule.
+⚠️ **An owned grenade CAN be retaken, but the mechanism is unsettled (F70).** A shotgun took a red hill with one
+word carrying `mag=70` (its `t12` extraHeadsetDamage, not its `t5` of 45); an AR then failed with four verified
+`mag=9` words on the air. Two explanations fit and were not separated: the extra-headset emission (`$WEAP` t1=2)
+being what captures, or simple CHARGE accumulation, which `docs/reference/grenade.md` already documents ("to
+retake, the other team must fire at least as many rounds back into it"). **Do not cite either as fact.** An
+earlier reading that owned hills cannot be retaken at all is RETRACTED. Power-cycling returns it to neutral
+(team 2).
 
 ⚠️ **A hosted game sees none of this unless we ship a protocol-15 `$SIR` row** — the firmware discards an
 unmatched cell in silence, which is why "station words do nothing in a host-driven game" (B23). One row

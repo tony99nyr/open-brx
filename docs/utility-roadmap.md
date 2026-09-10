@@ -203,6 +203,40 @@ the CLI/sim with synthetic objective events.
 | **Domination / KotH** | `modes/objectives.py` engines + sim tests | station input (K1); MC catalog + scorer | spine + K1 ≈ the first playable objective mode |
 | **CTF** | `modes/objectives.py` | K5 (`kind 6 flag`, carrier bit) after K1–K4 | later |
 
+### ⭐ The grenade shortcut to K1 (bench 2026-09-10)
+
+**A $30 grenade is already a working control point, and one table row makes a hosted game read it.** K1 was
+scoped as building a station; for Hill and Respawn the hardware exists and the protocol is decoded:
+
+| what K1 needs | the grenade already does it |
+|---|---|
+| a capturable point | shoot it to claim; **neutral is team 2**, then the beacon carries the owner |
+| possession broadcast | `proto=15 team=<owner> mag=8` every ~5 s (respawn: `mag=6`, ~2.5 s) |
+| the node knowing | **one row**: `$SIR,15,0,,24,0,0,1,,*` → `$HIR,<sensor>,15,0,<owner>,8,0,0`, no pool change |
+| holder feedback | the firmware already loops a tick on the owner's gun |
+| punishing intruders | the hill emits an ordinary `proto=0 mag=8` damage word (see the hazard below) |
+
+**So K1's station hardware is optional for Hill/Respawn.** What remains is node work — read the beacon, track
+the owner, score possession — plus an MC catalog entry and scorer, which K1 needed anyway. That is a materially
+shorter path to the first playable objective mode than building a station first.
+
+**Three constraints the bench found, which any design here must respect:**
+1. 🔴 **The damage word lands in hosted games TODAY** (F69). Protocol 0 is our standard damage row, so a hill
+   chips and kills players while MC cannot say why. Ship the protocol-15 row so the node can name it, or
+   document the hazard loudly, before anyone takes a grenade to a match.
+2. **The beacon row makes the gun ACKNOWLEDGE a hit every ~5 s** — vibration, flash, sound, for as long as
+   anyone stands on the point. The row's `<soundID>` must be chosen deliberately (a `$SIR` sound REPLACES the
+   `$PSET` pool sound) or the objective is unbearable within a minute.
+3. **Which weapons can capture is unsettled and may be ours to choose** (F70): capture may need the
+   extra-headset word (`$WEAP` t1=2), which only 3 of our 22 weapons carry — but those tokens are ours to write,
+   so "heavy weapons take points" is a design option rather than a constraint.
+
+**And a mode primitive we did not have: shield the holder.** Both grenade words carry the OWNER's team, and the
+firmware gates by polarity — damage lands only from an enemy, grants only from your own team. So `<0,0>` on fn 1
+punishes challengers while `<15,0>` on a grant function (fn 11/18) shields holders, with the firmware doing the
+team logic. Untested (see `bench-grenade.md` programme D), and it would be the first shield our stack can fill
+at all (F60).
+
 **The grenade bridge (FOLLOWUPS B23).** Our phone stations are a hosted reimplementation of what the Smart
 Grenade does in native games: Respawn (yellow) ✅ built as the phone station; Hill (blue) and Assault (green) →
 K1; CTF (white) → K5; Frag (red) out of scope. A hosted (MC) gun ignores all the grenade's IR words, so inside
