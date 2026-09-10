@@ -22,13 +22,16 @@ A scenario that reproduces a REAL engine bug lives in a `scenario_*` function
 from brx_mcp.gameconfig import GameConfig
 from brx_mcp.sim import SimGame
 
-from brx_mcp import sounds as _snd
-CAP_SOUND = _snd.POINT_CAPTURED   # "Control Point Captured" (VA23; transcript-verified 2026-09-03)
+from brx_mcp.modes import hillbeacon as _hb
+# "Hill Captured" (VB0N) on the ANNOUNCER slot. Confirmed by ear 2026-09-10 (rung S) and Tony's own
+# pick over the three male "Control Point" lines; a capture is a voice line, not an effect.
+CAP_SOUND = _hb.HILL_CAPTURED
+CAP_FRAME = f"$PLAY,,4,6,{CAP_SOUND},,,,*"
 
 
 def _cap_sound_count(g) -> int:
     """How many point-captured $PLAY cues were emitted, across all guns."""
-    return sum(1 for (_pid, f) in g.all_frames() if f.startswith(f"$PLAY,{CAP_SOUND},"))
+    return sum(1 for (_pid, f) in g.all_frames() if f == CAP_FRAME)
 
 
 def _dom(**kw) -> GameConfig:
@@ -147,8 +150,9 @@ def test_garbage_team_token_is_ignored_no_crash_no_phantom():
     s = g.snapshot()
     assert s["owner"]["A"] is None                 # never captured
     assert _cap_sound_count(g) == 0
-    # no phantom team fabricated in the scoreboard (only the two roster teams)
-    assert set(s["score"].keys()) <= {1, 2}
+    # no phantom team fabricated in the scoreboard (only the roster's own teams -- read from the
+    # game rather than hard-coded, so this keeps meaning what it says if the default teams move)
+    assert set(s["score"].keys()) <= set(g.teams.values())
     assert all(v == 0 for v in s["score"].values())
 
 
@@ -258,9 +262,10 @@ def test_unlimited_never_self_ends():
 def test_capture_emits_play_cue_to_all_guns():
     g = SimGame(_dom(control_points=1)).setup()
     g.station("ST", "$CAPTURE,A,1,*", now=0.0)
-    # PlaySound(scope="all") → the cue reaches every gun
+    # PlaySound(scope="all") → the cue reaches every gun. A capture from NEUTRAL is one
+    # announcement to everybody; a STEAL is per-team instead (see test_hillbeacon.py).
     for pid in ("G1", "G2"):
-        assert f"$PLAY,{CAP_SOUND},4,6,,,,,*" in g.frames_to(pid)
+        assert CAP_FRAME in g.frames_to(pid)
 
 
 # =========================================================================== #

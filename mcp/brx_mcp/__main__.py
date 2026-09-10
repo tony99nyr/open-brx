@@ -1091,7 +1091,9 @@ def _sim_plan(mode: str):
                  (None, None, 5),                              # @6 countdown ticking…
                  (None, None, 5)])                             # @11 detonates → attackers win
     if mode in ("domination", "koth"):
-        return ({"red": 1, "blue": 2}, ["control_points=2", "score_target=8", "game_time_s=0"],
+        # blue on $TID 3, NOT 2 — team 2 is what a neutral grenade hill broadcasts (F82), and
+        # DominationEngine refuses a roster that uses it.
+        return ({"red": 1, "blue": 3}, ["control_points=2", "score_target=8", "game_time_s=0"],
                 [("A", ev("CAPTURE", "A", 1), 1),              # @1 red takes A
                  ("B", ev("CAPTURE", "B", 1), 1),              # @2 red takes B → 2 pt/s
                  (None, None, 10)])                            # @12 holds both → hits target

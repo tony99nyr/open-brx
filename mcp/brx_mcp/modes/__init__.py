@@ -25,6 +25,8 @@ from .survival import InfectionEngine
 from .lms import LastManStandingEngine
 from .cs import BombEngine
 from .objectives import DominationEngine, CtfEngine
+from . import hillbeacon
+from .hillbeacon import HillBeaconReader
 from .driver import GameDriver, build_engine, run_live, assign_teams, clean_callsign
 # Extraction engine + its non-colliding data classes (config/game/results).
 from .extraction import ExtractionConfig, ExtractionGame
@@ -39,6 +41,9 @@ __all__ = [
     # engines + driver
     "DeathmatchEngine", "InfectionEngine", "LastManStandingEngine", "BombEngine",
     "DominationEngine", "CtfEngine",
+    # the grenade-hill bridge (proto-15 $HIR -> objective state); the module is exported too
+    # so the MC server can reach the wire constants without importing an engine.
+    "hillbeacon", "HillBeaconReader",
     "GameDriver", "build_engine", "run_live", "assign_teams", "clean_callsign",
     # extraction (import its Actions from .extraction directly)
     "ExtractionConfig", "ExtractionGame", "ExtractionEngineAdapter",

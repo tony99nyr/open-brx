@@ -22,6 +22,7 @@ from typing import Awaitable, Callable, Optional
 from .. import sounds as snd
 from ..gameconfig import GameConfig, RESPAWN_SEQUENCE, END_SEQUENCE
 from .. import poolgauge as pg
+from . import hillbeacon
 from .base import (
     Action, Callout, Eliminate, GameEngine, GameOver, Heal, KillConfirm, PlaySound, Respawn,
     Score, SendFrame, SetTeam,
@@ -57,6 +58,7 @@ def assign_teams(mode: str, addresses: list[str],
                  explicit: Optional[dict[str, int]] = None) -> dict[str, int]:
     """Map each gun → team. Explicit wins; else FFA = unique team per gun;
     infection/survival = exactly ONE seed infected (team 2), rest human (team 1);
+    domination/koth = alternate 1/3 (**never 2** — that is a neutral hill, F82);
     other modes = alternate 1/2."""
     explicit = explicit or {}
     out: dict[str, int] = {}
@@ -67,6 +69,14 @@ def assign_teams(mode: str, addresses: list[str],
             out[addr] = i + 1                  # unique team → 1:1 kill attribution
         elif mode in ("infection", "survival"):
             out[addr] = 2 if i == 0 else 1     # first gun = the single seed infected
+        elif mode in ("domination", "koth"):
+            # F82: teams 1 and 3 (blue/green), never 2 — a NEUTRAL grenade hill broadcasts team 2,
+            # so a player sitting on it reads every uncaptured point as their own and takes no hill
+            # damage. DominationEngine refuses team 2 outright; this is the default that never
+            # produces it in the first place. **3 rather than 0**: a beacon's team 0 is genuinely
+            # red (bench-captured), but `objectives._team()` treats a ZERO on the station `$CAPTURE`
+            # path as a malformed token, so a tid-0 team could never be handed a point by a station.
+            out[addr] = (1, 3)[i % 2]
         else:
             out[addr] = (i % 2) + 1
     return out
@@ -382,7 +392,12 @@ class GameDriver:
         # answering `$QUERY` -- and simply never registers. The only symptom visible to the host is
         # that this player is never hit, which no scoreboard would otherwise call out.
         cmd = (ev.get("command") or ev.get("cmd") or ev.get("raw", "")[:5])
-        if str(cmd).upper().lstrip("$").startswith("HIR"):
+        is_hir = str(cmd).upper().lstrip("$").startswith("HIR")
+        # A grenade/station BEACON is an $HIR that nobody fired. Counting it as a hit taken would
+        # defeat the detector in exactly the modes that have a hill: an unhittable gun still hears
+        # the beacon every 5 s, so it would look hit all match and never be flagged.
+        beacon = is_hir and hillbeacon.parse(ev) is not None
+        if is_hir and not beacon:
             self.hits_taken[player_id] = self.hits_taken.get(player_id, 0) + 1
         if self._t0 is None:
             self._t0 = now
@@ -394,9 +409,12 @@ class GameDriver:
         gauge = self._gauge_action(player_id, ev, now)
         if gauge is not None:
             actions = list(actions) + [gauge]
-        if str(cmd).upper().lstrip("$").startswith("HIR") and self.config.leds:
+        if is_hir and not beacon and self.config.leds:
             # A registered hit wipes the headset (native flash, then dark -- bench 2026-09-03), so
             # repaint the team colour. One write per hit; the frame is static and never hammered.
+            # NOT for a beacon: fn 28 registers with zero player feedback (F73 -- no sound, no flash,
+            # no vibration), so there is nothing to repaint, and a hill would otherwise put a write
+            # on every gun every 5 s for the whole match.
             actions = list(actions) + [SendFrame(player_id,
                                                  pg.headset_team_frame(self.players.get(player_id)))]
         return actions

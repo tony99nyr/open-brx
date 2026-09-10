@@ -24,6 +24,7 @@ from .types import MAX_PLAYERS, FrameBundle, GameConfig, Player, Team, Weapon
 from . import presentation as _pres
 from .. import poolgauge as pg
 from .. import voices as _voices
+from ..modes.hillbeacon import NEUTRAL_TEAM as _NEUTRAL_TEAM
 
 # Field-corrected 2026-08-30 (first live 2-player match on the Mac): $VOL,69 — the value iOS
 # Callsign sends — plays at roughly **on-gun level 2** and Tony called it "super low" outdoors.
@@ -1025,6 +1026,24 @@ class Compiler:
             errors.append(f"team tid(s) {sorted(set(bad_tids))} outside 0-3 (F35): the IR word's team "
                           f"field is 2 bits -- a $TID of 4 or higher makes teammates damage each other "
                           f"and can let a gun read its own shots as friendly")
+
+        # 🔴 F82: in a hill mode team 2 is NOT a team, it is the value a NEUTRAL grenade
+        # broadcasts. A player rostered there reads every uncaptured point as their own: under an
+        # enemy-only $SIR row they go deaf to it, and the hill's proto=0 damage word cannot land on
+        # them, so they walk onto any neutral point untouched while everyone else is contested.
+        # Both inputs are bench-measured (2026-09-10); only the consequence is predicted, and it
+        # costs nothing to make impossible — teams 0, 1 and 3 are all free. `DominationEngine`
+        # refuses it too; this is the half that says so before the match starts.
+        if mode in _OBJECTIVE_MODES:
+            tid_of = {t.get("team_id"): t.get("tid") for t in config.get("teams", [])}
+            on_neutral = sorted({str(p.get("player_id")) for p in roster
+                                 if tid_of.get(p.get("team_id")) == _NEUTRAL_TEAM})
+            if on_neutral:
+                errors.append(
+                    f"F82: mode {mode!r} cannot roster players on $TID {_NEUTRAL_TEAM} "
+                    f"({', '.join(on_neutral)}) — that is the team a NEUTRAL grenade hill "
+                    "broadcasts, so they read every uncaptured point as their own and take no "
+                    "hill damage. Use tid 0, 1 or 3.")
 
         # ffa ⇒ exactly one team (one $TID); friendly fire is forced on in compile (§2/A5.2)
         if mode == "ffa" and len({t["tid"] for t in config.get("teams", [])}) > 1:

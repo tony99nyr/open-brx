@@ -1,4 +1,9 @@
-"""Tests for the objective engines — Domination, KotH, CTF."""
+"""Tests for the objective engines — Domination, KotH, CTF.
+
+⚠ The Domination/KotH rosters below use teams **1 and 3**, never 2: team 2 is the value a NEUTRAL
+grenade hill broadcasts, so `DominationEngine.add_player` refuses it (F82). The station `$CAPTURE`
+path can still name team 2 — that is a station's own token, not a roster seat.
+"""
 
 from brx_mcp.gameconfig import GameConfig
 from brx_mcp.modes import DominationEngine, CtfEngine, GameOver, Score, Callout, build_engine
@@ -20,7 +25,7 @@ def _types(actions, typ):
 def test_domination_owner_scores_over_time():
     e = DominationEngine(GameConfig(mode="domination", control_points=2,
                                     score_target=10, game_time_s=0))
-    e.add_player("red", 1); e.add_player("blue", 2)
+    e.add_player("red", 1); e.add_player("blue", 3)
     e.on_event("red", cap("A", 1), now=0.0)      # red owns A → 1 pt/s
     assert e.tick(now=5.0) == []                 # 5 pts < 10
     acts = e.tick(now=10.0)                       # 10 pts → win
@@ -40,18 +45,18 @@ def test_domination_two_points_double_rate():
 def test_domination_steal_transfers_scoring():
     e = DominationEngine(GameConfig(mode="domination", control_points=1,
                                     score_target=0, game_time_s=0))
-    e.add_player("red", 1); e.add_player("blue", 2)
+    e.add_player("red", 1); e.add_player("blue", 3)
     e.on_event("red", cap("A", 1), now=0.0)
     e.tick(now=4.0)                                # red +4
-    e.on_event("blue", cap("A", 2), now=4.0)      # blue steals A
+    e.on_event("blue", cap("A", 3), now=4.0)      # blue steals A
     e.tick(now=10.0)                              # blue +6
     s = e.snapshot()["score"]
-    assert s[1] == 4 and s[2] == 6
+    assert s[1] == 4 and s[3] == 6
 
 
 def test_domination_time_limit_leader_wins():
     e = DominationEngine(GameConfig(mode="domination", control_points=1, game_time_s=30))
-    e.add_player("red", 1); e.add_player("blue", 2)
+    e.add_player("red", 1); e.add_player("blue", 3)
     e.on_event("red", cap("A", 1), now=0.0)
     acts = e.tick(now=30.0)
     over = _types(acts, GameOver)
