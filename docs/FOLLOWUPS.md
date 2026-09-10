@@ -712,16 +712,22 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   its `t12` extraHeadsetDamage, not its `t5` of 45 — and a RED hill became BLUE, held over the following beacons.
   An **AR** then failed to take it back: 4 shots verifiably on the air (`proto=0 team=0 mag=9` ×4), 13 beacons
   after, all still team 1. Not an aim null.
-  **Two explanations fit equally and they were not separated:**
+  **Two explanations fit, and they are NOT equally weighted** (sharpened 2026-09-10 after a review pass):
   **(a) the extra-headset word** (`$WEAP` t1=2, with `t12` and the shorter `t13`/`t42` range) is what captures,
   which would be the firmware enforcing "stand on the point" — Tony's hypothesis; or
   **(b) simple CHARGE**, which `docs/reference/grenade.md` §"King of the Hill" ALREADY documents from a prior
   session: *"each shot adds charge up to a max; to retake, the other team must fire at least as many rounds back
   into it"*, plus a thrown blast capturing 100% in one hit. One shotgun word is 70 of charge; four AR rounds are 36.
   **The weapon block AND the magnitude both differed, which is the identical two-variable error that produced the
-  retraction above.** ⚠ Do not build on either reading.
+  retraction above.** ⚠ Do not build on either reading — **but note they are not equal candidates.** Charge is
+  **already hardware-confirmed** (`reference/grenade.md:127` marks the whole KotH section confirmed by Tony,
+  exp-log #37) and it PREDICTS BOTH of tonight's observations without anything new: 70 of charge beats 36. The
+  extra-headset idea invokes an unproven mechanism to explain something an established one already covers, so it
+  carries the burden of proof. Phrase the discriminator accordingly: it is not "which of two", it is **"is there
+  any reason to invoke a second mechanism at all"**.
   **Discriminator (10 min):** empty a full AR magazine (32 × mag 9 = 288 of charge) into an owned hill. Flips ⇒
-  it is CHARGE and the headset block is irrelevant. Does not flip, while one shotgun word does ⇒ the block is real.
+  charge alone explains everything and the headset block is irrelevant — **the expected result**. Does not flip,
+  while one shotgun word does ⇒ charge is refuted as sufficient and the block earns its place.
   Second control: a rocket (t1=2, t12=115) against a bolt rifle at comparable magnitude with no block.
   **Process note:** `reference/grenade.md` documented the charge mechanic and was not read before concluding.
   The house rule is to read the reference layer first; this is the second time in one session that skipping it
