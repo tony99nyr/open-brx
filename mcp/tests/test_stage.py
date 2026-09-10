@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import asyncio
+import pathlib
+import re
 import time
 
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
+from brx_mcp.stage import stage as S           # the hill parity tests read its constants by name
 from brx_mcp.stage.stage import GunStage, ir_words
 from brx_mcp.mc import presentation as P
 from brx_mcp import poolgauge as PG
@@ -1275,3 +1278,551 @@ def test_a_failed_background_task_logs_a_warning_instead_of_vanishing_silently()
         await settle(st)
         assert any("background task failed" in l["text"] and "kaboom" in l["text"] for l in st.log), st.log
     asyncio.run(go())
+
+
+# =====================================================================================================
+# King of the Hill audio -- PARITY with app/src/engine.js (commit 4348721).
+#
+# The stage's only purpose is to PREDICT the phone: the operator connects ONE real gun here and signs
+# off on what they hear, and a stage/phone divergence means they signed off on behaviour players never
+# get (2026-09-07: seven of nine defects in one night were exactly this). So these are parity tests --
+# each one pins the decision engine.js makes, and the first one reads engine.js's own constants rather
+# than trusting a copy of them.
+#
+# ⚠ UNITS. engine.js is on `Date.now()` (ms); the stage is on `time.monotonic` (SECONDS). Every hill
+# test below drives `self.now` by hand through `_Clock`, so no assertion here depends on a real sleep
+# or on how often something happens to call `poll()`.
+# =====================================================================================================
+
+ENGINE_JS = pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "engine.js"
+
+# The VERBATIM $HIR streams read off the BLE link at the bench, docs/experiment-log/2026-09.md,
+# "2026-09-10 (evening, cont.) -- CAPTURE PROVEN END TO END" and "... `mag=53` MEANS THE POINT WAS
+# NEUTRAL", with the trailing `,*` the wire carries restored. `(t_ms, frame)`; t is the log's own clock.
+NEUTRAL_TO_BLUE = [                          # gun on team 1 (blue), a NEUTRAL grenade, one AR round
+    (41770, "$HIR,4,15,0,2,8,0,0,*"),        # last NEUTRAL beacon (a neutral point broadcasts team 2)
+    (41820, "$HIR,4,15,0,1,50,0,0,*"),       # mag 50: NEW OWNER = team 1, 50 ms after the shot
+    (46780, "$HIR,0,15,0,2,53,0,0,*"),       # mag 53, ~5 s LATER, on a DIFFERENT sensor: the state left was neutral (team 2)
+    (46780, "$HIR,4,15,0,1,8,0,0,*"),        # first hill beacon owned by team 1
+    (51720, "$HIR,4,15,0,1,8,0,0,*"),
+    (56770, "$HIR,4,15,0,1,8,0,0,*"),
+]
+BLUE_TO_RED = [                              # the enemy-to-enemy capture: NO mag 53 anywhere in the stream
+    (291755, "$HIR,4,15,0,1,8,0,0,*"),       # blue (team 1) still holds it
+    (292265, "$HIR,4,15,0,0,50,0,0,*"),      # mag 50: NEW OWNER = team 0 (red)
+    (296835, "$HIR,4,15,0,0,8,0,0,*"),       # first hill beacon owned by RED
+    (301845, "$HIR,4,15,0,0,8,0,0,*"),
+]
+
+CAPTURED = "$PLAY,,4,6,VB0N,,,,*"            # VB0N "Hill Captured"
+LOST = "$PLAY,,4,6,VB0P,,,,*"                # VB0P "Hill Lost!"
+TICK = "$PLAY,U100,4,6,,,,,*"                # U100 possession tick
+PLAYX = "$PLAYX,0,*"
+
+
+class _Clock:
+    """A hand-driven `now` in SECONDS. `at_ms()` places it on the bench log's own millisecond clock."""
+
+    def __init__(self, t: float = 1000.0):
+        self.t = float(t)
+        self._base = None
+
+    def __call__(self) -> float:
+        return self.t
+
+    def advance(self, dt_s: float) -> float:
+        self.t += float(dt_s)
+        return self.t
+
+    def at_ms(self, t_ms: float) -> float:
+        """Jump to a capture's timestamp, keeping the gaps BETWEEN frames exactly as they were measured."""
+        if self._base is None:
+            self._base = t_ms - self.t * 1000.0
+        self.t = (t_ms - self._base) / 1000.0
+        return self.t
+
+
+# The captured streams involve teams 0 (red), 1 (blue) and 2 (neutral/yellow), and `recompile()` snaps
+# `profile["tid"]` to a tid the ROSTER actually has -- the stage's default tdm config is blue(1)+yellow(2),
+# so asking for tid 0 on it would silently land back on 1 and quietly test the wrong listener.
+HILL_ROSTER = [{"tid": 0, "team_id": "red", "name": "RED TEAM"},
+               {"tid": 1, "team_id": "blue", "name": "BLUE TEAM"},
+               {"tid": 2, "team_id": "yellow", "name": "YELLOW TEAM"}]
+
+
+def mk_hill(tid: int = 1, **profile):
+    """A stage with a driveable clock and a three-team roster. Returns (stage, mgr, clock)."""
+    mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1)])
+    clock = _Clock()
+    st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
+    st.load_config({**st.config, "teams": [dict(t) for t in HILL_ROSTER]}, source="test")
+    st.set_profile(tid=tid, **profile)
+    assert st.profile["tid"] == tid, "the roster must actually carry the tid under test"
+    return st, mgr, clock
+
+
+async def in_play(st):
+    """Armed, spawned and alive, with everything the spawn burst wrote already drained and settled."""
+    await st.connect("FA:KE:00:00:00:01")
+    await st.arm()
+    st.bundle["cues"]["countdown"] = ""       # these tests are about the hill, not the spawn countdown
+    await st.spawn()
+    await settle(st)
+    st.poll()
+    await settle(st)
+
+
+def mark(mgr, alias="stage") -> int:
+    return mgr.sessions[alias].seq
+
+
+def since(mgr, n, alias="stage") -> list[str]:
+    return [e.raw for e in mgr.sessions[alias].buffer if e.seq > n and e.direction == "tx"]
+
+
+def hill_audio(mgr, n) -> list[str]:
+    """Just the hill lines out of the tx stream: the two callouts, the tick, and our own preempt."""
+    return [f for f in since(mgr, n) if f in (CAPTURED, LOST, TICK, PLAYX)]
+
+
+async def feed(st, mgr, clock, frames, alias="stage"):
+    """Play a captured `(t_ms, frame)` stream at its MEASURED timing, through the real rx path:
+    record it on the session the way a BLE notification would, then let `poll()` drain and tick it."""
+    for t_ms, raw in frames:
+        clock.at_ms(t_ms)
+        mgr.sessions[alias].record("rx", raw)
+        st.poll()
+        await settle(st)
+
+
+async def run_clock(st, clock, seconds: float, step: float = 0.2) -> list[float]:
+    """Advance the clock with NO frames arriving, polling at the stage server's own 0.2 s cadence --
+    which is what proves the tick and the presence expiry do not need a frame to run. Returns the clock
+    time of every possession tick heard, for `assert_cadence`."""
+    out: list[float] = []
+    end = clock.t + seconds
+    while clock.t < end - 1e-9:
+        clock.advance(min(step, end - clock.t))
+        n = mark(mgr_of(st))
+        st.poll()
+        await settle(st)
+        out += [clock.t for f in hill_audio(mgr_of(st), n) if f == TICK]
+    return out
+
+
+def mgr_of(st):
+    return st.mgr
+
+
+def assert_cadence(times: list[float], seconds: float, step: float = 0.2, from_s: float = 0.0):
+    """The possession tick is one clip per HILL_TICK_S. Assert the measured GAPS rather than a frame
+    count: the count alone would be measuring the poll interval, and in float SECONDS a boundary can
+    slip by one poll (engine.js compares integer ms and cannot), so an exact count is a harness
+    artefact either way. `from_s` is any dead time at the start of the window (a callout's length)."""
+    for a, b in zip(times, times[1:]):
+        gap = b - a
+        assert S.HILL_TICK_S - 1e-6 <= gap <= S.HILL_TICK_S + step + 1e-6, f"tick gap {gap}s in {times}"
+    want = int((seconds - from_s) // S.HILL_TICK_S)
+    assert len(times) >= want - 1, f"expected about {want} ticks in {seconds}s, heard {len(times)}: {times}"
+
+
+def test_the_hill_constants_and_cues_are_engine_js_converted_to_seconds():
+    """PARITY, read off the source of truth rather than trusting a copy: every hill constant and cue in
+    stage.py must be engine.js's own value, with the ms->s conversion applied exactly once.
+
+    This is the test for the single silent failure mode of this port -- a stage that kept engine.js's
+    12000 would never expire presence and a stage that kept 1000 would never tick, and BOTH suites
+    would still be green because each side is only ever tested against itself."""
+    src = ENGINE_JS.read_text(encoding="utf-8")
+    assert "HILL_CUES" in src, f"engine.js not found or has no hill block at {ENGINE_JS}"
+
+    def num(name):
+        m = re.search(rf"^const {name} = (\d+);", src, re.M)
+        assert m, f"engine.js no longer defines {name}"
+        return int(m.group(1))
+
+    assert S.HILL_MAG == num("HILL_MAG")
+    assert S.HILL_CAPTURE_MAG == num("HILL_CAPTURE_MAG")
+    assert S.HILL_WAS_NEUTRAL_MAG == num("HILL_WAS_NEUTRAL_MAG")
+    assert S.HILL_NEUTRAL_TEAM == num("HILL_NEUTRAL_TEAM")
+    assert S.HILL_TICK_S == num("HILL_TICK_MS") / 1000.0, "the possession tick's cadence is SECONDS here"
+    assert S.HILL_PRESENCE_S == num("HILL_PRESENCE_MS") / 1000.0, "the presence window is SECONDS here"
+    # …and they are the numbers the bench actually measured, so a matching pair of wrong constants still fails
+    assert (S.HILL_TICK_S, S.HILL_PRESENCE_S) == (1.0, 12.0)
+
+    m = re.search(r"\(now - this\._lastBeaconAt\) < (\d+)", src)
+    assert m and S.BEACON_DEDUPE_S == int(m.group(1)) / 1000.0, "the F85 identity window must match engine.js"
+
+    js_cues = {k: v for k, v in re.findall(r"^  (hill_\w+):\s*\{ frame: '([^']*)', ms: \d+ \},", src, re.M)}
+    js_ms = {k: int(v) for k, v in re.findall(r"^  (hill_\w+):\s*\{ frame: '[^']*', ms: (\d+) \},", src, re.M)}
+    assert set(js_cues) == set(S.HILL_CUES), f"engine.js cue keys {sorted(js_cues)} vs stage {sorted(S.HILL_CUES)}"
+    for k, frame in js_cues.items():
+        assert S.HILL_CUES[k]["frame"] == frame, k
+        assert S.HILL_CUES[k]["s"] == js_ms[k] / 1000.0, f"{k}: clip length must be seconds"
+    assert "domination" in S.HILL_AUDIO_EXCLUDED_MODES and "domination" in re.search(
+        r"HILL_AUDIO_EXCLUDED_MODES = new Set\(\[([^\]]*)\]\)", src).group(1)
+    # the frames the tests below listen for ARE those cues -- and `hill_captured` is one MC's presentation
+    # table also ships, so if that id ever changes this names the reason instead of failing somewhere odd
+    assert (CAPTURED, LOST, TICK) == (S.HILL_CUES["hill_captured"]["frame"], S.HILL_CUES["hill_lost"]["frame"],
+                                      S.HILL_CUES["hill_tick"]["frame"])
+    st, _, _ = mk_hill()
+    assert st.bundle["cues"]["hill_captured"] == CAPTURED, "MC compiles a different hill_captured cue than engine.js falls back to"
+    assert PLAYX == S.PLAYX
+
+
+def test_the_stages_poller_is_faster_than_the_hill_tick_it_has_to_carry():
+    """`poll()` is NOT the phone's ~250 ms `tick()`: whatever cadence its CALLER uses becomes the hill
+    tick's real resolution. If the stage server ever polled slower than HILL_TICK_S the possession
+    cadence would silently stretch, and a bench cadence check would then be measuring the harness
+    instead of the engine. Pin it here so that change cannot pass unnoticed."""
+    try:
+        import inspect
+        from brx_mcp.stage.server import create_app
+        poll_s = inspect.signature(create_app).parameters["poll_s"].default
+    except Exception:                       # no starlette under system python: read the default off the source
+        src = (pathlib.Path(__file__).resolve().parents[1] / "brx_mcp" / "stage" / "server.py").read_text(encoding="utf-8")
+        m = re.search(r"def create_app\([^)]*poll_s: float = ([\d.]+)", src)
+        assert m, "create_app no longer takes a poll_s default"
+        poll_s = float(m.group(1))
+    assert poll_s <= S.HILL_TICK_S / 2, f"the stage polls every {poll_s}s, too coarse to carry a {S.HILL_TICK_S}s tick"
+
+
+def test_the_neutral_to_blue_capture_announces_for_the_incoming_team():
+    """The REAL neutral->blue stream (bench 2026-09-10). One `mag=50` word, one "Hill Captured", played
+    on the frame that proves it -- and then the point ticks on OUR clock, not the beacon's."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        await in_play(st)
+        n = mark(mgr)
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:2])          # the neutral beacon, then the capture word
+        assert hill_audio(mgr, n) == [CAPTURED], hill_audio(mgr, n)
+        assert st.hill["owner"] == 1 and st.hill["from_neutral"] is False
+        # the rest of the stream: mag 53 lands ~5 s later and says nothing, and possession keeps ticking
+        n2 = mark(mgr)
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE[2:])
+        assert LOST not in hill_audio(mgr, n2) and CAPTURED not in hill_audio(mgr, n2), "the late words must announce nothing"
+        assert hill_audio(mgr, n2).count(TICK) >= 3, "we hold a fresh point: it must be ticking"
+        assert st.hill["owner"] == 1 and st.hill["from_neutral"] is True, "mag 53 records that the capture started from neutral"
+    asyncio.run(go())
+
+
+def test_the_same_capture_frame_is_lost_for_the_outgoing_team():
+    """ONE wire event, two opposite callouts: the `mag=50` frame that says "Hill Captured" to the
+    incoming team says "Hill Lost!" to the team that just lost it. Both halves run the SAME captured
+    enemy-to-enemy stream, so neither is a control that passes by doing nothing."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)              # blue: we HELD it and red takes it
+        await in_play(st)
+        n = mark(mgr)
+        await feed(st, mgr, clock, BLUE_TO_RED[:1])              # blue still holds it: OUR point, so it ticks
+        assert hill_audio(mgr, n) == [TICK], hill_audio(mgr, n)
+        n = mark(mgr)
+        await feed(st, mgr, clock, BLUE_TO_RED[1:])
+        heard = hill_audio(mgr, n)
+        assert LOST in heard and CAPTURED not in heard, heard
+        assert TICK not in heard, "an enemy holds it now: nothing left to tick for"
+        assert st.hill["owner"] == 0
+
+        st2, mgr2, clock2 = mk_hill(tid=0)           # red: the identical frames are our capture
+        await in_play(st2)
+        n2 = mark(mgr2)
+        await feed(st2, mgr2, clock2, BLUE_TO_RED)
+        heard2 = hill_audio(mgr2, n2)
+        assert CAPTURED in heard2 and LOST not in heard2, heard2
+        assert TICK in heard2, "we hold it now: it must tick"
+    asyncio.run(go())
+
+
+def test_mag_53_refreshes_presence_but_never_writes_its_team_into_the_owner():
+    """`mag=53` carries the OUTGOING owner and arrives ~5 s after the capture it describes. Writing that
+    team into `owner` would hand the point back to nobody a full beacon cycle after we took it, and stop
+    the tick -- so it refreshes presence, records `from_neutral`, and announces nothing."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        await in_play(st)
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:2])          # we hold it (owner 1)
+        n = mark(mgr)
+        await feed(st, mgr, clock, [NEUTRAL_TO_BLUE[2]])         # the lone mag=53, team field = 2 (the neutral it left)
+        assert st.hill["owner"] == 1, "the point must NOT be handed back to the team in the mag-53 word"
+        assert st.hill["at"] == clock.t, "…and it must still count as presence"
+        assert [f for f in hill_audio(mgr, n) if f != TICK] == [], "mag 53 announces nothing"
+        # the positive half: had `owner` been overwritten with 2, the tick would have stopped dead here
+        times = await run_clock(st, clock, 3.0)
+        assert times, "the point is still ours: it must still be ticking"
+        assert_cadence(times, 3.0)
+    asyncio.run(go())
+
+
+def test_a_respawn_station_beacon_never_refreshes_a_hill_window():
+    """F84, three times in one day: only a magnitude-8 HILL beacon refreshes presence. A respawn
+    station's ~2.5 s mag-6 beacon would otherwise keep a 12 s window permanently fresh and a hill
+    nobody holds would tick forever."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        await in_play(st)
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:2])
+        for _ in range(6):                                        # 15 s of station beacons, every 2.5 s
+            await run_clock(st, clock, 2.5)
+            mgr.sessions["stage"].record("rx", f"$HIR,4,15,0,{st.profile['tid']},6,0,0,*")
+            st.poll(); await settle(st)
+        assert st.hill is None, "a station beacon must not hold a hill window open"
+        assert any("presence expired" in l["text"] for l in st.log)
+
+        # the positive half, same cadence, only the magnitude differs: a real hill beacon DOES hold it
+        st2, mgr2, clock2 = mk_hill(tid=1)
+        await in_play(st2)
+        await feed(st2, mgr2, clock2, NEUTRAL_TO_BLUE[:2])
+        for _ in range(6):
+            await run_clock(st2, clock2, 2.5)
+            mgr2.sessions["stage"].record("rx", "$HIR,4,15,0,1,8,0,0,*")
+            st2.poll(); await settle(st2)
+        assert st2.hill is not None and st2.hill["owner"] == 1
+    asyncio.run(go())
+
+
+def test_one_missed_beacon_keeps_ticking_and_two_expire_presence_with_no_lost_callout():
+    """Rung R: the beacon is clean at desk range and intermittent at the edge of it, so ONE miss is
+    normal reception, not "left the hill". Two is the expiry -- and walking out of range is silent,
+    because nobody took the point from us."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        await in_play(st)
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:2])
+        times = await run_clock(st, clock, 10.0)                  # one beacon missed (10 s < 12 s)
+        assert st.hill is not None, "a single missed beacon is normal reception, not an expiry"
+        assert_cadence(times, 10.0, from_s=S.HILL_CUES["hill_captured"]["s"])
+        clock.advance(0.001)
+        mgr.sessions["stage"].record("rx", "$HIR,4,15,0,1,8,0,0,*")   # it comes back: presence refreshed
+        st.poll(); await settle(st)
+        n2 = mark(mgr)
+        times2 = await run_clock(st, clock, 12.0)                 # now two are missed
+        assert st.hill is None
+        assert LOST not in hill_audio(mgr, n2), "walking out of range is NOT a loss: nobody took it from us"
+        assert_cadence(times2, 12.0)                              # …and it ticked right up to the expiry
+        assert max(times2) >= clock.t - S.HILL_TICK_S - 1.0, "the ticks must run to the expiry, not stop early"
+        assert any("presence expired" in l["text"] for l in st.log)
+    asyncio.run(go())
+
+
+def test_a_callout_suppresses_the_tick_for_the_clips_real_length():
+    """The tick is 0.114 s and "Hill Captured" is 1.924 s: the tick must WAIT for the announcer rather
+    than play underneath it. The control is the same clock with no callout in front of it."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        await in_play(st)
+        n = mark(mgr)
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:2])
+        assert hill_audio(mgr, n) == [CAPTURED]
+        n2 = mark(mgr)
+        assert await run_clock(st, clock, 1.9) == [], "the tick must not play under a callout"
+        assert len(await run_clock(st, clock, 0.2)) == 1, "…and it must play the moment the clip ends"
+
+        # control: the identical 2.1 s with the announcer free ticks all the way through
+        times = await run_clock(st, clock, 2.1)
+        assert len(times) >= 2, times
+        assert_cadence(times, 2.1)
+    asyncio.run(go())
+
+
+def test_the_f85_duplicate_yields_one_callout_and_leaves_the_cadence_alone():
+    """One physical transmission can land on several IR sensors, each reported as its own `$HIR` ~14 ms
+    apart. Deduped on IDENTITY (owner + magnitude, sensor deliberately NOT in the key), so the double
+    hearing announces once -- and does not extend the announcer's busy window either, which would push
+    the whole possession cadence out."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        await in_play(st)
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:1])
+        n = mark(mgr)
+        clock.at_ms(41820)
+        mgr.sessions["stage"].record("rx", "$HIR,4,15,0,1,50,0,0,*")     # gun body
+        st.poll(); await settle(st)
+        busy = st._hill_busy_until
+        clock.advance(0.014)                                             # the SAME word on a headset sensor
+        mgr.sessions["stage"].record("rx", "$HIR,0,15,0,1,50,0,0,*")
+        st.poll(); await settle(st)
+        heard = hill_audio(mgr, n)
+        assert heard == [CAPTURED], f"one transmission, one callout -- got {heard}"
+        assert PLAYX not in heard, "a duplicate must not preempt the line it is a duplicate of"
+        assert st._hill_busy_until == busy, "the duplicate must not extend the announcer's busy window"
+        times = await run_clock(st, clock, 3.0)                          # 1.924 s of callout, then ticks
+        assert_cadence(times, 3.0, from_s=S.HILL_CUES["hill_captured"]["s"])
+        assert times, "the duplicate must not have pushed the cadence out of a 3 s window"
+    asyncio.run(go())
+
+
+def test_a_second_callout_preempts_the_first_it_never_queues():
+    """These are 1.9-3.0 s announcements of a state that has just changed AGAIN, so a queued "Hill
+    Captured" finishing after the point was already lost would state something false. The later word
+    wins and sends `$PLAYX,0,*` in the same write to actually stop the stale line."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        await in_play(st)
+        n = mark(mgr)
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:2])                  # we take it: 1.924 s of "Hill Captured"
+        clock.advance(0.5)                                               # …and lose it half a second later
+        mgr.sessions["stage"].record("rx", "$HIR,4,15,0,0,50,0,0,*")
+        st.poll(); await settle(st)
+        assert hill_audio(mgr, n) == [CAPTURED, PLAYX, LOST], hill_audio(mgr, n)
+    asyncio.run(go())
+
+
+def test_a_tid_2_roster_is_silent_because_a_neutral_hill_broadcasts_team_2():
+    """F82: a NEUTRAL point broadcasts team 2, so a roster sitting on tid 2 cannot tell "nobody holds
+    it" from "we hold it". It says nothing at all and logs the reason once. The positive half runs the
+    IDENTICAL frames on tid 1, where they are loud -- "no audio" is also what a stage with no hill
+    logic in it reports, so the control alone would pass vacuously."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=2)
+        await in_play(st)
+        n = mark(mgr)
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE)
+        await run_clock(st, clock, 5.0)
+        assert hill_audio(mgr, n) == [], hill_audio(mgr, n)
+        f82 = [l for l in st.log if "F82" in l["text"]]
+        assert len(f82) == 1, f"logged once per game, not once per beacon -- got {len(f82)}"
+
+        st2, mgr2, clock2 = mk_hill(tid=1)
+        await in_play(st2)
+        n2 = mark(mgr2)
+        await feed(st2, mgr2, clock2, NEUTRAL_TO_BLUE)
+        await run_clock(st2, clock2, 5.0)
+        heard = hill_audio(mgr2, n2)
+        assert CAPTURED in heard and TICK in heard, heard
+    asyncio.run(go())
+
+
+def test_domination_hears_no_hill_audio_at_all():
+    """A hill beacon carries NO point identifier, so in Domination two grenades held by different teams
+    read as one point changing hands every few seconds and would announce continuously. Excluded until
+    K1 supplies a discriminator. The positive half is the same stream in tdm."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        await in_play(st)
+        st.config["mode"] = "domination"     # not in the stage's own MODES selector yet; MC can still ship it
+        n = mark(mgr)
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE)
+        await run_clock(st, clock, 5.0)
+        assert hill_audio(mgr, n) == [], hill_audio(mgr, n)
+        assert st.hill is not None and st.hill["owner"] == 1, "state is still tracked; only the AUDIO is excluded"
+
+        st.config["mode"] = "tdm"            # same stage, same state: the exclusion is the only difference
+        times = await run_clock(st, clock, 2.0)
+        assert len(times) >= 1, "the identical state in tdm must be audible"
+        assert_cadence(times, 2.0)
+    asyncio.run(go())
+
+
+def test_an_empty_bundle_cue_mutes_that_hill_line_and_only_that_line():
+    """The bundle WINS over the literal whenever it carries the key at all, including `""` -- that is
+    MC's deliberate mute for an objective cue when the announcer is off, and a fallback that overrode
+    it would turn the announcer switch into a lie. Per key: `hill_lost` is left alone here, which is
+    what makes the two silences falsifiable."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        await in_play(st)
+        st.bundle["cues"]["hill_captured"] = ""
+        st.bundle["cues"]["hill_tick"] = ""
+        n = mark(mgr)
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:2])
+        await run_clock(st, clock, 3.0)
+        assert hill_audio(mgr, n) == [], hill_audio(mgr, n)
+        n2 = mark(mgr)
+        clock.advance(1.0)
+        mgr.sessions["stage"].record("rx", "$HIR,4,15,0,0,50,0,0,*")     # an enemy takes it: hill_lost is NOT muted
+        st.poll(); await settle(st)
+        assert hill_audio(mgr, n2) == [LOST], hill_audio(mgr, n2)
+        # …and with nothing muted, the same two events are loud
+        st2, mgr2, clock2 = mk_hill(tid=1)
+        await in_play(st2)
+        n3 = mark(mgr2)
+        await feed(st2, mgr2, clock2, NEUTRAL_TO_BLUE[:2])
+        await run_clock(st2, clock2, 3.0)
+        heard = hill_audio(mgr2, n3)
+        assert CAPTURED in heard and TICK in heard, heard
+    asyncio.run(go())
+
+
+def test_a_hill_beacon_never_latches_a_hit_or_touches_the_melee_tracker():
+    """A beacon rides the same `$HIR` as a hit but registers through the silent `$SIR` fn-28 row (F73):
+    no latch, no pool change -- and it must not disturb `_last_hir_proto` either, which is A15.3's melee
+    tracker and is read by the NEXT pain grunt."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        await in_play(st)
+        mgr.sessions["stage"].record("rx", "$HIR,4,13,7,0,25,0,0,*")     # a melee hit
+        st.poll(); await settle(st)
+        assert st._last_hir_proto == 13
+        hp, armor = st.hp, st.armor
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:2])
+        assert st._last_hir_proto == 13, "a beacon must leave the melee tracker exactly as it found it"
+        assert (st.hp, st.armor) == (hp, armor), "a beacon moves no pools"
+    asyncio.run(go())
+
+
+def test_a_ble_drop_clears_the_hill_so_a_reconnect_cannot_tick_for_a_stale_point():
+    """`poll()` RETURNS on a drop, so no expiry runs there -- a hill left standing would survive the
+    reconnect and tick for a point nothing has been watching for minutes."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        await in_play(st)
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:2])
+        assert st.hill is not None                                       # the control: it IS being tracked
+        mgr.drop("stage")
+        assert st.poll() == [] and st.connected is False
+        assert st.hill is None, "a dropped link must not leave a hill standing"
+        st.connected = True
+        n = mark(mgr)
+        await run_clock(st, clock, 2.0)
+        assert hill_audio(mgr, n) == [], "nothing to tick for until a beacon says otherwise"
+    asyncio.run(go())
+
+
+def test_the_hill_tick_runs_on_a_poll_that_drained_no_frames():
+    """The expiry and the cadence both live in `poll()`, and the case they exist for -- a player who
+    walks off the point -- is exactly the case where NO further frames arrive. A tick loop that only
+    ran when something was drained would never fire and never expire."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        await in_play(st)
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:2])
+        await run_clock(st, clock, 2.0)                                  # past the 1.924 s callout
+        n = mark(mgr)
+        clock.advance(1.0)
+        assert st.poll() == [], "no frames were waiting"
+        await settle(st)
+        assert hill_audio(mgr, n) == [TICK], hill_audio(mgr, n)
+    asyncio.run(go())
+
+
+def test_hill_audio_stops_while_we_are_down():
+    """A16 makes the DOWN window hands-off and the death scream owns the announcer; a player who
+    respawns learns the current owner from the tick within a second."""
+    async def go():
+        st, mgr, clock = mk_hill(tid=1)
+        await in_play(st)
+        await feed(st, mgr, clock, NEUTRAL_TO_BLUE[:2])
+        await run_clock(st, clock, 2.0)
+        st.alive = False
+        n = mark(mgr)
+        await run_clock(st, clock, 3.0)
+        assert hill_audio(mgr, n) == [], hill_audio(mgr, n)
+        st.alive = True                                                  # back on our feet: the same clock is loud again
+        times = await run_clock(st, clock, 2.0)
+        assert len(times) >= 1, "a player back on their feet learns the owner from the tick within a second"
+        assert_cadence(times, 2.0)
+    asyncio.run(go())
+
+
+def test_the_stage_can_synthesise_the_three_hill_words_for_the_bench():
+    """The emit side: the operator has to be able to FIRE these at a gun, not only receive them. Same
+    protocol-15 encoding as the station beacon, differing only in magnitude."""
+    from brx_mcp.irbridge import decode_word
+    for kind, mag in (("hill", 8), ("hill_capture", 50), ("hill_was_neutral", 53)):
+        w = ir_words(kind, 1)[0]
+        d = decode_word(w)
+        assert (d["proto"], d["team"], d["damage"]) == (15, 1, mag), (kind, d)
+    st, _, _ = mk_hill()
+    reg = st.ir_registers()
+    for kind in ("hill", "hill_capture", "hill_was_neutral"):
+        assert kind in S.IR_KINDS and reg[kind]["proto"] == 15

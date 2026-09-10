@@ -26,6 +26,7 @@ from ..mc.compile import Compiler
 from ..mc.state import default_config
 
 SFLASH = "$SFLASH,*"
+PLAYX = "$PLAYX,0,*"           # engine.js PLAYX: stop whatever line the gun is speaking (used only to PREEMPT our own hill callout)
 EVENT_MIN_GAP_S = 1.0          # engine.js EVENT_MIN_GAP_MS: never two LED bursts inside a second
 PAIN_GAP_S = 0.6               # engine.js PAIN_GAP_MS (A15.3): at most one pain grunt per 600 ms -- dropped, never queued
 LOW_HEALTH_HP = 15             # engine.js LOW_HEALTH_HP (A17.2): HP below which the once-per-life low-health alert fires
@@ -35,6 +36,42 @@ GUN_IN_PLAY = list(_pres.GUN_IN_PLAY)
 HEADSET_IN_PLAY = ["dark", "team"]
 MODES = ["tdm", "ffa", "infection", "lms", "extraction"]
 
+# ---- King of the Hill audio (a FAITHFUL port of engine.js's HILL_CUES block + `_onHillBeacon`… , commit 4348721)
+# The phone is the source of truth here and the stage exists to PREDICT it, so nothing below is redesigned:
+# where the JS looks wrong it is ported wrong on purpose and reported instead.
+#
+# ⚠ UNITS. engine.js runs on `Date.now()` (MILLISECONDS); `self.now` here is `time.monotonic` (SECONDS), so
+# every constant engine.js writes as an integer of ms is a float of seconds here. Getting this wrong is
+# silent -- a 12000 s presence window never expires and a 1000 s tick never fires -- and the bench would
+# read completely differently from the phone while both suites stayed green.
+HILL_MAG = 8                   # $HIR magnitude 8 = a control point / hill (6 = respawn station -- never a hill)
+HILL_CAPTURE_MAG = 50          # the capture word, carrying the NEW owner in the team field; lands ~50 ms after the shot
+HILL_WAS_NEUTRAL_MAG = 53      # "the state being LEFT was neutral" -- arrives ~5 s LATER, and only when it was neutral (n=2)
+HILL_NEUTRAL_TEAM = 2          # a NEUTRAL point broadcasts team 2 (bench 2026-09-10; F82: a hill roster must not use tid 2)
+HILL_TICK_S = 1.0              # engine.js HILL_TICK_MS 1000: the possession tick's cadence -- OUR clock, never the beacon's
+# Presence expires on >= 2 MISSED beacons, not one: the beacon is clean at desk range (20+ consecutive at a flat
+# 5.0 s) but goes intermittent at the edge of range (rung R), so a single miss is normal reception. Only a
+# magnitude-8 hill beacon refreshes it -- F84: a respawn station's ~2.5 s period would otherwise keep a 12 s
+# window permanently fresh and a hill nobody holds would tick forever.
+HILL_PRESENCE_S = 12.0         # engine.js HILL_PRESENCE_MS 12000
+BEACON_DEDUPE_S = 0.150        # engine.js's 150 ms F85 identity window (see `_on_rx`)
+# The literal fallbacks and their REAL clip lengths, straight off engine.js `HILL_CUES` (ids confirmed by ear on
+# hardware 2026-09-10, rung S; lengths from mcp/brx_mcp/data/sound_catalog.json). `s` is what keeps the 0.114 s
+# tick out from under a 1.9-3.0 s callout. The compiled bundle overrides a frame the moment it carries the key.
+HILL_CUES = {
+    "hill_captured":  {"frame": "$PLAY,,4,6,VB0N,,,,*", "s": 1.924},   # VB0N "Hill Captured"  1.924 s
+    "hill_lost":      {"frame": "$PLAY,,4,6,VB0P,,,,*", "s": 2.976},   # VB0P "Hill Lost!"     2.976 s
+    "hill_contested": {"frame": "$PLAY,,4,6,VB0O,,,,*", "s": 2.078},   # VB0O "Hill Contested" 2.078 s -- NOT WIRED, see `_hill_callout` (F75)
+    "hill_moved":     {"frame": "$PLAY,,4,6,VB0Q,,,,*", "s": 2.424},   # VB0Q "Hill Moved"     2.424 s -- rotating-hill modes only (F83), no caller yet
+    "hill_tick":      {"frame": "$PLAY,U100,4,6,,,,,*", "s": 0.114},   # U100 possession tick  0.114 s
+}
+# A hill beacon carries NO point identifier, so several points in play are indistinguishable on the wire: in
+# Domination two grenades held by different teams would read as one point changing hands every few seconds and
+# announce continuously. Excluded until K1 supplies a discriminator, rather than shipped noisy.
+HILL_AUDIO_EXCLUDED_MODES = {"domination"}
+# IR words whose team field is an OWNER (a point/station), not a shooter -- `ir()` defaults these to our own tid.
+OWNER_TEAM_IR_KINDS = ("beacon", "button", "hill", "hill_capture", "hill_was_neutral")
+
 # IR words the emitter can send at the gun (bench-derived; see protocol/brx-protocol.md + experiment-log).
 #   shot     plain hit, proto 0, mag = damage (25 = an assault-rifle hit against the 45/70 defaults)
 #   kill     one heavy plain hit (mag 200) -- takes a full-health 45/70 gun down in one word
@@ -42,7 +79,11 @@ MODES = ["tdm", "ffa", "infection", "lms", "extraction"]
 #   medic    the Medic heal pair: proto 1, sub 2, crit 1, mags 8 then 14
 #   beacon   the grenade's Respawn-station beacon: proto 15, owner team, mag 6 (native games only)
 #   button   the station's button word: beacon + crit 1
-IR_KINDS = ("shot", "kill", "emp", "medic", "beacon", "button")
+#   hill              a control point's ordinary 5.0 s beacon: proto 15, owner team, mag 8
+#   hill_capture      the capture word: proto 15, mag 50, team = the INCOMING owner (lands ~50 ms after the shot)
+#   hill_was_neutral  proto 15, mag 53 = "the state being left was neutral", ~5 s later; its team field is the
+#                     OUTGOING owner and the node deliberately ignores it (see `_on_hill_beacon`)
+IR_KINDS = ("shot", "kill", "emp", "medic", "beacon", "button", "hill", "hill_capture", "hill_was_neutral")
 
 
 def ir_words(kind: str, team: int, damage: int | None = None) -> list[str]:
@@ -61,6 +102,12 @@ def ir_words(kind: str, team: int, damage: int | None = None) -> list[str]:
         return [encode_word(player=0, team=t, damage=6, proto=15)]
     if kind == "button":
         return [encode_word(player=0, team=t, damage=6, proto=15, crit=1)]
+    if kind == "hill":
+        return [encode_word(player=0, team=t, damage=HILL_MAG, proto=15)]
+    if kind == "hill_capture":
+        return [encode_word(player=0, team=t, damage=HILL_CAPTURE_MAG, proto=15)]
+    if kind == "hill_was_neutral":
+        return [encode_word(player=0, team=t, damage=HILL_WAS_NEUTRAL_MAG, proto=15)]
     raise ValueError(f"unknown IR kind {kind!r}; known: {IR_KINDS}")
 
 
@@ -100,6 +147,15 @@ MEDAL_STACKS = [("kill", []), ("first_blood", ["first_blood"]), ("double_kill", 
 
 def _toks(frame: str) -> list[str]:
     return frame.strip().lstrip("$").rstrip("*").split(",")
+
+
+def _tok_int(t: list[str], i: int) -> int | None:
+    """`int(t[i])`, or None for a missing/blank/non-numeric token -- engine.js's `parseInt(...)` + `isNaN`
+    guard made explicit, so a short frame is skipped rather than raising IndexError."""
+    try:
+        return int(t[i])
+    except (IndexError, ValueError):
+        return None
 
 
 def _cue_id(frame: str) -> str | None:
@@ -184,6 +240,14 @@ class GunStage:
         self.scream_this_life: str | None = None   # A15.3: the death-scream id last written into a $PSET, or None
         self._last_pain_at: float | None = None    # A15.3: the 600 ms pain gate (PAIN_GAP_S)
         self._last_hir_proto: int | None = None    # A15.3: the ir protocol of the last $HIR (melee = 13), read on the next $HP/$LCD
+        # F72/F85 + the hill: the phone's proto-15 model, field for field (engine.js `beacon`/`_lastBeacon*`/`hill`…)
+        self.beacon: dict | None = None            # F72: {owner_team, magnitude, sensor, at} -- the last grenade/station beacon
+        self._last_beacon_key: str | None = None   # F85: `<owner_team>:<magnitude>` of the last beacon ACCEPTED (not merely seen)
+        self._last_beacon_at = 0.0                 # F85: self.now() of that acceptance
+        self.hill: dict | None = None              # {owner, at, from_neutral} -- state from the wire; the cadence below is ours
+        self._hill_busy_until = 0.0                # a hill callout owns the announcer until here: the tick waits, it never overlaps
+        self._hill_tick_at = 0.0                   # when the possession tick last played (0 = not ticking)
+        self._hill_team2_warned = False            # F82 is logged once per game, not once per beacon
         self._pending: list[asyncio.Task] = []
         self._loop: asyncio.AbstractEventLoop | None = None   # reactions run here; see _spawn_task (2026-09-07)
         # 2026-09-07 (bench): `state()` measured 527-658 ms on real hardware -- almost entirely
@@ -969,7 +1033,9 @@ class GunStage:
             return []
 
     async def ir(self, kind: str, team: int | None = None, damage: int | None = None, repeat: int = 1) -> dict:
-        t = int(team) if team is not None else (self.profile["tid"] if kind in ("beacon", "button") else self.enemy_tid())
+        # a beacon/station/hill word carries the OWNER's team, not a shooter's, so it defaults to ours
+        # ("we hold it" / "we just took it"); the operator passes `team` for a neutral or enemy-held point.
+        t = int(team) if team is not None else (self.profile["tid"] if kind in OWNER_TEAM_IR_KINDS else self.enemy_tid())
         words = ir_words(kind, t, damage)
         for w in words:
             self._log(f"IR {kind} team {t}: {w}", "ir")
@@ -1019,12 +1085,14 @@ class GunStage:
         if is_up is not None and not is_up(self.alias):
             self.connected = False
             self._level_gen += 1                   # Node rules: cancel everything on a BLE drop
+            self._hill_reset()                     # …and the hill with it: this path RETURNS, so no expiry would run
             self._log("the gun dropped the BLE link -- press CONNECT (or any write reconnects)", "warn")
             return []
         try:
             ev = self.mgr.get_events(self.alias, since_seq=self._last_seq)
         except Exception as e:
             self._log(f"link lost: {e}", "warn"); self.connected = False
+            self._hill_reset()                     # same drop, discovered a different way
             return []
         events = ev.get("events", [])
         # advance past everything we were handed; the fake manager has no last_seq, so take it from the events
@@ -1042,6 +1110,21 @@ class GunStage:
             self.tele["last_rx"] = raw
             self._log(raw, "rx")
             self._on_rx(raw)
+        # ⚠ OUTSIDE the loop on purpose: this is the phone's `tick()` work and it must run on an EMPTY drain
+        # too, or presence never expires (a player who walks off the hill sees no more frames at all, which is
+        # exactly the case the expiry exists for).
+        #
+        # ⚠ GRANULARITY: `poll()` is NOT the phone's own ~250 ms `tick()`; whatever cadence its caller uses
+        # becomes this tick's real resolution. The caller is `stage/server.py`'s `poller()` at
+        # `create_app(poll_s=0.2)` -- 200 ms, comfortably under HILL_TICK_S, so the 1 s cadence the operator
+        # hears is the engine's rule and not the harness's period. If that default ever rises above
+        # HILL_TICK_S the cadence silently stretches and a bench cadence check would be measuring the poller;
+        # `test_the_stages_poller_is_faster_than_the_hill_tick_it_has_to_carry` fails if it does. The hill
+        # TESTS drive `self.now` explicitly instead of leaning on any interval at all.
+        #
+        # The two paths above it return EARLIER than this, and neither can leave a hill unexpired: with no
+        # link no beacon can have arrived, and a drop clears the state outright (`_hill_reset`).
+        self._hill_tick(self.now())
         return seen
 
     def _on_rx(self, raw: str) -> None:
@@ -1052,6 +1135,34 @@ class GunStage:
         try:
             if cmd == "HIR":
                 self.tele["last_hir"] = raw
+                if len(t) > 2 and t[2] == "15":
+                    # A grenade/station/hill BEACON (F70/F72), not a shot:
+                    # $HIR,<sensor>,15,<ownerId=0>,<ownerTeam>,<magnitude>,0,<sub>. It rides the same $HIR as a
+                    # hit but registers through the silent $SIR fn-28 row (F73) so the player feels nothing --
+                    # no latch, no fact, no pool change, and it does NOT set `_last_hir_proto` either (that
+                    # field is A15.3's melee tracker, read by the next pain grunt: a beacon must not disturb it).
+                    #
+                    # F85: the gun has several IR sensors (0-3 headset, 4 body) and ONE transmission can land on
+                    # more than one of them, each reported as its own $HIR ~14 ms apart. Dedupe on IDENTITY
+                    # (protocol 15 is implicit here + owner team + magnitude), never on time alone: a real
+                    # capture bench-measured two DIFFERENT beacon words arriving in the SAME MILLISECOND on
+                    # different sensors, and a time-only window would drop one -- silently swallowing the
+                    # capture. Sensor is deliberately NOT in the key: a differing sensor is exactly what a
+                    # duplicate looks like. 150 ms sits well above the 14 ms spread and well under the ~5 s
+                    # beacon period, so a normal repeat of the same word is never taken for a duplicate.
+                    owner_team, magnitude = _tok_int(t, 4), _tok_int(t, 5)
+                    if owner_team is not None:
+                        now = self.now()
+                        key = f"{owner_team}:{'null' if magnitude is None else magnitude}"
+                        if not (key == self._last_beacon_key and (now - self._last_beacon_at) < BEACON_DEDUPE_S):
+                            self.beacon = {"owner_team": owner_team, "magnitude": magnitude,
+                                           "sensor": _tok_int(t, 1), "at": now}
+                            self._last_beacon_key, self._last_beacon_at = key, now
+                            # Hill state + its callouts run HERE, on the frame that proves the change and in
+                            # the same handler -- never on a poll, and never waiting for a second word. Inside
+                            # the dedupe so one transmission heard on two sensors cannot announce or tick twice.
+                            self._on_hill_beacon(owner_team, magnitude, now)
+                    return
                 # $HIR,<sensor>,<irProto>,<shooterId>,<shooterTeam>,<magnitude>,<crit>,<subtype>,* -- proto 13 = melee
                 self._last_hir_proto = int(t[2]) if len(t) > 2 and t[2] != "" else None
             elif cmd == "ALCD" and len(t) > 4:
@@ -1068,6 +1179,165 @@ class GunStage:
                 self._on_pools(hp, armor, shield)
         except ValueError:
             pass
+
+    # ---- King of the Hill audio (a faithful port of engine.js, commit 4348721) -----------------------
+    # The architecture, and it is the whole point of this block: **beacons update STATE, a node timer sets the
+    # CADENCE.** F74 measured a gun replaying a latched IR event every 5.07 s forever, so a multi-second
+    # sequence launched per beacon stacks three deep and drifts; the possession tick is therefore a 0.114 s
+    # clip fired by `_hill_tick` off our own ~1 s clock while state says we hold a fresh point, and nothing
+    # here plays audio straight off a beacon except a one-shot transition callout.
+
+    def _hill_cue(self, kind: str) -> tuple[str | None, float]:
+        """The bundle's cue for a hill sound, else the literal fallback above, plus its real length in SECONDS.
+
+        The bundle WINS whenever it carries the key at all -- `""` is MC's deliberate mute (`cue_frames()`
+        writes `""` for an objective cue when the profile's announcer is off), and a fallback that overrode
+        that would turn the announcer switch into a lie. `(None, 0)` = play nothing.
+
+        Deliberately NOT `_pick_cue`: that one honours `cue_pools` (A15's random takes) and returns None when
+        the bundle has no key, so it can neither fall back to a literal nor keep a callout's length. engine.js
+        `_hillCue` reads `frames.cues` only, so a hill callout never draws from a pool even if one exists --
+        ported as-is; a stage that randomised here would announce a take the phone cannot."""
+        d = HILL_CUES.get(kind)
+        if not d:
+            return None, 0.0
+        cues = self.bundle.get("cues") or {}
+        frame = cues[kind] if kind in cues else d["frame"]
+        if not frame:
+            return None, 0.0
+        ms = (self.bundle.get("cue_ms") or {}).get(kind)      # engine.js `frames.cue_ms`: a per-bundle override, in ms
+        return frame, (float(ms) / 1000.0 if ms else d["s"])
+
+    def _hill_audio_on(self) -> bool:
+        """True while hill audio should be audible at all: in play, on our feet, and not a mode whose points we
+        cannot tell apart. Death is deliberately silent -- A16 makes the DOWN window hands-off and the death
+        scream owns the announcer; a player who respawns learns the owner from the tick within 1 s."""
+        return bool(self.spawned) and bool(self.alive) and self.config.get("mode") not in HILL_AUDIO_EXCLUDED_MODES
+
+    def _hill_mine(self) -> bool:
+        """Do WE hold the point right now? None/neutral/an enemy all read false."""
+        mine = self._hill_tid()
+        return mine is not None and mine != HILL_NEUTRAL_TEAM and bool(self.hill) and self.hill["owner"] == mine
+
+    def _hill_tid(self) -> int | None:
+        """Our team id as the wire uses it (engine.js `teamTid`)."""
+        try:
+            return int(self.profile["tid"])
+        except (KeyError, TypeError, ValueError):
+            return None
+
+    def _hill_callout(self, prev_owner: int | None, owner: int | None) -> str | None:
+        """Which callout ONE wire event deserves for THIS listener: the same `mag=50` frame is "Hill Captured"
+        to the incoming team and "Hill Lost" to the team that just lost it. A capture between two other teams
+        (or from neutral to an enemy) is deliberately silent -- it is not this player's event.
+
+        ⚠ "Hill Contested" (`VB0O`) is DELIBERATELY NOT WIRED. F75 checked four bench runs where a hill was
+        shot and did NOT change hands: the only protocol-15 traffic is the ordinary `mag=8` beacon, so a
+        non-capturing hit emits nothing we can decode. The only way to produce it is to INFER it from "I
+        fired" + "an enemy hill is in range" + "no capture word followed" -- which cannot tell a hit from a
+        miss, so firing PAST the grenade while standing in an enemy point would announce it falsely. At
+        2.078 s that false positive would also suppress the possession tick for two seconds and tell the
+        player something untrue about the objective. Silence is the honest answer until F75 settles it."""
+        mine = self._hill_tid()
+        if mine is None:
+            return None
+        if mine == HILL_NEUTRAL_TEAM:   # F82: a NEUTRAL point broadcasts team 2, so a tid-2 roster cannot tell "nobody holds it" from "we hold it"
+            if not self._hill_team2_warned:
+                self._hill_team2_warned = True
+                self._log("F82: we are on tid 2, which is what a NEUTRAL hill broadcasts -- hill ownership is "
+                          "undecidable, so no hill audio will play", "warn")
+            return None
+        if owner == mine:
+            return "hill_captured"
+        if prev_owner == mine:
+            return "hill_lost"
+        return None
+
+    def _hill_say(self, kind: str, why: str) -> None:
+        """Play one callout NOW. Priority rule: **the later callout wins outright -- it preempts, it never
+        queues.** These are 1.9-3.0 s announcements of a state that has just changed AGAIN, so a queued
+        "Hill Captured" finishing three seconds after the point was already lost would state something false;
+        the newest word is always the true one. A preempt sends `$PLAYX,0,*` in the SAME write, so the stale
+        line is actually stopped on the gun rather than left to mix -- and only when we are cutting off our OWN
+        in-flight hill callout, so nothing else's audio is ever clipped by this path."""
+        frame, length_s = self._hill_cue(kind)
+        if not frame:
+            return
+        now = self.now()
+        preempt = now < self._hill_busy_until
+        self._hill_busy_until = now + length_s
+        self._spawn_task(self.write([PLAYX, frame] if preempt else [frame],
+                                    f"hill {kind}{' (preempting the line still playing)' if preempt else ''} -- {why}",
+                                    gap_ms=0))
+
+    def _on_hill_beacon(self, owner_team: int, magnitude: int | None, now: float) -> None:
+        """A deduped protocol-15 beacon: update hill state and, if this frame PROVES a change of hands, announce
+        it in this same handler. Nothing here starts a sequence, and nothing here waits for a second word."""
+        if magnitude not in (HILL_MAG, HILL_CAPTURE_MAG, HILL_WAS_NEUTRAL_MAG):
+            return                       # magnitude 6 is a respawn station, not a point (F84)
+        prev = self.hill
+        prev_owner = prev["owner"] if prev else None
+        fresh = bool(prev) and (now - prev["at"]) < HILL_PRESENCE_S
+
+        if magnitude == HILL_WAS_NEUTRAL_MAG:
+            # `mag=53` is the state being LEFT, and bench 2026-09-10 measured it arriving ~5 s AFTER the
+            # `mag=50` that already named the new owner (t=41820 vs t=46780). Its team field is therefore the
+            # OLD owner: writing it into `owner` would hand the point back to nobody a full beacon cycle after
+            # we took it, and stop the tick. It refreshes presence and records that the capture started from
+            # neutral; it announces nothing, and nothing ever waits for it -- on an enemy-to-enemy capture it
+            # never arrives at all (n=2).
+            self.hill = {"owner": prev_owner, "at": now, "from_neutral": True}
+            return
+
+        # `mag=50` is an explicit capture word: it proves a change of hands by itself, whether or not we were
+        # watching the point beforehand. A plain `mag=8` whose owner differs from the one we knew is the SAME
+        # event seen late (we missed the capture word), so it announces too -- but only while presence was
+        # still fresh. Once presence has expired we were not watching, and adopting an owner on walking back
+        # into range is not a capture: it is silent.
+        announce = (prev_owner != owner_team) if magnitude == HILL_CAPTURE_MAG else (
+            fresh and prev_owner is not None and prev_owner != owner_team)
+        self.hill = {"owner": owner_team, "at": now,
+                     "from_neutral": False if magnitude == HILL_CAPTURE_MAG else (bool(prev["from_neutral"]) if prev else False)}
+        if announce:
+            kind = self._hill_callout(prev_owner, owner_team)
+            if kind and self._hill_audio_on():
+                self._hill_say(kind, f"capture word (mag 50): team {'?' if prev_owner is None else prev_owner} -> {owner_team}"
+                               if magnitude == HILL_CAPTURE_MAG else
+                               f"owner changed on a plain beacon (the mag-50 word never reached us): team {prev_owner} -> {owner_team}")
+
+    def _hill_tick(self, now: float) -> None:
+        """Called from `poll()`: expire a stale point, then play the possession tick on OUR clock while we hold a
+        fresh one. This is the only place the tick fires from -- a beacon arrives once per ~5 s and could never
+        carry a 1 s cadence, and driving audio per beacon is exactly what F74 forbids."""
+        h = self.hill
+        if not h:
+            return
+        if now - h["at"] >= HILL_PRESENCE_S:   # >= 2 missed beacons: out of range or off the point. NOT a "lost" -- nobody took it from us
+            self.hill = None
+            self._hill_tick_at = 0.0
+            self._log(f"hill presence expired ({round(now - h['at'])}s since its last beacon)", "info")
+            return
+        if not self._hill_audio_on() or not self._hill_mine():
+            return
+        if now < self._hill_busy_until:
+            return                             # a callout owns the announcer for its own real length: the tick waits rather than playing under it
+        if self._hill_tick_at and now - self._hill_tick_at < HILL_TICK_S:
+            return
+        frame, _s = self._hill_cue("hill_tick")
+        if not frame:
+            return
+        self._hill_tick_at = now
+        self._spawn_task(self.write([frame], "hill possession tick", gap_ms=0))
+
+    def _hill_reset(self) -> None:
+        """Forget the point. Called on a BLE drop, where `poll()` returns before the expiry could run and a
+        stale `hill` would otherwise survive the reconnect and tick for a point we are no longer watching."""
+        if self.hill:
+            self._log("hill state cleared (the link went away, so nothing is watching the point)", "info")
+        self.hill = None
+        self._hill_tick_at = 0.0
+        self._hill_busy_until = 0.0
+        self._last_beacon_key = None
 
     def _on_pools(self, hp: int, armor: int, shield: int | None = None) -> None:
         if shield is None:
@@ -1652,7 +1922,8 @@ class GunStage:
                 t = f.split(",")
                 if len(t) > 1 and t[1].isdigit():
                     protos.add(int(t[1]))
-        need = {"shot": 0, "kill": 0, "emp": 8, "medic": 1, "beacon": 15, "button": 15}
+        need = {"shot": 0, "kill": 0, "emp": 8, "medic": 1, "beacon": 15, "button": 15,
+                "hill": 15, "hill_capture": 15, "hill_was_neutral": 15}
         return {k: {"proto": p, "registers": p in protos} for k, p in need.items()}
 
     def state(self) -> dict:
@@ -1670,7 +1941,12 @@ class GunStage:
             "presentation": self.config.get("presentation"),
             "model": {"spawned": self.spawned, "alive": self.alive, "hp": self.hp, "armor": self.armor,
                       "shield": self.shield, "max_hp": self.max_hp, "max_armor": self.max_armor,
-                      "carrying": self.carrying, "auto_react": self.auto_react},
+                      "carrying": self.carrying, "auto_react": self.auto_react,
+                      # engine.js `state()` publishes both: `beacon` is the last proto-15 word heard (F72),
+                      # `hill` is the control point as the hill logic reads it ({owner (2 = neutral), at,
+                      # from_neutral}, null once presence has expired). Derived from `beacon`, not a second source.
+                      "beacon": dict(self.beacon) if self.beacon else None,
+                      "hill": dict(self.hill) if self.hill else None},
             "tele": dict(self.tele),
             # the flat sequences (start/hit/death/respawn/rest…) plus the A16 §3.3 held roles -- carrier
             # is ONE flat state now (WHITE, never the flag's team colour), not a per-team table, so it is
