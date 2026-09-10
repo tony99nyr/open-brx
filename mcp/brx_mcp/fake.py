@@ -13,6 +13,7 @@ anywhere (WSL/CI included).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Optional
 
 from .protocol import BufferedEvent, parse_event
 
@@ -96,16 +97,30 @@ class FakeTagger:
         # all other config frames (CLEAR/START/GSET/WEAP/SIR/BMAP/VOL/AMMO/PLAY…) accepted
 
     # -- IR hit → events ----------------------------------------------------- #
-    def receive_ir(self, shooter_team: int, shooter_id: int = 1) -> None:
+    def receive_ir(self, shooter_team: int, shooter_id: int = 1,
+                   proto: int = 0, mag: Optional[int] = None, sub: int = 3) -> None:
         """Take a hit from `shooter_team`: emit `$HIR` then `$HP` (0 = died).
+
         No-op if dead, or a same-team hit while friendly-fire is off (the real gun
         ignores teammate IR unless FF is enabled via $GSET). With FF on, a same-team
-        hit DOES damage — the host engine then declines to credit it as a kill."""
+        hit DOES damage — the host engine then declines to credit it as a kill.
+
+        `proto`/`mag`/`sub` exist so the sim can model words that are NOT an ordinary
+        rifle round (F78). The one that matters: a grenade hill's ambient damage word is
+        `proto=0, mag=8, shooter_id=0` — an environmental shooter, not a player.
+        For a protocol-15 station BEACON use `beacon()`, which changes no pool.
+
+        ⚠ `mag` now drives the damage actually applied. It used to be hardcoded to 9 in
+        the frame while `self.damage` (25 by default) was subtracted from the pools, so
+        the fake emitted a magnitude that contradicted the damage it had just dealt —
+        anything reading dmg off `$HIR` inherited the contradiction.
+        """
         if not self.alive:
             return
         if shooter_team == self.team and not self.friendly_fire:
             return
-        d = self.damage
+        m = self.damage if mag is None else int(mag)
+        d = m
         if self.armor >= d:
             self.armor -= d
         else:
@@ -113,14 +128,27 @@ class FakeTagger:
             self.armor = 0
             self.hp -= d
         # token 3 = shooter PLAYER id. It was hardcoded 0, which is why no sim
-        # scenario could ever exercise per-gun kill attribution (Q17).
-        self._out.append(f"$HIR,0,0,{shooter_id},{shooter_team},9,0,3,*")
+        # scenario could ever exercise per-gun kill attribution (Q17) — and, because 0 is
+        # A5.1's "no identity", why the F69 hill-scoring bug stayed invisible to the suite.
+        self._out.append(f"$HIR,0,{proto},{shooter_id},{shooter_team},{m},0,{sub},*")
         if self.hp <= 0:
             self.hp = 0
             self.alive = False
             self._out.append(f"$HP,0,{self.armor},{self.shield},*")
         else:
             self._out.append(f"$HP,{self.hp},{self.armor},{self.shield},*")
+
+    def beacon(self, owner_team: int, mag: int = 8, proto: int = 15) -> None:
+        """A station/grenade BEACON: `$HIR` with NO pool change and NO `$HP` (bench 2026-09-10).
+
+        Magnitude is the station MODE, not damage: **8 = hill, 6 = respawn**. The owner's team
+        rides in the team field, and a neutral hill reads team 2. Beacons are the half of the
+        grenade our compiled table discards in silence for want of a protocol-15 row (F60/F70),
+        so a sim that cannot emit one cannot exercise the fix.
+
+        A beacon lands whether or not the gun is alive — it is a broadcast, not a shot.
+        """
+        self._out.append(f"$HIR,0,{proto},0,{owner_team},{mag},0,0,*")
 
     def drain(self) -> list[str]:
         out, self._out = self._out, []

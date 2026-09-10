@@ -267,3 +267,46 @@ def test_fake_run_live_ffa_drives_sflash_and_kill_line_to_the_shooter():
     assert "$PLAY,,4,6,V3A,,,,*" in to_shooter          # kill line on the token-4 slot
     # feedback goes to the SHOOTER, never the victim
     assert "$SFLASH,*" not in [f for (p, f) in sent if p == "CC:3"]
+
+
+def test_a_hill_drains_a_fake_gun_to_death_and_scores_for_nobody():
+    """F69 end to end, through the fake tagger's own frames rather than hand-built dicts.
+
+    A grenade in hill mode puts TWO words on the air every ~5 s: a protocol-15 beacon (no
+    pool change) and an ordinary protocol-0 magnitude-8 DAMAGE word carrying shooter wire
+    id 0. Both are now expressible by the fake (F78) -- before this the sim could only emit
+    a protocol-0 magnitude-9 player shot, so the whole mechanic was unmodellable and the
+    scoring bug sat green under 1000 tests.
+
+    The gun really does die here (the damage is real, and F69's damage half is still open).
+    What must NOT happen is the hill's owning team collecting the kill.
+    """
+    from brx_mcp.modes.driver import GameDriver
+    from brx_mcp.fake import FakeTagger
+    from brx_mcp.protocol import parse_event
+
+    sent = []
+
+    async def sender(pid, frame):
+        sent.append((pid, frame))
+
+    cfg = GameConfig(mode="tdm", frag_limit=5, respawn_s=100, game_time_s=0)
+    drv = GameDriver(cfg, {"AA": 1, "BB": 2}, sender)
+    _run(drv.setup())
+
+    # BB stands in a hill held by team 1. 25 armour + 25 hp, 8 a tick.
+    gun = FakeTagger("BB", hp=25, armor=25, team=2)
+    t = 0.0
+    for _ in range(12):
+        gun.beacon(owner_team=1)                       # the half our table discards today
+        gun.receive_ir(shooter_team=1, shooter_id=0, mag=8)   # the half that lands
+        for frame in gun.drain():
+            ev = drv.feed("BB", parse_event(frame), t)
+            _run(drv.execute(ev))
+        t += 5.0                                       # the real hill period
+        if not gun.alive:
+            break
+
+    assert not gun.alive, "the hill must still be able to kill -- F69's damage half is open"
+    assert drv.engine.team_score.get(1, 0) == 0, "the hill scored for its owning team"
+    assert drv.engine.roster.get("AA").kills == 0

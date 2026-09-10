@@ -773,8 +773,15 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   cannot produce a protocol-15 beacon, a hill's ambient damage word, a magnitude-0 miss, or a `$SIR` cell that
   discards in silence -- so F69, F70, F72, F73, F74 and F75 are all invisible to the 1000-test suite by
   construction. This is the `stage-must-mirror-the-phone` failure: the sim's fidelity ceiling, not its
-  coverage, is what let the F69 scoring bug sit green. **Scope it as: `receive_ir` grows a protocol/magnitude
-  argument, plus a `beacon()` helper.** `build`.
+  coverage, is what let the F69 scoring bug sit green. ✅ **Half done 2026-09-10:** `receive_ir` now takes
+  `proto`/`mag`/`sub`, `beacon()` emits a protocol-15 station word with no pool change, and the hill is
+  modelled end to end in `test_a_hill_drains_a_fake_gun_to_death_and_scores_for_nobody`. Also fixed on the way:
+  the fake **subtracted `self.damage` (25) from the pools while emitting magnitude 9 in the frame**, so
+  anything reading dmg off `$HIR` inherited a contradiction; magnitude now drives the damage. **Still missing:
+  (a) the `$SIR` TABLE GATE** -- the fake accepts `$SIR` and `$CLEAR` silently and always registers a hit, so
+  it cannot reproduce the F11/F40/F60 shape (an unmatched or absent cell discarding in silence) that has now
+  bitten three times in one week, and which is the single highest-value thing left to model; **(b) a
+  magnitude-0 MISS** (F46/F62). `build`.
 - **F79 🟢 `assert_sir_covers_weapons` has no concept of a non-weapon `$SIR` cell.** It checks that every
   weapon in the loadout has a matching row, so a bundle that ships with NO protocol-15 row -- the exact
   condition that made station words silently vanish (F60, and the third instance of the F11 shape this week)
