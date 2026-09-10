@@ -9,6 +9,27 @@ by losing a session to them.
 ---
 
 
+## 🔴 POINT-BLANK EMITTER = MULTIPATH = A CORRUPTED PROTOCOL FIELD (2026-09-10)
+
+**Symptom:** one emitted IR word registers as SEVERAL `$HIR` on the victim, on different sensors, and **some
+copies decode with the WRONG protocol** — so they land on a different `$SIR` row than the one you are testing.
+Measured with the emitter a few inches from the gun: **three emissions produced nine `$HIR`** — three correct
+(`$HIR,1,5,…`, the protocol under test) and six corrupted (`$HIR,0,0,…`, protocol 0). Earlier in the same
+session a corrupted copy landed on the plain-damage row and took 20 armour off a gun in a test that was supposed
+to move no pools at all.
+
+**Why it matters beyond the rig:** a mis-decoded protocol nibble is silently a DIFFERENT EFFECT. A word meant as
+an inert status can arrive as damage. Any experiment that infers a function's behaviour from what the operator
+hears or sees is worthless unless every trial's `$HIR` **protocol field** is checked and off-target copies are
+discarded.
+
+⚠️ It also contradicts the `$HIR` row's "at point-blank the IR floods every sensor and the first one to see it
+wins" — that predicts ONE registration; we measured three per shot. Close range is its own regime.
+
+**Fix:** distance. Put ~3 ft between emitter and gun (the emitter reaches 6/6 at 3 ft, ceiling 8-9 ft), which
+removes the reflections without costing reliability. And note the operator was stationary throughout — this is
+geometry, not aim, so "move the gun" is not the fix, "move it BACK" is.
+
 ## Before a bench session (pre-flight)
 
 Four checks, in order, every time. Two of them would each have saved hours in the sessions that
