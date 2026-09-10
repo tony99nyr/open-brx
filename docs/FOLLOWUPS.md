@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F82 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F83 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S18.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -777,6 +777,16 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   24 is enemy-only, so a gun sees only hills it does NOT own unless `$GSET` t1 = 1; decide how to read your own
   point. ⚠ And pick the row's `<soundID>` deliberately: a hit lands every 5 s for as long as anyone stands
   there. `build`.
+- **F82 🔴 A HILL MODE MUST NOT PUT ANYONE ON TEAM 2, AND NOTHING IN MC STOPS IT.** Found in review 2026-09-10,
+  falls straight out of F70 and was never written down. **A neutral hill broadcasts team 2.** The firmware's
+  polarity gate compares that against the receiving gun's own `$TID`, so a roster that contains team 2 reads
+  every NEUTRAL point as its OWN: those players go deaf to neutral hills under an enemy-only row, and the
+  `proto=0` damage word that punishes intruders **cannot land on them** — team 2 gets free run of every
+  uncaptured point while everyone else is contested. **MC's team assignment must skip 2 for any mode with a
+  hill** (use 0, 1, 3 — and remember tids 4-7 are colours, not teams, per `$TID`), or the mode must run
+  `$GSET` t1 = 1 and resolve ownership in software instead of leaning on the gate. ⚠ Untested — this is
+  predicted from the polarity rule plus "neutral = team 2", both of which ARE measured; rung D would show it
+  directly. `build` + `bench`.
 - **F80 🟠 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.**
   Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
   received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default

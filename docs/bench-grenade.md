@@ -25,9 +25,10 @@ steps, about **25 minutes hands-on**, one gun, one grenade, the rig. Tool: `mcp/
 > **🔴 And a hosted game is already exposed to the damage.** A hill also emits an ordinary `proto=0 mag=8`
 > word, which our standard `$SIR,0,0,,1` row applies in full — it killed the operator in ~106 s with nothing
 > in the event stream naming the cause (FOLLOWUPS **F69**).
-> **Unsettled:** why a shotgun retook an owned hill with one `mag=70` word while an AR failed with four
-> `mag=9` — extra-headset block or plain charge (**F70**); and the damage word appeared in one window and not
-> another with no dual-instrument control (**§ programme A** below).
+> **Unsettled (2026-09-10):** whether charge is priced in MAGNITUDE or something weapon-specific — the
+> discriminating trial is confounded, because the shotgun's `mag=70` IS its extra-headset payload (**F70/F76**,
+> rung X below); and whether the `proto=0` damage word is continuous or conditional, which has never had a
+> dual-instrument control (**rung C** below).
 
 ## Programme (rewritten 2026-09-10 after the hill sessions)
 
@@ -37,10 +38,10 @@ steps, about **25 minutes hands-on**, one gun, one grenade, the rig. Tool: `mcp/
 |---|---|
 | **Beacon** | `proto=15 team=<owner> mag=8` every ~5 s. **Neutral = team 2.** Respawn is `mag=6` at ~2.5 s, boot `mag=56`. Magnitude is a fixed MODE id, **not** a charge level. **Recounted from the capture logs 2026-09-10** (an earlier "84 decodes, three values" here was both miscounted and wrong about the spread): across every session, unambiguous proto-15 decodes are **mag=8 x96** (hill), **mag=6 x63** (respawn), **53 x4 / 50 x3** (capture announcement), **56 x1** (boot, a whole word), plus two lone stitched decodes -- **55** and **2** -- that are probably stitch artefacts; the mag=2 one carries `player=42`, which no other beacon does. The MODE values are the ones with hundreds of repeats behind them |
 | **Capture** | shoot it; **ANY weapon** (settled). Charge accumulates and **the attacker wins ties** — 1 AR took 9; 5 took 45; one shotgun shell (70) took 45. That the currency is MAGNITUDE is 🟠 only: ⚠ **The discriminating trial is CONFOUNDED:** the shotgun's `mag=70` is its `t12` **extraHeadsetDamage** (a `t1=2` weapon), so magnitude and weapon-block varied together and it cannot separate "magnitude is the currency" from "an extra-headset word captures out of proportion". ⚠ And both AR flips were at **exact equality** (9 v 9, 45 v 45), so what is measured is **the attacker wins ties**, not "the higher total owns the point". See F70/F76. |
-| **Announcement** | a transition PAIR in the same burst as the shot: `mag=53` (state left) + `mag=50` (owner entered). This is why guns say "hill captured" |
+| **Announcement** | a transition PAIR in the same burst as the shot: `mag=53` (state left) + `mag=50` (owner entered). **Very likely** why guns say "hill captured" — the pair is measured, the causal link to the callout is not |
 | **Reading it in a hosted game** | `$SIR,15,0,,28` — **fn 28 registers with ZERO player feedback** (no sound, flash or vibration) + the `engine.js` fix (F72) |
 | **Polarity** | fn 28 is enemy-only at `$GSET` t1=0; **t1=1 lifts the gate** and ownership arrives in `$HIR` token 4. **KotH wants FF on** |
-| **Non-capturing hit** | emits **nothing** — the grenade announces captures, not hits (F75) |
+| **Non-capturing hit** | no **DECODABLE** word — the grenade appears to announce captures, not hits (F75). ⚠ NOT a proven silence: a reply inside the shooter's own burst is invisible to every capture taken so far, and that is exactly where a hit word would sit. Gated on **B0** |
 
 ### Still to run, in value order
 
@@ -52,7 +53,9 @@ has been invisible to every capture ever taken**, which is exactly where F75's "
 would hide. Gates B and F75.
 
 **S. Prove the hosted callouts by EAR (5 min, one gun, no grenade needed).**
-The native lines are already in the bank, confirmed present by catalog search:
+**CANDIDATE** ids, found by catalog search — which proves the FILES are on the gun, not that native play uses
+them, and this rung's own warning below says the catalog transcripts are untrusted. Treat every id here as a
+guess until it is heard:
 `VA23` "Control Point Captured." · `VA22` "Control Point Lost." · `VA21` "Control Point Contested." ·
 `V8Q` "Hill Confirmed" · `VA93` "King of the hill!" · `V108` the full KotH intro.
 Drive a scripted hill sequence to a connected gun with `$PLAY,<id>,4,6,,,,,*` — capture, a held-tick loop, a
@@ -64,6 +67,27 @@ also the audition that confirms each id. Pick the tick from `fx:ui_beep` (`U100`
 **F75. Does a non-capturing hit emit anything?** In a NATIVE game, stand in an enemy hill and deliberately MISS.
 Still says "contested" ⇒ native infers it too and we lose nothing. Silent ⇒ there is a hit word, and B0's
 geometry is what will catch it.
+
+**C. Both instruments on ONE window (10 min, board A + a gun on BLE).** ⚠ **Restored 2026-09-10 — the
+2026-09-10 rewrite deleted this rung, and it is the named missing control for F69, which is still 🔴 and still
+kills players.** Board A beside the headset AND the gun on BLE at the same time, while a NON-OWNER stands in
+the hill. Settles whether the `proto=0 mag=8` damage word is continuous or conditional on ownership — the
+comparison this session made across two different windows and therefore could not make at all.
+
+**D. The contest, and Tony's shield design (20 min, TWO guns).** ⚠ **Also restored — `HANDOFF.md` and
+`utility-roadmap.md` both still depend on this rung.** Both guns armed by us, both carrying a protocol-15 row,
+on opposing teams, alternately capturing; watch each gun's view of the same beacon. Then the design test:
+`<15,0>` on a **grant** function (fn 11 add shield, or 18) with friendly fire OFF, so ally polarity should
+shield the HOLDER while `<0,0>` on fn 1 damages the challenger. ⚠ Arm from `$CLEAR` — an in-place `$SIR` row
+replacement is unverified and probably voided the first attempt.
+
+**X. Settle the capture currency (15 min, one gun).** The one trial that discriminates and has never been run.
+Every reading so far confounds magnitude with the extra-headset block, because the only high-magnitude word
+fired was a shotgun's `t12`. **Fire a HIGH-MAGNITUDE word from a NON-`t1=2` weapon** — boost an AR's `$WEAP`
+t5 to ~70 — into a hill seeded with 45. If it takes the point, the currency is magnitude and F76's per-weapon
+counts are wrong. If it does NOT, the extra-headset block is doing the work and F76's counts may be right for
+ordinary weapons. Either way F70 and F76 both resolve. ⚠ Verify the magnitude on the wire before trusting the
+run — `$WEAP` t5 is the raw IR magnitude (`$HIR` tok5), so board A should read ~70.
 
 **R. Beacon RANGE (tape measure, 10 min).** Unmeasured for the hill; respawn is ~18-20 ft. **This number IS the
 physical size of the objective** and no mode can be designed without it.

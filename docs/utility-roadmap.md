@@ -248,6 +248,14 @@ shorter path to the first playable objective mode than building a station first.
 `$HIR,<sensor>,15,0,<owner>,8,0,0` about every 5 s. One frame, two facts: **who owns the point**, and **that
 this player is near it**.
 
+🔴 **NEVER ASSIGN TEAM 2 IN A HILL MODE.** A neutral hill broadcasts **team 2** (F70), and the firmware's
+polarity gate compares that against the receiving gun's own `$TID`. So a roster that actually contains team 2
+reads every NEUTRAL hill as *its own team's*: under an enemy-only row those players go **deaf to neutral
+points** entirely, and the `proto=0` damage word — the enemy-only one that punishes intruders — **cannot land
+on them**, handing team 2 free run of any uncaptured point. This falls straight out of "neutral is team 2" and
+nothing anywhere said it. MC's team assignment for a hill mode must skip 2 (use 0, 1, 3), or the mode must run
+with `$GSET` t1 = 1 and sort ownership in software rather than leaning on the gate.
+
 **Presence is a heartbeat, and timing is node-side.** Beacons arriving = in range; beacons stopping = gone. The
 node runs its own clock, accumulates "seconds in range while my team owned it", and reports totals to MC when it
 has coverage — so possession scoring **works offline**, which matches the node-is-the-engine architecture.
