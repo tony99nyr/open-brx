@@ -9,6 +9,20 @@ by losing a session to them.
 ---
 
 
+## 🔴 A GUN THAT WILL NOT STOP BEING HIT — the phantom-hit loop (2026-09-10)
+
+**Symptom:** `$HIR` + `$HP` arriving every ~5 s, one hit and one sound each time, on a loop, and it does not stop
+when you remove every IR source in the room. **Check board A before you believe the gun**: in the measured case
+the receiver recorded **zero bursts in 18 s** while the gun reported a hit every 5.07 s. Nothing was transmitting.
+The gun had **latched an IR event and was replaying it**.
+
+**`$PLAYX,0,*` is not the fix** — it quiets the audio for a moment and the event carries on. **`$SPAWN,,*` clears
+it** (the same command that clears the `$SIR` fn-23 state).
+
+⚠️ **In a game this manufactures hits that MC will score**, and nothing downstream can tell a replayed `$HIR`
+from a real one (F74). At the bench it silently contaminates any experiment that counts hits or listens for
+sounds — it cost us a whole function sweep before it was spotted.
+
 ## 🔴 POINT-BLANK EMITTER = MULTIPATH = A CORRUPTED PROTOCOL FIELD (2026-09-10)
 
 **Symptom:** one emitted IR word registers as SEVERAL `$HIR` on the victim, on different sensors, and **some

@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F74 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F75 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S18.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -748,6 +748,23 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   24 is enemy-only, so a gun sees only hills it does NOT own unless `$GSET` t1 = 1; decide how to read your own
   point. ⚠ And pick the row's `<soundID>` deliberately: a hit lands every 5 s for as long as anyone stands
   there. `build`.
+- **F74 🔴 A GUN CAN LATCH AN IR EVENT AND REPLAY IT FOREVER — with no IR in the air.** Bench 2026-09-10,
+  measured from both directions. The gun emitted `$HIR,0,0,42,0,20,0,0` + `$HP` **every 5.07 s, indefinitely**,
+  while **board A recorded ZERO bursts across an 18 s capture** — nothing was transmitting. The grenade was off,
+  the emitter was idle, and the operator was stationary. It **survived three `$PLAYX,0,*`** (the audio went quiet
+  briefly and the event kept going) and was **cleared by `$SPAWN,,*`** — the same command that clears the `$SIR`
+  fn-23 state, so `$SPAWN` looks like the general "drop stuck IR state" lever.
+  **Why it is 🔴:** in a match a latched gun MANUFACTURES HITS THAT MC WILL SCORE. Accuracy, kill attribution
+  and hit feedback all corrupt, and to the player it is indistinguishable from being shot by nobody. It is also
+  silent to us: nothing in the node or MC can tell a replayed `$HIR` from a real one.
+  **It already cost us a result:** the U11′ sweep (F73) ran with phantom hits mixed into every trial, which is
+  what produced "multiple sounds per shot" and sent me chasing multipath. Tony called it early — *"i think it
+  also queues the events on the tagger"* — and I looked at rig geometry instead.
+  **Unknown: the trigger.** It appeared during rapid emitter shots with a grenade beaconing nearby, so a flood of
+  IR is the suspect, but nothing was isolated. Probe: hammer a gun with `rapid_fire.py`, stop, and watch for a
+  replay; then bisect (emitter alone vs beacon alone). Also open: does it survive a BLE drop, and does a NODE
+  see it as real (it should, which is the problem). Consider a node-side guard — identical `$HIR` at a fixed
+  period with no `$ALCD` from any shooter is not a real hit. `trigger` + `build`.
 - **F73 🟠 U11′ IS NOW A BLOCKING DESIGN QUESTION: does ANY status function register QUIETLY?** Raised from a
   curiosity by the 2026-09-10 hill work. A `$SIR` row is the only way a hosted game can read a beacon (F70/F72),
   but a *registered* hit drags a **headset flash and vibration** with it — the firmware's response to any
