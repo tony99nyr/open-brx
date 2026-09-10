@@ -55,7 +55,7 @@ AR magazine then retook that owned hill within its first 13 rounds — **with no
 This confirms the charge mechanic `docs/reference/grenade.md` already documented, and matches native play, where
 every player captures regardless of weapon. Two earlier readings are RETRACTED: that owned hills cannot be
 retaken at all, and that capture requires the extra-headset word (`$WEAP` t1=2) — a shotgun's one `mag=70` word
-simply out-charged four AR rounds at 36. The currency is **MAGNITUDE**: charge accumulates as the sum of the magnitudes fired into it and the higher total owns the point (1 AR round beat 9; 5 AR rounds beat 45; one shotgun `mag=70` shell beat 45). A weapon's capture power therefore equals its damage. ⚠ Max charge unmeasured. ⚠ **n=1 on the discriminating trial, and F76 records a live contradiction:** `reference/grenade.md`'s per-weapon capture counts (also hardware-confirmed) make the shotgun the SLOWEST capturer, where magnitude makes it among the fastest. Both cannot be right — do not build on the exchange rate until F76 resolves.
+simply out-charged four AR rounds at 36. Charge accumulates, and **an EQUAL total flips it — the attacker wins ties** (1 AR round took a hill holding 9; 5 AR rounds took one holding 45; one shotgun `mag=70` shell took one holding 45). The currency LOOKS like **MAGNITUDE**, which would make a weapon's capture power equal its damage — but that is 🟠, not settled. ⚠ **The discriminating trial is CONFOUNDED:** the shotgun's `mag=70` is its `t12` **extraHeadsetDamage** (a `t1=2` weapon), so magnitude and weapon-block varied together and it cannot separate "magnitude is the currency" from "an extra-headset word captures out of proportion". ⚠ And both AR flips were at **exact equality** (9 v 9, 45 v 45), so what is measured is **the attacker wins ties**, not "the higher total owns the point". See F70/F76. ⚠ Max charge unmeasured. **Do not build an objective economy on the exchange rate until F76 resolves.**
 Power-cycling returns a grenade to neutral (team 2).
 
 ⭐ **CAPTURE IS ANNOUNCED, not just inferred (bench 2026-09-10).** At the instant a grenade changes hands it
@@ -93,7 +93,7 @@ not a finding. Whether `53` means "was neutral" specifically, or "the outgoing s
 ⚠️ **A hosted game sees none of this unless we ship a protocol-15 `$SIR` row** — the firmware discards an
 unmatched cell in silence, which is why "station words do nothing in a host-driven game" (B23). One row makes
 beacons arrive as `$HIR,<sensor>,15,0,<owner>,<mode>,0,0` with no pool change. ⚠️ **That is necessary and NOT
-sufficient: `app/src/engine.js:1272` discards every `$HIR` with proto 15 before the phone reads it**
+sufficient: `app/src/engine.js:1273` discards every `$HIR` with proto 15 before the phone reads it**
 (`if (t[2] === '15') break;`), so the row reaches the GUN and still not the player. Reading a beacon in a
 hosted game needs both (F72).
 
@@ -101,7 +101,7 @@ hosted game needs both (F72).
 `$SIR,15,0,,24,0,0,1,,*`, and it works — but **fn 24 gives the player a flash, a buzz and a long grenade-ish
 clip on every beacon**, which a hill emits every ~5 s for as long as anyone stands there. **fn 28 registers
 with NOTHING — no sound, no headset flash, no vibration** — so the host reads an IR event the player never
-perceives. That is what a beacon row wants: `$SIR,15,0,,28,0,0,1,,*`. Polarity applies to both: they are
+perceives. That is what a beacon row wants: `$SIR,15,0,,28,0,0,1,,*`. ⚠️ **Measured in cell `<5,0>` with the ESP32 rig, NOT on a real beacon.** The whole sweep ran on `$SIR,5,0,,<fn>` with board B's synthetic words — the FF-on registration is `$HIR,0,5,42,1,20`, **protocol 5**, and that `team=1` is what board B transmitted, not a hill owner. Nobody has loaded `$SIR,15,0,,28` or watched a real ally beacon register. The function id is very likely the effect and the cell only the key, but **that is the assumption, not the measurement** — confirm it with the grenade before shipping (rung F73-b). Polarity applies to both: they are
 enemy-only under `$GSET` t1 = 0, so a gun sees only hills it does NOT own; **t1 = 1 lifts the gate** and the
 owner arrives in `$HIR` token 4, which is how a host reads who holds a point.
 

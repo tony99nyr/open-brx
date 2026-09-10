@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F80 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F82 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S18.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
@@ -252,7 +252,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 - **F64 🟢 CLOSED-AS-WRONG 2026-09-10 — a host-inflicted kill is NOT invisible; the node books it.** Filed 🔴 on
   the strength of a real measurement (a lethal `$LIFE` emits `$LCD,0,0,0,0,32,192,*` and never `$HP,0,0,0`, with a
   same-session IR-death control that emitted BOTH) plus a reading of the code that was simply wrong. I checked
-  `_onHp`, saw death booked from `$HP`, and never read the `$LCD` handler. **`engine.js:1265`, inside
+  `_onHp`, saw death booked from `$HP`, and never read the `$LCD` handler. **`engine.js:1264`, inside
   `case 'LCD'`, is `if (this.phase === 'live' && this.hp === 0 && this.alive) this._death(wasResync);`** — a
   zeroed `$LCD` books a death directly. `stage.py:1059` routes `cmd in ("HP","LCD")` through the same
   `_on_pools`, which books death at `hp == 0` too, so the two mirrors agree. **The wire fact stands and is worth
@@ -707,7 +707,8 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   crediting its owning team with kills.** `shooter_team()`/`shooter_player_id()` now return `None` on wire 0,
   covered by `test_a_hill_that_kills_you_scores_for_nobody` plus a real-shooter control. The suite could not
   see this because every fixture defaulted the shooter's wire id to 0 (see the log). **Still open: the DAMAGE
-  itself.** Players are still killed by an unattended hill with nothing naming the cause. `build`.
+  itself.** Players are still killed by an unattended hill — and **"nothing names the cause" turns out to be too
+  kind: the victim's phone names the WRONG team as the killer (F81).** `build`.
 - **F70 🟠 KING OF THE HILL IS A NATIVE PRIMITIVE, FULLY MAPPED, AND WE CAN READ IT WITH ONE ROW.**
   **The wire, bench 2026-09-10:** neutral hill beacons `proto=15 team=2 mag=8` every ~5 s. Shoot it with a gun
   and the very next beacon carries THAT GUN'S TEAM: a red gun (`proto=0 player=5 team=0 mag=22`) fired at
@@ -734,13 +735,25 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   `$ALCD`, 32→31 and 32→27). Charge ACCUMULATES and costs the attacker exactly what the defender invested. That
   is a self-tuning objective: a lightly-touched point flips instantly, a defended one is genuinely expensive, and
   **a mode needs no host rules to make holding a point meaningful**.
-  🟡 **THE CURRENCY IS MAGNITUDE, NOT ROUNDS (2026-09-10) — n=1, AND F76 CONTRADICTS IT.** Downgraded from ✅ on
-  review. The trial genuinely discriminates (a rounds model predicts one shell should have LOST to five rounds,
-  and it won), which is why this is 🟡 and not a guess — but it happened **once**, and **F76 stands against it**:
-  `reference/grenade.md`'s per-weapon counts, also hardware-confirmed, make the shotgun the slowest capturer
-  where this makes it among the fastest. Replicate before building on it. Seeded 5 AR rounds (45), then ONE shotgun shell
+  🟠 **THE CURRENCY IS MAGNITUDE, NOT ROUNDS (2026-09-10) — n=1, CONFOUNDED, AND F76 CONTRADICTS IT.**
+  Downgraded ✅ → 🟡 → 🟠 across two review passes, and the second downgrade is the damning one.
+  ⚠️ **THE DISCRIMINATING TRIAL CHANGED TWO VARIABLES.** The shotgun's `mag=70` is, in this session's own
+  words, *"the shotgun's `t12` extraHeadsetDamage, not its `t5` of 45"* — an **extra-headset word from a
+  `t1=2` weapon**. So "5 AR rounds (45) lost to one shotgun shell (70)" varied magnitude AND weapon-block
+  together, and it cannot separate *"magnitude is the currency"* from *"an extra-headset word captures out of
+  proportion"* — **the very hypothesis this entry declares dead, and the fourth two-variable comparison in one
+  session.** The AR magdump retaking an owned point does kill "capture REQUIRES an extra-headset word"; it does
+  NOT establish what the exchange is priced in. **The clean experiment nobody has run: a HIGH-MAGNITUDE word
+  from a non-`t1=2` weapon** (rocket is also t1=2 — use a boosted AR via `$WEAP` t5). Until then F76's
+  contradiction has a candidate resolution that fits every reading, which F76 did not list: the per-weapon
+  counts could be right for ordinary rounds while the three extra-headset weapons capture disproportionately —
+  and `reference/grenade.md`'s own *"a thrown grenade blast instantly captures 100%"* is that same shape. Seeded 5 AR rounds (45), then ONE shotgun shell
   (`mag=70`) retook it — confirmed on the wire, `$ALCD` 6→5, one shell against a hill holding 45. Every reading
-  now fits a single rule: **charge accumulates in MAGNITUDE and the higher total owns the point.**
+  now fits a single rule: **charge accumulates and the ATTACKER WINS TIES.**
+  ⚠️ **Not "the higher total owns the point" — this entry's own table falsifies that.** Both AR flips landed at
+  EXACT EQUALITY (9 v 9; 45 v 45, "flipped on the 5th"), and a strict *higher* rule predicts neither. The only
+  strictly-greater run is the confounded shotgun one. So what is measured is **`attacker >= defender` flips**;
+  whether a strict majority is ever required has never been tested.
   | seeded | contested with | totals | result |
   |---|---|---|---|
   | 1 AR (9) | 1 AR | 9 v 9 | flipped |
@@ -755,7 +768,7 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   **Original entry:** Bench 2026-09-10, and it
   answers `bench-grenade.md` Q3 ("does a spawned gun in one of our games surface grenade beacons if we give it a
   `$SIR` row for protocol 15?") **YES** -- adding `$SIR,15,0,,24,0,0,1,,*` made the hill beacons appear
-  immediately as `$HIR,<sensor>,15,0,<owner>,8,0,0` with no pool change. ⚠️ **But "one row" is NOT the whole fix: `app/src/engine.js:1272` drops every `$HIR` with proto 15 before the phone sees it** (`if (t[2] === '15') break;`). The row makes the GUN report beacons; the PHONE still discards them (F72). The whole mechanic is native: **shoot
+  immediately as `$HIR,<sensor>,15,0,<owner>,8,0,0` with no pool change. ⚠️ **But "one row" is NOT the whole fix: `app/src/engine.js:1273` drops every `$HIR` with proto 15 before the phone sees it** (`if (t[2] === '15') break;`). The row makes the GUN report beacons; the PHONE still discards them (F72). The whole mechanic is native: **shoot
   the grenade to capture it** (the gun announces "hill captured"), the **owner team rides in the beacon's team
   bits**, **holding it plays a looping tick** on the owner's gun, and an **enemy-held hill damages intruders**
   (F69). Magnitude is the mode: **8 = hill, 6 = respawn**, and the periods differ (5 s vs ~2.5 s). So KotH,
@@ -764,6 +777,26 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   24 is enemy-only, so a gun sees only hills it does NOT own unless `$GSET` t1 = 1; decide how to read your own
   point. ⚠ And pick the row's `<soundID>` deliberately: a hit lands every 5 s for as long as anyone stands
   there. `build`.
+- **F80 🟠 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.**
+  Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
+  received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default
+  id"*), and `compile.py:899` relies on exactly that for try-outs. The F69 guard makes attribution refuse wire
+  0, which is right for a hill and **costs a mis-armed gun every kill it makes** — previously those reached its
+  team via `sole_member_of_team`. ⚠ **A single `$HIR` cannot separate the two cases, so do not fix this in
+  attribution;** any heuristic there is a guess that will silently mis-score one of them. **The fix is at ARM
+  TIME:** MC should confirm `$PSET` landed (`$QUERY` the gun, or read back the id) and refuse to start a player
+  with no identity, rather than letting an identity-less gun into a match. Cheap interim: surface it in the
+  muster screen — a gun reporting id 0 is a gun that will score nothing. `build`.
+- **F81 🟠 THE VICTIM'S PHONE NAMES THE WRONG TEAM AS THE KILLER WHEN A HILL KILLS YOU.** Found in review
+  2026-09-10, and it is the half F69 missed. `app/src/engine.js`'s `$HIR` case excludes only the beacon
+  (`t[2] === '15'`) and never checks wire 0, so a hill's damage word latches
+  `{shooter_num: 0, shooter_team: <hill owner>}` and the DOWN screen renders **"KILLED BY <the owning team>"**
+  (`nameOf(0)` is null, so it falls back to the team name). MC's scoreboard is now correct and **the player is
+  told a specific lie** — worse than F69's "nothing names the cause", which is what that entry still claims.
+  ⚠ Same ambiguity as F80: a mis-armed gun also sends wire 0, and for THAT case the team shown is correct. So
+  the phone fix is not simply "drop the latch" — it is "say the killer is unknown when the shooter has no
+  identity". The engine half (latch + the `hit_taken` fact) is ours; **the DOWN-screen copy belongs to the
+  brx-hud session** and should be handed over rather than guessed at. `build`.
 - **F77 🟠 A REPLAYED HIT IS INDISTINGUISHABLE FROM A REAL ONE, AND BOTH SCORE.** F74's phantom loop
   (a gun replaying `$HIR`+`$HP` every 5.07 s with no IR in the air) reaches the scoring path unchallenged:
   `engine.js:1514` gates `hit_taken` only on `latch.at` being under 1 s old and `dmg > 0`, and
@@ -855,7 +888,7 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   | 24 / 25 / 26 / 27 | ✓ | a long grenade-ish clip (hiss → timer → explosion) | ? | ? |
   | **28** | **✓ ×3** | **none** | **none** | **none** |
   ⭐ **fn 28 is the row to ship on protocol 15**: a node reads the hill beacon every ~5 s and the player feels,
-  hears and sees nothing.
+  hears and sees nothing. ⚠️ **Measured in cell `<5,0>` with the ESP32 rig, NOT on a real beacon.** The whole sweep ran on `$SIR,5,0,,<fn>` with board B's synthetic words — the FF-on registration is `$HIR,0,5,42,1,20`, **protocol 5**, and that `team=1` is what board B transmitted, not a hill owner. Nobody has loaded `$SIR,15,0,,28` or watched a real ally beacon register. The function id is very likely the effect and the cell only the key, but **that is the assumption, not the measurement** — confirm it with the grenade before shipping (rung F73-b).
   **Polarity, both directions measured.** fn 28 is **enemy-only** under `$GSET` t1=0 (three ally words → zero
   registrations, silently rejected). With **`$GSET` t1=1** the gate lifts: the same ally words registered
   `$HIR,0,5,42,**1**,20` ×3, **owner in the team field**. So:
@@ -869,7 +902,7 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   in a way a leftover tail does not explain; unexplained, recorded rather than tidied away.
   ⚠ Not swept: enemy 35, and the ally-side 31/32/34 — unnecessary now that fn 28 answers the question, but they
   are the fallback if fn 28 turns out to have a side effect we have not looked for.
-- **F72 🟠 The phone throws away every grenade/station beacon.** `app/src/engine.js:1272` opens the `$HIR`
+- **F72 🟠 The phone throws away every grenade/station beacon.** `app/src/engine.js:1273` opens the `$HIR`
   handler with `if (t[2] === '15') break;` — protocol 15 is dropped before anything reads it. That predates
   knowing what a beacon carries, and it is a SECOND blind spot stacked on the missing `$SIR` row (F70): fixing
   the compiled table alone surfaces beacons to the gun and still not to the player. To read a hill or a respawn

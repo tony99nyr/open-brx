@@ -267,6 +267,12 @@ def shooter_team(ev: dict) -> Optional[int]:
       as `_last_shot`, and — because `ATTRIB_FUSE_S` (6 s) is WIDER than the hill's ~5 s period, so
       the attribution never went stale — **credited the hill's owning team with a kill** when the
       ambient damage finally emptied a player. A wrong game outcome, not merely a blind spot.
+
+      ⚠ **This is a TRADE, and the cost is real.** Wire 0 is not only environmental: a gun whose
+      `$PSET` never landed also fires with id 0, and its kills are now dropped where they used to
+      reach its team via `sole_member_of_team`. A single `$HIR` cannot separate the two cases, and
+      no heuristic here should pretend otherwise — the fix belongs at arm time, where MC can verify
+      `$PSET` landed instead of letting an identity-less gun into a match (F80).
     """
     t = ev.get("tokens", [])
     if len(t) > 2 and t[2] == "15":

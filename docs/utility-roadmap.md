@@ -297,9 +297,15 @@ it changes hands. Mapped against what the wire actually carries:
 | "hill lost" on a switch | ✅ direct | the `mag=50` capture word carries the NEW owner |
 | **"control point contested"** | ⚠️ **inferred, no signal exists** | node reasons: *I fired* (`$ALCD` decrement) + *enemy hill in range* + *no capture word followed* |
 
-**A non-capturing hit emits NOTHING** — checked across four runs where a hill was shot and did not change hands
-(single rounds into a 45-charge hill, and a shotgun shell): the only protocol-15 traffic is the ordinary `mag=8`
-beacon. The grenade announces CAPTURES, not HITS.
+**A non-capturing hit produces NO DECODABLE WORD** — checked across four runs where a hill was shot and did not
+change hands (single rounds into a 45-charge hill, and a shotgun shell): the only protocol-15 traffic decoded is
+the ordinary `mag=8` beacon. So the grenade appears to announce CAPTURES, not HITS.
+⚠️ **This null has a known blind spot and is NOT "nothing".** The same session established that the grenade
+replies essentially instantaneously, inside the SHOOTER's burst — which is precisely where a hit-acknowledgement
+word would live, and *"any word that only occurs inside a shot's burst has been invisible to every capture ever
+taken"*. Four captures with that blind spot cannot distinguish "no word" from "a word we structurally cannot
+see". **Gated on rung B0** (move the receiver so it sees the GRENADE and not the SHOOTER); until B0 runs, design
+for the event and do not treat the silence as proven.
 
 So "contested" is a guess, and it fails in one specific way: **the node cannot tell whether the shot hit the
 grenade**, so firing past it while standing in an enemy hill produces a false "contested". Probably acceptable

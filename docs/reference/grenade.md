@@ -174,19 +174,25 @@ you shoot to own. Described here for completeness.)*
   **emits who holds it every ~5 s** (our BLE decode: `$HIR,0,15,0,<team>,8`; an earlier "~3-4 s" here was
   never measured and is corrected 2026-09-10 to the bench figure, which is the same one this page's beacon
   table gives), so nearby guns know
-  possession. It **charges** — ⭐ **and the currency is MAGNITUDE, not rounds (bench-measured 2026-09-10,
-  F70).** Charge accumulates as the sum of the magnitudes fired into it and the higher total owns the point.
+  possession. It **charges**, and **ANY weapon can take a point** (bench 2026-09-10, F70 — settled: an AR
+  magdump retook a point held by another team, so no special payload is required).
   Measured from a power-cycled neutral, one round at a time with a beacon read between each and counts confirmed
   by `$ALCD`: seeded 1 AR round (mag 9) → retaken with **1**; seeded 5 (45) → retaken with **5**; seeded 5 (45) →
-  retaken by **ONE shotgun shell** (mag 70). So a weapon's capture power equals its damage, and **any** weapon
-  can take a point.
-  ⚠️ **This CONTRADICTS the per-weapon round counts below**, which are kept for provenance: *"to retake, the other
+  retaken by **ONE shotgun shell** (mag 70). Note both AR flips landed at **exact equality**, so what is measured
+  is that **the attacker wins ties**.
+  ⚠️ **What the charge is priced in is NOT settled — 🟠, and do not build on it.** The reading that fits the AR
+  runs is MAGNITUDE (capture power = damage), but **the trial that would prove it is confounded**: the shotgun's
+  `mag=70` is its `t12` **extraHeadsetDamage**, from one of the three `t1=2` weapons, so that run varied
+  magnitude AND weapon-block together. It cannot separate "magnitude is the currency" from "an extra-headset
+  word captures out of proportion".
+  ⚠️ **It also CONTRADICTS the per-weapon round counts below**, kept for provenance: *"to retake, the other
   team must fire at least as many ROUNDS back into it (2–3 rounds to 2–3 magazines depending on weapon; ~4 on an
-  MG, ~10–12 on a shotgun)"*. Under a magnitude model a shotgun is among the FASTEST capturers, not the slowest —
-  the opposite of that figure. Both were labelled hardware-confirmed, so one of them is wrong: either those
-  counts came from video rather than the bench, or they measure something else (a FULL hill, where a slow weapon
-  takes longer in wall-clock even at high magnitude). **Do not use the per-weapon counts** until reconciled; the
-  magnitude result has the stronger method behind it (single-variable, `$ALCD`-verified, beacon-gated).
+  MG, ~10–12 on a shotgun)"*. Under a magnitude model a shotgun is among the FASTEST capturers, not the slowest.
+  Both were labelled hardware-confirmed. **A third reading fits BOTH** and is the one to test first: the round
+  counts are right for ordinary weapons, while the three extra-headset weapons capture out of proportion — which
+  is exactly the shape of *"a thrown grenade blast instantly captures 100%"* two bullets down. **Treat both the
+  per-weapon counts and the magnitude rule as unconfirmed** until a high-magnitude word from a NON-`t1=2` weapon
+  (a `$WEAP` t5-boosted AR) settles it. F76.
   The holder has a rapid-refill advantage while defending. Win = possession at time / fully charged.
 - **A thrown grenade blast on the point instantly captures it 100%** for the thrower's team (full
   charge in one hit) — a deliberate quick-takeover mechanic.
