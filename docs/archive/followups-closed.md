@@ -2096,3 +2096,4 @@ session: `state()` **9.1 ms cold, 0.04 ms warm** (30 calls, max 0.11 ms); `on_gu
 calls). The separate hit-path fix (`event()` split into `_event_now()`) is what removed the ~600 ms LED lag and
 is logged under its own entry.
 - 2026-09-09 **B9** manual website rebuilt: block DSL deleted, 74 pages to 9, generator 1,009 to 233 lines, Playwright gate 779 to 146 lines, all provenance badges and per-block `src:` lines removed from the published prose.
+- 2026-09-09 **B24** deploy-time builds: the site is rebuilt by Cloudflare on every push (`wrangler deploy` runs `wrangler.toml`'s `[build]`), so `webapp/`'s generated pages left git. No dashboard build command was required, contrary to the plan's assumption.

@@ -219,20 +219,16 @@ badge, no `src:` line, no page-placement decision.
 5. **Replace the test suite.**
 6. §3.8 (see below).
 
-## 6. What is done, and the one step left
+## 6. Done
 
-Steps 1 to 5 are done and verified: the manual is plain markdown, the generator is rewritten, the
-gate is 18 browser checks and passes, and the repo's own suites (1,067 tests) are green.
+All six steps are complete. The manual is plain markdown, the generator is rewritten, the gate is 62
+browser steps at two widths, and as of 2026-09-09 the built pages are **no longer committed**.
 
-Step 3.8 is **half done and deliberately stopped there.** The root `package.json` and the
-`[build]` section in `wrangler.toml` are in place, so the site builds from source at deploy time.
-The built pages are **still committed**, because push-to-deploy runs the build command configured in
-the Cloudflare dashboard, not the one in `wrangler.toml`. Un-committing `webapp/` before that
-setting exists would publish an empty site on the next push.
+Cloudflare rebuilds the site on every push: Workers Builds runs `npx wrangler deploy`, and
+`wrangler deploy` runs the `[build]` command in `wrangler.toml`, which is `npm run build:ci`. No
+dashboard build command was needed, which is what the earlier draft of this section assumed. That was
+settled by pushing a source-only change with deliberately stale committed output and watching the
+live site serve the new text a minute later, then by rebuilding from a clean clone with every
+generated file deleted.
 
-To finish it: set **Workers & Pages -> open-brx -> Settings -> Build -> Build command** to
-`npm run build`, push once, confirm the deploy renders, and only then stop committing the generated
-files.
-
-Steps 1-3 are independently useful even if 4-6 never happen: the manual gets better and the site
-keeps building.
+`webapp/mc/`, `webapp/download/`, `webapp/favicon.svg` and `webapp/.assetsignore` stay tracked.

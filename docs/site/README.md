@@ -18,12 +18,12 @@ pages, one per manual file. Nothing is written twice.
 - `npm run serve` previews `webapp/` on :4173.
 
 **Where it ships.** `webapp/` is published as an assets-only Cloudflare Worker via the root
-`wrangler.toml`, and **a push to `main` deploys it**. ⚠ **The built pages are still committed**, and
-Cloudflare serves `webapp/` exactly as pushed: build before you commit, or you publish a stale site.
-The root `npm run build` and the `[build]` block exist for the move to deploy-time builds, but
-push-to-deploy uses the build command set in the Cloudflare dashboard and that is not set yet
-(FOLLOWUPS B24; the command to set is `npm run build:ci`, which drops the dev dependencies). `webapp/mc/` and `webapp/download/` are hand-committed and the generator refuses to
-write into them.
+`wrangler.toml`, and **a push to `main` deploys it**. Cloudflare rebuilds the site itself: Workers
+Builds runs `npx wrangler deploy`, and `wrangler deploy` runs the `[build]` command
+(`npm run build:ci`) before reading the assets directory. **The generated pages are git-ignored**, so
+a push cannot publish a stale build and you never need to rebuild before committing. `webapp/mc/`,
+`webapp/download/`, `webapp/favicon.svg` and `webapp/.assetsignore` are hand-kept; the generator
+refuses to write into the first two, and `.assetsignore` keeps `mc/` from being served.
 
 **Editorial rule.** Only confirmed facts are published. There is no per-sentence confidence marking:
 that lives in `docs/experiment-log/` and `docs/FOLLOWUPS.md`. See

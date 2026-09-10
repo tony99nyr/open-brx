@@ -72,11 +72,11 @@ pinned asset, so a new cut does not stale a manual page) ·
 `firmware/` PlatformIO ESP32 flavors · `webapp/mc/` the **Mission Control web UI** (Vite/React/TS; `npm run dev`, `?mock` for the in-browser demo; design brief `docs/spec/design/mission-control.md`) · `webapp/` legacy static harness (Web BT is not the player path — ADR-0003) ·
 `hardware/` STLs/BOM · `protocol/` + `docs/` reference · **`site/`** the static generator for the public
 website (`docs/manual/*.md` → `webapp/`, ~200 lines of `marked` plus one template; `cd site && npm test`
-builds and runs the gate; **a push to `main` deploys the site**. ⚠ **The built pages ARE still committed
-and Cloudflare serves `webapp/` exactly as pushed**, so build before you commit or you publish stale.
-The root `npm run build` and `[build]` in `wrangler.toml` exist for the switch to deploy-time builds,
-but push-to-deploy uses the build command set in the Cloudflare **dashboard**, which is not set yet
-(FOLLOWUPS B24). Do not gitignore `webapp/` until it is, or the next push serves an empty site;
+builds and runs the gate; **a push to `main` deploys the site**, and Cloudflare REBUILDS it from
+`docs/manual/*.md`: Workers Builds runs `wrangler deploy`, which runs `[build]` in `wrangler.toml`
+(`npm run build:ci`). **The built pages are git-ignored**, so there is no stale-output failure mode
+and nothing to rebuild before committing. `webapp/mc/`, `webapp/download/`, `webapp/favicon.svg` and
+`webapp/.assetsignore` are hand-kept and stay tracked;
 `webapp/mc/` is the separate MC UI and is never touched by the site build;
 **`webapp/download/`** holds only the `build.json` sidecar: the APK itself is **git-ignored and lives on
 the `app-v<version>` GitHub Release** (a committed APK cost ~5 MB of history per cut). `npm run android:apk`

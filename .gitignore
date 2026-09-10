@@ -29,3 +29,15 @@ protocol/callsign-extract/.raw-assets/
 # Android builds live in the GitHub Release (app-v<version>), never in git: a committed apk
 # costs ~5 MB of history per release. The download page reads build.json and links the release url.
 webapp/download/*.apk
+
+# --- the public site's generated output -------------------------------------------------------
+# `cd site && npm run build` writes these, and Cloudflare regenerates them on every deploy:
+# wrangler.toml's [build] runs `npm run build:ci`, proven on 2026-09-09 by pushing a source-only
+# change with stale output and watching the live site pick it up. Committing them again would only
+# mean publishing whatever was last built by hand. FOLLOWUPS B24.
+# webapp/mc/ (the Mission Control UI source) and webapp/download/ (the APK sidecar) are hand-kept.
+/webapp/*
+!/webapp/mc/
+!/webapp/download/
+!/webapp/favicon.svg
+!/webapp/.assetsignore

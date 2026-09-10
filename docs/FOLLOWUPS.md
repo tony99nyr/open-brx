@@ -94,10 +94,11 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 - **B29 🟡** voice pack: 16 slots or 17? `sound.md` gives a 17-row slot table confirmed on hardware 2026-09-07;
   `dev.md` says sixteen ids on the wire with the slot mapping unknown, and its own sample frame carries 16.
   17 declared field names against 16 wire ids is a real gap, not a typo. `capture`.
-- **B24 🟡 Needs Tony** finish the deploy change: set the Cloudflare build command (Workers & Pages -> open-brx ->
-  Settings -> Build -> Build command: `npm run build:ci`), push once, confirm the deploy renders, then stop committing
-  the generated files in `webapp/`. Until that setting exists, push-to-deploy serves what is committed, so the built
-  pages stay in git. `build`.
+- ~~**B24**~~ deploy-time builds. **CLOSED 2026-09-09**: no dashboard change was needed. Workers
+  Builds runs `npx wrangler deploy`, which runs `[build]` in `wrangler.toml` (`npm run build:ci`),
+  so Cloudflare regenerates the site from `docs/manual/*.md` on every push and the built pages are
+  now git-ignored. Proven by a source-only push with stale output, and by a clean-clone rebuild.
+
 - **B11 🟢** "Open BRX connected/disconnected" voice: ids are VA99 / VA9A; back up, convert, USB-load. `build`.
 - **B14 🟡** voice-pack selection: every character voice uses one 22-slot layout (sound catalog), so the per-character
   map is now derivable without P3. `build`.

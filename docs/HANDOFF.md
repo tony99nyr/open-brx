@@ -56,8 +56,9 @@
   by 62 browser steps at desktop AND phone width (`cd site && npm test`). Eight pages are the BRX
   manual, four are Open BRX (`/platform`, plus leds, modes, run-a-game). No block syntax, no badges, no
   `src:` lines; confidence lives in the log and FOLLOWUPS. Search is generated per heading and lazy.
-  ⚠ Built pages are STILL COMMITTED until the Cloudflare build command is set to `npm run build:ci`
-  (B24). ⚠ The repo is PRIVATE, so the site publishes no link into it: flip `REPO_PUBLIC` in
+  **Cloudflare rebuilds the site on every push** (`wrangler deploy` runs `wrangler.toml`'s `[build]`),
+  so the generated pages are git-ignored and there is no stale-output failure mode (B24 closed).
+  ⚠ The repo is PRIVATE, so the site publishes no link into it: flip `REPO_PUBLIC` in
   `site/build.mjs` when that changes and every link returns at once.
   `site/lib/led-facts.mjs` reads `SHIELD_COLOUR`, `ARMOUR_COLOUR`, `GUN_DEFAULT` and the drain
   direction out of the live Python and FAILS THE SITE BUILD when a published LED fact disagrees. It

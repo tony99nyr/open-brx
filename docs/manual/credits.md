@@ -21,5 +21,3 @@ Every fact here is restated in our own words from those sources.
 
 Open BRX is independent. It is not endorsed by Battle Company. Stock firmware is never modified.
 Everything is done over the documented Bluetooth protocol.
-
-<!-- BUILD-PROBE: present only if Cloudflare ran the build. Removed straight after. -->
