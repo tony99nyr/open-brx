@@ -12,7 +12,8 @@
   the kill** until 2026-09-10. Guarded in `modes/base.py` at the cost of **F80** (a gun whose `$PSET` never
   landed also sends wire 0 and now scores nothing — fix at arm time). **Damage still live; F81: the victim's
   phone names the WRONG team as killer.** ✅ **Capture is CHARGE, any weapon, attacker wins ties** (F70);
-  🟠 what charge is PRICED IN is not settled — the magnitude trial is confounded and F76 disagrees.
+  🟠 what charge is PRICED IN is not settled (rung X settles it). 🔴 **F82: never put a player on team 2 in a
+  hill mode** — neutral broadcasts team 2, so team 2 goes deaf to neutral points and takes no hill damage.
 - ⭐⭐ **SIMULATED RECOIL IS REAL AND OURS TO DRIVE (2026-09-09, F46 closed).** `$WEAP` **t21 = accuracy
   ceiling · t22 = floor · `$ALCD` tok2 = live accuracy**; falls in five steps toward the floor, races a native
   recovery (**t14 sets how hard it bites**), resets on reload, and below the ceiling a shot emits **IR magnitude
@@ -112,11 +113,10 @@
 
 1. **Hear A15.3 on a gun** (10 min, tagger + emitter): ARM, respawn, take rifle and BIG HIT (80) hits. Scream
    changes per life? spawn line varies? pain length matches damage? kill draws from the 5 takes?
-2. **Build and ship an APK carrying A16 + A17** (0.1.7 predates both). Until it ships, none of the LED work
-   or the hit audio reaches a player, and the legacy `headset.carrier` key cannot be deleted (S10).
+2. **Ship an APK with A16 + A17** (0.1.7 predates both): until then no LED work or hit audio reaches a player, and the legacy `headset.carrier` key cannot go (S10).
 3. **LED design DECIDED (2026-09-09)**: partial-level blink stays, healing gets no opening beat. Do not re-open.
-4. **Bench:** run sheet block E (LED metering) and D1 (**F23** sensor damage, the highest-value reading left);
-   plus **F50**, the A17 pain gate in a real node path. **5. Build S5** (MC arms stations at muster).
+4. **Bench:** block E (LED metering), D1 (**F23** sensor damage), **F50** the A17 pain gate in a node path, and
+   grenade rungs **C** (F69's missing control) + **X** (settles F70/F76). **5. Build S5** (stations at muster).
 6. ⚠ **Nothing shield-shaped has EVER been on a gun** (F60): shield is IR-only (P16) and no compiled mode
    registers a grant word, so the teal bar and A16.5's handover are unverifiable. The grenade hill is now a
    natural reason to ship a grant row in the compiled `$SIR` table (F70).
