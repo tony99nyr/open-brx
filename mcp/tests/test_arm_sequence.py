@@ -4,14 +4,24 @@ sequence spawned a gun that showed HP and armour and looked armed, while the tri
 nothing, because it was missing `$AMMO`, missing `$BMAP`, and used `$SPAWN,*` instead of
 `$SPAWN,,*`. A fourth real mistake that night -- the weapon loaded into slot 1 (secondary)
 instead of slot 0 (primary) -- produces the exact same symptom and is covered too.
-"""
-import pytest
 
+No pytest here: `run_tests.py` must stay green under system python, which has none (see
+test_f11_f13_guards.py for the same pattern this file follows).
+"""
 from brx_mcp.gameconfig import arm_sequence, assert_arm_sequence_complete
 
 
 def _good_frames():
     return arm_sequence(team=1, player_id=3, weapon="primary")
+
+
+def _raises(frames, needle: str) -> bool:
+    """True iff assert_arm_sequence_complete raises ValueError whose message contains `needle`."""
+    try:
+        assert_arm_sequence_complete(frames)
+    except ValueError as e:
+        return needle in str(e)
+    return False
 
 
 # -- arm_sequence() itself ---------------------------------------------------------- #
@@ -68,40 +78,47 @@ def test_arm_sequence_reuses_gameconfig_tables_not_copies():
 
 def test_missing_start_is_rejected():
     frames = [f for f in _good_frames() if not f.startswith("$START")]
-    with pytest.raises(ValueError, match="START"):
-        assert_arm_sequence_complete(frames)
+    assert _raises(frames, "START")
 
 
 def test_missing_ammo_is_rejected():
     frames = [f for f in _good_frames() if not f.startswith("$AMMO,")]
-    with pytest.raises(ValueError, match="AMMO"):
-        assert_arm_sequence_complete(frames)
+    assert _raises(frames, "AMMO")
 
 
 def test_missing_bmap_is_rejected():
     frames = [f for f in _good_frames() if not f.startswith("$BMAP,")]
-    with pytest.raises(ValueError, match="BMAP"):
-        assert_arm_sequence_complete(frames)
+    assert _raises(frames, "BMAP")
 
 
 def test_wrong_spawn_form_is_rejected():
     # the exact 2026-09-10 mistake: $SPAWN,* (no empty token) instead of $SPAWN,,*
     frames = ["$SPAWN,*" if f == "$SPAWN,,*" else f for f in _good_frames()]
-    with pytest.raises(ValueError, match="SPAWN"):
-        assert_arm_sequence_complete(frames)
+    assert _raises(frames, "SPAWN")
 
 
 def test_spawn_missing_entirely_is_also_rejected():
     frames = [f for f in _good_frames() if f != "$SPAWN,,*"]
-    with pytest.raises(ValueError, match="SPAWN"):
-        assert_arm_sequence_complete(frames)
+    assert _raises(frames, "SPAWN")
 
 
 def test_weapon_only_in_secondary_slot_is_rejected():
     # the "Also" mistake from the same session: $WEAP,1 with no $WEAP,0
     frames = [f for f in _good_frames() if not f.startswith("$WEAP,0,")]
-    with pytest.raises(ValueError, match="WEAP"):
-        assert_arm_sequence_complete(frames)
+    assert _raises(frames, "WEAP")
+
+
+def test_every_failure_message_names_the_bench_symptom():
+    # the whole point of writing these out by hand instead of a generic message: at 11pm with
+    # a gun in your hand, the text has to say what you're SEEING, not just what's missing.
+    symptom = "looks armed"
+    for frames in (
+        [f for f in _good_frames() if not f.startswith("$AMMO,")],
+        [f for f in _good_frames() if not f.startswith("$BMAP,")],
+        ["$SPAWN,*" if f == "$SPAWN,,*" else f for f in _good_frames()],
+        [f for f in _good_frames() if not f.startswith("$WEAP,0,")],
+    ):
+        assert _raises(frames, symptom), symptom
 
 
 def test_a_fully_hand_built_partial_arm_is_rejected():
@@ -115,5 +132,9 @@ def test_a_fully_hand_built_partial_arm_is_rejected():
         "$TID,1,*",
         "$SPAWN,*",
     ]
-    with pytest.raises(ValueError):
+    try:
         assert_arm_sequence_complete(frames)
+        raised = False
+    except ValueError:
+        raised = True
+    assert raised
