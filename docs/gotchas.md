@@ -73,11 +73,12 @@ grenade and it switched to red."*
 next shot captured an enemy hill for the new team while the LEDs held the old colour. `docs/led-language.md`
 does not specify a repaint on team change as of this writing.
 
-**Fix:** any mode that changes a player's team mid-match must repaint explicitly right after the `$TID` write
-— blank first (`$GLED,,,,5,,,*`), then paint (`$GLED,<colour>,<colour>,<colour>,0,10,,*`, plus `$HLED`); a
-painted colour does not hold on a spawned gun without the blank first. `$SPAWN` also repaints from `$TID` but
-is not a free substitute — it restores ammo and re-enables the firmware's native breathing animation as a side
-effect. Filed as **F86**.
+**Fix, VERIFIED on hardware the same evening:** right after the `$TID` write, blank first (`$GLED,,,,5,,,*`)
+then paint (`$GLED,<colour>,<colour>,<colour>,0,10,,*`, plus `$HLED,<colour>,0,,,10,,*`) — operator confirmed
+both gun and headset showed the new team colour after each of two live switches. A painted colour does not
+hold on a spawned gun without the blank first. `$SPAWN` also repaints from `$TID` but is not a free
+substitute — it restores ammo and re-enables the firmware's native breathing animation as a side effect. Still
+open: no mode calls this sequence automatically on a team change yet. Filed as **F86**.
 
 ## Before a bench session (pre-flight)
 

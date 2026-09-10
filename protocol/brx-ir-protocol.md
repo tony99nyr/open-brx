@@ -107,14 +107,16 @@ grenade, not the shooter) is still worth doing for anyone repeating this on the 
 only ever occurs inside a shot's burst remains the risk F75 names — but the capture pair itself is no longer in
 that category.
 
-✅ **SETTLED (2026-09-10 evening): `mag=53` means the point WAS NEUTRAL; `mag=50` announces the incoming owner
-on EVERY capture, neutral or enemy-to-enemy.** `mag=50` is confirmed for a team-to-team takeover too: with a
-gun on team 1 (blue) holding a hill, `$TID` was live-written to 0 (red) mid-session and the very next shot took
-it — `$HIR,4,15,0,0,50,0,0` (new owner = red), then ordinary `mag=8` beacons owned by red from then on, **with
-no `mag=53` anywhere in the stream**. Earlier the same session a neutral→blue capture, captured on the same
-continuous BLE connection, DID carry `mag=53` right alongside `mag=50`. The two runs differ in exactly one
-variable — whether the outgoing state was neutral — which settles it. **Method note, because it is why this
-settles what the IR rig runs could not:** this was a continuous BLE stream with the gun armed and listening
+✅ **SETTLED, n=2 (2026-09-10 evening): `mag=53` means the point WAS NEUTRAL; `mag=50` announces the incoming
+owner on EVERY capture, neutral or enemy-to-enemy.** `mag=50` is confirmed for a team-to-team takeover too, and
+**TWO independent enemy-to-enemy captures, both on continuous BLE streams, both carried `mag=50` with NO
+`mag=53`:** first blue→red (gun on team 1 holding a hill, `$TID` live-written to 0, next shot took it —
+`$HIR,4,15,0,0,50,0,0`, then ordinary `mag=8` beacons owned by red), then a second run red→blue the same
+evening (`$TID` switched back to 1 mid-stream, `$HIR,4,15,0,1,50,0,0` on the flip, `mag=8` beacons owned by blue
+after). Neither had a thin-window excuse. A neutral→blue capture earlier the same evening, on the same kind of
+continuous connection, DID carry `mag=53` right alongside `mag=50`. The runs differ in exactly one variable —
+whether the outgoing state was neutral — which settles it. **Method note, because it is why this settles what
+the IR rig runs could not:** every one of these was a continuous BLE stream with the gun armed and listening
 before, during and after the transition, not a thin IR capture window that could plausibly have missed a word
 that was actually there. **Design consequence:** a node can tell "captured from neutral" apart from "stolen
 from an enemy" purely from whether `mag=53` shows up — which is exactly the distinction native needs to pick

@@ -863,13 +863,16 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   be on one team for damage/objective purposes and display as ANOTHER team to themselves and to everyone
   looking at them, which is a live gameplay hazard, not cosmetic: teammates read each other by LED colour in
   the field. **`docs/led-language.md` does not cover this today** — no mention of `$TID`, team change or a
-  repaint requirement anywhere in it, checked 2026-09-10. **Fix: any mode that changes a player's team
-  mid-match must repaint explicitly after the `$TID` write** — the blank-then-paint sequence (`$GLED,,,,5,,,*`
-  then `$GLED,<colour>,<colour>,<colour>,0,10,,*`, plus `$HLED`), since a painted colour does not hold on a
-  spawned gun without the blank first (`protocol/brx-protocol.md`). `$SPAWN` also repaints from `$TID`, but it
-  is not a free fix — it restores ammo and re-enables the firmware's native breathing animation as a side
-  effect. **Modes affected: infection** (the single most likely place for this to bite — players change team
-  ON infection), any host-driven team swap, and team-based objective modes generally. `build`.
+  repaint requirement anywhere in it, checked 2026-09-10. ✅ **The remedy is VERIFIED on hardware, same
+  evening, not just proposed:** blank (`$GLED,,,,5,,,*`) then paint (`$GLED,<colour>,<colour>,<colour>,0,10,,*`
+  plus `$HLED,<colour>,0,,,10,,*`) right after the `$TID` write. Operator confirmed both gun and headset
+  showed the new team colour after each of two live switches ("yes both red", then "now they are blue"). A
+  painted colour does not hold on a spawned gun without the blank first (`protocol/brx-protocol.md`). `$SPAWN`
+  also repaints from `$TID`, but it is not a free substitute — it restores ammo and re-enables the firmware's
+  native breathing animation as a side effect. **Fix still open at the MODE level:** any mode that changes a
+  player's team mid-match must call the verified blank-then-paint sequence itself; nothing wires it in
+  automatically today. **Modes affected: infection** (the single most likely place for this to bite — players
+  change team ON infection), any host-driven team swap, and team-based objective modes generally. `build`.
 - **F77 🟠 A REPLAYED HIT IS INDISTINGUISHABLE FROM A REAL ONE, AND BOTH SCORE.** F74's phantom loop
   (a gun replaying `$HIR`+`$HP` every 5.07 s with no IR in the air) reaches the scoring path unchallenged:
   `engine.js:1514` gates `hit_taken` only on `latch.at` being under 1 s old and `dmg > 0`, and
