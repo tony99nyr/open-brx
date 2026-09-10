@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F88 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F91 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S18.** (2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
 wider than the hill's period" generalisation, the double-`$HIR`-per-beacon dedupe finding (F85, closed same
 session), the team-change-leaves-old-LED-colour finding, and the hosted hill rate-of-fire boost.) (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
@@ -789,6 +789,28 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   `$GSET` t1 = 1 and resolve ownership in software instead of leaning on the gate. ⚠ Untested — this is
   predicted from the polarity rule plus "neutral = team 2", both of which ARE measured; rung D would show it
   directly. `build` + `bench`.
+- **F88 🟡 THE HILL BRIDGE DRIVES ONE POINT ONLY, SO MULTI-POINT DOMINATION IS STILL BLOCKED.** Opened
+  2026-09-10 alongside the KotH build. A grenade beacon carries **no station id** — `$HIR,<sensor>,15,0,
+  <owner>,<mode>,0,0` says who owns *a* point and which MODE it is, and nothing distinguishes one grenade
+  from another. So `hillbeacon.py` drives `sites[0]` and KotH (one point) works, while **Domination with 2+
+  points cannot be built on grenades at all**: two hills in range are indistinguishable, and their beacons
+  would fight over the same site. Domination needs either a station source that names its point, or a way to
+  tell grenades apart on the wire that we have not found. ⚠ Do not "fix" this by inferring identity from
+  timing or magnitude — magnitude is the MODE (8 hill, 6 respawn) and the period is fixed at 5 s, so neither
+  carries identity. `build` + `bench` (is there ANY per-device field? check a two-grenade capture).
+- **F89 🟢 THE STATION `$CAPTURE` PATH CANNOT HAND A POINT TO TEAM 0.** `objectives.py`'s `_team()` treats a
+  zero team as malformed, which is correct for the station path it was written for but means an explicit
+  `config.teams` override putting a player on tid 0 in `domination`/`cs`/`ctf` silently cannot score. **Not a
+  live bug and deliberately not fixed:** `assign_teams` never returns 0 for any of those modes (ffa/extraction
+  use `i+1`, infection/survival 1/2, domination/koth 1/3, else 1/2), and MC's `MODES` catalogue does not list
+  domination/koth/ctf/cs at all, so tid 0 is reachable only by hand. Recorded so nobody "fixes" it later
+  assuming it is reachable by default — and so nobody routes BEACONS through `_team()`, which WOULD break:
+  a beacon's team 0 is genuinely red, bench-captured 2026-09-10 taking a blue-held hill. `build`.
+- **F90 🟢 THE HILL SOUND CONSTANTS LIVE IN THE WRONG FILE.** `HILL_CONTESTED`/`HILL_LOST` were put in
+  `modes/hillbeacon.py` because `sounds.py` was being edited concurrently. They belong in `sounds.py` with
+  every other grounded cue — `test_engines_use_catalog_not_raw_ids` exists precisely to stop raw ids leaking
+  into engines, and this is a near miss. Move them and cross-check the ids against the by-ear results
+  (`VB0N`/`VB0O`/`VB0P` confirmed 2026-09-10; ⚠ `V8Q` is "**Kill** Confirmed", never a hill line). `build`.
 - **F80 🟠 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.**
   Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
   received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default

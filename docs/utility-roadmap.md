@@ -363,9 +363,19 @@ possession tick) are phone work, not gun work** — they need to distinguish fou
 - **Announce a capture on `mag=50` alone.** Never wait for `mag=53` — on an enemy-to-enemy capture it never
   arrives at all (n=2, settled in `protocol/brx-ir-protocol.md`), so a node gated on both words would simply
   never announce that class of capture.
-- **`mag=53` present vs. absent is the switch between callouts**: present means the point was neutral (play
-  `VB0N` Hill Captured); absent means it was stolen from an enemy (play `VB0O`/`VB0P` — contested/lost — for the
-  losing/gaining side respectively).
+- **The LISTENER'S TEAM picks the callout, not the magnitude.** ⚠ An earlier version of this line said `mag=53`
+  present/absent switched between "captured" and "contested/lost" for the "losing/gaining side respectively".
+  That was garbled and is corrected here against what is now implemented (`engine.js:_hillCallout`,
+  `4348721`): **one wire event, different audio per listener.** The same `mag=50` frame is `VB0N` **Hill
+  Captured** to the team named in it, and `VB0P` **Hill Lost** to the team that just lost it. A capture
+  between two OTHER teams is deliberately silent — it is not this player's event.
+- **`mag=53` distinguishes WHERE the point came from, not who says what**: present = it was NEUTRAL before,
+  absent = it was stolen from an enemy. Both are still "captured" for the taker and "lost" for the loser, so
+  this is available for flavour (a different line for a first claim) and for scoring, not for choosing between
+  captured and lost. ⚠ And nothing may WAIT for it: it arrives ~5 s later, and on an enemy-to-enemy capture it
+  never arrives at all.
+- ⚠ **`VB0O` "Hill Contested" is NOT in this mapping and is not wired.** F75: a non-capturing hit emits nothing
+  decodable, so contest cannot be detected — only guessed at, and a guess cannot tell a hit from a miss.
 - ⚠ **Never queue a multi-second audio sequence off a beacon.** F74 proved this gun really does replay long
   events, and a beacon repeats every 5 s — a 15 s clip fired on three consecutive beacons stacks three deep.
   `U100` is chosen precisely because it is ~0.1 s and cannot overlap its own 1 s cadence; a capture callout
