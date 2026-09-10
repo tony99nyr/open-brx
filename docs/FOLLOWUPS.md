@@ -760,6 +760,14 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   **It already cost us a result:** the U11′ sweep (F73) ran with phantom hits mixed into every trial, which is
   what produced "multiple sounds per shot" and sent me chasing multipath. Tony called it early — *"i think it
   also queues the events on the tagger"* — and I looked at rig geometry instead.
+  **It is the whole EVENT, not queued audio** (Tony proposed audio queueing, then ruled it out himself): the
+  **headset flashed** on every repeat, and the wire carries `$HIR` **and** `$HP` each time. The durations settle
+  it too — every hit clip in the `$PSET` is 0.36-0.79 s (`H06` .43, `H55` .36, `H13` .79, `H21` .74, `H02` .39),
+  so nothing retriggered at 5 s can overlap itself into a "growing" sound.
+  ⚠ **Loose end: which clip is the hiss?** It is not `A10` (`energyShieldLoop` shipped EMPTY in these runs) and
+  none of the five hit slots is a long hiss, so something outside the slots we set is producing it — and it is
+  the same sound heard during the grenade runs. Identify it: it may be a fall-through (an empty effect field
+  falls OUTWARD to the neighbouring pool's clip, A17) or a firmware default we have never catalogued.
   **Unknown: the trigger.** It appeared during rapid emitter shots with a grenade beaconing nearby, so a flood of
   IR is the suspect, but nothing was isolated. Probe: hammer a gun with `rapid_fire.py`, stop, and watch for a
   replay; then bisect (emitter alone vs beacon alone). Also open: does it survive a BLE drop, and does a NODE
