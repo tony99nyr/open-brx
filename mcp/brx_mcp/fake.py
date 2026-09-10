@@ -73,11 +73,26 @@ class FakeTagger:
             self.alive = True
             self.hp, self.armor, self.shield = self.cfg_hp, self.cfg_armor, self.cfg_shield
             self._out.append(f"$LCD,{self.hp},{self.armor},0,0,0,0,*")
-        elif cmd == "LIFE":                  # additive, clamped
-            self.hp = min(self.cfg_hp, self.hp + (_int(t[1] if len(t) > 1 else None) or 0))
-            self.armor = min(self.cfg_armor, self.armor + (_int(t[2] if len(t) > 2 else None) or 0))
+        elif cmd == "LIFE":
+            # Bench-measured 2026-09-09 (protocol/brx-protocol.md $LIFE). Three behaviours the old
+            # three-liner did not model, all of which a damage-over-time feature (S16) would be built
+            # on -- and a fake that models a command wrongly lets the real bug pass the suite:
+            #   1. NEGATIVES DRAIN. `$LIFE,0,-5,0,*` took armour 66 -> 61 on hardware.
+            #   2. Per pool, floored at 0, NO SPILL: -100 on armour left armour 0 and HP untouched.
+            #      The old `min(cfg, hp + v)` had no lower bound and would go NEGATIVE on a drain.
+            #   3. It SELF-EMITS `$HP` -- except when the write is lethal, where the frame shape
+            #      SWAPS to `$LCD` and no `$HP` is sent at all (F64).
+            clamp = lambda cur, cap, d: max(0, min(cap, cur + d))
+            self.hp = clamp(self.hp, self.cfg_hp, _int(t[1] if len(t) > 1 else None) or 0)
+            self.armor = clamp(self.armor, self.cfg_armor, _int(t[2] if len(t) > 2 else None) or 0)
             if self.hp > 0:
                 self.alive = True
+                self._out.append(f"$HP,{self.hp},{self.armor},{self.shield},*")
+            else:
+                self.alive = False
+                # ammo is untouched by a lethal write; the fake does not model a magazine, and the
+                # real frame carries whatever was loaded, so 0,0 is the honest stand-in here.
+                self._out.append("$LCD,0,0,0,0,0,0,*")
         # all other config frames (CLEAR/START/GSET/WEAP/SIR/BMAP/VOL/AMMO/PLAY…) accepted
 
     # -- IR hit → events ----------------------------------------------------- #
