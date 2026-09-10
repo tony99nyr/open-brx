@@ -35,8 +35,8 @@ steps, about **25 minutes hands-on**, one gun, one grenade, the rig. Tool: `mcp/
 
 | | finding |
 |---|---|
-| **Beacon** | `proto=15 team=<owner> mag=8` every ~5 s. **Neutral = team 2.** Respawn is `mag=6` at ~2.5 s, boot `mag=56`. Magnitude is a fixed MODE id, **not** a charge level (84 clean decodes, three values only) |
-| **Capture** | shoot it; **ANY weapon**; charge accumulates in **MAGNITUDE** and the higher total owns the point. 1 AR round beat 9; 5 beat 45; one shotgun shell (70) beat 45. **A weapon's capture power equals its damage** |
+| **Beacon** | `proto=15 team=<owner> mag=8` every ~5 s. **Neutral = team 2.** Respawn is `mag=6` at ~2.5 s, boot `mag=56`. Magnitude is a fixed MODE id, **not** a charge level. **Recounted from the capture logs 2026-09-10** (an earlier "84 decodes, three values" here was both miscounted and wrong about the spread): across every session, unambiguous proto-15 decodes are **mag=8 x96** (hill), **mag=6 x63** (respawn), **53 x4 / 50 x3** (capture announcement), **56 x1** (boot, a whole word), plus two lone stitched decodes -- **55** and **2** -- that are probably stitch artefacts; the mag=2 one carries `player=42`, which no other beacon does. The MODE values are the ones with hundreds of repeats behind them |
+| **Capture** | shoot it; **ANY weapon**; charge accumulates in **MAGNITUDE** and the higher total owns the point. 1 AR round beat 9; 5 beat 45; one shotgun shell (70) beat 45. **A weapon's capture power equals its damage**. ⚠ n=1 on the discriminating trial; **F76** contradicts it |
 | **Announcement** | a transition PAIR in the same burst as the shot: `mag=53` (state left) + `mag=50` (owner entered). This is why guns say "hill captured" |
 | **Reading it in a hosted game** | `$SIR,15,0,,28` — **fn 28 registers with ZERO player feedback** (no sound, flash or vibration) + the `engine.js` fix (F72) |
 | **Polarity** | fn 28 is enemy-only at `$GSET` t1=0; **t1=1 lifts the gate** and ownership arrives in `$HIR` token 4. **KotH wants FF on** |

@@ -228,12 +228,19 @@ shorter path to the first playable objective mode than building a station first.
    anyone stands on the point. The row's `<soundID>` must be chosen deliberately (a `$SIR` sound REPLACES the
    `$PSET` pool sound) or the objective is unbearable within a minute.
 3. ✅ **Any weapon can capture, and the contest tunes itself** (F70, settled 2026-09-10). It is CHARGE, not a
-   special emission, so a rifleman plays the objective and no weapon needs special tokens. The exchange is
-   **1:1 and linear** — seeded 1 round, retaken with 1; seeded 5, retaken with 5 — so a defended point costs an
-   attacker exactly what the defender invested, **with no host rules needed to make holding it matter**. ✅ **The currency is MAGNITUDE**: one shotgun shell
-   (70) retook a hill holding five AR rounds (45). So **a weapon's capture power equals its damage** — a shotgun
-   or rocket takes a point in one hit, a rifleman needs a burst — and the objective economy falls out of the
-   weapon balance we already tune, with no separate capture stat. ⚠ Max charge still unmeasured.
+   special emission, so a rifleman plays the objective and no weapon needs special tokens. **That much is
+   multiply-sourced** — the bench run, `reference/grenade.md`'s prior hardware-confirmed charge mechanic, and
+   Tony's own native play, which a three-weapon mechanism could never explain.
+
+   ⚠ **The EXCHANGE RATE is where the design must not get ahead of the bench.** "1:1 and linear" rests on
+   **two points** (seeded 1 → retaken with 1; seeded 5 → retaken with 5), and two points define a line by
+   construction rather than by measurement. "The currency is MAGNITUDE" rests on **one** discriminating trial
+   (one shotgun shell at 70 retook a hill holding five AR rounds at 45). The logic of that trial is sound — a
+   rounds model predicts it should have failed — but **F76 records a standing contradiction**: this page's own
+   `reference/grenade.md`, equally hardware-confirmed, makes the shotgun the SLOWEST capturer where magnitude
+   makes it among the fastest. **So the shape is settled and the rate is not.** Design the mode on "any weapon
+   captures"; do NOT yet build economy or scoring that assumes capture power equals damage, and do not assume
+   linearity beyond the two points measured. Max charge is also unmeasured (rung M).
 
 ### How a hosted hill actually works (design, 2026-09-10)
 

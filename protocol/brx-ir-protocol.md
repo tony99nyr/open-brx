@@ -55,7 +55,7 @@ AR magazine then retook that owned hill within its first 13 rounds — **with no
 This confirms the charge mechanic `docs/reference/grenade.md` already documented, and matches native play, where
 every player captures regardless of weapon. Two earlier readings are RETRACTED: that owned hills cannot be
 retaken at all, and that capture requires the extra-headset word (`$WEAP` t1=2) — a shotgun's one `mag=70` word
-simply out-charged four AR rounds at 36. The currency is **MAGNITUDE**: charge accumulates as the sum of the magnitudes fired into it and the higher total owns the point (1 AR round beat 9; 5 AR rounds beat 45; one shotgun `mag=70` shell beat 45). A weapon's capture power therefore equals its damage. ⚠ Max charge unmeasured.
+simply out-charged four AR rounds at 36. The currency is **MAGNITUDE**: charge accumulates as the sum of the magnitudes fired into it and the higher total owns the point (1 AR round beat 9; 5 AR rounds beat 45; one shotgun `mag=70` shell beat 45). A weapon's capture power therefore equals its damage. ⚠ Max charge unmeasured. ⚠ **n=1 on the discriminating trial, and F76 records a live contradiction:** `reference/grenade.md`'s per-weapon capture counts (also hardware-confirmed) make the shotgun the SLOWEST capturer, where magnitude makes it among the fastest. Both cannot be right — do not build on the exchange rate until F76 resolves.
 Power-cycling returns a grenade to neutral (team 2).
 
 ⭐ **CAPTURE IS ANNOUNCED, not just inferred (bench 2026-09-10).** At the instant a grenade changes hands it
@@ -91,11 +91,19 @@ those later windows were thin (the capture often opened after the transition), s
 not a finding. Whether `53` means "was neutral" specifically, or "the outgoing state" generally, is open.
 
 ⚠️ **A hosted game sees none of this unless we ship a protocol-15 `$SIR` row** — the firmware discards an
-unmatched cell in silence, which is why "station words do nothing in a host-driven game" (B23). One row
-(`$SIR,15,0,,24,0,0,1,,*`) makes beacons arrive as `$HIR,<sensor>,15,0,<owner>,<mode>,0,0` with no pool
-change. ⚠️ **That is necessary and NOT sufficient: `app/src/engine.js:1272` discards every `$HIR` with proto 15
-before the phone reads it** (`if (t[2] === '15') break;`), so the row reaches the GUN and still not the player.
-Reading a beacon in a hosted game needs both (F72). Polarity applies: fn 24 is enemy-only, so a gun sees only hills it does NOT own unless `$GSET` t1 = 1.
+unmatched cell in silence, which is why "station words do nothing in a host-driven game" (B23). One row makes
+beacons arrive as `$HIR,<sensor>,15,0,<owner>,<mode>,0,0` with no pool change. ⚠️ **That is necessary and NOT
+sufficient: `app/src/engine.js:1272` discards every `$HIR` with proto 15 before the phone reads it**
+(`if (t[2] === '15') break;`), so the row reaches the GUN and still not the player. Reading a beacon in a
+hosted game needs both (F72).
+
+⭐ **SHIP FUNCTION 28, NOT 24 (F73, bench-swept 2026-09-10).** The row proved out here first was
+`$SIR,15,0,,24,0,0,1,,*`, and it works — but **fn 24 gives the player a flash, a buzz and a long grenade-ish
+clip on every beacon**, which a hill emits every ~5 s for as long as anyone stands there. **fn 28 registers
+with NOTHING — no sound, no headset flash, no vibration** — so the host reads an IR event the player never
+perceives. That is what a beacon row wants: `$SIR,15,0,,28,0,0,1,,*`. Polarity applies to both: they are
+enemy-only under `$GSET` t1 = 0, so a gun sees only hills it does NOT own; **t1 = 1 lifts the gate** and the
+owner arrives in `$HIR` token 4, which is how a host reads who holds a point.
 
 **B and U together are the `$SIR` composite key `<protocol, subtype>`** — the exact index a `$SIR`
 row is looked up by. 4 bits and 2 bits — 16 × 4 = **64 addressable effect cells, and the table is ours to write

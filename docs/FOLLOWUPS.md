@@ -724,13 +724,21 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   could never explain. Last night's shotgun-vs-AR result was never evidence for a headset word: one shotgun word
   is 70 of charge against four AR rounds at 36, so it simply out-charged it. Two variables differed and I picked
   the wrong one, for the third time in one session.
-  ✅ **THE EXCHANGE RATE IS 1:1 AND LINEAR (2026-09-10, one-round-then-wait protocol).** Against hills seeded from
+  🟡 **THE EXCHANGE RATE LOOKS 1:1, AND "LINEAR" IS A WORD I SHOULD NOT HAVE USED (2026-09-10, one-round-then-wait
+  protocol).** Downgraded from ✅ on review: it rests on **TWO POINTS**, and two points define a line by
+  construction, not by measurement. Nothing here separates 1:1-linear from any curve through (1,1) and (5,5).
+  Seed 20 and see whether it still costs 20 before anyone builds an economy on the rate. The DIRECTION —
+  more charge in costs more to take back — is solid; the RATE is one hypothesis that fits two readings. Against hills seeded from
   a power-cycled neutral with a known number of AR rounds, contested one round at a time with a beacon read
   between each: **seeded 1 → retaken with 1; seeded 5 → retaken with 5** (both counts confirmed on the wire by
   `$ALCD`, 32→31 and 32→27). Charge ACCUMULATES and costs the attacker exactly what the defender invested. That
   is a self-tuning objective: a lightly-touched point flips instantly, a defended one is genuinely expensive, and
   **a mode needs no host rules to make holding a point meaningful**.
-  ✅ **THE CURRENCY IS MAGNITUDE, NOT ROUNDS (2026-09-10).** Seeded 5 AR rounds (45), then ONE shotgun shell
+  🟡 **THE CURRENCY IS MAGNITUDE, NOT ROUNDS (2026-09-10) — n=1, AND F76 CONTRADICTS IT.** Downgraded from ✅ on
+  review. The trial genuinely discriminates (a rounds model predicts one shell should have LOST to five rounds,
+  and it won), which is why this is 🟡 and not a guess — but it happened **once**, and **F76 stands against it**:
+  `reference/grenade.md`'s per-weapon counts, also hardware-confirmed, make the shotgun the slowest capturer
+  where this makes it among the fastest. Replicate before building on it. Seeded 5 AR rounds (45), then ONE shotgun shell
   (`mag=70`) retook it — confirmed on the wire, `$ALCD` 6→5, one shell against a hill holding 45. Every reading
   now fits a single rule: **charge accumulates in MAGNITUDE and the higher total owns the point.**
   | seeded | contested with | totals | result |

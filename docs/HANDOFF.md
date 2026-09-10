@@ -10,8 +10,8 @@
   proto-15 row **plus** an `engine.js` fix (F72) — a shortcut to K1. 🔴 **F69: it also emits a `proto=0 mag=8`
   damage word our standard row applies in full**, killing the operator in ~106 s with nothing naming the cause
   — and until 2026-09-10 **crediting the hill's owner with the kill** (wire 0; nothing enforced A5.1's "wire 0
-  is never a player"). Guarded in `modes/base.py`; **the damage is still live**. ⚠ WHAT captures a point is
-  unsettled. Programme: `bench-grenade.md`.
+  is never a player"). Guarded in `modes/base.py`; **the damage is still live**. ✅ **Capture is CHARGE and any
+  weapon takes a point** (F70); ⚠ the CURRENCY is magnitude on n=1 and F76 contradicts it. `bench-grenade.md`.
 - ⭐⭐ **SIMULATED RECOIL IS REAL AND OURS TO DRIVE (2026-09-09, F46 closed).** `$WEAP` **t21 = accuracy
   ceiling · t22 = floor · `$ALCD` tok2 = live accuracy**; falls in five steps toward the floor, races a native
   recovery (**t14 sets how hard it bites**), resets on reload, and below the ceiling a shot emits **IR magnitude

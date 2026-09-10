@@ -171,7 +171,9 @@ you shoot to own. Described here for completeness.)*
 
 - **King of the Hill (blue):** **starts white/neutral until someone shoots it** (hardware-confirmed, same as
   Respawn — exp-log #37); on capture, all guns announce **"control point captured"**; the grenade
-  **emits every ~3–4 s who holds it** (our BLE decode: `$HIR,0,15,0,<team>,8`), so nearby guns know
+  **emits who holds it every ~5 s** (our BLE decode: `$HIR,0,15,0,<team>,8`; an earlier "~3-4 s" here was
+  never measured and is corrected 2026-09-10 to the bench figure, which is the same one this page's beacon
+  table gives), so nearby guns know
   possession. It **charges** — ⭐ **and the currency is MAGNITUDE, not rounds (bench-measured 2026-09-10,
   F70).** Charge accumulates as the sum of the magnitudes fired into it and the higher total owns the point.
   Measured from a power-cycled neutral, one round at a time with a beacon read between each and counts confirmed
