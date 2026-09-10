@@ -6,7 +6,8 @@
 //          (report(kind, body)), and a render-able snapshot (state()) with a change callback.
 //
 // Every write to the gun goes through `writer`; the engine never composes a frame except the two
-// literal templates (`$SFLASH,*`, `$PLAYX,0,*`) and the pre-config probe set (contracts §3/§8).
+// literal templates (`$SFLASH,*`, `$PLAYX,0,*`), the pre-config probe set (contracts §3/§8), and the
+// `HILL_CUES` literals below (which the bundle overrides the moment it carries those cue keys).
 
 import * as W from './transport/envelope.js';   // single source for the contracts §9 constants
 import { stationView, TEAM_ANY } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
@@ -47,6 +48,38 @@ const TEAM_KEY = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green' };
 // health. Mirrors `poolgauge.py`'s `READOUT_POOL_INWARD`; kept as its own constant here too rather than
 // shipped through the bundle, so the phone and the bench stage can never silently disagree on it.
 const READOUT_POOL_INWARD = ['shield', 'armor', 'health'];
+
+// ---------- King of the Hill audio (F70/F72/F74/F85, docs/utility-roadmap.md "Where the hill audio has to live")
+// The gun CANNOT speak for itself on a beacon: `$SIR` is keyed on <irProtocol, subtype> alone, every hill
+// beacon decodes as the same cell <15,0>, and fn 28 ignores the row's <soundID> outright (measured
+// 2026-09-10, rung Y). So all four hill states are the NODE's job, played over BLE from here.
+const HILL_MAG = 8;                 // $HIR magnitude 8 = a control point / hill (6 = respawn station — never a hill)
+const HILL_CAPTURE_MAG = 50;        // the capture word, carrying the NEW owner in the team field; lands ~50 ms after the shot
+const HILL_WAS_NEUTRAL_MAG = 53;    // "the state being LEFT was neutral" — arrives ~5 s LATER, and only when it was neutral (n=2)
+const HILL_NEUTRAL_TEAM = 2;        // a NEUTRAL point broadcasts team 2 (bench 2026-09-10; F82: a hill roster must not use tid 2)
+const HILL_TICK_MS = 1000;          // the possession tick's cadence — the node's own clock, never the beacon's
+// Presence expires on >= 2 MISSED beacons, not one: the beacon is clean at desk range (20+ consecutive at a
+// flat 5.0 s) but goes intermittent at the edge of range (rung R), so a single miss is normal reception, not
+// "left the hill". Only a magnitude-8 hill beacon refreshes this — F84: a respawn station's ~2.5 s period
+// would otherwise keep a 12 s window permanently fresh and a hill nobody holds would tick forever.
+const HILL_PRESENCE_MS = 12000;
+// Ids are the operator's picks, every one CONFIRMED BY EAR on hardware 2026-09-10 (rung S) — one female
+// objectives announcer with a music bed, chosen over the male "Control Point" set (VA23/VA22/VA21, also
+// confirmed). `ms` is the clip's real length from `mcp/brx_mcp/data/sound_catalog.json`, which is what the
+// scheduler below uses to keep the 0.11 s tick out from under a 1.9-3.0 s callout; a bundle may override a
+// duration through `frames.cue_ms`. Picked BY ID and never by category: `V8Q` is catalogued "Hill Confirmed"
+// and actually says "KILL Confirmed" (rung S), so a by-category pick would announce a kill line on a capture.
+export const HILL_CUES = {
+  hill_captured:  { frame: '$PLAY,,4,6,VB0N,,,,*', ms: 1924 },   // VB0N "Hill Captured"  1.924 s
+  hill_lost:      { frame: '$PLAY,,4,6,VB0P,,,,*', ms: 2976 },   // VB0P "Hill Lost!"     2.976 s
+  hill_contested: { frame: '$PLAY,,4,6,VB0O,,,,*', ms: 2078 },   // VB0O "Hill Contested" 2.078 s — NOT WIRED, see `_hillCallout` (F75)
+  hill_moved:     { frame: '$PLAY,,4,6,VB0Q,,,,*', ms: 2424 },   // VB0Q "Hill Moved"     2.424 s — rotating-hill modes only (F83), no caller yet
+  hill_tick:      { frame: '$PLAY,U100,4,6,,,,,*', ms: 114 },    // U100 possession tick  0.114 s
+};
+// A hill beacon carries NO point identifier, so several points in play are indistinguishable on the wire:
+// in Domination two grenades held by different teams would read as one point changing hands every few
+// seconds and announce continuously. Excluded until K1 supplies a discriminator, rather than shipped noisy.
+const HILL_AUDIO_EXCLUDED_MODES = new Set(['domination']);
 
 /** A16.5: which pool the readout should actually SHOW, given that `pool` is the one that just moved and
  *  settled at level 0. Mirrors `poolgauge.handover_pool` exactly -- see its docstring for the full
@@ -114,6 +147,10 @@ export class Engine {
     this.beacon = null;             // F72: {owner_team, magnitude, sensor, at} — last grenade/station beacon (proto-15 $HIR)
     this._lastBeaconKey = null;     // F85: `${owner_team}:${magnitude}` of the last beacon ACCEPTED (not merely seen), for dedupe below
     this._lastBeaconAt = 0;         // F85: this.now() of that acceptance
+    this.hill = null;               // {owner, at, from_neutral} — the control point's OWNER and when its last beacon landed. State from the wire; the cadence below is ours
+    this._hillBusyUntil = 0;        // the announcer is occupied by a hill callout until this (now + the clip's real length) — the tick waits, it never overlaps
+    this._hillTickAt = 0;           // when the possession tick last played (0 = not ticking)
+    this._hillTeam2Warned = false;  // F82 is logged once per game, not once per beacon
     this.deadAt = 0; this.killedBy = null; this.lastHitAt = 0;
     this._deathBlinkAt = 0;         // when the headset out-blink was last (re)painted, so a long DOWN doesn't outlast the count
     this._downRearmSent = false;    // §3.2: `down.rearm` sent for THIS death — one write per death, reset on death and revive
@@ -1036,6 +1073,130 @@ export class Engine {
     this._set('live');
   }
 
+  // ---------- King of the Hill audio ----------
+  // The architecture, and it is the whole point of this block: **beacons update STATE, a node timer sets the
+  // CADENCE.** F74 measured a gun replaying a latched IR event every 5.07 s forever, so a multi-second
+  // sequence launched per beacon stacks three deep and drifts; the possession tick is therefore a 0.11 s
+  // clip fired by `_hillTick` off our own ~1 s clock while state says we hold a fresh point, and NOTHING
+  // in this file plays audio directly from a beacon except a one-shot transition callout.
+
+  /** The bundle's cue for a hill sound, else the literal fallback above, plus its real length in ms.
+   *  The bundle WINS whenever it carries the key at all -- `''` is MC's deliberate mute (`cue_frames()`
+   *  writes `''` for an objective cue when the profile's announcer is off), and a fallback that overrode
+   *  that would turn the announcer switch into a lie. `{frame: null}` = play nothing. */
+  _hillCue(kind) {
+    const def = HILL_CUES[kind]; if (!def) return { frame: null, ms: 0 };
+    const cues = this.frames && this.frames.cues;
+    const fromBundle = cues && Object.prototype.hasOwnProperty.call(cues, kind) ? cues[kind] : undefined;
+    const frame = fromBundle !== undefined ? fromBundle : def.frame;
+    if (!frame) return { frame: null, ms: 0 };
+    const cm = this.frames && this.frames.cue_ms;
+    return { frame, ms: (cm && cm[kind]) || def.ms };
+  }
+  /** True while hill audio should be audible at all: live, on our feet, and not a mode whose points we
+   *  cannot tell apart. Death is deliberately silent — A16 makes the DOWN window hands-off and the death
+   *  scream owns the announcer; a player who respawns learns the current owner from the tick within 1 s. */
+  _hillAudioOn() {
+    return this.phase === 'live' && this.alive
+      && !(this.config && HILL_AUDIO_EXCLUDED_MODES.has(this.config.mode));
+  }
+  /** Do WE hold the point right now? `null`/neutral/an enemy all read false. */
+  _hillMine() {
+    const mine = this.teamTid;
+    return mine != null && mine !== HILL_NEUTRAL_TEAM && !!this.hill && this.hill.owner === mine;
+  }
+  /** Which callout ONE wire event deserves for THIS listener: the same `mag=50` frame is "Hill Captured"
+   *  to the incoming team and "Hill Lost" to the team that just lost it. A capture between two other teams
+   *  (or from neutral to an enemy) is deliberately silent — it is not this player's event.
+   *
+   *  ⚠ "Hill Contested" (`VB0O`) is DELIBERATELY NOT WIRED. F75 checked four bench runs where a hill was
+   *  shot and did NOT change hands: the only protocol-15 traffic is the ordinary `mag=8` beacon, so a
+   *  non-capturing hit emits nothing we can decode. The only way to produce it is to INFER it from "I
+   *  fired" + "an enemy hill is in range" + "no capture word followed" — which cannot tell a hit from a
+   *  miss, so firing PAST the grenade while standing in an enemy point would announce it falsely. That
+   *  false positive is not merely noise: at 2.078 s it would suppress the possession tick for two seconds
+   *  and tell the player something untrue about the objective. Silence is the honest answer until F75's
+   *  probe (deliberately miss a grenade in a NATIVE game and see whether native still says "contested")
+   *  settles whether native infers it too or there is a word we have not captured. */
+  _hillCallout(prevOwner, owner) {
+    const mine = this.teamTid;
+    if (mine == null) return null;
+    if (mine === HILL_NEUTRAL_TEAM) {   // F82: a NEUTRAL point broadcasts team 2, so a tid-2 roster cannot tell "nobody holds it" from "we hold it"
+      if (!this._hillTeam2Warned) { this._hillTeam2Warned = true; this.log('F82: we are on tid 2, which is what a NEUTRAL hill broadcasts — hill ownership is undecidable, so no hill audio will play', 'le'); }
+      return null;
+    }
+    if (owner === mine) return 'hill_captured';
+    if (prevOwner === mine) return 'hill_lost';
+    return null;
+  }
+  /** Play one callout NOW. Priority rule: **the later callout wins outright — it preempts, it never
+   *  queues.** These are 1.9-3.0 s announcements of a state that has just changed AGAIN, so a queued
+   *  "Hill Captured" finishing three seconds after the point was already lost would state something
+   *  false; the newest word is always the true one. A preempt sends `$PLAYX,0,*` in the SAME write, so
+   *  the stale line is actually stopped on the gun rather than left to mix — and only when we are cutting
+   *  off our OWN in-flight hill callout, so nothing else's audio is ever clipped by this path. */
+  _hillSay(kind, why) {
+    const cue = this._hillCue(kind);
+    if (!cue.frame) return;
+    const now = this.now();
+    const preempt = now < this._hillBusyUntil;
+    this._hillBusyUntil = now + cue.ms;
+    this._write(preempt ? [PLAYX, cue.frame] : [cue.frame], `hill ${kind}${preempt ? ' (preempting the line still playing)' : ''} — ${why}`);
+  }
+  /** A deduped protocol-15 beacon: update hill state and, if this frame PROVES a change of hands, announce
+   *  it in this same handler. Nothing here starts a sequence, and nothing here waits for a second word. */
+  _onHillBeacon(ownerTeam, magnitude, now) {
+    if (magnitude !== HILL_MAG && magnitude !== HILL_CAPTURE_MAG && magnitude !== HILL_WAS_NEUTRAL_MAG) return;   // magnitude 6 is a respawn station, not a point (F84)
+    const prev = this.hill;
+    const prevOwner = prev ? prev.owner : null;
+    const fresh = !!prev && (now - prev.at) < HILL_PRESENCE_MS;
+
+    if (magnitude === HILL_WAS_NEUTRAL_MAG) {
+      // `mag=53` is the state being LEFT, and bench 2026-09-10 measured it arriving ~5 s AFTER the `mag=50`
+      // that already named the new owner (t=41820 vs t=46780). Its team field is therefore the OLD owner:
+      // writing it into `owner` would hand the point back to nobody a full beacon cycle after we took it.
+      // It refreshes presence and records that the capture started from neutral; it announces nothing, and
+      // nothing ever waits for it — on an enemy-to-enemy capture it never arrives at all (n=2).
+      this.hill = { owner: prevOwner, at: now, from_neutral: true };
+      this._changed();
+      return;
+    }
+
+    // `mag=50` is an explicit capture word: it proves a change of hands by itself, whether or not we were
+    // watching the point beforehand. A plain `mag=8` whose owner differs from the one we knew is the SAME
+    // event seen late (we missed the capture word), so it announces too — but only while presence was
+    // still fresh. Once presence has expired we were not watching, and adopting an owner on walking back
+    // into range is not a capture: it is silent.
+    const announce = magnitude === HILL_CAPTURE_MAG ? prevOwner !== ownerTeam : (fresh && prevOwner != null && prevOwner !== ownerTeam);
+    this.hill = { owner: ownerTeam, at: now, from_neutral: magnitude === HILL_CAPTURE_MAG ? false : (prev ? !!prev.from_neutral : false) };
+    if (announce) {
+      const kind = this._hillCallout(prevOwner, ownerTeam);
+      if (kind && this._hillAudioOn()) this._hillSay(kind, magnitude === HILL_CAPTURE_MAG
+        ? `capture word (mag 50): team ${prevOwner == null ? '?' : prevOwner} -> ${ownerTeam}`
+        : `owner changed on a plain beacon (the mag-50 word never reached us): team ${prevOwner} -> ${ownerTeam}`);
+    }
+    this._changed();
+  }
+  /** Called from tick() (~250 ms): expire a stale point, then play the possession tick on OUR clock while
+   *  we hold a fresh one. This is the only place the tick fires from — a beacon arrives once per ~5 s and
+   *  could never carry a 1 s cadence, and driving audio per beacon is exactly what F74 forbids. */
+  _hillTick(now) {
+    const h = this.hill; if (!h) return;
+    if (now - h.at >= HILL_PRESENCE_MS) {   // >= 2 missed beacons: out of range or off the point. NOT a "lost" — nobody took it from us
+      this.hill = null; this._hillTickAt = 0;
+      this.log(`hill presence expired (${Math.round((now - h.at) / 1000)}s since its last beacon)`, 'li');
+      this._changed();
+      return;
+    }
+    if (!this._hillAudioOn() || !this._hillMine()) return;
+    if (now < this._hillBusyUntil) return;   // a callout owns the announcer for its own real length: the tick waits rather than playing under it
+    if (this._hillTickAt && now - this._hillTickAt < HILL_TICK_MS) return;
+    const cue = this._hillCue('hill_tick');
+    if (!cue.frame) return;
+    this._hillTickAt = now;
+    this._write([cue.frame], 'hill possession tick');
+  }
+
   // ---------- clock tick (call every ~250 ms) ----------
   tick() {
     const now = this.now();
@@ -1086,6 +1247,7 @@ export class Engine {
       this._reassertDeathBlink(now);   // A11.6: keep the headset out-blink lit through a long DOWN (colour opt-in only)
       this._downRearm(now);            // §3.2: one $HLOOP rearm after the hands-off window (belt-and-braces; the native flash is already running)
       this._gunReadoutTick(now);       // A16 §3.1: revert the gun-body readout to rest once its hold has run out
+      this._hillTick(now);             // the possession tick on OUR ~1 s clock, and the >= 2-missed-beacon presence expiry
       if (this.moment && now - this.moment.at > 4000) { this.moment = null; }
       // A swap the gun never confirmed with a shot: past the assumed window we TAKE the swap as done (the real
       // duration has never been timed — FOLLOWUPS F4; the next $ALCD corrects activeSlot if the gun disagrees).
@@ -1297,6 +1459,10 @@ export class Engine {
             if (!isDupe) {
               this.beacon = { owner_team: ownerTeam, magnitude: Number.isNaN(magnitude) ? null : magnitude, sensor: parseInt(t[1], 10), at: now };
               this._lastBeaconKey = key; this._lastBeaconAt = now;
+              // Hill state + its callouts run HERE, on the frame that proves the change and in the same
+              // handler — never on a timer poll, and never waiting for a second word (see `_onHillBeacon`).
+              // Inside the dedupe so one transmission heard on two sensors cannot announce or tick twice.
+              this._onHillBeacon(ownerTeam, magnitude, now);
             }
           }
           break;
@@ -1777,6 +1943,9 @@ export class Engine {
       // F72: the most recent grenade/station beacon (proto-15 $HIR) — owner team + magnitude (8 hill, 6 respawn),
       // null once nobody has reported one this life. Not `station` above: that is BLE advert presence, this is IR.
       beacon: this.beacon || null,
+      // The control point as the hill logic reads it: {owner (2 = neutral), at, from_neutral}, null once
+      // presence has expired (>= 2 missed beacons). Derived from `beacon` above, not a second source.
+      hill: this.hill || null,
       tMinusMs: this.phase === 'armed' && this.goLiveT ? Math.max(0, this.goLiveT - now) : null,
       clockMs: this.endT ? Math.max(0, this.endT - now) : (this.timeLimitMs || 0),
       ready: !!this.ready, tutorial: this.tutorial, tutorialWeapon: this.tutorialWeapon,

@@ -129,6 +129,261 @@ test('F85: an identical beacon repeated at the normal ~5 s cadence is not swallo
   assert.equal(h.eng.state().beacon.at, 705000, 'a 5 s-later repeat must update the beacon, not be dropped as a dupe');
 });
 
+// ---------- King of the Hill audio (F70/F72/F74/F75/F82/F84/F85) ----------
+// Every frame sequence below is copied from a real BLE capture in docs/experiment-log/2026-09.md,
+// 2026-09-10 (evening): the neutral->blue capture that carries mag=53, and the blue->red
+// enemy-to-enemy capture that does not. The harness player is BLUE (tid 1); RED (tid 0) is the enemy
+// and tid 2 is NEUTRAL -- deliberately never used as a team here, which is F82's rule.
+const HILL_TICK_F = '$PLAY,U100,4,6,,,,,*';       // U100, 0.114 s
+const HILL_CAPTURED_F = '$PLAY,,4,6,VB0N,,,,*';   // VB0N "Hill Captured", 1.924 s
+const HILL_LOST_F = '$PLAY,,4,6,VB0P,,,,*';       // VB0P "Hill Lost!", 2.976 s
+const HILL_CONTESTED_F = '$PLAY,,4,6,VB0O,,,,*';  // VB0O "Hill Contested", 2.078 s
+const nWrites = (h, f) => h.writes.filter(x => x === f).length;
+/** Advance the clock in ~250 ms steps, ticking the engine like the app does. */
+function run(h, ms, step = 250) { const n = Math.round(ms / step); for (let i = 0; i < n; i++) { h.adv(step); h.eng.tick(); } }
+function koth() { const h = harness({ mode: 'koth' }).kit().config_().echo().start(0); h.adv(10); h.eng.tick(); return h; }
+
+test('hill: the possession tick plays once a second while MY team holds a fresh point', () => {
+  const h = koth();
+  h.frame('$HIR,4,15,0,1,8,0,0,*');            // blue (us) holds it
+  run(h, 3000);
+  // The first poll after the beacon ticks (+250 ms), then +1250 and +2250: three ticks in three seconds,
+  // on the node's clock. One beacon arrived; a per-beacon design would have played exactly one.
+  assert.equal(nWrites(h, HILL_TICK_F), 3, 'one tick per second, on the node clock — not one per 5 s beacon');
+  assert.equal(h.eng.state().hill.owner, 1);
+});
+
+test('hill CONTROL: no possession tick while an ENEMY holds the point (and the positive half proves the tick is alive)', () => {
+  const h = koth();
+  h.frame('$HIR,4,15,0,0,8,0,0,*');            // red holds it -- we are standing in it, it is beaconing at us
+  run(h, 3000);
+  assert.equal(nWrites(h, HILL_TICK_F), 0, 'the tick is possession, not proximity — an enemy point is silent');
+  // The half that makes the above falsifiable: take the point on the same engine and the tick must start.
+  // Without it "0 ticks" is also what a phone that plays no hill audio at all reports.
+  h.frame('$HIR,4,15,0,1,50,0,0,*');
+  run(h, 3000);
+  assert.ok(nWrites(h, HILL_TICK_F) >= 1, 'the same engine DOES tick once we own it — so the 0 above is the gate, not a dead engine');
+});
+
+test('hill CONTROL: no possession tick while the point is NEUTRAL (team 2)', () => {
+  const h = koth();
+  h.frame('$HIR,4,15,0,2,8,0,0,*');            // neutral broadcasts team 2
+  run(h, 3000);
+  assert.equal(nWrites(h, HILL_TICK_F), 0);
+  assert.equal(h.eng.state().hill.owner, 2, 'the neutral owner is still tracked, it just does not tick');
+});
+
+test('hill: a mag=50 capture for my team announces Hill Captured on the frame that proves it, with no tick and no second word', () => {
+  // Bench 2026-09-10, verbatim: the capture word landed 50 ms after the shot; mag=53 came 5 s LATER.
+  const h = koth();
+  h.frame('$HIR,4,15,0,2,8,0,0,*');            // t=41770: last neutral beacon
+  const before = h.writes.length;
+  h.adv(50);
+  h.frame('$HIR,4,15,0,1,50,0,0,*');           // t=41820: mag 50, new owner = team 1 (us)
+  assert.deepEqual(h.writes.slice(before), [HILL_CAPTURED_F], 'the callout must go out inside the frame handler — no engine tick has run yet');
+  assert.equal(nWrites(h, HILL_LOST_F), 0);
+});
+
+test('hill: the SAME mag=50 frame says Hill Lost to the team that just lost it', () => {
+  // Bench 2026-09-10: t=291755 blue holds; t=292265 $HIR,4,15,0,0,50,0,0 -- red takes it. We are blue.
+  const h = koth();
+  h.frame('$HIR,4,15,0,1,8,0,0,*');
+  run(h, 500);                                  // we are holding it, so it is ticking
+  const before = h.writes.length;
+  h.frame('$HIR,4,15,0,0,50,0,0,*');            // red captures
+  assert.deepEqual(h.writes.slice(before), [HILL_LOST_F], 'one wire event, the other team\'s audio');
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 0);
+  const ticks = nWrites(h, HILL_TICK_F);
+  run(h, 3000);
+  assert.equal(nWrites(h, HILL_TICK_F), ticks, 'and the tick stops dead: we no longer hold it');
+});
+
+test('hill CONTROL: a callout SUPPRESSES the possession tick for its own real length, then the tick resumes', () => {
+  const h = koth();
+  h.frame('$HIR,4,15,0,2,8,0,0,*');
+  run(h, 1000);
+  assert.equal(nWrites(h, HILL_TICK_F), 0, 'neutral: nothing ticking yet');
+  h.frame('$HIR,4,15,0,1,50,0,0,*');            // we capture it: VB0N is 1.924 s long
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 1);
+  run(h, 1750);                                 // seven polls inside the clip
+  assert.equal(nWrites(h, HILL_TICK_F), 0, 'the 0.11 s tick must not play under a 1.92 s callout');
+  run(h, 500);                                  // now past 1.924 s
+  assert.equal(nWrites(h, HILL_TICK_F), 1, 'the tick resumes the moment the callout has actually finished');
+  run(h, 1000);
+  assert.equal(nWrites(h, HILL_TICK_F), 2, 'and then keeps its 1 s cadence');
+});
+
+test('hill: two callouts never overlap — the later one preempts the line still playing', () => {
+  const h = koth();
+  h.frame('$HIR,4,15,0,2,8,0,0,*');
+  h.frame('$HIR,4,15,0,1,50,0,0,*');            // we take it (VB0N, 1.924 s)
+  h.adv(500); h.eng.tick();
+  h.frame('$HIR,4,15,0,0,50,0,0,*');            // red takes it back 0.5 s later, inside the clip
+  assert.deepEqual(h.writes.slice(-2), ['$PLAYX,0,*', HILL_LOST_F],
+    'the stale line is stopped in the same write — the newest word about the point is the true one');
+});
+
+test('hill CONTROL: a callout well clear of the previous one does NOT preempt', () => {
+  const h = koth();
+  h.frame('$HIR,4,15,0,2,8,0,0,*');
+  h.frame('$HIR,4,15,0,1,50,0,0,*');            // VB0N, 1.924 s
+  run(h, 2500);
+  const before = h.writes.length;
+  h.frame('$HIR,4,15,0,0,50,0,0,*');
+  assert.deepEqual(h.writes.slice(before), [HILL_LOST_F], 'nothing to cut off, so no $PLAYX');
+});
+
+test('hill: presence survives ONE missed beacon and expires on two (>= 12 s)', () => {
+  // Rung R: the beacon is clean at desk range and goes intermittent at the edge of range, so a single
+  // miss is normal reception, not "left the hill".
+  const h = koth();
+  h.frame('$HIR,4,15,0,1,8,0,0,*');
+  run(h, 10000);                                // one beacon missed at +5 s
+  assert.ok(h.eng.state().hill, 'one missed beacon must not expire the point');
+  const ticks = nWrites(h, HILL_TICK_F);
+  assert.ok(ticks >= 10, `the tick keeps running through a single miss (got ${ticks})`);
+  run(h, 2500);                                 // now past 12 s with no beacon
+  assert.equal(h.eng.state().hill, null, 'two missed beacons expires presence');
+  const after = nWrites(h, HILL_TICK_F);
+  run(h, 3000);
+  assert.equal(nWrites(h, HILL_TICK_F), after, 'and the tick stops');
+  assert.equal(nWrites(h, HILL_LOST_F), 0, 'walking out of range is not losing the point — no callout');
+});
+
+test('hill CONTROL (F84): a respawn station beaconing every 2.5 s never refreshes a hill presence window', () => {
+  // magnitude 6 is a respawn station, not a point. Its period is SHORTER than the 12 s window, which is
+  // exactly the shape that has now bitten three times in one day (ATTRIB_FUSE_S, regen_delay_s).
+  const h = koth();
+  h.frame('$HIR,4,15,0,1,8,0,0,*');             // we hold a hill
+  for (let i = 0; i < 8; i++) { run(h, 2500); h.frame('$HIR,4,15,0,1,6,0,0,*'); }   // 20 s of station beacons
+  assert.equal(h.eng.state().hill, null, 'a station word must not keep a dead hill alive');
+});
+
+test('hill: the late mag=53 confirmation must never overwrite the new owner', () => {
+  // Bench 2026-09-10, verbatim: mag=50 (new owner, team 1) at t=41820, then mag=53 (the state LEFT --
+  // neutral, team 2) at t=46780, five seconds later. Reading its team field as the owner would hand the
+  // point back to nobody a whole beacon cycle after we took it, and the tick would stop.
+  const h = koth();
+  h.frame('$HIR,4,15,0,2,8,0,0,*');
+  h.adv(50); h.frame('$HIR,4,15,0,1,50,0,0,*');
+  run(h, 4960);
+  h.frame('$HIR,0,15,0,2,53,0,0,*');            // sensor 0, mag 53
+  h.frame('$HIR,4,15,0,1,8,0,0,*');             // same ms, sensor 4: the first hill beacon owned by us
+  assert.equal(h.eng.state().hill.owner, 1, 'still ours');
+  assert.equal(h.eng.state().hill.from_neutral, true, 'and we know it was taken from neutral');
+  const ticks = nWrites(h, HILL_TICK_F);
+  run(h, 3000);
+  assert.equal(nWrites(h, HILL_TICK_F), ticks + 3, 'the tick runs straight through the late confirmation');
+  assert.equal(nWrites(h, HILL_LOST_F), 0, 'and mag=53 announces nothing at all');
+});
+
+test('hill: an owner change on a plain mag=8 beacon announces (a missed capture word), but adopting one after presence expired is silent', () => {
+  const h = koth();
+  h.frame('$HIR,4,15,0,0,8,0,0,*');             // red holds it, we are watching
+  run(h, 5000);
+  h.frame('$HIR,4,15,0,1,8,0,0,*');             // it is ours now and we never saw the mag=50
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 1, 'the frame that proves the change announces it');
+  // now walk away long enough for presence to expire, and come back to an enemy-held point
+  run(h, 13000);
+  assert.equal(h.eng.state().hill, null);
+  const before = h.writes.length;
+  h.frame('$HIR,4,15,0,0,8,0,0,*');
+  assert.deepEqual(h.writes.slice(before), [], 'walking back into range is not a capture — adopt the owner silently');
+});
+
+test('hill (F75): "Contested" is never inferred from firing near an enemy-held point', () => {
+  // F75, four bench runs: a hit that does NOT capture emits nothing decodable -- only the ordinary mag=8
+  // beacon. Inferring it from "I fired + an enemy point is in range" cannot tell a hit from a miss, so
+  // shooting PAST the grenade would announce it falsely and suppress the tick for 2.078 s. Deliberately
+  // unimplemented; this test is the record of that decision, and fails if anyone wires a naive guess.
+  const h = koth();
+  h.frame('$HIR,4,15,0,0,8,0,0,*');             // red holds the point, we are standing in it
+  h.frame('$ALCD,32,100,0,384,0,*');
+  for (let i = 31; i > 26; i--) { h.frame(`$ALCD,${i},100,0,384,0,*`); h.adv(200); h.eng.tick(); }   // five rounds, no capture follows
+  run(h, 6000);
+  h.frame('$HIR,4,15,0,0,8,0,0,*');             // still red: nothing changed hands
+  run(h, 3000);
+  assert.equal(nWrites(h, HILL_CONTESTED_F), 0, 'no contested callout may be invented from a shot');
+  assert.equal(nWrites(h, HILL_TICK_F), 0);
+  // The control that makes those two zeros mean something: one more round DOES take the point, and the
+  // same engine announces it. So hill audio was live throughout and "no contested" is a decision.
+  h.frame('$HIR,4,15,0,1,50,0,0,*');
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 1, 'the same engine announces a capture — the silence above was deliberate, not broken');
+  assert.equal(nWrites(h, HILL_CONTESTED_F), 0, 'and still never VB0O');
+});
+
+test('hill: silent in Domination — several points are indistinguishable on the wire', () => {
+  const h = harness({ mode: 'domination' }).kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$HIR,4,15,0,1,8,0,0,*');
+  run(h, 3000);
+  h.frame('$HIR,4,15,0,0,50,0,0,*');
+  assert.equal(nWrites(h, HILL_TICK_F), 0);
+  assert.equal(nWrites(h, HILL_LOST_F), 0);
+  assert.ok(h.eng.state().hill, 'state is still tracked — only the audio is withheld');
+});
+
+test('hill: a bundle cue of "" (announcer off) mutes the callout and the tick, and the fallback must not override it', () => {
+  const h = harness({ mode: 'koth' }).kit();
+  h.eng.onMcMessage({ kind: 'config', body: { config: h.config, roster: h.roster,
+    frames: { ...h.bundle, cues: { ...h.bundle.cues, hill_captured: '', hill_tick: '' } } } });
+  h.echo(); h.start(0); h.adv(10); h.eng.tick();
+  h.frame('$HIR,4,15,0,2,8,0,0,*');
+  h.frame('$HIR,4,15,0,1,50,0,0,*');
+  run(h, 3000);
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 0, '"" is MC\'s deliberate mute, not a missing key');
+  assert.equal(nWrites(h, HILL_TICK_F), 0);
+  // The mute is PER KEY, which is also what makes the two zeros above falsifiable: `hill_lost` was left
+  // alone in this bundle, so losing the point must still announce on the very same engine.
+  h.frame('$HIR,4,15,0,0,50,0,0,*');
+  assert.equal(nWrites(h, HILL_LOST_F), 1, 'an unmuted key on the same engine still plays');
+});
+
+test('hill: nothing plays before go-live or while down', () => {
+  const h = harness({ mode: 'koth' }).kit().config_().echo().start(20000);   // armed, not live
+  h.frame('$HIR,4,15,0,1,8,0,0,*');
+  run(h, 3000);
+  assert.equal(nWrites(h, HILL_TICK_F), 0, 'armed is not live');
+  h.adv(17000); h.eng.tick();                   // T-0 -> live
+  h.frame('$HIR,4,15,0,1,8,0,0,*');
+  run(h, 2000);
+  assert.ok(nWrites(h, HILL_TICK_F) >= 2, 'live and holding: ticking');
+  const live = nWrites(h, HILL_TICK_F);
+  h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');   // killed
+  assert.equal(h.eng.alive, false);
+  h.frame('$HIR,4,15,0,1,8,0,0,*');
+  run(h, 3000);
+  assert.equal(nWrites(h, HILL_TICK_F), live, 'DOWN is hands-off: the death scream owns the announcer');
+});
+
+test('hill (F85): one transmission heard on two sensors does not double the tick or announce twice', () => {
+  const h = koth();
+  h.frame('$HIR,4,15,0,2,8,0,0,*');
+  h.adv(50); h.frame('$HIR,4,15,0,1,50,0,0,*');   // capture, gun body
+  h.adv(14); h.frame('$HIR,0,15,0,1,50,0,0,*');   // the SAME transmission on the headset sensor
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 1, 'one physical capture, one callout');
+  run(h, 3000);
+  assert.equal(nWrites(h, HILL_TICK_F), 2, 'and the tick keeps a 1 s cadence, not a doubled one');
+});
+
+test('hill (F82): a roster sitting on tid 2 never announces, because neutral IS team 2', () => {
+  const h = harness({ mode: 'koth' }).kit();
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, roster: h.roster,
+    team: { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 } } });
+  h.config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$HIR,4,15,0,2,8,0,0,*');             // is this OUR point or nobody's? undecidable
+  run(h, 3000);
+  h.frame('$HIR,4,15,0,0,50,0,0,*');
+  assert.equal(nWrites(h, HILL_TICK_F), 0);
+  assert.equal(nWrites(h, HILL_LOST_F), 0, 'silence beats a guess when ownership cannot be decided');
+  // The control: the IDENTICAL wire sequence on a tid-1 roster is loud. Otherwise "silent" is just what
+  // this suite would report for an engine with no hill audio in it at all.
+  const ok = harness({ mode: 'koth' }).kit().config_().echo().start(0); ok.adv(10); ok.eng.tick();
+  ok.frame('$HIR,4,15,0,1,8,0,0,*');            // tid 1 = us, unambiguously
+  run(ok, 3000);
+  ok.frame('$HIR,4,15,0,0,50,0,0,*');
+  assert.ok(nWrites(ok, HILL_TICK_F) >= 1 && nWrites(ok, HILL_LOST_F) === 1, 'the same frames on a decidable roster tick and announce');
+});
+
 test('Q12: shield-absorbed damage still emits hit_taken (drain order shield->armor->HP)', () => {
   // Bench 2026-08-27: $HP is <hp>,<armor>,<shield> and damage drains the shield first.
   // Before the fix the engine summed only hp+armor, so a shield-absorbed hit computed
