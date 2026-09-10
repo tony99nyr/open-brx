@@ -85,6 +85,29 @@ quick `$PING`, then drops within seconds and echoes nothing to config. After a g
 | `$PBGAME` `$PBTEAM` `$PBWEAP` `$PBPERK` `$PBLIVES` `$PBTIME` `$PBSPAWN` `$PBINDOOR` `$PBLOCK` `$PBSTART` | The "playbook" pre-battle family (community, fw v4.30) | Mirrors the on-gun menu; a second remote-start path: `$PBGAME,0` FFA · `$PBWEAP,0` M4 auto · `$PBPERK,2` Body Armor · `$PBLIVES,2` 5 lives · `$PBTIME,5` infinite, then `$PBSTART,*`. `$PBWEAP,0,*` produced a "game starting" sound on our v4.32; enum tables not reproduced on v4.32 |
 | `$AS,…,*` · `$UP,100,<n>,0,*` + `$UR,*` · `$RV` `$RP` `$UR` `$IT` `$KK` `$TA` `$PT` `$HS` `$PH` `$RR` `$PKC` `$HKC` `$KOTH` `$RADSK` `$INDOOR` `$#CONNECT` `$BRXSERVER` `$SSID` `$PASS` `$BRX` | LaserTagMods / community vocabulary | Seen in JEDGE sources or the v4.30 community capture; unmapped on v4.32 (`$AS` silent across seven shapes; bare `$UP,*` gets no reply; `$UP` with arguments is probably a write). Leads, not protocol |
 
+**⚠️ Canonical arm sequence — don't hand-roll this.** A partial one still spawns and shows HP/armor
+(looks armed) while the trigger fires nothing (2026-09-10 bench incident). Slot 0 is PRIMARY (what the
+trigger fires), slot 1 is SECONDARY.
+
+| # | Frame | Why | Omit it and… |
+|---|---|---|---|
+| 1 | `$CLEAR,*` | reset game state | stale config from a prior game may linger |
+| 2 | `$START,*` | enter config mode | later config frames aren't guaranteed to take |
+| 3 | `$GSET,…,*` | game rules (FF, crit, indoor/outdoor) | rules default to the last game's |
+| 4 | `$PSET,…,*` | HP/armor/shield + voice pack | pools/sounds default to the last game's |
+| 5 | `$WEAP,0,…,*` / `$WEAP,1,…,*` | load weapons — **0 = primary, 1 = secondary** | weapon in slot 1 only ⇒ trigger fires nothing (slot 0 is empty) |
+| 6 | `$SIR,…,*` ×10 | incoming-IR effect table | **must follow any `$CLEAR`** (F11) — a gun with no rows silently eats every hit while reporting healthy |
+| 7 | `$BMAP,…,*` ×7 | bind buttons to weapon slots | trigger gives the "disabled" chirp, or fires nothing |
+| 8 | `$TID,<team>,*` | team (0-3 only, see the `$TID` row) | wrong-team damage resolution |
+| 9 | `$SPAWN,,*` | **go live** — note the empty token; `$SPAWN,*` is a different command | gun never actually goes live: looks armed, trigger does nothing |
+| 10 | `$AMMO,0,…,*` / `$AMMO,1,…,*` | load magazines, **after** `$SPAWN,,*` | gun is live with an empty magazine — spawns and shows HP/armor, trigger fires nothing |
+| 11 | `$BMAP,0,0,,,,,*` | re-send after `$SPAWN` | app does this; matches the captured sequence |
+
+Build this with `gameconfig.arm_sequence(team, player_id, weapon, extra_sir=…)`
+(`mcp/brx_mcp/gameconfig.py`) instead of typing it by hand — it reuses the same wire tables the CLI and
+MC compiler use, in this order, and `assert_arm_sequence_complete()` raises before you send a bundle
+that's missing `$START`, any `$AMMO`, any `$BMAP`, the correct `$SPAWN,,*` form, or a slot-0 weapon.
+
 ### 3.2 In-game effects, feedback and pools
 
 | Command | Purpose | Notes |

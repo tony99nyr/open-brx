@@ -44,6 +44,22 @@ wins" — that predicts ONE registration; we measured three per shot. Close rang
 removes the reflections without costing reliability. And note the operator was stationary throughout — this is
 geometry, not aim, so "move the gun" is not the fix, "move it BACK" is.
 
+## 🔴 A GUN THAT LOOKS ARMED BUT WON'T FIRE — a partial arm sequence (2026-09-10)
+
+**Symptom:** the gun spawns, shows HP and armour, everything LOOKS armed — and the trigger fires nothing.
+
+**Cause:** a hand-rolled arm sequence, missing one of three things that all produce this exact symptom:
+no `$AMMO` after `$SPAWN,,*` (gun is live with an empty magazine), no `$BMAP` (no button is bound to a
+weapon slot), or `$SPAWN,*` instead of `$SPAWN,,*` (the empty token matters — it's a different command).
+A fourth mistake gives the same symptom: the weapon loaded into `$WEAP,1` (secondary) with no `$WEAP,0`
+(primary) — slot 0 is what the trigger fires.
+
+**Fix:** don't hand-roll it. Build the sequence with `gameconfig.arm_sequence(team, player_id, weapon,
+extra_sir=…)` (`mcp/brx_mcp/gameconfig.py`) — it reuses the same tested wire tables the CLI and MC
+compiler use (`WEAPON_TAILS`, `_SIR_TABLE`, `_BMAP`) in the correct order, and
+`assert_arm_sequence_complete()` raises before you send a bundle missing any of the four things above.
+See the canonical sequence table in `protocol/brx-protocol.md` §3.1 if you must build one by hand.
+
 ## Before a bench session (pre-flight)
 
 Four checks, in order, every time. Two of them would each have saved hours in the sessions that

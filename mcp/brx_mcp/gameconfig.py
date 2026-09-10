@@ -187,6 +187,77 @@ def assert_sir_follows_clear(frames) -> None:
         )
 
 
+def assert_arm_sequence_complete(frames) -> None:
+    """Raise if a frame bundle is a PARTIAL arm — one that leaves the gun looking live while the
+    trigger does nothing. Every check here exists because it bit a bench session for real:
+
+    2026-09-10 -- a hand-rolled `$CLEAR/$START/$GSET/$PSET/$TID/$SIR.../$WEAP/$SPAWN` sequence
+    spawned a gun that showed HP and armour and LOOKED armed, and the trigger fired nothing. Three
+    separate omissions each independently produce that exact symptom (no `$AMMO`, no `$BMAP`, and
+    `$SPAWN,*` instead of `$SPAWN,,*`), plus a fourth mistake (loading the weapon into slot 1
+    instead of slot 0) that produces it too. Use `arm_sequence()` to build a bundle that cannot have
+    any of these — this function is the belt-and-suspenders check for a hand-built one.
+
+    Checks PRESENCE, not order (order is `arm_sequence()`'s job, backed by
+    `docs/spec/contracts.md`'s documented head: `$VOL -> $CLEAR -> $START -> $GSET -> $PSET ->
+    $WEAP*n -> $SIR*n -> $BMAP*n -> LED -> $TID`).
+    """
+    frames = list(frames)
+
+    if not any(f.startswith("$START") for f in frames):
+        raise ValueError(
+            "ARM SEQUENCE INCOMPLETE: no $START frame. Protocol: '$START,* Begin the "
+            "configuration sequence' -- without it the $GSET/$PSET/$WEAP/$SIR/$BMAP frames that "
+            "follow are not guaranteed to take. Bench symptom: the config sends without error, "
+            "but the gun keeps whatever it already had configured. Send $START,* before them."
+        )
+
+    if not any(f.startswith("$AMMO,") for f in frames):
+        raise ValueError(
+            "ARM SEQUENCE INCOMPLETE: no $AMMO frame. Protocol: $AMMO 'must follow $SPAWN,,* at "
+            "initial go-live or the gun is live with no ammunition'. BENCH SYMPTOM: the gun "
+            "spawns, shows HP and armour, and looks armed -- but $ALCD reads magazine 0 and the "
+            "trigger fires nothing. Send $AMMO,0,... (primary) and $AMMO,1,... (secondary) after "
+            "$SPAWN,,*."
+        )
+
+    if not any(f.startswith("$BMAP,") for f in frames):
+        raise ValueError(
+            "ARM SEQUENCE INCOMPLETE: no $BMAP frame. Protocol: $BMAP is 'mandatory, sent before "
+            "and again after $SPAWN: without it the trigger only chirps \"disabled\"'. BENCH "
+            "SYMPTOM: the gun spawns, shows HP and armour, and looks armed -- but pulling the "
+            "trigger fires nothing, because no button is bound to a weapon slot. Send the full "
+            "$BMAP table, and $BMAP,0,0,,,,,* again after $SPAWN,,*."
+        )
+
+    if not any(f == "$SPAWN,,*" for f in frames):
+        if any(f.startswith("$SPAWN") for f in frames):
+            raise ValueError(
+                "ARM SEQUENCE INCOMPLETE: found a $SPAWN frame that is not exactly \"$SPAWN,,*\" "
+                "(the empty token matters -- protocol: '$SPAWN,,* (one empty token) is a "
+                "different command from $SPAWN,*'). BENCH SYMPTOM: the gun spawns, shows HP and "
+                "armour, and looks armed -- but the trigger fires nothing, because the frame the "
+                "gun actually parsed was never the go-live command. Use $SPAWN,,* exactly, with "
+                "the empty middle token."
+            )
+        raise ValueError(
+            "ARM SEQUENCE INCOMPLETE: no $SPAWN,,* frame at all. Nothing takes the gun live -- "
+            "HP/armour/ammo never apply and the config frames sit unused. Send $SPAWN,,* (note "
+            "the empty token) after the config head."
+        )
+
+    has_primary = any(f.startswith("$WEAP,0,") for f in frames)
+    has_secondary = any(f.startswith("$WEAP,1,") for f in frames)
+    if has_secondary and not has_primary:
+        raise ValueError(
+            "ARM SEQUENCE INCOMPLETE: only $WEAP,1 (secondary) is configured -- no $WEAP,0 "
+            "(primary). Slot 0 is PRIMARY, slot 1 is SECONDARY, and the trigger ($BMAP,0,0) "
+            "fires whatever is loaded in slot 0. BENCH SYMPTOM: the gun spawns, shows HP and "
+            "armour, and looks armed -- but the trigger fires nothing, because slot 0 was never "
+            "loaded. Send $WEAP,0,<tail> too (or put the weapon you want to fire in slot 0)."
+        )
+
+
 MIN_RESPAWN_S = 3
 
 RESPAWN_SEQUENCE = ("$HLOOP,0,0,*", "$SPAWN,,*")
@@ -462,3 +533,39 @@ _CLASSES: dict[str, dict] = {
     "scout":     {"primary": "primary", "secondary": "secondary", "hp": 35, "armor": 50},
     "guardian":  {"primary": "primary", "secondary": "secondary", "hp": 75, "armor": 125},
 }
+
+
+def arm_sequence(team: int, player_id: int, weapon: str = "primary",
+                  secondary: str = "secondary", *,
+                  extra_sir: tuple[str, ...] = (), **cfg_kwargs) -> list[str]:
+    """Build ONE complete, correct arm sequence for a single gun, for bench use.
+
+    This exists so a bench operator never hand-rolls a `$CLEAR/$START/.../$SPAWN` sequence again
+    (2026-09-10: a hand-rolled one omitted `$AMMO`, `$BMAP`, and used `$SPAWN,*` instead of
+    `$SPAWN,,*` -- the gun spawned, showed HP and armour, looked armed, and the trigger fired
+    nothing on all three). It builds on `GameConfig`'s own frame builders -- `setup_frames()` and
+    `spawn_frames()` -- so the wire tables live in exactly one place (`WEAPON_TAILS`, `WEAPON_AMMO`,
+    `_SIR_TABLE`, `_BMAP`); nothing here is a second copy of them.
+
+    `team`: `$TID` (0-3 only -- see the F35 note on `$TID` in protocol/brx-protocol.md; 4+ makes
+    teammates damage each other and can make a gun hit itself). `player_id`: the wire id for `$PSET`
+    (0-63, protocol §7p). `weapon`/`secondary`: `WEAPON_TAILS` keys for slot 0 / slot 1 -- slot 0 is
+    PRIMARY (what the trigger fires), slot 1 is SECONDARY. `extra_sir`: additional `$SIR` rows for a
+    one-off bench probe (e.g. a grenade beacon row), appended after the standard 10-row table.
+    `cfg_kwargs`: any other `GameConfig` field (volume, outdoor, hp, armor, ...).
+
+    Frame order matches `modes/driver.py`'s live arm path: `setup_frames()` (config head, weapons,
+    $SIR table, $BMAP, LEDs) -> `$TID` -> `spawn_frames()` ($SPAWN,,* + loadout-correct $AMMO +
+    $BMAP,0,0 again). Validated with `assert_arm_sequence_complete()` before it is returned, so a
+    bug here fails loudly at build time instead of silently at the bench.
+    """
+    cfg = GameConfig(primary=weapon, secondary=secondary, **cfg_kwargs)
+    frames = list(cfg.setup_frames(player_id))
+    if extra_sir:
+        sir_idx = [i for i, f in enumerate(frames) if f.startswith("$SIR,")]
+        insert_at = (sir_idx[-1] + 1) if sir_idx else len(frames)
+        frames[insert_at:insert_at] = list(extra_sir)
+    frames.append(f"$TID,{int(team)},*")
+    frames += cfg.spawn_frames()
+    assert_arm_sequence_complete(frames)
+    return frames
