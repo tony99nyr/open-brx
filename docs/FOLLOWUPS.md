@@ -757,6 +757,14 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   24, 25, 26, 27, 28, 35 and ally 31, 32, 34 — and **only fn 24 has ever been tried**. If one of the other eight
   is quiet, King of the Hill is playable; if none is, every control-point mode ships with a buzzer. Run it as
   bench 1.5 (`ally_remeasure.py` for the keyboard half first) and report per fn what you HEAR, SEE and FEEL.
+  ⚠️ **METHOD, learned the hard way 2026-09-10: put ~3 ft between emitter and gun, and CHECK THE `$HIR` PROTOCOL
+  FIELD ON EVERY TRIAL.** A first attempt at a few inches was worthless: multipath made each emission register up
+  to THREE times on different sensors, with copies decoding as protocol 0 instead of the protocol under test — so
+  the operator heard several sounds per shot and some were plain damage from the wrong `$SIR` row (one took 20
+  armour off in a test meant to move no pools). A sensory reading counts only for a trial whose `$HIR` shows the
+  intended protocol exactly once. See `gotchas.md`. **Survives from that attempt: fn 8 registered SILENTLY**
+  (vibration + headset flash + muzzle flash, no sound) — re-confirm at distance, because if it holds, fn 8 is the
+  row to ship on protocol 15.
   ⚠ Also settle the polarity: fn 24 is enemy-only, so a gun registers only hills it does NOT own — a holder
   needs an ally-side function or `$GSET` t1=1. `trigger` + `ears`.
 - **F72 🟠 The phone throws away every grenade/station beacon.** `app/src/engine.js:1272` opens the `$HIR`
