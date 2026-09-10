@@ -6,9 +6,10 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F86 · G11 · H7 ·
-K7 · P18 · Q20 · R3 · S18.** (2026-09-10 evening: F83/F84/F85 taken — rotating-hill mode idea, the "constant wider
-than the hill's period" generalisation, and the double-`$HIR`-per-beacon dedupe finding.) (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F87 · G11 · H7 ·
+K7 · P18 · Q20 · R3 · S18.** (2026-09-10 evening: F83/F84/F85/F86 taken — rotating-hill mode idea, the "constant
+wider than the hill's period" generalisation, the double-`$HIR`-per-beacon dedupe finding (F85, closed same
+session), and the team-change-leaves-old-LED-colour finding.) (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
 **Blocked on:** `trigger` · `eyes` · `ears` · `space` · `grenade` · `capture` · `decision` · `build`.
@@ -852,6 +853,23 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   same sensor pair as bench) collapses to one beacon; the same-millisecond capture pair (mag 53 → mag 8,
   different owner) yields two distinct beacon updates, the regression guard against the time-only fix; a
   normal 5.0 s repeat is not swallowed. `build`.
+- **F86 🟠 A LIVE `$TID` WRITE MOVES A PLAYER'S TEAM FOR HIT RESOLUTION BUT LEAVES THE LEDS ON THE OLD COLOUR.**
+  Bench 2026-09-10 evening. The operator's gun was switched `$TID,1` -> `$TID,0` mid-session; the very next
+  shot captured an enemy-held hill for team 0 (the firmware had genuinely moved him — consistent with the
+  documented `$TID` behaviour in `protocol/brx-protocol.md`, "a live write changes hit resolution immediately
+  but does not repaint the LEDs"), while **the gun LEDs still showed the previous team's colour**. Operator's
+  words: *"the gun leds dont show me as red, but i shot the grenade and it switched to red."* The protocol row
+  is correct and needs no change — this is the missing CONSEQUENCE for modes, not a protocol bug. A player can
+  be on one team for damage/objective purposes and display as ANOTHER team to themselves and to everyone
+  looking at them, which is a live gameplay hazard, not cosmetic: teammates read each other by LED colour in
+  the field. **`docs/led-language.md` does not cover this today** — no mention of `$TID`, team change or a
+  repaint requirement anywhere in it, checked 2026-09-10. **Fix: any mode that changes a player's team
+  mid-match must repaint explicitly after the `$TID` write** — the blank-then-paint sequence (`$GLED,,,,5,,,*`
+  then `$GLED,<colour>,<colour>,<colour>,0,10,,*`, plus `$HLED`), since a painted colour does not hold on a
+  spawned gun without the blank first (`protocol/brx-protocol.md`). `$SPAWN` also repaints from `$TID`, but it
+  is not a free fix — it restores ammo and re-enables the firmware's native breathing animation as a side
+  effect. **Modes affected: infection** (the single most likely place for this to bite — players change team
+  ON infection), any host-driven team swap, and team-based objective modes generally. `build`.
 - **F77 🟠 A REPLAYED HIT IS INDISTINGUISHABLE FROM A REAL ONE, AND BOTH SCORE.** F74's phantom loop
   (a gun replaying `$HIR`+`$HP` every 5.07 s with no IR in the air) reaches the scoring path unchallenged:
   `engine.js:1514` gates `hit_taken` only on `latch.at` being under 1 s old and `dmg > 0`, and

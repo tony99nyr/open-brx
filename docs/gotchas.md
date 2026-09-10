@@ -60,6 +60,25 @@ compiler use (`WEAPON_TAILS`, `_SIR_TABLE`, `_BMAP`) in the correct order, and
 `assert_arm_sequence_complete()` raises before you send a bundle missing any of the four things above.
 See the canonical sequence table in `protocol/brx-protocol.md` §3.1 if you must build one by hand.
 
+## 🟡 A PLAYER SHOWS THE WRONG TEAM COLOUR AFTER A LIVE TEAM SWITCH — the LEDs did not move with `$TID` (2026-09-10)
+
+**Symptom:** a player's team was changed mid-match (infection, a host-driven swap, any team-based objective
+mode) and their gun/headset LEDs still show the OLD team's colour, even though hit resolution has already
+moved — they can capture an enemy point or take friendly fire as the NEW team while looking like the old one.
+Reads as "the LEDs are broken." Operator's words, verbatim: *"the gun leds dont show me as red, but i shot the
+grenade and it switched to red."*
+
+**Cause:** working as documented, not a bug. A live `$TID` write changes hit resolution immediately but does
+**not** repaint the LEDs (`protocol/brx-protocol.md`) — confirmed 2026-09-10, `$TID,1` -> `$TID,0` mid-session,
+next shot captured an enemy hill for the new team while the LEDs held the old colour. `docs/led-language.md`
+does not specify a repaint on team change as of this writing.
+
+**Fix:** any mode that changes a player's team mid-match must repaint explicitly right after the `$TID` write
+— blank first (`$GLED,,,,5,,,*`), then paint (`$GLED,<colour>,<colour>,<colour>,0,10,,*`, plus `$HLED`); a
+painted colour does not hold on a spawned gun without the blank first. `$SPAWN` also repaints from `$TID` but
+is not a free substitute — it restores ammo and re-enables the firmware's native breathing animation as a side
+effect. Filed as **F86**.
+
 ## Before a bench session (pre-flight)
 
 Four checks, in order, every time. Two of them would each have saved hours in the sessions that
