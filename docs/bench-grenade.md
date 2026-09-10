@@ -35,10 +35,11 @@ Ordered by value per bench-minute. **A-C need one gun; D needs two; E is receive
 
 **A. ✅ DONE 2026-09-10 — capture is CHARGE, any weapon can take a point.** One AR round claimed a neutral
 hill; an AR magazine retook that owned hill inside its first 13 rounds, no extra-headset emission involved. The
-"only three weapons can capture" worry is dead, and a rifleman can play the objective. ⚠ **Left open: the
-exchange rate** — 13 rounds is an upper bound, not a measurement, because beacons only arrive every ~5 s. To
-tune contest difficulty a mode needs charge-per-magnitude and the max: fire *n* rounds, WAIT for a beacon,
-repeat, against hills seeded with known charge.
+"only three weapons can capture" worry is dead, and a rifleman can play the objective. ✅ **And the exchange rate is 1:1 and LINEAR** (one-round-then-wait,
+from power-cycled neutral, counts confirmed by `$ALCD`): seeded 1 round → retaken with 1; seeded 5 → retaken
+with 5. Charge accumulates and costs exactly what was invested. ⚠ **Still open: rounds vs MAGNITUDE** — both
+sides fired mag 9, while the shotgun's one `mag=70` word suggests magnitude is the real currency. **5 min:** seed
+5 AR rounds (45), contest with ONE shotgun word (70). Also unmeasured: the max charge.
 
 **B. The missing hill words (15 min, receiver only, then one gun)**
 Respawn has three words: boot (`mag=56`, announces the station and ARMS guns pre-game), beacon (`mag=6`), and

@@ -716,10 +716,17 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   could never explain. Last night's shotgun-vs-AR result was never evidence for a headset word: one shotgun word
   is 70 of charge against four AR rounds at 36, so it simply out-charged it. Two variables differed and I picked
   the wrong one, for the third time in one session.
-  ⚠ **Still unmeasured: the EXCHANGE RATE.** 13 rounds is an upper bound, not a measurement — beacons arrive only
-  every ~5 s and he was firing faster. Open questions: how much charge a magnitude buys, whether a fully-charged
-  hill costs proportionally more to flip, and what the max charge is. Probe: fire *n* rounds, WAIT for a beacon,
-  repeat, against hills seeded with known charge. Needed only if a mode wants to tune contest difficulty.
+  ✅ **THE EXCHANGE RATE IS 1:1 AND LINEAR (2026-09-10, one-round-then-wait protocol).** Against hills seeded from
+  a power-cycled neutral with a known number of AR rounds, contested one round at a time with a beacon read
+  between each: **seeded 1 → retaken with 1; seeded 5 → retaken with 5** (both counts confirmed on the wire by
+  `$ALCD`, 32→31 and 32→27). Charge ACCUMULATES and costs the attacker exactly what the defender invested. That
+  is a self-tuning objective: a lightly-touched point flips instantly, a defended one is genuinely expensive, and
+  **a mode needs no host rules to make holding a point meaningful**.
+  ⚠ **Open: is the currency ROUNDS or MAGNITUDE?** Both sides fired `mag=9` throughout, so this measured rounds
+  at EQUAL magnitude. The shotgun evidence points at magnitude (one `mag=70` word took a hill four `mag=9` rounds
+  could not), which would make heavy weapons better at capturing — a real balance lever. **Probe (5 min):** seed
+  with 5 AR rounds (45), then contest with ONE shotgun word (70). Flips ⇒ magnitude is the currency. Also still
+  unmeasured: the max charge (does a hill cap, and how long does a full one take to build?).
   **Original entry:** Bench 2026-09-10, and it
   answers `bench-grenade.md` Q3 ("does a spawned gun in one of our games surface grenade beacons if we give it a
   `$SIR` row for protocol 15?") **YES** -- adding `$SIR,15,0,,24,0,0,1,,*` made the hill beacons appear
