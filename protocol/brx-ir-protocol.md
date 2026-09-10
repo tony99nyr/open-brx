@@ -73,6 +73,17 @@ fire a capture callout at the moment it happens instead of up to 5 s later.
 ⚠️ **Capture PROGRESS is not on the wire.** No charge value has ever been observed; the beacon carries owner and
 mode only. Progress lives inside the grenade, so a hosted mode learns the discrete transition and **cannot draw a
 capture bar**. Design around the event, not a percentage.
+**Why the capture words only ever decode as STITCHED frames** (Tony, 2026-09-10): the grenade replies
+essentially instantaneously, so its words overlap the SHOOTER's word in the air. The burst the receiver splits
+literally contains all three — `word1/3` the gun's shot, `word2/3` `mag=53`, `word3/3` `mag=50`. The beacon, which
+is alone in the air, decodes whole 57 times across the same sessions. **This makes the capture-word evidence
+stronger, not weaker**: overlapping bursts do not reproduce byte-identical patterns across three independent
+captures by chance. ⚠ It also means better decode quality cannot fix it — no receiver separates two transmitters
+firing at once. **The fix is geometry: put the receiver where it sees the GRENADE but not the SHOOTER** (behind
+the grenade, or with the gun firing across rather than toward the board) so the reply arrives alone. Worth doing
+before trusting any capture-triggered callout, and worth doing anyway: a word that only ever occurs inside a
+shot's burst would have been invisible to every capture so far (see F75).
+
 ⚠ **`mag=50` is confirmed for a TEAM-TO-TEAM takeover too**: a blue-held hill retaken by red emitted
 `proto=15 team=0 mag=50` with no `53` beside it. So `50` announces the incoming owner whatever it took over from.
 **`mag=53` is less clear**: it appeared in all three neutral→team captures and not in the team→team one — but

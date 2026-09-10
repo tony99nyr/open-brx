@@ -41,6 +41,14 @@ with 5. Charge accumulates and costs exactly what was invested. ✅ **And the cu
 shell (70) retook a hill seeded with five AR rounds (45), `$ALCD` 6→5. So a weapon's capture power equals its
 damage. ⚠ Only the max charge is still unmeasured (does a hill cap, and how long does a full one take to build?).
 
+**B0. Put the receiver where it sees the GRENADE but not the SHOOTER (do this first, it is free).**
+The grenade replies to a shot instantaneously, so its capture words always overlap the gun's word and the
+receiver only ever gets a stitched burst (`word1/3` the shot, `word2/3` `mag=53`, `word3/3` `mag=50`). Better
+decoding cannot fix two transmitters firing at once — geometry can. Put board A behind the grenade, or have the
+shooter fire across the receiver's view rather than into it. Then every grenade reply arrives alone and decodes
+whole. ⚠ Any word that only ever occurs INSIDE a shot's burst has been invisible to every capture so far, which
+is exactly where a "hit but not captured" signal would hide (F75).
+
 **B. The missing hill words (15 min, receiver only, then one gun)**
 Respawn has three words: boot (`mag=56`, announces the station and ARMS guns pre-game), beacon (`mag=6`), and
 button (beacon + crit bit, arms mid-game). **Only the hill BEACON is captured.** Capture on power-up (the boot
