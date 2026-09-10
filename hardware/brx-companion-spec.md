@@ -126,7 +126,7 @@ Each is a small command sequence the Companion sends over BLE. This is the payof
 | **Extra life / auto-respawn** | on `$HP,0` → wait respawn timer → `$SPAWN,,*` + `$AMMO` reload |
 | **Faster rate of fire** | re-push `$WEAP` for the active slot with a lower fire interval (WEAP tok 14, bench-proven; tok 15 is the swap delay) |
 | **Damage boost** | re-push `$WEAP` with higher `primaryDamage` (WEAP tok 5) |
-| **Overshield / heal** | `$LIFE,addedHP,addedArmor,addedShields,*` or `$BUMP` current pools |
+| **Overshield / heal** | `$LIFE,addedHP,addedArmor,addedShields,*` (⚠ **not `$BUMP`** — inert on v4.32, F65). `$LIFE` also takes NEGATIVES, which is what makes damage-over-time possible (S16) |
 | **Infinite / refilled ammo** | `$AMMO,<slot>,<clip>,<reserve>,1,*` on demand |
 | **Loadout swap** | push a different `$WEAP` into a slot mid-game |
 | **Handicap / juggernaut** | per-player `$PSET` max HP/shields at spawn |

@@ -265,8 +265,11 @@ A bare **`$WEAP` re-push RESETS mag/reserve to the frame's baked-in values.** Ev
 **"I set health and nothing happened."**
 ⚠️ **CORRECTED 2026-09-09 (bench):** `$LIFE` is additive and clamped at max, **it DOES self-emit `$HP`**, and
 it **accepts NEGATIVES and drains** (per pool, floors at 0, no spill). **`$BUMP` is INERT** in both directions —
-use `$LIFE`. A `$LIFE` that empties a pool really kills the gun but emits `$LCD,0,0,0,0,…` and **never
-`$HP,0,0,0`**, so anything booking a death from `$HP,0` alone is blind to it (F64).
+use `$LIFE`. A `$LIFE` that empties a pool really kills the gun but announces it with `$LCD,0,0,0,0,…` and **never
+`$HP,0,0,0`** — the frame shape swaps on a lethal host write. ✅ **Our stack handles that**: `engine.js`'s
+`case 'LCD'` books a death at `hp === 0` and `stage.py` routes `$LCD` through the same `_on_pools` (F64 was
+filed claiming otherwise and is closed as WRONG). The residual is narrower: the `$LCD` path skips `_onHp`, so
+such a kill carries no `hit_taken` fact and no attribution — S16's problem, not the bench's.
 
 **"`$SPAWN` cleared the effect, so I'll use it as a reset."**
 It also **restores health**. It is not a clean "clear one thing" tool.

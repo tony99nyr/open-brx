@@ -726,6 +726,18 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   **Process note:** `reference/grenade.md` documented the charge mechanic and was not read before concluding.
   The house rule is to read the reference layer first; this is the second time in one session that skipping it
   produced an overreach.
+  **Original entry:** Bench 2026-09-10, and it
+  answers `bench-grenade.md` Q3 ("does a spawned gun in one of our games surface grenade beacons if we give it a
+  `$SIR` row for protocol 15?") **YES** -- adding `$SIR,15,0,,24,0,0,1,,*` made the hill beacons appear
+  immediately as `$HIR,<sensor>,15,0,<owner>,8,0,0` with no pool change. ⚠️ **But "one row" is NOT the whole fix: `app/src/engine.js:1272` drops every `$HIR` with proto 15 before the phone sees it** (`if (t[2] === '15') break;`). The row makes the GUN report beacons; the PHONE still discards them (F72). The whole mechanic is native: **shoot
+  the grenade to capture it** (the gun announces "hill captured"), the **owner team rides in the beacon's team
+  bits**, **holding it plays a looping tick** on the owner's gun, and an **enemy-held hill damages intruders**
+  (F69). Magnitude is the mode: **8 = hill, 6 = respawn**, and the periods differ (5 s vs ~2.5 s). So KotH,
+  Domination and respawn points are available with a $30 grenade, one table row and no station hardware -- Tier 1
+  of the mode catalog, unblocked. Node work: read the beacon, track the owner, drive the scoring. ⚠ Polarity: fn
+  24 is enemy-only, so a gun sees only hills it does NOT own unless `$GSET` t1 = 1; decide how to read your own
+  point. ⚠ And pick the row's `<soundID>` deliberately: a hit lands every 5 s for as long as anyone stands
+  there. `build`.
 - **F72 🟠 The phone throws away every grenade/station beacon.** `app/src/engine.js:1272` opens the `$HIR`
   handler with `if (t[2] === '15') break;` — protocol 15 is dropped before anything reads it. That predates
   knowing what a beacon carries, and it is a SECOND blind spot stacked on the missing `$SIR` row (F70): fixing
@@ -742,18 +754,6 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   family as **F23** (damage depends on the sensor). Probe: fire each of the three at a victim at headset range
   and at gun range, and read the `$HP` delta against t5 and t5+t12. Only ONE word (`mag=70`) decoded on the
   shotgun shot, so whether the primary goes out too is open — the second half of that burst was undecodable. `trigger`.
-  **Original entry:** Bench 2026-09-10, and it
-  answers `bench-grenade.md` Q3 ("does a spawned gun in one of our games surface grenade beacons if we give it a
-  `$SIR` row for protocol 15?") **YES** -- adding `$SIR,15,0,,24,0,0,1,,*` made the hill beacons appear
-  immediately as `$HIR,<sensor>,15,0,<owner>,8,0,0` with no pool change. ⚠️ **But "one row" is NOT the whole fix: `app/src/engine.js:1272` drops every `$HIR` with proto 15 before the phone sees it** (`if (t[2] === '15') break;`). The row makes the GUN report beacons; the PHONE still discards them (F72). The whole mechanic is native: **shoot
-  the grenade to capture it** (the gun announces "hill captured"), the **owner team rides in the beacon's team
-  bits**, **holding it plays a looping tick** on the owner's gun, and an **enemy-held hill damages intruders**
-  (F69). Magnitude is the mode: **8 = hill, 6 = respawn**, and the periods differ (5 s vs ~2.5 s). So KotH,
-  Domination and respawn points are available with a $30 grenade, one table row and no station hardware -- Tier 1
-  of the mode catalog, unblocked. Node work: read the beacon, track the owner, drive the scoring. ⚠ Polarity: fn
-  24 is enemy-only, so a gun sees only hills it does NOT own unless `$GSET` t1 = 1; decide how to read your own
-  point. ⚠ And pick the row's `<soundID>` deliberately: a hit lands every 5 s for as long as anyone stands
-  there. `build`.
 - **F66 🟡 `$SIR` fn 23: one mechanism with two symptoms, or two effects?** The 2026-08-27 row called it an audio
   suppressor on the strength of `$ALCD` token 2 dropping 100 → 0. Token 2 is now bench-proven to be **live accuracy**
   (F46), so that number never evidenced the audio claim at all. Both observations stand on their own: the gun **was heard**

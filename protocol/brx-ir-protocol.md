@@ -60,7 +60,9 @@ earlier reading that owned hills cannot be retaken at all is RETRACTED. Power-cy
 ⚠️ **A hosted game sees none of this unless we ship a protocol-15 `$SIR` row** — the firmware discards an
 unmatched cell in silence, which is why "station words do nothing in a host-driven game" (B23). One row
 (`$SIR,15,0,,24,0,0,1,,*`) makes beacons arrive as `$HIR,<sensor>,15,0,<owner>,<mode>,0,0` with no pool
-change. Polarity applies: fn 24 is enemy-only, so a gun sees only hills it does NOT own unless `$GSET` t1 = 1.
+change. ⚠️ **That is necessary and NOT sufficient: `app/src/engine.js:1272` discards every `$HIR` with proto 15
+before the phone reads it** (`if (t[2] === '15') break;`), so the row reaches the GUN and still not the player.
+Reading a beacon in a hosted game needs both (F72). Polarity applies: fn 24 is enemy-only, so a gun sees only hills it does NOT own unless `$GSET` t1 = 1.
 
 **B and U together are the `$SIR` composite key `<protocol, subtype>`** — the exact index a `$SIR`
 row is looked up by. 4 bits and 2 bits — 16 × 4 = **64 addressable effect cells, and the table is ours to write
