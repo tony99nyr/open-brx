@@ -39,11 +39,11 @@ week to week. Four things have never been run: a dispersed timed start with play
 before T-0, a store-and-forward recovery after real coverage loss, more than two phones, and a
 20-minute soak.
 
-Android debug builds exist for sideloading, but they are not publicly downloadable yet: they live on
-the project's releases page, one release per version tagged `app-v<version>`, and the repository is
-still private. The site deliberately publishes no link to it, because every such link would 404 for
-a visitor. They are test builds, not releases, and a given build can be behind the current game
-rules. Two things follow from "debug".
+Android debug builds exist for sideloading. They live on the
+[releases page](https://github.com/tony99nyr/open-brx/releases), one release per version tagged
+`app-v<version>`. That link goes to the list rather than to a particular file, so it keeps working as
+new builds are cut. They are test builds, not releases, and a given build can be behind the current
+game rules. Two things follow from "debug".
 The build is **debuggable**: anything attached over USB debugging can inspect it and read its data.
 That is fine on your own phone, and it is a reason not to hand the build to a stranger. It is also
 signed with Android's throwaway debug key, so a future release-signed build **will not install over

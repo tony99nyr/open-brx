@@ -17,10 +17,12 @@ const MANUAL = path.resolve(arg('manual') || path.join(REPO, 'docs/manual'));
 const OUT = path.resolve(arg('out') || path.join(REPO, 'webapp'));
 const SITE = arg('site') || 'https://open-brx.iamrossi.workers.dev';
 const GITHUB = 'https://github.com/tony99nyr/open-brx';
-// The repository is PRIVATE, so every one of these links 404s for a visitor. The site published
-// them anyway on all twelve pages. Flip this to true the moment the repo goes public
-// (docs/FOLLOWUPS.md section 1) and the links come back everywhere at once.
-const REPO_PUBLIC = false;
+// Was false while the repository was private, because every repo link 404s for a visitor and the
+// site had published them anyway on all twelve pages. **The repo went public 2026-09-10**, verified
+// by `gh repo view` (visibility=PUBLIC) and by an anonymous 200 on a release asset, so the links are
+// live again everywhere at once. If it ever goes private again, flip this back FIRST: the build
+// refuses a manual page that links the repo while this is false, which is what caught it last time.
+const REPO_PUBLIC = true;
 
 // One file, one page. Adding a page = adding a file and a row. (docs/site/FORMAT.md)
 const PAGES = [

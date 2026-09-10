@@ -28,11 +28,13 @@ The repo is private, MIT-licensed, 0 forks. Nothing below blocks day-to-day work
 - **✅ DONE 2026-09-07 — headset ids in binary captures.** The two `protocol/captures/raw/2026-08-25-*.btsnoop`
   traces carried a sticker id in the advertised name; both were patched in place with an equal-length alias,
   byte count unchanged, and both still decode identically.
-- **⬜ Flip the APK to the Release.** One apk is still tracked in `webapp/download/` because a release asset
-  on a *private* repo is not downloadable by an anonymous visitor, and the site is public. The moment the repo
-  goes public: `git rm --cached webapp/download/*.apk` and append `webapp/download/*.apk` to `.gitignore`.
-  The download card already prefers the local file and falls back to `build.json`'s `url`, so the page does
-  not change. Every build from now on is published to the `app-v<version>` release by `npm run android:apk`.
+- **✅ DONE (verified 2026-09-10) — the APK is out of git.** No `.apk` is tracked (`git ls-files` is clean)
+  and `.gitignore:31` carries `webapp/download/*.apk`; only the `build.json` sidecar is tracked. Every build
+  goes to the `app-v<version>` release via `npm run android:apk` (0.1.8 published 2026-09-10 from `cfe2a8e`).
+  ⚠ The site publishes NO link to it: `site/build.mjs`'s `REPO_PUBLIC = false` strips repo links on all twelve
+  pages, and the build FAILS if a manual page adds one back ("links the repository, which is private"). That
+  guard exists because the site had shipped 404ing repo links on every page. Flipping `REPO_PUBLIC` is the
+  one switch that restores them.
 - **⬜ Device identifiers in text history.** Sticker ids and BLE MACs remain in ~88 old commits (the tree is
   clean; `mcp/tests/test_docs_hygiene.py` keeps it that way). Deliberately not purged: they label Tony's own
   four headsets and grant nothing remotely. Revisit only if that judgement changes; it needs `--replace-text`
