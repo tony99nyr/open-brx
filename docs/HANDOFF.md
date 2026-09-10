@@ -8,8 +8,10 @@
 - ⭐ **THE GRENADE IS A WORKING CONTROL POINT (2026-09-10, F70).** Hill beacons `proto=15 team=<owner> mag=8`
   every ~5 s, **neutral is team 2**, shoot a neutral one to claim it. Hosted games read it with a `$SIR`
   proto-15 row **plus** an `engine.js` fix (F72) — a shortcut to K1. 🔴 **F69: it also emits a `proto=0 mag=8`
-  damage word our standard row applies in full**, which killed the operator in ~106 s with nothing naming the
-  cause. ⚠ WHAT captures a point is unsettled. Programme: `bench-grenade.md`.
+  damage word our standard row applies in full**, killing the operator in ~106 s with nothing naming the cause
+  — and until 2026-09-10 **crediting the hill's owner with the kill** (wire 0; nothing enforced A5.1's "wire 0
+  is never a player"). Guarded in `modes/base.py`; **the damage is still live**. ⚠ WHAT captures a point is
+  unsettled. Programme: `bench-grenade.md`.
 - ⭐⭐ **SIMULATED RECOIL IS REAL AND OURS TO DRIVE (2026-09-09, F46 closed).** `$WEAP` **t21 = accuracy
   ceiling · t22 = floor · `$ALCD` tok2 = live accuracy**; falls in five steps toward the floor, races a native
   recovery (**t14 sets how hard it bites**), resets on reload, and below the ceiling a shot emits **IR magnitude
@@ -112,13 +114,12 @@
    the damage, and a kill draws from the 5 takes.
 2. **Build and ship an APK carrying A16 + A17** (0.1.7 predates both). Until it ships, none of the LED work
    or the hit audio reaches a player, and the legacy `headset.carrier` key cannot be deleted (S10).
-3. **The two LED design questions are DECIDED (2026-09-09): the partial-level blink stays, healing gets no
-   opening beat. Recorded in `led-language.md` with the reasoning — do not re-open.**
+3. **LED design DECIDED (2026-09-09)**: partial-level blink stays, healing gets no opening beat. Do not re-open.
 4. **Bench:** run sheet block E (LED metering) and D1 (**F23** sensor damage, the highest-value reading left);
    plus **F50**, the A17 pain gate in a real node path. **5. Build S5** (MC arms stations at muster).
 6. ⚠ **Nothing shield-shaped has EVER been on a gun** (F60): shield is IR-only (P16) and no compiled mode
-   registers a grant word, so the teal bar and A16.5's handover are unverifiable. Decide whether a grant row
-   belongs in the compiled `$SIR` table — the grenade hill is now a natural reason to ship one (F70).
+   registers a grant word, so the teal bar and A16.5's handover are unverifiable. The grenade hill is now a
+   natural reason to ship a grant row in the compiled `$SIR` table (F70).
 
 **The bench queue is [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md)** — every open item in eight
 SETUP blocks with the command, reading, control and blocked-on-code per rung, plus the five traps that fake
@@ -131,17 +132,16 @@ a result. `FOLLOWUPS.md` §9 stays the register. Pre-flight: `gotchas.md`.
 | **Windows PC (WSL2 + Windows Python)** | **primary development** | Code, protocol work, Android-side captures, the IR rig and the gun stage. |
 | **MacBook** | **field / match day, and the only capture rig** | Goes to the field with the taggers. Keep `mcp/` working here (`docs/mac-dev-runbook.md`). |
 
-**Only the MacBook can capture the official app** (Callsign is iOS-only, PacketLogger is macOS-only),
-so every capture job is batched for a Mac day — full flow and its two capture-costing traps are in
-`docs/capture-runbook.md`. Code must run on both machines: macOS gives BLE UUIDs, Windows/BlueZ give
-MACs; never pattern-match the address format (`_split_addrs()` handles both).
+**Only the MacBook can capture the official app** (Callsign iOS-only, PacketLogger macOS-only), so capture
+jobs batch for a Mac day — flow and its two capture-costing traps: `docs/capture-runbook.md`. Code must run on
+both: macOS gives BLE UUIDs, Windows/BlueZ give MACs; never pattern-match the format (`_split_addrs()` does).
 
 ## Where things live
 
 | what | where |
 |---|---|
 | Open work, all of it, by id | `FOLLOWUPS.md` (incl. "Needs Tony at the bench" and "System proofs") |
-| Evidence, append after every session | `experiment-log.md` |
+| Evidence, append after every session | `experiment-log/` (by month) |
 | Field lore by symptom, bench pre-flight | `gotchas.md` |
 | Issues at a live session · Mac-only capture jobs | `field-issues.md` · `capture-runbook.md` |
 | Running a match / armory + muster / Mac setup / one-gun bench page | `field-runbook-mc.md` · `field-process.md` · `mac-dev-runbook.md` · `gun-stage.md` |
