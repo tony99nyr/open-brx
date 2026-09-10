@@ -6,8 +6,8 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F64 · G11 · H7 ·
-K7 · P18 · Q20 · R3 · S16.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F66 · G11 · H7 ·
+K7 · P18 · Q20 · R3 · S17.** (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
 **Blocked on:** `trigger` · `eyes` · `ears` · `space` · `grenade` · `capture` · `decision` · `build`.
@@ -246,13 +246,28 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   fire from IR either. Decide whether a heal/grant row belongs in the compiled table at all — it may be that
   we simply do not want medic words in a hosted game, in which case say so and mark shield permanently
   node-granted — but today the gap is silent and looks like a bug from the bench. `build`.
-- **F61 🟠 Does `$BUMP` take a NEGATIVE value?** `protocol/brx-protocol.md` documents `$LIFE` and `$BUMP` as
-  "additive, clamped at the pool max, never an absolute set" and **there is no experiment-log citation for either
-  command in either direction** — the claim is spec/APK-derived while `mc/types.py` syphon already depends on it.
-  If `$BUMP,-5,0,0,*` drains 5 HP, host-side damage-over-time (poison, burn, bleed) is buildable: no `$SIR`
-  function is a DoT, so a node applying the tick is the only route. If it clamps, DoT is a HUD fiction and we
-  stop designing it. Read via `$QUERY` (these writes do not self-emit `$HP`); the `+5` control is also our first
-  measurement of the documented behaviour. 5 min, no rig. `trigger` (bench A1).
+- **F64 🔴 A HOST-INFLICTED KILL IS INVISIBLE TO THE NODE.** Bench 2026-09-09: a `$LIFE` write that takes a pool
+  to zero really kills the gun (Tony, on Tactix-E20D: *"its dead, headset green blinking, trigger does nothing"*, and the
+  wire agreed — 15 `$BUT,0,1`/`0,0` pairs with no `$ALCD`, the documented dead-gun signature). But it emits
+  **`$LCD,0,0,0,0,32,192,*` and never `$HP,0,0,0`**: the frame shape SWAPS on the lethal write, where every
+  non-lethal `$LIFE` self-emits `$HP`. `engine.js _onHp` and `stage.py` both derive death from `$HP`, and
+  `spec/node.md` states "no death is inferred" as a deliberate anti-cheat. So a poison tick, a syphon drain or any
+  future host damage can kill a player while the HUD still says ALIVE and MC never scores it. Fix: treat a zeroed
+  `$LCD` as a death alongside `$HP,0`, in BOTH mirrors — and note the node already knows, because it sent the
+  write. Blocks any DoT shipping (S16). `build`.
+- **F65 🟢 `$BUMP` is inert on v4.32 — is that the command or our shape?** Bench 2026-09-09: `$BUMP,-5,0,0,*` on
+  full HP and `$BUMP,0,5,0,*` on armour at 61 both did nothing, with the read validated either side (a real IR hit
+  moved the pools and `$QUERY`'s `$LCD` tracked it). `$LIFE` with the identical arity worked in the same session, so
+  this is not the connection or the arming. `brx-protocol.md` now says INERT. Open only as: does `$BUMP` want a
+  different arity, a different game state, or is it dead firmware? Low value — `$LIFE` covers the need. `trigger`.
+- **S16 ⬜ Damage over time, on the node** (unblocked by the 2026-09-09 bench). `$LIFE` takes negatives, so
+  poison / burn / bleed / gas are buildable with no firmware change and no IR per tick: the gun registers the
+  proc once (a status cell, fn 8/24-28/35 — `$SIR,9,3,,24` already ships), the node reads the protocol off `$HIR`
+  and runs the tick clock itself. Three things the bench pinned that the design must respect: a negative is
+  **per-pool with no spill**, so the node walks shield → armour → health itself; the pool **floors at 0**, so
+  overkill is silent; and a lethal tick emits **no `$HP`**, so the node must book that death itself (**F64 first**).
+  Also needs: who gets the kill credit for a tick, whether a DoT survives a respawn, and what the HUD shows while
+  it ticks. Needs a spec section before code. `build`.
 - **F62 🟡 `$WEAP` t6 `primaryCritChance` — can we emit crits?** The crit bit reads 0 on every stock weapon,
   "not dead, just never set", and t6 would be a per-shot firmware roll. Design already written in
   `bench-weap-tokens-discovery-2026-09-04.md` §t6 (~10 min): t6 0 → 100 → 50 → 0 with `$GSET` t7=100 so a crit

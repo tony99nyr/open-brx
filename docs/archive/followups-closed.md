@@ -2097,3 +2097,15 @@ calls). The separate hit-path fix (`event()` split into `_event_now()`) is what 
 is logged under its own entry.
 - 2026-09-09 **B9** manual website rebuilt: block DSL deleted, 74 pages to 9, generator 1,009 to 233 lines, Playwright gate 779 to 146 lines, all provenance badges and per-block `src:` lines removed from the published prose.
 - 2026-09-09 **B24** deploy-time builds: the site is rebuilt by Cloudflare on every push (`wrangler deploy` runs `wrangler.toml`'s `[build]`), so `webapp/`'s generated pages left git. No dashboard build command was required, contrary to the plan's assumption.
+
+
+# F61 · closed 2026-09-09 · bench A1 on Tactix-E20D
+*ANSWERED, and the answer was better than the question: `$BUMP` is inert but **`$LIFE` takes negatives and drains** (armour 66 → 61), so host-side damage-over-time is buildable — see S16. The probe also produced three corrections to `protocol/brx-protocol.md` ($LIFE self-emits `$HP`; a negative is per-pool, floors at 0, does not spill; a lethal one kills but emits `$LCD`, never `$HP,0,0,0` — F64) and one to the `$BUMP` row (F65).*
+
+- **F61 🟠 Does `$BUMP` take a NEGATIVE value?** `protocol/brx-protocol.md` documents `$LIFE` and `$BUMP` as
+  "additive, clamped at the pool max, never an absolute set" and **there is no experiment-log citation for either
+  command in either direction** — the claim is spec/APK-derived while `mc/types.py` syphon already depends on it.
+  If `$BUMP,-5,0,0,*` drains 5 HP, host-side damage-over-time (poison, burn, bleed) is buildable: no `$SIR`
+  function is a DoT, so a node applying the tick is the only route. If it clamps, DoT is a HUD fiction and we
+  stop designing it. Read via `$QUERY` (these writes do not self-emit `$HP`); the `+5` control is also our first
+  measurement of the documented behaviour. 5 min, no rig. `trigger` (bench A1).
