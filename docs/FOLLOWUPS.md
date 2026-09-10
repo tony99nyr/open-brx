@@ -6,9 +6,9 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F85 · G11 · H7 ·
-K7 · P18 · Q20 · R3 · S18.** (2026-09-10 evening: F83/F84 taken — rotating-hill mode idea and the "constant wider
-than the hill's period" generalisation.) (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F86 · G11 · H7 ·
+K7 · P18 · Q20 · R3 · S18.** (2026-09-10 evening: F83/F84/F85 taken — rotating-hill mode idea, the "constant wider
+than the hill's period" generalisation, and the double-`$HIR`-per-beacon dedupe finding.) (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
 **Blocked on:** `trigger` · `eyes` · `ears` · `space` · `grenade` · `capture` · `decision` · `build`.
@@ -828,6 +828,18 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   MEANS) will silently never fire once a hill or station is in play, because that is now the shortest ambient
   period on the wire. Audit every time constant in `mcp/brx_mcp/` against the 5 s hill period as a required
   check for every future objective, not only the two caught by hand this session. `build`.
+- **F85 🟠 ONE HILL BEACON CAN ARRIVE AS TWO `$HIR` FRAMES, AND ANYTHING COUNTING PER-FRAME WILL DOUBLE-COUNT.**
+  Bench 2026-09-10 evening. Captured verbatim, 14 ms apart:
+  ```
+  $HIR,4,15,0,2,8,0,0    <- sensor 4, gun body
+  $HIR,0,15,0,2,8,0,0    <- sensor 0, headset front — SAME transmission
+  ```
+  Same protocol, owner and magnitude, on two different sensors on the same gun: one physical beacon, two
+  frames on the wire. **Any node that ticks, scores or counts presence per `$HIR` will double-count**, and a
+  capture/possession timer driven per-frame would run at roughly double rate. Needs a dedupe window: same
+  protocol + magnitude + owner within ~100 ms collapses to one beacon. Cross-reference **F72** (the phone
+  throws away every proto-15 `$HIR` today, so this has not reached `engine.js` yet — but once F72 ships, the
+  phone's own handling needs the same dedupe, not only the node's). `build`.
 - **F77 🟠 A REPLAYED HIT IS INDISTINGUISHABLE FROM A REAL ONE, AND BOTH SCORE.** F74's phantom loop
   (a gun replaying `$HIR`+`$HP` every 5.07 s with no IR in the air) reaches the scoring path unchallenged:
   `engine.js:1514` gates `hit_taken` only on `latch.at` being under 1 s old and `dmg > 0`, and

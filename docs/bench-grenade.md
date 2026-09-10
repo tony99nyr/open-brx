@@ -109,8 +109,15 @@ counts are wrong. If it does NOT, the extra-headset block is doing the work and 
 ordinary weapons. Either way F70 and F76 both resolve. ⚠ Verify the magnitude on the wire before trusting the
 run — `$WEAP` t5 is the raw IR magnitude (`$HIR` tok5), so board A should read ~70.
 
-**R. Beacon RANGE (tape measure, 10 min).** Unmeasured for the hill; respawn is ~18-20 ft. **This number IS the
-physical size of the objective** and no mode can be designed without it.
+**R. ✅ ANSWERED 2026-09-10 (evening), by estimate rather than tape measure.** Close in (desk range) the
+beacon is solid, zero misses across 20+ consecutive reads at a clean 5.0 s. At the operator's estimated
+~30 ft it turned intermittent — long dropouts (85 s and 145 s of silence) interleaved with brief runs of
+clean 5 s beacons. So the reliable range is well under 30 ft and the useful outer edge is around there.
+**The hill beacon reaches further than the respawn station** (documented ~18-20 ft). ⚠ Not a hard number:
+one operator estimate, no tape measure, and the beacon is AIM-SENSITIVE (`reference/grenade.md`), so
+orientation was an uncontrolled variable. **Design consequence:** presence is not a clean in/out at the
+range boundary — do not call a player "left the hill" on one missed beacon; with a 5 s period, a grace of
+at least two missed beacons (~12 s) is the floor.
 
 **M. Max charge.** Does a hill cap, and how long does a full one take to build? Needed only to tune contest
 difficulty.
