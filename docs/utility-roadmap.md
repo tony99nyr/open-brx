@@ -85,7 +85,8 @@ primitive it reuses).
 ### K1 · Control point → Domination and King of the Hill (first)
 
 **➡ The rule is now specified: `docs/spec/utility.md` §5d** (Tony's design, 2026-09-10) — capture rate is the
-**net difference of living present players** (2v1 counts as the 1; 2v0 goes twice as fast; even nets zero), a
+**net difference between the leading team and its largest single rival** (2v1 counts as the 1; 2v0 goes twice
+as fast; 2v1v1 still converts, slowly; a tie for the lead nets zero), a
 **two-phase conversion** (drain an enemy point to neutral, then build it for the claimant, on one 0-100 scale in
 advert byte 11), an **animated** station screen that shows which way the point is going and who is contributing,
 per-team gun callouts (`VB0N` captured / `VB0P` lost / `VB0O` contested / `U100` tick) played **by each player
@@ -107,11 +108,11 @@ separate objectives, or run the phone point.
 
 | surface | work |
 |---|---|
-| station (`utility.js`) | state machine per **spec §5d.3** (this row's older sketch is superseded where they differ): `team` = owner tid (255 neutral) · `value` = progress 0-100 **always** (hold time is node-side, never in the advert) · `state` carries phase / `toward` / contested · byte 15 carries the signed net rate. Inputs: player adverts (team, alive) present at the station. Rule: **net difference** of living present players sets the rate (§5d.1 — 2v1 = the 1, 2v0 = double, even = no movement, empty = the owner holds and keeps scoring). ⚠ **Not a contested freeze** — the older wording here said "mixed → frozen" and that is explicitly not the design. Screen: **animated** per §5d.4 (owner colour, two-toned progress bar, direction arrow + rate, CONTESTED band, the roster marked counts / does not count, transition flashes). Tally per team persisted (§5d.6) for recap. |
+| station (`utility.js`) | state machine per **spec §5d.3** (this row's older sketch is superseded where they differ): `team` = owner tid (255 neutral) · `value` = progress 0-100 **always** (hold time is node-side, never in the advert) · `state` carries phase / `toward` / contested · byte 15 carries the signed net rate. Inputs: player adverts (team, alive) present at the station. Rule: **net difference** of living present players sets the rate (§5d.1 — leader minus the **largest single other team**: 2v1 = the 1, 2v0 = double, 2v1v1 = 1, a tie for the lead = no movement, empty = the owner holds and keeps scoring). ⚠ **Not a contested freeze** — the older wording here said "mixed → frozen" and that is explicitly not the design. Screen: **animated** per §5d.4 (owner colour, two-toned progress bar, direction arrow + rate, CONTESTED band, the roster marked counts / does not count, transition flashes). Tally per team persisted (§5d.6) for recap. |
 | player node (`engine.js`) | `state().objective` = the nearest control station `{id, owner, progress, contested, mine}`; facts `capture` (station, team) when the owner flips while this player is present. No gun writes. |
 | HUD (`hud.js`) | a live-screen OBJECTIVE line: HOLD THE HILL · 32 s / CONTESTED / LOST — reuses the alert banner (`point_captured`, `hill_captured` already exist) and the DOWN recap's "race to the cap". |
 | MC | modes `hill` (win: hold total ≥ N s or most hold time at time-limit) and `domination` (points per second, cap); the ITEMS panel arms kind `control`; scoring from `capture` facts + the station's tally at recap. Alerts `point_captured` / `hill_captured` / `lead_taken` already wired in A11. |
-| tests | engine: owner flips, **net-difference arithmetic (1v0 · 2v0 · 2v1 · 1v1)**, the two-phase drain-then-build crossing, dead players don't count, allow-list, one callout per transition (never per advert). screens: an OBJECTIVE line stage. utility: a fake-player script drives the state machine in the harness. |
+| tests | engine: owner flips, **net-difference arithmetic (1v0 · 2v0 · 2v1 · 1v1 · 2v1v1 · 2v2v1 · 3v2v1 — the multi-team cases are the only ones that distinguish largest-single-rival from summing the others)**, the two-phase drain-then-build crossing, dead players don't count, allow-list, one callout per transition (never per advert). screens: an OBJECTIVE line stage. utility: a fake-player script drives the state machine in the harness. |
 | bench gate | two phones + two guns: capture, contest, recapture; hold timer matches a stopwatch within 1 s. |
 | needs | B1 (the station must hear player adverts reliably) — this is the first kind that depends on it, and §5d's whole rule is a head count of player adverts. §5e additionally needs A1/A2 (MC arming + the ITEMS panel) for its setup warnings. |
 

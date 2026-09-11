@@ -183,21 +183,37 @@ Wi-Fi-coupled extensions are §5e and are a separate, opt-in mode.
 
 ### 5d.1 The rule: capture rate is the NET DIFFERENCE of living present players
 
-A control point is captured by **presence**, and the rate is the **net difference** of the teams standing on it:
+A control point is captured by **presence**, and the rate is the **net difference** between the leading team and
+its **largest single rival** (Tony, 2026-09-10: *"against largest single rival, yeah"*):
 
 ```
-leader = the team with the most LIVING PRESENT players   (a tie -> no leader, net 0)
-net    = leader's count - (living present players of every other team, combined)
-rate   = net * 100 / capture_s        progress points per second; net <= 0 means no movement
+leader = the team with the most LIVING PRESENT players   (a tie for the lead -> net 0)
+net    = leader's count - the LARGEST SINGLE OTHER team's count      (not the sum of the others)
+rate   = net * 100 / capture_s        progress points per second; net 0 means no movement
 ```
 
-| on the point | net | what happens |
+| present | net | behaviour |
 |---|---|---|
-| 1 v 0 | +1 | conversion at the base rate: `capture_s` seconds per phase |
-| 2 v 0 | +2 | **twice** the base rate |
-| 2 v 1 | +1 | "2v1 counts only as the 1" — the extra defender cancels one attacker |
-| 1 v 1, 2 v 2 | 0 | an even fight nets zero: progress holds where it is |
+| 1 v 0 | 1 | converts at the base rate: `capture_s` seconds per phase |
+| 2 v 0 | 2 | **twice** the rate |
+| 2 v 1 | 1 | "2v1 only counts as the 1" (Tony) — the defender cancels one attacker |
+| 1 v 1 | 0 | stalled |
+| **2 v 1 v 1** | **1** | the pair converts, **slowly** — two opponents on two different teams do NOT stall a pair |
+| 2 v 2 v 1 | 0 | stalled — only a single rival team of equal size can stall you |
+| 3 v 2 v 1 | 1 | converts |
 | nobody | 0 | progress holds; the owner keeps scoring |
+
+**"Largest single other team", never the sum.** Only a single rival of equal size can stall you; two opponents
+split across two teams must not be able to. This has to be written out because in a **two-team game the two
+readings are identical** — every 2v2 example is silent about which rule is in force, so the rule cannot be left to
+be inferred from them.
+
+**`net` is never negative**, because the leader is by definition the largest. So progress only ever moves in the
+leader's favour, and a point is never drained by anybody except whoever is currently leading on it. In an **FFA**
+(every player their own team, **F97**) that is the sensible behaviour rather than an accident: a lone holder facing
+two separate rivals nets 1 - 1 = 0, so the point **stalls** instead of draining, and a player must be **alone** on
+the point to convert it. ⚠ FFA KotH **caps at three players** (Tony, 2026-09-10): four teams exist, F82 removes
+tid 2, leaving tids 0/1/3, and a fourth player forces tid 2 or the forbidden tid 4 (**F96**).
 
 **This is net difference, not a freeze-on-contested rule.** An even fight stalls because the arithmetic says so,
 not because a special case says so, and one extra body always moves the needle. A **down** player counts for
@@ -205,9 +221,7 @@ nothing (the station reads `alive` from the player advert, byte 10 bit 0 — alr
 and a present-but-dead player is a body that does not help: reviving matters on the point.
 
 `net` is clamped to `net_cap` (**proposed default 3**, tunable, not measured) so a six-player rush is fast and
-not instant. With **three teams** the other teams are summed, so 2 v 1 v 1 nets zero: everyone defending against
-you is defending, whoever they are. That is a spec choice, not Tony's words — he specified the two-team cases —
-and the alternative (subtract only the largest other team) is a one-line change if a three-team park says so.
+not instant.
 
 ### 5d.2 Two-phase conversion: drain to neutral, then build
 
@@ -239,7 +253,7 @@ possible on phones and impossible on grenades (F88: a grenade beacon carries no 
 | 10 `state` | bits 0-1 **phase**: 0 static · 1 `value` falling · 2 `value` rising · bits 2-3 **`toward`** = the tid the movement favours (meaningless at phase 0) · bit 4 **contested** (living present players of two or more teams) · bit 5 **hot** (§5e roaming only; 1 on a single-point game) · bits 6-7 spare |
 | 11 `value` | **progress 0-100**, read per the §5d.2 table |
 | 12 `seq` | bumps on every change of `team`, phase, `toward` or the contested bit — a phone one-shots its callouts off this |
-| 15 `reserved` → `rate` | the clamped `net` as a **signed int8** (+2 = two-player advantage to `toward`), so a screen or a HUD can show direction and speed without re-deriving it |
+| 15 `reserved` → `rate` | the clamped `net` (0..`net_cap`), so a screen or a HUD can show speed without re-deriving it. It needs no sign — `net` is never negative (§5d.1) and byte 10's `toward` already says which way it points |
 
 **Byte 15 is role-scoped and does not collide with F93/F92.** This is the **station** advert (byte 5 `role` = 1);
 F93's note about byte 15 being the cheap spare for relaying grenade-hill ownership phone-to-phone concerns the

@@ -875,8 +875,10 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   player-side spare byte this row wants is untouched. `build`.
 - **F94 🟢 BUILD THE PHONE CONTROL POINT (K1 base) — SPECIFIED 2026-09-10, NO LAN NEEDED.** Tony's design,
   written up in full as `spec/utility.md` **§5d**; this row is the build. `kind 5 control` already exists in the
-  advert schema, so **no radio work**: capture rate is the **net difference of living present players** (2v1
-  counts as the 1, 2v0 goes twice as fast, an even fight nets zero — explicitly **not** a contested freeze), a
+  advert schema, so **no radio work**: capture rate is the **net difference between the leading team and its
+  LARGEST SINGLE RIVAL** (Tony's decision, 2026-09-10 — 2v1 counts as the 1, 2v0 goes twice as fast, 2v1v1 nets
+  1 because two opponents on two teams must not stall a pair, a tie for the lead nets zero, and `net` is therefore
+  never negative; explicitly **not** a contested freeze and explicitly **not** the sum of the other teams), a
   **two-phase conversion** (drain an enemy point to neutral, then build it for the claimant) on one 0-100 scale in
   advert byte 11, phase / `toward` / contested in byte 10, and the signed net rate in byte 15 (role-scoped, so it
   does not consume the **player**-advert spare byte F93 mentions). Three surfaces: the station state machine and
@@ -943,10 +945,12 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   and any two players can deny a third. But the roster maths is brutal — four teams exist (tids 0-3), **F82
   removes tid 2** because a neutral hill broadcasts team 2 and a tid-2 player would read every neutral point
   as already theirs and take no hill damage. That leaves **tids 0, 1, 3 = three players**. Going to four
-  forces either tid 2 (an unfair advantage, F82) or tid 4 (forbidden, F96). ⚠ Also decide the three-way rate
-  rule, currently specced as summing the other teams so 1v1v1 nets **negative** and progress drains toward
-  neutral — arguably right for FFA (you must be alone to hold it) but it is a design choice, not a
-  measurement, and it is the agent's call rather than Tony's so far. `build` + a design decision.
+  forces either tid 2 (an unfair advantage, F82) or tid 4 (forbidden, F96).
+  ➡ **The three-way rate rule is DECIDED (Tony, 2026-09-10): leader minus the LARGEST SINGLE other team, not the
+  sum** (`spec/utility.md` §5d.1, corrected). So `net` is never negative, 1v1v1 **stalls** rather than draining,
+  2v1v1 converts slowly for the pair, and a player must be **alone** on the point to take it — which is the FFA
+  behaviour this row wanted, arrived at by the general rule rather than by an FFA special case. The cap at three
+  players is what is left open here. `build`.
 - **F80 🟠 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.**
   Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
   received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default
