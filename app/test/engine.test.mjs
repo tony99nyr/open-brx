@@ -720,7 +720,7 @@ test('control point: the transition lines have a repeat floor, so a shared stati
   assert.equal(nWrites(slow, HILL_LOST_F), 1, 'a real second transition is not swallowed by the floor');
 });
 
-test('control point: a handover that happens while you are DOWN is told to you on revive, not swallowed (item C)', { skip: 'F101: specified and NOT implemented — the agent that wrote this test hit its session limit before the code landed. Left failing-shaped on purpose so the intent survives.' }, () => {
+test('control point: a handover that happens while you are DOWN is told to you on revive, not swallowed (item C)', () => {
   // Death is deliberately silent, but a "Hill Lost!" landing then was never replayed — so a player respawned
   // and "we lost it", "out of range" and "nothing is happening" were all the same silence.
   const h = koth();
@@ -730,7 +730,7 @@ test('control point: a handover that happens while you are DOWN is told to you o
   assert.equal(h.eng.alive, false, 'precondition: down');
   runControl(h, 1000, { team: 255, state: 0, value: 0 });      // it goes neutral while we are down
   assert.equal(nWrites(h, HILL_LOST_F), 0, 'the DOWN window stays silent — A16 makes it hands-off');
-  h.frame('$HP,45,0,0,*'); h.eng.tick();                      // revived
+  h.adv(8000); h.eng.tick();                                  // revived by the auto respawn (delay_s 8), the real path
   assert.equal(h.eng.alive, true);
   control(h, { team: 255, state: 0, value: 0 });
   assert.equal(nWrites(h, HILL_LOST_F), 1, 'and the first advert after revive says what happened');
@@ -826,11 +826,11 @@ test('possession: a clock STEP cannot add possession nobody played', () => {
   assert.ok(real.eng.state().possession.observed_ms['11'] >= 9000, 'real time is counted in full');
 });
 
-test('possession: the tally at the WHISTLE is sent, and a new match does not inherit it', { skip: 'F101: specified and NOT implemented — the agent that wrote this test hit its session limit before the code landed. Left failing-shaped on purpose so the intent survives.' }, () => {
+test('possession: the tally at the WHISTLE is sent, and a new match does not inherit it', () => {
   const h = koth();
   runControl(h, 5000, { team: 1, state: HELD, value: 100 });
   const before = h.facts.filter(f => f.type === 'possession').length;
-  h.eng.onMcMessage({ kind: 'end', body: { match_id: 'm1', reason: 'time' } });
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });   // END MATCH EARLY on MC, the real envelope
   const sent = h.facts.filter(f => f.type === 'possession');
   assert.ok(sent.length > before, 'the report that decides the match is sent at the end, not on the 10 s cadence');
   assert.ok(Math.abs(sent[sent.length - 1].hold_ms['1'] - 5000) <= 600, 'and it carries the real total');
@@ -840,7 +840,7 @@ test('possession: the tally at the WHISTLE is sent, and a new match does not inh
   assert.equal(h.eng.state().hill, null, 'and so is the point');
 });
 
-test('control point: MC naming a GRENADE source refuses the phone point, and vice versa (item B)', { skip: 'F101: specified and NOT implemented — the agent that wrote this test hit its session limit before the code landed. Left failing-shaped on purpose so the intent survives.' }, () => {
+test('control point: MC naming a GRENADE source refuses the phone point, and vice versa (item B)', () => {
   // One `this.hill`, two wires. A grenade left live on the field (F69) during a phone-point game would
   // alternate ownership with the point every 5 s and announce continuously.
   const g = harness({ mode: 'koth' }).kit();
@@ -851,8 +851,11 @@ test('control point: MC naming a GRENADE source refuses the phone point, and vic
   g.frame('$HIR,4,15,0,1,8,0,0,*');
   assert.ok(g.eng.state().hill, 'and the grenade beacon still drives it');
   assert.equal(g.eng.state().hill.source, undefined);
-  // The mirror: with no grenade named, the phone point drives it and the grenade beacon is ignored.
-  const s2 = koth();
+  // The mirror: MC naming the PHONE source (F103's third value), the phone point drives it and a stray
+  // grenade beacon is ignored.
+  const s2 = harness({ mode: 'koth' }).kit();
+  s2.config.station_source = 'phone';
+  s2.config_().echo().start(0); s2.adv(10); s2.eng.tick();
   control(s2, { team: 1, state: HELD, value: 100 });
   assert.equal(s2.eng.state().hill.source, 'station');
   s2.frame('$HIR,4,15,0,0,8,0,0,*');
