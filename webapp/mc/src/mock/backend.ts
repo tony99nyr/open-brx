@@ -33,11 +33,13 @@ const DEMO_LOADOUTS: (() => Loadout)[] = [
 const SETUP_WARNING: Record<string, string> = {
   grenade: 'SETUP: POWER-CYCLE THE GRENADE SO IT STARTS NEUTRAL, SET IT TO HILL MODE, AND PLACE IT — a hill that starts already owned skews the whole match, and only a power cycle guarantees neutral. ONE POINT ONLY (F88: a beacon carries no station id)',
   ir_station: 'SETUP: PLACE AND POWER THE IR STATION, AND CHECK IT READS NEUTRAL BEFORE THE WHISTLE — ⚠ UNPROVEN: we have never had one on the bench, so nothing confirms it speaks the protocol our nodes read. Run the grenade if you want a hill we have measured',
+  phone: 'SETUP: THE CONTROL POINT IS A PHONE — open the app in the UTILITY role, kind CONTROL, confirm it shows MC-ARMED for THIS game (arming resets the point; do NOT power-cycle it), leave the screen awake on the point, and check its battery. Players must be advertising (the HUD does this) or the point counts nobody',
 };
 // mirrors STATION_SOURCES in mcp/brx_mcp/mc/types.py, including the wording of the refusal
 const MOCK_STATION_SOURCES = [
   { value: 'grenade', desc: 'a BRX Smart Grenade in hill mode (protocol-15 beacons; bench-proven 2026-09-10)' },
   { value: 'ir_station', desc: 'a BRX station / Utility Box emitting $CAPTURE objective events (unproven on our bench)' },
+  { value: 'phone', desc: 'a spare phone in the utility role as a BLE control point, capture by presence (spec/utility.md §5d)' },
 ];
 const uid = (p: string) => `${p}_${Math.random().toString(36).slice(2, 8)}`;
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));

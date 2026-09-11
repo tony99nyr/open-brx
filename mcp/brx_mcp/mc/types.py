@@ -177,9 +177,18 @@ OBJECTIVE_MODES = {"domination", "koth"}
 #                     events (`modes/objectives.py`'s station path, which names its point). ⚠ NOT
 #                     confirmed to be this same proto-15/fn-28 mechanism, and we have never had one
 #                     on the bench -- it is accepted because that path exists in code, not measured.
+#   * `phone`      -- a spare phone in the `utility` role, kind `control` (spec/utility.md §5d): a BLE
+#                     control point that captures by PRESENCE (it counts living player adverts inside its
+#                     bubble) and announces owner / progress / contested in its own advert. Armed by MC at
+#                     muster (`station_config`, A13.5). The only source that can drive MORE than one point
+#                     (its advert carries a station id; a grenade's beacon does not, F88), and the only one
+#                     that can truthfully say "contested" (F75). Built 2026-09-10/11; heard by every player
+#                     phone with no LAN (F94). Added 2026-09-11 (F103): the phone side existed and MC had
+#                     no word for it, so a phone-driven KotH could not be configured at all.
 STATION_SOURCES = {
     "grenade": "a BRX Smart Grenade in hill mode (protocol-15 beacons; bench-proven 2026-09-10)",
     "ir_station": "a BRX station / Utility Box emitting $CAPTURE objective events (unproven on our bench)",
+    "phone": "a spare phone in the utility role as a BLE control point, capture by presence (spec/utility.md §5d)",
 }
 
 

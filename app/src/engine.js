@@ -1154,16 +1154,13 @@ export class Engine {
   /** B/F70: MC names ONE objective source per game (`config.station_source`), and the phone accepts BOTH
    *  wires. Without this gate a grenade left live on the field (F69) during a phone-point game alternates
    *  ownership with the point every 5 s and announces continuously — two sources, one `this.hill`.
-   *
-   *  ⚠ `STATION_SOURCES` (`mcp/brx_mcp/mc/types.py`) has no value for a BLE phone control point today, only
-   *  `grenade` and `ir_station`, and `compile.py` REFUSES `koth` without one. So the gate is written the only
-   *  way today's vocabulary allows: a game that says `grenade` belongs to the IR beacon and the phone point
-   *  is refused; anything else (absent, or a future phone value) belongs to the phone point. Until MC gains
-   *  that third value a phone-driven KotH cannot be configured — reported, not worked around here. */
+   *  The vocabulary (`STATION_SOURCES`, `mcp/brx_mcp/mc/types.py`): `grenade` = the IR beacon, `phone` = the
+   *  BLE control point (F103 added it 2026-09-11), `ir_station` = a `$CAPTURE`-speaking box that reaches MC,
+   *  not us. Absent = no objective in this game, so what we hear is it (a try-out, the stage). */
   _hillSourceAllowed(source) {
     const src = this.config && this.config.station_source;
     if (!src) return true;                                  // no game, or a mode with no objective: what we hear is it
-    const ok = source === 'station' ? src !== 'grenade' : src === 'grenade';
+    const ok = source === 'station' ? src === 'phone' : src === 'grenade';
     if (!ok && this._hillSourceWarned !== source) {
       this._hillSourceWarned = source;
       this.log(`ignoring the ${source === 'station' ? 'phone control point' : 'grenade hill beacon'}: this game's station_source is ${src}`, 'li');

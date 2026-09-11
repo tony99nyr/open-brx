@@ -148,7 +148,7 @@ export function Designer() {
               {/* F70: the modes with an objective need something ON THE FIELD emitting it, and until now
                   nothing in the console could set that — the operator got a push refused by a server
                   naming a config key no screen owned. `station_source` is a closed vocabulary
-                  (gameSummary.STATION_SOURCES ⇄ types.py), so this is a two-value segmented control and
+                  (gameSummary.STATION_SOURCES ⇄ types.py), so this is a three-value segmented control and
                   never a text field: a typo used to ship a hill match with nothing emitting a hill. */}
               {stationGated && (
                 <Row label={<>OBJECTIVE SOURCE <Hint>What is on the field emitting the objective</Hint></>}>

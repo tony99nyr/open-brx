@@ -47,17 +47,19 @@ const PRESET_LABEL: Record<string, string> = { open: 'OPEN', no_heavies: 'NO HEA
 
 // F70 — the objective-source vocabulary, mirroring `STATION_SOURCES` in mcp/brx_mcp/mc/types.py. It is a
 // CLOSED list on the server (a PUT with anything else 400s naming these values), so the console offers
-// exactly these two and nothing else. An unknown value that somehow arrives in a config still renders
+// exactly these three and nothing else. An unknown value that somehow arrives in a config still renders
 // (see `objectiveLine`) rather than vanishing — a field we cannot show is a field nobody can fix.
 export const STATION_SOURCES: { value: string; label: string; hint: string }[] = [
   { value: 'grenade', label: 'GRENADE', hint: 'A BRX Smart Grenade in hill mode. Bench-proven 2026-09-10; drives exactly ONE point (F88).' },
   { value: 'ir_station', label: 'IR STATION', hint: 'A BRX station / Utility Box speaking $CAPTURE. UNPROVEN — we have never had one on the bench.' },
+  { value: 'phone', label: 'PHONE', hint: 'A spare phone in the UTILITY role as a BLE control point: capture by presence, armed by MC at muster. Announces contested; can name its point (several are possible).' },
 ];
 /** the OBJECTIVE row shown on GAMES and in the designer rail, or null for a mode with no station source */
 export const objectiveLine = (cfg: GameConfig): string | null => {
   const src = cfg.station_source;
   if (!src) return null;
   if (src === 'grenade') return 'GRENADE HILL · ONE POINT';
+  if (src === 'phone') return 'PHONE CONTROL POINT · PRESENCE';
   return (STATION_SOURCES.find(s => s.value === src)?.label ?? src.toUpperCase());
 };
 

@@ -481,3 +481,23 @@ def test_a_hill_config_cannot_hold_four_teams_and_the_error_names_the_cap():
     s.set_config({"mode": "tdm"})
     s.set_config({"teams": four})
     assert len(s.config["teams"]) == 4
+
+
+def test_a_phone_control_point_is_a_station_source_with_its_own_checklist():
+    """F103 (third item): the phone control point was built (`app/src/control.js`, spec §5d) and MC had no
+    word for it -- `STATION_SOURCES` held `grenade` and `ir_station` only, `validate()` refuses `koth`
+    without one, so a phone-driven KotH could not be configured. `phone` is in the vocabulary now, with a
+    checklist that says ARMING resets the point (never a power cycle) -- the grenade's line is wrong for it."""
+    assert "phone" in STATION_SOURCES
+    s = _sess("koth")
+    s.set_config({"station_source": "phone"})
+    r = C.validate(s.config, _roster(s), {})
+    assert r["ok"], r["errors"]
+    setup = [w for w in r["warnings"] if w.startswith("SETUP:")]
+    assert len(setup) == 1 and "PHONE" in setup[0] and "MC-ARMED" in setup[0], setup
+    assert "power-cycle" in setup[0].lower() and "do not" in setup[0].lower(), "a phone point is never power-cycled"
+    assert "GRENADE" not in setup[0]
+    # CONTROL: the grenade line is unchanged and still names the power cycle as the reset.
+    s.set_config({"station_source": "grenade"})
+    g = [w for w in C.validate(s.config, _roster(s), {})["warnings"] if w.startswith("SETUP:")]
+    assert len(g) == 1 and "POWER-CYCLE THE GRENADE" in g[0], g

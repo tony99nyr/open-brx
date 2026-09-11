@@ -1156,6 +1156,15 @@ class Compiler:
                         "SETUP: POWER-CYCLE THE GRENADE SO IT STARTS NEUTRAL, SET IT TO HILL MODE, AND "
                         "PLACE IT — a hill that starts already owned skews the whole match, and only a "
                         "power cycle guarantees neutral. ONE POINT ONLY (F88: a beacon carries no station id)")
+                elif src == "phone":
+                    # A phone point is NOT power-cycled: arming is what resets it (utility.js
+                    # `applyStationConfig` calls `resetPoint()` when the game id changes), so the
+                    # checklist is about the app being in the right role and staying awake on the point.
+                    warnings.append(
+                        "SETUP: THE CONTROL POINT IS A PHONE — open the app in the UTILITY role, kind "
+                        "CONTROL, confirm it shows MC-ARMED for THIS game (arming resets the point; do NOT "
+                        "power-cycle it), leave the screen awake on the point, and check its battery. "
+                        "Players must be advertising (the HUD does this) or the point counts nobody")
                 else:
                     warnings.append(
                         "SETUP: PLACE AND POWER THE IR STATION, AND CHECK IT READS NEUTRAL BEFORE THE "
