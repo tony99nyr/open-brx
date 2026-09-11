@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F93 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F94 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S18.** (2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
 wider than the hill's period" generalisation, the double-`$HIR`-per-beacon dedupe finding (F85, closed same
 session), the team-change-leaves-old-LED-colour finding, and the hosted hill rate-of-fire boost.) (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
@@ -841,6 +841,30 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   peer-to-peer via their own player adverts (the advert has spare bytes but no field for it); or accept
   presence-capture for phone control points and keep shoot-to-capture for the grenade as a separate objective.
   Decide before building multi-point Domination, since F88 already rules out two grenades. `build`.
+- **F93 🟢 A PROXIMITY LAYER IS ALREADY ARRIVING ON EVERY PHONE AND BEING DISCARDED.** Opened 2026-09-10
+  (Tony's idea, and his design call recorded below). `app/src/app.js:121` feeds **every** OBRX advert into the
+  presence tracker — `presence.observe(hit.uuids, hit.rssi, …)`, low-latency scan mode, open for the whole
+  match — and `Presence` decodes role, so **player** adverts land in it alongside stations. But `app.js:381`
+  surfaces only `presence.stations()` to the engine: **`presence.players()` is populated and unused.** Every
+  phone therefore already knows, continuously and with no LAN: who is in range, their **player id**, their
+  **team** (advert byte 9), whether they are **alive or down** (byte 10 bit 0), and a smoothed RSSI. No radio
+  work is needed — this is a consumer, not plumbing.
+  ⭐ **DESIGN DECISION (Tony, 2026-09-10): teammates only by default; enemies are a PERK, not baseline.**
+  Enemy adverts are readable, so a baseline enemy display is a wallhack — symmetric, so not unfair, but it
+  turns flanking into a solved problem and changes the game more than it improves it. As a perk it is a
+  deliberate loadout cost instead: the A14 perk slot and `mc/perks.json` (7 perks today, `perk_id` +
+  name/desc, policy pool in `mc/policy.py`) already carry exactly this shape, so a "motion tracker" perk is a
+  registry row plus a filter, and MC's policy pool can switch it off per game.
+  **What it can and cannot do, so nobody promises a radar:** ⚠ **there is NO direction.** BLE gives no bearing
+  without multi-antenna AoA, so this is a proximity LIST, never a sweep. ⚠ Distance is a crude bubble, not a
+  range: the bench-tuned default is **-74 dBm at high TX ≈ 10 ft** (`spec/utility.md` §3), and body blocking
+  and phone orientation wreck it. ⚠ Adverts are **unauthenticated**, so a player can go dark by not
+  advertising, or lie about their team — already the documented accepted tradeoff for friends on a LAN, which
+  makes this fine as flavour and unusable as a competitive guarantee. ⚠ Advertising plus scanning all match
+  costs battery, and Android throttles scan restarts (~5 per 30 s, which is why `app.js:148` uses 7 s / 90 s).
+  **Cheapest first slice:** expose `presence.players()` in engine state, filter to own team, show "N
+  teammates near" on the HUD. Related: **F92** (byte 15 is `reserved` — a spare byte in the same advert is the
+  cheapest way to relay grenade-hill ownership phone to phone). `build`.
 - **F80 🟠 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.**
   Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
   received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default
