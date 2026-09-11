@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F104 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F105 · G11 · H8 ·
 K7 · P18 · Q20 · R3 · S18.** (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
 ids are retired, never reused.) (2026-09-10: F94/F95/F98 taken — the phone control point
 (`spec/utility.md` §5d), its LAN-coupled roaming variant (§5e) and Territories (§5f). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
@@ -159,6 +159,10 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   **H3 ⬜** Companion mount + ported audio box (with B1). **H4 ⬜** station enclosure (with B4). **H5 ⬜** skins.
   **H6 🟡** curated MIT sound pack + load guide (data-port swap, `community-notes.md`). All blocked on Tony's caliper
   measurements (reload socket, D-pad, rail). `hardware/print-files.md`.
+- **H7 🟡** M5StickS3 station: 2× Stick + 3× Seeed Grove IR emitter ordered 2026-09-11 (`hardware/inventory.md`);
+  firmware `hardware/m5sticks3/`. Gates: (1) a `proto=15 mag=8` grenade beacon decoded on G42 over RMT with the speaker
+  amp off; (2) a HUD phone sees the Stick's kind-5 advert carrying that owner; (3) Grove-emitter range walk against the
+  bare-LED cliff (8 to 10 ft). Ring + power bank are planned, not ordered. `hardware`.
 - **R2 🟢** software `DUTY <0-255>` (and `PULSES`) command on the IR emitter, echoing its own duty; re-run the fn 1
   control at every duty before trusting a result. A nicety again since the emitter was fixed (2026-09-03). `build`.
 
@@ -1071,6 +1075,23 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   deleted so nobody re-files it from the same stale review. ⚠ **F101's three skipped tests are a separate row
   and ARE genuinely unimplemented** (verified by running them un-skipped); do not sweep them up with this.
   `build`.
+- **F104 🔴 MC NEVER SENDS `station_config`, SO NO UTILITY STATION IS EVER ARMED IN THE FIELD.** Found
+  2026-09-11 while verifying F103. The phone listens for it (`app/src/utility.js`, "take `station_config`
+  (A13.5)") and `spec/utility.md` §5c specifies the message, but **`grep station_config mcp/` returns
+  nothing** — not in the server, not in `mc/API.md`. The entire MC→station arming path is unbuilt.
+  **Three consequences, and the third is why this is 🔴 rather than a missing feature:**
+  (a) a station is never told its kind, team, id, threshold or `game` byte, so it runs on whatever the
+  operator last set by hand behind the seven-tap gate;
+  (b) the `valid_ids` allow-list never reaches the phone, so `config.stations` scoping is inert and a stray
+  station from another match is not excluded;
+  (c) 🔴 **the point never resets between matches.** `applyStationConfig` correctly calls `resetPoint()` when
+  the `game` id CHANGES — that part is built and verified — but nothing ever calls it, so the only reset in
+  the field is the manual button. **Match 2 therefore resumes match 1's owner and its possession seconds**,
+  which is the F70 persistence trap after all, arriving by a different road than the one first reported.
+  ⚠ Do not "fix" this by resetting on a timer or on a disconnect: arming is the only signal a station gets
+  that a match changed, which is exactly why the reset lives there. The fix is to make MC send the message.
+  Cross-ref F103 (whose match-lifecycle claim was withdrawn as false — the phone code is right, the caller
+  does not exist), F92, F94. `build`.
 - **F80 🟠 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.**
   Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
   received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default
