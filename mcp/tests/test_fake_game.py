@@ -82,10 +82,12 @@ def test_run_live_refuses_a_fifth_ffa_gun_with_a_readable_error():
     cfg = GameConfig(mode="ffa", frag_limit=1, game_time_s=0)
 
     async def play():
-        # ⚠ `wait_for`, not a bare await: WITHOUT the refusal this does not fail, it HANGS — the
-        # game happily arms five guns on $TID 0-4 and then loops to run_live's 1-hour wall-clock
-        # cap, because nobody in this scenario ever shoots. A guard that takes an hour to disagree
-        # is a guard nobody runs, so the disagreement is bounded to five seconds.
+        # ⚠ `wait_for`, not a bare await. WITHOUT the refusal the old behaviour is **a HANG, not a
+        # crash and not an exception**: the game happily arms five guns on $TID 1-5 and then loops
+        # to run_live's 1-HOUR wall-clock cap, because nobody in this scenario ever shoots. Measured
+        # the hard way — reverting the fix to check this test failed hit a 120 s tool timeout
+        # instead. A guard that takes an hour to disagree is a guard nobody runs, so the
+        # disagreement is bounded to five seconds and shows up as a TimeoutError.
         return await asyncio.wait_for(
             run_live(cfg, [g.address for g in guns], manager=mgr, tick_s=0.01), timeout=5)
 

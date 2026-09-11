@@ -41,7 +41,17 @@ def _ev(ev, i, default=None):
 def _team(ev, idx, roster, player_id):
     """Resolve a team for an objective event: the roster player if it came from a
     gun, else the event's team token. Returns None for a missing/garbage/zero team
-    (station events are trusted but must be well-formed → don't fabricate team 0)."""
+    (station events are trusted but must be well-formed → don't fabricate team 0).
+
+    ⚠ **REJECTING ZERO IS CORRECT HERE, and F89 is the note not to "fix" it.** A `$CAPTURE` is
+    host-authored text: its team token is absent or unparseable far more often than it is a
+    deliberate 0, and `_ev()` defaults a missing token to None, so a zero reaching this function is
+    almost always a malformed event rather than team red. The cost is real and known — a station
+    cannot hand a point to a tid-0 team — which is why `assign_teams` keeps hill modes on teams 1
+    and 3, and why the BEACON path deliberately bypasses this function entirely: a beacon's team is
+    the wire's 2-bit `$TID` field, where **0 is genuinely red** (bench-captured taking a blue-held
+    hill, 2026-09-10). Two sources, two meanings for the same digit; do not unify them.
+    """
     p = roster.get(player_id)
     if p is not None:
         return p.team

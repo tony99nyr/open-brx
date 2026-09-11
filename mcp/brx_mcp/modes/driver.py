@@ -179,14 +179,23 @@ class GameDriver:
                           if clean_callsign(n)}
         # Per-gun PLAYER ID -> $PSET token 1 (protocol §7p). Distinct ids are what make
         # per-player attribution possible at all; with every gun on the default id the
-        # shooter field is a constant. Auto-number the fleet 0,1,2… unless the operator
+        # shooter field is a constant. Auto-number the fleet **1,2,3…** unless the operator
         # pinned ids in config.player_ids. Assignment is computed ONCE here so a
         # mid-game resetup re-sends the SAME id (a changed id mid-game would re-identify
         # the player and orphan their kills).
+        #
+        # 🔴 **FROM 1, NEVER FROM 0.** This used to be `idx`, so the FIRST gun in every game was
+        # armed at `$PSET,0` — the value A5.1 reserves for "no identity (tutorial arms,
+        # unknown/environmental shooter) ... never a player". Since the F69 guard landed,
+        # `base.shooter_player_id()` and `shooter_team()` both refuse wire 0, so gun #1's kills
+        # were silently dropped: the victim died, nobody scored, and no error said why. MC has
+        # always assigned 1-63 (`compile.py`, A5.1) and `compile.py` arms TRY-OUTS at `$PSET,0`
+        # precisely because 0 means "do not credit this" — the CLI path was the one place still
+        # handing that reserved value to a real player. Do not "simplify" this back to `idx`.
         pinned = dict(getattr(config, "player_ids", {}) or {})
         self.player_ids: dict[str, int] = {}
         for idx, pid in enumerate(players):
-            self.player_ids[pid] = int(pinned.get(pid, idx))
+            self.player_ids[pid] = int(pinned.get(pid, idx + 1))
         for pid, team in players.items():
             self.engine.add_player(pid, team)
         # Hand the engine the reverse map so it can credit a kill to the SPECIFIC gun

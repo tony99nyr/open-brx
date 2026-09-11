@@ -212,6 +212,30 @@ def test_self_shot_not_credited():
     assert snap["players"]["G1"]["kills"] == 0
 
 
+def test_the_first_gun_in_the_lobby_can_actually_score():
+    """🔴 The falsy-zero trap, live until today: `GameDriver` auto-numbered the fleet from 0, and
+    `$PSET,0` is A5.1's "no identity ... never a player" — which `shooter_player_id()` refuses
+    outright since the F69 guard landed. So the FIRST gun of every game killed people and scored
+    nothing: the victim went down, no score moved, and nothing said why.
+
+    Driven from the gun's OWN arming id rather than a literal, because a literal is exactly what hid
+    it: every other scenario in this file passes `shooter_id=1` and so never exercised gun #1.
+    """
+    g = SimGame(GameConfig(mode="tdm", frag_limit=0, game_time_s=0)).setup()
+    first = g.drv.player_ids["G1"]
+    assert first != 0, "a real player was armed on the 'no identity' id"
+    g.kill("G2", shooter_team=g.teams["G1"], shooter_id=first)
+    snap = g.snapshot()
+    assert snap["team_score"][g.teams["G1"]] == 1, snap["team_score"]
+    assert snap["players"]["G1"]["kills"] == 1
+    # CONTROL: a shot that really does carry wire 0 — a mis-armed gun, or a grenade hill's ambient
+    # damage word — still credits nobody. The guard is intact, not loosened to make the above pass.
+    g2 = SimGame(GameConfig(mode="tdm", frag_limit=0, game_time_s=0)).setup()
+    g2.kill("G2", shooter_team=g2.teams["G1"], shooter_id=0)
+    assert not any(g2.snapshot()["team_score"].values()), g2.snapshot()["team_score"]
+    assert g2.snapshot()["players"]["G1"]["kills"] == 0
+
+
 # --------------------------------------------------------------------------- #
 # FFA — per-gun credit                                                         #
 # --------------------------------------------------------------------------- #
@@ -315,7 +339,9 @@ def test_kid_mode_health_floor_applied():
     tg = g.taggers["G1"]
     assert tg.cfg_hp == 75 and tg.cfg_armor == 100     # $PSET floors reached the gun
     assert tg.hp == 75 and tg.armor == 100             # spawned at the floored pool
-    assert any(f.startswith("$PSET,0,0,75,100,") for f in g.frames_to("G1"))
+    # The id comes from the driver, not written inline: this scenario is about the health FLOOR,
+    # and the fleet is numbered from 1 (A5.1 reserves wire 0 for "no identity").
+    assert any(f.startswith(f"$PSET,{g.drv.player_ids['G1']},0,75,100,") for f in g.frames_to("G1"))
 
 
 def test_kid_mode_forces_friendly_fire_off():

@@ -3,6 +3,14 @@
 Confirmed on hardware by cap10+cap11: the wire is **0-based, 0–63** (6 bits) while
 the Callsign UI shows 1–64. Distinct ids are the prerequisite for per-player
 attribution — with every gun on the default id, the shooter field is a constant.
+
+⚠ **The RANGE starts at 0; the ASSIGNMENT starts at 1.** A5.1 reserves wire 0 for "no identity
+(tutorial arms, unknown/environmental shooter) ... never a player", and since the F69 guard landed
+`base.shooter_player_id()` refuses it outright. `GameDriver` auto-numbering the fleet from 0
+therefore armed the FIRST gun of every game with the one id whose kills are dropped on purpose —
+silently, with the victim dying and nobody scoring. It numbers from 1 now, as MC always has.
+`GameConfig.setup_frames()` keeps 0 as its own default, because that is the try-out arm
+(`compile.py`) where "do not credit this" is the point.
 """
 
 import asyncio
@@ -50,18 +58,21 @@ def _setup_sends(players, cfg=None):
     return drv, sent
 
 
-def test_driver_auto_numbers_the_fleet_distinctly():
+def test_driver_auto_numbers_the_fleet_distinctly_and_never_from_zero():
+    """Distinct AND starting at 1. Numbering from 0 gave gun A the reserved "no identity" id, whose
+    kills `shooter_player_id()` drops by design (F69/A5.1) — see the module docstring."""
     drv, sent = _setup_sends({"A": 1, "B": 2, "C": 3})
     ids = {pid: f.split(",")[1] for pid, f in sent if f.startswith("$PSET,")}
-    assert ids == {"A": "0", "B": "1", "C": "2"}, ids
+    assert ids == {"A": "1", "B": "2", "C": "3"}, ids
     assert len(set(ids.values())) == 3          # the whole point: distinct
+    assert "0" not in ids.values(), "a real player was armed on the 'no identity' id"
 
 
 def test_pinned_ids_win_over_auto_numbering():
     cfg = GameConfig(mode="ffa", player_ids={"B": 40})
     _, sent = _setup_sends({"A": 1, "B": 2}, cfg)
     ids = {pid: f.split(",")[1] for pid, f in sent if f.startswith("$PSET,")}
-    assert ids == {"A": "0", "B": "40"}, ids
+    assert ids == {"A": "1", "B": "40"}, ids
 
 
 def test_resetup_reuses_the_same_id():
@@ -78,4 +89,4 @@ def test_resetup_reuses_the_same_id():
     # A17 (bench 2026-09-07): the four hit slots carry the EAR-CONFIRMED material sounds instead of
     # Callsign's inherited H55/H13/H21/H02; hitHp ships EMPTY (health is silent -- the node's pain grunt
     # carries it), and energyShieldLoop ships EMPTY (A10 loops a geiger tick while the shield is up).
-    assert first == again == "$PSET,1,0,45,70,70,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H22,H43,U15,W71,,*"
+    assert first == again == "$PSET,2,0,45,70,70,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H22,H43,U15,W71,,*"
