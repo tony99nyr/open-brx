@@ -360,7 +360,7 @@ which the cue has a truthful caller. That is a reason to build the phone point e
   otherwise oscillate at net 0).
 - **The scheduling rule is the phone's, it already exists, and the animated screen does not replace it.** These are
   1.9-3.0 s clips against a 1 s tick cadence, so: a callout **owns the announcer for the clip's real length** and
-  the tick **waits** rather than playing underneath it (`engine.js` `_hillBusyUntil`, `:151` / `:1221`), and a later
+  the tick **waits** rather than playing underneath it (`engine.js`'s `_hillBusyUntil`, set in `_hillSay()` and honoured in `_hillTick()`), and a later
   callout **preempts outright — it never queues** (`_hillSay` sends `$PLAYX,0,*` in the same write, and only ever
   cuts off our own in-flight hill line). Both are implemented, commit `4348721`. A queued "Hill Captured" landing
   three seconds after the point was already lost would state something false; the newest word is always the true
@@ -377,7 +377,7 @@ which the cue has a truthful caller. That is a reason to build the phone point e
 
 The station owns its own state and answers to nobody mid-match (§5c: *stations are self-authoritative and report
 at recap; MC is not live mid-match*). `utility.js` already persists role and settings in `localStorage`
-(`brx.utility`, `:26-27`); `kind 5` adds **`brx.station.control`**: the `control.js` model as it stands — `owner`,
+(the `brx.utility` key); `kind 5` adds **`brx.station.control`**: the `control.js` model as it stands — `owner`,
 `capturing`, `progress`, `contested`, `dir`, `net` — plus `seq`, possession seconds per team, and the capture log
 (`{t, from, to}`). Written on every change, read at startup, so a
 phone that reboots, is force-closed or runs out of browser under it comes back holding the point it held — the
@@ -457,7 +457,7 @@ unlinked control point (a 4xx naming the phone), the same way `compile.py` refus
 ### 5e.3 The utility screen must make the Wi-Fi requirement clear during setup
 
 `utility.js` already renders an MC link state — **`MISSION CONTROL ✓ LINKED` / `· OFFLINE` / `· NO ADDRESS`**
-(`:159`) — and the arming banner **`MC-ARMED · GAME N`** / `NOT ARMED BY MISSION CONTROL` (`:157`). Build on
+and the arming banner **`MC-ARMED · GAME N`** / `NOT ARMED BY MISSION CONTROL`, both written by `render()`. Build on
 those; add no new indicator.
 
 - a station armed into a `lan_coupled` mode shows **`MC-ARMED · GAME N · LAN-COUPLED`**;
