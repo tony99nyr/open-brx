@@ -2,28 +2,28 @@
 Last verified: 2026-09-09
 
 This page covers the modes Open BRX itself runs, and the pieces you choose when you build a game.
-The stock on-gun and Callsign modes are a separate thing and live on the [gameplay page](/manual/gameplay).
+The stock on-tagger and Callsign modes are a separate thing and live on the [gameplay page](/manual/gameplay).
 
 ## What you can run
 
 Two of the modes have been played on real taggers, start to finish, with a scoreboard at the end.
 The rest are written and covered by tests, but have never been fired at a person. That gap is real:
-a mode that has never met a gun can still surprise you.
+a mode that has never met a tagger can still surprise you.
 
 **Played on hardware:**
 
 | Mode | The rule | Proven by |
 |---|---|---|
-| Team Deathmatch | Teams score a point per elimination. Downed players respawn after a delay. Highest score at the cap or the clock wins. | A two-gun laptop match on 2026-08-25 (frag limit, correct winner) and an outdoor two-phone match on 2026-09-01. |
+| Team Deathmatch | Teams score a point per elimination. Downed players respawn after a delay. Highest score at the cap or the clock wins. | A two-tagger laptop match on 2026-08-25 (frag limit, correct winner) and an outdoor two-phone match on 2026-09-01. |
 | Free-for-all | No teams. Every elimination scores for the shooter. First to the frag limit, or the top score at the clock. | A 300 second match on 2026-08-30: two phones, two taggers, 12 kills over 126 landed hits. |
 
-**Written, never played on guns:**
+**Written, never played on taggers:**
 
 | Mode | The rule | What is missing |
 |---|---|---|
 | Infection | One player starts infected. Anyone who goes down respawns onto the infected side. Survivors win by outlasting the clock. | Rules engine and Mission Control support are both in. No live run. |
 | Last Man Standing | Every player carries a fixed number of lives. Spend them all and you are out. Last player or squad standing wins. | Rules engine and Mission Control support are both in. No live run. |
-| Extraction | Loot, reach the extraction point, hold a loud channel, survive it to bank what you carry. Die and you drop the lot. | The mode is in Mission Control's list and compiles a gun head. Its objective rules (the zone, the loot, the channel) run only on the laptop command line and have not run on hardware. |
+| Extraction | Loot, reach the extraction point, hold a loud channel, survive it to bank what you carry. Die and you drop the lot. | The mode is in Mission Control's list and compiles a tagger head. Its objective rules (the zone, the loot, the channel) run only on the laptop command line and have not run on hardware. |
 | Counter-Strike (plant and defuse) | Attackers plant at a site, defenders defuse. The round ends on detonate, defuse, or a side wiped out. | Needs a station to report plant and defuse. Not in the Mission Control mode list. |
 | Domination | Teams hold capture points. Score accrues per second held. | Needs a station per point. Not in the Mission Control mode list. |
 | King of the Hill | Domination with one point: hold the hill for time. | Same as Domination. |
@@ -35,20 +35,20 @@ exist only in the laptop command-line path, so neither reaches a player carrying
 
 ## How a game is put together
 
-A game is one config object. Everything the guns are told is derived from it, so a game you like is
+A game is one config object. Everything the taggers are told is derived from it, so a game you like is
 a game you can save and run again.
 
 | Piece | What it does |
 |---|---|
 | Mode | Picks the rules and, with them, sensible defaults for the rest of this table. |
-| Teams | Up to 4 native teams. The team id is 2 bits in every shot, which is what makes friendly fire work on the gun itself. Beyond 4, run free-for-all and let Mission Control keep logical teams; there is no on-gun friendly-fire protection in that mode. |
+| Teams | Up to 4 native teams. The team id is 2 bits in every shot, which is what makes friendly fire work on the tagger itself. Beyond 4, run free-for-all and let Mission Control keep logical teams; there is no on-tagger friendly-fire protection in that mode. |
 | Time limit | The clock. It is the only ending every player sees, because each phone counts it down locally and stops on its own even with nothing in range. |
 | Frag or score limit | An early end. Mission Control decides it from the events it has and tells the phones. Players in range stop; players out of range keep playing until the clock runs out. |
-| Respawn | Timed (the phone counts a delay and re-arms the gun), station (walk back to a respawn station and it re-arms you), or none (Last Man Standing lives). |
+| Respawn | Timed (the phone counts a delay and re-arms the tagger), station (walk back to a respawn station and it re-arms you), or none (Last Man Standing lives). |
 | Health pool | 45 health and 70 armor by default. Armor soaks first. You can raise or lower it per player, which is how you handicap a strong player or help a small one. |
 | Loadout policy | Who picks the weapons: the operator, the players, or nobody (see below). |
-| Venue | Indoor or outdoor sets the gun's IR range profile and the game volume (80 indoors, 90 outdoors). Night dims the LEDs instead of lighting the field up. |
-| Friendly fire and critical hits | Both are gun settings, both are per game. Free-for-all forces friendly fire on, since everyone is an enemy. |
+| Venue | Indoor or outdoor sets the tagger's IR range profile and the game volume (80 indoors, 90 outdoors). Night dims the LEDs instead of lighting the field up. |
+| Friendly fire and critical hits | Both are tagger settings, both are per game. Free-for-all forces friendly fire on, since everyone is an enemy. |
 
 Because the clock is the only ending that reaches everyone, a game with no time limit is refused
 unless you assert that every player will stay in range for the whole match.
@@ -89,7 +89,7 @@ future perk that claims a button joins the same rule.
 
 ## Weapons
 
-Open BRX defines weapons on the wire. Each one is a frame the gun is sent at arming time, so a
+Open BRX defines weapons on the wire. Each one is a frame the tagger is sent at arming time, so a
 weapon is data, not firmware, and a game can hand out numbers Battle Company never shipped.
 
 The roster is 22 entries: the 19 captured Callsign weapons, melee among them, and three pistols we
@@ -102,7 +102,7 @@ The full stat table for the Callsign 19 is on the [gameplay page](/manual/gamepl
 numbers the app itself sends. Open BRX ships its own tuning on top of those rows, so treat the
 gameplay page as the arsenal and this page as what the platform does with it.
 
-A player can also try a weapon before the game starts. The gun is armed with that one weapon,
+A player can also try a weapon before the game starts. The tagger is armed with that one weapon,
 privately, at a lower volume, with no team and no identity, so they can pull the trigger and feel
 the reload without it counting for anything.
 

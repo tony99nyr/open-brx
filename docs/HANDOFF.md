@@ -70,25 +70,28 @@
 - **IR rig:** emitter (board B, COM8) registers 6/6 at 3 ft, 10/10 at 6 ft, cliff at 10 ft; work at
   6 ft or less. Receiver (board A, COM7) fragments frames but `native_capture.py` stitches them (F12
   worked around). Never end a run on a bare `$CLEAR`: it wipes the `$SIR` table (F11).
-- **The public site is twelve plain-markdown pages** at open-brx.iamrossi.workers.dev. `docs/manual/*.md`
-  is ordinary CommonMark (contract: `docs/site/FORMAT.md`), rendered by a 597-line generator and gated
-  by 62 browser steps at desktop AND phone width (`cd site && npm test`). Eight pages are the BRX
-  manual, four are Open BRX (`/platform`, plus leds, modes, run-a-game). No block syntax, no badges, no
-  `src:` lines; confidence lives in the log and FOLLOWUPS. Search is generated per heading and lazy.
-  **Cloudflare rebuilds the site on every push** (`wrangler deploy` runs `wrangler.toml`'s `[build]`),
-  so the generated pages are git-ignored and there is no stale-output failure mode (B24 closed).
-  ⚠ The repo is PRIVATE, so the site publishes no link into it: flip `REPO_PUBLIC` in
-  `site/build.mjs` when that changes and every link returns at once.
-  `site/lib/led-facts.mjs` reads `SHIELD_COLOUR`, `ARMOUR_COLOUR`, `GUN_DEFAULT` and the drain
-  direction out of the live Python and FAILS THE SITE BUILD when a published LED fact disagrees. It
-  proves the page matches the code, never that the code is right.
-
+- **The public site has two doors and one source (2026-09-11).** `docs/platform/*.md` → `/` (the marketing
+  landing for the ecosystem), `/platform/` (the platform landing, as a match runs), `/docs/*`
+  and `/download` (Android card rendered off the APK sidecar, iOS = build from source); `docs/manual/*.md` →
+  `/manual/*` with its own landing. Two templates in `site/build.mjs` (`doc`, `landing`); landings are plain
+  markdown read by shape (`docs/site/FORMAT.md` "Landing pages") and the build FAILS on a date, version or status
+  word in them. Screenshots are generated (`cd site && npm run shots`) and `test_site_shots.py` fails when the UI
+  source moves past them. Gate: `cd site && npm test`, 82 steps at 1280 and 390. Photos are real (Gemini-edited, the HUD frame
+  composited onto the phone); `og.jpg` is the share card; the wordmark names the place and opens the core places; `MODES[*].proven` badges unproven modes.
 - **Environment:** WSL2 has no Bluetooth; run anything that touches a gun with
   `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe`. `mcp/pyproject.toml` pins `mcp>=2,<3`; the
   2.0 port is done. `~/.brx-mcp/armory.json` is never in git (headset PINs); stickers stay out of
   docs, use `Tactix-XXXX`.
 
-## What changed since the last handoff (2026-09-11, late session — no hardware)
+## What changed since the last handoff (2026-09-11 afternoon — the site refactor, no hardware)
+
+- **The site was rebuilt around Tony's brief "I want both": a dry manual AND an Apple-grade marketing
+  page.** Design canvas first (headline "The BRX, unlocked."), then two content/screenshot lanes and the
+  generator in the main session; full story in [`experiment-log/2026-09.md`](experiment-log/2026-09.md)
+  (2026-09-11 afternoon). Thirteen defects caught by the build, the gate and two adversarial reviewers are
+  listed there; the two worth remembering: the landing counted app-only sounds until it filtered `on_gun`, and a phone reveal never fired
+  because scrolling a SECTION taller than the screen centres it and hides its first line. **Not committed at
+  the time of writing; a push to `main` deploys.** Old `/platform/*` URLs redirect.
 
 - **The followups were triaged in full** ([`followups-triage.md`](followups-triage.md): category · doer · blocker
   · what it unblocks · a dependency spine) and the keyboard list was worked top down: **18 ids closed** (F81 ·
@@ -102,13 +105,10 @@
   callouts confirmed BY EAR (⚠ `V8Q` says **"Kill Confirmed"**, fixed in `BY_EAR_CORRECTIONS`); **F84** a hill
   beacon's `$HP` echo blocked regen; the driver armed **gun #1 at `$PSET,0`**.
 
-- **LEDs, the three facts from A16 parts 1+2 that still bite** (full block moved to
-  [`archive/handoff-history.md`](archive/handoff-history.md) 2026-09-09, now that A16 is verified):
-  **`$HLED,,6` must NEVER be sent in play** — it disables the firmware's death flash for the rest of the
-  life, silently, and that cost three days; in-play dark is `$HLED,9,0,,,10,,*` and `$HLOOP` is the down
-  signal. **`$TID` is 0-3 only (F35)** — the IR team field is 2 bits, so above 3 teammates damage each other
-  and a gun can kill itself off a surface. **Phones are on a pre-`role` APK**, so `headset_frames()` still
-  ships the legacy `headset.carrier` key on purpose (S10). `test_led_invariants.py` pins all of it.
+- **LEDs, the three A16 facts that still bite** (full block in [`archive/handoff-history.md`](archive/handoff-history.md)):
+  **`$HLED,,6` must NEVER be sent in play** (kills the firmware death flash for the life; in-play dark is
+  `$HLED,9,0,,,10,,*`, `$HLOOP` is the down signal) · **`$TID` is 0-3 only (F35)** · phones are on a pre-`role`
+  APK so `headset_frames()` still ships `headset.carrier` (S10). `test_led_invariants.py` pins all of it.
 
 ## Next actions
 

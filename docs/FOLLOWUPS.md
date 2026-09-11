@@ -7,7 +7,7 @@ add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `pro
 same commit, or it gets a row here saying "promote X".
 
 **Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F107 · G11 · H8 ·
-K7 · P18 · Q20 · R3 · S18.** (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
+K7 · P18 · Q20 · R3 · S20.** (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
 ids are retired, never reused.) (2026-09-10: F94/F95/F98 taken — the phone control point
 (`spec/utility.md` §5d), its LAN-coupled roaming variant (§5e) and Territories (§5f). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
 wider than the hill's period" generalisation, the double-`$HIR`-per-beacon dedupe finding (F85, closed same
@@ -59,11 +59,11 @@ right** and this index is stale. Do not cite it as evidence that something is or
 - 🔴 **B18b** · **B23** · **E1** · **E5** · **F43** · **F68** · **F69** · **F74** · **S10**
 - 🟠 **B4** · **B19** · **B21** · **E2** · **F12** · **F13** · **F15** · **F40** · **F54** · **F56** · **F58** · **F70** · **F80** · **F102** · **S3** · **S5** · **S14**
 - 🟡 **B1** · **B8** · **B14** · **B17** · **D1** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F39** · **F42** · **F60** · **F78** · **F88** · **F95** · **H1** · **K2** · **Q12′** · **Q13** · **Q18** · **S1** · **S2** · **S6** · **S7** · **S11** · **S12** · **S13**
-- 🟢 **B11** · **B16** · **B22** · **B25** · **E7** · **F14** · **F17** · **F18** · **F19** · **F32** · **F52** · **F83** · **F87** · **F89** · **F93** · **F98** · **F99** · **F100** · **P14** · **R2** · ⬜ **K6** · **S16** · **S17**
+- 🟢 **B11** · **B16** · **B22** · **B25** · **E7** · **F14** · **F17** · **F18** · **F19** · **F32** · **F52** · **F83** · **F87** · **F89** · **F93** · **F98** · **F99** · **F100** · **P14** · **R2** · ⬜ **K6** · **S16** · **S17** · **S19**
 
 ## 1. Before going public
 
-The repo is private, MIT-licensed, 0 forks. Nothing below blocks day-to-day work; all of it blocks a public flip.
+The repo went PUBLIC on 2026-09-10 (MIT). What remains here is what a public repo still owes.
 
 - **✅ Five items are DONE and have moved out** (history purge · raw Callsign assets · headset ids in the
   binary captures · dead branches · the APK out of git). One dated line each in
@@ -288,6 +288,10 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   moved the pools and `$QUERY`'s `$LCD` tracked it). `$LIFE` with the identical arity worked in the same session, so
   this is not the connection or the arming. `brx-protocol.md` now says INERT. Open only as: does `$BUMP` want a
   different arity, a different game state, or is it dead firmware? Low value — `$LIFE` covers the need. `trigger`.
+- **S19 🟢 Lighthouse pass on `/` and `/manual/`** once the photos are in: LCP with a real hero JPEG (consider
+  `fetchpriority="high"` on the hero image and an eager load for the first shot), CLS (every image already
+  carries width/height), a11y score, and an OG-image check with a real unfurler. The gate covers landmarks,
+  contrast, targets and fonts; it does not measure load. `build`.
 - **S16 ⬜ Damage over time, on the node** (unblocked by the 2026-09-09 bench). `$LIFE` takes negatives, so
   poison / burn / bleed / gas are buildable with no firmware change and no IR per tick: the gun registers the
   proc once (a status cell, fn 8/24-28/35 — `$SIR,9,3,,24` already ships), the node reads the protocol off `$HIR`

@@ -10,8 +10,8 @@ over Web Bluetooth). Ground truth for tagger I/O: `protocol/brx-protocol.md`.
 **Start with [`docs/README.md`](docs/README.md)** — the docs index. **BRX facts: `docs/manual/`** is the
 canonical, confirmed-facts manual (also the source the public website is built from) — read the page
 there before digging through `reference/`/`protocol/`, and promote new confirmed facts into it
-(`docs/manual/README.md` → *How a fact gets in*). It is **plain markdown**, twelve pages plus a README, one per page;
-the format contract is `docs/site/FORMAT.md`. There is no block syntax, no provenance badge and no
+(`docs/manual/README.md` → *How a fact gets in*). It is **plain markdown**, one file per page (the platform pages live in
+`docs/platform/`); the format contract is `docs/site/FORMAT.md`. There is no block syntax, no provenance badge and no
 per-sentence `src:` line: confidence lives in `docs/experiment-log/` and `docs/FOLLOWUPS.md`. Before any hardware/protocol
 work also read `docs/HANDOFF.md` (one screen of current state), `docs/FOLLOWUPS.md` (every open item,
 incl. **Needs Tony at the bench**), and the current month under `docs/experiment-log/` (lab notebook).
@@ -71,18 +71,33 @@ build and publishes it to the `app-v<version>` GitHub Release; the site links th
 pinned asset, so a new cut does not stale a manual page) ·
 `firmware/` PlatformIO ESP32 flavors · `webapp/mc/` the **Mission Control web UI** (Vite/React/TS; `npm run dev`, `?mock` for the in-browser demo; design brief `docs/spec/design/mission-control.md`). ⚠ **To verify MC in a real browser there is NOTHING to build** — it is a web app, so run the dev server and drive it (Playwright is already installed under `app/` and `site/`). The phone HUD needs its stage harness (`app && npm run ui:stage`) because it drives a tagger over BLE; MC drives nothing, so it needs no stand-in. `webapp/mc/README.md` has the detail, and for any UI change follow the `ui-build-verify` skill · `webapp/` legacy static harness (Web BT is not the player path — ADR-0003) ·
 `hardware/` STLs/BOM · `protocol/` + `docs/` reference · **`site/`** the static generator for the public
-website (`docs/manual/*.md` → `webapp/`, ~200 lines of `marked` plus one template; `cd site && npm test`
-builds and runs the gate; **a push to `main` deploys the site**, and Cloudflare REBUILDS it from
-`docs/manual/*.md`: Workers Builds runs `wrangler deploy`, which runs `[build]` in `wrangler.toml`
-(`npm run build:ci`). **The built pages are git-ignored**, so there is no stale-output failure mode
-and nothing to rebuild before committing. `webapp/mc/`, `webapp/download/`, `webapp/favicon.svg` and
-`webapp/.assetsignore` are hand-kept and stay tracked;
-`webapp/mc/` is the separate MC UI and is never touched by the site build;
-**`webapp/download/`** holds only the `build.json` sidecar: the APK itself is **git-ignored and lives on
+website. **Two doors, one source (2026-09-11):** `docs/platform/*.md` → `/` (the MARKETING landing for the
+Open BRX ecosystem), `/docs/*` and `/download`; `docs/manual/*.md` → `/manual/*` (the BRX manual; its
+`index.md` is the manual's own landing). Two templates in `site/build.mjs`: `doc` (one readable column,
+light/dark) and `landing` (dark, Mission Control's type, rendered from PLAIN markdown by
+`site/lib/landing.mjs`: `##` = section, `###` = its headline, an image-only paragraph = a row of shots,
+a `**Bold.**` list = captions, a link list = buttons, a bare code fence = a terminal, a ```data fence =
+a generated component: `counts`/`modes`/`roles`/`manual`/`release`/`download`, all read from repo
+source by `site/lib/facts.mjs`). **Landing pages carry capabilities, never status**: the build FAILS on
+a date, a version number, "not yet"/"unfinished"/"coming soon" or a match report in `docs/platform/index.md`
+or `docs/manual/index.md`; the only moving number is the app version, rendered from
+`webapp/download/build.json`. **Screenshots are generated, never taken**: `cd site && npm run shots`
+drives the built MC UI (`?mock`) and the HUD (`?demo`) with Playwright into `site/shots/` (committed,
+content-hashed on publish), and `mcp/tests/test_site_shots.py` fails when `webapp/mc/src` or `app/src`
+has moved past `site/shots/manifest.json`. Staged photos live in `site/photos/` (`hero.*`, `grenade.*`;
+SVG placeholders until real ones land). Fonts are self-hosted from `site/public/fonts/`. The contract is
+`docs/site/FORMAT.md`; `cd site && npm test` builds and runs the gate (~90 browser steps at 1280 and 390,
+incl. the landing steps 12–12g); **a push to `main` deploys the site**, and Cloudflare REBUILDS it:
+Workers Builds runs `wrangler deploy`, which runs `[build]` in `wrangler.toml` (`npm run build:ci`).
+**The built pages are git-ignored**, so there is no stale-output failure mode and nothing to rebuild
+before committing. `webapp/mc/`, `webapp/download/build.json`, `webapp/favicon.svg` and
+`webapp/.assetsignore` are hand-kept and stay tracked; `webapp/mc/` is the separate MC UI and is never
+touched by the site build; **`webapp/download/`** holds the `build.json` sidecar (the generated
+`/download` page shares the directory and is ignored): the APK itself is **git-ignored and lives on
 the `app-v<version>` GitHub Release** (a committed APK cost ~5 MB of history per cut). `npm run android:apk`
 builds it, publishes the release and writes the asset URL into the sidecar. `mcp/tests/test_published_build.py` fails if the sidecar
 goes stale, names a commit that does not exist, or an APK gets committed).
-**No em dashes in `docs/manual/`**: a test fails the build if one reaches a page. See
+**No em dashes in `docs/manual/` or `docs/platform/`**: the build fails if one reaches a page. See
 `docs/manual/README.md` for the house style.
 
 **Generated, never hand-edit:** `app/ios/`, `app/android/`, `app/www/app.js` (all git-ignored and

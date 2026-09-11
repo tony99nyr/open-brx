@@ -1,16 +1,16 @@
 # What the lights mean in a game
 Last verified: 2026-09-09
 
-In an Open BRX game the host takes over the gun body LEDs and the headset ring, so what you see is
+In an Open BRX game the host takes over the tagger body LEDs and the headset ring, so what you see is
 ours. For the stock behaviour of a tagger nobody is hosting, see [Meet the BRX](/manual/hardware).
 
-## The gun body
+## The tagger body
 
 Three LEDs run along the body. In a game they do two jobs: they rest on your team colour, and they
 briefly become a bar showing the pool that just moved.
 
 **Rest.** The body holds your team's paint colour, dimmed. In free-for-all every player rests on
-white. An armed gun that has not spawned holds the same colour at full brightness, so a dim body means
+white. An armed tagger that has not spawned holds the same colour at full brightness, so a dim body means
 the match is live.
 
 **The readout.** Whenever a pool changes (damage, a heal, a shield or armour grant) the three LEDs
@@ -29,7 +29,7 @@ Which pool you are looking at:
 The bar has seven levels, because half steps blink:
 
 **The bar empties toward the muzzle end.** LED 1 goes out first and LED 3 is the last one lit, which
-is the direction every stock game mode drains on the same gun. The half step is the leftmost lit
+is the direction every stock game mode drains on the same tagger. The half step is the leftmost lit
 segment blinking, because that is the one you are about to lose. On health, the colour rides the
 segments that are left, so the final surviving LED is the one that turns red.
 
@@ -50,10 +50,10 @@ it falls. Shield and armour hold one colour, so their adjacent levels differ onl
 segment blinks: 1 and 2 are both one lit segment, 3 and 4 are both two, 5 and 6 are both three. Catch
 the blink and you read seven. Glance and you read four.
 
-**How you tell a resting gun from a readout.** Brightness, not colour. The rest paint is dim and the
+**How you tell a resting tagger from a readout.** Brightness, not colour. The rest paint is dim and the
 readout paints at full, which matters because three of the four team colours share a hue with a pool:
 team 3 purple against armour, team 2 yellow against mid health, team 0 red against critical health.
-Without the brightness gap a settled bar and a resting gun are the same picture. **At night both are
+Without the brightness gap a settled bar and a resting tagger are the same picture. **At night both are
 dim, so that separation is gone**: read the bar by its length instead.
 
 **Why a half step blinks instead of dimming.** Brightness on this hardware is one setting for the
@@ -126,8 +126,8 @@ Only health changes hue as it falls. Shield and armour keep one colour and let t
 the level.
 
 **You will not see a shield bar today.** The shield pool is IR-only on the BRX: it cannot be written
-over Bluetooth, and a real gun reports shield 0 on every life. The teal row above is what Open BRX
-paints when a shield exists, and it has never appeared on a gun. Everything else on this page has
+over Bluetooth, and a real tagger reports shield 0 on every life. The teal row above is what Open BRX
+paints when a shield exists, and it has never appeared on a tagger. Everything else on this page has
 been watched on real hardware.
 
 Teams paint red (team 0), blue (team 1), yellow (team 2) and purple (team 3). Team 3 fights as green
@@ -138,7 +138,7 @@ paints white for everyone.
 
 Night dims the lights, it does not switch them off:
 
-- every gun and headset paint drops to the low brightness setting
+- every tagger and headset paint drops to the low brightness setting
 - the readout holds 2 seconds instead of 4, and a reload glance 1 second instead of 2
 - the white start and respawn flashes are single, not double
 - the down flash is unchanged and stays at full brightness, because a downed player has nothing to

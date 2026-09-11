@@ -20,6 +20,12 @@ const { BLOCK_MARKER } = await import(pathToFileURL(path.resolve(HERE, '../block
 
 const urls = () => [...fs.readFileSync(path.join(WEB, 'sitemap.xml'), 'utf8')
   .matchAll(/<loc>([^<]+)<\/loc>/g)].map(m => new URL(m[1]).pathname);
+const manifest = () => JSON.parse(fs.readFileSync(path.join(WEB, '.site-manifest.json'), 'utf8'));
+// which pages are marketing landings (root, /manual) and which are readable doc pages
+const layoutOf = u => manifest().layouts[u] || 'doc';
+const docUrls = () => urls().filter(u => layoutOf(u) === 'doc');
+const landingUrls = () => urls().filter(u => layoutOf(u) !== 'doc');
+const DOCS = path.resolve(WEB, '../docs');
 
 function watchErrors(page) {
   const errors = [];
@@ -57,31 +63,30 @@ for (const u of urls()) {
     // provenance marks are gone from the published prose
     expect(text, 'provenance badge reached a page').not.toMatch(/[✅📖🔍👥🧪📐🚧]/u);
     expect(text, 'src: citation reached a page').not.toMatch(/\bsrc:/);
+    // the hard rule in CLAUDE.md: LaserTagMods is credited on every public page
+    await expect(page.locator('footer')).toContainText('LaserTagMods (JEDGE / JBOX)');
 
     expect(errors).toEqual([]);
   });
 }
 
-it('1b · a page opens with its title, not with a second nav bar', async ({ page }) => {
-  // A sibling-links row above the <h1> read as a second navigation bar under the first, with the
-  // same underline-for-current treatment, so three "you are here" marks sat within 100px and it
-  // competed with the contents box. Where-to-go-next belongs at the END of the article.
-  for (const u of urls()) {
+it('1b · a doc page opens with its title, and its header lists its own section', async ({ page }) => {
+  // A sibling-links row above the <h1> read as a second navigation bar under the first, so where
+  // else to go in a section now lives in the header nav, and the article opens with its title.
+  expect(landingUrls().length, 'the site publishes no landing pages').toBeGreaterThan(1);
+  for (const u of docUrls()) {
     await page.goto(u);
     const first = page.locator('article > *').first();
     expect(await first.evaluate(e => e.tagName), `${u} does not open with its title`).toBe('H1');
-    // and any section-sibling nav must come after the content
-    const more = page.locator('article > nav.more');
-    // the platform section HAS siblings, so its pages must carry the block; a bare `if (count())`
-    // meant renaming the class silently disabled this check
-    if (/^\/platform\/.+/.test(u)) expect(await more.count(), `${u} lost its section-siblings block`).toBe(1);
-    if (await more.count()) {
-      const pos = await more.evaluate(e => {
-        const kids = [...e.parentElement.children];
-        return { at: kids.indexOf(e), of: kids.length };
-      });
-      expect(pos.at, `${u}: the "more in this section" block is not at the end`).toBeGreaterThan(pos.of - 3);
-    }
+    // the header names the section the page is in, and marks this page as current
+    const here = page.locator('.topnav a[aria-current="page"]');
+    if (u !== '/credits/' && u !== '/docs/') expect(await here.count(), `${u} has no current-page mark in the header`).toBe(1);
+    // the wordmark names the place: BRX/ DOCS in the manual, PLATFORM/ DOCS in the platform half
+    const wm = (await page.locator('.wm').innerText()).replace(/\s+/g, ' ').trim();
+    const want = u.startsWith('/manual') || u === '/credits/' ? /^BRX ?\/ ?DOCS$/i : /^PLATFORM ?\/ ?DOCS$/i;   // every doc page carries DOCS; only the two landings are bare
+    expect(wm, `${u}: the wordmark reads "${wm}"`).toMatch(want);
+    // and a hairline separates the wordmark from the section links beside it
+    expect(await page.locator('.brand').evaluate(e => getComputedStyle(e).borderRightWidth), `${u}: no separator after the wordmark`).toBe('1px');
   }
 });
 
@@ -105,11 +110,12 @@ it('2b · the official documents we say we link are actually reachable', async (
   // The manual promised "linked, not rehosted" while publishing exactly one external link, to our
   // own GitHub. A promised link that 404s is the same broken promise one step later. Network is
   // allowed to be flaky, so a transport error is reported and skipped; only a real 4xx/5xx fails.
-  const dir = path.resolve(WEB, '../docs/manual');
   const urls = new Set();
-  for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.md') && f !== 'README.md')) {
-    for (const u of fs.readFileSync(path.join(dir, f), 'utf8').match(/https?:\/\/[^\s)"'<]+/g) || []) {
-      urls.add(u);   // including our own repo: excluding it is how a 404 on all 12 pages survived
+  for (const dir of ['manual', 'platform'].map(d => path.join(DOCS, d))) {
+    for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.md') && f !== 'README.md')) {
+      for (const u of fs.readFileSync(path.join(dir, f), 'utf8').match(/https?:\/\/[^\s)"'<]+/g) || []) {
+        urls.add(u);   // including our own repo: excluding it is how a 404 on all 12 pages survived
+      }
     }
   }
   // the footer link is in the template, not in any manual file, so read the built pages as well
@@ -123,6 +129,8 @@ it('2b · the official documents we say we link are actually reachable', async (
   for (const u of urls) {
     try {
       const r = await request.get(u, { timeout: 20000, maxRedirects: 5 });
+      // 429 is the host rate-limiting THIS checker (GitHub does, after a few runs), not a dead link
+      if (r.status() === 429) { console.log(`  (rate limited by ${new URL(u).host}, could not verify ${u})`); continue; }
       if (r.status() >= 400) bad.push(`${u} -> ${r.status()}`);
     } catch (e) { console.log(`  (could not reach ${u}: ${e.message.split('\n')[0]})`); }
   }
@@ -132,15 +140,14 @@ it('2b · the official documents we say we link are actually reachable', async (
 it('3 · every markdown twin is byte-for-byte the manual file it came from', async ({ request }) => {
   // The twins and llms-full.txt are what llms.txt exists to serve. Asserting "a file exists and has
   // an H1" let a twin carrying entirely the wrong page pass, so compare the actual bytes.
-  const MANUAL = path.resolve(WEB, '../docs/manual');
-  const map = JSON.parse(fs.readFileSync(path.join(WEB, '.site-manifest.json'), 'utf8')).twins;
+  const map = manifest().twins;
   expect(Object.keys(map).length, 'the build published no twin map').toBe(urls().length);
   const full = await (await request.get('/llms-full.txt')).text();
   for (const [twin, file] of Object.entries(map)) {
     const r = await request.get(twin);
     expect(r.ok(), `${twin} missing`).toBe(true);
     const served = await r.text();
-    const source = fs.readFileSync(path.join(MANUAL, file), 'utf8');
+    const source = fs.readFileSync(path.join(DOCS, file), 'utf8');
     expect(served, `${twin} is not ${file}`).toBe(source);
     expect(full.includes(source), `llms-full.txt is missing ${file}`).toBe(true);
   }
@@ -276,7 +283,7 @@ it('6b · search finds a symbol and lands on the section that defines it', async
 });
 
 it('6c · search says so when nothing matches and when the index will not load', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/manual/');   // the manual's front door carries the search box in its hero
   await page.locator('#q').fill('zzzznotathing');
   await expect(page.locator('#results')).toContainText('Nothing matches');
 
@@ -329,7 +336,7 @@ it('6e · the phone menu opens, closes and keeps the header small', async ({ pag
 });
 
 it('7 · the theme toggle changes the page and survives navigation', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/manual/hardware/');
   const before = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   await page.locator('.theme').click();
   const after = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
@@ -337,6 +344,12 @@ it('7 · the theme toggle changes the page and survives navigation', async ({ pa
   const theme = await page.evaluate(() => document.documentElement.dataset.theme);
   await page.goto('/manual/hardware/');
   expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe(theme);
+  // the landings are dark by design and carry no toggle, whatever the reader chose on a doc page
+  for (const u of ['/', '/manual/']) {
+    await page.goto(u, { waitUntil: 'networkidle' });
+    expect(await page.locator('.theme').count(), `a theme toggle leaked onto ${u}`).toBe(0);
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe('rgb(7, 9, 13)');
+  }
 });
 
 it('8 · on a phone the page never scrolls sideways', async ({ page }) => {
@@ -348,10 +361,13 @@ it('8 · on a phone the page never scrolls sideways', async ({ page }) => {
   }
 });
 
-it('9 · 404 renders a real page', async ({ page }) => {
+it('9 · 404 renders a real page whose links all work', async ({ page, request }) => {
   const r = await page.goto('/no/such/page/');
   expect(r.status()).toBe(404);
   await expect(page.locator('h1')).toBeVisible();
+  const hrefs = await page.locator('a[href^="/"]').evaluateAll(as => as.map(a => a.getAttribute('href')));
+  expect(hrefs.length).toBeGreaterThan(3);
+  for (const h of hrefs) expect((await request.get(h)).ok(), `404 page links to ${h}`).toBe(true);
 });
 
 it('10 \u00b7 every URL the old site published still resolves, by page or by redirect', async () => {
@@ -378,6 +394,15 @@ it('10 \u00b7 every URL the old site published still resolves, by page or by red
   // `/manual/dev/` itself, which redirected the live page to itself and looped forever in production.
   const selfMatch = [...live].filter(p => rules.some(r => matches(r.from, p)));
   expect(selfMatch, `redirect rules that swallow a live page (loop): ${selfMatch.join(', ')}`).toEqual([]);
+  // the pages that MOVED must land on their own new home, not on any live page
+  const moved = { '/platform/leds/': '/docs/leds/', '/platform/modes/': '/docs/modes/', '/platform/run-a-game/': '/docs/run-a-game/' };
+  expect(live.has('/platform'), '/platform/ must be a live landing, not a redirect').toBe(true);
+  for (const [from, to] of Object.entries(moved)) {
+    const rule = rules.find(r => norm(r.from) === norm(from));
+    expect(rule, `no redirect for ${from}`).toBeTruthy();
+    expect(norm(rule.to), `${from} redirects to the wrong page`).toBe(norm(to));
+  }
+  expect(live.has('/manual'), '/manual/ must be a live page, not a redirect').toBe(true);
   // no rule may point at another rule's source, which would chain
   const chained = rules.filter(r => rules.some(o => matches(o.from, r.to)));
   expect(chained.map(r => `${r.from} -> ${r.to}`), 'chained redirects').toEqual([]);
@@ -398,6 +423,317 @@ it('11 · every old URL really resolves over HTTP, in one hop, with no loop', as
   for (const u of urls()) {
     const r = await request.get(u, { maxRedirects: 0 });
     expect(r.status(), `${u} redirects instead of serving`).toBe(200);
+  }
+});
+
+
+// ---- the landing pages ----------------------------------------------------------------------
+// Everything below asserts what a visitor SEES on the root and the manual's front door: real
+// screenshots that loaded, buttons that go where they say, numbers that equal the repo data, and
+// motion that reveals rather than hides.
+const facts = () => {
+  const modes = (fs.readFileSync(path.join(DOCS, '../mcp/brx_mcp/mc/state.py'), 'utf8').match(/\{"mode":\s*"[a-z_]+",\s*"name"/g) || []).length;
+  const weapons = JSON.parse(fs.readFileSync(path.join(DOCS, '../mcp/brx_mcp/mc/weapons.json'), 'utf8')).weapons.length;
+  const release = JSON.parse(fs.readFileSync(path.join(DOCS, '../webapp/download/build.json'), 'utf8'));
+  return { modes, weapons, release };
+};
+
+it('12 · the root landing renders every section with a loaded image and one h1', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('/', { waitUntil: 'networkidle' });
+  await expect(page.locator('h1')).toHaveCount(1);
+  await expect(page.locator('h1')).toContainText(/unlocked/i);
+  // the hero lede says what the product is, since the headline no longer does
+  await expect(page.locator('.hero .lede')).toContainText(/BRX taggers/);
+  expect((await page.locator('.wm').innerText()).replace(/\s+/g, ' ').trim()).toMatch(/^OPEN-BRX ?\/$/i);
+  // the wordmark sits on one line: icon, name and the nav links share a vertical centre within 3px
+  const mid = el => el.evaluate(e => { const r = e.getBoundingClientRect(); return r.top + r.height / 2; });
+  const [icon, name, link] = await Promise.all([mid(page.locator('.wm .logo')), mid(page.locator('.wm-name')), mid(page.locator('.topnav a').first())]);
+  expect(Math.abs(icon - name), `wordmark icon and name are ${(icon - name).toFixed(1)}px apart vertically`).toBeLessThanOrEqual(3);
+  if (page.viewportSize().width >= 1024) expect(Math.abs(name - link), `wordmark and nav links are ${(name - link).toFixed(1)}px apart vertically`).toBeLessThanOrEqual(4);
+  // the wordmark opens the core places, every one a live page, and Escape closes it back to the button
+  await page.locator('.wm').click();
+  await expect(page.locator('#places')).toBeVisible();
+  const places = await page.locator('#places a').evaluateAll(as => as.map(a => a.getAttribute('href')));
+  expect(places).toEqual(expect.arrayContaining(['/', '/platform/', '/manual/']));
+  expect(places, 'download does not belong in the places menu; the header button carries it').not.toContain('/download/');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#places')).toBeHidden();
+  expect(await page.evaluate(() => document.activeElement?.className)).toBe('wm');
+  // the header call to action is a button, not an underlined link
+  expect(await page.locator('.top .btn').evaluate(b => getComputedStyle(b).textDecorationLine)).toBe('none');
+  // the outline button's border runs along the whole chamfer, the diagonal included (a CSS border cannot; a clipped layer can)
+  const edge = await page.locator('.hero .btn-line').first().evaluate(b => { const cs = getComputedStyle(b, '::before'); return { bg: cs.backgroundColor, clip: cs.clipPath }; });
+  expect(edge.bg, 'the outline button has no drawn edge layer').not.toMatch(/rgba\(0, 0, 0, 0\)|transparent/);
+  expect(edge.clip, 'the edge layer is not chamfered').toMatch(/polygon/);
+  // hovering the primary button keeps its label readable (a generic link hover once turned it light blue on light blue)
+  const primary = page.locator('.hero .btn-acc').first();
+  await primary.hover(); await page.waitForTimeout(250);
+  const hov = await primary.evaluate(b => { const cs = getComputedStyle(b); return [cs.color, cs.backgroundColor]; });
+  const lumH = c => { const [r, g, b] = c.match(/\d+/g).map(Number).map(v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return .2126 * r + .7152 * g + .0722 * b; };
+  const hr = (Math.max(lumH(hov[0]), lumH(hov[1])) + .05) / (Math.min(lumH(hov[0]), lumH(hov[1])) + .05);
+  expect(hr, `hovered button label contrast ${hr.toFixed(2)}:1 (${hov.join(' on ')})`).toBeGreaterThanOrEqual(4.5);
+  await page.mouse.move(0, 0);
+  // keyboard focus is VISIBLE on a chamfered button (the clip-path used to clip the outline away)
+  await page.locator('.hero .btn').first().focus();
+  const ring = await page.locator('.hero .btn').first().evaluate(b => { const cs = getComputedStyle(b); return { style: cs.outlineStyle, offset: cs.outlineOffset }; });
+  expect(ring.style, 'no focus ring on the primary button').not.toBe('none');
+  expect(parseInt(ring.offset), 'focus ring drawn outside the chamfer, where the clip hides it').toBeLessThan(0);
+  // modes that have not run on real taggers say so
+  const wip = await page.locator('.tile.wip .badge').allTextContents();
+  expect(wip.length, 'no mode is badged in development, yet state.py says some are unproven').toBeGreaterThan(0);
+  // sections: eyebrow + h2 each, anchored, and the header's in-page links resolve to them
+  const secs = page.locator('main.landing section.feat');
+  const srcMd = fs.readFileSync(path.join(DOCS, 'platform/index.md'), 'utf8');
+  expect(await secs.count(), 'a landing section went missing').toBe((srcMd.match(/^## /gm) || []).length);
+  // the eyebrows number the sections in order, 01 upward, no gaps and no repeats
+  const eyebrows = await page.locator('main.landing .feat .feat-head .eyebrow').allTextContents();
+  expect(eyebrows.map(e => e.trim().slice(0, 2))).toEqual(eyebrows.map((_, i) => String(i + 1).padStart(2, '0')));
+  for (const a of await page.locator('.topnav a[href^="#"]').evaluateAll(as => as.map(a => a.getAttribute('href')))) {
+    expect(await page.locator(a).count(), `nav anchor ${a} has no target`).toBe(1);
+  }
+  // every screenshot and photo actually loaded, at its declared size. They are lazy, so walk the
+  // page first the way a reader would; an image that never loads on scroll is the bug to catch.
+  await page.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += 600) { scrollTo(0, y); await new Promise(r => setTimeout(r, 60)); } scrollTo(0, 0); });
+  await page.waitForLoadState('networkidle');
+  const imgs = await page.locator('main img').evaluateAll(is => is.map(i => ({ src: i.getAttribute('src'), alt: i.alt, ok: i.complete && i.naturalWidth > 0, w: i.getAttribute('width') })));
+  expect(imgs.length).toBeGreaterThanOrEqual(8);
+  for (const i of imgs) {
+    expect(i.ok, `${i.src} did not load`).toBe(true);
+    expect(i.alt.trim().length, `${i.src} has no alt text`).toBeGreaterThan(8);
+    expect(i.w, `${i.src} has no declared width, so the page jumps as it loads`).not.toBeNull();
+  }
+  // shots and photos are content-hashed, never served under a bare name a cache could pin
+  for (const i of imgs) expect(i.src, `${i.src} is not content-hashed`).toMatch(/\.[0-9a-f]{10}\.(jpg|svg|png)$/);
+  // and every image is THE image the source names, in the source's order: a swapped screenshot fails here
+  const want = [...srcMd.matchAll(/!\[[^\]]*\]\((\/(?:shots|photos)\/[^)\s]+)\)/g)].map(m => m[1].split('/').pop().replace(/\.[a-z]+$/, ''));
+  const got = imgs.map(i => i.src.split('/').pop().replace(/\.[0-9a-f]{10}\.[a-z]+$/, ''));
+  expect(got, 'rendered images differ from the source, in identity or order').toEqual(want);
+  expect(errors).toEqual([]);
+});
+
+it('12b · the landing numbers equal the repo data they claim to count', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'networkidle' });
+  const f = facts();
+  const counts = await page.locator('.counts .count').evaluateAll(cs => cs.map(c => ({ n: c.querySelector('b').dataset.n, label: c.querySelector('span').textContent })));
+  expect(counts.find(c => /modes/.test(c.label))?.n).toBe(String(f.modes));
+  expect(counts.find(c => /weapons/.test(c.label))?.n).toBe(String(f.weapons));
+  const onGun = JSON.parse(fs.readFileSync(path.join(WEB, 'data/sounds.json'), 'utf8')).filter(s => s.on_gun).length;
+  expect(counts.find(c => /sounds/.test(c.label))?.n, 'the sound count is not the on-tagger count').toBe(String(onGun));
+  // one tile per mode, one chip total per weapon
+  expect(await page.locator('.tiles .tile').count()).toBe(f.modes);
+  const chipTotal = (await page.locator('.chips .chip b').allTextContents()).reduce((a, b) => a + Number(b), 0);
+  expect(chipTotal).toBe(f.weapons);
+  // the version comes from the release sidecar and is the only version on the page
+  await expect(page.locator('.cards .c-app')).toContainText(f.release.version);
+  const text = await page.locator('main').innerText();
+  const versions = [...new Set(text.match(/\b\d+\.\d+\.\d+\b/g) || [])];
+  expect(versions, 'a version other than the published build is on the landing').toEqual([f.release.version]);
+  // and no date or status word reached the marketing copy
+  expect(text).not.toMatch(/\b20\d\d-\d\d-\d\d\b/);
+  expect(text).not.toMatch(/\b(not yet|unfinished|coming soon)\b/i);
+});
+
+it('12c · every landing button goes where it says', async ({ page, request }) => {
+  await page.goto('/', { waitUntil: 'networkidle' });
+  const btns = await page.locator('main .btn, .top .btn').evaluateAll(bs => bs.map(b => ({ t: b.textContent.trim(), h: b.getAttribute('href') })));
+  expect(btns.length).toBeGreaterThanOrEqual(5);
+  for (const b of btns) {
+    expect(b.h, `button "${b.t}" has no href`).toBeTruthy();
+    if (b.h.startsWith('/')) expect((await request.get(b.h)).ok(), `"${b.t}" -> ${b.h}`).toBe(true);
+  }
+  // "Get the app" is the primary action and it lands on the download page, never on a bare APK
+  const get = btns.filter(b => /get the app/i.test(b.t));
+  expect(get.length).toBeGreaterThanOrEqual(2);
+  for (const b of get) expect(b.h).toBe('/download/');
+  // the download page carries the live Android card with the checksum
+  await page.goto('/download/');
+  await expect(page.locator('.dl .dl-btn')).toContainText(/APK/);
+  expect(await page.locator('.dl .dl-btn').getAttribute('href')).toMatch(/^https:\/\/github\.com\/.*\.apk$/);
+  await expect(page.locator('.dl-meta')).toContainText(/[0-9a-f]{64}/);
+  await expect(page.locator('h2', { hasText: /iOS/ })).toBeVisible();
+});
+
+it('12d · motion reveals as you scroll and never hides content from readers', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'networkidle' });
+  // before scrolling, a section far down is staged (transparent) but present in the tree
+  const late = page.locator('section.feat[aria-labelledby="get-it"]');   // the id sits on the h2 the nav anchors to
+  const staged = await late.locator('[data-reveal]').first().evaluate(e => getComputedStyle(e).opacity);
+  expect(Number(staged), 'the reveal has no starting state; motion is not wired').toBeLessThan(1);
+  // scroll the ELEMENT in, not the section: on a phone the section is taller than the screen and
+  // centring it leaves its first line above the viewport
+  await late.locator('[data-reveal]').first().scrollIntoViewIfNeeded();
+  await expect(late.locator('[data-reveal]').first()).toHaveClass(/\bin\b/);
+  await expect.poll(async () => Number(await late.locator('[data-reveal]').first().evaluate(e => getComputedStyle(e).opacity)), { timeout: 3000 }).toBe(1);
+  // after a full scroll under NORMAL motion nothing stays hidden: not a photo, not a shot, not a terminal line
+  await page.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += 400) { scrollTo(0, y); await new Promise(r => setTimeout(r, 90)); } });
+  await page.waitForTimeout(1800);
+  const stuck = await page.locator('[data-reveal], .shot.wide, .hero .photo, .term .t-l').evaluateAll(es => es.filter(e => Number(getComputedStyle(e).opacity) < 1).map(e => e.className || e.tagName));
+  expect(stuck, 'elements still hidden after scrolling the whole page').toEqual([]);
+  // every count-up lands on its real number, not just the first
+  await page.locator('.counts').scrollIntoViewIfNeeded();
+  const ns = page.locator('.counts b[data-n]');
+  for (let i = 0; i < await ns.count(); i++) {
+    await expect.poll(async () => (await ns.nth(i).textContent()).replace(/,/g, ''), { timeout: 3000 }).toBe(await ns.nth(i).getAttribute('data-n'));
+  }
+  // the pinned layout: the shot never overlaps the lede or the captions beside it (desktop only; it stacks on a phone)
+  if (page.viewportSize().width >= 1024) {
+    const pin = page.locator('.feat.pin').first();
+    await pin.locator('.shot.wide').scrollIntoViewIfNeeded(); await page.waitForTimeout(600);
+    const [lede, shot, caps] = await Promise.all([pin.locator('> .lede').boundingBox(), pin.locator('.shot.wide').boundingBox(), pin.locator('.caps').boundingBox()]);
+    const overlap = (a, b) => !(a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y);
+    expect(overlap(lede, shot), 'the pinned shot overlaps its lede').toBe(false);
+    expect(overlap(caps, shot), 'the pinned shot overlaps its captions').toBe(false);
+  }
+  // an in-page anchor lands its heading BELOW the sticky header, not under it (the heading used to be
+  // scrolled to while still translated by its reveal, then slid up 18px under the header)
+  for (const a of ['#mission-control', '#the-hud', '#game-modes']) {
+    await page.goto('/', { waitUntil: 'networkidle' });
+    if (await page.locator('.burger').isVisible()) await page.locator('.burger').click();   // the nav is behind the burger on a phone
+    await page.locator(`.topnav a[href="${a}"]`).click();
+    await page.waitForTimeout(1200);
+    const [top, header] = await page.evaluate(sel => [document.querySelector(sel).getBoundingClientRect().top, document.querySelector('.top').offsetHeight], a);
+    expect(top, `${a} lands at ${top}px, header is ${header}px`).toBeGreaterThanOrEqual(header + 8);
+  }
+  // no JavaScript: every word and picture is visible, nothing waits for a reveal that will never run
+  const nojs = await page.context().browser().newContext({ javaScriptEnabled: false });
+  const p0 = await nojs.newPage();
+  await p0.goto('/', { waitUntil: 'networkidle' });
+  const dark = await p0.locator('[data-reveal], .shot.wide, .hero .photo, .term .t-l').evaluateAll(es => es.filter(e => Number(getComputedStyle(e).opacity) < 1).length);
+  expect(dark, 'elements invisible without JavaScript').toBe(0);
+  await nojs.close();
+  // reduced motion: everything is visible at once, nothing animates
+  const ctx = await page.context().browser().newContext({ reducedMotion: 'reduce' });
+  const p2 = await ctx.newPage();
+  await p2.goto('/', { waitUntil: 'networkidle' });
+  const hidden = await p2.locator('[data-reveal]').evaluateAll(es => es.filter(e => Number(getComputedStyle(e).opacity) < 1).length);
+  expect(hidden, 'elements hidden under prefers-reduced-motion').toBe(0);
+  await ctx.close();
+});
+
+it('12e · the landing is accessible: landmarks, heading order, contrast, tap targets, fonts', async ({ page }, testInfo) => {
+  await page.goto('/', { waitUntil: 'networkidle' });
+  for (const lm of ['header', 'nav', 'main', 'footer']) expect(await page.locator(lm).count(), `no <${lm}>`).toBeGreaterThan(0);
+  // h1 then h2s only: the section eyebrows are labels, not headings, so the outline stays flat
+  const levels = await page.locator('main h1, main h2, main h3, main h4').evaluateAll(hs => hs.map(h => h.tagName));
+  expect(levels[0]).toBe('H1');
+  expect(levels.filter(l => l !== 'H1' && l !== 'H2'), 'a landing section skipped a heading level').toEqual([]);
+  // the self-hosted display face actually loaded (Google-hosted fonts are gone)
+  expect(await page.evaluate(() => document.fonts.check('700 40px Oswald')), 'Oswald did not load').toBe(true);
+  expect(await page.locator('link[href*="fonts.googleapis"]').count(), 'a Google Fonts link is still on the page').toBe(0);
+  // Open Graph and canonical for the share card
+  for (const m of ['og:title', 'og:description', 'og:url']) expect(await page.locator(`meta[property="${m}"]`).count(), `missing ${m}`).toBe(1);
+  expect(await page.locator('link[rel="canonical"]').count()).toBe(1);
+  expect(await page.locator('script[type="application/ld+json"]').count()).toBe(1);
+  // body copy contrast: the lede against the ground
+  const c = await page.locator('.hero .lede').evaluate(e => [getComputedStyle(e).color, getComputedStyle(document.body).backgroundColor]);
+  const lum = s => { const [r, g, b] = s.match(/\d+/g).map(Number).map(v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return .2126 * r + .7152 * g + .0722 * b; };
+  const ratio = (lum(c[0]) + .05) / (lum(c[1]) + .05);
+  expect(ratio, `lede contrast ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+  // no text a reader is meant to read is under 11px (labels included; decorative regions excluded by the vh class)
+  const tiny = await page.evaluate(() => {
+    const res = []; const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let n; while ((n = walker.nextNode())) {
+      const t = n.textContent.trim(); if (t.length < 3) continue;
+      const el = n.parentElement; if (!el || el.closest('.vh, [hidden], script, style')) continue;
+      const cs = getComputedStyle(el);
+      if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+      if (parseFloat(cs.fontSize) < 11) res.push(`${cs.fontSize} "${t.slice(0, 30)}"`);
+    }
+    return res;
+  });
+  expect(tiny, 'text under 11px').toEqual([]);
+  // every button is a real tap target
+  const small = await page.locator('main .btn').evaluateAll(bs => bs.filter(b => b.getBoundingClientRect().height < 44).map(b => b.textContent.trim()));
+  expect(small, 'buttons under 44px').toEqual([]);
+  // the skip link moves FOCUS into the content, not just the scroll position
+  await page.keyboard.press('Tab');
+  await expect(page.locator('.skip')).toBeFocused();
+  await page.keyboard.press('Enter');
+  expect(await page.evaluate(() => document.activeElement?.id), 'skip link did not move focus to main').toBe('main');
+  if (testInfo.project.name === 'phone') {
+    // the two icon buttons in the header are what a phone user actually has to hit
+    for (const sel of ['.burger']) {
+      const h = await page.locator(sel).evaluate(b => b.getBoundingClientRect().height);
+      expect(h, `${sel} is ${h}px tall on a phone`).toBeGreaterThanOrEqual(44);
+    }
+    await page.goto('/manual/hardware/');
+    const th = await page.locator('.theme').evaluate(b => b.getBoundingClientRect().height);
+    expect(th, `.theme is ${th}px tall on a phone`).toBeGreaterThanOrEqual(44);
+    await page.goto('/', { waitUntil: 'networkidle' });
+    // the header CTA hides on a phone so the burger and brand fit; the hero buttons carry the action
+    await expect(page.locator('.top-cta')).toBeHidden();
+    await expect(page.locator('.wm')).toBeVisible();
+    // the landing header has its own burger; it opens the section list and Escape closes it
+    await page.locator('.burger').click();
+    await expect(page.locator('.topnav')).toBeVisible();
+    expect(await page.locator('.topnav a').count()).toBeGreaterThanOrEqual(5);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.topnav')).toBeHidden();
+    const w = await page.locator('.hero .cta .btn').first().evaluate(b => b.getBoundingClientRect().width);
+    expect(w, 'hero button is not full width on a phone').toBeGreaterThan(300);
+  }
+});
+
+it('12f · the manual front door searches from its hero and lists every manual page', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('/manual/', { waitUntil: 'networkidle' });
+  await expect(page.locator('h1')).toHaveCount(1);
+  // one door per manual page in the header nav, each leading to a live page with that title
+  const doors = await page.locator('.doors .door').evaluateAll(ds => ds.map(d => ({ h: d.getAttribute('href'), t: d.querySelector('.t').textContent.trim() })));
+  const navs = await page.locator('.topnav a[href^="/manual/"]').evaluateAll(as => as.map(a => a.textContent.trim()));
+  expect(doors.map(d => d.t)).toEqual(navs);
+  // a door's blurb is a sentence: it ends on a full stop, never on a bare cut or an ellipsis
+  const blurbs = await page.locator('.doors .door .s').allTextContents();
+  for (const b of blurbs) {
+    expect(b.length, `blurb too short: "${b}"`).toBeGreaterThan(40);
+    expect(b.trim(), `blurb does not end as a sentence: "${b}"`).toMatch(/[a-z)]\.$/i);
+  }
+  for (const d of doors) {
+    await page.goto(d.h);
+    await expect(page.locator('h1')).toBeVisible();
+  }
+  await page.goto('/manual/', { waitUntil: 'networkidle' });
+  // the hero search is the header search, moved: same behaviour, same keyboard
+  await page.keyboard.press('/');
+  expect(await page.evaluate(() => document.activeElement?.id)).toBe('q');
+  expect(await page.evaluate(() => document.activeElement.closest('.hero-find') !== null), 'slash focused a box outside the hero').toBe(true);
+  await page.keyboard.type('$WEAP');
+  await expect(page.locator('#results a').first()).toBeVisible();
+  await expect(page.locator('#results a').first().locator('.r-h')).toContainText('$WEAP');
+  expect(errors).toEqual([]);
+});
+
+it('12h · the platform landing markets the software and hands off to the download', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('/platform/', { waitUntil: 'networkidle' });
+  await expect(page.locator('h1')).toHaveCount(1);
+  expect((await page.locator('.wm').innerText()).replace(/\s+/g, ' ').trim()).toMatch(/^PLATFORM ?\/$/i);
+  expect(await page.locator('.top .btn.top-cta').getAttribute('href')).toBe('/download/');
+  expect(await page.locator('.theme').count()).toBe(0);
+  // its header lists its own sections and they resolve
+  for (const a of await page.locator('.topnav a[href^="#"]').evaluateAll(as => as.map(a => a.getAttribute('href')))) {
+    expect(await page.locator(a).count(), `nav anchor ${a} has no target`).toBe(1);
+  }
+  await page.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += 600) { scrollTo(0, y); await new Promise(r => setTimeout(r, 60)); } scrollTo(0, 0); });
+  await page.waitForLoadState('networkidle');
+  const imgs = await page.locator('main img').evaluateAll(is => is.map(i => ({ src: i.getAttribute('src'), ok: i.complete && i.naturalWidth > 0 })));
+  expect(imgs.length).toBeGreaterThanOrEqual(6);
+  for (const i of imgs) expect(i.ok, `${i.src} did not load`).toBe(true);
+  // the release card is live data, the same version as the download page
+  const v = JSON.parse(fs.readFileSync(path.join(DOCS, '../webapp/download/build.json'), 'utf8')).version;
+  await expect(page.locator('.cards .c-app')).toContainText(v);
+  expect(errors).toEqual([]);
+});
+
+it('12g · the site is honest when a photo has not been shot yet', async ({ page }) => {
+  // The hero and objectives slots may still be placeholders. If they are, the placeholder says so
+  // in its own alt text, so nobody mistakes the striped box for a broken image.
+  await page.goto('/', { waitUntil: 'networkidle' });
+  const photos = await page.locator('figure.photo img').evaluateAll(is => is.map(i => ({ src: i.getAttribute('src'), alt: i.alt })));
+  expect(photos.length).toBeGreaterThanOrEqual(2);
+  for (const p of photos) {
+    if (p.src.endsWith('.svg')) expect(p.alt.length, `${p.src}: a placeholder needs alt text saying what belongs there`).toBeGreaterThan(8);
   }
 });
 

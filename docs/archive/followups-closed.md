@@ -2247,3 +2247,7 @@ Evidence: `experiment-log/2026-09.md` → *2026-09-11 (late) — the followups t
 - 2026-09-11 **F84** the audit is a TEST: `test_timers_vs_hill_period.py` fails on any `*_S`/`*_MS` constant in `mcp/brx_mcp/` at or above the 5 s beacon period that is not listed with the reason a beacon cannot keep it from firing (every existing one judged), and re-asserts the two fuses that bit through the engine.
 - 2026-09-11 **F92** DECIDED 2026-09-10 (option c: phone points capture by presence, the grenade keeps shoot-to-capture, no IR-to-advert bridge); nothing left open, the reasoning is kept here and in `spec/utility.md` §5d.
 - 2026-09-11 **F94** built; the three leftovers were F101 (closed), F103 (closed) and F102 (still open -- the stage mirror). Nothing else was left in this row.
+
+## Closed 2026-09-11 (afternoon, site refactor)
+
+- **S18** Real photos on the landing: Tony shot the gear 2026-09-11, Gemini replaced the backgrounds, the real HUD frame was composited onto the phone screen and a hallucinated logo cloned out; `site/photos/hero.jpg`, `grenade.jpg` and `og.jpg` (the share card) replaced the SVG placeholders the same afternoon.

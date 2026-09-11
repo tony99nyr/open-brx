@@ -1,15 +1,11 @@
-# Open BRX
-Last verified: 2026-09-09
+# Everything known about the Battle Company BRX. One place.
 
-This is a manual for the Battle Company BRX laser tagger and headset. It covers the hardware,
-how to run it, and how to fix it when something goes wrong. It is also open-source software for
-running games on stock BRX guns from a laptop.
+Hardware, operation, gameplay, sound, repairs and the full developer protocol. Gathered from Battle Company's documents, the community and the bench, and written once. Only confirmed facts are published.
 
-- [Meet the BRX](/manual/hardware): anatomy, buttons, lights, headset, generations
-- [Operating the BRX](/manual/operate): quick start, charging, the on-gun menu, pairing
-- [Gameplay](/manual/gameplay): weapons, health and damage, native game modes
-- [Sound, voice and updates](/manual/sound): how audio works, the sound bank, custom sounds, firmware
-- [Fix, mod and accessorise](/manual/fix): troubleshooting by symptom, repairs, mods
-- [Developer reference](/manual/dev): the BLE and IR protocol, every command
-- [The Open BRX platform](/platform): the open-source software
-- [Credits and sources](/credits)
+```data
+manual
+```
+
+- **Confirmed facts only.** A fact is bench-verified, in an official document, or uncontradicted community practice before it is published here. When sources disagree, neither value is.
+- **Open source.** The manual is plain markdown in the Open BRX repository. Found an error or know something we do not? Open an issue or a pull request.
+- **Credit.** Protocol discovery: LaserTagMods (JEDGE / JBOX). Official PDFs are linked, never rehosted. Independent and not endorsed by Battle Company.

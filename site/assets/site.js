@@ -27,6 +27,21 @@
     if (e.key === 'Escape' && document.body.classList.contains('nav-open')) { setNav(false); burger?.focus(); }
   });
 
+  // ---- the wordmark menu: the core places ----
+  const wm = document.querySelector('.wm'), places = document.getElementById('places');
+  if (wm && places) {
+    const open = o => { places.hidden = !o; wm.setAttribute('aria-expanded', String(o)); if (o) places.querySelector('a')?.focus(); };
+    wm.addEventListener('click', () => open(places.hidden));
+    document.addEventListener('click', e => { if (!places.hidden && !e.target.closest('.brand')) open(false); });
+    document.addEventListener('keydown', e => {
+      if (places.hidden) return;
+      const items = [...places.querySelectorAll('a')]; const i = items.indexOf(document.activeElement);
+      if (e.key === 'Escape') { open(false); wm.focus(); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+    });
+  }
+
   // ---- theme ----
   const root = document.documentElement;
   try { const t = localStorage.getItem('brx-theme'); if (t) root.dataset.theme = t; } catch {}
@@ -266,5 +281,56 @@
         e.preventDefault(); input.focus(); input.select();
       }
     });
+  }
+})();
+
+// ---- landing motion ----
+// Reveal on scroll, a one-shot count-up on the hero numbers, and a slow parallax on a backdrop
+// photo. All of it is decoration: the CSS shows everything when motion is reduced or JS is off,
+// and every element is visible to assistive tech from first paint (opacity only, never display).
+(() => {
+  'use strict';
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const targets = [...document.querySelectorAll('[data-reveal], .shot.wide, .hero .photo')];
+  if (!targets.length) return;
+  if (reduce || !('IntersectionObserver' in window)) { targets.forEach(t => t.classList.add('in')); return; }
+  const io = new IntersectionObserver(entries => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      e.target.classList.add('in');
+      io.unobserve(e.target);
+      const n = e.target.querySelector?.('b[data-n]') || (e.target.matches?.('b[data-n]') ? e.target : null);
+      if (n) countUp(n);
+    }
+  }, { rootMargin: '0px 0px -10% 0px', threshold: 0.12 });
+  targets.forEach(t => io.observe(t));
+
+  function countUp(el) {
+    const end = Number(el.dataset.n);
+    if (!Number.isFinite(end) || el.dataset.done) return;
+    el.dataset.done = '1';
+    const t0 = performance.now(), dur = 900;
+    const tick = now => {
+      const p = Math.min(1, (now - t0) / dur), k = 1 - Math.pow(1 - p, 3);
+      el.textContent = Math.round(end * k).toLocaleString('en-US');
+      if (p < 1) requestAnimationFrame(tick); else el.textContent = end.toLocaleString('en-US');
+    };
+    requestAnimationFrame(tick);
+  }
+
+  // parallax: the backdrop photo drifts at 0.6x while its section is on screen
+  const bg = document.querySelector('.feat.backdrop');
+  if (bg) {
+    const img = bg.querySelector('.photo.bg img');
+    let raf = 0;
+    const move = () => {
+      raf = 0;
+      const r = bg.getBoundingClientRect();
+      if (r.bottom < 0 || r.top > innerHeight) return;
+      const mid = r.top + r.height / 2 - innerHeight / 2;
+      img.style.setProperty('--px', `${(mid * -0.12).toFixed(1)}px`);
+    };
+    addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(move); }, { passive: true });
+    move();
   }
 })();

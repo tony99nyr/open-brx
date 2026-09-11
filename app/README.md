@@ -124,8 +124,8 @@ APK_OUT_DIR=/tmp/brx-apk npm run android:apk    # same build, webapp/download/ u
 Then rebuild + test the site and commit, because **a push to `main` deploys `webapp/`**:
 
 ```bash
-cd ../site && npm run build && npm test      # /platform links straight to the GitHub Release now
-git add webapp/download webapp/platform docs/manual app && git commit -m "cut <version>" && git push
+cd ../site && npm run build && npm test      # /download renders the new version off the sidecar
+git add webapp/download/build.json app && git commit -m "cut <version>" && git push
 ```
 
 Name the paths. A bare `git add -A` here will sweep up whatever another session has in flight (this
@@ -155,10 +155,10 @@ repo goes public, with no edit: the URL does not change, it just starts working 
   original date. The generator trusts the sidecar only while its `file` + `sha256` still match the
   APK, and fails the build if they drift. This script writes it; never hand-edit it.
 
-The page itself is `docs/manual/platform.md` (`/platform`). Since the 2026-09-09 manual rewrite this
-is a single plain page that just links out to the GitHub releases page rather than rendering a
-`[download]` block with a per-file fact table off the sidecar — that block markup and its dedicated
-`/platform/app` sub-page are gone. `webapp/download/build.json` is still the sidecar the release
+The page itself is `docs/platform/download.md` (`/download`, since the 2026-09-11 site refactor). Its
+```data download``` fence renders the Android card (version, size, SHA-256, build date, APK link)
+straight off the sidecar, so a new cut needs no page edit; the root landing's "Get it" card reads the
+same file. `webapp/download/build.json` is still the sidecar the release
 tooling writes and `mcp/tests/test_published_build.py` still checks (git provenance, branch, sidecar
 freshness); it just is not rendered into a name/size/date/sha256 table on the site anymore.
 
