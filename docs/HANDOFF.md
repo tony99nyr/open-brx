@@ -144,6 +144,6 @@ both: macOS gives BLE UUIDs, Windows/BlueZ give MACs; never pattern-match the fo
 | Evidence, append after every session | `experiment-log/` (by month) |
 | Field lore by symptom, bench pre-flight | `gotchas.md` |
 | Issues at a live session · Mac-only capture jobs | `field-issues.md` · `capture-runbook.md` |
-| Running a match / armory + muster / Mac setup / one-gun bench page | `field-runbook-mc.md` · `field-process.md` · `mac-dev-runbook.md` · `gun-stage.md` |
+| Start MC with no hardware (the command, the busy-port trap) / running a match / armory + muster / Mac setup / one-gun bench page | `../mcp/brx_mcp/mc/README.md` → *Start it* · `field-runbook-mc.md` · `field-process.md` · `mac-dev-runbook.md` · `gun-stage.md` |
 | Spec of record / protocol truth / confirmed BRX facts | `spec/contracts.md` · `../protocol/brx-protocol.md` · `manual/` |
 | History: old handoff banners, closed bench sheets, superseded handoffs | `archive/` |

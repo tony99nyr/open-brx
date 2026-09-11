@@ -81,10 +81,12 @@ Wi-Fi and the MC `ws://` URL (from the join QR).
 Verify the install with no hardware and no phones:
 
 ```bash
-python -m brx_mcp.mc --fake-net        # in-memory node transport + demo nodes
+python -m brx_mcp.mc --demo --fake-net --ephemeral   # 8 demo players + 8 simulated phones, no session file
+# (--fake-net ALONE seeds nothing and --demo ALONE starts the real node server; both flags = the walkthrough.
+#  Every flag, and the busy-port trap: mcp/brx_mcp/mc/README.md → "Start it".)
 # it prints  Mission Control  http://127.0.0.1:8765/#tok=<token> … — open THAT link (the #tok= part is
 # the operator token; without it the console shows an OPERATOR TOKEN REQUIRED prompt — paste the token).
-# On a trusted bench you can skip auth entirely: python -m brx_mcp.mc --fake-net --no-auth
+# On a trusted bench you can skip auth entirely: add --no-auth
 ```
 
 ---
@@ -123,7 +125,7 @@ already sets the cleartext + Wi-Fi permissions and forces landscape):
 
 ```bash
 source .venv/bin/activate
-python -m brx_mcp.mc                    # real node server; add --host 0.0.0.0 to bind all interfaces
+python -m brx_mcp.mc                    # real node server; binds every interface by default (--host to narrow)
 # prints:  Mission Control  http://<ip>:8765/#tok=<token>   nodes: ws://<ip>:8766/ws
 #          (a new operator token every launch; --token <fixed> to choose it; --no-auth on a trusted bench)
 ```

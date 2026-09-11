@@ -8,6 +8,7 @@ specified. Then **[`manual/`](manual/)**, the confirmed-facts manual the public 
 |---|---|
 | **A BRX owner wondering if you can use this** | [`architecture-topology.md`](architecture-topology.md) §3 · [`platform/index.md`](platform/index.md) · the [root README](../README.md) |
 | **Running a match today** | [`field-runbook-mc.md`](field-runbook-mc.md) · [`field-process.md`](field-process.md) · [`field-issues.md`](field-issues.md) |
+| **Starting Mission Control on the dev box** (no hardware, no phones) | [`../mcp/brx_mcp/mc/README.md`](../mcp/brx_mcp/mc/README.md) → *Start it*: the one command, what it prints, the busy-port trap, served vs dev UI |
 | **Trying LEDs, sounds and events on ONE gun at the bench** | [`gun-stage.md`](gun-stage.md) (`python -m brx_mcp stage`) |
 | **Changing the code** | [`spec/README.md`](spec/README.md) → [`spec/contracts.md`](spec/contracts.md) · [`adr/`](adr/) |
 | **An AI agent working on this repo** | `../CLAUDE.md` for hard rules + environment, then [`HANDOFF.md`](HANDOFF.md) |
@@ -105,6 +106,7 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 
 ## Building the software
 - **[../app/README.md](../app/README.md)** — the native phone app (Capacitor → Android + iOS), the APK publish path.
+- **[../mcp/brx_mcp/mc/README.md](../mcp/brx_mcp/mc/README.md)** — the Mission Control server: how to start it, every flag, the UI it serves.
 - **[../webapp/mc/README.md](../webapp/mc/README.md)** — the Mission Control web UI.
 - **[manual/README.md](manual/README.md)** + **[site/README.md](site/README.md)** — the public site: how a fact
   gets in, and the build + Playwright gate.

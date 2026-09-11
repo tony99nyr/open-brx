@@ -65,7 +65,7 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
 
 ## Layout
 
-`mcp/` Python MCP server (lab instrument) **+ `mcp/brx_mcp/mc/` = the Mission Control server** (M-MC: API.md is the server⇄UI contract; run `python -m brx_mcp.mc`) ·
+`mcp/` Python MCP server (lab instrument) **+ `mcp/brx_mcp/mc/` = the Mission Control server** (M-MC: API.md is the server⇄UI contract; **to see it running with no hardware: `cd mcp && ../.venv/bin/python -m brx_mcp.mc --demo --fake-net --no-auth --ephemeral`** — WSL venv, not Windows Python; `--fake-net` alone shows an empty board; the banner prints BEFORE the port binds, so a busy :8765 looks like success — `mcp/brx_mcp/mc/README.md` → *Start it*) ·
 `app/` native phone app (Capacitor → Android + iOS; see `app/README.md` — `npm run android:apk` cuts a
 build and publishes it to the `app-v<version>` GitHub Release; the site links the releases page, not a
 pinned asset, so a new cut does not stale a manual page) ·
