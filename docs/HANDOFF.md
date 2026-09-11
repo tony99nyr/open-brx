@@ -55,6 +55,7 @@
 - **Utility station (A13):** a spare phone as a BLE-beacon respawn station is proven on hardware, built on the
   phone side, and **MC arms it from the MUSTER ITEMS panel since 2026-09-11 (S5/F104; not yet used at a field).**
   Hosted games ignore the grenade's IR station words (B23), so hosted respawn stations are node-defined.
+  **Station hardware is on order (2026-09-11):** 2× M5StickS3 + 3× Grove IR emitters ([`../hardware/inventory.md`](../hardware/inventory.md)); firmware `hardware/m5sticks3/`; gates in **H7**.
 - **Sound bank:** 2477 on-gun clips off the gun and classified; 148 audited by ear (S9 open).
 - **Hit audio (A17, ear-confirmed 2026-09-07):** metal for armour (`H02/H36/H37`), an energy note for
   shield (`H22`), **health deliberately SILENT** — real damage is where the metal stops and the pain

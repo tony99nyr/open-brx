@@ -31,6 +31,10 @@ reliable, any-mode, and driven live by Mission Control.
 
 ## Platform: ESP32
 
+> **First concrete build (2026-09-11): the M5StickS3**, `m5sticks3/` (README there). It is this spec's S1 tier
+> bought as a finished kit: IR both ways, screen, battery, BLE advert to the phones. It does not yet do the Wi-Fi
+> captive config, ESP-NOW or LoRa tiers below; those stay design. Parts and orders: `inventory.md`.
+
 One chip covers it (same family as the Companion, so shared firmware libraries):
 
 - **IR RX + IR TX** → the tagger interface (capture in, perk/effect out).
