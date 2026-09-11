@@ -36,7 +36,9 @@ def test_build_engine_and_teams():
     e = build_engine(_cfg())
     assert isinstance(e, ExtractionEngineAdapter)
     # extraction assigns unique teams (FFA) → 1:1 kill attribution
-    assert assign_teams("extraction", ["a", "b", "c"]) == {"a": 1, "b": 2, "c": 3}
+    # 0-based since F96: four guns fill teams 0-3 exactly, and a fifth is refused rather than
+    # armed on a $TID the 2-bit wire field does not have.
+    assert assign_teams("extraction", ["a", "b", "c"]) == {"a": 0, "b": 1, "c": 2}
 
 
 def test_loot_zone_extract_flow_scores():

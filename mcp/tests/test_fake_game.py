@@ -67,6 +67,50 @@ def test_faketagger_spawn_revives_and_config_sets_health():
     assert any(o.startswith("$LCD,60,80") for o in t.drain())
 
 
+# ---- F96: more guns than the wire has teams --------------------------------- #
+def test_run_live_refuses_a_fifth_ffa_gun_with_a_readable_error():
+    """The exposed caller. FFA needs one `$TID` per gun and the wire only has four teams, so a
+    fifth gun would be armed on `$TID,4` — a team that does not exist, whose shots read friendly to
+    a real team while it still takes their damage (F96/F35). The operator gets the same
+    `{"over": False, "error": ...}` shape as "no taggers connected", not a traceback.
+
+    Checked AFTER connecting on purpose: a 5-gun run where one gun never connects is a legal 4-gun
+    game, and refusing on the REQUESTED list would have blocked it.
+    """
+    guns = [FakeTagger(f"AA:{i}", name=f"G{i}") for i in range(5)]
+    mgr = FakeConnectionManager(guns)
+    cfg = GameConfig(mode="ffa", frag_limit=1, game_time_s=0)
+
+    async def play():
+        # ⚠ `wait_for`, not a bare await: WITHOUT the refusal this does not fail, it HANGS — the
+        # game happily arms five guns on $TID 0-4 and then loops to run_live's 1-hour wall-clock
+        # cap, because nobody in this scenario ever shoots. A guard that takes an hour to disagree
+        # is a guard nobody runs, so the disagreement is bounded to five seconds.
+        return await asyncio.wait_for(
+            run_live(cfg, [g.address for g in guns], manager=mgr, tick_s=0.01), timeout=5)
+
+    out = _run(play())
+    assert out["over"] is False
+    assert "0-3" in out["error"] and "F96" in out["error"], out["error"]
+    assert len(out["connected"]) == 5                 # it connected, then refused to arm
+
+    # CONTROL: four of the same guns play a real game to a real end, so the refusal is about the
+    # fifth gun and not about FFA on this path at all.
+    four = [FakeTagger(f"BB:{i}", name=f"H{i}") for i in range(4)]
+    mgr4 = FakeConnectionManager(four)
+
+    async def play4():
+        task = asyncio.ensure_future(
+            run_live(cfg, [g.address for g in four], manager=mgr4, tick_s=0.01))
+        await asyncio.sleep(0.08)
+        assert sorted(g.team for g in four) == [0, 1, 2, 3]   # every $TID a real wire team
+        mgr4.inject_kill("BB:1", shooter_team=four[0].team)
+        return await asyncio.wait_for(task, timeout=5)
+
+    snap = _run(play4())
+    assert snap["over"] and "error" not in snap, snap
+
+
 # ---- full game through run_live -------------------------------------------- #
 def test_fake_run_live_full_tdm_game():
     A = FakeTagger("AA:1", name="A")

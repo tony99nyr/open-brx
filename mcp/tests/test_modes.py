@@ -8,6 +8,7 @@ from brx_mcp.modes import (
     build_engine, GameOver, Respawn, Score, Eliminate, SetTeam, Callout, Heal,
 )
 from brx_mcp.modes.driver import assign_teams
+from brx_mcp import poolgauge as pg
 
 
 def hp(hp_, armor, shield=0):
@@ -443,9 +444,41 @@ def test_driver_survives_a_failing_send_midgame():
     assert calls["n"] > 0
 
 
+def test_ffa_refuses_a_fifth_gun_because_the_wire_has_only_four_teams():
+    """F96: FFA/extraction give every gun its OWN `$TID` for 1:1 kill attribution, and the wire's
+    team field is 2 BITS — `protocol/brx-protocol.md` §7i: "use 4-7 as COLOURS only, never as a
+    team". A gun armed on `$TID,5` TRANSMITS as wire team 1 while comparing incoming words against
+    its own FULL tid, so its shots read FRIENDLY to the tid-1 player and do nothing, while it still
+    takes damage from them. One-directional immunity: one player in the lobby simply cannot shoot
+    one specific opponent. Refused now rather than armed onto a team that cannot fight.
+    """
+    for mode in ("ffa", "extraction"):
+        try:
+            assign_teams(mode, ["a", "b", "c", "d", "e"])
+            raise AssertionError(f"{mode} armed a fifth gun on a team the wire does not have")
+        except ValueError as exc:
+            assert "0-3" in str(exc) and "team4" in str(exc), exc
+    # CONTROL: four is still accepted, and every team it hands out is a REAL wire team — otherwise
+    # "it refuses" would be satisfied just as well by a function that refuses everything.
+    four = assign_teams("ffa", ["a", "b", "c", "d"])
+    assert set(four.values()) <= set(pg.TEAM_TIDS), four
+    assert len(set(four.values())) == 4, f"FFA needs a UNIQUE team per gun for 1:1 credit: {four}"
+
+
+def test_an_explicit_team_is_still_the_operators_own_call():
+    """The cap guards what `assign_teams` INVENTS. An explicitly-passed team is the operator saying
+    what they want and is passed through — MC validates those separately (F35), and `compile.py`
+    arms try-outs on a deliberately odd id."""
+    assert assign_teams("tdm", ["a", "b"], {"a": 5})["a"] == 5
+    five = assign_teams("ffa", ["a", "b", "c", "d", "e"], {"e": 3})
+    assert five["e"] == 3 and set(five.values()) <= set(pg.TEAM_TIDS), five
+
+
 def test_assign_teams_variants():
     addrs = ["a", "b", "c"]
-    assert assign_teams("ffa", addrs) == {"a": 1, "b": 2, "c": 3}
+    # FFA is 0-BASED so that four guns fill teams 0-3 exactly (F96); it used to start at 1 and arm
+    # the fourth gun on $TID,4, a team the 2-bit wire field does not have.
+    assert assign_teams("ffa", addrs) == {"a": 0, "b": 1, "c": 2}
     assert assign_teams("tdm", addrs) == {"a": 1, "b": 2, "c": 1}
     inf = assign_teams("infection", addrs)
     assert inf == {"a": 2, "b": 1, "c": 1}       # exactly one seed infected

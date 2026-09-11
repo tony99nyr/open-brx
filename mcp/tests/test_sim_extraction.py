@@ -11,6 +11,11 @@ stays green while flagging the defect.
 Extraction is FFA-teamed: each gun is its own team, so kills attribute 1:1. The
 harness keys extraction station events (`$LOOT`/`$ZONE`/`$LEAVE`/`$PICKUP`) to the
 GUN doing the action.
+
+⚠ Shooters are named as `g.teams["G1"]`, never as the literal `1`. Extraction gives every gun its
+own `$TID` and that numbering is **0-based** (F96: four guns fill teams 0-3 exactly, and a fifth is
+refused rather than armed on a team the 2-bit wire field does not have). Writing the number inline
+made a scenario silently change meaning when it moved.
 """
 
 from brx_mcp import sounds as snd
@@ -102,7 +107,7 @@ def test_channel_interrupted_by_death_resets_no_extraction():
     g = _game(channel_s=10, win_target=100)
     g.station("G1", "$LOOT,50,*", now=0.0)
     g.station("G1", "$ZONE,Alpha,*", now=1.0)       # channel @1
-    g.kill("G1", shooter_team=2, now=5.0)          # G2 downs G1 mid-channel
+    g.kill("G1", shooter_team=g.teams["G2"], now=5.0)          # G2 downs G1 mid-channel
     g.tick(now=12.0)                               # 11s elapsed — but channel died with G1
     assert not g.over
     assert _p(g, "G1")["banked"] == 0
@@ -116,7 +121,7 @@ def test_channel_interrupted_by_death_resets_no_extraction():
 def test_kill_drops_carried_loot_and_downs_the_carrier():
     g = _game(drop_policy="ground", loot_per_kill=0)
     g.station("G2", "$LOOT,40,*", now=0.0)
-    g.kill("G2", shooter_team=1, now=1.0)          # G1 downs G2
+    g.kill("G2", shooter_team=g.teams["G1"], now=1.0)          # G1 downs G2
     assert _p(g, "G2")["carried"] == 0              # dropped everything
     assert _p(g, "G2")["status"] == "down"
 
@@ -126,7 +131,7 @@ def test_drop_policy_killer_credits_killer_with_drop_plus_killloot():
     # wallet, and the killer ALSO gains loot_per_kill on top.
     g = _game(drop_policy="killer", loot_per_kill=10)
     g.station("G2", "$LOOT,40,*", now=0.0)
-    g.kill("G2", shooter_team=1, now=1.0)          # G1 (team1) kills G2
+    g.kill("G2", shooter_team=g.teams["G1"], now=1.0)          # G1 (team1) kills G2
     assert _p(g, "G1")["carried"] == 50             # 40 drop + 10 kill-loot
     assert _p(g, "G2")["carried"] == 0
 
@@ -134,7 +139,7 @@ def test_drop_policy_killer_credits_killer_with_drop_plus_killloot():
 def test_drop_policy_ground_leaves_a_pickable_token():
     g = _game(drop_policy="ground", loot_per_kill=0)
     g.station("G2", "$LOOT,40,*", now=0.0)
-    g.kill("G2", shooter_team=1, now=1.0)          # drops as ground token #1
+    g.kill("G2", shooter_team=g.teams["G1"], now=1.0)          # drops as ground token #1
     g.station("G1", "$PICKUP,1,*", now=2.0)         # G1 grabs it
     assert _p(g, "G1")["carried"] == 40
 
@@ -142,7 +147,7 @@ def test_drop_policy_ground_leaves_a_pickable_token():
 def test_ground_token_consumed_once_only():
     g = _game(drop_policy="ground", loot_per_kill=0)
     g.station("G2", "$LOOT,40,*", now=0.0)
-    g.kill("G2", shooter_team=1, now=1.0)
+    g.kill("G2", shooter_team=g.teams["G1"], now=1.0)
     g.station("G1", "$PICKUP,1,*", now=2.0)
     g.station("G1", "$PICKUP,1,*", now=3.0)         # already gone
     assert _p(g, "G1")["carried"] == 40             # not doubled
@@ -153,7 +158,7 @@ def test_drop_policy_pool_is_not_ground_pickable():
     # ground token.
     g = _game(drop_policy="pool", loot_per_kill=0)
     g.station("G2", "$LOOT,40,*", now=0.0)
-    g.kill("G2", shooter_team=1, now=1.0)
+    g.kill("G2", shooter_team=g.teams["G1"], now=1.0)
     g.station("G1", "$PICKUP,1,*", now=2.0)         # nothing on the ground to grab
     assert _p(g, "G1")["carried"] == 0
     assert _p(g, "G2")["carried"] == 0
@@ -167,8 +172,8 @@ def test_dead_killer_fallback_to_ground_not_double_credited():
     g = _game(guns=("G1", "G2", "G3"), damage=25,
               drop_policy="killer", loot_per_kill=0)
     g.station("G1", "$LOOT,40,*", now=0.0)
-    g.hit("G1", shooter_team=2, now=1.0)            # G2 tags G1 (records the shooter, non-fatal)
-    g.kill("G2", shooter_team=3, now=2.0)          # G3 downs G2 (the would-be killer)
+    g.hit("G1", shooter_team=g.teams["G2"], now=1.0)            # G2 tags G1 (records the shooter, non-fatal)
+    g.kill("G2", shooter_team=g.teams["G3"], now=2.0)          # G3 downs G2 (the would-be killer)
     g.event("G1", "$HP,0,0,0,*", now=3.0)          # G1 dies, attributed to (down) G2
     assert _p(g, "G2")["carried"] == 0              # dead killer received nothing
     g.station("G3", "$PICKUP,1,*", now=4.0)         # the token is on the ground, grabbable
@@ -182,7 +187,7 @@ def test_dead_killer_fallback_to_ground_not_double_credited():
 def test_kill_loot_credited_to_killer():
     g = _game(loot_per_kill=10, drop_policy="ground")
     g.station("G2", "$LOOT,0,*", now=0.0)          # no carried loot to drop
-    g.kill("G2", shooter_team=1, now=1.0)          # G1 kills G2
+    g.kill("G2", shooter_team=g.teams["G1"], now=1.0)          # G1 kills G2
     assert _p(g, "G1")["carried"] == 10             # kill-loot only
     assert _p(g, "G2")["carried"] == 0
 
@@ -200,7 +205,7 @@ def test_attribution_fuse_stale_hit_does_not_miscredit_killloot():
     # A stale non-fatal hit long before a later (unattributed) death must NOT be
     # credited as the kill — the 6s attribution fuse drops it.
     g = _game(guns=("G1", "G2"), damage=25, loot_per_kill=10)
-    g.hit("G2", shooter_team=1, now=0.0)           # G1 tags G2 once, non-fatally
+    g.hit("G2", shooter_team=g.teams["G1"], now=0.0)           # G1 tags G2 once, non-fatally
     g.event("G2", "$HP,0,0,0,*", now=100.0)        # G2 dies 100s later, no fresh shooter
     assert _p(g, "G1")["carried"] == 0              # stale hit didn't steal the kill-loot
 
@@ -210,7 +215,7 @@ def test_attribution_fuse_stale_hit_does_not_miscredit_killloot():
 # --------------------------------------------------------------------------- #
 def test_host_respawn_returns_player_alive_after_delay():
     g = _game(respawn_s=5)
-    g.kill("G2", shooter_team=1, now=1.0)          # down at 1
+    g.kill("G2", shooter_team=g.teams["G1"], now=1.0)          # down at 1
     assert _p(g, "G2")["status"] == "down"
     g.tick(now=3.0)                                # too soon
     assert _p(g, "G2")["status"] == "down"
@@ -222,7 +227,7 @@ def test_host_respawn_returns_player_alive_after_delay():
 def test_repeat_death_while_down_does_not_reset_respawn_clock():
     # A stray repeat $HP,0 while already DOWN must not push out the respawn time.
     g = _game(respawn_s=5)
-    g.kill("G2", shooter_team=1, now=1.0)          # DOWN at 1 → respawn due @6
+    g.kill("G2", shooter_team=g.teams["G1"], now=1.0)          # DOWN at 1 → respawn due @6
     g.event("G2", "$HP,0,0,0,*", now=3.0)          # stray repeat — must NOT reset to 3
     g.tick(now=6.1)                                # 6 ≤ 6.1 → respawn is due
     assert _p(g, "G2")["status"] == "alive"

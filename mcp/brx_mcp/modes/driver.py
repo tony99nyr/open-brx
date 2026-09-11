@@ -59,14 +59,28 @@ def assign_teams(mode: str, addresses: list[str],
     """Map each gun → team. Explicit wins; else FFA = unique team per gun;
     infection/survival = exactly ONE seed infected (team 2), rest human (team 1);
     domination/koth = alternate 1/3 (**never 2** — that is a neutral hill, F82);
-    other modes = alternate 1/2."""
+    other modes = alternate 1/2.
+
+    **Raises for any team it would AUTO-assign outside `pg.TEAM_TIDS` (0-3)** — in practice, a
+    5th gun in FFA/extraction (F96). An explicit team is the operator's own call and is passed
+    through unchecked; MC validates those separately (`compile.Compiler.validate`, F35)."""
     explicit = explicit or {}
     out: dict[str, int] = {}
     for i, addr in enumerate(addresses):
         if addr in explicit:
             out[addr] = explicit[addr]
         elif mode in ("ffa", "extraction"):
-            out[addr] = i + 1                  # unique team → 1:1 kill attribution
+            # One $TID per gun → 1:1 kill attribution. **0-BASED**, so four guns fill teams 0-3
+            # exactly (F96). It used to be `i + 1`, which armed the FOURTH gun on `$TID,4` — a
+            # team that does not exist on the wire. That only ever worked by luck: 4 masks to wire
+            # 0 and nothing else was on 0, so the collision never showed up. Starting at 0 makes
+            # `poolgauge`'s own invariant ("FFA's own $TID stays within TEAM_TIDS") actually true.
+            #
+            # ⚠ **MC's FFA is NOT affected and must not be "fixed" to match this.** There, FFA is a
+            # SINGLE team on `$TID,1` and identity comes from `$PSET` (A4.1) — verified by compiling
+            # six FFA players and getting `$TID,1,*` on every head. This branch is the CLI path,
+            # where there is no `$PSET`-based scoreboard to lean on, so the team IS the identity.
+            out[addr] = i
         elif mode in ("infection", "survival"):
             out[addr] = 2 if i == 0 else 1     # first gun = the single seed infected
         elif mode in ("domination", "koth"):
@@ -79,6 +93,22 @@ def assign_teams(mode: str, addresses: list[str],
             out[addr] = (1, 3)[i % 2]
         else:
             out[addr] = (i % 2) + 1
+    # F96: the wire's team field is 2 BITS, so only teams 0-3 exist -- `protocol/brx-protocol.md`
+    # §7i is blunt about it ("use 4-7 as COLOURS only, never as a team"). A gun armed on $TID 5
+    # TRANSMITS as wire team 1 while comparing incoming words against its own FULL tid, so its
+    # shots read FRIENDLY to the tid-1 player and do nothing while it still takes damage from
+    # them: one-directional immunity, and one player in the lobby who cannot shoot one specific
+    # opponent. Refuse loudly here rather than arming a gun on a team that cannot fight.
+    over = {a: t for a, t in out.items() if a not in explicit and t not in pg.TEAM_TIDS}
+    if over:
+        raise ValueError(
+            f"mode {mode!r} with {len(addresses)} guns needs team {max(over.values())}, and the "
+            f"wire only has teams {min(pg.TEAM_TIDS)}-{max(pg.TEAM_TIDS)} (F96/F35: the $TID field "
+            f"is 2 bits, so a gun on team 4+ transmits a LOWER team and its shots read friendly to "
+            f"that team while it still takes their damage). "
+            f"{mode} gives every gun its own team for 1:1 kill attribution, so it is capped at "
+            f"{len(pg.TEAM_TIDS)} guns on this path — "
+            f"{', '.join(f'{a}=team{t}' for a, t in sorted(over.items()))}")
     return out
 
 
@@ -541,7 +571,14 @@ async def run_live(config: GameConfig, addresses: list[str],
         print(f"(playing with {len(connected)}/{len(addresses)} taggers: {connected})",
               file=sys.stderr)
 
-    players = assign_teams(config.mode, connected, config.teams or None)
+    try:
+        players = assign_teams(config.mode, connected, config.teams or None)
+    except ValueError as e:
+        # F96: more guns than the wire has teams. Surfaced in the same shape as "no taggers
+        # connected" so the operator reads one clear line instead of a traceback — and checked
+        # AFTER connecting on purpose: a 5-gun run where one gun never connects is a legal 4-gun
+        # game, and refusing on the requested list would have blocked it.
+        return {"over": False, "error": str(e), "connected": connected}
     driver = GameDriver(config, players, sender, now=time.monotonic(),
                         callsigns=callsigns)
     try:

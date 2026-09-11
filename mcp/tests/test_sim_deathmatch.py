@@ -204,9 +204,11 @@ def test_same_team_kill_not_credited():
 def test_self_shot_not_credited():
     """A gun that shoots itself gets no kill credit."""
     g = SimGame(GameConfig(mode="ffa", frag_limit=0, game_time_s=0)).setup()
-    g.kill("G1", shooter_team=1)                 # G1 is team1 → shooting own team
+    # Read the team off the game rather than writing "1": FFA numbering is not a fact these
+    # scenarios are about, and hard-coding it made five of them fail when it moved (F96).
+    g.kill("G1", shooter_team=g.teams["G1"])     # G1 shooting its own team
     snap = g.snapshot()
-    assert snap["team_score"].get(1, 0) == 0
+    assert snap["team_score"].get(g.teams["G1"], 0) == 0
     assert snap["players"]["G1"]["kills"] == 0
 
 
@@ -216,13 +218,16 @@ def test_self_shot_not_credited():
 def test_ffa_unique_team_per_gun():
     """FFA gives every gun its own team so scoring resolves to the specific gun."""
     g = SimGame(GameConfig(mode="ffa", frag_limit=0, game_time_s=0)).setup()
-    assert g.teams == {"G1": 1, "G2": 2, "G3": 3}
+    # 0-BASED since F96, so four guns fill teams 0-3 exactly and a fifth is refused instead of
+    # being armed on a $TID the 2-bit wire field does not have.
+    assert g.teams == {"G1": 0, "G2": 1, "G3": 2}
+    assert len(set(g.teams.values())) == len(g.teams), "FFA credit needs a UNIQUE team per gun"
 
 
 def test_ffa_credits_specific_killer_gun():
     """A kill in FFA credits the killer GUN (not a team bucket)."""
     g = SimGame(GameConfig(mode="ffa", frag_limit=0, game_time_s=0)).setup()
-    g.kill("G2", shooter_team=1)                 # G1 kills G2
+    g.kill("G2", shooter_team=g.teams["G1"])     # G1 kills G2
     snap = g.snapshot()
     assert snap["players"]["G1"]["kills"] == 1
     assert snap["players"]["G2"]["kills"] == 0
@@ -232,9 +237,9 @@ def test_ffa_credits_specific_killer_gun():
 def test_ffa_frag_limit_ends_on_right_gun():
     """FFA frag_limit ends the game with the killer GUN id as winner."""
     g = SimGame(GameConfig(mode="ffa", frag_limit=2, game_time_s=0)).setup()
-    g.kill("G2", shooter_team=1)                 # G1: 1
+    g.kill("G2", shooter_team=g.teams["G1"])     # G1: 1
     assert not g.over
-    g.kill("G3", shooter_team=1)                 # G1: 2 → frag limit
+    g.kill("G3", shooter_team=g.teams["G1"])     # G1: 2 → frag limit
     assert g.over
     assert g.snapshot()["winner"] == "G1"        # a gun id, not "team1"
 
@@ -248,18 +253,18 @@ def test_syphon_heals_killer_on_kill():
     g = SimGame(GameConfig(mode="ffa", frag_limit=0, game_time_s=0,
                            syphon=True, syphon_armor=30, syphon_hp=0),
                 damage=25).setup()
-    g.hit("G1", 2, now=1.0)                       # G1 armor 70→45 (shot by team2)
-    g.hit("G1", 2, now=1.0)                       # G1 armor 45→20
+    g.hit("G1", g.teams["G2"], now=1.0)           # G1 armor 70→45 (shot by G2)
+    g.hit("G1", g.teams["G2"], now=1.0)           # G1 armor 45→20
     assert g.taggers["G1"].armor == 20
-    g.kill("G3", shooter_team=1, now=2.0)         # G1 kills G3 → syphon +30 armor
+    g.kill("G3", shooter_team=g.teams["G1"], now=2.0)   # G1 kills G3 → syphon +30 armor
     assert g.taggers["G1"].armor == 50           # 20 + 30 (clamped ≤ 70)
     assert "$LIFE,0,30,0,*" in g.frames_to("G1")
 
 
 def test_syphon_off_by_default_no_heal():
     g = SimGame(GameConfig(mode="ffa", frag_limit=0, game_time_s=0), damage=25).setup()
-    g.hit("G1", 2, now=1.0)
-    g.kill("G3", shooter_team=1, now=2.0)
+    g.hit("G1", g.teams["G2"], now=1.0)
+    g.kill("G3", shooter_team=g.teams["G1"], now=2.0)
     assert not any(f.startswith("$LIFE") for f in g.frames_to("G1"))
 
 
