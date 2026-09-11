@@ -980,10 +980,23 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   condition. Same sensor gap as **F92** and **F88**, seen from a third angle. ➡ **So Territories is the strongest
   case for building the phone control point (F94):** a phone station IS the observer a grenade lacks, and a
   grenade can only ever be a *contested* point someone is present for.
-  ⬜ **Open for Tony** (§5f.4, numbers and policy, none of it blocking F94): the tick rate per owned territory;
-  linear vs superlinear in points held (linear is probably right, since the mode already pays for spreading out);
-  and whether a station powered off mid-match has its accrued seconds counted or voided at recap. Already
-  settled: a neutral point ticks for nobody, an owned one ticks unattended. `build`.
+  ✅ **Scoring is LINEAR per owned territory (Tony, 2026-09-10: *"sounds like linear is the way to go."*)** — two
+  territories tick twice as fast, no multiplier, no majority threshold. **Superlinear** was rejected because the
+  mode already rewards spreading out by construction, so a multiplier pays twice for the same behaviour and risks a
+  first-capture lead snowballing in a 10-minute game. **A majority threshold** (score only while holding 2 of 3 —
+  Halo 5/Infinite *Strongholds*) was rejected for our point counts, not on merit: it needs THREE points to mean
+  anything, because with two "majority" is both and a 1-1 split pays nobody. ➡ Revisit the threshold if a
+  three-point Territories game is ever built. ⚠ Do not cite "Halo" as one answer — Halo 4 *Dominion* ticked per
+  base, *Strongholds* is the threshold.
+  ⬜ **PROPOSAL needing sign-off: scale ADVANTAGE, not points** (*Dominion*'s approach) — holding more territories
+  **shortens your respawn delay**. `respawn_s` is host-driven and already the lever §5d uses, so it is buildable
+  today with no new mechanism, it compounds board control without the score snowballing, and it composes with the
+  linear score rather than replacing it (§5f.4).
+  ⬜ **Still open for Tony** (§5f.5, numbers and policy, none of it blocking F94): the tick rate per territory;
+  whether a **neutral** point ticks for nobody (§5d.2 assumes it does — that is the spec's assumption and **not**
+  his ruling; an earlier draft of the section wrongly called it settled on the strength of our own sentence); and
+  whether a station powered off mid-match has its accrued seconds counted or voided at recap. Settled: an owned
+  point ticks unattended, which is the mode. `build`.
 - **F80 🟠 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.**
   Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
   received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default

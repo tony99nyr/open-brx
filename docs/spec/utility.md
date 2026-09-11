@@ -528,18 +528,41 @@ scorekeeper."
 hears directly, and it keeps its own books. A grenade can only ever be a **contested** point that someone is
 present for — a good objective, and never a territory.
 
-### 5f.4 Open, for Tony to decide
+### 5f.4 Scoring is LINEAR per owned territory — decided
+
+**Tony, 2026-09-10: *"sounds like linear is the way to go."*** Two territories tick at twice the rate of one.
+**No superlinear multiplier for holding more, and no majority threshold.** The rate is `n_owned * tick_rate`.
+
+Both alternatives were considered, and the arguments against them are worth keeping, because each will be
+proposed again by somebody:
+
+| model | why not |
+|---|---|
+| **superlinear** in the count (a multiplier for holding two, three…) | the mode **already** rewards spreading out by construction (§5f.1: sitting on a point you own earns nothing extra), so a multiplier is not needed to create the push incentive — it pays twice for the same behaviour. And in a 10-minute game it risks a first-capture lead **snowballing out of reach** before the other team can answer |
+| **a majority threshold** (score only while you hold 2 of 3) | genuinely good design — losing one point drops you to **zero**, so the scoring itself shouts *get help* — and **wrong for our point counts.** A threshold needs **three** points to mean anything: with two, "majority" is *both*, so a 1-1 split pays nobody and a 2v2 match can sit scoreless for minutes. ➡ **Revisit this if a three-point Territories game is ever built**, where the threshold is strictly better than linear |
+
+⚠ **Do not attribute a single canonical answer to "Halo":** it shipped both. Halo 4's *Dominion* ticked per
+captured base (linear-ish); *Strongholds* in Halo 5 / Infinite is the majority threshold. The reference is useful
+for the shape of each model and settles nothing by itself.
+
+⬜ **PROPOSAL, needs Tony's sign-off — scale ADVANTAGE, not points.** This is *Dominion's* approach and it is the
+interesting third option: instead of scaling the score with territory count, let holding more territories **shorten
+your respawn delay**. `respawn_s` is host-driven, already fully in our control, and already the lever §5d/§4 use for
+a respawn station, so this is buildable today with no new mechanism. It compounds board control — you come back
+faster, so you keep pushing — **without** the score itself snowballing, which is exactly the objection to
+superlinear. Not decided; recorded so it is not lost, and it composes with the linear score rather than replacing it.
+
+### 5f.5 Still open, for Tony to decide
 
 Not decided here. Each is a number or a policy, not a mechanism, so none of them blocks building §5d.
 
 | # | question | note |
 |---|---|---|
-| 1 | **the tick rate** per owned territory (points per second per point) | interacts with match length and point count; wants one playtest, not a derivation |
-| 2 | **linear or superlinear** in the number of points held | linear is probably right *here*: the mode already rewards spreading out (§5f.1), so a multiplier would be paying twice for the same behaviour |
+| 1 | **the tick rate** per owned territory (points per second per point) | interacts with match length and point count; wants one playtest, not a derivation. Linear in the count is settled (§5f.4); this is the constant |
+| 2 | does a **neutral** point tick for **nobody**? | §5d.2 currently says neutral pays nobody, and that is the **spec's assumption, not Tony's ruling** — an earlier draft of this section wrongly called it settled on the strength of our own sentence. The alternative worth a thought: a neutral point paying nobody means a match where everything is contested pays nobody, which is correct for conquest and does make a stalled game feel dead |
 | 3 | **a station powered off mid-match** — are the seconds it did accrue counted, or voided at recap? | it accrues nothing while off, so an owner is silently under-paid for that gap, and a rival who flipped the point while it was dark gets no credit either. Voiding is cleaner to explain; counting is closer to what happened. Note the phone must also be trusted not to have been tampered with, per §3's security posture |
 
-**Already settled, not open:** a **neutral** point ticks for **nobody** (§5d.2 — neutral pays nobody), and an
-**owned** point ticks whether or not anyone is present (that is the mode).
+**Settled, and not in the list above:** an **owned** point ticks whether or not anyone is present. That is the mode.
 
 ## 6. Platform notes (verified where marked)
 
