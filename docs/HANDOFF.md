@@ -15,11 +15,11 @@
   possession fact with an **`observed_ms` floor** so an unwatched hill reads 0 rather than lying.
   🔴 **Still live: F69** — an enemy hill's `proto=0 mag=8` word chips the attacker and cannot be switched off
   while our weapons share that cell. **F91 is the fix and tomorrow's top rung.**
-  🟡 **F82: never put a player on tid 2 in a hill mode** (neutral broadcasts team 2). Refused at three layers,
-  so nothing can reach the hazard through MC; what is still open is that nobody has observed it on hardware.
-  ⚠ **Specified but NOT implemented (session limit, 02:28):** F101 three phone behaviours (tests skipped with
-  a reason, not deleted), F102 the stage never got a station-path mirror, F103 the phone point has no match
-  lifecycle — F70's persistence trap rebuilt one layer over. Read those three before building on this.
+  🟡 **F82: never put a player on tid 2 in a hill mode** (neutral broadcasts team 2). Refused at three layers; only the bench observation is open.
+  ⚠ **Unfinished (session limit, 02:28), read before building on this:** F101 three phone behaviours (tests
+  skipped with a reason, not deleted), F102 no station mirror on the stage, F103 possession clamped by the
+  capture-progress knob + no `station_source` value for a phone (⚠ its *"no match lifecycle"* headline was
+  **withdrawn 2026-09-11**, filed off a stale review).
   Spec: `spec/utility.md` §5d/§5e/§5f. Comparison for a reader: `manual/gameplay.md`.
 - ⭐⭐ **SIMULATED RECOIL IS REAL AND OURS TO DRIVE (2026-09-09, F46 closed).** `$WEAP` **t21 = accuracy
   ceiling · t22 = floor · `$ALCD` tok2 = live accuracy**; falls in five steps toward the floor, races a native

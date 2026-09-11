@@ -896,7 +896,9 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   hand-editing the generated catalog.
   🔴 **What is LEFT is three rows, not this one: F101** (three specified-and-tested behaviours with their tests
   skipped), **F102** (the bench stage has no station model at all, so none of this is verifiable at the bench)
-  and **F103** (no match lifecycle — F70's persistence trap rebuilt one layer over). Also still true: the rule
+  and **F103** (the possession tally is clamped by a knob meant for capture progress, and MC has no
+  `station_source` value for a phone at all — ⚠ F103's original "no match lifecycle" headline was WITHDRAWN
+  2026-09-11 as false). Also still true: the rule
   IS a head count, so this needs **B1** (the station must hear player adverts reliably) more than any other
   kind. Cross-refs: **F88** (no grenade carries a station id, so multi-point Domination needs phones), **F92**
   (and why a grenade hill and a phone station cannot be coupled), **F82** (no tid 2 in a hill mode). `build`.
@@ -1039,20 +1041,36 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   `hill.source`); byte 10 is FLAGS not packed, and `rising && falling` must read as direction-unknown; and
   `stage.py` is SECONDS while `engine.js` is MILLISECONDS. Extend the constants-parity test (which reads
   `engine.js` itself) to cover the new constants so this cannot drift. `build`.
-- **F103 🟠 THE PHONE CONTROL POINT HAS NO MATCH LIFECYCLE, WHICH IS F70 REINTRODUCED ONE LAYER OVER.**
-  Found by the final adversarial pass 2026-09-11. `app/src/utility.js`'s `controlTick` runs whenever
-  `kind === 'control'`, `applyStationConfig` never resets the point, and `control.js`'s `restore()` brings
-  `owner`, `holdMs` and the capture log back from `localStorage`. So **match 2 of a session starts with match
-  1's owner AND its possession tally**, and the point converts during setup before the whistle. We fixed
-  exactly this trap for the grenade (a hill that starts already-owned skews the match, hence the `SETUP:`
-  power-cycle warning) and then rebuilt it on the phone — and the only `SETUP:` line `compile.py` emits still
-  talks about a *grenade*. Fix: reset the point in `applyStationConfig` when `body.game` changes, and emit a
-  phone-source `SETUP:` line (the phone's checklist is different: app in utility role, kind control,
-  MC-armed, screen awake, battery — not a power-cycle).
-  Two smaller ones found in the same pass: **`control.js`'s `MAX_STEP_MS` clamps possession as well as
-  conversion**, so `holdMs` silently under-reports on any tick gap over 1 s (accrue from an `ownedSince`
-  stamp and clamp only the conversion work); and **`refusedSeen` is sticky for the app's life**, so the F82
-  tid-2 banner never clears after the player is reassigned, only via POINT RESET. `build`.
+- **F103 🟠 THE PHONE CONTROL POINT'S POSSESSION TALLY SILENTLY UNDER-REPORTS, AND IT IS THE NUMBER THE MATCH
+  IS SCORED ON.** `control.js`'s `update()` opens with `dtMs = min(MAX_STEP_MS, now - this.at)` — a 1 s clamp
+  that exists to stop a long gap doing a second's worth of CONVERSION work in one step — and then adds **that
+  same clamped value** to `holdMs`. So possession is clamped by a knob meant for capture progress: a throttled,
+  backgrounded or briefly-wedged station tick over 1 s credits the owner 1 s no matter how long it really held
+  the point, and nothing anywhere reports the shortfall. It fails in the direction this project rates worst —
+  a plausible wrong number rather than an error. **Fix:** accrue possession from an `ownedSince` stamp
+  (elapsed time, the way `engine.js` already does it) and clamp only the conversion work.
+  **Second item: `refusedSeen` never clears inside a match.** It latches true on the first tid-2 player (the
+  F82 branch of `update()`) and is cleared only by the constructor or `resetPoint()`, so once the banner is up,
+  reassigning that player off tid 2 does not take it down for the rest of the match. A NEW game does clear it
+  (`resetPoint()` zeroes it), so this is within-match staleness, not permanent.
+  **Third item: MC has no vocabulary for a phone-sourced objective, so one cannot be configured at all.**
+  `types.STATION_SOURCES` holds only `grenade` and `ir_station`, `validate()` refuses `koth` without one, and
+  the two `SETUP:` warnings `compile.py` emits are written for those two sources. A phone control point needs a
+  third value plus its own checklist line (app in utility role, kind `control`, MC-armed, screen awake, battery
+  — not a power-cycle). ⚠ This is also half of why **F101(b)**'s skipped test fails: `engine.js`'s
+  `_hillSourceAllowed()` is written the only way today's vocabulary allows, and says so in its own comment.
+  ~~**Fourth item: the point has no match lifecycle, which is F70 reintroduced one layer over — match 2 of a
+  session starts with match 1's owner AND its possession tally.**~~ 🔴 **WITHDRAWN 2026-09-11. This was the
+  HEADLINE of this row and it is FALSE.** It was filed on a reviewer's report of an older tree and relayed
+  without anyone opening the file. `applyStationConfig` **does** reset: it keeps `wasGame`, writes the new
+  `settings.game`, and calls `resetPoint()` when the two differ — with a comment reasoning it out (*"a NEW game
+  must not resume the last one's owner with the last one's possession seconds in the tally. Arming is the only
+  signal a station gets that a match changed"*). `resetPoint()` clears owner, progress, `holdMs`, the capture
+  log, `dir`, `net` and `refusedSeen`. `control.js`'s `restore()` bringing state back from `localStorage` is
+  **§5d.6 working as specified**, not the bug — the lifecycle reset is what bounds it. Recorded rather than
+  deleted so nobody re-files it from the same stale review. ⚠ **F101's three skipped tests are a separate row
+  and ARE genuinely unimplemented** (verified by running them un-skipped); do not sweep them up with this.
+  `build`.
 - **F80 🟠 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.**
   Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
   received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default
