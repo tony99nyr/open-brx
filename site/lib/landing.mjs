@@ -122,8 +122,8 @@ export function renderLanding(body, ctx) {
     if (t.type === 'heading') { push(`<h${t.depth}>${inline(t.tokens)}</h${t.depth}>`); continue; }
     if (isImagePara(t)) {
       const imgs = t.tokens.filter(x => x.type === 'image');
-      // a photo inside a section becomes its backdrop; in the hero it is the hero photo
-      if (cur && imgs.length === 1 && kindOf(imgs[0].href) === 'photo') { cur.photo = imgs[0]; continue; }
+      // a photo that OPENS a section becomes its backdrop; a photo after the copy is shown whole
+      if (cur && imgs.length === 1 && kindOf(imgs[0].href) === 'photo' && cur.html.trim() === '') { cur.photo = imgs[0]; continue; }
       push(shots(t, ctx, !cur));
       continue;
     }

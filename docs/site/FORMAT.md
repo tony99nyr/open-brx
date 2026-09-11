@@ -68,8 +68,8 @@ Three pages are landings, not doc pages: `docs/platform/index.md` (`/`), `docs/p
   into `site/shots/`; `mcp/tests/test_site_shots.py` fails when the UI source moves past them) or
   `/photos/<name>.jpg|svg` (staged photos in `site/photos/`). The build fails on an image that is not
   in either directory, and publishes every image content-hashed with its width and height.
-- A single `/photos/` image inside a section makes that section a full-bleed backdrop with the copy
-  over its lower third. In the hero it is the hero photo, and a `.jpg` hero doubles as the Open Graph
+- A single `/photos/` image that OPENS a section (before its lede) makes that section a full-bleed
+  backdrop with the copy over its lower third; a photo placed after the copy is shown whole. In the hero it is the hero photo, and a `.jpg` hero doubles as the Open Graph
   share image (a placeholder `.svg` never does).
 - A list whose items each begin with `**Bold lead.**` renders as a grid of captions.
 - A list of links renders as buttons.

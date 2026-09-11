@@ -419,6 +419,9 @@ figure { margin: 0; }
 .shot::after { bottom: -1px; right: -1px; border-bottom: 2px solid var(--accent); border-right: 2px solid var(--accent); }
 .shot img { display: block; width: 100%; height: auto; }
 .shot.wide { width: min(1312px, 100%); margin-top: clamp(20px, 3vw, 48px); }
+/* a photo shown whole inside a section: same column as a wide shot, no brackets */
+.feat .photo.wide { width: min(1312px, 100%); margin-top: clamp(20px, 3vw, 48px); }
+.feat .photo.wide img { display: block; width: 100%; height: auto; }
 .row { display: grid; gap: clamp(16px, 2.4vw, 32px); width: min(1312px, 100%); margin-top: clamp(20px, 3vw, 48px); }
 .row-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .row-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }

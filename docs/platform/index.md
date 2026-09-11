@@ -5,7 +5,7 @@ Open source software that turns stock Battle Company BRX taggers into a hosted g
 - [Get the app](/download/)
 - [Read the BRX manual](/manual/)
 
-![Mission Control's readiness board: eight taggers with headset, battery and link state](/shots/mc-armory.jpg) ![The Companion HUD on a phone: health, ammo and the match clock, weapons hot](/shots/hud-live.jpg)
+![A BRX tagger with a phone mounted on the rail, the HUD live, headset beside it](/photos/hero.jpg)
 
 ```data
 counts
@@ -88,6 +88,14 @@ brx-mcp also speaks MCP, the protocol AI agents use to call tools. So an agent c
 ![A BRX smart grenade in hill mode, lit](/photos/grenade.jpg)
 
 Set a BRX smart grenade to hill mode and it becomes a king-of-the-hill objective. The taggers already see its beacon, so possession is read off the player's own tagger. No base, no extra hardware, no firmware change. The same idea gives you respawn points: a spare phone works as one today, and a pocket station follows the same beacon design.
+
+## The kit
+
+### A tagger, a headset, a phone and a mount.
+
+Everything a player carries. The tagger and headset are stock Battle Company BRX. The phone is any Android with Bluetooth, running the Companion app. The mount is an ordinary rail phone clamp. The taggers stay exactly as they shipped.
+
+![The kit laid out: BRX tagger, headset, phone with the HUD, and the rail mount](/photos/kit.jpg)
 
 ## The BRX manual
 

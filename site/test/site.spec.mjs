@@ -445,12 +445,15 @@ it('12 · the root landing renders every section with a loaded image and one h1'
   await expect(page.locator('h1')).toContainText(/unlocked/i);
   // the hero lede says what the product is, since the headline no longer does
   await expect(page.locator('.hero .lede')).toContainText(/BRX taggers/);
-  // the hero is a product shot of the two real screens, the phone overlapping the console
+  // the hero is either a photo or a product shot of the two real screens; either way it is present and loaded
   const duo = page.locator('.hero-duo');
-  await expect(duo).toBeVisible();
-  const [main, phone] = await Promise.all([duo.locator('.duo-main').boundingBox(), duo.locator('.duo-phone').boundingBox()]);
-  expect(phone.y + phone.height, 'the phone should overlap the console\'s lower edge').toBeGreaterThan(main.y + main.height);
-  expect(phone.y, 'the phone should sit over the console, not below it').toBeLessThan(main.y + main.height);
+  if (await duo.count()) {
+    const [main, phone] = await Promise.all([duo.locator('.duo-main').boundingBox(), duo.locator('.duo-phone').boundingBox()]);
+    expect(phone.y + phone.height, 'the phone should overlap the console\'s lower edge').toBeGreaterThan(main.y + main.height);
+    expect(phone.y, 'the phone should sit over the console, not below it').toBeLessThan(main.y + main.height);
+  } else {
+    await expect(page.locator('.hero .photo img')).toBeVisible();
+  }
   expect((await page.locator('.wm').innerText()).replace(/\s+/g, ' ').trim()).toMatch(/^OPEN-BRX ?\/$/i);
   // the wordmark sits on one line: icon, name and the nav links share a vertical centre within 3px
   const mid = el => el.evaluate(e => { const r = e.getBoundingClientRect(); return r.top + r.height / 2; });
