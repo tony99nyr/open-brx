@@ -292,8 +292,11 @@ polarity gate compares that against the receiving gun's own `$TID`. So a roster 
 reads every NEUTRAL hill as *its own team's*: under an enemy-only row those players go **deaf to neutral
 points** entirely, and the `proto=0` damage word — the enemy-only one that punishes intruders — **cannot land
 on them**, handing team 2 free run of any uncaptured point. This falls straight out of "neutral is team 2" and
-nothing anywhere said it. MC's team assignment for a hill mode must skip 2 (use 0, 1, 3), or the mode must run
-with `$GSET` t1 = 1 and sort ownership in software rather than leaning on the gate.
+nothing anywhere said it. ✅ **MC now refuses it at three layers and this paragraph is the WHY, not open work**
+(**F82**): `mc/state.py`'s validate rejects a hill config containing tid 2 at all, `DominationEngine.add_player`
+rejects the player, and `assign_teams` defaults domination/koth to 1/3 — one `NEUTRAL_TEAM` constant imported
+from `modes/hillbeacon.py` drives all three. ⚠ What is still open in F82 is the **measurement**: the consequence
+above is predicted from two measured facts and has never been observed on hardware.
 
 **Presence is a heartbeat, and timing is node-side.** Beacons arriving = in range; beacons stopping = gone. The
 node runs its own clock, accumulates "seconds in range while my team owned it", and reports totals to MC when it

@@ -1,8 +1,13 @@
 # Bench run sheet — the whole queue, ordered for the operator's time
 
-Updated: 2026-09-09. **This sheet replaces reading `FOLLOWUPS.md` §9 at the bench.** §9 stays the
-register (ids are permanent and live there); this is the running order. Every command below exists in
-the repo and was checked against its source. Nothing here is a new script.
+Updated: 2026-09-11 (2026-09-09, re-checked). **This sheet replaces reading `FOLLOWUPS.md` §9 at the bench.**
+§9 stays the register (ids are permanent and live there); this is the running order. Every command below exists
+in the repo and was checked against its source. Nothing here is a new script.
+
+⚠ **Answered rungs are OUT of the tables.** A1, C1, D7 and G 3.2 are done; each keeps one line where it was and
+its lesson in *Answered rungs* near the bottom, so nothing you read on the way to the next rung is closed work.
+**Tomorrow's sitting is not this sheet** — it is [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md),
+six readings, deliberately self-contained. Come back here for the rest of the queue.
 
 **Read first:** [`gotchas.md`](gotchas.md) §"Before a bench session" (the four-check preflight, in
 order, every time). `$PY` below = the Windows venv python,
@@ -67,7 +72,7 @@ the syphon code already depends on.
 
 | # | item | run | read | control |
 |---|---|---|---|---|
-| A1 | ✅ **DONE 2026-09-09 — `$LIFE` takes negatives, `$BUMP` is inert** (F61 closed; F64 🔴 and S16 opened; three `brx-protocol.md` rows corrected). ⚠ Ordering lesson: run the NEGATIVE first — on a full pool an additive-clamped write cannot move, so a `+5` control proves nothing until a negative or a real hit has depleted the pool | Arm one gun (`bench_common.arming_frames(1,1)` + `PSET` + `$SPAWN`). Then, one at a time via `$PY mcp/tools/sendframes.py <addr> '<frame>'`: `$QUERY,*` → `$BUMP,5,0,0,*` → `$QUERY,*` → `$BUMP,-5,0,0,*` → `$QUERY,*` → `$BUMP,0,0,0,*` → `$QUERY,*` | the HP token of the `$LCD` in each `$QUERY` reply. `$LIFE`/`$BUMP` do **not** self-emit `$HP`, so `$QUERY` is the only read | the `+5` write is the positive control **and** the first bench measurement we have ever taken of the documented "additive, clamped" behaviour — there is no experiment-log citation for `$LIFE`/`$BUMP` in either direction, while `mc/types.py` syphon already assumes it. The `0,0,0` no-op closes |
+| A1 | ✅ **DONE 2026-09-09** — `$LIFE` takes negatives, `$BUMP` is inert. Do not re-run; the ordering lesson it cost is in *Answered rungs* below | — | — | — |
 | A2 | **P4** | `$PY mcp/tools/sendframes.py <addr> '$AS,1,0,0,0,0,0,0,99,*' '$UP,1,*'` on a live gun. ⚠ Also try LaserTagMods' actual shape, `$UP,100,<n>,0,*` followed by `$UR,*` — `$UP,1,*` matches nothing any source documents and may just be an 8th silent shape rather than a probe | not "does it reply" (known: no, across 7 shapes) but does the GUN's behaviour change after: fire, reload, LEDs, anything | fire and reload normally for a minute BEFORE sending, same gun same session, so "no change" is established rather than assumed |
 | A3 | **1.5a (gates 1.5)** | `$PY mcp/tools/ally_remeasure.py <victim> COM8 10,11,9,15,31,32,34` | per-fn pool deltas against a **depleted** pool | fn 10/11 are the known heals: if they do not move, the rig or the team polarity is wrong, not the fn |
 
@@ -113,7 +118,7 @@ use `firemode_probe.py` at all (trap 3).
 
 | # | item | run | read | control |
 |---|---|---|---|---|
-| C1 | ✅ **DONE 2026-09-09 — ANSWERED YES, the model is real** (F46 closed; F66/F67/F68/S17 opened; t21/t22 promoted to bench-proven; `$ALCD` tok2 relabelled). ⚠ **Ordering lesson, the important one:** the first three rungs fired SINGLE SHOTS 2 s apart, which is maximum recovery time and never switches the feature on. They gave a clean A-B-A control and the wrong answer. **Sustained fire is the condition.** Original row: **F46** t21/t22 accuracy | design already written: [`bench-weap-tokens-discovery-2026-09-04.md`](bench-weap-tokens-discovery-2026-09-04.md) §t21/t22, the three-count design. `firemode_probe.py <addr> assault_rifle 23=0`, then `22=0`, then `23=50`, control `22=100 23=100` between | three counts per run: pulls (`$ALCD` mag), words on board A, victim `$HIR` tok5. ⚠ Trap 5: for the magnitude read accept only `WORD`/unambiguous `STITCH` lines. The COUNT half (did words arrive at all) is ambiguity-proof, so read that first | the 100/100 control between every rung. 10 pulls / 0 words = the shooter suppresses; 10 words at magnitude 0 = the D=0 miss; 10 clean words = inert |
+| C1 | ✅ **DONE 2026-09-09** — the simulated-recoil model is REAL (F46 closed). Do not re-run; the ordering lesson it cost is in *Answered rungs* below | — | — | — |
 | C2 | **t6 crit chance** (no id yet) | design already written: same sheet §t6, ~10 min. `firemode_probe.py <addr> assault_rifle 7=100`, then 50, then 0 | victim `$HIR` tok6 (the crit bit) and applied damage: 9 vs 18 with `$GSET` t7=100 | t6=0 opens and closes. 100 giving 0 crits ⇒ try 1 and 255 before calling it inert |
 | C3 | **t7-t11 secondary fire** (no id yet) — the per-shot damage-type question | `firemode_probe.py <addr> assault_rifle 8=100 9=5 10=5 11=50`, board A capturing with `native_capture.py sec-t7 COM7 60`. Then repeat under `$GSET` t6=0 vs t6=1 | count captured words **by decoded protocol** — **`WORD` lines only** (trap 5: a stitch invented `proto=4` and `proto=1` during rig qualification, parity-valid). Does a protocol-5 word ever appear, and does its rate move with `$GSET` t6 | t7 empty (every stock frame) as the control: zero protocol-5 words, proving nothing already leaks there. Read on the RIG, not the victim — protocol 5 has no `$SIR` row, so a victim would discard it silently |
 | C4 | **1.4 K1** t19=5 on an empty chamber | needs the reload handle ⇒ arm with `bench_common.arming_frames` + `BMAP` + `$SPAWN` + `spawn_tail()`, `firemode_probe.py <addr> assault_rifle 20=5` (**raw 20** = doc t19) → it disconnects → `$PY -m brx_mcp listen <addr> 60`, then empty the mag and pull on empty | does `$ALCD` mag climb on its own after firing dry and pulling again? | run **t19=0 first**, empty it, confirm NO auto-reload, then flip to 5 in the same session. Only the fire-triggered case is open; the idle case is answered |
@@ -136,8 +141,8 @@ use `firemode_probe.py` at all (trap 3).
 | D3 | **2.2** the halo assassinate | same arming as D2. One swing at the front dome, one at the back | is a back-dome melee a different word, or the same proto-13/mag-90 word with only `$HIR` tok1 differing? Read board A's decoded word, not just the victim's post-decode | the front-dome swing |
 | D4 | **2.3 + F28** sensor map at field distance | victim on a stand at ~5 m, sensors masked one at a time, 10 shots each | `$HIR` tok1 per shot, and hit rate per sensor at 5 m | sensor 4 (gun body) at every distance. The map itself is known at point-blank; what is open is whether it survives 5 m (F28 saw 0/69 on the back dome in a real match) |
 | D5 | **F26** attribution | two guns, two phones, ten shots | does the `$HIR` shooter field map to `player_num` as `scoring.py` assumes | shoot from a known `$PSET` player id |
-| D6 | **0.5 U11′** the status functions — ⚠ **MOSTLY DONE (F73, 2026-09-10)**: enemy **8, 24, 25, 26, 27, 28** are swept and written up (fn 28 registers with NO sound, flash or vibration — the row to ship for beacons; fn 8 is silent but still flashes and buzzes; fn 24-27 fire a long grenade-ish clip). **Only enemy 35 and ally 31, 32, 34 are still open** | fire enemy 35 and ally 31, 32, 34 at a held gun. ⚠ **The three traps that VOIDED this run the first time, all mandatory:** (1) **`$SPAWN` before every arm** — a gun can latch an IR event and replay it every ~5 s with nothing in the air (F74), which is what produced the "varied sounds" that were really one clip truncated by a phantom; (2) **ONE row in the table at a time**, and read the `$HIR` protocol back per trial, or you are attributing another cell's effect; (3) **3 ft of separation** — a point-blank emitter corrupts the protocol field and silently lands you in a different cell | what you hear, see, or cannot do — only a human holding the gun can name these | fn 1 (plain damage) and fn 10/11 (heals) as the two known ends |
-| D7 | ✅ **ANSWERED 2026-09-10 (hosted case)** — **1.6** the "KotH rate-of-fire buff": measured a clean null. Counting `$ALCD` decrements (not trigger pulls), 15 rounds/1530 ms (102.0 ms/round) hill-owned vs 31 rounds/3150 ms (101.6 ms/round) enemy-held — indistinguishable, and the hill flipped teams mid-burst with no cadence change, so the control sits inside the single measurement. **Holding a hill does not change `$ALCD` cadence under fn 28.** ⚠ Hosted-only: a native game drops the BLE link and cannot be instrumented this way, so this does not disprove a native buff. See `docs/experiment-log/2026-09.md` 2026-09-10 (evening, cont.) and `docs/bench-grenade.md` rung D. Shield remains untested (needs a grant function, fn 11/18 — separate from this row) |
+| D6 | **0.5 U11′** the status functions — **enemy 8 and 24-28 are DONE** (F73, closed 2026-09-11: fn 28 registers with NO sound, flash or vibration — the row to ship for beacons; fn 8 is silent but still flashes and buzzes; fn 24-27 fire ONE long grenade-ish clip, truncated by the next event). **Still open: enemy 35 and ally 31, 32, 34** | fire enemy 35 and ally 31, 32, 34 at a held gun. ⚠ **The three traps that VOIDED this run the first time, all mandatory:** (1) **`$SPAWN` before every arm** — a gun can latch an IR event and replay it every ~5 s with nothing in the air (F74), which is what produced the "varied sounds"; (2) **ONE row in the table at a time**, and read the `$HIR` protocol back per trial, or you are attributing another cell's effect; (3) **3 ft of separation** — a point-blank emitter corrupts the protocol field and silently lands you in a different cell | what you hear, see, or cannot do — only a human holding the gun can name these | fn 1 (plain damage) and fn 10/11 (heals) as the two known ends |
+| D7 | ✅ **ANSWERED 2026-09-10** — holding a hill does NOT change `$ALCD` cadence (a clean null). Do not re-run; see *Answered rungs* below | — | — | — |
 | D8 | **F15** rung 9 | **frames already written**: [`bench-flash-control-2026-09-05.md`](bench-flash-control-2026-09-05.md) rungs 9-10, plus a Damage=0 variant `$BHIT,0,1,<enemy team>,0,0,1,0,*` for the flash-only question. `$BHIT` is host→gun self-injection: **no shooter gun needed**. Not on the safe list (trap 4) | native small-LED flash? hit sound? `$HP` drop? any `$HIR` self-echo (probably none — `$BHIT` bypasses the sensor; confirm it explicitly) | after the three shapes, fire a real synthetic IR shot at the same gun and confirm it still registers — rules out `$BHIT` corrupting internal state |
 | D9 | **F27** | **full arm** per weapon (handle-triggered, so `firemode_probe` cannot do it): swap the weapon frame, resend `BMAP`/`$SPAWN`/`spawn_tail`, pull the handle, next | `$ALCD` refill timing per weapon vs its catalog **`reload_ms`** (§9's row says `reload_s`, which is not a field that exists) | C6's AR measurement calibrates the method; past that, no stopwatch precision needed |
 
@@ -189,7 +194,7 @@ Taped stations at 3/6/9/12…50 ft, reused by all three rungs.
 All receiver-first: run board A alone before involving a gun (that is how the Respawn words were
 found). Commands are already written in [`bench-grenade.md`](bench-grenade.md) §§0-1 and §5.
 
-- ✅ **3.2 DONE 2026-09-10 — the hill is a full KotH primitive** (F70): beacon `proto=15`, magnitude = mode, team bits = owner, **neutral is team 2**, shooting a neutral one claims it, an owned one CAN be retaken (by what is unsettled, F70), and a `$SIR,15,0,...` row plus an `engine.js` change (F72) would make it visible to a hosted game (B23 explained). Hazard F69 🔴 opened. Original row: the Hill BUFF word, board A mounted **on the standing gun's own headset**, through the
+- ✅ **3.2 DONE 2026-09-10 — the hill is a full KotH primitive** (F70). Do not re-run; see *Answered rungs* below.
   REAL HILL / boxed-SILENCE / REPLAY / ENEMY phases. The boxed phase is the built-in control.
 - **§8 captures**: the Hill/Assault/CTF/Frag mode words, the RF scan, and a headset-mounted capture
   of the three unexplained emissions.
@@ -243,15 +248,48 @@ These sit in §9 today but none of them needs hardware.
    shield from seven levels to four. Healing also gets no opening beat: a gain steps up immediately,
    and that asymmetry against a hit is the signal. Seven decisions remain.
 
+## Answered rungs — kept for the LESSON each one cost, not for re-running
+
+Four rungs in the tables above are done; their rows there are one line each now. What is worth reading is why
+three of them gave the WRONG answer on the first attempt. The findings themselves live in
+`experiment-log/2026-09.md` and, where they are wire facts, in `protocol/`.
+
+- **A1 ✅ 2026-09-09 — `$LIFE` takes negatives, `$BUMP` is inert** (F61 closed; F64 and S16 opened; three
+  `brx-protocol.md` rows corrected). ⚠ **Ordering lesson: run the NEGATIVE first.** On a full pool an
+  additive-clamped write cannot move, so a `+5` control proves nothing until a negative or a real hit has
+  depleted the pool. `$BUMP` — the command the rung was written around — turned out to be the inert one.
+- **C1 ✅ 2026-09-09 — the simulated-recoil model is REAL** (F46 closed; F66/F67/F68/S17 opened; t21/t22
+  promoted to bench-proven; `$ALCD` token 2 relabelled as live accuracy). ⚠ **Ordering lesson, the important
+  one: the first three rungs fired SINGLE SHOTS 2 s apart**, which is maximum recovery time and never switches
+  the feature on. They gave a clean A-B-A control and the wrong answer. **Sustained fire is the condition.**
+- **D7 ✅ 2026-09-10 — holding a hill does NOT change `$ALCD` cadence** (the "KotH rate-of-fire buff", a clean
+  null): 102.0 ms/round hill-owned vs 101.6 ms/round enemy-held, and the hill flipped teams mid-burst with no
+  cadence change, so the control sits inside the single measurement. ⚠ **Method: count `$ALCD` DECREMENTS,
+  never trigger pulls** — under this gun's fire mode 14 one press sometimes releases two rounds. ⚠ Hosted-only:
+  a native game drops the BLE link, so this does not disprove a native buff. The node-side boost is **F87**,
+  gated on `bench-grenade.md` rung Z.
+- **G 3.2 ✅ 2026-09-10 — the hill is a full KotH primitive** (F70). The wire is documented once, in
+  `protocol/brx-ir-protocol.md` §"The grenade beacon"; the rung index and what is still open are in
+  [`bench-grenade.md`](bench-grenade.md). Hazard **F69** (a hill's ordinary `proto=0` damage word) opened here
+  and is still 🔴.
+
 ## Bookkeeping
 
-- **W4a has no defining row in `FOLLOWUPS.md`.** Its only definition is in
-  `archive/followups-closed.md`, which says it was "carried as an open ears item" — and nobody ever
-  re-added the row. It is real, open work (B4 above).
-- `test_followups_ids_are_defined_exactly_once` cannot catch that: it only flags an id **defined more
-  than once**, never an id **referenced with no definition**. Worth a second assertion.
-- Closed rows still sitting in §9, safe to strike: **F37**, **F38** (both marked ✅ inline), S10's
-  "L1-L9 and L12-L14 ANSWERED" clause, S10's verified state-by-state list, **S4 (b)**, and **2.1
-  Q15** (its own row names its replacement sheet).
+*Re-checked against `FOLLOWUPS.md` on 2026-09-11; the items that were fixed are struck rather than
+deleted, so the guard blind spots they exposed stay on the record.*
+
+- ~~**W4a has no defining row in `FOLLOWUPS.md`.**~~ ✅ **FIXED** — W4a now has its own row in §6, and the
+  row itself records why it went missing. The BLIND SPOT stands and is the reason to keep this line:
+  `test_followups_ids_are_defined_exactly_once` only flags an id **defined more than once**, never an id
+  **referenced with no definition at all**, so nothing could have caught it. Worth a second assertion.
+- **A second blind spot in the same guard, found 2026-09-11:** it recognises a definition by its STATUS
+  MARKER, and five rows wrote the word `decision` instead of one — so **F5, F20, F25, Q13 and Q12′ were
+  invisible to it**. They now carry a marker as well as the tag, but the guard would still miss the next
+  row written that way.
+- ~~Closed rows still sitting in §9, safe to strike: **F37**, **F38** …~~ ✅ **DONE** — F37 and F38 were
+  archived 2026-09-10; **F35**, **F73** and **F96** followed on 2026-09-11. S10's "L1-L9 and L12-L14
+  ANSWERED" clause, S10's verified state-by-state list, **S4 (b)** and **2.1 Q15** are deliberately kept:
+  each one is a *narrowing* of a still-open item, not a closed item.
 - Not hardware, and misfiled in a bench queue: **F47** and **F53** (`build`), **F43** (a methodology
-  warning, not an experiment), **A10c** (stage harness).
+  warning, not an experiment), **A10c** (stage harness). Still true; they are in FOLLOWUPS §0's
+  keyboard-only lane.

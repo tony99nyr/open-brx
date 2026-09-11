@@ -1,11 +1,13 @@
 # Grenade IR bench (run sheet)
 
-**Updated: 2026-09-10.** One gun, one grenade, the rig. Tool: `mcp/tools/grenade_bench.py` (every phase is
+**Updated: 2026-09-11.** One gun, one grenade, the rig. Tool: `mcp/tools/grenade_bench.py` (every phase is
 announced with its length; nothing waits on you, so read the phase text before it starts), plus
 `native_capture.py` and `ir-emit` one-liners.
 
 **Read this sheet in three parts, in this order:** *What is answered* (so nobody re-runs it), the **rung
-index** (what is left), then *Setup*.
+index** (what is left), then *Setup*. Everything ANSWERED is behind a heading that says so — the two
+*Answered* sections and the appendix's part B — so nothing on the path from the top to the next rung is
+closed work.
 
 **The WIRE facts this sheet produced live in
 [`../protocol/brx-ir-protocol.md`](../protocol/brx-ir-protocol.md) §"The grenade beacon"** — beacon format,
@@ -26,16 +28,21 @@ stream naming the cause (**F69**), and the victim's phone names the WRONG team a
 
 ## What is answered — do NOT re-run
 
+⚠ **The findings below are one line each on purpose.** Every wire detail — the beacon format, the capture
+pair's timing, `mag=50`/`mag=53` semantics, the fn-28 row and the polarity rule — is written out once, in
+[`../protocol/brx-ir-protocol.md`](../protocol/brx-ir-protocol.md) §"The grenade beacon". Read it there. This
+table exists to stop a rung being re-run, not to be a second copy that can disagree with the first.
 
-| | finding |
-|---|---|
-| **Beacon** | `proto=15 team=<owner> mag=8` every ~5 s. **Neutral = team 2.** Respawn is `mag=6` at ~2.5 s, boot `mag=56`. Magnitude is a fixed MODE id, **not** a charge level. **Recounted from the capture logs 2026-09-10** (an earlier "84 decodes, three values" here was both miscounted and wrong about the spread): across every session, unambiguous proto-15 decodes are **mag=8 x96** (hill), **mag=6 x63** (respawn), **53 x4 / 50 x3** (capture announcement), **56 x1** (boot, a whole word), plus two lone stitched decodes -- **55** and **2** -- that are probably stitch artefacts; the mag=2 one carries `player=42`, which no other beacon does. The MODE values are the ones with hundreds of repeats behind them |
-| **Capture** | shoot it; **ANY weapon** (settled). Charge accumulates and **the attacker wins ties** — 1 AR took 9; 5 took 45; one shotgun shell (70) took 45. That the currency is MAGNITUDE is 🟠 only: ⚠ **The discriminating trial is CONFOUNDED:** the shotgun's `mag=70` is its `t12` **extraHeadsetDamage** (a `t1=2` weapon), so magnitude and weapon-block varied together and it cannot separate "magnitude is the currency" from "an extra-headset word captures out of proportion". ⚠ And both AR flips were at **exact equality** (9 v 9, 45 v 45), so what is measured is **the attacker wins ties**, not "the higher total owns the point". See F70/F76. |
-| **Announcement** | **NOT a pair in the same burst — corrected 2026-09-10 evening, confirmed cleanly on BLE.** `mag=50` (new owner) arrives ~50 ms after the capturing shot, on EVERY capture. `mag=53` (state WAS NEUTRAL) arrives ~5 s later, on the NEXT beacon cycle — but only when the outgoing state was neutral; **n=2**: TWO independent enemy-to-enemy captures (`$TID` switched live, blue→red then red→blue), both on continuous BLE streams, both produced `mag=50` with no `mag=53` at all. A node must not wait for both — `mag=50` alone is the capture signal, and on an enemy-to-enemy capture `mag=53` never comes. `mag=53`'s presence/absence is also how a node tells "captured from neutral" apart from "stolen from an enemy," which is the distinction native needs for its callouts. **Very likely** why guns say "hill captured" — the pair is measured, the causal link to the callout is not |
-| **Reading it in a hosted game** | `$SIR,15,0,,28` — **fn 28 registers with ZERO player feedback** (no sound, flash or vibration) + the `engine.js` fix (F72). Both now confirmed on a real beacon over BLE, not only the ESP32 rig |
-| **Polarity** | fn 28 is enemy-only at `$GSET` t1=0; **t1=1 lifts the gate** and ownership arrives in `$HIR` token 4. **KotH wants FF on** |
-| **Capture, end to end** | ✅ proven live: one AR round flipped a neutral hill, read over BLE, grenade confirmed blue + beeping by eye (2026-09-10 evening) |
-| **Non-capturing hit** | no **DECODABLE** word — the grenade appears to announce captures, not hits (F75). ⚠ NOT a proven silence: a reply inside the shooter's own burst is invisible to every capture taken so far, and that is exactly where a hit word would sit. Gated on **B0** |
+| | finding | still open? |
+|---|---|---|
+| **Beacon** | `proto=15`, team bits = owner, magnitude = MODE (hill 8 at ~5 s, respawn 6 at ~2.5 s, boot 56). **Neutral = team 2.** Magnitude is a fixed mode id, **not** a charge level | no |
+| **Decode census** | across every session, unambiguous proto-15 decodes are **mag=8 ×96** · **mag=6 ×63** · **53 ×4 / 50 ×3** · **56 ×1**, plus two lone stitched decodes (**55** and **2**, probably stitch artefacts; the mag=2 one carries `player=42`, which no other beacon does). ⚠ **Recounted 2026-09-10** — an earlier "84 decodes, three values" line here was both miscounted and wrong about the spread | no |
+| **Capture** | shoot it; **ANY weapon**; charge accumulates and **the attacker wins ties** | 🟠 **the CURRENCY is not settled** — rung **X**, **F70**, **F76** |
+| **Announcement** | `mag=50` = the new owner, ~50 ms after the shot, on EVERY capture. `mag=53` = the state LEFT, on the NEXT beacon cycle ~5 s later, and **only when the outgoing state was neutral** (n=2). A node fires on `mag=50` alone | no |
+| **Reading it in a hosted game** | `$SIR,15,0,,28` — fn 28 registers with ZERO player feedback — plus the `engine.js` parse (F72). Both confirmed on a real beacon over BLE, not only the ESP32 rig | no |
+| **Polarity** | fn 28 is enemy-only at `$GSET` t1=0; **t1=1 lifts the gate** and ownership arrives in `$HIR` token 4. **KotH wants FF on** | no |
+| **Capture, end to end** | ✅ one AR round flipped a neutral hill, read over BLE, grenade confirmed blue + beeping by eye (2026-09-10 evening) | no |
+| **Non-capturing hit** | no **DECODABLE** word — the grenade appears to announce captures, not hits. ⚠ NOT a proven silence: a reply inside the shooter's own burst is invisible to every capture taken so far, and that is exactly where a hit word would sit | 🟡 **F75**, gated on **B0** |
 
 ## Still to run
 
@@ -265,10 +272,13 @@ GUN=DF:F5:DA:08:94:98
 ## Appendix — the original step-by-step programme (written 2026-09-04)
 
 **Steps 1 (Respawn captures), 2, 3 and 4 are ANSWERED** — see *Run history* and *What is answered* above.
-What survives here is the exact commands for the rungs that are still open, and the `$SIR`-row control in
-step 3. Stamps per step below.
+What survives here is the exact commands, split so an operator at 11pm reads only what is still to run:
+**A. Steps still outstanding** (0, the rest of 1, 5, 6), then **B. Answered steps**, kept for their commands,
+their controls and the traps they cost. Stamps per step.
 
-### 0. RF check (2 min, no gun) — ⬜ **OUTSTANDING** = rung **F**
+### A. Still outstanding
+
+#### 0. RF check (2 min, no gun) — ⬜ **OUTSTANDING** = rung **F**
 
 ```bash
 $PY grenade_bench.py rf
@@ -277,7 +287,7 @@ $PY grenade_bench.py rf
 Two BLE scans, grenade off then on, and it prints the difference. Follow the two prompts.
 **Expect:** nothing new. Anything new is a finding: re-run once to make sure it is not a late gun.
 
-### 1. Listen with the receiver only (5 min, no gun, no BLE) — ✅ Respawn + Hill done; ⬜ the **Assault / CTF / Frag** captures are rung **E**
+#### 1. Listen with the receiver only (5 min, no gun, no BLE) — ✅ Respawn + Hill done; ⬜ the **Assault / CTF / Frag** captures are rung **E**
 
 The receiver alone, pointed at the grenade from about 1 ft. One capture per mode so the file name
 says what it holds. Each writes `~/.brx-mcp/ir-captures/<time>-<label>.log` and prints every decoded
@@ -306,63 +316,9 @@ $PY native_capture.py frag-button  COM7 30        # set FRAG (red), press the bu
 from Assault or CTF. If a mode shows **nothing at all** on the receiver but the gun reacts to it in
 step 2, that is the RF question answered the other way, so say so.
 
-Reset the grenade to **RESPAWN (yellow)** and power-cycle it before step 2.
+Reset the grenade to **RESPAWN (yellow)** and power-cycle it before any of part B's steps.
 
-### 2. Bare watch + box test (2 min) — ✅ **ANSWERED 2026-09-04**
-
-```bash
-$PY grenade_bench.py watch $GUN 40 bare COM7
-```
-
-Grenade emitter side facing the headset front, 1 ft. Hands off. At the **BOX IT NOW** call, put the
-grenade in the closed box.
-**Expect:** a beacon every ~2.5 s shown as `GRENADE RESPAWN owner=team2`, the witness reporting
-**52 edges** per beacon, and both stopping in the box. At the end it prints the **replay word** for
-each distinct beacon. Write the word down if it differs from the predicted
-`1111000000100000011000001` (owner team2) or `1111000000010000011000001` (owner team1).
-
-If the witness reports **more than 54 edges** per beacon the grenade uses a longer word than a shot,
-and the replay in steps 4 and 5 must use the raw word from step 1's log, not the gun echo. Say so before step 4.
-
-### 3. Passthrough watch, gun spawned in a game (1.5 min) — ✅ **ANSWERED** (Q3 = yes, 2026-09-10; the row is `$SIR,15,0,,28`, see above)
-
-```bash
-$PY grenade_bench.py watch $GUN 30 passthru
-```
-
-Same placement. At about 10 s, **shoot the grenade once** with this gun (it should chime and turn
-blue). No box this time; ignore the BOX call.
-**Expect:** beacons still visible while spawned, flipping from `owner=team2` to `owner=team1/blue` after
-your shot. **If none appear**, run the control to confirm the row is the variable, then move on:
-
-```bash
-$PY grenade_bench.py watch $GUN 20 game
-```
-
-### 4. Respawn station (5 min, the big one) — ✅ **ANSWERED 2026-09-04** (emitter arms and revives a native-game gun, 4/4, team-gated)
-
-**Power-cycle the grenade first** so it is neutral again. Emitter at a dome, ≤ 3 ft.
-
-```bash
-$PY grenade_bench.py respawn $GUN COM8 passthru COM7
-```
-
-Phases, each announced on screen with its length:
-
-1. **CLAIM + ARM (30 s):** shoot the grenade once, hold it facing the headset front, press its button
-   once at the 15 s call. Listen for what the gun says.
-2. **KILL:** the emitter shoots the gun dead. If it prints NOT killed, move the emitter closer and re-run.
-3. **GRENADE BUTTON (15 s):** press the button next to the dead headset, twice on the calls.
-4. **HEADSET-FRONT + TRIGGER (15 s):** only if still dead. Face the grenade with the headset front, pull
-   the trigger twice.
-5. **REPLAY (about 25 s):** only if still dead. Box the real grenade; our emitter sends the beacon words.
-6. **HOST `$SPAWN`:** kills the gun again if something revived it, then sends the host respawn.
-7. **AFTERMATH (10 s):** hands off.
-
-It ends with a verdict table. **Write next to each phase what the gun and headset said and lit.** The
-stream cannot hear that, and your ears have out-scored the readings every time.
-
-### 5. Hill impersonation (3 min) — ⬜ **OUTSTANDING**, and largely superseded: the REAL hill is now proven end to end, so what is left here is the emitter REPLAY halves (phases 3 and 4)
+#### 5. Hill impersonation (3 min) — ⬜ **OUTSTANDING**, and largely superseded: the REAL hill is now proven end to end, so what is left here is the emitter REPLAY halves (phases 3 and 4)
 
 Set the grenade to **HILL (blue)**: same setup procedure, release on blue, power-cycle, confirm the
 blue boot flash. Grenade neutral, emitter at a dome.
@@ -384,7 +340,7 @@ nothing. Repeat in a **native** game: start a manual game on the gun, no BLE, an
 $PY -m brx_mcp ir-emit 1111000000010000100000010 COM8 6
 ```
 
-### 6. Optional: Assault and CTF on the gun stream (3 min) — ⬜ **OUTSTANDING** = part of rung **E**
+#### 6. Optional: Assault and CTF on the gun stream (3 min) — ⬜ **OUTSTANDING** = part of rung **E**
 
 Grenade in **ASSAULT (green)**, then again in **CTF (white)**:
 
@@ -395,6 +351,62 @@ $PY grenade_bench.py watch $GUN 30 bare COM7
 Shoot the grenade at about 10 s with a second gun, or re-run in `passthru` and shoot it with this one.
 **Expect:** nothing on the gun stream (they do not beacon). Skip this if step 1's Assault and CTF
 captures already showed what they emit on a shot.
+
+### B. Answered steps — kept for the commands, the controls and the traps, not for re-running
+
+#### 2. Bare watch + box test (2 min) — ✅ **ANSWERED 2026-09-04**
+
+```bash
+$PY grenade_bench.py watch $GUN 40 bare COM7
+```
+
+Grenade emitter side facing the headset front, 1 ft. Hands off. At the **BOX IT NOW** call, put the
+grenade in the closed box.
+**Expect:** a beacon every ~2.5 s shown as `GRENADE RESPAWN owner=team2`, the witness reporting
+**52 edges** per beacon, and both stopping in the box. At the end it prints the **replay word** for
+each distinct beacon. Write the word down if it differs from the predicted
+`1111000000100000011000001` (owner team2) or `1111000000010000011000001` (owner team1).
+
+If the witness reports **more than 54 edges** per beacon the grenade uses a longer word than a shot,
+and the replay in steps 4 and 5 must use the raw word from step 1's log, not the gun echo. Say so before step 4.
+
+#### 3. Passthrough watch, gun spawned in a game (1.5 min) — ✅ **ANSWERED** (Q3 = yes, 2026-09-10; the row is `$SIR,15,0,,28`, see above)
+
+```bash
+$PY grenade_bench.py watch $GUN 30 passthru
+```
+
+Same placement. At about 10 s, **shoot the grenade once** with this gun (it should chime and turn
+blue). No box this time; ignore the BOX call.
+**Expect:** beacons still visible while spawned, flipping from `owner=team2` to `owner=team1/blue` after
+your shot. **If none appear**, run the control to confirm the row is the variable, then move on:
+
+```bash
+$PY grenade_bench.py watch $GUN 20 game
+```
+
+#### 4. Respawn station (5 min, the big one) — ✅ **ANSWERED 2026-09-04** (emitter arms and revives a native-game gun, 4/4, team-gated)
+
+**Power-cycle the grenade first** so it is neutral again. Emitter at a dome, ≤ 3 ft.
+
+```bash
+$PY grenade_bench.py respawn $GUN COM8 passthru COM7
+```
+
+Phases, each announced on screen with its length:
+
+1. **CLAIM + ARM (30 s):** shoot the grenade once, hold it facing the headset front, press its button
+   once at the 15 s call. Listen for what the gun says.
+2. **KILL:** the emitter shoots the gun dead. If it prints NOT killed, move the emitter closer and re-run.
+3. **GRENADE BUTTON (15 s):** press the button next to the dead headset, twice on the calls.
+4. **HEADSET-FRONT + TRIGGER (15 s):** only if still dead. Face the grenade with the headset front, pull
+   the trigger twice.
+5. **REPLAY (about 25 s):** only if still dead. Box the real grenade; our emitter sends the beacon words.
+6. **HOST `$SPAWN`:** kills the gun again if something revived it, then sends the host respawn.
+7. **AFTERMATH (10 s):** hands off.
+
+It ends with a verdict table. **Write next to each phase what the gun and headset said and lit.** The
+stream cannot hear that, and your ears have out-scored the readings every time.
 
 ## Afterwards
 
