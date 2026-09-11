@@ -994,6 +994,7 @@ class Session:
         the same voice as `set_config`, stored, and pushed as `station_config` at once (utility.md §5b.1)."""
         if not isinstance(a, dict):
             raise ValueError("assignment must be an object")
+        self._refuse_station_change_in_play()
         kind = a.get("kind")
         if kind not in STATION_KINDS:
             raise ValueError(f"kind must be one of {', '.join(STATION_KINDS)}")
@@ -1008,6 +1009,13 @@ class Session:
                 team = int(t["tid"])
         if not (isinstance(team, int) and not isinstance(team, bool)) or not (team in (0, 1, 2, 3) or team == STATION_TEAM_ANY):
             raise ValueError("team must be a $TID 0-3, a team_id, or 'any' (255)")
+        # A team-scoped station serves only the players on that $TID (`engine.js _stationAllowed` admits
+        # `e.team === TEAM_ANY || e.team === tid`), so a tid nobody in this game is on -- or the F82 neutral
+        # broadcast in a hill mode -- is a station that silently serves nobody (polish review 2026-09-11).
+        game_tids = {int(t["tid"]) for t in self.config.get("teams", []) if "tid" in t}
+        if team != STATION_TEAM_ANY and team not in game_tids:
+            raise ValueError(f"team $TID {team} is not one of this game's teams ({sorted(game_tids) or 'none yet'}); "
+                             "a station on it would serve nobody -- pick a team in the game, or 'any'")
         if kind == "control" and team != STATION_TEAM_ANY:
             raise ValueError("a control point starts NEUTRAL and is taken by presence (spec/utility.md §5d): team must be 'any'")
         sid = a.get("id")
@@ -1039,6 +1047,7 @@ class Session:
         st = self.stations.get(nid)
         if not st:
             return False
+        self._refuse_station_change_in_play()
         st["assigned"] = None
         st["armed"] = None
         self.arm_stations()                    # the survivors' valid_ids shrink
@@ -1047,13 +1056,24 @@ class Session:
         self._changed()
         return True
 
+    def _refuse_station_change_in_play(self) -> None:
+        """An assignment or clear is a `config` re-push to every player (below), and the phone's
+        `_applyConfig` rewrites the gun head and sets `spawned = false` whatever the phase -- on a LIVE gun
+        that silences every hit and death handler for the rest of the match (polish review 2026-09-11).
+        So the ITEMS panel is a muster/lobby control: once a start is scheduled it is refused in the
+        operator's voice rather than quietly re-arming the field."""
+        if self.phase in ("armed", "live"):
+            raise ValueError(f"the match is {self.phase.upper()}: a station cannot be assigned or cleared now "
+                             "(every player would be re-armed mid-game). RECALL or END first, or wait for the recap")
+
     def _repush_stations_to_players(self) -> None:
         """After a lobby push the players already HOLD a `config.stations`; an assignment made after that
         (a re-id, a late station, a cleared one) must reach them or `engine.js _stationAllowed` keeps
         filtering on the old list and nobody can respawn or capture at the new id (review 2026-09-11).
         The bundle is NOT recompiled and the acks are NOT cleared -- the frames are unchanged, only the
-        config's allow-list moved."""
-        if not self.lobby_pushed:
+        config's allow-list moved. LOBBY only: `lobby_pushed` stays True through armed and live, and a
+        `config` to a live gun re-arms it (see `_refuse_station_change_in_play`)."""
+        if not self.lobby_pushed or self.phase != "lobby":
             return
         cfg = self._wire_config()
         roster = self.roster()
@@ -1197,7 +1217,12 @@ class Session:
                 self.acks.pop(p["player_id"], None)
         self.nodes.pop(nid, None)
         self.synced_at_lobby.pop(nid, None)
-        self.stations.pop(nid, None)
+        if (self.stations.pop(nid, None) or {}).get("assigned"):
+            # An assigned station left with its id still in every other station's `valid_ids` and every
+            # HUD's `config.stations` (polish review 2026-09-11): shrink both, as `clear_station` does.
+            self.arm_stations()
+            self._repush_stations_to_players()
+            self._validate()
         self._changed()
         return known
 

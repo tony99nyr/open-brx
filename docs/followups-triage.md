@@ -139,7 +139,7 @@ Sorted by how badly it bites, then by whether a keyboard can close it.
 **F16** `bench_common` half fixed · **F14** three deliberate HUD nits (recorded, not bugs) · **F89** recorded so
 nobody routes beacons through `_team()` (not a bug) · **F43** the sound-pick rule (a lesson, keep it where the code
 is) · **S2 Lows** (2026-09-04 polish) · **S4/S7 leftovers** · **§11** low ledgers · **D3** Jay's LoRa host ·
-**F94** built; close it once F101/F102/F103 land · **F92** decided; close.
+**F94** and **F92** closed 2026-09-11 (archive).
 
 ## 7. Dependency spine (what to do first so the rest can move)
 

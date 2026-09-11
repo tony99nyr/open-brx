@@ -315,8 +315,11 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             return _err(str(e))
 
     async def delete_station(req):
-        if not s.clear_station(req.path_params["nid"]):
-            return _err("no such station", 404)
+        try:
+            if not s.clear_station(req.path_params["nid"]):
+                return _err("no such station", 404)
+        except ValueError as e:                    # refused while armed/live: the operator's voice, not a 500
+            return _err(str(e))
         return JSONResponse({"ok": True})
 
     async def arm_stations(_):

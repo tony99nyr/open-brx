@@ -137,3 +137,23 @@ def test_weapon_stats_follow_the_hosts_health_config():
     assert hard["pool"] == 200 and hard["htk"] == 23                # §2.5's 100/100 column
     assert hard["dmg_per_hit"] == base["dmg_per_hit"]               # a property of the weapon, not the pool
     assert hard["ttk_ms"] > base["ttk_ms"]
+
+
+def test_station_routes_refuse_in_the_operators_voice_while_armed_or_live():
+    """Polish 2026-09-11: `clear_station` raises while the match is armed/live (a re-push would re-arm every
+    live gun). The DELETE route called it outside its try, so the refusal was a 500 with no message where PUT
+    gave a 400 in the operator's voice."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net = _client()
+    net.simulate_utility_hello("util-1")
+    assert c.put("/api/stations/util-1", json={"kind": "respawn", "team": "any", "id": 3}).status_code == 200
+    s.phase = "live"
+    r = c.delete("/api/stations/util-1")
+    assert r.status_code == 400 and "LIVE" in r.json()["error"], (r.status_code, r.text)
+    r = c.put("/api/stations/util-1", json={"kind": "respawn", "team": "any", "id": 4})
+    assert r.status_code == 400 and "LIVE" in r.json()["error"], (r.status_code, r.text)
+    assert s.stations["util-1"]["assigned"]["id"] == 3, "the refused change left nothing behind"
+    # CONTROL: in lobby the same DELETE succeeds, and an unknown station is still a 404 (not a 400)
+    s.phase = "lobby"
+    assert c.delete("/api/stations/util-1").status_code == 200
+    assert c.delete("/api/stations/never").status_code == 404

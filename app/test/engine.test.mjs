@@ -2825,6 +2825,28 @@ test('A16 readout: the hold expires to rest after hold_s with no further pool ch
   assert.equal(h.writes.length, 0, 'one rest write, never a repeating pulse');
 });
 
+test('F86 (polish 2026-09-11): after an infection flip the readout reverts to the NEW team\'s rest, on hold expiry and after an event burst', () => {
+  const NEW_REST = '$GLED,2,2,2,0,1,,*';
+  const h = readoutHarness();
+  h.eng.frames.team_flip_take = { '2': [RO_REST, NEW_REST] };
+  h.eng.team = { ...h.eng.team, tid: 2 };   // the flip has happened (the take-after-flip is covered above)
+  h.eng._gunTake();
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,25,0,0,*');   // -> RO_H2, hold_s=4 armed
+  h.adv(4001); h.eng.tick();
+  const gled = h.writes.filter(f => f.startsWith('$GLED'));
+  assert.deepEqual(gled, [RO_H2, NEW_REST], 'the hold expires to the flipped team\'s rest');
+  assert.ok(!h.writes.includes(RO_REST), 'never the arming team\'s rest again');
+  // and the end of an event burst lands on the same rest, not `gun.rest`
+  h.eng.frames.leds = { kill: TEST_BURST }; h.writes.length = 0;
+  h.eng._event('kill');
+  assert.equal(h.writes.filter(f => f.startsWith('$GLED')).pop(), NEW_REST, 'a burst ends on the flipped rest');
+  // CONTROL: with no flip table the same expiry paints `gun.rest` (the arming team), as the test above proves
+  const c = readoutHarness(); c.writes.length = 0;
+  c.frame('$HIR,4,0,19,2,9,0,0,*'); c.frame('$HP,25,0,0,*'); c.adv(4001); c.eng.tick();
+  assert.deepEqual(c.writes.filter(f => f.startsWith('$GLED')), [RO_H2, RO_REST]);
+});
+
 test('A16 readout: a reload paints the CURRENT readout for reload_glance_s, even after the ordinary hold already went dark', () => {
   const h = readoutHarness();
   h.player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }] };

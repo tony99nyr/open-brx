@@ -312,8 +312,9 @@ export class Engine {
   get teamTid() { return this.team ? this.team.tid : null; }
   get teamKey() { return this.team ? (TEAM_KEY[this.team.tid] || String(this.team.color || 'blue')) : 'blue'; }
   get maxHp() { return (this.config && this.config.health && this.config.health.max_hp) || 45; }
-  /** F47: `??`, not `||` -- MC may ship `max_armor: 0` ("one-shot with a sniper", and a per-player handicap can
-   *  strip armour); `||` turned that explicit 0 into 70, so a no-armour class silently had armour. */
+  /** F47: `??`, not `||` -- MC may ship `max_armor: 0` ("one-shot with a sniper"); `||` turned that explicit 0
+   *  into 70, so a no-armour class silently had armour. (A per-player `overrides.max_armor` lands in `$PSET`
+   *  only; the node never sees it and still models the game value -- a known gap, not covered here.) */
   get maxArmor() { const v = this.config && this.config.health && this.config.health.max_armor; return (v === 0 || v > 0) ? v : 70; }
   /** F34/F13: floored at MIN_RESPAWN_S on the node too. MC refuses 1-2 s at PUT, but a config that arrives another
    *  way (a stored preset, the demo, the stage) spawned at exactly that, inside the headset relay's out-blink wedge. */
@@ -436,6 +437,7 @@ export class Engine {
     this.frames = frames || this.frames; if (roster) this.roster = roster;
     if (config && config.night != null) this.night = !!config.night;
     this.tutorial = false; this.tutorialWeapon = null;
+    this._gunRestFrame = null;   // F86: a new bundle's rest is `gun.rest` until this match's first take says otherwise
     if (!this.frames || !this.frames.head) { this.log('config without frames — ignored', 'le'); return; }
     if (!this.bleUp) { this.configPending = true; this.log('config stored; gun not linked yet — head will be written on relink', 'li'); this._changed(); return; }
     this.configPending = false; this._panicked = null;
@@ -639,6 +641,7 @@ export class Engine {
     const flipTake = this.frames.team_flip_take && this.teamTid != null && this.frames.team_flip_take[String(this.teamTid)];
     const take = (Array.isArray(flipTake) && flipTake.length) ? flipTake : g.take;
     const rest = take === g.take ? g.rest : take[take.length - 1];
+    this._gunRestFrame = rest;   // the readout's revert-to-rest (below) must paint THIS team's rest, not the arming team's
     const life = (this._gunLife = (this._gunLife || 0) + 1);
     const lg = (this._lightGen = this._lightGen || 0);   // teardown snapshot: a blank+paint must not land after _endLocal/panic writes $CLEAR/$SP,99
     this.delay(Math.round((g.after_spawn_s || 2.5) * 1000), () => {
@@ -902,7 +905,8 @@ export class Engine {
     // the very same tick (otherwise a blink write and the revert-to-rest write would both land here).
     if (now - this._readoutHoldStartAt >= this._readoutHoldMs) {
       this._readoutHoldActive = false; this._roBlinkAt = 0;
-      if (g.rest && this._readoutFrame !== g.rest) { this._readoutFrame = g.rest; this._write([g.rest], 'readout rest'); }
+      const rest = this._gunRestFrame || g.rest;   // F86: after an infection flip `g.rest` is the arming team's colour
+      if (rest && this._readoutFrame !== rest) { this._readoutFrame = rest; this._write([rest], 'readout rest'); }
       return;
     }
     // The partial-level blink, tick()-polled (see `_readoutSettle`) -- runs only while `_roBlinkAt` is
@@ -1093,8 +1097,9 @@ export class Engine {
     if (g && g.readout && this._gunTaken) {
       this.delay(t, () => {
         if (this._lightGen !== lg || !this.alive) return;
-        if ((this._readoutHoldActive || this._roAnimating) && this._readoutFrame && this._readoutFrame !== g.rest) { this._write([this._readoutFrame], `readout after ${kind}`); }
-        else if (g.rest) { this._readoutFrame = g.rest; this._readoutHoldActive = false; this._write([g.rest], `readout rest after ${kind}`); }
+        const rest = this._gunRestFrame || g.rest;   // F86: the flip's rest, when the gun was taken on another team
+        if ((this._readoutHoldActive || this._roAnimating) && this._readoutFrame && this._readoutFrame !== rest) { this._write([this._readoutFrame], `readout after ${kind}`); }
+        else if (rest) { this._readoutFrame = rest; this._readoutHoldActive = false; this._write([rest], `readout rest after ${kind}`); }
       });
     } else if (g && g.in_play === 'health' && this._gunTaken) this.delay(t, () => { if (this._lightGen !== lg) return; const r = this._gunRest(); if (r && this.alive) { this._gunBand = r; this._write([r], `gun health after ${kind}`); } });   // A11.7: the burst ended on the full-health frame; restore the real band
   }

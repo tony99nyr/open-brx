@@ -28,10 +28,13 @@ export function Items() {
       <SectionRule label={`ITEMS // ${stations.length} UTILITY PHONE${stations.length === 1 ? '' : 'S'}`}
         hint={<>{nArmed}/{stations.length} ARMED · GAME {state.game_no ?? '—'} · ASSIGN, THEN PLACE — A STATION NEEDS NO WI-FI ONCE ARMED</>} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 12 }}>
-        {/* keyed on the assignment and the phone's own kind/id/team/threshold, so a card mounted before the
-            first heartbeat re-seeds its draft when the report arrives (the heartbeat's live/revives/progress
-            fields are deliberately NOT in the key -- they change every 2 s and must not drop an edit) */}
-        {stations.map(s => <StationCard key={`${s.node_id}|${s.assigned?.at ?? ''}|${s.report.kind ?? ''}|${s.report.team ?? ''}|${s.report.station_id ?? ''}|${s.report.threshold ?? ''}`} s={s} />)}
+        {/* keyed on the node and the assignment ONLY. The phone's `report` (kind/team/id/threshold/…) is
+            deliberately NOT in the key: it starts empty and fills in on the first heartbeat (~2s after
+            hello) or changes on a phone reboot, and either would remount the card mid-edit, throwing away
+            the operator's draft and `busy` (F104 follow-up). So an unassigned card mounted at hello keeps
+            the default draft even after the report fills in: PHONE SAYS shows the phone's own state on the
+            same card, and the operator has to assign anyway. */}
+        {stations.map(s => <StationCard key={`${s.node_id}|${s.assigned?.at ?? ''}`} s={s} />)}
       </div>
     </div>
   );
@@ -50,11 +53,19 @@ function StationCard({ s }: { s: StationView }) {
   const control = kind === 'control';
   const status = !a ? 'NOT ASSIGNED' : s.arm_pending ? 'ARM PENDING' : s.armed ? `MC-ARMED · GAME ${s.armed.game}` : 'ASSIGNED';
   const color = !a ? T.micro : s.attention.length || s.arm_pending ? T.warn : T.ok;
+  // F104 follow-up: a phone that disagrees with what MC thinks it armed (never heard ARM, advertises a
+  // different id, or is still on an older game's config) needs the SAME fix as a pending arm — push the
+  // arming again. An UNCHANGED assignment goes through POST /api/stations/arm, not a PUT: a PUT is refused
+  // while the match is armed/live (it would re-push config to every HUD), whereas arming touches only the
+  // stations and is allowed in any phase — and a station that reboots mid-match is exactly this case.
+  const needsRearm = s.arm_pending || s.attention.some(t => t.startsWith('PHONE ') || t.startsWith('ARMED FOR'));
   const dirty = !a || a.kind !== kind || a.team !== (control ? 255 : team) || a.id !== id || a.threshold !== threshold;
   const apply = async () => {
     setBusy(true);
-    try { await run(() => api.putStation(s.node_id, { kind, team: control ? 255 : team, id, threshold })); }
-    finally { setBusy(false); }
+    try {
+      if (dirty) await run(() => api.putStation(s.node_id, { kind, team: control ? 255 : team, id, threshold }));
+      else await run(() => api.armStations());
+    } finally { setBusy(false); }
   };
   const rep = s.report;
   const age = s.last_seen_ms;
@@ -113,11 +124,11 @@ function StationCard({ s }: { s: StationView }) {
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Micro>BUBBLE</Micro><ValueBox value={threshold} unit="dBm" min={-100} max={-30} label={`threshold for ${s.node_id}`} onChange={setThreshold} /></span>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button type="button" className={dirty ? 'hov-accbg' : ''} disabled={busy || (!dirty && !s.arm_pending)} onClick={apply}
+          <button type="button" className={dirty ? 'hov-accbg' : ''} disabled={busy || (!dirty && !needsRearm)} onClick={apply}
             style={{ font: F.osw(700, 15), letterSpacing: '.18em', padding: '8px 18px', whiteSpace: 'nowrap',
-              background: dirty || s.arm_pending ? T.acc : T.panelAlt, color: dirty || s.arm_pending ? T.accInk : T.dim,
-              border: `1px solid ${dirty || s.arm_pending ? T.acc : T.line}`, clipPath: CHAMFER.tl14, cursor: busy ? 'wait' : dirty || s.arm_pending ? 'pointer' : 'default', minHeight: 40 }}>
-            {a ? (s.arm_pending ? 'RE-ARM' : dirty ? 'ARM WITH CHANGES' : 'ARMED') : 'ASSIGN + ARM'}
+              background: dirty || needsRearm ? T.acc : T.panelAlt, color: dirty || needsRearm ? T.accInk : T.dim,
+              border: `1px solid ${dirty || needsRearm ? T.acc : T.line}`, clipPath: CHAMFER.tl14, cursor: busy ? 'wait' : dirty || needsRearm ? 'pointer' : 'default', minHeight: 40 }}>
+            {a ? (dirty ? 'ARM WITH CHANGES' : needsRearm ? 'RE-ARM' : 'ARMED') : 'ASSIGN + ARM'}
           </button>
           {a && <GhostButton onClick={async () => { await run(() => api.deleteStation(s.node_id)); }} title="drop the assignment; the phone keeps advertising whatever it was last armed with">CLEAR</GhostButton>}
           {a && <span style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: teamColor(TID_NAME[a.team]?.toLowerCase() ?? 'any') }}>{TID_NAME[a.team] ?? a.team}</span>}

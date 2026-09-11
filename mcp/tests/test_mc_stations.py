@@ -326,3 +326,77 @@ def test_end_reaches_every_hud_but_counts_only_bound_players():
     assert "ghost" in targets, "the unbound HUD still gets END"
     assert "util-1" not in targets, "a station has no match to end"
     assert r["reached"] == r["nodes"] == 2, r
+
+
+# --------------------------------------------------------------------------- polish review 2026-09-11
+def test_a_station_cannot_be_assigned_or_cleared_once_the_match_is_armed_or_live():
+    """`_repush_stations_to_players` gated only on `lobby_pushed`, which stays True through armed and
+    live; a re-id mid-match re-sent `config` to every HUD, whose `_applyConfig` rewrites the gun head and
+    sets `spawned = false` -- every hit and death handler is gated on it, so a live player stopped
+    booking hits in silence. The ITEMS panel is a muster/lobby control and says so."""
+    s = _joined(_sess(respawn={"type": "scanner", "delay_s": 15}))
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 1})
+    s.push_config(force=True)
+    s.start(runway_s=30, force=True)
+    assert s.phase == "armed"
+    for phase in ("armed", "live"):
+        s.phase = phase
+        s.net.pushed.clear()
+        for call in (lambda: s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 2}),
+                     lambda: s.clear_station("util-1")):
+            try:
+                call()
+                raise AssertionError(f"a station change was accepted while {phase}")
+            except ValueError as e:
+                assert phase.upper() in str(e) and "RECALL" in str(e), str(e)
+        assert not _pushed(s, "config"), f"no HUD was re-armed while {phase}"
+        assert s.stations["util-1"]["assigned"]["id"] == 1, "the refused change left nothing behind"
+    # CONTROL: the same calls in LOBBY (the phase the panel is for) do re-push, as the test above proves
+    s.phase = "lobby"
+    s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 2})
+    assert _pushed(s, "config"), "in lobby the players learn the new id"
+
+
+def test_evicting_an_assigned_station_shrinks_the_allow_list_like_clearing_it():
+    """`evict_node` popped the station but left its id in every survivor's `valid_ids` and in every HUD's
+    `config.stations` until the next full push."""
+    s = _joined(_sess(respawn={"type": "scanner", "delay_s": 15}))
+    s.net.simulate_utility_hello("util-1"); s.net.simulate_utility_hello("util-2")
+    t1, t2 = (t["team_id"] for t in s.config["teams"][:2])
+    s.set_station("util-1", {"kind": "respawn", "team": t1, "id": 1})
+    s.set_station("util-2", {"kind": "respawn", "team": t2, "id": 2})
+    s.push_config(force=True)
+    s.net.pushed.clear()
+    assert s.evict_node("util-1")
+    assert "util-1" not in s.stations
+    survivors = _pushed(s, "station_config", "util-2")
+    assert survivors and survivors[-1]["valid_ids"] == [2], survivors
+    cfgs = _pushed(s, "config")
+    assert cfgs and all(c["config"]["stations"] == [{"id": 2, "kind": "respawn"}] for c in cfgs), cfgs
+    # CONTROL: evicting an UNASSIGNED utility node re-arms nobody (nothing on the field changed)
+    s.net.simulate_utility_hello("util-3"); s.net.pushed.clear()
+    assert s.evict_node("util-3")
+    assert not _pushed(s, "station_config") and not _pushed(s, "config")
+
+
+def test_a_team_scoped_station_must_be_on_a_team_that_is_in_the_game():
+    """`engine.js _stationAllowed` admits a player only when the station's team is ANY or the player's
+    own tid, so a station on a tid nobody is on (or on the F82 neutral broadcast in a hill mode) is a
+    station that serves nobody, silently."""
+    s = _sess("koth", station_source="phone")           # teams are on tids other than 2
+    s.net.simulate_utility_hello("util-1")
+    tids = {int(t["tid"]) for t in s.config["teams"]}
+    assert 2 not in tids, "the F82 rule holds: a hill game has no team on tid 2"
+    for team in sorted({0, 1, 2, 3} - tids):
+        try:
+            s.set_station("util-1", {"kind": "respawn", "team": team, "id": 1})
+            raise AssertionError(f"tid {team} accepted though no team in the game is on it")
+        except ValueError as e:
+            assert "serve nobody" in str(e), str(e)
+    assert s.stations["util-1"]["assigned"] is None
+    # CONTROL: a tid that IS in the game, and 'any', are accepted as before
+    s.set_station("util-1", {"kind": "respawn", "team": min(tids), "id": 1})
+    assert s.stations["util-1"]["assigned"]["team"] == min(tids)
+    s.set_station("util-1", {"kind": "respawn", "team": "any", "id": 1})
+    assert s.stations["util-1"]["assigned"]["team"] == 255

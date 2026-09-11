@@ -471,7 +471,7 @@ step('station-source-control', async ({ browser, base }) => {
   expect(await grp.count() === 1, 'the DESIGNER has an OBJECTIVE SOURCE control for a station-gated mode');
   if (await grp.count() !== 1) { await shot(pg, '07-station-source-MISSING'); await closePage(pg); return; }
   const labels = (await grp.locator('button').allTextContents()).map(s => s.trim());
-  expect(JSON.stringify(labels) === JSON.stringify(['GRENADE', 'IR STATION']), `it offers exactly the server vocabulary (saw ${JSON.stringify(labels)})`);
+  expect(JSON.stringify(labels) === JSON.stringify(['GRENADE', 'IR STATION', 'PHONE']), `it offers exactly the server vocabulary (saw ${JSON.stringify(labels)})`);
   const on = await grp.locator('button[aria-pressed="true"]').textContent();
   expect(on.trim() === 'GRENADE', `koth defaults to GRENADE (saw ${JSON.stringify(on.trim())})`);
   // clicking the other value must visibly change the rail, not just the draft object
