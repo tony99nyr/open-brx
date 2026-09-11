@@ -445,6 +445,33 @@ test('control point: the FIRST advert adopts the owner silently, and a real hand
   assert.equal(nWrites(h, HILL_CAPTURED_F), 1, 'BLUE taking it says Hill Captured, once');
 });
 
+// Mutation audit 2026-09-11: `_onControlAdvert` restated `claimable()` by hand as `e.team <= 3`, and
+// flipping that literal to `<= 4` left the whole suite green -- so a station advertising tid 4 with `held`
+// set would have installed a real owner and nothing would have said so. tids 4-7 are COLOUR tids, not
+// teams: `$TID` is masked to 2 bits (protocol/brx-protocol.md, F35/F96), so a gun on 4+ transmits a LOWER
+// team, reads friendly to that team and still takes its damage. Crediting a point to one credits a team
+// that cannot coherently exist. Adverts are unauthenticated (§3), so this is the value a buggy or hostile
+// station supplies for free.
+test('control point: a held advert on a COLOUR tid (4-7) owns nothing, and a real tid still does', () => {
+  for (const tid of [4, 5, 6, 7]) {
+    const h = koth();
+    control(h, { team: tid, state: HELD, value: 100 });
+    assert.equal(h.eng.state().hill.owner, 2, `a held advert naming tid ${tid} is nobody, not an owner`);
+    assert.equal(nWrites(h, HILL_CAPTURED_F) + nWrites(h, HILL_LOST_F), 0, `tid ${tid} announces nothing`);
+  }
+  // 255 is the station's own "nobody" and must land in the same place
+  const none = koth();
+  control(none, { team: 255, state: HELD, value: 100 });
+  assert.equal(none.eng.state().hill.owner, 2, '255 held is nobody too');
+  // 🔴 the control: "not the owner" must not be satisfiable by an engine that accepts nobody. Every tid a
+  // hill CAN use still installs an owner off the same wire.
+  for (const tid of [0, 1, 3]) {
+    const h = koth();
+    control(h, { team: tid, state: HELD, value: 100 });
+    assert.equal(h.eng.state().hill.owner, tid, `tid ${tid} is a real point owner`);
+  }
+});
+
 test('control point: a two-phase steal says Hill Lost the moment it goes neutral, not when it flips', () => {
   const h = koth();
   control(h, { team: 1, state: HELD, value: 100 });     // we hold it

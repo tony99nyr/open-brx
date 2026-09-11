@@ -11,7 +11,7 @@
 
 import * as W from './transport/envelope.js';   // single source for the contracts §9 constants
 import { stationView, TEAM_ANY } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
-import { CONTROL_STATE } from './control.js';   // the phone control point's advert bits (utility.md §5 `control`, K1)
+import { CONTROL_STATE, claimable } from './control.js';   // the phone control point's advert bits + who may own a point (utility.md §5 `control`, K1)
 export const C = {
   STATUS_HEARTBEAT_MS: W.STATUS_HEARTBEAT_MS, SYNC_FRESH_MS: W.SYNC_FRESH_MS, FEEDBACK_MAX_AGE_MS: W.FEEDBACK_MAX_AGE_MS,
   LATE_ARM_GRACE_MS: W.LATE_ARM_GRACE_MS, DEATH_LATCH_MS: W.DEATH_LATCH_MS, RESYNC_PROBE_S: W.RESYNC_PROBE_S,
@@ -1305,7 +1305,11 @@ export class Engine {
     // Not held, a colour tid, or 255 all mean the same thing to this model: nobody. A `held` advert naming
     // tid 2 needs no special case — 2 IS the neutral sentinel, so an unauthenticated advert cannot use it to
     // install an owner nobody could decide (F82), it just says "nobody" the long way round.
-    const owner = (held && e.team <= 3) ? e.team : HILL_NEUTRAL_TEAM;
+    // `claimable` rather than a restated `e.team <= 3`: the station side already decides who may hold a point
+    // with it (control.js), and a hand-copy of that boundary is one edit away from disagreeing with it. A
+    // mutation audit (2026-09-11) moved the old literal to `<= 4` and the whole suite stayed green, which
+    // would have made a COLOUR tid a point owner — tids 4-7 are not teams ($TID is masked to 2 bits, F35/F96).
+    const owner = (held && claimable(e.team)) ? e.team : HILL_NEUTRAL_TEAM;
     const contested = !!(e.state & CONTROL_STATE.contested);
     // §5d.3: `rising && falling` is INVALID and direction falls back to UNKNOWN. Flags are independent bits,
     // so unlike a 2-bit phase field they CAN both be set -- and adverts are unauthenticated (§3), so a buggy
