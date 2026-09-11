@@ -2,12 +2,13 @@
   "name": "open-brx-site",
   "private": true,
   "type": "module",
-  "description": "Static generator for the Open BRX website: renders docs/manual/*.md into webapp/ (Cloudflare assets).",
+  "description": "Static generator for the Open BRX website: renders docs/platform/*.md and docs/manual/*.md into webapp/ (Cloudflare assets).",
   "scripts": {
     "build": "node build.mjs",
     "serve": "node serve.mjs",
     "test": "playwright test",
-    "test:only": "playwright test --grep"
+    "test:only": "playwright test --grep",
+    "shots": "node shots.mjs"
   },
   "devDependencies": {
     "playwright": "^1.62.1",

@@ -39,5 +39,7 @@ webapp/download/*.apk
 /webapp/*
 !/webapp/mc/
 !/webapp/download/
+# the generated /download page shares the sidecar's directory; only build.json is hand-kept
+/webapp/download/index.html
 !/webapp/favicon.svg
 !/webapp/.assetsignore

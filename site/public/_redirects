@@ -2,7 +2,6 @@
 # EXPLICIT, not splats: a splat like `/platform/*` also matches `/platform/` itself and looped
 # the live page. A URL that later comes BACK as a real page is dropped from this list.
 /changelog/                          /  301
-/manual/                             /manual/hardware/  301
 /manual/dev/arm-sequence/            /manual/dev/  301
 /manual/dev/brx-mcp/                 /manual/dev/  301
 /manual/dev/captures/                /manual/dev/  301
@@ -57,11 +56,14 @@
 /manual/sound/sound-bank/            /manual/sound/  301
 /manual/sound/voice-packs/           /manual/sound/  301
 /manual/sound/volume/                /manual/sound/  301
-/platform/app/                       /platform/  301
-/platform/architecture/              /platform/  301
-/platform/build-tiers/               /platform/  301
-/platform/faq/                       /platform/  301
-/platform/get-involved/              /platform/  301
-/platform/pieces/                    /platform/  301
-/platform/status/                    /platform/  301
-/platform/vs-edge/                   /platform/  301
+/platform/app/                       /  301
+/platform/architecture/              /  301
+/platform/build-tiers/               /  301
+/platform/faq/                       /  301
+/platform/get-involved/              /  301
+/platform/leds/                      /docs/leds/  301
+/platform/modes/                     /docs/modes/  301
+/platform/pieces/                    /  301
+/platform/run-a-game/                /docs/run-a-game/  301
+/platform/status/                    /  301
+/platform/vs-edge/                   /  301

@@ -1,9 +1,20 @@
-/* Open BRX site. A documentation page: one column, readable, light and dark. */
+/* Open BRX site. Two layouts share this file: the DOC pages (one readable column, light and dark)
+   and the LANDING pages (dark by design, marketing anatomy). The type is Mission Control's:
+   Oswald for display, Chakra Petch for UI copy, the system stack for long reading. */
+
+/* ---- type: self-hosted, latin subsets, from site/public/fonts ---- */
+@font-face { font-family: "Oswald"; font-style: normal; font-weight: 200 700; font-display: swap; src: url(/fonts/oswald-latin.woff2) format("woff2"); }
+@font-face { font-family: "Chakra Petch"; font-style: normal; font-weight: 500; font-display: swap; src: url(/fonts/chakra-petch-500-latin.woff2) format("woff2"); }
+@font-face { font-family: "Chakra Petch"; font-style: normal; font-weight: 600; font-display: swap; src: url(/fonts/chakra-petch-600-latin.woff2) format("woff2"); }
+@font-face { font-family: "Chakra Petch"; font-style: normal; font-weight: 700; font-display: swap; src: url(/fonts/chakra-petch-700-latin.woff2) format("woff2"); }
 
 :root {
   --bg: #ffffff; --panel: #f6f7f9; --ink: #1a1d21; --muted: #5b6470;
   --line: #d9dde3; --line-strong: #6b7684; --accent: #0b6bcb; --code-bg: #f2f4f7;
   --quote-bg: #f4f7fb; --yes-bg: #0b6bcb; --yes-ink: #ffffff; --no-ink: #5b6470;
+  --display: "Oswald", "Arial Narrow", Impact, sans-serif;
+  --ui: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   color-scheme: light;
 }
 /* no data-theme = follow the reader's system setting */
@@ -27,6 +38,12 @@
   --line: #d9dde3; --line-strong: #6b7684; --accent: #0b6bcb; --code-bg: #f2f4f7;
   --quote-bg: #f4f7fb; --yes-bg: #0b6bcb; --yes-ink: #ffffff; --no-ink: #5b6470;
   color-scheme: light;
+}
+/* the landing pages are Mission Control's ground, whatever the reader's theme */
+:root.landing {
+  --bg: #07090d; --panel: #0c1016; --ink: #e8eef5; --muted: #8aa0b4; --micro: #71879c;
+  --line: #1c2733; --line-strong: #25313f; --accent: #39b4ff; --accent-hover: #7fd0ff; --accent-ink: #04121e;
+  --code-bg: #05070a; --deep: #05070a; color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -57,16 +74,36 @@ a { color: var(--accent); }
   position: sticky; top: 0; z-index: 20;
 }
 @supports not (backdrop-filter: blur(1px)) { .top { background: var(--panel); } }
-.brand {
-  display: inline-flex; align-items: center; gap: 9px;
-  font-weight: 700; letter-spacing: -0.01em; text-decoration: none; color: var(--ink);
+/* the wordmark names the place, with the HUD's blue slash; clicking it opens the core places */
+.brand { position: relative; flex: none; display: flex; align-items: center; }
+/* on a doc page the section links sit right after the wordmark: a hairline keeps them apart */
+body:not(.landing):not(.manual) .brand { padding-right: 18px; margin-right: 6px; border-right: 1px solid var(--line-strong); height: 28px; }
+.wm {
+  display: inline-flex; align-items: center; gap: 10px; height: 40px; padding: 0 8px 0 0; margin: 0;
+  background: none; border: 0; color: var(--ink); cursor: pointer; border-radius: 6px;
+  font: italic 700 21px/1 var(--display); letter-spacing: .12em; text-transform: uppercase;
 }
-.brand .logo { color: var(--accent); flex: none; }
-.brand:hover .logo { color: var(--ink); }
+.wm .logo { color: var(--accent); flex: none; }
+/* every part sits on one optical centre line: icon, name, slash and the small place label */
+.wm-name { display: inline-flex; align-items: center; line-height: 1; padding-top: 2px; }
+.wm b { color: var(--accent); font-weight: 700; margin-left: 2px; }
+.wm-sub { font: 600 11px/1 var(--display); letter-spacing: .32em; text-transform: uppercase; color: var(--muted); font-style: normal; padding-top: 3px; }
+.wm:hover .logo, .wm[aria-expanded="true"] .logo { color: var(--ink); }
+.wm:hover .wm-sub { color: var(--ink); }
+.places {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 40; margin: 0; padding: 6px; list-style: none; min-width: 260px;
+  background: var(--bg); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: 0 16px 40px rgb(0 0 0 / 35%);
+}
+.places li { margin: 0; padding: 0; }
+.places a { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; min-height: 44px; border-radius: 6px; text-decoration: none; color: var(--ink); }
+.places a span { font: 600 14px/1.2 var(--display); letter-spacing: .1em; text-transform: uppercase; }
+.places a small { font: 500 12px/1.3 var(--ui); color: var(--muted); }
+.places a:hover, .places a:focus-visible { background: var(--panel); outline: none; box-shadow: inset 0 0 0 2px var(--accent); }
+.places a[aria-current="page"] { box-shadow: inset 3px 0 0 var(--accent); }
 /* visually hidden but read aloud */
 .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .topnav { display: flex; gap: 14px; flex-wrap: wrap; }
-.topnav a { color: var(--muted); text-decoration: none; padding: 6px 2px; min-height: 36px; display: inline-flex; align-items: center; }
+.topnav a { color: var(--muted); text-decoration: none; padding: 6px 2px; min-height: 36px; display: inline-flex; align-items: center; font: 600 13px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; }
 .topnav a:hover, .topnav a[aria-current="page"] { color: var(--ink); }
 .topnav a[aria-current="page"] { box-shadow: inset 0 -2px 0 var(--accent); }
 /* the nav is always visible on a wide screen; the burger is a phone control only */
@@ -128,23 +165,11 @@ footer {
   font-size: 14px; max-width: 62rem; margin: 0 auto;
 }
 
-/* Where to go next, at the end of the article. Deliberately NOT a nav bar: the top bar already
-   says which section you are in, and a second one above the title competed with it and with the
-   contents box. Plain links in a row, introduced by a sentence, so it reads as an offer to keep
-   reading rather than as chrome. */
-/* a hairline, not the 2px an h2 uses: this ENDS the article, it does not start a section */
-.more { margin: 64px 0 8px; padding-top: 22px; border-top: 1px solid var(--line); }
-.more p { margin: 0 0 10px; color: var(--muted); font-size: 14px; }
-.more ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px 28px; }
-.more li { margin: 0; }
-.more a { font-weight: 600; text-decoration: none; }
-.more a:hover { text-decoration: underline; }
-
 /* ---- text ---- */
-h1 { font-size: 2.15rem; line-height: 1.15; letter-spacing: -0.02em; margin: 8px 0 4px; }
+h1 { font: 700 2.4rem/1.05 var(--display); letter-spacing: .005em; text-transform: uppercase; margin: 8px 0 4px; }
 /* a section break should read as one: a rule, real air, and a heavier face */
 h2 {
-  font-size: 1.5rem; line-height: 1.25; letter-spacing: -0.01em; font-weight: 700;
+  font: 700 1.55rem/1.2 var(--display); letter-spacing: .01em; text-transform: uppercase;
   margin: 56px 0 12px; padding-top: 20px; border-top: 2px solid var(--line);
 }
 /* a subsection is a step down in weight, not a rule: it groups, it does not divide */
@@ -155,7 +180,8 @@ h3 {
 h4 { font-size: 1rem; font-weight: 650; margin: 22px 0 4px; color: var(--muted); }
 /* clears the sticky header. It is ~60px on a desktop but ~184px at 390px wide, where the nav
    wraps under the search field, so a flat 72px dropped every in-page jump behind it. */
-h2, h3, h4, #main { scroll-margin-top: calc(var(--header-h, 76px) + 12px); }
+h2, h3, h4, #main, .feat { scroll-margin-top: calc(var(--header-h, 76px) + 12px); }
+main.landing h2 { scroll-margin-top: calc(var(--header-h, 64px) + 40px); }
 /* CSS-only fallback for the widths where the header wraps, so an anchor clears it with JS off */
 @media (max-width: 768px)  { h2, h3, h4, #main { scroll-margin-top: calc(var(--header-h, 176px) + 12px); } }
 @media (max-width: 480px)  { h2, h3, h4, #main { scroll-margin-top: calc(var(--header-h, 196px) + 12px); } }
@@ -178,6 +204,7 @@ blockquote p { margin: 8px 0; }
 blockquote > p:first-child { margin-top: 0; }
 blockquote > p:last-child { margin-bottom: 0; }
 hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
+article img { max-width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; }
 
 /* ---- toc ---- */
 .toc {
@@ -260,9 +287,25 @@ tbody tr:hover { background: var(--panel); }
 }
 .todo { background: #ffd5d5; color: #7a0000; padding: 8px 12px; border-radius: 6px; }
 
+/* ---- the download card (doc layout, /download) ---- */
+.dl { border: 1px solid var(--line-strong); border-radius: 10px; padding: 20px 22px; margin: 18px 0 24px; background: var(--panel); max-width: 44rem; }
+.dl-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.dl-name { font: 700 1.25rem/1.2 var(--display); text-transform: uppercase; letter-spacing: .01em; }
+.dl-ver { font: 600 14px/1 var(--mono); color: var(--muted); }
+.dl-btn {
+  display: inline-flex; align-items: center; gap: 12px; margin: 16px 0 14px; min-height: 48px; padding: 0 22px;
+  background: var(--accent); color: #fff; text-decoration: none; border-radius: 8px;
+  font: 700 15px/1 var(--display); letter-spacing: .1em; text-transform: uppercase;
+}
+.dl-btn span { font: 600 13px/1 var(--mono); letter-spacing: 0; opacity: .8; }
+.dl-btn:hover { filter: brightness(1.1); }
+.dl-meta { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; font-size: 14px; }
+.dl-meta dt { color: var(--muted); }
+.dl-meta dd { margin: 0; overflow-wrap: anywhere; }
+
 @media (max-width: 640px) {
   main { padding: 16px 14px 48px; }
-  h1 { font-size: 1.6rem; }
+  h1 { font-size: 1.8rem; }
   .toc ul { columns: 1; }
   /* Nine nav links wrapped to three rows and made the header 184px, a quarter of a phone screen,
      on every page. They collapse behind the burger now and the header is one row. */
@@ -279,10 +322,251 @@ tbody tr:hover { background: var(--panel); }
     margin: 6px -12px -8px; padding: 4px 12px 8px; border-top: 1px solid var(--line);
   }
   body.nav-open .topnav { display: flex; }
-  .topnav a { min-height: 44px; font-size: 16px; border-bottom: 1px solid var(--line); }
+  .topnav a { min-height: 44px; font-size: 14px; border-bottom: 1px solid var(--line); }
   .topnav a:last-child { border-bottom: 0; }
   .topnav a[aria-current="page"] { box-shadow: inset 3px 0 0 var(--accent); padding-left: 10px; }
-  .theme { width: 38px; height: 38px; }
+  .theme, .burger { width: 44px; height: 44px; }
+  .wm { font-size: 19px; }
+  .places { position: fixed; left: 12px; right: 12px; top: 64px; min-width: 0; }
   .find { flex: 1 1 auto; margin-left: 0; order: 3; }
   .results { width: 100%; right: auto; left: 0; }
+}
+
+/* =================================================================================================
+   LANDING. Dark by design. One idea per screen, big type, one product shot per section, air.
+   Everything below is scoped to body.landing / body.manual so the doc pages are untouched.
+   ============================================================================================== */
+body.landing, body.manual {
+  font: 500 17px/1.6 var(--ui);
+  background-image: linear-gradient(rgba(57,180,255,.028) 1px, transparent 1px), linear-gradient(90deg, rgba(57,180,255,.028) 1px, transparent 1px);
+  background-size: 36px 36px;
+}
+body.landing .top, body.manual .top { border-color: var(--line); background: rgba(7,9,13,.82); }
+body.landing .top .topnav, body.manual .top .topnav { margin-left: auto; }
+.top-cta { flex: none; }
+main.landing { max-width: none; padding: 0; }
+main.landing a { text-decoration: none; }
+main.landing a:hover { color: var(--accent-hover); }
+/* the generic link hover must never recolour a button's label onto its own background */
+main.landing .btn-acc:hover, body.landing .top .btn-acc:hover, body.manual .btn-acc:hover { color: var(--accent-ink); }
+main.landing .btn-line:hover, body.manual .btn-line:hover { color: var(--ink); }
+body.landing footer, body.manual footer { max-width: none; border-color: var(--line); color: var(--micro); font: 500 12px/1.6 var(--mono); letter-spacing: .06em; padding: 28px clamp(20px, 4.4vw, 64px); }
+
+/* type */
+.eyebrow { font: 500 12px/1 var(--mono); letter-spacing: .28em; color: var(--accent); text-transform: uppercase; margin: 0; }
+main.landing h1 { font: 700 clamp(48px, 7.4vw, 108px)/.96 var(--display); letter-spacing: -.005em; text-transform: uppercase; margin: 0; text-wrap: balance; max-width: 1100px; }
+main.landing h2 { font: 700 clamp(34px, 4.6vw, 66px)/1 var(--display); letter-spacing: 0; text-transform: uppercase; margin: 0; padding: 0; border: 0; text-wrap: balance; max-width: 980px; }
+.lede { font: 500 clamp(17px, 1.5vw, 22px)/1.5 var(--ui); color: #c7d3de; margin: 0; max-width: 760px; text-wrap: pretty; }
+.copy { font: 500 17px/1.6 var(--ui); color: #c7d3de; margin: 0; max-width: 700px; text-wrap: pretty; }
+
+/* buttons: Mission Control's chamfer */
+.btn {
+  display: inline-flex; align-items: center; gap: 12px; min-height: 56px; padding: 0 30px;
+  font: 600 15px/1 var(--display); letter-spacing: .18em; text-transform: uppercase;
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%); transition: background .15s, border-color .15s, color .15s;
+}
+.btn .v { font: 500 12px/1 var(--mono); letter-spacing: .1em; opacity: .7; }
+.btn, .top .btn, a.btn { text-decoration: none; }
+/* the chamfer is a clip-path, which clips an outline: draw focus INSIDE the shape */
+.btn:focus-visible { outline: 2px solid #fff; outline-offset: -4px; border-radius: 0; }
+.btn-acc:focus-visible { outline-color: var(--accent-ink); }
+.door:focus-visible, .tile:focus-visible, .card:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; border-radius: 0; }
+.hero-find .find input:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; border-radius: 0; }
+.topnav a:focus-visible { outline-offset: 0; }
+.dl-btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.tile:hover { border-color: var(--accent); }
+.chips .chip { transition: background .15s; } .chips .chip:hover { background: rgba(57,180,255,.06); }
+.btn-acc { background: var(--accent); color: var(--accent-ink); } .btn-acc:hover { background: var(--accent-hover); color: var(--accent-ink); }
+/* the outline button: a CSS border stops at the chamfer's diagonal, so the edge is a clipped layer
+   underneath (::before) with the fill inset 1px on top of it (::after) */
+.btn-line { position: relative; isolation: isolate; border: 0; color: var(--ink); background: transparent; clip-path: none; }
+.btn-line::before, .btn-line::after { content: ''; position: absolute; pointer-events: none; }
+.btn-line::before { inset: 0; z-index: -2; background: var(--line-strong); clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%); transition: background .15s; }
+.btn-line::after { inset: 1px; z-index: -1; background: rgba(12,16,22,.92); clip-path: polygon(0 0, calc(100% - 11.6px) 0, 100% 11.6px, 100% 100%, 0 100%); }
+.btn-line:hover { color: var(--ink); } .btn-line:hover::before { background: var(--accent); }
+.btn-line:focus-visible { outline: 2px solid var(--accent); outline-offset: -5px; }
+.top .btn { min-height: 36px; padding: 0 18px; font-size: 12px; }
+.cta { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+
+/* hero */
+.hero { padding: clamp(56px, 6.5vw, 96px) clamp(20px, 4.4vw, 64px) clamp(64px, 7vw, 112px); display: flex; flex-direction: column; align-items: center; text-align: center; gap: clamp(22px, 2.4vw, 34px); }
+.hero .lede { text-align: center; }
+.hero .photo { width: min(1312px, 100%); margin-top: clamp(20px, 3vw, 40px); }
+.hero .photo img { display: block; width: 100%; height: auto; }
+.counts { display: flex; gap: clamp(24px, 4vw, 56px); justify-content: center; flex-wrap: wrap; padding: clamp(40px, 5vw, 72px) 0 0; }
+.count { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.count b { font: 700 clamp(34px, 3.4vw, 48px)/1 var(--display); color: var(--ink); font-variant-numeric: tabular-nums; }
+.count span { font: 500 11px/1 var(--mono); letter-spacing: .22em; text-transform: uppercase; color: var(--micro); }
+
+/* sections */
+.feat { padding: clamp(80px, 11vw, 160px) clamp(20px, 4.4vw, 64px); display: flex; flex-direction: column; align-items: center; text-align: center; gap: clamp(20px, 2vw, 28px); }
+.feat:nth-of-type(even) { background: var(--deep); }
+.feat-head { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+.feat .lede { text-align: center; }
+.feat .copy { text-align: center; margin-top: 8px; }
+.feat .cta { margin-top: 8px; }
+
+/* the hero as a product shot: the console large, the phone HUD overlapping its lower left corner */
+.hero-duo { position: relative; width: min(1312px, 100%); margin: clamp(20px, 3vw, 40px) auto 0; padding-bottom: clamp(48px, 7%, 92px); padding-left: clamp(0px, 2%, 24px); }
+.hero-duo .shot.duo-main { width: 100%; }
+.hero-duo .shot.duo-phone { position: absolute; left: 0; bottom: 0; width: 46%; box-shadow: 0 40px 120px rgba(0,0,0,.75), 0 0 0 1px rgba(57,180,255,.12); }
+@media (max-width: 640px) { .hero-duo { padding-bottom: 20%; } .hero-duo .shot.duo-phone { width: 64%; } }
+/* frames: a screenshot gets Mission Control's corner brackets; a photo gets none */
+figure { margin: 0; }
+.shot { position: relative; background: var(--code-bg); border: 1px solid var(--line-strong); box-shadow: 0 40px 120px rgba(0,0,0,.6), 0 0 0 1px rgba(57,180,255,.08); }
+.shot::before, .shot::after { content: ''; position: absolute; width: 22px; height: 22px; pointer-events: none; }
+.shot::before { top: -1px; left: -1px; border-top: 2px solid var(--accent); border-left: 2px solid var(--accent); }
+.shot::after { bottom: -1px; right: -1px; border-bottom: 2px solid var(--accent); border-right: 2px solid var(--accent); }
+.shot img { display: block; width: 100%; height: auto; }
+.shot.wide { width: min(1312px, 100%); margin-top: clamp(20px, 3vw, 48px); }
+/* a photo shown whole inside a section: same column as a wide shot, no brackets */
+.feat .photo.wide { width: min(1312px, 100%); margin-top: clamp(20px, 3vw, 48px); }
+.feat .photo.wide img { display: block; width: 100%; height: auto; }
+.row { display: grid; gap: clamp(16px, 2.4vw, 32px); width: min(1312px, 100%); margin-top: clamp(20px, 3vw, 48px); }
+.row-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.row-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* a phone-landscape screenshot reads as a device: round it like one */
+.shot.phone { border-radius: 18px; padding: 8px; }
+.shot.phone img { border-radius: 14px; }
+.shot.phone::before, .shot.phone::after { display: none; }
+
+/* captions */
+.caps { list-style: none; margin: clamp(32px, 4vw, 56px) 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(24px, 3vw, 48px); width: min(1200px, 100%); text-align: left; }
+.caps li { margin: 0; padding: 0; font: 500 16px/1.6 var(--ui); color: #c7d3de; }
+.caps li strong { display: block; font: 600 15px/1.3 var(--display); letter-spacing: .06em; text-transform: uppercase; color: var(--ink); margin-bottom: 10px; }
+.caps:has(li:nth-child(2):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.caps:has(li:nth-child(4):last-child) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+/* the pinned layout: one wide shot holds on the left while its captions scroll past on the right */
+@media (min-width: 1024px) {
+  .feat.pin { max-width: calc(1312px + 2 * clamp(20px, 4.4vw, 64px)); margin-inline: auto; display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); grid-template-areas: "head head" "lede lede" "shot caps" "rest rest"; column-gap: 56px; row-gap: 0; text-align: left; align-items: start; justify-items: start; }
+  .feat.pin .feat-head { grid-area: head; align-items: flex-start; }
+  .feat.pin > .lede { grid-area: lede; text-align: left; margin-top: 24px; }
+  .feat.pin .pin-shot { grid-area: shot; align-self: stretch; width: 100%; }
+  .feat.pin .shot.wide { position: sticky; top: calc(var(--header-h, 64px) + 24px); width: 100%; }
+  .feat.pin .caps { grid-area: caps; grid-template-columns: 1fr; gap: 0; margin-top: clamp(20px, 3vw, 48px); width: 100%; }
+  .feat.pin .caps li { min-height: 46vh; display: flex; flex-direction: column; justify-content: center; padding: 0 0 0 28px; border-left: 1px solid var(--line); }
+  .feat.pin .caps li strong { font-size: 20px; }
+  .feat.pin .row { grid-area: rest; margin-top: clamp(32px, 4vw, 64px); }
+  .feat.pin .pin-shot .shot.wide { margin-top: clamp(20px, 3vw, 48px); }
+}
+
+/* tiles (game modes) */
+.tiles { list-style: none; margin: clamp(24px, 3vw, 48px) 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; width: min(1312px, 100%); text-align: left; }
+.tile { margin: 0; background: var(--panel); border: 1px solid var(--line); clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%); padding: 32px; display: flex; flex-direction: column; gap: 16px; min-height: 250px; transition: border-color .15s; }
+.tile:hover { border-color: var(--line-strong); }
+.tile .abbr { font: 700 44px/1 var(--display); letter-spacing: .02em; }
+.tile .name { font: 600 24px/1.1 var(--display); text-transform: uppercase; color: var(--ink); }
+.tile p { margin: 0; font: 500 15px/1.5 var(--ui); color: var(--muted); }
+.tile .badge { align-self: flex-start; font: 600 11px/1 var(--mono); letter-spacing: .2em; text-transform: uppercase; color: #ffb020; border: 1px solid #ffb020; padding: 6px 8px; }
+.tile.wip .abbr { opacity: .55; }
+
+/* chips (weapon classes) */
+.chips { list-style: none; margin: clamp(20px, 2vw, 32px) 0 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.chip { margin: 0; font: 500 11px/1 var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--c); border: 1px solid var(--c); padding: 10px 12px; }
+.chip b { font-weight: 700; margin-left: 4px; }
+
+/* terminal */
+.term { background: var(--code-bg); border: 1px solid var(--line); padding: clamp(18px, 2.4vw, 34px) clamp(18px, 2.8vw, 40px); margin: clamp(20px, 3vw, 48px) 0 0; font: 500 clamp(13px, 1.1vw, 16px)/1.8 var(--mono); color: #c7d3de; text-align: left; width: min(1000px, 100%); overflow-x: auto; box-shadow: 0 40px 120px rgba(0,0,0,.6); clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%); border-radius: 0; }
+.term .t-p { color: var(--accent); } .term .t-c { color: var(--micro); } .term .t-o { color: var(--muted); }
+.term .t-l { display: block; min-height: 1.8em; }
+.term.small { padding: 16px 18px; font-size: 14px; box-shadow: none; margin: 0; width: 100%; }
+
+/* backdrop section: a full-bleed photo with the copy over its lower third */
+.feat.backdrop { position: relative; min-height: clamp(560px, 46vw, 820px); justify-content: flex-end; align-items: flex-start; text-align: left; padding-bottom: clamp(56px, 7vw, 96px); overflow: hidden; }
+.feat.backdrop .photo.bg { position: absolute; inset: 0; margin: 0; }
+.feat.backdrop .photo.bg img { width: 100%; height: 100%; object-fit: cover; object-position: 72% 62%; display: block; }
+.feat.backdrop::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(7,9,13,0) 30%, rgba(7,9,13,.92) 100%); pointer-events: none; }
+.feat.backdrop .over { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 22px; max-width: min(720px, 52%); }
+.feat.backdrop .feat-head { align-items: flex-start; }
+.feat.backdrop .lede, .feat.backdrop .copy { text-align: left; margin: 0; }
+
+/* doors (the manual) */
+.doors { list-style: none; margin: clamp(24px, 3vw, 48px) 0 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 16px; width: min(1312px, 100%); text-align: left; }
+.doors li { margin: 0; }
+.door { display: flex; flex-direction: column; gap: 10px; height: 100%; background: var(--panel); border: 1px solid var(--line); clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%); padding: 26px 24px; color: var(--ink); transition: border-color .15s; }
+.door:hover { border-color: var(--accent); color: var(--ink); }
+.door .t { font: 600 22px/1.1 var(--display); text-transform: uppercase; }
+.door .s { font: 500 13px/1.45 var(--ui); color: var(--muted); }
+
+/* cards (get it) */
+.cards { list-style: none; margin: clamp(24px, 3vw, 48px) 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; width: min(1312px, 100%); text-align: left; }
+.card { margin: 0; background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--accent); clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%); padding: 32px; display: flex; flex-direction: column; gap: 16px; }
+.card.c-mc { border-top-color: #2ecc71; } .card.c-src { border-top-color: #8aa0b4; }
+.card .eyebrow { color: var(--micro); }
+.card .name { font: 600 24px/1.1 var(--display); text-transform: uppercase; }
+.card p { margin: 0; font: 500 15px/1.5 var(--ui); color: var(--muted); flex-grow: 1; }
+.card dl { display: grid; grid-template-columns: 90px 1fr; gap: 8px 16px; margin: 0; font: 500 14px/1.4 var(--mono); }
+.card dt { color: var(--micro); letter-spacing: .14em; text-transform: uppercase; } .card dd { margin: 0; color: #c7d3de; }
+.card .btn { align-self: flex-start; min-height: 50px; }
+
+/* the manual's front door: hero search */
+.hero-find { width: min(760px, 100%); }
+.hero-find .find { flex: none; margin: 0; width: 100%; }
+.hero-find .find input { min-height: 60px; font: 500 17px/1 var(--ui); padding: 0 20px; border-radius: 0; background: var(--panel); border-color: var(--line-strong); color: var(--ink); clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%); }
+.hero-find .results { left: 0; right: 0; width: 100%; text-align: left; }
+body.manual .doors { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+body.manual .door { min-height: 150px; }
+body.manual .door .t { font-size: 26px; }
+body.manual .caps { text-align: left; }
+
+/* motion: reveal on scroll, count-up, terminal type-out. Off entirely under reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  html.js [data-reveal] { opacity: 0; transform: translateY(18px); transition: opacity .8s cubic-bezier(.2,.7,.2,1), transform .8s cubic-bezier(.2,.7,.2,1); }
+  html.js [data-reveal].in { opacity: 1; transform: none; }
+  /* headings fade in place: the browser scrolls to a heading where it IS, and a heading that is
+     translated 18px down at that moment then slides up under the sticky header (browser-breaker, 2026-09-11) */
+  html.js .feat-head [data-reveal], html.js .hero > h1 { transform: none; }
+  .hero > [data-reveal]:nth-child(2) { transition-delay: .12s; }
+  .hero > [data-reveal]:nth-child(3) { transition-delay: .24s; }
+  html.js .hero .photo { opacity: 0; transform: scale(1.03); transition: opacity 1.2s ease .3s, transform 1.6s cubic-bezier(.2,.7,.2,1) .3s; }
+  html.js .hero .photo.in { opacity: 1; transform: none; }
+  .tiles.in .tile, .doors.in .door, .cards.in .card { animation: tile-in .7s cubic-bezier(.2,.7,.2,1) both; }
+  .tiles.in .tile:nth-child(2), .doors.in li:nth-child(2) .door, .cards.in .card:nth-child(2) { animation-delay: .08s; }
+  .tiles.in .tile:nth-child(3), .doors.in li:nth-child(3) .door, .cards.in .card:nth-child(3) { animation-delay: .16s; }
+  .tiles.in .tile:nth-child(4), .doors.in li:nth-child(4) .door { animation-delay: .24s; }
+  .tiles.in .tile:nth-child(5), .doors.in li:nth-child(5) .door { animation-delay: .32s; }
+  .tiles.in .tile:nth-child(6), .doors.in li:nth-child(6) .door { animation-delay: .4s; }
+  @keyframes tile-in { from { opacity: 0; transform: translateY(14px) scale(.98); } to { opacity: 1; transform: none; } }
+  html.js .term[data-reveal] .t-l { opacity: 0; }
+  html.js .term.in .t-l { animation: line-in .25s steps(1) both; animation-delay: calc(var(--i, 0) * 120ms); }
+  @keyframes line-in { to { opacity: 1; } }
+  html.js .shot.wide { transition: opacity .9s ease, transform 1.1s cubic-bezier(.2,.7,.2,1); opacity: 0; transform: translateY(28px); }
+  html.js .shot.wide.in { opacity: 1; transform: none; }
+  .feat.backdrop .photo.bg img { transform: translateY(var(--px, 0)); will-change: transform; }
+}
+
+@media (max-width: 900px) {
+  /* no room to overlay copy on the grenade: the photo becomes a normal figure above the copy */
+  .feat.backdrop { min-height: 0; padding-top: clamp(64px, 9vw, 120px); justify-content: flex-start; }
+  .feat.backdrop .photo.bg { position: static; width: 100%; aspect-ratio: 1440 / 760; margin-bottom: 28px; }
+  .feat.backdrop .photo.bg img { object-position: 60% 60%; }
+  .feat.backdrop::after { display: none; }
+  .feat.backdrop .over { max-width: none; }
+}
+@media (max-width: 1023px) {
+  .caps, .caps:has(li:nth-child(4):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tiles, .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .doors, body.manual .doors { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .row-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .hero { text-align: left; align-items: flex-start; }
+  .hero .lede, .feat .lede, .feat .copy { text-align: left; }
+  .feat { align-items: flex-start; text-align: left; }
+  .feat-head { align-items: flex-start; }
+  .cta { justify-content: flex-start; width: 100%; }
+  .cta .btn { width: 100%; justify-content: center; }
+  .counts { justify-content: space-between; width: 100%; gap: 12px; }
+  .count { align-items: flex-start; }
+  .caps, .caps:has(li:nth-child(4):last-child), .caps:has(li:nth-child(2):last-child) { grid-template-columns: 1fr; }
+  .tiles, .cards, .row-2, .row-3 { grid-template-columns: 1fr; }
+  .doors, body.manual .doors { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .door .t, body.manual .door .t { font-size: 19px; }
+  .card .name { font-size: 21px; }
+  .tile { min-height: 0; padding: 22px; }
+  .tile .abbr { font-size: 34px; }
+  .chips { justify-content: flex-start; }
+  .top-cta { display: none; }
+  .feat.backdrop { min-height: 70vh; }
+  main.landing h2 { font-size: 34px; }
 }

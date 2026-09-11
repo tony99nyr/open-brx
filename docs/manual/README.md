@@ -10,17 +10,32 @@ confirm something there, write it in here.
 
 ## The pages
 
+This directory holds the BRX manual (hardware, operation, gameplay, sound, fixes, the developer
+reference and credits). The platform docs and landing pages live in `../platform/`.
+
 | File | Page | What is in it |
 |---|---|---|
-| `index.md` | `/` | the front page: what this is, and links |
+| `index.md` | `/manual` | the manual landing: what this is, and links to every page |
 | `hardware.md` | `/manual/hardware` | anatomy, buttons, ports, IR and sensors, LEDs, headset, battery, generations, accessories |
 | `operate.md` | `/manual/operate` | quick start, charging, the on-gun menu, indoor and outdoor, sighting, headset pairing, the grenade, the Callsign app, a stock game, range, care |
 | `gameplay.md` | `/manual/gameplay` | the arsenal with wire stats, health and damage, how a kill works, native modes, classes and perks, grenade modes |
 | `sound.md` | `/manual/sound` | how audio works, voice packs, the sound bank, custom sounds over USB, firmware, volume |
 | `fix.md` | `/manual/fix` | symptom ladders, pairing and BLE, hits, sound, battery, repairs, mods, accessories, community, FAQ |
 | `dev.md` | `/manual/dev` | transport, framing, every command, the arm sequence, `$WEAP`, `$GSET`/`$PSET`, `$SIR`, events, the IR word, the serial console, `brx-mcp` |
-| `platform.md` | `/platform` | what Open BRX is, what runs on hardware, what does not exist yet |
 | `credits.md` | `/credits` | credits, sourcing, policy |
+
+The platform pages, in `../platform/`:
+
+| File | Page | What is in it |
+|---|---|---|
+| `../platform/index.md` | `/` | the root landing: marketing for the whole Open BRX ecosystem |
+| `../platform/platform.md` | `/platform` | the platform landing: Mission Control, the HUD and brx-mcp, as a match runs |
+| `../platform/docs.md` | `/docs` | platform docs landing, links to the four pages below |
+| `../platform/install.md` | `/docs/install` | what you need, the Android app, the Python package, running Mission Control, first contact with a gun, the MCP server for agents |
+| `../platform/run.md` | `/docs/run-a-game` | how to get from a bag of taggers to a finished game |
+| `../platform/modes.md` | `/docs/modes` | the modes Open BRX runs, how a game is put together, loadouts and weapons |
+| `../platform/leds.md` | `/docs/leds` | what the gun body and headset LEDs mean during a hosted game |
+| `../platform/download.md` | `/download` | the Android app, iOS, and the laptop package |
 
 ## How to write in here
 

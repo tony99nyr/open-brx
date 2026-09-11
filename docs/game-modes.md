@@ -14,7 +14,7 @@ kills), CaptureTheFlag, SquadLeader.
 
 > **Tier note:** these are **infrastructure tiers** (what gear a mode needs). They are a *different axis* from
 > the **spend tiers** ($0 → phones → Companions → stations → radio) laid out in
-> `docs/architecture-topology.md` §8 (the public platform page, `manual/platform.md`, no longer carries
+> `docs/architecture-topology.md` §8 (the public platform page, `platform/index.md`, no longer carries
 > that ladder). A mode's infrastructure tier maps to whatever spend tier supplies that gear.
 
 ## The three infrastructure tiers

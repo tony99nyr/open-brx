@@ -90,8 +90,8 @@ claude mcp add brx -- python -m brx_mcp
 
 > **You do not need the phone app for any of the above.** The phone node is what lifts the BLE-range
 > limit later. A **debug-signed Android test build** is linked from
-> <https://open-brx.iamrossi.workers.dev/platform> (under construction; a later release-signed build
-> will not upgrade over it). iOS builds from source (`app/README.md`).
+> <https://open-brx.iamrossi.workers.dev/download/> (a later release-signed build will not upgrade
+> over it). iOS builds from source (`app/README.md`).
 
 ### Platform notes
 
