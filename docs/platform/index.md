@@ -11,6 +11,12 @@ Open source software that turns stock Battle Company BRX taggers into a hosted g
 counts
 ```
 
+## What is this?
+
+### A BRX is a laser tag tagger. Open BRX is the software that runs the game.
+
+The Battle Company BRX is a rifle-shaped laser tag tagger with a wireless sensor headset, sold by [Battle Company](https://battlecompany.com/) and built like it walked out of Halo: infrared shots, real hit sensing, a scope you sight in yourself, a speaker full of sounds. Battle Company built it as a serious system for home players, not a toy. Out of the box it plays a handful of built-in games from its own menu. Open BRX is free, open-source software that takes over the game: a laptop keeps score and sets the rules, a phone on each tagger shows the player what is happening, and the taggers themselves stay exactly as they shipped.
+
 ## Mission Control
 
 ### Write the game. Muster the taggers. Start. Recap.

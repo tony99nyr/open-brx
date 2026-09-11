@@ -713,6 +713,19 @@ it('12f · the manual front door searches from its hero and lists every manual p
   expect(errors).toEqual([]);
 });
 
+it('12i · every marketing landing answers "what is this" for a newcomer and links Battle Company', async ({ page }) => {
+  for (const u of ['/', '/platform/', '/manual/']) {
+    await page.goto(u, { waitUntil: 'networkidle' });
+    const sec = page.locator('main.landing section.feat', { has: page.locator('.eyebrow', { hasText: /what is (this|it)\?/i }) });
+    expect(await sec.count(), `${u} has no "what is this" section`).toBe(1);
+    await expect(sec.locator('a[href^="https://battlecompany.com"]')).toHaveCount(1);
+    await expect(sec).toContainText(/laser tag/i);
+    await expect(sec).toContainText(/Battle Company/);
+    // it is for newcomers and search engines, not a header link
+    expect(await page.locator('.topnav a', { hasText: /what is/i }).count(), `${u}: the newcomer section leaked into the header nav`).toBe(0);
+  }
+});
+
 it('12h · the platform landing markets the software and hands off to the download', async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto('/platform/', { waitUntil: 'networkidle' });

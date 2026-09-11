@@ -1,4 +1,4 @@
-# One laptop. One phone per tagger. A whole match.
+# One laptop. One phone per tagger.
 
 The Open BRX platform is three pieces of software that run a laser tag match on stock Battle Company BRX taggers: Mission Control on a laptop, the Companion HUD on each player's phone, and brx-mcp underneath. Nothing is flashed to the tagger. Everything goes over the tagger's own Bluetooth serial protocol.
 
@@ -6,6 +6,12 @@ The Open BRX platform is three pieces of software that run a laser tag match on 
 - [Read the docs](/docs/)
 
 ![Mission Control's readiness board beside the HUD on a phone](/shots/mc-armory.jpg)
+
+## What is this?
+
+### Software that keeps score and lets you write your own game types.
+
+The BRX is a laser tag tagger by [Battle Company](https://battlecompany.com/). On its own it plays the games built into its menu, and nobody keeps score for you. The Open BRX platform is free, open-source software that does: Mission Control on a laptop sets the rules and adds up the match, the Companion HUD on each player's phone shows health, ammo and the clock, and brx-mcp underneath talks to the tagger over Bluetooth. Custom modes, custom weapons, real scoring, stock hardware.
 
 ## Kit up
 

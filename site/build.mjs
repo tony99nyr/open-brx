@@ -51,7 +51,7 @@ const PAGES = [
 // a marketing landing's header lists its own sections (the first few `##`), then its doors
 const LANDING_DOORS = { root: [['/platform/', 'Platform'], ['/manual/', 'Manual']], platform: [['/docs/', 'Docs'], ['/manual/', 'Manual']] };
 const landingNav = page => {
-  const secs = [...page.body.matchAll(/^## (.+)$/gm)].map(m => m[1].trim()).filter(t => !/^get it$/i.test(t)).slice(0, 4);
+  const secs = [...page.body.matchAll(/^## (.+)$/gm)].map(m => m[1].trim()).filter(t => !/^get it$/i.test(t) && !/\?$/.test(t)).slice(0, 4);
   return [...secs.map(t => ['#' + slugify(t), t]), ...(LANDING_DOORS[page.section] || [])];
 };
 // webapp/ holds hand-committed files the generator must never touch: the whole Mission Control UI
