@@ -40,7 +40,7 @@ documents §8 and §9 were distilled from (`mode-readiness.md`, `mode-extensibil
 | 4 | DOWN screen lesson (run → get closer → hold → pull the trigger) | `hud.js` | ✅ built | screens #45 a/b/c |
 | 5 | Utility screen: status only, ⓘ ×7 drawer, DEFAULT badges, reset, live-after-reload | `utility.html/.js` | ✅ built | screens #48 |
 | 6 | Phone side of MC arming: hello as `utility`, heartbeat, `station_config` apply → MC-ARMED · game | `utility.js` | ✅ built | screens #49 |
-| 7 | MC side of arming: `station_config` push, ITEMS panel at muster, persisted assignments | `mcp/brx_mcp/mc`, `webapp/mc` | 🔴 not started (brx session, FOLLOWUPS S5) | — |
+| 7 | MC side of arming: `station_config` push, ITEMS panel at muster, persisted assignments | `mcp/brx_mcp/mc`, `webapp/mc` | ✅ server 2026-09-11 (F104: utility roster, `PUT /api/stations/{id}`, arm on hello / assign / push, per-match game byte, `config.stations`); ITEMS panel in the MC console the same day; assignments live for the SESSION (not persisted across an MC restart yet) | `test_mc_stations.py` (12) |
 | 8 | Headset out-blink while down, re-asserted | `engine.js` | ✅ built (A11.6/7) | bench 2026-09-04 |
 | 9 | Station intermittently hears no player adverts at high TX | `utility.js` scan | ✅ fixed (S6, 73d391a: low-latency scan + restart) | soak on two phones pending |
 | 10 | Reconnect / new-match reconciliation on a rejoin | `engine.js` | ✅ built (S7.1, 2e36f58: 3 s disarmed reconcile, never heals) + the HUD's RECONCILING takeover | validated on hardware 2026-09-04 (contracts A6.8, node.md §3.10) |
@@ -55,11 +55,11 @@ These unblock every kind and are cheap relative to the kinds themselves.
 ### A. The arming loop (MC ↔ station)
 | what | surface | owner | done when |
 |---|---|---|---|
-| A1 `station_config` push over M-NET (`{kind, team, id, threshold?, game?, valid_ids?}`), accept `hello node_type "utility"` with no gun, never bind | MC server | brx | a `--demo` MC arms `utility.html?mc=…` from the harness; step #49 goes end to end against the real push |
+| A1 `station_config` push over M-NET (`{kind, team, id, threshold?, game?, valid_ids?}`), accept `hello node_type "utility"` with no gun, never bind | MC server | brx | ✅ 2026-09-11 (F104). ⚠ The phone's `MC_KINDS` lacked the kind too, so this was a TWO-sided fix. Still owed: step #49 against the real push instead of `window.brxUtility.applyStationConfig` |
 | A2 ITEMS panel at muster: one row per utility phone from its heartbeat (kind, team, id, threshold, live, revives, armed, **battery**, last seen, app version); assign + ARM buttons; persisted per session | MC UI | brx | e2e step: assign a phone, see MC-ARMED on the utility page |
 | A3 Battery + app version in the utility heartbeat | `utility.js` | brx-hud | field visible in A2 |
 | A4 **Attention flags** on the ITEMS row: "bring back to re-arm" (assignment changed since last contact), "battery low", "not seen since last match", "app behind" | MC UI | brx | e2e: change a team on an offline phone → the flag appears |
-| A5 `config.stations` from the compiler = the ids MC armed this game; the utility phone displays `valid_ids` | compiler + `utility.js` | brx + brx-hud | player phone ignores a station not on the list (engine test exists; wire the list) |
+| A5 `config.stations` from the compiler = the ids MC armed this game; the utility phone displays `valid_ids` | compiler + `utility.js` | brx + brx-hud | ✅ MC half 2026-09-11 (`Session._wire_config()` puts `stations: [{id, kind}]` on every config push and hydrate); the utility screen still does not display `valid_ids` |
 | A6 Recap: stations row — revives per station from player facts vs the station's own count; ✓ when they agree, ⚠ when the station was never heard | MC scoring + recap UI | brx | recap e2e |
 
 ### B. Radio hardening
@@ -73,7 +73,7 @@ These unblock every kind and are cheap relative to the kinds themselves.
 ### C. Match scoping
 | what | surface | owner | done when |
 |---|---|---|---|
-| C1 `game` byte from `station_config` (already applied on the phone); MC bumps it per match | MC | brx | a station armed for game 3 is ignored by players holding bundle game 4 |
+| C1 `game` byte from `station_config` (already applied on the phone); MC bumps it per match | MC | brx | ✅ 2026-09-11: `Session.game_no` bumps on the first lobby push after a match STARTED (so an edit at muster is the same game), every station is re-armed with it, and a station that missed the push gets it on its next hello. C2 (players filtering presence by game byte) is still open |
 | C2 Player phones filter presence by the bundle's game byte (Presence already supports `game`) | `app.js` | brx-hud | engine test |
 
 ## 3. The kinds, in build order

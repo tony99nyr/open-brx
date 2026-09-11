@@ -208,3 +208,17 @@ test('gun linked after connect: bind carries the late gun (MC-first join order)'
   assert.equal(sent[0].body.gun_tail, '3D4F');
   assert.deepEqual(t.gun, { name: 'GUN-A-3D4F', tail: '3D4F' }, 'transport adopts the gun for future hellos');
 });
+
+test('envelope: MC -> node kinds include alert and station_config (F104 / F105 -- both were dropped as unknown_kind)', () => {
+  // `MC_KINDS` here is a hand-kept copy of `mcp/brx_mcp/mc/types.py`. `alert` (A11.4) was never added, so
+  // every alert MC sent -- flag taken, infected broadcast, last survivor -- was counted as a malformed frame
+  // and dropped before `onMessage`; `station_config` (A13.5) likewise, so no station could be armed.
+  // The Python side pins the two lists equal (`test_mc_stations.py`); this pins the phone's decode path.
+  const alert = E.makeEnvelope('alert', { kind: 'flag_taken', text: 'FLAG TAKEN', player_id: 'p1', t: Date.now() });
+  assert.equal(E.decode(JSON.stringify(alert), 'mc').body.kind, 'flag_taken');
+  const arm = E.makeEnvelope('station_config', { kind: 'control', team: 255, id: 9, threshold: -74, game: 2, valid_ids: [9] });
+  assert.equal(E.decode(JSON.stringify(arm), 'mc').body.game, 2);
+  assert.throws(() => E.decode(JSON.stringify(E.makeEnvelope('station_config', { kind: 'control', team: 255 })), 'mc'), /id/);
+  // CONTROL: an unknown kind is still refused, so the whitelist is doing its job
+  assert.throws(() => E.decode(JSON.stringify(E.makeEnvelope('disarm', {})), 'mc'), /unknown_kind|disarm/);
+});

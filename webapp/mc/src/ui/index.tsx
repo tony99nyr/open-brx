@@ -89,12 +89,15 @@ export function OutlineTag({ children, color, border }: { children: ReactNode; c
 }
 
 /** Segmented control. */
-export function Seg<V extends string>({ value, options, onChange, size = 11, pad = '5px 14px', label, titles }:
+export function Seg<V extends string>({ value, options, onChange, size = 11, pad = '5px 14px', label, titles, wrap = false }:
   { value: V; options: { value: V; label: string }[]; onChange: (v: V) => void; size?: number; pad?: string;
     /** names the group for a screen reader (and for the e2e suite, which reads what it reads) */
-    label?: string; titles?: Record<string, string> }) {
+    label?: string; titles?: Record<string, string>;
+    /** let the options wrap onto a second row inside a narrow card — a five-way Seg in a 320 px card
+     *  overflowed its clip-path and the last option could not be clicked (ITEMS, real browser 2026-09-11) */
+    wrap?: boolean }) {
   return (
-    <span role="group" aria-label={label} style={{ display: 'flex', border: `1px solid ${T.line}` }}>
+    <span role="group" aria-label={label} style={{ display: 'flex', flexWrap: wrap ? 'wrap' : undefined, border: `1px solid ${T.line}` }}>
       {options.map(o => {
         const on = o.value === value;
         return (
