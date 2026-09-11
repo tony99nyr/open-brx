@@ -228,10 +228,15 @@ not instant.
 An enemy-held point does **not** flip. It is drained to neutral, then built up for the claimant, on one 0-100
 scale so it fits advert byte 11:
 
-| byte 9 `team` | what `value` means | how it moves |
-|---|---|---|
-| a tid (the **owner**) | how much of the owner's hold remains; 100 = fully held | enemy net drains it; the owner's own net rebuilds it. At **0** → `team` becomes 255 (neutral), `value` stays 0 |
-| 255 (**neutral**) | how far the claimant named in `toward` has built; 0 = fully neutral | the claimant's net builds it; net against it drains it back. At **100** → `team` becomes that tid, `value` 100 |
+| byte 10 `held` | byte 9 `team` is… | what `value` means | how it moves |
+|---|---|---|---|
+| **set** | the **owner** | how much of the owner's hold remains; 100 = fully held | enemy net drains it; the owner's own net rebuilds it. At **0** the `held` flag clears and the point is neutral, `value` 0 |
+| **clear** | the **claimant** building it up (255 = nobody is) | how far that claimant has built; 0 = fully neutral | the claimant's net builds it; net against it drains it back. At **100** `held` sets and that tid owns it |
+
+**`held` is what makes byte 9 readable**, and it is the one flag a reader cannot skip: the same tid in byte 9 means
+"this team owns the point" with `held` set and "this team is *taking* it" with `held` clear. A reader that ignores
+`held` hands the point to whoever is merely walking onto it. `engine.js:1259` gets this right —
+`owner = (held && team <= 3) ? team : neutral` — and that line is the model everything downstream shares.
 
 So a full enemy-to-own conversion costs `2 * capture_s` at net +1, and two phases give the defender a real chance
 to arrive in the middle of it. **Only the team named in byte 9 scores** (possession seconds, or a Domination point
@@ -246,21 +251,35 @@ either way.
 `kind 5` uses the §2 advert as it stands. The station id in **bytes 6-7** is what makes multi-point Domination
 possible on phones and impossible on grenades (F88: a grenade beacon carries no id at all).
 
+**Byte 10 is INDEPENDENT FLAGS, not a packed bitfield** — `CONTROL_STATE` in `app/src/control.js:42`, written at
+`:111-114` and read by `engine.js` (which imports the same constant, `:14`, and decodes at `:1255`/`:1260`). This is
+the wire. It is stated here explicitly so that nobody, reading an earlier draft of this section, "fixes" the code
+toward prose that was never shipped.
+
 | byte | kind 5 meaning |
 |---|---|
 | 8 `kind` | **5** |
-| 9 `team` | the **current owner** tid · **255 = neutral** |
-| 10 `state` | bits 0-1 **phase**: 0 static · 1 `value` falling · 2 `value` rising · bits 2-3 **`toward`** = the tid the movement favours (meaningless at phase 0) · bit 4 **contested** (living present players of two or more teams) · bit 5 **hot** (§5e roaming only; 1 on a single-point game) · bits 6-7 spare |
+| 9 `team` | the **owner** when `held` is set, the **claimant** when it is clear, **255 = nobody** (§5d.2) |
+| 10 `state` | flags, OR-ed: **`held` 1** (byte 9 is an owner, not a claimant) · **`contested` 2** (living present players of two or more teams) · **`rising` 4** (`value` climbing) · **`falling` 8** (`value` dropping). Bits 4-7 spare — **`hot` (§5e roaming) takes 16** when that variant is built |
 | 11 `value` | **progress 0-100**, read per the §5d.2 table |
-| 12 `seq` | bumps on every change of `team`, phase, `toward` or the contested bit — a phone one-shots its callouts off this |
-| 15 `reserved` → `rate` | the clamped `net` (0..`net_cap`), so a screen or a HUD can show speed without re-deriving it. It needs no sign — `net` is never negative (§5d.1) and byte 10's `toward` already says which way it points |
+| 12 `seq` | bumps on every change of `team`, the flags or `value` — a phone one-shots its callouts off this |
+| 15 `reserved` → `rate` | **specified, not yet emitted.** `advert()` returns `{team, state, value}` today. The intent is the clamped `net` (0..`net_cap`) so a screen can show speed without re-deriving it; it needs no sign, since `net` is never negative (§5d.1). A station's own screen has something better locally — `control.js timeToChange()`, the seconds until the point actually flips, which is the number a defender reads — so this byte is only worth emitting once a *player* HUD wants it |
 
-⚠ **Spec vs code, byte 10: these do not agree yet.** `app/src/control.js` (being built now) carries the same state
-model — `owner`, `capturing` (= `toward`), `progress`, `contested`, `dir`, `net` — but encodes the advert byte as
-independent flags (`CONTROL_STATE = { held: 1, contested: 2, rising: 4, falling: 8 }`, `:41`) rather than the packed
-phase/`toward` bitfield above. Either encoding works; **they must be reconciled before anything reads the byte
-across the wire**, because a station and a player phone disagreeing on byte 10 is silent and looks like a radio
-problem. This spec is the spec of record, so a deliberate change of encoding belongs here first.
+⚠ **A reader must treat `rising && falling` as INVALID** and fall back to neither. This is the one virtue the
+packed-bitfield draft had and it does not survive into flags for free: two bits *can* both be set, where a 2-bit
+phase field made the contradiction unrepresentable. Our own station never emits it (`control.js:113-114` is
+`if`/`else if`), but **adverts are unauthenticated** (§3) — a buggy or hostile station can set both, and a reader
+that trusts whichever flag it happens to test first will show a point moving the wrong way. Check for both, then
+treat direction as unknown.
+
+**Why flags and not packing** (recorded so the question is not reopened): the implementation is shipped and
+self-consistent, writer and reader sharing one constant; `mcp/brx_mcp/stage/stage.py` must mirror `engine.js`
+whatever it does, so the code is the de-facto contract; and the packing bought nothing — byte 10 has eight bits and
+the flags use four. The spec was the stale side here, not the code.
+
+**Byte 10's meaning is KIND-SCOPED**, as it already is throughout §2 (respawn uses 1 ready / 0 disabled, bomb uses
+0-3, a player advert uses it for alive/planting/defusing/extracting bits). So `kind 5`'s flags cannot collide with
+another kind's use of the same offset: a reader that has not first checked byte 8 is reading the wrong record.
 
 **Byte 15 is role-scoped and does not collide with F93/F92.** This is the **station** advert (byte 5 `role` = 1);
 F93's note about byte 15 being the cheap spare for relaying grenade-hill ownership phone-to-phone concerns the
@@ -283,7 +302,7 @@ The screen builds on what `utility.js` already renders.
 |---|---|
 | **owner colour** | the page already themes itself from the station's team (`utility.js:145` sets `document.documentElement.dataset.team`). `kind 5` drives it from the **live owner**, and **neutral is its own look** (grey/unlit), never a team colour |
 | **progress bar** | one bar for `value` 0-100, animated between advert updates (CSS transition, not a jumping number). It is **two-toned across the phases**: draining shows the owner's colour retreating, building shows the claimant's colour advancing from neutral |
-| **direction and rate** | an arrow on the moving edge pointing the way the point is going, plus the rate as a multiplier (`→ RED ×2`) straight from byte 15. At net 0 the arrow is replaced by **STALLED** |
+| **direction and rate** | an arrow on the moving edge pointing the way the point is going, plus the rate as a multiplier (`→ RED ×2`) from its own `net` (the station reads its own state, not the byte it emits), and **`timeToChange()`** as the seconds until the point actually flips, which is the number a defender reads to decide whether to run. At net 0 the arrow is replaced by **STALLED** |
 | **the transition** | a one-shot full-width flash and a large word at each crossing: **NEUTRAL** when the drain completes, **CAPTURED BY <team>** when the build completes. The moment must be unmistakable from across a room |
 | **contested** | a persistent band when the contested bit is set, so "both teams are here" reads even at net 0 (which is otherwise indistinguishable from an empty point by the bar alone) |
 | **who is contributing** | the existing roster (`utility.js:161`, P-id · team · RSSI · ALIVE/DOWN · AT STATION) gains a **counts / does not count** marker per row: living + present = counted and shown in team colour; **DOWN** = struck through; in range but not present = dimmed. Under it, the net line: `RED 2 · BLU 1 → +1 RED` |
@@ -308,10 +327,14 @@ Confirmed" by ear** — it is a hill line in the catalogue and not one in realit
 below are trustworthy and nothing outside this table is: a candidate found by catalogue name must be **heard**
 before it is used.
 
+⚠ **Every transition below is on the DECODED owner** — `held ? team : nobody` (§5d.2, `engine.js:1259`) — never on
+raw byte 9, which carries a *claimant* while the point is unheld. Announcing off byte 9 alone would shout "Hill
+Captured" the moment someone walked on.
+
 | transition (on a `seq` bump) | the listener's team | plays |
 |---|---|---|
-| `team` 255 → mine, or an enemy tid → mine | the new owner | **`VB0N` "Hill Captured"** (1.92 s) |
-| `team` mine → 255 (the drain completed) | the team that just lost it | **`VB0P` "Hill Lost!"** (2.98 s) |
+| decoded owner: nobody → mine, or an enemy tid → mine | the new owner | **`VB0N` "Hill Captured"** (1.92 s) |
+| decoded owner: mine → nobody (the drain completed) | the team that just lost it | **`VB0P` "Hill Lost!"** (2.98 s) |
 | contested bit 0 → 1 with my team involved | both sides | **`VB0O` "Hill Contested"** (2.08 s) |
 | `team` == my team, on the node's own ~1 s timer | the holder | **`U100`** possession tick (0.11 s) |
 | a capture between two **other** teams | everyone else | **silence** — not this player's event |
@@ -353,8 +376,9 @@ which the cue has a truthful caller. That is a reason to build the phone point e
 
 The station owns its own state and answers to nobody mid-match (§5c: *stations are self-authoritative and report
 at recap; MC is not live mid-match*). `utility.js` already persists role and settings in `localStorage`
-(`brx.utility`, `:26-27`); `kind 5` adds **`brx.station.control`**: owner, `value`, phase, `toward`, `seq`,
-possession seconds per team, and the capture log (`{t, from, to}`). Written on every change, read at startup, so a
+(`brx.utility`, `:26-27`); `kind 5` adds **`brx.station.control`**: the `control.js` model as it stands — `owner`,
+`capturing`, `progress`, `contested`, `dir`, `net` — plus `seq`, possession seconds per team, and the capture log
+(`{t, from, to}`). Written on every change, read at startup, so a
 phone that reboots, is force-closed or runs out of browser under it comes back holding the point it held — the
 same "live after a reload" property the respawn station already has.
 

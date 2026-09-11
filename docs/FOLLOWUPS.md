@@ -996,6 +996,14 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   anything, because with two "majority" is both and a 1-1 split pays nobody. ➡ Revisit the threshold if a
   three-point Territories game is ever built. ⚠ Do not cite "Halo" as one answer — Halo 4 *Dominion* ticked per
   base, *Strongholds* is the threshold.
+  ⚠ **The spec's byte-10 encoding was the stale side, corrected 2026-09-10.** The wire is **independent flags**
+  (`CONTROL_STATE = { held: 1, contested: 2, rising: 4, falling: 8 }`, `control.js:42`), written at `:111-114` and
+  read by `engine.js` off the same imported constant (`:1255`/`:1260`) — self-consistent, shipped, and the de-facto
+  contract since `stage.py` must mirror `engine.js` regardless. §5d.3 now documents the flags and says so, so nobody
+  "fixes" the code toward the old packed-bitfield prose. **One reader rule survives from the packed draft:**
+  `rising && falling` is **invalid** and a reader must fall back to neither — packing made that contradiction
+  unrepresentable, flags do not, and adverts are unauthenticated. Also corrected: byte 9 carries the **claimant**
+  while `held` is clear, so callouts key off the decoded owner (`held ? team : nobody`) and never off raw byte 9.
   ✅ **THE REST OF THE LIST IS DECIDED TOO (Tony, 2026-09-10).** (a) **Both rates are CONFIGURABLE with defaults**
   — *"3 needs to be configurable with a good default"* — and they are **two different numbers** that must stay
   separate in config (§5f.5): the **conversion** rate (progress %/s per net player, default **10**, which is already
