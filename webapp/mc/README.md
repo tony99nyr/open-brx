@@ -13,6 +13,26 @@ npm test                   # 69 jsdom tests, ~1.7s — mounts every screen, no s
 npm run lint               # oxlint
 ```
 
+## Verifying it in a real browser — there is nothing to build
+
+**MC is a web app: `npm run dev` and point a browser at it.** That is the whole answer, and it is written
+down because a capable agent got it wrong on 2026-09-10 and started building an e2e "harness" for a UI that
+needs none. If you want Playwright, it is already installed under `app/node_modules` and `site/node_modules`
+and `site/playwright.config.mjs` is a working example — but what you write is a short script that opens
+`http://localhost:5173` (add `/?mock` for no server) and clicks. Not a framework.
+
+**Why the confusion is easy, and the distinction worth keeping:** the phone HUD has a whole stage harness
+(`cd app && npm run ui:stage`, plus `ui:screens`, `ui:e2e`, `ui:shots`) because it drives a real tagger over
+BLE — it needs something to stand in for hardware you cannot script. **MC drives nothing.** It talks to a
+Python server over HTTP and a WebSocket, both of which Playwright can intercept directly
+(`page.route` for REST, **`page.routeWebSocket` for the pushed snapshots** — strip only REST and a
+"stale server" run is a lie). So MC needs no stand-in for anything.
+
+The jsdom suite below is the fast inner loop, not a substitute for looking at the screen. When a change
+crosses the server boundary or touches layout, follow `~/.claude/skills/ui-build-verify` — real browser,
+click every control, stale server, a forced 400, small viewports (Pixel 4 393x830 is the target device),
+tap-target and tiny-text audits.
+
 ## Tests
 
 `test/` mounts the real screens with the real React renderer against fixture state. It exists because

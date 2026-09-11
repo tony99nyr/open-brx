@@ -69,7 +69,7 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
 `app/` native phone app (Capacitor → Android + iOS; see `app/README.md` — `npm run android:apk` cuts a
 build and publishes it to the `app-v<version>` GitHub Release; the site links the releases page, not a
 pinned asset, so a new cut does not stale a manual page) ·
-`firmware/` PlatformIO ESP32 flavors · `webapp/mc/` the **Mission Control web UI** (Vite/React/TS; `npm run dev`, `?mock` for the in-browser demo; design brief `docs/spec/design/mission-control.md`) · `webapp/` legacy static harness (Web BT is not the player path — ADR-0003) ·
+`firmware/` PlatformIO ESP32 flavors · `webapp/mc/` the **Mission Control web UI** (Vite/React/TS; `npm run dev`, `?mock` for the in-browser demo; design brief `docs/spec/design/mission-control.md`). ⚠ **To verify MC in a real browser there is NOTHING to build** — it is a web app, so run the dev server and drive it (Playwright is already installed under `app/` and `site/`). The phone HUD needs its stage harness (`app && npm run ui:stage`) because it drives a tagger over BLE; MC drives nothing, so it needs no stand-in. `webapp/mc/README.md` has the detail, and for any UI change follow the `ui-build-verify` skill · `webapp/` legacy static harness (Web BT is not the player path — ADR-0003) ·
 `hardware/` STLs/BOM · `protocol/` + `docs/` reference · **`site/`** the static generator for the public
 website (`docs/manual/*.md` → `webapp/`, ~200 lines of `marked` plus one template; `cd site && npm test`
 builds and runs the gate; **a push to `main` deploys the site**, and Cloudflare REBUILDS it from
