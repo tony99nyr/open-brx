@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F99 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F101 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S18.** (2026-09-10: F94/F95/F98 taken — the phone control point
 (`spec/utility.md` §5d), its LAN-coupled roaming variant (§5e) and Territories (§5f). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
 wider than the hill's period" generalisation, the double-`$HIR`-per-beacon dedupe finding (F85, closed same
@@ -1019,6 +1019,54 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   **shortens your respawn delay** (*Dominion*). `respawn_s` is host-driven and already the lever §4/§5d use, so it
   is buildable today with no new mechanism; it compounds board control without the score snowballing and composes
   with the linear score. Needs his sign-off before anyone builds it. `build`.
+- **F99 🟢 AN M5STACK STATION IS THE IR↔BLE BRIDGE, AND THE ONLY THING THAT CAN GRANT A SHIELD.** Tony's
+  idea 2026-09-10, and it is the piece that makes the grenades genuinely useful inside Open BRX rather than a
+  parallel toy. `hardware/brx-companion-spec.md` already names the **M5StickC Plus2 (~$20)** as the closest
+  off-the-shelf ESP32 — rugged case, battery, buttons, screen, LED and **IR TX** — with a Grove **IR RX**
+  (~$5) and a battery base (~$10) making a pocketable unit at ~$30-35 with **no fabrication**. Two capability
+  unlocks a phone can never have:
+  **(a) IT CAN GRANT A SHIELD.** `spec/utility.md` §5's powerup row names the limit: everything else a powerup
+  gives rides BLE (`$LIFE` armor/HP, `$WEAP`+`$AMMO`, ammo) but **shields are "IR fn-11 only"**, so no phone
+  can ever grant one. F60/P16: **"nothing shield-shaped has EVER been on a gun"**, which is why the teal shield
+  bar and A16.5's handover remain unverifiable. An M5Stack emitting an fn-11 word would be the first thing in
+  this project to put a shield on a gun. ⚠ The emit side is already proven — our ESP32 rig has had synthetic
+  IR words accepted by a stock tagger — so this is packaging, not research.
+  **(b) IT CLOSES F92, WHICH UNBLOCKS THE WHOLE GRENADE-PLUS-PHONE DESIGN.** A utility phone has no IR
+  receiver, so a grenade's ownership is invisible to the BLE world and a phone station cannot learn who holds a
+  hill. An M5Stack with IR RX hears the beacon and re-broadcasts the owner in a BLE advert:
+  `grenade --IR--> M5Stack --BLE--> phone stations + every player's phone`. That makes Tony's coupling work
+  (hold the hill, get faster respawns) with **no LAN and no MC**, and it gives a grenade hill a station id it
+  otherwise cannot have — which is the F88 wall. Plan: one M5Stack per grenade as a bridge, plus spares as
+  powerups. ⚠ Do NOT confuse this with running the app on one: `app/` is a Capacitor web app and an ESP32 has
+  no WebView, so the logic is a C++ reimplementation under `firmware/`, and it becomes a **THIRD** engine to
+  keep in sync with `engine.js` and `stage.py` — the repo's highest-yield bug class (7 of 9 defects in one
+  night). Keep the bridge DUMB: hear IR, republish, no game rules. `build` + `hardware`.
+- **F100 🟢 A WEARABLE POWERUP, AND DEATH MAKES YOU DROP IT — ENFORCED BY RADIO, NOT BY HONOUR.** Tony's
+  design 2026-09-10: clip an M5Stack (or any station-role device) to a physical prop such as a mask. **Wear
+  the mask and you get faster rate of fire; die wearing it and you cannot respawn until you physically leave
+  its range** — you have to put it down and walk away. His words: *"could enforce it with technology"*, and
+  that is the appeal: the rule is not a convention players agree to honour, it is a radio condition the node
+  checks. It also creates a real risk/reward loop: the buff is strongest for whoever is pushing, and dying
+  with it hands the enemy a chance to take it.
+  **Everything needed already exists.** Presence is a smoothed-RSSI bubble with a dwell (bench-tuned -74 dBm
+  at high TX, 0.8 s, ~10 ft), the phone already reads station adverts, `respawn_s` and `$SPAWN` are
+  host-driven so the phone can simply decline to respawn, and the RoF lever is `$WEAP` **t14** in ms/round
+  (bench-calibrated: t14 = 100 gave 101.6-102.0 ms/round), so a buff is a lower t14. ⚠ A `$WEAP` re-push
+  **resets ammo**, so applying or removing the buff must re-send `$AMMO` with the live count or it is a free
+  reload exploit (see F87).
+  **Design questions to settle before building, none of them blockers:**
+  (1) **A new kind, or a powerup variant?** Every existing kind is a PLACED item; this one MOVES with a
+  player, and `kind 2 powerup` is specced as "ready or depleted + cooldown", not a persistent worn buff.
+  (2) **Who gets the buff when two players are near it?** The advert cannot say who is carrying it, only who
+  is nearby. Nearest by RSSI is the obvious rule and RSSI is a poor judge of that.
+  (3) 🔴 **The blocked-respawn rule is griefable and the grief is interesting**: a teammate who picks the mask
+  up and stands over your body keeps you dead. Decide whether that is a bug or a tactic.
+  (4) **The bubble is not a boundary.** No direction, ~10 ft nominal, wrecked by body blocking and
+  orientation, so "I dropped it" may read as 8 ft one moment and 15 ft the next. A dwell on the LEAVE
+  transition matters as much as on the enter.
+  (5) **Self-declared presence.** Adverts are unauthenticated, so a player could claim proximity they do not
+  have. Accepted tradeoff for friends on a LAN, but a persistent RoF buff is a stronger temptation than a
+  respawn, so say so out loud rather than discovering it. `build` + a design pass.
 - **F80 🟠 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.**
   Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
   received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default
