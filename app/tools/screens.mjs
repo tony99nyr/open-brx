@@ -294,7 +294,7 @@ for (const view of VIEWS) {
     const s3 = await pg.evaluate(() => ({ status: document.getElementById('status').textContent, hidden: document.getElementById('cfg').hidden }));
     await pg.reload(); await pg.waitForTimeout(1500); const s4 = await pg.evaluate(() => ({ status: document.getElementById('status').textContent, hidden: document.getElementById('cfg').hidden }));
     await pg.screenshot({ path: `${OUT}/${view.name}-utility.png` }); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.close();
-    must(perr.length === 0, perr.join('|')); must(s1.hidden && s1.rows === 3 && s1.team === 'BLUE' && s1.status === 'READY', 'status screen: ' + JSON.stringify(s1));
+    must(perr.length === 0, perr.join('|')); must(s1.hidden && s1.rows === 4 && s1.team === 'BLUE' && s1.status === 'READY', 'status screen: ' + JSON.stringify(s1));   // four fake phones: three for the respawn demo + the opposing team a control point needs (F82 bars tid 2)
     must(six, 'six taps opened the settings'); must(!s2.hidden && s2.defaults >= 6 && s2.pressed === 3 && s2.rangeLabel, 'settings: ' + JSON.stringify(s2));
     must(s3.status === 'LIVE' && s3.hidden, 'after START + close: ' + JSON.stringify(s3)); must(s4.status === 'LIVE' && s4.hidden, 'after reload: ' + JSON.stringify(s4));
   });
@@ -309,6 +309,197 @@ for (const view of VIEWS) {
     must(s2.armed === 'MC-ARMED · GAME 3' && s2.status === 'LIVE' && s2.kind === 'BOMB SITE' && s2.team === 'RED' && s2.sid === 'STATION 4' && s2.hidden && /-0400-/.test(s2.uuid), 'after push: ' + JSON.stringify(s2));
     must(s3.armed === 'MC-ARMED · GAME 3' && s3.status === 'LIVE', 'after reload: ' + JSON.stringify(s3));
   });
+  // ---- K1: the control point, on the real screen. Every assertion below is what a PERSON SEES (rendered
+  // text, a painted bar width) driven through the REAL presence path — the stage's fake player phones, whose
+  // RSSI these steps pin so presence is deterministic instead of drifting. Presence is NOT instant (EMA α
+  // 0.35 + 0.8 s dwell + 6 dB hysteresis ≈ 1-1.5 s either way), so these steps WAIT FOR the screen to reach
+  // a state rather than sleeping a guessed number of milliseconds — a fixed sleep here read the screen
+  // mid-walk and made four of these assertions wrong the first time round.
+  const FAR = -95, ON = -50;
+  const cread = pg => pg.evaluate(() => {
+    const fill = document.getElementById('cfill').getBoundingClientRect(), bar = document.getElementById('cbar').getBoundingClientRect();
+    return { shown: !document.getElementById('control').hidden, kind: document.getElementById('kind').textContent,
+      team: document.getElementById('team').textContent, owner: document.getElementById('cowner').textContent,
+      pct: document.getElementById('cpct').textContent, net: document.getElementById('cnet').textContent,
+      eta: document.getElementById('ceta').textContent, banner: document.getElementById('cbanner').textContent,
+      warn: document.getElementById('cwarn').textContent, title: document.getElementById('ptitle').textContent,
+      rate: document.getElementById('crate').textContent, tally: document.getElementById('ctally').textContent,
+      flash: document.getElementById('cflash').hidden ? '' : document.getElementById('cflash').textContent,
+      arrow: document.getElementById('carrow').hidden ? '' : document.getElementById('carrow').textContent,
+      arrowAt: document.getElementById('carrow').hidden ? null : Math.round(100 * (document.getElementById('carrow').getBoundingClientRect().left - bar.left) / bar.width),
+      marks: { claim: document.querySelectorAll('#players .row.claim').length, dead: document.querySelectorAll('#players .row.dead').length, far: document.querySelectorAll('#players .row.far').length },
+      // the row of whoever is actually ON the point, and how it is marked — the per-row assertion the
+      // totals above cannot make
+      onPointRow: (r => r ? { cls: r.className.replace('row ', ''), struck: getComputedStyle(r).textDecorationLine.includes('line-through') } : null)(
+        [...document.querySelectorAll('#players .row')].find(r => (r.querySelector('.pres') || {}).textContent === 'ON POINT')),
+      cstate: document.documentElement.getAttribute('data-cstate'), dteam: document.documentElement.getAttribute('data-team'),
+      painted: Math.round(100 * fill.width / bar.width), claims: document.querySelectorAll('#players .row.claim').length,
+      revives: document.getElementById('revives').textContent,
+      wire: (h => { const b = i => parseInt(h.slice(i * 2, i * 2 + 2), 16); return { kind: b(8), team: b(9), state: b(10), value: b(11), seq: b(12) }; })(window.brxUtility.stationUuid().replace(/-/g, '')) };
+  });
+  /** Poll the rendered screen until `pred(reading)`, or throw with the last thing seen. */
+  const untilC = async (pg, pred, ms, why) => {
+    const t0 = Date.now(); let last;
+    while (Date.now() - t0 < ms) { last = await cread(pg); if (pred(last)) return last; await pg.waitForTimeout(150); }
+    throw new Error(`${why}: never reached in ${ms} ms; last = ${JSON.stringify(last)}`);
+  };
+  const pinFakes = (pg, at) => pg.evaluate(a => window.brxUtilityFake.forEach((f, i) => { f.rssi = () => a[i]; }), at);
+  /** A utility phone on the stage, switched to CONTROL POINT and started, with a pinned fake roster.
+   *  `at` is the RSSI each of the four stage phones sits at: [P7 blue, P19 tid-2, P23 blue, P31 red]. */
+  const utilPage = async (at = [ON, FAR, FAR, FAR], mutate = null) => {
+    const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
+    await pg.goto('http://127.0.0.1:4192/utility.html?stage'); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); localStorage.removeItem('brx.station.control'); } catch {} }); await pg.reload();
+    await pg.waitForFunction(() => !!window.brxUtilityFake, null, { timeout: 8000 });
+    await pinFakes(pg, at); if (mutate) await pg.evaluate(mutate);
+    for (let i = 0; i < 7; i++) await pg.click('#info');
+    await pg.click('[data-kind="control"]'); await pg.click('#btnStart'); await pg.click('#cfgClose'); await pg.waitForTimeout(200);
+    return { pg, perr };
+  };
+  const done = async (pg, perr) => { await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); localStorage.removeItem('brx.station.control'); } catch {} }); await pg.close(); must(perr.length === 0, perr.join('|')); };
+
+  await step(`${view.name} #52 control point: a lone attacker converts it, and the screen says who, which way and how long`, async () => {
+    const { pg, perr } = await utilPage();
+    const a = await cread(pg);
+    must(a.shown && a.kind === 'CONTROL POINT' && a.team === 'NEUTRAL' && a.title === 'WHO IS ON THE POINT', 'fresh point: ' + JSON.stringify(a));
+    must(a.revives === '', 'a control point does not show a revive tally');
+    const mid = await untilC(pg, r => parseInt(r.pct, 10) >= 20 && parseInt(r.pct, 10) <= 70, 12000, 'mid-conversion');
+    must(/BLUE IS TAKING IT/.test(mid.owner) && mid.cstate === 'rising', 'owner + direction: ' + JSON.stringify(mid));
+    must(/BLUE TAKES IT IN \d+ S/.test(mid.eta), 'the eta says how long: ' + mid.eta);
+    must(/^BLU 1 → \+1 BLU$/.test(mid.net), 'net line: ' + mid.net);
+    must(Math.abs(mid.painted - parseInt(mid.pct, 10)) <= 6, `the painted bar matches the number (${mid.painted}% vs ${mid.pct})`);
+    must(mid.claims === 1, 'exactly one body is converting it, got ' + mid.claims);
+    must(mid.rate === '▶ BLUE ×1', 'the rate reads as a direction and a multiplier: ' + mid.rate);
+    must(mid.arrow === '▶' && Math.abs(mid.arrowAt - parseInt(mid.pct, 10)) <= 6, `the arrow rides the moving edge (at ${mid.arrowAt}% for ${mid.pct})`);
+    must(mid.wire.kind === 5 && mid.wire.team === 1 && (mid.wire.state & 1) === 0 && mid.wire.value > 0,
+      'mid-conversion the advert says BLUE is at N% and holds NOTHING: ' + JSON.stringify(mid.wire));
+    const held = await untilC(pg, r => r.team === 'BLUE', 14000, 'capture');
+    must(held.pct === '100%' && held.painted >= 96, 'captured: ' + JSON.stringify(held));
+    must(held.owner === 'HELD' && held.cstate === 'held' && held.dteam === 'blue' && held.eta === '', 'held state: ' + JSON.stringify(held));
+    must(held.flash === 'CAPTURED BY BLUE', 'the crossing throws a full-screen word: ' + JSON.stringify(held.flash));
+    must(held.rate === 'STALLED' || /▶ BLUE/.test(held.rate), 'rate line at 100%: ' + held.rate);
+    must(held.wire.kind === 5 && held.wire.team === 1 && (held.wire.state & 1) === 1 && held.wire.value === 100 && held.wire.seq > 1,
+      'and the advert now says BLUE HOLDS it, at a bumped seq: ' + JSON.stringify(held.wire));
+    await pg.screenshot({ path: `${OUT}/${view.name}-control-held.png` });
+    // the flash is one-shot: it clears itself, and the possession tally takes over (§5d.4)
+    const after = await untilC(pg, r => r.flash === '', 5000, 'the flash clears itself');
+    must(/^HELD · BLU \d+:\d\d$/.test(after.tally), 'and the screen becomes the recap sheet: ' + JSON.stringify(after.tally));
+    await done(pg, perr);
+  });
+
+  await step(`${view.name} #53 control point: an even fight reads CONTESTED and stalls, and clearing it resumes`, async () => {
+    const { pg, perr } = await utilPage();
+    await untilC(pg, r => parseInt(r.pct, 10) >= 15, 12000, 'the push starts');
+    await pinFakes(pg, [ON, FAR, FAR, ON]);                       // P31 RED walks onto the point: 1 v 1
+    const c = await untilC(pg, r => r.banner === 'CONTESTED', 8000, 'contested');
+    must(c.cstate === 'contested' && /^(RED 1 · BLU 1|BLU 1 · RED 1) → STALLED$/.test(c.net), 'the net line: ' + JSON.stringify(c.net));
+    must(c.rate === 'STALLED' && c.arrow === '', 'at net 0 the arrow is replaced by STALLED: ' + JSON.stringify(c));
+    must(c.eta === '' && c.claims === 2, 'a stalemate has no eta, and both bodies count: ' + JSON.stringify(c));
+    must((c.wire.state & 2) === 2, 'and the contest goes out on the wire (byte 10 bit 1): ' + JSON.stringify(c.wire));
+    await pg.screenshot({ path: `${OUT}/${view.name}-control-contested.png` });
+    const held = parseInt(c.pct, 10);
+    await pg.waitForTimeout(3000);
+    const still = await cread(pg);
+    must(Math.abs(parseInt(still.pct, 10) - held) <= 2, `1 v 1 nets zero: ${held}% -> ${still.pct} after 3 s`);
+    must(still.banner === 'CONTESTED', 'and it is still contested');
+    // the positive half: RED leaves and the SAME screen starts moving again
+    await pinFakes(pg, [ON, FAR, FAR, FAR]);
+    const back = await untilC(pg, r => r.cstate === 'rising' && parseInt(r.pct, 10) > held + 8, 8000, 'resumed');
+    must(back.banner === '', 'and the CONTESTED banner clears: ' + JSON.stringify(back));
+    await done(pg, perr);
+  });
+
+  await step(`${view.name} #54 control point: a two-phase steal drains to NEUTRAL on screen before it flips`, async () => {
+    // capture_s is the knob (§5d.1); `rate` is a derived getter and assigning it does nothing at all.
+    const { pg, perr } = await utilPage([ON, FAR, FAR, FAR], () => { window.brxUtility.settings.captureS = 4; window.brxUtility.point.captureS = 4; });
+    await untilC(pg, r => r.team === 'BLUE', 12000, 'BLUE takes it');
+    await pinFakes(pg, [FAR, FAR, FAR, ON]);                      // BLUE leaves, RED arrives
+    const mid = await untilC(pg, r => r.cstate === 'falling', 8000, 'the drain starts');
+    must(mid.team === 'BLUE' && mid.owner === 'LOSING IT', 'mid-drain it is STILL blue: ' + JSON.stringify(mid));
+    must(/LOST IN \d+ S/.test(mid.eta), 'and the screen says how long: ' + mid.eta);
+    must(parseInt(mid.pct, 10) < 100 && (mid.wire.state & 1) === 1, 'draining, not flipped: ' + JSON.stringify(mid));
+    await pg.screenshot({ path: `${OUT}/${view.name}-control-losing.png` });
+    const neu = await untilC(pg, r => r.team === 'NEUTRAL', 9000, 'it goes neutral');
+    must(/RED IS TAKING IT/.test(neu.owner) && (neu.wire.state & 1) === 0, 'through neutral, nobody holding: ' + JSON.stringify(neu));
+    must(neu.flash === 'NEUTRAL', 'the drain completing throws its own word: ' + JSON.stringify(neu.flash));
+    must(neu.arrow === '▶' && /▶ RED/.test(neu.rate), 'and the arrow already points RED`s way: ' + JSON.stringify(neu));
+    const red = await untilC(pg, r => r.team === 'RED', 9000, 'and only then RED');
+    must(red.dteam === 'red' && red.pct === '100%' && red.wire.team === 0 && (red.wire.state & 1) === 1, 'RED holds it: ' + JSON.stringify(red));
+    await done(pg, perr);
+  });
+
+  await step(`${view.name} #55 control point: a DOWN body on the point converts nothing, and a tid-2 body is refused out loud`, async () => {
+    // The only body on the point is DOWN from the start, so "0%" cannot be progress that merely stopped.
+    const { pg, perr } = await utilPage([ON, FAR, FAR, FAR], () => { window.brxUtilityFake[0].alive = false; });
+    await pg.waitForTimeout(3500);
+    const d = await cread(pg);
+    must(d.pct === '0%' && d.painted <= 2 && d.owner === 'NOBODY HOLDS IT', 'a DOWN body converts nothing: ' + JSON.stringify(d));
+    must(d.claims === 0 && /NOBODY ON THE POINT/.test(d.net), 'and it is not counted: ' + JSON.stringify(d));
+    must(await pg.evaluate(() => !!document.querySelector('#players .row .state.down')), 'though it IS on screen, as DOWN');
+    must(d.marks.claim === 0, 'nobody is counted: ' + JSON.stringify(d.marks));
+    must(d.onPointRow && d.onPointRow.struck && /dead/.test(d.onPointRow.cls) && !/claim/.test(d.onPointRow.cls),
+      'the body ON the point is struck through and not counted: ' + JSON.stringify(d.onPointRow));
+    must(d.marks.far === 3, 'and the three out-of-range phones are dimmed (one of them also down, so the marks compose): ' + JSON.stringify(d.marks));
+    // the positive half: the SAME body back on its feet converts the SAME point
+    await pg.evaluate(() => { window.brxUtilityFake[0].alive = true; });
+    await untilC(pg, r => parseInt(r.pct, 10) > 8, 8000, 'the same player alive converts');
+    // F82: tid 2 standing on it is refused, and the operator is told why
+    await pg.evaluate(() => { window.brxUtilityFake[1].alive = true; });
+    await pinFakes(pg, [FAR, ON, FAR, FAR]);
+    const y = await untilC(pg, r => /TEAM 2 CAN NEVER HOLD A POINT/.test(r.warn), 8000, 'the F82 warning');
+    must(y.claims === 0 && y.team !== 'YELLOW' && !/YELLOW/.test(y.owner), 'and tid 2 gets nothing: ' + JSON.stringify(y));
+    must(y.wire.team !== 2, 'nor can the advert ever name team 2: ' + JSON.stringify(y.wire));
+    const frozen = parseInt(y.pct, 10);
+    await pg.waitForTimeout(3000);
+    must(parseInt((await cread(pg)).pct, 10) === frozen, 'a tid-2 body on the point moves the bar not at all');
+    await pg.screenshot({ path: `${OUT}/${view.name}-control-refused.png` });
+    await done(pg, perr);
+  });
+
+  await step(`${view.name} #56 control point: the owner and the progress survive a reload, and every control does something`, async () => {
+    const { pg, perr } = await utilPage();
+    const mid = await untilC(pg, r => parseInt(r.pct, 10) >= 30 && parseInt(r.pct, 10) <= 80, 12000, 'part way through');
+    await pinFakes(pg, [FAR, FAR, FAR, FAR]);                     // everyone walks off, so nothing moves across the reload
+    await pg.waitForTimeout(1500);
+    const parked = parseInt((await cread(pg)).pct, 10);
+    must(parked >= 30, 'precondition: parked part way through, got ' + parked);
+    await pg.reload();
+    // `seedDemo` re-seeds the fake roster on every load, so re-pin the INSTANT it exists: presence needs
+    // ~1 s of dwell to establish, so pinning here means zero conversion happens across the restart and the
+    // number below is genuinely the restored one and not a fresh push.
+    await pg.waitForFunction(() => !!window.brxUtilityFake, null, { timeout: 8000 });
+    await pinFakes(pg, [FAR, FAR, FAR, FAR]);
+    await pg.waitForTimeout(1200);
+    const back = await cread(pg);
+    must(back.shown && Math.abs(parseInt(back.pct, 10) - parked) <= 2, `progress survived the restart: ${parked}% -> ${back.pct}`);
+    must(back.painted >= parked - 3, `and the bar is painted to match (${back.painted}% vs ${back.pct})`);
+    must(back.wire.kind === 5 && back.wire.value === parseInt(back.pct, 10), 'and it comes back up advertising it: ' + JSON.stringify(back.wire));
+    // every control on the new panel changes something a person can see
+    for (let i = 0; i < 7; i++) await pg.click('#info');
+    const cap = async () => pg.evaluate(() => [document.getElementById('capS').textContent, document.getElementById('netCap').textContent]);
+    const c0 = await cap();
+    await pg.click('#capMinus'); await pg.click('#capMinus');
+    const c1 = await cap();
+    await pg.click('#capPlus'); await pg.click('#capPlus2'); await pg.click('#capMinus2'); await pg.click('#capMinus2');
+    const c2 = await cap();
+    must(c0[0] === '10 S' && c0[1] === '3', 'the labelled defaults: ' + JSON.stringify(c0));
+    must(c1[0] === '8 S' && c2[0] === '9 S', `the capture-time control: ${c1[0]} / ${c2[0]}`);
+    must(c2[1] === '2', 'the net-cap control: ' + c2[1]);
+    // and the point state lives under its own key (§5d.6), not inside the operator's settings
+    const keys = await pg.evaluate(() => ({ ctl: JSON.parse(localStorage.getItem('brx.station.control') || 'null'), set: JSON.parse(localStorage.getItem('brx.utility') || '{}') }));
+    must(keys.ctl && Number.isFinite(keys.ctl.progress) && Number.isFinite(keys.ctl.seq) && Array.isArray(keys.ctl.log),
+      'brx.station.control carries the model, seq and the capture log: ' + JSON.stringify(keys.ctl));
+    must(keys.set.control === undefined && keys.set.captureS != null, 'and the settings key holds settings only: ' + JSON.stringify(keys.set));
+    must(await pg.evaluate(() => !document.getElementById('teamnote').hidden), 'the TEAM panel says it does not apply to a control point');
+    await pg.click('#btnPointReset'); await pg.waitForTimeout(500);
+    const reset = await cread(pg);
+    must(reset.pct === '0%' && reset.painted <= 3 && reset.team === 'NEUTRAL', 'RESET POINT TO NEUTRAL: ' + JSON.stringify(reset));
+    // and switching kind away puts the respawn screen back
+    await pg.click('[data-kind="respawn"]'); await pg.waitForTimeout(300);
+    const resp = await pg.evaluate(() => ({ hidden: document.getElementById('control').hidden, kind: document.getElementById('kind').textContent, team: document.getElementById('team').textContent, note: document.getElementById('teamnote').hidden, title: document.getElementById('ptitle').textContent }));
+    must(resp.hidden && resp.kind === 'RESPAWN STATION' && resp.team === 'BLUE' && resp.note && resp.title === 'PLAYER PHONES IN RANGE', 'back to respawn: ' + JSON.stringify(resp));
+    await done(pg, perr);
+  });
+
   await step(`${view.name} #50 a live rejoin shows the RECONCILING takeover for 3 s, then clears with no prompt`, async () => {
     const pg = await open(view, 'resync', '', 3900); const r = await pg.evaluate(() => { const m = document.querySelector('.mo.reconciling'); return { up: !!m, t: m ? m.querySelector('.t').textContent : null, k: m ? m.querySelector('.k').textContent : null, rec: window.brx.engine.state().reconciling, prompt: !!document.querySelector('.prompt'), chips: getComputedStyle(document.getElementById('chips')).opacity }; });
     await pg.waitForTimeout(3200); const r2 = await pg.evaluate(() => ({ up: !!document.querySelector('.mo.reconciling'), rec: window.brx.engine.state().reconciling, alive: window.brx.engine.state().alive, prompt: !!document.querySelector('.prompt') })); await pg.close();

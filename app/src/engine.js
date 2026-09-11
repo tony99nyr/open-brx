@@ -11,6 +11,7 @@
 
 import * as W from './transport/envelope.js';   // single source for the contracts §9 constants
 import { stationView, TEAM_ANY } from './beacon.js';   // utility-item presence (docs/spec/utility.md)
+import { CONTROL_STATE } from './control.js';   // the phone control point's advert bits (utility.md §5 `control`, K1)
 export const C = {
   STATUS_HEARTBEAT_MS: W.STATUS_HEARTBEAT_MS, SYNC_FRESH_MS: W.SYNC_FRESH_MS, FEEDBACK_MAX_AGE_MS: W.FEEDBACK_MAX_AGE_MS,
   LATE_ARM_GRACE_MS: W.LATE_ARM_GRACE_MS, DEATH_LATCH_MS: W.DEATH_LATCH_MS, RESYNC_PROBE_S: W.RESYNC_PROBE_S,
@@ -63,6 +64,18 @@ const HILL_TICK_MS = 1000;          // the possession tick's cadence — the nod
 // "left the hill". Only a magnitude-8 hill beacon refreshes this — F84: a respawn station's ~2.5 s period
 // would otherwise keep a 12 s window permanently fresh and a hill nobody holds would tick forever.
 const HILL_PRESENCE_MS = 12000;
+// K1: the same hill state, sourced from a phone CONTROL POINT's BLE advert instead of a grenade's IR word
+// (utility.md §5d). ⚠ A control point's freshness is the §3 PRESENCE rule (`Presence.expiryMs` 4 s), NOT the
+// grenade's 12 s / two-missed-beacons rule (§5d.5): that 12 s exists only because a grenade beacons once per
+// ~5 s, and a BLE station advertises continuously. So 4 s covers both halves — an advert older than this
+// stops refreshing the point, and `_hillTick` expires a station-sourced point on the same window.
+// (`Presence` itself keeps an entry for up to 8 s after the last advert, so without this a point nobody was
+// hearing would go on owning the field.)
+const CONTROL_STALE_MS = 4000;
+// §5d.5: "a floor between repeats of the same line (proposed 10 s for contested, which can otherwise
+// oscillate at net 0)". Unlike the IR path (F75) this is a MEASURED state, so it may play at all -- but a
+// station at 2 v 2 crosses the line repeatedly and the clip is 2.078 s.
+const HILL_CONTESTED_MIN_MS = 10000;
 // Ids are the operator's picks, every one CONFIRMED BY EAR on hardware 2026-09-10 (rung S) — one female
 // objectives announcer with a music bed, chosen over the male "Control Point" set (VA23/VA22/VA21, also
 // confirmed). `ms` is the clip's real length from `mcp/brx_mcp/data/sound_catalog.json`, which is what the
@@ -151,6 +164,9 @@ export class Engine {
     this._hillBusyUntil = 0;        // the announcer is occupied by a hill callout until this (now + the clip's real length) — the tick waits, it never overlaps
     this._hillTickAt = 0;           // when the possession tick last played (0 = not ticking)
     this._hillTeam2Warned = false;  // F82 is logged once per game, not once per beacon
+    this._hillContestedAt = 0;      // K1: when "Hill Contested" last played, so a flapping bit cannot repeat it
+    this._hillWasContested = false; // the contested bit we last read off a control point's advert (edge-triggered)
+    this._controlSig = '';          // the control-point advert fields that are worth a re-render
     this.deadAt = 0; this.killedBy = null; this.lastHitAt = 0;
     this._deathBlinkAt = 0;         // when the headset out-blink was last (re)painted, so a long DOWN doesn't outlast the count
     this._downRearmSent = false;    // §3.2: `down.rearm` sent for THIS death — one write per death, reset on death and revive
@@ -1206,13 +1222,98 @@ export class Engine {
     }
     this._changed();
   }
+  /** K1 — the SAME hill state and the SAME four cues, sourced from a phone CONTROL POINT's BLE advert
+   *  instead of a grenade's IR word (utility.md §5 row `control`). Called from `setStations` at ~4 Hz.
+   *
+   *  The station has already done the counting: its advert carries the owner (byte 9 + the `held` bit), the
+   *  0-100 conversion progress (byte 11) and whether two teams are on it (byte 10 bit 1). So this is a
+   *  TRANSLATOR, not a second audio system -- it writes `this.hill` in the shape `_hillMine` / `_hillTick` /
+   *  `state().hill` already read, and announces through `_hillCallout` / `_hillSay`, which keeps the
+   *  preempt-not-queue rule, the real clip lengths and the tick suppression identical on both sources.
+   *
+   *  Two things it does differently from the IR path, both because the station measures what the grenade
+   *  cannot:
+   *   - **Ownership changes only through neutral.** The station drains an enemy-held point to 0 (its owners
+   *     have LOST it) and only then builds it to 100 for its new owner, so "Hill Lost!" lands on the team
+   *     that was robbed at the moment they actually stop holding it, and "Hill Captured" lands on the new
+   *     owner up to a conversion later. `_hillCallout` already resolves both from one owner change.
+   *   - **"Hill Contested" (VB0O) IS wired here.** F75 forbids it on the IR path because a non-capturing hit
+   *     emits nothing and the state could only be INFERRED from a miss. A station COUNTS living bodies of
+   *     each team inside its own bubble, so the contested bit is a measurement. It is announced only to
+   *     players the fight belongs to: someone standing on the point, or the team that owns it (a defender
+   *     hearing their own point go contested is the whole reason the cue exists).
+   *
+   *  ⚠ ONE point. A station advert does name its own id, so unlike F88's grenades several points ARE
+   *  distinguishable on this wire -- but `this.hill` models a single point, so the nearest/occupied one wins
+   *  and multi-point Domination stays out of scope (`HILL_AUDIO_EXCLUDED_MODES` already mutes it). */
+  _onControlAdvert(now) {
+    const e = this._controlStation();
+    if (!e) return;
+    if (this.teamTid === HILL_NEUTRAL_TEAM && !this._hillTeam2Warned) {   // F82, the same warning as the IR path
+      this._hillTeam2Warned = true;
+      this.log('F82: we are on tid 2, which is what a NEUTRAL point broadcasts — control-point ownership is undecidable, so no hill audio will play', 'le');
+    }
+    // The station says 255 for "nobody holds it"; the hill model (and `modes/hillbeacon.py`) says team 2,
+    // because that is what a NEUTRAL grenade broadcasts. Map once, HERE, so everything downstream is shared.
+    const held = !!(e.state & CONTROL_STATE.held);
+    // Not held, a colour tid, or 255 all mean the same thing to this model: nobody. A `held` advert naming
+    // tid 2 needs no special case — 2 IS the neutral sentinel, so an unauthenticated advert cannot use it to
+    // install an owner nobody could decide (F82), it just says "nobody" the long way round.
+    const owner = (held && e.team <= 3) ? e.team : HILL_NEUTRAL_TEAM;
+    const contested = !!(e.state & CONTROL_STATE.contested);
+    // §5d.3: `rising && falling` is INVALID and direction falls back to UNKNOWN. Flags are independent bits,
+    // so unlike a 2-bit phase field they CAN both be set -- and adverts are unauthenticated (§3), so a buggy
+    // or hostile station can say it. A reader that trusts whichever bit it tests first shows a defender the
+    // point moving the wrong way, which is worse than showing no direction at all.
+    const bothWays = (e.state & CONTROL_STATE.rising) && (e.state & CONTROL_STATE.falling);
+    const rising = !bothWays && !!(e.state & CONTROL_STATE.rising);
+    const falling = !bothWays && !!(e.state & CONTROL_STATE.falling);
+    const prev = this.hill;
+    const prevOwner = prev ? prev.owner : null;
+    this.hill = {
+      owner, at: now,
+      // A station capture ALWAYS passes through neutral (that is the two-phase rule), so this is true for
+      // every handover it reports -- which is the literal truth, not a leak of the IR path's meaning.
+      from_neutral: prevOwner === HILL_NEUTRAL_TEAM,
+      source: 'station', site: e.id,
+      progress: Math.max(0, Math.min(100, e.value | 0)),
+      // Whose progress the bar is: the owner while held, else the team building it up, else null.
+      holding: e.team <= 3 ? e.team : null,
+      contested, rising, falling,
+      onPoint: !!e.present,
+    };
+    let said = false;
+    if (prevOwner != null && prevOwner !== owner) {
+      const kind = this._hillCallout(prevOwner, owner);
+      if (kind && this._hillAudioOn()) { this._hillSay(kind, `control point ${e.id}: team ${prevOwner} -> ${owner}`); said = true; }
+    }
+    // Contested, on the rising edge only. A capture callout in the same advert wins outright: `_hillSay`
+    // preempts, so announcing both would cut "Hill Captured" off with "Hill Contested" and leave the player
+    // with the less important of the two facts.
+    const mine = this.teamTid;
+    if (contested && !this._hillWasContested && !said && this._hillAudioOn()
+        && mine != null && mine !== HILL_NEUTRAL_TEAM && (e.present || owner === mine)
+        && now - this._hillContestedAt >= HILL_CONTESTED_MIN_MS) {
+      this._hillContestedAt = now;
+      this._hillSay('hill_contested', `control point ${e.id} is contested (${e.value}% for team ${e.team})`);
+    }
+    this._hillWasContested = contested;
+    // 4 Hz: only a fact the screen shows is worth a render (progress to the whole percent, like the RSSI
+    // rounding in `setStations`).
+    const sig = `${e.id}:${owner}:${held}:${contested}:${this.hill.progress}:${this.hill.holding}:${rising}:${falling}:${e.present}`;
+    if (sig !== this._controlSig) { this._controlSig = sig; this._changed(); }
+  }
   /** Called from tick() (~250 ms): expire a stale point, then play the possession tick on OUR clock while
    *  we hold a fresh one. This is the only place the tick fires from — a beacon arrives once per ~5 s and
    *  could never carry a 1 s cadence, and driving audio per beacon is exactly what F74 forbids. */
   _hillTick(now) {
     const h = this.hill; if (!h) return;
-    if (now - h.at >= HILL_PRESENCE_MS) {   // >= 2 missed beacons: out of range or off the point. NOT a "lost" — nobody took it from us
+    // A grenade point expires on two missed 5 s beacons; a phone control point expires on the §3 presence
+    // rule, because its advert is continuous (§5d.5). Same code, the window is the source's.
+    const window = h.source === 'station' ? CONTROL_STALE_MS : HILL_PRESENCE_MS;
+    if (now - h.at >= window) {   // out of range or off the point. NOT a "lost" — nobody took it from us
       this.hill = null; this._hillTickAt = 0;
+      this._controlSig = ''; this._hillWasContested = false;   // K1: walking back into range must be able to re-announce
       this.log(`hill presence expired (${Math.round((now - h.at) / 1000)}s since its last beacon)`, 'li');
       this._changed();
       return;
@@ -1526,18 +1627,31 @@ export class Engine {
    *  respawn station the HUD shows actually changed (id / present / rounded RSSI), not on every advert. */
   setStations(list) {
     this.stations = Array.isArray(list) ? list : [];
+    this._onControlAdvert(this.now());          // K1: a kind-5 advert is the hill's other source (utility.md §5)
     const v = stationView(this._respawnStation()); const sig = v ? `${v.id}:${v.present}:${v.rssi}:${v.team}` : '';
     if (sig !== this._stationSig) { this._stationSig = sig; this._changed(); }
   }
-  /** My team's respawn station: a present one first, else the strongest (the HUD shows how close you are).
-   *  A station admits me when it is neutral or on my gun's $TID team; `config.stations`, when given, is the
-   *  allow-list of station ids valid in this game (a stray phone from another game cannot revive anyone). */
-  _respawnStation() {
-    const tid = this.team ? this.team.tid : null;
+  /** `config.stations`, when the bundle carries it, is the allow-list of station ids valid in this game --
+   *  a stray phone from another game can neither revive anyone nor claim to be a control point. */
+  _stationAllowed(e) {
     const allow = this.config && Array.isArray(this.config.stations) && this.config.stations.length
       ? new Set(this.config.stations.map(x => (x && typeof x === 'object') ? x.id : x)) : null;
-    const mine = this.stations.filter(e => e && e.kind === 'respawn' && e.state !== 0 && (e.team === TEAM_ANY || e.team === tid) && (!allow || allow.has(e.id)));
+    return !allow || allow.has(e.id);
+  }
+  /** My team's respawn station: a present one first, else the strongest (the HUD shows how close you are).
+   *  A station admits me when it is neutral or on my gun's $TID team. */
+  _respawnStation() {
+    const tid = this.team ? this.team.tid : null;
+    const mine = this.stations.filter(e => e && e.kind === 'respawn' && e.state !== 0 && (e.team === TEAM_ANY || e.team === tid) && this._stationAllowed(e));
     return mine.find(e => e.present) || mine[0] || null;
+  }
+  /** The control point this player reads: one we are standing on first, else the strongest in range.
+   *  Unlike a respawn station a control point is NOT team-filtered -- an enemy-held point is exactly the
+   *  one you need to hear about. A stale advert is ignored (see CONTROL_STALE_MS). */
+  _controlStation() {
+    const live = this.stations.filter(e => e && e.kind === 'control' && this._stationAllowed(e)
+      && !(Number.isFinite(e.seenAt) && this.now() - e.seenAt > CONTROL_STALE_MS));
+    return live.find(e => e.present) || live[0] || null;
   }
   /** The station a scanner revive may use RIGHT NOW, or null: dead, past the delay, link up, not resyncing, present. */
   _stationRevivable(now) {
@@ -1973,7 +2087,10 @@ export class Engine {
       // null once nobody has reported one this life. Not `station` above: that is BLE advert presence, this is IR.
       beacon: this.beacon || null,
       // The control point as the hill logic reads it: {owner (2 = neutral), at, from_neutral}, null once
-      // presence has expired (>= 2 missed beacons). Derived from `beacon` above, not a second source.
+      // presence has expired (>= 2 missed beacons). Two sources write it, never both in one game: a
+      // grenade's IR beacon (derived from `beacon` above), or a phone CONTROL POINT's BLE advert, which adds
+      // `source: 'station'`, `site`, `progress` 0-100, `holding`, `contested`, `rising`/`falling` and
+      // `onPoint` (K1, utility.md §5). A reader that only knows `owner` behaves identically on both.
       hill: this.hill || null,
       tMinusMs: this.phase === 'armed' && this.goLiveT ? Math.max(0, this.goLiveT - now) : null,
       clockMs: this.endT ? Math.max(0, this.endT - now) : (this.timeLimitMs || 0),

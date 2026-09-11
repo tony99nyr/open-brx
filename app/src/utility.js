@@ -5,10 +5,12 @@
 // No gun, no engine: the revive itself happens on the player's phone (engine.js _triggerPulled).
 import { BrxLink } from './brxlink.js';
 import { Presence, encodeUuid, KIND, TEAM_ANY, PLAYER_STATE } from './beacon.js';
+import { ControlPoint, ControlAdvertiser, CONTROL_STATE, NEUTRAL as CONTROL_NEUTRAL, claimable, DEFAULT_CAPTURE_S, DEFAULT_NET_CAP } from './control.js';   // kind 5: the control point (utility.md §5, K1)
 import { Transport } from './transport/transport.js';   // utility.md §5b/§5c: the phone joins MC at muster to be ARMED (contracts A13.5)
 
 const $ = id => document.getElementById(id);
 const TEAM_NAMES = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN', [TEAM_ANY]: 'ANY TEAM' };
+const TEAM_ABBR = { 0: 'RED', 1: 'BLU', 2: 'YEL', 3: 'GRN', [TEAM_ANY]: '—' };   // §5d.4's net line: "RED 2 · BLU 1 → +1 RED"
 const TEAM_KEYS = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green', [TEAM_ANY]: 'any' };
 const KIND_LABEL = { respawn: 'RESPAWN STATION', powerup: 'POWERUP', extraction: 'EXTRACTION POINT', bomb: 'BOMB SITE', control: 'CONTROL POINT' };
 const TX_LEVELS = ['ultraLow', 'low', 'medium', 'high'];
@@ -21,7 +23,11 @@ function log(msg, cls = 'li') {
 }
 
 // ---------- settings (persisted; the station survives an app restart the way it was) ----------
-const DEFAULTS = { kind: 'respawn', team: 1, id: 1, tx: 'high', threshold: -74, dwell: 800, game: 0, mcArmed: null, mc: '' };   // mcArmed: {game, at, valid_ids} once MC pushed station_config   // -74 threshold + 0.8s dwell = arm's length, brief pause, green (bench-tuned 2026-09-04)
+// mcArmed: {game, at, valid_ids} once MC pushed station_config. -74 threshold + 0.8 s dwell = arm's length,
+// brief pause, green (bench-tuned 2026-09-04). captureS/netCap belong to kind 5 (§5d.1): seconds ONE net
+// player needs for ONE phase, and the clamp on how much a rush can stack.
+const DEFAULTS = { kind: 'respawn', team: 1, id: 1, tx: 'high', threshold: -74, dwell: 800, game: 0, mcArmed: null, mc: '',
+  captureS: DEFAULT_CAPTURE_S, netCap: DEFAULT_NET_CAP };
 const DEMO = /[?&](stage|demo)\b/.test(typeof location !== 'undefined' ? location.search : '');   // the stage harness: no radio, fake players
 const settings = (() => { try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem('brx.utility') || '{}') }; } catch (_) { return { ...DEFAULTS }; } })();
 function save() { try { localStorage.setItem('brx.utility', JSON.stringify(settings)); } catch (_) { /* ignore */ } }
@@ -38,27 +44,52 @@ async function loadPlugins() {
 }
 
 // ---------- the station ----------
-let seq = 0, advertising = false, support = { advertising: false, txPowerControl: false, platform: 'web' };
+let advertising = false, support = { advertising: false, txPowerControl: false, platform: 'web' };
+// The control point (kind 5). §5d.6 gives it its OWN localStorage key, separate from the operator's settings:
+// it is match state, not configuration, and it is restored BEFORE the first advert goes out so a phone that
+// was rebooted or force-closed mid-match comes back holding what it held. The station is self-authoritative
+// and nothing in MC can tell it who owns its point (§5b/§5c, F92).
+const CONTROL_KEY = 'brx.station.control';
+const savedPoint = (() => { try { return JSON.parse(localStorage.getItem(CONTROL_KEY) || 'null'); } catch (_) { return null; } })();
+const point = new ControlPoint({ captureS: settings.captureS, netCap: settings.netCap }).restore(savedPoint);
+const advert = new ControlAdvertiser();     // owns `seq` (advert byte 12) and the republish rate limit
+if (savedPoint && Number.isFinite(+savedPoint.seq)) advert.seq = (+savedPoint.seq) & 0xff;   // a scanner must not see seq go backwards across our restart
+/** §5d.6: written on every change, read at startup. */
+function saveControl() {
+  try { localStorage.setItem(CONTROL_KEY, JSON.stringify({ ...point.snapshot(), seq: advert.seq })); } catch (_) { /* ignore */ }
+}
 const link = new BrxLink({ log });
 const presence = new Presence({ defaultThreshold: settings.threshold, dwellMs: settings.dwell, alpha: 0.35 });
 const wasAlive = new Map();          // player id → alive bit, to count revives that happened here
 let revives = 0, scanning = false, _lastScanRestart = 0, _scanBusy = false;
 const SCAN_RESTART_MS = 8000;        // S6: a long scan STALLS on Android, worse while we also advertise — restart it on this cadence (8s > the ~6s floor Android's ~5-starts/30s throttle imposes)
 
-function stationUuid() {
-  return encodeUuid({ role: 'station', id: settings.id, kind: settings.kind, team: settings.team, state: 1, value: 0, seq, game: settings.game, threshold: settings.threshold });
+/** The advert triple this kind publishes. A control point's is LIVE state (owner / progress / contested),
+ *  so `settings.team` does not apply to it at all: ownership is decided by play, not by the operator. */
+function advertFields() {
+  if (settings.kind === 'control') return point.advert();
+  return { team: settings.team, state: 1, value: 0 };
 }
-async function startAdvert() {
-  if (DEMO) { advertising = true; settings.live = true; save(); log('stage: pretending to advertise', 'lk'); render(); return; }   // the harness has no radio (the plugin's web stub answers "no")
+function stationUuid() {
+  const f = advertFields();
+  return encodeUuid({ role: 'station', id: settings.id, kind: settings.kind, team: f.team, state: f.state, value: f.value, seq: advert.seq, game: settings.game, threshold: settings.threshold });
+}
+/** `quiet` is the control point's once-a-second progress republish: it re-keys the advert but says nothing
+ *  new, and logging it would bury a whole match's real events under a wall of UUIDs. */
+async function startAdvert(quiet = false) {
+  // Record the intent FIRST, whatever happens next: `seq` (byte 12) bumps on every change, and the
+  // republish check in tick() is driven off what we last decided to publish. Doing this inside the try
+  // below left the stage (no radio) asking to republish on every 250 ms tick, forever.
+  advert.published(advertFields(), Date.now());
+  if (DEMO) { advertising = true; settings.live = true; save(); if (!quiet) log('stage: pretending to advertise', 'lk'); render(); return; }   // the harness has no radio (the plugin's web stub answers "no")
   if (!plugins.beacon) { log('no beacon plugin: this build cannot advertise (desktop?)', 'le'); render(); return; }
   try {
-    seq = (seq + 1) & 0xff;
     const uuid = stationUuid();
     const name = `BRX-${settings.kind.toUpperCase()}-${settings.id}`;
     const r = await plugins.beacon.start({ uuid, name, txPower: settings.tx, mode: 'lowLatency', includeTxPower: true });
     advertising = !!(r && r.advertising);
     settings.live = advertising; save();   // a reload mid-game comes back advertising (the settings stay behind the ⓘ gate)
-    log(`advertising ${name} as ${TEAM_NAMES[settings.team]} · tx ${r && r.txPowerControl ? settings.tx : 'platform default'} · threshold ${settings.threshold} dBm · ${uuid}`, 'lk');
+    if (!quiet) log(`advertising ${name} as ${TEAM_NAMES[settings.team]} · tx ${r && r.txPowerControl ? settings.tx : 'platform default'} · threshold ${settings.threshold} dBm · ${uuid}`, 'lk');
   } catch (e) { advertising = false; log('advertise failed: ' + (e && e.message || e), 'le'); }
   render();
 }
@@ -86,7 +117,12 @@ function connectMc(url) {
   if (transport) { try { transport.close(); } catch (_) { /* ignore */ } }
   transport = new Transport({ node: { node_type: 'utility', app_ver: 'utility' }, gun: null, keyPrefix: 'brxu' });   // its own node id: never the HUD's
   transport.armedOrLive = true;                            // keep dialling — at muster the operator is waiting on this
-  transport.setStatusProvider(() => ({ role: 'utility', kind: settings.kind, team: settings.team, station_id: settings.id, threshold: settings.threshold, live: advertising, revives, armed: !!settings.mcArmed }));
+  transport.setStatusProvider(() => ({ role: 'utility', kind: settings.kind, team: settings.team, station_id: settings.id, threshold: settings.threshold, live: advertising, revives, armed: !!settings.mcArmed,
+    // §5c: the station is self-authoritative and reports at recap. For a control point that report is the
+    // owner, the conversion progress and who held it for how long — MC is not live mid-match and cannot
+    // have watched any of it (F92).
+    ...(settings.kind === 'control' ? { control: { owner: point.owner, progress: Math.round(point.progress), contested: point.contested,
+      hold_ms: point.holdMs, capture_log: point.log.slice(-32), capture_s: settings.captureS, net_cap: settings.netCap } } : {}) }));
   transport.onMessage(m => { if (m && m.kind === 'station_config') applyStationConfig(m.body); });
   transport.onState(s => { mcState = s; log(`MC ${s}${transport.rejected ? ' — ' + transport.rejected.reason : ''}`, s === 'bound' ? 'lk' : 'li'); render(); });
   transport.connect({ url }).catch(e => log('MC connect: ' + (e && e.message || e), 'le'));
@@ -136,15 +172,73 @@ function tick() {
     wasAlive.set(p.id, alive);
   }
   for (const id of wasAlive.keys()) if (!seen.has(id)) wasAlive.delete(id);   // don't grow unbounded over a long session
+  if (settings.kind === 'control') controlTick(now);
   render();
 }
 
+// ---------- kind 5: the control point ----------
+/** One step of the point (control.js does the arithmetic), then its log lines, its save and its advert.
+ *  Nothing here needs MC: the station counts the bodies in its own bubble and publishes the answer. */
+function controlTick(now) {
+  point.captureS = settings.captureS; point.netCap = settings.netCap;
+  const { changed, events } = point.update(presence.players(), now);
+  for (const e of events) {
+    if (e.type === 'captured') { log(`${TEAM_NAMES[e.team]} CAPTURED the point${e.from != null ? ` from ${TEAM_NAMES[e.from]}` : ''}`, 'lk'); flash(`CAPTURED BY ${TEAM_NAMES[e.team]}`, TEAM_KEYS[e.team]); }
+    else if (e.type === 'neutralised') { log(`${TEAM_NAMES[e.team]} LOST the point — ${TEAM_NAMES[e.by]} drained it to neutral`, 'lk'); flash('NEUTRAL', 'any'); }
+    else if (e.type === 'contested') log(`CONTESTED: ${netLine()}`, 'li');
+    else if (e.type === 'uncontested') log('no longer contested', 'li');
+    else if (e.type === 'refused') log('F82: a player on tid 2 is standing here. Team 2 is what a NEUTRAL point broadcasts, so it can never hold one — reassign that team in Mission Control (use red/blue/green).', 'le');
+  }
+  // §5d.6: written on EVERY change, read at startup. A 1 Hz throttle was tried and left the saved value up
+  // to a second of conversion behind the screen, so a reload visibly went backwards (tools/screens.mjs #56
+  // caught 38% coming back as 33%). A small JSON four times a second on a propped-up station is not a cost
+  // worth that.
+  if (changed || events.length) saveControl();
+  // Republish when the advert would say something new. `due()` sends owner/held/contested/direction changes
+  // at once and rate-limits a progress-only change, so the Android advertiser is not stopped and started
+  // four times a second.
+  const why = advertising && advert.due(point.advert(), now);
+  if (why) startAdvert(why === 'progress');   // a progress-only re-key is silent in the log; a change of owner/contest is not
+}
+/** §5d.4: a one-shot full-width flash and a large word at each crossing — "the moment must be unmistakable
+ *  from across a room". It is the transition the GUN cannot show (a callout is one 2 s clip); the screen can. */
+let _flashAt = 0;
+function flash(word, teamKey) {
+  const el = $('cflash'); if (!el) return;
+  el.textContent = word; el.dataset.fteam = teamKey || 'any'; el.hidden = false;
+  el.classList.remove('go'); void el.offsetWidth; el.classList.add('go');   // restart the animation on a second crossing
+  _flashAt = Date.now();
+}
+/** "RED 2 · BLU 1 → +1 RED" (§5d.4). */
+function netLine() {
+  const parts = Object.keys(point.counts).map(Number).sort((a, b) => point.counts[b] - point.counts[a] || a - b)
+    .map(t => `${TEAM_ABBR[t] || t} ${point.counts[t]}`);
+  if (!parts.length) return 'NOBODY ON THE POINT';
+  return parts.join(' · ') + (point.net > 0 ? ` → +${point.net} ${TEAM_ABBR[point.lead]}` : ' → STALLED');
+}
+/** §5d.4: possession seconds per team, so the screen IS the recap sheet if nobody ever collects it. */
+function tallyLine() {
+  const ids = Object.keys(point.holdMs).map(Number).filter(t => point.holdMs[t] >= 1000).sort((a, b) => point.holdMs[b] - point.holdMs[a]);
+  if (!ids.length) return '';
+  return 'HELD · ' + ids.map(t => `${TEAM_ABBR[t] || t} ${mmss(point.holdMs[t])}`).join(' · ');
+}
+const mmss = ms => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+
 // ---------- screen ----------
 function render() {
-  const t = TEAM_KEYS[settings.team] || 'any';
+  const isControl = settings.kind === 'control';
+  const v = point.advert();
+  const heldBy = (v.state & CONTROL_STATE.held) ? v.team : null;    // who OWNS it (null = nobody)
+  // A control point paints the whole screen the OWNER's colour, so a glance from across the field reads
+  // ownership before anything else; every other kind paints its assigned team, as before.
+  const t = TEAM_KEYS[isControl ? (heldBy == null ? TEAM_ANY : heldBy) : settings.team] || 'any';
   document.documentElement.dataset.team = t;
+  document.documentElement.dataset.cstate = !isControl ? 'off'
+    : point.contested ? 'contested' : point.dir > 0 ? 'rising' : point.dir < 0 ? 'falling' : (heldBy != null ? 'held' : 'idle');
   $('kind').textContent = KIND_LABEL[settings.kind] || settings.kind.toUpperCase();
-  $('team').textContent = TEAM_NAMES[settings.team] || `TEAM ${settings.team}`;
+  $('team').textContent = isControl ? (heldBy == null ? 'NEUTRAL' : (TEAM_NAMES[heldBy] || `TEAM ${heldBy}`))
+    : (TEAM_NAMES[settings.team] || `TEAM ${settings.team}`);
+  renderControl(isControl, v, heldBy);
   $('sid').textContent = `STATION ${settings.id}`; $('sidn').textContent = settings.id;
   $('status').textContent = advertising ? 'LIVE' : (plugins.beacon && support.advertising ? 'READY' : 'CANNOT ADVERTISE');
   $('status').className = 'status ' + (advertising ? 'on' : 'off');
@@ -160,12 +254,69 @@ function render() {
   if (document.activeElement !== $('mcUrl')) $('mcUrl').value = settings.mc || mcUrl() || '';
   const rows = presence.players().map(p => {
     const alive = !!(p.state & PLAYER_STATE.alive);
-    return `<div class="row ${p.present ? 'near' : ''}"><span class="pid">P${p.id}</span><span class="pteam ${TEAM_KEYS[p.team] || 'any'}">${TEAM_NAMES[p.team] || p.team}</span><span class="rssi">${Math.round(p.rssi)}<small>/${Math.round(p.raw)} dBm</small></span><span class="state ${alive ? 'alive' : 'down'}">${alive ? 'ALIVE' : 'DOWN'}</span><span class="pres">${p.present ? 'AT STATION' : ''}</span></div>`;
+    // On a control point the row IS the contribution readout (§5d.4): `claim` is a body actually converting
+    // the point (present + alive + a team that may hold one), DOWN is struck through, and in range but off
+    // the point is dimmed. The three COMPOSE rather than ranking: a body that is both down and out of range
+    // is both, and ranking them silently dropped one of the two facts the operator reads the row for.
+    const claim = isControl && p.present && alive && claimable(p.team);
+    const label = isControl ? (p.present ? 'ON POINT' : '') : (p.present ? 'AT STATION' : '');
+    const mark = !isControl ? '' : `${alive ? '' : ' dead'}${p.present ? '' : ' far'}${claim ? ' claim' : ''}`;
+    return `<div class="row ${p.present ? 'near' : ''}${mark}" style="--rowteam:var(--team-${TEAM_KEYS[p.team] || 'any'})"><span class="pid">P${p.id}</span><span class="pteam ${TEAM_KEYS[p.team] || 'any'}">${TEAM_NAMES[p.team] || p.team}</span><span class="rssi">${Math.round(p.rssi)}<small>/${Math.round(p.raw)} dBm</small></span><span class="state ${alive ? 'alive' : 'down'}">${alive ? 'ALIVE' : 'DOWN'}</span><span class="pres">${label}</span></div>`;
   });
   $('players').innerHTML = rows.join('') || '<div class="row empty">no player phones in range</div>';
+  $('ptitle').textContent = isControl ? 'WHO IS ON THE POINT' : 'PLAYER PHONES IN RANGE';
+  $('capS').textContent = `${settings.captureS} S`;
+  $('netCap').textContent = `${settings.netCap}`;
+  $('teamnote').hidden = !isControl;
   for (const b of document.querySelectorAll('[data-tx]')) b.classList.toggle('sel', b.dataset.tx === settings.tx);
   for (const b of document.querySelectorAll('[data-kind]')) b.classList.toggle('sel', b.dataset.kind === settings.kind);
   for (const b of document.querySelectorAll('[data-team]')) b.classList.toggle('sel', +b.dataset.team === settings.team);
+}
+
+/** The animated part: owner, a progress bar with the DIRECTION and speed of change, the net push, and the
+ *  one line a defender reads to decide whether to run ("LOST IN 6 S"). CSS does the motion off
+ *  `data-cstate` on <html> plus `--cspd`; this only feeds it numbers. */
+function renderControl(isControl, v, heldBy) {
+  const el = $('control'); el.hidden = !isControl;
+  if (!isControl) { $('cflash').hidden = true; return; }
+  const holder = v.team;                          // whose progress the bar is (255 = nobody)
+  const held = heldBy != null;
+  const hname = holder === CONTROL_NEUTRAL ? null : (TEAM_NAMES[holder] || `TEAM ${holder}`);
+  $('cfill').style.width = `${v.value}%`;
+  // §5d.4: two-toned across the phases — the fill is the OWNER's colour while it drains and the CLAIMANT's
+  // while it builds, which falls out of colouring it by whoever byte 9 names.
+  $('cfill').style.setProperty('--bar', `var(--team-${TEAM_KEYS[holder] || 'any'})`);
+  $('cpct').textContent = `${v.value}%`;
+  $('cbar').setAttribute('aria-valuenow', String(v.value));
+  $('cbar').setAttribute('aria-valuetext', `${v.value}% ${hname == null ? 'neutral' : `for ${hname}`}`);
+  // Speed of change, not just direction: more net players = the stripes move faster. 1.2 s per cycle at
+  // net 1, floored so a six-player stack does not strobe.
+  $('cbar').style.setProperty('--cspd', `${Math.max(0.3, 1.2 / Math.max(1, point.net)).toFixed(2)}s`);
+  // §5d.4: an arrow ON THE MOVING EDGE pointing the way the point is going.
+  const arrow = $('carrow');
+  arrow.hidden = !point.dir;
+  arrow.textContent = point.dir > 0 ? '▶' : '◀';
+  arrow.style.left = `${v.value}%`;
+  $('cowner').textContent = held
+    ? (point.dir < 0 ? 'LOSING IT' : point.dir > 0 ? 'PUSHING BACK' : 'HELD')
+    : hname == null ? 'NOBODY HOLDS IT'
+    : point.dir > 0 ? `${hname} IS TAKING IT`
+    : point.dir < 0 ? `${hname} IS BEING PUSHED OFF`
+    : `${hname} STALLED AT ${v.value}%`;
+  // §5d.4: the rate as a multiplier from the station's OWN net (not the byte it emits), and STALLED in place
+  // of the arrow at net 0.
+  $('crate').textContent = point.net > 0 && point.lead != null
+    ? `${point.dir < 0 ? '◀' : '▶'} ${TEAM_NAMES[point.lead]} ×${point.net}` : 'STALLED';
+  $('cnet').textContent = netLine();
+  const secs = point.timeToChange();
+  // What the number MEANS depends on which way it is going and whose it is. These four are the whole story.
+  $('ceta').textContent = secs == null ? '' : point.dir > 0
+    ? (held ? `SECURE IN ${Math.ceil(secs)} S` : `${hname} TAKES IT IN ${Math.ceil(secs)} S`)
+    : (held ? `LOST IN ${Math.ceil(secs)} S` : `${hname} PUSHED OFF IN ${Math.ceil(secs)} S`);
+  $('cbanner').textContent = point.contested ? 'CONTESTED' : '';
+  $('ctally').textContent = tallyLine();
+  $('cwarn').textContent = point.refusedSeen ? 'A PLAYER ON TEAM 2 IS HERE — TEAM 2 CAN NEVER HOLD A POINT (F82). REASSIGN IN MISSION CONTROL.' : '';
+  if (_flashAt && Date.now() - _flashAt > 2600) { _flashAt = 0; $('cflash').hidden = true; }
 }
 
 function wire() {
@@ -179,6 +330,18 @@ function wire() {
   $('idPlus').onclick = () => { settings.id = Math.min(65535, settings.id + 1); save(); restartIfLive(); };
   $('thrRange').oninput = e => { settings.threshold = +e.target.value; save(); render(); };
   $('thrRange').onchange = () => restartIfLive();
+  $('capMinus').onclick = () => { settings.captureS = Math.max(2, settings.captureS - 1); point.captureS = settings.captureS; save(); render(); };
+  $('capPlus').onclick = () => { settings.captureS = Math.min(120, settings.captureS + 1); point.captureS = settings.captureS; save(); render(); };
+  $('capMinus2').onclick = () => { settings.netCap = Math.max(1, settings.netCap - 1); point.netCap = settings.netCap; save(); render(); };
+  $('capPlus2').onclick = () => { settings.netCap = Math.min(12, settings.netCap + 1); point.netCap = settings.netCap; save(); render(); };
+  // Between games: hand the point back to nobody without wiping the operator's radius calibration.
+  $('btnPointReset').onclick = () => {
+    point.owner = CONTROL_NEUTRAL; point.capturing = null; point.progress = 0; point.lastOwner = null;
+    point.holdMs = {}; point.log = []; point.contested = false; point.dir = 0; point.refusedSeen = false;
+    saveControl();
+    log('control point reset to NEUTRAL', 'lk');
+    restartIfLive();
+  };
   $('dwellMinus').onclick = () => { settings.dwell = Math.max(0, settings.dwell - 500); presence.dwellMs = settings.dwell; save(); render(); };
   $('dwellPlus').onclick = () => { settings.dwell = Math.min(10000, settings.dwell + 500); presence.dwellMs = settings.dwell; save(); render(); };
   // Calibration: stand where "at the station" should be, holding a player phone, press SET. The threshold
@@ -206,15 +369,18 @@ function wire() {
   await startScan();
   setInterval(tick, 250);
   if (DEMO) seedDemo();
-  window.brxUtility = { settings, presence, startAdvert, stopAdvert, render, log: logLines, stationUuid, applyStationConfig, connectMc, get transport() { return transport; } };
+  window.brxUtility = { settings, presence, point, advert, startAdvert, stopAdvert, render, log: logLines, stationUuid, advertFields, encodeUuid, applyStationConfig, connectMc, get transport() { return transport; } };
   window.brxUtil = window.brxUtility;
 })();
 
 /** The stage harness: three fake player phones on a 250 ms timer — one close, one far, one drifting across the threshold. */
 function seedDemo() {
   const t0 = Date.now();
+  // 19 stays tid 2 and DOWN (the respawn demo); 31 is the opposing CLAIMABLE team a control point needs —
+  // tid 2 can never hold a point (F82), so without it the contest could not be demonstrated at all.
   const fake = [{ id: 7, team: 1, alive: true, rssi: () => -58 }, { id: 19, team: 2, alive: false, rssi: () => -80 },
-                { id: 23, team: 1, alive: true, rssi: () => -74 + 9 * Math.sin((Date.now() - t0) / 4000) }];
+                { id: 23, team: 1, alive: true, rssi: () => -74 + 9 * Math.sin((Date.now() - t0) / 4000) },
+                { id: 31, team: 0, alive: true, rssi: () => -70 + 14 * Math.sin((Date.now() - t0) / 11000) }];
   setInterval(() => {
     const now = Date.now();
     for (const f of fake) presence.observe([encodeUuid({ role: 'player', id: f.id, kind: 0, team: f.team, state: f.alive ? PLAYER_STATE.alive : 0, seq: 0, game: settings.game })], f.rssi() + (Math.random() - .5) * 2, now);

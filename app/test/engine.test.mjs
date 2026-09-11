@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine, handoverPool } from '../src/engine.js';
+import { CONTROL_STATE } from '../src/control.js';   // the phone control point's advert bits (K1)
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 
@@ -411,6 +412,272 @@ test('hill (F75): "Contested" is never inferred from firing near an enemy-held p
   h.frame('$HIR,4,15,0,1,50,0,0,*');
   assert.equal(nWrites(h, HILL_CAPTURED_F), 1, 'the same engine announces a capture — the silence above was deliberate, not broken');
   assert.equal(nWrites(h, HILL_CONTESTED_F), 0, 'and still never VB0O');
+});
+
+// ---------- K1: the SAME hill audio, sourced from a phone CONTROL POINT's BLE advert ----------
+// docs/spec/utility.md §5 row `control`. The station does the counting (src/control.js, its own test file);
+// these tests are about the TRANSLATION: an advert in, the shared hill state and the four cues out. The
+// harness player is BLUE (tid 1), RED (tid 0) is the enemy, and tid 2 is never a team (F82).
+function controlEntry(o = {}) {
+  return { role: 'station', id: 11, kind: 'control', team: 255, state: 0, value: 0, seq: 0, game: 0,
+    threshold: -74, rssi: -50, raw: -50, present: true, ...o };
+}
+const HELD = CONTROL_STATE.held, CONTESTED = CONTROL_STATE.contested, RISING = CONTROL_STATE.rising;
+/** One advert, pushed the way app.js's presenceTick pushes `presence.stations()`. */
+function control(h, o) { h.eng.setStations([controlEntry(o)]); return h; }
+/** Advance the clock while the station keeps advertising the same thing (an advert is a ~1 Hz heartbeat). */
+function runControl(h, ms, o, step = 250) {
+  for (let i = 0; i < Math.round(ms / step); i++) { h.adv(step); h.eng.setStations([controlEntry(o)]); h.eng.tick(); }
+}
+
+test('control point: the FIRST advert adopts the owner silently, and a real handover to us DOES announce', () => {
+  const h = koth();
+  control(h, { team: 0, state: HELD, value: 100 });
+  assert.equal(h.eng.state().hill.owner, 0, 'RED holds it');
+  assert.equal(h.eng.state().hill.source, 'station');
+  assert.equal(nWrites(h, HILL_CAPTURED_F) + nWrites(h, HILL_LOST_F), 0, 'walking into range announces nothing');
+  // The positive half: the same engine on the same wire DOES announce a handover, so the zero above is a
+  // decision and not a control path that never speaks.
+  control(h, { team: 0, state: 0, value: 0 });          // drained to neutral (not our point: still silent)
+  assert.equal(nWrites(h, HILL_LOST_F), 0, 'RED losing THEIR point is not our callout');
+  control(h, { team: 1, state: HELD, value: 100 });
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 1, 'BLUE taking it says Hill Captured, once');
+});
+
+test('control point: a two-phase steal says Hill Lost the moment it goes neutral, not when it flips', () => {
+  const h = koth();
+  control(h, { team: 1, state: HELD, value: 100 });     // we hold it
+  assert.equal(nWrites(h, HILL_LOST_F), 0);
+  control(h, { team: 1, state: HELD | CONTROL_STATE.falling, value: 50 });
+  assert.equal(h.eng.state().hill.owner, 1, 'halfway drained it is STILL ours');
+  assert.equal(nWrites(h, HILL_LOST_F), 0, 'and nothing is announced yet');
+  control(h, { team: 0, state: 0, value: 0 });          // zero: nobody holds it, RED is on the bar
+  assert.equal(h.eng.state().hill.owner, 2, 'at zero the point is neutral (team 2 in the shared hill model)');
+  assert.equal(nWrites(h, HILL_LOST_F), 1, 'THAT is the moment we lost it');
+  control(h, { team: 0, state: RISING, value: 60 });
+  control(h, { team: 0, state: HELD, value: 100 });     // RED completes the steal
+  assert.equal(nWrites(h, HILL_LOST_F), 1, 'and we are not told twice');
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 0, 'nor congratulated on someone else taking it');
+});
+
+test('control point: the possession tick runs while WE hold it and stops the moment it goes neutral', () => {
+  const h = koth();
+  runControl(h, 3000, { team: 1, state: HELD, value: 100 });
+  const mine = nWrites(h, HILL_TICK_F);
+  assert.ok(mine >= 3, `the tick runs on our own point (got ${mine})`);
+  runControl(h, 3000, { team: 0, state: 0, value: 0 });     // neutral now
+  assert.equal(nWrites(h, HILL_TICK_F), mine, 'a neutral point does not tick');
+  runControl(h, 3000, { team: 0, state: HELD, value: 100 });
+  assert.equal(nWrites(h, HILL_TICK_F), mine, 'nor an enemy-held one');
+  runControl(h, 3000, { team: 1, state: HELD, value: 100 });
+  assert.ok(nWrites(h, HILL_TICK_F) > mine, 'and it comes back when we take it — the zeros above are real');
+});
+
+test('control point: a bar being BUILT for us at 40% is not ownership — the held bit is', () => {
+  const h = koth();
+  runControl(h, 3000, { team: 1, state: RISING, value: 40 });
+  assert.equal(h.eng.state().hill.owner, 2, 'nobody owns a point at 40%');
+  assert.equal(h.eng.state().hill.holding, 1, 'though the state DOES say whose 40% it is');
+  assert.equal(h.eng.state().hill.progress, 40);
+  assert.equal(nWrites(h, HILL_TICK_F), 0, 'so there is no possession tick');
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 0, 'and no capture callout');
+  runControl(h, 6000, { team: 1, state: HELD, value: 100 });
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 1, 'reaching 100 is the capture');
+  assert.ok(nWrites(h, HILL_TICK_F) >= 3, 'and the tick starts then (after the 1.924 s callout it waits on)');
+});
+
+test('control point: Hill Contested IS announced — it is measured here, not inferred (F75 applies to IR only)', () => {
+  const h = koth();
+  control(h, { team: 1, state: HELD, value: 100 });
+  assert.equal(nWrites(h, HILL_CONTESTED_F), 0);
+  control(h, { team: 1, state: HELD | CONTESTED, value: 96 });
+  assert.equal(nWrites(h, HILL_CONTESTED_F), 1, 'two teams on OUR point is a fact the station measured');
+  assert.equal(h.eng.state().hill.contested, true, 'and it is in state for the HUD');
+  control(h, { team: 1, state: HELD | CONTESTED, value: 94 });
+  assert.equal(nWrites(h, HILL_CONTESTED_F), 1, 'the edge, not every advert');
+});
+
+test('control point: contested reaches a defender whose point it is, and a player standing on it, and nobody else', () => {
+  // A neutral point we are NOT standing on: contested there is somebody else's fight.
+  const away = koth();
+  control(away, { team: 0, state: 0, value: 20, present: false });
+  control(away, { team: 0, state: CONTESTED, value: 20, present: false });
+  assert.equal(nWrites(away, HILL_CONTESTED_F), 0, 'a contest across the map is not our callout');
+  // The two positive halves on the same code path: standing on it, or owning it.
+  const on = koth();
+  control(on, { team: 0, state: 0, value: 20, present: true });
+  control(on, { team: 0, state: CONTESTED, value: 20, present: true });
+  assert.equal(nWrites(on, HILL_CONTESTED_F), 1, 'standing on it, we hear it');
+  const ours = koth();
+  control(ours, { team: 1, state: HELD, value: 100, present: false });
+  control(ours, { team: 1, state: HELD | CONTESTED, value: 98, present: false });
+  assert.equal(nWrites(ours, HILL_CONTESTED_F), 1, 'and a defender hears their own point go contested from off it');
+});
+
+test('control point: a flapping contested bit cannot repeat the 2 s callout, but a later contest does', () => {
+  const h = koth();
+  control(h, { team: 1, state: HELD, value: 100 });
+  control(h, { team: 1, state: HELD | CONTESTED, value: 98 });
+  assert.equal(nWrites(h, HILL_CONTESTED_F), 1);
+  const t0 = h.eng.now();                       // when the one allowed callout played
+  for (let i = 0; i < 4; i++) {                 // in and out at the edge of the bubble, twice a second
+    runControl(h, 500, { team: 1, state: HELD, value: 98 });
+    runControl(h, 500, { team: 1, state: HELD | CONTESTED, value: 98 });
+  }
+  assert.equal(nWrites(h, HILL_CONTESTED_F), 1, 'four more crossings inside the floor announce nothing');
+  // §5d.5 puts the floor at 10 s, so a crossing at 9 s must still be silent and one at 11 s must not be —
+  // otherwise "a floor" and "a mute" are indistinguishable, and so are 8 s and 10 s.
+  const uncontestedUntil = ms => { while (h.eng.now() - t0 < ms) { h.adv(250); h.eng.setStations([controlEntry({ team: 1, state: HELD, value: 98 })]); h.eng.tick(); } };
+  uncontestedUntil(9000);
+  control(h, { team: 1, state: HELD | CONTESTED, value: 98 });
+  assert.equal(nWrites(h, HILL_CONTESTED_F), 1, `a crossing ${h.eng.now() - t0} ms after the last one is still inside the 10 s floor`);
+  uncontestedUntil(11000);
+  control(h, { team: 1, state: HELD | CONTESTED, value: 98 });
+  assert.equal(nWrites(h, HILL_CONTESTED_F), 2, `past the floor (${h.eng.now() - t0} ms) a genuinely later contest is announced`);
+});
+
+test('control point: a capture in the same advert wins outright over contested', () => {
+  // `_hillSay` preempts rather than queues, so announcing both would cut "Hill Captured" off after a few
+  // hundred ms and leave the player with the less important of the two facts.
+  const h = koth();
+  control(h, { team: 0, state: 0, value: 0 });                    // neutral, we are watching
+  control(h, { team: 1, state: HELD | CONTESTED, value: 100 });   // we took it, and it is already contested
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 1, 'the capture is announced');
+  assert.equal(nWrites(h, HILL_CONTESTED_F), 0, 'and does not get cut off by the contest');
+  // The positive half: contested on its own, one advert later, IS announced — so the zero is the priority
+  // rule and not a dead contested path.
+  control(h, { team: 1, state: HELD, value: 99 });
+  control(h, { team: 1, state: HELD | CONTESTED, value: 97 });
+  assert.equal(nWrites(h, HILL_CONTESTED_F), 1);
+});
+
+test('control point: F82 — a tid-2 player is told why, once, and hears nothing (with a decidable control)', () => {
+  const h = harness({ mode: 'koth' }).kit();
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, roster: h.roster,
+    team: { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 } } });
+  const logs = []; h.eng.log = m => logs.push(String(m));
+  h.config_().echo().start(0); h.adv(10); h.eng.tick();
+  control(h, { team: 0, state: HELD, value: 100 });
+  assert.ok(logs.some(m => m.includes('F82')), 'a tid-2 roster is TOLD, on the first advert');
+  const n = logs.filter(m => m.includes('F82')).length;
+  runControl(h, 3000, { team: 0, state: HELD, value: 100 });
+  control(h, { team: 2, state: 0, value: 0 });
+  control(h, { team: 1, state: HELD, value: 100 });
+  runControl(h, 3000, { team: 1, state: HELD | CONTESTED, value: 90 });
+  assert.equal(logs.filter(m => m.includes('F82')).length, n, 'once per game, not once per advert');
+  assert.equal(nWrites(h, HILL_CAPTURED_F) + nWrites(h, HILL_LOST_F) + nWrites(h, HILL_CONTESTED_F) + nWrites(h, HILL_TICK_F), 0,
+    'and a player who cannot tell "nobody holds it" from "we hold it" is told nothing at all');
+  // The decidable control: the SAME advert sequence on a tid-1 roster is fully audible, so the silence
+  // above is F82 and not a control path that never speaks.
+  const ok = koth();
+  const okLogs = []; ok.eng.log = m => okLogs.push(String(m));
+  control(ok, { team: 0, state: HELD, value: 100 });
+  control(ok, { team: 2, state: 0, value: 0 });
+  control(ok, { team: 1, state: HELD, value: 100 });
+  runControl(ok, 6000, { team: 1, state: HELD | CONTESTED, value: 90 });
+  assert.ok(!okLogs.some(m => m.includes('F82')), 'a tid-1 roster has nothing to warn about');
+  assert.equal(nWrites(ok, HILL_CAPTURED_F), 1, 'it hears the capture');
+  assert.equal(nWrites(ok, HILL_CONTESTED_F), 1, 'and the contest');
+  assert.ok(nWrites(ok, HILL_TICK_F) >= 3, 'and the possession tick');
+});
+
+test('control point: a held advert claiming team 2 is read as NEUTRAL, never as an owner', () => {
+  // The station refuses to produce this (control.js), but an advert is unauthenticated: a foreign or
+  // hand-rolled one must not be able to install an owner nobody can decide.
+  const h = koth();
+  control(h, { team: 2, state: HELD, value: 100 });
+  assert.equal(h.eng.state().hill.owner, 2, 'team 2 + held still reads as nobody');
+  runControl(h, 3000, { team: 2, state: HELD, value: 100 });
+  assert.equal(nWrites(h, HILL_TICK_F), 0, 'so it never ticks for anyone');
+  runControl(h, 6000, { team: 1, state: HELD, value: 100 });
+  assert.ok(nWrites(h, HILL_TICK_F) >= 3, 'and a real owner still does (after its capture callout)');
+});
+
+test('control point: freshness is the 4 s PRESENCE rule, not the grenade`s 12 s (and a live station keeps its point)', () => {
+  // §5d.5: the 12 s / two-missed-beacons rule exists because a GRENADE beacons once per ~5 s. A BLE station
+  // advertises continuously, so a point nobody has heard for 4 s is gone — and `Presence` keeps the entry
+  // itself for up to 8 s, which is what would otherwise let a dead station go on owning the field.
+  const h = koth();
+  const t = h.eng.now();
+  control(h, { team: 1, state: HELD, value: 100, seenAt: t });
+  assert.ok(h.eng.state().hill, 'a fresh advert is read');
+  for (let i = 0; i < 14; i++) { h.adv(250); h.eng.setStations([controlEntry({ team: 1, state: HELD, value: 100, seenAt: t })]); h.eng.tick(); }
+  assert.ok(h.eng.state().hill, 'still inside the window at 3.5 s');
+  for (let i = 0; i < 20; i++) { h.adv(250); h.eng.setStations([controlEntry({ team: 1, state: HELD, value: 100, seenAt: t })]); h.eng.tick(); }
+  assert.equal(h.eng.state().hill, null, 'gone well before the grenade path`s 12 s (4 s stale + a 4 s window)');
+  // And the control that keeps the 12 s rule honest for the source it belongs to: a GRENADE point survives
+  // a single missed 5 s beacon, which the 4 s window would have killed.
+  const ir = koth();
+  ir.frame('$HIR,4,15,0,1,8,0,0,*');
+  run(ir, 8000);
+  assert.ok(ir.eng.state().hill, 'a grenade point still survives one missed beacon on the 12 s rule');
+  // The positive half: the same loop with seenAt kept fresh keeps it.
+  const live = koth();
+  for (let i = 0; i < 60; i++) { live.adv(250); live.eng.setStations([controlEntry({ team: 1, state: HELD, value: 100, seenAt: live.eng.now() })]); live.eng.tick(); }
+  assert.ok(live.eng.state().hill, 'a station that keeps advertising keeps its point');
+  assert.ok(nWrites(live, HILL_TICK_F) >= 14, 'and keeps ticking');
+});
+
+test('control point: an advert claiming BOTH rising and falling is read as direction UNKNOWN (§5d.3)', () => {
+  // Flags are independent bits, so unlike a 2-bit phase field they CAN both be set, and adverts are
+  // unauthenticated (§3): a buggy or hostile station can say it. A reader that trusts whichever bit it tests
+  // first shows a defender the point moving the WRONG way, which is worse than showing no direction.
+  const h = koth();
+  control(h, { team: 1, state: HELD | RISING | CONTROL_STATE.falling, value: 50 });
+  const bad = h.eng.state().hill;
+  assert.equal(bad.rising, false, 'neither direction is claimed');
+  assert.equal(bad.falling, false);
+  assert.equal(bad.owner, 1, 'the rest of the advert is still read — only the direction is discarded');
+  assert.equal(bad.progress, 50);
+  // the two positive halves on the same code path, so "false, false" is the contradiction and not the default
+  control(h, { team: 1, state: HELD | RISING, value: 60 });
+  assert.equal(h.eng.state().hill.rising, true, 'rising alone IS read');
+  control(h, { team: 1, state: HELD | CONTROL_STATE.falling, value: 40 });
+  assert.equal(h.eng.state().hill.falling, true, 'and so is falling alone');
+});
+
+test('control point: the game`s station allow-list applies to control points too', () => {
+  const h = koth();
+  h.eng.config.stations = [{ id: 11, kind: 'control' }];
+  control(h, { id: 99, team: 1, state: HELD, value: 100 });
+  assert.equal(h.eng.state().hill, null, 'a phone from another game cannot hand anyone a point');
+  control(h, { id: 11, team: 1, state: HELD, value: 100 });
+  assert.ok(h.eng.state().hill, 'the id MC handed out is read');
+  assert.equal(h.eng.state().hill.site, 11, 'and the point names itself');
+});
+
+test('control point: state() carries the whole reading a HUD needs, from one advert', () => {
+  const h = koth();
+  control(h, { id: 7, team: 0, state: CONTESTED | RISING, value: 63, present: true });
+  const hl = h.eng.state().hill;
+  assert.equal(hl.source, 'station'); assert.equal(hl.site, 7);
+  assert.equal(hl.owner, 2, 'nobody owns it yet');
+  assert.equal(hl.holding, 0, 'RED is the team building it up');
+  assert.equal(hl.progress, 63);
+  assert.equal(hl.contested, true); assert.equal(hl.rising, true); assert.equal(hl.falling, false);
+  assert.equal(hl.onPoint, true, 'and whether this player is standing on it');
+});
+
+test('control point: a respawn station in the same list is not mistaken for a point, and vice versa', () => {
+  const h = koth();
+  h.eng.setStations([{ role: 'station', id: 3, kind: 'respawn', team: 1, state: 1, value: 0, seq: 0, game: 0, threshold: -74, rssi: -40, raw: -40, present: true }]);
+  assert.equal(h.eng.state().hill, null, 'a respawn station is not a control point (the F84 trap, on the BLE wire)');
+  assert.equal(h.eng.state().station.id, 3, 'it is still the respawn station');
+  h.eng.setStations([{ role: 'station', id: 3, kind: 'respawn', team: 1, state: 1, value: 0, seq: 0, game: 0, threshold: -74, rssi: -40, raw: -40, present: true },
+    controlEntry({ id: 11, team: 1, state: HELD, value: 100 })]);
+  assert.equal(h.eng.state().station.id, 3, 'both kinds coexist: the respawn station is unchanged');
+  assert.equal(h.eng.state().hill.site, 11, 'and the control point is read');
+});
+
+test('control point: silent in Domination, like the grenade path, because one point is modelled', () => {
+  const h = harness({ mode: 'domination' }).kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  control(h, { team: 0, state: 0, value: 0 });
+  runControl(h, 3000, { team: 1, state: HELD | CONTESTED, value: 100 });
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 0);
+  assert.equal(nWrites(h, HILL_CONTESTED_F), 0);
+  assert.equal(nWrites(h, HILL_TICK_F), 0);
+  assert.ok(h.eng.state().hill, 'state is still tracked — only the audio is withheld');
+  assert.equal(h.eng.state().hill.owner, 1, 'and it is correct');
 });
 
 test('hill: silent in Domination — several points are indistinguishable on the wire', () => {
