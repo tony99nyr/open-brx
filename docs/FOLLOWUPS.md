@@ -6,8 +6,8 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F94 · G11 · H7 ·
-K7 · P18 · Q20 · R3 · S18.** (2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F96 · G11 · H7 ·
+K7 · P18 · Q20 · R3 · S18.** (2026-09-10: F94/F95 taken — the phone control point (`spec/utility.md` §5d) and its LAN-coupled variant (§5e). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
 wider than the hill's period" generalisation, the double-`$HIR`-per-beacon dedupe finding (F85, closed same
 session), the team-change-leaves-old-LED-colour finding, and the hosted hill rate-of-fire boost.) (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
@@ -797,7 +797,9 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   from another. So `hillbeacon.py` drives `sites[0]` and KotH (one point) works, while **Domination with 2+
   points cannot be built on grenades at all**: two hills in range are indistinguishable, and their beacons
   would fight over the same site. Domination needs either a station source that names its point, or a way to
-  tell grenades apart on the wire that we have not found. ⚠ Do not "fix" this by inferring identity from
+  tell grenades apart on the wire that we have not found. ➡ **The station source is specified: `spec/utility.md`
+  §5d / F94.** A phone control point's advert carries its station id in bytes 6-7, so several of them are
+  distinguishable by construction, which is the thing a grenade can never be. ⚠ Do not "fix" this by inferring identity from
   timing or magnitude — magnitude is the MODE (8 hill, 6 respawn) and the period is fixed at 5 s, so neither
   carries identity. `build` + `bench` (is there ANY per-device field? check a two-grenade capture).
 - **F89 🟢 THE STATION `$CAPTURE` PATH CANNOT HAND A POINT TO TEAM 0.** `objectives.py`'s `_team()` treats a
@@ -840,7 +842,11 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   free:** give the station a gun/headset of its own so it can hear IR; have player phones relay ownership
   peer-to-peer via their own player adverts (the advert has spare bytes but no field for it); or accept
   presence-capture for phone control points and keep shoot-to-capture for the grenade as a separate objective.
-  Decide before building multi-point Domination, since F88 already rules out two grenades. `build`.
+  Decide before building multi-point Domination, since F88 already rules out two grenades.
+  ➡ **DECIDED 2026-09-10 (Tony): option (c).** Phone control points capture by **presence** (`spec/utility.md`
+  §5d, F94) and the grenade keeps shoot-to-capture as a separate objective; the two are **not** coupled and no
+  IR-to-advert bridge is built. The gap this row describes is real and is now designed around rather than closed.
+  `build`.
 - **F93 🟢 A PROXIMITY LAYER IS ALREADY ARRIVING ON EVERY PHONE AND BEING DISCARDED.** Opened 2026-09-10
   (Tony's idea, and his design call recorded below). `app/src/app.js:121` feeds **every** OBRX advert into the
   presence tracker — `presence.observe(hit.uuids, hit.rssi, …)`, low-latency scan mode, open for the whole
@@ -864,7 +870,54 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   costs battery, and Android throttles scan restarts (~5 per 30 s, which is why `app.js:148` uses 7 s / 90 s).
   **Cheapest first slice:** expose `presence.players()` in engine state, filter to own team, show "N
   teammates near" on the HUD. Related: **F92** (byte 15 is `reserved` — a spare byte in the same advert is the
-  cheapest way to relay grenade-hill ownership phone to phone). `build`.
+  cheapest way to relay grenade-hill ownership phone to phone). ⚠ **F94 uses byte 15 of the STATION advert**
+  (role 1) for a control point's net capture rate — a different record from the player advert (role 2), so the
+  player-side spare byte this row wants is untouched. `build`.
+- **F94 🟢 BUILD THE PHONE CONTROL POINT (K1 base) — SPECIFIED 2026-09-10, NO LAN NEEDED.** Tony's design,
+  written up in full as `spec/utility.md` **§5d**; this row is the build. `kind 5 control` already exists in the
+  advert schema, so **no radio work**: capture rate is the **net difference of living present players** (2v1
+  counts as the 1, 2v0 goes twice as fast, an even fight nets zero — explicitly **not** a contested freeze), a
+  **two-phase conversion** (drain an enemy point to neutral, then build it for the claimant) on one 0-100 scale in
+  advert byte 11, phase / `toward` / contested in byte 10, and the signed net rate in byte 15 (role-scoped, so it
+  does not consume the **player**-advert spare byte F93 mentions). Three surfaces: the station state machine and
+  an **animated** screen (§5d.4 — the point of it is that a defender can see "you are losing this" at a glance,
+  built on the roster already at `app/src/utility.js:161`); a player-node branch on `presence.stations()`, which
+  `app.js:158-163` already feeds to the engine; and MC's `koth`/`domination` catalog entry + scorer.
+  ⭐ **The callouts need no LAN and that is the whole point:** every phone already scans all match
+  (`app/src/app.js:121`), so it reads the point's own advert and plays its own line locally — `VB0N` captured to
+  the new owner, `VB0P` lost to the team that just lost it, `U100` while you hold it, the listener's team picking
+  the line exactly as `engine.js:_hillCallout` already does for the grenade. ⭐ **And this is the first path that
+  can wire `VB0O` "Hill Contested"**: `HILL_CUES.hill_contested` sits in `engine.js` with no caller because on the
+  grenade path **F75** says a non-capturing hit emits nothing decodable, so contest can only be guessed at — a
+  phone point *counts bodies* and measures it. ⚠ One callout per `seq` transition, never per advert (F74). ⚠ The
+  callout's reach is the advert's radio reach, not the field. Needs **B1** (the station must hear player adverts
+  reliably) more than any other kind, since the rule IS a head count. Cross-refs: **F88** (no grenade carries a
+  station id, so multi-point Domination needs phones), **F92** (and is why a grenade hill and a phone station
+  cannot be coupled), **F82** (no tid 2 in a hill mode). `build`.
+- **F95 🟡 THE LAN-COUPLED CONTROL-POINT VARIANT: POINTS TO WIN AND ROAMING HILLS — A DELIBERATE A4.8 EXCEPTION.**
+  Tony's second, opt-in mode for a small field where every point really is on one Wi-Fi (his example: one hill in
+  the garage, another on the porch, both on the house AP). Specified as `spec/utility.md` **§5e**. Two features
+  that are impossible offline because no single station can know the fact they need: **points to win** (the target
+  is crossed by the SUM across points, and 16 bytes hold no running score) and **roaming hills** (somebody must
+  choose which point is hot and tell the others — which is what `VB0Q` "Hill Moved" exists for, and what **F83**
+  proposes on the grenade side).
+  🔴 **The exception is the headline, not a footnote.** `spec/contracts.md` §5 **[A4.8]** says *"nothing about the
+  match outcome depends on coverage"*; a points-to-win race and an MC-driven hill rotation both **do** — a point
+  out of Wi-Fi range is not merely invisible, it is not in the game. Taken knowingly and fenced: only modes
+  flagged `lan_coupled`, never F94's base mode, and the only place in the system where coverage decides an
+  outcome. **If this is built, A4.8 gains a pointer to §5e** — an exception not written next to the rule it breaks
+  is a bug waiting to be rediscovered.
+  **Two setup surfaces are part of the work, not polish:** (a) MC emits a **`SETUP: `** `config_warnings` entry
+  (the operator-warning channel already documented in `mcp/brx_mcp/mc/API.md`, rendered verbatim by the GAMES
+  rail) naming how many control points are linked, plus a link state and attention flag per phone in the ITEMS
+  panel (roadmap A2/A4) — reuse that channel, do not invent one; and (b) the **utility screen** promotes its
+  existing MC-link line (`utility.js:159` LINKED / OFFLINE / NO ADDRESS) to a blocking band, `THIS GAME NEEDS
+  WI-FI — MISSION CONTROL OFFLINE`, because the person who can fix it is standing in front of that phone and not
+  in front of MC. ⬜ **LAN loss mid-match is a PROPOSAL needing Tony's sign-off** (§5e.4): 15 s grace, then the
+  station degrades to running F94's local rule on the last known owner and stops scoring, roaming freezes, both
+  screens say so, and MC declines a points win it cannot stand behind (falling back to most possession time) if
+  any point was degraded for more than ~10% of the match. The honest alternative is awarding it anyway from
+  partial data with a recap warning. Needs **F94** first, and A1/A2. `build` + `decision`.
 - **F80 🟠 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.**
   Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
   received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default
@@ -891,7 +944,9 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   is currently "hot" and reading only that beacon (or all of them and scoring the one the node has picked).
   Nothing hardware-side blocks it: each grenade beacons independently on its own `proto=15` cell, so the node
   already has one wire per point and just needs the rotation logic and the `VB0Q` transition wired to it.
-  Not scoped or bench-tested; a new mode idea, not a finding. `build`.
+  Not scoped or bench-tested; a new mode idea, not a finding. ➡ **Specified on the phone path as
+  `spec/utility.md` §5e / F95**, where choosing the hot point needs a live LAN and is written up as a deliberate
+  **A4.8** exception; the same rotation logic serves both sources. `build`.
 - **F87 🟢 GRANT A RATE-OF-FIRE BOOST TO THE TEAM HOLDING A HILL, FROM THE NODE.** Tony's ask; designed
   2026-09-10 evening, not built. The grenade will not do it for us: holding a hill under fn 28 changes `$ALCD`
   cadence not at all (102.0 ms/round owned vs 101.6 enemy-held, control inside the measurement, bench-queue D7).
