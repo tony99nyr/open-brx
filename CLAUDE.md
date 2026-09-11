@@ -10,7 +10,7 @@ over Web Bluetooth). Ground truth for tagger I/O: `protocol/brx-protocol.md`.
 **Start with [`docs/README.md`](docs/README.md)** — the docs index. **BRX facts: `docs/manual/`** is the
 canonical, confirmed-facts manual (also the source the public website is built from) — read the page
 there before digging through `reference/`/`protocol/`, and promote new confirmed facts into it
-(`docs/manual/README.md` → *How a fact gets in*). It is **plain markdown**, nine files, one per page;
+(`docs/manual/README.md` → *How a fact gets in*). It is **plain markdown**, twelve pages plus a README, one per page;
 the format contract is `docs/site/FORMAT.md`. There is no block syntax, no provenance badge and no
 per-sentence `src:` line: confidence lives in `docs/experiment-log/` and `docs/FOLLOWUPS.md`. Before any hardware/protocol
 work also read `docs/HANDOFF.md` (one screen of current state), `docs/FOLLOWUPS.md` (every open item,
