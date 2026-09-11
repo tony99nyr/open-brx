@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F96 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F98 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S18.** (2026-09-10: F94/F95 taken — the phone control point (`spec/utility.md` §5d) and its LAN-coupled variant (§5e). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
 wider than the hill's period" generalisation, the double-`$HIR`-per-beacon dedupe finding (F85, closed same
 session), the team-change-leaves-old-LED-colour finding, and the hosted hill rate-of-fire boost.) (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
@@ -922,6 +922,31 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   screens say so, and MC declines a points win it cannot stand behind (falling back to most possession time) if
   any point was degraded for more than ~10% of the match. The honest alternative is awarding it anyway from
   partial data with a recap warning. Needs **F94** first, and A1/A2. `build` + `decision`.
+- **F96 🔴 FFA HANDS OUT TID 4 AND 5, WHICH THE PROTOCOL FORBIDS — ONE-DIRECTIONAL IMMUNITY AT 5 PLAYERS.**
+  Found 2026-09-10 while sizing an FFA King of the Hill. `assign_teams("ffa", …)` assigns `i+1`, so four
+  players get tids 1,2,3,**4** and five get 1,2,3,4,**5**. But `$TID` is **masked to 2 bits on the wire**
+  (`protocol/brx-protocol.md`: *"⚠️ TEAMS ARE 0-3 (bench 2026-09-07) … Use 4-7 as COLOURS only, never as a
+  team"*). A victim compares the incoming team against its **FULL** tid, so the asymmetry is real damage
+  logic, not cosmetics: **tid 5 transmits as wire team 1, so a tid-5 player's shots read FRIENDLY to the
+  tid-1 player and do nothing**, while tid 5 still takes damage from tid 1 — one-directional immunity, and
+  the unluckiest player in the lobby simply cannot shoot one specific opponent. A tid-5 gun was also observed
+  **killing itself** off a nearby surface (`$HIR,4,0,7,1,9` naming its own player id, armour to 0).
+  ⚠ **Four players happens to be safe, by luck only**: tid 4 aliases to wire 0 and FFA starts at 1, so no
+  real tid-0 player exists for it to collide with. Do not rely on that — it breaks the moment anything
+  assigns tid 0. **Never run FFA above 4 players until this is fixed**, and the real cap is 4 because the
+  hardware has four teams, full stop. Fix: refuse >4 in FFA at validate time with a clear operator message
+  rather than silently assigning an unusable tid. Never run in the field above 2 players (the 2026-08-30 FFA
+  was two iPhones), so this has never bitten anyone yet. `build`.
+- **F97 🟡 AN FFA KING OF THE HILL CAPS AT THREE PLAYERS, AND THAT IS WORTH SAYING OUT LOUD.** Tony's idea,
+  2026-09-10. FFA KotH is attractive because the net-difference rule (§5d.1) reads beautifully in a free-for-
+  all: every player is their own team, so the point only converts for someone who has it **to themselves**,
+  and any two players can deny a third. But the roster maths is brutal — four teams exist (tids 0-3), **F82
+  removes tid 2** because a neutral hill broadcasts team 2 and a tid-2 player would read every neutral point
+  as already theirs and take no hill damage. That leaves **tids 0, 1, 3 = three players**. Going to four
+  forces either tid 2 (an unfair advantage, F82) or tid 4 (forbidden, F96). ⚠ Also decide the three-way rate
+  rule, currently specced as summing the other teams so 1v1v1 nets **negative** and progress drains toward
+  neutral — arguably right for FFA (you must be alone to hold it) but it is a design choice, not a
+  measurement, and it is the agent's call rather than Tony's so far. `build` + a design decision.
 - **F80 🟠 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.**
   Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
   received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default
