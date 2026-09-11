@@ -321,5 +321,10 @@ pool change (proven 2026-09-04). **Respawn mode is fully decoded and replayable*
 ```
 
 Passthrough rows (after the bench `$SIR` table, friendly fire ON so a same-team beacon is not discarded):
-`$SIR,15,0,,24,0,0,1,,*` and the same for subtypes 1, 2, 3. fn 24 registers a `$HIR` and moves no pool
-(FOLLOWUPS U11').
+`$SIR,15,0,,28,0,0,1,,*` and the same for subtypes 1, 2, 3.
+⚠ **Corrected 2026-09-11: this said fn 24.** fn 24 is the function the mechanism was first PROVEN with and it
+does register a `$HIR` and move no pool — but it also makes the gun flash, buzz and play a long clip on every
+beacon, which a hill emits every ~5 s for as long as anyone stands there. **fn 28 registers with nothing at all**
+and is what ships everywhere else (`../../protocol/brx-ir-protocol.md` §"The grenade beacon"; bench-swept, then
+confirmed on a real beacon). If you want the row that makes a beacon *audible*, there isn't one: fn 28 ignores
+the `<soundID>` field outright, so all hill audio is node work.

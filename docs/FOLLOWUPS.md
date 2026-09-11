@@ -146,7 +146,8 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 - **B23 🔴** respawn station for HOSTED games = a node-defined "downed" state. A dead hosted gun hears no IR and native
   station words do nothing in a host-driven game (2026-09-04). ⭐ **WHY they do nothing is now known (2026-09-10): our
   compiled `$SIR` table ships no protocol-15 row, so the firmware discards every station word in silence. One row
-  (`$SIR,15,0,,24,...`) makes them arrive as `$HIR` -- proven on a gun, see F70.** That removes the "can we even
+  (`$SIR,15,0,,28,...` — fn 28, not the fn 24 this row used to name; 24 proved the mechanism first and is
+  unbearable in play) makes them arrive as `$HIR` -- proven on a gun, see F70.** That removes the "can we even
   hear a station" unknown from this design; what is left is the assembly. Design: on `$HP,0` re-spawn stunned (F15) ≥ 3 s later,
   node paints the dead look, station beacon arrives via the passthrough row, node checks team + delay, restores pools.
   Every link is proven separately; the assembly is not. Open: a downed gun still takes IR damage; FF must be ON for a
