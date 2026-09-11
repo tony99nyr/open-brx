@@ -552,11 +552,16 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 
 ## 8. Protocol unknowns (P), grenade (G), bench unknowns (U)
 
-- **P3 🟡** `$PSET` voice-pack token → line map (or from P8). `ears` / `capture`.
+- **P3 🟡** `$PSET` voice-pack token → line map. **2026-09-11:** the field is `SquadLeaderVoices` in the
+  lobby `RoomIsOpenMessage`, but it was **empty** in the capture (no squad-leader voice set). To capture: set
+  a squad voice in Callsign and re-host, then decode. `ears` / `capture`.
 - **P4 🟢** `$AS` / `$UP` are silent on v4.32 (seven shapes); their *effect* was never probed. `trigger`.
-- **P8 🟠** Callsign HTTPS API capture (MITM: `settings`, `voice-profiles`, `arenas/games`): weapon stats, voice packs,
-  game defs in one shot, gun-free. Method: `capture-runbook.md`. Also answers P3 and P12's enums. `capture` (Mac + iPhone).
-- **P12 🟢** `$PB*` playbook enums: silent on v4.32; values only via P8. `capture`.
+- **P8 🟠** Callsign API capture. **2026-09-11: largely resolved** — API is **plain HTTP** (OAuth2, hardcoded
+  client_secret), and the game config **did not ride REST in this capture**; it came through the SNS/SQS lobby as .NET blobs.
+  Whole lobby + match message catalog and game-data model are now in `protocol/callsign-extract/protocol-classes.md`.
+  **Still open:** numeric **weapon stat values** were not in the payload (names/enum only). Method that works:
+  WireGuard mode, not the HTTP proxy (`capture-runbook.md`). `capture` (Mac).
+- **P12 🟢** `$PB*` playbook enums: silent on v4.32; a BLE probe, not in the HTTP capture (P8 did not yield them). `capture`.
 - **P14 🟢** is the audio SD card removable? Needs a teardown; not worth it on a 4-gun fleet until there is a spare. `decision`.
 - **P15 🟡** phone-as-station limits: which `$PLAY` id is a field-wide alarm (candidates from F44's failed shield-hum shortlist, 2026-09-11: N71/N72, both read as "security alert"/"very annoying security alarm" — promising for THIS use even though they failed as a shield loop); max simultaneous BLE links an Android phone holds. `ears` + `space`.
 - **G3 🟡** capture Callsign configuring a grenade → the exact `$GREN`. `capture`. **G4 🟢** grenade `.bin` flashing: no

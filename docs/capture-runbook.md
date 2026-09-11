@@ -16,6 +16,16 @@ called R2 here until 2026-09-06, renamed because FOLLOWUPS R2 is the IR emitter 
 definitions, and the **ability parameters** (durations, radii, cooldowns) that brx-fable searched the
 manual for and confirmed are **not there** — they live server-side. **No gun required.**
 
+**⚠ Corrected 2026-09-11: the system HTTP proxy below does NOT work for Callsign.** It is a Unity/IL2CPP
+app and Unity ignores the iOS system proxy — login succeeds and nothing reaches the proxy (looks like a
+silent TLS failure, is not one). **Use mitmproxy's WireGuard mode instead:** `mitmweb --mode regular --mode
+wireguard`, install the WireGuard iOS app, scan the QR from the mitmweb Capture panel, drop the Wi-Fi proxy.
+It captures at the network layer, so Unity gets no vote. Everything below (cert install, S3, licensing) still
+applies; the cert is still needed to read the **lobby's** TLS traffic (SNS/SQS), though the REST API turned
+out to be **plain HTTP**. Full
+session: `experiment-log/2026-09.md` (2026-09-11 night). The other finding: Callsign's game config does not
+ride REST — it comes through the SNS/SQS lobby, so the endpoint list below is mostly cached and silent.
+
 **Rig:** MacBook + iPhone on the same Wi-Fi.
 
 1. Install a MITM proxy on the Mac — **mitmproxy** (`brew install mitmproxy`) or Proxyman/Charles.

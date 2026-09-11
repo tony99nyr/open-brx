@@ -1,6 +1,6 @@
 # Handoff — Open BRX
 
-**State as of 2026-09-11 (late: the bench pass, then the sound pass).** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners:
+**State as of 2026-09-11 (night: the bench pass, the sound pass, then the Callsign cloud-protocol capture).** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners:
 [`archive/handoff-history.md`](archive/handoff-history.md).
 
 ## Tonight's bench (2026-09-11, three closes, all written up, tests green, NOT committed)
@@ -99,13 +99,13 @@
 
 ## Recent history (detail in the log; only what still bites is kept here)
 
-- **Prior sessions 2026-09-11:** site rebuilt (two doors, one source, see "What is true today"); a triage
-  pass closed 8 ids (F102 F54 S11 F57 F15 F78 E1 S5) and added amendments A18 `config.mode_params`, A19
-  `alert.role` + `config.vip_player_id`, A20 `config.stun`. Full story: [`experiment-log/2026-09.md`](experiment-log/2026-09.md).
-- **LEDs, the three A16 facts that still bite:** `$HLED,,6` must NEVER be sent in play (kills the firmware
-  death flash for the life; in-play dark is `$HLED,9,0,,,10,,*`, `$HLOOP` is the down signal); `$TID` is 0-3
-  only (F35); phones are on a pre-`role` APK so `headset_frames()` still ships `headset.carrier` (S10).
-  `test_led_invariants.py` pins all of it.
+- **⭐ Callsign's whole cloud protocol is decoded** (Mac + mitmproxy **WireGuard**, not the HTTP proxy the
+  Unity app ignores; `capture-runbook.md` corrected). Plain-HTTP API; game config rides the **SNS/SQS lobby**
+  (Melior Games), not REST. Catalog + model in [`../protocol/callsign-extract/protocol-classes.md`](../protocol/callsign-extract/protocol-classes.md);
+  **P8 largely resolved** (open: weapon stats), **P3 refined**. Raw `.flows` off the repo.
+- **Prior sessions 2026-09-11** (log has it): site rebuilt (two doors, one source); triage closed 8 ids, added amendments A18 `config.mode_params` / A19 `alert.role`+`config.vip_player_id` / A20 `config.stun`.
+- **LEDs (pinned by `test_led_invariants.py`, full block in archive):** never `$HLED,,6` in play (kills the
+  death flash; in-play dark = `$HLED,9,0,,,10,,*`); `$TID` 0-3 only (F35); phones ship `headset.carrier` (S10).
 
 ## Next actions
 

@@ -120,10 +120,12 @@ A self-hosted platform simply reimplements any wanted mode host-side and skips t
 
 ## Backend (context)
 
-REST: `ltp-prod-v4.us-east-1.elasticbeanstalk.com`. Multiplayer: **AWS SQS/SNS** (the ~1-min
-lobby delay is a cloud round-trip). Networking DTOs live under
-`LaserTag.Network.ArenaClient.Edge.Domain.CallSign.Games.*`. Replace the whole layer with the
-local LAN (WebSocket, `docs/spec/contracts.md` §5).
+REST: `ltp-prod-v4.us-east-1.elasticbeanstalk.com`; multiplayer over AWS SQS/SNS. **The lobby +
+match protocol was captured live on 2026-09-11 — the canonical facts (auth, endpoints, message
+catalog, game-data model) are in [`protocol-classes.md`](protocol-classes.md) § Backend.** These
+static-teardown DTO names (`LaserTag.Network.ArenaClient.Edge.Domain.CallSign.Games.*`) are the
+Edge/offline layer, distinct from the cloud lobby's `MeliorGames.Net.*` + `LaserTag.CallSign.Domain.*`.
+Replace the whole layer with the local LAN (WebSocket, `docs/spec/contracts.md` §5).
 
 ## Where the game DATA lives — server, not the APK (verified 2026-08-24, UnityPy)
 
@@ -133,23 +135,26 @@ holds the **structure** but not the **content**:
 - The base APK is UI (RectTransform/Canvas/GameObject) + IL2CPP engine code + the sound *inventory*
   (`Sounds.json`, id→duration). Scanning all 8,003 MonoBehaviours found **zero** sound-id clusters
   and no weapon/character stat objects — the ScriptableObject *data* isn't bundled.
-- It's **fetched at runtime from the Callsign server** (`ltp-prod-v4.us-east-1.elasticbeanstalk.com`,
-  `/api/v1/callsign/...`) and an S3 bucket (`s3.amazonaws.com/ltp-prd-v4/...`). Relevant endpoints:
-  `/api/v1/callsign/settings/`, **`/api/v1/callsign/voice-profiles/selected/`** (= the `$PSET`
-  voice-pack presets — `$PSET`/`WeaponSettings` carries a `VoiceProfile` field), and
-  `/api/v1/callsign/arenas/games/` (game definitions). Auth via AWS Cognito; lobby via SNS/SQS.
+- It's server-side, not in the APK. ⚠ **The runtime route is NOT what this teardown guessed
+  (corrected by the 2026-09-11 live capture).** The endpoints named here from strings —
+  `/api/v1/callsign/settings/`, `voice-profiles/selected/`, `arenas/games/` — **were silent in the
+  capture**: they are cached client-side, and the live game data (weapons, mode, voices) rides the
+  **SNS/SQS lobby** as .NET blobs, not REST. The API is also **plain HTTP, not HTTPS**. The S3 bucket
+  (`s3.amazonaws.com/ltp-prd-v4/...`) was seen only as a string, not on the wire. Auth is AWS Cognito.
+  Canonical: [`protocol-classes.md`](protocol-classes.md) § Backend.
 
-**Consequence for the three deep-dive goals:** the remaining unknowns are **data, not structure**,
-so static teardown can't reach them. To recover:
-- **Stock weapon stats** → capture the server API response, or capture more live `$WEAP` frames.
-- **`$PSET` voice-pack → sound map** → the server's `voice-profiles` endpoint, or a BLE capture
-  changing one voice profile.
+**Consequence for the three deep-dive goals:** the remaining unknowns are **data, not structure**.
+To recover:
+- **Stock weapon stats** → **NOT in the lobby payload** (weapon *names/enum* only); capture more live
+  `$WEAP` frames, or find where the numeric stats are fetched (unproven).
+- **`$PSET` voice-pack → sound map** → the lobby's `SquadLeaderVoices` field (was empty; set a squad
+  voice and re-host), or a BLE capture changing one voice profile.
 - **`$WEAP` tok 7–13 (secondary fire) positions** → a BLE capture of a weapon with secondary fire
   configured (the field names/order are already known; only the wire positions are unpinned).
 
-A new **API-capture route** (gun-off): MITM the Callsign HTTPS traffic (proxy + cert) while it
-loads settings/voice-profiles/games — yields the weapon/voice/game data directly. Distinct from BLE
-snooping.
+**Capture route (gun-off, method corrected 2026-09-11):** use mitmproxy **WireGuard** mode, not the
+system HTTP proxy (Unity ignores it) — see `docs/capture-runbook.md`. It yields the lobby + match
+traffic; the REST endpoints stay cached/silent.
 
 ## What we have NOT harvested (and why)
 

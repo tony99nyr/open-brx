@@ -447,9 +447,53 @@ for static per-gun packs; the bridge for anything dynamic or unlimited.
 
 ## Backend (for context — not tagger protocol)
 
-- REST API: `ltp-prod-v4.us-east-1.elasticbeanstalk.com` (AWS Elastic Beanstalk).
+- REST API: `ltp-prod-v4.us-east-1.elasticbeanstalk.com` (AWS Elastic Beanstalk). **Confirmed plain HTTP,
+  no TLS** (2026-09-11 live capture) — no cert pinning to defeat. Auth: OAuth2 password grant
+  `POST /oauth/token`, `client_id=callsignclient` with a **client_secret hardcoded in the app**; returns a
+  bearer + refresh token, scope `read write trust`, role `ROLE_CallSign`. The only REST calls a hosted
+  session makes are `GET/PUT /api/v1/callsign/profile/<userId>` (roster is polled per-player) and
+  `arenas/last-time-played-profile`. **Weapon/voice/game config is NOT REST** — it is cached client-side and
+  the live game data rides the lobby (below).
 - Multiplayer coordination: **AWS SQS/SNS** (the phone-to-phone lobby; ~1-min lobby delay is a
   cloud round-trip). ECS creds endpoint `169.254.170.2`. IP geo via `ip-api.com`.
+
+### Lobby + match protocol (confirmed on the wire, 2026-09-11)
+
+Middleware vendor is **Melior Games** (`MeliorGames.Net.*`, from `MeliorGamesLib`); the game layer is
+`LaserTag.CallSign.*` (Assembly-CSharp). Discovery: AWS **Cognito** (identity pool in **eu-west-1**) temp
+creds → each client has its **own GUID-named SQS queue** (`CreateQueue` not captured; inferred from the
+per-client queue + `MessageRetentionPeriod=60`), subscribed to the shared **SNS topic**
+`LTP-BRX-Lobby-Topic_prod` (account `623577608736`, **us-east-1** — note the region split from Cognito), and
+long-polls (`WaitTimeSeconds=20`). Hosting = **SNS Publish**; joining = `ReceiveMessage`. Payloads are **.NET
+`BinaryFormatter` blobs, base64-encoded**.
+
+- **Game object:** `RoomIsOpenMessage → MultiplayerRoom`. **The room, its `MultiplayerTeam[]` and
+  `MultiplayerParticipant` are `MeliorGames.Net.*`, NOT `LaserTag.*`** — `LaserTag.CallSign.Domain.*` appears
+  only inside the nested GameSettings blob. `MultiplayerRoom` fields: `GameSettings · SquadLeaderVoices ·
+  GameSkin · GameMode · ModuleVersion · Title · Description · Address · Location · ReadyPlayers · Uid`, plus
+  `Teams[]` and `Participants[]` (participant carries `Uid` + an `Address` that was a **LAN IP** — gameplay may
+  be LAN P2P after the cloud handoff). `GameSettings` is a nested blob →
+  `LaserTag.CallSign.Domain.GameSettings.GameSettingsInfo` holding a `List<WeaponSettings>` `{FireMode,
+  engine-mode, gender, primary+secondary WeaponType, GameSkin, "Scan", Id}` + a `List<WeaponType>` (enum, int
+  `value__`).
+- **Two mode fields:** a skin display name (`Slayer`, `TeamSnipers`) over an engine name (`FreeForAll`,
+  `FactionWarsOffline`). Three distinct hosted configs were captured; the confirmed `WeaponType` enum members
+  so far are `SniperRifle`, `AssualtRifle` (sic), `Shotgun`, `None`, `AMR`, `SmgSaw` (only picked weapons
+  appear; the enum is larger).
+- **In-match messages** (counts = seen in one capture, not a closed set) — Melior transport:
+  `JoinToRoomMessage` / `JoinToRoomAnswerMessage` · `RoomUpdateMessage` · `LeftRoomMessage` · `PingMessage` /
+  `PongMessage`. CallSign game logic (`LaserTag.CallSign.Net.Messages`): **`HitMessage` and
+  `PlayerKilledMessage` are the real hit/kill events** · `PlayerReadyMessage` · `StartGameMessage` ·
+  `PlayerInfoChangedMessage` · `GunVolumeSettingsMessage` (relevant to our volume work) ·
+  `FullMargeGameStatisticsMessage` (sic; wraps `UserUpdateInfoData[] {Id, PlayerGameStatistics}`) ·
+  `BeginRestartGameMessage` · `GamePauseMessage` · `GetPlayerInfoMessage` · `GameOverMessage → GameOverData
+  {Reason, PlayerGameProfile, PlayerGameStatistics}`. `Reason` enum seen: `Normal`,
+  `NumberOfPlayersLessThanMinimum`.
+- **Not recovered:** numeric weapon stat values (only names/enum are in the payload), the field-level byte
+  layout of `HitMessage` / `PlayerKilledMessage` / `PlayerGameStatistics` (message types pinned, contents
+  not), and the `SquadLeaderVoices` contents (empty unless a squad-leader voice is set). Evidence:
+  `docs/experiment-log/2026-09.md` (2026-09-11 night).
+
 - A self-hosted platform replaces this entire cloud layer with the local LAN (WebSocket, `docs/spec/contracts.md` §5).
 
 ## Method (reproduce / extend)
