@@ -15,6 +15,7 @@ import re
 from brx_mcp.mc import envelope as E
 from brx_mcp.mc.compile import Compiler
 from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
+from brx_mcp.mc.net import NetServer, NodeRecord
 from brx_mcp.mc.state import Session
 from brx_mcp.mc.types import MC_KINDS, STATION_KINDS
 
@@ -400,3 +401,170 @@ def test_a_team_scoped_station_must_be_on_a_team_that_is_in_the_game():
     assert s.stations["util-1"]["assigned"]["team"] == min(tids)
     s.set_station("util-1", {"kind": "respawn", "team": "any", "id": 1})
     assert s.stations["util-1"]["assigned"]["team"] == 255
+
+
+# --------------------------------------------------------------------------- F106 lows (2026-09-11)
+def test_fire_node_forwards_app_ver():
+    """F106(b): `net.py _fire_node` never carried `rec.app_ver` into the info dict it fires to `on_node`
+    callbacks, so `state.py _on_node`'s utility branch (`st["app_ver"] = n.get("app_ver") or ...`) read a
+    key that never arrived off a REAL socket -- `station.app_ver` stayed None forever except on `FakeNet`,
+    whose hand-rolled `simulate_*_hello` info dicts always included it and so never caught this."""
+    net = NetServer()
+    seen: list[dict] = []
+    net.on_node(lambda info: seen.append(info))
+    net._fire_node(NodeRecord(node_id="util-1", node_type="utility", app_ver="utility-0.2"))
+    assert seen[-1]["app_ver"] == "utility-0.2", seen[-1]
+    # CONTROL: this is an ADDITION, not a replacement -- the existing fields still ride along
+    net._fire_node(NodeRecord(node_id="n2", node_type="phone", app_ver="hud-0.2", gun_name="GUN-A"))
+    assert seen[-1]["gun_name"] == "GUN-A" and seen[-1]["app_ver"] == "hud-0.2", seen[-1]
+
+
+def test_status_heartbeat_keeps_app_ver_fresh():
+    """Roadmap A3: `app_ver` rides the STATUS heartbeat too, not only the hello, so a phone that updated
+    mid-session is never stuck showing its old version until its next reconnect."""
+    s = _sess()
+    s.net.simulate_utility_hello("util-1", app_ver="utility-0.1")
+    assert s.stations["util-1"]["app_ver"] == "utility-0.1"
+    s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False,
+                                     "role": "utility", "app_ver": "utility-0.2"}, s.now_ms())
+    assert s.stations["util-1"]["app_ver"] == "utility-0.2"
+    # CONTROL: a heartbeat with no app_ver field at all does not blank out what the hello already gave
+    s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False, "role": "utility"}, s.now_ms())
+    assert s.stations["util-1"]["app_ver"] == "utility-0.2"
+
+
+def test_a_node_that_switches_from_player_to_utility_drops_its_player_binding():
+    """F106(c): the SAME node_id said hello as a player once (a phone taken OUT of the HUD role on the
+    field, or a reused node_id on a fresh install); `node_player`/the player's own `node_id` must not
+    keep pointing at a socket that is now a station, or a later push (config/start/control) silently
+    lands on a utility phone that drops everything but `station_config`."""
+    s = _joined(_sess(n=1))
+    p = next(iter(s.players.values()))
+    nid = p["node_id"]
+    assert s.node_player.get(nid) == p["player_id"]
+    s.net.simulate_utility_hello(nid)
+    assert nid not in s.node_player, "the station kept speaking for the player"
+    assert s.players[p["player_id"]]["node_id"] is None
+    assert nid in s.stations, "CONTROL: the utility side of the switch still worked"
+
+
+def test_abort_start_clears_the_started_flag_so_the_next_push_does_not_bump_the_game():
+    """F106(a): `abort_start` left `_game_no_started` set, so the NEXT muster push (an edit, a re-try)
+    silently skipped a game number and re-armed every station though no match actually ran."""
+    s = _joined(_sess())
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 1})
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    assert s._game_no_started is True          # CONTROL: start() really does set it
+    s.abort_start()
+    assert s._game_no_started is False, "an aborted start must not count as a played match"
+    s.push_config(force=True)
+    assert s.game_no == 1, f"the game byte moved though nothing was ever played: {s.game_no}"
+
+
+def test_finish_and_abort_start_skip_utility_nodes():
+    """F106(d): a utility phone never held the pending start (it is not a player, §5c) and its log holds
+    nothing about a match it never binds -- `abort_start`'s broadcast and `_finish`'s log-pull loop used
+    to reach it anyway, on a wire that is supposed to need it no LAN mid-match."""
+    s = _joined(_sess())
+    s.net.simulate_utility_hello("util-1")
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    s.net.pushed.clear()
+    s.abort_start()
+    controlled = [n for n, k, _ in s.net.pushed if k == "control"]
+    assert "util-1" not in controlled and controlled, controlled     # CONTROL: the real players still got it
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    s.net.pushed.clear()
+    s.control("end")
+    logged = [n for n, k, _ in s.net.pushed if k == "pull_log"]
+    assert "util-1" not in logged and logged, logged                 # CONTROL: the real players still got their log pulled
+
+
+def test_recap_carries_a_stations_row():
+    """Roadmap A6: the recap sheet gets a row per ASSIGNED station, straight from its own
+    self-authoritative heartbeat -- MC never watches a revive happen, so this is the only place a station's
+    own count is ever shown."""
+    s = _joined(_sess(respawn={"type": "scanner", "delay_s": 15}))
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 1})
+    s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False,
+                                     "role": "utility", "kind": "respawn", "station_id": 1, "armed": True,
+                                     "revives": 4}, s.now_ms())
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    s.control("end")
+    rows = s.recap()["stations"]
+    assert rows == [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1, "heard": True, "revives": 4}], rows
+    # CONTROL: a station that said hello but was never assigned contributes no row
+    s.net.simulate_utility_hello("util-2")
+    assert all(r["node_id"] != "util-2" for r in s.recap()["stations"])
+
+
+def test_recap_stations_heard_is_set_for_every_kind_and_flips_true_on_first_heartbeat():
+    """Finding 1 (review 2026-09-11, F105): `heard` is set on EVERY row regardless of kind -- extraction,
+    powerup and bomb have no count of their own (unlike revives/hold_ms), so before this `heard` existed
+    those three kinds had nothing at all to tell "reported" from "never heard from" with, and Recap.tsx
+    rendered them identically either way."""
+    s = _joined(_sess())
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "extraction", "team": "any", "id": 8})
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    # CONTROL: assigned, but no status body has arrived yet -- heard is False, not a missing/absent row
+    rows = s.recap()["stations"]
+    assert rows == [{"node_id": "util-1", "kind": "extraction", "id": 8, "team": 255, "heard": False}], rows
+    s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False,
+                                     "role": "utility", "kind": "extraction", "station_id": 8, "armed": True}, s.now_ms())
+    rows = s.recap()["stations"]
+    assert rows == [{"node_id": "util-1", "kind": "extraction", "id": 8, "team": 255, "heard": True}], rows
+
+
+def test_a_late_fact_after_end_keeps_the_stations_rows_in_the_recap():
+    """Polish review 2026-09-11: `_restore_recap` (the re-store on a fact that lands after END -- the outbox
+    flush, i.e. every real match) called `scorer.recap()` bare, so the first late fact dropped `stations`
+    from `last_recap` and from the archived row."""
+    s = _joined(_sess(respawn={"type": "scanner", "delay_s": 15}))
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 1})
+    s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False,
+                                     "role": "utility", "kind": "respawn", "station_id": 1, "armed": True,
+                                     "revives": 2}, s.now_ms())
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    s.control("end")
+    assert s.last_recap and s.last_recap.get("stations"), "CONTROL: the END recap carries the row"
+    # a hit fact from a bound player arrives after END (the outbox flush)
+    p = next(pl for pl in s.players.values() if pl.get("node_id"))
+    s.net.simulate_event(p["node_id"], {"type": "hit_taken", "shooter_num": 0, "shooter_team": 0, "dmg": 9, "t": s.now_ms(), "match_id": s.scorer.match_id}, s.now_ms())
+    assert s.phase == "recap"
+    assert s.last_recap.get("stations") == [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1, "heard": True, "revives": 2}], s.last_recap.get("stations")
+
+
+def test_a_player_phone_that_rehellos_as_utility_is_unbound_like_an_evict():
+    """F106(c) + polish review: the re-hello unbound `node_player` but left `ready` and the ack, so kit->lobby
+    could advance on a phone that had become a station."""
+    s = _joined(_sess())
+    p = next(pl for pl in s.players.values() if pl.get("node_id"))
+    nid = p["node_id"]
+    p["ready"] = True
+    s.acks[p["player_id"]] = {"ok": True}
+    s.net.simulate_utility_hello(nid)
+    assert p.get("node_id") is None and nid not in s.node_player
+    assert p["ready"] is False and p["player_id"] not in s.acks
+    assert nid in s.stations
+    # CONTROL: a status body saying `role: utility` from a still-bound PLAYER phone does not unbind it -- and
+    # (polish round 2) does not RE-TYPE it either: the node stays a player node, so END still reaches it and
+    # its log is still pulled. A status never changes what a bound node is (A8); only a hello does.
+    q = next(pl for pl in s.players.values() if pl.get("node_id"))
+    q["ready"] = True
+    s.net.simulate_status(q["node_id"], {"node_id": q["node_id"], "arm_state": "connected", "synced": True, "role": "utility"}, s.now_ms())
+    assert q.get("node_id") and q["ready"] is True
+    assert s.nodes[q["node_id"]].get("node_type") != "utility", "a status field must not re-type a bound player node"
+    assert q["node_id"] not in s.stations or not s.stations[q["node_id"]].get("report"), "and it files no station report"
+    s.push_config(force=True); s.start(runway_s=3, force=True); s.phase = "live"
+    s.net.pushed.clear()
+    s.control("end")
+    assert any(n == q["node_id"] and k == "control" for n, k, _ in s.net.pushed), "END reaches the phone the status tried to re-type"

@@ -1,5 +1,5 @@
 // Demo data from the design export (guns renamed GUN-A…GUN-H — real sticker ids never enter the repo).
-import type { GameConfig, ModeInfo, PerkView, Team, WeaponView } from '../api/types';
+import type { GameConfig, ModeInfo, ModeParamSpec, PerkView, Team, WeaponView } from '../api/types';
 import { defaultPolicy } from './policy';
 
 export const TEAMS: Team[] = [
@@ -435,32 +435,52 @@ const base = (mode: string, over: Partial<GameConfig> = {}): GameConfig => ({
   ...over,
 });
 
+// A18 (F105, 2026-09-11): the real schema shapes from `params_schema_json` for the three modes that declare
+// tunables, so the mock's demo of the params UI is truthful rather than empty — tdm/ffa/infection get `[]`
+// (they declare none, same as the server).
+const KOTH_PARAMS: ModeParamSpec[] = [
+  { name: 'score_target', type: 'int', default: 0, desc: 'point-seconds a team needs to win; 0 = most possession when the clock runs out', min: 0, max: 36000 },
+  { name: 'points_per_s', type: 'float', default: 1.0, desc: 'points a held point earns its owner every second', min: 0.1, max: 60 },
+];
+const LMS_PARAMS: ModeParamSpec[] = [
+  { name: 'lives', type: 'int', default: 3, desc: 'lives per player; the last one standing wins', min: 1, max: 20 },
+];
+const EXTRACTION_PARAMS: ModeParamSpec[] = [
+  { name: 'channel_s', type: 'float', default: 45.0, desc: 'seconds a player must hold the extraction point', min: 5, max: 600 },
+  { name: 'win_target', type: 'int', default: 0, desc: 'banked loot that wins the raid outright; 0 = the clock decides', min: 0, max: 100000 },
+  { name: 'loot_per_kill', type: 'int', default: 10, desc: 'loot a killer picks up per kill', min: 0, max: 1000 },
+  { name: 'drop_policy', type: 'str', default: 'ground', desc: "where a downed player's loot goes", choices: ['ground', 'killer', 'pool'] },
+  { name: 'extract_removes_player', type: 'bool', default: true, desc: "an extracted player is out of the raid (off: they respawn clean)" },
+];
+
 export const MODES: ModeInfo[] = [
   { mode: 'tdm', name: 'TEAM DEATHMATCH', abbr: 'TDM', desc: 'Teams score per elimination',
     brief: 'Squads score a point per elimination. Downed players respawn after the delay and rejoin. First team to the score cap — or the highest score at the time limit — takes the match.',
-    teams_text: '2–4 TEAMS', win_text: 'SCORE CAP / TIME', respawn_text: 'ON · TIMED', defaults: base('tdm') },
+    teams_text: '2–4 TEAMS', win_text: 'SCORE CAP / TIME', respawn_text: 'ON · TIMED', params: [], defaults: base('tdm') },
   { mode: 'ffa', name: 'FREE-FOR-ALL', abbr: 'FFA', desc: 'Every operator for themselves',
     brief: 'No teams — everyone is a target. Each elimination scores a point. First to the frag limit, or the top score when time expires, wins.',
-    teams_text: 'NONE · ALL VS ALL', win_text: 'FRAG LIMIT / TIME', respawn_text: 'ON · TIMED',
+    teams_text: 'NONE · ALL VS ALL', win_text: 'FRAG LIMIT / TIME', respawn_text: 'ON · TIMED', params: [],
     defaults: base('ffa', { teams: [{ team_id: 'ffa', name: 'FFA', color: 'ffa', tid: 1 }], scoring: { frag_limit: 15, win_by: 'kills' } }) },
   { mode: 'infection', name: 'INFECTION', abbr: 'INF', desc: 'One infected; survive the spread',
     brief: 'One operator starts infected. Survivors who go down switch sides and hunt their old squad. Survivors win by outlasting the clock; the infected win by converting everyone.',
-    teams_text: 'SURVIVORS VS INFECTED', win_text: 'SURVIVE THE CLOCK', respawn_text: 'INFECTED ONLY',
+    teams_text: 'SURVIVORS VS INFECTED', win_text: 'SURVIVE THE CLOCK', respawn_text: 'INFECTED ONLY', params: [],
     defaults: base('infection', { scoring: { frag_limit: null, win_by: 'survival' } }) },
   { mode: 'lms', name: 'LAST MAN STANDING', abbr: 'LMS', desc: 'Limited lives, last alive wins',
     brief: 'Every operator carries a fixed pool of lives. Once they are spent there is no respawn. The last operator — or last squad — still standing takes the match.',
-    teams_text: 'SOLO OR SQUADS', win_text: 'LAST ALIVE', respawn_text: 'OFF · LIVES',
-    defaults: base('lms', { respawn: { type: 'none', delay_s: 0 }, scoring: { frag_limit: null, win_by: 'survival' } }) },
+    teams_text: 'SOLO OR SQUADS', win_text: 'LAST ALIVE', respawn_text: 'OFF · LIVES', params: LMS_PARAMS,
+    defaults: base('lms', { respawn: { type: 'none', delay_s: 0 }, scoring: { frag_limit: null, win_by: 'survival' }, mode_params: { lives: 3 } }) },
   { mode: 'extraction', name: 'EXTRACTION', abbr: 'EXT', desc: 'Reach the objective and hold it',
     brief: 'Attackers push to the extraction point and hold it through the capture timer. Defenders deny until time expires. Sides swap between rounds.',
-    teams_text: '2 TEAMS', win_text: 'HOLD TO CAPTURE', respawn_text: 'ON · TIMED',
-    defaults: base('extraction', { scoring: { frag_limit: null, win_by: 'objective' } }) },
+    teams_text: '2 TEAMS', win_text: 'HOLD TO CAPTURE', respawn_text: 'ON · TIMED', params: EXTRACTION_PARAMS,
+    defaults: base('extraction', { scoring: { frag_limit: null, win_by: 'objective' },
+      mode_params: { channel_s: 45.0, win_target: 0, loot_per_kill: 10, drop_policy: 'ground', extract_removes_player: true } }) },
   // F82: BLUE + GREEN (tids 1 and 3). Yellow is tid 2, which is what a NEUTRAL hill broadcasts, so a
   // yellow roster would read every uncaptured point as its own — the server refuses it outright.
   { mode: 'koth', name: 'KING OF THE HILL', abbr: 'KOTH', desc: 'Hold the hill; possession scores',
     brief: 'One hill, and it is a real grenade on the field. Shoot the point and it flips to your team; every second your side holds it banks possession. A point your team does not own damages anyone standing on it, so taking one is a fight. Most possession time when the clock runs out takes the match.',
-    teams_text: '2 TEAMS', win_text: 'POSSESSION TIME · HOST CALL', respawn_text: 'ON · TIMED',
-    defaults: base('koth', { teams: [TEAMS[0], TEAMS[3]], scoring: { frag_limit: null, win_by: 'objective' }, station_source: 'grenade' }) },
+    teams_text: '2 TEAMS', win_text: 'POSSESSION TIME · HOST CALL', respawn_text: 'ON · TIMED', params: KOTH_PARAMS,
+    defaults: base('koth', { teams: [TEAMS[0], TEAMS[3]], scoring: { frag_limit: null, win_by: 'objective' }, station_source: 'grenade',
+      mode_params: { score_target: 0, points_per_s: 1.0 } }) },
 ];
 
 // guns: sticker, tail, readiness class (g=green, r=red, a1=battery unread, a2=stale link), batt, link age s

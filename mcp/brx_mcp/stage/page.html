@@ -124,7 +124,10 @@
       <label>MY TEAM<select id="tid"></select></label>
       <label>NIGHT<select id="night"><option value="false">off</option><option value="true">on</option></select></label>
       <label>VOICE<select id="voice"></select></label>
+      <label>OBJECTIVE SOURCE<select id="station_source"></select></label>
+      <label>STUN (EMP)<select id="stun"><option value="">off</option><option value="0">on · 10 s default</option><option value="3">on · 3 s</option><option value="5">on · 5 s</option><option value="20">on · 20 s</option><option value="60">on · 60 s</option></select></label>
     </div>
+    <div class="hint" id="sourcehint">F70: the phone hears the grenade's IR beacon only when the game's station_source is <b>grenade</b>, and a phone control point only when it is <b>phone</b>; a game with no source hears either. Blank = as the config says (koth: grenade).</div>
     <div class="hint" id="voicehint">The voice rides in the $PSET line of the head: a change takes effect on the next ARM.</div>
     <div class="row">
       <input id="mcurl" placeholder="http://<mc-ip>:8765" size="22"><input id="mctok" placeholder="operator token" size="12">
@@ -146,6 +149,12 @@
       <button class="big" data-act="game_end">GAME END<span class="sub">game_over line, then teardown</span></button>
       <button class="big" data-act="end">TEARDOWN ONLY</button>
       <button class="big bad" data-act="panic">PANIC<span class="sub">$CLEAR + $SP,99 — re-ARM after</span></button>
+    </div>
+    <div class="row">
+      <button class="big" data-act="reload">RELOAD<span class="sub">injects $BUT,2,1 (the handle) → A16 §3.1 glance</span></button>
+      <label>MAG<input id="mag" value="10" size="3"></label><label>RESERVE<input id="reserve" value="20" size="3"></label>
+      <button data-act="alcd">REPORT AMMO<span class="sub">injects $ALCD (a real gun sends it on a shot; the reload gate needs a known reserve)</span></button>
+      <span class="hint" id="reloadhint"></span>
     </div>
     <div class="tele">
       <div><b>HP</b><span id="t-hp">—</span></div><div><b>ARMOR</b><span id="t-armor">—</span></div><div><b>SHIELD</b><span id="t-shield">—</span></div>
@@ -171,6 +180,24 @@
       <button class="big" data-ir="beacon">RESPAWN BEACON<span class="sub">proto 15, my team</span></button>
       <button class="big" data-ir="button">STATION BUTTON<span class="sub">beacon + crit</span></button>
     </div>
+  </section>
+  <section>
+    <h2>4b // CONTROL POINT (a phone station, kind 5 — the advert is INJECTED: the stage cannot hear BLE)</h2>
+    <div class="row">
+      <label>STATION ID<input id="cpid" value="1" size="4"></label>
+      <label>TEAM (owner / builder)<select id="cpteam"></select></label>
+      <label><input type="checkbox" id="cpheld"> HELD</label>
+      <label><input type="checkbox" id="cpcontested"> CONTESTED</label>
+      <label>DIRECTION<select id="cpdir"><option value="static">static</option><option value="rising">rising</option><option value="falling">falling</option><option value="both">rising+falling (invalid → unknown)</option></select></label>
+      <label>PROGRESS %<input id="cpvalue" value="100" size="3"></label>
+      <label><input type="checkbox" id="cppresent" checked> ON THE POINT</label>
+    </div>
+    <div class="row">
+      <button class="big acc" data-act="station_advert">SEND ADVERT<span class="sub">keeps advertising until STOP; send the NEXT state to rehearse a change</span></button>
+      <button class="big" data-act="station_stop">STOP ADVERTISING<span class="sub">walk away: expires silently, no Lost line</span></button>
+    </div>
+    <div class="hint" id="cpgate"></div>
+    <div class="hint" id="cp"></div>
   </section>
   <section style="grid-column: 1 / -1">
     <h2>5 // GAME EVENTS — from this config's presentation profile (HUD-driven green · MC-driven amber)</h2>
@@ -226,6 +253,21 @@
     const colourIdx = leds.find(c => c !== 9 && !Number.isNaN(c));
     const colour = colourIdx != null ? PAL[colourIdx] : 'dark';
     return `${'█'.repeat(lit)}${'░'.repeat(3 - lit)} ${colour.toUpperCase()} (${lit}/3)`;
+  }
+  // F102: the phone control point as the hill model reads it, plus the F70 source gate in force -- so a silent
+  // SEND ADVERT is explained BEFORE it happens (the gate ignores a phone point in a grenade game, on the phone too).
+  function renderControl(s) {
+    const src = s.station_source, m = s.model || {}, h = m.hill;
+    $('#cpgate').textContent = !src ? 'this game names NO objective source: the phone hears a control point AND a grenade beacon (a try-out)'
+      : src === 'phone' ? 'station_source = phone: control-point adverts are heard; the grenade\'s IR beacon is IGNORED'
+      : `station_source = ${src}: a phone control point is IGNORED by the phone (and here) — set OBJECTIVE SOURCE to phone in section 2 to rehearse it`;
+    $('#cpgate').className = 'hint' + (src && src !== 'phone' ? ' warn' : '');
+    const stations = (s.stations || []).map(e => `station ${e.id}: team ${e.team === 255 ? 'none' : e.team}${e.flags.held ? ' HELD' : ''}${e.flags.contested ? ' CONTESTED' : ''}${e.flags.rising && e.flags.falling ? ' rising+falling(unknown)' : e.flags.rising ? ' rising' : e.flags.falling ? ' falling' : ''} ${e.value}%${e.present ? ' · on it' : ' · in range'} · ${e.advertising ? 'advertising' : `silent ${e.age_s}s`}`).join(' | ');
+    const hill = !h ? 'hill model: no point (nothing heard, or presence expired)'
+      : h.source === 'station'
+        ? `hill model: point ${h.site} — ${h.owner === 2 ? 'NEUTRAL' : 'team ' + h.owner + (h.owner == s.profile.tid ? ' (OURS: ticking)' : '')} · ${h.progress}%${h.holding != null ? ' for team ' + h.holding : ''}${h.contested ? ' · CONTESTED' : ''}${h.rising ? ' · rising' : h.falling ? ' · FALLING (tick doubles)' : ''}${h.on_point ? ' · on the point' : ''}`
+        : `hill model: the GRENADE hill — ${h.owner === 2 ? 'NEUTRAL' : 'team ' + h.owner}${h.from_neutral ? ' (taken from neutral)' : ''}`;
+    $('#cp').textContent = hill + (stations ? ' — on the air: ' + stations : '');
   }
   // ---- A16.3 GUN-BODY LED SIMULATOR ------------------------------------------------------------
   // A picture of the real strip, driven by the $GLED frames the stage actually wrote. It models the
@@ -515,12 +557,20 @@
       fill('#irteam', [0, 1, 2, 3], s.teams.find(t => t.tid != s.profile.tid)?.tid ?? 2, v => { const t = s.teams.find(x => x.tid == v); return t ? `${t.name} (tid ${v})` : `tid ${v}`; });
       $('#night').value = String(!!s.profile.night);
       if (s.voices) fill('#voice', s.voices.map(v => v.id), s.profile.voice, v => { const o = s.voices.find(x => x.id === v); return o ? `${o.name} · ${o.speaker}` : v; });
+      fill('#station_source', ['', ...(s.station_sources || [])], s.profile.station_source || '', v => v || `(as the config says${s.station_source && !s.profile.station_source ? ': ' + s.station_source : ''})`);
+      $('#stun').value = s.profile.stun == null ? '' : String(s.profile.stun);
+      fill('#cpteam', [255, ...s.teams.map(t => t.tid)], $('#cpteam').value || 255, v => { if (Number(v) === 255) return 'NEUTRAL (255: nobody)'; const t = s.teams.find(x => x.tid == v); return t ? `${t.name} (tid ${v})${t.tid == s.profile.tid ? ' — ME' : ''}` : `tid ${v}`; });
     }
+    renderControl(s);
     renderVoice(s);
     const sm = s.summary || {};
     $('#summary').textContent = sm.preset ? `announcer ${sm.announcer ? 'on' : 'OFF'} · gun flashes ${sm.gun_flash ? 'on' : 'OFF'} · hud events ${sm.hud_events ? 'on' : 'OFF'} · mc events ${sm.mc_events ? 'on' : 'OFF'} · headset ${sm.headset ? sm.headset.in_play : ''} / hit ${sm.headset ? sm.headset.hit : ''} / death ${sm.headset ? sm.headset.death : ''} · gun body ${sm.gun ? sm.gun.in_play : ''} · custom events: ${(sm.custom_events || []).join(', ') || 'none'}` : '';
     const t = s.tele; $('#t-hp').textContent = t.hp ?? '—'; $('#t-armor').textContent = t.armor ?? '—'; $('#t-shield').textContent = t.shield ?? '—';
-    $('#t-ammo').textContent = t.mag != null ? `${t.mag} / ${t.reserve}` : '—'; $('#t-model').textContent = `${m.hp}/${m.max_hp} · ${m.armor}/${m.max_armor}${m.carrying != null ? ' · FLAG ' + m.carrying : ''}`;
+    $('#t-ammo').textContent = t.mag != null ? `${t.mag} / ${t.reserve}` : '—'; $('#t-model').textContent = `${m.hp}/${m.max_hp} · ${m.armor}/${m.max_armor}${m.carrying != null ? ' · FLAG ' + m.carrying : ''}${m.reloading ? ` · RELOADING slot ${m.reloading.slot} (${m.reloading.elapsed_s}s)` : ''}${m.stunned ? ` · ⚡ STUNNED ${m.stunned.left_s}s left` : ''}`;
+    // F15: the EMP button says what this game's <8,0> row will do BEFORE it is pressed
+    const emp = document.querySelector('button[data-ir="emp"] .sub'); if (emp) emp.textContent = m.stun_enabled ? `proto 8 → STUN ${m.stun_s}s (config.stun on: fn 24, no damage)` : 'proto 8, Sentinel — plain damage (set STUN in section 2 for the F15 stun)';
+    // F54: what the reload gate will do with the next pull, so a silent RELOAD press is explained before it happens
+    $('#reloadhint').textContent = !m.spawned || !m.alive ? 'reload: needs a live, spawned gun' : m.reserve == null ? 'reload: the phone knows no reserve yet ($ALCD arrives on a shot) — a pull is IGNORED until it does' : m.reserve <= 0 ? 'reload: reserve is dry — a pull reloads nothing' : m.reloading ? 'reloading — an $ALCD with the mag back up ends it' : `reload ready (mag ${m.ammo ?? '?'}, reserve ${m.reserve}) — the pull glances the last-moved pool for ${(((st || {}).readout || {}).timings || {}).reload_glance_s ?? 2} s`;
     $('#lasthir').textContent = t.last_hir ? 'last $HIR: ' + t.last_hir : '';
     // A16 §3.1/§5: the transient gun-body pool readout -- what Tony would see painted on the strip
     pumpGled(s.log);                       // live: replay every $GLED at the spacing it was written
@@ -665,10 +715,17 @@
     if (act === 'headset') return api('headset', { name: b.dataset.name, tid: b.dataset.tid != null ? Number(b.dataset.tid) : null });
     if (act === 'pull_mc') return api('pull_mc', { url: $('#mcurl').value, token: $('#mctok').value || null });
     if (act === 'patch_presentation') { let p; try { p = JSON.parse($('#patch').value); } catch (e) { $('#err').textContent = 'patch is not valid JSON'; return; } return api('patch_presentation', { patch: p }); }
+    if (act === 'station_advert') {
+      const team = Number($('#cpteam').value), dir = $('#cpdir').value;
+      return api('station_advert', { id: Number($('#cpid').value), team: team === 255 ? null : team, held: $('#cpheld').checked, contested: $('#cpcontested').checked,
+        rising: dir === 'rising' || dir === 'both', falling: dir === 'falling' || dir === 'both', value: Number($('#cpvalue').value), present: $('#cppresent').checked });
+    }
+    if (act === 'station_stop') return api('station_stop', { id: null });
+    if (act === 'alcd') return api('alcd', { mag: Number($('#mag').value), reserve: Number($('#reserve').value), slot: 0 });
     return api(act);
   });
-  for (const id of ['mode', 'preset', 'gun', 'headset', 'tid', 'night', 'voice']) $('#' + id).addEventListener('change', e => {
-    const v = id === 'night' ? e.target.value === 'true' : id === 'tid' ? Number(e.target.value) : e.target.value; if (id === 'voice') headStale = true; api('set_profile', { [id]: v });
+  for (const id of ['mode', 'preset', 'gun', 'headset', 'tid', 'night', 'voice', 'station_source', 'stun']) $('#' + id).addEventListener('change', e => {
+    const v = id === 'night' ? e.target.value === 'true' : id === 'tid' ? Number(e.target.value) : id === 'station_source' ? (e.target.value || null) : id === 'stun' ? (e.target.value === '' ? null : Number(e.target.value)) : e.target.value; if (id === 'voice' || id === 'stun') headStale = true; api('set_profile', { [id]: v });
   });
   $('#auto').addEventListener('change', e => api('auto_react', { on: e.target.checked }));
   $('#board').addEventListener('change', e => api('voice_board', { voice: e.target.value }));

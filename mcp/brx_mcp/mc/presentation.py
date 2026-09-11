@@ -160,19 +160,55 @@ TEXT = {
 
 def alert_body(kind: str, extra: dict | None = None) -> dict:
     """The MC→node `alert` body for a named event (A11.4): the node plays cues[kind] + leds[kind] from
-    its OWN bundle (so the presentation profile is honoured per player) and shows `text` as a HUD alert."""
+    its OWN bundle (so the presentation profile is honoured per player) and shows `text` as a HUD alert.
+
+    A19: an extra `role` = `{name, on, tid?}` is checked here against `ROLE_STATES` -- a body naming a role the
+    node cannot hold is a CODE bug on this side, and the node logs-and-ignores it rather than painting it."""
     body = {"kind": kind, "text": TEXT.get(kind, kind.replace("_", " ").upper())}
     for k, v in (extra or {}).items():
         if k not in ALERT_EXTRA:
             raise ValueError(f"alert extra {k!r} is not a wire field")
+        if k == "role":
+            v = _check_role(v)
         body[ALERT_EXTRA[k]] = v
+    return body
+
+
+def _check_role(v) -> dict:
+    if not isinstance(v, dict) or v.get("name") not in ROLE_STATES or not isinstance(v.get("on"), bool):
+        raise ValueError(f"alert role must be {{name: one of {ROLE_STATES}, on: bool, tid?: 0-3}}, not {v!r}")
+    tid = v.get("tid")
+    if tid is not None and not (isinstance(tid, int) and not isinstance(tid, bool) and tid in pg.TEAM_TIDS):
+        raise ValueError(f"alert role tid must be a $TID 0-3 or absent, not {tid!r}")
+    out = {"name": v["name"], "on": v["on"]}
+    if tid is not None:
+        out["tid"] = tid
+    return out
+
+
+# A19: what the HUD banner says when MC hands a player a held role (the node paints the lamp from its own
+# `headset.role[name]`; MC sends only the name). Off = the role ended without a death (a death clears it on
+# the node already).
+ROLE_TEXT_ON = {"vip": "YOU ARE THE VIP", "beacon": "YOU ARE THE EXTRACTION BEACON",
+                "extracted": "EXTRACTED — YOU ARE OUT", "carrier": "YOU HAVE THE OBJECTIVE",
+                "infected": "YOU ARE INFECTED"}
+
+
+def role_alert_body(name: str, on: bool, tid: int | None = None) -> dict:
+    """The `alert` body that assigns (or ends) a held headset role (A19, led-language.md §3.3). Kind `role` is
+    not a presentation EVENT -- the node plays no cue for it, only `_setRole` -- so a silenced game still tells
+    its VIP who they are."""
+    body = alert_body("role", {"role": {"name": name, "on": on, **({"tid": tid} if tid is not None else {})}})
+    body["text"] = ROLE_TEXT_ON.get(name, f"YOU ARE THE {name.upper()}") if on else f"{name.upper()} ROLE ENDED"
     return body
 
 
 # The scorer's `extra` keys and the wire field each becomes. `player_id` (who turned / who is the last
 # survivor) travels as `player_id_subject`: the body's `player_id` is the RECIPIENT, set per push by
 # `Session._alert`, and the two collided until polish 2026-09-04 (the subject was silently overwritten).
-ALERT_EXTRA = {"player_id": "player_id_subject", "carrier": "carrier", "flag_tid": "flag_tid", "hud": "hud"}
+# A19: `role` = `{name, on, tid?}`, the held headset state the recipient now holds (or stops holding).
+ALERT_EXTRA = {"player_id": "player_id_subject", "carrier": "carrier", "flag_tid": "flag_tid", "hud": "hud",
+               "role": "role"}
 
 
 # `sound` specials: "voice:kill" = the player's own voice family's kill line (compile.kill_line);

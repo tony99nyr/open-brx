@@ -592,7 +592,7 @@ class Scorer:
     def missing(self) -> list[str]:
         return [pid for pid, st in self.stats.items() if not st.flushed]
 
-    def recap(self, provisional_override: bool | None = None) -> dict:
+    def recap(self, provisional_override: bool | None = None, stations: list[dict] | None = None) -> dict:
         missing = self.missing()
         out = {"winner": self.winner(), "score": self.team_scores(), "rows": self.rows(),
                "honors": self.honors(),
@@ -605,6 +605,11 @@ class Scorer:
         warn = self.warnings()
         if warn:
             out["warnings"] = warn
+        # Roadmap A6: the utility stations' own self-authoritative report (revives / control hold), one row
+        # per ASSIGNED station -- the Scorer has no idea stations exist, so the caller (`Session._finish` /
+        # `Session.recap`) hands the list in; absent (not `[]`) when nothing on the field was ever assigned.
+        if stations:
+            out["stations"] = stations
         return out
 
     # F74's phantom loop: a gun replaying `$HIR`+`$HP` every 5.07 s with no IR in the air. A replayed hit is

@@ -75,8 +75,31 @@ export interface GameConfig {
   /** A17: per-weapon $SIR sounds. DEFAULT OFF — a non-empty $SIR sound REPLACES the $PSET pool
    *  sound rather than layering with it (bench 2026-09-07), so enabling this silences the
    *  ear-confirmed material layer (armour metal / shield fizz / silent health) on every hit. */
+  /** F15/A20: the host-driven stun (EMP). Present = the `<8,0>` $SIR cell ships as a status row and a proto-8 hit disarms
+   *  the victim's node for `duration_s` (default 10, 1..60). Absent = the stock charge-rifle damage row. */
+  stun?: { duration_s?: number };
   hit_audio_class?: boolean;
   hit_audio_rekey?: boolean;
+  /** A18 (E1): the MODE's own rules, exactly the keys its engine declares (`ModeInfo.params` is the schema).
+   *  Present and complete for a mode that declares any (koth / lms / extraction), absent otherwise. The server
+   *  refuses an unknown key or an out-of-range value at PUT — render controls from `ModeInfo.params`, never
+   *  from a list of knobs living here. Rides the wire to the phone as-is. */
+  mode_params?: Record<string, number | string | boolean>;
+  /** A19 (S10): the VIP's player_id. Must be on the roster (validate() names it otherwise); MC pushes that
+   *  player the white `vip` headset role once the match is live. Never part of a saved game. */
+  vip_player_id?: string | null;
+}
+
+/** A18: one row of a mode's parameter schema (`GET /api/modes` → `ModeInfo.params`). Render `int`/`float` as a
+ *  number field bounded by `min`/`max`, `bool` as a switch, `str` with `choices` as a segmented control. */
+export interface ModeParamSpec {
+  name: string;
+  type: 'int' | 'float' | 'bool' | 'str';
+  default: number | string | boolean;
+  desc: string;
+  min?: number;
+  max?: number;
+  choices?: string[];
 }
 
 /** A11/A11.5 — one row of the resolved presentation profile (GET /api/presentation). */
@@ -185,6 +208,22 @@ export interface RecapView {
   settling?: boolean;
   awaiting?: string[];
   since_end_ms?: number | null;
+  /** Roadmap A6 — one row per ASSIGNED utility station, from its own self-authoritative heartbeat
+   *  (utility.md §5c/§5d.6: a station answers to nobody mid-match, so this is the only place its count is
+   *  ever seen). Absent unless some station is assigned; a station never heard from still gets a row, with
+   *  its own fields null rather than a fabricated zero. */
+  stations?: RecapStationRow[];
+}
+
+export interface RecapStationRow {
+  node_id: string; kind: StationKind; id: number; team: number;
+  /** A6 fix (F105, 2026-09-11): true once at least one heartbeat has landed for this station, set on
+   *  EVERY kind — extraction/powerup/bomb have no count of their own, so this is the only signal the UI
+   *  has to tell "reported" from "never heard from" for them. */
+  heard: boolean;
+  revives?: number | null;                          // respawn only
+  hold_ms?: Record<string, number> | null;           // control only
+  owner?: number | null;                             // control only
 }
 
 export type FeedTag = 'DOUBLE KILL' | 'TRIPLE KILL' | `STREAK ×${number}` | 'FIRST BLOOD' | 'TEAM KILL' | 'SYNC POINT';
@@ -242,6 +281,9 @@ export interface State {
 export interface ModeInfo {
   mode: string; name: string; abbr: string; desc: string; brief: string;
   teams_text: string; win_text: string; respawn_text: string; defaults: GameConfig;
+  /** A18: what this mode lets the operator tune (`defaults.mode_params` carries the values). Optional — an
+   *  older server never sends it; `[]` for a mode that takes none. */
+  params?: ModeParamSpec[];
 }
 
 export interface WeaponView {

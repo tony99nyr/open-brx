@@ -28,6 +28,10 @@ from .objectives import DominationEngine, CtfEngine
 from . import hillbeacon
 from .hillbeacon import HillBeaconReader
 from .driver import GameDriver, build_engine, run_live, assign_teams, clean_callsign
+# A18 / E1: engine-declared mode parameters + the name -> engine table (the E2 seed)
+from .params import Param
+from . import registry
+from .registry import engine_class, params_schema, params_schema_json, register_mode, validate_mode_params
 # Extraction engine + its non-colliding data classes (config/game/results).
 from .extraction import ExtractionConfig, ExtractionGame
 from .extraction_adapter import ExtractionEngineAdapter
@@ -45,6 +49,8 @@ __all__ = [
     # so the MC server can reach the wire constants without importing an engine.
     "hillbeacon", "HillBeaconReader",
     "GameDriver", "build_engine", "run_live", "assign_teams", "clean_callsign",
+    "Param", "registry", "engine_class", "params_schema", "params_schema_json", "register_mode",
+    "validate_mode_params",
     # extraction (import its Actions from .extraction directly)
     "ExtractionConfig", "ExtractionGame", "ExtractionEngineAdapter",
 ]

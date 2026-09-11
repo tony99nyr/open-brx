@@ -342,9 +342,10 @@ def test_a_hill_drains_a_fake_gun_to_death_and_scores_for_nobody():
 
     # BB stands in a hill held by team 1. 25 armour + 25 hp, 8 a tick.
     gun = FakeTagger("BB", hp=25, armor=25, team=2)
-    t = 0.0
+    gun.write("$SIR,15,0,,28,0,0,1,,*")                # the proto-15 row the compiled table ships (F70/F72): without it the
+    t = 0.0                                            # fake now DISCARDS the beacon (F78's gate) and the driver never sees one
     for _ in range(12):
-        gun.beacon(owner_team=1)                       # the half our table discards today
+        gun.beacon(owner_team=1)                       # the beacon half
         gun.receive_ir(shooter_team=1, shooter_id=0, mag=8)   # the half that lands
         for frame in gun.drain():
             ev = drv.feed("BB", parse_event(frame), t)
@@ -373,3 +374,71 @@ def test_faketagger_reports_shield_zero_after_spawn_whatever_pset_said():
     assert hp and hp[-1].endswith(",0,*"), hp    # `$HP,hp,armor,shield` with shield 0, as on hardware
     # CONTROL: hp and armour DO come from the `$PSET`.
     assert t.cfg_hp == 45 and t.cfg_armor == 70
+
+
+# ---- Q18: a reconnect is only a reconnect once the gun ANSWERS --------------- #
+def test_reconnect_is_not_declared_until_the_gun_answers_the_probe():
+    """Q18: the first mid-game reconnect printed "(reconnected …)" as soon as the BLE connect returned, pushed
+    the whole re-arm at a gun that was not yet taking writes, counted it against RECONNECT_CAP, and then sat
+    on a "connected" link the loop never retried -- a deaf gun for the rest of the match. Now a `$PHONE,*`
+    round trip (bench: it answers `$BUT,3,0,*`) has to succeed first; a linked-but-deaf gun is dropped again
+    and retried on the next window, and nothing is printed or counted as reconnected."""
+    import contextlib
+    import io
+
+    A = FakeTagger("AA:1"); B = FakeTagger("BB:2")
+    mgr = FakeConnectionManager([A, B])
+    cfg = GameConfig(mode="tdm", frag_limit=1, game_time_s=1, respawn_s=1)   # ends on the clock
+    err = io.StringIO()
+
+    async def play():
+        task = asyncio.ensure_future(
+            run_live(cfg, ["AA:1", "BB:2"], manager=mgr, tick_s=0.01))
+        await asyncio.sleep(0.05)
+        B.listening = False                          # connects fine, takes no writes (the Q18 shape)
+        mgr.drop("BB:2")
+        await asyncio.sleep(0.15)                    # the loop tries once (the next try is MIN_RECONNECT_S away)
+        assert not mgr.is_connected("BB:2"), "a deaf gun is NOT left sitting on a 'connected' link"
+        assert "(reconnected BB:2)" not in err.getvalue(), "nothing was declared reconnected"
+        assert "not listening" in err.getvalue(), err.getvalue()
+        # read the spy HERE, while the match is live: after the whistle the teardown's best-effort end
+        # frames are also tried at the dead link (and fail harmlessly), and those are not a re-arm
+        assert _tx_since_drop == ["$PHONE,*"], f"only the probe reached the deaf gun, not the re-arm: {_tx_since_drop}"
+        return await asyncio.wait_for(task, timeout=8)
+
+    _tx_since_drop: list[str] = []
+    _orig_send = mgr.send
+
+    async def spy_send(alias, command, reply_window_ms=0):
+        if alias == "BB:2" and not B.listening:
+            _tx_since_drop.append(command)
+        return await _orig_send(alias, command, reply_window_ms=reply_window_ms)
+    mgr.send = spy_send
+
+    with contextlib.redirect_stderr(err):
+        snap = _run(play())
+    assert snap["over"] is True
+
+    # CONTROL: the same drop on a LISTENING gun is reconnected, re-armed and declared exactly once
+    A2 = FakeTagger("AA:1"); B2 = FakeTagger("BB:2")
+    mgr2 = FakeConnectionManager([A2, B2])
+    err2 = io.StringIO()
+
+    async def play2():
+        task = asyncio.ensure_future(
+            run_live(cfg, ["AA:1", "BB:2"], manager=mgr2, tick_s=0.01))
+        await asyncio.sleep(0.05)
+        B2.write("$CLEAR,*"); B2.drain()             # the gun "lost" its table with the link (worst case)
+        mgr2.drop("BB:2")
+        await asyncio.sleep(0.15)
+        assert mgr2.is_connected("BB:2")
+        # read while LIVE: the game-end teardown ends on `$CLEAR` and would wipe the evidence
+        tx2 = [e.raw for e in mgr2.sessions["BB:2"].buffer if e.direction == "tx"]
+        assert tx2.index("$PHONE,*") < tx2.index("$CLEAR,*"), f"the probe goes out BEFORE the re-arm: {tx2[:4]}"
+        assert B2.sir, "the listening gun was re-armed (holds a $SIR table again) after the probe"
+        return await asyncio.wait_for(task, timeout=8)
+
+    with contextlib.redirect_stderr(err2):
+        _run(play2())
+    assert err2.getvalue().count("(reconnected BB:2)") == 1, err2.getvalue()
+    assert "not listening" not in err2.getvalue()

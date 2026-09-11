@@ -8,13 +8,23 @@ life and host-respawns while lives remain; at zero lives the player is eliminate
 from __future__ import annotations
 
 from .base import Action, Callout, Eliminate, Respawn, ScoredEngine
+from .params import Param, resolve as _resolve_params
 
 
 class LastManStandingEngine(ScoredEngine):
+    # A18: `lives` on the wire. The CLI dataclass expresses it as `respawns` (lives - 1, None = unlimited);
+    # `config.lives()` is passed as the fallback so that path keeps its meaning, and an unlimited CLI config
+    # still gets the finite default LMS needs.
+    PARAMS = {
+        "lives": Param("int", 3, "lives per player; the last one standing wins", lo=1, hi=20),
+    }
+
     def __init__(self, config, now: float = 0.0):
         super().__init__(config, now)
-        # default 3 lives if unlimited was left on (LMS needs finite lives)
-        self._lives = config.lives() if config.lives() is not None else 3
+        lives_fn = getattr(config, "lives", None)
+        cli_lives = lives_fn() if callable(lives_fn) else None
+        self.params = _resolve_params(type(self), config, fallback={"lives": cli_lives})
+        self._lives = self.params["lives"]
 
     def add_player(self, player_id: str, team: int) -> None:
         self.roster.add(player_id, team, lives=self._lives)

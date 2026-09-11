@@ -12,7 +12,9 @@ LED and sound behaviour can be judged on a bench, one click at a time, before a 
 /mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp stage --gun <addr> --ir auto
 # or from a Windows shell: python -m brx_mcp stage --gun <addr> --ir COM7
 ```
-Then open **http://127.0.0.1:8790/**. Flags: `--gun ADDR` connect on start (or SCAN / CONNECT on the page) ·
+Then open **http://127.0.0.1:8790/**. Flags: `--gun ADDR` connect on start (or SCAN / CONNECT on the page; S11: the
+connect runs in the background, so the page is up at once with NO GUN LINKED while a sleeping tagger is tried, and a
+failed connect is one warn line in the log rather than a hung process) ·
 `--ir COM7|auto` the emitter's serial port -- it is PINGed on attach and a port that does not answer is refused (auto-detect once picked a different USB device); without an emitter the IR buttons only log the word · `--mc http://ip:8765
 --token …` pull a running MC's applied config so the stage plays exactly that game · `--mode` start mode ·
 `--fake` no Bluetooth, one emulated gun (for trying the page itself; `SHOOT ME` / `KILL ME` hit it directly).
@@ -37,10 +39,49 @@ is tied to the exact profile. A silenced preset has no sound steps; night has no
    shape `PUT /api/config` takes) and recompiles, so an event's sound or colour can be changed and tried in the
    same minute. Anything the server would refuse is refused here with the same message.
 3. **GAME** — ARM (head), SPAWN (T-0 tail + start flash; the gun body is taken 2.5 s later, blank then rest), RESPAWN, GAME END / TEARDOWN ONLY, PANIC (re-ARM after: F11). The tiles show
-   what the gun reports (`$HP` / `$LCD` / `$ALCD`) and the phone-side model beside it.
+   what the gun reports (`$HP` / `$LCD` / `$ALCD`) and the phone-side model beside it. A second row is the **reload
+   path** (F54): **RELOAD** injects the gun's own handle report `$BUT,2,1` through the same rx path a real pull
+   arrives on, and the stage does what `engine.js` `_reloadPulled` does -- the pull is ignored with a full mag, a
+   dry reserve, or a reserve the gun has never reported (`$ALCD` only arrives on a shot: fire once on a real gun, or
+   press **REPORT AMMO**, which injects an `$ALCD` for the fake), else it repaints the last-moved pool SOLID at its
+   current level for `reload_glance_s` (2 s day, 1 s night, from the bundle) and reverts. The glance cancels a drop
+   animation in flight, a later drop cancels the glance's revert, and the hint beside the button says what the
+   next pull will do before it is pressed. The MODEL tile shows `RELOADING slot n` until an `$ALCD` brings the mag
+   back up.
 4. **IR AT THE GUN** — SHOOT ME (25), KILL ME (200), EMP (proto 8), MEDIC HEAL (proto 1 pair), RESPAWN BEACON /
    STATION BUTTON (proto 15). Shooter team is a selector. With **AUTO-REACT** on (default) the stage plays what
-   the phone would on the hit it sees back: the hit flash, the low-health alert, the death blink, the health band.
+   the phone would on the hit it sees back: the hit flash, the low-health alert, the death blink, the health band --
+   and, on a pool RISE (a heal, an armour pickup, a shield grant), the `healed` / `armour_up` / `shield_up` event
+   for the biggest rise, exactly as `engine.js` fires them (F58(b)): a frame that damages and grants in one tick is
+   a HIT when the total fell and the gain is dropped (F14), and a rise inside 250 ms of a kill / respawn / down /
+   match-over moment is dropped too (the phone's one HUD moment slot). The default profile attaches nothing to
+   those events (F58(a) is the ears item), so the log says `pool rise: healed (health +20)` and then that the
+   event has nothing configured. F57: the hit that arms the low-health alert plays the alert ONLY (no grunt under
+   it) and stamps the 600 ms pain gate, so a hit inside that window is silent too; the log names both.
+   **EMP** is the F15 stun when section 2's **STUN (EMP)** is on (off = the stock plain-damage cell; on = the
+   compiled head carries the `<8,0>` fn-24 status row, so the word deals no damage): on a live gun the stage writes
+   `$AMMO,<slot>,0,0,1,*` for every spawn slot and holds the LIVE mag/reserve per slot (the last `$ALCD`, else the
+   spawn frame's); a second EMP extends the window and writes nothing; `$ALCD` is ignored while stunned; expiry
+   writes the held counts back once; death cancels with no write (the revive's own `$AMMO` re-arms). The MODEL tile
+   shows `STUNNED n s left`, the EMP button says which of the two it will be before it is pressed, and a STUN change
+   lights RE-ARM (the row rides in the head). On the fake the EMP word is placed on the session as the gun would
+   report it, since the fake knows nothing of `$SIR` functions.
+4b. **CONTROL POINT** (F102) -- the phone station (kind 5) half of the hill, which the stage cannot hear over BLE, so
+   the advert is **injected**: station id, team (owner while HELD, else the team building it up, or NEUTRAL 255),
+   HELD / CONTESTED, direction (static / rising / falling / rising+falling, which the phone reads as UNKNOWN), progress
+   0-100 and ON THE POINT. **SEND ADVERT** encodes those into the 16-byte advert and decodes them back through the
+   phone's own byte layout (`beacon.js`: team byte 9, flags byte 10, value byte 11) before the hill model reads
+   them, and the station keeps advertising (refreshed every poll, like a real one at ~4 Hz) until **STOP
+   ADVERTISING**. The model only announces a CHANGE of hands, so rehearse as a sequence: neutral (adopted silently)
+   -> held by me (Hill Captured, then the possession tick once per second) -> contested + falling (Hill Contested
+   once, 10 s floor; the tick doubles to every 0.5 s) -> neutral (Hill Lost!) -> STOP (silence; the point expires on
+   the 4 s presence rule, applied twice as on the phone: the entry stops being read after 4 s and the model expires
+   4 s after that; a grenade point keeps its 12 s / two-missed-beacons window). The F70 gate is mirrored: section
+   2's **OBJECTIVE SOURCE** (blank = as the config says; koth's row says grenade) decides which wire the phone
+   listens to, a phone point is heard only under `phone`, the grenade's IR beacon only under `grenade`, and the
+   section's first line says which is in force so a silent SEND is explained before it happens. The walkthrough
+   adds the five control-point steps whenever the source is `phone`, and a RELOAD GLANCE step whenever the profile
+   has a readout.
 5. **GAME EVENTS** — one button per event **in this config's profile** (HUD-driven green, MC-driven amber), greyed
    when the profile carries nothing for it. Plays the cue + burst with the real holds and the one-burst-per-second
    gate. KILL buttons play the shooter-side stack (`$SFLASH` + medal lines, or the kill line).

@@ -536,7 +536,12 @@ class NetServer:
         return rec
 
     def _fire_node(self, rec: NodeRecord) -> None:
-        info = {"node_id": rec.node_id, "node_type": rec.node_type}
+        # F106(b): `rec.app_ver` has been captured from every hello since A13.5, but this dict never
+        # carried it -- so `state.py _on_node`'s utility branch (`st["app_ver"] = n.get("app_ver") or ...`)
+        # was reading a key that never arrived off a REAL socket, and `station.app_ver` stayed None
+        # forever except on `FakeNet`, whose hand-rolled `simulate_*_hello` info dicts included it and
+        # so never caught this.
+        info = {"node_id": rec.node_id, "node_type": rec.node_type, "app_ver": rec.app_ver}
         if rec.gun_name:
             info["gun_name"] = rec.gun_name
         if rec.gun_tail:

@@ -1,6 +1,6 @@
 # Shared contracts (M-CONTRACTS) — the node↔MC wire and the game data model
 
-- **Status:** Ratified (Wave 0, 2026-08-25) + amendments **A1–A15** (index in §10). Since 2026-09-06 the
+- **Status:** Ratified (Wave 0, 2026-08-25) + amendments **A1–A20** (index in §10). Since 2026-09-06 the
   amendments are **folded into the body** where they apply, each tagged with its id (`A6.8`, `A11.7`, …) so the
   ids stay greppable. Changes are still amendments: add an index row in §10 and fold the text in.
 - **Consumers:** every module (`mcp/brx_mcp/mc/`, `app/src/`, `webapp/mc/`). Bind to *these shapes*, never
@@ -144,8 +144,40 @@ GameConfig {
   presentation?: Presentation,        // A11.1 — below
   player_num_base?: number,           // A6.5: first player_num this session hands out (default 1). Two concurrent games on one
                                       // field use disjoint ranges (e.g. 1 and 32) — $HIR carries no match id.
+  mode_params?: { [name: string]: number | string | boolean },   // [A18] the MODE's own rules — below
+  vip_player_id?: string | null,      // [A19] who the VIP is; must be on the roster (validate()); MC pushes them the `vip`
+                                      //   headset role via `alert.role` once live and after each of their respawns. Never in a saved game.
+  stun?: { duration_s?: number },     // [A20] the host-driven STUN (EMP). Present = the `<8,0>` $SIR cell ships as fn 24 (status,
+                                      //   no damage) and a proto-8 $HIR disarms the victim's node for duration_s (default 10, 1..60).
+                                      //   Absent = the stock charge-rifle damage row, byte-for-byte. Source: a $WEAP t3=8 slot
+                                      //   (the charge rifle) or a proto-8 station. node.md §3.12.
 }
 ```
+
+**`GameConfig.mode_params` [A18, E1] — the mode's own rules, declared by its engine.** The wire config used
+to be mode-agnostic (`mode, health, respawn, scoring, teams, loadout_policy, presentation`), so an objective
+mode's knobs lived only in the CLI dataclass and could not be set from MC at all
+(`docs/archive/mode-extensibility.md` G1). Now each engine (`mcp/brx_mcp/modes/*.py`) declares a `PARAMS`
+class attribute — `{name: Param(type, default, desc, lo?, hi?, choices?)}` (`modes/params.py`) — and
+`modes/registry.py` maps a mode name to its engine, so ONE table answers "what may `koth` be told?". Rules:
+- **The schema is served, not duplicated:** `GET /api/modes` → `params[]` (`{name, type: int|float|bool|str,
+  default, desc, min?, max?, choices?}`). A UI renders controls from it; it never keeps its own list of knobs.
+- **Present and COMPLETE, or absent.** `default_config(mode)` carries every default for a mode whose engine
+  declares any (`koth`: `score_target`, `points_per_s` · `lms`: `lives` · `extraction`: `channel_s`,
+  `win_target`, `loot_per_kill`, `drop_policy`, `extract_removes_player`); `tdm`/`ffa`/`infection` declare none
+  and carry no key, so their configs are byte-identical to before (a saved game's identity is the whole config).
+  A partial `PUT` merges onto the current values and stores the resolved set, so the wire form is
+  self-describing and a node needs no schema to read it (§3's "no hidden state").
+- **Refused, never dropped or clamped:** an unknown key or an out-of-range value is a `400` at `PUT
+  /api/config` and an error from `validate()` (belt and braces for a fixture / CLI / stale preset), in the
+  operator's voice naming the mode's real parameters. A mode with no params refuses ANY key ("a control that
+  does nothing"). `control_points` is deliberately not a param (F88: a beacon carries no station id).
+- **The engine reads them** (`params.resolve(cls, config)`), from `mode_params` on the wire form or the same-
+  named attribute on the CLI dataclass, so the CLI/sim path is unchanged. `registry.register_mode(name, cls)`
+  is the E2 seed: a registered engine is buildable and its schema/validation light up from that one call (the
+  MC catalog row, presentation preset and scorer are still hand-registered — E2's other half).
+- **The phone reads `config.mode_params` as-is** (the TS `GameConfig` type carries it); no phone-side
+  consumer exists yet — the field is the contract the HUD's objective ladders will read.
 
 **`GameConfig.presentation` [A11.1, A11.5, A11.6, A11.7, A11.8]** = `{ preset: standard|silenced|counter_strike|vip|
 infection|last_stand|extraction|custom, announcer, gun_flash, headset_team, sight_flash, hud_events, mc_events,
@@ -503,7 +535,7 @@ for idempotent replay. `status` carries no `seq`.
 | `config` | `{ config: GameConfig, frames: FrameBundle, roster: RosterEntry[] }` | pushed on **all-ready** (phase 4) [A2] → node writes `frames.head` (no `$SPAWN`), replies `ack_config` → **LOBBY**. Re-pushed (new `frames`) if a player's loadout/num changes after the push. |
 | `start` | `{ match_id, go_live_t, config_id, seq, countdown_s }` | schedule the dispersed start (M-START) [A1]. MC mints `match_id` and stamps a **monotonic `seq` per session**. **Rules [A5.6]:** re-push of the *same* schedule (straggler, grace re-arm) = **same `seq` + same `match_id`** (no-op on a node that holds it); a **reschedule** = **new `seq` + new `match_id`** (supersedes). A late-joining player mid-match: `assign` → `config` → the same `start` re-pushed → hot-join (M-START E5). |
 | `feedback` | `{ player_id, kind:"kill"|"victory"|(legacy "multi"|"medal"), t, cue?:string, medals?:string[] }` | MC scored you a kill → node `$SFLASH` + `$PLAY` (`cue` if present, else `frames.cues[kind]`; missing → flash only). `t` = the death time; node ignores it if older than `FEEDBACK_MAX_AGE_MS` [A4.3]. `medals` [A11.4]. |
-| `alert` | `{ kind, text, player_id, t, hud?:boolean, player_id_subject?, carrier?, flag_tid? }` | A11.4: a named game event (`player_id` = the recipient; `player_id_subject` = who turned / the last survivor); node plays its own `cues[kind]`/`leds[kind]` + shows `text` as a HUD alert (`hud:false` = sound/lights only); stale (> `FEEDBACK_MAX_AGE_MS`) → dropped. Scope is MC's: all / one team / one player. `carrier`/`flag_tid` start the flag-carrier headset blink [A11.6]. |
+| `alert` | `{ kind, text, player_id, t, hud?:boolean, player_id_subject?, carrier?, flag_tid?, role?: { name, on, tid? } }` | A11.4: a named game event (`player_id` = the recipient; `player_id_subject` = who turned / the last survivor); node plays its own `cues[kind]`/`leds[kind]` + shows `text` as a HUD alert (`hud:false` = sound/lights only); stale (> `FEEDBACK_MAX_AGE_MS`) → dropped. Scope is MC's: all / one team / one player. `carrier`/`flag_tid` start the flag-carrier headset blink [A11.6]. **`role` [A19]** = a HELD headset state (led-language.md §3.3: `carrier`\|`infected`\|`vip`\|`beacon`\|`extracted`) the recipient now holds (`on:true`) or stops holding; `tid` only for a tid-keyed role. The node routes it to `_setRole` (the same mechanism the carrier blink and the infection flip use), paints from ITS OWN `headset.role` table, and logs-and-ignores a name outside the five. Kind `role` is not a presentation event (no cue plays) and the push bypasses the profile's `mc_events` switch: a role is a rule, not a flourish. MC sends `vip` to `config.vip_player_id` **`ROLE_SETTLE_MS` (3 s) after go-live and after each of that player's `respawn` facts** — the node's own start/respawn flash (+1 s, ~1 s) would paint over anything sent at the whistle. `beacon`/`extracted` have no MC-side signal yet (no node→MC fact says who is extracting or extracted), so only the contract exists for them. |
 | `control` | `{ cmd, seq?, ... }`, cmd ∈ `end`\|`panic`\|`abort_start`\|`recall` | **one meaning each [A2, A5.9]**: `abort_start`=cancel a *pending* schedule (by `seq`) while ARMED → LOBBY (gun still holds `head`); if the node is already LIVE for that `seq`, it behaves as `recall`. `recall`=stop a *live/armed* game → node writes `frames.end` (+ `cues.game_over`) → **KITTED**; `end`=normal match end → same → KITTED; `panic`=`frames.panic` → KITTED. In KITTED/LOBBY an `end`/`recall` writes `frames.end` iff a bundle is held, then → KITTED. **`pause` is removed** [A4.6]. |
 | `apply` | `{ frames: string[], reason?: string, preview?: boolean }` | A6.4: best-effort "write these frames now" — coverage-zone runtime effects only (syphon heal, regen refill, extraction boost). Node writes verbatim, never persists, ignores unless LIVE. **A9.1:** `preview:true` with frames that are ALL `$PLAY`/`$SFLASH` may be written in `connected`/`kitted`/`lobby` too (the tagger speaks a voice sample when the host changes a voice or gamertag). |
 | `score` | `ScoreRow` + `{ shots_total, board? }` | A7: MC pushes a player's current row to its node whenever it changes (best-effort, coverage-zone). The HUD shows K/D/A (and ACC only once `hits ≥ 1` and `shots ≥ 10`); still "—" until the first push or `welcome.node.score`. **`board?`** (2026-09-03, additive) = `{ teams: [{ team_id, name, score }], cap }` — the race to the frag cap for the HUD's DOWN-screen recap; in FFA the top three players stand in for teams. |
@@ -654,6 +686,9 @@ Volume per §3. BLE writes chunk at 20 bytes (§app).
 
 | id | date | what | folded into |
 |---|---|---|---|
+| A20 | 2026-09-11 | HOST-DRIVEN STUN (F15): `GameConfig.stun = {duration_s?}` (default 10 s, 1..60). **The gun does not stun itself** — the proven chain is a proto-8 IR word → the victim's `$SIR,8,0,,24` row (fn 24: a STATUS function, `$HIR` fires, no pool moves, no `$HP` follows) → the NODE writes `$AMMO,<slot>,0,0,1,*` for every live slot → the node restores the **LIVE** counts (last `$ALCD` per slot, else the frame's spawn values; F87: a re-push refills, a stun must not) when the timer runs out. **The cell is the charge rifle's** (`<8,0>`, stock fn 38), so with stun on the charge rifle IS the EMP source and deals no damage; the other source is a proto-8 station. `compile.sir_table(stun=True)` swaps the row's function in place (stock order kept, sound token carried over — F43, never invented) on the head AND on every `sir_pool` take (a revive that re-wrote the stock row would un-stun the game). **Rules the node keeps** (`engine.js _stun`/`_stunRestore`, mirrored in `stage.py`): only under `config.stun`, only LIVE and spawned and alive; a second EMP EXTENDS the window (no second disarm write, never a double restore); death CANCELS with no write (`frames.revive` re-arms); a rejoin reconcile takes the stun over (coarse: it re-arms with the frame's counts); a link that is down at expiry gets no write and the relink reconcile re-arms it; `$ALCD` while stunned is ignored (a gun that cannot fire has nothing to count, and the echo of our own `$AMMO,0` must not become the count we restore — hardware-UNVERIFIED whether it echoes). HUD: `moment {kind: stunned, data:{ms}}` / `stun_over`, `state().stunned = {until, leftMs}`; presentation hooks `stunned` / `stun_over` (no profile carries them yet). No wire fact (a status row moves no pool, so there is no `hit_taken`; MC does not learn of stuns — open). `validate()`: shape, range, refused with `hit_audio_rekey` (the re-key would move the charge rifle off the EMP cell with its damage intact), a WARNING naming the rostered weapons that become stunners, and a WARNING when nothing in the game can stun. Exposed at `PUT /api/config` (`stun: {duration_s?}` or `null` to clear; the shape is a 400, the range and the source warning are `validate()`'s). **The native stun is not relied on** (2/5 singles, lasts until death). | §3 GameConfig; `node.md` §3.12; `mcp/brx_mcp/mc/compile.py` (`_STUN_SIR_ROW`); `protocol/brx-protocol.md` §5 fn 24 |
+| A19 | 2026-09-11 | HELD ROLES REACH THE NODE (S10): `alert.role = {name, on, tid?}` routed to `engine.js _setRole`; `GameConfig.vip_player_id` (rostered, never in a saved game) — MC pushes `vip` 3 s after go-live and after each VIP respawn (`Session._push_role`, `ROLE_SETTLE_MS`), bypassing `mc_events`; `beacon`/`extracted` have the contract but no MC-side signal yet | §3, §5 `alert`; `mc/presentation.py role_alert_body` |
+| A18 | 2026-09-11 | MODE PARAMS (E1): `GameConfig.mode_params`, declared per engine as `PARAMS` (`modes/params.py`), resolved through `modes/registry.py` (the E2 seed: `register_mode`), served as `GET /api/modes .params`, refused-not-dropped at PUT and in `validate()`; complete-or-absent on the wire; engines read `score_target`/`points_per_s`/`cap_target`/`detonation_s`/`rounds_to_win`/team sides/`channel_s`/`win_target`/`loot_per_kill`/`drop_policy`/`extract_removes_player`/`lives` instead of literals | §3; `docs/spec/modes.md` §2.1 |
 | A1 | 2026-08-25 | `ready`, `ack{seq_hi}`, `start.seq`/`countdown_s` + `abort_start`, `status.arm_state`, battery amber-not-red | §5 tables, §4, §1.1 |
 | A2 | 2026-08-25 | `assign` split from `config`; `recall` vs `abort_start`; `t_minus_ms`/`synced`; three `seq` namespaces; link state orthogonal | §5, §6, §9 |
 | A3 | 2026-08-25 | `status.dropped`, `arm_state:connected`, `log_data`, `assign` re-sent on change, native multikill is NOT free under BLE (host-`$PLAY`, LAN-gated) | §4, §5 |

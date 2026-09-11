@@ -1017,3 +1017,63 @@ def test_the_spawn_line_is_ours_and_respawned_draws_from_the_same_pool():
     assert next(f for f in back["head"] if f.startswith("$PSET,")).split(",")[11] == "VAN"
     one = C.compile(_cfg(), dict(_player(), voice="male", voice_slots={"spawn": "VAO"}), _TEAMS)
     assert one["cues"]["spawn"] == "$PLAY,,4,6,VAO,,,,*" and "spawn" not in one["cue_pools"]
+
+
+# ---- F15 / A20: the host-driven stun (EMP) -----------------------------------
+def _sir_fn(head, cell=("8", "0")):
+    from brx_mcp.mc.compile import _sir_index
+    return _sir_index([f for f in head if f.startswith("$SIR,")]).get(cell)
+
+
+def test_stun_ships_the_emp_row_only_when_the_config_asks():
+    """`config.stun` present -> the `<8,0>` cell is fn 24 (status: `$HIR`, no pool change); absent -> the stock
+    charge-rifle row, byte-for-byte (the golden bundle must not move)."""
+    from brx_mcp.mc.compile import _STUN_SIR_ROW
+    from brx_mcp.gameconfig import _SIR_TABLE
+    # CONTROL: no stun -> the stock table, in stock order, untouched
+    head = C.compile(_cfg(), _player(), _TEAMS)["head"]
+    assert _sir_fn(head) == 38, "stock: the charge rifle's plain damage"
+    assert [f for f in head if f.startswith("$SIR,")] == list(_SIR_TABLE)
+    # stun on -> fn 24 on the SAME cell, in the SAME position, nothing else moved
+    on = C.compile(dict(_cfg(), stun={"duration_s": 10}), _player(), _TEAMS)["head"]
+    rows_on = [f for f in on if f.startswith("$SIR,")]
+    assert _sir_fn(on) == 24
+    assert rows_on.index(_STUN_SIR_ROW) == list(_SIR_TABLE).index("$SIR,8,0,,38,0,0,1,,*"), "in place, not appended"
+    assert [r for r in rows_on if not r.startswith("$SIR,8,0,")] == [r for r in _SIR_TABLE if not r.startswith("$SIR,8,0,")]
+    assert "$SIR,8,0,,24,0,0,1,,*" in rows_on and _STUN_SIR_ROW.split(",")[3] == "", "the sound token stays EMPTY (F43: never invent a sound id)"
+    # `{}` is the 10 s default and still ships the row
+    assert _sir_fn(C.compile(dict(_cfg(), stun={}), _player(), _TEAMS)["head"]) == 24
+
+
+def test_stun_row_rides_every_sir_pool_take_too():
+    """A17's class layer re-writes a whole `$SIR` table before every revive; if those takes kept the stock fn-38
+    row the first respawn would silently un-stun the game."""
+    b = C.compile(dict(_cfg(), stun={"duration_s": 5}, hit_audio_class=True), _player(), _TEAMS)
+    assert b["sir_pool"], "class sounds on: the pool exists"
+    for take in b["sir_pool"]:
+        assert _sir_fn(take) == 24, take
+    # CONTROL: the same pool without stun keeps fn 38 in every take
+    b0 = C.compile(dict(_cfg(), hit_audio_class=True), _player(), _TEAMS)
+    assert all(_sir_fn(take) == 38 for take in b0["sir_pool"])
+
+
+def test_validate_stun_shape_and_names_the_source():
+    roster = [_player(num=7, weapons=("charge_rifle", "shotgun")), _player(num=8, team="yellow", weapons=("assault_rifle",))]
+    v = C.validate(dict(_cfg(), stun={"duration_s": 10}), roster)
+    assert v["ok"], v
+    assert any("charge_rifle" in w and "<8,0>" in w for w in v["warnings"]), v["warnings"]
+    # nothing on the roster can stun: say so (a knob that does nothing is the E1 failure)
+    v = C.validate(dict(_cfg(), stun={}), [_player(num=7, weapons=("assault_rifle",))])
+    assert v["ok"] and any("nothing in this game can stun" in w for w in v["warnings"]), v
+    # shape: not an object / out of range / a bool
+    for bad in ("10", 10, ["x"]):
+        assert not C.validate(dict(_cfg(), stun=bad), roster)["ok"], bad
+    for d in (0, 61, -1, True, "10"):
+        v = C.validate(dict(_cfg(), stun={"duration_s": d}), roster)
+        assert not v["ok"] and any("duration_s" in e for e in v["errors"]), (d, v)
+    # refused with the re-key (it would move the charge rifle off the EMP cell with its damage intact)
+    v = C.validate(dict(_cfg(), stun={}, hit_audio_rekey=True), roster)
+    assert not v["ok"] and any("hit_audio_rekey" in e for e in v["errors"]), v
+    # CONTROL: the plain config validates clean with no stun chatter at all
+    v = C.validate(_cfg(), roster)
+    assert v["ok"] and not any("stun" in w for w in v["warnings"]), v

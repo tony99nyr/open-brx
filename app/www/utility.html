@@ -42,6 +42,7 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 .hero .status.on{background:var(--ok);color:#03140a;border-color:var(--ok);box-shadow:0 0 30px -8px var(--ok)}
 .hero .revives{margin-top:12px;font-family:var(--fd);font-weight:700;font-size:20px;letter-spacing:.1em;color:var(--ok);min-height:1em}
 .hero .armed{margin-top:10px;font:700 11px var(--fl);letter-spacing:.24em;color:var(--mut)}.hero .armed.on{color:var(--glow)}
+.hero .ids{margin-top:4px;font:600 10px var(--m);letter-spacing:.1em;color:var(--mut);min-height:1em}
 
 /* ---- kind 5: the control point. The screen has to say, from across the field and at a glance, WHO owns it,
    WHICH WAY it is going and HOW FAST -- a defender must be able to read "we are losing this, get help".
@@ -163,6 +164,7 @@ input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:0}   /*
       <div class="cwarn" id="cwarn"></div>
     </section>
     <div class="armed" id="armed"></div>
+    <div class="ids" id="ids"></div>
   </section>
 
   <section class="panel players">

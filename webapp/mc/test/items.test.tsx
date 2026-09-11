@@ -22,16 +22,29 @@ async function muster() {
 }
 
 describe('ITEMS — utility phones at muster', () => {
-  it('lists the utility phone that said hello, unassigned, and not among the companion phones', async () => {
+  it('lists the utility phones that said hello, unassigned, and not among the companion phones', async () => {
     const { m, state } = await muster();
     const panel = m.find('[data-testid="items-panel"]');
     expect(panel.length).toBe(1);
-    expect(panel[0].textContent).toMatch(/ITEMS \/\/ 1 UTILITY PHONE/);
+    // F106(i): the mock seeds TWO utility phones so ?mock can demo OUT OF WI-FI / ARM PENDING (below)
+    // without live hardware — the panel header count is the cheapest proof both are actually listed.
+    expect(panel[0].textContent).toMatch(/ITEMS \/\/ 2 UTILITY PHONES/);
     expect(panel[0].textContent).toMatch(/NOT ASSIGNED/);
     expect(panel[0].textContent).toMatch(/GAME 1/);
     // the phone's own report is shown so an assignment that never lands reads as the two disagreeing
     expect(panel[0].textContent).toMatch(/PHONE SAYS/);
     expect(state().stations?.[0].node_id).toBe('util-a1b2c3');
+    m.unmount();
+  });
+
+  it('F106(i): the seeded second phone shows OUT OF WI-FI and ARM PENDING with no operator action', async () => {
+    const { m, state } = await muster();
+    expect(state().stations?.[1]).toMatchObject({ node_id: 'util-d4e5f6', online: false, arm_pending: true });
+    const panel = m.find('[data-testid="items-panel"]')[0];
+    // CONTROL: this is the ONLY station that is offline, so the string is unambiguous evidence the
+    // panel actually renders the `online: false` case, not just a hard-coded label.
+    expect(panel.textContent).toMatch(/OUT OF WI-FI/);
+    expect(panel.textContent).toMatch(/ARM PENDING/);
     m.unmount();
   });
 

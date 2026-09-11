@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F107 · G11 · H8 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F108 · G11 · H8 ·
 K7 · P18 · Q20 · R3 · S18.** (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
 ids are retired, never reused.) (2026-09-10: F94/F95/F98 taken — the phone control point
 (`spec/utility.md` §5d), its LAN-coupled roaming variant (§5e) and Territories (§5f). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
@@ -32,7 +32,7 @@ F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (col
 **🔴 blocking, at a glance (2026-09-11):** **F69** a grenade hill damages and kills players in our games ·
 **F91** (bench) move our weapons off IR protocol 0 · **F74** a gun can latch an IR event and replay it
 forever · **F68** a miss permanently kills the headset team colour · **F43** sound picks by acoustic shape
-are not trustworthy · **S10** LED language v2 · **E1**/**E5** extensibility · **B23**/**B26**
+are not trustworthy · **S10** LED language v2 · **E5** extensibility (E1 closed 2026-09-11) · **B23**/**B26**
 respawn-for-hosted and the headset-less-gun contradiction.
 *(**F35** and **F96** left this list on 2026-09-11: both were fixed in code and only the rows were still
 open — see `archive/followups-closed.md`. **F82** is 🟡, not 🔴: MC refuses a tid-2 hill at three layers, and
@@ -51,14 +51,14 @@ right** and this index is stale. Do not cite it as evidence that something is or
 `hardware` — running order in [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md), next sheet
 [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md)):
 - 🔴 **B26** · **F49** · **F74** · **F91** · **K4** · **Q15** · **S10**
-- 🟠 **F13** · **F15** · **F23** · **F44** · **F50** · **F57** · **F58** · **F59** · **F71** · **P8** · **Q16** · **S9**
+- 🟠 **F13** · **F23** · **F44** · **F50** · **F58** · **F59** · **F71** · **P8** · **Q16** · **S9**
 - 🟡 **B27** · **B28** · **B29** · **D1** · **F3** · **F21** · **F26** · **F27** · **F28** · **F30** · **F36** · **F45** · **F48** · **F62** · **F63** · **F66** · **F67** · **F75** · **F76** · **F82** · **F88** · **G3** · **K1** · **P3** · **P15** · **Q18** · **S1** · **S2** · **S7** · **U11′**
 - 🟢 **B20** · **F29** · **F65** · **F87** · **F99** · **P4** · **P12** · **S4** · **S8** · ⬜ **W4a**
 
 **Keyboard only** (tagged `build` or `decision` — no gun, no rig, no dim room):
-- 🔴 **B18b** · **B23** · **E1** · **E5** · **F43** · **F68** · **F69** · **F74** · **S10**
-- 🟠 **B4** · **B19** · **B21** · **E2** · **F12** · **F13** · **F15** · **F40** · **F54** · **F56** · **F58** · **F70** · **F80** · **F102** · **S3** · **S5** · **S14**
-- 🟡 **B1** · **B8** · **B14** · **B17** · **D1** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F39** · **F42** · **F60** · **F78** · **F88** · **F95** · **H1** · **K2** · **Q12′** · **Q13** · **Q18** · **S1** · **S2** · **S6** · **S7** · **S11** · **S12** · **S13**
+- 🔴 **B18b** · **B23** · **E5** · **F43** · **F68** · **F69** · **F74** · **S10**
+- 🟠 **B4** · **B19** · **B21** · **E2** · **F12** · **F13** · **F40** · **F56** · **F58** · **F70** · **F80** · **S3** · **S14**
+- 🟡 **B1** · **B8** · **B14** · **B17** · **D1** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F39** · **F42** · **F60** · **F88** · **F95** · **H1** · **K2** · **Q12′** · **Q13** · **Q18** · **S1** · **S2** · **S6** · **S7** · **S12** · **S13**
 - 🟢 **B11** · **B16** · **B22** · **B25** · **E7** · **F14** · **F17** · **F18** · **F19** · **F32** · **F52** · **F83** · **F87** · **F89** · **F93** · **F98** · **F99** · **F100** · **P14** · **R2** · ⬜ **K6** · **S16** · **S17**
 
 ## 1. Before going public
@@ -87,9 +87,7 @@ The repo is private, MIT-licensed, 0 forks. Nothing below blocks day-to-day work
 Review + rationale: [`mode-extensibility.md`](archive/mode-extensibility.md). JSON re-skins shipped modes; a new ruleset
 needs Python across ~4 core files, and the wire schema cannot carry a new mode's parameters. Do them in order.
 
-- **E1 🔴** `mode_params: dict` on the wire `GameConfig` (`mcp/brx_mcp/mc/types.py`), validated by the engine. The
-  wire is mode-agnostic today, so objective modes cannot be configured over MC at all. `build`.
-- **E2 🟠** one `register_mode(name, engine_cls, meta, preset, scorer)` replacing the four hardcoded touch points
+- **E2 🟠** one `register_mode(name, engine_cls, meta, preset, scorer)` replacing the four hardcoded touch points. *(2026-09-11 late: `modes/registry.py` exists and `driver.build_engine` dispatches through it — E1's seed; the other three touch points are still hardcoded.)*
   (`modes/driver.py build_engine`, `mc/state.py MODES`, `mc/presentation.py MODE_PRESET`, `mc/scoring.py`). `build`.
 - **E3 🟡** unify `gameconfig.py` (CLI dataclass) and `mc/types.py GameConfig` (wire TypedDict); publish a JSON Schema. `build`.
 - **E4 🟡** "How to add a game mode" contributor doc with a ~40-line worked `GameEngine` subclass. `build`.
@@ -243,7 +241,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   **(a)** `presentation.py:84` ships `healed` with `sound=None, gun_led=None, headset=None`. It is a registered
   event with NOTHING attached, so even where it fires it is silent and unlit. Same for `armour_up`; `shield_up`
   at least has a paint. So being healed is, by configuration, indistinguishable from nothing happening.
-  **(b) DIVERGENCE:** `engine.js` fires `healed`/`armour_up`/`shield_up` on a pool RISE (the pool-delta branch of its `$HP` handler). `stage.py` fires
+  **(b) ✅ CLOSED 2026-09-11 (late, second session): `stage.py` `_on_pools` now fires `healed`/`armour_up`/`shield_up` on a pool rise with engine.js's exact drop rules (`test_stage_mirror.py`).** It used to fire
   none of them — zero occurrences of `healed` in the file. So the bench instrument cannot exercise the heal
   path AT ALL, which is why this went unnoticed: the surface built to predict the phone is missing the branch.
   That is the eighth stage-vs-phone divergence in a week (see [[stage-must-mirror-the-phone]] reasoning in
@@ -315,27 +313,6 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   defined_exactly_once` cannot catch that: it flags an id defined TWICE, never an id referenced with no definition
   at all. ⚠ The launcher's zero damage (`$SIR,9,3,,24` is a status row) is the bigger problem and is a decision,
   not an audition. `ears` (bench B4).
-- **F57 🟠 THE LOW-HEALTH WARNING AND THE PAIN GRUNT FIRE IN THE SAME MILLISECOND.** Bench 2026-09-09, Tony:
-  *"the critical sounds are a bit bugged when it was at 1 red"*. Captured on the wire, one `$HP` tick:
-  `rx $HP,8,0,0` → `tx $PLAY,,4,6,VA6` (low health) and `tx $PLAY,,4,6,VAG` (pain short, 10 dmg) at the SAME
-  timestamp, 2244290.79. The gun plays one clip at a time, so they cut each other off. Every earlier hit that
-  life fired the grunt alone, because A17.2 arms `low_health` only under 15 HP — so **the collision happens
-  exactly once per life, at the moment the warning is the whole point.** The LEDs at that instant were right
-  (red, blinking to dark, the critical state); it is only the audio.
-  A17 already owns the concept needed to fix it: the pain gate is "one per 600 ms and never on the lethal
-  hit". This is the same class — two cues competing for one speaker — and wants the same kind of rule.
-  Shape, undecided: either suppress the pain grunt on the hit that crosses the threshold (the low-health line
-  IS the reaction to that hit, and a grunt adds nothing the player does not already know), or sequence the
-  warning after the grunt by the grunt's own length. The first is simpler and matches the never-on-the-lethal-
-  hit precedent. **Owner: the audio lane (A17 is brx-sound's).** Found by the LED lane while walking the bar
-  state by state, so nothing here is an audio judgement — just the capture. `ears`.
-- **F54 🟠** **the reload glance has no bench instrument.** `engine.js` has `_gunReadoutReloadGlance` (A16 §3.1:
-  a reload repaints the current pool readout for `reload_glance_s`, 2 s day / 1 s night) wired to the reload path;
-  `stage.py` has none, and says so in its own comment ("no reload path on the stage yet"). So the one behaviour a
-  player triggers deliberately, to ask "how am I doing", is the one an operator cannot see on hardware. Everything
-  else in A16.3 can be judged at the stage. It also interacts with the animation (a glance cutting a drop short
-  now records the level, fixed 2026-09-07) and that interaction is exactly what is unobservable. Build a reload
-  action on the stage page, or accept that this ships to players unverified. `build`.
 - **F50 🟠** the A17 pain gate has never run in a REAL node path — only unit tests and grunts hand-played over
   BLE (brx-sound, 2026-09-07). The stage is now the only instrument that can exercise it, and any A17 audio
   judgement taken through the stage before `3388362` used the rejected shape-picked pools. Re-verify: an
@@ -447,12 +424,6 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   the arming burst is unverified (echo proves the gun got it, not that the headset executed it) `eyes`.
 - **F14 🟢** HUD moment nits: a `gain` inside the 250 ms rare-moment guard is dropped (deliberate); the night hit-chip
   lost the shooter's team colour (deliberate); `engine.js` drops a `gain` when a frame damages and grants in one tick.
-- **F15 🟠** build the host-driven stun (EMP). Proven chain: proto-8 word → victim `$SIR,8,0,,24` → `$HIR,…,8,…` →
-  `$AMMO,0,0,0,1` + `$AMMO,1,0,0,1` → restore. Build: engine timer (default 10 s, extend not double-restore, death
-  cancels) + a `_SIR_TABLE` row when the mode enables EMP + a source (slot with t3=8, or the Utility Box) + tests.
-  Cheaper alternative to bench first: `$BHIT,<BulletType>,<PlayerId>,<Team>,<Damage>,<Crit>,<PowerLevel>,<Direction>`
-  injects a hit through the firmware path (APK field set; the 2026-08-26 "echoed, not applied" used a 3-token shape).
-  Do not rely on the native stun (2/5 singles, lasts until death). `build` + `trigger`.
 - **F16 🟡** `bench_common` half fixed: `BMAP` + `spawn_tail()` exist and `stun_hunt.py` uses them; the other
   operator-fires tools (`hittest`/`damage_bench` style) and a test pinning `BMAP` to MC's `_bmap()` remain. Re-read any
   past "trigger did nothing" negative from such a tool with this in mind. `build`.
@@ -485,8 +456,8 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   `space` (bench 2.1).
 - **Q16 🟠** beam divergence: on-axis then 10–50° off-axis at 3 m, 10 shots each, closing control. Sharp fall-off ⇒ skip
   the snoot, cut power (t41, then an aperture attenuator). Black plastic is IR-transparent at 980 nm; test any snoot. `space` (bench 2.4).
-- **Q18 🟡** the first mid-game reconnect prints "reconnected" before the gun is listening (`modes/driver.py`), burning
-  `RECONNECT_CAP`; verify with a round trip first. Also untested: can a gun absent at START join a running match? `build` + `space`.
+- **Q18 🟡** ✅ the print half closed 2026-09-11 (late, second session): `modes/driver.py` probes `$PHONE` and waits for the gun's `$BUT`
+  before it prints, counts or re-arms a reconnect (`test_reconnect_is_not_declared_until_the_gun_answers_the_probe`). Still untested: can a gun absent at START join a running match? `build` + `space`.
 
 - **Q12′ 🟡 decision** should `hit_taken` carry the shield delta as its own field (both sessions said yes; `dmg: 0` invites
   `if dmg:` guards to drop the event)? `decision`.
@@ -526,17 +497,13 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   carry more: a damage or fire-rate modifier, a respawn-delay handicap, extra lives. Each needs a home on the
   wire before it is worth a control: pools ride `$PSET`, weapon numbers ride that player's `$WEAP`, respawn and
   lives are node-side. Decide which are worth it before building any. `decision`.
-- **F36 🟡** **The published APK is unproven on hardware.** 0.1.7 is cut, published and advertised on the site,
-  but no build since 0.1.6 (2026-09-04) has run on a phone, and it carries 16 commits including the S7.1 rejoin
-  anti-cheat, A11.7/A11.8 LED work and the A15 voices. Install it before the next match. `trigger`.
+- **F36 🟡** **The published APK is unproven on hardware.** 0.1.8 is cut (2026-09-10, `app-v0.1.8`), published and advertised on the site,
+  but no build since 0.1.6 (2026-09-04) has run on a phone; it carries the S7.1 rejoin anti-cheat, A11.7/A11.8 and A16/A17 LED work,
+  the A15 voices and the hill work, and everything since 2026-09-11 (F81/F34/F47/F86/F103/F105, station arming) is on NO build yet. Install it before the next match. `trigger`.
 - **S3 🟠** extraction on the phone path, HUD-driven (ARC Raiders / Fortnite Sprite reference): zone presence from the
   station beacon on the player's own gun; call → window → close timers on the node with `extraction_tick`; a wallet;
   hard end at expiry (`raid_ending` → `raid_over`); MC reconciles wallets at recap. Port `modes/extraction.py`'s rules,
   not its transport. `last_survivor` stays opt-in. `build`.
-- **S5 🟡** MC arms the utility stations at muster (contracts A13.5, `spec/utility.md` §5b/c, `utility-roadmap.md`). ✅ **The server side and the ITEMS panel shipped 2026-09-11 (late), see F104 in the archive**: utility `hello`, `PUT /api/stations/{node_id}`, `station_config` on hello / assign / every lobby push with the per-match game byte, `config.stations` in every bundle, attention flags, the muster panel (verified in Chromium against `?mock`). **Leftovers:** (a) assignments live for the SESSION only — persist them in `session.json` so an MC restart at the field does not forget the stations; (b) roadmap A3 (battery + app version in the utility heartbeat — MC keeps them, the phone sends neither yet) and A6 (the recap's stations row); (c) `app/tools/screens.mjs` #49 still fakes the arming through `window.brxUtility.applyStationConfig` — point it at the real socket; (d) the utility screen does not display `valid_ids`.
-  Server side not built: `hello node_type:"utility"` accepted without a gun; ITEMS panel (kind / team / station id /
-  threshold); `station_config` push at muster and on re-arm; `config.stations` allow-list from the assigned ids.
-  Phone-side wire facts are in the archive (S5 block). Build with the ui-build-verify discipline. `build`.
 - **S6 🟡** kill the legacy shims (Tony: "we dont need to support legacy at all"): `presentation.EVENTS` `multi`/`medal`
   and `compile.cues()` `multi`/`medal`; `cues.team_led` + the pre-A11.6 bundle fallback; engine "older MC" defaults
   (`swap_ms` 850, kit-open flag, `feedback.cue`), `restore_snapshot()` pre-A11 normalising; the scorer's "kind stays
@@ -548,11 +515,6 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   firmware grunted under a silenced game anyway, so gating it would have REMOVED a sound players had. But a silenced
   sniper grunting on every hit gives away the position, which is the point of that preset. Decide: a
   `presentation.voice` switch (`on` / `hits_only` / `off`) or leave it. `decision`.
-- **S11 🟡** the gun stage's boot blocks the HTTP server: `--gun <addr>` is awaited INSIDE the lifespan before
-  `yield`, so when the tagger is asleep or the BLE stack is busy the page never starts listening and the process looks
-  hung (hit 2026-09-06 after two forced restarts; two orphan processes, port 8790 dead, no error in the log). Fix: boot
-  the link as a background task and let the page come up LINKED=false, or bound the connect with a timeout that logs.
-  Workaround meanwhile: start without `--gun` and press CONNECT. `build`.
 - **S9 🟠** event sound pass on the gun stage (45-step walkthrough failed several): `extraction_tick` (K01 is a fly-by;
   trial U100, alts U13/U41), `extraction_closing` VX0R and `extraction_complete` VQ8 failed, `unstoppable` had no line
   (trial VX0U), `killing_spree` V125 vs VA7K, `healed`/`armour_up`/`shield_up` have no sound. Then every mode preset.
@@ -566,11 +528,10 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   VIP, extraction beacon), the DOWN pulse with quiet gaps around death/`$SPAWN` and the eliminated cadence, `_lightGen`
   cancel on end/panic/resync, respawn white flash at +1.0 s, preset name on every `MODES` row, console lights editor +
   muster lights check + DOWN-screen copy. Findings table and build lanes in the doc. Gate for the down-signal timing:
-  the L-ladder (bench sheet §6). **Open sub-item (found in the A16 part-2 build):** the node's headset ROLE
-  mechanism is general and wired for `carrier` (via `alert()`) and `infected` (via the death/team_flip path), but
-  **`vip` / `beacon` / `extracted` have no signal that reaches the node** — nothing on an `alert()` body or in the
-  config tells a phone "you are the VIP". Needs an MC-side contract field before those three role states can fire;
-  the engine side is ready. `build` + `eyes`.
+  the L-ladder (bench sheet §6). **Sub-item ✅ CLOSED 2026-09-11 (late, second session, contracts A19):** `alert.role = {name, on, tid?}` reaches the node's
+  `_setRole`; `config.vip_player_id` names the VIP and MC sends `vip` 3 s after go-live and after each VIP respawn
+  (`_push_role`, `ROLE_SETTLE_MS`; the feed line says WITHHELD when the phone was out of Wi-Fi). `beacon` / `extracted`
+  have the contract but no MC-side SIGNAL yet: no node fact says who is channelling, and MC runs no extraction engine (S3). `build` + `eyes`.
 - **S2 leftovers 🟡** presentation profile: the WRITE UI (preset picker + switches; today `PUT /api/config`);
   per-event override editor with the catalog picker; objective/VIP emitters (`Session._alert("objective_scored")`,
   `survivors_win` for infection); `bomb_detonated` X12 vs X13 (Tony: X13 might be a sniper); **6b** the headset flash
@@ -920,18 +881,8 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   (5) **Self-declared presence.** Adverts are unauthenticated, so a player could claim proximity they do not
   have. Accepted tradeoff for friends on a LAN, but a persistent RoF buff is a stronger temptation than a
   respawn, so say so out loud rather than discovering it. `build` + a design pass.
-- **F102 🟠 THE BENCH STAGE DOES NOT MIRROR THE PHONE CONTROL POINT AT ALL.** *(2026-09-11 late: F101 and F103 closed; this is the ONLY F94 leftover, and the constants to mirror now include the `phone` station_source gate.)* `mcp/brx_mcp/stage/stage.py`
-  models the grenade/IR half of the hill (ported 2026-09-10) but has **no kind-5 / BLE station model**, so a
-  phone-sourced control point is behaviour the operator can never verify at the bench — and this project's
-  own rule is that the stage exists to PREDICT `app/src/engine.js`, with a divergence meaning the operator
-  signs off on behaviour players never get (7 of 9 defects in one night, 2026-09-07). Also `stage.py`'s `HILL_CUES`
-  still reads `hill_contested … NOT WIRED (F75)`, which is **now false**: contested IS detectable on the
-  phone path and `engine.js` plays it for `source: 'station'`. ⚠ When mirroring: the 4 s station freshness
-  and the grenade's 12 s presence window are **different on purpose** (`_hillTick` takes its window from
-  `hill.source`); byte 10 is FLAGS not packed, and `rising && falling` must read as direction-unknown; and
-  `stage.py` is SECONDS while `engine.js` is MILLISECONDS. Extend the constants-parity test (which reads
-  `engine.js` itself) to cover the new constants so this cannot drift. `build`.
-- **F106 🟢 STATION-ARMING LOWS FROM THE 2026-09-11 POLISH PASS (PR #1).** Noted, not fixed, so they are not lost: (a) `abort_start` leaves `_game_no_started` set, so the next muster push bumps the game byte though no match ran (harmless: the point resets to neutral; the ITEMS "GAME n" counter drifts); (b) `net.py _fire_node` never forwards `app_ver`, so `station.app_ver` is always None off a real socket; (c) a node that was bound as a player and re-hellos as `utility` keeps its `node_player` entry; (d) `_finish` still sends `pull_log` to utility nodes and `abort_start` still broadcasts to them (noise); (e) `engine.js _stationAllowed` is PERMISSIVE when `config.stations` is absent, so clearing the LAST station re-opens the allow-list to everything (matches the seven-tap hand-arm fallback; the `types.py` comment should say so); (f) `control.js` credits possession from `Date.now()` unclamped, so a forward clock step is credited to the owner in full (a cap would also under-report; decide a bound); (g) ITEMS: "n/m ARMED" excludes a card whose only flag is BATTERY LOW; CLEAR has no confirm and the phone keeps advertising the old assignment with nothing on the card saying so; `TID_NAME` hardcodes colour names where LOBBY uses `teams[].name`; the PHONE/LINK rows are unpaired spans for a screen reader; the Recap `warnings` block is styled like PROVISIONAL; (h) `delay_s: 0` still means 10 s on the node with no message; (i) API.md omits `app_ver` from `StationView`; the mock's `online` is always true so OUT OF WI-FI cannot be demoed. `build`.
+- **F106 🟢 STATION-ARMING LOWS FROM THE 2026-09-11 POLISH PASS (PR #1).** ✅ (a) (b) (c) (d) (e) (i) fixed 2026-09-11 (late, second session); **(f) (g) (h) stand.** The original list, for the record: (a) `abort_start` leaves `_game_no_started` set, so the next muster push bumps the game byte though no match ran (harmless: the point resets to neutral; the ITEMS "GAME n" counter drifts); (b) `net.py _fire_node` never forwards `app_ver`, so `station.app_ver` is always None off a real socket; (c) a node that was bound as a player and re-hellos as `utility` keeps its `node_player` entry; (d) `_finish` still sends `pull_log` to utility nodes and `abort_start` still broadcasts to them (noise); (e) `engine.js _stationAllowed` is PERMISSIVE when `config.stations` is absent, so clearing the LAST station re-opens the allow-list to everything (matches the seven-tap hand-arm fallback; the `types.py` comment should say so); (f) `control.js` credits possession from `Date.now()` unclamped, so a forward clock step is credited to the owner in full (a cap would also under-report; decide a bound); (g) ITEMS: "n/m ARMED" excludes a card whose only flag is BATTERY LOW; CLEAR has no confirm and the phone keeps advertising the old assignment with nothing on the card saying so; `TID_NAME` hardcodes colour names where LOBBY uses `teams[].name`; the PHONE/LINK rows are unpaired spans for a screen reader; the Recap `warnings` block is styled like PROVISIONAL; (h) `delay_s: 0` still means 10 s on the node with no message; (i) API.md omits `app_ver` from `StationView`; the mock's `online` is always true so OUT OF WI-FI cannot be demoed. `build`.
+- **F107 🟢 LOWS FROM THE 2026-09-11 (LATE, SECOND SESSION) POLISH LOOP.** Noted, not fixed: (a) `net.py _fire_node` never forwards `gun_fw` while `_on_node` copies a `fw` key that never arrives (the `app_ver` shape again); (b) `_role_due` is not cleared on end/recall/panic (the phase gate in `_push_role` covers it); session.json `v` stays 1 though the shape gained `stations`/`game_no`; (c) F57 suppresses the grunt even when the profile writes no `hurt` line (announcer off, pre-A15 bundle): one fully silent hit per life there; (d) a reload pull while stunned starts the HUD RELOADING takeover off the frozen pre-stun reserve; (e) the stage logs a `warn` on every EMP because no profile carries `stunned`/`stun_over` cues (the phone is silent); (f) `utility.js` `?stage` persists `settings.mc = 'stage://mc'`; (g) `Recap.tsx STATION_TID_NAME` duplicates `Items.tsx TID_NAME`; `types.py Stun.duration_s` is `int` while the validator accepts a float; contracts §10 rows A18-A20 sit above A1; CLAUDE.md still says amendments A1-A14; (h) E1 leftovers: no Designer editor for `mode_params` (not even read-only) and no phone-side consumer; (i) A19 leftovers: `beacon` / `extracted` have no MC-side signal (see S10); (j) `_endReconcile` re-arms with the frame's `$AMMO` but leaves `_prevAmmo`/`_prevReserve` at the pre-drop pair, so a stun before the next `$ALCD` restores the older (lower) pair -- never a refill, same shape on the stage; (k) `restore_snapshot` resets an out-of-range stored `mode_params` value to its default with no log line; (l) the `role: utility` status from a bound player logs once per heartbeat. `build`.
 - **F80 🟡 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.** ➡ **Narrowed 2026-09-11 (late): the AFTER-the-match surface is built** — the recap's `warnings` count every hit and death from wire id 0 ("a grenade hill's damage word, or a gun whose $PSET never landed") and RECAP renders it, so a mis-armed gun is no longer invisible. **Still open: the ARM-TIME refusal** (`$QUERY` read-back, B19) and a muster flag, which needs a signal the node does not report today (the head echo is an `$LCD`, it carries no id).
   Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
   received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default
@@ -972,20 +923,6 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   interacts with the t21/t22 recoil model (F46), so a boost may cost accuracy as a side effect. **Blocked on
   `docs/bench-grenade.md` rung Z** (sweep t14 for the floor; prove the push/revert preserves ammo exactly; fire it
   off a real beacon). Design: `docs/utility-roadmap.md` "Rewarding the holder". `build` + `bench`.
-- **F78 🟡 `fake.py` cannot model a single one of this week's grenade findings.** The fake tagger takes hits
-  only through `receive_ir(shooter_team, shooter_id)`, which always emits a protocol-0, magnitude-9 word. It
-  cannot produce a protocol-15 beacon, a hill's ambient damage word, a magnitude-0 miss, or a `$SIR` cell that
-  discards in silence -- so F69, F70, F72, F73, F74 and F75 are all invisible to the 1000-test suite by
-  construction. This is the `stage-must-mirror-the-phone` failure: the sim's fidelity ceiling, not its
-  coverage, is what let the F69 scoring bug sit green. ✅ **Half done 2026-09-10:** `receive_ir` now takes
-  `proto`/`mag`/`sub`, `beacon()` emits a protocol-15 station word with no pool change, and the hill is
-  modelled end to end in `test_a_hill_drains_a_fake_gun_to_death_and_scores_for_nobody`. Also fixed on the way:
-  the fake **subtracted `self.damage` (25) from the pools while emitting magnitude 9 in the frame**, so
-  anything reading dmg off `$HIR` inherited a contradiction; magnitude now drives the damage. **Still missing:
-  (a) the `$SIR` TABLE GATE** -- the fake accepts `$SIR` and `$CLEAR` silently and always registers a hit, so
-  it cannot reproduce the F11/F40/F60 shape (an unmatched or absent cell discarding in silence) that has now
-  bitten three times in one week, and which is the single highest-value thing left to model; **(b) a
-  magnitude-0 MISS** (F46/F62). `build`.
 - **F76 🟡 The reference page's per-weapon capture counts contradict the bench.** `reference/grenade.md`'s King
   of the Hill section says retaking costs *"at least as many ROUNDS back into it (2-3 rounds to 2-3 magazines
   depending on weapon; ~4 on an MG, ~10-12 on a shotgun)"*, and that section is labelled hardware-confirmed
@@ -1103,7 +1040,7 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 - 1.6 KotH rate-of-fire buff: while ally 31/32/34 land, hold the trigger and listen for cadence.
 - 1.7 t37/t38 overheat: two varied-value probes on the SMG frame, watch the `$ALCD` heat gauge.
 - 1.8 **U4/U5** one long reload with a stopwatch; hold the AR trigger and listen.
-- **F15** rung 9: `$BHIT` with the `$HIR` field set; does it apply a hit, and does Damage 0 give the native flash?
+- **F15** (closed 2026-09-11, built unproven) rung 9: fire a proto-8 word at a gun armed with `config.stun` — expect `$AMMO,<slot>,0,0,1` from the node and the live counts back after 10 s; then `$BHIT` with the `$HIR` field set as the cheaper source.
 - **F23** same word at headset sensor 0 vs gun body 4, compare the `$HP` delta.
 - **F26** two guns, two phones, ten shots: does `$HIR` shooter id map to `player_num`?
 - **F27** per weapon, `$BUT,2` → `$ALCD` up, versus `reload_s`.

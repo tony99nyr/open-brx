@@ -179,7 +179,14 @@ class Roster:
 
 
 class GameEngine(ABC):
-    """Interface every mode implements."""
+    """Interface every mode implements.
+
+    `PARAMS` (A18 / E1): the tunables this mode accepts on `GameConfig.mode_params`, as
+    `{name: params.Param}`. Empty = the mode takes none, and MC refuses any key sent for it (a knob
+    that "takes" a value the engine then ignores is a control that does nothing). Read the values with
+    `params.resolve(type(self), config)`, which serves both the wire dict and the CLI dataclass."""
+
+    PARAMS: dict = {}
 
     @abstractmethod
     def add_player(self, player_id: str, team: int) -> None: ...

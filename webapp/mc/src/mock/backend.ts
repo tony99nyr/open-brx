@@ -1,7 +1,7 @@
 // In-browser mock of the MC server (mcp/brx_mcp/mc/API.md). Stateful enough for every UI interaction.
 import type {
   Api, FeedEntry, GameConfig, LiveRow, Loadout, LoadoutPolicy, MatchHistoryRow, ModeInfo, PerkView, Phase, Player, ReadinessRow, ReadinessSnapshot,
-  RecapView, SavedGame, ScanRow, ScoreRow, StartView, State, StationAssignment, StationKind, StationView, WeaponView,
+  RecapStationRow, RecapView, SavedGame, ScanRow, ScoreRow, StartView, State, StationAssignment, StationKind, StationView, WeaponView,
 } from '../api/types';
 import { STATION_KINDS } from '../api/types';
 import { GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
@@ -59,8 +59,16 @@ export class MockBackend implements Api {
   private evicted = new Set<string>();
   // A13.5: one utility phone that said hello and is waiting to be assigned (the ITEMS panel demo). Mirrors
   // `Session.stations` / `_station_view` in state.py, including the attention flags the server derives.
-  private stations: Record<string, { assigned: StationAssignment | null; armed: StationView['armed']; arm_pending: boolean; report: StationView['report']; seen: number }> = {
+  private stations: Record<string, { assigned: StationAssignment | null; armed: StationView['armed']; arm_pending: boolean; report: StationView['report']; seen: number; offline?: boolean }> = {
     'util-a1b2c3': { assigned: null, armed: null, arm_pending: false, report: { kind: 'respawn', team: 1, station_id: 1, threshold: -74, live: false, revives: 0, armed: false, battery: 64 }, seen: now() },
+    // F106(i): a second seeded phone that is ASSIGNED but OUT OF WI-FI (the operator carried it out to the
+    // field before it ever got the arming push) so `?mock` alone can show OUT OF WI-FI / ARM PENDING on the
+    // ITEMS panel without live hardware — the first phone's `online` was hard-coded true for every station,
+    // so that pair of states could never be demoed (review 2026-09-11 lane-4).
+    'util-d4e5f6': { assigned: { kind: 'extraction', team: 255, id: 8, threshold: -74, at: now() - 20 * 60 * 1000 },
+                     armed: null, arm_pending: true,
+                     report: { kind: 'extraction', team: 255, station_id: 8, threshold: -74, live: true, revives: 0, armed: false, battery: 41 },
+                     seen: now() - 20 * 60 * 1000, offline: true },
   };
   private gameNo = 1;
   private gameStarted = false;
@@ -75,7 +83,7 @@ export class MockBackend implements Api {
       if (a && fresh && rep.station_id != null && rep.station_id !== a.id) attention.push(`PHONE ADVERTISES ID ${rep.station_id}, ASSIGNED ${a.id}`);
       if (typeof rep.battery === 'number' && rep.battery < 30) attention.push('BATTERY LOW');
       return { node_id, assigned: a, armed: st.armed, arm_pending: st.arm_pending, report: rep, app_ver: 'utility',
-        last_seen_ms: now() - st.seen, online: true, attention, game: this.gameNo };
+        last_seen_ms: now() - st.seen, online: !st.offline, attention, game: this.gameNo };
     });
   }
   private stationIds() { return Object.values(this.stations).flatMap(s => s.assigned ? [s.assigned.id] : []).sort((a, b) => a - b); }
@@ -297,7 +305,18 @@ export class MockBackend implements Api {
     ];
     for (const h of honors) rows.find(r => r.player_id === h.player_id)?.medals.push(h.award.replace(' · NON-MVP', ''));
     const missing = l.rows.filter(r => r.status === 'stale').map(r => r.player_id);
-    this.recap_ = { winner: ffa ? { player_id: top.player_id } : { team_id: winnerTeam }, score, rows, honors, provisional: missing.length > 0, missing };
+    // Roadmap A6: mirror `Session._recap_stations()` -- one row per ASSIGNED station, straight from its
+    // own report, so ?mock's RECAP screen can demo the STATIONS block with no server at all.
+    const stationRows: RecapStationRow[] = this.stationViews().filter(s => s.assigned).map(s => {
+      const a = s.assigned!;
+      const heard = Object.keys(s.report ?? {}).length > 0;   // F105: same test as `_recap_stations()` -- any heartbeat at all
+      const row: RecapStationRow = { node_id: s.node_id, kind: a.kind, id: a.id, team: a.team, heard };
+      if (a.kind === 'respawn') row.revives = s.report.revives ?? null;
+      else if (a.kind === 'control' && s.report.control) { row.hold_ms = s.report.control.hold_ms ?? null; row.owner = s.report.control.owner ?? null; }
+      return row;
+    });
+    this.recap_ = { winner: ffa ? { player_id: top.player_id } : { team_id: winnerTeam }, score, rows, honors, provisional: missing.length > 0, missing,
+                    ...(stationRows.length ? { stations: stationRows } : {}) };
     // the demo keeps its own history, exactly as the server's session store does — without it the
     // RECAP history picker and the per-match CSV had no way to be seen (let alone tested) in ?mock
     this.history_.unshift({ match_id: l.match_id, mode: this.config.mode, go_live_t: l.go_live_t,
