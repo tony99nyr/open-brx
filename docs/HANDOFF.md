@@ -1,19 +1,25 @@
 # Handoff — Open BRX
 
-**State as of 2026-09-10.** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners:
+**State as of 2026-09-11.** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners:
 [`archive/handoff-history.md`](archive/handoff-history.md).
 
 ## What is true today
 
-- ⭐ **THE GRENADE IS A WORKING CONTROL POINT (2026-09-10, F70).** Hill beacons `proto=15 team=<owner> mag=8`
-  every ~5 s, **neutral is team 2**, shoot a neutral one to claim it. Hosted games read it with a `$SIR`
-  proto-15 row **plus** an `engine.js` fix (F72) — a shortcut to K1. 🔴 **F69: it also emits a `proto=0 mag=8`
-  damage word our row applies in full**, killing the operator in ~106 s, and it **credited the hill's owner with
-  the kill** until 2026-09-10. Guarded in `modes/base.py` at the cost of **F80** (a gun whose `$PSET` never
-  landed also sends wire 0 and now scores nothing — fix at arm time). **Damage still live; F81: the victim's
-  phone names the WRONG team as killer.** ✅ **Capture is CHARGE, any weapon, attacker wins ties** (F70);
-  🟠 what charge is PRICED IN is not settled (rung X settles it). 🔴 **F82: never put a player on team 2 in a
-  hill mode** — neutral broadcasts team 2, so team 2 goes deaf to neutral points and takes no hill damage.
+- ⭐⭐ **KING OF THE HILL IS BUILT, END TO END (2026-09-10/11).** A $200 BRX grenade in hill mode is a working
+  control point, proven **through the gun over BLE** (not the IR rig): beacons `proto=15 team=<owner> mag=8`
+  every 5.0 s, **neutral = team 2**, `mag=50` announces the new owner ~50 ms after the shot and **`mag=53`
+  only when the point was NEUTRAL before** (n=2). The row to ship is `$SIR,15,0,,28` (fn 28 registers with
+  zero player feedback). Shipped: `hillbeacon.py`, `DominationEngine` possession scoring, `control.js` (the
+  PHONE control point: capture rate = leader minus the **largest single rival**, two-phase drain-then-build),
+  the phone's hill audio, MC's `koth` mode + `station_source` vocabulary + operator checklist, and the
+  possession fact with an **`observed_ms` floor** so an unwatched hill reads 0 rather than lying.
+  🔴 **Still live: F69** — an enemy hill's `proto=0 mag=8` word chips the attacker and cannot be switched off
+  while our weapons share that cell. **F91 is the fix and tomorrow's top rung.**
+  🔴 **F82: never put a player on tid 2 in a hill mode** (neutral broadcasts team 2). Refused at three layers.
+  ⚠ **Specified but NOT implemented (session limit, 02:28):** F101 three phone behaviours (tests skipped with
+  a reason, not deleted), F102 the stage never got a station-path mirror, F103 the phone point has no match
+  lifecycle — F70's persistence trap rebuilt one layer over. Read those three before building on this.
+  Spec: `spec/utility.md` §5d/§5e/§5f. Comparison for a reader: `manual/gameplay.md`.
 - ⭐⭐ **SIMULATED RECOIL IS REAL AND OURS TO DRIVE (2026-09-09, F46 closed).** `$WEAP` **t21 = accuracy
   ceiling · t22 = floor · `$ALCD` tok2 = live accuracy**; falls in five steps toward the floor, races a native
   recovery (**t14 sets how hard it bites**), resets on reload, and below the ceiling a shot emits **IR magnitude
@@ -82,24 +88,15 @@
   2.0 port is done. `~/.brx-mcp/armory.json` is never in git (headset PINs); stickers stay out of
   docs, use `Tactix-XXXX`.
 
-## What changed since the last handoff (2026-09-09 to 2026-09-10)
+## What changed since the last handoff (2026-09-09 to 2026-09-11)
 
-- **⭐ Hosted hill audio proven end to end; `$SIR` fn 28's caveat resolved (2026-09-10 evening, rung S).**
-  Every hosted objective callout confirmed BY EAR at `$VOL,80`: `VA21/22/23`, `VA93` and the
-  **preferred `VB0N/O/P/Q` set** (one Halo-style announcer, capture/contest/lost/moved) play as
-  catalogued. `V8Q` was catalogued "Hill Confirmed" but says **"Kill Confirmed"** — a one-letter
-  transcript error that filed a kill-feed line under `voice:objective_hill`; fixed at source in
-  `soundbank_classify.py`'s `BY_EAR_CORRECTIONS`, not the generated JSON. Then `$SIR,15,0,,28,0,0,1,,*`
-  against the **real grenade** beaconed as `$HIR,4,15,0,2,8,0,0`, 20+ beacons, period 5.0 s, no drift —
-  **fn 28 confirmed on protocol 15 with a real beacon**, closing the "only measured in the ESP32 rig's
-  `<5,0>`" caveat. ⚠ Capture (a beacon flipping team under a real shot) is still unproven — the gun was
-  armed to receive only, no `$WEAP`, so it could not fire.
-- **✅ F84: a hidden regen bug, found and fixed the same session.** `deathmatch.py` restarted the regen
-  idle timer on ANY non-fatal `$HP`, wrongly treating arrival as damage — a hill beacon emits `$HP` every
-  ~5 s with pools unchanged, and `regen_delay_s` is 6.0, so **anyone standing in a hill never regenerated,
-  in any regen mode** (60 s in a hill = 0 heals vs 1 heal outside). Same shape as F69's `ATTRIB_FUSE_S`: a
-  host constant wider than the hill's period never expires. Fixed by measuring the pools' DROP
-  (`_last_pools`), covered by two new tests. `engine.js` already had this right; the Python engine did not.
+- **The whole KotH build plus the bench session behind it** — see the two 2026-09-10/11 entries in
+  [`experiment-log/2026-09.md`](experiment-log/2026-09.md), which carry the evidence, the eight bugs the
+  reviews caught, and what the session limit stopped. Headlines: fn 28 confirmed on protocol 15 against a
+  real beacon; all hosted callouts confirmed BY EAR (⚠ `V8Q` is catalogued "Hill Confirmed" and says
+  **"Kill Confirmed"** — fixed at source in `BY_EAR_CORRECTIONS`, never in the generated JSON); **F84** a
+  hill beacon's `$HP` echo blocked regen for whole matches; and the driver armed **gun #1 at `$PSET,0`**, so
+  the first gun of every CLI game silently could not score.
 
 - **LEDs, the three facts from A16 parts 1+2 that still bite** (full block moved to
   [`archive/handoff-history.md`](archive/handoff-history.md) 2026-09-09, now that A16 is verified):
@@ -111,15 +108,17 @@
 
 ## Next actions
 
-1. **Hear A15.3 on a gun** (10 min, tagger + emitter): ARM, respawn, take rifle and BIG HIT (80) hits. Scream
-   changes per life? spawn line varies? pain length matches damage? kill draws from the 5 takes?
-2. **Ship an APK with A16 + A17** (0.1.7 predates both): until then no LED work or hit audio reaches a player, and the legacy `headset.carrier` key cannot go (S10).
+1. **Hear A15.3 on a gun** (10 min, tagger + emitter): scream per life, spawn line varies, pain matches damage, kill draws from the 5 takes.
+2. ✅ **APK 0.1.8 published 2026-09-10** (`app-v0.1.8`, from `cfe2a8e`) — the FIRST build carrying A16, A17
+   and the hill work. ⚠ It is debug-signed with `webContentsDebuggingEnabled: true` and the repo is now
+   PUBLIC, so it is anonymously downloadable and inspectable (B21). Decide before a field day.
 3. **LED design DECIDED (2026-09-09)**: partial-level blink stays, healing gets no opening beat. Do not re-open.
-4. **Bench:** block E (LED metering), D1 (**F23** sensor damage), **F50** the A17 pain gate in a node path, and
-   grenade rungs **C** (F69's missing control) + **X** (settles F70/F76). **5. Build S5** (stations at muster).
-6. ⚠ **Nothing shield-shaped has EVER been on a gun** (F60): shield is IR-only (P16) and no compiled mode
-   registers a grant word, so the teal bar and A16.5's handover are unverifiable. The grenade hill is now a
-   natural reason to ship a grant row in the compiled `$SIR` table (F70).
+4. **Bench: run [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md) first** — its **B2** can kill the
+   F91 plan (every capture ever measured was a protocol-0 word, so moving off protocol 0 may delete
+   shoot-to-capture). Then block E (LED metering), D1 (**F23**). **5. Build F101/F102/F103** — the KotH work the
+   session limit stopped, and F102 means nothing phone-sourced is bench-verifiable until the stage mirrors it.
+6. ⚠ **Nothing shield-shaped has EVER been on a gun** (F60): shield is IR-only (P16), so the teal bar and
+   A16.5's handover are unverifiable. Tomorrow's rung C1 is the first attempt.
 
 **Next bench sheet: [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md)** — the six readings that gate
 KotH (F91 off protocol 0, F70/F76's currency, F69's missing control, F60's shield, F87's t14 floor, D6's rest),
