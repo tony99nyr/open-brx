@@ -27,6 +27,11 @@ const DEMO_LOADOUTS: (() => Loadout)[] = [
   () => ({ weapons: [{ weapon_id: 'sniper_rifle' }, { weapon_id: 'smg' }], perk: null }),
   () => ({ weapons: [{ weapon_id: 'assault_rifle' }], perk: 'easy_reload' }),
 ];
+// mirrors STATION_SOURCES in mcp/brx_mcp/mc/types.py, including the wording of the refusal
+const MOCK_STATION_SOURCES = [
+  { value: 'grenade', desc: 'a BRX Smart Grenade in hill mode (protocol-15 beacons; bench-proven 2026-09-10)' },
+  { value: 'ir_station', desc: 'a BRX station / Utility Box emitting $CAPTURE objective events (unproven on our bench)' },
+];
 const uid = (p: string) => `${p}_${Math.random().toString(36).slice(2, 8)}`;
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 
@@ -51,6 +56,9 @@ export class MockBackend implements Api {
   private gunOverride: Partial<Record<string, 'g' | 'r'>> = {};
   private timer: number | null = null;
   private session_id = uid('sess');
+  // the server's validate() errors ride on every snapshot (config_errors); the demo used to hardcode []
+  // so a refusal shown in the PUT response vanished from the rail on the very next tick
+  private cfgErrors: string[] = [];
 
   constructor() {
     this.players = PLAYERS.map(([display, team_id, gi], i) => ({
@@ -100,7 +108,7 @@ export class MockBackend implements Api {
       lan: { mode: 'router', ssid: 'BRX-FIELD', ip: '192.168.8.10', port: 8765, ws_url: 'ws://192.168.8.10:8765/ws', qr: 'ws://192.168.8.10:8765/ws' },
       // The demo mirrors the server's own `SETUP: ` warning for a grenade objective (compile.py validate),
       // so the KotH rail in `?mock` shows the same field step the real MC does.
-      nodes, readiness, config: clone(this.config), config_errors: [],
+      nodes, readiness, config: clone(this.config), config_errors: [...this.cfgErrors],
       config_warnings: this.config.station_source === 'grenade'
         ? ['SETUP: POWER-CYCLE THE GRENADE SO IT STARTS NEUTRAL, SET IT TO HILL MODE, AND PLACE IT — a hill that starts already owned skews the whole match, and only a power cycle guarantees neutral. ONE POINT ONLY (F88: a beacon carries no station id)']
         : [],
@@ -312,6 +320,13 @@ export class MockBackend implements Api {
   }
   async putConfig(partial: Partial<GameConfig>) {
     const prevMode = this.config.mode, prevPol = this.config.loadout_policy;
+    // F70: `station_source` is a CLOSED vocabulary server-side (state.py _merge_config raises, the API
+    // answers 400 naming every legal value). The demo refuses the same way, so the OBJECTIVE SOURCE
+    // control cannot look more permissive in `?mock` than it is against a real MC.
+    if ('station_source' in partial && partial.station_source != null && !MOCK_STATION_SOURCES.some(s => s.value === partial.station_source)) {
+      throw new Error('station_source must be null or one of: '
+        + MOCK_STATION_SOURCES.map(s => `${s.value} (${s.desc})`).join(', '));
+    }
     if (Object.keys(partial).some(k => !['environment', 'night', 'config_id'].includes(k))) this.activePreset = null;   // a real edit: no longer that saved game
     this.config = { ...this.config, ...partial, config_id: uid('cfg') };
     if (partial.loadout_policy) {
@@ -334,11 +349,23 @@ export class MockBackend implements Api {
       const src = MODES.find(m => m.mode === partial.mode)?.defaults.station_source;
       if (src) this.config.station_source = src; else delete this.config.station_source;
     }
+    // 🔴 The real server re-teams anyone left on a team the new mode does not have
+    // (state.py set_config: `p["team_id"] = self.teams[0]["team_id"]`). The demo used to skip this, so
+    // `?mock` showed a KING OF THE HILL roster still half YELLOW — the exact $TID 2 the server refuses
+    // (F82) and the one thing this screen must never appear to allow. A demo that predicts the wrong
+    // state is worse than no demo: it is where a "verified" screenshot comes from.
+    const legal = new Set(this.config.teams.map(t => t.team_id));
+    for (const p of this.players) if (!legal.has(p.team_id ?? '')) p.team_id = this.config.teams[0]?.team_id ?? null;
     this.applyPolicy();
     const errors: string[] = [];
     if (this.config.time_limit_s == null || this.config.time_limit_s <= 0) errors.push('time_limit_s is required on the phone path');
+    if (MODES.find(m => m.mode === this.config.mode)?.defaults.station_source && !this.config.station_source) {
+      errors.push(`mode '${this.config.mode}' needs a station/objective source (Tier 1) — set config.station_source to one of: `
+        + MOCK_STATION_SOURCES.map(x => `'${x.value}' (${x.desc})`).join(', '));
+    }
     if (this.config.mode === 'ffa') { const t = this.config.teams[0]; if (t) for (const p of this.players) p.team_id = t.team_id; }
     if (this.pushed) { this.pushed = false; this.acks = {}; }
+    this.cfgErrors = errors;
     this.emit();
     return { ok: errors.length === 0, errors, config: clone(this.config) };
   }

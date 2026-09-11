@@ -89,14 +89,16 @@ export function OutlineTag({ children, color, border }: { children: ReactNode; c
 }
 
 /** Segmented control. */
-export function Seg<V extends string>({ value, options, onChange, size = 11, pad = '5px 14px' }:
-  { value: V; options: { value: V; label: string }[]; onChange: (v: V) => void; size?: number; pad?: string }) {
+export function Seg<V extends string>({ value, options, onChange, size = 11, pad = '5px 14px', label, titles }:
+  { value: V; options: { value: V; label: string }[]; onChange: (v: V) => void; size?: number; pad?: string;
+    /** names the group for a screen reader (and for the e2e suite, which reads what it reads) */
+    label?: string; titles?: Record<string, string> }) {
   return (
-    <span role="group" style={{ display: 'flex', border: `1px solid ${T.line}` }}>
+    <span role="group" aria-label={label} style={{ display: 'flex', border: `1px solid ${T.line}` }}>
       {options.map(o => {
         const on = o.value === value;
         return (
-          <button key={o.value} type="button" className="hit44" onClick={() => onChange(o.value)} aria-pressed={on}
+          <button key={o.value} type="button" className="hit44" onClick={() => onChange(o.value)} aria-pressed={on} title={titles?.[o.value]}
             // Selected used to be a solid T.acc block. With several Segs on one screen (START FROM,
             // WHO PICKS, WEAPONS|PERKS, RESPAWN) that is a lot of bright fill for a toggle — Tony,
             // 2026-09-02: "the colors of the buttons are too harsh maybe just border color or a

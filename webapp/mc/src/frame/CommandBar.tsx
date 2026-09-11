@@ -65,10 +65,16 @@ export function CommandBar() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {/* an action that failed must still say so somewhere immediate */}
           {error && (
-            <button type="button" role="alert" onClick={clearError} title="dismiss"
+            // This was one `nowrap` line clipped at 420px with `title="dismiss"`, so the server's most
+            // useful refusals were unreadable: a rejected `station_source` answers with the whole legal
+            // vocabulary (~250 chars) and the operator saw "▲ station_source must be null or one of: gre…"
+            // — a message that names the valid values, with the valid values cut off. It wraps now (up to
+            // four lines, then scrolls) and carries the full text as its tooltip.
+            <button type="button" role="alert" onClick={clearError} title={error}
               style={{ background: 'rgba(255,82,82,.12)', border: `1px solid ${T.bad}`, color: T.bad,
-                       font: F.chk(600, 12), padding: '6px 12px', cursor: 'pointer', maxWidth: 420,
-                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>▲ {error} ✕</button>
+                       font: F.chk(600, 12), lineHeight: 1.35, padding: '6px 12px', cursor: 'pointer',
+                       maxWidth: 520, textAlign: 'left', whiteSpace: 'normal', overflowWrap: 'anywhere',
+                       maxHeight: '8em', overflowY: 'auto' }}>▲ {error} ✕</button>
           )}
           {notice && (
             <button type="button" onClick={clearNotice} title="dismiss"

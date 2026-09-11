@@ -8,7 +8,7 @@ import { F, PERK_COLOR, ROLE, T, TAB, roleOf } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, StripedSlot, Toggle, ValueBox } from '../ui';
 import { PerkGlyph } from './Kit';
 import { AdvancedPresentation } from './AdvancedPresentation';
-import { TEMPLATE_RULES, admitsWeapons, computePool, gameSig, presetOf, rulesLine, withPolicy } from './gameSummary';
+import { STATION_SOURCES, TEMPLATE_RULES, admitsWeapons, computePool, gameSig, objectiveLine, presetOf, rulesLine, withPolicy } from './gameSummary';
 
 const MODE_ART = new Set(['tdm', 'ffa', 'infection', 'lms', 'extraction']);
 const TEMPLATES: { value: LoadoutPreset; label: string; hint: string }[] = [
@@ -70,6 +70,10 @@ export function Designer() {
 
   if (!state || !cfg) return null;
   const mode = modes.find(m => m.mode === cfg.mode);
+  // "this mode needs an objective source" is the SERVER's fact, read off the mode row's defaults
+  // (/api/modes → default_config(mode)) rather than a second list of mode names living in the UI.
+  // A draft that already carries one counts too, so an older MC's config still shows its own field.
+  const stationGated = mode?.defaults.station_source != null || cfg.station_source != null;
   const pol = cfg.loadout_policy;
   const put = (p: Partial<GameConfig>) => setCfg(c => c ? { ...c, ...p } : c);
   const putPol = (p: Partial<LoadoutPolicy>) => setCfg(c => { if (!c) return c; const lp = { ...c.loadout_policy, ...p }; return { ...c, loadout_policy: { ...lp, preset: presetOf(lp) } }; });   // a hand-built NO HEAVIES reads NO HEAVIES (review #18)
@@ -138,7 +142,25 @@ export function Designer() {
               <Row label="RESPAWN DELAY"><ValueBox value={cfg.respawn.delay_s} unit="S" label="respawn delay seconds" min={0} max={300} onChange={v => put({ respawn: { ...cfg.respawn, delay_s: v } })} /></Row>
               <Row label="HEALTH"><ValueBox value={cfg.health.max_hp} unit="HP" min={1} max={999} label="health" onChange={v => put({ health: { ...cfg.health, max_hp: v } })} /></Row>
               <Row label={<>ARMOR <Hint>0 means one-shot with a sniper</Hint></>}><ValueBox value={cfg.health.max_armor} unit="AR" min={0} max={999} label="armor" onChange={v => put({ health: { ...cfg.health, max_armor: v } })} /></Row>
+              {/* F70: the modes with an objective need something ON THE FIELD emitting it, and until now
+                  nothing in the console could set that — the operator got a push refused by a server
+                  naming a config key no screen owned. `station_source` is a closed vocabulary
+                  (gameSummary.STATION_SOURCES ⇄ types.py), so this is a two-value segmented control and
+                  never a text field: a typo used to ship a hill match with nothing emitting a hill. */}
+              {stationGated && (
+                <Row label={<>OBJECTIVE SOURCE <Hint>What is on the field emitting the objective</Hint></>}>
+                  <Seg label="objective source" value={cfg.station_source ?? 'grenade'} pad="5px 11px"
+                    options={STATION_SOURCES.map(s => ({ value: s.value, label: s.label }))}
+                    titles={Object.fromEntries(STATION_SOURCES.map(s => [s.value, s.hint]))}
+                    onChange={v => put({ station_source: v })} />
+                </Row>
+              )}
             </div>
+            {stationGated && (
+              <div style={{ font: F.chk(500, 12), letterSpacing: '.02em', color: T.micro, marginTop: 8 }}>
+                {STATION_SOURCES.find(s => s.value === (cfg.station_source ?? 'grenade'))?.hint}
+              </div>
+            )}
             <div style={{ font: F.chk(500, 12), letterSpacing: '.02em', color: T.micro, marginTop: 8 }}>Venue (indoor / outdoor, night ops) is set on the Games page each time — it is not part of the game.</div>
           </section>
 
@@ -190,7 +212,8 @@ export function Designer() {
                 ['RESPAWN', cfg.respawn.type === 'none' ? 'OFF' : `${cfg.respawn.type.toUpperCase()} · ${cfg.respawn.delay_s} S`], ['HEALTH', `HP ${cfg.health.max_hp} · ARMOR ${cfg.health.max_armor}`],
                 ['PRIMARY', pool ? (pol.primary.choice === 'fixed' ? 'FIXED' : `${pool.primary.length} OF ${weapons.length}`) : '…'],
                 ['SLOT 2', pol.secondary.choice === 'off' ? 'OFF' : pol.secondary.choice === 'fixed' ? 'FIXED' : pool ? `${pool.secondary_weapons.length} ${!pol.secondary.kinds.includes('weapon') && pol.secondary.kinds.includes('sidearm') ? 'SIDEARMS' : 'WEAPONS'}` : '…'],
-                ['PERK', pol.perk.choice === 'off' ? 'OFF' : pol.perk.choice === 'fixed' ? 'FIXED' : pool ? `${pool.perks.length} PERKS` : '…']].map(([l, v]) => (
+                ['PERK', pol.perk.choice === 'off' ? 'OFF' : pol.perk.choice === 'fixed' ? 'FIXED' : pool ? `${pool.perks.length} PERKS` : '…'],
+                ...(objectiveLine(cfg) ? [['OBJECTIVE', objectiveLine(cfg)!]] : [])].map(([l, v]) => (
                 <div key={l} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, font: F.mono(500, 10.5), letterSpacing: '.14em' }}>
                   <span style={{ color: T.micro }}>{l}</span><span style={{ color: T.body, ...TAB, textAlign: 'right' }}>{v}</span>
                 </div>

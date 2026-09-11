@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# real-browser e2e artefacts
+test/e2e/shots/

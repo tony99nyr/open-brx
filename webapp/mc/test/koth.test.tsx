@@ -61,6 +61,35 @@ describe('KING OF THE HILL — GAMES', () => {
     g.m.unmount();
   });
 
+  it('moves a YELLOW roster off tid 2 when the hill is picked, exactly as the server does (F82)', async () => {
+    // The real server re-teams anyone left on a team the new mode does not have (state.py set_config:
+    // `p["team_id"] = self.teams[0]["team_id"]`). The demo backend did NOT, so `?mock` rendered a KotH
+    // roster still half YELLOW — a screen the real MC can never produce, and the one reading F82 exists
+    // to make impossible. A demo that predicts the wrong state is where a false "verified" comes from.
+    const g = await games();
+    const before = await g.api.getState();
+    expect(before.players.some(p => p.team_id === 'yellow')).toBe(true);       // control
+    await g.m.click('KING OF THE HILL');
+    await g.settle();
+    const after = await g.api.getState();
+    const tid = Object.fromEntries(after.config.teams.map(t => [t.team_id, t.tid]));
+    expect(after.config.teams.map(t => t.team_id)).toEqual(['blue', 'green']);
+    expect(after.players.some(p => p.team_id === 'yellow')).toBe(false);
+    expect(after.players.some(p => tid[p.team_id ?? ''] === 2)).toBe(false);
+    g.m.unmount();
+  });
+
+  it('refuses an objective source outside the server vocabulary, naming the legal values (F70)', async () => {
+    const api = new MockBackend();
+    await api.putConfig({ mode: 'koth' });
+    await expect(api.putConfig({ station_source: 'jbox' })).rejects.toThrow(/must be null or one of: .*grenade.*ir_station/s);
+    // and clearing it leaves the mode unpushable, with the same vocabulary in config_errors
+    const r = await api.putConfig({ station_source: null as unknown as undefined });
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(' ')).toMatch(/needs a station\/objective source.*grenade.*ir_station/s);
+    expect((await api.getState()).config_errors.join(' ')).toMatch(/needs a station\/objective source/);
+  });
+
   it('drops the grenade step when the operator switches to a mode with no hill', async () => {
     // CONTROL for the first test, and a real trap: the rail is fed from the CONFIG, so a stale
     // `station_source` left over from the previous game would keep telling a TDM operator to

@@ -6,7 +6,7 @@ import type { ModeInfo, SavedGame } from '../api/types';
 import { useStore } from '../store';
 import { F, PERK_COLOR, T, TAB } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, Shelf, StripedSlot, Tag, Toggle, onKey } from '../ui';
-import { gameSig, rulesLine } from './gameSummary';
+import { gameSig, objectiveLine, rulesLine } from './gameSummary';
 
 const MODE_ART = new Set(['tdm', 'ffa', 'infection', 'lms', 'extraction']);   // public/assets/modes/*.jpg
 
@@ -140,7 +140,7 @@ export function Games() {
         <div style={{ flex: '1 1 330px', maxWidth: 480, position: 'sticky', top: 12, display: 'flex', flexDirection: 'column', gap: 0, background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderLeft: `3px solid ${custom ? T.warn : activeSaved ? PERK_COLOR : T.acc}` }}>
           <div style={{ padding: '14px 18px 0' }}>
             <div style={{ font: F.mono(600, 10.5), letterSpacing: '.26em', color: custom ? T.warn : activeSaved ? PERK_COLOR : T.acc }}>{custom ? 'TUNED — NOT SAVED' : activeSaved ? 'SAVED GAME' : 'STOCK MODE'} // PLAYING</div>
-            <div style={{ font: F.osw(700, 28), letterSpacing: '.08em', textTransform: 'uppercase', marginTop: 2, lineHeight: 1.1 }}>{activeSaved?.name ?? mode?.name ?? cfg.mode}</div>
+            <div data-testid="playing-title" style={{ font: F.osw(700, 28), letterSpacing: '.08em', textTransform: 'uppercase', marginTop: 2, lineHeight: 1.1 }}>{activeSaved?.name ?? mode?.name ?? cfg.mode}</div>
           </div>
           {mode && MODE_ART.has(mode.mode) && (
             <div style={{ margin: '12px 18px 0', aspectRatio: '2816 / 1536', background: `url(assets/modes/${mode.mode}.jpg) center/contain no-repeat, ${T.inset}`, border: `1px solid ${T.line2}` }} />
@@ -151,10 +151,11 @@ export function Games() {
               {[['TEAMS', mode?.teams_text ?? '—'], ['WIN', mode?.win_text ?? '—'], ['RESPAWN', cfg.respawn.type === 'none' ? 'OFF · LIVES' : `${cfg.respawn.type.toUpperCase()} · ${cfg.respawn.delay_s} S`],
                 ['TIME', cfg.time_limit_s ? `${Math.round(cfg.time_limit_s / 60)} MIN` : '—'], ['HEALTH', `HP ${cfg.health.max_hp} · ARMOR ${cfg.health.max_armor}`],
                 ['LOADOUT', rulesLine(cfg, weapons, perks) || '—'], ['VENUE', `${cfg.environment.toUpperCase()}${cfg.night ? ' · NIGHT OPS' : ''}`],
-                // F70/F88: only the objective modes carry this, and a grenade drives exactly ONE point
-                ...(cfg.station_source ? [['OBJECTIVE', cfg.station_source === 'grenade' ? 'GRENADE HILL · ONE POINT' : cfg.station_source.toUpperCase()]] : [])].map(([l, v]) => (
+                // F70/F88: only the objective modes carry this, and a grenade drives exactly ONE point.
+                // Same generator as the designer rail (gameSummary.objectiveLine) so the two never drift.
+                ...(objectiveLine(cfg) ? [['OBJECTIVE', objectiveLine(cfg)!]] : [])].map(([l, v]) => (
                 <div key={l} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 14, background: T.panel, border: `1px solid ${T.line}`, padding: '7px 12px' }}>
-                  <span style={{ font: F.mono(500, 10.5), letterSpacing: '.2em', color: T.dim, flex: 'none' }}>{l}</span>
+                  <span style={{ font: F.mono(500, 11), letterSpacing: '.2em', color: T.dim, flex: 'none' }}>{l}</span>
                   <span style={{ font: F.chk(700, 12), letterSpacing: '.06em', textAlign: 'right', ...TAB }}>{v}</span>
                 </div>
               ))}
@@ -170,7 +171,10 @@ export function Games() {
                 {[...state.config_warnings!].filter(w => /LOADOUTS? RESET/i.test(w) || /^SETUP:/i.test(w)).map((w, i) => <div key={i} style={{ font: F.chk(700, 12), letterSpacing: '.14em', color: T.accInk, background: T.warn, padding: '6px 10px', alignSelf: 'flex-start' }}>▲ {w.toUpperCase()}</div>)}
               </div>
             )}
-            {state.config_errors.length > 0 && <div style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.bad }}>▲ {state.config_errors.join(' · ').toUpperCase()}</div>}
+            {/* A refusal is the one thing on this rail the operator MUST be able to read: these are the
+                server's validate() errors (a missing/unknown station_source, F82's yellow roster, F88's
+                second control point) and they name the fix. They rendered at 10px in the corner. */}
+            {state.config_errors.length > 0 && <div role="alert" style={{ font: F.mono(500, 11.5), lineHeight: 1.5, letterSpacing: '.08em', color: T.bad, background: 'rgba(255,82,82,.08)', border: `1px solid ${T.bad}`, padding: '7px 10px' }}>▲ {state.config_errors.join(' · ').toUpperCase()}</div>}
             <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro, lineHeight: 1.6 }}>VENUE = WHERE YOU ARE PLAYING TONIGHT (NOT PART OF THE GAME). CONTINUE ▸ TAKES THIS GAME TO KIT — PHONES SHOW "SETTING UP" UNTIL THEN, THEN THE BRIEFING, THEN THEIR KIT. A "BASE" TAG MARKS THE STOCK MODE THE PLAYING GAME IS BUILT ON.</div>
           </div>
         </div>

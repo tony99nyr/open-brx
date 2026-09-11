@@ -293,7 +293,7 @@ export function Kit() {
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: T.inset, border: `1px solid ${T.line}` }}>
                 <Blink color={node ? T.ok : T.bad} />
                 <select aria-label={`gun for ${sp.display}`} value={selectedGun} onChange={e => patch({ gun_id: e.target.value || null })}
-                  style={{ background: T.inset, color: T.ink, border: `1px solid ${T.line2}`, font: F.mono(600, 11), letterSpacing: '.06em', padding: '6px 8px', minHeight: 32, cursor: 'pointer' }}>
+                  style={{ background: T.inset, color: T.ink, border: `1px solid ${T.line2}`, font: F.mono(600, 11), letterSpacing: '.06em', padding: '6px 8px', minHeight: 36, cursor: 'pointer' }}>
                   <option value="">— NO GUN —</option>
                   {gunOptions.map(o => {
                     const takenBy = players.find(q => q.player_id !== sp.player_id && (q.gun_id || '').toUpperCase() === o.gun_id.toUpperCase());
@@ -463,14 +463,14 @@ function SlotCard({ label, slot, active, onClick, rule, item, kind, required, on
       )}
       {onClear && (
         <button type="button" onClick={e => { e.stopPropagation(); onClear(); }} aria-label={`clear ${slot}`} title={slot === 'perk' ? 'No perk' : 'Leave slot 2 empty'} className="hov-acc-ink"
-          style={{ ...BTN_RESET, position: 'absolute', right: 8, bottom: 8, font: F.mono(600, 9), letterSpacing: '.14em', color: T.micro, padding: '6px 8px', minHeight: 32 }}>✕ CLEAR</button>
+          style={{ ...BTN_RESET, position: 'absolute', right: 8, bottom: 8, font: F.mono(600, 9), letterSpacing: '.14em', color: T.micro, padding: '8px 10px', minHeight: 36 }}>✕ CLEAR</button>
       )}
       {required && !item && <span style={{ font: F.mono(500, 9), color: T.bad }}>A PRIMARY IS REQUIRED</span>}
       {overridden && (
         <div role="status" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', font: F.mono(600, 9.5), letterSpacing: '.12em', color: T.warn }}>
           ▲ CHANGED FROM THEIR PHONE — YOURS WAS {overridden.label.toUpperCase()}
           <button type="button" onClick={e => { e.stopPropagation(); onReapply?.(overridden); }} className="hov-warnbg"
-            style={{ ...BTN_RESET, font: F.chk(700, 10), letterSpacing: '.16em', color: T.warn, border: `1px solid ${T.warn}`, padding: '5px 10px', minHeight: 32 }}>REAPPLY MINE</button>
+            style={{ ...BTN_RESET, font: F.chk(700, 10), letterSpacing: '.16em', color: T.warn, border: `1px solid ${T.warn}`, padding: '7px 12px', minHeight: 36 }}>REAPPLY MINE</button>
         </div>
       )}
     </div>
@@ -489,7 +489,7 @@ function ArsenalHeader({ slot, rule, pool, weapons, preset, onClear, onBuild }:
     : sidearms ? `${nAllowed} SIDEARMS${presetTxt}`
     : `${nAllowed} OF ${weapons.length} WEAPONS${presetTxt}`;
   const hint = choice === 'fixed' || choice === 'off'
-    ? <button type="button" className="hov-acc-ink" onClick={onBuild} style={{ ...BTN_RESET, font: F.mono(600, 9), letterSpacing: '.18em', color: T.warn, minHeight: 32 }}>CHANGE IN GAMES ▸</button>
+    ? <button type="button" className="hov-acc-ink" onClick={onBuild} style={{ ...BTN_RESET, font: F.mono(600, 9), letterSpacing: '.18em', color: T.warn, minHeight: 36 }}>CHANGE IN GAMES ▸</button>
     : <span>{slot === 'primary' ? 'SELECT TO ARM · TRY-OUT STARTS ON PICK' : slot === 'secondary' ? 'SELECT · WEAPONS TRY OUT ON PICK' : 'SELECT · APPLIED WHEN THE GAME IS PUSHED'}</span>;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
