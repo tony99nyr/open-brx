@@ -29,14 +29,16 @@ F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (col
 | **What closed today** | [`archive/followups-closed.md`](archive/followups-closed.md), newest last |
 | **Why a fact is believed** | [`experiment-log/`](experiment-log/) — grep the id or the date |
 
-**🔴 blocking, at a glance (2026-09-11):** **F69** a grenade hill damages and kills players in our games ·
-**F91** (bench) move our weapons off IR protocol 0 · **F74** a gun can latch an IR event and replay it
-forever · **F68** a miss permanently kills the headset team colour · **F43** sound picks by acoustic shape
-are not trustworthy · **S10** LED language v2 · **E5** extensibility (E1 closed 2026-09-11) · **B23**/**B26**
-respawn-for-hosted and the headset-less-gun contradiction.
+**🔴 blocking, at a glance (2026-09-11):** **F68** a miss permanently kills the headset team colour ·
+**F43** sound picks by acoustic shape are not trustworthy · **S10** LED language v2 · **E5** extensibility
+(E1 closed 2026-09-11) · **B23**/**B26** respawn-for-hosted and the headset-less-gun contradiction.
 *(**F35** and **F96** left this list on 2026-09-11: both were fixed in code and only the rows were still
 open — see `archive/followups-closed.md`. **F82** is 🟡, not 🔴: MC refuses a tid-2 hill at three layers, and
-what remains is the bench observation.)*
+what remains is the bench observation. **F69** and **F91** left this list on 2026-09-11 (bench): the hill's
+"chip damage" turned out to be manufactured inside the gun by fn 24, not a wire-level word — F69 closed as
+refuted, F91 retired since there is no word left to dodge; see `archive/followups-closed.md`. **F74** stays
+open but drops off this list, downgraded to 🟡 the same night: the trigger is fn 24-27, not a general IR
+latch, though the original self-replay-with-no-IR observation is still unreproduced.)*
 
 ### Every open id, by lane
 
@@ -50,13 +52,13 @@ right** and this index is stale. Do not cite it as evidence that something is or
 **Needs Tony at the bench** (tagged `trigger` · `bench` · `ears` · `eyes` · `space` · `grenade` · `capture` ·
 `hardware` — running order in [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md), next sheet
 [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md)):
-- 🔴 **B26** · **F49** · **F74** · **F91** · **K4** · **Q15** · **S10**
-- 🟠 **F13** · **F23** · **F44** · **F50** · **F58** · **F59** · **F71** · **P8** · **Q16** · **S9**
-- 🟡 **B27** · **B28** · **B29** · **D1** · **F3** · **F21** · **F26** · **F27** · **F28** · **F30** · **F36** · **F45** · **F48** · **F62** · **F63** · **F66** · **F67** · **F75** · **F76** · **F82** · **F88** · **G3** · **K1** · **P3** · **P15** · **Q18** · **S1** · **S2** · **S7** · **U11′**
+- 🔴 **B26** · **F49** · **K4** · **Q15** · **S10**
+- 🟠 **F13** · **F44** · **F50** · **F58** · **F59** · **F71** · **P8** · **Q16** · **S9**
+- 🟡 **B27** · **B28** · **B29** · **D1** · **F3** · **F21** · **F26** · **F27** · **F28** · **F30** · **F36** · **F45** · **F48** · **F62** · **F63** · **F66** · **F67** · **F74** · **F75** · **F76** · **F82** · **F88** · **G3** · **K1** · **P3** · **P15** · **Q18** · **S1** · **S2** · **S7** · **U11′**
 - 🟢 **B20** · **F29** · **F65** · **F87** · **F99** · **P4** · **P12** · **S4** · **S8** · ⬜ **W4a**
 
 **Keyboard only** (tagged `build` or `decision` — no gun, no rig, no dim room):
-- 🔴 **B18b** · **B23** · **E5** · **F43** · **F68** · **F69** · **F74** · **S10**
+- 🔴 **B18b** · **B23** · **E5** · **F43** · **F68** · **S10**
 - 🟠 **B4** · **B19** · **B21** · **E2** · **F12** · **F13** · **F40** · **F56** · **F58** · **F70** · **F80** · **S3** · **S14**
 - 🟡 **B1** · **B8** · **B14** · **B17** · **D1** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F39** · **F42** · **F60** · **F88** · **F95** · **H1** · **K2** · **Q12′** · **Q13** · **Q18** · **S1** · **S2** · **S6** · **S7** · **S12** · **S13**
 - 🟢 **B11** · **B16** · **B22** · **B25** · **E7** · **F14** · **F17** · **F18** · **F19** · **F32** · **F52** · **F83** · **F87** · **F89** · **F93** · **F98** · **F99** · **F100** · **P14** · **R2** · ⬜ **K6** · **S16** · **S17** · **S19**
@@ -303,6 +305,11 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   `bench-weap-tokens-discovery-2026-09-04.md` §t6 (~10 min): t6 0 → 100 → 50 → 0 with `$GSET` t7=100 so a crit
   exactly doubles; read `$HIR` tok6 and 9-vs-18 damage. Also the cheapest proof that the firmware rolls dice
   per shot at all, which is what F46 and F63 both assume. `trigger` (bench C2).
+  ⚠ **Warning added 2026-09-11 (bench):** the "9-vs-18" expectation this design was built on is the fn-37
+  HEADSET multiplier effect (`docs/weapon-design.md` §6.2, `compile.headset_multiplier()`), not the crit bit —
+  15 headset hits that night all read tok6 = 0 while still landing the fn-37 scale. Run this probe with
+  `$GSET` t7=0 (kills the fn-37 confound outright) or aimed at the GUN BODY (always ×1 regardless of t7), or
+  the result will look like a t6 effect that is really t7 leaking through.
 - **F63 🟡 `$WEAP` t7-t11, the secondary-fire block — a per-shot damage type?** `secondaryFireChance`,
   `secondaryDamageType`, `secondaryPowerType`, `secondaryDamage`, `secondaryCritChance`: **empty on all 20
   captured stock frames.** If t7 is a per-shot percentage that swaps the emitted `<protocol, subtype>` to the
@@ -436,9 +443,6 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 - **F19 🟢** after a PANIC the HUD shows the plain kitted screen; add a "HOST STOPPED THE MATCH" pill. `build`.
 - **F20 🟡 decision** kill confirm during a reload is deferred until the RELOADING takeover ends (~2 s). `decision`.
 - **F21 🟡** status-bar / display-corner inset fixed in code (APK 0.1.6+); verify on the Pixel 4 and Pixel 10. `eyes`.
-- **F23 🟠** applied damage may depend on the SENSOR, not just the `$SIR` function: a Callsign capture shows 18/hit on
-  headset sensor 0 vs 9/hit on gun body 4, same victim, same life. Would break every hits-to-kill number.
-  `bench-weap-tokens-discovery-2026-09-04.md` item 1. `trigger`.
 - **F24 🟡** MC-owned session totals (`session_totals` in the `score` push) so the phone's tally matches the laptop. `build`.
 - **F25 🟡 decision** the kill strip says "CONFIRMED BY MISSION CONTROL"; true by construction (kills only arrive from MC),
   but an out-of-range player reads their kills as unconfirmed. Keep, or "ELIMINATION"? One string in `hud.js`. `decision`.
@@ -590,8 +594,9 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   up** (fn 28 registers with nothing at all, fn 8 is silent but flashes and buzzes, fn 24-27 fire one long
   grenade-ish clip). **Left here: enemy 35, and ally 31 / 32 / 34** — bench-queue rung **D6**, whose three
   run-voiding traps are mandatory. Moot for the product if F15 ships. `trigger` (bench 1.5).
-- **Unexplained, recorded not buried:** the 2026-08-27 24-cell ×1.0 multiplier matrix (outvoted by two runs, never
-  explained); one 16/16 vs 4/10 registration run under identical geometry (2026-09-02).
+- **Explained 2026-09-11 (F23):** the 2026-08-27 24-cell ×1.0 matrix was the GUN BODY (always ×1); the ×1.25/×2
+  runs measured the HEADSET. Different sensors, both correct. Kept: one 16/16 vs 4/10 registration run under
+  identical geometry (2026-09-02).
 
 ## 9. Needs Tony at the bench (merged from bench-tomorrow.md + unknowns.md, 2026-09-06)
 
@@ -636,23 +641,6 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   does. Fix needs a trigger that does not depend on damage: the node cannot see the miss at all, so either repaint on a
   timer/heartbeat while alive, or accept a dark headset and move team identity entirely to the gun body. **Also worth
   knowing for gameplay: a miss is VISUALLY IDENTICAL to a hit** (same green flash), so no observer can tell them apart. `build`.
-- **F69 🔴 A GRENADE HILL DAMAGES AND KILLS PLAYERS IN OUR GAMES TODAY, AND MC CANNOT SEE WHY.** Bench
-  2026-09-10. A grenade in HILL mode emits **two** words on the same ~5 s cycle: a beacon
-  (`proto=15 mag=8`, team = the OWNER) and a **standard damage word (`proto=0 mag=8`)**. Our compiled table
-  has no proto-15 row, so the beacon is discarded silently -- but `$SIR,0,0,,1` is our ordinary damage row, so
-  **the damage lands in full**. Measured: a player flipped to the non-owning team was killed by an unattended
-  hill in ~106 s, 8 damage a tick, 70 armour + 45 HP to zero, with no host involvement and nothing in the
-  event stream naming the cause. Anyone who brings a grenade in hill mode to a match today gets unexplained
-  deaths. Either ship the proto-15 row (see F70) so the node can name it, or document the hazard loudly.
-  ⚠️ **It was WORSE than "cannot see why", and that half is now fixed (2026-09-10).** The hill's damage word
-  carries **shooter wire id 0**, and nothing in the attribution helpers enforced A5.1's "wire 0 is never a
-  player". So the word was stored as `_last_shot`; `ATTRIB_FUSE_S` (6 s) is WIDER than the hill's ~5 s period,
-  so the attribution never went stale; and `_handle_death` ran `team_score[owner] += 1`. **The hill was
-  crediting its owning team with kills.** `shooter_team()`/`shooter_player_id()` now return `None` on wire 0,
-  covered by `test_a_hill_that_kills_you_scores_for_nobody` plus a real-shooter control. The suite could not
-  see this because every fixture defaulted the shooter's wire id to 0 (see the log). **Still open: the DAMAGE
-  itself.** Players are still killed by an unattended hill — and **"nothing names the cause" turns out to be too
-  kind: the victim's phone names the WRONG team as the killer (F81).** `build`.
 - **F70 🟠 KING OF THE HILL IS A NATIVE PRIMITIVE, AND A HOSTED GAME CAN NOW READ IT.** Bench
   2026-09-10. **The wire is documented once, in
   [`protocol/brx-ir-protocol.md`](../protocol/brx-ir-protocol.md) §"The grenade beacon"** — beacon,
@@ -700,7 +688,8 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   balance we already tune, with no separate capture stat and no host rules. **Do not build that economy yet.**
   **Node work still open here:** track the owner, drive the scoring, and pick the `$SIR` row's `<soundID>`
   deliberately (moot on fn 28, which ignores it — rung Y). Cross-refs: **F88** no beacon carries a station id ·
-  **F82** no tid 2 · **F91** the hill's `proto=0` chip damage · **F87** the rate-of-fire boost. `build`.
+  **F82** no tid 2 · **F91** (closed 2026-09-11, retired: the chip damage was fn 24 manufacturing ticks inside
+  the gun, not a wire word) · **F87** the rate-of-fire boost. `build`.
 - **F82 🟡 NOBODY MAY BE ON TEAM 2 IN A HILL MODE — the GUARD has shipped; the HARDWARE claim is still
   untested.** Found in review 2026-09-10, falls straight out of F70. **A neutral hill broadcasts team 2.** The
   firmware's polarity gate compares that against the receiving gun's own `$TID`, so a roster containing team 2
@@ -744,21 +733,6 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   conclusion still holds; it now rests on one leg instead of two. Recorded so nobody "fixes" it later
   assuming it is reachable by default — and so nobody routes BEACONS through `_team()`, which WOULD break:
   a beacon's team 0 is genuinely red, bench-captured 2026-09-10 taking a blue-held hill. `build`.
-- **F91 🔴 BENCH: MOVE OUR WEAPONS OFF IR PROTOCOL 0 SO A HILL'S CHIP DAMAGE VANISHES.** A grenade hill
-  emits an ambient `proto=0 sub=0 mag=8` damage word that our `$SIR,0,0,,1` row applies in full (F69), which
-  punishes the ATTACKER and is the one hardware fact working against a push-the-objective mode. It cannot be
-  switched off while our weapons share that cell. **But `$WEAP` t3 = `primaryDamageType` IS the IR word's
-  protocol field** and selects the victim's `$SIR` row — a 15-value enum (0 Standard, 5 Cryogenic, 6
-  ArmorPiercing, 7 EMP …), bench-proven in its wire position, and stock weapons already use different values
-  (8 charge, 10 rocket, 11 gas, 13 melee). So: set our weapons to a non-zero t3, ship `$SIR,<that>,0,,1`
-  instead of `$SIR,0,0,,1`, and the hill's word lands in an **unmatched cell = silently discarded** (the F11
-  shape, used deliberately). Protocol independence for fn 1 is already measured across protocols 0, 5, 7, 9
-  and 10 (50 cells, none varied), so damage behaves the same.
-  **UNTESTED and the whole point of this rung:** nobody has set a non-stock t3 on OUR gun and watched the
-  wire. Arm via `arm_sequence()` with t3=7, fire at board A, confirm the captured word reads **proto=7**;
-  then confirm a hill no longer drains an intruder. ⚠ **The tradeoff to state in the write-up:** dropping
-  `<0,0>` makes our guns DEAF to anything shooting standard protocol 0, including a native BRX gun. Fine for
-  an all-hosted match, fatal for mixing hosted and native players in one game. `bench`.
 - **F93 🟢 A PROXIMITY LAYER IS ALREADY ARRIVING ON EVERY PHONE AND BEING DISCARDED.** Opened 2026-09-10
   (Tony's idea, and his design call recorded below). `app/src/app.js:121` feeds **every** OBRX advert into the
   presence tracker — `presence.observe(hit.uuids, hit.rssi, …)`, low-latency scan mode, open for the whole
@@ -950,15 +924,13 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   NATIVE game, stand in an enemy-held hill and deliberately MISS the grenade. If it still says "contested",
   native is inferring too and we lose nothing. If it stays silent, the grenade emits a hit word and board A should
   be pointed at it during a deliberate near-miss to catch it. `grenade`.
-- **F74 🔴 A GUN CAN LATCH AN IR EVENT AND REPLAY IT FOREVER — with no IR in the air.** Bench 2026-09-10,
-  measured from both directions. The gun emitted `$HIR,0,0,42,0,20,0,0` + `$HP` **every 5.07 s, indefinitely**,
-  while **board A recorded ZERO bursts across an 18 s capture** — nothing was transmitting. The grenade was off,
-  the emitter was idle, and the operator was stationary. It **survived three `$PLAYX,0,*`** (the audio went quiet
-  briefly and the event kept going) and was **cleared by `$SPAWN,,*`** — the same command that clears the `$SIR`
-  fn-23 state, so `$SPAWN` looks like the general "drop stuck IR state" lever.
-  **Why it is 🔴:** in a match a latched gun MANUFACTURES HITS THAT MC WILL SCORE. Accuracy, kill attribution
-  and hit feedback all corrupt, and to the player it is indistinguishable from being shot by nobody. It is also
-  silent to us: nothing in the node or MC can tell a replayed `$HIR` from a real one.
+- **F74 🟡 A GUN ONCE LATCHED AN IR EVENT AND REPLAYED IT WITH NO IR IN THE AIR — the mechanism is now
+  understood, the SELF-replay is not.** Bench 2026-09-10, measured from both directions. The gun emitted
+  `$HIR,0,0,42,0,20,0,0` + `$HP` **every 5.07 s, indefinitely**, while **board A recorded ZERO bursts across an
+  18 s capture** — nothing was transmitting. The grenade was off, the emitter was idle, and the operator was
+  stationary. It **survived three `$PLAYX,0,*`** (the audio went quiet briefly and the event kept going) and was
+  **cleared by `$SPAWN,,*`** — the same command that clears the `$SIR` fn-23 state, so `$SPAWN` looks like the
+  general "drop stuck IR state" lever.
   **It already cost us a result:** the U11′ sweep (F73) ran with phantom hits mixed into every trial, which is
   what produced "multiple sounds per shot" and sent me chasing multipath. Tony called it early — *"i think it
   also queues the events on the tagger"* — and I looked at rig geometry instead.
@@ -966,15 +938,21 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   **headset flashed** on every repeat, and the wire carries `$HIR` **and** `$HP` each time. The durations settle
   it too — every hit clip in the `$PSET` is 0.36-0.79 s (`H06` .43, `H55` .36, `H13` .79, `H21` .74, `H02` .39),
   so nothing retriggered at 5 s can overlap itself into a "growing" sound.
-  ⚠ **Loose end: which clip is the hiss?** It is not `A10` (`energyShieldLoop` shipped EMPTY in these runs) and
-  none of the five hit slots is a long hiss, so something outside the slots we set is producing it — and it is
-  the same sound heard during the grenade runs. Identify it: it may be a fall-through (an empty effect field
-  falls OUTWARD to the neighbouring pool's clip, A17) or a firmware default we have never catalogued.
-  **Unknown: the trigger.** It appeared during rapid emitter shots with a grenade beaconing nearby, so a flood of
-  IR is the suspect, but nothing was isolated. Probe: hammer a gun with `rapid_fire.py`, stop, and watch for a
-  replay; then bisect (emitter alone vs beacon alone). Also open: does it survive a BLE drop, and does a NODE
-  see it as real (it should, which is the problem). Consider a node-side guard — identical `$HIR` at a fixed
-  period with no `$ALCD` from any shooter is not a real hit. `trigger` + `build`.
+  ✅ **Which clip is the hiss is now answered (bench 2026-09-11): it is fn 24-27's own clip.** The same
+  hiss-then-explosion sequence heard during these runs is exactly what a live `$SIR,15,0,,24` beacon plays every
+  ~5 s (see F69/F91's close), so it is not `A10` or a fall-through — it is the function's own effect, playing on
+  a real ~5 s cycle rather than nothing.
+  **Downgraded 🔴 → 🟡 (bench 2026-09-11): the TRIGGER is identified as the fn 24-27 blast family, and the
+  proposed node-side guard is no longer justified.** Arming the beacon cell with fn 24 and watching it live
+  produces the same shape as this row — a fixed-period `$HIR`+`$HP` repeat with a delay baked into the function
+  — but each tick traces to a real beacon and stops within one period of the beacon stopping (60+ s of silence,
+  zero further ticks, board A confirming no IR). **Self-replay with NO IR in the air at all — this row's
+  original 2026-09-10 observation — was NOT reproduced tonight and stays open and unexplained.** The rule to
+  ship is simply "never put fn 24-27 on any cell," which needs no defensive code; a node-side guard (identical
+  `$HIR` at a fixed period with no `$ALCD` from any shooter) would still be worth having if the original
+  observation ever recurs, but nothing justifies building it from tonight's evidence. Also still open: does it
+  survive a BLE drop, and was the grenade actually fully off during the 2026-09-10 capture (never independently
+  confirmed with a receiver on the grenade itself). `trigger`.
 - **F71 🟠 The three headset weapons may do far more damage than we publish.** The catalog derives `dmg`, `htk`
   and `ttk_ms` from `$WEAP` **t5 alone**. But the shotgun's capture word went out at **magnitude 70** = its
   `t12` extraHeadsetDamage, alongside a t5 of 45 — so at headset range a shotgun may land **115, not 45**, and
@@ -983,6 +961,10 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   family as **F23** (damage depends on the sensor). Probe: fire each of the three at a victim at headset range
   and at gun range, and read the `$HP` delta against t5 and t5+t12. Only ONE word (`mag=70`) decoded on the
   shotgun shot, so whether the primary goes out too is open — the second half of that burst was undecodable. `trigger`.
+  ⚠ **Cross-ref added 2026-09-11 (bench):** this is a DIFFERENT mechanism from F23's headset scaling, now closed
+  and explained by `$SIR` fn 36/37 + the compiled `$GSET` t7 (`docs/weapon-design.md` §6.2). F71's candidate is
+  `$WEAP` t12 `extraHeadsetDamage`, a per-weapon token added on top of t5 at headset range, which is orthogonal to
+  the fn-driven multiplier and untested either way. Both could be true on the same shot; probe both.
 - **F66 🟡 `$SIR` fn 23: one mechanism with two symptoms, or two effects?** The 2026-08-27 row called it an audio
   suppressor on the strength of `$ALCD` token 2 dropping 100 → 0. Token 2 is now bench-proven to be **live accuracy**
   (F46), so that number never evidenced the audio claim at all. Both observations stand on their own: the gun **was heard**
@@ -1046,7 +1028,6 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 - 1.7 t37/t38 overheat: two varied-value probes on the SMG frame, watch the `$ALCD` heat gauge.
 - 1.8 **U4/U5** one long reload with a stopwatch; hold the AR trigger and listen.
 - **F15** (closed 2026-09-11, built unproven) rung 9: fire a proto-8 word at a gun armed with `config.stun` — expect `$AMMO,<slot>,0,0,1` from the node and the live counts back after 10 s; then `$BHIT` with the `$HIR` field set as the cheaper source.
-- **F23** same word at headset sensor 0 vs gun body 4, compare the `$HP` delta.
 - **F26** two guns, two phones, ten shots: does `$HIR` shooter id map to `player_num`?
 - **F27** per weapon, `$BUT,2` → `$ALCD` up, versus `reload_s`.
 - **P4** `$AS,1,0,0,0,0,0,0,99,*` and `$UP,1,*` on a live gun: any behaviour change?

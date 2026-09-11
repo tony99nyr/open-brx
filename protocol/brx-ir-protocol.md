@@ -144,6 +144,16 @@ hardware. Polarity applies to both: they are
 enemy-only under `$GSET` t1 = 0, so a gun sees only hills it does NOT own; **t1 = 1 lifts the gate** and the
 owner arrives in `$HIR` token 4, which is how a host reads who holds a point.
 
+🔴 **fn 24 is not the harmless alternative it looked like — it is WHY an unattended hill used to kill players
+(F69, refuted; F91, retired).** Bench 2026-09-11, arming `<15,0>` with fn 24 against a live neutral hill:
+every beacon plays its clip, and **~4 s later the gun applies 1-3 damage ticks of the beacon's own magnitude**
+(mag 8, `$HIR,0,0,0,2,8,0,0` ×1-3, ~420 ms apart), reported as ordinary `proto=0` hits carrying the beacon's
+team — a receiver aimed at the same grenade across the same window saw zero protocol-0 words, so the tick is
+generated INSIDE the gun by fn 24, not transmitted. That is the entire 2026-09-10 "hill kills players in
+~106 s" measurement: it ran with fn 24 on the cell. **fn 28 (shipped above) has no such tick** — armed the same
+way against the same live hill for 70 s, pools held steady. The rule this settles: never put fn 24 (or, by the
+same clip family, 25-27, untested for the tick specifically) on ANY cell in a hosted table, beacon or otherwise.
+
 **B and U together are the `$SIR` composite key `<protocol, subtype>`** — the exact index a `$SIR`
 row is looked up by. 4 bits and 2 bits — 16 × 4 = **64 addressable effect cells, and the table is ours to write
 over BLE.** A victim registers an IR event **only if a row exists for that cell**; with no row the hit

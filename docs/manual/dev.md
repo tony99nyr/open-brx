@@ -276,7 +276,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | 3 | primaryDamageType | 0 | 8 | **The IR word's B field / `$SIR` protocol key.** Writing a type here is echoed by the victim in `$HIR` token 2 and selects its `$SIR` row. DamageType enum: 0 Standard, 1 MedicHeal, 2 ActivateShield, 3 RallyPulse, 4 Radiation, 5 Cryogenic, 6 ArmorPiercing, 7 EMP, 8 Shrapnel, 9 StickyBomb, 10 StandardLethalExplosive, 11 NonLethalExplosive, 12 ShottyPellets, 13 MeleeDamage, 14 Plasma. Stock: 8 charge, 10 rocket, 11 gas, 13 melee. The wire position is bench-proven; the enum names come from the APK. |
 | 4 | primaryPowerType | 0 | 0 | IRSource enum: DeviceCommand, IRSource, GunLaser, HeadSetOnly, GunAndHead, DoubleGun, DoubleGunAndHead, DRY_FIRE, MuzzleFlash, MuzOnly, VibOnly, MuzAndVib. Order relative to t3 was settled by t3 behaving as damageType. |
 | 5 | primaryDamage | 24 | 150 | **The raw magnitude put in the IR word** (= `$HIR` token 5). Applied damage depends on the victim's `$SIR` row. The stock AR emits 9. The 24 in the sample frame is the figure printed in Battle Company's manual. |
-| 6 | primaryCriticalChance | 0 | 0 | Crit chance. 0 on every stock weapon; the IR crit bit *can* be set (applies `$GSET` t7, ×1.5 at the shipped t7=50). |
+| 6 | primaryCriticalChance | 0 | 0 | Crit chance. 0 on every stock weapon; the `$HIR` crit bit (tok6) read 0 on every measured headset hit, so its damage effect is unconfirmed (F62). The `$GSET` t7 scaling rides fn 36/37 by SENSOR, not this bit. |
 | 7-11 | secondaryFireChance, secondaryDamageType, secondaryPowerType, secondaryDamage, secondaryCriticalChance | n/a | n/a | **Dormant**: empty on all 20 captured stock frames. No stock BRX weapon has a secondary fire mode. |
 | 12 | extraHeadsetDamage | n/a | n/a | Populated with t1=2: Shotgun 70, Rocket 115, Plasma Sniper 80. |
 | 13 | extraHeadsetRangeOutdoor | n/a | n/a | 80 on the same three weapons. |
@@ -425,14 +425,16 @@ $SIR,11,0,VA2,28,0,0,1,,*   Tear gas
 $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer (melee)
 ```
 
-**Function map.** Measured at magnitude 20, baseline HP 45 / armor 70 / shield 0, **at the gun-body sensor (`$HIR` tok1 = 4) from about 40 cm**. Protocol independence is measured for 10 of the 41 functions (fn 1, 3, 8, 23, 24, 25, 26, 27, 28, 35). Those ran on the enemy team at subtype 0 only, across protocols 0, 5, 7, 9 and 10. That is 50 cells, none of which varied. Applying the result to the grant and ally functions is an extrapolation, not a measurement. Whether a **headset-dome** hit behaves the same is **untested**. The two multiplier functions, 36 and 37, were measured again on 2026-09-02 across magnitudes 20, 40, 9 and 7 and across 8 different `$SIR` row-tail shapes, 16 trials, each with an fn 1 control that had to read the magnitude exactly. The row tail does not change the multiplier.
+**Function map.** Measured at magnitude 20, baseline HP 45 / armor 70 / shield 0, **at the gun-body sensor (`$HIR` tok1 = 4) from about 40 cm**. Protocol independence is measured for 10 of the 41 functions (fn 1, 3, 8, 23, 24, 25, 26, 27, 28, 35). Those ran on the enemy team at subtype 0 only, across protocols 0, 5, 7, 9 and 10. That is 50 cells, none of which varied. Applying the result to the grant and ally functions is an extrapolation, not a measurement. The two multiplier functions, 36 and 37, were measured again on 2026-09-02 across magnitudes 20, 40, 9 and 7 and across 8 different `$SIR` row-tail shapes, 16 trials, each with an fn 1 control that had to read the magnitude exactly. The row tail does not change the multiplier.
+
+**The headset-dome question is now answered (bench 2026-09-11).** Fn 36 and 37 only scale on the headset sensor: the gun body applies the raw magnitude for every function, fn 36/37 included. The headset scale is a function of the `$GSET` critical shot modifier (t7): fn 36 lands `floor(magnitude times (1 plus t7/200))`, fn 37 lands `floor(magnitude times (1 plus 2 times t7/100))`. At t7 equal 50, that is the x1.25 and x2 read on 2026-09-02, so both earlier readings were correct at once; the 2026-08-27 run that read x1.0 was pinned to the gun body the whole time. A t7 equal 0 closing control read fn 37 back to a plain x1 on the headset, confirming t7 as the driver.
 
 | Class | Function ids | Measured behaviour | Polarity |
 |---|---|---|---|
 | Standard damage | 1, **3**, 4, 5, 7, 29, 30, 33, 38 | −20 per hit, drains shields, then armor, then HP | enemy only |
 | **Armor-piercing** | 2, 6 (+17, 21 enemy-side) | HP 45 to 25 to 5 with armor **and shields** untouched | enemy only |
-| **×1.25 damage (truncated)** | 36 | magnitude 20 lands as **25**, 40 as **50**, 9 as **11**, 7 as **8**. The result is the **floor**: 7 × 1.25 = 8.75 lands as 8, not 9 | enemy only |
-| **×2 damage** | 37 | magnitude 20 lands as **40**, 40 as **80**, 9 as **18**, 7 as **14** | enemy only |
+| **×1.25 damage on the headset, ×1 on the gun body** | 36 | Gun body: always ×1 (magnitude 20 lands as 20). Headset at the shipped t7=50: magnitude 20 lands as **25**, 40 as **50**, 9 as **11**, 7 as **8**. The result is the **floor**: 7 × 1.25 = 8.75 lands as 8, not 9 | enemy only |
+| **×2 damage on the headset, ×1 on the gun body** | 37 | Gun body: always ×1 (magnitude 20 lands as 20). Headset at the shipped t7=50: magnitude 20 lands as **40**, 40 as **80**, 9 as **18**, 7 as **14** | enemy only |
 | Add HP, overflow to armor | 9, 12, 16, 19 | 15 to 35 to 45, then +armor | ally only (16/19 also damage enemies) |
 | Add HP, clamp | 10, 17 | 15 to 35 to 45, no overflow | ally only (17 also AP-damages enemies) |
 | Add HP, overflow to shield | 14, 21 | 15 to 35 to 45, then +shield | ally only |
@@ -444,7 +446,7 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 
 > **Support functions are team-gated in firmware.** With `$GSET` friendlyFire = 0, heals/armor/shield grants register **only from a same-team source**, and damage registers only from another team. Set friendlyFire = 1 and everything lands from anyone. A medic gun enforces "allies only" with zero host logic.
 
-- **applied = magnitude × fn multiplier × (1 + `$GSET` t7/100 if crit)**: the crit modifier is a **per-game tunable**, not a fixed ×1.5: t7=0 disables crits, t7=100 doubles. ×1.5 is simply the shipped t7=50. Exact at seven levels, 3/3 each.
+- **applied (gun body) = magnitude.** **applied (headset) = magnitude × fn multiplier**, and only fn 36/37 carry one: fn 36 is `1 + $GSET t7/200`, fn 37 is `1 + 2 × $GSET t7/100`. The `$HIR` crit bit (token 6) is a separate field that read 0 on every headset hit measured; it is not what drives this. The critical shot modifier (t7) is a **per-game tunable**: t7=0 disables the fn 36/37 scaling on the headset, t7=100 triples fn 37 (×3) and lifts fn 36 to ×1.5. The shipped t7=50 is why fn 36/37 read as a fixed ×1.25/×2.
 - **Drain order: shields, then armor, then HP.** Armor absorbs 1:1 with no per-hit cap; overflow spills into HP (a sniper's 80 split exactly 70/10).
 - **Heals clamp** at the pool max. Magnitude 200 is a fill, not a stack.
 - **No function is a damage-over-time.** 18 s watched after each status hit: no ticks.
@@ -544,7 +546,7 @@ A 25-bit pulse-width-encoded word on a 38 kHz carrier, decoded from LaserTagMods
 | **P** | 6 | 4-9 | player id 0-63 = `$PSET` token 1 = `$HIR` tok3 | matched the registry |
 | **T** | 2 | 10-11 | team id 0-3 = `$TID & 3` = `$HIR` tok4 | matched |
 | **D** | 8 | 12-19 | magnitude = `$WEAP` t5 = `$HIR` tok5 | pushed 22, then 9, then 115; only these bits moved |
-| **C** | 1 | 20 | critical flag to `$HIR` tok6, applies ×(1 + `$GSET` t7/100) | emitted crit=1 gave `$HIR,…,1,…` |
+| **C** | 1 | 20 | critical flag, echoes to `$HIR` tok6; damage effect unconfirmed (read 0 on every measured headset hit; the t7 multiplier rides fn 36/37 by sensor, not this bit) | emitted crit=1 gave `$HIR,…,1,…` |
 | **U** | 2 | 21-22 | `$SIR` subtype to `$HIR` tok7 | U=0/1/3 registered with rows; U=2 (no row) ignored |
 | **Z** | 2 | 23-24 | parity trailer | see rule |
 

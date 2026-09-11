@@ -9,8 +9,11 @@ Raw traces: `protocol/captures/raw/`. Regenerate the underlying table with
 `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop`.
 
 **Reading the columns.** `dmg` = `t5` (the **raw magnitude** the weapon emits, per bench exp 2; an AR emits
-9, the manual's 24 was stale. **Applied** damage = magnitude × the victim's `$SIR`-function multiplier ×
-1.5-if-crit; see ``session-findings-2026-08.md` §7r). `cycle` = `t14`, the per-shot cycle time in ms, which for charge weapons is the
+9, the manual's 24 was stale — and, bench 2026-09-11, `t5` IS the applied damage on a GUN-BODY hit,
+for every function including the fn 36/37 multiplier pair. **Applied** damage on a HEADSET hit can be
+more: magnitude × the victim's `$SIR`-function multiplier, where fn 36/37 scale with the compiled
+`$GSET criticalShotModifier` (t7) — not a flat "1.5 if crit"; see `protocol/brx-protocol.md` §5 and
+`session-findings-2026-08.md` §7r). `cycle` = `t14`, the per-shot cycle time in ms, which for charge weapons is the
 charge time. `clip`/`reserve` = `t16`/`t40`. `heat` = `t24`, non-zero only on weapons that overheat.
 
 | weapon | sound | behaviour | dmg | cycle ms | clip | reserve | heat |
@@ -54,8 +57,10 @@ behaviour it describes, and empty on all the others:
 ## Caveat worth carrying
 
 `t5` **is the raw magnitude** the weapon emits in the IR word: an AR emits 9, the manual's 24 was stale.
-It equalled the applied damage across the four weapons exp 2 tested only because all four key to `$SIR`
-**fn-1** rows; in general **applied = magnitude × the victim's `$SIR`-function multiplier × 1.5-if-crit**
-(``session-findings-2026-08.md` §7r). Weapon stats are still server-fetched per `apk-harvest.md`, so the numbers above
+It equalled the applied damage across the four weapons exp 2 tested because all four key to `$SIR`
+**fn-1** rows, and (bench 2026-09-11) it equals the applied damage on a GUN-BODY hit for EVERY row,
+fn 36/37 included. In general **applied (headset) = magnitude × the victim's `$SIR`-function
+multiplier**, where fn 36/37 scale with the compiled `$GSET criticalShotModifier` (t7) rather than a
+flat "1.5-if-crit" (`protocol/brx-protocol.md` §5, `session-findings-2026-08.md` §7r). Weapon stats are still server-fetched per `apk-harvest.md`, so the numbers above
 are what the app sent on the day: a faithful record of the wire (as emitted magnitudes), not necessarily
 BRX's current live-service balance.

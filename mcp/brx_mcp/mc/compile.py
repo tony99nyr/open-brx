@@ -133,13 +133,32 @@ def armed_pool(hp: int, armor: int, fx: dict) -> int:
 # It only looked inert because the original sweep ran with the shield at 0; re-measured with a shield
 # granted first, it drains exactly what fn 1 drains. It is plain damage and lives in _SIR_PLAIN_DAMAGE.
 _SIR_NO_POOL = frozenset({8, 23, 24, 25, 26, 27, 28, 35, 31, 32, 34})     # registers a $HIR, moves no pool
-# ✅ CONFIRMED 2026-09-02 (bench item 0.1 CLOSED): fn 36 lands floor(magnitude * 1.25) and fn 37 lands
-# magnitude * 2. 16 trials, magnitudes 20/40/9/7, 8 $SIR row-tail shapes, with an fn 1 control on
-# subtype 0 in every trial. The x1.25 TRUNCATES: 7 * 1.25 = 8.75 lands as 8, not 9. Row tails do not
-# gate it. Measured through OUR $SIR table (the victim's row picks the function), which is what we ship.
-# Retracted: the 2026-08-27 "DISPUTED" reading, whose 24-cell matrix read x1.0 with a valid fn 1
-# control -- that run is OUTVOTED, NOT EXPLAINED. See docs/weapon-design.md §6 and brx-protocol.md §5.
-_SIR_MULTIPLIER = {36: 1.25, 37: 2.0}                # magnitude scaling; applied = floor(mag * mult)
+# ✅ RESOLVED 2026-09-11 (bench, gun Tactix-3D4F): fn 36/37 only scale the HEADSET sensor, and the scale is a
+# function of the compiled `$GSET` criticalShotModifier (t7), not a fixed constant. On the GUN BODY
+# sensor, fn 1/36/37 all land the raw magnitude (x1) -- five sets of five words, sensor field recorded
+# on every hit, confirmed the split. On the HEADSET sensor: fn 36 lands floor(magnitude * (1 + t7/200))
+# and fn 37 lands floor(magnitude * (1 + 2*t7/100)); a t7=0 closing control on fn 37 read back to x1,
+# isolating t7 as the driver. See `headset_multiplier()` below. This reconciles, rather than overturns,
+# the two earlier readings: 2026-08-27's "x1.0" matrix was rig-pinned to the gun body (correct, body is
+# always x1) and 2026-09-02's x1.25/x2 reading was taken on the headset at the MC-compiled default
+# t7=50 (also correct) -- neither was wrong, they measured different sensors. Method lesson: record the
+# `$HIR` sensor field on every hit. See docs/weapon-design.md §6 and brx-protocol.md §5,
+# experiment-log/2026-09.md (2026-09-11, bench).
+def headset_multiplier(fn: int, crit_modifier: int) -> float:
+    """HEADSET-sensor damage multiplier for a $SIR row's function, at the compiled `$GSET`
+    criticalShotModifier (t7, 0-100). Bench-confirmed 2026-09-11: fn 36 -> 1 + t7/200 (x1.25 at the
+    MC default t7=50), fn 37 -> 1 + 2*t7/100 (x2.0 at t7=50); every other function is unscaled (1.0).
+    ⚠ HEADSET ONLY -- the gun-body sensor applies the raw magnitude (x1) for fn 1/36/37 alike, which is
+    why `WeaponCatalog.damage()`/`hits_to_kill()`/`time_to_kill()` do NOT call this: they compute the
+    body number, the guaranteed kill. `applied = floor(magnitude * headset_multiplier(fn, t7))` on a
+    headset hit."""
+    if fn == 36:
+        return 1 + crit_modifier / 200
+    if fn == 37:
+        return 1 + 2 * crit_modifier / 100
+    return 1.0
+
+
 _SIR_ARMOR_PIERCING = frozenset({2, 6})           # bypasses armor AND shields -> straight to bare HP
 _SIR_GRANT = frozenset(range(9, 23))              # heals/armor/shields: a "damage" weapon here HELPS the target
 # ALLOW-LIST, deliberately: only these are bench-confirmed plain 1x damage. Anything not listed is
@@ -521,13 +540,18 @@ class WeaponCatalog:
         return idx
 
     def damage(self, weapon_id: str) -> int:
-        """The weapon's `$WEAP` t5 — the MAGNITUDE it emits, which is NOT always what lands.
+        """The weapon's `$WEAP` t5 — the MAGNITUDE it emits, and (bench-confirmed 2026-09-11) exactly
+        what lands on a GUN-BODY hit; this is the guaranteed-kill number this class publishes.
 
-        ⚠ The victim's `$SIR` row for this weapon's `<t3,t4>` decides what the magnitude does: a
-        multiplier row lands floor(t5 x 1.25) (fn 36) or t5 x 2 (fn 37), a status row lands nothing, and
-        a missing row drops the hit entirely (bench 2026-08-26, multipliers confirmed 2026-09-02;
-        docs/weapon-design.md §6.2). `validate()` warns about all three.
-        For plain damage rows — the majority — this is the applied damage and `$HIR` token 5 echoes it.
+        ⚠ The victim's `$SIR` row for this weapon's `<t3,t4>` decides what the magnitude does, and on
+        the HEADSET sensor it can do more: fn 36 lands floor(t5 x headset_multiplier(36, t7)) and fn 37
+        lands floor(t5 x headset_multiplier(37, t7)) (t7 = the compiled `$GSET` criticalShotModifier;
+        see `headset_multiplier()`), a status row lands nothing, and a missing row drops the hit
+        entirely (bench 2026-08-26, headset scaling bench-confirmed 2026-09-11 to be sensor-gated and
+        t7-dependent, superseding the earlier flat x1.25/x2 reading; docs/weapon-design.md §6.2).
+        `validate()` warns about all three; this method always returns the gun-body (x1) number.
+        For plain damage rows — the majority — this is the applied damage on either sensor and `$HIR`
+        token 5 echoes it.
 
         Rebalanced weapons carry it in `wire.dmg`; untuned ones read it back out of their captured
         frame rather than being treated as unknown."""
@@ -541,16 +565,18 @@ class WeaponCatalog:
             return 0
 
     def hits_to_kill(self, weapon_id: str, pool: int) -> int:
-        """Hits to drop a `pool`-point target (hp + armor), computed on RAW t5.
+        """Hits to drop a `pool`-point target (hp + armor) on the GUN BODY, computed on raw t5.
 
-        Armor absorbs at face value and spills into HP (bench §7r). ⚠ Two things this does not model
-        (docs/weapon-design.md §6). First, a `$SIR` multiplier row: **fn 36 lands floor(magnitude x
-        1.25) and fn 37 lands magnitude x 2 — CONFIRMED 2026-09-02** (16 trials, magnitudes 20/40/9/7,
-        8 row-tail shapes, fn 1 control in every trial; the x1.25 truncates, so 7 lands as 8, not 9).
-        Because this function computes on raw t5, it **OVER-ESTIMATES** htk for the five weapons on
-        fn 36/37 — that behaviour is deliberate and unchanged here; `validate()` warns on those rows.
-        Second, the SHIELD pool, which sits above armor and is granted only by an IR function-11 event.
-        0 = damage unknown, caller skips."""
+        Armor absorbs at face value and spills into HP (bench §7r). This is the guaranteed-kill number:
+        raw t5 IS the gun-body applied damage (bench-confirmed 2026-09-11, `damage()`), so this is
+        correct for a body-only kill, not an over-estimate. ⚠ Two things this does not model
+        (docs/weapon-design.md §6). First, a `$SIR` multiplier row lands MORE on a HEADSET hit — **fn 36
+        lands floor(magnitude x headset_multiplier(36, t7)) and fn 37 lands floor(magnitude x
+        headset_multiplier(37, t7))**, t7 = the compiled crit_modifier (bench-confirmed 2026-09-11,
+        superseding the earlier flat x1.25/x2 reading) — so an all-headset kill on the five weapons on
+        fn 36/37 needs FEWER hits than this method publishes; `validate()` warns on those rows with the
+        actual multiplier. Second, the SHIELD pool, which sits above armor and is granted only by an IR
+        function-11 event. 0 = damage unknown, caller skips."""
         dmg = self.damage(weapon_id)
         return math.ceil(pool / dmg) if dmg > 0 and pool > 0 else 0
 
@@ -599,7 +625,9 @@ class WeaponCatalog:
         return round(100 * self.damage(weapon_id) / pool) if pool > 0 else 0
 
     def time_to_kill(self, weapon_id: str, pool: int) -> int:
-        """ms from the first shot to the killing hit at `pool`; 0 when the weapon one-shots.
+        """ms from the first shot to the killing hit at `pool`, on the GUN BODY; 0 when the weapon
+        one-shots. Built on `hits_to_kill()`, so the same gun-body caveat applies: an all-headset kill
+        on an fn 36/37 weapon lands sooner than this.
 
         (htk - 1) cycles, because the first hit costs no wait — EXCEPT on a charge weapon, where the
         first shot has to be charged too, so it is htk cycles. That is the whole reason the Rail Gun
@@ -1364,13 +1392,16 @@ class Compiler:
                     warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, a GRANT "
                                     f"(heal/armor/shield): it HEALS an ally it hits{dual} "
                                     f"(weapon-design.md §6.2)")
-                elif fn in _SIR_MULTIPLIER:
+                elif fn in (36, 37):
                     flagged.add(wid)
-                    mult = _SIR_MULTIPLIER[fn]
+                    cm = self._to_gc(config, p).crit_modifier
+                    mult = headset_multiplier(fn, cm)
                     warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, a CONFIRMED "
-                                    f"multiplier row: it lands floor({mult}x its $WEAP t5) "
-                                    f"(bench 2026-09-02). The published htk/ttk_ms are computed on raw "
-                                    f"t5, so they OVER-ESTIMATE hits-to-kill for this weapon "
+                                    f"HEADSET-ONLY multiplier row: at this game's compiled crit_modifier "
+                                    f"({cm}) a headset hit lands floor({mult}x its $WEAP t5); a gun-body "
+                                    f"hit lands the raw t5 (x1) (bench 2026-09-11). The published "
+                                    f"htk/ttk_ms are the GUN-BODY (guaranteed-kill) number, so an "
+                                    f"all-headset kill needs fewer hits than published "
                                     f"(weapon-design.md §6.2)")
                 elif fn in _SIR_ARMOR_PIERCING:
                     flagged.add(wid)

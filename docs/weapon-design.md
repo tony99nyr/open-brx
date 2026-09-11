@@ -10,12 +10,15 @@
 > listen-only run that reported damage on protocol 7 did not reproduce. History of the flip-flop:
 > `docs/experiment-log.md` 2026-08-26/27.
 >
-> ✅ **SETTLED (2026-09-02): the ×1.25 / ×2 multipliers are REAL.** **fn 36 = floor(magnitude × 1.25),
-> fn 37 = magnitude × 2** — 16 trials, 4 magnitudes (20/40/9/7), 8 `$SIR` row-tail shapes, an fn 1
-> control in every trial. **The ×1.25 truncates: 7 × 1.25 = 8.75 lands as 8.** So five weapons —
-> Burst Rifle, Bolt Rifle, AMR (×2), Force Rifle, Sniper Rifle (×1.25) — **do** deal more than their
-> `t5`, and tuning on ×1.25/×2 is safe. The one 2026-08-27 matrix that read ×1.0 is outvoted, not
-> explained (`docs/experiment-log.md` 2026-08-27, 2026-09-02). §6.2.
+> ✅ **SETTLED (2026-09-11, bench): the ×1.25 / ×2 multipliers are REAL, and HEADSET-ONLY.** **fn 36
+> lands floor(magnitude × (1 + t7/200)), fn 37 lands floor(magnitude × (1 + 2·t7/100))** on the
+> HEADSET sensor (t7 = the compiled `$GSET criticalShotModifier`; ×1.25 / ×2 at t7=50, the MC
+> default) — the GUN BODY lands the raw magnitude (×1) on all three functions, fn 1/36/37 alike. So
+> five weapons — Burst Rifle, Bolt Rifle, AMR (fn 37), Force Rifle, Sniper Rifle (fn 36) — deal more
+> than their `t5` on a HEADSET hit only; a body hit is exactly `t5`. This reconciles rather than
+> overturns the two earlier readings: 2026-08-27's ×1.0 matrix was rig-pinned to the gun body
+> (correct — body is always ×1) and 2026-09-02's ×1.25/×2 reading was taken on the headset at t7=50
+> (also correct). §6.2.
 
 What our weapons are, why their numbers are what they are, and where every one of them comes from.
 
@@ -473,7 +476,7 @@ first.
 | **U4** | **How the 3-part reload chain relates to `reload_ms`.** Six stock frames "overrun" a sequential model, so the model is wrong. | any future reload-sound work | One weapon, one long chain, one stopwatch. Also answers whether `t19` changes it. |
 | **U5** | **Does a held trigger retrigger the fire sample from zero, or ring under the next shot?** Decides whether sample duration constrains anything at all. | custom weapon sound design | Fire the AR (1.76 s sample, 190 ms cycle) and listen. |
 | **U6** | ~~victim behaviour per damage type~~ — **CLOSED 2026-08-26, then PARTLY REOPENED by the IR work (§6.2).** The hit-SFX half stands. The conclusion *"presentation only; damage is always t5"* does **not**: `t3`/`t4` are the `$SIR` composite key, and the table MC pushes maps two of the three subtypes in use to **multiplier** functions. Damage is `t5 × the row's multiplier`. The earlier test was sound — every row it exercised happened to be a standard-damage row. | §2's balance table (§6.2) | done — the multiplier values were confirmed 2026-09-02 (U10). |
-| **U10** | ~~REOPENED 2026-08-27 — what switches the fn 36/37 multipliers on?~~ ✅ **CLOSED 2026-09-02: the multipliers are REAL and unconditional. fn 36 = floor(magnitude × 1.25), fn 37 = magnitude × 2.** 16 trials across magnitudes 20/40/9/7 and 8 `$SIR` row-tail shapes, with an fn 1 control on subtype 0 in every trial. The ×1.25 **truncates** (7 × 1.25 = 8.75 → **8**). Row tails do not gate it. Nothing "switches it on" — it is the function. *Still unexplained:* the 2026-08-27 controlled matrix that read ×1.0 in all 24 cells with a correct fn 1 control is **outvoted, not explained**. | §2's balance — the five multiplied weapons are real and §6.2's retune/flatten decision is live | done |
+| **U10** | ~~REOPENED 2026-08-27 — what switches the fn 36/37 multipliers on?~~ ✅ **CLOSED 2026-09-02, fully explained 2026-09-11 (F23): the multipliers are REAL but HEADSET-only and t7-scaled. fn 36 = floor(magnitude × (1 + t7/200)), fn 37 = floor(magnitude × (1 + 2·t7/100)); at the shipped t7=50 that is ×1.25 / ×2.** 16 trials across magnitudes 20/40/9/7 and 8 `$SIR` row-tail shapes, with an fn 1 control on subtype 0 in every trial. The ×1.25 **truncates** (7 × 1.25 = 8.75 → **8**). Row tails do not gate it. *Reconciled:* the 2026-08-27 matrix that read ×1.0 in all 24 cells was rig-pinned to the GUN BODY (always ×1); the ×1.25/×2 runs measured the HEADSET. Both were correct — different sensors. See §6.2. | §2's balance — the five multiplied weapons are real and §6.2's retune/flatten decision is live | done |
 | **U11′** | **Which status function, if any, is a real STUN? — OPEN (reopened 2026-08-27).** fn 23 is eliminated as a stun: it **silences the gun AND zeroes its accuracy** — the silence was heard by ear (stands), while the `$ALCD` token 2 drop cited as its proof is live ACCURACY (bench-proven 2026-09-09, §4.4), not the audio level this row said. One number was doing duty for two claims; see F66. Getting hit with fn 23 forces it down and it recovers over ~6–8 s; the gun fires and emits IR normally, ammo and health preserved, `$SPAWN` clears it early. Category 10 remains unbuilt; next lead is capturing the native Sentinel EMP ability. The 2026-08-26 "it is an EMP" reading and its correction: `docs/experiment-log.md` 2026-08-26/27. | stun weapons | capture the Sentinel EMP |
 | **U7** | ~~Damage ceiling in the IR payload~~ ✅ **CLOSED 2026-08-26** — read straight off the wire on our own VS1838B: the field is **8 bits (max 255)** and the rocket's 115 decoded exactly. A 2× powerup is expressible on anything up to 127. | future powerups | **Now directly readable** — the `D8` field on a VS1838B capture (bench-plan Session 1½b). |
 | **U8** | **`t17` vs `t40`.** Every captured frame obeys `t17 == 2 × t40` and we preserve it, but *why* is unknown — is `t40` a per-magazine count and `t17` a total? | nothing today; would matter for a resupply powerup | Set them independently and watch `$ALCD`. |
@@ -542,10 +545,14 @@ with identical `t5` can do entirely different things.
 
 Four corrections, in descending order of how much they matter.
 
-**1. §2's balance table is computed on raw `t5`, and five weapons do not deal `t5`.** The table MC
-actually pushes assigns **multiplier functions** to two of the three subtypes in use — `<0,1>` → fn
-36 (**×1.25**) and `<0,3>` → fn 37 (**×2**) **[two-sided map]**. Every weapon whose captured `t4` is 1 or
-3 therefore lands more than its `t5`:
+**1. §2's balance table is computed on raw `t5`, and five weapons do not deal `t5` — on a HEADSET
+hit.** The table MC actually pushes assigns **multiplier functions** to two of the three subtypes in
+use — `<0,1>` → fn 36 (**×1.25**) and `<0,3>` → fn 37 (**×2**) **[two-sided map]**. Every weapon whose
+captured `t4` is 1 or 3 therefore lands more than its `t5` on the headset; on the GUN BODY every one
+of them lands exactly `t5` (×1), same as any other row (bench 2026-09-11).
+
+⚠ The ×1.25/×2 columns below are the HEADSET reading at `t7=50` (the MC-compiled `$GSET
+criticalShotModifier` default); a gun-body hit is ×1 on all three functions (`compile.headset_multiplier()`).
 
 | weapon | t3,t4 | `$SIR` fn | multiplier | t5 | effective | htk shipped | htk real | TTK shipped | **TTK real** |
 |---|---|---|---|---|---|---|---|---|---|
@@ -582,31 +589,36 @@ the ×1.25 **truncates** (7 → 8, not 9), which is why the Force Rifle's 10 lan
 tails do **not** gate the multiplier: `0,0,1,,` / `,,,,` / `0,0,0,,` / `0,0,2,,` / `0,1,1,,` / none /
 `0,0,1,60` all produced ×1.25 and ×2.
 
-The one 2026-08-27 matrix that read ×1.0 in all 24 cells is **outvoted, not explained**; it is on the record
-in `docs/experiment-log.md` (2026-08-27, 2026-09-02) and not relied on. What still stands open is the single
-non-reproduction of fn 24 dealing damage on protocol 7, and the untested question behind it: whether the sensor
-that catches the IR affects the damage applied. Everything in the function map was measured at the gun-body
-sensor (`$HIR` tok1 = 4, 20/20 at ~40 cm), so read it as "measured at the gun body" the way it carries a
-protocol; the outstanding question is two rows re-measured at a dome, not the whole map. The emitter is
-function-agnostic (a fn 1 control read 20 while fn 37 read 40 in the same run), so the doubling happens inside
-the gun. The full narrative of the flip-flop, including the held-gun hypothesis that is no longer needed, is in
-the experiment log.
+✅ **RESOLVED 2026-09-11 (bench, F23): the 2026-08-27 ×1.0 matrix and the 2026-09-02 ×1.25/×2 reading
+were BOTH correct — they measured different sensors, and neither was outvoted.** Everything in the
+function map above was measured at the gun-body sensor (`$HIR` tok1 = 4, 20/20 at ~40 cm), which is
+always ×1 for fn 1/36/37 alike; the 2026-09-02 reading was taken on the headset (sensor 0) at the
+MC-compiled `t7=50`. A same-night sweep on gun Tactix-3D4F fired the same word sets at both sensors and at
+`t7` = 0/50/100: the body held ×1 throughout every `t7`, and the headset scaled with `t7` exactly as
+`fn 36 -> 1+t7/200`, `fn 37 -> 1+2·t7/100` predicts — a `t7=0` closing control on fn 37 read the
+headset back to ×1, isolating `t7` (not the function alone) as the driver. The emitter is
+function-agnostic (a fn 1 control read 20 while fn 37 read 40 in the same run), so the scaling
+happens inside the gun, gated on which sensor caught the hit. The single non-reproduction of fn 24
+dealing damage on protocol 7 is unrelated to this and stays open. The full narrative, including the
+held-gun hypothesis that is no longer needed, is in the experiment log
+(`docs/experiment-log/2026-09.md`, 2026-09-11 bench).
 
 > **Method rule: record the protocol, the `$HIR` token 1, and the firing range beside every pool
 > measurement.** All three started as unstated conditions discovered after the fact and each cost a re-run.
 > The default question for any new claim is "under what conditions is this true?", asked at capture time.
 
-| shipped row | function | magnitude 20 lands as | weapons on that key |
+| shipped row | function | magnitude 20 lands as (gun body / headset at t7=50) | weapons on that key |
 |---|---|---|---|
-| `<0,0>` | 1 | **20** (×1) | the other 12 weapons |
-| `<0,1>` | 36 | **25** (floor ×1.25) | Force Rifle, Sniper Rifle |
-| `<0,3>` | 37 | **40** (×2) | Burst Rifle, Bolt Rifle, AMR |
+| `<0,0>` | 1 | **20** (×1) / **20** (×1) | the other 12 weapons |
+| `<0,1>` | 36 | **20** (×1) / **25** (floor ×1.25) | Force Rifle, Sniper Rifle |
+| `<0,3>` | 37 | **20** (×1) / **40** (×2) | Burst Rifle, Bolt Rifle, AMR |
 | `<8,0>` | 38 | **20** (×1) | Charge Rifle |
 | `<6,0>` | 1 | **20** (×1) | Rail Gun |
 | `<9,3>` | 24 | **0 — no damage at all** | **Energy Launcher** |
 
 The multipliers behave identically through the shipped rows as through the synthetic protocol-5 row
-they were first measured on, so the table above is the effective-damage table for the shipped game.
+they were first measured on, so the table above is the effective-damage table for the shipped game —
+gated on which sensor caught the hit, per the resolution above.
 
 > ⚠ **A measurement artifact worth remembering.** The first pass read the Burst Rifle as unaffected.
 > It was not — the trial had counted *registered hits* rather than per-hit damage, and a ×2 multiplier
@@ -665,12 +677,17 @@ and warns on three cases:
 > quiet on its own; under retune it is the prompt to recompute the published numbers.
 
 **2. §0's "no multiplier, no reduction" is wrong.** It holds only for a standard-damage row against a
-shieldless victim. The full expression is:
+shieldless victim, and the row multiplier is SENSOR-gated (bench 2026-09-11), not a flat "if crit"
+factor — the `$HIR` crit bit read 0 on all 15 headset hits in that session, so it is not what is
+driving the fn 36/37 scaling; that is the compiled `$GSET criticalShotModifier` (t7), via
+`compile.headset_multiplier()`. The full expression is:
 
 ```
-applied = t5 × (row multiplier for <t3,t4>) × (1.5 if crit)   → drains shields, then armor, then HP
-                                                              ...unless the row is armor-piercing,
-                                                              which goes straight to HP
+applied (gun body)  = t5 × 1                                  → the guaranteed-kill number
+applied (headset)   = t5 × headset_multiplier(fn, t7)          → fn 36/37 only scale; every other fn is ×1
+                                                                → drains shields, then armor, then HP
+                                                                ...unless the row is armor-piercing,
+                                                                which goes straight to HP
 ```
 
 **3. `htk = ceil(pool / dmg)` — quoted here at the default 115 pool (§2.5) — assumes a standard row, no crit, no shields, and armor present.** Against
@@ -723,12 +740,16 @@ from a same-team source** — heal fired at an enemy is silently dropped (experi
 along; only the generalisation to t1 = 0 was unsupported.) **A medic gun enforces "allies only" in hardware, with zero host
 logic.**
 
-**Crit is a live mechanic.** The IR word's **C** bit is emittable and echoes on `$HIR` tok6
-(`brx-ir-protocol.md`, bench-verified) — **×1.5 damage**, replicated with alternating legs: at
-magnitude 20, `crit=0` gave per-hit armor deltas of 20 and `crit=1` gave 30 **[two-sided map]**. It reads 0 on every stock
-weapon: not dead, just never set. That is a whole unused axis — a weapon with a crit chance, a
-headshot bonus (recall `$HIR` tok1 == 1 is a headset hit, §7r), or a "marked target" perk. Note the
-existing `$GSET` `criticalShotModifier` (50 in our config) may interact; untested.
+**Crit is a live mechanic, and it is NOT the same axis as `$GSET criticalShotModifier`.** The IR word's
+**C** bit is emittable and echoes on `$HIR` tok6 (`brx-ir-protocol.md`, bench-verified) — **×1.5
+damage**, replicated with alternating legs: at magnitude 20, `crit=0` gave per-hit armor deltas of 20
+and `crit=1` gave 30 **[two-sided map]**. It reads 0 on every stock weapon: not dead, just never set.
+That is a whole unused axis — a weapon with a crit chance, a headshot bonus (recall `$HIR` tok1 == 1
+is a headset hit, §7r), or a "marked target" perk. ⚠ **Bench 2026-09-11 confirmed `$HIR` tok6 stayed 0
+across all 15 headset hits** in that session (across `$GSET` t7 = 0/50/100), so the fn 36/37 headset
+scaling documented in §6.2 runs through `criticalShotModifier` (t7) directly, not through this bit —
+the two "crit" names are separate mechanisms, and F62 (`docs/FOLLOWUPS.md`) plans the probe that
+isolates t6 (`primaryCritChance`) from t7 cleanly.
 
 **Three overflow flavours make support weapons distinct.** The add-HP functions differ *only* in
 where the overflow goes — **nowhere** (10, 17), **into armor** (9, 12, 16, 19), or **into shields**

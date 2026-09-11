@@ -1,7 +1,24 @@
 # Handoff — Open BRX
 
-**State as of 2026-09-11 (late, third session: docs only).** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners:
+**State as of 2026-09-11 (late, fourth session: bench, gun Tactix-3D4F).** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners:
 [`archive/handoff-history.md`](archive/handoff-history.md).
+
+## Tonight's bench (2026-09-11, three closes, all written up, tests green, NOT committed)
+
+- **F69 + F91 CLOSED.** No ambient `proto=0` word exists: a receiver on a live neutral hill saw only
+  `proto=15` beacons for ~5 min while the gun bled. The chip damage is manufactured INSIDE the gun by the
+  fn-24 blast row; with the SHIPPED `$SIR,15,0,,28` a 100/200 gun took nothing beside a live hill for 70 s.
+  Moving weapons off protocol 0 solved a non-problem; retired. **Rule: never ship fn 24-27 on any cell.**
+- **F74 → 🟡.** The "phantom replay" was emitter + grenade pinging a fn-24-armed gun, plus a tool trap:
+  `ir-emit` returns instantly while the board fires ~0.15 s/repeat (1000-count = ~2.5 min). Tool now prints
+  the estimate and takes `--wait`; gotchas has the line. The zero-IR self-replay was NOT reproduced; kept open.
+- **F23 CLOSED.** Damage depends on the SENSOR: body always ×1; headset fn 36 ×(1+t7/200), fn 37 ×(1+2·t7/100),
+  t7 = `$GSET` critModifier (default 50 → ×1.25 / ×2). Crit bit never fired; reconciles the Aug/Sep dispute
+  (different sensors). `compile.py` has `headset_multiplier()`; htk/ttk stay on the body number; docs fixed ×7.
+  ⚠ side effects: sidearms inherit subtype 3 (top headset bonus); kid_mode halves t7.
+- **F27 (open):** handle-to-refill is SLOWER than catalog on all three (AR 1701 vs 1400, burst 2160 vs 1700,
+  charge 3220 vs 2500), so the RELOADING HUD bar ends early; sidearms/melee open. ⚠ **Link tonight:** after
+  ~55 min the BLE link dropped ~15 s into every long `send_batch`; the fix was the 4-frame spawn tail post-arm.
 
 ## What is true today
 
@@ -13,7 +30,7 @@
   **largest single rival**), the phone's hill audio, MC's `koth` mode with `station_source` **`grenade` /
   `ir_station` / `phone`**, and the possession fact with an `observed_ms` floor.
   ✅ **F104/S5: MC arms utility phones** (the ITEMS panel; and `MC_KINDS` had lacked `alert` too, F105, fixed).
-  🔴 **Still live: F69** — an enemy hill's `proto=0 mag=8` word chips the attacker. **F91 is the fix and the top bench rung.**
+  ✅ **F69/F91 CLOSED tonight** (see Tonight's bench): the hill does NOT chip anyone with the shipped fn-28 row.
   🟡 **F82**: never a player on tid 2 in a hill mode; refused at three layers, and **F97** now refuses a fourth team.
   **F101, F102 and F103 are closed**: the stage models the phone control point too (an injected advert through
   the phone's own byte layout), so the whole phone-sourced hill is rehearsable at the bench before a field day.
@@ -80,39 +97,22 @@
   2.0 port is done. `~/.brx-mcp/armory.json` is never in git (headset PINs); stickers stay out of
   docs, use `Tactix-XXXX`.
 
-## What changed since the last handoff (2026-09-11, late, second session — no hardware)
+## Recent history (detail in the log; only what still bites is kept here)
 
-- **The site was rebuilt around Tony's brief "I want both": a dry manual AND an Apple-grade marketing
-  page.** Design canvas first (headline "The BRX, unlocked."), then two content/screenshot lanes and the
-  generator in the main session; full story in [`experiment-log/2026-09.md`](experiment-log/2026-09.md)
-  (2026-09-11 afternoon). Thirteen defects caught by the build, the gate and two adversarial reviewers are
-  listed there; the two worth remembering: the landing counted app-only sounds until it filtered `on_gun`, and a phone reveal never fired
-  because scrolling a SECTION taller than the screen centres it and hides its first line. **Not committed at
-  the time of writing; a push to `main` deploys.** Old `/platform/*` URLs redirect.
-
-- **The second triage pass worked the keyboard list**: **8 ids closed** (F102 · F54 · S11 · F57 · F15 · F78 · E1 · S5),
-  four narrowed (F58 (b), Q18's print half, S10's role contract, F106 (a)-(e)(i)), F107 opened for the loop's Lows.
-  Three contract amendments: **A18** `config.mode_params` (engine-declared schemas, `GET /api/modes .params`, the E2
-  registry seed) · **A19** `alert.role` + `config.vip_player_id` (MC tells the VIP who they are, 3 s after go-live)
-  · **A20** `config.stun` (the host-driven EMP: `$SIR,8,0,,24` in place of the charge rifle's damage row; the node
-  disarms every slot and restores the LIVE counts). The stage mirrors all of it (F57, F15, F58 (b), F54) and boots
-  without blocking on the gun (S11). `fake.py` keeps a real `$SIR` table (F78). Log: the second 2026-09-11 (late) entry.
-- **What the polish loop found**: a stun in a new life restored the LAST life's reserve (both maps reset on spawn
-  now); the late-fact recap re-store dropped the stations rows; `stun` was not in the PUT whitelist; a pre-A18
-  session.json restored without `mode_params`; **screens.mjs #45 had been failing on main since F34** (the demo's
-  scanner fixture said 1 s, the engine floors at 3 s).
-- **The M5StickS3 firmware is in the tree** (`hardware/m5sticks3/`, host-tested, never run on a Stick; H7 gates it).
-
-- **LEDs, the three A16 facts that still bite** (full block in [`archive/handoff-history.md`](archive/handoff-history.md)):
-  **`$HLED,,6` must NEVER be sent in play** (kills the firmware death flash for the life; in-play dark is
-  `$HLED,9,0,,,10,,*`, `$HLOOP` is the down signal) · **`$TID` is 0-3 only (F35)** · phones are on a pre-`role`
-  APK so `headset_frames()` still ships `headset.carrier` (S10). `test_led_invariants.py` pins all of it.
+- **Prior sessions 2026-09-11:** site rebuilt (two doors, one source, see "What is true today"); a triage
+  pass closed 8 ids (F102 F54 S11 F57 F15 F78 E1 S5) and added amendments A18 `config.mode_params`, A19
+  `alert.role` + `config.vip_player_id`, A20 `config.stun`. Full story: [`experiment-log/2026-09.md`](experiment-log/2026-09.md).
+- **LEDs, the three A16 facts that still bite:** `$HLED,,6` must NEVER be sent in play (kills the firmware
+  death flash for the life; in-play dark is `$HLED,9,0,,,10,,*`, `$HLOOP` is the down signal); `$TID` is 0-3
+  only (F35); phones are on a pre-`role` APK so `headset_frames()` still ships `headset.carrier` (S10).
+  `test_led_invariants.py` pins all of it.
 
 ## Next actions
 
-1. **Bench: run [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md) first** — its **B2** can kill the
-   F91 plan (every capture ever measured was a protocol-0 word). Then block E (LED metering), D1 (**F23**), and
-   **F15 rung 9** (a proto-8 word at a stun-armed gun: the node's `$AMMO,0,0` and the restore).
+1. **Bench, still open on [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md):** A1/B1/B2 ANSWERED
+   tonight (F69/F91/F23). Remaining: **A2** the t14 rate-of-fire floor (F87/F100), **B3** the capture currency
+   (F70/F76), **C1** the shield grant (F60), **C2** enemy fn 35 (D6). Also block E (LED metering) and **F15 rung 9**
+   (a proto-8 word at a stun-armed gun). F27 sidearms + melee reload timing are quick adds when a gun is armed.
 2. **Keyboard, in order** (`followups-triage.md` §7): **E2** the other three touch points (the registry exists) · **B23** the hosted respawn assembly (every link built) ·
    **F88** multi-point Domination on phones (the ids now reach every HUD) · **S3** extraction on phones · **B19**
    for F80's real fix · the E1 Designer editor (F107 (h)) · **E5** phone audio when there is an ear for it.

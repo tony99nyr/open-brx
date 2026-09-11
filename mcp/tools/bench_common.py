@@ -27,9 +27,9 @@ BURST = "$WEAP,0,,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,
 PSET = "$PSET,{pid},0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"
 
 # The two-sided $SIR function map as bench-measured 2026-08-26 (experiment-log: "the COMPLETE
-# two-sided $SIR function map"). ⚠ Rows 36/37 are the DISPUTED multiplier pair — see
-# docs/weapon-design.md §6 and compile.py `_SIR_MULTIPLIER`. They are here because they are what the
-# bench arms with, not because the scaling is settled.
+# two-sided $SIR function map"). ⚠ Rows 36/37 are the sensor-gated multiplier pair, RESOLVED
+# 2026-09-11 (bench) — see docs/weapon-design.md §6 and compile.py `headset_multiplier()`. They are
+# here because they are what the bench arms with, at PSET's crit_modifier=50 above.
 SIRS = ["$SIR,0,0,,1,0,0,1,,*", "$SIR,0,1,,36,0,0,1,,*", "$SIR,0,3,,37,0,0,1,,*", "$SIR,10,0,X13,1,0,100,2,60,*",
         "$SIR,13,0,H50,1,0,0,1,,*", "$SIR,13,1,H57,1,0,0,1,,*", "$SIR,13,3,H49,1,0,100,0,60,*",
         "$SIR,6,0,H02,1,0,90,1,40,*", "$SIR,8,0,,38,0,0,1,,*", "$SIR,9,3,,24,10,0,,,*"]

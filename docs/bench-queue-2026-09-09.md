@@ -102,11 +102,20 @@ does not take your keystroke, run it from a Windows terminal instead of losing a
 | B3 | **P3** the defeat line | `sounds ids:JAY,JAW,JAX <addr> --audit` | JAY is the confirmed victory outro; which of JAW/JAX plays as its loss partner |
 | B4 | **W4a** Energy Launcher fire sound | `sounds ids:O01,O05,O02,O04,O06,O03 <addr> --audit` | O01 ships. Wanted: an ordnance report that fits the 1600 ms cycle. ⚠ W4a has **no defining row in FOLLOWUPS** — see "Bookkeeping" below |
 | B5 | **S-A12.1** sidearms | `sounds ids:P09,Q04,P16,D08,D07,D06,D04,D03,D02 <addr> --audit` | the three pistol fire ids, then the reload chain: does it read as distinct steps or clip together |
-| B6 | **S9** the events that failed the walkthrough | `sounds ids:K01,U100,U13,U41,VX0R,VQ8,VX0U,VA7K,V125 <addr> --audit` | `extraction_tick` (K01 ships), `extraction_closing` (VX0R failed), `extraction_complete` (VQ8 failed), `unstoppable` (no line at all), `killing_spree` (VA7K vs V125). Winning ids go into `presentation.EVENTS` + its catalog pin |
+| B6 | **S9** the events that failed the walkthrough | `sounds ids:U100,U13,U41,V114,VX0R,VQ8,VA3J,VR7,VS7,V8Y,VHV,VX0U,VA7F,VA7M,VA7K,V125 <addr> --audit` | **Trials are WIRED since 2026-09-11** (`presentation.EVENTS`, marked `TRIAL`): `extraction_tick` = U100 (ear-confirmed tick; K01 was a 10 s fly-by), `extraction_closing` = V114 "10 seconds!" (VX0R is the numbers/menu announcer, which is why it read wrong), `unstoppable` = VX0U "Domination." (alts VA7F "Fatality", VA7M "Go tacular"), `extraction_complete` still VQ8 -- it is a NEXUS COMMANDER character line, not the announcer; announcer alts VA3J "Hijack complete", then VR7/VS7/V8Y/VHV, `killing_spree` VA7K (male announcer, matches VA7H/VA7E/VA7Q) vs V125 (game-callouts announcer, matches V124). A verdict here = edit the id and its pin in `test_presentation.py`; the stage walkthrough plays whatever ships |
+| B6a | **F58(a)** heal / armour / shield have a sound now | `sounds ids:V37,V87,VE7,VA1G,VA16,VA8C,VA6Y <addr> --audit` then the stage: `$LIFE,20,0,0,*` / `$LIFE,0,25,0,*` / `$LIFE,0,0,20,*` on a damaged gun | **Wired 2026-09-11 as TRIALS**: `healed` = the character's own slot-7 line (`voice:healed`: V37 "patched up", V87 "Bleeding stopped", VE7 "Good to go"), `armour_up` = VA1G "Body Armor." (alt VA16 "armor suit"), `shield_up` = VA8C "Shield online" (ear-confirmed 2026-09-04; alt VA6Y). The `$LIFE` grants fire the real pool-rise path on the stage (F58 (b) closed), so you hear each in context, and the walkthrough's `event_healed` / `event_armour_up` / `event_shield_up` steps no longer sit on silence |
+| B6b | **F42.1** does the announcer slot pre-empt the effect slot? | stage `raw`: `$PLAY,H02,4,6,VA33,,,,*` · then `$PLAY,H02,4,6,,,,,*` followed 300 ms later by `$PLAY,,4,6,VA33,,,,*` · then the reverse order | Both slots play a V-id (VA81 ships in token 1 and is confirmed there; `presentation.play_frame` puts V-ids in token 4 and that is what ships). The open question is only MIXING: does a token-4 line cut a token-1 effect, queue behind it, or overlay? ⚠ `sounds --audit` plays EVERY id in token 1, which is fine for a solo confirm but is not the shape the game uses for voices |
 | B7 | **S1** the `fx:hit` audit | `sounds category:fx:hit <addr> --audit` | 122 ids, so **two runs** past the 60 cap. Do it last: it is the long tail, and it is the batch that makes every future hit-sound pick honest |
 
-**Not in this block: F44 (the shield hum).** It needs a shield actually up, and no compiled mode can
-grant one (F60). See "Blocked on code".
+| B8 | **F44** the shield hum | `sounds ids:N71,N72,N67,CC07,JAS,JAQ,N74,CC08 <addr> --audit` first (solo, F43); then the winner into `hitaudio.SHIELD_LOOP`, re-ARM, and stage `raw` `$LIFE,0,0,20,*` to raise a shield and hear it LOOP | **Not blocked on F60 after all (2026-09-11):** `$LIFE` grants shields over BLE, so the loop slot can be heard live without a compiled shield mode. Shortlist = sustained, pitch <= 150 Hz, outside the rejected `SW` family and `A10`; a shape SHORTLIST for the ear, never a pick. `$PLAYX,0,*` stops the loop |
+
+**F59, the ~1 s audio lag, is NOT the clips (2026-09-11, offline):** `mcp/tools/soundbank_leadin.py` measured every
+shipped id -- H02/H36/H37/H22/H43/H06 start in the first 5 ms, nothing on the gun leads in by more than 0.9 s
+(three ids over 0.5 s, all long ambient/rules tracks). What is left is firmware latency after `$PLAY`, and that
+wants ONE filmed rung, not a theory: **B9** phone camera at 240 fps on the gun, stage `raw` `$GLED,6,6,6,0,10,,*`
+then `$PLAY,,4,6,VA33,,,,*` in one batch; read light-to-first-sound off the video; repeat with a token-1 effect
+(`$PLAY,H02,4,6,,,,,*`) and with a hit from the emitter. Three numbers: announcer-slot latency, effect-slot latency,
+hit-path latency. If they agree, the LED language (S10) stops assuming light and sound land together.
 
 ---
 
@@ -270,8 +279,8 @@ three of them gave the WRONG answer on the first attempt. The findings themselve
   gated on `bench-grenade.md` rung Z.
 - **G 3.2 ✅ 2026-09-10 — the hill is a full KotH primitive** (F70). The wire is documented once, in
   `protocol/brx-ir-protocol.md` §"The grenade beacon"; the rung index and what is still open are in
-  [`bench-grenade.md`](bench-grenade.md). Hazard **F69** (a hill's ordinary `proto=0` damage word) opened here
-  and is still 🔴.
+  [`bench-grenade.md`](bench-grenade.md). Hazard **F69** opened here;
+  ✅ CLOSED 2026-09-11 (the chip damage is the in-gun fn-24 blast row, not a wire word; the shipped fn-28 row is harmless), see `archive/followups-closed.md`.
 
 ## Bookkeeping
 

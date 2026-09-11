@@ -278,10 +278,15 @@ them as two independent knobs.** Likewise `t39 == t16` in every frame (clip star
 ✅ **`t5` (`primaryDamage`) — RESOLVED (bench exp 2, 2026-08-26; refined that night).** `t5` is the
 weapon's **raw magnitude** — the number it puts in the IR word. Exp-2 read `$HIR` token 5 == `t5` on four
 weapons (AR 9, Shotgun 45, Sniper 80, Rocket 115), which held because all four key to `$SIR` **fn-1** rows.
-In general the **applied** damage = `magnitude × the victim's $SIR-function multiplier × (1.5 if crit)`
-(fn 36 = **floor(magnitude × 1.25)**, fn 37 = **magnitude × 2**, both confirmed 2026-09-02) — so tok5 == applied only on fn-1 rows. The AR really emits **9**; the 2-frame
-table's **24** was the stale manual M-4 anchor. (Weapon stats are server-fetched — a weapon's `t5` is
-whatever the app last sent.)
+In general the **applied** damage = `magnitude × the victim's $SIR-function multiplier`, and (bench
+2026-09-11) that multiplier is **SENSOR-gated, not a "1.5 if crit" flat factor**: the gun-body sensor
+is ×1 on fn 36/37 same as fn 1, and only a HEADSET hit scales — fn 36 = **floor(magnitude × (1 +
+t7/200))**, fn 37 = **floor(magnitude × (1 + 2·t7/100))**, t7 = the compiled `$GSET`
+criticalShotModifier (×1.25 / ×2 at the MC-default t7=50, confirmed 2026-09-02 on the headset and
+2026-09-11 across t7 = 0/50/100 on both sensors) — so tok5 == applied only on fn-1 rows, or on a
+gun-body hit of any row. The `$HIR` crit bit (tok6) read 0 on every headset hit measured; it is not
+what drives this. The AR really emits **9**; the 2-frame table's **24** was the stale manual M-4
+anchor. (Weapon stats are server-fetched — a weapon's `t5` is whatever the app last sent.)
 
 ### WEAP exact token positions (metadata field names × 2 live frames)
 

@@ -100,6 +100,10 @@ produced them (carried in from the 2026-09-03 session sheet when it was archived
 4. **Never conclude "deaf" without reading the pools.** A dead gun and a `$SIR`-less gun are
    indistinguishable through `$HIR`. Tony: *"it isn't going to register a hit while dead. thats dead
    not deaf."* The tools check this themselves; a hand-run probe must too.
+5. **`ir-emit` returns the moment the board acks, not when it is done firing.** The ESP32 keeps
+   transmitting for roughly 0.15 s per repeat (a repeat=1000 flood runs ~2.5 minutes), so a re-spawned
+   victim that dies again a moment later is the emitter still running, not a firmware latch. Use
+   `--wait` or watch board A before you believe the room is quiet.
 
 And never end a run on a bare `$CLEAR` (it wipes the `$SIR` table, under Sending commands below).
 
@@ -567,7 +571,7 @@ came from a human's senses.
 proxy was never tested against the behaviour it stood in for.
 
 **Damage is a property of the (weapon, victim's `$SIR` table) PAIR — never of the weapon alone.**
-`$HIR` tok5 is the **raw magnitude**; applied = magnitude × the row's function multiplier × (1 + `$GSET` t7/100) if crit (×1.5 only at the shipped t7=50; **fn 36 = floor(magnitude × 1.25) and fn 37 = magnitude × 2, confirmed 2026-09-02** — the ×1.25 truncates, so 7 lands as 8).
+`$HIR` tok5 is the **raw magnitude**; applied damage depends on the **SENSOR** (bench 2026-09-11, F23): the gun body is always ×1, and only a **headset** hit on fn 36/37 scales, by `$GSET` t7 — **fn 36 = floor(magnitude × (1 + t7/200)), fn 37 = floor(magnitude × (1 + 2·t7/100))**. At the shipped t7=50 that reads ×1.25 / ×2 (the ×1.25 truncates, so 7 lands as 8). The `$HIR` crit bit (tok6) read 0 on every measured hit and is a separate, unconfirmed axis.
 Anything that validates a weapon in isolation is blind to a whole class of bug.
 
 **Close a question in EVERY file in the same commit, or it is not closed.** Two independent cold-read

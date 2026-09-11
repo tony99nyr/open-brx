@@ -19,7 +19,10 @@
       a gun may carry a gamertag: <addr>@<Gamertag> (pushed to the gun via $NAME)
   python -m brx_mcp diag-game <address> [2guns] [ir]   # structured end-to-end test suite → scorecard
   python -m brx_mcp ir-capture [port] [seconds]        # capture BRX IR frames via the ESP32 bridge
-  python -m brx_mcp ir-emit <bits> [port] [repeat]     # emit an IR frame via the ESP32 bridge
+  python -m brx_mcp ir-emit <bits> [port] [repeat] [--wait]  # emit an IR frame via the ESP32 bridge
+      the command returns as soon as the board acks, but it keeps transmitting for
+      ~0.15s per repeat (repeat=1000 is ~2.5 min) — pass --wait (any position) to
+      block until it is actually done, or watch board A yourself
   python -m brx_mcp ir-range [port] [secs] [shots]     # walk-back range reading (hit-rate at a distance)
   python -m brx_mcp reset <address>                     # reset a tagger to clean idle (revive if dead, silence, headset dark)
   python -m brx_mcp rename <address> <name>             # set a tagger's persistent name over BLE ($NAME); power-cycle to see the advert update
@@ -1021,12 +1024,34 @@ def _ir_range(port: str | None, seconds: float, expected: int | None) -> None:
         print("-> marginal: bursts arrive but rarely decode clean — near the edge of range.")
 
 
-def _ir_emit(bits: str, port: str | None, repeat: int) -> None:
+def _ir_emit(bits: str, port: str | None, repeat: int, wait: bool = False) -> None:
+    """Emit one IR frame `repeat` times via the ESP32 bridge.
+
+    `IRBridge.emit` sends `TXN <repeat> <bits>` and returns as soon as the firmware
+    acks the command — the board then keeps transmitting on its own for roughly
+    0.15 s per repeat (measured 2026-09-11: a repeat=1000 flood ran ~2 minutes after
+    the CLI call had already returned, and a re-spawned victim gun died again 90 ms
+    later because the emitter, not the gun, was still live). Print the estimate
+    up front so that is never a surprise, and offer `--wait` to block until it is
+    actually over.
+    """
     from .irbridge import IRBridge
+    est_s = repeat * 0.15
+    if repeat > 1:
+        print(f"# repeat={repeat} -> estimated run time ~{est_s:.0f} s "
+              "(this command returns immediately; the board keeps transmitting "
+              "after that — use --wait or watch board A before believing it's done)",
+              file=sys.stderr)
     br = IRBridge(port)
     print(f"# emitting {bits!r} ×{repeat} on {br.port}", file=sys.stderr)
     print(br.emit(bits, repeat))
     br.close()
+    if wait:
+        sleep_s = est_s + 1
+        print(f"# --wait: sleeping {sleep_s:.0f} s for the emitter to finish...",
+              file=sys.stderr)
+        time.sleep(sleep_s)
+        print("# emitter done", file=sys.stderr)
 
 
 def _build_config(mode: str, kvs: list[str]):
@@ -1420,11 +1445,13 @@ def _dispatch(cmd: str, args: list[str]) -> None:
         port = args[1] if len(args) > 1 and not args[1].isdigit() else None
         secs = next((float(a) for a in args[1:] if a.replace(".", "").isdigit()), 15.0)
         _ir_capture(port, secs)
-    elif cmd == "ir-emit" and len(args) > 1:
-        bits = args[1]
-        port = args[2] if len(args) > 2 and not args[2].isdigit() else None
-        repeat = next((int(a) for a in args[2:] if a.isdigit()), 1)
-        _ir_emit(bits, port, repeat)
+    elif cmd == "ir-emit" and len([a for a in args[1:] if a != "--wait"]) > 0:
+        wait = "--wait" in args
+        rest = [a for a in args[1:] if a != "--wait"]
+        bits = rest[0]
+        port = rest[1] if len(rest) > 1 and not rest[1].isdigit() else None
+        repeat = next((int(a) for a in rest[1:] if a.isdigit()), 1)
+        _ir_emit(bits, port, repeat, wait=wait)
     elif cmd == "reset" and len(args) > 1:
         asyncio.run(_reset(args[1]))
     elif cmd == "rename" and len(args) > 2:

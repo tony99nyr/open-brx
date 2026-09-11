@@ -123,7 +123,12 @@ Board A (**COM7**) about 3 ft in front of the muzzle, soft background behind it,
 
 ### A1 — does `$WEAP` t3 actually change the transmitted IR protocol? (15 min) 🔴 F91
 
-**Why this is first.** A grenade hill emits an ambient `proto=0 mag=8` damage word that our
+**ANSWERED 2026-09-11 (moot): this rung never ran.** F91, the reason it mattered, was retired the same night —
+the hill's chip damage turned out to be manufactured inside the gun by fn 24, not a wire-level `proto=0` word
+(B1), so there is nothing to dodge by moving `$WEAP` t3 off protocol 0. See `experiment-log/2026-09.md` →
+*2026-09-11 (bench)*.
+
+**Why this is first (as written, for the record).** A grenade hill emits an ambient `proto=0 mag=8` damage word that our
 `$SIR,0,0,,1` row applies in full, so an enemy-held hill **chips the attacker** — it punishes exactly the
 pushing a KotH mode needs. The fix is to move our weapons off cell `<0,0>` so the hill's word lands in an
 unmatched cell and is silently discarded. **t3 = `primaryDamageType` is believed to BE the IR word's
@@ -204,6 +209,12 @@ grenade**, so board A witnesses the grenade and not only the gun's own muzzle.
 
 ### B1 — is the hill's damage word continuous or conditional, and does dropping `<0,0>` stop it? (25 min) 🔴 F69 + F91
 
+**ANSWERED 2026-09-11: there is no damage word.** A receiver aimed at a live grenade recorded ZERO protocol-0
+words across two ~5-minute windows while the gun logged chip damage under the fn-24 beacon row; the damage is
+fn 24 applying delayed blast ticks of the beacon's own magnitude, reported back as `proto=0` hits carrying the
+beacon's team. With the shipped fn-28 row on the cell, the same live hill chipped nothing over 70 s. F69 closed
+as refuted, F91 retired. See `experiment-log/2026-09.md` → *2026-09-11 (bench)*.
+
 This is **rung C of `bench-grenade.md` merged with F91's second half**, because C is the control F91's
 "confirm a hill no longer drains an intruder" needs: "no drain" only means something if you can show the
 damage word was in the air during the window. Board A shows that; the gun alone cannot. The experiment
@@ -252,6 +263,10 @@ window boundary so the gun-side counts split the same way the captures do.
 | **Record either way** | the tradeoff: dropping `<0,0>` makes our guns **deaf to any native BRX gun**, which is fine for an all-hosted match and fatal for mixing hosted and native players in one game. |
 
 ### B2 — can a gun on protocol 7 still capture a hill? (10 min) 🔴 F91, and it can kill the plan
+
+**ANSWERED 2026-09-11 (moot): this rung never ran.** F91 was retired the same night (B1), so the plan it could
+have killed was never adopted and the question does not need settling. See `experiment-log/2026-09.md` →
+*2026-09-11 (bench)*.
 
 **Not in anybody's queue, and it is the question that decides whether F91 is shippable at all.** Capture
 is "shoot the grenade", and every capture ever measured was a **protocol-0** word. If the grenade's own
@@ -379,7 +394,7 @@ Blocked, and deliberately not on tonight's list:
 
 | item | what has to land first |
 |---|---|
-| Shipping F91 (weapons off protocol 0) | code, not bench: `gameconfig._SIR_TABLE` + `mc/compile.py` must move the weapon catalog's `t3` and the compiled table together, or a game arms guns that cannot hit each other. A1/B1/B2 are the evidence that decides whether to write it. |
+| ~~Shipping F91 (weapons off protocol 0)~~ | **Moot 2026-09-11: F91 retired** (A1/B1/B2 above) — there is no wire-level damage word to dodge, so this was never written. |
 | The hill rate-of-fire buff (F87) | A2's floor number, then the push/revert `$AMMO` work (`bench-grenade.md` rungs Z2/Z3). Not a reading, a build. |
 | The teal shield bar · A16.5's handover · `$LCD` token 3 (B20) | an APK carrying A16/A17. C1 can prove a shield exists on the wire; it cannot show it on a phone. |
 | F81's "killed by the wrong team" copy | the DOWN-screen wording belongs to the brx-hud session; B1 will make the hill damage reproducible for it. |
