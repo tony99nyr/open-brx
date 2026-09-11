@@ -445,6 +445,12 @@ it('12 · the root landing renders every section with a loaded image and one h1'
   await expect(page.locator('h1')).toContainText(/unlocked/i);
   // the hero lede says what the product is, since the headline no longer does
   await expect(page.locator('.hero .lede')).toContainText(/BRX taggers/);
+  // the hero is a product shot of the two real screens, the phone overlapping the console
+  const duo = page.locator('.hero-duo');
+  await expect(duo).toBeVisible();
+  const [main, phone] = await Promise.all([duo.locator('.duo-main').boundingBox(), duo.locator('.duo-phone').boundingBox()]);
+  expect(phone.y + phone.height, 'the phone should overlap the console\'s lower edge').toBeGreaterThan(main.y + main.height);
+  expect(phone.y, 'the phone should sit over the console, not below it').toBeLessThan(main.y + main.height);
   expect((await page.locator('.wm').innerText()).replace(/\s+/g, ' ').trim()).toMatch(/^OPEN-BRX ?\/$/i);
   // the wordmark sits on one line: icon, name and the nav links share a vertical centre within 3px
   const mid = el => el.evaluate(e => { const r = e.getBoundingClientRect(); return r.top + r.height / 2; });
@@ -731,7 +737,7 @@ it('12g · the site is honest when a photo has not been shot yet', async ({ page
   // in its own alt text, so nobody mistakes the striped box for a broken image.
   await page.goto('/', { waitUntil: 'networkidle' });
   const photos = await page.locator('figure.photo img').evaluateAll(is => is.map(i => ({ src: i.getAttribute('src'), alt: i.alt })));
-  expect(photos.length).toBeGreaterThanOrEqual(2);
+  expect(photos.length).toBeGreaterThanOrEqual(1);
   for (const p of photos) {
     if (p.src.endsWith('.svg')) expect(p.alt.length, `${p.src}: a placeholder needs alt text saying what belongs there`).toBeGreaterThan(8);
   }

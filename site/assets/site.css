@@ -406,6 +406,11 @@ main.landing h2 { font: 700 clamp(34px, 4.6vw, 66px)/1 var(--display); letter-sp
 .feat .copy { text-align: center; margin-top: 8px; }
 .feat .cta { margin-top: 8px; }
 
+/* the hero as a product shot: the console large, the phone HUD overlapping its lower left corner */
+.hero-duo { position: relative; width: min(1312px, 100%); margin: clamp(20px, 3vw, 40px) auto 0; padding-bottom: clamp(48px, 7%, 92px); padding-left: clamp(0px, 2%, 24px); }
+.hero-duo .shot.duo-main { width: 100%; }
+.hero-duo .shot.duo-phone { position: absolute; left: 0; bottom: 0; width: 46%; box-shadow: 0 40px 120px rgba(0,0,0,.75), 0 0 0 1px rgba(57,180,255,.12); }
+@media (max-width: 640px) { .hero-duo { padding-bottom: 20%; } .hero-duo .shot.duo-phone { width: 64%; } }
 /* frames: a screenshot gets Mission Control's corner brackets; a photo gets none */
 figure { margin: 0; }
 .shot { position: relative; background: var(--code-bg); border: 1px solid var(--line-strong); box-shadow: 0 40px 120px rgba(0,0,0,.6), 0 0 0 1px rgba(57,180,255,.08); }

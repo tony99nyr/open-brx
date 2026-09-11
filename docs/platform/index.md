@@ -5,7 +5,7 @@ Open source software that turns stock Battle Company BRX taggers into a hosted g
 - [Get the app](/download/)
 - [Read the BRX manual](/manual/)
 
-![A BRX tagger with a phone mounted on the rail, headset beside it](/photos/hero.jpg)
+![Mission Control's readiness board: eight taggers with headset, battery and link state](/shots/mc-armory.jpg) ![The Companion HUD on a phone: health, ammo and the match clock, weapons hot](/shots/hud-live.jpg)
 
 ```data
 counts

@@ -35,8 +35,10 @@ function figure(img, ctx, cls = '') {
   return `<figure class="${kind}${cls ? ' ' + cls : ''}${phone}"><img src="${esc(href)}" alt="${esc(img.text)}"${size} loading="lazy" decoding="async"></figure>`;
 }
 
-function shots(t, ctx) {
+function shots(t, ctx, inHero) {
   const imgs = t.tokens.filter(x => x.type === 'image');
+  // the hero can be two real screens composed as one product shot: the console large, the phone over it
+  if (inHero && imgs.length === 2) return `<div class="hero-duo" data-reveal>${figure(imgs[0], ctx, 'duo-main')}${figure(imgs[1], ctx, 'duo-phone')}</div>`;
   if (imgs.length === 1) return figure(imgs[0], ctx, 'wide');
   return `<div class="row row-${imgs.length}" data-reveal>${imgs.map(i => figure(i, ctx)).join('')}</div>`;
 }
@@ -122,7 +124,7 @@ export function renderLanding(body, ctx) {
       const imgs = t.tokens.filter(x => x.type === 'image');
       // a photo inside a section becomes its backdrop; in the hero it is the hero photo
       if (cur && imgs.length === 1 && kindOf(imgs[0].href) === 'photo') { cur.photo = imgs[0]; continue; }
-      push(shots(t, ctx));
+      push(shots(t, ctx, !cur));
       continue;
     }
     if (isLinkList(t)) { push(buttons(t)); continue; }
