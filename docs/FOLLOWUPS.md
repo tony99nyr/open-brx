@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F91 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F93 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S18.** (2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
 wider than the hill's period" generalisation, the double-`$HIR`-per-beacon dedupe finding (F85, closed same
 session), the team-change-leaves-old-LED-colour finding, and the hosted hill rate-of-fire boost.) (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
@@ -813,6 +813,34 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   every other grounded cue — `test_engines_use_catalog_not_raw_ids` exists precisely to stop raw ids leaking
   into engines, and this is a near miss. Move them and cross-check the ids against the by-ear results
   (`VB0N`/`VB0O`/`VB0P` confirmed 2026-09-10; ⚠ `V8Q` is "**Kill** Confirmed", never a hill line). `build`.
+- **F91 🔴 BENCH: MOVE OUR WEAPONS OFF IR PROTOCOL 0 SO A HILL'S CHIP DAMAGE VANISHES.** A grenade hill
+  emits an ambient `proto=0 sub=0 mag=8` damage word that our `$SIR,0,0,,1` row applies in full (F69), which
+  punishes the ATTACKER and is the one hardware fact working against a push-the-objective mode. It cannot be
+  switched off while our weapons share that cell. **But `$WEAP` t3 = `primaryDamageType` IS the IR word's
+  protocol field** and selects the victim's `$SIR` row — a 15-value enum (0 Standard, 5 Cryogenic, 6
+  ArmorPiercing, 7 EMP …), bench-proven in its wire position, and stock weapons already use different values
+  (8 charge, 10 rocket, 11 gas, 13 melee). So: set our weapons to a non-zero t3, ship `$SIR,<that>,0,,1`
+  instead of `$SIR,0,0,,1`, and the hill's word lands in an **unmatched cell = silently discarded** (the F11
+  shape, used deliberately). Protocol independence for fn 1 is already measured across protocols 0, 5, 7, 9
+  and 10 (50 cells, none varied), so damage behaves the same.
+  **UNTESTED and the whole point of this rung:** nobody has set a non-stock t3 on OUR gun and watched the
+  wire. Arm via `arm_sequence()` with t3=7, fire at board A, confirm the captured word reads **proto=7**;
+  then confirm a hill no longer drains an intruder. ⚠ **The tradeoff to state in the write-up:** dropping
+  `<0,0>` makes our guns DEAF to anything shooting standard protocol 0, including a native BRX gun. Fine for
+  an all-hosted match, fatal for mixing hosted and native players in one game. `bench`.
+- **F92 🟠 A PHONE STATION CANNOT LEARN WHO OWNS A GRENADE HILL, AND MC CANNOT TELL IT.** The gap that
+  blocks coupling a respawn station to hill control. A grenade's ownership travels **only over IR**, so only
+  a GUN can hear it — and a utility phone (`spec/utility.md` role `utility`) has no gun. The station channel
+  is BLE adverts, which carry `team` and `value` (progress %) for `kind 5 control`, but nothing bridges IR to
+  that advert. And relaying it through MC is not available: §5c states *"stations are self-authoritative and
+  report at recap (MC is not live mid-match)"*, so a mid-match `station_config` re-arm contradicts the
+  architecture. **Consequences for mode design:** (a) a grenade hill and a phone respawn station cannot be
+  coupled today — the station must run a FIXED team, or be contestable in its own right by BLE presence;
+  (b) K1's "still needs: shoot-to-capture = the IR box" is the same gap from the other side. **Options, none
+  free:** give the station a gun/headset of its own so it can hear IR; have player phones relay ownership
+  peer-to-peer via their own player adverts (the advert has spare bytes but no field for it); or accept
+  presence-capture for phone control points and keep shoot-to-capture for the grenade as a separate objective.
+  Decide before building multi-point Domination, since F88 already rules out two grenades. `build`.
 - **F80 🟠 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.**
   Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
   received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default
