@@ -75,7 +75,7 @@ Three pages are landings, not doc pages: `docs/platform/index.md` (`/`), `docs/p
 - A list of links renders as buttons.
 - A fenced code block with no language renders as a terminal panel.
 - A ` ```data ` fence with one keyword renders a generated component. On landings: `counts`, `modes`,
-  `roles`, `manual`, `release`. On a doc page: `download` (the Android card off `webapp/download/build.json`),
+  `roles`, `manual`, `release`, `huddemo` (the real phone HUD from `app/www`, `?demo&kit`, in the phone frame, loaded on tap). On a doc page: `download` (the Android card off `webapp/download/build.json`),
   plus the two tables below. Every component reads repo source (`site/lib/facts.mjs`), never prose.
 - A wide shot followed directly by a caption list is the pinned layout on a desktop: the shot holds
   while the captions scroll past it.

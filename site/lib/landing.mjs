@@ -83,6 +83,14 @@ const DATA = {
   manual(ctx) {
     return `<ul class="doors" data-reveal>${ctx.facts.manual.map(p => `<li><a class="door" href="${p.slug}/"><span class="t">${esc(p.nav)}</span><span class="s">${esc(p.blurb)}</span></a></li>`).join('')}</ul>`;
   },
+  // the real phone HUD, live, in the phone frame: loads on tap so the page stays light
+  huddemo(ctx) {
+    const poster = ctx.asset('/shots/hud-kitted.jpg');
+    return `<div class="huddemo shot phone" data-reveal data-src="/demo/hud/index.html?demo&kit" style="background-image:url('${esc(poster)}')">
+<button type="button" class="btn btn-acc huddemo-go">Try the HUD <span class="v">live</span></button>
+<p class="huddemo-hint">The real app, running in your browser with a pretend tagger. Tap a plate to pick a weapon, then ready up.</p>
+</div>`;
+  },
   release(ctx) {
     const r = ctx.facts.release;
     return `<ul class="cards" data-reveal>

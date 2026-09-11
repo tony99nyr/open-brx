@@ -42,6 +42,17 @@
     });
   }
 
+  // ---- the live HUD demo: swap the poster for the real app on tap ----
+  document.addEventListener('click', e => {
+    const go = e.target.closest('.huddemo-go'); if (!go) return;
+    const box = go.closest('.huddemo');
+    const f = document.createElement('iframe');
+    f.src = box.dataset.src; f.title = 'BRX Companion HUD, live demo'; f.loading = 'eager';
+    f.setAttribute('allow', ''); f.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+    box.replaceChildren(f); box.classList.add('live');
+    f.focus();
+  });
+
   // ---- theme ----
   const root = document.documentElement;
   try { const t = localStorage.getItem('brx-theme'); if (t) root.dataset.theme = t; } catch {}

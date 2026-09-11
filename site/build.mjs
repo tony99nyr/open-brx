@@ -117,6 +117,21 @@ const imageDims = href => {
   const f = imageFiles.find(i => '/' + i.out.split('/')[0] + '/' + i.src === href);
   return f ? imageSize(f.buf, f.src) : null;
 };
+// The interactive HUD demo on the landing IS the phone app's web build (app/www, `?demo&kit`): a real
+// engine with a fake tagger and a fake Mission Control, nothing mocked up for the page. The bundle is
+// git-ignored and built by `cd app && npm run build`, which the root `build:ci` runs before the site.
+const HUD_WWW = path.join(REPO, 'app/www');
+const hudFiles = [];
+if (fs.existsSync(path.join(HUD_WWW, 'app.js')) && fs.existsSync(path.join(HUD_WWW, 'index.html'))) {
+  const walkHud = (rel = '') => {
+    for (const e of fs.readdirSync(path.join(HUD_WWW, rel), { withFileTypes: true })) {
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) walkHud(r);
+      else if (!/^utility\./.test(r)) hudFiles.push({ rel: `demo/hud/${r}`, buf: fs.readFileSync(path.join(HUD_WWW, r)) });
+    }
+  };
+  walkHud();
+}
 // public/ is copied verbatim (fonts, _redirects): stable names, no hash
 const publicFiles = [];
 const walk = (dir, rel = '') => {
@@ -457,6 +472,7 @@ for (const p of pages) {
     try { imageHref(m[1]); } catch (e) { problems.push(`${p.file}: ${e.message}`); }
   }
 }
+if (!hudFiles.length) problems.push('app/www is not built, and the landing embeds the real HUD demo from it: run "cd app && npm run build" first');
 let facts;
 try {
   const manual = pages.filter(p => p.section === 'manual' && p.nav).map(p => ({ slug: p.slug, nav: p.nav, blurb: p.blurb }));
@@ -473,6 +489,7 @@ if (problems.length) {
 for (const a of assetFiles) write(a.out, a.buf);
 for (const i of imageFiles) write(i.out, i.buf);
 for (const f of publicFiles) write(f.rel, f.buf);
+for (const f of hudFiles) write(f.rel, f.buf);
 write('data/weapons.json', JSON.stringify(weapons));
 write('data/sounds.json', JSON.stringify(sounds));
 

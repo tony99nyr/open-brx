@@ -13,9 +13,9 @@ counts
 
 ## What is this?
 
-### A BRX is a laser tag tagger. Open BRX is the software that runs the game.
+### A BRX is a laser tag gun. Open BRX is the software that runs the game.
 
-The Battle Company BRX is a rifle-shaped laser tag tagger with a wireless sensor headset, sold by [Battle Company](https://battlecompany.com/) and built like it walked out of Halo: infrared shots, real hit sensing, a scope you sight in yourself, a speaker full of sounds. Battle Company built it as a serious system for home players, not a toy. Out of the box it plays a handful of built-in games from its own menu. Open BRX is free, open-source software that takes over the game: a laptop keeps score and sets the rules, a phone on each tagger shows the player what is happening, and the taggers themselves stay exactly as they shipped.
+The Battle Company BRX is a rifle-shaped laser tag gun with a wireless sensor headset, sold by [Battle Company](https://battlecompany.com/) and built like it walked out of Halo: infrared shots, real hit sensing, a scope you sight in yourself, a speaker full of sounds. Battle Company built it as a serious system for home players, not a toy. Out of the box it plays a handful of built-in games from its own menu. Open BRX is free, open-source software that takes over the game: a laptop keeps score and sets the rules, a phone on each tagger shows the player what is happening, and the taggers themselves stay exactly as they shipped.
 
 ## Mission Control
 
@@ -58,13 +58,15 @@ modes
 
 ### Twenty-two weapons. Three slots.
 
-A primary, a secondary and a perk. Sidearms that swap fast. Every weapon is written to the tagger as its own definition: fire mode, rate of fire, damage, magazine, reload and swap delay, so a shotgun, a bolt rifle and a charge rifle feel like different taggers on the same tagger.
+A primary, a secondary and a perk. Sidearms that swap fast. Every weapon is written to the tagger as its own definition: fire mode, rate of fire, damage, magazine, reload and swap delay, so a shotgun, a bolt rifle and a charge rifle feel like different weapons on the same tagger.
 
 ```data
 roles
 ```
 
-![Kitted: an assault rifle in the primary slot, secondary and perk plates open](/shots/hud-kitted.jpg)
+```data
+huddemo
+```
 
 ## brx-mcp
 
@@ -99,7 +101,7 @@ Set a BRX smart grenade to hill mode and it becomes a king-of-the-hill objective
 
 ### A tagger, a headset, a phone and a mount.
 
-Everything a player carries. The tagger and headset are stock Battle Company BRX. The phone is any Android with Bluetooth, running the Companion app. The mount is an ordinary rail phone clamp. The taggers stay exactly as they shipped.
+Everything a player carries. The tagger and headset are stock Battle Company BRX. The phone is any Android or iPhone with Bluetooth, running the Companion app. The mount is an ordinary rail phone clamp. The taggers stay exactly as they shipped.
 
 ![The kit laid out: BRX tagger, headset, phone with the HUD, and the rail mount](/photos/kit.jpg)
 

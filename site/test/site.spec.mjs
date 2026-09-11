@@ -545,7 +545,7 @@ it('12b · the landing numbers equal the repo data they claim to count', async (
 
 it('12c · every landing button goes where it says', async ({ page, request }) => {
   await page.goto('/', { waitUntil: 'networkidle' });
-  const btns = await page.locator('main .btn, .top .btn').evaluateAll(bs => bs.map(b => ({ t: b.textContent.trim(), h: b.getAttribute('href') })));
+  const btns = await page.locator('main a.btn, .top a.btn').evaluateAll(bs => bs.map(b => ({ t: b.textContent.trim(), h: b.getAttribute('href') })));
   expect(btns.length).toBeGreaterThanOrEqual(5);
   for (const b of btns) {
     expect(b.h, `button "${b.t}" has no href`).toBeTruthy();
@@ -724,6 +724,34 @@ it('12i · every marketing landing answers "what is this" for a newcomer and lin
     // it is for newcomers and search engines, not a header link
     expect(await page.locator('.topnav a', { hasText: /what is/i }).count(), `${u}: the newcomer section leaked into the header nav`).toBe(0);
   }
+});
+
+it('12j · the live HUD demo on the landing is the real app: pick a weapon, ready up', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('/', { waitUntil: 'networkidle' });
+  const box = page.locator('.huddemo');
+  await box.scrollIntoViewIfNeeded();
+  // before the tap: a poster and a button, no iframe, so the page stays light
+  expect(await page.locator('.huddemo iframe').count()).toBe(0);
+  await box.locator('.huddemo-go').click();
+  const hud = page.frameLocator('.huddemo iframe');
+  // the real HUD boots into KITTED: the primary plate is there to tap
+  const primary = hud.locator('[data-act="onOpenLoadout"][data-arg="primary"]');
+  await expect(primary).toBeVisible({ timeout: 15000 });
+  await primary.click();
+  await expect(hud.locator('[data-act="onPickItem"]').first()).toBeVisible();
+  const picks = await hud.locator('[data-act="onPickItem"]').count();
+  expect(picks, 'the loadout browser shows weapons to pick').toBeGreaterThan(3);
+  await hud.locator('[data-act="onPickItem"][data-arg="weapon:smg"]').click();
+  await hud.locator('[data-act="onLoDone"]').click();
+  // the plate now names the pick, and ready-up flips to READY
+  await expect(hud.locator('#hud')).toContainText(/SMG/i);
+  const ready = hud.locator('[data-act="onReady"]');
+  await expect(ready).toContainText(/READY UP/i);
+  await ready.click();
+  await expect(ready).toContainText(/READY ✓/);
+  // the demo's own console noise is the app's; the PAGE must stay error-free
+  expect(errors.filter(e => !e.includes('/demo/hud/') && !e.startsWith('console:'))).toEqual([]);
 });
 
 it('12h · the platform landing markets the software and hands off to the download', async ({ page }) => {

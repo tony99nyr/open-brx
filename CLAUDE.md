@@ -85,7 +85,7 @@ or `docs/manual/index.md`; the only moving number is the app version, rendered f
 drives the built MC UI (`?mock`) and the HUD (`?demo`) with Playwright into `site/shots/` (committed,
 content-hashed on publish), and `mcp/tests/test_site_shots.py` fails when `webapp/mc/src` or `app/src`
 has moved past `site/shots/manifest.json`. Staged photos live in `site/photos/` (`hero.*`, `grenade.*`;
-SVG placeholders until real ones land). Fonts are self-hosted from `site/public/fonts/`. The contract is
+SVG placeholders until real ones land). Fonts are self-hosted from `site/public/fonts/`. **The landing embeds the REAL HUD** (`app/www` → `/demo/hud/`, `?demo&kit`) as a tap-to-try demo, so the site build needs `cd app && npm run build` first; root `build:ci` does that on Cloudflare and `site/build.mjs` fails if `app/www` is missing. The contract is
 `docs/site/FORMAT.md`; `cd site && npm test` builds and runs the gate (~90 browser steps at 1280 and 390,
 incl. the landing steps 12–12g); **a push to `main` deploys the site**, and Cloudflare REBUILDS it:
 Workers Builds runs `wrangler deploy`, which runs `[build]` in `wrangler.toml` (`npm run build:ci`).
