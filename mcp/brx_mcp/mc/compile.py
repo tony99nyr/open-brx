@@ -950,10 +950,21 @@ class Compiler:
         if config["mode"] == "infection":
             # move THIS gun to each other team's $TID on death, then re-arm (node emits team_change)
             flip: dict[str, list[str]] = {}
+            take: dict[str, list[str]] = {}
             for t in teams:
                 if int(t["tid"]) != tid:
                     flip[str(t["tid"])] = [f"$TID,{t['tid']},*"] + revive
+                    # F86: `gun.take` (blank + rest) is compiled for the ARMING team, so after a flip the
+                    # node's next take -- 2.5 s after the flip's own $SPAWN, and after every later revive --
+                    # painted the OLD team's colour back onto a gun the firmware had just moved. The node
+                    # picks the take for the team it is on now; this is that table. (The headset is the
+                    # `infected` ROLE's job, A16 §3.3, and needs nothing here.)
+                    other = _pres.gun_frames(prof, int(t["tid"]), night, gc.leds, ffa, gc.hp, gc.armor, gc.shield)
+                    if other:
+                        take[str(t["tid"])] = other["take"]
             bundle["team_flip"] = flip
+            if take:
+                bundle["team_flip_take"] = take
         return bundle
 
     def tutorial_frames(self, weapon: Weapon, environment: str) -> list[str]:

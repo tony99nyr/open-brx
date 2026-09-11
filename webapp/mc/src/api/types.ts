@@ -169,6 +169,10 @@ export interface RecapView {
   honors: Honor[];
   provisional: boolean;
   missing: string[];
+  /** F77 / F80 (2026-09-11) — after-the-fact detectors, worded for the operator: a run of identical hits at a
+   *  steady ~5 s period (a gun replaying a latched IR event, F74), or hits/deaths from wire id 0 (a hill's
+   *  damage word, or a gun whose $PSET never landed). Absent when there is nothing to say. */
+  warnings?: string[];
   /** F70 — an OBJECTIVE mode's real result: SECONDS each team held the control point, merged from the
    *  nodes' `possession` facts (max per point per team, never summed — four teammates on one hill all
    *  report the same ownership). Absent unless some node reported, which is itself the answer: a hill

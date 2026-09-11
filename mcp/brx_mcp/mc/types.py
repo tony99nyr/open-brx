@@ -238,6 +238,7 @@ class FrameBundle(TypedDict):
     end: list[str]
     panic: list[str]
     team_flip: NotRequired[dict[str, list[str]]]
+    team_flip_take: NotRequired[dict[str, list[str]]]   # F86: per-tid [blank, rest] the node takes the gun with after a flip
     cues: dict[str, str]  # A6.3: key -> PRE-COMPOSED frame the node writes verbatim. countdown, kill,
     # game_over?, victory?, tick?, klaxon?, multi?, medal?, runway_*?, and the once-per-life
     # low-health pair hurt?/hurt_led? (hurt_led is an $HLED, not a $PLAY — see compile.cues)

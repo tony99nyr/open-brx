@@ -1760,7 +1760,16 @@ class Session:
         # broadcast() returns how many nodes it actually reached and this discarded it, so END MATCH
         # EARLY reported success even when it landed on nobody (field 2026-09-01: "end game early on
         # MC did not go to each hud"). The operator needs the number — `abort` already shows one.
-        reached = self.net.broadcast("control", {"cmd": cmd})
+        # F31 residual (2026-09-11): `broadcast` counted every live SOCKET (a utility phone, a phone with no
+        # player) while `nodes` below counts PLAYERS with a bound node, so "END REACHED 3 OF 2" was
+        # possible and "2 of 2" did not mean both HUDs. Sent per bound player node now, so the two numbers
+        # are the same population; a node with no player has no match to end.
+        body = {"cmd": cmd}
+        reached = 0
+        for p in self.players.values():
+            nid = p.get("node_id")
+            if nid and self.net.push(nid, "control", body) is not False:
+                reached += 1
         if cmd == "end" and self.scorer:
             self.scorer.set_end(self.now_ms())           # A6.1 end freeze
             self._finish()

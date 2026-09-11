@@ -198,6 +198,7 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
   end:     string[],   // game-over teardown (END_SEQUENCE)
   panic:   string[],   // ["$CLEAR,*", "$SP,99,*"]
   team_flip?: { [tid: string]: string[] }, // infection: frames to move THIS gun to another team mid-match
+  team_flip_take?: { [tid: string]: string[] }, // F86 (2026-09-11): per-tid [blank, rest] the node takes the gun body with after a flip -- `gun.take` is compiled for the ARMING team, so a flipped gun must not be re-taken with the old colour
   cues: { countdown: string, kill: string, game_over?, victory?, tick?, klaxon?, multi?, medal?,
           hurt?, hurt_led?, runway_30?, runway_20?, runway_10?, team_led?,
           // A11.2: one key per presentation EVENT that carries a sound — the medal kinds (first_blood, double_kill,

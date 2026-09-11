@@ -1183,6 +1183,50 @@ test('resumeSchedule across T-0: within grace spawns; long-past hot-joins', () =
   assert.equal(h2.eng.phase, 'live'); assert.equal(r2.reason, 'hot_join');
 });
 
+test('F86: after an infection flip the gun is TAKEN with the new team\'s frames, on the flip and on every later revive', () => {
+  const NEW_TAKE = ['$GLED,,,,5,,,*', '$GLED,2,2,2,0,1,,*'];
+  const b = { ...golden, player_id: 'p1', team_flip: { '2': ['$TID,2,*', '$SPAWN,,*'] }, team_flip_take: { '2': NEW_TAKE } };
+  const writes = []; const facts = []; let clock = 1e6;
+  const eng = new Engine({ writer: f => writes.push(...f), emit: f => facts.push(f), report: () => {}, now: () => clock, synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn() });
+  const config = { config_id: 'g', mode: 'infection', environment: 'indoor', night: false, time_limit_s: 300, respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: null, win_by: 'survival' }, health: { max_hp: 45, max_armor: 70 }, teams: [{ team_id: 'human', tid: 1, name: 'HUMAN', color: 'blue' }, { team_id: 'inf', tid: 2, name: 'INFECTED', color: 'red' }] };
+  eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  eng.onMcMessage({ kind: 'assign', body: { player: { player_id: 'p1', player_num: 7, display: 'X', team_id: 'human', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' }, team: { team_id: 'human', tid: 1, name: 'HUMAN', color: 'blue' }, roster: [] } });
+  eng.onMcMessage({ kind: 'config', body: { config, frames: b, roster: [] } }); eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+  eng.onMcMessage({ kind: 'start', body: { match_id: 'm', go_live_t: clock, config_id: 'g', seq: 1, countdown_s: 0 } });
+  clock += 10; eng.tick();
+  const oldRest = golden.gun.take[golden.gun.take.length - 1];
+  assert.ok(writes.includes(oldRest), 'the first life is taken with the arming team\'s rest');
+  eng.feedFrame('$HIR,4,0,19,2,9,0,3,*'); eng.feedFrame('$HP,0,0,0,*');
+  assert.equal(eng.teamTid, 2, 'flipped');
+  writes.length = 0;
+  clock += 8000; eng.tick();                       // the auto respawn -> _revive -> _gunTake
+  assert.ok(writes.includes(NEW_TAKE[1]), 'the take after the flip is the NEW team\'s rest');
+  assert.ok(!writes.includes(oldRest), 'and never the old colour again');
+  // CONTROL: without the table (an older MC) the old take is used, as before
+  const c = { ...golden, player_id: 'p1', team_flip: { '2': ['$TID,2,*', '$SPAWN,,*'] } };
+  const w2 = []; let clock2 = 1e6;
+  const e2 = new Engine({ writer: f => w2.push(...f), emit: () => {}, report: () => {}, now: () => clock2, synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn() });
+  e2.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  e2.onMcMessage({ kind: 'assign', body: { player: { player_id: 'p1', player_num: 7, display: 'X', team_id: 'human', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' }, team: { team_id: 'human', tid: 1, name: 'HUMAN', color: 'blue' }, roster: [] } });
+  e2.onMcMessage({ kind: 'config', body: { config, frames: c, roster: [] } }); e2.feedFrame('$LCD,0,0,0,0,0,0,*');
+  e2.onMcMessage({ kind: 'start', body: { match_id: 'm', go_live_t: clock2, config_id: 'g', seq: 1, countdown_s: 0 } });
+  clock2 += 10; e2.tick(); e2.feedFrame('$HIR,4,0,19,2,9,0,3,*'); e2.feedFrame('$HP,0,0,0,*'); w2.length = 0; clock2 += 8000; e2.tick();
+  assert.ok(w2.includes(oldRest));
+});
+
+test('F64: a lethal host write arrives as a zeroed $LCD with no $HP, and the node books the death from it', () => {
+  // The frame is the one captured on the bench 2026-09-09 (`$LIFE` to zero emitted `$LCD,0,0,0,0,32,192,*` and
+  // never `$HP,0,0,0`). The correction to F64 was a CODE READ; this is the replay it asked for.
+  const h = goLive(harness());
+  h.frame('$LCD,0,0,0,0,32,192,*');
+  assert.equal(h.eng.alive, false, 'death booked off the $LCD path');
+  assert.equal(h.eng.deaths, 1);
+  const death = h.facts.find(f => f.type === 'death');
+  assert.ok(death && death.shooter_num === 0, 'no attribution: nobody shot us');
+  assert.equal(h.eng.killedBy.unknown, true, 'the DOWN screen says UNKNOWN, not a team');
+  assert.equal(h.facts.some(f => f.type === 'hit_taken'), false, 'and no hit_taken fact -- the residual S16 must decide credit for a lethal tick');
+});
+
 test('infection: death writes team_flip and emits team_change', () => {
   const b = { ...golden, player_id: 'p1', team_flip: { '2': ['$TID,2,*'] } };
   const writes = []; const facts = []; let clock = 1e6;

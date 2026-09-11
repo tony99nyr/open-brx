@@ -633,11 +633,17 @@ export class Engine {
     // loop's final pass, 2026-09-07, by replaying a second life rather than by reading the code.
     this._roLevels = {}; this._roLastStartAt = null;
     if (!g || !Array.isArray(g.take) || !g.take.length) return;
+    // F86: `gun.take` was compiled for the ARMING team. After an infection flip this gun is on another
+    // team, and taking it with the old frames painted the old colour back over a body the firmware had
+    // just moved -- so the take is looked up by the team we are on NOW when MC shipped one for it.
+    const flipTake = this.frames.team_flip_take && this.teamTid != null && this.frames.team_flip_take[String(this.teamTid)];
+    const take = (Array.isArray(flipTake) && flipTake.length) ? flipTake : g.take;
+    const rest = take === g.take ? g.rest : take[take.length - 1];
     const life = (this._gunLife = (this._gunLife || 0) + 1);
     const lg = (this._lightGen = this._lightGen || 0);   // teardown snapshot: a blank+paint must not land after _endLocal/panic writes $CLEAR/$SP,99
     this.delay(Math.round((g.after_spawn_s || 2.5) * 1000), () => {
       if (life !== this._gunLife || this._lightGen !== lg || !this.alive) return;
-      this._write(g.take, 'gun take'); this._gunTaken = true; this._gunBand = g.rest; this._readoutFrame = g.rest;   // A16: the strip now shows `rest` — dark until a pool change paints a band
+      this._write(take, 'gun take'); this._gunTaken = true; this._gunBand = rest; this._readoutFrame = rest;   // A16: the strip now shows `rest` — dark until a pool change paints a band
     });
   }
   /** A11.7: the gun body's resting frame when the game owns it (frames.gun; absent = firmware breathing).

@@ -250,6 +250,17 @@ class GameDriver:
                 await self._paint_event(a.player_id, "healed")
             elif isinstance(a, SetTeam):
                 await self._send(a.player_id, f"$TID,{a.team},*")
+                # F86 (bench 2026-09-10): a live `$TID` moves hit resolution at once but leaves BOTH the gun
+                # body and the headset on the old team's colour -- teammates read each other by LED, so a
+                # turned player displayed as their old team to everyone. The verified remedy is blank, then
+                # paint, right after the write ("yes both red", then "now they are blue"). The driver's own
+                # paint helpers read `self.players`, so the map is updated FIRST or they would repaint the
+                # old colour with great confidence.
+                self.players[a.player_id] = a.team
+                if self.config.leds:
+                    hs, gun = self._rest_frames(a.player_id)
+                    for f in (pg.GUN_BLANK, gun, hs):
+                        await self._send(a.player_id, f, reply_window_ms=0)
             elif isinstance(a, KillConfirm):
                 await self._send(a.scope, "$SFLASH,*")   # green-sight kill confirm (§7o)
             elif isinstance(a, PlaySound):

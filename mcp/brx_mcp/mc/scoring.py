@@ -98,6 +98,10 @@ class Scorer:
         self.stats: dict[str, _P] = {pid: _P(p.get("team_id")) for pid, p in players.items()}
         self.num_to_pid = {p["player_num"]: pid for pid, p in players.items()}
         self.hits_log: list[tuple[int, str, str, int]] = []   # (t, shooter_pid, victim_pid, dmg)
+        # F80: facts whose shooter is wire id 0 -- a grenade hill's damage word (F69) or a gun whose $PSET
+        # never landed. They score for nobody by design (A5.1); the recap says how many there were so a
+        # mis-armed gun is at least visible AFTER the match (the arm-time fix is B19).
+        self.wire0: dict[str, int] = {"hit_taken": 0, "death": 0}
         self.kills: list[dict] = []
         self.parked: list[tuple[str, Event, int]] = []
         self.feed: list[Feed] = []
@@ -229,6 +233,8 @@ class Scorer:
             self.post_end.append((node_id, ev, t_recv))
             return "post_end"
         kind = ev.get("type")
+        if kind in self.wire0 and int(ev.get("shooter_num", 0) or 0) == 0:
+            self.wire0[kind] += 1
         if kind == "hit_taken":
             shooter = self.num_to_pid.get(int(ev.get("shooter_num", 0) or 0))
             if shooter and shooter != pid:
@@ -596,6 +602,53 @@ class Scorer:
         poss = self.possession()
         if poss is not None:       # absent for every mode with no control point, so nothing else changes
             out["possession"] = poss
+        warn = self.warnings()
+        if warn:
+            out["warnings"] = warn
+        return out
+
+    # F74's phantom loop: a gun replaying `$HIR`+`$HP` every 5.07 s with no IR in the air. A replayed hit is
+    # indistinguishable from a real one at frame level, so F77 forbids a suppressor (it would eat real bursts).
+    # This is the DETECTOR: a run of identical hits at a near-constant period is named in the recap.
+    REPLAY_MIN_HITS = 4
+    REPLAY_PERIOD_MS = (3000, 8000)     # the measured 5.07 s, with room; nothing a player fires sits here for 4 hits
+    REPLAY_JITTER = 0.15                # every gap within ±15 % of the median
+
+    def warnings(self) -> list[str]:
+        out: list[str] = []
+        by: dict[tuple[str, str, int], list[int]] = {}
+        for t, shooter, victim, dmg in self.hits_log:
+            by.setdefault((shooter, victim, dmg), []).append(t)
+        names = {pid: self._name(pid) for pid in self.stats}
+        for (shooter, victim, dmg), ts in sorted(by.items()):
+            ts.sort()
+            if len(ts) < self.REPLAY_MIN_HITS:
+                continue
+            gaps = [b - a for a, b in zip(ts, ts[1:])]
+            # the longest run of consecutive gaps that look like one clock
+            run, best = [], []
+            for g in gaps:
+                if not run:
+                    run = [g]
+                    continue
+                med = sorted(run)[len(run) // 2]
+                if self.REPLAY_PERIOD_MS[0] <= g <= self.REPLAY_PERIOD_MS[1] and abs(g - med) <= self.REPLAY_JITTER * med \
+                        and self.REPLAY_PERIOD_MS[0] <= med <= self.REPLAY_PERIOD_MS[1]:
+                    run.append(g)
+                else:
+                    best = max(best, run, key=len); run = [g]
+            best = max(best, run, key=len)
+            if len(best) + 1 >= self.REPLAY_MIN_HITS:
+                period = sorted(best)[len(best) // 2] / 1000
+                out.append(f"F74? {names.get(victim, victim)} took {len(best) + 1} identical {dmg}-damage hits from "
+                           f"{names.get(shooter, shooter)} at a steady {period:.1f} s period -- the shape of a gun REPLAYING "
+                           "a latched IR event, not a player firing. Those hits and any death they caused are counted; "
+                           "check the shooter's shots against them, and re-arm the victim's gun with $SPAWN")
+        n_hit, n_death = self.wire0["hit_taken"], self.wire0["death"]
+        if n_hit or n_death:
+            out.append(f"WIRE 0: {n_hit} hit(s) and {n_death} death(s) came from a shooter with NO identity -- a grenade "
+                       "hill's damage word (F69) or a gun whose $PSET never landed (F80). They scored for nobody. If no "
+                       "hill was on the field, one gun played the whole match unable to score: check its $PSET at the next arm")
         return out
 
     _csv_safe = staticmethod(_csv_safe)

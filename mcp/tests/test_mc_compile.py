@@ -128,6 +128,19 @@ def test_infection_emits_team_flip():
     assert b["team_flip"]["2"][0] == "$TID,2,*"
 
 
+def test_infection_ships_the_take_for_the_team_a_flipped_gun_lands_on():
+    """F86: `gun.take` is compiled for the ARMING team; after a flip the node must take the gun with the
+    team it is on NOW, or the old colour is painted back over a body the firmware just moved."""
+    from brx_mcp import poolgauge as pg
+    b = C.compile(_cfg(mode="infection"), _player(team="blue"), _TEAMS)
+    assert "team_flip_take" in b and set(b["team_flip_take"]) == set(b["team_flip"])
+    take = b["team_flip_take"]["2"]
+    assert take[0] == pg.GUN_BLANK and take[1].startswith("$GLED,"), take
+    assert take != b["gun"]["take"], "the flipped take must differ from the arming team's"
+    assert pg.display_colour(2) != pg.display_colour(1)
+    assert str(pg.display_colour(2)) in take[1].split(",")[1:4], take
+
+
 def test_tdm_has_no_team_flip():
     b = C.compile(_cfg(mode="tdm"), _player(), _TEAMS)
     assert "team_flip" not in b
