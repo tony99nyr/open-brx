@@ -1,5 +1,5 @@
 # Gameplay
-Last verified: 2026-09-09
+Last verified: 2026-09-10
 
 This page covers every weapon the BRX can fire, how health and damage work, every native game mode and its settings, the classes and perks the Callsign app models, and the Smart Grenade's objective modes.
 
@@ -418,3 +418,32 @@ Three modes stock BRX does not ship:
 - **Syphon and regenerating health**: the host credits the exact killer (every shot names its shooter) and tops up their pool. Or it refills anyone who has gone T seconds without taking damage. Both are host rules on top of the "heals add, never set" write. Syphon is written for the laptop CLI path and has never run on hardware, so today it is a design rather than a mode you can play.
 
 > **Honest limits.** Phones have no IR, so shoot-the-point needs a station or the grenade. One phone can hold only a handful of gun links. A field without WiFi means live global state needs a radio tier.
+
+## Control points: the grenade or a phone
+
+A control point is a place on the field a team can own: a King of the Hill point, a Domination point, a bomb site. There are two ways to put one on your field and they are good at different things. The grenade is the cheapest way to have a control point at all, and it is the only one you can shoot. A phone is what you reach for when you want more than one point, or want the point to count people, or want it to keep scoring after you walk away.
+
+A Smart Grenade in Hill mode is a complete control point on its own: no phone, no host, no app, and it works in native games. You shoot it to capture it, and nothing else replicates that. Capture is by charge, so any weapon can take a point and the attacker wins ties: on the bench one Assault Rifle round took a neutral point, and about four rounds' worth of charge took one an enemy team was holding. It beacons its owner to every gun in range every 5 seconds, it changes colour and beeps so everyone nearby knows what just happened, and it holds its owner with nobody standing there (ten straight beacons on one owner with no one shooting it).
+
+A phone can be a control point too, and everything in the phone column below is designed and specified but **not built yet**. Read it as the plan, not as something you can play this weekend.
+
+| | Smart Grenade, Hill mode | A phone as a control point |
+|---|---|---|
+| Status | works today, in native games too | designed, not built |
+| How you capture it | shoot it. Charge accumulates, any weapon counts | stand on it |
+| More than one point | no. A beacon carries no point id, so two grenades cannot be told apart on the wire | yes. Every point carries its own station id |
+| Do more attackers capture faster | no. It counts the charge fired into it, not the people | yes. It counts living players present per team, and nets the leading team against the largest single rival team |
+| Downed players | no idea they are there | ignored, so reviving on the point matters |
+| Contested | not readable. A non-capturing hit emits nothing we can decode | a real state it can see and announce |
+| Progress you can watch | the LED colour and a beep | a percentage on the air for other phones and stations, and an animated bar on its own screen, so a defender can see the point going |
+| A point nobody is standing on | ownership travels only over IR and only a gun receives IR, so nobody learns that a far point flipped until a player walks into range. Reception is solid close in and intermittent by about 30 feet, with dropouts of 85 and 145 seconds measured at the edge | the phone sits on the point all match and keeps its own clock, so it keeps scoring for its owner with nobody there. That is what makes a Territories game possible |
+| Points talking to each other | no | yes, with no network at all. The adverts are broadcast, so a respawn station can read a control point |
+| Presence range | you aim a gun at it | a bubble of roughly 10 feet at the tuned default, with no direction at all |
+| It fights back | yes. An enemy-held hill emits an ordinary damage word, so pushing onto a point you do not own costs you health | no |
+| Security | a beacon is unauthenticated | an advert is unauthenticated too. Fine for friends on a private network, not a guarantee |
+
+**The hill chips you, and that is measured.** An unattended enemy hill killed a player in about 106 seconds on the bench, 8 damage every 5 seconds, with no host involved. In a native game that is the mode working: it punishes standing on someone else's point. In an Open BRX game it is currently indistinguishable from being shot. A fix is under investigation (moving our own weapons off the IR protocol the hill uses, which would make the hill's damage land in a cell nothing is listening to) and it has not been tested.
+
+**Do not put a player on team 2 in a hill game.** A neutral hill broadcasts team 2, which is measured. The gun's own filter compares that against the gun's team, so a player on team 2 should read every neutral point as already theirs and take no hill damage at all. Use teams 0, 1 and 3. The consequence follows from two measured facts but has not been tested directly.
+
+A second hand Android phone is an inexpensive way to add an objective to your field, and unlike a grenade you can add several of them. What you give up is the shot: you cannot shoot a phone, you stand on it. For a single point that everybody fights over by aiming at it, the grenade is still the better prop.

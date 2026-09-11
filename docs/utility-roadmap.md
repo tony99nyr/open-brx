@@ -231,7 +231,7 @@ the CLI/sim with synthetic objective events.
 
 ### ⭐ The grenade shortcut to K1 (bench 2026-09-10)
 
-**A $30 grenade is already a working control point, and two small changes make a hosted game read it** (a `$SIR` row, and stopping the phone discarding protocol 15). K1 was
+**A grenade is already a working control point, and two small changes make a hosted game read it** (a `$SIR` row, and stopping the phone discarding protocol 15). K1 was
 scoped as building a station; for Hill and Respawn the hardware exists and the protocol is decoded:
 
 | what K1 needs | the grenade already does it |
@@ -245,6 +245,13 @@ scoped as building a station; for Hill and Respawn the hardware exists and the p
 **So K1's station hardware is optional for Hill/Respawn.** What remains is node work — read the beacon, track
 the owner, score possession — plus an MC catalog entry and scorer, which K1 needed anyway. That is a materially
 shorter path to the first playable objective mode than building a station first.
+
+⚠ **The "$30" that used to open this section is gone because nothing in the repo sources it** (no price list, no
+invoice, no bench note). Make the cost argument qualitatively until somebody has a receipt.
+
+📖 **The reader-facing grenade-vs-phone comparison now lives in the manual**: `docs/manual/gameplay.md` "Control
+points: the grenade or a phone" (2026-09-10), phone column marked designed-not-built. Keep it in step when K1
+lands or F91/F82 resolve.
 
 **Three constraints the bench found, which any design here must respect:**
 1. 🔴 **The damage word lands in hosted games TODAY** (F69). Protocol 0 is our standard damage row, so a hill
