@@ -294,6 +294,34 @@ class GameDriver:
             await self._paint_headset(pid)
         self.announce(f"game live: {self.config.summary()}")
 
+    @property
+    def _ffa(self) -> bool:
+        """Q19: FFA has no team identity to protect, so BOTH surfaces paint WHITE for every player
+        (`poolgauge.FFA_COLOUR`) instead of a per-player colour — matching stock behaviour, Tony's
+        call. The `$TID` itself still varies per gun (that is the identity attribution leans on);
+        only the PAINT is fixed, the same colour/identity split `TEAM_DISPLAY_COLOURS` makes.
+
+        Deliberately NOT extraction: its guns are one-per-team for attribution, but squads are a real
+        identity there, so a squad colour is meaningful where an FFA one is not.
+        """
+        return self.config.mode == "ffa"
+
+    def _rest_frames(self, pid: str) -> tuple[str, str]:
+        """(headset, gun-body) rest paints for `pid` — the ONE place that decides them.
+
+        These three paints (spawn, after every hit, and the gauge revert) each used to call
+        `poolgauge` directly and each had to remember `ffa=`; none of them did, so every FFA game
+        painted per-gun team colours in a mode whose whole point is that it has no teams. Deciding
+        it once means a fourth call site cannot drift.
+
+        ⚠ No `night=` here, and that is not an omission: `is_night_mode()` is "outdoor AND LEDs
+        off", and every caller below returns early when the LEDs are off, so the flag could only
+        ever be False at these call sites. Passing it would be dead code that reads like coverage.
+        """
+        team = self.players.get(pid)
+        return (pg.headset_team_frame(team, ffa=self._ffa),
+                pg.team_frame(team, ffa=self._ffa, night=self.config.is_night_mode(), dim=True))
+
     async def _paint_headset(self, pid: str) -> None:
         """Put the headset back on the team colour. Send after every `$SPAWN` and every hit.
 
@@ -304,7 +332,7 @@ class GameDriver:
         """
         if not self.config.leds:
             return
-        await self._send(pid, pg.headset_team_frame(self.players.get(pid)), reply_window_ms=0)
+        await self._send(pid, self._rest_frames(pid)[0], reply_window_ms=0)
 
     async def _paint_event(self, pid: str, event: str) -> None:
         """Play the tuned event burst on the gun WITHOUT blocking the game loop.
@@ -355,6 +383,25 @@ class GameDriver:
             if self._bursts.get(pid) is asyncio.current_task():
                 self._bursts.pop(pid, None)
 
+    def _warn_if_tid_is_not_a_team(self, pid: str) -> None:
+        """Arm anyway, but say so, when a gun is about to be armed on a `$TID` the wire has no team
+        for (F96/F35 — the field is 2 bits, so only 0-3 exist).
+
+        `assign_teams` refuses any team IT invents outside that range, so reaching here means the
+        operator pinned it explicitly (`config.teams`) — and "explicit wins" is load-bearing:
+        `compile.py` arms try-outs on a deliberately odd id, and pinning is how an operator keeps a
+        player's identity stable across games. Taking the override away would break a contract
+        something depends on; saying nothing leaves them with a gun that half-works and no clue why.
+        So: one unmissable line on **stderr**, naming the gun and the tid, then arm it.
+        """
+        tid = self.players.get(pid)
+        if isinstance(tid, int) and not isinstance(tid, bool) and tid not in pg.TEAM_TIDS:
+            print(f"⚠️  WARNING: {pid} is armed on $TID {tid}, WHICH IS NOT A TEAM — the wire's team "
+                  f"field is 2 bits, so this gun transmits as team {tid & 3}: its shots read "
+                  f"FRIENDLY to team {tid & 3} and do no damage, while it still takes damage from "
+                  f"them. Valid teams are {min(pg.TEAM_TIDS)}-{max(pg.TEAM_TIDS)} (F96/F35). "
+                  f"Arming anyway — this team was set explicitly.", file=sys.stderr, flush=True)
+
     async def _arm_one(self, pid: str) -> bool:
         """Send one gun's full config, then make sure the `$SIR` table actually landed.
 
@@ -365,6 +412,7 @@ class GameDriver:
         letting a player walk onto the field unhittable.
         """
         self.arming_failures.pop(pid, None)
+        self._warn_if_tid_is_not_a_team(pid)
         frames = list(self.config.setup_frames(self.player_ids[pid]))
         for f in frames:
             await self._send(pid, f, critical=True)
@@ -454,8 +502,7 @@ class GameDriver:
             # NOT for a beacon: fn 28 registers with zero player feedback (F73 -- no sound, no flash,
             # no vibration), so there is nothing to repaint, and a hill would otherwise put a write
             # on every gun every 5 s for the whole match.
-            actions = list(actions) + [SendFrame(player_id,
-                                                 pg.headset_team_frame(self.players.get(player_id)))]
+            actions = list(actions) + [SendFrame(player_id, self._rest_frames(player_id)[0])]
         return actions
 
     def _gauge_action(self, pid: str, ev: dict, now: float) -> Optional[Action]:
@@ -504,8 +551,7 @@ class GameDriver:
                 # A16.4: reverting from a gauge paint lands on the IN-PLAY rest, which is dim -- the
                 # same frame `presentation.gun_frames()` ships as `gun.rest`. Full brightness here
                 # would make the revert brighter than the reading that preceded it.
-                actions.append(SendFrame(pid, pg.team_frame(self.players.get(pid),
-                                                          night=self.config.is_night_mode(), dim=True)))
+                actions.append(SendFrame(pid, self._rest_frames(pid)[1]))
         return actions
 
     @property

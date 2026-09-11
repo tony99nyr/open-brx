@@ -444,6 +444,42 @@ def test_driver_survives_a_failing_send_midgame():
     assert calls["n"] > 0
 
 
+def test_an_out_of_range_tid_is_armed_but_warned_about_on_stderr():
+    """F96, the operator's-own-rope half. `assign_teams` refuses a team it INVENTS outside 0-3, so a
+    tid this high can only have been pinned explicitly — and "explicit wins" is load-bearing
+    (`compile.py` arms try-outs on a deliberately odd id, and pinning keeps an identity stable).
+    Taking the override away would break that contract; saying nothing leaves the operator with a
+    gun whose shots read friendly to a real team and no clue why. So it arms, loudly.
+    """
+    import contextlib
+    import io
+
+    def _arm(players):
+        sent = []
+
+        async def sender(pid, frame):
+            sent.append((pid, frame))
+
+        drv = GameDriver(GameConfig(mode="tdm"), players, sender=sender, announce=lambda *_: None)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            asyncio.get_event_loop_policy().new_event_loop().run_until_complete(drv.setup())
+        return sent, err.getvalue()
+
+    sent, err = _arm({"G1": 5, "G2": 1})
+    assert "G1" in err and "$TID 5" in err, err
+    assert "2 bits" in err and "FRIENDLY" in err, err          # the consequence, not just the number
+    assert "team 1" in err, err                                # the team it actually transmits as
+    # ... and it really did arm: the override is honoured, not silently rewritten.
+    assert ("G1", "$TID,5,*") in sent, [f for p, f in sent if p == "G1" and "TID" in f]
+
+    # CONTROL: a roster entirely within 0-3 says nothing at all, so the warning is reading the tid
+    # and not printing on every arm.
+    sent_ok, err_ok = _arm({"G1": 0, "G2": 3})
+    assert err_ok == "", err_ok
+    assert ("G1", "$TID,0,*") in sent_ok
+
+
 def test_ffa_refuses_a_fifth_gun_because_the_wire_has_only_four_teams():
     """F96: FFA/extraction give every gun its OWN `$TID` for 1:1 kill attribution, and the wire's
     team field is 2 BITS — `protocol/brx-protocol.md` §7i: "use 4-7 as COLOURS only, never as a

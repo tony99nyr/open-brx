@@ -12,6 +12,7 @@ Reference: tests/test_sim_harness.py (harness usage), tests/test_modes.py (pure
 engine-level equivalents of several of these).
 """
 
+from brx_mcp import poolgauge as pg
 from brx_mcp.gameconfig import GameConfig
 from brx_mcp.sim import SimGame
 
@@ -266,6 +267,50 @@ def test_ffa_frag_limit_ends_on_right_gun():
     g.kill("G3", shooter_team=g.teams["G1"])     # G1: 2 → frag limit
     assert g.over
     assert g.snapshot()["winner"] == "G1"        # a gun id, not "team1"
+
+
+# --------------------------------------------------------------------------- #
+# Q19: FFA paints WHITE on both surfaces                                       #
+# --------------------------------------------------------------------------- #
+def test_ffa_paints_white_on_both_surfaces_never_a_team_colour():
+    """Q19: FFA has no team identity to protect, so BOTH surfaces paint WHITE for every player.
+
+    The three rest paints — at spawn, after every registered hit, and the gauge revert — each called
+    `poolgauge` directly and each had to remember `ffa=`; none of them did, so every FFA game painted
+    per-gun team colours in the one mode that has no teams. Asserted on the frames the guns were
+    actually SENT, not on a builder's return value: the builder is the thing that was right all
+    along, and the call sites were the thing that was wrong.
+    """
+    white = pg.FFA_COLOUR
+    g = SimGame(GameConfig(mode="ffa", frag_limit=0, game_time_s=0), damage=25).setup()
+    # TWO hits: `changed_pool` compares against the PREVIOUS $HP, so the first one only establishes
+    # the baseline and paints no gauge. One hit here left the body untested and the test green.
+    g.hit("G1", g.teams["G2"], now=1.0)                    # a registered hit wipes + repaints the head
+    g.hit("G1", g.teams["G2"], now=1.5)                    # ... this one moves a pool → gauge paint
+    g.tick(now=1.5 + pg.REVERT_AFTER_S + 0.1)              # the gauge expires → body back to rest
+    to_g1 = g.frames_to("G1")
+    heads = [f for f in to_g1 if f.startswith("$HLED,")]
+    assert heads, to_g1
+    assert all(f.startswith(f"$HLED,{white},") for f in heads), heads
+    # G1 is team 0 in FFA now, so the bug had a visible signature (a RED head). It must be gone.
+    assert not any(f.startswith(f"$HLED,{pg.display_colour(g.teams['G1'])},") for f in heads), heads
+    rests = [f for f in to_g1 if f.startswith("$GLED,") and ",0," in f]
+    assert any(f.startswith(f"$GLED,{white},{white},{white},") for f in rests), rests
+    g.close()
+
+    # CONTROL: a TEAM mode still paints its team colour on both surfaces. Without it, "everything is
+    # white" would be satisfied just as well by a driver that paints white for everybody.
+    t = SimGame(GameConfig(mode="tdm", frag_limit=0, game_time_s=0), damage=25).setup()
+    t.hit("G1", t.teams["G2"], now=1.0)
+    t.hit("G1", t.teams["G2"], now=1.5)
+    t.tick(now=1.5 + pg.REVERT_AFTER_S + 0.1)
+    colour = pg.display_colour(t.teams["G1"])
+    assert colour != white, "the control cannot tell white from a team colour"
+    t_heads = [f for f in t.frames_to("G1") if f.startswith("$HLED,")]
+    assert t_heads and all(f.startswith(f"$HLED,{colour},") for f in t_heads), t_heads
+    assert any(f.startswith(f"$GLED,{colour},{colour},{colour},")
+               for f in t.frames_to("G1") if f.startswith("$GLED,"))
+    t.close()
 
 
 # --------------------------------------------------------------------------- #
