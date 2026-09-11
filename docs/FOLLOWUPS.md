@@ -16,36 +16,39 @@ F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (col
 **Blocked on:** `trigger` · `eyes` · `ears` · `space` · `grenade` · `capture` · `decision` · `build`.
 **Status:** 🔴 blocking or high value · 🟠 next · 🟡 useful · 🟢 low.
 
+## 0. Where to look
+
+| You want | Go to |
+|---|---|
+| **The bench running order** (setup blocks, exact command, reading, control per rung) | [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md). §9 below is the REGISTER: ids live here, order lives there |
+| **The grenade / hill rungs** | [`bench-grenade.md`](bench-grenade.md) §"Still to run" |
+| **Open BUILD items** (no hardware needed) | §2 extensibility · §3 build · §7 September build items · the `build`-tagged rows in §6 |
+| **Open DECISIONS** (keyboard, Tony's call) | §9 "Decisions", and the seven-item list in [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) §"Decisions" |
+| **What closed today** | [`archive/followups-closed.md`](archive/followups-closed.md), newest last |
+| **Why a fact is believed** | [`experiment-log/`](experiment-log/) — grep the id or the date |
+
+**🔴 blocking, at a glance (2026-09-10):** **F69** a grenade hill damages and kills players in our games ·
+**F82** never put a player on team 2 in a hill mode · **F91** (bench) move our weapons off IR protocol 0 ·
+**F96** FFA hands out forbidden tids above 4 players · **F74** a gun can latch an IR event and replay it
+forever · **F68** a miss permanently kills the headset team colour · **F35** `$TID` 4-7 break combat ·
+**F43** sound picks by acoustic shape are not trustworthy · **S10** LED language v2 · **E1**/**E5**
+extensibility · **B23**/**B26** respawn-for-hosted and the headset-less-gun contradiction.
+
 ## 1. Before going public
 
 The repo is private, MIT-licensed, 0 forks. Nothing below blocks day-to-day work; all of it blocks a public flip.
 
-- **✅ DONE 2026-09-07 — history purge, binaries.** `docs/reference/BRX_Manual_V7.pdf` (Battle Company's
-  copyrighted manual, 14 MB) and every stale APK blob were removed from history with `git filter-repo`
-  and force-pushed. Old clones are invalid; re-clone rather than pull.
-- **✅ DONE 2026-09-07 — raw Callsign assets.** The five raw JSONs are gone from the tree per
-  `protocol/callsign-extract/RAW_ASSETS_NOTE.md`; three were unreferenced, two were restated as our own
-  derived data under `mcp/brx_mcp/data/`. Regeneration reads a gitignored local copy of the APK.
-- **✅ DONE 2026-09-07 — headset ids in binary captures.** The two `protocol/captures/raw/2026-08-25-*.btsnoop`
-  traces carried a sticker id in the advertised name; both were patched in place with an equal-length alias,
-  byte count unchanged, and both still decode identically.
-- **✅ DONE (verified 2026-09-10) — the APK is out of git.** No `.apk` is tracked (`git ls-files` is clean)
-  and `.gitignore:31` carries `webapp/download/*.apk`; only the `build.json` sidecar is tracked. Every build
-  goes to the `app-v<version>` release via `npm run android:apk` (0.1.8 published 2026-09-10 from `cfe2a8e`).
-  ⚠ The site publishes NO link to it: `site/build.mjs`'s `REPO_PUBLIC = false` strips repo links on all twelve
-  pages, and the build FAILS if a manual page adds one back ("links the repository, which is private"). That
-  guard exists because the site had shipped 404ing repo links on every page. Flipping `REPO_PUBLIC` is the
-  one switch that restores them.
+- **✅ Five items are DONE and have moved out** (history purge · raw Callsign assets · headset ids in the
+  binary captures · dead branches · the APK out of git). One dated line each in
+  [`archive/followups-closed.md`](archive/followups-closed.md) under *Closed 2026-09-10*. Two traps worth
+  remembering are kept there: a **release tag can pin purged history** (`app-v0.1.6` had to be re-pointed
+  through `.git/filter-repo/commit-map` before the objects would drop), and the site publishes **no** link
+  into the repo while `site/build.mjs`'s `REPO_PUBLIC = false` — flipping that one switch restores every link
+  at once, and the build FAILS if a manual page adds one back by hand.
 - **⬜ Device identifiers in text history.** Sticker ids and BLE MACs remain in ~88 old commits (the tree is
   clean; `mcp/tests/test_docs_hygiene.py` keeps it that way). Deliberately not purged: they label Tony's own
   four headsets and grant nothing remotely. Revisit only if that judgement changes; it needs `--replace-text`
   plus a `--blob-callback` for binaries (`docs/gotchas.md` has the traps).
-- **✅ DONE 2026-09-07 — dead branches deleted.** `bench/feedback-fork-ir-nrf-2026-08-25` (local and
-  remote) and `worktree-agent-a8593058024df0d96` are gone. They were superseded 2026-08-25 forks and the
-  remote one still pinned the PDF and every old apk, which is why the purge of `main` alone did not shrink
-  anything. Full pre-purge backup: `~/brx-backups/open-brx-pre-purge-2026-09-07.bundle` (48 MB, all refs).
-  Pack went 93 MB → 28 MB. **A release tag can pin purged history too**: `app-v0.1.6` pointed at the old
-  commit and had to be re-pointed through `.git/filter-repo/commit-map` before the objects would drop.
 - **⬜ Release-sign the APK** (B21) and drop `webContentsDebuggingEnabled` before a build leaves the bench.
 - **Standing rules.** Credit LaserTagMods in anything public-facing (CLAUDE.md hard rule). Keep
   `test_docs_hygiene.py` green: no sticker ids (write `Tactix-XXXX`), the Updated stamp above moves with the
@@ -78,7 +81,6 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   A respawn station for *hosted* games is B23; for native games it is one word (see `reference/grenade.md`). `build`.
 - **B8 🟡** grenade STATE app: a live Hill/Respawn display from the passthrough row (`$SIR,15,*,,24` + FF on → `$HIR,0,15,…`).
   Objective modes are button-locked on the grenade (G8), so this is display only. `build`.
-- ~~**B9**~~ the manual website. Rebuilt 2026-09-09: plain-markdown source, 9 pages, 233-line generator, 18-step gate. Closed.
 - **B25 🟢** the manual names one quantity two ways: `dev.md`'s `$WEAP` map calls **t17** `maxAmmo`
   ("always 2 x t40, or 32768 as an unlimited flag, not an independent knob") and **t40** `ammoReserv`
   ("reserve; 9999999 = unlimited"), while the published arsenal's "Reserve" column and the retired
@@ -99,11 +101,6 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 - **B29 🟡** voice pack: 16 slots or 17? `sound.md` gives a 17-row slot table confirmed on hardware 2026-09-07;
   `dev.md` says sixteen ids on the wire with the slot mapping unknown, and its own sample frame carries 16.
   17 declared field names against 16 wire ids is a real gap, not a typo. `capture`.
-- ~~**B24**~~ deploy-time builds. **CLOSED 2026-09-09**: no dashboard change was needed. Workers
-  Builds runs `npx wrangler deploy`, which runs `[build]` in `wrangler.toml` (`npm run build:ci`),
-  so Cloudflare regenerates the site from `docs/manual/*.md` on every push and the built pages are
-  now git-ignored. Proven by a source-only push with stale output, and by a clean-clone rebuild.
-
 - **B11 🟢** "Open BRX connected/disconnected" voice: ids are VA99 / VA9A; back up, convert, USB-load. `build`.
 - **B14 🟡** voice-pack selection: every character voice uses one 22-slot layout (sound catalog), so the per-character
   map is now derivable without P3. `build`.
@@ -214,7 +211,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   **(a)** `presentation.py:84` ships `healed` with `sound=None, gun_led=None, headset=None`. It is a registered
   event with NOTHING attached, so even where it fires it is silent and unlit. Same for `armour_up`; `shield_up`
   at least has a paint. So being healed is, by configuration, indistinguishable from nothing happening.
-  **(b) DIVERGENCE:** `engine.js:1560` fires `healed`/`armour_up`/`shield_up` on a pool RISE. `stage.py` fires
+  **(b) DIVERGENCE:** `engine.js` fires `healed`/`armour_up`/`shield_up` on a pool RISE (the pool-delta branch of its `$HP` handler). `stage.py` fires
   none of them — zero occurrences of `healed` in the file. So the bench instrument cannot exercise the heal
   path AT ALL, which is why this went unnoticed: the surface built to predict the phone is missing the branch.
   That is the eighth stage-vs-phone divergence in a week (see [[stage-must-mirror-the-phone]] reasoning in
@@ -257,9 +254,9 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 - **F64 🟢 CLOSED-AS-WRONG 2026-09-10 — a host-inflicted kill is NOT invisible; the node books it.** Filed 🔴 on
   the strength of a real measurement (a lethal `$LIFE` emits `$LCD,0,0,0,0,32,192,*` and never `$HP,0,0,0`, with a
   same-session IR-death control that emitted BOTH) plus a reading of the code that was simply wrong. I checked
-  `_onHp`, saw death booked from `$HP`, and never read the `$LCD` handler. **`engine.js:1264`, inside
-  `case 'LCD'`, is `if (this.phase === 'live' && this.hp === 0 && this.alive) this._death(wasResync);`** — a
-  zeroed `$LCD` books a death directly. `stage.py:1059` routes `cmd in ("HP","LCD")` through the same
+  `_onHp`, saw death booked from `$HP`, and never read the `$LCD` handler. **`engine.js`'s `case 'LCD'` carries
+  `if (this.phase === 'live' && this.hp === 0 && this.alive) this._death(wasResync);`** — a
+  zeroed `$LCD` books a death directly. `stage.py` routes `cmd in ("HP","LCD")` through the same
   `_on_pools`, which books death at `hp == 0` too, so the two mirrors agree. **The wire fact stands and is worth
   keeping** (the frame shape really does swap on a lethal host write, which is why `protocol/brx-protocol.md`
   documents it); what was wrong was the consequence. Caught by a code-impact reviewer, not by me.
@@ -318,7 +315,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   warning after the grunt by the grunt's own length. The first is simpler and matches the never-on-the-lethal-
   hit precedent. **Owner: the audio lane (A17 is brx-sound's).** Found by the LED lane while walking the bar
   state by state, so nothing here is an audio judgement — just the capture. `ears`.
-- **F55 🟡** `modes/driver.py:306` raises `RuntimeError: no running event loop` into stderr during test runs.
+- **F55 🟡** `modes/driver.py`'s `_play_burst` raises `RuntimeError: no running event loop` into stderr during test runs.
   `_play_burst`'s `finally` calls `asyncio.current_task()`, which raises once the loop is gone — i.e. when a
   still-pending burst task is garbage-collected after `asyncio.run()` closed the loop. The cleanup is then
   skipped (harmless at teardown, nothing left to clean) but **the traceback prints while the suite reports 0
@@ -358,7 +355,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   **F42.6** smaller repeats: the mute rule 4x in `presentation.py`, the (primary, secondary, perk) unpack 5x in
   `policy.py`, `views.weapon_view` re-implementing `WeaponCatalog.hits_to_kill`, `net._send`/`_send_raw`,
   `_lan_ip` twice; in tests, the Session-builder `mk()` 5x and the API TestClient bootstrap 3x. **F42.7**
-  `mc/armory.py:19`'s `gen` check is case-sensitive, so `"Gen1"` silently becomes `gen2_3` (pinned as current
+  `mc/armory.py`'s `gen` check is case-sensitive, so `"Gen1"` silently becomes `gen2_3` (pinned as current
   behaviour, not fixed); `mc/interfaces.py` documents `resolve_gun`/`evict` as "optional on fakes" but not
   `on_batch`, which `state.py` guards identically. **F42.8 DO NOT MERGE, for whoever runs the next pass:**
   `hitaudio.MATERIAL_POOLS["hit_hp"]` is `("",)` -- a deliberate empty id meaning SILENCE, not a missing
@@ -489,9 +486,6 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 - **F30 🟡** (was G5) a game whose rules fix the weapon/perk did not apply them; no evidence captured; repro with the config id. `capture`.
 - **F31 🟠** (was G6) END MATCH EARLY on MC did not reach either HUD (`control{end}` fan-out; both nodes were `bound`). `build`.
 - **F32 🟢** (was G7) the perks menu on the phone is too small and hard to find. `build` (check `hud-review-2026-09-03.md` first).
-- **F33 🔴** gun-body team table is OFFSET from the server's tids: `poolgauge.TEAM_COLOURS = {1: BLUE, 2: RED, 3: YELLOW,
-  4: GREEN}` vs `state.py` red 0 / blue 1 / yellow 2 / green 3, so a yellow-team gun paints RED pregame and in play
-  (only blue, every bench, agrees). Identity map + tests for tid 0 and 2 (`led-language.md` §6 #1). `build`.
 - **F34 🟠** no F13 floor on the node path: MC accepts `respawn.delay_s` 0–600 and the engine spawns at exactly that,
   so 1–2 s puts every `$SPAWN` inside the relay wedge. Validate ≥ 3 at PUT, floor in the engine. `build`.
 - **Q13 decision** friendly fire is invisible on the wire (a team-blocked shot emits no `$HIR`). Either run FF on and
@@ -661,16 +655,6 @@ the Windows venv (`/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp
 receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 
 **A17 hit audio** (one gun, our compiled game, an armoured life; `ears` + `trigger`):
-- **✅ F37 CLOSED 2026-09-07 — the `$PSET` slot order is the APK's.** hitHp / hitArrmor / hitShield sit exactly
-  where the field list says; a voice line placed in the hitShield position was heard on a shield hit. An
-  intermediate "the slots are SWAPPED" reading was published mid-session and RETRACTED: two different clips both
-  read as "a computer sound" to the ear and the inference chain hung on that ambiguity. What killed it was a
-  CONTROL (move one clip, watch the sound NOT change), not more reasoning.
-- **✅ F38 CLOSED 2026-09-07 — `$SIR`'s sound REPLACES the `$PSET` pool sound; it does not layer.** Single-variable
-  test: with a voice on `$SIR,0,0` only the voice played; silencing that token revealed the pool sound underneath,
-  nothing else changed. CONSEQUENCE: per-weapon and per-pool audio compete for one hit and only one can speak.
-  The class layer therefore ships OFF (`GameConfig.hit_audio_class`, default false) so the ear-confirmed material
-  layer is audible; the stock rows keep the EMPTY sound token Callsign ships, which is what makes that work.
 - **F44 🟠 `energyShieldLoop` needs a low hum.** BENCH 2026-09-07: `$PSET` position 7 is a REAL LOOP that runs while
   the shield is UP, survives a `$PSET` rewrite, and stops only on `$PLAYX,0,*` or the shield reaching zero.
   Callsign's stock `A10` is a geiger-ish tick and, because it loops, it played under every shield-band hit and made
@@ -690,7 +674,7 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 - **F68 🔴 A MISS PERMANENTLY KILLS THE HEADSET TEAM COLOUR.** Bench-observed 2026-09-09, Tony watching a gun painted
   blue: a magnitude-0 word makes the headset **flash green exactly like a hit and then go dark, and it stays dark**. Same
   mechanism as the 2026-09-03 "a registered hit WIPES the headset" finding -- but a miss emits **no `$HIR` and no `$HP`**
-  (F46), and our repaint lives inside the `dmg > 0` branch (`engine.js:1494`, mirrored `stage.py:1101`), so the node never
+  (F46), and our repaint lives inside the `dmg > 0` branch of the `$HIR` handler (`engine.js`, mirrored in `stage.py`), so the node never
   learns and never repaints. **Consequence: the first miss of a life removes that player's team identity until the next
   real hit or respawn** -- and A16.4 deliberately rests the GUN body on team colour for exactly the identity reason the
   headset just lost. Invisible today only because misses cannot happen at stock 100/100, so this ships the moment S17
@@ -714,74 +698,54 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   see this because every fixture defaulted the shooter's wire id to 0 (see the log). **Still open: the DAMAGE
   itself.** Players are still killed by an unattended hill — and **"nothing names the cause" turns out to be too
   kind: the victim's phone names the WRONG team as the killer (F81).** `build`.
-- **F70 🟠 KING OF THE HILL IS A NATIVE PRIMITIVE, FULLY MAPPED, AND WE CAN READ IT WITH ONE ROW.**
-  **The wire, bench 2026-09-10:** neutral hill beacons `proto=15 team=2 mag=8` every ~5 s. Shoot it with a gun
-  and the very next beacon carries THAT GUN'S TEAM: a red gun (`proto=0 player=5 team=0 mag=22`) fired at
-  07:59:58 and every beacon from 08:00:01 onward read `team=0`, held for ten straight beacons. **Neutral is
-  team 2** — which means an earlier capture the same night labelled "hill-neutral" reading `team=1` was in fact
-  a hill already OWNED by blue, and any inference from "neutral = team 1" is void.
-  ✅ **SETTLED 2026-09-10: CAPTURE IS CHARGE. Any weapon can take a point.** The extra-headset hypothesis is
-  DEAD and was never needed. Clean run, our config throughout: a NEUTRAL hill (`team=2`) was claimed by **one AR
-  round** (`proto=0 team=1 mag=9`), leaving it holding ~9 of charge; the shooter was then re-armed RED and
-  emptied a magazine at it, and the **first beacon 2.3 s later already read `team=0`** (13 AR rounds on the air),
-  staying red for the remaining 48 s. **A weapon with NO extra-headset block retook an owned point.**
-  This matches `reference/grenade.md`'s prior hardware-confirmed charge mechanic, and Tony's own observation that
-  in native play every player captures the hill regardless of weapon — which is what a three-weapon mechanism
-  could never explain. Last night's shotgun-vs-AR result was never evidence for a headset word: one shotgun word
-  is 70 of charge against four AR rounds at 36, so it simply out-charged it. Two variables differed and I picked
-  the wrong one, for the third time in one session.
-  🟡 **THE EXCHANGE RATE LOOKS 1:1, AND "LINEAR" IS A WORD I SHOULD NOT HAVE USED (2026-09-10, one-round-then-wait
-  protocol).** Downgraded from ✅ on review: it rests on **TWO POINTS**, and two points define a line by
-  construction, not by measurement. Nothing here separates 1:1-linear from any curve through (1,1) and (5,5).
-  Seed 20 and see whether it still costs 20 before anyone builds an economy on the rate. The DIRECTION —
-  more charge in costs more to take back — is solid; the RATE is one hypothesis that fits two readings. Against hills seeded from
-  a power-cycled neutral with a known number of AR rounds, contested one round at a time with a beacon read
-  between each: **seeded 1 → retaken with 1; seeded 5 → retaken with 5** (both counts confirmed on the wire by
-  `$ALCD`, 32→31 and 32→27). Charge ACCUMULATES and costs the attacker exactly what the defender invested. That
-  is a self-tuning objective: a lightly-touched point flips instantly, a defended one is genuinely expensive, and
-  **a mode needs no host rules to make holding a point meaningful**.
-  🟠 **THE CURRENCY IS MAGNITUDE, NOT ROUNDS (2026-09-10) — n=1, CONFOUNDED, AND F76 CONTRADICTS IT.**
+- **F70 🟠 KING OF THE HILL IS A NATIVE PRIMITIVE, AND A HOSTED GAME CAN NOW READ IT.** Bench
+  2026-09-10. **The wire is documented once, in
+  [`protocol/brx-ir-protocol.md`](../protocol/brx-ir-protocol.md) §"The grenade beacon"** — beacon,
+  capture pair, `mag=50`/`mag=53` semantics, ship-fn-28-not-24, polarity. Do not restate it here or anywhere
+  else; this row is the OPEN work and the design consequences only. Reading it in one of our games is
+  **done**: the compiled `$SIR` proto-15 row plus the phone-side parse (**F72**, both closed 2026-09-10).
+  ✅ **SETTLED: CAPTURE IS CHARGE, ANY WEAPON CAN TAKE A POINT, AND THE ATTACKER WINS TIES.** The
+  extra-headset-word hypothesis is **DEAD** — a re-armed gun emptied an AR magazine into a point another team
+  held and took it on the 13th round, with no `t1=2` block involved. This matches `reference/grenade.md`'s
+  prior hardware-confirmed charge mechanic and Tony's own native play, where every player captures regardless
+  of weapon. **Two readings are RETRACTED and must not be repeated:** that an owned hill cannot be retaken at
+  all, and that capture requires the extra-headset word. Two variables differed in the run that suggested
+  otherwise (one shotgun word at 70 vs four AR rounds at 36) and the wrong one was picked, for the third time
+  in one session. A third is retracted too: an earlier capture labelled "hill-neutral" reading `team=1` was a
+  hill already OWNED by blue, so **any inference from "neutral = team 1" is void** (neutral is team 2).
+  🟠 **WHAT THE CHARGE IS PRICED IN IS NOT SETTLED, and rung X is the trial that settles it.**
   Downgraded ✅ → 🟡 → 🟠 across two review passes, and the second downgrade is the damning one.
-  ⚠️ **THE DISCRIMINATING TRIAL CHANGED TWO VARIABLES.** The shotgun's `mag=70` is, in this session's own
-  words, *"the shotgun's `t12` extraHeadsetDamage, not its `t5` of 45"* — an **extra-headset word from a
-  `t1=2` weapon**. So "5 AR rounds (45) lost to one shotgun shell (70)" varied magnitude AND weapon-block
-  together, and it cannot separate *"magnitude is the currency"* from *"an extra-headset word captures out of
-  proportion"* — **the very hypothesis this entry declares dead, and the fourth two-variable comparison in one
-  session.** The AR magdump retaking an owned point does kill "capture REQUIRES an extra-headset word"; it does
-  NOT establish what the exchange is priced in. **The clean experiment nobody has run: a HIGH-MAGNITUDE word
-  from a non-`t1=2` weapon** (rocket is also t1=2 — use a boosted AR via `$WEAP` t5). Until then F76's
-  contradiction has a candidate resolution that fits every reading, which F76 did not list: the per-weapon
-  counts could be right for ordinary rounds while the three extra-headset weapons capture disproportionately —
-  and `reference/grenade.md`'s own *"a thrown grenade blast instantly captures 100%"* is that same shape. Seeded 5 AR rounds (45), then ONE shotgun shell
-  (`mag=70`) retook it — confirmed on the wire, `$ALCD` 6→5, one shell against a hill holding 45. Every reading
-  now fits a single rule: **charge accumulates and the ATTACKER WINS TIES.**
-  ⚠️ **Not "the higher total owns the point" — this entry's own table falsifies that.** Both AR flips landed at
-  EXACT EQUALITY (9 v 9; 45 v 45, "flipped on the 5th"), and a strict *higher* rule predicts neither. The only
-  strictly-greater run is the confounded shotgun one. So what is measured is **`attacker >= defender` flips**;
-  whether a strict majority is ever required has never been tested.
+  ⚠️ **The discriminating trial changed TWO variables.** The shotgun's `mag=70` is its `t12`
+  **extraHeadsetDamage** — an extra-headset word from a `t1=2` weapon — so "5 AR rounds (45) lost to one
+  shotgun shell (70)" varied magnitude AND weapon-block together. It cannot separate *"magnitude is the
+  currency"* from *"an extra-headset word captures out of proportion"*: **the very hypothesis the paragraph
+  above declares dead**, and the fourth two-variable comparison in one session. The AR magdump kills "capture
+  REQUIRES an extra-headset word"; it does NOT establish the exchange. ⚠️ **"Linear" is a word I should not
+  have used**: 1:1 rests on **two points**, and two points define a line by construction, not by measurement.
+  Nothing separates 1:1-linear from any curve through (1,1) and (5,5) — seed 20 and see whether it still costs
+  20 before anyone builds an economy on a rate. The DIRECTION (more charge in costs more to take back) is
+  solid.
   | seeded | contested with | totals | result |
   |---|---|---|---|
   | 1 AR (9) | 1 AR | 9 v 9 | flipped |
   | 5 AR (45) | 5 AR | 45 v 45 | flipped on the 5th |
   | 5 AR (45) | **1 shotgun (70)** | 45 v **70** | **flipped on one shell** |
-  This also explains 2026-09-09 with nothing left over: the shotgun's `mag=70` word out-charged what was in the
-  hill while four AR rounds at 36 fell short. It was always charge. **Design consequence, and it is a good one:
-  a weapon's capture power EQUALS ITS DAMAGE, automatically.** A shotgun or rocket seizes a point in one hit, a
-  rifleman needs a burst, and a defended point costs an attacker exactly what the defender invested — a coherent
-  objective economy falling straight out of the weapon balance we already tune, with no separate capture stat and
-  no host rules. ⚠ Still unmeasured: the MAX charge (does a hill cap, and how long does a full one take to build?).
-  **Original entry:** Bench 2026-09-10, and it
-  answers `bench-grenade.md` Q3 ("does a spawned gun in one of our games surface grenade beacons if we give it a
-  `$SIR` row for protocol 15?") **YES** -- adding `$SIR,15,0,,24,0,0,1,,*` made the hill beacons appear
-  immediately as `$HIR,<sensor>,15,0,<owner>,8,0,0` with no pool change. ⚠️ **But "one row" is NOT the whole fix: `app/src/engine.js:1273` drops every `$HIR` with proto 15 before the phone sees it** (`if (t[2] === '15') break;`). The row makes the GUN report beacons; the PHONE still discards them (F72). The whole mechanic is native: **shoot
-  the grenade to capture it** (the gun announces "hill captured"), the **owner team rides in the beacon's team
-  bits**, **holding it plays a looping tick** on the owner's gun, and an **enemy-held hill damages intruders**
-  (F69). Magnitude is the mode: **8 = hill, 6 = respawn**, and the periods differ (5 s vs ~2.5 s). So KotH,
-  Domination and respawn points are available with a $30 grenade, one table row and no station hardware -- Tier 1
-  of the mode catalog, unblocked. Node work: read the beacon, track the owner, drive the scoring. ⚠ Polarity: fn
-  24 is enemy-only, so a gun sees only hills it does NOT own unless `$GSET` t1 = 1; decide how to read your own
-  point. ⚠ And pick the row's `<soundID>` deliberately: a hit lands every 5 s for as long as anyone stands
-  there. `build`.
+  ⚠️ **Not "the higher total owns the point" — that table falsifies it.** Both AR flips landed at EXACT
+  EQUALITY and a strict *higher* rule predicts neither; the only strictly-greater run is the confounded one.
+  What is measured is **`attacker >= defender` flips**. Whether a strict majority is ever required is untested.
+  ⚠ **Max charge is unmeasured** (rung M): does a hill cap, and how long does a full one take to build?
+  **The clean experiment nobody has run (rung X): a HIGH-MAGNITUDE word from a non-`t1=2` weapon** — boost an
+  AR's `$WEAP` t5 to ~70 and fire it into a hill seeded with 45. Until it runs, **F76**'s contradicting
+  per-weapon round counts have a candidate resolution nobody has ruled out: the counts could be right for
+  ordinary rounds while the three extra-headset weapons capture disproportionately — which is the same shape as
+  `reference/grenade.md`'s *"a thrown grenade blast instantly captures 100%"*.
+  **If magnitude does win, the design consequence is a good one:** a weapon's capture power EQUALS its damage
+  automatically, so a shotgun or rocket seizes a point in one hit, a rifleman needs a burst, and a defended
+  point costs an attacker what the defender invested — a coherent objective economy falling out of the weapon
+  balance we already tune, with no separate capture stat and no host rules. **Do not build that economy yet.**
+  **Node work still open here:** track the owner, drive the scoring, and pick the `$SIR` row's `<soundID>`
+  deliberately (moot on fn 28, which ignores it — rung Y). Cross-refs: **F88** no beacon carries a station id ·
+  **F82** no tid 2 · **F91** the hill's `proto=0` chip damage · **F87** the rate-of-fire boost. `build`.
 - **F82 🔴 A HILL MODE MUST NOT PUT ANYONE ON TEAM 2, AND NOTHING IN MC STOPS IT.** Found in review 2026-09-10,
   falls straight out of F70 and was never written down. **A neutral hill broadcasts team 2.** The firmware's
   polarity gate compares that against the receiving gun's own `$TID`, so a roster that contains team 2 reads
@@ -851,8 +815,8 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 - **F93 🟢 A PROXIMITY LAYER IS ALREADY ARRIVING ON EVERY PHONE AND BEING DISCARDED.** Opened 2026-09-10
   (Tony's idea, and his design call recorded below). `app/src/app.js:121` feeds **every** OBRX advert into the
   presence tracker — `presence.observe(hit.uuids, hit.rssi, …)`, low-latency scan mode, open for the whole
-  match — and `Presence` decodes role, so **player** adverts land in it alongside stations. But `app.js:381`
-  surfaces only `presence.stations()` to the engine: **`presence.players()` is populated and unused.** Every
+  match — and `Presence` decodes role, so **player** adverts land in it alongside stations. But `app.js`
+  surfaces only `presence.stations()` to the engine (via `engine.setStations()`): **`presence.players()` is populated and unused.** Every
   phone therefore already knows, continuously and with no LAN: who is in range, their **player id**, their
   **team** (advert byte 9), whether they are **alive or down** (byte 10 bit 0), and a smoothed RSSI. No radio
   work is needed — this is a consumer, not plumbing.
@@ -884,8 +848,8 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   advert byte 11, phase / `toward` / contested in byte 10, and the signed net rate in byte 15 (role-scoped, so it
   does not consume the **player**-advert spare byte F93 mentions). Three surfaces: the station state machine and
   an **animated** screen (§5d.4 — the point of it is that a defender can see "you are losing this" at a glance,
-  built on the roster already at `app/src/utility.js:161`); a player-node branch on `presence.stations()`, which
-  `app.js:158-163` already feeds to the engine; and MC's `koth`/`domination` catalog entry + scorer.
+  built on the roster row already in `app/src/utility.js`); a player-node branch on `presence.stations()`, which
+  `app.js` already feeds to the engine; and MC's `koth`/`domination` catalog entry + scorer.
   ⭐ **The callouts need no LAN and that is the whole point:** every phone already scans all match
   (`app/src/app.js:121`), so it reads the point's own advert and plays its own line locally — `VB0N` captured to
   the new owner, `VB0P` lost to the team that just lost it, `U100` while you hold it, the listener's team picking
@@ -930,7 +894,7 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   (the operator-warning channel already documented in `mcp/brx_mcp/mc/API.md`, rendered verbatim by the GAMES
   rail) naming how many control points are linked, plus a link state and attention flag per phone in the ITEMS
   panel (roadmap A2/A4) — reuse that channel, do not invent one; and (b) the **utility screen** promotes its
-  existing MC-link line (`utility.js:159` LINKED / OFFLINE / NO ADDRESS) to a blocking band, `THIS GAME NEEDS
+  existing MC-link line (`utility.js`, LINKED / OFFLINE / NO ADDRESS) to a blocking band, `THIS GAME NEEDS
   WI-FI — MISSION CONTROL OFFLINE`, because the person who can fix it is standing in front of that phone and not
   in front of MC. ⬜ **LAN loss mid-match is a PROPOSAL needing Tony's sign-off** (§5e.4): 15 s grace, then the
   station degrades to running F94's local rule on the last known owner and stops scoring, roaming freezes, both
@@ -997,8 +961,8 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   three-point Territories game is ever built. ⚠ Do not cite "Halo" as one answer — Halo 4 *Dominion* ticked per
   base, *Strongholds* is the threshold.
   ⚠ **The spec's byte-10 encoding was the stale side, corrected 2026-09-10.** The wire is **independent flags**
-  (`CONTROL_STATE = { held: 1, contested: 2, rising: 4, falling: 8 }`, `control.js:42`), written at `:111-114` and
-  read by `engine.js` off the same imported constant (`:1255`/`:1260`) — self-consistent, shipped, and the de-facto
+  (`CONTROL_STATE = { held: 1, contested: 2, rising: 4, falling: 8 }` in `app/src/control.js`), written by its
+  advert builder and read by `engine.js` off the same imported constant — self-consistent, shipped, and the de-facto
   contract since `stage.py` must mirror `engine.js` regardless. §5d.3 now documents the flags and says so, so nobody
   "fixes" the code toward the old packed-bitfield prose. **One reader rule survives from the packed draft:**
   `rising && falling` is **invalid** and a reader must fall back to neither — packing made that contradiction
@@ -1007,7 +971,9 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   ✅ **THE REST OF THE LIST IS DECIDED TOO (Tony, 2026-09-10).** (a) **Both rates are CONFIGURABLE with defaults**
   — *"3 needs to be configurable with a good default"* — and they are **two different numbers** that must stay
   separate in config (§5f.5): the **conversion** rate (progress %/s per net player, default **10**, which is already
-  `DEFAULT_RATE` in `app/src/control.js:49` — spec value and code constant must agree) and the **score tick**
+  `DEFAULT_CAPTURE_S = 10` in `app/src/control.js` — renamed from `DEFAULT_RATE`, so the constant now reads as
+  seconds-to-capture at net 1 rather than as a percent-per-second rate; the spec and the constant must keep
+  saying the same thing) and the **score tick**
   (points/s per owned territory, **1/s proposed**). The spec carries the 10-minute arithmetic so an operator can
   pick a target: ~600 for one territory held all match, ~1200 for two — so the target decides whether holding a
   single point can ever win, which is the thing to tune rather than the constant. ⚠ Both values are proposals; he
@@ -1070,7 +1036,7 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 - **F80 🟠 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.**
   Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
   received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default
-  id"*), and `compile.py:899` relies on exactly that for try-outs. The F69 guard makes attribution refuse wire
+  id"*), and `compile.py`'s try-out path relies on exactly that. The F69 guard makes attribution refuse wire
   0, which is right for a hill and **costs a mis-armed gun every kill it makes** — previously those reached its
   team via `sole_member_of_team`. ⚠ **A single `$HIR` cannot separate the two cases, so do not fix this in
   attribution;** any heuristic there is a guess that will silently mis-score one of them. **The fix is at ARM
@@ -1130,30 +1096,6 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   MEANS) will silently never fire once a hill or station is in play, because that is now the shortest ambient
   period on the wire. Audit every time constant in `mcp/brx_mcp/` against the 5 s hill period as a required
   check for every future objective, not only the two caught by hand this session. `build`.
-- **F85 ✅ CLOSED 2026-09-10 — deduped on IDENTITY, not on time alone.** Bench 2026-09-10 evening. Captured
-  verbatim, 14 ms apart:
-  ```
-  $HIR,4,15,0,2,8,0,0    <- sensor 4, gun body
-  $HIR,0,15,0,2,8,0,0    <- sensor 0, headset front — SAME transmission
-  ```
-  Same protocol, owner and magnitude, on two different sensors on the same gun: one physical beacon, two
-  frames on the wire. **Any node that ticks, scores or counts presence per `$HIR` will double-count**, and a
-  capture/possession timer driven per-frame would run at roughly double rate. Cross-reference **F72** (the
-  phone throws away every proto-15 `$HIR` today, so this had not reached `engine.js` — but F72 has since
-  shipped, so the phone's own handling needed the same dedupe, not only the node's).
-  **Fixed in `app/src/engine.js`'s proto-15 `$HIR` branch.** The obvious fix — drop any beacon within
-  N ms of the last one, time alone — is wrong, and a second same-evening capture proves it: two DIFFERENT
-  beacon words arrived in the SAME MILLISECOND on different sensors during a real hill capture —
-  `$HIR,0,15,0,2,53,0,0` (mag 53: the state being left, neutral) and `$HIR,4,15,0,1,8,0,0` (mag 8: the new
-  owner's beacon). A time-only window would have dropped one of those and could silently swallow the
-  capture announcement, the single most important beacon event there is. So the key is **protocol (implicit,
-  this branch only runs on proto 15) + owner team + magnitude**, matched within a 150 ms window (comfortably
-  above the 14 ms observed spread, well clear of the ~5 s beacon period so a normal repeat is never mistaken
-  for a duplicate of itself); **sensor id is deliberately excluded from the key** — a differing sensor is
-  exactly what a duplicate looks like. Tests in `app/test/engine.test.mjs`: the true duplicate (14 ms apart,
-  same sensor pair as bench) collapses to one beacon; the same-millisecond capture pair (mag 53 → mag 8,
-  different owner) yields two distinct beacon updates, the regression guard against the time-only fix; a
-  normal 5.0 s repeat is not swallowed. `build`.
 - **F86 🟠 A LIVE `$TID` WRITE MOVES A PLAYER'S TEAM FOR HIT RESOLUTION BUT LEAVES THE LEDS ON THE OLD COLOUR.**
   Bench 2026-09-10 evening. The operator's gun was switched `$TID,1` -> `$TID,0` mid-session; the very next
   shot captured an enemy-held hill for team 0 (the firmware had genuinely moved him — consistent with the
@@ -1176,8 +1118,8 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   change team ON infection), any host-driven team swap, and team-based objective modes generally. `build`.
 - **F77 🟠 A REPLAYED HIT IS INDISTINGUISHABLE FROM A REAL ONE, AND BOTH SCORE.** F74's phantom loop
   (a gun replaying `$HIR`+`$HP` every 5.07 s with no IR in the air) reaches the scoring path unchallenged:
-  `engine.js:1514` gates `hit_taken` only on `latch.at` being under 1 s old and `dmg > 0`, and
-  `mc/scoring.py:220-225` dedups on nothing at all -- it counts every `hit_taken` it is handed. So a latched
+  `engine.js` gates `hit_taken` only on `latch.at` being under 1 s old and `dmg > 0`, and
+  `mc/scoring.py`'s `hit_taken` counter dedups on nothing at all -- it counts every `hit_taken` it is handed. So a latched
   gun inflates the shooter's hit count and, once the replayed damage empties the victim, can book a phantom
   death. ⚠ **Deliberately NOT fixed with a heuristic.** At frame level a replay looks exactly like genuine
   repeated fire; a "same shooter + same dmg at a regular period" suppressor would silently eat real bursts,
@@ -1293,14 +1235,6 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   hill audio has to live" updated). ⚠ Still untested: whether any OTHER protocol-15 function honours
   `<soundID>`, and the `$PSET`-override side effect — no sound played at all, so nothing to observe an
   override on. `docs/bench-grenade.md` rung Y closed with this result.
-- **F72 🟠 The phone throws away every grenade/station beacon.** `app/src/engine.js:1273` opens the `$HIR`
-  handler with `if (t[2] === '15') break;` — protocol 15 is dropped before anything reads it. That predates
-  knowing what a beacon carries, and it is a SECOND blind spot stacked on the missing `$SIR` row (F70): fixing
-  the compiled table alone surfaces beacons to the gun and still not to the player. To read a hill or a respawn
-  point a node needs both. The beacon carries the owner (team bits) and the mode (magnitude 8 hill / 6 respawn),
-  so the handler should parse and route it rather than break. ⚠ It also needs a rate rule: a beacon lands every
-  ~5 s for as long as anyone stands there, so whatever the node does with it must not fire per beacon. Blocks the
-  KotH/Domination path in `utility-roadmap.md` §8. `build`.
 - **F71 🟠 The three headset weapons may do far more damage than we publish.** The catalog derives `dmg`, `htk`
   and `ttk_ms` from `$WEAP` **t5 alone**. But the shotgun's capture word went out at **magnitude 70** = its
   `t12` extraHeadsetDamage, alongside a t5 of 45 — so at headset range a shotgun may land **115, not 45**, and
@@ -1333,7 +1267,7 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   who sprays. Design notes in `weapon-design.md` §4.4; the manual pages already describe the mechanic for players. Consider
   also surfacing `$ALCD` token 2 on the HUD: it is a live per-shot accuracy number the phone can already read, and it would
   make the mechanic legible instead of mysterious. `build`.
-- **F47 🟡 `get maxArmor()` turns an explicit 0 into 70.** `engine.js:195` is
+- **F47 🟡 `get maxArmor()` turns an explicit 0 into 70.** `engine.js`'s `get maxArmor()` is
   `(config.health.max_armor) || 70`, so a loadout that deliberately ships NO armour gets 70 instead. Two
   consequences: a no-armour class silently has armour, and A17.2's dropped `maxArmor > 0` guard could never
   have been false, so it was dead code the whole time it was relied on. Same truthiness family as F42.8's
@@ -1377,7 +1311,7 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   rules. A rule without its reason is the first thing a tidy-minded pass deletes, and it will be deleted by
   someone who is reading the code correctly.
 
-**Trigger in hand** (one gun, our compiled game, Tony firing):**Trigger in hand** (one gun, our compiled game, Tony firing):
+**Trigger in hand** (one gun, our compiled game, Tony firing):
 - 1.1 **K4** melee swing, watch `$BUT,8` / `$HIR,…,13`.
 - 1.4 **K1** `$WEAP` t19 = 5, pull the trigger on an empty chamber, watch `$ALCD`.
 - 1.5 **U11′** fire enemy 8, 24–28, 35 and ally 31, 32, 34 at a held gun; report what you hear, see, or cannot do.

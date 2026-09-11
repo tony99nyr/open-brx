@@ -2121,3 +2121,58 @@ is logged under its own entry.
   accuracy), both in the protocol doc's UNVERIFIED list. Probe: flip t21/t22 on one weapon and count `$HIR` against
   `$ALCD` shots. If they gate the gun's own accuracy, the feature is: set the token, let the firmware miss, and the
   victim hears `H07`/`H09` go past instead of a hit. `trigger`.
+
+
+# Closed 2026-09-10 — the docs consolidation pass
+
+*One dated line each, per `CLAUDE.md`'s session-close rule. The evidence is in
+`docs/experiment-log/2026-09.md`; the FACT (where there is one) is named with its new canonical home.*
+
+- 2026-09-07 **F37** the `$PSET` slot order is the APK's — hitHp / hitArrmor / hitShield sit exactly where
+  the field list says (a voice line placed in the hitShield position was heard on a shield hit). An
+  intermediate *"the slots are SWAPPED"* reading was published mid-session and **RETRACTED**; what killed it
+  was a CONTROL (move one clip, watch the sound NOT change), not more reasoning. Fact now lives in
+  `protocol/brx-protocol.md` `$PSET`.
+- 2026-09-07 **F38** `$SIR`'s `<soundID>` **REPLACES** the `$PSET` pool sound; it does not layer.
+  Single-variable test: with a voice on `$SIR,0,0` only the voice played; silencing that token revealed the
+  pool sound underneath. Consequence: per-weapon and per-pool audio compete for one hit, so the class layer
+  ships OFF (`GameConfig.hit_audio_class`) and the stock rows keep Callsign's EMPTY sound token, which is what
+  makes the pool sounds audible. Fact now lives in `protocol/brx-protocol.md` `$PSET` (c) and contracts A17.
+- 2026-09-10 **F33** the gun-body team table is now an IDENTITY map — `poolgauge.TEAM_COLOURS =
+  {0: RED, 1: BLUE, 2: YELLOW, 3: GREEN}`, was the offset `{1: BLUE, 2: RED, 3: YELLOW, 4: GREEN}` that
+  painted a yellow-team gun RED — and the colour actually PAINTED is split out into `display_colour()` /
+  `TEAM_DISPLAY_COLOURS`. Pinned for tid 0 and 2 by `test_poolgauge.py` and `test_led_invariants.py`, exactly
+  what the row asked for. Verified in code 2026-09-10; the fix itself landed earlier and the row was never
+  struck. ⚠ The separate hue COLLISION between the readout bar and the rest frame is **F56** and is still open.
+- 2026-09-10 **F72** the phone no longer discards protocol 15. `engine.js`'s `$HIR` case was
+  `if (t[2] === '15') break;`; it now parses the beacon (owner team + magnitude), dedupes it on identity
+  (F85) and calls `_onHillBeacon`, which owns the hill state and its callouts. Read the beacon as a STANDING
+  snapshot, never as a one-shot moment.
+- 2026-09-10 **F85** one physical grenade transmission arrives as TWO `$HIR` on two sensors ~14 ms apart, so
+  anything ticking or scoring per `$HIR` double-counts. Deduped on **IDENTITY** (owner team + magnitude, 150 ms
+  window), never on time alone: a real capture produced two DIFFERENT beacon words in the SAME millisecond on
+  different sensors (`mag=53` neutral leaving, `mag=8` new owner), and a time-only window would have silently
+  swallowed the capture announcement. Sensor is deliberately excluded from the key. Three tests in
+  `app/test/engine.test.mjs`.
+
+**Pre-public checklist items completed** (moved out of `FOLLOWUPS.md` §1 on 2026-09-10, because that file is
+open work only and these were five ✅ rows):
+
+- 2026-09-07 **history purge, binaries.** `docs/reference/BRX_Manual_V7.pdf` (Battle Company's copyrighted
+  manual, 14 MB) and every stale APK blob removed from history with `git filter-repo` and force-pushed. Old
+  clones are invalid; re-clone rather than pull.
+- 2026-09-07 **raw Callsign assets.** The five raw JSONs are gone from the tree per
+  `protocol/callsign-extract/RAW_ASSETS_NOTE.md`; three were unreferenced, two restated as our own derived data
+  under `mcp/brx_mcp/data/`. Regeneration reads a gitignored local copy of the APK.
+- 2026-09-07 **headset ids in binary captures.** The two `protocol/captures/raw/2026-08-25-*.btsnoop` traces
+  carried a sticker id in the advertised name; both patched in place with an equal-length alias, byte count
+  unchanged, and both still decode identically.
+- 2026-09-07 **dead branches deleted.** `bench/feedback-fork-ir-nrf-2026-08-25` (local and remote) and
+  `worktree-agent-a8593058024df0d96` are gone; the remote one still pinned the PDF and every old apk, which is
+  why purging `main` alone did not shrink anything. Pack 93 MB → 28 MB. Pre-purge backup:
+  `~/brx-backups/open-brx-pre-purge-2026-09-07.bundle` (48 MB, all refs). **A release tag can pin purged
+  history too**: `app-v0.1.6` had to be re-pointed through `.git/filter-repo/commit-map` before the objects
+  would drop.
+- 2026-09-10 **the APK is out of git.** No `.apk` is tracked and `.gitignore` carries
+  `webapp/download/*.apk`; only the `build.json` sidecar is tracked. Every build goes to the `app-v<version>`
+  release via `npm run android:apk` (0.1.8 published 2026-09-10 from `cfe2a8e`).
