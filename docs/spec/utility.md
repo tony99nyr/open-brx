@@ -235,7 +235,7 @@ scale so it fits advert byte 11:
 
 So a full enemy-to-own conversion costs `2 * capture_s` at net +1, and two phases give the defender a real chance
 to arrive in the middle of it. **Only the team named in byte 9 scores** (possession seconds, or a Domination point
-per second); progress itself scores nothing. Neutral pays nobody.
+per second); progress itself scores nothing. **Neutral pays nobody** (Tony, 2026-09-10; §5f.6).
 
 ⚠ **Team 2 (F82).** A hill mode must not put anyone on tid 2 — that constraint comes from the grenade's polarity
 gate, not from this advert, but a park will run both objectives, so MC's team assignment (0, 1, 3) is the same
@@ -254,6 +254,13 @@ possible on phones and impossible on grenades (F88: a grenade beacon carries no 
 | 11 `value` | **progress 0-100**, read per the §5d.2 table |
 | 12 `seq` | bumps on every change of `team`, phase, `toward` or the contested bit — a phone one-shots its callouts off this |
 | 15 `reserved` → `rate` | the clamped `net` (0..`net_cap`), so a screen or a HUD can show speed without re-deriving it. It needs no sign — `net` is never negative (§5d.1) and byte 10's `toward` already says which way it points |
+
+⚠ **Spec vs code, byte 10: these do not agree yet.** `app/src/control.js` (being built now) carries the same state
+model — `owner`, `capturing` (= `toward`), `progress`, `contested`, `dir`, `net` — but encodes the advert byte as
+independent flags (`CONTROL_STATE = { held: 1, contested: 2, rising: 4, falling: 8 }`, `:41`) rather than the packed
+phase/`toward` bitfield above. Either encoding works; **they must be reconciled before anything reads the byte
+across the wire**, because a station and a player phone disagreeing on byte 10 is silent and looks like a radio
+problem. This spec is the spec of record, so a deliberate change of encoding belongs here first.
 
 **Byte 15 is role-scoped and does not collide with F93/F92.** This is the **station** advert (byte 5 `role` = 1);
 F93's note about byte 15 being the cheap spare for relaying grenade-hill ownership phone-to-phone concerns the
@@ -370,7 +377,7 @@ LAN is **one** feature, plus one optional flavour of the score:
 | feature | why it needs the LAN |
 |---|---|
 | **Roaming hills** (the live point moves during the match) | somebody must **choose** which point is hot and tell the others. That is MC, mid-match, which is the exception. `VB0Q` "Hill Moved" (2.42 s, confirmed by ear, already in `HILL_CUES` with no caller) exists for exactly this, and **F83** already proposes the mode on the grenade side |
-| *(optional)* **a points race that ENDS the match early** on crossing a target | only the live-early-end form; the same target evaluated at the horn is offline (§5f.2). Wanting this is a preference, not a requirement of any mode |
+| ~~a points race that ENDS the match early on crossing a target~~ | 🔴 **DECLINED (Tony, 2026-09-10) and not being built.** The points target is read **at the horn** (§5f.2), which is fully offline. The early-end form is the only other thing that would have needed coverage, and it is now deliberately off the table — **not** "allowed but unbuilt". Anyone reviving it is opening a second A4.8 exception and must say so |
 
 Mechanically: MC pushes the hot point to the stations (`station_config`, §5c, extended with the hot flag — advert
 byte 10 bit 5). On a move, each player phone plays `VB0Q` off the hot bit changing, by the §5d.5 rule. Stations
@@ -386,7 +393,8 @@ outcome depends on coverage.**
 **§5e breaks that last sentence on purpose.** A roaming hill is a match rule taking its orders from the laptop
 mid-match: a control point out of Wi-Fi range is not merely invisible, it is **not in the game**, because it cannot
 be told whether it is the live one. There is no way to have that feature and keep A4.8 — the exception is the
-feature. (The same is true of an early end on a points target, if anyone wants one; it is not needed by any mode.)
+feature. **Roaming hills is the whole of the exception** — an early end on a points target would have been a
+second one, and Tony declined it (see the table above), so it is not in the system and not reserved for later.
 
 ⚠ **The exception is NARROWER than this section first claimed**, and that is worth noticing rather than quietly
 fixing: points-to-win was listed here as a second reason, on the reasoning that no station knows another station's
@@ -435,10 +443,10 @@ those; add no new indicator.
 - when it is linked, the band is replaced by a quiet confirmation carrying the thing an operator actually wants to
   know: **`WI-FI OK · REPORTING TO MISSION CONTROL`**.
 
-### 5e.4 LAN loss mid-match — ⬜ PROPOSAL, needs Tony's sign-off
+### 5e.4 LAN loss mid-match — ✅ DECIDED (Tony, 2026-09-10), accepted as proposed
 
-This is the failure the exception buys, so it needs a written behaviour rather than whatever the code happens to
-do. **Proposed, not decided:**
+This is the failure the exception buys, so it gets a written behaviour rather than whatever the code happens to do.
+All four points below are **Tony's decision**, taken as they were proposed:
 
 1. **Grace, then degrade.** A link down for more than **15 s** (a few reconnect backoffs, `contracts.md` §5) puts
    the station into **degraded** mode. It **keeps running §5d locally on the last known owner** — presence,
@@ -449,14 +457,15 @@ do. **Proposed, not decided:**
 3. **Both screens say it, in the words above.** The station: **`OFFLINE — POSSESSION ONLY, NOT SCORING`**. MC: the
    ITEMS row flagged, and the points race shown as **incomplete**, with the gap in seconds.
 4. **At the time limit MC will not award a points win it cannot stand behind.** If any `lan_coupled` point was
-   degraded for more than a threshold of the match (**proposed 10%**), MC declines the points target and falls back
-   to **most possession time from the facts it does hold**, saying so on the recap. Degraded seconds are collected
-   from the station at recap and shown as a separate, clearly-marked column — they are real possession, they were
-   simply never in the live race.
+   degraded for more than **10%** of the match, MC declines the points target and falls back to **most possession
+   time from the facts it does hold**, saying so on the recap. Degraded seconds are collected from the station at
+   recap and shown as a separate, clearly-marked column — they are real possession, they were simply never in the
+   live race.
 
-⬜ **Tony's call on all four**, and specifically on (4): the honest alternative is that MC awards the points win
-anyway from partial data and the recap carries a warning. That is friendlier on a house field and it is a scored
-result nobody can check, which is the thing A4.8 exists to prevent. Recommendation: (4) as written.
+**The rationale for (4), in one line, because it is the one somebody will want to soften:** a win computed from
+data we know is incomplete is not a win, and **failing loudly beats quietly crowning the wrong team.** The
+friendlier alternative — award it anyway from partial data and put a warning on the recap — produces a scored
+result nobody can check, which is the thing A4.8 exists to prevent.
 
 ## 5f. TERRITORIES — the multi-point scoring model, and the mode that needs no LAN at all
 
@@ -499,12 +508,12 @@ the LAN. That is only true of one *form* of it:
 | form of "points to win" | needs coverage? |
 |---|---|
 | **the target decides the winner at the horn** — the match runs its full clock, MC sums each station's tally at recap, and the team past the target (or with the most territory-seconds if nobody reached it) wins | **No.** Fully offline. No A4.8 exception, no Wi-Fi requirement, nothing to warn the operator about |
-| **a live race that ENDS THE MATCH the moment someone crosses the target** | **Yes**, and only this. Somebody must hold the running sum *during* the match to blow the horn early, and no station knows another station's contribution |
+| ~~**a live race that ENDS THE MATCH the moment someone crosses the target**~~ | **Yes**, and only this. Somebody must hold the running sum *during* the match to blow the horn early, and no station knows another station's contribution. 🔴 **DECLINED (Tony, 2026-09-10): not being built** |
 
-**Recommended default: the first.** To players the two are nearly indistinguishable — a BRX match runs a clock
-anyway, and the runway is the normal one — and the first costs nothing architecturally. So the §5e exception
-narrows to **roaming hills** (a match rule taking orders from the laptop mid-match, which genuinely cannot be
-done offline) plus, optionally, a live early end for anyone who wants one.
+✅ **Tony took the first, 2026-09-10: the target is read AT THE HORN.** To players the two are nearly
+indistinguishable — a BRX match runs a clock anyway, and the runway is the normal one — and the first costs nothing
+architecturally. So the §5e exception narrows to **roaming hills alone** (a match rule taking orders from the
+laptop mid-match, which genuinely cannot be done offline), with no second exception held in reserve.
 
 ### 5f.3 ⚠ Territories does NOT work on grenades, and the reason is observation, not memory
 
@@ -545,24 +554,59 @@ proposed again by somebody:
 captured base (linear-ish); *Strongholds* in Halo 5 / Infinite is the majority threshold. The reference is useful
 for the shape of each model and settles nothing by itself.
 
-⬜ **PROPOSAL, needs Tony's sign-off — scale ADVANTAGE, not points.** This is *Dominion's* approach and it is the
-interesting third option: instead of scaling the score with territory count, let holding more territories **shorten
-your respawn delay**. `respawn_s` is host-driven, already fully in our control, and already the lever §5d/§4 use for
-a respawn station, so this is buildable today with no new mechanism. It compounds board control — you come back
-faster, so you keep pushing — **without** the score itself snowballing, which is exactly the objection to
-superlinear. Not decided; recorded so it is not lost, and it composes with the linear score rather than replacing it.
+⬜ **And a third option that is still open: scale ADVANTAGE, not points** — holding more territories shortens your
+respawn delay, *Dominion*'s approach. It answers the superlinear objection (board control compounds, the score does
+not snowball) and it is the one item here Tony has not ruled on. Written up in **§5f.7**.
 
-### 5f.5 Still open, for Tony to decide
+### 5f.5 The two rates, and both are CONFIGURABLE
 
-Not decided here. Each is a number or a policy, not a mechanism, so none of them blocks building §5d.
+**Tony, 2026-09-10: *"3 needs to be configurable with a good default."*** Neither number is hard-coded; both live in
+game config beside the other tunables. **They are two different quantities and are easy to conflate, so they are
+named separately here and must stay separate in config:**
 
-| # | question | note |
-|---|---|---|
-| 1 | **the tick rate** per owned territory (points per second per point) | interacts with match length and point count; wants one playtest, not a derivation. Linear in the count is settled (§5f.4); this is the constant |
-| 2 | does a **neutral** point tick for **nobody**? | §5d.2 currently says neutral pays nobody, and that is the **spec's assumption, not Tony's ruling** — an earlier draft of this section wrongly called it settled on the strength of our own sentence. The alternative worth a thought: a neutral point paying nobody means a match where everything is contested pays nobody, which is correct for conquest and does make a stalled game feel dead |
-| 3 | **a station powered off mid-match** — are the seconds it did accrue counted, or voided at recap? | it accrues nothing while off, so an owner is silently under-paid for that gap, and a rival who flipped the point while it was dark gets no credit either. Voiding is cleaner to explain; counting is closer to what happened. Note the phone must also be trusted not to have been tampered with, per §3's security posture |
+| # | what | unit | default |
+|---|---|---|---|
+| **conversion rate** | how fast a point *changes hands* (§5d.1) | progress points per second **per net player** | **10** = a lone player takes a neutral point in 10 s and steals a held one in 20 s (two phases); `capture_s` = 10 s. ⚠ **This is already `DEFAULT_RATE` in `app/src/control.js:49` — the spec value and the code constant must agree, and a change to one is a change to both** |
+| **score tick** | how fast an *owned* territory **pays** (§5f) | score points per second **per owned territory** | **1/s proposed** (see the arithmetic below) |
 
-**Settled, and not in the list above:** an **owned** point ticks whether or not anyone is present. That is the mode.
+**The arithmetic an operator actually needs, for a 10-minute match at 1 point/s per territory:**
+
+| held all match | total |
+|---|---|
+| one territory | ~600 |
+| two territories | ~1200 |
+| three territories | ~1800 |
+
+So **the target chosen decides whether holding a single point can ever win**: a target of 1000 means one territory
+is never enough and a team must take a second; 500 means one territory held cleanly wins, which turns the mode back
+into KotH. That relationship, not the constant, is the thing to tune — which is why the rate is configurable and why
+this table is here rather than a bare number.
+
+⚠ **Both numbers are proposals.** Tony asked for *a good default*, not for these values; 10 is what the
+implementation already ships and 1/s is chosen so the totals above are round and readable. Neither has been
+playtested.
+
+### 5f.6 Decided: neutral pays nobody, and a dead station keeps what it earned
+
+Both **Tony, 2026-09-10**:
+
+- ✅ **A neutral point ticks for NOBODY.** (§5d.2 said this already — but that was the spec's own sentence, not a
+  ruling, and an earlier draft wrongly cited it as settled. Now it is his, so §5d.2 is backed rather than
+  self-referential.) An **owned** point ticks whether or not anyone is present; that is the mode.
+- ✅ **A station powered off mid-match KEEPS the seconds it accrued up to its last advert, then stops.** The tally
+  is **not** voided. Rationale, recorded because the opposite is the tidier-looking choice: voiding everything
+  punishes a dead battery far more harshly than the information loss warrants, and **the seconds up to the last
+  advert were genuinely earned**. What is lost is only the dark interval — an owner is silently under-paid for it,
+  and a rival who flipped the point while it was dark gets no credit either. Trust caveat unchanged: the phone is
+  assumed untampered, per §3's security posture.
+
+### 5f.7 ⬜ Still open: scale ADVANTAGE rather than points
+
+The one item Tony has **not** ruled on. Repeated here rather than left buried in §5f.4: instead of (or alongside)
+scaling the score with territory count, let holding more territories **shorten your respawn delay** — *Dominion*'s
+approach. `respawn_s` is host-driven, already fully in our control, already the lever §4/§5d use, so it is
+buildable today with no new mechanism; it compounds board control without the score itself snowballing; and it
+composes with the linear score rather than replacing it. **Needs his sign-off before anyone builds it.**
 
 ## 6. Platform notes (verified where marked)
 

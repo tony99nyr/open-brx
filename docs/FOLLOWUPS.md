@@ -904,8 +904,16 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 - **F95 🟡 THE LAN-COUPLED CONTROL-POINT VARIANT: ROAMING HILLS — A DELIBERATE A4.8 EXCEPTION.**
   ⚠ **SCOPE NARROWED 2026-09-10 by F98/§5f: points-to-win is OUT, roaming hills is all that is left.** A
   Territories station scores itself offline and reports at recap (plain §5c), so only the form of a points race
-  that **ends the match early** on crossing a target needs a live sum — and nothing requires that form. The rest
-  of this row stands as written, minus the points-race half of the justification.
+  that **ends the match early** on crossing a target needs a live sum — and **Tony has declined that form
+  (2026-09-10): the target is read at the horn.** So it is not "allowed but unbuilt" — reviving it means opening a
+  second A4.8 exception and saying so. The rest of this row stands, minus the points-race half of the
+  justification.
+  ✅ **And §5e.4's LAN-loss behaviour is DECIDED (Tony, 2026-09-10), accepted exactly as proposed:** 15 s grace,
+  then the station degrades to the base mode on the last known owner and stops contributing to the race; roaming
+  freezes and a station never promotes itself; both screens say so; and **MC declines a points win if any point was
+  degraded for more than 10% of the match**, falling back to most possession time. Rationale kept in the spec: a
+  win computed from data we know is incomplete is not a win, and failing loudly beats quietly crowning the wrong
+  team.
   Tony's second, opt-in mode for a small field where every point really is on one Wi-Fi (his example: one hill in
   the garage, another on the porch, both on the house AP). Specified as `spec/utility.md` **§5e**. Two features
   that are impossible offline because no single station can know the fact they need: **points to win** (the target
@@ -988,15 +996,21 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   anything, because with two "majority" is both and a 1-1 split pays nobody. ➡ Revisit the threshold if a
   three-point Territories game is ever built. ⚠ Do not cite "Halo" as one answer — Halo 4 *Dominion* ticked per
   base, *Strongholds* is the threshold.
-  ⬜ **PROPOSAL needing sign-off: scale ADVANTAGE, not points** (*Dominion*'s approach) — holding more territories
-  **shortens your respawn delay**. `respawn_s` is host-driven and already the lever §5d uses, so it is buildable
-  today with no new mechanism, it compounds board control without the score snowballing, and it composes with the
-  linear score rather than replacing it (§5f.4).
-  ⬜ **Still open for Tony** (§5f.5, numbers and policy, none of it blocking F94): the tick rate per territory;
-  whether a **neutral** point ticks for nobody (§5d.2 assumes it does — that is the spec's assumption and **not**
-  his ruling; an earlier draft of the section wrongly called it settled on the strength of our own sentence); and
-  whether a station powered off mid-match has its accrued seconds counted or voided at recap. Settled: an owned
-  point ticks unattended, which is the mode. `build`.
+  ✅ **THE REST OF THE LIST IS DECIDED TOO (Tony, 2026-09-10).** (a) **Both rates are CONFIGURABLE with defaults**
+  — *"3 needs to be configurable with a good default"* — and they are **two different numbers** that must stay
+  separate in config (§5f.5): the **conversion** rate (progress %/s per net player, default **10**, which is already
+  `DEFAULT_RATE` in `app/src/control.js:49` — spec value and code constant must agree) and the **score tick**
+  (points/s per owned territory, **1/s proposed**). The spec carries the 10-minute arithmetic so an operator can
+  pick a target: ~600 for one territory held all match, ~1200 for two — so the target decides whether holding a
+  single point can ever win, which is the thing to tune rather than the constant. ⚠ Both values are proposals; he
+  asked for a good default, not for these. (b) **A neutral point ticks for NOBODY** — now his ruling, so §5d.2 is
+  backed rather than self-referential. (c) **A station powered off mid-match KEEPS the seconds it accrued up to its
+  last advert** and is not voided: voiding punishes a dead battery far more harshly than the information loss
+  warrants, and those seconds were genuinely earned.
+  ⬜ **The ONE item still open** (§5f.7): **scale ADVANTAGE rather than points** — holding more territories
+  **shortens your respawn delay** (*Dominion*). `respawn_s` is host-driven and already the lever §4/§5d use, so it
+  is buildable today with no new mechanism; it compounds board control without the score snowballing and composes
+  with the linear score. Needs his sign-off before anyone builds it. `build`.
 - **F80 🟠 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.**
   Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
   received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default
