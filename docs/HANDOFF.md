@@ -121,9 +121,9 @@
    registers a grant word, so the teal bar and A16.5's handover are unverifiable. The grenade hill is now a
    natural reason to ship a grant row in the compiled `$SIR` table (F70).
 
-**The bench queue is [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md)** — every open item in eight
-SETUP blocks with the command, reading, control and blocked-on-code per rung, plus the five traps that fake
-a result. `FOLLOWUPS.md` §9 stays the register. Pre-flight: `gotchas.md`.
+**Next bench sheet: [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md)** — the six readings that gate
+KotH (F91 off protocol 0, F70/F76's currency, F69's missing control, F60's shield, F87's t14 floor, D6's rest),
+self-contained. Whole queue: [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md). Register: §9. Pre-flight: `gotchas.md`.
 
 ## Machine roles
 
