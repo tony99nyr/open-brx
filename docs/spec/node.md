@@ -85,7 +85,7 @@ battery exists at muster) and runs the `$STOP,*` → `$PHONE,*` → `$VERSION,*`
 `hello.gun.fw` / `status.fw`). `engine.js` `PROBE_VOLTS` / `PROBE_FW`.
 
 The node **owns exactly two literal frame templates** and nothing else (contracts §3/§8, A6.3):
-`$SFLASH,*` and `$PLAYX,0,*` (`engine.js:18-19`) — plus the pre-config probe set above. `frames.cues` values
+`$SFLASH,*` and `$PLAYX,0,*` (`engine.js`'s exported `SFLASH` / `PLAYX` constants) — plus the pre-config probe set above. `frames.cues` values
 are **pre-composed `$PLAY` frames** (the compiler decides slot placement); the node writes them verbatim like
 any bundle frame. Everything else — `head`, `spawn`, `revive`, `end`, `panic`, `team_flip`, `leds`, `gun`,
 `headset` from the bundle, and the `tutorial{frames}` *message* — is written verbatim. Volume is MC's concern:
@@ -98,7 +98,7 @@ the HUD match clock and the local timed end (§3.9). `night` selects blackout de
 ### 3.2 Tracking hp / armor / ammo / shooter
 
 > ⚠ **Two pools scored, three on the wire.** `$HP` carries `<hp>,<armor>,<shield>` and damage drains
-> **shields → armor → HP**. The engine now reads and persists `shield` (`engine.js:76,133`) but the `status`
+> **shields → armor → HP**. The engine now reads and persists `shield` (`engine.js`'s `$HP` handler and its snapshot) but the `status`
 > event, `hit_taken.dmg` and the HUD still model hp+armor. Nothing is wrong today because shields cannot be
 > granted over BLE — the pool fills **only** from an IR `$SIR` function-11 event (P16) — but that is now something
 > a station can do. The decision is **§10-Q12**.

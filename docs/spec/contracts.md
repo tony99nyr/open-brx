@@ -325,7 +325,7 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
   2 and was inaudible outdoors); **try-outs stay at 69** (`VOL_TRYOUT`, fired at arm's length from the player's own
   head); the diagnostic default `30` is inaudible for game audio and stays a bench value only.
 - The node owns exactly **two literal templates** and nothing else: `$SFLASH,*` and `$PLAYX,0,*`
-  (`app/src/engine.js:18-19`; [A6.3] — `cues` are pre-composed frames, so there is no `$PLAY` template on the node).
+  (`app/src/engine.js`'s exported `SFLASH` / `PLAYX`; [A6.3] — `cues` are pre-composed frames, so there is no `$PLAY` template on the node).
   Everything else is written verbatim from the bundle. **Plus one pre-config probe set** [A5.4], allowed **only in
   CONNECTED/KITTED** (never after a head is written): `$PHONE,*` (starts `$VOLTS` telemetry) and the
   `$STOP,*`→`$PHONE,*`→`$VERSION,*` ritual (firmware).
@@ -641,7 +641,8 @@ Volume per §3. BLE writes chunk at 20 bytes (§app).
 - Post-freeze changes: add an index row in §10, fold the text in where it applies with its tag, and bump `v` only
   for wire-breaking changes once a consumer is deployed. Additive fields are non-breaking; consumers ignore
   unknown fields.
-- **Constants** (single source `mcp/brx_mcp/mc/types.py:11-27` and `app/src/engine.js:31`; modules reference
+- **Constants** (single source: `mcp/brx_mcp/mc/types.py`'s module-level block on the server side and
+  `app/src/transport/envelope.js` on the node side, which `engine.js` imports wholesale as `W`; modules reference
   by name, never redefine): `ASSIST_WINDOW_MS = 4000`, `MULTI_KILL_MS = 4000`, `FEEDBACK_MAX_AGE_MS = 3000`,
   `STATUS_HEARTBEAT_MS = 2000`, `STALE_AFTER_MS = 8000`, `SYNC_FRESH_MS = 10000`, `LATE_ARM_GRACE_MS = 8000`,
   `CONFIG_TTL_MS = 1800000`, `MAX_PLAYERS = 63` (wire ids 1–63; 0 reserved), `DEATH_LATCH_MS = 2000`,

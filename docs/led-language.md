@@ -314,7 +314,13 @@ MC (`$PSET` token 5), never parsed from a frame. Night arrives pre-compiled: no 
 
 ## 6. Findings, ranked by match-day impact (all four lenses merged; ✔ = verified in code by the lead)
 
-| # | finding | fix | where |
+⚠ **The "where" column is a SNAPSHOT of where each finding was found, on 2026-09-06.** The line numbers have
+drifted — several of these files moved by hundreds of lines during the A16/A17 and hill work — so read them as
+"this file, near this symbol", never as a pointer to chase. The FINDINGS are still the record; only the
+coordinates rot. **Finding #1 has since shipped** (`poolgauge.TEAM_COLOURS` is the identity map and the painted
+colour is split into `display_colour()`; **F33**, closed 2026-09-10) and is kept here for the history.
+
+| # | finding | fix | where (2026-09-06) |
 |---|---|---|---|
 | 1 | ✔ **Gun-body team table is offset**: `TEAM_COLOURS = {1: BLUE, 2: RED, 3: YELLOW, 4: GREEN}` vs server tids red 0 / blue 1 / yellow 2 / green 3. Yellow team guns paint RED, red team WHITE, green YELLOW; only blue (every bench) agrees | identity map, tests for tid 0 and 2 | `poolgauge.py:46`, `state.py:25-29` |
 | 2 | ✔ **Night is a blackout, not a profile**, and it deletes the DOWN signal: `leds = … and not night` empties every table incl. `death_flash`; the dim path is unreachable and its unit test asserts a state compile cannot produce | night overlay (§3.4); `down` exempt from blackout | `compile.py:465`, `gameconfig.py:265`, `presentation.py:537`, `test_presentation.py:305` |

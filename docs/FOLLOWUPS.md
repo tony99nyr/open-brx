@@ -417,7 +417,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   whose whole job is answering "can this gun be hit?" — shipped FIVE of the ten `$SIR` rows (no rocket, no melee),
   so it would sign off a gun that is deaf to three weapon classes; its docstring claimed the frames were kept in
   sync by hand. Fixed 2026-09-07 (`028cc4e`) by importing them. **And the same file still ends on a bare `$CLEAR`
-  (`END = ("$STOP,*", "$CLEAR,*")`, cases.py:38), so running the diagnostic LEAVES the gun un-hittable** — F11,
+  (`END = ("$STOP,*", "$CLEAR,*")` in `diag/cases.py`), so running the diagnostic LEAVES the gun un-hittable** — F11,
   the very fault it exists to detect. **Corrected 2026-09-07 (`f25981e`): `cases.END` was DEAD code; the live
   fault was `diag/runner.py`'s inline `finally:` teardown, running after every diagnostic — worse, not better.
   And BOTH guards missed it for complementary reasons: `test_clear_safety` sweeps NAMED sequences, so an inline
@@ -1079,7 +1079,7 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   models the grenade/IR half of the hill (ported 2026-09-10) but has **no kind-5 / BLE station model**, so a
   phone-sourced control point is behaviour the operator can never verify at the bench — and this project's
   own rule is that the stage exists to PREDICT `app/src/engine.js`, with a divergence meaning the operator
-  signs off on behaviour players never get (7 of 9 defects in one night, 2026-09-07). Also `stage.py:64`
+  signs off on behaviour players never get (7 of 9 defects in one night, 2026-09-07). Also `stage.py`'s `HILL_CUES`
   still reads `hill_contested … NOT WIRED (F75)`, which is **now false**: contested IS detectable on the
   phone path and `engine.js` plays it for `source: 'station'`. ⚠ When mirroring: the 4 s station freshness
   and the grenade's 12 s presence window are **different on purpose** (`_hillTick` takes its window from

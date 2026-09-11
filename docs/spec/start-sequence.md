@@ -62,7 +62,7 @@ of its own. A `$PLAY` needs tokens 2-3 = `4,6` to be audible; the empty-token fo
 
 **Default runway = `DEFAULT_RUNWAY_S` (120 s, "walk time"; host-set, presets 60/120/180).**
 
-What `compile.py` ships today (`compile.py:663-669`, 2026-09-06):
+What `compile.py` ships today (`Compiler.cues()`, checked 2026-09-11):
 
 | Mark | Cue | `cues` key | shipped value / status |
 |---|---|---|---|

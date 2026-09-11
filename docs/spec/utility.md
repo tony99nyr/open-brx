@@ -235,7 +235,7 @@ scale so it fits advert byte 11:
 
 **`held` is what makes byte 9 readable**, and it is the one flag a reader cannot skip: the same tid in byte 9 means
 "this team owns the point" with `held` set and "this team is *taking* it" with `held` clear. A reader that ignores
-`held` hands the point to whoever is merely walking onto it. `engine.js:1259` gets this right —
+`held` hands the point to whoever is merely walking onto it. `engine.js`'s `_onControlAdvert()` gets this right —
 `owner = (held && team <= 3) ? team : neutral` — and that line is the model everything downstream shares.
 
 So a full enemy-to-own conversion costs `2 * capture_s` at net +1, and two phases give the defender a real chance
@@ -251,8 +251,9 @@ either way.
 `kind 5` uses the §2 advert as it stands. The station id in **bytes 6-7** is what makes multi-point Domination
 possible on phones and impossible on grenades (F88: a grenade beacon carries no id at all).
 
-**Byte 10 is INDEPENDENT FLAGS, not a packed bitfield** — `CONTROL_STATE` in `app/src/control.js:42`, written at
-`:111-114` and read by `engine.js` (which imports the same constant, `:14`, and decodes at `:1255`/`:1260`). This is
+**Byte 10 is INDEPENDENT FLAGS, not a packed bitfield** — `CONTROL_STATE` in `app/src/control.js`, written by
+`ControlPoint.advert()` and read by `engine.js`'s `_onControlAdvert()`, which imports the same constant rather
+than restating the bit values. This is
 the wire. It is stated here explicitly so that nobody, reading an earlier draft of this section, "fixes" the code
 toward prose that was never shipped.
 
@@ -267,8 +268,7 @@ toward prose that was never shipped.
 
 ⚠ **A reader must treat `rising && falling` as INVALID** and fall back to neither. This is the one virtue the
 packed-bitfield draft had and it does not survive into flags for free: two bits *can* both be set, where a 2-bit
-phase field made the contradiction unrepresentable. Our own station never emits it (`control.js:113-114` is
-`if`/`else if`), but **adverts are unauthenticated** (§3) — a buggy or hostile station can set both, and a reader
+phase field made the contradiction unrepresentable. Our own station never emits it (`ControlPoint.advert()` sets the two direction bits in one `if`/`else if`), but **adverts are unauthenticated** (§3) — a buggy or hostile station can set both, and a reader
 that trusts whichever flag it happens to test first will show a point moving the wrong way. Check for both, then
 treat direction as unknown.
 
@@ -300,19 +300,19 @@ The screen builds on what `utility.js` already renders.
 
 | element | what it does |
 |---|---|
-| **owner colour** | the page already themes itself from the station's team (`utility.js:145` sets `document.documentElement.dataset.team`). `kind 5` drives it from the **live owner**, and **neutral is its own look** (grey/unlit), never a team colour |
+| **owner colour** | the page already themes itself from the station's team (`utility.js`'s `render()` sets `document.documentElement.dataset.team` from the live owner). `kind 5` drives it from the **live owner**, and **neutral is its own look** (grey/unlit), never a team colour |
 | **progress bar** | one bar for `value` 0-100, animated between advert updates (CSS transition, not a jumping number). It is **two-toned across the phases**: draining shows the owner's colour retreating, building shows the claimant's colour advancing from neutral |
 | **direction and rate** | an arrow on the moving edge pointing the way the point is going, plus the rate as a multiplier (`→ RED ×2`) from its own `net` (the station reads its own state, not the byte it emits), and **`timeToChange()`** as the seconds until the point actually flips, which is the number a defender reads to decide whether to run. At net 0 the arrow is replaced by **STALLED** |
 | **the transition** | a one-shot full-width flash and a large word at each crossing: **NEUTRAL** when the drain completes, **CAPTURED BY <team>** when the build completes. The moment must be unmistakable from across a room |
 | **contested** | a persistent band when the contested bit is set, so "both teams are here" reads even at net 0 (which is otherwise indistinguishable from an empty point by the bar alone) |
-| **who is contributing** | the existing roster (`utility.js:161`, P-id · team · RSSI · ALIVE/DOWN · AT STATION) gains a **counts / does not count** marker per row: living + present = counted and shown in team colour; **DOWN** = struck through; in range but not present = dimmed. Under it, the net line: `RED 2 · BLU 1 → +1 RED` |
+| **who is contributing** | the existing roster (`utility.js`'s roster render, P-id · team · RSSI · ALIVE/DOWN · AT STATION / ON POINT) gains a **counts / does not count** marker per row: living + present = counted and shown in team colour; **DOWN** = struck through; in range but not present = dimmed. Under it, the net line: `RED 2 · BLU 1 → +1 RED` |
 | **the tally** | possession seconds per team, persisted (§5d.6), so the screen is also the recap sheet if nobody ever collects it |
 
 ### 5d.5 The guns say the right thing per team — and this needs NO LAN
 
 ⭐ **This is the difference between the mode working on a field and not.** Every HUD phone already keeps a scan
 open for the whole match and already feeds every OBRX advert into the presence tracker (`app/src/app.js:121`),
-and stations are already surfaced to the engine (`app.js:158-163`, `presence.stations()` → `engine.setStations`).
+and stations are already surfaced to the engine (`app.js`'s `presenceTick()`, `presence.stations()` → `engine.setStations`).
 So a player phone **reads the control point's own advert** — `team`, `value`, `seq`, the contested bit — and plays
 its own callout on its own gun, locally, over its own BLE link. **No LAN, no MC, no peer connection, no server in
 the path.** Radio reach is the only requirement, and the point is broadcasting anyway.
@@ -327,7 +327,8 @@ Confirmed" by ear** — it is a hill line in the catalogue and not one in realit
 below are trustworthy and nothing outside this table is: a candidate found by catalogue name must be **heard**
 before it is used.
 
-⚠ **Every transition below is on the DECODED owner** — `held ? team : nobody` (§5d.2, `engine.js:1259`) — never on
+⚠ **Every transition below is on the DECODED owner** — `held ? team : nobody` (§5d.2, `engine.js`'s
+`_onControlAdvert()`) — never on
 raw byte 9, which carries a *claimant* while the point is unheld. Announcing off byte 9 alone would shout "Hill
 Captured" the moment someone walked on.
 
@@ -590,7 +591,7 @@ named separately here and must stay separate in config:**
 
 | # | what | unit | default |
 |---|---|---|---|
-| **conversion rate** | how fast a point *changes hands* (§5d.1) | progress points per second **per net player** | **10** = a lone player takes a neutral point in 10 s and steals a held one in 20 s (two phases); `capture_s` = 10 s. ⚠ **This is already `DEFAULT_RATE` in `app/src/control.js:49` — the spec value and the code constant must agree, and a change to one is a change to both** |
+| **conversion rate** | how fast a point *changes hands* (§5d.1) | progress points per second **per net player** | **10** = a lone player takes a neutral point in 10 s and steals a held one in 20 s (two phases); `capture_s` = 10 s. ⚠ **This is already `DEFAULT_CAPTURE_S = 10` in `app/src/control.js` — the spec value and the code constant must agree, and a change to one is a change to both.** *(Corrected 2026-09-11: this row said `DEFAULT_RATE`, the constant's name before it was renamed to read as seconds-to-capture at net 1 rather than as a percent-per-second rate — F98 recorded the rename and the spec did not follow. The line number it gave, `:49`, is `REFUSED_TID`.)* |
 | **score tick** | how fast an *owned* territory **pays** (§5f) | score points per second **per owned territory** | **1/s proposed** (see the arithmetic below) |
 
 **The arithmetic an operator actually needs, for a 10-minute match at 1 point/s per territory:**

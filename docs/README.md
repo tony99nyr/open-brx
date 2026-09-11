@@ -21,12 +21,18 @@ specified. Then **[`manual/`](manual/)**, the confirmed-facts manual the public 
   [`experiment-log.md`](experiment-log.md) is its index. **Append after every session.** Nobody reads it
   for orientation; grep it.
 
-Around them: **[`gotchas.md`](gotchas.md)** (field lore by symptom, plus the bench pre-flight),
-**[`field-issues.md`](field-issues.md)** (the issue register + what to check next match), and **one dated
-bench sheet at a time** — currently [`bench-flash-control-2026-09-05.md`](bench-flash-control-2026-09-05.md),
-then [`bench-weap-tokens-discovery-2026-09-04.md`](bench-weap-tokens-discovery-2026-09-04.md);
-[`bench-grenade.md`](bench-grenade.md) holds the grenade captures still to run. A sheet is archived the
-moment its log entry lands.
+Around them: **[`gotchas.md`](gotchas.md)** (field lore by symptom, plus the bench pre-flight) and
+**[`field-issues.md`](field-issues.md)** (the issue register + what to check next match).
+
+**The bench sheets, and which one to open** (a sheet is archived the moment its log entry lands):
+
+| sheet | what it is |
+|---|---|
+| **[`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md)** | **the NEXT sitting.** Six readings, deliberately self-contained — run it without reading anything else |
+| [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) | the WHOLE queue, grouped by setup block. FOLLOWUPS §9 is the register (ids); this is the running order |
+| [`bench-grenade.md`](bench-grenade.md) | the grenade/hill rungs. Read its *What is answered* table first, then *Still to run* |
+| [`bench-super-indoor-2026-09-07.md`](bench-super-indoor-2026-09-07.md) | Q15, MacBook-only, entirely outstanding and needing its own plumbing pass |
+| [`bench-flash-control-2026-09-05.md`](bench-flash-control-2026-09-05.md) · [`bench-weap-tokens-discovery-2026-09-04.md`](bench-weap-tokens-discovery-2026-09-04.md) · [`bench-next-2026-09-07.md`](bench-next-2026-09-07.md) | written-up designs the queue CITES rather than re-derives (the flash ladder, the t6/t21/t22/F23 designs) |
 
 ### Session close is three writes
 1. One entry in the current month's experiment log (the evidence).
