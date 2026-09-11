@@ -94,6 +94,18 @@ class DominationEngine(ScoredEngine):
         self.roster.add(player_id, team)
         self._acc.setdefault(team, 0.0)
 
+    def _in_play(self, team: Optional[int]) -> bool:
+        """Can `team` actually field a player in THIS match?
+
+        🔴 Ownership and scoring are not the same question, and conflating them let a team with
+        nobody in it win a game. A grenade PERSISTS its hill owner between matches (F70: ten
+        straight beacons on one owner), so a hill still held by red from an earlier game beacons red
+        from the first second of a blue/green match. The engine adopted that owner — correctly, the
+        point really is held — and then `tick()` accrued 1 pt/s for it and `_leader()` announced
+        `team0` as the winner. A team that cannot field a player cannot hold a point *for score*.
+        """
+        return team is not None and any(p.team == team for p in self.roster.players.values())
+
     def capture(self, site: str, team: Optional[int], now: float,
                 from_neutral: Optional[bool] = None) -> list[Action]:
         """`team` is the NEW owner, or None when the point went neutral (nobody accrues).
@@ -111,13 +123,20 @@ class DominationEngine(ScoredEngine):
         self.owner[site] = team
         if team is None:
             return [Callout(f"Point {site} → neutral")]
-        self._acc.setdefault(team, 0.0)
+        in_play = self._in_play(team)
+        if in_play:
+            self._acc.setdefault(team, 0.0)
         held = sum(1 for o in self.owner.values() if o == team)
         acts: list[Action] = [
-            Callout(f"Point {site} → team{team}  (holds {held}/{len(self.sites)})")]
+            Callout(f"Point {site} → team{team}  (holds {held}/{len(self.sites)})" if in_play else
+                    f"Point {site} → team{team}, who are NOT IN THIS MATCH — held, not scoring")]
         stolen = (previous is not None) if from_neutral is None else (not from_neutral)
         if not stolen:
-            acts.append(PlaySound(hb.HILL_CAPTURED, scope="all", slot="voice"))
+            # Nobody in this match took it, so there is nothing to announce to anybody. (A STEAL by
+            # an outsider still falls through to the loop below: whoever LOST the point is told, and
+            # `p.team == team` cannot match, so no one hears "Hill Captured".)
+            if in_play:
+                acts.append(PlaySound(hb.HILL_CAPTURED, scope="all", slot="voice"))
             return acts
         # A steal. `previous` is the team that lost it when we know it; when we do not (the node
         # joined mid-match and only learned of the theft from a mag=50), everyone who is not the
@@ -152,7 +171,7 @@ class DominationEngine(ScoredEngine):
                 # grenade is ground truth for SCORING — but announce nothing, because the capture
                 # already happened and may be minutes old.
                 self.owner[self.hill_site] = be.owner
-                if be.owner is not None:
+                if self._in_play(be.owner):
                     self._acc.setdefault(be.owner, 0.0)
             elif isinstance(be, hb.NeutralCaptureConfirmed) and be.corrected:
                 acts.append(Callout(f"Point {self.hill_site} was neutral (mag 53 confirms)"))
@@ -171,7 +190,10 @@ class DominationEngine(ScoredEngine):
             # Bounded by the ~0.5s tick cadence (run_live) → ≤0.5s misattributed
             # per steal; acceptable for scoring at this granularity.
             for owner in self.owner.values():
-                if owner is not None:
+                # `_in_play`, not `is not None`: this line creates the accumulator itself, so a
+                # hill held by a team that is not in this match would score (and win) here no
+                # matter what `capture()` refused to set up. See `_in_play`.
+                if self._in_play(owner):
                     self._acc[owner] = self._acc.get(owner, 0.0) + dt
         # win by score target
         if self.target:
@@ -203,7 +225,11 @@ class DominationEngine(ScoredEngine):
         return {"mode": "domination", "over": self.over, "winner": self.winner,
                 "owner": dict(self.owner), "target": self.target,
                 "score": {t: int(s) for t, s in self._acc.items()},
-                "hill": dict(self.beacons.snapshot(self._last_tick), site=self.hill_site),
+                # `owner_in_play` False = the point is genuinely held, by a team with nobody in
+                # this match (a grenade carried in still owned from the last game). A recap can say
+                # that instead of showing it as neutral, which would be a lie about the hardware.
+                "hill": dict(self.beacons.snapshot(self._last_tick), site=self.hill_site,
+                             owner_in_play=self._in_play(self.owner[self.hill_site])),
                 "players": {pid: {"team": p.team} for pid, p in self.roster.players.items()}}
 
 

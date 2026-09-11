@@ -429,6 +429,74 @@ def test_an_already_held_hill_is_adopted_silently():
 
 
 # --------------------------------------------------------------------------- #
+# 10b. An owner that is not in this match owns the point but scores nothing     #
+# --------------------------------------------------------------------------- #
+def test_a_hill_owned_by_a_team_not_in_the_match_scores_nothing():
+    """Grenades PERSIST their ownership between games (F70: ten straight beacons on one owner). A
+    hill still held by RED from an earlier match, carried into a blue/green game, beacons red from
+    the first second — and the adoption is silent by design, which is exactly what would hide this.
+    A team that cannot field a player cannot hold a point: the ownership is real and still reported,
+    but it accrues nothing."""
+    stream = [(t, "$HIR,4,15,0,0,8,0,0") for t in (1.0, 6.0, 11.0, 16.0)]
+    e = _engine()                                    # blue=1, green=3 -- nobody on team 0
+    _play(e, stream, until=20.0)
+    s = e.snapshot()
+    assert s["owner"]["A"] == 0, s["owner"]           # ownership is REAL and still reported
+    assert s["hill"]["owner_in_play"] is False
+    assert 0 not in s["score"], s["score"]            # ... and scores nothing
+    assert s["score"] == {1: 0, 3: 0}, s["score"]
+    # CONTROL: the identical stream owned by a ROSTERED team does accrue. Without it, "scores
+    # nothing" would be satisfied just as well by an engine that had stopped scoring at all.
+    e2 = _engine()
+    _play(e2, [(t, f.replace(",0,8,", ",1,8,")) for t, f in stream], until=20.0)
+    s2 = e2.snapshot()
+    assert s2["score"][1] == 20, s2["score"]          # ticks 1.0 … 20.0
+    assert s2["hill"]["owner_in_play"] is True
+
+
+def test_a_team_not_in_the_match_cannot_win_on_the_clock():
+    """The half that turns the bug above into a wrong RESULT: `_leader()` reads `_acc`, so an
+    unrostered team that accrued anything at all could be announced as the winner."""
+    stream = [(t, "$HIR,4,15,0,0,8,0,0") for t in (1.0, 6.0, 11.0)]
+    e = _engine(game_time_s=30)
+    _play(e, stream, until=29.0)
+    over = _types(e.tick(now=30.0), GameOver)
+    assert over and over[0].winner == "draw", over[0] if over else over
+    # CONTROL: a ROSTERED owner on the identical stream does win it on the clock.
+    e2 = _engine(game_time_s=30)
+    _play(e2, [(t, f.replace(",0,8,", ",1,8,")) for t, f in stream], until=29.0)
+    over2 = _types(e2.tick(now=30.0), GameOver)
+    assert over2 and over2[0].winner == "team1", over2[0] if over2 else over2
+
+
+def test_losing_the_hill_to_a_team_not_in_the_match_still_tells_the_losers():
+    """Refusing to SCORE an outside team is not the same as pretending nothing happened: blue
+    genuinely lost the point and is told so. Nobody hears "Hill Captured", because nobody in this
+    match took it."""
+    e = _engine()
+    e.on_event("blue", ev("$HIR,4,15,0,1,8,0,0"), now=1.0)          # blue holds it
+    acts = e.on_event("blue", ev("$HIR,4,15,0,0,50,0,0"), now=10.0)  # an outside gun takes it
+    assert {p.scope: p.sound_id for p in _types(acts, PlaySound)} == {"blue": hb.HILL_LOST}
+    assert e.snapshot()["owner"]["A"] == 0
+
+
+def test_a_station_capture_by_an_unrostered_team_scores_nothing_either():
+    """The same hole on the station path, which has no beacon anywhere near it: `$CAPTURE,A,3` in a
+    game with nobody on team 3."""
+    e = _engine(teams=(("blue", 1), ("red", 0)))
+    e.on_event("st", {"command": "CAPTURE", "tokens": ["CAPTURE", "A", "3"]}, now=0.0)
+    for t in range(1, 11):
+        e.tick(now=float(t))
+    s = e.snapshot()
+    assert s["owner"]["A"] == 3 and 3 not in s["score"], s
+    # CONTROL: a rostered team capturing the same site the same way does score.
+    e.on_event("st", {"command": "CAPTURE", "tokens": ["CAPTURE", "A", "1"]}, now=10.0)
+    for t in range(11, 21):
+        e.tick(now=float(t))
+    assert e.snapshot()["score"][1] == 10
+
+
+# --------------------------------------------------------------------------- #
 # 11. Through the whole stack (config → driver → engine → frames)              #
 # --------------------------------------------------------------------------- #
 def test_koth_plays_off_real_beacons_end_to_end():

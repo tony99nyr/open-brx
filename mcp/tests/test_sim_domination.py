@@ -17,6 +17,14 @@ a capture at now=0 then tick(now=T) credits T point-seconds.
 
 A scenario that reproduces a REAL engine bug lives in a `scenario_*` function
 (NOT run by run_tests.py) tagged `# SUSPECTED BUG:` — see the bottom of the file.
+
+⚠ **The second team here is $TID 3, not 2.** Two measured facts meet in these tests: a NEUTRAL
+grenade hill broadcasts team 2, so `assign_teams` puts hill-mode guns on 1 and 3 and
+`DominationEngine` refuses a team-2 roster outright (F82); and a point may only SCORE for a team that
+can field a player, so a `$CAPTURE` naming a team nobody is on is held-but-not-scoring. Before that
+second rule these scenarios captured for "team2" — a team with no players — and the engine happily
+crowned it the winner.
+
 """
 
 from brx_mcp.gameconfig import GameConfig
@@ -89,10 +97,10 @@ def test_single_point_same_target_not_reached_at_same_time():
 def test_two_points_split_between_teams_each_scores_own_rate():
     g = SimGame(_dom(control_points=2, score_target=0, game_time_s=0)).setup()
     g.station("ST", "$CAPTURE,A,1,*", now=0.0)     # team1 holds A
-    g.station("ST", "$CAPTURE,B,2,*", now=0.0)     # team2 holds B
+    g.station("ST", "$CAPTURE,B,3,*", now=0.0)     # team3 holds B
     g.tick(now=8.0)
     s = g.snapshot()["score"]
-    assert s[1] == 8 and s[2] == 8                 # each 1 pt/s, no double rate
+    assert s[1] == 8 and s[3] == 8                 # each 1 pt/s, no double rate
     assert not g.over
 
 
@@ -103,23 +111,23 @@ def test_steal_transfers_scoring_from_steal_point():
     g = SimGame(_dom(control_points=1, score_target=0, game_time_s=0)).setup()
     g.station("ST", "$CAPTURE,A,1,*", now=0.0)     # team1 holds A
     g.tick(now=4.0)                                # team1 +4
-    g.station("ST", "$CAPTURE,A,2,*", now=4.0)     # team2 steals A at the tick boundary
+    g.station("ST", "$CAPTURE,A,3,*", now=4.0)     # team3 steals A at the tick boundary
     g.tick(now=10.0)                               # team2 +6
     s = g.snapshot()
-    assert s["owner"]["A"] == 2
-    assert s["score"][1] == 4 and s["score"][2] == 6   # each team's accrual is correct
+    assert s["owner"]["A"] == 3
+    assert s["score"][1] == 4 and s["score"][3] == 6   # each team's accrual is correct
 
 
 def test_steal_back_and_forth_accrues_to_current_owner():
     g = SimGame(_dom(control_points=1, score_target=0, game_time_s=0)).setup()
     g.station("ST", "$CAPTURE,A,1,*", now=0.0)
     g.tick(now=3.0)                                # team1 +3
-    g.station("ST", "$CAPTURE,A,2,*", now=3.0)
+    g.station("ST", "$CAPTURE,A,3,*", now=3.0)
     g.tick(now=8.0)                                # team2 +5
     g.station("ST", "$CAPTURE,A,1,*", now=8.0)
     g.tick(now=10.0)                               # team1 +2
     s = g.snapshot()["score"]
-    assert s[1] == 5 and s[2] == 5                 # 3+2 vs 5
+    assert s[1] == 5 and s[3] == 5                 # 3+2 vs 5
     assert g.snapshot()["owner"]["A"] == 1
 
 
@@ -168,10 +176,10 @@ def test_garbage_then_valid_capture_still_works():
     # A malformed event must not poison later valid ones.
     g = SimGame(_dom(control_points=1, score_target=3)).setup()
     g.station("ST", "$CAPTURE,A,junk,*", now=0.0)  # ignored
-    g.station("ST", "$CAPTURE,A,2,*", now=0.0)     # valid → team2 owns A
+    g.station("ST", "$CAPTURE,A,3,*", now=0.0)     # valid → team3 owns A
     g.tick(now=3.0)
     s = g.snapshot()
-    assert g.over and s["winner"] == "team2" and s["owner"]["A"] == 2
+    assert g.over and s["winner"] == "team3" and s["owner"]["A"] == 3
 
 
 # --------------------------------------------------------------------------- #
@@ -189,11 +197,11 @@ def test_time_limit_leader_wins():
 def test_time_limit_genuine_tie_is_draw():
     g = SimGame(_dom(control_points=2, score_target=0, game_time_s=10)).setup()
     g.station("ST", "$CAPTURE,A,1,*", now=0.0)     # team1 holds A
-    g.station("ST", "$CAPTURE,B,2,*", now=0.0)     # team2 holds B → equal split
+    g.station("ST", "$CAPTURE,B,3,*", now=0.0)     # team3 holds B → equal split
     g.run_until_over(dt=1.0, start=1.0)
     s = g.snapshot()
     assert g.over and s["winner"] == "draw"
-    assert s["score"][1] == s["score"][2]
+    assert s["score"][1] == s["score"][3]
 
 
 def test_time_limit_no_captures_is_draw():
@@ -237,11 +245,11 @@ def test_koth_steal_the_hill_flips_the_winner():
                            score_target=6, game_time_s=0)).setup()
     g.station("ST", "$CAPTURE,A,1,*", now=0.0)
     g.tick(now=4.0)                                # team1 +4 (< 6)
-    g.station("ST", "$CAPTURE,A,2,*", now=4.0)     # team2 steals the hill
+    g.station("ST", "$CAPTURE,A,3,*", now=4.0)     # team3 steals the hill
     g.tick(now=10.0)                              # team2 +6 → team2 wins
     s = g.snapshot()
-    assert g.over and s["winner"] == "team2"
-    assert s["score"][1] == 4 and s["score"][2] == 6
+    assert g.over and s["winner"] == "team3"
+    assert s["score"][1] == 4 and s["score"][3] == 6
 
 
 # --------------------------------------------------------------------------- #
