@@ -67,11 +67,11 @@ CONFIRM_WINDOW_S = 2 * BEACON_PERIOD_S
 
 # Hill callouts, confirmed BY EAR 2026-09-10 (rung S). The `VB0*` set is one female objectives
 # announcer covering every hill state and is Tony's own pick over the three male "Control Point"
-# lines. ⚠ These two belong in `brx_mcp/sounds.py` beside `HILL_CAPTURED`; they live here only
-# because that file is being edited in parallel by the hill-audio session. Move them when it lands.
-HILL_CAPTURED = snd.HILL_CAPTURED    # "Hill Captured"  (VB0N, already catalogued)
-HILL_CONTESTED = "VB0O"              # "Hill Contested"
-HILL_LOST = "VB0P"                   # "Hill Lost!"
+# lines. The ids live in `brx_mcp/sounds.py` with every other grounded cue (F90); these are aliases
+# so the engine and its tests keep reading `hb.HILL_*`.
+HILL_CAPTURED = snd.HILL_CAPTURED    # "Hill Captured"
+HILL_CONTESTED = snd.HILL_CONTESTED  # "Hill Contested"
+HILL_LOST = snd.HILL_LOST            # "Hill Lost!"
 
 
 @dataclass(frozen=True)

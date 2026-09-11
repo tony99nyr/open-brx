@@ -878,6 +878,15 @@ class Session:
                 # and re-pushes `$TID,2` from `_after_player_change` -> `_resend` BEFORE `_validate`
                 # runs, leaving only an advisory error on a screen the operator has already left. So the
                 # team must not EXIST in a hill config: refused here, roster or not.
+                # F97: and it cannot have FOUR teams either -- with tid 2 gone, 0 / 1 / 3 are all a hill
+                # mode has, so a four-player free-for-all hill is three players and a pair. Checked
+                # before F82 so the operator is told the real limit rather than "use tid 0, 1 or 3",
+                # which no fourth single-member team can obey.
+                if mode in OBJECTIVE_MODES and len({t["tid"] for t in v}) > 3:
+                    raise ValueError(
+                        f"F97: mode {mode!r} supports at most three teams (tids 0, 1 and 3): a neutral "
+                        f"hill broadcasts team {_NEUTRAL_TEAM} and the IR team field is 2 bits, so a "
+                        "fourth player has to share a team -- an FFA hill caps at three players")
                 if mode in OBJECTIVE_MODES and any(t["tid"] == _NEUTRAL_TEAM for t in v):
                     raise ValueError(
                         f"F82: mode {mode!r} cannot have a team on $TID {_NEUTRAL_TEAM} at all — that "

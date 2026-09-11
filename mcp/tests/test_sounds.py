@@ -72,3 +72,19 @@ def test_on_gun_ids_is_cached_but_reloads_when_the_catalog_changes():
     assert "NOT-A-REAL-ID" not in S.on_gun_ids(), "a caller mutating the result must not poison the cache"
     S._ON_GUN = (-1.0, frozenset())          # simulate a stale mtime: the next call must rebuild
     assert S.on_gun_ids() == set(first) - {"NOT-A-REAL-ID"}, "a changed catalog mtime rebuilds the set"
+
+
+def test_the_hill_callouts_live_in_the_catalog_and_the_engine_aliases_them():
+    """F90: `HILL_CONTESTED` / `HILL_LOST` were parked in `modes/hillbeacon.py` during a parallel edit.
+    They are grounded cues (confirmed by ear 2026-09-10) and belong beside `HILL_CAPTURED` in `sounds.py`;
+    the engine keeps aliases so `hb.HILL_*` still reads. Pin both the ids and the aliasing."""
+    from brx_mcp import sounds as S
+    from brx_mcp.modes import hillbeacon as hb
+    assert (S.HILL_CAPTURED, S.HILL_CONTESTED, S.HILL_LOST) == ("VB0N", "VB0O", "VB0P")
+    assert (hb.HILL_CAPTURED, hb.HILL_CONTESTED, hb.HILL_LOST) == (S.HILL_CAPTURED, S.HILL_CONTESTED, S.HILL_LOST)
+    names = {c.name for c in S.CATALOG}
+    assert {"HILL_CAPTURED", "HILL_CONTESTED", "HILL_LOST"} <= names, names
+    # the raw-id guard now covers the file the aliases used to hide in
+    import inspect
+    src = inspect.getsource(hb)
+    assert '"VB0O"' not in src and '"VB0P"' not in src, "raw hill ids are back in hillbeacon.py"

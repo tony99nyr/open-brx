@@ -139,7 +139,10 @@ export function Designer() {
               <Row label={<>TIME LIMIT <Hint>Required</Hint></>}><ValueBox value={Math.round((cfg.time_limit_s ?? 0) / 60)} unit="MIN" label="time limit minutes" min={1} max={120} onChange={v => put({ time_limit_s: v * 60 })} /></Row>
               <Row label={<>SCORE TO WIN <Hint>0 means time only</Hint></>}><ValueBox value={cfg.scoring.frag_limit ?? 0} label="score to win" min={0} max={999} onChange={v => put({ scoring: { ...cfg.scoring, frag_limit: v || null } })} /></Row>
               <Row label="RESPAWN"><Seg value={cfg.respawn.type} options={[{ value: 'scanner', label: 'SCANNER' }, { value: 'auto', label: 'AUTO' }, { value: 'none', label: 'NONE' }]} onChange={v => put({ respawn: { ...cfg.respawn, type: v } })} pad="5px 11px" /></Row>
-              <Row label="RESPAWN DELAY"><ValueBox value={cfg.respawn.delay_s} unit="S" label="respawn delay seconds" min={0} max={300} onChange={v => put({ respawn: { ...cfg.respawn, delay_s: v } })} /></Row>
+              {/* F34/F13: 1-2 s wedges the headset relay in its out-blink, and the server refuses it with a 400. The
+                  control skips that band instead of letting the operator step into an error: up from 0 lands on 3,
+                  down from 3 lands on 0 (no respawn). */}
+              <Row label={<>RESPAWN DELAY <Hint>0 = none · min 3</Hint></>}><ValueBox value={cfg.respawn.delay_s} unit="S" label="respawn delay seconds" min={0} max={300} onChange={v => put({ respawn: { ...cfg.respawn, delay_s: (v > 0 && v < 3) ? (v > (cfg.respawn.delay_s ?? 0) ? 3 : 0) : v } })} /></Row>
               <Row label="HEALTH"><ValueBox value={cfg.health.max_hp} unit="HP" min={1} max={999} label="health" onChange={v => put({ health: { ...cfg.health, max_hp: v } })} /></Row>
               <Row label={<>ARMOR <Hint>0 means one-shot with a sniper</Hint></>}><ValueBox value={cfg.health.max_armor} unit="AR" min={0} max={999} label="armor" onChange={v => put({ health: { ...cfg.health, max_armor: v } })} /></Row>
               {/* F70: the modes with an objective need something ON THE FIELD emitting it, and until now

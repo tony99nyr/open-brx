@@ -380,7 +380,15 @@ class GameDriver:
         finally:
             # Identity, not `.done()`: a coroutine's `finally` runs BEFORE its Task is marked done,
             # so the old check never fired and every player kept a stale Task forever.
-            if self._bursts.get(pid) is asyncio.current_task():
+            # F55: once `asyncio.run()` has closed the loop, a still-pending burst task garbage-collected
+            # at teardown reaches this `finally` with NO running loop, and `current_task()` raises
+            # RuntimeError into stderr while the suite reports 0 failed. Nothing is left to clean at that
+            # point, so a missing loop simply means "not us".
+            try:
+                cur = asyncio.current_task()
+            except RuntimeError:
+                cur = None
+            if cur is not None and self._bursts.get(pid) is cur:
                 self._bursts.pop(pid, None)
 
     def _warn_if_tid_is_not_a_team(self, pid: str) -> None:

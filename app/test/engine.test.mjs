@@ -1045,6 +1045,45 @@ test('death with a stale latch → shooter_num 0 (DEATH_LATCH_MS)', () => {
   assert.equal(death.shooter_num, 0);
 });
 
+test('F81: a wire-0 killer (a hill\'s damage word, or a gun with no $PSET) is UNKNOWN, never the hill\'s owning team', () => {
+  // Bench 2026-09-10: a hill's ambient damage word is `$HIR,0,0,0,<ownerTeam>,8,0,0`. The DOWN screen rendered
+  // "KILLED BY <owner team>" -- a specific lie, since nobody shot the player. MC already refuses to credit wire 0.
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  for (let i = 0; i < 20; i++) { h.frame('$HIR,0,0,0,3,8,0,0,*'); h.frame(`$HP,${Math.max(0, 45 - 8 * i)},0,0,*`); }
+  assert.equal(h.eng.alive, false, 'the hill killed us');
+  const kb = h.eng.killedBy;
+  assert.equal(kb.unknown, true); assert.equal(kb.name, null); assert.equal(kb.teamName, null); assert.equal(kb.teamKey, null);
+  assert.equal(kb.num, 0);
+  const death = h.facts.find(f => f.type === 'death');
+  assert.equal(death.shooter_num, 0, 'the fact still says wire 0 so MC scores it for nobody');
+  // CONTROL: a real shooter is still named, with their team chip.
+  const g = harness().kit().config_().echo().start(0); g.adv(10); g.eng.tick();
+  g.frame('$HIR,4,0,19,2,9,0,3,*'); g.frame('$HP,0,0,0,*');
+  assert.equal(g.eng.killedBy.name, 'VIPER'); assert.equal(g.eng.killedBy.teamKey, 'yellow'); assert.equal(g.eng.killedBy.unknown, undefined);
+  // CONTROL: a STALE latch is the same "nobody we can name" case, not the stale shooter's team.
+  const s = harness().kit().config_().echo().start(0); s.adv(10); s.eng.tick();
+  s.frame('$HIR,4,0,19,2,9,0,3,*'); s.adv(3000); s.frame('$HP,0,0,0,*');
+  assert.equal(s.eng.killedBy.unknown, true); assert.equal(s.eng.killedBy.teamName, null);
+});
+
+test('F34: the node floors the respawn delay at 3 s whatever the config says (F13 relay wedge)', () => {
+  // MC refuses 1-2 s at PUT, but a config that arrives another way (a preset, the demo, the stage) used to spawn
+  // at exactly that -- inside the headset relay's out-blink wedge. 0 is not "no delay" on the node either.
+  for (const [delay_s, wantMs] of [[1, 3000], [2, 3000], [3, 3000], [8, 8000], [0, 10000], [undefined, 10000]]) {
+    const h = harness();
+    if (delay_s === undefined) delete h.config.respawn.delay_s; else h.config.respawn.delay_s = delay_s;
+    h.kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+    assert.equal(h.eng.respawnDelayMs, wantMs, `delay_s ${delay_s}`);
+  }
+  const h = harness(); h.config.respawn.delay_s = 1;
+  h.kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');
+  h.adv(1500); h.eng.tick();
+  assert.equal(h.eng.alive, false, 'not back at 1.5 s');
+  h.adv(1600); h.eng.tick();
+  assert.equal(h.eng.alive, true, 'back once 3 s have passed');
+});
+
 test('auto respawn writes revive and emits respawn', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');
@@ -1661,10 +1700,22 @@ test('A17.2 the low-health alert fires on an HP THRESHOLD, not when armour runs 
   assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 1, 'once per life, not per hit');
 });
 
-// A17.2 dropped the old `maxArmor > 0` guard. A test that a NO-ARMOUR loadout still gets warned cannot
-// be written today: `get maxArmor()` is `(config.health.max_armor) || 70`, so an explicit 0 is falsy and
-// becomes 70 -- which also means the old guard could never be false and was dead code in practice. Filed
-// as F47; when that `||` is fixed this test becomes writable and should be added.
+test('F47: an explicit max_armor of 0 is a NO-ARMOUR loadout, not 70 -- and it still gets its low-health warning', () => {
+  // A17.2 dropped the old `maxArmor > 0` guard; this is the test it could not write while `get maxArmor()` was
+  // `(config.health.max_armor) || 70` (an explicit 0 became 70, so the guard had been dead code all along).
+  const h = harness(); h.config.health.max_armor = 0;
+  h.kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  assert.equal(h.eng.maxArmor, 0); assert.equal(h.eng.armor, 0, 'spawned with no armour');
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,12,0,0,*');
+  assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 1, 'under 15 HP with no armour ever: the alert fires');
+  // CONTROL: absent still means the 70 default, and a positive value is itself.
+  const d = harness(); delete d.config.health.max_armor; d.kit().config_().echo().start(0);
+  assert.equal(d.eng.maxArmor, 70);
+  const p = harness(); p.config.health.max_armor = 30; p.kit().config_().echo().start(0);
+  assert.equal(p.eng.maxArmor, 30);
+});
+
 test('A17.2 a ZERO-damage $HP frame under the threshold does not trip the alert', () => {
   // The mirrors had diverged: stage.py imposes `dmg > 0` structurally (its check is nested inside
   // `if dmg > 0`), engine.js did not. So a heal/regen tick or a plain frame resend that merely LEFT you

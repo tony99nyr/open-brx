@@ -570,3 +570,49 @@ def test_build_engine_gives_koth_the_beacon_bridge():
     e = build_engine(_koth(control_points=5))
     assert isinstance(e, DominationEngine) and len(e.sites) == 1
     assert e.hill_site == "A" and isinstance(e.beacons, hb.HillBeaconReader)
+
+
+# --------------------------------------------------------------------------- #
+# 10. F97: a hill mode has three teams, never four                              #
+# --------------------------------------------------------------------------- #
+def _mc_validate_teams(mode, tids):
+    """Like `_mc_validate` but with one single-member team per tid -- the FFA-hill shape."""
+    from brx_mcp.mc.compile import Compiler
+    names = {0: "red", 1: "blue", 2: "yellow", 3: "green"}
+    teams = [{"team_id": names[t], "name": names[t].upper(), "color": names[t], "tid": t} for t in tids]
+    cfg = {"config_id": "c1", "mode": mode, "environment": "indoor", "night": False,
+           "time_limit_s": 600, "respawn": {"type": "auto", "delay_s": 15},
+           "scoring": {"frag_limit": 0, "win_by": "kills"},
+           "health": {"max_hp": 45, "max_armor": 70}, "teams": teams}
+    roster = [{"player_id": f"p{n}", "player_num": n, "display": "X", "team_id": names[t],
+               "node_id": None, "gun_id": None, "voice": "male", "ready": True,
+               "loadout": {"weapons": [{"weapon_id": "assault_rifle"}]}}
+              for n, t in enumerate(tids, start=1)]
+    return Compiler().validate(cfg, roster, {"station_source": "grenade"})
+
+
+def test_a_four_player_ffa_hill_is_refused_by_count_not_just_by_tid_two():
+    """F97: four tids exist, neutral is 2, so a hill mode fields at most three teams. A four-team koth
+    is refused with the LIMIT named -- F82's "use tid 0, 1 or 3" is advice a fourth single-member team
+    cannot follow, so the operator is told the real cap instead."""
+    errs = _mc_validate_teams("koth", (0, 1, 2, 3))["errors"]
+    assert any("F97" in e and "three" in e.lower() for e in errs), errs
+    assert any("F97" in e for e in _mc_validate_teams("domination", (0, 1, 2, 3))["errors"])
+    # CONTROL: the three-player FFA hill (0, 1, 3) is exactly the shape the row wants, and it is clean.
+    three = _mc_validate_teams("koth", (0, 1, 3))["errors"]
+    assert not any("F97" in e or "F82" in e for e in three), three
+    # CONTROL: four teams in a mode with no hill are still four teams.
+    assert not any("F97" in e for e in _mc_validate_teams("tdm", (0, 1, 2, 3))["errors"])
+
+
+def test_the_engine_refuses_a_fourth_distinct_hill_team():
+    e = DominationEngine(_koth())
+    e.add_player("a", 0); e.add_player("b", 1); e.add_player("c", 3)
+    try:
+        e.add_player("d", 2)
+        raise AssertionError("a fourth team was accepted")
+    except ValueError as exc:
+        assert "F82" in str(exc) or "F97" in str(exc)
+    # CONTROL: a fourth PLAYER on an existing team is fine -- the cap is on teams, not bodies.
+    e.add_player("d", 3)
+    assert len({t for t in e._acc}) == 3

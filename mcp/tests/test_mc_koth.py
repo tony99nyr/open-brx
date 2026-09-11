@@ -461,3 +461,23 @@ def test_a_garbage_possession_payload_is_ignored_rather_than_scored():
     # CONTROL: a well-formed report on the same scorer does land, so "ignored" is about the payload.
     assert sc.ingest("n1", _poss({str(s.config["teams"][0]["tid"]): 5_000}), 1_100_000) == "scored"
     assert sc.possession()["by_team"][s.config["teams"][0]["team_id"]] == 5
+
+
+def test_a_hill_config_cannot_hold_four_teams_and_the_error_names_the_cap():
+    """F97: PUT /api/config refuses a four-team hill BEFORE the F82 check, so the operator reads the
+    limit ("three teams") rather than a tid-2 message no fourth single-member team can obey."""
+    s = _sess("koth")
+    four = [{"team_id": n, "name": n.upper(), "color": n, "tid": t}
+            for t, n in ((0, "red"), (1, "blue"), (2, "yellow"), (3, "green"))]
+    try:
+        s.set_config({"teams": four})
+        raise AssertionError("F97: a four-team hill config was accepted")
+    except ValueError as e:
+        assert "F97" in str(e) and "three" in str(e), e
+    # CONTROL 1: three single-member teams -- the FFA hill at its cap -- are accepted and pushable.
+    s.set_config({"teams": [four[0], four[1], four[3]]})
+    assert [t["tid"] for t in s.config["teams"]] == [0, 1, 3]
+    # CONTROL 2: four teams are ordinary in a mode with no hill.
+    s.set_config({"mode": "tdm"})
+    s.set_config({"teams": four})
+    assert len(s.config["teams"]) == 4
