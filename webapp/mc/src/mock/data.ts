@@ -459,7 +459,7 @@ export const MODES: ModeInfo[] = [
   // yellow roster would read every uncaptured point as its own — the server refuses it outright.
   { mode: 'koth', name: 'KING OF THE HILL', abbr: 'KOTH', desc: 'Hold the hill; possession scores',
     brief: 'One hill, and it is a real grenade on the field. Shoot the point and it flips to your team; every second your side holds it banks possession. A point your team does not own damages anyone standing on it, so taking one is a fight. Most possession time when the clock runs out takes the match.',
-    teams_text: '2 TEAMS', win_text: 'POSSESSION TIME', respawn_text: 'ON · TIMED',
+    teams_text: '2 TEAMS', win_text: 'POSSESSION TIME · HOST CALL', respawn_text: 'ON · TIMED',
     defaults: base('koth', { teams: [TEAMS[0], TEAMS[3]], scoring: { frag_limit: null, win_by: 'objective' }, station_source: 'grenade' }) },
 ];
 

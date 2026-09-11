@@ -144,7 +144,11 @@ describe('a recap that is still moving says so', () => {
     expect(banner.length).toBe(1);
     expect(banner[0].textContent).toMatch(/STILL SETTLING/);
     expect(banner[0].textContent).toMatch(new RegExp(someone.display, 'i'));
-    expect(banner[0].textContent).toMatch(/42s AGO/);
+    // the strip is all caps and nothing uppercases it, so the seconds are written in caps at source
+    expect(banner[0].textContent).toMatch(/42S AGO/);
+    expect(banner[0].textContent).not.toMatch(/\ds AGO/);
+    expect(banner[0].textContent).toMatch(/1 NODE HAS NOT REPORTED/);   // not "1 NODE HAVE"
+
     expect(banner[0].textContent).toMatch(/CAN STILL CHANGE/);
     m.unmount();
   });

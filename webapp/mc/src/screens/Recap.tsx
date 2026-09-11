@@ -109,9 +109,9 @@ export function Recap() {
           an objective mode is the difference between a result and a guess (operator review 2026-09-10). */}
       {!past && rc.settling && (
         <div data-testid="settling" style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.warn}`, borderLeft: `3px solid ${T.warn}`, font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>
-          ▲ STILL SETTLING — {(rc.awaiting ?? []).length} NODE{(rc.awaiting ?? []).length === 1 ? '' : 'S'} HAVE NOT REPORTED SINCE THE WHISTLE
+          ▲ STILL SETTLING — {(rc.awaiting ?? []).length} NODE{(rc.awaiting ?? []).length === 1 ? ' HAS' : 'S HAVE'} NOT REPORTED SINCE THE WHISTLE
           {(rc.awaiting ?? []).length ? ` (${(rc.awaiting ?? []).map(name).join(', ')})` : ''}
-          {typeof rc.since_end_ms === 'number' ? ` · ${Math.round(rc.since_end_ms / 1000)}s AGO` : ''}. THESE TOTALS CAN STILL CHANGE.
+          {typeof rc.since_end_ms === 'number' ? ` · ${Math.round(rc.since_end_ms / 1000)}S AGO` : ''}. THESE TOTALS CAN STILL CHANGE.
         </div>
       )}
       {/* an ARCHIVED match must be described by ITS OWN mode, not the config the host is drafting

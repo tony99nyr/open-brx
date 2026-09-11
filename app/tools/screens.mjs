@@ -346,8 +346,13 @@ for (const view of VIEWS) {
   const pinFakes = (pg, at) => pg.evaluate(a => window.brxUtilityFake.forEach((f, i) => { f.rssi = () => a[i]; }), at);
   /** A utility phone on the stage, switched to CONTROL POINT and started, with a pinned fake roster.
    *  `at` is the RSSI each of the four stage phones sits at: [P7 blue, P19 tid-2, P23 blue, P31 red]. */
+  // A utility phone stands at a control point in PORTRAIT, so these steps do not use the landscape HUD
+  // viewports above -- but they were pinned to one hardcoded 411x891 and ran at that same size in both
+  // VIEWS passes, so "two viewports" bought nothing and the target device was never rendered at all.
+  // `pixel` is now Pixel 4, the match-day phone; `se` is a smaller Android, where clipping shows first.
+  const CP_VP = view.name === 'pixel' ? { width: 393, height: 830 } : { width: 360, height: 740 };
   const utilPage = async (at = [ON, FAR, FAR, FAR], mutate = null) => {
-    const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
+    const pg = await b.newPage({ viewport: CP_VP }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
     await pg.goto('http://127.0.0.1:4192/utility.html?stage'); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); localStorage.removeItem('brx.station.control'); } catch {} }); await pg.reload();
     await pg.waitForFunction(() => !!window.brxUtilityFake, null, { timeout: 8000 });
     await pinFakes(pg, at); if (mutate) await pg.evaluate(mutate);
@@ -451,6 +456,21 @@ for (const view of VIEWS) {
     const frozen = parseInt(y.pct, 10);
     await pg.waitForTimeout(3000);
     must(parseInt((await cread(pg)).pct, 10) === frozen, 'a tid-2 body on the point moves the bar not at all');
+    // ...and the ROSTER has to agree with the bar. A refused body read exactly like a contributing one --
+    // highlighted row, green "ON POINT" -- while two lines above it the net line said NOBODY ON THE POINT.
+    // A down body is struck through; a refused one had no mark at all, so the same screen said both things.
+    const refusedRow = await pg.evaluate(() => {
+      const r = [...document.querySelectorAll('#players .row')].find(x => /YELLOW/.test(x.textContent));
+      if (!r) return null;
+      const p = r.querySelector('.pres');
+      return { cls: r.className.replace('row ', ''), pres: p.textContent.trim(), color: getComputedStyle(p).color, px: parseFloat(getComputedStyle(p).fontSize), clipped: p.scrollWidth > p.clientWidth + 1 };
+    });
+    must(refusedRow, 'the tid-2 body is on the roster at all');
+    must(refusedRow.pres !== 'ON POINT',
+      `the roster must not call a refused body a contributor while the net line says NOBODY ON THE POINT: ${JSON.stringify(refusedRow)}`);
+    must(/CAN.T HOLD|REFUSED|NOT COUNTED/i.test(refusedRow.pres), 'it says what it is instead: ' + JSON.stringify(refusedRow));
+    must(refusedRow.px >= 11, 'and legibly: ' + refusedRow.px + 'px');
+    must(!refusedRow.clipped, '.pres is overflow:hidden, so a word too long for its column disappears silently: ' + JSON.stringify(refusedRow));
     await pg.screenshot({ path: `${OUT}/${view.name}-control-refused.png` });
     await done(pg, perr);
   });
@@ -497,6 +517,73 @@ for (const view of VIEWS) {
     await pg.click('[data-kind="respawn"]'); await pg.waitForTimeout(300);
     const resp = await pg.evaluate(() => ({ hidden: document.getElementById('control').hidden, kind: document.getElementById('kind').textContent, team: document.getElementById('team').textContent, note: document.getElementById('teamnote').hidden, title: document.getElementById('ptitle').textContent }));
     must(resp.hidden && resp.kind === 'RESPAWN STATION' && resp.team === 'BLUE' && resp.note && resp.title === 'PLAYER PHONES IN RANGE', 'back to respawn: ' + JSON.stringify(resp));
+    await done(pg, perr);
+  });
+
+  // The crossing flash is the one thing on this screen that can HIDE the screen. §5d.4 asks for a
+  // "full-width flash", and `#cflash` is `position:fixed; inset:0` -- but it lived inside `.hero`, which
+  // is `transform: skewX(-4deg)`, and a transform makes an element the containing block for its fixed
+  // descendants. So `inset:0` resolved to the HERO box: a skewed 323x196 patch sitting exactly on the
+  // capture bar and the `LOST IN n S` countdown, for its full 2.6 s. A capture that is contested a second
+  // later -- the normal case -- covered the one line a defender reads to decide whether to run.
+  // Nothing caught it because every other assertion in this file reads `textContent` and `hidden`, which
+  // are blind to where a box actually is and what it sits on top of.
+  await step(`${view.name} #57 control point: the crossing flash is full-bleed and never covers the bar or the countdown`, async () => {
+    const { pg, perr } = await utilPage([ON, FAR, FAR, FAR], () => { window.brxUtility.settings.captureS = 4; window.brxUtility.point.captureS = 4; });
+    await untilC(pg, r => r.team === 'BLUE', 14000, 'BLUE takes it');
+    const up = await pg.evaluate(() => !document.getElementById('cflash').hidden);
+    must(up, 'precondition: the capture threw its flash');
+    // `.cflash.go` scales 1.3 -> 1 over the first 8% of 2.6 s, so a getBoundingClientRect sampled during the
+    // pop measures the animation, not the layout. Size and fit are read off the LAYOUT box (offsetWidth /
+    // scrollWidth), which a transform does not touch; the overlap checks wait for the pop to finish.
+    const geo = () => pg.evaluate(() => {
+      const r = e => { const b = document.getElementById(e).getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height), right: Math.round(b.right), bottom: Math.round(b.bottom) }; };
+      const ov = (a, z) => !(a.right <= z.x || a.x >= z.right || a.bottom <= z.y || a.y >= z.bottom);
+      const wash = document.getElementById('cflash'), w = document.getElementById('cflashw');
+      const word = r('cflashw'), bar = r('cbar'), eta = r('ceta');
+      // a fixed element's containing block is the viewport MINUS classic scrollbars, and this harness runs
+      // with them on (ignoreDefaultArgs --hide-scrollbars), so innerWidth overstates it by 15px
+      const de = document.documentElement;
+      return { vp: { w: de.clientWidth, h: de.clientHeight, inner: innerWidth }, layout: { w: wash.offsetWidth, h: wash.offsetHeight }, wash: r('cflash'), word, bar, eta,
+        wordOverBar: ov(word, bar), wordOverEta: ov(word, eta),
+        clipped: w.scrollWidth > w.clientWidth + 1 };   // a word wider than its own box is a word nobody can read
+    });
+    await pg.waitForTimeout(450);                       // let the pop settle, then measure the screen as it stands
+    const g = await geo();
+    must(g.layout.w >= g.vp.w - 1 && g.layout.h >= g.vp.h - 1,
+      `the flash is FULL-BLEED, not a patch inside the hero: ${g.layout.w}x${g.layout.h} on a ${g.vp.w}x${g.vp.h} screen`);
+    must(!g.clipped, `the word fits the screen: ${JSON.stringify(g.word)} on ${g.vp.w}px`);
+    must(!g.wordOverBar, `the flash word does not sit on the capture bar: word ${JSON.stringify(g.word)} vs bar ${JSON.stringify(g.bar)}`);
+    // and the live half of it: put an enemy on the point WHILE the flash is up, so the screen is telling
+    // the defender he is losing it at the same moment it is celebrating the capture
+    await pinFakes(pg, [FAR, FAR, FAR, ON]);
+    const losing = await untilC(pg, r => r.cstate === 'falling' && /LOST IN \d+ S/.test(r.eta), 8000, 'the drain starts');
+    const g2 = await geo();
+    const stillUp = await pg.evaluate(() => !document.getElementById('cflash').hidden);
+    await pg.screenshot({ path: `${OUT}/${view.name}-control-flash-vs-countdown.png` });
+    must(stillUp, 'precondition: the capture flash is STILL up while the point drains (that is the whole bug)');
+    must(!g2.wordOverEta, `"${losing.eta}" is not covered by "${await pg.evaluate(() => document.getElementById('cflashw').textContent)}": eta ${JSON.stringify(g2.eta)} vs word ${JSON.stringify(g2.word)}`);
+    must(!g2.wordOverBar, `nor is the bar: bar ${JSON.stringify(g2.bar)} vs word ${JSON.stringify(g2.word)}`);
+    await done(pg, perr);
+  });
+
+  // The threshold slider is how the operator calibrates "at the station" -- the primary control of the
+  // whole config drawer -- and a bare `input[type=range]` is 16px tall on a phone.
+  await step(`${view.name} #58 utility: no undersized tap target, and the roster's meaning-bearing text is >= 11px`, async () => {
+    const { pg, perr } = await utilPage();
+    for (let i = 0; i < 7; i++) await pg.click('#info');
+    await pg.waitForTimeout(250);
+    const a = await pg.evaluate(() => {
+      const small = [];
+      for (const el of document.querySelectorAll('button,[role=button],input,select')) {
+        const r = el.getBoundingClientRect(); const cs = getComputedStyle(el);
+        if (!r.width || !r.height || cs.visibility === 'hidden' || cs.display === 'none') continue;
+        if (r.height < 36 || r.width < 36) small.push(`${el.id || el.getAttribute('aria-label') || el.textContent.trim().slice(0, 20)} ${Math.round(r.width)}x${Math.round(r.height)}`);
+      }
+      return { small, pres: parseFloat(getComputedStyle(document.querySelector('#players .pres')).fontSize) };
+    });
+    must(a.small.length === 0, 'undersized tap targets: ' + JSON.stringify(a.small));
+    must(a.pres >= 11, `"ON POINT" is the roster's readout of who is converting, so it is legible: ${a.pres}px`);
     await done(pg, perr);
   });
 

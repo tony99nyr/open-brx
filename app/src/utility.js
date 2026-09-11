@@ -238,7 +238,7 @@ function resetPoint(why) {
 let _flashAt = 0;
 function flash(word, teamKey) {
   const el = $('cflash'); if (!el) return;
-  el.textContent = word; el.dataset.fteam = teamKey || 'any'; el.hidden = false;
+  $('cflashw').textContent = word; el.dataset.fteam = teamKey || 'any'; el.hidden = false;
   el.classList.remove('go'); void el.offsetWidth; el.classList.add('go');   // restart the animation on a second crossing
   _flashAt = Date.now();
 }
@@ -292,9 +292,13 @@ function render() {
     // the point is dimmed. The three COMPOSE rather than ranking: a body that is both down and out of range
     // is both, and ranking them silently dropped one of the two facts the operator reads the row for.
     const claim = isControl && p.present && alive && claimable(p.team);
-    const label = isControl ? (p.present ? 'ON POINT' : '') : (p.present ? 'AT STATION' : '');
-    const mark = !isControl ? '' : `${alive ? '' : ' dead'}${p.present ? '' : ' far'}${claim ? ' claim' : ''}`;
-    return `<div class="row ${p.present ? 'near' : ''}${mark}" style="--rowteam:var(--team-${TEAM_KEYS[p.team] || 'any'})"><span class="pid">P${p.id}</span><span class="pteam ${TEAM_KEYS[p.team] || 'any'}">${TEAM_NAMES[p.team] || p.team}</span><span class="rssi">${Math.round(p.rssi)}<small>/${Math.round(p.raw)} dBm</small></span><span class="state ${alive ? 'alive' : 'down'}">${alive ? 'ALIVE' : 'DOWN'}</span><span class="pres">${label}</span></div>`;
+    // F82: a tid-2 body standing here converts nothing, and the row has to say so. Left unmarked it read
+    // exactly like a contributor -- highlighted, green ON POINT -- two lines under a net line saying
+    // NOBODY ON THE POINT. A down body is struck through; a refused one gets its own word and colour.
+    const refused = isControl && p.present && alive && !claimable(p.team);
+    const label = isControl ? (refused ? "CAN'T HOLD" : p.present ? 'ON POINT' : '') : (p.present ? 'AT STATION' : '');
+    const mark = !isControl ? '' : `${alive ? '' : ' dead'}${p.present ? '' : ' far'}${claim ? ' claim' : ''}${refused ? ' refused' : ''}`;
+    return `<div class="row ${p.present ? 'near' : ''}${mark}" style="--rowteam:var(--team-${TEAM_KEYS[p.team] || 'any'})"><span class="pid">P${p.id}</span><span class="pteam ${TEAM_KEYS[p.team] || 'any'}">${TEAM_NAMES[p.team] || p.team}</span><span class="rssi">${Math.round(p.rssi)}<small>/${Math.round(p.raw)} dBm</small></span><span class="state ${alive ? 'alive' : 'down'}">${alive ? 'ALIVE' : 'DOWN'}</span><span class="pres${refused ? ' no' : ''}">${label}</span></div>`;
   });
   $('players').innerHTML = rows.join('') || '<div class="row empty">no player phones in range</div>';
   $('ptitle').textContent = isControl ? 'WHO IS ON THE POINT' : 'PLAYER PHONES IN RANGE';

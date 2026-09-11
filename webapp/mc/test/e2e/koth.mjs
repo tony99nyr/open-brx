@@ -32,7 +32,10 @@ const expect = (cond, what) => {
   console.log(`    ✗ ${what}`);
   return false;
 };
-const ok = what => console.log(`    ✓ ${what}`);
+// A ✓ printed by a step that has already recorded a failure is a lie in the transcript: the
+// summary at the bottom was honest, but anyone scanning the ticks read a pass. `ok` refuses.
+let stepFailedAt = 0;
+const ok = what => console.log(failures.length > stepFailedAt ? `    ⊘ ${what} (step already failed above)` : `    ✓ ${what}`);
 const until = async (pred, ms, what) => {
   const end = Date.now() + ms;
   for (;;) {
@@ -172,8 +175,19 @@ const railRow = (pg, label) => pg.locator(`main span:text-is("${label}") + span`
 const kothCard = pg => pg.locator('div[role="button"][aria-label="play KING OF THE HILL"]');
 /** put the shared server back on a blue/yellow TDM so "pick KotH" is a real transition, not a no-op */
 async function resetTdm(base) {
+  // Every step shares ONE server, so a step that ARMS a match (setup-steps-prematch does) leaves
+  // `PUT /api/config` refused with "cannot change config after the match has started" for every step
+  // after it. That is not a product bug -- state.py is right to refuse -- it is this suite failing to
+  // hand the next step the precondition it declares. Put the match back first.
+  const phase0 = (await (await fetch(`${base}/api/state`)).json()).phase;
+  if (!['muster', 'build', 'kit', 'lobby', 'recap'].includes(phase0)) {
+    const ab = await fetch(`${base}/api/start/abort`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    if (!ab.ok) throw new Error(`resetTdm: could not leave phase ${phase0} (POST /api/start/abort ${ab.status})`);
+    const phase1 = (await (await fetch(`${base}/api/state`)).json()).phase;
+    if (!['muster', 'build', 'kit', 'lobby'].includes(phase1)) throw new Error(`resetTdm: abort left phase ${phase1}, still not config-writable`);
+  }
   const r = await fetch(`${base}/api/config`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode: 'tdm' }) });
-  if (!r.ok) throw new Error(`resetTdm: PUT /api/config ${r.status}`);
+  if (!r.ok) throw new Error(`resetTdm: PUT /api/config ${r.status} ${(await r.text()).slice(0, 160)} (phase was ${phase0})`);
   const st = await (await fetch(`${base}/api/state`)).json();
   const teams = st.config.teams.map(t => t.team_id);
   await Promise.all(st.players.map((p, i) => fetch(`${base}/api/players/${p.player_id}`, {
@@ -206,20 +220,36 @@ function recapFixture(args = []) {
  *  first time a push arrives and overwrites it. `patch(state)` mutates the snapshot in place. */
 async function patchSnapshots(pg, patch) {
   const seen = { rest: 0, ws: 0 };
+  // /api/state is a bare State; the WebSocket wraps it -- `{kind:'snapshot', state:{...}}` (api/client.ts).
+  // This used to test `typeof o.phase === 'string'` on the frame itself, which is false for the wrapper,
+  // so EVERY pushed snapshot went through unpatched and promptly overwrote the patched REST one. The store
+  // takes its state from the socket, so the patch never reached the screen at all. `seen.ws` counted
+  // FORWARDED frames rather than PATCHED ones, so the guard meant to catch exactly this could not fail.
   const apply = body => {
     const o = JSON.parse(body);
-    // both /api/state and the WS snapshot are the same State shape; a WS frame may be another message
-    if (o && typeof o === 'object' && typeof o.phase === 'string') patch(o);
+    if (!o || typeof o !== 'object') return body;
+    const st = typeof o.phase === 'string' ? o
+      : (o.kind === 'snapshot' && o.state && typeof o.state.phase === 'string') ? o.state
+      : null;
+    if (!st) return null;                       // not a snapshot (a feed entry, an error): forward untouched
+    patch(st);
     return JSON.stringify(o);
   };
   await pg.route('**/api/state', async r => {
-    const res = await r.fetch(); let body = await res.text();
-    try { body = apply(body); seen.rest++; } catch { /* not json */ }
+    const res = await r.fetch(); const orig = await res.text();
+    let body = orig;
+    try { const out = apply(orig); if (out !== null) { body = out; seen.rest++; } } catch { /* not json */ }
     await r.fulfill({ response: res, body, headers: { ...res.headers(), 'content-length': String(Buffer.byteLength(body)) } });
   });
   await pg.routeWebSocket('**/ui-ws*', ws => {
     const s = ws.connectToServer();
-    s.onMessage(m => { try { ws.send(apply(m.toString())); seen.ws++; } catch { ws.send(m); } });
+    s.onMessage(m => {
+      const raw = m.toString();
+      let out = null;
+      try { out = apply(raw); } catch { out = null; }
+      if (out === null) { ws.send(m); return; }
+      seen.ws++; ws.send(out);
+    });
     ws.onMessage(m => s.send(m));
   });
   return seen;
@@ -338,10 +368,26 @@ step('setup-steps-prematch', async ({ browser, base }) => {
     expect(fsz >= 11, `${view}: the step is legible (${fsz}px)`);
     ok(`${view.toUpperCase()} carries the field step, and only that  ${await shot(pg, `16-setup-${view}`)}`);
   }
-  // and it is not invented: a mode with no grenade has no step on those screens either
+  // and it is not invented: a mode with no grenade has no step on those screens either.
+  // `armMatch` above put the server in `armed`, where state.py refuses every config change -- so the
+  // mode pick below (and every step after this one) needs the match put back first.
+  const ab = await fetch(`${base}/api/start/abort`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+  expect(ab.ok, `the armed match can be aborted back to a config-writable phase (${ab.status})`);
+  const backTo = (await (await fetch(`${base}/api/state`)).json()).phase;
+  expect(['muster', 'build', 'kit', 'lobby'].includes(backTo), `abort returns a config-writable phase (saw ${backTo})`);
   await go(pg, 'build');
-  await pg.locator('div[role="button"][aria-label="play TEAM DEATHMATCH"]').click();
-  await until(async () => (await pg.locator('div[role="button"][aria-label="play TEAM DEATHMATCH"]').getAttribute('aria-pressed')) === 'true', 8000, 'TDM playing');
+  // The frag_limit PUT above made this config a TUNED, UNSAVED draft, so Games.tsx `guarded` asks
+  // once before discarding it. That is the product working (skill: "confirm discards"), and it is
+  // worth an assertion of its own -- nothing else in this file covers the two-tap confirm.
+  const tdm = pg.locator('div[role="button"][aria-label="play TEAM DEATHMATCH"]');
+  await tdm.click();
+  const confirm = tdm.locator('div[role="status"]', { hasText: 'TAP AGAIN' });
+  await until(() => confirm.count().then(n => n > 0), 6000, 'the discard confirm on the first tap');
+  expect(await confirm.isVisible(), 'switching away from a tuned draft warns BEFORE it discards it');
+  expect(/THIS DROPS YOUR UNSAVED TUNED GAME/i.test(await confirm.textContent()), 'and the warning says what is lost');
+  expect((await tdm.getAttribute('aria-pressed')) === 'false', 'and the first tap has NOT switched the game');
+  await tdm.click();
+  await until(async () => (await tdm.getAttribute('aria-pressed')) === 'true', 8000, 'TDM playing');
   await go(pg, 'lobby');
   await until(() => pg.getByTestId('setup-steps').count().then(n => n === 0), 6000, 'the SETUP step to disappear for TDM');
   ok('no SETUP step on a LOBBY for a mode with nothing to place');
@@ -546,7 +592,8 @@ step('recap-possession', async ({ browser, base }) => {
   expect(/NOBODY HELD THE POINT/i.test(txt), 'the neutral line says nobody held it');
   // 🔴 the whole reason the panel exists: the WINNER comes off possession, not the kills table
   const winner = await pg.locator('main').textContent();
-  expect(/BLUE WINS/.test(winner), 'BLUE (214 s) is named the winner, from possession');
+  // the block names the TEAM as the live config names it ("BLUE TEAM"), not the raw team_id
+  expect(/BLUE(\s+TEAM)?\s+WINS/.test(winner), `BLUE (214 s) is named the winner, from possession (saw ${JSON.stringify(winner.slice(0, 80))})`);
   expect(!/UNDECIDED/.test(winner), 'a match with a tally is no longer UNDECIDED · HOST DECIDES');
   expect(seen.ws > 0, 'the WebSocket snapshots were patched too, not only REST');
   ok(`the possession bar renders mm:ss per team  ${await shot(pg, '17-possession')}`);
@@ -607,7 +654,10 @@ step('recap-settling', async ({ browser, base }) => {
   expect(/STILL SETTLING/.test(txt), 'it says STILL SETTLING');
   expect(/2 NODES HAVE NOT REPORTED SINCE THE WHISTLE/.test(txt), `it counts the silent nodes (saw ${JSON.stringify(txt.trim().slice(0, 160))})`);
   expect(/THESE TOTALS CAN STILL CHANGE/.test(txt), 'it says the totals can still change — the whole point');
-  expect(/4S AGO/.test(txt), `it says how long ago the whistle was (saw ${JSON.stringify(txt.trim().slice(0, 200))})`);
+  // Case matters here: nothing uppercases this band, so a `4s` in the source renders as a lowercase
+  // "4s" in an otherwise all-caps strip. Asserted exactly, not case-insensitively.
+  expect(/4S AGO/.test(txt), `it says how long ago the whistle was, in the band's own case (saw ${JSON.stringify(txt.trim().slice(0, 200))})`);
+  expect(!/\ds AGO/.test(txt), 'and not as a lowercase "4s" in a caps strip');
   expect(!/PROVISIONAL/.test(txt), 'it is its own banner, not the provisional one');
   const px = await band.evaluate(e => parseFloat(getComputedStyle(e).fontSize));
   expect(px >= 10, `the banner is legible (${px}px)`);
@@ -856,6 +906,7 @@ step('old-data-boot', async ({ browser, base, swapMC }) => {
     currentStep = s.name;
     console.log(`\n[${s.name}]`);
     const before = failures.length;
+    stepFailedAt = before;
     try { await s.fn({ browser, base: vite.base, swapMC }); } catch (e) { failures.push(`${s.name}: THREW ${e.message}`); console.log(`    ✗ THREW ${e.message}`); }
     if (failures.length > before) {
       // forensics: what WAS on the page when it failed

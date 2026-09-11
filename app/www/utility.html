@@ -78,9 +78,14 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 .control .cwarn{font:600 11px/1.4 var(--fl);letter-spacing:.06em;color:var(--bad);margin-top:6px}
 /* §5d.4 the transition: one full-width flash and a large word at each crossing — unmistakable from across a
    room, and the one thing the gun cannot show (a callout is a single 2 s clip). */
-.cflash{position:fixed;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;pointer-events:none;
-  font-family:var(--fd);font-style:italic;font-weight:700;font-size:clamp(34px,12vw,84px);letter-spacing:.06em;text-align:center;
-  color:var(--fc,var(--num));background:color-mix(in srgb,var(--fc,var(--num)) 30%,transparent);text-shadow:0 0 40px #000}
+/* The wash is the across-the-room half and covers the whole screen; the WORD sits in the top band, over the
+   hero's own team name, because the bar and the LOST IN n S countdown below it are what a defender reads
+   while the flash is still running -- a contest a second after a capture is the normal case, not an edge one. */
+.cflash{position:fixed;inset:0;z-index:5;display:flex;align-items:flex-start;justify-content:center;pointer-events:none;
+  background:color-mix(in srgb,var(--fc,var(--num)) 30%,transparent)}
+.cflash span{display:block;max-width:100%;margin-top:9vh;padding:0 10px;overflow-wrap:anywhere;
+  font-family:var(--fd);font-style:italic;font-weight:700;font-size:clamp(28px,10vw,84px);line-height:.95;letter-spacing:.06em;text-align:center;
+  color:var(--fc,var(--num));text-shadow:0 0 40px #000,0 2px 10px #000}
 .cflash[hidden]{display:none}
 .cflash[data-fteam="red"]{--fc:var(--team-red)}.cflash[data-fteam="blue"]{--fc:var(--team-blue)}
 .cflash[data-fteam="green"]{--fc:var(--team-green)}.cflash[data-fteam="yellow"]{--fc:var(--team-yellow)}.cflash[data-fteam="any"]{--fc:#cfe3f5}
@@ -89,6 +94,9 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 /* the roster marks (§5d.4): counted, DOWN, or in range but off the point */
 .players .row.dead{text-decoration:line-through;opacity:.75}
 .players .row.far{opacity:.45}
+/* F82: present and alive, but its team can never hold a point — not a contributor, and not merely absent */
+.players .row.refused{opacity:.7}
+.players .pres.no{color:var(--bad)}
 @media (prefers-reduced-motion:reduce){.cbar .cchev,.cbar i,.cbar u,.control .cbanner,.cflash.go{animation:none!important;transition:none!important}}
 
 /* ---- players in range: a read-only readout (the host glances; players learn nothing they can use) ---- */
@@ -102,7 +110,7 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 .players .row.claim{border-left:4px solid var(--rowteam,var(--team))}
 .players .row.empty{color:var(--mut);grid-template-columns:1fr;font-family:var(--fl);letter-spacing:.1em}
 .players .pteam.blue{color:var(--team-blue)}.players .pteam.yellow{color:var(--team-yellow)}.players .pteam.red{color:var(--team-red)}.players .pteam.green{color:var(--team-green)}
-.players .rssi{font-family:var(--fd);font-weight:700;font-size:20px}.players .rssi small{font:11px var(--m);color:var(--mut);margin-left:4px}.players .pres{color:var(--ok);font-weight:700;text-align:right;font-size:10px;letter-spacing:.06em;overflow:hidden}
+.players .rssi{font-family:var(--fd);font-weight:700;font-size:20px}.players .rssi small{font:11px var(--m);color:var(--mut);margin-left:4px}.players .pres{color:var(--ok);font-weight:700;text-align:right;font-size:11px;letter-spacing:.04em;overflow:hidden}
 .foot{text-align:center;font-size:10px;letter-spacing:.3em;color:var(--mut);margin-top:auto}
 
 /* ---- the config drawer: hidden until the ⓘ is tapped seven times ---- */
@@ -126,7 +134,7 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 .rowc{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .hint{font:12px/1.4 var(--fl);color:var(--mut)}
 label.hint{display:block;margin-top:12px}
-input[type=range]{width:100%;accent-color:var(--team);margin:6px 0}
+input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:0}   /* 44px: this slider IS the calibration control */
 .big{font:700 24px var(--fd);letter-spacing:.06em;min-width:64px;text-align:center}
 #log{font:11px/1.45 var(--m);color:var(--mut);white-space:pre-wrap;max-height:160px;overflow:auto;margin:0}
 .danger{border-color:var(--bad);color:var(--bad)}
@@ -153,7 +161,6 @@ input[type=range]{width:100%;accent-color:var(--team);margin:6px 0}
       <div class="cbanner" id="cbanner"></div>
       <div class="ctally" id="ctally"></div>
       <div class="cwarn" id="cwarn"></div>
-      <div class="cflash" id="cflash" hidden aria-hidden="true"></div>
     </section>
     <div class="armed" id="armed"></div>
   </section>
@@ -164,6 +171,12 @@ input[type=range]{width:100%;accent-color:var(--team);margin:6px 0}
   </section>
 
   <div class="foot">OPEN BRX · UTILITY ITEM</div>
+
+  <!-- §5d.4's crossing flash, OUTSIDE .hero on purpose. `.hero` is `transform: skewX(-4deg)`, and a
+       transformed element is the containing block for its `position:fixed` descendants — nested in there,
+       `inset:0` resolved to the hero box: a skewed patch sitting on the capture bar and the LOST IN n S
+       countdown, for the full 2.6 s, exactly when a contest starts. -->
+  <div class="cflash" id="cflash" hidden aria-hidden="true"><span id="cflashw"></span></div>
 
   <!-- the configuration: seven taps on ⓘ within 3 s. Everything in here keeps the ids utility.js drives. -->
   <section id="cfg" hidden aria-label="station settings">
