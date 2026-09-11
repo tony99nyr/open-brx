@@ -1,17 +1,15 @@
-// Real-browser screen-truth suite for the KING OF THE HILL setup flow (commit d20a4ca).
+// The KING OF THE HILL setup flow, clicked in a real browser (commit d20a4ca).
 //
-// Why this file exists: `webapp/mc` had vitest/jsdom only, and a jsdom test asserting
-// `modes.find(m => m.mode === 'koth')` cannot tell you whether an operator can pick the mode, whether
-// the SETUP warning is on screen, or whether a yellow chip is offered. Everything here drives the
-// SHIPPED bundle in Chromium against the REAL Mission Control server (`python -m brx_mcp.mc`), and
-// asserts what a person sees — rendered text, computed styles, aria state.
+// MC is a web app, so there is nothing to build: this starts `npm run dev` and a real
+// `python -m brx_mcp.mc`, points Chromium at localhost, and clicks. Vite proxies /api and /ui-ws
+// straight through to the server (vite.config.ts), so `page.route` and `page.routeWebSocket` still
+// intercept everything a stale-server or failure-path run needs.
 //
-//   node test/e2e/koth.mjs                 # all steps
-//   ONLY=teams node test/e2e/koth.mjs      # one step (steps self-navigate)
-//   HEADED=1 ... KEEP_SHOTS=1 ...          # watch it / keep the passing screenshots
-//   MC_PY=/path/to/python ...              # the interpreter that has starlette+uvicorn+websockets
+//   npm run e2e                            # all steps
+//   ONLY=teams npm run e2e                 # one step (every step self-navigates)
+//   HEADED=1 / KEEP_SHOTS=1 / MC_PY=...    # watch it / keep screenshots / pick the interpreter
 //
-// It refuses to run on a stale bundle: the served dist must be newer than src (ALLOW_STALE=1 to skip).
+// Component logic that is NOT about what a person sees stays in test/koth.test.tsx (jsdom, 2s).
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -46,32 +44,16 @@ const until = async (pred, ms, what) => {
   }
 };
 
-// ---------------------------------------------------------------- bundle freshness
-const walk = d => fs.readdirSync(d, { withFileTypes: true }).flatMap(e =>
-  e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]);
-function assertFreshBundle() {
-  const dist = path.join(MC, 'dist');
-  if (!fs.existsSync(dist)) { console.error('NO BUNDLE — run `npm run build` in webapp/mc first'); process.exit(3); }
-  const newestSrc = Math.max(...[...walk(path.join(MC, 'src')), path.join(MC, 'index.html')].map(f => fs.statSync(f).mtimeMs));
-  const builtAt = Math.max(...walk(dist).map(f => fs.statSync(f).mtimeMs));
-  if (newestSrc > builtAt && !process.env.ALLOW_STALE) {
-    console.error(`STALE BUNDLE — src is newer than dist (${new Date(newestSrc).toISOString()} > ${new Date(builtAt).toISOString()}).`);
-    console.error('Run `npm run build` in webapp/mc. (ALLOW_STALE=1 to override — but then this run proves nothing.)');
-    process.exit(3);
-  }
-  // and the change under test must actually be IN the served javascript, or every assertion below is
-  // about some other build. These two strings only exist since d20a4ca.
-  const js = walk(dist).filter(f => f.endsWith('.js')).map(f => fs.readFileSync(f, 'utf8')).join('');
-  for (const marker of ['GRENADE HILL', 'station_source']) {
-    if (!js.includes(marker)) {
-      console.error(`SERVED BUNDLE PREDATES THIS SUITE — ${JSON.stringify(marker)} is not in dist/assets/*.js. Rebuild.`);
-      process.exit(3);
-    }
-  }
-  return builtAt;
-}
+// ---------------------------------------------------------------- the two processes the owner runs
+/** `npm run dev` is npm -> sh -> vite: signal the GROUP, or vite survives holding our stdio pipe */
+const killGroup = proc => new Promise(done => {
+  let settled = false;
+  const finish = () => { if (!settled) { settled = true; done(); } };
+  proc.once('exit', finish);
+  try { process.kill(-proc.pid, 'SIGTERM'); } catch { try { proc.kill('SIGTERM'); } catch { /* already gone */ } }
+  setTimeout(() => { try { process.kill(-proc.pid, 'SIGKILL'); } catch { /* gone */ } finish(); }, 3000).unref();
+});
 
-// ---------------------------------------------------------------- the server under test
 const freePort = () => new Promise((res, rej) => {
   const s = net.createServer();
   s.on('error', rej);
@@ -84,11 +66,21 @@ async function startMC({ sessionFile = null, label = 'fresh' } = {}) {
     console.error(`NO PYTHON — ${py} is missing. Set MC_PY to an interpreter with starlette/uvicorn/websockets.`);
     process.exit(3);
   }
-  const port = await freePort();
+  const port = 8765;                      // vite.config.ts proxies /api and /ui-ws to exactly this
+  // If something already answers on 8765 we would silently drive THAT server and report on it —
+  // which is how a run "passes" against a process it never started. Refuse instead.
+  try {
+    const squatter = await fetch(`http://127.0.0.1:${port}/api/state`, { signal: AbortSignal.timeout(1500) });
+    if (squatter.ok) {
+      console.error(`SOMETHING IS ALREADY SERVING :${port} — that is the port vite.config.ts proxies to.`);
+      console.error('Stop your own `python -m brx_mcp.mc` (or a leftover run) and try again.');
+      process.exit(3);
+    }
+  } catch { /* nothing there: good */ }
   const wsPort = await freePort();
   const args = ['-m', 'brx_mcp.mc', '--host', '127.0.0.1', '--port', String(port), '--ws-port', String(wsPort), '--demo', '--no-auth'];
   if (sessionFile) args.push('--session-file', sessionFile); else args.push('--ephemeral');
-  const proc = spawn(py, args, { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', 'pipe', 'pipe'] });
+  const proc = spawn(py, args, { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', 'pipe', 'pipe'], detached: true });
   let log = '';
   proc.stdout.on('data', d => { log += d; });
   proc.stderr.on('data', d => { log += d; });
@@ -101,13 +93,40 @@ async function startMC({ sessionFile = null, label = 'fresh' } = {}) {
     }
     return false;
   })();
-  if (!up) { console.error(`MC (${label}) DID NOT START:\n${log}`); proc.kill('SIGKILL'); process.exit(3); }
+  if (!up) {
+    console.error(`MC (${label}) DID NOT START on :${port}:\n${log}`);
+    console.error('If something else is already on 8765 that is probably your own MC — stop it, or run this against it by hand.');
+    proc.kill('SIGKILL'); process.exit(3);
+  }
   console.log(`  MC ${label} server: ${base}  (session ${sessionFile ? path.basename(sessionFile) : 'ephemeral'})`);
-  return { base, proc, log: () => log, stop: () => new Promise(r => { proc.once('exit', r); proc.kill('SIGTERM'); setTimeout(() => { proc.kill('SIGKILL'); r(); }, 3000); }) };
+  return { base, proc, log: () => log, stop: () => killGroup(proc) };
+}
+
+/** `npm run dev` — the same command the owner types. Vite serves src, so there is no bundle to stale. */
+async function startVite() {
+  const port = await freePort();
+  const proc = spawn('npm', ['run', 'dev', '--', '--port', String(port), '--strictPort'], { cwd: MC, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+  let log = '';
+  proc.stdout.on('data', d => { log += d; });
+  proc.stderr.on('data', d => { log += d; });
+  const base = `http://localhost:${port}`;
+  for (let i = 0; i < 300; i++) {
+    try { const r = await fetch(base); if (r.ok) { console.log(`  vite dev: ${base}`); return { base, stop: () => killGroup(proc) }; } } catch { /* not yet */ }
+    if (proc.exitCode != null) break;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  console.error(`npm run dev DID NOT START:\n${log}`);
+  proc.kill('SIGKILL'); process.exit(3);
 }
 
 // ---------------------------------------------------------------- page helpers
 const jsErrors = [];
+// a route handler whose page went away rejects on its own timeline; record it, never crash the run
+process.on('unhandledRejection', e => {
+  const m = String(e && e.message || e);
+  if (/Target(Closed)?Error|Request context disposed|Target page, context or browser has been closed/.test(m)) return;
+  failures.push(`${currentStep || 'run'}: unhandled rejection ${m.slice(0, 200)}`);
+});
 async function newPage(browser, base, viewport = { width: 1440, height: 950 }) {
   const ctx = await browser.newContext({ viewport, deviceScaleFactor: 1 });
   const pg = await ctx.newPage();
@@ -124,6 +143,11 @@ async function go(pg, view) {
   await until(() => pg.locator('text=CONNECTING TO MISSION CONTROL').count().then(n => n === 0), 12000, 'the first snapshot');
   return pg;
 }
+/** close a page that has routes attached — an in-flight `route.fetch` after close throws globally */
+const closePage = async pg => {
+  try { await pg.unrouteAll({ behavior: 'ignoreErrors' }); } catch { /* no routes */ }
+  await pg.context().close();
+};
 const shot = async (pg, name) => {
   const f = path.join(SHOTS, `${name}.png`);
   // frame from the top — a screenshot that has scrolled the command bar off is evidence of nothing —
@@ -158,7 +182,7 @@ step('boot', async ({ browser, base }) => {
   expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, 'no error-boundary crash on first paint');
   expect(await pg.locator('nav button:has-text("GAMES")').count() > 0, 'the GAMES nav tab is present');
   ok(`GAMES renders  ${await shot(pg, '01-games')}`);
-  await pg.context().close();
+  await closePage(pg);
 });
 
 step('koth-selectable', async ({ browser, base }) => {
@@ -176,7 +200,7 @@ step('koth-selectable', async ({ browser, base }) => {
   expect((await title.textContent()).trim() === 'KING OF THE HILL', 'the rail title reads KING OF THE HILL');
   expect(await pg.locator('main', { hasText: 'STOCK MODE // PLAYING' }).count() > 0, 'the rail marks it a STOCK MODE (untuned defaults)');
   ok(`KotH is selectable and becomes the playing game  ${await shot(pg, '02-koth-playing')}`);
-  await pg.context().close();
+  await closePage(pg);
 });
 
 step('objective-row', async ({ browser, base }) => {
@@ -193,7 +217,7 @@ step('objective-row', async ({ browser, base }) => {
   await pg.locator('div[role="button"][aria-label="play TEAM DEATHMATCH"]').click();
   await until(async () => (await railRow(pg, 'OBJECTIVE').count()) === 0, 6000, 'the OBJECTIVE row to disappear for TDM');
   ok(`OBJECTIVE = GRENADE HILL · ONE POINT on koth, absent on tdm  ${await shot(pg, '03-objective-row')}`);
-  await pg.context().close();
+  await closePage(pg);
 });
 
 step('setup-warning', async ({ browser, base }) => {
@@ -217,7 +241,7 @@ step('setup-warning', async ({ browser, base }) => {
   const box = await warn.boundingBox();
   expect(box && box.height >= 14, 'the warning has real height on screen');
   ok(`SETUP warning renders in the rail  ${await shot(pg, '04-setup-warning')}`);
-  await pg.context().close();
+  await closePage(pg);
 });
 
 // 🔴 the highest-value step in the file. Yellow is $TID 2, which is what a NEUTRAL hill broadcasts:
@@ -256,7 +280,7 @@ step('teams-never-yellow', async ({ browser, base }) => {
   expect(!st.players.some(p => tidOf[p.team_id] === 2), '🔴 F82: no player is rostered on $TID 2');
   expect(st.config_errors.length === 0, `the server does not refuse the push (saw ${JSON.stringify(st.config_errors)})`);
   ok(`blue+green only, no yellow chip, no yellow roster row  ${await shot(pg, '05-teams-no-yellow')}`);
-  await pg.context().close();
+  await closePage(pg);
 });
 
 // The hill's team split is silent: everyone who was on yellow lands on teams[0]. If the console does
@@ -282,7 +306,7 @@ step('reteam-visible', async ({ browser, base }) => {
   const zero = await pg.locator('main', { hasText: '0 OPERATORS' }).count();
   expect(zero > 0, `the LOBBY shows the empty side as "0 OPERATORS" (counts ${JSON.stringify(counts)})`);
   ok(`the silent re-team is at least legible as 0 OPERATORS  ${await shot(pg, '06-reteam')}`);
-  await pg.context().close();
+  await closePage(pg);
 });
 
 step('station-source-control', async ({ browser, base }) => {
@@ -295,7 +319,7 @@ step('station-source-control', async ({ browser, base }) => {
   await until(() => pg.locator('main', { hasText: '[ A2b // GAME DESIGNER ]' }).count().then(n => n > 0), 8000, 'the designer');
   const grp = pg.locator('span[role="group"][aria-label="objective source"]');
   expect(await grp.count() === 1, 'the DESIGNER has an OBJECTIVE SOURCE control for a station-gated mode');
-  if (await grp.count() !== 1) { await shot(pg, '07-station-source-MISSING'); await pg.context().close(); return; }
+  if (await grp.count() !== 1) { await shot(pg, '07-station-source-MISSING'); await closePage(pg); return; }
   const labels = (await grp.locator('button').allTextContents()).map(s => s.trim());
   expect(JSON.stringify(labels) === JSON.stringify(['GRENADE', 'IR STATION']), `it offers exactly the server vocabulary (saw ${JSON.stringify(labels)})`);
   const on = await grp.locator('button[aria-pressed="true"]').textContent();
@@ -309,7 +333,7 @@ step('station-source-control', async ({ browser, base }) => {
   await grp.locator('button:text-is("GRENADE")').click();
   await until(async () => /GRENADE/.test(await railRow(pg, 'OBJECTIVE').textContent()), 4000, 'the rail back to GRENADE');
   ok(`OBJECTIVE SOURCE is reachable and both values respond  ${await shot(pg, '07-station-source')}`);
-  await pg.context().close();
+  await closePage(pg);
 });
 
 // A refusal is only useful if the operator can READ it. The server's 400 names the whole vocabulary;
@@ -335,7 +359,7 @@ step('station-source-refused', async ({ browser, base }) => {
   // a refused config must not leave the card claiming it is playing
   expect((await kothCard(pg).getAttribute('aria-pressed')) === 'false', 'a refused mode pick does not show as PLAYING');
   ok(`a refused station_source is readable on screen  ${await shot(pg, '08-refusal')}`);
-  await pg.context().close();
+  await closePage(pg);
 });
 
 // F88: >1 control point on a grenade source is not buildable. `control_points` is not a PUT-able
@@ -366,7 +390,7 @@ step('f88-multipoint-refused', async ({ browser, base }) => {
   expect(fs_ >= 11, `the refusal is legible (${fs_}px, must be >= 11px)`);
   void el;
   ok(`an F88 config error is visible on screen  ${await shot(pg, '09-f88')}`);
-  await pg.context().close();
+  await closePage(pg);
 });
 
 step('continue-path', async ({ browser, base }) => {
@@ -383,7 +407,7 @@ step('continue-path', async ({ browser, base }) => {
   const st = await (await fetch(`${base}/api/state`)).json();
   expect(st.phase === 'kit', `CONTINUE advanced the server phase to kit (saw ${st.phase})`);
   ok(`GAMES → CONTINUE ▸ → KIT  ${await shot(pg, '10-continue-kit')}`);
-  await pg.context().close();
+  await closePage(pg);
 });
 
 // A stale server: the new fields are gone from REST *and* from the pushed snapshots, and the A10
@@ -430,7 +454,7 @@ step('stale-server', async ({ browser, base }) => {
   }
   expect(wsStripped > 0, 'the WebSocket was stripped too — a REST-only "stale" run is a lie');
   ok(`stale server: every page renders, skew banner shown, ${wsStripped} snapshots stripped  ${await shot(pg, '11-stale')}`);
-  await pg.context().close();
+  await closePage(pg);
 });
 
 step('failure-path', async ({ browser, base }) => {
@@ -450,7 +474,7 @@ step('failure-path', async ({ browser, base }) => {
   expect((await kothCard(pg).getAttribute('aria-pressed')) === 'false', 'the card does not claim PLAYING after a 500');
   expect(await railRow(pg, 'OBJECTIVE').count() === 0, 'the rail does not show a hill objective for a config the server rejected');
   ok(`a 500 on PUT /api/config is visible and stops the flow  ${await shot(pg, '12-failure')}`);
-  await pg.context().close();
+  await closePage(pg);
 });
 
 // The owner's phone is a Pixel 4 (393x830); MC is also opened on a tablet and on short laptop screens.
@@ -477,7 +501,7 @@ for (const [name, vp] of [['pixel4', { width: 393, height: 830 }], ['tablet', { 
     expect(wb && wb.x >= -1 && wb.x + wb.width <= vp.width + 1, `the SETUP warning fits the ${vp.width}px width (${JSON.stringify(wb)})`);
     expect((await railRow(pg, 'OBJECTIVE').textContent()).includes('GRENADE HILL'), `the OBJECTIVE row survives at ${vp.width}px`);
     ok(`${vp.width}x${vp.height} clean  ${await shot(pg, `13-${name}`)}`);
-    await pg.context().close();
+    await closePage(pg);
   });
 }
 
@@ -506,7 +530,7 @@ step('audit-taps', async ({ browser, base }) => {
     console.log(`      ${where}: ${rows.length} controls, smallest ${Math.min(...rows.map(r => r.h))}px`);
   }
   ok('tap targets >= 36px on GAMES, KIT and the DESIGNER');
-  await pg.context().close();
+  await closePage(pg);
 });
 
 step('audit-text', async ({ browser, base }) => {
@@ -523,7 +547,7 @@ step('audit-text', async ({ browser, base }) => {
   expect(hard.length === 0, `text carrying the KotH setup meaning is >= 11px ${JSON.stringify(hard)}`);
   if (tiny.length) console.log(`      ${tiny.length} sub-11px string(s) on GAMES (non-blocking): ${JSON.stringify(tiny.slice(0, 6))}`);
   ok('the KotH setup copy is legible (>= 11px)');
-  await pg.context().close();
+  await closePage(pg);
 });
 
 // `?mock` is how the console is iterated on without a server (CLAUDE.md), so the demo has to predict the
@@ -545,23 +569,24 @@ step('mock-demo', async ({ browser, base }) => {
   const stripes = await pg.locator('.kit-row > span:first-child').evaluateAll(els => els.map(el => getComputedStyle(el).backgroundColor));
   expect(stripes.length > 0 && !stripes.some(c => YELLOW.includes(c)), `🔴 F82: the DEMO re-teams its yellow half too (saw ${JSON.stringify([...new Set(stripes)])})`);
   ok(`?mock predicts the real server  ${await shot(pg, '15-mock')}`);
-  await pg.context().close();
+  await closePage(pg);
 });
 
 // A session persisted long before this change, with a YELLOW roster, booted into the new UI.
-step('old-data-boot', async ({ browser }) => {
+step('old-data-boot', async ({ browser, base, swapMC }) => {
   const tmp = path.join(SHOTS, `session-old-${Date.now()}.json`);
   fs.copyFileSync(path.join(HERE, 'fixtures', 'session-prekoth.json'), tmp);
-  const srv = await startMC({ sessionFile: tmp, label: 'old-session' });
+  // only one MC can hold :8765 (the port vite proxies to), so the fresh one steps aside
+  await swapMC({ sessionFile: tmp, label: 'old-session' });
   try {
-    const pre = await (await fetch(`${srv.base}/api/state`)).json();
+    const pre = await (await fetch(`${base}/api/state`)).json();
     expect(pre.players.length > 0, `the old session actually restored (${pre.players.length} player(s))`);
     expect(pre.players.some(p => p.team_id === 'yellow'), 'the restored roster is on YELLOW (control for F82)');
-    const pg = await go(await newPage(browser, srv.base), 'build');
+    const pg = await go(await newPage(browser, base), 'build');
     expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, 'the console opens a pre-koth session without crashing');
     await kothCard(pg).click();
     await until(async () => (await kothCard(pg).getAttribute('aria-pressed')) === 'true', 8000, 'KotH playing on an old session');
-    const post = await (await fetch(`${srv.base}/api/state`)).json();
+    const post = await (await fetch(`${base}/api/state`)).json();
     const tidOf = Object.fromEntries(post.config.teams.map(t => [t.team_id, t.tid]));
     expect(!post.players.some(p => tidOf[p.team_id] === 2), '🔴 F82: a restored YELLOW roster is moved off $TID 2 by the koth pick');
     await go(pg, 'kit');
@@ -571,25 +596,27 @@ step('old-data-boot', async ({ browser }) => {
     const stripes = await pg.locator('.kit-row > span:first-child').evaluateAll(els => els.map(el => getComputedStyle(el).backgroundColor));
     expect(!stripes.some(c => YELLOW.includes(c)), `no yellow roster stripe on an old session (saw ${JSON.stringify([...new Set(stripes)])})`);
     ok(`pre-koth session boots and is normalised  ${await shot(pg, '14-old-session')}`);
-    await pg.context().close();
-  } finally { await srv.stop(); try { fs.unlinkSync(tmp); } catch { /* gone */ } }
+    await closePage(pg);
+  } finally { try { fs.unlinkSync(tmp); } catch { /* gone */ } }
 });
 
 // ---------------------------------------------------------------- runner
 (async () => {
-  const builtAt = assertFreshBundle();
   if (!ONLY) fs.rmSync(SHOTS, { recursive: true, force: true });   // an ONLY= run must not wipe the full run's evidence
   fs.mkdirSync(SHOTS, { recursive: true });
-  const chosen = steps.filter(s => !ONLY || s.name.includes(ONLY));
+  const chosen = steps.filter(s => !ONLY || s.name === ONLY || s.name.includes(ONLY));
   if (!chosen.length) { console.error(`no step matches ONLY=${ONLY}. Steps: ${steps.map(s => s.name).join(', ')}`); process.exit(2); }
-  console.log(`MC KotH e2e — ${chosen.length}/${steps.length} step(s), bundle built ${new Date(builtAt).toISOString()}`);
-  const srv = await startMC();
+  if (ONLY && chosen.length > 1 && chosen.some(s => s.name === ONLY)) chosen.splice(0, chosen.length, chosen.find(s => s.name === ONLY));
+  console.log(`MC KotH — ${chosen.length}/${steps.length} step(s) in a real browser`);
+  let mc = await startMC();
+  const vite = await startVite();
+  const swapMC = async opts => { await mc.stop(); mc = await startMC(opts); };
   const browser = await chromium.launch({ headless: !process.env.HEADED });
   for (const s of chosen) {
     currentStep = s.name;
     console.log(`\n[${s.name}]`);
     const before = failures.length;
-    try { await s.fn({ browser, base: srv.base }); } catch (e) { failures.push(`${s.name}: THREW ${e.message}`); console.log(`    ✗ THREW ${e.message}`); }
+    try { await s.fn({ browser, base: vite.base, swapMC }); } catch (e) { failures.push(`${s.name}: THREW ${e.message}`); console.log(`    ✗ THREW ${e.message}`); }
     if (failures.length > before) {
       // forensics: what WAS on the page when it failed
       try {
@@ -606,7 +633,8 @@ step('old-data-boot', async ({ browser }) => {
     }
   }
   await browser.close();
-  await srv.stop();
+  await vite.stop();
+  await mc.stop();
   currentStep = 'js-errors';
   const noisy = jsErrors.filter(e => !/favicon|ERR_CONNECTION|Failed to load resource/i.test(e));
   expect(noisy.length === 0, `no uncaught JS / console errors in the whole run (${noisy.length}): ${JSON.stringify(noisy.slice(0, 6))}`);
@@ -619,4 +647,5 @@ step('old-data-boot', async ({ browser }) => {
   }
   console.log(`PASSED — ${chosen.length} step(s), 0 failures.  screenshots: ${SHOTS}`);
   if (!process.env.KEEP_SHOTS) console.log('(KEEP_SHOTS=1 keeps the passing screenshots for the next run too)');
+  process.exit(0);   // the verdict is printed; do not hang waiting on a pooled keep-alive socket
 })();

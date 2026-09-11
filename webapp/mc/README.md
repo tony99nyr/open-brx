@@ -9,7 +9,9 @@ npm install
 npm run dev                # http://localhost:5173 — proxies /api + /ui-ws to the Python server on :8765
 npm run dev -- --mode mock # or open http://localhost:5173/?mock — in-browser demo, no server needed
 npm run build              # tsc -b && vite build → dist/ (served by `python -m brx_mcp.mc` at /)
-npm test                   # 69 jsdom tests, ~1.7s — mounts every screen, no server, no browser
+npm test                   # jsdom tests, ~2s — mounts every screen, no server, no browser
+npm run e2e                # starts `npm run dev` + a real MC and clicks the KotH setup flow in Chromium
+                           #   ONLY=<step> npm run e2e   runs one step; HEADED=1 to watch
 npm run lint               # oxlint
 ```
 
