@@ -91,6 +91,9 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 | Open work | [`FOLLOWUPS.md`](FOLLOWUPS.md) |
 
 ## Hardware
+- **[../hardware/inventory.md](../hardware/inventory.md)** — what the bench owns, what is on order, what is planned.
+- **[../hardware/m5sticks3/README.md](../hardware/m5sticks3/README.md)** — the M5StickS3 station firmware (IR decode over RMT,
+  kind-5 BLE advert, BRIDGE/HILL modes, the bench gate).
 - **[../hardware/esp32-ir-bridge/README.md](../hardware/esp32-ir-bridge/README.md)** — the IR transceiver that
   exists (board registry, wiring, the receiver traps).
 - **[../hardware/brx-companion-spec.md](../hardware/brx-companion-spec.md)** (per-tagger node, paper) ·
