@@ -889,7 +889,11 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   the line exactly as `engine.js:_hillCallout` already does for the grenade. ⭐ **And this is the first path that
   can wire `VB0O` "Hill Contested"**: `HILL_CUES.hill_contested` sits in `engine.js` with no caller because on the
   grenade path **F75** says a non-capturing hit emits nothing decodable, so contest can only be guessed at — a
-  phone point *counts bodies* and measures it. ⚠ One callout per `seq` transition, never per advert (F74). ⚠ The
+  phone point *counts bodies* and measures it. **The callout set is closed at the five confirmed-by-ear ids**
+  (`VB0N` covers both capture and "you control it" — Tony: no separate "controlled" line is wanted; `V8Q` is
+  catalogued "Hill Confirmed" and says "**Kill** Confirmed", so nothing is used unheard). ⚠ One callout per `seq`
+  transition, never per advert (F74), and the existing scheduling rule stands: a callout owns the announcer for the
+  clip's real length with the tick waiting, and a later callout preempts rather than queues (`4348721`). ⚠ The
   callout's reach is the advert's radio reach, not the field. Needs **B1** (the station must hear player adverts
   reliably) more than any other kind, since the rule IS a head count. Cross-refs: **F88** (no grenade carries a
   station id, so multi-point Domination needs phones), **F92** (and is why a grenade hill and a phone station

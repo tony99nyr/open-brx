@@ -277,7 +277,15 @@ So a player phone **reads the control point's own advert** — `team`, `value`, 
 its own callout on its own gun, locally, over its own BLE link. **No LAN, no MC, no peer connection, no server in
 the path.** Radio reach is the only requirement, and the point is broadcasting anyway.
 
-The callout set is the four hill lines already in `app/src/engine.js` (`HILL_CUES`, confirmed by ear 2026-09-10):
+**The callout set is closed: these five ids and nothing else.** All five are in `app/src/engine.js` (`HILL_CUES`)
+and all five were **confirmed by ear** 2026-09-10. `VB0N` "Hill Captured" covers both the capture moment and the
+"your team controls this" announcement — **Tony's call: there is no separate "hill controlled" line and none is
+wanted**, so nothing here needs a catalogue search.
+
+⚠ **And do not go looking for one by name.** `V8Q` is catalogued as "Hill Confirmed" and **says "*Kill*
+Confirmed" by ear** — it is a hill line in the catalogue and not one in reality. That trap is exactly why the five
+below are trustworthy and nothing outside this table is: a candidate found by catalogue name must be **heard**
+before it is used.
 
 | transition (on a `seq` bump) | the listener's team | plays |
 |---|---|---|
@@ -286,6 +294,7 @@ The callout set is the four hill lines already in `app/src/engine.js` (`HILL_CUE
 | contested bit 0 → 1 with my team involved | both sides | **`VB0O` "Hill Contested"** (2.08 s) |
 | `team` == my team, on the node's own ~1 s timer | the holder | **`U100`** possession tick (0.11 s) |
 | a capture between two **other** teams | everyone else | **silence** — not this player's event |
+| the hot point moves (**§5e only**) | everyone | **`VB0Q` "Hill Moved"** (2.42 s) |
 
 **The listener's team picks the line, not the wire event** — the same rule `engine.js:_hillCallout` already
 implements for the grenade path, reused verbatim. "Hill Lost!" fires the moment the point stops being yours (the
@@ -299,11 +308,19 @@ therefore sits in the engine today with **no caller**. A phone control point **m
 inferring it — it counts living present bodies of each team and says so in a bit — so this is the first path on
 which the cue has a truthful caller. That is a reason to build the phone point even where a grenade is available.
 
-⚠ **Two limits to state, not to promise around:**
+⚠ **Limits to state, not to promise around:**
 - **One-shot per transition, never per advert.** F74's lesson (this gun really does replay long events) plus a
   station advertising several times a second: a 2-3 s callout fired on every advert stacks instantly. Callouts fire
   on a `seq` change only, with a floor between repeats of the same line (**proposed 10 s** for contested, which can
-  otherwise oscillate at net 0). `U100` is safe at 1 s because it is 0.11 s long.
+  otherwise oscillate at net 0).
+- **The scheduling rule is the phone's, it already exists, and the animated screen does not replace it.** These are
+  1.9-3.0 s clips against a 1 s tick cadence, so: a callout **owns the announcer for the clip's real length** and
+  the tick **waits** rather than playing underneath it (`engine.js` `_hillBusyUntil`, `:151` / `:1221`), and a later
+  callout **preempts outright — it never queues** (`_hillSay` sends `$PLAYX,0,*` in the same write, and only ever
+  cuts off our own in-flight hill line). Both are implemented, commit `4348721`. A queued "Hill Captured" landing
+  three seconds after the point was already lost would state something false; the newest word is always the true
+  one. `U100` is safe at 1 s only because it is 0.11 s long and yields to every callout. §5d.4's animation is
+  **additive to this**: the screen can show a transition continuously, the gun cannot.
 - **The callout's reach is the advert's radio reach**, which is neither the 10 ft presence bubble nor the whole
   field — roughly tens of metres, body-blocked and uneven. So a capture is heard by whoever is near the fight, not
   by the far side of the park. Native's field-wide announcement is not reproducible offline; §5e can fan it out
