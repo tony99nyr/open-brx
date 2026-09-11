@@ -31,7 +31,7 @@ Python server over HTTP and a WebSocket, both of which Playwright can intercept 
 "stale server" run is a lie). So MC needs no stand-in for anything.
 
 The jsdom suite below is the fast inner loop, not a substitute for looking at the screen. When a change
-crosses the server boundary or touches layout, follow `~/.claude/skills/ui-build-verify` — real browser,
+crosses the server boundary or touches layout, follow `.claude/skills/ui-build-verify/SKILL.md` (repo root) — real browser,
 click every control, stale server, a forced 400, small viewports (Pixel 4 393x830 is the target device),
 tap-target and tiny-text audits.
 

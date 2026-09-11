@@ -49,12 +49,15 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
 - WSL Python dev venv: `.venv/` (`.venv/bin/python`; has websockets/starlette/uvicorn/zeroconf/pytest;
   system python3 has no pip — bootstrap via get-pip if recreating). `python3 run_tests.py` must stay green
   under system python (tests needing extras skip cleanly).
-- Development happens in **WSL2, which has no Bluetooth**. The `brx-mcp` server runs on
-  **Windows Python** via WSL interop:
+- Development happens in **WSL2, which has no Bluetooth**. The `brx-mcp` instrument (anything that
+  touches a gun) runs on **Windows Python** via WSL interop:
   - Windows venv: `C:\Users\Tony\.brx-mcp\venv` (from WSL: `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe`)
   - Installed editable from `\\wsl.localhost\Ubuntu-24.04\home\tony\gitrepos\battlecompany\mcp`
     — code edits in WSL take effect immediately, no reinstall.
   - CLI first contact: `python.exe -m brx_mcp scan|identify|listen`.
+- **Mission Control (`python -m brx_mcp.mc`) is the exception: it runs from the WSL `.venv`.** Its one
+  radio route is the match-day armory scan, which is the MacBook's job. Plain Linux/macOS: the same venv
+  recipe, `pip install -e ./mcp` plus starlette/uvicorn/websockets.
 - Working **on the MacBook** (dev or field): read **`docs/mac-dev-runbook.md`** first — the setup
   that is not in git, and the restart-MC-vs-hard-reload rule that has caused three false bug reports.
 - Match-day target is a **MacBook**: everything in `mcp/` must stay cross-platform
@@ -69,7 +72,7 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
 `app/` native phone app (Capacitor → Android + iOS; see `app/README.md` — `npm run android:apk` cuts a
 build and publishes it to the `app-v<version>` GitHub Release; the site links the releases page, not a
 pinned asset, so a new cut does not stale a manual page) ·
-`firmware/` PlatformIO ESP32 flavors · `webapp/mc/` the **Mission Control web UI** (Vite/React/TS; `npm run dev`, `?mock` for the in-browser demo; design brief `docs/spec/design/mission-control.md`). ⚠ **To verify MC in a real browser there is NOTHING to build** — it is a web app, so run the dev server and drive it (Playwright is already installed under `app/` and `site/`). The phone HUD needs its stage harness (`app && npm run ui:stage`) because it drives a tagger over BLE; MC drives nothing, so it needs no stand-in. `webapp/mc/README.md` has the detail, and for any UI change follow the `ui-build-verify` skill · `webapp/` legacy static harness (Web BT is not the player path — ADR-0003) ·
+`firmware/` does not exist yet (Companion/station firmware is still to write; the ESP32 code that exists is `hardware/esp32-ir-bridge/` and `hardware/m5sticks3/`) · `webapp/mc/` the **Mission Control web UI** (Vite/React/TS; `npm run dev`, `?mock` for the in-browser demo; design brief `docs/spec/design/mission-control.md`). ⚠ **To verify MC in a real browser there is NOTHING to build** — it is a web app, so run the dev server and drive it (Playwright is already installed under `webapp/mc/`, `app/` and `site/`; the script must live under one of them). The phone HUD needs its stage harness (`app && npm run ui:stage`) because it drives a tagger over BLE; MC drives nothing, so it needs no stand-in. `webapp/mc/README.md` has the detail, and for any UI change follow the `ui-build-verify` skill (`.claude/skills/ui-build-verify/SKILL.md`, plain markdown, in the repo) · `webapp/` legacy static harness (Web BT is not the player path — ADR-0003) ·
 `hardware/` STLs/BOM · `protocol/` + `docs/` reference · **`site/`** the static generator for the public
 website. **Two doors, one source (2026-09-11):** `docs/platform/*.md` → `/` (the MARKETING landing for the
 Open BRX ecosystem), `/docs/*` and `/download`; `docs/manual/*.md` → `/manual/*` (the BRX manual; its

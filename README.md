@@ -76,8 +76,9 @@ python -m brx_mcp play tdm <addr1> <addr2> outdoor=1 volume=90   # outdoors: lou
 # no guns to hand? this needs no hardware at all:
 python -m brx_mcp game-sim tdm                        # narrated demo match in your terminal
 
-# register with Claude Code:
-claude mcp add brx -- python -m brx_mcp
+# register it with your MCP client (stdio server; any client works):
+claude mcp add brx -- python -m brx_mcp        # Claude Code
+codex mcp add brx -- python -m brx_mcp         # Codex CLI; Cursor/others: command "python", args ["-m","brx_mcp"]
 ```
 
 > **What works today:** the command above ran a full TDM on two real taggers: scoring, respawn,
@@ -96,8 +97,8 @@ claude mcp add brx -- python -m brx_mcp
 ### Platform notes
 
 - **WSL2 has no Bluetooth.** Develop in WSL, but run the server with **Windows Python**
-  (`python.exe`); Claude Code in WSL can register it directly:
-  `claude mcp add brx -- python.exe -m brx_mcp` (with the package installed into Windows Python).
+  (`python.exe`); an MCP client running in WSL can register it directly:
+  `claude mcp add brx -- python.exe -m brx_mcp` (or your client's equivalent, with the package installed into Windows Python).
 - **macOS:** grant your terminal Bluetooth permission (System Settings → Privacy & Security →
   Bluetooth). CoreBluetooth reports per-machine UUIDs instead of MAC addresses, so the
   `~/.brx-mcp/known-devices.json` registry is per-machine: re-scan on the MacBook.

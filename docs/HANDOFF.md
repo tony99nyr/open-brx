@@ -1,6 +1,6 @@
 # Handoff — Open BRX
 
-**State as of 2026-09-11 (late, second session).** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners:
+**State as of 2026-09-11 (late, third session: docs only).** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners:
 [`archive/handoff-history.md`](archive/handoff-history.md).
 
 ## What is true today

@@ -43,3 +43,6 @@ webapp/download/*.apk
 /webapp/download/index.html
 !/webapp/favicon.svg
 !/webapp/.assetsignore
+
+# Playwright runner artifacts (written wherever playwright is invoked from)
+test-results/

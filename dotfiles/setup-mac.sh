@@ -52,8 +52,10 @@ say "Wrote ~/.zshrc"
 
 # --- git config -------------------------------------------------------------
 say "Configuring git"
-git config --global user.name  "tony99nyr"
-git config --global user.email "tony@iamrossi.com"
+# Identity comes from the environment, never from this file (it is public):
+#   GIT_NAME="Your Name" GIT_EMAIL="you@example.com" bash dotfiles/setup-mac.sh
+git config --global user.name  "${GIT_NAME:?set GIT_NAME=\"Your Name\" before running}"
+git config --global user.email "${GIT_EMAIL:?set GIT_EMAIL=you@example.com before running}"
 git config --global --replace-all credential.helper osxkeychain
 git config --global 'credential.https://github.com.helper' '!gh auth git-credential'
 git config --global 'credential.https://gist.github.com.helper' '!gh auth git-credential'
