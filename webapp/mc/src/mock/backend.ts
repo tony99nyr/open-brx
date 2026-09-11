@@ -70,8 +70,9 @@ export class MockBackend implements Api {
       const a = st.assigned, rep = st.report;
       if (a && st.arm_pending) attention.push('BRING IT BACK TO RE-ARM');
       if (a && st.armed && st.armed.game !== this.gameNo) attention.push('ARMED FOR AN OLDER GAME');
-      if (a && rep.armed === false && st.armed) attention.push('PHONE SAYS NOT ARMED');
-      if (a && rep.station_id != null && rep.station_id !== a.id) attention.push(`PHONE ADVERTISES ID ${rep.station_id}, ASSIGNED ${a.id}`);
+      const fresh = !!st.armed && st.seen > st.armed.at;   // a report only contradicts an arming it post-dates
+      if (a && fresh && rep.armed === false) attention.push('PHONE SAYS NOT ARMED');
+      if (a && fresh && rep.station_id != null && rep.station_id !== a.id) attention.push(`PHONE ADVERTISES ID ${rep.station_id}, ASSIGNED ${a.id}`);
       if (typeof rep.battery === 'number' && rep.battery < 30) attention.push('BATTERY LOW');
       return { node_id, assigned: a, armed: st.armed, arm_pending: st.arm_pending, report: rep, app_ver: 'utility',
         last_seen_ms: now() - st.seen, online: true, attention, game: this.gameNo };

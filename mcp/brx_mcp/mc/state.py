@@ -1019,11 +1019,18 @@ class Session:
         thr = a.get("threshold", -74)
         if not (isinstance(thr, int) and not isinstance(thr, bool) and -100 <= thr <= -30):
             raise ValueError("threshold must be an integer dBm in -100..-30 (the presence bubble; -74 ≈ 10 ft at high TX)")
+        # Only a phone that said hello as a UTILITY node can be a station. A player's HUD ignores
+        # `station_config`, and assigning it would advertise a station id to every player that nothing
+        # on the field emits (review 2026-09-11).
+        if nid not in self.stations and (self.nodes.get(nid) or {}).get("node_type") != "utility":
+            raise ValueError(f"{nid!r} is not a utility phone (no utility hello this session); open the app in the "
+                             "UTILITY role on that phone and connect it to Mission Control first")
         st = self.stations.setdefault(nid, {"node_id": nid, "assigned": None, "report": {}, "armed": None})
         st["assigned"] = {"kind": kind, "team": team, "id": sid, "threshold": thr, "at": self.now_ms()}
         self.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle", "synced": False, "last_seen_ms": 0})
         # An assignment changes the allow-list every OTHER station echoes, so all of them are re-armed.
         self.arm_stations()
+        self._repush_stations_to_players()
         self._validate()
         self._changed()
         return self._station_view(nid)
@@ -1035,9 +1042,25 @@ class Session:
         st["assigned"] = None
         st["armed"] = None
         self.arm_stations()                    # the survivors' valid_ids shrink
+        self._repush_stations_to_players()
         self._validate()
         self._changed()
         return True
+
+    def _repush_stations_to_players(self) -> None:
+        """After a lobby push the players already HOLD a `config.stations`; an assignment made after that
+        (a re-id, a late station, a cleared one) must reach them or `engine.js _stationAllowed` keeps
+        filtering on the old list and nobody can respawn or capture at the new id (review 2026-09-11).
+        The bundle is NOT recompiled and the acks are NOT cleared -- the frames are unchanged, only the
+        config's allow-list moved."""
+        if not self.lobby_pushed:
+            return
+        cfg = self._wire_config()
+        roster = self.roster()
+        for p in self.players.values():
+            nid, pid = p.get("node_id"), p["player_id"]
+            if nid and pid in self.bundles:
+                self.net.push(nid, "config", {"config": cfg, "frames": self.bundles[pid], "roster": roster})
 
     def _arm_station(self, nid: str) -> bool:
         """Push `station_config` to one assigned station. Best-effort: an offline phone is flagged
@@ -1074,9 +1097,12 @@ class Session:
             attention.append("BRING IT BACK TO RE-ARM")            # assignment changed with the phone out of range
         if a and armed and armed.get("game") != self._game_byte():
             attention.append("ARMED FOR AN OLDER GAME")            # it missed the muster push
-        if a and rep and rep.get("armed") is False:
+        # The phone's own report only contradicts the arming if it arrived AFTER the push -- the heartbeat
+        # from before an assignment naturally says "not armed" / the old id (review 2026-09-11).
+        fresh = bool(armed) and seen is not None and seen > (armed.get("at") or 0)
+        if a and fresh and rep.get("armed") is False:
             attention.append("PHONE SAYS NOT ARMED")               # the push was sent; the phone never applied it
-        if a and rep.get("station_id") not in (None, a["id"]):
+        if a and fresh and rep.get("station_id") not in (None, a["id"]):
             attention.append(f"PHONE ADVERTISES ID {rep.get('station_id')}, ASSIGNED {a['id']}")
         if isinstance(rep.get("battery"), (int, float)) and rep["battery"] < 30:
             attention.append("BATTERY LOW")
@@ -1765,10 +1791,16 @@ class Session:
         # possible and "2 of 2" did not mean both HUDs. Sent per bound player node now, so the two numbers
         # are the same population; a node with no player has no match to end.
         body = {"cmd": cmd}
+        bound_nodes = {p["node_id"] for p in self.players.values() if p.get("node_id")}
         reached = 0
-        for p in self.players.values():
-            nid = p.get("node_id")
-            if nid and self.net.push(nid, "control", body) is not False:
+        # Delivery goes to EVERY non-utility node MC knows (a HUD whose binding was lost mid-match still runs
+        # the match on its gun and must still get END/PANIC -- review 2026-09-11); the COUNT is over the bound
+        # player nodes, the same population as `nodes` below.
+        for nid, nv in list(self.nodes.items()):
+            if nv.get("node_type") == "utility":
+                continue
+            ok = self.net.push(nid, "control", body)
+            if nid in bound_nodes and ok is not False:
                 reached += 1
         if cmd == "end" and self.scorer:
             self.scorer.set_end(self.now_ms())           # A6.1 end freeze

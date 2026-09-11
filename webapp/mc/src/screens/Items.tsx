@@ -28,7 +28,10 @@ export function Items() {
       <SectionRule label={`ITEMS // ${stations.length} UTILITY PHONE${stations.length === 1 ? '' : 'S'}`}
         hint={<>{nArmed}/{stations.length} ARMED · GAME {state.game_no ?? '—'} · ASSIGN, THEN PLACE — A STATION NEEDS NO WI-FI ONCE ARMED</>} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 12 }}>
-        {stations.map(s => <StationCard key={s.node_id} s={s} />)}
+        {/* keyed on the assignment and the phone's own kind/id/team/threshold, so a card mounted before the
+            first heartbeat re-seeds its draft when the report arrives (the heartbeat's live/revives/progress
+            fields are deliberately NOT in the key -- they change every 2 s and must not drop an edit) */}
+        {stations.map(s => <StationCard key={`${s.node_id}|${s.assigned?.at ?? ''}|${s.report.kind ?? ''}|${s.report.team ?? ''}|${s.report.station_id ?? ''}|${s.report.threshold ?? ''}`} s={s} />)}
       </div>
     </div>
   );

@@ -223,13 +223,13 @@ def test_the_utility_heartbeat_is_kept_as_the_stations_report():
     s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False, "role": "utility",
                                      "kind": "control", "team": 255, "station_id": 9, "threshold": -74, "live": True,
                                      "revives": 0, "armed": True, "battery": 22,
-                                     "control": {"owner": 1, "progress": 100, "hold_ms": {"1": 42000}}}, s.now_ms())
+                                     "control": {"owner": 1, "progress": 100, "hold_ms": {"1": 42000}}}, s.now_ms() + 1)
     v = s._station_view("util-1")
     assert v["report"]["control"]["hold_ms"] == {"1": 42000} and v["report"]["live"] is True
     assert "BATTERY LOW" in v["attention"]
     # the phone advertising a DIFFERENT id than assigned is the kind of drift the panel exists to show
     s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False, "role": "utility",
-                                     "kind": "control", "station_id": 2, "armed": False}, s.now_ms())
+                                     "kind": "control", "station_id": 2, "armed": False}, s.now_ms() + 2)
     att = s._station_view("util-1")["attention"]
     assert any("ADVERTISES ID 2" in a for a in att) and "PHONE SAYS NOT ARMED" in att, att
 
@@ -257,3 +257,72 @@ def test_clearing_an_assignment_shrinks_the_allow_list_the_others_echo():
     assert _pushed(s, "station_config", "util-1")[-1]["valid_ids"] == [3]
     assert s._station_ids() == [{"id": 3, "kind": "respawn"}]
     assert not s.clear_station("nobody")
+
+
+# --------------------------------------------------------------------------- review 2026-09-11
+def test_an_assignment_made_after_the_lobby_push_reaches_the_players_allow_list():
+    """Players already holding `config.stations` must learn a re-id / a late station / a cleared one, or
+    `engine.js _stationAllowed` keeps filtering on the old list and nobody can use the new id."""
+    s = _joined(_sess(respawn={"type": "scanner", "delay_s": 15}))
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 1})
+    s.push_config(force=True)
+    acks_before = dict(s.acks)
+    s.net.pushed.clear()
+    s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 2})      # re-id after the push
+    cfgs = _pushed(s, "config")
+    assert cfgs and all(c["config"]["stations"] == [{"id": 2, "kind": "respawn"}] for c in cfgs), cfgs
+    assert len(cfgs) == sum(1 for p in s.players.values() if p.get("node_id")), "one per bound player"
+    assert s.acks == acks_before, "the frames did not change, so no re-ack is demanded"
+    s.net.pushed.clear()
+    s.clear_station("util-1")
+    assert all("stations" not in c["config"] for c in _pushed(s, "config")), "the last one cleared = allow all again"
+    # CONTROL: before the lobby push nothing is re-sent (the push itself carries the list)
+    t = _joined(_sess()); t.net.simulate_utility_hello("u"); t.net.pushed.clear()
+    t.set_station("u", {"kind": "respawn", "team": "blue", "id": 1})
+    assert not _pushed(t, "config")
+
+
+def test_a_player_hud_cannot_be_assigned_as_a_station():
+    s = _joined(_sess())
+    try:
+        s.set_station("phone-0", {"kind": "respawn", "team": "blue", "id": 1})
+        raise AssertionError("a HUD phone was turned into a station")
+    except ValueError as e:
+        assert "utility" in str(e).lower(), e
+    assert "phone-0" not in s.stations
+    try:
+        s.set_station("never-heard", {"kind": "respawn", "team": "blue", "id": 1})
+        raise AssertionError("an unknown node was turned into a station")
+    except ValueError:
+        pass
+
+
+def test_the_phones_report_only_contradicts_an_arming_it_post_dates():
+    s = _sess()
+    base = s.now_ms()
+    s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False, "role": "utility",
+                                     "kind": "respawn", "station_id": 1, "armed": False}, base)
+    s.net.simulate_utility_hello("util-1")
+    s.now_ms = lambda: base + 10
+    v = s.set_station("util-1", {"kind": "control", "team": "any", "id": 9})
+    assert v["attention"] == [], f"a report from BEFORE the arming is not a contradiction: {v['attention']}"
+    # CONTROL: the same report arriving AFTER the push is
+    s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False, "role": "utility",
+                                     "kind": "respawn", "station_id": 1, "armed": False}, base + 20)
+    att = s._station_view("util-1")["attention"]
+    assert "PHONE SAYS NOT ARMED" in att and any("ADVERTISES ID 1" in a for a in att), att
+
+
+def test_end_reaches_every_hud_but_counts_only_bound_players():
+    s = _joined(_sess())
+    s.net.simulate_utility_hello("util-1")
+    s.push_config(force=True); s.start(runway_s=3, force=True)
+    # a HUD whose binding MC lost mid-match (A8 takeover, a gun-name mismatch) still runs the match on its gun
+    s.nodes["ghost"] = {"node_id": "ghost", "node_type": "phone", "arm_state": "live", "synced": True, "last_seen_ms": s.now_ms()}
+    s.net.pushed.clear()
+    r = s.control("end")
+    targets = [n for n, k, _ in s.net.pushed if k == "control"]
+    assert "ghost" in targets, "the unbound HUD still gets END"
+    assert "util-1" not in targets, "a station has no match to end"
+    assert r["reached"] == r["nodes"] == 2, r
