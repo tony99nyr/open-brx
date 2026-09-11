@@ -238,7 +238,7 @@ scoped as building a station; for Hill and Respawn the hardware exists and the p
 |---|---|
 | a capturable point | shoot it to claim; **neutral is team 2**, then the beacon carries the owner |
 | possession broadcast | `proto=15 team=<owner> mag=8` every ~5 s (respawn: `mag=6`, ~2.5 s) |
-| the node knowing | `$SIR,15,0,,24,0,0,1,,*` → `$HIR,<sensor>,15,0,<owner>,8,0,0`, no pool change. ⚠️ **AND** an `engine.js` fix: the phone drops every proto-15 `$HIR` today (F72) |
+| the node knowing | **`$SIR,15,0,,28,0,0,1,,*`** → `$HIR,<sensor>,15,0,<owner>,8,0,0`, no pool change and **no player feedback at all** (F73). Both halves have SHIPPED: the compiler emits the row for every objective mode (`_OBJECTIVE_SIR_ROW`, guarded by F79) and the phone parses the beacon (F72, closed 2026-09-10). ⚠ **fn 28, not fn 24** — 24 proved the mechanism first and makes the gun flash, buzz and play a long clip on every beacon |
 | holder feedback | the firmware already loops a tick on the owner's gun |
 | punishing intruders | the hill emits an ordinary `proto=0 mag=8` damage word (see the hazard below) |
 
@@ -261,9 +261,11 @@ above. Keep it in step when K1 lands or F91/F82 resolve.
 1. 🔴 **The damage word lands in hosted games TODAY** (F69). Protocol 0 is our standard damage row, so a hill
    chips and kills players while MC cannot say why. Ship the protocol-15 row so the node can name it, or
    document the hazard loudly, before anyone takes a grenade to a match.
-2. **The beacon row makes the gun ACKNOWLEDGE a hit every ~5 s** — vibration, flash, sound, for as long as
-   anyone stands on the point. The row's `<soundID>` must be chosen deliberately (a `$SIR` sound REPLACES the
-   `$PSET` pool sound) or the objective is unbearable within a minute.
+2. ✅ **The row is SILENT, and that took choosing the right function.** fn **24** — the one this mechanism was
+   first proved with — makes the gun acknowledge every beacon with a vibration, a headset flash and a long
+   grenade-ish clip, for as long as anyone stands on the point: unbearable within a minute. fn **28** registers
+   with nothing at all, and **ignores the row's `<soundID>` outright** (rung Y), so a gun-native beacon cue is
+   not available and all hill audio is node work. That is what ships (F73).
 3. ✅ **Any weapon can capture, and the contest tunes itself** (F70, settled 2026-09-10). It is CHARGE, not a
    special emission, so a rifleman plays the objective and no weapon needs special tokens. **That much is
    multiply-sourced** — the bench run, `reference/grenade.md`'s prior hardware-confirmed charge mechanic, and
@@ -281,7 +283,7 @@ above. Keep it in step when K1 lands or F91/F82 resolve.
 
 ### How a hosted hill actually works (design, 2026-09-10)
 
-**What the node gets.** With the `$SIR` proto-15 row and the F72 engine fix, every node in range receives
+**What the node gets.** With the `$SIR` proto-15 row and the phone-side parse (both shipped, F72/F79), every node in range receives
 `$HIR,<sensor>,15,0,<owner>,8,0,0` about every 5 s. One frame, two facts: **who owns the point**, and **that
 this player is near it**.
 
@@ -302,8 +304,12 @@ can build the ownership timeline from whoever is nearby.
 **Three limits to design around:**
 1. **Granularity is one beacon period (~5 s).** Entry and exit cannot be resolved finer, so a player dipping in
    and out carries ±5 s. Fine for a hold timer, not for anything needing precise moments.
-2. **The hill's beacon RANGE is unmeasured** (the respawn beacon is ~18-20 ft; nobody has measured the hill).
-   That number IS the physical size of the objective — worth a tape-measure rung before a mode ships.
+2. **The hill's beacon RANGE is known only by estimate** (rung R, 2026-09-10 evening): solid at desk range,
+   zero misses across 20+ consecutive 5.0 s reads; **intermittent by ~30 ft**, with 85 s and 145 s dropouts.
+   Further than the respawn station's documented ~18-20 ft. That number IS the physical size of the objective,
+   and it is still one operator estimate with no tape measure and an uncontrolled aim variable, so a proper
+   measurement is worth having before a mode ships. **Design consequence already taken:** presence expires on
+   ≥ 2 missed beacons (~12 s), never one.
 3. **A node knows only about itself.** The beacon cannot say an enemy is also standing there, so "contested"
    exists only once MC has several nodes' reports: best-effort, and possibly late.
 
@@ -321,13 +327,13 @@ ship on protocol 15**, and it removes the "a control point buzzes at you" object
 hills you do NOT own — cheap, but "no beacon" is then ambiguous between out-of-range and we-own-it, and you miss
 your own captures. With **FF on** every beacon and capture registers and the owner arrives in `$HIR` token 4, so
 the node has complete information; the cost is same-team IR registering elsewhere. **KotH wants FF on.**
-~~The blocking question is whether any status function registers QUIETLY. Only fn 24 has ever been tried.~~
-Nine register without moving a pool — enemy 8, 24, 25, 26, 27, 28, 35 and ally 31, 32, 34 — and nobody has
-characterised what each does to the player. That is **U11′** (bench queue 1.5), and it has just gone from a
-curiosity to the rung that decides whether a hill is playable or unbearable. Second constraint in the same
-place: **fn 24 is enemy-only**, so a gun registers only hills it does NOT own; a holder knowing they hold it
-needs an ally-side function (31/32/34) or friendly fire on — the same polarity split that would let a hill
-shield its holders.
+**The U11′ sweep that used to sit here is mostly answered** (F73, 2026-09-10): enemy 8, 24, 25, 26, 27 and 28
+were swept and characterised — fn 8 is silent but still flashes and buzzes, 24-27 fire one long grenade-ish
+clip, and **only fn 28 gives the player nothing**. Still unswept, and kept only as the fallback if fn 28 turns
+out to have a side effect nobody has looked for: enemy **35** and the ally side **31 / 32 / 34**
+(`bench-queue-2026-09-09.md` D6). **Polarity is a mode-level decision, and it is made: KotH runs FF on.** With
+`$GSET` t1 = 0 a gun registers only hills it does NOT own, so a holder cannot see their own point; t1 = 1 lifts
+the gate and the owner arrives in `$HIR` token 4.
 
 ### The four native hill callouts, and whether a hosted game can reproduce them (2026-09-10)
 

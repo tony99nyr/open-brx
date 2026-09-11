@@ -125,10 +125,11 @@ wait for `mag=53`, because on an enemy-to-enemy capture it never arrives at all.
 
 ⚠️ **A hosted game sees none of this unless we ship a protocol-15 `$SIR` row** — the firmware discards an
 unmatched cell in silence, which is why "station words do nothing in a host-driven game" (B23). One row makes
-beacons arrive as `$HIR,<sensor>,15,0,<owner>,<mode>,0,0` with no pool change. ⚠️ **That is necessary and NOT
-sufficient: `app/src/engine.js:1273` discards every `$HIR` with proto 15 before the phone reads it**
-(`if (t[2] === '15') break;`), so the row reaches the GUN and still not the player. Reading a beacon in a
-hosted game needs both (F72).
+beacons arrive as `$HIR,<sensor>,15,0,<owner>,<mode>,0,0` with no pool change. ⚠️ **The row is necessary and not
+sufficient: the phone has to parse the beacon too.** It used to open its `$HIR` handler with
+`if (t[2] === '15') break;`, so the row reached the GUN and never the player. **Both halves shipped
+2026-09-10** — the compiler emits the row for every objective mode and `engine.js` parses, dedupes (F85) and
+routes the beacon (F72, closed).
 
 ⭐ **SHIP FUNCTION 28, NOT 24 (F73, bench-swept 2026-09-10).** The row proved out here first was
 `$SIR,15,0,,24,0,0,1,,*`, and it works — but **fn 24 gives the player a flash, a buzz and a long grenade-ish

@@ -2176,3 +2176,11 @@ open work only and these were five ✅ rows):
 - 2026-09-10 **the APK is out of git.** No `.apk` is tracked and `.gitignore` carries
   `webapp/download/*.apk`; only the `build.json` sidecar is tracked. Every build goes to the `app-v<version>`
   release via `npm run android:apk` (0.1.8 published 2026-09-10 from `cfe2a8e`).
+- 2026-09-10 **F79** the compiled `$SIR` table now has a concept of a non-weapon cell.
+  `assert_sir_covers_weapons` only ever checked that every WEAPON in the loadout had a row, so a bundle that
+  shipped **no protocol-15 row** — the exact condition that made every station word vanish in silence (F60, the
+  third instance of the F11 shape that week) — raised nothing: a table was "covered" while deaf to every beacon
+  in the venue. `compile.py` now carries `_OBJECTIVE_SIR_ROW = "$SIR,15,0,,28,0,0,1,,*"` and a guard that
+  RAISES for any `_OBJECTIVE_MODES` config shipping no protocol-15 cell. The row was deliberately deferred until
+  the feature existed, and then written in the same commit that shipped it, because **a guard added before its
+  feature is a guard nobody can test**.

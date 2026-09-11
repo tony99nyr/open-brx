@@ -746,16 +746,23 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   **Node work still open here:** track the owner, drive the scoring, and pick the `$SIR` row's `<soundID>`
   deliberately (moot on fn 28, which ignores it — rung Y). Cross-refs: **F88** no beacon carries a station id ·
   **F82** no tid 2 · **F91** the hill's `proto=0` chip damage · **F87** the rate-of-fire boost. `build`.
-- **F82 🔴 A HILL MODE MUST NOT PUT ANYONE ON TEAM 2, AND NOTHING IN MC STOPS IT.** Found in review 2026-09-10,
-  falls straight out of F70 and was never written down. **A neutral hill broadcasts team 2.** The firmware's
-  polarity gate compares that against the receiving gun's own `$TID`, so a roster that contains team 2 reads
-  every NEUTRAL point as its OWN: those players go deaf to neutral hills under an enemy-only row, and the
-  `proto=0` damage word that punishes intruders **cannot land on them** — team 2 gets free run of every
-  uncaptured point while everyone else is contested. **MC's team assignment must skip 2 for any mode with a
-  hill** (use 0, 1, 3 — and remember tids 4-7 are colours, not teams, per `$TID`), or the mode must run
-  `$GSET` t1 = 1 and resolve ownership in software instead of leaning on the gate. ⚠ Untested — this is
-  predicted from the polarity rule plus "neutral = team 2", both of which ARE measured; rung D would show it
-  directly. `build` + `bench`.
+- **F82 🟡 NOBODY MAY BE ON TEAM 2 IN A HILL MODE — the GUARD has shipped; the HARDWARE claim is still
+  untested.** Found in review 2026-09-10, falls straight out of F70. **A neutral hill broadcasts team 2.** The
+  firmware's polarity gate compares that against the receiving gun's own `$TID`, so a roster containing team 2
+  should read every NEUTRAL point as its OWN: those players go deaf to neutral hills under an enemy-only row,
+  and the `proto=0` damage word that punishes intruders cannot land on them — team 2 gets free run of every
+  uncaptured point while everyone else is contested.
+  ✅ **The headline "and nothing in MC stops it" is no longer true, and is corrected here.** Three independent
+  refusals ship: `mc/state.py`'s validate refuses a hill config that contains tid 2 *at all*, roster or not
+  (`NEUTRAL_TEAM` imported from `hillbeacon.py` so one constant drives both), `DominationEngine.add_player`
+  refuses the player, and `assign_teams` defaults domination/koth to 1/3. Pinned by `test_hillbeacon.py`
+  §9 **with a control** — the identical config on tid 3 raises nothing, and tdm on tid 2 raises nothing, so the
+  guard is reading the tid and the mode rather than always firing.
+  ⚠ **What is still open is the measurement.** The consequence above is PREDICTED from the polarity rule plus
+  "neutral = team 2" — both measured — and has never been observed directly. Rung **D** (two guns, opposing
+  teams, one carrying the row) would show it. Downgraded from 🔴 because nothing can reach the hazard
+  through MC any more; keep the rung, because a guard built on an unobserved mechanism is worth confirming.
+  Cross-ref **F97** (this is what caps an FFA hill at three players). `bench`.
 - **F88 🟡 THE HILL BRIDGE DRIVES ONE POINT ONLY, SO MULTI-POINT DOMINATION IS STILL BLOCKED.** Opened
   2026-09-10 alongside the KotH build. A grenade beacon carries **no station id** — `$HIR,<sensor>,15,0,
   <owner>,<mode>,0,0` says who owns *a* point and which MODE it is, and nothing distinguishes one grenade
@@ -771,8 +778,11 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   zero team as malformed, which is correct for the station path it was written for but means an explicit
   `config.teams` override putting a player on tid 0 in `domination`/`cs`/`ctf` silently cannot score. **Not a
   live bug and deliberately not fixed:** `assign_teams` never returns 0 for any of those modes (ffa/extraction
-  use `i+1`, infection/survival 1/2, domination/koth 1/3, else 1/2), and MC's `MODES` catalogue does not list
-  domination/koth/ctf/cs at all, so tid 0 is reachable only by hand. Recorded so nobody "fixes" it later
+  use `i+1`, infection/survival 1/2, domination/koth 1/3, else 1/2), so tid 0 is reachable only by hand.
+  ⚠ **Corrected 2026-09-10: the second reason this row gave has expired.** It said MC's `MODES` catalogue does
+  not list domination/koth/ctf/cs at all — **`koth` is in the catalogue now** (it shipped with the hill bridge),
+  so the mode IS selectable by an operator and `assign_teams` is the only thing keeping tid 0 out of it. The
+  conclusion still holds; it now rests on one leg instead of two. Recorded so nobody "fixes" it later
   assuming it is reachable by default — and so nobody routes BEACONS through `_team()`, which WOULD break:
   a beacon's team 0 is genuinely red, bench-captured 2026-09-10 taking a blue-held hill. `build`.
 - **F90 🟢 THE HILL SOUND CONSTANTS LIVE IN THE WRONG FILE.** `HILL_CONTESTED`/`HILL_LOST` were put in
@@ -1142,14 +1152,6 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   it cannot reproduce the F11/F40/F60 shape (an unmatched or absent cell discarding in silence) that has now
   bitten three times in one week, and which is the single highest-value thing left to model; **(b) a
   magnitude-0 MISS** (F46/F62). `build`.
-- **F79 🟢 `assert_sir_covers_weapons` has no concept of a non-weapon `$SIR` cell.** It checks that every
-  weapon in the loadout has a matching row, so a bundle that ships with NO protocol-15 row -- the exact
-  condition that made station words silently vanish (F60, and the third instance of the F11 shape this week)
-  -- raises nothing. A table is "covered" while being deaf to every beacon in the venue. Add a check that a
-  game whose config declares an objective also carries the cell that can hear it. ⏸ **Deliberately deferred,
-  not forgotten:** no compiled mode ships a protocol-15 row yet (F70/F72 is that work), so the check would
-  either be a no-op or fire on every config that legitimately has no objective support. **Write it in the same
-  commit that ships the row** -- a guard added before its feature is a guard nobody can test. `build`.
 - **F76 🟡 The reference page's per-weapon capture counts contradict the bench.** `reference/grenade.md`'s King
   of the Hill section says retaking costs *"at least as many ROUNDS back into it (2-3 rounds to 2-3 magazines
   depending on weapon; ~4 on an MG, ~10-12 on a shotgun)"*, and that section is labelled hardware-confirmed
