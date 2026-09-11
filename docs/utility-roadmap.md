@@ -246,12 +246,16 @@ scoped as building a station; for Hill and Respawn the hardware exists and the p
 the owner, score possession — plus an MC catalog entry and scorer, which K1 needed anyway. That is a materially
 shorter path to the first playable objective mode than building a station first.
 
-⚠ **The "$30" that used to open this section is gone because nothing in the repo sources it** (no price list, no
-invoice, no bench note). Make the cost argument qualitatively until somebody has a receipt.
+🔴 **The "$30 grenade" that used to open this section was WRONG, by about 7x.** Tony, who bought it, 2026-09-10:
+*"pretty sure i paid $200 for the grenade from BC."* That is a first-hand purchase report and it inverts the
+argument: a grenade is the **expensive** way to get a control point, not the cheap one, and what the money buys is
+shoot-to-capture plus native-game compatibility, not capability. A second-hand Android phone is a small fraction of
+that and you can run several. Quote it as **what was paid** ("about $200 when we bought ours"), never as a current
+price.
 
 📖 **The reader-facing grenade-vs-phone comparison now lives in the manual**: `docs/manual/gameplay.md` "Control
-points: the grenade or a phone" (2026-09-10), phone column marked designed-not-built. Keep it in step when K1
-lands or F91/F82 resolve.
+points: the grenade or a phone" (2026-09-10), phone column marked designed-not-built, and it carries the price
+above. Keep it in step when K1 lands or F91/F82 resolve.
 
 **Three constraints the bench found, which any design here must respect:**
 1. 🔴 **The damage word lands in hosted games TODAY** (F69). Protocol 0 is our standard damage row, so a hill

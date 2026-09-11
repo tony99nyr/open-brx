@@ -421,7 +421,7 @@ Three modes stock BRX does not ship:
 
 ## Control points: the grenade or a phone
 
-A control point is a place on the field a team can own: a King of the Hill point, a Domination point, a bomb site. There are two ways to put one on your field and they are good at different things. The grenade is the cheapest way to have a control point at all, and it is the only one you can shoot. A phone is what you reach for when you want more than one point, or want the point to count people, or want it to keep scoring after you walk away.
+A control point is a place on the field a team can own: a King of the Hill point, a Domination point, a bomb site. There are two ways to put one on your field, and the choice is not cheap against expensive. The grenade is the only control point you can shoot, and the only one that plays inside a native game with no host running at all. A phone is what you reach for when you want more than one point, or want the point to count people, or want it to keep scoring after you walk away.
 
 A Smart Grenade in Hill mode is a complete control point on its own: no phone, no host, no app, and it works in native games. You shoot it to capture it, and nothing else replicates that. Capture is by charge, so any weapon can take a point and the attacker wins ties: on the bench one Assault Rifle round took a neutral point, and about four rounds' worth of charge took one an enemy team was holding. It beacons its owner to every gun in range every 5 seconds, it changes colour and beeps so everyone nearby knows what just happened, and it holds its owner with nobody standing there (ten straight beacons on one owner with no one shooting it).
 
@@ -441,9 +441,10 @@ A phone can be a control point too, and everything in the phone column below is 
 | Presence range | you aim a gun at it | a bubble of roughly 10 feet at the tuned default, with no direction at all |
 | It fights back | yes. An enemy-held hill emits an ordinary damage word, so pushing onto a point you do not own costs you health | no |
 | Security | a beacon is unauthenticated | an advert is unauthenticated too. Fine for friends on a private network, not a guarantee |
+| What it costs | about $200 for ours, bought from Battle Company | a second-hand Android phone, a small fraction of that |
 
 **The hill chips you, and that is measured.** An unattended enemy hill killed a player in about 106 seconds on the bench, 8 damage every 5 seconds, with no host involved. In a native game that is the mode working: it punishes standing on someone else's point. In an Open BRX game it is currently indistinguishable from being shot. A fix is under investigation (moving our own weapons off the IR protocol the hill uses, which would make the hill's damage land in a cell nothing is listening to) and it has not been tested.
 
 **Do not put a player on team 2 in a hill game.** A neutral hill broadcasts team 2, which is measured. The gun's own filter compares that against the gun's team, so a player on team 2 should read every neutral point as already theirs and take no hill damage at all. Use teams 0, 1 and 3. The consequence follows from two measured facts but has not been tested directly.
 
-A second hand Android phone is an inexpensive way to add an objective to your field, and unlike a grenade you can add several of them. What you give up is the shot: you cannot shoot a phone, you stand on it. For a single point that everybody fights over by aiming at it, the grenade is still the better prop.
+**What the money actually buys.** We paid about $200 for our Smart Grenade, from Battle Company. Read that as what was paid rather than as a current price: retail moves, it varies by region, and it is one purchase. A second-hand Android phone costs a small fraction of that, and you can add several of them, where grenades stop at one usable point. So the grenade is not the budget option, it is the expensive one, and the money does not buy capability. It buys the interaction: you can shoot it, everybody nearby sees and hears it flip, and it works in a native game with nothing else switched on. That is worth paying for if that is the game you want to play.
