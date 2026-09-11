@@ -57,8 +57,8 @@ right** and this index is stale. Do not cite it as evidence that something is or
 **Keyboard only** (tagged `build` or `decision` — no gun, no rig, no dim room):
 - 🔴 **B18b** · **B23** · **E1** · **E5** · **F43** · **F68** · **F69** · **F74** · **S10**
 - 🟠 **B4** · **B19** · **B21** · **E2** · **F12** · **F13** · **F15** · **F31** · **F34** · **F40** · **F54** · **F56** · **F58** · **F70** · **F77** · **F80** · **F81** · **F84** · **F86** · **F92** · **F101** · **F102** · **F103** · **S3** · **S5** · **S14**
-- 🟡 **B1** · **B8** · **B14** · **B17** · **D1** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F39** · **F41** · **F42** · **F47** · **F53** · **F55** · **F60** · **F78** · **F88** · **F95** · **F97** · **H1** · **K2** · **Q12′** · **Q13** · **Q18** · **S1** · **S2** · **S6** · **S7** · **S11** · **S12** · **S13**
-- 🟢 **B11** · **B16** · **B22** · **B25** · **E7** · **F14** · **F17** · **F18** · **F19** · **F32** · **F52** · **F64** · **F83** · **F87** · **F89** · **F90** · **F93** · **F94** · **F98** · **F99** · **F100** · **P14** · **R2** · ⬜ **K6** · **S16** · **S17**
+- 🟡 **B1** · **B8** · **B14** · **B17** · **D1** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F39** · **F41** · **F42** · **F47** · **F53** · **F55** · **F60** · **F78** · **F88** · **F94** · **F95** · **F97** · **H1** · **K2** · **Q12′** · **Q13** · **Q18** · **S1** · **S2** · **S6** · **S7** · **S11** · **S12** · **S13**
+- 🟢 **B11** · **B16** · **B22** · **B25** · **E7** · **F14** · **F17** · **F18** · **F19** · **F32** · **F52** · **F64** · **F83** · **F87** · **F89** · **F90** · **F93** · **F98** · **F99** · **F100** · **P14** · **R2** · ⬜ **K6** · **S16** · **S17**
 
 ## 1. Before going public
 
@@ -875,138 +875,90 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   cheapest way to relay grenade-hill ownership phone to phone). ⚠ **F94 uses byte 15 of the STATION advert**
   (role 1) for a control point's net capture rate — a different record from the player advert (role 2), so the
   player-side spare byte this row wants is untouched. `build`.
-- **F94 🟢 BUILD THE PHONE CONTROL POINT (K1 base) — SPECIFIED 2026-09-10, NO LAN NEEDED.** Tony's design,
-  written up in full as `spec/utility.md` **§5d**; this row is the build. `kind 5 control` already exists in the
-  advert schema, so **no radio work**: capture rate is the **net difference between the leading team and its
-  LARGEST SINGLE RIVAL** (Tony's decision, 2026-09-10 — 2v1 counts as the 1, 2v0 goes twice as fast, 2v1v1 nets
-  1 because two opponents on two teams must not stall a pair, a tie for the lead nets zero, and `net` is therefore
-  never negative; explicitly **not** a contested freeze and explicitly **not** the sum of the other teams), a
-  **two-phase conversion** (drain an enemy point to neutral, then build it for the claimant) on one 0-100 scale in
-  advert byte 11, phase / `toward` / contested in byte 10, and the signed net rate in byte 15 (role-scoped, so it
-  does not consume the **player**-advert spare byte F93 mentions). Three surfaces: the station state machine and
-  an **animated** screen (§5d.4 — the point of it is that a defender can see "you are losing this" at a glance,
-  built on the roster row already in `app/src/utility.js`); a player-node branch on `presence.stations()`, which
-  `app.js` already feeds to the engine; and MC's `koth`/`domination` catalog entry + scorer.
-  ⭐ **The callouts need no LAN and that is the whole point:** every phone already scans all match
-  (`app/src/app.js:121`), so it reads the point's own advert and plays its own line locally — `VB0N` captured to
-  the new owner, `VB0P` lost to the team that just lost it, `U100` while you hold it, the listener's team picking
-  the line exactly as `engine.js:_hillCallout` already does for the grenade. ⭐ **And this is the first path that
-  can wire `VB0O` "Hill Contested"**: `HILL_CUES.hill_contested` sits in `engine.js` with no caller because on the
-  grenade path **F75** says a non-capturing hit emits nothing decodable, so contest can only be guessed at — a
-  phone point *counts bodies* and measures it. **The callout set is closed at the five confirmed-by-ear ids**
-  (`VB0N` covers both capture and "you control it" — Tony: no separate "controlled" line is wanted; `V8Q` is
-  catalogued "Hill Confirmed" and says "**Kill** Confirmed", so nothing is used unheard). ⚠ One callout per `seq`
-  transition, never per advert (F74), and the existing scheduling rule stands: a callout owns the announcer for the
-  clip's real length with the tick waiting, and a later callout preempts rather than queues (`4348721`). ⚠ The
-  callout's reach is the advert's radio reach, not the field. Needs **B1** (the station must hear player adverts
-  reliably) more than any other kind, since the rule IS a head count. Cross-refs: **F88** (no grenade carries a
-  station id, so multi-point Domination needs phones), **F92** (and is why a grenade hill and a phone station
-  cannot be coupled), **F82** (no tid 2 in a hill mode). `build`.
-- **F95 🟡 THE LAN-COUPLED CONTROL-POINT VARIANT: ROAMING HILLS — A DELIBERATE A4.8 EXCEPTION.**
+- **F94 🟡 THE PHONE CONTROL POINT — SPECIFIED, AND MOST OF IT HAS SHIPPED.** Tony's design, 2026-09-10.
+  **The rule, the two-phase conversion, the advert bytes, the animated screen, the per-team callouts and the
+  persistence are written out once, in `spec/utility.md` §5d. This row is the BUILD, and it does not restate
+  the spec.** ✅ **Built 2026-09-10/11:** `app/src/control.js` (the state machine — capture rate = the leading
+  team minus its **largest single rival**, two-phase drain-then-build), `utility.js`'s control screen (owner
+  colour, bar, direction, contested band, the counts/does-not-count roster), `engine.js`'s `_onControlAdvert()`
+  player-node branch with the hill audio, and MC's `koth` mode + `station_source` vocabulary + operator
+  checklist + possession scorer.
+  ⭐ **Why it is worth having even where a grenade exists, and both halves are measured, not hoped:** the
+  callouts need **no LAN** (every phone already scans all match, so it reads the point's own advert and plays
+  its own line locally), and a phone point is **the first path that can truthfully wire `VB0O` "Hill
+  Contested"** — on the grenade path F75 says a non-capturing hit emits nothing decodable, so contest could
+  only be guessed; a phone point *counts bodies*.
+  ⚠ **The callout set is CLOSED at the five ids confirmed by ear** (rung S, `bench-grenade.md`). `VB0N` covers
+  both capture and "you control it" — Tony wants no separate "controlled" line. **`V8Q` is catalogued "Hill
+  Confirmed" and actually says "KILL Confirmed"**, so a hill mode picking callouts BY CATEGORY would have
+  announced the wrong thing; it is corrected at source in `soundbank_classify.BY_EAR_CORRECTIONS`, never by
+  hand-editing the generated catalog.
+  🔴 **What is LEFT is three rows, not this one: F101** (three specified-and-tested behaviours with their tests
+  skipped), **F102** (the bench stage has no station model at all, so none of this is verifiable at the bench)
+  and **F103** (no match lifecycle — F70's persistence trap rebuilt one layer over). Also still true: the rule
+  IS a head count, so this needs **B1** (the station must hear player adverts reliably) more than any other
+  kind. Cross-refs: **F88** (no grenade carries a station id, so multi-point Domination needs phones), **F92**
+  (and why a grenade hill and a phone station cannot be coupled), **F82** (no tid 2 in a hill mode). `build`.
+- **F95 🟡 THE LAN-COUPLED VARIANT: ROAMING HILLS — A DELIBERATE A4.8 EXCEPTION. Specified as
+  `spec/utility.md` §5e; this row is the open work.** Tony's second, opt-in mode for a small field where every
+  point really is on one Wi-Fi (his example: one hill in the garage, another on the porch, both on the house AP).
   ⚠ **SCOPE NARROWED 2026-09-10 by F98/§5f: points-to-win is OUT, roaming hills is all that is left.** A
   Territories station scores itself offline and reports at recap (plain §5c), so only the form of a points race
-  that **ends the match early** on crossing a target needs a live sum — and **Tony has declined that form
-  (2026-09-10): the target is read at the horn.** So it is not "allowed but unbuilt" — reviving it means opening a
-  second A4.8 exception and saying so. The rest of this row stands, minus the points-race half of the
-  justification.
-  ✅ **And §5e.4's LAN-loss behaviour is DECIDED (Tony, 2026-09-10), accepted exactly as proposed:** 15 s grace,
-  then the station degrades to the base mode on the last known owner and stops contributing to the race; roaming
-  freezes and a station never promotes itself; both screens say so; and **MC declines a points win if any point was
-  degraded for more than 10% of the match**, falling back to most possession time. Rationale kept in the spec: a
-  win computed from data we know is incomplete is not a win, and failing loudly beats quietly crowning the wrong
-  team.
-  Tony's second, opt-in mode for a small field where every point really is on one Wi-Fi (his example: one hill in
-  the garage, another on the porch, both on the house AP). Specified as `spec/utility.md` **§5e**. Two features
-  that are impossible offline because no single station can know the fact they need: **points to win** (the target
-  is crossed by the SUM across points, and 16 bytes hold no running score) and **roaming hills** (somebody must
-  choose which point is hot and tell the others — which is what `VB0Q` "Hill Moved" exists for, and what **F83**
-  proposes on the grenade side).
+  that **ends the match early** on crossing a target needs a live sum — and **Tony has declined that form: the
+  target is read at the horn.** So it is not "allowed but unbuilt"; reviving it means opening a second A4.8
+  exception and saying so.
   🔴 **The exception is the headline, not a footnote.** `spec/contracts.md` §5 **[A4.8]** says *"nothing about the
-  match outcome depends on coverage"*; a points-to-win race and an MC-driven hill rotation both **do** — a point
-  out of Wi-Fi range is not merely invisible, it is not in the game. Taken knowingly and fenced: only modes
-  flagged `lan_coupled`, never F94's base mode, and the only place in the system where coverage decides an
-  outcome. **If this is built, A4.8 gains a pointer to §5e** — an exception not written next to the rule it breaks
-  is a bug waiting to be rediscovered.
-  **Two setup surfaces are part of the work, not polish:** (a) MC emits a **`SETUP: `** `config_warnings` entry
-  (the operator-warning channel already documented in `mcp/brx_mcp/mc/API.md`, rendered verbatim by the GAMES
-  rail) naming how many control points are linked, plus a link state and attention flag per phone in the ITEMS
-  panel (roadmap A2/A4) — reuse that channel, do not invent one; and (b) the **utility screen** promotes its
-  existing MC-link line (`utility.js`, LINKED / OFFLINE / NO ADDRESS) to a blocking band, `THIS GAME NEEDS
-  WI-FI — MISSION CONTROL OFFLINE`, because the person who can fix it is standing in front of that phone and not
-  in front of MC. ⬜ **LAN loss mid-match is a PROPOSAL needing Tony's sign-off** (§5e.4): 15 s grace, then the
-  station degrades to running F94's local rule on the last known owner and stops scoring, roaming freezes, both
-  screens say so, and MC declines a points win it cannot stand behind (falling back to most possession time) if
-  any point was degraded for more than ~10% of the match. The honest alternative is awarding it anyway from
-  partial data with a recap warning. Needs **F94** first, and A1/A2. `build` + `decision`.
-- **F97 🟡 AN FFA KING OF THE HILL CAPS AT THREE PLAYERS, AND THAT IS WORTH SAYING OUT LOUD.** Tony's idea,
-  2026-09-10. FFA KotH is attractive because the net-difference rule (§5d.1) reads beautifully in a free-for-
-  all: every player is their own team, so the point only converts for someone who has it **to themselves**,
-  and any two players can deny a third. But the roster maths is brutal — four teams exist (tids 0-3), **F82
-  removes tid 2** because a neutral hill broadcasts team 2 and a tid-2 player would read every neutral point
-  as already theirs and take no hill damage. That leaves **tids 0, 1, 3 = three players**. Going to four
-  forces either tid 2 (an unfair advantage, F82) or tid 4 (forbidden, F96).
-  ➡ **The three-way rate rule is DECIDED (Tony, 2026-09-10): leader minus the LARGEST SINGLE other team, not the
-  sum** (`spec/utility.md` §5d.1, corrected). So `net` is never negative, 1v1v1 **stalls** rather than draining,
-  2v1v1 converts slowly for the pair, and a player must be **alone** on the point to take it — which is the FFA
-  behaviour this row wanted, arrived at by the general rule rather than by an FFA special case. The cap at three
-  players is what is left open here. `build`.
+  match outcome depends on coverage"*, and an MC-driven hill rotation **does** — a point out of Wi-Fi range is not
+  merely invisible, it is not in the game. Fenced: only modes flagged `lan_coupled`, never F94's base mode.
+  **If this is built, A4.8 gains a pointer to §5e** — an exception not written next to the rule it breaks is a bug
+  waiting to be rediscovered.
+  ✅ **§5e.4's LAN-loss behaviour is DECIDED (Tony, 2026-09-10), accepted exactly as proposed** and written up
+  there; the rationale worth repeating is that a win computed from data we know is incomplete is not a win.
+  **Open build work:** the two setup surfaces, which are part of the job and not polish — (a) MC's `SETUP:`
+  `config_warnings` entry naming how many control points are linked, plus link state and attention per phone in
+  the ITEMS panel (**reuse that channel, do not invent one**); and (b) the utility screen promoting its MC-link
+  line to a blocking band, because the person who can fix Wi-Fi is standing in front of that phone and not in
+  front of MC. Needs **F94** first, and A1/A2. `build`.
+- **F97 🟡 AN FFA KING OF THE HILL CAPS AT THREE PLAYERS, AND NOTHING ENFORCES IT.** Tony's idea, 2026-09-10;
+  the reasoning is in `spec/utility.md` §5d.1 and this row is what is left. Four teams exist (tids 0-3), **F82**
+  removes tid 2 because a neutral hill broadcasts team 2, which leaves **0, 1, 3 = three players**. Going to four
+  forces either tid 2 (an unfair advantage) or tid 4 (forbidden — F35/F96, both closed 2026-09-11, which is
+  exactly why a fourth player must now be REFUSED rather than silently given an unusable tid).
+  ➡ **The three-way rate rule is DECIDED (Tony): leader minus the LARGEST SINGLE other team, not the sum**, so a
+  player must be **alone** on the point to take it — the FFA behaviour this row wanted, arrived at by the general
+  rule rather than an FFA special case. **Open: MC does not refuse or warn on a four-player FFA hill.** `build`.
 - **F98 🟢 TERRITORIES: THE MULTI-POINT MODE THAT SOLVES CAMPING BY CONSTRUCTION AND NEEDS NO LAN.** Tony's
-  design, 2026-09-10, in his words: *"the other option for koth, is territories. You tick points whether you are
-  there or not. You turn it your colour and then you go find the next territory."* Specified as
-  `spec/utility.md` **§5f**. Several `kind 5` points; capture one the §5d way, it turns your colour, and it
-  **accrues score whether or not anyone stands on it**; the win is on the total. **§5d needs no change** — it
-  already scores OWNERSHIP rather than presence (§5d.2), so this is §5d configured with several stations and a
-  total, which is why it is cheap. ⭐ **Camping dies by construction:** standing on a point you already own earns
-  nothing extra, so the optimal play is always to leave and take another — **no decay rule, no capture bonus, no
-  superlinear multiplier, nothing to tune or defend**. That is the argument for the mode.
-  🔴 **And it shrinks the A4.8 exception.** A Territories station is **its own scorekeeper**: it decided the
-  owner, it is on the point all match, it already persists its tally across a reboot (§5d.6), so it accrues
-  locally and reports at recap — plain §5c, no coverage needed. **F95 claimed points-to-win as a second reason
-  for the exception and that was over-claimed:** only the form that **ENDS the match early** on crossing a target
-  needs a live sum; the same target evaluated at the horn is fully offline and is the recommended default. So the
-  exception is down to **roaming hills alone** (see F95, scope narrowed).
+  design, 2026-09-10, in his words: *"you tick points whether you are there or not. You turn it your colour and
+  then you go find the next territory."* **Specified in full as `spec/utility.md` §5f — the rule, the linear
+  scoring, the two configurable rates and the decisions below all live there; this row is the open work and the
+  corrections.** §5d needs no change: it already scores OWNERSHIP rather than presence, which is why this is
+  cheap.
+  🔴 **It SHRINKS the A4.8 exception, and that is the load-bearing consequence.** A Territories station is its own
+  scorekeeper — it decided the owner, it is on the point all match, it already persists its tally across a reboot
+  — so it accrues locally and reports at recap, needing no coverage. **F95 claimed points-to-win as a second
+  reason for the exception and that was over-claimed:** only the form that ENDS the match early needs a live sum.
+  The exception is down to **roaming hills alone** (F95, scope narrowed).
   ⚠ **Territories does NOT work on grenades, and the reason is OBSERVATION, not memory.** A grenade holds its
-  ownership unattended perfectly well (F70: ten straight beacons on one owner with nobody shooting it; rung R's
-  range walk read the same owner from the far edge). But ownership travels **only over IR and only a gun receives
-  IR** (**F92**), so an unattended grenade territory is **unverifiable**: a rival flips a far point and nobody
-  learns until a player wanders into range — rung R measured that edge as solid close in and intermittent by
-  ~30 ft, with 85 s and 145 s dropouts. Eventually-consistent scoring is fine as flavour and unusable as a win
-  condition. Same sensor gap as **F92** and **F88**, seen from a third angle. ➡ **So Territories is the strongest
-  case for building the phone control point (F94):** a phone station IS the observer a grenade lacks, and a
-  grenade can only ever be a *contested* point someone is present for.
-  ✅ **Scoring is LINEAR per owned territory (Tony, 2026-09-10: *"sounds like linear is the way to go."*)** — two
-  territories tick twice as fast, no multiplier, no majority threshold. **Superlinear** was rejected because the
-  mode already rewards spreading out by construction, so a multiplier pays twice for the same behaviour and risks a
-  first-capture lead snowballing in a 10-minute game. **A majority threshold** (score only while holding 2 of 3 —
-  Halo 5/Infinite *Strongholds*) was rejected for our point counts, not on merit: it needs THREE points to mean
-  anything, because with two "majority" is both and a 1-1 split pays nobody. ➡ Revisit the threshold if a
-  three-point Territories game is ever built. ⚠ Do not cite "Halo" as one answer — Halo 4 *Dominion* ticked per
-  base, *Strongholds* is the threshold.
-  ⚠ **The spec's byte-10 encoding was the stale side, corrected 2026-09-10.** The wire is **independent flags**
-  (`CONTROL_STATE = { held: 1, contested: 2, rising: 4, falling: 8 }` in `app/src/control.js`), written by its
-  advert builder and read by `engine.js` off the same imported constant — self-consistent, shipped, and the de-facto
-  contract since `stage.py` must mirror `engine.js` regardless. §5d.3 now documents the flags and says so, so nobody
-  "fixes" the code toward the old packed-bitfield prose. **One reader rule survives from the packed draft:**
-  `rising && falling` is **invalid** and a reader must fall back to neither — packing made that contradiction
-  unrepresentable, flags do not, and adverts are unauthenticated. Also corrected: byte 9 carries the **claimant**
-  while `held` is clear, so callouts key off the decoded owner (`held ? team : nobody`) and never off raw byte 9.
-  ✅ **THE REST OF THE LIST IS DECIDED TOO (Tony, 2026-09-10).** (a) **Both rates are CONFIGURABLE with defaults**
-  — *"3 needs to be configurable with a good default"* — and they are **two different numbers** that must stay
-  separate in config (§5f.5): the **conversion** rate (progress %/s per net player, default **10**, which is already
-  `DEFAULT_CAPTURE_S = 10` in `app/src/control.js` — renamed from `DEFAULT_RATE`, so the constant now reads as
-  seconds-to-capture at net 1 rather than as a percent-per-second rate; the spec and the constant must keep
-  saying the same thing) and the **score tick**
-  (points/s per owned territory, **1/s proposed**). The spec carries the 10-minute arithmetic so an operator can
-  pick a target: ~600 for one territory held all match, ~1200 for two — so the target decides whether holding a
-  single point can ever win, which is the thing to tune rather than the constant. ⚠ Both values are proposals; he
-  asked for a good default, not for these. (b) **A neutral point ticks for NOBODY** — now his ruling, so §5d.2 is
-  backed rather than self-referential. (c) **A station powered off mid-match KEEPS the seconds it accrued up to its
-  last advert** and is not voided: voiding punishes a dead battery far more harshly than the information loss
-  warrants, and those seconds were genuinely earned.
+  ownership unattended perfectly well (F70), but ownership travels **only over IR and only a gun receives IR**
+  (**F92**), so an unattended grenade territory is **unverifiable** — a rival flips a far point and nobody learns
+  until a player wanders into range (rung R: solid close in, 85 s and 145 s dropouts by ~30 ft). Eventually-
+  consistent scoring is fine as flavour and unusable as a win condition. ➡ **So Territories is the strongest case
+  for the phone control point (F94):** a phone station IS the observer a grenade lacks.
+  ⚠ **The spec's byte-10 encoding was the STALE side, corrected 2026-09-10** — the wire is **independent flags**
+  (`CONTROL_STATE` in `app/src/control.js`), shipped and self-consistent, so nobody should "fix" the code toward
+  the old packed-bitfield prose. **One reader rule survives from the packed draft:** `rising && falling` is
+  **invalid** and a reader must fall back to neither, because packing made that contradiction unrepresentable and
+  flags do not. Also corrected: byte 9 carries the **claimant** while `held` is clear, so callouts key off the
+  decoded owner and never off raw byte 9.
+  ⚠ **Two warnings worth keeping out of the spec's prose:** the conversion rate and the score tick are **two
+  different numbers** that must stay separate in config, and **both shipped values are proposals** — Tony asked
+  for a good default, not for these. And **do not cite "Halo" as one answer**: Halo 4 *Dominion* ticked per base,
+  *Strongholds* is the majority threshold. The threshold was rejected for our point counts, not on merit (it needs
+  THREE points to mean anything); ➡ revisit it if a three-point Territories game is ever built.
   ⬜ **The ONE item still open** (§5f.7): **scale ADVANTAGE rather than points** — holding more territories
   **shortens your respawn delay** (*Dominion*). `respawn_s` is host-driven and already the lever §4/§5d use, so it
   is buildable today with no new mechanism; it compounds board control without the score snowballing and composes
-  with the linear score. Needs his sign-off before anyone builds it. `build`.
+  with the linear score. Needs Tony's sign-off before anyone builds it. `build`.
 - **F99 🟢 AN M5STACK STATION IS THE IR↔BLE BRIDGE, AND THE ONLY THING THAT CAN GRANT A SHIELD.** Tony's
   idea 2026-09-10, and it is the piece that makes the grenades genuinely useful inside Open BRX rather than a
   parallel toy. `hardware/brx-companion-spec.md` already names the **M5StickC Plus2 (~$20)** as the closest

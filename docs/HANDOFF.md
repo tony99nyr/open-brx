@@ -15,7 +15,8 @@
   possession fact with an **`observed_ms` floor** so an unwatched hill reads 0 rather than lying.
   🔴 **Still live: F69** — an enemy hill's `proto=0 mag=8` word chips the attacker and cannot be switched off
   while our weapons share that cell. **F91 is the fix and tomorrow's top rung.**
-  🔴 **F82: never put a player on tid 2 in a hill mode** (neutral broadcasts team 2). Refused at three layers.
+  🟡 **F82: never put a player on tid 2 in a hill mode** (neutral broadcasts team 2). Refused at three layers,
+  so nothing can reach the hazard through MC; what is still open is that nobody has observed it on hardware.
   ⚠ **Specified but NOT implemented (session limit, 02:28):** F101 three phone behaviours (tests skipped with
   a reason, not deleted), F102 the stage never got a station-path mirror, F103 the phone point has no match
   lifecycle — F70's persistence trap rebuilt one layer over. Read those three before building on this.
