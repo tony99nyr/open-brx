@@ -37,8 +37,10 @@ hidden state, no side-channel, nothing the JSON doesn't capture. Author → JSON
 
 Two GameConfig representations, one meaning: the **wire form** (contracts §3 JSON, crossing the LAN in
 `config` and `welcome` together with the compiled `FrameBundle`) and the **compiler form** (the
-`gameconfig.py` dataclass, a superset carrying the CLI/sim knobs). ⚠ They have drifted: the dataclass has
-objective/extraction/regen knobs the wire cannot carry (FOLLOWUPS E1–E3, `docs/utility-roadmap.md` §9).
+`gameconfig.py` dataclass, a superset carrying the CLI/sim knobs). ⚠ They have drifted: the dataclass still has
+regen/crit/alt-reload knobs the wire cannot carry (FOLLOWUPS E2–E3, `docs/utility-roadmap.md` §9). The mode-
+specific knobs are no longer among them: `mode_params` (§2.1, A18) carries them, and each engine reads either
+form through `modes/params.resolve`.
 
 ### 1.1 `compile(config, player) → FrameBundle` — the per-player build
 
@@ -89,8 +91,8 @@ limit. `time_limit_s == null` is legal **only** when `validate(roster, {coverage
 | **tdm** | `deathmatch.py` | `teams[]` (2–4), `time_limit_s`, `scoring.frag_limit`, `respawn`, `health`, `friendly_fire` | `$TID` per team, `$PSET` player id + HP/armor, `$GSET` FF, `$WEAP` loadout | exact per-player kills/assists (`$HIR` tok3), respawn timer, team-kill scoring | time limit / `frag_limit` (MC → `end`) |
 | **ffa** | `deathmatch.py` (FFA path) | **one `$TID`, FF forced ON, distinct `player_num`s**, `time_limit_s`, `scoring.frag_limit`; policy default `no_heavies` | `$TID` all-same, `$GSET` friendlyFire=1, `$PSET,<player_num>` | **exact 1:1 attribution**. **Never friendly** (A5.2). **Winner = top `ScoreRow`**. | time limit / `frag_limit` |
 | **infection** | `survival.py` | starting infected count, `respawn` (auto), `time_limit_s` | `$TID` (human vs infected); **`team_flip[<infected tid>]`** in the bundle | **node-local**: a killed human writes `team_flip` + `revive`, emits **`team_change{tid}`** — works offline; MC updates the roster from `team_change`, tallies last-human, pushes `infected`/`last_survivor` alerts (A11.4). | time limit / last-human (MC → `end`) |
-| **lms** | `lms.py` | `scoring.win_by:"survival"`, lives (`respawn.type:"none"` or finite), `time_limit_s` | `$PSET` HP; no `revive` after last life | lives counter (node-local), last-alive (MC) | time limit / last-alive |
-| **extraction** | `extraction.py` (+ adapter) | `channel_s`, `win_target`, `loot_per_kill`, `drop_policy`, `extract_removes_player`, `time_limit_s` (CLI dataclass only today, E1) | base combat frames + `$LIFE`/`$WEAP` boost writes on bank (coverage-only, `apply`) | loot wallet, loud channel, drop-on-death, bank→boost — MC-side, so **coverage-zone gameplay**; the HUD owns its own extraction ladder events (A11.5) | time limit / `win_target` |
+| **lms** | `lms.py` | `scoring.win_by:"survival"`, `mode_params.lives` (§2.1, A18), `respawn.type:"none"`, `time_limit_s` | `$PSET` HP; no `revive` after last life | lives counter (node-local), last-alive (MC) | time limit / last-alive |
+| **extraction** | `extraction.py` (+ adapter) | `mode_params.{channel_s, win_target, loot_per_kill, drop_policy, extract_removes_player}` (§2.1, A18), `time_limit_s` | base combat frames + `$LIFE`/`$WEAP` boost writes on bank (coverage-only, `apply`) | loot wallet, loud channel, drop-on-death, bank→boost — MC-side, so **coverage-zone gameplay**; the HUD owns its own extraction ladder events (A11.5) | time limit / `win_target` |
 
 Notes that shape the schema:
 
@@ -102,8 +104,9 @@ Notes that shape the schema:
 - **Respawn** (`respawn.type`): `auto` = node timer (`delay_s`) → writes `revive`; `scanner` = revive at a
   utility-phone station (BLE advert presence + the `gate`, utility.md §4; A13.1); `none` = LMS. No gun token
   exists — the node owns the delay.
-- **Objective modes** (domination/koth/ctf/cs) exist as engines in `modes/` but are **not in the MC catalog**
-  and have no wire-carried parameters (E1/E2) — `docs/utility-roadmap.md` §8 is the status per mode.
+- **Objective modes.** `koth` is in the MC catalog (F70, a grenade hill; `mode_params.{score_target,
+  points_per_s}`); domination/ctf/cs exist as engines in `modes/` with their params declared (§2.1) but are
+  **not in the MC catalog** yet (E2) — `docs/utility-roadmap.md` §8 is the status per mode.
 - **Health variants.** *Regen* is still a `gameconfig.py` boolean on the laptop-BLE path only: a host-driven
   `$LIFE` write that reaches a node via **`apply{frames}`** (A6.4), so it works in a coverage zone and nowhere
   else. **Syphon is being moved off that route (S14).** It is a **node-side** event, because MC already tells the
@@ -119,6 +122,29 @@ Notes that shape the schema:
   full health grants the full amount and gains nothing: the node must report `min(grant, max - current)`, what was
   *gained*, never what was granted. And there is **no shield**: that pool is IR-only (P16), so a shield number
   here would be written and silently do nothing.
+
+### 2.1 Mode parameters — `GameConfig.mode_params` [A18, E1]
+
+A mode's own rules are **declared by its engine and nowhere else**: a `PARAMS` class attribute of
+`{name: Param(type, default, desc, lo?, hi?, choices?)}` (`mcp/brx_mcp/modes/params.py`), looked up by mode
+name through `modes/registry.py` (the one name → engine table; `register_mode(name, cls)` is the E2 seed).
+The rest of the platform derives everything from that declaration:
+
+| who | what it does with the schema |
+|---|---|
+| `GET /api/modes` | serves `params[]` rows (`{name, type, default, desc, min?, max?, choices?}`) so a UI renders the controls |
+| `default_config(mode)` | fills `mode_params` with every default for a mode that declares any; a mode with none carries **no key** (tdm / ffa / infection stay byte-identical) |
+| `PUT /api/config` | merges a partial patch onto the current values and stores the **complete** resolved set; an unknown key or out-of-range value is a `400` in the operator's voice, never dropped or clamped |
+| `validate()` | the same check again (fixture / CLI / stale-preset routes) |
+| the engine | `params.resolve(cls, config)` — from `mode_params` on the wire form, or the same-named attribute on the CLI dataclass, so `gameconfig.py` callers are unchanged; a value the schema refuses raises before the engine starts |
+| the node | reads `config.mode_params` as-is (TS `GameConfig.mode_params`); no consumer yet — it is the field the HUD's objective ladders will read |
+
+Declared today: **koth/domination** `score_target` (0 = the clock decides), `points_per_s` · **ctf** `cap_target` ·
+**cs** `detonation_s`, `rounds_to_win` (0 = single round), `attackers_team`, `defenders_team` (tids 0-3) ·
+**extraction** `channel_s`, `win_target`, `loot_per_kill`, `drop_policy` (ground|killer|pool),
+`extract_removes_player` · **lms** `lives`. **Not** declared, on purpose: `control_points` (F88 — a beacon
+carries no station id, so a second point is not buildable on the grenade source and the knob would be a control
+for a mode we cannot ship) and infection's seed teams (on the MC path the teams ARE `config.teams`).
 
 ## 3. WeaponCatalog
 
@@ -242,12 +268,14 @@ free-form `led` object for everything but the night blank.
 
 ```
 // Config (M-MC)
-default_config(mode) / MODES     -> GameConfig            // mc/state.py: the catalog + per-mode defaults (incl. loadout_policy, presentation preset)
+default_config(mode) / MODES     -> GameConfig            // mc/state.py: the catalog + per-mode defaults (incl. loadout_policy, presentation preset, mode_params)
+modes.registry.params_schema(mode) / params_schema_json(mode) / validate_mode_params(mode, values)   // A18 §2.1
 validate(config, roster, opts?)  -> {ok, errors[], warnings[]}
    // rules: time_limit_s required (> 0) unless opts.coverage == "full"; player_num unique + 1..63; dup team tid;
    //        ffa ⇒ one tid + friendly_fire on; lms ⇔ respawn none/finite lives; station-gated modes rejected without a
    //        station source (extraction exempt); unknown weapon_id / perk_id; loadout vs policy; the $SIR cross-check (§3);
-   //        frag_limit without full coverage → warning (A6.1)
+   //        frag_limit without full coverage → warning (A6.1); mode_params against the engine's PARAMS (A18);
+   //        vip_player_id on the roster (A19)
 apply_policy()                   -> re-fixes every loadout to the ruleset (loadout.md §3.3)
 
 // Frames (pure; no clock, no BLE) — the compiler
@@ -278,8 +306,8 @@ presentation.resolve(config)     -> rows for GET /api/presentation (A11.5)
 - **Pin the runway lines + klaxon by ear** (start-sequence §2; `Compiler.cues()` ships runway_30/20 silent).
 - **`revive` vs `$HLOOP`** — the mid-match revive drops `$HLOOP,0,0`; the headset comes back through the A11.6
   `respawn` sequence instead. Confirm on hardware that nothing else needed it.
-- **Wire-carried mode parameters** (`mode_params`) so objective modes are configurable through MC — E1
-  (`docs/utility-roadmap.md` §9).
+- ~~Wire-carried mode parameters (`mode_params`) — E1~~ built 2026-09-11 (§2.1, A18); what remains is E2 (the
+  catalog / preset / scorer halves of `register_mode`) and E3 (one config schema).
 
 Closed on the bench and folded above: night LED-off (2026-08-30, mechanism 2026-09-02); the shield pool is
 IR-only (P16, 2026-08-26); four native teams (2026-08-26); `$PSET` tok2 inert, `$START` silent at the head

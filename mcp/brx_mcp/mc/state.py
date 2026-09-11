@@ -19,6 +19,8 @@ from .. import voices as _voices
 from . import policy as _policy
 from .scoring import Scorer
 from ..modes.hillbeacon import NEUTRAL_TEAM as _NEUTRAL_TEAM     # F82: the tid a NEUTRAL hill broadcasts
+from ..modes.registry import default_params as _default_params, params_schema_json as _params_schema_json, \
+    validate_mode_params as _validate_mode_params                  # A18: the mode's own rules, engine-declared
 from .types import (DEFAULT_RUNWAY_S, MAX_PLAYERS, OBJECTIVE_MODES, OFFLINE_AFTER_MS, STALE_AFTER_MS, STATION_KINDS,
                     STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, GameConfig, Player, ReadinessRow,
                     ReadinessSnapshot, ScanRow, Team)
@@ -112,6 +114,11 @@ def default_config(mode: str = "tdm") -> GameConfig:
     # config -- `gameSummary.ts` `gameSig` -- and a null nobody set would have re-keyed all of them).
     if m.get("station_source"):
         cfg["station_source"] = m["station_source"]
+    # A18: the same rule for the mode's own parameters -- present and COMPLETE (every default) only when the
+    # engine declares some (koth, lms, extraction); tdm / ffa / infection declare none and stay byte-identical.
+    mp = _default_params(mode)
+    if mp:
+        cfg["mode_params"] = mp
     return cfg
 
 
@@ -164,6 +171,8 @@ class Session:
         self.acks: dict[str, dict] = {}
         self.bundles: dict[str, dict] = {}
         self.start_info: dict | None = None
+        # A19: held-role pushes waiting for the node's own start / respawn flash to settle (`_queue_role`).
+        self._role_due: list[tuple[int, str, str, bool, int | None]] = []
         self.start_seq = 0
         self.scorer: Scorer | None = None
         self._score_pushed: dict[str, dict] = {}   # A7: last ScoreRow pushed per player
@@ -208,9 +217,15 @@ class Session:
         self._persist_last = now
         self._persist_dirty = False
         try:
+            # S5(a): assignments used to live for the SESSION only, so an MC restart at the field forgot
+            # every placed station -- the operator had to walk out and re-do ITEMS from scratch. Only an
+            # ASSIGNED station is worth a line (an unassigned entry is just a hello nobody acted on, and
+            # `restore_snapshot` re-derives it from the next hello anyway).
+            stations = {nid: st["assigned"] for nid, st in self.stations.items() if st.get("assigned")}
             snap = {"v": 1, "saved_ms": self.now_ms(),
                     "players": [{**p, "node_id": None, "ready": False} for p in self.players.values()],
-                    "teams": self.teams, "config": self.config, "active_preset_id": self.active_preset_id}
+                    "teams": self.teams, "config": self.config, "active_preset_id": self.active_preset_id,
+                    "stations": stations, "game_no": self.game_no, "game_no_started": self._game_no_started}
             tmp = self._persist_path.with_suffix(".tmp")
             tmp.write_text(json.dumps(snap))
             tmp.replace(self._persist_path)
@@ -229,8 +244,30 @@ class Session:
             if snap.get("config"):
                 self.config = snap["config"]
             self.active_preset_id = snap.get("active_preset_id")
+            # S5(a): a restored station comes back UNARMED -- `armed=None, arm_pending=True` -- because the
+            # phone itself remembers nothing about MC across a restart; the existing "re-arm on next hello"
+            # path (`_on_node`'s utility branch, `if st.get("assigned"): self._arm_station(nid)`) is what
+            # actually pushes `station_config` again the moment the phone (still out on the field) says
+            # hello. `game_no`/`game_no_started` come back too, so a restart mid-match still bumps the byte
+            # on the next muster push instead of re-arming everyone for a game they already played.
+            for nid, a in (snap.get("stations") or {}).items():
+                if not isinstance(a, dict):
+                    continue
+                self.stations[nid] = {"node_id": nid, "assigned": a, "report": {}, "armed": None, "arm_pending": True}
+                self.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle",
+                                            "synced": False, "last_seen_ms": 0})
+            self.game_no = snap.get("game_no", self.game_no)
+            self._game_no_started = bool(snap.get("game_no_started", False))
             self._repair_player_nums()
             self.config["loadout_policy"] = _policy.normalize(self.config.get("loadout_policy"), self.config["mode"])
+            # A18: a snapshot persisted before mode_params existed restores a koth/lms/extraction config with
+            # none, and `_validate` skips an ABSENT set, so the wire pushed without it (polish review 2026-09-11).
+            # Complete-or-absent, the same rule as `default_config`.
+            mp, _errs = _validate_mode_params(self.config["mode"], self.config.get("mode_params") or {})
+            if mp:
+                self.config["mode_params"] = mp
+            else:
+                self.config.pop("mode_params", None)
             # A11: a snapshot persisted before the presentation profile existed gets the mode default, so the
             # console still reads it as the stock mode it was (the UI compares configs to the mode defaults).
             if not isinstance(self.config.get("presentation"), dict):
@@ -437,7 +474,7 @@ class Session:
         saved = None
         try:
             if getattr(self, "presets", None) is not None:
-                sig = {k: v for k, v in cfg.items() if k != "config_id"}
+                sig = {k: v for k, v in cfg.items() if k not in ("config_id", "vip_player_id")}   # A19: never in a saved game, so never in the match
                 saved = next((r for r in self.presets.list() if {k: v for k, v in r["config"].items() if k != "config_id"} == sig), None)
         except Exception:
             saved = None
@@ -757,11 +794,13 @@ class Session:
 
     # ---------- config ----------
     def modes(self) -> list[dict]:
-        return [{**m, "defaults": default_config(m["mode"])} for m in MODES]
+        # A18: `params` = the engine's own schema rows, so the Designer can render a mode's controls without a
+        # second list of knobs living in the UI (the same rule `station_source` follows).
+        return [{**m, "defaults": default_config(m["mode"]), "params": _params_schema_json(m["mode"])} for m in MODES]
 
     _CONFIG_KEYS = {"mode", "environment", "night", "time_limit_s", "respawn", "scoring",
                     "health", "teams", "led", "player_num_base", "loadout_policy", "presentation",
-                    "station_source"}
+                    "station_source", "mode_params", "vip_player_id", "stun"}
 
     def apply_preset(self, preset_id: str, config: dict) -> dict:
         """A10 §8: apply a saved game — same path as PUT /api/config, but the state remembers WHICH game is playing."""
@@ -823,6 +862,7 @@ class Session:
             raise ValueError(f"unknown mode {mode!r}")
         cfg = self._merge_config(default_config(mode), raw, mode)
         cfg.pop("config_id", None)
+        cfg.pop("vip_player_id", None)       # A19: a saved game names no person; the VIP is picked per session
         return cfg
 
     def _merge_config(self, cfg: dict, patch: dict, mode: str) -> dict:
@@ -924,6 +964,42 @@ class Session:
                     cfg.pop(k, None)
                 else:
                     cfg[k] = v
+            elif k == "mode_params":
+                # A18 (E1): the mode's own rules, checked against what ITS ENGINE declares (`modes/params.py`).
+                # A partial patch merges onto the current values; what is stored is the COMPLETE resolved set
+                # (defaults filled), so the wire config is self-describing. An unknown key or an out-of-range
+                # value is refused in the operator's voice -- never dropped or clamped.
+                if v is None:
+                    v = {}
+                if not isinstance(v, dict):
+                    raise ValueError("mode_params must be an object (the mode's parameters, GET /api/modes .params)")
+                merged = {**(cfg.get("mode_params") or {}), **v}
+                resolved, errs = _validate_mode_params(mode, merged)
+                if errs:
+                    raise ValueError("; ".join(errs))
+                if resolved:
+                    cfg[k] = resolved
+                else:
+                    cfg.pop(k, None)             # a mode with no parameters carries no key at all
+            elif k == "vip_player_id":
+                # A19 (S10): who the VIP is. Roster membership is `validate()`'s to check (this merge is pure);
+                # here only the shape. `null` clears it.
+                if v is not None and not (isinstance(v, str) and v):
+                    raise ValueError("vip_player_id must be a player_id string or null")
+                if v is None:
+                    cfg.pop(k, None)
+                else:
+                    cfg[k] = v
+            elif k == "stun":
+                # F15 / A20: `{duration_s?}` enables the EMP row; range and the source warning are `validate()`'s
+                # (`compile._validate_stun`). `null` clears it. Until 2026-09-11 this key was not in
+                # `_CONFIG_KEYS`, so a PUT dropped it in silence and no game could stun over MC.
+                if v is not None and not isinstance(v, dict):
+                    raise ValueError("stun must be an object {duration_s} or null (F15/A20)")
+                if v is None:
+                    cfg.pop(k, None)
+                else:
+                    cfg[k] = dict(v)
             elif k == "player_num_base":
                 if not (isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= MAX_PLAYERS):
                     raise ValueError("player_num_base must be 1..63")
@@ -1138,6 +1214,39 @@ class Session:
     def stations_view(self) -> list[dict]:
         return [self._station_view(nid) for nid in sorted(self.stations)]
 
+    def _scorer_recap(self) -> dict:
+        """THE recap: the scorer's sheet plus the stations rows (A6). Every call site goes through here -- the
+        late-fact re-store (`_restore_recap`) used to call `scorer.recap()` bare, so the first fact after END
+        (the outbox flush, i.e. the normal case) silently dropped `stations` from `last_recap` and the DB row
+        (polish review 2026-09-11)."""
+        return self.scorer.recap(stations=self._recap_stations())
+
+    def _recap_stations(self) -> list[dict]:
+        """Roadmap A6: a stations row for the recap sheet, one per ASSIGNED station, from its own
+        self-authoritative heartbeat (utility.md §5c/§5d.6 -- a station answers to nobody mid-match, so
+        this is the only place its count is ever seen). `heard` (True once at least one heartbeat has
+        landed in `report`) is set on EVERY row regardless of kind -- a station of a kind with no count
+        of its own (extraction/powerup/bomb) still needs to say "reported" vs "never heard from"
+        (review 2026-09-11, Finding 1: the UI had nothing to render for those kinds and a silent station
+        looked identical to a reporting one). `revives` for a respawn point, `hold_ms`/`owner` from
+        `report.control` for a control point; a station never heard from reports what it can -- `None`,
+        not a fabricated zero, so the recap can tell "zero revives" from "never heard"."""
+        out: list[dict] = []
+        for row in self.stations_view():
+            a = row.get("assigned")
+            if not a:
+                continue
+            rep = row.get("report") or {}
+            rec = {"node_id": row["node_id"], "kind": a["kind"], "id": a["id"], "team": a["team"],
+                   "heard": bool(rep)}
+            if a["kind"] == "respawn":
+                rec["revives"] = rep.get("revives")
+            elif a["kind"] == "control" and isinstance(rep.get("control"), dict):
+                rec["hold_ms"] = rep["control"].get("hold_ms")
+                rec["owner"] = rep["control"].get("owner")
+            out.append(rec)
+        return out
+
     # ---------- nodes ----------
     def _touch(self, nid: str, stale: bool | None = None):
         nv = self.nodes.setdefault(nid, {"node_id": nid, "node_type": "phone", "arm_state": "idle", "last_seen_ms": 0, "synced": False})
@@ -1247,6 +1356,15 @@ class Session:
         nv.update({k: v for k, v in n.items() if k in ("node_type", "gun_name", "gun_tail", "fw")})
         nv["last_seen_ms"] = self.now_ms()
         if n.get("node_type") == "utility":
+            # F106(c): the SAME node_id said hello as a player once (a phone switched OUT of the HUD role
+            # on the field) -- `node_player`/the player's `node_id` must not keep pointing at a socket that
+            # is now a station, or a later push (`config`, `start`, `control`) is sent to a utility phone
+            # that silently drops it, and the player looks bound but hears nothing.
+            pid = self.node_player.pop(nid, None)
+            if pid and (pl := self.players.get(pid)) and pl.get("node_id") == nid:
+                pl["node_id"] = None
+                pl["ready"] = False                # as `evict_node`: kit->lobby must not advance on a phone that is now a station
+                self.acks.pop(pid, None)
             # A13.5: a station phone. No gun, never bound; if the operator already assigned it, this hello
             # (first contact, or a reconnect after a reboot) is what arms it -- with the CURRENT game number,
             # which is how a station that missed the muster push still resets for the new match.
@@ -1299,7 +1417,14 @@ class Session:
         nv.update({k: body.get(k) for k in ("arm_state", "synced", "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "t_minus_ms", "shots", "dropped", "pending") if k in body})
         nv["last_seen_ms"] = t_recv
         nv["stale"] = False
-        if body.get("role") == "utility" or nv.get("node_type") == "utility":
+        # A8 + polish review 2026-09-11: a STATUS body never changes what a BOUND node IS. A player HUD that
+        # (however it happened) sends `role: utility` used to be re-typed here without being unbound, so END /
+        # PANIC skipped it (`_control` skips utility nodes) and `_finish` pulled no log from it -- a HUD silenced
+        # by one status field. Only the utility HELLO (`_on_node`) may turn a node into a station; a bound
+        # node's station-shaped heartbeat is ignored as a station report.
+        if body.get("role") == "utility" and nid in self.node_player and nv.get("node_type") != "utility":
+            self._log(nid, "status", {"ignored": "role: utility from a BOUND player node -- a hello, not a status, changes a node's type"}, t_recv)
+        elif body.get("role") == "utility" or nv.get("node_type") == "utility":
             # A13.5: the station heartbeat is the ITEMS panel's whole data source and, for a control point,
             # the self-authoritative recap (owner / progress / hold_ms / capture log, utility.md §5c). The
             # player whitelist above dropped every one of these fields, so nothing MC showed came from a station.
@@ -1307,6 +1432,8 @@ class Session:
             st["report"] = {k: body.get(k) for k in ("kind", "team", "station_id", "threshold", "live", "revives",
                                                      "armed", "control", "battery") if k in body}
             st["last_seen_ms"] = t_recv
+            if body.get("app_ver"):                # roadmap A3: the heartbeat, not just the hello, keeps this fresh
+                st["app_ver"] = body["app_ver"]
             nv["node_type"] = "utility"
         # A8: the server's binding is authoritative — a status body's player_id never rebinds a node.
         if self.phase in ("kit", "lobby", "armed") and body.get("synced"):
@@ -1321,6 +1448,11 @@ class Session:
         self.nodes.setdefault(nid, {"node_id": nid})["last_seen_ms"] = t_recv
         parked = bool(self.scorer and ev.get("match_id") != self.scorer.match_id) or not self.scorer
         self._log(nid, ev.get("type", "event"), ev, t_recv, seq=seq, parked=parked)
+        if not parked and ev.get("type") == "respawn":
+            # A19: a respawn clears every held role on the node (engine.js) -- the VIP is still the VIP.
+            pid = self.node_player.get(nid)
+            if pid and pid == self.config.get("vip_player_id"):
+                self._queue_role(pid, "vip", True)
         if self.scorer:
             self.scorer.ingest(nid, ev, t_recv, seq=seq)
             self._restore_recap()
@@ -1353,7 +1485,7 @@ class Session:
         if self.phase != "recap" or not (self.store and self.scorer):
             return
         try:
-            self.last_recap = self.scorer.recap()
+            self.last_recap = self._scorer_recap()
             self.store.match_ended(self.scorer.match_id, self.last_recap)
         except Exception:
             import logging
@@ -1707,6 +1839,8 @@ class Session:
                 pass
         self.net.broadcast("start", self._start_body())
         self.phase = "armed"
+        self._role_due = []                    # a reschedule re-queues from scratch
+        self._queue_roles_for_live()
         self._changed()
         return dict(self.start_info)
 
@@ -1721,9 +1855,17 @@ class Session:
         now = self.now_ms()
         reached = [pid for nid, pid in self.node_player.items() if now - self.nodes.get(nid, {}).get("last_seen_ms", 0) <= STALE_AFTER_MS]
         unreachable = [p["player_id"] for p in self.players.values() if p["player_id"] not in reached]
-        self.net.broadcast("control", {"cmd": "abort_start", "seq": self.start_info["seq"]})
+        # F106(d): a utility phone never held this start (it is not a player, §5c) and has nothing to
+        # abort; `broadcast()` reached it anyway, on a wire that is supposed to need it no LAN mid-match.
+        for nid, nv in list(self.nodes.items()):
+            if nv.get("node_type") != "utility":
+                self.net.push(nid, "control", {"cmd": "abort_start", "seq": self.start_info["seq"]})
         self.start_info = None
         self.scorer = None
+        # F106(a): no match ran on this game number, so the NEXT muster push must not treat it as a new
+        # match (`_next_game_no` bumps only when `_game_no_started` is True -- an abort must not leave it
+        # set, or the following push silently skips a game number and re-arms every station for nothing).
+        self._game_no_started = False
         self.phase = "lobby"
         self._changed()
         return {"ok": True, "reached": reached, "unreachable": unreachable}
@@ -1790,6 +1932,46 @@ class Session:
         self._on_feed({"t_match_s": max(0, (self.now_ms() - (self.scorer.go_live_t if self.scorer else self.now_ms())) // 1000),
                        "text": base["text"].title() + (f" ({scope})" if scope != "all" else ""), "tag": "ALERT", "kind": "alert"})
         return n
+
+    # ---------- held headset roles (A19 / S10, led-language.md §3.3) ----------
+    # The node's own start flash (+1.0 s after $SPAWN, ~1 s long) and respawn flash paint the headset AFTER any
+    # frame written just before them, so a role pushed at the whistle would be wiped a second later while the
+    # node still believes it holds it (it re-asserts only on the next hit). MC therefore waits ROLE_SETTLE_MS
+    # past go-live / past a respawn fact before pushing. ➡ A node that re-asserted its held role after its own
+    # flashes would make this delay unnecessary; until then it is the honest timing.
+    ROLE_SETTLE_MS = 3000
+
+    def _queue_roles_for_live(self) -> None:
+        vip = self.config.get("vip_player_id")
+        if vip in self.players and self.start_info:
+            self._role_due.append((self.start_info["go_live_t"] + self.ROLE_SETTLE_MS, vip, "vip", True, None))
+
+    def _queue_role(self, pid: str, name: str, on: bool, tid: int | None = None) -> None:
+        self._role_due.append((self.now_ms() + self.ROLE_SETTLE_MS, pid, name, on, tid))
+
+    def _push_due_roles(self, now: int) -> None:
+        due = [r for r in self._role_due if r[0] <= now]
+        if not due:
+            return
+        self._role_due = [r for r in self._role_due if r[0] > now]
+        for _, pid, name, on, tid in due:
+            self._push_role(pid, name, on, tid)
+
+    def _push_role(self, pid: str, name: str, on: bool, tid: int | None = None) -> int:
+        """Hand `pid`'s node a held headset role NOW (`alert.role`, contracts A19). Deliberately NOT gated by the
+        profile's `mc_events` switch: a role is a rule of the match, not a flourish, and a silenced game must
+        still tell its VIP who they are. Returns 1 if a socket took it, else 0."""
+        p = self.players.get(pid)
+        if not p or not p.get("node_id") or self.phase not in ("armed", "live"):
+            return 0
+        body = {**_pres.role_alert_body(name, on, tid), "player_id": pid, "t": self.now_ms()}
+        ok = self.net.push(p["node_id"], "alert", body) is not False
+        # The feed line is what the operator reads; a VIP whose phone is out of Wi-Fi at go-live is never
+        # retried (MC is not live mid-match), so the line must say the role did NOT land rather than claim it.
+        self._on_feed({"t_match_s": max(0, (self.now_ms() - (self.scorer.go_live_t if self.scorer else self.now_ms())) // 1000),
+                       "text": f"{name.upper()}: {p.get('display') or pid}" + ("" if on else " (ended)") + ("" if ok else " (NOT REACHED: phone offline)"),
+                       "tag": "ROLE" if ok else "WITHHELD", "kind": "alert"})
+        return 1 if ok else 0
 
     def _feedback(self, pid: str, body: dict):
         p = self.players.get(pid)
@@ -1860,7 +2042,10 @@ class Session:
                 self._feedback(p["player_id"], {"kind": "victory", "player_id": p["player_id"], "t": self.now_ms()})
 
     def _finish(self):
-        self.last_recap = self.scorer.recap() if self.scorer else None
+        # A6: the stations row rides IN the recap dict from the moment it exists, same as `possession` --
+        # a station is self-authoritative and reports at recap (§5c), so its own last heartbeat is all
+        # there ever is to show, and it must be here even after the live scorer object is gone.
+        self.last_recap = self._scorer_recap() if self.scorer else None
         self._push_victory(self.last_recap)              # winners' guns play the victory sting (in coverage)
         if self.store and self.start_info and self.last_recap:
             try:
@@ -1869,7 +2054,11 @@ class Session:
                 pass
         self.start_info = None            # no re-hydrating a finished match's `start`
         self.phase = "recap"
-        for _nid in list(self.nodes):        # harvest every phone's log at match end (debug gold, ~1MB cap each)
+        # F106(d): a utility phone's log holds nothing about a MATCH (it never binds one, §5c) -- only
+        # a player node's log is match debug gold.
+        for _nid, _nv in list(self.nodes.items()):
+            if _nv.get("node_type") == "utility":
+                continue
             try: self.net.push(_nid, "pull_log", {})
             except Exception: pass
         self.lobby_pushed = False
@@ -1886,6 +2075,7 @@ class Session:
         if self.phase == "armed" and now >= self.start_info["go_live_t"]:
             self.phase = "live"
             self._changed()
+        self._push_due_roles(now)
         tl = self.config.get("time_limit_s")
         if self.phase == "live" and tl and now >= self.start_info["go_live_t"] + tl * 1000 + 5000:
             self._finish()
@@ -1893,7 +2083,7 @@ class Session:
     def recap(self) -> dict | None:
         if self.scorer:
             self._mark_flushed_live()
-            r = self.scorer.recap()
+            r = self._scorer_recap()                                 # A6: live recap gets the row too, not just the final one
             if self.phase != "recap":
                 r["provisional"] = True
             r.update(self.settling())     # advisory only — never gates, see settling()

@@ -10,11 +10,13 @@ Doer legend: **KB** = keyboard only, an agent can finish it without Tony · **BE
 a dim room or an ear · **DECISION** = Tony's call, five minutes, no hardware · **HW** = hardware to buy, print
 or measure. Status is copied from the row (🔴 blocking · 🟠 next · 🟡 useful · 🟢 low · ⬜ not started).
 
-**Closed by the session that wrote this file (2026-09-11 late), removed from the tables below:** F81 · F34 · F97 · F47 · F55 · F53 · F41 · F90 · F101 · F103 · F104 · F105 (opened and closed) · F86 · F77 · F64 · F31 · F84 · F92 · F94. Narrowed: F80 (recap surface built, arm-time refusal open), S5 (server + panel built, persistence + recap row open), F13 (the floor is in; the headset-pacing half stays). Evidence: `experiment-log/2026-09.md`, the 2026-09-11 (late) entry.
+**Closed by the SECOND 2026-09-11 (late) session, removed from the tables below:** F102 · F54 · S11 · F57 · F15 · F78 · E1 · S5. Narrowed: F58 (b) done, Q18 (print half done), S10 (role contract A19 done), F106 ((a)-(e)(i) done). Opened: F107 (the loop's Lows). Evidence: the second 2026-09-11 (late) log entry.
 
-**Headline counts (158 ids defined in the register at the time of triage; 140 after the session):** 30 bugs in active code (**24 are KB**), 18 core platform
-gaps (**14 KB**), 46 bench-gated unknowns, 14 decisions, 29 future features / ideas, 21 hygiene or research
-leftovers. **The 🔴 list is nine ids, and only TWO are still keyboard work: E1, E5 (F104 closed this session).** Every other 🔴 is
+**Closed by the first 2026-09-11 (late) session, removed from the tables below:** F81 · F34 · F97 · F47 · F55 · F53 · F41 · F90 · F101 · F103 · F104 · F105 (opened and closed) · F86 · F77 · F64 · F31 · F84 · F92 · F94. Narrowed: F80 (recap surface built, arm-time refusal open), S5 (server + panel built, persistence + recap row open), F13 (the floor is in; the headset-pacing half stays). Evidence: `experiment-log/2026-09.md`, the 2026-09-11 (late) entry.
+
+**Headline counts (by the hygiene test's definition count, a `- **ID 🟡` row: 126 at the start of the second 2026-09-11 session, 119 after it; the earlier 158/140 figures counted bench-sheet aliases too):** 26 bugs in active code (**20 KB**), 14 core platform
+gaps (**10 KB**), 46 bench-gated unknowns, 14 decisions, 29 future features / ideas, 23 hygiene or research
+leftovers. **The 🔴 list is eight ids, and only ONE is still keyboard work: E5 (E1 closed 2026-09-11, second session).** Every other 🔴 is
 either bench-gated (F91, F74, K4, Q15, B26, F49) or a lesson already learned and kept as a rule (F43, F40).
 
 ---
@@ -28,13 +30,8 @@ Sorted by how badly it bites, then by whether a keyboard can close it.
 | id | st | one line | blocked on / depends | unblocks |
 |---|---|---|---|---|
 | **F80** | 🟡 | a gun whose `$PSET` never landed fires as id 0; the RECAP now counts wire-0 hits; the arm-time refusal is B19 | B19 | — |
-| **F57** | 🟠 | low-health line and the pain grunt fire in the same ms, once per life | rule is KB; confirming it is `ears` | — |
-| **F78** | 🟡 | the fake cannot model an unmatched `$SIR` cell or a magnitude-0 miss | nothing | F11/F40/F60-shaped tests |
-| **F58(b)** | 🟠 | `stage.py` fires no `healed`/`armour_up`/`shield_up` at all | nothing | rehearsing heals at the bench |
-| **F54** | 🟠 | the reload glance has no stage instrument | nothing | verifying A16 §3.1 |
-| **S11** | 🟡 | `stage --gun` blocks the HTTP server until the gun answers | nothing | — |
 | **F52** | 🟢 | four readout timings still carry fallback literals in two consumers | nothing | — |
-| **Q18** | 🟡 | "reconnected" printed before the gun listens (`modes/driver.py`); the join-late half is `space` | nothing for the print | — |
+| **Q18** | 🟡 | the print half is done (2026-09-11, second session); the join-late half is `space` | `space` | — |
 
 ### 1b. Bugs that need the bench (a keyboard cannot see them)
 
@@ -62,32 +59,28 @@ Sorted by how badly it bites, then by whether a keyboard can close it.
 
 | id | st | one line | doer | depends on | unblocks |
 |---|---|---|---|---|---|
-| **S5** | 🟡 | MC arms the utility stations: server + ITEMS panel BUILT 2026-09-11; left = persist assignments across an MC restart, recap stations row, the utility screen showing `valid_ids` | KB | nothing | B23, every objective on phones |
-| **E1** | 🔴 | `mode_params` on the wire `GameConfig`; objective modes cannot be configured over MC | KB | nothing | E2, E3, K6, F103(3) done properly |
-| **E2** | 🟠 | one `register_mode()` replacing four hardcoded touch points | KB | E1 first | E4, outsiders adding modes |
+| **E2** | 🟠 | one `register_mode()` replacing four hardcoded touch points — `modes/registry.py` exists and `build_engine` uses it (E1's seed); three touch points left | KB | nothing (E1 closed) | E4, outsiders adding modes |
 | **E5** | 🔴 | phone-side audio channel (the app plays no game audio) | KB build, `ears` to hear it | nothing | E6, a custom announcer |
-| **B23** | 🔴 | respawn station for HOSTED games (node-defined downed state) | KB assembly, then bench | **F15** (stun) + **F104/S5** (arming); the proto-15 row is shipped | station respawn |
-| **F15** | 🟠 | host-driven stun (EMP): engine timer + `$SIR` row + a source | KB; `$BHIT` shortcut is `trigger` | nothing | B23, U11′ moot |
+| **B23** | 🔴 | respawn station for HOSTED games (node-defined downed state) | KB assembly, then bench | F15 (built) + F104/S5 (built) + the proto-15 row (shipped): every link exists, the ASSEMBLY is the work | station respawn |
 | **B19** | 🟠 | MC verifies its config landed via `$QUERY` before start | KB, bench to validate | nothing | **F80**'s real fix, B18b |
 | **B18b** | 🟡 | headset-present gate in MC preflight (detectors known) | KB | B19 is the natural home | — |
 | **S14** | 🟠 | Syphon as a HUD-driven kill event (`siphon: {hp, armor}` in the kill moment) | KB (S14.1/.2), `trigger` (S14.3) | **F58(d)** — `$LIFE` grant sizes are inconsistent on hardware | a fair 2v1 |
-| **S10** | 🔴 | LED language v2: verified on the gun; open = an MC contract field for `vip`/`beacon`/`extracted` headset roles + four bench leftovers | KB for the field, `eyes` for (a)–(d) | nothing | VIP / extraction roles lighting |
-| **F102** | 🟠 | the bench stage has no kind-5 station model; nothing phone-sourced is bench-verifiable | KB | F103, F101 | verifying KotH on phones |
-| **S3** | 🟠 | extraction on the phone path, HUD-driven | KB, then bench | S5 (zone = a station beacon) | extraction live |
+| **S10** | 🔴 | LED language v2: verified on the gun; the role contract is A19 (done, `vip` reaches the node); open = an MC-side SIGNAL for `beacon`/`extracted` (S3) + four bench leftovers | `eyes` for (a)–(d); KB for the signals once S3 exists | S3 | VIP / extraction roles lighting |
+| **S3** | 🟠 | extraction on the phone path, HUD-driven | KB, then bench | nothing (S5 closed: the zone is a station beacon MC can arm) | extraction live, the `extracted` role signal (S10) |
 | **F24** | 🟡 | MC-owned `session_totals` so the phone's tally matches the laptop | KB | nothing | — |
 | **S2** | 🟡 | presentation profile WRITE UI + per-event override editor | KB (`ui-build-verify`); 6b is `eyes` | nothing | operators changing sounds without JSON |
 | **S6** | 🟡 | kill the legacy shims (Tony: no legacy support) | KB, then an APK cut | F36 (a phone on the current build) | smaller engine |
-| **F88** | 🟡 | multi-point Domination: grenades carry no station id; phones do | KB on phones (F94 path); grenade half is `bench` | F104, F103 | Domination |
+| **F88** | 🟡 | multi-point Domination: grenades carry no station id; phones do | KB on phones (F94 path); grenade half is `bench` | nothing (F104/F103 closed; `config.stations` reaches every HUD) | Domination |
 | **F70** | 🟠 | KotH node work is done; open = what the charge is priced in (rung X), max charge (rung M) | `grenade` bench | — | F76, the capture economy |
-| **E3 · E4 · E6 · E7** | 🟡/🟢 | unify the two `GameConfig`s + JSON Schema · contributor doc · sound packs · `.LTP` import | KB | E1/E2 · E2 · E5 · B11 | outsiders |
+| **E3 · E4 · E6 · E7** | 🟡/🟢 | unify the two `GameConfig`s + JSON Schema · contributor doc · sound packs · `.LTP` import | KB | E2 · E2 · E5 · B11 | outsiders |
 
 ## 3. BENCH-gated unknowns (Tony + hardware; the running order is [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md))
 
 **Next sitting, self-contained: [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md).** Grouped by setup.
 
-- **Trigger in hand:** 🔴 **K4** melee · 🔴 **F49** polarity · 🔴 **F74** latch · 🔴 **F91** off protocol 0 (B2 first) · 🟠 **F23** sensor damage · 🟠 **F71** t12 · 🟠 **F15** `$BHIT` · 🟡 **K1** t19 · 🟡 **U11′** enemy 35 / ally 31-32-34 · 🟡 **F26** attribution · 🟡 **F27** reload timing · 🟡 **F62** crits · 🟡 **F63** secondary fire · 🟡 **F66** fn 23 · 🟡 **F67** accuracy calibration · 🟡 **F39** 20-row `$SIR` · 🟡 **S7** dead-player rejoin · 🟡 **S-A12.2** pistol cadence · 🟢 **F65** `$BUMP` · 🟢 **P4** `$AS`/`$UP` · 🟢 **F87** rung Z (t14 floor).
+- **Trigger in hand:** 🔴 **K4** melee · 🔴 **F49** polarity · 🔴 **F74** latch · 🔴 **F91** off protocol 0 (B2 first) · 🟠 **F23** sensor damage · 🟠 **F71** t12 · **F15** rung 9 (closed, built unproven: the proto-8 word at a stun-armed gun, then `$BHIT`) · 🟡 **K1** t19 · 🟡 **U11′** enemy 35 / ally 31-32-34 · 🟡 **F26** attribution · 🟡 **F27** reload timing · 🟡 **F62** crits · 🟡 **F63** secondary fire · 🟡 **F66** fn 23 · 🟡 **F67** accuracy calibration · 🟡 **F39** 20-row `$SIR` · 🟡 **S7** dead-player rejoin · 🟡 **S-A12.2** pistol cadence · 🟢 **F65** `$BUMP` · 🟢 **P4** `$AS`/`$UP` · 🟢 **F87** rung Z (t14 floor).
 - **Eyes (dim room):** 🔴 **S10** (a)–(d) · 🟠 **F56** team 3 at night · 🟠 **F13(2)** · 🟡 **F21** · **F28** · **B20** · **S8** · **S4** · **S2 6b** · 🟢 **F29**.
-- **Ears:** 🔴 **F43** is the RULE (confirm every id solo) · 🟠 **F44** shield hum · 🟠 **F59** audio lag · 🟠 **F58(a)** heal sound · 🟠 **F50** pain gate · 🟠 **F57** confirm · 🟠 **S9** event sound pass · 🟡 **F45** four `$PSET` slots · 🟡 **F48** heartbeat pool · 🟡 **B27** fn 23 mute · 🟡 **S1** by-ear audit · 🟡 **P3** voice map · 🟡 **S-A12.1** · 🟡 **D4** double kill · 🟡 **U4/U5** · 🟡 **P15** alarm id · ⬜ **W4a** launcher sound.
+- **Ears:** 🔴 **F43** is the RULE (confirm every id solo) · 🟠 **F44** shield hum · 🟠 **F59** audio lag · 🟠 **F58(a)** heal sound · 🟠 **F50** pain gate · **F57** (closed) hear the crossing hit play the warning alone · 🟠 **S9** event sound pass · 🟡 **F45** four `$PSET` slots · 🟡 **F48** heartbeat pool · 🟡 **B27** fn 23 mute · 🟡 **S1** by-ear audit · 🟡 **P3** voice map · 🟡 **S-A12.1** · 🟡 **D4** double kill · 🟡 **U4/U5** · 🟡 **P15** alarm id · ⬜ **W4a** launcher sound.
 - **Space / tape:** 🔴 **Q15** sub-indoor power (Mac) · 🟠 **Q16** divergence · 🟡 **Q18** join late · 🟡 **D1** nRF mesh (30 min) · **F28** field distance · **P15** BLE link count.
 - **Grenade:** 🟠 **F70** rungs X/M · 🟠 **G9** CTF colour · 🟡 **F75** contested word · 🟡 **F76** per-weapon counts · 🟡 **F82** rung D · 🟡 **F88** two-grenade capture · 🟡 **G3** · 🟡 **G10** · the §8 captures.
 - **Capture (Mac + iPhone day):** 🟠 **P8** HTTPS API · 🟡 **B28** mesh claim · 🟡 **B29** 16 vs 17 slots · 🟡 **F3** · 🟡 **F30** · 🟢 **P12** · 🟢 **B25** t17 vs t40.
@@ -122,7 +115,7 @@ Sorted by how badly it bites, then by whether a keyboard can close it.
 | **F98** | 🟢 | Territories | F94 + the §5f.7 decision |
 | **F83** | 🟢 | rotating-hill mode | same rotation logic as F95 |
 | **F87** | 🟢 | rate-of-fire boost for the hill holder (`$WEAP` t14 + `$AMMO` restore) | rung Z (t14 floor) |
-| **F99** | 🟢 | M5Stack IR↔BLE bridge and shield granter | **H7** hardware ordered 2026-09-11 |
+| **F99** | 🟢 | M5Stack IR↔BLE bridge and shield granter — **firmware WRITTEN 2026-09-11** (`hardware/m5sticks3/`: RMT IR decode, kind-5 advert, BRIDGE/HILL state machines, host-tested by `test_sticks3_core.py`), never run on a Stick | **H7** hardware ordered 2026-09-11; gates (1)-(3) in the H7 row |
 | **F100** | 🟢 | wearable powerup, death drops it | design pass (5 questions) |
 | **B8** | 🟡 | grenade STATE display app | a grenade to verify |
 | **B16 · B17 · K2 · K6** | 🟢/🟡 | kid disable-secondary · tutorial mode · perk on ALT-fire · per-game weapon tuning | K6 needs a spec |
@@ -139,16 +132,15 @@ Sorted by how badly it bites, then by whether a keyboard can close it.
 **F16** `bench_common` half fixed · **F14** three deliberate HUD nits (recorded, not bugs) · **F89** recorded so
 nobody routes beacons through `_team()` (not a bug) · **F43** the sound-pick rule (a lesson, keep it where the code
 is) · **S2 Lows** (2026-09-04 polish) · **S4/S7 leftovers** · **§11** low ledgers · **D3** Jay's LoRa host ·
-**F94** and **F92** closed 2026-09-11 (archive).
+**F94** and **F92** closed 2026-09-11 (archive) · **F106** the station-arming Lows ((a)-(e)(i) fixed 2026-09-11; (f)(g)(h) stand) · **F107** the second polish loop's Lows (nine letters, all KB).
 
 ## 7. Dependency spine (what to do first so the rest can move)
 
 ```
-S5 (built) ──► B23 (also needs F15)
-  │        └──► S3 extraction on phones
-  ├──► F102 stage mirror (F103/F101 done)
+S5 (closed) + F15 (closed) ──► B23 = the ASSEMBLY (KB), then bench
+  ├──► S3 extraction on phones ──► the `extracted` role signal (S10)
   └──► F88 multi-point on phones ──► Domination
-E1 ──► E2 ──► E3 / E4 ──► outsiders' modes
+E1 (closed) ──► E2 (registry seeded) ──► E3 / E4 ──► outsiders' modes
 B19 ──► F80 real fix ──► B18b
 F58(d) [bench] ──► S14 syphon
 F68 ──► S17 accuracy per weapon ──► F67 calibration
@@ -156,5 +148,5 @@ F91 [bench, B2 first] ──► F69 closes
 F74 [bench] ──► F77 root cause
 ```
 
-**Recommended order for the next keyboard sessions** (the first eleven of the original list closed 2026-09-11): **F102** (the stage mirror, so the phone control point is bench-verifiable) · **F58(b)** + **F54** (the other two stage gaps) · **E1 → E2** · **F15** (stun, which B23 needs) · S5's persistence leftover · then **B19** for F80's real fix. **The next bench sitting is
+**Recommended order for the next keyboard sessions** (nineteen of the original list closed 2026-09-11, eight more in the second session): **E2** (three touch points, the registry is there) · **B23** the hosted respawn assembly (every link built) · **F88** multi-point on phones · **S3** extraction on phones · **B19** for F80's real fix · the E1 Designer editor (F107 (h)) · **E5** when there is an ear for it. **The next bench sitting is
 unchanged** (`bench-critical-2026-09-11.md`); B2 there decides whether F91 is even the fix for F69.

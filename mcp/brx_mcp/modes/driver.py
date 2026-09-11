@@ -113,34 +113,15 @@ def assign_teams(mode: str, addresses: list[str],
 
 
 def build_engine(config: GameConfig, now: float = 0.0) -> GameEngine:
-    """Factory: config.mode → the engine instance."""
-    from .deathmatch import DeathmatchEngine
-    from .survival import InfectionEngine
-    from .lms import LastManStandingEngine
-    from .cs import BombEngine
-    from .objectives import DominationEngine, CtfEngine
+    """Factory: config.mode → the engine instance (the name → class table is `registry.py`, A18)."""
     import dataclasses
+    from .registry import engine_class
     m = config.mode
-    if m in ("tdm", "ffa"):
-        return DeathmatchEngine(config, now)
-    if m in ("infection", "survival"):
-        return InfectionEngine(config, now)
-    if m == "lms":
-        return LastManStandingEngine(config, now)
-    if m in ("cs", "bomb"):
-        return BombEngine(config, now)
-    if m == "domination":
-        return DominationEngine(config, now)
+    cls = engine_class(m)                      # ValueError names the vocabulary for an unknown mode
     if m == "koth":
         # KotH = domination on a single point (hold the hill for time)
-        return DominationEngine(dataclasses.replace(config, control_points=1), now)
-    if m == "ctf":
-        return CtfEngine(config, now)
-    if m == "extraction":
-        from .extraction_adapter import ExtractionEngineAdapter
-        return ExtractionEngineAdapter(config, now)
-    raise ValueError(f"unknown mode {m!r} "
-                     "(tdm|ffa|infection|lms|cs|domination|koth|ctf|extraction)")
+        return cls(dataclasses.replace(config, control_points=1), now)
+    return cls(config, now)
 
 
 class GameDriver:
@@ -604,6 +585,19 @@ class GameDriver:
 # --------------------------------------------------------------------------- #
 # Live wiring — the only Bluetooth-touching part                              #
 # --------------------------------------------------------------------------- #
+async def _gun_answers(mgr, addr: str, timeout_s: float) -> bool:
+    """Q18: one bounded round trip -- `$PHONE,*` -> `$BUT,3,0,*` (protocol §3.1, the diagnose ritual's
+    first step). True only if the gun REPLIED. Reads the send's own reply window first (the fake answers
+    synchronously), then waits on the session for a real gun whose notification lands a moment later.
+    `reply_window_ms=0` on purpose: the real manager's `wait_for` floors at the seq it is called with,
+    so a reply that arrived INSIDE a non-zero send window would sit below the floor and be missed."""
+    r = await mgr.send(addr, "$PHONE,*", reply_window_ms=0)
+    if any(str(e.get("raw", "")).startswith("$BUT") for e in (r.get("replies_within_window") or [])):
+        return True
+    w = await mgr.wait_for(addr, "$BUT", timeout_s=timeout_s)
+    return bool(w.get("matched"))
+
+
 async def run_live(config: GameConfig, addresses: list[str],
                    callsigns: Optional[dict[str, str]] = None,
                    manager=None, tick_s: float = 0.5,
@@ -664,11 +658,14 @@ async def run_live(config: GameConfig, addresses: list[str],
         deadline = (config.game_time_s + 60) if config.game_time_s else 3600.0
         limit = max_s if max_s is not None else deadline
         game_start = time.monotonic()
-        reconnect_tries: dict[str, int] = {addr: 0 for addr in connected}
+        reconnect_tries: dict[str, int] = {addr: 0 for addr in connected}    # VERIFIED reconnects (Q18)
+        reconnect_attempts: dict[str, int] = {addr: 0 for addr in connected} # every attempt, answered or not
         last_reconnect: dict[str, float] = {addr: -1e9 for addr in connected}
-        RECONNECT_CAP = 6          # TOTAL reconnects/gun — bounds a flapping link
+        RECONNECT_CAP = 6          # TOTAL verified reconnects/gun — bounds a flapping link that keeps coming back
+        RECONNECT_ATTEMPT_CAP = 3 * RECONNECT_CAP   # bounds a gun that connects but never answers (Q18)
         MIN_RECONNECT_S = 8.0      # rate-limit between attempts for the same gun
         RECONNECT_TIMEOUT_S = 3.0  # time-box ONE attempt so a slow connect can't freeze the loop
+        RECONNECT_PROBE_S = 2.0    # Q18: how long a re-linked gun gets to answer `$PHONE` before we call it deaf
         loops = 0
         while not driver.over:
             await asyncio.sleep(tick_s)
@@ -682,10 +679,11 @@ async def run_live(config: GameConfig, addresses: list[str],
                 for addr in connected:
                     if (mgr.is_connected(addr)
                             or reconnect_tries[addr] >= RECONNECT_CAP
+                            or reconnect_attempts[addr] >= RECONNECT_ATTEMPT_CAP
                             or now - last_reconnect[addr] < MIN_RECONNECT_S):
                         continue
                     last_reconnect[addr] = now
-                    reconnect_tries[addr] += 1
+                    reconnect_attempts[addr] += 1
                     try:
                         try:
                             await mgr.disconnect(addr)
@@ -693,12 +691,34 @@ async def run_live(config: GameConfig, addresses: list[str],
                             pass
                         await asyncio.wait_for(mgr.connect(addr, addr, attempts=1),
                                                timeout=RECONNECT_TIMEOUT_S)
+                        # Q18: a BLE connect returning is NOT the gun listening. The first mid-game
+                        # reconnect used to print "reconnected" here, push the whole re-arm at a gun that
+                        # was not yet taking writes, count the attempt against RECONNECT_CAP, and then
+                        # sit on a "connected" link the loop would never retry -- a deaf gun for the rest
+                        # of the match. So: a ROUND TRIP first. `$PHONE,*` is the bench-proven probe (it
+                        # answers `$BUT,3,0,*` and is the app's own re-link preamble, protocol §3.1); no
+                        # answer within RECONNECT_PROBE_S means "not listening yet" -- drop the link so the
+                        # NEXT window tries again, and count nothing as reconnected.
+                        if not await _gun_answers(mgr, addr, RECONNECT_PROBE_S):
+                            try:
+                                await mgr.disconnect(addr)
+                            except Exception:  # noqa: BLE001
+                                pass
+                            print(f"(reconnect {addr}: linked but not listening -- no reply to $PHONE "
+                                  f"within {RECONNECT_PROBE_S:.0f}s; will retry)", file=sys.stderr)
+                            continue
                         await driver.resetup(addr)
                         last_seq[addr] = mgr.sessions[addr].seq
+                        reconnect_tries[addr] += 1
                         print(f"(reconnected {addr})", file=sys.stderr)
                     except Exception as e:  # noqa: BLE001 — stay in the game if it fails
                         print(f"(reconnect {addr} failed: {type(e).__name__})", file=sys.stderr)
             for addr in connected:
+                # Q18: a link the reconnect path just DROPPED (a gun that linked but never answered), or one whose
+                # reconnect raised after the disconnect, has no session to read -- both managers raise on it
+                # (`ble.py _get`, the fake's `sessions[...]`), which would take the whole game down with it.
+                if hasattr(mgr, "is_connected") and not mgr.is_connected(addr) and addr not in mgr.sessions:
+                    continue
                 for ev in mgr.get_events(addr, since_seq=last_seq[addr])["events"]:
                     last_seq[addr] = ev["seq"]
                     if ev["direction"] != "rx":

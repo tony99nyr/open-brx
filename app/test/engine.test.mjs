@@ -3244,3 +3244,147 @@ test('A16.5: a death mid-handover-pause cancels it -- no stale write, no stale p
   assert.equal(h.eng._roPool, null, 'death cleared the readout state outright -- the handover never got to set it');
   assert.equal(h.eng._roLevel, null);
 });
+
+// ── F57: the low-health warning and the pain grunt must not fire in the same millisecond ────────
+test('F57: the hit that crosses the low-health threshold plays the warning and NOT the pain grunt; past the gap the grunt is back', () => {
+  // Bench 2026-09-09 (Tony: "the critical sounds are a bit bugged when it was at 1 red"): `rx $HP,8,0,0` -> `$PLAY VA6`
+  // (low health) AND `$PLAY VAG` (pain short) at the same timestamp; the gun plays one clip at a time.
+  const h = goLive(harness());
+  const plays = () => h.writes.filter(f => f.startsWith('$PLAY'));
+  const hurt = () => plays().filter(f => f === golden.cues.hurt);
+  const pains = () => plays().filter(f => golden.cue_pools.pain_short.includes(f) || golden.cue_pools.pain_long.includes(f));
+  assert.ok(!golden.cue_pools.pain_short.includes(golden.cues.hurt) && !golden.cue_pools.pain_long.includes(golden.cues.hurt), 'the warning is not one of the pain takes (or these counts would be confounded)');
+
+  h.frame('$HIR,4,0,19,2,70,0,0,*'); h.frame('$HP,45,0,0,*');   // armour gone, silently (equipment, A17)
+  // CONTROL: a health hit ABOVE the threshold grunts as before, and no warning yet
+  h.adv(700); h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,29,0,0,*'); h.frame('$HP,16,0,0,*');
+  assert.equal(pains().length, 1, 'CONTROL: 16 HP is above the threshold -- the grunt plays');
+  assert.equal(hurt().length, 0, 'and the warning does not');
+
+  // THE CROSSING HIT: warning yes, grunt no
+  h.adv(700); h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,8,0,0,*'); h.frame('$HP,8,0,0,*');
+  assert.equal(hurt().length, 1, 'the crossing hit plays low_health');
+  assert.equal(pains().length, 0, 'and NOT the grunt -- one speaker, one clip');
+
+  // a follow-up inside PAIN_GAP_MS cannot cut the warning short either (the gate is stamped by the warning)
+  h.adv(300); h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,2,0,0,*'); h.frame('$HP,6,0,0,*');
+  assert.equal(pains().length, 0, 'inside the pain gap of the warning: no grunt');
+
+  // CONTROL: the next hit under the threshold, past the gap, grunts again -- and the warning stays once per life
+  h.adv(700); h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,2,0,0,*'); h.frame('$HP,4,0,0,*');
+  assert.equal(pains().length, 1, 'CONTROL: the next hit below the threshold grunts again');
+  assert.equal(hurt().length, 0, 'the warning fired once this life');
+});
+
+// ── F15: the host-driven stun (EMP) ─────────────────────────────────────────────────────────────
+function stunHarness() { const h = harness(); h.config.stun = { duration_s: 10 }; return goLive(h); }
+const ammoWrites = h => h.writes.filter(f => f.startsWith('$AMMO'));
+
+test('F15: a proto-8 $HIR under config.stun disarms every live slot, extends on a second word, and restores the LIVE counts on expiry', () => {
+  const h = stunHarness();
+  h.frame('$ALCD,20,100,0,150,0,*');   // slot 0 has fired: live 20/150, not the frame's 32/192
+  h.writes.length = 0;
+  h.frame('$HIR,4,8,19,2,15,0,0,*');   // the EMP word: proto 8, no $HP follows (fn 24 is a status row)
+  assert.deepEqual(ammoWrites(h), ['$AMMO,0,0,0,1,*', '$AMMO,1,0,0,1,*'], 'both live slots disarmed (the F15 chain)');
+  assert.equal(h.eng.moment.kind, 'stunned');
+  assert.equal(h.eng.state().stunned.leftMs, 10000, 'the default 10 s window, exposed for the HUD');
+  assert.equal(h.eng.hp, 45, 'a stun is not damage');
+  assert.equal(h.facts.filter(f => f.type === 'hit_taken').length, 0, 'no hit_taken: no $HP moved');
+
+  // an echo of our own disarm must neither count shots nor become the count we restore
+  const shots = h.eng.shots;
+  h.frame('$ALCD,0,100,0,0,0,*');
+  assert.equal(h.eng.shots, shots, 'a $ALCD while stunned books no shots');
+
+  // EXTEND, not double-restore: a second EMP 4 s in writes nothing and pushes the window out
+  h.adv(4000); h.writes.length = 0;
+  h.frame('$HIR,4,8,19,2,15,0,0,*');
+  assert.equal(ammoWrites(h).length, 0, 'no second disarm write');
+  assert.equal(h.eng.stunned.until, h.eng.now() + 10000, 'a full window from the second word');
+  h.adv(6500); h.eng.tick();
+  assert.ok(h.eng.stunned, 'the first window has passed; the extension still holds');
+  assert.equal(ammoWrites(h).length, 0, 'and nothing restored yet');
+
+  // expiry: ONE restore, with the LIVE counts (slot 0) and the frame's counts for a slot that never fired (slot 1)
+  h.adv(3600); h.eng.tick();
+  assert.equal(h.eng.stunned, null);
+  assert.deepEqual(ammoWrites(h), ['$AMMO,0,20,150,1,*', '$AMMO,1,6,24,1,*'], 'restore = live counts, never the frame\'s for a slot that fired');
+  assert.equal(h.eng.moment.kind, 'stun_over');
+  h.writes.length = 0; h.adv(1000); h.eng.tick();
+  assert.equal(ammoWrites(h).length, 0, 'restored once');
+  // the gun fires again and the counter picks up from the live count
+  h.frame('$ALCD,19,100,0,150,0,*');
+  assert.equal(h.eng.shots, shots + 1, 'one shot after the restore, counted from the restored magazine');
+});
+
+test('F15: death cancels the stun -- no restore write; the revive\'s own $AMMO re-arms the next life', () => {
+  const h = stunHarness();
+  h.frame('$HIR,4,8,19,2,15,0,0,*');
+  assert.ok(h.eng.stunned);
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,45,0,0,*'); h.frame('$HP,0,0,0,*');   // killed while stunned
+  assert.equal(h.eng.stunned, null, 'death cancels');
+  h.adv(11000); h.eng.tick();                                     // past the stun window AND the 8 s respawn delay
+  assert.ok(h.eng.alive, 'respawned');
+  assert.deepEqual(ammoWrites(h), golden.revive.filter(f => f.startsWith('$AMMO')), 'only the revive frames re-armed the gun -- no stun restore after death');
+  assert.equal(h.eng.moment.kind, 'redeploy', 'no stun_over moment after a death');
+});
+
+test('F15 (polish 2026-09-11): a stun before the first shot of a NEW life restores THIS life\'s reserve, not the last life\'s', () => {
+  const h = stunHarness();
+  h.frame('$ALCD,20,100,0,150,0,*');                              // life 1 fired: live 20/150
+  h.frame('$HIR,4,0,19,2,45,0,0,*'); h.frame('$HP,0,0,0,*');       // killed
+  h.adv(9000); h.eng.tick(); assert.ok(h.eng.alive, 'life 2');    // the revive re-armed the frame's 32/192
+  h.writes.length = 0;
+  h.frame('$HIR,4,8,19,2,15,0,0,*');                              // stunned before any $ALCD of life 2
+  assert.deepEqual(ammoWrites(h), ['$AMMO,0,0,0,1,*', '$AMMO,1,0,0,1,*']);
+  h.adv(10100); h.eng.tick();
+  const frameSlot0 = golden.revive.find(f => f.startsWith('$AMMO,0,'));
+  assert.deepEqual(ammoWrites(h).slice(-2), [frameSlot0, golden.revive.find(f => f.startsWith('$AMMO,1,'))],
+    'the restore is the revive frame\'s pair; life 1\'s 150 reserve must not leak into life 2 (both $ALCD maps reset on spawn)');
+  assert.ok(!ammoWrites(h).some(f => f.includes(',150,')), 'the stale reserve never reaches the gun');
+  // CONTROL: a shot in life 2 before the stun makes the LIVE pair the restore, as the main test proves
+  h.writes.length = 0;
+  h.frame('$ALCD,31,100,0,192,0,*');
+  h.frame('$HIR,4,8,19,2,15,0,0,*'); h.adv(10100); h.eng.tick();
+  assert.ok(ammoWrites(h).includes('$AMMO,0,31,192,1,*'));
+});
+
+test('F15 CONTROLS: without config.stun a proto-8 word is an ordinary hit (the stock <8,0> row is the charge rifle); a proto-0 hit never stuns; a stun before spawn is ignored', () => {
+  const h = goLive(harness());                                  // no config.stun
+  h.writes.length = 0;
+  h.frame('$HIR,4,8,19,2,15,0,0,*'); h.frame('$HP,45,55,0,*');   // a charge-rifle hit lands as damage today
+  assert.equal(ammoWrites(h).length, 0, 'CONTROL: no disarm without the config');
+  assert.equal(h.eng.stunned, null);
+  assert.equal(h.facts.filter(f => f.type === 'hit_taken').length, 1, 'and it is booked as the hit it is');
+
+  const s = stunHarness(); s.writes.length = 0;
+  s.frame('$HIR,4,0,19,2,9,0,0,*'); s.frame('$HP,45,61,0,*');
+  assert.equal(ammoWrites(s).length, 0, 'CONTROL: a plain proto-0 hit under config.stun disarms nothing');
+  assert.equal(s.eng.stunned, null);
+
+  const l = harness(); l.config.stun = { duration_s: 5 }; l.kit().config_().echo();   // lobby, not live
+  l.writes.length = 0; l.frame('$HIR,4,8,19,2,15,0,0,*');
+  assert.equal(l.eng.stunned, null, 'CONTROL: not live -- no stun');
+  assert.equal(ammoWrites(l).length, 0);
+});
+
+test('F15: config.stun.duration_s sizes the window; an absent duration is the 10 s default; a rejoin reconcile takes the stun over', () => {
+  const h = harness(); h.config.stun = { duration_s: 3 }; goLive(h);
+  h.frame('$HIR,4,8,19,2,15,0,0,*');
+  assert.equal(h.eng.state().stunned.leftMs, 3000);
+  h.adv(3000); h.eng.tick();
+  assert.equal(h.eng.stunned, null, 'restored at 3 s');
+  const d = harness(); d.config.stun = {}; goLive(d);
+  d.frame('$HIR,4,8,19,2,15,0,0,*');
+  assert.equal(d.eng.state().stunned.leftMs, 10000, 'default 10 s');
+  // a BLE drop + relink while stunned: the reconcile owns the disarm/re-arm from here
+  d.writes.length = 0;
+  d.eng.onBleDropped(); d.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  assert.equal(d.eng.stunned, null, 'the reconcile cancels the stun timer');
+  assert.ok(d.eng.reconciling, 'and holds the gun disarmed itself');
+});

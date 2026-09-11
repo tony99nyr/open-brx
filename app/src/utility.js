@@ -7,6 +7,9 @@ import { BrxLink } from './brxlink.js';
 import { Presence, encodeUuid, KIND, TEAM_ANY, PLAYER_STATE } from './beacon.js';
 import { ControlPoint, ControlAdvertiser, CONTROL_STATE, NEUTRAL as CONTROL_NEUTRAL, claimable, DEFAULT_CAPTURE_S, DEFAULT_NET_CAP } from './control.js';   // kind 5: the control point (utility.md §5, K1)
 import { Transport } from './transport/transport.js';   // utility.md §5b/§5c: the phone joins MC at muster to be ARMED (contracts A13.5)
+import { makeEnvelope, encode } from './transport/envelope.js';   // stage harness only: a real station_config ENVELOPE, not a bare function call (review 2026-09-11 lane-4)
+
+const UTIL_VER = 'utility-0.2';   // roadmap A3/A5: was the literal string 'utility' -- indistinguishable from a version and never bumped
 
 const $ = id => document.getElementById(id);
 const TEAM_NAMES = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN', [TEAM_ANY]: 'ANY TEAM' };
@@ -40,8 +43,18 @@ async function loadPlugins() {
   await Promise.all([
     tryImport('beacon', () => import('brx-beacon').then(m => ({ v: m.BrxBeacon }))),
     tryImport('keepAwake', () => import('@capacitor-community/keep-awake').then(m => ({ v: m.KeepAwake }))),
+    tryImport('device', () => import('@capacitor/device').then(m => ({ v: m.Device }))),   // roadmap A3: battery in the heartbeat, same plugin app.js already uses
   ]);
 }
+/** Roadmap A3: best-effort battery percent for the ITEMS panel. Capacitor's Device plugin first (app.js's own
+ *  path); the web `navigator.getBattery()` on a browser build that has one; otherwise omit the field entirely
+ *  rather than send a fabricated number. */
+async function readBattery() {
+  try { if (plugins.device) { const b = await plugins.device.getBatteryInfo(); if (b && b.batteryLevel != null) return Math.round(b.batteryLevel * 100); } } catch (_) { /* ignore */ }
+  try { if (navigator.getBattery) { const b = await navigator.getBattery(); if (b && b.level != null) return Math.round(b.level * 100); } } catch (_) { /* ignore */ }
+  return null;
+}
+let lastBattery = null;
 
 // ---------- the station ----------
 let advertising = false, _advertRetryAt = 0, support = { advertising: false, txPowerControl: false, platform: 'web' };
@@ -121,13 +134,14 @@ async function applyStationConfig(body) {
   if (window.brxUtilityGate) window.brxUtilityGate.close();   // the operator armed it: the drawer has no business being open
   await startAdvert();
 }
-function connectMc(url) {
+function connectMc(url, { wsFactory } = {}) {
   if (!url) return;
   settings.mc = url; save();
   if (transport) { try { transport.close(); } catch (_) { /* ignore */ } }
-  transport = new Transport({ node: { node_type: 'utility', app_ver: 'utility' }, gun: null, keyPrefix: 'brxu' });   // its own node id: never the HUD's
+  transport = new Transport({ node: { node_type: 'utility', app_ver: UTIL_VER }, gun: null, keyPrefix: 'brxu', ...(wsFactory ? { wsFactory } : {}) });   // its own node id: never the HUD's
   transport.armedOrLive = true;                            // keep dialling — at muster the operator is waiting on this
   transport.setStatusProvider(() => ({ role: 'utility', kind: settings.kind, team: settings.team, station_id: settings.id, threshold: settings.threshold, live: advertising, revives, armed: !!settings.mcArmed,
+    app_ver: UTIL_VER, ...(lastBattery != null ? { battery: lastBattery } : {}),   // roadmap A3: the heartbeat, not just the hello, so MC's ITEMS panel stays current without a reconnect
     // §5c: the station is self-authoritative and reports at recap. For a control point that report is the
     // owner, the conversion progress and who held it for how long — MC is not live mid-match and cannot
     // have watched any of it (F92).
@@ -136,6 +150,28 @@ function connectMc(url) {
   transport.onMessage(m => { if (m && m.kind === 'station_config') applyStationConfig(m.body); });
   transport.onState(s => { mcState = s; log(`MC ${s}${transport.rejected ? ' — ' + transport.rejected.reason : ''}`, s === 'bound' ? 'lk' : 'li'); render(); });
   transport.connect({ url }).catch(e => log('MC connect: ' + (e && e.message || e), 'le'));
+}
+// ---------- stage harness: a station_config through the REAL wire, not a bare function call ----------
+// screens.mjs #49 used to call `applyStationConfig()` directly, which never touched the Transport at all --
+// no envelope, no `_onFrame`, no `DELIVERED` check. `?stage` never calls `connectMc` (setup needs Wi-Fi, play
+// does not), so there was no socket to drive; this fakes ONE (hello -> welcome, same as a real MC) so the
+// harness can hand it a real `station_config` frame and exercise the exact path a live socket runs
+// (review 2026-09-11 lane-4, F106-adjacent S5(c)).
+let _stageWs = null;
+function stageWsFactory() {
+  const ws = { close() {} };
+  ws.send = raw => {
+    let env; try { env = JSON.parse(raw); } catch (_) { return; }
+    if (env.kind === 'hello') setTimeout(() => { if (ws.onmessage) ws.onmessage({ data: encode(makeEnvelope('welcome', { session_id: 'stage', server_t: Date.now(), seq_hi: 0 })) }); }, 0);
+  };
+  _stageWs = ws;
+  setTimeout(() => { if (ws.onopen) ws.onopen(); }, 0);
+  return ws;
+}
+/** Deliver a real MC->node envelope through the fake stage socket (e.g. `mcMessage('station_config', {...})`). */
+function stageMcMessage(kind, body) {
+  if (!_stageWs || !_stageWs.onmessage) return;
+  _stageWs.onmessage({ data: encode(makeEnvelope(kind, body)) });
 }
 
 async function stopAdvert() {
@@ -163,8 +199,11 @@ async function refreshScan() {
   finally { _scanBusy = false; }
 }
 
+let _lastBatteryPoll = 0;
+const BATTERY_POLL_MS = 30000;   // roadmap A3: battery does not need 250 ms resolution, and Device.getBatteryInfo is async
 function tick() {
   const now = Date.now();
+  if (now - _lastBatteryPoll >= BATTERY_POLL_MS) { _lastBatteryPoll = now; readBattery().then(b => { lastBattery = b; }); }
   // S6: keep the player-watch scan alive. Recover one stuck OFF (a startScan() throw left scanning=false),
   // and restart a possibly-stalled one on a period so the station keeps hearing planting/defusing/reviving
   // players. Mirrors the player-side beacon-scan refresh in app.js.
@@ -283,6 +322,10 @@ function render() {
   const armed = settings.mcArmed;
   $('armed').textContent = armed ? `MC-ARMED · GAME ${armed.game || 0}` : 'NOT ARMED BY MISSION CONTROL';
   $('armed').className = 'armed ' + (armed ? 'on' : '');
+  // S5(d): the allow-list this phone was armed with -- the operator's own confirmation that MC's ITEMS
+  // panel and this phone's advert agree on which ids are live in this game.
+  const idsEl = $('ids');
+  if (idsEl) idsEl.textContent = (armed && Array.isArray(armed.valid_ids) && armed.valid_ids.length) ? `VALID IDS: ${armed.valid_ids.join(', ')}` : '';
   $('mcstate').textContent = mcState === 'bound' ? 'MISSION CONTROL ✓ LINKED' : mcState === 'offline' ? (settings.mc ? 'MISSION CONTROL · OFFLINE' : 'MISSION CONTROL · NO ADDRESS') : `MISSION CONTROL · ${mcState.toUpperCase()}…`;
   if (document.activeElement !== $('mcUrl')) $('mcUrl').value = settings.mc || mcUrl() || '';
   const rows = presence.players().map(p => {
@@ -395,13 +438,19 @@ function wire() {
   if (DEMO) support = { advertising: true, txPowerControl: true, platform: 'stage' };
   log(`utility mode · ${support.platform} · advertise ${support.advertising ? 'yes' : 'NO'} · tx control ${support.txPowerControl ? 'yes' : 'no'}`);
   if (settings.live) await startAdvert();   // it was live when the phone last ran: come straight back up
+  readBattery().then(b => { lastBattery = b; });
   render();
-  const url = mcUrl(); if (url && !DEMO) connectMc(url);   // setup needs WiFi (A13.5); once armed, play does not
+  const url = mcUrl();
+  // Stage/screens.mjs: no real Wi-Fi to a real MC, but `station_config` must still arrive through the REAL
+  // wire (`stageMcMessage`, above), not a bare `applyStationConfig()` call -- so the harness gets a fake but
+  // otherwise real transport instead of none at all.
+  if (DEMO) connectMc(url || 'stage://mc', { wsFactory: stageWsFactory });
+  else if (url) connectMc(url);   // setup needs WiFi (A13.5); once armed, play does not
   if (!plugins.beacon || !support.advertising) log('this phone cannot advertise; check Bluetooth is on', 'le');
   await startScan();
   setInterval(tick, 250);
   if (DEMO) seedDemo();
-  window.brxUtility = { settings, presence, point, advert, startAdvert, stopAdvert, render, log: logLines, stationUuid, advertFields, encodeUuid, applyStationConfig, connectMc, get transport() { return transport; } };
+  window.brxUtility = { settings, presence, point, advert, startAdvert, stopAdvert, render, log: logLines, stationUuid, advertFields, encodeUuid, applyStationConfig, connectMc, mcMessage: stageMcMessage, get transport() { return transport; } };
   window.brxUtil = window.brxUtility;
 })();
 

@@ -23,6 +23,7 @@ from .base import (
     Action, Callout, GameEngine, GameOver, PlaySound, Roster, Score,
     hp_values,
 )
+from .params import Param, resolve as _resolve_params
 
 # Grounded cues (brx_mcp/sounds.py). A plant starts the detonation countdown, so
 # the plant cue IS the countdown clip.
@@ -32,14 +33,24 @@ DETONATION_SOUND = snd.BOMB_DETONATED  # X13 — explosion
 
 
 class BombEngine(GameEngine):
+    # A18: the round rules an operator may set on `GameConfig.mode_params`. The two team ids are the
+    # $TIDs of the sides (0-3, F35); `rounds_to_win` 0 keeps the CLI dataclass's meaning of "single round".
+    PARAMS = {
+        "detonation_s": Param("float", 40.0, "seconds from the plant to the detonation", lo=5, hi=600),
+        "rounds_to_win": Param("int", 0, "rounds a side must win to take the match; 0 = a single round", lo=0, hi=30),
+        "attackers_team": Param("int", 2, "$TID of the attacking side (plants the bomb)", lo=0, hi=3),
+        "defenders_team": Param("int", 1, "$TID of the defending side (defuses it)", lo=0, hi=3),
+    }
+
     def __init__(self, config, now: float = 0.0):
         self.config = config
         self.roster = Roster()
-        self.attackers = getattr(config, "attackers_team", 2)
-        self.defenders = getattr(config, "defenders_team", 1)
-        self.detonation_s = getattr(config, "detonation_s", 40.0)
+        self.params = _resolve_params(type(self), config)
+        self.attackers = self.params["attackers_team"]
+        self.defenders = self.params["defenders_team"]
+        self.detonation_s = self.params["detonation_s"]
         self.round_time_s = config.game_time_s or 120
-        self.rounds_to_win = getattr(config, "rounds_to_win", 0) or 1
+        self.rounds_to_win = self.params["rounds_to_win"] or 1
         self.score = {"attackers": 0, "defenders": 0}
         self.round = 1
         self.round_start = now

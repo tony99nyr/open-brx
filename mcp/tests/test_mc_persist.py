@@ -2,7 +2,7 @@
 mid-setup each left phones on WAITING FOR KIT-OUT with every gun ghosted NOT SEEN)."""
 import json, pathlib, sys, tempfile
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from test_mc_state import mk
+from test_mc_state import T0, mk
 
 
 def test_snapshot_round_trip():
@@ -192,3 +192,63 @@ def test_a_snapshot_from_before_the_presentation_profile_restores_with_the_mode_
     fresh = default_config(s2.config["mode"])
     for k in ("presentation", "loadout_policy"):
         assert s2.config[k] == fresh[k], k                    # identical to the stock mode's defaults
+
+
+# --------------------------------------------------------------------------- S5(a) — station assignments (2026-09-11)
+def test_station_assignment_and_game_no_persist_across_a_restart():
+    """S5(a): assignments used to live for the SESSION only, so an MC restart at the field forgot every
+    placed station and the operator had to walk out and redo ITEMS from scratch."""
+    s, net, clock, ps = mk()
+    tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_path = tmp
+    net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 3, "threshold": -70})
+    s.game_no = 2
+    s._game_no_started = True
+    s._persist_last = 0.0
+    s._persist()
+    assert tmp.exists()
+
+    s2, net2, clock2, ps2 = mk()
+    s2._persist_path = tmp
+    s2.restore_snapshot()
+    assert s2.game_no == 2 and s2._game_no_started is True
+    st = s2.stations.get("util-1")
+    assert st and st["assigned"] == {"kind": "respawn", "team": 1, "id": 3, "threshold": -70, "at": T0}
+    # a restored station comes back UNARMED -- the phone remembers nothing about MC across a restart --
+    # and is re-armed on its next hello, the same path a first-contact hello already uses.
+    assert st["armed"] is None and st["arm_pending"] is True
+    net2.pushed.clear()
+    net2.simulate_utility_hello("util-1")
+    assert net2.pushes("station_config", "util-1"), "the restored assignment re-arms itself on the next hello"
+
+    # CONTROL: an unassigned station is never persisted
+    net.simulate_utility_hello("util-2")           # heard, never assigned
+    s._persist_last = 0.0
+    s._persist()
+    snap = json.loads(tmp.read_text())
+    assert "util-1" in snap["stations"] and "util-2" not in snap["stations"], snap["stations"]
+
+
+def test_a_pre_a18_snapshot_restores_the_modes_complete_params():
+    """Polish review 2026-09-11: a session.json written before mode_params existed restored a koth config with
+    none, `_validate` skips an ABSENT set, and the wire pushed without it -- against A18's complete-or-absent."""
+    from brx_mcp.modes.registry import validate_mode_params
+    s, net, clock, ps = mk()
+    tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_path = tmp
+    s.set_config({"mode": "koth", "station_source": "phone"})
+    s._persist_last = 0.0
+    s._persist()
+    snap = json.loads(tmp.read_text())
+    assert snap["config"].pop("mode_params", None), "CONTROL: a koth config persists its params today"
+    tmp.write_text(json.dumps(snap))                              # what a pre-A18 file looks like
+    s2, net2, clock2, ps2 = mk()
+    s2._persist_path = tmp
+    s2.restore_snapshot()
+    assert s2.config["mode"] == "koth"
+    assert s2.config.get("mode_params") == validate_mode_params("koth", {})[0], s2.config.get("mode_params")
+    # CONTROL: a mode that declares no params stays byte-identical (no key)
+    s3, net3, clock3, ps3 = mk()
+    s3.set_config({"mode": "tdm"})
+    assert "mode_params" not in s3.config

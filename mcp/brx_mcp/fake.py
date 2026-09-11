@@ -17,6 +17,28 @@ from typing import Optional
 
 from .protocol import BufferedEvent, parse_event
 
+# F78: the `$SIR` FUNCTION classes the fake applies, all bench-measured (protocol/brx-protocol.md §5,
+# magnitude 20 / baseline 45/70/0, 2026-08-27 + 2026-09-02). A word whose <proto, subtype> cell has NO row
+# emits NOTHING (no `$HIR`, no `$HP`, no pool change) -- the F11/F40/F60 silent-discard shape. A function
+# not listed here still REGISTERS (`$HIR`, pools untouched) unless it is in `_SIR_FN_NONE`.
+_SIR_FN_DAMAGE = {1, 3, 4, 5, 7, 29, 30, 33, 38}   # -magnitude, shields -> armour -> HP
+_SIR_FN_AP = {2, 6}                                 # armour-piercing: HP only, armour + shield untouched
+_SIR_FN_X125 = {36}                                 # floor(magnitude * 1.25)
+_SIR_FN_X2 = {37}                                   # magnitude * 2
+_SIR_FN_HEAL = {10, 17}                             # add HP, clamp at the $PSET max (fn 10 = "respawn + add HP")
+_SIR_FN_SHIELD = {11, 18}                           # add shield, saturating at $PSET t5
+_SIR_FN_ARMOR = {13, 15, 20, 22}                    # add armour (the measured overflow-to-shield is not modelled)
+_SIR_FN_NONE = {0, 39, 40, 41, 42, 43, 44, 45}      # no registration at all
+_SIR_FN_ALLY = _SIR_FN_HEAL | _SIR_FN_SHIELD | _SIR_FN_ARMOR   # polarity: support lands from the OWN team only
+
+# What a gun boots with. protocol/brx-protocol.md (panic sequence): a gun left with no table "cannot be hit
+# until it is re-armed or POWER-CYCLED", so a fresh boot has a working table; its exact rows are not
+# measured and the stock Callsign table is the only candidate. Imported, not copied: `gameconfig._SIR_TABLE`
+# is the one place the wire table lives.
+def _boot_sir_table() -> tuple[str, ...]:
+    from .gameconfig import _SIR_TABLE
+    return tuple(_SIR_TABLE)
+
 
 def _toks(frame: str) -> list[str]:
     return frame.strip().lstrip("$").rstrip("*").rstrip(",").split(",")
@@ -45,12 +67,42 @@ class FakeTagger:
         self.friendly_fire = friendly_fire  # set from $GSET token1 when a game configs it
         self._tap = False                   # $PHONE opens the event tap (models the ritual)
         self._out: list[str] = []          # queued rx frames (tagger→host)
+        # F78: the `$SIR` table, keyed <proto, subtype> -> function. Boots with the stock table (see
+        # `_boot_sir_table`), `$CLEAR` WIPES it (F11), each `$SIR` row written re-arms one cell. `$SPAWN`
+        # does not touch it -- only a `$SIR` write or a "power cycle" (a new FakeTagger) brings it back.
+        self.sir: dict[tuple[int, int], int] = {}
+        for row in _boot_sir_table():
+            self._sir_row(row)
+        # F46/F62/F68: a magnitude-0 word is a MISS -- the player feels it (haptic + the $PSET missShotHit
+        # clip, natively) and the host sees NOTHING. Counted here so a test can assert that shape.
+        self.misses = 0
+        self.discarded: list[tuple[int, int]] = []   # cells that arrived with no row (the silent-discard log)
+        # Q18: a gun that has connected but is not yet LISTENING -- every write is dropped on the floor,
+        # no reply, no state change. The reconnect probe exists to tell this apart from a live gun.
+        self.listening = True
 
     # -- host → tagger ------------------------------------------------------- #
+    def _sir_row(self, frame: str) -> None:
+        """`$SIR,<proto>,<sub>,<snd>,<fn>,...` -> one cell of the table (an empty token reads as 0, as
+        `compile._sir_index` reads it)."""
+        t = _toks(frame)
+        if len(t) < 5:
+            return
+        proto, sub, fn = _int(t[1] or "0"), _int(t[2] or "0"), _int(t[4] or "0")
+        if proto is None or sub is None or fn is None:
+            return
+        self.sir[(proto, sub)] = fn
+
     def write(self, frame: str) -> None:
+        if not self.listening:
+            return                                  # Q18: connected, not listening -- the write is lost
         t = _toks(frame)
         cmd = t[0] if t else ""
-        if cmd == "VERSION":
+        if cmd == "CLEAR":
+            self.sir.clear()                        # F11: `$CLEAR` wipes the table; nothing lands until `$SIR` rows do
+        elif cmd == "SIR":
+            self._sir_row(frame)
+        elif cmd == "VERSION":
             if self._tap:                           # cold $VERSION gets no reply (exp-log 8-24)
                 self._out.append("$VERSION,v4.32,?,4,,devhost.03,*")
         elif cmd == "PHONE":
@@ -99,39 +151,79 @@ class FakeTagger:
                 # ammo is untouched by a lethal write; the fake does not model a magazine, and the
                 # real frame carries whatever was loaded, so 0,0 is the honest stand-in here.
                 self._out.append("$LCD,0,0,0,0,0,0,*")
-        # all other config frames (CLEAR/START/GSET/WEAP/SIR/BMAP/VOL/AMMO/PLAY…) accepted
+        # all other config frames (START/GSET/WEAP/BMAP/VOL/AMMO/PLAY…) accepted
 
     # -- IR hit → events ----------------------------------------------------- #
     def receive_ir(self, shooter_team: int, shooter_id: int = 1,
-                   proto: int = 0, mag: Optional[int] = None, sub: int = 3) -> None:
-        """Take a hit from `shooter_team`: emit `$HIR` then `$HP` (0 = died).
+                   proto: int = 0, mag: Optional[int] = None, sub: int = 0) -> None:
+        """Take an IR word from `shooter_team`: look the `<proto, sub>` cell up in the `$SIR` table the
+        gun HOLDS and apply that row's function; emit `$HIR` then `$HP` (0 = died).
 
-        No-op if dead, or a same-team hit while friendly-fire is off (the real gun
-        ignores teammate IR unless FF is enabled via $GSET). With FF on, a same-team
-        hit DOES damage — the host engine then declines to credit it as a kill.
+        F78 -- THE TABLE GATE. A cell with no row emits NOTHING: no `$HIR`, no `$HP`, no pool change,
+        no headset flash. That is the F11 shape (`$CLEAR` with no `$SIR` after it: a gun that reports
+        alive and healthy and can never be hit), the F40 shape (a re-keyed cell the victim's table
+        lacks) and the F60 shape (a station word on a protocol the table has no row for). The cell is
+        logged in `self.discarded` so a test can prove the discard happened rather than infer it from
+        silence. The row's FUNCTION decides the pool effect (`_SIR_FN_*` above): fn 1 and its class
+        damage, 36/37 multiply, 2/6 pierce armour, 10 heals, 11 grants shield, 13 grants armour, and
+        the status functions (8, 23-28, 35...) register with no pool change -- which is how an EMP
+        (F15, proto 8 -> fn 24) and a hill beacon (proto 15 -> fn 28) reach the host.
 
-        `proto`/`mag`/`sub` exist so the sim can model words that are NOT an ordinary
-        rifle round (F78). The one that matters: a grenade hill's ambient damage word is
-        `proto=0, mag=8, shooter_id=0` — an environmental shooter, not a player.
-        For a protocol-15 station BEACON use `beacon()`, which changes no pool.
+        Polarity (bench, protocol §5): damage lands only from an ENEMY team and support (heal / shield /
+        armour) only from the OWN team while `$GSET` t1 = 0; a rejected word emits no `$HIR`. With
+        friendly fire ON everything lands from anyone -- the host engine then declines the kill credit.
 
-        ⚠ `mag` now drives the damage actually applied. It used to be hardcoded to 9 in
-        the frame while `self.damage` (25 by default) was subtracted from the pools, so
-        the fake emitted a magnitude that contradicted the damage it had just dealt —
-        anything reading dmg off `$HIR` inherited the contradiction.
+        F46/F62 -- `mag=0` IS A MISS (bench 2026-09-09): the gun vibrates and plays `missShotHit`
+        natively and emits NO `$HIR` and NO `$HP`. Modelled as `self.misses += 1` and nothing on the
+        wire, so a test can assert F68's shape (a miss reaches the player and not the software).
+        ⚠ Assumed, not measured: the table lookup happens BEFORE the miss check here, so a mag-0 word
+        on a cell with no row is a silent discard, not a miss. The bench measured misses on a stock
+        table only.
+
+        `sub` defaults to 0 -- the plain-damage row `<0,0>`. ⚠ Real captures carry `3` in `$HIR`
+        token 7 for an ordinary rifle round (`$HIR,4,0,19,2,9,0,3`) while dealing plain magnitude, and
+        the stock row `<0,3>` is fn 37 (x2) -- so token 7 is evidently NOT the same thing as the
+        `$SIR` subtype key, or the AR would double. The fake keys the table on `sub` and echoes it in
+        token 7 because nothing downstream reads that token; do not read the emitted value as a
+        measurement.
+
+        `proto`/`mag`/`sub` exist so the sim can model words that are NOT an ordinary rifle round.
+        A grenade hill's ambient damage word is `proto=0, mag=8, shooter_id=0` -- an environmental
+        shooter, not a player. For a protocol-15 station BEACON use `beacon()`.
+
+        ⚠ `mag` drives the damage actually applied. It used to be hardcoded to 9 in the frame while
+        `self.damage` (25 by default) was subtracted from the pools, so the fake emitted a magnitude
+        that contradicted the damage it had just dealt.
         """
         if not self.alive:
-            return
-        if shooter_team == self.team and not self.friendly_fire:
+            return                                  # dead guns accept no IR (protocol §5)
+        cell = (int(proto), int(sub))
+        fn = self.sir.get(cell)
+        if fn is None or fn in _SIR_FN_NONE:
+            self.discarded.append(cell)             # F11/F40/F60: silently ignored -- NOTHING on the wire
             return
         m = self.damage if mag is None else int(mag)
-        d = m
-        if self.armor >= d:
-            self.armor -= d
-        else:
-            d -= self.armor
-            self.armor = 0
-            self.hp -= d
+        if m == 0:
+            self.misses += 1                        # F46/F62: felt by the player, invisible over BLE
+            return
+        same_team = shooter_team == self.team
+        if not self.friendly_fire:
+            if fn in _SIR_FN_ALLY and not same_team:
+                return                              # support from an enemy: rejected, no $HIR
+            if fn not in _SIR_FN_ALLY and same_team:
+                return                              # damage from a teammate: rejected, no $HIR
+        if fn in _SIR_FN_DAMAGE or fn in _SIR_FN_X125 or fn in _SIR_FN_X2:
+            d = m if fn in _SIR_FN_DAMAGE else (m * 5 // 4 if fn in _SIR_FN_X125 else m * 2)
+            self._drain_pools(d)
+        elif fn in _SIR_FN_AP:
+            self.hp = max(0, self.hp - m)
+        elif fn in _SIR_FN_HEAL:
+            self.hp = min(self.cfg_hp, self.hp + m)
+        elif fn in _SIR_FN_SHIELD:
+            self.shield = min(self.cfg_shield, self.shield + m)
+        elif fn in _SIR_FN_ARMOR:
+            self.armor = min(self.cfg_armor, self.armor + m)
+        # else: a status function (8, 23-28, 35, ...) -- registers, pools unchanged
         # token 3 = shooter PLAYER id. It was hardcoded 0, which is why no sim
         # scenario could ever exercise per-gun kill attribution (Q17) — and, because 0 is
         # A5.1's "no identity", why the F69 hill-scoring bug stayed invisible to the suite.
@@ -143,6 +235,20 @@ class FakeTagger:
         else:
             self._out.append(f"$HP,{self.hp},{self.armor},{self.shield},*")
 
+    def _drain_pools(self, d: int) -> None:
+        """Damage drains shield -> armour -> HP, 1:1, overflow spilling inward (protocol §5)."""
+        if self.shield >= d:
+            self.shield -= d
+            return
+        d -= self.shield
+        self.shield = 0
+        if self.armor >= d:
+            self.armor -= d
+        else:
+            d -= self.armor
+            self.armor = 0
+            self.hp -= d
+
     def beacon(self, owner_team: int, mag: int = 8, proto: int = 15) -> None:
         """A station/grenade BEACON: `$HIR` with NO pool change and NO `$HP` (bench 2026-09-10).
 
@@ -152,7 +258,14 @@ class FakeTagger:
         so a sim that cannot emit one cannot exercise the fix.
 
         A beacon lands whether or not the gun is alive — it is a broadcast, not a shot.
+
+        F78: it is still a `$SIR` lookup. Without a `<15,0>` row (the `_OBJECTIVE_SIR_ROW` an objective
+        mode ships) the beacon is discarded in silence, exactly like a hit -- that is F60/F70.
         """
+        cell = (int(proto), 0)
+        if cell not in self.sir or self.sir[cell] in _SIR_FN_NONE:
+            self.discarded.append(cell)
+            return
         self._out.append(f"$HIR,0,{proto},0,{owner_team},{mag},0,0,*")
 
     def drain(self) -> list[str]:
@@ -220,10 +333,8 @@ class FakeConnectionManager:
         s.record("tx", command)
         tagger = self.taggers[s.address]
         tagger.write(command)
-        replies = tagger.drain()
-        for r in replies:
-            s.record("rx", r)
-        return {"sent": command, "replies_within_window": []}
+        replies = [s.record("rx", r).to_dict() for r in tagger.drain()]
+        return {"sent": command, "replies_within_window": replies}   # the real manager's shape (ble.py send)
 
     def get_events(self, alias: str, since_seq: int = 0, max_events: int = 200) -> dict:
         if alias in self.dropped:            # a dropped link goes silent (no new events)

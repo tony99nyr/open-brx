@@ -31,6 +31,7 @@ from typing import Optional
 from .. import sounds as snd
 from . import hillbeacon as hb
 from .base import Action, Callout, PlaySound, Score, ScoredEngine, hp_values
+from .params import Param, resolve as _resolve_params
 
 
 def _ev(ev, i, default=None):
@@ -67,14 +68,26 @@ class DominationEngine(ScoredEngine):
     score_target (or most points-time when the clock runs out). KotH = 1 point.
 
     With score_target=0 AND game_time_s=0 the game is intentionally unlimited —
-    it never self-ends; the operator stops it manually (teardown / GameOver)."""
+    it never self-ends; the operator stops it manually (teardown / GameOver).
+
+    A18: `score_target` and `points_per_s` are the mode's wire parameters (`GameConfig.mode_params`);
+    `control_points` is deliberately NOT one -- a beacon carries no station id (F88), so a second point is
+    not buildable on the grenade source and MC must not offer the knob (`compile.validate` explains)."""
+
+    PARAMS = {
+        "score_target": Param("int", 0, "point-seconds a team needs to win; 0 = most possession when the clock runs out",
+                              lo=0, hi=36000),
+        "points_per_s": Param("float", 1.0, "points a held point earns its owner every second", lo=0.1, hi=60),
+    }
 
     def __init__(self, config, now: float = 0.0):
         super().__init__(config, now)
         n = max(1, getattr(config, "control_points", 3))
         self.sites = [chr(ord("A") + i) for i in range(n)]
         self.owner: dict[str, Optional[int]] = {s: None for s in self.sites}
-        self.target = getattr(config, "score_target", 0) or 0
+        self.params = _resolve_params(type(self), config)
+        self.target = self.params["score_target"]
+        self.points_per_s = self.params["points_per_s"]
         self._last_tick = now
         self._acc: dict[int, float] = {}
         # The grenade bridge. A beacon carries no station id (the player field is 0 on every beacon
@@ -209,7 +222,7 @@ class DominationEngine(ScoredEngine):
                 # hill held by a team that is not in this match would score (and win) here no
                 # matter what `capture()` refused to set up. See `_in_play`.
                 if self._in_play(owner):
-                    self._acc[owner] = self._acc.get(owner, 0.0) + dt
+                    self._acc[owner] = self._acc.get(owner, 0.0) + dt * self.points_per_s
         # win by score target
         if self.target:
             for team, sc in self._acc.items():
@@ -259,9 +272,14 @@ class CtfEngine(ScoredEngine):
     DROP <team>) — they come from a station, not a player gun, so the team is
     resolved from the token, not the roster. A malformed/zero team is ignored."""
 
+    PARAMS = {
+        "cap_target": Param("int", 3, "flag captures a team needs to win", lo=1, hi=1000),
+    }
+
     def __init__(self, config, now: float = 0.0):
         super().__init__(config, now)
-        self.target = getattr(config, "cap_target", 3)
+        self.params = _resolve_params(type(self), config)
+        self.target = self.params["cap_target"]
         self.caps: dict[int, int] = {}
         self.held: set[int] = set()   # teams currently carrying the enemy flag
 

@@ -198,6 +198,10 @@ STATION_KINDS = ("respawn", "powerup", "extraction", "bomb", "control")
 STATION_TEAM_ANY = 255        # advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral
 
 
+class Stun(TypedDict):
+    duration_s: NotRequired[int]   # F15/A20: seconds a hit EMP keeps the gun disarmed (default 10, 1..60)
+
+
 class GameConfig(TypedDict):
     config_id: str
     mode: str
@@ -211,9 +215,10 @@ class GameConfig(TypedDict):
     led: NotRequired[dict]
     player_num_base: NotRequired[int]   # A6.5
     siphon: NotRequired[Siphon]         # S14: heal-on-kill; absent or {0,0} = off
-    stations: NotRequired[list[dict]]   # A13.1 (F104): `[{id, kind}]` -- the utility items MC armed for THIS game.
+    stations: NotRequired[list[dict]]   # A13.1 (F104): `[{id, kind}]` -- the utility items MC armed for THIS game, when at least one is assigned.
     #                                     Set by `Session._wire_config()` from the ITEMS assignments, never by the
-    #                                     operator; a player phone honours only these ids (`engine.js _stationAllowed`).
+    #                                     operator; a player phone honours only these ids (`engine.js _stationAllowed`) --
+    #                                     and when the list is ABSENT (nothing assigned) it honours ANY station (the hand-armed fallback).
     station_source: NotRequired[str]    # F70: what is emitting this game's objective -- `STATION_SOURCES` above
     #                                     ("grenade" = a BRX Smart Grenade in hill mode, "ir_station" = a
     #                                     $CAPTURE-speaking station). Present only for the modes that need one
@@ -227,6 +232,24 @@ class GameConfig(TypedDict):
     hit_audio_rekey: NotRequired[bool]           # A17: give each weapon FAMILY its own $SIR cell so hits sound different
     #                                              per weapon. DEFAULT OFF -- an unmatched cell is silently ignored (the
     #                                              F11 shape), so it stays off until FOLLOWUPS F38/F39 clear it at the bench.
+    stun: NotRequired["Stun"]                    # F15/A20: the host-driven STUN (EMP). Present = the `<8,0>` $SIR cell
+    #                                              ships as fn 24 (status, no damage) and a proto-8 $HIR disarms the
+    #                                              victim's node for `duration_s` (default 10, 1..60). Absent = the stock
+    #                                              charge-rifle damage row, byte-for-byte. Source: a $WEAP t3=8 slot
+    #                                              (the charge rifle) or a proto-8 station.
+    mode_params: NotRequired[dict[str, int | float | bool | str]]
+    #                                              A18 (E1): the MODE's own rules -- what its engine declares in `PARAMS`
+    #                                              (`modes/params.py`; schema per mode from `GET /api/modes`). Present, and
+    #                                              COMPLETE (defaults filled), for every mode whose engine declares any;
+    #                                              absent for one that declares none (tdm/ffa/infection), so those configs
+    #                                              are byte-identical to before the field existed. Unknown keys and
+    #                                              out-of-range values are refused at PUT and again by `validate()`.
+    #                                              Rides the wire as-is: a node reads its rules from here, never from a
+    #                                              schema of its own.
+    vip_player_id: NotRequired[str | None]       # A19 (S10): who the VIP is. Must name a rostered player (`validate()`);
+    #                                              MC pushes them the `vip` headset role (`alert.role`) once the match is
+    #                                              live and again after each of their respawns. Never stored in a saved
+    #                                              game (a preset names no person).
 
 
 class FrameBundle(TypedDict):

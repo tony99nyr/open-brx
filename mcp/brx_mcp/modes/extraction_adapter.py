@@ -23,6 +23,7 @@ from typing import Optional
 from .. import sounds as snd
 from . import base
 from .base import Action, GameEngine, hp_values, is_hit, shooter_team, shooter_player_id
+from .params import Param, resolve as _resolve_params
 from . import extraction as ex
 
 ATTRIB_FUSE_S = 6.0
@@ -63,8 +64,19 @@ def _translate(actions: list[ex.Action]) -> list[Action]:
 class ExtractionEngineAdapter(GameEngine):
     """Wrap `ExtractionGame` behind the uniform GameEngine interface."""
 
+    # A18: the `ExtractionConfig` knobs, on the wire. They used to exist only on the CLI dataclass, so an
+    # Extraction game set up in MC ran on the engine's defaults whatever the operator wanted.
+    PARAMS = {
+        "channel_s": Param("float", 45.0, "seconds a player must hold the extraction point", lo=5, hi=600),
+        "win_target": Param("int", 0, "banked loot that wins the raid outright; 0 = the clock decides", lo=0, hi=100000),
+        "loot_per_kill": Param("int", 10, "loot a killer picks up per kill", lo=0, hi=1000),
+        "drop_policy": Param("str", "ground", "where a downed player's loot goes", choices=("ground", "killer", "pool")),
+        "extract_removes_player": Param("bool", True, "an extracted player is out of the raid (off: they respawn clean)"),
+    }
+
     def __init__(self, config, now: float = 0.0):
         self.config = config
+        self.params = _resolve_params(type(self), config)
         self._now = now
         self._players: list[str] = []
         self._teams: dict[str, int] = {}
@@ -79,13 +91,14 @@ class ExtractionEngineAdapter(GameEngine):
 
     # -- setup --------------------------------------------------------------- #
     def _ex_config(self) -> ex.ExtractionConfig:
-        g = self.config
+        g, p = self.config, self.params
         return ex.ExtractionConfig(
-            channel_s=float(getattr(g, "channel_s", 45.0)),
-            win_target=int(getattr(g, "win_target", 0) or getattr(g, "score_target", 0) or 0),
-            loot_per_kill=int(getattr(g, "loot_per_kill", 10)),
-            drop_policy=str(getattr(g, "drop_policy", "ground")),
-            extract_removes_player=bool(getattr(g, "extract_removes_player", True)),
+            channel_s=float(p["channel_s"]),
+            # the CLI dataclass's `score_target` still stands in for an unset win target (pre-A18 behaviour)
+            win_target=int(p["win_target"] or getattr(g, "score_target", 0) or 0),
+            loot_per_kill=int(p["loot_per_kill"]),
+            drop_policy=str(p["drop_policy"]),
+            extract_removes_player=bool(p["extract_removes_player"]),
         )
 
     def add_player(self, player_id: str, team: int) -> None:

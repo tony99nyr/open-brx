@@ -258,7 +258,7 @@ for (const view of VIEWS) {
     must(third.warn && /NEEDS THE ALT BUTTON/.test(third.chip) && /DROPS EASY RELOAD/.test(third.chip), 'the reverse pick warns too: ' + JSON.stringify(third));
   });
   await step(`${view.name} #45 DOWN in scanner mode: find → approach (closeness bar) → at station`, async () => {
-    const pg = await open(view, 'down-find', '', 4200); /* death at ~2.6 s + the 1 s scanner delay */ const has = await pg.evaluate(() => typeof window.brx.engine.setStations === 'function');
+    const pg = await open(view, 'down-find', '', 6200); /* death at ~2.6 s + the 3 s scanner delay (the F34 floor) + margin */ const has = await pg.evaluate(() => typeof window.brx.engine.setStations === 'function');
     if (!has) { await pg.close(); console.log('       (engine without stations — step skipped)'); return; }
     const read = () => pg.evaluate(() => { const l = document.querySelector('.down .lab'), i = document.querySelector('.down .ins'); const b = document.querySelector('.down .near i'); return { hint: window.brx.engine.state().respawnHint, ins: i ? i.textContent.trim() : null, lab: l ? l.textContent.trim() : null, bar: b ? parseFloat(b.style.width) : null, on: !!document.querySelector('.down .ins.on') }; });
     let r = await read(); must(r.hint === 'find_station' && r.ins === "RUN TO YOUR TEAM'S RESPAWN STATION" && r.lab === 'THEN PULL THE TRIGGER THERE' && r.bar === null, JSON.stringify(r));
@@ -270,7 +270,7 @@ for (const view of VIEWS) {
     must(r.hint === 'pull_trigger' && r.ins === 'PULL THE TRIGGER TO RESPAWN' && r.bar === 100 && r.on, JSON.stringify(r));
   });
   await step(`${view.name} #45c presence gate: the first-death line never says "pull the trigger"`, async () => {
-    const pg = await open(view, 'down-find-presence', '', 4200); const r = await pg.evaluate(() => ({ gate: window.brx.engine.state().respawnGate, hint: window.brx.engine.state().respawnHint, ins: (document.querySelector('.down .ins') || {}).textContent, lab: (document.querySelector('.down .lab') || {}).textContent })); await pg.close();
+    const pg = await open(view, 'down-find-presence', '', 6200); const r = await pg.evaluate(() => ({ gate: window.brx.engine.state().respawnGate, hint: window.brx.engine.state().respawnHint, ins: (document.querySelector('.down .ins') || {}).textContent, lab: (document.querySelector('.down .lab') || {}).textContent })); await pg.close();
     if (r.gate !== 'presence') { console.log('       (engine without respawnGate — step skipped)'); return; }
     must(r.hint === 'find_station' && /RESPAWN STATION/.test(r.ins || '') && r.lab === 'AND STAND THERE', JSON.stringify(r));
   });
@@ -302,11 +302,15 @@ for (const view of VIEWS) {
     const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
     await pg.goto('http://127.0.0.1:4192/utility.html?stage'); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
     const s1 = await pg.evaluate(() => document.getElementById('armed').textContent);
-    await pg.evaluate(() => window.brxUtility.applyStationConfig({ kind: 'bomb', team: 'red', id: 4, threshold: -70, game: 3 })); await pg.waitForTimeout(400);
-    const s2 = await pg.evaluate(() => ({ armed: document.getElementById('armed').textContent, status: document.getElementById('status').textContent, kind: document.getElementById('kind').textContent, team: document.getElementById('team').textContent, sid: document.getElementById('sid').textContent, hidden: document.getElementById('cfg').hidden, uuid: window.brxUtility.stationUuid() }));
-    await pg.reload(); await pg.waitForTimeout(1500); const s3 = await pg.evaluate(() => ({ armed: document.getElementById('armed').textContent, status: document.getElementById('status').textContent })); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.close();
+    // Through the REAL wire (review 2026-09-11 lane-4): `mcMessage` hands a real `station_config` envelope
+    // to the stage's fake socket, which the Transport decodes exactly as it would a live MC push -- not a
+    // bare call into `applyStationConfig()`, which used to skip the envelope entirely.
+    await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'bomb', team: 'red', id: 4, threshold: -70, game: 3, valid_ids: [4, 7] })); await pg.waitForTimeout(400);
+    const s2 = await pg.evaluate(() => ({ armed: document.getElementById('armed').textContent, status: document.getElementById('status').textContent, kind: document.getElementById('kind').textContent, team: document.getElementById('team').textContent, sid: document.getElementById('sid').textContent, hidden: document.getElementById('cfg').hidden, uuid: window.brxUtility.stationUuid(), ids: document.getElementById('ids').textContent }));
+    await pg.reload(); await pg.waitForTimeout(1500); const s3 = await pg.evaluate(() => ({ armed: document.getElementById('armed').textContent, status: document.getElementById('status').textContent, ids: document.getElementById('ids').textContent })); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.close();
     must(perr.length === 0, perr.join('|')); must(s1 === 'NOT ARMED BY MISSION CONTROL', 'before: ' + s1);
-    must(s2.armed === 'MC-ARMED · GAME 3' && s2.status === 'LIVE' && s2.kind === 'BOMB SITE' && s2.team === 'RED' && s2.sid === 'STATION 4' && s2.hidden && /-0400-/.test(s2.uuid), 'after push: ' + JSON.stringify(s2));
+    must(s2.armed === 'MC-ARMED · GAME 3' && s2.status === 'LIVE' && s2.kind === 'BOMB SITE' && s2.team === 'RED' && s2.sid === 'STATION 4' && s2.hidden && /-0400-/.test(s2.uuid) && s2.ids === 'VALID IDS: 4, 7', 'after push: ' + JSON.stringify(s2));
+    must(s3.ids === 'VALID IDS: 4, 7', 'valid ids survive reload: ' + JSON.stringify(s3));
     must(s3.armed === 'MC-ARMED · GAME 3' && s3.status === 'LIVE', 'after reload: ' + JSON.stringify(s3));
   });
   // ---- K1: the control point, on the real screen. Every assertion below is what a PERSON SEES (rendered

@@ -1,12 +1,12 @@
 {
-  "taken": "2026-09-11T14:30:29.795Z",
-  "mc_src": "5ea67ef0dca625ebca753c7f07737132f0773d73",
-  "hud_src": "9146fae61f4b1ad4c224b6d9303791dc2d841cbf",
+  "taken": "2026-09-11T18:22:46.272Z",
+  "mc_src": "5db5f36c8b1caee321dfe131dd30a74122ce888f",
+  "hud_src": "7d687221b864ce416fd26a9d0423ccd5dac66b69",
   "files": {
     "mc-armory.jpg": {
       "w": 1280,
       "h": 800,
-      "bytes": 202073
+      "bytes": 204659
     },
     "mc-games.jpg": {
       "w": 1280,

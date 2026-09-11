@@ -42,6 +42,7 @@ const PAIN_GAP_MS = 600;            // A15.3: at most one pain grunt per 600 ms 
 // almost as soon as it started taking damage. 15 keeps the warning late on every stock pool. If a loadout
 // ever needs its own value this wants plumbing through the bundle the way `voice.pain_long_min` is.
 const LOW_HEALTH_HP = 15;
+const STUN_DEFAULT_S = 10;          // F15: how long an EMP (proto-8 $HIR under config.stun) disarms the gun when the config names no duration
 /** F13: a `$SPAWN` within ~2 s of death wedges the headset in its green out-blink (threshold 2.0-2.5 s; use >= 3). Same
  *  value as `gameconfig.MIN_RESPAWN_S` on the CLI path. */
 const MIN_RESPAWN_S = 3;
@@ -245,10 +246,12 @@ export class Engine {
     this.night = false;
     this.lastVoltsAt = 0;
     this.hurtFired = false;         // low-health alert already sent this life
+    this.stunned = null;            // F15: {at, until, ammo:{slot:[mag,reserve]}} while an EMP has the gun disarmed; the ammo is the LIVE count to restore
     this.switching = null;          // {at, from} while an ALT weapon swap is in flight (field 2026-08-30)
     this.reloading = null;          // {at, ms, slot} from the reload-handle pull ($BUT,2) until the mag comes back ($ALCD up) — HUD takeover (review 2026-09-03 #15)
     this.lastSwitchMs = null;       // measured duration of the last completed swap
     this._prevAmmo = {};            // per weapon slot ($ALCD token 3): last mag seen
+    this._prevReserve = {};         // per weapon slot: last reserve seen ($ALCD token 4) -- the stun restore needs the LIVE pair, not the frame's (F15/F87)
     this.activeSlot = 0;
     this.magBySlot = {};
     this.endedMatches = [];         // match_ids already ended locally — a re-hydrated `start` for them is a no-op
@@ -320,6 +323,10 @@ export class Engine {
    *  way (a stored preset, the demo, the stage) spawned at exactly that, inside the headset relay's out-blink wedge. */
   get respawnDelayMs() { const s = this.config && this.config.respawn && this.config.respawn.delay_s; return Math.max(MIN_RESPAWN_S, s > 0 ? s : 10) * 1000; }
   get respawnType() { return (this.config && this.config.respawn && this.config.respawn.type) || 'auto'; }
+  /** F15: the host-driven stun is ON when the config carries a `stun` object (`{duration_s}`); a proto-8 `$HIR` is
+   *  otherwise an ordinary hit (the stock `<8,0>` row is the charge rifle's plain damage) and must disarm nothing. */
+  get stunEnabled() { return !!(this.config && this.config.stun && typeof this.config.stun === 'object'); }
+  get stunMs() { const s = this.config && this.config.stun && +this.config.stun.duration_s; return (s > 0 ? s : STUN_DEFAULT_S) * 1000; }
   /** scanner respawn: 'trigger' = at the station AND pull the trigger (default); 'presence' = being at the station is enough */
   get respawnGate() { return (this.config && this.config.respawn && this.config.respawn.gate) || 'trigger'; }
   get timeLimitMs() { const s = this.config && this.config.time_limit_s; return s ? s * 1000 : null; }
@@ -1120,7 +1127,7 @@ export class Engine {
     const ps = this._pickFrame('pset_pool');
     this._write([...(ps.frame ? [ps.frame] : []), ...this.frames.spawn, SFLASH, ...(sp.frame ? [sp.frame] : [])], 'spawn' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : ''));
     this.hurtFired = false;        // the low-health alert is once per LIFE
-    this._prevAmmo = {}; this.activeSlot = 0; this.magBySlot = {};   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
+    this._prevAmmo = {}; this._prevReserve = {}; this.activeSlot = 0; this.magBySlot = {};   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
     this._cue('klaxon');
     // Spawn shield is ALWAYS 0 on hardware -- $PSET t5 is a capacity filled by an fn-11
     // grant, never a starting pool (bench 2026-08-27).
@@ -1532,6 +1539,7 @@ export class Engine {
       if (this.respawnType === 'scanner' && this.respawnGate === 'presence') {
         const st = this._stationRevivable(now); if (st) { this._resyncRevive = false; this._revive(false, st.id); }
       }
+      if (this.stunned && now >= this.stunned.until) this._stunRestore('expired');   // F15: the stun timer -- restore the LIVE counts
       this._reassertDeathBlink(now);   // A11.6: keep the headset out-blink lit through a long DOWN (colour opt-in only)
       this._downRearm(now);            // §3.2: one $HLOOP rearm after the hands-off window (belt-and-braces; the native flash is already running)
       this._gunReadoutTick(now);       // A16 §3.1: revert the gun-body readout to rest once its hold has run out
@@ -1565,7 +1573,7 @@ export class Engine {
     const sir = this._pickTable('sir_pool');
     this._write([...(ps.frame ? [ps.frame] : []), ...sir, ...this.frames.revive, ...(sp.frame ? [sp.frame] : [])], 'revive' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : ''));
     this.hurtFired = false;
-    this._prevAmmo = {}; this.activeSlot = 0;   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
+    this._prevAmmo = {}; this._prevReserve = {}; this.activeSlot = 0;   // both maps: a stun before the first shot of a NEW life must snapshot this life's reserve, not the last one's (polish review 2026-09-11)   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null;
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
     this._gunTake();   // A11.7
@@ -1590,10 +1598,65 @@ export class Engine {
     if (this.matchId && !this.endedMatches.includes(this.matchId)) this.endedMatches.push(this.matchId);
     if (this.bleUp) this._writeTeardown('end', why); else { this.pendingTeardown = 'end'; this.log(`end (${why}) owed to the gun — link down`, 'le'); }
     this.spawned = false; this.alive = false; this.resync = null; this.reconciling = null; this.start = null; this._resyncRevive = false; this.reloading = null;
+    this.stunned = null;   // F15: the end frames own the gun now
     this.ready = false;
     this.moment = { kind: 'match_over', at: this.now() };
     this._set('kitted');
     this.log(`match ended: ${why}`, 'lk');
+  }
+
+  // ---------- F15: the host-driven stun (EMP) ----------
+  /** The proven chain (FOLLOWUPS F15): a proto-8 IR word -> the victim's `$SIR,8,0,,24` row (a STATUS function: `$HIR`
+   *  fires, pools do not move, no `$HP` follows) -> `$AMMO,<slot>,0,0,1,*` for every live slot -> restore. The native
+   *  stun is not relied on (2/5 singles, lasts until death). Only under `config.stun` (`stunEnabled`): the stock
+   *  `<8,0>` row is the charge rifle's plain damage, and a plain hit must not disarm anyone.
+   *  - EXTEND, never double-restore: a second EMP inside the window pushes `until` out and writes nothing.
+   *  - The restore re-sends the LIVE counts snapshotted here (last `$ALCD` per slot, else the frame's spawn
+   *    values), because a `$WEAP`/`$AMMO` re-push resets ammo to the frame's numbers (F87) and a stun must not refill.
+   *  - Death cancels (`_death` -> `_stunRestore('died')`, no write): `frames.revive` carries its own `$AMMO`.
+   *  - A rejoin's reconcile takes over (`_beginReconcile`), and a link that is down at expiry gets no write --
+   *    the relink's reconcile re-arms it (coarsely, with the frame's counts).
+   *  - Not persisted: a reload during a stun loses the timer and the relink reconcile re-arms the gun. */
+  _stun() {
+    if (!this.stunEnabled || this.phase !== 'live' || !this.spawned || !this.alive || this.tutorial) return;
+    const now = this.now(), ms = this.stunMs;
+    if (this.stunned) {
+      this.stunned.until = Math.max(this.stunned.until, now + ms);
+      this.log(`⚡ stun extended: ${Math.ceil((this.stunned.until - now) / 1000)} s left`, 'li');
+      this._changed(); return;
+    }
+    const spawn = this._spawnAmmo(), live = {};
+    for (const slot of Object.keys(spawn)) {
+      const mag = this._prevAmmo[slot], res = this._prevReserve[slot];
+      live[slot] = [mag != null ? mag : spawn[slot][0], res != null ? res : spawn[slot][1]];
+    }
+    this.stunned = { at: now, until: now + ms, ammo: live };
+    this._write(Object.keys(live).map(slot => `$AMMO,${slot},0,0,1,*`), `stun: disarm ${ms} ms`);
+    this.moment = { kind: 'stunned', at: now, data: { ms } };
+    this._event('stunned');   // A11 presentation hook: no-op until a profile carries a `stunned` cue/burst
+    this.log(`⚡ stunned ${ms} ms — by ${this.latch ? this.nameOf(this.latch.shooter_num) || TEAM_NAME[this.latch.shooter_team] || 'UNKNOWN' : 'UNKNOWN'}`, 'le');
+    this._changed();
+  }
+  /** End the stun. Only an EXPIRY on a live, linked gun writes the restore; every other reason (death, reconcile)
+   *  leaves the re-arm to the path that owns it. */
+  _stunRestore(why) {
+    const st = this.stunned; if (!st) return;
+    this.stunned = null;
+    if (why === 'expired' && this.alive && this.bleUp) {
+      this._write(Object.entries(st.ammo).map(([slot, [mag, res]]) => `$AMMO,${slot},${mag},${res},1,*`), 'stun over: restore live ammo');
+      this.moment = { kind: 'stun_over', at: this.now() };
+      this._event('stun_over');
+    }
+    this.log(`stun over (${why})`, 'li');
+    this._changed();
+  }
+  /** {slot: [mag, reserve]} straight from the bundle's spawn $AMMO frames -- the counts a slot that has never fired holds. */
+  _spawnAmmo() {
+    const out = {};
+    for (const f of (this.frames && this.frames.spawn) || []) {
+      if (f.startsWith('$AMMO,')) { const t = f.split(','); out[+t[1]] = [+t[2] || 0, +t[3] || 0]; }
+    }
+    return out;
   }
 
   /** True per-slot mags from the bundle's spawn $AMMO frames — the display/warn denominator. */
@@ -1697,6 +1760,15 @@ export class Engine {
     // A11.6 carrier blink: MC names who holds it (`carrier`) and whose flag it is (`flag_tid`)
     if (body.kind === 'objective_taken' && me && body.carrier === me) this._carrier(true, body.flag_tid != null ? body.flag_tid : (this.team ? this.team.tid : 0));
     if ((body.kind === 'objective_scored' || body.kind === 'flag_returned') && this.carrying != null && (!body.carrier || body.carrier === me)) this._carrier(false);
+    // A19 (S10): a held headset ROLE named by MC — `role: {name, on, tid?}` — goes through the same mechanism the
+    // carrier blink and the infection flip already use. The names are the five §3.3 states; anything else is
+    // logged and IGNORED, so a newer MC can never paint an arbitrary state on the lamp (the lamp shows only what
+    // this bundle's `headset.role` table can express).
+    if (body.role && typeof body.role === 'object') {
+      const r = body.role;
+      if (['carrier', 'infected', 'vip', 'beacon', 'extracted'].includes(r.name)) this._setRole(r.name, !!r.on, r.tid != null ? r.tid : null);
+      else this.log(`alert role ${String(r.name)} unknown — ignored`, 'li');
+    }
     if (body.hud !== false) this.moment = { kind: 'alert', at: this.now(), data: { kind: body.kind, text: body.text || body.kind, player_id: body.player_id_subject || null } };
     this.log(`alert ${body.kind}`, 'lk');
     this._changed();
@@ -1764,6 +1836,7 @@ export class Engine {
         // word, sensor is t[1] and irProto is t[2]. `ir_proto` read t[1], so it had been reporting
         // the SENSOR all along; every hit_taken fact ever recorded carries that mix-up.
         if (!Number.isNaN(team)) { this.latch = { shooter_num: Number.isNaN(num) ? 0 : num, shooter_team: team, at: this.now(), ir_proto: parseInt(t[2], 10), sensor: parseInt(t[1], 10) }; this.lastHitAt = this.now(); }
+        if (t[2] === '8') this._stun();   // F15: an EMP word (proto 8) -- a no-op unless config.stun is on; no $HP follows a status row, so nothing below sees it
         break;
       }
       case 'VOLTS': { const b = parseInt(t[3], 10); if (!Number.isNaN(b)) this.battery = b; this.lastVoltsAt = this.now(); break; }
@@ -1942,6 +2015,10 @@ export class Engine {
   /** $ALCD,<mag>,100,<slot>,<reserve>,0 — counts are per weapon SLOT; a weapon swap is never a shot. */
   _onAmmo(mag, reserve, slot = 0) {
     slot = Number.isFinite(slot) ? slot : 0;
+    // F15: a stunned gun cannot fire, so any $ALCD in the window is the gun echoing OUR `$AMMO,<slot>,0,0` (whether
+    // it does is hardware-UNVERIFIED; this guard makes it safe either way). Counting it would book a magazine of
+    // phantom shots, and recording it would make the restore re-send 0 -- a gun disarmed for the rest of the life.
+    if (this.stunned) return;
     const prev = this._prevAmmo[slot];
     if (prev != null && mag < prev && this.phase === 'live') this.shots += (prev - mag);
     if (this.resync && prev != null && mag < prev) this._resyncEvidence('alcd-dec');
@@ -1957,6 +2034,7 @@ export class Engine {
       this.moment = { kind: 'switched', at: this.now(), data: { slot } };   // the HUD flips SWITCHING → ACTIVE
     }
     this._prevAmmo[slot] = mag; this.activeSlot = slot;
+    if (reserve != null && !Number.isNaN(reserve)) this._prevReserve[slot] = reserve;
     this.magBySlot[slot] = Math.max(this.magBySlot[slot] || 0, mag);
     this.ammo = mag; this.mag = this.magBySlot[slot];
     if (reserve != null && !Number.isNaN(reserve)) this.reserve = reserve;
@@ -2031,7 +2109,13 @@ export class Engine {
       this.emitFact({ type: 'hit_taken', match_id: this.matchId, shooter_num: this.latch.shooter_num,
         shooter_team: this.latch.shooter_team, dmg, ir_proto: this.latch.ir_proto, sensor: this.latch.sensor });
       this.lastHitAt = this.now();
-      if (this.alive && hp > 0) { this._event('hit_taken'); this._pain(dmg, this.latch.ir_proto, movedPool); }   // A11: a death is its own event; A15.3: our pain grunt by damage; A17: only when it reached HEALTH
+      // F57 (bench 2026-09-09, "the critical sounds are a bit bugged when it was at 1 red"): the hit that CROSSES the
+      // low-health threshold used to fire `low_health` AND the pain grunt in the same millisecond, and the gun plays
+      // one clip at a time, so they cut each other off -- exactly once per life, at the moment the warning is the
+      // whole point. The warning IS the reaction to that hit, so the grunt is suppressed on it (the A17 "never on
+      // the lethal hit" precedent: two cues, one speaker, the rarer one wins). The pain gate is stamped too, so a
+      // follow-up hit inside PAIN_GAP_MS cannot cut the warning short either; past the gap the grunt is back.
+      if (this.alive && hp > 0) { this._event('hit_taken'); if (hurtNow) this._lastPainAt = this.now(); else this._pain(dmg, this.latch.ir_proto, movedPool); }   // A11: a death is its own event; A15.3: our pain grunt by damage; A17: only when it reached HEALTH; F57: not on the low-health crossing
     }
     // HUD moments. The gun's own LED strip cannot hold a steady colour in game (the firmware
     // animates it, and winning that fight needs ~30Hz repaints which STROBE), so the phone carries
@@ -2091,6 +2175,7 @@ export class Engine {
     // says the killer is unknown. A stale latch (older than DEATH_LATCH_MS) is the same case: nobody we can name.
     const unknown = !fresh || shooter_num === 0;
     this.alive = false; this.deaths++; this.deadAt = this.now(); this._downRearmSent = false;   // §3.2: fresh rearm gate for this life
+    this._stunRestore('died');   // F15: death cancels the stun -- no restore write; the revive's own $AMMO re-arms the next life
     // A16 §5: death clears the readout — NO gun write here, the strip simply sits wherever the native hit
     // flash left it until the next `_gunTake` blanks it; a pending hold from this life must not fire later.
     this._readoutFrame = null; this._readoutHoldActive = false; this._readoutLastWriteAt = null; this._readoutLastPool = null;
@@ -2138,6 +2223,7 @@ export class Engine {
     if (this.reconciling) return;
     this.reconciling = { since: this.now() };
     this.resync = null;                                   // never run the infer-death machine on a rejoin
+    this._stunRestore('reconcile');                       // F15: the reconcile owns the disarm/re-arm from here (coarse: it re-arms with the frame's counts)
     this._write(['$AMMO,0,0,0,1,*', '$AMMO,1,0,0,1,*'], 'reconcile: disarm');   // no shots count while we reconcile
     this.log('reconnect — reconciling (gun held ' + RECONCILE_MS + ' ms)', 'li');
     this._changed();
@@ -2220,7 +2306,7 @@ export class Engine {
   /** Every head write goes through here: the head starts with $CLEAR, so its $LCD,0,0,… echo must read as a
    *  reset (prev=0 per slot), never as a magazine dump into `shots`. */
   /** Every head write starts with $CLEAR → the gun is back on weapon slot 0 (so $LCD, which carries no slot, books to slot 0). */
-  _writeHead(label) { this._prevAmmo = {}; this.activeSlot = 0; this._write(this.frames.head, label); }
+  _writeHead(label) { this._prevAmmo = {}; this._prevReserve = {}; this.activeSlot = 0; this._write(this.frames.head, label); }
   _resyncDone(why) { this.log(`resync: ${why}`, 'lk'); this.resync = null; this._changed(); }
 
   // ---------- app lifecycle (§3.11) ----------
@@ -2283,6 +2369,7 @@ export class Engine {
       weaponId: (() => { const ws = this.player && this.player.loadout && this.player.loadout.weapons; const w = ws && (ws[this.activeSlot] || ws[0]); return w ? w.weapon_id : null; })(),
       resync: this.resync ? { step: this.resync.step, prompt: this.resync.prompt } : null,
       reconciling: !!this.reconciling,
+      stunned: this.stunned ? { until: this.stunned.until, leftMs: Math.max(0, this.stunned.until - now) } : null,   // F15: the HUD's STUNNED takeover reads this
       // read ONCE: two calls could straddle the expiry and disagree (switching:true, switchingMs:null)
       ...(ms => ({ switching: ms != null, switchingMs: ms }))(this.switchingMs()),
       switchWindowMs: this.switchWindowMs(), lastSwitchMs: this.lastSwitchMs, activeSlot: this.activeSlot,

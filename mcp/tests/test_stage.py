@@ -1470,6 +1470,80 @@ def test_the_hill_constants_and_cues_are_engine_js_converted_to_seconds():
     assert PLAYX == S.PLAYX
 
 
+CONTROL_JS = ENGINE_JS.with_name("control.js")
+BEACON_JS = ENGINE_JS.with_name("beacon.js")
+
+
+def test_the_control_point_constants_the_advert_layout_and_the_source_gate_are_the_phones_own():
+    """F102 PARITY, read off the source of truth: every constant the station path adds to stage.py must be
+    engine.js's own value with the ms->s conversion applied exactly once, the advert bits/bytes must be
+    control.js's and beacon.js's, and the two RULES that are easiest to port wrong -- the per-source expiry
+    window and the `station_source` gate -- must still be written the way the stage assumes. A stage that
+    kept CONTROL_STALE_MS's 4000 would never expire a station point; one that put the grenade's 12 s on a
+    station point would let a walked-away point tick for eight extra seconds; and both suites stay green."""
+    src = ENGINE_JS.read_text(encoding="utf-8")
+
+    def num(name):
+        m = re.search(rf"^\s*const {name} = (\d+);", src, re.M)
+        assert m, f"engine.js no longer defines {name}"
+        return int(m.group(1))
+
+    assert S.CONTROL_STALE_S == num("CONTROL_STALE_MS") / 1000.0, "a station point's window is SECONDS here"
+    assert S.HILL_CONTESTED_MIN_S == num("HILL_CONTESTED_MIN_MS") / 1000.0
+    assert S.HILL_CALLOUT_MIN_S == num("HILL_CALLOUT_MIN_MS") / 1000.0
+    assert S.HILL_TICK_LOSING_S == num("HILL_TICK_LOSING_MS") / 1000.0
+    assert S.RARE_GUARD_S == num("RARE_GUARD_MS") / 1000.0, "F58(b): the pool-rise guard is SECONDS here"
+    assert (S.CONTROL_STALE_S, S.HILL_TICK_LOSING_S) == (4.0, 0.5)
+    assert S.CONTROL_STALE_S != S.HILL_PRESENCE_S, "the two sources' windows are different ON PURPOSE"
+    # the rule that picks the window, and the rule that gates the source, as engine.js writes them
+    assert re.search(r"h\.source === 'station' \? CONTROL_STALE_MS : HILL_PRESENCE_MS", src), "engine.js `_hillTick` no longer keys the window on hill.source"
+    assert re.search(r"source === 'station' \? src === 'phone' : src === 'grenade'", src), "engine.js `_hillSourceAllowed` changed its mapping"
+    assert re.search(r"h\.falling \? HILL_TICK_LOSING_MS : HILL_TICK_MS", src), "engine.js `_hillTick` no longer doubles the tick while falling"
+    assert re.search(r"this\._hillSay\('hill_contested'", src), "engine.js no longer plays hill_contested on the station path (the stage's HILL_CUES note would be a lie)"
+    assert "_onControlAdvert" in src and re.search(r"readout\.reload_glance_s != null \? readout\.reload_glance_s : 2", src), "F54: the glance default"
+    # F15: the stun's default length (engine.js writes it in SECONDS already) and the three rules the stage ports:
+    # the disarm frame shape, the restore frame shape, and the $ALCD ignore while stunned
+    assert S.STUN_DEFAULT_S == float(num("STUN_DEFAULT_S")) == 10.0
+    assert re.search(r"`\$AMMO,\$\{slot\},0,0,1,\*`", src), "engine.js `_stun` no longer disarms with $AMMO,<slot>,0,0,1"
+    assert re.search(r"`\$AMMO,\$\{slot\},\$\{mag\},\$\{res\},1,\*`", src), "engine.js `_stunRestore` no longer restores the live pair"
+    assert re.search(r"_onAmmo\(mag, reserve, slot = 0\) \{[^}]*?if \(this\.stunned\) return;", src, re.S), "engine.js `_onAmmo` no longer ignores $ALCD while stunned"
+    assert re.search(r"this\.stunned\.until = Math\.max\(this\.stunned\.until, now \+ ms\)", src), "a second EMP must EXTEND the stun"
+    assert re.search(r"_stunRestore\('died'\)", src), "death must cancel the stun"
+    # F57: the low-health crossing plays no grunt and stamps the pain gate
+    assert re.search(r"if \(hurtNow\) this\._lastPainAt = this\.now\(\); else this\._pain\(", src), "engine.js F57 gate changed shape"
+    cj_stun = (pathlib.Path(__file__).resolve().parents[1] / "brx_mcp" / "mc" / "compile.py").read_text(encoding="utf-8")
+    assert re.search(r"^_STUN_DEFAULT_S = 10$", cj_stun, re.M), "compile.py's stun default must match engine.js's"
+    st, _, _ = mk_hill()
+    for source, cfg_src, want in (("station", "phone", True), ("station", "grenade", False), ("beacon", "grenade", True),
+                                  ("beacon", "phone", False), ("station", None, True), ("beacon", None, True)):
+        st.config = {**st.config, "station_source": cfg_src} if cfg_src else {k: v for k, v in st.config.items() if k != "station_source"}
+        st._hill_source_warned = ""
+        assert st._hill_source_allowed(source) is want, (source, cfg_src)
+    # control.js: byte 10's bits and who may own a point
+    cj = CONTROL_JS.read_text(encoding="utf-8")
+    m = re.search(r"export const CONTROL_STATE = \{ held: (\d+), contested: (\d+), rising: (\d+), falling: (\d+) \};", cj)
+    assert m and S.CONTROL_STATE == dict(zip(("held", "contested", "rising", "falling"), map(int, m.groups()))), "control.js CONTROL_STATE"
+    m = re.search(r"export function claimable\(tid\) \{ return (.*); \}", cj)
+    assert m, "control.js `claimable`"
+    js_ok = {int(x) for x in re.findall(r"tid === (\d+)", m.group(1))}
+    assert {t for t in range(256) if S.claimable(t)} == js_ok == {0, 1, 3}
+    # beacon.js: the advert bytes the injector encodes and the model decodes
+    bj = BEACON_JS.read_text(encoding="utf-8")
+    m = re.search(r"export const MAGIC = \[([^\]]*)\];", bj)
+    assert m and tuple(int(x, 16) for x in re.findall(r"0x[0-9a-fA-F]+", m.group(1))) == S.ADVERT_MAGIC
+    assert S.ADVERT_VERSION == int(re.search(r"export const VERSION = (\d+);", bj).group(1))
+    assert S.STATION_TEAM_ANY == int(re.search(r"export const TEAM_ANY = (\d+);", bj).group(1))
+    m = re.search(r"export const KIND = \{ ([^}]*) \};", bj)
+    assert m and S.ADVERT_KIND == {k: int(v) for k, v in re.findall(r"(\w+): (\d+)", m.group(1))}
+    m = re.search(r"export const ROLE = \{ ([^}]*) \};", bj)
+    assert m and S.ADVERT_ROLE == {k: int(v) for k, v in re.findall(r"(\w+): (\d+)", m.group(1))}
+    # ...and the layout itself, byte for byte, against beacon.js's own comment table (team 9, state 10, value 11)
+    for field, byte in (("id", "6-7"), ("kind", "8"), ("team", "9"), ("state", "10"), ("value", "11"), ("seq", "12")):
+        assert re.search(rf"^//\s+{byte}\s+{field}\b", bj, re.M), f"beacon.js's layout comment moved byte {byte} ({field})"
+    raw = S.encode_advert_uuid("station", 0x1234, "control", 3, 0b1010, 77, seq=9).replace("-", "")
+    assert raw[12:16] == "1234" and raw[16:18] == "05" and raw[18:20] == "03" and raw[20:22] == "0a" and raw[22:24] == "4d" and raw[24:26] == "09"
+
+
 def test_the_stages_poller_is_faster_than_the_hill_tick_it_has_to_carry():
     """`poll()` is NOT the phone's ~250 ms `tick()`: whatever cadence its CALLER uses becomes the hill
     tick's real resolution. If the stage server ever polled slower than HILL_TICK_S the possession

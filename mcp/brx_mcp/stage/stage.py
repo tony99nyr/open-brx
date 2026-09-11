@@ -11,6 +11,7 @@ real IR shot from the emitter shows the whole picture, firmware + ours, on the b
 from __future__ import annotations
 
 import asyncio
+import math
 import random
 import time
 from collections import deque
@@ -24,6 +25,7 @@ from ..irbridge import encode_word
 from ..mc import presentation as _pres
 from ..mc.compile import Compiler
 from ..mc.state import default_config
+from ..mc.types import STATION_SOURCES
 
 SFLASH = "$SFLASH,*"
 PLAYX = "$PLAYX,0,*"           # engine.js PLAYX: stop whatever line the gun is speaking (used only to PREEMPT our own hill callout)
@@ -34,7 +36,7 @@ MEDAL_GAP_S = 2.0              # engine.js MEDAL_GAP_MS
 READOUT_COALESCE_S = 0.3       # engine.js READOUT_COALESCE_MS (A16 §3.1): a repaint within this of the last WRITE only restarts the hold
 GUN_IN_PLAY = list(_pres.GUN_IN_PLAY)
 HEADSET_IN_PLAY = ["dark", "team"]
-MODES = ["tdm", "ffa", "infection", "lms", "extraction"]
+MODES = ["tdm", "ffa", "infection", "lms", "extraction", "koth"]   # koth (F102): the one selector mode with an objective source
 
 # ---- King of the Hill audio (a FAITHFUL port of engine.js's HILL_CUES block + `_onHillBeacon`… , commit 4348721)
 # The phone is the source of truth here and the stage exists to PREDICT it, so nothing below is redesigned:
@@ -55,13 +57,75 @@ HILL_TICK_S = 1.0              # engine.js HILL_TICK_MS 1000: the possession tic
 # window permanently fresh and a hill nobody holds would tick forever.
 HILL_PRESENCE_S = 12.0         # engine.js HILL_PRESENCE_MS 12000
 BEACON_DEDUPE_S = 0.150        # engine.js's 150 ms F85 identity window (see `_on_rx`)
+# K1 / F102: the SAME hill state sourced from a phone CONTROL POINT's BLE advert (kind 5) instead of a
+# grenade's IR word. ⚠ The two sources' windows are different ON PURPOSE (engine.js `_hillTick` takes its
+# window from `hill.source`): a grenade beacons once per ~5 s, so its presence is 12 s / two missed beacons;
+# a BLE station advertises continuously, so its point goes stale on the §3 presence rule, 4 s.
+CONTROL_STALE_S = 4.0          # engine.js CONTROL_STALE_MS 4000
+HILL_CONTESTED_MIN_S = 10.0    # engine.js HILL_CONTESTED_MIN_MS: a floor between "Hill Contested" repeats (2 v 2 flaps)
+HILL_CALLOUT_MIN_S = 3.0       # engine.js HILL_CALLOUT_MIN_MS: a floor between the transition lines (two phones on one id)
+HILL_TICK_LOSING_S = 0.5       # engine.js HILL_TICK_LOSING_MS: OUR point draining doubles the possession tick
+RARE_GUARD_S = 0.25            # engine.js RARE_GUARD_MS: a pool RISE inside this of a kill/redeploy/down/match_over moment is dropped
+STUN_DEFAULT_S = 10.0          # engine.js STUN_DEFAULT_S (already seconds): an EMP's disarm when config.stun names no duration (F15)
+RARE_MOMENTS = ("kill", "redeploy", "down", "match_over")
+# app/src/control.js `CONTROL_STATE`: advert byte 10 is FLAGS (independent bits), not a packed phase field --
+# so `rising` and `falling` CAN both be set, and that reads as direction UNKNOWN (§5d.3), never as either.
+CONTROL_STATE = {"held": 1, "contested": 2, "rising": 4, "falling": 8}
+STATION_TEAM_ANY = 255         # beacon.js TEAM_ANY: advert byte 9 "neutral / any team"
+# app/src/beacon.js: the 16-byte advert layout the phone's scanner decodes (one 128-bit service UUID).
+ADVERT_MAGIC = (0x4F, 0x42, 0x52, 0x58)
+ADVERT_VERSION = 1
+ADVERT_ROLE = {"station": 1, "player": 2}
+ADVERT_KIND = {"respawn": 1, "powerup": 2, "extraction": 3, "bomb": 4, "control": 5}
+_ADVERT_KIND_NAME = {v: k for k, v in ADVERT_KIND.items()}
+_UNSET = object()              # engine.js `undefined` (distinct from `null`/None) for `_hillOwnerWhenSilenced`
+
+
+def claimable(tid) -> bool:
+    """control.js `claimable`: can this tid OWN a point at all? 0/1/3 only -- 4-7 are colours, not teams
+    ($TID is masked to 2 bits), 255 is "any", and 2 is refused by F82 (a neutral hill broadcasts it)."""
+    return tid in (0, 1, 3)
+
+
+def encode_advert_uuid(role: str, id: int = 0, kind: str | int = 0, team: int = STATION_TEAM_ANY, state: int = 0,
+                       value: int = 0, seq: int = 0, game: int = 0, threshold: int = 0) -> str:
+    """beacon.js `encodeUuid`, byte for byte: what a phone station puts on the air."""
+    r = ADVERT_ROLE.get(role) if isinstance(role, str) else int(role)
+    if not r:
+        raise ValueError("role required (station|player)")
+    k = ADVERT_KIND.get(kind, 0) if isinstance(kind, str) else int(kind)
+    thr = 0 if not threshold else (256 + max(-128, round(threshold)) if threshold < 0 else min(127, round(threshold)))
+    b = [*ADVERT_MAGIC, ADVERT_VERSION, r, (int(id) >> 8) & 0xFF, int(id) & 0xFF, k, int(team) & 0xFF,
+         int(state) & 0xFF, int(value) & 0xFF, int(seq) & 0xFF, int(game) & 0xFF, thr & 0xFF, 0]
+    h = "".join(f"{x & 0xFF:02x}" for x in b)
+    return f"{h[0:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}"
+
+
+def decode_advert_uuid(s: str) -> dict | None:
+    """beacon.js `decodeUuid`: the advert as the phone's scanner reads it, or None when it is not ours.
+    The stage feeds an injected advert through THIS, never straight into the hill model, so the byte
+    positions (team 9, flags 10, value 11) are exercised exactly as on the phone."""
+    import re
+    h = str(s or "").replace("-", "").lower()
+    if not re.fullmatch(r"[0-9a-f]{32}", h):
+        return None
+    b = [int(h[i:i + 2], 16) for i in range(0, 32, 2)]
+    if tuple(b[0:4]) != ADVERT_MAGIC or b[4] != ADVERT_VERSION:
+        return None
+    role = "station" if b[5] == ADVERT_ROLE["station"] else "player" if b[5] == ADVERT_ROLE["player"] else None
+    if not role:
+        return None
+    thr = 0 if b[14] == 0 else (b[14] - 256 if b[14] > 127 else b[14])
+    return {"role": role, "id": (b[6] << 8) | b[7],
+            "kind": (_ADVERT_KIND_NAME.get(b[8], f"kind{b[8]}") if role == "station" else None),
+            "team": b[9], "state": b[10], "value": b[11], "seq": b[12], "game": b[13], "threshold": thr}
 # The literal fallbacks and their REAL clip lengths, straight off engine.js `HILL_CUES` (ids confirmed by ear on
 # hardware 2026-09-10, rung S; lengths from mcp/brx_mcp/data/sound_catalog.json). `s` is what keeps the 0.114 s
 # tick out from under a 1.9-3.0 s callout. The compiled bundle overrides a frame the moment it carries the key.
 HILL_CUES = {
     "hill_captured":  {"frame": "$PLAY,,4,6,VB0N,,,,*", "s": 1.924},   # VB0N "Hill Captured"  1.924 s
     "hill_lost":      {"frame": "$PLAY,,4,6,VB0P,,,,*", "s": 2.976},   # VB0P "Hill Lost!"     2.976 s
-    "hill_contested": {"frame": "$PLAY,,4,6,VB0O,,,,*", "s": 2.078},   # VB0O "Hill Contested" 2.078 s -- NOT WIRED, see `_hill_callout` (F75)
+    "hill_contested": {"frame": "$PLAY,,4,6,VB0O,,,,*", "s": 2.078},   # VB0O "Hill Contested" 2.078 s -- the STATION path only (`_on_control_advert`); never the IR path (F75, see `_hill_callout`)
     "hill_moved":     {"frame": "$PLAY,,4,6,VB0Q,,,,*", "s": 2.424},   # VB0Q "Hill Moved"     2.424 s -- rotating-hill modes only (F83), no caller yet
     "hill_tick":      {"frame": "$PLAY,U100,4,6,,,,,*", "s": 0.114},   # U100 possession tick  0.114 s
 }
@@ -190,7 +254,13 @@ class GunStage:
         self.scan_results: list[dict] = []
         self.profile: dict[str, Any] = {"mode": "tdm", "preset": None, "gun": "team", "headset": "dark",
                                         "night": False, "tid": 1, "environment": "outdoor",
-                                        "voice": "male", "voice_slots": {}}
+                                        "voice": "male", "voice_slots": {},
+                                        # F102: None = "as the config says" (a mode row's own source, or absent);
+                                        # a value overrides it so the F70 gate can be tried both ways at the bench
+                                        "station_source": None,
+                                        # F15: None = no stun in this game (the config's own `stun` stands if it has one);
+                                        # 0 = `{}` (the 10 s default); 1..60 = `{duration_s}`
+                                        "stun": None}
         # 2026-09-07: `gun`/`headset` are DISPLAY-ONLY until the operator explicitly picks one via
         # set_profile(); an untouched selector tracks whatever the preset/config's own gun.in_play /
         # headset.in_play resolves to (recompile() syncs it there) instead of always re-patching this
@@ -244,10 +314,34 @@ class GunStage:
         self.beacon: dict | None = None            # F72: {owner_team, magnitude, sensor, at} -- the last grenade/station beacon
         self._last_beacon_key: str | None = None   # F85: `<owner_team>:<magnitude>` of the last beacon ACCEPTED (not merely seen)
         self._last_beacon_at = 0.0                 # F85: self.now() of that acceptance
-        self.hill: dict | None = None              # {owner, at, from_neutral} -- state from the wire; the cadence below is ours
+        self.hill: dict | None = None              # {owner, at, from_neutral[, source: 'station', site, progress, …]} -- state from the wire; the cadence below is ours
         self._hill_busy_until = 0.0                # a hill callout owns the announcer until here: the tick waits, it never overlaps
         self._hill_tick_at = 0.0                   # when the possession tick last played (0 = not ticking)
         self._hill_team2_warned = False            # F82 is logged once per game, not once per beacon
+        # K1 / F102: the phone CONTROL POINT half (engine.js `_onControlAdvert` / `_controlStation`), field for field.
+        # The stage cannot hear BLE adverts, so `stations` holds INJECTED adverts (`station_advert`), each decoded
+        # through `decode_advert_uuid` exactly as the phone's scanner would decode the air.
+        self.stations: dict[str, dict] = {}        # 'station:<id>' -> the presence entry (beacon.js `Presence` shape + seen_at/advertising)
+        self._control_site: int | None = None      # the point we are latched to, so walking between two does not read as a capture
+        self._control_sig = ""                     # last published advert signature (a change is worth a log line)
+        self._hill_said_at = 0.0                   # when a captured/lost line last played, for HILL_CALLOUT_MIN_S
+        self._hill_contested_at = 0.0              # when "Hill Contested" last played, so a flapping bit cannot repeat it
+        self._hill_was_contested = False           # the contested bit we last read off an advert (edge-triggered)
+        self._hill_owner_when_silenced: Any = _UNSET   # C: the owner as we last heard it while audio was ON (_UNSET = never)
+        self._hill_source_warned = ""              # B: the refused objective source, logged once per game
+        # F58(b): the pool-RISE events (`healed` / `armour_up` / `shield_up`) are dropped inside RARE_GUARD_S of a
+        # rarer HUD moment (engine.js's one moment slot) -- so the stage keeps the moment kinds that matter to it.
+        self._moment: tuple[str, float] | None = None
+        # F54: the reload glance. `reloading` is {at, s, slot} from the handle pull ($BUT,2,1) until the mag comes
+        # back ($ALCD up on that slot); ammo/reserve are what the gun last REPORTED ($ALCD), None until it has.
+        self.reloading: dict | None = None
+        self.ammo: int | None = None
+        self.reserve: int | None = None
+        self.active_slot = 0
+        self._prev_ammo: dict[int, int] = {}       # per weapon slot ($ALCD token 3): last mag seen
+        self._prev_reserve: dict[int, int] = {}    # per weapon slot: last reserve seen -- the stun restore needs the LIVE pair (F15/F87)
+        # F15: {at, until, ammo: {slot: [mag, reserve]}} while an EMP has the gun disarmed; the ammo is the LIVE count to restore
+        self.stunned: dict | None = None
         self._pending: list[asyncio.Task] = []
         self._loop: asyncio.AbstractEventLoop | None = None   # reactions run here; see _spawn_task (2026-09-07)
         # 2026-09-07 (bench): `state()` measured 527-658 ms on real hardware -- almost entirely
@@ -300,6 +394,14 @@ class GunStage:
                 raise ValueError(f"headset must be one of {HEADSET_IN_PLAY}")
             if k == "preset" and v not in (None, "") and v not in _pres.PRESETS:
                 raise ValueError(f"preset must be one of {sorted(_pres.PRESETS)}")
+            if k == "station_source":
+                v = v or None
+                if v is not None and v not in STATION_SOURCES:
+                    raise ValueError(f"station_source must be null (as the config says) or one of {sorted(STATION_SOURCES)}")
+            if k == "stun":
+                v = None if v in (None, "") else int(v)
+                if v is not None and not 0 <= v <= 60:
+                    raise ValueError("stun must be null (off), 0 (the 10 s default) or a duration 1..60 s (F15/A20)")
             if k == "night":
                 v = bool(v)
             if k == "tid":
@@ -485,6 +587,10 @@ class GunStage:
                 patch["headset"] = hs_patch
             base = getattr(self, "_local_pres", None) if not p["preset"] else None
             cfg["presentation"] = _pres.merge(base or cfg.get("presentation"), patch)
+        if p.get("station_source"):
+            cfg["station_source"] = p["station_source"]      # F102: the operator's override of the objective source
+        if p.get("stun") is not None:
+            cfg["stun"] = {} if p["stun"] == 0 else {"duration_s": p["stun"]}   # F15: the EMP cell becomes a stun; compile ships the fn-24 row
         teams = cfg["teams"]
         team = next((t for t in teams if int(t["tid"]) == int(p["tid"])), teams[0])
         self.profile["tid"] = int(team["tid"])
@@ -752,6 +858,8 @@ class GunStage:
             self._log("rolled: " + self.roll_text(), "info")
         await self.write(self.bundle["head"], "arm (head)")
         self.spawned = False; self.alive = False; self.scream_this_life = None   # a fresh head: no scream written yet
+        self._reset_hill()                                       # engine.js `_resetHill` on a new match: game 2 must not inherit game 1's point or its once-per-game warnings
+        self._prev_ammo = {}; self._prev_reserve = {}; self.active_slot = 0; self.reloading = None   # engine.js `_writeHead`
         hs = self.bundle.get("headset") or {}
         if hs.get("pregame"):
             await self.write(hs["pregame"], "headset pregame")
@@ -809,6 +917,7 @@ class GunStage:
         await self.write(([ps] if ps else []) + list(self.bundle["revive"]) + ([fr] if fr else []),
                           "revive" + ps_why + self._line_tag(fr, tag))
         self._after_spawn()
+        self._moment = ("redeploy", self.now())                       # engine.js `_revive`: the HUD's rarer moment (gates a pool rise for RARE_GUARD_S)
         self._event_now("respawned", sound=False)                     # the lights; the sound went out with the revive write
         self.carrying = None; self._active_role = None
         if hs.get("respawn"):
@@ -819,6 +928,7 @@ class GunStage:
         self.spawned = True; self.alive = True
         self.hp = self.max_hp; self.armor = self.max_armor; self.shield = 0   # engine.js `_afterSpawn`/`_revive`: shield always starts at 0, not a max
         self._hurt_fired = False
+        self._prev_ammo = {}; self._prev_reserve = {}; self.active_slot = 0; self.reloading = None    # engine.js: a spawn/revive puts the gun back on slot 0, no reload in flight; both ammo maps reset (stun snapshot, polish 2026-09-11)
         self._gun_band = None; self._gun_taken = False
         # A16 §3.1/§5: a fresh life starts with no readout -- any hold from the last life is dead the
         # moment `_gun_taken` drops False (mirrors engine.js `_gunTake`'s reset).
@@ -861,13 +971,14 @@ class GunStage:
 
     async def end(self) -> dict:
         await self.write(self.bundle["end"], "end")
-        self.spawned = False; self.alive = False
+        self.spawned = False; self.alive = False; self.reloading = None; self.stunned = None   # F15: the end frames own the gun now
+        self._moment = ("match_over", self.now())  # engine.js `_endLocal`
         self._level_gen += 1                       # Node rules: cancel everything on end
         return self.state()
 
     async def panic(self) -> dict:
         await self.write(self.bundle["panic"], "PANIC")
-        self.spawned = False; self.alive = False
+        self.spawned = False; self.alive = False; self.stunned = None; self.reloading = None
         self._level_gen += 1                       # Node rules: cancel everything on panic
         self._log("⚠ the gun now has NO $SIR table: re-ARM before it can be hit (F11)", "warn")
         return self.state()
@@ -933,6 +1044,7 @@ class GunStage:
             if fr:
                 frames.append([fr, 0])
         self._spawn_task(self._seq(frames, "kill" + (" + " + "+".join(medals) if medals else tag)))
+        self._moment = ("kill", self.now())        # engine.js: the kill moment owns the HUD slot (gates a pool rise for RARE_GUARD_S)
         top = medals[0] if medals else "kill"
         seq = (self.bundle.get("leds") or {}).get(top) or []
         if seq:
@@ -1046,6 +1158,11 @@ class GunStage:
                 n = 1 if kind == "shot" else 30
                 for _ in range(n):            # the fake tagger takes 25 per hit; a kill is "until dead"
                     self.mgr.inject_hit(self.alias, t)
+            elif hasattr(self.mgr, "inject_hit") and self.connected and kind == "emp":
+                # F15 on the fake: the EMP registers through the `<8,0>` row, which is fn 24 (a STATUS row) when
+                # config.stun is on -- `$HIR` fires and NO `$HP` follows. The fake gun knows nothing of $SIR
+                # functions, so the report is placed on its session as the gun would send it.
+                self.mgr.sessions[self.alias].record("rx", f"$HIR,0,8,42,{t},15,0,0,*")
             else:
                 self._log("no emitter attached (--ir PORT) -- word logged only", "warn")
             if len(words) > 1:
@@ -1124,7 +1241,11 @@ class GunStage:
         #
         # The two paths above it return EARLIER than this, and neither can leave a hill unexpired: with no
         # link no beacon can have arrived, and a drop clears the state outright (`_hill_reset`).
-        self._hill_tick(self.now())
+        now = self.now()
+        if self.stunned and now >= self.stunned["until"]:
+            self._stun_restore("expired")        # F15: the stun timer -- restore the LIVE counts (engine.js tick())
+        self._stations_tick(now)                 # K1: the scanner's callback (an advertising station is heard again)
+        self._hill_tick(now)
         return seen
 
     def _on_rx(self, raw: str) -> None:
@@ -1165,8 +1286,20 @@ class GunStage:
                     return
                 # $HIR,<sensor>,<irProto>,<shooterId>,<shooterTeam>,<magnitude>,<crit>,<subtype>,* -- proto 13 = melee
                 self._last_hir_proto = int(t[2]) if len(t) > 2 and t[2] != "" else None
+                if len(t) > 2 and t[2] == "8":
+                    self._stun()             # F15: an EMP word (proto 8) -- a no-op unless config.stun is on; a status row, so no $HP follows
             elif cmd == "ALCD" and len(t) > 4:
                 self.tele["mag"], self.tele["reserve"] = int(t[1] or 0), int(t[4] or 0)
+                # engine.js `feedFrame` ALCD: `_onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null, t[3] || 0)`
+                self._on_ammo(int(t[1] or 0), int(t[4]) if t[4] != "" else None, int(t[3]) if len(t) > 3 and t[3] != "" else 0)
+            elif cmd == "BUT" and len(t) > 2:
+                # engine.js `feedFrame` BUT: id 1 = ALT (a swap; a one-slot loadout falls back to reload), id 2 = the
+                # reload handle. `$BUT,<id>,1` is the press; the release (`,0`) is ignored on both paths.
+                bid, pressed = _tok_int(t, 1), _tok_int(t, 2)
+                if bid == 1 and pressed == 1:
+                    self._alt_pressed()
+                if bid == 2 and pressed == 1:
+                    self._reload_pulled()
             elif cmd in ("HP", "LCD") and len(t) > 2:
                 hp, armor = int(t[1] or 0), int(t[2] or 0)
                 # $LCD's tokens 3+ are undocumented and read 0 in every observed frame (engine.js
@@ -1216,6 +1349,22 @@ class GunStage:
         cannot tell apart. Death is deliberately silent -- A16 makes the DOWN window hands-off and the death
         scream owns the announcer; a player who respawns learns the owner from the tick within 1 s."""
         return bool(self.spawned) and bool(self.alive) and self.config.get("mode") not in HILL_AUDIO_EXCLUDED_MODES
+
+    def _hill_source_allowed(self, source: str) -> bool:
+        """B/F70 (engine.js `_hillSourceAllowed`): MC names ONE objective source per game
+        (`config.station_source`) and the phone accepts BOTH wires, so without this gate a grenade left live
+        on the field during a phone-point game alternates ownership with the point every 5 s. `station`
+        (the BLE control point) is allowed only when the source is `phone`, the IR beacon only when it is
+        `grenade`; an ABSENT source allows either (a try-out, or this stage on a mode with no objective)."""
+        src = self.config.get("station_source")
+        if not src:
+            return True
+        ok = (src == "phone") if source == "station" else (src == "grenade")
+        if not ok and self._hill_source_warned != source:
+            self._hill_source_warned = source
+            self._log(f"ignoring the {'phone control point' if source == 'station' else 'grenade hill beacon'}: "
+                      f"this game's station_source is {src}", "info")
+        return ok
 
     def _hill_mine(self) -> bool:
         """Do WE hold the point right now? None/neutral/an enemy all read false."""
@@ -1278,6 +1427,8 @@ class GunStage:
         it in this same handler. Nothing here starts a sequence, and nothing here waits for a second word."""
         if magnitude not in (HILL_MAG, HILL_CAPTURE_MAG, HILL_WAS_NEUTRAL_MAG):
             return                       # magnitude 6 is a respawn station, not a point (F84)
+        if not self._hill_source_allowed("beacon"):
+            return                       # B: this game's objective is not a grenade
         # F82 is explained HERE, on the first beacon, not from `_hill_callout` -- that is only reached when a
         # transition would be announced, so a tid-2 roster that never witnessed a capture went silent with no
         # reason in the log. The behaviour was always right (the tick is gated by `_hill_mine`); the diagnostic
@@ -1338,16 +1489,23 @@ class GunStage:
         h = self.hill
         if not h:
             return
-        if now - h["at"] >= HILL_PRESENCE_S:   # >= 2 missed beacons: out of range or off the point. NOT a "lost" -- nobody took it from us
+        # A grenade point expires on two missed 5 s beacons; a phone control point expires on the §3 presence
+        # rule, because its advert is continuous (§5d.5). Same code, the window is the SOURCE's (engine.js).
+        window = CONTROL_STALE_S if h.get("source") == "station" else HILL_PRESENCE_S
+        if now - h["at"] >= window:            # out of range or off the point. NOT a "lost" -- nobody took it from us
             self.hill = None
             self._hill_tick_at = 0.0
+            self._control_sig = ""; self._hill_was_contested = False   # K1: walking back into range must be able to re-announce
             self._log(f"hill presence expired ({round(now - h['at'])}s since its last beacon)", "info")
             return
         if not self._hill_audio_on() or not self._hill_mine():
             return
         if now < self._hill_busy_until:
             return                             # a callout owns the announcer for its own real length: the tick waits rather than playing under it
-        if self._hill_tick_at and now - self._hill_tick_at < HILL_TICK_S:
+        # D: OUR point draining doubles the cadence -- the only audible warning before "Hill Lost!", which
+        # arrives when it is already too late. `falling` comes off a station advert; a grenade never sets it.
+        period = HILL_TICK_LOSING_S if h.get("falling") else HILL_TICK_S
+        if self._hill_tick_at and now - self._hill_tick_at < period:
             return
         frame, _s = self._hill_cue("hill_tick")
         if not frame:
@@ -1364,6 +1522,178 @@ class GunStage:
         self._hill_tick_at = 0.0
         self._hill_busy_until = 0.0
         self._last_beacon_key = None
+        self._control_sig = ""; self._hill_was_contested = False
+
+    def _reset_hill(self) -> None:
+        """engine.js `_resetHill`: a new match (ARM here) must not inherit the last one's point or its
+        once-per-game warnings (F82, the refused-source line). The injected station adverts stay -- they
+        are the operator's field, not the game's state."""
+        self.hill = None; self._hill_tick_at = 0.0; self._hill_busy_until = 0.0
+        self._control_site = None; self._control_sig = ""; self._hill_said_at = 0.0
+        self._hill_was_contested = False; self._hill_contested_at = 0.0; self._hill_owner_when_silenced = _UNSET
+        self._hill_team2_warned = False; self._hill_source_warned = ""
+
+    # ---- K1 / F102: the phone CONTROL POINT (kind 5), a faithful port of engine.js `_onControlAdvert` -----
+    def _station_allowed(self, e: dict) -> bool:
+        """`config.stations`, when the game carries it, is the allow-list of station ids valid in this game."""
+        allow = self.config.get("stations")
+        if not isinstance(allow, list) or not allow:
+            return True
+        ids = {(x.get("id") if isinstance(x, dict) else x) for x in allow}
+        return e["id"] in ids
+
+    def _control_station(self) -> dict | None:
+        """The control point this player reads: one we are standing on first, else the strongest in range,
+        LATCHED to the point already being read (engine.js `_controlStation`). Not team-filtered: an
+        enemy-held point is exactly the one to hear about. An advert older than CONTROL_STALE_S is ignored."""
+        now = self.now()
+        live = [e for e in self.stations.values() if e.get("kind") == "control" and self._station_allowed(e)
+                and not (now - e["seen_at"] > CONTROL_STALE_S)]
+        live.sort(key=lambda e: -e.get("rssi", -50))
+        latched = next((e for e in live if e["id"] == self._control_site), None) if self._control_site is not None else None
+        present = next((e for e in live if e.get("present")), None)
+        if latched and (latched.get("present") or not present):
+            return latched
+        return present or (live[0] if live else None)
+
+    def _on_control_advert(self, now: float) -> None:
+        """The SAME hill state and the SAME cues, sourced from a control point's advert. A TRANSLATOR, not a
+        second audio system: it writes `self.hill` in the shape `_hill_mine` / `_hill_tick` read and announces
+        through `_hill_callout` / `_hill_say`. Two things differ from the IR path, both because the station
+        MEASURES what a grenade cannot: ownership changes only through neutral (drain to 0, build to 100), and
+        "Hill Contested" IS wired here -- the station counts living bodies of each team in its bubble."""
+        e = self._control_station()
+        if not e:
+            return
+        if not self._hill_source_allowed("station"):
+            return                       # B: this game's objective is a grenade, not a phone point
+        if self._hill_tid() == HILL_NEUTRAL_TEAM and not self._hill_team2_warned:   # F82, the same warning as the IR path
+            self._hill_team2_warned = True
+            self._log("F82: we are on tid 2, which is what a NEUTRAL point broadcasts -- control-point ownership is "
+                      "undecidable, so no hill audio will play", "warn")
+        state = int(e["state"])
+        held = bool(state & CONTROL_STATE["held"])
+        # The station says 255 for "nobody"; the hill model says team 2 (what a NEUTRAL grenade broadcasts).
+        # Map once, HERE. `claimable`, not `<= 3`: the station side decides who may hold a point (control.js).
+        owner = e["team"] if (held and claimable(e["team"])) else HILL_NEUTRAL_TEAM
+        contested = bool(state & CONTROL_STATE["contested"])
+        # §5d.3: `rising && falling` is INVALID and direction falls back to UNKNOWN -- the bits are independent.
+        both_ways = bool(state & CONTROL_STATE["rising"]) and bool(state & CONTROL_STATE["falling"])
+        rising = not both_ways and bool(state & CONTROL_STATE["rising"])
+        falling = not both_ways and bool(state & CONTROL_STATE["falling"])
+        prev = self.hill
+        # A: two points are two different objectives. A point we were not reading before tells us NOTHING
+        # about a change of hands -- a different site (or the other source's state) is adopted SILENTLY.
+        same_site = bool(prev) and prev.get("source") == "station" and prev.get("site") == e["id"]
+        prev_owner = prev["owner"] if same_site else None
+        if not same_site and prev and prev.get("site") != e["id"]:
+            self._log(f"control point {e['id']} is a different point from "
+                      f"{prev['site'] if prev.get('source') == 'station' else 'the grenade hill'} -- adopting its owner silently", "info")
+            self._hill_was_contested = False; self._hill_owner_when_silenced = _UNSET
+        self._control_site = e["id"]
+        self.hill = {"owner": owner, "at": now,
+                     "from_neutral": prev_owner == HILL_NEUTRAL_TEAM,   # a station capture ALWAYS passes through neutral
+                     "source": "station", "site": e["id"],
+                     "progress": max(0, min(100, int(e["value"]))),
+                     "holding": e["team"] if e["team"] <= 3 else None,
+                     "contested": contested, "rising": rising, "falling": falling,
+                     "on_point": bool(e.get("present"))}
+        # C: a transition that lands while we are DOWN is owed, not swallowed: remember the owner as we last
+        # heard it WITH audio on, and on the first advert after revive say the one line for the NET change.
+        audio = self._hill_audio_on()
+        said = False
+        silenced = self._hill_owner_when_silenced
+        announce_from = silenced if (audio and silenced is not _UNSET and silenced != prev_owner) else prev_owner
+        if audio and announce_from is not None and announce_from != owner:
+            kind = self._hill_callout(announce_from, owner)
+            if kind and now - self._hill_said_at >= HILL_CALLOUT_MIN_S:   # 2: a floor on the transition lines
+                self._hill_said_at = now
+                self._hill_say(kind, f"control point {e['id']}: team {prev_owner} -> {owner}" if announce_from == prev_owner
+                               else f"control point {e['id']}: it changed hands while we were down (team {announce_from} -> {owner})")
+                said = True
+        self._hill_owner_when_silenced = _UNSET if audio else (prev_owner if silenced is _UNSET else silenced)
+        # Contested, on the RISING EDGE only, floored at HILL_CONTESTED_MIN_S, and only to players the fight
+        # belongs to (on the point, or the owning team). A capture callout in the same advert wins outright.
+        mine = self._hill_tid()
+        if (contested and not self._hill_was_contested and not said and audio
+                and mine is not None and mine != HILL_NEUTRAL_TEAM and (e.get("present") or owner == mine)
+                and now - self._hill_contested_at >= HILL_CONTESTED_MIN_S):
+            self._hill_contested_at = now
+            self._hill_say("hill_contested", f"control point {e['id']} is contested ({e['value']}% for team {e['team']})")
+        self._hill_was_contested = contested
+        sig = f"{e['id']}:{owner}:{held}:{contested}:{self.hill['progress']}:{self.hill['holding']}:{rising}:{falling}:{bool(e.get('present'))}"
+        if sig != self._control_sig:
+            self._control_sig = sig
+            self._log(f"control point {e['id']}: {'team ' + str(owner) + ' holds it' if owner != HILL_NEUTRAL_TEAM else 'NEUTRAL'}"
+                      f"{' · ' + str(self.hill['progress']) + '% for team ' + str(self.hill['holding']) if self.hill['holding'] is not None else ''}"
+                      f"{' · CONTESTED' if contested else ''}{' · rising' if rising else ' · falling' if falling else ' · direction UNKNOWN (rising+falling)' if both_ways else ''}"
+                      f"{' · on the point' if e.get('present') else ' · in range'}", "info")
+
+    def station_advert(self, id: int = 1, team: int | None = None, held: bool = False, contested: bool = False,
+                       rising: bool = False, falling: bool = False, value: int = 0, present: bool = True,
+                       flags: int | None = None, uuid: str | None = None, rssi: int = -50) -> dict:
+        """Put a phone CONTROL POINT's advert on the stage's air. The stage cannot hear BLE, so this is the
+        scanner's callback: the fields are ENCODED into the 16-byte advert and DECODED back through the
+        phone's own layout (`decode_advert_uuid`), then fed to `_on_control_advert` exactly as `setStations`
+        would. The station keeps "advertising" (poll refreshes it, like a real one at ~4 Hz) until
+        `station_stop` -- so capture / contested / lost are rehearsed by sending the NEXT state, not by
+        keeping this one alive. `uuid` = a literal advert instead of the fields; `flags` = a literal byte 10
+        (so `rising|falling` = 12, the direction-unknown case, can be sent)."""
+        if uuid:
+            d = decode_advert_uuid(uuid)
+            if not d:
+                raise ValueError("uuid is not an Open BRX advert")
+        else:
+            sid = int(id)
+            if not 1 <= sid <= 65535:
+                raise ValueError("station id must be 1..65535")
+            t = STATION_TEAM_ANY if team is None or team == "" else int(team)
+            if t not in (0, 1, 2, 3, STATION_TEAM_ANY):
+                raise ValueError("team must be a tid 0-3 or null (neutral, 255)")
+            v = int(value)
+            if not 0 <= v <= 100:
+                raise ValueError("value (progress) must be 0..100")
+            st_byte = int(flags) if flags is not None else ((CONTROL_STATE["held"] if held else 0) | (CONTROL_STATE["contested"] if contested else 0)
+                                                          | (CONTROL_STATE["rising"] if rising else 0) | (CONTROL_STATE["falling"] if falling else 0))
+            if not 0 <= st_byte <= 255:
+                raise ValueError("flags must be a byte")
+            d = decode_advert_uuid(encode_advert_uuid("station", sid, "control", t, st_byte, v))
+        if d["role"] != "station" or d["kind"] != "control":
+            raise ValueError(f"the stage models kind 5 (control) stations only, not {d['kind']!r}")
+        now = self.now()
+        key = f"station:{d['id']}"
+        prev = self.stations.get(key)
+        entry = {**d, "present": bool(present), "rssi": int(rssi), "seen_at": now, "advertising": True,
+                 "seq": ((prev["seq"] + 1) & 0xFF) if prev else 0}
+        self.stations[key] = entry
+        self._log(f"advert station {d['id']} (control): team {d['team']} state {d['state']:#06b} value {d['value']}"
+                  f"{' · ON THE POINT' if present else ''}", "ir")
+        self._on_control_advert(now)
+        return self.state()
+
+    def station_stop(self, id: int | None = None) -> dict:
+        """The station stops advertising (or we walk out of range): its entry ages out over CONTROL_STALE_S,
+        the point expires SILENTLY from `_hill_tick` (nobody took it from us), and the entry is dropped after
+        2x the window, like the phone's `Presence`. `id` None = every station."""
+        for k, e in self.stations.items():
+            if id is None or e["id"] == int(id):
+                e["advertising"] = False
+        self._log(f"station {'all' if id is None else id}: stopped advertising -- the entry is read for {CONTROL_STALE_S:g} s more, "
+                  f"then the point expires {CONTROL_STALE_S:g} s after that (~{2 * CONTROL_STALE_S:g} s, as on the phone)", "info")
+        return self.state()
+
+    def _stations_tick(self, now: float) -> None:
+        """The scanner's callback at the poller's cadence: an advertising station is heard again (its
+        `seen_at` refreshes), a stopped one ages out and is dropped after 2x CONTROL_STALE_S. Then the
+        control-point reader runs, as engine.js `setStations` does on every scan callback."""
+        for k in list(self.stations):
+            e = self.stations[k]
+            if e.get("advertising"):
+                e["seen_at"] = now
+            elif now - e["seen_at"] > 2 * CONTROL_STALE_S:
+                del self.stations[k]
+        if self.stations:
+            self._on_control_advert(now)
 
     def _on_pools(self, hp: int, armor: int, shield: int | None = None) -> None:
         if shield is None:
@@ -1383,6 +1713,9 @@ class GunStage:
         hs = self.bundle.get("headset") or {}
         if hp == 0 and self.alive:
             self.alive = False
+            self.reloading = None                  # engine.js `_death`: the gun stops the reload when you drop; so does the HUD
+            self._stun_restore("died")             # F15: death cancels the stun -- no restore write; the revive's own $AMMO re-arms the next life
+            self._moment = ("down", self.now())    # engine.js `_death`: the rarer moment (gates a pool rise for RARE_GUARD_S)
             self._level_gen += 1                   # Node rules: cancel everything on death
             self._log("☠ down -- the firmware's own out-flash takes over; nothing extra written to the headset", "info")
             self._event_now("died")
@@ -1405,7 +1738,13 @@ class GunStage:
                 self._hs_gen += 1
                 self._spawn_task(self.write(fr, "low health", gap_ms=0))
             self._event_now("hit_taken")
-            self._pain(dmg, self._last_hir_proto, moved)   # A15.3: pain by damage; A17: only when it reached HEALTH -- never on a death (that returned above)
+            if hurt_now:
+                # F57 (engine.js `_onHp`): the hit that ARMS low_health plays the alert ONLY -- no grunt under it --
+                # and stamps the pain gate, so a hit inside PAIN_GAP_S of the warning is silent too.
+                self._last_pain_at = self.now()
+                self._log("pain: not played -- this hit armed the low-health alert (F57); the gap starts now", "info")
+            else:
+                self._pain(dmg, self._last_hir_proto, moved)   # A15.3: pain by damage; A17: only when it reached HEALTH -- never on a death (that returned above)
             if hs and not hurt_now:
                 # A16 §3.3: whatever role is held (carrier/infected/vip/beacon/extracted) survives the
                 # hit -- the native flash wipes the headset on every registered hit, so re-assert it.
@@ -1415,6 +1754,27 @@ class GunStage:
                     self._headset(role_seq, f"role {name} after hit")
                 elif hs.get("hit"):
                     self._headset(hs["hit"], "headset hit")
+        # F58(b): the pool-RISE events, exactly engine.js `_onHp`'s HUD-moments block. ONE moment slot: a
+        # rarer moment (kill / redeploy / down / match_over) inside RARE_GUARD_S keeps it, and a frame that
+        # both damages and grants is a HIT when the total went DOWN (`dmg > 0` wins) -- the gain is dropped,
+        # never queued (F14). `before > 0` keeps the spawn/respawn refill out (that is its own moment). The
+        # biggest rise names the event: healed (health) / armour_up / shield_up.
+        if self.alive and self.spawned:
+            now = self.now()
+            busy = self._moment is not None and self._moment[0] in RARE_MOMENTS and now - self._moment[1] < RARE_GUARD_S
+            gains = sorted([(p, d) for p, d in (("health", hp - prev_hp), ("armor", armor - prev_armor),
+                                                ("shield", shield - prev_shield)) if d > 0], key=lambda g: -g[1])
+            if busy:
+                if gains:
+                    self._log(f"pool rise ({', '.join(f'{p} +{d}' for p, d in gains)}): dropped -- inside {int(RARE_GUARD_S * 1000)} ms of the {self._moment[0]} moment (engine.js RARE_GUARD_MS)", "info")
+            elif dmg > 0 and hp > 0:
+                if gains:
+                    self._log(f"pool rise ({', '.join(f'{p} +{d}' for p, d in gains)}) in the same frame as {dmg} damage: the HIT wins, no gain event (F14)", "info")
+            elif before > 0 and gains:
+                pool, amount = gains[0]
+                kind = "healed" if pool == "health" else "armour_up" if pool == "armor" else "shield_up"
+                self._log(f"pool rise: {kind} ({pool} +{amount}) -- the phone fires this event here", "info")
+                self._event_now(kind)
         # A16 §3.1/§5 (readout) / A11.7 legacy (health bands): a hit does not clear a held paint, only
         # a real pool change writes a new one -- mirrors engine.js `_onHp`'s `if (hp > 0) this._gunPoolPaint(...)`,
         # called on ANY pool change (gains included), not only damage.
@@ -1516,6 +1876,193 @@ class GunStage:
             self._readout_frame = rest
             await self.write([rest], "readout rest", gap_ms=0)
 
+    # ---- F54: the reload path and the A16 §3.1 reload glance (engine.js `_reloadPulled` / `_gunReadoutReloadGlance`) --
+    def _ammo_by_slot(self) -> dict[int, int | None]:
+        """True per-slot mags from the bundle's spawn `$AMMO,<slot>,<mag>,<reserve>,…` frames (engine.js `_ammoBySlot`)."""
+        out: dict[int, int | None] = {}
+        for f in self.bundle.get("spawn") or []:
+            if str(f).startswith("$AMMO,"):
+                t = str(f).split(",")
+                out[_tok_int(t, 1) or 0] = _tok_int(t, 2) or None
+        return out
+
+    def _slot_count(self) -> int:
+        return len(self._ammo_by_slot()) or 2      # the stage's player carries two weapons (recompile)
+
+    def _on_ammo(self, mag: int, reserve: int | None, slot: int = 0) -> None:
+        """`$ALCD,<mag>,100,<slot>,<reserve>,0` -- counts are per weapon SLOT (engine.js `_onAmmo`): the mag
+        coming BACK UP on the reloading slot ends the reload; the slot the gun names is the live one."""
+        # F15: a stunned gun cannot fire, so any $ALCD in the window is the gun echoing OUR `$AMMO,<slot>,0,0`
+        # (hardware-UNVERIFIED either way). Recording it would make the restore re-send 0 -- disarmed for life.
+        if self.stunned:
+            self._log(f"$ALCD ignored while stunned (slot {slot} mag {mag})", "info")
+            return
+        prev = self._prev_ammo.get(slot)
+        if self.reloading and prev is not None and mag > prev and slot == self.reloading["slot"]:
+            self._log(f"reload done: slot {slot} mag {prev} -> {mag}", "info")
+            self.reloading = None                    # the mag is back: the gun fires again
+        self._prev_ammo[slot] = mag
+        self.active_slot = slot
+        self.ammo = mag
+        if reserve is not None:
+            self.reserve = reserve
+            self._prev_reserve[slot] = reserve
+
+    def _alt_pressed(self) -> None:
+        """ALT: a weapon swap -- except with ONE slot, where the gun's ALT falls back to reload (loadout.md §2)
+        and takes the same glance as the handle (engine.js `_altPressed`)."""
+        if not (self.spawned and self.alive):
+            return
+        if self._slot_count() < 2:
+            self._reload_pulled()
+
+    # ---- F15 / A20: the host-driven STUN (EMP), a faithful port of engine.js `_stun` / `_stunRestore` ------------
+    @property
+    def stun_enabled(self) -> bool:
+        """engine.js `stunEnabled`: `config.stun` present (an object; `{}` = the default) = the EMP cell is a stun."""
+        return isinstance(self.config.get("stun"), dict)
+
+    @property
+    def stun_s(self) -> float:
+        """engine.js `stunMs` in SECONDS: `config.stun.duration_s` when positive, else STUN_DEFAULT_S."""
+        try:
+            d = float((self.config.get("stun") or {}).get("duration_s") or 0)
+        except (TypeError, ValueError):
+            d = 0.0
+        return d if d > 0 else STUN_DEFAULT_S
+
+    def _spawn_ammo(self) -> dict[int, list[int]]:
+        """{slot: [mag, reserve]} straight from the bundle's spawn $AMMO frames -- what a slot that never fired holds."""
+        out: dict[int, list[int]] = {}
+        for f in self.bundle.get("spawn") or []:
+            if str(f).startswith("$AMMO,"):
+                t = str(f).split(",")
+                out[_tok_int(t, 1) or 0] = [_tok_int(t, 2) or 0, _tok_int(t, 3) or 0]
+        return out
+
+    def _stun(self) -> None:
+        """A proto-8 `$HIR` under `config.stun`, on a live gun: write `$AMMO,<slot>,0,0,1,*` for every live slot
+        and snapshot the LIVE mag/reserve per slot (the last `$ALCD`, else the spawn frame's) to restore. A second
+        word EXTENDS `until` and writes nothing. Nothing else moves: fn 24 is a status row, no `$HP` follows."""
+        if not self.stun_enabled or not (self.spawned and self.alive):
+            if not self.stun_enabled:
+                self._log("EMP word (proto 8): no stun -- this game has no config.stun (the $SIR row is the stock plain-damage cell)", "info")
+            return
+        now = self.now()
+        s = self.stun_s
+        if self.stunned:
+            self.stunned["until"] = max(self.stunned["until"], now + s)
+            self._log(f"⚡ stun extended: {math.ceil(self.stunned['until'] - now)} s left", "info")
+            return
+        spawn = self._spawn_ammo()
+        live: dict[int, list[int]] = {}
+        for slot in spawn:
+            mag, res = self._prev_ammo.get(slot), self._prev_reserve.get(slot)
+            live[slot] = [mag if mag is not None else spawn[slot][0], res if res is not None else spawn[slot][1]]
+        self.stunned = {"at": now, "until": now + s, "ammo": live}
+        self._spawn_task(self.write([f"$AMMO,{slot},0,0,1,*" for slot in live], f"stun: disarm {s:g} s", gap_ms=60))
+        self._moment = ("stunned", now)
+        self._event_now("stunned")     # A11 presentation hook: no-op until a profile carries a `stunned` cue/burst
+        self._log(f"⚡ stunned {s:g} s -- live counts held for the restore: {live}", "warn")
+
+    def _stun_restore(self, why: str) -> None:
+        """End the stun. Only an EXPIRY on a live, linked gun writes the restore (once, from the snapshot); every
+        other reason (death, end) leaves the re-arm to the path that owns it (the revive's own `$AMMO`)."""
+        st = self.stunned
+        if not st:
+            return
+        self.stunned = None
+        if why == "expired" and self.alive and self.connected:
+            self._spawn_task(self.write([f"$AMMO,{slot},{mag},{res},1,*" for slot, (mag, res) in st["ammo"].items()],
+                                        "stun over: restore live ammo", gap_ms=60))
+            self._moment = ("stun_over", self.now())
+            self._event_now("stun_over")
+        self._log(f"stun over ({why})", "info")
+
+    def _reload_pulled(self) -> None:
+        """The reload handle ($BUT,2,1): the gun refuses fire for the weapon's reload time, and A16 §3.1 gives
+        the pull a GLANCE at the current pool readout. Ported gate for gate from engine.js `_reloadPulled`:
+        nothing to reload when the mag is full and there is reserve; a DRY reserve reloads nothing; and a
+        reserve the gun has never reported (`$ALCD` only arrives on a shot) reads as unknown = no reload --
+        on the phone too, so the first pull before the first shot is silent there as well."""
+        if not (self.spawned and self.alive):
+            return
+        cap = self._ammo_by_slot().get(self.active_slot, self.tele.get("mag"))
+        if cap and self.ammo is not None and self.ammo >= cap and (self.reserve or 0) > 0:
+            self._log(f"reload pull ignored: mag full ({self.ammo}/{cap}) with reserve -- the gun ignores it", "info")
+            return
+        if not (self.reserve is not None and self.reserve > 0):
+            self._log("reload pull ignored: no reserve known (the gun reports ammo on a shot: fire once, or inject $ALCD)"
+                      if self.reserve is None else "reload pull ignored: dry reserve -- nothing to reload", "info")
+            return
+        self.reloading = {"at": self.now(), "s": 1.5, "slot": self.active_slot}   # engine.js: the catalog reload_s, 1.5 s when unknown
+        self._log(f"reload: handle pulled on slot {self.active_slot}", "info")
+        self._gun_readout_reload_glance()
+
+    def _gun_readout_reload_glance(self) -> None:
+        """A16 §3.1 reload: paint the CURRENT readout for `reload_glance_s` (2 s day / 1 s night, compiled)
+        -- recomputed fresh for whichever pool most recently actually MOVED this life, not the last-shown
+        frame, so a reload glances the real state even after the ordinary hold reverted to rest. A no-op
+        when nothing has moved this life or the bundle has no readout. A `levels` pool glances its level
+        SOLID: a plain peek, not an animation, so it cancels any drop/gain/blink in flight (engine.js bumps
+        `_roGen`; here `_level_gen`) and its own hold then reverts to rest."""
+        g = self.bundle.get("gun") or {}
+        readout = g.get("readout")
+        if not readout or not getattr(self, "_gun_taken", False):
+            return
+        if not (self.alive and self.spawned):
+            return
+        pool = self._readout_last_pool
+        if not pool:
+            self._log("reload glance: nothing has moved this life -- nothing to glance", "info")
+            return
+        entry = next((p for p in (readout.get("pools") or []) if p.get("pool") == pool), None)
+        if not entry:
+            return
+        levels = entry.get("levels")
+        if isinstance(levels, list) and len(levels) == 7:
+            level = self._level_for(entry, pool)
+            frame = levels[level][0] if levels[level] else None
+            if not frame:
+                return
+            self._level_gen += 1                     # cancel the animation in flight: the glance is what is on the strip now
+            self._level_current = level; self._level_partial = False
+            self._level_state[pool] = level          # the glance is what this pool now DISPLAYS (engine.js `_roLevels[pool] = level`)
+            why = f"readout reload glance ({pool} level {level}/6)"
+        else:
+            band = self._readout_band(entry)
+            if not band:
+                return
+            frame = band[1]
+            why = f"readout reload glance ({pool})"
+        now = self.now()
+        glance_s = float(readout["reload_glance_s"]) if readout.get("reload_glance_s") is not None else 2.0
+        self._readout_gen += 1
+        gen = self._readout_gen
+        self._readout_frame = frame
+        self._readout_last_write_at = now
+        self._spawn_task(self.write([frame], why, gap_ms=0))
+        self._spawn_task(self._readout_revert(gen, glance_s))
+
+    def reload(self) -> dict:
+        """Page button: the gun's own reload report, INJECTED as the rx frame `$BUT,2,1,*` through the same
+        `_on_rx` a real pull arrives on -- so the glance is driven by the trigger the phone reacts to, not by
+        a side door. With a real gun linked, pulling the handle does the same thing for free."""
+        self._inject_rx("$BUT,2,1,*")
+        return self.state()
+
+    def alcd(self, mag: int = 0, reserve: int = 0, slot: int = 0) -> dict:
+        """Page button: an injected `$ALCD,<mag>,100,<slot>,<reserve>,0,*`, the frame the gun sends on a shot.
+        The reload gate needs a KNOWN reserve (engine.js: `reserve` is null until the first `$ALCD`), and the
+        fake gun never sends one; on a real gun one shot does this for you."""
+        self._inject_rx(f"$ALCD,{int(mag)},100,{int(slot)},{int(reserve)},0,*")
+        return self.state()
+
+    def _inject_rx(self, raw: str) -> None:
+        self.tele["last_rx"] = raw
+        self._log(raw, "rx", "injected by the page")
+        self._on_rx(raw)
+
     # ---- A16.3: the 7-level pool bar with a drop animation (bar-spec.md, 2026-09-07) ------------------
     def _level_for(self, entry: dict, pool: str) -> int:
         """`poolgauge.level_for` IS the formula (`clamp(round(fraction * 6), 0, 6)`, floored to 1 while
@@ -1566,6 +2113,7 @@ class GunStage:
         rapid = self._level_last_start is not None and (now - self._level_last_start) < min_gap_s
         self._level_last_start = now
         self._level_gen += 1
+        self._readout_gen += 1      # F54: a reload glance's pending revert (a `_readout_revert` task) must not land under this animation -- engine.js `_readoutAnimStart` sets `_roAnimating`, which its hold poll defers to
         gen = self._level_gen
         self._spawn_task(self._level_animate(gen, levels, prev, target, pool, rapid, lead_s, gap_s, step_s, blink_s, hold_s))
 
@@ -1670,7 +2218,12 @@ class GunStage:
             return
         g = self.bundle.get("gun") or {}
         rest = g.get("rest")
-        self._readout_last_pool = None
+        # ⚠ `_readout_last_pool` deliberately SURVIVES the revert (F54, 2026-09-11): engine.js keeps
+        # `_readoutLastPool` / `_roPool` / `_roLevel` across its hold expiry and clears them only at death
+        # and at the next `_gunTake`. That is what lets a reload glance "the real state even after the
+        # ordinary hold already reverted to rest", and what makes a same-pool, same-level change after the
+        # revert a NO-OP there (`_roPool === pool && _roLevel === level`). This used to null it here, so
+        # the bench repainted a level the phone leaves alone and could never glance after a revert.
         self._level_current = None
         self._level_partial = False
         if rest and self._readout_frame != rest:
@@ -1771,6 +2324,30 @@ class GunStage:
                 add(f"infected_{t['tid']}", f"INFECTED (survivors see {t['name'].upper()})", "headset: that team's colour held; a hit keeps it lit", "headset", {"name": "infected", "tid": int(t["tid"])})
         if role:
             add("carrier_off", "ROLE ENDED (flag scored/lost, cured, extraction closed…)", "headset: back to the in-play rest (dark or team)", "headset", {"name": "carrier_off"})
+        if g and g.get("readout"):
+            add("reload_glance", "RELOAD GLANCE (A16 §3.1: the handle repaints the last-moved pool for reload_glance_s)",
+                "gun body: the pool that last moved, SOLID at its current level, for 2 s (1 s at night), then rest -- "
+                "needs a pool to have moved this life and a KNOWN reserve (fire one shot on a real gun, or the AMMO button on the fake)",
+                "reload")
+        # K1 / F102: the phone control point, rehearsed as a SEQUENCE of adverts (the model only announces a
+        # change of hands, so a first advert is adopted silently) -- offered only when this game's objective
+        # source is a phone: any other source makes `_hill_source_allowed` ignore every one of these.
+        if self.config.get("station_source") == "phone":
+            mine = int(self.profile["tid"])
+            add("cp_neutral", "CONTROL POINT IN RANGE (neutral, nobody on it)",
+                "no sound: a point we were not reading is adopted silently · log: control point 1 NEUTRAL", "station_advert",
+                {"id": 1, "team": None, "value": 0, "present": True})
+            add("cp_captured", "CONTROL POINT CAPTURED (built to 100 for us)",
+                "sound: Hill Captured (VB0N), then the possession tick (U100) once per second while we hold it", "station_advert",
+                {"id": 1, "team": mine, "held": True, "value": 100, "present": True})
+            add("cp_contested", "CONTROL POINT CONTESTED (an enemy on our point, draining it)",
+                "sound: Hill Contested (VB0O) once (10 s floor) · the tick DOUBLES to every 0.5 s while it falls", "station_advert",
+                {"id": 1, "team": mine, "held": True, "contested": True, "falling": True, "value": 60, "present": True})
+            add("cp_lost", "CONTROL POINT LOST (drained to 0: neutral again)",
+                "sound: Hill Lost! (VB0P) · the tick stops", "station_advert",
+                {"id": 1, "team": None, "value": 0, "present": True})
+            add("cp_away", "WALK AWAY FROM THE POINT (the advert stops)",
+                f"silence: 'hill presence expired' in the log after ~{2 * CONTROL_STALE_S:g} s ({CONTROL_STALE_S:g} s of the entry being read, then {CONTROL_STALE_S:g} s of freshness, as on the phone), and NO Lost line (nobody took it)", "station_stop")
         for sid, medals in MEDAL_STACKS:
             have = [m for m in medals if cues.get(m)] if medals else (["kill"] if cues.get("kill") else [])
             if have:
@@ -1972,7 +2549,23 @@ class GunStage:
                       # `hill` is the control point as the hill logic reads it ({owner (2 = neutral), at,
                       # from_neutral}, null once presence has expired). Derived from `beacon`, not a second source.
                       "beacon": dict(self.beacon) if self.beacon else None,
-                      "hill": dict(self.hill) if self.hill else None},
+                      "hill": dict(self.hill) if self.hill else None,
+                      # F54: the reload in flight ({at, s, slot}, null when none) and what the gun last REPORTED
+                      "reloading": ({**self.reloading, "elapsed_s": round(self.now() - self.reloading["at"], 2)} if self.reloading else None),
+                      "ammo": self.ammo, "reserve": self.reserve, "active_slot": self.active_slot,
+                      # F15: the stun in flight (what the HUD's STUNNED takeover reads) and whether this game can stun at all
+                      "stunned": ({"until": self.stunned["until"], "left_s": round(max(0.0, self.stunned["until"] - self.now()), 2),
+                                   "ammo": {str(k): v for k, v in self.stunned["ammo"].items()}} if self.stunned else None),
+                      "stun_enabled": self.stun_enabled, "stun_s": self.stun_s if self.stun_enabled else None},
+            # F102: the objective source in force (the F70 gate) and the injected station adverts on the air
+            "station_source": self.config.get("station_source"),
+            "station_sources": sorted(STATION_SOURCES),
+            "control_site": self._control_site,
+            "stations": [{"id": e["id"], "kind": e["kind"], "team": e["team"], "state": e["state"], "value": e["value"],
+                          "present": bool(e.get("present")), "advertising": bool(e.get("advertising")),
+                          "age_s": round(self.now() - e["seen_at"], 2),
+                          "flags": {k: bool(e["state"] & bit) for k, bit in CONTROL_STATE.items()}}
+                         for e in self.stations.values()],
             "tele": dict(self.tele),
             # the flat sequences (start/hit/death/respawn/rest…) plus the A16 §3.3 held roles -- carrier
             # is ONE flat state now (WHITE, never the flag's team colour), not a per-team table, so it is

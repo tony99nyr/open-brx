@@ -22,7 +22,11 @@ PAGE = Path(__file__).with_name("page.html")
 # action -> (is_coroutine, allowed kwargs). Anything else is a 400, so the page cannot call into the manager.
 ACTIONS: dict[str, tuple[bool, tuple[str, ...]]] = {
     "scan": (True, ("duration_s",)), "connect": (True, ("address",)), "disconnect": (True, ()),
-    "set_profile": (False, ("mode", "preset", "gun", "headset", "night", "tid", "environment", "voice", "voice_slots")),
+    "set_profile": (False, ("mode", "preset", "gun", "headset", "night", "tid", "environment", "voice", "voice_slots", "station_source", "stun")),
+    # F102: a phone control point's advert, injected (the stage cannot hear BLE); F54: the gun's own reload / ammo
+    # reports, injected as the rx frames a real gun sends
+    "station_advert": (False, ("id", "team", "held", "contested", "rising", "falling", "value", "present", "flags", "uuid", "rssi")),
+    "station_stop": (False, ("id",)), "reload": (False, ()), "alcd": (False, ("mag", "reserve", "slot")),
     "voice_line": (True, ("id",)), "set_voice_slot": (False, ("role", "id")),
     "voice_board": (False, ("voice",)), "voice_board_play": (False, ("voice", "from_slot")), "voice_board_stop": (False, ()),
     "voice_verdict": (False, ("voice", "id", "ok", "note")), "reroll": (False, ()),
@@ -146,6 +150,44 @@ def build(args) -> GunStage:
     return stage
 
 
+def install_boot(app: Starlette, stage: GunStage, gun: str | None = None, mc: str | None = None, token: str | None = None) -> None:
+    """Wrap the app's lifespan so `--mc` / `--gun` are done at start-up -- as a BACKGROUND task.
+
+    S11 (2026-09-11): this used to `await boot()` INSIDE the lifespan before `yield`, so with the tagger
+    asleep the connect blocked start-up, the page never listened and the process looked hung. Now the page
+    comes up at once with LINKED=false (CONNECT still works); the link lands when it lands, and a failure
+    is one warn line in the page's log instead of a silent hang."""
+    async def boot():
+        if mc:
+            try:
+                await pull_mc(stage, mc, token)
+            except Exception as e:
+                stage._log(f"could not pull the MC config from {mc}: {e}", "warn")
+        if gun:
+            stage._log(f"connecting to {gun} in the background -- the page is up; LINKED shows when it lands (or use SCAN / CONNECT)", "info")
+            if stage.connected:
+                stage._log(f"boot: a link is already up (the operator pressed CONNECT first); leaving it, not dialling {gun}", "info")
+                return
+            try:
+                await stage.connect(gun)
+            except Exception as e:
+                stage._log(f"connect {gun} failed: {e} -- use SCAN / CONNECT on the page", "warn")
+
+    orig = app.router.lifespan_context
+
+    @contextlib.asynccontextmanager
+    async def lifespan(app_):
+        async with orig(app_):
+            task = asyncio.get_event_loop().create_task(boot())
+            app_.state.boot_task = task            # tests (and a curious operator) can see whether it is still pending
+            try:
+                yield
+            finally:
+                task.cancel()
+
+    app.router.lifespan_context = lifespan
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(prog="brx_mcp stage", description="the GUN STAGE bench page")
     ap.add_argument("--gun", default=None, help="BLE address (or the fake's) to connect on start")
@@ -161,29 +203,7 @@ def main(argv=None) -> None:
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     stage = build(args)
     app = create_app(stage)
-
-    async def boot():
-        if args.mc:
-            try:
-                await pull_mc(stage, args.mc, args.token)
-            except Exception as e:
-                stage._log(f"could not pull the MC config from {args.mc}: {e}", "warn")
-        gun = args.gun or ("FA:KE:00:00:00:01" if args.fake else None)
-        if gun:
-            try:
-                await stage.connect(gun)
-            except Exception as e:
-                stage._log(f"connect {gun} failed: {e} -- use SCAN / CONNECT on the page", "warn")
-
-    orig = app.router.lifespan_context
-
-    @contextlib.asynccontextmanager
-    async def lifespan(app_):
-        async with orig(app_):
-            await boot()
-            yield
-
-    app.router.lifespan_context = lifespan
+    install_boot(app, stage, gun=args.gun or ("FA:KE:00:00:00:01" if args.fake else None), mc=args.mc, token=args.token)
     import uvicorn
     print(f"GUN STAGE  http://{args.host}:{args.port}/   ({'FAKE gun' if args.fake else 'real BLE'}"
           f"{', emitter ' + args.ir if args.ir else ', no emitter'})", flush=True)

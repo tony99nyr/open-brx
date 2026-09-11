@@ -328,6 +328,31 @@ webview's JS still freezes**. Therefore:
   muster checklist puts phones in **Do-Not-Disturb** (`preflight.dnd_on`).
 - **Tell MC.** `status.preflight.screen_on` / `foreground` flip to false the instant the app is backgrounded.
 
+### 3.12 Host-driven stun (EMP) — the node disarms, the node restores (F15, contracts A20)
+
+The gun does not stun itself. The chain the bench proved: a **proto-8 IR word** → the victim's `$SIR,8,0,,24` row
+(fn 24 is a **status** function: `$HIR,…,8,…` fires, no pool moves, **no `$HP` follows**) → the node writes
+`$AMMO,<slot>,0,0,1,*` for every live slot → the node restores when its timer runs out. MC ships the fn-24 row only
+under **`config.stun`** (`{duration_s?}`, default 10 s); without it the stock `<8,0>` row is the **charge rifle's
+plain damage**, so the node's rule is gated on the config too — a plain charge-rifle hit must disarm nobody.
+
+| rule | engine (`engine.js _stun` / `_stunRestore`; `stage.py` mirrors) |
+|---|---|
+| trigger | `$HIR` tok 2 = `8`, only while LIVE + spawned + alive + not tutorial + `config.stun` present. The shooter is still latched (§3.5) |
+| disarm | one write: `$AMMO,<slot>,0,0,1,*` per slot the bundle's spawn frames load (0, and 1 when a secondary exists). `moment {kind: stunned, data: {ms}}`, presentation hook `stunned` |
+| the restore counts | snapshotted AT the stun: the last `$ALCD` mag + reserve per slot, else the frame's spawn values for a slot that never fired. **Never the frame's for a slot that fired** — a re-push refills (F87) and a stun is not a reload |
+| extend | a second EMP inside the window pushes `until` out to a full window from now and writes nothing — no second disarm, never a double restore |
+| expiry | `tick()`: `$AMMO,<slot>,<mag>,<reserve>,1,*` per slot from the snapshot, once; `moment stun_over`, hook `stun_over`. A link that is down at expiry gets no write (the relink reconcile re-arms, §3.10) |
+| death | cancels with **no write** — `frames.revive` carries its own `$AMMO`, and `_revive` resets the per-slot counters as always |
+| rejoin | `_beginReconcile` cancels the stun: the reconcile owns the disarm/re-arm from there (coarse: it re-arms with the frame's counts) |
+| `$ALCD` while stunned | ignored — a gun that cannot fire has no shot to count, and if the gun echoes our `$AMMO,0` (hardware-UNVERIFIED) that echo must not become the count we restore |
+| state | `state().stunned = {until, leftMs}` (null when not stunned) for a STUNNED takeover; not persisted (a reload during a stun loses the timer; the relink reconcile re-arms the gun) |
+| wire | nothing: a status row moves no pool, so no `hit_taken`; MC does not learn of stuns today (open) |
+
+The **source** is a catalog matter, not a node one: any `$WEAP` with t3 = 8 fires the word (the charge rifle keys `<8,0>`
+today, so under `config.stun` it stuns and deals no damage — `validate()` says so), or a proto-8 station. The native
+firmware stun is not relied on (2/5 singles, lasts until death).
+
 ---
 
 ## 4. The HUD — requirements and state mapping

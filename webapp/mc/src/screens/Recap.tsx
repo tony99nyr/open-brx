@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import type { MatchHistoryRow, RecapView, ScoreRow } from '../api/types';
+import type { MatchHistoryRow, RecapStationRow, RecapView, ScoreRow } from '../api/types';
 import { useStore } from '../store';
 import { CHAMFER, F, T, TAB, fmtClock, teamColor } from '../tokens';
 import { BTN_RESET, Brackets, SectionRule, PrimaryButton } from '../ui';
 
 const COLS = 'minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px minmax(120px,1fr)';
 const AWARD_COLOR: Record<string, string> = { MVP: '#ffd23f', 'FIRST BLOOD': T.bad, MULTIKILL: T.warn };
+const STATION_KIND_LABEL: Record<string, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACTION', bomb: 'BOMB SITE', control: 'CONTROL POINT' };
+const STATION_TID_NAME: Record<number, string> = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN', 255: 'ANY' };
 
 export function Recap() {
   const { state, run, api, setView } = useStore();
@@ -192,6 +194,7 @@ export function Recap() {
         </div>
       </Brackets>
       {rc.possession && <Possession p={rc.possession} label={teamLabel} />}
+      {rc.stations && rc.stations.length > 0 && <Stations rows={rc.stations} />}
       {rc.honors.length > 0 && (<>
       <SectionRule label="HONORS" />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(168px,1fr))', gap: 8, marginBottom: 22 }}>
@@ -343,6 +346,45 @@ function Possession({ p, label }: { p: NonNullable<RecapView['possession']>; lab
         <div style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: thin ? T.warn : T.micro, lineHeight: 1.5 }}>
           {thin ? '▲ ' : ''}BEST COVERAGE {mmss(p.observed_s)}{p.of_s ? ` OF ${mmss(p.of_s)}` : ''} — A HILL IS ONLY SEEN BY A GUN IN BEACON RANGE, SO THIS IS A FLOOR, NOT A FULL ACCOUNT.
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Roadmap A6 — one line per ASSIGNED utility station, from its own self-authoritative heartbeat (utility.md
+ *  §5c/§5d.6). A station never heard from still gets a row (its fields null, `heard: false`), so "no
+ *  revives" and "never armed" read differently instead of both showing a bare 0 -- and, since extraction/
+ *  powerup/bomb have no count of their own, `heard` is what tells them apart at all (F105, 2026-09-11). */
+function Stations({ rows }: { rows: RecapStationRow[] }) {
+  return (
+    <div data-testid="recap-stations" style={{ marginBottom: 18, border: `1px solid ${T.line}`, background: T.panelDeep }}>
+      <SectionRule label="STATIONS // WHAT THE FIELD ITEMS REPORTED" hint={`${rows.length} ASSIGNED`} />
+      <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {rows.map(r => (
+          <div key={r.node_id} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ font: F.chk(700, 12), letterSpacing: '.1em', minWidth: 150 }}>{STATION_KIND_LABEL[r.kind] ?? r.kind} {r.id}</span>
+            <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: teamColor((STATION_TID_NAME[r.team] ?? 'any').toLowerCase()) }}>{STATION_TID_NAME[r.team] ?? r.team}</span>
+            {r.kind === 'respawn' && (
+              <span style={{ font: F.mono(600, 11), letterSpacing: '.06em', color: r.revives == null ? T.warn : T.ok }}>
+                {r.revives == null ? 'NEVER HEARD FROM' : `${r.revives} REVIVE${r.revives === 1 ? '' : 'S'}`}
+              </span>
+            )}
+            {r.kind === 'control' && (
+              <span style={{ font: F.mono(600, 11), letterSpacing: '.06em', color: r.owner == null ? T.warn : T.ok }}>
+                {r.owner == null ? 'NEVER HEARD FROM' : `HELD BY ${r.owner === 255 ? 'NOBODY' : (STATION_TID_NAME[r.owner] ?? r.owner)}`}
+                {r.hold_ms && Object.keys(r.hold_ms).length > 0 && ' · ' + Object.entries(r.hold_ms).map(([tid, ms]) => `${STATION_TID_NAME[Number(tid)] ?? tid} ${Math.round(ms / 1000)}s`).join(' · ')}
+              </span>
+            )}
+            {(r.kind === 'extraction' || r.kind === 'powerup' || r.kind === 'bomb') && (
+              // F105 (review 2026-09-11): these three kinds have no count of their own -- `heard` is the
+              // only thing distinguishing a silent station from a reporting one; without this branch both
+              // looked identical (neither rendered anything at all).
+              <span style={{ font: F.mono(600, 11), letterSpacing: '.06em', color: r.heard ? T.ok : T.warn }}>
+                {r.heard ? 'REPORTED' : 'NEVER HEARD FROM'}
+              </span>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );

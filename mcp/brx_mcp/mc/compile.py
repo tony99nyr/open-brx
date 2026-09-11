@@ -25,6 +25,7 @@ from . import presentation as _pres
 from .. import poolgauge as pg
 from .. import voices as _voices
 from ..modes.hillbeacon import NEUTRAL_TEAM as _NEUTRAL_TEAM
+from ..modes.registry import validate_mode_params as _validate_mode_params
 
 # Field-corrected 2026-08-30 (first live 2-player match on the Mac): $VOL,69 — the value iOS
 # Callsign sends — plays at roughly **on-gun level 2** and Tony called it "super low" outdoors.
@@ -240,6 +241,40 @@ def assert_sir_covers_weapons(head: list[str]) -> None:
 # registered through fn 28 with ZERO player feedback (no sound, no flash, no vibration) is the row that
 # lets a gun report the beacon at all without also making the player experience one every 5 s.
 _OBJECTIVE_SIR_ROW = "$SIR,15,0,,28,0,0,1,,*"
+# F15 / A20: the host-driven STUN (EMP). The proven chain: a proto-8 IR word -> the victim's `$SIR,8,0,,24` row
+# (fn 24 = a STATUS function: `$HIR` fires, pools do not move, the gun plays fn 24's own clip) -> the NODE writes
+# `$AMMO,<slot>,0,0,1,*` for its live slots and restores the LIVE counts when `config.stun.duration_s` runs out
+# (`engine.js _stun`). The native stun is not relied on (2/5 singles, lasts until death). The cell is the stock
+# `<8,0>` row -- the CHARGE RIFLE's plain damage (fn 38) -- so with stun ON, a charge rifle IS the EMP source: it
+# stuns and deals no damage (the row's function is the only thing that changes; the sound token is carried over,
+# never rewritten -- F43). The other source is a proto-8 station. Shipped ONLY when `config.stun` is present;
+# a game without it keeps the stock row byte-for-byte.
+_STUN_SIR_ROW = "$SIR,8,0,,24,0,0,1,,*"
+_STUN_CELL = ("8", "0")
+_STUN_DEFAULT_S = 10
+_STUN_MAX_S = 60
+
+
+def stun_enabled(config) -> bool:
+    """`config.stun` present (an object; `{}` = the 10 s default) = the EMP cell is a stun this game."""
+    return isinstance(config.get("stun"), dict)
+
+
+def _with_stun_row(rows: list[str]) -> list[str]:
+    """The table with the `<8,0>` cell's function swapped to fn 24, in place (stock order kept, sound token
+    carried over so a class-layer draw survives); appended if the table had no such cell."""
+    out: list[str] = []
+    done = False
+    for row in rows:
+        cell = _sir_cells([row])
+        if cell and cell[0] == _STUN_CELL and not done:
+            out.append(_sir_with_sound(_STUN_SIR_ROW, row.split(",")[_SIR_SOUND_TOK]))
+            done = True
+        else:
+            out.append(row)
+    if not done:
+        out.append(_STUN_SIR_ROW)
+    return out
 # Modes whose objective IS this grenade beacon -- defined in `.types` beside the GameConfig shape,
 # because `state.py`'s PUT validator and `scoring.py` read the same set (keep the local alias: it is
 # what every guard in this file reads).
@@ -698,7 +733,7 @@ class Compiler:
         ms = [self.catalog.cycle_ms(w) for w, c in plan.cells.items() if c == cell]
         return int(min(ms)) if ms else None
 
-    def sir_table(self, plan, rng, class_sounds: bool = False) -> list[str]:
+    def sir_table(self, plan, rng, class_sounds: bool = False, stun: bool = False) -> list[str]:
         """The `$SIR` table for one head. Stock rows are never removed -- a cell we vacate keeps its row,
         so a stock gun or a grenade station still registers exactly as it does today.
 
@@ -720,8 +755,9 @@ class Compiler:
         if not class_sounds:
             # Stock rows VERBATIM, in stock order, plus a silent row for any re-keyed cell. Order is
             # preserved deliberately: the table is a wire artefact and churning it churns every bundle.
-            return rows + [_sir_row(cell, "", fn, by_fn.get(fn))
+            rows = rows + [_sir_row(cell, "", fn, by_fn.get(fn))
                            for cell, (_k, fn) in sorted(plan.groups.items()) if cell not in cells]
+            return _with_stun_row(rows) if stun else rows   # F15/A20: the EMP cell, only when the game asks
         for cell, (cls, fn) in sorted(plan.groups.items()):
             sound = _ha.class_sound(cls, rng, self._cell_cycle_ms(plan, cell))
             if cell in cells:
@@ -729,7 +765,45 @@ class Compiler:
                 rows[i] = _sir_with_sound(rows[i], sound)
             else:
                 rows.append(_sir_row(cell, sound, fn, by_fn.get(fn)))
-        return rows
+        return _with_stun_row(rows) if stun else rows   # F15/A20: same substitution on the class-sound path (and so on every `sir_pool` take)
+
+    def _weapon_cell(self, weapon_id: str) -> tuple[str, str] | None:
+        """The `<proto, subtype>` cell a weapon fires on today (its `$WEAP` tok3/tok4), or None for an unknown id."""
+        if weapon_id not in self.catalog._by_id:
+            return None
+        T = self.catalog._T
+        try:
+            f = self.catalog.resolve(weapon_id, 0).split(",")
+            return (f[T["proto"] + 1] or "0", f[T["subtype"] + 1] or "0")
+        except (IndexError, ValueError, KeyError):
+            return None
+
+    def _validate_stun(self, config, roster, errors: list[str], warnings: list[str]) -> None:
+        """F15 / A20 `config.stun`: `{duration_s?}`, 1..60 s, default 10. Says which rostered weapons become the EMP
+        source (they stop dealing damage), and says so if NOTHING in the game can stun. Refused together with
+        `hit_audio_rekey`: a re-key would move the charge rifle off `<8,0>` with its fn-38 damage intact and leave
+        the stun row keying nothing."""
+        st = config.get("stun")
+        if st is None:
+            return
+        if not isinstance(st, dict):
+            errors.append("stun must be an object {duration_s} (F15/A20) -- {} for the 10 s default")
+            return
+        d = st.get("duration_s", _STUN_DEFAULT_S)
+        if isinstance(d, bool) or not isinstance(d, (int, float)) or not (1 <= d <= _STUN_MAX_S):
+            errors.append(f"stun.duration_s {d!r} out of range 1..{_STUN_MAX_S} s (F15/A20)")
+        if config.get("hit_audio_rekey"):
+            errors.append("stun cannot be combined with hit_audio_rekey (F15/A20): the re-key would move the "
+                          "<8,0> weapons off the EMP cell with their damage intact")
+        srcs = sorted({str(w.get("weapon_id")) for p in roster
+                       for w in ((p.get("loadout") or {}).get("weapons") or [])
+                       if self._weapon_cell(w.get("weapon_id")) == _STUN_CELL})
+        if srcs:
+            warnings.append(f"stun: {', '.join(srcs)} fire on IR cell <8,0>, the EMP cell while stun is on -- "
+                            f"they STUN (fn 24, no damage) instead of dealing damage")
+        else:
+            warnings.append("stun is on but no rostered weapon fires on cell <8,0> and MC arms no station for "
+                            "it: nothing in this game can stun (the source is a $WEAP t3=8 slot or a proto-8 station)")
 
     @staticmethod
     def _rekey(frame: str, cell) -> str:
@@ -826,7 +900,7 @@ class Compiler:
         play_hled = _headset_colour(tid, gc.leds, ffa, night) if hs.get("in_play") == "team" else []
         # A11.7 pregame: the armed gun body in the team colour (a paint holds before $SPAWN), like the headset.
         gun_pre = _pres.gun_pregame(prof, tid, night, gc.leds, ffa)
-        sir_rows = self.sir_table(plan, hits_rng, bool(config.get("hit_audio_class", False)))
+        sir_rows = self.sir_table(plan, hits_rng, bool(config.get("hit_audio_class", False)), stun=stun_enabled(config))
         if config["mode"] in _OBJECTIVE_MODES:
             sir_rows = list(sir_rows) + [_OBJECTIVE_SIR_ROW]   # F70/F79: the silent proto-15 beacon row
         head += sir_rows + bmap + gc._led_frames() + hled + gun_pre + [f"$TID,{tid},*"]   # §1.1: head ends with $TID
@@ -901,7 +975,7 @@ class Compiler:
         # before every $SPAWN and again after a lull, so the same weapon does not land the same clip all
         # match. Re-sending $SIR rows is the F11 REPAIR path, so this write is bench-safe by construction.
         _cs = bool(config.get("hit_audio_class", False))
-        bundle["sir_pool"] = [self.sir_table(plan, hits_rng, _cs) for _ in range(_SIR_TAKES)] if _cs else []
+        bundle["sir_pool"] = [self.sir_table(plan, hits_rng, _cs, stun=stun_enabled(config)) for _ in range(_SIR_TAKES)] if _cs else []
         bundle["hit_audio"] = {"rekey": bool(config.get("hit_audio_rekey", False)),
                                "cells": {w: f"{c[0]},{c[1]}" for w, c in plan.cells.items()},
                                "classes": {f"{c[0]},{c[1]}": k for c, (k, _fn) in plan.groups.items()},
@@ -1116,6 +1190,28 @@ class Compiler:
                     f"team {_NEUTRAL_TEAM} and the IR team field is 2 bits, so a fourth player has to "
                     "share a team -- an FFA hill caps at three players")
 
+        # A18 (E1): the mode's own rules. `state._merge_config` refuses these at PUT; this is the belt-and-braces
+        # for a config that reaches the compiler another way (a fixture, the CLI, a stored preset from before the
+        # engine tightened a bound). Unknown keys are an ERROR, not dropped: a knob the engine ignores is a
+        # control that does nothing, which is the whole failure mode E1 exists to remove.
+        mp = config.get("mode_params")
+        if mp is not None:
+            if not isinstance(mp, dict):
+                errors.append("mode_params must be an object (the mode's own parameters, GET /api/modes .params)")
+            else:
+                errors.extend(_validate_mode_params(mode, mp)[1])
+
+        # A19 (S10): the VIP must be somebody who is actually playing. A saved game never carries this (a preset
+        # names no person), so a stale id here means the player was removed after being named.
+        vip = config.get("vip_player_id")
+        if vip is not None:
+            rostered = {str(p.get("player_id")) for p in roster}
+            if not isinstance(vip, str) or vip not in rostered:
+                errors.append(f"vip_player_id {vip!r} is not on the roster — pick the VIP from the players in this session")
+        elif (config.get("presentation") or {}).get("preset") == "vip":
+            warnings.append("VIP profile with no VIP named — set config.vip_player_id or nobody's headset holds the "
+                            "white VIP state and vip_hit / vip_down have no subject")
+
         # ffa ⇒ exactly one team (one $TID); friendly fire is forced on in compile (§2/A5.2)
         if mode == "ffa" and len({t["tid"] for t in config.get("teams", [])}) > 1:
             errors.append("ffa requires a single $TID (one team); identity is $PSET, not $TID (A4.1)")
@@ -1292,6 +1388,7 @@ class Compiler:
             warnings.append("frag_limit on a non-full-coverage venue is an in-coverage early end only; "
                             "the guaranteed end is time_limit_s (A4.8) — winner is provisional until recap")
 
+        self._validate_stun(config, roster, errors, warnings)   # F15/A20 (own hunk: the stun's shape + its source)
         return {"ok": not errors, "errors": errors, "warnings": warnings}
 
     def weapon_catalog(self) -> list[Weapon]:
