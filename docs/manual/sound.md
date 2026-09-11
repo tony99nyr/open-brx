@@ -1,5 +1,5 @@
 # Sound, voice and updates
-Last verified: 2026-09-09
+Last verified: 2026-09-11
 
 How BRX plays sound: what the gun does on its own, what a host has to trigger, the full sound bank, and how to change what you hear over USB or through a firmware update.
 
@@ -32,6 +32,7 @@ Only one sound is truly stuck: the boot chime.
 |---|---|
 | Shape | `$PLAY,<soundID>,<volume>,<priority>,<announcerID>,,,,*`. Token 1 is the local effect sound; token 4 is a second, independent announcer/voice slot. |
 | Two slots at once | `$PLAY,,4,6,V3A,,,,*` leaves the effect slot empty and says "kill". Both slots can carry an id at once: the app's game-end frame is `$PLAY,VSF,4,6,JAY,,,,*` (victory sting plus "victory"). |
+| Slots behave differently | Token 1 interrupts: sending a new id there cuts off whatever is playing, in either slot, even mid-word. Token 4 queues: a new id there waits its turn and plays after what is ahead of it, several deep. This is true of the slot, not the id: an effect id sent through token 4 queues exactly like a voice line does. Put anything that must never be cut off in token 4, and accept that anything urgent in token 1 can cut a line short. |
 | Required tokens | Volume and priority are required. `$PLAY,VA33,,,,,,,*` was silent on the bench; `$PLAY,VA33,4,6,,,,,*` spoke "game over". The official apps use `3,9` (Android) and `3,6` / `4,6` (iOS Callsign): app conventions, not protocol constants. |
 | Stop playback | `$PLAYX,0,*` stops playback right away. The app sends it just after `$STOP` on connect, and it also silences a spawn voice line if sent right after `$SPAWN`. |
 | Unknown id | Any id not in the bank is invalid. For an unknown id the gun plays a fallback sound instead of staying silent. That is why a microphone sweep can't list the bank: a nonsense id produced audio at 150x the noise floor. |

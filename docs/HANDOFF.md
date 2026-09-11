@@ -1,6 +1,6 @@
 # Handoff — Open BRX
 
-**State as of 2026-09-11 (late, fourth session: bench, gun Tactix-3D4F).** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners:
+**State as of 2026-09-11 (late: the bench pass, then the sound pass).** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners:
 [`archive/handoff-history.md`](archive/handoff-history.md).
 
 ## Tonight's bench (2026-09-11, three closes, all written up, tests green, NOT committed)
@@ -70,7 +70,7 @@
   assignments persist across an MC restart, the recap carries a stations row, battery + app version ride the heartbeat.
   Hosted games ignore the grenade's IR station words (B23), so hosted respawn stations are node-defined.
   **Station hardware is on order (2026-09-11):** 2× M5StickS3 + 3× Grove IR emitters ([`../hardware/inventory.md`](../hardware/inventory.md)); firmware `hardware/m5sticks3/`; gates in **H7**.
-- **Sound bank:** 2477 on-gun clips off the gun and classified; 148 audited by ear (S9 open).
+- **`$PLAY` token 1 interrupts / token 4 queues (2026-09-11, A21, per-event `slot`).** 249 of 2477 (`fx:hit` complete) clips audited by ear; F45, F48, W4a, S-A12.1, F58(a) and the defeat line closed by ear, S9 all but the preset sweep; F59 is firmware not clips (`soundbank_leadin.py`), one filmed rung left. **Later the same night:** F44 closed (the shield loop is A10, heard live via `$LIFE,0,0,20,*`), S12 decided and built (`presentation.voice`, A22), and **F109** filed: `$LIFE` grants shields over BLE, so host-granted overshields/heals need no IR word.
 - **Hit audio (A17, ear-confirmed 2026-09-07):** metal for armour (`H02/H36/H37`), an energy note for
   shield (`H22`), **health deliberately SILENT** — real damage is where the metal stops and the pain
   grunt starts. Every id picked by acoustic SHAPE was rejected by ear (features separate tonal from
@@ -112,7 +112,7 @@
 1. **Bench, still open on [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md):** A1/B1/B2 ANSWERED
    tonight (F69/F91/F23). Remaining: **A2** the t14 rate-of-fire floor (F87/F100), **B3** the capture currency
    (F70/F76), **C1** the shield grant (F60), **C2** enemy fn 35 (D6). Also block E (LED metering) and **F15 rung 9**
-   (a proto-8 word at a stun-armed gun). F27 sidearms + melee reload timing are quick adds when a gun is armed.
+   (a proto-8 word at a stun-armed gun). F27 sidearms + melee reload timing are quick adds when a gun is armed. **F59**'s filmed rung is also due: phone at 240 fps on a batched `$GLED`+`$PLAY`, reading announcer/effect/hit-path latency off the video.
 2. **Keyboard, in order** (`followups-triage.md` §7): **E2** the other three touch points (the registry exists) · **B23** the hosted respawn assembly (every link built) ·
    **F88** multi-point Domination on phones (the ids now reach every HUD) · **S3** extraction on phones · **B19**
    for F80's real fix · the E1 Designer editor (F107 (h)) · **E5** phone audio when there is an ear for it.

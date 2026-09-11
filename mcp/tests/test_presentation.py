@@ -86,6 +86,21 @@ def test_merge_rejects_bad_input():
             P.merge(None, bad)
 
 
+def test_voice_switch_presets_and_validation():
+    """S12 (Tony, 2026-09-11: "let the config drive it. silenced snipers no grunts could be legit"):
+    `presentation.voice` gates the player's OWN pain/spawn lines -- a 3-way enum, not a SWITCHES bool,
+    so it gets its own validation and its own default-carry in merge()/resolve()/summary()."""
+    assert P.default_for("tdm")["voice"] == "on"                       # today's behaviour, unchanged
+    assert P.merge(None, {"preset": "silenced"})["voice"] == "off"     # silenced silences the player's own lines too
+    for v in P.VOICE_VALUES:
+        assert P.merge(None, {"voice": v})["voice"] == v
+    with raises(ValueError):
+        P.merge(None, {"voice": "loud"})
+    # an edit that actually changes the value marks the preset custom, same rule as every other field
+    edited = P.merge(P.merge(None, {"preset": "standard"}), {"voice": "hits_only"})
+    assert edited["preset"] == "custom" and edited["voice"] == "hits_only"
+
+
 def test_play_frame_puts_voices_on_the_announcer_slot_and_effects_on_the_sfx_slot():
     assert P.play_frame("VA7E", None) == "$PLAY,,4,6,VA7E,,,,*"
     assert P.play_frame("X12", None) == "$PLAY,X12,4,6,,,,,*"
@@ -115,14 +130,16 @@ def test_voice_role_sounds_resolve_per_player_through_the_compiler():
         P.merge(None, {"events": {"respawned": {"sound": "voice:dance"}}})
 
 
-def test_low_health_plays_the_players_own_hurt_loop_and_long_death_is_retired():
-    """Tony, 2026-09-06 (bench): the hurt loop plays at critical health; the long death "is ridiculous,
-    probably dont use that one for anything" and can no longer be picked for any presentation event."""
+def test_low_health_plays_a_heartbeat_loop_regardless_of_voice_family():
+    """Tony, 2026-09-11 (bench, ear-confirmed): "yeah heartbeat, it could be looped. i like that more
+    for critical health" -- N74 (a bare fx id) replaces the player's own "voice:hurt_loop" line
+    (V06 "guy breathing heavy in pain"), so `hurt` no longer varies by voice family. The long death
+    (voice:long_death) is still retired and can no longer be picked for any presentation event."""
     config, player = _golden_inputs()
     b = C._DEFAULT.compile(config, {**player, "voice": "heavy"}, config["teams"])
-    assert b["cues"]["hurt"] == "$PLAY,,4,6,V36,,,,*"
+    assert b["cues"]["hurt"] == "$PLAY,N74,4,6,,,,,*"
     b2 = C._DEFAULT.compile(config, {**player, "voice": "scout"}, config["teams"])
-    assert b2["cues"]["hurt"] == "$PLAY,,4,6,VB6,,,,*"          # V36 replaced by the scout family's own line
+    assert b2["cues"]["hurt"] == "$PLAY,N74,4,6,,,,,*"          # same heartbeat now, no longer per-family
     with raises(ValueError):
         P.merge(None, {"events": {"low_health": {"sound": "voice:long_death"}}})
 
@@ -151,7 +168,7 @@ def test_standard_bundle_carries_led_bursts_and_verified_cues():
     assert b["cues"]["multi"] == "$PLAY,,4,6,VA7E,,,,*"          # "Double Kill", transcript-verified
     assert b["cues"]["first_blood"] == "$PLAY,,4,6,VA7H,,,,*"
     assert b["cues"]["objective_scored"] == f"$PLAY,,4,6,{snd.OBJECTIVE_SCORED},,,,*"
-    assert b["cues"]["hurt"] == "$PLAY,,4,6,VA6,,,,*"            # the player's own hurt loop (Tony 2026-09-06: good at critical health)
+    assert b["cues"]["hurt"] == "$PLAY,N74,4,6,,,,,*"            # the heartbeat loop (Tony 2026-09-11, ear-confirmed: good at critical health)
     assert b["cues"]["kill"].startswith("$PLAY,,4,6,")
 
 
@@ -161,7 +178,7 @@ def test_silenced_mutes_the_announcer_and_drops_the_gun_flashes_but_keeps_the_pl
     assert b["leds"] == {}
     for ev in ("kill", "multi", "medal", "first_blood", "objective_scored", "lead_taken", "victory", "game_over"):
         assert b["cues"][ev] == "", ev                  # present and deliberately mute -> $SFLASH only
-    assert b["cues"]["hurt"] == "$PLAY,,4,6,VA6,,,,*"  # the player's own low-health alert (hurt loop) survives
+    assert b["cues"]["hurt"] == "$PLAY,N74,4,6,,,,,*"  # the low-health heartbeat loop survives (group "player", not gated by announcer)
     assert b["cues"]["countdown"] == "$PLAY,VA81,4,6,,,,,*"
     assert b["headset"]["pregame"] == ["$HLED,1,0,,,10,,*"]   # the lobby team colour is not "announcer stuff" (A11.6: dark in play)
     # led-language.md §3.5 "readout off" (2026-09-07 gap, caught by the engine lane): a silenced sniper
@@ -258,7 +275,8 @@ def test_medal_events_each_have_their_own_verified_line_and_alerts_carry_text():
     assert b["cues"]["triple_kill"] == "$PLAY,,4,6,VA7Q,,,,*"
     assert b["cues"]["killtacular"] == "$PLAY,,4,6,V124,,,,*"
     assert b["cues"]["killing_spree"] == "$PLAY,,4,6,VA7K,,,,*"
-    assert "unstoppable" not in b["cues"]                     # no bank line: flash only
+    # ear-confirmed 2026-09-11 (Tony): VX0U "Domination." -- the only streak-shaped bank line
+    assert b["cues"]["unstoppable"] == "$PLAY,,4,6,VX0U,,,,*"
     assert b["cues"]["next_kill_wins"] == "$PLAY,,4,6,V115,,,,*"
     assert b["cues"]["time_60"] == "$PLAY,,4,6,V113,,,,*"
     assert P.alert_body("bomb_planted") == {"kind": "bomb_planted", "text": "BOMB PLANTED"}
@@ -267,11 +285,19 @@ def test_medal_events_each_have_their_own_verified_line_and_alerts_carry_text():
 
 def test_extraction_preset_follows_the_genre_loop_and_last_stand_has_no_last_survivor_by_default():
     b = _compile({"preset": "extraction"})
-    for ev, sid in (("extraction_called", "VA1C"), ("extraction_open", "VA1U"), ("extraction_closing", "VX0R"),
-                    ("extraction_complete", "VQ8"), ("extraction_failed", "VA8X"), ("extraction_alert", "VA1S"),
+    # extraction_closing: ear-confirmed 2026-09-11 -- V114 "10 seconds!" (game-callouts announcer, Halo
+    # voice) replaces VX0R (numbers/menu announcer, failed the walkthrough).
+    # extraction_complete: ear-confirmed 2026-09-11 -- VS7 "Objective Complete!" (Resistance commander,
+    # a Battle Company announcer voice) replaces VQ8 (Nexus commander, "objective complete in the
+    # zombie creature voice" -- wrong genre for an extraction win).
+    for ev, sid in (("extraction_called", "VA1C"), ("extraction_open", "VA1U"), ("extraction_closing", "V114"),
+                    ("extraction_complete", "VS7"), ("extraction_failed", "VA8X"), ("extraction_alert", "VA1S"),
                     ("loot_picked", "VA1Q"), ("raid_ending", "VA3U")):
         assert b["cues"][ev] == f"$PLAY,,4,6,{sid},,,,*", ev
-    assert b["cues"]["raid_over"] == "$PLAY,X20,4,6,,,,,*" and b["cues"]["extraction_tick"] == "$PLAY,K01,4,6,,,,,*"
+    # extraction_tick: ear-confirmed 2026-09-11 -- Tony: "OH this is a cool extraction sound, its like an
+    # intro hype music" -- JAS (10.7 s) replaces U100 (a 0.11 s tick), and is QUEUED (slot="queue", token
+    # 4) rather than interrupted so the ~10 s refire loops it seamlessly instead of cutting itself off.
+    assert b["cues"]["raid_over"] == "$PLAY,X20,4,6,,,,,*" and b["cues"]["extraction_tick"] == "$PLAY,,4,6,JAS,,,,*"
     # led-language.md §6 finding #6: the static headset paint holds then reverts, it does not stay lit
     assert b["leds"]["extraction_called"][-2] == [f"$HLED,{pg.ORANGE},0,,,10,,*", P.STATIC_EVENT_HLED_HOLD_S]
     assert b["leds"]["extraction_called"][-1] == [b["headset"]["rest"], 0.0]
@@ -564,3 +590,39 @@ def test_voice_role_pools_reach_the_bundle_for_multi_take_roles_only():
     muted = C.Compiler().compile({**cfg, "presentation": {**cfg["presentation"], "hud_events": False}}, player, teams)
     assert "hit_taken" not in muted["cue_pools"] and muted["cues"]["hit_taken"] == ""
     assert P.cue_pool_frames(P.resolve(cfg), "V3A") == {}                # the pre-A15 str form carries no pools
+
+
+def test_s9_f58a_ear_confirmed_ids_are_wired_and_on_the_gun():
+    """S9 / F58(a): several EVENTS shipped with sound=None, or with an id that FAILED the bench walkthrough.
+    Tony's ear confirmed each of these six on a real gun 2026-09-11, one clip at a time (his exact words
+    are on each EVENTS entry's comment). This only confirms each one resolves to a real, on-gun cue in the
+    standard bundle -- it is not itself a repeat of that bench session."""
+    on = snd.on_gun_ids()
+    b = golden_bundle()   # golden player's voice is "male" -- healed resolves through voices.py, not a literal here
+    confirmed = {"healed": None, "armour_up": snd.ADD_ARMOR, "shield_up": snd.ADD_SHIELD,
+                 "unstoppable": "VX0U", "extraction_tick": "JAS", "extraction_closing": "V114"}
+    for ev, expect_id in confirmed.items():
+        frame = b["cues"].get(ev)
+        assert frame, (ev, "must resolve to a non-empty cue in the standard bundle")
+        parts = frame.split(",")
+        sid = parts[4] or parts[1]                    # voice ids ride token 4, fx ids ride token 1
+        assert sid and sid in on, (ev, sid, "must be a real, on-gun sound id")
+        if expect_id is not None:
+            assert sid == expect_id, (ev, sid, expect_id)
+
+
+def test_play_slot_override_queue_and_interrupt():
+    """Bench-confirmed 2026-09-11 (Tony's ear, six trials on a real gun): `$PLAY` token 1 INTERRUPTS
+    whatever the gun is already playing, token 4 QUEUES behind it (depth >= 3 observed) -- true for BOTH
+    an fx id and a voice id, not just the V-family pattern `play_frame()` falls back to when `slot` is
+    unset."""
+    assert P.play_frame("X12", None, "queue") == "$PLAY,,4,6,X12,,,,*"          # an fx id, forced to queue
+    assert P.play_frame("VA7E", None, "interrupt") == "$PLAY,VA7E,4,6,,,,,*"    # a V id, forced to interrupt
+    assert P.play_frame("X12", None, None) == "$PLAY,X12,4,6,,,,,*"            # None keeps the pattern rule
+    assert P.play_frame("VA7E", None, None) == "$PLAY,,4,6,VA7E,,,,*"
+    # voice: sounds always queue, regardless of slot
+    assert P.play_frame("voice:kill", "V3A", "interrupt") == "$PLAY,,4,6,V3A,,,,*"
+    p = P.merge(None, {"events": {"hit_taken": {"slot": "queue"}}})
+    assert p["events"]["hit_taken"]["slot"] == "queue"
+    with raises(ValueError):
+        P.merge(None, {"events": {"hit_taken": {"slot": "loud"}}})

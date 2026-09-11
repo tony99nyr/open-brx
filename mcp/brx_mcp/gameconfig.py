@@ -75,7 +75,9 @@ def pset_foot(hits: dict | None = None) -> list[str]:
     four hit slots and `energyShieldLoop` are still inherited untouched."""
     from .hitaudio import MATERIAL_DEFAULT, MATERIAL_ROLES, SHIELD_LOOP, SHIELD_LOOP_INDEX
     foot = list(_PSET_FOOT_INHERITED)
-    foot[SHIELD_LOOP_INDEX] = SHIELD_LOOP     # A17: Callsign's A10 LOOPS a geiger tick while shield is up
+    foot[SHIELD_LOOP_INDEX] = SHIELD_LOOP     # A17/F44 (closed 2026-09-11): Callsign's own A10 is a real
+                                               # shield hum, ear-confirmed alone with $LIFE raising/dropping
+                                               # the shield -- writes back the same id the gun already inherits
     # A17: the four hit slots default to the EAR-CONFIRMED heads, not the inherited ids, so a gun that
     # is armed but not yet spawned already sounds right. `hits` (a roll or an operator pin) overrides.
     for i, role in enumerate(MATERIAL_ROLES, start=1):

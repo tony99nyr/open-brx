@@ -11,6 +11,12 @@ Shape (lives in `GameConfig.presentation`, validated by `merge`, expanded by `re
     {
       "preset": "standard" | "silenced" | "counter_strike" | "vip" | "infection" | "last_stand" | "extraction" | "custom",
       "announcer":    bool,   # kill lines, medals, lead changes, objective callouts (voice)
+      "voice":        "on" | "hits_only" | "off",   # S12 (Tony, 2026-09-11: "let the config drive it. silenced
+                       # snipers no grunts could be legit"): the player's OWN voice lines -- "on" (default) plays
+                       # all of them; "hits_only" keeps the three pain lines but drops the spawn line; "off" drops
+                       # both. Independent of `announcer` (which gates MC/announcer feedback, not the player's own
+                       # cues). The native death scream is ALWAYS native regardless of this switch -- it is
+                       # firmware, not a `$PLAY`, and a death already gives no position away.
       "gun_flash":    bool,   # $GLED event bursts on the player's own gun
       "headset_team": bool,   # derived mirror of headset.in_play/pregame == "team" (older readers)
       "hud_events": bool, "mc_events": bool, "mc_confidence": bool,   # A11.5 event classes + the confidence gate
@@ -22,10 +28,15 @@ Shape (lives in `GameConfig.presentation`, validated by `merge`, expanded by `re
       "gun": {in_play, pregame, readout},   # A11.7/§3.1 (blank-then-hold, taken 2.5 s after $SPAWN;
                                             # readout = {pools, hold_s, reload_glance_s}, [] = off)
       "sight_flash":  bool,   # $SFLASH on a credited kill
-      "events": { <event>: { "sound": <id>|"voice:<role>"|null, "gun_led": 0-8|null, "headset": 0-8|null, "flash": "green"|null } }
+      "events": { <event>: { "sound": <id>|"voice:<role>"|null, "gun_led": 0-8|null, "headset": 0-8|null, "flash": "green"|null,
+                             "slot": "queue"|"interrupt"|null } }
                  # flash = the small headset LED (A11.8); "voice:<role>" (A15) = the PLAYER's own voice line for that
                  # role (kill, spawn, boast, taunt, intro, gas_death, death_scream, hurt_loop, healed, kill_confirm, defeat_taunt,
-                 # pain, pain_short / pain_long / pain_melee (A15.3), name -- voices.SOUND_ROLES), resolved per player at compile time
+                 # pain, pain_short / pain_long / pain_melee (A15.3), name -- voices.SOUND_ROLES), resolved per player at compile time.
+                 # slot (bench-confirmed 2026-09-11): an explicit `$PLAY` slot override -- "queue" (token 4, waits
+                 # behind whatever is already playing) or "interrupt" (token 1, cuts it); null keeps the pattern
+                 # rule in `play_frame()` (V-family -> queue, else interrupt). `voice:<role>` sounds always queue
+                 # regardless of this field.
     }
 
 Every sound id must be ON THE GUN (`sounds.on_gun_ids()`, from the catalog read off the hardware);
@@ -81,18 +92,18 @@ EVENTS: dict[str, dict] = {
     "hit_taken":     dict(source="hud", group="player",    desc="you were hit",                      sound=None,   gun_led=None,    headset=None),
     "died":          dict(source="hud", group="player",    desc="you are out",                       sound=None,   gun_led=None,    headset=None),
     "respawned":     dict(source="hud", group="player",    desc="back in: the player's own spawn line (A15.2, one random take)", sound="voice:spawn", gun_led=None, headset=None),
-    "healed":        dict(source="hud", group="player",    desc="health restored",                   sound=None,   gun_led=None,  headset=None),
-    "armour_up":     dict(source="hud", group="player",    desc="armour granted",                    sound=None,   gun_led=None, headset=None),
-    "shield_up":     dict(source="hud", group="player",    desc="shield granted",                    sound=None,   gun_led=None,   headset=None),
-    "low_health":    dict(source="hud", group="player",    desc="HP below 15: the player's own hurt loop, once per life (A17.2 -- was 'armour gone', which fired at full health)", sound="voice:hurt_loop", gun_led=None, headset=pg.PINK),
+    "healed":        dict(source="hud", group="player",    desc="health restored",                   sound="voice:healed", gun_led=None,  headset=None),  # ear-confirmed 2026-09-11: Tony -- V37 "patched up" and V87 "Bleeding stopped" both clean
+    "armour_up":     dict(source="hud", group="player",    desc="armour granted",                    sound=snd.ADD_ARMOR, gun_led=None, headset=None),  # ear-confirmed 2026-09-11: Tony -- "Halo announcer, body armor" (VA1G)
+    "shield_up":     dict(source="hud", group="player",    desc="shield granted",                    sound=snd.ADD_SHIELD, gun_led=None,   headset=None),  # ear-confirmed 2026-09-11: Tony -- "shields online with a sound effect" (VA8C)
+    "low_health":    dict(source="hud", group="player",    desc="HP below 15: a heartbeat loop, once per life (A17.2 -- was 'armour gone', which fired at full health)", sound="N74", gun_led=None, headset=pg.PINK),  # ear-confirmed 2026-09-11: Tony -- "yeah heartbeat, it could be looped. i like that more for critical health", replacing "voice:hurt_loop" (V06 "guy breathing heavy in pain"); N75 is a second heartbeat take, N25 a faster one (pool/tier candidates, not wired)
     # -- the shooter's kill feedback (MC `feedback` push; ONE of these per kill, most specific wins) --
     "kill":          dict(source="mc", group="announcer", desc="you scored a kill",                 sound="voice:kill", gun_led=None, headset=None, flash="green"),
     "first_blood":   dict(source="mc", group="announcer", desc="first kill of the match",           sound="VA7H", gun_led=None,      headset=None, flash="green"),
     "double_kill":   dict(source="mc", group="announcer", desc="2 kills inside the multi window",   sound="VA7E", gun_led=None,      headset=None, flash="green"),
     "triple_kill":   dict(source="mc", group="announcer", desc="3 kills inside the window",         sound="VA7Q", gun_led=None,      headset=None, flash="green"),
     "killtacular":   dict(source="mc", group="announcer", desc="4+ kills inside the window",        sound="V124", gun_led=None,      headset=None, flash="green"),
-    "killing_spree": dict(source="mc", group="announcer", desc="5 kills without dying",             sound="VA7K", gun_led=None,      headset=None, flash="green"),
-    "unstoppable":   dict(source="mc", group="announcer", desc="10 kills without dying (no bank line; flash only)", sound=None, gun_led=None, headset=None, flash="green"),
+    "killing_spree": dict(source="mc", group="announcer", desc="5 kills without dying",             sound="VA7K", gun_led=None,      headset=None, flash="green"),  # ear-confirmed 2026-09-11: Tony -- clean; V125 is the other read, also clean, but VA7K has the sting and matches VA7H/VA7E/VA7Q
+    "unstoppable":   dict(source="mc", group="announcer", desc="10 kills without dying",             sound="VX0U", gun_led=None, headset=None, flash="green"),  # ear-confirmed 2026-09-11: Tony -- "Domination, Halo voice" -- the only streak-shaped bank line
     "multi":         dict(source="mc", group="announcer", desc="legacy: any multi-kill (older MCs)", sound="VA7E", gun_led=None,      headset=None),
     "medal":         dict(source="mc", group="announcer", desc="legacy: any streak medal",           sound="VA7K", gun_led=None,      headset=None),
     # -- match state, pushed to EVERY node it concerns --
@@ -125,10 +136,10 @@ EVENTS: dict[str, dict] = {
     #    The extractor's own events are HUD-local once the channel runs on the node (zone = station/grenade
     #    beacons on its own gun); `extraction_alert` is what OTHERS hear and is MC best-effort until a field radio.
     "extraction_called":   dict(source="hud", group="player",    desc="you called the extract; it is inbound and LOUD",  sound="VA1C", gun_led=pg.ORANGE, headset=None),  # "Black Hawk inbound."
-    "extraction_tick":     dict(source="hud", group="player",    desc="inbound / window running (repeats every ~10 s)",  sound="K01",  gun_led=None,      headset=None),       # 10 s rotor fly-by
+    "extraction_tick":     dict(source="hud", group="player",    desc="inbound / window running (repeats every ~10 s): a seamless intro-hype loop, queued so it never cuts itself off",  sound="JAS", slot="queue", gun_led=None, headset=None),       # ear-confirmed 2026-09-11: Tony -- "OH this is a cool extraction sound, its like an intro hype music"; JAS runs 10.7 s and the event refires every ~10 s, so queued (never interrupted) it loops seamlessly
     "extraction_open":     dict(source="hud", group="player",    desc="the extract is here: window open",               sound="VA1U", gun_led=pg.WHITE,  headset=None),   # "Incoming Chopper."
-    "extraction_closing":  dict(source="hud", group="player",    desc="window closing (10 s)",                          sound="VX0R", gun_led=pg.ORANGE, headset=None),       # "10 Seconds Remain."
-    "extraction_complete": dict(source="hud", group="player",    desc="you extracted -- loot banked, you are out safe",  sound="VQ8",  gun_led=pg.WHITE,  headset=None),   # "Objective complete!"
+    "extraction_closing":  dict(source="hud", group="player",    desc="window closing (10 s)",                          sound="V114", gun_led=pg.ORANGE, headset=None),       # ear-confirmed 2026-09-11: Tony -- "10 seconds!" (game-callouts announcer, Halo voice)
+    "extraction_complete": dict(source="hud", group="player",    desc="you extracted -- loot banked, you are out safe",  sound=snd.EXTRACTED,  gun_led=pg.WHITE,  headset=None),   # ear-confirmed 2026-09-11: EXTRACTED is now VS7 "Objective Complete!" (Resistance commander, Battle Company announcer voice) -- see sounds.py
     "extraction_failed":   dict(source="hud", group="player",    desc="left the zone or died: extract lost",            sound="VA8X", gun_led=pg.RED,    headset=None),       # "Fail."
     "extraction_alert":    dict(source="mc", group="objective", desc="someone ELSE called an extract nearby",          sound="VA1S", gun_led=pg.ORANGE, headset=None),       # "enemy chopper detected."
     "loot_picked":         dict(source="hud", group="player",    desc="loot picked up",                                 sound="VA1Q", gun_led=pg.WHITE,  headset=None),       # "Care Package."
@@ -343,9 +354,12 @@ NIGHT_READOUT = {"hold_s": 2, "reload_glance_s": 1}   # §3.4: night halves both
 # everything else; the two are independent now, and `down` is unconditional regardless of either.
 _BASE = {"announcer": True, "gun_flash": True, "headset_team": True, "sight_flash": True,
          "hud_events": True, "mc_events": True, "mc_confidence": True, "blackout": False,
-         "headset": dict(HEADSET_DEFAULT), "gun": dict(GUN_DEFAULT)}
+         "voice": "on", "headset": dict(HEADSET_DEFAULT), "gun": dict(GUN_DEFAULT)}
 SWITCHES = ("announcer", "gun_flash", "headset_team", "sight_flash", "hud_events", "mc_events",
             "mc_confidence", "blackout")
+# S12: the player's OWN voice-line switch. Not a SWITCHES member -- it is a 3-way enum, not a bool, so
+# it gets its own validation in `merge()`/`resolve()`/`summary()` rather than the bool-cast loop.
+VOICE_VALUES = ("on", "hits_only", "off")
 
 PRESETS: dict[str, dict] = {
     "standard": {**_BASE, "events": {}},
@@ -355,7 +369,9 @@ PRESETS: dict[str, dict] = {
     # caught by the engine lane's fixture work): a silenced bundle still shipped the full three-pool
     # `gun.readout`, so a "gun stays dark" sniper mode painted a segment bar on every hit anyway.
     # `readout.pools: []` empties it -- `gun_readout()` returns {} for an empty pool list.
-    "silenced": {**_BASE, "announcer": False, "gun_flash": False,
+    # S12 (Tony, 2026-09-11: "let the config drive it. silenced snipers no grunts could be legit"):
+    # `voice: "off"` -- the player's own pain/spawn lines are dropped along with the announcer.
+    "silenced": {**_BASE, "announcer": False, "gun_flash": False, "voice": "off",
                 "gun": {**GUN_DEFAULT, "readout": {"pools": []}}, "events": {}},
     # Tony: "for a counter-strike mode we use the bomb armed and bomb defused sounds".
     # X12 is the unambiguous heavy explosion by ear (2026-09-04); X13 "might actually be a sniper".
@@ -387,10 +403,10 @@ PRESETS: dict[str, dict] = {
     # Extraction (game-modes.md): the extractor is LOUD by design, everyone else gets the chopper alert.
     "extraction": {**_BASE, "events": {
         "extraction_called":   {"sound": "VA1C", "gun_led": pg.ORANGE, "headset": pg.ORANGE},
-        "extraction_tick":     {"sound": "K01"},
+        "extraction_tick":     {"sound": "JAS", "slot": "queue"},   # ear-confirmed 2026-09-11 -- see EVENTS["extraction_tick"]
         "extraction_open":     {"sound": "VA1U", "gun_led": pg.WHITE, "headset": pg.WHITE},
-        "extraction_closing":  {"sound": "VX0R", "gun_led": pg.ORANGE},
-        "extraction_complete": {"sound": "VQ8", "gun_led": pg.WHITE, "headset": pg.WHITE},
+        "extraction_closing":  {"sound": "V114", "gun_led": pg.ORANGE},   # ear-confirmed 2026-09-11 -- see EVENTS["extraction_closing"]
+        "extraction_complete": {"sound": snd.EXTRACTED, "gun_led": pg.WHITE, "headset": pg.WHITE},   # ear-confirmed 2026-09-11 -- see EVENTS["extraction_complete"]
         "extraction_failed":   {"sound": "VA8X", "gun_led": pg.RED},
         "extraction_alert":    {"sound": "VA1S", "gun_led": pg.ORANGE},
         "loot_picked":         {"sound": "VA1Q", "gun_led": pg.WHITE},
@@ -460,6 +476,13 @@ def merge(current: dict | None, patch: dict) -> dict:
             if prof.get(k) != patch[k]:
                 edited = True
             prof[k] = patch[k]
+    if "voice" in patch:
+        v = patch["voice"]
+        if v not in VOICE_VALUES:
+            raise ValueError(f"presentation.voice must be one of {VOICE_VALUES}")
+        if prof.get("voice") != v:
+            edited = True
+        prof["voice"] = v
     if "headset" in patch:
         h = patch["headset"]
         if not isinstance(h, dict):
@@ -560,6 +583,10 @@ def merge(current: dict | None, patch: dict) -> dict:
                     if fv is not None and fv not in FLASH_COLOURS:
                         raise ValueError(f"presentation.events.{ev}.flash must be green|null (the small LED is green-only)")
                     cur[fk] = fv
+                elif fk == "slot":
+                    if fv is not None and fv not in ("queue", "interrupt"):
+                        raise ValueError(f"presentation.events.{ev}.slot must be queue|interrupt|null")
+                    cur[fk] = fv
                 else:
                     raise ValueError(f"presentation.events.{ev}.{fk}: unknown field")
             prof["events"][ev] = cur
@@ -594,6 +621,8 @@ def resolve(config: dict) -> dict:
     for k in SWITCHES:
         if k in raw:
             prof[k] = bool(raw[k])
+    if raw.get("voice") in VOICE_VALUES:
+        prof["voice"] = raw["voice"]
     if raw.get("preset") == "custom":
         prof["preset"] = "custom"
     prof["headset"] = {**HEADSET_DEFAULT, **_collapse_headset(base.get("headset")), **_collapse_headset(raw.get("headset"))}
@@ -602,17 +631,24 @@ def resolve(config: dict) -> dict:
     events = {}
     for ev, d in EVENTS.items():
         spec = {"sound": d["sound"], "gun_led": d["gun_led"], "headset": d["headset"], "group": d["group"],
-                "source": d.get("source", "mc"), "desc": d["desc"], "flash": d.get("flash")}
-        spec.update({k: v for k, v in (prof.get("events") or {}).get(ev, {}).items() if k in ("sound", "gun_led", "headset", "flash")})
+                "source": d.get("source", "mc"), "desc": d["desc"], "flash": d.get("flash"), "slot": d.get("slot")}
+        spec.update({k: v for k, v in (prof.get("events") or {}).get(ev, {}).items() if k in ("sound", "gun_led", "headset", "flash", "slot")})
         events[ev] = spec
     prof["events"] = events
     return prof
 
 
-def play_frame(sound: str, voice) -> str | None:
+def play_frame(sound: str, voice, slot: str | None = None) -> str | None:
     """A bank id -> the pre-composed `$PLAY` frame (A6.3). V-family ids speak on the announcer slot.
     `voice` = the player's `{role: id}` map (compile._voice_map) for `voice:<role>` sounds; a bare str is
-    the kill-line id (the pre-A15 shape). A role the player's family cannot fill -> None (no cue)."""
+    the kill-line id (the pre-A15 shape). A role the player's family cannot fill -> None (no cue).
+
+    `slot` (bench-confirmed 2026-09-11, Tony's ear, six trials on a real gun): token 1 of `$PLAY`
+    INTERRUPTS whatever the gun is already playing; token 4 QUEUES behind it (depth >= 3 observed) --
+    this holds for BOTH an fx id and a voice id, it is not the V-family pattern below. An event's
+    explicit `slot` ("queue" | "interrupt") overrides the pattern; `None` keeps it. `voice:<role>`
+    sounds always queue (they are spoken lines, never worth cutting) regardless of `slot`.
+    """
     if sound.startswith("voice:"):
         role = sound[6:]
         sid = voice.get(role) if isinstance(voice, dict) else (voice if role == "kill" else None)
@@ -621,6 +657,10 @@ def play_frame(sound: str, voice) -> str | None:
         return f"$PLAY,,4,6,{sid},,,,*" if sid else None
     if sound == "VSF+JAY":
         return "$PLAY,VSF,4,6,JAY,,,,*"
+    if slot == "queue":
+        return f"$PLAY,,4,6,{sound},,,,*"
+    if slot == "interrupt":
+        return f"$PLAY,{sound},4,6,,,,,*"
     if re.fullmatch(r"V[A-Z0-9]{1,3}", sound):
         return f"$PLAY,,4,6,{sound},,,,*"
     return f"$PLAY,{sound},4,6,,,,,*"
@@ -644,7 +684,7 @@ def cue_frames(profile: dict, voice) -> dict[str, str]:
         if muted:
             out[ev] = ""
             continue
-        fr = play_frame(s, voice)
+        fr = play_frame(s, voice, spec.get("slot"))
         if fr:
             out[ev] = fr
     return out
@@ -669,9 +709,13 @@ def cue_pool_frames(profile: dict, voice) -> dict[str, list[str]]:
         s = spec.get("sound")
         if not s or not s.startswith("voice:") or _muted(profile, spec):
             continue
-        ids = voice.get(s[6:])
+        role = s[6:]
+        ids = voice.get(role)
         if isinstance(ids, (list, tuple)) and len(ids) > 1:
-            out[ev] = [f"$PLAY,,4,6,{i},,,,*" for i in ids]
+            # play_frame(s, ...) ignores `slot` for a voice: sound (always queues, see play_frame's
+            # docstring) -- routed through it anyway so a pool frame and its single-cue equivalent in
+            # cue_frames() can never drift apart.
+            out[ev] = [play_frame(s, {role: i}, spec.get("slot")) for i in ids]
     return out
 
 
@@ -909,10 +953,11 @@ def summary(profile: dict) -> dict:
     hs = {**HEADSET_DEFAULT, **_collapse_headset(profile.get("headset"))}
     return {"preset": profile.get("preset", "standard"),
             **{k: bool(profile.get(k, _BASE[k])) for k in SWITCHES},
+            "voice": profile.get("voice", _BASE["voice"]),
             "headset": {**hs, "carrier": hs["role"]},
             "gun": {**GUN_DEFAULT, **(profile.get("gun") or {})},
             "custom_events": sorted(ev for ev, spec in (profile.get("events") or {}).items()
-                                    if spec.get("sound") or spec.get("gun_led") is not None or spec.get("headset") is not None or spec.get("flash"))}
+                                    if spec.get("sound") or spec.get("gun_led") is not None or spec.get("headset") is not None or spec.get("flash") or spec.get("slot"))}
 
 
 def table(config: dict) -> list[dict]:
@@ -932,6 +977,7 @@ def table(config: dict) -> list[dict]:
             words = "Victory! + sting"
         rows.append({"event": ev, "source": spec.get("source", "mc"), "desc": spec.get("desc", ""),
                      "sound": s, "words": words, "gun_led": spec.get("gun_led"), "headset": spec.get("headset"), "flash": spec.get("flash"),
+                     "slot": spec.get("slot"),
                      "text": TEXT.get(ev, ""),
                      "enabled": not ((spec.get("source") == "hud" and not prof.get("hud_events", True))
                                      or (spec.get("source") == "mc" and not prof.get("mc_events", True))

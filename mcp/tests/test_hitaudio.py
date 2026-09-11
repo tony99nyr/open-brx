@@ -40,7 +40,7 @@ def test_health_ships_silent_so_the_pain_grunt_is_the_only_thing_the_player_hear
     foot = pset_foot(H.roll_material(random.Random(0)))
     assert foot[1] == "", "the $PSET hitHp token must be EMPTY, not an inherited id"
     assert foot[0] == "H06" and foot[5:7] == _PSET_FOOT_INHERITED[5:7], "only A17's slots may move"
-    assert foot[7] == "", "energyShieldLoop ships empty (it LOOPS a geiger tick while shield is up)"
+    assert foot[7] == "A10", "energyShieldLoop = A10, ear-confirmed as a real shield hum (F44, 2026-09-11)"
 
 
 def test_an_explicit_empty_pick_is_not_rolled_over():
@@ -62,6 +62,7 @@ def test_every_material_id_was_confirmed_by_ear_not_by_shape():
         "H07": "bullet whizz-by, a near-miss", "H09": "bullet whizz-by, a near-miss",
         "H33": "creature audio",               "Z06": "creature audio",
         "Z07": "creature audio",               "H140": "reads as a 'disabled' sound",
+        "H43": "dropped a gun on the ground, not an impact (2026-09-11)",
     }
     for sid, why in rejected.items():
         assert sid not in H.pool_ids(), f"{sid} is back in a pool; rejected by ear: {why}"
@@ -75,7 +76,7 @@ def test_the_default_foot_is_the_confirmed_set_and_nothing_else_moved():
     hit slots, so this pins the change to exactly the tokens A17 owns."""
     foot = pset_foot()
     assert foot[1:5] == [H.MATERIAL_DEFAULT[r] for r in H.MATERIAL_ROLES], "hit slots = confirmed heads"
-    assert foot[7] == "", "energyShieldLoop ships empty (A10 loops a geiger tick while shield is up)"
+    assert foot[7] == "A10", "energyShieldLoop = A10, a real shield hum ear-confirmed alone (F44, 2026-09-11)"
     # untouched: missShotHit, emptyUnboundButtonSound, ammoOrGearPickUp -- inherited, never auditioned.
     assert [foot[0], foot[5], foot[6]] == [_PSET_FOOT_INHERITED[i] for i in (0, 5, 6)]
     assert GameConfig()._pset(3).split(",")[-9:-1] == foot
@@ -88,7 +89,7 @@ def test_a_pinned_hit_sound_wins_over_the_roll_and_lands_in_the_right_slot():
         assert foot[2] == "H14" and foot[3] == "H21"        # hitArrmor, hitShield
         assert foot[1] == ""                                # hitHp ships EMPTY (A17): the grunt carries health
         assert foot[0] == "H06"                             # missShotHit: inherited, A17 does not touch it
-        assert foot[-1] == ""                               # energyShieldLoop: emptied by A17, not pinnable here
+        assert foot[-1] == "A10"                            # energyShieldLoop: the shield hum, not pinnable here
 
 
 def test_pset_pool_rolls_a_fresh_material_set_per_take():
@@ -268,13 +269,15 @@ def test_health_is_silent_only_because_nothing_lies_further_inward():
 def test_the_shipped_frame_matches_what_was_confirmed_on_hardware():
     """The exact foot the bench approved, so a refactor cannot drift it silently. Armour varies (three
     ear-confirmed complementary metal takes); health is empty; shield is the one confirmed fizz; the
-    energyShieldLoop slot ships EMPTY because Callsign's inherited A10 is a geiger-ish tick that LOOPS
-    while the shield is up and ran under every shield reading of the session (followup: pick a hum)."""
+    energyShieldLoop slot ships A10 -- Callsign's own inherited id, ear-confirmed 2026-09-11 as a real
+    shield hum heard alone (F44 closed; the 2026-09-07 "geiger-ish tick" read was a barrage of shield-
+    band hits landing on top of the loop, not the clip itself)."""
     foot = pset_foot(H.roll_material(random.Random(0)))
     assert foot[1] == ""                                   # hitHp   -- silent, the grunt carries health
     assert foot[2] in ("H02", "H36", "H37")                # hitArrmor -- "blacksmith hammer on steel"
     assert foot[3] == "H22"                                # hitShield -- "the proper shield hit sound"
     assert foot[0] == "H06"                                # missShotHit -- inherited, never auditioned
+    assert foot[7] == "A10"                                # energyShieldLoop -- the shield hum (F44)
 
 
 def test_rekey_end_to_end_through_the_real_compiler_and_every_gun_agrees():

@@ -88,5 +88,8 @@ def test_resetup_reuses_the_same_id():
     # A15.3: the battleRespawnCry token AND the three pain tokens are EMPTY -- the node plays those itself.
     # A17 (bench 2026-09-07): the four hit slots carry the EAR-CONFIRMED material sounds instead of
     # Callsign's inherited H55/H13/H21/H02; hitHp ships EMPTY (health is silent -- the node's pain grunt
-    # carries it), and energyShieldLoop ships EMPTY (A10 loops a geiger tick while the shield is up).
-    assert first == again == "$PSET,2,0,45,70,70,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H22,H43,U15,W71,,*"
+    # carries it), and energyShieldLoop ships A10 (F44, closed 2026-09-11: heard alone on hardware it is
+    # a real shield hum, not the "geiger tick" an earlier barrage of hits made it sound like).
+    # hitCrit is X49 (bench 2026-09-11: ear-confirmed "metal hit"; the earlier H43 placeholder was
+    # rejected -- "dropped a gun on the ground").
+    assert first == again == "$PSET,2,0,45,70,70,50,,H44,JAD,VA3,,,,,VA7,H06,,H02,H22,X49,U15,W71,A10,*"

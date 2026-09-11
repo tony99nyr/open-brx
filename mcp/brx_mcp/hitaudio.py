@@ -55,6 +55,13 @@ hardware settled, including the things it settled against me:
   4. **Position 7 (`energyShieldLoop`) is a REAL LOOP** that runs while the shield is up, survives a
      `$PSET` rewrite, and is stopped by `$PLAYX,0,*`. Callsign's inherited `A10` is a geiger-ish tick and
      it ran under every shield-band hit all session. Left EMPTY here; picking a hum is a followup.
+     ⚠️ CORRECTED 2026-09-11 (evening, Tony at the bench): the "geiger-ish tick" read was CONTEXT, not
+     the clip -- it was heard under a barrage of shield-band hits during a readings session, where every
+     hit's own material sound was landing on top of the loop. Heard ALONE tonight (gun armed with the
+     golden bundle, `$LIFE,0,0,20,*` raised the shield, `$LIFE,0,0,-20,*` dropped it and the loop stopped
+     with it), `A10` is a real hum: "oh this is a nice humming of shield or energy." `SHIELD_LOOP` below
+     is now wired to it. `U100` and `U13` were also tried in the slot on this pass and both read as "a
+     bomb ticking about to blow" -- rejected.
 
 ⚠️ **THE METHOD THAT BUILT THE FIRST VERSION OF THIS FILE DOES NOT WORK, and that is the transferable
 finding.** Every id was originally chosen by ACOUSTIC SHAPE from `data/sound_catalog.json`. Not one
@@ -151,10 +158,11 @@ MATERIAL_POOLS: dict[str, tuple[str, ...]] = {
     # shape picks is exactly the mistake above, so it stays a single confirmed id until a second audit pass
     # earns a second one. Shield is IR-granted only (P16) so it is the rarest pool in play anyway.
     "hit_shield": ("H22",),
-    # CRIT. NOT yet audited, and down to one shape pick: `H02` moved to armour (confirmed metal) and `H33`
-    # is out of every pool (creature audio, rejected by ear). `H43` carries the shape-method caveat above
-    # and is a placeholder, not a choice. Next bench pass.
-    "hit_crit":   ("H43",),
+    # CRIT. EAR-CONFIRMED 2026-09-11 (Tony at the bench, `X49` heard three times solo): "metal hit, yeah
+    # use it for crit" -- matching its 2026-09-04 audit label ("metal hitting sound"). No longer a shape
+    # pick. The earlier placeholder `H43` was REJECTED on this pass ("dropped a gun on the ground", not
+    # an impact) and is retired from every pool that carried it, including `CLASS_POOLS["marksman"]` below.
+    "hit_crit":   ("X49",),
 }
 
 # What a hit on each pool sounds like is now carried by the pools; a caller that pins nothing gets the
@@ -165,13 +173,29 @@ MATERIAL_DEFAULT = {r: MATERIAL_POOLS[r][0] for r in MATERIAL_ROLES}
 
 # `$PSET` foot position 7, `energyShieldLoop`. BENCH 2026-09-07: it is a REAL LOOP that runs while the
 # shield is UP, survives a `$PSET` rewrite, and stops only on `$PLAYX,0,*` or the shield reaching zero.
-# Callsign's inherited `A10` is a geiger-ish tick, and because it loops it ran UNDER every shield-band
-# hit of the session -- which is what made an hour of shield readings incoherent ("that geiger counter
-# hit came back", "wtf"). It ships EMPTY until a hum is chosen by ear: an unexplained ticking loop
-# during play is worse than no shield ambience at all. Followup F44: pick a low hum (`fx:scifi_fx` /
-# `fx:retro_fx` on PITCH, not centroid; the whole `SW` family is Star-Wars-style and was rejected).
+# That session's read of Callsign's inherited `A10` as a "geiger-ish tick" was CONTEXT, not the clip --
+# every shield-band hit's own material sound was landing on top of the loop, and an hour of readings
+# under that barrage came back incoherent ("that geiger counter hit came back", "wtf").
+# BENCH 2026-09-11: the low-hum shortlist tried in between FAILED by ear -- `N71`/`N72` read as "security
+# alert", `N67` as "a very annoying security alarm", `CC07` as an "8-bit level-clear jingle", `Y07` as a
+# "high-pitch drill", `JAS`/`JAQ` are hype tracks not ambience, and `U100`/`U13` (heard again this pass,
+# in the slot) both read as "a bomb ticking about to blow" -- rejected.
+# CLOSED 2026-09-11 (evening, Tony at the bench, one Tactix2): `A10` heard ALONE -- `$LIFE,0,0,20,*`
+# raised the shield, the loop started, `$LIFE,0,0,-20,*` dropped the shield and the loop stopped with it
+# -- is a real hum: "oh this is a nice humming of shield or energy." Callsign's own inherited id turns
+# out to be the right one; F44 closed.
 SHIELD_LOOP_INDEX = 7
-SHIELD_LOOP = ""
+SHIELD_LOOP = "A10"
+
+# `A08`/`A09` sit either side of `A10` in the Callsign app's own FSET enum order (ShieldOnHeal,
+# ShieldOffExpire, ShieldLoop -- `protocol/callsign-extract/protocol-classes.md` FSET slots) and were
+# heard on the same 2026-09-11 pass: `A08` reads as "getting armor or protection on", `A09` as "a sad
+# sound, maybe LOSING shield". Recorded as constants because they are the app's own matched set, but
+# NOT wired to anything here -- there is no `shield_down` event in `presentation.EVENTS` yet, and
+# `shield_up` already keeps its ear-confirmed A17 sound (`snd.ADD_SHIELD`, VA8C). Wiring either is a
+# followup, not a bench finding to lose.
+SHIELD_ON = "A08"    # ShieldOnHeal, by ear -- not wired (shield_up keeps VA8C)
+SHIELD_OFF = "A09"   # ShieldOffExpire, by ear -- not wired (no shield_down event exists)
 
 # --------------------------------------------------------------------------- #
 # 2. THE CLASS LAYER -- $SIR <soundID> per (irProtocol, subtype)
@@ -183,7 +207,9 @@ CLASS_POOLS: dict[str, tuple[str, ...]] = {
                                                     # (`H07`/`H09` whizz-bys, `H140` a "disabled" sound: all removed by ear 2026-09-07)
     "cqb":      ("H31", "H36", "H141"),             # lower and punchier: shotgun / SMG / stinger
                                                     # (`H03` removed 2026-09-07: a cough tail, see below)
-    "marksman": ("H22", "H35", "H26", "H43"),       # heavier crack with a tail; ~1.25 s between shots
+    "marksman": ("H22", "H35", "H26", "X49"),       # heavier crack with a tail; ~1.25 s between shots
+                                                    # (`H43` replaced 2026-09-11: rejected by ear as
+                                                    # "dropped a gun on the ground"; `X49` is the crit pick)
     "support":  ("H56", "H137", "H105", "H08"),
     "sidearm":  ("H126", "H112", "H113"),           # light and bright, quick out of the way
                                                     # (`H33` removed 2026-09-07: creature audio, rejected by ear)
@@ -398,7 +424,7 @@ def class_sound(class_key: str, rng: random.Random, cycle_ms: int | None = None)
 
 def pool_ids() -> set[str]:
     """Every sound id this module can emit -- what `test_hitaudio` asserts is really on the gun."""
-    out: set[str] = set(CLASS_PINNED.values())
+    out: set[str] = set(CLASS_PINNED.values()) | {SHIELD_LOOP}
     for p in MATERIAL_POOLS.values():
         out |= set(p)
     for p in CLASS_POOLS.values():

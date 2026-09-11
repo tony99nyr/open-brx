@@ -993,6 +993,20 @@ class Compiler:
                            "pain_long_min": _voices.PAIN_LONG_MIN_DAMAGE}
         frames = _pres.cue_frames(prof, voice_map)
         bundle["cue_pools"] = _pres.cue_pool_frames(prof, voice_map)   # A15.1: the node rolls one per event
+        # S12 (Tony, 2026-09-11: "let the config drive it. silenced snipers no grunts could be legit"):
+        # `presentation.voice` gates the player's OWN voice lines -- "on" (default) plays both the pain
+        # cues and the spawn line; "hits_only" keeps the pain cues but drops the spawn line; "off" drops
+        # both. Independent of `announcer` (MC/announcer feedback). The native death scream (`pset_pool`
+        # below) and the material hit sounds are UNCHANGED in all three: the scream is firmware, not a
+        # `$PLAY`, and a death already gives no position away.
+        # `respawned` (`presentation.EVENTS`, source "hud") is the SAME spawn line as `cues.spawn` --
+        # engine.js plays `cues.spawn` on the first life and `cues.respawned` on every REVIVE after that
+        # (`_spawn`/`_revive`), so it must be dropped alongside `spawn` or every respawn past the first
+        # would still speak under "hits_only"/"off".
+        voice_switch = prof.get("voice", "on")
+        if voice_switch != "on":
+            frames.pop("respawned", None)
+            bundle["cue_pools"].pop("respawned", None)
         # A15.3: one full $PSET per death-scream take (only the deathScream token differs); the node writes ONE at
         # random immediately before every $SPAWN (spawn and revive) so the firmware's scream changes per life.
         # A17: each take also carries its own draw from the MATERIAL pools (hitHp / hitArrmor /
@@ -1011,20 +1025,22 @@ class Compiler:
                                "material": list(_ha.MATERIAL_ROLES)}
         # A15.3: the pains are OURS -- the three $PSET pain fields ship empty and the node plays one of these on each
         # $HIR, the pool chosen by damage (proto 13 -> pain_melee; >= pain_long_min -> pain_long; else pain_short).
-        for role in ("pain_short", "pain_long", "pain_melee"):
-            ids = voice_map.get(role) or []
-            if ids:
-                bundle["cues"][role] = _pres.play_frame(f"voice:{role}", voice_map)
-                if len(ids) > 1:
-                    bundle["cue_pools"][role] = [f"$PLAY,,4,6,{i},,,,*" for i in ids]
+        if voice_switch != "off":
+            for role in ("pain_short", "pain_long", "pain_melee"):
+                ids = voice_map.get(role) or []
+                if ids:
+                    bundle["cues"][role] = _pres.play_frame(f"voice:{role}", voice_map)
+                    if len(ids) > 1:
+                        bundle["cue_pools"][role] = [f"$PLAY,,4,6,{i},,,,*" for i in ids]
         # A15.2: the SPAWN LINE is ours. The head's $PSET carries an EMPTY battleRespawnCry (the firmware then says
         # nothing on $SPAWN -- bench 2026-09-06) and the node writes ONE of these right after the spawn / revive
         # frames, a fresh draw per spawn. `cues.spawn` = the first take; `cue_pools.spawn` = the pool when 2+.
-        spawn_ids = voice_map.get("spawn") or []
-        if spawn_ids:
-            bundle["cues"]["spawn"] = _pres.play_frame("voice:spawn", voice_map)
-            if len(spawn_ids) > 1:
-                bundle["cue_pools"]["spawn"] = [f"$PLAY,,4,6,{i},,,,*" for i in spawn_ids]
+        if voice_switch == "on":
+            spawn_ids = voice_map.get("spawn") or []
+            if spawn_ids:
+                bundle["cues"]["spawn"] = _pres.play_frame("voice:spawn", voice_map)
+                if len(spawn_ids) > 1:
+                    bundle["cue_pools"]["spawn"] = [f"$PLAY,,4,6,{i},,,,*" for i in spawn_ids]
         low = frames.pop("low_health", None)
         bundle["cues"].update(frames)
         # low_health is the node's existing `hurt` cue. The default profile now plays the player's OWN

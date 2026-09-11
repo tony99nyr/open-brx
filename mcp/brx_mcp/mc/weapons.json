@@ -1,5 +1,5 @@
 {
- "_note": "M-MODES WeaponCatalog (docs/spec/modes.md \u00a73). EVERY weapon is now based on ITS OWN captured Callsign $WEAP frame (`capture.frame`, traced to `capture.src` in protocol/captures/raw/; regenerate the decode with `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop`; named table in docs/reference/weapons.md). That inherits every native behaviour we cannot synthesise: 3-round burst (t23), bolt/single-shot, charge, overheat (t24/t35), per-weapon reload chains, damage type (t3), reload type (t19), muzzle flash (t25/t26). `wire` lists ONLY the tokens we deliberately overwrite for balance; mag/reserve/reload_ms are written too (t16/t39, t17/t40, t18) keeping the captured invariants t39==t16 and t17==2*t40. Everything else is emitted byte-for-byte as Battle Company sent it. stats: dmg/rof/rng are 0-100 UI bars derived from the real numbers. dmg = share of a 115 pool one hit removes, rof = cycle relative to the fastest weapon, rng = the wire's t41 gunRange (identical on all 18 guns: range is NOT differentiated on the wire today; see weapon-design.md \u00a74.2). 'verified' now means SHIPPED EXACTLY AS CAPTURED (no balance edit); 'captured' is true for all 19. 'melee' is hidden (slot 4). tags: policy vocabulary (docs/spec/loadout.md \u00a71.1). 'heavy' = role power (rocket/rail/laser cannon/energy launcher/ion sniper), 'sniper' = the four long guns incl. AMR, plus the role name; presets exclude by tag so a new weapon only needs the right tags. caution: optional human copy for a weapon with a known LIVE problem. The UIs show it on the tile and hero. based_on (2026-09-04, sidearms): a weapon with NO capture of its own names the captured weapon whose frame it is built on and why; its capture block is a COPY of that frame (same src), `captured: false`, and every deviation is a wire/override token. 'sidearm' = the three pistols (usp/glock/deagle, role sidearm, cls 10): slot-2 backups by design, deliberately dominated by primaries (test_ttk_band exempts them from BEING dominated, never from dominating). Fire sounds P09/Q04/P16 are ids no other weapon uses, so a custom .LTP over the data port (community-notes.md) replaces only that pistol.",
+ "_note": "M-MODES WeaponCatalog (docs/spec/modes.md \u00a73). EVERY weapon is now based on ITS OWN captured Callsign $WEAP frame (`capture.frame`, traced to `capture.src` in protocol/captures/raw/; regenerate the decode with `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop`; named table in docs/reference/weapons.md). That inherits every native behaviour we cannot synthesise: 3-round burst (t23), bolt/single-shot, charge, overheat (t24/t35), per-weapon reload chains, damage type (t3), reload type (t19), muzzle flash (t25/t26). `wire` lists ONLY the tokens we deliberately overwrite for balance; mag/reserve/reload_ms are written too (t16/t39, t17/t40, t18) keeping the captured invariants t39==t16 and t17==2*t40. Everything else is emitted byte-for-byte as Battle Company sent it. stats: dmg/rof/rng are 0-100 UI bars derived from the real numbers. dmg = share of a 115 pool one hit removes, rof = cycle relative to the fastest weapon, rng = the wire's t41 gunRange (identical on all 18 guns: range is NOT differentiated on the wire today; see weapon-design.md \u00a74.2). 'verified' now means SHIPPED EXACTLY AS CAPTURED (no balance edit); 'captured' is true for all 19. 'melee' is hidden (slot 4). tags: policy vocabulary (docs/spec/loadout.md \u00a71.1). 'heavy' = role power (rocket/rail/laser cannon/energy launcher/ion sniper), 'sniper' = the four long guns incl. AMR, plus the role name; presets exclude by tag so a new weapon only needs the right tags. caution: optional human copy for a weapon with a known LIVE problem. The UIs show it on the tile and hero. based_on (2026-09-04, sidearms): a weapon with NO capture of its own names the captured weapon whose frame it is built on and why; its capture block is a COPY of that frame (same src), `captured: false`, and every deviation is a wire/override token. 'sidearm' = the three pistols (usp/glock/deagle, role sidearm, cls 10): slot-2 backups by design, deliberately dominated by primaries (test_ttk_band exempts them from BEING dominated, never from dominating). Fire sounds P16/Q04/X14 (glock/usp/deagle, ear-confirmed 2026-09-11) are ids no other weapon uses, so a custom .LTP over the data port (community-notes.md) replaces only that pistol.",
  "weapons": [
   {
    "weapon_id": "assault_rifle",
@@ -396,8 +396,8 @@
    },
    "overrides": {
     "t27": {
-     "value": "P09",
-     "why": "Glock-18 fire sound: sound-catalog id P09, chosen from the on-gun gunshot families by descriptor (docs/reference/sound-catalog.md); P09 is used by no other weapon, so a custom .LTP swapped in over the data port replaces only this pistol's shot"
+     "value": "P16",
+     "why": "Glock-18 fire sound: ear 2026-09-11, P16 (\"Deagle sound\") preferred for the Glock over the earlier P09 (\"a pronounced shot, could be the Deagle\"); P09 is now unused. P16 is used by no other weapon, so a custom .LTP swapped in over the data port replaces only this pistol's shot"
     },
     "t31": {
      "value": "D08",
@@ -508,8 +508,8 @@
    },
    "overrides": {
     "t27": {
-     "value": "P16",
-     "why": "Desert Eagle fire sound: sound-catalog id P16, chosen from the on-gun gunshot families by descriptor (docs/reference/sound-catalog.md); P16 is used by no other weapon, so a custom .LTP swapped in over the data port replaces only this pistol's shot"
+     "value": "X14",
+     "why": "Desert Eagle fire sound: ear 2026-09-11, X14 (2026-09-04 audit label \"heavy rifle shot\") chosen as the louder Deagle report (\"that could work\") once P16 moved to the Glock; X14 is used by no other weapon, so a custom .LTP swapped in over the data port replaces only this pistol's shot"
     },
     "t31": {
      "value": "D08",
@@ -629,8 +629,8 @@
    },
    "overrides": {
     "t27": {
-     "value": "O01",
-     "why": "captured J15 is a music sting (J = music/SFX family, DK legend), inherited from the 'unnamed secondary' frame (bench 2026-08-26); O01 is an ordnance report and the O family is otherwise unused by the stock arsenal"
+     "value": "O06",
+     "why": "ear 2026-09-11 (W4a audition, six O-family clips solo): O06 (\"shooting a rocket\") chosen over the earlier placeholder O01; O04 (\"shooting a missile\") was runner-up, O01/O02/O05 read as the BLAST not the launch, and O03 is a rifle shot. Original placeholder rationale: captured J15 is a music sting (J = music/SFX family, DK legend), inherited from the 'unnamed secondary' frame (bench 2026-08-26); the O family is otherwise unused by the stock arsenal"
     }
    },
    "verified": false,

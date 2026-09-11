@@ -61,7 +61,10 @@ FLAG_RETURNED = "VB0D"      # "Flag returned."
 EXTRACTION_CALLED = "VA1C"  # "Black Hawk inbound." -- the extractor's own LOUD call
 EXTRACTION_OPEN = "VA1U"    # "Incoming Chopper." -- the window is open
 EXTRACTION_ALERT = "VA1S"   # "enemy chopper detected." -- what everyone else hears
-EXTRACTED = "VQ8"           # "Objective complete!"
+EXTRACTED = "VS7"           # "Objective Complete!" -- ear-confirmed 2026-09-11 (Tony): the Resistance
+                            # commander, a "Battle Company announcer voice", replaces VQ8, which is the
+                            # Nexus commander -- "objective complete in the zombie creature voice", a
+                            # creature/zombie read, wrong for an extraction win.
 EXTRACTION_FAILED = "VA8X"  # "Fail."
 LOOT_PICKED = "VA1Q"        # "Care Package."
 RAID_ENDING = "VA3U"        # "Incoming air raid, find cover."
@@ -101,7 +104,7 @@ CATALOG: tuple[Cue, ...] = (
     Cue("EXTRACTION_CALLED", EXTRACTION_CALLED, "\"Black Hawk inbound\"", CONFIRMED),
     Cue("EXTRACTION_OPEN", EXTRACTION_OPEN, "\"Incoming Chopper\"", CONFIRMED),
     Cue("EXTRACTION_ALERT", EXTRACTION_ALERT, "\"enemy chopper detected\"", CONFIRMED),
-    Cue("EXTRACTED", EXTRACTED, "\"Objective complete!\"", CONFIRMED),
+    Cue("EXTRACTED", EXTRACTED, "\"Objective Complete!\" (Resistance commander)", CONFIRMED),
     Cue("EXTRACTION_FAILED", EXTRACTION_FAILED, "\"Fail\"", CONFIRMED),
     Cue("LOOT_PICKED", LOOT_PICKED, "\"Care Package\"", CONFIRMED),
     Cue("RAID_ENDING", RAID_ENDING, "\"Incoming air raid, find cover\"", CONFIRMED),

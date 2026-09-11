@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F109 · G11 · H8 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F110 · G11 · H8 ·
 K7 · P18 · Q20 · R3 · S20.** (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
 ids are retired, never reused.) (2026-09-10: F94/F95/F98 taken — the phone control point
 (`spec/utility.md` §5d), its LAN-coupled roaming variant (§5e) and Territories (§5f). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
@@ -53,14 +53,14 @@ right** and this index is stale. Do not cite it as evidence that something is or
 `hardware` — running order in [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md), next sheet
 [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md)):
 - 🔴 **B26** · **F49** · **K4** · **Q15** · **S10**
-- 🟠 **F13** · **F44** · **F50** · **F58** · **F59** · **F71** · **P8** · **Q16** · **S9**
-- 🟡 **B27** · **B28** · **B29** · **D1** · **F3** · **F21** · **F26** · **F27** · **F28** · **F30** · **F36** · **F45** · **F48** · **F62** · **F63** · **F66** · **F67** · **F74** · **F75** · **F76** · **F82** · **F88** · **G3** · **K1** · **P3** · **P15** · **Q18** · **S1** · **S2** · **S7** · **U11′**
-- 🟢 **B20** · **F29** · **F65** · **F87** · **F99** · **P4** · **P12** · **S4** · **S8** · ⬜ **W4a**
+- 🟠 **F13** · **F50** · **F58** · **F59** · **F71** · **P8** · **Q16** · **S9**
+- 🟡 **B27** · **B28** · **B29** · **D1** · **F3** · **F21** · **F26** · **F27** · **F28** · **F30** · **F36** · **F62** · **F63** · **F66** · **F67** · **F74** · **F75** · **F76** · **F82** · **F88** · **G3** · **K1** · **P3** · **P15** · **Q18** · **S1** · **S2** · **S7** · **U11′**
+- 🟢 **B20** · **F29** · **F65** · **F87** · **F99** · **P4** · **P12** · **S4** · **S8**
 
 **Keyboard only** (tagged `build` or `decision` — no gun, no rig, no dim room):
 - 🔴 **B18b** · **B23** · **E5** · **F43** · **F68** · **S10**
 - 🟠 **B4** · **B19** · **B21** · **E2** · **F12** · **F13** · **F40** · **F56** · **F58** · **F70** · **F80** · **S3** · **S14**
-- 🟡 **B1** · **B8** · **B14** · **B17** · **D1** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F39** · **F42** · **F60** · **F88** · **F95** · **H1** · **K2** · **Q12′** · **Q13** · **Q18** · **S1** · **S2** · **S6** · **S7** · **S12** · **S13**
+- 🟡 **F109** · **B1** · **B8** · **B14** · **B17** · **D1** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F39** · **F42** · **F60** · **F88** · **F95** · **H1** · **K2** · **Q12′** · **Q13** · **Q18** · **S1** · **S2** · **S6** · **S7** · **S13**
 - 🟢 **B11** · **B16** · **B22** · **B25** · **E7** · **F14** · **F17** · **F18** · **F19** · **F32** · **F52** · **F83** · **F87** · **F89** · **F93** · **F98** · **F99** · **F100** · **P14** · **R2** · ⬜ **K6** · **S16** · **S17** · **S19**
 
 ## 1. Before going public
@@ -237,12 +237,11 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   between the `$PLAY` write and the first audio. If it is the clips, the fix is id selection; if it is the
   firmware, the LED language should stop assuming light and sound land together.
   Owner: the audio lane (A17). Found by the LED lane, and the LED side is not at fault. `ears`.
+  ✅ **The clip side is RULED OUT, offline, 2026-09-11 (evening):** `mcp/tools/soundbank_leadin.py` (stdlib + numpy, reads the raw s16le/44.1 kHz `.LTP` bank, first crossing of -40 dBFS relative to each clip's own peak, 5 ms windows) measured the whole shipped hit path at 0.000 s lead-in — H02/H36/H37/H22/H43/H06 all start immediately. Across all 2,477 ids on the gun only three exceed 0.5 s and none exceed 1.0 s (worst: J100 0.90 s, V108 0.90 s, SW31 0.57 s — long ambient/rules tracks, not hit sounds). Every id in `presentation.EVENTS` tops out around 0.1-0.2 s. **What is left is firmware latency after `$PLAY`, and it needs one filmed rung, not more theory:** phone at 240 fps, a batched `$GLED,6,6,6,0,10,,*` + `$PLAY` frame, light-to-first-sound off the video, repeated once for a slot-4 announcer line, once for a slot-1 effect, once for a real hit off the emitter. Narrowed from "measure it" to "film these three specific numbers"; stays `ears` + a camera.
 - **F58 🟠 HEALING HAS NO FEEDBACK ON ANY SURFACE, and the two consumers disagree about it.** Tony, bench
   2026-09-09, after a real `$LIFE` heal took hp 6 → 25: *"it made a health hit sound. the sound wasn't heal"*.
   Three separate holes, found together:
-  **(a)** `presentation.py:84` ships `healed` with `sound=None, gun_led=None, headset=None`. It is a registered
-  event with NOTHING attached, so even where it fires it is silent and unlit. Same for `armour_up`; `shield_up`
-  at least has a paint. So being healed is, by configuration, indistinguishable from nothing happening.
+  **(a) ✅ CLOSED 2026-09-11 (evening, bench):** all three now have sound and a paint, ear-confirmed solo. `healed` = the character's own slot-7 line (`voice:healed`: V37 "patched up", clean male take; V87 "Bleeding stopped", clean female take). `armour_up` = VA1G, "Body Armor.", Halo-style announcer (VA16 "armor suit" also clean, not chosen). `shield_up` = VA8C, "Shields online", with a sound effect. Wired in `presentation.EVENTS` and pinned by `test_presentation.py` the same night.
   **(b) ✅ CLOSED 2026-09-11 (late, second session): `stage.py` `_on_pools` now fires `healed`/`armour_up`/`shield_up` on a pool rise with engine.js's exact drop rules (`test_stage_mirror.py`).** It used to fire
   none of them — zero occurrences of `healed` in the file. So the bench instrument cannot exercise the heal
   path AT ALL, which is why this went unnoticed: the surface built to predict the phone is missing the branch.
@@ -283,6 +282,8 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   fire from IR either. Decide whether a heal/grant row belongs in the compiled table at all — it may be that
   we simply do not want medic words in a hosted game, in which case say so and mark shield permanently
   node-granted — but today the gap is silent and looks like a bug from the bench. `build`.
+  ✅ **Narrowed 2026-09-11 (evening, bench): this is an IR fact only.** Over BLE `$LIFE,0,0,20,*` filled the shield pool of a gun armed with the golden bundle (`$HP,45,70,20`) and `$LIFE,0,0,-20,*` emptied it again, on a table with no proto-1 row. So the shield pool CAN be filled in one of our games -- by the host, not by a word in the air. The IR side (a medic row nobody ships) stays open here; the host-side lever is **F109**.
+- **F109 🟡 HOST-GRANTED SHIELDS AND HEALS: the `$LIFE` lever.** Proven 2026-09-11 (evening, bench): `$LIFE,<hp>,<armour>,<shield>,*` is additive per pool INCLUDING shields and takes negatives, with no `$SIR` row involved (F60 is IR-only). So a spawn perk (overshield), a phone/BLE station, a timed regen, a medic ROLE that grants over the LAN, or a hill-holder buff can all be node-written `$LIFE` frames -- no IR word, no new firmware state, and the shield hum (A10, F44) and the pool readout light up for free. Design: which grants, from whom, with what cap (F58 (d): `$LIFE,25` did nothing where `$LIFE,20` healed -- a per-grant cap is UNMEASURED and gates every design here). Related: S14 syphon (the first consumer), F60. `build` + one bench rung for the cap.
 - **F65 🟢 `$BUMP` is inert on v4.32 — is that the command or our shape?** Bench 2026-09-09: `$BUMP,-5,0,0,*` on
   full HP and `$BUMP,0,5,0,*` on armour at 61 both did nothing, with the read validated either side (a real IR hit
   moved the pools and `$QUERY`'s `$LCD` tracked it). `$LIFE` with the identical arity worked in the same session, so
@@ -317,13 +318,6 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   the gun emits autonomously on the pull. That unlocks proc weapons (a poison round on 15% of shots) and is the
   one route to a "miss" token besides F46. Probe on the RIG, counting words by protocol (aim t8/t9 at a free
   protocol: 4, 5, 7, 12, 14), and check whether `$GSET` t6 `secondaryBluetoothWeapons` gates it. `trigger` (bench C3).
-- **W4a ⬜ Energy Launcher fire sound — bench audition.** `O01` ships; alternates `O05` `O02` `O04` `O06` `O03`,
-  all fitting the 1600 ms cycle. Wanted: an ordnance report, not a music sting. **This row exists because W4a had
-  no definition anywhere in this file** — it was referenced in §9's Ears block while its only definition sat in
-  `archive/followups-closed.md`, which itself said it was "carried as an open ears item". `test_followups_ids_are_
-  defined_exactly_once` cannot catch that: it flags an id defined TWICE, never an id referenced with no definition
-  at all. ⚠ The launcher's zero damage (`$SIR,9,3,,24` is a status row) is the bigger problem and is a decision,
-  not an audition. `ears` (bench B4).
 - **F50 🟠** the A17 pain gate has never run in a REAL node path — only unit tests and grunts hand-played over
   BLE (brx-sound, 2026-09-07). The stage is now the only instrument that can exercise it, and any A17 audio
   judgement taken through the stage before `3388362` used the rejected shape-picked pools. Re-verify: an
@@ -332,11 +326,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 
 - **F42 🟡** **the DRY-review backlog** (2026-09-07 Python review, agent team). Six bugs from that pass are FIXED
   and pushed; what is left is real but none of it is blocking. Evidence: every item below was measured, not read.
-  **F42.1** `Compiler.cues()` carries THREE values that are unreachable — `presentation.cue_frames` overwrites
-  `game_over`, `medal` and `multi` for the same resolved profile, so `cues()` is stale for them. No live impact
-  (`state._push_voice_preview` reads only `kill`, which agrees). `game_over` is the interesting one: same VA33
-  sound, different `$PLAY` token slot (token1 vs token4), so which is right needs an `ear`. Decide which table
-  owns which key, then delete the loser. **F42.2** 12 bench tools hand-roll the body of `B.teardown_frames()`
+  **F42.1 ✅ ANSWERED 2026-09-11 (evening, bench):** the token slots are not equivalent — token 1 INTERRUPTS, token 4 QUEUES, and that is a property of the slot, not of the id (six trials, see `experiment-log/2026-09.md` → *the sound pass*). `presentation.cue_frames`'s token-4 `game_over` (VA33) is the one to keep: it queues behind an in-flight effect rather than cutting it, which is the right behaviour for an announcer line. `Compiler.cues()`'s `game_over`/`medal`/`multi` keys are dead — `cue_frames` overwrites them for the same resolved profile and nothing reads the stale copies — delete them on the next pass through `compile.py`. VA81 in slot 1 for the countdown stays confirmed and correct, unaffected by this. **F42.2** 12 bench tools hand-roll the body of `B.teardown_frames()`
   instead of calling it (~55-60 lines); `tools/f11_ab.py`, a one-shot experiment, is imported as a LIBRARY by 18
   scripts for `SENSOR`/`witnessed`/`word` — those three belong in `bench_common.py`. **F42.3**
   `tools/led_ingame_usable.py` reaches into `led_effects.py` through a hardcoded Windows UNC path and `exec()`s a
@@ -516,17 +506,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   and `compile.cues()` `multi`/`medal`; `cues.team_led` + the pre-A11.6 bundle fallback; engine "older MC" defaults
   (`swap_ms` 850, kit-open flag, `feedback.cue`), `restore_snapshot()` pre-A11 normalising; the scorer's "kind stays
   kill" comment. Keep the "server predates this UI" banners. One sweep, regen the golden bundle, cut an APK. `build`.
-- **S12 🟡 Tony's call** the player's OWN voice has no off switch. A15.3 moved the pains, the spawn line and the
-  death scream from the firmware to us, but `compile.py` emits them ungated: `preset: "silenced"`, `announcer: false`
-  and `hud_events: false` all still ship `cues.pain_short`, `cues.spawn` and a 3-frame `pset_pool` (verified
-  2026-09-06). Kept deliberately — `announcer: false` mutes the announcer and objective groups only, and pre-A15.3 the
-  firmware grunted under a silenced game anyway, so gating it would have REMOVED a sound players had. But a silenced
-  sniper grunting on every hit gives away the position, which is the point of that preset. Decide: a
-  `presentation.voice` switch (`on` / `hits_only` / `off`) or leave it. `decision`.
-- **S9 🟠** event sound pass on the gun stage (45-step walkthrough failed several): `extraction_tick` (K01 is a fly-by;
-  trial U100, alts U13/U41), `extraction_closing` VX0R and `extraction_complete` VQ8 failed, `unstoppable` had no line
-  (trial VX0U), `killing_spree` V125 vs VA7K, `healed`/`armour_up`/`shield_up` have no sound. Then every mode preset.
-  One sound per verdict, Tony's ear decides; write ids into `presentation.EVENTS` with a `test_sound_catalog` pin. `ears`.
+- **S9 🟠** event sound pass on the gun stage, mostly closed by ear 2026-09-11 (evening) — what is left is the mode-preset sweep. `extraction_closing` = V114 ("10 seconds", Halo voice; VX0R rejected, it is the numbers/menu announcer). `extraction_complete` = VS7 ("Objective complete" with a call sound, Battle Company announcer voice; VQ8 rejected, the Nexus commander is a zombie/creature voice; VR7 is the same words in an Indian-accented male, kept as a note). `unstoppable` = VX0U ("Domination", Halo voice). `killing_spree` stays VA7K (both reads are clean; VA7K keeps the sting and matches the shipped VA7H/VA7E/VA7Q family). **`extraction_tick` = JAS, in the QUEUE slot (token 4)**, replacing the U100 trial: Tony heard JAS (10.7 s) as "a cool extraction sound, intro hype music" and asked for it to loop for extraction — the tick already re-fires every ~10 s, so JAS in slot 4 queues cleanly (F42.1) and never cuts an announcer line. JAQ (11 s, "good extraction sound too, ticking in the background") is the not-yet-assigned candidate for the window-open phase. U100 and U13 are both real ticks (U13 brighter); U100 goes back to being F44's shield-loop trial. `healed`/`armour_up`/`shield_up` now have sound (see F58(a), closed tonight). Wired: `presentation.py` carries a per-event `slot` field now, `presentation.EVENTS` is pinned by `test_presentation.py`, and `extraction_tick` is `JAS` with `slot: "queue"`. Still open: the mode-preset sweep, and assigning JAQ. `ears`.
 - **S10 🔴** LED language v2 (A16): build [`led-language.md`](led-language.md) §3–§5. **Bench 2026-09-07 settled the
   down signal**: never send `$HLED,,6` in play (effect 6 disables the firmware's own death flash for the life; a
   colour write does not, so `dark` = `$HLED,9,0,,,10,,*`), write nothing at death, re-arm with one `$HLOOP,2,750,*`;
@@ -564,9 +544,8 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   teardown). `trigger` + `build`.
 - **S8 🟢** station scan fix (low-latency scan + 8 s restart, 73d391a) needs the two-Pixel bench to confirm; try a lower
   station TX if it recurs. `eyes`.
-- **S1 leftovers 🟡** sound catalog: Tony's by-ear audit (148 of 2477 done; `fx:hit` is the most valuable batch left);
-  the category-driven picker in the MC game-mode editor. `ears` + `build`.
-- **S-A12 sidearms 🟡** .1 ear audit of P09 / Q04 / P16 and the D08 D07 D06 reload run (fallback D04/D03/D02) `ears`;
+- **S1 leftovers 🟡** sound catalog: Tony's by-ear audit: **249 of 2477** distinct ids in `~/.brx-mcp/sound-audit.jsonl` (101 new on 2026-09-11 evening, in two sittings) and **`fx:hit` is COMPLETE** (all 122: 105 in the audit file + the 17 judged 2026-09-07 that live in `hitaudio.py`'s comments). New armour-family takes for A17's pool if it ever wants a fourth: H35/H39/H40/H54 "hammer on metal"; H52/H53/H58 "metal bucket"; H134/H135/H136 "typical hit" (health-hit candidates, health ships silent by decision). Still to hear: every other fx category; the category-driven picker in the MC game-mode editor. `ears` + `build`.
+- **S-A12 sidearms 🟡** .1 ✅ **CLOSED 2026-09-11 (evening, bench):** P09 reads as "a pronounced shot, could be the Deagle"; P16 preferred for the GLOCK ("I like the deagle sound for the glock"); Q04 confirmed silenced, for the USP-S; **Deagle = X14** ("heavy rifle shot", "that could work"); reload chain D08->D07->D06 at 400 ms confirmed working. Wired in `weapons.json`: glock t27 = P16, deagle t27 = X14; usp keeps Q04.
   .2 semi-auto cadence on hardware (t20 = 7, t14 150/200/375; USP-S t25=2/t26=50 = no flash + half loudness?) `trigger`;
   .3 real Counter-Strike audio stays out of the repo (convert with `ltp_convert.py`, copy over the data port) `build`;
   .5 a stock `pistols` template in START FROM. `build`.
@@ -579,7 +558,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   game defs in one shot, gun-free. Method: `capture-runbook.md`. Also answers P3 and P12's enums. `capture` (Mac + iPhone).
 - **P12 🟢** `$PB*` playbook enums: silent on v4.32; values only via P8. `capture`.
 - **P14 🟢** is the audio SD card removable? Needs a teardown; not worth it on a 4-gun fleet until there is a spare. `decision`.
-- **P15 🟡** phone-as-station limits: which `$PLAY` id is a field-wide alarm; max simultaneous BLE links an Android phone holds. `ears` + `space`.
+- **P15 🟡** phone-as-station limits: which `$PLAY` id is a field-wide alarm (candidates from F44's failed shield-hum shortlist, 2026-09-11: N71/N72, both read as "security alert"/"very annoying security alarm" — promising for THIS use even though they failed as a shield loop); max simultaneous BLE links an Android phone holds. `ears` + `space`.
 - **G3 🟡** capture Callsign configuring a grenade → the exact `$GREN`. `capture`. **G4 🟢** grenade `.bin` flashing: no
   known method (USB-C is power-only, G7). **G9 🟠** CTF flag team assignment (a white grenade shot by team 1 turned red;
   likely `$GREN channel`; pull Jay's CTF videos). **G10 🟡** `$GREN` blast type on a paired thrown grenade. `grenade`.
@@ -615,22 +594,10 @@ the Windows venv (`/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp
 receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 
 **A17 hit audio** (one gun, our compiled game, an armoured life; `ears` + `trigger`):
-- **F44 🟠 `energyShieldLoop` needs a low hum.** BENCH 2026-09-07: `$PSET` position 7 is a REAL LOOP that runs while
-  the shield is UP, survives a `$PSET` rewrite, and stops only on `$PLAYX,0,*` or the shield reaching zero.
-  Callsign's stock `A10` is a geiger-ish tick and, because it loops, it played under every shield-band hit and made
-  an hour of shield readings incoherent. It now ships EMPTY. Tony wants "a better low hum ... several halo shield
-  sounds in many variety" — the whole `SW` family was auditioned and rejected (Star-Wars-style: lightsabers), and
-  `C22`/`C23`/`C08`/`C10` are energy WEAPON charge-ups, not shields. Search `fx:scifi_fx` / `fx:retro_fx` on PITCH
-  rather than centroid. Also decide whether we want a hum ON GRANT (this slot, one shot) or WHILE SHIELDED (a node
-  loop with a stop when the pool empties — real work, a live BLE write in play). `ears`.
 - **F39 🟡 The real `$SIR` row ceiling.** "Max 14 distinct IR recognitions per game" is a community figure we have
   never measured; `hitaudio.MAX_SIR_ROWS` treats it as a soft budget. Push a 20-row table and check every row still
   registers. Gates `hit_audio_rekey`, which is DEFAULT OFF. Lower value now that F38 has ruled the class layer off
   by default — the rekey only matters if we ever choose per-weapon audio over per-pool.
-- **F45 🟡 Audit the four `$PSET` tokens nobody has ever heard.** `missShotHit` (`H06`), `emptyUnboundButtonSound`
-  (`U15`), `ammoOrGearPickUp` (`W71`) and `hitCrit` (`H43`, a shape pick and a placeholder, not a choice) all still
-  ship inherited or unaudited ids. `W71` fires on every ammo/gear pickup in a real game and no one has heard it.
-  **`H06` IS ANSWERED (bench 2026-09-09):** fired a magnitude-0 IR word at a gun armed with our `$PSET` and Tony heard it by ear -- `H06` is a bullet near-miss and it is correctly placed in `missShotHit`. It is also now reachable in a real game for the first time (F46 proved a miss exists). ⚠ Spaced misses play it every time; three fired back-to-back played it once, so there is a rate gate or a batch collapse (F67). Still open here: `U15`, `W71` and `H43`. `ears`.
 - **F68 🔴 A MISS PERMANENTLY KILLS THE HEADSET TEAM COLOUR.** Bench-observed 2026-09-09, Tony watching a gun painted
   blue: a magnitude-0 word makes the headset **flash green exactly like a hit and then go dark, and it stays dark**. Same
   mechanism as the 2026-09-03 "a registered hit WIPES the headset" finding -- but a miss emits **no `$HIR` and no `$HP`**
@@ -861,7 +828,7 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   respawn, so say so out loud rather than discovering it. `build` + a design pass.
 - **F108 🟡 MC PRINTS ITS "Mission Control http://…:8765/" BANNER BEFORE UVICORN BINDS THE PORT** (`__main__.py main()`), so a launch onto a busy :8765 shows the success line first and the `[Errno 98] address already in use` a line later, and every curl/browser check after that is answered by the squatter (2026-09-11: a 7-hour-old `--demo` MC from an earlier session). Found dogfooding "start Mission Control" as a fresh agent. Fix: probe/bind first (or print after `uvicorn` reports startup), exit non-zero with "something else owns :8765" — the e2e already does this check in JS (`koth.mjs startMC`). Related: `vite.config.ts` proxies :8765 only, so `--port` cannot rescue `npm run dev`; a `MC_PORT` env for the proxy would. Docs now warn (`mc/README.md` → Start it). `build`.
 - **F106 🟢 STATION-ARMING LOWS FROM THE 2026-09-11 POLISH PASS (PR #1).** ✅ (a) (b) (c) (d) (e) (i) fixed 2026-09-11 (late, second session); **(f) (g) (h) stand.** The original list, for the record: (a) `abort_start` leaves `_game_no_started` set, so the next muster push bumps the game byte though no match ran (harmless: the point resets to neutral; the ITEMS "GAME n" counter drifts); (b) `net.py _fire_node` never forwards `app_ver`, so `station.app_ver` is always None off a real socket; (c) a node that was bound as a player and re-hellos as `utility` keeps its `node_player` entry; (d) `_finish` still sends `pull_log` to utility nodes and `abort_start` still broadcasts to them (noise); (e) `engine.js _stationAllowed` is PERMISSIVE when `config.stations` is absent, so clearing the LAST station re-opens the allow-list to everything (matches the seven-tap hand-arm fallback; the `types.py` comment should say so); (f) `control.js` credits possession from `Date.now()` unclamped, so a forward clock step is credited to the owner in full (a cap would also under-report; decide a bound); (g) ITEMS: "n/m ARMED" excludes a card whose only flag is BATTERY LOW; CLEAR has no confirm and the phone keeps advertising the old assignment with nothing on the card saying so; `TID_NAME` hardcodes colour names where LOBBY uses `teams[].name`; the PHONE/LINK rows are unpaired spans for a screen reader; the Recap `warnings` block is styled like PROVISIONAL; (h) `delay_s: 0` still means 10 s on the node with no message; (i) API.md omits `app_ver` from `StationView`; the mock's `online` is always true so OUT OF WI-FI cannot be demoed. `build`.
-- **F107 🟢 LOWS FROM THE 2026-09-11 (LATE, SECOND SESSION) POLISH LOOP.** Noted, not fixed: (a) `net.py _fire_node` never forwards `gun_fw` while `_on_node` copies a `fw` key that never arrives (the `app_ver` shape again); (b) `_role_due` is not cleared on end/recall/panic (the phase gate in `_push_role` covers it); session.json `v` stays 1 though the shape gained `stations`/`game_no`; (c) F57 suppresses the grunt even when the profile writes no `hurt` line (announcer off, pre-A15 bundle): one fully silent hit per life there; (d) a reload pull while stunned starts the HUD RELOADING takeover off the frozen pre-stun reserve; (e) the stage logs a `warn` on every EMP because no profile carries `stunned`/`stun_over` cues (the phone is silent); (f) `utility.js` `?stage` persists `settings.mc = 'stage://mc'`; (g) `Recap.tsx STATION_TID_NAME` duplicates `Items.tsx TID_NAME`; `types.py Stun.duration_s` is `int` while the validator accepts a float; contracts §10 rows A18-A20 sit above A1; CLAUDE.md still says amendments A1-A14; (h) E1 leftovers: no Designer editor for `mode_params` (not even read-only) and no phone-side consumer; (i) A19 leftovers: `beacon` / `extracted` have no MC-side signal (see S10); (j) `_endReconcile` re-arms with the frame's `$AMMO` but leaves `_prevAmmo`/`_prevReserve` at the pre-drop pair, so a stun before the next `$ALCD` restores the older (lower) pair -- never a refill, same shape on the stage; (k) `restore_snapshot` resets an out-of-range stored `mode_params` value to its default with no log line; (l) the `role: utility` status from a bound player logs once per heartbeat. `build`.
+- **F107 🟢 LOWS FROM THE 2026-09-11 (LATE, SECOND SESSION) POLISH LOOP.** Noted, not fixed: (a) `net.py _fire_node` never forwards `gun_fw` while `_on_node` copies a `fw` key that never arrives (the `app_ver` shape again); (b) `_role_due` is not cleared on end/recall/panic (the phase gate in `_push_role` covers it); session.json `v` stays 1 though the shape gained `stations`/`game_no`; (c) F57 suppresses the grunt even when the profile writes no `hurt` line (announcer off, pre-A15 bundle): one fully silent hit per life there; (d) a reload pull while stunned starts the HUD RELOADING takeover off the frozen pre-stun reserve; (e) the stage logs a `warn` on every EMP because no profile carries `stunned`/`stun_over` cues (the phone is silent) — **candidates surfaced 2026-09-11 (evening) from the S1 `fx:hit` pass: H20/H21, "hit then electrical pulse, could be EMP disable"** — not auditioned in context, just noted while auditing the wider `fx:hit` batch; (f) `utility.js` `?stage` persists `settings.mc = 'stage://mc'`; (g) `Recap.tsx STATION_TID_NAME` duplicates `Items.tsx TID_NAME`; `types.py Stun.duration_s` is `int` while the validator accepts a float; contracts §10 rows A18-A20 sit above A1; CLAUDE.md still says amendments A1-A14; (h) E1 leftovers: no Designer editor for `mode_params` (not even read-only) and no phone-side consumer; (i) A19 leftovers: `beacon` / `extracted` have no MC-side signal (see S10); (j) `_endReconcile` re-arms with the frame's `$AMMO` but leaves `_prevAmmo`/`_prevReserve` at the pre-drop pair, so a stun before the next `$ALCD` restores the older (lower) pair -- never a refill, same shape on the stage; (k) `restore_snapshot` resets an out-of-range stored `mode_params` value to its default with no log line; (l) the `role: utility` status from a bound player logs once per heartbeat. `build`.
 - **F80 🟡 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.** ➡ **Narrowed 2026-09-11 (late): the AFTER-the-match surface is built** — the recap's `warnings` count every hit and death from wire id 0 ("a grenade hill's damage word, or a gun whose $PSET never landed") and RECAP renders it, so a mis-armed gun is no longer invisible. **Still open: the ARM-TIME refusal** (`$QUERY` read-back, B19) and a muster flag, which needs a signal the node does not report today (the head echo is an `$LCD`, it carries no id).
   Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
   received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default
@@ -989,14 +956,6 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   who sprays. Design notes in `weapon-design.md` §4.4; the manual pages already describe the mechanic for players. Consider
   also surfacing `$ALCD` token 2 on the HUD: it is a live per-shot accuracy number the phone can already read, and it would
   make the mechanic legible instead of mysterious. `build`.
-- **F48 🟡 A heartbeat pool for `low_health`** (Tony, bench 2026-09-07: "the heart beat sound could be used as
-  a pool for low health"). Fits A17.2, which moved the alert to an actual threshold (HP under 15) -- a heartbeat
-  says "you are nearly dead" in a way a hurt-breath loop does not, and `low_health` is once per life so a longer
-  clip is affordable. NOT YET AUDITIONED and must not be picked by shape (F43). The catalog has no literal
-  "heart" match; the shape candidates are the lowest-centroid pulsing clips in the bank -- `N74` (1.94 s,
-  centroid 186, sustained), `N75` (2.86 s, centroid 201, varying) and `N25` (2.51 s, centroid 315) -- none of
-  which any ear has heard. Today the event plays `voice:hurt_loop` (the character's own breathing, `V06`/`V16`/
-  …), which could become a two-take pool with a heartbeat rather than being replaced. `ears`.
 - **F43 🔴 SOUND PICKS BY ACOUSTIC SHAPE ARE NOT TRUSTWORTHY — do not repeat the method.** Every id in the first
   `hitaudio.py` was chosen from `sound_catalog.json` by envelope / flatness / centroid / duration. NOT ONE survived
   a listen on 2026-09-07. Signal features separate TONAL from NOISY; they cannot separate METAL from ELECTRONIC
@@ -1057,7 +1016,7 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   ⚠ F35: never leave the gun there.
 - Night mode: confirm a blanked gun stays dark once spawned (the S4 blank holds; only `$SPAWN` re-breathes).
 
-**Ears:** **P3** voice-pack token; the defeat line (`JAW`/`JAX` beside the confirmed `JAY`); **W4a** Energy Launcher fire
+**Ears:** **P3** voice-pack token; **W4a** Energy Launcher fire
 sound (O01 ships; alternates O05 O02 O04 O06 O03) and, first, its zero damage (decision below); **S9**; **S1** audit;
 **S-A12.1**; **D4** does "double kill" fire under our config (3 guns); **P15** alarm id.
 

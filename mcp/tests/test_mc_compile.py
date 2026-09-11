@@ -326,7 +326,9 @@ def test_override_mechanism_rejects_undeclared_and_unnamed_writes():
 
 
 def test_bench_sound_swaps_are_applied():
-    """Field range 2026-08-26: D21 fires a 'disable' chirp; the Energy Launcher's J15 is a music sting."""
+    """Field range 2026-08-26: D21 fires a 'disable' chirp; the Energy Launcher's J15 is a music sting.
+    The launcher's fire sound was re-picked by ear 2026-09-11 (W4a audition): O06 ("shooting a rocket")
+    over the earlier O01 placeholder."""
     cat, T = WeaponCatalog(), WeaponCatalog._T
     for wid in ("sniper_rifle", "amr", "force_rifle"):
         chain = [cat.resolve(wid, 0).split(",")[T[k] + 1] for k in ("rel1", "rel2", "rel3")]
@@ -335,7 +337,7 @@ def test_bench_sound_swaps_are_applied():
     assert cat.resolve("bolt_rifle", 0).split(",")[T["rel3"] + 1] == "D02", \
         "bolt_rifle never carried D21 — its captured chain already ended on D02, so it needs no override"
     p = cat.resolve("energy_launcher", 0).split(",")
-    assert p[T["snd_fire"] + 1] == "O01" and "J15" not in p
+    assert p[T["snd_fire"] + 1] == "O06" and "J15" not in p and "O01" not in p
 
 
 def test_resolve_keeps_the_captured_ammo_invariants():
@@ -1017,6 +1019,43 @@ def test_the_spawn_line_is_ours_and_respawned_draws_from_the_same_pool():
     assert next(f for f in back["head"] if f.startswith("$PSET,")).split(",")[11] == "VAN"
     one = C.compile(_cfg(), dict(_player(), voice="male", voice_slots={"spawn": "VAO"}), _TEAMS)
     assert one["cues"]["spawn"] == "$PLAY,,4,6,VAO,,,,*" and "spawn" not in one["cue_pools"]
+
+
+def test_voice_switch_gates_the_players_own_lines():
+    """S12 (Tony, 2026-09-11: "let the config drive it. silenced snipers no grunts could be legit"):
+    `presentation.voice` gates the player's OWN pain + spawn cues, independent of `announcer`. `spawn`
+    (the first life) and `respawned` (every revive after it, `_spawn`/`_revive` in engine.js) are the
+    SAME line and must move together -- otherwise a player would still speak on every respawn but the
+    first. The native death scream (`pset_pool`) and the A17 material hit sounds are unaffected."""
+    pain = ("pain_short", "pain_long", "pain_melee")
+
+    def _voice_cfg(v):
+        return {**_cfg(), "presentation": {"voice": v}}
+
+    on = C.compile(_voice_cfg("on"), _player(), _TEAMS)
+    hits_only = C.compile(_voice_cfg("hits_only"), _player(), _TEAMS)
+    off = C.compile(_voice_cfg("off"), _player(), _TEAMS)
+
+    for role in pain:
+        assert role in on["cues"], role
+    assert "spawn" in on["cues"] and "respawned" in on["cues"]
+
+    for role in pain:
+        # hits_only keeps the pain cues/pools byte-for-byte the same as "on" ...
+        assert hits_only["cues"].get(role) == on["cues"].get(role)
+        assert hits_only["cue_pools"].get(role) == on["cue_pools"].get(role)
+        # ... "off" drops them
+        assert role not in off["cues"] and role not in off["cue_pools"]
+
+    # both hits_only and off drop the spawn line, on BOTH bundle keys
+    for b in (hits_only, off):
+        assert "spawn" not in b["cues"] and "spawn" not in b["cue_pools"]
+        assert "respawned" not in b["cues"] and "respawned" not in b["cue_pools"]
+
+    # unaffected in all three: the native death scream re-roll and the A17 material hit sounds
+    for b in (on, hits_only, off):
+        assert b["pset_pool"], "pset_pool must be present regardless of the voice switch"
+        assert b["hit_audio"]["material"]
 
 
 # ---- F15 / A20: the host-driven stun (EMP) -----------------------------------
