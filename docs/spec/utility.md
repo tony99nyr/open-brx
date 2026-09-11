@@ -355,25 +355,27 @@ At recap the station reports its tally and capture log to MC when it is next in 
 row: the station's own count against the players' `capture` facts, ✓ when they agree, ⚠ when the station was
 never heard). **MC is never asked for the answer mid-match, and never asked to arbitrate between two stations.**
 
-## 5e. The LAN-coupled variant (opt-in): points to win, and roaming hills
+## 5e. The LAN-coupled variant (opt-in): roaming hills
 
-**Status: designed, not built, and it buys its features with an architectural exception.** Tony asked for this
+**Status: designed, not built, and it buys its feature with an architectural exception.** Tony asked for this
 explicitly as a second mode, for a small field where every point really is on one Wi-Fi — his example: one hill in
 the garage, another on the porch across the house, both on the house AP. §5d is the mode for a field; §5e is the
 mode for a house.
 
-With a live LAN between the control points and MC, two things become possible that are **impossible** offline,
-because both need a fact no single station can know:
+⚠ **Read §5f first if you have not.** This section used to claim points-to-win as a second LAN-coupled feature,
+and **it is not one** — §5f.2 shows a
+Territories station scoring itself offline and reporting at recap, which is plain §5c. What is left needing a live
+LAN is **one** feature, plus one optional flavour of the score:
 
 | feature | why it needs the LAN |
 |---|---|
-| **Points to win** (a score target: first to 500) | the target is crossed by the **sum** across points. No station knows another station's contribution, and 16 bytes hold no running score (§5d.3). MC sums live and calls the win |
-| **Roaming hills** (the live point moves during the match) | somebody must **choose** which point is hot and tell the others. That is MC. `VB0Q` "Hill Moved" (2.42 s, confirmed by ear, already in `HILL_CUES` with no caller) exists for exactly this, and **F83** already proposes the mode on the grenade side |
+| **Roaming hills** (the live point moves during the match) | somebody must **choose** which point is hot and tell the others. That is MC, mid-match, which is the exception. `VB0Q` "Hill Moved" (2.42 s, confirmed by ear, already in `HILL_CUES` with no caller) exists for exactly this, and **F83** already proposes the mode on the grenade side |
+| *(optional)* **a points race that ENDS the match early** on crossing a target | only the live-early-end form; the same target evaluated at the horn is offline (§5f.2). Wanting this is a preference, not a requirement of any mode |
 
-Mechanically: MC holds the score, sums possession per second from each station's live report, and pushes the hot
-point to the stations (`station_config`, §5c, extended with the hot flag — advert byte 10 bit 5). On a move, each
-player phone plays `VB0Q` off the hot bit changing, by the §5d.5 rule. Stations still run §5d locally; the LAN adds
-the cross-point layer, it does not replace the local rule.
+Mechanically: MC pushes the hot point to the stations (`station_config`, §5c, extended with the hot flag — advert
+byte 10 bit 5). On a move, each player phone plays `VB0Q` off the hot bit changing, by the §5d.5 rule. Stations
+still run §5d locally and still keep their own books; the LAN adds the rotation, it does not replace the local
+rule.
 
 ### 5e.1 🔴 This is a DELIBERATE EXCEPTION to A4.8, and that is the most important line in this document
 
@@ -381,10 +383,15 @@ the cross-point layer, it does not replace the local rule.
 match … live kill-confirm and a live individual board are coverage-zone features.* **Nothing about the match
 outcome depends on coverage.**
 
-**§5e breaks that last sentence on purpose.** A points-to-win race is a win condition computed from facts that
-only arrive over the LAN, and a roaming hill is a match rule taking its orders from the laptop mid-match: a
-control point out of Wi-Fi range is not merely invisible, it is **not in the game**. There is no way to have
-either feature and keep A4.8 — the exception is the feature.
+**§5e breaks that last sentence on purpose.** A roaming hill is a match rule taking its orders from the laptop
+mid-match: a control point out of Wi-Fi range is not merely invisible, it is **not in the game**, because it cannot
+be told whether it is the live one. There is no way to have that feature and keep A4.8 — the exception is the
+feature. (The same is true of an early end on a points target, if anyone wants one; it is not needed by any mode.)
+
+⚠ **The exception is NARROWER than this section first claimed**, and that is worth noticing rather than quietly
+fixing: points-to-win was listed here as a second reason, on the reasoning that no station knows another station's
+contribution. True — and irrelevant, because nothing has to add them up *during* the match. Territories (§5f.2)
+scores offline and MC sums at recap. The rule that looked like it needed breaking twice needs breaking once.
 
 We take it knowingly and we fence it:
 
@@ -450,6 +457,89 @@ do. **Proposed, not decided:**
 ⬜ **Tony's call on all four**, and specifically on (4): the honest alternative is that MC awards the points win
 anyway from partial data and the recap carries a warning. That is friendlier on a house field and it is a scored
 result nobody can check, which is the thing A4.8 exists to prevent. Recommendation: (4) as written.
+
+## 5f. TERRITORIES — the multi-point scoring model, and the mode that needs no LAN at all
+
+**Tony, 2026-09-10:** *"the other option for koth, is territories. You tick points whether you are there or not.
+You turn it your colour and then you go find the next territory."*
+
+Several `kind 5` points on the field. Capture one the §5d way, it turns your colour, and it **accrues score for
+your team whether or not anyone is standing on it**. Then you leave it and go take the next one. Conquest scoring,
+not possession scoring.
+
+**§5d needs no change to support this.** §5d.2 already scores **ownership**, not presence — *"only the team named
+in byte 9 scores"*, and an empty point holds its progress while the owner keeps scoring. So Territories is §5d
+**configured with several points and a total to win**, which is why it is cheap: the capture rule, the advert, the
+callouts and the station screen are all the same. What changes is the number of stations and what MC does with
+their tallies.
+
+### 5f.1 It solves camping by construction
+
+The camping worry is real in single-point possession KotH: standing on your point is *how you earn*, so a 1-1
+split settles into a stable, boring equilibrium where both teams sit on their own point and nothing happens.
+
+In Territories, **standing on a point you already own earns you nothing extra.** The point is already ticking. The
+only way to increase your rate is to go own another one, so the optimal play is always to leave and push. The
+incentive comes out of the scoring model, which means **none of the anti-camp machinery is needed for this mode**:
+no ownership decay, no capture bonus, no superlinear "holding both" multiplier, no timer that punishes standing
+still. Every one of those is a rule that has to be tuned, explained to players, and then defended when it
+misfires. Territories needs none of them, and that is the main argument for the mode.
+
+### 5f.2 🔴 It removes the A4.8 exception for scoring: a station is its own scorekeeper
+
+**A Territories point can score itself, offline, with no LAN at any point in the match.** It knows who owns it
+(it decided), it is physically present for the whole match, and it already persists its tally across a reboot
+(§5d.6). So it accrues its own ownership-seconds locally and hands MC the total **at recap** — which is not a
+concession, it is exactly §5c: *stations are self-authoritative and report at recap; MC is not live mid-match*.
+Add up the stations at recap and you have the score.
+
+⚠ **This means §5e over-claimed, and the correction matters.** §5e originally listed **points to win** as needing
+the LAN. That is only true of one *form* of it:
+
+| form of "points to win" | needs coverage? |
+|---|---|
+| **the target decides the winner at the horn** — the match runs its full clock, MC sums each station's tally at recap, and the team past the target (or with the most territory-seconds if nobody reached it) wins | **No.** Fully offline. No A4.8 exception, no Wi-Fi requirement, nothing to warn the operator about |
+| **a live race that ENDS THE MATCH the moment someone crosses the target** | **Yes**, and only this. Somebody must hold the running sum *during* the match to blow the horn early, and no station knows another station's contribution |
+
+**Recommended default: the first.** To players the two are nearly indistinguishable — a BRX match runs a clock
+anyway, and the runway is the normal one — and the first costs nothing architecturally. So the §5e exception
+narrows to **roaming hills** (a match rule taking orders from the laptop mid-match, which genuinely cannot be
+done offline) plus, optionally, a live early end for anyone who wants one.
+
+### 5f.3 ⚠ Territories does NOT work on grenades, and the reason is observation, not memory
+
+A grenade **does** hold its ownership when unattended: F70 measured a captured hill reading the same owner for ten
+straight beacons with nobody shooting it, and rung R's range walk still read the same owner from the far edge
+(`docs/bench-grenade.md` rung R). The grenade remembers fine.
+
+**The problem is that nobody observes it.** A grenade's ownership travels **only over IR**, and only a **gun**
+receives IR (**F92**). So an unattended grenade territory is **unverifiable**: a rival can flip a far point and
+nobody — no station, no node, not MC — learns of it until a player happens to wander into range, which rung R puts
+at *solid close in, intermittent by ~30 ft* (85 s and 145 s dropouts at the edge). That is **eventually-consistent
+scoring**: the score is right whenever someone last looked. Acceptable as flavour. Not acceptable as the thing
+that decides who won.
+
+This is the same sensor gap as F92, seen from a third angle — F92 saw it as "a station cannot learn who owns a
+grenade hill", F88 as "a grenade carries no point id", and Territories sees it as "an unwatched point has no
+scorekeeper."
+
+➡ **So Territories is the strongest case in this document for building K1 phone control points.** A phone station
+*is* the observer the grenade lacks: it sits on the point for the whole match, it decides ownership from adverts it
+hears directly, and it keeps its own books. A grenade can only ever be a **contested** point that someone is
+present for — a good objective, and never a territory.
+
+### 5f.4 Open, for Tony to decide
+
+Not decided here. Each is a number or a policy, not a mechanism, so none of them blocks building §5d.
+
+| # | question | note |
+|---|---|---|
+| 1 | **the tick rate** per owned territory (points per second per point) | interacts with match length and point count; wants one playtest, not a derivation |
+| 2 | **linear or superlinear** in the number of points held | linear is probably right *here*: the mode already rewards spreading out (§5f.1), so a multiplier would be paying twice for the same behaviour |
+| 3 | **a station powered off mid-match** — are the seconds it did accrue counted, or voided at recap? | it accrues nothing while off, so an owner is silently under-paid for that gap, and a rival who flipped the point while it was dark gets no credit either. Voiding is cleaner to explain; counting is closer to what happened. Note the phone must also be trusted not to have been tampered with, per §3's security posture |
+
+**Already settled, not open:** a **neutral** point ticks for **nobody** (§5d.2 — neutral pays nobody), and an
+**owned** point ticks whether or not anyone is present (that is the mode).
 
 ## 6. Platform notes (verified where marked)
 

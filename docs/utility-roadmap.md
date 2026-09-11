@@ -82,7 +82,7 @@ Each kind = a station state machine (what it advertises in `state`/`value`), a p
 HUD copy), an MC mode/scoring, tests, and a bench gate. The order is by (game value × how much of the respawn
 primitive it reuses).
 
-### K1 · Control point → Domination and King of the Hill (first)
+### K1 · Control point → Territories, Domination and King of the Hill (first)
 
 **➡ The rule is now specified: `docs/spec/utility.md` §5d** (Tony's design, 2026-09-10) — capture rate is the
 **net difference between the leading team and its largest single rival** (2v1 counts as the 1; 2v0 goes twice
@@ -93,7 +93,15 @@ per-team gun callouts (`VB0N` captured / `VB0P` lost / `VB0O` contested / `U100`
 phone off the station's own advert, with no LAN**, and progress persisted on the station, which stays
 self-authoritative and reports at recap. **§5e** is the opt-in LAN-coupled variant (points-to-win, roaming hills)
 and is a deliberate exception to A4.8. The rows below are the surfaces; the spec wins on the rule.
-**Followups: F94** (build §5d) and **F95** (build §5e).
+**Followups: F94** (build §5d), **F95** (build §5e) and **F98** (Territories, §5f).
+
+⭐ **Territories (§5f, F98) is the strongest case for building this row**, and it needs nothing beyond §5d: several
+points, each scoring for its owner **whether or not anyone stands on it**, win on the total. It kills camping by
+construction (owning a point you already hold earns nothing extra, so the play is always to go take another — no
+decay rule, no bonus, no multiplier to tune), and because each station keeps its own books and reports at recap it
+needs **no LAN at all**, which shrank §5e's A4.8 exception to roaming hills alone. It also cannot be done on
+grenades: a grenade holds its owner unattended fine, but ownership travels only over IR and only a gun hears IR
+(F92), so an unwatched grenade point has no scorekeeper.
 
 **The grenade is complementary, not a substitute.** The shortcut below is real for a single hill, and it does not
 replace the phone point: a grenade gives **shoot-to-capture and physical feedback** that a phone cannot, and a
@@ -111,7 +119,7 @@ separate objectives, or run the phone point.
 | station (`utility.js`) | state machine per **spec §5d.3** (this row's older sketch is superseded where they differ): `team` = owner tid (255 neutral) · `value` = progress 0-100 **always** (hold time is node-side, never in the advert) · `state` carries phase / `toward` / contested · byte 15 carries the signed net rate. Inputs: player adverts (team, alive) present at the station. Rule: **net difference** of living present players sets the rate (§5d.1 — leader minus the **largest single other team**: 2v1 = the 1, 2v0 = double, 2v1v1 = 1, a tie for the lead = no movement, empty = the owner holds and keeps scoring). ⚠ **Not a contested freeze** — the older wording here said "mixed → frozen" and that is explicitly not the design. Screen: **animated** per §5d.4 (owner colour, two-toned progress bar, direction arrow + rate, CONTESTED band, the roster marked counts / does not count, transition flashes). Tally per team persisted (§5d.6) for recap. |
 | player node (`engine.js`) | `state().objective` = the nearest control station `{id, owner, progress, contested, mine}`; facts `capture` (station, team) when the owner flips while this player is present. No gun writes. |
 | HUD (`hud.js`) | a live-screen OBJECTIVE line: HOLD THE HILL · 32 s / CONTESTED / LOST — reuses the alert banner (`point_captured`, `hill_captured` already exist) and the DOWN recap's "race to the cap". |
-| MC | modes `hill` (win: hold total ≥ N s or most hold time at time-limit) and `domination` (points per second, cap); the ITEMS panel arms kind `control`; scoring from `capture` facts + the station's tally at recap. Alerts `point_captured` / `hill_captured` / `lead_taken` already wired in A11. |
+| MC | modes `hill` (win: hold total ≥ N s or most hold time at time-limit), `domination` (points per second, cap) and **`territories`** (§5f: several points, each scoring for its owner unattended, win on the total summed from the stations' own tallies at recap); the ITEMS panel arms kind `control`; scoring from `capture` facts + the station's tally at recap. Alerts `point_captured` / `hill_captured` / `lead_taken` already wired in A11. |
 | tests | engine: owner flips, **net-difference arithmetic (1v0 · 2v0 · 2v1 · 1v1 · 2v1v1 · 2v2v1 · 3v2v1 — the multi-team cases are the only ones that distinguish largest-single-rival from summing the others)**, the two-phase drain-then-build crossing, dead players don't count, allow-list, one callout per transition (never per advert). screens: an OBJECTIVE line stage. utility: a fake-player script drives the state machine in the harness. |
 | bench gate | two phones + two guns: capture, contest, recapture; hold timer matches a stopwatch within 1 s. |
 | needs | B1 (the station must hear player adverts reliably) — this is the first kind that depends on it, and §5d's whole rule is a head count of player adverts. §5e additionally needs A1/A2 (MC arming + the ITEMS panel) for its setup warnings. |

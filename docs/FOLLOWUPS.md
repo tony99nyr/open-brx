@@ -6,8 +6,9 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F98 · G11 · H7 ·
-K7 · P18 · Q20 · R3 · S18.** (2026-09-10: F94/F95 taken — the phone control point (`spec/utility.md` §5d) and its LAN-coupled variant (§5e). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F99 · G11 · H7 ·
+K7 · P18 · Q20 · R3 · S18.** (2026-09-10: F94/F95/F98 taken — the phone control point
+(`spec/utility.md` §5d), its LAN-coupled roaming variant (§5e) and Territories (§5f). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
 wider than the hill's period" generalisation, the double-`$HIR`-per-beacon dedupe finding (F85, closed same
 session), the team-change-leaves-old-LED-colour finding, and the hosted hill rate-of-fire boost.) (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
@@ -900,7 +901,11 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   reliably) more than any other kind, since the rule IS a head count. Cross-refs: **F88** (no grenade carries a
   station id, so multi-point Domination needs phones), **F92** (and is why a grenade hill and a phone station
   cannot be coupled), **F82** (no tid 2 in a hill mode). `build`.
-- **F95 🟡 THE LAN-COUPLED CONTROL-POINT VARIANT: POINTS TO WIN AND ROAMING HILLS — A DELIBERATE A4.8 EXCEPTION.**
+- **F95 🟡 THE LAN-COUPLED CONTROL-POINT VARIANT: ROAMING HILLS — A DELIBERATE A4.8 EXCEPTION.**
+  ⚠ **SCOPE NARROWED 2026-09-10 by F98/§5f: points-to-win is OUT, roaming hills is all that is left.** A
+  Territories station scores itself offline and reports at recap (plain §5c), so only the form of a points race
+  that **ends the match early** on crossing a target needs a live sum — and nothing requires that form. The rest
+  of this row stands as written, minus the points-race half of the justification.
   Tony's second, opt-in mode for a small field where every point really is on one Wi-Fi (his example: one hill in
   the garage, another on the porch, both on the house AP). Specified as `spec/utility.md` **§5e**. Two features
   that are impossible offline because no single station can know the fact they need: **points to win** (the target
@@ -951,6 +956,34 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   2v1v1 converts slowly for the pair, and a player must be **alone** on the point to take it — which is the FFA
   behaviour this row wanted, arrived at by the general rule rather than by an FFA special case. The cap at three
   players is what is left open here. `build`.
+- **F98 🟢 TERRITORIES: THE MULTI-POINT MODE THAT SOLVES CAMPING BY CONSTRUCTION AND NEEDS NO LAN.** Tony's
+  design, 2026-09-10, in his words: *"the other option for koth, is territories. You tick points whether you are
+  there or not. You turn it your colour and then you go find the next territory."* Specified as
+  `spec/utility.md` **§5f**. Several `kind 5` points; capture one the §5d way, it turns your colour, and it
+  **accrues score whether or not anyone stands on it**; the win is on the total. **§5d needs no change** — it
+  already scores OWNERSHIP rather than presence (§5d.2), so this is §5d configured with several stations and a
+  total, which is why it is cheap. ⭐ **Camping dies by construction:** standing on a point you already own earns
+  nothing extra, so the optimal play is always to leave and take another — **no decay rule, no capture bonus, no
+  superlinear multiplier, nothing to tune or defend**. That is the argument for the mode.
+  🔴 **And it shrinks the A4.8 exception.** A Territories station is **its own scorekeeper**: it decided the
+  owner, it is on the point all match, it already persists its tally across a reboot (§5d.6), so it accrues
+  locally and reports at recap — plain §5c, no coverage needed. **F95 claimed points-to-win as a second reason
+  for the exception and that was over-claimed:** only the form that **ENDS the match early** on crossing a target
+  needs a live sum; the same target evaluated at the horn is fully offline and is the recommended default. So the
+  exception is down to **roaming hills alone** (see F95, scope narrowed).
+  ⚠ **Territories does NOT work on grenades, and the reason is OBSERVATION, not memory.** A grenade holds its
+  ownership unattended perfectly well (F70: ten straight beacons on one owner with nobody shooting it; rung R's
+  range walk read the same owner from the far edge). But ownership travels **only over IR and only a gun receives
+  IR** (**F92**), so an unattended grenade territory is **unverifiable**: a rival flips a far point and nobody
+  learns until a player wanders into range — rung R measured that edge as solid close in and intermittent by
+  ~30 ft, with 85 s and 145 s dropouts. Eventually-consistent scoring is fine as flavour and unusable as a win
+  condition. Same sensor gap as **F92** and **F88**, seen from a third angle. ➡ **So Territories is the strongest
+  case for building the phone control point (F94):** a phone station IS the observer a grenade lacks, and a
+  grenade can only ever be a *contested* point someone is present for.
+  ⬜ **Open for Tony** (§5f.4, numbers and policy, none of it blocking F94): the tick rate per owned territory;
+  linear vs superlinear in points held (linear is probably right, since the mode already pays for spreading out);
+  and whether a station powered off mid-match has its accrued seconds counted or voided at recap. Already
+  settled: a neutral point ticks for nobody, an owned one ticks unattended. `build`.
 - **F80 🟠 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.**
   Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
   received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default
