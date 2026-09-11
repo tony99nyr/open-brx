@@ -121,6 +121,11 @@ HEALTH_BANDS = ((0.66, GREEN), (0.33, YELLOW), (0.0, RED))
 # shield/armour (constant hue) and health (hue shifts per band) can share one table shape.
 READOUT_THRESHOLDS = ((0.66, 3), (0.33, 2), (0.0, 1))
 
+# The gun-body BLANK (`$GLED,,,,5,,,*`): apply gate 5, no colour. A paint sent to a SPAWNED gun without
+# this first does not hold -- the firmware keeps breathing and the paint does nothing (bench 2026-09-04,
+# `test_led_invariants.py`). `mc.presentation.GUN_BLANK` is this same string; it moved here 2026-09-11 so
+# the CLI driver (F86) can use it without importing the MC package.
+GUN_BLANK = "$GLED,,,,5,,,*"
 REVERT_AFTER_S = 4.0     # Tony: "a few seconds maybe 3-5s"
 
 # --- THE EVENT BURST, tuned on hardware 2026-09-03 --------------------------- #

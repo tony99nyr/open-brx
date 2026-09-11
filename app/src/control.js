@@ -146,7 +146,13 @@ export class ControlPoint {
    * / `refused`, each one exactly once at its edge, for the station's log and its recap tally.
    */
   update(players, now) {
-    const dtMs = this.at == null ? 0 : Math.max(0, Math.min(MAX_STEP_MS, now - this.at));
+    // F103: two different clocks. `elapsedMs` is real time and feeds POSSESSION (the number the match is
+    // scored on -- a station that held the point through a throttled or backgrounded minute held it for a
+    // minute); `dtMs` is the same interval clamped to MAX_STEP_MS and feeds CONVERSION only (a sleeping
+    // station must not hand somebody the point on its first tick back). Adding the clamped value to the
+    // tally silently under-reported every hold longer than one tick, in the direction nothing reports.
+    const elapsedMs = this.at == null ? 0 : Math.max(0, now - this.at);
+    const dtMs = Math.min(MAX_STEP_MS, elapsedMs);
     this.at = now;
     const events = [];
     const before = `${this.owner}:${this.capturing}:${Math.round(this.progress)}:${this.contested}:${this.dir}:${this.net}`;
@@ -162,7 +168,11 @@ export class ControlPoint {
       counts[p.team] = (counts[p.team] || 0) + 1;
     }
     this.counts = counts;
+    // F103: the F82 banner used to latch for the rest of the match, so reassigning that player off tid 2 in
+    // Mission Control never took it down. It now tracks whether a refused player is HERE: the operator is told
+    // once per episode (the rising edge), and the banner clears on the first tick with nobody refused.
     if (refused && !this.refusedSeen) { this.refusedSeen = true; events.push({ type: 'refused', team: REFUSED_TID }); }
+    else if (!refused) this.refusedSeen = false;
 
     const ranked = Object.keys(counts).map(Number).sort((a, b) => counts[b] - counts[a] || a - b);
     this.lead = ranked.length ? ranked[0] : null;
@@ -174,7 +184,7 @@ export class ControlPoint {
     if (contested !== this.contested) { this.contested = contested; events.push({ type: contested ? 'contested' : 'uncontested', counts: { ...counts } }); }
 
     // ---- possession time, for the station's own recap (it is self-authoritative, §5c) ----
-    if (this.owner !== NEUTRAL && dtMs) this.holdMs[this.owner] = (this.holdMs[this.owner] || 0) + dtMs;
+    if (this.owner !== NEUTRAL && elapsedMs) this.holdMs[this.owner] = (this.holdMs[this.owner] || 0) + elapsedMs;
 
     // ---- the two phases ----
     // `holder` is whose progress the bar shows: the owner while held, else the team building it up. The

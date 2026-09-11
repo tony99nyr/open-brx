@@ -559,3 +559,27 @@ def test_driver_setup_configs_then_spawns_all_guns():
     assert last_start < first_spawn
     spawned = {pid for pid, f in order if f.startswith("$SPAWN")}
     assert spawned == {"g1", "g2"}
+
+
+def test_a_burst_task_collected_after_the_loop_closed_does_not_print_a_traceback():
+    """F55: `_play_burst`'s `finally` called `asyncio.current_task()`, which RAISES once the loop is gone
+    (a still-pending burst garbage-collected after `asyncio.run()` closed the loop). The suite reported
+    0 failed while a traceback printed -- noise an operator reads as a failure, and a real error in that
+    `finally` would be indistinguishable from it. Drive the coroutine to its `finally` with no loop and
+    assert it stays quiet."""
+    import asyncio
+    from brx_mcp.modes.driver import GameDriver
+    d = GameDriver.__new__(GameDriver)
+    d._bursts = {}
+    sends = []
+    async def _send(pid, frame, reply_window_ms=0):
+        sends.append(frame)
+    d._send = _send
+    coro = d._play_burst("p1", [("$GLED,1,1,1,0,10,,*", 0)])
+    # No running loop: step the coroutine by hand, exactly the state a late GC finaliser sees.
+    try:
+        coro.send(None)
+    except StopIteration:
+        pass
+    assert sends == ["$GLED,1,1,1,0,10,,*"]
+    assert asyncio._get_running_loop() is None

@@ -17,7 +17,10 @@ export const PERSISTED_EVENT_TYPES = new Set(['hit_taken', 'death', 'respawn', '
 export const NODE_KINDS = new Set(['hello', 'bind', 'event', 'event_batch', 'status', 'ack_config',
   'time_req', 'log_offer', 'log_data', 'ready', 'loadout_request', 'loadout_browse']);   // A10: phone self-serve kitting
 export const MC_KINDS = new Set(['welcome', 'assign', 'tutorial', 'config', 'start', 'feedback',
-  'control', 'time_res', 'pull_log', 'ack', 'apply', 'score', 'loadout_ack']);
+  'control', 'time_res', 'pull_log', 'ack', 'apply', 'score', 'loadout_ack',
+  'alert',            // A11.4
+  'station_config']); // A13.5 (F104): MC -> a utility phone. Unlisted here it was dropped as malformed before
+                      // utility.js's onMessage ever saw it -- the second half of "MC never arms a station".
 export const CONTROL_CMDS = new Set(['end', 'panic', 'abort_start', 'recall']);
 
 const T_MIN_MS = 1_500_000_000_000, T_MAX_MS = 4_000_000_000_000;
@@ -39,6 +42,8 @@ const REQUIRED = {
   feedback: ['player_id', 'kind', 't'], control: ['cmd'], time_res: ['t_node', 'server_t'],
   pull_log: [], ack: ['seq_hi'], apply: ['frames'], score: ['player_id'],
   loadout_ack: ['slot', 'ok'],
+  alert: ['kind', 'text', 'player_id', 't'],
+  station_config: ['kind', 'team', 'id'],   // threshold / game / valid_ids optional (utility.md §5c)
 };
 const EVENT_REQUIRED = { hit_taken: ['shooter_num', 'shooter_team', 'dmg'], death: ['shooter_num', 'shooter_team'], respawn: [], team_change: ['tid'] };
 

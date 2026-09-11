@@ -289,7 +289,7 @@ GUN_DEFAULT = {"in_play": "team", "pregame": "team"}
 # +1.5 s: breathing; +2.0 s: SOLID. So the node takes the body 2.5 s after every $SPAWN (margin over 2.0).
 GUN_AFTER_SPAWN_S = 2.5
 GUN_IN_PLAY = ("native", "team", "dark", "health")
-GUN_BLANK = "$GLED,,,,5,,,*"
+GUN_BLANK = pg.GUN_BLANK    # one string, defined once (poolgauge) -- the CLI driver paints with it too (F86)
 
 # ---- the transient pool readout (led-language.md §3.1/§5, 2026-09-07 build) --------------------------
 # Outermost pool first (shield, armor, health -- the order BRX depletes them, `poolgauge.changed_pool`),

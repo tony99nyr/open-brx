@@ -303,6 +303,28 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             return _err(str(e))
         return JSONResponse({"ok": True})
 
+    # ---- A13.5 / F104: utility stations (the ITEMS panel) ----
+    async def stations_list(_):
+        return JSONResponse({"stations": s.stations_view(), "game": s._game_byte()})
+
+    async def put_station(req):
+        nid = req.path_params["nid"]
+        try:
+            return JSONResponse(s.set_station(nid, await body(req)))
+        except (ValueError, TypeError) as e:
+            return _err(str(e))
+
+    async def delete_station(req):
+        try:
+            if not s.clear_station(req.path_params["nid"]):
+                return _err("no such station", 404)
+        except ValueError as e:                    # refused while armed/live: the operator's voice, not a 500
+            return _err(str(e))
+        return JSONResponse({"ok": True})
+
+    async def arm_stations(_):
+        return JSONResponse({"ok": True, **s.arm_stations()})
+
     async def evict_node(req):
         nid = req.path_params["nid"]
         if not s.evict_node(nid):
@@ -557,6 +579,10 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/players/{pid}", delete_player, methods=["DELETE"]),
         Route("/api/players/{pid}/tryout", tryout, methods=["POST", "DELETE"]),
         Route("/api/nodes/{nid}", evict_node, methods=["DELETE"]),
+        Route("/api/stations", stations_list),
+        Route("/api/stations/arm", arm_stations, methods=["POST"]),
+        Route("/api/stations/{nid}", put_station, methods=["PUT"]),
+        Route("/api/stations/{nid}", delete_station, methods=["DELETE"]),
         Route("/api/players/{pid}/ready", ready, methods=["POST"]),
         Route("/api/lobby/push", lobby_push, methods=["POST"]),
         Route("/api/start", start, methods=["POST"]),

@@ -1,8 +1,9 @@
 // In-browser mock of the MC server (mcp/brx_mcp/mc/API.md). Stateful enough for every UI interaction.
 import type {
   Api, FeedEntry, GameConfig, LiveRow, Loadout, LoadoutPolicy, MatchHistoryRow, ModeInfo, PerkView, Phase, Player, ReadinessRow, ReadinessSnapshot,
-  RecapView, SavedGame, ScanRow, ScoreRow, StartView, State, WeaponView,
+  RecapView, SavedGame, ScanRow, ScoreRow, StartView, State, StationAssignment, StationKind, StationView, WeaponView,
 } from '../api/types';
+import { STATION_KINDS } from '../api/types';
 import { GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
 import { PRESETS, apply as applyPolicy, conflict, defaultPolicy, pool as poolOf, presetOf, reject } from './policy';
 
@@ -33,11 +34,13 @@ const DEMO_LOADOUTS: (() => Loadout)[] = [
 const SETUP_WARNING: Record<string, string> = {
   grenade: 'SETUP: POWER-CYCLE THE GRENADE SO IT STARTS NEUTRAL, SET IT TO HILL MODE, AND PLACE IT — a hill that starts already owned skews the whole match, and only a power cycle guarantees neutral. ONE POINT ONLY (F88: a beacon carries no station id)',
   ir_station: 'SETUP: PLACE AND POWER THE IR STATION, AND CHECK IT READS NEUTRAL BEFORE THE WHISTLE — ⚠ UNPROVEN: we have never had one on the bench, so nothing confirms it speaks the protocol our nodes read. Run the grenade if you want a hill we have measured',
+  phone: 'SETUP: THE CONTROL POINT IS A PHONE — open the app in the UTILITY role, kind CONTROL, confirm it shows MC-ARMED for THIS game (arming resets the point; do NOT power-cycle it), leave the screen awake on the point, and check its battery. Players must be advertising (the HUD does this) or the point counts nobody',
 };
 // mirrors STATION_SOURCES in mcp/brx_mcp/mc/types.py, including the wording of the refusal
 const MOCK_STATION_SOURCES = [
   { value: 'grenade', desc: 'a BRX Smart Grenade in hill mode (protocol-15 beacons; bench-proven 2026-09-10)' },
   { value: 'ir_station', desc: 'a BRX station / Utility Box emitting $CAPTURE objective events (unproven on our bench)' },
+  { value: 'phone', desc: 'a spare phone in the utility role as a BLE control point, capture by presence (spec/utility.md §5d)' },
 ];
 const uid = (p: string) => `${p}_${Math.random().toString(36).slice(2, 8)}`;
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
@@ -54,6 +57,60 @@ export class MockBackend implements Api {
   private presets: SavedGame[] = [BUILTIN_SNIPER()];
   private activePreset: string | null = null;
   private evicted = new Set<string>();
+  // A13.5: one utility phone that said hello and is waiting to be assigned (the ITEMS panel demo). Mirrors
+  // `Session.stations` / `_station_view` in state.py, including the attention flags the server derives.
+  private stations: Record<string, { assigned: StationAssignment | null; armed: StationView['armed']; arm_pending: boolean; report: StationView['report']; seen: number }> = {
+    'util-a1b2c3': { assigned: null, armed: null, arm_pending: false, report: { kind: 'respawn', team: 1, station_id: 1, threshold: -74, live: false, revives: 0, armed: false, battery: 64 }, seen: now() },
+  };
+  private gameNo = 1;
+  private gameStarted = false;
+  private stationViews(): StationView[] {
+    return Object.entries(this.stations).map(([node_id, st]) => {
+      const attention: string[] = [];
+      const a = st.assigned, rep = st.report;
+      if (a && st.arm_pending) attention.push('BRING IT BACK TO RE-ARM');
+      if (a && st.armed && st.armed.game !== this.gameNo) attention.push('ARMED FOR AN OLDER GAME');
+      const fresh = !!st.armed && st.seen > st.armed.at;   // a report only contradicts an arming it post-dates
+      if (a && fresh && rep.armed === false) attention.push('PHONE SAYS NOT ARMED');
+      if (a && fresh && rep.station_id != null && rep.station_id !== a.id) attention.push(`PHONE ADVERTISES ID ${rep.station_id}, ASSIGNED ${a.id}`);
+      if (typeof rep.battery === 'number' && rep.battery < 30) attention.push('BATTERY LOW');
+      return { node_id, assigned: a, armed: st.armed, arm_pending: st.arm_pending, report: rep, app_ver: 'utility',
+        last_seen_ms: now() - st.seen, online: true, attention, game: this.gameNo };
+    });
+  }
+  private stationIds() { return Object.values(this.stations).flatMap(s => s.assigned ? [s.assigned.id] : []).sort((a, b) => a - b); }
+  private armStation(node_id: string) {
+    const st = this.stations[node_id]; if (!st?.assigned) return;
+    st.armed = { game: this.gameNo, at: now(), kind: st.assigned.kind, team: st.assigned.team, id: st.assigned.id };
+    st.arm_pending = false;
+    // the demo phone applies it, as utility.js does: it now reports what it was told
+    st.report = { ...st.report, kind: st.assigned.kind, team: st.assigned.team, station_id: st.assigned.id, threshold: st.assigned.threshold, armed: true, live: true };
+  }
+  async putStation(node_id: string, a: { kind: StationKind; team: number | string; id: number; threshold?: number }): Promise<StationView> {
+    if (!STATION_KINDS.includes(a.kind)) throw new Error(`kind must be one of ${STATION_KINDS.join(', ')}`);
+    let team: number;
+    if (typeof a.team === 'string') {
+      if (a.team === 'any' || a.team === 'ffa') team = 255;
+      else { const t = TEAMS.find(t => t.team_id === a.team); if (!t) throw new Error(`team '${a.team}' is not a team_id in this game (or 'any')`); team = t.tid; }
+    } else team = a.team;
+    if (!([0, 1, 2, 3].includes(team) || team === 255)) throw new Error("team must be a $TID 0-3, a team_id, or 'any' (255)");
+    if (a.kind === 'control' && team !== 255) throw new Error("a control point starts NEUTRAL and is taken by presence (spec/utility.md §5d): team must be 'any'");
+    if (!Number.isInteger(a.id) || a.id < 1 || a.id > 65535) throw new Error('id must be an integer 1..65535 (the station id in the advert)');
+    const clash = Object.entries(this.stations).find(([n, s]) => n !== node_id && s.assigned?.id === a.id);
+    if (clash) throw new Error(`station id ${a.id} is already assigned to ${clash[0]}; ids must be unique on the field`);
+    const threshold = a.threshold ?? -74;
+    if (!Number.isInteger(threshold) || threshold < -100 || threshold > -30) throw new Error('threshold must be an integer dBm in -100..-30 (the presence bubble; -74 ≈ 10 ft at high TX)');
+    const st = this.stations[node_id] ?? (this.stations[node_id] = { assigned: null, armed: null, arm_pending: false, report: {}, seen: now() });
+    st.assigned = { kind: a.kind, team, id: a.id, threshold, at: now() };
+    for (const n of Object.keys(this.stations)) this.armStation(n);
+    this.emit();
+    return this.stationViews().find(v => v.node_id === node_id)!;
+  }
+  async deleteStation(node_id: string) {
+    const st = this.stations[node_id]; if (!st) throw Object.assign(new Error('no such station'), { status: 404 });
+    st.assigned = null; st.armed = null; st.arm_pending = false; this.emit();
+  }
+  async armStations() { for (const n of Object.keys(this.stations)) this.armStation(n); this.emit(); return { ok: true, armed: this.stationIds().length, pending: [] }; }
   private pushed = false;
   private acks: State['lobby']['acks'] = {};
   private start_?: State['start'];
@@ -116,7 +173,15 @@ export class MockBackend implements Api {
       // The demo mirrors the server's own `SETUP: ` warning for a grenade objective (compile.py validate),
       // so the KotH rail in `?mock` shows the same field step the real MC does.
       nodes, readiness, config: clone(this.config), config_errors: [...this.cfgErrors],
-      config_warnings: SETUP_WARNING[this.config.station_source ?? ''] ? [SETUP_WARNING[this.config.station_source ?? '']] : [],
+      stations: this.stationViews(), game_no: this.gameNo,
+      config_warnings: [
+        ...(SETUP_WARNING[this.config.station_source ?? ''] ? [SETUP_WARNING[this.config.station_source ?? '']] : []),
+        // mirrors Session._station_warnings(): a station-gated rule with nothing assigned in ITEMS
+        ...(this.config.station_source === 'phone' && !Object.values(this.stations).some(s => s.assigned?.kind === 'control')
+          ? ["SETUP: NO CONTROL-POINT PHONE IS ASSIGNED — this game's objective is a phone (station_source phone); assign a utility phone as CONTROL in ITEMS and arm it, or nothing on the field is the hill"] : []),
+        ...(this.config.respawn.type === 'scanner' && !Object.values(this.stations).some(s => s.assigned?.kind === 'respawn')
+          ? ['SETUP: NO RESPAWN STATION IS ASSIGNED — respawn is SCANNER, so a downed player can only come back at a station; assign a utility phone as RESPAWN in ITEMS and arm it'] : []),
+      ],
       players: clone(this.players), teams: clone(TEAMS),
       kit: { kitted, total: this.players.length, trying: { ...this.trying }, browsing: { ...this.browsing } },
       loadout_pool: this.pool(),
@@ -423,6 +488,8 @@ export class MockBackend implements Api {
   }
   async pushLobby(force?: boolean) {
     if (!this.readiness().go && !force) throw new Error('readiness has reds — clear them before pushing, or push with force');
+    if (this.gameStarted) { this.gameNo = (this.gameNo % 255) + 1; this.gameStarted = false; }   // a new match to every station
+    for (const n of Object.keys(this.stations)) this.armStation(n);
     this.phase = 'lobby'; this.pushed = true; this.trying = {}; this.acks = {};
     for (const p of this.players) {
       const g = GUNS.find(x => x[0] === p.gun_id);
@@ -444,6 +511,7 @@ export class MockBackend implements Api {
   }
   async start(runway_s: number, _force?: boolean) {
     if (!this.pushed) throw new Error('push config first');
+    this.gameStarted = true;
     return this.schedule(runway_s, 1, uid('match'));
   }
   async reschedule(runway_s: number) { return this.schedule(runway_s, (this.start_?.seq ?? 0) + 1, uid('match')); }

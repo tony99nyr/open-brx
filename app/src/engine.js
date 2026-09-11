@@ -42,6 +42,9 @@ const PAIN_GAP_MS = 600;            // A15.3: at most one pain grunt per 600 ms 
 // almost as soon as it started taking damage. 15 keeps the warning late on every stock pool. If a loadout
 // ever needs its own value this wants plumbing through the bundle the way `voice.pain_long_min` is.
 const LOW_HEALTH_HP = 15;
+/** F13: a `$SPAWN` within ~2 s of death wedges the headset in its green out-blink (threshold 2.0-2.5 s; use >= 3). Same
+ *  value as `gameconfig.MIN_RESPAWN_S` on the CLI path. */
+const MIN_RESPAWN_S = 3;
 const MEDAL_GAP_MS = 2000;       // A11.4: medal lines are 1.5-2.5 s; play them back to back, not on top of each other   // A11: no two LED bursts inside a second (three flashes per second is the ceiling)
 const RELOAD_GRACE_MS = 600;     // a reload the gun never echoed still clears the takeover this long after reload_s
 const TEAM_KEY = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green' };
@@ -309,8 +312,13 @@ export class Engine {
   get teamTid() { return this.team ? this.team.tid : null; }
   get teamKey() { return this.team ? (TEAM_KEY[this.team.tid] || String(this.team.color || 'blue')) : 'blue'; }
   get maxHp() { return (this.config && this.config.health && this.config.health.max_hp) || 45; }
-  get maxArmor() { return (this.config && this.config.health && this.config.health.max_armor) || 70; }
-  get respawnDelayMs() { return ((this.config && this.config.respawn && this.config.respawn.delay_s) || 10) * 1000; }
+  /** F47: `??`, not `||` -- MC may ship `max_armor: 0` ("one-shot with a sniper"); `||` turned that explicit 0
+   *  into 70, so a no-armour class silently had armour. (A per-player `overrides.max_armor` lands in `$PSET`
+   *  only; the node never sees it and still models the game value -- a known gap, not covered here.) */
+  get maxArmor() { const v = this.config && this.config.health && this.config.health.max_armor; return (v === 0 || v > 0) ? v : 70; }
+  /** F34/F13: floored at MIN_RESPAWN_S on the node too. MC refuses 1-2 s at PUT, but a config that arrives another
+   *  way (a stored preset, the demo, the stage) spawned at exactly that, inside the headset relay's out-blink wedge. */
+  get respawnDelayMs() { const s = this.config && this.config.respawn && this.config.respawn.delay_s; return Math.max(MIN_RESPAWN_S, s > 0 ? s : 10) * 1000; }
   get respawnType() { return (this.config && this.config.respawn && this.config.respawn.type) || 'auto'; }
   /** scanner respawn: 'trigger' = at the station AND pull the trigger (default); 'presence' = being at the station is enough */
   get respawnGate() { return (this.config && this.config.respawn && this.config.respawn.gate) || 'trigger'; }
@@ -429,6 +437,7 @@ export class Engine {
     this.frames = frames || this.frames; if (roster) this.roster = roster;
     if (config && config.night != null) this.night = !!config.night;
     this.tutorial = false; this.tutorialWeapon = null;
+    this._gunRestFrame = null;   // F86: a new bundle's rest is `gun.rest` until this match's first take says otherwise
     if (!this.frames || !this.frames.head) { this.log('config without frames — ignored', 'le'); return; }
     if (!this.bleUp) { this.configPending = true; this.log('config stored; gun not linked yet — head will be written on relink', 'li'); this._changed(); return; }
     this.configPending = false; this._panicked = null;
@@ -626,11 +635,18 @@ export class Engine {
     // loop's final pass, 2026-09-07, by replaying a second life rather than by reading the code.
     this._roLevels = {}; this._roLastStartAt = null;
     if (!g || !Array.isArray(g.take) || !g.take.length) return;
+    // F86: `gun.take` was compiled for the ARMING team. After an infection flip this gun is on another
+    // team, and taking it with the old frames painted the old colour back over a body the firmware had
+    // just moved -- so the take is looked up by the team we are on NOW when MC shipped one for it.
+    const flipTake = this.frames.team_flip_take && this.teamTid != null && this.frames.team_flip_take[String(this.teamTid)];
+    const take = (Array.isArray(flipTake) && flipTake.length) ? flipTake : g.take;
+    const rest = take === g.take ? g.rest : take[take.length - 1];
+    this._gunRestFrame = rest;   // the readout's revert-to-rest (below) must paint THIS team's rest, not the arming team's
     const life = (this._gunLife = (this._gunLife || 0) + 1);
     const lg = (this._lightGen = this._lightGen || 0);   // teardown snapshot: a blank+paint must not land after _endLocal/panic writes $CLEAR/$SP,99
     this.delay(Math.round((g.after_spawn_s || 2.5) * 1000), () => {
       if (life !== this._gunLife || this._lightGen !== lg || !this.alive) return;
-      this._write(g.take, 'gun take'); this._gunTaken = true; this._gunBand = g.rest; this._readoutFrame = g.rest;   // A16: the strip now shows `rest` — dark until a pool change paints a band
+      this._write(take, 'gun take'); this._gunTaken = true; this._gunBand = rest; this._readoutFrame = rest;   // A16: the strip now shows `rest` — dark until a pool change paints a band
     });
   }
   /** A11.7: the gun body's resting frame when the game owns it (frames.gun; absent = firmware breathing).
@@ -889,7 +905,8 @@ export class Engine {
     // the very same tick (otherwise a blink write and the revert-to-rest write would both land here).
     if (now - this._readoutHoldStartAt >= this._readoutHoldMs) {
       this._readoutHoldActive = false; this._roBlinkAt = 0;
-      if (g.rest && this._readoutFrame !== g.rest) { this._readoutFrame = g.rest; this._write([g.rest], 'readout rest'); }
+      const rest = this._gunRestFrame || g.rest;   // F86: after an infection flip `g.rest` is the arming team's colour
+      if (rest && this._readoutFrame !== rest) { this._readoutFrame = rest; this._write([rest], 'readout rest'); }
       return;
     }
     // The partial-level blink, tick()-polled (see `_readoutSettle`) -- runs only while `_roBlinkAt` is
@@ -1080,8 +1097,9 @@ export class Engine {
     if (g && g.readout && this._gunTaken) {
       this.delay(t, () => {
         if (this._lightGen !== lg || !this.alive) return;
-        if ((this._readoutHoldActive || this._roAnimating) && this._readoutFrame && this._readoutFrame !== g.rest) { this._write([this._readoutFrame], `readout after ${kind}`); }
-        else if (g.rest) { this._readoutFrame = g.rest; this._readoutHoldActive = false; this._write([g.rest], `readout rest after ${kind}`); }
+        const rest = this._gunRestFrame || g.rest;   // F86: the flip's rest, when the gun was taken on another team
+        if ((this._readoutHoldActive || this._roAnimating) && this._readoutFrame && this._readoutFrame !== rest) { this._write([this._readoutFrame], `readout after ${kind}`); }
+        else if (rest) { this._readoutFrame = rest; this._readoutHoldActive = false; this._write([rest], `readout rest after ${kind}`); }
       });
     } else if (g && g.in_play === 'health' && this._gunTaken) this.delay(t, () => { if (this._lightGen !== lg) return; const r = this._gunRest(); if (r && this.alive) { this._gunBand = r; this._write([r], `gun health after ${kind}`); } });   // A11.7: the burst ended on the full-health frame; restore the real band
   }
@@ -1147,16 +1165,13 @@ export class Engine {
   /** B/F70: MC names ONE objective source per game (`config.station_source`), and the phone accepts BOTH
    *  wires. Without this gate a grenade left live on the field (F69) during a phone-point game alternates
    *  ownership with the point every 5 s and announces continuously — two sources, one `this.hill`.
-   *
-   *  ⚠ `STATION_SOURCES` (`mcp/brx_mcp/mc/types.py`) has no value for a BLE phone control point today, only
-   *  `grenade` and `ir_station`, and `compile.py` REFUSES `koth` without one. So the gate is written the only
-   *  way today's vocabulary allows: a game that says `grenade` belongs to the IR beacon and the phone point
-   *  is refused; anything else (absent, or a future phone value) belongs to the phone point. Until MC gains
-   *  that third value a phone-driven KotH cannot be configured — reported, not worked around here. */
+   *  The vocabulary (`STATION_SOURCES`, `mcp/brx_mcp/mc/types.py`): `grenade` = the IR beacon, `phone` = the
+   *  BLE control point (F103 added it 2026-09-11), `ir_station` = a `$CAPTURE`-speaking box that reaches MC,
+   *  not us. Absent = no objective in this game, so what we hear is it (a try-out, the stage). */
   _hillSourceAllowed(source) {
     const src = this.config && this.config.station_source;
     if (!src) return true;                                  // no game, or a mode with no objective: what we hear is it
-    const ok = source === 'station' ? src !== 'grenade' : src === 'grenade';
+    const ok = source === 'station' ? src === 'phone' : src === 'grenade';
     if (!ok && this._hillSourceWarned !== source) {
       this._hillSourceWarned = source;
       this.log(`ignoring the ${source === 'station' ? 'phone control point' : 'grenade hill beacon'}: this game's station_source is ${src}`, 'li');
@@ -2070,6 +2085,11 @@ export class Engine {
     const fresh = this.latch && this.now() - this.latch.at <= C.DEATH_LATCH_MS;
     const shooter_num = fresh ? this.latch.shooter_num : 0;
     const shooter_team = fresh ? this.latch.shooter_team : (this.latch ? this.latch.shooter_team : 0);
+    // F81: wire id 0 is "no identity" (A5.1) -- a grenade hill's ambient damage word (F69) or a gun whose `$PSET`
+    // never landed (F80). Its team field is the hill's OWNER, so naming that team as the killer told the player a
+    // specific lie ("KILLED BY GREEN" when nobody shot them). MC already refuses to credit wire 0; the phone now
+    // says the killer is unknown. A stale latch (older than DEATH_LATCH_MS) is the same case: nobody we can name.
+    const unknown = !fresh || shooter_num === 0;
     this.alive = false; this.deaths++; this.deadAt = this.now(); this._downRearmSent = false;   // §3.2: fresh rearm gate for this life
     // A16 §5: death clears the readout — NO gun write here, the strip simply sits wherever the native hit
     // flash left it until the next `_gunTake` blanks it; a pending hold from this life must not fire later.
@@ -2079,7 +2099,9 @@ export class Engine {
     // just before it can still be mid-animation when death registers.
     this._roGen = (this._roGen || 0) + 1; this._roLevel = null; this._roPool = null; this._roAnimating = false; this._roBlinkAt = 0; this._roBlinkOn = false;
     this._activeRole = null;   // A16 §3.3: cleared BEFORE the infection check below, which may assign a fresh 'infected' role in the same call
-    this.killedBy = { num: shooter_num, team: shooter_team, name: this.nameOf(shooter_num), teamName: TEAM_NAME[shooter_team] || `TEAM ${shooter_team}`, teamKey: TEAM_KEY[shooter_team] || 'red' };
+    this.killedBy = unknown
+      ? { num: 0, team: null, name: null, teamName: null, teamKey: null, unknown: true }
+      : { num: shooter_num, team: shooter_team, name: this.nameOf(shooter_num), teamName: TEAM_NAME[shooter_team] || `TEAM ${shooter_team}`, teamKey: TEAM_KEY[shooter_team] || 'red' };
     this.emitFact({ type: 'death', match_id: this.matchId, shooter_num, shooter_team, ...(desync ? { desync: true } : {}) });
     if (this.config && this.config.mode === 'infection' && this.frames && this.frames.team_flip) {
       const tids = Object.keys(this.frames.team_flip).filter(k => Number(k) !== this.teamTid);
@@ -2101,7 +2123,7 @@ export class Engine {
     this._event('died');   // A11
     if (this._headsetDeath().length) { this._headset(this._headsetDeath(), 'death'); this._deathBlinkAt = this.now(); }   // A11.6 out-blink (empty = the 'native' opt-out; nothing to paint)
     this.carrying = null;
-    this.log(`☠ down — by ${this.killedBy.name || this.killedBy.teamName}`, 'le');
+    this.log(`☠ down — by ${this.killedBy.name || this.killedBy.teamName || 'UNKNOWN'}`, 'le');
     this._changed();
   }
 

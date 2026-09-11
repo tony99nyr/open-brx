@@ -51,7 +51,10 @@ POINT_CAPTURED = "VA23"     # "Control Point Captured." (V109 was "Capture the f
 # --- CS / bomb ------------------------------------------------------------- #
 # A plant kicks off the detonation countdown → reuse COUNTDOWN (VA81) for it.
 BOMB_DETONATED = "X13"      # explosion (CONFIRMED: rocket/explosion in the $SIR table)
-HILL_CAPTURED = "VB0N"      # "Hill Captured"
+HILL_CAPTURED = "VB0N"      # "Hill Captured"  (confirmed by ear 2026-09-10, rung S)
+HILL_CONTESTED = "VB0O"     # "Hill Contested" (by ear 2026-09-10)
+HILL_LOST = "VB0P"          # "Hill Lost!"     (by ear 2026-09-10)
+# ⚠ `V8Q` is catalogued "Hill Confirmed" and says "KILL Confirmed" on the gun (BY_EAR_CORRECTIONS): never a hill line.
 BOMB_PLANTED = "VA1I"       # "Bomb Planted"
 FLAG_RETURNED = "VB0D"      # "Flag returned."
 # --- Extraction (game-modes.md §Extraction; ARC Raiders / Fortnite-Sprites shape) --------- #
@@ -89,6 +92,8 @@ CATALOG: tuple[Cue, ...] = (
     Cue("OBJECTIVE_SCORED", OBJECTIVE_SCORED, "\"Flag captured\"", CONFIRMED),
     Cue("POINT_CAPTURED", POINT_CAPTURED, "\"Control Point Captured\"", CONFIRMED),
     Cue("HILL_CAPTURED", HILL_CAPTURED, "\"Hill Captured\"", CONFIRMED),
+    Cue("HILL_CONTESTED", HILL_CONTESTED, "\"Hill Contested\"", CONFIRMED),
+    Cue("HILL_LOST", HILL_LOST, "\"Hill Lost!\"", CONFIRMED),
     Cue("BOMB_PLANTED", BOMB_PLANTED, "\"Bomb Planted\"", CONFIRMED),
     Cue("FLAG_RETURNED", FLAG_RETURNED, "\"Flag returned\"", CONFIRMED),
     Cue("BOMB_DETONATED", BOMB_DETONATED, "explosion / bomb detonated", CONFIRMED),

@@ -1,26 +1,26 @@
 # Handoff — Open BRX
 
-**State as of 2026-09-11.** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners:
+**State as of 2026-09-11 (late).** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners:
 [`archive/handoff-history.md`](archive/handoff-history.md).
 
 ## What is true today
 
-- ⭐⭐ **KING OF THE HILL IS BUILT, END TO END (2026-09-10/11).** A $200 BRX grenade in hill mode is a working
-  control point, proven **through the gun over BLE** (not the IR rig): beacons `proto=15 team=<owner> mag=8`
-  every 5.0 s, **neutral = team 2**, `mag=50` announces the new owner ~50 ms after the shot and **`mag=53`
-  only when the point was NEUTRAL before** (n=2). The row to ship is `$SIR,15,0,,28` (fn 28 registers with
-  zero player feedback). Shipped: `hillbeacon.py`, `DominationEngine` possession scoring, `control.js` (the
-  PHONE control point: capture rate = leader minus the **largest single rival**, two-phase drain-then-build),
-  the phone's hill audio, MC's `koth` mode + `station_source` vocabulary + operator checklist, and the
-  possession fact with an **`observed_ms` floor** so an unwatched hill reads 0 rather than lying.
-  🔴 **Still live: F69** — an enemy hill's `proto=0 mag=8` word chips the attacker and cannot be switched off
-  while our weapons share that cell. **F91 is the fix and tomorrow's top rung.**
-  🟡 **F82: never put a player on tid 2 in a hill mode** (neutral broadcasts team 2). Refused at three layers; only the bench observation is open.
-  ⚠ **Unfinished (session limit, 02:28), read before building on this:** F101 three phone behaviours (tests
-  skipped with a reason, not deleted), F102 no station mirror on the stage, F103 possession clamped by the
-  capture-progress knob + no `station_source` value for a phone (⚠ its *"no match lifecycle"* headline was
-  **withdrawn 2026-09-11**, filed off a stale review).
-  Spec: `spec/utility.md` §5d/§5e/§5f. Comparison for a reader: `manual/gameplay.md`.
+- ⭐⭐ **KING OF THE HILL IS BUILT, END TO END (2026-09-10/11), AND MC CAN NOW ARM A PHONE POINT (2026-09-11 late).**
+  A $200 BRX grenade in hill mode is a working control point, proven **through the gun over BLE**: beacons
+  `proto=15 team=<owner> mag=8` every 5.0 s, **neutral = team 2**, `mag=50` announces the new owner, **`mag=53`
+  only when the point was NEUTRAL before**. The row to ship is `$SIR,15,0,,28`. Shipped: `hillbeacon.py`,
+  `DominationEngine` possession scoring, `control.js` (the PHONE control point, capture rate = leader minus the
+  **largest single rival**), the phone's hill audio, MC's `koth` mode with `station_source` **`grenade` /
+  `ir_station` / `phone`**, and the possession fact with an `observed_ms` floor.
+  ✅ **F104/S5 (2026-09-11 late): MC arms utility phones** — `PUT /api/stations/{node_id}`, the MUSTER
+  **ITEMS** panel, `station_config` on hello / assign / every lobby push with a **per-match game byte** (the phone
+  resets its point when it changes), `config.stations` in every bundle. ⚠ It was two-sided: the phone's
+  `MC_KINDS` lacked the kind — **and `alert`, so no A11.4 alert had ever reached a phone (F105, fixed).**
+  🔴 **Still live: F69** — an enemy hill's `proto=0 mag=8` word chips the attacker. **F91 is the fix and the top bench rung.**
+  🟡 **F82**: never a player on tid 2 in a hill mode; refused at three layers, and **F97** now refuses a fourth team.
+  **F101 and F103 are closed** (two of F101's three were already built; the tests were wrong). **F102 is the one
+  KotH leftover**: the stage has no phone-point model, so nothing phone-sourced is bench-verifiable.
+  Spec: `spec/utility.md` §5b–§5f. Triage of everything open: [`followups-triage.md`](followups-triage.md).
 - ⭐⭐ **SIMULATED RECOIL IS REAL AND OURS TO DRIVE (2026-09-09, F46 closed).** `$WEAP` **t21 = accuracy
   ceiling · t22 = floor · `$ALCD` tok2 = live accuracy**; falls in five steps toward the floor, races a native
   recovery (**t14 sets how hard it bites**), resets on reload, and below the ceiling a shot emits **IR magnitude
@@ -32,10 +32,8 @@
   drives its own gun over BLE and reports to MC over the LAN. Verified end to end: a 300 s FFA on
   2026-08-30 (two iPhones, MacBook host, 12 kills / 126 hits) and a TDM outdoors on 2026-09-01 (two
   Android HUDs). MC is setup, start and recap only; it is not BLE-connected to guns during play.
-- **APK 0.1.7 IS built and published** (`app-v0.1.7`, from `51cc20b`, 2026-09-07 18:46).
-  ⚠ **It predates A16 + A17** (`976e35a`), so the LED language and the hit audio are NOT on any
-  phone: dark rest, the pool readout, the `$HLOOP` down signal, headset roles and the material hit
-  sounds all need a NEW build. `cd app && npm run android:apk`, then rebuild the site.
+- **APK 0.1.8 is published** (`app-v0.1.8`, from `cfe2a8e`, 2026-09-10) — the first build with A16, A17 and the
+  hill work. ⚠ Debug-signed, and it predates this session's engine fixes: `cd app && npm run android:apk` before a field day.
 - **Presentation profile (contracts A11)** is built: presets `standard / silenced / counter_strike / vip
   / infection / last_stand / extraction`, per-event sound + gun-LED burst + headset colour, shipped in
   the bundle. Events are **HUD-driven** (fire on the phone from the bundle) except cross-player facts
@@ -54,9 +52,10 @@
   the 24 characters, hear every line it carries with its role and words, ✓/✗ each one
   (`~/.brx-mcp/voice-verdicts.jsonl`). Start it WITHOUT `--gun` (S11: that flag blocks the web server until
   the gun answers) and press CONNECT.
-- **Utility station (A13):** a spare phone as a BLE-beacon respawn station is proven on hardware and
-  built on the phone side; **MC arming at muster (S5, A13.5) is not built.** Hosted games ignore the
-  grenade's IR station words (B23), so hosted respawn stations are node-defined. **Station hardware is on order (2026-09-11):** 2× M5StickS3 + 3× Grove IR emitters ([`../hardware/inventory.md`](../hardware/inventory.md)); firmware `hardware/m5sticks3/`; gates in **H7**.
+- **Utility station (A13):** a spare phone as a BLE-beacon respawn station is proven on hardware, built on the
+  phone side, and **MC arms it from the MUSTER ITEMS panel since 2026-09-11 (S5/F104; not yet used at a field).**
+  Hosted games ignore the grenade's IR station words (B23), so hosted respawn stations are node-defined.
+  **Station hardware is on order (2026-09-11):** 2× M5StickS3 + 3× Grove IR emitters ([`../hardware/inventory.md`](../hardware/inventory.md)); firmware `hardware/m5sticks3/`; gates in **H7**.
 - **Sound bank:** 2477 on-gun clips off the gun and classified; 148 audited by ear (S9 open).
 - **Hit audio (A17, ear-confirmed 2026-09-07):** metal for armour (`H02/H36/H37`), an energy note for
   shield (`H22`), **health deliberately SILENT** — real damage is where the metal stops and the pain
@@ -89,15 +88,19 @@
   2.0 port is done. `~/.brx-mcp/armory.json` is never in git (headset PINs); stickers stay out of
   docs, use `Tactix-XXXX`.
 
-## What changed since the last handoff (2026-09-09 to 2026-09-11)
+## What changed since the last handoff (2026-09-11, late session — no hardware)
 
-- **The whole KotH build plus the bench session behind it** — see the two 2026-09-10/11 entries in
-  [`experiment-log/2026-09.md`](experiment-log/2026-09.md), which carry the evidence, the eight bugs the
-  reviews caught, and what the session limit stopped. Headlines: fn 28 confirmed on protocol 15 against a
-  real beacon; all hosted callouts confirmed BY EAR (⚠ `V8Q` is catalogued "Hill Confirmed" and says
-  **"Kill Confirmed"** — fixed at source in `BY_EAR_CORRECTIONS`, never in the generated JSON); **F84** a
-  hill beacon's `$HP` echo blocked regen for whole matches; and the driver armed **gun #1 at `$PSET,0`**, so
-  the first gun of every CLI game silently could not score.
+- **The followups were triaged in full** ([`followups-triage.md`](followups-triage.md): category · doer · blocker
+  · what it unblocks · a dependency spine) and the keyboard list was worked top down: **18 ids closed** (F81 ·
+  F34 · F97 · F47 · F55 · F53 · F41 · F90 · F101 · F103 · F104 · F86 · F77 · F64 · F31 · F84 · F92 · F94) plus
+  F105 opened and closed, F80 / S5 / F13 narrowed. Log: the 2026-09-11 (late) entry. Highlights: the victim's
+  phone no longer names the hill's owner as the killer; the possession tally is real elapsed time; the recap
+  names a replaying gun (F74's shape) and counts wire-0 hits; an infected gun stays painted infected; every
+  timer wider than the 5 s hill period must be judged in `test_timers_vs_hill_period.py`.
+- **The whole KotH build plus the bench session behind it** — the two 2026-09-10/11 entries in
+  [`experiment-log/2026-09.md`](experiment-log/2026-09.md). Headlines: fn 28 confirmed on protocol 15; hosted
+  callouts confirmed BY EAR (⚠ `V8Q` says **"Kill Confirmed"**, fixed in `BY_EAR_CORRECTIONS`); **F84** a hill
+  beacon's `$HP` echo blocked regen; the driver armed **gun #1 at `$PSET,0`**.
 
 - **LEDs, the three facts from A16 parts 1+2 that still bite** (full block moved to
   [`archive/handoff-history.md`](archive/handoff-history.md) 2026-09-09, now that A16 is verified):
@@ -109,21 +112,18 @@
 
 ## Next actions
 
-1. **Hear A15.3 on a gun** (10 min, tagger + emitter): scream per life, spawn line varies, pain matches damage, kill draws from the 5 takes.
-2. ✅ **APK 0.1.8 published 2026-09-10** (`app-v0.1.8`, from `cfe2a8e`) — the FIRST build carrying A16, A17
-   and the hill work. ⚠ It is debug-signed with `webContentsDebuggingEnabled: true` and the repo is now
-   PUBLIC, so it is anonymously downloadable and inspectable (B21). Decide before a field day.
-3. **LED design DECIDED (2026-09-09)**: partial-level blink stays, healing gets no opening beat. Do not re-open.
-4. **Bench: run [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md) first** — its **B2** can kill the
-   F91 plan (every capture ever measured was a protocol-0 word, so moving off protocol 0 may delete
-   shoot-to-capture). Then block E (LED metering), D1 (**F23**). **5. Build F101/F102/F103** — the KotH work the
-   session limit stopped, and F102 means nothing phone-sourced is bench-verifiable until the stage mirrors it.
-6. ⚠ **Nothing shield-shaped has EVER been on a gun** (F60): shield is IR-only (P16), so the teal bar and
-   A16.5's handover are unverifiable. Tomorrow's rung C1 is the first attempt.
+1. **Bench: run [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md) first** — its **B2** can kill the
+   F91 plan (every capture ever measured was a protocol-0 word). Then block E (LED metering), D1 (**F23**).
+2. **Keyboard, in order** (from the triage): **F102** the stage mirror of the phone control point · **F58(b)** +
+   **F54** the other two stage gaps · **E1 → E2** extensibility · **F15** stun (B23 needs it) · S5's leftover
+   (persist station assignments across an MC restart). Then **B19** for F80's real fix.
+3. **Hear A15.3 on a gun** (10 min): scream per life, spawn line varies, pain matches damage.
+4. **APK 0.1.8** (`app-v0.1.8`) carries A16/A17/hill; **nothing since is on a phone** — this session's engine
+   fixes (F81, F34, F47, F86, F103, F105's alerts) need a NEW build before a field day. ⚠ Debug-signed (B21).
+5. ⚠ **Nothing shield-shaped has EVER been on a gun** (F60); rung C1 is the first attempt.
 
-**Next bench sheet: [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md)** — the six readings that gate
-KotH (F91 off protocol 0, F70/F76's currency, F69's missing control, F60's shield, F87's t14 floor, D6's rest),
-self-contained. Whole queue: [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md). Register: §9. Pre-flight: `gotchas.md`.
+**Next bench sheet: [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md)**, self-contained. Whole queue:
+[`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md). Register: FOLLOWUPS §9. Pre-flight: `gotchas.md`.
 
 ## Machine roles
 

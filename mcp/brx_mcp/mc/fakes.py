@@ -185,6 +185,13 @@ class FakeNet:
         for cb in self._cb["node"]:
             cb({"node_id": node_id, "node_type": node_type, "gun_name": gun_name, "gun_tail": tail, "fw": fw})
         return node
+    def simulate_utility_hello(self, node_id: str, app_ver: str = "utility") -> dict | None:
+        """A13.5: a station phone's hello -- `node_type: "utility"`, no gun (utility.js `connectMc`)."""
+        hello = {"node_id": node_id, "node_type": "utility", "app_ver": app_ver, "seq_next": 1}
+        node = self._hydrate(hello) if self._hydrate else None
+        for cb in self._cb["node"]:
+            cb({"node_id": node_id, "node_type": "utility", "app_ver": app_ver})
+        return node
     def simulate_bind(self, node_id: str, gun_name: str, player_id: str | None = None):
         tail = gun_name.rsplit("-", 1)[-1]
         for cb in self._cb["node"]:

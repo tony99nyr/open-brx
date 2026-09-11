@@ -177,10 +177,25 @@ OBJECTIVE_MODES = {"domination", "koth"}
 #                     events (`modes/objectives.py`'s station path, which names its point). ⚠ NOT
 #                     confirmed to be this same proto-15/fn-28 mechanism, and we have never had one
 #                     on the bench -- it is accepted because that path exists in code, not measured.
+#   * `phone`      -- a spare phone in the `utility` role, kind `control` (spec/utility.md §5d): a BLE
+#                     control point that captures by PRESENCE (it counts living player adverts inside its
+#                     bubble) and announces owner / progress / contested in its own advert. Armed by MC at
+#                     muster (`station_config`, A13.5). The only source that can drive MORE than one point
+#                     (its advert carries a station id; a grenade's beacon does not, F88), and the only one
+#                     that can truthfully say "contested" (F75). Built 2026-09-10/11; heard by every player
+#                     phone with no LAN (F94). Added 2026-09-11 (F103): the phone side existed and MC had
+#                     no word for it, so a phone-driven KotH could not be configured at all.
 STATION_SOURCES = {
     "grenade": "a BRX Smart Grenade in hill mode (protocol-15 beacons; bench-proven 2026-09-10)",
     "ir_station": "a BRX station / Utility Box emitting $CAPTURE objective events (unproven on our bench)",
+    "phone": "a spare phone in the utility role as a BLE control point, capture by presence (spec/utility.md §5d)",
 }
+
+
+# A13 / spec/utility.md §5: what a utility phone can be. Mirrors `KIND` in `app/src/beacon.js` (the advert
+# byte 8) and `KIND_LABEL` in `app/src/utility.js`; a `station_config` naming anything else is refused at PUT.
+STATION_KINDS = ("respawn", "powerup", "extraction", "bomb", "control")
+STATION_TEAM_ANY = 255        # advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral
 
 
 class GameConfig(TypedDict):
@@ -196,6 +211,9 @@ class GameConfig(TypedDict):
     led: NotRequired[dict]
     player_num_base: NotRequired[int]   # A6.5
     siphon: NotRequired[Siphon]         # S14: heal-on-kill; absent or {0,0} = off
+    stations: NotRequired[list[dict]]   # A13.1 (F104): `[{id, kind}]` -- the utility items MC armed for THIS game.
+    #                                     Set by `Session._wire_config()` from the ITEMS assignments, never by the
+    #                                     operator; a player phone honours only these ids (`engine.js _stationAllowed`).
     station_source: NotRequired[str]    # F70: what is emitting this game's objective -- `STATION_SOURCES` above
     #                                     ("grenade" = a BRX Smart Grenade in hill mode, "ir_station" = a
     #                                     $CAPTURE-speaking station). Present only for the modes that need one
@@ -220,6 +238,7 @@ class FrameBundle(TypedDict):
     end: list[str]
     panic: list[str]
     team_flip: NotRequired[dict[str, list[str]]]
+    team_flip_take: NotRequired[dict[str, list[str]]]   # F86: per-tid [blank, rest] the node takes the gun with after a flip
     cues: dict[str, str]  # A6.3: key -> PRE-COMPOSED frame the node writes verbatim. countdown, kill,
     # game_over?, victory?, tick?, klaxon?, multi?, medal?, runway_*?, and the once-per-life
     # low-health pair hurt?/hurt_led? (hurt_led is an $HLED, not a $PLAY — see compile.cues)
@@ -388,6 +407,9 @@ NODE_KINDS = {"hello", "bind", "event", "event_batch", "status", "ack_config", "
               "log_offer", "log_data", "ready", "loadout_request", "loadout_browse"}   # A10: loadout_*
 MC_KINDS = {"welcome", "assign", "tutorial", "config", "start", "feedback", "control",
             "time_res", "pull_log", "ack", "apply", "score", "loadout_ack",             # A10: loadout_ack
-            "alert"}    # A11.4 -- omitted here until 2026-09-07, so every alert MC sent was rejected
+            "alert",    # A11.4 -- omitted here until 2026-09-07, so every alert MC sent was rejected
                         # by envelope.validate() at the node and silently dropped (contracts.md §MC->node).
+            "station_config"}   # A13.5 (F104, 2026-09-11): MC -> a utility node. The same trap as `alert`:
+                                # the phone's `MC_KINDS` (app/src/transport/envelope.js) must list it too, or
+                                # the arming message is dropped as malformed before `onMessage` ever sees it.
 CONTROL_CMDS = {"end", "panic", "abort_start", "recall"}

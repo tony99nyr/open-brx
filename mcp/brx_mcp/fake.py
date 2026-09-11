@@ -72,7 +72,12 @@ class FakeTagger:
                     setattr(self, attr, v)
         elif cmd == "SPAWN":
             self.alive = True
-            self.hp, self.armor, self.shield = self.cfg_hp, self.cfg_armor, self.cfg_shield
+            # F41 / P16: a REAL gun reports shield 0 on every `$HP` after a spawn no matter what `$PSET`
+            # token 5 said -- the shield pool is IR-only (fn 11) and not BLE-writable. The fake used to
+            # apply the token here, so the first `$HP` of a life read as a 70-point GAIN that netted out the
+            # first hit's damage and produced a false bug report. The `$PSET` value is kept (`cfg_shield`)
+            # as the CEILING an IR grant fills toward, never as a starting pool.
+            self.hp, self.armor, self.shield = self.cfg_hp, self.cfg_armor, 0
             self._out.append(f"$LCD,{self.hp},{self.armor},0,0,0,0,*")
         elif cmd == "LIFE":
             # Bench-measured 2026-09-09 (protocol/brx-protocol.md $LIFE). Three behaviours the old

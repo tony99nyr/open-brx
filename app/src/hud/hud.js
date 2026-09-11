@@ -532,11 +532,11 @@ export class Hud {
 
     // DOWN (persistent while dead)
     if (st.phase === 'live' && !st.alive) {
-      const kb = st.killedBy || {}; const tk = kb.teamKey || 'red';
+      const kb = st.killedBy || {}; const tk = kb.teamKey;   // F81: null = no identity on the wire, so no team chip
       if (this._moment !== 'down') {
         this._moment = 'down';
         this.overlay.innerHTML = `<div class="mo down"><div class="wash"></div>
-          <div class="c"><div class="l2">${st.respawnType === 'scanner' ? '<span class="tt"><span class="t">DOWN</span><span class="t t2">RESPAWN<br>AT STATION</span></span>' : '<span class="t">DOWN</span>'}<span class="kb">KILLED BY <b style="background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span></div>
+          <div class="c"><div class="l2">${st.respawnType === 'scanner' ? '<span class="tt"><span class="t">DOWN</span><span class="t t2">RESPAWN<br>AT STATION</span></span>' : '<span class="t">DOWN</span>'}<span class="kb">KILLED BY <b style="${tk ? `background:${TEAM_COLOR[tk]};color:${TEAM_INK[tk]}` : 'background:var(--mut);color:var(--bg,#000)'}"><span class="unskew">${esc(kb.name || kb.teamName || 'UNKNOWN')}</span></b></span></div>
           <div class="dn" id="dnhint">${this._downHint(st)}</div></div>
           <div class="recap" id="downrecap">${this._downRecap(st)}</div></div>`;
         this._flash();

@@ -101,6 +101,14 @@ export function Recap() {
                 : " KILLS LIVE IN VICTIMS' REPORTS; BRING THEM INTO RANGE TO FINALIZE."}
         </div>
       )}
+      {/* F77 / F80: after-the-fact detectors from the scorer. A replayed hit cannot be dropped (it looks exactly
+          like real fire), so the recap NAMES the pattern; a wire-0 shooter scored for nobody, and the operator
+          should know whether that was a hill or a gun that never got its identity. */}
+      {(rc.warnings ?? []).map(w => (
+        <div key={w} data-testid="recap-warning" style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.warn}`, borderLeft: `3px solid ${T.warn}`, background: 'rgba(255,176,32,.08)', font: F.chk(600, 11.5), letterSpacing: '.04em', color: T.warn, textTransform: 'none' }}>
+          ▲ {w}
+        </div>
+      ))}
       {/* A8: `settling` means a bound node has not been heard from since the whistle, so the numbers on
           this screen are still moving. `provisional` cannot cover it — a player is marked flushed on
           their FIRST event, so anyone who fired is flushed long before the end (Tony, field 2026-08-30:

@@ -5,6 +5,7 @@ import type { ReadinessRow } from '../api/types';
 import { useStore } from '../store';
 import { CHAMFER, F, T, TAB, fmtAge } from '../tokens';
 import { CountBlock, GhostButton, Micro, ScreenHeader, SectionRule, SegBar, Tag } from '../ui';
+import { Items } from './Items';
 
 const statusColor = (s: ReadinessRow['status']) =>
   (s === 'red' ? T.bad : s === 'amber' ? T.warn : s === 'waiting' ? T.micro : T.ok);
@@ -66,11 +67,13 @@ export function Armory() {
           {board.length === 0 && <div style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.micro, padding: '20px 4px' }}>NO PLAYERS YET — ADD OPERATORS IN KIT, OR JUST GET PHONES JOINED FIRST ◂</div>}
         </div>
       </div>
-      {(state?.nodes?.length ?? 0) > 0 && (
+      <Items />
+      {/* A13.5: a utility phone is a station, not a companion; it has its own card in ITEMS above */}
+      {(state?.nodes ?? []).filter(n => n.node_type !== 'utility').length > 0 && (
         <div style={{ marginTop: 20 }}>
-          <SectionRule label={`PHONES ON THE NET // ${state!.nodes.length}`} hint="WITH OR WITHOUT A GUN" />
+          <SectionRule label={`PHONES ON THE NET // ${(state?.nodes ?? []).filter(n => n.node_type !== 'utility').length}`} hint="WITH OR WITHOUT A GUN" />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 12 }}>
-            {(state?.nodes ?? []).map(n => <NodeCard key={n.node_id} n={n} registry={registry} />)}
+            {(state?.nodes ?? []).filter(n => n.node_type !== 'utility').map(n => <NodeCard key={n.node_id} n={n} registry={registry} />)}
           </div>
         </div>
       )}

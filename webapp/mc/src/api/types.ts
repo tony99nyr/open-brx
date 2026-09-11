@@ -63,6 +63,7 @@ export interface GameConfig {
   /** F70: what is on the field emitting this game's objective — 'grenade' (a BRX Smart Grenade in hill
    *  mode) or 'ir_station'. Present only for the modes that need one (koth/domination/ctf/cs/bomb), which
    *  the server REFUSES to push without it. Server vocabulary: `mc/types.py` STATION_SOURCES. */
+  stations?: { id: number; kind: StationKind }[];   // A13.1 (F104): the utility items MC armed this game — derived on the wire, never edited
   station_source?: string;
   loadout_policy: LoadoutPolicy;
   /** A11: sounds + lights per event (preset or custom). Optional — an older server never sends it. */
@@ -168,6 +169,10 @@ export interface RecapView {
   honors: Honor[];
   provisional: boolean;
   missing: string[];
+  /** F77 / F80 (2026-09-11) — after-the-fact detectors, worded for the operator: a run of identical hits at a
+   *  steady ~5 s period (a gun replaying a latched IR event, F74), or hits/deaths from wire id 0 (a hill's
+   *  damage word, or a gun whose $PSET never landed). Absent when there is nothing to say. */
+  warnings?: string[];
   /** F70 — an OBJECTIVE mode's real result: SECONDS each team held the control point, merged from the
    *  nodes' `possession` facts (max per point per team, never summed — four teammates on one hill all
    *  report the same ownership). Absent unless some node reported, which is itself the answer: a hill
@@ -190,12 +195,35 @@ export interface StartView {
   per_node: Record<string, { arm_state: ArmState; t_minus_ms?: number; synced: boolean; last_seen_ms: number }>;
 }
 
+/** A13.5 (F104): a utility phone as MC sees it — the ITEMS panel's row. `assigned` is the operator's call,
+ *  `armed` what the phone was last told, `report` the phone's own heartbeat (for a control point that carries
+ *  the self-authoritative recap: owner, progress, hold_ms per team). */
+export type StationKind = 'respawn' | 'powerup' | 'extraction' | 'bomb' | 'control';
+export const STATION_KINDS: StationKind[] = ['respawn', 'powerup', 'extraction', 'bomb', 'control'];
+export interface StationAssignment { kind: StationKind; team: number; id: number; threshold: number; at?: number }
+export interface StationView {
+  node_id: string;
+  assigned: StationAssignment | null;
+  armed: { game: number; at: number; kind: StationKind; team: number; id: number } | null;
+  arm_pending: boolean;
+  report: { kind?: StationKind; team?: number; station_id?: number; threshold?: number; live?: boolean; revives?: number;
+            armed?: boolean; battery?: number;
+            control?: { owner?: number; progress?: number; contested?: boolean; hold_ms?: Record<string, number> } };
+  app_ver?: string | null;
+  last_seen_ms: number | null;   // age
+  online: boolean;
+  attention: string[];
+  game: number;                  // the game byte stations are armed with THIS match
+}
+
 export interface State {
   session_id: string;
   phase: Phase;
   t: number;
   lan: { mode: 'router' | 'hotspot' | 'unknown'; ssid?: string; ip: string; port: number; ws_url: string; qr: string; auth_required?: boolean };
   nodes: NodeView[];
+  stations?: StationView[];      // A13.5: absent on a server older than 2026-09-11
+  game_no?: number;
   readiness: ReadinessSnapshot;
   config: GameConfig;
   config_errors: string[];
@@ -280,6 +308,10 @@ export interface Api {
   patchPlayer(id: string, patch: Partial<Player>): Promise<Player>;
   deletePlayer(id: string): Promise<void>;
   evictNode(node_id: string): Promise<void>;   // DELETE /api/nodes/{id} — operator kick (closes 4000, unbinds, rotates key)
+  /** A13.5: assign a utility phone (kind / team / id / threshold); MC pushes `station_config` at once. 400 in the operator's voice. */
+  putStation(node_id: string, a: { kind: StationKind; team: number | string; id: number; threshold?: number }): Promise<StationView>;
+  deleteStation(node_id: string): Promise<void>;
+  armStations(): Promise<{ ok: boolean; armed: number; pending: string[] }>;
   tryout(id: string, weapon_id: string): Promise<void>;
   rangeVerdicts(): Promise<Record<string, { weapon_id: string; verdict: 'pass' | 'issue'; note: string; t: number }>>;
   rangeVerdict(weapon_id: string, verdict: 'pass' | 'issue', note?: string): Promise<unknown>;

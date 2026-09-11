@@ -1910,3 +1910,19 @@ def test_the_stage_can_synthesise_the_three_hill_words_for_the_bench():
     reg = st.ir_registers()
     for kind in ("hill", "hill_capture", "hill_was_neutral"):
         assert kind in S.IR_KINDS and reg[kind]["proto"] == 15
+
+
+def test_a_lethal_host_write_arrives_as_a_zeroed_lcd_and_the_stage_books_the_death():
+    """F64 replay: the bench frame `$LCD,0,0,0,0,32,192,*` (a lethal `$LIFE`, 2026-09-09) has no `$HP`
+    twin. The correction that "the node books it" was a code read; this feeds the real frame."""
+    async def run():
+        st, mgr = mk(gun="health")
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm(); await st.spawn(); await settle(st)
+        st.poll()
+        assert st.alive
+        st._on_rx("$LCD,0,0,0,0,32,192,*")
+        await settle(st)
+        assert not st.alive, "death booked from the zeroed $LCD"
+        assert st.hp == 0
+    asyncio.run(run())

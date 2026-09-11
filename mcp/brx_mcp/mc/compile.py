@@ -244,6 +244,8 @@ _OBJECTIVE_SIR_ROW = "$SIR,15,0,,28,0,0,1,,*"
 # because `state.py`'s PUT validator and `scoring.py` read the same set (keep the local alias: it is
 # what every guard in this file reads).
 _OBJECTIVE_MODES = OBJECTIVE_MODES
+# F97: the teams a hill mode can actually field -- every valid tid except the one a NEUTRAL hill broadcasts.
+_HILL_TIDS = frozenset(t for t in pg.TEAM_TIDS if t != _NEUTRAL_TEAM)
 
 # Every mode that cannot run without something on the field emitting its objective (modes §7).
 # `extraction` is deliberately absent: its objective runs MC-side off gun events, no emitter.
@@ -654,13 +656,18 @@ class Compiler:
             cell = (f[T["proto"] + 1] or "0", f[T["subtype"] + 1] or "0")
         except (IndexError, ValueError, KeyError):
             return None
-        # ⚠ `sir.get(cell, 0)` defaults an UNCOVERED cell's function to 0. Inert today -- every catalogued
-        # weapon's stock cell is in `_SIR_TABLE` -- but if a future weapon lands on a cell the table lacks
-        # AND `hit_audio_rekey` is on, the re-key would write its new row with fn 0 and silently change
-        # that weapon's damage class. `assert_sir_covers_weapons` checks a row EXISTS for the cell, never
-        # that the function is right, so nothing would catch it. Review 2026-09-07; see FOLLOWUPS **F53**
-        # (this cited F49 until 2026-09-11 — F49 is the unexplained polarity bench result, a different row).
-        return _ha.Entry(weapon_id, _ha.class_for(row.get("role"), weapon_id), cell, sir.get(cell, 0))
+        # F53 (closed 2026-09-11): this used to be `sir.get(cell, 0)`, which defaulted an UNCOVERED cell's
+        # function to 0 -- inert while every catalogued weapon's stock cell is in `_SIR_TABLE`, but a future
+        # weapon on a cell the table lacks with `hit_audio_rekey` ON would have had its new row written with
+        # fn 0, silently changing its damage class, and `assert_sir_covers_weapons` (which checks a row
+        # EXISTS, never that its function is right) would have passed. An uncovered cell is now an error
+        # at compile time rather than a plausible wrong table on the gun (the F40 "absence reports as
+        # health" shape).
+        if cell not in sir:
+            raise ValueError(
+                f"F53: weapon {weapon_id!r} fires on IR cell {cell} and the $SIR table has no row for it "
+                f"-- add the cell to compile._SIR_TABLE (with the function it needs, not 0) before it ships")
+        return _ha.Entry(weapon_id, _ha.class_for(row.get("role"), weapon_id), cell, sir[cell])
 
     def hit_plan(self, roster, rekey: bool = False) -> "_ha.Plan":
         """The A17 `$SIR` plan for ONE MATCH, from every weapon on the roster.
@@ -943,10 +950,21 @@ class Compiler:
         if config["mode"] == "infection":
             # move THIS gun to each other team's $TID on death, then re-arm (node emits team_change)
             flip: dict[str, list[str]] = {}
+            take: dict[str, list[str]] = {}
             for t in teams:
                 if int(t["tid"]) != tid:
                     flip[str(t["tid"])] = [f"$TID,{t['tid']},*"] + revive
+                    # F86: `gun.take` (blank + rest) is compiled for the ARMING team, so after a flip the
+                    # node's next take -- 2.5 s after the flip's own $SPAWN, and after every later revive --
+                    # painted the OLD team's colour back onto a gun the firmware had just moved. The node
+                    # picks the take for the team it is on now; this is that table. (The headset is the
+                    # `infected` ROLE's job, A16 §3.3, and needs nothing here.)
+                    other = _pres.gun_frames(prof, int(t["tid"]), night, gc.leds, ffa, gc.hp, gc.armor, gc.shield)
+                    if other:
+                        take[str(t["tid"])] = other["take"]
             bundle["team_flip"] = flip
+            if take:
+                bundle["team_flip_take"] = take
         return bundle
 
     def tutorial_frames(self, weapon: Weapon, environment: str) -> list[str]:
@@ -1085,6 +1103,19 @@ class Compiler:
                     f"({', '.join(neutral_teams)}) — that is the value a NEUTRAL hill broadcasts, and "
                     "anyone moved onto it later reads every uncaptured point as their own. Use tid 0, 1 or 3.")
 
+        # F97: a hill mode has THREE usable teams, never four. Four tids exist (0-3, F35), a neutral hill
+        # broadcasts 2 (F82), so 0 / 1 / 3 are all there is -- a "free-for-all" King of the Hill caps at
+        # three players and a fourth must share a team. Refused by count rather than left to the F82
+        # message, whose advice ("use tid 0, 1 or 3") is impossible for a fourth single-member team.
+        if mode in _OBJECTIVE_MODES:
+            distinct = {t.get("tid") for t in config.get("teams", [])}
+            if len(distinct) > len(_HILL_TIDS):
+                errors.append(
+                    f"F97: mode {mode!r} supports at most {len(_HILL_TIDS)} teams (tids "
+                    f"{sorted(_HILL_TIDS)}); this config has {len(distinct)}. A neutral hill broadcasts "
+                    f"team {_NEUTRAL_TEAM} and the IR team field is 2 bits, so a fourth player has to "
+                    "share a team -- an FFA hill caps at three players")
+
         # ffa ⇒ exactly one team (one $TID); friendly fire is forced on in compile (§2/A5.2)
         if mode == "ffa" and len({t["tid"] for t in config.get("teams", [])}) > 1:
             errors.append("ffa requires a single $TID (one team); identity is $PSET, not $TID (A4.1)")
@@ -1136,6 +1167,15 @@ class Compiler:
                         "SETUP: POWER-CYCLE THE GRENADE SO IT STARTS NEUTRAL, SET IT TO HILL MODE, AND "
                         "PLACE IT — a hill that starts already owned skews the whole match, and only a "
                         "power cycle guarantees neutral. ONE POINT ONLY (F88: a beacon carries no station id)")
+                elif src == "phone":
+                    # A phone point is NOT power-cycled: arming is what resets it (utility.js
+                    # `applyStationConfig` calls `resetPoint()` when the game id changes), so the
+                    # checklist is about the app being in the right role and staying awake on the point.
+                    warnings.append(
+                        "SETUP: THE CONTROL POINT IS A PHONE — open the app in the UTILITY role, kind "
+                        "CONTROL, confirm it shows MC-ARMED for THIS game (arming resets the point; do NOT "
+                        "power-cycle it), leave the screen awake on the point, and check its battery. "
+                        "Players must be advertising (the HUD does this) or the point counts nobody")
                 else:
                     warnings.append(
                         "SETUP: PLACE AND POWER THE IR STATION, AND CHECK IT READS NEUTRAL BEFORE THE "

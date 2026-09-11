@@ -101,6 +101,11 @@ class DominationEngine(ScoredEngine):
                 f"F82: {player_id!r} cannot be on team {hb.NEUTRAL_TEAM} in a hill mode — that is "
                 "the value a NEUTRAL grenade broadcasts, so this player would read every uncaptured "
                 "point as their own and take no hill damage. Use team 0, 1 or 3.")
+        # F97: the same arithmetic from the other side -- a fourth DISTINCT team cannot exist here.
+        if team not in self._acc and len(self._acc) >= 3:
+            raise ValueError(
+                f"F97: {player_id!r} on team {team} would be a fourth team in a hill mode; only "
+                f"three exist (0, 1 and 3 -- {hb.NEUTRAL_TEAM} is the neutral broadcast). Share a team.")
         self.roster.add(player_id, team)
         self._acc.setdefault(team, 0.0)
 

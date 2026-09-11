@@ -17,6 +17,9 @@ specified. Then **[`manual/`](manual/)**, the confirmed-facts manual the public 
   machine roles. Overwritten each session, never stacked.
 - **[FOLLOWUPS.md](FOLLOWUPS.md)** — **every open item and nothing else**, with a "Needs Tony at the bench"
   section (the bench queue) and "System proofs" (needs players / space). Ids are permanent.
+  **[followups-triage.md](followups-triage.md)** is the categorised index over it (bug in active code · core
+  platform gap · bench-gated · decision · future · hygiene, with who can close each and what it unblocks); if
+  it disagrees with a row, the row is right.
 - **[experiment-log/](experiment-log/)** — the append-only lab notebook, one file per month;
   [`experiment-log.md`](experiment-log.md) is its index. **Append after every session.** Nobody reads it
   for orientation; grep it.

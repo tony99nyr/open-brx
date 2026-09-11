@@ -33,6 +33,15 @@ def test_infection_dead_human_flips_to_infected_with_tid_frame():
     assert snap["players"]["h1"]["team"] == 2, "dead human must join the infected team"
     assert "$TID,2,*" in g.frames_to("h1"), "flipped gun must get a $TID,<infected> frame"
     assert not g.over, "two humans still stood at seed time — game must not end yet"
+    # F86 (bench 2026-09-10): the firmware moves hit resolution on `$TID` but leaves the LEDs on the old
+    # colour, so the driver blanks then paints the NEW team right after the write -- the verified remedy.
+    from brx_mcp import poolgauge as pg
+    fr = g.frames_to("h1")
+    i = fr.index("$TID,2,*")
+    assert fr[i + 1] == pg.GUN_BLANK, fr[i:i + 4]
+    assert fr[i + 2] == pg.team_frame(2, dim=True) and fr[i + 3] == pg.headset_team_frame(2), fr[i:i + 4]
+    # CONTROL: the untouched human's gun got no repaint
+    assert pg.GUN_BLANK not in g.frames_to("h2")[1:] or "$TID,2,*" not in g.frames_to("h2")
 
 
 def test_infection_flipped_human_respawns_as_infected():

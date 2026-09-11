@@ -461,3 +461,43 @@ def test_a_garbage_possession_payload_is_ignored_rather_than_scored():
     # CONTROL: a well-formed report on the same scorer does land, so "ignored" is about the payload.
     assert sc.ingest("n1", _poss({str(s.config["teams"][0]["tid"]): 5_000}), 1_100_000) == "scored"
     assert sc.possession()["by_team"][s.config["teams"][0]["team_id"]] == 5
+
+
+def test_a_hill_config_cannot_hold_four_teams_and_the_error_names_the_cap():
+    """F97: PUT /api/config refuses a four-team hill BEFORE the F82 check, so the operator reads the
+    limit ("three teams") rather than a tid-2 message no fourth single-member team can obey."""
+    s = _sess("koth")
+    four = [{"team_id": n, "name": n.upper(), "color": n, "tid": t}
+            for t, n in ((0, "red"), (1, "blue"), (2, "yellow"), (3, "green"))]
+    try:
+        s.set_config({"teams": four})
+        raise AssertionError("F97: a four-team hill config was accepted")
+    except ValueError as e:
+        assert "F97" in str(e) and "three" in str(e), e
+    # CONTROL 1: three single-member teams -- the FFA hill at its cap -- are accepted and pushable.
+    s.set_config({"teams": [four[0], four[1], four[3]]})
+    assert [t["tid"] for t in s.config["teams"]] == [0, 1, 3]
+    # CONTROL 2: four teams are ordinary in a mode with no hill.
+    s.set_config({"mode": "tdm"})
+    s.set_config({"teams": four})
+    assert len(s.config["teams"]) == 4
+
+
+def test_a_phone_control_point_is_a_station_source_with_its_own_checklist():
+    """F103 (third item): the phone control point was built (`app/src/control.js`, spec §5d) and MC had no
+    word for it -- `STATION_SOURCES` held `grenade` and `ir_station` only, `validate()` refuses `koth`
+    without one, so a phone-driven KotH could not be configured. `phone` is in the vocabulary now, with a
+    checklist that says ARMING resets the point (never a power cycle) -- the grenade's line is wrong for it."""
+    assert "phone" in STATION_SOURCES
+    s = _sess("koth")
+    s.set_config({"station_source": "phone"})
+    r = C.validate(s.config, _roster(s), {})
+    assert r["ok"], r["errors"]
+    setup = [w for w in r["warnings"] if w.startswith("SETUP:")]
+    assert len(setup) == 1 and "PHONE" in setup[0] and "MC-ARMED" in setup[0], setup
+    assert "power-cycle" in setup[0].lower() and "do not" in setup[0].lower(), "a phone point is never power-cycled"
+    assert "GRENADE" not in setup[0]
+    # CONTROL: the grenade line is unchanged and still names the power cycle as the reset.
+    s.set_config({"station_source": "grenade"})
+    g = [w for w in C.validate(s.config, _roster(s), {})["warnings"] if w.startswith("SETUP:")]
+    assert len(g) == 1 and "POWER-CYCLE THE GRENADE" in g[0], g

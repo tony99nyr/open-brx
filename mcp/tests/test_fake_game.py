@@ -356,3 +356,20 @@ def test_a_hill_drains_a_fake_gun_to_death_and_scores_for_nobody():
     assert not gun.alive, "the hill must still be able to kill -- F69's damage half is open"
     assert drv.engine.team_score.get(1, 0) == 0, "the hill scored for its owning team"
     assert drv.engine.roster.get("AA").kills == 0
+
+
+def test_faketagger_reports_shield_zero_after_spawn_whatever_pset_said():
+    """F41 / P16: a REAL gun reports shield 0 on every `$HP` after a spawn; the shield pool is IR-only
+    and `$PSET` token 5 is a ceiling, not a starting pool. The fake used to apply the token on spawn,
+    so the first `$HP` of a life read as a 70-point GAIN that netted out the first hit's damage and
+    produced a false bug report. Pin the real behaviour."""
+    t = FakeTagger("AA:1", team=2, hp=45, armor=70, damage=25)
+    t.write("$PSET,1,0,45,70,70,50,,H44,JAD,*")
+    t.write("$SPAWN,,*")
+    assert t.shield == 0
+    assert t.cfg_shield == 70, "the ceiling is kept for a future IR grant"
+    t.receive_ir(1)
+    hp = [f for f in t.drain() if f.startswith("$HP,")]
+    assert hp and hp[-1].endswith(",0,*"), hp    # `$HP,hp,armor,shield` with shield 0, as on hardware
+    # CONTROL: hp and armour DO come from the `$PSET`.
+    assert t.cfg_hp == 45 and t.cfg_armor == 70

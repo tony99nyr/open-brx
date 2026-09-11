@@ -250,6 +250,17 @@ class GameDriver:
                 await self._paint_event(a.player_id, "healed")
             elif isinstance(a, SetTeam):
                 await self._send(a.player_id, f"$TID,{a.team},*")
+                # F86 (bench 2026-09-10): a live `$TID` moves hit resolution at once but leaves BOTH the gun
+                # body and the headset on the old team's colour -- teammates read each other by LED, so a
+                # turned player displayed as their old team to everyone. The verified remedy is blank, then
+                # paint, right after the write ("yes both red", then "now they are blue"). The driver's own
+                # paint helpers read `self.players`, so the map is updated FIRST or they would repaint the
+                # old colour with great confidence.
+                self.players[a.player_id] = a.team
+                if self.config.leds:
+                    hs, gun = self._rest_frames(a.player_id)
+                    for f in (pg.GUN_BLANK, gun, hs):
+                        await self._send(a.player_id, f, reply_window_ms=0)
             elif isinstance(a, KillConfirm):
                 await self._send(a.scope, "$SFLASH,*")   # green-sight kill confirm (§7o)
             elif isinstance(a, PlaySound):
@@ -380,7 +391,15 @@ class GameDriver:
         finally:
             # Identity, not `.done()`: a coroutine's `finally` runs BEFORE its Task is marked done,
             # so the old check never fired and every player kept a stale Task forever.
-            if self._bursts.get(pid) is asyncio.current_task():
+            # F55: once `asyncio.run()` has closed the loop, a still-pending burst task garbage-collected
+            # at teardown reaches this `finally` with NO running loop, and `current_task()` raises
+            # RuntimeError into stderr while the suite reports 0 failed. Nothing is left to clean at that
+            # point, so a missing loop simply means "not us".
+            try:
+                cur = asyncio.current_task()
+            except RuntimeError:
+                cur = None
+            if cur is not None and self._bursts.get(pid) is cur:
                 self._bursts.pop(pid, None)
 
     def _warn_if_tid_is_not_a_team(self, pid: str) -> None:

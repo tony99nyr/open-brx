@@ -65,6 +65,8 @@ _REQUIRED: dict[str, tuple[str, ...]] = {
     # §MC->node). Registered 2026-09-07 alongside the missing MC_KINDS entry -- until then every alert
     # MC sent was rejected at the node and dropped in silence.
     "alert": ("kind", "text", "player_id", "t"),
+    # A13.5 (F104): the arming message. `threshold` / `game` / `valid_ids` are optional (utility.md §5c).
+    "station_config": ("kind", "team", "id"),
 }
 
 _EVENT_REQUIRED: dict[str, tuple[str, ...]] = {

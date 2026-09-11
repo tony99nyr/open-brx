@@ -429,3 +429,22 @@ def test_a_player_whose_weapons_the_pinned_plan_never_saw_falls_back_to_STOCK_ce
     for name, h in heads.items():
         sir = set(C._sir_cells([f for f in h if f.startswith("$SIR")]))
         assert not (late_weap - sir), f"{name}'s table misses a late joiner's cell: {sorted(late_weap - sir)}"
+
+
+def test_an_uncovered_ir_cell_is_an_error_not_a_fn_zero_row():
+    """F53: `_hit_entry` used to default an uncovered cell's `$SIR` function to 0, so a future weapon on
+    a cell the table lacks would (with `hit_audio_rekey` on) get its new row written with fn 0 -- a
+    silently changed damage class that `assert_sir_covers_weapons` (row EXISTS, never function RIGHT)
+    could not see. It raises now, naming the weapon and the cell."""
+    c = C.Compiler()
+    sir = C._sir_index(C._SIR_TABLE)
+    # every catalogued weapon's stock cell is covered, so the shipped catalog compiles unchanged
+    assert _entries(c, [w for w in c.catalog._by_id])
+    # a table missing the AR's cell: the entry must refuse rather than key the weapon to fn 0
+    ar = c._hit_entry("assault_rifle", sir)
+    hole = {k: v for k, v in sir.items() if k != ar.cell}
+    try:
+        c._hit_entry("assault_rifle", hole)
+        raise AssertionError("an uncovered cell produced an Entry")
+    except ValueError as e:
+        assert "F53" in str(e) and "assault_rifle" in str(e), e

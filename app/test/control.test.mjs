@@ -430,3 +430,36 @@ test('control: possession time is tallied per team for the station’s own recap
   assert.equal(pt.holdMs[BLUE], undefined, 'a team that never held it has no tally');
   assert.ok((new ControlPoint().restore(pt.snapshot()).holdMs[RED] || 0) > 0, 'and the tally survives a restart');
 });
+
+// ---------- F103: possession is elapsed time; the F82 banner follows the player ----------
+
+test('control: F103 — possession is credited in ELAPSED time, while conversion stays clamped per tick', () => {
+  // `holdMs` used to add the same 1 s-clamped `dtMs` that bounds capture work, so a throttled or backgrounded
+  // station that held the point for a minute credited its owner ONE SECOND -- a plausible wrong number in the
+  // one figure the match is scored on. The two clocks are separate now.
+  const pt = new ControlPoint({ captureS: 10 });
+  run(pt, [P(RED)], 10000);
+  assert.equal(pt.owner, RED);
+  const t0 = pt.at, before = pt.holdMs[RED] || 0;   // captured on the last tick: nothing accrued yet
+  pt.update([P(RED)], t0 + 60_000);                      // one tick, a minute later: the phone was throttled
+  assert.ok(pt.holdMs[RED] - before >= 60_000 - 1, `a minute held is a minute credited (got ${pt.holdMs[RED] - before})`);
+  // CONTROL: conversion over the same gap is still clamped -- the sleeping-station guard is intact.
+  const blue = new ControlPoint({ captureS: 10 });
+  blue.update([P(BLUE)], 1_000_000);
+  blue.update([P(BLUE)], 1_000_000 + 60_000);
+  assert.ok(blue.progress <= 10 + 0.01, `one step is still capped at 1 s of capture work (got ${blue.progress})`);
+  assert.equal(blue.holdMs[BLUE], undefined, 'and nobody is credited for a point nobody owns');
+});
+
+test('control: F103 — reassigning the tid-2 player off team 2 takes the F82 banner down within the match', () => {
+  const pt = new ControlPoint({ captureS: 10 });
+  const ev = run(pt, [P(REFUSED_TID, { id: 1 })], 2000);
+  assert.equal(ev.filter(e => e.type === 'refused').length, 1);
+  assert.equal(pt.refusedSeen, true, 'banner up while they stand here on tid 2');
+  run(pt, [P(BLUE, { id: 1 })], 500);                    // the operator moved them to blue in Mission Control
+  assert.equal(pt.refusedSeen, false, 'banner down: nobody on tid 2 is here any more');
+  // told again if a refused player comes BACK -- the hazard is present again, not a stale latch
+  const again = run(pt, [P(REFUSED_TID, { id: 1 })], 500);
+  assert.equal(again.filter(e => e.type === 'refused').length, 1);
+  assert.equal(pt.refusedSeen, true);
+});
