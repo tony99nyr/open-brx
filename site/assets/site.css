@@ -432,10 +432,12 @@ figure { margin: 0; }
 
 /* the live HUD demo: a phone frame that holds a poster until tapped, then the real app */
 .huddemo { position: relative; width: min(1000px, 100%); aspect-ratio: 891 / 411; margin-top: clamp(20px, 3vw, 48px); background-size: cover; background-position: center; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; overflow: hidden; }
-.huddemo::after { content: ''; position: absolute; inset: 8px; border-radius: 14px; background: rgba(5,7,10,.78); backdrop-filter: blur(2px); z-index: 0; pointer-events: none; }
+/* a real element, not ::after: the phone frame's bracket rules hide pseudo-elements on .shot.phone */
+.huddemo-veil { position: absolute; inset: 8px; border-radius: 14px; background: radial-gradient(ellipse at center, rgba(5,7,10,.94) 0%, rgba(5,7,10,.86) 55%, rgba(5,7,10,.72) 100%); backdrop-filter: blur(3px); z-index: 0; pointer-events: none; }
 .huddemo .btn, .huddemo-hint { position: relative; z-index: 1; }
+.huddemo .huddemo-go { min-height: 64px; padding: 0 40px; font-size: 17px; box-shadow: 0 0 0 1px rgba(57,180,255,.35), 0 18px 48px rgba(57,180,255,.25); }
 .huddemo-hint { margin: 0; font: 500 13px/1.5 var(--ui); color: #c7d3de; max-width: 420px; text-align: center; padding: 0 16px; }
-.huddemo.live::after { display: none; }
+.huddemo.live .huddemo-veil { display: none; }
 .huddemo iframe { position: absolute; inset: 8px; width: calc(100% - 16px); height: calc(100% - 16px); border: 0; border-radius: 14px; background: #02040a; }
 @media (max-width: 640px) { .huddemo-hint { font-size: 12px; } .huddemo .btn { min-height: 48px; padding: 0 20px; } }
 /* captions */

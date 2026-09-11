@@ -87,6 +87,7 @@ const DATA = {
   huddemo(ctx) {
     const poster = ctx.asset('/shots/hud-kitted.jpg');
     return `<div class="huddemo shot phone" data-reveal data-src="/demo/hud/index.html?demo&kit" style="background-image:url('${esc(poster)}')">
+<div class="huddemo-veil" aria-hidden="true"></div>
 <button type="button" class="btn btn-acc huddemo-go">Try the HUD <span class="v">live</span></button>
 <p class="huddemo-hint">The real app, running in your browser with a pretend tagger. Tap a plate to pick a weapon, then ready up.</p>
 </div>`;
