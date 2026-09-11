@@ -2184,3 +2184,41 @@ open work only and these were five ✅ rows):
   RAISES for any `_OBJECTIVE_MODES` config shipping no protocol-15 cell. The row was deliberately deferred until
   the feature existed, and then written in the same commit that shipped it, because **a guard added before its
   feature is a guard nobody can test**.
+
+# Closed 2026-09-11 — the docs DRY pass
+
+*One dated line each, per `CLAUDE.md`'s session-close rule. Each was checked against the CODE, not against
+the row: all three were filed as open work that has since shipped, or as a question the bench answered.*
+
+- 2026-09-11 **F35** `$TID` 4-7 are display-only and BREAK combat (bench 2026-09-07: the IR word's team field
+  is 2 bits, so a gun transmits `tid & 3` while the victim compares the FULL tid — teammates on tid ≥ 4 damage
+  each other and a gun can kill itself off a surface). **Both fixes the row asked for have shipped.** The tid is
+  refused at three layers (`mc/state.py` validate, `mc/compile.py` validate, `modes/driver.assign_teams`, all
+  naming F35 in the operator message), and the displayed team COLOUR is a separate lookup from the wire tid
+  (`poolgauge.display_colour()` / `TEAM_DISPLAY_COLOURS`, so team 3 stays GREEN on the wire and PAINTS purple).
+  Pinned by `test_led_invariants.py` (`pg.TEAM_TIDS == (0,1,2,3)`, plus an assertion that the two palettes must
+  DISAGREE so merging them cannot silently reintroduce it), `test_mc_state.py`, `test_mc_compile.py` and
+  `test_poolgauge.py`. The FACT lives in `protocol/brx-protocol.md`'s `$TID` row and is not moved by this
+  closure; **F96** (the FFA path that was handing out those tids) closed the same day.
+- 2026-09-11 **F96** FFA no longer hands out a tid the wire does not have. `assign_teams("ffa"|"extraction", …)`
+  assigned `i + 1`, so the FOURTH gun was armed on `$TID,4` and a fifth on 5 — one-directional immunity, because
+  a tid-5 gun transmits as wire team 1 and its shots read FRIENDLY to the real tid-1 player while it still takes
+  their damage. It is now **0-based**, so four guns fill teams 0-3 exactly, and a fifth RAISES with the operator
+  message the row asked for rather than silently arming an unusable tid. ⚠ **Recorded because it is the thing a
+  later reader will get wrong:** this is the CLI driver path only. **MC's FFA is a single team on `$TID,1`** with
+  identity from `$PSET` (A4.1), so it never had this bug and must not be "fixed" to match. Pinned by
+  `test_modes.py`, `test_fake_game.py` (the operator message), `test_sim_deathmatch.py` and
+  `test_sim_extraction.py`.
+- 2026-09-11 **F73** ANSWERED at the bench 2026-09-10 — **`$SIR` fn 28 registers with ZERO player feedback**
+  (no sound, no headset flash, no vibration), which is what makes a hill beacon readable by a node without the
+  player perceiving it every 5 s. Swept enemy-side 8 / 24 / 25 / 26 / 27 / 28 on a free cell, then CONFIRMED on a
+  real protocol-15 beacon over BLE (20+ consecutive beacons, 5.0 s period, no misses), and confirmed again to
+  ignore the `$SIR` `<soundID>` field outright — so "zero feedback" is a property of the FUNCTION, and no
+  gun-native beacon cue is possible through it. ⚠ Also learned and kept: the "varied sounds" across fn 24-27 are
+  ONE long clip truncated by the next event, not several clips (spacing shots 6 s apart let it play through);
+  fn 27's first of three sounded genuinely different in a way a leftover tail does not explain, and that is
+  **unexplained, recorded rather than tidied away**. The wire fact and the polarity rule now live in
+  `protocol/brx-ir-protocol.md` §"The grenade beacon"; the design consequence (all hill audio is node work) in
+  `docs/utility-roadmap.md` "Where the hill audio has to live"; the method and traps in `docs/bench-grenade.md`
+  rungs S and Y. **What the sweep did NOT cover stays open as U11′** (enemy 35 and the ally side 31 / 32 / 34)
+  and as bench-queue rung **D6**.

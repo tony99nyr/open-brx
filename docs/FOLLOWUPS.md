@@ -7,7 +7,8 @@ add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `pro
 same commit, or it gets a row here saying "promote X".
 
 **Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F104 · G11 · H7 ·
-K7 · P18 · Q20 · R3 · S18.** (2026-09-10: F94/F95/F98 taken — the phone control point
+K7 · P18 · Q20 · R3 · S18.** (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
+ids are retired, never reused.) (2026-09-10: F94/F95/F98 taken — the phone control point
 (`spec/utility.md` §5d), its LAN-coupled roaming variant (§5e) and Territories (§5f). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
 wider than the hill's period" generalisation, the double-`$HIR`-per-beacon dedupe finding (F85, closed same
 session), the team-change-leaves-old-LED-colour finding, and the hosted hill rate-of-fire boost.) (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
@@ -27,12 +28,37 @@ F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (col
 | **What closed today** | [`archive/followups-closed.md`](archive/followups-closed.md), newest last |
 | **Why a fact is believed** | [`experiment-log/`](experiment-log/) — grep the id or the date |
 
-**🔴 blocking, at a glance (2026-09-10):** **F69** a grenade hill damages and kills players in our games ·
-**F82** never put a player on team 2 in a hill mode · **F91** (bench) move our weapons off IR protocol 0 ·
-**F96** FFA hands out forbidden tids above 4 players · **F74** a gun can latch an IR event and replay it
-forever · **F68** a miss permanently kills the headset team colour · **F35** `$TID` 4-7 break combat ·
-**F43** sound picks by acoustic shape are not trustworthy · **S10** LED language v2 · **E1**/**E5**
-extensibility · **B23**/**B26** respawn-for-hosted and the headset-less-gun contradiction.
+**🔴 blocking, at a glance (2026-09-11):** **F69** a grenade hill damages and kills players in our games ·
+**F91** (bench) move our weapons off IR protocol 0 · **F74** a gun can latch an IR event and replay it
+forever · **F68** a miss permanently kills the headset team colour · **F43** sound picks by acoustic shape
+are not trustworthy · **S10** LED language v2 · **E1**/**E5** extensibility · **B23**/**B26**
+respawn-for-hosted and the headset-less-gun contradiction.
+*(**F35** and **F96** left this list on 2026-09-11: both were fixed in code and only the rows were still
+open — see `archive/followups-closed.md`. **F82** is 🟡, not 🔴: MC refuses a tid-2 hill at three layers, and
+what remains is the bench observation.)*
+
+### Every open id, by lane
+
+**Two questions cover the whole file: does it need a gun, or does it need a keyboard?** The lists below are
+just the rows re-sorted; the rows themselves are the truth. An id appears in BOTH lists when it carries both a
+hardware tag and `build` (S10 is the biggest of those: the LED language is code that then needs an eye on it).
+⚠ **This index has no guard.** It is the `tag` at the end of each row, re-sorted by hand
+(`grep -n '\`bench\`' docs/FOLLOWUPS.md` and friends rebuild it); **if it disagrees with a row, the ROW is
+right** and this index is stale. Do not cite it as evidence that something is or is not open.
+
+**Needs Tony at the bench** (tagged `trigger` · `bench` · `ears` · `eyes` · `space` · `grenade` · `capture` ·
+`hardware` — running order in [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md), next sheet
+[`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md)):
+- 🔴 **B26** · **F49** · **F74** · **F91** · **K4** · **Q15** · **S10**
+- 🟠 **F13** · **F15** · **F23** · **F44** · **F50** · **F57** · **F58** · **F59** · **F71** · **F77** · **P8** · **Q16** · **S9**
+- 🟡 **B27** · **B28** · **B29** · **D1** · **F3** · **F21** · **F26** · **F27** · **F28** · **F30** · **F36** · **F45** · **F48** · **F62** · **F63** · **F66** · **F67** · **F75** · **F76** · **F82** · **F88** · **G3** · **K1** · **P3** · **P15** · **Q18** · **S1** · **S2** · **S7** · **U11′**
+- 🟢 **B20** · **F29** · **F65** · **F87** · **F99** · **P4** · **P12** · **S4** · **S8** · ⬜ **W4a**
+
+**Keyboard only** (tagged `build` or `decision` — no gun, no rig, no dim room):
+- 🔴 **B18b** · **B23** · **E1** · **E5** · **F43** · **F68** · **F69** · **F74** · **S10**
+- 🟠 **B4** · **B19** · **B21** · **E2** · **F12** · **F13** · **F15** · **F31** · **F34** · **F40** · **F54** · **F56** · **F58** · **F70** · **F77** · **F80** · **F81** · **F84** · **F86** · **F92** · **F101** · **F102** · **F103** · **S3** · **S5** · **S14**
+- 🟡 **B1** · **B8** · **B14** · **B17** · **D1** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F39** · **F41** · **F42** · **F47** · **F53** · **F55** · **F60** · **F78** · **F88** · **F95** · **F97** · **H1** · **K2** · **Q12′** · **Q13** · **Q18** · **S1** · **S2** · **S6** · **S7** · **S11** · **S12** · **S13**
+- 🟢 **B11** · **B16** · **B22** · **B25** · **E7** · **F14** · **F17** · **F18** · **F19** · **F32** · **F52** · **F64** · **F83** · **F87** · **F89** · **F90** · **F93** · **F94** · **F98** · **F99** · **F100** · **P14** · **R2** · ⬜ **K6** · **S16** · **S17**
 
 ## 1. Before going public
 
@@ -430,15 +456,9 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   INVARIANT ("one bundle must not carry two brightnesses for the same surface") over a VALUE a later retraction moves.
   `decision` + `build`.
 
-- **F35 🔴** `$TID` 4-7 are display-only and BREAK combat (bench 2026-09-07): the IR word's team field is 2 bits so
-  the gun transmits `tid & 3`, but the victim compares the FULL tid — teammates on tid ≥ 4 damage each other, their
-  shots read as friendly to the tid they alias onto (no damage), and a gun can kill itself off a nearby surface
-  (observed, `$HIR` naming its own player id). **Guard it in code**: reject `tid > 3` in `state.validate()` /
-  team assignment, and make the displayed team COLOUR a separate lookup (palette 0-7) from the tid. `build`.
-
 - **F3 🟡** empty-mag / reload prompt never appeared on sustained full-auto. Gun and engine are eliminated from captures;
   what is left is the phone transport/render layer. Needs the phone's BLE frame ring (Share log before closing the app). `capture`.
-- **F5 decision** the AR ships at 140 ms / reserve 192, not the captured 100 / 384 (balance; 100 strictly dominates 10 of
+- **F5 🟡 decision** the AR ships at 140 ms / reserve 192, not the captured 100 / 384 (balance; 100 strictly dominates 10 of
   17 weapons). Stock feel = set `wire.fire_ms` to 100 and delete `test_ttk_band_and_no_strictly_dominant_weapon`. `decision`.
 - **F12 🟠** (raised from 🟡 2026-09-09) ⚠️ **the STITCH is not just lossy, it INVENTS parity-valid words.** Rig
   qualification 2026-09-09, a real gun firing a known word (`proto=0 player=0 team=1 mag=9 sub=0`): every whole
@@ -469,13 +489,13 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 - **F17 🟢** lives cap: DOWN recap shows LIVES LEFT only if `config.respawn.lives` exists; no mode sets it. `build`.
 - **F18 🟢** FFA board is the top three players standing in for teams; a real FFA ladder is a small HUD follow-up. `build`.
 - **F19 🟢** after a PANIC the HUD shows the plain kitted screen; add a "HOST STOPPED THE MATCH" pill. `build`.
-- **F20 decision** kill confirm during a reload is deferred until the RELOADING takeover ends (~2 s). `decision`.
+- **F20 🟡 decision** kill confirm during a reload is deferred until the RELOADING takeover ends (~2 s). `decision`.
 - **F21 🟡** status-bar / display-corner inset fixed in code (APK 0.1.6+); verify on the Pixel 4 and Pixel 10. `eyes`.
 - **F23 🟠** applied damage may depend on the SENSOR, not just the `$SIR` function: a Callsign capture shows 18/hit on
   headset sensor 0 vs 9/hit on gun body 4, same victim, same life. Would break every hits-to-kill number.
   `bench-weap-tokens-discovery-2026-09-04.md` item 1. `trigger`.
 - **F24 🟡** MC-owned session totals (`session_totals` in the `score` push) so the phone's tally matches the laptop. `build`.
-- **F25 decision** the kill strip says "CONFIRMED BY MISSION CONTROL"; true by construction (kills only arrive from MC),
+- **F25 🟡 decision** the kill strip says "CONFIRMED BY MISSION CONTROL"; true by construction (kills only arrive from MC),
   but an out-of-range player reads their kills as unconfirmed. Keep, or "ELIMINATION"? One string in `hud.js`. `decision`.
 - **F26 🟡** (was F15) accuracy attribution unverified: `$HIR` shooter field → `player_num` as `scoring.py` assumes?
   Two guns, two phones, ten shots. `trigger`.
@@ -488,7 +508,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 - **F32 🟢** (was G7) the perks menu on the phone is too small and hard to find. `build` (check `hud-review-2026-09-03.md` first).
 - **F34 🟠** no F13 floor on the node path: MC accepts `respawn.delay_s` 0–600 and the engine spawns at exactly that,
   so 1–2 s puts every `$SPAWN` inside the relay wedge. Validate ≥ 3 at PUT, floor in the engine. `build`.
-- **Q13 decision** friendly fire is invisible on the wire (a team-blocked shot emits no `$HIR`). Either run FF on and
+- **Q13 🟡 decision** friendly fire is invisible on the wire (a team-blocked shot emits no `$HIR`). Either run FF on and
   score teamkills as policy, or accept no teamkill feedback. Decide before any mode advertises it. `decision`.
 - **Q15 🔴** sub-indoor IR power (Tony: indoor bounces register hits from everywhere). Lever 1 = `$WEAP` t41
   `gunRangeIndoor` (75 on all guns, 20 on melee) — **one prior positive, see `weapon-design.md` §5 U2**; lever 2 =
@@ -501,7 +521,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 - **Q18 🟡** the first mid-game reconnect prints "reconnected" before the gun is listening (`modes/driver.py`), burning
   `RECONNECT_CAP`; verify with a round trip first. Also untested: can a gun absent at START join a running match? `build` + `space`.
 
-- **Q12′ decision** should `hit_taken` carry the shield delta as its own field (both sessions said yes; `dmg: 0` invites
+- **Q12′ 🟡 decision** should `hit_taken` carry the shield delta as its own field (both sessions said yes; `dmg: 0` invites
   `if dmg:` guards to drop the event)? `decision`.
 - **B20 🟢** is `$LCD` token 3 the shield? Grant a shield (fn 11, friendly), `$HP` shows it, trigger an `$LCD`, read
   token 3. Yes ⇒ re-add the read in `engine.js` with a test; no ⇒ record confirmed-not-shield. `eyes`.
@@ -634,7 +654,10 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 - **U11′ 🟡** which `$SIR` function, if any, is a real STUN in OUR table? fn 23 is audio suppression; the enemy-polarity
   shortlist that registers a hit and moves no pool is **8, 24, 25, 26, 27, 28, 35** (fn 3 drains shield, so damage);
   ally 31, 32, 34 are genuine status functions (re-measured from depleted pools). Only a human holding the gun can name
-  them. Moot for the product if F15 ships. `trigger` (bench 1.5).
+  them. **Narrowed 2026-09-10 (F73, closed — `archive/followups-closed.md`): enemy 8 and 24-28 are swept and written
+  up** (fn 28 registers with nothing at all, fn 8 is silent but flashes and buzzes, fn 24-27 fire one long
+  grenade-ish clip). **Left here: enemy 35, and ally 31 / 32 / 34** — bench-queue rung **D6**, whose three
+  run-voiding traps are mandatory. Moot for the product if F15 ships. `trigger` (bench 1.5).
 - **Unexplained, recorded not buried:** the 2026-08-27 24-cell ×1.0 multiplier matrix (outvoted by two runs, never
   explained); one 16/16 vs 4/10 registration run under identical geometry (2026-09-02).
 
@@ -777,8 +800,12 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 - **F89 🟢 THE STATION `$CAPTURE` PATH CANNOT HAND A POINT TO TEAM 0.** `objectives.py`'s `_team()` treats a
   zero team as malformed, which is correct for the station path it was written for but means an explicit
   `config.teams` override putting a player on tid 0 in `domination`/`cs`/`ctf` silently cannot score. **Not a
-  live bug and deliberately not fixed:** `assign_teams` never returns 0 for any of those modes (ffa/extraction
-  use `i+1`, infection/survival 1/2, domination/koth 1/3, else 1/2), so tid 0 is reachable only by hand.
+  live bug and deliberately not fixed:** `assign_teams` never returns 0 for **domination / cs / ctf**
+  (domination/koth alternate 1/3, infection/survival 1/2, else 1/2), so tid 0 is reachable there only by hand.
+  ⚠ **Corrected 2026-09-11: the parenthetical used to say "ffa/extraction use `i+1`", and that is no longer
+  true** — F96's fix made FFA/extraction **0-based**, so the first gun really does get tid 0. That path does not
+  go through `_team()` and the conclusion is unchanged, but the sentence was evidence for a claim it no longer
+  supports.
   ⚠ **Corrected 2026-09-10: the second reason this row gave has expired.** It said MC's `MODES` catalogue does
   not list domination/koth/ctf/cs at all — **`koth` is in the catalogue now** (it shipped with the hill bridge),
   so the mode IS selectable by an operator and `assign_teams` is the only thing keeping tid 0 out of it. The
@@ -911,21 +938,6 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   screens say so, and MC declines a points win it cannot stand behind (falling back to most possession time) if
   any point was degraded for more than ~10% of the match. The honest alternative is awarding it anyway from
   partial data with a recap warning. Needs **F94** first, and A1/A2. `build` + `decision`.
-- **F96 🔴 FFA HANDS OUT TID 4 AND 5, WHICH THE PROTOCOL FORBIDS — ONE-DIRECTIONAL IMMUNITY AT 5 PLAYERS.**
-  Found 2026-09-10 while sizing an FFA King of the Hill. `assign_teams("ffa", …)` assigns `i+1`, so four
-  players get tids 1,2,3,**4** and five get 1,2,3,4,**5**. But `$TID` is **masked to 2 bits on the wire**
-  (`protocol/brx-protocol.md`: *"⚠️ TEAMS ARE 0-3 (bench 2026-09-07) … Use 4-7 as COLOURS only, never as a
-  team"*). A victim compares the incoming team against its **FULL** tid, so the asymmetry is real damage
-  logic, not cosmetics: **tid 5 transmits as wire team 1, so a tid-5 player's shots read FRIENDLY to the
-  tid-1 player and do nothing**, while tid 5 still takes damage from tid 1 — one-directional immunity, and
-  the unluckiest player in the lobby simply cannot shoot one specific opponent. A tid-5 gun was also observed
-  **killing itself** off a nearby surface (`$HIR,4,0,7,1,9` naming its own player id, armour to 0).
-  ⚠ **Four players happens to be safe, by luck only**: tid 4 aliases to wire 0 and FFA starts at 1, so no
-  real tid-0 player exists for it to collide with. Do not rely on that — it breaks the moment anything
-  assigns tid 0. **Never run FFA above 4 players until this is fixed**, and the real cap is 4 because the
-  hardware has four teams, full stop. Fix: refuse >4 in FFA at validate time with a clear operator message
-  rather than silently assigning an unusable tid. Never run in the field above 2 players (the 2026-08-30 FFA
-  was two iPhones), so this has never bitten anyone yet. `build`.
 - **F97 🟡 AN FFA KING OF THE HILL CAPS AT THREE PLAYERS, AND THAT IS WORTH SAYING OUT LOUD.** Tony's idea,
   2026-09-10. FFA KotH is attractive because the net-difference rule (§5d.1) reads beautifully in a free-for-
   all: every player is their own team, so the point only converts for someone who has it **to themselves**,
@@ -1244,44 +1256,6 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   replay; then bisect (emitter alone vs beacon alone). Also open: does it survive a BLE drop, and does a NODE
   see it as real (it should, which is the problem). Consider a node-side guard — identical `$HIR` at a fixed
   period with no `$ALCD` from any shooter is not a real hit. `trigger` + `build`.
-- **F73 ✅ ANSWERED 2026-09-10 — `$SIR` fn 28 REGISTERS WITH ZERO PLAYER FEEDBACK.** The question was whether any
-  status function can be read by a node without the player experiencing it. **fn 28 can.** Swept enemy-side
-  8/24/25/26/27/28 on a free cell (`$SIR,5,0,,<fn>` as the ONLY row, so a mis-decoded word has no row and is
-  discarded), three spaced words each, `$HIR` protocol verified per trial:
-  | fn | registers | sound | headset flash | vibrate |
-  |---|---|---|---|---|
-  | 8 | ✓ | none | **yes** | **yes** |
-  | 24 / 25 / 26 / 27 | ✓ | a long grenade-ish clip (hiss → timer → explosion) | ? | ? |
-  | **28** | **✓ ×3** | **none** | **none** | **none** |
-  ⭐ **fn 28 is the row to ship on protocol 15**: a node reads the hill beacon every ~5 s and the player feels,
-  hears and sees nothing. ✅ **CONFIRMED on a real beacon, protocol 15, bench 2026-09-10 evening (rung F73-b
-  closed).** The original sweep ran fn 28 only in cell `<5,0>` with the ESP32 rig's synthetic words, so
-  "ship it on protocol 15" was an assumption. Armed a gun for real with `$SIR,15,0,,28,0,0,1,,*` against the
-  live grenade: the beacon arrived as `$HIR,4,15,0,2,8,0,0` (sensor 4, protocol 15, neutral team 2, mag 8 =
-  hill), 20+ consecutive beacons, period 5.0 s, no drift, zero misses. **The cell is the key, the function is
-  the effect — holds on real hardware, not only the rig's cell `<5,0>`.**
-  **Polarity, both directions measured.** fn 28 is **enemy-only** under `$GSET` t1=0 (three ally words → zero
-  registrations, silently rejected). With **`$GSET` t1=1** the gate lifts: the same ally words registered
-  `$HIR,0,5,42,**1**,20` ×3, **owner in the team field**. So:
-  **FF off** = you hear only hills you do NOT own (cheap, but "no beacon" is ambiguous between out-of-range and
-  we-own-it, and you miss your own captures, since the `mag=50` capture word carries the new owner's team).
-  **FF on** = every beacon and every capture, ownership read from `$HIR`, complete information — at the cost of
-  same-team IR registering elsewhere in the game. **A KotH mode wants FF on; that is a mode-level decision.**
-  ⚠ Also learned: the "varied sounds" across 24-27 are ONE long clip truncated by the next event, not several
-  clips — spacing shots 6 s apart let it play through to the explosion. Which clip it is remains unidentified
-  (not `A10`, not any of the five `$PSET` hit slots). And on fn 27 the first of three sounded genuinely different
-  in a way a leftover tail does not explain; unexplained, recorded rather than tidied away.
-  ⚠ Not swept: enemy 35, and the ally-side 31/32/34 — unnecessary now that fn 28 answers the question, but they
-  are the fallback if fn 28 turns out to have a side effect we have not looked for.
-  **Extended 2026-09-10 (evening): fn 28 ignores the `$SIR` `<soundID>` field too.** Armed
-  `$SIR,15,0,U100,28,0,0,1,,*` — `U100` known audible, confirmed by ear the same evening at the same
-  `$VOL,80` — against the live grenade. The row registered repeatedly (`$HIR,4,15,0,0,8,0,0`, no misses) and
-  produced **no sound at all** ("havent heard a tick yet"). So "zero player feedback" is a property of the
-  FUNCTION, not of leaving the sound slot empty — no gun-native beacon cue is possible through fn 28.
-  **Design consequence:** hill audio is node/phone work, not gun work (`docs/utility-roadmap.md` "Where the
-  hill audio has to live" updated). ⚠ Still untested: whether any OTHER protocol-15 function honours
-  `<soundID>`, and the `$PSET`-override side effect — no sound played at all, so nothing to observe an
-  override on. `docs/bench-grenade.md` rung Y closed with this result.
 - **F71 🟠 The three headset weapons may do far more damage than we publish.** The catalog derives `dmg`, `htk`
   and `ttk_ms` from `$WEAP` **t5 alone**. But the shotgun's capture word went out at **magnitude 70** = its
   `t12` extraHeadsetDamage, alongside a t5 of 45 — so at headset range a shotgun may land **115, not 45**, and
@@ -1361,7 +1335,8 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 **Trigger in hand** (one gun, our compiled game, Tony firing):
 - 1.1 **K4** melee swing, watch `$BUT,8` / `$HIR,…,13`.
 - 1.4 **K1** `$WEAP` t19 = 5, pull the trigger on an empty chamber, watch `$ALCD`.
-- 1.5 **U11′** fire enemy 8, 24–28, 35 and ally 31, 32, 34 at a held gun; report what you hear, see, or cannot do.
+- 1.5 **U11′** fire enemy **35** and ally **31, 32, 34** at a held gun; report what you hear, see, or cannot do.
+  (Enemy 8 and 24-28 are done — F73, closed 2026-09-11.)
   1.5a first (keyboard): `mcp/tools/ally_remeasure.py <victim>` with fn 10/11 as positive controls.
 - 1.6 KotH rate-of-fire buff: while ally 31/32/34 land, hold the trigger and listen for cadence.
 - 1.7 t37/t38 overheat: two varied-value probes on the SMG frame, watch the `$ALCD` heat gauge.
