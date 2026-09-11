@@ -159,6 +159,13 @@ class PerkView(TypedDict):
     hidden: bool
 
 
+# Modes whose objective IS a control point on the field (F70). Three modules need to agree on this:
+# the compiler ships the protocol-15 `$SIR` row for them and enforces F82, `state.py` refuses a
+# tid-2 team in one, and the scorer reads their possession. `ctf`/`cs`/`bomb` also gate on a station
+# source, but NOTHING confirms they use this same proto-15/fn-28 mechanism -- do not widen this set
+# on the strength of that other gate alone.
+OBJECTIVE_MODES = {"domination", "koth"}
+
 # What may be sitting on the field emitting the objective. This used to be a bare truthiness gate --
 # any non-empty string satisfied it, including a typo -- so an operator either got an unsatisfiable
 # error or "satisfied" it with a word that meant nothing. The value is what the node/host reads the
@@ -271,7 +278,7 @@ class Preflight(TypedDict, total=False):
 
 
 class Event(TypedDict, total=False):
-    type: Literal["hit_taken", "death", "respawn", "team_change", "status"]
+    type: Literal["hit_taken", "death", "respawn", "team_change", "status", "possession"]
     t: int
     match_id: str | None
     node_id: str
@@ -291,6 +298,16 @@ class Event(TypedDict, total=False):
     resync: bool
     # team_change
     tid: int
+    # possession (F70, objective modes) — a CUMULATIVE tally for ONE control point, resent as it grows.
+    # `hold_ms` maps a TEAM TID (as a string key on the wire: JSON has no integer keys) to the ms this
+    # node observed that team OWNING the point; tid 2 on a hill is NEUTRAL, not a team. `observed_ms` is
+    # how long it could hear the point at all, which is what makes the number a stated lower bound
+    # rather than a claim. `site` is "A" for the single grenade point (F88: a beacon carries no id).
+    # MC merges these by MAX per (site, team) and NEVER by sum — see `scoring._possession`.
+    site: str
+    hold_ms: dict[str, int]
+    observed_ms: int
+    source: Literal["beacon", "station"]
     # status
     hp: int
     armor: int

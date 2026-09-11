@@ -20,7 +20,7 @@ from ..gameconfig import END_SEQUENCE, WEAPON_TAILS, _SIR_TABLE, GameConfig as _
 from .. import hitaudio as _ha
 from ..protocol import PANIC_SEQUENCE
 from .perks import PerkCatalog
-from .types import MAX_PLAYERS, STATION_SOURCES, FrameBundle, GameConfig, Player, Team, Weapon
+from .types import MAX_PLAYERS, OBJECTIVE_MODES, STATION_SOURCES, FrameBundle, GameConfig, Player, Team, Weapon
 from . import presentation as _pres
 from .. import poolgauge as pg
 from .. import voices as _voices
@@ -240,10 +240,10 @@ def assert_sir_covers_weapons(head: list[str]) -> None:
 # registered through fn 28 with ZERO player feedback (no sound, no flash, no vibration) is the row that
 # lets a gun report the beacon at all without also making the player experience one every 5 s.
 _OBJECTIVE_SIR_ROW = "$SIR,15,0,,28,0,0,1,,*"
-# Modes whose objective IS this grenade beacon. `ctf`/`cs`/`bomb` also gate on a Tier-1 station source
-# (see `validate()`) but that source is unconfirmed to be this same proto-15/fn-28 mechanism -- do not
-# widen this set on the strength of that other gate alone.
-_OBJECTIVE_MODES = {"domination", "koth"}
+# Modes whose objective IS this grenade beacon -- defined in `.types` beside the GameConfig shape,
+# because `state.py`'s PUT validator and `scoring.py` read the same set (keep the local alias: it is
+# what every guard in this file reads).
+_OBJECTIVE_MODES = OBJECTIVE_MODES
 
 # Every mode that cannot run without something on the field emitting its objective (modes §7).
 # `extraction` is deliberately absent: its objective runs MC-side off gun events, no emitter.
@@ -747,6 +747,19 @@ class Compiler:
         if not 1 <= pnum <= MAX_PLAYERS:
             raise ValueError(f"player_num {pnum} out of range 1..{MAX_PLAYERS} (0 reserved, A5.1)")
         tid = self._tid(player, teams)
+        # 🔴 F82 at the last possible moment: a hill mode's head may not carry `$TID,2`. `validate()`
+        # reports that as an ERROR, but an error is ADVISORY — `_after_player_change` re-compiles and
+        # re-pushes before it runs, so a team change after the push could put the frame on a gun with
+        # nothing but a red line on a screen the operator had already left (operator review
+        # 2026-09-10). The config can no longer even HOLD a tid-2 team in these modes (`state.py`
+        # `_merge_config`); this makes the frame itself unbuildable, the same way `assert_sir_covers_*`
+        # makes a silently-deaf head unbuildable.
+        if config.get("mode") in _OBJECTIVE_MODES and tid == _NEUTRAL_TEAM:
+            raise ValueError(
+                f"F82 GUARD: refusing to compile a {config.get('mode')!r} head on $TID {_NEUTRAL_TEAM} for "
+                f"{player.get('display') or player.get('player_id')} — that is the team a NEUTRAL hill "
+                "broadcasts, so this gun would read every uncaptured point as its own and take no hill "
+                "damage. Move the player to tid 0, 1 or 3.")
         w0, w1 = self._weapon_ids(player)
         fx = self._perk_effects(player)                    # ammo/reload knobs act on the PRIMARY only …
         mods = {k: fx[k] for k in ("ammo_mult", "reload_mult", "switch_mult") if fx.get(k)}
@@ -1058,6 +1071,18 @@ class Compiler:
                     f"({', '.join(on_neutral)}) — that is the team a NEUTRAL grenade hill "
                     "broadcasts, so they read every uncaptured point as their own and take no "
                     "hill damage. Use tid 0, 1 or 3.")
+            # The EMPTY tid-2 team was the open route (operator review 2026-09-10): the roster scan
+            # above passes while nobody is on it, the push succeeds, the Lobby renders it as a drop
+            # target and one drag re-pushes `$TID,2`. `state.py` refuses such a config at PUT time;
+            # this catches one that arrives another way (a stored preset from before the refusal, the
+            # CLI, a fixture) and names the team rather than waiting for a body to be dropped on it.
+            neutral_teams = sorted({str(t.get("team_id")) for t in config.get("teams", [])
+                                    if t.get("tid") == _NEUTRAL_TEAM})
+            if neutral_teams:
+                errors.append(
+                    f"F82: mode {mode!r} cannot have a team on $TID {_NEUTRAL_TEAM} at all "
+                    f"({', '.join(neutral_teams)}) — that is the value a NEUTRAL hill broadcasts, and "
+                    "anyone moved onto it later reads every uncaptured point as their own. Use tid 0, 1 or 3.")
 
         # ffa ⇒ exactly one team (one $TID); friendly fire is forced on in compile (§2/A5.2)
         if mode == "ffa" and len({t["tid"] for t in config.get("teams", [])}) > 1:
@@ -1080,25 +1105,41 @@ class Compiler:
                 # This used to be a bare truthiness gate, so any string at all passed -- including a
                 # typo, which then shipped a match with nothing on the field emitting its objective.
                 errors.append(f"unknown station_source {src!r} for mode {mode!r} — valid values are: {vocab}")
-            elif src == "grenade" and mode in _OBJECTIVE_MODES:
+            elif mode in _OBJECTIVE_MODES:
                 # F88: a beacon carries NO station id, so one grenade is indistinguishable from
                 # another and the bridge can only ever speak for ONE point. KotH is exactly that;
                 # a multi-point Domination on grenades cannot be built at all.
+                # ⚠ On the MC path this is UNREACHABLE BY DESIGN and that is not an oversight:
+                # `control_points` is deliberately NOT in `state.py` `_CONFIG_KEYS`, so no operator can
+                # ask for a second point and `sanitize_config` drops the key out of a saved game. The
+                # guard is for the paths that build a GameConfig directly -- the CLI (`__main__`), the
+                # sim, a hand-written fixture. Do not "fix" it by wiring the key: multi-point domination
+                # is not buildable on grenades at all, and the key would be a control for a mode we
+                # cannot ship (operator review 2026-09-10).
                 points = config.get("control_points")
-                if isinstance(points, int) and not isinstance(points, bool) and points > 1:
+                if src == "grenade" and isinstance(points, int) and not isinstance(points, bool) and points > 1:
                     errors.append(
                         f"F88: {points} control points on a grenade source is not buildable — a hill "
                         "beacon carries no station id, so two grenades in range are indistinguishable "
                         "on the wire and would fight over the same point. Run ONE point (koth), or "
                         "supply a station source that names its point")
-                # The one physical setup step nothing in software can do for the operator. A hill that
-                # starts already-owned skews the whole match silently (its owner banks possession from
-                # t=0), and NEUTRAL is only guaranteed by a power cycle -- bench 2026-09-10 read team 2
-                # (neutral) straight after one, and read a stale owner without one.
-                warnings.append(
-                    "SETUP: POWER-CYCLE THE GRENADE SO IT STARTS NEUTRAL, SET IT TO HILL MODE, AND "
-                    "PLACE IT — a hill that starts already owned skews the whole match, and only a "
-                    "power cycle guarantees neutral. ONE POINT ONLY (F88: a beacon carries no station id)")
+                # The physical setup nothing in software can do for the operator, and it is DIFFERENT per
+                # source: a grenade must be power-cycled (a hill that starts already-owned banks
+                # possession for its old owner from t=0 and skews the match silently; bench 2026-09-10
+                # read team 2 = NEUTRAL straight after a power cycle, and a stale owner without one). An
+                # IR station is the source we have NEVER had on the bench, so the honest line says so --
+                # it used to say nothing at all, and a game saved on `ir_station` pushed clean and
+                # silent (operator review 2026-09-10).
+                if src == "grenade":
+                    warnings.append(
+                        "SETUP: POWER-CYCLE THE GRENADE SO IT STARTS NEUTRAL, SET IT TO HILL MODE, AND "
+                        "PLACE IT — a hill that starts already owned skews the whole match, and only a "
+                        "power cycle guarantees neutral. ONE POINT ONLY (F88: a beacon carries no station id)")
+                else:
+                    warnings.append(
+                        "SETUP: PLACE AND POWER THE IR STATION, AND CHECK IT READS NEUTRAL BEFORE THE "
+                        "WHISTLE — ⚠ UNPROVEN: we have never had one on the bench, so nothing confirms it "
+                        "speaks the protocol our nodes read. Run the grenade if you want a hill we have measured")
 
         # unknown weapon / perk ids; a perk rides BESIDE a secondary weapon (A14) -- the ALT-button pairing is refused by policy.py before it gets here
         for p in roster:

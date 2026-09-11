@@ -101,6 +101,19 @@ export function Recap() {
                 : " KILLS LIVE IN VICTIMS' REPORTS; BRING THEM INTO RANGE TO FINALIZE."}
         </div>
       )}
+      {/* A8: `settling` means a bound node has not been heard from since the whistle, so the numbers on
+          this screen are still moving. `provisional` cannot cover it — a player is marked flushed on
+          their FIRST event, so anyone who fired is flushed long before the end (Tony, field 2026-08-30:
+          "it kinda was showing the final results as if it was final and then it finally popped up and
+          the totals changed"). The server has served this since A8 and nothing rendered it, which for
+          an objective mode is the difference between a result and a guess (operator review 2026-09-10). */}
+      {!past && rc.settling && (
+        <div data-testid="settling" style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.warn}`, borderLeft: `3px solid ${T.warn}`, font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>
+          ▲ STILL SETTLING — {(rc.awaiting ?? []).length} NODE{(rc.awaiting ?? []).length === 1 ? '' : 'S'} HAVE NOT REPORTED SINCE THE WHISTLE
+          {(rc.awaiting ?? []).length ? ` (${(rc.awaiting ?? []).map(name).join(', ')})` : ''}
+          {typeof rc.since_end_ms === 'number' ? ` · ${Math.round(rc.since_end_ms / 1000)}s AGO` : ''}. THESE TOTALS CAN STILL CHANGE.
+        </div>
+      )}
       {/* an ARCHIVED match must be described by ITS OWN mode, not the config the host is drafting
           now — the header read "MATCH COMPLETE · TDM · 05:00" over a recap of a 3-minute FFA */}
       <div style={{ font: F.mono(500, 10), letterSpacing: '.28em', color: T.dim, marginBottom: 8 }}>[ A8 // MATCH COMPLETE · {(past ? past.mode : state.config.mode).toUpperCase()}{past ? '' : ` · ${fmtClock(state.config.time_limit_s ?? 0)}`} ]</div>
@@ -170,6 +183,7 @@ export function Recap() {
           }}>{starting ? 'STARTING…' : 'NEW MATCH ▸'}</PrimaryButton>}
         </div>
       </Brackets>
+      {rc.possession && <Possession p={rc.possession} label={teamLabel} />}
       {rc.honors.length > 0 && (<>
       <SectionRule label="HONORS" />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(168px,1fr))', gap: 8, marginBottom: 22 }}>
@@ -284,6 +298,44 @@ function MatchConfig({ row }: { row: MatchHistoryRow }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+
+/** F70 — an objective mode's real scoreboard: seconds of possession per team.
+ *
+ *  Rendered BESIDE the kills, never instead of them: the kill table is still true, it just is not how
+ *  a hill mode is won. `reports`/`observed` are shown because possession from a grenade is a LOWER
+ *  BOUND — the beacon is IR and only a gun in range hears it (F92), so a match nobody watched reads 0
+ *  and must not be dressed up as the result. */
+function Possession({ p, label }: { p: NonNullable<RecapView['possession']>; label: (id: string) => string }) {
+  const held = Object.entries(p.by_team).sort((a, b) => b[1] - a[1]);
+  const top = held[0]?.[1] ?? 0;
+  const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+  const thin = p.of_s != null && p.observed_s < p.of_s * 0.75;
+  return (
+    <div data-testid="possession" style={{ marginBottom: 18, border: `1px solid ${T.line}`, background: T.panelDeep }}>
+      <SectionRule label="POSSESSION // HOW THE HILL WAS HELD" hint={`${p.sites} POINT${p.sites === 1 ? '' : 'S'} · ${p.reports} PHONE${p.reports === 1 ? '' : 'S'} REPORTED`} />
+      <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {held.map(([id, secs]) => (
+          <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ font: F.chk(700, 12), letterSpacing: '.14em', color: teamColor(id), minWidth: 120 }}>{label(id)}</span>
+            <span style={{ flex: 1, height: 14, background: T.inset, border: `1px solid ${T.line}` }}>
+              <span style={{ display: 'block', height: '100%', width: `${top ? Math.round((secs / top) * 100) : 0}%`, background: teamColor(id) }} />
+            </span>
+            <span style={{ font: F.osw(700, 20), ...TAB, minWidth: 72, textAlign: 'right' }}>{mmss(secs)}</span>
+          </div>
+        ))}
+        {p.neutral_s > 0 && (
+          <div style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.micro }}>
+            NEUTRAL {mmss(p.neutral_s)} — NOBODY HELD THE POINT (A HILL BROADCASTS TEAM 2 WHEN UNOWNED)
+          </div>
+        )}
+        <div style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: thin ? T.warn : T.micro, lineHeight: 1.5 }}>
+          {thin ? '▲ ' : ''}BEST COVERAGE {mmss(p.observed_s)}{p.of_s ? ` OF ${mmss(p.of_s)}` : ''} — A HILL IS ONLY SEEN BY A GUN IN BEACON RANGE, SO THIS IS A FLOOR, NOT A FULL ACCOUNT.
+        </div>
+      </div>
     </div>
   );
 }

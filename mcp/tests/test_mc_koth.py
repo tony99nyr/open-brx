@@ -69,29 +69,67 @@ def test_the_koth_defaults_never_put_anyone_on_the_neutral_team():
     assert 2 in {t["tid"] for t in default_config("tdm")["teams"]}
 
 
-def test_a_hill_roster_on_the_neutral_team_is_refused_at_the_push():
-    """The operator can drag players onto any team, so the guard has to hold at validate/push time
-    and not only in the mode defaults."""
+def test_a_hill_config_cannot_even_HOLD_a_neutral_team():
+    """🔴 The last open F82 route, found in the operator review 2026-09-10, and it was reachable.
+
+    `validate()` scans the ROSTER, so a koth config carrying an EMPTY yellow (tid 2) team passed, the
+    push succeeded, and the Lobby then renders every config team as a drop target. One drag ran
+    `_after_player_change` -> `_resend`, which re-compiles and re-pushes BEFORE `_validate` — so
+    `$TID,2` reached a real gun with nothing but an advisory error on a screen the operator had already
+    left. The team must therefore not exist in the config at all.
+    """
     s = _sess("koth")
-    s.set_config({"teams": [{"team_id": "blue", "name": "BLUE TEAM", "color": "#3a86ff", "tid": 1},
-                            {"team_id": "yellow", "name": "YELLOW TEAM", "color": "#ffd23f", "tid": 2}]})
-    for p in _roster(s):
-        s.patch_player(p["player_id"], team_id="yellow")
-    res = s._validate()
-    assert not res["ok"] and any("F82" in e for e in res["errors"]), res["errors"]
+    teams = [{"team_id": "blue", "name": "BLUE TEAM", "color": "#3a86ff", "tid": 1},
+             {"team_id": "yellow", "name": "YELLOW TEAM", "color": "#ffd23f", "tid": 2}]
     try:
-        s.push_config(force=True)          # even the operator override must not get past this
-        raise AssertionError("F82: MC pushed a koth game with a roster on tid 2")
+        s.set_config({"teams": teams})
+        raise AssertionError("F82: PUT /api/config accepted a tid-2 team for a hill mode")
     except ValueError as e:
-        assert "F82" in str(e), e
-    # CONTROL: move the same players to tid 3 and the identical game pushes clean, so the refusal is
-    # reading the TID and not simply objecting to every hill roster.
-    s.set_config({"teams": [{"team_id": "blue", "name": "BLUE TEAM", "color": "#3a86ff", "tid": 1},
-                            {"team_id": "green", "name": "GREEN TEAM", "color": "#2ecc71", "tid": 3}]})
-    for p in _roster(s):
-        s.patch_player(p["player_id"], team_id="green")
-    assert s._validate()["ok"], s.config_errors
+        assert "F82" in str(e) and "2" in str(e), e
+    assert all(t["tid"] != 2 for t in s.config["teams"]), s.config["teams"]
+    # CONTROL 1: the same shape of PUT is fine in a mode with no hill, where 2 is an ordinary team.
+    s.set_config({"mode": "tdm"})
+    s.set_config({"teams": teams})
+    assert [t["tid"] for t in s.config["teams"]] == [1, 2]
+    # CONTROL 2: and a hill mode still takes any other pair.
+    s.set_config({"mode": "koth"})
+    s.set_config({"teams": [teams[0], {"team_id": "green", "name": "GREEN TEAM", "color": "#2ecc71", "tid": 3}]})
+    assert [t["tid"] for t in s.config["teams"]] == [1, 3]
     s.push_config(force=True)
+
+
+def test_validate_names_an_empty_neutral_team_not_just_a_roster_on_one():
+    """A config that arrives another way (a preset stored before the PUT refusal, the CLI, a fixture)
+    must still be caught — and named BEFORE a body is dropped on it, which is the whole point."""
+    cfg = default_config("koth")
+    cfg["teams"] = list(cfg["teams"]) + [{"team_id": "yellow", "name": "Y", "color": "y", "tid": 2}]
+    errs = C.validate(cfg, [], {})["errors"]
+    assert any("F82" in e and "yellow" in e for e in errs), errs
+    # CONTROL: the same config without that team validates clean, so the guard reads the team list.
+    assert not any("F82" in e for e in C.validate(default_config("koth"), [], {})["errors"])
+
+
+def test_compiling_a_hill_head_on_the_neutral_tid_raises():
+    """The frame itself must be unbuildable, not merely warned about: `_resend` compiles and pushes
+    without consulting `validate()`, so this is the only layer a post-push team change cannot slip
+    past. Same shape as the F79 / A17 head guards."""
+    teams = [{"team_id": "blue", "name": "B", "color": "b", "tid": 1},
+             {"team_id": "yellow", "name": "Y", "color": "y", "tid": 2}]
+    cfg = dict(default_config("koth"), teams=teams)
+    player = {"player_id": "p1", "player_num": 1, "display": "REAPER", "team_id": "yellow",
+              "node_id": None, "gun_id": None, "voice": "male", "ready": True,
+              "loadout": {"weapons": [{"weapon_id": "assault_rifle"}]}}
+    try:
+        C.compile(cfg, player, teams)
+        raise AssertionError("F82: compiled a koth head on $TID 2")
+    except ValueError as e:
+        assert "F82" in str(e) and "REAPER" in str(e), e
+    # CONTROL 1: the same player on tid 1 compiles, and its head ends on $TID,1.
+    ok = C.compile(cfg, dict(player, team_id="blue"), teams)
+    assert ok["head"][-1] == "$TID,1,*"
+    # CONTROL 2: tid 2 is still compilable in a mode with no hill — this guard is mode-scoped.
+    tdm = C.compile(dict(cfg, mode="tdm"), player, teams)
+    assert tdm["head"][-1] == "$TID,2,*"
 
 
 # --------------------------------------------------------------------------- #
@@ -177,6 +215,24 @@ def test_a_grenade_objective_tells_the_operator_to_power_cycle_it_first():
     assert not [x for x in s.config_warnings if x.startswith("SETUP:")], s.config_warnings
 
 
+def test_an_ir_station_objective_says_out_loud_that_we_have_never_had_one():
+    """It was honest in exactly one place (the designer's picker hint) and silent everywhere that
+    matters: the `SETUP:` line was gated on `src == "grenade"`, so a game saved on `ir_station` pushed
+    clean with nothing said about a source we have never put on a bench (operator review 2026-09-10)."""
+    s = _sess("koth")
+    s.set_config({"station_source": "ir_station"})
+    setup = [w for w in s.config_warnings if w.startswith("SETUP:")]
+    assert len(setup) == 1, s.config_warnings
+    w = setup[0].upper()
+    assert "UNPROVEN" in w and "NEVER HAD ONE" in w, w
+    assert "POWER-CYCLE THE GRENADE" not in w, w          # the grenade's step is not this source's step
+    # CONTROL: switching back to the grenade brings the grenade's own step back, so the two are not
+    # one string with a word swapped.
+    s.set_config({"station_source": "grenade"})
+    assert any("POWER-CYCLE THE GRENADE" in x.upper() for x in s.config_warnings), s.config_warnings
+    assert not any("UNPROVEN" in x.upper() for x in s.config_warnings), s.config_warnings
+
+
 def test_multiple_control_points_on_a_grenade_source_are_refused():
     """F88: a beacon carries no station id, so two grenades in range are indistinguishable and would
     fight over the same point. MC cannot configure points today, so this is the guard for a config
@@ -218,3 +274,141 @@ def test_the_recap_of_a_possession_game_is_undecided_rather_than_won_on_kills():
     sc = Scorer("m", 1000, 600, "koth", s.players, s.teams, {}, {}, now_ms=lambda: 2000,
                 win_by=s.config["scoring"]["win_by"])
     assert sc.winner() == {"team_id": None, "undecided": "objective"}, sc.winner()
+
+
+# --------------------------------------------------------------------------- #
+# 5. possession: MC counts the hill, and four teammates do not count it 4x     #
+# --------------------------------------------------------------------------- #
+def _scorer(session, time_limit_s=600, nodes=()):
+    """A Scorer for the session's roster, with `nodes` bound node_id -> player_id."""
+    from brx_mcp.mc.scoring import Scorer
+    node_player = dict(nodes)
+    return Scorer("m1", 1_000_000, time_limit_s, session.config["mode"], session.players, session.teams,
+                  node_player, {n: True for n in node_player}, now_ms=lambda: 1_000_000,
+                  win_by=session.config["scoring"]["win_by"])
+
+
+def _poss(hold_ms, observed_ms=None, site="A"):
+    ev = {"type": "possession", "match_id": "m1", "t": 1_100_000, "hold_ms": hold_ms}
+    if observed_ms is not None:
+        ev["observed_ms"] = observed_ms
+    if site:
+        ev["site"] = site
+    return ev
+
+
+def test_four_teammates_on_one_hill_do_not_score_it_four_times():
+    """🔴 The rule the whole fact shape exists for. Every node in beacon range of the same point
+    reports the same ownership, so SUMMING them would quadruple a four-player squad's possession and
+    hand the match to whoever brought the most phones. Merged by MAX per (site, team)."""
+    s = _sess("koth", n=4)
+    pids = [p["player_id"] for p in _roster(s)]
+    sc = _scorer(s, nodes=[(f"node{i}", pid) for i, pid in enumerate(pids)])
+    blue = s.config["teams"][0]
+    for i in range(4):                                   # all four saw the same 120 s of blue ownership
+        assert sc.ingest(f"node{i}", _poss({str(blue["tid"]): 120_000}, observed_ms=300_000), 1_100_000) == "scored"
+    poss = sc.possession()
+    assert poss["by_team"][blue["team_id"]] == 120, poss
+    assert poss["reports"] == 4, poss
+    # CONTROL: a node that genuinely saw MORE raises the total — max is not "ignore everyone but the
+    # first", which would pass the assertion above just as well.
+    sc.ingest("node0", _poss({str(blue["tid"]): 200_000}, observed_ms=300_000), 1_100_000)
+    assert sc.possession()["by_team"][blue["team_id"]] == 200
+
+
+def test_a_resent_tally_is_idempotent_and_a_node_total_never_shrinks():
+    s = _sess("koth")
+    pid = _roster(s)[0]["player_id"]
+    sc = _scorer(s, nodes=[("n1", pid)])
+    tid = str(s.config["teams"][0]["tid"])
+    for _ in range(3):                                   # the same cumulative report, three times
+        sc.ingest("n1", _poss({tid: 60_000}, observed_ms=60_000), 1_100_000, seq=None)
+    assert sc.possession()["by_team"][s.config["teams"][0]["team_id"]] == 60
+    # a LOWER figure from the same node (an outbox replay of an older tally) must not walk it back
+    sc.ingest("n1", _poss({tid: 10_000}), 1_100_000)
+    assert sc.possession()["by_team"][s.config["teams"][0]["team_id"]] == 60
+
+
+def test_a_hills_neutral_time_is_nobodys():
+    """Team 2 is NEUTRAL on the wire (bench 2026-09-10), not a team. Crediting it to a colour would
+    invent possession; dropping it silently would hide how long the point sat unowned."""
+    s = _sess("koth")
+    pid = _roster(s)[0]["player_id"]
+    sc = _scorer(s, nodes=[("n1", pid)])
+    blue, green = s.config["teams"][0], s.config["teams"][1]
+    sc.ingest("n1", _poss({"2": 90_000, str(blue["tid"]): 30_000}, observed_ms=120_000), 1_100_000)
+    poss = sc.possession()
+    assert poss["neutral_s"] == 90 and poss["by_team"][blue["team_id"]] == 30, poss
+    assert poss["by_team"][green["team_id"]] == 0, poss
+    assert 2 not in {t["tid"] for t in s.config["teams"]}      # and no team could have claimed it anyway
+
+
+def test_possession_arriving_after_the_whistle_still_counts_and_is_clamped():
+    """A6.1 freezes KILLS after the whistle. The possession report the phone sends AT the whistle is a
+    tally for the whole match, and dropping it would throw away the only possession data MC gets — so
+    it is accepted late and CLAMPED to the match length instead."""
+    s = _sess("koth")
+    pid = _roster(s)[0]["player_id"]
+    sc = _scorer(s, time_limit_s=300, nodes=[("n1", pid)])
+    late = _poss({str(s.config["teams"][0]["tid"]): 9_999_000}, observed_ms=9_999_000)
+    late["t"] = sc.end_t + 30_000                        # well past the end freeze
+    assert sc.ingest("n1", late, sc.end_t + 30_000) == "scored"
+    poss = sc.possession()
+    assert poss["by_team"][s.config["teams"][0]["team_id"]] == 300, poss     # not 9999
+    assert poss["observed_s"] == 300 and poss["of_s"] == 300, poss
+    # CONTROL: an ordinary late KILL is still frozen out, so the exemption is possession-only.
+    dead = {"type": "death", "match_id": "m1", "t": sc.end_t + 30_000, "shooter_num": 0, "shooter_team": 0,
+            "player_id": pid}
+    assert sc.ingest("n1", dead, sc.end_t + 30_000) == "post_end"
+
+
+def test_the_winner_of_a_koth_match_is_the_team_that_held_the_hill():
+    """The card promised POSSESSION TIME and the recap said UNDECIDED after ten minutes. With a tally
+    on the record MC names the winner; with none it still refuses to guess from kills."""
+    s = _sess("koth")
+    pid = _roster(s)[0]["player_id"]
+    blue, green = s.config["teams"][0], s.config["teams"][1]
+    sc = _scorer(s, nodes=[("n1", pid)])
+    # no reports yet: undecided, NOT the kill leader
+    sc.stats[pid].kills = 12
+    assert sc.winner() == {"team_id": None, "undecided": "objective"}, sc.winner()
+    assert "possession" not in sc.recap()
+    sc.ingest("n1", _poss({str(blue["tid"]): 200_000, str(green["tid"]): 100_000}, observed_ms=300_000), 1_100_000)
+    assert sc.winner() == {"team_id": blue["team_id"]}, sc.winner()
+    r = sc.recap()
+    assert r["possession"]["by_team"] == {blue["team_id"]: 200, green["team_id"]: 100}, r["possession"]
+    # a level pair is a TIE, not a coin toss on dict order
+    sc.ingest("n1", _poss({str(green["tid"]): 200_000}), 1_100_000)
+    assert sc.winner() == {"team_id": None, "tie": sorted([blue["team_id"], green["team_id"]])}, sc.winner()
+    # CONTROL: a SURVIVAL mode has no tally and must stay undecided — this path is objective-only.
+    s2 = _sess("infection")
+    sc2 = _scorer(s2)
+    assert sc2.winner() == {"team_id": None, "undecided": "survival"}, sc2.winner()
+
+
+def test_a_possession_fact_is_accepted_by_the_envelope_validator():
+    """⚠ `PERSISTED_EVENT_TYPES` is a WHITELIST and an unlisted type is REJECTED at the socket — so a
+    fact the phone learns to send reaches nothing at all until it is registered (the F40/F60 shape:
+    both ends report healthy). This is the test that says the wire is open."""
+    from brx_mcp.mc.envelope import EnvelopeError, validate_event
+    ev = {"type": "possession", "t": 1_700_000_000_000, "node_id": "n1", "player_id": "p1",
+          "match_id": "m1", "hold_ms": {"1": 1000}}
+    assert validate_event(dict(ev)) is not None
+    # and the fact itself is required
+    try:
+        validate_event({k: v for k, v in ev.items() if k != "hold_ms"})
+        raise AssertionError("a possession event with no hold_ms was accepted")
+    except EnvelopeError as e:
+        assert "hold_ms" in str(e), e
+
+
+def test_a_garbage_possession_payload_is_ignored_rather_than_scored():
+    s = _sess("koth")
+    pid = _roster(s)[0]["player_id"]
+    sc = _scorer(s, nodes=[("n1", pid)])
+    assert sc.ingest("n1", _poss("not-a-dict"), 1_100_000) == "ignored"
+    assert sc.ingest("n1", _poss({"blue": "lots"}), 1_100_000) == "ignored"
+    assert sc.possession() is None, sc.possession()
+    # CONTROL: a well-formed report on the same scorer does land, so "ignored" is about the payload.
+    assert sc.ingest("n1", _poss({str(s.config["teams"][0]["tid"]): 5_000}), 1_100_000) == "scored"
+    assert sc.possession()["by_team"][s.config["teams"][0]["team_id"]] == 5

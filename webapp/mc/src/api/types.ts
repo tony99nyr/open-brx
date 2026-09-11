@@ -168,6 +168,18 @@ export interface RecapView {
   honors: Honor[];
   provisional: boolean;
   missing: string[];
+  /** F70 — an OBJECTIVE mode's real result: SECONDS each team held the control point, merged from the
+   *  nodes' `possession` facts (max per point per team, never summed — four teammates on one hill all
+   *  report the same ownership). Absent unless some node reported, which is itself the answer: a hill
+   *  nobody was in range of has no tally. `observed_s` is the best single observer's coverage of
+   *  `of_s`, so a partial number can be shown AS partial instead of as the result. */
+  possession?: { by_team: Record<string, number>; neutral_s: number; sites: number; reports: number;
+                 observed_s: number; of_s: number | null };
+  /** A8 — bound nodes not heard from since the whistle. ADVISORY: it gates nothing server-side, but a
+   *  recap that is still moving must say so, or the operator reads a settling number as the result. */
+  settling?: boolean;
+  awaiting?: string[];
+  since_end_ms?: number | null;
 }
 
 export type FeedTag = 'DOUBLE KILL' | 'TRIPLE KILL' | `STREAK ×${number}` | 'FIRST BLOOD' | 'TEAM KILL' | 'SYNC POINT';

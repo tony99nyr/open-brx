@@ -29,7 +29,7 @@ State {
   nodes: NodeView[],                          // every node that ever said hello this session
   readiness: ReadinessSnapshot,
   config: GameConfig,                         // current draft (validated on PUT); A10: carries loadout_policy {preset, hud_select, primary: SlotRule, secondary: SlotRule, perk: SlotRule}; A12: a weapon slot's kinds ∈ ("weapon"|"sidearm")[] — "sidearm" admits only the pistols; A14: `perk` is its own rule (kinds always ["perk"], choice may be "off") (loadout.md §3)
-  config_errors: string[], config_warnings: string[],   // warnings: e.g. frag_limit without full coverage (A6.1); A10: "N LOADOUTS RESET BY <ruleset>" after a policy change overwrote picks (cleared on the next PUT); a warning starting `SETUP: ` is a PHYSICAL step the operator must do on the field before the push (F70: power-cycle the grenade so the hill starts neutral) — the GAMES rail renders those verbatim
+  config_errors: string[], config_warnings: string[],   // warnings: e.g. frag_limit without full coverage (A6.1); A10: "N LOADOUTS RESET BY <ruleset>" after a policy change overwrote picks (cleared on the next PUT); a warning starting `SETUP: ` is a PHYSICAL step the operator must do on the field before the push (F70: power-cycle the grenade so the hill starts neutral; an `ir_station` source says instead that we have never had one on the bench) — the GAMES rail renders those verbatim, and so do the LOBBY and ARMED headers, where the operator is standing when the step is actionable
   players: Player[], teams: Team[],
   kit: { kitted: number, total: number, trying: { [player_id]: weapon_id }, browsing: { [player_id]: t_ms } },   // A10 browsing = HUD has its loadout browser open ("PICKING…"), 60 s expiry
   loadout_pool: { primary: string[], secondary_weapons: string[], perks: string[] },   // A10/A14: allowed ids per slot under config.loadout_policy (server-computed; render, don't re-derive)
@@ -43,7 +43,11 @@ LiveView { match_id, go_live_t, time_limit_s, ends_t, score: { [team_id]: number
 LiveRow  = ScoreRow + { status: "alive"|"down"|"stale", respawn_in_s?: number, sync_age_ms: number }
 RecapView { winner: Winner, score: { [team_id]: number }, rows: ScoreRow[],
             honors: { award: string, player_id: string, stat: string }[], provisional: boolean, missing: string[],
-            post_end_facts: number }   // A6.1: facts after end_t, recorded but not scored
+            post_end_facts: number,    // A6.1: facts after end_t, recorded but not scored
+            possession?: { by_team: { [team_id]: number /* SECONDS held */ }, neutral_s: number, sites: number,
+                           reports: number /* nodes that reported */, observed_s: number /* best single observer */,
+                           of_s: number|null /* the match length it is measured against */ } }
+            // possession is ABSENT unless some node reported it (objective modes only) — see `possession` below
 Winner   { team_id?: string|null, player_id?: string, undecided?: string /* win_by not decided by kills: host/objective decides */, tie?: string[] /* tied team_ids */ }
 FeedEntry { t_match_s: number, text: string, tag?: "DOUBLE KILL"|"TRIPLE KILL"|"STREAK ×N"|"FIRST BLOOD"|"TEAM KILL"|"SYNC POINT", kind: "kill"|"sync"|"info" }
 ```
@@ -55,7 +59,7 @@ FeedEntry { t_match_s: number, text: string, tag?: "DOUBLE KILL"|"TRIPLE KILL"|"
 | `POST /api/armory/scan` | `{duration_s?}` → `ScanRow[]` | muster |
 | `GET /api/armory` | → `ArmoryRecord[]` | any |
 | `GET /api/presentation` | → `{summary: {preset, announcer, gun_flash, headset_team, sight_flash, hud_events, mc_events, mc_confidence, custom_events, headset: {pregame, start_flash, in_play, hit, death: "native"\|colour, respawn_flash, carrier}, gun: {in_play: "native"\|"team"\|"dark"\|"health"}}, events: PresentationRow[], mc_confidence: {confident, missing, stale, unflushed}, presets: string[]}` — A11/A11.5: TONIGHT'S applied game's presentation profile, resolved. `PresentationRow` = `{event, source: "hud"\|"mc"\|"both", desc, sound: id\|null, words, gun_led: 0-8\|null, headset: 0-8\|null, flash: "green"\|null, text, enabled}`. Read-only; the UI's ADVANCED view. **Absent on an older server (404): the UI shows the "server predates this UI" banner and nothing else breaks.** | any |
-| `GET /api/modes` | → `ModeInfo[]` `{mode, name, abbr, desc, brief, teams_text, win_text, respawn_text, defaults: GameConfig}`. `koth` (King of the Hill) defaults to BLUE + GREEN — tids 1 and 3, never 2, which is what a NEUTRAL hill broadcasts (F82) — and `win_by: "objective"` (possession time), which the recap reports as `undecided` because MC has no objective scorer | any |
+| `GET /api/modes` | → `ModeInfo[]` `{mode, name, abbr, desc, brief, teams_text, win_text, respawn_text, defaults: GameConfig}`. `koth` (King of the Hill) defaults to BLUE + GREEN — tids 1 and 3, never 2, which is what a NEUTRAL hill broadcasts, and a koth/domination config may not even CONTAIN a tid-2 team (F82, refused at PUT) — and `win_by: "objective"`, decided by the `possession` fact below (`win_text` says "· HOST CALL" while no node sends one) | any |
 | `POST /api/loadout/pool` | `{loadout_policy, mode?}` (partial policy ok) → `{policy, pool: LoadoutPool}` — preview a DRAFT ruleset's allowed ids for the game designer; nothing applied | any |
 | `GET /api/weapons` | → `WeaponView[]` `{weapon_id, name, cls, clip, mags, reserve, reload_s, reload_ms, dmg, rpm, rng, dmg_per_hit, pool, ammo_total, bars, verified, tags: string[], role, htk, ttk_ms, caution?}`. **Draw meters from `bars` `{power, rof, ammo, ttk}` (0–100, ranked across the arsenal, any may be `null`), never from raw `dmg`** — `dmg` is the *share of the 115 pool one hit removes* (7–11 for most guns), so a raw 0–100 bar reads near-empty for everything (field 2026-08-30). `bars.ttk` is inverted (faster kill = longer bar) and is `null` for a one-shot weapon, which has no time-to-kill. **There is no range bar**: `rng` is identical on all 18 guns. `reload_s` is **null** when the weapon has no reload time — render `—`, never `0.0` and never a bare unit. `dmg_per_hit` is the real per-hit damage and does NOT move with the pool. **`pool` is the HOST'S health config (`config.health.max_hp + max_armor`), not a constant** — `htk` and `ttk_ms` are quoted against it and both move when the host changes health (`docs/weapon-design.md` §2.5: the AR needs 13 hits at 45/70 and 23 at 100/100), so a UI showing either must show `pool` beside it. `ttk_ms` is `null` when it cannot be derived. `caution` = known live problem, show on tile + hero | any |
 | `GET /api/voices` | → `{default: string, voices: VoiceOption[]}` from `compile.voice_options()` — the selectable `$PSET` voice personas (the full pack, not just male/female); `PATCH /api/players/{id}` validates `voice` against these ids. Only HEAVY is confirmed by ear (`gameconfig.VOICE_PACKS`) | any |
@@ -109,8 +113,26 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
 - **Scoring** (`scoring.py`, contracts §4): exact kills/assists, roster-based friendly (never in FFA), accuracy from
   victims' hits over own `shots_total` ("—" on a stale status), `t_recv` re-basing for unsynced nodes, `match_id`
   parking, end freeze (`post_end_facts`), fresh-only `feedback`/`alert` (`FEEDBACK_MAX_AGE_MS`), the A11.4
-  global-state alerts gated by `mc_confidence`. `win_by` other than `kills`/`survival` is `undecided` (no objective
-  scorer yet: `docs/utility-roadmap.md` §8).
+  global-state alerts gated by `mc_confidence`.
+- **Objective scoring — the `possession` fact (F70, node → MC).** An objective mode (`koth`/`domination`) is won on
+  POSSESSION, and MC is not on the field, so the nodes report it. One event type, deliberately shaped so it cannot be
+  double-counted:
+  `{type: "possession", match_id, t, node_id, player_id, site?: "A", hold_ms: { "<team tid>": ms }, observed_ms?: ms, source?: "beacon"|"station"}`
+  - **`hold_ms` is CUMULATIVE for the whole match, not a delta**, keyed by TEAM TID as a string (JSON has no integer
+    keys). Resend it as it grows — every report is idempotent.
+  - **MC merges by MAX per (site, team), NEVER by sum.** Four teammates standing on one hill all see the same
+    ownership; summing would score it four times. Max also makes a duplicated batch or a reconnecting node harmless.
+  - **tid 2 on a hill is NEUTRAL, not a team** (bench 2026-09-10): its time lands in `possession.neutral_s` and is
+    credited to nobody.
+  - **`observed_ms`** is how long this node could hear the point at all. It is what makes the number an honest LOWER
+    BOUND: a grenade's ownership travels only over IR and only a gun in range hears it (F92), so a point nobody
+    watched reads 0 rather than a guess. `possession.observed_s` reports the best single observer.
+  - **It is exempt from the A6.1 end freeze, and clamped instead.** The report that matters is the one sent AT the
+    whistle; a tally is a fact about the whole match, not a moment, so it is accepted late and capped at
+    `time_limit_s`. A late one rewrites the stored recap like any other late fact (`_restore_recap`).
+  - **`winner`** is the top team by `possession.by_team` when any is > 0 (a level pair is `tie`); with no possession
+    reported at all, `win_by` other than `kills` stays `undecided` — host-decided, never inferred from kills.
+    ⚠ Nothing on `app/src` sends this fact yet, which is why the koth card reads "POSSESSION TIME · HOST CALL".
 - **Recap** is provisional until every rostered node has flushed (`provisional`, `missing`, `settling`); late
   `event_batch`es and parked events reconcile in; honors need ≥ 3 scored players; `session/new` returns to muster
   with KITTED nodes (a rematch is a new push).

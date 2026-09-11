@@ -18,8 +18,9 @@ from .. import poolgauge as _pg
 from .. import voices as _voices
 from . import policy as _policy
 from .scoring import Scorer
-from .types import (DEFAULT_RUNWAY_S, MAX_PLAYERS, OFFLINE_AFTER_MS, STALE_AFTER_MS, STATION_SOURCES, SYNC_FRESH_MS,
-                    GameConfig, Player, ReadinessRow, ReadinessSnapshot, ScanRow, Team)
+from ..modes.hillbeacon import NEUTRAL_TEAM as _NEUTRAL_TEAM     # F82: the tid a NEUTRAL hill broadcasts
+from .types import (DEFAULT_RUNWAY_S, MAX_PLAYERS, OBJECTIVE_MODES, OFFLINE_AFTER_MS, STALE_AFTER_MS, STATION_SOURCES,
+                    SYNC_FRESH_MS, GameConfig, Player, ReadinessRow, ReadinessSnapshot, ScanRow, Team)
 
 PHASES = ("muster", "build", "kit", "lobby", "armed", "live", "recap")
 
@@ -75,7 +76,12 @@ MODES = [
     # from kills, and the UI renders that as "UNDECIDED — OBJECTIVE · HOST DECIDES" (Recap.tsx).
     {"mode": "koth", "name": "KING OF THE HILL", "abbr": "KOTH", "desc": "Hold the hill; possession scores",
      "brief": "One hill, and it is a real grenade on the field. Shoot the point and it flips to your team; every second your side holds it banks possession. A point your team does not own damages anyone standing on it, so taking one is a fight, and a defended hill costs an attacker exactly what the defenders put into it. Most possession time when the clock runs out takes the match.",
-     "teams_text": "2 TEAMS", "win_text": "POSSESSION TIME", "respawn_text": "ON · TIMED",
+     # `win_text` says HOST CALL on purpose, and it is the honest label until the phones report.
+     # MC ingests a `possession` fact and names the winner from it the moment one arrives (API.md /
+     # `scoring._possession`) -- but nothing on `app/src` sends one yet, so a card reading plain
+     # "POSSESSION TIME" promises a number that does not exist and the operator gets a kills table
+     # (operator review 2026-09-10). ➡ Drop "· HOST CALL" when the phone ships the fact.
+     "teams_text": "2 TEAMS", "win_text": "POSSESSION TIME · HOST CALL", "respawn_text": "ON · TIMED",
      "teams": ["blue", "green"], "win_by": "objective", "frag_limit": None, "respawn": {"type": "auto", "delay_s": 15},
      "preset": "standard", "station_source": "grenade"},
 ]
@@ -865,6 +871,18 @@ class Session:
                     raise ValueError(f"team tid(s) {sorted(set(bad))} outside 0-3 (F35): the IR word's "
                                      f"team field is 2 bits -- a $TID of 4 or higher makes teammates "
                                      f"damage each other and can let a gun read its own shots as friendly")
+                # 🔴 F82, and this was the LAST open route into it (operator review 2026-09-10). A hill
+                # mode's config was allowed to CONTAIN a tid-2 team as long as nobody was on it yet --
+                # `validate()` scans the roster, so an empty yellow team passed and the push succeeded.
+                # The Lobby then renders every config team as a drop target, and one drag re-compiles
+                # and re-pushes `$TID,2` from `_after_player_change` -> `_resend` BEFORE `_validate`
+                # runs, leaving only an advisory error on a screen the operator has already left. So the
+                # team must not EXIST in a hill config: refused here, roster or not.
+                if mode in OBJECTIVE_MODES and any(t["tid"] == _NEUTRAL_TEAM for t in v):
+                    raise ValueError(
+                        f"F82: mode {mode!r} cannot have a team on $TID {_NEUTRAL_TEAM} at all — that "
+                        "is the value a NEUTRAL grenade hill broadcasts, so anyone put on it later reads "
+                        "every uncaptured point as their own and takes no hill damage. Use tid 0, 1 or 3.")
                 cfg[k] = v
             elif k == "led":
                 if v is not None and not isinstance(v, dict):

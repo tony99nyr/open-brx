@@ -102,6 +102,10 @@ class Scorer:
         self.parked: list[tuple[str, Event, int]] = []
         self.feed: list[Feed] = []
         self.first_blood: str | None = None
+        # Objective modes: site -> team tid -> node_id -> that node's CUMULATIVE observed ms. Merged by
+        # MAX per (site, tid) in `possession()`, never summed — four teammates on one hill all report it.
+        self.possession_ms: dict[str, dict[int, dict[str, int]]] = {}
+        self.possession_observed: dict[str, int] = {}    # node_id -> ms it was hearing the point at all
         self.seen: set[tuple[str, int]] = set()
         # A6.1 end freeze: facts with effective t > end_t are recorded, never scored.
         self.end_t: int | None = (go_live_t + time_limit_s * 1000) if time_limit_s else None
@@ -205,6 +209,14 @@ class Scorer:
             if key in self.seen:
                 return "dup"
             self.seen.add(key)
+        # A possession tally is handled BEFORE the pid gate and BEFORE the A6.1 end freeze, and both
+        # are deliberate (see `_possession`): it is a cumulative total, not a timestamped event, and
+        # the report that matters arrives AFTER the whistle.
+        if ev.get("type") == "possession":
+            pid0 = self._pid(node_id, ev)
+            if pid0 in self.stats:
+                self.stats[pid0].flushed = True
+            return self._possession(node_id, ev)
         pid = self._pid(node_id, ev)
         if not pid or pid not in self.stats:
             return "ignored"
@@ -414,6 +426,88 @@ class Scorer:
             rows.append(row)
         return rows
 
+    # ---------- possession (objective modes: koth / domination) ----------
+    def _possession(self, node_id: str, ev: Event) -> str:
+        """Ingest one node's CUMULATIVE possession tally for a control point (mc/API.md `possession`).
+
+        Three rules, and each exists because the obvious alternative is wrong:
+
+        **Cumulative, merged by MAX per (site, team) — never summed.** Every node within beacon range
+        of the same hill reports the same ownership, so four teammates standing on one point would
+        otherwise score it four times. A cumulative total merged by max is also idempotent: a resend,
+        a duplicated batch or a node that reconnects and re-reports cannot inflate it, and a lost
+        report costs nothing as long as a later one arrives.
+
+        **It bypasses the A6.1 end freeze.** That freeze exists so a KILL arriving after the whistle
+        cannot change the result — a fact about a moment. A possession tally is a fact about the whole
+        match, and the report we most want is the one the phone sends *at* the whistle. Dropping it
+        would discard the only possession data we ever get. What replaces the freeze is a CLAMP: no
+        team can be credited with more than the match length.
+
+        **It does not need a bound player.** The payload carries team ids, not a player, so a node
+        whose binding MC has lost still contributes a reading.
+        """
+        site = str(ev.get("site") or "A")
+        hold = ev.get("hold_ms")
+        if not isinstance(hold, dict):
+            return "ignored"
+        cap = self.time_limit_s * 1000 if self.time_limit_s else None
+        def clamp(v) -> int | None:
+            try:
+                ms = int(v)
+            except (TypeError, ValueError):
+                return None
+            ms = max(0, ms)
+            return min(ms, cap) if cap is not None else ms
+        seen_any = False
+        for tid_raw, ms_raw in hold.items():
+            try:
+                tid = int(tid_raw)
+            except (TypeError, ValueError):
+                continue
+            ms = clamp(ms_raw)
+            if ms is None:
+                continue
+            per_node = self.possession_ms.setdefault(site, {}).setdefault(tid, {})
+            per_node[node_id] = max(per_node.get(node_id, 0), ms)   # a node's own total only ever grows
+            seen_any = True
+        obs = clamp(ev.get("observed_ms"))
+        if obs is not None:
+            self.possession_observed[node_id] = max(self.possession_observed.get(node_id, 0), obs)
+        if not seen_any and obs is None:
+            return "ignored"
+        return "scored"
+
+    def possession(self) -> dict | None:
+        """Merged possession, or None when nobody reported any (mc/API.md RecapView.possession).
+
+        Seconds per TEAM, the max reading per (site, team) — see `_possession`. A hill's NEUTRAL time
+        (tid 2, bench-measured 2026-09-10) belongs to no team and is reported separately rather than
+        being silently dropped or credited to a colour. `observed_s` is the BEST single observer's
+        coverage: possession from a grenade is only ever a lower bound, because the beacon is IR and
+        only a gun in range hears it (F92), so a match nobody watched reads as 0 rather than as a lie.
+        """
+        if not self.possession_ms and not self.possession_observed:
+            return None
+        tid_team = {t["tid"]: tid for tid, t in self.teams.items()}
+        by_team: dict[str, int] = {tid: 0 for tid in self.teams}
+        neutral_ms = 0
+        for sites in self.possession_ms.values():
+            for tid, per_node in sites.items():
+                best = max(per_node.values()) if per_node else 0
+                team_id = tid_team.get(tid)
+                if team_id is None:            # tid 2 on a hill = NEUTRAL, and any tid nobody is on
+                    neutral_ms += best
+                else:
+                    by_team[team_id] += best
+        return {"by_team": {k: round(v / 1000) for k, v in by_team.items()},
+                "neutral_s": round(neutral_ms / 1000),
+                "sites": len(self.possession_ms),
+                "reports": len(set(self.possession_observed) | {n for s in self.possession_ms.values()
+                                                                for p in s.values() for n in p}),
+                "observed_s": round(max(self.possession_observed.values(), default=0) / 1000),
+                "of_s": self.time_limit_s}
+
     def team_scores(self) -> dict[str, int]:
         scores = {tid: 0 for tid in self.teams}
         for st in self.stats.values():
@@ -426,7 +520,18 @@ class Scorer:
             rows = self.rows()
             return {"player_id": rows[0]["player_id"]} if rows else {}
         if self.win_by not in (None, "", "kills"):
-            # survival / objective ends are decided by the host or an objective source, not by kills (A5.9/A6.1)
+            # An OBJECTIVE mode is won on possession when the field actually reported some: the top
+            # team by held seconds, a tie when two are level. This is the one thing that made the koth
+            # card a promise MC could not keep — it printed "WIN · POSSESSION TIME" and then handed the
+            # operator a kills table and "UNDECIDED". Nothing else changes: survival (infection / LMS)
+            # has no tally to consult and stays undecided, as does an objective match nobody observed
+            # (A5.9/A6.1 — decided by the host, not by kills).
+            poss = self.possession()
+            held = {t: s for t, s in (poss or {}).get("by_team", {}).items() if s > 0}
+            if held:
+                best = max(held.values())
+                tops = sorted(t for t, s in held.items() if s == best)
+                return {"team_id": tops[0]} if len(tops) == 1 else {"team_id": None, "tie": tops}
             return {"team_id": None, "undecided": self.win_by}
         scores = self.team_scores()
         if not scores:
@@ -483,11 +588,15 @@ class Scorer:
 
     def recap(self, provisional_override: bool | None = None) -> dict:
         missing = self.missing()
-        return {"winner": self.winner(), "score": self.team_scores(), "rows": self.rows(),
-                "honors": self.honors(),
-                "provisional": bool(missing) if provisional_override is None else provisional_override,
-                "missing": missing, "post_end": len(self.post_end), "post_end_facts": len(self.post_end),
-                "parked": len(self.parked)}
+        out = {"winner": self.winner(), "score": self.team_scores(), "rows": self.rows(),
+               "honors": self.honors(),
+               "provisional": bool(missing) if provisional_override is None else provisional_override,
+               "missing": missing, "post_end": len(self.post_end), "post_end_facts": len(self.post_end),
+               "parked": len(self.parked)}
+        poss = self.possession()
+        if poss is not None:       # absent for every mode with no control point, so nothing else changes
+            out["possession"] = poss
+        return out
 
     _csv_safe = staticmethod(_csv_safe)
 

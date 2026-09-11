@@ -27,6 +27,13 @@ const DEMO_LOADOUTS: (() => Loadout)[] = [
   () => ({ weapons: [{ weapon_id: 'sniper_rifle' }, { weapon_id: 'smg' }], perk: null }),
   () => ({ weapons: [{ weapon_id: 'assault_rifle' }], perk: 'easy_reload' }),
 ];
+// The server's `SETUP: ` warnings, one per objective source (compile.py validate). The demo carries both
+// so the LOBBY / ARMED strip and the GAMES rail show in `?mock` exactly what a real MC sends — including
+// that an `ir_station` game is NOT silent about being a source we have never had on a bench.
+const SETUP_WARNING: Record<string, string> = {
+  grenade: 'SETUP: POWER-CYCLE THE GRENADE SO IT STARTS NEUTRAL, SET IT TO HILL MODE, AND PLACE IT — a hill that starts already owned skews the whole match, and only a power cycle guarantees neutral. ONE POINT ONLY (F88: a beacon carries no station id)',
+  ir_station: 'SETUP: PLACE AND POWER THE IR STATION, AND CHECK IT READS NEUTRAL BEFORE THE WHISTLE — ⚠ UNPROVEN: we have never had one on the bench, so nothing confirms it speaks the protocol our nodes read. Run the grenade if you want a hill we have measured',
+};
 // mirrors STATION_SOURCES in mcp/brx_mcp/mc/types.py, including the wording of the refusal
 const MOCK_STATION_SOURCES = [
   { value: 'grenade', desc: 'a BRX Smart Grenade in hill mode (protocol-15 beacons; bench-proven 2026-09-10)' },
@@ -109,9 +116,7 @@ export class MockBackend implements Api {
       // The demo mirrors the server's own `SETUP: ` warning for a grenade objective (compile.py validate),
       // so the KotH rail in `?mock` shows the same field step the real MC does.
       nodes, readiness, config: clone(this.config), config_errors: [...this.cfgErrors],
-      config_warnings: this.config.station_source === 'grenade'
-        ? ['SETUP: POWER-CYCLE THE GRENADE SO IT STARTS NEUTRAL, SET IT TO HILL MODE, AND PLACE IT — a hill that starts already owned skews the whole match, and only a power cycle guarantees neutral. ONE POINT ONLY (F88: a beacon carries no station id)']
-        : [],
+      config_warnings: SETUP_WARNING[this.config.station_source ?? ''] ? [SETUP_WARNING[this.config.station_source ?? '']] : [],
       players: clone(this.players), teams: clone(TEAMS),
       kit: { kitted, total: this.players.length, trying: { ...this.trying }, browsing: { ...this.browsing } },
       loadout_pool: this.pool(),
