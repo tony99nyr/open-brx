@@ -109,6 +109,55 @@ def test_validate_names_an_empty_neutral_team_not_just_a_roster_on_one():
     assert not any("F82" in e for e in C.validate(default_config("koth"), [], {})["errors"])
 
 
+def test_a_restored_session_on_tid_two_still_cannot_be_pushed_even_with_force():
+    """The push refusal is NOT dead code, and this is the path that still reaches it.
+
+    `_merge_config` now refuses a tid-2 team at PUT time, so an operator cannot build this config any
+    more. `restore_snapshot()` can: it assigns `self.config = snap["config"]` verbatim, with no
+    validation at all — so a `session.json` written before that refusal existed (or hand-edited, or
+    carried over from another build) boots MC straight into the state the PUT can no longer produce.
+    The property being proven is the original one: a koth game with a player on tid 2 cannot be pushed
+    **even with `force=True`**, because `force` waves the READINESS board and never a config error.
+    """
+    import json, pathlib, tempfile
+    s = _sess("koth")
+    snap = {"v": 1, "saved_ms": 0,
+            "players": [{**p, "team_id": "yellow", "node_id": None, "ready": False} for p in _roster(s)],
+            "teams": [], "config": dict(s.config, teams=[
+                {"team_id": "blue", "name": "BLUE TEAM", "color": "#3a86ff", "tid": 1},
+                {"team_id": "yellow", "name": "YELLOW TEAM", "color": "#ffd23f", "tid": 2}]),
+            "active_preset_id": None}
+    path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    path.write_text(json.dumps(snap))
+    s2 = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()))
+    s2._persist_path = path
+    assert s2.restore_snapshot() == 2
+    assert any(t["tid"] == 2 for t in s2.config["teams"]), "the restore path is supposed to bypass validation"
+    res = s2._validate()
+    assert not res["ok"], res
+    # BOTH F82 layers have to speak, and they say different things: one names the TEAM that should not
+    # exist, the other names the PLAYERS standing on it. Asserting only "an F82 error" would let the
+    # roster check be deleted while this test stayed green.
+    assert any("F82" in e and "cannot roster players" in e and _roster(s)[0]["player_id"] in e
+               for e in res["errors"]), res["errors"]
+    assert any("F82" in e and "cannot have a team" in e and "yellow" in e for e in res["errors"]), res["errors"]
+    try:
+        s2.push_config(force=True)
+        raise AssertionError("F82: MC pushed a koth game with a roster on tid 2")
+    except ValueError as e:
+        assert "F82" in str(e) and "cannot roster players" in str(e), e
+    # CONTROL: the same restored session on tid 3 pushes clean, so the refusal is reading the TID and
+    # not simply objecting to every restored hill game.
+    snap["config"]["teams"][1] = {"team_id": "green", "name": "GREEN TEAM", "color": "#2ecc71", "tid": 3}
+    snap["players"] = [{**p, "team_id": "green"} for p in snap["players"]]
+    path.write_text(json.dumps(snap))
+    s3 = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()))
+    s3._persist_path = path
+    s3.restore_snapshot()
+    assert s3._validate()["ok"], s3.config_errors
+    s3.push_config(force=True)
+
+
 def test_compiling_a_hill_head_on_the_neutral_tid_raises():
     """The frame itself must be unbuildable, not merely warned about: `_resend` compiles and pushes
     without consulting `validate()`, so this is the only layer a post-push team change cannot slip
