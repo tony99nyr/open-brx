@@ -76,6 +76,23 @@ const CONTROL_STALE_MS = 4000;
 // oscillate at net 0)". Unlike the IR path (F75) this is a MEASURED state, so it may play at all -- but a
 // station at 2 v 2 crosses the line repeatedly and the clip is 2.078 s.
 const HILL_CONTESTED_MIN_MS = 10000;
+// The same rule for the transition lines, which had no floor at all. Two control-point phones left on the
+// DEFAULT station id 1 are ONE presence entry (`beacon.js` keys `station:<id>`), so their fields alternate
+// per scan callback and the decoded owner flips several times a second -- each callout preempting the last.
+// The id latch in `_controlStation` fixes the distinct-id case; nothing on the reader side can separate two
+// phones that claim the same id, so the floor is what bounds the damage to one line per 3 s.
+const HILL_CALLOUT_MIN_MS = 3000;
+// D: while OUR point is draining, the possession tick doubles. That is the "you are losing this, get help"
+// signal, delivered by audio rather than by a screen the defender is not looking at -- and it is the only
+// audible warning before "Hill Lost!", which arrives when it is already too late to matter.
+const HILL_TICK_LOSING_MS = 500;
+// A duration must never be measured across a clock STEP: `now()` is `Date.now()` plus an MC offset that
+// updates as the sync converges, so one delta can jump. Clamp each accrual to a tick's worth of time.
+const HOLD_STEP_MAX_MS = 1000;
+// How often a growing tally goes to MC. `hold_ms` is cumulative and every report is idempotent
+// (`mc/API.md` "Objective scoring"), so this is purely a wire-traffic choice; the tally at the whistle is
+// sent unconditionally, because that is the report that decides the match.
+const POSSESSION_REPORT_MS = 10000;
 // Ids are the operator's picks, every one CONFIRMED BY EAR on hardware 2026-09-10 (rung S) — one female
 // objectives announcer with a music bed, chosen over the male "Control Point" set (VA23/VA22/VA21, also
 // confirmed). `ms` is the clip's real length from `mcp/brx_mcp/data/sound_catalog.json`, which is what the
@@ -167,6 +184,14 @@ export class Engine {
     this._hillContestedAt = 0;      // K1: when "Hill Contested" last played, so a flapping bit cannot repeat it
     this._hillWasContested = false; // the contested bit we last read off a control point's advert (edge-triggered)
     this._controlSig = '';          // the control-point advert fields that are worth a re-render
+    this._controlSite = null;       // the point we are latched to, so walking between two does not read as a capture
+    this._hillSaidAt = 0;           // when a captured/lost line last played, for HILL_CALLOUT_MIN_MS
+    this._hillOwnerWhenSilenced = undefined;  // C: the owner as we last heard it while audio was ON (undefined = never)
+    this._hillSourceWarned = '';    // B: the refused objective source, logged once per game
+    this.hold = {};                 // possession: site -> {tid -> cumulative ms} owned, as THIS node observed it
+    this.observed = {};             // site -> cumulative ms this node could hear the point at all (the honest lower bound)
+    this._holdAt = 0;               // when the accrual last ran
+    this._possessionSentAt = 0; this._possessionSig = '';
     this.deadAt = 0; this.killedBy = null; this.lastHitAt = 0;
     this._deathBlinkAt = 0;         // when the headset out-blink was last (re)painted, so a long DOWN doesn't outlast the count
     this._downRearmSent = false;    // §3.2: `down.rearm` sent for THIS death — one write per death, reset on death and revive
@@ -540,7 +565,7 @@ export class Engine {
     // this reset, startAt skipped re-arming from `live` and resumeSchedule returned `live` early — the
     // T-0 spawn never ran and the gun sat alive-with-0-hp (bench 2026-09-04, S7, on hardware). Drop the
     // stale live/down state so the new match re-arms → spawns.
-    if (newMatch) { this.spawned = false; this.alive = false; this.deadAt = 0; this.killedBy = null; }
+    if (newMatch) { this.spawned = false; this.alive = false; this.deadAt = 0; this.killedBy = null; this._resetHill(); }   // game 2 must not inherit game 1's owner, tally or warnings
     this._turned = false;               // last match's infection flip must not score this one as "turned" (polish 2026-09-04)
     if (this.phase === 'lobby' || this.phase === 'kitted' || this.phase === 'armed' || (newMatch && this.phase === 'live')) this._set('armed');
     this._save();
@@ -1119,6 +1144,25 @@ export class Engine {
     return this.phase === 'live' && this.alive
       && !(this.config && HILL_AUDIO_EXCLUDED_MODES.has(this.config.mode));
   }
+  /** B/F70: MC names ONE objective source per game (`config.station_source`), and the phone accepts BOTH
+   *  wires. Without this gate a grenade left live on the field (F69) during a phone-point game alternates
+   *  ownership with the point every 5 s and announces continuously — two sources, one `this.hill`.
+   *
+   *  ⚠ `STATION_SOURCES` (`mcp/brx_mcp/mc/types.py`) has no value for a BLE phone control point today, only
+   *  `grenade` and `ir_station`, and `compile.py` REFUSES `koth` without one. So the gate is written the only
+   *  way today's vocabulary allows: a game that says `grenade` belongs to the IR beacon and the phone point
+   *  is refused; anything else (absent, or a future phone value) belongs to the phone point. Until MC gains
+   *  that third value a phone-driven KotH cannot be configured — reported, not worked around here. */
+  _hillSourceAllowed(source) {
+    const src = this.config && this.config.station_source;
+    if (!src) return true;                                  // no game, or a mode with no objective: what we hear is it
+    const ok = source === 'station' ? src !== 'grenade' : src === 'grenade';
+    if (!ok && this._hillSourceWarned !== source) {
+      this._hillSourceWarned = source;
+      this.log(`ignoring the ${source === 'station' ? 'phone control point' : 'grenade hill beacon'}: this game's station_source is ${src}`, 'li');
+    }
+    return ok;
+  }
   /** Do WE hold the point right now? `null`/neutral/an enemy all read false. */
   _hillMine() {
     const mine = this.teamTid;
@@ -1166,6 +1210,7 @@ export class Engine {
    *  it in this same handler. Nothing here starts a sequence, and nothing here waits for a second word. */
   _onHillBeacon(ownerTeam, magnitude, now) {
     if (magnitude !== HILL_MAG && magnitude !== HILL_CAPTURE_MAG && magnitude !== HILL_WAS_NEUTRAL_MAG) return;   // magnitude 6 is a respawn station, not a point (F84)
+    if (!this._hillSourceAllowed('beacon')) return;   // B: this game's objective is not a grenade
     // F82 is explained HERE, on the first beacon, not from `_hillCallout` — that is only reached when a
     // transition would be announced, so a tid-2 roster that never witnessed a capture went silent with no
     // reason in the log. The behaviour was always right (the tick is gated by `_hillMine`); the diagnostic
@@ -1249,6 +1294,7 @@ export class Engine {
   _onControlAdvert(now) {
     const e = this._controlStation();
     if (!e) return;
+    if (!this._hillSourceAllowed('station')) return;   // B: this game's objective is a grenade, not a phone point
     if (this.teamTid === HILL_NEUTRAL_TEAM && !this._hillTeam2Warned) {   // F82, the same warning as the IR path
       this._hillTeam2Warned = true;
       this.log('F82: we are on tid 2, which is what a NEUTRAL point broadcasts — control-point ownership is undecidable, so no hill audio will play', 'le');
@@ -1269,7 +1315,17 @@ export class Engine {
     const rising = !bothWays && !!(e.state & CONTROL_STATE.rising);
     const falling = !bothWays && !!(e.state & CONTROL_STATE.falling);
     const prev = this.hill;
-    const prevOwner = prev ? prev.owner : null;
+    // A: two points are two different objectives, and `site` was recorded and never compared. A point we
+    // were not reading before tells us NOTHING about a change of hands — walking from our own point toward
+    // an enemy's used to fire "Hill Lost!" for a point nobody had taken. A different site (or the other
+    // source's state) is adopted SILENTLY, exactly as walking back into range is (`_onHillBeacon`).
+    const sameSite = !!prev && prev.source === 'station' && prev.site === e.id;
+    const prevOwner = sameSite ? prev.owner : null;
+    if (!sameSite && prev && prev.site !== e.id) {
+      this.log(`control point ${e.id} is a different point from ${prev.source === 'station' ? prev.site : 'the grenade hill'} — adopting its owner silently`, 'li');
+      this._hillWasContested = false; this._hillOwnerWhenSilenced = undefined;
+    }
+    this._controlSite = e.id;
     this.hill = {
       owner, at: now,
       // A station capture ALWAYS passes through neutral (that is the two-phase rule), so this is true for
@@ -1282,16 +1338,34 @@ export class Engine {
       contested, rising, falling,
       onPoint: !!e.present,
     };
+    // C: a transition that lands while we are DOWN used to be swallowed, not deferred — so a player
+    // respawned and "we lost it", "out of range" and "nothing is happening" were all the same silence, and
+    // only OWNING the point ever spoke. We remember the owner as we last heard it WITH audio on, and on the
+    // first advert after revive we say the one line that describes the net change across the death window.
+    // The net change, not a replay: the point may have changed hands twice, and the newest word is the true
+    // one (the same rule `_hillSay` enforces by preempting).
+    const audio = this._hillAudioOn();
     let said = false;
-    if (prevOwner != null && prevOwner !== owner) {
-      const kind = this._hillCallout(prevOwner, owner);
-      if (kind && this._hillAudioOn()) { this._hillSay(kind, `control point ${e.id}: team ${prevOwner} -> ${owner}`); said = true; }
+    const announceFrom = audio && this._hillOwnerWhenSilenced !== undefined && this._hillOwnerWhenSilenced !== prevOwner
+      ? this._hillOwnerWhenSilenced : prevOwner;
+    if (audio && announceFrom != null && announceFrom !== owner) {
+      const kind = this._hillCallout(announceFrom, owner);
+      // 2: a floor on the transition lines too. Two phones sharing the default station id 1 are ONE presence
+      // entry, so the decoded owner can flip several times a second and each line preempted the last.
+      if (kind && now - this._hillSaidAt >= HILL_CALLOUT_MIN_MS) {
+        this._hillSaidAt = now;
+        this._hillSay(kind, announceFrom === prevOwner ? `control point ${e.id}: team ${prevOwner} -> ${owner}`
+          : `control point ${e.id}: it changed hands while we were down (team ${announceFrom} -> ${owner})`);
+        said = true;
+      }
     }
+    // Track the owner we last heard with audio ON, so the line above can be owed across a death window.
+    this._hillOwnerWhenSilenced = audio ? undefined : (this._hillOwnerWhenSilenced === undefined ? prevOwner : this._hillOwnerWhenSilenced);
     // Contested, on the rising edge only. A capture callout in the same advert wins outright: `_hillSay`
     // preempts, so announcing both would cut "Hill Captured" off with "Hill Contested" and leave the player
     // with the less important of the two facts.
     const mine = this.teamTid;
-    if (contested && !this._hillWasContested && !said && this._hillAudioOn()
+    if (contested && !this._hillWasContested && !said && audio
         && mine != null && mine !== HILL_NEUTRAL_TEAM && (e.present || owner === mine)
         && now - this._hillContestedAt >= HILL_CONTESTED_MIN_MS) {
       this._hillContestedAt = now;
@@ -1303,24 +1377,89 @@ export class Engine {
     const sig = `${e.id}:${owner}:${held}:${contested}:${this.hill.progress}:${this.hill.holding}:${rising}:${falling}:${e.present}`;
     if (sig !== this._controlSig) { this._controlSig = sig; this._changed(); }
   }
+  /**
+   * POSSESSION, the thing an objective mode is actually scored on. Nothing anywhere counted it: the hill
+   * tick ticks a SOUND, not a clock. This accrues, per point and per team, how long that team OWNED it as
+   * THIS node observed it, plus how long this node could hear the point at all -- which is what makes the
+   * number an honest lower bound rather than a guess (`mc/API.md`, the `possession` fact).
+   *
+   * ⚠ From ELAPSED TIME, never from a count of ticks: a stalled or throttled tick would silently under-count,
+   * and that is the number the match is decided on. Each delta is clamped to one tick's worth because `now()`
+   * is `Date.now()` plus an MC offset that MOVES as the sync converges -- an unclamped delta across one clock
+   * step would add minutes of possession nobody played.
+   *
+   * ⚠ It accrues for WHOEVER owns it, not only for us, and it is never summed with a teammate's: MC merges by
+   * MAX per (site, team) precisely because four players on one hill all observe the same ownership. The fact
+   * says "team X owned point P for N ms as observed by me", which is why that merge is the obvious one.
+   */
+  _accrueHold(h, now) {
+    if (this.phase !== 'live') { this._holdAt = 0; return; }   // a point heard in the lobby is not possession
+    // Anchor the FIRST interval on when the point was last SEEN, not on when our tick happened to run.
+    // Seeding from `now` instead lost one tick's worth on every fresh hold -- 250 ms at our normal cadence
+    // but a full second on a throttled phone, which made possession depend on tick rate, the exact thing
+    // this accumulator exists to avoid.
+    if (!this._holdAt) this._holdAt = (h.at != null && h.at <= now) ? h.at : now;
+    const dt = Math.max(0, Math.min(HOLD_STEP_MAX_MS, now - this._holdAt));
+    this._holdAt = now;
+    if (!dt) return;
+    // A grenade beacon carries NO point id (F88), so its site is unnamed; a station advert names itself.
+    const site = h.site != null ? String(h.site) : '';
+    this._holdSource = h.source === 'station' ? 'station' : 'beacon';
+    this.observed[site] = (this.observed[site] || 0) + dt;
+    if (h.owner != null) {
+      const by = this.hold[site] || (this.hold[site] = {});
+      by[h.owner] = (by[h.owner] || 0) + dt;   // tid 2 included: MC credits it to nobody as `neutral_s`
+    }
+  }
+  /** Send the tally to MC. `hold_ms` is CUMULATIVE and every report is idempotent, so this is
+   *  resend-as-it-grows on a slow cadence, plus one unconditional report at the whistle. */
+  _reportPossession(now, force = false) {
+    if (!this.matchId) return;
+    const sites = Object.keys(this.observed);
+    if (!sites.length) return;
+    const sig = JSON.stringify([this.hold, this.observed]);
+    if (!force && (sig === this._possessionSig || now - this._possessionSentAt < POSSESSION_REPORT_MS)) return;
+    this._possessionSig = sig; this._possessionSentAt = now;
+    for (const site of sites) {
+      const hold = this.hold[site] || {};
+      this.emitFact({ type: 'possession', match_id: this.matchId, ...(site ? { site } : {}),
+        hold_ms: Object.fromEntries(Object.entries(hold).map(([tid, ms]) => [String(tid), Math.round(ms)])),
+        observed_ms: Math.round(this.observed[site]), source: this._holdSource || 'station' });
+    }
+  }
+  /** A new match must not inherit the last one's point, its tally, or its once-per-game warnings. */
+  _resetHill() {
+    this.hill = null; this._hillTickAt = 0; this._hillBusyUntil = 0;
+    this._controlSite = null; this._controlSig = ''; this._hillSaidAt = 0;
+    this._hillWasContested = false; this._hillContestedAt = 0; this._hillOwnerWhenSilenced = undefined;
+    this._hillTeam2Warned = false; this._hillSourceWarned = '';
+    this.hold = {}; this.observed = {}; this._holdAt = 0; this._holdSource = null;
+    this._possessionSig = ''; this._possessionSentAt = 0;
+  }
   /** Called from tick() (~250 ms): expire a stale point, then play the possession tick on OUR clock while
    *  we hold a fresh one. This is the only place the tick fires from — a beacon arrives once per ~5 s and
    *  could never carry a 1 s cadence, and driving audio per beacon is exactly what F74 forbids. */
   _hillTick(now) {
-    const h = this.hill; if (!h) return;
+    const h = this.hill;
+    if (!h) { this._holdAt = 0; return; }   // nothing to hear: the next accrual must not count the gap
     // A grenade point expires on two missed 5 s beacons; a phone control point expires on the §3 presence
     // rule, because its advert is continuous (§5d.5). Same code, the window is the source's.
     const window = h.source === 'station' ? CONTROL_STALE_MS : HILL_PRESENCE_MS;
     if (now - h.at >= window) {   // out of range or off the point. NOT a "lost" — nobody took it from us
-      this.hill = null; this._hillTickAt = 0;
+      this.hill = null; this._hillTickAt = 0; this._holdAt = 0;
       this._controlSig = ''; this._hillWasContested = false;   // K1: walking back into range must be able to re-announce
       this.log(`hill presence expired (${Math.round((now - h.at) / 1000)}s since its last beacon)`, 'li');
       this._changed();
       return;
     }
+    this._accrueHold(h, now);   // the CLOCK runs whatever the audio does: possession is a fact about the point
     if (!this._hillAudioOn() || !this._hillMine()) return;
     if (now < this._hillBusyUntil) return;   // a callout owns the announcer for its own real length: the tick waits rather than playing under it
-    if (this._hillTickAt && now - this._hillTickAt < HILL_TICK_MS) return;
+    // D: OUR point draining doubles the cadence. Nothing else is audible before "Hill Lost!", which arrives
+    // when it is already too late — the defender hears an unchanged 1 s tick right up to the moment they
+    // have lost it. `falling` comes off the advert, so this costs a comparison.
+    const period = h.falling ? HILL_TICK_LOSING_MS : HILL_TICK_MS;
+    if (this._hillTickAt && now - this._hillTickAt < period) return;
     const cue = this._hillCue('hill_tick');
     if (!cue.frame) return;
     this._hillTickAt = now;
@@ -1378,6 +1517,7 @@ export class Engine {
       this._downRearm(now);            // §3.2: one $HLOOP rearm after the hands-off window (belt-and-braces; the native flash is already running)
       this._gunReadoutTick(now);       // A16 §3.1: revert the gun-body readout to rest once its hold has run out
       this._hillTick(now);             // the possession tick on OUR ~1 s clock, and the >= 2-missed-beacon presence expiry
+      this._reportPossession(now);     // and the possession CLOCK, which is what the mode is scored on
       if (this.moment && now - this.moment.at > 4000) { this.moment = null; }
       // A swap the gun never confirmed with a shot: past the assumed window we TAKE the swap as done (the real
       // duration has never been timed — FOLLOWUPS F4; the next $ALCD corrects activeSlot if the gun disagrees).
@@ -1425,6 +1565,9 @@ export class Engine {
     try { if (this.onEnd) this.onEnd({ t: this.now(), match_id: this.matchId, kills: this.score ? this.score.kills : null,
       deaths: this.deaths, assists: this.score ? this.score.assists : null,
       accuracy: this.score ? this.score.accuracy : null, shots: this.shots, mode: this.config ? this.config.mode : null }); } catch (_) { /* history is best-effort */ }
+    // The tally that decides the match is the one sent AT the whistle: it is exempt from the A6.1 end freeze
+    // and clamped on MC's side instead (`mc/API.md`), so send it before the phase leaves `live`.
+    this._reportPossession(this.now(), true);
     if (this.matchId && !this.endedMatches.includes(this.matchId)) this.endedMatches.push(this.matchId);
     if (this.bleUp) this._writeTeardown('end', why); else { this.pendingTeardown = 'end'; this.log(`end (${why}) owed to the gun — link down`, 'le'); }
     this.spawned = false; this.alive = false; this.resync = null; this.reconciling = null; this.start = null; this._resyncRevive = false; this.reloading = null;
@@ -1649,9 +1792,20 @@ export class Engine {
    *  Unlike a respawn station a control point is NOT team-filtered -- an enemy-held point is exactly the
    *  one you need to hear about. A stale advert is ignored (see CONTROL_STALE_MS). */
   _controlStation() {
+    // ⚠ `ageMs`, never `this.now() - e.seenAt`. `Presence` stamps `seenAt` (and now `ageMs`) with the RAW
+    // `Date.now()`; a node's `now()` is that plus the MC clock offset, so subtracting one from the other
+    // made every advert look stale — or none of them ever — depending on which way MC's clock leaned, with
+    // no log line to explain it. The age is computed on one clock where the stamp was made.
     const live = this.stations.filter(e => e && e.kind === 'control' && this._stationAllowed(e)
-      && !(Number.isFinite(e.seenAt) && this.now() - e.seenAt > CONTROL_STALE_MS));
-    return live.find(e => e.present) || live[0] || null;
+      && !(Number.isFinite(e.ageMs) && e.ageMs > CONTROL_STALE_MS));
+    // Latch the point we are already reading (item 2): `stations` arrives in RSSI order, so picking by
+    // signal alone flips between two points as a player walks between them, and each flip looked like a
+    // change of hands. Stay on the latched point while it is live; move only when it is gone, or when we
+    // are actually STANDING on a different one.
+    const latched = this._controlSite != null ? live.find(e => e.id === this._controlSite) : null;
+    const present = live.find(e => e.present);
+    if (latched && (latched.present || !present)) return latched;
+    return present || live[0] || null;
   }
   /** The station a scanner revive may use RIGHT NOW, or null: dead, past the delay, link up, not resyncing, present. */
   _stationRevivable(now) {
@@ -2092,6 +2246,10 @@ export class Engine {
       // `source: 'station'`, `site`, `progress` 0-100, `holding`, `contested`, `rising`/`falling` and
       // `onPoint` (K1, utility.md §5). A reader that only knows `owner` behaves identically on both.
       hill: this.hill || null,
+      // The possession CLOCK (`mc/API.md`'s `possession` fact): per point, per team, cumulative ms owned as
+      // THIS node observed it, plus how long it could hear the point at all. Worth having in `state()` even
+      // before the wire carries it — a person can read the number off a phone at the end of a match.
+      possession: { by_site: this.hold, observed_ms: this.observed, source: this._holdSource || null },
       tMinusMs: this.phase === 'armed' && this.goLiveT ? Math.max(0, this.goLiveT - now) : null,
       clockMs: this.endT ? Math.max(0, this.endT - now) : (this.timeLimitMs || 0),
       ready: !!this.ready, tutorial: this.tutorial, tutorialWeapon: this.tutorialWeapon,

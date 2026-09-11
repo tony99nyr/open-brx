@@ -1,12 +1,12 @@
 # Followups — open work only
 
-Updated: 2026-09-10. **Everything in this file is open.** Closed items are in
+Updated: 2026-09-11. **Everything in this file is open.** Closed items are in
 [`archive/followups-closed.md`](archive/followups-closed.md), verbatim and ordered by close date; the evidence
 behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date). Session close = strike or
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F101 · G11 · H7 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F104 · G11 · H7 ·
 K7 · P18 · Q20 · R3 · S18.** (2026-09-10: F94/F95/F98 taken — the phone control point
 (`spec/utility.md` §5d), its LAN-coupled roaming variant (§5e) and Territories (§5f). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
 wider than the hill's period" generalisation, the double-`$HIR`-per-beacon dedupe finding (F85, closed same
@@ -1043,6 +1043,51 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   (5) **Self-declared presence.** Adverts are unauthenticated, so a player could claim proximity they do not
   have. Accepted tradeoff for friends on a LAN, but a persistent RoF buff is a stronger temptation than a
   respawn, so say so out loud rather than discovering it. `build` + a design pass.
+- **F101 🟠 THREE PHONE CONTROL-POINT BEHAVIOURS ARE SPECIFIED, TESTED, AND NOT IMPLEMENTED.** The agent
+  building them hit its session limit mid-task 2026-09-11, having written the fail-first tests but not the
+  code. The tests are **skipped with a reason rather than deleted**, so the intent survives and the suite is
+  honestly green (`app/test/engine.test.mjs`, 247 pass / 3 skip). Un-skip each as you implement it:
+  **(a) A handover while you are DOWN is swallowed, not deferred.** `_hillAudioOn()` is silent while down,
+  which is right, but a "Hill Lost!" landing in your death window is never replayed — so you respawn and
+  "we lost it", "out of range" and "nothing is happening" are the same silence. Play the one line for your
+  team on the first advert after revive if the owner changed while you were down.
+  **(b) The two sources are not gated on `config.station_source`.** MC picks ONE source per game, but the
+  phone accepts a grenade beacon and a phone advert into the same `this.hill`. A stray live grenade during a
+  station-sourced KotH would alternate false "Hill Lost!"/"Hill Captured" every 5 s. The test's words: *"a
+  stray grenade cannot take the phone point off us"*.
+  **(c) The possession tally is not force-sent at the whistle, and a new match can inherit it.** The report
+  that decides the match is the one sent AT the end, and `scoring.py` is already written to accept it (it is
+  deliberately exempt from the A6.1 end freeze and clamped to `time_limit_s` instead). Without the forced
+  send, MC gets only whatever the 10 s cadence happened to deliver.
+  ⚠ One thing NOT broken and already fixed: possession is elapsed-time based and cadence-independent to
+  within one observation interval. The accumulator anchors on when the point was last SEEN rather than on
+  when our tick ran, because crediting time before first sight would be inventing possession nobody
+  observed. `build`.
+- **F102 🟠 THE BENCH STAGE DOES NOT MIRROR THE PHONE CONTROL POINT AT ALL.** `mcp/brx_mcp/stage/stage.py`
+  models the grenade/IR half of the hill (ported 2026-09-10) but has **no kind-5 / BLE station model**, so a
+  phone-sourced control point is behaviour the operator can never verify at the bench — and this project's
+  own rule is that the stage exists to PREDICT `app/src/engine.js`, with a divergence meaning the operator
+  signs off on behaviour players never get (7 of 9 defects in one night, 2026-09-07). Also `stage.py:64`
+  still reads `hill_contested … NOT WIRED (F75)`, which is **now false**: contested IS detectable on the
+  phone path and `engine.js` plays it for `source: 'station'`. ⚠ When mirroring: the 4 s station freshness
+  and the grenade's 12 s presence window are **different on purpose** (`_hillTick` takes its window from
+  `hill.source`); byte 10 is FLAGS not packed, and `rising && falling` must read as direction-unknown; and
+  `stage.py` is SECONDS while `engine.js` is MILLISECONDS. Extend the constants-parity test (which reads
+  `engine.js` itself) to cover the new constants so this cannot drift. `build`.
+- **F103 🟠 THE PHONE CONTROL POINT HAS NO MATCH LIFECYCLE, WHICH IS F70 REINTRODUCED ONE LAYER OVER.**
+  Found by the final adversarial pass 2026-09-11. `app/src/utility.js`'s `controlTick` runs whenever
+  `kind === 'control'`, `applyStationConfig` never resets the point, and `control.js`'s `restore()` brings
+  `owner`, `holdMs` and the capture log back from `localStorage`. So **match 2 of a session starts with match
+  1's owner AND its possession tally**, and the point converts during setup before the whistle. We fixed
+  exactly this trap for the grenade (a hill that starts already-owned skews the match, hence the `SETUP:`
+  power-cycle warning) and then rebuilt it on the phone — and the only `SETUP:` line `compile.py` emits still
+  talks about a *grenade*. Fix: reset the point in `applyStationConfig` when `body.game` changes, and emit a
+  phone-source `SETUP:` line (the phone's checklist is different: app in utility role, kind control,
+  MC-armed, screen awake, battery — not a power-cycle).
+  Two smaller ones found in the same pass: **`control.js`'s `MAX_STEP_MS` clamps possession as well as
+  conversion**, so `holdMs` silently under-reports on any tick gap over 1 s (accrue from an `ownedSince`
+  stamp and clamp only the conversion work); and **`refusedSeen` is sticky for the app's life**, so the F82
+  tid-2 banner never clears after the player is reassigned, only via POINT RESET. `build`.
 - **F80 🟠 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.**
   Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
   received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default

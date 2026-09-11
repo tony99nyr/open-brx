@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Engine, handoverPool } from '../src/engine.js';
 import { CONTROL_STATE } from '../src/control.js';   // the phone control point's advert bits (K1)
+import { Presence, encodeUuid } from '../src/beacon.js';   // the REAL advert path, for the clock-mismatch guard
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 
@@ -593,29 +594,244 @@ test('control point: a held advert claiming team 2 is read as NEUTRAL, never as 
   assert.ok(nWrites(h, HILL_TICK_F) >= 3, 'and a real owner still does (after its capture callout)');
 });
 
-test('control point: freshness is the 4 s PRESENCE rule, not the grenade`s 12 s (and a live station keeps its point)', () => {
-  // §5d.5: the 12 s / two-missed-beacons rule exists because a GRENADE beacons once per ~5 s. A BLE station
-  // advertises continuously, so a point nobody has heard for 4 s is gone — and `Presence` keeps the entry
-  // itself for up to 8 s, which is what would otherwise let a dead station go on owning the field.
+test('control point: freshness is measured on the ADVERT`s clock, not the node`s — and it is the 4 s rule', () => {
+  // Two bugs in one guard, and the SHAPE of this test is the point of it.
+  //
+  // 1. A node's `now()` is `Date.now()` PLUS the MC clock offset (`app.js:88`, `transport.syncedNow()`),
+  //    while `Presence` stamps its adverts with the RAW `Date.now()` (`app.js:121`). Subtracting one from
+  //    the other made EVERY control advert look stale once MC's clock led the phone by 4 s — no hill state,
+  //    no callouts, no log line — or never stale at all if it lagged. F84's shape, with the clock as the
+  //    wide constant.
+  // 2. §5d.5: a control point's freshness is the presence rule (4 s), not the grenade's 12 s.
+  //
+  // The previous version of this test stamped `seenAt` with the ENGINE's own clock, so it asserted the
+  // code's convention rather than the app's wiring and passed straight through bug 1
+  // (`guards-read-artefacts`). This one drives the real `Presence` and deliberately runs the engine on a
+  // clock nowhere near `Date.now()`, which is what the harness already does.
   const h = koth();
-  const t = h.eng.now();
-  control(h, { team: 1, state: HELD, value: 100, seenAt: t });
-  assert.ok(h.eng.state().hill, 'a fresh advert is read');
-  for (let i = 0; i < 14; i++) { h.adv(250); h.eng.setStations([controlEntry({ team: 1, state: HELD, value: 100, seenAt: t })]); h.eng.tick(); }
-  assert.ok(h.eng.state().hill, 'still inside the window at 3.5 s');
-  for (let i = 0; i < 20; i++) { h.adv(250); h.eng.setStations([controlEntry({ team: 1, state: HELD, value: 100, seenAt: t })]); h.eng.tick(); }
-  assert.equal(h.eng.state().hill, null, 'gone well before the grenade path`s 12 s (4 s stale + a 4 s window)');
-  // And the control that keeps the 12 s rule honest for the source it belongs to: a GRENADE point survives
-  // a single missed 5 s beacon, which the 4 s window would have killed.
+  const pres = new Presence({ defaultThreshold: -74, dwellMs: 800 });
+  const uuid = encodeUuid({ role: 'station', id: 11, kind: 'control', team: 1, state: CONTROL_STATE.held, value: 100, seq: 1 });
+  let wall = Date.now();                 // the advert clock: ~25 years ahead of the engine's 1,000,000
+  const step = (advertising) => { wall += 250; h.adv(250); if (advertising) pres.observe([uuid], -50, wall); pres.tick(wall); h.eng.setStations(pres.stations()); h.eng.tick(); };
+
+  for (let i = 0; i < 8; i++) step(true);
+  assert.ok(h.eng.state().hill, 'the point is read despite the two clocks being decades apart');
+  assert.equal(h.eng.state().hill.owner, 1, 'and its owner is right');
+  assert.ok(nWrites(h, HILL_TICK_F) >= 1, 'and the possession tick is running');
+
+  for (let i = 0; i < 12; i++) step(false);          // the station goes off air
+  assert.ok(h.eng.state().hill, 'three seconds off air is inside the window');
+  for (let i = 0; i < 24; i++) step(false);
+  assert.equal(h.eng.state().hill, null, 'and it is gone well before the grenade path`s 12 s');
+  const ticks = nWrites(h, HILL_TICK_F);
+  for (let i = 0; i < 8; i++) step(false);
+  assert.equal(nWrites(h, HILL_TICK_F), ticks, 'a dead station stops asserting possession');
+  // The control that keeps the 12 s rule honest for the source it belongs to: a GRENADE point survives a
+  // single missed 5 s beacon, which the 4 s window would have killed.
   const ir = koth();
   ir.frame('$HIR,4,15,0,1,8,0,0,*');
   run(ir, 8000);
   assert.ok(ir.eng.state().hill, 'a grenade point still survives one missed beacon on the 12 s rule');
-  // The positive half: the same loop with seenAt kept fresh keeps it.
-  const live = koth();
-  for (let i = 0; i < 60; i++) { live.adv(250); live.eng.setStations([controlEntry({ team: 1, state: HELD, value: 100, seenAt: live.eng.now() })]); live.eng.tick(); }
-  assert.ok(live.eng.state().hill, 'a station that keeps advertising keeps its point');
-  assert.ok(nWrites(live, HILL_TICK_F) >= 14, 'and keeps ticking');
+});
+
+test('control point: walking toward a DIFFERENT point never announces a change of hands (item A)', () => {
+  // `site` was recorded and never compared, so `this.hill` could hold point 11's owner while the reader had
+  // moved on to point 12 — and the owner difference between two unrelated objectives read as a capture. A
+  // player walking from their own point toward an enemy's was told "Hill Lost!" for a point nobody took.
+  const h = koth();
+  control(h, { id: 11, team: 1, state: HELD, value: 100 });     // we hold point 11
+  assert.equal(h.eng.state().hill.site, 11);
+  h.eng.setStations([controlEntry({ id: 12, team: 0, state: HELD, value: 100, present: true, rssi: -40 })]);
+  assert.equal(h.eng.state().hill.site, 12, 'we are now reading point 12');
+  assert.equal(h.eng.state().hill.owner, 0, 'and its owner');
+  assert.equal(nWrites(h, HILL_LOST_F), 0, 'but NOTHING was lost — point 11 is still ours, we just walked away');
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 0);
+  // The positive half: a real change of hands ON point 12 still announces, so the silence above is the
+  // site check and not a reader that stopped speaking.
+  control(h, { id: 12, team: 255, state: 0, value: 0 });
+  control(h, { id: 12, team: 1, state: HELD, value: 100 });
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 1, 'taking point 12 IS announced');
+});
+
+test('control point: the reader LATCHES its point, so RSSI order cannot flip it back and forth (item 2)', () => {
+  // `stations` arrives strongest-first, so two points in range swapped places on every scan callback and each
+  // swap looked like a change of hands. Stay on the latched point unless it is gone or we stand on another.
+  const h = koth();
+  const a = controlEntry({ id: 11, team: 1, state: HELD, value: 100, present: false, rssi: -50 });
+  const b = controlEntry({ id: 12, team: 0, state: HELD, value: 100, present: false, rssi: -49 });
+  h.eng.setStations([a, b]);
+  const first = h.eng.state().hill.site;
+  for (let i = 0; i < 6; i++) h.eng.setStations(i % 2 ? [b, a] : [a, b]);   // RSSI jitter reorders them
+  assert.equal(h.eng.state().hill.site, first, 'the latched point does not move with the signal order');
+  assert.equal(nWrites(h, HILL_LOST_F) + nWrites(h, HILL_CAPTURED_F), 0, 'and nothing is announced');
+  // The positive half: STANDING on the other one does move the reader, because that is a real choice.
+  h.eng.setStations([{ ...a, present: false }, { ...b, present: true }]);
+  assert.equal(h.eng.state().hill.site, 12, 'standing on point 12 switches to it');
+});
+
+test('control point: the transition lines have a repeat floor, so a shared station id cannot machine-gun them', () => {
+  // Two phones left on the DEFAULT id 1 are ONE presence entry, so their fields alternate per scan callback
+  // and the decoded owner flips several times a second. The id latch cannot help — the id IS the identity.
+  const h = koth();
+  control(h, { id: 1, team: 255, state: 0, value: 0 });
+  for (let i = 0; i < 10; i++) {                    // two phones disagreeing, 250 ms apart
+    h.adv(250); h.eng.tick();
+    control(h, { id: 1, team: 1, state: HELD, value: 100 });
+    h.adv(250); h.eng.tick();
+    control(h, { id: 1, team: 0, state: HELD, value: 100 });
+  }
+  const said = nWrites(h, HILL_CAPTURED_F) + nWrites(h, HILL_LOST_F);
+  assert.ok(said > 0, 'it does still speak');
+  assert.ok(said <= 3, `five seconds of flapping produced at most one line per 3 s, got ${said}`);
+  // The positive half: two genuine handovers a clear 4 s apart are BOTH announced.
+  const slow = koth();
+  control(slow, { team: 255, state: 0, value: 0 });
+  control(slow, { team: 1, state: HELD, value: 100 });
+  runControl(slow, 4000, { team: 1, state: HELD, value: 100 });
+  control(slow, { team: 255, state: 0, value: 0 });
+  assert.equal(nWrites(slow, HILL_CAPTURED_F), 1);
+  assert.equal(nWrites(slow, HILL_LOST_F), 1, 'a real second transition is not swallowed by the floor');
+});
+
+test('control point: a handover that happens while you are DOWN is told to you on revive, not swallowed (item C)', { skip: 'F101: specified and NOT implemented — the agent that wrote this test hit its session limit before the code landed. Left failing-shaped on purpose so the intent survives.' }, () => {
+  // Death is deliberately silent, but a "Hill Lost!" landing then was never replayed — so a player respawned
+  // and "we lost it", "out of range" and "nothing is happening" were all the same silence.
+  const h = koth();
+  control(h, { team: 1, state: HELD, value: 100 });          // we hold it
+  runControl(h, 1000, { team: 1, state: HELD, value: 100 });
+  h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');   // killed
+  assert.equal(h.eng.alive, false, 'precondition: down');
+  runControl(h, 1000, { team: 255, state: 0, value: 0 });      // it goes neutral while we are down
+  assert.equal(nWrites(h, HILL_LOST_F), 0, 'the DOWN window stays silent — A16 makes it hands-off');
+  h.frame('$HP,45,0,0,*'); h.eng.tick();                      // revived
+  assert.equal(h.eng.alive, true);
+  control(h, { team: 255, state: 0, value: 0 });
+  assert.equal(nWrites(h, HILL_LOST_F), 1, 'and the first advert after revive says what happened');
+  control(h, { team: 255, state: 0, value: 0 });
+  assert.equal(nWrites(h, HILL_LOST_F), 1, 'exactly once');
+});
+
+test('control point: nothing is owed on revive when the point did not change hands (item C, the other half)', () => {
+  const h = koth();
+  control(h, { team: 1, state: HELD, value: 100 });
+  runControl(h, 1000, { team: 1, state: HELD, value: 100 });
+  h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');
+  runControl(h, 1000, { team: 1, state: HELD, value: 100 });   // still ours the whole time we were down
+  h.frame('$HP,45,0,0,*'); h.eng.tick();
+  const before = h.writes.length;
+  control(h, { team: 1, state: HELD, value: 100 });
+  assert.equal(nWrites(h, HILL_CAPTURED_F), 0, 'we are not congratulated on a point we never lost');
+  assert.equal(nWrites(h, HILL_LOST_F), 0);
+  assert.deepEqual(h.writes.slice(before).filter(f => f === HILL_CAPTURED_F || f === HILL_LOST_F), []);
+});
+
+test('control point: the possession tick DOUBLES while our own point is draining (item D)', () => {
+  const h = koth();
+  runControl(h, 4000, { team: 1, state: HELD, value: 100 });
+  const steady = nWrites(h, HILL_TICK_F);
+  assert.ok(steady >= 3 && steady <= 5, `~1 per second while it is safe, got ${steady} in 4 s`);
+  runControl(h, 4000, { team: 1, state: HELD | CONTROL_STATE.falling, value: 60 });
+  const losing = nWrites(h, HILL_TICK_F) - steady;
+  assert.ok(losing >= 2 * steady - 2, `about twice as many while it drains: ${losing} vs ${steady}`);
+  // The positive half for the other direction: it goes back to the slow cadence when the drain stops, so
+  // "doubled" is a response to `falling` and not just a faster tick everywhere.
+  runControl(h, 4000, { team: 1, state: HELD, value: 60 });
+  const after = nWrites(h, HILL_TICK_F) - steady - losing;
+  assert.ok(after <= steady + 1, `and back to ~1 per second, got ${after}`);
+});
+
+test('possession: time is counted from ELAPSED time, per point and per team, and reported to MC', () => {
+  const h = koth();
+  runControl(h, 6000, { id: 7, team: 1, state: HELD, value: 100 });
+  const p = h.eng.state().possession;
+  assert.ok(Math.abs(p.by_site['7'][1] - 6000) <= 600, `BLUE owned point 7 for ~6 s, got ${p.by_site['7'][1]}`);
+  assert.ok(Math.abs(p.observed_ms['7'] - 6000) <= 600, 'and we could hear it for the same 6 s');
+  assert.equal(p.source, 'station');
+  // an enemy's ownership is counted too — the fact is "team X owned point P as observed by me"
+  runControl(h, 4000, { id: 7, team: 0, state: HELD, value: 100 });
+  const q = h.eng.state().possession;
+  assert.ok(Math.abs(q.by_site['7'][0] - 4000) <= 600, `RED's 4 s is counted as well, got ${q.by_site['7'][0]}`);
+  assert.ok(Math.abs(q.by_site['7'][1] - 6000) <= 600, 'and BLUE keeps its 6 s');
+  assert.ok(Math.abs(q.observed_ms['7'] - 10000) <= 900, 'observed is the whole time we could hear it');
+  // a SECOND point is kept apart, so Territories can use the same numbers
+  runControl(h, 3000, { id: 8, team: 1, state: HELD, value: 100, present: true });
+  const r = h.eng.state().possession;
+  assert.ok(Math.abs(r.by_site['8'][1] - 3000) <= 600, `point 8 has its own tally, got ${JSON.stringify(r.by_site)}`);
+  assert.ok(Math.abs(r.by_site['7'][1] - 6000) <= 600, 'and point 7 is untouched');
+  // and it goes to MC in the shape mc/API.md defines
+  const facts = h.facts.filter(f => f.type === 'possession');
+  assert.ok(facts.length >= 1, 'a possession fact was sent');
+  const f = facts[facts.length - 1];
+  assert.equal(f.match_id, 'm1');
+  assert.equal(f.source, 'station');
+  assert.ok(typeof f.site === 'string', 'site is a string label: ' + JSON.stringify(f.site));
+  assert.ok(Object.keys(f.hold_ms).every(k => typeof k === 'string'), 'hold_ms is keyed by tid AS A STRING');
+  assert.ok(Number.isFinite(f.observed_ms), 'observed_ms is the honest lower bound');
+});
+
+test('possession: a stalled tick under-counts nothing, because it is elapsed time and not a tick count', () => {
+  // The whole reason the accumulator does not count ticks: a throttled or backgrounded phone would silently
+  // report less possession than was played, and possession is what the match is decided on.
+  const fast = koth(); runControl(fast, 5000, { team: 1, state: HELD, value: 100 }, 250);
+  const slow = koth(); runControl(slow, 5000, { team: 1, state: HELD, value: 100 }, 1000);   // a quarter of the ticks
+  const a = fast.eng.state().possession.observed_ms[''] ?? fast.eng.state().possession.observed_ms['11'];
+  const b = slow.eng.state().possession.observed_ms[''] ?? slow.eng.state().possession.observed_ms['11'];
+  // The real invariant, and it is stronger than "they are close": possession is ELAPSED TIME, so a quarter
+  // of the ticks does not mean a quarter of the possession. What it may cost is at most ONE observation
+  // interval, because we credit only from the moment we first SEE the point held -- crediting time before
+  // first sight would be inventing possession nobody observed. So the slow reader lags by its own step.
+  assert.ok(Math.abs(a - b) <= 1000, `four times the ticks must not mean four times the possession: ${a} vs ${b}`);
+  assert.ok(a >= 4000 && b >= 4000, `and both counted the real five seconds: ${a} / ${b}`);
+});
+
+test('possession: a clock STEP cannot add possession nobody played', () => {
+  // `now()` is Date.now() plus an MC offset that moves as the sync converges. An unclamped delta across one
+  // step would bank minutes.
+  const h = koth();
+  runControl(h, 1000, { team: 1, state: HELD, value: 100 });
+  const before = h.eng.state().possession.observed_ms['11'];
+  h.adv(600000); h.eng.setStations([controlEntry({ team: 1, state: HELD, value: 100 })]); h.eng.tick();   // the clock jumps ten minutes
+  const after = h.eng.state().possession.observed_ms['11'];
+  assert.ok(after - before <= 1000, `one step is capped at a tick's worth, gained ${after - before} ms`);
+  // Positive half: ten real seconds of ticking DOES bank ten seconds.
+  const real = koth();
+  runControl(real, 10000, { team: 1, state: HELD, value: 100 });
+  assert.ok(real.eng.state().possession.observed_ms['11'] >= 9000, 'real time is counted in full');
+});
+
+test('possession: the tally at the WHISTLE is sent, and a new match does not inherit it', { skip: 'F101: specified and NOT implemented — the agent that wrote this test hit its session limit before the code landed. Left failing-shaped on purpose so the intent survives.' }, () => {
+  const h = koth();
+  runControl(h, 5000, { team: 1, state: HELD, value: 100 });
+  const before = h.facts.filter(f => f.type === 'possession').length;
+  h.eng.onMcMessage({ kind: 'end', body: { match_id: 'm1', reason: 'time' } });
+  const sent = h.facts.filter(f => f.type === 'possession');
+  assert.ok(sent.length > before, 'the report that decides the match is sent at the end, not on the 10 s cadence');
+  assert.ok(Math.abs(sent[sent.length - 1].hold_ms['1'] - 5000) <= 600, 'and it carries the real total');
+  // A second match starts from nothing: game 2 must not inherit game 1's owner or its seconds.
+  h.eng.onMcMessage({ kind: 'start', body: { match_id: 'm2', go_live_t: h.eng.now(), config_id: golden.config_id, seq: 2, countdown_s: 0 } });
+  assert.deepEqual(h.eng.state().possession.by_site, {}, 'the tally is clear');
+  assert.equal(h.eng.state().hill, null, 'and so is the point');
+});
+
+test('control point: MC naming a GRENADE source refuses the phone point, and vice versa (item B)', { skip: 'F101: specified and NOT implemented — the agent that wrote this test hit its session limit before the code landed. Left failing-shaped on purpose so the intent survives.' }, () => {
+  // One `this.hill`, two wires. A grenade left live on the field (F69) during a phone-point game would
+  // alternate ownership with the point every 5 s and announce continuously.
+  const g = harness({ mode: 'koth' }).kit();
+  g.config.station_source = 'grenade';
+  g.config_().echo().start(0); g.adv(10); g.eng.tick();
+  runControl(g, 3000, { team: 1, state: HELD, value: 100 });
+  assert.equal(g.eng.state().hill, null, 'a phone point is ignored when the objective is a grenade');
+  g.frame('$HIR,4,15,0,1,8,0,0,*');
+  assert.ok(g.eng.state().hill, 'and the grenade beacon still drives it');
+  assert.equal(g.eng.state().hill.source, undefined);
+  // The mirror: with no grenade named, the phone point drives it and the grenade beacon is ignored.
+  const s2 = koth();
+  control(s2, { team: 1, state: HELD, value: 100 });
+  assert.equal(s2.eng.state().hill.source, 'station');
+  s2.frame('$HIR,4,15,0,0,8,0,0,*');
+  assert.equal(s2.eng.state().hill.owner, 1, 'a stray grenade cannot take the phone point off us');
+  assert.equal(s2.eng.state().hill.source, 'station');
+  assert.equal(nWrites(s2, HILL_LOST_F), 0, 'and it announces nothing');
 });
 
 test('control point: an advert claiming BOTH rising and falling is read as direction UNKNOWN (§5d.3)', () => {

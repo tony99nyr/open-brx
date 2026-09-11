@@ -44,7 +44,7 @@ async function loadPlugins() {
 }
 
 // ---------- the station ----------
-let advertising = false, support = { advertising: false, txPowerControl: false, platform: 'web' };
+let advertising = false, _advertRetryAt = 0, support = { advertising: false, txPowerControl: false, platform: 'web' };
 // The control point (kind 5). §5d.6 gives it its OWN localStorage key, separate from the operator's settings:
 // it is match state, not configuration, and it is restored BEFORE the first advert goes out so a phone that
 // was rebooted or force-closed mid-match comes back holding what it held. The station is self-authoritative
@@ -59,9 +59,13 @@ function saveControl() {
   try { localStorage.setItem(CONTROL_KEY, JSON.stringify({ ...point.snapshot(), seq: advert.seq })); } catch (_) { /* ignore */ }
 }
 const link = new BrxLink({ log });
-const presence = new Presence({ defaultThreshold: settings.threshold, dwellMs: settings.dwell, alpha: 0.35 });
+// `game` is the match scope (§3): a player advert from another match, or a spare phone on a table near the
+// point, must not count as a body. The player side already assigns this every second (`app.js` presenceTick);
+// the station never did, so `beacon.js`'s filter was dead code here. It only bites once MC arms a non-zero
+// game (v1 manual stations stay at 0 = any), which is exactly when two games share a field.
+const presence = new Presence({ defaultThreshold: settings.threshold, dwellMs: settings.dwell, alpha: 0.35, game: settings.game });
 const wasAlive = new Map();          // player id → alive bit, to count revives that happened here
-let revives = 0, scanning = false, _lastScanRestart = 0, _scanBusy = false;
+let revives = 0, scanning = false, _lastScanRestart = 0, _scanBusy = false, _twin = 0;
 const SCAN_RESTART_MS = 8000;        // S6: a long scan STALLS on Android, worse while we also advertise — restart it on this cadence (8s > the ~6s floor Android's ~5-starts/30s throttle imposes)
 
 /** The advert triple this kind publishes. A control point's is LIVE state (owner / progress / contested),
@@ -104,7 +108,13 @@ async function applyStationConfig(body) {
   if (body.team != null) settings.team = typeof body.team === 'number' ? body.team : (TEAM_ID_TO_TID[String(body.team).toLowerCase()] ?? settings.team);
   if (Number.isFinite(+body.id) && +body.id >= 1) settings.id = Math.min(65535, Math.round(+body.id));
   if (Number.isFinite(+body.threshold)) settings.threshold = Math.max(-100, Math.min(-30, Math.round(+body.threshold)));
+  const wasGame = settings.game;
   settings.game = Number.isFinite(+body.game) ? (+body.game & 0xff) : 0;   // absent = 0 (any game), v1
+  // A NEW game must not resume the last one's owner with the last one's possession seconds in the tally.
+  // Arming is the only signal a station gets that a match changed (it is deliberately offline for the rest of
+  // one), so this is where the point resets. The manual button behind the seven-tap gate is the field
+  // fallback, not the mechanism.
+  if (settings.game !== wasGame) resetPoint(`MC armed game ${settings.game}`);
   settings.mcArmed = { game: settings.game, at: Date.now(), valid_ids: Array.isArray(body.valid_ids) ? body.valid_ids.slice(0, 32) : null };
   save();
   log(`MC armed this phone: ${KIND_LABEL[settings.kind]} · ${TEAM_NAMES[settings.team] || settings.team} · station ${settings.id} · threshold ${settings.threshold} dBm · game ${settings.game}`, 'lk');
@@ -163,6 +173,7 @@ function tick() {
     else if (now - _lastScanRestart >= SCAN_RESTART_MS) refreshScan().catch(() => {});
   }
   presence.defaultThreshold = settings.threshold;
+  presence.game = settings.game;
   presence.tick(now);
   const seen = new Set();
   for (const p of presence.players()) {
@@ -173,6 +184,11 @@ function tick() {
   }
   for (const id of wasAlive.keys()) if (!seen.has(id)) wasAlive.delete(id);   // don't grow unbounded over a long session
   if (settings.kind === 'control') controlTick(now);
+  // Two control points on the same station id are ONE presence entry on every player phone (`beacon.js` keys
+  // `station:<id>`), so their adverts alternate and every reader sees the owner flip several times a second.
+  // Nothing on the reader side can separate them -- the id IS the identity -- so the only real fix is the
+  // operator seeing it, and the default id is 1 on every fresh install.
+  _twin = presence.stations().some(e => e.id === settings.id && e.kind === settings.kind) ? settings.id : 0;
   render();
 }
 
@@ -197,8 +213,25 @@ function controlTick(now) {
   // Republish when the advert would say something new. `due()` sends owner/held/contested/direction changes
   // at once and rate-limits a progress-only change, so the Android advertiser is not stopped and started
   // four times a second.
-  const why = advertising && advert.due(point.advert(), now);
+  //
+  // ⚠ Gated on `settings.live` (what the operator asked for), NOT on `advertising` (whether the last start
+  // worked). A single throw inside `startAdvert` clears `advertising`, and gating the republish on it meant
+  // one failed restart silenced the point for the rest of the match with the screen still reading LIVE.
+  // Backed off so a broken radio is retried once a second, not four times.
+  if (!settings.live) return;
+  if (!advertising) {
+    if (now - _advertRetryAt >= 1000) { _advertRetryAt = now; log('the advert is down — retrying', 'le'); startAdvert(); }
+    return;
+  }
+  const why = advert.due(point.advert(), now);
   if (why) startAdvert(why === 'progress');   // a progress-only re-key is silent in the log; a change of owner/contest is not
+}
+/** Hand the point back to nobody: between games (a `station_config` naming a new game) or from the button. */
+function resetPoint(why) {
+  point.owner = CONTROL_NEUTRAL; point.capturing = null; point.progress = 0; point.lastOwner = null;
+  point.holdMs = {}; point.log = []; point.contested = false; point.dir = 0; point.net = 0; point.refusedSeen = false;
+  saveControl();
+  log(`control point reset to NEUTRAL (${why})`, 'lk');
 }
 /** §5d.4: a one-shot full-width flash and a large word at each crossing — "the moment must be unmistakable
  *  from across a room". It is the transition the GUN cannot show (a callout is one 2 s clip); the screen can. */
@@ -315,7 +348,8 @@ function renderControl(isControl, v, heldBy) {
     : (held ? `LOST IN ${Math.ceil(secs)} S` : `${hname} PUSHED OFF IN ${Math.ceil(secs)} S`);
   $('cbanner').textContent = point.contested ? 'CONTESTED' : '';
   $('ctally').textContent = tallyLine();
-  $('cwarn').textContent = point.refusedSeen ? 'A PLAYER ON TEAM 2 IS HERE — TEAM 2 CAN NEVER HOLD A POINT (F82). REASSIGN IN MISSION CONTROL.' : '';
+  $('cwarn').textContent = _twin ? `ANOTHER STATION IS ALSO ON ID ${_twin} — TWO POINTS SHARING AN ID LOOK LIKE ONE POINT TO EVERY PLAYER PHONE. GIVE THEM DIFFERENT IDS.`
+    : point.refusedSeen ? 'A PLAYER ON TEAM 2 IS HERE — TEAM 2 CAN NEVER HOLD A POINT (F82). REASSIGN IN MISSION CONTROL.' : '';
   if (_flashAt && Date.now() - _flashAt > 2600) { _flashAt = 0; $('cflash').hidden = true; }
 }
 
@@ -335,13 +369,7 @@ function wire() {
   $('capMinus2').onclick = () => { settings.netCap = Math.max(1, settings.netCap - 1); point.netCap = settings.netCap; save(); render(); };
   $('capPlus2').onclick = () => { settings.netCap = Math.min(12, settings.netCap + 1); point.netCap = settings.netCap; save(); render(); };
   // Between games: hand the point back to nobody without wiping the operator's radius calibration.
-  $('btnPointReset').onclick = () => {
-    point.owner = CONTROL_NEUTRAL; point.capturing = null; point.progress = 0; point.lastOwner = null;
-    point.holdMs = {}; point.log = []; point.contested = false; point.dir = 0; point.refusedSeen = false;
-    saveControl();
-    log('control point reset to NEUTRAL', 'lk');
-    restartIfLive();
-  };
+  $('btnPointReset').onclick = () => { resetPoint('operator'); restartIfLive(); };
   $('dwellMinus').onclick = () => { settings.dwell = Math.max(0, settings.dwell - 500); presence.dwellMs = settings.dwell; save(); render(); };
   $('dwellPlus').onclick = () => { settings.dwell = Math.min(10000, settings.dwell + 500); presence.dwellMs = settings.dwell; save(); render(); };
   // Calibration: stand where "at the station" should be, holding a player phone, press SET. The threshold

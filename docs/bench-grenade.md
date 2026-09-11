@@ -1,38 +1,31 @@
 # Grenade IR bench (run sheet)
 
-The deferred "grenade + emitter side by side" session (FOLLOWUPS star item, B12, G6, G9). Six timed
-steps, about **25 minutes hands-on**, one gun, one grenade, the rig. Tool: `mcp/tools/grenade_bench.py`
-(every phase is announced with its length; nothing waits on you, so read the phase text before it starts).
+**Updated: 2026-09-10.** One gun, one grenade, the rig. Tool: `mcp/tools/grenade_bench.py` (every phase is
+announced with its length; nothing waits on you, so read the phase text before it starts), plus
+`native_capture.py` and `ir-emit` one-liners.
 
-> ### ✅ Run 2026-09-04 (morning) — results
-> Steps 1, 2 (partly), 3 and 4 answered with `native_capture.py` + `ir-emit` one-liners + the MCP tools; the
-> scripted `respawn`/`hill` steps were not needed. Full write-up: `experiment-log.md` 2026-09-04
-> "THE RESPAWN STATION IS ONE IR WORD". Short form: Respawn beacon / button / boot words captured (all
-> 25-bit, proto 15); emitter arms + revives a native-game gun with the grenade out of the building (4/4,
-> team-gated); hosted games ignore every station word (→ FOLLOWUPS B23); passthrough row works.
-> **Still to run:** step 0 (BLE scan), step 1's Assault/CTF/Frag captures, step 5 (hill replay), and a
-> receiver-on-the-HEADSET capture for the three unexplained emissions (death echo, self-hits after the
-> button word, dead-trigger request bursts).
+**Read this sheet in three parts, in this order:** *What is answered* (so nobody re-runs it), the **rung
+index** (what is left), then *Setup*.
 
-> ### ✅ Run 2026-09-10 (early) — the HILL is decoded, and it changes what a hosted game can do
-> **The beacon carries the owner.** Hill = `proto=15 team=<owner> mag=8` every ~5 s (respawn is `mag=6` at
-> ~2.5 s), and **neutral is team 2**. Shooting a neutral hill claims it: a red gun fired
-> `proto=0 player=5 team=0 mag=22` and the next ten beacons read `team=0`.
-> **A hosted game CAN see it — with one row, plus an engine fix (F72: `engine.js` drops proto 15 today).**
-> `$SIR,15,0,,24,0,0,1,,*` and beacons arrive as
-> `$HIR,<sensor>,15,0,<owner>,8,0,0`, no pool change. That answers Q3 **yes** and explains B23: our compiled
-> table ships no protocol-15 row, so the firmware discards every station word in silence.
-> **🔴 And a hosted game is already exposed to the damage.** A hill also emits an ordinary `proto=0 mag=8`
-> word, which our standard `$SIR,0,0,,1` row applies in full — it killed the operator in ~106 s with nothing
-> in the event stream naming the cause (FOLLOWUPS **F69**).
-> **Unsettled (2026-09-10):** whether charge is priced in MAGNITUDE or something weapon-specific — the
-> discriminating trial is confounded, because the shotgun's `mag=70` IS its extra-headset payload (**F70/F76**,
-> rung X below); and whether the `proto=0` damage word is continuous or conditional, which has never had a
-> dual-instrument control (**rung C** below).
+**The WIRE facts this sheet produced live in
+[`../protocol/brx-ir-protocol.md`](../protocol/brx-ir-protocol.md) §"The grenade beacon"** — beacon format,
+capture pair, `mag=50`/`mag=53` semantics, the fn-28 row, polarity. That is the canonical home and this sheet
+does not restate it.
 
-## Programme (rewritten 2026-09-10 after the hill sessions)
+## Run history
 
-### ✅ Answered today — do not re-run
+| run | what it answered | write-up |
+|---|---|---|
+| **2026-09-04 (morning)** | the respawn station is ONE IR word: beacon / button / boot words captured (all 25-bit, proto 15); the emitter arms and revives a native-game gun with the grenade out of the building (4/4, team-gated); hosted games ignore every station word (→ B23); the passthrough row works | [`experiment-log/2026-09.md`](experiment-log/2026-09.md) 2026-09-04 "THE RESPAWN STATION IS ONE IR WORD" |
+| **2026-09-10 (early)** | the HILL is decoded: the beacon carries the owner, neutral is team 2, shooting a neutral hill claims it, and one `$SIR` row makes a hosted game see it (answering step 3's Q3 **yes**, and explaining B23) | [`experiment-log/2026-09.md`](experiment-log/2026-09.md) 2026-09-10 |
+| **2026-09-10 (evening)** | capture proven end to end over BLE; every hosted callout confirmed by ear (rung S); fn 28 confirmed on a real beacon and shown to ignore `<soundID>` (rung Y); the rate-of-fire null (rung D, hosted half); range by estimate (rung R) | [`experiment-log/2026-09.md`](experiment-log/2026-09.md) 2026-09-10 (evening, cont.) |
+
+🔴 **The one hazard to carry to the bench:** a hill also emits an ordinary `proto=0 mag=8` damage word, which
+our standard `$SIR,0,0,,1` row applies in full. It killed the operator in ~106 s with nothing in the event
+stream naming the cause (**F69**), and the victim's phone names the WRONG team as the killer (**F81**).
+
+## What is answered — do NOT re-run
+
 
 | | finding |
 |---|---|
@@ -44,7 +37,29 @@ steps, about **25 minutes hands-on**, one gun, one grenade, the rig. Tool: `mcp/
 | **Capture, end to end** | ✅ proven live: one AR round flipped a neutral hill, read over BLE, grenade confirmed blue + beeping by eye (2026-09-10 evening) |
 | **Non-capturing hit** | no **DECODABLE** word — the grenade appears to announce captures, not hits (F75). ⚠ NOT a proven silence: a reply inside the shooter's own burst is invisible to every capture taken so far, and that is exactly where a hit word would sit. Gated on **B0** |
 
-### Still to run, in value order
+## Still to run
+
+**Rung index.** These letters are this sheet's own, not followup ids. ⚠ Two pairs read alike and are
+different rungs: **B0** (geometry) is not **B** (the missing hill words), and **F** (the RF question) is not
+**F75** (the non-capturing hit).
+
+| rung | subject | status | cost |
+|---|---|---|---|
+| **B0** | geometry: the receiver must see the GRENADE, not the shooter | ⬜ **do first** — gates B and F75 | free |
+| **X** | settle the capture currency: a high-magnitude word from a non-`t1=2` weapon | ⬜ settles **F70** and **F76** | 15 min, one gun |
+| **C** | both instruments on ONE window: is the hill's `proto=0` damage continuous or conditional? | ⬜ the named missing control for **F69** (🔴, still kills players) | 10 min, board A + BLE |
+| **Z1 / Z2 / Z3** | the hosted rate-of-fire boost: the t14 floor, an ammo-preserving push/revert, fire it off a real beacon | ⬜ blocks **F87** | 25 min |
+| **D** | the contest with TWO guns, and the shield grant test (fn 11/18 on `<15,0>`) | ⬜ the rate-of-fire half is ANSWERED (a clean null); **shield is untested** | 20 min, two guns |
+| **F75** | does a non-capturing hit emit anything? | ⬜ gated on **B0** | native game |
+| **M** | max charge: does a hill cap, and how long does a full one take to build? | ⬜ tuning only | — |
+| **B** | the missing hill words: a boot word on power-up, a button word on a press | ⬜ | 15 min |
+| **E** | the three silent modes: what do Assault / CTF / Frag actually emit? | ⬜ **G9**, **G10** | 20 min, receiver only |
+| **F** | does the grenade emit over Bluetooth/RF at all? | ⬜ never run | 2 min |
+| **S** | every hosted callout by ear, and fn 28 on a real beacon | ✅ 2026-09-10 evening | — |
+| **Y** | can the GUN play the beacon? (`<soundID>` on fn 28) | ✅ no: fn 28 ignores it, so hill audio is node work | — |
+| **R** | beacon range | ✅ by estimate: solid at desk range, intermittent by ~30 ft | — |
+
+### In value order
 
 **B0. Geometry: receiver sees the GRENADE, not the SHOOTER (free, do first).**
 `mag=50`'s reply is essentially instantaneous (~50 ms), so on the IR rig alone it overlaps the gun's own word
@@ -55,61 +70,6 @@ rig alone, geometry still matters for `mag=50`: no decoder separates two simulta
 behind the grenade, or have the shooter fire across the receiver's view. ⚠ **Any word that only occurs inside a
 shot's burst has been invisible to every capture ever taken on the rig**, which is exactly where F75's "hit but
 not captured" signal would hide. Gates B and F75.
-
-**S. ✅ ANSWERED 2026-09-10 (evening) — every hosted callout confirmed BY EAR, one catalogue entry was wrong.**
-Driven over BLE at `$VOL,80` (one gun, `Tactix-E20D`, no grenade needed):
-
-| id | catalogued | actually heard | verdict |
-|---|---|---|---|
-| `VA23` | "Control Point Captured." | as catalogued | ✅ |
-| `VA22` | "Control Point Lost." | as catalogued | ✅ |
-| `VA21` | "Control Point Contested." | as catalogued | ✅ |
-| `VA93` | "King of the hill!" | as catalogued | ✅ |
-| **`V8Q`** | **"Hill Confirmed"** | **"KILL Confirmed"** | 🔴 **wrong** |
-| `VB0N/O/P/Q` | Hill Captured / Contested / Lost! / Moved | as catalogued | ✅ **preferred** |
-| `U100`, `U104` | ui ticks | both tick; U100 more clock-like | ✅ `U100` chosen |
-
-`V8Q` was filed under `voice:objective_hill` off its Whisper transcript, so a hill mode picking callouts BY
-CATEGORY would have announced "Kill Confirmed" when someone took a point. Fixed at source in a new
-`BY_EAR_CORRECTIONS` table in `mcp/tools/soundbank_classify.py` — **that table is the source of truth for
-`V8Q` now, not a hand-edit to the generated catalog**, which the next regeneration would silently revert.
-Tony's preference, unprompted: the **`VB0*` set** ("like the Halo announcer, and they have dramatic music"),
-one female objectives announcer covering all four states, over the three male "Control Point" lines. `VB0Q`
-"Hill Moved" is only meaningful in a rotating-hill mode (several grenades, node picks which is live) — see
-FOLLOWUPS F83.
-
-The full chain was then proven live on real hardware: armed by hand with `$SIR,15,0,,28,0,0,1,,*`, `$GSET`
-t1=1 and `$TID,1` (not 2 — neutral broadcasts team 2, F82). The beacon arrived as `$HIR,4,15,0,2,8,0,0`,
-20+ consecutive beacons, period 5.0 s, no drift, zero misses — grenade beacons, gun registers silently, host
-reads it over BLE, host plays the cue.
-
-✅ **The CAPTURE half is now also proven end to end (2026-09-10, later the same evening).** The first pass of
-this rung could not fire — the gun was armed to RECEIVE but carried no `$WEAP`, so its magazine was 0 (kept
-below as a trap for next time). Re-armed with ammo: one AR round (`mag=24`) took a neutral hill, read live
-over BLE as `$HIR,4,15,0,1,50,0,0` (new owner = team 1) ~50 ms after the shot, followed 5 s later by
-`$HIR,0,15,0,2,53,0,0` (state left = team 2, on the next beacon cycle, sensor 0 not sensor 4). Operator
-confirmed by eye: the grenade turned blue and beeped. Full detail and the "same burst" correction this run
-also produced: see the 2026-09-10 (evening) log entry and `protocol/brx-ir-protocol.md`.
-⚠ **Trap that cost the first pass: a receive-only arm cannot shoot.** Include a `$WEAP` row with ammo whenever
-this rung is repeated.
-
-**Y. ✅ ANSWERED 2026-09-10 (evening) — the GUN cannot play the beacon: fn 28 ignores the `$SIR` `<soundID>` field.**
-Armed live (`arm_sequence()`, `$GSET` t1=1, AR in slot 0, grenade set to HILL):
-`$SIR,15,0,U100,28,0,0,1,,*` — fn 28 with a known-audible sound (`U100`, confirmed by ear the same evening via
-`$PLAY` at the same `$VOL,80`) in the `<soundID>` field. Over a run of several beacons, the row registered
-repeatedly and unambiguously (`$HIR,4,15,0,0,8,0,0`, ~5 s apart, no misses) and produced **no sound at all**.
-Operator, verbatim: *"havent heard a tick yet."*
-
-**So F73's "zero player feedback" is a property of the FUNCTION, not of leaving the sound slot empty** — fn 28
-ignores `<soundID>` outright. Reasoning from the protocol docs alone predicted (a) would play; it does not.
-**Design consequence: a gun-native beacon cue is not available through fn 28**, and the alternatives that do
-give feedback (fn 8: flash+vibrate, silent; fn 24-27: a long grenade-ish clip) trade away exactly the silence
-that makes fn 28 the row to ship. **All hill audio is therefore node/phone work** — `docs/utility-roadmap.md`
-"Where the hill audio has to live" updated to this measured answer.
-
-⚠ Scope: measured for **fn 28 only**. (b)/(c) polarity-with-sound and the `$PSET`-override side effect are
-both still untested — no sound played at all, so there was nothing to observe an override on or gate by
-polarity. Full detail: `docs/experiment-log/2026-09.md` 2026-09-10 (evening, cont.).
 
 **F75. Does a non-capturing hit emit anything?** In a NATIVE game, stand in an enemy hill and deliberately MISS.
 Still says "contested" ⇒ native infers it too and we lose nothing. Silent ⇒ there is a hit word, and B0's
@@ -201,16 +161,6 @@ across two frames from one press). So "4 rounds" was really "4 magazine decremen
 each," not a measurement. Rung X must read `$ALCD` deltas on the wire and verify magnitude on board A, never
 trust one-press-one-round.
 
-**R. ✅ ANSWERED 2026-09-10 (evening), by estimate rather than tape measure.** Close in (desk range) the
-beacon is solid, zero misses across 20+ consecutive reads at a clean 5.0 s. At the operator's estimated
-~30 ft it turned intermittent — long dropouts (85 s and 145 s of silence) interleaved with brief runs of
-clean 5 s beacons. So the reliable range is well under 30 ft and the useful outer edge is around there.
-**The hill beacon reaches further than the respawn station** (documented ~18-20 ft). ⚠ Not a hard number:
-one operator estimate, no tape measure, and the beacon is AIM-SENSITIVE (`reference/grenade.md`), so
-orientation was an uncontrolled variable. **Design consequence:** presence is not a clean in/out at the
-range boundary — do not call a player "left the hill" on one missed beacon; with a 5 s period, a grace of
-at least two missed beacons (~12 s) is the floor.
-
 **M. Max charge.** Does a hill cap, and how long does a full one take to build? Needed only to tune contest
 difficulty.
 
@@ -224,6 +174,73 @@ detonated (**G10**), CTF team assignment (**G9**). If Assault/CTF are truly sile
 them, which is worth knowing before anyone designs a mode around them.
 
 **F. Never run.** Q0: does the grenade emit over Bluetooth/RF at all (`grenade_bench.py rf`)?
+
+## Answered rungs — here for the METHOD and the traps they cost, not for re-running
+
+**S. ✅ ANSWERED 2026-09-10 (evening) — every hosted callout confirmed BY EAR, one catalogue entry was wrong.**
+Driven over BLE at `$VOL,80` (one gun, `Tactix-E20D`, no grenade needed):
+
+| id | catalogued | actually heard | verdict |
+|---|---|---|---|
+| `VA23` | "Control Point Captured." | as catalogued | ✅ |
+| `VA22` | "Control Point Lost." | as catalogued | ✅ |
+| `VA21` | "Control Point Contested." | as catalogued | ✅ |
+| `VA93` | "King of the hill!" | as catalogued | ✅ |
+| **`V8Q`** | **"Hill Confirmed"** | **"KILL Confirmed"** | 🔴 **wrong** |
+| `VB0N/O/P/Q` | Hill Captured / Contested / Lost! / Moved | as catalogued | ✅ **preferred** |
+| `U100`, `U104` | ui ticks | both tick; U100 more clock-like | ✅ `U100` chosen |
+
+`V8Q` was filed under `voice:objective_hill` off its Whisper transcript, so a hill mode picking callouts BY
+CATEGORY would have announced "Kill Confirmed" when someone took a point. Fixed at source in a new
+`BY_EAR_CORRECTIONS` table in `mcp/tools/soundbank_classify.py` — **that table is the source of truth for
+`V8Q` now, not a hand-edit to the generated catalog**, which the next regeneration would silently revert.
+Tony's preference, unprompted: the **`VB0*` set** ("like the Halo announcer, and they have dramatic music"),
+one female objectives announcer covering all four states, over the three male "Control Point" lines. `VB0Q`
+"Hill Moved" is only meaningful in a rotating-hill mode (several grenades, node picks which is live) — see
+FOLLOWUPS F83.
+
+The full chain was then proven live on real hardware: armed by hand with `$SIR,15,0,,28,0,0,1,,*`, `$GSET`
+t1=1 and `$TID,1` (not 2 — neutral broadcasts team 2, F82). The beacon arrived as `$HIR,4,15,0,2,8,0,0`,
+20+ consecutive beacons, period 5.0 s, no drift, zero misses — grenade beacons, gun registers silently, host
+reads it over BLE, host plays the cue.
+
+✅ **The CAPTURE half is now also proven end to end (2026-09-10, later the same evening).** The first pass of
+this rung could not fire — the gun was armed to RECEIVE but carried no `$WEAP`, so its magazine was 0 (kept
+below as a trap for next time). Re-armed with ammo: one AR round (`mag=24`) took a neutral hill, read live
+over BLE as `$HIR,4,15,0,1,50,0,0` (new owner = team 1) ~50 ms after the shot, followed 5 s later by
+`$HIR,0,15,0,2,53,0,0` (state left = team 2, on the next beacon cycle, sensor 0 not sensor 4). Operator
+confirmed by eye: the grenade turned blue and beeped. Full detail and the "same burst" correction this run
+also produced: see the 2026-09-10 (evening) log entry and `protocol/brx-ir-protocol.md`.
+⚠ **Trap that cost the first pass: a receive-only arm cannot shoot.** Include a `$WEAP` row with ammo whenever
+this rung is repeated.
+
+**Y. ✅ ANSWERED 2026-09-10 (evening) — the GUN cannot play the beacon: fn 28 ignores the `$SIR` `<soundID>` field.**
+Armed live (`arm_sequence()`, `$GSET` t1=1, AR in slot 0, grenade set to HILL):
+`$SIR,15,0,U100,28,0,0,1,,*` — fn 28 with a known-audible sound (`U100`, confirmed by ear the same evening via
+`$PLAY` at the same `$VOL,80`) in the `<soundID>` field. Over a run of several beacons, the row registered
+repeatedly and unambiguously (`$HIR,4,15,0,0,8,0,0`, ~5 s apart, no misses) and produced **no sound at all**.
+Operator, verbatim: *"havent heard a tick yet."*
+
+**So F73's "zero player feedback" is a property of the FUNCTION, not of leaving the sound slot empty** — fn 28
+ignores `<soundID>` outright. Reasoning from the protocol docs alone predicted (a) would play; it does not.
+**Design consequence: a gun-native beacon cue is not available through fn 28**, and the alternatives that do
+give feedback (fn 8: flash+vibrate, silent; fn 24-27: a long grenade-ish clip) trade away exactly the silence
+that makes fn 28 the row to ship. **All hill audio is therefore node/phone work** — `docs/utility-roadmap.md`
+"Where the hill audio has to live" updated to this measured answer.
+
+⚠ Scope: measured for **fn 28 only**. (b)/(c) polarity-with-sound and the `$PSET`-override side effect are
+both still untested — no sound played at all, so there was nothing to observe an override on or gate by
+polarity. Full detail: `docs/experiment-log/2026-09.md` 2026-09-10 (evening, cont.).
+
+**R. ✅ ANSWERED 2026-09-10 (evening), by estimate rather than tape measure.** Close in (desk range) the
+beacon is solid, zero misses across 20+ consecutive reads at a clean 5.0 s. At the operator's estimated
+~30 ft it turned intermittent — long dropouts (85 s and 145 s of silence) interleaved with brief runs of
+clean 5 s beacons. So the reliable range is well under 30 ft and the useful outer edge is around there.
+**The hill beacon reaches further than the respawn station** (documented ~18-20 ft). ⚠ Not a hard number:
+one operator estimate, no tape measure, and the beacon is AIM-SENSITIVE (`reference/grenade.md`), so
+orientation was an uncontrolled variable. **Design consequence:** presence is not a clean in/out at the
+range boundary — do not call a player "left the hill" on one missed beacon; with a 5 s period, a grace of
+at least two missed beacons (~12 s) is the floor.
 
 ## Setup (5 min)
 
@@ -245,9 +262,13 @@ cd /home/tony/gitrepos/battlecompany/mcp/tools
 GUN=DF:F5:DA:08:94:98
 ```
 
-## Steps
+## Appendix — the original step-by-step programme (written 2026-09-04)
 
-### 0. RF check (2 min, no gun)
+**Steps 1 (Respawn captures), 2, 3 and 4 are ANSWERED** — see *Run history* and *What is answered* above.
+What survives here is the exact commands for the rungs that are still open, and the `$SIR`-row control in
+step 3. Stamps per step below.
+
+### 0. RF check (2 min, no gun) — ⬜ **OUTSTANDING** = rung **F**
 
 ```bash
 $PY grenade_bench.py rf
@@ -256,7 +277,7 @@ $PY grenade_bench.py rf
 Two BLE scans, grenade off then on, and it prints the difference. Follow the two prompts.
 **Expect:** nothing new. Anything new is a finding: re-run once to make sure it is not a late gun.
 
-### 1. Listen with the receiver only (5 min, no gun, no BLE)
+### 1. Listen with the receiver only (5 min, no gun, no BLE) — ✅ Respawn + Hill done; ⬜ the **Assault / CTF / Frag** captures are rung **E**
 
 The receiver alone, pointed at the grenade from about 1 ft. One capture per mode so the file name
 says what it holds. Each writes `~/.brx-mcp/ir-captures/<time>-<label>.log` and prints every decoded
@@ -287,7 +308,7 @@ step 2, that is the RF question answered the other way, so say so.
 
 Reset the grenade to **RESPAWN (yellow)** and power-cycle it before step 2.
 
-### 2. Bare watch + box test (2 min)
+### 2. Bare watch + box test (2 min) — ✅ **ANSWERED 2026-09-04**
 
 ```bash
 $PY grenade_bench.py watch $GUN 40 bare COM7
@@ -303,7 +324,7 @@ each distinct beacon. Write the word down if it differs from the predicted
 If the witness reports **more than 54 edges** per beacon the grenade uses a longer word than a shot,
 and the replay in steps 4 and 5 must use the raw word from step 1's log, not the gun echo. Say so before step 4.
 
-### 3. Passthrough watch, gun spawned in a game (1.5 min)
+### 3. Passthrough watch, gun spawned in a game (1.5 min) — ✅ **ANSWERED** (Q3 = yes, 2026-09-10; the row is `$SIR,15,0,,28`, see above)
 
 ```bash
 $PY grenade_bench.py watch $GUN 30 passthru
@@ -318,7 +339,7 @@ your shot. **If none appear**, run the control to confirm the row is the variabl
 $PY grenade_bench.py watch $GUN 20 game
 ```
 
-### 4. Respawn station (5 min, the big one)
+### 4. Respawn station (5 min, the big one) — ✅ **ANSWERED 2026-09-04** (emitter arms and revives a native-game gun, 4/4, team-gated)
 
 **Power-cycle the grenade first** so it is neutral again. Emitter at a dome, ≤ 3 ft.
 
@@ -341,7 +362,7 @@ Phases, each announced on screen with its length:
 It ends with a verdict table. **Write next to each phase what the gun and headset said and lit.** The
 stream cannot hear that, and your ears have out-scored the readings every time.
 
-### 5. Hill impersonation (3 min)
+### 5. Hill impersonation (3 min) — ⬜ **OUTSTANDING**, and largely superseded: the REAL hill is now proven end to end, so what is left here is the emitter REPLAY halves (phases 3 and 4)
 
 Set the grenade to **HILL (blue)**: same setup procedure, release on blue, power-cycle, confirm the
 blue boot flash. Grenade neutral, emitter at a dome.
@@ -363,7 +384,7 @@ nothing. Repeat in a **native** game: start a manual game on the gun, no BLE, an
 $PY -m brx_mcp ir-emit 1111000000010000100000010 COM8 6
 ```
 
-### 6. Optional: Assault and CTF on the gun stream (3 min)
+### 6. Optional: Assault and CTF on the gun stream (3 min) — ⬜ **OUTSTANDING** = part of rung **E**
 
 Grenade in **ASSAULT (green)**, then again in **CTF (white)**:
 
@@ -377,9 +398,11 @@ captures already showed what they emit on a shot.
 
 ## Afterwards
 
-Paste the terminal output and your notes here in chat. I append the session to
-`docs/experiment-log.md`, update `docs/reference/grenade.md`, and close or re-word B12, G6, G9 and the
-star item in `docs/FOLLOWUPS.md`.
+Paste the terminal output and your notes here in chat. Session close is the usual three writes
+(`CLAUDE.md`): one entry in [`experiment-log/2026-09.md`](experiment-log/2026-09.md), one
+[`FOLLOWUPS.md`](FOLLOWUPS.md) diff, one [`HANDOFF.md`](HANDOFF.md) replacement — plus the FACT into
+[`../protocol/brx-ir-protocol.md`](../protocol/brx-ir-protocol.md) or
+[`reference/grenade.md`](reference/grenade.md) in the same commit, and this sheet's rung index restamped.
 
 ## Replay words
 

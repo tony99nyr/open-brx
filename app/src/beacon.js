@@ -95,6 +95,12 @@ export class Presence {
   thresholdFor(e) { return e.threshold || this.defaultThreshold; }
   tick(now) {
     for (const [key, e] of this.entries) {
+      // How long since this advert actually arrived, stamped HERE so it is a duration on ONE clock. A reader
+      // must never subtract `seenAt` from a clock of its own: `observe`/`tick` are called with the raw
+      // `Date.now()`, while a node's `now()` is `Date.now()` plus the MC clock offset, so a >4 s offset made
+      // every advert look stale (or none of them) with no log line saying why. F84's shape, with the clock as
+      // the wide constant.
+      e.ageMs = now - e.seenAt;
       if (now - e.seenAt > this.expiryMs) { e.present = false; e.sinceAbove = null; if (now - e.seenAt > 2 * this.expiryMs) this.entries.delete(key); continue; }
       const thr = this.thresholdFor(e);
       if (e.present) { if (e.rssi < thr - this.hysteresisDb) { e.present = false; e.sinceAbove = null; } continue; }
@@ -118,5 +124,6 @@ export class Presence {
 /** A plain snapshot of a station entry for engine state / diagnostics. */
 export function stationView(e) {
   if (!e) return null;
-  return { id: e.id, kind: e.kind, team: e.team, state: e.state, value: e.value, rssi: Math.round(e.rssi), threshold: e.threshold, present: !!e.present };
+  return { id: e.id, kind: e.kind, team: e.team, state: e.state, value: e.value, rssi: Math.round(e.rssi), threshold: e.threshold, present: !!e.present,
+    ...(Number.isFinite(e.ageMs) ? { ageMs: Math.round(e.ageMs) } : {}) };
 }

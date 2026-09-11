@@ -174,7 +174,14 @@ async function syncPlayerAdvert() {
   try {
     if (want) { await plugins.beacon.start({ uuid: want, txPower: 'medium', mode: 'balanced' }); log(`advertising as player ${num} team ${tid}${st.alive ? '' : ' (down)'}`, 'li'); }
     else await plugins.beacon.stop();
-  } catch (e) { log('player advert: ' + (e && e.message || e), 'li'); }
+  } catch (e) {
+    // ⚠ Put the intent BACK so the next tick retries. `playerAdvert` was assigned before the await, so a
+    // throw left this phone broadcasting the PREVIOUS advert for as long as the state lasted — and the one
+    // that matters is the start that clears the alive bit on death: a dead player whose advert still says
+    // alive=1 goes on converting a control point for the whole death window, silently.
+    playerAdvert = null;
+    log('player advert failed — the phone may still be broadcasting the previous one; retrying: ' + (e && e.message || e), 'le');
+  }
 }
 
 // preflight (contracts A4.9)

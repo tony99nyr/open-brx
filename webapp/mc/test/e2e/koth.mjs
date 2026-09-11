@@ -11,7 +11,7 @@
 //
 // Component logic that is NOT about what a person sees stays in test/koth.test.tsx (jsdom, 2s).
 import { chromium } from 'playwright';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -98,7 +98,17 @@ async function startMC({ sessionFile = null, label = 'fresh' } = {}) {
     console.error('If something else is already on 8765 that is probably your own MC — stop it, or run this against it by hand.');
     proc.kill('SIGKILL'); process.exit(3);
   }
-  console.log(`  MC ${label} server: ${base}  (session ${sessionFile ? path.basename(sessionFile) : 'ephemeral'})`);
+  // The squatter check above is a PRE-check and it can lose a race (a server that came up in the
+  // 100 ms between the probe and our spawn wins :8765 and ours dies quietly). So prove POSITIVELY
+  // that the process answering is ours: `--ws-port` is a per-run random port and MC advertises it
+  // as `lan.ws_url`, so a leftover server cannot be wearing it.
+  const who = await (await fetch(`${base}/api/state`)).json();
+  if (!String(who?.lan?.ws_url || '').includes(`:${wsPort}/`)) {
+    console.error(`:${port} IS NOT THE MC WE LAUNCHED — it advertises ${JSON.stringify(who?.lan?.ws_url)}, we asked for ws port ${wsPort}.`);
+    console.error('Something else owns that port. Stop it and re-run; driving it would report on a server this run never started.');
+    await killGroup(proc); process.exit(3);
+  }
+  console.log(`  MC ${label} server: ${base}  (ours: ws ${wsPort}; session ${sessionFile ? path.basename(sessionFile) : 'ephemeral'})`);
   return { base, proc, log: () => log, stop: () => killGroup(proc) };
 }
 
@@ -172,6 +182,49 @@ async function resetTdm(base) {
 }
 const errorStrip = pg => pg.locator('header button[role="alert"]');
 
+/** Push + arm the real server so ARMED has a schedule to render (`Armed.tsx` early-returns without
+ *  one). `force` waves the readiness board — there are no phones in a browser run. */
+async function armMatch(base) {
+  const push = await fetch(`${base}/api/lobby/push`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"force":true}' });
+  if (!push.ok) throw new Error(`armMatch: POST /api/lobby/push ${push.status} ${await push.text()}`);
+  const start = await fetch(`${base}/api/start`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"force":true}' });
+  if (!start.ok) throw new Error(`armMatch: POST /api/start ${start.status} ${await start.text()}`);
+  return start.json();
+}
+
+/** A koth RecapView built by MC'S OWN Scorer — see `recap_fixture.py` for why it is not a JSON
+ *  literal in this file. Nothing on `app/src` sends a `possession` fact yet, so a browser run cannot
+ *  reach a recap that has one by playing; this is the honest substitute. */
+function recapFixture(args = []) {
+  const py = process.env.MC_PY || path.join(REPO, '.venv', 'bin', 'python');
+  const r = spawnSync(py, [path.join(HERE, 'recap_fixture.py'), ...args], { cwd: path.join(REPO, 'mcp'), encoding: 'utf8' });
+  if (r.status !== 0) { console.error(`recap_fixture.py failed (${r.status}):\n${r.stderr}`); process.exit(3); }
+  return JSON.parse(r.stdout);
+}
+
+/** Rewrite every snapshot the page receives — REST *and* the WebSocket, or the patch is a lie the
+ *  first time a push arrives and overwrites it. `patch(state)` mutates the snapshot in place. */
+async function patchSnapshots(pg, patch) {
+  const seen = { rest: 0, ws: 0 };
+  const apply = body => {
+    const o = JSON.parse(body);
+    // both /api/state and the WS snapshot are the same State shape; a WS frame may be another message
+    if (o && typeof o === 'object' && typeof o.phase === 'string') patch(o);
+    return JSON.stringify(o);
+  };
+  await pg.route('**/api/state', async r => {
+    const res = await r.fetch(); let body = await res.text();
+    try { body = apply(body); seen.rest++; } catch { /* not json */ }
+    await r.fulfill({ response: res, body, headers: { ...res.headers(), 'content-length': String(Buffer.byteLength(body)) } });
+  });
+  await pg.routeWebSocket('**/ui-ws*', ws => {
+    const s = ws.connectToServer();
+    s.onMessage(m => { try { ws.send(apply(m.toString())); seen.ws++; } catch { ws.send(m); } });
+    ws.onMessage(m => s.send(m));
+  });
+  return seen;
+}
+
 // ---------------------------------------------------------------- steps
 const steps = [];
 const step = (name, fn) => steps.push({ name, fn });
@@ -241,6 +294,57 @@ step('setup-warning', async ({ browser, base }) => {
   const box = await warn.boundingBox();
   expect(box && box.height >= 14, 'the warning has real height on screen');
   ok(`SETUP warning renders in the rail  ${await shot(pg, '04-setup-warning')}`);
+  await closePage(pg);
+});
+
+// The step is only useful where it is ACTIONABLE. The operator reads "place the grenade" on GAMES,
+// then walks out to place it from LOBBY (and during the runway, from ARMED) — and until 10437d6 it was
+// gone from both. `SetupSteps` is deliberately narrowed to /^SETUP:/, so this also asserts the
+// NEGATIVE: the $SIR multiplier rows and the frag-limit advisory the same server sends must NOT be on
+// the last screen before the horn, or the operator learns to ignore the strip that matters.
+step('setup-steps-prematch', async ({ browser, base }) => {
+  await resetTdm(base);
+  const pg = await go(await newPage(browser, base), 'build');
+  await kothCard(pg).click();
+  await until(async () => (await kothCard(pg).getAttribute('aria-pressed')) === 'true', 6000, 'KotH playing');
+  // CONTROL: the server really is sending advisories alongside the SETUP step, or "they are not on
+  // screen" would pass on an empty list. A frag limit on a venue with no coverage model adds a second
+  // kind (compile.py) — set it so the negative covers more than the $SIR rows.
+  const put = await fetch(`${base}/api/config`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ scoring: { frag_limit: 10, win_by: 'objective' } }) });
+  expect(put.ok, `PUT a frag_limit onto the koth config (${put.status})`);
+  const warns = (await (await fetch(`${base}/api/state`)).json()).config_warnings ?? [];
+  const setup = warns.filter(w => /^SETUP:/i.test(w));
+  const advisories = warns.filter(w => !/^SETUP:/i.test(w));
+  expect(setup.length >= 1, `the server sends a SETUP step (saw ${JSON.stringify(warns.slice(0, 2))})`);
+  expect(advisories.some(w => /\$SIR/.test(w)), 'CONTROL: the server also sends $SIR advisories');
+  expect(advisories.some(w => /frag_limit/i.test(w)), 'CONTROL: the server also sends the frag-limit advisory');
+
+  await armMatch(base);                       // ARMED renders nothing without a schedule
+  for (const view of ['lobby', 'armed']) {
+    await go(pg, view);
+    const steps_ = pg.getByTestId('setup-steps');
+    await until(() => steps_.count().then(n => n > 0), 8000, `the SETUP steps on ${view}`);
+    expect(await steps_.isVisible(), `the SETUP step is VISIBLE on ${view.toUpperCase()}, where it is actionable`);
+    const txt = (await steps_.textContent()).toUpperCase();
+    expect(txt.includes('POWER-CYCLE THE GRENADE'), `${view}: the step names the power cycle`);
+    expect(txt.includes('PLACE IT'), `${view}: the step says to place it`);
+    // the narrowing, asserted on the screen the operator reads last
+    const screen = (await pg.locator('main').textContent());
+    expect(!/\$SIR/.test(screen), `${view}: no $SIR multiplier advisory on a pre-match screen`);
+    expect(!/frag_limit/i.test(screen), `${view}: no frag-limit advisory on a pre-match screen`);
+    const box = await steps_.boundingBox();
+    expect(box && box.height >= 14, `${view}: the step has real height on screen`);
+    const fsz = await steps_.locator('div').first().evaluate(e => parseFloat(getComputedStyle(e).fontSize));
+    expect(fsz >= 11, `${view}: the step is legible (${fsz}px)`);
+    ok(`${view.toUpperCase()} carries the field step, and only that  ${await shot(pg, `16-setup-${view}`)}`);
+  }
+  // and it is not invented: a mode with no grenade has no step on those screens either
+  await go(pg, 'build');
+  await pg.locator('div[role="button"][aria-label="play TEAM DEATHMATCH"]').click();
+  await until(async () => (await pg.locator('div[role="button"][aria-label="play TEAM DEATHMATCH"]').getAttribute('aria-pressed')) === 'true', 8000, 'TDM playing');
+  await go(pg, 'lobby');
+  await until(() => pg.getByTestId('setup-steps').count().then(n => n === 0), 6000, 'the SETUP step to disappear for TDM');
+  ok('no SETUP step on a LOBBY for a mode with nothing to place');
   await closePage(pg);
 });
 
@@ -408,6 +512,142 @@ step('continue-path', async ({ browser, base }) => {
   expect(st.phase === 'kit', `CONTINUE advanced the server phase to kit (saw ${st.phase})`);
   ok(`GAMES → CONTINUE ▸ → KIT  ${await shot(pg, '10-continue-kit')}`);
   await closePage(pg);
+});
+
+// F70 — the recap of a hill match. `win_text` promises POSSESSION TIME, and until 11e3ca8 the screen
+// answered with a kills table: the fact was ingested, scored, served, and rendered nowhere.
+step('recap-possession', async ({ browser, base }) => {
+  await resetTdm(base);
+  const rc = recapFixture(['--coverage', 'thin']);
+  expect(rc.possession?.by_team?.blue === 214 && rc.possession?.by_team?.green === 131,
+    `the fixture MC's own scorer produced is the one we expect (${JSON.stringify(rc.possession)})`);
+  const pg = await newPage(browser, base);
+  const seen = await patchSnapshots(pg, st => { st.recap = rc; });
+  await go(pg, 'build');
+  await kothCard(pg).click();
+  await go(pg, 'recap');
+  const poss = pg.getByTestId('possession');
+  await until(() => poss.count().then(n => n > 0), 10000, 'the POSSESSION panel to render');
+  expect(await poss.isVisible(), 'the possession panel is visible on the recap');
+  const txt = await poss.textContent();
+  // mm:ss, not raw seconds: 214 s is 3:34 and 131 s is 2:11
+  expect(/3:34/.test(txt), `BLUE's 214 s reads as 3:34 (saw ${JSON.stringify(txt.slice(0, 160))})`);
+  expect(/2:11/.test(txt), "GREEN's 131 s reads as 2:11");
+  expect(/BLUE/.test(txt) && /GREEN/.test(txt), 'both sides are named');
+  // the bars are the at-a-glance readout: the leader's must be full and the trailer's proportional
+  const bars = await poss.locator('span > span[style*="width"]').evaluateAll(els => els.map(el => ({
+    pct: el.style.width, w: Math.round(el.getBoundingClientRect().width), bg: getComputedStyle(el).backgroundColor })));
+  expect(bars.length === 2, `one bar per team (saw ${bars.length})`);
+  expect(bars[0]?.pct === '100%', `the leader's bar is full (saw ${JSON.stringify(bars[0])})`);
+  expect(bars[1] && bars[1].w > 0 && bars[1].w < bars[0].w, `the trailing bar is shorter and not zero (${JSON.stringify(bars)})`);
+  expect(bars[0].bg !== bars[1].bg, `the two bars are painted their own team colours (${JSON.stringify(bars.map(b => b.bg))})`);
+  // neutral time is nobody's, and the screen has to say so or 96 s went missing
+  expect(/NEUTRAL 1:36/.test(txt), `the 96 s the hill sat unowned is shown as NEUTRAL 1:36 (saw ${JSON.stringify(txt.slice(0, 240))})`);
+  expect(/NOBODY HELD THE POINT/i.test(txt), 'the neutral line says nobody held it');
+  // 🔴 the whole reason the panel exists: the WINNER comes off possession, not the kills table
+  const winner = await pg.locator('main').textContent();
+  expect(/BLUE WINS/.test(winner), 'BLUE (214 s) is named the winner, from possession');
+  expect(!/UNDECIDED/.test(winner), 'a match with a tally is no longer UNDECIDED · HOST DECIDES');
+  expect(seen.ws > 0, 'the WebSocket snapshots were patched too, not only REST');
+  ok(`the possession bar renders mm:ss per team  ${await shot(pg, '17-possession')}`);
+  await closePage(pg);
+});
+
+// Possession from a grenade is a LOWER BOUND (F92: the beacon is IR, only a gun in range hears it).
+// A number presented as the result when a third of the match went unwatched is a wrong answer stated
+// confidently, so the coverage line goes AMBER under 75%.
+step('recap-coverage-floor', async ({ browser, base }) => {
+  await resetTdm(base);
+  const open = async coverage => {
+    const pg = await newPage(browser, base);
+    await patchSnapshots(pg, st => { st.recap = recapFixture(['--coverage', coverage]); });
+    await go(pg, 'build');
+    await kothCard(pg).click();
+    await go(pg, 'recap');
+    const line = pg.getByTestId('possession').locator('div', { hasText: 'BEST COVERAGE' }).last();
+    await until(() => line.count().then(n => n > 0), 10000, `the coverage line (${coverage})`);
+    return { pg, line };
+  };
+  const thin = await open('thin');            // 441 of 600 s = 73.5%
+  const tTxt = await thin.line.textContent();
+  expect(/BEST COVERAGE 7:21 OF 10:00/.test(tTxt), `the coverage line reads "BEST COVERAGE 7:21 OF 10:00" (saw ${JSON.stringify(tTxt.trim().slice(0, 140))})`);
+  expect(/THIS IS A FLOOR, NOT A FULL ACCOUNT/i.test(tTxt), 'it says the number is a FLOOR');
+  expect(/^▲/.test(tTxt.trim()), 'under 75% coverage it is flagged with ▲');
+  const tStyle = await thin.line.evaluate(e => ({ c: getComputedStyle(e).color, px: parseFloat(getComputedStyle(e).fontSize) }));
+  expect(tStyle.px >= 10, `the coverage line is legible (${tStyle.px}px)`);
+  await shot(thin.pg, '18-coverage-thin');
+  await closePage(thin.pg);
+
+  const full = await open('full');            // 560 of 600 s = 93%
+  const fTxt = await full.line.textContent();
+  expect(/BEST COVERAGE 9:20 OF 10:00/.test(fTxt), `a well-watched match reads 9:20 OF 10:00 (saw ${JSON.stringify(fTxt.trim().slice(0, 140))})`);
+  expect(!/^▲/.test(fTxt.trim()), 'CONTROL: over 75% coverage is NOT flagged — the amber means something');
+  const fStyle = await full.line.evaluate(e => getComputedStyle(e).color);
+  expect(fStyle !== tStyle.c, `the thin run is painted a different colour from the covered one (${tStyle.c} vs ${fStyle})`);
+  ok(`the coverage floor is stated, and amber only under 75%  ${await shot(full.pg, '18-coverage-full')}`);
+  await closePage(full.pg);
+});
+
+// A8, field 2026-08-30: "it kinda was showing the final results as if it was final and then it finally
+// popped up and the totals changed". The server has served `settling` since A8 and nothing rendered it.
+step('recap-settling', async ({ browser, base }) => {
+  await resetTdm(base);
+  const rc = recapFixture(['--coverage', 'full', '--settling']);
+  expect(rc.settling === true && (rc.awaiting || []).length === 2, `the fixture is a SETTLING recap (${JSON.stringify({ s: rc.settling, a: rc.awaiting })})`);
+  expect(rc.provisional === false, 'and NOT provisional — this banner is the one `provisional` cannot cover');
+  const pg = await newPage(browser, base);
+  await patchSnapshots(pg, st => { st.recap = rc; });
+  await go(pg, 'build');
+  await kothCard(pg).click();
+  await go(pg, 'recap');
+  const band = pg.getByTestId('settling');
+  await until(() => band.count().then(n => n > 0), 10000, 'the STILL SETTLING banner');
+  expect(await band.isVisible(), 'the STILL SETTLING banner is visible');
+  const txt = await band.textContent();
+  expect(/STILL SETTLING/.test(txt), 'it says STILL SETTLING');
+  expect(/2 NODES HAVE NOT REPORTED SINCE THE WHISTLE/.test(txt), `it counts the silent nodes (saw ${JSON.stringify(txt.trim().slice(0, 160))})`);
+  expect(/THESE TOTALS CAN STILL CHANGE/.test(txt), 'it says the totals can still change — the whole point');
+  expect(/4S AGO/.test(txt), `it says how long ago the whistle was (saw ${JSON.stringify(txt.trim().slice(0, 200))})`);
+  expect(!/PROVISIONAL/.test(txt), 'it is its own banner, not the provisional one');
+  const px = await band.evaluate(e => parseFloat(getComputedStyle(e).fontSize));
+  expect(px >= 10, `the banner is legible (${px}px)`);
+  await shot(pg, '19-settling');
+  await closePage(pg);
+
+  // 🔴 the control. A banner that is always there says nothing: a SETTLED recap must render NOTHING.
+  const pg2 = await newPage(browser, base);
+  await patchSnapshots(pg2, st => { st.recap = recapFixture(['--coverage', 'full']); });
+  await go(pg2, 'build');
+  await kothCard(pg2).click();
+  await go(pg2, 'recap');
+  await until(() => pg2.getByTestId('possession').count().then(n => n > 0), 10000, 'the settled recap to render');
+  expect(await pg2.getByTestId('settling').count() === 0, 'a settled recap renders NO settling banner');
+  expect(!/STILL SETTLING/.test(await pg2.locator('main').textContent()), 'and no STILL SETTLING text anywhere on it');
+  ok(`STILL SETTLING on a moving recap, nothing on a settled one  ${await shot(pg2, '19-settled')}`);
+  await closePage(pg2);
+});
+
+// The card is a PROMISE about the result screen. MC scores possession the moment a node reports one,
+// but nothing on `app/src` sends the fact yet (state.py), so a card reading plain "POSSESSION TIME"
+// promises a number that does not exist and hands the operator a kills table. `?mock` has to say the
+// same thing, or the demo the console is iterated on predicts a console that does not exist.
+step('mode-card-host-call', async ({ browser, base }) => {
+  await resetTdm(base);
+  const WIN = 'POSSESSION TIME · HOST CALL';
+  const server = (await (await fetch(`${base}/api/modes`)).json()).find(m => m.mode === 'koth');
+  expect(server?.win_text === WIN, `the server's koth win_text is ${JSON.stringify(WIN)} (saw ${JSON.stringify(server?.win_text)})`);
+  for (const url of [`${base}/#build`, `${base}/?mock#build`]) {
+    const pg = await newPage(browser, base);
+    await pg.goto(url, { waitUntil: 'domcontentloaded' });
+    await until(() => pg.locator('main', { hasText: '[ A2 // GAMES ]' }).count().then(n => n > 0), 12000, `the GAMES screen (${url})`);
+    await kothCard(pg).click();
+    await until(async () => (await kothCard(pg).getAttribute('aria-pressed')) === 'true', 8000, `KotH playing (${url})`);
+    const win = (await railRow(pg, 'WIN').textContent()).trim();
+    expect(win === WIN, `${url.includes('mock') ? '?mock' : 'server'}: the WIN row reads ${JSON.stringify(WIN)} (saw ${JSON.stringify(win)})`);
+    await shot(pg, `20-win-text-${url.includes('mock') ? 'mock' : 'server'}`);
+    await closePage(pg);
+  }
+  ok('the koth card says the winner is the HOST CALL until a phone sends a possession fact');
 });
 
 // A stale server: the new fields are gone from REST *and* from the pushed snapshots, and the A10
