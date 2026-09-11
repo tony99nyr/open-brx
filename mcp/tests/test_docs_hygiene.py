@@ -171,3 +171,17 @@ def test_docs_links_resolve():
             if not (f.parent / target).exists():
                 bad.append(f"{f.relative_to(REPO)} -> {target}")
     assert not bad, "dangling links in docs/: " + "; ".join(bad[:20])
+
+
+def test_every_package_json_parses():
+    """Cloudflare's build starts with `npm run build:ci` at the root. On 2026-09-11 a scripted edit left a
+    literal backslash-n after the closing brace of the root package.json; npm refused to parse it, the deploy
+    failed, and the only symptom was a site that never updated. JSON, not JavaScript, at every level."""
+    import json
+    for rel in ("package.json", "site/package.json", "app/package.json", "webapp/mc/package.json"):
+        p = REPO / rel
+        if not p.exists():
+            continue
+        raw = p.read_text(encoding="utf-8")
+        assert raw.endswith("}\n") or raw.endswith("}"), f"{rel} does not end at its closing brace: {raw[-12:]!r}"
+        json.loads(raw)  # raises with the position if it is not JSON
