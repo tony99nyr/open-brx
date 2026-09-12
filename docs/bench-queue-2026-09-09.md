@@ -218,7 +218,7 @@ found). Commands are already written in [`bench-grenade.md`](bench-grenade.md) �
   [`bench-super-indoor-2026-09-07.md`](bench-super-indoor-2026-09-07.md), and it is **entirely
   outstanding**. It needs its own plumbing pass first (pyserial, `/dev/cu.*`, the CH34x driver) —
   do not fold it into the Windows-rig blocks.
-- **P8, P3, P12, G3** — batch the Mac + iPhone PacketLogger captures ([`capture-runbook.md`](capture-runbook.md)).
+- **P8** (weapon stat values), **P3** (squad voice re-host), **G3** — batch the Mac + iPhone captures ([`capture-runbook.md`](capture-runbook.md)); P8 itself was captured 2026-09-11 over WireGuard, and P12 is dropped (`$PB*` is silent on v4.32).
 - The Facebook re-scrape is **not** a capture job: it is a browser crawl from the dev machine and
   does not belong in this block.
 

@@ -1068,8 +1068,9 @@ sound (O01 ships; alternates O05 O02 O04 O06 O03) and, first, its zero damage (d
 
 **Grenade:** 3.2 the Hill BUFF word (a gun in the hill, receiver on its headset); 3.5 **G9**; 3.6 **G10**; the captures in §8.
 
-**Capture (Mac + iPhone, batch for a Mac day):** **P8**, **P3**, **P12**, **G3**; re-scrape the FB group with comments
-expanded (the 2026-08-24 crawl missed threads).
+**Capture (Mac + iPhone, batch for a Mac day):** **P8** leftovers (the numeric weapon stat values), **P3** (set a squad
+voice in Callsign, re-host; WireGuard mode, not the HTTP proxy), **G3**; re-scrape the FB group with comments expanded
+(the 2026-08-24 crawl missed threads). P12 is not a capture item: v4.32 ignores `$PB*` and the cloud capture did not carry the enums.
 
 **Decisions (Tony's call):** Energy Launcher deals zero damage in every shipped game (`$SIR,9,3,,24` is a status row;
 flatten `_SIR_TABLE` or retune five weapons); **Q12′**; **Q13**; **F5**; **F20**; **F25**; **K1** which kid
