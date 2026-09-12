@@ -17,10 +17,8 @@ specified. Then **[`manual/`](manual/)**, the confirmed-facts manual the public 
 - **[HANDOFF.md](HANDOFF.md)** — **one screen**: what is true today, what changed, the next three actions,
   machine roles. Overwritten each session, never stacked.
 - **[FOLLOWUPS.md](FOLLOWUPS.md)** — **every open item and nothing else**, with a "Needs Tony at the bench"
-  section (the bench queue) and "System proofs" (needs players / space). Ids are permanent.
-  **[followups-triage.md](followups-triage.md)** is the categorised index over it (bug in active code · core
-  platform gap · bench-gated · decision · future · hygiene, with who can close each and what it unblocks); if
-  it disagrees with a row, the row is right.
+  section (the bench queue) and "System proofs" (needs players / space). Ids are permanent. The rows are
+  the only index: a separate triage file drifted eleven closed ids behind within a day and was retired 2026-09-12.
 - **[experiment-log/](experiment-log/)** — the append-only lab notebook, one file per month;
   [`experiment-log.md`](experiment-log.md) is its index. **Append after every session.** Nobody reads it
   for orientation; grep it.
@@ -33,11 +31,11 @@ Around them: **[`gotchas.md`](gotchas.md)** (field lore by symptom, plus the ben
 | sheet | what it is |
 |---|---|
 | **[`game-test-2026-09-11.md`](game-test-2026-09-11.md)** | **the 2026-09-11 game test.** Every issue from a 1v1 on two taggers, self-contained: symptom, evidence, mechanism, fix |
-| **[`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md)** | **the NEXT sitting.** Six readings, deliberately self-contained — run it without reading anything else |
+| **[`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md)** | **the NEXT sitting.** The four readings still open (three of the original six were answered 2026-09-11), deliberately self-contained — run it without reading anything else |
 | [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) | the WHOLE queue, grouped by setup block. FOLLOWUPS §9 is the register (ids); this is the running order |
 | [`bench-grenade.md`](bench-grenade.md) | the grenade/hill rungs. Read its *What is answered* table first, then *Still to run* |
 | [`bench-super-indoor-2026-09-07.md`](bench-super-indoor-2026-09-07.md) | Q15, MacBook-only, entirely outstanding and needing its own plumbing pass |
-| [`bench-flash-control-2026-09-05.md`](bench-flash-control-2026-09-05.md) · [`bench-weap-tokens-discovery-2026-09-04.md`](bench-weap-tokens-discovery-2026-09-04.md) · [`bench-next-2026-09-07.md`](bench-next-2026-09-07.md) | written-up designs the queue CITES rather than re-derives (the flash ladder, the t6/t21/t22/F23 designs) |
+| [`bench-flash-control-2026-09-05.md`](bench-flash-control-2026-09-05.md) | the flash ladder, written up once; the queue CITES it rather than re-deriving it. The t6/t21/t22/F23 designs moved to [`archive/bench-weap-tokens-discovery-2026-09-04.md`](archive/bench-weap-tokens-discovery-2026-09-04.md), still cited from the queue's BQ-D1 row |
 
 ### Session close is three writes
 1. One entry in the current month's experiment log (the evidence).
@@ -52,7 +50,7 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 
 ## Runbooks (how-to, no status)
 - **[field-runbook-mc.md](field-runbook-mc.md)** — match-day operator runbook from the MacBook (install, field
-  network, phase-by-phase host flow, troubleshooting, the REST table).
+  network, phase-by-phase host flow, troubleshooting; the REST routes are `../mcp/brx_mcp/mc/API.md`).
 - **[field-process.md](field-process.md)** — the **Armory Setup** + **Muster** operator processes.
 - **[mac-dev-runbook.md](mac-dev-runbook.md)** — working on the MacBook: the setup that is not in git, restart-MC
   vs hard-reload.
@@ -73,12 +71,17 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 
 ## Vision & plan
 - **[VISION.md](VISION.md)** — strategy + naming.
-- **[game-modes.md](game-modes.md)** — the mode catalog, the Extraction design, and the hard ceilings per mode.
+- **[game-modes.md](game-modes.md)** — the mode catalog, the infrastructure tiers, and the hard ceilings per mode.
+- **[extraction-design.md](extraction-design.md)** — the flagship Extraction mode: the event ladder, the BRX
+  mechanic mapping, the tier ladder and the genre research. Split out of `game-modes.md` 2026-09-12.
+- **[edge-brp.md](edge-brp.md)** — the competitive study of Battle Company's EDGE + Battle Rifle Pro, and the
+  parity targets it sets. Moved out of `reference/` 2026-09-12: it is strategy context, not manual evidence.
 - **[weapon-design.md](weapon-design.md)** — the balance rationale and the open flatten-vs-retune decision.
-- **[utility-roadmap.md](utility-roadmap.md)** — the objective-station work in order, status per mode, and how
-  outsiders will add modes and sound packs.
-- **[led-language.md](led-language.md)** — the LED language (gun body, headset RGB, headset flash) reviewed
-  2026-09-06; becomes contracts A16 on sign-off, build item S10.
+- **[utility-roadmap.md](utility-roadmap.md)** — the objective-station work in order, the grenade-as-control-point
+  evidence, and two designs (roaming hills, Territories) that are specified but not built. What it costs an
+  outsider to add a mode is FOLLOWUPS §2 (E1-E7).
+- **[led-language.md](led-language.md)** — the LED language (gun body, headset RGB, headset flash): the design of
+  record for contracts A16, amended as the bench moves it; the open build items are S10.
 - [`hud-review-2026-09-03.md`](hud-review-2026-09-03.md) — the closed HUD review ledger that `screens.mjs` cites.
 
 ## Ground truth
@@ -90,7 +93,7 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 | `$GSET`/`$WEAP`/`$PSET` field maps, modes, grenade (APK teardown) | [`../protocol/callsign-extract/`](../protocol/callsign-extract/) |
 | The 2477 sounds on the gun, with meanings | [`reference/sound-catalog.md`](reference/sound-catalog.md) (generated from `mcp/brx_mcp/data/sound_catalog.json`) |
 | Every confirmed BRX fact, for people | [`manual/`](manual/) (+ [`manual/README.md`](manual/README.md): how a fact gets in) |
-| The evidence the manual cites | [`reference/`](reference/) (manual notes, community posts, JEDGE, Edge/BRP, grenade, weapons data, iOS BLE notes) |
+| The evidence the manual cites | [`reference/`](reference/) (manual notes, community posts, JEDGE, grenade, weapons data, print-file survey, iOS BLE notes) |
 | Decoded transcripts + raw btsnoop traces | [`../protocol/captures/`](../protocol/captures/) |
 | Node↔MC wire + game data model | [`spec/contracts.md`](spec/contracts.md) |
 | Open work | [`FOLLOWUPS.md`](FOLLOWUPS.md) |
@@ -103,7 +106,8 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
   exists (board registry, wiring, the receiver traps).
 - **[../hardware/brx-companion-spec.md](../hardware/brx-companion-spec.md)** (per-tagger node, paper) ·
   **[../hardware/brx-station-spec.md](../hardware/brx-station-spec.md)** (the Utility Box, paper) ·
-  **[../hardware/print-files.md](../hardware/print-files.md)**.
+  **[../hardware/print-files.md](../hardware/print-files.md)** (what we would print, and the caliper-measurement
+  blocker; the market survey behind it is [`reference/print-files.md`](reference/print-files.md)).
 
 ## Building the software
 - **[../app/README.md](../app/README.md)** — the native phone app (Capacitor → Android + iOS), the APK publish path.
@@ -113,8 +117,9 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
   gets in, and the build + Playwright gate.
 
 ## Archive
-**[`archive/`](archive/)** — not maintained; grep it, do not read it. Closed followups, the old handoff
-banners, dated bench sheets that ran, superseded spec modules, one-time design exports.
+**[`archive/`](archive/)** — not maintained; grep it, do not read it. Closed followups, dated bench sheets that
+ran, superseded spec modules, the design-tool exports the briefs re-seed from. Only files a living doc still
+links stay; old HANDOFF banners live in `git log -p -- docs/HANDOFF.md`.
 
 ## The system in one paragraph
 The BRX tagger is **dumb** — it fires a weapon we define (`$WEAP`), reads IR hits, tracks health, and
