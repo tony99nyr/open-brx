@@ -1,7 +1,7 @@
 # The manual source format
 
 This is the whole contract between `docs/manual/*.md` and the site generator (`site/build.mjs`).
-If something is not on this page, it is not a feature. Adopted 2026-09-09 (see `SIMPLIFY-PLAN.md`).
+If something is not on this page, it is not a feature. Adopted 2026-09-09 (see `../archive/site/SIMPLIFY-PLAN.md`).
 
 ## One file, one page
 

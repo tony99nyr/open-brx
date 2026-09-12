@@ -1,9 +1,10 @@
-# Game modes — catalog, infrastructure tiers, hard ceilings, Extraction
+# Game modes — catalog, infrastructure tiers, hard ceilings
 
 Every BRX game mode we know of, from all sources (V7 manual, Extended User Guide, the Callsign APK harvest,
 community), classified by **what infrastructure each needs to run at scale**, plus the hard ceilings every
-mode design has to respect and the design of the flagship Extraction mode. What is *built* and how far each
-objective mode is from playable is `utility-roadmap.md` §8; the MC config schema per mode is `spec/modes.md` §2;
+mode design has to respect. The flagship Extraction design has its own page, `extraction-design.md`.
+**This page carries no status**: what is built today is `HANDOFF.md`, and what is still open is
+`FOLLOWUPS.md`. The MC config schema per mode is `spec/modes.md` §2;
 the grenade's own modes are `reference/grenade.md` and the public manual (`manual/gameplay.md`). Consolidated
 2026-09-06: the constraints ledger (`mode-limits.md`) and the grenade section moved out; the ceilings that
 survive are §Hard ceilings below.
@@ -43,9 +44,9 @@ kills), CaptureTheFlag, SquadLeader.
 | **Commander** | EUG, APK (GOTDLC) | Faction wars + a **Commander** respawn character | seek-and-destroy the Commander | **0** | – | – | same as Generals, faction flavour |
 | **Supremacy** | manual, EUG, APK | 3 factions (Nexus/Resistance/Vanguard), class-based | score / control | **0** | – | – | class abilities are `$WEAP`/`$PSET` loadouts |
 | **Last Man Standing** | APK | elimination, limited lives | last alive | **0** | – | – | nodes track lives; no props |
-| **Domination** | APK | hold **control points** for score-over-time | most point-time / Score | **1** | control-point stations | optional (live board) | points self-authoritative (LED = owner); `DominationBoxes` in APK; roadmap K1 |
-| **King of the Hill / Territory** | APK (`Territory`) | hold a **zone** | time held | **1** | zone/hill station | optional | one contested point; same as domination with 1 point; roadmap K1 |
-| **Capture the Flag** | APK, Callsign Team Arena | grab enemy **flag**, return to base | captures / CaptureTheFlag win | **1** | flag bases (+ flag object / QR) | **wanted** ("flag taken!") | Callsign uses QR flags; roadmap K5 |
+| **Domination** | APK | hold **control points** for score-over-time | most point-time / Score | **1** | control-point stations | optional (live board) | points self-authoritative (LED = owner); `DominationBoxes` in APK |
+| **King of the Hill / Territory** | APK (`Territory`) | hold a **zone** | time held | **1** | zone/hill station | optional | ✅ built and proven end to end through the gun 2026-09-10 (the hill is a real grenade in hill mode); domination is the same primitive with more than one point |
+| **Capture the Flag** | APK, Callsign Team Arena | grab enemy **flag**, return to base | captures / CaptureTheFlag win | **1** | flag bases (+ flag object / QR) | **wanted** ("flag taken!") | Callsign uses QR flags |
 | **Assault** | APK | attack/defend **objectives** in sequence | objectives armed/held | **1** | objective stations | optional | attackers arm points, defenders hold |
 | **Team Arena** (Callsign) | APK, EUG | TDM + **QR weapon pickups** + capturable flags | kills + captures | **1** | QR codes (pickups/flags) | optional | QR = cheap props; weapon pickup = `$WEAP` push |
 | **Battle Royale** | APK, EUG | shrinking play area, **GPS weapon/supply drops**, last alive | last standing | **2** | drop points (GPS) | **required** | needs per-node **location** + live zone/drop broadcast — the most infra-heavy |
@@ -81,7 +82,7 @@ No. The gun resolves friend/enemy by **team id (`$TID`)** in the IR hit, so team
 
 ## Hard ceilings (design around these; everything else is software or a pending bench test)
 
-1. **The gun keeps no game state** (`protocol/brx-protocol.md` §7n) and BLE reaches ~1–30 m → anything needing a
+1. **The gun keeps no game state** (`protocol/session-findings-2026-08.md` §7n) and BLE reaches ~1–30 m → anything needing a
    clock, score or respawn needs a listener *on the player* out on a field. This is the whole reason for
    per-player nodes (ADR-0001/0002).
 2. **One BLE central holds a handful of guns** (Android caps at 7 GATT connections; a laptop radio is
@@ -129,85 +130,12 @@ space reduces to: **objective-station node + player-role support + host rule mod
 
 ## Extraction (raid-and-extract) — a flagship mode Edge can't do
 
-The extraction-shooter genre (Escape from Tarkov, Hunt: Showdown, CoD DMZ, The Cycle, Marathon) is the
-hottest shape in shooters right now, and **it maps beautifully onto laser tag** — the signature tension
-is *"channel a loud extraction while exposed and everyone converges on you,"* which is exactly what this
-hardware is good at. **Battle Company's Edge has nothing like it**, so this is a marquee differentiator.
-
-**Genre core loop:** insert with your gear → **loot** valuables (risk/reward: push deeper for better
-loot vs. leave now) → reach an **extraction point** and **summon/channel** it (a timer; it's **loud and
-alerts everyone**) → **survive the channel** → if you extract you **keep/bank** the loot (points +
-persistent boosts); **if you die you drop it all** (others can grab it). Loss-on-death is the whole
-point — it's what gives every decision real stakes. (Sources below.)
-
-### The shape Tony is picturing (2026-09-04): ARC Raiders + Fortnite's Sprite extraction
-
-Two references sharpen the loop above into an **event ladder** (sources at the end of this section):
-
-| beat | ARC Raiders | Fortnite: Runners / Sprites | our event |
-|---|---|---|---|
-| call the extract | one player activates the console; 60-90 s timer (elevator / metro), airshaft ~60 s, keyed hatch 15 s | interact with the site: a ~45 s "rifting the crate in" sequence | `extraction_called` (LOUD: "Black Hawk inbound") · others: `extraction_alert` |
-| the window | leave the zone and the timer restarts; the whole squad in the zone extracts together | crate lands and stays ~70 s; drops to **10 s** once someone banks | `extraction_open` → `extraction_tick` → `extraction_closing` |
-| success | out of the raid, loot kept; downed squadmates revive on extraction | Sprite banked permanently, Sprite Dust earned | `extraction_complete` (banked score + next-life boosts) |
-| failure | die → lose everything except the safe pocket | die / leave → the Sprite is dropped for others | `extraction_failed`, `loot_dropped` |
-| the hard end | 30-min raid, then an orbital strike kills everyone still out | match end | `raid_ending` ("Incoming air raid, find cover") → `raid_over` (bombardment kills everyone not extracted) |
-
-**HUD-driven by design** (`docs/spec/contracts.md` A11.4): the extractor's own HUD owns its channel --
-"in the zone" is the station's presence landing on its own phone, the timers are local, the wallet is local --
-so every beat above except `extraction_alert` works with MC out of range. The alert to everyone else is MC
-best-effort (or, at Tier 2, the field radio). The **hard end** is the node's own clock: at time-expiry any
-player not extracted is killed by the bombardment and scores nothing.
-
-*Refs:* [ARC Raiders extraction mechanics (brokenbuilds.gg)](https://brokenbuilds.gg/arc-raiders/guides/arc-raiders-extraction-mechanics-guide),
-[all extract types (arcmaps.com)](https://arcmaps.com/arc-raiders-extraction-points),
-[the 30-minute timer + meteor (PC Gamer)](https://www.pcgamer.com/games/third-person-shooter/arc-raiders-punishes-players-who-fail-to-extract-in-time-by-simply-dropping-a-meteor-on-their-heads-but-there-is-one-way-to-survive-the-blast/),
-[Fortnite Extraction Sites (wiki)](https://fortnite.fandom.com/wiki/Extraction_Sites),
-[Fortnite Runners: extract Sprites (Epic)](https://www.fortnite.com/news/extract-and-collect-sprites-on-a-new-map-in-fortnite-runners),
-[Hunt: Showdown extraction (wiki)](https://huntshowdown.fandom.com/wiki/Extraction).
-
-### The BRX mechanic (what maps to what)
-
-| Genre element | BRX / Open BRX implementation |
-|---|---|
-| **Your carried loot** | The gun keeps no state, so the player's **node (Companion/phone) is the loot wallet.** Loot value accrues from kills, IR **loot boxes** (Jay's prototype — `reference/jay-ecosystem.md`), and objective pickups. Optional **physical loot** = a printed QR/RFID/IR "briefcase" token you actually carry — makes the drop-on-death moment tangible. |
-| **Extraction point + "summon it, takes a while"** | The **KotH/hold primitive** with a channel: reach the extraction station (a utility phone, roadmap K2; or the grenade as the beacon), **initiate** (present + hold the trigger) → a **30–60 s channel timer** starts. |
-| **"It's loud" (alerts everyone)** | On channel start, the station + nearby nodes fire an **audio + LED alarm** ("Extraction inbound at Alpha!"). *Local* loudness works at **any tier** (station/gun audio); **field-wide** "everyone hears it" needs the broadcast downlink (Tier 2). This is the genre's defining risk — and it also **counters extract-camping**, since attackers get the same callout. |
-| **Survive the channel** | If the extracting player is killed or leaves the zone, the channel **pauses/resets** (host rule on `$HP,0` + presence). Channel completes → loot is **banked**. |
-| **"If kicked you drop your loot"** | On `$HP,0`, the victim's node **transfers its wallet out** — either to a **dropped token** at the death spot (physical/beacon) or back to the **pool / to the killer** (virtual). Pure host-side rule on the death event — Tier 0 logic. |
-| **Extracted loot → points or boosts** | Banked value converts to **score** (win condition) and/or **`$WEAP`/`$LIFE` boosts** on your next life/raid — a persistent **"stash"** across rounds (the genre's meta-progression). |
-
-### Tiers — it scales from gear-you-own up to full field
-
-- **Minimum ($0, gear you already own):** a **utility phone is the extraction beacon** (or the grenade's KotH
-  charge, which already does summon + the "who holds it" callout), loot tracked by **phone nodes**,
-  drop/bank/boost as host rules. A playable Extraction mode with **no custom hardware**.
-- **Tier 1 (one station):** a purpose-built **extraction station** — cleaner channel, proper LED/alarm,
-  multiple loot pickups. This is the sweet spot.
-- **Tier 2 (full experience):** **multiple, optionally *hidden* extraction points** (Hunt's "Devil's Trail"
-  hidden-extract idea), a **field-wide "extraction inbound" broadcast**, **dropped-loot beacons** you can hunt
-  for, and a live **stash/scoreboard** — needs stations + the broadcast downlink.
-
-### Variants
-
-- **PvPvE (solo/small squad):** add "AI" pressure with **utility-box hostile emitters** (proximity mines /
-  turret tags — `reference/jay-ecosystem.md`) so even a few players face environmental threat between fights.
-- **Boss / bounty (Hunt-style):** a high-value **boss role** (a tanky player, General-style) or a heavily-defended
-  station drops a **bounty token** that makes its carrier **loud/marked** — their node pulses a detectable
-  beacon — until they extract. Classic "kill the holder, take the prize."
-- **Storm timer (BR crossover):** a closing zone (reuse the Battle Royale storm) forces the push-vs-extract
-  decision on a clock.
-
-### What we actually have to build
-
-Very little that's new: Extraction is **the King-of-the-Hill station + a loot wallet in the node + three
-host rules** (channel-under-fire, drop-on-death, bank→boost). The rules engine is built and sim-proven
-(`mcp/brx_mcp/modes/extraction.py`, `python -m brx_mcp extraction-sim`); the station (K2) and an MC loot scorer
-are what remain — `utility-roadmap.md` §8.
-
-*Genre research sources:* [What is an extraction shooter? (Antihero Studios)](https://antiherostudios.com/blog/what-is-an-extraction-shooter),
-[Extraction shooter (Wikipedia)](https://en.wikipedia.org/wiki/Extraction_shooter),
-[Why DMZ gets the formula right (The Loadout)](https://www.theloadout.com/call-of-duty-warzone-2/dmz-extraction-shooter-formula-right),
-[Hunt: Showdown "Devil's Trail" (ixbt.games)](https://ixbt.games/en/news/2026/03/18/hunt-showdown-1896-prevratilas-v-escape-from-tarkov-nacalos-xardkornoe-sobytie-tropa-diavola.html).
+The flagship mode: raid, loot, call a **loud** extraction, survive the channel, bank it — die and you
+drop everything. It is Tier 1 (one station) and it is the single mode Battle Company's Edge has nothing
+like. The full design — the ARC Raiders / Fortnite-Sprites event ladder, the BRX mechanic mapping, the
+tier ladder, the variants and the genre research — is [`extraction-design.md`](extraction-design.md).
+The rules engine is built and sim-proven (`mcp/brx_mcp/modes/extraction.py`,
+`python -m brx_mcp extraction-sim`); the station and an MC loot scorer are what remain.
 
 ## Health / regen variants (all Tier 0 — no props)
 

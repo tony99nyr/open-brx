@@ -129,7 +129,7 @@ EVENTS: dict[str, dict] = {
     "bomb_detonated":   dict(source="mc", group="objective", desc="bomb detonated",                 sound=None,   gun_led=None,      headset=None),
     "vip_hit":          dict(source="mc", group="objective", desc="the VIP was hit",                sound=None,   gun_led=None,      headset=None),
     "vip_down":         dict(source="mc", group="objective", desc="the VIP is down",                sound=None,   gun_led=None,      headset=None),
-    # -- extraction, the ARC Raiders / Fortnite-Sprites shape Tony is picturing (game-modes.md §Extraction):
+    # -- extraction, the ARC Raiders / Fortnite-Sprites shape Tony is picturing (extraction-design.md):
     #    loot -> reach a site -> CALL the extract (a 45-90 s inbound sequence everyone can hear) -> the window
     #    OPENS (crate lands / chopper arrives) -> stand in the zone when it closes to bank -> leave the zone or
     #    die and the extract fails; the raid has a HARD END that kills everyone still out there.

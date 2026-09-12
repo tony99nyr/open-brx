@@ -1,18 +1,19 @@
-# Bench run sheet — the six readings that gate the KotH build
+# Bench run sheet — the four readings left that gate the KotH build
 
 Updated: 2026-09-11. **Read this file and nothing else.** It is self-contained: every command below was
 run against its own source on 2026-09-10 (the generator ones were executed; the hardware ones are
 quoted from tools that exist). Links are for mechanism only — you do not need them to run the session.
 
-Six rungs in three SETUP blocks, about **two hours** plus a 15-minute pre-flight. Blocks are ordered so
-the gun is re-armed as little as possible and so the cheapest rung that can kill the most expensive plan
-runs first. **Finish a block before starting the next one.**
+**Three of the original six are already answered on 2026-09-11** and keep their rungs below for the
+method and the refutation; what is left is **four readings, about 70 minutes** plus a 15-minute
+pre-flight. Blocks are ordered so the gun is re-armed as little as possible and so the cheapest rung
+that can kill the most expensive plan runs first. **Finish a block before starting the next one.**
 
-| block | setup | rungs | time |
+| block | setup | rungs still to run | time |
 |---|---|---|---|
-| **A** | one gun on BLE + board A (receiver), **no grenade** | A1 protocol move · A2 rate-of-fire floor | ~35 min |
-| **B** | same, **plus the grenade in HILL** | B1 the hill's damage word · B2 can we still capture · B3 the currency | ~55 min |
-| **C** | one gun on BLE + board B (emitter) at 3 ft, no grenade | C1 the shield grant · C2 the last status functions | ~30 min |
+| **A** | one gun on BLE + board A (receiver), **no grenade** | BC-A2 rate-of-fire floor (BC-A1 answered: moot) | ~20 min |
+| **B** | same, **plus the grenade in HILL** | BC-B3 the currency (BC-B1 answered: no damage word · BC-B2 answered: moot) | ~20 min |
+| **C** | one gun on BLE + board B (emitter) at 3 ft, no grenade | BC-C1 the shield grant · BC-C2 the last status functions | ~30 min |
 
 ---
 
@@ -30,7 +31,7 @@ All seven cost real bench time on 2026-09-10. Numbers 1-4 each produce a reading
    slot 1 with nothing in slot 0 gives the same dead trigger as trap 1.
 3. **A STITCHED IR word can be parity-valid and WRONG in the exact field you are measuring.** Board A
    fragments frames and `native_capture.py` stitches them; during rig qualification the stitcher's
-   `AMBIGUOUS 2` lines offered impostors reading `proto=4`, `proto=1`, `mag=137`, `mag=41`. **A1 and B3
+   `AMBIGUOUS 2` lines offered impostors reading `proto=4`, `proto=1`, `mag=137`, `mag=41`. **BC-A1 and BC-B3
    measure the protocol and magnitude fields, which is precisely what an ambiguous stitch invents.**
    Count only `WORD` lines (whole, ~51-52 edges) or an unambiguous `STITCH`; discard every `AMBIGUOUS`.
    Budget for the rate: **7 whole words out of 45 bursts** in that qualification, so fire 20-30 rounds
@@ -109,7 +110,7 @@ into the swap-delay token and shipped every weapon at 10 shots/s. And `-sir=<p>,
 **Defaults you are running with, so you do not have to look them up:** `armgen … ar` puts the **full-auto
 AR** in slot 0 (`t3`=0 protocol, `t5`=24 magnitude, `t14`=100 ms/round, `t21/t22`=100/100 = recoil model
 OFF), the stock **10-row `$SIR` table**, `$VOL,80`, and **`$GSET` friendly fire ON** (`t1=1`, which lifts
-the IR polarity gate — a KotH mode wants this, and it changes what B1 reads). `$TID` is the first
+the IR polarity gate — a KotH mode wants this, and it changes what BC-B1 reads). `$TID` is the first
 argument, `$PSET` player id the second. **Never use team 2: a neutral hill broadcasts team 2** (F82).
 
 **The phone is not in the loop for any rung tonight.** Everything is read off the wire over BLE, so the
@@ -121,11 +122,11 @@ installed APK version does not matter and no `engine.js` fix is needed to take t
 
 Board A (**COM7**) about 3 ft in front of the muzzle, soft background behind it, grenade out of the room.
 
-### A1 — does `$WEAP` t3 actually change the transmitted IR protocol? (15 min) 🔴 F91
+### BC-A1 — does `$WEAP` t3 actually change the transmitted IR protocol? (15 min) 🔴 F91
 
 **ANSWERED 2026-09-11 (moot): this rung never ran.** F91, the reason it mattered, was retired the same night —
 the hill's chip damage turned out to be manufactured inside the gun by fn 24, not a wire-level `proto=0` word
-(B1), so there is nothing to dodge by moving `$WEAP` t3 off protocol 0. See `experiment-log/2026-09.md` →
+(BC-B1), so there is nothing to dodge by moving `$WEAP` t3 off protocol 0. See `experiment-log/2026-09.md` →
 *2026-09-11 (bench)*.
 
 **Why this is first (as written, for the record).** A grenade hill emits an ambient `proto=0 mag=8` damage word that our
@@ -134,14 +135,14 @@ pushing a KotH mode needs. The fix is to move our weapons off cell `<0,0>` so th
 unmatched cell and is silently discarded. **t3 = `primaryDamageType` is believed to BE the IR word's
 protocol field** (a 15-value enum; stock weapons already ship 8, 10, 11, 13) and protocol independence
 for fn 1 is measured across 0, 5, 7, 9 and 10 — but **nobody has ever set a non-stock t3 on our gun and
-watched the wire.** If t3 does not move the transmitted protocol, the whole F91 plan is dead and B1's
-second half and B2 do not need running.
+watched the wire.** If t3 does not move the transmitted protocol, the whole F91 plan is dead and BC-B1's
+second half and BC-B2 do not need running.
 
 **Control first.** Arm stock and confirm the rig decodes this gun correctly tonight:
 
 ```bash
 $WPY mcp/tools/armgen.py 1 5 ar                            # t3 = 0, the stock AR
-$PY  mcp/tools/native_capture.py A1-control-proto0 COM7 60  # start this, then fire
+$PY  mcp/tools/native_capture.py BC-A1-control-proto0 COM7 60  # start this, then fire
 ```
 
 Fire **25-30 rounds** in bursts of 5 with a second between bursts (trap 3: whole words are rare).
@@ -151,7 +152,7 @@ Fire **25-30 rounds** in bursts of 5 with a second between bursts (trap 3: whole
 ```bash
 $WPY mcp/tools/armgen.py 1 5 ar t3=7
 # stderr says: $WEAP,0 (PRIMARY, the trigger) doc t3 = raw index 4: '0' -> '7'
-$PY  mcp/tools/native_capture.py A1-test-proto7 COM7 60
+$PY  mcp/tools/native_capture.py BC-A1-test-proto7 COM7 60
 ```
 
 Same 25-30 rounds, same distance, same session.
@@ -161,10 +162,10 @@ Same 25-30 rounds, same distance, same session.
 | **Reads** | the `proto=` field of every **`WORD`** line in each capture (discard `AMBIGUOUS`). Magnitude should stay 24 in both — t3 must not move it. |
 | **Decides** | every clean word in the second capture reading `proto=7` ⇒ **t3 IS the wire protocol**, and F91's route is live. |
 | **Control** | the first capture. Its words must read `proto=0 mag=24`: that proves rig, geometry and decode are sound tonight, so a `proto=7` reading afterwards is the token and not the room. Without it a `proto=7` is uninterpretable. |
-| **Falsifies** | words still reading `proto=0` after t3=7 ⇒ either t3 is not the wire protocol or the write did not land. Check the `$WEAP,0` frame in the session log before believing it; if it was sent correctly, **write F91 up as refuted, skip B1's part 3 and B2, and go straight to B3.** |
+| **Falsifies** | words still reading `proto=0` after t3=7 ⇒ either t3 is not the wire protocol or the write did not land. Check the `$WEAP,0` frame in the session log before believing it; if it was sent correctly, **write F91 up as refuted, skip BC-B1's part 3 and BC-B2, and go straight to BC-B3.** |
 | **Also record** | any word whose magnitude is 0 — that is the recoil-model miss (t21/t22 are 100/100 here, so there should be none; one appearing means something else moved). |
 
-### A2 — how low can t14 go? (20 min) 🟠 F87 / F100, blocks both
+### BC-A2 — how low can t14 go? (20 min) 🟠 F87 / F100, blocks both
 
 t14 is milliseconds per round, calibrated at **one point only**: t14=100 measured 101.6 and 102.0
 ms/round. Every rate-of-fire reward (hill buff, worn powerup) needs the **floor** — the value at which
@@ -180,7 +181,7 @@ name says what it holds:
 
 ```bash
 $WPY mcp/tools/armgen.py 1 5 ar t14=<value>            # confirm stderr says raw index 15
-$PY  mcp/tools/native_capture.py A2-t14-<value> COM7 30
+$PY  mcp/tools/native_capture.py BC-A2-t14-<value> COM7 30
 ```
 
 send the arm, start the capture, then **hold the trigger** through a full magazine (32 rounds) pointed at
@@ -207,7 +208,7 @@ through the colour cycle; release on **blue (HILL)**; white LED = locked. Power-
 blue boot flash. Leave it **neutral** (unshot). Stand it 3-6 ft from the gun with **board A facing the
 grenade**, so board A witnesses the grenade and not only the gun's own muzzle.
 
-### B1 — is the hill's damage word continuous or conditional, and does dropping `<0,0>` stop it? (25 min) 🔴 F69 + F91
+### BC-B1 — is the hill's damage word continuous or conditional, and does dropping `<0,0>` stop it? (25 min) 🔴 F69 + F91
 
 **ANSWERED 2026-09-11: there is no damage word.** A receiver aimed at a live grenade recorded ZERO protocol-0
 words across two ~5-minute windows while the gun logged chip damage under the fn-24 beacon row; the damage is
@@ -234,10 +235,10 @@ window boundary so the gun-side counts split the same way the captures do.
 1. **Owner.** Arm team 1 with the stock table plus the beacon row:
    `$WPY mcp/tools/armgen.py 1 5 ar '+sir=$SIR,15,0,,28,0,0,1,,*'`. Fire **one** round at the neutral
    hill to claim it; from the next beacon on, the gun is the owner. Then
-   `$PY mcp/tools/native_capture.py B1-w1-owner COM7 60` and hands off.
+   `$PY mcp/tools/native_capture.py BC-B1-w1-owner COM7 60` and hands off.
 2. **Intruder.** Re-arm identically but on **team 0**:
    `$WPY mcp/tools/armgen.py 0 5 ar '+sir=$SIR,15,0,,28,0,0,1,,*'`. The hill still belongs to team 1, so
-   the gun is now an intruder standing in it, with full pools. `native_capture.py B1-w2-intruder COM7 60`,
+   the gun is now an intruder standing in it, with full pools. `native_capture.py BC-B1-w2-intruder COM7 60`,
    hands off. **Do not fire** — a shot would re-capture the hill and end the intruder condition.
 3. **The deaf test.** Re-arm with `<0,0>` gone and a protocol-7 damage row in its place, still on
    **team 0** so the gun stays an intruder:
@@ -247,10 +248,10 @@ window boundary so the gun-side counts split the same way the captures do.
        '+sir=$SIR,7,0,,1,0,0,1,,*' '+sir=$SIR,15,0,,28,0,0,1,,*'
    ```
 
-   `native_capture.py B1-w3-deaf COM7 60`, hands off, do not fire.
+   `native_capture.py BC-B1-w3-deaf COM7 60`, hands off, do not fire.
 4. **The closing control.** Re-arm **exactly as window 2**
    (`$WPY mcp/tools/armgen.py 0 5 ar '+sir=$SIR,15,0,,28,0,0,1,,*'`),
-   `native_capture.py B1-w4-control COM7 60`, and confirm the drain **comes back**. Windows 2-3-4 are an
+   `native_capture.py BC-B1-w4-control COM7 60`, and confirm the drain **comes back**. Windows 2-3-4 are an
    A-B-A on one changed thing: the `$SIR` table.
 
 | | |
@@ -262,9 +263,9 @@ window boundary so the gun-side counts split the same way the captures do.
 | **The reading nobody has written down** | friendly fire is **ON** in every arm here, so the polarity gate is lifted — **does the OWNER take the chip damage too** (window 1)? F69 only ever measured a non-owner. If the owner bleeds as well, then "FF on" (which F73 says a KotH mode wants, so it can read every beacon) chips **everyone** standing on the point, and F91 stops being an optimisation and becomes the only way to ship the mode. |
 | **Record either way** | the tradeoff: dropping `<0,0>` makes our guns **deaf to any native BRX gun**, which is fine for an all-hosted match and fatal for mixing hosted and native players in one game. |
 
-### B2 — can a gun on protocol 7 still capture a hill? (10 min) 🔴 F91, and it can kill the plan
+### BC-B2 — can a gun on protocol 7 still capture a hill? (10 min) 🔴 F91, and it can kill the plan
 
-**ANSWERED 2026-09-11 (moot): this rung never ran.** F91 was retired the same night (B1), so the plan it could
+**ANSWERED 2026-09-11 (moot): this rung never ran.** F91 was retired the same night (BC-B1), so the plan it could
 have killed was never adopted and the question does not need settling. See `experiment-log/2026-09.md` →
 *2026-09-11 (bench)*.
 
@@ -273,7 +274,7 @@ is "shoot the grenade", and every capture ever measured was a **protocol-0** wor
 receiver only accepts protocol 0, then moving our weapons to protocol 7 buys immunity to the chip damage
 by **giving up shoot-to-capture** — which deletes the mode F91 exists to protect.
 
-Power-cycle the grenade back to neutral HILL. The gun is still armed from B1 window 3 (t3=7).
+Power-cycle the grenade back to neutral HILL. The gun is still armed from BC-B1 window 3 (t3=7).
 
 1. Fire **one** round at the neutral hill. Watch for the capture announcement.
 2. **Control:** re-arm stock (`armgen.py 0 5 ar '+sir=$SIR,15,0,,28,0,0,1,,*'`), power-cycle the grenade
@@ -286,7 +287,7 @@ Power-cycle the grenade back to neutral HILL. The gun is still armed from B1 win
 | **Control** | step 2. Without it, "no capture" could be a flat grenade, a bad angle or an empty magazine. |
 | **Falsifies** | no `mag=50` in either step ⇒ the geometry or the grenade is the problem, not the protocol; nothing is learned. Check `$ALCD` actually decremented — a receive-only arm cannot shoot, which is exactly what cost the first pass of this rung on 2026-09-10. |
 
-### B3 — what is capture charge priced in? (20 min) 🔴 F70 / F76
+### BC-B3 — what is capture charge priced in? (20 min) 🔴 F70 / F76
 
 Charge accumulates and the attacker wins ties. What it is **priced in** is unsettled, because the one
 discriminating trial ran two variables at once: the shotgun's `mag=70` **is** its `t12`
@@ -297,7 +298,7 @@ block.** The AR is that weapon — `t1` (weapon class) and `t12` are both **empt
 pure magnitude-70 ordinary round. Confirm both are empty in the frame armgen prints.
 
 ⚠ **Arm with `-sir=0,0` for every step of this rung.** The gun has to survive several minutes beside an
-enemy-held hill, and without that row it cannot be chipped (B1 proves it). **What a gun RECEIVES has no
+enemy-held hill, and without that row it cannot be chipped (BC-B1 proves it). **What a gun RECEIVES has no
 bearing on what it TRANSMITS**, so its rounds are still ordinary `proto=0` words that capture normally —
 this changes nothing the rung measures and removes the only reason the run could die halfway.
 
@@ -331,7 +332,7 @@ Grenade off and out of the room. Emitter board B (**COM8**) aimed at a headset d
 5). Close any Arduino serial monitor: Windows COM ports are exclusive and the monitor steals the port
 silently.
 
-### C1 — can anything put a shield on a gun? (20 min) 🟠 F60 / P16, plus the D6 ally remainder
+### BC-C1 — can anything put a shield on a gun? (20 min) 🟠 F60 / P16, plus the D6 ally remainder
 
 **Nothing shield-shaped has ever been on a gun.** Shield is IR-only (fn 11 / 18, ally polarity) and no
 compiled mode of ours ships a grant row, so the teal shield bar and A16.5's shield→armour handover are
@@ -356,7 +357,7 @@ row to deplete with, and fires ally-polarity words from board B.
 | **Fallback, 5 min** | if fn 10 grants but 11 and 18 do not, try the **official app's own cell** before concluding. The stock Team Arena table ships `$SIR,2,1,VA8C,11,0,0,1,,*` for add-shields, so arm `$WPY mcp/tools/armgen.py 1 5 ar -sir=all '+sir=$SIR,2,1,VA8C,11,0,0,1,,*'` and emit a matching ally word: `$WPY -c "from brx_mcp.irbridge import encode_word; print(encode_word(proto=2, player=42, team=1, damage=50, subtype=1))"` then `$PY -m brx_mcp ir-emit <bits> COM8 1`, three times ~6 s apart. Read `$HP` token 3. |
 | ⚠ **Cannot be checked tonight** | even a proven shield will not show on a phone: the published APK predates A16/A17. Read it on the wire, never on the HUD. |
 
-### C2 — enemy fn 35, the last unswept status function (10 min) 🟡 D6
+### BC-C2 — enemy fn 35, the last unswept status function (10 min) 🟡 D6
 
 Enemy 8, 24, 25, 26, 27 and 28 are swept; **35 is the last one open**, and it is the fallback if fn 28
 turns out to have a side effect. This is a *human* reading — what a person holding the gun hears, sees or
@@ -381,7 +382,7 @@ truncated by the next event, and closer spacing is what faked "varied sounds" la
 | **Decides** | fn 35's row in the function map: registers silently, registers with feedback, or does not register. |
 | **Control** | run **fn 1** on the same cell first (`-sir=all '+sir=$SIR,5,0,,1,0,0,1,,*'`) — a pool drop proves cell, geometry and polarity, so a later silence is the function and not the rig. **fn 28** is the reference for "registers with nothing at all". |
 | **Falsifies** | zero `$HIR` ⇒ polarity (the word is enemy-team 2 against a team-1 gun, which should land) or aim; not a property of fn 35. Any `$HIR` whose protocol is not 5 is a trap-5 corruption — discard the trial, do not average it in. |
-| **If there is time** | ally 31/32/34 are covered by C1; nothing else in D6 remains after this. |
+| **If there is time** | ally 31/32/34 are covered by BC-C1; nothing else in D6 remains after this. |
 
 ---
 
@@ -394,10 +395,10 @@ Blocked, and deliberately not on tonight's list:
 
 | item | what has to land first |
 |---|---|
-| ~~Shipping F91 (weapons off protocol 0)~~ | **Moot 2026-09-11: F91 retired** (A1/B1/B2 above) — there is no wire-level damage word to dodge, so this was never written. |
-| The hill rate-of-fire buff (F87) | A2's floor number, then the push/revert `$AMMO` work (`bench-grenade.md` rungs Z2/Z3). Not a reading, a build. |
-| The teal shield bar · A16.5's handover · `$LCD` token 3 (B20) | an APK carrying A16/A17. C1 can prove a shield exists on the wire; it cannot show it on a phone. |
-| F81's "killed by the wrong team" copy | the DOWN-screen wording belongs to the brx-hud session; B1 will make the hill damage reproducible for it. |
+| ~~Shipping F91 (weapons off protocol 0)~~ | **Moot 2026-09-11: F91 retired** (BC-A1/BC-B1/BC-B2 above) — there is no wire-level damage word to dodge, so this was never written. |
+| The hill rate-of-fire buff (F87) | BC-A2's floor number, then the push/revert `$AMMO` work (`bench-grenade.md` rungs Z2/Z3). Not a reading, a build. |
+| The teal shield bar · A16.5's handover · `$LCD` token 3 (B20) | an APK carrying A16/A17. BC-C1 can prove a shield exists on the wire; it cannot show it on a phone. |
+| F81's "killed by the wrong team" copy | the DOWN-screen wording belongs to the brx-hud session; BC-B1 will make the hill damage reproducible for it. |
 
 ---
 
@@ -418,7 +419,7 @@ re-armed.
 1. **One entry** appended to `docs/experiment-log/2026-09.md`, dated, with the numbers and the controls —
    including the rungs that returned nulls, which are results.
 2. **One `FOLLOWUPS.md` diff**: strike or add rows, no prose. F91 resolves or is refuted; F70/F76 resolve
-   together on B3; F60 moves on C1; F87 gets its floor from A2. A closed item becomes one dated line in
+   together on BC-B3; F60 moves on BC-C1; F87 gets its floor from BC-A2. A closed item becomes one dated line in
    `docs/archive/followups-closed.md`, and ids are never renumbered or reused.
 3. **One `HANDOFF.md` replacement** — overwrite it, never stack banners; it must stay ≤ 150 lines.
 

@@ -3,7 +3,7 @@
 //   sounds  = mcp/brx_mcp/data/sound_catalog.json
 // The build never reads facts out of manual prose: if a value belongs in a table, it belongs in
 // the JSON. (This used to scrape markdown tables out of the manual, so renaming a column silently
-// changed published data. See docs/site/SIMPLIFY-PLAN.md §2.)
+// changed published data. See docs/archive/site/SIMPLIFY-PLAN.md §2.)
 import fs from 'node:fs';
 import path from 'node:path';
 

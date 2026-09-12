@@ -1,5 +1,8 @@
 # Battle Company EDGE + Battle Rifle Pro — competitive study & parity targets
 
+> **Strategy context, beside [`VISION.md`](VISION.md).** This is a competitive study of the commercial
+> stack, not evidence the manual cites — it sets feature targets, it does not establish BRX facts.
+
 Factual study of Battle Company's commercial stack (the **EDGE** game engine and the **Battle Rifle
 Pro / XL / Metal** hardware) to set feature targets for our open BRX platform — especially
 environmental effects. Not copied; marketing paraphrased. Sources at the bottom.
@@ -39,7 +42,7 @@ This is EDGE's immersion headline and its **moat**, delivered through the **Util
   EDGE software"). ⚠ Whether DMX is native to EDGE or routed through the UBox relay is **not
   documented** — treat "DMX + relays via UBox" as the model, mechanism unconfirmed.
 - **Sound/music:** a **unique soundtrack per game mode** over the venue PA + per-game SFX +
-  announcements. Taggers carry **2000+ on-device SFX** (≈ our 2166-id bank, `sound-bank.md`).
+  announcements. Taggers carry **2000+ on-device SFX** (≈ our 2166-id bank, `reference/sound-catalog.md`).
 - The **UBox is the physical bridge** — one hardware unit **reconfigured in software** to be any of
   **20+ box types**. It's a networked relay/effect-node + prop controller that "fully integrates to
   the EDGE engine."
@@ -63,7 +66,7 @@ Target** (live-scoring target) · hands-free "Ping/Damage" activation.
   charging-handle reload, strongest audio.
 - **What BRP+EDGE does that stock BRX can't:** commercial EDGE suite, on-gun LCD scoring, swappable/
   hot-swap batteries for all-day ops, **removable-SD** custom sounds + bigger built-in library (the BRX also takes custom sounds, over
-USB — `community-notes.md`), deep UBox/Animatronics prop
+USB — `reference/community-notes.md`), deep UBox/Animatronics prop
   & effects integration. **Important:** EDGE explicitly says **BRX can be used commercially too** —
   the **software tier is the gate, not just the gun.**
 
@@ -94,7 +97,7 @@ chaining/CTF/control points).
   20-in-1. Add **"order activation"** chaining (one station's event triggers another) — cheap over the
   LAN event stream.
 - **"Enemies"-style standalone head sensors** (fire/take damage unpaired from a gun) → a
-  differentiating target; the headset's ARGB is WS2812B (`community-notes.md`).
+  differentiating target; the headset's ARGB is WS2812B (`reference/community-notes.md`).
 - Hardware niceties (hot-swap batteries, on-gun LCD, sunlight LED sensors) — not our layer (stock BRX).
 
 **Where we can differentiate / leapfrog:**

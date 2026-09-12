@@ -1,7 +1,7 @@
 """Extraction (raid-and-extract) game mode — a host-side rules engine.
 
 The extraction-shooter loop (Tarkov / Hunt / DMZ / Marathon), mapped onto BRX per
-`docs/game-modes.md` §Extraction:
+`docs/extraction-design.md`:
 
     loot  ->  reach an extraction point  ->  channel a LOUD extraction while
     exposed  ->  survive it to BANK the loot (score + boosts)  ->  die and you

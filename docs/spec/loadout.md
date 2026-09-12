@@ -41,7 +41,7 @@ bar: t41 is 75 on every gun),
 ### 1.2 Perks — NEW `mcp/brx_mcp/mc/perks.json`, `GET /api/perks → PerkView[]`
 ```jsonc
 PerkView {
-  perk_id: string,                 // "body_armor" | "extended_mags" | "quick_hands" | "easy_reload" | "med_kit" | "concussion"
+  perk_id: string,                 // "body_armor" | "extended_mags" | "quick_hands" | "easy_reload" | "quick_switch" | "med_kit" | "concussion"
   name: string, desc: string,      // house-written, human (no protocol jargon)
   tags: string[],                  // "passive" | "utility"
   mechanism: "passive" | "slot_frame",
@@ -57,7 +57,8 @@ PerkView {
 }
 ```
 v1 rows: `body_armor` (verified), `extended_mags` (verified), `quick_hands` (unverified, listed), `easy_reload`
-(verified — existing `alt_reload`), `med_kit` + `concussion` (`hidden: true`, `mechanism: "slot_frame"`).
+(verified — existing `alt_reload`), `quick_switch` (verified — A14, 2026-09-04), `med_kit` + `concussion`
+(`hidden: true`, `mechanism: "slot_frame"`).
 
 ## 2. Loadout (contracts §2, A10 + A14) — `weapons[]` stays canonical on the wire
 ```jsonc
@@ -228,51 +229,15 @@ assign.game { name, desc,                       // saved-game name/desc when the
   button **`BUILD MY KIT ▸`** that reveals the slot plates + READY UP (§4.5). A `BRIEFING` button on the KITTED
   screen reopens it any time. Locked rulesets (`hud_select:false` / fixed slots) still get the briefing; the button
   reads **`SEE MY KIT ▸`** and the plates are padlocked.
-- Mode art on the phone: downscaled copies of `webapp/mc/public/assets/modes/*.jpg` in `app/www/assets/modes/`.
+- Mode art on the phone: `app/www/assets/modes/` holds copies of `webapp/mc/public/assets/modes/*.jpg` — the
+  same bytes in both trees, not a downscale.
 
 ## 5. MC screens
 
 Moved 2026-09-06 to `design/mission-control.md` (A2 GAMES + GAME DESIGNER, A3 KIT) — the one place the console's
 screens are described. The rules those screens render are §3 (policy, presets, pool) and §4 (the phone flow).
 
-<!-- superseded text follows for grep provenance only; the design brief is authoritative -->
-<details><summary>Superseded 2026-08-27 screen notes</summary>
-
-- **GAMES** (replaces BUILD in the stepper; Tony 2026-08-27 — "pick tonight's game" is a different job from
-  "define a game"): `YOUR GAMES` row (saved cards: name, base-mode art, one-line summary, EDIT / DUPLICATE; `+ CREATE
-  A GAME`) and `STOCK MODES` row (TDM / FFA / … with defaults; CUSTOMIZE opens the designer with that base). Tap a
-  card → it is the game; a summary panel shows what players get; **VENUE** chips (indoor/outdoor, night — about
-  where you play, not saved into the game; re-asserted after a game is applied); `CONTINUE ▸` to KIT. No forms.
-  `State.active_preset_id` (set by `POST /api/presets/{id}/apply`, cleared by any non-venue `PUT /api/config`) is
-  how GAMES knows which saved game is PLAYING — never by config content (a copy is identical to its source).
-  Verbs: CUSTOMIZE (stock mode) · EDIT (your game) · COPY / MAKE MY OWN (open a draft named after the source;
-  nothing is written until SAVE). Playing another card while the draft is TUNED — NOT SAVED asks once.
-- **GAME DESIGNER** (a full-width page opened from GAMES via CREATE / EDIT / CUSTOMIZE — authoring, not a phase):
-  one scrolling page — BASE (mode) → RULES (teams, time, score, respawn, health) → LOADOUT (PRIMARY / SECONDARY as
-  two columns: who picks, the allowed pool as a tappable weapon grid with class quick-filters, fixed pick, perks) →
-  NAME & NOTES — with a sticky summary rail (reads like the card will) holding `SAVE` / `SAVE AS NEW` / `PLAY THIS
-  NOW ▸` (saves and jumps to KIT; an unnamed draft plays without being saved, and says so). Edits a DRAFT: nothing
-  touches the live config until PLAY. The pool is computed ON THE CLIENT from the rules being edited (instant,
-  server-independent — the same engine as `policy.py`); `POST /api/loadout/pool` only re-confirms the preset name.
-  Class chips are ON / ◐ partial (n/N) / OFF; a tile dimmed by a chip is still tappable (allows just that weapon).
-  A12: the secondary column's kind chips are `WEAPONS · SIDEARMS` (pistols only; mutually exclusive since "weapon"
-  already admits pistols — the PERKS chip left with A14), the class chips gain `SIDEARM`, and the summary reads
-  `SIDEARMS ONLY · 3 PISTOLS`. KIT's arsenal header Seg reads `SIDEARMS · n` for the same rule. OPEN / NO HEAVIES / SNIPERS are starting templates
-  inside the designer, not match-night choices.
-- *(superseded)* **BUILD** — "LOADOUT RULES" panel under GLOBAL SETTINGS: preset Seg `OPEN · NO HEAVIES · SNIPERS · CUSTOM`,
-  `PLAYERS PICK ON PHONE` toggle, per-slot rows (choice Seg + pool summary "15 OF 18 · NO HEAVIES" + fixed picker),
-  CUSTOM exposes tag chips + per-weapon include/exclude.
-- **KIT** — roster rows: live state (`PICKING…` / `TRYING SMG` / `READY ✓`) + the loadout line `PRIMARY + SECONDARY ◆ PERK`.
-  Detail: identity strip → **loadout rail** (PRIMARY / SECONDARY / PERK cards — A14; secondary is weapon | empty, perk is
-  perk | empty) → arsenal for the selected slot (header carries the pool summary; out-of-pool tiles dimmed, no per-tile
-  labels; the PERK slot shows the perk grid) → hero for the selected slot's item (perks: effects block instead of
-  DMG/ROF/RNG). Fixed/off slots show a padlock and "SET IN BUILD". A14: picking Easy Reload over a loaded secondary (or
-  the reverse) is a two-tap confirm on the tile ("DROPS THEIR SMG — TAP AGAIN"). Tablet ≤ 900 px: roster becomes a chip
-  strip, cards stack.
-- **GAME DESIGNER** LOADOUT section (A14): three columns PRIMARY / SECONDARY / PERK. The PERK column has WHO PICKS
-  (player / host / fixed / off) and the perk grid; the SECONDARY column's kind chips are `WEAPONS · SIDEARMS` only.
-
-</details>
+*The superseded 2026-08-27 screen notes that used to sit here are `docs/archive/spec-loadout-superseded-notes.md`.*
 
 ## 6. Tests / e2e (screen truth)
 Server: policy presets + pool, `_check_loadout` matrix, compile (no slot 1 when empty; each perk effect on the
@@ -304,8 +269,11 @@ SavedGame {
 ```
 - Storage: `~/.brx-mcp/presets.json` (`storage.BASE_DIR`, same place as `armory.json`). Never committed.
 - One builtin example ships so the shelf is never empty on first use: **"Silenced Sniper"** — `ffa`, primary
-  `fixed` → `sniper_rifle`, secondary `fixed` → `extended_mags`, `hud_select: false`, `health.max_armor: 0`
-  (one shot kills on raw magnitude alone: the sniper's 52 beats 45 HP without needing the fn 36 ×1.25, which is confirmed as floor(magnitude × 1.25) but not relied on here), desc notes that "silenced" (fire-sound override) is
+  `fixed` → `sniper_rifle`, secondary `off`, perk `fixed` → `extended_mags` (A14 — the perk is its own
+  slot; `presets.py::_builtin_configs`), `hud_select: false`, `health.max_armor: 0`
+  (one shot kills on raw magnitude alone: the sniper's applied magnitude of 60 — `weapons.json` `wire.dmg`, not the
+  0-100 UI bar of 52 — beats 45 HP without needing the fn 36 ×1.25, which is confirmed as floor(magnitude × 1.25)
+  but not relied on here), desc notes that "silenced" (fire-sound override) is
   pending the weapon-tuning spec.
 - API (`API.md`): `GET /api/presets → SavedGame[]` · `POST /api/presets {name, desc?, config?}` (default
   `config` = the current draft) `→ SavedGame`, `409` on a name clash unless `{replace: true}` · `PUT

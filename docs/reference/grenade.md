@@ -274,7 +274,7 @@ Two different questions:
   are raw **IR primitives**; what they *mean* is decided by our host + nodes. So we layer any new
   ruleset on top without touching the grenade:
   - grenade in **KotH mode** → our engine treats its zone beacon as the **Extraction point**
-    (`game-modes.md` §Extraction) or a **Counter-Strike bomb site**;
+    (`../extraction-design.md`) or a **Counter-Strike bomb site**;
   - grenade as a **placed objective** → nodes track capture/hold and score it however the mode wants;
   - `channel` + `MaxCount` let multiple grenades be **multiple addressable objectives**.
 
