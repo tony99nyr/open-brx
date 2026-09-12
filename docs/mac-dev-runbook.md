@@ -60,6 +60,30 @@ Every restart mints a **new operator token** and prints it in that log. Read it 
 ls -t ~/mc-*.log | head -1 | xargs grep -E "Mission Control|nodes:"
 ```
 
+## 2b. Keeping the HUD current on a phone (wireless adb)
+
+`cd app && npm run android:install` builds the apk from the working tree, installs it on the attached
+phone and launches it (`app/scripts/android-install.sh`; the site's sidecar and the Release are not
+touched). What it needs on the Mac, once:
+
+```bash
+brew install android-platform-tools openjdk@21     # adb + the JDK Capacitor 8 wants
+# Android SDK: Android Studio, or cmdline-tools + `sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"`
+```
+
+**Pair the phone once per machine.** Phone: Settings > Developer options > Wireless debugging >
+*Pair device with pairing code*; then `adb pair <ip>:<pairing port> <code>`. On a Mac `adb mdns
+services` then finds the phone by itself; if not, `adb connect <ip>:<connect port>`, where the connect
+port is the one on the main Wireless debugging screen (it is not the pairing port, and it changes
+when the phone reboots). USB works too, once the phone trusts the Mac.
+
+**Copy `~/.android/debug.keystore` from the Windows machine** (`C:\Users\Tony\.android\debug.keystore`;
+it is the same file WSL uses) before the first Mac build. A debug apk is signed with the building
+machine's throwaway key, and a phone that holds a build from another key refuses the upgrade
+(`INSTALL_FAILED_UPDATE_INCOMPATIBLE`). The script explains this when it happens and never uninstalls
+for you: uninstalling wipes the app's data. Both phones (Pixel 10 Pro, Pixel 4) hold WSL-key builds
+as of 2026-09-11.
+
 ## 3. Test suites, and their two traps
 
 ```bash

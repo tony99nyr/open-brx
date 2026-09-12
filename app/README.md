@@ -88,6 +88,7 @@ npm run ios:open        # open the project in Xcode  (needs full Xcode)
 
 npm run android:setup   # build, add the Android platform if missing, sync
 npm run android:apk     # build the APK the public site hands out (-> webapp/download/)
+npm run android:install # build from the working tree, install on the attached phone over adb, launch (bench loop)
 npm run sync            # build + sync every platform already added
 
 npm run ui:stage        # the STAGE harness: the real HUD + the utility screen in a phone frame, every state,

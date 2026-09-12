@@ -11,6 +11,7 @@
     "ios:open": "npx cap open ios",
     "android:setup": "npm run build && ./scripts/android-setup.sh",
     "android:apk": "./scripts/android-apk.sh",
+    "android:install": "./scripts/android-install.sh",
     "ui:shots": "node tools/shots.mjs",
     "ui:e2e": "node tools/e2e.mjs",
     "ui:rig": "node tools/rig.mjs",
