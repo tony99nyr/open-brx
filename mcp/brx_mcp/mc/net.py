@@ -254,6 +254,7 @@ class NetServer:
     async def start(self, host: str = "0.0.0.0", port: int = 8765, ws_path: str = "/ws",
                     *, advertise_host: str | None = None) -> None:
         from websockets.asyncio.server import serve
+        from websockets.datastructures import Headers
         from websockets.http11 import Response
 
         self._loop = asyncio.get_running_loop()
@@ -266,7 +267,7 @@ class NetServer:
 
         def process_request(connection, request):
             if request.path != ws_path:
-                return Response(404, "Not Found", None, b"not found\n")
+                return Response(404, "Not Found", Headers(), b"not found\n")
             return None
 
         self._server = await serve(
@@ -565,6 +566,9 @@ class NetServer:
     def _claim_gun(self, rec: NodeRecord, presented_key: str, gun_name: str, gun_tail: str, where: str) -> NodeRecord | None:
         """A8 gun rule shared by hello and bind. Returns the fresh holder that BLOCKS the claim (caller closes
         4003), or None when the claim may proceed — after displacing any stale / keyed holders' sockets."""
+        # Only ever called from a hello/bind handler, i.e. after `start()` has set `_loop` — same invariant
+        # `evict()` below checks explicitly; this asserts it instead of silently no-op'ing a takeover.
+        assert self._loop is not None, "_claim_gun ran before the server's event loop was set"
         now = time.monotonic()
         for other in self._gun_holders(rec, gun_name, gun_tail):
             fresh = self._fresh(other, now)
@@ -677,7 +681,8 @@ class NetServer:
                 raise _Rejected()
         # A8 (gun): the same fresh-holder rule as bind, applied BEFORE hydrate — hydrate rebinds the
         # player to this node, so a keyless hello carrying a copied (or case/tail-varied) gun name must never reach it.
-        gun0 = body.get("gun") if isinstance(body.get("gun"), dict) else {}
+        _gun_raw = body.get("gun")
+        gun0 = _gun_raw if isinstance(_gun_raw, dict) else {}
         gun_name_new, gun_tail_new = str(gun0.get("name") or ""), str(gun0.get("tail") or "")
         if gun_name_new or gun_tail_new:
             if self._claim_gun(rec, presented_key, gun_name_new, gun_tail_new, "hello") is not None:
@@ -749,6 +754,8 @@ class NetServer:
                 self._set_player(rec, r)
 
     def _dispatch(self, rec: NodeRecord, env: dict, t_recv: int) -> None:
+        # Only reachable from a live socket's message loop, i.e. after `start()` has set `_loop`.
+        assert self._loop is not None, "_dispatch ran before the server's event loop was set"
         kind, body = env["kind"], env["body"]
         if kind == "hello":
             if str(body.get("node_id")) != rec.node_id:
@@ -793,6 +800,8 @@ class NetServer:
             self._call(cb, rec.node_id, kind, dict(body), t_recv)
 
     def _on_bind(self, rec: NodeRecord, body: dict) -> None:
+        # Only reachable from a live socket's message loop, i.e. after `start()` has set `_loop`.
+        assert self._loop is not None, "_on_bind ran before the server's event loop was set"
         gun_name = str(body.get("gun_name") or "")
         gun_tail = str(body.get("gun_tail") or "")
         # A8 takeover by gun (exact name OR the player it resolves to): only a fresh holder whose key this node

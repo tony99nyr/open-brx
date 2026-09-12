@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import pathlib
 
+from .types import PerkEffects, PerkView
+
 _HERE = pathlib.Path(__file__).resolve().parent
 
 # Effect keys the compiler understands. Anything else in `effects` is a data error, not a silent no-op.
@@ -28,15 +30,31 @@ class PerkCatalog:
             if bad:
                 raise ValueError(f"perks.json {r['perk_id']}: unknown effect keys {sorted(bad)}")
 
-    def all(self) -> list[dict]:
+    def all(self) -> list[PerkView]:
         """Visible rows (hidden excluded), API/phone `PerkView` shape."""
         return [self.view(r) for r in self._rows if not r.get("hidden")]
 
     @staticmethod
-    def view(r: dict) -> dict:
+    def view(r: dict) -> PerkView:
+        raw_effects = r.get("effects") or {}
+        # Built key-by-key rather than `dict(raw_effects)`: `PerkEffects` fields each have their own
+        # concrete type (int/float/bool), which a loop over a runtime key can't express -- `__init__`
+        # already refused any row whose `effects` carries a key outside this same five, so this is a
+        # reshape of already-validated data, not a second validation pass.
+        effects: PerkEffects = {}
+        if "max_armor_add" in raw_effects:
+            effects["max_armor_add"] = raw_effects["max_armor_add"]
+        if "ammo_mult" in raw_effects:
+            effects["ammo_mult"] = raw_effects["ammo_mult"]
+        if "reload_mult" in raw_effects:
+            effects["reload_mult"] = raw_effects["reload_mult"]
+        if "alt_reload" in raw_effects:
+            effects["alt_reload"] = raw_effects["alt_reload"]
+        if "switch_mult" in raw_effects:
+            effects["switch_mult"] = raw_effects["switch_mult"]
         return {"perk_id": r["perk_id"], "name": r["name"], "desc": r.get("desc", ""),
                 "tags": list(r.get("tags") or []), "mechanism": r.get("mechanism", "passive"),
-                "effects": dict(r.get("effects") or {}), "verified": bool(r.get("verified")),
+                "effects": effects, "verified": bool(r.get("verified")),
                 "hidden": bool(r.get("hidden"))}
 
     def visible_ids(self) -> list[str]:

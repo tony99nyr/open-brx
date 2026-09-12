@@ -20,7 +20,7 @@ loopback origin got 502. **The five that matter, all filed and in flight on bran
 - 🔴 **F140** the tunnel hostname is announced UP before some resolvers can see it (home router: ~250 s NXDOMAIN).
 - 🔴 **F142** two --demo players were restored into the real session, invisible on the board ("big bug").
 - 🔴 **F146** the one-magazine guard blocked the push twice (pistols-only fallback; a sidearm vs Body Armor pool).
-Plus F134-F157, K7-K8, S37-S41, D5 (FOLLOWUPS). Fix lanes: app transport (opus) · HUD (sonnet) · MC server (opus) ·
+Plus F135-F157 + F161, K7-K8, S37-S41, D5 (FOLLOWUPS). Fix lanes: app transport (opus) · HUD (sonnet) · MC server (opus) ·
 MC UI (sonnet), then a polish loop and a PR. **APK 0.2.0 has NO backhaul code** (cut from a pre-merge commit): the
 phones ran a tree build; cut 0.2.1 from the merged branch before any field day.
 
@@ -51,7 +51,7 @@ phones ran a tree build; cut 0.2.1 from the merged branch before any field day.
 - **Contract DRY (`86a8c3a` + `be1ce39`):** one machine source for the wire — `mcp/tools/gen_contract.py` renders
   `contract.gen.ts`/`contract.gen.js` from `types.py` + `envelope.py`; `test_contract_generated.py` fails on drift.
   Regenerate after touching either file; never hand-edit the generated files. Still hand-written: ~29 UI view types
-  (F42.9), pyright (F42.10), `strict` (F42.11), JSDoc+checkJs (F42.12). Lesson: diff what `git commit --only` is about
+  (F42.9), `strict` (F42.11), JSDoc+checkJs (F42.12); pyright gates `mcp/` in CI (F42.10 closed, `stage.py` excluded: F42.14). Lesson: diff what `git commit --only` is about
   to commit when another session has the file open.
 - **Doc-rot review (2026-09-12):** repo-wide read-only pass, ~55 P1 findings, applied in nine
   `--only` commits: one generator for both UI catalogs, new hygiene guards (dead links, closed ids
@@ -80,7 +80,7 @@ phones ran a tree build; cut 0.2.1 from the merged branch before any field day.
    redeploy) — the frame order at respawn; still open from before: F121/F113/F123/F126.
 4. **Decisions for Tony:** D5 pistol balance (Deagle 3-hit, Extended Mags on a pistol primary), K7 shields (needs a grant
    mechanism first), K8 a volume knob at MC; the manual `--public-url` / named-tunnel path is untested.
-5. Contract follow-ups F42.9–F42.12, none blocking.
+5. Contract follow-ups F42.9, F42.11, F42.12, F42.14 (pyright now gates `mcp/` in CI; `stage.py` excluded), none blocking.
 
 **Bench sheet:** [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md). Queue:
 [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md). Register: FOLLOWUPS §9. Pre-flight: `gotchas.md`.

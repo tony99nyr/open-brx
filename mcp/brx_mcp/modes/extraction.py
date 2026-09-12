@@ -291,8 +291,9 @@ class ExtractionGame:
             killer=killer_id,
         )
         self._next_drop_id += 1
-        if actual_by == "killer":
-            # loot goes straight to the killer's wallet
+        if actual_by == "killer" and killer_id is not None:
+            # loot goes straight to the killer's wallet (actual_by == "killer" only when
+            # killer_id was truthy above, but pyright can't see that across the if/elif)
             self.players[killer_id].carried += victim.carried
         elif actual_by == "pool":
             # returns to the shared pool: not pickable off the ground, host re-seeds

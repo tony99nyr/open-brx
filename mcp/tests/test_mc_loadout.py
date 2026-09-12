@@ -10,7 +10,7 @@ from brx_mcp.mc import envelope as E
 from brx_mcp.mc import policy as P
 from brx_mcp.mc.compile import Compiler, WeaponCatalog
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
-from brx_mcp.mc.perks import PerkCatalog, default_perks
+from brx_mcp.mc.perks import EFFECT_KEYS, PerkCatalog, default_perks
 from brx_mcp.mc.state import Session, default_config
 from _session import match_config
 
@@ -82,6 +82,16 @@ def test_weapons_carry_tags_and_perks_catalog_is_visible_only():
         PerkCatalog([{"perk_id": "x", "name": "X", "effects": {"laser_eyes": 1}}]); assert False
     except ValueError:
         pass
+
+
+def test_perk_view_forwards_every_effect_key():
+    """MEDIUM (2026-09-12): `view()` re-lists `PerkEffects` keys by hand rather than iterating
+    `EFFECT_KEYS` — a sixth key added to both `EFFECT_KEYS` and perks.json would be silently dropped
+    from every `PerkView`. A synthetic row carrying every key must come back with every key."""
+    row = {"perk_id": "synthetic", "name": "Synthetic", "effects": {k: 1 for k in EFFECT_KEYS}}
+    view = PerkCatalog.view(row)
+    assert set(view["effects"]) == set(EFFECT_KEYS)
+    assert all(view["effects"][k] == 1 for k in EFFECT_KEYS)
 
 
 # ------------------------------------------------------------------ policy engine

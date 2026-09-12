@@ -164,7 +164,7 @@ class MockNode:
     def respawn(self, resync: bool = False) -> None:
         self.alive = True
         self.hp, self.armor, self.ammo = self.max_hp, self.max_armor, 36
-        ev = {"type": "respawn"}
+        ev: dict[str, Any] = {"type": "respawn"}
         if resync:
             ev["resync"] = True
         self.emit(ev)

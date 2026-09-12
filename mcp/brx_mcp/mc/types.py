@@ -512,6 +512,12 @@ class ScoreRow(TypedDict):
     multi_best: NotRequired[int]       # the biggest multi-kill (2 = double, 3 = triple, 4+ = killtacular); 0 = none
     first_blood: NotRequired[bool]     # this player drew first blood
     acc_provisional: NotRequired[bool] # F119: `accuracy` is not settled yet — render it as settling, not as fact
+    # 2026-09-12, the same additive rule as the five above: `scoring.rows()` fills both on every LIVE row
+    # (0 when nothing landed late) and `rows_csv` has a column for each, but a session PERSISTED before
+    # they existed replays rows without them. Kills and deaths scored AFTER the whistle (A6.1 parks them,
+    # they do not move the tally) -- read either one only with a fallback.
+    after_end_kills: NotRequired[int]
+    after_end_deaths: NotRequired[int]
 
 
 class LogView(TypedDict):
@@ -533,11 +539,12 @@ class LogView(TypedDict):
 class ReadinessRow(TypedDict):
     """One player's row on the readiness board. `state.py readiness()` is the ONLY producer.
 
-    NOT `total=False`: every path through `readiness()` writes every key here -- the opening literal, all
-    three arms of the headset branch, and the closing `row.update`. So a reader guarding for a MISSING key
-    is guarding against nothing, while the fields that really are uncertain arrive as an explicit `None`
-    and were the ones being read unguarded. What is unknown on this row is the VALUE, never the key, and
-    `| None` is how that is said.
+    NOT `total=False`: `readiness()` builds the row as ONE literal, at the end of the loop body, once
+    every field it needs (`identity`, `headset`/`headset_proof`, `blockers`/`ambers`, ...) has been
+    worked out -- so every path through the function writes every key. A reader guarding for a MISSING
+    key is guarding against nothing, while the fields that really are uncertain arrive as an explicit
+    `None` and were the ones being read unguarded. What is unknown on this row is the VALUE, never the
+    key, and `| None` is how that is said.
     """
     gun_id: str                  # "" for a player with no gun assigned
     sticker: str                 # falls back to the gun_id, then to an em dash

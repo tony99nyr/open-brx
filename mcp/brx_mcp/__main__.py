@@ -44,10 +44,12 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import re
 import sys
 import time
+from typing import Sequence
 
 # Wire tables shared with the MC compiler (verified byte-identical between the two
 # copies before this import replaced one of them — see test_cli_gameconfig_parity.py).
@@ -329,7 +331,7 @@ async def _startgame(address: str, listen_s: int, respawn_s: int = 10,
     mgr = ConnectionManager()
     await mgr.connect(address, "cli")
 
-    async def send_all(cmds: list[str], label: str) -> None:
+    async def send_all(cmds: Sequence[str], label: str) -> None:
         print(f"--- {label}", file=sys.stderr)
         for cmd in cmds:
             result = await mgr.send("cli", cmd, reply_window_ms=400)
@@ -403,7 +405,7 @@ async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
     stats = {a: {"hits": 0, "deaths": 0, "respawns": 0, "hir": []}
              for a, _, _ in players}
 
-    async def push(alias: str, cmds: list[str]) -> None:
+    async def push(alias: str, cmds: Sequence[str]) -> None:
         for cmd in cmds:
             await mgr.send(alias, cmd, reply_window_ms=350)
 
@@ -474,8 +476,8 @@ async def _arena(addresses: list[str], minutes: int = 3, respawn_s: int = 15,
                     elif raw.startswith("$HP,"):
                         print(f"[{alias}] {raw}", flush=True)
 
-                if (dead_at[alias] is not None
-                        and time.monotonic() - dead_at[alias] >= respawn_s):
+                since_death = dead_at[alias]
+                if since_death is not None and time.monotonic() - since_death >= respawn_s:
                     if ends_at - time.monotonic() > 5:
                         await push(alias, RESPAWN_SEQUENCE)
                         stats[alias]["respawns"] += 1
@@ -723,10 +725,11 @@ def main() -> None:
     # graceful fallback (errors="replace" → no glyph can EVER kill a command) and
     # line buffering so live game/scoreboard output streams in real time.
     for _stream in (sys.stdout, sys.stderr):
-        try:
-            _stream.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
-        except Exception:  # noqa: BLE001 — older Pythons / non-reconfigurable streams
-            pass
+        if isinstance(_stream, io.TextIOWrapper):
+            try:
+                _stream.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+            except Exception:  # noqa: BLE001 — non-reconfigurable streams on some platforms
+                pass
     args = sys.argv[1:]
     if not args:
         from .server import main as run_server
@@ -945,10 +948,11 @@ def _sounds(query: str, addr: str | None) -> None:
                         note = raw[1:].strip() if wrong else raw
                         if wrong and not note:
                             note = input("      what did you actually hear? ").strip()
-                        with open(out_path, "a") as f:
-                            f.write(json.dumps({"id": e["id"], "expected": label, "category": e["category"],
-                                                "ok": not wrong, "heard": note,
-                                                "t": time.strftime("%Y-%m-%d %H:%M:%S")}) + "\n")
+                        if out_path is not None:   # always true here: reaching this line means audit was True
+                            with open(out_path, "a") as f:
+                                f.write(json.dumps({"id": e["id"], "expected": label, "category": e["category"],
+                                                    "ok": not wrong, "heard": note,
+                                                    "t": time.strftime("%Y-%m-%d %H:%M:%S")}) + "\n")
                         break
             finally:
                 await mgr.disconnect("s")
@@ -1141,7 +1145,7 @@ def _sim_plan(mode: str):
     raise ValueError(f"unknown sim mode {mode!r}")
 
 
-def _game_sim(mode: str) -> None:
+def _game_sim(mode: str) -> dict:
     """Narrated M0 game against a fake sender + scripted events — no BLE.
     Covers every mode: tdm ffa infection lms cs domination koth ctf extraction."""
     import asyncio

@@ -50,7 +50,8 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
   system python3 has no pip — bootstrap via get-pip if recreating). `cd mcp && python3 run_tests.py`
   must stay green under system python (tests needing extras skip cleanly).
 - **The four test suites** (the per-suite detail and flags are `CONTRIBUTING.md` → *Running things*): `cd mcp &&
-  python3 run_tests.py` (Python server + Mission Control) · `cd webapp/mc && npm test` (+ `npm run e2e`
+  python3 run_tests.py` (Python server + Mission Control; includes the pyright static-type gate in
+  `standard` mode, config in `mcp/pyproject.toml`, with `brx_mcp/stage` excluded, F42.14) · `cd webapp/mc && npm test` (+ `npm run e2e`
   for a UI change; Mission Control web UI) · `cd app && npm test` (phone app) · `cd site && npm test`
   (public site, needs `cd app && npm run build` first).
 - Development happens in **WSL2, which has no Bluetooth**; the `brx-mcp` instrument (anything that

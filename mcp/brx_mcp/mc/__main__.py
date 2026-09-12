@@ -158,18 +158,25 @@ def build(args):
     extra = []
     import inspect
     if inspect.iscoroutinefunction(getattr(net, "start", None)):
+        # `net.start` is a coroutine function only for the real M-NET `NetServer` (FakeNet.start is
+        # sync), so this branch only ever runs with a `RealNet` -- bind it to its own name so the
+        # closure below carries the narrowed type instead of the wider `FakeNet | NetServer` union.
+        from .net import NetServer as RealNet
+        assert isinstance(net, RealNet)
+        real_net = net
         # Real M-NET: an asyncio server — start it inside the app's event loop (lifespan task).
         async def _start_net():
             # Bind every interface, advertise the LAN address. Binding the resolved LAN IP alone left
             # loopback closed, so the cloudflared origin (http://127.0.0.1:<ws-port>) answered 502 on the
             # first real tunnel (field test 2026-09-12): the QR scanned, the phone dialled, nothing landed.
+            # `real_net`, not `net`: the narrowed name from the isinstance assert above.
             bind = args.host if args.host not in ("0.0.0.0", "") else "0.0.0.0"
-            await net.start(bind, args.ws_port, "/ws", advertise_host=ip)
+            await real_net.start(bind, args.ws_port, "/ws", advertise_host=ip)
             # join info FIRST — it fills lan.ws_url with the REAL bound port. The mDNS advert below is
             # best-effort and once HUNG in a sandboxed netns, leaving ws_url at port 0: every phone that
             # trusted the JOIN strip then dialed ws://…:0/ws (e2e, 2026-08-26).
             try:
-                ji = net.join_info()
+                ji = real_net.join_info()
                 session.lan["session_id"] = ji.get("session_id")
                 # A28.2: `qr` is DERIVED (secret, and the public URL when the tunnel is up) -- set the
                 # bare URL and let the session render it, or the join strip loses the join secret.
@@ -179,12 +186,12 @@ def build(args):
             try:
                 # sync zeroconf blocks if called from inside the running loop (EventLoopBlocked) — thread it,
                 # and cap it: a wedged multicast stack must never stall startup.
-                if await asyncio.wait_for(asyncio.get_running_loop().run_in_executor(None, net.advertise_mdns), timeout=6):
+                if await asyncio.wait_for(asyncio.get_running_loop().run_in_executor(None, real_net.advertise_mdns), timeout=6):
                     print("  mDNS: advertising _openbrx._tcp (phones auto-discover)")
             except Exception as e:
                 # the timeout abandons the AWAIT, not the worker thread — tell it to unpublish if it
                 # ever does finish, or MC advertises a service nothing tracks (deferred low)
-                net.abort_mdns()
+                real_net.abort_mdns()
                 print(f"  mDNS advertising failed ({type(e).__name__}: {e!r}) — QR/manual join still work")
             log.info("net: listening on %s", session.lan["ws_url"])
             # print the nodes line HERE (not in the pre-loop banner) so the REAL bound port shows —
@@ -194,7 +201,7 @@ def build(args):
                 # A28.1: start on boot, once the ws port is REAL. Failures land in `lan.public.error`
                 # and the LAN path is untouched, so this must never stop MC coming up.
                 try:
-                    tunnel.start(net.port or args.ws_port)
+                    tunnel.start(real_net.port or args.ws_port)
                     print("  backhaul: starting a cloudflared quick tunnel (the public URL prints when it is up)", flush=True)
                 except Exception as e:
                     print(f"  backhaul: NOT started -- {e}", flush=True)
@@ -241,7 +248,9 @@ def build(args):
         for i, name in enumerate(DEMO_NAMES):
             session.add_player(name, team_id="blue" if i % 2 == 0 else "yellow", gun_id=f"GUN-{chr(65 + i)}",
                                loadout=demo_loadouts[i % len(demo_loadouts)])
-        if fake_net:
+        # `fake_net` (set above from `net is None` before the FakeNet() fallback) means exactly this,
+        # but re-checking it as an isinstance keeps the type narrowed for `DemoDriver` too.
+        if isinstance(net, FakeNet):
             driver = DemoDriver(session, net, n=len(DEMO_NAMES), speed=args.demo_speed)
             extra.append(driver.run)
             log.info("demo: %d fake nodes driving the board", len(DEMO_NAMES))

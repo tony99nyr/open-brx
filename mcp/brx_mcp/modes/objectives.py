@@ -34,12 +34,12 @@ from .base import Action, Callout, PlaySound, Score, ScoredEngine, hp_values
 from .params import Param, resolve as _resolve_params
 
 
-def _ev(ev, i, default=None):
+def _ev(ev: dict, i: int, default: Optional[str] = None) -> Optional[str]:
     t = ev.get("tokens", [])
     return t[i] if i < len(t) else default
 
 
-def _team(ev, idx, roster, player_id):
+def _team(ev: dict, idx: int, roster, player_id: str) -> Optional[int]:
     """Resolve a team for an objective event: the roster player if it came from a
     gun, else the event's team token. Returns None for a missing/garbage/zero team
     (station events are trusted but must be well-formed → don't fabricate team 0).
@@ -56,8 +56,11 @@ def _team(ev, idx, roster, player_id):
     p = roster.get(player_id)
     if p is not None:
         return p.team
+    val = _ev(ev, idx)
+    if val is None:
+        return None
     try:
-        t = int(_ev(ev, idx))
+        t = int(val)
         return t if t > 0 else None
     except (TypeError, ValueError):
         return None
@@ -183,7 +186,10 @@ class DominationEngine(ScoredEngine):
             team = _team(ev, 2, self.roster, player_id)   # guards garbage/zero/missing → None
             if team is None:
                 return []
-            return self.capture(_ev(ev, 1), team, now)
+            site = _ev(ev, 1)
+            if site is None:      # malformed CAPTURE with no site token: nothing to score
+                return []
+            return self.capture(site, team, now)
         return self._on_beacon(player_id, ev, now)
 
     def _on_beacon(self, player_id: str, ev: dict, now: float) -> list[Action]:
@@ -199,7 +205,7 @@ class DominationEngine(ScoredEngine):
                 # grenade is ground truth for SCORING — but announce nothing, because the capture
                 # already happened and may be minutes old.
                 self.owner[self.hill_site] = be.owner
-                if self._in_play(be.owner):
+                if be.owner is not None and self._in_play(be.owner):
                     self._acc.setdefault(be.owner, 0.0)
             elif isinstance(be, hb.NeutralCaptureConfirmed) and be.corrected:
                 acts.append(Callout(f"Point {self.hill_site} was neutral (mag 53 confirms)"))
@@ -212,7 +218,7 @@ class DominationEngine(ScoredEngine):
         self._last_tick = now
         # Presence ages out on ≥ 2 missed beacons, never on one: reception at the edge of range is
         # intermittent by measurement (rung R), so a single miss is normal, not "left the hill".
-        left = [Callout(f"{e.player_id} left {self.hill_site}") for e in self.beacons.expire(now)]
+        left: list[Action] = [Callout(f"{e.player_id} left {self.hill_site}") for e in self.beacons.expire(now)]
         if dt > 0:
             # A mid-interval steal credits the whole dt to the CURRENT owner.
             # Bounded by the ~0.5s tick cadence (run_live) → ≤0.5s misattributed
@@ -221,7 +227,7 @@ class DominationEngine(ScoredEngine):
                 # `_in_play`, not `is not None`: this line creates the accumulator itself, so a
                 # hill held by a team that is not in this match would score (and win) here no
                 # matter what `capture()` refused to set up. See `_in_play`.
-                if self._in_play(owner):
+                if owner is not None and self._in_play(owner):
                     self._acc[owner] = self._acc.get(owner, 0.0) + dt * self.points_per_s
         # win by score target
         if self.target:
@@ -240,10 +246,10 @@ class DominationEngine(ScoredEngine):
         leaders = [t for t, s in self._acc.items() if s == best]
         return f"team{leaders[0]}" if len(leaders) == 1 else "draw"
 
-    def _end(self, winner: str) -> list[Action]:
+    def _end(self, winner: str, detail: str = "") -> list[Action]:
         if self.over:
             return []
-        return super()._end(winner, detail=f"points={ {t:int(s) for t,s in self._acc.items()} }")
+        return super()._end(winner, detail=detail or f"points={ {t:int(s) for t,s in self._acc.items()} }")
 
     def snapshot(self) -> dict:
         # `hill` is ADDITIVE — the keys the MC UI already reads (owner/target/score/players) keep
@@ -345,10 +351,10 @@ class CtfEngine(ScoredEngine):
             return self._end(f"team{leaders[0]}" if best and len(leaders) == 1 else "draw")
         return []
 
-    def _end(self, winner: str) -> list[Action]:
+    def _end(self, winner: str, detail: str = "") -> list[Action]:
         if self.over:
             return []
-        return super()._end(winner, detail=f"caps={self.caps}")
+        return super()._end(winner, detail=detail or f"caps={self.caps}")
 
     def snapshot(self) -> dict:
         return {"mode": "ctf", "over": self.over, "winner": self.winner,

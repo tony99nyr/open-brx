@@ -66,9 +66,11 @@ from __future__ import annotations
 
 import copy
 import re
+from typing import Any
 
 from .. import poolgauge as pg
 from .. import sounds as snd
+from .types import GameConfig
 
 PALETTE = {"red": 0, "blue": 1, "yellow": 2, "green": 3, "purple": 4, "teal": 5, "white": 6,
            "pink": 7, "orange": 8}
@@ -210,7 +212,7 @@ def alert_body(kind: str, extra: dict | None = None) -> dict:
 
     A19: an extra `role` = `{name, on, tid?}` is checked here against `ROLE_STATES` -- a body naming a role the
     node cannot hold is a CODE bug on this side, and the node logs-and-ignores it rather than painting it."""
-    body = {"kind": kind, "text": TEXT.get(kind, kind.replace("_", " ").upper())}
+    body: dict[str, Any] = {"kind": kind, "text": TEXT.get(kind, kind.replace("_", " ").upper())}
     for k, v in (extra or {}).items():
         if k not in ALERT_EXTRA:
             raise ValueError(f"alert extra {k!r} is not a wire field")
@@ -565,7 +567,7 @@ def merge(current: dict | None, patch: dict) -> dict:
         g = patch["gun"]
         if not isinstance(g, dict):
             raise ValueError("presentation.gun must be an object")
-        cur = dict(prof.get("gun") or GUN_DEFAULT)
+        cur: dict[str, Any] = dict(prof.get("gun") or GUN_DEFAULT)
         for gk, gv in g.items():
             if gk == "in_play":
                 if gv not in GUN_IN_PLAY:
@@ -646,7 +648,7 @@ def _collapse_headset(raw_headset: dict | None) -> dict:
     return h
 
 
-def resolve(config: dict) -> dict:
+def resolve(config: GameConfig) -> dict:
     """The FULL profile for a config: preset defaults + overrides, every event filled in."""
     raw = config.get("presentation") or {}
     # A bare {"preset": "silenced"} (what a client sends, or a saved game stores) expands from the preset;
@@ -749,8 +751,11 @@ def cue_pool_frames(profile: dict, voice) -> dict[str, list[str]]:
         if isinstance(ids, (list, tuple)) and len(ids) > 1:
             # play_frame(s, ...) ignores `slot` for a voice: sound (always queues, see play_frame's
             # docstring) -- routed through it anyway so a pool frame and its single-cue equivalent in
-            # cue_frames() can never drift apart.
-            out[ev] = [play_frame(s, {role: i}, spec.get("slot")) for i in ids]
+            # cue_frames() can never drift apart. Every `i` here came from `voice[role]` itself, so
+            # play_frame's own `voice.get(role)` lookup always resolves -- but the return type is
+            # honest about the general case, so a mismatch drops the slot rather than writing a wire
+            # frame list with a hole in it.
+            out[ev] = [fr for i in ids if (fr := play_frame(s, {role: i}, spec.get("slot"))) is not None]
     return out
 
 
@@ -995,7 +1000,7 @@ def summary(profile: dict) -> dict:
                                     if spec.get("sound") or spec.get("gun_led") is not None or spec.get("headset") is not None or spec.get("flash") or spec.get("slot"))}
 
 
-def table(config: dict) -> list[dict]:
+def table(config: GameConfig) -> list[dict]:
     """The resolved profile as rows for the MC's read-only ADVANCED view: every event with its source
     (hud / mc / both), what fires it, the sound (id + the catalog's words), and the colours."""
     prof = resolve(config)

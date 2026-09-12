@@ -503,6 +503,26 @@ def test_join_info_and_oversize_frame():
     _run(go())
 
 
+def test_non_ws_http_path_gets_a_404_not_a_dropped_connection():
+    """MEDIUM (2026-09-12): `process_request` refuses anything but `ws_path` with a real HTTP 404
+    (`Response(404, "Not Found", Headers(), ...)`). Pinned as a regression: an older
+    `Response(404, "Not Found", None, ...)` raised AttributeError inside websockets at serialize time because a response's
+    headers must be a `Headers` object, and the client saw the socket dropped rather than a 404."""
+    if not HAVE_WS:
+        return _skip("404")
+    try:
+        import httpx
+    except ImportError:
+        raise Skipped("httpx")
+
+    async def go():
+        async with _Harness() as h:
+            async with httpx.AsyncClient() as client:
+                r = await client.get(f"http://127.0.0.1:{h.net.port}/not-the-ws-path")
+                assert r.status_code == 404
+    _run(go())
+
+
 # ── polish-loop 2026-08-26 deferred low, closed 2026-09-01 ───────────────────────────────────────
 def test_a_late_mdns_registration_unpublishes_itself():
     """`advertise_mdns()` runs in a worker thread behind a 6 s `wait_for`, and a timeout abandons the

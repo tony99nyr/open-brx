@@ -21,7 +21,9 @@ jobs:
       # (CLAUDE.md); tests needing websockets/starlette/etc. skip cleanly rather than failing.
       - run: cd mcp && python3 run_tests.py
       # Second pass with the MC extras installed, so the Mission Control tests actually run.
-      - run: pip install -e ./mcp starlette uvicorn websockets httpx zeroconf
+      # pyright pinned to the version the WSL dev venv runs: a stricter upstream release must not
+      # turn an unrelated commit red (2026-09-12).
+      - run: pip install -e ./mcp starlette uvicorn websockets httpx zeroconf pyright==1.1.414
       - run: cd mcp && python3 run_tests.py
 
   webapp-mc:
