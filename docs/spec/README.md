@@ -1,8 +1,8 @@
 # Open BRX — End-to-End Product Spec
 
-- **Status:** backbone ratified 2026-08-25; `contracts.md` at amendment **A14** (2026-09-04), amendments folded into
-  its body on 2026-09-06 (index: `contracts.md` §10). The software (`mcp/brx_mcp/mc/`, `app/`, `webapp/mc/`) is built
-  and tested against it (`cd mcp && python3 run_tests.py`).
+- **Amendments are folded into the body of `contracts.md`**; its **§10 is the index**, newest first, and each
+  amendment id stays as an anchor. The software (`mcp/brx_mcp/mc/`, `app/`, `webapp/mc/`) is built and tested
+  against it (`cd mcp && python3 run_tests.py`).
 - **Owners:** Tony (product) · multiple Claude sessions (parallel implementation).
 - **Anchors:** ADR-0001 (per-player node), ADR-0002 (laptop MC + local host), ADR-0003 (native app). Ground truth
   for the gun: `protocol/brx-protocol.md`. Onboarding: `docs/architecture-topology.md`.
@@ -53,7 +53,7 @@ dispersed** match, tracks a live board and produces a recap. Each player carries
 |---|---|---|---|
 | M-CONTRACTS | `contracts.md` | `mc/types.py`, `mc/envelope.py`, `app/src/transport/envelope.js` | data model, wire, lifecycle, clock, constants, store-and-forward, platform gates |
 | M-ARMORY | `contracts.md` §1.1 | `mc/armory.py`, `usbconsole.py` | USB enrol + scan-only BLE presence |
-| M-MODES | `modes.md`, `loadout.md`, `weapon-design.md` | `mc/compile.py`, `mc/policy.py`, `mc/presentation.py`, `mc/weapons.json`, `mc/perks.json` | the frame compiler, catalogs, policy, presentation |
+| M-MODES | `modes.md`, `loadout.md`, `../weapon-design.md` | `mc/compile.py`, `mc/policy.py`, `mc/presentation.py`, `mc/weapons.json`, `mc/perks.json` | the frame compiler, catalogs, policy, presentation |
 | M-NET | `contracts.md` §5 | `mc/net.py`, `app/src/transport/` | the WebSocket, ring, clock sync |
 | M-MC | `mc/API.md`, `design/mission-control.md` | `mc/state.py`, `mc/api.py`, `mc/scoring.py`, `webapp/mc/` | the operator console and scoring |
 | M-NODE | `node.md`, `design/phone-hud.md` | `app/src/engine.js`, `app/src/hud/` | the per-gun engine and HUD |
@@ -79,7 +79,7 @@ live with config intact (5-min run still owed); the head write is silent; headse
 echo is the headset proof; an unspawned gun ignores IR; a live `$TID` write flips hit resolution immediately.
 
 Still open (tracked in `docs/FOLLOWUPS.md`): the `$VOLTS` % token; the 5-min hold; a 20-min two-node soak;
-iOS locked-phone BLE; the third (shield) pool in the node (node.md Q12); MC-side station arming (utility-roadmap A1).
+iOS locked-phone BLE; the third (shield) pool in the node (node.md Q12).
 
 ## 6. Product qualities every module honours
 

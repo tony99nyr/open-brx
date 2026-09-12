@@ -2,10 +2,10 @@
 
 **Package for:** the operator console (`webapp/mc/`, React/TS; server⇄UI contract `mcp/brx_mcp/mc/API.md`).
 Real weapon data is `mcp/brx_mcp/mc/weapons.json` (the public arsenal page is `docs/manual/gameplay.md`).
-The shipping UI is the visual source of truth; the 2026-08-25 Claude Design export it started from is archived
-at `docs/archive/design/mc-export/` for re-seeding the design tool (per Tony, 2026-08-26, the exports were
-inspiration, not definitive). Absorbed 2026-09-06: the shared foundation brief and the screen sections of the
-retired `spec/mission-control.md` (`docs/archive/spec-design-foundation.md`, `docs/archive/spec-mission-control.md`).
+The shipping UI is the visual source of truth. The Claude Design export it started from is archived at
+`docs/archive/design/mc-export/` for re-seeding the design tool; per Tony, the exports were inspiration, not
+definitive. This brief also carries the shared foundation section and the screen sections of the retired
+`spec/mission-control.md`.
 
 ## 0. Shared foundation (both UIs: this console and `phone-hud.md`)
 
@@ -15,9 +15,12 @@ seems to need a control the brief doesn't mention, **ask**, don't fill it in.
 
 **Brand & tone.** Tactical, precise, energetic, confident. High-contrast and legible over pretty. Never
 cartoonish. Numbers are the hero on both UIs — big, tabular. **Team colours are fixed and meaningful** (Blue
-`#3a86ff`, Yellow `#ffd23f`, Red `#ff5252`, Green `#2ecc71`) — never repurposed as decoration; semantic colour
-(ok/warn/bad) is separate from the brand accent (`#39b4ff`). Tokens live in the code (`webapp/mc/src/tokens.ts`,
-`app/www/index.html`); the MC `micro` ink is `#71879c` (≥4.5:1, design-review 2026-08-26). Fonts: Oswald +
+`#3a86ff`, Yellow `#ffd23f`, Red, Green `#2ecc71`) — never repurposed as decoration; semantic colour
+(ok/warn/bad) is separate from the brand accent (`#39b4ff`). ⚠ **The two consoles use different reds, on
+purpose.** MC paints team red `#ff5252` (`webapp/mc/src/tokens.ts`); the HUD paints `#f43f5e`
+(`app/www/index.html`), a crimson-rose hue-shifted off the alarm red so a red-team player's own accents cannot
+read as danger on the screen they stare at while being shot. MC's operator is not in that position. Tokens live
+in the code, not here; the MC `micro` ink is `#71879c` (≥4.5:1). Fonts: Oswald +
 Chakra Petch (MC), Saira Condensed + Chakra Petch (HUD); ship fallback stacks — the field LAN has no internet.
 
 **Three states to design.** Everyday/staging (the default dark look) · **bright outdoor** (max contrast,
@@ -68,7 +71,7 @@ checklist strip: mobile data off, auto-join field SSID, auto-lock off, Do-Not-Di
 **"6/8 green, 2 amber, 0 red — GO"**; gate is **no reds**, not all-green; STANDBY while the roster is empty;
 show *why* a gun is red. Device-first muster: claim a phone + gun in one gesture.
 
-### A2 · GAMES — "pick the game", and the GAME DESIGNER — "define a game" *(2026-08-27)*
+### A2 · GAMES — "pick the game", and the GAME DESIGNER — "define a game"
 Tony: picking tonight's game and defining a game are different jobs; BUILD had both and buried the defining
 controls. **GAMES** (the stepper step): `YOUR GAMES` cards (saved games — name, base-mode art, one generated
 rules line, EDIT / DUPLICATE / delete-with-confirm, `+ CREATE A GAME`), `STOCK MODES` cards (defaults;
@@ -146,7 +149,7 @@ N/M nodes; the rest end at 12:00". **TV mode** for a spectator display (read-onl
 scored players; MVP / MOST KILLS require kills > 0; SURVIVOR reads "FEWEST DEATHS · N". **Full stats table**
 (all players, all columns, MEDALS) + **EXPORT CSV**; a history picker over this session's finished matches.
 
-### Items panel (utility phones; designed 2026-09-04, not built — `utility.md` §5b, `utility-roadmap.md` A2)
+### Items panel (utility phones — `../utility.md` §5b, `../../utility-roadmap.md` A2)
 On ARMORY/KIT: one row per utility phone from its heartbeat (kind, team, station id, threshold, live, revives,
 armed, battery, last seen, app version), assign + ARM buttons, attention flags ("bring back to re-arm",
 "battery low", "not seen since last match", "app behind"). Station status copy on the phone: "NOT ARMED BY

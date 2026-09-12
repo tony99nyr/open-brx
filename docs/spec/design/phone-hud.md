@@ -60,8 +60,8 @@ animated moments.
 ### B4 · Blackout / night mode
 A **distinct visual mode** (auto when the game's `night` flag is set; also a manual toggle). Near-black,
 essential readouts only, **dim red/amber low-luminance, no white**, no bright flashes, reduced brightness.
-Read HP/ammo/respawn without the phone becoming a flashlight. Its own screen (see `tokens.css`
-`[data-env="night"]`), not a filter over B2.
+Read HP/ammo/respawn without the phone becoming a flashlight. Its own screen (the `[data-env="night"]`
+token block in `app/www/index.html`), not a filter over B2.
 
 ### B5 · Diagnostics / info (optional button)
 Behind a small **info button**: raw BLE link state, last frames, battery, timings, node/gun ids — a
@@ -87,4 +87,5 @@ button brings it back any time. Blackout rules apply (no white, no flashes).
 
 ## Deliverables to iterate
 B1 connect · B2 HUD in **both sun and blackout** · B3 death/respawn · the ARMED countdown · the KITTED
-ready-up · the "gun relinked" prompt. Keep it one product with Mission Control (shared `tokens.css`).
+ready-up · the "gun relinked" prompt. Keep it one product with Mission Control (the two token sets are deliberately near-identical; see the
+design brief `mission-control.md`).

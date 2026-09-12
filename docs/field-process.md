@@ -102,35 +102,39 @@ objective modes — every tagger armed to its station **before** kickoff.
 3. **Config-all-then-spawn barrier.** Config **all** guns fully **first**, *then* send `$SPAWN` to all
    back-to-back so they go live ~together (sequential config-then-spawn starts guns ~10 s apart). This
    barrier is the engine's behaviour and was proven live on three guns on 2026-08-25 (B10). **[BUILT]**
-4. **Station Arming** *(objective modes only — respawn stations, and by extension any station-armed
-   behavior).* Before kickoff, **deliver the station IR to each tagger** so it switches from auto-behavior
-   to station-behavior for the game:
-   - Set the grenade/station to its mode (e.g. Respawn = yellow) on-device (grenade is button-locked;
-     `reference/grenade.md`), claim it for a team by shooting it if the mode requires an owner.
-   - **Arm each tagger** by exposing it to the station's IR (respawn: the grenade button pressed near each
-     player at base, and/or facing the station front + trigger). A tagger that is **not** armed will
-     **self-respawn normally** — so arm *every* participating tagger.
-   - **Two arming paths — either works (Jay's video, 2026-08-25 — Extreme Laser Tag And More! /
-     @extremelasertag3602):**
-     - **Pre-game (here in Muster):** expose each tagger to the station IR **before** kickoff → it respawns
-       at the station instead of automatically for the game. The natural config step.
-     - **Mid-game (per gun):** even if the game **started before** the grenade was set to a respawn station,
-       **pressing the grenade button** beams the station IR to each gun in range and **forces respawn-station
-       mode mid-match**. This is the **reliable per-gun force / re-arm** — usable to arm stragglers or to
-       arm the whole field just after `$SPAWN`.
-   - **Measured 2026-09-04 (native games):** the station's boot word (team 0, magnitude 56) before the
-     game or its button word (crit 1) during it **arms** the gun; the team-owner beacon **revives** it
-     (4/4, wrong team 0/1). Our emitter can send all three words. **Hosted (MC) games ignore every
-     station word** (FOLLOWUPS B23), so a hosted respawn station is node-defined, not IR. Still open:
-     whether a button-armed gun stays armed all match. See `reference/grenade.md` §Respawn Station.
-   - **Respawn-authority caveat (B12):** if a mode uses grenade respawn stations, the host engine must
-     **not** also drive `$SPAWN` respawns for those players (two competing authorities). Pick one respawn
-     authority per mode. (`FOLLOWUPS.md` B12.)
+4. **Stations** *(objective modes — respawn, powerup, extraction, bomb, control point).* A station is a
+   **spare phone running the app in utility mode**, and Mission Control arms it. **[BUILT]**
+   - In **MUSTER → ITEMS**, every utility phone that has said hello appears as a row. Give it a **kind**, a
+     **team** (a control point must be `ANY` — it starts neutral and is taken by presence), an **id** unique
+     on the field, and a **bubble** in dBm (default −74, about 10 ft). Press **ASSIGN + ARM**.
+   - **Place it.** An armed station needs **no Wi-Fi**: it advertises on its own. The panel header counts
+     `n/m ARMED · GAME N`.
+   - **Re-arm** when a row says `ARM PENDING`, `RE-ARM` or raises an attention tag (`ARMED FOR AN OLDER
+     GAME`, `PHONE SAYS NOT ARMED`, `PHONE ADVERTISES ID x, ASSIGNED y`). The LOBBY push re-arms every
+     assigned station automatically, so in the normal flow you do not touch this.
+   - **Assignments are refused while the match is `armed` or `live`** — players already hold
+     `config.stations`, and re-pushing would re-arm every live gun. RECALL or END first.
+   - Players need nothing: the ids MC armed ride to every node on the lobby push, and each phone's HUD
+     reacts to the station it is standing in.
+   - **Respawn-authority caveat (B12):** one respawn authority per mode. If a mode respawns players at a
+     station, the host engine must not also drive `$SPAWN` respawns for them.
+
+   > **Native games only — the grenade as an IR station.** In a *stock* BRX game (no Mission Control), the
+   > grenade/station arms guns over IR: set it to its mode on-device (Respawn = yellow; the grenade is
+   > button-locked, `reference/grenade.md`), claim it for a team by shooting it if the mode needs an owner,
+   > then expose each tagger to its IR — before kickoff at base, or mid-match by pressing the grenade button
+   > near a player, which is the reliable per-gun re-arm (Jay's video, 2026-08-25 — Extreme Laser Tag And
+   > More! / @extremelasertag3602). An un-armed tagger self-respawns normally, so arm every one.
+   > Measured 2026-09-04: the station's boot word (team 0, magnitude 56) or its button word (crit 1) **arms**
+   > the gun; the team-owner beacon **revives** it (4/4, wrong team 0/1). ⚠ **Hosted (MC) games ignore every
+   > station word** (FOLLOWUPS B23) — a hosted respawn station is node-defined, not IR. See
+   > `reference/grenade.md` §Respawn Station.
+
 5. **Kickoff.** Start the game. For objective modes, verify at least one BLE-connected tagger is in station
    range if you want the live state display (Hill/Respawn beacon relay, B8).
 
 **Output of Muster:** all guns live ~together, on the same game, teams/loadouts set, and (objective modes)
-every tagger armed to its station.
+every station assigned, armed and placed.
 
 ---
 

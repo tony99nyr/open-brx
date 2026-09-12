@@ -78,7 +78,7 @@ player not extracted is killed by the bombardment and scores nothing.
 Very little that's new: Extraction is **the King-of-the-Hill station + a loot wallet in the node + three
 host rules** (channel-under-fire, drop-on-death, bank→boost). The rules engine is built and sim-proven
 (`mcp/brx_mcp/modes/extraction.py`, `python -m brx_mcp extraction-sim`); the station (K2) and an MC loot scorer
-are what remain — `utility-roadmap.md` §8.
+are what remain (`utility-roadmap.md` §7).
 
 *Genre research sources:* [What is an extraction shooter? (Antihero Studios)](https://antiherostudios.com/blog/what-is-an-extraction-shooter),
 [Extraction shooter (Wikipedia)](https://en.wikipedia.org/wiki/Extraction_shooter),

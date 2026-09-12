@@ -167,17 +167,31 @@ The **readiness board** must be green-enough to start. Its gate is **no reds** (
   start** (see §6). Battery-unread / screen-off / firmware-unread are **amber** — they don't block.
 
 ### GAMES + GAME DESIGNER (the `build` phase) — pick the game
-Choose a **mode** (tdm / ffa / infection / lms / extraction) and settings — **`time_limit_s` is
+Choose a **mode** (tdm / ffa / infection / lms / extraction / koth) and settings — **`time_limit_s` is
 required** on the phone path (it's the only end that reaches a dispersed node), plus respawn, scoring,
 health, indoor/outdoor, night. `PUT /api/config` validates live; **`config_errors` block**,
 **`config_warnings` don't** (e.g. a frag-limit on a non-fully-covered venue warns that the winner is an
 in-coverage early-end, provisional until recap).
 
 ### Kit — set each player up (while they gear up)
-Per player: **display name, team, weapon, voice** (`PATCH /api/players/{id}`). A weapon change can push a
-**silent try-out** (`POST /api/players/{id}/tryout`) so the player fires + reloads to feel it.
-Try-outs are disabled once any node is in LOBBY. A configured-but-unspawned gun ignores IR completely
-(bench 2026-08-25), so try-outs are safe in a crowd; point the gun away from others anyway.
+Per player: **display name, team, voice**, and three loadout slots — **primary, secondary and perk**
+(`PATCH /api/players/{id}`). The perk is its own slot beside the two weapons; **Easy Reload** is the
+exception that takes the second weapon with it, and the UI asks twice before dropping it. A player can
+also be armed with a **pool** (HP / armour) different from the game's, and their row shows a chip when a
+host set one deliberately.
+
+What each slot may hold comes from the game's **loadout policy** — `POST /api/loadout/pool` previews it,
+and the KIT screen greys out anything the policy refuses and says which rule did it. Phones may self-serve
+within the same policy.
+
+A weapon change can push a **silent try-out** (`POST /api/players/{id}/tryout`) so the player fires +
+reloads to feel it. Try-outs are disabled once any node is in LOBBY. A configured-but-unspawned gun
+ignores IR completely (bench 2026-08-25), so try-outs are safe in a crowd; point the gun away from others
+anyway.
+
+**CONTINUE is two steps when someone is still kitting.** The button reads `CONTINUE · 6/8 READY ▸`; the
+first tap opens an inline confirm naming who is not ready and warning that they lose their screen, and
+only the second advances. On an older server that cannot report readiness it reads `READINESS UNKNOWN`.
 
 ### Lobby — ready up, then push
 Players **ready up** on their phones; the board fills (`ready N/total`). When everyone's ready and
@@ -251,31 +265,9 @@ Other field issues:
 
 ## 7. REST reference (what the UI calls; also for scripting)
 
-All JSON, all times Unix ms, from `mcp/brx_mcp/mc/API.md`:
-
-| method path | phase | purpose |
-|---|---|---|
-| `GET /api/state` | any | full `State` snapshot (same as the live `/ui-ws` feed) |
-| `GET /api/armory` · `POST /api/armory/scan` | muster | known guns; BLE scan for guns (needs Mac BLE) |
-| `GET /api/modes` · `/api/weapons` · `/api/perks` · `/api/voices` | any | the catalogs the console renders |
-| `GET/POST /api/presets` · `PUT/DELETE /api/presets/{id}` · `POST /api/presets/{id}/apply` | ≤ kit | saved games (GAME DESIGNER) |
-| `PUT /api/config` | ≤ kit | set/patch the `GameConfig` → `{ok, errors, config}` (incl. `presentation`) |
-| `GET /api/presentation` | any | the resolved sounds-and-lights profile for the current config |
-| `POST /api/phase` | ≤ lobby | move the phase by hand (muster/build/kit/lobby only) |
-| `POST /api/loadout/pool` | kit | preview what a loadout policy lets a player pick |
-| `DELETE /api/nodes/{nid}` | any | evict a stale node |
-| `GET /api/range/verdicts` · `POST /api/range/verdict` | kit | weapon-range verdicts from the KIT try-out |
-| `POST /api/players` · `PATCH /api/players/{id}` · `DELETE …` | ≤ lobby | roster + kit-out (server assigns `player_num`) |
-| `POST /api/players/{id}/tryout` (`DELETE` to end) | kit | silent weapon try-out |
-| `POST /api/players/{id}/ready` | lobby | host ready override |
-| `POST /api/lobby/push` | lobby | compile + push bundles; refuses on reds |
-| `POST /api/start` · `/api/start/reschedule` · `/api/start/abort` | lobby/armed | the dispersed start controls |
-| `POST /api/control` | armed/live | `{end｜recall｜panic}` (`panic` needs `confirm:true`) |
-| `GET /api/recap` · `GET /api/recap.csv` | live/recap | results + export |
-| `GET /api/matches` · `GET /api/matches/{id}.csv` | any | past matches of this session + per-match CSV |
-| `POST /api/session/new` | recap | next game (`keep_roster?`) |
-
-Live UI feed: `GET /ui-ws` (WebSocket) — `snapshot` on every state change + `feed` entries for kills.
+**[`../mcp/brx_mcp/mc/API.md`](../mcp/brx_mcp/mc/API.md) is the contract** — every route, its phase gate,
+its body and its errors, kept beside the code that serves them. All JSON, all times Unix ms. The live UI
+feed is `GET /ui-ws` (WebSocket): a `snapshot` on every state change, plus `feed` entries for kills.
 
 ---
 

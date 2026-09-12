@@ -168,7 +168,7 @@ The Smart Grenade's five native objective modes (Frag / Assault / Hill / Respawn
 and its limits are documented once in `reference/grenade.md` and published in `manual/gameplay.md`
 (Grenade modes). In **native** games it is a $0 single-point Hill / Respawn / Assault / CTF / bomb site; in
 **hosted** (MC) games the gun ignores its station words entirely (bench 2026-09-04), so the phone station
-supersedes it, and the B23 bridge (`utility-roadmap.md` §8) is how it could come back as a readable IR station.
+supersedes it, and the B23 bridge (`utility-roadmap.md` §7) is how it could come back as a readable IR station.
 
 ## What each needs, in one line
 

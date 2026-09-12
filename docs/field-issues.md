@@ -14,16 +14,11 @@ Legend — ✅ fixed & tested · 🔧 fixed, needs a field check (see **Check ne
 ## Session 3 — 2026-09-11 night, MacBook host, 1v1 on two taggers
 
 **The whole session is written up, issue by issue, in [`game-test-2026-09-11.md`](game-test-2026-09-11.md) — do not duplicate it here.**
-iPhone on that day's tree, Android on APK 0.1.8. 25 ids filed: **F110-F127** and **S20-S26**.
+iPhone on that day's tree, Android on APK 0.1.8. 25 ids were filed (F110-F127 and S20-S26); their status lives
+in `FOLLOWUPS.md`, and the sheet holds the symptom, evidence, mechanism and fix for each.
 
-- 🔍 **F124** the frag limit is never enforced · 🔍 **F125** END reports "reached 2 of 2" and the match runs on
-- 🔍 **F121** hit reception is armed at config push, so the countdown and spawn are both live
-- 🔍 **F127** MC's CONTINUE locks out everyone still kitting
 - 🔧 **F112** the CAM button crashed iOS (missing `NSCameraUsageDescription`); fixed at source, **not yet
   verified on device** — that is the field check.
-- 🔍 **F122/F126** the debug panel eats taps and inflates its font on iOS, so SHARE LOG never delivered from
-  the iPhone · 🔍 **F123** the HUD animates reloads the gun never performs
-- 💭 **S20-S26** the design asks: results screen, balance, spectator view, passive log sync
 - ✅ **Worked:** mid-match resync after a crash · early end + `game_over` + `victory` · `next_kill_wins` ·
   mDNS auto-join with no QR
 
@@ -88,7 +83,7 @@ is a fix that is shipped but unconfirmed on hardware, or a report that could not
 you start, note **how long the guns have been powered** and whether a headset was re-seated: those are
 the variables we keep failing to write down. The 🔧 rows above map to these: F2-3 → V5, F2-5 → V2,
 F2-6 → V3, F2-8 → V6, F2-9 → V7, and Session 1's empty-mag prompt → V8. V3's "needs a new APK" was
-met by 0.1.4 on 2026-09-04; 0.1.7 is the one the next match needs.
+met by 0.1.4 on 2026-09-04; the build the next match needs is the version in `webapp/download/build.json`.
 
 ### V1 · Why did point-blank on the headset fail, when the headset was catching most hits? 🔴
 **Shipped:** nothing — this is a diagnosis. The protocol doc has been corrected (below).

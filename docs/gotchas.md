@@ -77,12 +77,14 @@ does not specify a repaint on team change as of this writing.
 then paint (`$GLED,<colour>,<colour>,<colour>,0,10,,*`, plus `$HLED,<colour>,0,,,10,,*`) — operator confirmed
 both gun and headset showed the new team colour after each of two live switches. A painted colour does not
 hold on a spawned gun without the blank first. `$SPAWN` also repaints from `$TID` but is not a free
-substitute — it restores ammo and re-enables the firmware's native breathing animation as a side effect. Still
-open: no mode calls this sequence automatically on a team change yet. Filed as **F86**.
+substitute — it restores ammo and re-enables the firmware's native breathing animation as a side effect.
+Both code paths call this sequence on a team change themselves (F86, closed 2026-09-11): the CLI driver
+blanks-then-paints right after `$TID`, and the compiled bundle carries a per-tid take so the phone paints
+the team the player is on now.
 
 ## Before a bench session (pre-flight)
 
-Four checks, in order, every time. Two of them would each have saved hours in the sessions that
+Five checks, in order, every time. Two of them would each have saved hours in the sessions that
 produced them (carried in from the 2026-09-03 session sheet when it was archived).
 
 1. **Kill stale `brx_mcp` processes** (see below: a forgotten server silently owns a gun).
@@ -370,8 +372,10 @@ registered 24/24 in an interleaved A/B. Do not "fix" this by making tables longe
 indistinguishable through `$HIR`, and a whole session was lost to reading corpses as deafness. Read
 `$LCD`/`$QUERY` pools before concluding anything.
 
-Bench-proven deterministic 5/5, and independent of the `$CLEAR`→`$SPAWN` gap (0.05 s to 1.0 s).
-Repro: `mcp/tools/clear_spawn_repro.py`.
+Bench-proven deterministic 5/5, and independent of the `$CLEAR`→`$SPAWN` gap (0.05 s to 1.0 s). The rule
+above is the whole finding; `protocol/brx-protocol.md` carries it on the `$CLEAR` row and in its safety
+notes. To reproduce: arm a gun, send a bare `$CLEAR`, `$SPAWN`, then fire at it — no `$HIR`; re-send the
+`$SIR` rows and the same shot lands.
 
 **🔴 "THE EMITTER IS FIRING AND NOTHING REGISTERS" — check these IN THIS ORDER (2026-09-07)**
 This cost most of an evening and produced four confident wrong diagnoses (aim, friendly fire, outdoor mode, the

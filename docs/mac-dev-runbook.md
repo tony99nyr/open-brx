@@ -89,17 +89,16 @@ when the phone reboots). USB works too, once the phone trusts the Mac.
 it is the same file WSL uses) before the first Mac build. A debug apk is signed with the building
 machine's throwaway key, and a phone that holds a build from another key refuses the upgrade
 (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`). The script explains this when it happens and never uninstalls
-for you: uninstalling wipes the app's data. Both phones (Pixel 10 Pro, Pixel 4) hold WSL-key builds
-as of 2026-09-11.
+for you: uninstalling wipes the app's data. Both phones (Pixel 10 Pro, Pixel 4) hold WSL-key builds.
 
 ## 3. Test suites, and their two traps
 
 ```bash
-cd mcp       && ../.venv/bin/python run_tests.py   # ~585
+cd mcp       && ../.venv/bin/python run_tests.py   # the Python suite
 cd webapp/mc && npm test                           # ~69, vitest + jsdom
 cd app       && node --test test/*.test.mjs        # ~75, engine + brxlink
 cd app       && npm run ui:e2e                     # 75 steps, real MC + 2 HUDs
-cd site      && npx playwright test                # ~198, only if you touched the website
+cd site      && npx playwright test                # the site gate, only if you touched the website
 ```
 
 - **Stale e2e ports.** A killed run leaves a server on 8865–8875 and the next run fails with

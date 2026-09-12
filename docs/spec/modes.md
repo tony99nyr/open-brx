@@ -1,14 +1,15 @@
 # M-MODES — mode catalog, config authoring, weapon catalog, the frame compiler, tutorial arming
 
-- **Status:** built (`mcp/brx_mcp/mc/compile.py` over `gameconfig.py`; `mc/policy.py`, `mc/presentation.py`,
-  `mc/weapons.json`, `mc/perks.json`). Binds to `contracts.md` §3 (GameConfig + `FrameBundle` + WeaponCatalog),
-  §8 (frame contract), A4.2 (frames compiled by MC). Pruned 2026-09-06: the hand-typed weapon table moved out (the
-  catalog is `weapons.json`, the rationale `docs/weapon-design.md`); closed bench questions moved to git history.
+- **Code:** `mcp/brx_mcp/mc/compile.py` over `gameconfig.py`, plus `mc/policy.py`, `mc/presentation.py`,
+  `mc/weapons.json`, `mc/perks.json`. Binds to `contracts.md` §3 (GameConfig + `FrameBundle` + WeaponCatalog),
+  §8 (frame contract), A4.2 (frames compiled by MC). The weapon catalog is `weapons.json`; its rationale is
+  `../weapon-design.md`.
 - **Runs in MC (Python).** M-MODES is the **frame compiler**: it wraps `gameconfig.py` (config→frame builder) +
   `mcp/brx_mcp/modes/` (pure rules engines, the CLI/sim path). **Nodes never call it** — a phone (JS) or Companion
   (C++) writes the compiled `FrameBundle` verbatim. One frame authority, one runtime that compiles.
-- **Ground truth (link, don't restate):** `protocol/brx-protocol.md` (§7e arm, §7p/§7q player id, §7o feedback,
-  §7r bench 2026-08-25), `protocol/callsign-extract/protocol-classes.md` ($WEAP/$GSET/$PSET token maps),
+- **Ground truth (link, don't restate):** `protocol/brx-protocol.md` (the command reference),
+  `protocol/session-findings-2026-08.md` (§7e arm, §7p/§7q player id, §7o feedback, §7r the bench run),
+  `protocol/callsign-extract/protocol-classes.md` ($WEAP/$GSET/$PSET token maps),
   `protocol/callsign-extract/sound-bank.md` (voice families), `docs/game-modes.md` (mode catalog),
   `docs/manual/gameplay.md` (the public arsenal page).
 
@@ -57,7 +58,7 @@ contracts §3 `FrameBundle` fields like this:
 | `panic` | `PANIC_SEQUENCE` | `$CLEAR,*` → `$SP,99,*` |
 | `team_flip?` | `$TID,<tid>` per other team | **infection** only: the frames that move *this* gun to the infected team on death. Node writes `team_flip[<tid>]` then `revive` and emits **`team_change{tid}`** (A5.8). A live `$TID` write flips hit resolution immediately (bench 2026-08-25). |
 | `cues` / `leds` / `gun` / `headset` / `presentation` | `mc/presentation.py` (A11) | one pre-composed `$PLAY` per event that carries a sound (`""` = mute), the tuned `$GLED` burst per event, the gun-body and headset sequences — contracts §3. |
-| `swap_ms` | `max($WEAP tok15)` after perks | 850 stock, 425 with `quick_switch` (2026-09-04). |
+| `swap_ms` | `max($WEAP tok15)` after perks | 850 stock, 425 with `quick_switch`. |
 
 - `_PSET_HEAD` is `["PSET", str(player_num), "0"]` with `player_num ∈ 1..63` — **token 2 stays `0`** (bench
   2026-08-25: inert). Token 1 = `0` is written **only** by `tutorialFrames` (§4): "no identity", which MC never
@@ -75,7 +76,7 @@ contracts §3 `FrameBundle` fields like this:
 
 `docs/game-modes.md` is the **infrastructure-tier catalog** (what gear each mode needs). This section is the
 **config schema** for the modes the MC path ships (`mc/state.py` `MODES`: `tdm`, `ffa`, `infection`, `lms`,
-`extraction`) — how each mode's knobs sit in `GameConfig`, which map to *frames* vs the *host engine*, and
+`extraction`, `koth`) — how each mode's knobs sit in `GameConfig`, which map to *frames* vs the *host engine*, and
 **which end condition actually reaches a dispersed node**. The gun keeps **no game state** (no mode/clock/
 score/respawn — protocol §7n); mode logic is host-side, and only the combat-surface knobs (weapon, team,
 player id, HP, FF, crit, indoor/outdoor, LED) become frames.
@@ -93,6 +94,7 @@ limit. `time_limit_s == null` is legal **only** when `validate(roster, {coverage
 | **infection** | `survival.py` | starting infected count, `respawn` (auto), `time_limit_s` | `$TID` (human vs infected); **`team_flip[<infected tid>]`** in the bundle | **node-local**: a killed human writes `team_flip` + `revive`, emits **`team_change{tid}`** — works offline; MC updates the roster from `team_change`, tallies last-human, pushes `infected`/`last_survivor` alerts (A11.4). | time limit / last-human (MC → `end`) |
 | **lms** | `lms.py` | `scoring.win_by:"survival"`, `mode_params.lives` (§2.1, A18), `respawn.type:"none"`, `time_limit_s` | `$PSET` HP; no `revive` after last life | lives counter (node-local), last-alive (MC) | time limit / last-alive |
 | **extraction** | `extraction.py` (+ adapter) | `mode_params.{channel_s, win_target, loot_per_kill, drop_policy, extract_removes_player}` (§2.1, A18), `time_limit_s` | base combat frames + `$LIFE`/`$WEAP` boost writes on bank (coverage-only, `apply`) | loot wallet, loud channel, drop-on-death, bank→boost — MC-side, so **coverage-zone gameplay**; the HUD owns its own extraction ladder events (A11.5) | time limit / `win_target` |
+| **koth** | `objectives.py` `DominationEngine` (one point) | `mode_params.{score_target, points_per_s}`, `station_source` (grenade or a `control` station), `time_limit_s`, **teams that do NOT include tid 2** | base combat frames + the protocol-15 `$SIR` row so the node reads the hill beacon | possession per team from the beacon the node hears; MC has no objective scorer, so an unreported match is `undecided` | time limit (possession decides the winner) |
 
 Notes that shape the schema:
 
@@ -104,9 +106,13 @@ Notes that shape the schema:
 - **Respawn** (`respawn.type`): `auto` = node timer (`delay_s`) → writes `revive`; `scanner` = revive at a
   utility-phone station (BLE advert presence + the `gate`, utility.md §4; A13.1); `none` = LMS. No gun token
   exists — the node owns the delay.
-- **Objective modes.** `koth` is in the MC catalog (F70, a grenade hill; `mode_params.{score_target,
-  points_per_s}`); domination/ctf/cs exist as engines in `modes/` with their params declared (§2.1) but are
-  **not in the MC catalog** yet (E2) — `docs/utility-roadmap.md` §8 is the status per mode.
+- **Objective modes, and the engines MC cannot reach.** `modes/registry.py` maps eleven mode names onto six
+  engine classes; MC's catalog offers the six in `state.MODES`. The rest — `survival` (an alias of `infection`),
+  `cs` / `bomb`, `domination` and `ctf` — are **CLI-only engines**: `python -m brx_mcp play <mode>` and the sim
+  build them, `state.MODES` does not list them, so `PUT /api/config` refuses them and no operator can select one.
+  Lighting one up from a single registration is **E2**. `koth` is the one that made the crossing (F70, a grenade
+  hill), and `compile._STATION_GATED_MODES` (`domination`, `koth`, `ctf`, `cs`, `bomb`) refuses any of them
+  without a `station_source`.
 - **Health variants.** *Regen* is still a `gameconfig.py` boolean on the laptop-BLE path only: a host-driven
   `$LIFE` write that reaches a node via **`apply{frames}`** (A6.4), so it works in a coverage zone and nowhere
   else. **Syphon is being moved off that route (S14).** It is a **node-side** event, because MC already tells the
@@ -158,7 +164,7 @@ block naming only the balance tokens we overwrite, optional declared `overrides`
   frame**, and only the balance tokens are overwritten: `t5` damage, `t14` fire interval, `t16`+`t39` mag,
   `t17`+`t40` reserve (`t17 == 2 × t40` preserved), `t18` reload, plus `t15` swap delay where `wire.swap_ms` is
   set (sidearms 500). Sounds, fire mode (`t20`), burst (`t23`), overheat, ranges come from the capture.
-  **Token 15 is the swap delay** (bench 2026-09-04) — the 2026-08-26 note that it must never be written is retired.
+  **Token 15 is the swap delay**, and it is written.
 - `spawnAmmo(weapon_id) → (mag, reserve)` drives the `$AMMO` frames in `spawn`/`revive`; perks scale it.
 - **Melee** is always loaded to slot 4; hidden from the picker.
 - **Provenance discipline:** `verified: true` only where the shipped row equals the capture byte for byte
@@ -225,9 +231,9 @@ Medals are awarded per player from exact attribution (A4.1). Kill-moment medals 
 first_blood · double_kill / triple_kill / killtacular · killing_spree at 5 · unstoppable at 10) with their own
 cues; recap honors (`scoring.honors()` + `compile.award_medals`): MVP (top `kills − deaths`, tie → K/D), Top Gun
 (most kills), Highest K/D, Sharp Shooter (accuracy above a min-shots threshold), Survivalist (fewest deaths),
-First Blood, multi-kills, Assistant. No honors under 3 scored players; MVP and Top Gun require kills > 0
-(design-review 2026-08-26). Names track the stock BRX set (`mcp/brx_mcp/data/medals.json`, restated from the app's own
-game-medals-config.json; raw file removed 2026-09-07, `protocol/callsign-extract/RAW_ASSETS_NOTE.md`).
+First Blood, multi-kills, Assistant. No honors under 3 scored players; MVP and Top Gun require kills > 0.
+Names track the stock BRX set (`mcp/brx_mcp/data/medals.json`, restated from the app's own
+game-medals-config.json; the raw file is not in the repo — `protocol/callsign-extract/RAW_ASSETS_NOTE.md`).
 
 **Feedback cues are shipped in the bundle, not looked up on the node** (A6.3): the node turns MC's
 `feedback{kind, t, cue?, medals?}` into `$SFLASH,*` + the pre-composed `cues[kind]` (or the carried `cue`) +
@@ -243,16 +249,14 @@ presentation profile's `gun` / `headset` blocks (contracts §3, A11.6/A11.7), wh
 free-form `led` object for everything but the night blank.
 
 ```jsonc
-// Palette (bench-verified 2026-08-30, completed 2026-09-02): nine colours, 0-8 —
+// Palette: nine colours, 0-8 —
 // 0 red · 1 blue · 2 yellow · 3 green · 4 purple · 5 teal · 6 white · 7 pink · 8 orange (9/10 dark).
 // $GLED,<led1>,<led2>,<led3>,<apply-gate>,<brightness>: three independently addressable body LEDs.
-// Token 4 is an APPLY GATE, not an off value (corrected 2026-09-02): 0/6/7/8/9/10 apply the colour tokens at full
-// brightness; 1/2/3/4 are no-ops. ⚠ RETRACTED 2026-09-07: gate 5 is OFF, not "~1/3 brightness" — an A/B on a
-// host-owned strip read it as dark ("bright then off, no steps in between"); the earlier reading was taken
-// while the firmware breathing was still contending. The real dimmer is TOKEN 5 (1 dim, >=2 full), which is
-// what night mode uses. $GLED,,,,5,,,* blanks because its colour tokens are
-// EMPTY and t4=5 applies them — and (A11.7, 2026-09-04) that blank also takes the LED OUT of the spawned gun's
-// breathing loop, so any colour painted after it HOLDS until $SPAWN re-enables the breathing.
+// Token 4 is an APPLY GATE, not an off value: 0/6/7/8/9/10 apply the colour tokens at full brightness;
+// 1/2/3/4 are no-ops; gate 5 is OFF, not a dim step. The real dimmer is TOKEN 5 (1 dim, >=2 full), which is
+// what night mode uses. $GLED,,,,5,,,* blanks because its colour tokens are EMPTY and t4=5 applies them —
+// and (A11.7) that blank also takes the LED OUT of the spawned gun's breathing loop, so any colour painted
+// after it HOLDS until $SPAWN re-enables the breathing.
 // Token 5 (brightness) is three-state: 0 off, 1 dim (~70%), >=2 full.
 ```
 
@@ -260,7 +264,7 @@ free-form `led` object for everything but the night blank.
 |---|---|---|
 | **Indoor** | `indoor` / false | `$GSET,…,outdoorMode=0,…`; body + headset per `presentation` (default team) |
 | **Outdoor (day)** | `outdoor` / false | `$GSET,…,outdoorMode=1,…` (longer IR range profile) |
-| **Night** | any / true | `$GLED,,,,5,,,*` (✅ confirmed 2026-08-30) + no `leds` bursts; the HUD blackout |
+| **Night** | any / true | `$GLED,,,,5,,,*` + no `leds` bursts; the HUD blackout |
 
 `is_night_mode()` mirrors `gameconfig.is_night_mode`; `night` also drives the node's blackout HUD.
 
@@ -297,19 +301,14 @@ presentation.resolve(config)     -> rows for GET /api/presentation (A11.5)
 - Frames are **strings, verbatim** — M-NODE chunks at 20 bytes and writes; it never parses or edits them. Its
   only self-composed frames are the two contracts §3 templates (`$SFLASH,*`, `$PLAYX,0,*`).
 
-## 8. Open questions (still open on 2026-09-06)
+## 8. Open questions
 
-- **`t41` range** — reads 75 on every gun; not differentiated; the IR-instrument A/B is weapon-design.md U2.
-- **`$SIR` table: flatten to fn 1 or retune the five multiplied weapons** — weapon-design.md §6.2, Tony's call;
-  the Energy Launcher bug is fixed either way in the same commit.
+- **`t41` range** — reads 75 on every gun; not differentiated; the IR-instrument A/B is `../weapon-design.md` U2.
+- **`$SIR` table: flatten to fn 1 or retune the five multiplied weapons** — `../weapon-design.md` §6.2, Tony's
+  call; the Energy Launcher bug is fixed either way in the same commit.
 - **Voice per-slot map** beyond HEAVY — by ear or the `voice-profiles` endpoint (apk-harvest).
 - **Pin the runway lines + klaxon by ear** (start-sequence §2; `Compiler.cues()` ships runway_30/20 silent).
 - **`revive` vs `$HLOOP`** — the mid-match revive drops `$HLOOP,0,0`; the headset comes back through the A11.6
   `respawn` sequence instead. Confirm on hardware that nothing else needed it.
-- ~~Wire-carried mode parameters (`mode_params`) — E1~~ built 2026-09-11 (§2.1, A18); what remains is E2 (the
-  catalog / preset / scorer halves of `register_mode`) and E3 (one config schema).
-
-Closed on the bench and folded above: night LED-off (2026-08-30, mechanism 2026-09-02); the shield pool is
-IR-only (P16, 2026-08-26); four native teams (2026-08-26); `$PSET` tok2 inert, `$START` silent at the head
-write, unspawned guns ignore IR, live `$TID` flips hit resolution (all 2026-08-25, §7r); `t20` is the fire mode
-and `t15` the swap delay (2026-08-26, 2026-09-04).
+- **E2 and E3** — the catalog / preset / scorer halves of `register_mode`, and one config schema.
+  (`mode_params`, E1, is built: §2.1, A18.)

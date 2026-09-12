@@ -10,12 +10,12 @@ LED and sound behaviour can be judged on a bench, one click at a time, before a 
 
 ```
 /mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp stage --gun <addr> --ir auto
-# or from a Windows shell: python -m brx_mcp stage --gun <addr> --ir COM7
+# or from a Windows shell: python -m brx_mcp stage --gun <addr> --ir COM8
 ```
 Then open **http://127.0.0.1:8790/**. Flags: `--gun ADDR` connect on start (or SCAN / CONNECT on the page; S11: the
 connect runs in the background, so the page is up at once with NO GUN LINKED while a sleeping tagger is tried, and a
 failed connect is one warn line in the log rather than a hung process) ·
-`--ir COM7|auto` the emitter's serial port -- it is PINGed on attach and a port that does not answer is refused (auto-detect once picked a different USB device); without an emitter the IR buttons only log the word · `--mc http://ip:8765
+`--ir COM8|auto` the emitter's serial port (board B is the EMITTER on COM8; board A, the receiver, is COM7) -- it is PINGed on attach and a port that does not answer is refused (auto-detect once picked a different USB device); without an emitter the IR buttons only log the word · `--mc http://ip:8765
 --token …` pull a running MC's applied config so the stage plays exactly that game · `--mode` start mode ·
 `--fake` no Bluetooth, one emulated gun (for trying the page itself; `SHOOT ME` / `KILL ME` hit it directly).
 

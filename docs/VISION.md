@@ -21,16 +21,17 @@ protocol + the effect-node/subscriber architecture): game/mode management, custo
 abilities, killstreaks, live scoring, leaderboards, medals, accounts/progression, per-mode music +
 event stingers + announcements, prop game logic (domination/CTF/bomb/respawn), themes, and
 environmental effects (our effect nodes = Edge's UBox + Animatronics). Plus things Edge can't:
-**MIT/self-hosted (no $600–1,600/yr, no location lock), native open DMX/scripting, moddable, and
+**MIT/self-hosted (no subscription — EDGE's own tiers run $599.99/6 mo to $1,599.99/yr — and no location lock), native open DMX/scripting, moddable, and
 large-field play with no venue WiFi** — and **novel game modes Edge doesn't have**, headlined by a full
-**Extraction (raid-and-extract) mode** (`game-modes.md` §Extraction).
+**Extraction (raid-and-extract) mode** (`extraction-design.md`).
 
 **We can't quickly match Edge's moat:** product **maturity** (Edge 7.0, years of polish, ~6M
 players, daily commercial use, support), a **global cloud/accounts/matchmaking network**, **marketing/
 monetization tooling** (Battle Coin, Message Center), proven **scaling/reliability**, and the
-**BRP+UBox hardware co-design**. We're specs + working software + a bench-proven Tier 0; they're a shipping product.
+**BRP+UBox hardware co-design**. We're specs + working software, a bench-proven Tier 0, two whole outdoor phone matches (2026-08-30 and
+2026-09-01) and a 1v1 game test on the Mac (2026-09-11); they're a shipping product.
 
-**The wedge:** BRX owners who don't want a $1,200/yr subscription, clubs/meetups, small/mobile
+**The wedge:** BRX owners who don't want that subscription, clubs/meetups, small/mobile
 operators, and the modding community (LaserTagMods ecosystem already exists). We win *there* by being
 open, cheap, moddable, and field-capable — not by out-enterprising Edge for big arenas on day one.
 

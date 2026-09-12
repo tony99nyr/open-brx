@@ -1,15 +1,15 @@
-# Utility items: the implementation plan (2026-09-04; §8–§9 added 2026-09-06)
+# Utility items: the implementation plan
 
-The utility role turns a spare phone into an item on the field. One kind, the **respawn station**, is built,
-bench-proven on two Pixels and shipping in APK 0.1.6. This is the plan for everything else, written so any
-session can pick up a row and know what to build, on which surface, and what proves it.
+The utility role turns a spare phone into an item on the field. This is the **order of work** for everything
+the utility path still owes, written so any session can pick up a row and know what to build, on which
+surface, and what proves it. It carries no status: what is built, what is open and what is next live in
+[`FOLLOWUPS.md`](FOLLOWUPS.md) and [`HANDOFF.md`](HANDOFF.md).
 
-The spec of record stays `docs/spec/utility.md` (advert format, presence, the respawn rule, MC arming);
-mode rules stay `docs/game-modes.md`; the frame compiler and the MC mode catalog are `docs/spec/modes.md`. This
-document is the **order of work** across them, plus (§8) where each objective mode stands and (§9) what it costs
-an outsider to add a mode. When a row lands, mark it here and promote the facts into the spec. The two review
-documents §8 and §9 were distilled from (`mode-readiness.md`, `mode-extensibility.md`, both 2026-09-04) are in
-`docs/archive/`.
+The spec of record stays [`spec/utility.md`](spec/utility.md) (advert format, presence, the respawn rule, MC
+arming, the control point); mode rules stay [`game-modes.md`](game-modes.md); the frame compiler and the MC
+mode catalog are [`spec/modes.md`](spec/modes.md). **If a row here disagrees with the spec, the spec wins.**
+§7 is the grenade-as-control-point evidence the hill design rests on; §8 holds two designs that are specified
+in full but not built.
 
 ## 0. Principles every row obeys
 
@@ -30,57 +30,44 @@ documents §8 and §9 were distilled from (`mode-readiness.md`, `mode-extensibil
 - **The station never touches a gun.** It reads adverts and shows state; the player's own node writes to the
   player's own gun. The exception is the bomb's blast, which every player node applies to its own gun.
 
-## 1. Where we are
+## 1. Cross-cutting work first
 
-| # | piece | surface | state | proof |
-|---|---|---|---|---|
-| 1 | Advert codec (`encodeUuid`/`decodeUuid`), Presence tracker | `app/src/beacon.js` | ✅ built | `beacon.test.mjs` |
-| 2 | Beacon plugin (advertise + TX power, Android) | `app/plugins/brx-beacon` | ✅ Android · ⚠ iOS written, unbuilt | two Pixels 2026-09-04 |
-| 3 | Respawn station rule (trigger / presence gate, delay, team, allow-list, disabled) | `engine.js` | ✅ built | "utility items" tests |
-| 4 | DOWN screen lesson (run → get closer → hold → pull the trigger) | `hud.js` | ✅ built | screens #45 a/b/c |
-| 5 | Utility screen: status only, ⓘ ×7 drawer, DEFAULT badges, reset, live-after-reload | `utility.html/.js` | ✅ built | screens #48 |
-| 6 | Phone side of MC arming: hello as `utility`, heartbeat, `station_config` apply → MC-ARMED · game | `utility.js` | ✅ built | screens #49 |
-| 7 | MC side of arming: `station_config` push, ITEMS panel at muster, persisted assignments | `mcp/brx_mcp/mc`, `webapp/mc` | ✅ server 2026-09-11 (F104: utility roster, `PUT /api/stations/{id}`, arm on hello / assign / push, per-match game byte, `config.stations`); ITEMS panel in the MC console the same day; assignments live for the SESSION (not persisted across an MC restart yet) | `test_mc_stations.py` (12) |
-| 8 | Headset out-blink while down, re-asserted | `engine.js` | ✅ built (A11.6/7) | bench 2026-09-04 |
-| 9 | Station intermittently hears no player adverts at high TX | `utility.js` scan | ✅ fixed (S6, 73d391a: low-latency scan + restart) | soak on two phones pending |
-| 10 | Reconnect / new-match reconciliation on a rejoin | `engine.js` | ✅ built (S7.1, 2e36f58: 3 s disarmed reconcile, never heals) + the HUD's RECONCILING takeover | validated on hardware 2026-09-04 (contracts A6.8, node.md §3.10) |
-| 11 | Harness: utility presets, fake players, fake `station_config` | `tools/stage.html`, `?stage` | ✅ built | — |
+These unblock every kind and are cheap relative to the kinds themselves. Row ids are permanent — other
+documents cite them.
 
-Kinds 2–5 (powerup, extraction, bomb, control) are designed in the spec's §5 table and not built.
+**A · The arming loop (MC ↔ station)** — MC server + console, plus the phone half.
 
-## 2. Cross-cutting work first
+| id | what | surface |
+|---|---|---|
+| A1 | `station_config` push over M-NET (`{kind, team, id, threshold?, game?, valid_ids?}`); accept `hello node_type "utility"` with no gun, never bind. Both sides need the kind in their table | MC + `utility.js` |
+| A2 | ITEMS panel at muster: one row per utility phone from its heartbeat (kind, team, id, threshold, live, revives, armed, battery, last seen, app version); assign + ARM; assignments kept per session | MC UI |
+| A3 | Battery + app version in the utility heartbeat | `utility.js` |
+| A4 | Attention flags on the row: bring back to re-arm · battery low · not seen since last match · app behind | MC UI |
+| A5 | `config.stations` from the compiler = the ids MC armed this game; the utility phone displays `valid_ids` | compiler + `utility.js` |
+| A6 | Recap stations row: revives per station from player facts vs the station's own count; ✓ when they agree, ⚠ when the station was never heard | MC scoring + recap UI |
 
-These unblock every kind and are cheap relative to the kinds themselves.
+**B · Radio hardening.**
 
-### A. The arming loop (MC ↔ station)
-| what | surface | owner | done when |
-|---|---|---|---|
-| A1 `station_config` push over M-NET (`{kind, team, id, threshold?, game?, valid_ids?}`), accept `hello node_type "utility"` with no gun, never bind | MC server | brx | ✅ 2026-09-11 (F104). ⚠ The phone's `MC_KINDS` lacked the kind too, so this was a TWO-sided fix. Still owed: step #49 against the real push instead of `window.brxUtility.applyStationConfig` |
-| A2 ITEMS panel at muster: one row per utility phone from its heartbeat (kind, team, id, threshold, live, revives, armed, **battery**, last seen, app version); assign + ARM buttons; persisted per session | MC UI | brx | e2e step: assign a phone, see MC-ARMED on the utility page |
-| A3 Battery + app version in the utility heartbeat | `utility.js` | brx-hud | field visible in A2 |
-| A4 **Attention flags** on the ITEMS row: "bring back to re-arm" (assignment changed since last contact), "battery low", "not seen since last match", "app behind" | MC UI | brx | e2e: change a team on an offline phone → the flag appears |
-| A5 `config.stations` from the compiler = the ids MC armed this game; the utility phone displays `valid_ids` | compiler + `utility.js` | brx + brx-hud | ✅ MC half 2026-09-11 (`Session._wire_config()` puts `stations: [{id, kind}]` on every config push and hydrate); the utility screen still does not display `valid_ids` |
-| A6 Recap: stations row — revives per station from player facts vs the station's own count; ✓ when they agree, ⚠ when the station was never heard | MC scoring + recap UI | brx | recap e2e |
+| id | what | done when |
+|---|---|---|
+| B1 | Station scan starvation while advertising | a 10-minute two-phone soak where the player list never empties while a player phone stands there |
+| B2 | Android opportunistic-scan demotion: restart the HUD's beacon scan every 25 min | soak |
+| B3 | iOS: build `BrxBeaconPlugin.swift` on the MacBook, verify advertise + scan | an iPhone station revives a Pixel |
+| B4 | RSSI-vs-distance at each TX level, phone-to-phone; per-kind default thresholds (a zone is bigger than a respawn point) | a table in `spec/utility.md` §3 |
 
-### B. Radio hardening
-| what | surface | owner | done when |
-|---|---|---|---|
-| B1 S6: station scan starvation while advertising — ✅ fixed (73d391a); the two-phone soak is still owed | `utility.js` | brx-grenade | 10-minute soak: player list never empties while a player phone stands there |
-| B2 Android opportunistic-scan demotion: restart the HUD's beacon scan every 25 min | `app.js` | brx-grenade | soak |
-| B3 iOS: build `BrxBeaconPlugin.swift` on the MacBook, verify advertise + scan | plugin | whoever has the Mac | iPhone as station revives a Pixel |
-| B4 RSSI-vs-distance at each TX level, phone-to-phone; per-kind default thresholds (a zone is bigger than a respawn point) | bench doc | Tony + a session | a table in `utility.md` §3 |
+**C · Match scoping.**
 
-### C. Match scoping
-| what | surface | owner | done when |
-|---|---|---|---|
-| C1 `game` byte from `station_config` (already applied on the phone); MC bumps it per match | MC | brx | ✅ 2026-09-11: `Session.game_no` bumps on the first lobby push after a match STARTED (so an edit at muster is the same game), every station is re-armed with it, and a station that missed the push gets it on its next hello. C2 (players filtering presence by game byte) is still open |
-| C2 Player phones filter presence by the bundle's game byte (Presence already supports `game`) | `app.js` | brx-hud | engine test |
+| id | what | done when |
+|---|---|---|
+| C1 | `game` byte from `station_config`; MC bumps it per match and re-arms every station | an edit at muster stays the same game; a station that missed the push gets it on its next hello |
+| C2 | Player phones filter presence by the bundle's game byte (`Presence` already supports `game`) | engine test |
 
-## 3. The kinds, in build order
+## 2. The kinds, in build order
 
-Each kind = a station state machine (what it advertises in `state`/`value`), a player-node rule (engine +
-HUD copy), an MC mode/scoring, tests, and a bench gate. The order is by (game value × how much of the respawn
-primitive it reuses).
+Each kind = a station state machine (what it advertises in `state`/`value`), a player-node rule
+(engine + HUD copy), an MC mode/scoring, tests, and a bench gate. The order is by (game value × how
+much of the respawn primitive it reuses). **The rules live in `spec/utility.md` §5; what follows is the
+work.**
 
 ### K1 · Control point → Territories, Domination and King of the Hill (first)
 
@@ -91,15 +78,15 @@ as fast; 2v1v1 still converts, slowly; a tie for the lead nets zero), a
 advert byte 11), an **animated** station screen that shows which way the point is going and who is contributing,
 per-team gun callouts (`VB0N` captured / `VB0P` lost / `VB0O` contested / `U100` tick) played **by each player
 phone off the station's own advert, with no LAN**, and progress persisted on the station, which stays
-self-authoritative and reports at recap. **§5e** is the opt-in LAN-coupled variant (points-to-win, roaming hills)
+self-authoritative and reports at recap. The opt-in LAN-coupled variant (points-to-win, roaming hills) is in §8 below
 and is a deliberate exception to A4.8. The rows below are the surfaces; the spec wins on the rule.
-**Followups: F94** (build §5d), **F95** (build §5e) and **F98** (Territories, §5f).
+Build items: **F94** (§5d), **F95** (roaming hills, §8 below) and **F98** (Territories, §8 below).
 
-⭐ **Territories (§5f, F98) is the strongest case for building this row**, and it needs nothing beyond §5d: several
+**Territories (§8 below, F98) is the strongest case for building this row**, and it needs nothing beyond §5d: several
 points, each scoring for its owner **whether or not anyone stands on it**, win on the total. It kills camping by
 construction (owning a point you already hold earns nothing extra, so the play is always to go take another — no
 decay rule, no bonus, no multiplier to tune), and because each station keeps its own books and reports at recap it
-needs **no LAN at all**, which shrank §5e's A4.8 exception to roaming hills alone. It also cannot be done on
+needs **no LAN at all**, which shrank the A4.8 exception to roaming hills alone. It also cannot be done on
 grenades: a grenade holds its owner unattended fine, but ownership travels only over IR and only a gun hears IR
 (F92), so an unwatched grenade point has no scorekeeper.
 
@@ -126,50 +113,36 @@ separate objectives, or run the phone point.
 
 ### K2 · Extraction zone
 
-**Rule.** A player carrying loot who is present at the zone channels for `channel_s`; leaving resets; dying
-drops the loot. The extraction is loud: the station's speaker plays the alarm and MC's alerts
-(`extraction_called / open / closing / complete / failed`) already exist.
-
-| surface | work |
-|---|---|
-| station | `state` 0 idle · 1 channelling · 2 extracted · 3 failed; `value` = channel seconds left; screen shows who is channelling (player id, team) and the countdown; plays the alarm on its own speaker (WebAudio, the bank line). |
-| player node | intent bit `extracting` in the player advert while present with loot; `state().objective` = zone + channel progress; facts `extract_start / extract_done / extract_fail`. The loot wallet and drop-on-death already live in `mcp/brx_mcp/modes/extraction.py` — the node needs the same wallet mirrored (A13.x) or MC pushes `loot` in `score`. |
-| HUD | CHANNELLING · 12 s bar; STAY IN THE ZONE; the existing alert banners. |
-| MC | the extraction mode exists; add the station as the zone source (today the zone is a phone/host). |
-| tests | engine: channel start/stop/reset/death; screens: channelling stage. |
-| bench gate | one phone channels at a station, walks out, walks back; a second gun kills mid-channel → failed + loot dropped. |
-| needs | K1's presence plumbing; B1. |
+A player carrying loot who is present at the zone channels for `channel_s`; leaving resets; dying drops the
+loot. The rule is `spec/utility.md` §5. What is left to build: the station state machine (idle / channelling /
+extracted / failed, seconds left in `value`, the alarm on its own speaker), an `extracting` intent bit and
+`state().objective` on the node, the CHANNELLING bar on the HUD, and the station as the zone source in MC's
+extraction mode (today the zone is a phone/host). The loot wallet already lives in
+`mcp/brx_mcp/modes/extraction.py`; the node needs it mirrored or MC pushes `loot` in `score`.
+**Bench gate:** one phone channels, walks out, walks back; a second gun kills mid-channel → failed + loot
+dropped. **Needs:** K1's presence plumbing, B1.
 
 ### K3 · Powerup
 
-**Rule.** A present player takes the powerup: armour / HP grant, an ammo refill, or a weapon swap; the
-station goes depleted for a cooldown.
-
-| surface | work |
-|---|---|
-| station | `state` 1 ready · 0 depleted; `value` = cooldown seconds; `kind`-specific payload needs a byte: reuse `value` while ready as the payload code (1 armour, 2 HP, 3 ammo, 4 weapon slot swap). Screen: what it gives, READY / cooldown ring. Marks the taker (id) so the same player cannot re-take before cooldown. |
-| player node | on present + ready + a trigger pull (same gate as respawn): write the grant to its own gun — `$LIFE` armour/HP (additive, proven), `$AMMO` refill, or the `$WEAP`+`$AMMO` swap from the bundle's `powerups[]` frames; fact `pickup`. |
-| HUD | a GAIN moment already exists (health/armour/shield); add "AMMO" and "WEAPON: SMG" variants. |
-| MC | compiler adds `bundle.powerups` (frames per payload code); ITEMS panel arms kind `powerup` with a payload; scoring optional. |
-| tests | engine: take once, cooldown, wrong team (if team-locked), the written frames. |
-| bench gate | take an armour powerup, `$LCD` echo shows the pool; take a weapon swap, fire the new weapon. |
-| needs | nothing beyond the respawn primitive; shields stay IR-only (fn-11) and are out of scope. |
+A present player takes the powerup (armour / HP grant, ammo refill, or weapon swap); the station goes depleted
+for a cooldown. The rule is `spec/utility.md` §5. What is left to build: the ready/depleted state machine with
+the payload code in `value` and the taker marked so the same player cannot re-take before cooldown; the node's
+write to its own gun from the bundle's `powerups[]` frames plus a `pickup` fact; AMMO and WEAPON variants of
+the existing GAIN moment; `bundle.powerups` in the compiler.
+**Bench gate:** take an armour powerup and read the pool in the `$LCD` echo; take a weapon swap and fire the
+new weapon. **Needs:** nothing beyond the respawn primitive. Shields stay IR-only (fn-11) and are out of scope.
 
 ### K4 · Bomb site (last: the most moving parts)
 
-**Rule.** An attacker present with the `planting` intent for `plant_s` plants; the site counts down
-`fuse_s`; a defender present with `defusing` for `defuse_s` defuses; on detonation every player phone
-within blast radius applies host-inflicted damage to its own gun.
-
-| surface | work |
-|---|---|
-| station | `state` 0 idle · 1 planted · 2 defused · 3 detonated; `value` = fuse seconds; plant/defuse progress shown; the station's speaker does the beeps. It must read player intent bits — B1 is a hard prerequisite. |
-| player node | intents from the HUD (rail-mounted, so: present + hold the trigger = plant/defuse, exactly the respawn gesture); on `detonated` with the site present at ≥ threshold-N dB: write `$BHIT`-style damage to its own gun (frame from the bundle); facts `plant / defuse / detonate`. |
-| HUD | PLANTING · bar; BOMB PLANTED · 40 s (alert exists); DEFUSING · bar; the DOWN recap shows the round state. |
-| MC | round-based mode (`cs`): win by detonate / defuse / elimination; sides swap; alerts exist (`bomb_planted / defused / detonated`). |
-| tests | engine: plant, defuse race, detonation damage radius; utility: state machine under fake intents. |
-| bench gate | plant with one phone, defuse with another, let one detonate and read the `$HP` drop on a gun in radius vs none on a gun outside. |
-| needs | K1 presence, B1, a decision on blast damage (proposal: 45 HP — a kill — inside the threshold, half outside to threshold-10 dB). |
+An attacker present with the `planting` intent for `plant_s` plants; the site counts down `fuse_s`; a defender
+present with `defusing` for `defuse_s` defuses; on detonation every player phone within blast radius applies
+host-inflicted damage to its own gun. The rule is `spec/utility.md` §5. What is left to build: the four-state
+station with the fuse in `value` and the beeps on its speaker; intent reading (present + trigger held, the
+respawn gesture); the blast write on the node; and the round-based `cs` mode in MC (win by detonate / defuse /
+elimination, sides swap). The alerts already exist.
+**Bench gate:** plant with one phone, defuse with another, let one detonate and read the `$HP` drop on a gun in
+radius against a gun outside it. **Needs:** K1 presence, B1, and **a decision on blast damage** (proposal: 45 HP
+— a kill — inside the threshold, half out to threshold −10 dB).
 
 ### K5 · Flag base (later; a new kind id)
 
@@ -177,7 +150,7 @@ CTF needs `kind 6 flag` (grab by presence + trigger, carry = a player intent bit
 base) and a player-advert `carrying` bit. Designed in `game-modes.md`; not in the advert table yet. Do it
 after K1–K4 prove the intent-bit path.
 
-## 4. Shared player-side surfaces (build once, in K1)
+## 3. Shared player-side surfaces (build once, in K1)
 
 - `state().objective` on the engine: the nearest relevant station for the current mode with its state,
   progress and whether it is ours. One shape for hill / zone / site / powerup.
@@ -187,7 +160,7 @@ after K1–K4 prove the intent-bit path.
   player advert's intent bits follow the engine state.
 - Alerts: `point_captured`, `hill_captured`, `bomb_*`, `extraction_*`, `lead_taken` are already rendered.
 
-## 5. Bench gates, in order
+## 4. Bench gates, in order
 
 1. **S6** (station hears players reliably) — nothing objective works without it.
 2. RSSI-vs-distance per TX level; per-kind thresholds (B4).
@@ -197,39 +170,27 @@ after K1–K4 prove the intent-bit path.
 6. K4 plant / defuse / blast radius.
 7. iOS station (B3) once a Mac is at hand.
 
-## 6. Ownership
+## 5. Ownership
 
 | who | rows |
 |---|---|
 | **brx-grenade** (spec, plugin, radio) | spec updates for each kind (`utility.md` §5 → real sections), B1–B3, station state machines' spec text, S7 |
-| **brx** (MC server + console) | A1, A2, A4, A5 (compiler), A6, C1, the `hill` / `domination` / `cs` modes and scoring, E1–E2 (§9) |
+| **brx** (MC server + console) | A1, A2, A4, A5 (compiler), A6, C1, the `hill` / `domination` / `cs` modes and scoring, E1-E2 (FOLLOWUPS §2) |
 | **brx-hud** (phones) | A3, A5 (phone), C2, every `utility.js` state machine and screen, every engine rule + HUD copy per kind, harness stages and screen-truth steps |
-| **Tony** | bench gates (§5), thresholds, the blast-damage decision, which kind after K1 |
+| **Tony** | bench gates (§4), thresholds, the blast-damage decision, which kind after K1 |
 
-## 7. Rough size
+## 6. Rough size
 
 K1 is about a day across the three surfaces once A1/A2 exist (the presence primitive is done). K3 half a day.
 K2 a day (loot mirroring is the tricky part). K4 a day and a half plus its bench. A1–A6 a day for the MC side.
 B1 is an hour of code and an evening of soak. Total: about a week of sessions, with K1 playable first.
 
-## 8. Status per mode: how far a playable match is (snapshot 2026-09-04)
+## 7. The grenade as a control point: what the bench established
 
-**Two execution paths, the crux of every objective mode.** The repo has two runtimes: the **CLI + sim path**
-(`brx_mcp/modes/` engines + `driver.py`, run by `python -m brx_mcp play <mode>` / `game-sim`), where the
-objective logic actually lives and runs; and the **Mission Control path** (`brx_mcp/mc/` — `state.py`,
-`compile.py`, `scoring.py`), which configures, compiles, pushes and scores from death facts and **does not
-instantiate the mode engines** (no import of `modes.driver` anywhere under `mc/`). Match-day runs through MC, so
-the MC gap is what gates a real game. Until the spine above exists (S6, A1–A6, K1), objective modes only run in
-the CLI/sim with synthetic objective events.
+The hill design in `spec/utility.md` §5d rests on these measurements. Keep them together: several are
+retractions of things that were believed and are not true.
 
-| mode | built (CLI/sim) | missing | distance |
-|---|---|---|---|
-| **Counter-Strike** (bomb, rounds) | `modes/cs.py` `BombEngine`: plant → countdown → defuse / elimination / round-time expiry, late-plant guard, `rounds_to_win`, `next_round()`; `counter_strike` presentation preset; `compile.py` refuses `cs` without a station source; `test_cs.py` + `test_sim_cs.py` | no side-swap / half-time (attackers pinned to team 2); no live multi-round loop (`GameDriver` never calls `next_round()`, so `play cs` is one round); **not in MC's `MODES` catalog** (`mc/state.py`'s `MODES` lists tdm/ffa/infection/lms/extraction; anything else raises); no MC round scorer (`scoring.py` returns `undecided` for `win_by` other than kills/survival); plant/defuse input is synthetic until K4 | spine + **K4** (~1.5 days + bench) + a round-orchestration loop + side-swap + MC catalog entry + round scorer ≈ **3–4 sessions**. Open decision (Tony): the blast-damage model (K4). |
-| **Extraction** | `modes/extraction.py` `ExtractionGame`: per-player loot wallet, pickup + ground tokens, channel/hold with a loud callout, bank + `$LIFE` boost + win check, drop-on-death with three policies, channel interrupt on death; `extraction_adapter.py` maps ZONE/LEAVE/LOOT/PICKUP + `$HIR`/`$HP,0`; **first-class in MC** (`win_by:"objective"`, preset, not station-gated); `test_extraction*.py`, `test_sim_extraction.py` | no real zone/loot input (synthetic station commands until K2); no MC objective scorer (MC can select it but returns `undecided`, no loot board); no raid window / hard end producer (`extraction_closing`, `raid_over` events exist, nothing emits them); the field-wide alert is best-effort (Tier 4 for instant) | spine + **K2** (~1 day) + an MC banked-loot scorer ≈ **2–3 sessions**; the raid window is a second pass. **The shorter hop.** |
-| **Domination / KotH** | `modes/objectives.py` engines + sim tests | station input (K1); MC catalog + scorer | spine + K1 ≈ the first playable objective mode |
-| **CTF** | `modes/objectives.py` | K5 (`kind 6 flag`, carrier bit) after K1–K4 | later |
-
-### ⭐ The grenade shortcut to K1 (bench 2026-09-10)
+### The grenade shortcut to K1
 
 **A grenade is already a working control point, and two small changes make a hosted game read it** (a `$SIR` row, and stopping the phone discarding protocol 15). K1 was
 scoped as building a station; for Hill and Respawn the hardware exists and the protocol is decoded:
@@ -281,7 +242,7 @@ above. Keep it in step when K1 lands or F91/F82 resolve.
    captures"; do NOT yet build economy or scoring that assumes capture power equals damage, and do not assume
    linearity beyond the two points measured. Max charge is also unmeasured (rung M).
 
-### How a hosted hill actually works (design, 2026-09-10)
+### How a hosted hill actually works
 
 **What the node gets.** With the `$SIR` proto-15 row and the phone-side parse (both shipped, F72/F79), every node in range receives
 `$HIR,<sensor>,15,0,<owner>,8,0,0` about every 5 s. One frame, two facts: **who owns the point**, and **that
@@ -338,7 +299,7 @@ out to have a side effect nobody has looked for: enemy **35** and the ally side 
 `$GSET` t1 = 0 a gun registers only hills it does NOT own, so a holder cannot see their own point; t1 = 1 lifts
 the gate and the owner arrives in `$HIR` token 4.
 
-### The four native hill callouts, and whether a hosted game can reproduce them (2026-09-10)
+### The four native hill callouts, and whether a hosted game can reproduce them
 
 Tony's description of native play: a ticking timer while you hold it; silence when the other team holds it and
 you step in; "control point contested" when you shoot an enemy-held point without taking it; and a callout when
@@ -397,35 +358,10 @@ non-empty `$SIR` `<soundID>` overrides the `$PSET` pool sound on the row that fi
 
 **So the four team-aware callouts (`VB0N` Hill Captured, `VB0O` Hill Contested, `VB0P` Hill Lost, `U100` the
 possession tick) are phone work, not gun work** — they need to distinguish four+ states from one wire fact
-(owner) that changes over time, and a single `$SIR` cell cannot hold four sounds. Concretely, the node algorithm:
-
-- Every `$HIR,<sensor>,15,0,<owner>,<mode>,0,0` beacon updates two pieces of state, **`hill_owner`** and
-  **`last_beacon_at`** — nothing plays here directly.
-- A **separate** ~1 s timer checks that state and plays `U100` while `hill_owner == my_team` **and** the beacon
-  is fresh (see the next bullet for "fresh"). This is the only place the possession tick fires from; it is not
-  triggered by the beacon itself, because the beacon only arrives once per ~5 s.
-- **Presence expires after ≥ 2 missed beacons (~12 s)**, not one — `rung R` measured the beacon going
-  intermittent at the edge of range, so a single miss is normal reception, not "left the hill."
-- **Announce a capture on `mag=50` alone.** Never wait for `mag=53` — on an enemy-to-enemy capture it never
-  arrives at all (n=2, settled in `protocol/brx-ir-protocol.md`), so a node gated on both words would simply
-  never announce that class of capture.
-- **The LISTENER'S TEAM picks the callout, not the magnitude.** ⚠ An earlier version of this line said `mag=53`
-  present/absent switched between "captured" and "contested/lost" for the "losing/gaining side respectively".
-  That was garbled and is corrected here against what is now implemented (`engine.js:_hillCallout`,
-  `4348721`): **one wire event, different audio per listener.** The same `mag=50` frame is `VB0N` **Hill
-  Captured** to the team named in it, and `VB0P` **Hill Lost** to the team that just lost it. A capture
-  between two OTHER teams is deliberately silent — it is not this player's event.
-- **`mag=53` distinguishes WHERE the point came from, not who says what**: present = it was NEUTRAL before,
-  absent = it was stolen from an enemy. Both are still "captured" for the taker and "lost" for the loser, so
-  this is available for flavour (a different line for a first claim) and for scoring, not for choosing between
-  captured and lost. ⚠ And nothing may WAIT for it: it arrives ~5 s later, and on an enemy-to-enemy capture it
-  never arrives at all.
-- ⚠ **`VB0O` "Hill Contested" is NOT in this mapping and is not wired.** F75: a non-capturing hit emits nothing
-  decodable, so contest cannot be detected — only guessed at, and a guess cannot tell a hit from a miss.
-- ⚠ **Never queue a multi-second audio sequence off a beacon.** F74 proved this gun really does replay long
-  events, and a beacon repeats every 5 s — a 15 s clip fired on three consecutive beacons stacks three deep.
-  `U100` is chosen precisely because it is ~0.1 s and cannot overlap its own 1 s cadence; a capture callout
-  (`VB0N`/`VB0O`/`VB0P`) is a one-shot per transition, not a per-beacon repeat, for the same reason.
+(owner) that changes over time, and a single `$SIR` cell cannot hold four sounds. **The node algorithm is now
+normative in [`spec/utility.md`](spec/utility.md) §5d.7** (`hill_owner` / `last_beacon_at`, the separate ~1 s
+tick, presence expiring on two missed beacons, announcing on `mag=50` alone, the listener's team choosing the
+callout, and the ban on queueing anything off a beacon). `engine.js:_hillCallout` implements it.
 
 **And a mode primitive we did not have: shield the holder.** Both grenade words carry the OWNER's team, and the
 firmware gates by polarity — damage lands only from an enemy, grants only from your own team. So `<0,0>` on fn 1
@@ -436,157 +372,275 @@ at all (F60).
 hill, which is the whole mode. The conflict is worked through in the next section; it applies to any
 firmware-granted hill reward, shield included, not just to rate of fire.
 
-### Rewarding the holder: a hosted rate-of-fire boost (design, 2026-09-10)
+### Rewarding the holder: a hosted rate-of-fire boost
 
-Tony's ask: while your team holds the hill, your gun fires faster; when you lose it, it goes back to stock. He
-believes native KotH does this. Two facts frame the design, both from the 2026-09-10 evening bench.
+**The design F87 builds against, and the reason it cannot be a firmware grant.**
 
-**1. The hill does not do it for us in a hosted game.** Measured, counting `$ALCD` decrements off the wire:
-**102.0 ms/round while the operator's team held the point, 101.6 ms/round while the enemy held it** — same gun,
-same `$WEAP`, same session, indistinguishable. Stronger than a plain A/B, because the hill flipped to the
-operator's team *partway through the enemy-held burst* and the inter-round cadence never broke: the control sits
-inside the single measurement. Expected, since fn 28 moves no pools. ⚠ **This does NOT say native has no RoF
-buff** — a native game drops the BLE link and cannot be instrumented this way, so a native buff would be
-invisible to this method. What is measured is that the grenade does not buff *our* guns through the row we ship.
+**Why the firmware cannot grant it: one cell, two jobs.** `$SIR` is keyed on `<irProtocol, subtype>` alone, and
+every hill word — the beacon, the capture, the damage — decodes to the same key. So the protocol-15 cell can be
+a silent READ of the hill (fn 28, what ships) **or** a grant to the holder (fn 11/18), never both. Taking the
+grant costs the read of every enemy-held hill, which is the whole mode. The same conflict applies to a
+firmware-granted shield (F60), not just to rate of fire.
 
-**2. So a boost has to be something WE apply**, from the node, over BLE — the same place the hill audio ended up
-(previous section), and for a related reason.
+**The mechanism (node-side, so it has neither problem).** The holder's own node pushes a `$WEAP` with a lower
+token 14 (the inter-round interval, calibrated at ~1 ms/round) and reverts it when possession is lost. The node
+already knows possession from the beacon, so nothing new goes on the wire. The push must preserve ammo exactly —
+a `$WEAP` write is the moment a magazine can be silently refilled or truncated.
 
-#### Why the firmware cannot grant it: one cell, two jobs
+**What is unmeasured, and gates the build (`bench-grenade.md` rung Z).** How low token 14 can go before the
+firmware clamps or the IR stops keying; whether the push/revert preserves ammo; whether it fires correctly off a
+real beacon. A faster cadence also interacts with the t21/t22 recoil model (F46), so a boost may cost accuracy as
+a side effect. Do not price the boost before the floor is measured.
 
-The obvious idea is to let the firmware do the team logic, exactly as the shield sketch above proposes: put an
-**ally-polarity** function on the hill's cell at `$GSET` t1 = 0, and the polarity gate grants only when the
-beacon's team matches the gun's own `$TID`. That is genuinely how the gate works. It still cannot be made to
-work here, and the reason is worth writing down because it constrains *every* firmware-granted hill reward:
+## 8. Designs specified but not built
 
-- **`$SIR` is keyed on `<irProtocol, subtype>` alone.** Every hill word — the `mag=8` possession beacon, the
-  `mag=50` capture announcement, `mag=53`, every owner — lands in the **single cell `<15,0>`**. Owner and mode
-  ride in the IR word's team/magnitude fields and **neither is part of the lookup** (`protocol/brx-protocol.md`
-  §5). One cell holds one function.
-- **At t1 = 0, an ally function in that cell would gate correctly and go blind.** Enemy-team beacons are
-  **silently rejected** — no `$HIR` at all — so the node stops seeing hills it does not own, stops seeing the
-  `mag=50` capture word for enemy captures, and loses capture detection entirely. That is the mode.
-- **At t1 = 1 the gate lifts and the grant stops discriminating.** Everything registers, the owner arrives in
-  `$HIR` token 4, the node has complete information — and the firmware would fire the grant on **any** beacon,
-  boosting a player standing in an **enemy** hill.
+Both were written in full as `spec/utility.md` §5e and §5f and moved here when the spec was cut back to what
+ships. They are complete designs, not sketches: build them from this text, and promote the parts that survive
+contact with hardware back into the spec.
 
-**One cell cannot both read every owner and grant only to the owner.** So: **read** with fn 28 at `$GSET`
-t1 = 1 (already the documented KotH arm — see the FF-on argument above), and **apply the boost from the node**,
-which knows the owner from `$HIR` token 4 anyway.
+### 5e · Roaming hills: the LAN-coupled variant (opt-in)
 
-⚠ **The ally-function half is UNMEASURED, and the conflict does not depend on it.** No `$SIR` function anywhere
-in the map is known to change weapon cadence — the function classes are damage, armour-pierce, multipliers,
-heals, armour, shield, audio suppression, and register-only. fn **31 / 32 / 34** (the ally side of the
-register-only class) are still unswept for player effect (`docs/bench-queue-2026-09-09.md` D6, and the old 1.6
-"KotH rate-of-fire buff" item): they are known **pool-neutral**, but nobody has checked what they do to a gun's
-firing behaviour, so "an ally function that buffs RoF" is not ruled out — it is simply unevidenced. Either way
-the polarity conflict above stands, so the node-side design is the one to build.
+**It buys its feature with an architectural exception.** Tony asked for this
+explicitly as a second mode, for a small field where every point really is on one Wi-Fi — his example: one hill in
+the garage, another on the porch across the house, both on the house AP. §5d is the mode for a field; §5e is the
+mode for a house.
 
-#### The mechanism
+⚠ **Read §5f first if you have not.** This section used to claim points-to-win as a second LAN-coupled feature,
+and **it is not one** — §5f.2 shows a
+Territories station scoring itself offline and reporting at recap, which is plain §5c. What is left needing a live
+LAN is **one** feature, plus one optional flavour of the score:
 
-The node already holds `hill_owner` and `last_beacon_at` for the audio timer (previous section). The boost
-hangs off the same two pieces of state, plus one more the phone already has: the live magazine, which
-`app/src/engine.js` reads from `$ALCD`.
+| feature | why it needs the LAN |
+|---|---|
+| **Roaming hills** (the live point moves during the match) | somebody must **choose** which point is hot and tell the others. That is MC, mid-match, which is the exception. `VB0Q` "Hill Moved" (2.42 s, confirmed by ear, already in `HILL_CUES` with no caller) exists for exactly this, and **F83** already proposes the mode on the grenade side |
+| ~~a points race that ENDS the match early on crossing a target~~ | 🔴 **DECLINED (Tony, 2026-09-10) and not being built.** The points target is read **at the horn** (§5f.2), which is fully offline. The early-end form is the only other thing that would have needed coverage, and it is now deliberately off the table — **not** "allowed but unbuilt". Anyone reviving it is opening a second A4.8 exception and must say so |
 
-**On boost (my team owns the point AND the beacon is fresh):**
+Mechanically: MC pushes the hot point to the stations (`station_config`, §5c, extended with the hot flag — advert
+byte 10 bit 5). On a move, each player phone plays `VB0Q` off the hot bit changing, by the §5d.5 rule. Stations
+still run §5d locally and still keep their own books; the LAN adds the rotation, it does not replace the local
+rule.
 
-1. `$WEAP,<slot>,…,*` — the player's own weapon frame from the bundle, with **t14 reduced** and every other
-   token identical.
-2. **Immediately** `$AMMO,<slot>,<live mag>,<live reserve>,1,*` using the counts the node read from `$ALCD`.
+#### 5e.1 This is a DELIBERATE EXCEPTION to A4.8, and that is the most important line in this design
 
-**On revert (the point changes hands, or the beacon goes stale — ≥ 2 missed beacons, ~12 s, per rung R):** the
-same two frames with the **stock** `$WEAP` and, again, the live counts.
+`docs/spec/contracts.md` §5 [**A4.8**] says: *on a large field most nodes are out of LAN range for most of the
+match … live kill-confirm and a live individual board are coverage-zone features.* **Nothing about the match
+outcome depends on coverage.**
 
-🔴 **Step 2 is not optional, and skipping it is an exploit, not a cosmetic bug.** A `$WEAP` re-push **resets
-ammo to the frame's values** (`protocol/brx-protocol.md`: *"re-send `$AMMO` after any weapon swap"*). A boost
-that omits the `$AMMO` restore hands the player a **free full magazine every time they step onto their own
-hill** — mid-firefight, on demand, by walking. Worse, it is repeatable: step off, step back on. The restore is
-what makes the boost a reward instead of an infinite-ammo button.
+**§5e breaks that last sentence on purpose.** A roaming hill is a match rule taking its orders from the laptop
+mid-match: a control point out of Wi-Fi range is not merely invisible, it is **not in the game**, because it cannot
+be told whether it is the live one. There is no way to have that feature and keep A4.8 — the exception is the
+feature. **Roaming hills is the whole of the exception** — an early end on a points target would have been a
+second one, and Tony declined it (see the table above), so it is not in the system and not reserved for later.
 
-**Risks, plainly:**
+⚠ **The exception is NARROWER than this section first claimed**, and that is worth noticing rather than quietly
+fixing: points-to-win was listed here as a second reason, on the reasoning that no station knows another station's
+contribution. True — and irrelevant, because nothing has to add them up *during* the match. Territories (§5f.2)
+scores offline and MC sums at recap. The rule that looked like it needed breaking twice needs breaking once.
 
-- **The ammo blip.** There is a window between the `$WEAP` and the `$AMMO` in which the gun holds the frame's
-  magazine. It is two frames on a link that carries them back to back, but it is not zero, and the HUD may see
-  one `$ALCD` frame with the wrong count. Do not treat that frame as a reload event.
-- **A write landing mid-burst.** Both transitions can arrive while the trigger is held. What a `$WEAP` re-push
-  does to an in-flight burst is **unmeasured** — the `$ALCD` count could tear, and the recoil model resets its
-  ceiling on a weapon change. Rung Z step 2 exists to look at exactly this.
-- **A dropped link leaves the player stuck.** If BLE drops while boosted, the gun keeps the boosted `$WEAP`
-  (weapon config survives a drop, §7) with no node to revert it; if it drops while the revert is in flight, the
-  player may be stuck slow. **The safe default is: revert on reconnect.** Push the stock `$WEAP` + live `$AMMO`
-  as part of the reconnect head, unconditionally, and let the next fresh beacon re-apply the boost. Stock is the
-  state you can always justify; boosted is not.
-- **Boost churn at the edge of range.** The ≥ 2-missed-beacons staleness rule is what keeps a player at the
-  fringe from being re-armed every 5 s. Never revert on a single miss.
+We take it knowingly and we fence it:
 
-#### Balance: the arithmetic, and what is still unmeasured
+- it applies **only** to modes explicitly flagged **`lan_coupled`** in the mode catalog;
+- it **never** applies to §5d, which stays fully offline-capable and is the default for any field bigger than a house;
+- it is the **only** place in the system where coverage decides an outcome; everything else A4.8 protects (facts
+  queued in the ring and replayed, kills reconciled at sync points, a node whose own loop never waits on MC) stays
+  exactly as it is;
+- and because the requirement is physical, **both screens must say so before the match starts** (§5e.2, §5e.3).
 
-**t14 is milliseconds per round** (calibrated 2026-09-10, now in `protocol/brx-protocol.md` §6): an AR at
-t14 = 100 measured **101.6–102.0 ms/round**. So a boost is a straight ratio — halving t14 doubles the cadence —
-and stock cadences are all in the same units (burst 75, SMG 90, AR 100, sniper 300, shotgun 900, charge rifle
-1250). **Pick the boost as a percentage of the weapon's own t14, not as an absolute**, or the same rule turns a
-shotgun into a different gun and an SMG into nothing.
+If §5e is ever built, `contracts.md` A4.8 gains a pointer to this section. An exception that is not written next to
+the rule it breaks is just a bug waiting to be rediscovered.
 
-**No number is proposed here, because two inputs are missing:**
+#### 5e.2 MC must say the phones need a connection (setup surface)
 
-1. **The floor is UNKNOWN.** Nobody has measured how low t14 can go before the firmware clamps it, or before the
-   IR word stops keying reliably at that repetition rate. Rung Z sweeps 100 → 70 → 50 → 30 to find it. Until
-   that runs, any chosen ratio might silently land on a clamp and produce a boost the player cannot feel.
-2. **The boost interacts with the recoil model, and the direction is not obvious.** `$WEAP` **t21/t22** are the
-   simulated-recoil ceiling and floor (F46, bench-proven 2026-09-09), and accuracy is a **per-shot hit
-   probability** that decays under sustained fire and recovers with time between shots. A shorter t14 means less
-   recovery per round, so **a faster gun may also be a less accurate one** — the same finding notes that at
-   t22 = 0 single shots ~2 s apart held a flat 80 while a held trigger reached 0 in eight rounds. Whether that
-   makes the boost self-limiting (nice) or worthless (bad) depends on the t21/t22 the mode ships. ⚠ **Flag, not
-   assumption:** the interaction is predicted from two proven mechanisms, and the combination has never been
-   measured. Note that stock ships t21 = t22 = 100, which disables the model entirely — so on a stock-accuracy
-   loadout this concern does not arise at all.
+The requirement is a **physical setup step**, which MC already has a channel for. `mcp/brx_mcp/mc/API.md`: a
+`config_warnings` entry whose text starts **`SETUP: `** is a physical step the operator must do on the field
+before the push, and the **GAMES rail renders those verbatim**. `lan_coupled` modes emit one, with live counts:
 
-Everything else the mode needs is already decided: fn 28 on `<15,0>`, `$GSET` t1 = 1, node-side timing,
-`$SPAWN` before every arm. The boost is a small amount of node code sitting on state the hill audio already
-maintains — but it must not be written before **rung Z** (`docs/bench-grenade.md`) says what the floor is and
-that the push/revert loop preserves ammo exactly. Tracked as **F87**.
+```
+SETUP: this mode needs every control point on the match Wi-Fi for the whole game - 1 of 2 items linked
+```
 
-**The grenade bridge (FOLLOWUPS B23).** Our phone stations are a hosted reimplementation of what the Smart
-Grenade does in native games: Respawn (yellow) ✅ built as the phone station; Hill (blue) and Assault (green) →
-K1; CTF (white) → K5; Frag (red) out of scope. A hosted (MC) gun ignores all the grenade's IR words, so inside
-our games the phone supersedes the grenade. B23 would bring the grenade back in as a physical station by
-*reading* its beacon: a passthrough `$SIR,15,*` row lets the gun report `$HIR,0,15,0,<team>,6` over BLE, and the
-node treats it as "a team-X station is present" (IR, directional) in the same `respawnGate` machinery. The
-catch: a firmware-dead gun hears no IR, so DOWN must become a node-defined stunned state (`$SPAWN` +
-`$AMMO,0,0`, painted dead by the node). Every link is bench-proven separately; the assembly is not.
+Reuse that channel; do not invent a second warning surface. Alongside it, the **ITEMS panel** (roadmap A2) shows a
+link state per utility phone and raises an A4-style attention flag on any `kind 5` phone that is not linked while a
+`lan_coupled` mode is selected. **Proposal:** MC should also **refuse to start** a `lan_coupled` game with an
+unlinked control point (a 4xx naming the phone), the same way `compile.py` refuses `koth` with no `station_source`
+— the mode cannot be scored correctly, so starting it is a guaranteed bad match rather than a risk.
 
-Order that falls out: **S6 soak → MC arming (A1–A6) → K1 → K2 (extraction playable) → K4 (CS playable)**, with
-the B23 grenade bridge as an optional physical-station bench alongside K1.
+#### 5e.3 The utility screen must make the Wi-Fi requirement clear during setup
 
-## 9. Extensibility: what it costs an outsider to add a mode (review 2026-09-04; FOLLOWUPS E1–E7)
+`utility.js` already renders an MC link state — **`MISSION CONTROL ✓ LINKED` / `· OFFLINE` / `· NO ADDRESS`**
+and the arming banner **`MC-ARMED · GAME N`** / `NOT ARMED BY MISSION CONTROL`, both written by `render()`. Build on
+those; add no new indicator.
 
-- **Re-parameterize or re-skin a shipped mode** (a faster TDM, low-HP snipers, custom sounds/LEDs, loadout
-  rules): **well supported by JSON today** — `GameConfig` carries health, respawn, scoring, teams, loadout
-  policy and the full presentation profile.
-- **A genuinely new ruleset** (a new win condition or objective interaction): **not easy.** The engine seam is
-  good — `GameEngine(ABC)` is four methods (`add_player`, `on_event`, `tick`, `snapshot`) emitting a semantic
-  Action vocabulary (`Respawn`, `Heal`, `PlaySound`, `KillConfirm`, `Callout`, `Score`, `Eliminate`, `GameOver`,
-  `SetTeam`, `SendFrame`; a mode author never writes a raw BRX frame) — but the JSON wire schema
-  (`mc/types.py:GameConfig`) has **no slot for mode-specific parameters** (no `detonation_s`, `control_points`,
-  `channel_s`, `drop_policy`, `rounds_to_win`, lives…), those knobs exist only in the CLI dataclass
-  (`gameconfig.py`), and registration is hardcoded in four places (`modes/driver.py` `build_engine`,
-  `mc/state.py` `MODES`, `mc/presentation.py` `MODE_PRESET`, `mc/scoring.py`) — which is exactly why CS runs in
-  the CLI but is invisible to MC (§8).
+- a station armed into a `lan_coupled` mode shows **`MC-ARMED · GAME N · LAN-COUPLED`**;
+- while such a station is not linked, the existing MC line is **promoted from a footnote to a blocking band**:
+  **`THIS GAME NEEDS WI-FI — MISSION CONTROL OFFLINE`**, in the alert treatment, above the fold, unmissable by
+  whoever is propping the phone up. The point of putting it here is that the person who can fix it is standing in
+  front of this screen and not in front of MC;
+- when it is linked, the band is replaced by a quiet confirmation carrying the thing an operator actually wants to
+  know: **`WI-FI OK · REPORTING TO MISSION CONTROL`**.
 
-| # | change | unblocks | size |
+#### 5e.4 LAN loss mid-match
+
+This is the failure the exception buys, so it gets a written behaviour rather than whatever the code happens to do.
+All four points below are **Tony's decision**, taken as they were proposed:
+
+1. **Grace, then degrade.** A link down for more than **15 s** (a few reconnect backoffs, `contracts.md` §5) puts
+   the station into **degraded** mode. It **keeps running §5d locally on the last known owner** — presence,
+   net-difference capture, per-team possession seconds, the local callouts, all of which need no LAN — and stops
+   contributing to the points race.
+2. **Roaming freezes.** The hot point stays where it last was. A station never promotes itself; a hill that moved
+   because a phone lost Wi-Fi would be worse than a hill that stopped moving.
+3. **Both screens say it, in the words above.** The station: **`OFFLINE — POSSESSION ONLY, NOT SCORING`**. MC: the
+   ITEMS row flagged, and the points race shown as **incomplete**, with the gap in seconds.
+4. **At the time limit MC will not award a points win it cannot stand behind.** If any `lan_coupled` point was
+   degraded for more than **10%** of the match, MC declines the points target and falls back to **most possession
+   time from the facts it does hold**, saying so on the recap. Degraded seconds are collected from the station at
+   recap and shown as a separate, clearly-marked column — they are real possession, they were simply never in the
+   live race.
+
+**The rationale for (4), in one line, because it is the one somebody will want to soften:** a win computed from
+data we know is incomplete is not a win, and **failing loudly beats quietly crowning the wrong team.** The
+friendlier alternative — award it anyway from partial data and put a warning on the recap — produces a scored
+result nobody can check, which is the thing A4.8 exists to prevent.
+
+### 5f · TERRITORIES: the multi-point scoring model, and the mode that needs no LAN at all
+
+**Tony, 2026-09-10:** *"the other option for koth, is territories. You tick points whether you are there or not.
+You turn it your colour and then you go find the next territory."*
+
+Several `kind 5` points on the field. Capture one the §5d way, it turns your colour, and it **accrues score for
+your team whether or not anyone is standing on it**. Then you leave it and go take the next one. Conquest scoring,
+not possession scoring.
+
+**§5d needs no change to support this.** §5d.2 already scores **ownership**, not presence — *"only the team named
+in byte 9 scores"*, and an empty point holds its progress while the owner keeps scoring. So Territories is §5d
+**configured with several points and a total to win**, which is why it is cheap: the capture rule, the advert, the
+callouts and the station screen are all the same. What changes is the number of stations and what MC does with
+their tallies.
+
+#### 5f.1 It solves camping by construction
+
+The camping worry is real in single-point possession KotH: standing on your point is *how you earn*, so a 1-1
+split settles into a stable, boring equilibrium where both teams sit on their own point and nothing happens.
+
+In Territories, **standing on a point you already own earns you nothing extra.** The point is already ticking. The
+only way to increase your rate is to go own another one, so the optimal play is always to leave and push. The
+incentive comes out of the scoring model, which means **none of the anti-camp machinery is needed for this mode**:
+no ownership decay, no capture bonus, no superlinear "holding both" multiplier, no timer that punishes standing
+still. Every one of those is a rule that has to be tuned, explained to players, and then defended when it
+misfires. Territories needs none of them, and that is the main argument for the mode.
+
+#### 5f.2 It removes the A4.8 exception for scoring: a station is its own scorekeeper
+
+**A Territories point can score itself, offline, with no LAN at any point in the match.** It knows who owns it
+(it decided), it is physically present for the whole match, and it already persists its tally across a reboot
+(§5d.6). So it accrues its own ownership-seconds locally and hands MC the total **at recap** — which is not a
+concession, it is exactly §5c: *stations are self-authoritative and report at recap; MC is not live mid-match*.
+Add up the stations at recap and you have the score.
+
+⚠ **This means §5e over-claimed, and the correction matters.** §5e originally listed **points to win** as needing
+the LAN. That is only true of one *form* of it:
+
+| form of "points to win" | needs coverage? |
+|---|---|
+| **the target decides the winner at the horn** — the match runs its full clock, MC sums each station's tally at recap, and the team past the target (or with the most territory-seconds if nobody reached it) wins | **No.** Fully offline. No A4.8 exception, no Wi-Fi requirement, nothing to warn the operator about |
+| ~~**a live race that ENDS THE MATCH the moment someone crosses the target**~~ | **Yes**, and only this. Somebody must hold the running sum *during* the match to blow the horn early, and no station knows another station's contribution. 🔴 **DECLINED (Tony, 2026-09-10): not being built** |
+
+✅ **Tony took the first, 2026-09-10: the target is read AT THE HORN.** To players the two are nearly
+indistinguishable — a BRX match runs a clock anyway, and the runway is the normal one — and the first costs nothing
+architecturally. So the §5e exception narrows to **roaming hills alone** (a match rule taking orders from the
+laptop mid-match, which genuinely cannot be done offline), with no second exception held in reserve.
+
+#### 5f.3 Territories does NOT work on grenades, and the reason is observation, not memory
+
+A grenade **does** hold its ownership when unattended: F70 measured a captured hill reading the same owner for ten
+straight beacons with nobody shooting it, and rung R's range walk still read the same owner from the far edge
+(`docs/bench-grenade.md` rung R). The grenade remembers fine.
+
+**The problem is that nobody observes it.** A grenade's ownership travels **only over IR**, and only a **gun**
+receives IR (**F92**). So an unattended grenade territory is **unverifiable**: a rival can flip a far point and
+nobody — no station, no node, not MC — learns of it until a player happens to wander into range, which rung R puts
+at *solid close in, intermittent by ~30 ft* (85 s and 145 s dropouts at the edge). That is **eventually-consistent
+scoring**: the score is right whenever someone last looked. Acceptable as flavour. Not acceptable as the thing
+that decides who won.
+
+This is the same sensor gap as F92, seen from a third angle — F92 saw it as "a station cannot learn who owns a
+grenade hill", F88 as "a grenade carries no point id", and Territories sees it as "an unwatched point has no
+scorekeeper."
+
+➡ **So Territories is the strongest case in this document for building K1 phone control points.** A phone station
+*is* the observer the grenade lacks: it sits on the point for the whole match, it decides ownership from adverts it
+hears directly, and it keeps its own books. A grenade can only ever be a **contested** point that someone is
+present for — a good objective, and never a territory.
+
+#### 5f.4 Scoring is LINEAR per owned territory
+
+**Tony, 2026-09-10: *"sounds like linear is the way to go."*** Two territories tick at twice the rate of one.
+**No superlinear multiplier for holding more, and no majority threshold.** The rate is `n_owned * tick_rate`.
+
+Both alternatives were considered, and the arguments against them are worth keeping, because each will be
+proposed again by somebody:
+
+| model | why not |
+|---|---|
+| **superlinear** in the count (a multiplier for holding two, three…) | the mode **already** rewards spreading out by construction (§5f.1: sitting on a point you own earns nothing extra), so a multiplier is not needed to create the push incentive — it pays twice for the same behaviour. And in a 10-minute game it risks a first-capture lead **snowballing out of reach** before the other team can answer |
+| **a majority threshold** (score only while you hold 2 of 3) | genuinely good design — losing one point drops you to **zero**, so the scoring itself shouts *get help* — and **wrong for our point counts.** A threshold needs **three** points to mean anything: with two, "majority" is *both*, so a 1-1 split pays nobody and a 2v2 match can sit scoreless for minutes. ➡ **Revisit this if a three-point Territories game is ever built**, where the threshold is strictly better than linear |
+
+⚠ **Do not attribute a single canonical answer to "Halo":** it shipped both. Halo 4's *Dominion* ticked per
+captured base (linear-ish); *Strongholds* in Halo 5 / Infinite is the majority threshold. The reference is useful
+for the shape of each model and settles nothing by itself.
+
+⬜ **And a third option that is still open: scale ADVANTAGE, not points** — holding more territories shortens your
+respawn delay, *Dominion*'s approach. It answers the superlinear objection (board control compounds, the score does
+not snowball) and it is the one item here Tony has not ruled on. Written up in **§5f.7**.
+
+#### 5f.5 The two rates, and both are CONFIGURABLE
+
+**Tony, 2026-09-10: *"3 needs to be configurable with a good default."*** Neither number is hard-coded; both live in
+game config beside the other tunables. **They are two different quantities and are easy to conflate, so they are
+named separately here and must stay separate in config:**
+
+| # | what | unit | default |
 |---|---|---|---|
-| **E1** | `mode_params: dict` on the wire `GameConfig`, validated by the engine itself | JSON-carried custom params, incl. CS/extraction through MC | small |
-| **E2** | one `register_mode(name, engine_cls, meta, preset, scorer)` replacing the four hardcoded points; a mode may supply its own scorer | a mode lights up everywhere from one call | medium |
-| **E3** | unify the two config schemas (one source of truth) + publish a JSON Schema | contributors validate; no drift | medium |
-| **E4** | a "How to add a game mode" doc with a ~40-line worked example | the on-ramp | small |
+| **conversion rate** | how fast a point *changes hands* (§5d.1) | progress points per second **per net player** | **10** = a lone player takes a neutral point in 10 s and steals a held one in 20 s (two phases); `capture_s` = 10 s. ⚠ **This is already `DEFAULT_CAPTURE_S = 10` in `app/src/control.js` — the spec value and the code constant must agree, and a change to one is a change to both.** *(Corrected 2026-09-11: this row said `DEFAULT_RATE`, the constant's name before it was renamed to read as seconds-to-capture at net 1 rather than as a percent-per-second rate — F98 recorded the rename and the spec did not follow. The line number it gave, `:49`, is `REFUSED_TID`.)* |
+| **score tick** | how fast an *owned* territory **pays** (§5f) | score points per second **per owned territory** | **1/s proposed** (see the arithmetic below) |
 
-After E1–E4 a contributor writes `my_mode.py` (subclass, four methods, Actions), makes one `register_mode`
-call, and ships `{"mode": "my_mode", "mode_params": {…}, …}` validated against the schema.
+**The arithmetic an operator actually needs, for a 10-minute match at 1 point/s per territory:**
 
-**Sound packs / custom announcers (E5–E7).** The gun plays only its on-gun bank by id — there is no
-audio-over-BLE — so a custom clip on the gun speaker must be USB-loaded as `<ID>.LTP` over an existing id (the
-bank is a fixed set; archive the originals; FOLLOWUPS B11). The A11 profile already maps event → id in JSON, so
-the reference layer works; missing are a **pack** abstraction (E6, supersets the B14 voice-pack selection), the
-**phone-speaker path** (E5, the clean path: the app plays no game audio today) and an `.LTP` import/gun-load tool
-(E7, lowest priority). Halo/UT announcer audio is copyrighted: the project ships the slot, never the packs.
+| held all match | total |
+|---|---|
+| one territory | ~600 |
+| two territories | ~1200 |
+| three territories | ~1800 |
+
+So **the target chosen decides whether holding a single point can ever win**: a target of 1000 means one territory
+is never enough and a team must take a second; 500 means one territory held cleanly wins, which turns the mode back
+into KotH. That relationship, not the constant, is the thing to tune — which is why the rate is configurable and why
+this table is here rather than a bare number.
+
+⚠ **Both numbers are proposals.** Tony asked for *a good default*, not for these values; 10 is what the
+implementation already ships and 1/s is chosen so the totals above are round and readable. Neither has been
+playtested.
+
+#### 5f.6 Neutral pays nobody, and a dead station keeps what it earned
+
+Both **Tony, 2026-09-10**:
+
+- ✅ **A neutral point ticks for NOBODY.** (§5d.2 said this already — but that was the spec's own sentence, not a
+  ruling, and an earlier draft wrongly cited it as settled. Now it is his, so §5d.2 is backed rather than
+  self-referential.) An **owned** point ticks whether or not anyone is present; that is the mode.
+- ✅ **A station powered off mid-match KEEPS the seconds it accrued up to its last advert, then stops.** The tally
+  is **not** voided. Rationale, recorded because the opposite is the tidier-looking choice: voiding everything
+  punishes a dead battery far more harshly than the information loss warrants, and **the seconds up to the last
+  advert were genuinely earned**. What is lost is only the dark interval — an owner is silently under-paid for it,
+  and a rival who flipped the point while it was dark gets no credit either. Trust caveat unchanged: the phone is
+  assumed untampered, per §3's security posture.
+
+#### 5f.7 Open question: scale ADVANTAGE rather than points
+
+The one item Tony has **not** ruled on. Repeated here rather than left buried in §5f.4: instead of (or alongside)
+scaling the score with territory count, let holding more territories **shorten your respawn delay** — *Dominion*'s
+approach. `respawn_s` is host-driven, already fully in our control, already the lever §4/§5d use, so it is
+buildable today with no new mechanism; it compounds board control without the score itself snowballing; and it
+composes with the linear score rather than replacing it. **Needs his sign-off before anyone builds it.**
+

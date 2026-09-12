@@ -136,7 +136,7 @@ bits) — no connection.
 | bomb | idle → planted (countdown in `value`) → defused / detonated | attacker present + plant intent → planted; defender present + defuse intent → defused; on detonate every phone in radius applies blast damage to its own gun (`$BHIT`, host-inflicted) | — |
 | control | owner by team over time | present counts for your team | **specified in §5d** (net-difference presence capture); shoot-to-capture stays the grenade's, and cannot be bridged to a phone station (F92) |
 
-## 5b. MC setup, arming, and placement (design, 2026-09-04 — Tony)
+## 5b. MC setup, arming, and placement
 
 **Setup needs WiFi; play does not.** A utility phone joins MC at muster like a node — `hello` with
 `role:"utility"` (and its current id/kind/team if it has any). Once the match is live a station is a
@@ -172,14 +172,14 @@ the allow-list echoed for the station's own display; the authoritative allow-lis
 Mission Control drives all of the §5 kinds from the ITEMS panel (§5b); stations are self-authoritative and
 report at recap (MC is not live mid-match). (A duplicate of the §5 table that sat here as §5d was removed
 2026-09-06; the roadmap's older "§5d" references mean §5. **§5d below is the control-point spec**, added
-2026-09-10, and §5e the LAN-coupled variant.)
+and the roaming-hill variant is `utility-roadmap.md` §8 5e.)
 
-## 5d. kind 5 `control` — the phone control point (K1 base, design 2026-09-10 — Tony)
+## 5d. kind 5 `control` — the phone control point (K1 base)
 
 **Status: designed, not built.** Tony's design call, dictated 2026-09-10. This section is the spec of record for
 `kind 5`; the §5 table row ("owner by team over time · present counts for your team") is the one-line summary and
 this is the rule. Build row: `docs/utility-roadmap.md` K1. **Everything in §5d works with no LAN at all** — the
-Wi-Fi-coupled extensions are §5e and are a separate, opt-in mode.
+Wi-Fi-coupled extensions are `utility-roadmap.md` §8 5e and are a separate, opt-in mode.
 
 ### 5d.1 The rule: capture rate is the NET DIFFERENCE of living present players
 
@@ -240,7 +240,7 @@ scale so it fits advert byte 11:
 
 So a full enemy-to-own conversion costs `2 * capture_s` at net +1, and two phases give the defender a real chance
 to arrive in the middle of it. **Only the team named in byte 9 scores** (possession seconds, or a Domination point
-per second); progress itself scores nothing. **Neutral pays nobody** (Tony, 2026-09-10; §5f.6).
+per second); progress itself scores nothing. **Neutral pays nobody** (`utility-roadmap.md` §8 5f.6).
 
 ⚠ **Team 2 (F82).** A hill mode must not put anyone on tid 2 — that constraint comes from the grenade's polarity
 gate, not from this advert, but a park will run both objectives, so MC's team assignment (0, 1, 3) is the same
@@ -261,7 +261,7 @@ toward prose that was never shipped.
 |---|---|
 | 8 `kind` | **5** |
 | 9 `team` | the **owner** when `held` is set, the **claimant** when it is clear, **255 = nobody** (§5d.2) |
-| 10 `state` | flags, OR-ed: **`held` 1** (byte 9 is an owner, not a claimant) · **`contested` 2** (living present players of two or more teams) · **`rising` 4** (`value` climbing) · **`falling` 8** (`value` dropping). Bits 4-7 spare — **`hot` (§5e roaming) takes 16** when that variant is built |
+| 10 `state` | flags, OR-ed: **`held` 1** (byte 9 is an owner, not a claimant) · **`contested` 2** (living present players of two or more teams) · **`rising` 4** (`value` climbing) · **`falling` 8** (`value` dropping). Bits 4-7 spare — **`hot` (roaming hills, `utility-roadmap.md` §8 5e) takes 16** when that variant is built |
 | 11 `value` | **progress 0-100**, read per the §5d.2 table |
 | 12 `seq` | bumps on every change of `team`, the flags or `value` — a phone one-shots its callouts off this |
 | 15 `reserved` → `rate` | **specified, not yet emitted.** `advert()` returns `{team, state, value}` today. The intent is the clamped `net` (0..`net_cap`) so a screen can show speed without re-deriving it; it needs no sign, since `net` is never negative (§5d.1). A station's own screen has something better locally — `control.js timeToChange()`, the seconds until the point actually flips, which is the number a defender reads — so this byte is only worth emitting once a *player* HUD wants it |
@@ -291,7 +291,7 @@ F93's note about byte 15 being the cheap spare for relaying grenade-hill ownersh
 |---|---|
 | **who** is contributing (ids, teams, alive) | the station's own screen only (§5d.4). The station knows it from player adverts; it cannot fan a per-player list out in 16 bytes, and no player phone needs it |
 | **hold time / possession seconds** | each node's own clock, exactly as the grenade hill does it (`utility-roadmap.md` "presence is a heartbeat, and timing is node-side"). The old K1 sketch put "seconds held" in `value`; `value` is progress now, permanently, and hold time never rides in the advert |
-| **a running score** across several points, and **points-to-win** | nowhere offline. This is the whole reason §5e exists |
+| **a running score** across several points, and **points-to-win** | nowhere offline. This is the whole reason the roaming-hill variant exists (`utility-roadmap.md` §8 5e) |
 
 ### 5d.4 The station screen ANIMATES the contest and the transition
 
@@ -339,7 +339,7 @@ Captured" the moment someone walked on.
 | contested bit 0 → 1 with my team involved | both sides | **`VB0O` "Hill Contested"** (2.08 s) |
 | `team` == my team, on the node's own ~1 s timer | the holder | **`U100`** possession tick (0.11 s) |
 | a capture between two **other** teams | everyone else | **silence** — not this player's event |
-| the hot point moves (**§5e only**) | everyone | **`VB0Q` "Hill Moved"** (2.42 s) |
+| the hot point moves (**roaming hills only**) | everyone | **`VB0Q` "Hill Moved"** (2.42 s) |
 
 **The listener's team picks the line, not the wire event** — the same rule `engine.js:_hillCallout` already
 implements for the grenade path, reused verbatim. "Hill Lost!" fires the moment the point stops being yours (the
@@ -368,7 +368,7 @@ which the cue has a truthful caller. That is a reason to build the phone point e
   **additive to this**: the screen can show a transition continuously, the gun cannot.
 - **The callout's reach is the advert's radio reach**, which is neither the 10 ft presence bubble nor the whole
   field — roughly tens of metres, body-blocked and uneven. So a capture is heard by whoever is near the fight, not
-  by the far side of the park. Native's field-wide announcement is not reproducible offline; §5e can fan it out
+  by the far side of the park. Native's field-wide announcement is not reproducible offline; the roaming-hill variant can fan it out
   best-effort through MC, and per `hud-driven-events` nothing ever waits on that.
 - **Freshness is the §3 presence rule** (`expiryMs` 4 s), not the grenade's 12 s / two-missed-beacons rule. That
   rule exists because the grenade beacons once per ~5 s; a BLE station advertises continuously.
@@ -387,251 +387,41 @@ At recap the station reports its tally and capture log to MC when it is next in 
 row: the station's own count against the players' `capture` facts, ✓ when they agree, ⚠ when the station was
 never heard). **MC is never asked for the answer mid-match, and never asked to arbitrate between two stations.**
 
-## 5e. The LAN-coupled variant (opt-in): roaming hills
+### 5d.7 Hill audio is the NODE's job, and this is the algorithm
 
-**Status: designed, not built, and it buys its feature with an architectural exception.** Tony asked for this
-explicitly as a second mode, for a small field where every point really is on one Wi-Fi — his example: one hill in
-the garage, another on the porch across the house, both on the house AP. §5d is the mode for a field; §5e is the
-mode for a house.
+The gun cannot speak on a beacon. `$SIR` is keyed on `<irProtocol, subtype>` alone, every hill word decodes to
+the same key `<15,0>`, and the shipped function (fn 28) **ignores the row's `<soundID>` outright** (measured
+2026-09-10). One cell cannot hold four sounds, so the four team-aware callouts — `VB0N` Hill Captured, `VB0P`
+Hill Lost, `VB0O` Hill Contested and the `U100` possession tick — are played by the player's own phone.
+`engine.js:_hillCallout` implements what follows; the evidence is `utility-roadmap.md` §7.
 
-⚠ **Read §5f first if you have not.** This section used to claim points-to-win as a second LAN-coupled feature,
-and **it is not one** — §5f.2 shows a
-Territories station scoring itself offline and reporting at recap, which is plain §5c. What is left needing a live
-LAN is **one** feature, plus one optional flavour of the score:
+- **A beacon updates state, it never plays.** Every `$HIR,<sensor>,15,0,<owner>,<mode>,0,0` sets two fields,
+  **`hill_owner`** and **`last_beacon_at`**. Nothing sounds here.
+- **A separate ~1 s timer plays the tick.** It fires `U100` while `hill_owner == my_team` and the beacon is
+  fresh. This is the only source of the possession tick; it cannot ride the beacon, which arrives once per ~5 s.
+- **Presence expires on ≥ 2 missed beacons (~12 s), never one.** The beacon goes intermittent at the edge of
+  range, so a single miss is normal reception, not "left the hill".
+- **Announce a capture on `mag=50` alone.** Never wait for `mag=53`: on an enemy-to-enemy capture it never
+  arrives, so a node gated on both words would never announce that class of capture at all.
+- **The LISTENER'S TEAM picks the callout, not the magnitude.** One wire event, different audio per listener:
+  the same `mag=50` frame is `VB0N` **Hill Captured** to the team named in it and `VB0P` **Hill Lost** to the
+  team that just lost it. A capture between two other teams is deliberately silent.
+- **`mag=53` says WHERE the point came from, not who says what.** Present = it was neutral before, absent = it
+  was stolen from an enemy. Both are "captured" for the taker and "lost" for the loser, so it is available for
+  flavour and for scoring, never for choosing between the two callouts. ⚠ Nothing may WAIT for it.
+- ⚠ **`VB0O` "Hill Contested" is not wired.** A non-capturing hit emits nothing decodable (F75), so contest
+  cannot be detected, only guessed, and a guess cannot tell a hit from a miss.
+- ⚠ **Never queue a multi-second sequence off a beacon.** A beacon repeats every ~5 s, and this gun really does
+  replay long events (F74): a 15 s clip fired on three consecutive beacons stacks three deep. `U100` is chosen
+  because it is ~0.1 s and cannot overlap its own 1 s cadence; a capture callout is one-shot per transition.
 
-| feature | why it needs the LAN |
-|---|---|
-| **Roaming hills** (the live point moves during the match) | somebody must **choose** which point is hot and tell the others. That is MC, mid-match, which is the exception. `VB0Q` "Hill Moved" (2.42 s, confirmed by ear, already in `HILL_CUES` with no caller) exists for exactly this, and **F83** already proposes the mode on the grenade side |
-| ~~a points race that ENDS the match early on crossing a target~~ | 🔴 **DECLINED (Tony, 2026-09-10) and not being built.** The points target is read **at the horn** (§5f.2), which is fully offline. The early-end form is the only other thing that would have needed coverage, and it is now deliberately off the table — **not** "allowed but unbuilt". Anyone reviving it is opening a second A4.8 exception and must say so |
+## 5e / 5f. Roaming hills and TERRITORIES — designed, not built
 
-Mechanically: MC pushes the hot point to the stations (`station_config`, §5c, extended with the hot flag — advert
-byte 10 bit 5). On a move, each player phone plays `VB0Q` off the hot bit changing, by the §5d.5 rule. Stations
-still run §5d locally and still keep their own books; the LAN adds the rotation, it does not replace the local
-rule.
-
-### 5e.1 🔴 This is a DELIBERATE EXCEPTION to A4.8, and that is the most important line in this document
-
-`docs/spec/contracts.md` §5 [**A4.8**] says: *on a large field most nodes are out of LAN range for most of the
-match … live kill-confirm and a live individual board are coverage-zone features.* **Nothing about the match
-outcome depends on coverage.**
-
-**§5e breaks that last sentence on purpose.** A roaming hill is a match rule taking its orders from the laptop
-mid-match: a control point out of Wi-Fi range is not merely invisible, it is **not in the game**, because it cannot
-be told whether it is the live one. There is no way to have that feature and keep A4.8 — the exception is the
-feature. **Roaming hills is the whole of the exception** — an early end on a points target would have been a
-second one, and Tony declined it (see the table above), so it is not in the system and not reserved for later.
-
-⚠ **The exception is NARROWER than this section first claimed**, and that is worth noticing rather than quietly
-fixing: points-to-win was listed here as a second reason, on the reasoning that no station knows another station's
-contribution. True — and irrelevant, because nothing has to add them up *during* the match. Territories (§5f.2)
-scores offline and MC sums at recap. The rule that looked like it needed breaking twice needs breaking once.
-
-We take it knowingly and we fence it:
-
-- it applies **only** to modes explicitly flagged **`lan_coupled`** in the mode catalog;
-- it **never** applies to §5d, which stays fully offline-capable and is the default for any field bigger than a house;
-- it is the **only** place in the system where coverage decides an outcome; everything else A4.8 protects (facts
-  queued in the ring and replayed, kills reconciled at sync points, a node whose own loop never waits on MC) stays
-  exactly as it is;
-- and because the requirement is physical, **both screens must say so before the match starts** (§5e.2, §5e.3).
-
-If §5e is ever built, `contracts.md` A4.8 gains a pointer to this section. An exception that is not written next to
-the rule it breaks is just a bug waiting to be rediscovered.
-
-### 5e.2 MC must say the phones need a connection (setup surface)
-
-The requirement is a **physical setup step**, which MC already has a channel for. `mcp/brx_mcp/mc/API.md`: a
-`config_warnings` entry whose text starts **`SETUP: `** is a physical step the operator must do on the field
-before the push, and the **GAMES rail renders those verbatim**. `lan_coupled` modes emit one, with live counts:
-
-```
-SETUP: this mode needs every control point on the match Wi-Fi for the whole game - 1 of 2 items linked
-```
-
-Reuse that channel; do not invent a second warning surface. Alongside it, the **ITEMS panel** (roadmap A2) shows a
-link state per utility phone and raises an A4-style attention flag on any `kind 5` phone that is not linked while a
-`lan_coupled` mode is selected. **Proposal:** MC should also **refuse to start** a `lan_coupled` game with an
-unlinked control point (a 4xx naming the phone), the same way `compile.py` refuses `koth` with no `station_source`
-— the mode cannot be scored correctly, so starting it is a guaranteed bad match rather than a risk.
-
-### 5e.3 The utility screen must make the Wi-Fi requirement clear during setup
-
-`utility.js` already renders an MC link state — **`MISSION CONTROL ✓ LINKED` / `· OFFLINE` / `· NO ADDRESS`**
-and the arming banner **`MC-ARMED · GAME N`** / `NOT ARMED BY MISSION CONTROL`, both written by `render()`. Build on
-those; add no new indicator.
-
-- a station armed into a `lan_coupled` mode shows **`MC-ARMED · GAME N · LAN-COUPLED`**;
-- while such a station is not linked, the existing MC line is **promoted from a footnote to a blocking band**:
-  **`THIS GAME NEEDS WI-FI — MISSION CONTROL OFFLINE`**, in the alert treatment, above the fold, unmissable by
-  whoever is propping the phone up. The point of putting it here is that the person who can fix it is standing in
-  front of this screen and not in front of MC;
-- when it is linked, the band is replaced by a quiet confirmation carrying the thing an operator actually wants to
-  know: **`WI-FI OK · REPORTING TO MISSION CONTROL`**.
-
-### 5e.4 LAN loss mid-match — ✅ DECIDED (Tony, 2026-09-10), accepted as proposed
-
-This is the failure the exception buys, so it gets a written behaviour rather than whatever the code happens to do.
-All four points below are **Tony's decision**, taken as they were proposed:
-
-1. **Grace, then degrade.** A link down for more than **15 s** (a few reconnect backoffs, `contracts.md` §5) puts
-   the station into **degraded** mode. It **keeps running §5d locally on the last known owner** — presence,
-   net-difference capture, per-team possession seconds, the local callouts, all of which need no LAN — and stops
-   contributing to the points race.
-2. **Roaming freezes.** The hot point stays where it last was. A station never promotes itself; a hill that moved
-   because a phone lost Wi-Fi would be worse than a hill that stopped moving.
-3. **Both screens say it, in the words above.** The station: **`OFFLINE — POSSESSION ONLY, NOT SCORING`**. MC: the
-   ITEMS row flagged, and the points race shown as **incomplete**, with the gap in seconds.
-4. **At the time limit MC will not award a points win it cannot stand behind.** If any `lan_coupled` point was
-   degraded for more than **10%** of the match, MC declines the points target and falls back to **most possession
-   time from the facts it does hold**, saying so on the recap. Degraded seconds are collected from the station at
-   recap and shown as a separate, clearly-marked column — they are real possession, they were simply never in the
-   live race.
-
-**The rationale for (4), in one line, because it is the one somebody will want to soften:** a win computed from
-data we know is incomplete is not a win, and **failing loudly beats quietly crowning the wrong team.** The
-friendlier alternative — award it anyway from partial data and put a warning on the recap — produces a scored
-result nobody can check, which is the thing A4.8 exists to prevent.
-
-## 5f. TERRITORIES — the multi-point scoring model, and the mode that needs no LAN at all
-
-**Tony, 2026-09-10:** *"the other option for koth, is territories. You tick points whether you are there or not.
-You turn it your colour and then you go find the next territory."*
-
-Several `kind 5` points on the field. Capture one the §5d way, it turns your colour, and it **accrues score for
-your team whether or not anyone is standing on it**. Then you leave it and go take the next one. Conquest scoring,
-not possession scoring.
-
-**§5d needs no change to support this.** §5d.2 already scores **ownership**, not presence — *"only the team named
-in byte 9 scores"*, and an empty point holds its progress while the owner keeps scoring. So Territories is §5d
-**configured with several points and a total to win**, which is why it is cheap: the capture rule, the advert, the
-callouts and the station screen are all the same. What changes is the number of stations and what MC does with
-their tallies.
-
-### 5f.1 It solves camping by construction
-
-The camping worry is real in single-point possession KotH: standing on your point is *how you earn*, so a 1-1
-split settles into a stable, boring equilibrium where both teams sit on their own point and nothing happens.
-
-In Territories, **standing on a point you already own earns you nothing extra.** The point is already ticking. The
-only way to increase your rate is to go own another one, so the optimal play is always to leave and push. The
-incentive comes out of the scoring model, which means **none of the anti-camp machinery is needed for this mode**:
-no ownership decay, no capture bonus, no superlinear "holding both" multiplier, no timer that punishes standing
-still. Every one of those is a rule that has to be tuned, explained to players, and then defended when it
-misfires. Territories needs none of them, and that is the main argument for the mode.
-
-### 5f.2 🔴 It removes the A4.8 exception for scoring: a station is its own scorekeeper
-
-**A Territories point can score itself, offline, with no LAN at any point in the match.** It knows who owns it
-(it decided), it is physically present for the whole match, and it already persists its tally across a reboot
-(§5d.6). So it accrues its own ownership-seconds locally and hands MC the total **at recap** — which is not a
-concession, it is exactly §5c: *stations are self-authoritative and report at recap; MC is not live mid-match*.
-Add up the stations at recap and you have the score.
-
-⚠ **This means §5e over-claimed, and the correction matters.** §5e originally listed **points to win** as needing
-the LAN. That is only true of one *form* of it:
-
-| form of "points to win" | needs coverage? |
-|---|---|
-| **the target decides the winner at the horn** — the match runs its full clock, MC sums each station's tally at recap, and the team past the target (or with the most territory-seconds if nobody reached it) wins | **No.** Fully offline. No A4.8 exception, no Wi-Fi requirement, nothing to warn the operator about |
-| ~~**a live race that ENDS THE MATCH the moment someone crosses the target**~~ | **Yes**, and only this. Somebody must hold the running sum *during* the match to blow the horn early, and no station knows another station's contribution. 🔴 **DECLINED (Tony, 2026-09-10): not being built** |
-
-✅ **Tony took the first, 2026-09-10: the target is read AT THE HORN.** To players the two are nearly
-indistinguishable — a BRX match runs a clock anyway, and the runway is the normal one — and the first costs nothing
-architecturally. So the §5e exception narrows to **roaming hills alone** (a match rule taking orders from the
-laptop mid-match, which genuinely cannot be done offline), with no second exception held in reserve.
-
-### 5f.3 ⚠ Territories does NOT work on grenades, and the reason is observation, not memory
-
-A grenade **does** hold its ownership when unattended: F70 measured a captured hill reading the same owner for ten
-straight beacons with nobody shooting it, and rung R's range walk still read the same owner from the far edge
-(`docs/bench-grenade.md` rung R). The grenade remembers fine.
-
-**The problem is that nobody observes it.** A grenade's ownership travels **only over IR**, and only a **gun**
-receives IR (**F92**). So an unattended grenade territory is **unverifiable**: a rival can flip a far point and
-nobody — no station, no node, not MC — learns of it until a player happens to wander into range, which rung R puts
-at *solid close in, intermittent by ~30 ft* (85 s and 145 s dropouts at the edge). That is **eventually-consistent
-scoring**: the score is right whenever someone last looked. Acceptable as flavour. Not acceptable as the thing
-that decides who won.
-
-This is the same sensor gap as F92, seen from a third angle — F92 saw it as "a station cannot learn who owns a
-grenade hill", F88 as "a grenade carries no point id", and Territories sees it as "an unwatched point has no
-scorekeeper."
-
-➡ **So Territories is the strongest case in this document for building K1 phone control points.** A phone station
-*is* the observer the grenade lacks: it sits on the point for the whole match, it decides ownership from adverts it
-hears directly, and it keeps its own books. A grenade can only ever be a **contested** point that someone is
-present for — a good objective, and never a territory.
-
-### 5f.4 Scoring is LINEAR per owned territory — decided
-
-**Tony, 2026-09-10: *"sounds like linear is the way to go."*** Two territories tick at twice the rate of one.
-**No superlinear multiplier for holding more, and no majority threshold.** The rate is `n_owned * tick_rate`.
-
-Both alternatives were considered, and the arguments against them are worth keeping, because each will be
-proposed again by somebody:
-
-| model | why not |
-|---|---|
-| **superlinear** in the count (a multiplier for holding two, three…) | the mode **already** rewards spreading out by construction (§5f.1: sitting on a point you own earns nothing extra), so a multiplier is not needed to create the push incentive — it pays twice for the same behaviour. And in a 10-minute game it risks a first-capture lead **snowballing out of reach** before the other team can answer |
-| **a majority threshold** (score only while you hold 2 of 3) | genuinely good design — losing one point drops you to **zero**, so the scoring itself shouts *get help* — and **wrong for our point counts.** A threshold needs **three** points to mean anything: with two, "majority" is *both*, so a 1-1 split pays nobody and a 2v2 match can sit scoreless for minutes. ➡ **Revisit this if a three-point Territories game is ever built**, where the threshold is strictly better than linear |
-
-⚠ **Do not attribute a single canonical answer to "Halo":** it shipped both. Halo 4's *Dominion* ticked per
-captured base (linear-ish); *Strongholds* in Halo 5 / Infinite is the majority threshold. The reference is useful
-for the shape of each model and settles nothing by itself.
-
-⬜ **And a third option that is still open: scale ADVANTAGE, not points** — holding more territories shortens your
-respawn delay, *Dominion*'s approach. It answers the superlinear objection (board control compounds, the score does
-not snowball) and it is the one item here Tony has not ruled on. Written up in **§5f.7**.
-
-### 5f.5 The two rates, and both are CONFIGURABLE
-
-**Tony, 2026-09-10: *"3 needs to be configurable with a good default."*** Neither number is hard-coded; both live in
-game config beside the other tunables. **They are two different quantities and are easy to conflate, so they are
-named separately here and must stay separate in config:**
-
-| # | what | unit | default |
-|---|---|---|---|
-| **conversion rate** | how fast a point *changes hands* (§5d.1) | progress points per second **per net player** | **10** = a lone player takes a neutral point in 10 s and steals a held one in 20 s (two phases); `capture_s` = 10 s. ⚠ **This is already `DEFAULT_CAPTURE_S = 10` in `app/src/control.js` — the spec value and the code constant must agree, and a change to one is a change to both.** *(Corrected 2026-09-11: this row said `DEFAULT_RATE`, the constant's name before it was renamed to read as seconds-to-capture at net 1 rather than as a percent-per-second rate — F98 recorded the rename and the spec did not follow. The line number it gave, `:49`, is `REFUSED_TID`.)* |
-| **score tick** | how fast an *owned* territory **pays** (§5f) | score points per second **per owned territory** | **1/s proposed** (see the arithmetic below) |
-
-**The arithmetic an operator actually needs, for a 10-minute match at 1 point/s per territory:**
-
-| held all match | total |
-|---|---|
-| one territory | ~600 |
-| two territories | ~1200 |
-| three territories | ~1800 |
-
-So **the target chosen decides whether holding a single point can ever win**: a target of 1000 means one territory
-is never enough and a team must take a second; 500 means one territory held cleanly wins, which turns the mode back
-into KotH. That relationship, not the constant, is the thing to tune — which is why the rate is configurable and why
-this table is here rather than a bare number.
-
-⚠ **Both numbers are proposals.** Tony asked for *a good default*, not for these values; 10 is what the
-implementation already ships and 1/s is chosen so the totals above are round and readable. Neither has been
-playtested.
-
-### 5f.6 Decided: neutral pays nobody, and a dead station keeps what it earned
-
-Both **Tony, 2026-09-10**:
-
-- ✅ **A neutral point ticks for NOBODY.** (§5d.2 said this already — but that was the spec's own sentence, not a
-  ruling, and an earlier draft wrongly cited it as settled. Now it is his, so §5d.2 is backed rather than
-  self-referential.) An **owned** point ticks whether or not anyone is present; that is the mode.
-- ✅ **A station powered off mid-match KEEPS the seconds it accrued up to its last advert, then stops.** The tally
-  is **not** voided. Rationale, recorded because the opposite is the tidier-looking choice: voiding everything
-  punishes a dead battery far more harshly than the information loss warrants, and **the seconds up to the last
-  advert were genuinely earned**. What is lost is only the dark interval — an owner is silently under-paid for it,
-  and a rival who flipped the point while it was dark gets no credit either. Trust caveat unchanged: the phone is
-  assumed untampered, per §3's security posture.
-
-### 5f.7 ⬜ Still open: scale ADVANTAGE rather than points
-
-The one item Tony has **not** ruled on. Repeated here rather than left buried in §5f.4: instead of (or alongside)
-scaling the score with territory count, let holding more territories **shorten your respawn delay** — *Dominion*'s
-approach. `respawn_s` is host-driven, already fully in our control, already the lever §4/§5d use, so it is
-buildable today with no new mechanism; it compounds board control without the score itself snowballing; and it
-composes with the linear score rather than replacing it. **Needs his sign-off before anyone builds it.**
+Two full designs that build on §5d and ship nothing today: **5e roaming hills**, the opt-in LAN-coupled
+variant and a deliberate exception to A4.8 (F95), and **5f TERRITORIES**, multi-point scoring where each
+station keeps its own books and needs no LAN at all (F98). Both live in
+[`../utility-roadmap.md`](../utility-roadmap.md) §8, under the same 5e / 5f numbers. Promote them back here as
+they are built.
 
 ## 6. Platform notes (verified where marked)
 
@@ -667,7 +457,7 @@ Still open:
   (the authoritative allow-list players enforce). Today's fallback is disjoint ids (§3).
 - **Station kinds 2–5** state machines (powerup/extraction/bomb/control) — build order in
   `docs/utility-roadmap.md` (K1 control point first). **kind 5 `control` is now fully specified in §5d**, with the
-  opt-in LAN-coupled variant in §5e; kinds 2–4 are still the §5 table only. **MC muster / arming assignment is FOLLOWUPS S5** (brx).
+  roaming-hill and Territories designs in `utility-roadmap.md` §8; kinds 2–4 are still the §5 table only. **MC muster / arming assignment is FOLLOWUPS S5** (brx).
 - iOS build + test of `BrxBeaconPlugin.swift` on the MacBook (the superseded-start + power-toggle re-assert
   paths are written but unbuilt).
 - Bench-tuned defaults are -74 dBm / 0.8 s / high TX (§3); revisit per station-kind (an extraction zone wants
