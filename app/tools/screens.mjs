@@ -1485,7 +1485,9 @@ await step('polish-2 loadout-primary: an arm that times out reads EQUIPPED · UN
   const r = await pg.evaluate(() => {
     const row = document.querySelector('.lrow.unconf'), hero = document.querySelector('.eqtag.unconf'), chip = document.querySelector('.ackchip.unconf'), nm = document.querySelector('.lodetail .nm');
     return { rowMark: row ? (row.querySelector('.st') || {}).textContent : null, hero: hero ? hero.textContent : null, chip: chip ? chip.textContent : null,
-      nmFits: nm ? nm.scrollWidth <= nm.clientWidth + 1 : null, engineConfirmed: window.brx.engine.state().tryoutArming === false && window.brx.engine.state().tryoutUnconfirmed === true };
+      nmFits: nm ? nm.scrollWidth <= nm.clientWidth + 1 : null,
+      // pass 3: tryoutUnconfirmed is {tab, kind} | null, not a bare boolean
+      engineConfirmed: window.brx.engine.state().tryoutArming === false && !!window.brx.engine.state().tryoutUnconfirmed };
   });
   await pg.close();
   must(r.engineConfirmed, 'the engine never settled into the unconfirmed state');
@@ -1493,6 +1495,34 @@ await step('polish-2 loadout-primary: an arm that times out reads EQUIPPED · UN
   must(r.hero === 'UNCONFIRMED', 'the hero pane badge: ' + r.hero);
   must(r.chip === 'EQUIPPED · UNCONFIRMED', 'the action-bar chip: ' + r.chip);
   must(r.nmFits, 'the hero pane name + role + badge overflows its line');
+});
+// ---------- Polish-loop pass 3 (MEDIUM): tryoutUnconfirmed must never bleed onto an unrelated tab/kind ----------
+await step('polish-3 loadout-perk: a perk picked after a timed-out weapon arm shows a plain ✓, never the stale UNCONFIRMED', async () => {
+  const pg = await open(VIEWS[0], 'loadout-perk');
+  await pg.evaluate(() => {
+    const eng = window.brx.engine;
+    // time out a PRIMARY weapon arm first (same recipe as the loadout-primary case above)
+    eng.requestLoadout('primary', 'weapon', 'smg', true);
+    if (eng._flushPick) eng._flushPick('test');
+    eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
+    eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 72 }, frames: ['$WEAP,0,*'] } });
+    eng.now = () => Date.now() + 3200; eng.tick();
+    // now pick a PERK -- perks never arm a try-out at all, and must not inherit the weapon's stale flag
+    eng.requestLoadout('perk', 'perk', 'body_armor');
+    eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'perk', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }], perk: 'body_armor' } } });
+    window.brx.hud.lo.tab = 'perk'; window.brx.hud.sig = null; window.brx.hud.render(eng.state());
+  });
+  await pg.waitForTimeout(150);
+  const r = await pg.evaluate(() => {
+    const eqRow = document.querySelector('.lrow.eq'), unconfRow = document.querySelector('.lrow.unconf'), hero = document.querySelector('.eqtag');
+    return { eqMark: eqRow ? (eqRow.querySelector('.st') || {}).textContent : null, unconfPresent: !!unconfRow, heroText: hero ? hero.textContent : null,
+      engineStillUnconfirmed: !!window.brx.engine.state().tryoutUnconfirmed };
+  });
+  await pg.close();
+  must(r.engineStillUnconfirmed, 'sanity: the weapon arm really did settle unconfirmed underneath');
+  must(!r.unconfPresent, 'the perk row shows the ≈/unconf treatment it never earned');
+  must(r.eqMark === '✓', 'the perk row does not read a plain confirmed ✓: ' + r.eqMark);
+  must(r.heroText === 'EQUIPPED', 'the perk hero pane: ' + r.heroText);
 });
 await b.close(); srv.close();
 console.log(`\n${pass} passed, ${fail} failed${fail ? ': ' + errs.join(', ') : ''}`);

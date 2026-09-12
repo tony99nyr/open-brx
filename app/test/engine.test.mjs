@@ -1610,15 +1610,31 @@ test('polish-2: the ack itself arms a placeholder -- no EQUIPPED flash before th
   h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
   assert.equal(h.eng.state().tryoutArming, true, 'the ack alone must already read as arming, before the gun write ever lands');
 });
-test('polish-2: a report on the OTHER slot never forecloses confirmation of this arm', () => {
+// Polish-loop pass 3 (HIGH): a try-out is written to GUN SLOT 0 always, primary or secondary rack alike
+// (compile.py `resolve(wid, 0)` + `$AMMO,0,…`) -- the earlier version of this test hand-fed `$ALCD,…,1,…`
+// for a secondary pick, which the real gun never sends (every secondary try-out was timing out
+// UNCONFIRMED against real hardware as a result). Corrected to the real frame shape, plus a dedicated
+// case proving a secondary pick still confirms -- on slot 0, same as primary.
+test('polish-3: a report on a DIFFERENT gun slot never forecloses confirmation', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('primary', 'weapon', 'smg', true);
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 72 }, frames: ['$WEAP,0,*', '$AMMO,0,72,0,1,*'] } });
+  h.frame('$ALCD,10,100,1,50,0,*');           // slot 1 -- some OTHER weapon's traffic, irrelevant to this arm (gun slot 0)
+  assert.equal(h.eng.state().tryoutArming, true, 'an other-slot report must not foreclose');
+  h.frame('$ALCD,72,100,0,20,0,*');           // slot 0, the arming slot, matches the clip
+  assert.equal(h.eng.state().tryoutArming, false, 'the same-slot matching report still confirms');
+});
+test('polish-3: a SECONDARY pick is also written to gun slot 0, and confirms there', () => {
   const h = kitA10();
   h.eng.requestLoadout('secondary', 'weapon', 'smg', true);
   h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'secondary', ok: true, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] } } });
-  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 72 }, frames: ['$WEAP,1,*'] } });
-  h.frame('$ALCD,10,100,0,50,0,*');           // slot 0 (primary) -- the OLD weapon's own traffic, irrelevant to this SECONDARY arm
-  assert.equal(h.eng.state().tryoutArming, true, 'an other-slot report must not foreclose');
-  h.frame('$ALCD,72,100,1,20,0,*');           // slot 1 (secondary), the arming slot, matches the clip
-  assert.equal(h.eng.state().tryoutArming, false, 'the same-slot matching report still confirms');
+  // A REAL secondary try-out's frames still target gun slot 0 -- the compiled bundle never writes slot 1
+  // for a try-out no matter which rack tab picked it.
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 72 }, frames: ['$WEAP,0,*', '$AMMO,0,72,0,1,*'] } });
+  assert.equal(h.eng.state().tryoutArming, true, 'still arming, waiting on the gun');
+  h.frame('$ALCD,72,100,0,20,0,*');           // the gun's REAL report for a secondary try-out: slot 0
+  assert.equal(h.eng.state().tryoutArming, false, 'a secondary pick must confirm on gun slot 0 -- where the gun actually reports it');
 });
 test('polish-2: a same-slot report equal to the OLD weapon\'s magazine (the baseline) does not confirm', () => {
   const h = kitA10();
@@ -1629,25 +1645,37 @@ test('polish-2: a same-slot report equal to the OLD weapon\'s magazine (the base
   h.frame('$ALCD,30,100,0,50,0,*');           // a routine resend of the OLD weapon's own state -- proves nothing about the NEW one
   assert.equal(h.eng.state().tryoutArming, true, 'a baseline-matching report must not pass as confirmation');
 });
-test('polish-2: an unconfirmed timeout is honest -- tryoutUnconfirmed, never a silent ✓', () => {
+test('polish-2/3: an unconfirmed timeout is honest -- tryoutUnconfirmed carries {tab, kind}, never a silent ✓', () => {
   const h = kitA10();
   h.eng.requestLoadout('primary', 'weapon', 'smg', true);
   h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
   h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 30 }, frames: ['$WEAP,0,*'] } });
   h.adv(3100); h.eng.tick();
   const st = h.eng.state();
-  assert.equal(st.tryoutArming, false); assert.equal(st.tryoutUnconfirmed, true, 'the timeout must mark it unconfirmed, not a plain confirm');
+  assert.equal(st.tryoutArming, false);
+  assert.deepEqual(st.tryoutUnconfirmed, { tab: 'primary', kind: 'weapon' }, 'the timeout must mark it unconfirmed (identified), not a plain confirm');
 });
-test('polish-2: a fresh successful arm clears a stale tryoutUnconfirmed from the previous one', () => {
+test('polish-2/3: a fresh successful arm clears a stale tryoutUnconfirmed from the previous one', () => {
   const h = kitA10();
   h.eng.requestLoadout('primary', 'weapon', 'smg', true);
   h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
   h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 30 }, frames: ['$WEAP,0,*'] } });
   h.adv(3100); h.eng.tick();
-  assert.equal(h.eng.state().tryoutUnconfirmed, true);
+  assert.ok(h.eng.state().tryoutUnconfirmed);
   h.eng.requestLoadout('primary', 'weapon', 'assault_rifle', true);
   h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'assault_rifle' }] } } });
-  assert.equal(h.eng.state().tryoutUnconfirmed, false, 'a new pick must not still say the PREVIOUS one was unconfirmed');
+  assert.equal(h.eng.state().tryoutUnconfirmed, null, 'a new pick must not still say the PREVIOUS one was unconfirmed');
+});
+test('polish-3: an unrelated PERK pick after a timed-out weapon arm never clears or claims its identity', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('primary', 'weapon', 'smg', true);
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 30 }, frames: ['$WEAP,0,*'] } });
+  h.adv(3100); h.eng.tick();
+  assert.deepEqual(h.eng.state().tryoutUnconfirmed, { tab: 'primary', kind: 'weapon' });
+  h.eng.requestLoadout('perk', 'perk', 'body_armor');   // perks never arm a try-out at all
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'perk', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }], perk: 'body_armor' } } });
+  assert.deepEqual(h.eng.state().tryoutUnconfirmed, { tab: 'primary', kind: 'weapon' }, 'the perk pick must not touch a flag that was never about it (hud.js is what keeps it off the perk row: tab/kind mismatch)');
 });
 
 test('apply.preview plays sound-only frames at the bench; non-preview stays live-only (A9.1)', () => {

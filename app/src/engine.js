@@ -253,8 +253,8 @@ export class Engine {
     this.spawned = false; this.ended = false;
     this.cuesFired = new Set();
     this.tutorial = false; this.tutorialWeapon = null;
-    this.tryoutArming = null;       // F147: {at, clip, slot, baseline} between a try-out weapon write and the gun's own confirming $ALCD/$LCD
-    this.tryoutUnconfirmed = false; // polish-loop pass 2: the LAST try-out arm timed out with no confirming report (honest, distinct from a real ✓)
+    this.tryoutArming = null;       // F147: {at, clip, gunSlot, baseline, tab, kind} between a try-out weapon write and the gun's own confirming $ALCD/$LCD
+    this.tryoutUnconfirmed = null;  // polish-loop pass 3: {tab, kind} | null — the LAST try-out arm timed out with no confirming report (honest, distinct from a real ✓; identified so a later pick on a DIFFERENT row/kind never inherits it)
     // A10 — self-serve kitting (docs/spec/loadout.md §4)
     this.catalog = null;            // {weapons: WeaponView[], perks: PerkView[]} — arrives in `assign`
     this.policy = null;             // {hud_select, primary:{choice, allowed_ids}, secondary:{choice, kinds, allowed_weapon_ids}, perk:{choice, allowed_perk_ids}} (A14)
@@ -533,7 +533,7 @@ export class Engine {
     this.browse(false);   // the LOADOUT browser is a KITTED-phase screen; a config push ends kit-out
     this.frames = frames || this.frames; if (roster) this.roster = roster;
     if (config && config.night != null) this.night = !!config.night;
-    this.tutorial = false; this.tutorialWeapon = null; this.tryoutArming = null; this.tryoutUnconfirmed = false;
+    this.tutorial = false; this.tutorialWeapon = null; this.tryoutArming = null; this.tryoutUnconfirmed = null;
     this._gunRestFrame = null;   // F86: a new bundle's rest is `gun.rest` until this match's first take says otherwise
     if (!this.frames || !this.frames.head) { this.log('config without frames — ignored', 'le'); return; }
     if (!this.bleUp) { this.configPending = true; this.log('config stored; gun not linked yet — head will be written on relink', 'li'); this._changed(); return; }
@@ -556,7 +556,7 @@ export class Engine {
   _tutorial({ frames, weapon, end }) {
     if (this.phase !== 'kitted' || !frames) return;
     if (end) {                               // host ended the try-out: quiet the gun, drop the panel
-      this.tutorial = false; this.tutorialWeapon = null; this.tryoutArming = null; this.tryoutUnconfirmed = false;
+      this.tutorial = false; this.tutorialWeapon = null; this.tryoutArming = null; this.tryoutUnconfirmed = null;
       this._write(frames, 'tutorial end');
       this._changed();
       return;
@@ -571,19 +571,34 @@ export class Engine {
     // ammo report on the new weapon's full clip (`_onAmmo`, mirroring how the live SWITCHING takeover
     // confirms on the next $ALCD rather than trusting the write). No clip on the row (an older/stub
     // catalog entry) arms nothing to wait for, so the ⓘ / rack read EQUIPPED at once, as before.
-    // Polish-loop pass 2: reuse the ack's placeholder slot (`_loadoutAck`) when there is one — it is the
-    // real gun-wire slot this weapon is landing in (0 primary, 1 secondary); an MC-pushed try-out with no
-    // phone-side pick behind it has no placeholder, so it falls back to slot 0. `baseline` is the OLD
-    // weapon's last-known magazine on that slot: a same-slot report that just repeats it is not new
-    // information and must not pass for confirmation (pass 2: "$LCD reports the ACTIVE slot's magazine,
-    // so a routine report for the OLD weapon forecloses confirmation" — the real bug was scoping, this
-    // closes the value-coincidence half of it at the same time).
+    // Polish-loop pass 3 (HIGH): `gunSlot` is NOT `pk.slot` — a try-out is written to gun slot 0 ALWAYS,
+    // primary or secondary alike (compile.py `resolve(wid, 0)` + `$AMMO,0,…`; state.py routes every
+    // weapon pick through `tryout()`), so the earlier "secondary → slot 1" guess meant the gun's own
+    // $ALCD (which really does arrive on slot 0) was read as an OTHER-slot report and ignored — every
+    // secondary pick timed out UNCONFIRMED even on a real gun. Derive it from the frames actually being
+    // written instead of guessing: the first `$WEAP,<n>,` or `$AMMO,<n>,` frame names the true slot.
+    // `baseline` is the OLD weapon's last-known magazine on THAT slot: a same-slot report that just
+    // repeats it is not new information and must not pass for confirmation.
     const clip = weapon ? [weapon.clip, weapon.stats && weapon.stats.mag, weapon.mag].find(v => v != null) : null;
-    const armSlot = (this.tryoutArming && this.tryoutArming.slot != null) ? this.tryoutArming.slot : 0;
-    this.tryoutArming = clip != null ? { at: this.now(), clip, slot: armSlot, baseline: this._prevAmmo[armSlot] != null ? this._prevAmmo[armSlot] : null } : null;
-    this.tryoutUnconfirmed = false;
+    const gunSlot = this._tryoutFrameSlot(frames);
+    // `tab`/`kind` (HUD row identity, polish-loop pass 3 MEDIUM) ride along from the ack's placeholder when
+    // there is one; an MC-pushed try-out with no phone-side pick behind it has none, so default to the
+    // primary rack (the only tab an old-style host push could mean).
+    const tab = (this.tryoutArming && this.tryoutArming.tab) || 'primary';
+    const kind = (this.tryoutArming && this.tryoutArming.kind) || 'weapon';
+    this.tryoutArming = clip != null ? { at: this.now(), clip, gunSlot, baseline: this._prevAmmo[gunSlot] != null ? this._prevAmmo[gunSlot] : null, tab, kind } : null;
+    this.tryoutUnconfirmed = null;
     this._write(frames, 'tutorial');
     this._changed();
+  }
+  /** Polish-loop pass 3: the gun-wire slot a try-out's $WEAP/$AMMO frames actually target — read from the
+   *  frames themselves rather than guessed from which rack tab the pick came from (a try-out always lands
+   *  in slot 0 regardless of tab; §above). The first frame naming a slot wins; frames with no slot token
+   *  (`$CLEAR,*`, `$TID,1,*`, …) are skipped. Falls back to 0 — the one slot a try-out is ever written to —
+   *  if somehow neither frame is present. */
+  _tryoutFrameSlot(frames) {
+    for (const f of (frames || [])) { const m = /^\$(?:WEAP|AMMO),(\d+),/.exec(f); if (m) return +m[1]; }
+    return 0;
   }
 
   // ---------- A10 self-serve kitting (docs/spec/loadout.md §4) ----------
@@ -677,9 +692,13 @@ export class Engine {
     // F147/polish-loop pass 2: MC's ack lands BEFORE the `tutorial` message that actually writes the gun —
     // a real gap of up to ~250 ms during which the rack used to read a plain EQUIPPED (`tryoutArming` was
     // still null). Arm a PLACEHOLDER right here so SWITCHING… covers the whole gap, not just its tail;
-    // `_tutorial` below fills in the real clip (and re-derives the slot if the placeholder never arrived,
-    // e.g. an MC-pushed try-out with no phone-side pick behind it).
-    if (ok && mine && pk && pk.kind === 'weapon') { this.tryoutArming = { at: this.now(), clip: null, slot: pk.slot === 'secondary' ? 1 : 0 }; this.tryoutUnconfirmed = false; }
+    // `_tutorial` below fills in the real clip (and derives `gunSlot` from the actual frames, since the
+    // placeholder cannot know it yet). `tab`/`kind` are carried purely for hud.js identity (polish-loop
+    // pass 3): which RACK ROW this belongs to, so it is never confused with the gun-wire slot the ammo
+    // confirmation itself keys on (pass 3: a try-out is ALWAYS written to gun slot 0 — compile.py's
+    // `resolve(wid, 0)` — regardless of which rack tab the pick came from, so `gunSlot` can never tell a
+    // primary pick from a secondary one; that is what `tab` is for).
+    if (ok && mine && pk && pk.kind === 'weapon') { this.tryoutArming = { at: this.now(), clip: null, gunSlot: 0, tab: pk.slot, kind: pk.kind }; this.tryoutUnconfirmed = null; }
     this._changed();
   }
   /** DONE on the try-out panel: hide it (the gun stays armed until MC ends the try-out or the player readies). */
@@ -1676,9 +1695,16 @@ export class Engine {
     if (this.pendingPick && now - this.pendingPick.at > 6000) { this.pendingPick = null; this._changed(); }   // MC never answered — drop the optimistic row
     // F147: past TRYOUT_ARM_MAX_MS with no confirming $ALCD/$LCD, resolve it HONESTLY (polish-loop pass 2)
     // rather than silently claiming the same gun-confirmed EQUIPPED — `tryoutUnconfirmed` is what tells
-    // hud.js to keep saying so (EQUIPPED · UNCONFIRMED, muted, its own glyph) instead of a settled ✓. The
-    // real duration has never been bench-timed, same as the live SWITCHING timeout this mirrors.
-    if (this.tryoutArming && now - this.tryoutArming.at > TRYOUT_ARM_MAX_MS) { this.tryoutArming = null; this.tryoutUnconfirmed = true; this.log('try-out arm timed out — resolved UNCONFIRMED (no confirming ammo report)', 'li'); this._changed(); }
+    // hud.js to keep saying so (EQUIPPED · UNCONFIRMED, muted, its own glyph) instead of a settled ✓.
+    // Pass 3 (MEDIUM): carries `{tab, kind}` (never just a bare flag) so hud.js can tell WHICH row this
+    // was ever about — otherwise a perk picked after a timed-out weapon arm inherited the same badge on a
+    // row that was never arming anything (`tryoutUnconfirmed` used to outlive the weapon it described).
+    // The real duration has never been bench-timed, same as the live SWITCHING timeout this mirrors.
+    if (this.tryoutArming && now - this.tryoutArming.at > TRYOUT_ARM_MAX_MS) {
+      this.tryoutUnconfirmed = { tab: this.tryoutArming.tab, kind: this.tryoutArming.kind };
+      this.tryoutArming = null;
+      this.log('try-out arm timed out — resolved UNCONFIRMED (no confirming ammo report)', 'li'); this._changed();
+    }
     if (this.phase === 'armed' && this.start) {
       const rem = this.goLiveT - now;
       // Runway cues are EDGE-triggered: fire only when crossing the threshold from above. With a runway shorter
@@ -2331,8 +2357,8 @@ export class Engine {
     // report can pass or fail it until `_tutorial` fills the clip in. A report that fails the check never
     // gets a second chance — it marks the arming unconfirmable-by-ammo, and the TRYOUT_ARM_MAX_MS timeout
     // is what resolves it (honestly, as unconfirmed — see `tick()`).
-    if (this.tryoutArming && this.tryoutArming.clip != null && slot === this.tryoutArming.slot) {
-      if (!this.tryoutArming.seen && mag === this.tryoutArming.clip && mag !== this.tryoutArming.baseline) { this.tryoutArming = null; this.tryoutUnconfirmed = false; }
+    if (this.tryoutArming && this.tryoutArming.clip != null && slot === this.tryoutArming.gunSlot) {
+      if (!this.tryoutArming.seen && mag === this.tryoutArming.clip && mag !== this.tryoutArming.baseline) { this.tryoutArming = null; this.tryoutUnconfirmed = null; }
       else this.tryoutArming.seen = true;
     }
     const prev = this._prevAmmo[slot];
@@ -2721,7 +2747,7 @@ export class Engine {
       clockMs: this.endT ? Math.max(0, this.endT - now) : (this.timeLimitMs || 0),
       ready: !!this.ready, tutorial: this.tutorial, tutorialWeapon: this.tutorialWeapon,
       tryoutArming: !!this.tryoutArming,   // F147: true between a try-out weapon write and the gun's own confirming ammo report
-      tryoutUnconfirmed: this.tryoutUnconfirmed,   // polish-loop pass 2: the last arm settled with no confirming report — honest, not a real ✓
+      tryoutUnconfirmed: this.tryoutUnconfirmed,   // polish-loop pass 3: {tab, kind} | null — the last arm settled with no confirming report — honest, not a real ✓, and identified so it never bleeds onto an unrelated row
 
       // follows the LIVE slot, not always the primary (field 2026-08-30)
       weaponId: (() => { const ws = this.player && this.player.loadout && this.player.loadout.weapons; const w = ws && (ws[this.activeSlot] || ws[0]); return w ? w.weapon_id : null; })(),

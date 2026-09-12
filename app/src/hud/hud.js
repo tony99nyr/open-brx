@@ -230,7 +230,12 @@ export class Hud {
       // case the old comment (still true of `synced`/`headEcho`, which stay patched-only) was written for.
       st.wsState,
       // A10 loadout browser + slot plates
-      st.browsing, st.canPickPrimary, st.canPickSecondary, st.canPickPerk, st.tryoutSeen, st.tryoutArming, st.tryoutUnconfirmed, this.lo.tab, this.lo.filter, this.lo.focus, this.lo.confirm && this.lo.confirm.key,
+      // Pass 3: `tryoutUnconfirmed` is now an object ({tab, kind}) or null — every OTHER object in this join
+      // stringifies to the same "[object Object]" too, so it is flattened to its own fields; the join
+      // would otherwise never notice a switch from one arm's identity to another's.
+      st.browsing, st.canPickPrimary, st.canPickSecondary, st.canPickPerk, st.tryoutSeen, st.tryoutArming,
+      st.tryoutUnconfirmed && st.tryoutUnconfirmed.tab, st.tryoutUnconfirmed && st.tryoutUnconfirmed.kind,
+      this.lo.tab, this.lo.filter, this.lo.focus, this.lo.confirm && this.lo.confirm.key,
       st.kitOpen, st.briefSeen, st.kitLocked, st.game && st.game.name, st.game && st.game.loadout_line,
       st.loadoutAck && st.loadoutAck.t, st.pendingPick && st.pendingPick.id, st.pendingPick && st.pendingPick.kind,
       st.loadout && st.loadout.primary && st.loadout.primary.weapon_id, st.loadout && st.loadout.secondary && st.loadout.secondary.weapon_id, st.loadout && st.loadout.perk && st.loadout.perk.perk_id,
@@ -493,6 +498,11 @@ export class Hud {
     const cf = this.lo.confirm && this.lo.confirm.tab === tab ? this.lo.confirm : null;   // A14: the pending two-tap confirm
     const pend = st.pendingPick && st.pendingPick.slot === tab ? (st.pendingPick.kind === 'none' ? 'none' : `${st.pendingPick.kind}:${st.pendingPick.id}`) : null;
     const ack = st.loadoutAck && st.loadoutAck.slot === tab ? st.loadoutAck : null;
+    // Polish-loop pass 3 (MEDIUM): `tryoutUnconfirmed` used to be a bare flag applied to whatever row/tab
+    // was on screen — a perk picked after a timed-out weapon arm inherited its OWN badge, on a row that
+    // never armed anything. It now carries {tab, kind}; only the TAB (and, per row, the KIND) it was
+    // actually about may show it.
+    const unconfHere = !!(st.tryoutUnconfirmed && st.tryoutUnconfirmed.tab === tab);
     const rows = this._loRows(st, tab);
     const tabBtn = (t, item) => { const on = t === tab; const r = st.policy ? st.policy[t] : null; const lk = st.policy && !canOf(t) && r && r.choice !== 'player';
       const nm = item ? item.name : (t === 'primary' ? '—' : 'NONE');
@@ -516,9 +526,10 @@ export class Hud {
         // never the settled ✓, until the gun's own ammo report closes it out. Polish-loop pass 2: past the
         // 3 s timeout `tryoutArming` clears WITHOUT a confirming report — `tryoutUnconfirmed` marks that
         // honestly (`≈`, muted) instead of the same ✓ a real gun-confirmed pick gets.
-        const eq = r.key === eqKey && !pend && !st.tryoutArming && !st.tryoutUnconfirmed,
+        const rowUnconf = unconfHere && st.tryoutUnconfirmed.kind === r.kind;
+        const eq = r.key === eqKey && !pend && !st.tryoutArming && !rowUnconf,
           arming = r.key === eqKey && !pend && !!st.tryoutArming,
-          unconf = r.key === eqKey && !pend && !st.tryoutArming && !!st.tryoutUnconfirmed,
+          unconf = r.key === eqKey && !pend && !st.tryoutArming && rowUnconf,
           pn = r.key === pend, fo = r.key === focusKey, rj = !!(ack && !ack.ok && ack.key === r.key), wn = !!(cf && cf.key === r.key);
         const thumb = r.kind === 'perk' ? `<span class="thumb perk">${perkGlyph(r.id)}</span>` : `<span class="thumb" style="background-image:url('assets/weapons/${esc(r.id)}.jpg')"></span>`;
         const body = r.kind === 'perk' ? `<span class="nm2"><b>${esc(name(r)).toUpperCase()}</b><small>${esc(perkEffect(r.row))}</small></span>` : `<span class="nm">${esc(name(r)).toUpperCase()}</span><span class="role">${esc(roleName(r.row))}</span><span class="mag tab">MAG ${r.row.clip != null ? r.row.clip : '—'}</span>`;
@@ -548,7 +559,9 @@ export class Hud {
         // Shorter than the ackChip's "EQUIPPED · UNCONFIRMED": this badge sits on the SAME nowrap line as
         // the weapon name + role chip (`.lodetail .nm`, `_fitLoDetailName`'s shrink loop only has so much
         // room before 13px stops being legible), and the weapon name here already says what's equipped.
-        : (focus.key === eqKey && !pend && st.tryoutUnconfirmed) ? '<span class="eqtag unconf">UNCONFIRMED</span>'
+        // Pass 3: gated the same way the row is (`unconfHere` + kind) — a perk's detail pane must never
+        // inherit a weapon arm's stale timeout.
+        : (focus.key === eqKey && !pend && unconfHere && st.tryoutUnconfirmed.kind === focus.kind) ? '<span class="eqtag unconf">UNCONFIRMED</span>'
         : (focus.key === eqKey && !pend) ? '<span class="eqtag">EQUIPPED</span>' : '';
       if (focus.kind === 'perk') detail = `<div class="art perk">${perkGlyph(focus.id)}</div><div class="nm">${esc(r.name).toUpperCase()}${heroTag}</div><div class="ln pk">PERK · ${esc(perkEffect(r))}${r.verified === false ? ' · <span style="color:var(--warn)">NOT YET FIELD-TESTED</span>' : ''}</div><div class="desc">${esc(r.desc || '')}</div>`;
       else detail = `<div class="art" style="background-image:url('assets/weapons/${esc(focus.id)}.jpg')"></div><div class="nm">${esc(r.name).toUpperCase()} <span class="rolechip">${esc(roleName(r))}</span>${heroTag}</div><div class="ln">MAG ${r.clip != null ? r.clip : '—'} · RESERVE ${r.reserve != null ? r.reserve : '—'}${r.reload_s != null ? ' · RELOAD ' + r.reload_s + 'S' : ''}</div>${statBlock(r)}${r.caution ? `<div class="caution">▲ ${esc(r.caution)}</div>` : ''}<div class="desc">${esc(r.desc || '')}</div>`;
@@ -556,8 +569,10 @@ export class Hud {
     // A14: the two-tap confirm outranks everything else in the action bar; an ack that dropped the other slot says so
     // F147: MC's ack alone must not read as EQUIPPED while `st.tryoutArming` says the gun has not answered
     // the write yet — SWITCHING… holds the same slot the acked-but-not-yet-armed row does.
+    // Pass 3: `unconfHere` is already tab-scoped (a perk tab can never match a weapon arm's tab), so the
+    // action bar — one chip per tab, no row of its own — only needs that check, not `kind` again.
     const ackChip = cf ? `<span class="ackchip warn cf"><span class="unskew">${esc(cf.text).toUpperCase()} · TAP AGAIN</span></span>`
-      : ack ? `<span class="ackchip ${!ack.ok ? 'bad' : st.tryoutUnconfirmed ? 'unconf' : 'ok'}"><span class="unskew">${ack.ok ? (st.tryoutArming ? 'SWITCHING…' : st.tryoutUnconfirmed ? 'EQUIPPED · UNCONFIRMED' : ('EQUIPPED ✓' + (ack.dropped ? ' · ' + esc(ack.dropped.name).toUpperCase() + ' DROPPED' : ''))) : esc(ack.reason || 'THE HOST SAID NO').toUpperCase()}</span></span>` : (pend ? '<span class="ackchip"><span class="unskew">ASKING THE HOST…</span></span>' : (st.tutorial ? '<span class="ackchip warn"><span class="unskew">TRY-OUT ARMED — FIRE A FEW ROUNDS</span></span>' : ''));
+      : ack ? `<span class="ackchip ${!ack.ok ? 'bad' : unconfHere ? 'unconf' : 'ok'}"><span class="unskew">${ack.ok ? (st.tryoutArming ? 'SWITCHING…' : unconfHere ? 'EQUIPPED · UNCONFIRMED' : ('EQUIPPED ✓' + (ack.dropped ? ' · ' + esc(ack.dropped.name).toUpperCase() + ' DROPPED' : ''))) : esc(ack.reason || 'THE HOST SAID NO').toUpperCase()}</span></span>` : (pend ? '<span class="ackchip"><span class="unskew">ASKING THE HOST…</span></span>' : (st.tutorial ? '<span class="ackchip warn"><span class="unskew">TRY-OUT ARMED — FIRE A FEW ROUNDS</span></span>' : ''));
     // A26: TRY IT is gone — the pick IS the try-out. The forward action is REVIEW KIT ▸, which closes the rack
     // onto the three-plate kit summary (PRIMARY · SECONDARY · PERK) where READY UP lives; CLOSE is the same
     // exit without the commitment framing.
