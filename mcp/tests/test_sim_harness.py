@@ -2,7 +2,7 @@
 events + timers). The exhaustive per-mode scenarios live in test_sim_<family>.py."""
 
 from brx_mcp.gameconfig import GameConfig
-from brx_mcp.sim import SimGame
+from sim import SimGame
 
 
 def test_sim_tdm_kill_to_frag_limit():

@@ -20,7 +20,7 @@ made a scenario silently change meaning when it moved.
 
 from brx_mcp import sounds as snd
 from brx_mcp.gameconfig import GameConfig
-from brx_mcp.sim import SimGame
+from sim import SimGame
 
 COUNTDOWN_PLAY = f"$PLAY,{snd.COUNTDOWN},4,6,,,,,*"   # the loud extraction alarm
 

@@ -14,16 +14,20 @@ just with an in-memory gun instead of Bluetooth. Synchronous (each step runs the
 async driver to completion on a held loop) so scenarios read like a script.
 
 NOT a substitute for the bench: no BLE timing/reliability, no physical LED/audio.
-See docs/experiment-log.md 2026-08-25 for what's earned on real guns.
+See docs/experiment-log/ for what's earned on real guns.
+
+TEST-ONLY harness. It lives in `mcp/tests/` (not in the shipped `brx_mcp` package)
+because every one of its importers is a test: `from sim import SimGame`, the same way
+the suite already does `from _skip import Skipped`.
 """
 from __future__ import annotations
 
 import asyncio
 
-from .fake import FakeTagger
-from .gameconfig import GameConfig
-from .modes.driver import GameDriver, assign_teams
-from .protocol import parse_event
+from brx_mcp.fake import FakeTagger
+from brx_mcp.gameconfig import GameConfig
+from brx_mcp.modes.driver import GameDriver, assign_teams
+from brx_mcp.protocol import parse_event
 
 
 class SimGame:

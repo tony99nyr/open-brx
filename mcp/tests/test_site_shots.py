@@ -105,3 +105,49 @@ def test_site_shots_are_small():
         _skip(f"no jpgs in {SHOTS_DIR} (covered by test_site_shots_manifest_exists)")
     oversized = [(p.name, p.stat().st_size) for p in jpgs if p.stat().st_size >= MAX_BYTES]
     assert not oversized, f"screenshots at or over {MAX_BYTES} bytes: {oversized}"
+
+
+_UI_DIRS = ("webapp/mc/src", "app/src")
+
+
+def _dirty_ui_files() -> list[str] | None:
+    """Paths under the UI source dirs that differ from HEAD — modified, staged or untracked.
+
+    `git status --porcelain` is the working-tree hash: it already walks the files, compares content to
+    the index and HEAD, and honours .gitignore, which a hand-rolled sha walk would have to re-implement
+    (and would get wrong for `app/www/app.js`, which is generated and ignored).
+    """
+    out = _git("status", "--porcelain", "--untracked-files=normal", "--", *_UI_DIRS)
+    if out is None:
+        return None
+    return sorted({ln[3:].strip().strip('"') for ln in out.split("\n") if ln.strip()})
+
+
+def test_site_shots_match_the_ui_working_tree():
+    """2026-09-12 review: the staleness check compared the manifest to `HEAD:webapp/mc/src` and
+    `HEAD:app/src` only, so a screenshot was "current" the moment the UI change was committed — and
+    every UI change is UNCOMMITTED while it is being made. That is exactly when someone rebuilds the
+    site and ships a shot of the previous design.
+
+    A dirty tree cannot prove anything about the shots either way, so it SKIPS and names the files;
+    with a clean tree the HEAD hashes ARE the working tree and the manifest must match them.
+    """
+    if not MANIFEST.exists():
+        _skip(f"{MANIFEST} missing (covered by test_site_shots_manifest_exists)")
+    dirty = _dirty_ui_files()
+    if dirty is None:
+        _skip("git")
+    if dirty:
+        _skip("working tree dirty: shots may be stale for " + ", ".join(dirty[:8])
+              + (f" (+{len(dirty) - 8} more)" if len(dirty) > 8 else ""))
+
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    heads = {d: _git("rev-parse", f"HEAD:{d}") for d in _UI_DIRS}
+    if any(v is None for v in heads.values()):
+        _skip("shallow clone: webapp/mc/src or app/src is not a tree object at HEAD")
+    stale = [f"{d} ({manifest.get(k)!r} != {heads[d]!r})"
+             for d, k in (("webapp/mc/src", "mc_src"), ("app/src", "hud_src"))
+             if manifest.get(k) != heads[d]]
+    assert not stale, (
+        "the UI source is clean but site/shots do not match it: run \"cd site && npm run shots\" and "
+        "commit site/shots/ (stale: " + "; ".join(stale) + ")")

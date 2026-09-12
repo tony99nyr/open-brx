@@ -20,7 +20,7 @@ so game_time_s=0 means a 120s round (used when we only care about the bomb timer
 """
 
 from brx_mcp.gameconfig import GameConfig
-from brx_mcp.sim import SimGame
+from sim import SimGame
 
 PLANT_CUE = "VA81"       # snd.COUNTDOWN — the plant kicks off the detonation countdown
 

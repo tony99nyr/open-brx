@@ -23,7 +23,7 @@ from brx_mcp.gameconfig import (
     END_SEQUENCE,
     VOLUME_LEVELS,
 )
-from brx_mcp.sim import SimGame
+from sim import SimGame
 
 
 # --------------------------------------------------------------------------- #
@@ -321,6 +321,6 @@ def test_alt_reload_remaps_orange_button_to_reload():
     assert not any(f.startswith("$BMAP,1,100") for f in on)
     assert "$BMAP,2,97,,,,,*" in on                 # the lever still reloads too
     # and it reaches the guns through the driver
-    from brx_mcp.sim import SimGame
+    from sim import SimGame
     g = SimGame(GameConfig(mode="tdm", alt_reload=True)).setup()
     assert "$BMAP,1,97,,,,,*" in g.frames_to("G1")

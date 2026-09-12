@@ -3,6 +3,7 @@
   python -m brx_mcp            # run the MCP server (stdio)
   python -m brx_mcp scan [s]   # one-shot BLE scan (first-contact CLI)
   python -m brx_mcp identify <address>
+  python -m brx_mcp probe <address> [seconds]    # send the app handshake ($CONNECT/$INIT/$PHONE), then listen
   python -m brx_mcp diagnose <address>           # firmware + battery + latency sweep
   python -m brx_mcp fleet [addr...]              # armory dashboard (scan + diagnose each)
   python -m brx_mcp listen <address> [seconds]   # read-only live console
@@ -17,7 +18,12 @@
   python -m brx_mcp play <mode> <addr...> [k=v]   # run a configured game LIVE (k=v: volume, outdoor, hp, ...)
       modes: tdm ffa infection lms cs domination koth ctf extraction
       a gun may carry a gamertag: <addr>@<Gamertag> (pushed to the gun via $NAME)
+  python -m brx_mcp diag <address>                # output-command sweep using the official app's connect ritual
   python -m brx_mcp diag-game <address> [2guns] [ir]   # structured end-to-end test suite → scorecard
+      three similarly-named commands, deliberately: `diagnose` READS one gun (firmware,
+      battery, latency); `diag` WRITES the app's connect ritual and watches what each
+      output command does; `diag-game` runs the whole catalog in brx_mcp/diag/ and prints
+      a pass/fail scorecard.
   python -m brx_mcp ir-capture [port] [seconds]        # capture BRX IR frames via the ESP32 bridge
   python -m brx_mcp ir-emit <bits> [port] [repeat] [--wait]  # emit an IR frame via the ESP32 bridge
       the command returns as soon as the board acks, but it keeps transmitting for
@@ -26,6 +32,7 @@
   python -m brx_mcp ir-range [port] [secs] [shots]     # walk-back range reading (hit-rate at a distance)
   python -m brx_mcp reset <address>                     # reset a tagger to clean idle (revive if dead, silence, headset dark)
   python -m brx_mcp rename <address> <name>             # set a tagger's persistent name over BLE ($NAME); power-cycle to see the advert update
+  python -m brx_mcp enroll [name]                       # isolation enrol: ONE gun powered + cabled -> bind serial<->BLE address (+ rename)
   python -m brx_mcp usb-query [port]                    # read a cabled tagger's device record (headset PIN, serial, ...)
   python -m brx_mcp armory                              # QUERY the cabled tagger + print the accumulated gun<->headset inventory
   python -m brx_mcp sounds <words|category:...> [addr]  # search the on-gun sound catalog by words or category; with an address, PLAY each match
@@ -739,7 +746,7 @@ def _extraction_sim() -> None:
 
     Demonstrates the full genre loop (loot → loud channel → drop-on-death →
     steal the loot → extract → win) so the mode can be seen working before any
-    hardware exists. See docs/game-modes.md §Extraction and brx_mcp/modes/.
+    hardware exists. See docs/extraction-design.md and brx_mcp/modes/.
     """
     from .modes.extraction import (Bank, Callout, ChannelReset, ChannelStarted,
                                    Extracted, ExtractionConfig, ExtractionGame,

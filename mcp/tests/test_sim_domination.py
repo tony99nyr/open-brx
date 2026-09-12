@@ -28,7 +28,7 @@ crowned it the winner.
 """
 
 from brx_mcp.gameconfig import GameConfig
-from brx_mcp.sim import SimGame
+from sim import SimGame
 
 from brx_mcp.modes import hillbeacon as _hb
 # "Hill Captured" (VB0N) on the ANNOUNCER slot. Confirmed by ear 2026-09-10 (rung S) and Tony's own

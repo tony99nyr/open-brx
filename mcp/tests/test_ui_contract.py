@@ -204,8 +204,12 @@ def test_voice_option_fields_match():
 
 
 def test_weapon_ids_match_weapons_json():
-    """`webapp/mc/src/mock/data.ts`'s `RAW` weapon table says it is GENERATED from `weapons.json` --
-    the visible (non-`hidden`) weapon ids on both sides must be exactly the same set."""
+    """`webapp/mc/src/mock/data.ts`'s weapon table is GENERATED from `weapons.json` -- the visible
+    (non-`hidden`) weapon ids on both sides must be exactly the same set.
+
+    2026-09-12: the table used to be a `const RAW = [...] as const;` the UI re-mapped by hand, and this
+    scan was keyed to that name. `mcp/tools/gen_ui_catalog.py` now emits the finished `WEAPONS` array
+    between `// GENERATED-START weapons` markers, so the scan reads the marked block instead."""
     if not WEAPONS_JSON.is_file():
         raise Skipped(f"{WEAPONS_JSON} (missing)")
     catalog = json.loads(WEAPONS_JSON.read_text(encoding="utf-8"))
@@ -216,18 +220,18 @@ def test_weapon_ids_match_weapons_json():
     if not DATA_TS.is_file():
         raise Skipped(f"{DATA_TS} (missing)")
     text = DATA_TS.read_text(encoding="utf-8")
-    m = re.search(r"const RAW\s*=\s*\[(.*?)\]\s*as const;", text, re.S)
+    m = re.search(r"// GENERATED-START weapons(.*?)// GENERATED-END weapons", text, re.S)
     if not m:
-        raise Skipped(f"RAW weapon array in {DATA_TS} (not found -- renamed or restructured?)")
+        raise Skipped(f"the GENERATED weapons block in {DATA_TS} (not found -- renamed or restructured?)")
     ts_ids = set(re.findall(r'"weapon_id"\s*:\s*"([a-z_0-9]+)"', m.group(1)))
     if not ts_ids:
-        raise Skipped(f"weapon_id entries inside RAW in {DATA_TS}")
+        raise Skipped(f"weapon_id entries inside the generated block in {DATA_TS}")
 
     missing_in_ts = sorted(py_ids - ts_ids)
     missing_in_py = sorted(ts_ids - py_ids)
     msgs = []
     if missing_in_ts:
-        msgs.append(f"weapon ids in {WEAPONS_JSON} missing from {DATA_TS}'s RAW table: {missing_in_ts}")
+        msgs.append(f"weapon ids in {WEAPONS_JSON} missing from {DATA_TS}'s generated table: {missing_in_ts}")
     if missing_in_py:
-        msgs.append(f"weapon ids in {DATA_TS}'s RAW table not in {WEAPONS_JSON}: {missing_in_py}")
+        msgs.append(f"weapon ids in {DATA_TS}'s generated table not in {WEAPONS_JSON}: {missing_in_py}")
     assert not msgs, "; ".join(msgs)

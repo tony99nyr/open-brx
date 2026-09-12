@@ -17,7 +17,7 @@ Default guns: G1→team1, G2→team2 (so caps is seeded {1:0, 2:0}).
 """
 
 from brx_mcp.gameconfig import GameConfig
-from brx_mcp.sim import SimGame
+from sim import SimGame
 
 ST = "ST"   # a station node id — NOT a gun, so team comes from the token
 

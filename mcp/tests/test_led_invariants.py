@@ -19,6 +19,7 @@ from brx_mcp import poolgauge as pg
 from brx_mcp.gameconfig import RESPAWN_SEQUENCE
 from brx_mcp.mc import presentation as P
 from brx_mcp.mc.compile import Compiler, golden_bundle
+from _session import match_config
 
 # --- the emitted-frame surface ---------------------------------------------- #
 
@@ -45,13 +46,7 @@ _TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
 
 
 def _cfg(night: bool, led=None):
-    c = {"config_id": "c1", "mode": "tdm", "environment": "indoor", "night": night,
-         "time_limit_s": 600, "respawn": {"type": "auto", "delay_s": 15},
-         "scoring": {"frag_limit": 0, "win_by": "kills"},
-         "health": {"max_hp": 45, "max_armor": 70}, "teams": _TEAMS}
-    if led is not None:
-        c["led"] = led
-    return c
+    return match_config(night=night, led=led, teams=_TEAMS)
 
 
 def _player(team="blue"):

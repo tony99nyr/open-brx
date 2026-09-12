@@ -14,7 +14,7 @@ engine-level equivalents of several of these).
 
 from brx_mcp import poolgauge as pg
 from brx_mcp.gameconfig import GameConfig
-from brx_mcp.sim import SimGame
+from sim import SimGame
 
 
 # --------------------------------------------------------------------------- #

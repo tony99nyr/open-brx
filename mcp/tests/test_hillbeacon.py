@@ -21,7 +21,7 @@ from brx_mcp.modes import hillbeacon as hb
 from brx_mcp.modes.base import shooter_player_id, shooter_team
 from brx_mcp.modes.driver import assign_teams
 from brx_mcp.protocol import parse_event
-from brx_mcp.sim import SimGame
+from sim import SimGame
 
 
 def ev(frame: str) -> dict:

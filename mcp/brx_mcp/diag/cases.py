@@ -2,7 +2,9 @@
 
 Grouped by category. Each case declares what it needs (`requires`), what it sends,
 and how it's verified (auto predicate, or a human prompt/question). BLE cases run
-today; IR cases carry Capability.IR and SKIP until the ESP32 bridge exists.
+today; IR cases carry Capability.IR and SKIP. The bridge itself exists
+(`brx_mcp/irbridge.py`, `hardware/esp32-ir-bridge/`) — the `ir.*` cases just carry no
+send/verify yet, so wiring them to `IRBridge` is what un-skips them.
 
 Frame constants are IMPORTED from `gameconfig` so the diag game arms a gun exactly the way a
 real game does. They used to be copied here "kept in sync" by hand, and had drifted.
@@ -152,7 +154,8 @@ CATALOG: list[DiagCase] = [
         proves="Hill/Respawn grenade IR surfaces as $HIR token2=15 (relay-readable)",
     ),
 
-    # --- IR bridge (ESP32) — SKIP until hardware exists --------------------- #
+    # --- IR bridge (ESP32) — the hardware EXISTS (irbridge.py); these three     #
+    #     cases are unwired (no send/verify) and skip until routed through it.  #
     DiagCase(
         id="ir.capture", name="Capture a BRX IR frame (ESP32)", category="ir",
         requires=(Cap.IR,), proves="ESP32 decodes the 25-bit IR frame from a gun shot (B13)",

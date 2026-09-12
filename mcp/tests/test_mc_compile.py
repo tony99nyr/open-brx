@@ -7,6 +7,7 @@ shapes), the catalog, validate() {ok,errors,warnings}, tutorial, cues-as-frames,
 from brx_mcp import poolgauge as pg
 from brx_mcp.mc.compile import Compiler, WeaponCatalog, golden_bundle
 from brx_mcp.mc.types import MAX_PLAYERS
+from _session import match_config
 
 C = Compiler()
 
@@ -15,13 +16,7 @@ _TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
 
 
 def _cfg(mode="tdm", frag=0, time_limit_s=600, led=None):
-    c = {"config_id": "c1", "mode": mode, "environment": "indoor", "night": False,
-         "time_limit_s": time_limit_s, "respawn": {"type": "auto", "delay_s": 15},
-         "scoring": {"frag_limit": frag, "win_by": "kills"},
-         "health": {"max_hp": 45, "max_armor": 70}, "teams": _TEAMS}
-    if led is not None:
-        c["led"] = led
-    return c
+    return match_config(mode, frag=frag, time_limit_s=time_limit_s, led=led, teams=_TEAMS)
 
 
 def _player(num=7, team="blue", weapons=("assault_rifle", "shotgun"), voice="male"):

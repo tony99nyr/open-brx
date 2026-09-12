@@ -3,8 +3,14 @@
 The BRX tagger keeps no host-readable game state, so every mode lives here: a pure
 rules engine that consumes the parsed event stream + wall-clock ticks and emits
 *actions* (frames to send, respawns, heals, sounds, score). Engines are
-transport-free — the same module runs on a Companion node, in the MCP host, or in
-a unit test with synthetic events. A driver translates Actions into BLE writes.
+transport-free — the same module runs in the MCP host or in a unit test with
+synthetic events. (No Python runs on a player node: the node is the phone app in
+`app/`, per ADR-0003.) A driver translates Actions into BLE writes.
+
+THREE rule engines exist, and this is not the shipping one. `modes/` is the Tier 0
+CLI/sim path (`python -m brx_mcp play|game-sim`); `mc/scoring.py` is Mission Control
+and `app/src/engine.js` is the phone node. The shipping pair is `mc/` + `app/`:
+`modes/` is not ported to and does not receive fixes unless the CLI path needs them.
 
 M0: the combat modes (deathmatch, infection, lms), a customizable GameConfig
 (brx_mcp/gameconfig.py), and the GameDriver that runs them live.

@@ -1048,3 +1048,112 @@ def test_the_reload_watchdog_hands_the_deadline_to_poll_instead_of_busy_spinning
         st.poll(); await asyncio.wait_for(settle(st), 5)
         assert st.reloading is None and st.reload_outcome["why"] == "timeout", st.reload_outcome
     asyncio.run(go())
+
+
+# ---------------------------------------------------------------------------- #
+# 2026-09-12 doc-rot review: a MECHANICAL coverage floor under the tests above.
+#
+# Every test in this file is a hand-written pairing of one engine.js behaviour with its GunStage
+# counterpart, which means the file can only ever assert what somebody remembered to port. The gap it
+# leaves is the one that actually bites: a NEW method lands in `app/src/engine.js`, the stage never
+# grows one, and the operator signs off a bench run against a stage that does not model it (2026-09-07:
+# seven of nine defects in one night were exactly that).
+#
+# So: parse both class bodies, and pin the set of engine methods with NO same-named stage counterpart.
+# A new name appearing in that set fails this test and forces a decision — port it to the stage, or add
+# it below with a reason. Most of the pinned set is deliberately node-only: transport (`onMcMessage`,
+# `setWsState`), persistence (`_save`, `_load`), HUD/browser surface (`openBriefing`, `loadoutView`) and
+# MC-pushed facts the stage has no MC for. Game RULES are what must not appear here.
+# ---------------------------------------------------------------------------- #
+import pathlib as _pathlib
+import re as _re
+
+_REPO = _pathlib.Path(__file__).resolve().parents[2]
+_ENGINE_JS = _REPO / "app" / "src" / "engine.js"
+_STAGE_PY = _REPO / "mcp" / "brx_mcp" / "stage" / "stage.py"
+_JS_KEYWORDS = {"if", "for", "while", "switch", "catch", "do", "else", "return", "constructor",
+                "function", "try"}
+
+
+def _engine_methods() -> set[str]:
+    """Names declared at one indent level inside the Engine class (`  foo(` / `  async foo(`)."""
+    text = _ENGINE_JS.read_text(encoding="utf-8")
+    found = {m.group(1) for m in _re.finditer(r"^  (?:async\s+)?(_?[A-Za-z][A-Za-z0-9_]*)\s*\(", text, _re.M)}
+    return found - _JS_KEYWORDS
+
+
+def _stage_methods() -> set[str]:
+    """`def`s inside the GunStage class body."""
+    text = _STAGE_PY.read_text(encoding="utf-8")
+    body = text[text.index("class GunStage"):]
+    nxt = _re.search(r"^class ", body[10:], _re.M)
+    if nxt:
+        body = body[:nxt.start() + 10]
+    return {m.group(1) for m in _re.finditer(r"^    (?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(", body, _re.M)}
+
+
+def _snake(name: str) -> str:
+    return _re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+
+
+def _unmirrored() -> set[str]:
+    stage = _stage_methods()
+    return {m for m in _engine_methods() if m not in stage and _snake(m) not in stage}
+
+
+# Pinned from the tree of 2026-09-12 (95 names). Shrinking it is progress; GROWING it needs a reason.
+KNOWN_UNMIRRORED = {
+    # transport / MC session: the stage talks to a gun, never to Mission Control
+    "onMcMessage", "onBleConnected", "onBleDropped", "setWsState", "hydrate", "statusBody", "resume",
+    "resumeSchedule", "_event", "_probe", "_checkEcho", "ackEnd", "onResultPush", "resultWait",
+    "_beginReconcile", "_endReconcile", "_reportPossession", "feedback", "alert", "control", "_cue",
+    "_beginResync", "_resyncButton", "_resyncDone", "_resyncEvidence", "_resyncNotLive", "_resyncTick",
+    # persistence + config application (the stage is configured directly, not by a pushed bundle)
+    "_save", "_load", "_set", "_changed", "clearPersisted", "_applyConfig", "_assign", "_write",
+    "_writeHead", "_writeTeardown", "feedFrame", "reset", "_pickTable",
+    # kitting / loadout browser — HUD surface, no stage equivalent
+    "browse", "canPick", "conflictFor", "kitOpen", "loadoutView", "perkRow", "weaponRow", "slotRule",
+    "requestLoadout", "_loadoutAck", "dismissTryout", "_tutorial", "setReady", "_loadAmmo",
+    "_cancelPick", "_flushPick", "_sendPick",     # A26: the 400 ms tap-to-equip debounce, browser-only
+    # briefing / history / roster display
+    "openBriefing", "closeBriefing", "historyEntry", "nameOf", "teamOf",
+    # lifecycle the stage drives by hand from its own clock
+    "startAt", "tick", "_spawn", "_revive", "_death", "_endLocal", "_triggerPulled", "_onHp",
+    "armState", "respawnHint", "heldMs", "reloadingMs", "switchingMs", "switchWindowMs", "_accrueHold",
+    # LED readout internals: the stage models the READOUT, not each paint step
+    "_gunReadoutPaint", "_gunReadoutPaintLevels", "_gunReadoutTick", "_readoutAnimStart",
+    "_readoutConfiguredPools", "_readoutFullLevel", "_readoutLevel", "_readoutSettle",
+    "_headsetDeath", "_headsetDelayed", "_headsetFlash", "_headsetRest", "_reassertDeathBlink",
+    # roles + stations
+    "_carrier", "_setRole", "_respawnStation", "_stationRevivable", "setStations",
+}
+
+
+def test_stage_ports_every_engine_method_it_claims():
+    """Fails when a NEW `app/src/engine.js` method has no same-named `GunStage` counterpart.
+
+    The stage's only purpose is to PREDICT the phone. A rule that exists on one side and not the other
+    is a bench run that proves nothing — verified against a fiction. If the new name is genuinely
+    node-only (transport, storage, HUD chrome), add it to `KNOWN_UNMIRRORED` with a comment; if it is a
+    game rule, port it to `brx_mcp/stage/stage.py`.
+    """
+    unmirrored = _unmirrored()
+    new = sorted(unmirrored - KNOWN_UNMIRRORED)
+    assert not new, (
+        "new engine.js method(s) with no GunStage counterpart — port them to the stage, or pin them in "
+        "KNOWN_UNMIRRORED with a reason: " + ", ".join(new))
+    healed = sorted(KNOWN_UNMIRRORED - unmirrored)
+    assert not healed, (
+        "these are now mirrored on the stage — delete them from KNOWN_UNMIRRORED so the set keeps "
+        "shrinking: " + ", ".join(healed))
+
+
+def test_the_mirror_scan_sees_both_classes():
+    """The floor: two empty sets agree perfectly. Both parsers must find real methods."""
+    eng, stg = _engine_methods(), _stage_methods()
+    assert len(eng) > 100, f"only {len(eng)} engine.js methods parsed — the declaration pattern moved"
+    assert len(stg) > 100, f"only {len(stg)} GunStage methods parsed — the class body pattern moved"
+    mirrored = eng - _unmirrored()
+    assert len(mirrored) > 25, f"only {len(mirrored)} engine methods resolve to a stage method"
+    for known in ("_hillTick", "_reloadTick", "_stun"):
+        assert known in mirrored, f"{known} should pair engine.js with GunStage but does not"

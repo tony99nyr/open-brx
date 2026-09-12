@@ -9,21 +9,15 @@ dataclass, so a pass proves the parameter did the work and not something that ha
 Run: python3 run_tests.py mode_params
 """
 from brx_mcp.gameconfig import GameConfig as CliConfig
-from brx_mcp.mc.compile import Compiler
-from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
-from brx_mcp.mc.state import MODES, Session, default_config
+from brx_mcp.mc.state import MODES, default_config
 from brx_mcp.modes import (BombEngine, CtfEngine, DominationEngine, LastManStandingEngine,
                            build_engine, params_schema, params_schema_json, registry, validate_mode_params)
 from brx_mcp.modes.extraction_adapter import ExtractionEngineAdapter
 from brx_mcp.modes.params import Param, resolve, validate
+from _session import mc_session
 
 
-def _sess(mode="koth", n=2, **cfg):
-    s = Session(Compiler(), FakeNet(), FakeArmory(demo_armory()))
-    s.set_config({"mode": mode, "time_limit_s": 600, **cfg})
-    for i in range(n):
-        s.add_player(f"OP{i}", gun_id=f"GUN-{chr(65 + i)}")
-    return s
+_sess = mc_session   # shared fixture: tests/_session.py
 
 
 def _raises(fn, *needles):

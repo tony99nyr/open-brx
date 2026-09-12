@@ -16,7 +16,7 @@ Anything that FAILS and looks like a real engine bug is parked as `scenario_*` (
 """
 
 from brx_mcp.gameconfig import GameConfig
-from brx_mcp.sim import SimGame
+from sim import SimGame
 
 
 # --------------------------------------------------------------------------- #

@@ -6,6 +6,11 @@ a token that holds the same value in both samples is not discriminable, and the
 secondary-fire block (tokens 7-13) was empty in both. More weapons = more columns =
 positions that finally move.
 
+SUPERSEDED as a source of truth: every weapon now carries its own captured frame
+(`mc/weapons.json`, see its `_note`) and the token map is bench-proven (fire = t14,
+t15 = the swap delay, 2026-09-04). This module is kept as the decoder, not as the
+map's evidence.
+
 Feed it captures of Callsign arming games with different weapons:
 
   python -m brx_mcp.weapmap cap13.log cap14.log ...

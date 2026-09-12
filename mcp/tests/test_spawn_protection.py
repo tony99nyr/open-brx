@@ -21,6 +21,7 @@ from brx_mcp.gameconfig import _SIR_TABLE
 from brx_mcp.mc.compile import (Compiler, _OBJECTIVE_SIR_ROW, _SPAWN_PROTECT_FN, _sir_cells,
                                 _sir_index, assert_arms_at_spawn, assert_rearms_every_life,
                                 assert_spawn_protected, golden_bundle, sir_spawn_protected)
+from _session import match_config
 
 C = Compiler()
 
@@ -35,12 +36,7 @@ _MUST_NOT_SHIP_PREGAME = {1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17
 
 
 def _cfg(mode="tdm", **kw):
-    c = {"config_id": "c1", "mode": mode, "environment": "indoor", "night": False,
-         "time_limit_s": 600, "respawn": {"type": "auto", "delay_s": 15},
-         "scoring": {"frag_limit": 0, "win_by": "kills"},
-         "health": {"max_hp": 45, "max_armor": 70}, "teams": _TEAMS}
-    c.update(kw)
-    return c
+    return match_config(mode, teams=_TEAMS, **kw)
 
 
 def _player(num=7, team="blue", weapons=("assault_rifle", "shotgun")):

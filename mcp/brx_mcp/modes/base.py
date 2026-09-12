@@ -158,12 +158,6 @@ class Roster:
     def team_members(self, team: int) -> list[Player]:
         return [p for p in self.players.values() if p.team == team]
 
-    def alive_players(self) -> list[Player]:
-        return [p for p in self.players.values() if p.alive]
-
-    def alive_teams(self) -> set[int]:
-        return {p.team for p in self.players.values() if p.alive}
-
     def still_in(self) -> list[Player]:
         """Players not yet out — alive OR still holding a life to respawn on.
         (A dead-but-respawning player is still IN the game.)"""

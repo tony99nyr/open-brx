@@ -1,7 +1,12 @@
-"""B18 — host-side killstreak / multikill announcer (MC as scorekeeper).
+"""B18 — the TIER 0 CLI killstreak / multikill announcer.
 
-Mission Control is the scorekeeper and drives the feedback itself: watch credited
-kills, and send the right feedback back to the SHOOTER's gun.
+Not Mission Control's. This module is imported by `modes/deathmatch.py` and nothing
+else: it serves `python -m brx_mcp play|game-sim`. The shipping medal ladder is
+`mc/scoring.py` (~line 400, `medals`/`MEDAL_LABEL`), with the cue table in
+`mc/presentation.py`. Fix them there; this copy follows only if the CLI needs it.
+
+The scorekeeper drives the feedback itself: watch credited kills, and send the right
+feedback back to the SHOOTER's gun.
 
 **This is what the official app does** — `cap8` (protocol §7o) caught Callsign, which
 has no nRF radio either, emitting per kill over plain BLE:

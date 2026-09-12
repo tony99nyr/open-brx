@@ -126,10 +126,6 @@ def options() -> list[dict]:
     return out
 
 
-def _entry(sid: str) -> dict | None:
-    return snd._catalog().get(sid)
-
-
 def check_slots(slots: dict | None) -> dict[str, str]:
     """Validate `{role: id}` overrides for the `$PSET` fields (+ `kill`): known role, an id ON THE GUN."""
     if not slots:

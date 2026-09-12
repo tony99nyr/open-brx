@@ -14,4 +14,9 @@ Lanes (each module is one workstream; bind to the shapes in `types.py` and the P
 
 Run the UI dev server from webapp/mc (`npm run dev`) against this API, or build it
 (`npm run build`) and let api.py serve webapp/mc/dist.
+
+THREE rule engines exist. `scoring.py` here is Mission Control's; `app/src/engine.js`
+is the phone node's; `brx_mcp/modes/` is the Tier 0 CLI/sim path
+(`python -m brx_mcp play|game-sim`). The shipping pair is this package + `app/`;
+`modes/` is not ported to and does not receive fixes unless the CLI path needs them.
 """

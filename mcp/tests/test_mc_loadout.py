@@ -12,6 +12,7 @@ from brx_mcp.mc.compile import Compiler, WeaponCatalog
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.perks import PerkCatalog, default_perks
 from brx_mcp.mc.state import Session, default_config
+from _session import match_config
 
 T0 = 5_000_000
 C = Compiler()
@@ -22,9 +23,7 @@ _TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
 
 
 def _cfg(mode="tdm"):
-    return {"config_id": "c1", "mode": mode, "environment": "indoor", "night": False, "time_limit_s": 600,
-            "respawn": {"type": "auto", "delay_s": 15}, "scoring": {"frag_limit": 0, "win_by": "kills"},
-            "health": {"max_hp": 45, "max_armor": 70}, "teams": _TEAMS}
+    return match_config(mode, teams=_TEAMS)
 
 
 def _player(lo, num=7):

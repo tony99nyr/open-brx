@@ -16,15 +16,13 @@ plus a case that isolates the 255 clamp specifically inside `validate()`.
 """
 from brx_mcp.mc.compile import Compiler
 from brx_mcp.mc.fakes import FakeArmory, FakeNet, demo_armory
+from _session import match_config
 
 _TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1}]
 
 
 def _cfg(max_hp, max_armor):
-    return {"config_id": "c1", "mode": "tdm", "environment": "indoor", "night": False,
-            "time_limit_s": 600, "respawn": {"type": "auto", "delay_s": 15},
-            "scoring": {"frag_limit": 0, "win_by": "kills"},
-            "health": {"max_hp": max_hp, "max_armor": max_armor}, "teams": _TEAMS}
+    return match_config(max_hp=max_hp, max_armor=max_armor, teams=_TEAMS)
 
 
 def _player(weapon_id, perk=None):
