@@ -49,7 +49,7 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
 - WSL Python dev venv: `.venv/` (`.venv/bin/python`; has websockets/starlette/uvicorn/zeroconf/pytest;
   system python3 has no pip — bootstrap via get-pip if recreating). `cd mcp && python3 run_tests.py`
   must stay green under system python (tests needing extras skip cleanly).
-- **The four test suites** (this is the one place they're listed; other docs point here): `cd mcp &&
+- **The four test suites** (the per-suite detail and flags are `CONTRIBUTING.md` → *Running things*): `cd mcp &&
   python3 run_tests.py` (Python server + Mission Control) · `cd webapp/mc && npm test` (+ `npm run e2e`
   for a UI change; Mission Control web UI) · `cd app && npm test` (phone app) · `cd site && npm test`
   (public site, needs `cd app && npm run build` first).
