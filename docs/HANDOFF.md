@@ -85,7 +85,7 @@ just the path list, whenever more than one session has the same file open.
    for `webapp/mc` (F42.11), JSDoc + `checkJs` on `app/src/transport` (F42.12).
 3. **Bench-gated residuals:** F121 (spawn protection during the countdown), F113 (death-blank LED),
    F123 (reload bar vs. `$ALCD`), F126 (iPhone WKWebView font); keyboard-only: F129 (M2 UI polish),
-   F130 (unsynced-node late flush), the generated-contract follow-ups (F42.9–F42.13, all `build`, none
+   F130 (unsynced-node late flush), the generated-contract follow-ups (F42.9–F42.12, all `build`, none
    blocking).
 
 **Bench sheet:** [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md). Queue:
