@@ -1155,16 +1155,6 @@ KNOWN_UNMIRRORED = {
     # `stunEnabled` is deliberately ABSENT: the stage has `stun_enabled`, and it must stay paired.
 }
 
-# Pins that lead their engine.js declaration: pinned from a WORKING TREE where the app lane had added
-# the method, against a `HEAD` that does not have it yet. The new-name check still applies to them in
-# full; they are only exempt from the "vanished from engine.js" branch below, which would otherwise send
-# a reader off to hunt for a rename on any checkout made before that commit lands.
-#
-# `_awake` + `commitPick`: the app lifecycle hook and the A26 pick debounce, pinned 2026-09-12 from the
-# app lane's in-flight engine.js. DELETE this set the moment that commit is in — after which a genuine
-# removal of either name fails loudly again, which is the whole point of the branch.
-_PINNED_AHEAD_OF_HEAD = {"_awake", "commitPick"}
-
 
 def test_stage_ports_every_engine_method_it_claims():
     """Fails when a NEW `app/src/engine.js` method has no same-named `GunStage` counterpart.
@@ -1186,7 +1176,7 @@ def test_stage_ports_every_engine_method_it_claims():
     engine = _engine_methods()
     stale = sorted(KNOWN_UNMIRRORED - unmirrored)
     ported = [m for m in stale if m in engine]
-    vanished = [m for m in stale if m not in engine and m not in _PINNED_AHEAD_OF_HEAD]
+    vanished = [m for m in stale if m not in engine]
     stale = [m for m in stale if m in ported or m in vanished]
     assert not stale, "; ".join(filter(None, [
         ("now mirrored on the stage — delete them from KNOWN_UNMIRRORED so the set keeps shrinking: "
