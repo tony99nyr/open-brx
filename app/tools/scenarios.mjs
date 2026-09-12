@@ -1,5 +1,5 @@
 import fs0 from 'fs'; try { fs0.mkdirSync(process.env.SHOTS_DIR || new URL('../shots', import.meta.url).pathname, { recursive: true }); } catch {}
-// Edge-state visual QA: resync prompts (§3.10), BLE-drop, abort, panic — states rig.mjs's happy path skips.
+// Edge-state visual QA: the live reconcile (§3.10), BLE-drop, abort, panic — states rig.mjs's happy path skips.
 import { chromium } from 'playwright';
 import http from 'http'; import fs from 'fs'; import path from 'path';
 const MC = process.env.MC || 'http://127.0.0.1:8765', WS = process.env.WS || MC.replace('http', 'ws').replace(':8765', ':8766') + '/ws';
@@ -30,18 +30,21 @@ await api('POST', '/api/start', { runway_s: 30 });
 await hud.waitForTimeout(2500); await shot('a1-armed');
 await api('POST', '/api/start/abort', {});
 await hud.waitForTimeout(1200); await shot('a2-aborted-back-to-lobby');
-// scenario B: start, BLE drop mid-live → NO GUN state; relink → resync prompt (trigger-first)
+// scenario B: start, BLE drop mid-live → NO GUN state; relink → the S7.1 RECONCILE (node.md §3.10).
+// NOT the trigger-first resync prompt: that evidence protocol was retired for the live path (it mis-concluded
+// "dead" and let auto-respawn heal the player on restart) and now survives only for lobby/armed. A live relink
+// — and a live app RESUME, which took the retired path until 2026-09-12 — disarms for RECONCILE_MS, keeps the
+// real pools, then re-arms. Nothing is asked of the player.
 await api('POST', '/api/start', { runway_s: 3 });
 await hud.waitForTimeout(6000); await shot('b1-live');
 await hud.evaluate(() => window.fakeGun.drop());
 await hud.waitForTimeout(1000); await shot('b2-ble-dropped');
 await hud.evaluate(() => window.fakeGun.relink());
-await hud.waitForTimeout(1500); await shot('b3-resync-prompt');
-console.log('resync state:', await hud.evaluate(() => JSON.stringify(window.brx.engine.state().resync)));
-// player pulls the trigger, a shot goes out → alive, prompt clears
-await hud.evaluate(() => window.fakeGun.fire(1));
-await hud.waitForTimeout(1000); await shot('b4-resync-cleared');
-console.log('after fire:', await hud.evaluate(() => { const s = window.brx.engine.state(); return JSON.stringify({ resync: s.resync, alive: s.alive, phase: s.phase }); }));
+await hud.waitForTimeout(1500); await shot('b3-reconciling');
+console.log('reconcile state:', await hud.evaluate(() => { const s = window.brx.engine.state(); return JSON.stringify({ reconciling: s.reconciling, resync: s.resync, alive: s.alive, hp: s.hp }); }));
+// no trigger pull is asked of the player: the window closes on its own and the gun re-arms at its REAL hp
+await hud.waitForTimeout(2500); await shot('b4-reconciled');
+console.log('after the window:', await hud.evaluate(() => { const s = window.brx.engine.state(); return JSON.stringify({ reconciling: s.reconciling, resync: s.resync, alive: s.alive, hp: s.hp, phase: s.phase }); }));
 // scenario C: host PANIC
 await api('POST', '/api/control', { cmd: 'panic', confirm: true });
 await hud.waitForTimeout(1500); await shot('c1-panic');

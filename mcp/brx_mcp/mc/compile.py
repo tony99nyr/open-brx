@@ -434,6 +434,55 @@ _STATION_GATED_MODES = {"domination", "koth", "ctf", "cs", "bomb"}
 # validator read the one table.
 
 
+# ---------------------------------------------------------------------------------------------------
+# A31 (2026-09-12): THE "VERIFY AT MC" PRE-GAME WARNING.
+# ---------------------------------------------------------------------------------------------------
+# Written ONCE, here, and read by both audiences (`assign.game.mc_verify` for the phone's ARMED screen,
+# `State.notices.mc_verify` for the host's LOBBY/ARMED banner), so MC and the phones cannot disagree
+# about whether this match needs the warning at all.
+MC_VERIFY_PLAYER = "A WIN IS CONFIRMED AT MISSION CONTROL · RETURN AFTER THE WHISTLE"
+
+
+def full_coverage(config: dict | None = None, opts: dict | None = None) -> bool:
+    """Is the VENUE asserted to cover every phone for the whole match? (A4.8, A31.)
+
+    THE coverage model, and the only reader of either field: `opts.coverage` is the per-call CLI/sim
+    path and wins; `config.coverage` is the MC operator's venue setting (`state.py` `_CONFIG_KEYS`).
+    Anything other than "full" — including absent, which is the default — is partial coverage, because
+    a venue nobody has asserted is one MC cannot promise to hear.
+    """
+    return ((opts or {}).get("coverage") or (config or {}).get("coverage")) == "full"
+
+
+def mc_decided_end(config: dict) -> bool:
+    """Does MISSION CONTROL decide when this game is over, rather than the clock on every phone?
+
+    Three shapes (A31): a frag cap (MC counts the kills and calls it), an objective `win_by` (possession
+    is merged from the nodes' reports at MC), and a survival mode, where "last player standing" is a
+    fact about the whole field. A plain timed kills match is NOT one of these — every phone ends itself
+    on `go_live_t + time_limit_s` and needs nothing from MC to know the match is over.
+    """
+    sc = config.get("scoring") or {}
+    if sc.get("frag_limit"):
+        return True
+    if sc.get("win_by") not in (None, "", "kills"):
+        return True
+    return config.get("mode") in ("lms", "infection")
+
+
+def mc_verify(config: dict, opts: dict | None = None, off_grid: bool = False) -> str | None:
+    """The player-facing line, or None when this match does not need it (A31).
+
+    Three conditions, all required: MC decides the end, the venue is not full coverage, and at least
+    one rostered phone has no backhaul (the caller's `off_grid` — `state.py` `_off_grid()`). Under full
+    coverage every phone hears the END; with backhaul everywhere every phone hears the RESULT; either
+    way the warning would be a lie about a match that tells players itself.
+    """
+    if not off_grid or not mc_decided_end(config) or full_coverage(config, opts):
+        return None
+    return MC_VERIFY_PLAYER
+
+
 def station_source_of(config: dict, opts: dict | None = None) -> str | None:
     """Where this game's objective comes from: `opts` wins (the CLI/sim path passes it per call),
     else the GameConfig field the MC operator sets (`state.py` `_CONFIG_KEYS`)."""
@@ -1300,7 +1349,7 @@ class Compiler:
         errors: list[str] = []
         warnings: list[str] = []
         mode = config.get("mode", "tdm")
-        covered = opts.get("coverage") == "full"
+        covered = full_coverage(config, opts)      # A31: one coverage model, `opts` over the venue setting
 
         # time limit: required (>0) on the phone path unless a fully-covered venue is asserted
         tl = config.get("time_limit_s")

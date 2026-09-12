@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { registrySig } from '../api/derive';
-import type { Loadout, PerkView, Player, WeaponView } from '../api/types';
+import type { Loadout, PerkView, PhaseRefusal, Player, WeaponView } from '../api/types';
 import { useStore } from '../store';
 import { EvictButton } from '../ui/EvictButton';
 import { CHAMFER, F, PERK_COLOR, T, TAB, fmtAge, roleOf, teamColor } from '../tokens';
@@ -50,8 +50,54 @@ export function kitGate(players: Player[] | null | undefined) {
 /** Three names, then a count: a squad of 12 must not wrap the header to three lines. */
 const waitingNames = (names: string[]) => (names.length <= 3 ? names.join(', ') : `${names.slice(0, 3).join(', ')} +${names.length - 3} MORE`);
 
+/** The refusal, as one line the operator can act on.
+ *
+ *  The server's sentence is rendered VERBATIM and first — it is the one that decided. The names are
+ *  appended only when that sentence does not already carry them, because MC's own copy usually does
+ *  ("1 of 9 are not READY: ROCCO") and printing them twice reads as two different facts. The
+ *  "CONTINUE ANYWAY?" prompt is always last: it is what the next tap will do. */
+export function refusalLine(r: PhaseRefusal): string {
+  const said = (r.error || '').trim() || 'MISSION CONTROL REFUSED THE ADVANCE';
+  const names = (r.not_ready ?? []).map(n => n.toUpperCase()).filter(Boolean);
+  const upper = said.toUpperCase();
+  const missing = names.filter(n => !upper.includes(n));
+  // just the names. The server's sentence has already said WHAT is wrong; repeating "ARE NOT READY"
+  // after it makes one fact read as two.
+  const who = missing.length ? ` — ${waitingNames(missing)}` : '';
+  return `${said}${who}${/CONTINUE ANYWAY\?$/.test(upper) ? '' : ' — CONTINUE ANYWAY?'}`;
+}
+
+/** The refusal of a tap that ALREADY carried `force`.
+ *
+ *  A 409 on the forced tap used to re-render the same sentence the unforced tap produced, so the
+ *  screen said nothing had changed while the override had in fact been sent and refused — and the
+ *  12 s expiry then disarmed the button back to an UNFORCED tap, so the operator's next press was
+ *  the first tap again (review 2026-09-12). This line says the override itself was refused; the
+ *  button stays armed until it is cancelled, and the next tap forces again. */
+function overrideRefusedLine(r: PhaseRefusal): string {
+  const said = (r.error || '').trim() || 'IT WOULD NOT ADVANCE';
+  return `MC REFUSED THE OVERRIDE — ${said.toUpperCase()}`;
+}
+
+/** The ready count the button prints. While the SERVER has refused, it is the SERVER's tally: the
+ *  console's own roster said 9/9 READY on the very line that was being refused for an unready
+ *  player, which reads as the console arguing with the sentence under it (review 2026-09-12). An
+ *  older MC sends no counts with its 409 — then there is no number to print rather than a wrong one. */
+function readyCount(gate: ReturnType<typeof kitGate>, refusal: PhaseRefusal | null): string {
+  if (refusal) {
+    return typeof refusal.greens === 'number' && typeof refusal.roster_size === 'number'
+      ? ` · ${refusal.greens}/${refusal.roster_size} READY` : '';
+  }
+  return gate.known ? ` · ${gate.ready}/${gate.total} READY` : '';
+}
+
+/** What a tap on CONTINUE came back with. `refusal` is A27's 409: the SERVER would not advance, and
+ *  it said who is not ready. It is not an error — the operator can force it — so it never goes to the
+ *  red strip, which is for things that went wrong. */
+export type GoResult = { ok: boolean; refusal?: PhaseRefusal };
+
 /** The KIT -> LOBBY button: the ready count IS the status, and a short roster is a two-tap confirm. */
-function ContinueToLobby({ gate, onGo }: { gate: ReturnType<typeof kitGate>; onGo: () => Promise<boolean> }) {
+function ContinueToLobby({ gate, onGo }: { gate: ReturnType<typeof kitGate>; onGo: (force: boolean) => Promise<GoResult> }) {
   const blocked = gate.known && gate.waiting.length > 0;
   const who = gate.waiting.join('|');
   // The confirm is armed FOR a named set of players, not as a flag, so it disarms itself the moment
@@ -59,7 +105,16 @@ function ContinueToLobby({ gate, onGo }: { gate: ReturnType<typeof kitGate>; onG
   // would be stranded now. (Derived during render, so there is no disarm effect to lag a snapshot
   // behind the button.) Leaving KIT unmounts this, which disarms it too.
   const [armedFor, setArmedFor] = useState<string | null>(null);
-  const armed = blocked && armedFor === who;
+  // A27 (F127, server side): `POST /api/phase` refuses kit -> lobby with 409 `{error, not_ready}` while
+  // anyone is unready. The console's OWN gate above counts the roster it last saw; the two can
+  // disagree (a phone readied a snapshot ago, or the server knows about a player this console does
+  // not), and when they do the server's list is the true one. So the refusal becomes the confirm: it
+  // is shown with the server's names, and the NEXT tap carries `force: true`.
+  const [refusal, setRefusal] = useState<PhaseRefusal | null>(null);
+  // ...and whether the tap it refused had already carried `force`. That is a different event with a
+  // different next step, and it must not expire back into an unforced tap.
+  const [refusedForce, setRefusedForce] = useState(false);
+  const armed = (blocked && armedFor === who) || refusal != null;
   // Deriving `armed` HIDES the confirm the moment the roster stops matching — but the armed-for set
   // also has to be FORGOTTEN, and the trigger is the SET CHANGING, not the roster unblocking. Clearing
   // only on `!blocked` left the old set behind through a roster that was still blocked by somebody
@@ -70,16 +125,33 @@ function ContinueToLobby({ gate, onGo }: { gate: ReturnType<typeof kitGate>; onG
   // behind, and no frame in which the button is armed at a set it was not armed for). Unmount needs no
   // cleanup: leaving KIT destroys this state with the component.
   if (armedFor !== null && armedFor !== who) setArmedFor(null);
+  // a refusal describes a roster; when the roster changes it is describing something else
+  const [refusedAt, setRefusedAt] = useState<string | null>(null);
+  if (refusal != null && refusedAt !== who) { setRefusal(null); setRefusedAt(null); setRefusedForce(false); }
   // ...and it expires on its own, like the A14 loadout confirm: an armed warning left on screen is a
   // trap, because the next tap is the one that moves everybody.
-  useEffect(() => { if (!armed) return; const h = setTimeout(() => setArmedFor(null), 12_000); return () => clearTimeout(h); }, [armed]);
+  // ...EXCEPT once the override itself has been refused: expiring that would quietly turn the next
+  // tap back into the first tap of a two-tap gate, on a screen still showing a refusal. It is
+  // cleared by CANCEL, by the roster changing, or by the advance going through.
+  useEffect(() => { if (!armed || refusedForce) return; const h = setTimeout(() => { setArmedFor(null); setRefusal(null); setRefusedAt(null); }, 12_000); return () => clearTimeout(h); }, [armed, refusedForce]);
   // The count rides on BOTH labels. Dropping it while armed left the strip's only number as the
   // KITTED tally — a different count, of a different thing, at the moment the operator is deciding.
-  const count = gate.known ? ` · ${gate.ready}/${gate.total} READY` : '';
+  const count = readyCount(gate, refusal);
   const label = `${armed ? 'CONTINUE ANYWAY' : 'CONTINUE'}${count} ▸`;
   const go = async () => {
     if (blocked && !armed) { setArmedFor(who); return; }   // first tap: arm on THIS set of names, send nothing
-    if (await onGo()) setArmedFor(null);                   // `run()` returned undefined on a 4xx: stay put
+    // `force` rides on any tap the operator makes AFTER seeing a named warning — the console's own
+    // F127 confirm counts, not just the server's refusal. Without that the two guards stack and
+    // CONTINUE needs THREE taps: arm, refused, force (caught by `npm run e2e:kit`, 2026-09-12). Each
+    // path is still two taps, and `force` is still never sent before the operator has been told whose
+    // screen it takes:
+    //   roster blocked here  → tap 1 arms and names them, tap 2 sends `force`
+    //   roster looks green   → tap 1 sends plain, the server refuses and names them, tap 2 sends `force`
+    const forced = armed;
+    const r = await onGo(forced);
+    // the server said no, and said who — and whether it was the OVERRIDE it turned down
+    if (r.refusal) { setRefusal(r.refusal); setRefusedAt(who); setRefusedForce(forced); return; }
+    if (r.ok) { setArmedFor(null); setRefusal(null); setRefusedAt(null); setRefusedForce(false); }  // otherwise it threw: the red strip says why, stay put
   };
   return (
     <span data-continue="kit" data-armed={armed ? '1' : '0'} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, maxWidth: '100%' }}>
@@ -87,7 +159,7 @@ function ContinueToLobby({ gate, onGo }: { gate: ReturnType<typeof kitGate>; onG
           393px phone, which pushed CANCEL off the right edge of the console (e2e 2026-09-12). Let the
           pair wrap instead: one row on the desk, stacked and still right-aligned on a phone. */}
       <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8, maxWidth: '100%' }}>
-        {armed && <GhostButton size={11} pad="9px 14px" onClick={() => setArmedFor(null)}>CANCEL</GhostButton>}
+        {armed && <GhostButton size={11} pad="9px 14px" onClick={() => { setArmedFor(null); setRefusal(null); setRefusedAt(null); setRefusedForce(false); }}>CANCEL</GhostButton>}
         {/* ONE element in both states, styled two ways. Swapping <button> for PrimaryButton when the
             roster blocks threw the focused element away mid-decision, so a keyboard operator lost the
             gate at the exact moment it started asking a question (review 2026-09-12). The transparent
@@ -103,12 +175,22 @@ function ContinueToLobby({ gate, onGo }: { gate: ReturnType<typeof kitGate>; onG
           {label}
         </button>
       </span>
-      {armed && (
-        // The CONSEQUENCE, on screen. It used to live in a `title` tooltip — which the operator was
+      {armed && !refusal && (
+        // The CONSEQUENCE, on screen. Suppressed once the SERVER has refused: its line says the same
+        // thing with better information, and two warnings about one roster read as two problems
+        // (real-server walk, 2026-09-12). It used to live in a `title` tooltip — which the operator was
         // never going to hover, and which a touch console has no way to show at all — so the visible
         // line said only that someone was "waiting", not that a tap takes their screen away (F127).
         <span role="alert" data-continue-warn="1" style={{ font: F.chk(600, 12), letterSpacing: '.06em', color: T.warn, maxWidth: 'min(620px, calc(100vw - 48px))', textAlign: 'right', lineHeight: 1.45 }}>
           {waitingNames(gate.waiting)} {gate.waiting.length === 1 ? 'IS' : 'ARE'} STILL KITTING AND WILL LOSE THEIR SCREEN — CONTINUE ANYWAY?
+        </span>
+      )}
+      {refusal && (
+        // The SERVER's sentence and the SERVER's names, verbatim. Not the console's own count — when
+        // the two disagree this is the one that decided, and the operator is about to override it.
+        <span role="alert" data-continue-refusal="1" data-override-refused={refusedForce ? '1' : '0'}
+          style={{ font: F.chk(600, 12), letterSpacing: '.06em', color: refusedForce ? T.bad : T.warn, maxWidth: 'min(620px, calc(100vw - 48px))', textAlign: 'right', lineHeight: 1.45 }}>
+          {refusedForce ? overrideRefusedLine(refusal) : refusalLine(refusal)}
         </span>
       )}
       {!gate.known && gate.total > 0 && (
@@ -288,11 +370,24 @@ export function Kit() {
               does not echo) would have read as a refusal and stranded the operator on KIT with no error
               strip to explain it. Return the sentinel from INSIDE `run`, so the only refusal is a throw
               (review 2026-09-12). */}
-          <ContinueToLobby gate={gate} onGo={async () => {
-            const ok = await run(async () => { await api.setPhase('lobby'); return true; });
-            if (!ok) return false;                // threw: the error strip says why, stay on KIT
+          <ContinueToLobby gate={gate} onGo={async force => {
+            // A27: a 409 is a REFUSAL, not a failure — it is caught here so it never reaches the red
+            // strip, and handed back so the button can turn into the confirm that carries `force`.
+            let refusal: PhaseRefusal | undefined;
+            const ok = await run(async () => {
+              try {
+                await api.setPhase('lobby', force || undefined);
+                return true;
+              } catch (e) {
+                const err = e as Error & { status?: number; body?: PhaseRefusal };
+                if (err.status === 409) { refusal = err.body ?? { error: err.message }; return false; }
+                throw e;                          // anything else really is an error
+              }
+            });
+            if (refusal) return { ok: false, refusal };
+            if (!ok) return { ok: false };        // threw: the error strip says why, stay on KIT
             setView('lobby');
-            return true;
+            return { ok: true };
           }} />
         </span>} />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'flex-start' }}>
@@ -530,6 +625,13 @@ function SlotCard({ label, slot, active, onClick, rule, item, kind, required, on
   const isPerk = kind === 'perk' && item && 'perk_id' in item;
   const color = isPerk ? PERK_COLOR : T.acc;
   const empty = kind === 'none';
+  // `✕ CLEAR` is absolutely positioned in the card's bottom-right corner, and the line it lands on is
+  // the weapon's `ROLE · MAG 12 · RES 24` — which ran straight under it on every SECONDARY plate in
+  // every Kit screenshot we have (review 2026-09-12). Absolute position takes an element out of flow,
+  // so nothing was ever going to move for it: the room has to be RESERVED. The ammo line then WRAPS
+  // into that narrower column rather than ellipsising, because truncating it to "SIDEARM · MAG 7 · R…"
+  // trades one unreadable reserve count for a missing one.
+  const clearW = onClear ? 96 : 0;
   return (
     <div role="button" tabIndex={0} aria-pressed={active} onClick={onClick} onKeyDown={onKey(onClick)} className="hov-acc"
       style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', minHeight: 96, cursor: 'pointer',
@@ -548,25 +650,25 @@ function SlotCard({ label, slot, active, onClick, rule, item, kind, required, on
           </span>
         </div>
       ) : item && 'weapon_id' in item ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 48 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 48, paddingRight: clearW }}>
           <span style={{ width: 84, height: 48, flex: 'none', background: `url(assets/weapons/${item.weapon_id}.jpg) center/contain no-repeat, ${T.inset}`, border: `1px solid ${T.line}` }} />
           <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ font: F.osw(700, 18), letterSpacing: '.06em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name.toUpperCase()}</span>
-            <span style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: T.micro }}><span style={{ color: roleOf(item.role, item.cls).color }}>{roleOf(item.role, item.cls).label}</span> · MAG {item.clip} · RES {item.reserve}</span>
+            <span data-slot-ammo="1" style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: T.micro, lineHeight: 1.35 }}><span style={{ color: roleOf(item.role, item.cls).color }}>{roleOf(item.role, item.cls).label}</span> · MAG {item.clip} · RES {item.reserve}</span>
           </span>
         </div>
       ) : item && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 48 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 48, paddingRight: clearW }}>
           <span style={{ width: 48, height: 48, flex: 'none', display: 'grid', placeItems: 'center', background: T.inset, border: `1px solid ${PERK_COLOR}` }}><PerkGlyph id={item.perk_id} size={28} color={PERK_COLOR} /></span>
           <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ font: F.osw(700, 18), letterSpacing: '.06em' }}>{item.name.toUpperCase()}</span>
-            <span style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: PERK_COLOR }}>PERK · {effectLine(item)}</span>
+            <span style={{ font: F.osw(700, 18), letterSpacing: '.06em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name.toUpperCase()}</span>
+            <span data-slot-ammo="1" style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: PERK_COLOR, lineHeight: 1.35 }}>PERK · {effectLine(item)}</span>
           </span>
         </div>
       )}
       {onClear && (
-        <button type="button" onClick={e => { e.stopPropagation(); onClear(); }} aria-label={`clear ${slot}`} title={slot === 'perk' ? 'No perk' : 'Leave slot 2 empty'} className="hov-acc-ink"
-          style={{ ...BTN_RESET, position: 'absolute', right: 8, bottom: 8, font: F.mono(600, 9), letterSpacing: '.14em', color: T.micro, padding: '8px 10px', minHeight: 36 }}>✕ CLEAR</button>
+        <button type="button" data-slot-clear={slot} onClick={e => { e.stopPropagation(); onClear(); }} aria-label={`clear ${slot}`} title={slot === 'perk' ? 'No perk' : 'Leave slot 2 empty'} className="hov-acc-ink"
+          style={{ ...BTN_RESET, position: 'absolute', right: 8, bottom: 8, width: clearW - 12, textAlign: 'right', font: F.mono(600, 9), letterSpacing: '.14em', color: T.micro, padding: '8px 10px', minHeight: 36, boxSizing: 'border-box' }}>✕ CLEAR</button>
       )}
       {required && !item && <span style={{ font: F.mono(500, 9), color: T.bad }}>A PRIMARY IS REQUIRED</span>}
       {overridden && (

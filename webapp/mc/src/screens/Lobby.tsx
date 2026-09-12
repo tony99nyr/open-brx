@@ -5,6 +5,7 @@ import { useStore } from '../store';
 import { F, T, TAB, teamColor } from '../tokens';
 import { BTN_RESET, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag } from '../ui';
 import { SetupSteps } from '../ui/SetupSteps';
+import { McVerify } from '../ui/McVerify';
 
 
 export function Lobby() {
@@ -56,6 +57,8 @@ export function Lobby() {
       } />
       {/* the field steps (power-cycle the grenade, place it) — see ui/SetupSteps */}
       <SetupSteps style={{ marginBottom: 12 }} />
+      {/* A31: the standing "this win is settled at MC" line, naming the phones with no backhaul */}
+      <McVerify style={{ marginBottom: 12 }} />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
         {cols.map(col => (
           <div key={col.id} style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column' }}

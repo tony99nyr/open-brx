@@ -34,11 +34,7 @@ html,body{margin:0;height:100%;background:#030407;color:var(--num);font-family:v
 #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#030407;padding:env(safe-area-inset-top,0) env(safe-area-inset-right,0) env(safe-area-inset-bottom,0) env(safe-area-inset-left,0);box-sizing:border-box}   /* a status bar / notch never covers the frame's corners (device report 2026-09-04) */
 #frame{position:relative;flex:0 0 844px;width:844px;height:390px;transform-origin:center center;overflow:hidden;background:var(--bg);color:var(--num)}   /* flex:0 0 — #stage is a flex row and a phone narrower than 844 CSS px shrank the frame BEFORE scaling it, reflowing every screen (review 2026-09-03 #6/#7/#13/#18/#22) */
 #frame *{scrollbar-width:none}#frame *::-webkit-scrollbar{display:none}#diag,#diag *{scrollbar-width:auto}#diag::-webkit-scrollbar,#diag *::-webkit-scrollbar{display:block}   /* the desktop diagnostics panel keeps its scrollbars */   /* touch UI: desktop scrollbars ate 15px inside every scroller and wrapped rows (#2/#10) */   /* color resolved INSIDE the frame so night's --num applies to inherited text */
-html.cam-on,html.cam-on body{background:transparent!important}
-#frame.cam{background:transparent}
-#hud,#overlay,#chips,#cam{position:absolute;inset:0}
-#cam{z-index:0;background:transparent;display:none}
-#frame.cam #cam{display:block}
+#hud,#overlay,#chips{position:absolute;inset:0}
 #hud{z-index:1}#overlay{z-index:3;pointer-events:none}#chips{z-index:4;pointer-events:none}
 #diag{z-index:6}
 .tab{font-variant-numeric:tabular-nums}
@@ -77,10 +73,8 @@ button:active{filter:brightness(1.15)}
 .batt{display:flex;align-items:center;gap:5px}
 .batt .shell{width:24px;height:11px;border:1.5px solid var(--mut);border-radius:2px;position:relative;display:inline-block}
 .batt .fill{position:absolute;inset:2px;background:var(--ok)}
-.camchip{border:1px solid var(--edge);color:var(--mut);font-size:12px;font-weight:700;letter-spacing:.16em;padding:5px 14px;transform:skewX(-10deg);pointer-events:auto;min-height:32px;position:relative}
-/* ≥44px glove-tap hit area without growing the 32px visual (in-element pseudo extends the click box) */
-.camchip::after{content:"";position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);height:44px;min-width:44px}
-.camchip.on{background:var(--glow);color:#04121e;border-color:var(--glow)}
+/* (S21, 2026-09-12: the CAM look-through chip is gone from the HUD. The camera PERMISSION and the QR join
+   scanner stay — only the see-through-the-phone button went.) */
 .stats{position:absolute;top:64px;right:48px;display:flex;gap:18px;font-size:13px;letter-spacing:.08em;color:var(--mut);font-weight:700;align-items:baseline;white-space:nowrap}   /* legible at arm's length (#14): 13/22 instead of 12/15 */
 .stats b{color:var(--num);font-family:var(--fd);font-size:22px;font-weight:700;margin-left:4px}
 .stats b.mut{color:var(--mut)}
@@ -124,15 +118,8 @@ button:active{filter:brightness(1.15)}
 .takingfire .r{width:6px;height:6px;border:1px solid var(--bad);border-radius:50%}
 .takingfire .t{font-family:var(--fd);font-style:italic;font-weight:700;font-size:22px;letter-spacing:.3em;color:var(--bad);text-indent:.3em;animation:blink .5s infinite}
 .battwarn{position:absolute;top:96px;right:48px;font-size:10px;letter-spacing:.16em;color:var(--warn);font-weight:700}
-/* cam look-through */
-#frame.cam .clockplate{background:rgba(4,8,14,.6)}
-#frame.cam .scrim-t{position:absolute;top:0;left:0;right:0;height:80px;background:linear-gradient(180deg,rgba(0,0,0,.55),transparent)}
-#frame.cam .scrim-b{position:absolute;bottom:0;left:120px;right:0;height:110px;background:linear-gradient(0deg,rgba(0,0,0,.55),transparent)}
-#frame.cam .ident,#frame.cam .topright,#frame.cam .stats,#frame.cam .vitals,#frame.cam .ammo{text-shadow:0 2px 10px rgba(0,0,0,.95)}
-#frame.cam .bar{background:rgba(0,0,0,.5)}
-#frame.cam .edgeglow,#frame.cam .strip,#frame.cam .scan{display:none}
-.scrim-t,.scrim-b{display:none}#frame.cam .scrim-t,#frame.cam .scrim-b{display:block}
-
+/* (S21, 2026-09-12: the camera look-through is gone — the #cam layer, the `cam-on`/`#frame.cam` rules and
+   the scrims that only existed under it went with the chip. The QR join scanner is unrelated and stays.) */
 /* ============ night ============ */
 [data-env="night"] .clockplate{border:0;background:none;top:28px}
 [data-env="night"] .clockplate .t{font-size:22px;font-weight:600;color:var(--mut);text-shadow:none}
@@ -385,6 +372,9 @@ button:active{filter:brightness(1.15)}
 .ready.wait{background:var(--plate);color:var(--mut);border:1px solid var(--edge);box-shadow:none;font-size:20px;cursor:default}   /* F117: `.wait` is now the INERT button only (STANDING BY). A real control never wears it. */
 .ready.wait.on{background:var(--ok);color:#04120a;border:none;box-shadow:0 0 40px -8px var(--ok)}
 .lobby .note{font-size:13px;color:var(--mut);font-weight:600;max-width:200px;line-height:1.5}
+/* A27/A30: the host locked kits under this player, or MC refused a pick. It LEADS the screen -- one line
+   sitting directly above the footer's button, never a silent screen swap and never buried in the note. */
+.lobby .kitlock{position:absolute;left:0;right:0;bottom:100%;margin-bottom:8px;font-size:13px;letter-spacing:.14em;color:var(--warn);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lobby .foot .note.join{max-width:230px;font-size:12px;line-height:1.4}
 .lobby .tr{position:absolute;top:30px;right:48px;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
 .lobby .status{font-size:11px;letter-spacing:.2em;color:var(--mut);font-weight:600;text-align:right;white-space:nowrap}
@@ -468,19 +458,107 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 @keyframes trackin{from{opacity:0;transform:translate(24px,-50%)}to{opacity:1;transform:translate(0,-50%)}}
 @keyframes wipeout{to{transform:translateX(120%);opacity:0}}
 
-/* end-of-match result screen — flex column so nothing can stack on short viewports (2026-08-26) */
-.result{display:flex;flex-direction:column;align-items:stretch;justify-content:center;gap:12px;padding:18px 32px;overflow:hidden}
-.result .banner{text-align:center;font-family:var(--fd);font-style:italic;font-weight:700;font-size:40px;letter-spacing:.18em;color:var(--num);transform:skewX(-8deg);text-shadow:0 0 40px rgba(122,190,255,.35)}
-.result .banner .unskew{display:inline-block;transform:skewX(8deg)}
-.result .rstats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
-.result .rstats .cell{min-width:0;border:1px solid var(--edge);background:var(--plate);padding:10px 4px;text-align:center;transform:skewX(-8deg)}
-.result .rstats .cell b{display:block;font-family:var(--fd);font-weight:700;font-size:30px;color:var(--num);transform:skewX(8deg);white-space:nowrap}
-.result .rstats .cell span{display:block;margin-top:3px;font-size:9.5px;letter-spacing:.18em;color:var(--mut);font-weight:600;transform:skewX(8deg);white-space:nowrap}
-.result .sess{text-align:center;font-size:12px;letter-spacing:.24em;color:var(--mut);font-weight:600}
-.result .foot{position:static;display:flex;flex-direction:column;gap:6px;align-items:center}
-.result .foot .ready{max-width:420px;width:100%;margin:0 auto}
-.result .syncline{font-size:11px;letter-spacing:.2em;font-weight:700}
+/* ============ A24 FINAL RESULTS + MATCH HISTORY (node.md §3.13, game test 2026-09-11 D3) ============
+   A flex column: head (fixed) · body (absorbs the remainder and scrolls inside itself) · strips · my-line
+   tiles · foot. Nothing here is sized for five cells, two teams or one screen height: the tile row's column
+   count is written by the renderer and every list scrolls rather than pushing the footer off the frame.
+   EVERY meaning-bearing label is >= 11px — the old `.cell span` was 9.5px, which is what the report was about. */
+.result{position:absolute;inset:0;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:5px;padding:10px 26px 9px;overflow:hidden}
+.result .rhead{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;column-gap:14px;flex:0 0 auto;padding-right:26px}   /* the right column stops clear of the 36px ⓘ corner box */
+.result .rkick{grid-column:1;grid-row:1;font-size:11px;letter-spacing:.28em;color:var(--mut);font-weight:700;white-space:nowrap}
+.result .rh1{grid-column:1;grid-row:2;font-family:var(--fd);font-style:italic;font-weight:700;letter-spacing:.14em;color:var(--num);transform:skewX(-8deg)}
+.result .rh1 .unskew{display:inline-block;transform:skewX(8deg)}
+.result .rh1.w{font-size:42px;line-height:1.02;white-space:nowrap;text-shadow:0 0 40px rgba(122,190,255,.35)}
+.result .rh1.p{font-size:18px;line-height:1.2;letter-spacing:.1em;color:var(--warn);max-width:560px}
+.result .rh1.win{color:var(--ok)}.result .rh1.lose{color:var(--bad)}.result .rh1.draw,.result .rh1.undecided{color:var(--warn)}
+.result .rmeta{grid-column:2;grid-row:2;font-size:11px;letter-spacing:.18em;color:var(--mut);font-weight:600;align-self:flex-end;padding-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.result .rseg{grid-column:3;grid-row:1/span 2;display:flex;align-self:center;pointer-events:auto}
+.result .rseg .sg{min-height:38px;padding:0 15px;border:1px solid var(--edge);background:var(--plate);color:var(--mut);font-family:var(--fd);font-weight:700;font-size:13px;letter-spacing:.18em;transform:skewX(-8deg)}
+.result .rseg .sg+.sg{border-left:0}
+.result .rseg .sg .unskew{display:inline-block;transform:skewX(8deg)}
+.result .rseg .sg.on{background:var(--team);color:var(--team-ink);border-color:var(--team)}
+.result .rbody{flex:1 1 auto;min-height:0;overflow:hidden}
+/* --- waiting for the push: what the screen knows, and never an outcome --- */
+.result .rwait{display:flex;flex-direction:column;justify-content:center;gap:8px;height:100%;border:1px dashed var(--edge);padding:10px 16px}
+.result .rwait .wl{font-size:13px;line-height:1.45;color:var(--num);max-width:660px}
+.result .rwait .wl.dim{color:var(--mut);font-size:12px}
+/* --- TEAM view --- */
+.result .rteams{display:grid;gap:10px;height:100%;min-height:0}
+.result .rteam{display:flex;flex-direction:column;gap:5px;min-height:0;border:1px solid var(--edge);background:var(--plate);padding:7px 8px}
+.result .rteam.mine{border-color:var(--team)}
+.result .rteam .tm{display:inline-block;align-self:flex-start;padding:2px 11px;font-family:var(--fd);font-weight:700;font-size:15px;letter-spacing:.14em;transform:skewX(-12deg);max-width:100%;overflow:hidden}
+.result .rteam .tm .unskew{display:inline-block;transform:skewX(12deg);white-space:nowrap}
+.result .rteam .tm b{font-size:21px;margin-left:5px}
+.result .thold{font-size:11px;letter-spacing:.18em;color:var(--mut);font-weight:600;white-space:nowrap}
+.result .thold b{color:var(--num);font-family:var(--fd);font-size:15px}
+.result .tpl{flex:1 1 auto;min-height:0;overflow:hidden auto}
+.result .tph{display:flex;justify-content:space-between;gap:8px;font-size:11px;letter-spacing:.14em;color:var(--mut);font-weight:700;border-bottom:1px solid var(--edge);padding-bottom:3px;margin-bottom:2px;white-space:nowrap}
+.result .tp{display:flex;justify-content:space-between;gap:10px;font-size:13px;letter-spacing:.05em;padding:1px 0}
+.result .tp .pn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.result .tp .pv{color:var(--mut);white-space:nowrap}
+.result .tp.me,.result .tp.me .pv{color:var(--glow)}
+.result .tp.none{display:block;color:var(--mut);font-size:11px;letter-spacing:.16em;font-weight:600}
+/* --- PLAYER view (the leaderboard) --- */
+.result .rlb{display:flex;flex-direction:column;height:100%;min-height:0}
+.result .lbh,.result .lbr{display:grid;grid-template-columns:24px minmax(0,1fr) 36px 36px 36px 44px 50px 46px minmax(0,1.1fr);align-items:center;column-gap:8px}
+.result .lbh{font-size:11px;letter-spacing:.14em;color:var(--mut);font-weight:700;border-bottom:1px solid var(--edge);padding-bottom:4px;flex:0 0 auto}
+.result .lbrows{flex:1 1 auto;min-height:0;overflow:hidden auto}
+.result .lbr{font-size:14px;padding:3px 0;border-bottom:1px solid rgba(42,78,110,.35)}
+.result .lbr.me{color:var(--glow);background:rgba(95,214,255,.08)}
+.result .lbh .c,.result .lbr .c{text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.result .lbh .c.n,.result .lbr .c.n,.result .lbh .c.m,.result .lbr .c.m{text-align:left}
+.result .lbr .c.n .dot{display:inline-block;width:7px;height:7px;margin-right:6px;vertical-align:middle}
+.result .lbr .c.m{font-size:11px;letter-spacing:.08em;color:var(--warn);font-weight:600}
+.result .lbr .c.prov{color:var(--mut)}
+.result .lbnone{font-size:12px;letter-spacing:.14em;color:var(--mut);padding:16px 2px;font-weight:600}
+/* --- strips: possession · honors · the unofficial post-whistle tally --- */
+.result .rstrip{display:flex;align-items:center;gap:10px;flex:0 0 auto;font-size:11px;letter-spacing:.14em;font-weight:600;min-height:18px;overflow:hidden}
+.result .rstrip .k{color:var(--mut);white-space:nowrap}
+.result .rstrip .v{display:flex;gap:7px;overflow:hidden;min-width:0}
+.result .rstrip .ch{border:1px solid var(--edge);padding:0 7px;white-space:nowrap;color:var(--num);overflow:hidden;text-overflow:ellipsis;line-height:18px}
+.result .rstrip .ch b{font-family:var(--fd);font-size:12px}
+.result .rstrip.hon .ch{color:var(--warn);border-color:var(--warn)}
+.result .rstrip.after .k{color:var(--warn)}
+.result .rstrip.after .ch{border-style:dashed;color:var(--mut)}
+/* --- this player's own line, as a LIST of tiles (never five fixed cells) --- */
+.result .rstats{display:grid;gap:8px;flex:0 0 auto}
+.result .rstats .cell{min-width:0;border:1px solid var(--edge);background:var(--plate);padding:4px 4px 5px;text-align:center;transform:skewX(-8deg)}
+.result .rstats .cell b{display:block;font-family:var(--fd);font-weight:700;font-size:22px;line-height:1.05;color:var(--num);transform:skewX(8deg);white-space:nowrap}
+.result .rstats .cell span{display:block;margin-top:1px;font-size:11px;letter-spacing:.1em;color:var(--mut);font-weight:600;transform:skewX(8deg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* --- footer --- */
+.result .rfoot{position:static;left:auto;right:auto;bottom:auto;display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:16px;flex:0 0 auto}
+.result .rfoot .fl{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1 1 auto}   /* the blinking RETURN line sat a pixel off the sync line under it (design-result-pending.png) */
+.result .rfoot .ready{flex:0 0 auto;width:auto;min-width:180px;height:44px;font-size:21px;margin:0}
+.result .rfoot .ready.ghost{background:transparent;color:var(--mut);border:1px solid var(--edge);box-shadow:none}
+.result .syncline{font-size:11px;letter-spacing:.2em;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .result .syncline.ok{color:var(--ok)}.result .syncline.warn{color:var(--warn)}
+.result .sess{font-size:11px;letter-spacing:.16em;color:var(--mut);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.result .mcvline{font-size:11px;letter-spacing:.14em;color:var(--mut);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Blinks only while the result is NOT in — which is exactly when walking back to MC is the thing to do (D3). */
+.result .retmc{font-size:13px;letter-spacing:.2em;color:var(--warn);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:retblink 1.1s steps(1,end) infinite}
+@keyframes retblink{0%,55%{opacity:1}56%,100%{opacity:.22}}
+/* --- MATCH HISTORY --- */
+.result.hist .hlist{height:100%;overflow:hidden auto}
+.result.hist .hr{display:grid;grid-template-columns:66px 92px 112px minmax(0,1fr) 92px 46px;align-items:center;column-gap:10px;font-size:13px;padding:3px 0;border-bottom:1px solid rgba(42,78,110,.35)}
+.result.hist .hr.hh{font-size:11px;letter-spacing:.14em;color:var(--mut);font-weight:700;border-bottom:1px solid var(--edge);padding-bottom:4px}
+.result.hist .hr .c{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.result.hist .hr .c.k,.result.hist .hr .c.b{text-align:right}
+.result.hist .hr .c.s{color:var(--mut)}
+.result.hist .hr .c.o{font-weight:700;letter-spacing:.1em}
+.result.hist .hr .c.o.win{color:var(--ok)}.result.hist .hr .c.o.lose{color:var(--bad)}
+.result.hist .hr .c.o.draw,.result.hist .hr .c.o.undecided{color:var(--warn)}
+.result.hist .hr .c.o.none{color:var(--mut);font-weight:600;font-size:11px}
+.result.hist .rfoot .sess{white-space:normal;line-height:1.35}
+/* the over screen's way back in (A24) */
+.lobby .overbtns{display:flex;gap:8px;pointer-events:auto}
+.lobby .overbtns .briefbtn{min-height:38px}
+.lobby .status b.oc.lose{color:var(--bad)}.lobby .status b.oc.draw,.lobby .status b.oc.undecided{color:var(--warn)}
+/* A31: the compiled "win is confirmed at MC" line — on ARMED above the T-minus, and on the DOWN screen at cap-1 */
+.mo.tminus .mcv{position:absolute;top:34px;left:52px;right:52px;text-align:center;pointer-events:none}   /* clear of the 26px hazard stripe — over it the line was unreadable */
+.mo.tminus .mcv span{display:inline-block;max-width:100%;font-size:12px;letter-spacing:.18em;color:var(--mut);font-weight:700;background:rgba(3,6,12,.82);border:1px solid var(--edge);padding:3px 12px}
+.down .recap{flex-wrap:wrap;row-gap:6px}
+.down .recap .capwarn{flex:0 0 100%;text-align:center;font-size:12px;letter-spacing:.16em;color:var(--warn);font-weight:700;transform:skewX(-10deg)}
+.down .recap .capwarn .unskew{display:inline-block;transform:skewX(10deg);white-space:normal}
 /* connected screen: unmistakable MC state (bench 2026-08-25) */
 .mclinked{flex:1;display:flex;align-items:center;justify-content:center;min-height:96px;border:1px solid var(--ok);color:var(--ok);font-family:var(--fd);font-style:italic;font-weight:700;font-size:28px;letter-spacing:.2em;transform:skewX(-10deg);box-shadow:0 0 40px -12px var(--ok)}
 .mclinked .unskew{display:inline-block;transform:skewX(10deg)}
@@ -488,6 +566,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 /* kit-out try-out panel + loadout weapon thumb (2026-08-26) */
 .tryout{position:absolute;top:118px;left:36px;right:36px;display:flex;gap:16px;border:1px solid var(--edge);background:var(--plate);padding:8px 18px;transform:skewX(-8deg)}   /* slanted like the plates and the buttons beside it (review #28) */
 .tryout > *{transform:skewX(8deg)}
+.tryout .facts{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}   /* F111 made real 2026-09-12: MC's WeaponView facts (dmg · htk · kill · reload) wrapped to two lines and the panel grew into READY UP; one clamped line here, the full detail lives in the rack's ⓘ pane */
 .tryout .art{flex:0 0 220px;height:120px;background-color:#0a1626;background-size:contain;background-repeat:no-repeat;background-position:center;border:1px solid var(--edge)}
 .tryout .meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;justify-content:center}
 .tryout .facts{margin-top:2px;line-height:1.4}
@@ -525,7 +604,8 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .lobtn{height:48px;min-width:130px;padding:0 22px;font-family:var(--fd);font-weight:700;font-size:20px;letter-spacing:.16em;transform:skewX(-10deg);background:var(--glow);color:#04121e;pointer-events:auto}
 .lobtn .unskew{display:inline-block;transform:skewX(10deg)}
 .lobtn.ghost,.lobtn.done{background:var(--plate);color:var(--num);border:1px solid var(--edge)}
-.lobtn.try{background:var(--warn);color:#1a1200}
+.lobtn.try{background:var(--warn);color:#1a1200}   /* the host-pushed try-out panel's own button */
+.lobtn.review{background:var(--glow);color:#04121e}   /* A26: REVIEW KIT is the FORWARD action, not a caution */
 .lo .lotop{position:absolute;top:0;left:36px;right:36px;height:62px;display:flex;align-items:flex-end;gap:8px;padding-bottom:6px;border-bottom:1px solid var(--edge)}
 .lotab{height:48px;min-width:186px;padding:0 18px;background:var(--plate2);border:1px solid var(--edge);color:var(--mut);transform:skewX(-10deg);text-align:left;pointer-events:auto}
 .lotab .unskew{display:flex;flex-direction:column;transform:skewX(10deg);line-height:1.1}
@@ -537,7 +617,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .lo .who .cs{font-family:var(--fd);font-style:italic;font-weight:700;font-size:22px;letter-spacing:.08em;line-height:1}
 .lo .who .num{font-family:var(--fd);font-weight:700;font-size:16px;color:var(--glow)}
 .lo .lobody{position:absolute;top:70px;left:36px;right:36px;bottom:74px;display:flex;gap:16px}
-.lo .lolist{flex:0 0 404px;overflow:hidden auto;display:flex;flex-direction:column;gap:6px;padding:0 6px 0 4px;pointer-events:auto}
+.lo .lolist{flex:0 0 436px;overflow:hidden auto;display:flex;flex-direction:column;gap:6px;padding:0 6px 0 4px;pointer-events:auto}   /* A26 widened it by 32px: every row now carries its own 40px ⓘ, and the weapon NAME must not be the cell that pays for it (the detail pane keeps 320px, measured against its longest name) */
 /* WEAPONS | PERKS | NONE. Field 2026-09-01: "the perks menu is really small and hard to see, it
    was hard to figure out how to open the perks menu". These are the only way to reach perks, so
    they are sized as the primary control they are, not as a filter chip. */
@@ -549,7 +629,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .fch.none.on{background:var(--plate);color:var(--ok);border-color:var(--ok)}
 .fch.pend{border-color:var(--glow);color:var(--glow)}
 /* the ::after tap-area hack is gone: the chip is 46px tall now, so the control IS the tap target */
-.lrow{display:flex;align-items:center;gap:12px;min-height:50px;padding:5px 12px 5px 6px;background:var(--plate);border:1px solid var(--edge);transform:skewX(-6deg);flex:0 0 auto;pointer-events:auto}
+.lrow{display:flex;align-items:center;gap:10px;min-height:50px;padding:5px 6px 5px 6px;background:var(--plate);border:1px solid var(--edge);transform:skewX(-6deg);flex:0 0 auto;pointer-events:auto}
 .lrow > *{transform:skewX(6deg)}
 .lrow .thumb{flex:0 0 66px;height:36px;background-color:#0a1626;background-size:contain;background-repeat:no-repeat;background-position:center;border:1px solid var(--edge)}
 .lrow .thumb.perk{display:flex;align-items:center;justify-content:center;color:var(--glow);background:var(--plate2)}
@@ -559,11 +639,17 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .lrow .nm2 b{font-family:var(--fd);font-weight:700;font-size:18px;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lrow .nm2 small{font-size:11px;letter-spacing:.16em;color:var(--mut);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lrow .role{font-size:11px;letter-spacing:.16em;color:var(--mut);font-weight:700;white-space:nowrap;flex:0 3 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}   /* the NAME wins the row: the role label gives way first */
-.lrow .mag{font-size:12px;color:var(--mut);font-weight:700;letter-spacing:.08em;min-width:52px;text-align:right}
+.lrow .mag{font-size:12px;color:var(--mut);font-weight:700;letter-spacing:.08em;min-width:46px;text-align:right}
 .lrow .st{width:18px;text-align:center;font-size:16px;color:var(--ok);font-weight:700}
+/* A26: tapping a row EQUIPS AND ARMS it, so reading one without committing needs its own control. 40x40 so it
+   is a real tap target on a phone, and it sits inside the row's own skew like every other cell. */
+.lrow .linfo{flex:0 0 40px;height:40px;display:flex;align-items:center;justify-content:center;background:none;border:1px solid var(--edge);color:var(--mut);padding:0;pointer-events:auto}
+.lrow .linfo .infog{width:19px;height:19px}
+.lrow.fo .linfo{color:var(--glow);border-color:var(--glow)}
+.lrow.pend{border-color:var(--glow)}
+.lrow.pend .st{color:var(--glow);animation:blink 1s infinite}
 .lrow.fo{background:rgba(95,214,255,.08)}
 .lrow.eq{border-color:var(--ok)}
-.lrow.pend{border-color:var(--glow);animation:blink 1s infinite}
 .lrow.rej{border-color:var(--bad);box-shadow:inset 0 0 0 1px var(--bad)}
 .lrow.warn{border-color:var(--warn);box-shadow:inset 0 0 0 1px var(--warn)}.lrow.warn .st{color:var(--warn)}   /* A14: first tap of the ALT-button confirm */
 .ackchip.cf{animation:blink 1s infinite}
@@ -580,6 +666,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .lo .lodetail .rolechip{font-family:var(--fl);font-style:normal;font-size:11px;letter-spacing:.18em;color:var(--mut);vertical-align:middle;margin-left:6px}
 .lo .lodetail .nm{font-family:var(--fd);font-style:italic;font-weight:700;font-size:24px;letter-spacing:.06em;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:4px}
 .lo .lodetail .ln{font-size:11px;letter-spacing:.14em;color:var(--mut);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lo .lodetail .ln.pk{white-space:normal;line-height:1.35}   /* a perk's effect line is a sentence, not MAG/RESERVE figures — it wraps rather than being cut */
 .lo .lodetail .tb{display:flex;align-items:center;gap:10px;font-size:11px;letter-spacing:.2em;color:var(--mut);font-weight:600}
 .lo .lodetail .tb span{width:104px;flex:0 0 104px}   /* fits RATE OF FIRE / AMMO CARRIED / KILL SPEED without wrapping */
 /* the real numbers that sit under the ranked bars (field 2026-08-30) */
@@ -615,7 +702,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 [data-env="night"] .lo .lodetail .tb b,[data-env="night"] .tryout .tb b{background:var(--num)}
 [data-env="night"] .lrow.rej{border-color:var(--bad);box-shadow:none}
 [data-env="night"] .lo .lolist{-webkit-mask-image:none;mask-image:none}
-[data-env="night"] .lobtn,[data-env="night"] .lobtn.try{background:var(--plate2);color:var(--num);border:1px solid var(--edge)}
+[data-env="night"] .lobtn,[data-env="night"] .lobtn.try,[data-env="night"] .lobtn.review{background:var(--plate2);color:var(--num);border:1px solid var(--edge)}
 [data-env="night"] .plate.slot.tap{box-shadow:none;border-color:var(--edge)}
 .plate.wart .in{padding:10px 10px 10px 12px}   /* the subtitle line needs the width (MAG 300 · RESERVE 600) */
 
@@ -672,7 +759,6 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 <body>
   <div id="stage">
     <div id="frame" data-team="blue">
-      <div id="cam"></div>
       <div id="hud"></div>
       <div id="overlay"></div>
       <div id="chips"></div>

@@ -14,8 +14,11 @@ from .types import (ACC_MIN_SHOTS, ASSIST_WINDOW_MS, FEEDBACK_MAX_AGE_MS, MULTI_
 Feed = dict
 Feedback = Callable[[str, dict], None]     # (player_id, feedback body)
 
+# A24/M2: the last two columns are UNOFFICIAL -- what a player picked up AFTER the whistle (A6.1
+# post-end facts). They are in the export because a late flush is invisible otherwise, and they are
+# LAST because nothing in the official half of the row may be read as including them.
 CSV_COLUMNS = ["operator", "team", "kills", "deaths", "assists", "kd", "accuracy", "streak",
-               "best_streak", "shots", "hits", "medals"]
+               "best_streak", "shots", "hits", "medals", "after_end_kills", "after_end_deaths"]
 
 # F116: the per-kill Halo medals, in the order a row lists them. They were computed at every kill,
 # fired as A11.4 alerts and then DISCARDED, so `ScoreRow.medals` could only ever carry an `honors()`
@@ -62,7 +65,8 @@ def rows_csv(rows) -> str:
                     r.get("kills", 0), r.get("deaths", 0), r.get("assists", 0), r.get("kd", 0),
                     "" if acc is None else acc, r.get("streak", 0), r.get("best_streak", 0),
                     r.get("shots", 0), r.get("hits", 0),
-                    _csv_safe(" · ".join(str(m) for m in medals))])
+                    _csv_safe(" · ".join(str(m) for m in medals)),
+                    r.get("after_end_kills", 0), r.get("after_end_deaths", 0)])
     return buf.getvalue()
 
 
@@ -142,11 +146,87 @@ class Scorer:
         # A6.1 end freeze: facts with effective t > end_t are recorded, never scored.
         self.end_t: int | None = (go_live_t + time_limit_s * 1000) if time_limit_s else None
         self.post_end: list[tuple[str, Event, int]] = []
+        # A24/M2: the cap was reached by MORE THAN ONE side inside `CLOCK_TIE_MS` -- team_ids (or
+        # player_ids in FFA). Set by the Session at the finish via `check_cap_tie`; `winner()` reports it
+        # as a tie rather than letting MC's arrival order pick between two kills it cannot order.
+        self.cap_tie: list[str] | None = None
 
     def set_end(self, end_t: int) -> None:
         """Freeze scoring at end_t (control{end}); later facts park as post_end (A6.1)."""
         if self.end_t is None or end_t < self.end_t:
             self.end_t = end_t
+
+    # ---- A24/M2: what happened AFTER the whistle, and whether the cap was a dead heat ----
+    def _kill_pair(self, node_id: str, ev: Event) -> tuple[str | None, str | None]:
+        """(victim, killer) for a death fact, by the SAME rules the scored path uses — the node's
+        binding names the victim, `shooter_num` names the killer through the roster, and a shot at
+        yourself is nobody's kill. Either may be None (an unbound node, wire id 0, a stale num)."""
+        victim = self.node_player.get(node_id)
+        if victim not in self.stats:
+            return None, None
+        killer = self.num_to_pid.get(int(ev.get("shooter_num", 0) or 0))
+        if killer == victim or killer not in self.stats:
+            killer = None
+        return victim, killer
+
+    def after_end(self) -> dict | None:
+        """The UNOFFICIAL after-the-whistle block (A6.1 + A24), or None when nothing arrived late.
+
+        These are real facts — a player kept playing, or a phone flushed minutes later — and A6.1
+        already records them without scoring them. Until now the recap could only say HOW MANY; a
+        player whose last three kills landed after the end saw them vanish with no explanation. So
+        the breakdown rides along, clearly separated: it feeds nothing (not kills, not streaks, not
+        medals, not the winner) and is shown as "after the whistle".
+        """
+        if not self.post_end:
+            return None
+        by: dict[str, dict[str, int]] = {}
+        def slot(pid: str) -> dict[str, int]:
+            return by.setdefault(pid, {"kills": 0, "deaths": 0})
+        for node_id, ev, _t_recv in self.post_end:
+            if ev.get("type") != "death":
+                continue
+            victim, killer = self._kill_pair(node_id, ev)
+            if victim is None:
+                continue
+            slot(victim)["deaths"] += 1
+            if killer and not self._friendly(killer, victim):
+                slot(killer)["kills"] += 1
+        return {"facts": len(self.post_end), "by_player": by}
+
+    def check_cap_tie(self, tol_ms: int) -> list[str] | None:
+        """Did anyone ELSE reach the frag cap inside `tol_ms` of the kill that ended the match?
+
+        The end freezes at the winning kill's `t`, so a second cap kill a few hundred ms later parks
+        as `post_end` and is never scored — and MC would then crown whichever of two effectively
+        simultaneous kills it happened to order first. Phone clocks agree to well under a second
+        (contracts §7), which is exactly the width of the band where that order means nothing. Inside
+        it, both sides are at the cap and the honest answer is a TIE.
+
+        Pure: it replays the post-end deaths onto a COPY of the tallies and touches no state.
+        """
+        if not self.frag_limit or self.limit_reached_t is None or self.end_t is None:
+            return None
+        kills = {pid: st.kills for pid, st in self.stats.items()}
+        for node_id, ev, t_recv in self.post_end:
+            if ev.get("type") != "death":
+                continue
+            if self._eff_t(node_id, ev, t_recv, None) > self.end_t + tol_ms:
+                continue
+            victim, killer = self._kill_pair(node_id, ev)
+            if victim is None or not killer:
+                continue
+            kills[killer] += -1 if self._friendly(killer, victim) else 1
+        if self.mode == "ffa":
+            scores = kills
+        else:
+            scores = {tid: 0 for tid in self.teams}
+            for pid, k in kills.items():
+                tid = self.stats[pid].team_id
+                if tid in scores:
+                    scores[tid] += k
+        at_cap = sorted(k for k, v in scores.items() if v >= self.frag_limit)
+        return at_cap if len(at_cap) > 1 else None
 
     def shots_total(self, pid: str) -> int:
         st = self.stats[pid]
@@ -185,6 +265,12 @@ class Scorer:
         if self.synced_at_lobby.get(node_id, False):
             return int(ev.get("t", t_recv))
         return t_recv
+
+    def eff_t(self, node_id: str, ev: Event, t_recv: int) -> int:
+        """The time this fact is scored AT, by the §7/A4.7 rule (synced node → its own `t`, never-synced
+        node → `t_recv`). Public because the Session has to ask the same question of a fact that has not
+        been ingested yet — "is this late arrival inside the scored window?" (A24/M2 reconciliation)."""
+        return self._eff_t(node_id, ev, t_recv, None)
 
     def _friendly(self, killer: str | None, victim: str) -> bool:
         if not killer or self.mode == "ffa":
@@ -499,6 +585,7 @@ class Scorer:
         return out
 
     def rows(self) -> list[ScoreRow]:
+        ae = (self.after_end() or {}).get("by_player", {})
         out: list[ScoreRow] = []
         for pid, st in self.stats.items():
             p = self.players[pid]
@@ -514,6 +601,10 @@ class Scorer:
                 # number to show. `multi_best` / `first_blood` were tracked and never exposed either.
                 "best_streak": st.best_streak, "multi_best": st.multi_best,
                 "first_blood": self.first_blood == pid,
+                # A24/M2: UNOFFICIAL, and additive. Always present (0/0) so a reader never has to tell
+                # "none" from "this server is too old to say"; they feed nothing on this row.
+                "after_end_kills": ae.get(pid, {}).get("kills", 0),
+                "after_end_deaths": ae.get(pid, {}).get("deaths", 0),
             })
         out.sort(key=lambda r: (-r["kills"], -r["kd"], r["deaths"]))
         medals, earned = self.medals(), self.earned_medals()
@@ -639,6 +730,11 @@ class Scorer:
         return scores
 
     def winner(self) -> dict:
+        # A24/M2: two sides reached the cap inside the clock-sync band — MC cannot order them, so it
+        # does not pretend to. Checked first, because a dead heat outranks every other rule below.
+        if self.cap_tie:
+            key = "player_id" if self.mode == "ffa" else "team_id"
+            return {key: None, "tie": list(self.cap_tie)}
         if self.mode == "ffa":
             rows = self.rows()
             return {"player_id": rows[0]["player_id"]} if rows else {}
@@ -717,6 +813,9 @@ class Scorer:
                "provisional": bool(missing) if provisional_override is None else provisional_override,
                "missing": missing, "post_end": len(self.post_end), "post_end_facts": len(self.post_end),
                "parked": len(self.parked)}
+        ae = self.after_end()
+        if ae is not None:         # A24/M2: absent when nothing landed after the whistle
+            out["after_end"] = ae
         poss = self.possession()
         if poss is not None:       # absent for every mode with no control point, so nothing else changes
             out["possession"] = poss

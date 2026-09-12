@@ -371,17 +371,17 @@
   {
    "weapon_id": "glock",
    "name": "Glock-18",
-   "desc": "The starting pistol. 9 a hit as fast as you can pull, 20 in the mag and 120 behind it: 13 hits to drop, 10 kills across the kit. Weak per shot, deep for a sidearm, and always ready.",
+   "desc": "The middle ground. 13 a hit at a measured cadence, 9 hits to drop, 16 in the mag with 64 behind it: 8 kills across the kit. Not the fastest trigger and not the biggest punch, but the safest bet not to be caught reloading.",
    "cls": 10,
    "role": "sidearm",
-   "mag": 20,
-   "reserve": 120,
+   "mag": 16,
+   "reserve": 64,
    "reload_ms": 2200,
-   "dmg": 8,
-   "rof": 50,
+   "dmg": 11,
+   "rof": 31,
    "rng": 75,
-   "htk": 13,
-   "ttk_ms": 1800,
+   "htk": 9,
+   "ttk_ms": 1920,
    "capture": {
     "src": "2026-08-26-weapons-chargerifle-boltrifle.btsnoop",
     "frame": "$WEAP,1,,100,0,3,13,0,,,,,,,,225,850,18,180,2000,0,7,100,100,,0,,,R12,,,,D04,D03,D02,D18,,,,,18,90,75,*"
@@ -391,8 +391,8 @@
     "why": "no Callsign sidearm was ever captured; the Bolt Rifle frame is the one captured semi-automatic (t20=7, one shot per pull, no bolt pair, magazine reload) so it inherits the right trigger behaviour and $SIR row. Every deviation is a named wire/override token below."
    },
    "wire": {
-    "dmg": 9,
-    "fire_ms": 150,
+    "dmg": 13,
+    "fire_ms": 240,
     "swap_ms": 500
    },
    "overrides": {
@@ -423,17 +423,17 @@
   {
    "weapon_id": "usp",
    "name": "USP-S",
-   "desc": "The quiet one. Suppressed and flashless: 13 a hit at a measured cadence, 9 hits to drop, 12 in the mag with 72 behind it. Nobody hears where it came from.",
+   "desc": "The quiet one. Suppressed and flashless: 9 a hit, as fast as you can pull the trigger, 13 hits to drop, 20 in the mag with 120 behind it: 10 kills across the kit. Low damage, but nobody hears where it came from.",
    "cls": 10,
    "role": "sidearm",
-   "mag": 12,
-   "reserve": 72,
+   "mag": 20,
+   "reserve": 120,
    "reload_ms": 2200,
-   "dmg": 11,
-   "rof": 38,
+   "dmg": 8,
+   "rof": 47,
    "rng": 75,
-   "htk": 9,
-   "ttk_ms": 1600,
+   "htk": 13,
+   "ttk_ms": 1920,
    "capture": {
     "src": "2026-08-26-weapons-chargerifle-boltrifle.btsnoop",
     "frame": "$WEAP,1,,100,0,3,13,0,,,,,,,,225,850,18,180,2000,0,7,100,100,,0,,,R12,,,,D04,D03,D02,D18,,,,,18,90,75,*"
@@ -443,8 +443,8 @@
     "why": "no Callsign sidearm was ever captured; the Bolt Rifle frame is the one captured semi-automatic (t20=7, one shot per pull, no bolt pair, magazine reload) so it inherits the right trigger behaviour and $SIR row. Every deviation is a named wire/override token below."
    },
    "wire": {
-    "dmg": 13,
-    "fire_ms": 200,
+    "dmg": 9,
+    "fire_ms": 160,
     "swap_ms": 500
    },
    "overrides": {
@@ -483,17 +483,17 @@
   {
    "weapon_id": "deagle",
    "name": "Desert Eagle",
-   "desc": "The hand cannon. 24 a hit, five hits to drop, and the fastest kill a sidearm gets \u2014 if you land them. Seven in the mag, 36 behind it, and a slow cycle that punishes a miss.",
+   "desc": "The hand cannon. 26 a hit, five hits to drop \u2014 the most damage of any sidearm, if you land them. Seven in the mag, 48 behind it: 11 kills across the kit. A slow cycle that punishes every miss.",
    "cls": 10,
    "role": "sidearm",
    "mag": 7,
-   "reserve": 36,
+   "reserve": 48,
    "reload_ms": 2200,
-   "dmg": 21,
-   "rof": 20,
+   "dmg": 23,
+   "rof": 16,
    "rng": 75,
    "htk": 5,
-   "ttk_ms": 1500,
+   "ttk_ms": 1920,
    "capture": {
     "src": "2026-08-26-weapons-chargerifle-boltrifle.btsnoop",
     "frame": "$WEAP,1,,100,0,3,13,0,,,,,,,,225,850,18,180,2000,0,7,100,100,,0,,,R12,,,,D04,D03,D02,D18,,,,,18,90,75,*"
@@ -503,8 +503,8 @@
     "why": "no Callsign sidearm was ever captured; the Bolt Rifle frame is the one captured semi-automatic (t20=7, one shot per pull, no bolt pair, magazine reload) so it inherits the right trigger behaviour and $SIR row. Every deviation is a named wire/override token below."
    },
    "wire": {
-    "dmg": 24,
-    "fire_ms": 375,
+    "dmg": 26,
+    "fire_ms": 480,
     "swap_ms": 500
    },
    "overrides": {

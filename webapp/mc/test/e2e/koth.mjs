@@ -581,7 +581,7 @@ step('recap-possession', async ({ browser, base }) => {
   expect(/2:11/.test(txt), "GREEN's 131 s reads as 2:11");
   expect(/BLUE/.test(txt) && /GREEN/.test(txt), 'both sides are named');
   // the bars are the at-a-glance readout: the leader's must be full and the trailer's proportional
-  const bars = await poss.locator('span > span[style*="width"]').evaluateAll(els => els.map(el => ({
+  const bars = await poss.locator('[data-poss-bar]').evaluateAll(els => els.map(el => ({
     pct: el.style.width, w: Math.round(el.getBoundingClientRect().width), bg: getComputedStyle(el).backgroundColor })));
   expect(bars.length === 2, `one bar per team (saw ${bars.length})`);
   expect(bars[0]?.pct === '100%', `the leader's bar is full (saw ${JSON.stringify(bars[0])})`);

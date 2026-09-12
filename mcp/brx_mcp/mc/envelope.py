@@ -65,6 +65,9 @@ _REQUIRED: dict[str, tuple[str, ...]] = {
     # §MC->node). Registered 2026-09-07 alongside the missing MC_KINDS entry -- until then every alert
     # MC sent was rejected at the node and dropped in silence.
     "alert": ("kind", "text", "player_id", "t"),
+    # A24 (2026-09-11): the MATCH RESULT, to every player node. `my` is null for a player MC never
+    # scored, `possession`/`after_end` ride only when there is something to say, so neither is required.
+    "result": ("match_id", "outcome", "winner", "rows", "provisional", "t"),
     # A13.5 (F104): the arming message. `threshold` / `game` / `valid_ids` are optional (utility.md §5c).
     "station_config": ("kind", "team", "id"),
 }

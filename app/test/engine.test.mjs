@@ -1147,6 +1147,39 @@ test('S7.1 rejoin reconcile: a live gun disarms then re-arms, never a heal', () 
   assert.ok(!h.writes.slice(before).some(f => f.startsWith('$SPAWN')), 'never spawns on a rejoin');
 });
 
+test('node.md §3.10: resume() in LIVE RECONCILES — it never runs the retired trigger-first evidence protocol', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$LCD,29,70,0,0,10,384,*');            // alive at 29 hp — the state a resume must not touch
+  assert.equal(h.eng.alive, true); assert.equal(h.eng.hp, 29);
+  const before = h.writes.length;
+  h.eng.resume();                                 // app foregrounded, gun still linked
+  const st = h.eng.state();
+  assert.ok(st.reconciling, 'a live resume opens the disarmed reconcile window');
+  assert.equal(st.resync, null, 'NO resync prompt — the evidence protocol mis-concluded "dead" and healed on restart');
+  assert.ok(h.writes.slice(before).some(f => f === '$AMMO,0,0,0,1,*'), 'the gun is disarmed while state settles');
+  assert.equal(h.eng.hp, 29, 'pools untouched');
+  assert.equal(h.eng.alive, true);
+  h.adv(3000); h.eng.tick();
+  assert.equal(h.eng.state().reconciling, false, 'the window closes on its own — no trigger pull is asked of the player');
+  assert.equal(h.eng.hp, 29, 'still no heal');
+  assert.ok(!h.writes.slice(before).some(f => f.startsWith('$SPAWN')), 'a resume can never re-spawn');
+});
+
+test('node.md §3.10 CONTROL: the evidence protocol survives for ARMED — a relink there re-writes the head, and a LOBBY resume reconciles nothing', () => {
+  const a = harness().kit().config_().echo().start(30000);   // armed, T-30
+  assert.equal(a.eng.phase, 'armed');
+  const beforeA = a.writes.length;
+  a.eng.onBleDropped(); a.eng.onBleConnected();
+  assert.equal(a.eng.state().reconciling, false, 'ARMED has no live state to reconcile');
+  assert.ok(a.writes.slice(beforeA).includes('$START,*'), '_beginResync still re-writes the head here');
+  const h = harness().kit().config_().echo();                // lobby, configured, link never dropped
+  const before = h.writes.length;
+  h.eng.resume();
+  assert.equal(h.eng.state().reconciling, false, 'a lobby resume opens no reconcile window');
+  assert.equal(h.eng.resync, null, 'and no evidence protocol');
+  assert.ok(!h.writes.slice(before).some(f => f.startsWith('$SPAWN')), 'and never blind-spawns');
+});
+
 test('S7.1 rejoin reconcile never infers death — the force-close-at-low-HP exploit stays closed', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$LCD,25,70,0,0,10,384,*');           // alive at 25 hp — the cheat's starting point
@@ -1545,9 +1578,12 @@ test('A10: assign carries catalog + policy → state; loadout view resolves name
   assert.equal(st.weapon, 'ASSAULT RIFLE'); assert.ok(st.canPickPrimary && st.canPickSecondary && st.canPickPerk);
 });
 
-test('A10: requestLoadout reports loadout_request (id + try only when set) and holds an optimistic pendingPick', () => {
+test('A10/A26: requestLoadout reports loadout_request (a weapon always carries try, after the debounce) and holds an optimistic pendingPick', () => {
   const h = kitA10();
   assert.equal(h.eng.requestLoadout('primary', 'weapon', 'smg', true), true);
+  assert.deepEqual(h.eng.state().pendingPick.id, 'smg', 'A26: the row shows the arming mark at once');
+  assert.equal(h.reports.filter(x => x.k === 'loadout_request').length, 0, 'A26: nothing on the wire until the debounce elapses');
+  h.adv(400); h.eng.tick();
   const r = h.reports.find(x => x.k === 'loadout_request');
   assert.deepEqual(r.b, { player_id: 'p1', slot: 'primary', kind: 'weapon', id: 'smg', try: true });
   assert.deepEqual(h.eng.state().pendingPick.id, 'smg');
@@ -1588,6 +1624,109 @@ test('A10/A14: loadout_ack ok applies the echoed loadout (perk beside the weapon
   assert.equal(st.loadout.primary.weapon_id, 'assault_rifle', 'a reject reverts the optimistic pick to MC\'s echo');
   h.adv(4100); h.eng.tick();
   assert.equal(h.eng.state().loadoutAck, null, 'ack chip expires');
+});
+
+// ---------- A26 (S20): the try-out collapsed into selection (loadout.md §4.5, contracts A26) ----------
+const picks = h => h.reports.filter(x => x.k === 'loadout_request').map(x => x.b);
+
+test('A26: three taps inside the debounce window send ONE request, carrying the LAST id', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('primary', 'weapon', 'assault_rifle');
+  h.adv(100); h.eng.tick();
+  h.eng.requestLoadout('primary', 'weapon', 'smg');
+  h.adv(100); h.eng.tick();
+  h.eng.requestLoadout('primary', 'weapon', 'assault_rifle');
+  h.adv(100); h.eng.tick();
+  assert.equal(picks(h).length, 0, 'nothing sent while the thumb is still moving (300 ms of taps)');
+  h.adv(400); h.eng.tick();
+  assert.equal(picks(h).length, 1, 'the three taps coalesce into one request');
+  assert.deepEqual(picks(h)[0], { player_id: 'p1', slot: 'primary', kind: 'weapon', id: 'assault_rifle', try: true }, 'the last row tapped is the one sent, and it arms');
+});
+
+test('A26 CONTROL: a tap AFTER the window is its own request (the coalescing is a window, not a one-shot)', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('primary', 'weapon', 'smg');
+  h.adv(500); h.eng.tick();
+  assert.equal(picks(h).length, 1);
+  h.eng.requestLoadout('primary', 'weapon', 'assault_rifle');
+  h.adv(500); h.eng.tick();
+  assert.equal(picks(h).length, 2, 'a second, separate pick');
+  assert.equal(picks(h)[1].id, 'assault_rifle');
+});
+
+test('A26: the row is ⟳ (pendingPick) from the tap until MC acks, then ✓ (equipped, nothing pending)', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('primary', 'weapon', 'smg');
+  assert.equal(h.eng.state().pendingPick.id, 'smg', '⟳ the instant the row is tapped — before anything is on the wire');
+  h.adv(400); h.eng.tick();
+  assert.equal(h.eng.state().pendingPick.id, 'smg', 'still ⟳ while the request is in flight');
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
+  const st = h.eng.state();
+  assert.equal(st.pendingPick, null, '✓: MC acked, nothing is arming any more');
+  assert.equal(st.loadout.primary.weapon_id, 'smg');
+});
+
+test('A26: a PERK equips on tap with no try and no debounce', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('perk', 'perk', 'body_armor');
+  assert.deepEqual(picks(h), [{ player_id: 'p1', slot: 'perk', kind: 'perk', id: 'body_armor' }], 'straight out, and no `try`');
+});
+
+test('A26: closing the browser and READY UP both flush a pick still inside the debounce window', () => {
+  const h = kitA10();
+  h.eng.browse(true);
+  h.eng.requestLoadout('primary', 'weapon', 'smg');
+  h.adv(100);
+  h.eng.browse(false);                       // REVIEW KIT ▸ / CLOSE
+  assert.deepEqual(picks(h).map(p => p.id), ['smg'], 'leaving the rack commits the last pick');
+  h.eng.requestLoadout('primary', 'weapon', 'assault_rifle');
+  h.adv(100);
+  h.eng.setReady(true);
+  assert.deepEqual(picks(h).map(p => p.id), ['smg', 'assault_rifle'], 'READY UP commits the kit, debounce window or not');
+});
+
+test('A26: a try-out arriving while the browser is open does NOT take the screen (the rack stays, the row arms)', () => {
+  const h = kitA10();
+  h.eng.browse(true);
+  h.eng.onMcMessage({ kind: 'tutorial', body: { frames: ['$WEAP,0,1,*'], weapon: { weapon_id: 'smg', name: 'SMG' } } });
+  const st = h.eng.state();
+  assert.equal(st.tutorial, true, 'the gun IS armed with the try-out');
+  assert.equal(st.browsing, true, 'and the player is still in the rack, not on a takeover panel');
+});
+
+// ---------- A27/A30: the host locks kits under a player who is still kitting (loadout.md §4.4) ----------
+test('A30: a lobby push while this player is mid-kit raises kit_locked_by_host and latches kitLocked', () => {
+  const h = kitA10();
+  h.eng.browse(true);
+  h.eng.requestLoadout('primary', 'weapon', 'smg');     // queued in the debounce window
+  h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: h.bundle, roster: h.roster } });
+  const st = h.eng.state();
+  assert.equal(st.phase, 'lobby');
+  assert.equal(st.moment && st.moment.kind, 'kit_locked_by_host', 'never a silent screen swap');
+  assert.equal(st.kitLocked, true, 'the lobby screen leads with it');
+  assert.equal(st.browsing, false);
+  assert.equal(picks(h).length, 0, 'the queued pick is dropped, not sent into a locked kit');
+});
+
+test('A30 CONTROL: a player who had already readied up gets no lock notice (they asked for the advance)', () => {
+  const h = kitA10();
+  h.eng.setReady(true);
+  h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: h.bundle, roster: h.roster } });
+  const st = h.eng.state();
+  assert.equal(st.phase, 'lobby');
+  assert.equal(st.kitLocked, false);
+  assert.ok(!st.moment || st.moment.kind !== 'kit_locked_by_host');
+});
+
+test('A30: the server refusal reason is kept verbatim for the kit screen to print', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('primary', 'weapon', 'smg');
+  h.adv(400); h.eng.tick();
+  const reason = 'THE MATCH HAS STARTED — YOUR KIT IS LOCKED UNTIL THE NEXT ONE';
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: false, reason, loadout: { weapons: [{ weapon_id: 'assault_rifle' }] } } });
+  const st = h.eng.state();
+  assert.equal(st.loadoutAck.ok, false);
+  assert.equal(st.loadoutAck.reason, reason, 'MC wrote the copy; the node does not paraphrase it');
 });
 
 test('A14: conflictFor names what an ALT-button pick would drop; the ack\'s `dropped` is kept on the verdict', () => {
@@ -3704,4 +3843,131 @@ test('state() names WHICH takeover is running, so a second reload is never read 
   assert.ok(s.reloadAt > first, `a NEW takeover, not the old one: ${first} -> ${s.reloadAt}`);
   h.adv(5000); h.eng.tick();
   assert.equal(h.eng.state().reloadAt, null, 'and it goes null with the rest of the takeover');
+});
+
+// ---------- A24 / node.md §3.13: the match result is PUSHED, never inferred ----------
+const RESULT = (over = 'win', match = 'm1') => ({
+  match_id: match, outcome: over, winner: { team_id: 'blue' }, mode: 'tdm', win_by: 'kills',
+  team_scores: [{ team_id: 'blue', name: 'BLUE', score: 25 }, { team_id: 'yellow', name: 'YELLOW', score: 19 }],
+  rows: [{ player_id: 'p1', display: 'REAPER', team_id: 'blue', kills: 11, deaths: 4, assists: 2, kd: 2.8, accuracy: 34, best_streak: 5, medals: ['double_kill'] },
+         { player_id: 'p2', display: 'VIPER', team_id: 'yellow', kills: 9, deaths: 7, assists: 1, kd: 1.3, accuracy: 28, best_streak: 3, medals: [] }],
+  my: { player_id: 'p1', display: 'REAPER', team_id: 'blue', kills: 11, deaths: 4, assists: 2, kd: 2.8, accuracy: 34, best_streak: 5, medals: ['double_kill'] },
+  honors: [{ medal: 'first_blood', player_id: 'p2', display: 'VIPER' }], provisional: false, t: 1,
+});
+
+test('A24 result: accepted for the CURRENT match, exposed in state(), and fires onResult', () => {
+  const h = harness().kit().config_(); h.echo(); h.start(0); h.adv(100);
+  let hook = null; h.eng.onResult = r => { hook = r; };
+  h.eng.onMcMessage({ kind: 'result', body: RESULT('win') });
+  assert.equal(h.eng.state().result.outcome, 'win');
+  assert.equal(h.eng.state().resultWait, 'in');
+  assert.equal(hook && hook.match_id, 'm1');
+});
+
+test('A24 result: a STALE match_id is dropped, not rendered over this match', () => {
+  const h = harness().kit().config_(); h.echo(); h.start(0); h.adv(100);
+  const r = h.eng.onMcMessage({ kind: 'result', body: RESULT('lose', 'm0') });
+  assert.equal(r.ok, false); assert.equal(r.reason, 'stale');
+  assert.equal(h.eng.state().result, null);
+});
+
+test('A24 result: no match_id, and no current match, are both dropped', () => {
+  const h = harness().kit().config_(); h.echo();
+  assert.equal(h.eng.onMcMessage({ kind: 'result', body: { outcome: 'win' } }).reason, 'no_match_id');
+  assert.equal(h.eng.onMcMessage({ kind: 'result', body: RESULT('win') }).reason, 'no_match');   // never started
+});
+
+test('A24: the node NEVER infers win or lose — no message, no outcome, ever', () => {
+  const h = harness().kit().config_(); h.echo(); h.start(0); h.adv(100);
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  // in coverage, right after the whistle
+  h.eng.setWsState('bound');
+  assert.equal(h.eng.state().result, null);
+  assert.equal(h.eng.state().resultWait, 'pending');
+  // out of coverage, long past the settle window — still not a loss
+  h.eng.setWsState('closed'); h.adv(31000);
+  assert.equal(h.eng.state().resultWait, 'unreached');
+  assert.equal(h.eng.state().result, null);
+  // and there is no third state that reads as an outcome
+  assert.ok(!['win', 'lose', 'draw', 'undecided'].includes(h.eng.state().resultWait));
+});
+
+test('A24: a relaunch during recap restores endedAt/result — without them the screen is pinned on PENDING for ever', () => {
+  const h = harness().kit().config_(); h.echo(); h.start(0); h.adv(100);
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  h.eng.setWsState('closed');
+  assert.equal(h.eng.state().resultWait, 'pending');
+  // relaunch: a fresh engine on the same storage, 31 s later, MC still unreachable
+  const store = h.eng.storage;
+  let clock = h.eng.now() + 31000;
+  const eng2 = new Engine({ writer: () => {}, now: () => clock, synced: () => true, storage: store, log: () => {} });
+  assert.equal(eng2.ended, true);
+  assert.ok(eng2.endedAt > 0, 'endedAt must survive the restart — `resultWait` measures the settle window from it');
+  assert.equal(eng2.state().resultWait, 'unreached', 'a restart during recap must still reach MC NOT REACHED, not sit on PENDING');
+  assert.equal(eng2.state().result, null, 'and it still never invents an outcome');
+});
+
+test('A24: a result already pushed survives the restart too (the screen comes back with the outcome, not PENDING)', () => {
+  const h = harness().kit().config_(); h.echo(); h.start(0); h.adv(100);
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  h.eng.onMcMessage({ kind: 'result', body: { match_id: h.eng.matchId, outcome: 'win', mode: 'tdm', rows: [], team_scores: [] } });
+  assert.equal(h.eng.state().resultWait, 'in');
+  const store = h.eng.storage;
+  let clock = h.eng.now() + 5000;
+  const eng2 = new Engine({ writer: () => {}, now: () => clock, synced: () => true, storage: store, log: () => {} });
+  assert.equal(eng2.state().resultWait, 'in');
+  assert.equal(eng2.state().result.outcome, 'win', 'the pushed outcome is not thrown away by a relaunch');
+  assert.ok(eng2.state().resultAt > 0);
+});
+
+test('A24: a result that lands after the whistle is still stored (the screen updates in place)', () => {
+  const h = harness().kit().config_(); h.echo(); h.start(0); h.adv(100);
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  h.adv(4000);
+  assert.equal(h.eng.onMcMessage({ kind: 'result', body: RESULT('lose') }).ok, true);
+  assert.equal(h.eng.state().result.outcome, 'lose');
+  assert.equal(h.eng.state().resultWait, 'in');
+});
+
+test('A24: welcome.node.result hydrates a phone that rejoins during recap', () => {
+  const h = harness().kit().config_(); h.echo();
+  h.eng.hydrate({ player: h.player, team: h.team, roster: h.roster, match_id: 'm1', result: RESULT('draw') });
+  assert.equal(h.eng.state().result.outcome, 'draw');
+});
+
+test('A24 history: the entry written at the whistle carries outcome:null, and the fields MC owns are null too', () => {
+  const h = harness().kit().config_(); h.echo(); h.start(0); h.adv(100);
+  let entry = null; h.eng.onEnd = g => { entry = g; };
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  assert.equal(entry.match_id, 'm1');
+  assert.equal(entry.outcome, null);          // MISSING, never wrong
+  assert.equal(entry.team_scores, null);
+  assert.equal(entry.best_streak, null);
+  assert.equal(entry.medals, null);
+  assert.equal(entry.win_by, 'kills');        // this one the node knows from its own config
+});
+
+test('A24 history: a result that beat the whistle is folded straight into the entry, hill hold included', () => {
+  const h = harness().kit().config_(); h.echo(); h.start(0); h.adv(100);
+  h.eng.hold = { hill: { blue: 214000, yellow: 137000 } };
+  h.eng.onMcMessage({ kind: 'result', body: RESULT('win') });
+  let entry = null; h.eng.onEnd = g => { entry = g; };
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  assert.equal(entry.outcome, 'win');
+  assert.equal(entry.kills, 11);
+  assert.equal(entry.best_streak, 5);
+  assert.deepEqual(entry.medals, ['double_kill']);
+  assert.equal(entry.team_scores.length, 2);
+  assert.equal(entry.possession.hill.blue, 214000);
+  h.eng.hold = {};   // a deep copy, not the live map
+  assert.equal(entry.possession.hill.blue, 214000);
+});
+
+test('A24: a NEW match retires the previous result before anyone can see it on a fresh DOWN screen', () => {
+  const h = harness().kit().config_(); h.echo(); h.start(0); h.adv(100);
+  h.eng.onMcMessage({ kind: 'result', body: RESULT('win') });
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster } });
+  assert.equal(h.eng.state().result, null);
+  assert.equal(h.eng.state().resultWait, 'pending');
 });

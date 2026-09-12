@@ -112,14 +112,14 @@ function StationCard({ s }: { s: StationView }) {
         </div>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${T.line2}`, paddingTop: 10 }}>
-        <div style={{ font: F.chk(700, 10), letterSpacing: '.24em', color: T.acc }}>▸ WHAT IS THIS PHONE?</div>
-        <Seg label={`kind for ${s.node_id}`} value={kind} size={10} pad="5px 9px" wrap
+        <div style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.acc }}>▸ WHAT IS THIS PHONE?</div>
+        <Seg label={`kind for ${s.node_id}`} value={kind} size={11} pad="5px 8px" wrap
           options={STATION_KINDS.map(k => ({ value: k, label: KIND_SHORT[k] }))} titles={Object.fromEntries(STATION_KINDS.map(k => [k, KIND_LABEL[k]]))}
           onChange={k => { setKind(k); if (k === 'control') setTeam(255); }} />
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* a control point starts NEUTRAL and is taken by presence (§5d): the team control is moot for it */}
-          {!control && <Seg label={`team for ${s.node_id}`} value={String(team)} size={10} pad="5px 9px" wrap options={teamOptions} onChange={v => setTeam(Number(v))} />}
-          {control && <span style={{ font: F.chk(600, 10), letterSpacing: '.08em', color: T.micro }}>STARTS NEUTRAL — TAKEN BY PRESENCE</span>}
+          {!control && <Seg label={`team for ${s.node_id}`} value={String(team)} size={11} pad="5px 8px" wrap options={teamOptions} onChange={v => setTeam(Number(v))} />}
+          {control && <span style={{ font: F.chk(600, 11), letterSpacing: '.06em', color: T.micro }}>STARTS NEUTRAL — TAKEN BY PRESENCE</span>}
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Micro>ID</Micro><ValueBox value={id} min={1} max={65535} label={`station id for ${s.node_id}`} onChange={setId} /></span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Micro>BUBBLE</Micro><ValueBox value={threshold} unit="dBm" min={-100} max={-30} label={`threshold for ${s.node_id}`} onChange={setThreshold} /></span>
         </div>
@@ -131,7 +131,7 @@ function StationCard({ s }: { s: StationView }) {
             {a ? (dirty ? 'ARM WITH CHANGES' : needsRearm ? 'RE-ARM' : 'ARMED') : 'ASSIGN + ARM'}
           </button>
           {a && <GhostButton onClick={async () => { await run(() => api.deleteStation(s.node_id)); }} title="drop the assignment; the phone keeps advertising whatever it was last armed with">CLEAR</GhostButton>}
-          {a && <span style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: teamColor(TID_NAME[a.team]?.toLowerCase() ?? 'any') }}>{TID_NAME[a.team] ?? a.team}</span>}
+          {a && <span style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: teamColor(TID_NAME[a.team]?.toLowerCase() ?? 'any') }}>{TID_NAME[a.team] ?? a.team}</span>}
         </div>
       </div>
     </div>

@@ -460,8 +460,13 @@ def test_a_cap_reached_mid_batch_finishes_on_the_WHOLE_batch():
 
     Two deaths on the same millisecond in one batch (a phone's store-and-forward outbox draining) and the
     cap falls on the first: the second still scores — same millisecond, so the A6.1 freeze does not touch
-    it — but it landed after `_finish()` had already decided who won. Here it flips the winner: both
-    players end on 2 kills and the tiebreak is deaths, which ROCCO has one of."""
+    it — but it landed after `_finish()` had already decided who won.
+
+    A24/M2 (2026-09-12) changed what that second kill MEANS, not whether it is scored: two players
+    reaching the cap inside `CLOCK_TIE_MS` is a DEAD HEAT (`winner.tie`), not a win for whichever of two
+    indistinguishable kills MC ordered first. Same millisecond is inside any tolerance. The guard this
+    test exists for is unchanged and in fact stronger: a tie naming BOTH players is only reachable if
+    both kills were scored before the recap was taken — a half-batch recap has ROCCO alone on the cap."""
     s, net, clock, ps, info = go_live(3, "ffa", {"scoring": {"frag_limit": 2, "win_by": "kills"}})
     kill(s, net, clock, ps, 0, 2, info, seq=1)       # ROCCO 1 kill
     kill(s, net, clock, ps, 1, 0, info, seq=2)       # TONY 1 kill, ROCCO 1 death
@@ -476,10 +481,15 @@ def test_a_cap_reached_mid_batch_finishes_on_the_WHOLE_batch():
     rows = {r["player_id"]: r for r in s.last_recap["rows"]}
     assert rows[ps[0]["player_id"]]["kills"] == 2 and rows[ps[1]["player_id"]]["kills"] == 2, rows
     assert s.last_recap["post_end"] == 0, "a same-millisecond fact is scored, not frozen out"
-    assert s.last_recap["winner"]["player_id"] == ps[1]["player_id"], (
+    assert s.last_recap["winner"].get("tie") == sorted([ps[0]["player_id"], ps[1]["player_id"]]), (
         f"the recap was taken from half a batch: {s.last_recap['winner']}")
+    assert s.last_recap["winner"].get("player_id") is None, "a dead heat names no winner"
     won = {p[0] for p in net.pushes("feedback") if p[2].get("kind") == "victory"}
-    assert won == {"node1"}, f"the victory sting went to the wrong gun: {won}"
+    assert won == set(), f"a dead heat has no winner to sting: {won}"
+    # A24: and both of them are told it was a draw, rather than being left to guess from silence.
+    res = {p[0]: p[2] for p in net.pushes("result")}
+    assert res["node0"]["outcome"] == "draw" and res["node1"]["outcome"] == "draw"
+    assert res["node2"]["outcome"] == "lose"
 
 
 def test_a_cap_from_a_replaced_scorer_cannot_end_the_match_that_is_running():

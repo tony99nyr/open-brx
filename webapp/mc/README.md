@@ -12,6 +12,10 @@ npm run build              # tsc -b && vite build → dist/ (served by `python -
 npm test                   # jsdom tests, ~2s — mounts every screen, no server, no browser
 npm run e2e                # starts `npm run dev` + a real MC and clicks the KotH setup flow in Chromium
                            #   ONLY=<step> npm run e2e   runs one step; HEADED=1 to watch
+npm run e2e:kit            # F127/A27: the KIT -> LOBBY gate, on a real MC and a stale one
+npm run e2e:m2             # S24/S25/A25/A27/A29/A31: the live board, the spectator route, version
+                           #   chips and log sync. ONLY=measure|mock|phone|real|refusal|stale;
+                           #   shots land in ~/brx-scratch/m2ui
 npm run lint               # oxlint
 ```
 
@@ -56,9 +60,23 @@ in the status bar, and two hooks called below `Kit`'s `if (!state) return null`.
 gate that runs before that suite is worth starting — see the `ui-build-verify` skill for what "done"
 means for a UI change.
 
+## Numbers do not jitter — use `<Num>`, not `TAB`
+
+`tokens.ts` exports `TAB = {fontVariantNumeric:'tabular-nums'}` and it **does nothing**: the property
+needs the FONT to ship tabular figures and neither product face does. Measured 2026-09-12 in Chromium
+(`ONLY=measure npm run e2e:m2`): at 40 px with `tabular-nums` set, Oswald renders `"00"` and `"11"`
+12 px apart. The phone HUD made exactly this assumption with Saira Condensed and its countdown
+re-centred on every tick (game test 2026-09-11, A5).
+
+So any number that CHANGES on screen goes through `<Num>` (`src/ui/Num.tsx`), which gives every digit
+its own fixed-width centred cell and leaves separators (`:`, `.`, `%`) at natural width. `TAB` is kept
+so untouched screens still compile; nothing new should use it. The measure step in `e2e:m2` re-checks
+both halves — that `tabular-nums` still fails, and that every rendered digit cell of one size is the
+same width.
+
 Layout: `src/tokens.ts` (design tokens) · `src/ui/` (Chamfer, Brackets, SegBar, Tag, Seg, Toggle,
 StripedSlot, HazardButton, …) · `src/frame/` (command bar, stepper, telemetry strip, PANIC w/ confirm,
-join QR) · `src/screens/` (Armory A1, Build A2, Kit A3/A4, Lobby A5, Armed A6, Live A7, Recap A8) ·
+join QR) · `src/screens/` (Armory A1, Build A2, Kit A3/A4, Lobby A5, Armed A6, Live A7, Recap A8, **Spectate**) ·
 `src/api/` (types mirroring API.md + the REST/WS client) · `src/mock/` (stateful in-browser backend with
 the design's demo data — guns are `GUN-A…H`; real sticker ids never enter the repo) · `src/store.tsx`.
 
@@ -66,6 +84,19 @@ Rules encoded in the UI (contracts A5): player numbers 1–63 shown as-is; the A
 amber never blocks; headset/screen are amber before the config push; abort reaches only nodes in range so
 Reschedule is the primary action; K/A/ACC are MC-derived and reconcile at sync points (footnote verbatim);
 FFA has no team-kill marker; recap is provisional until every node has flushed.
+
+**A25 log sync (D6)** lives on the muster header: a `LOG SYNC` switch (`AUTO` lets MC ask each phone
+on its own — at the recap, on an offer, on a reconnect; `MANUAL` leaves the asking to you) and a `⬇ LOGS`
+button on every phone card, which is never gated either way. The per-node `LOG` row shows what the
+**phone** reports, not what MC asked for: `NOTHING OFFERED · READY TO SEND · SENDING… · HOLDING · DELIVERED ✓`,
+with the node's own `held` reason rendered verbatim. The switch is absent entirely on a server with no
+option table, because a control that PUTs to a 404 is worse than no control.
+
+**`#spectate` (S25) is the room-facing board** and is deliberately not in the nav: a small `SPECTATE ↗`
+link on LIVE opens it in a new tab. It renders WITHOUT the command bar (that bar carries PANIC) and
+holds no button, link or input at all — `test/spectate.test.tsx` asserts exactly that, because the
+point of a separate route is that a stranger can touch the screen and change nothing. It is the
+legible v1; the broadcast treatment Tony asked for is a later pass on top of it.
 
 Fonts load from Google Fonts for now — self-host Oswald + Chakra Petch before a field deployment (the
 field LAN has no internet).

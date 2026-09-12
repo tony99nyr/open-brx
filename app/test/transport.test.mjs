@@ -1,16 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import * as E from '../src/transport/envelope.js';
 import { Ring, memoryStorage } from '../src/transport/ring.js';
 import { Clock } from '../src/transport/clock.js';
-import { Transport } from '../src/transport/transport.js';
+import { Transport, DELIVERED } from '../src/transport/transport.js';
+import { APP_VER } from '../src/build.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PY = path.resolve(HERE, '../../.venv/bin/python');
+const BUNDLE = path.resolve(HERE, '../www/app.js');
+const BUILDER = path.resolve(HERE, '../scripts/build.mjs');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ---------------- unit: envelope ----------------
@@ -221,4 +224,142 @@ test('envelope: MC -> node kinds include alert and station_config (F104 / F105 -
   assert.throws(() => E.decode(JSON.stringify(E.makeEnvelope('station_config', { kind: 'control', team: 255 })), 'mc'), /id/);
   // CONTROL: an unknown kind is still refused, so the whitelist is doing its job
   assert.throws(() => E.decode(JSON.stringify(E.makeEnvelope('disarm', {})), 'mc'), /unknown_kind|disarm/);
+});
+
+// ---------------- A29: the phone reports its REAL build, on hello AND on every heartbeat ----------------
+test('transport: hello and every status carry the baked app_ver + platform (A29)', async () => {
+  const sockets = [];
+  const t = new Transport({ storage: memoryStorage(), wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; },
+    gun: { name: 'GUN-A', tail: '3D4F' }, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  assert.equal(t.appVer, APP_VER, 'the default IS the baked constant — never a hand-written literal');
+  assert.match(APP_VER, /^\d+\.\d+\.\d+\+\S+$/, 'shape is "<package version>+<sha|unknown>[-dirty]"');
+  const p = t.connect({ url: 'ws://x/ws' }); sockets[0].open();
+  const hello = sockets[0].sent[0];
+  assert.equal(hello.kind, 'hello');
+  assert.equal(hello.body.app_ver, APP_VER);
+  assert.equal(hello.body.platform, 'web', 'no Capacitor bridge in node → web, never a UA guess');
+  E.validate(hello, 'node');
+  sockets[0].recv(E.makeEnvelope('welcome', { session_id: 's', server_t: Date.now(), seq_hi: 0 })); await p;
+  assert.equal(t.status({ arm_state: 'kitted', hp: 45 }), true);
+  const st = sockets[0].sent.filter(e => e.kind === 'status').pop();
+  // A phone updated and relaunched mid-session keeps its node_id: MC only sees the new build if the
+  // heartbeat carries it too (A29 — MC's muster rollup counts versions across the field).
+  assert.equal(st.body.app_ver, APP_VER);
+  assert.equal(st.body.platform, 'web');
+  assert.equal(st.body.arm_state, 'kitted');
+  E.validate(st, 'node');
+  t.close();
+  // a caller may still name itself (utility.js does); the platform stays honest
+  const u = new Transport({ storage: memoryStorage(), node: { node_type: 'utility', app_ver: 'utility-0.2' } });
+  assert.equal(u.appVer, 'utility-0.2');
+  assert.equal(u.platformName(), 'web');
+  u.close();
+});
+
+test('build: www/app.js carries the baked version, not a hard-coded literal (A29)', () => {
+  // This used to SKIP when www/app.js was older than scripts/build.mjs, which is precisely the state a
+  // broken `--define` leaves behind — so `npm test` alone never once proved that `__APP_VER__` reaches
+  // the bundle, and the only thing that did was remembering to run `npm run build` first. Build it here
+  // instead (a few seconds of esbuild): a guard that excuses itself on the failing case is not a guard.
+  if (!existsSync(BUNDLE) || statSync(BUNDLE).mtimeMs < statSync(BUILDER).mtimeMs) {
+    const r = spawnSync(process.execPath, [BUILDER], { cwd: path.resolve(HERE, '..'), encoding: 'utf8' });
+    assert.equal(r.status, 0, `npm run build failed, so A29 is unproven:\n${r.stdout || ''}${r.stderr || ''}`);
+  }
+  const js = readFileSync(BUNDLE, 'utf8');
+  assert.match(js, /APP_VER = "\d+\.\d+\.\d+\+\S+"/, 'esbuild --define did not reach the bundle');
+  assert.doesNotMatch(js, /hud-0\.2/, 'the hard-coded version is gone');
+  assert.doesNotMatch(js, /camera-preview/, 'S21/D5: the CAM look-through is out of the bundle');
+});
+
+
+// ---------------- the DELIVERED trap (F105, and A24 hit it again) ----------------
+/** Extract one method's body from a source file by brace-matching from its signature. Regex-free on the
+ *  inside, so nested braces, template literals in comments and a `case '...': {` block cannot fool it. */
+function methodBody(src, signature) {
+  const i = src.indexOf(signature);
+  assert.ok(i > 0, `"${signature}" is not in engine.js any more — FIX this test, do not delete it: it is the only thing standing between a new MC kind and a feature that silently never runs`);
+  // AFTER the signature: `onMcMessage({ kind, body, t })` has a destructuring brace of its own, and starting
+  // there matched the parameter list instead of the method — which the "parsed only 0 cases" guard caught.
+  let depth = 0, start = src.indexOf('{', i + signature.length);
+  for (let j = start; j < src.length; j++) {
+    if (src[j] === '{') depth++;
+    else if (src[j] === '}' && --depth === 0) return src.slice(start, j + 1);
+  }
+  throw new Error('unbalanced braces after ' + signature);
+}
+
+/** Extract one CALL's argument source by paren-matching from `open` (e.g. `transport.onMessage(`).
+ *  Scoped, not whole-file: `utility.js` is full of `settings.kind === 'control'`, which is a station
+ *  kind and nothing to do with an MC envelope. */
+function callArgs(src, open) {
+  const i = src.indexOf(open);
+  assert.ok(i > 0, `"${open}" is not in the source any more — FIX this test, do not delete it: it is what stops a new MC kind from being handled by a subscriber the Transport never feeds`);
+  let depth = 0, start = i + open.length - 1;
+  for (let j = start; j < src.length; j++) {
+    if (src[j] === '(') depth++;
+    else if (src[j] === ')' && --depth === 0) return src.slice(start, j + 1);
+  }
+  throw new Error('unbalanced parens after ' + open);
+}
+
+test('transport: every MC kind the engine handles is DELIVERED to onMessage (F105/A24 trap)', () => {
+  // A kind that is in MC_KINDS but not in DELIVERED decodes, validates, and then goes NOWHERE: no throw,
+  // no log, the handler never runs. `station_config` shipped that way ("MC never arms a station", F105) and
+  // `result` shipped that way too — the whole A24 results screen worked in the demo harness, which calls
+  // engine.onMcMessage directly, and was dead over a real socket. This test is the standing guard.
+  const src = readFileSync(path.resolve(HERE, '../src/engine.js'), 'utf8');
+  const body = methodBody(src, 'onMcMessage({ kind, body, t })');
+  const cases = [...body.matchAll(/case '([a-z_]+)'/g)].map(m => m[1]);
+  assert.ok(cases.length >= 10, 'parsed only ' + cases.length + ' cases out of onMcMessage — the parse broke, fix it: ' + cases.join(','));
+  assert.ok(cases.includes('result') && cases.includes('station_config') === false, 'sanity: the parse should see result and not invent kinds: ' + cases.join(','));
+
+  // The engine is NOT the only onMessage subscriber. `utility.js` handles `station_config` in a
+  // subscriber of its own — a station phone never loads engine.js at all — so scanning engine.js
+  // alone left the exact F105 shape open: a future MC kind handled only by utility.js would go
+  // undelivered with this guard green. Union both handler sets.
+  const util = readFileSync(path.resolve(HERE, '../src/utility.js'), 'utf8');
+  const handler = callArgs(util, 'transport.onMessage(');
+  const utilKinds = [...handler.matchAll(/\.kind === '([a-z_]+)'/g), ...handler.matchAll(/case '([a-z_]+)'/g)].map(m => m[1]);
+  assert.ok(utilKinds.includes('station_config'), 'the utility.js parse saw ' + (utilKinds.join(',') || 'nothing') + ' — it must at least see station_config, or it is proving nothing');
+
+  const handled = [...new Set([...cases, ...utilKinds])];
+  const undelivered = handled.filter(k => !DELIVERED.has(k));
+  assert.deepEqual(undelivered, [], `a node handles ${undelivered.join(', ')} but Transport never delivers ${undelivered.length === 1 ? 'it' : 'them'} — add to DELIVERED in src/transport/transport.js`);
+  // The other half of F105: a kind not in MC_KINDS is thrown away as malformed by `decode` before
+  // DELIVERED is ever consulted, so the handler is just as dead.
+  const unknown = handled.filter(k => !E.MC_KINDS.has(k));
+  assert.deepEqual(unknown, [], `a node handles ${unknown.join(', ')} but the envelope drops ${unknown.length === 1 ? 'it' : 'them'} as malformed — add to MC_KINDS in src/transport/envelope.js`);
+});
+
+test('transport: DELIVERED carries no kind MC could never send', () => {
+  // The mirror of the trap: a typo in DELIVERED delivers nothing and looks like a working line.
+  const bogus = [...DELIVERED].filter(k => !E.MC_KINDS.has(k));
+  assert.deepEqual(bogus, [], 'DELIVERED names kinds that are not MC kinds: ' + bogus.join(', '));
+});
+
+test('transport → engine: a `result` frame off the wire lands in state().result (the whole A24 chain)', async () => {
+  // The unit test above proves the frame reaches a subscriber. This proves the subscriber app.js actually
+  // installs — `transport.onMessage(m => engine.onMcMessage(m))` — turns it into what the HUD renders.
+  const { Engine } = await import('../src/engine.js');
+  const eng = new Engine({ writer: () => {}, emit: () => {}, report: () => {}, storage: memoryStorage(), log: () => {}, now: () => 1_700_000_000_000, synced: () => true });
+  eng.matchId = 'm1';   // a match is running; anything else is a stale/no-match drop by design
+  const t = new Transport({ storage: memoryStorage(), wsFactory: () => ({ send() {}, close() {} }) });
+  t.onMessage(m => eng.onMcMessage(m));
+  t._onFrame(JSON.stringify(E.makeEnvelope('result', { match_id: 'm1', outcome: 'lose', mode: 'tdm', rows: [], my: null })));
+  assert.equal(eng.state().result && eng.state().result.outcome, 'lose', 'the result never made it from the wire to state()');
+  assert.equal(eng.state().resultWait, 'in');
+  // and a stale one off the same wire changes nothing
+  t._onFrame(JSON.stringify(E.makeEnvelope('result', { match_id: 'm0', outcome: 'win' })));
+  assert.equal(eng.state().result.outcome, 'lose', 'a stale result overwrote this match');
+});
+
+test('transport: a `result` envelope actually reaches an onMessage subscriber', () => {
+  // Not a set-membership assertion: the real decode path, end to end, because that is the step that was broken.
+  const t = new Transport({ storage: memoryStorage(), wsFactory: () => ({ send() {}, close() {} }) });
+  const seen = [];
+  t.onMessage(m => seen.push(m));
+  t._onFrame(JSON.stringify(E.makeEnvelope('result', { match_id: 'm1', outcome: 'lose' })));
+  assert.equal(seen.length, 1, 'a result envelope never reached onMessage');
+  assert.equal(seen[0].kind, 'result');
+  assert.equal(seen[0].body.outcome, 'lose');
 });

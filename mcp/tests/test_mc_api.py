@@ -114,7 +114,8 @@ def test_archived_match_csv_edge_cases():
     s.store.match_started("m3", {"mode": "ffa"}, 3000)
     s.store.match_ended("m3", {"winner": {}, "rows": []})
     r = c.get("/api/matches/m3.csv")
-    assert r.status_code == 200 and r.text.strip() == "operator,team,kills,deaths,assists,kd,accuracy,streak,best_streak,shots,hits,medals"
+    assert r.status_code == 200 and r.text.strip() == ("operator,team,kills,deaths,assists,kd,accuracy,streak,"
+                                                      "best_streak,shots,hits,medals,after_end_kills,after_end_deaths")
     # and it is READ-ONLY: no operator token, exactly like GET /api/matches
     assert c.get("/api/matches").status_code == 200
 

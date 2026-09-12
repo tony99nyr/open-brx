@@ -28,7 +28,40 @@ State {
   lan: { mode: "router"|"hotspot"|"unknown", ssid?: string, ip: string, port: number, ws_url: string, qr: string /* same as ws_url */ },
   nodes: NodeView[],                          // every node that ever said hello this session
   stations: StationView[], game_no: number,   // A13.5: the ITEMS panel (see GET /api/stations); game_no = the advert `game` byte stations are armed with THIS match (bumps on the first push after a match started)
-  readiness: ReadinessSnapshot,
+  readiness: ReadinessSnapshot,               // A25/A29: each ReadinessRow also carries `app_ver`, `platform` and `log` (same shape as
+                                               // NodeView.log). A29 adds one RED blocker — `APP <x.y.z> INCOMPATIBLE WITH MC (NEEDS <tier>) —
+                                               // UPDATE THE APP` — and three ambers: `APP OLDER THAN THE FIELD (<mine> < <newest>)`,
+                                               // `APP OLDER THAN THE RELEASE (<mine> < <release>)` and `APP VERSION UNKNOWN (<raw>)`.
+                                               // An UNPARSABLE version is amber, NEVER red (A1: amber never blocks — the app shipped a
+                                               // hard-coded `hud-0.2` for months). An incompatible build says the ONE thing and is left out
+                                               // of `newest`, so one rogue phone cannot amber the whole board. Render the strings verbatim.
+                                               // A32: `headset: "proven"|"unknown"|"absent"` is joined by `headset_proof: "echo"|"link"|null`
+                                               // (additive) — HOW it was proven. `"echo"` = the gun answered the config push; `"link"` = the
+                                               // node's `status.preflight.gun_linked` has been TRUE CONTINUOUSLY for `HEADSET_LINK_PROOF_MS`
+                                               // (10 s), which a gun with no headset cannot manage (it drops the link in ~6 s); `null` = not
+                                               // proven. A link that drops sends the row back to `unknown` and the clock restarts. While a
+                                               // link is counting up the row carries the amber `HEADSET · CONFIRMING (LINK <n> s)`, which
+                                               // clears itself at 10 s — the UI renders it through the normal amber path and does NO timing of
+                                               // its own. `absent` is unchanged: the head echoed nothing, and `GUN DID NOT ANSWER CONFIG —
+                                               // HEADSET OFF? BLOCKS START` stays a red blocker that outranks any link evidence
+  options: { log_sync: "auto" | "manual" },    // A25 (GET/PUT /api/options). "auto" = MC asks every player node for its log at
+                                               // recap, on each offer, and on the reconnect of a node whose last-match log never
+                                               // arrived; "manual" = only the operator's LOGS button ever asks.
+                                               // At most ONE automatic ask per node is outstanding: a node that
+                                               // reconnects and then offers would otherwise be asked twice in the
+                                               // same breath and upload the same log twice. A fresh `hello` (the
+                                               // socket we asked is gone) and the first `log_data` chunk clear it;
+                                               // the LOGS button is never deduped
+  versions: {                                  // A29: the muster version header — `PHONES · 3 × 0.1.9 · 1 × 0.1.8`.
+                                               // Counts only nodes still IN THE FIELD: one MC has not heard from in
+                                               // OFFLINE_AFTER_MS is gone, and never sets `newest`
+    field: { [app_ver: string]: number },      //   PLAYER nodes counted by the version string each reported, VERBATIM (an
+                                               //   unparsable one included — the operator needs to see `hud-0.2` said out loud).
+                                               //   Stations are not in the match and are not counted (their build is StationView.app_ver)
+    newest: string | null,                     //   highest PARSABLE, COMPATIBLE player version in the field ("0.1.9")
+    release: string | null,                    //   `webapp/download/build.json`'s version, read once at startup; null = no sidecar
+    mc_major: string                           //   the tier MC is compatible with: "0.1" while the app is on 0.x, "2" from 1.0.0 on
+  },
   config: GameConfig,                         // current draft (validated on PUT); A18: `mode_params` (complete, or absent for a mode with none); A19: `vip_player_id?`; A20: `stun?: {duration_s?}` (absent = no EMP row); A10: carries loadout_policy {preset, hud_select, primary: SlotRule, secondary: SlotRule, perk: SlotRule}; A12: a weapon slot's kinds ∈ ("weapon"|"sidearm")[] — "sidearm" admits only the pistols; A14: `perk` is its own rule (kinds always ["perk"], choice may be "off") (loadout.md §3)
   config_errors: string[], config_warnings: string[],   // warnings: e.g. frag_limit without full coverage (A6.1); A10: "N LOADOUTS RESET BY <ruleset>" after a policy change overwrote picks (cleared on the next PUT); a warning starting `SETUP: ` is a PHYSICAL step the operator must do on the field before the push (F70: power-cycle the grenade so the hill starts neutral; an `ir_station` source says instead that we have never had one on the bench) — the GAMES rail renders those verbatim, and so do the LOBBY and ARMED headers, where the operator is standing when the step is actionable
   players: Player[], teams: Team[],
@@ -37,9 +70,36 @@ State {
   lobby: { ready: number, total: number, pushed: boolean, acks: { [player_id]: { ok: boolean, gun_echo?: string, err?: string } } },
   start?: { match_id, go_live_t, seq, countdown_s, per_node: { [player_id]: { arm_state, t_minus_ms?, synced, last_seen_ms } } },
   live?: LiveView,
-  recap?: RecapView
+  recap?: RecapView,
+  notices: { mc_verify?: string }             // A31 (2026-09-12): standing HOST lines the compiler wrote once, so MC
+                                              // and the phones cannot disagree. `mc_verify` is present ONLY when this
+                                              // game's end state is MC's call (a frag cap, an objective `win_by`, a
+                                              // survival mode) AND `config.coverage != "full"` AND at least one
+                                              // rostered phone has no backhaul (A28) — and it NAMES those phones:
+                                              // `WIN IS CONFIRMED AT MC · 3 PHONES OFF-GRID (OP0, OP1, OP2) · TELL
+                                              // PLAYERS TO RETURN AFTER THE WHISTLE`. Render it verbatim on LOBBY and
+                                              // ARMED. `{}` (no keys) = nothing to say. The PLAYER's half of the same
+                                              // decision rides `assign.game.mc_verify` (contracts §3), one line, no
+                                              // names. ⚠ `backhaul` is not reported by any node yet: until A28 lands
+                                              // every phone counts as off-grid, so the notice appears on every
+                                              // MC-decided game at a venue that has not been marked full coverage.
 }
-NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last_seen_ms, synced, preflight?, battery?, fw?, hp?, armor?, ammo?, alive? }
+NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last_seen_ms, synced, preflight?, battery?, fw?, hp?, armor?, ammo?, alive?,
+           // --- additive 2026-09-12 (A25/A29); an older UI ignores them, an older server omits them ---
+           app_ver?: string,        // A29: the phone's REAL build, `"<package version>+<git sha>[-dirty]"` (e.g. "0.1.9+cfe2a8e").
+                                    //      From the hello AND every status, so a phone updated mid-session is seen. Compare with
+                                    //      `State.versions`; the readiness row carries the same string plus the verdict
+           platform?: "android" | "ios" | "web",
+           log?: {                  // A25: what this node's log sync is doing, as the NODE reports it. MC asking does not make it
+                                    // `offered` — the phone answers when it is safe, and the board shows the phone's truth
+             state: "none" | "offered" | "pulling" | "held" | "complete",
+             reason?: string,       //   `held`: why the phone is not answering yet ("live", "armed", "3 facts pending", "offline");
+                                    //   `offered`: the reason the node put on its offer
+             lines?: number, bytes?: number,   // from the offer; `bytes` becomes the running total once chunks arrive
+             last_t: number         //   server time (Unix ms) of the last change
+           } }
+       // `complete` = a whole `last`-terminated stream landed. It STAYS complete when the phone idles back to `none`, until the
+       // next ask — otherwise the one state the operator was waiting for is erased two seconds after it appears.
 LiveView { match_id, go_live_t, time_limit_s, ends_t, score: { [team_id]: number }, rows: LiveRow[] }
 LiveRow  = ScoreRow + { status: "alive"|"down"|"stale", respawn_in_s?: number, sync_age_ms: number }
 ScoreRow { player_id, display, team_id: string|null, kills, deaths, assists, shots, shots_total, hits,
@@ -58,11 +118,23 @@ ScoreRow { player_id, display, team_id: string|null, kills, deaths, assists, sho
                                     // row read "streak 0" — it stays only so an older UI keeps working
            multi_best: number,      // biggest multi-kill (2 double · 3 triple · 4+ killtacular; 0 = none)
            first_blood: boolean,    // this player drew first blood
-           acc_provisional: boolean // F119: `accuracy` is NOT settled — render it as settling, not as fact
+           acc_provisional: boolean,// F119: `accuracy` is NOT settled — render it as settling, not as fact
+           // --- additive 2026-09-12 (A24/M2). UNOFFICIAL: what this player picked up AFTER the whistle
+           //     (A6.1 post-end facts). They feed nothing — not kills, not streaks, not medals, not the
+           //     winner — and are the last two columns of the CSV export for the same reason. 0/0 when
+           //     nothing landed late, so presence never has to be tested for.
+           after_end_kills: number, after_end_deaths: number
          }
 RecapView { winner: Winner, score: { [team_id]: number }, rows: ScoreRow[],
             honors: { award: string, player_id: string, stat: string }[], provisional: boolean, missing: string[],
             post_end_facts: number,    // A6.1: facts after end_t, recorded but not scored
+            after_end?: { facts: number, by_player: { [player_id]: { kills: number, deaths: number } } },
+                                       // A24/M2 (2026-09-12): the same facts, BROKEN DOWN. Absent when nothing
+                                       // landed after the whistle. Show it as "after the whistle" — it is real
+                                       // (a player kept playing, or a phone flushed minutes late) and it counts
+                                       // for nothing. `winner` may itself carry `tie: player_id[]|team_id[]` when
+                                       // two sides reached the frag cap within CLOCK_TIE_MS (1 s, contracts §7):
+                                       // MC cannot order two kills inside the clock band and does not pretend to
             possession?: { by_team: { [team_id]: number /* SECONDS held */ }, neutral_s: number, sites: number,
                            reports: number /* nodes that reported */, observed_s: number /* best single observer */,
                            of_s: number|null /* the match length it is measured against */ },
@@ -108,10 +180,13 @@ FeedEntry { t_match_s: number, text: string, tag?: "DOUBLE KILL"|"TRIPLE KILL"|"
 | `PATCH /api/players/{id}` | any of `{display, team_id, voice, voice_slots, loadout, player_num, gun_id}` → `Player` (A15 `voice_slots`: `{}`/`null` clears the picks; a change re-compiles and fires the A9.1 voice preview like a voice change); re-sends `assign` (and re-compiles/re-pushes `config` if already pushed). A10/A14 `loadout` = `{weapons: [{weapon_id}] \| [{primary}, {secondary}], perk?: perk_id\|null, overrides?: {max_hp?: 1..999, max_armor?: 0..999}}` — the perk rides beside a secondary weapon, except an ALT-button perk (easy_reload), which is `400 "Easy Reload takes the ALT button, so it can't ride with a second weapon"`; a pick outside the policy pool is `400 {error: <human reason>}` (e.g. "Heavies are off for this game"). **A30 — THE KIT LOCKS AT START (2026-09-12):** in `armed`/`live`, `loadout`, `voice`, `voice_slots`, `player_num` and `gun_id` are refused `409 {error: "the match is LIVE: a player's kit is locked until it ends …"}` (a CONFLICT, not a bad request: the edit is fine, the moment is not — `state.ConflictError`) — every one of them would be COMPILED to the gun, and a `config` to a gun in play writes the A23/F121 DISARMED head with nothing to re-spawn it (`engine.js resumeSchedule()` returns early in `live`), so that player would register every hit, move no pool and be unable to fire for the rest of the match. `display`, `team_id` and `ready` are still accepted mid-match: they ride in `assign` (roster/display) and never reach the gun — a mid-match re-team still moves the scorer. The lock is per PLAYER, not per phase: a node that has NOT taken this match's config (no ack for it, not reporting armed/live) still receives `config` + the same `start` and HOT JOINS (contracts §5 `start`, node.md M-START E5) | ≤ lobby (kit fields); display/team/ready any |
 | `DELETE /api/players/{id}` | → `{ok}` | ≤ lobby |
 | `POST /api/players/{id}/tryout` | `{weapon_id}` → `{ok}` (pushes `tutorial`); `DELETE` same path ends it | kit |
-| `GET /api/stations` | → `{stations: StationView[], game}` — A13.5 (F104, 2026-09-11): every utility phone that said hello this session (`node_type:"utility"`, never bound to a player, never pruned while assigned), each with the operator's `assigned` `{kind, team, id, threshold, at}` (or null), what it was last `armed` with (`{game, at, kind, team, id}`), `arm_pending` (assignment changed while it was out of Wi-Fi: "bring it back to re-arm"), its own heartbeat as `report` (`kind, team, station_id, threshold, live, revives, armed, battery`, and for a control point `control: {owner, progress, contested, hold_ms, capture_log, …}` — the self-authoritative recap, utility.md §5c), `app_ver` (from the phone's hello, kept fresh by its heartbeat too — roadmap A3), `online`, `last_seen_ms` (age) and `attention: string[]` (ARMED FOR AN OLDER GAME · PHONE SAYS NOT ARMED · PHONE ADVERTISES ID x, ASSIGNED y · BATTERY LOW). The same list rides on every snapshot as `stations`, with the current game byte as `game_no` | any |
+| `GET /api/stations` | → `{stations: StationView[], game}` — A13.5 (F104, 2026-09-11): every utility phone that said hello this session (`node_type:"utility"`, never bound to a player, never pruned while assigned), each with the operator's `assigned` `{kind, team, id, threshold, at}` (or null), what it was last `armed` with (`{game, at, kind, team, id}`), `arm_pending` (assignment changed while it was out of Wi-Fi: "bring it back to re-arm"), its own heartbeat as `report` (`kind, team, station_id, threshold, live, revives, armed, battery`, and for a control point `control: {owner, progress, contested, hold_ms, capture_log, …}` — the self-authoritative recap, utility.md §5c), `app_ver` + `platform` (from the phone's hello, kept fresh by its heartbeat too — roadmap A3/A29), `online`, `last_seen_ms` (age) and `attention: string[]` (ARMED FOR AN OLDER GAME · PHONE SAYS NOT ARMED · PHONE ADVERTISES ID x, ASSIGNED y · BATTERY LOW). The same list rides on every snapshot as `stations`, with the current game byte as `game_no` | any |
 | `PUT /api/stations/{node_id}` | `{kind, team, id, threshold?}` → `StationView`. `kind` ∈ respawn · powerup · extraction · bomb · control; `team` = a `team_id`, a `$TID` 0-3, or `"any"` (255 — required for `control`, which starts NEUTRAL and is taken by presence); `id` 1..65535, unique on the field; `threshold` dBm −100..−30 (default −74 ≈ 10 ft at high TX). Pushes `station_config` `{kind, team, id, threshold, game, valid_ids}` to that phone at once and re-arms every other assigned station (the allow-list they echo changed); an offline phone is flagged and armed on its next hello. 400 in the operator's voice, including (polish 2026-09-11): a `team` that is not ANY and not a `$TID` some team in this game is on (such a station serves nobody), and any PUT while the match is `armed` or `live` (players already hold `config.stations`; re-pushing it would re-arm every live gun — RECALL or END first). A PUT in `recap` is accepted and arms against the finished match's game byte; the next lobby push re-arms every station with the new one | any but armed/live |
 | `DELETE /api/stations/{node_id}` | → `{ok}`; drops the assignment (the survivors' `valid_ids` shrink, and players in LOBBY are re-pushed the shorter `config.stations`). 404 for an unknown station; 400 while `armed`/`live`, as for PUT. `DELETE /api/nodes/{node_id}` on an ASSIGNED station does the same shrink | any but armed/live |
 | `POST /api/stations/arm` | → `{ok, armed, pending: node_id[]}`; re-arm every assigned station now (the LOBBY push does this automatically) | any |
+| `GET /api/options` | → `{log_sync: "auto"|"manual"}` — A25 session options. Also on every snapshot as `State.options` | any |
+| `PUT /api/options` | `{log_sync}` (partial: only the keys you send are set) → the full options object. An unknown key or an out-of-table value is 400 and nothing is changed — an option the operator set and MC silently ignored is worse than a refusal | any |
+| `POST /api/nodes/{node_id}/pull_log` | → `{ok: boolean, node_id, log: NodeView["log"]}` — A25, the operator's **LOGS** button. Pushes `pull_log {reason:"manual"}` to that node. **Never gated by `log_sync`**: "manual" means the button is the only asker, not that the button stops working. `ok:false` (still 200) when the node is a utility phone (F106(d): a station never binds a match) or past the ~1 MB per-node budget (which is per MATCH — it resets at the next start, or a session of four games would silently stop asking); 404 for an unknown node. The NODE decides when to answer (never while ARMED/LIVE or with unacked facts) — watch `NodeView.log` | any |
 | `DELETE /api/nodes/{node_id}` | → `{ok}`; operator kick: closes the node's socket (4000), unbinds its player, clears its ready/ack, rotates its key and marks it stale so the next hello for that gun (the real phone) re-hydrates. Use when a stranger squatted a live gun name before its owner's phone connected. 404 for an unknown node | any |
 | `POST /api/players/{id}/ready` | `{ready}` host override → `Player` | lobby |
 | `POST /api/lobby/push` | `{force?: bool}` → `{ok, acks}`; compiles every bundle, pushes `config`. A15.1: each push ROLLS every `$PSET` voice field the player did not pick in `voice_slots` (death scream, short pain, respawn cry) from the character's pool -- the draw is in `frames.voice.rolled`, the pools in `frames.voice.pools`; `frames.cue_pools[event]` lists every frame a `voice:<role>` event may play and the node picks one at random per event (`frames.cues[event]` = the first). A15.2: the `$PSET` respawn-cry field is EMPTY and the node says the spawn line itself -- `frames.cues.spawn` / one of `frames.cue_pools.spawn` (ids in `frames.voice.spawn`) written right after the spawn and revive frames. A15.3: `frames.pset_pool` = one `$PSET` per death-scream take, the node writes one at random before every `$SPAWN` (the scream stays the firmware's, re-rolled per life); the three `$PSET` pain fields are EMPTY and the node plays `frames.cues.pain_short` / `pain_long` / `pain_melee` (pools in `frames.cue_pools`) on each `$HIR` by damage (`frames.voice.pain_long_min`) or the melee word. Refuses if readiness has reds — the error names each red and its blocker — unless `force`. **A23 (F121) SPAWN PROTECTION:** `frames.head` carries the `$SIR` table with every function replaced by fn 28 — the same cells, registering a `$HIR` with no sound, no headset flash, no vibration and no pool movement — and the REAL table rides `frames.spawn` and `frames.revive`, ahead of their `$SPAWN`. A gun therefore cannot be hurt between the lobby push and its own go-live, and a node needs no change to get this (the rows are inside frame lists it already writes verbatim). With `hit_audio_class` on, `frames.revive` ships no rows and the node's `frames.sir_pool` take is the revive carrier instead — exactly one of the two, or the take's rolled sounds are clobbered. **An empty roster is refused even with `force`.** **Refused with `400` in `armed` and `live`, and `force` does NOT open that door** (`_refuse_push_in_play`): the node writes `frames.head` on every `config` and clears `spawned`, and since A23/F121 that head is the DISARMED fn-28 `$SIR` table — so a push to a gun in play leaves a player who registers every hit and loses no health until their next life. RECALL or END first. `force` overrides a readiness judgement, never this. `POST /api/start` takes the same `force`: a forced push does not clear a red (it usually adds `GUN DID NOT ANSWER CONFIG`), so an override that stopped at push left ARM unreachable | lobby |
@@ -123,7 +198,7 @@ FeedEntry { t_match_s: number, text: string, tag?: "DOUBLE KILL"|"TRIPLE KILL"|"
 | `GET /api/matches` | → `[{match_id, mode, go_live_t, ended_t, recap}]`, newest first; finished matches in this session (the RECAP history picker). Read-only, no token. Empty list on any store error | any |
 | `GET /api/recap.csv` | → text/csv (full stats table + medals) — the **LIVE** scorer only. Columns: `operator,team,kills,deaths,assists,kd,accuracy,streak,best_streak,shots,hits,medals` (`best_streak` added 2026-09-11, F116; an archived recap stored before that exports `0` for it) | recap |
 | `GET /api/matches/{id}.csv` | → text/csv for one **finished** match from the session store, same columns and same writer as `/api/recap.csv` (`scoring.rows_csv`, so the two cannot drift). `404` unknown id; a match that scored nobody is a header-only file, not a 404. Read-only, no token | any |
-| `POST /api/phase` | `{phase: "muster"|"build"|"kit"|"lobby"}` → `State`; host navigation between the setup phases (`armed`/`live`/`recap` are driven by start/end and are rejected here, 400) | ≤ lobby |
+| `POST /api/phase` | `{phase: "muster"|"build"|"kit"|"lobby", force?: boolean}` → `State`; host navigation between the setup phases (`armed`/`live`/`recap` are driven by start/end and are rejected here, 400). **The SOURCE phase is guarded too: any move while the session is `armed` or `live` is 409** — `{phase:"kit"}` from LIVE used to succeed and left `tick()` with no phase to end, so the match ran on with no whistle coming. End it with `control{end}` first; `force` does not apply. **A27 (F127): CONTINUE out of `kit` is guarded.** `kit` → `lobby` while any rostered player has not pressed READY is **409** `{error, not_ready: string[] /* displays */, greens /* how many ARE ready */, roster_size}` and the phase does not move; `force: true` does it anyway (the UI's second tap, which names who is not ready — `CONTINUE · greens / roster_size READY`). Everything the player carries is compiled at the lobby push, so advancing early takes a half-made kit into the match; the NODE says the same thing in its own words (`moment {kind:"kit_locked_by_host"}`, loadout.md §4.4). Those two are the only guards: between the setup phases nothing else is refused | ≤ lobby |
 | `POST /api/session/new` | `{keep_roster?: boolean}` → `State` (back to muster) | recap |
 
 Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
@@ -135,8 +210,8 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
   (`death.shooter_num` → roster → killer); the live board is a coverage-zone view with staleness, never real-time.
 - **Readiness** (`State.readiness`, contracts §4): node-reported from `status.preflight`; the laptop's `scan()` only
   lists unclaimed guns. Red (blocks the push) = no node, identity reverted/unknown, never synced, wrong SSID / MC
-  unreachable; amber (shown, not gating) = headset unknown, battery unsampled, low phone battery, screen off, fw
-  unknown. After the push an empty `ack_config.gun_echo` is red and blocks `start`. Fields are aged/decayed, never
+  unreachable; amber (shown, not gating) = the headset still confirming (A32), battery unsampled, low phone battery,
+  screen off, fw unknown. After the push an empty `ack_config.gun_echo` is red and blocks `start`. Fields are aged/decayed, never
   shown stale as current.
 - **Kit → lobby:** `POST /api/players` assigns `player_num` in roster order (1–63); any player change re-sends `assign`
   (re-compiles + re-pushes `config` once pushed); a phone `loadout_request` goes through the same policy
@@ -183,9 +258,44 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
   end**, which is why `control{end}` is pushed to every node (the HUD shows `frag_limit` and the gun
   never reads it, so that push is what stops the field). The feed carries one line:
   `FRAG LIMIT N REACHED — MATCH OVER · END REACHED x OF y NODE(S)`.
+- **The match RESULT reaches every node (A24, 2026-09-11).** At `_finish()` MC pushes `result` to every
+  BOUND player node — losers included — with `outcome` ("win"/"lose"/"draw"/"undecided") computed PER
+  RECIPIENT from `winner`, plus `mode`, `win_by`, `team_scores` (`[]` in FFA: `rows` is the leaderboard),
+  EVERY player's `rows`, the recipient's own `my`, `honors` (`{medal, player_id, display, stat}` —
+  `display` is the PLAYER's name, so the phone needs no roster), `possession?`, `after_end?` and
+  `provisional`. It is re-sent whenever the recap moves (de-duplicated on the body minus `t`) and the
+  current one rides `welcome.node.result` while the phase is `recap`, so a phone that comes back into
+  coverage after the whistle still learns how it ended. The node NEVER infers win or lose: a `victory`
+  cue that did not arrive means "you lost" and "you were out of coverage" identically (game test
+  2026-09-11 D3). `score` pushes now carry `rows` (every player) in every mode for the same reason.
+  **The re-pushed `result` is the ONLY correction there is.** A `victory` sting or a `game_over` the gun
+  has already played cannot be recalled, so a player whose recap is re-scored hears the old cue and then
+  reads the new verdict on the phone; the feed's `THE WINNER CHANGED` line is the operator's cue to say
+  it out loud. MC never re-fires audio to "undo" a result.
+  **The result speaks to the roster AS PLAYED (round-2 review, 2026-09-12).** Both the recipient's team
+  (so `outcome` is for the side they actually wore) and the set of recipients come from the roster frozen
+  at the whistle, not the live one the operator is editing for the next match: a player re-teamed in the
+  debrief is still told the outcome of the side they played on, and a player ADDED during the debrief is
+  sent no `result` at all and gets none in `welcome.node.result` — they were not in the match, so their
+  HUD shows the neutral "no result for you" state rather than a win they did not earn. They are not
+  registered into the finished scorer either, so the archived recap keeps exactly the rows that played.
+- **The recap is a REPLAY of the stored facts (A24/M2, 2026-09-12).** A frag-cap match ends at the
+  TIMESTAMP of the winning kill, not when MC learned of it — so a phone that flushes minutes late can
+  reveal that somebody ELSE reached the cap EARLIER. When a death lands after the whistle within
+  `end_t + CLOCK_TIE_MS`, MC re-derives the whole recap as a pure function of (the stored envelopes for
+  this `match_id`, the end rule): find the cap on a clean pass, freeze a second pass at it, re-park what
+  now falls after the end, check for a dead heat, re-take the recap, re-push `result`. The end moves
+  only for a frag cap, and only EARLIER — a host END and a time limit are moments the whole field lived
+  through (A6.1), and a re-derived cap that falls LATER than the whistle (a late friendly-fire death in
+  the tie band subtracts a kill) is refused outright, because moving the end forward would promote
+  post-whistle facts into the official tally after the field was already told `control{end}` —
+  and the feed says so: `END MOVED BACK N.Ns …` / `THE WINNER CHANGED on re-scored facts`. `shots` (a
+  status sample, not an event) and the `flushed` marks are carried over, not replayed.
 - **Recap** is provisional until every rostered node has flushed (`provisional`, `missing`, `settling`); late
   `event_batch`es and parked events reconcile in; honors need ≥ 3 scored players (F116: the per-kill medals
-  in `ScoreRow.medals` do not, which is what gives a 1v1 a medals column); `session/new` returns to muster
+  in `ScoreRow.medals` do not, which is what gives a 1v1 a medals column); the roster the replay scores
+  against is FROZEN at the whistle, so a re-team made in the debrief never moves a finished match onto
+  teams nobody wore; `session/new` returns to muster
   with KITTED nodes (a rematch is a new push).
 - **Persistence:** session state under `~/.brx-mcp/` (`store.py`, SQLite: every inbound envelope with `t`, `t_recv`,
   `match_id`, parked flag; `presets.json`; `weapon-verdicts.jsonl`), so a restart re-hydrates and `GET /api/matches`

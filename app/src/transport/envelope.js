@@ -19,6 +19,7 @@ export const NODE_KINDS = new Set(['hello', 'bind', 'event', 'event_batch', 'sta
 export const MC_KINDS = new Set(['welcome', 'assign', 'tutorial', 'config', 'start', 'feedback',
   'control', 'time_res', 'pull_log', 'ack', 'apply', 'score', 'loadout_ack',
   'alert',            // A11.4
+  'result',           // A24: the match result, computed per recipient by MC. The node NEVER infers win/lose.
   'station_config']); // A13.5 (F104): MC -> a utility phone. Unlisted here it was dropped as malformed before
                       // utility.js's onMessage ever saw it -- the second half of "MC never arms a station".
 export const CONTROL_CMDS = new Set(['end', 'panic', 'abort_start', 'recall']);
@@ -43,6 +44,10 @@ const REQUIRED = {
   pull_log: [], ack: ['seq_hi'], apply: ['frames'], score: ['player_id'],
   loadout_ack: ['slot', 'ok'],
   alert: ['kind', 'text', 'player_id', 't'],
+  // A24: everything below `match_id` stays OPTIONAL. A `result` that loses a field to an older/newer MC must
+  // still REACH the engine, which logs what it dropped — a required field that is missing drops the frame silently,
+  // and a silently dropped result is indistinguishable from "MC never reached us", which is the one thing A24 forbids.
+  result: ['match_id'],
   station_config: ['kind', 'team', 'id'],   // threshold / game / valid_ids optional (utility.md §5c)
 };
 const EVENT_REQUIRED = { hit_taken: ['shooter_num', 'shooter_team', 'dmg'], death: ['shooter_num', 'shooter_team'], respawn: [], team_change: ['tid'] };

@@ -379,12 +379,22 @@ await step('(b) hudA: PRIMARY plate → browser → SMG row → EQUIPPED ✓ →
   await until(async () => (await mc.locator('div[role="button"]:has-text("ALPHA")').first().textContent()).includes('SMG'), 6000, 'MC roster line shows SMG');
   await shot(hudA, 'hudA-loadout-equipped'); await shot(mc, 'kit-phone-pick');
 });
-await step('(c) hudA TRY IT → MC TRYING SMG → try-out panel; DONE returns to the browser', async () => {
-  await hudA.click('.lobtn.try');
-  await until(async () => (await mc.locator('text=TRYING SMG').count()) > 0, 6000, 'MC TRYING chip');
-  await until(async () => (await hudA.locator('.tryout').count()) > 0, 6000, 'try-out panel');
-  await hudA.click('[data-act="onTryDone"]');
-  await until(async () => (await hudA.locator('.lo .lolist').count()) > 0, 5000, 'browser back after DONE');
+// A26 (S20): TRY IT is gone. The SMG row tapped in (b) equipped it AND armed it for test-firing, so MC's
+// TRYING chip must already be up with NO second control touched — and the player must still be in the rack,
+// because a try-out takeover on every pick would eject them from the list they are scrolling.
+await step('(c) A26: the (b) pick already armed the try-out — MC says TRYING SMG and the rack stays on screen', async () => {
+  await until(async () => (await mc.locator('text=TRYING SMG').count()) > 0, 6000, 'MC TRYING chip (no TRY IT was tapped)');
+  expect((await hudA.locator('.tryout').count()) === 0, 'the try-out panel took over the browser — A26 says the rack stays');
+  await until(async () => (await hudA.locator('.lo .lolist').count()) > 0, 5000, 'still in the rack');
+  expect((await hudA.locator('text=TRY IT').count()) === 0, 'TRY IT is gone (A26)');
+  expect((await hudA.locator('text=REVIEW KIT').count()) > 0, 'the action bar reads REVIEW KIT');
+});
+await step('(c2) A26: REVIEW KIT ▸ closes the rack onto the three-plate kit summary with READY UP', async () => {
+  await hudA.click('.lobtn.review');
+  await until(async () => (await hudA.locator('.lobby .plates .plate.slot').count()) === 3, 5000, 'three slot plates');
+  expect((await hudA.locator('text=READY UP').count()) > 0, 'READY UP is not on the kit summary');
+  await hudA.click('.plate.slot.tap[data-arg="primary"]');
+  await until(async () => (await hudA.locator('.lo .lolist').count()) > 0, 5000, 'back in the rack for (d)');
 });
 await step('(d) hudA PERK tab → Body Armor → MC PERK card + roster show BODY ARMOR (A14: the secondary stays)', async () => {
   await hudA.click('.lotab[data-arg="perk"]');
@@ -401,16 +411,18 @@ await step('(e) no heavy is listed on the phone under NO HEAVIES', async () => {
   expect((await hudA.locator('.lrow[data-arg="weapon:rocket_launcher"]').count()) === 0, 'rocket launcher listed under NO HEAVIES');
 });
 await step('(f) READY UP while a try-out is armed ends it; first ready does NOT advance to lobby', async () => {
+  // A26: the row tap is the whole try-out. READY UP lives on the kit summary, so the path out of the rack is
+  // REVIEW KIT ▸ — and leaving the rack must not leave a try-out panel sitting over the plates.
   await hudA.click('.lrow[data-arg="weapon:shotgun"]');
   await until(async () => { const a = await hudA.evaluate(() => window.brx.engine.loadoutAck); return a && a.ok && a.key === 'weapon:shotgun'; }, 6000, 'shotgun equipped');
-  await hudA.click('.lobtn.try');
-  await until(async () => (await mc.locator('text=TRYING SHOTGUN').count()) > 0, 6000, 'MC TRYING SHOTGUN');
-  await until(async () => (await hudA.locator('.tryout').count()) > 0, 8000, 'try-out panel (it wins the screen over the browser)');
-  await until(async () => (await hudA.locator('[data-act="onReady"]').count()) > 0, 5000, 'READY UP visible under the panel');
+  await until(async () => (await mc.locator('text=TRYING SHOTGUN').count()) > 0, 6000, 'MC TRYING SHOTGUN (armed by the row tap alone)');
+  await hudA.click('.lobtn.review');
+  await until(async () => (await hudA.locator('.lobby .plates .plate.slot').count()) === 3, 6000, 'the three-plate kit summary');
+  expect((await hudA.locator('.tryout').count()) === 0, 'a try-out panel is covering the kit summary');
+  await until(async () => (await hudA.locator('[data-act="onReady"]').count()) > 0, 5000, 'READY UP visible');
   await hudA.locator('[data-act="onReady"]').first().dispatchEvent('click');   // the HUD re-renders on the ack-chip timer; a stability-gated click races it
   await until(async () => (await st()).players.find(p => p.player_id === pA.player_id).ready === true, 6000, 'ALPHA ready');
   await until(async () => (await mc.locator('text=TRYING SHOTGUN').count()) === 0, 6000, 'MC TRYING chip cleared by ready');
-  await until(async () => (await hudA.locator('.tryout').count()) === 0, 6000, 'hudA try-out panel torn down');
   await sleep(600);
   expect((await st()).phase === 'kit', 'phase advanced to lobby on the FIRST ready (regression)');
   await hudA.locator('[data-act="onReady"]').first().dispatchEvent('click');   // un-ready again so F4 readies both from a clean state
@@ -718,9 +730,11 @@ await step('END MATCH EARLY is a two-step confirm', async () => {
   await mc.click('text=CONFIRM END');
   await until(async () => (await st()).phase === 'recap', 10000, 'recap phase');
 });
-await step('HUDs show GAME OVER result with stats; OK → MATCH COMPLETE', async () => {
+await step('HUDs show the FINAL RESULTS screen with stats; OK → the next-match screen', async () => {
   await until(async () => (await hudA.locator('.result').count()) > 0, 8000, 'result screen');
-  expect((await hudA.locator('text=GAME OVER').count()) > 0, 'no GAME OVER banner');
+  // A24 replaced the GAME OVER banner with the FINAL RESULTS screen: the kicker is on it in every
+  // state (outcome in, pending, or MC never reached), which is exactly why it is what we assert.
+  expect((await hudA.locator('text=FINAL RESULTS').count()) > 0, 'no FINAL RESULTS headline');
   const accTxt = (await hudA.locator('.result .cell:has-text("ACCURACY") b').innerText()).trim();
   if (accTxt !== '\u2014') expect(parseInt(accTxt, 10) <= 100, `accuracy reads ${accTxt} — >100% means double-scaled (server sends PERCENT)`);
   expect((await hudA.locator('.result .cell').count()) >= 4, 'stat cells missing');
@@ -739,7 +753,8 @@ await step('HUDs show GAME OVER result with stats; OK → MATCH COMPLETE', async
     throw new Error(e.message + ' — ring ' + ring);
   }
   await hudA.click('[data-act="onEndOk"]');
-  await until(async () => (await hudA.locator('text=MATCH COMPLETE').count()) > 0, 6000, 'over screen');
+  // F117 retired the declarative "MATCH COMPLETE" label — the over screen's one control now says what to do.
+  await until(async () => (await hudA.locator('text=READY FOR NEXT MATCH').count()) > 0, 6000, 'over screen');
   const hist = await hudA.evaluate(() => JSON.parse(localStorage.getItem('brx.history') || '[]'));
   expect(hist.length === 1 && hist[0].deaths === 1, 'history entry wrong: ' + JSON.stringify(hist));
 });

@@ -5,15 +5,22 @@
 import * as E from './envelope.js';
 import { Ring, defaultStorage } from './ring.js';
 import { Clock } from './clock.js';
+import { APP_VER, platformName } from '../build.js';
 
-const DELIVERED = new Set(['assign', 'config', 'tutorial', 'start', 'feedback', 'control', 'apply', 'score', 'time_res', 'pull_log', 'loadout_ack', 'alert', 'station_config']);
+/** The MC kinds handed to `onMessage` subscribers (the engine, utility.js, app.js). A kind missing HERE
+ *  decodes and validates perfectly and then goes nowhere — no error, no log, the feature simply never runs.
+ *  That is the F105 trap (`station_config`: "MC never arms a station") and it caught `result` (A24) too.
+ *  EXPORTED so `test/transport.test.mjs` can pin DELIVERED ⊇ every `case` in the engine's `onMcMessage`. */
+export const DELIVERED = new Set(['assign', 'config', 'tutorial', 'start', 'feedback', 'control', 'apply', 'score', 'time_res', 'pull_log', 'loadout_ack', 'alert',
+  'result',           // A24: the match result. Without this line the whole FINAL RESULTS screen is dead on the real wire.
+  'station_config']); // A13.5 (F104/F105)
 
 export class Transport {
   /**
    * @param {object} o
    * @param {object} [o.storage]      localStorage-like; defaults to localStorage or memory
    * @param {function} [o.wsFactory]  url => WebSocket-like ({send, close, onopen/onmessage/onclose/onerror})
-   * @param {{node_id?:string,node_type?:string,app_ver?:string}} [o.node]
+   * @param {{node_id?:string,node_type?:string,app_ver?:string,platform?:string}} [o.node]
    * @param {{name:string,tail:string,fw?:string}} [o.gun]   the advert name/tail (never the BLE deviceId)
    */
   constructor({ storage = defaultStorage(), wsFactory = url => new WebSocket(url), node = {}, gun = null,
@@ -26,7 +33,11 @@ export class Transport {
     this.nodeId = node.node_id || this._persistedNodeId(`${keyPrefix}.node_id`);
     this._keyKey = `${keyPrefix}.node_key`;
     this.nodeKey = this._persisted(this._keyKey);        // contracts A8: takeover key issued in welcome
-    this.nodeType = node.node_type || 'phone'; this.appVer = node.app_ver || 'app';
+    this.nodeType = node.node_type || 'phone';
+    // A29: the REAL build, baked by scripts/build.mjs — "<package version>+<sha>[-dirty]". A caller may
+    // still name itself (utility.js does); nothing may fall back to a hand-written literal.
+    this.appVer = node.app_ver || APP_VER;
+    this.platform = node.platform || null;   // null = ask Capacitor per frame (the bridge appears late)
     this.gun = gun; this.playerId = null; this.playerNum = 0; this.matchId = null; this.sessionId = null;
     this.context = {};                       // last welcome.node / assign / config / start
     this.ring = new Ring({ storage, key: `${keyPrefix}.outbox`, now });
@@ -76,7 +87,10 @@ export class Transport {
   status(body = {}) {
     body.pending = this.ring.pending().length;   // lets MC know 'nothing left to flush' (recap finality, 2026-08-26)
     if (this.state !== 'bound') return false;
+    // app_ver/platform ride EVERY heartbeat, not just the hello (A29): a phone that was updated and
+    // relaunched mid-session keeps the same node_id, and MC's muster rollup must see the new build.
     const full = { node_id: this.nodeId, player_id: this.playerId, match_id: this.matchId, synced: this.synced(),
+                   app_ver: this.appVer, platform: this.platformName(),
                    arm_state: 'connected', ...body, preflight: { ...this.preflight, ...(body.preflight || {}) } };
     const dropped = this.ring.takeDropped(); if (dropped) full.dropped = (full.dropped || 0) + dropped;
     return this._sendKind('status', full);
@@ -86,6 +100,10 @@ export class Transport {
     if (this.state !== 'bound') return false;
     return this._sendKind(kind, { node_id: this.nodeId, ...body });
   }
+  /** `android` | `ios` | `web` (A29). */
+  platformName() { return this.platform || platformName(); }
+  /** Bytes still queued in the socket — the log uploader's backpressure gate (A25: one chunk in flight). */
+  bufferedAmount() { const ws = this._ws; try { return ws && Number.isFinite(ws.bufferedAmount) ? ws.bufferedAmount : 0; } catch (_) { return 0; } }
   syncedNow() { return this.clock.syncedNow(this.now()); }
   synced() { return this.clock.synced(this.now()); }
   onMessage(cb) { this._onMessage.push(cb); return () => { this._onMessage = this._onMessage.filter(f => f !== cb); }; }
@@ -125,7 +143,7 @@ export class Transport {
     ws.onopen = () => {
       if (ws !== this._ws) return;
       this.attempt = 0;
-      this._sendRaw(E.makeEnvelope('hello', { node_id: this.nodeId, node_type: this.nodeType, app_ver: this.appVer,
+      this._sendRaw(E.makeEnvelope('hello', { node_id: this.nodeId, node_type: this.nodeType, app_ver: this.appVer, platform: this.platformName(),
         gun: this.gun ? { name: this.gun.name, tail: this.gun.tail, ...(this.gun.fw ? { fw: this.gun.fw } : {}) } : undefined,
         seq_next: this.ring.seqNext, ...(this.nodeKey ? { node_key: this.nodeKey } : {}) }), ws);
       this._helloTimer = this.timers.setTimeout(() => { if (this._ws === ws && this.state === 'connecting') { this._log('welcome timeout'); this.dropLink(); } }, this.helloTimeoutMs);

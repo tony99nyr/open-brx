@@ -13,6 +13,11 @@ MULTI_KILL_MS = 4000
 FEEDBACK_MAX_AGE_MS = 3000
 STATUS_HEARTBEAT_MS = 2000
 STALE_AFTER_MS = 8000
+# A24/M2: how far apart two cap-reaching kills may be and still count as the SAME moment. contracts.md
+# §7 gives no single number -- it says phone clocks "drift <<1 s over a match" after a lobby re-sync, so
+# 1 s is the width of the band inside which MC cannot tell which of two kills landed first. Two players
+# reaching the frag cap inside it are reported as a TIE rather than decided by MC's arrival order.
+CLOCK_TIE_MS = 1000
 # F119: the smallest shot count an accuracy number is worth believing. Hits arrive per EVENT and shots
 # only on the ~2 s status heartbeat, so a row with a handful of shots swings wildly between samples and
 # can read over 100 %. `honors()` already refused SHARPSHOOTER below this; `ScoreRow.acc_provisional`
@@ -24,6 +29,13 @@ ACC_MIN_SHOTS = 10
 # tagger into a wall of red alarms (field 2026-09-02).
 OFFLINE_AFTER_MS = 10 * 60 * 1000
 SYNC_FRESH_MS = 10000
+# A32: how long `status.preflight.gun_linked` must stay TRUE CONTINUOUSLY before the link itself is
+# accepted as proof that a headset is attached. A gun with NO headset accepts a BLE link and answers a
+# `$PING`, then drops it within ~6 s (manual/hardware.md, manual/dev.md); switching a linked headset off
+# makes the gun send `$DISCONNECT,*` and drop the same way. So a link that SURVIVES is the headset --
+# 10 s is the ~6 s drop plus margin for a slow phone and the ~2 s status heartbeat. Shorter and a
+# headless gun's dying link would read as proven; much longer and the board sits amber for no reason.
+HEADSET_LINK_PROOF_MS = 10_000
 LATE_ARM_GRACE_MS = 8000
 CONFIG_TTL_MS = 1_800_000
 MAX_PLAYERS = 63          # wire ids 1..63; 0 reserved (tutorial / unknown shooter)
@@ -31,6 +43,56 @@ DEATH_LATCH_MS = 2000
 RESYNC_PROBE_S = 10
 DEFAULT_RUNWAY_S = 120
 PROTOCOL_V = 1
+
+# ---- A29: the app build MC is compatible with ----
+# Versions are SEMVER and the tiers carry meaning (contracts A29): MAJOR = anything the game or the wire
+# depends on (protocol, engine rules, bundle shape), MINOR = HUD-facing features with no game impact,
+# PATCH = fixes. Keep these two in step with `app/package.json` — they ARE the compatibility statement.
+#
+# ⚠️ While the app is on 0.x, semver's own rule applies: MINOR is the breaking tier, so the comparison is
+# `(major, minor)` while major == 0 and `major` alone from 1.0.0 on. `APP_MINOR` is read ONLY in the 0.x
+# regime; once the app cuts 1.0.0, bump APP_MAJOR and APP_MINOR stops mattering.
+APP_MAJOR = 0
+APP_MINOR = 1
+
+
+def parse_app_ver(app_ver: str | None) -> tuple[int, int, int] | None:
+    """`"0.1.9+abc123-dirty"` → `(0, 1, 9)`; anything that is not `MAJOR.MINOR.PATCH` → None.
+
+    The build metadata after `+` is deliberately ignored for comparison (semver says it is not part of
+    precedence): two builds of 0.1.9 from different shas are the same VERSION, and the sha is for the
+    operator's eyes. A node that reports something unparsable (the old hard-coded `hud-0.2`, or a fake)
+    is UNKNOWN, never incompatible — see `readiness()`.
+
+    ⚠ A PRERELEASE tag is stripped too, so `0.2.0-rc1` parses as `(0, 2, 0)` and ranks EQUAL to
+    `0.2.0`, not below it as semver precedence would have it. That is the behaviour we want and not an
+    oversight: MC uses this for one thing, "which build is the field on", and an rc of 0.2.0 IS a 0.2.0
+    build for compatibility. Ranking it below would amber every rc phone in the field with OLDER THAN
+    THE RELEASE the day before a cut. If a release ever has to out-rank its own rc, this returns a
+    4-tuple with a prerelease sort key — nothing else in MC compares versions."""
+    if not isinstance(app_ver, str):
+        return None
+    core = app_ver.strip().split("+", 1)[0].split("-", 1)[0]
+    parts = core.split(".")
+    if len(parts) != 3 or not all(x.isdigit() for x in parts):
+        return None
+    try:
+        return (int(parts[0]), int(parts[1]), int(parts[2]))
+    except ValueError:
+        return None
+
+
+def app_tier() -> str:
+    """What MC needs, in the words the blocker uses: `"0.1"` on 0.x, `"2"` once the app is 1.0.0+."""
+    return f"{APP_MAJOR}.{APP_MINOR}" if APP_MAJOR == 0 else str(APP_MAJOR)
+
+
+def compatible(app_ver: str | None) -> bool | None:
+    """True / False / None (unparsable — the caller says UNKNOWN, and A1 says amber never blocks)."""
+    v = parse_app_ver(app_ver)
+    if v is None:
+        return None
+    return (v[0], v[1]) == (APP_MAJOR, APP_MINOR) if APP_MAJOR == 0 else v[0] == APP_MAJOR
 
 ArmState = Literal["idle", "connected", "kitted", "lobby", "armed", "live"]
 
@@ -242,6 +304,11 @@ class GameConfig(TypedDict):
     #                                              victim's node for `duration_s` (default 10, 1..60). Absent = the stock
     #                                              charge-rifle damage row, byte-for-byte. Source: a $WEAP t3=8 slot
     #                                              (the charge rifle) or a proto-8 station.
+    coverage: NotRequired[str]                   # A31/A4.8: the VENUE's radio coverage -- "full" = every phone is on
+    #                                              the LAN for the whole match (the only case where `time_limit_s` may
+    #                                              be null and where an MC-decided end needs no "verify at MC" warning).
+    #                                              Absent/anything else = partial. `compile.full_coverage()` is the one
+    #                                              reader; `opts.coverage` (the CLI/sim path) still wins.
     mode_params: NotRequired[dict[str, int | float | bool | str]]
     #                                              A18 (E1): the MODE's own rules -- what its engine declares in `PARAMS`
     #                                              (`modes/params.py`; schema per mode from `GET /api/modes`). Present, and
@@ -402,6 +469,9 @@ class ReadinessRow(TypedDict, total=False):
     identity: Literal["ok", "unconfirmed", "reverted", "unknown", "manual"]
     node: Literal["none", "linked"]
     headset: Literal["proven", "unknown", "absent"]
+    # A32: HOW the headset was proven, so the UI can say it -- `"echo"` = the gun answered the config
+    # push, `"link"` = a BLE link that has held for HEADSET_LINK_PROOF_MS, `None` = not proven (yet).
+    headset_proof: Literal["echo", "link"] | None
     battery_pct: int
     battery_age_ms: int
     fw: str
@@ -411,6 +481,12 @@ class ReadinessRow(TypedDict, total=False):
     synced: bool
     screen_on: bool
     foreground: bool
+    # A29: the phone's real build, as it reported it (`"0.1.9+abc123"`), and its platform. Rendered on
+    # the row so the operator can read WHICH phone is behind without opening the node list.
+    app_ver: str
+    platform: str
+    # A25: this node's log-sync state, the same dict as `NodeView.log` (state/reason/lines/bytes/last_t).
+    log: dict
     # `waiting` = the phone has not connected yet. Blocks the start exactly like `red`, but it is
     # not a fault and the UI must not paint it as one (field 2026-09-01).
     status: Literal["green", "amber", "red", "waiting"]
@@ -443,6 +519,9 @@ MC_KINDS = {"welcome", "assign", "tutorial", "config", "start", "feedback", "con
             "time_res", "pull_log", "ack", "apply", "score", "loadout_ack",             # A10: loadout_ack
             "alert",    # A11.4 -- omitted here until 2026-09-07, so every alert MC sent was rejected
                         # by envelope.validate() at the node and silently dropped (contracts.md §MC->node).
+            "result",   # A24 (2026-09-11): the match result to EVERY node, losers included. The phone's
+                        # `MC_KINDS` (app/src/transport/envelope.js) must list it too or every result is
+                        # dropped as malformed -- `test_mc_envelope_kinds.py` pins the two lists equal.
             "station_config"}   # A13.5 (F104, 2026-09-11): MC -> a utility node. The same trap as `alert`:
                                 # the phone's `MC_KINDS` (app/src/transport/envelope.js) must list it too, or
                                 # the arming message is dropped as malformed before `onMessage` ever sees it.

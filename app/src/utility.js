@@ -8,8 +8,12 @@ import { Presence, encodeUuid, KIND, TEAM_ANY, PLAYER_STATE } from './beacon.js'
 import { ControlPoint, ControlAdvertiser, CONTROL_STATE, NEUTRAL as CONTROL_NEUTRAL, claimable, DEFAULT_CAPTURE_S, DEFAULT_NET_CAP } from './control.js';   // kind 5: the control point (utility.md §5, K1)
 import { Transport } from './transport/transport.js';   // utility.md §5b/§5c: the phone joins MC at muster to be ARMED (contracts A13.5)
 import { makeEnvelope, encode } from './transport/envelope.js';   // stage harness only: a real station_config ENVELOPE, not a bare function call (review 2026-09-11 lane-4)
+import { APP_VER } from './build.js';   // A29: the REAL build, baked by scripts/build.mjs
 
-const UTIL_VER = 'utility-0.2';   // roadmap A3/A5: was the literal string 'utility' -- indistinguishable from a version and never bumped
+// A29 (2026-09-12): "utility phones report the same way" -- the same "<version>+<sha>[-dirty]" a player
+// node sends, so MC's muster rollup can compare a station phone with the field. It was 'utility-0.2', a
+// label MC could not parse as a version (roadmap A3/A5 had already replaced the bare string 'utility').
+const UTIL_VER = APP_VER;
 
 const $ = id => document.getElementById(id);
 const TEAM_NAMES = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN', [TEAM_ANY]: 'ANY TEAM' };

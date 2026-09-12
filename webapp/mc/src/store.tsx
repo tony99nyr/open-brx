@@ -2,13 +2,17 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { Api, FeedEntry, ModeInfo, PerkView, Phase, SavedGame, State, WeaponView } from './api/types';
 
 /** UI views = server phases + the game DESIGNER (authoring, not a phase — loadout.md §5). */
-export type View = Phase | 'designer' | 'catalog' | 'debug';
+/** UI views = server phases + the game DESIGNER (authoring, not a phase — loadout.md §5) + `spectate`,
+ *  the read-only board for a projector (S25). `spectate` is a VIEW and never a phase: it follows the
+ *  match but the store must never auto-navigate INTO or OUT of it, or a room-facing screen would jump
+ *  to a setup page the moment the host touched something. */
+export type View = Phase | 'designer' | 'catalog' | 'debug' | 'spectate';
 
 // Tony 2026-08-31: "each tab of the MC should put state in the URL so you can refresh the page."
 // The view lives in the hash (the operator token is picked out of the same hash and stripped, see
 // client.ts). Whitelisted on the way in so a hand-typed hash can never select a view that does not
 // exist — that is what blanked the console when a non-phase view reached the phase-indexed label.
-const VIEWS: View[] = ['muster', 'build', 'designer', 'kit', 'lobby', 'armed', 'live', 'recap', 'catalog', 'debug'];
+export const VIEWS: View[] = ['muster', 'build', 'designer', 'kit', 'lobby', 'armed', 'live', 'recap', 'catalog', 'debug', 'spectate'];
 function viewFromHash(): View | null {
   try {
     const h = decodeURIComponent(location.hash.replace(/^#/, '')).split('&')[0].trim();
@@ -74,10 +78,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [weapons, setWeapons] = useState<WeaponView[]>([]);
   const [perks, setPerks] = useState<PerkView[]>([]);
   const [view, setViewRaw] = useState<View>(() => viewFromHash() ?? 'muster');
-  const setView = useCallback((v: View) => { writeHash(v); setViewRaw(v); }, []);
+  // S25 — THE PROJECTOR LATCH. A tab that LOADS at `#spectate` is the one pointed at the room, and it
+  // carries the operator token like any other tab: reaching the console from it is reaching PANIC,
+  // END MATCH and RECALL, in front of whoever is standing next to the screen. The hash was the way
+  // in — `#kit` typed into that window, or a back button — because `hashchange` moved every tab
+  // alike (review 2026-09-12). So the tab is latched read-only AT LOAD and never unlatched: hash
+  // navigation away from the board is ignored and the hash is put back, and a full RELOAD (a
+  // deliberate act, at a keyboard) is the only way to turn that window back into a console.
+  const spectatorTab = useRef<boolean>(viewFromHash() === 'spectate');
+  const setView = useCallback((v: View) => {
+    if (spectatorTab.current) { writeHash('spectate'); return; }
+    writeHash(v); setViewRaw(v);
+  }, []);
   // back/forward and a hand-edited hash both move the console
   useEffect(() => {
-    const onHash = () => { const v = viewFromHash(); if (v) setViewRaw(v); };
+    const onHash = () => {
+      if (spectatorTab.current) { writeHash('spectate'); return; }   // the board stays the board
+      const v = viewFromHash(); if (v) setViewRaw(v);
+    };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
@@ -114,7 +132,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           const seeding = followed.current === null && urlView.current;
           followed.current = s.phase;
           urlView.current = false;
-          if (!seeding) { writeHash(s.phase); setViewRaw(s.phase); }   // the URL follows an auto-advance too
+          // S25: a tab left on #spectate is pointed at a ROOM. The phase-follow that is right for the
+          // operator's console would swap it to KIT the moment the host moved on, so the spectator
+          // view opts out and keeps showing the board (which handles live / recap / neither itself).
+          if (!seeding && !spectatorTab.current && viewFromHash() !== 'spectate') { writeHash(s.phase); setViewRaw(s.phase); }
         }
       },
       e => setFeed(f => [e, ...f].slice(0, 60)),
@@ -123,6 +144,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const unAuth = mock ? () => {} : onAuthRequired(setAuthRequired);
     return () => { un(); unAuth(); };
   }, [api, mock, tokenVersion]);
+
+  // A test hook, and ONLY in `?mock`: the in-browser demo has no server to poke from outside, so a
+  // browser walk had no way to reach a LIVE match without sitting through the 60 s runway the UI
+  // offers. Never attached against a real server — there the suite drives the real MC over HTTP,
+  // which is the honest thing to drive.
+  //
+  // In an EFFECT, not in the `useMemo` that builds the api: StrictMode runs that factory twice and
+  // keeps one of the two backends, so assigning from inside it published an ORPHAN — a second
+  // MockBackend, with its own ticker, that the console was not subscribed to. Driving it moved
+  // nothing on screen (2026-09-12). An effect can only ever see the instance React actually kept.
+  useEffect(() => {
+    if (!mock) return;
+    const w = window as unknown as { __MC_MOCK__?: Api };
+    w.__MC_MOCK__ = api;
+    return () => { if (w.__MC_MOCK__ === api) delete w.__MC_MOCK__; };
+  }, [api, mock]);
 
   // While the operator token is missing/wrong, seed the board read-only from the open GET so the host
   // sees the console (not a blank CONNECTING page) behind the token prompt.

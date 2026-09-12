@@ -1,6 +1,6 @@
 // In-browser mock of the MC server (mcp/brx_mcp/mc/API.md). Stateful enough for every UI interaction.
 import type {
-  Api, FeedEntry, GameConfig, LiveRow, Loadout, LoadoutPolicy, MatchHistoryRow, ModeInfo, PerkView, Phase, Player, ReadinessRow, ReadinessSnapshot,
+  Api, FeedEntry, GameConfig, LiveRow, Loadout, LoadoutPolicy, LogView, MatchHistoryRow, ModeInfo, PerkView, Phase, Player, ReadinessRow, ReadinessSnapshot,
   RecapStationRow, RecapView, SavedGame, ScanRow, ScoreRow, StartView, State, StationAssignment, StationKind, StationView, WeaponView,
 } from '../api/types';
 import { STATION_KINDS } from '../api/types';
@@ -122,6 +122,12 @@ export class MockBackend implements Api {
   private pushed = false;
   private acks: State['lobby']['acks'] = {};
   private start_?: State['start'];
+  // A25: the session option table and the per-node log state, mirrored so `?mock` shows the LOG SYNC
+  // switch and the LOGS button doing something. The demo field is deliberately MIXED — one phone
+  // holding with a reason, one mid-upload, one delivered — because a board where every row says the
+  // same thing proves nothing about the states the operator has to tell apart.
+  private options: { log_sync: 'auto' | 'manual' } = { log_sync: 'auto' };
+  private logs: Record<string, LogView> = {};
   private live_?: { rows: LiveRow[]; feed: FeedEntry[]; go_live_t: number; match_id: string };
   private recap_?: RecapView;
   private history_: MatchHistoryRow[] = [];
@@ -144,6 +150,27 @@ export class MockBackend implements Api {
   }
 
   // ---------- state assembly ----------
+  /** A29 — what each demo phone reports as its build. Deliberately NOT uniform: the muster summary and
+   *  the amber row only mean anything on a field that is mixed, and that is the field we keep having. */
+  private appVer(sticker: string): { app_ver: string; platform: string } {
+    const old = sticker === 'GUN-C' || sticker === 'GUN-H';
+    return { app_ver: old ? '0.1.8+99ffee1' : '0.1.9+ab12cd3', platform: sticker === 'GUN-A' ? 'ios' : 'android' };
+  }
+
+  /** A25 demo states, seeded once per node and then moved by the LOGS button. */
+  private logFor(node_id: string): LogView {
+    if (!this.logs[node_id]) {
+      const seed: Record<string, LogView> = {
+        node_3D4F: { state: 'complete', lines: 812, bytes: 41_233, last_t: now() - 40_000 },
+        node_91C2: { state: 'pulling', lines: 240, bytes: 9_100, last_t: now() - 2_000 },
+        node_7A10: { state: 'held', reason: '2 facts pending', last_t: now() - 15_000 },
+        node_5D77: { state: 'offered', lines: 1_004, bytes: 55_800, last_t: now() - 9_000 },
+      };
+      this.logs[node_id] = seed[node_id] ?? { state: 'none', last_t: now() };
+    }
+    return { ...this.logs[node_id] };
+  }
+
   private readiness(): ReadinessSnapshot {
     const board: ReadinessRow[] = GUNS.map(([sticker, tail, s0, batt, link]) => {
       const s = this.gunOverride[sticker] ?? s0;
@@ -153,14 +180,30 @@ export class MockBackend implements Api {
       if (red) blockers.push('NOT POWERED — BLOCKS START');
       if (a1) blockers.push('BATTERY UNREAD — DOES NOT BLOCK');
       if (a2) blockers.push(`STALE LINK (${link}s) — DOES NOT BLOCK`);
+      // A29: the version flags are the SERVER's words, amber only (A1: amber never blocks). The demo
+      // writes them the way `state.py readiness()` will, so the console can render and never re-derive.
+      const ver = this.appVer(sticker);
+      const ambers: string[] = [];
+      if (ver.app_ver.startsWith('0.1.8')) ambers.push('APP OLDER THAN THE FIELD (0.1.8 < 0.1.9) — DOES NOT BLOCK');
+      // A32: the demo board shows BOTH proofs, because they read differently and the operator has to
+      // recognise each. GUN-F's link is still counting up (it is already an amber row for its unread
+      // battery, so the extra advisory perturbs no other card's status); every other linked phone has
+      // held its link past the 10 s a headless gun cannot survive. After the push the echo takes over.
+      const confirming = !red && !this.pushed && sticker === 'GUN-F';
+      if (confirming) ambers.push('HEADSET · CONFIRMING (LINK 4 s)');
+      const proof = red || confirming ? null : this.pushed ? 'echo' as const : 'link' as const;
       return {
+        ...ver,
+        log: this.logFor(`node_${tail}`),            // A25: the same view, on the per-player board
+        ambers,
         gun_id: sticker, sticker, tail, player_id: pl?.player_id, player_num: pl?.player_num,
         present: !red, identity: 'ok', node: red ? 'none' : 'linked',
-        headset: red ? 'absent' : this.pushed ? 'proven' : 'unknown',
+        headset: red ? 'absent' : proof ? 'proven' : 'unknown',
+        headset_proof: proof,
         battery_pct: batt ?? undefined, battery_age_ms: batt == null ? undefined : 4000,
         fw: 'v4.32', phone_batt: 80, ssid_ok: true, mc_reachable: !red, synced: !red, screen_on: true, foreground: true,
         last_seen_ms: link * 1000,
-        status: red ? 'red' : a1 || a2 ? 'amber' : 'green', blockers,
+        status: red ? 'red' : a1 || a2 || ambers.length ? 'amber' : 'green', blockers,
       };
     });
     return { t: now(), roster_size: board.length, greens: board.filter(b => b.status === 'green').length, board, unclaimed: [], go: !board.some(b => b.status === 'red') };
@@ -173,6 +216,8 @@ export class MockBackend implements Api {
       node_id: `node_${b.tail}`, node_type: 'phone', gun_name: `${b.sticker}-${b.tail}`, gun_tail: b.tail,
       player_id: b.player_id, arm_state: this.armStateFor(b.player_id), last_seen_ms: b.last_seen_ms ?? 0,
       synced: true, battery: b.battery_pct, fw: b.fw,
+      app_ver: b.app_ver, platform: b.platform,      // A29
+      log: this.logFor(`node_${b.tail}`),            // A25
     }));
     const kitted = this.players.filter(p => PLAYERS.find(x => x[0] === p.display)?.[3] === 'kitted' || (p.player_id in this.acks)).length;
     return {
@@ -195,6 +240,13 @@ export class MockBackend implements Api {
       loadout_pool: this.pool(),
       active_preset_id: this.activePreset,
       lobby: { ready: this.players.filter(p => p.ready).length, total: this.players.length, pushed: this.pushed, acks: clone(this.acks) },
+      options: { ...this.options },      // A25
+      // A31: the compiler writes this ONCE, so MC and the phones cannot disagree. The demo raises it
+      // whenever the game's end state is MC's call (a frag cap, or an objective win_by) — which is the
+      // only condition under which a phone with no backhaul changes what the players should do.
+      notices: (this.config.scoring.frag_limit || this.config.scoring.win_by === 'objective')
+        ? { mc_verify: 'WIN IS CONFIRMED AT MC · 2 PHONES OFF-GRID · TELL PLAYERS TO RETURN AFTER THE WHISTLE (SABLE, DRIFT)' }
+        : undefined,
       start: this.start_ ? clone(this.start_) : undefined,
       live: this.live_ ? this.liveView() : undefined,
       recap: this.recap_ ? clone(this.recap_) : undefined,
@@ -256,13 +308,36 @@ export class MockBackend implements Api {
     let v = alive[Math.floor(Math.random() * alive.length)];
     if (v === k) v = alive[(alive.indexOf(k) + 1) % alive.length];
     k.kills++; k.streak++; k.hits += 3; k.shots += 6; v.deaths++; v.streak = 0; v.status = 'down'; v.respawn_in_s = this.config.respawn.delay_s;
-    for (const r of l.rows) { r.kd = +(r.kills / Math.max(r.deaths, 1)).toFixed(1); r.accuracy = r.shots ? Math.round((r.hits / r.shots) * 100) : null; }
+    // F116: `best_streak` is the longest of the match and NEVER resets — `streak` is 0 for whoever
+    // died last, which is what made a 9-kill row read "streak 0" on the field.
+    k.best_streak = Math.max(k.best_streak ?? 0, k.streak);
+    if (!l.rows.some(r => r.first_blood)) k.first_blood = true;
+    if (Math.random() < 0.2) k.multi_best = Math.max(k.multi_best ?? 0, 2);
+    for (const r of l.rows) {
+      r.kd = +(r.kills / Math.max(r.deaths, 1)).toFixed(1);
+      r.accuracy = r.shots ? Math.round((r.hits / r.shots) * 100) : null;
+      r.shots_total = r.shots;
+      // F119: the server's own test — accuracy is not settled until the row has ≥10 shots behind it
+      r.acc_provisional = (r.shots_total ?? 0) < 10;
+    }
     l.rows.sort((a, b) => b.kills - a.kills);
     const tm = Math.floor((now() - l.go_live_t) / 1000);
     const friendly = k.team_id && k.team_id === v.team_id && this.config.mode !== 'ffa';
     this.feed({ t_match_s: tm, text: `${k.display} eliminated ${v.display}`, kind: 'kill',
       tag: friendly ? 'TEAM KILL' : k.streak >= 5 ? `STREAK ×${k.streak}` : Math.random() < 0.2 ? 'DOUBLE KILL' : undefined });
-    if (this.config.scoring.frag_limit && k.kills >= this.config.scoring.frag_limit) this.endMatch();
+    // A11.4/F118: MC's own global-state alerts land in the feed as `kind: 'alert'`, in the OPERATOR's
+    // third-person copy. `WITHHELD` is the one mc_confidence refused to push — it has to LOOK
+    // different from one that landed, or the operator reads a withheld call as a delivered one.
+    const cap = this.config.scoring.frag_limit;
+    if (cap && k.kills === cap - 1) {
+      this.feed({ t_match_s: tm, kind: 'alert', tag: 'ALERT',
+                  text: `${k.display} is one kill from the cap` });
+    } else if (k.kills === 3 && k.kills > Math.max(...l.rows.filter(r => r !== k).map(r => r.kills))) {
+      this.feed({ t_match_s: tm, kind: 'alert', tag: this.config.mode === 'ffa' ? 'ALERT' : 'WITHHELD',
+                  text: this.config.mode === 'ffa' ? `${k.display} takes the lead`
+                                                   : `${(k.team_id ?? '').toUpperCase()} takes the lead` });
+    }
+    if (cap && k.kills >= cap) this.endMatch();
   }
   private goLive() {
     const s = this.start_!;
@@ -270,6 +345,10 @@ export class MockBackend implements Api {
     const rows: LiveRow[] = this.players.map(p => {
       const d = LIVE.find(x => x[0] === p.display) ?? [p.display, 0, 0, 0, 0, 0, 'alive', 1];
       return { player_id: p.player_id, display: p.display, team_id: p.team_id, kills: 0, deaths: 0, assists: 0, shots: 0, hits: 0,
+        // A24: the additive row fields, so ?mock shows what a current server sends. `acc_provisional`
+        // starts TRUE for everyone — under 10 shots the number has not settled (F119), and the demo
+        // is the only place the settling look can be seen without a match on the field.
+        shots_total: 0, best_streak: 0, multi_best: 0, first_blood: false, acc_provisional: true,
         accuracy: null, kd: 0, streak: 0, medals: [], status: d[6] === 'stale' ? 'stale' : 'alive', sync_age_ms: d[7] * 1000 };
     });
     this.live_ = { rows, feed: [], go_live_t: s.go_live_t, match_id: s.match_id };
@@ -281,9 +360,14 @@ export class MockBackend implements Api {
     const rows: ScoreRow[] = l.rows.map(r => {
       const d = RECAP.find(x => x[0] === r.display);
       const kills = r.kills || d?.[1] || 0, deaths = r.deaths || d?.[2] || 0;
+      const shots = r.shots || 40;
       return { player_id: r.player_id, display: r.display, team_id: r.team_id, kills, deaths, assists: r.assists || d?.[3] || 0,
-        shots: r.shots || 40, hits: r.hits || Math.round((d?.[4] ?? 30) * 0.4), accuracy: r.accuracy ?? d?.[4] ?? 30,
-        kd: +(kills / Math.max(deaths, 1)).toFixed(1), streak: r.streak || d?.[5] || 0, medals: [] };
+        shots, shots_total: shots, hits: r.hits || Math.round((d?.[4] ?? 30) * 0.4), accuracy: r.accuracy ?? d?.[4] ?? 30,
+        kd: +(kills / Math.max(deaths, 1)).toFixed(1), streak: r.streak || d?.[5] || 0, medals: [],
+        // A24: the match is over, so accuracy has settled; `best_streak` is the longest run, which at
+        // the whistle is what the RECAP column must show (`streak` is the survivor of the last death).
+        best_streak: Math.max(r.best_streak ?? 0, r.streak || d?.[5] || 0),
+        multi_best: r.multi_best ?? 0, first_blood: !!r.first_blood, acc_provisional: false };
     }).sort((a, b) => b.kills - a.kills);
     const score: Record<string, number> = {};
     for (const r of rows) if (r.team_id) score[r.team_id] = (score[r.team_id] ?? 0) + r.kills;
@@ -315,7 +399,15 @@ export class MockBackend implements Api {
       else if (a.kind === 'control' && s.report.control) { row.hold_ms = s.report.control.hold_ms ?? null; row.owner = s.report.control.owner ?? null; }
       return row;
     });
+    // A6.1: two kills landed after the whistle. They are REAL and they do NOT count — the demo carries
+    // them so the "recorded, not counted" block can be seen (and tested) without a match on the field.
+    const late = rows.slice(0, 2);
+    const after_end = late.length === 2 ? {
+      facts: 3,
+      by_player: { [late[0].player_id]: { kills: 1, deaths: 0 }, [late[1].player_id]: { kills: 0, deaths: 1 } },
+    } : undefined;
     this.recap_ = { winner: ffa ? { player_id: top.player_id } : { team_id: winnerTeam }, score, rows, honors, provisional: missing.length > 0, missing,
+                    ...(after_end ? { after_end, post_end_facts: after_end.facts } : {}),
                     ...(stationRows.length ? { stations: stationRows } : {}) };
     // the demo keeps its own history, exactly as the server's session store does — without it the
     // RECAP history picker and the per-match CSV had no way to be seen (let alone tested) in ?mock
@@ -336,7 +428,22 @@ export class MockBackend implements Api {
     this.emit();
     return GUNS.map(([s, tail]) => ({ tail, name: `${s}-${tail}`, basename: s, gun_id: s, rssi: -60, identity: 'ok', t: now() }));
   }
-  async setPhase(phase: string) { this.phase = phase as Phase; this.emit(); return {}; }
+  /** A27 (F127): kit -> lobby is REFUSED while a rostered player is not ready, unless `force`. The
+   *  refusal is a 409 carrying WHO is not ready, so the console shows the server's list rather than
+   *  its own guess — and the mock has to refuse the same way, or `?mock` proves nothing about it. */
+  async setPhase(phase: string, force?: boolean) {
+    if (phase === 'lobby' && this.phase === 'kit' && !force) {
+      const notReady = this.players.filter(p => !p.ready);
+      if (notReady.length) {
+        const names = notReady.map(p => p.display.toUpperCase());
+        const err = new Error(`${names.length} PLAYER${names.length === 1 ? ' IS' : 'S ARE'} NOT READY — CONTINUE ANYWAY TO LOCK THEIR KITS`) as Error & { status?: number; body?: unknown };
+        err.status = 409;
+        err.body = { error: err.message, not_ready: names, greens: this.players.length - names.length, roster_size: this.players.length };
+        throw err;
+      }
+    }
+    this.phase = phase as Phase; this.emit(); return {};
+  }
   async armory() { return GUNS.map(([s, tail]) => ({ gun_id: s, sticker: s, ble: { tail } })); }
   async getVoices() { return { default: 'male', voices: [{ id: 'male', name: 'MALE', family: 'VA', kill_line: 'VAA', verified: false }] }; }
   async getModes(): Promise<ModeInfo[]> { return clone(MODES); }
@@ -490,6 +597,26 @@ export class MockBackend implements Api {
   }
   async deletePlayer(id: string) { this.players = this.players.filter(p => p.player_id !== id); this.emit(); }
   async evictNode(id: string) { this.evicted.add(id); this.emit(); }
+
+  // ---------- A25 ----------
+  async getOptions() { return { ...this.options }; }
+  async setOptions(opts: { log_sync?: 'auto' | 'manual' }) {
+    if (opts.log_sync && opts.log_sync !== 'auto' && opts.log_sync !== 'manual') throw new Error('log_sync must be auto|manual');
+    if (opts.log_sync) this.options.log_sync = opts.log_sync;
+    this.emit();
+    return { ...this.options };
+  }
+  async pullLog(node_id: string) {
+    // MC asking does not make the phone answer: the state moves to `pulling` only for a node that had
+    // something to send. A node with nothing stays where it is and the ask is still reported as sent —
+    // which is what `ok` means (the ASK went out), never "a log arrived".
+    const cur = this.logFor(node_id);
+    if (cur.state === 'offered' || cur.state === 'held') {
+      this.logs[node_id] = { state: 'pulling', lines: cur.lines, bytes: cur.bytes, last_t: now() };
+      this.emit();
+    }
+    return { ok: true, node_id, log: this.logFor(node_id) };
+  }
   private verdicts: Record<string, { weapon_id: string; verdict: 'pass' | 'issue'; note: string; t: number }> = {};
   async rangeVerdicts() { return { ...this.verdicts }; }
   async rangeVerdict(weapon_id: string, verdict: 'pass' | 'issue', note = '') { const r = { weapon_id, verdict, note, t: Date.now() }; this.verdicts[weapon_id] = r; return r; }

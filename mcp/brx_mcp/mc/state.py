@@ -11,21 +11,46 @@ import json
 import random
 import time
 import uuid
+from pathlib import Path
 from typing import Any, Callable
 
 from . import presentation as _pres
 from .. import poolgauge as _pg
 from .. import voices as _voices
+from . import compile as _compile      # A31: `mc_verify` / `full_coverage` — one coverage model
 from . import policy as _policy
 from .scoring import Scorer
 from ..modes.hillbeacon import NEUTRAL_TEAM as _NEUTRAL_TEAM     # F82: the tid a NEUTRAL hill broadcasts
 from ..modes.registry import default_params as _default_params, params_schema_json as _params_schema_json, \
     validate_mode_params as _validate_mode_params                  # A18: the mode's own rules, engine-declared
-from .types import (DEFAULT_RUNWAY_S, MAX_PLAYERS, OBJECTIVE_MODES, OFFLINE_AFTER_MS, STALE_AFTER_MS, STATION_KINDS,
-                    STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, GameConfig, Player, ReadinessRow,
-                    ReadinessSnapshot, ScanRow, Team)
+from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS,
+                    OBJECTIVE_MODES, OFFLINE_AFTER_MS,
+                    STALE_AFTER_MS, STATION_KINDS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, GameConfig,
+                    Player, ReadinessRow, ReadinessSnapshot, ScanRow, Team, app_tier, compatible, parse_app_ver)
 
 PHASES = ("muster", "build", "kit", "lobby", "armed", "live", "recap")
+
+# A25: the session option table. `log_sync` gates the AUTOMATIC `pull_log` asks (recap / offer /
+# reconnect); the operator's LOGS button (`reason: "manual"`) is never gated -- the whole point of
+# "manual" is that the operator still gets a log when they ask for one.
+OPTION_DEFAULTS: dict[str, Any] = {"log_sync": "auto"}
+OPTION_VALUES: dict[str, tuple[str, ...]] = {"log_sync": ("auto", "manual")}
+LOG_STATES = ("none", "offered", "pulling", "held", "complete")
+PULL_REASONS = ("recap", "offer", "manual", "reconnect")
+
+
+def release_app_version() -> str | None:
+    """The app version on the GitHub Release, read from `webapp/download/build.json` (the sidecar
+    `npm run android:apk` writes). Absent on a checkout that has never cut an APK, and absent in an
+    installed/packaged MC -- both are fine: no sidecar simply means no RELEASE amber."""
+    try:
+        path = Path(__file__).resolve().parents[3] / "webapp" / "download" / "build.json"
+        data = json.loads(path.read_text())
+    except Exception:
+        return None
+    v = data.get("version") if isinstance(data, dict) else None
+    return v if isinstance(v, str) and v else None
+
 
 TEAM_DEFS = {  # $TID: 1=blue, 2=yellow, 0=red (protocol §7i); green provisional 3
     "blue": {"team_id": "blue", "name": "BLUE TEAM", "color": "#3a86ff", "tid": 1},
@@ -123,6 +148,22 @@ class ConflictError(ValueError):
     `.status` where it matters. `PresetError` has carried the same field since the saved-games lane."""
     status = 409
 
+class NotReadyError(ConflictError):
+    """A27/F127: CONTINUE from KIT while somebody has not pressed READY. Not a bad request -- a state of
+    play -- so it is a 409, and it CARRIES who is missing so the UI's second tap can name them rather
+    than making the operator hunt the board."""
+
+    def __init__(self, message: str, not_ready: list[str], greens: int, roster_size: int):
+        super().__init__(message)
+        self.not_ready = not_ready
+        self.greens = greens
+        self.roster_size = roster_size
+
+    def body(self) -> dict:
+        return {"error": str(self), "not_ready": self.not_ready,
+                "greens": self.greens, "roster_size": self.roster_size}
+
+
 _KIT_LOCKED_HOST = ("the match is {phase}: a player's kit is locked until it ends — changing {what} now would "
                     "re-arm that gun with the disarmed head and it could not fire or take damage again this "
                     "match. RECALL or END first")
@@ -209,7 +250,34 @@ class Session:
         self._batch_depth = 0
         self._pending_limit_t: int | None = None
         self._score_pushed: dict[str, dict] = {}   # A7: last ScoreRow pushed per player
-        self._log_bytes: dict[str, int] = {}       # per-node pulled-log byte budget
+        self._result_pushed: dict[str, dict] = {}  # A24: last `result` body pushed per player (minus `t`)
+        # A24/M2: WHAT ended the last match -- "frag_limit" | "host" | "time" | None. Only a frag cap has
+        # an end time that a LATER fact can move (an earlier cap kill flushed minutes late); a whistle and
+        # a clock are moments the field already lived through and are never re-derived.
+        self.end_reason: str | None = None
+        self._log_bytes: dict[str, int] = {}       # per-node pulled-log byte budget (per MATCH; reset in `_schedule`)
+        # A25: node_ids with an AUTOMATIC `pull_log` ask still outstanding. A node that reconnects and
+        # then offers its log fires `reconnect` and `offer` in the same breath, and asking twice makes
+        # the phone upload the same log twice. Cleared by a fresh `hello` (the socket we asked is gone)
+        # and by the first `log_data` chunk (the node is answering). The manual button is never deduped:
+        # "manual" means the button is the only asker, not that the button stops working.
+        self._log_asked: set[str] = set()
+        # A24/M2: the roster AS PLAYED. `_replay` must not build its Scorer from the LIVE roster --
+        # the operator can re-team a player during recap, and a late flush would then replay the
+        # finished match on the new teams. Frozen at `_schedule` and again at the whistle.
+        self._match_players: dict[str, Player] | None = None
+        # A25 background log sync. `options` is the session option table (`PUT /api/options`);
+        # `_log_match` is the match_id of the LAST match that ended, and `_log_done` the match whose log
+        # each node has finished delivering -- the pair is the whole "did this node's log ever arrive?"
+        # test that the `reconnect` ask is built on. Neither is cleared by NEW MATCH: a phone that was
+        # out of coverage at the whistle still owes us that match's log ten minutes later.
+        self.options: dict[str, Any] = dict(OPTION_DEFAULTS)
+        self._log_match: str | None = None
+        self._log_done: dict[str, str | None] = {}
+        # A29: the app version on the GitHub Release, read ONCE at startup (a sidecar that changes
+        # mid-session means someone cut an APK while a game was running; re-reading it per snapshot
+        # would put a file read on the 4 Hz broadcast path).
+        self.release_version: str | None = release_app_version()
         self.last_recap: dict | None = None
         self.feed: list[dict] = []
         self._listeners: list[Callable[[], None]] = []
@@ -469,6 +537,42 @@ class Session:
         return {"player": p, "team": self.team(p["team_id"]), "roster": self.roster(),
                 "catalog": self._catalog_views(p), "policy": pol, "game": self.game_brief()}
 
+    def _off_grid(self) -> list[str]:
+        """A28/A31: the rostered players whose phone cannot be reached after the whistle, by display name.
+
+        A phone is off-grid when it has no backhaul — no route to MC from wherever the match is being
+        played — so an MC-decided end (a frag cap, an objective, a survival win) never reaches it and the
+        player has to come back to find out how it ended.
+
+        ⚠ TODO (A28): `backhaul` is the per-node boolean the A28 work adds to `status`/`NodeView`; nothing
+        reports it yet. Until it does, a node that does not claim backhaul is treated as not having it,
+        which is the safe direction (the warning appears; it never hides a phone that will miss the
+        result). A player with no bound node at all is off-grid for the stronger reason: there is no
+        phone to push anything to.
+        """
+        out: list[str] = []
+        for p in self.players.values():
+            nv = self.nodes.get(p.get("node_id") or "", {})
+            if not p.get("node_id") or not nv.get("backhaul"):
+                out.append(str(p.get("display") or p["player_id"]))
+        return out
+
+    def _mc_verify_player_line(self) -> str | None:
+        """A31: the line every PLAYER sees on ARMED, or None. Compiled once in `compile.mc_verify`."""
+        return _compile.mc_verify(self.config, None, bool(self._off_grid()))
+
+    def _notices(self) -> dict:
+        """A31: the HOST's standing lines (API.md `State.notices`). Same decision as the player's line —
+        the compiler makes it once — but the host's copy NAMES the phones, because the host is the one
+        who can walk over and tell those players to come back."""
+        out: dict = {}
+        off = self._off_grid()
+        if self._mc_verify_player_line():
+            shown = ", ".join(off[:6]) + (f" +{len(off) - 6} MORE" if len(off) > 6 else "")
+            out["mc_verify"] = (f"WIN IS CONFIRMED AT MC · {len(off)} PHONE{'S' if len(off) != 1 else ''} OFF-GRID "
+                                f"({shown}) · TELL PLAYERS TO RETURN AFTER THE WHISTLE")
+        return out
+
     def game_brief(self) -> dict:
         """A10 §4.6: what the phone's BRIEFING screen shows — the chosen game in human terms. Saved-game name/desc
         when the live config matches one, else the stock mode; rules as short lines; the loadout rules as one line."""
@@ -519,6 +623,8 @@ class Session:
             "time_limit_s": cfg.get("time_limit_s"), "respawn": cfg.get("respawn"), "health": cfg.get("health"),
             "environment": cfg.get("environment"), "night": bool(cfg.get("night")),
             "loadout_line": ", ".join(parts) + ".", "ruleset": preset_lbl, "hud_select": bool(pol.get("hud_select")),
+            # A31: present ONLY when this match needs it, so a node can treat presence as the rule.
+            **({"mc_verify": mcv} if (mcv := self._mc_verify_player_line()) else {}),
         }
 
     def _sync_kit_open(self) -> None:
@@ -624,8 +730,11 @@ class Session:
         if voice_slots:
             p["voice_slots"] = voice_slots
         self.players[pid] = p
-        if self.scorer:
-            self.scorer.register_player(pid, p)      # A5.6 late joiner: scorable in the running match
+        if self.scorer and self.phase != "recap":
+            # A5.6 late joiner: scorable in the RUNNING match. Never in a finished one -- registering
+            # into the recap scorer put a 0/0 row for somebody who was not there into the archived
+            # recap and the result every node is holding (round-2 review 2026-09-12).
+            self.scorer.register_player(pid, p)
         if gun_id:
             self._adopt_node_for_gun(p)
         self._after_player_change(p, new=True)
@@ -845,7 +954,7 @@ class Session:
 
     _CONFIG_KEYS = {"mode", "environment", "night", "time_limit_s", "respawn", "scoring",
                     "health", "teams", "led", "player_num_base", "loadout_policy", "presentation",
-                    "station_source", "mode_params", "vip_player_id", "stun"}
+                    "station_source", "mode_params", "vip_player_id", "stun", "coverage"}
 
     def apply_preset(self, preset_id: str, config: dict) -> dict:
         """A10 §8: apply a saved game — same path as PUT /api/config, but the state remembers WHICH game is playing."""
@@ -879,6 +988,16 @@ class Session:
             self._policy_notice = None                       # a saved game applies) must not eat the reset notice
 
         cfg = default_config(mode) if mode != self.config["mode"] else copy.deepcopy(self.config)
+        if mode != self.config["mode"]:
+            # A31/A4.8: the VENUE is a fact about the site, not about the game. `default_config()` knows
+            # the mode's defaults and nothing about where you are standing, so picking a new mode used to
+            # reset the venue keys to `outdoor`/day/partial. The UI re-sent `environment` and `night` in
+            # the same patch and hid two thirds of it; `coverage` it did not, so a full-coverage site
+            # silently became partial and the A31 verify-at-MC warning appeared out of nowhere. Anything
+            # the patch itself names still wins -- this only fills what the swap would have dropped.
+            for k in ("environment", "night", "coverage"):
+                if k not in patch and k in self.config:
+                    cfg[k] = copy.deepcopy(self.config[k])
         cfg = self._merge_config(cfg, patch, mode)
         cfg["config_id"] = uuid.uuid4().hex[:8]
         self.config = cfg
@@ -925,6 +1044,16 @@ class Session:
                 cfg[k] = v
             elif k == "night":
                 cfg[k] = bool(v)
+            elif k == "coverage":
+                # A31/A4.8: the venue's radio coverage. "full" is an ASSERTION the operator makes about
+                # the site (every phone on the LAN the whole match) and it unlocks a null `time_limit_s`
+                # and suppresses the verify-at-MC warning, so it is spelled exactly or refused.
+                if v is not None and v not in ("full", "partial"):
+                    raise ValueError("coverage must be full|partial or null")
+                if v is None:
+                    cfg.pop(k, None)
+                else:
+                    cfg[k] = v
             elif k in ("respawn", "scoring", "health"):
                 if not isinstance(v, dict):
                     raise ValueError(f"{k} must be an object")
@@ -1251,7 +1380,7 @@ class Session:
         if isinstance(rep.get("battery"), (int, float)) and rep["battery"] < 30:
             attention.append("BATTERY LOW")
         return {"node_id": nid, "assigned": a, "armed": armed, "arm_pending": bool(st.get("arm_pending")),
-                "report": rep, "app_ver": st.get("app_ver"),
+                "report": rep, "app_ver": st.get("app_ver"), "platform": st.get("platform"),   # A29
                 "last_seen_ms": (now - seen) if seen else None,
                 "online": bool(seen) and (now - seen) <= OFFLINE_AFTER_MS,
                 "attention": attention, "game": self._game_byte()}
@@ -1294,7 +1423,7 @@ class Session:
 
     # ---------- nodes ----------
     def _touch(self, nid: str, stale: bool | None = None):
-        nv = self.nodes.setdefault(nid, {"node_id": nid, "node_type": "phone", "arm_state": "idle", "last_seen_ms": 0, "synced": False})
+        nv = self._node_view(nid)
         if stale is not None:
             nv["stale"] = stale
         self._changed()
@@ -1350,7 +1479,7 @@ class Session:
                 self.nodes[prev].pop("player_id", None)
         self.node_player[nid] = p["player_id"]
         p["node_id"] = nid
-        self.nodes.setdefault(nid, {"node_id": nid})["player_id"] = p["player_id"]
+        self._node_view(nid)["player_id"] = p["player_id"]
         if self.phase in ("kit", "lobby", "armed") and self.nodes.get(nid, {}).get("synced"):
             self.synced_at_lobby[nid] = True   # same pre-live gate as _on_status (A5.7)
         # A5.6 late joiner: a node binding a player after the lobby push gets its bundle (+ the running start) now.
@@ -1402,10 +1531,31 @@ class Session:
                 self.nodes.pop(nid, None)
                 self.stations.pop(nid, None)
 
+    def _node_view(self, nid: str) -> dict:
+        """The ONE place a player `NodeView` is created, so it always has its defaults.
+
+        It used to be created by whichever handler ran first, each with its own dict literal, and the
+        order is not the one it looks like: `_hydrate` fires BEFORE `_on_node` (net.py answers the
+        hello first), so `_note_version`'s `setdefault` pre-created the node and `_on_node`'s
+        `{"arm_state": "idle", "synced": False}` silently never applied. A node that said hello and
+        then went quiet had NO `arm_state` and NO `synced` at all, and the board read them as absent
+        rather than as the idle, unsynced phone it is (`API.md` NodeView says both are always there).
+        """
+        nv = self.nodes.setdefault(nid, {"node_id": nid})
+        nv.setdefault("node_type", "phone")
+        nv.setdefault("arm_state", "idle")
+        nv.setdefault("synced", False)
+        nv.setdefault("last_seen_ms", 0)
+        return nv
+
     def _on_node(self, n: dict):
         nid = n["node_id"]
-        nv = self.nodes.setdefault(nid, {"node_id": nid, "arm_state": "idle", "synced": False})
+        # A25: a hello is a NEW socket. Any `pull_log` we sent the old one never landed, so the ask
+        # stops being outstanding here -- before the `reconnect` trigger below decides to make a new one.
+        self._log_asked.discard(nid)
+        nv = self._node_view(nid)
         nv.update({k: v for k, v in n.items() if k in ("node_type", "gun_name", "gun_tail", "fw")})
+        self._note_version(nid, n.get("app_ver"), n.get("platform"))   # A29
         nv["last_seen_ms"] = self.now_ms()
         if n.get("node_type") == "utility":
             # F106(c): the SAME node_id said hello as a player once (a phone switched OUT of the HUD role
@@ -1423,6 +1573,7 @@ class Session:
             st = self.stations.setdefault(nid, {"node_id": nid, "assigned": None, "report": {}, "armed": None})
             st["last_seen_ms"] = nv["last_seen_ms"]
             st["app_ver"] = n.get("app_ver") or st.get("app_ver")
+            st["platform"] = nv.get("platform") or st.get("platform")   # A29: stations report the same way
             if st.get("assigned"):
                 self._arm_station(nid)
             self._changed()
@@ -1433,11 +1584,21 @@ class Session:
             p = self.players[n["player_id"]]
         if p:
             self._bind(nid, p)
+        # A25 `reconnect`: this node's log for the LAST match never arrived. A phone that was out of
+        # coverage at the whistle (or whose upload was cut off mid-stream) comes back minutes later and
+        # this hello is the only moment we know it is reachable again -- so ask once, here.
+        if self._log_match and self._log_done.get(nid) != self._log_match:
+            self.pull_log(nid, "reconnect")
         self._prune_unbound_nodes()
         self._changed()
         return self.node_player.get(nid)
 
     def _hydrate(self, hello: dict) -> dict | None:
+        # A29: `net.py _fire_node` forwards `app_ver` but not `platform`, and this callback is the one
+        # place the WHOLE hello body reaches the session -- capture both here, before any early return,
+        # so a utility phone and an unbound player node are covered too.
+        if hello.get("node_id"):
+            self._note_version(str(hello["node_id"]), hello.get("app_ver"), hello.get("platform"))
         if hello.get("node_type") == "utility":
             return None                        # A13.5: a station is never a player, whatever it remembers
         gun = hello.get("gun") or {}
@@ -1459,16 +1620,39 @@ class Session:
             node["start"] = self._start_body()
             node["match_id"] = self.start_info["match_id"]
         if self.scorer:
-            row = next((r for r in self.scorer.rows() if r["player_id"] == p["player_id"]), None)
+            rows = self.scorer.rows()
+            row = next((r for r in rows if r["player_id"] == p["player_id"]), None)
             if row:
-                node["score"] = dict(row, board=self._score_board())   # same shape as the live push: the swapped phone's DOWN recap has the race
+                node["score"] = dict(row, board=self._score_board(), rows=rows)   # same shape as the live push: the swapped phone's DOWN recap has the race
+        if self.phase == "recap" and self.last_recap and self._played_this_match(p["player_id"]):
+            # A24: a phone that comes back into coverage AFTER the whistle still learns how it ended —
+            # the only route to a result for a node that was off the LAN when `_finish` pushed it.
+            # A player added DURING the debrief was not in it, so there is no result to carry.
+            node["result"] = self._result_body(self.last_recap, p)
         return node
 
     def _on_status(self, nid: str, body: dict, t_recv: int):
-        nv = self.nodes.setdefault(nid, {"node_id": nid, "node_type": "phone"})
+        nv = self._node_view(nid)
         nv.update({k: body.get(k) for k in ("arm_state", "synced", "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "t_minus_ms", "shots", "dropped", "pending") if k in body})
         nv["last_seen_ms"] = t_recv
         nv["stale"] = False
+        # A32: when this node's BLE link to the gun was last (re)established, as the heartbeats tell it.
+        # A gun with no headset holds a link for only ~6 s, so the DURATION of the link is the proof --
+        # `readiness()` reads this, not the instantaneous flag. A false or missing `gun_linked` resets it,
+        # so a drop un-proves the headset and a re-link has to earn it again.
+        if ((nv.get("preflight") or {}).get("gun_linked")) is True:
+            nv.setdefault("gun_linked_since", t_recv)
+        else:
+            nv.pop("gun_linked_since", None)
+            # …and the ECHO proof goes with it. `headset = "proven"` set by an `ack_config` gun echo was
+            # never cleared, so A32's "falls back to unknown when the link drops" did not apply to a gun
+            # that had answered once: the operator could switch the headset off, watch GUN LINK LOST go
+            # red, and still read HEADSET · CONNECTED beside it. The echo proves the head answered THEN;
+            # the link is the only thing that proves it is still on (round-2 review 2026-09-12).
+            nv.pop("headset", None)
+        self._note_version(nid, body.get("app_ver"), body.get("platform"))   # A29: the heartbeat carries it too
+        if (parsed := self._parse_log_status(body.get("log"))) is not None:  # A25: the node's own log state
+            self._set_log(nid, parsed[0], reason=parsed[1])
         # A8 + polish review 2026-09-11: a STATUS body never changes what a BOUND node IS. A player HUD that
         # (however it happened) sends `role: utility` used to be re-typed here without being unbound, so END /
         # PANIC skipped it (`_control` skips utility nodes) and `_finish` pulled no log from it -- a HUD silenced
@@ -1486,6 +1670,8 @@ class Session:
             st["last_seen_ms"] = t_recv
             if body.get("app_ver"):                # roadmap A3: the heartbeat, not just the hello, keeps this fresh
                 st["app_ver"] = body["app_ver"]
+            if body.get("platform"):
+                st["platform"] = body["platform"]
             nv["node_type"] = "utility"
         # A8: the server's binding is authoritative — a status body's player_id never rebinds a node.
         if self.phase in ("kit", "lobby", "armed") and body.get("synced"):
@@ -1497,7 +1683,7 @@ class Session:
 
     def _on_event(self, nid: str, ev: dict, t_recv: int):
         seq = (ev.pop("_seq", None) if isinstance(ev, dict) else None) or (ev.get("seq") if isinstance(ev, dict) else None)
-        self.nodes.setdefault(nid, {"node_id": nid})["last_seen_ms"] = t_recv
+        self._node_view(nid)["last_seen_ms"] = t_recv
         parked = bool(self.scorer and ev.get("match_id") != self.scorer.match_id) or not self.scorer
         self._log(nid, ev.get("type", "event"), ev, t_recv, seq=seq, parked=parked)
         if not parked and ev.get("type") == "respawn":
@@ -1508,12 +1694,13 @@ class Session:
         if self.scorer:
             self.scorer.ingest(nid, ev, t_recv, seq=seq)
             self._flush_pending_limit()   # a cap deferred by a batch never waits on the NEXT batch
+            self._reconcile_end(nid, [ev], t_recv)   # A24/M2: a late fact can move the END itself
             self._restore_recap()
             self._push_scores()
             self._changed()
 
     def ingest_batch(self, nid: str, events: list[dict], t_recv: int):
-        self.nodes.setdefault(nid, {"node_id": nid})["last_seen_ms"] = t_recv
+        self._node_view(nid)["last_seen_ms"] = t_recv
         for ev in events:
             self._log(nid, ev.get("type", "event"), ev, t_recv, seq=ev.get("seq"),
                       parked=not self.scorer or ev.get("match_id") != self.scorer.match_id)
@@ -1537,6 +1724,7 @@ class Session:
                 # too, so a cap left pending by any route is finished by the next thing that happens.
                 self._batch_depth -= 1
                 self._flush_pending_limit()
+            self._reconcile_end(nid, events, t_recv)  # A24/M2: the store-and-forward flush is the CASE
             self._restore_recap()
             self._push_scores()
             self._changed()
@@ -1551,11 +1739,13 @@ class Session:
         nothing arrived late. The RECAP history picker serves these rows, so an archived match was
         showing understated scores (review 2026-09-01).
         """
-        if self.phase != "recap" or not (self.store and self.scorer):
+        if self.phase != "recap" or not self.scorer:
             return
         try:
             self.last_recap = self._scorer_recap()
-            self.store.match_ended(self.scorer.match_id, self.last_recap)
+            if self.store:               # the ARCHIVE row; the live recap above is re-taken either way
+                self.store.match_ended(self.scorer.match_id, self.last_recap)
+            self._push_result()          # A24: the field is re-told whenever the recap moves
         except Exception:
             import logging
             logging.getLogger("brx.mc").exception("late-fact recap re-store failed (play continues)")
@@ -1566,16 +1756,260 @@ class Session:
             return
         plist = self.players.values() if isinstance(self.players, dict) else self.players
         by_pid = {p["player_id"]: p for p in plist}
-        for row in self.scorer.rows():
+        rows = self.scorer.rows()
+        for row in rows:
             pid = row["player_id"]; p = by_pid.get(pid)
             if not p or not p.get("node_id"):
                 continue
             body = dict(row); body["shots_total"] = self.scorer.shots_total(pid)
             body["board"] = self._score_board()     # the race to the cap, for the HUD's DOWN-screen recap (review 2026-09-03 #25/#26)
+            body["rows"] = rows                     # A24: EVERY player's row, all modes — the phone's mid-match leaderboard
             if self._score_pushed.get(pid) == body:
                 continue
             self._score_pushed[pid] = body
             self.net.push(p["node_id"], "score", body)
+
+    # ---------- A24: the match result reaches EVERY node, losers included ----------
+    def _as_played(self, p: Player) -> Player:
+        """The recipient AS THE FIELD WORE THEM (A24/M2 round-2 review).
+
+        `_replay` was already fixed to score `_match_players`, the roster frozen at the whistle — but
+        the RESULT still read the live one, so the same late flush could hand yellow the win and tell
+        the player who won it `outcome: "lose"`, because the operator had moved them to blue for the
+        next match. Which side a recipient wore is a fact about the match that was played.
+        """
+        if self._match_players is None:
+            return p
+        return self._match_players.get(p["player_id"], p)
+
+    def _played_this_match(self, pid: str) -> bool:
+        """Was this player on the roster at the whistle? A player ADDED during the debrief was being
+        pushed a win or a loss for a match they were standing in the car park for (and `add_player`
+        registered them into the finished scorer, growing the archived recap a 0/0 row). They get no
+        `result` at all -- the HUD's neutral "no result for you" state, contracts §5 `result`."""
+        return self._match_players is None or pid in self._match_players
+
+    def _outcome_for(self, winner: dict, p: Player) -> str:
+        """"win" | "lose" | "draw" | "undecided", FOR THIS RECIPIENT (A24).
+
+        The node never infers this: silence means "you lost" and "your phone dropped off the LAN"
+        identically (game test 2026-09-11 D3), so MC is the only thing that may say the word.
+        The recipient's team is read AS PLAYED (`_as_played`), never as the debrief has it.
+        """
+        p = self._as_played(p)
+        if not winner or winner.get("undecided"):
+            return "undecided"
+        tie = winner.get("tie")
+        if tie:
+            mine = p["player_id"] if self.config.get("mode") == "ffa" else p.get("team_id")
+            return "draw" if mine in tie else "lose"
+        if winner.get("team_id") is not None:
+            return "win" if p.get("team_id") == winner["team_id"] else "lose"
+        if winner.get("player_id") is not None:
+            return "win" if p["player_id"] == winner["player_id"] else "lose"
+        return "undecided"
+
+    def _result_team_scores(self, recap: dict) -> list[dict]:
+        """`[{team_id, name, score}]` for the results screen. TEAM modes only — in FFA there are no teams
+        and `rows` is already the leaderboard, so this is `[]` rather than three players wearing a team
+        shape (which is what `score.board` does, for a different job: the DOWN screen's race to the cap)."""
+        if self.config.get("mode") == "ffa":
+            return []
+        totals = recap.get("score") or {}
+        names = {t["team_id"]: str(t.get("name") or t["team_id"]) for t in self.teams}
+        return [{"team_id": tid, "name": names.get(tid, tid), "score": sc} for tid, sc in totals.items()]
+
+    def _result_body(self, recap: dict, p: Player) -> dict:
+        """The `result` envelope for ONE player (contracts §5 `result`)."""
+        p = self._as_played(p)                   # the side, the name and the row AS PLAYED, not as edited
+        winner = recap.get("winner") or {}
+        rows = recap.get("rows") or []
+        roster = self._match_players if self._match_players is not None else self.players
+        display = {pl["player_id"]: pl.get("display") for pl in roster.values()}
+        body = {
+            "match_id": self.scorer.match_id if self.scorer else None,
+            "outcome": self._outcome_for(winner, p),
+            "winner": winner,
+            "mode": self.config.get("mode"),
+            "win_by": (self.config.get("scoring") or {}).get("win_by"),
+            "team_scores": self._result_team_scores(recap),
+            "rows": rows,
+            "my": next((r for r in rows if r["player_id"] == p["player_id"]), None),
+            # `display` is the PLAYER's name, so a phone can render the honours roll without the roster.
+            "honors": [{"medal": h.get("award"), "player_id": h.get("player_id"),
+                        "display": display.get(h.get("player_id")) or h.get("player_id"), "stat": h.get("stat")}
+                       for h in (recap.get("honors") or [])],
+            "provisional": bool(recap.get("provisional")),
+            "t": self.now_ms(),
+        }
+        for k in ("possession", "after_end"):
+            if recap.get(k) is not None:
+                body[k] = recap[k]
+        return body
+
+    def _push_result(self) -> int:
+        """A24: push `result` to every BOUND player node, best-effort, and again whenever it changes.
+
+        Sent at `_finish()` and re-sent on every late fact that moves the recap — including the A24/M2
+        reconciliation, where the winner itself can change minutes after the whistle. De-duplicated on
+        the body MINUS `t` (the timestamp moves on every call and would defeat the compare), so a node
+        that is already holding the current result is not re-told; a node out of coverage simply misses
+        the push and picks the result up from `welcome.node.result` when it comes back.
+        """
+        if not self.scorer or not self.last_recap:
+            return 0
+        sent = 0
+        # The FROZEN roster decides who is told; the LIVE one says where to send it (a phone that
+        # rebound to a different socket in the debrief is still that player's node).
+        roster = self._match_players if self._match_players is not None else self.players
+        for pid in roster:
+            p = self.players.get(pid)
+            if not p or not p.get("node_id"):
+                continue
+            body = self._result_body(self.last_recap, p)
+            key = {k: v for k, v in body.items() if k != "t"}
+            if self._result_pushed.get(p["player_id"]) == key:
+                continue
+            self._result_pushed[p["player_id"]] = key
+            self.net.push(p["node_id"], "result", body)
+            sent += 1
+        return sent
+
+    # ---------- A24/M2: the recap as a REPLAY of the stored facts ----------
+    _FACT_KINDS = ("hit_taken", "death", "respawn", "team_change", "possession")
+
+    def _match_facts(self, match_id: str) -> list[dict]:
+        """Every persisted fact for this match, in EFFECTIVE-t order (the order it should have been
+        scored in, not the order it arrived in). `store.events` returns insertion order, and the sort
+        is stable, so two facts on the same millisecond keep their arrival order.
+
+        ⚠ Known gap: an `event_batch` from a NEVER-SYNCED node is re-based once per flush (A5.7,
+        `offset = t_recv - t_newest`) and the store keeps no batch grouping, so on replay those facts
+        fall back to `t_recv` — the same approximation the live path makes for a single event from such
+        a node. Their window awards are suppressed either way.
+        """
+        if not self.store:
+            return []
+        try:
+
+            # The `kind` filter is SQL: a 10-minute match's envelope table is mostly `status`
+            # heartbeats, and reading them back meant a `json.loads` per heartbeat, twice per late
+            # death, only to discard them here.
+            rows = self.store.events(match_id=match_id, kinds=self._FACT_KINDS)
+        except Exception:
+            import logging
+            logging.getLogger("brx.mc").exception("store read failed (recap left as scored live)")
+            return []
+        facts = [r for r in rows if r.get("kind") in self._FACT_KINDS and isinstance(r.get("body"), dict)]
+        def eff(r):
+            t, tr = r.get("t"), r.get("t_recv") or 0
+            return t if (t is not None and self.synced_at_lobby.get(r.get("node_id"), False)) else tr
+        return sorted(facts, key=eff)
+
+    def _replay(self, facts: list[dict], freeze_at: int | None = None) -> Scorer:
+        """Re-derive a Scorer for THIS match from stored facts. Pure: no feedback, no alerts, no feed,
+        no cap callback — a replay must never re-fire a cue at a player standing in the debrief.
+
+        Every constructor argument comes from the scorer being replaced, not from `self.config`: the
+        operator can edit the draft config during recap, and the match that was played does not change
+        when they do. The ROSTER is the frozen copy taken at the whistle for the same reason —
+        `old.players` IS `self.players`, so a re-team made in the debrief would otherwise replay the
+        finished match on the new teams and hand the win to a side that never held it.
+        """
+        old = self.scorer
+        sc = Scorer(old.match_id, old.go_live_t, old.time_limit_s, old.mode,
+                    self._match_players if self._match_players is not None else old.players,
+                    list(old.teams.values()), old.node_player, old.synced_at_lobby,
+                    now_ms=self.now_ms, win_by=old.win_by, frag_limit=old.frag_limit)
+        if freeze_at is not None:
+            sc.set_end(freeze_at)
+        for r in facts:
+            sc.ingest(r["node_id"], dict(r["body"]), r.get("t_recv") or 0, seq=r.get("seq"))
+        return sc
+
+    def _adopt_scorer(self, sc: Scorer) -> None:
+        """Swap a replayed Scorer in for the live one, carrying the state facts cannot re-derive.
+
+        `shots` arrives on the ~2 s status heartbeat and is a LATEST-WINS sample, not an event log, so
+        the old scorer's copy is the only one there is — replaying it would mean re-ingesting every
+        status envelope to land on the same number. `flushed` is sticky for the same reason: a node
+        marked flushed by `_mark_flushed_live` (connected, fresh, nothing pending) never sent a fact to
+        prove it, and losing that mark would make a settled recap provisional again.
+        """
+        old = self.scorer
+        for pid, st in sc.stats.items():
+            o = old.stats.get(pid)
+            if o is None:
+                continue
+            for f in ("shots", "shots_baseline", "shots_t", "last_status_t", "alive", "hp", "armor", "deadline_s"):
+                setattr(st, f, getattr(o, f))
+            st.flushed = st.flushed or o.flushed
+        sc.mismatched = old.mismatched
+        # Facts for ANOTHER match (a phone still flushing the previous one) never reach the replay --
+        # `_match_facts` reads this match_id only -- so the count the recap reports would reset to 0.
+        sc.parked = list(old.parked)
+        # The replay ran with no callbacks (it must never re-fire a cue at a player in the debrief).
+        # The scorer that comes OUT of it is the LIVE one again: everything that lands from here on is
+        # a fact arriving now, and it has to reach the operator's feed and the match-state alerts the
+        # same way it would have before the reconcile. `on_feedback` stays age-gated inside the Scorer
+        # (`FEEDBACK_MAX_AGE_MS`), so a fact flushed minutes late still cues nobody's gun.
+        sc.on_feed = self._on_feed
+        sc.on_alert = self._alert
+        sc.on_feedback = lambda pid, body: self._feedback(pid, body)
+        sc.on_limit = lambda t, _sc=sc: self._on_frag_limit(t, _sc)
+        self.scorer = sc
+
+    def _reconcile_end(self, nid: str, events: list[dict], t_recv: int) -> bool:
+        """A24/M2: a fact landed after the whistle that can move the END ITSELF. Re-derive everything.
+
+        The match ends at the TIMESTAMP of the kill that reached the cap — not when MC learned of it.
+        A phone that was out of coverage can flush minutes late and reveal that somebody ELSE reached
+        the cap EARLIER, which moves the end backwards and means every kill MC scored after that moment
+        must be un-scored. That cannot be patched onto a running tally, so the recap is a pure function
+        of (the stored facts, the end rule) and this re-runs it: find the cap in a clean pass, freeze a
+        second pass at it, check for a dead heat, adopt the result.
+
+        Only a frag cap has a movable end. A host END and a time limit are moments the whole field
+        lived through, and A6.1 keeps their whistle exactly where it was.
+        """
+        if self.phase != "recap" or not self.scorer or not self.store or self.end_reason != "frag_limit":
+            return False
+        end_t = self.scorer.end_t
+        if end_t is None:
+            return False
+        # A death inside the scored window can move the cap EARLIER; one inside the clock band just
+        # after the end can reveal a DEAD HEAT (`check_cap_tie`). Anything later than that changes
+        # neither, and is already reported as an after-the-whistle fact.
+        if not any(ev.get("type") == "death" and self.scorer.eff_t(nid, ev, t_recv) <= end_t + CLOCK_TIE_MS
+                   for ev in events if isinstance(ev, dict)):
+            return False
+        facts = self._match_facts(self.scorer.match_id)
+        if not facts:
+            return False
+        probe = self._replay(facts)              # no freeze: where does the cap fall on ALL the facts?
+        cap_t = probe.limit_reached_t
+        if cap_t is None:                        # the cap no longer stands (it cannot un-happen; be safe)
+            return False
+        if cap_t > end_t:
+            # Contracts §4: the end may move EARLIER only. A late friendly-fire death inside the tie
+            # band SUBTRACTS a kill, so the re-derived cap can fall LATER than the whistle the field
+            # already heard -- and adopting it would promote facts the live scorer parked as post-end
+            # into the official tally, minutes after everyone was told `control{end}`. Leave the end
+            # where it was; the late fact stays an after-the-whistle fact (round-2 review 2026-09-12).
+            return False
+        sc = self._replay(facts, freeze_at=cap_t)
+        sc.cap_tie = sc.check_cap_tie(CLOCK_TIE_MS)
+        before = (self.scorer.winner(), end_t)
+        self._adopt_scorer(sc)
+        if cap_t < end_t:
+            moved = (end_t - cap_t) / 1000.0
+            self._on_feed({"t_match_s": max(0, (cap_t - sc.go_live_t) // 1000), "tag": "RESCORED", "kind": "alert",
+                           "text": f"END MOVED BACK {moved:.1f}s — a late flush shows the cap was reached earlier. "
+                                   f"Everything after that moment is un-scored and reported as after the whistle"})
+        if before[0] != sc.winner():
+            self._on_feed({"t_match_s": max(0, (cap_t - sc.go_live_t) // 1000), "tag": "RESCORED", "kind": "alert",
+                           "text": "THE WINNER CHANGED on re-scored facts — the field has been re-told the result"})
+        return True
 
     def _score_board(self) -> dict:
         """Team totals + the frag cap; in FFA the top three players stand in for teams."""
@@ -1588,7 +2022,7 @@ class Session:
         return {"teams": [{"team_id": tid, "name": names.get(tid, tid), "score": sc} for tid, sc in totals.items()], "cap": cap}
 
     def _on_node_message(self, nid: str, kind: str, body: dict, t_recv: int):
-        self.nodes.setdefault(nid, {"node_id": nid})["last_seen_ms"] = t_recv
+        self._node_view(nid)["last_seen_ms"] = t_recv
         pid = self.node_player.get(nid)   # authoritative binding, not a client-supplied player_id
         if kind == "ready" and pid in self.players:
             self._on_ready(pid, bool(body.get("ready")))     # A10 §4.4
@@ -1607,13 +2041,218 @@ class Session:
             self.ingest_batch(nid, body.get("events", []), t_recv)
             return
         elif kind == "log_offer":
-            got = self._log_bytes.get(nid, 0)
-            if got < 1_000_000:            # cap total pulled log per node at ~1 MB
-                self.net.push(nid, "pull_log", {})
+            # A25: the node is telling us what it holds. Record it, then ask (gated by `log_sync` and
+            # by the ~1 MB per-node budget, both inside `pull_log`).
+            self._set_log(nid, "offered",
+                          reason=body.get("reason") if isinstance(body.get("reason"), str) else None,
+                          lines=body.get("lines") if isinstance(body.get("lines"), int) else None,
+                          nbytes=body.get("bytes") if isinstance(body.get("bytes"), int) else None)
+            self.pull_log(nid, "offer")
         elif kind == "log_data":
-            self._log_bytes[nid] = self._log_bytes.get(nid, 0) + len(str(body.get("chunk", "")))
+            self._log_asked.discard(nid)          # A25: the node is answering; the ask is no longer outstanding
+            n = len(str(body.get("chunk", "")))
+            self._log_bytes[nid] = self._log_bytes.get(nid, 0) + n
+            # A25: only a COMPLETE `last`-terminated stream counts as delivered -- a half-uploaded log
+            # that the node abandoned mid-match must still read as owed, or the `reconnect` ask never
+            # fires for exactly the node that needs it.
+            if body.get("last"):
+                self._set_log(nid, "complete", nbytes=self._log_bytes.get(nid, 0))
+                self._log_done[nid] = self._log_match
+            else:
+                self._set_log(nid, "pulling", nbytes=self._log_bytes.get(nid, 0))
         self._log(nid, kind, body, t_recv)
         self._changed()
+
+    def set_phase(self, phase: str, force: bool = False) -> str:
+        """`POST /api/phase`. Two guards: the SOURCE phase, and A27's KIT → LOBBY.
+
+        The destination check was never enough. `armed` and `live` are not phases a route may leave
+        either: `{phase: "kit"}` from LIVE used to succeed, and `tick()` returns early unless the phase
+        is `armed`/`live`, so the match could never reach its timed end — it just sat there while the
+        field played on with no whistle coming. Ending a running match is `control{end}` (A30 is the
+        same rule for the kit), so this is a 409: correct request, not now.
+
+        Everything a player carries is compiled at the lobby push, so advancing past KIT while somebody
+        is still choosing takes their half-made kit into the match (loadout.md §4.4 -- the node says so
+        in its own words). The host may still do it deliberately; `force` is that deliberate second tap."""
+        if phase not in PHASES or phase in ("armed", "live", "recap"):
+            raise ValueError("phase must be one of muster|build|kit|lobby (armed/live/recap are driven by start/end)")
+        if self.phase in ("armed", "live"):
+            raise ConflictError(
+                f"the match is {self.phase.upper()} — end it (control END) before moving the session back to "
+                f"{str(phase).upper()}; `force` does not apply")
+        if phase == "lobby" and self.phase == "kit" and not force:
+            not_ready = [p.get("display") or p["player_id"] for p in self.players.values() if not p.get("ready")]
+            if not_ready:
+                greens = len(self.players) - len(not_ready)
+                raise NotReadyError(
+                    f"{len(not_ready)} of {len(self.players)} are not READY: {', '.join(not_ready)}",
+                    not_ready, greens, len(self.players))
+        self.phase = phase
+        self._changed()
+        return self.phase
+
+    # ---------- A25 background log sync / A29 versions ----------
+    def set_option(self, key: str, value: Any) -> dict:
+        """`PUT /api/options`. Unknown keys and out-of-table values are a 400, not a silent no-op --
+        an option the operator set and MC quietly ignored is the F40 shape."""
+        if key not in OPTION_DEFAULTS:
+            raise ValueError(f"unknown option {key!r}")
+        allowed = OPTION_VALUES.get(key)
+        if allowed and value not in allowed:
+            raise ValueError(f"{key} must be one of {'|'.join(allowed)}")
+        self.options[key] = value
+        self._changed()
+        return dict(self.options)
+
+    def _log_sync_auto(self) -> bool:
+        return self.options.get("log_sync", "auto") == "auto"
+
+    def pull_log(self, nid: str, reason: str = "manual") -> bool:
+        """Ask ONE node for its log (contracts A25 `pull_log {reason}`). Returns whether the ask went out.
+
+        Refused for a utility phone (F106(d): a station never binds a match, so its log holds nothing
+        about one), for a node past the ~1 MB budget, and -- for every reason but `manual` -- when
+        `log_sync` is `"manual"`. The NODE decides when to answer; MC never waits on it."""
+        if reason not in PULL_REASONS:
+            raise ValueError(f"pull_log reason must be one of {'|'.join(PULL_REASONS)}")
+        nv = self.nodes.get(nid)
+        if nv is None or nv.get("node_type") == "utility":
+            return False
+        if reason != "manual" and not self._log_sync_auto():
+            return False
+        if reason != "manual" and nid in self._log_asked:
+            return False                                  # one outstanding automatic ask per node
+        if self._log_bytes.get(nid, 0) >= 1_000_000:      # the existing per-MATCH cap
+            return False
+        try:
+            self.net.push(nid, "pull_log", {"reason": reason})
+        except Exception:
+            return False
+        if reason != "manual":
+            self._log_asked.add(nid)
+        return True
+
+    def _set_log(self, nid: str, state: str, *, reason: str | None = None,
+                 lines: int | None = None, nbytes: int | None = None) -> None:
+        """`NodeView.log` -- the operator's per-node view of the log sync, fed ONLY by what the node
+        reports (`status.log`, `log_offer`, the `log_data` stream). MC asking does not make it
+        `offered`: the phone answers when it is safe, and the board must show the phone's truth."""
+        nv = self._node_view(nid)
+        cur = dict(nv.get("log") or {})
+        # A completed stream stays COMPLETE until something new happens. The phone idles back to
+        # `none` the moment it finishes, and taking that literally would erase the one state the
+        # operator is looking for two seconds after it appeared.
+        if cur.get("state") == "complete" and state == "none":
+            return
+        cur["state"] = state
+        cur["last_t"] = self.now_ms()
+        if reason is not None:
+            cur["reason"] = reason
+        else:
+            cur.pop("reason", None)      # never carry a stale reason ("2 facts pending") into a new state
+        if lines is not None:
+            cur["lines"] = lines
+        if nbytes is not None:
+            cur["bytes"] = nbytes
+        nv["log"] = cur
+
+    @staticmethod
+    def _parse_log_status(raw: Any) -> tuple[str, str | None] | None:
+        """`"held(2 facts pending)"` → `("held", "2 facts pending")`; `"none"`/`"offered"`/`"pulling"`
+        pass through. Anything else is ignored rather than shown -- the node is the only writer of
+        this string and a shape we do not know is a bug to fix on the node, not a state to render."""
+        if not isinstance(raw, str) or not raw:
+            return None
+        s = raw.strip()
+        if s.startswith("held(") and s.endswith(")"):
+            return ("held", s[5:-1] or None)
+        if s in ("none", "offered", "pulling", "held", "complete"):
+            return (s, None)
+        return None
+
+    def _note_version(self, nid: str, app_ver: Any, platform: Any) -> None:
+        """A29: keep the node's REAL build. Never blank a known value with an absent one -- a status
+        body that omits the field is a heartbeat, not a downgrade."""
+        nv = self._node_view(nid)
+        if isinstance(app_ver, str) and app_ver:
+            nv["app_ver"] = app_ver
+        if isinstance(platform, str) and platform:
+            nv["platform"] = platform
+
+    def _in_the_field(self, nv: dict, now: int) -> bool:
+        """Is this node part of THE FIELD for A29's version comparisons?
+
+        `self.nodes` is every node that ever said hello this session, and a bound one is never pruned,
+        so a phone swapped out an hour ago still sat in the muster header and -- worse -- could still be
+        `newest`, ambering every phone actually on the pitch with OLDER THAN THE FIELD for a build
+        nobody is carrying. The line is the one the readiness board already draws (`OFFLINE_AFTER_MS`):
+        past it a node is not quiet, it is gone. A station is excluded outright -- a utility phone is
+        not in the match."""
+        if nv.get("node_type") == "utility":
+            return False
+        seen = nv.get("last_seen_ms") or 0
+        return not (seen and (now - seen) > OFFLINE_AFTER_MS)
+
+    def _newest_field_version(self) -> tuple[int, int, int] | None:
+        """The highest PARSABLE app version among the PLAYER nodes still in the field -- what "older
+        than the field" measures against."""
+        best = None
+        now = self.now_ms()
+        for nv in self.nodes.values():
+            if not self._in_the_field(nv, now):
+                continue
+            # An INCOMPATIBLE build is not "the field" -- it is a phone that cannot play. Counting it
+            # would let one rogue 0.2.0 amber every correct phone on the board with OLDER THAN THE FIELD.
+            if not compatible(nv.get("app_ver")):
+                continue
+            v = parse_app_ver(nv.get("app_ver"))
+            if v and (best is None or v > best):
+                best = v
+        return best
+
+    def versions(self) -> dict:
+        """A29 muster header: `PHONES · 3 × 0.1.9 · 1 × 0.1.8`. `field` counts the PLAYER nodes by the
+        version string each reported (an unparsable one included, verbatim -- the operator needs to see
+        `hud-0.2` said out loud); `newest`/`release` are the two things a phone can be behind. A node MC
+        has not heard from in `OFFLINE_AFTER_MS` has left the field and is counted in neither."""
+        field: dict[str, int] = {}
+        now = self.now_ms()
+        for nv in self.nodes.values():
+            if not self._in_the_field(nv, now):
+                continue
+            av = nv.get("app_ver")
+            if isinstance(av, str) and av:
+                field[av] = field.get(av, 0) + 1
+        newest = self._newest_field_version()
+        return {"field": field,
+                "newest": ".".join(str(x) for x in newest) if newest else None,
+                "release": self.release_version,
+                "mc_major": app_tier()}
+
+    def _version_flags(self, nv: dict) -> tuple[list[str], list[str]]:
+        """The A29 readiness lines for one node: (blockers, ambers).
+
+        RED only for a build MC knows it cannot play with. An UNPARSABLE version is amber by design
+        (A1: amber never blocks) -- the old hard-coded `hud-0.2` would otherwise have red-flagged every
+        phone in the field the day this landed."""
+        blockers, ambers = [], []
+        av = nv.get("app_ver")
+        ok = compatible(av)
+        if ok is None:
+            ambers.append(f"APP VERSION UNKNOWN ({av})" if isinstance(av, str) and av else "APP VERSION UNKNOWN")
+            return blockers, ambers
+        if not ok:
+            blockers.append(f"APP {av.split('+', 1)[0]} INCOMPATIBLE WITH MC (NEEDS {app_tier()}) — UPDATE THE APP")
+            return blockers, ambers
+        mine = parse_app_ver(av)
+        newest = self._newest_field_version()
+        if newest and mine and mine < newest:
+            ambers.append(f"APP OLDER THAN THE FIELD ({'.'.join(str(x) for x in mine)} < {'.'.join(str(x) for x in newest)})")
+        rel = parse_app_ver(self.release_version)
+        if rel and mine and mine < rel:
+            ambers.append(f"APP OLDER THAN THE RELEASE ({'.'.join(str(x) for x in mine)} < {self.release_version})")
+        return blockers, ambers
 
     # ---------- readiness ----------
     def readiness(self) -> ReadinessSnapshot:
@@ -1662,24 +2301,41 @@ class Session:
                     ambers.append("SCREEN OFF / BACKGROUNDED — DOES NOT BLOCK YET")
                 if not nv.get("fw"):
                     ambers.append("FIRMWARE UNREAD — DOES NOT BLOCK")
+                vb, va = self._version_flags(nv)          # A29: the app build this phone is actually running
+                blockers.extend(vb)
+                ambers.extend(va)
             if row["identity"] in ("reverted", "unknown") and g:
                 blockers.append("IDENTITY REVERTED — RE-STAMP $NAME")
             ack = self.acks.get(p["player_id"])
             if self.lobby_pushed and ack is not None and (not ack.get("ok") or not ack.get("gun_echo")):
                 blockers.append("GUN DID NOT ANSWER CONFIG — HEADSET OFF? BLOCKS START")
-                row["headset"] = "absent"
+                row["headset"], row["headset_proof"] = "absent", None
             elif nv.get("headset") == "proven":
-                row["headset"] = "proven"
+                row["headset"], row["headset_proof"] = "proven", "echo"   # the gun answered the push: settled
             else:
-                row["headset"] = "unknown"
-                if nid and not self.lobby_pushed:
-                    ambers.append("HEADSET UNPROVEN UNTIL CONFIG PUSH")
+                # A32: no echo yet, so the LINK is the evidence. A headless gun drops inside ~6 s, so a link
+                # this node has held for HEADSET_LINK_PROOF_MS is a headset. Until then the board says so out
+                # loud and counts up, instead of the old "HEADSET UNPROVEN UNTIL CONFIG PUSH" that sat amber
+                # for the whole muster and told the operator to do something they were going to do anyway.
+                # Not for a node that has gone OFFLINE: its `gun_linked_since` is a fact about a phone that
+                # is no longer here, and ageing it into a proof would print PROVEN over a dead row.
+                since = nv.get("gun_linked_since")
+                if since is not None and (now - nv.get("last_seen_ms", 0)) > OFFLINE_AFTER_MS:
+                    since = None
+                if since is not None and (now - since) >= HEADSET_LINK_PROOF_MS:
+                    row["headset"], row["headset_proof"] = "proven", "link"
+                else:
+                    row["headset"], row["headset_proof"] = "unknown", None
+                    if since is not None:
+                        ambers.append(f"HEADSET · CONFIRMING (LINK {(now - since) // 1000} s)")
             row.update({"battery_pct": nv.get("battery"), "battery_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,
                         "last_seen_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,   # the UI showed "0s AGO" reading a field that didn't exist (2026-08-26)
                         "gun_linked": pf.get("gun_linked"),
                         "fw": nv.get("fw"), "phone_batt": pf.get("phone_batt"), "ssid_ok": pf.get("ssid_ok"),
                         "mc_reachable": pf.get("mc_reachable"), "synced": nv.get("synced"), "screen_on": pf.get("screen_on"),
                         "foreground": pf.get("foreground"),
+                        "app_ver": nv.get("app_ver"), "platform": nv.get("platform"),   # A29
+                        "log": nv.get("log"),                                           # A25
                         # kept APART. Merging them meant the lobby printed "GUN LINK LOST - BLOCKS
                         # START, STALE LINK - DOES NOT BLOCK, SCREEN OFF - DOES NOT BLOCK YET" as one
                         # run-on blocker string, so a real fault read the same as a shrug.
@@ -1946,7 +2602,17 @@ class Session:
         # ingested into one of those would otherwise end the match that is running NOW.
         sc.on_limit = lambda t, _sc=sc: self._on_frag_limit(t, _sc)
         self.scorer = sc
+        # A24/M2: the roster AS IT GOES IN. `_replay` builds its Scorer from this, never from the live
+        # dict, so a re-team made after the whistle cannot re-play the match on teams nobody wore.
+        self._match_players = {pid: dict(p) for pid, p in self.players.items()}
+        # A25: the ~1 MB pulled-log budget is PER MATCH, not per session. It was never reset, so after
+        # three or four matches of logs every node was over it and the recap ask stopped going out --
+        # silently, on the match most likely to be the one worth debugging.
+        self._log_bytes = {}
+        self._log_asked = set()
         self._pending_limit_t = None           # a new match owes nothing to the last one's cap
+        self._result_pushed = {}               # A24: nor to the last one's result
+        self.end_reason = None
         self.feed = []
         self.last_recap = None
         if self.store:
@@ -2228,6 +2894,7 @@ class Session:
         reached = self._broadcast_control(cmd)
         if cmd == "end":
             self.scorer.set_end(self.now_ms())           # A6.1 end freeze
+            self.end_reason = "host"                     # A24/M2: a whistle is a moment; it never moves
             self._finish()
         else:                                            # recall/panic stop a live game → KITTED (A5.9)
             self.start_info = None
@@ -2276,6 +2943,7 @@ class Session:
         reached = self._broadcast_control("end")
         bound = sum(1 for p in self.players.values() if p.get("node_id"))
         self.scorer.set_end(t)
+        self.end_reason = "frag_limit"       # A24/M2: THE one end a later fact can move (an earlier cap kill)
         self._finish()
         # One line, after the fact, saying what actually happened — the same honesty rule `control`
         # now follows. A node MC could not reach ends on its own time limit, so the operator needs
@@ -2301,11 +2969,23 @@ class Session:
                 self._feedback(p["player_id"], {"kind": "victory", "player_id": p["player_id"], "t": self.now_ms()})
 
     def _finish(self):
+        # A24/M2: before the recap is taken, ask whether the cap was a DEAD HEAT — a second cap kill
+        # inside the clock-sync band parks as post_end (A6.1) and would otherwise hand the match to
+        # whichever of two indistinguishable kills MC happened to order first.
+        if self.scorer and self.end_reason == "frag_limit":
+            self.scorer.cap_tie = self.scorer.check_cap_tie(CLOCK_TIE_MS)
         # A6: the stations row rides IN the recap dict from the moment it exists, same as `possession` --
         # a station is self-authoritative and reports at recap (§5c), so its own last heartbeat is all
         # there ever is to show, and it must be here even after the live scorer object is gone.
+        # A25: which match the logs we are about to ask for belong to. Captured HERE because
+        # `start_info` is cleared a few lines down and the scorer object goes with the recap.
+        self._log_match = (self.start_info or {}).get("match_id") or (self.scorer.match_id if self.scorer else None)
+        # A24/M2: the roster as the field WORE it at the whistle -- mid-match re-teams included, recap
+        # edits excluded. Everything `_replay` re-derives is measured against this copy.
+        self._match_players = {pid: dict(p) for pid, p in self.players.items()}
         self.last_recap = self._scorer_recap() if self.scorer else None
         self._push_victory(self.last_recap)              # winners' guns play the victory sting (in coverage)
+        self._push_result()                              # A24: EVERY node learns the outcome, losers included
         if self.store and self.start_info and self.last_recap:
             try:
                 self.store.match_ended(self.start_info["match_id"], self.last_recap)
@@ -2315,13 +2995,15 @@ class Session:
         self.phase = "recap"
         # F106(d): a utility phone's log holds nothing about a MATCH (it never binds one, §5c) -- only
         # a player node's log is match debug gold.
-        for _nid, _nv in list(self.nodes.items()):
-            if _nv.get("node_type") == "utility":
-                continue
-            try: self.net.push(_nid, "pull_log", {})
-            except Exception: pass
+        for _nid in list(self.nodes):
+            self.pull_log(_nid, "recap")        # A25: gated by `log_sync`; utility nodes refused inside
         self.lobby_pushed = False
         self.acks = {}
+        # A32: `acks` is what turns the echo into a red "GUN DID NOT ANSWER CONFIG" for the NEXT lobby,
+        # so the proof it set resets with it -- otherwise a gun whose headset died in the debrief reads
+        # PROVEN through the whole next muster on an echo from the match before.
+        for _nv in self.nodes.values():
+            _nv.pop("headset", None)
         for p in self.players.values():
             p["ready"] = False
         self._changed()
@@ -2338,6 +3020,7 @@ class Session:
         self._push_due_roles(now)
         tl = self.config.get("time_limit_s")
         if self.phase == "live" and tl and now >= self.start_info["go_live_t"] + tl * 1000 + 5000:
+            self.end_reason = "time"         # A6.1: the clock every phone ran; it is not re-derived
             self._finish()
 
     def recap(self) -> dict | None:
@@ -2407,6 +3090,9 @@ class Session:
         self.start_info = None
         self.scorer = None
         self.last_recap = None
+        self.end_reason = None
+        self._score_pushed = {}
+        self._result_pushed = {}
         self.feed = []
         self.lobby_pushed = False
         self.acks = {}
@@ -2463,6 +3149,8 @@ class Session:
                 "nodes": [{**nv, "last_seen_ms": now - nv.get("last_seen_ms", 0)} for nv in self.nodes.values()],
                 "stations": self.stations_view(), "game_no": self._game_byte(),   # A13.5: the ITEMS panel
                 "readiness": self.readiness(), "config": self.config, "config_errors": self.config_errors,
+                "options": dict(self.options),      # A25: session options (log_sync)
+                "versions": self.versions(),        # A29: the muster version header
                 "config_warnings": self.config_warnings,
                 "players": list(self.players.values()), "teams": self.teams,
                 "kit": {"kitted": kitted, "total": len(self.players), "trying": dict(self.trying), "browsing": dict(self.browsing)},
@@ -2471,4 +3159,5 @@ class Session:
                 "lobby": {"ready": sum(1 for p in self.players.values() if p["ready"]), "total": len(self.players),
                           "pushed": self.lobby_pushed, "acks": self.acks, "all_acked": self.all_acked()},
                 "start": start, "live": live, "recap": self.recap() if self.phase in ("live", "recap") else None,
+                "notices": self._notices(),      # A31: standing host lines (absent keys = nothing to say)
                 "feed": self.feed[:50]}

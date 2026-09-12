@@ -456,13 +456,41 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
 
     async def set_phase(req):
         b = await body(req)
-        ph = b.get("phase")
-        from .state import PHASES
-        if ph not in PHASES or ph in ("armed", "live", "recap"):
-            return _err("phase must be one of muster|build|kit|lobby (armed/live/recap are driven by start/end)")
-        s.phase = ph
-        s._changed()
+        try:
+            s.set_phase(b.get("phase"), force=bool(b.get("force")))
+        except ValueError as e:
+            # A27: NotReadyError is a ConflictError (409) and carries WHO is not ready — the UI's second
+            # CONTINUE tap names them. Every other ValueError is the old 400.
+            payload = e.body() if hasattr(e, "body") else None
+            if payload is not None:
+                return JSONResponse(payload, status_code=getattr(e, "status", 409))
+            return _err(str(e), getattr(e, "status", 400))
         return JSONResponse(s.snapshot())
+
+    async def get_options(_):
+        return JSONResponse(dict(s.options))
+
+    async def put_options(req):
+        """A25: the session option table. Only the keys we know, only the values we know."""
+        b = await body(req)
+        from .state import OPTION_DEFAULTS
+        unknown = [k for k in b if k not in OPTION_DEFAULTS]
+        if unknown:
+            return _err(f"unknown option(s): {', '.join(sorted(unknown))}")
+        try:
+            for k, v in b.items():
+                s.set_option(k, v)
+        except ValueError as e:
+            return _err(str(e))
+        return JSONResponse(dict(s.options))
+
+    async def node_pull_log(req):
+        """A25: the operator's LOGS button. `reason: "manual"` — never gated by `log_sync`."""
+        nid = req.path_params["nid"]
+        if nid not in s.nodes:
+            return _err("no such node", 404)
+        asked = s.pull_log(nid, "manual")
+        return JSONResponse({"ok": asked, "node_id": nid, "log": s.nodes[nid].get("log")})
 
     async def ui_ws(ws: WebSocket):
         await ws.accept()
@@ -579,6 +607,9 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/players/{pid}", delete_player, methods=["DELETE"]),
         Route("/api/players/{pid}/tryout", tryout, methods=["POST", "DELETE"]),
         Route("/api/nodes/{nid}", evict_node, methods=["DELETE"]),
+        Route("/api/nodes/{nid}/pull_log", node_pull_log, methods=["POST"]),
+        Route("/api/options", get_options),
+        Route("/api/options", put_options, methods=["PUT"]),
         Route("/api/stations", stations_list),
         Route("/api/stations/arm", arm_stations, methods=["POST"]),
         Route("/api/stations/{nid}", put_station, methods=["PUT"]),

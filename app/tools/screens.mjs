@@ -17,7 +17,9 @@ let pass = 0, fail = 0; const errs = [];
 const must = (c, m) => { if (!c) throw new Error(m); };
 const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });   // scrollbars ON: what a desktop reviewer sees
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
-const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted']);
+const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
+  'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
+  'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
 const step = async (name, fn) => { if (ONLY && !name.includes(ONLY)) return; try { await fn(); console.log(`  ok   ${name}`); pass++; } catch (e) { console.log(`  FAIL ${name}: ${String(e.message || e).slice(0, 300)}`); fail++; errs.push(name); } };
 const open = async (view, stage, extra = '', ms) => {
   const pg = await b.newPage({ viewport: { width: view.width, height: view.height } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
@@ -73,7 +75,9 @@ const notSheared = (r, sels) => {
 
 for (const view of VIEWS) {
   console.log(`\n== ${view.name} ${view.width}×${view.height} ==`);
-  for (const st of ['idle', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'kitted-perk', 'kitted-full', 'loadout-perk', 'tryout', 'lobby', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'down', 'redeploy', 'result', 'over']) {
+  for (const st of ['idle', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'loadout-arming', 'loadout-info', 'kitted-perk', 'kitted-full', 'loadout-perk', 'tryout', 'lobby', 'lobby-kit-locked', 'kit-refused', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'down', 'redeploy', 'result', 'over',
+    'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
+    'down-at-cap-offline', 'armed-with-mc-verify']) {
     await step(`${view.name} ${st}: invariants`, async () => { const pg = await open(view, st); const bad = await invariants(pg); await pg.close(); must(bad.length === 0, bad.join(' ; ')); });
   }
   await step(`${view.name} frame keeps its design size (#6/#7/#13/#18/#22 root cause)`, async () => {
@@ -865,6 +869,361 @@ for (const view of VIEWS) {
     must(!r.ready, 'this player is already readied, so the un-readied note is not the one on screen: ' + JSON.stringify(r));
     must(!/cannot start until/i.test(r.note), 'the note still promises a veto the player does not have: ' + r.note);
     must(/host sees who is ready/i.test(r.note), 'the note does not say what readying up actually does: ' + r.note);
+  });
+  // ================= A24 FINAL RESULTS / A31 verify-at-MC (game test 2026-09-11 D3, contracts A24/A31) =================
+  // Every step below is about what a PERSON SEES on the results screen. The first one is the hard rule: the node
+  // may not write win or lose from the absence of a message, so it is written as a NEGATIVE test that also proves
+  // it can see the words it is looking for — an assertion that can never fail is not a guard.
+  await step(`${view.name} A24 result-pending: NOTHING on screen reads as won or lost until MC says so`, async () => {
+    const pg = await open(view, 'result-pending');
+    const OUTCOME = /\b(WIN|WON|LOSE|LOST|DEFEAT|VICTORY|DRAW)\b/;
+    const before = await text(pg);
+    must(/RESULT PENDING/.test(before), 'the screen does not say the result is pending: ' + before.slice(0, 200));
+    must(/CONFIRM AT MISSION CONTROL/.test(before), 'it does not say where the result comes from');
+    must(!OUTCOME.test(before), 'an outcome word is on screen with NO result pushed: ' + (before.match(OUTCOME) || [])[0] + ' — ' + before.slice(0, 260));
+    must(await pg.evaluate(() => window.brx.engine.state().result === null), 'the engine invented a result');
+    // the same assertion, against a screen that SHOULD carry the word — proves the regex can fail this step
+    await pg.evaluate(() => window.brxDemo.result('win')); await pg.waitForTimeout(400);
+    const after = await text(pg);
+    await pg.close();
+    must(OUTCOME.test(after), 'the guard cannot see an outcome word even when one is pushed — it would never fail: ' + after.slice(0, 200));
+    must(/\bWIN\b/.test(after), 'the pushed outcome is not the word on screen: ' + after.slice(0, 200));
+  });
+  await step(`${view.name} A24 result-unreached: 30 s with no MC link says MC NOT REACHED, never a loss`, async () => {
+    const pg = await open(view, 'result-unreached');
+    const t = await text(pg); const wait = await pg.evaluate(() => window.brx.engine.state().resultWait);
+    await pg.close();
+    must(wait === 'unreached', 'settle window state: ' + wait);
+    must(/MC NOT REACHED/.test(t) && /SEE MISSION CONTROL/.test(t), 'copy: ' + t.slice(0, 200));
+    must(!/\b(LOSE|LOST|DEFEAT)\b/.test(t), 'an unreachable MC was rendered as a defeat: ' + t.slice(0, 200));
+  });
+  await step(`${view.name} A24 result-pending: RETURN TO MISSION CONTROL is on screen and blinking`, async () => {
+    const pg = await open(view, 'result-pending');
+    const r = await pg.evaluate(() => { const e = document.querySelector('.result .retmc'); if (!e) return null;
+      const cs = getComputedStyle(e); return { txt: e.textContent.trim(), anim: cs.animationName, dur: cs.animationDuration, fs: parseFloat(cs.fontSize) }; });
+    const gone = await pg.evaluate(async () => { window.brxDemo.result('win'); await new Promise(r => setTimeout(r, 400)); return !document.querySelector('.result .retmc'); });
+    await pg.close();
+    must(r, 'no RETURN TO MISSION CONTROL line');
+    must(r.txt === 'RETURN TO MISSION CONTROL', 'copy: ' + r.txt);
+    must(r.anim !== 'none' && parseFloat(r.dur) > 0, 'it does not blink: ' + JSON.stringify(r));
+    must(r.fs >= 11, 'too small: ' + r.fs);
+    must(gone, 'it kept blinking after the result arrived — the walk back is over');
+  });
+  await step(`${view.name} A24 result-win-team: the headline is the pushed outcome, in the team colour language`, async () => {
+    const pg = await open(view, 'result-win-team');
+    const r = await pg.evaluate(() => { const h = document.querySelector('.result .rh1'); const cs = getComputedStyle(h);
+      return { txt: h.textContent.trim(), cls: h.className, fs: parseFloat(cs.fontSize), color: cs.color,
+               meta: (document.querySelector('.result .rmeta') || {}).textContent || '' }; });
+    await pg.close();
+    must(r.txt === 'WIN', 'headline: ' + r.txt);
+    must(/\bwin\b/.test(r.cls), 'headline is not marked as a win: ' + r.cls);
+    must(r.fs >= 30, 'the headline is not the biggest thing on the screen: ' + r.fs);
+    must(/TDM/.test(r.meta) && /WIN BY KILLS/.test(r.meta), 'the screen is not mode-aware: ' + r.meta);
+  });
+  for (const [stage, word] of [['result-draw', 'DRAW'], ['result-undecided', 'UNDECIDED']]) {
+    await step(`${view.name} A24 ${stage}: the headline reads ${word}`, async () => {
+      const pg = await open(view, stage); const h = (await pg.evaluate(() => document.querySelector('.result .rh1').textContent)).trim(); await pg.close();
+      must(h === word, 'headline: ' + h);
+    });
+  }
+  await step(`${view.name} A24 result-win-team: the TEAM view shows every team's total AND its players`, async () => {
+    const pg = await open(view, 'result-win-team');
+    const r = await pg.evaluate(() => ({
+      teams: Array.from(document.querySelectorAll('.result .rteam')).map(t => ({
+        chip: t.querySelector('.tm').textContent.replace(/\s+/g, ' ').trim(),
+        mine: t.classList.contains('mine'),
+        players: Array.from(t.querySelectorAll('.tp')).map(p => p.textContent.replace(/\s+/g, ' ').trim()) })),
+      hold: (t => t ? t.textContent.replace(/\s+/g, ' ').trim() : null)(document.querySelector('.result .thold')) }));
+    await pg.close();
+    must(r.teams.length === 2, 'teams rendered: ' + r.teams.length);
+    must(r.teams.filter(t => t.mine).length === 1, 'exactly one team is marked as mine: ' + JSON.stringify(r.teams.map(t => t.mine)));
+    must(r.teams.every(t => /\d/.test(t.chip)), 'a team chip carries no score: ' + JSON.stringify(r.teams.map(t => t.chip)));
+    must(r.teams.every(t => t.players.length === 2), 'each team should list its two players: ' + JSON.stringify(r.teams.map(t => t.players)));
+    must(r.teams.some(t => /REAPER/.test(t.players.join(' '))), 'this player is not in the team list');
+    must(r.hold && /HELD/.test(r.hold), 'possession was pushed and is not shown: ' + r.hold);
+  });
+  await step(`${view.name} A24 result: the TEAMS/PLAYERS toggle actually changes the screen`, async () => {
+    const pg = await open(view, 'result-win-team');
+    const seg = await pg.evaluate(() => Array.from(document.querySelectorAll('.result .rseg .sg')).map(b => ({ t: b.textContent.trim(), on: b.getAttribute('aria-pressed'), h: b.getBoundingClientRect().height / parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1) })));
+    must(seg.length === 2 && seg[0].t === 'TEAMS' && seg[1].t === 'PLAYERS', 'segments: ' + JSON.stringify(seg));
+    must(seg[0].on === 'true' && seg[1].on === 'false', 'a team game does not open on the team view: ' + JSON.stringify(seg));
+    must(seg.every(x => x.h >= 36), 'segment tap targets under 36px: ' + JSON.stringify(seg.map(x => x.h)));
+    const before = await pg.evaluate(() => ({ teams: document.querySelectorAll('.result .rteam').length, board: document.querySelectorAll('.result .lbr').length }));
+    await pg.click('.result .rseg .sg[data-arg="player"]'); await pg.waitForTimeout(250);
+    const after = await pg.evaluate(() => ({ teams: document.querySelectorAll('.result .rteam').length, board: document.querySelectorAll('.result .lbr').length,
+      head: Array.from(document.querySelectorAll('.result .lbh .c')).map(c => c.textContent.trim()), on: document.querySelector('.result .rseg .sg[data-arg="player"]').getAttribute('aria-pressed') }));
+    await pg.screenshot({ path: `${OUT}/${view.name}-result-players-toggled.png` });
+    await pg.click('.result .rseg .sg[data-arg="team"]'); await pg.waitForTimeout(250);
+    const back = await pg.evaluate(() => document.querySelectorAll('.result .rteam').length);
+    await pg.close();
+    must(before.teams === 2 && before.board === 0, 'the team view is not what opened: ' + JSON.stringify(before));
+    must(after.teams === 0 && after.board === 4, 'PLAYERS did not swap in the leaderboard: ' + JSON.stringify(after));
+    must(after.on === 'true', 'the tapped segment does not read as pressed');
+    must(['K', 'D', 'A', 'KD', 'ACC', 'BEST', 'MEDALS'].every(h => after.head.includes(h)), 'leaderboard columns: ' + JSON.stringify(after.head));
+    must(back === 2, 'TEAMS did not come back');
+  });
+  await step(`${view.name} A24 result-players: the leaderboard carries kd, acc, best streak and medals`, async () => {
+    const pg = await open(view, 'result-players');
+    const r = await pg.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll('.result .lbr'));
+      return { first: rows[0].textContent.replace(/\s+/g, ' ').trim(), me: rows.findIndex(x => x.classList.contains('me')),
+        medals: rows.map(x => x.querySelector('.c.m').textContent.trim()),
+        prov: rows.filter(x => x.querySelector('.c.prov')).length };
+    });
+    await pg.close();
+    must(/VIPER/.test(r.first) && /13/.test(r.first), 'the top row is not the top scorer: ' + r.first);
+    must(/1\.9/.test(r.first) && /43%/.test(r.first) && /\b7\b/.test(r.first), 'kd / acc / best streak missing from the row: ' + r.first);
+    must(r.me >= 0, 'this player is not marked on the leaderboard');
+    must(r.medals.some(m => /KILLING SPREE|TRIPLE KILL/.test(m)), 'no medals on any row: ' + JSON.stringify(r.medals));
+    must(r.prov === 1, 'a provisional accuracy is not dimmed: ' + r.prov);
+  });
+  await step(`${view.name} A24 result: a four-player field fits — no row is cut off by the fixed rows around it`, async () => {
+    // The screen's height budget is head + strips + tiles + footer; the body gets whatever is left. A strip that
+    // grows by a few px silently eats the last leaderboard row, and the scrollbars are hidden (touch UI) so the
+    // player sees a half row and no way to know there is more.
+    const pg = await open(view, 'result-players');
+    const lb = await pg.evaluate(() => { const r = document.querySelector('.result .lbrows'); return { c: r.clientHeight, s: r.scrollHeight, rows: r.children.length }; });
+    await pg.click('.result .rseg .sg[data-arg="team"]'); await pg.waitForTimeout(250);
+    const tm = await pg.evaluate(() => Array.from(document.querySelectorAll('.result .tpl')).map(r => ({ c: r.clientHeight, s: r.scrollHeight })));
+    await pg.close();
+    must(lb.rows === 4, 'the fixture is not four players: ' + lb.rows);
+    must(lb.s <= lb.c + 1, `the leaderboard clips a row: ${lb.s} > ${lb.c}`);
+    must(tm.length === 2 && tm.every(x => x.s <= x.c + 1), 'a team block clips its player list: ' + JSON.stringify(tm));
+  });
+  await step(`${view.name} A24 result-lose-ffa: no TEAM view is offered when MC sent no team totals`, async () => {
+    const pg = await open(view, 'result-lose-ffa');
+    const r = await pg.evaluate(() => ({ seg: document.querySelectorAll('.result .rseg .sg').length, teams: document.querySelectorAll('.result .rteam').length,
+      rows: document.querySelectorAll('.result .lbr').length, head: document.querySelector('.result .rh1').textContent.trim(),
+      meta: (document.querySelector('.result .rmeta') || {}).textContent || '' }));
+    await pg.close();
+    must(r.head === 'LOSE', 'headline: ' + r.head);
+    must(r.seg === 0 && r.teams === 0, 'an FFA match offered a team view: ' + JSON.stringify(r));
+    must(r.rows === 4, 'the FFA leaderboard is not the whole field: ' + r.rows);
+    must(/FFA/.test(r.meta), 'the screen is not mode-aware: ' + r.meta);
+  });
+  await step(`${view.name} A24 result: AFTER THE WHISTLE is shown, and shown as NOT counted`, async () => {
+    const pg = await open(view, 'result-win-team');
+    const r = await pg.evaluate(() => { const e = document.querySelector('.result .rstrip.after'); if (!e) return null;
+      return { k: e.querySelector('.k').textContent.trim(), v: e.querySelector('.v').textContent.replace(/\s+/g, ' ').trim(),
+               fs: parseFloat(getComputedStyle(e.querySelector('.k')).fontSize),
+               inBoard: !!e.closest('.rlb, .rteams') };
+    });
+    await pg.close();
+    must(r, 'the post-whistle tally is not on screen');
+    must(/AFTER THE WHISTLE/.test(r.k) && /NOT COUNTED/.test(r.k), 'copy: ' + r.k);
+    must(/\b4 NOT COUNTED/.test(r.k), 'the recap`s fact COUNT is not shown (server sends after_end.facts): ' + r.k);
+    must(/VIPER/.test(r.v), 'no per-player post-whistle line: ' + r.v);
+    // `after_end.by_player` is keyed by player_id and carries NO name: the HUD resolves it from `rows`, and a
+    // player with no row at all falls back to the raw id rather than being dropped or given an invented name.
+    must(/VIPER 2·0/.test(r.v.replace(/\s+/g, ' ')), 'the name was not resolved from rows: ' + r.v);
+    must(/P-GHOST 1·0/.test(r.v.replace(/\s+/g, ' ')), 'a player with no scored row was dropped instead of falling back to the id: ' + r.v);
+    must(!r.inBoard, 'the unofficial tally is mixed into the scored board');
+    must(r.fs >= 11, 'too small: ' + r.fs);
+  });
+  await step(`${view.name} A24 result: HONORS name the PLAYER and print MC's stat STRING, and FFA offers no team view`, async () => {
+    // `honors[].display` is the player's name, not a label for the medal — printing the medal twice and the
+    // person not at all is the easy way to get this wrong. The TEAMS toggle keys off `team_scores.length`.
+    // The stat is MC's own sentence ("11 K · 2.8 K/D · ×5 STREAK"), NOT a number: this step asserts the text
+    // MC actually sends, because the numeric demo payload it used to assert is what hid a guard that dropped
+    // every real one (`num(h.stat) != null` is false for a string).
+    const pg = await open(view, 'result-win-team');
+    const h = await pg.evaluate(() => Array.from(document.querySelectorAll('.result .rstrip.hon .ch')).map(c => c.textContent.replace(/\s+/g, ' ').trim()));
+    await pg.close();
+    must(h.length === 3, 'honors chips: ' + JSON.stringify(h));
+    must(h.some(x => /^MVP REAPER 11 K · 2\.8 K\/D · ×5 STREAK$/.test(x)), 'the honor does not name the player and print MC\'s stat string: ' + JSON.stringify(h));
+    must(h.some(x => /^FIRST BLOOD VIPER AT 01:12$/.test(x)), 'honors: ' + JSON.stringify(h));
+    must(h.some(x => /^SHARPSHOOTER VIPER 41% ACCURACY$/.test(x)), 'honors: ' + JSON.stringify(h));
+  });
+  await step(`${view.name} A24 result: every meaning-bearing label is at least 11px (the 9.5px cell label was the report)`, async () => {
+    const pg = await open(view, 'result-win-team');
+    const small = await pg.evaluate(() => Array.from(document.querySelectorAll('.result *')).filter(e => {
+      const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+      if (e.childElementCount) return false; const t = (e.textContent || '').trim(); if (!t) return false;
+      return parseFloat(cs.fontSize) < 11; }).map(e => `${e.className || e.tagName}@${getComputedStyle(e).fontSize}: ${(e.textContent || '').trim().slice(0, 24)}`));
+    await pg.close();
+    must(small.length === 0, 'text under 11px: ' + small.join(' ; '));
+  });
+  await step(`${view.name} A24 result: head, body, strips, tiles and footer do not overlap`, async () => {
+    const pg = await open(view, 'result-win-team');
+    const bad = await pg.evaluate(() => {
+      const sels = ['.rhead', '.rbody', '.rstrip.poss', '.rstrip.hon', '.rstrip.after', '.rstats', '.rfoot'];
+      const boxes = sels.map(s => [s, document.querySelector('.result ' + s)]).filter(x => x[1]).map(([s, e]) => [s, e.getBoundingClientRect()]);
+      const out = [];
+      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i][1], b = boxes[j][1];
+        if (a.left < b.right - 2 && a.right > b.left + 2 && a.top < b.bottom - 2 && a.bottom > b.top + 2) out.push(boxes[i][0] + ' x ' + boxes[j][0]);
+      }
+      const f = document.querySelector('.result').getBoundingClientRect(), last = boxes[boxes.length - 1][1];
+      if (last.bottom > f.bottom + 1) out.push('the footer is off the bottom of the frame');
+      return out; });
+    await pg.close();
+    must(bad.length === 0, bad.join(' ; '));
+  });
+  await step(`${view.name} A24 over: RESULTS and HISTORY put the player back on the screens`, async () => {
+    const pg = await open(view, 'over');
+    const btns = await pg.evaluate(() => Array.from(document.querySelectorAll('.lobby .overbtns button')).map(b => ({ t: b.textContent.trim(), h: b.getBoundingClientRect().height / parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1) })));
+    must(btns.length === 2 && /RESULTS/.test(btns[0].t) && /HISTORY/.test(btns[1].t), 'buttons: ' + JSON.stringify(btns));
+    must(btns.every(b => b.h >= 36), 'tap targets under 36px: ' + JSON.stringify(btns.map(b => b.h)));
+    await pg.click('[data-act="onShowResults"]'); await pg.waitForTimeout(250);
+    const onResult = await pg.evaluate(() => ({ shown: !!document.querySelector('.result:not(.hist)'), btn: (document.querySelector('.result .rfoot .ready') || {}).textContent.trim() }));
+    must(onResult.shown, 'RESULTS did not reopen the results screen');
+    must(onResult.btn === 'CLOSE', 'a reopened results screen still offers OK: ' + onResult.btn);
+    await pg.click('[data-act="onCloseView"]'); await pg.waitForTimeout(250);
+    const backOver = await pg.evaluate(() => !document.querySelector('.result') && !!document.querySelector('.lobby .overbtns'));
+    must(backOver, 'CLOSE did not return to the over screen');
+    await pg.click('[data-act="onShowHistory"]'); await pg.waitForTimeout(250);
+    const onHist = await pg.evaluate(() => !!document.querySelector('.result.hist'));
+    await pg.screenshot({ path: `${OUT}/${view.name}-over-reopened.png` });
+    await pg.close();
+    must(onHist, 'HISTORY did not open the history list');
+  });
+  await step(`${view.name} A24 history: this session's matches, and one MC never confirmed`, async () => {
+    const pg = await open(view, 'history');
+    const r = await pg.evaluate(() => ({ rows: Array.from(document.querySelectorAll('.result.hist .hr:not(.hh)')).map(x => x.textContent.replace(/\s+/g, ' ').trim()),
+      head: (document.querySelector('.result.hist .hr.hh') || {}).textContent || '',
+      title: (document.querySelector('.result.hist .rh1') || {}).textContent.trim() }));
+    await pg.close();
+    must(r.rows.length >= 3, 'history rows: ' + r.rows.length);
+    must(/THIS SESSION/.test(r.title), 'the list is not scoped to this MC session: ' + r.title);
+    must(/RESULT/.test(r.head) && /K · D · A/.test(r.head), 'history columns: ' + r.head);
+    must(r.rows.some(x => /\bWIN\b/.test(x)) && r.rows.some(x => /\bLOSE\b/.test(x)), 'no outcomes in the list: ' + JSON.stringify(r.rows));
+    must(r.rows.some(x => /NOT CONFIRMED/.test(x)), 'an entry MC never resolved must read NOT CONFIRMED, not a guess: ' + JSON.stringify(r.rows));
+  });
+  await step(`${view.name} A31 down-at-cap-offline: one off the cap with no MC link names where a win is confirmed`, async () => {
+    const pg = await open(view, 'down-at-cap-offline');
+    const t = await text(pg);
+    const r = await pg.evaluate(() => { const e = document.querySelector('.down .recap .capwarn'); if (!e) return null;
+      const cs = getComputedStyle(e.querySelector('.unskew') || e); const rc = document.querySelector('.down .recap').getBoundingClientRect();
+      return { txt: e.textContent.trim(), fs: parseFloat(cs.fontSize), inRecap: e.getBoundingClientRect().bottom <= rc.bottom + 1 }; });
+    await pg.close();
+    must(/DOWN/.test(t), 'this is not the DOWN screen');
+    must(r, 'no cap-1 line on the DOWN screen');
+    must(r.txt === 'MC OUT OF RANGE · A WIN IS CONFIRMED ONLY AT MISSION CONTROL', 'copy: ' + r.txt);
+    must(r.fs >= 11, 'too small: ' + r.fs);
+    must(r.inRecap, 'the line escapes the recap block');
+  });
+  await step(`${view.name} A31 down: the cap-1 line stays OFF while MC is linked`, async () => {
+    const pg = await open(view, 'down');   // linked, board at 18/21 of 25
+    const has = await pg.evaluate(() => !!document.querySelector('.down .recap .capwarn')); await pg.close();
+    must(!has, 'the out-of-range warning shows while MC is in range');
+  });
+  await step(`${view.name} A31 armed: the compiled verify-at-MC notice sits above the T-minus`, async () => {
+    const pg = await open(view, 'armed-with-mc-verify');
+    const r = await pg.evaluate(() => { const e = document.querySelector('.mo.tminus .mcv span'); if (!e) return null;
+      const n = document.querySelector('.mo.tminus .n').getBoundingClientRect(), b = e.getBoundingClientRect();
+      const info = document.getElementById('info').getBoundingClientRect();
+      return { txt: e.textContent.trim(), fs: parseFloat(getComputedStyle(e).fontSize), above: b.bottom <= n.top + 1,
+               underInfo: b.left < info.right - 2 && b.right > info.left + 2 && b.top < info.bottom - 2 && b.bottom > info.top + 2,
+               dim: getComputedStyle(e).color }; });
+    const plain = await open(view, 'armed').then(async p => { const x = await p.evaluate(() => !!document.querySelector('.mo.tminus .mcv')); await p.close(); return x; });
+    await pg.close();
+    must(r, 'no mc_verify notice on the ARMED screen');
+    must(/A WIN IS CONFIRMED AT MISSION CONTROL/.test(r.txt), 'copy: ' + r.txt);
+    must(r.fs >= 11, 'too small: ' + r.fs);
+    must(r.above, 'the notice is not above the T-minus digits');
+    must(!r.underInfo, 'the notice runs under the ⓘ button');
+    must(!plain, 'a game with NO mc_verify still rendered the notice');
+  });
+  await step(`${view.name} S21: the CAM look-through is gone from the live HUD — button, layer and scrims`, async () => {
+    const pg = await open(view, 'live');
+    // The button went in the first S21 pass; the layer it drove (#cam), the `cam-on`/`#frame.cam` rules and
+    // the two scrims that were only ever visible under it survived as dead weight until the 2026-09-12 review.
+    const r = await pg.evaluate(() => ({ chip: document.querySelectorAll('.camchip').length, act: document.querySelectorAll('[data-act="onToggleCam"]').length,
+      layer: document.querySelectorAll('#cam').length, scrims: document.querySelectorAll('.scrim-t, .scrim-b').length,
+      setCam: typeof window.brx.hud.setCam, camOn: document.documentElement.classList.contains('cam-on'),
+      qr: typeof window.brx.hud.h.onScanQr }));
+    await pg.close();
+    must(r.chip === 0 && r.act === 0, 'the CAM button is still on screen');
+    must(r.layer === 0, 'the #cam layer is still in the frame');
+    must(r.scrims === 0, 'the cam-only scrims are still rendered on every live frame');
+    must(r.setCam === 'undefined' && !r.camOn, 'hud.setCam / the cam-on class survived the removal');
+    must(r.qr === 'function', 'the QR join scanner went with it — it was supposed to stay (S21)');
+  });
+  // ---------- A26 (S20, contracts A26 / loadout.md §4.5): the try-out collapsed into selection ----------
+  await step(`${view.name} #59 A26 rack: TRY IT is gone, the bar reads REVIEW KIT ▸, and a tapped row shows ⟳ while it arms`, async () => {
+    const pg = await open(view, 'loadout-arming');
+    const r = await pg.evaluate(() => {
+      const pend = document.querySelector('.lrow.pend');
+      return { bar: Array.from(document.querySelectorAll('.lobar .lobtn')).map(b => b.textContent.trim()),
+               tryIt: (document.body.innerText.match(/TRY IT/g) || []).length,
+               pendName: pend ? pend.querySelector('.nm').textContent.trim() : null,
+               pendMark: pend ? pend.querySelector('.st').textContent.trim() : null,
+               ticks: Array.from(document.querySelectorAll('.lrow .st')).filter(e => e.textContent.trim() === '✓').length,
+               chip: (document.querySelector('.ackchip') || {}).textContent || '' };
+    });
+    await pg.close();
+    must(r.tryIt === 0, 'TRY IT is still on screen');
+    must(r.bar[0] === 'REVIEW KIT ▸' && r.bar[1] === 'CLOSE', 'action bar: ' + JSON.stringify(r.bar));
+    must(r.pendName === 'SMG', 'the tapped row is not the one marked arming: ' + r.pendName);
+    must(r.pendMark === '⟳', 'the arming row must wear ⟳, got "' + r.pendMark + '"');
+    must(r.ticks === 0, 'a ✓ is showing while the host has not acked yet');
+    must(/ASKING THE HOST/.test(r.chip), 'the bar does not say the host is being asked: ' + r.chip);
+  });
+  await step(`${view.name} #60 A26 rack: the ack turns ⟳ into ✓ and the try-out does NOT take the screen`, async () => {
+    const pg = await open(view, 'loadout-picked');
+    const r = await pg.evaluate(() => ({ eq: (document.querySelector('.lrow.eq .nm') || {}).textContent, mark: (document.querySelector('.lrow.eq .st') || {}).textContent,
+      pend: document.querySelectorAll('.lrow.pend').length, rack: document.querySelectorAll('.lo .lolist').length, takeover: document.querySelectorAll('.tryout').length,
+      armed: window.brx.engine.state().tutorial, chip: (document.querySelector('.ackchip') || {}).textContent || '' }));
+    await pg.close();
+    must(r.eq === 'SMG' && r.mark.trim() === '✓', 'the acked row does not read ✓: ' + JSON.stringify(r));
+    must(r.pend === 0, 'still arming after the ack');
+    must(r.armed === true, 'the pick did not ARM the weapon — A26 says a tap equips AND arms');
+    must(r.rack === 1 && r.takeover === 0, 'the try-out panel ejected the player from the rack: ' + JSON.stringify(r));
+    must(/EQUIPPED/.test(r.chip), 'ack chip: ' + r.chip);
+  });
+  await step(`${view.name} #61 A26: REVIEW KIT ▸ lands on the three-plate kit summary with READY UP`, async () => {
+    const pg = await open(view, 'loadout-primary');
+    await pg.click('.lobar .lobtn.review'); await pg.waitForTimeout(500);
+    const r = await pg.evaluate(() => ({ rack: document.querySelectorAll('.lo .lolist').length,
+      plates: Array.from(document.querySelectorAll('.lobby .plates .plate.slot')).map(p => p.querySelector('.k').textContent.replace(/[▸\s]+$/, '')),
+      ready: (document.querySelector('.foot .ready') || {}).textContent || '' }));
+    await pg.close();
+    must(r.rack === 0, 'REVIEW KIT left the player in the rack');
+    must(r.plates.join('|') === 'PRIMARY|SECONDARY|PERK', 'not the three-plate summary: ' + JSON.stringify(r.plates));
+    must(/READY UP/.test(r.ready), 'no READY UP on the kit summary: ' + r.ready);
+  });
+  await step(`${view.name} #62 A26: the ⓘ opens a row's detail and equips NOTHING (and is a real tap target)`, async () => {
+    const pg = await open(view, 'loadout-info');
+    const r = await pg.evaluate(() => { const sc = parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1);
+      const b = document.querySelector('.lrow[data-arg="weapon:shotgun"] .linfo').getBoundingClientRect();
+      return { detail: (document.querySelector('.lodetail .nm') || {}).textContent || '', focused: (document.querySelector('.lrow.fo .nm') || {}).textContent,
+               equipped: window.brx.engine.state().loadout.primary.weapon_id, pend: window.brx.engine.state().pendingPick,
+               asked: (window.brx.log || []).filter(l => /loadout_request .*shotgun/.test(l)).length,
+               w: b.width / sc, h: b.height / sc, infos: document.querySelectorAll('.lrow .linfo').length, rows: document.querySelectorAll('.lrow').length }; });
+    await pg.close();
+    must(/SHOTGUN/.test(r.detail), 'the ⓘ did not move the detail pane: ' + r.detail);
+    must(r.focused === 'SHOTGUN', 'the ⓘ did not focus its own row: ' + r.focused);
+    must(r.equipped === 'assault_rifle' && r.pend === null && r.asked === 0, 'the ⓘ equipped something: ' + JSON.stringify(r));
+    must(r.infos === r.rows, 'every row needs its own ⓘ: ' + r.infos + ' of ' + r.rows);
+    must(r.w >= 36 && r.h >= 36, 'the ⓘ is an undersized tap target: ' + Math.round(r.w) + 'x' + Math.round(r.h));
+  });
+  // ---------- A27/A30: the host locks kits under a player who is still kitting (loadout.md §4.4) ----------
+  await step(`${view.name} #63 A30: a lobby push mid-kit leads the lobby screen with THE HOST LOCKED KITS`, async () => {
+    const pg = await open(view, 'lobby-kit-locked');
+    const r = await pg.evaluate(() => { const e = document.querySelector('.lobby .kitlock'); if (!e) return null;
+      const b = e.getBoundingClientRect(), btn = document.querySelector('.foot .ready').getBoundingClientRect();
+      const f = document.getElementById('frame').getBoundingClientRect();
+      return { txt: e.textContent.trim(), fs: parseFloat(getComputedStyle(e).fontSize), above: b.bottom <= btn.top + 1,
+               inFrame: b.left >= f.left - 1 && b.right <= f.right + 1, clipped: e.scrollWidth > e.clientWidth + 1,
+               rack: document.querySelectorAll('.lo .lolist').length, moment: window.brx.engine.state().moment }; });
+    await pg.close();
+    must(r, 'the lobby screen said nothing — a silent screen swap is exactly what A27 forbids');
+    must(r.txt === 'THE HOST LOCKED KITS — you play what you had', 'copy: ' + r.txt);
+    must(r.fs >= 11 && !r.clipped && r.inFrame, 'the line is unreadable or off the frame: ' + JSON.stringify(r));
+    must(r.above, 'the lock line does not lead the footer');
+    must(r.rack === 0, 'still in the rack after the push');
+  });
+  await step(`${view.name} #64 A30: MC's refusal copy is printed VERBATIM on the kit screen`, async () => {
+    const pg = await open(view, 'kit-refused');
+    const r = await pg.evaluate(() => { const e = document.querySelector('.lobby .kitlock'); if (!e) return null;
+      const b = e.getBoundingClientRect(), ps = Array.from(document.querySelectorAll('.plate.slot')).map(p => p.getBoundingClientRect());
+      return { txt: e.textContent.trim(), clipped: e.scrollWidth > e.clientWidth + 1,
+               onPlate: ps.some(p => b.top < p.bottom - 2 && b.bottom > p.top + 2), plates: ps.length }; });
+    await pg.close();
+    must(r, 'the refusal never reached the screen');
+    must(r.txt === 'THE MATCH HAS STARTED — YOUR KIT IS LOCKED UNTIL THE NEXT ONE', 'not verbatim: ' + r.txt);
+    must(!r.clipped, 'the refusal is cut off: ' + r.txt);
+    must(r.plates === 3 && !r.onPlate, 'the refusal line sits on the plates');
   });
   await step(`${view.name} #24 night: the kit plates stay visible`, async () => {
     const pg = await open(view, 'kitted', '&night'); const r = await pg.evaluate(() => Array.from(document.querySelectorAll('.plate')).map(p => getComputedStyle(p).backgroundColor)); await pg.close();

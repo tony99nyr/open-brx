@@ -1,14 +1,88 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { isRoutableLanIp, registrySig } from '../api/derive';
-import type { ReadinessRow } from '../api/types';
+import type { LogView, ReadinessRow } from '../api/types';
+import { setNotice } from '../notice';
 import { useStore } from '../store';
 import { CHAMFER, F, T, TAB, fmtAge } from '../tokens';
-import { CountBlock, GhostButton, Micro, ScreenHeader, SectionRule, SegBar, Tag } from '../ui';
+import { CountBlock, GhostButton, Micro, ScreenHeader, SectionRule, Seg, SegBar, Tag } from '../ui';
 import { Items } from './Items';
 
 const statusColor = (s: ReadinessRow['status']) =>
   (s === 'red' ? T.bad : s === 'amber' ? T.warn : s === 'waiting' ? T.micro : T.ok);
+
+// A29 (2026-09-12) — the phones report their REAL build now (`"<version>+<sha>[-dirty]"`). MC could not
+// tell APK 0.1.8 from today's tree at the game test, and a phone a version behind can misplay the
+// match. Two rules, and BOTH of them live on the server (`state.py readiness()` holds `APP_MAJOR`):
+// a wrong MAJOR is a RED blocker, a MINOR/PATCH difference is AMBER. The console renders the strings
+// it is sent and derives NO version rule of its own — it only shows the version and counts the field.
+
+/** `"0.1.9+ab12cd3-dirty"` → `"0.1.9"` for the tally; the sha is noise in a summary and gold in a chip. */
+const verShort = (v?: string | null) => (v ? v.split('+')[0] : '');
+/** newest first by semver, so the summary leads with the version the field SHOULD be on */
+const verRank = (v: string) => v.split('.').map(n => parseInt(n, 10) || 0);
+const verCmp = (a: string, b: string) => {
+  const [x, y] = [verRank(a), verRank(b)];
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((y[i] ?? 0) !== (x[i] ?? 0)) return (y[i] ?? 0) - (x[i] ?? 0);
+  return 0;
+};
+/** "PHONES · 6 × 0.1.9 · 2 × 0.1.8" — a TALLY of what is on the field, never a verdict about it.
+ *  A phone that has not reported a build is counted as UNKNOWN rather than folded into the majority.
+ *
+ *  `field` is the server's own count (`state.py versions()`, `State.versions.field`) when the snapshot
+ *  carries it; otherwise the console counts the nodes it can see. Both produce the same sentence, and
+ *  neither decides anything: every version VERDICT arrives already worded, in a readiness row. */
+export function appVerSummary(nodes: { app_ver?: string }[], field?: Record<string, number>): string {
+  const counts = new Map<string, number>();
+  if (field && Object.keys(field).length) {
+    for (const [v, n] of Object.entries(field)) counts.set(verShort(v) || 'UNKNOWN', (counts.get(verShort(v) || 'UNKNOWN') ?? 0) + n);
+  } else {
+    if (nodes.length === 0) return '';
+    for (const n of nodes) {
+      const v = verShort(n.app_ver) || 'UNKNOWN';
+      counts.set(v, (counts.get(v) ?? 0) + 1);
+    }
+  }
+  if (counts.size === 0) return '';
+  const parts = [...counts.entries()]
+    .sort((a, b) => (a[0] === 'UNKNOWN' ? 1 : b[0] === 'UNKNOWN' ? -1 : verCmp(a[0], b[0])))
+    .map(([v, n]) => `${n} × ${v}`);
+  return `PHONES · ${parts.join(' · ')}`;
+}
+
+// A25 (2026-09-12, D6) — background log sync. "For almost all of my games I'm going to want the logs
+// from all phones." MC asks on its own while `log_sync` is `auto` (at the recap, on a node's offer, on
+// a reconnect); `manual` leaves the asking to the operator. The LOGS button is never gated either way.
+//
+// What the board shows is what the PHONE reports, never what MC intended: MC asking does not make a
+// log `offered`, because the node answers when it is safe to and MC never waits on it (`state.py
+// _set_log`). So every state below is a fact about the phone, and `none` is "the phone has not said",
+// not "there is nothing".
+const LOG_LABEL: Record<LogView['state'], { text: string; color: string }> = {
+  none: { text: 'NOTHING OFFERED', color: T.micro },
+  offered: { text: 'READY TO SEND', color: T.acc },
+  pulling: { text: 'SENDING…', color: T.warn },
+  held: { text: 'HOLDING', color: T.warn },
+  complete: { text: 'DELIVERED ✓', color: T.ok },
+};
+const kb = (n?: number) => (n == null ? '' : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`);
+
+/** One node's log line. Always rendered — a row that vanishes when a phone has said nothing reads as
+ *  "fine", and "the phone has not said" is exactly what the operator needs to know before a match. */
+function LogCell({ log }: { log?: LogView }) {
+  const st = log?.state ?? 'none';
+  const { text, color } = LOG_LABEL[st] ?? LOG_LABEL.none;
+  // the node worded `reason` itself ("2 facts pending") — render it verbatim, never re-phrase it
+  const detail = [log?.reason, st === 'pulling' || st === 'complete' || st === 'offered'
+    ? [log?.lines ? `${log.lines} lines` : '', kb(log?.bytes)].filter(Boolean).join(' · ') : '']
+    .filter(Boolean).join(' · ');
+  return (
+    <span data-log-state={st} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+      <span style={{ font: F.chk(600, 12), letterSpacing: '.08em', color }}>{text}</span>
+      {detail && <span style={{ font: F.mono(500, 11), letterSpacing: '.04em', color: T.micro, textTransform: 'none' }}>{detail}</span>}
+    </span>
+  );
+}
 
 export function Armory() {
   const { state, run, api, setView } = useStore();
@@ -44,6 +118,26 @@ export function Armory() {
       <ScreenHeader kicker="[ A1 // GEAR CHECK ]" title="Readiness Board" right={
         <>
           <GhostButton onClick={async () => { setScanning(true); await run(() => api.scan(6)); setScanning(false); }}>{scanning ? 'SCANNING…' : '⟳ SCAN ARMORY'}</GhostButton>
+          {/* A29: what the field is running, at the top of the screen where the operator decides whether
+              to send someone to update before the night starts. The server may word this itself
+              (`readiness.app_vers`); when it does not, the console counts the nodes. */}
+          {/* A25: the session switch. Rendered ONLY when the server sends an option table — an older MC
+              has no `/api/options` to PUT to, and a switch that writes to a 404 is worse than none. */}
+          {state.options?.log_sync && (
+            <span data-logsync={state.options.log_sync} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
+              title="AUTO: MC asks each phone for its log on its own — at the recap, when a phone offers one, and when one comes back into range. MANUAL: only the LOGS button asks.">
+              <span style={{ font: F.mono(600, 11), letterSpacing: '.16em', color: T.micro }}>LOG SYNC</span>
+              <Seg label="log sync" value={state.options.log_sync}
+                options={[{ value: 'auto' as const, label: 'AUTO' }, { value: 'manual' as const, label: 'MANUAL' }]}
+                onChange={v => run(() => api.setOptions({ log_sync: v }))} pad="5px 12px" />
+            </span>
+          )}
+          {phones.length > 0 && (
+            <span data-app-ver-summary="1" title="Every phone on the net and the build it reports"
+              style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: T.dim, border: `1px solid ${T.line2}`, padding: '7px 12px' }}>
+              {appVerSummary(phones, state.versions?.field)}
+            </span>
+          )}
           <div style={{ display: 'flex', gap: 2 }}>
             <CountBlock value={nGreen} label="GREEN" color={T.ok} />
             <CountBlock value={nAmber} label="AMBER" color={T.warn} />
@@ -98,7 +192,7 @@ export function Armory() {
                 <span style={{ font: F.osw(700, 16), letterSpacing: '.08em' }}>{u.basename}</span>
                 <Micro>-{u.tail}</Micro>
                 <Micro color={T.dim}>{u.rssi} dBm</Micro>
-                {u.identity !== 'ok' && <Tag color={u.identity === 'reverted' ? T.bad : T.warn} size={9}>{u.identity.toUpperCase()}</Tag>}
+                {u.identity !== 'ok' && <Tag color={u.identity === 'reverted' ? T.bad : T.warn} size={11}>{u.identity.toUpperCase()}</Tag>}
               </span>
             ))}
           </div>
@@ -117,7 +211,13 @@ function GunCard({ g }: { g: ReadinessRow }) {
   const age = g.last_seen_age_ms ?? g.battery_age_ms ?? null;                 // real link age from the server
   const stale = age != null && age > 60_000;                                   // >1 min old = show nothing as live truth
   const linkText = g.node === 'none' ? 'NO PHONE' : age == null ? '—' : `${fmtAge(age)} AGO`;
-  const hs = stale ? 'UNKNOWN' : g.headset === 'proven' ? 'CONNECTED' : g.headset === 'absent' ? '—' : 'UNKNOWN';
+  // A32: the server says WHETHER the headset is proven and HOW — `link` = a BLE link this phone has held
+  // for 10 s, which a headless gun cannot do (it drops in ~6 s), `echo` = the gun answered the config push.
+  // The "still confirming" count-up is an ordinary server amber and is rendered by the amber list below;
+  // this card never times anything itself, so it cannot disagree with the board.
+  const hs = stale ? 'UNKNOWN'
+    : g.headset === 'proven' ? (g.headset_proof === 'link' ? 'PROVEN BY LINK' : 'CONNECTED')
+    : g.headset === 'absent' ? '—' : 'UNKNOWN';
   return (
     <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${color}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, clipPath: CHAMFER.tr12, opacity: waiting ? 0.62 : 1 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
@@ -128,7 +228,7 @@ function GunCard({ g }: { g: ReadinessRow }) {
                                            overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{g.sticker}</span>
           {!!g.tail && !g.sticker.toUpperCase().endsWith(g.tail.toUpperCase())
             && <span style={{ font: F.mono(500, 11), color: T.micro, whiteSpace: 'nowrap' }}>-{g.tail}</span>}
-          {g.player_num != null && <span style={{ font: F.mono(500, 10), color: T.acc, whiteSpace: 'nowrap' }}>#{g.player_num}</span>}
+          {g.player_num != null && <span style={{ font: F.mono(500, 11), color: T.acc, whiteSpace: 'nowrap' }}>#{g.player_num}</span>}
         </div>
         <Tag color={color} style={{ whiteSpace: 'nowrap', flex: '0 0 auto' }}>
           {red ? 'BLOCKED' : g.status === 'waiting' ? (g.node === 'none' ? 'NO PHONE YET' : 'OFFLINE') : g.status === 'amber' ? 'CHECK' : 'READY'}
@@ -142,7 +242,7 @@ function GunCard({ g }: { g: ReadinessRow }) {
       ) : (
       <div style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: '6px 10px', alignItems: 'center' }}>
         <Micro>GUN</Micro><Val color={stale ? T.warn : g.gun_linked ? T.ink : g.gun_linked === false ? T.bad : T.micro}>{stale ? `UNKNOWN — LAST DATA ${fmtAge(age ?? 0)} AGO` : g.gun_linked ? 'LINKED' : g.gun_linked === false ? 'LINK LOST' : '—'}</Val>
-        <Micro>HEADSET</Micro><Val color={stale ? T.micro : g.headset === 'proven' ? T.ink : g.headset === 'absent' ? T.micro : T.warn}>{hs}</Val>
+        <Micro>HEADSET</Micro><span data-headset={stale ? 'stale' : g.headset_proof ?? g.headset}><Val color={stale ? T.micro : g.headset === 'proven' ? T.ink : g.headset === 'absent' ? T.micro : T.warn}>{hs}</Val></span>
         <Micro>BATTERY</Micro>
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ font: F.osw(600, 14), ...TAB, minWidth: 38, color: stale ? T.micro : battColor }}>{batt == null ? '—' : stale ? `${batt}%*` : `${batt}%`}</span>
@@ -150,6 +250,9 @@ function GunCard({ g }: { g: ReadinessRow }) {
           {stale && <span style={{ font: F.mono(500, 8), color: T.micro }}>*OLD</span>}
         </span>
         <Micro>LINK</Micro><Val color={stale ? T.warn : T.dim}>{linkText}</Val>   {/* this branch only runs when a node IS linked */}
+        {/* A25: the same log view as the node card, on the per-player board — this is the one the
+            operator is reading before a match, and "whose log is still owed" is a per-PLAYER question. */}
+        {g.log && (<><Micro>LOG</Micro><LogCell log={g.log} /></>)}
         {/* COMPANION row returns when the ESP32 rider exists — an always-empty row reads as broken (critic #25) */}
       </div>
       )}
@@ -191,7 +294,7 @@ function Val({ children, color }: { children: React.ReactNode; color: string }) 
  *  whole console down with it for the first ~300 ms of every session — the e2e walk had been
  *  sleeping past it rather than seeing it (review 2026-09-12). The skill's rule: write down what
  *  the UI does when a field is absent, because an older server or an earlier snapshot is normal. */
-function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { tail?: string } }[]; n: { node_id?: string | null; gun_tail?: string | null; gun_name?: string | null; arm_state?: string | null; last_seen_ms?: number | null; player_id?: string | null; battery?: number | null; fw?: string | null; preflight?: { phone_batt?: number | null } | null } }) {
+function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { tail?: string } }[]; n: { node_id?: string | null; gun_tail?: string | null; gun_name?: string | null; arm_state?: string | null; last_seen_ms?: number | null; player_id?: string | null; battery?: number | null; fw?: string | null; app_ver?: string | null; platform?: string | null; log?: LogView | null; preflight?: { phone_batt?: number | null } | null } }) {
   const { state, run, api } = useStore();
   const [name, setName] = useState('');
   const hasGun = !!n.gun_name;
@@ -222,11 +325,43 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
         {n.preflight?.phone_batt != null && (<><Micro>PH BATT</Micro><Val color={n.preflight.phone_batt < 20 ? T.bad : T.dim}>{n.preflight.phone_batt}%</Val></>)}
         {n.battery != null && (<><Micro>GUN BATT</Micro><Val color={T.dim}>{n.battery}%</Val></>)}
         {n.fw && (<><Micro>FIRMWARE</Micro><Val color={T.dim}>{n.fw}</Val></>)}
+        {/* A29: always rendered, even when the phone has not said — "UNKNOWN" is the answer the
+            operator needs (an app that predates A29 reports nothing at all), and a row that simply
+            vanishes reads as "fine". */}
+        <Micro>APP</Micro>
+        <span data-app-ver={n.app_ver ?? ''} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+          <Val color={n.app_ver ? T.ink : T.micro}>{verShort(n.app_ver) || 'UNKNOWN'}</Val>
+          {/* the git sha is what tells "0.1.9 from the release" from "0.1.9 from your tree" apart. It used
+              to be cut to 7 characters with the WHOLE string parked in a `title` — which on the match-day
+              touch console is nowhere, because there is no hover. The build metadata the app stamps is a
+              short sha plus an optional `-dirty` (app/scripts/build.mjs), so it is 13 characters at worst:
+              there was never anything to truncate. `-dirty` says this phone is running somebody's working
+              tree rather than a build anyone can reproduce, which is the single most important thing this
+              row can tell an operator, so it is shown and it is shown in the warning colour. */}
+          {n.app_ver?.includes('+') && (() => {
+            const meta = n.app_ver.split('+').slice(1).join('+');
+            const flag = meta.indexOf('-');                      // the sha, then whatever the build stamped after it
+            const [sha, rest] = flag < 0 ? [meta, ''] : [meta.slice(0, flag), meta.slice(flag)];
+            return (
+              // 11 px, not 10: every part of this chip carries meaning (version, sha, `-dirty`,
+              // platform) and the tiny-text sweep fails anything meaning-bearing under 11 px — it
+              // caught this one at both viewports (review 2026-09-12). It WRAPS rather than shrinking:
+              // the row has a whole line to spend and the metadata is 13 characters at worst.
+              <span title={n.app_ver} style={{ font: F.mono(500, 11), color: T.faint, minWidth: 0, wordBreak: 'break-all' }}>
+                +{sha}{rest && <span style={{ color: T.warn }}>{rest}</span>}
+              </span>
+            );
+          })()}
+          {n.platform && <span style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>{n.platform.toUpperCase()}</span>}
+        </span>
+        <Micro>LOG</Micro><LogCell log={n.log ?? undefined} />
       </div>
-      {!hasGun && <div style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.warn }}>▲ WAITING FOR ITS GUN — SET IT ON THE PHONE</div>}
+      {/* A25: always asks, whatever `log_sync` is set to — `reason: "manual"` is never gated. */}
+      <PullLogButton node_id={n.node_id ?? ''} />
+      {!hasGun && <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.warn }}>▲ WAITING FOR ITS GUN — SET IT ON THE PHONE</div>}
       {hasGun && !n.player_id && !gunClaimed && (
         <form onSubmit={e => { e.preventDefault(); claim('blue'); }} style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${T.line2}`, paddingTop: 10 }}>
-          <div style={{ font: F.chk(700, 10), letterSpacing: '.24em', color: T.acc }}>▸ WHO CARRIES THIS?</div>
+          <div style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.acc }}>▸ WHO CARRIES THIS?</div>
           <input value={name} onChange={e => setName(e.target.value)} placeholder="GAMERTAG" maxLength={24} aria-label={`gamertag for ${n.gun_name}`}
             style={{ background: T.panelDeep, border: `1px solid ${T.line2}`, color: T.ink, font: F.osw(600, 15), letterSpacing: '.06em', padding: '9px 12px', outline: 'none', width: '100%', boxSizing: 'border-box' }} />
           <div style={{ display: 'flex', gap: 8 }}>
@@ -241,6 +376,35 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
   );
 }
 
+/** A25 — the operator's LOGS button.
+ *
+ *  `ok` is whether the ASK went out, NOT whether a log arrived: MC never waits on the node. So the
+ *  answer on screen has to say exactly that much and no more. `ok: false` is MC refusing to ask at all
+ *  (a utility phone, a node past the ~1 MB budget, no socket) and must look different from a successful
+ *  ask, or the button answers "nothing happened" and "done" the same way — the F40 shape. */
+function PullLogButton({ node_id }: { node_id: string }) {
+  const { api, run } = useStore();
+  const [busy, setBusy] = useState(false);
+  if (!node_id) return null;
+  return (
+    <button type="button" data-pull-log={node_id} disabled={busy}
+      title="Ask this phone for its match log now. Never gated by LOG SYNC — the phone still answers when it is safe to."
+      onClick={async () => {
+        setBusy(true);
+        try {
+          const r = await run(() => api.pullLog(node_id));
+          if (r) setNotice(r.ok ? 'ASKED FOR THE LOG — THE PHONE ANSWERS WHEN IT CAN'
+                                : 'COULD NOT ASK FOR THE LOG — THE PHONE IS OFF THE NET, OR PAST ITS UPLOAD BUDGET', !r.ok);
+        } finally { setBusy(false); }
+      }}
+      style={{ alignSelf: 'flex-start', font: F.chk(700, 11), letterSpacing: '.18em', padding: '9px 14px', minHeight: 36,
+               background: 'transparent', border: `1px solid ${T.line2}`, color: busy ? T.micro : T.dim,
+               cursor: busy ? 'default' : 'pointer' }}>
+      {busy ? 'ASKING…' : '⬇ LOGS'}
+    </button>
+  );
+}
+
 /** A registry gun nobody can see right now. */
 function GhostCard({ r }: { r: { gun_id: string; sticker: string; ble: { tail?: string } } }) {
   return (
@@ -249,7 +413,7 @@ function GhostCard({ r }: { r: { gun_id: string; sticker: string; ble: { tail?: 
         <span style={{ font: F.osw(700, 18), letterSpacing: '.08em', color: T.dim }}>{r.sticker}{r.ble?.tail ? <span style={{ font: F.mono(500, 11), color: T.micro }}>-{r.ble.tail}</span> : null}</span>
         <Tag color={T.micro}>OFFLINE</Tag>
       </div>
-      <div style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro }}>IN THE REGISTRY — POWER IT UP AND SCAN</div>
+      <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro }}>IN THE REGISTRY — POWER IT UP AND SCAN</div>
     </div>
   );
 }
@@ -277,24 +441,24 @@ function JoinPanel() {
   return (
     <div style={{ flex: '0 0 300px', background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderTop: `2px solid ${T.acc}`, padding: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
       <div style={{ alignSelf: 'stretch', font: F.chk(700, 11), letterSpacing: '.28em', color: T.acc }}>▸ JOIN THE NET</div>
-      <div style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.dim, textAlign: 'center', lineHeight: 1.8 }}>PHONES ON THIS WI-FI FIND MC <span style={{ color: T.ink }}>AUTOMATICALLY</span> — OPEN BRX COMPANION AND WAIT A BEAT</div>
+      <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.dim, textAlign: 'center', lineHeight: 1.8 }}>PHONES ON THIS WI-FI FIND MC <span style={{ color: T.ink }}>AUTOMATICALLY</span> — OPEN BRX COMPANION AND WAIT A BEAT</div>
       <div style={{ font: F.mono(600, 12), letterSpacing: '.04em', color: T.ink, textAlign: 'center', wordBreak: 'break-all' }}>{state?.lan.ws_url}</div>
-      <button onClick={() => setShowQr(v => !v)} style={{ minHeight: 36,  alignSelf: 'stretch', background: showQr ? T.panelAlt : 'transparent', border: `1px solid ${T.line2}`, color: T.dim, font: F.chk(700, 10), letterSpacing: '.24em', padding: '9px 0', cursor: 'pointer' }}>
+      <button onClick={() => setShowQr(v => !v)} style={{ minHeight: 36,  alignSelf: 'stretch', background: showQr ? T.panelAlt : 'transparent', border: `1px solid ${T.line2}`, color: T.dim, font: F.chk(700, 11), letterSpacing: '.2em', padding: '9px 0', cursor: 'pointer' }}>
         {showQr ? '▴ HIDE QR CODES' : '▾ SHOW QR CODES'}
       </button>
       {showQr && <>
-        <div style={{ font: F.chk(700, 10), letterSpacing: '.26em', color: T.dim }}>JOIN — TAP SCAN QR IN THE APP</div>
+        <div style={{ font: F.chk(700, 11), letterSpacing: '.22em', color: T.dim }}>JOIN — TAP SCAN QR IN THE APP</div>
         {url && <div style={{ background: '#ffffff', padding: 10, lineHeight: 0, boxShadow: `0 0 0 1px ${T.line}, 0 8px 24px rgba(0,0,0,.45)` }}><img src={url} width={200} height={200} alt="node join QR" style={{ display: 'block', imageRendering: 'pixelated' }} /></div>}
         {/* no lan.ip means no download URL to print and no QR to scan — the header alone told the
             operator to point a camera at nothing (polish-loop deferred low) */}
         {apkUrl ? (
           <div style={{ alignSelf: 'stretch', borderTop: `1px solid ${T.line2}`, paddingTop: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-            <div style={{ font: F.chk(700, 10), letterSpacing: '.26em', color: T.dim }}>NO APP YET? PHONE CAMERA HERE</div>
+            <div style={{ font: F.chk(700, 11), letterSpacing: '.22em', color: T.dim }}>NO APP YET? PHONE CAMERA HERE</div>
             {apkQr && <div style={{ background: '#ffffff', padding: 8, lineHeight: 0, boxShadow: `0 0 0 1px ${T.line}` }}><img src={apkQr} width={132} height={132} alt="apk download QR" style={{ display: 'block', imageRendering: 'pixelated' }} /></div>}
-            <div style={{ font: F.mono(500, 10), letterSpacing: '.04em', color: T.micro, wordBreak: 'break-all', textAlign: 'center' }}>{apkUrl}</div>
+            <div style={{ font: F.mono(500, 11), letterSpacing: '.02em', color: T.micro, wordBreak: 'break-all', textAlign: 'center' }}>{apkUrl}</div>
           </div>
         ) : (
-          <div style={{ alignSelf: 'stretch', borderTop: `1px solid ${T.line2}`, paddingTop: 12, font: F.mono(500, 10), letterSpacing: '.12em', color: T.micro, textAlign: 'center' }}>
+          <div style={{ alignSelf: 'stretch', borderTop: `1px solid ${T.line2}`, paddingTop: 12, font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro, textAlign: 'center' }}>
             NO LAN ADDRESS ({state?.lan.ip || '—'}) — MC IS NOT ON A NETWORK PHONES CAN REACH.
             {' '}JOIN THE FIELD WI-FI AND RESTART MC; SIDELOAD THE APK BY CABLE MEANWHILE.
           </div>

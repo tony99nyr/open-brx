@@ -11,8 +11,8 @@ One-time: `cd app && npm i --no-save playwright && npx playwright install chromi
 - **`shots.mjs`** — HUD-only screenshot sweep over `?demo` (no MC server needed): every screen state at a
   phone-landscape viewport. `node tools/shots.mjs`.
 - **`stage.mjs`** — `npm run ui:stage` → http://localhost:4190/ : the STAGE harness for visual review. The real HUD in
-  a phone-sized frame with a sidebar that jumps it to any screen state (`?demo&stage=<state>`, 44 states from idle to
-  MATCH COMPLETE — no timeline, the state holds) and an event panel that forces in-game events by hand: fire, hit,
+  a phone-sized frame with a sidebar that jumps it to any screen state (`?demo&stage=<state>` — every state in
+  `STAGES`, idle through the post-match screens; no timeline, the state holds) and an event panel that forces in-game events by hand: fire, hit,
   death, respawn, kill confirm, low ammo/HP, gun drop/relink, MC lost/back, push/start/abort/end/PANIC. Variants:
   screen size, team colour, respawn type/delay, night, host-locked loadout, MC rejecting picks. `/hud/?demo&stage=live`
   opens a state alone. The states live in `src/demo.js` (STAGES); every load starts from a clean engine.
@@ -20,6 +20,16 @@ One-time: `cd app && npm i --no-save playwright && npx playwright install chromi
   Every reported item is an assertion about what a person sees (rects, wraps, overlaps, visible text), run over the stage
   states at the design width AND a 667px phone, with desktop scrollbars ON — both reproduced the report and headless
   defaults hide them. Shots in `app/shots/screens/`. `ONLY=<substring>` runs matching steps.
+- **`logsync-gate.mjs`** — `npm run ui:logsync`: the gate for background log sync (A25) and the baked build
+  version (A29), 17 PASS/FAIL checks, exit 1 on any failure. It starts everything itself — its own real
+  NetServer on an ephemeral port (`test/mc_server.py`, WSL `.venv` python) and a static server for `www/` on
+  4181 — then drives the real HUD with a fake gun. It hooks `WebSocket.prototype.send` before the app loads,
+  so the `hello`/`status` assertions are made against the frames that actually went down the wire, not
+  against the app's own idea of them. The A25 half is the part worth keeping: a `pull_log` arriving with an
+  unacked fact in the ring must send NOT ONE log frame, and the parked request must then be served on its own
+  backoff once the ring drains, keeping MC's original `reason` — the gate drives a real assign/config/start
+  push to hold it a second time from ARMED. Platform reads `web` in Chromium; only a device proves
+  `android`/`ios`.
 - The `?mc=&gun=` page works in ANY browser too — open it on the desktop next to the MC UI for manual poking.
 
 Regression canary: if `?demo` never leaves phase `idle`, the boot hung (see the Capacitor thenable-proxy

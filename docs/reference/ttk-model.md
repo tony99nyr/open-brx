@@ -146,6 +146,54 @@ No row wins on every axis, which is the property `test_ttk_band` and the sidearm
 for (dominated by primaries, not dominant among themselves). Reserve ammo (not specified above)
 should scale with mag the same way the current rows do, roughly 5-6x mag size.
 
+## Shipped 2026-09-12
+
+D2 (`docs/game-test-2026-09-11.md`) landed with one change from §5's proposal: the **USP's mag went
+16 → 20**. At `p=0.7` a 13-hit USP with a 16-round mag empties the magazine before landing the kill
+roughly three fights in four (a 25% one-mag-kill rate); 20 rounds brings that to a more usable 77%
+without moving its ideal TTK (the mag size never enters the ideal-TTK formula). Reserve for all three
+rows was then chosen — not simply carried over at "5-6x mag" — specifically to avoid a hidden
+domination: with all three sidearms tied on ideal TTK, `test_ttk_band_and_no_strictly_dominant_weapon`
+compares them on sustained DPS and total kills too, and a naive "same mag multiplier for every row"
+reserve gave the Glock the best sustained DPS **and** the most total kills at once (see below), which
+is a strict win on every published axis. Deagle's reserve was raised (36 → 48) and Glock's cut
+(120 → 64) so the three axes never agree.
+
+| | wire (dmg / fire_ms / mag / reserve) | ideal ttk | expected ttk @ p=0.7 | one-mag kill @ p=0.7 | sustained dps | kills/kit |
+|---|---|---|---|---|---|---|
+| **USP** (fastest trigger, lowest dmg) | 9 / 160 / 20 / 120 | 1920 ms | ~2811 ms | ~77% | 33.3 | 10 |
+| **Glock** (middle) | 13 / 240 / 16 / 64 | 1920 ms | ~2846 ms | ~93% | 34.4 | 8 |
+| **Deagle** (most dmg, slowest) | 26 / 480 / 7 / 48 | 1920 ms | ~2949 ms | ~65% | 32.7 | 11 |
+
+(`expected ttk` and `one-mag kill` as in §5, now binomial-exact for all three since every mag is
+small enough to sum directly. `sustained dps` and `kills/kit` are the two axes
+`test_ttk_band_and_no_strictly_dominant_weapon` checks alongside TTK — `mag*dmg/(mag*fire_ms +
+reload_ms)` and `(mag+reserve)//htk`.)
+
+**No row wins on every axis, verified, not just argued.** Sustained DPS ranks Glock > USP > Deagle;
+kills/kit ranks the exact opposite, Deagle > USP > Glock. The two axes invert end to end, so nothing
+is a strict win: the Glock that out-sustains everyone also runs out of ammo first, and the Deagle
+that carries the most rounds has the worst sustained output while it fires.
+`test_ttk_band_and_no_strictly_dominant_weapon` passes across the full 22-weapon roster with this
+table, not only among the three pistols.
+
+**Wire tokens changed** (`mcp/brx_mcp/mc/weapons.json`, `wire` block + top-level `mag`/`reserve`):
+
+| weapon | dmg (t5) | fire_ms (t14) | mag (t16/t39) | reserve (t17/t40) |
+|---|---|---|---|---|
+| USP | 13 → **9** | 200 → **160** | 12 → **20** | 72 → **120** |
+| Glock | 9 → **13** | 150 → **240** | 20 → **16** | 120 → **64** |
+| Deagle | 24 → **26** | 375 → **480** | 7 (unchanged) | 36 → **48** |
+
+`reload_ms` (2200) and `swap_ms` (500, tok15) are unchanged on all three. The captured-frame
+invariants (`tok39 == tok16`, `tok17 == 2*tok40`) hold at every new value shown.
+
+**Bench gate.** Try the three pistols back to back, then run one sidearm-only round
+(`loadout_policy.primary.kinds = ["sidearm"]`) and ask: does any one pistol feel like the obvious
+pick? The numbers say no (equal ideal TTK, inverted sustain/ammo trade-off), but this is exactly the
+kind of claim the arsenal has been burned by before (§3's headset-multiplier and t21/t22 accuracy
+notes) — it needs a body on the bench, not just a spreadsheet, before it ships as verified.
+
 ## Sources
 
 - [Time-to-kill: Modern Combat Wiki](https://moderncombat.fandom.com/wiki/Time-to-kill)

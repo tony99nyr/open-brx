@@ -35,6 +35,10 @@ export const F = {
   chk: (w: number, px: number) => `${w} ${px}px 'Chakra Petch','Segoe UI',system-ui,sans-serif`,
   mono: (w: number, px: number) => `${w} ${px}px ui-monospace,monospace`,
 };
+/** ⚠ DOES NOTHING on either product font. `font-variant-numeric: tabular-nums` needs the FONT to ship
+ *  tabular figures and neither Oswald nor Chakra Petch does — measured 2026-09-12: Oswald 500 at 40 px
+ *  renders "11" and "00" 12 px apart WITH this set. Kept so untouched screens keep compiling; for any
+ *  number that changes on screen use `<Num>` (`src/ui/Num.tsx`), which gives each digit a fixed cell. */
 export const TAB = { fontVariantNumeric: 'tabular-nums' } as const;
 // clip-paths
 export const CHAMFER = {

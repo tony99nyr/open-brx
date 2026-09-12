@@ -167,6 +167,40 @@ async function walkToKit(pg, url, fromArmory = true) {
   await until(() => onKit(pg), 10000, 'KIT to open from CONTINUE');
 }
 
+/** The SECONDARY plate: `✕ CLEAR` is positioned in the card's bottom-right corner and the weapon's
+ *  `ROLE · MAG 12 · RES 24` line ran straight underneath it — two pieces of text on top of each
+ *  other, in every Kit screenshot we have (review 2026-09-12). Absolute position takes the control
+ *  out of flow, so the fix is reserved room plus an ellipsis, and this is the measurement that says
+ *  the two rectangles no longer meet. It HARD-FAILS when no plate on screen has both, rather than
+ *  passing over an empty set. */
+async function checkSlotPlates(pg, tag, vp) {
+  const hits = await pg.evaluate(() => {
+    const out = [];
+    for (const clear of document.querySelectorAll('[data-slot-clear]')) {
+      const card = clear.parentElement;
+      const ammo = card.querySelector('[data-slot-ammo]');
+      if (!ammo) continue;
+      const a = ammo.getBoundingClientRect(), c = clear.getBoundingClientRect();
+      out.push({
+        slot: clear.dataset.slotClear,
+        text: (ammo.textContent || '').replace(/\s+/g, ' ').trim(),
+        overlap: !(a.right <= c.left || c.right <= a.left || a.bottom <= c.top || c.bottom <= a.top),
+        gap: Math.round(c.left - a.right),
+        clipped: ammo.scrollWidth > ammo.clientWidth + 1,
+        lines: Math.max(1, Math.round(a.height / (parseFloat(getComputedStyle(ammo).lineHeight) || a.height))),
+      });
+    }
+    return out;
+  });
+  expect(hits.length > 0, 'a slot plate on screen carries BOTH an ammo line and a CLEAR control (nothing to measure otherwise)');
+  const bad = hits.filter(h => h.overlap);
+  expect(bad.length === 0, `no ammo line runs under its CLEAR control (${bad.map(h => `${h.slot}: "${h.text}" overlaps`).join(', ')})`);
+  // it may WRAP, but nothing may be cut off: a reserve count that is not on screen is not a fix
+  const cut = hits.filter(h => h.clipped);
+  expect(cut.length === 0, `no ammo line is truncated (${cut.map(h => `${h.slot}: "${h.text}"`).join(', ')})`);
+  ok(`slot plates at ${vp.width}: ${hits.map(h => `${h.slot} gap ${h.gap}px, ${h.lines} line(s): "${h.text}"`).join(' · ')}   ${await shot(pg, `00-${tag}-slot-plates`)}`);
+}
+
 // ---------------------------------------------------------------------------- the runs
 async function runMock(browser, viteBase, vp, tag) {
   step = `mock/${tag}`; stepFailedAt = failures.length;
@@ -176,6 +210,7 @@ async function runMock(browser, viteBase, vp, tag) {
 
   expect((await gateText(pg)).includes('CONTINUE · 6/8 READY'), `the button carries the live count (saw ${JSON.stringify(await gateText(pg))})`);
   ok(`KIT: ${await gateText(pg)}   ${await shot(pg, `01-${tag}-kit-count`)}`);
+  await checkSlotPlates(pg, tag, vp);
   ok(`audit (resting): ${await auditGate(pg, `${tag} resting`)}`);
 
   // first tap: arms, moves nothing

@@ -17,6 +17,9 @@ const pad2 = n => String(Math.max(0, Math.floor(n))).padStart(2, '0');
  *  the honest ceiling for a countdown you watch tick (review 2026-09-12). */
 const digits = n => pad2(Math.min(99, Math.max(0, Math.floor(n)))).split('').map(c => `<span class="d">${c}</span>`).join('');
 const mmss = ms => { const s = Math.max(0, Math.round(ms / 1000)); return `${pad2(s / 60)}:${pad2(s % 60)}`; };
+const mmssS = s => mmss(Math.max(0, Number(s) || 0) * 1000);   // the wire carries possession in SECONDS
+const clock12 = t => { const d = new Date(Number(t) || 0); const h = d.getHours(); return `${h % 12 === 0 ? 12 : h % 12}:${pad2(d.getMinutes())}${h < 12 ? 'AM' : 'PM'}`; };
+const num = v => (typeof v === 'number' && Number.isFinite(v)) ? v : null;
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 /** Accuracy is hits/shots where hits come from the VICTIMS' phones — shown only once MC has counted at least one
  *  hit for this player and ten shots have gone out; otherwise it reads 0% for every player without a phone in range. */
@@ -28,6 +31,9 @@ const ALERT_FAMILY = { objective_taken: 'objective', objective_scored: 'objectiv
   lead_taken: 'info', next_kill_wins: 'info', last_survivor: 'info', survivors_win: 'info', bomb_defused: 'info',
   extraction_called: 'objective', extraction_open: 'objective', extraction_closing: 'objective', extraction_complete: 'objective', extraction_failed: 'danger', extraction_alert: 'danger',
   loot_picked: 'info', raid_ending: 'danger', raid_over: 'danger' };   // extraction ladder + raid (brx session, 2026-09-04)
+/** A24: the only four words the results screen may print as an outcome, and it prints one ONLY when MC has
+ *  pushed a `result`. There is deliberately no mapping for "no message arrived" — see `_result`. */
+const OUTCOME_WORD = { win: 'WIN', lose: 'LOSE', draw: 'DRAW', undecided: 'UNDECIDED' };
 const MEDAL_LABEL = { first_blood: 'FIRST BLOOD', double_kill: 'DOUBLE KILL', triple_kill: 'TRIPLE KILL', killtacular: 'KILLTACULAR', killing_spree: 'KILLING SPREE', unstoppable: 'UNSTOPPABLE' };
 const splitGun = g => { if (!g) return ['—', '']; return [esc(g.basename || g.name || ''), esc(g.tail || '')]; };
 // A10: human labels for catalog rows (never the raw $WEAP class id — design review round 3)
@@ -45,6 +51,9 @@ const PERK_GLYPH = {
   easy_reload: '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M31 15 A13 13 0 1 0 33 24"/><path d="M31 6 V15 H22"/></svg>',
 };
 const LOCK_SVG = '<svg class="lockg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="9" width="12" height="9"/><path d="M7 9V6a3 3 0 0 1 6 0v3"/></svg>';
+// A26: the rack row's "read this one" control. Drawn, not typed: U+24D8 (ⓘ) is not in the HUD's font stack
+// and rendered as a tofu box on the stage.
+const INFO_SVG = '<svg class="infog" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="7.6"/><path d="M10 8.8v5.4" stroke-linecap="round"/><circle cx="10" cy="6.1" r="1" fill="currentColor" stroke="none"/></svg>';
 const perkGlyph = id => PERK_GLYPH[id] || '<svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 4 L24 15 L36 16 L27 24 L30 36 L20 30 L10 36 L13 24 L4 16 L16 15 Z"/></svg>';
 
 
@@ -52,7 +61,7 @@ const perkGlyph = id => PERK_GLYPH[id] || '<svg viewBox="0 0 40 40" fill="none" 
 // 115 pool per hit" -- 7 to 11 for most guns -- so every bar sat near empty and no two weapons looked
 // different. MC now ranks each stat ACROSS the arsenal and ships it as `bars`, with the real figures
 // alongside. Range is gone: t41 is identical on all 18 guns, so a range meter measured nothing.
-function statBlock(r) {
+function statBlock(r, opts = {}) {
   const st = r && r.stats ? r.stats : (r || {});
   const b = r && r.bars ? r.bars : {};
   const bar = (label, v, note) => v == null ? '' :
@@ -72,8 +81,12 @@ function statBlock(r) {
     ttk != null ? `KILL <b>${(ttk / 1000).toFixed(2)}S</b>` : null,
     reload != null ? `RELOAD <b>${(+reload).toFixed(1)}S</b>` : null,
   ].filter(Boolean).join(' · ');
+  // `compact` = the TRY-OUT panel: two bars + one facts line. The panel sits above READY UP in a fixed box; when the
+  // catalog began carrying all four bars and the kill/reload facts (the regenerated demo catalog, 2026-09-12 — and MC's
+  // real WeaponView always did), the four-bar block grew the panel into the footer: the F111 hypothesis, made real.
+  // The rack's ⓘ pane keeps the full four.
   return `${bar('POWER', pick(b.power, st.dmg, r && r.dmg))}${bar('RATE OF FIRE', pick(b.rof, st.rof, r && r.rpm))}` +
-    `${bar('AMMO CARRIED', b.ammo)}${bar('KILL SPEED', b.ttk)}` +
+    (opts.compact ? '' : `${bar('AMMO CARRIED', b.ammo)}${bar('KILL SPEED', b.ttk)}`) +
     (facts ? `<div class="facts">${facts}</div>` : '');
 }
 
@@ -83,9 +96,12 @@ export class Hud {
     this.frame = root.querySelector('#frame'); this.hudEl = root.querySelector('#hud');
     this.overlay = root.querySelector('#overlay'); this.chips = root.querySelector('#chips');
     this.diag = root.querySelector('#diag'); this.info = root.querySelector('#info');
-    this.sig = null; this.scan = []; this.link = {}; this.diagData = {}; this.cam = false; this.mcUrl = '';
+    this.sig = null; this.scan = []; this.link = {}; this.diagData = {}; this.mcUrl = '';
     this.lo = { tab: 'primary', filter: 'weapons', focus: null, confirm: null };   // LOADOUT browser UI state (tab / filter / focused row / A14 two-tap confirm {key, drop})
     this._moment = null; this._momentTimer = null; this._lastTminus = null; this.mcPill = false;   // live: the MC-range pill is opt-in (tap the MC label)
+    // A24 FINAL RESULTS: which screen the player has reopened after OK (null | 'result' | 'history') and which
+    // half of the segmented toggle they are on (null = pick from the mode: teams for a team game, players for FFA).
+    this.view = null; this.rtab = null; this._lastSt = null;
     this.info.addEventListener('click', () => this.toggleDiag());
     this.hudEl.addEventListener('click', e => this._click(e));
     this.diag.addEventListener('click', e => this._click(e));
@@ -120,28 +136,55 @@ export class Hud {
   _click(e) {
     const el = e.target.closest('[data-act]'); if (!el) return;
     const act = el.dataset.act, arg = el.dataset.arg;
+    // The results / history screens are a VIEW of what the engine already holds — reopening them changes nothing
+    // on the gun or the wire, so they are handled here and never round-trip through the app's handler map.
+    // Re-rendered from the last state IMMEDIATELY: the app's loop is 250 ms and a toggle that lags a quarter of a
+    // second past the tap reads as a dead control.
+    // A26: the ⓘ on a rack row only MOVES THE DETAIL PANE. It equips nothing, sends nothing and touches no
+    // engine state, so like the results views it is answered here and never round-trips the app's handler map.
+    if (act === 'onLoInfo') {
+      this.lo.focus = arg || null; this.lo.confirm = null;
+      this.sig = null; if (this._lastSt) this.render(this._lastSt);
+      return;
+    }
+    if (act === 'onEndOk') this.view = null;                                     // OK still acks the end (app handler below)
+    else if (act === 'onShowResults' || act === 'onShowHistory' || act === 'onCloseView' || act === 'onResultTab') {
+      if (act === 'onShowResults') this.view = 'result';
+      else if (act === 'onShowHistory') this.view = 'history';
+      else if (act === 'onCloseView') this.view = null;
+      else this.rtab = arg === 'player' ? 'player' : 'team';
+      this.sig = null; if (this._lastSt) this.render(this._lastSt);
+      return;
+    }
     const fn = this.h[act]; if (fn) fn(arg, el);
   }
   setScan(list) { this.scan = list; this.sig = null; }
   setLink(link) { this.link = link; }
   setDiag(d) { this.diagData = d; if (this.diag.classList.contains('open')) this.renderDiag(); }
-  setCam(on) { this.cam = !!on; this.frame.classList.toggle('cam', this.cam); }
   toggleDiag() { this.diag.classList.toggle('open'); if (this.diag.classList.contains('open')) this.renderDiag(); }
 
   render(st) {
+    this._lastSt = st;
+    if (!st.ended) this.view = null;   // a new match retires a reopened results/history screen
     this.frame.dataset.team = st.teamKey || 'blue';
     this.frame.dataset.env = st.night ? 'night' : '';
-    const sig = [st.phase, st.alive, !!st.killedBy, st.night, this.cam, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
+    const sig = [st.phase, st.alive, !!st.killedBy, st.night, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
       st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.battery != null && st.battery <= 15,
       st.kills > 0, st.deaths > 0, st.assists > 0, accShown(st) != null, st.reserve != null, this.scan.length, st.bleUp, st.ended,
       st.rejoin, !!st.pendingTeardown, this.sync && this.sync.bound, this.sync && this.sync.pending,
       // A10 loadout browser + slot plates
       st.browsing, st.canPickPrimary, st.canPickSecondary, st.canPickPerk, st.tryoutSeen, this.lo.tab, this.lo.filter, this.lo.focus, this.lo.confirm && this.lo.confirm.key,
-      st.kitOpen, st.briefSeen, st.game && st.game.name, st.game && st.game.loadout_line,
+      st.kitOpen, st.briefSeen, st.kitLocked, st.game && st.game.name, st.game && st.game.loadout_line,
       st.loadoutAck && st.loadoutAck.t, st.pendingPick && st.pendingPick.id, st.pendingPick && st.pendingPick.kind,
       st.loadout && st.loadout.primary && st.loadout.primary.weapon_id, st.loadout && st.loadout.secondary && st.loadout.secondary.weapon_id, st.loadout && st.loadout.perk && st.loadout.perk.perk_id,
-      !!(st.catalog && st.catalog.weapons && st.catalog.weapons.length)].join('|');   // wsState / synced / headEcho are patched in place (never rebuild while typing the MC URL)
-    const panel = st.phase === 'kitted' && ((st.ended && !st.endAck) || (!st.ended && st.kitOpen && !st.briefSeen && !this._tryoutShown(st)) || (!st.ended && st.browsing && !this._tryoutShown(st)));
+      !!(st.catalog && st.catalog.weapons && st.catalog.weapons.length),
+      // A24 FINAL RESULTS: the headline changes when the result lands and again when the settle window expires,
+      // and the toggle/history are structure. `resultWait` is in here because "MC NOT REACHED" appears with NO
+      // message arriving — nothing else in the signature moves at that moment.
+      this.view, this.rtab, st.resultWait, st.result && st.result.match_id, st.result && st.result.outcome,
+      st.result && st.result.provisional, st.result && st.result.rows && st.result.rows.length,
+      this.history && this.history.length, this.sessionId, st.game && st.game.mc_verify].join('|');   // wsState / synced / headEcho are patched in place (never rebuild while typing the MC URL)
+    const panel = st.phase === 'kitted' && ((st.ended && (!st.endAck || !!this.view)) || (!st.ended && st.kitOpen && !st.briefSeen && !this._tryoutShown(st)) || (!st.ended && st.browsing && !this._tryoutShown(st)));
     const screen = st.phase === 'live' ? 'live' : st.phase === 'armed' ? 'armed' : st.phase === 'idle' ? 'idle' : panel ? (st.browsing ? 'lo' : 'panel') : 'lobby';
     if (this.frame.dataset.screen !== screen) this.frame.dataset.screen = screen;
     if (sig !== this.sig) {
@@ -184,7 +227,9 @@ export class Hud {
       case 'idle': return this._idle(st);
       case 'connected': return this._lobby(st, 'connected');
       case 'kitted':
-        if (st.ended && !st.endAck) return this._result(st);
+        // A24: the results screen is reachable twice — before OK, and again from RESULTS / HISTORY on the over screen.
+        if (st.ended && this.view === 'history') return this._history(st);
+        if (st.ended && (!st.endAck || this.view === 'result')) return this._result(st);
         if (!st.ended && !st.kitOpen) return this._lobby(st, 'setup');            // §4.1: MC is still picking the game
         if (!st.ended && !st.briefSeen && !this._tryoutShown(st)) return this._briefing(st);   // §4.6: read the game, then BUILD MY KIT ▸
         if (!st.ended && st.browsing && !this._tryoutShown(st)) return this._loadout(st);
@@ -228,7 +273,7 @@ export class Hud {
         <div class="art" style="background-image:url('assets/weapons/${esc(tw.weapon_id)}.jpg')"></div>
         <div class="meta"><div class="lbl">TRY-OUT · FIRE A FEW ROUNDS</div><div class="nm">${esc((tw.name || tw.weapon_id || '').toUpperCase())}</div>
           <div class="ln">MAG ${twMag != null ? twMag : '—'} · RESERVE ${twRes != null ? twRes : '—'}${tw.role ? ' · ' + esc(roleName(tw)) : ''}</div>
-          ${statBlock(tw)}</div>
+          ${statBlock(tw, { compact: true })}</div>
         <div class="tact"><button class="lobtn ghost" data-act="onTryDone"><span class="unskew">DONE</span></button><div class="small">Keeps the gun armed with this weapon.</div></div></div>` : '';
     // Ammo is unknown until the game is pushed/armed — say so in words instead of showing "MAG — · RESERVE —".
     const _mag = st.loadMag != null ? st.loadMag : (st.mag != null ? st.mag : null);
@@ -240,6 +285,11 @@ export class Hud {
         ${this._slotPlate(st, 'primary', mode, ammoLine)}${this._slotPlate(st, 'secondary', mode)}${this._slotPlate(st, 'perk', mode)}
         ${mode === 'kitted' && !tw && (st.canPickPrimary || st.canPickSecondary || st.canPickPerk) ? '<div class="platehint">TAP A SLOT TO CHANGE YOUR LOADOUT</div>' : ''}</div>` : '';
     const hpar = st.player && mode !== 'setup' ? `<span class="hpar tab"><span style="color:var(--health)">HP ${st.maxHp}</span> · <span style="color:var(--armor)">ARMOR ${st.maxArmor}</span>${st.playerNum ? ` · #${st.playerNum}` : ''}</span>` : '';
+    // A27/A30 (loadout.md §4.4): a host advance that lands mid-kit is never a silent screen swap, and a refusal
+    // from MC is MC's own copy — shown VERBATIM on whichever screen the player is standing on when it arrives.
+    const refusal = st.loadoutAck && !st.loadoutAck.ok && st.loadoutAck.reason ? String(st.loadoutAck.reason) : null;
+    const lead = (mode === 'kitted' || mode === 'lobby') && (refusal || st.kitLocked)
+      ? `<div class="kitlock">${refusal ? esc(refusal.toUpperCase()) : 'THE HOST LOCKED KITS — you play what you had'}</div>` : '';
     let foot, status;
     if (mode === 'connected') {
       foot = st.wsState === 'bound'
@@ -251,7 +301,7 @@ export class Hud {
       foot = `<div class="setup"><div class="pulse"><i></i><i></i><i></i></div><div class="in"><div class="t">HOST IS SETTING UP THE GAME</div><div class="s">Your kit opens as soon as the host picks the game. Nothing to do yet.</div></div></div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, 'kitted')}</div>`;
     } else if (mode === 'kitted') {
-      foot = `<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓' : 'READY UP'}</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
+      foot = `${lead}<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓' : 'READY UP'}</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>${st.game ? '<button class="briefbtn" data-act="onBriefing"><span class="unskew">▤ BRIEFING</span></button>' : ''}`;
     } else if (mode === 'over') {
       // F117: this is the one control gating the next match and it read as a status line — declarative label,
@@ -261,9 +311,14 @@ export class Hud {
       // the clock is unsynced, and the hard-coded note said nothing about it — the one control gating the next
       // match went dead with no explanation on screen.
       foot = `<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓' : 'READY FOR NEXT MATCH ▸'}</span></button><div class="note" id="readynote">${this._readyNote(st, 'over')}</div>`;
-      status = `<div class="status">D ${st.deaths} · K ${st.kills != null ? st.kills : '—'}</div>`;
+      // A24 (game test D3: "let players get back to results after OK · maybe a match history"). The outcome word
+      // is printed here ONLY out of `st.result` — with no result the line simply does not carry one.
+      const rw = st.result ? (OUTCOME_WORD[st.result.outcome] || null) : null;
+      status = `<div class="status">${rw ? `<b class="oc ${esc(String(st.result.outcome))}">${rw}</b> · ` : ''}D ${st.deaths} · K ${st.kills != null ? st.kills : '—'}</div>` +
+        `<div class="overbtns"><button class="briefbtn" data-act="onShowResults"><span class="unskew">▣ RESULTS</span></button>` +
+        `<button class="briefbtn" data-act="onShowHistory"><span class="unskew">▤ HISTORY</span></button></div>`;
     } else {
-      foot = `<button class="ready wait"><span class="unskew">STANDING BY</span></button><div class="note">Loadout is on the gun. Waiting for the host to start the countdown.</div>`;
+      foot = `${lead}<button class="ready wait"><span class="unskew">STANDING BY</span></button><div class="note">${st.kitLocked ? 'The plates above are what you take in. Waiting for the host to start the countdown.' : 'Loadout is on the gun. Waiting for the host to start the countdown.'}</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     }
     return `<div class="lobby"><div class="scan"></div><div class="edgeglow"></div>
@@ -271,7 +326,11 @@ export class Hud {
       <div class="tr">${status}</div><div class="foot">${foot}</div></div>`;
   }
 
-  _tryoutShown(st) { return !!(st.tutorial && st.tutorialWeapon && st.tryoutSeen !== st.tutorialWeapon.weapon_id); }
+  /** A26: the try-out panel is a KITTED-screen takeover, and under A26 every weapon tap arms a try-out — so
+   *  inside the browser it would eject the player from the rack on every pick. While the browser is open the
+   *  browser stays: the arming shows as the row's ⟳ → ✓ and the "TRY-OUT ARMED" chip in the action bar. The
+   *  panel survives for the one case that is still real: MC pushing a try-out at a player on the plates. */
+  _tryoutShown(st) { return !!(st.tutorial && st.tutorialWeapon && st.tryoutSeen !== st.tutorialWeapon.weapon_id && !st.browsing); }
 
   // ---------- A10 §4.6: the BRIEFING — the chosen game, read at the player's own pace ----------
   _briefing(st) {
@@ -357,7 +416,10 @@ export class Hud {
         const eq = r.key === eqKey && !pend, pn = r.key === pend, fo = r.key === focusKey, rj = !!(ack && !ack.ok && ack.key === r.key), wn = !!(cf && cf.key === r.key);
         const thumb = r.kind === 'perk' ? `<span class="thumb perk">${perkGlyph(r.id)}</span>` : `<span class="thumb" style="background-image:url('assets/weapons/${esc(r.id)}.jpg')"></span>`;
         const body = r.kind === 'perk' ? `<span class="nm2"><b>${esc(name(r)).toUpperCase()}</b><small>${esc(perkEffect(r.row))}</small></span>` : `<span class="nm">${esc(name(r)).toUpperCase()}</span><span class="role">${esc(roleName(r.row))}</span><span class="mag tab">MAG ${r.row.clip != null ? r.row.clip : '—'}</span>`;
-        return `<div class="lrow ${eq ? 'eq' : ''} ${pn ? 'pend' : ''} ${fo ? 'fo' : ''} ${rj ? 'rej' : ''} ${wn ? 'warn' : ''}" data-act="onPickItem" data-arg="${r.key}">${thumb}${body}<span class="st">${eq ? '✓' : pn ? '…' : wn ? '▲' : ''}</span></div>`;
+        // A26: ✓ = MC acked this pick, ⟳ = still arming (in the node's debounce window or waiting on the ack).
+        // The ⓘ is how a row is READ without being equipped — tapping the row itself now commits it.
+        const info = `<button class="linfo" data-act="onLoInfo" data-arg="${r.key}" aria-label="Details">${INFO_SVG}</button>`;
+        return `<div class="lrow ${eq ? 'eq' : ''} ${pn ? 'pend' : ''} ${fo ? 'fo' : ''} ${rj ? 'rej' : ''} ${wn ? 'warn' : ''}" data-act="onPickItem" data-arg="${r.key}">${thumb}${body}<span class="st">${eq ? '✓' : pn ? '⟳' : wn ? '▲' : ''}</span>${info}</div>`;
       }).join('') : '<div class="small" style="padding:14px 4px">Nothing to pick here for this game.</div>');
     }
     // detail pane
@@ -365,43 +427,232 @@ export class Hud {
     if (focus) {
       const r = focus.row;
       const bar = (label, v) => v == null ? '' : `<div class="tb"><span>${label}</span><i><b style="width:${Math.max(0, Math.min(100, v))}%"></b></i></div>`;
-      if (focus.kind === 'perk') detail = `<div class="art perk">${perkGlyph(focus.id)}</div><div class="nm">${esc(r.name).toUpperCase()}${focus.key === eqKey ? '<span class="eqtag">EQUIPPED</span>' : ''}</div><div class="ln">PERK · ${esc(perkEffect(r))}${r.verified === false ? ' · <span style="color:var(--warn)">NOT YET FIELD-TESTED</span>' : ''}</div><div class="desc">${esc(r.desc || '')}</div>`;
+      if (focus.kind === 'perk') detail = `<div class="art perk">${perkGlyph(focus.id)}</div><div class="nm">${esc(r.name).toUpperCase()}${focus.key === eqKey ? '<span class="eqtag">EQUIPPED</span>' : ''}</div><div class="ln pk">PERK · ${esc(perkEffect(r))}${r.verified === false ? ' · <span style="color:var(--warn)">NOT YET FIELD-TESTED</span>' : ''}</div><div class="desc">${esc(r.desc || '')}</div>`;
       else detail = `<div class="art" style="background-image:url('assets/weapons/${esc(focus.id)}.jpg')"></div><div class="nm">${esc(r.name).toUpperCase()} <span class="rolechip">${esc(roleName(r))}</span>${focus.key === eqKey ? '<span class="eqtag">EQUIPPED</span>' : ''}</div><div class="ln">MAG ${r.clip != null ? r.clip : '—'} · RESERVE ${r.reserve != null ? r.reserve : '—'}${r.reload_s != null ? ' · RELOAD ' + r.reload_s + 'S' : ''}</div>${statBlock(r)}${r.caution ? `<div class="caution">▲ ${esc(r.caution)}</div>` : ''}<div class="desc">${esc(r.desc || '')}</div>`;
     } else if (can) detail = `<div class="small" style="padding-top:30px">${tab === 'secondary' ? (sidearmOnly(rule) ? 'Pick a sidearm — or leave it on NONE.' : 'Pick a second weapon — or leave it on NONE.') : tab === 'perk' ? 'Pick a perk — or leave it on NONE.' : 'Pick your main weapon.'}</div>`;
     // A14: the two-tap confirm outranks everything else in the action bar; an ack that dropped the other slot says so
     const ackChip = cf ? `<span class="ackchip warn cf"><span class="unskew">${esc(cf.text).toUpperCase()} · TAP AGAIN</span></span>`
       : ack ? `<span class="ackchip ${ack.ok ? 'ok' : 'bad'}"><span class="unskew">${ack.ok ? ('EQUIPPED ✓' + (ack.dropped ? ' · ' + esc(ack.dropped.name).toUpperCase() + ' DROPPED' : '')) : esc(ack.reason || 'THE HOST SAID NO').toUpperCase()}</span></span>` : (pend ? '<span class="ackchip"><span class="unskew">ASKING THE HOST…</span></span>' : (st.tutorial ? '<span class="ackchip warn"><span class="unskew">TRY-OUT ARMED — FIRE A FEW ROUNDS</span></span>' : ''));
-    const canTry = can && focus && focus.kind === 'weapon';
+    // A26: TRY IT is gone — the pick IS the try-out. The forward action is REVIEW KIT ▸, which closes the rack
+    // onto the three-plate kit summary (PRIMARY · SECONDARY · PERK) where READY UP lives; CLOSE is the same
+    // exit without the commitment framing.
     return `<div class="lobby lo"><div class="scan"></div><div class="edgeglow"></div>
       <div class="lotop">${tabBtn('primary', lo.primary)}${tabBtn('secondary', lo.secondary)}${tabBtn('perk', lo.perk)}<span class="who"><span class="cs">${esc(st.callsign || '')}</span>${st.playerNum ? `<span class="num">#${st.playerNum}</span>` : ''}</span></div>
       <div class="lobody"><div class="lolist" data-tab="${tab}">${list}</div><div class="lodetail">${detail}</div></div>
-      <div class="lobar"><span class="ackslot">${ackChip}</span>${canTry ? `<button class="lobtn try" data-act="onTryIt"><span class="unskew">TRY IT ▸</span></button>` : ''}<button class="lobtn done" data-act="onLoDone"><span class="unskew">CLOSE</span></button></div></div>`;
+      <div class="lobar"><span class="ackslot">${ackChip}</span><button class="lobtn review" data-act="onLoDone"><span class="unskew">REVIEW KIT ▸</span></button><button class="lobtn done" data-act="onLoDone"><span class="unskew">CLOSE</span></button></div></div>`;
   }
 
-  /** End-of-match result: banner + this player's line, OK -> the 'over' screen (bench request 2026-08-25). */
+  // ---------- A24 / node.md §3.13: the FINAL RESULTS screen ----------
+  /** Sorted leaderboard rows out of `result.rows` (every player, all modes). `rows` is the only orderable
+   *  material on the wire — there is no per-mode objective number in a `ScoreRow` — so the order is kills,
+   *  then fewest deaths, then assists, and the heading says so rather than implying a mode ranking. */
+  _resultRows(R) {
+    const rows = (R && Array.isArray(R.rows)) ? R.rows.filter(r => r && typeof r === 'object') : [];
+    const n = v => num(v) == null ? 0 : v;
+    return rows.slice().sort((a, b) => n(b.kills) - n(a.kills) || n(a.deaths) - n(b.deaths) || n(b.assists) - n(a.assists)
+      || String(a.display || '').localeCompare(String(b.display || '')));
+  }
+  /** Possession as {team_id -> seconds}, from `result.possession.by_team` or, failing that, summed out of a
+   *  `by_site` map. Null when the mode has no point to hold — the screen then shows no possession at all. */
+  _resultHold(R) {
+    const p = R && R.possession && typeof R.possession === 'object' ? R.possession : null;
+    if (!p) return null;
+    if (p.by_team && typeof p.by_team === 'object' && Object.keys(p.by_team).length) return p.by_team;
+    if (p.by_site && typeof p.by_site === 'object') {
+      const out = {};
+      for (const site of Object.values(p.by_site)) { if (!site || typeof site !== 'object') continue;
+        for (const [tid, v] of Object.entries(site)) out[tid] = (out[tid] || 0) + (num(v) || 0); }
+      if (Object.keys(out).length) return out;
+    }
+    return null;
+  }
+  /** `after_end` (A6.1: facts past `end_t` are RECORDED and never scored). The server sends a MAP, not a list:
+   *  `{facts: <count>, by_player: {[player_id]: {kills, deaths}}}`. No display name rides in it, so the name is
+   *  resolved out of `result.rows` and falls back to the raw player_id for someone MC never scored — an id on
+   *  screen is ugly, an invented name is a lie. Returns `{facts, rows}`; `facts` is the total the recap counted,
+   *  which can exceed the rows shown (a fact from a player with no row at all still happened). */
+  _afterEnd(R, rows = []) {
+    const a = (R && R.after_end && typeof R.after_end === 'object' && !Array.isArray(R.after_end)) ? R.after_end : null;
+    if (!a || !a.by_player || typeof a.by_player !== 'object') return { facts: 0, rows: [] };
+    const name = new Map(rows.filter(r => r.player_id).map(r => [r.player_id, r.display]));
+    const out = Object.entries(a.by_player)
+      .map(([pid, v]) => ({ player_id: pid, display: name.get(pid) || pid, kills: num(v && v.kills) || 0, deaths: num(v && v.deaths) || 0 }))
+      .filter(r => r.kills > 0 || r.deaths > 0)
+      .sort((x, y) => y.kills - x.kills || y.deaths - x.deaths || String(x.display).localeCompare(String(y.display)));
+    return { facts: num(a.facts) != null ? a.facts : out.length, rows: out };
+  }
+  _teamChip(t, mine) {
+    const k = String(t.team_id == null ? '' : t.team_id).toLowerCase();
+    const bg = TEAM_COLOR[k] || 'var(--plate)', ink = TEAM_INK[k] || 'var(--num)';
+    return `<span class="tm ${mine ? 'mine' : ''}" style="background:${bg};color:${ink}"><span class="unskew">${esc(String(t.name || k || '—').toUpperCase())} <b>${num(t.score) == null ? '—' : t.score}</b></span></span>`;
+  }
+
+  /** THE FINAL RESULTS SCREEN.
+   *
+   *  The one rule that outranks every layout decision here (contracts A24, node.md §3.13, game test D3): **no
+   *  branch below writes WIN or LOSE from the absence of a message.** A `victory` cue that never arrived means
+   *  "you lost" and "your phone was out of coverage" identically, so with no `result` the screen says the match
+   *  is over and the result is PENDING, and — once the settle window has passed with MC still unreachable — that
+   *  MC was never reached. The four outcome words live in `OUTCOME_WORD` and are reachable only through
+   *  `st.result.outcome`, which MC computes for THIS recipient.
+   *
+   *  Everything else is mode-aware from `result.mode` / `result.win_by` and the fields that are actually present:
+   *  the tiles are built from a list (never five hard-coded cells), the TEAM view appears only when MC sent team
+   *  totals, and possession / AFTER THE WHISTLE appear only when their fields do. */
   _result(st) {
-    const v = (x, suf = '') => x == null ? '—' : x + suf;
-    // The tally is THIS MC SESSION's games (entries carry the session id they were played under); with no
-    // session known (never joined MC) it is everything the phone remembers. All-time stays in the ⓘ diagnostics.
+    const R = (st.result && typeof st.result === 'object') ? st.result : null;
+    const wait = st.resultWait || (R ? 'in' : 'pending');
+    const reopened = !!st.endAck;
+    const rows = this._resultRows(R);
+    const teams = (R && Array.isArray(R.team_scores)) ? R.team_scores.filter(t => t && typeof t === 'object' && (t.team_id != null || t.name)) : [];
+    const hasTeam = teams.length > 0;
+    const tab = hasTeam ? (this.rtab === 'player' ? 'player' : 'team') : 'player';
+    const hold = this._resultHold(R);
+    const my = (R && R.my && typeof R.my === 'object') ? R.my : null;
+    const myId = (my && my.player_id) || (st.player && st.player.player_id) || null;
+
+    // --- headline ---
+    const word = R ? (OUTCOME_WORD[R.outcome] || OUTCOME_WORD.undecided) : null;
+    const head = word
+      ? `<span class="rh1 w ${esc(String(R.outcome || 'undecided'))}"><span class="unskew">${word}</span></span>`
+      : `<span class="rh1 p"><span class="unskew">${wait === 'unreached' ? 'MC NOT REACHED · SEE MISSION CONTROL' : 'RESULT PENDING · CONFIRM AT MISSION CONTROL'}</span></span>`;
+    const modeName = String((R && R.mode) || st.mode || '').toUpperCase().replace(/_/g, ' ');
+    const meta = [modeName || null,
+      (R && R.win_by) ? 'WIN BY ' + String(R.win_by).toUpperCase().replace(/_/g, ' ') : null,
+      (R && R.provisional) ? 'PROVISIONAL · SCORES STILL ARRIVING' : null].filter(Boolean).join(' · ');
+    const seg = hasTeam ? `<div class="rseg" role="group">
+      <button class="sg ${tab === 'team' ? 'on' : ''}" aria-pressed="${tab === 'team'}" data-act="onResultTab" data-arg="team"><span class="unskew">TEAMS</span></button>
+      <button class="sg ${tab === 'player' ? 'on' : ''}" aria-pressed="${tab === 'player'}" data-act="onResultTab" data-arg="player"><span class="unskew">PLAYERS</span></button></div>` : '';
+
+    // --- body ---
+    let body;
+    if (!R) {
+      body = `<div class="rwait"><div class="wl">${wait === 'unreached'
+        ? 'Your phone never reached Mission Control after the whistle. The host has the scores — the result is read off Mission Control, not off this screen.'
+        : 'The match is over. Mission Control decides how it ended and sends the result here — walk back into range if you are out of it.'}</div>
+        <div class="wl dim">Your own line is below. It is what this phone counted, not the result.</div></div>`;
+    } else if (tab === 'team') {
+      body = `<div class="rteams" style="grid-template-columns:repeat(${Math.min(4, teams.length)},minmax(0,1fr))">${teams.map(t => {
+        const k = String(t.team_id == null ? '' : t.team_id).toLowerCase();
+        const mine = !!(st.teamKey && k === st.teamKey);
+        const ps = rows.filter(r => String(r.team_id == null ? '' : r.team_id).toLowerCase() === k);
+        const h = hold ? hold[t.team_id] != null ? hold[t.team_id] : hold[k] : null;
+        return `<div class="rteam ${mine ? 'mine' : ''}">${this._teamChip(t, mine)}
+          ${h != null ? `<div class="thold">HELD <b class="tab">${mmssS(h)}</b></div>` : ''}
+          <div class="tpl"><div class="tph"><span>PLAYER</span><span class="tab">K · D · A</span></div>
+          ${ps.length ? ps.map(r => `<div class="tp ${myId && r.player_id === myId ? 'me' : ''}"><span class="pn">${esc(String(r.display || r.player_id || '—').toUpperCase())}</span><span class="pv tab">${num(r.kills) == null ? '—' : r.kills} · ${num(r.deaths) == null ? '—' : r.deaths} · ${num(r.assists) == null ? '—' : r.assists}</span></div>`).join('')
+            : '<div class="tp none">NO SCORED PLAYERS</div>'}</div></div>`;
+      }).join('')}</div>`;
+    } else {
+      const cell = (r, k) => num(r[k]) == null ? '—' : r[k];
+      body = `<div class="rlb"><div class="lbh"><span class="c r">#</span><span class="c n">PLAYER · MOST KILLS FIRST</span><span class="c">K</span><span class="c">D</span><span class="c">A</span><span class="c">KD</span><span class="c">ACC</span><span class="c">BEST</span><span class="c m">MEDALS</span></div>
+        <div class="lbrows">${rows.length ? rows.map((r, i) => {
+          const k = String(r.team_id == null ? '' : r.team_id).toLowerCase();
+          const meds = Array.isArray(r.medals) ? r.medals : [];
+          return `<div class="lbr ${myId && r.player_id === myId ? 'me' : ''}"><span class="c r tab">${i + 1}</span>
+            <span class="c n">${TEAM_COLOR[k] ? `<i class="dot" style="background:${TEAM_COLOR[k]}"></i>` : ''}${esc(String(r.display || r.player_id || '—').toUpperCase())}</span>
+            <span class="c tab">${cell(r, 'kills')}</span><span class="c tab">${cell(r, 'deaths')}</span><span class="c tab">${cell(r, 'assists')}</span>
+            <span class="c tab">${num(r.kd) == null ? '—' : Number(r.kd).toFixed(1)}</span>
+            <span class="c tab ${r.acc_provisional ? 'prov' : ''}">${num(r.accuracy) == null ? '—' : Math.round(r.accuracy) + '%'}</span>
+            <span class="c tab">${num(r.best_streak) == null ? '—' : r.best_streak}</span>
+            <span class="c m">${meds.length ? esc(meds.map(m => MEDAL_LABEL[m] || String(m).toUpperCase().replace(/_/g, ' ')).join(' · ')) : ''}</span></div>`;
+        }).join('') : '<div class="lbnone">MISSION CONTROL SENT NO PLAYER ROWS FOR THIS MATCH</div>'}</div></div>`;
+    }
+
+    // --- strips: possession (player view), the honors roll, and the unofficial post-whistle tally ---
+    const holdStrip = (hold && tab !== 'team') ? `<div class="rstrip poss"><span class="k">HELD</span><span class="v">${Object.entries(hold).map(([tid, v]) => {
+      const t = teams.find(x => String(x.team_id) === String(tid));
+      return `<span class="ch">${esc(String((t && t.name) || tid).toUpperCase())} <b class="tab">${mmssS(v)}</b></span>`; }).join('')}</span></div>` : '';
+    const honors = (R && Array.isArray(R.honors)) ? R.honors.filter(h => h && h.medal) : [];
+    // `honors[].display` is the PLAYER's name (not the medal's). `stat` is WHAT EARNED IT, and MC writes it as
+    // a descriptive STRING, not a number — `scoring.py honors()` sends "11 K · 2.8 K/D · ×5 STREAK", "8
+    // ELIMINATIONS", "AT 01:12". The old guard was `num(h.stat) != null`, which is false for every string MC
+    // has ever sent, so the stat never reached a real phone; only the demo (which sent integers) ever showed
+    // one, and the stage shot of it was fiction. Anything non-empty is printed as MC wrote it.
+    const honorStrip = honors.length ? `<div class="rstrip hon"><span class="k">HONORS</span><span class="v">${honors.slice(0, 6).map(h =>
+      `<span class="ch">${esc(MEDAL_LABEL[h.medal] || String(h.medal).toUpperCase().replace(/_/g, ' '))} <b>${esc(String(h.display || h.player_id || '').toUpperCase())}</b>${h.stat != null && h.stat !== '' ? ` <b class="tab">${esc(String(h.stat))}</b>` : ''}</span>`).join('')}</span></div>` : '';
+    const ae = this._afterEnd(R, rows);
+    // A6.1: facts after the whistle are RECORDED, not scored. Shown so a player who kept shooting can see where
+    // those hits went — and shown as visibly not part of the score above, never mixed into it.
+    const afterStrip = ae.rows.length ? `<div class="rstrip after"><span class="k">AFTER THE WHISTLE · ${ae.facts} NOT COUNTED</span><span class="v">${ae.rows.slice(0, 8).map(r =>
+      `<span class="ch">${esc(String(r.display).toUpperCase())} <b class="tab">${r.kills}·${r.deaths}</b></span>`).join('')}</span></div>` : '';
+
+    // --- my own line, as tiles: a LIST, so the cell set follows the mode and the fields that arrived ---
+    const tiles = this._resultTiles(st, R, hold);
+
+    // --- footer ---
     const all = this.history || []; const sid = this.sessionId || null;
     const hist = sid ? all.filter(g => g.session === sid) : all;
     const tot = hist.reduce((a, g) => ({ g: a.g + 1, k: a.k + (g.kills || 0), d: a.d + (g.deaths || 0) }), { g: 0, k: 0, d: 0 });
     const sess = tot.g > 1 ? `<div class="sess">${sid ? 'THIS SESSION' : 'OVERALL'} · ${tot.g} GAMES · ${tot.k} KILLS · ${tot.d} DEATHS</div>` : '';
-    return `<div class="lobby result"><div class="scan"></div><div class="edgeglow"></div>
-      <div class="banner"><span class="unskew">GAME OVER</span></div>
-      <div class="rstats">
-        <div class="cell"><b>${v(st.kills)}</b><span>KILLS</span></div>
-        <div class="cell"><b>${v(st.deaths)}</b><span>DEATHS</span></div>
-        <div class="cell"><b>${v(st.assists)}</b><span>ASSISTS</span></div>
-        <div class="cell"><b>${v(accShown(st), '%')}</b><span>ACCURACY</span></div>
-        <div class="cell"><b>${st.shots != null ? st.shots : '—'}</b><span>SHOTS</span></div>
-      </div>${sess}
-      <div class="foot">${this.sync && this.sync.bound && this.sync.pending === 0
-        ? '<div class="syncline ok">SCORES SENT TO THE HOST ✓</div>'
-        : this.sync && this.sync.bound
-          ? `<div class="syncline warn">SENDING SCORES… ${this.sync.pending} LEFT</div>`
-          : '<div class="syncline warn">OUT OF RANGE — SCORES SEND WHEN YOU ARE BACK</div>'}
-      <button class="ready" data-act="onEndOk"><span class="unskew">OK</span></button></div></div>`;
+    const sync = this.sync && this.sync.bound && this.sync.pending === 0
+      ? '<div class="syncline ok">SCORES SENT TO THE HOST ✓</div>'
+      : this.sync && this.sync.bound
+        ? `<div class="syncline warn">SENDING SCORES… ${this.sync.pending} LEFT</div>`
+        : '<div class="syncline warn">OUT OF RANGE — SCORES SEND WHEN YOU ARE BACK</div>';
+    // The sheet's ask (D3): blink it while the result is not in — that is exactly when walking back matters.
+    // It sat a pixel off the OUT OF RANGE line under it, a stack too tight to read (design-result-pending.png);
+    // the room comes from `.fl`'s gap, so no line has to lose its own wording to make space.
+    const ret = R ? '' : '<div class="retmc">RETURN TO MISSION CONTROL</div>';
+    const mcv = (!R && st.game && st.game.mc_verify) ? `<div class="mcvline">${esc(String(st.game.mc_verify).toUpperCase())}</div>` : '';
+
+    return `<div class="lobby result rv"><div class="scan"></div><div class="edgeglow"></div>
+      <div class="rhead"><span class="rkick">FINAL RESULTS</span>${head}<span class="rmeta">${esc(meta)}</span>${seg}</div>
+      <div class="rbody">${body}</div>
+      ${holdStrip}${honorStrip}${afterStrip}
+      <div class="rstats" style="grid-template-columns:repeat(${tiles.n},minmax(0,1fr))">${tiles.html}</div>
+      <div class="rfoot foot"><div class="fl">${ret}${mcv}${sync}${sess}</div>
+        <button class="ready ${reopened ? 'ghost' : ''}" data-act="${reopened ? 'onCloseView' : 'onEndOk'}"><span class="unskew">${reopened ? 'CLOSE' : 'OK'}</span></button></div></div>`;
+  }
+
+  /** This player's own line as tiles. A LIST, not five fixed cells (game test D3): BEST STREAK appears only once
+   *  MC has counted one, HELD replaces SHOTS only in a mode with a point to hold, and every label is ≥11px. */
+  _resultTiles(st, R, hold) {
+    const my = (R && R.my && typeof R.my === 'object') ? R.my : null;
+    const v = x => x == null ? '—' : x;
+    const kills = num(my && my.kills) != null ? my.kills : (num(st.kills) != null ? st.kills : null);
+    const assists = num(my && my.assists) != null ? my.assists : (num(st.assists) != null ? st.assists : null);
+    const acc = num(my && my.accuracy) != null ? Math.round(my.accuracy) : accShown(st);
+    const streak = num(my && my.best_streak);
+    const myHold = (hold && st.teamKey && hold[st.teamKey] != null) ? hold[st.teamKey] : null;
+    // DEATHS is local-real on the live HUD (node.md §4.4), but on the FINAL screen MC's number sits three rows
+    // above it on the leaderboard — a tile reading 0 beside a row reading 6 is a screen arguing with itself.
+    const deaths = num(my && my.deaths) != null ? my.deaths : st.deaths;
+    const cells = [['KILLS', v(kills)], ['DEATHS', v(deaths)], ['ASSISTS', v(assists)],
+      ['ACCURACY', acc == null ? '—' : acc + '%']];
+    if (streak != null) cells.push(['BEST STREAK', streak]);
+    if (myHold != null) cells.push(['YOUR TEAM HELD', mmssS(myHold)]);
+    else cells.push(['SHOTS', v(num(st.shots))]);
+    // This player's medals are NOT repeated here: they already read on their own leaderboard line and in the
+    // HONORS strip, and a third copy cost 24px of body height on a 390px frame.
+    return { n: cells.length, html: cells.map(([lab, val]) => `<div class="cell"><b>${val}</b><span>${lab}</span></div>`).join('') };
+  }
+
+  /** The MATCH HISTORY list — this MC session's games out of `localStorage['brx.history']` (`app.js` owns the
+   *  writes). A24 fields are shown only when they are there: an entry from before the phone learned `outcome`
+   *  reads "—", never a guess at how it went. */
+  _history(st) {
+    const all = this.history || []; const sid = this.sessionId || null;
+    const hist = (sid ? all.filter(g => g.session === sid) : all).slice().reverse();
+    const tot = hist.reduce((a, g) => ({ g: a.g + 1, k: a.k + (g.kills || 0), d: a.d + (g.deaths || 0) }), { g: 0, k: 0, d: 0 });
+    const rows = hist.map(g => {
+      const w = g.outcome ? (OUTCOME_WORD[g.outcome] || '—') : null;
+      const scores = Array.isArray(g.team_scores) && g.team_scores.length
+        ? g.team_scores.map(t => `${esc(String(t.name || t.team_id || '').toUpperCase())} ${num(t.score) == null ? '—' : t.score}`).join(' · ') : '';
+      return `<div class="hr"><span class="c t tab">${clock12(g.t)}</span>
+        <span class="c m">${esc(String(g.mode || '—').toUpperCase())}</span>
+        <span class="c o ${w ? esc(String(g.outcome)) : 'none'}">${w || 'NOT CONFIRMED'}</span>
+        <span class="c s">${scores || '—'}</span>
+        <span class="c k tab">${num(g.kills) == null ? '—' : g.kills} · ${num(g.deaths) == null ? '—' : g.deaths} · ${num(g.assists) == null ? '—' : g.assists}</span>
+        <span class="c b tab">${num(g.best_streak) == null ? '—' : g.best_streak}</span></div>`;
+    }).join('');
+    return `<div class="lobby result hist"><div class="scan"></div><div class="edgeglow"></div>
+      <div class="rhead"><span class="rkick">MATCH HISTORY</span><span class="rh1 p"><span class="unskew">${sid ? 'THIS SESSION' : 'ON THIS PHONE'} · ${tot.g} GAME${tot.g === 1 ? '' : 'S'}</span></span>
+        <span class="rmeta">${tot.k} KILLS · ${tot.d} DEATHS</span></div>
+      <div class="rbody"><div class="hlist"><div class="hr hh"><span class="c t">TIME</span><span class="c m">MODE</span><span class="c o">RESULT</span><span class="c s">TEAM SCORES</span><span class="c k">K · D · A</span><span class="c b">BEST</span></div>
+        ${rows || '<div class="lbnone">NO MATCHES ON THIS PHONE YET</div>'}</div></div>
+      <div class="rfoot foot"><div class="fl"><div class="sess">A MATCH IS RECORDED WHEN IT ENDS · THE RESULT FILLS IN WHEN MISSION CONTROL SENDS IT</div></div>
+        <button class="ready ghost" data-act="${st.endAck ? 'onCloseView' : 'onShowResults'}"><span class="unskew">${st.endAck ? 'CLOSE' : 'BACK'}</span></button></div></div>`;
   }
 
   _live(st) {
@@ -412,13 +663,11 @@ export class Hud {
     const stat = (k, v) => `<span>${k}<b class="${v == null ? 'mut' : ''}" id="st-${k}">${v == null ? '—' : v}</b></span>`;
     const kb = st.killedBy ? `` : '';
     return `<div class="alive"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
-      <div class="scrim-t"></div><div class="scrim-b"></div>
       ${low ? '<div class="firevig"></div>' : ''}
       <div class="clockplate"><div class="in"><span class="t tab" id="clock">${mmss(st.clockMs)}</span><span class="m">${esc(st.mode)}</span></div></div>
       <div class="ident"><span class="arrow"></span><span class="cs">${esc(st.callsign || nm)}</span><span class="sq">${esc(st.teamName)} SQUAD</span></div>
       <div class="topright"><span class="link"><span id="linkdot" class="dot ${st.bleUp ? '' : 'off'}"></span><span id="linklab">${st.bleUp ? 'GUN' : 'NO GUN'}</span></span><button class="link mclink" data-act="onToggleMcPill" aria-label="Mission Control link"><span id="mcdot" class="dot ${st.wsState === 'bound' ? '' : 'ws'}"></span>MC</button>
-        <span class="batt tab"><span class="shell"><span class="fill" id="battfill" style="right:${100 - (st.battery || 0)}%"></span></span><span id="batt">${st.battery != null ? st.battery + '%' : '—'}</span></span>
-        <button class="camchip ${this.cam ? 'on' : ''}" data-act="onToggleCam"><span class="unskew10">◉ CAM${this.cam ? ' ON' : ''}</span></button></div>
+        <span class="batt tab"><span class="shell"><span class="fill" id="battfill" style="right:${100 - (st.battery || 0)}%"></span></span><span id="batt">${st.battery != null ? st.battery + '%' : '—'}</span></span></div>
       ${st.battery != null && st.battery <= 15 ? `<div class="battwarn">GUN BATT ${st.battery}% — CHARGE SOON</div>` : ''}
       <div class="stats tab">${st.kills > 0 ? stat('K', st.kills) : ''}${st.deaths > 0 ? stat('D', st.deaths) : ''}${st.assists > 0 ? stat('A', st.assists) : ''}${accShown(st) != null ? stat('ACC', accShown(st) + '%') : ''}</div>
       ${st.underFire ? '<div class="takingfire"><span class="r"></span><span class="t">TAKING FIRE</span></div>' : '<div class="reticle"></div>'}
@@ -469,7 +718,19 @@ export class Hud {
       : [`<b>${st.deaths}</b> DEATH${st.deaths === 1 ? '' : 'S'}`, `<b>${st.shots}</b> SHOT${st.shots === 1 ? '' : 'S'}`];
     if (st.lives != null) me.push(`<b>${st.lives}</b> ${st.lives === 1 ? 'LIFE' : 'LIVES'} LEFT`);   // "no respawns" is already the big label above
     out.push(tile('YOU', me.join(' · ')));
+    // A31/A24: one kill from the cap with MC unreachable is the exact moment a player decides the match is theirs
+    // and walks off. Say where a win actually gets confirmed — the phone cannot call it and never will.
+    if (!linked && this._atCapMinusOne(st)) out.push('<div class="capwarn"><span class="unskew">MC OUT OF RANGE · A WIN IS CONFIRMED ONLY AT MISSION CONTROL</span></div>');
     return out.join('');
+  }
+  /** True when the LAST board MC pushed has this player's team (or, in FFA, this player) one off the cap. The
+   *  board may be stale — that is the point: this line makes no claim about the score, only about who confirms it. */
+  _atCapMinusOne(st) {
+    const bd = st.board && typeof st.board === 'object' ? st.board : null;
+    const cap = num(bd && bd.cap) != null ? bd.cap : num(st.fragLimit);
+    if (cap == null || cap < 2) return false;
+    const mine = (bd && Array.isArray(bd.teams)) ? bd.teams.find(t => t && String(t.team_id == null ? '' : t.team_id).toLowerCase() === st.teamKey) : null;
+    return [num(mine && mine.score), num(st.kills)].some(v => v != null && v >= cap - 1 && v < cap);
   }
   _pips(st) {
     const n = 12, mag = st.mag || Math.max(st.ammo, 1);
@@ -557,7 +818,10 @@ export class Hud {
       const big = secs > 99 ? mmss(st.tMinusMs) : pad2(secs);
       if (this._moment !== 'tminus') {
         this._moment = 'tminus';
-        this.overlay.innerHTML = `<div class="mo tminus"><div class="hz t"></div><div class="hz b"></div><div class="glow"></div>
+        // A31: the compiler emits this line ONCE (`assign.game.mc_verify`) so MC and every phone say the same
+        // thing. Rendered only when it is there — full coverage, or every phone on backhaul, and it is absent.
+        const mcv = (st.game && st.game.mc_verify) ? `<div class="mcv"><span>${esc(String(st.game.mc_verify).toUpperCase())}</span></div>` : '';
+        this.overlay.innerHTML = `<div class="mo tminus"><div class="hz t"></div><div class="hz b"></div><div class="glow"></div>${mcv}
           <div class="c"><div class="lab"><span class="h">T-MINUS</span><span class="s">WEAPONS ARMING</span><span class="s">STAND BY</span></div>
           <span class="n tab ${secs > 99 ? 'mm' : ''}" id="tm">${big}</span>
           <div class="r"><span class="chip"><span class="unskew">${esc(st.teamName)} · ${esc(st.callsign)}</span></span><span class="s">${esc(st.mode)} · ${mmss(st.clockMs)}</span></div></div></div>`;

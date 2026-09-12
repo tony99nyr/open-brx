@@ -4,7 +4,7 @@
   "private": true,
   "description": "BRX native BLE app (Capacitor) \u2014 Android + iOS from one codebase",
   "scripts": {
-    "build": "esbuild src/app.js --bundle --format=iife --outfile=www/app.js && esbuild src/utility.js --bundle --format=iife --outfile=www/utility.js",
+    "build": "node scripts/build.mjs",
     "test": "node --test \"test/*.test.mjs\"",
     "sync": "npm run build && npx cap sync",
     "ios:setup": "npm run build && ./scripts/ios-setup.sh",
@@ -18,11 +18,11 @@
     "ui:scenarios": "node tools/scenarios.mjs",
     "ui:moments": "npm run build && node tools/moments.mjs",
     "ui:stage": "npm run build && node tools/stage.mjs",
-    "ui:screens": "npm run build && node tools/screens.mjs"
+    "ui:screens": "npm run build && node tools/screens.mjs",
+    "ui:logsync": "npm run build && node tools/logsync-gate.mjs"
   },
   "dependencies": {
     "@capacitor-community/bluetooth-le": "^8.3.0",
-    "@capacitor-community/camera-preview": "^8.0.1",
     "@capacitor-community/keep-awake": "^8.0.1",
     "@capacitor/android": "^8.5.0",
     "@capacitor/app": "^8.1.1",

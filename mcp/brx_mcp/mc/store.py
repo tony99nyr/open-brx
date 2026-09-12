@@ -80,13 +80,26 @@ class Store:
                         "go_live_t": r[2], "ended_t": r[3], "recap": recap})
         return out
 
-    def events(self, match_id: str | None = None, parked: bool | None = None) -> list[dict]:
+    def events(self, match_id: str | None = None, parked: bool | None = None,
+               kinds: "tuple[str, ...] | list[str] | None" = None) -> list[dict]:
+        """Every logged envelope, oldest first. `kinds` narrows to the rows the caller actually wants.
+
+        The filter is SQL, not a comprehension, on purpose: a 10-minute match logs a `status`
+        heartbeat per node every ~2 s, so the envelope table is mostly heartbeats and the recap
+        replay (`state._match_facts`) wants five kinds out of it. Reading them all back meant a
+        `json.loads` of every heartbeat body — twice per late death — to throw the result away.
+        """
         q, args = "SELECT node_id,kind,seq,t,t_recv,match_id,parked,body FROM envelopes", []
         conds = []
         if match_id is not None:
             conds.append("match_id=?"); args.append(match_id)
         if parked is not None:
             conds.append("parked=?"); args.append(1 if parked else 0)
+        if kinds is not None:
+            ks = list(kinds)
+            if not ks:
+                return []
+            conds.append("kind IN (%s)" % ",".join("?" * len(ks))); args.extend(ks)
         if conds:
             q += " WHERE " + " AND ".join(conds)
         return [{"node_id": r[0], "kind": r[1], "seq": r[2], "t": r[3], "t_recv": r[4], "match_id": r[5],

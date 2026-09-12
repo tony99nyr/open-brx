@@ -10,6 +10,7 @@ import { Kit } from './screens/Kit';
 import { Live } from './screens/Live';
 import { Lobby } from './screens/Lobby';
 import { Recap } from './screens/Recap';
+import { Spectate } from './screens/Spectate';
 import { StoreProvider, useStore } from './store';
 import { F, T } from './tokens';
 
@@ -48,18 +49,30 @@ function Screen() {
     case 'armed': return <Armed />;
     case 'live': return <Live />;
     case 'recap': return <Recap />;
+    case 'spectate': return <Spectate />;
   }
+}
+
+/** S25: the spectator board renders WITHOUT the command bar. That bar carries PANIC, the phase nav and
+ *  NEW MATCH — every one of which is a control, and this screen is pointed at a room. It is not enough
+ *  to leave controls off `Spectate.tsx` while the shell around it still has them. */
+function Shell() {
+  const { view } = useStore();
+  if (view === 'spectate') return <ErrorBoundary><Screen /></ErrorBoundary>;
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <CommandBar />
+      <main style={{ flex: 1, padding: '22px 24px 48px', overflow: 'auto' }}>
+        <ErrorBoundary><Screen /></ErrorBoundary>
+      </main>
+    </div>
+  );
 }
 
 export default function App() {
   return (
     <StoreProvider>
-      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-        <CommandBar />
-        <main style={{ flex: 1, padding: '22px 24px 48px', overflow: 'auto' }}>
-          <ErrorBoundary><Screen /></ErrorBoundary>
-        </main>
-      </div>
+      <Shell />
     </StoreProvider>
   );
 }

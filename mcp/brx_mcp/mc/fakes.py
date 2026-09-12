@@ -155,6 +155,18 @@ class FakeCompiler:
         from .perks import default_perks
         return default_perks().all()
 
+def fake_app_ver() -> str:
+    """A29: a version a fake node can honestly report — the shipped RELEASE when that is a build this MC
+    is compatible with, else the bottom of MC's own tier. Never a literal: a hardcoded string here goes
+    stale the day `APP_MAJOR`/`APP_MINOR` moves, and the whole suite then runs on an incompatible phone."""
+    from .state import release_app_version
+    from .types import APP_MAJOR, APP_MINOR, compatible
+    rel = release_app_version()
+    if rel and compatible(rel):
+        return rel
+    return f"{APP_MAJOR}.{APP_MINOR}.0"
+
+
 class FakeNet:
     """In-memory NetServer. Tests call the simulate_* helpers; pushes are recorded in .pushed."""
 
@@ -182,13 +194,20 @@ class FakeNet:
     def broadcast(self, kind: str, body: dict) -> None: self.pushed.append((None, kind, body))
 
     # simulation helpers (what a node would cause)
-    def simulate_hello(self, node_id: str, gun_name: str, node_type: str = "phone", fw: str | None = "v4.32") -> dict | None:
+    def simulate_hello(self, node_id: str, gun_name: str, node_type: str = "phone", fw: str | None = "v4.32",
+                       app_ver: str | None = None, platform: str = "android") -> dict | None:
+        # A29: the fake reports a REAL semver, because MC now reads one. The old literal `"fake"` is what
+        # the app itself used to send (`hud-0.2`) and it parses as nothing -- every fake node would carry
+        # an "APP VERSION UNKNOWN" amber and the suite would be testing a phone that cannot exist.
+        # `fake_app_ver()` tracks `types.APP_MAJOR/APP_MINOR` so this never goes stale on its own.
         tail = gun_name.rsplit("-", 1)[-1] if "-" in gun_name else ""
-        hello = {"node_id": node_id, "node_type": node_type, "app_ver": "fake", "seq_next": 1,
+        av = app_ver or fake_app_ver()
+        hello = {"node_id": node_id, "node_type": node_type, "app_ver": av, "platform": platform, "seq_next": 1,
                  "gun": {"name": gun_name, "tail": tail, "fw": fw}}
         node = self._hydrate(hello) if self._hydrate else None
         for cb in self._cb["node"]:
-            cb({"node_id": node_id, "node_type": node_type, "gun_name": gun_name, "gun_tail": tail, "fw": fw})
+            cb({"node_id": node_id, "node_type": node_type, "gun_name": gun_name, "gun_tail": tail, "fw": fw,
+                "app_ver": av})       # `net.py _fire_node` carries app_ver (F106(b)) but not platform
         return node
     def simulate_utility_hello(self, node_id: str, app_ver: str = "utility") -> dict | None:
         """A13.5: a station phone's hello -- `node_type: "utility"`, no gun (utility.js `connectMc`)."""

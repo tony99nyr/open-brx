@@ -41,6 +41,44 @@ describe('the client only calls routes the server actually serves', () => {
     expect(routes.some(r => routeMatcher(r).test(path)), `${path} matches no Route() in api.py`).toBe(true);
   });
 
+  // A25/A27 (2026-09-12): the methods that FETCH rather than return a URL had no drift protection at
+  // all — `matchCsvUrl` was pinned because it returns a string, and everything else was invisible.
+  // Calling them against a stubbed fetch pins the path AND the method the same way.
+  it.each([
+    ['getOptions', (a: ReturnType<typeof createHttpApi>) => a.getOptions(), 'GET', '/api/options'],
+    ['setOptions', (a: ReturnType<typeof createHttpApi>) => a.setOptions({ log_sync: 'manual' }), 'PUT', '/api/options'],
+    ['pullLog', (a: ReturnType<typeof createHttpApi>) => a.pullLog('node-1'), 'POST', '/api/nodes/node-1/pull_log'],
+    ['setPhase', (a: ReturnType<typeof createHttpApi>) => a.setPhase('lobby', true), 'POST', '/api/phase'],
+  ])('%s calls %s %s, and it is a real route', async (_name, call, method, path) => {
+    const seen: { url: string; method: string; body?: string }[] = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      seen.push({ url: String(url), method: (init?.method ?? 'GET').toUpperCase(), body: init?.body as string });
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+    try { await call(createHttpApi()); } finally { globalThis.fetch = real; }
+    expect(seen.length).toBe(1);
+    expect(seen[0].url).toBe(path);
+    expect(seen[0].method).toBe(method);
+    expect(routes.some(r => routeMatcher(r).test(path)), `${path} matches no Route() in api.py`).toBe(true);
+  });
+
+  it('setPhase sends `force` only when it is asked for', async () => {
+    const bodies: string[] = [];
+    const real = globalThis.fetch;
+    globalThis.fetch = (async (_u: string, init?: RequestInit) => {
+      bodies.push(String(init?.body ?? ''));
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+    try {
+      const api = createHttpApi();
+      await api.setPhase('lobby');
+      await api.setPhase('lobby', true);
+    } finally { globalThis.fetch = real; }
+    expect(JSON.parse(bodies[0])).toEqual({ phase: 'lobby' });        // no `force` key at all
+    expect(JSON.parse(bodies[1])).toEqual({ phase: 'lobby', force: true });
+  });
+
   it('matchCsvUrl targets the ARCHIVED route, not the live scorer', () => {
     // the W1 bug in one line: these two must never be the same URL
     expect(API.matchCsvUrl('m7')).toBe('/api/matches/m7.csv');

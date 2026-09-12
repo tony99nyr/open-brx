@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { RUNWAYS, useRunway } from '../runway';
 import { useStore } from '../store';
 import { EvictButton } from '../ui/EvictButton';
-import { F, T, TAB, fmtAge, fmtClock } from '../tokens';
-import { Brackets, GhostButton, HazardButton, ScreenHeader, Seg, Tag } from '../ui';
+import { F, T, fmtAge, fmtClock } from '../tokens';
+import { Brackets, GhostButton, HazardButton, Num, ScreenHeader, Seg, Tag } from '../ui';
 import { SetupSteps } from '../ui/SetupSteps';
+import { McVerify } from '../ui/McVerify';
 
 
 export function Armed() {
@@ -60,7 +61,9 @@ export function Armed() {
       <Brackets style={{ padding: '18px 22px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '16px 44px', marginBottom: 16 }}>
         <div style={{ opacity: connected ? 1 : .45 }} title={connected ? undefined : 'MC offline — countdown shown from the last snapshot'}>
           <div role="status" aria-live="polite" style={{ font: F.mono(500, 9), letterSpacing: '.26em', color: T.micro }}>{connected ? 'SYNCED GO-LIVE IN' : 'SYNCED GO-LIVE IN · OFFLINE'}</div>
-          <div aria-live="off" style={{ font: F.osw(700, 56), ...TAB, letterSpacing: '.04em', lineHeight: 1 }}>T-{fmtClock(tMinus / 1000)}</div>
+          {/* the countdown is the fastest-moving number on the console — a per-digit cell is what keeps
+              it from re-laying-out on every tick (the HUD hit exactly this, game test A5) */}
+          <div aria-live="off" style={{ font: F.osw(700, 56), letterSpacing: '.04em', lineHeight: 1 }}>T-<Num value={fmtClock(tMinus / 1000)} /></div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ font: F.mono(500, 9), letterSpacing: '.22em', color: T.micro }}>RESCHEDULE TO</span>
@@ -74,6 +77,8 @@ export function Armed() {
       </Brackets>
       {/* still actionable during the runway: the grenade is placed while the players walk */}
       <SetupSteps style={{ marginBottom: 12 }} />
+      {/* A31: the standing "this win is settled at MC" line, naming the phones with no backhaul */}
+      <McVerify style={{ marginBottom: 12 }} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))', gap: 10 }}>
         {nodes.map(({ p, n, nv }) => {
           const ack = n?.arm_state === 'armed' || n?.arm_state === 'live';
@@ -87,7 +92,7 @@ export function Armed() {
                 <Tag color={color} size={9} style={{ letterSpacing: '.16em', padding: '2px 7px' }}>{live ? 'LIVE' : ack ? 'ARMED' : 'NO ACK'}</Tag>
               </div>
               <div style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: T.micro }}>#{p.player_num} {p.display}</div>
-              <div style={{ font: F.osw(700, 22), ...TAB, color: ack ? T.ink : T.warn }}>{ack ? (live ? 'LIVE' : `T-${fmtClock(tMinus / 1000)}`) : '——:——'}</div>
+              <div style={{ font: F.osw(700, 22), color: ack ? T.ink : T.warn }}>{ack ? (live ? 'LIVE' : <>T-<Num value={fmtClock(tMinus / 1000)} /></>) : '——:——'}</div>
               <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: ack && !stale ? T.dim : T.warn }}>
                 {ack ? (stale ? `COUNTING · AUTONOMOUS · LAST SEEN ${fmtAge(n!.last_seen_ms)}` : 'COUNTING · AUTONOMOUS') : `RETRYING · LAST SEEN ${fmtAge(n?.last_seen_ms ?? 0)}`}
                 {n && !n.synced && ' · UNSYNCED'}

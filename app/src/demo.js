@@ -48,6 +48,9 @@ export function startDemo({ engine, log }) {
         health: { max_hp: 45, max_armor: 70 }, environment: 'outdoor', night: q.has('night'), loadout_line: `You pick your primary (${notHeavy.length} to choose from), slot 2: a second weapon, a perk of your choice (${DEMO_PERKS.length}).`, ruleset: 'NO HEAVIES', hud_select: true };
   // the fake Mission Control answering loadout_request / loadout_browse
   const prevReport = engine.report;
+  // A26: the row's ⟳ (tapped, still arming) normally lasts ~700 ms — the node's 400 ms debounce plus this
+  // fake MC's 300 ms. `ev.slowAck(ms)` stretches the MC half so the arming state can be LOOKED at.
+  let ackDelayMs = 300;
   const tutorialFor = w => ({ weapon: { ...w, stats: { mag: w.clip, reserve: w.reserve, dmg: w.dmg, rof: w.rpm, rng: w.rng } },
     frames: ['$VOL,69,0,*', '$CLEAR,*', '$START,*', '$GSET,0,1,1,0,1,0,50,1,*',
       // $CLEAR wipes the $SIR table and a gun with no rows ignores EVERY hit (F11), so the
@@ -84,7 +87,7 @@ export function startDemo({ engine, log }) {
         engine.onMcMessage({ kind: 'loadout_ack', body: { slot: body.slot, ok, reason, ...(dropped ? { dropped } : {}), loadout: player.loadout } });
         if (ok) engine.onMcMessage({ kind: 'assign', body: { player, team, roster, catalog, policy, game } });
         if (ok && body.try && w) setTimeout(() => engine.onMcMessage({ kind: 'tutorial', body: tutorialFor(w) }), 250);
-      }, 300);
+      }, ackDelayMs);
       log(`demo MC ← loadout_request ${body.slot} ${body.kind} ${body.id || ''}${body.try ? ' (try)' : ''}`, 'lr');
     } else if (kind === 'loadout_browse') log(`demo MC ← loadout_browse open=${body.open}`, 'lr');
     return prevReport ? prevReport(kind, body) : undefined;
@@ -99,6 +102,14 @@ export function startDemo({ engine, log }) {
     respawn: { type: ['auto', 'scanner', 'none'].includes(q.get('respawn')) ? q.get('respawn') : 'auto', delay_s: +q.get('delay') || 8 },
     scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 }, teams: [team, foe] };
   const bundle = { ...golden, player_id: 'p-demo' };
+  // A24 `result.rows`: EVERY player's ScoreRow, which is what makes a leaderboard possible on the phone.
+  // Four players over two teams, one of them with `acc_provisional` (dimmed ACC) and one with no medals.
+  const RESULT_ROWS = [
+    { player_id: 'p-demo', display: 'REAPER', team_id: teamKey, kills: 11, deaths: 6, assists: 3, shots: 184, hits: 63, accuracy: 34, kd: 1.8, streak: 0, best_streak: 5, medals: ['double_kill', 'killing_spree'], first_blood: false, multi_best: 2 },
+    { player_id: 'p-3', display: 'HAVOC', team_id: teamKey, kills: 8, deaths: 9, assists: 5, shots: 210, hits: 52, accuracy: 25, kd: 0.9, streak: 1, best_streak: 3, medals: [] },
+    { player_id: 'p-2', display: 'VIPER', team_id: foeKey, kills: 13, deaths: 7, assists: 2, shots: 166, hits: 71, accuracy: 43, kd: 1.9, streak: 2, best_streak: 7, medals: ['first_blood', 'triple_kill'], first_blood: true, multi_best: 3 },
+    { player_id: 'p-4', display: 'SABLE', team_id: foeKey, kills: 4, deaths: 11, assists: 6, shots: 240, hits: 38, accuracy: 16, kd: 0.4, streak: 0, best_streak: 2, medals: [], acc_provisional: true },
+  ];
 
   let hp = 45, armor = 70, mag = 32, reserve = 384;
   const lcd = () => engine.feedFrame(`$LCD,${hp},${armor},0,0,${mag},${reserve},*`);
@@ -147,7 +158,13 @@ export function startDemo({ engine, log }) {
       closeLoadout: () => engine.browse(false),
       pick: (slot, kind, id) => engine.requestLoadout(slot, kind, id, false),
       tap: sel => { const el = document.querySelector(sel); if (el) el.click(); return !!el; },   // a real tap through the app's data-act delegation (A14 two-tap confirm)
-      tryout: id => engine.requestLoadout('primary', 'weapon', id || 'smg', true),
+      // A26: a weapon pick is DEBOUNCED 400 ms on the node; the stage is instantaneous, so flush it at once —
+      // the `tryout` stage measures the try-out PANEL, which only exists after MC's tutorial reply.
+      tryout: id => { engine.requestLoadout('primary', 'weapon', id || 'smg', true); if (engine._flushPick) engine._flushPick(); },
+      slowAck: ms => { ackDelayMs = ms == null ? 6000 : ms; },                       // A26: hold the row on ⟳
+      // A30: the server refusal a pick earns once the match has started. MC writes the copy; the HUD prints it.
+      refuse: reason => engine.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: false,
+        reason: reason || 'THE MATCH HAS STARTED — YOUR KIT IS LOCKED UNTIL THE NEXT ONE', loadout: player.loadout } }),
       tryDone: () => engine.dismissTryout(),
       // match control (what Mission Control would send)
       config: () => { engine.onMcMessage({ kind: 'config', body: { config, frames: bundle, roster } }); setTimeout(lcd, 200); },
@@ -158,6 +175,46 @@ export function startDemo({ engine, log }) {
       endOk: () => engine.ackEnd(),
       score: (kills = 3, deaths = 1, assists = 1) => engine.onMcMessage({ kind: 'score', body: { kills, deaths, assists, accuracy: 41, hits: 11, shots: 28, shots_total: 28,
         board: { teams: [{ team_id: teamKey, name: team.name, score: 18 }, { team_id: foeKey, name: foe.name, score: 21 }], cap: 25 } } }),
+      // A24: the board one kill off the cap. Paired with `mcLost` this is the DOWN screen the A31 line exists for.
+      capBoard: () => engine.onMcMessage({ kind: 'score', body: { kills: 9, deaths: 3, assists: 2, accuracy: 38, hits: 40, shots: 105, shots_total: 105,
+        board: { teams: [{ team_id: teamKey, name: team.name, score: 24 }, { team_id: foeKey, name: foe.name, score: 21 }], cap: 25 } } }),
+      // ---- A24: the MATCH RESULT push (contracts §5 `result`). `outcome` is MC's, computed for THIS recipient. ----
+      result: (outcome = 'win', extra = {}) => engine.onMcMessage({ kind: 'result', body: {
+        match_id: engine.matchId, outcome,
+        winner: outcome === 'draw' ? { tie: [teamKey, foeKey] } : { team_id: outcome === 'win' ? teamKey : foeKey },
+        mode: 'tdm', win_by: 'kills',
+        team_scores: [{ team_id: teamKey, name: team.name, score: outcome === 'lose' ? 19 : outcome === 'draw' ? 21 : 25 },
+                      { team_id: foeKey, name: foe.name, score: outcome === 'win' ? 19 : outcome === 'draw' ? 21 : 25 }],
+        rows: RESULT_ROWS, my: RESULT_ROWS[0],
+        // The SERVER's shape (`scoring.py honors()` → `state.py` result push): `medal` is the award label MC
+        // already wrote in full, and `stat` is a descriptive STRING. The demo used to send integers here, which
+        // is why a HUD guard that rejected strings looked fine on every stage shot for weeks.
+        honors: [{ medal: 'MVP', player_id: 'p-demo', display: 'REAPER', stat: '11 K · 2.8 K/D · ×5 STREAK' },
+                 { medal: 'FIRST BLOOD', player_id: 'p-2', display: 'VIPER', stat: 'AT 01:12' },
+                 { medal: 'SHARPSHOOTER', player_id: 'p-2', display: 'VIPER', stat: '41% ACCURACY' }],
+        possession: { by_team: { [teamKey]: 214, [foeKey]: 137 } },
+        // the server's shape (A6.1 recap): a COUNT plus a map keyed by player_id — no display name in it, so the
+        // HUD resolves names from `rows`. `p-ghost` has no row at all, which is how the id fallback gets exercised.
+        after_end: { facts: 4, by_player: { 'p-2': { kills: 2, deaths: 0 }, 'p-demo': { kills: 0, deaths: 1 }, 'p-ghost': { kills: 1, deaths: 0 } } },
+        provisional: false, t: Date.now(), ...extra } }),
+      // FFA: no team totals at all, so the screen has no TEAM view to offer and never renders an empty one.
+      resultFfa: (outcome = 'lose') => engine.onMcMessage({ kind: 'result', body: {
+        match_id: engine.matchId, outcome, winner: { player_id: 'p-2' }, mode: 'ffa', win_by: 'kills',
+        team_scores: [], rows: RESULT_ROWS.map(r => ({ ...r, team_id: null })), my: { ...RESULT_ROWS[0], team_id: null },
+        honors: [{ medal: 'FIRST BLOOD', player_id: 'p-2', display: 'VIPER' }], provisional: false, t: Date.now() } }),   // no `stat` at all: the honour still names the player
+      // The settle window has passed and MC is still unreachable: "MC NOT REACHED", which is NOT "you lost".
+      unreached: () => { engine.endedAt = engine.now() - 31000; engine.setWsState('closed'); },
+      mcVerify: line => { game.mc_verify = line || 'A WIN IS CONFIRMED AT MISSION CONTROL · RETURN AFTER THE WHISTLE'; ev.assign(); },
+      seedHistory: () => { const h = hud(); if (!h) return;
+        h.sessionId = 'demo-session'; const t0 = Date.now() - 3600e3;
+        h.history = [
+          { t: t0, session: 'demo-session', match_id: 'h1', mode: 'tdm', kills: 7, deaths: 9, assists: 2, accuracy: 22, shots: 190, outcome: 'lose', win_by: 'kills', best_streak: 3, medals: [], team_scores: [{ team_id: teamKey, name: team.name, score: 18 }, { team_id: foeKey, name: foe.name, score: 25 }] },
+          { t: t0 + 1200e3, session: 'demo-session', match_id: 'h2', mode: 'koth', kills: 5, deaths: 4, assists: 6, accuracy: 31, shots: 120, outcome: 'win', win_by: 'hill_time', best_streak: 2, medals: ['killing_spree'], team_scores: [{ team_id: teamKey, name: team.name, score: 300 }, { team_id: foeKey, name: foe.name, score: 211 }] },
+          { t: t0 + 2400e3, session: 'demo-session', match_id: 'h3', mode: 'ffa', kills: 12, deaths: 5, assists: 1, accuracy: 44, shots: 160, outcome: null, win_by: null, best_streak: null, medals: null, team_scores: null },   // MC never confirmed this one — "—", never a guess
+          ...(h.history || []).filter(g => g.session === 'demo-session' && !['h1', 'h2', 'h3'].includes(g.match_id))];
+        h.sig = null; h.render(engine.state()); },
+      view: v => { const h = hud(); if (!h) return; h.view = v || null; h.sig = null; h.render(engine.state()); },
+      rtab: t => { const h = hud(); if (!h) return; h.rtab = t; h.sig = null; h.render(engine.state()); },
       reloadPull: () => engine.feedFrame('$BUT,2,1,*'),   // the gun's reload handle; the mag comes back with the next $ALCD (see `reload`)
       twoWeapons: () => { player.loadout = { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }], perk: player.loadout.perk || null }; ev.assign(); },
       perk: id => { player.loadout = { ...player.loadout, perk: id }; ev.assign(); },   // A14: the perk rides beside the weapons
@@ -218,9 +275,15 @@ export function startDemo({ engine, log }) {
       'kitted-perk':       [...kitted, [400, () => ev.pick('perk', 'perk', 'quick_hands')]],
       'kitted-full':       [[0, 'fullKit'], ...kitted],                                                       // A14: all three plates filled
       'loadout-perk':      [[0, 'fullKit'], ...kitted, [400, () => ev.openLoadout('perk')]],
+      // A26 (S20): tapping a row equips AND arms it. ⟳ while it is arming, ✓ once MC has acked.
+      'loadout-arming':    [...kitted, [400, () => ev.slowAck(9000)], [500, () => ev.openLoadout('primary')], [700, () => ev.tap('.lrow[data-arg="weapon:smg"]')]],
+      'loadout-info':      [...kitted, [400, () => ev.openLoadout('primary')], [700, () => ev.tap('.lrow[data-arg="weapon:shotgun"] .linfo')]],   // the ⓘ READS a row without equipping it
       'loadout-perk-conflict': [[0, 'twoWeapons'], ...kitted, [400, () => ev.openLoadout('perk')], [700, () => ev.tap('.lrow[data-arg="perk:easy_reload"]')]],   // first tap = the warning
       'tryout':            [...kitted, [400, () => ev.tryout('smg')]],
       'lobby':             lobby,
+      // A27/A30 (loadout.md §4.4): the host pushed the lobby while this player was still in the rack.
+      'lobby-kit-locked':  [...kitted, [400, () => ev.openLoadout('primary')], [700, 'config']],
+      'kit-refused':       [...kitted, [400, () => ev.refuse()]],                                             // A30: MC's refusal copy, verbatim, on the kit screen
       'armed':             [...lobby, [900, () => ev.start(+q.get('tminus') || 30)]],
       'aborted':           [...lobby, [900, () => ev.start(30)], [1600, 'abort']],
       'live':              live,
@@ -249,6 +312,17 @@ export function startDemo({ engine, log }) {
       'mc-rejected':       [...kitted, [400, 'mcRejected']],
       'result':            [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end']],
       'over':              [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, 'endOk']],
+      // ---- A24 FINAL RESULTS. `ended` is the local fact; the OUTCOME only ever arrives as a `result` push. ----
+      'result-pending':    [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2500, 'mcLost']],            // ended, no result, MC gone: PENDING — never "lost"
+      'result-unreached':  [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2500, 'unreached']],         // ... and still nothing 30 s later: MC NOT REACHED
+      'result-win-team':   [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win')]],
+      'result-lose-ffa':   [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.resultFfa('lose')]],
+      'result-draw':       [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('draw')]],
+      'result-undecided':  [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('undecided')]],
+      'result-players':    [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win')], [2700, () => ev.rtab('player')]],
+      'history':           [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, () => ev.result('win')], [2700, 'seedHistory'], [2800, () => ev.view('history')]],
+      'down-at-cap-offline': [...live, [2300, 'capBoard'], [2400, 'mcLost'], [2500, 'die']],                                                  // A31: one off the cap with no MC link
+      'armed-with-mc-verify': [[0, () => { game.mc_verify = 'A WIN IS CONFIRMED AT MISSION CONTROL · RETURN AFTER THE WHISTLE'; }], ...lobby, [900, () => ev.start(+q.get('tminus') || 30)]],
       'panic':             [...live, [2300, 'panic']],
       'diag':              [...kitted, [400, () => ev.diag(true)]],                                            // F122: the ⓘ panel, nothing churning under it
       'diag-live':         [...live, [2300, () => ev.diag(true)]],                                             // F122: the SAME panel while the live clock rewrites its data 4×/s

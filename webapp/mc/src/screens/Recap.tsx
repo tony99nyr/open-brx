@@ -1,10 +1,30 @@
 import { useEffect, useState } from 'react';
 import type { MatchHistoryRow, RecapStationRow, RecapView, ScoreRow } from '../api/types';
 import { useStore } from '../store';
-import { CHAMFER, F, T, TAB, fmtClock, teamColor } from '../tokens';
-import { BTN_RESET, Brackets, SectionRule, PrimaryButton } from '../ui';
+import { CHAMFER, F, T, fmtClock, teamColor } from '../tokens';
+import { BTN_RESET, Brackets, Num, SectionRule, PrimaryButton } from '../ui';
+import { bestStreak } from './Live';
+import { columnEdges, type Column } from './columns';
 
-const COLS = 'minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px minmax(120px,1fr)';
+// S24: the same treatment as the live board — wider columns, an 11 px header, and the numeric run
+// split into groups with a hairline between them (game test 2026-09-11, D4).
+const COLS = 'minmax(140px,1.6fr) 46px 46px 46px 60px 66px 54px minmax(130px,1fr)';
+const GAP = '0 14px';
+const COLUMNS: Column[] = [
+  { key: 'who', head: 'OPERATOR', g: 'who' },
+  { key: 'k', head: 'K', g: 'tally', num: true },
+  { key: 'd', head: 'D', g: 'tally', num: true },
+  { key: 'a', head: 'A', g: 'tally', num: true },
+  { key: 'kd', head: 'K/D', g: 'rate', num: true },
+  { key: 'acc', head: 'ACC', g: 'rate', num: true },
+  { key: 'stk', head: 'STK', g: 'best', num: true },
+  { key: 'medals', head: 'MEDALS', g: 'medals' },
+];
+/** The group rule, asked for BY COLUMN KEY. The cells used to hand-index this list — the K/D cell
+ *  passed a literal 4, STK a literal 6 — so inserting or moving a column drew the rules in the wrong
+ *  places with nothing to fail. LIVE was fixed first; this is the same defect one file over
+ *  (review 2026-09-12). Header and row now read the one lookup. */
+const edge = columnEdges(COLUMNS);
 const AWARD_COLOR: Record<string, string> = { MVP: '#ffd23f', 'FIRST BLOOD': T.bad, MULTIKILL: T.warn };
 const STATION_KIND_LABEL: Record<string, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACTION', bomb: 'BOMB SITE', control: 'CONTROL POINT' };
 const STATION_TID_NAME: Record<number, string> = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN', 255: 'ANY' };
@@ -41,7 +61,7 @@ export function Recap() {
   const rc: RecapView | null = past ? past.recap : live;
   const picker = archive.length > 0 ? (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-      <span style={{ font: F.mono(500, 9), letterSpacing: '.22em', color: T.micro }}>MATCH HISTORY ▸</span>
+      <span style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: T.micro }}>MATCH HISTORY ▸</span>
       {live && (
         <button type="button" onClick={() => setSel(null)} style={chip(!sel)}>THIS MATCH</button>
       )}
@@ -57,7 +77,7 @@ export function Recap() {
   if (!rc) return (
     <div className="screen">
       {picker}
-      <div style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.micro }}>
+      <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro }}>
         {archive.length ? 'PICK A MATCH ABOVE TO SEE ITS RESULT.' : 'NO RECAP YET — THE MATCH ENDS AT THE TIME LIMIT ON EVERY NODE.'}
       </div>
     </div>
@@ -91,12 +111,12 @@ export function Recap() {
       {picker}
       {(past ?? history.find(h => h.match_id === liveId))?.config && <MatchConfig row={(past ?? history.find(h => h.match_id === liveId))!} />}
       {past && (
-        <div style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.line2}`, borderLeft: `3px solid ${T.dim}`, font: F.mono(500, 10), letterSpacing: '.12em', color: T.dim }}>
+        <div style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.line2}`, borderLeft: `3px solid ${T.dim}`, font: F.mono(500, 11), letterSpacing: '.1em', color: T.dim }}>
           ARCHIVED MATCH{past.ended_t ? ` — ENDED ${new Date(past.ended_t).toLocaleString()}` : ''} · READ ONLY
         </div>
       )}
       {rc.provisional && (
-        <div style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.warn}`, borderLeft: `3px solid ${T.warn}`, background: 'rgba(255,176,32,.08)', font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>
+        <div style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.warn}`, borderLeft: `3px solid ${T.warn}`, background: 'rgba(255,176,32,.08)', font: F.mono(500, 11), letterSpacing: '.1em', color: T.warn }}>
           ▲ PROVISIONAL — {rc.missing.length} NODE{rc.missing.length === 1 ? ' HAS' : 'S HAVE'} NOT FLUSHED ({rc.missing.map(name).join(', ')}).
           {/* "bring them into range" is only actionable for the match still in hand */}
           {past ? ' THESE NUMBERS ARE AS RECORDED WHEN THE MATCH WAS ARCHIVED.'
@@ -118,7 +138,7 @@ export function Recap() {
           the totals changed"). The server has served this since A8 and nothing rendered it, which for
           an objective mode is the difference between a result and a guess (operator review 2026-09-10). */}
       {!past && rc.settling && (
-        <div data-testid="settling" style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.warn}`, borderLeft: `3px solid ${T.warn}`, font: F.mono(500, 10), letterSpacing: '.12em', color: T.warn }}>
+        <div data-testid="settling" style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.warn}`, borderLeft: `3px solid ${T.warn}`, font: F.mono(500, 11), letterSpacing: '.1em', color: T.warn }}>
           ▲ STILL SETTLING — {(rc.awaiting ?? []).length} NODE{(rc.awaiting ?? []).length === 1 ? ' HAS' : 'S HAVE'} NOT REPORTED SINCE THE WHISTLE
           {(rc.awaiting ?? []).length ? ` (${(rc.awaiting ?? []).map(name).join(', ')})` : ''}
           {typeof rc.since_end_ms === 'number' ? ` · ${Math.round(rc.since_end_ms / 1000)}S AGO` : ''}. THESE TOTALS CAN STILL CHANGE.
@@ -126,7 +146,7 @@ export function Recap() {
       )}
       {/* an ARCHIVED match must be described by ITS OWN mode, not the config the host is drafting
           now — the header read "MATCH COMPLETE · TDM · 05:00" over a recap of a 3-minute FFA */}
-      <div style={{ font: F.mono(500, 10), letterSpacing: '.28em', color: T.dim, marginBottom: 8 }}>[ A8 // MATCH COMPLETE · {(past ? past.mode : state.config.mode).toUpperCase()}{past ? '' : ` · ${fmtClock(state.config.time_limit_s ?? 0)}`} ]</div>
+      <div style={{ font: F.mono(500, 11), letterSpacing: '.22em', color: T.dim, marginBottom: 8 }}>[ A8 // MATCH COMPLETE · {(past ? past.mode : state.config.mode).toUpperCase()}{past ? '' : ` · ${fmtClock(state.config.time_limit_s ?? 0)}`} ]</div>
       <Brackets color="#ffd23f" size={18} style={{ background: `linear-gradient(90deg,rgba(255,210,63,.1),transparent 60%),linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, padding: '22px 26px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '18px 44px', marginBottom: 18 }}>
         <div>
           <div style={{ font: F.osw(700, 46), letterSpacing: '.08em', lineHeight: 1.15 }}>
@@ -138,15 +158,15 @@ export function Recap() {
             {scores.sort((a, b) => b[1] - a[1]).map(([id, s], i) => (
               <span key={id} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 12 }}>
                 {i > 0 && <span style={{ font: F.osw(600, 20), color: T.micro }}>—</span>}
-                <span style={{ font: F.osw(700, 44), ...TAB, color: teamColor(id) }}>{s}</span>
+                <span style={{ font: F.osw(700, 44), color: teamColor(id) }}><Num value={s} /></span>
               </span>
             ))}
           </div>
         ) : (
-          <span style={{ font: F.osw(700, 44), ...TAB, color: T.ink }}>{rows[0]?.kills ?? 0} <span style={{ font: F.chk(600, 12), color: T.micro }}>KILLS</span></span>
+          <span style={{ font: F.osw(700, 44), color: T.ink }}><Num value={rows[0]?.kills ?? 0} /> <span style={{ font: F.chk(600, 12), color: T.micro }}>KILLS</span></span>
         )}
         <span style={{ flex: 1 }} />
-        {csvErr && <span role="alert" style={{ font: F.mono(600, 10), letterSpacing: '.12em', color: T.bad }}>▲ {csvErr}</span>}
+        {csvErr && <span role="alert" style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: T.bad }}>▲ {csvErr}</span>}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {/* An <a download> saves whatever comes back, so against an MC that predates the archived
               route the operator gets the 404's JSON body in a file named .csv. `serverOld` only
@@ -193,6 +213,7 @@ export function Recap() {
           }}>{starting ? 'STARTING…' : 'NEW MATCH ▸'}</PrimaryButton>}
         </div>
       </Brackets>
+      <AfterWhistle rc={rc} name={name} />
       {rc.possession && <Possession p={rc.possession} label={teamLabel} />}
       {rc.stations && rc.stations.length > 0 && <Stations rows={rc.stations} />}
       {rc.honors.length > 0 && (<>
@@ -202,9 +223,9 @@ export function Recap() {
           const c = AWARD_COLOR[h.award] ?? T.acc;
           return (
             <div key={h.award} style={{ background: T.panel, border: `1px solid ${T.line}`, borderTop: `2px solid ${c}`, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 4, clipPath: CHAMFER.br8 }}>
-              <span style={{ font: F.mono(500, 9), letterSpacing: '.22em', color: c }}>{h.award}</span>
+              <span style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: c }}>{h.award}</span>
               <span style={{ font: F.osw(700, 19), letterSpacing: '.08em' }}>{name(h.player_id)}</span>
-              <span style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: T.micro }}>{h.stat}</span>
+              <span style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>{h.stat}</span>
             </div>
           );
         })}
@@ -227,7 +248,7 @@ export function Recap() {
           return (
             <span key={pl.player_id} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10, background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${col}`, padding: '8px 14px' }}>
               <span style={{ font: F.chk(700, 12), letterSpacing: '.06em' }}>{pl.display}</span>
-              <span style={{ font: F.mono(600, 10), letterSpacing: '.12em', color: col }}>{txt}</span>
+              <span style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: col }}>{txt}</span>
             </span>
           );
         })}
@@ -235,9 +256,14 @@ export function Recap() {
       </>}
       <SectionRule label="FULL STATS" />
       <div style={{ overflowX: 'auto' }}>
-        <div style={{ minWidth: 640 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: '0 10px', padding: '8px 14px', background: T.panelAlt, border: `1px solid ${T.line}`, font: F.mono(500, 9), letterSpacing: '.18em', color: T.micro }}>
-            <span>OPERATOR</span><R>K</R><R>D</R><R>A</R><R>K/D</R><R>ACC</R><R>STK</R><span>MEDALS</span>
+        {/* the widened S24 columns total ~780px; the wrapper has to say so or the scroll container
+              under-reports how much there is to scroll to on a phone */}
+          <div style={{ minWidth: 780 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: GAP, padding: '9px 14px', background: T.panelAlt, border: `1px solid ${T.line}`, font: F.mono(600, 11), letterSpacing: '.14em', color: T.dim }}>
+            {COLUMNS.map(c => (
+              <span key={c.key} data-col-head={c.key} data-group={c.g}
+                style={{ textAlign: c.num ? 'right' : 'left', ...edge(c.key) }}>{c.head}</span>
+            ))}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
             {rows.map(r => <Row key={r.player_id} r={r} mvp={r.player_id === mvpId} />)}
@@ -248,24 +274,32 @@ export function Recap() {
   );
 }
 
-function R({ children }: { children: React.ReactNode }) { return <span style={{ textAlign: 'right' }}>{children}</span>; }
 function Row({ r, mvp }: { r: ScoreRow; mvp: boolean }) {
+  // F119: the recap can still be settling (a parked node has not flushed), so ACC keeps the same
+  // settling mark it wears on the live board rather than quietly becoming a fact at the whistle.
+  const prov = !!r.acc_provisional;
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: '0 10px', alignItems: 'center', padding: '9px 14px', background: mvp ? 'rgba(255,210,63,.05)' : T.panel, border: `1px solid ${T.row}`, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>
+    <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: GAP, alignItems: 'center', padding: '10px 14px', background: mvp ? 'rgba(255,210,63,.05)' : T.panel, border: `1px solid ${T.row}`, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>
       <span style={{ font: F.chk(700, 14), letterSpacing: '.1em' }}>{r.display}</span>
-      <span style={{ textAlign: 'right', font: F.osw(700, 16), ...TAB }}>{r.kills}</span>
-      <span style={{ textAlign: 'right', font: F.osw(600, 15), ...TAB, color: T.dim }}>{r.deaths}</span>
-      <span style={{ textAlign: 'right', font: F.osw(600, 15), ...TAB, color: T.dim }}>{r.assists}</span>
-      <span style={{ textAlign: 'right', font: F.osw(600, 14), ...TAB }}>{r.kd.toFixed(1)}</span>
-      <span style={{ textAlign: 'right', font: F.osw(600, 14), ...TAB, color: T.dim }}>{r.accuracy == null ? '—' : `${Math.round(r.accuracy)}%`}</span>
-      <span style={{ textAlign: 'right', font: F.osw(600, 14), ...TAB, color: T.dim }}>{r.streak}</span>
-      <span style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: '#ffd23f' }}>{r.medals.length ? r.medals.join(' · ') : '—'}</span>
+      <span data-cell="k" style={{ textAlign: 'right', font: F.osw(700, 17), ...edge('k') }}><Num value={r.kills} /></span>
+      <span data-cell="d" style={{ textAlign: 'right', font: F.osw(600, 16), color: T.dim, ...edge('d') }}><Num value={r.deaths} /></span>
+      <span data-cell="a" style={{ textAlign: 'right', font: F.osw(600, 16), color: T.dim, ...edge('a') }}><Num value={r.assists} /></span>
+      <span data-cell="kd" style={{ textAlign: 'right', font: F.osw(600, 15), ...edge('kd') }}><Num value={r.kd.toFixed(1)} /></span>
+      <span data-cell="acc" data-provisional={prov ? '1' : '0'} title={prov ? 'Still settling — a node has not flushed its shot count' : undefined}
+        style={{ textAlign: 'right', font: F.osw(600, 15), color: prov ? T.micro : T.dim, ...edge('acc') }}>
+        {/* the mark LEADS the number, exactly as it does on the live board: "35%~" reads as a unit
+            nobody uses, "~35%" is how an approximate value is written everywhere else, and the two
+            screens must not write the same fact two ways (review 2026-09-12) */}
+        {r.accuracy == null ? '—' : <>{prov ? '~' : ''}<Num value={Math.round(r.accuracy)} />%</>}
+      </span>
+      <span data-cell="stk" style={{ textAlign: 'right', font: F.osw(600, 15), color: T.dim, ...edge('stk') }}><Num value={bestStreak(r)} /></span>
+      <span style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: '#ffd23f', lineHeight: 1.45, ...edge('medals') }}>{r.medals.length ? r.medals.join(' · ') : '—'}</span>
     </div>
   );
 }
 
 function chip(on: boolean): React.CSSProperties {
-  return { font: F.mono(600, 10), letterSpacing: '.12em', padding: '5px 10px', minHeight: 28, cursor: 'pointer',
+  return { font: F.mono(600, 11), letterSpacing: '.1em', padding: '5px 10px', minHeight: 28, cursor: 'pointer',
            background: on ? T.acc : 'transparent', color: on ? T.accInk : T.dim,
            border: `1px solid ${on ? T.acc : T.line2}` };
 }
@@ -286,8 +320,8 @@ function MatchConfig({ row }: { row: MatchHistoryRow }) {
     <div style={{ marginBottom: 12, border: `1px solid ${T.line}`, background: T.panelDeep }}>
       <button type="button" onClick={() => setOpen(o => !o)}
         style={{ ...BTN_RESET, width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', cursor: 'pointer', minHeight: 40 }}>
-        <span style={{ font: F.mono(600, 10), letterSpacing: '.2em', color: T.acc }}>{open ? '▾' : '▸'} GAME SETTINGS AS RUN</span>
-        <span style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: T.micro }}>
+        <span style={{ font: F.mono(600, 11), letterSpacing: '.16em', color: T.acc }}>{open ? '▾' : '▸'} GAME SETTINGS AS RUN</span>
+        <span style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>
           {String(cfg.mode ?? '').toUpperCase()} · {String(cfg.environment ?? '?').toUpperCase()} · {head.length} HEAD FRAMES
         </span>
       </button>
@@ -296,15 +330,15 @@ function MatchConfig({ row }: { row: MatchHistoryRow }) {
           <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '3px 14px', alignItems: 'baseline', minWidth: 260 }}>
             {rows.map(([k, v]) => (
               <div key={k} style={{ display: 'contents' }}>
-                <span style={{ font: F.mono(500, 9.5), letterSpacing: '.14em', color: T.micro }}>{k.toUpperCase()}</span>
+                <span style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro }}>{k.toUpperCase()}</span>
                 <span style={{ font: F.mono(600, 11), color: T.ink, wordBreak: 'break-word' }}>{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
               </div>
             ))}
           </div>
           {head.length > 0 && (
             <div style={{ flex: '1 1 340px', minWidth: 0 }}>
-              <div style={{ font: F.mono(500, 9.5), letterSpacing: '.14em', color: T.micro, marginBottom: 4 }}>COMPILED HEAD — WHAT THE GUN WAS SENT</div>
-              <pre style={{ margin: 0, maxHeight: 240, overflow: 'auto', font: F.mono(500, 10.5), color: T.dim, background: T.inset, border: `1px solid ${T.line}`, padding: 8 }}>{head.join('\n')}</pre>
+              <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro, marginBottom: 4 }}>COMPILED HEAD — WHAT THE GUN WAS SENT</div>
+              <pre style={{ margin: 0, maxHeight: 240, overflow: 'auto', font: F.mono(500, 11), color: T.dim, background: T.inset, border: `1px solid ${T.line}`, padding: 8 }}>{head.join('\n')}</pre>
             </div>
           )}
         </div>
@@ -313,6 +347,75 @@ function MatchConfig({ row }: { row: MatchHistoryRow }) {
   );
 }
 
+
+/** A6.1 — what happened AFTER the whistle.
+ *
+ *  The scorer freezes at `end_t` and keeps recording: a shot fired a second late is a real fact and it
+ *  does NOT count. Tony, field 2026-08-30: the totals "finally popped up and the totals changed" — a
+ *  recap that moves without saying why is worse than one that is late. So these are shown as their own
+ *  block, plainly marked unofficial, and never folded into the table above.
+ *
+ *  Rendered only when the server sent the breakdown. An older MC sends `post_end_facts` (a bare count)
+ *  and nothing else; there is no way to invent the per-player split from it, so nothing is invented. */
+/** How many late facts there are to talk about, and what to call them.
+ *
+ *  "3 FACTS RECORDED" was wire vocabulary on a screen an operator reads out loud: `facts` is what the
+ *  scorer calls a recorded event, and what actually landed after the whistle is kills and deaths
+ *  (review 2026-09-12). */
+const lateLine = (n: number) => (n === 1 ? '1 LATE KILL / DEATH' : `${n} LATE KILLS / DEATHS`);
+
+/** The A6.1 block, or the count an older MC sends instead, or nothing.
+ *
+ *  Two bugs lived in the one-line `{rc.after_end && …}` this replaces (review 2026-09-12):
+ *  `after_end: {facts: 0, by_player: {}}` — the normal case, a match where nothing landed late —
+ *  rendered a whole titled block that said NOTHING ATTRIBUTED TO A PLAYER, and an older MC that
+ *  sends only `post_end_facts` rendered nothing at all, dropping a fact it HAD sent. So the gate is
+ *  the COUNT, from whichever field carried it, and a count with no breakdown is still said out loud. */
+function AfterWhistle({ rc, name }: { rc: RecapView; name: (id: string) => string }) {
+  const a = rc.after_end;
+  const n = a ? a.facts : (rc.post_end_facts ?? 0);
+  if (!n) return null;
+  if (!a) {
+    return (
+      <div data-testid="after-end-count" style={{ marginBottom: 18, border: `1px dashed ${T.line2}`, background: T.panelDeep }}>
+        <SectionRule label="AFTER THE WHISTLE" hint={lateLine(n)} />
+        <div style={{ padding: '12px 16px', font: F.chk(600, 12), letterSpacing: '.06em', color: T.dim, lineHeight: 1.5 }}>
+          RECORDED, NOT COUNTED — THESE LANDED AFTER SCORING FROZE AND ARE NOT IN THE RESULT ABOVE.
+          THIS MC SENT THE COUNT WITHOUT THE PER-PLAYER SPLIT, SO THERE IS NONE TO SHOW.
+        </div>
+      </div>
+    );
+  }
+  return <AfterEnd a={a} name={name} />;
+}
+
+function AfterEnd({ a, name }: { a: NonNullable<RecapView['after_end']>; name: (id: string) => string }) {
+  const rows = Object.entries(a.by_player).filter(([, v]) => (v.kills || 0) + (v.deaths || 0) > 0);
+  return (
+    <div data-testid="after-end" style={{ marginBottom: 18, border: `1px dashed ${T.line2}`, background: T.panelDeep }}>
+      <SectionRule label="AFTER THE WHISTLE" hint={lateLine(a.facts)} />
+      <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ font: F.chk(600, 12), letterSpacing: '.06em', color: T.dim, lineHeight: 1.5 }}>
+          RECORDED, NOT COUNTED — THESE LANDED AFTER SCORING FROZE AND ARE NOT IN THE RESULT ABOVE.
+        </div>
+        {rows.length === 0 ? (
+          <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>NOTHING ATTRIBUTED TO A PLAYER.</div>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {rows.map(([pid, v]) => (
+              <span key={pid} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10, background: T.panel, border: `1px solid ${T.line}`, padding: '8px 14px' }}>
+                <span style={{ font: F.chk(700, 12), letterSpacing: '.06em' }}>{name(pid)}</span>
+                <span style={{ font: F.mono(600, 11), letterSpacing: '.08em', color: T.micro }}>
+                  {v.kills ? <>+<Num value={v.kills} /> K</> : null}{v.kills && v.deaths ? ' · ' : ''}{v.deaths ? <>+<Num value={v.deaths} /> D</> : null}
+                </span>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 /** F70 — an objective mode's real scoreboard: seconds of possession per team.
  *
@@ -333,17 +436,20 @@ function Possession({ p, label }: { p: NonNullable<RecapView['possession']>; lab
           <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ font: F.chk(700, 12), letterSpacing: '.14em', color: teamColor(id), minWidth: 120 }}>{label(id)}</span>
             <span style={{ flex: 1, height: 14, background: T.inset, border: `1px solid ${T.line}` }}>
-              <span style={{ display: 'block', height: '100%', width: `${top ? Math.round((secs / top) * 100) : 0}%`, background: teamColor(id) }} />
+              {/* named, not matched by shape: the suite used to find these with `span[style*="width"]`,
+                  which started matching <Num>'s fixed-width digit cells the moment the seconds beside
+                  it became digit cells (2026-09-12). A bar a test can name cannot be confused. */}
+              <span data-poss-bar={id} style={{ display: 'block', height: '100%', width: `${top ? Math.round((secs / top) * 100) : 0}%`, background: teamColor(id) }} />
             </span>
-            <span style={{ font: F.osw(700, 20), ...TAB, minWidth: 72, textAlign: 'right' }}>{mmss(secs)}</span>
+            <span style={{ font: F.osw(700, 20), minWidth: 72, textAlign: 'right' }}><Num value={mmss(secs)} /></span>
           </div>
         ))}
         {p.neutral_s > 0 && (
-          <div style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.micro }}>
+          <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro }}>
             NEUTRAL {mmss(p.neutral_s)} — NOBODY HELD THE POINT (A HILL BROADCASTS TEAM 2 WHEN UNOWNED)
           </div>
         )}
-        <div style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: thin ? T.warn : T.micro, lineHeight: 1.5 }}>
+        <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: thin ? T.warn : T.micro, lineHeight: 1.5 }}>
           {thin ? '▲ ' : ''}BEST COVERAGE {mmss(p.observed_s)}{p.of_s ? ` OF ${mmss(p.of_s)}` : ''} — A HILL IS ONLY SEEN BY A GUN IN BEACON RANGE, SO THIS IS A FLOOR, NOT A FULL ACCOUNT.
         </div>
       </div>
@@ -363,7 +469,7 @@ function Stations({ rows }: { rows: RecapStationRow[] }) {
         {rows.map(r => (
           <div key={r.node_id} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <span style={{ font: F.chk(700, 12), letterSpacing: '.1em', minWidth: 150 }}>{STATION_KIND_LABEL[r.kind] ?? r.kind} {r.id}</span>
-            <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: teamColor((STATION_TID_NAME[r.team] ?? 'any').toLowerCase()) }}>{STATION_TID_NAME[r.team] ?? r.team}</span>
+            <span style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: teamColor((STATION_TID_NAME[r.team] ?? 'any').toLowerCase()) }}>{STATION_TID_NAME[r.team] ?? r.team}</span>
             {r.kind === 'respawn' && (
               <span style={{ font: F.mono(600, 11), letterSpacing: '.06em', color: r.revives == null ? T.warn : T.ok }}>
                 {r.revives == null ? 'NEVER HEARD FROM' : `${r.revives} REVIVE${r.revives === 1 ? '' : 'S'}`}

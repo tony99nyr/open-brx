@@ -11,12 +11,17 @@ import { Transport } from './transport/transport.js';
 import { Hud } from './hud/hud.js';
 import { parseMcQr } from './mcurl.js';
 import { Presence, encodeUuid, stationView } from './beacon.js';   // utility items (docs/spec/utility.md)
+import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // background log sync (contracts A25)
+import { APP_VER, platformName } from './build.js';                  // the REAL build id (contracts A29)
+import { applyResult, HISTORY_MAX } from './history.js';             // per-match history + the A24 result patch
 
-const APP_VER = 'hud-0.2';
 const $ = id => document.getElementById(id);
 const LOGMAX = 400;
 const logLines = [];
-function log(msg, cls = 'li') { const t = new Date().toISOString().substr(11, 8); logLines.push(`[${t}] ${msg}`); if (logLines.length > LOGMAX) logLines.shift(); if (cls === 'le') console.warn(msg); }
+// `logLines` is a 400-line RING, so its indices are not stable. `logSeq` counts every line ever
+// written and is what `uploadedThrough` is measured in (A25: a later pull sends only the tail).
+let logSeq = 0;
+function log(msg, cls = 'li') { const t = new Date().toISOString().substr(11, 8); logSeq++; logLines.push(`[${t}] ${msg}`); if (logLines.length > LOGMAX) logLines.shift(); if (cls === 'le') console.warn(msg); }
 
 // ---------- Capacitor plugins (all guarded: the web build must run in a desktop browser) ----------
 const plugins = {};
@@ -35,7 +40,6 @@ async function loadPlugins() {
     tryImport('app', () => import('@capacitor/app').then(m => ({ v: m.App }))),
     tryImport('share', () => import('@capacitor/share').then(m => ({ v: m.Share }))),
     tryImport('fs', () => import('@capacitor/filesystem').then(m => ({ v: m }))),
-    tryImport('cam', () => import('@capacitor-community/camera-preview').then(m => ({ v: m.CameraPreview }))),
     tryImport('zeroconf', () => import('capacitor-zeroconf').then(m => ({ v: m.ZeroConf }))),
     tryImport('beacon', () => import('brx-beacon').then(m => ({ v: m.BrxBeacon }))),   // our advertise plugin (app/plugins/brx-beacon)
   ]);
@@ -96,7 +100,46 @@ engine.night = settings.night;
 hud.mcUrl = settings.mcUrl;
 // per-match history (bench request 2026-08-25): node-local, survives restarts, capped
 try { hud.history = JSON.parse(localStorage.getItem('brx.history') || '[]'); } catch (_) { hud.history = []; }
-engine.onEnd = (g) => { try { const h = hud.history || []; h.push({ ...g, session: transport ? transport.sessionId : null }); while (h.length > 50) h.shift(); hud.history = h; localStorage.setItem('brx.history', JSON.stringify(h)); } catch (_) { /* best-effort */ } };   // `session`: the MC session the match belonged to — the result screen's tally is per session (Tony, 2026-09-04)
+engine.onEnd = (g) => { try { const h = hud.history || []; h.push({ ...g, session: transport ? transport.sessionId : null }); while (h.length > HISTORY_MAX) h.shift(); hud.history = h; localStorage.setItem('brx.history', JSON.stringify(h)); } catch (_) { /* best-effort */ } };   // `session`: the MC session the match belonged to — the result screen's tally is per session (Tony, 2026-09-04)
+// A24: the result lands AFTER the whistle (often seconds, sometimes a rejoin later), so the entry written at the end
+// carries `outcome:null` and is PATCHED by `match_id` — see src/history.js for which entry and what happens when
+// there is none. The decision lives there because app.js cannot be imported in a test.
+engine.onResult = (r) => { try {
+  const { history, changed } = applyResult(hud.history || [], r, {
+    ended: !!engine.ended, mode: (engine.config && engine.config.mode) || null,
+    session: transport ? transport.sessionId : null,
+  });
+  if (!changed) return;
+  hud.history = history; hud.sig = null; localStorage.setItem('brx.history', JSON.stringify(history)); scheduleRender();
+} catch (_) { /* best-effort */ } };
+
+// ---------- the diagnostic bundle + background log sync (contracts A25, node.md §3.14) ----------
+// ONE builder for both routes: the manual SHARE LOG tap and MC's background `pull_log`. The BLE frame
+// ring (brxlink keeps the last 60 in/out frames) is the only record of what the gun actually said, and
+// without it a field fault on the phone side is undebuggable — so it rides along with the log tail.
+function logSnapshot(from = 0) {
+  const base = logSeq - logLines.length;                 // absolute index of logLines[0]
+  const start = Math.max(0, Math.min(logLines.length, Math.round(from) - base));
+  const lost = Math.max(0, base - Math.round(from));     // lines the ring dropped before MC ever saw them
+  const tail = logLines.slice(start);
+  let frames = [];
+  try { frames = (link && link.frames || []).map(f => `${f.t} ${f.dir} ${f.f}`); } catch (_) { /* ignore */ }
+  const text = [
+    lost ? `--- ${lost} earlier line(s) rolled out of the ring before upload ---` : null,
+    tail.join('\n'),
+    '--- ble frames (last ' + frames.length + ') ---',
+    frames.join('\n'),
+    '--- engine state ---',
+    (() => { try { return JSON.stringify(engine.state()); } catch (_) { return '{}'; } })(),
+  ].filter(x => x !== null).join('\n');
+  return { text, through: logSeq, lines: tail.length, frames: frames.length };
+}
+const logsync = new LogSync({
+  transport: () => transport,
+  snapshot: from => logSnapshot(from),
+  phase: () => engine.phase,
+  log,
+});
 
 // ---------- utility items: watch for stations while connected, and advertise ourselves as a player ----------
 // The beacon scan is the same BLE scan the gun picker uses, kept open for the whole match at the balanced
@@ -213,14 +256,22 @@ function connectMc(url, remember = true) {
   if (transport) { try { transport.close(); } catch (_) { /* ignore */ } }
   const gun = engine.gun ? { name: engine.gun.name, tail: engine.gun.tail, fw: engine.fw || undefined } : null;
   transport = new Transport({ node: { app_ver: APP_VER }, gun });
-  transport.setStatusProvider(() => engine.statusBody(preflight));
+  // `log` is this node's own view of the sync (A25: MC shows none|offered|pulling|held per node);
+  // app_ver/platform are added by the transport itself so every node type reports them (A29).
+  transport.setStatusProvider(() => ({ ...engine.statusBody(preflight), log: logsync.state() }));
   transport.onHydrate(node => engine.hydrate(node));
-  transport.onMessage(m => { engine.onMcMessage(m); if (m.kind === 'feedback' && m.body && m.body.kind === 'kill') haptic('kill'); });
+  transport.onMessage(m => {
+    engine.onMcMessage(m);
+    if (m.kind === 'feedback' && m.body && m.body.kind === 'kill') haptic('kill');
+    // A25: MC asks at recap, on an offer, from the LOGS button and on the reconnect of a node whose
+    // log never arrived. We answer only when it is safe; the request is parked otherwise, never dropped.
+    if (m.kind === 'pull_log') logsync.request((m.body && m.body.reason) || 'pull');
+  });
   transport.onState(s => {
     // Bound to an MC: stop letting discovery/sweep pick a different one. `allowAssist` opens that
     // door after 15 s of failing to connect and used to stay open for the rest of the session, so a
     // momentary drop mid-match could hand this phone to a second MC on the LAN (deferred low).
-    if (s === 'bound') { allowAssist = false; if (assistTimer) { clearTimeout(assistTimer); assistTimer = null; } }
+    if (s === 'bound') { allowAssist = false; if (assistTimer) { clearTimeout(assistTimer); assistTimer = null; } logsync.onBound(); }
     // ...and re-open it if we stay unbound: its only opener used to be a one-shot 15 s boot timer,
     // so after the first successful bind discovery could never rescue us again — exactly the case
     // where MC restarts on a new IP mid-match (review 2026-09-01).
@@ -288,14 +339,6 @@ Object.assign(hud.h, {
   onSetUrl: () => { const el = $('mcurl'); if (el && el.value.trim()) connectMc(el.value.trim()); },
   onToggleNight: () => { engine.night = !engine.night; settings.night = engine.night; hud.sig = null; scheduleRender(); },
   onToggleMcPill: () => { hud.mcPill = !hud.mcPill; scheduleRender(); },   // live: show/hide the out-of-range detail (review #32)
-  onToggleCam: async () => {
-    if (!plugins.cam || !isNative()) { hud.setCam(false); log('CAM unavailable on this platform', 'li'); return; }
-    try {
-      if (hud.cam) { await plugins.cam.stop(); hud.setCam(false); document.documentElement.classList.remove('cam-on'); }
-      else { await plugins.cam.start({ parent: 'cam', position: 'rear', toBack: true, disableAudio: true }); hud.setCam(true); document.documentElement.classList.add('cam-on'); }   // toBack puts the preview BEHIND the webview — the page must go transparent or it paints black over it
-    } catch (e) { log('CAM: ' + (e && e.message || e), 'le'); hud.setCam(false); }
-    hud.sig = null; scheduleRender();
-  },
   onCloseDiag: () => hud.toggleDiag(),
   onReconnectGun: () => { if (link.deviceId) link.retryNow(); },   // cuts the backoff short; _reconnect() alone was a no-op mid-loop
   onReconnectMc: () => {
@@ -310,37 +353,27 @@ Object.assign(hud.h, {
   // onPanic removed 2026-08-26: a player-side panic only safes THIS gun and knocks the player out until a
   // re-push — a mishit mid-game ruins their match. Fleet safety = MC's PANIC + the physical power switch.
   onShareLog: async () => {
-    // Build the diagnostic bundle ONCE: log lines + engine state + the raw BLE frame ring.
-    // The frame ring (brxlink keeps the last 60 in/out frames) is the only record of what the gun
-    // actually said, and without it a field fault on the phone side is undebuggable.
-    let frameCount = 0;
-    const bundle = () => {
-      let frames = [];
-      try { frames = (link && link.frames || []).map(f => `${f.t} ${f.dir} ${f.f}`); } catch (_) { /* ignore */ }
-      frameCount = frames.length;
-      return [
-        logLines.join('\n'),
-        '--- ble frames (last ' + frames.length + ') ---',
-        frames.join('\n'),
-        '--- engine state ---',
-        JSON.stringify(engine.state()),
-      ].join('\n');
-    };
+    // The MANUAL route (A25: background sync never replaces it). It sends the WHOLE ring, not the
+    // tail — the operator tapped it because they want this phone's log now — and it ignores the
+    // ARMED/LIVE gate for the same reason. `logSnapshot` is the one shared builder.
+    const snap = logSnapshot(0);
     // 1. queue the log to MC over the wire (log_offer + chunked log_data — the contract's log path)
     try {
       if (transport && transport.state === 'bound') {
-        const text = bundle();
-        const bytes = new TextEncoder().encode(text);
+        // The SAME cut the background sync uses. It was a bare `46 * 1024` here and
+        // `MAX_LOG_CHUNK_BYTES - 2048` there: two numbers that have to agree, with nothing making them.
+        const chunks = chunkByBytes(snap.text, DEFAULT_CHUNK_BYTES);
+        const bytes = new TextEncoder().encode(snap.text).length;
         // report() returns false when the socket is closing but `state` has not flipped yet, and
         // these frames do NOT go through the retry ring — so an unchecked send is a log that
         // silently never arrives while the HUD says it did (review 2026-09-01).
-        let sent = transport.report('log_offer', { bytes: bytes.length, lines: logLines.length }) !== false;
-        const CHUNK = 40 * 1024;
-        for (let o = 0, seq = 0; o < text.length; o += CHUNK, seq++) {
-          if (transport.report('log_data', { seq, chunk: text.slice(o, o + CHUNK), last: o + CHUNK >= text.length }) === false) sent = false;
+        let sent = transport.report('log_offer', { bytes, lines: snap.lines, from: 0, reason: 'manual' }) !== false;
+        for (let i = 0; i < chunks.length; i++) {
+          if (transport.report('log_data', { seq: i, chunk: chunks[i], last: i === chunks.length - 1 }) === false) sent = false;
         }
         if (!sent) throw new Error('the socket refused part of the log');
-        log(`log sent to MC — ${bytes.length} bytes, ${frameCount} BLE frames ✓`, 'lk');
+        logsync.markUploaded(snap.through);   // the background pull now has nothing to re-send
+        log(`log sent to MC — ${bytes} bytes, ${snap.frames} BLE frames ✓`, 'lk');
         return;                       // delivered: nothing to copy, nothing for the operator to do
       }
     } catch (e) { log('log→MC: ' + (e && e.message || e), 'le'); }
@@ -348,7 +381,7 @@ Object.assign(hud.h, {
     // fallback. just show that it successfully sent to MC" — a share sheet full of raw log after a
     // SUCCESSFUL upload reads as "it didn't work", and in the field nobody pastes it anywhere.
     log('MC unreachable — offering the log locally instead', 'le');
-    const text = bundle();
+    const text = snap.text;
     try { if (plugins.share) await plugins.share.share({ title: 'BRX node log', text }); else await navigator.clipboard.writeText(text); log('log shared/copied', 'lk'); }
     catch (e) { log('share: ' + (e && e.message || e), 'le'); }
   },
@@ -381,7 +414,7 @@ function renderNow() {
   const st = engine.state();
   hud.render(st);
   hud.setDiag({
-    preflight, link: { deviceId: link.deviceId, connected: link.connected, retries: link.retries, mc: transport ? transport.state : 'none', mc_url: settings.mcUrl, node_id: transport ? transport.nodeId : '—' },
+    preflight, link: { app: APP_VER, platform: platformName(), log: logsync.state(), deviceId: link.deviceId, connected: link.connected, retries: link.retries, mc: transport ? transport.state : 'none', mc_url: settings.mcUrl, node_id: transport ? transport.nodeId : '—' },
     engine: { phase: st.phase, alive: st.alive, hp: st.hp, armor: st.armor, ammo: st.ammo, reserve: st.reserve, shots: st.shots, deaths: st.deaths, match_id: st.matchId, player_num: st.playerNum, latch: engine.latch ? `${engine.latch.shooter_num}/${engine.latch.shooter_team}` : '—', resync: st.resync ? st.resync.step : '—' },
     timings: { offset_ms: transport ? Math.round(transport.clock.offset || 0) : 0, synced: st.synced, queue: transport ? transport.ring.pending().length : 0, t_minus_ms: st.tMinusMs, clock_ms: st.clockMs },
     frames: link.frames.slice(-14), log: logLines.slice(-30),
@@ -564,4 +597,4 @@ async function sweepForMc() {
   }
   await refreshPreflight(); scheduleRender();
 })();
-window.brx = { engine, link, hud, get transport() { return transport; }, connectMc, log: logLines, C, presence, switchRole };
+window.brx = { engine, link, hud, get transport() { return transport; }, connectMc, log: logLines, C, presence, switchRole, logsync, logSnapshot, APP_VER };

@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { CHAMFER, F, HAZARD, SEG_OVERLAY, STRIPES, T, TAB } from '../tokens';
 
+export { Num, Digits, DIGIT_W } from './Num';
+
 type Sx = CSSProperties;
 const merge = (a: Sx, b?: Sx): Sx => (b ? { ...a, ...b } : a);
 
@@ -15,7 +17,7 @@ export function ScreenHeader({ kicker, title, right }: { kicker: string; title: 
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '14px 28px', marginBottom: 20 }}>
       <div>
-        <div style={{ font: F.mono(600, 10), letterSpacing: '.3em', color: T.acc }}>{kicker}</div>
+        <div style={{ font: F.mono(600, 11), letterSpacing: '.26em', color: T.acc }}>{kicker}</div>
         <div style={{ font: F.osw(700, 30), letterSpacing: '.1em', textTransform: 'uppercase', marginTop: 2 }}>{title}</div>
       </div>
       {right && <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 14, flexWrap: 'wrap' }}>{right}</div>}
@@ -29,7 +31,9 @@ export function SectionRule({ label, hint, style }: { label: string; hint?: Reac
     <div style={merge({ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }, style)}>
       <span style={{ font: F.chk(700, 11), letterSpacing: '.28em', color: T.dim }}>{label}</span>
       <span style={{ flex: 1, height: 1, background: T.line }} />
-      {hint && <span style={{ font: F.mono(500, 9), letterSpacing: '.18em', color: T.micro }}>{hint}</span>}
+      {/* 11 px, not 9: the hint carries real content (how many stations are armed, what a section is
+          FOR), and the console's floor for meaning-bearing text is 11 px (audit 2026-09-12). */}
+      {hint && <span style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>{hint}</span>}
     </div>
   );
 }
@@ -79,13 +83,13 @@ export function SegBar({ pct, color = T.ink, height = 10, cell = 10, style }: { 
 }
 
 /** Solid tag: status-color background, dark ink. */
-export function Tag({ children, color = T.acc, ink = T.accInk, size = 10, style }: { children: ReactNode; color?: string; ink?: string; size?: number; style?: Sx }) {
+export function Tag({ children, color = T.acc, ink = T.accInk, size = 11, style }: { children: ReactNode; color?: string; ink?: string; size?: number; style?: Sx }) {
   return <span style={merge({ font: F.chk(700, size), letterSpacing: '.18em', color: ink, background: color, padding: '2px 8px', whiteSpace: 'nowrap' }, style)}>{children}</span>;
 }
 
 /** Outline tag (READY / WAIT). */
 export function OutlineTag({ children, color, border }: { children: ReactNode; color: string; border: string }) {
-  return <span style={{ font: F.chk(700, 10), letterSpacing: '.16em', color, border: `1px solid ${border}`, padding: '3px 9px' }}>{children}</span>;
+  return <span style={{ font: F.chk(700, 11), letterSpacing: '.14em', color, border: `1px solid ${border}`, padding: '3px 9px' }}>{children}</span>;
 }
 
 /** Segmented control. */
@@ -179,8 +183,9 @@ export function GhostButton({ children, onClick, color = T.dim, border = T.line,
 }
 
 /** Number cell: mono label over a big Oswald number. */
-export function NumberCell({ label, value, unit, color = T.ink, size = 24, pad = '8px 18px', labelSize = 9 }:
+export function NumberCell({ label, value, unit, color = T.ink, size = 24, pad = '8px 18px', labelSize = 11 }:
   { label: string; value: ReactNode; unit?: string; color?: string; size?: number; pad?: string; labelSize?: number }) {
+  // labelSize default raised 9 -> 11 with the rest of the console's floor (audit 2026-09-12)
   return (
     <span style={{ background: T.panel, border: `1px solid ${T.line}`, padding: pad, display: 'inline-flex', flexDirection: 'column' }}>
       <span style={{ font: F.mono(500, labelSize), letterSpacing: '.2em', color: T.micro }}>{label}</span>
@@ -194,7 +199,7 @@ export function CountBlock({ value, label, color }: { value: number; label: stri
   return (
     <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, background: T.panel, border: `1px solid ${T.line2}`, padding: '7px 16px' }}>
       <span style={{ font: F.osw(700, 24), ...TAB, color }}>{value}</span>
-      <span style={{ font: F.chk(600, 9), letterSpacing: '.22em', color: T.micro }}>{label}</span>
+      <span style={{ font: F.chk(600, 11), letterSpacing: '.18em', color: T.micro }}>{label}</span>
     </span>
   );
 }
@@ -223,7 +228,7 @@ export function ValueBox({ value, unit, onChange, min = 0, max = 9999, step = 1,
         onFocus={() => setFocused(true)} onBlur={() => { setFocused(false); commit(); }}
         onKeyDown={e => { if (e.key === 'Enter') { (e.target as HTMLInputElement).blur(); } }}
         onChange={e => setDraft(e.target.value)} />
-      {unit && <span style={{ font: F.chk(600, 10), letterSpacing: '.14em', color: T.micro }}>{unit}</span>}
+      {unit && <span style={{ font: F.chk(600, 11), letterSpacing: '.12em', color: T.micro }}>{unit}</span>}
     </span>
   );
 }
@@ -250,8 +255,12 @@ export function DraftText({ value, onCommit, className = 'textbox', style, trans
 }
 
 /** Label/value micro-telemetry row pair used inside cards. */
-export function Micro({ children, color = T.micro, size = 9.5 }: { children: ReactNode; color?: string; size?: number }) {
-  return <span style={{ font: F.mono(500, size), letterSpacing: '.2em', color }}>{children}</span>;
+/** The label half of every card's label/value pair (LINK · HEADSET · BATTERY · APP). It shipped at
+ *  9.5 px, which is under the console's own floor for text that carries meaning — and these are the
+ *  words that say WHAT the number beside them is (audit 2026-09-12). 11 px with the tracking pulled in
+ *  so "LAST SEEN" still fits the 82 px label column. */
+export function Micro({ children, color = T.micro, size = 11 }: { children: ReactNode; color?: string; size?: number }) {
+  return <span style={{ font: F.mono(500, size), letterSpacing: '.12em', color }}>{children}</span>;
 }
 
 /** Progress cell: "n/N LABEL" + segmented bar (kit-out / ready). */

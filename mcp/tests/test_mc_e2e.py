@@ -192,6 +192,36 @@ def test_victory_cue_to_winning_team_only():
     run(go())
 
 
+def _result(node):
+    """The last `result` body this node was pushed, or None. It only exists if the envelope SURVIVED
+    `decode(direction="mc")` at the node — so this is also the proof that the kind is registered on
+    both ends of the real wire."""
+    got = [e["body"] for e in node.received if e.get("kind") == "result"]
+    return got[-1] if got else None
+
+
+# ------------------------------------------------ A24: the result reaches the LOSER too
+def test_the_result_reaches_the_loser_over_the_real_wire():
+    """The victory cue goes to winners only and is in-coverage only, so on a losing phone "I lost" and
+    "I dropped off the LAN" look identical (game test 2026-09-11 D3). A24 pushes the outcome to every
+    bound node, computed per recipient, and this is that over a real websocket."""
+    if not HAVE_WS:
+        return skip("result")
+
+    async def go():
+        async with Stack(mode="tdm", time_limit_s=120) as s:
+            a, b, na, nb = await _live_two(s)
+            await _kill(s, a, nb)
+            assert await until(lambda: _rows(s).get(a["player_id"], {}).get("kills", 0) == 1)
+            s.session.control("end")
+            assert await until(lambda: _result(na) and _result(nb), 5.0), "both nodes were pushed a result"
+            assert _result(na)["outcome"] == "win" and _result(nb)["outcome"] == "lose"
+            assert _result(nb)["winner"]["team_id"] == a["team_id"]
+            assert len(_result(nb)["rows"]) == 2, "every player's row rides along"
+            assert _result(nb)["my"]["player_id"] == b["player_id"], "and the recipient's own row is named"
+    run(go())
+
+
 # ------------------------------------------------ (e) post-end parking (validates C1 end-freeze)
 def test_post_end_parking_does_not_move_the_winner():
     if not HAVE_WS:

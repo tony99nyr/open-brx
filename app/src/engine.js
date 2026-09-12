@@ -32,8 +32,11 @@ const TEAM_NAME = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN' };
 // easy_reload perk, so a press is not proof a weapon changed (review 2026-08-31).
 const RECONCILE_MS = 3000;           // rejoin: hold the gun disarmed this long while we reconcile state (anti-cheat: a restart is slow + gains nothing; a real crash costs 3 s, which is rare and fine — Tony 2026-09-04)
 const HEADSET_REBLINK_MS = 120000;   // re-paint the DOWN out-blink every 2 min (< the ~160 s blink count) so a long scanner walk stays lit
+const PICK_DEBOUNCE_MS = 400;        // A26 (S20): a WEAPON pick equips AND arms it for test-firing, so every tap costs an MC round-trip and a $WEAP write on the gun. Scrolling the rack must not spam either: only the last row tapped inside this window is sent (loadout.md §4.5)
 const SWITCH_MAX_MS = 850;       // the stock $WEAP tok15 (bench 2026-09-04: 850 ms, linear, no floor) — a fallback; the bundle carries the real value in frames.swap_ms
 const EVENT_MIN_GAP_MS = 1000;
+const RESULT_SETTLE_MS = 30000;     // A24/node.md §3.13: after the whistle the results screen says PENDING for this long; only
+                                    // then, and only with MC unreachable, does it say MC NOT REACHED. It NEVER says lost.
 const READOUT_COALESCE_MS = 300;    // A16 §3.1/§5: a change within this of the last READOUT WRITE only restarts the hold, it does not write again
 const PAIN_GAP_MS = 600;            // A15.3: at most one pain grunt per 600 ms (drop, never queue)
 // A17.2: HP below which the once-per-life low-health alert fires (Tony, bench 2026-09-07). ABSOLUTE, not
@@ -184,7 +187,7 @@ export class Engine {
     this.alive = false; this.deaths = 0; this.shots = 0; this.battery = null; this.fw = null;
     this.carrying = null;   // A11.6: flag team whose colour the headset is blinking while this player carries it (kept for back-compat reads; the source of truth is `_activeRole` once `headset.role` exists)
     this._activeRole = null;        // A16 §3.3: {name, tid} — the ONE headset role currently held (carrier|infected|vip|beacon|extracted), re-asserted after every hit, cleared on death
-    this._lastHeadsetFlashAt = null; // A16 §C: node-initiated headset FLASH sequences (hit flash, role re-assert) share the gun burst's 1 s minimum — never the down rearm or the low-health alert
+    this._lastHeadsetFlashAt = null; // led-language.md §2 (safety: bursts ≥ 1 s apart) / §5: node-initiated headset FLASH sequences (hit flash, role re-assert) share the gun burst's 1 s minimum — never the down rearm or the low-health alert
     this.latch = null;              // {shooter_num, shooter_team, at, ir_proto}
     this.beacon = null;             // F72: {owner_team, magnitude, sensor, at} — last grenade/station beacon (proto-15 $HIR)
     this._lastBeaconKey = null;     // F85: `${owner_team}:${magnitude}` of the last beacon ACCEPTED (not merely seen), for dedupe below
@@ -232,6 +235,11 @@ export class Engine {
     this._lightGen = 0;             // bumped on teardown (end/panic/BLE drop) so a stray delayed $GLED/$HLED/cue write can't land after it
     this.score = null;              // ScoreRow from MC (kills/assists/accuracy) — null until synced
     this.scoreAt = 0;
+    // A24: the MATCH RESULT, computed per recipient by MC and pushed to every node, losers included. Null until it
+    // arrives. NOTHING on the node may write win or lose from the ABSENCE of this — a `victory` cue that never came
+    // means "lost" and "out of coverage" identically (game test 2026-09-11 D3).
+    this.result = null;             // the `result` body for THIS match (contracts §5 `result`)
+    this.resultAt = 0;
     this.headEcho = null; this.headWrittenAt = 0; this.awaitingEcho = false;
     this.spawned = false; this.ended = false;
     this.cuesFired = new Set();
@@ -243,7 +251,9 @@ export class Engine {
     this.game = null;               // A10 §4.6: assign.game — what the BRIEFING screen shows
     this.briefSeen = false;         // the player tapped BUILD MY KIT ▸ on the briefing (reset when kit_open flips true)
     this.loadoutAck = null;         // MC's verdict on the last pick: {slot, ok, reason, t} — tick() clears it after ~4 s
-    this.pendingPick = null;        // optimistic highlight until the ack lands: {slot, kind, id, at}
+    this.pendingPick = null;        // optimistic highlight until the ack lands: {slot, kind, id, at} — the row's ⟳
+    this._pickDue = null;           // A26: a weapon pick waiting out PICK_DEBOUNCE_MS before it goes to MC: {slot, kind, id, at, try}
+    this.kitLocked = false;         // A27/A30: the host advanced the phase while this player was still kitting — the lobby screen says so (loadout.md §4.4)
     this.tryoutSeen = null;         // weapon_id of a try-out panel the player dismissed with DONE (panel hides, gun stays armed)
     this.resync = null;             // §3.10 state machine: {step, since, lastAmmo, lastReserve}
     this.reconciling = null;        // {since} — a rejoin's disarmed reconcile window (S7.1); no death is inferred here
@@ -270,6 +280,8 @@ export class Engine {
     this.endedMatches = [];         // match_ids already ended locally — a re-hydrated `start` for them is a no-op
     this.endAck = false;            // result screen shown until the player taps OK (then the 'over' screen)
     this.onEnd = null;              // app hook: called once per ended match with a stats summary (history)
+    this.onResult = null;           // A24 app hook: the result landed — PATCH the history entry for that match_id
+    this.endedAt = 0;               // when this node saw the match end (the results screen's 30 s settle window)
     this.configPending = false;     // config arrived while the gun was unlinked → write head on relink
     this.pendingTeardown = null;    // 'end' | 'panic' owed to the gun once it relinks
     this.stations = [];             // utility items in radio range (beacon.js Presence entries), newest snapshot from the app
@@ -284,6 +296,10 @@ export class Engine {
         phase: this.phase, gun: this.gun, player: this.player, team: this.team, roster: this.roster,
         config: this.config, frames: this.frames, start: this.start, matchId: this.matchId,
         deaths: this.deaths, shots: this.shots, spawned: this.spawned, ended: this.ended, savedAt: this.now(),
+        // A24: `ended` alone is not enough to restore the results screen. `resultWait` needs `endedAt` (the
+        // 30 s settle window is measured from it) and a falsy one pins the screen on PENDING for ever — a
+        // relaunch during recap could never reach MC NOT REACHED, and a result already pushed was lost with it.
+        endedAt: this.endedAt, result: this.result, resultAt: this.resultAt,
         // combat state — WITHOUT this a rejoin defaults alive:false/hp:0, the recovery guard stamps a
         // death, and auto-respawn HEALS you to full: force-close at 1 hp, reopen, get a free respawn
         // (bench 2026-09-04, Tony — a real cheat). Restoring the real pools closes it; the resync still
@@ -302,7 +318,8 @@ export class Engine {
       if (s.savedAt && this.now() - s.savedAt > C.CONFIG_TTL_MS) { this.log('persisted context expired', 'li'); return; }
       Object.assign(this, { gun: s.gun, player: s.player, team: s.team, roster: s.roster || [], config: s.config,
         frames: s.frames, start: s.start, matchId: s.matchId, deaths: s.deaths || 0, shots: s.shots || 0,
-        spawned: !!s.spawned, ended: !!s.ended, endedMatches: s.endedMatches || [], configPending: !!s.configPending, pendingTeardown: s.pendingTeardown || null,
+        spawned: !!s.spawned, ended: !!s.ended, endedAt: s.endedAt || 0, result: s.result || null, resultAt: s.resultAt || 0,
+        endedMatches: s.endedMatches || [], configPending: !!s.configPending, pendingTeardown: s.pendingTeardown || null,
         alive: !!s.alive, hp: s.hp || 0, armor: s.armor || 0, shield: s.shield || 0, deadAt: s.deadAt || 0, killedBy: s.killedBy || null,
         catalog: s.catalog || null, policy: s.policy || null, game: s.game || null, briefSeen: !!s.briefSeen });
       // Phase is re-derived when the gun reconnects (resumeSchedule); until then we are idle.
@@ -404,6 +421,7 @@ export class Engine {
     if (node.game) this.game = node.game;
     if (node.score) { this.score = node.score; this.scoreAt = this.now(); }
     if (node.match_id) this.matchId = node.match_id;
+    if (node.result) this.onResultPush(node.result, 'welcome');   // A24: MC carries the final result in `welcome.node.result` through recap
     if (node.config && node.config.night != null) this.night = !!node.config.night;
     if (this.player && this.phase === 'connected') this._set('kitted');
     if (node.frames && node.config && (this.phase === 'kitted')) {
@@ -432,9 +450,39 @@ export class Engine {
         if (body.preview && ['connected', 'kitted', 'lobby'].includes(this.phase) && fr.length && fr.every(f => f.startsWith('$PLAY') || f.startsWith('$SFLASH'))) return this._write(fr, 'apply preview');
         return undefined;
       }
+      case 'result': return this.onResultPush(body, 'push');   // A24 — never inferred, only ever pushed
       case 'score': if (body && typeof body === 'object') { this.score = body; this.scoreAt = this.now(); this._changed(); } return;   // may carry `board` {teams:[{team_id,name,score}], cap} for the DOWN recap
       default: return;
     }
+  }
+
+  /** A24 / node.md §3.13 — the MATCH RESULT. `outcome` ("win"|"lose"|"draw"|"undecided") is already computed FOR
+   *  THIS RECIPIENT by MC; the node only stores and renders it. Accepted for the CURRENT `match_id` only: a stale
+   *  one is logged and dropped, because a result from the previous match rendered over this one's screen is a
+   *  confident lie. `source` is 'push' (live) or 'welcome' (a rejoin during recap).
+   *
+   *  What must NOT happen here (and is the whole reason the field exists): inventing an outcome when nothing
+   *  arrived. There is no `else` branch below that writes win or lose — the absence of a result is rendered as
+   *  "pending", never as a loss. */
+  onResultPush(body, source = 'push') {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) { this.log('result: not an object — dropped', 'le'); return { ok: false, reason: 'bad_body' }; }
+    const mid = body.match_id;
+    if (!mid) { this.log('result with no match_id — dropped (MC must stamp it)', 'le'); return { ok: false, reason: 'no_match_id' }; }
+    if (!this.matchId) { this.log(`result for ${mid} — this node has no current match — dropped`, 'li'); return { ok: false, reason: 'no_match' }; }
+    if (mid !== this.matchId) { this.log(`result for ${mid} — not this match (${this.matchId}) — dropped`, 'li'); return { ok: false, reason: 'stale' }; }
+    this.result = body; this.resultAt = this.now();
+    this.log(`match result (${source}): ${body.outcome || '—'}${body.provisional ? ' · provisional' : ''}`, 'lk');
+    try { if (this.onResult) this.onResult(body); } catch (_) { /* history is best-effort */ }
+    this._changed();
+    return { ok: true };
+  }
+
+  /** 'in' once MC has told us how it ended · 'unreached' once the settle window has passed with no MC link ·
+   *  'pending' otherwise. NONE of the three is an outcome — the screen says what it knows, not what it guesses. */
+  resultWait(now = this.now()) {
+    if (this.result) return 'in';
+    if (this.ended && this.endedAt && (now - this.endedAt) >= RESULT_SETTLE_MS && this.wsState !== 'bound') return 'unreached';
+    return 'pending';
   }
 
   _assign({ player, team, roster, catalog, policy, game }) {
@@ -442,9 +490,9 @@ export class Engine {
     if (catalog) this.catalog = catalog;
     if (policy) this.policy = policy;
     if (game) this.game = game;
-    if (!wasOpen && this.kitOpen()) this.briefSeen = false;   // §4.6: the kit just opened — show the BRIEFING, the player taps through
+    if (!wasOpen && this.kitOpen()) { this.briefSeen = false; this.kitLocked = false; }   // §4.6: the kit just opened — show the BRIEFING, the player taps through; A27: and last match's lock notice is retired
     if (!this.kitOpen()) this.browse(false);                   // MC went back to setting up: no browser while the kit is closed
-    if (this.ended) { this.ended = false; this.endAck = false; this.matchId = null; this.start = null; this.log('new match from MC — leaving the match-complete screen', 'lk'); }
+    if (this.ended) { this.ended = false; this.endAck = false; this.matchId = null; this.start = null; this.result = null; this.resultAt = 0; this.endedAt = 0; this.log('new match from MC — leaving the match-complete screen', 'lk'); }
     this.player = player || this.player; this.team = team || this.team; if (roster) this.roster = roster;
     if (this.phase === 'connected' || this.phase === 'idle') { if (this.bleUp) this._set('kitted'); }
     this._changed();
@@ -452,6 +500,15 @@ export class Engine {
   }
 
   _applyConfig({ config, frames, roster }, why) {
+    // A27/A30 (loadout.md §4.4): a host advance that lands while this player is still kitting is NOT a silent
+    // screen swap. A queued pick is dropped (the kit is locked — sending it would only earn a refusal), and the
+    // lobby screen leads with "THE HOST LOCKED KITS". A player who had already readied up asked for this.
+    if (why !== 'hydrate' && why !== 'relink' && this.phase === 'kitted' && !this.ended && this.kitOpen() && (this.browsing || !this.ready)) {
+      this._cancelPick();
+      this.kitLocked = true;
+      this.moment = { kind: 'kit_locked_by_host', at: this.now() };
+      this.log('host locked kits while I was still kitting', 'li');
+    }
     this.config = config || this.config;
     this.browse(false);   // the LOADOUT browser is a KITTED-phase screen; a config push ends kit-out
     this.frames = frames || this.frames; if (roster) this.roster = roster;
@@ -516,24 +573,46 @@ export class Engine {
     if (slot === 'secondary' && kind === 'weapon' && lo.perk && alt(lo.perk)) return { slot: 'perk', id: lo.perk.perk_id, name: lo.perk.name };
     return null;
   }
-  /** Tap a row = equip. `tryIt` (weapons only) also asks MC for the try-out. Returns false if the slot isn't ours. */
-  requestLoadout(slot, kind, id = null, tryIt = false) {
+  /** A26 (S20, loadout.md §4.5): tap a row = EQUIP IT AND ARM IT for test-firing. There is no separate TRY IT
+   *  any more, so every weapon tap would otherwise cost an MC round-trip and a `$WEAP` write on the gun —
+   *  a player scrolling the rack with their thumb would fire off a dozen. So a weapon pick is DEBOUNCED here
+   *  on the node (`PICK_DEBOUNCE_MS`): the row shows ⟳ at once, and only the LAST row tapped inside the window
+   *  is sent, with `try:true`. Perks and NONE arm nothing and go straight out.
+   *  `tryIt` is legacy and ignored for weapons (A26 made every weapon pick a try). Returns false if the slot isn't ours. */
+  requestLoadout(slot, kind, id = null, tryIt = false) {   // eslint-disable-line no-unused-vars
     if (!this.canPick(slot)) { this.log(`pick refused locally: ${slot} is not player-choice`, 'le'); return false; }
     if (slot === 'primary' && kind !== 'weapon') return false;
     if (slot === 'secondary' && kind !== 'weapon' && kind !== 'none') return false;   // A14: perks have their own slot
     if (slot === 'perk' && kind !== 'perk' && kind !== 'none') return false;
     if (kind === 'none' && slot === 'primary') return false;
-    const body = { player_id: this.player && this.player.player_id, slot, kind };
-    if (kind !== 'none') body.id = id;
-    if (tryIt && kind === 'weapon') body.try = true;
     this.pendingPick = { slot, kind, id: kind === 'none' ? null : id, at: this.now() };
     this.loadoutAck = null;
-    this.report('loadout_request', body);
+    if (kind === 'weapon') this._pickDue = { slot, kind, id, at: this.now(), try: true };   // A26: coalesce; tick()/_flushPick sends it
+    else { this._pickDue = null; this._sendPick({ slot, kind, id }); }
     this._changed(); return true;
   }
+  /** The wire form of one pick (contracts §5 `loadout_request`). */
+  _sendPick(p) {
+    const body = { player_id: this.player && this.player.player_id, slot: p.slot, kind: p.kind };
+    if (p.kind !== 'none') body.id = p.id;
+    if (p.try && p.kind === 'weapon') body.try = true;
+    this.report('loadout_request', body);
+  }
+  /** Send whatever pick is sitting in the debounce window, now. Called by tick() when the window elapses, and
+   *  eagerly by anything that COMMITS the kit (closing the browser, readying up) so a pick is never dropped. */
+  _flushPick(why) {
+    const p = this._pickDue; if (!p) return false;
+    this._pickDue = null;
+    this.log(`pick sent (${why}): ${p.slot} ${p.kind} ${p.id || ''}`, 'lk');
+    this._sendPick(p);
+    this._changed(); return true;
+  }
+  /** A26: drop a queued pick that will never be sent (the kit locked under it). */
+  _cancelPick() { this._pickDue = null; this.pendingPick = null; }
   browse(open) {
     open = !!open;
     if (this.browsing === open) return;
+    if (!open) { this._flushPick('browser closed'); this.dismissTryout(); }   // A26: leaving the browser commits the last pick and retires the try-out panel (the gun stays armed — §4.5)
     this.browsing = open;
     this.report('loadout_browse', { player_id: this.player && this.player.player_id, open });
     this._changed();
@@ -565,7 +644,7 @@ export class Engine {
     if (this.phase !== 'kitted') return false;
     if (ready && !this.isSynced()) { this.log('cannot ready: clock not synced', 'le'); return false; }
     this.ready = !!ready;
-    if (this.ready) this.browse(false);   // READY UP commits the kit — the browser closes (loadout.md §4.5)
+    if (this.ready) { this._flushPick('ready up'); this.browse(false); }   // READY UP commits the kit — a pick still inside the A26 debounce goes now, then the browser closes (loadout.md §4.5)
     this.report('ready', { player_id: this.player && this.player.player_id, ready: this.ready });
     this._changed(); return true;
   }
@@ -583,7 +662,7 @@ export class Engine {
     this.start = { match_id: body.match_id, go_live_t: body.go_live_t, config_id: body.config_id, seq: body.seq, countdown_s: body.countdown_s };
     this._prevRem = null;               // fresh schedule: runway cue edges re-arm
     const newMatch = body.match_id !== this.matchId;
-    if (newMatch) { this.score = null; this.scoreAt = null; }   // a new match: last match's K/A/board must not show on the first DOWN
+    if (newMatch) { this.score = null; this.scoreAt = null; this.result = null; this.resultAt = 0; this.endedAt = 0; }   // a new match: last match's K/A/board — and last match's RESULT — must not show on the first DOWN
     this.matchId = body.match_id; this.cuesFired = new Set(); this.shots = 0; this.deaths = 0; this.ended = false; this._resyncRevive = false;
     // A NEW match supersedes any in-flight reconnect resync of the OLD one. Without this the resync
     // stays set, the T-0 spawn (guarded on `!this.resync`) never runs, and the gun sits alive-with-0-hp
@@ -1010,7 +1089,7 @@ export class Engine {
   /** Back-compat entry point: flag/objective carrier blink, now routed through the general role mechanism
    *  (§3.3). Every existing caller (`alert()`'s objective_taken/objective_scored/flag_returned) is unchanged. */
   _carrier(on, tid) { this._setRole('carrier', on, tid); }
-  /** A16 §C: node-initiated headset FLASH sequences (the hit flash, a role re-assert after a hit) share the
+  /** led-language.md §2 (safety: bursts ≥ 1 s apart) / §5: node-initiated headset FLASH sequences (the hit flash, a role re-assert after a hit) share the
    *  gun burst's 1 s minimum — a burst weapon plus the firmware's own hit flash could otherwise exceed 3
    *  flashes/s on one lamp. Dropped, never queued (the `_pain`/PAIN_GAP_MS shape). The down rearm and the
    *  low-health alert bypass this entirely (they call `_headset`/`_write` directly) and must NEVER be gated. */
@@ -1020,7 +1099,8 @@ export class Engine {
     this._lastHeadsetFlashAt = now;
     this._headset(seq, why);
   }
-  /** A16 §D: the white "you're live" flash is scheduled a full second after `$SPAWN` — never inline —
+  /** led-language.md §3.1 / §5 ("the respawn white flash is scheduled ≥ 1.0 s after `$SPAWN`"): the white
+   *  "you're live" flash is scheduled a full second after `$SPAWN` — never inline —
    *  because `$SPAWN` itself clears the headset and can swallow a flash written any sooner (the old ~50 ms
    *  offset; +1.0 s is the only measured-good one, led-language.md §3.2 D). Used for `start` and `respawn`. */
   _headsetDelayed(seq, why, delayMs = 1000) {
@@ -1170,7 +1250,7 @@ export class Engine {
     this.spawned = true; this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.killedBy = null; this.deadAt = 0; this.reloading = null; this._reloadOutcome = null; this.held = {};
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
     this._gunTake();   // A11.7
-    if (this.frames.headset) this._headsetDelayed(this.frames.headset.start, 'start');   // A16 §D: scheduled +1.0 s after $SPAWN, not inline (A11.6: white flash marks the start, then dark/team)
+    if (this.frames.headset) this._headsetDelayed(this.frames.headset.start, 'start');   // led-language.md §3.1/§5: scheduled +1.0 s after $SPAWN, not inline (A11.6: white flash marks the start, then dark/team)
     this.moment = { kind: 'go', at: this.now() };
     this._set('live');
   }
@@ -1533,6 +1613,7 @@ export class Engine {
     const now = this.now();
     this._checkEcho();
     if (this.loadoutAck && now - this.loadoutAck.t > 4000) { this.loadoutAck = null; this._changed(); }
+    if (this._pickDue && now - this._pickDue.at >= PICK_DEBOUNCE_MS) this._flushPick('debounce');   // A26: the last row tapped in the window goes now
     if (this.pendingPick && now - this.pendingPick.at > 6000) { this.pendingPick = null; this._changed(); }   // MC never answered — drop the optimistic row
     if (this.phase === 'armed' && this.start) {
       const rem = this.goLiveT - now;
@@ -1618,17 +1699,44 @@ export class Engine {
     this.moment = { kind: 'redeploy', at: this.now() };
     this.log(resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');
     this._eventLeds('respawned');   // A11 lights only (after the revive frames, so the burst ends on the fresh team colour); the sound went out with the revive write above
-    if (this.frames.headset) { this.carrying = null; this._activeRole = null; this._headsetDelayed(this.frames.headset.respawn, 'respawn'); }   // A16 §D: +1.0 s after $SPAWN; A11.6: white flash then dark/team
+    if (this.frames.headset) { this.carrying = null; this._activeRole = null; this._headsetDelayed(this.frames.headset.respawn, 'respawn'); }   // led-language.md §3.1/§5: +1.0 s after $SPAWN; A11.6: white flash then dark/team
     this._changed();
+  }
+
+  /** The history entry for the match that just ended (A24: `outcome`, `team_scores`, `best_streak`, `medals` and this
+   *  node's own hill hold ride along, so a recap read off the phone days later is the same story MC told).
+   *  Written at the whistle, when `result` is usually still in flight — every A24 field is then `null`, and the app
+   *  PATCHES the entry by `match_id` from `onResult`. Null, never a guess: a match played before the phone learned
+   *  this field has them MISSING, never wrong. */
+  historyEntry() {
+    const R = (this.result && this.result.match_id === this.matchId) ? this.result : null;
+    const my = R && R.my && typeof R.my === 'object' ? R.my : null;
+    const sc = this.score || null;
+    const pick = (a, b) => (a != null ? a : (b != null ? b : null));
+    let hold = null;
+    try { hold = (this.hold && Object.keys(this.hold).length) ? JSON.parse(JSON.stringify(this.hold)) : null; } catch (_) { hold = null; }
+    return {
+      t: this.now(), match_id: this.matchId,
+      kills: pick(my && my.kills, sc && sc.kills), deaths: this.deaths,
+      assists: pick(my && my.assists, sc && sc.assists),
+      accuracy: pick(my && my.accuracy, sc && sc.accuracy),
+      shots: this.shots, mode: this.config ? this.config.mode : null,
+      // A24 fields — every one of them null until MC says otherwise
+      outcome: R ? (R.outcome || null) : null,
+      win_by: R ? (R.win_by || null) : (this.config && this.config.scoring ? this.config.scoring.win_by || null : null),
+      team_scores: R && Array.isArray(R.team_scores) ? R.team_scores : null,
+      best_streak: pick(my && my.best_streak, sc && sc.best_streak),
+      medals: (my && Array.isArray(my.medals) ? my.medals : (sc && Array.isArray(sc.medals) ? sc.medals : null)),
+      possession: hold,
+    };
   }
 
   _endLocal(why) {
     if (this.ended) return;
     this.ended = true; this._panicked = null; this.endAck = false;
+    this.endedAt = this.now();   // the results screen's settle window runs from HERE, not from the result's arrival
     this._lightGen = (this._lightGen || 0) + 1;   // no delayed $GLED/$HLED/cue step from before teardown may land after it
-    try { if (this.onEnd) this.onEnd({ t: this.now(), match_id: this.matchId, kills: this.score ? this.score.kills : null,
-      deaths: this.deaths, assists: this.score ? this.score.assists : null,
-      accuracy: this.score ? this.score.accuracy : null, shots: this.shots, mode: this.config ? this.config.mode : null }); } catch (_) { /* history is best-effort */ }
+    try { if (this.onEnd) this.onEnd(this.historyEntry()); } catch (_) { /* history is best-effort */ }
     // The tally that decides the match is the one sent AT the whistle: it is exempt from the A6.1 end freeze
     // and clamped on MC's side instead (`mc/API.md`), so send it before the phase leaves `live`.
     this._reportPossession(this.now(), true);
@@ -2455,7 +2563,11 @@ export class Engine {
     this.log('app resumed — reconciling', 'li');
     if (this.phase === 'live') {
       if (this.endT && this.now() >= this.endT) { this._endLocal('expired-while-suspended'); return; }
-      if (this.bleUp) this._beginResync('resume');   // §3.10/§3.11: observe BEFORE any schedule-driven write
+      // node.md §3.10: a LIVE resume RECONCILES (disarm, keep the restored pools, re-arm if alive) — the same
+      // path the BLE relink takes. It must NOT be `_beginResync`: that is the retired trigger-first evidence
+      // protocol, which mis-concluded "dead" and let auto-respawn heal the player on restart (bench 2026-09-04).
+      // The evidence protocol survives ONLY for lobby/armed, where there is no live state to get wrong.
+      if (this.bleUp) this._beginReconcile();
     }
     if (this.start) this.resumeSchedule();
     this._changed();
@@ -2535,12 +2647,15 @@ export class Engine {
       hits: this.score ? this.score.hits : null, board: this.score ? this.score.board : null,
       fragLimit: this.config && this.config.scoring ? this.config.scoring.frag_limit : null,
       lives: (this.config && this.config.respawn && this.config.respawn.lives != null) ? Math.max(0, this.config.respawn.lives - this.deaths) : null,
+      // A24: the pushed result and WHERE WE ARE IN WAITING FOR IT. `resultWait` is 'in' | 'pending' | 'unreached';
+      // none of the three is an outcome, and there is deliberately no fourth value the HUD could read as "lost".
+      result: this.result, resultAt: this.resultAt, resultWait: this.resultWait(now), endedAt: this.endedAt,
       moment: this.moment, ended: this.ended, endAck: this.endAck, matchId: this.matchId, synced: this.isSynced(), headEcho: this.headEcho,
       rejoin: !!(this.start && !this.bleUp && this.phase === 'idle'), pendingTeardown: this.pendingTeardown,
       // A10 self-serve kitting
       catalog: this.catalog, policy: this.policy, loadout: this.loadoutView(), browsing: this.browsing, loadoutAck: this.loadoutAck, pendingPick: this.pendingPick,
       canPickPrimary: this.canPick('primary'), canPickSecondary: this.canPick('secondary'), canPickPerk: this.canPick('perk'), tryoutSeen: this.tryoutSeen,
-      game: this.game, kitOpen: this.kitOpen(), briefSeen: this.briefSeen,
+      game: this.game, kitOpen: this.kitOpen(), briefSeen: this.briefSeen, kitLocked: this.kitLocked,
     };
   }
 }

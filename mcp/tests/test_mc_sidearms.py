@@ -45,16 +45,27 @@ def test_pistol_frames_ride_the_bolt_rifle_and_only_named_tokens_move():
         assert p[1] == "1"                                    # slot 1 = the secondary
 
 
-def test_pistol_identities_keep_the_counter_strike_ordering():
+def test_pistol_identities_keep_tonys_ordering():
+    """D2 rebalance (2026-09-12, docs/reference/ttk-model.md §Shipped). Tony, 2026-09-11: "usp fast,
+    as fast as you can pull the trigger, but low damage. glock in middle" — DELIBERATELY the reverse
+    of the earlier Counter-Strike-identity pin (glock fastest+weakest, usp in the middle): this test
+    used to assert `dmg["glock"] < dmg["usp"] < dmg["deagle"]` and the matching fire ordering. Tony's
+    brief swaps glock and usp on both axes, so USP is now the fastest/weakest and Glock sits in the
+    middle; the Deagle keeps its role as the slowest, hardest-hitting sidearm."""
     dmg = {w: CAT.damage(w) for w in PISTOLS}
     fire = {w: CAT.fire_ms(w) for w in PISTOLS}
-    assert dmg["glock"] < dmg["usp"] < dmg["deagle"]
-    assert fire["glock"] < fire["usp"] < fire["deagle"]
+    assert dmg["usp"] < dmg["glock"] < dmg["deagle"]
+    assert fire["usp"] < fire["glock"] < fire["deagle"]
     mags = {w: CAT.spawn_ammo(w)[0] for w in PISTOLS}
-    assert mags["deagle"] < mags["usp"] < mags["glock"]
-    # every pistol lands in the 1.5-3.5 s band the arsenal is balanced to
+    assert mags["deagle"] < mags["glock"] < mags["usp"]
+    # every pistol lands in the 1.5-3.5 s band the arsenal is balanced to, and (D2) strictly slower
+    # than every rifle (force/assault/burst/bolt span 1650-1800 ms) — all three sidearms ship at the
+    # same 1920 ms ideal TTK and differentiate only in how they degrade under real aim
     for w in PISTOLS:
-        assert 1500 <= CAT.time_to_kill(w, DEFAULT_POOL) <= 3500, w
+        ttk = CAT.time_to_kill(w, DEFAULT_POOL)
+        assert 1500 <= ttk <= 3500, w
+        assert ttk > 1800, f"{w} must kill strictly slower than the slowest rifle (1800 ms)"
+        assert ttk == 1920, w
 
 
 def test_pistol_sounds_are_unique_on_gun_ids():

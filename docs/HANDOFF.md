@@ -1,35 +1,35 @@
 # Handoff — Open BRX
 
-**State as of 2026-09-12 (morning: the game-test sheet worked at the desk, Block D specified, WSL crash root-caused).** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners: `git log -p -- docs/HANDOFF.md`.
+**State as of 2026-09-12 (midday: milestones 1 + 2 of the game-test sheet in — Blocks A–D built; the doc-rot pass landed beside it).** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners: `git log -p -- docs/HANDOFF.md`.
 
-## ⭐ The game-test sheet is WORKED (2026-09-12 desk pass): Blocks A–C built, Block D specified, one commit
+## ⭐ Milestones 1 + 2 of the game-test sheet are IN (2026-09-12): Blocks A–D built, results replayed, phones report their build
 
-**Sheet:** [`game-test-2026-09-11.md`](game-test-2026-09-11.md) (status block at the top). **Log:** `experiment-log/2026-09.md` → 2026-09-12.
-Built and verified without hardware, as parallel lanes + a polish-loop (3 read-only reviewers → 3 fix lanes):
+**Sheet:** [`game-test-2026-09-11.md`](game-test-2026-09-11.md). **Log:** `experiment-log/2026-09.md` → 2026-09-12 (two entries).
+**Spec rows written and built today:** A23 spawn protection · A24 results + frag-cap REPLAY · A25 log sync · A26 try-out
+collapse · A27 guarded CONTINUE · A29 semver build report · A30 the kit locks at START · A31 verify-at-MC line · A32 a
+sustained link proves the headset. Method: parallel lanes on disjoint files, two-round polish loops (read-only reviewers →
+fix lanes, fail-first tests), a real-browser pass on every changed screen, long runs under `~/brx-scratch/watchdog.sh`.
 
-- **Closed → archive:** F110 F115 F116 F117 F118 F119 F122 F124 F125. **🟡 bench-gated:** F121 (A23 spawn protection:
-  the head's `$SIR` table is fn 28, the live table rides `spawn`/`revive`), F113 (death blanks the gun strip), F123
-  (reload reconciled against `$ALCD`; easy_reload + shotgun refused; residual **F128**), F126 (iPhone confirm), F127
-  (MC UI two-step CONTINUE shipped; A27 server guard + node moment = M2). **New:** F128, **P18** (fn 24: status fn per
-  A20 vs "delayed blast" per F69 — the stun row `<8,0>` needs the bench), S27 (one-tap store update).
-- **Safety fixes the loop found:** a refused perk pick silently ate the SECONDARY (policy order); a config push to an
-  ARMED/LIVE gun is refused (A23 made it an un-hittable gun; it always un-spawned it) → **A30 THE KIT LOCKS AT START**
-  (phone picks refused with a reason, host edits 400, late joiners still hot-join per E5); `control()` reports
-  `{ok, ended, reached, pushed, nodes, phase, error?}` and the MC UI shows the refusal.
-- **Decisions this morning (spec A24 · A29 · A30 · A31 + memory `game-test-2026-09-11-workplan`):** the match ENDS at the
-  timestamp of the confirmed winner's cap kill and MC re-scores by REPLAYING the fact log when a late flush moves it
-  (post-end facts kept as an unofficial "after the whistle" block); phones report a real semver build `x.y.z+sha`
-  (MAJOR mismatch red, minor/patch amber; today they send `hud-0.2`); a pre-game "a win is confirmed at Mission
-  Control" line unless full coverage or all phones have backhaul (A28, another session).
-- ⚠ **The WSL crash (×3) was ONE test:** the stage's reload watchdog spun under a no-op sleep + hand clock and the
-  test's sleep log grew to 23 GB. Fixed (`stage.py _reload_watchdog` returns when the clock does not move; `poll()`
-  re-checks the deadline). Run long suites through `~/brx-scratch/watchdog.sh 6 <log> <cmd>` anyway.
-- **Verified:** `python3 mcp/run_tests.py` 1312/0 (4 GB cap) · app 289/289 · MC UI 151/151 · `npm run e2e:kit`
-  mock/real/stale/400 × desk/phone · HUD screen-truth 212/0 (6 GB watchdog) · every changed screen looked at.
-- **Next (M2, in order):** D3 results (A24 push + replay scoring + HUD FINAL RESULTS) · D6 log sync + A29 versions ·
-  D4 S24/S25 (digits need fixed-width cells: no product font has tabular figures) · D1 try-out collapse (A26) ·
-  D2 sidearms (`docs/reference/ttk-model.md`; USP mag ≥ 20) · D5 drop CAM · A27/A31 · APK cut · push.
-- **Android is still on APK 0.1.8** — cut before the next field day; the iPhone needs the Mac for A6/F126.
+- **Closed → archive today:** F110 F115 F116 F117 F118 F119 F122 F124 F125 · S20 S21 S22 S23 S24 S26 F127. **🟡 bench-gated:**
+  F121 (head `$SIR` on fn 28; shot during the countdown must not land, after `$SPAWN` it must), F113 (death blanks the strip),
+  F123 (reload bar follows the gun's `$ALCD`; shotgun + easy_reload refused), F126 (iPhone), S22 (a sidearm-only round: no
+  obvious pick). **New:** F128 F129 F130 · P18 (fn 24: status vs delayed blast) · S27 S28 S29.
+- **Rules the field taught, now in code:** the match ENDS at the timestamp of the winning cap kill and MC re-scores by
+  REPLAYING stored facts when a late flush moves it (earlier only; ties inside 1 s; after-the-whistle facts shown, never
+  counted; roster frozen at the whistle). The phone never infers win/lose (`RESULT PENDING · CONFIRM AT MISSION CONTROL`).
+  A config never reaches a gun that took this match's config. A phone sends `x.y.z+sha[-dirty]` + platform; MC reds a major
+  mismatch (0.x: minor), ambers behind the field/release; `APP_MAJOR/APP_MINOR` are pinned to app/package.json by a test.
+- ⚠ **Traps found this pass:** `result` sat in `MC_KINDS` but not `transport.js DELIVERED` (the F105 shape; parity test over
+  every `onMcMessage` case now); `resume()` in LIVE ran the retired trigger-first resync (fixed → reconcile); a full pytest of
+  `test_stage_mirror` spun to 23 GB under a hand clock and crashed WSL three times (fixed; run suites under the watchdog).
+- **Doc-rot pass (another session, same day):** eleven `--only` commits 5e4ced8..edeb0d3 — the triage list and the banner
+  archive are gone (old banners: `git log -p -- docs/HANDOFF.md`), one generator for both UI catalogs
+  (`mcp/tools/gen_ui_catalog.py`, drift-tested), new hygiene guards. Its ledger is the artifact "Open BRX Rot Ledger".
+- **Verified at the M2 commit:** python 1403+/0 (4 GB cap) · app 333 · MC UI 247 · `e2e:kit` `e2e:m2` `e2e` koth `ui:logsync`
+  · HUD screen-truth under the watchdog · site shots regenerated.
+- **Next:** cut **APK 0.2.0** (bump `app/package.json` AND `types.APP_MINOR` together — the wire gained `result`; 0.x MINOR
+  is the breaking tier), push, then F129 residuals · S28 with a measured field accuracy · S29 shield recharge · the bench
+  gates above. **Android is still on APK 0.1.8** until the cut; the iPhone needs the Mac (A6/F126).
 
 ## What is true today
 
@@ -39,7 +39,7 @@ Built and verified without hardware, as parallel lanes + a polish-loop (3 read-o
   (phone point; capture rate = leader minus the largest single rival) · MC's `koth` with `station_source`
   `grenade`/`ir_station`/`phone`. ✅ F104/S5 MC arms utility phones. ✅ **F69/F91 CLOSED tonight** — the hill does
   NOT chip anyone with the shipped fn-28 row. 🟡 **F82** never a player on tid 2; **F97** refuses a fourth team.
-  Spec: `spec/utility.md` §5b-§5f. Triage: [`followups-triage.md`](followups-triage.md).
+  Spec: `spec/utility.md` §5b-§5f. Triage: `followups-triage.md` (retired 2026-09-12, see FOLLOWUPS §0).
 - ⭐⭐ **SIMULATED RECOIL IS REAL AND OURS TO DRIVE (2026-09-09, F46 closed).** `$WEAP` **t21 = accuracy
   ceiling · t22 = floor · `$ALCD` tok2 = live accuracy**; falls in five steps toward the floor, races a native
   recovery (**t14 sets how hard it bites**), resets on reload, and below the ceiling a shot emits **IR magnitude

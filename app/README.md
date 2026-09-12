@@ -81,7 +81,7 @@ to build the web bundle.
 
 ```bash
 npm ci                  # install exactly what the lockfile pins
-npm run build           # bundle src/app.js -> www/app.js  (esbuild)
+npm run build           # bundle src/app.js -> www/app.js  (scripts/build.mjs, esbuild)
 
 npm run ios:setup       # build, add the iOS platform if missing, apply our iOS config
 npm run ios:open        # open the project in Xcode  (needs full Xcode)
@@ -96,6 +96,19 @@ npm run ui:stage        # the STAGE harness: the real HUD + the utility screen i
 npm run ui:screens      # the screen-truth suite (tools/screens.mjs): every reviewed screen state at two widths
 npm run ui:moments      # the transient-moment suite; npm run ui:e2e = the full browser suite against a real MC
 ```
+
+### The build version the phone reports
+
+`npm run build` is `scripts/build.mjs`, and it BAKES the build identity into the bundle:
+`__APP_VER__` becomes `"<package.json version>+<git short sha>[-dirty]"` (`0.1.8+28c9e76-dirty`), read
+by `src/build.js` and sent on `hello` and on **every** `status` heartbeat alongside
+`platform` (`android`/`ios`/`web`, from Capacitor's own platform API). Contracts A29: the app used to
+report a hard-coded `hud-0.2`, so Mission Control could not tell a fortnight-old APK from the tree in
+front of you — and the muster version rollup, the APP-MAJOR readiness blocker and the "older than the
+release" amber all need a real number. Everything that ships the app runs `npm run build` first
+(`sync`, `ios:setup`, `android:setup`, `android:apk`, `ui:stage`, `ui:screens`), so everything bakes
+it. The dirty flag counts TRACKED changes only, and a checkout with no git reads `<version>+unknown`.
+The first two rows of the debug panel's LINK section show what this phone is actually running.
 
 ### Publishing the Android build
 

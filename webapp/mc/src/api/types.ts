@@ -65,6 +65,11 @@ export interface GameConfig {
    *  the server REFUSES to push without it. Server vocabulary: `mc/types.py` STATION_SOURCES. */
   stations?: { id: number; kind: StationKind }[];   // A13.1 (F104): the utility items MC armed this game — derived on the wire, never edited
   station_source?: string;
+  /** A31/A4.8 — the VENUE's radio coverage, and an ASSERTION the operator makes about the site: 'full'
+   *  means every phone is on the LAN for the whole match. It is the only thing that lets `time_limit_s`
+   *  be null, and it suppresses `State.notices.mc_verify`. Absent = partial, which is the default,
+   *  because a venue nobody has vouched for is one MC cannot promise to hear. */
+  coverage?: 'full' | 'partial';
   loadout_policy: LoadoutPolicy;
   /** A11: sounds + lights per event (preset or custom). Optional — an older server never sends it. */
   presentation?: Record<string, unknown>;
@@ -143,6 +148,11 @@ export interface ReadinessRow {
   identity: 'ok' | 'unconfirmed' | 'reverted' | 'unknown' | 'manual';
   node: 'none' | 'linked';
   headset: 'proven' | 'unknown' | 'absent';
+  /** A32: HOW the headset was proven — `echo` = the gun answered the config push, `link` = a BLE link
+   *  the phone has held for 10 s (a headless gun drops in ~6 s), `null`/absent = not proven. While a
+   *  link is still counting up the server sends the amber `HEADSET · CONFIRMING (LINK <n> s)`; the UI
+   *  renders that through the normal amber path and does NO timing of its own. */
+  headset_proof?: 'echo' | 'link' | null;
   battery_pct?: number; battery_age_ms?: number; fw?: string; phone_batt?: number;
   last_seen_age_ms?: number | null;
   gun_linked?: boolean | null;
@@ -153,6 +163,12 @@ export interface ReadinessRow {
   status: 'green' | 'amber' | 'red' | 'waiting';
   blockers: string[];   // things that actually gate the start
   ambers?: string[];    // advisories — never gate anything
+  /** A29: the phone's build + platform on the readiness row. Optional (older server). The version
+   *  RULES live in `blockers`/`ambers` as the server worded them — the console never re-derives them. */
+  app_ver?: string;
+  platform?: string;
+  /** A25: the same log view the node card carries, on the per-player board. */
+  log?: LogView;
 }
 
 export interface ReadinessSnapshot {
@@ -163,6 +179,36 @@ export interface ScoreRow {
   player_id: string; display: string; team_id: string | null;
   kills: number; deaths: number; assists: number; shots: number; hits: number;
   accuracy: number | null; kd: number; streak: number; medals: string[];
+  // --- A24 (F116/F119), additive 2026-09-11. EVERY ONE IS OPTIONAL: an older MC omits them, and a
+  // session persisted before the change has rows without them. Never read one without a fallback. ---
+  /** the shots ACCURACY is quoted against (`shots` is the same number today; kept separate because
+   *  the wire does, and because a row that has not sampled its shot counter yet reports 0 here). */
+  shots_total?: number;
+  /** F116: the LONGEST streak of the match. SHOW THIS ONE — `streak` is the CURRENT streak and is 0
+   *  for whoever died last, which is how a 9-kill row read "streak 0". Fall back to `streak`. */
+  best_streak?: number;
+  /** biggest multi-kill (2 double / 3 triple / 4+ killtacular; 0 = none) */
+  multi_best?: number;
+  /** this player drew first blood */
+  first_blood?: boolean;
+  /** F119: `accuracy` has NOT settled (hits arrive per event, `shots` only on the ~2 s heartbeat, so
+   *  a young row can spike past 100 %). Render the number as settling, never as fact. */
+  acc_provisional?: boolean;
+}
+
+/** A25 — the operator's view of ONE node's log sync, fed only by what the PHONE reports (`status.log`,
+ *  `log_offer`, the `log_data` stream). MC asking does not make it `offered`: the phone answers when it
+ *  is safe to, and the board has to show the phone's truth rather than MC's intention.
+ *
+ *  `held` carries a `reason` the node worded itself (`"held(2 facts pending)"` → `"2 facts pending"`).
+ *  `complete` sticks until something new happens — the phone idles straight back to `none` when it
+ *  finishes, and taking that literally would erase the one state the operator is waiting for. */
+export interface LogView {
+  state: 'none' | 'offered' | 'pulling' | 'held' | 'complete';
+  reason?: string;
+  lines?: number;
+  bytes?: number;
+  last_t?: number;
 }
 
 export interface NodeView {
@@ -170,6 +216,15 @@ export interface NodeView {
   arm_state: ArmState; last_seen_ms: number; synced: boolean; preflight?: Preflight;
   battery?: number; fw?: string; hp?: number; armor?: number; ammo?: number; alive?: boolean;
   pending?: number | null;
+  /** A29 (2026-09-12): the phone's REAL build — `"<package version>+<git sha>[-dirty]"` baked in at
+   *  build time — and `android`/`ios`/`web`. Optional: the app sent a hard-coded `hud-0.2` until
+   *  A29, and an MC that predates the change never forwards either. Render what arrived, and say
+   *  "UNKNOWN" rather than guess. The RED/AMBER semver rules are the SERVER's (`state.py readiness()`
+   *  holds `APP_MAJOR`); the console renders the strings it is sent and derives no version rule. */
+  app_ver?: string;
+  platform?: string;
+  /** A25: the log sync as this phone reports it. Optional — absent before the phone says anything. */
+  log?: LogView;
 }
 
 export type LiveRow = ScoreRow & {
@@ -208,6 +263,14 @@ export interface RecapView {
   settling?: boolean;
   awaiting?: string[];
   since_end_ms?: number | null;
+  /** A6.1 — what the scorer recorded AFTER the whistle: facts that are real but do NOT count. `facts`
+   *  is the total (the server's `post_end_facts`), `by_player` the kills/deaths each player picked up
+   *  once scoring was frozen. Optional — an older MC sends only the count, and nothing at all before
+   *  A6.1 — so the block renders only when the server actually sent it. */
+  after_end?: { facts: number; by_player: Record<string, { kills: number; deaths: number }> };
+  /** A6.1 — the bare count, which the server has always sent. Kept beside `after_end` because it is
+   *  what an older MC has: a count with no breakdown is still worth saying. */
+  post_end_facts?: number;
   /** Roadmap A6 — one row per ASSIGNED utility station, from its own self-authoritative heartbeat
    *  (utility.md §5c/§5d.6: a station answers to nobody mid-match, so this is the only place its count is
    *  ever seen). Absent unless some station is assigned; a station never heard from still gets a row, with
@@ -226,8 +289,12 @@ export interface RecapStationRow {
   owner?: number | null;                             // control only
 }
 
-export type FeedTag = 'DOUBLE KILL' | 'TRIPLE KILL' | `STREAK ×${number}` | 'FIRST BLOOD' | 'TEAM KILL' | 'SYNC POINT';
-export interface FeedEntry { t_match_s: number; text: string; tag?: FeedTag; kind: 'kill' | 'sync' | 'info' }
+export type FeedTag = 'DOUBLE KILL' | 'TRIPLE KILL' | `STREAK ×${number}` | 'FIRST BLOOD' | 'TEAM KILL' | 'SYNC POINT'
+  /** A11.4/F118: a global-state alert MC pushed to the nodes. `ALERT` reached everyone bound, `WITHHELD`
+   *  reached nobody (mc_confidence refused it, or no node was in coverage), `ROLE` is a role assignment
+   *  (VIP/carrier). The `text` is the OPERATOR's third-person copy — render it VERBATIM, never re-word. */
+  | 'ALERT' | 'WITHHELD' | 'ROLE';
+export interface FeedEntry { t_match_s: number; text: string; tag?: FeedTag; kind: 'kill' | 'sync' | 'info' | 'alert' }
 
 export interface StartView {
   match_id: string; go_live_t: number; seq: number; countdown_s: number;
@@ -276,6 +343,25 @@ export interface State {
   start?: StartView;
   live?: LiveView;
   recap?: RecapView;
+  /** A25 (2026-09-12) — session options. `log_sync: "auto"` lets MC ask every node for its log on its
+   *  own (at the recap, on an offer, on a reconnect); `"manual"` leaves the asking to the operator's
+   *  LOGS button, which is never gated. Optional: an older server sends none, and the console then
+   *  renders no toggle rather than one that writes to a route that is not there. */
+  options?: { log_sync?: 'auto' | 'manual' };
+  /** A29 (2026-09-12) — the field's builds, as `state.py versions()` counts them: `field` is
+   *  `{app_ver: how many PLAYER nodes report it}` with the string verbatim (an unparsable `hud-0.2`
+   *  included — the operator needs to see it said out loud), `newest` the highest version in the
+   *  field, `release` the one on the download card, `mc_major` the app major MC can play with.
+   *  Optional: not on the snapshot yet at the time of writing, so the console falls back to counting
+   *  `NodeView.app_ver` itself. Either way it is a TALLY — every version VERDICT is the server's, and
+   *  arrives as a worded string in a readiness row's `blockers`/`ambers`. */
+  versions?: { field: Record<string, number>; newest?: string | null; release?: string | null; mc_major?: number };
+  /** A31 (2026-09-12) — standing lines the COMPILER wrote once, so MC and the phones cannot disagree.
+   *  `mc_verify` is the pre-game warning for a game whose end state MC decides while some rostered
+   *  phone has no backhaul; it NAMES the phones. Optional: absent under full coverage, absent on an
+   *  older server, and the field name is whatever `mc/API.md` documents once the server lane lands —
+   *  this is built against `notices.mc_verify` and renders nothing at all when it is missing. */
+  notices?: { mc_verify?: string };
 }
 
 export interface ModeInfo {
@@ -331,7 +417,13 @@ export interface Api {
   subscribe(onSnapshot: (s: State) => void, onFeed: (e: FeedEntry) => void, onLink?: (connected: boolean) => void): () => void;
   scan(duration_s?: number): Promise<ScanRow[]>;
   armory(): Promise<{ gun_id: string; sticker: string; ble: { tail?: string } }[]>;
-  setPhase(phase: string): Promise<unknown>;
+  /** A27: `POST /api/phase {phase:"lobby", force?}` from `kit` is REFUSED 409 while a rostered player
+   *  is not ready. The rejection carries `{error, not_ready: display[], greens, roster_size}` — the
+   *  client attaches that body to the thrown error as `.body` (see `PhaseRefusal`), so the console can
+   *  show the SERVER's list of who is not ready instead of its own guess. `force: true` is the second
+   *  tap's override. An older server has no guard: it just answers 200 and the two-step still holds,
+   *  because the UI arms on its own roster count first. */
+  setPhase(phase: string, force?: boolean): Promise<unknown>;
   getModes(): Promise<ModeInfo[]>;
   getVoices(): Promise<VoiceList>;
   getWeapons(): Promise<WeaponView[]>;
@@ -350,6 +442,14 @@ export interface Api {
   patchPlayer(id: string, patch: Partial<Player>): Promise<Player>;
   deletePlayer(id: string): Promise<void>;
   evictNode(node_id: string): Promise<void>;   // DELETE /api/nodes/{id} — operator kick (closes 4000, unbinds, rotates key)
+  /** A25: `GET /api/options`. Rejects with status 404 on a server that predates the option table. */
+  getOptions(): Promise<{ log_sync?: 'auto' | 'manual' }>;
+  /** A25: `PUT /api/options`. Unknown keys and values are a 400 in the operator's voice, never a silent no-op. */
+  setOptions(opts: { log_sync?: 'auto' | 'manual' }): Promise<{ log_sync?: 'auto' | 'manual' }>;
+  /** A25: the operator's LOGS button — `POST /api/nodes/{id}/pull_log`, always `reason: "manual"` and
+   *  so never gated by `log_sync`. `ok` is whether the ASK went out, not whether a log arrived: the
+   *  node answers when it is safe to and MC never waits on it. */
+  pullLog(node_id: string): Promise<{ ok: boolean; node_id: string; log?: LogView | null }>;
   /** A13.5: assign a utility phone (kind / team / id / threshold); MC pushes `station_config` at once. 400 in the operator's voice. */
   putStation(node_id: string, a: { kind: StationKind; team: number | string; id: number; threshold?: number }): Promise<StationView>;
   deleteStation(node_id: string): Promise<void>;
@@ -382,6 +482,11 @@ export interface Api {
   matchCsvUrl(match_id: string): string;
   newSession(keep_roster: boolean): Promise<State>;
 }
+
+/** A27 — the body of the 409 `POST /api/phase` answers with. Every field optional: this is read off a
+ *  rejection, and a server that refuses for another reason (or an older one that refuses differently)
+ *  must degrade to "the error string alone", never to a crash or an empty list presented as a fact. */
+export interface PhaseRefusal { error?: string; not_ready?: string[]; greens?: number; roster_size?: number }
 
 /** One finished match from MC's session store — the RECAP screen's history picker (A8). */
 export interface MatchHistoryRow {

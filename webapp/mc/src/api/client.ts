@@ -32,9 +32,11 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(path, { ...init, headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) } });
   if (r.status === 401) { notifyAuth(true); throw new AuthError(); }
   if (!r.ok) {
-    let msg = r.statusText;
-    try { msg = (await r.json()).error ?? msg; } catch { /* ignore */ }
-    const err = new Error(msg) as Error & { status?: number }; err.status = r.status;   // callers can tell a 404 (route missing) from a 400
+    let msg = r.statusText, body: unknown;
+    try { body = await r.json(); msg = (body as { error?: string }).error ?? msg; } catch { /* not JSON: the status line is all there is */ }
+    const err = new Error(msg) as Error & { status?: number; body?: unknown };
+    err.status = r.status;   // callers can tell a 404 (route missing) from a 400
+    err.body = body;         // A27: the 409 from POST /api/phase carries `not_ready` — the operator needs the LIST, not just the sentence
     throw err;
   }
   if (method !== 'GET') notifyAuth(false);
@@ -81,7 +83,7 @@ export function createHttpApi(): Api {
     },
     scan: (duration_s = 6) => post('/api/armory/scan', { duration_s }),
     armory: () => j('/api/armory'),
-    setPhase: (phase: string) => post('/api/phase', { phase }),
+    setPhase: (phase: string, force?: boolean) => post('/api/phase', force ? { phase, force: true } : { phase }),
     getModes: () => j('/api/modes'),
     getVoices: () => j('/api/voices'),
     getWeapons: () => j('/api/weapons'),
@@ -98,6 +100,9 @@ export function createHttpApi(): Api {
     patchPlayer: (id, patch: Partial<Player>) => j(`/api/players/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
     deletePlayer: async id => { await j(`/api/players/${id}`, { method: 'DELETE' }); },
     evictNode: async id => { await j(`/api/nodes/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
+    getOptions: () => j('/api/options'),
+    setOptions: opts => j('/api/options', { method: 'PUT', body: JSON.stringify(opts) }),
+    pullLog: id => post(`/api/nodes/${encodeURIComponent(id)}/pull_log`),
     putStation: (id, a) => j(`/api/stations/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(a) }),
     deleteStation: async id => { await j(`/api/stations/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
     armStations: () => post('/api/stations/arm'),

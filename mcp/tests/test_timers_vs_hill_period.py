@@ -22,6 +22,9 @@ JUDGED = {
     "OFFLINE_AFTER_MS": "node heartbeat age, fed by the phone's status cadence, not by any IR frame",
     "STALE_AFTER_MS": "same: a socket-liveness threshold on the status heartbeat",
     "SYNC_FRESH_MS": "clock-sync freshness on time_req/time_res, not on game frames",
+    "HEADSET_LINK_PROOF_MS": "A32: how long a BLE link must hold before it proves a headset; measured from the "
+                             "phone's own `preflight.gun_linked`, and reset only by that flag going false — no IR "
+                             "frame of any kind reaches it",
     "LATE_ARM_GRACE_MS": "a one-shot window after go-live for a node to arm; nothing resets it",
     "CONFIG_TTL_MS": "how long a pushed config stays valid; nothing resets it",
     "RESYNC_PROBE_S": "the node's resync prompt cadence, driven by the operator's trigger pull",
