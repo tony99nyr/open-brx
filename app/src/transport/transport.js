@@ -21,6 +21,21 @@ import { Clock } from './clock.js';
 
 const DELIVERED = new Set(['assign', 'config', 'tutorial', 'start', 'feedback', 'control', 'apply', 'score', 'time_res', 'pull_log', 'loadout_ack', 'alert', 'station_config']);
 
+/** A28.2: a cosmetic-only difference (scheme/host case, a trailing '/') must not look like "a
+ *  different MC" and wipe a held pub/secret -- normalize before comparing a stored url to a given one. */
+function normUrl(u) {
+  const s = String(u || '');
+  const i = s.indexOf('://');
+  if (i < 0) return s;
+  const scheme = s.slice(0, i).toLowerCase();
+  const rest = s.slice(i + 3);
+  const slash = rest.indexOf('/');
+  const host = (slash < 0 ? rest : rest.slice(0, slash)).toLowerCase();
+  let path = slash < 0 ? '' : rest.slice(slash);
+  if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
+  return `${scheme}://${host}${path}`;
+}
+
 export const BACKHAUL_GIVEUP_MS = 8000;   // A28.3: no welcome over pub within this -> fall back to the LAN url
 export const PUB_RETRY_MS = 30000;        // A28.3: while riding the LAN with a pub in hand, re-probe it this often
 
@@ -65,7 +80,7 @@ export class Transport {
     this._viaCurrent = null;                 // which url `this._ws` (the live/primary socket) dialled
     this._pubRetryTimer = null; this._probeWs = null; this._probeGiveupTimer = null;
     this._pubJustLearned = false; this._probeStale = false;
-    this._onMessage = []; this._onState = []; this._onHydrate = []; this._onJoin = [];
+    this._onMessage = []; this._onState = []; this._onHydrate = [];
     this._firstWelcome = null;
   }
 
@@ -75,7 +90,7 @@ export class Transport {
     // A28.2 security: pub/secret are only ever valid for the MC that issued them. A different LAN
     // target (a phone told to join a different MC) means the tunnel/secret held for the OLD one must
     // not be dialled or offered — drop both before adopting whatever THIS call gives us.
-    if (nextUrl && this._pubUrl && nextUrl !== this._pubUrl) { this._setPub(null); this._setSecret(null); }
+    if (nextUrl && this._pubUrl && normUrl(nextUrl) !== normUrl(this._pubUrl)) { this._setPub(null); this._setSecret(null); }
     this.url = nextUrl;
     if (pub !== undefined) this._setPub(pub);
     if (secret !== undefined) this._setSecret(secret);
@@ -129,10 +144,6 @@ export class Transport {
   onState(cb) { this._onState.push(cb); return () => { this._onState = this._onState.filter(f => f !== cb); }; }
   /** Fires on every welcome (first connect AND reconnects) with welcome.node — the re-hydration hook. */
   onHydrate(cb) { this._onHydrate.push(cb); return () => { this._onHydrate = this._onHydrate.filter(f => f !== cb); }; }
-  /** A28.2: fires with `{pub, secret}` whenever the WIRE (welcome.join or an MC->node `join` push) tells
-   *  us something about the backhaul target — the app's own hook to mirror it (e.g. into its own
-   *  persisted settings) without having to poll `transport.pub`/`transport.secret`. */
-  onJoin(cb) { this._onJoin.push(cb); return () => { this._onJoin = this._onJoin.filter(f => f !== cb); }; }
   setPreflight(p) { Object.assign(this.preflight, p || {}); }
   setStatusProvider(fn) { this.statusProvider = fn; }
   close() {
@@ -190,7 +201,6 @@ export class Transport {
     }
   }
   _adoptSecret(secret) { if (secret !== undefined) this._setSecret(secret); }
-  _fireJoin() { for (const cb of this._onJoin) { try { cb({ pub: this.pub, secret: this.secret }); } catch (e) { this._log('onJoin cb', e); } } }
   _log(...a) { if (globalThis.__BRX_TRANSPORT_DEBUG) console.log('[transport]', ...a); }
   _setState(s) { if (this.state === s) return; this.state = s; for (const cb of this._onState) { try { cb(s); } catch (e) { this._log('onState cb', e); } } }
   _clearTimers() {
@@ -223,22 +233,38 @@ export class Transport {
       this._scheduleReconnect(); return;
     }
     this._ws = ws; this._viaCurrent = via;
+    if (via === 'backhaul') {
+      // Arm the giveup the INSTANT we start dialling, not just after onopen: a pub that accepts the TCP
+      // connection but never completes the websocket upgrade, or blackholes entirely (a dead tunnel
+      // hostname still in DNS, cellular dropping packets to the edge), fires neither onopen NOR onclose
+      // -- an onopen-armed timer would never even get armed, and the phone would sit offline with a
+      // working LAN one hop away. On expiry with the socket never opened we don't wait on `dropLink()`
+      // (which depends on an onclose that, for exactly this kind of dial, may never come) -- close it
+      // ourselves and dial LAN directly.
+      this._helloTimer = this.timers.setTimeout(() => {
+        if (this._ws !== ws || this.state !== 'connecting') return;
+        this._log('backhaul giveup, falling back to LAN');
+        this._helloTimer = null; this._ws = null;
+        try { ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null; ws.close(); } catch (_) { /* ignore */ }
+        this._dialVia('lan', this.url);
+      }, this.backhaulGiveupMs);
+    }
     ws.onopen = () => {
       if (ws !== this._ws) return;
       this.attempt = 0;
       this._sendRaw(E.makeEnvelope('hello', this._helloBody(via)), ws);
-      const timeoutMs = via === 'backhaul' ? this.backhaulGiveupMs : this.helloTimeoutMs;
-      this._helloTimer = this.timers.setTimeout(() => { if (this._ws === ws && this.state === 'connecting') { this._log(via === 'backhaul' ? 'backhaul giveup, falling back to LAN' : 'welcome timeout'); this.dropLink(); } }, timeoutMs);
+      // 'backhaul': the giveup timer armed above already covers "no welcome in time" -- nothing to re-arm.
+      if (via === 'lan') this._helloTimer = this.timers.setTimeout(() => { if (this._ws === ws && this.state === 'connecting') { this._log('welcome timeout'); this.dropLink(); } }, this.helloTimeoutMs);
     };
     ws.onmessage = evt => { if (ws === this._ws) this._onFrame(typeof evt.data === 'string' ? evt.data : String(evt.data)); };
-    ws.onerror = () => { /* onclose follows */ };
+    ws.onerror = () => { /* onclose follows, or (a true blackhole) the giveup above fires */ };
     ws.onclose = evt => {
       if (ws !== this._ws) return; this._ws = null;
+      if (this._helloTimer) { this.timers.clearTimeout(this._helloTimer); this._helloTimer = null; }
       const code = evt && evt.code;
       if (code === 4001 || code === 4003) { this._onOngoingClose(evt); return; }
       if (via === 'backhaul' && this.state === 'connecting') {
         // never welcomed over pub (giveup, immediate error/refusal-that-isn't-4001/4003) -> LAN, now
-        if (this._helloTimer) { this.timers.clearTimeout(this._helloTimer); this._helloTimer = null; }
         this._dialVia('lan', this.url); return;
       }
       this._onOngoingClose(evt);
@@ -338,7 +364,7 @@ export class Transport {
     if (kind === 'assign') { this._absorb({ player: body.player, team: body.team, roster: body.roster }); }
     if (kind === 'config') { this._absorb({ config: body.config, frames: body.frames, roster: body.roster }); }
     if (kind === 'start') { this._absorb({ start: body, match_id: body.match_id }); }
-    if (kind === 'join') { this._adoptSecret(body.secret); this._adoptPub(body.pub); this._kickPubRetry(); this._fireJoin(); }
+    if (kind === 'join') { this._adoptSecret(body.secret); this._adoptPub(body.pub); this._kickPubRetry(); }
     if (DELIVERED.has(kind)) for (const cb of this._onMessage) { try { cb({ kind, body, t: env.t, id: env.id }); } catch (e) { this._log('onMessage cb', e); } }
   }
   _onWelcome(body) {
@@ -354,7 +380,7 @@ export class Transport {
     this.ring.adoptSeqHi(Number(body.seq_hi));
     this.clock.newBurst(); this.clock.seed(Number(body.server_t), this.now());
     this.reach = this._viaCurrent === 'backhaul' ? 'backhaul' : 'lan';   // A28.3: the live socket's path
-    if (body.join && typeof body.join === 'object') { this._adoptSecret(body.join.secret); this._adoptPub(body.join.pub); this._fireJoin(); }
+    if (body.join && typeof body.join === 'object') { this._adoptSecret(body.join.secret); this._adoptPub(body.join.pub); }
     if (body.node && typeof body.node === 'object') this._absorb(body.node);
     this._setState('open');
     this.bind();

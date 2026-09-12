@@ -57,13 +57,6 @@ async function haptic(kind) {
 const settings = {
   get mcUrl() { try { return localStorage.getItem('brx.mc_url') || ''; } catch (_) { return ''; } },
   set mcUrl(v) { try { localStorage.setItem('brx.mc_url', v); } catch (_) { /* ignore */ } },
-  // A28.2: the backhaul URL + join secret last learned for this LAN url, remembered across app restarts
-  // independent of the Transport's own (session-scoped) copy so a fresh Transport object still has them
-  // to offer on its very first connect() after a cold boot.
-  get mcPub() { try { return localStorage.getItem('brx.mc_pub') || ''; } catch (_) { return ''; } },
-  set mcPub(v) { try { if (v) localStorage.setItem('brx.mc_pub', v); else localStorage.removeItem('brx.mc_pub'); } catch (_) { /* ignore */ } },
-  get mcSecret() { try { return localStorage.getItem('brx.mc_secret') || ''; } catch (_) { return ''; } },
-  set mcSecret(v) { try { if (v) localStorage.setItem('brx.mc_secret', v); else localStorage.removeItem('brx.mc_secret'); } catch (_) { /* ignore */ } },
   get night() { try { return localStorage.getItem('brx.night') === '1'; } catch (_) { return false; } },
   set night(v) { try { localStorage.setItem('brx.night', v ? '1' : '0'); } catch (_) { /* ignore */ } },
   // 'hud' (default) or 'utility': the same install is either a player's HUD or a utility item on the field
@@ -195,10 +188,10 @@ async function syncPlayerAdvert() {
 const preflight = { ssid_ok: true, mc_reachable: false, auto_join_ok: true, cellular_off: true, dnd_on: false, phone_batt: null, screen_on: true, foreground: true, gun_linked: false, headset_ok: false };
 async function refreshPreflight() {
   try { if (plugins.device) { const b = await plugins.device.getBatteryInfo(); if (b && b.batteryLevel != null) preflight.phone_batt = Math.round(b.batteryLevel * 100); } } catch (_) { /* ignore */ }
+  // Report ssid_ok truthfully (contracts A28.3: MC itself downgrades this to a warning, not a red, for
+  // a node reporting reach:"backhaul" — forcing it true here made that server-side downgrade dead code
+  // and showed the board a phone that IS on the field Wi-Fi when it is not).
   try { if (plugins.network) { const s = await plugins.network.getStatus(); preflight.ssid_ok = s.connectionType === 'wifi'; } } catch (_) { /* ignore */ }
-  // A28.3: §5c(d) is a warning, not a red, on a node reaching MC over backhaul — it has a working data path
-  // even though it is not (or not usefully) on the field Wi-Fi. The HUD session rewords the chip itself.
-  if (transport && transport.reach === 'backhaul') preflight.ssid_ok = true;
   preflight.mc_reachable = !!(transport && transport.state === 'bound');
   preflight.gun_linked = engine.bleUp; preflight.headset_ok = !!engine.headEcho;
   preflight.foreground = document.visibilityState !== 'hidden'; preflight.screen_on = preflight.foreground;
@@ -217,35 +210,26 @@ let lastMcUrl = null;
  * @param {string} url the LAN join url
  * @param {boolean} [remember] discovery/sweep never overwrites the user's explicit target (polish-loop)
  * @param {{pub?:string|null, secret?:string|null}} [join] A28.2: from a QR scan or a typed full join
- *   code — when given, replaces whatever backhaul target/secret was remembered for this url. When
- *   omitted (every discovery/sweep/remembered-address reconnect) neither is passed to Transport at
- *   all: the Transport's OWN persisted, url-scoped pub/secret stand as-is (it clears them itself if
- *   `url` differs from the one they were learned for) — passing `settings.mcPub || null` here used to
- *   force-clear whatever Transport had learned from welcome.join on every single reconnect, so a phone
- *   that learned its pub in the field lost it again on the very next reconnect, or on a cold boot out
- *   of Wi-Fi with no other path to MC (review fix). `settings.mcPub`/`mcSecret` are still kept as an
- *   app-level mirror — seeded here on an explicit join, and kept current afterward via `onJoin` below.
+ *   code — when given, replaces whatever backhaul target/secret Transport is holding. When omitted
+ *   (every discovery/sweep/remembered-address reconnect) neither is passed at all: Transport's OWN
+ *   persisted, url-scoped pub/secret stand as-is (it clears them itself if `url` differs from the one
+ *   they were learned for) — passing a stale app-level copy here used to force-clear whatever Transport
+ *   had just learned from welcome.join on every single reconnect, so a phone that learned its pub in
+ *   the field lost it again immediately, or a cold boot out of Wi-Fi had no other path to MC (review
+ *   fix). Transport's own persistence is the single store now — there is no app-level mirror to keep.
  */
 function connectMc(url, remember = true, join = {}) {
   if (!url) return;
-  if (remember) {
-    // A28.2 security: pub/secret only ever belong to the MC that issued them (Transport enforces this
-    // itself too) — a different remembered target means don't keep mirroring the old one.
-    if (settings.mcUrl && settings.mcUrl !== url) { settings.mcPub = ''; settings.mcSecret = ''; }
-    settings.mcUrl = url; hud.mcUrl = url;   // discovery never overwrites the explicit target (polish-loop)
-  }
+  if (remember) { settings.mcUrl = url; hud.mcUrl = url; }   // discovery never overwrites the explicit target (polish-loop)
   // ...but RECONNECT MC has to have something to dial. It read `settings.mcUrl`, which a
   // discovery-only connect deliberately never writes — so after an auto-discovered join the button
   // called connectMc(undefined) and returned on line 1, doing nothing at all (deferred low).
   lastMcUrl = url;
-  if (join.pub !== undefined) settings.mcPub = join.pub || '';
-  if (join.secret !== undefined) settings.mcSecret = join.secret || '';
   if (transport) { try { transport.close(); } catch (_) { /* ignore */ } }
   const gun = engine.gun ? { name: engine.gun.name, tail: engine.gun.tail, fw: engine.fw || undefined } : null;
   transport = new Transport({ node: { app_ver: APP_VER }, gun });
   transport.setStatusProvider(() => engine.statusBody(preflight));
   transport.onHydrate(node => engine.hydrate(node));
-  transport.onJoin(({ pub, secret }) => { settings.mcPub = pub || ''; settings.mcSecret = secret || ''; });
   transport.onMessage(m => { engine.onMcMessage(m); if (m.kind === 'feedback' && m.body && m.body.kind === 'kill') haptic('kill'); });
   transport.onState(s => {
     // Bound to an MC: stop letting discovery/sweep pick a different one. `allowAssist` opens that

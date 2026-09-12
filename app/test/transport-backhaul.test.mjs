@@ -61,6 +61,23 @@ test('A28.3: an immediate error/close on pub (before welcome) falls back to LAN 
   t.close();
 });
 
+test('A28.3: a pub dial that never fires ANY event (TCP accepted but the upgrade never completes, or a dead/blackholed tunnel) still falls back to LAN after BACKHAUL_GIVEUP_MS', async () => {
+  const { sockets, wsFactory } = factory();
+  const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'GUN-A', tail: '3D4F' },
+    backoff: { baseMs: 1, capMs: 2, jitter: 0 }, backhaulGiveupMs: 15 });
+  const p = t.connect({ url: 'ws://lan/ws', pub: 'wss://pub/ws' });
+  // sockets[0] never calls .open()/.recv()/.close() -- a true blackhole: neither onopen nor onclose ever fires,
+  // so a timer armed only inside onopen (the old bug) would never even get armed
+  await sleep(30);
+  assert.equal(sockets.length, 2, 'gave up on the silent dial on its own and fell back to LAN');
+  assert.equal(sockets[1].url, 'ws://lan/ws');
+  sockets[1].open();
+  sockets[1].recv(welcome());
+  await p;
+  assert.equal(t.reach, 'lan');
+  t.close();
+});
+
 test('A28.3: while bound on LAN with a pub in hand, checks reachability every PUB_RETRY_MS -- the probe never sends hello, and only opening it drops LAN so the normal dial ladder can claim pub for real', async () => {
   const { sockets, wsFactory } = factory();
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'GUN-A', tail: '3D4F' },
@@ -321,17 +338,19 @@ test('A28.2: reconnecting to the SAME url the pub/secret were learned for keeps 
   t2.close();
 });
 
-test('A28.2: onJoin surfaces every wire-driven pub/secret change (welcome.join and an MC->node join push)', async () => {
+test('A28.2: a cosmetically different but equivalent url (case, a trailing slash) is NOT "a different MC" -- pub/secret survive', async () => {
   const { sockets, wsFactory } = factory();
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'GUN-A', tail: '3D4F' }, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
-  const heard = [];
-  t.onJoin(j => heard.push(j));
-  const p = t.connect({ url: 'ws://lan/ws' });
-  sockets[0].open();
-  sockets[0].recv(welcome({ join: { pub: 'wss://pub/ws', secret: 'sek' } }));
+  const p = t.connect({ url: 'ws://192.168.1.20:8765/ws', pub: 'wss://pub/ws', secret: 'sek' });
+  sockets[0].open(); sockets[0].recv(welcome());
   await p;
-  assert.deepEqual(heard, [{ pub: 'wss://pub/ws', secret: 'sek' }]);
-  sockets[0].recv(E.makeEnvelope('join', { pub: null, secret: 'sek' }));
-  assert.deepEqual(heard[1], { pub: null, secret: 'sek' });
+  t.close();
+  // a discovery/sweep reconnect can hand back a cosmetically different (but equivalent) string
+  const p2 = t.connect({ url: 'WS://192.168.1.20:8765/ws/' });
+  assert.equal(t.pub, 'wss://pub/ws', 'same MC, differently-cased/trailing-slashed -- not wiped');
+  assert.equal(t.secret, 'sek');
+  assert.equal(sockets[1].url, 'wss://pub/ws', 'still dials pub first');
+  sockets[1].open(); sockets[1].recv(welcome());
+  await p2;
   t.close();
 });
