@@ -138,6 +138,10 @@ export class MockBackend implements Api {
   private tunnelAvailable = true;
   private tunnelError?: string;
   private tunnelTimer: number | null = null;
+  // Mock-only debug hook, read once at construction: `?mock&tunnelfail=1` makes the NEXT TURN ON fail
+  // instead of coming up, so the e2e suite (and a human) can drive the persistent "TUNNEL DOWN" banner
+  // without a real cloudflared process to kill. One-shot, like a real flaky start.
+  private tunnelFailNext = typeof location !== 'undefined' && new URLSearchParams(location.search).get('tunnelfail') === '1';
   // the server's validate() errors ride on every snapshot (config_errors); the demo used to hardcode []
   // so a refusal shown in the PUT response vanished from the rail on the very next tick
   private cfgErrors: string[] = [];
@@ -540,8 +544,14 @@ export class MockBackend implements Api {
       if (this.tunnelStatus === 'up' || this.tunnelStatus === 'starting') return this.publicView();   // idempotent, like the server
       this.tunnelStatus = 'starting'; this.tunnelError = undefined; this.emit();
       this.tunnelTimer = window.setTimeout(() => {
-        this.tunnelStatus = 'up';
-        this.tunnelWsUrl = `wss://${Math.random().toString(36).slice(2, 10)}.trycloudflare.com/ws`;
+        if (this.tunnelFailNext) {
+          this.tunnelFailNext = false;
+          this.tunnelStatus = 'error'; this.tunnelWsUrl = null;
+          this.tunnelError = 'cloudflared exited before printing a trycloudflare.com hostname (connect: network is unreachable)';
+        } else {
+          this.tunnelStatus = 'up';
+          this.tunnelWsUrl = `wss://${Math.random().toString(36).slice(2, 10)}.trycloudflare.com/ws`;
+        }
         this.emit();
       }, 1000);
     } else {

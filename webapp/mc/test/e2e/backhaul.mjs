@@ -142,6 +142,36 @@ step('qr-caption-follows-tunnel-status', async ({ browser, base }) => {
   await closePage(pg);
 });
 
+// The mock's `?mock&tunnelfail=1` debug hook (backend.ts) makes the NEXT TURN ON fail instead of
+// coming up — there is no real cloudflared process here to kill, so this is the only way to drive
+// the ERROR state from a browser. The banner lives in CommandBar (the shared frame), so the real
+// assertion is that it survives a navigation to a screen that never touches the REACH panel at all.
+step('tunnel-error-banner-persists-across-screens', async ({ browser, base }) => {
+  const pg = await newPage(browser, base);
+  await pg.goto(`${pg.__base}/?mock&tunnelfail=1#muster`, { waitUntil: 'domcontentloaded' });
+  await until(() => pg.locator('header').count().then(n => n > 0), 8000, 'the command bar to render');
+  await until(() => pg.locator('text=CONNECTING TO MISSION CONTROL').count().then(n => n === 0), 12000, 'the first snapshot');
+  const bannerSel = 'header [role="alert"]:has-text("TUNNEL DOWN")';
+  expect(await pg.locator(bannerSel).count() === 0, 'no banner before the tunnel has ever been touched');
+  await pg.locator('button', { hasText: 'TURN ON' }).click();
+  await until(() => pg.locator(bannerSel).count().then(n => n > 0), 6000, 'the persistent tunnel-down banner after the simulated failure');
+  const txt = await pg.locator(bannerSel).first().textContent();
+  expect(/INTERNET TUNNEL DOWN/.test(txt ?? ''), `the banner names the outage (saw ${JSON.stringify(txt)})`);
+  expect(/PHONES FELL BACK TO WI-FI/.test(txt ?? ''), 'the banner explains the fallback');
+  expect(/cloudflared exited/i.test(txt ?? ''), 'the banner carries the server-supplied reason, never swallowed');
+  ok(`tunnel-down banner appears on ARMORY after a simulated failure  ${await shot(pg, 'b08-tunnel-error-armory')}`);
+  // the whole point of putting it in the shared frame: it must ride to a screen that never renders
+  // the REACH panel at all, not just the one with the TURN ON/OFF control. Click the real nav tab —
+  // `go()` re-navigates with a hard-coded `?mock` query, which drops `tunnelfail=1` and forces a full
+  // reload that resets the mock's in-memory state, making this assertion pass for the wrong reason.
+  await pg.locator('nav button', { hasText: 'LOBBY' }).click();
+  await until(() => pg.locator('main', { hasText: '[ A5 // LOBBY ]' }).count().then(n => n > 0), 8000, 'LOBBY to render');
+  await until(() => pg.locator(bannerSel).count().then(n => n > 0), 6000, 'the banner to persist onto LOBBY');
+  expect(await pg.locator(bannerSel).first().isVisible(), 'the banner is visible on LOBBY, not only ARMORY');
+  ok(`tunnel-down banner persists onto LOBBY  ${await shot(pg, 'b09-tunnel-error-lobby')}`);
+  await closePage(pg);
+});
+
 step('lobby-coverage-and-reach-tags', async ({ browser, base }) => {
   // Turn the tunnel on from ARMORY first (`?mock` shares no state across pages/tabs — same tab, new view).
   const pg = await go(await newPage(browser, base), 'muster');

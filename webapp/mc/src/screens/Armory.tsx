@@ -334,7 +334,7 @@ function ReachBlock() {
         <span style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro }}>NETWORK</span>
         <span style={{ font: F.chk(600, 12), color: T.ink, wordBreak: 'break-word' }}>{lan.ssid ?? lan.mode.toUpperCase()} · {lan.ip ? `${lan.ip}:${lan.port}` : '—'}</span>
         <span style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro }}>INTERNET</span>
-        <span style={{ font: F.chk(700, 12), letterSpacing: '.04em', color: statusColor, wordBreak: 'break-word' }}>{statusText}</span>
+        <span style={{ font: F.chk(700, 11), color: statusColor, wordBreak: 'break-word' }}>{statusText}</span>
       </div>
       {!supported && (
         <div style={{ font: F.mono(500, 9), letterSpacing: '.1em', color: T.warn, lineHeight: 1.6 }}>
@@ -359,12 +359,19 @@ function ReachBlock() {
         </div>
       )}
       {supported && available && !manual && (
-        <button type="button" onClick={toggle} disabled={busyOrPending} className={busyOrPending ? undefined : 'hov-acc'}
-          style={{ alignSelf: 'flex-start', minHeight: 36, background: 'transparent', border: `1px solid ${T.line2}`,
-                   color: busyOrPending ? T.micro : T.dim, font: F.chk(700, 10), letterSpacing: '.2em', padding: '8px 16px',
-                   cursor: busyOrPending ? 'not-allowed' : 'pointer' }}>
-          {status === 'starting' ? 'STARTING…' : turningOn ? 'TURN ON' : 'TURN OFF'}
-        </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button type="button" onClick={toggle} disabled={busyOrPending} className={busyOrPending ? undefined : 'hov-acc'}
+            style={{ alignSelf: 'flex-start', minHeight: 36, background: 'transparent', border: `1px solid ${T.line2}`,
+                     color: busyOrPending ? T.micro : T.dim, font: F.chk(700, 10), letterSpacing: '.2em', padding: '8px 16px',
+                     cursor: busyOrPending ? 'not-allowed' : 'pointer' }}>
+            {status === 'starting' ? 'STARTING…' : turningOn ? 'TURN ON' : 'TURN OFF'}
+          </button>
+          {/* A28.2: `welcome.join`/MC→node `join` push this to phones that joined over the LAN before
+              the tunnel existed — nothing on their end needs to change for them to pick it up. */}
+          <div style={{ font: F.mono(500, 9), letterSpacing: '.05em', color: T.micro, lineHeight: 1.6 }}>
+            PHONES ALREADY JOINED PICK THIS UP AUTOMATICALLY. NEW PHONES SCAN THE QR.
+          </div>
+        </div>
       )}
     </div>
   );

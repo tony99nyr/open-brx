@@ -38,6 +38,16 @@ export function CommandBar() {
           <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.dim }}>SAVED GAMES, PERKS AND LOADOUT RULES ARE UNAVAILABLE UNTIL THEN</span>
         </div>
       )}
+      {/* A28: a tunnel that dies mid-match is invisible past the ARMORY screen unless it rides in the
+          shared frame — every screen reads this, not just the one with the TURN ON/OFF control. The
+          ▲ glyph carries the same meaning as the colour, so this still reads on a colour-blind or
+          greyscale screen (never colour-only). */}
+      {state?.lan.public?.status === 'error' && (
+        <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 20px', background: 'rgba(255,82,82,.12)', borderBottom: `1px solid ${T.bad}`, font: F.chk(700, 12), letterSpacing: '.14em', color: T.bad }}>
+          ▲ INTERNET TUNNEL DOWN — PHONES FELL BACK TO WI-FI
+          <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.dim }}>{state.lan.public.error || 'no reason given by the tunnel process'}</span>
+        </div>
+      )}
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 26px', padding: '12px 20px 10px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 230 }}>
           <div style={{ width: 26, height: 26, background: T.acc, clipPath: 'polygon(0 0,100% 0,100% 65%,65% 100%,0 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', font: F.chk(700, 12), color: T.accInk }}>B</div>

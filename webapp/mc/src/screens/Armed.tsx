@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { RUNWAYS, useRunway } from '../runway';
+import { coverageLine } from '../api/derive';
 import { useStore } from '../store';
 import { EvictButton } from '../ui/EvictButton';
 import { F, T, TAB, fmtAge, fmtClock } from '../tokens';
@@ -20,11 +21,18 @@ export function Armed() {
   const [reschedConfirm, setReschedConfirm] = useState(false);
   useEffect(() => { const id = setInterval(() => tick(x => x + 1), 250); return () => clearInterval(id); }, []);
   if (!state) return null;
+  // A28.4: derived, never asserted — grey the count while the tunnel is off, since it can only be 0.
+  const cLine = coverageLine(state);
+  const cColor = state.lan.public?.status !== 'up' ? T.micro : state.coverage?.level === 'full' ? T.ok : T.warn;
   const st = state.start;
   if (!st) {
     return (
       <div className="screen">
-        <ScreenHeader kicker="[ A6 // DISPERSED START ]" title="Match Arming" right={<GhostButton onClick={() => setView('lobby')}>◂ BACK TO LOBBY</GhostButton>} />
+        <ScreenHeader kicker="[ A6 // DISPERSED START ]" title="Match Arming" right={
+          <>
+            {cLine && <Tag color={cColor} size={9} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{cLine}</Tag>}
+            <GhostButton onClick={() => setView('lobby')}>◂ BACK TO LOBBY</GhostButton>
+          </>} />
         <div style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.micro }}>NO SCHEDULE — PUSH CONFIG &amp; ARM FROM THE LOBBY.</div>
       </div>
     );
@@ -39,6 +47,7 @@ export function Armed() {
     <div className="screen">
       <ScreenHeader kicker="[ A6 // DISPERSED START ]" title="Match Arming" right={
         <>
+          {cLine && <Tag color={cColor} size={9} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{cLine}</Tag>}
           <GhostButton onClick={() => setView('lobby')}>◂ BACK TO LOBBY</GhostButton>
           {reschedConfirm ? (<>
             <GhostButton color={T.warn} border={T.warn} onClick={() => { setReschedConfirm(false); run(() => api.reschedule(shownRunway)); }}>CONFIRM — RESTART EVERY COUNTDOWN AT {String(Math.floor(shownRunway / 60)).padStart(2, '0')}:{String(shownRunway % 60).padStart(2, '0')}</GhostButton>
