@@ -55,6 +55,9 @@ just the path list, whenever more than one session has the same file open.
   link-proves-headset (A32). Sheet: `game-test-2026-09-11.md`; log: `experiment-log/2026-09.md`.
   🟡 bench-gated: F121 (fn 28 spawn protection), F113 (death blanks the strip), F123 (reload bar), F126
   (iPhone). **APK 0.2.0 was cut from `47a71bd`** (`0dee568`, the sidecar points at release app-v0.2.0); not yet verified on a real phone.
+  **Round 2 closed (88b4d20):** the per-node pick debounce (a slot switch lost the first pick) and the foreground reconcile (a
+  free magazine on screen-off/on) are fixed; F129 residuals landed; **F133** filed (kit-lock latch vs a re-pushed game).
+  **APK 0.2.0 published** (`app-v0.2.0`, `APP_MINOR = 2`); the Android in the field is still on 0.1.8 until installed.
 - **A28 BACKHAUL (PR #3, same day):** a phone with a data plan reaches MC off the field Wi-Fi via a
   cloudflared quick tunnel, no per-phone setup; the node prefers backhaul when offered; coverage is
   derived. Merged as `6925d32` (22 conflicted files resolved by hand; the wire gained `join`); the
