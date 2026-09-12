@@ -1,7 +1,6 @@
 # Handoff — Open BRX
 
-**State as of 2026-09-12 (morning: the game-test sheet worked at the desk, Block D specified, WSL crash root-caused).** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners:
-[`archive/handoff-history.md`](archive/handoff-history.md).
+**State as of 2026-09-12 (morning: the game-test sheet worked at the desk, Block D specified, WSL crash root-caused).** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners: `git log -p -- docs/HANDOFF.md`.
 
 ## ⭐ The game-test sheet is WORKED (2026-09-12 desk pass): Blocks A–C built, Block D specified, one commit
 

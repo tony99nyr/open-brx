@@ -10,6 +10,14 @@ The MATCH-DAY guide is [`field-runbook-mc.md`](field-runbook-mc.md). This is the
 
 ## 1. First-time setup (none of this is in git)
 
+CLI tools this repo needs, via Homebrew (Android's `adb` + JDK are their own brew line in §2b; node
+comes from nvm, `nvm install 24` to match the WSL machine):
+
+```bash
+brew install git gh python@3.13
+gh auth login   # browser-based GitHub auth for the release/PR workflow, no tokens on disk
+```
+
 ```bash
 # python — the venv exists but ships without the MC server's deps
 .venv/bin/pip install -e ./mcp websockets starlette uvicorn zeroconf httpx

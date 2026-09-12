@@ -38,7 +38,7 @@ is tied to the exact profile. A silenced preset has no sound steps; night has no
    replaces all of that with what a running MC has; **the patch box** merges a `presentation` patch (the same
    shape `PUT /api/config` takes) and recompiles, so an event's sound or colour can be changed and tried in the
    same minute. Anything the server would refuse is refused here with the same message.
-3. **GAME** — ARM (head), SPAWN (T-0 tail + start flash; the gun body is taken 2.5 s later, blank then rest), RESPAWN, GAME END / TEARDOWN ONLY, PANIC (re-ARM after: F11). The tiles show
+3. **GAME** — ARM (head), SPAWN (T-0 tail + start flash; the gun body is taken 2.5 s later, blank then rest), RESPAWN, GAME END / TEARDOWN ONLY, PANIC (re-ARM after: F11, rule in gotchas.md). The tiles show
    what the gun reports (`$HP` / `$LCD` / `$ALCD`) and the phone-side model beside it. A second row is the **reload
    path** (F54): **RELOAD** injects the gun's own handle report `$BUT,2,1` through the same rx path a real pull
    arrives on, and the stage does what `engine.js` `_reloadPulled` does -- the pull is ignored with a full mag, a

@@ -155,7 +155,7 @@ def test_the_next_free_ids_are_actually_free():
 
 def test_handoff_is_one_screen():
     n = len(HANDOFF.read_text(encoding="utf-8").split("\n"))
-    assert n <= 150, f"HANDOFF.md is {n} lines; it is one screen (<=150), history goes to docs/archive/handoff-history.md"
+    assert n <= 150, f"HANDOFF.md is {n} lines; it is one screen (<=150), history goes to `git log -p -- docs/HANDOFF.md`"
 
 
 def test_docs_links_resolve():

@@ -11,5 +11,5 @@ disagrees with `docs/manual/`, `docs/spec/contracts.md`, `protocol/brx-protocol.
 Files keep their original names. Where a living file absorbed part of an archived one, the
 living file says so at the point of absorption.
 
-Subdirectories: `hardware/` (plans that ran or were superseded), `site/` (the round-1 design handoff), `design/`
-(the mc/hud design exports). `followups-closed.md` and `handoff-history.md` are aggregates, not moved files.
+Subdirectories: `hardware/` (plans that ran or were superseded), `design/` (the mc/hud design exports).
+`followups-closed.md` and `pre-2026-09-06-followups-snapshot.md` are aggregates, not moved files.

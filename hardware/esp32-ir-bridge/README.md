@@ -52,6 +52,8 @@ many DevKitC-1s come pre-soldered.
 
 ## Breadboard — `ir_capture.ino` (Phase A, CAPTURE)  ← wire this first
 
+[`ir-breadboard.svg`](../ir-breadboard.svg) is the same wiring (both capture and emit) as a picture.
+
 ```
   ESP32-S3                         VS1838B (IR receiver)
  ┌─────────┐                      ┌──────────┐
