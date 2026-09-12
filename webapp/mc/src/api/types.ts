@@ -21,7 +21,7 @@ export type {
   SlotChoice, StationKind, StationSourceId,
 } from './contract.gen';
 // values (verbatimModuleSyntax: a value re-export may not ride in a `export type` statement)
-export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, STATION_KINDS, STATION_SOURCE_IDS } from './contract.gen';
+export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS } from './contract.gen';
 
 import type { ArmState, GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, Player, Preflight,
   PerkView, ReadinessSnapshot, ScanRow, ScoreRow, StationKind, Team } from './contract.gen';

@@ -101,6 +101,13 @@ script in `/tmp` fails with `Cannot find package 'playwright'`.
 - **`docs/mac-dev-runbook.md`** — the MacBook setup that is not in git, and the restart-vs-hard-reload rule.
 - **`webapp/mc/README.md`** — the console: dev server, jsdom tests, the browser e2e, why MC needs no stage harness.
 
+**Where the wire types come from.** `types.py` (constants, `Literal` aliases, TypedDict shapes, kind
+vocabularies) and `envelope.py` (`REQUIRED`/`EVENT_REQUIRED`/`ACCEPT_MIN`, plus its module-level
+constants — the size caps and the `t` plausibility bounds) are the one hand-edited source; `webapp/mc/src/api/contract.gen.ts` and `app/src/transport/contract.gen.js` are
+generated from them. Regenerate with `python3 mcp/tools/gen_contract.py` (from the repo root) after
+touching either module; `mcp/tests/test_contract_generated.py` fails CI when a generated file goes
+stale. **Never hand-edit `contract.gen.ts` or `contract.gen.js`.**
+
 Modules: `state.py` (Session/phases/readiness), `scoring.py`, `compile.py` + `weapons.json`
 (`golden_bundle.json` is the frozen reference bundle), `net.py` (NetServer, A8 takeover rules), `armory.py`
 (bleak scan-only; `fakes.py` for demo), `store.py` (session persistence + CSV), `api.py` + `__main__.py`.

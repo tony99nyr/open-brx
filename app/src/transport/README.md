@@ -23,3 +23,9 @@ The app still owns: the gun engine and frame writes (`frames.*` verbatim + `$SFL
 probe set), the HUD, BLE plumbing, the §3.10 resync protocol, `match_id`/`arm_state` bookkeeping fed to
 `status()`, and running `report('ready', …)`. Storage: `localStorage` (falls back to memory); keys
 `brx.node_id`, `brx.outbox`, `brx.clock`. Tests: `cd app && node --test test/*.test.mjs` (the `MODULE_TYPELESS` warning goes away if `"type": "module"` is added to app/package.json — not done here).
+
+`contract.gen.js` in this folder is **generated, never hand-edit**: `mcp/tools/gen_contract.py` renders
+it from `mcp/brx_mcp/mc/types.py` + `envelope.py` (the wire's constants, kind sets and required-field
+tables), and `mcp/tests/test_contract_generated.py` fails CI when it drifts from the source. Regenerate
+with `python3 mcp/tools/gen_contract.py` from the repo root after touching either Python module.
+`envelope.js` imports the generated tables and re-exports every name it exported before.

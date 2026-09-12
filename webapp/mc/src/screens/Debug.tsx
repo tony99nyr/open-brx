@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { STALE_AFTER_MS } from '../api/types';
 import { useStore } from '../store';
 import { F, T, fmtAge } from '../tokens';
 import { GhostButton, ScreenHeader, SectionRule } from '../ui';
@@ -33,7 +34,7 @@ export function Debug() {
     .then(v => setVoices({ n: v.voices.length, verified: v.voices.filter(x => x.verified).length }))
     .catch(() => setVoices(null)); }, [api]);
 
-  const linked = state?.nodes.filter(n => (n.last_seen_ms ?? 1e9) < 8000).length ?? 0;
+  const linked = state?.nodes.filter(n => (n.last_seen_ms ?? 1e9) < STALE_AFTER_MS).length ?? 0;
   const synced = state?.nodes.filter(n => n.synced).length ?? 0;
 
   return (

@@ -1,134 +1,111 @@
 # Handoff — Open BRX
 
-**State as of 2026-09-12 (midday: milestones 1 + 2 of the game-test sheet in — Blocks A–D built; the doc-rot pass landed beside it).** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners: `git log -p -- docs/HANDOFF.md`.
+**State as of 2026-09-12 (evening: contract DRY landed, the A28 backhaul PR merged, APK 0.2.0 cut).** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners: `git log -p -- docs/HANDOFF.md`.
 
-## ⭐ Milestones 1 + 2 of the game-test sheet are IN (2026-09-12): Blocks A–D built, results replayed, phones report their build
+## ⭐ Contract DRY landed (2026-09-12, `86a8c3a` + `be1ce39`): one machine source for the node↔MC wire
 
-**Sheet:** [`game-test-2026-09-11.md`](game-test-2026-09-11.md). **Log:** `experiment-log/2026-09.md` → 2026-09-12 (two entries).
-**Spec rows written and built today:** A23 spawn protection · A24 results + frag-cap REPLAY · A25 log sync · A26 try-out
-collapse · A27 guarded CONTINUE · A29 semver build report · A30 the kit locks at START · A31 verify-at-MC line · A32 a
-sustained link proves the headset. Method: parallel lanes on disjoint files, two-round polish loops (read-only reviewers →
-fix lanes, fail-first tests), a real-browser pass on every changed screen, long runs under `~/brx-scratch/watchdog.sh`.
+The wire tables (kinds, required fields, event types, size caps, timing constants) and 18 shared
+TypedDict shapes lived three times — `envelope.py`, `envelope.js`, `types.ts` — and a mechanical diff
+found them already apart: `possession` was a persisted event in Python, missing from the phone's
+whitelist; `result` needed six fields on the MC side and one (`match_id`) on the node side, a silent
+asymmetry until now, explicit as `ACCEPT_MIN` (the A24 rule: a result must reach the engine even short
+a field). `mcp/tools/gen_contract.py` renders `webapp/mc/src/api/contract.gen.ts` and
+`app/src/transport/contract.gen.js` from `mcp/brx_mcp/mc/types.py` + `envelope.py`;
+`mcp/tests/test_contract_generated.py` (no skip path) fails CI on drift, under bare system
+python. `envelope.js` re-exports the generated tables under the names it already exported (no importer
+changed); `types.ts` re-exports the generated shapes and declares none itself. `_REQUIRED`/
+`_EVENT_REQUIRED` are now public `REQUIRED`/`EVENT_REQUIRED`. `webapp/mc` runs `npm run typecheck`
+(`tsc -b`) in CI before `vitest`, which type-checked nothing before this.
 
-- **Closed → archive today:** F110 F115 F116 F117 F118 F119 F122 F124 F125 · S20 S21 S22 S23 S24 S26 F127. **🟡 bench-gated:**
-  F121 (head `$SIR` on fn 28; shot during the countdown must not land, after `$SPAWN` it must), F113 (death blanks the strip),
-  F123 (reload bar follows the gun's `$ALCD`; shotgun + easy_reload refused), F126 (iPhone), S22 (a sidearm-only round: no
-  obvious pick). **New:** F128 F129 F130 · P18 (fn 24: status vs delayed blast) · S27 S28 S29.
-- **Rules the field taught, now in code:** the match ENDS at the timestamp of the winning cap kill and MC re-scores by
-  REPLAYING stored facts when a late flush moves it (earlier only; ties inside 1 s; after-the-whistle facts shown, never
-  counted; roster frozen at the whistle). The phone never infers win/lose (`RESULT PENDING · CONFIRM AT MISSION CONTROL`).
-  A config never reaches a gun that took this match's config. A phone sends `x.y.z+sha[-dirty]` + platform; MC reds a major
-  mismatch (0.x: minor), ambers behind the field/release; `APP_MAJOR/APP_MINOR` are pinned to app/package.json by a test.
-- ⚠ **Traps found this pass:** `result` sat in `MC_KINDS` but not `transport.js DELIVERED` (the F105 shape; parity test over
-  every `onMcMessage` case now); `resume()` in LIVE ran the retired trigger-first resync (fixed → reconcile); a full pytest of
-  `test_stage_mirror` spun to 23 GB under a hand clock and crashed WSL three times (fixed; run suites under the watchdog).
-- **Doc-rot pass (another session, same day):** eleven `--only` commits 5e4ced8..edeb0d3 — the triage list and the banner
-  archive are gone (old banners: `git log -p -- docs/HANDOFF.md`), one generator for both UI catalogs
-  (`mcp/tools/gen_ui_catalog.py`, drift-tested), new hygiene guards (links repo-wide, closed ids cited as open, spec kinds vs
-  whitelists, §10 symbols, stage coverage). Ledger: the artifact "Open BRX Rot Ledger"; method: `.claude/skills/doc-rot-review/`.
-  Left open from it: F131 F132 · R3 · S32-S36; the ledger's D1 (unbuilt amendments in §10) is now a test with an empty allowlist.
-- **Verified at the M2 commit:** python 1403+/0 (4 GB cap) · app 333 · MC UI 247 · `e2e:kit` `e2e:m2` `e2e` koth `ui:logsync`
-  · HUD screen-truth under the watchdog · site shots regenerated.
-- **Next:** cut **APK 0.2.0** (bump `app/package.json` AND `types.APP_MINOR` together — the wire gained `result`; 0.x MINOR
-  is the breaking tier), push, then F129 residuals · S28 with a measured field accuracy · S29 shield recharge · the bench
-  gates above. **Android is still on APK 0.1.8** until the cut; the iPhone needs the Mac (A6/F126).
+**Regenerate after touching `types.py` or `envelope.py`:** `python3 mcp/tools/gen_contract.py` from
+the repo root. **Never hand-edit `contract.gen.ts` / `contract.gen.js`.**
+
+**Still hand-written, not generated:** the ~29 UI-only view types (`State`, `LiveView`, `RecapView`,
+`NodeView`, `StationView`, `WeaponView`, …) — `api.py` builds them untyped, no Python shape exists yet
+to generate from (FOLLOWUPS F42.9); `webapp/mc/src/mock/policy.ts DEFAULT_POLICY` (mirrors `policy.py`'s
+default — logic, not a shape); `beacon.js KIND`/`utility.js KIND_LABEL` (mirror `STATION_KINDS`, pinned
+by a node test, not generated); `webapp/mc`'s `tsconfig` is not `strict` yet (F42.11); `envelope.js`/
+`transport.js` have no JSDoc + `checkJs` reading a `.d.ts` yet (F42.12); pyright for `mcp/` is unstarted
+(first manual run 2026-09-12: 249 errors, 81% of defs already annotated — F42.10).
+
+**Concurrency lesson:** a `git commit --only <file>` from another session, while this lane had
+`types.py` open, swept 139 unrelated lines into `be1ce39` alongside the intended app-version bump —
+correct content, just co-authored by an accident of timing. Diff what `--only` is about to commit, not
+just the path list, whenever more than one session has the same file open.
+
+**This session regenerated the site shots** (`cd site && npm run shots`, because `app/src` and
+`webapp/mc/src` changed) but did not run the site gate (`cd site && npm test`): nothing under
+`docs/platform/` or `docs/manual/` changed.
 
 ## What is true today
 
-- ⭐⭐ **KING OF THE HILL IS BUILT, END TO END, AND MC ARMS A PHONE POINT.** A grenade in hill mode is a working
-  control point over BLE: `proto=15 team=<owner> mag=8` every 5.0 s, **neutral = team 2**, `mag=50` new owner,
-  `mag=53` only when it was NEUTRAL. Ship `$SIR,15,0,,28`. `hillbeacon.py` · `DominationEngine` · `control.js`
-  (phone point; capture rate = leader minus the largest single rival) · MC's `koth` with `station_source`
-  `grenade`/`ir_station`/`phone`. ✅ F104/S5 MC arms utility phones. ✅ **F69/F91 CLOSED tonight** — the hill does
-  NOT chip anyone with the shipped fn-28 row. 🟡 **F82** never a player on tid 2; **F97** refuses a fourth team.
-  Spec: `spec/utility.md` §5b-§5d; the roaming-hill and Territories designs are `utility-roadmap.md` §8.
-- ⭐⭐ **SIMULATED RECOIL IS REAL AND OURS TO DRIVE (2026-09-09, F46 closed).** `$WEAP` **t21 = accuracy
-  ceiling · t22 = floor · `$ALCD` tok2 = live accuracy**; falls in five steps toward the floor, races a native
-  recovery (**t14 sets how hard it bites**), resets on reload, and below the ceiling a shot emits **IR magnitude
-  0** — a real miss, reaching the PLAYER natively and our SOFTWARE not at all. **Stock 100/100 = OFF.** Ship via
-  **S17** after **F68 🔴**. Mechanism: `protocol/brx-protocol.md`.
-
-- **The stack runs whole matches on real hardware.** MC compiles a per-player `FrameBundle`; each phone
-  (`app/`, the BRX Companion) drives its own gun over BLE and reports over the LAN. MC is setup, start and
-  recap only; it is never BLE-connected to guns during play. Verified: FFA 2026-08-30, TDM 2026-09-01,
-  and the 1v1 game test 2026-09-11.
-- **APK 0.1.8 is published** (`app-v0.1.8`, 2026-09-10): A16, A17 and the hill work; nothing since (see Next actions 4).
-- **Presentation profile (contracts A11)** is built: presets `standard/silenced/counter_strike/vip/infection/
-  last_stand/extraction`, per-event sound + gun-LED burst + headset colour, in the bundle. Events are HUD-driven
-  except cross-player facts (kill credit, medals, lead changes, last survivor), which MC pushes best-effort.
-  Headset A11.6 and gun-body A11.7 are in. The write UI is open (S2).
-- **Voices (A15-A15.3):** `voices.py` reads the 22-slot character layout off the on-gun catalog; 24
-  personas. Sounds VARY now, because Callsign never varied anything: a kill draws from 5 takes; the
-  pains are OURS, picked by `$HIR` damage (long at 40+, short below, melee grunt on proto 13), one per
-  600 ms and never on the lethal hit; the spawn line is OURS and draws per spawn; the death scream stays
-  NATIVE but a `$PSET` before every `$SPAWN` re-rolls it per life. **Not yet heard on hardware.**
-- **Loadout:** three slots, primary + secondary + perk (A14); sidearms Glock / USP / Deagle (A12);
-  `$WEAP` tok15 is the swap delay, so Quick Switch is real (F4/F22 closed 2026-09-04).
-- **Gun stage** (`python -m brx_mcp stage`, `docs/gun-stage.md`): click-to-try page for one real gun, a
-  walkthrough with PASS/FAIL verdicts, and the voice soundboard (§8) for all 24 characters. `--gun` links in
-  the background (S11 closed).
-- **Utility station (A13):** a spare phone as a BLE-beacon respawn station is proven on hardware and **MC arms it from the
-  MUSTER ITEMS panel** (S5/F104; not yet used at a field). Hosted games ignore the grenade's IR station words (B23).
-  **Station hardware on order:** 2x M5StickS3 + 3x Grove IR emitters; firmware `hardware/m5sticks3/`; gates in **H7**.
-- **`$PLAY` token 1 interrupts / token 4 queues (2026-09-11, A21, per-event `slot`).** 249 of 2477 (`fx:hit` complete) clips audited by ear; F45, F48, W4a, S-A12.1, F58(a) and the defeat line closed by ear, S9 all but the preset sweep; F59 is firmware not clips (`soundbank_leadin.py`), one filmed rung left. **Later the same night:** F44 closed (the shield loop is A10, heard live via `$LIFE,0,0,20,*`), S12 decided and built (`presentation.voice`, A22), and **F109** filed: `$LIFE` grants shields over BLE, so host-granted overshields/heals need no IR word.
-- **Hit audio (A17, ear-confirmed 2026-09-07):** metal for armour (`H02/H36/H37`), an energy note for shield
-  (`H22`), **health deliberately SILENT**. ⚠ **An empty slot is not silence** — it falls through to a
-  neighbouring pool, so health ships empty only as the innermost one. `$SIR` REPLACES the `$PSET` pool sound
-  (F38), so the class layer ships OFF. **A17.2** `low_health` fires below **15 HP**. **A17.3** the pain grunt is
-  sized on TOTAL pools lost, on purpose. Detail in the log.
-- **IR rig:** emitter (board B, COM8) registers 6/6 at 3 ft, 10/10 at 6 ft, cliff at 10 ft; work at
-  6 ft or less. Receiver (board A, COM7) fragments frames but `native_capture.py` stitches them (F12
-  worked around). Never end a run on a bare `$CLEAR`: it wipes the `$SIR` table (F11).
+- ⭐⭐ **KING OF THE HILL IS BUILT, END TO END, THROUGH THE GUN OVER BLE**, and MC arms a phone point.
+  `proto=15 team=<owner> mag=8` every 5.0 s, neutral = team 2, `mag=50` new owner, `mag=53` only when
+  NEUTRAL. Ship `$SIR,15,0,,28`. `hillbeacon.py` · `DominationEngine` · `control.js` (phone point) ·
+  MC's `koth`. Spec: `spec/utility.md` §5b–§5d.
+- ⭐⭐ **SIMULATED RECOIL IS REAL (F46).** `$WEAP` t21/t22 = accuracy ceiling/floor, `$ALCD` tok2 = live
+  accuracy; below the ceiling a shot emits IR magnitude 0 — a real miss the player feels natively.
+  Stock 100/100 = OFF. Ship via S17 after F68.
+- **The stack runs whole matches on real hardware.** MC compiles a per-player `FrameBundle`; each
+  phone drives its own gun over BLE and reports over the LAN. MC is setup/start/recap only, never
+  BLE-connected during play. Verified FFA/TDM/1v1 (2026-08-30, 09-01, 09-11).
+- **Game-test milestones 1+2 are IN (2026-09-12):** spawn protection (A23), match results replayed
+  from stored facts on a late flush (A24), background log sync (A25), try-out collapse (A26), guarded
+  CONTINUE (A27), semver build reporting (A29), kit-locks-at-start (A30), verify-at-MC line (A31),
+  link-proves-headset (A32). Sheet: `game-test-2026-09-11.md`; log: `experiment-log/2026-09.md`.
+  🟡 bench-gated: F121 (fn 28 spawn protection), F113 (death blanks the strip), F123 (reload bar), F126
+  (iPhone). **APK 0.2.0 was cut from `47a71bd`** (`0dee568`, the sidecar points at release app-v0.2.0); not yet verified on a real phone.
+- **A28 BACKHAUL (PR #3, same day):** a phone with a data plan reaches MC off the field Wi-Fi via a
+  cloudflared quick tunnel, no per-phone setup; the node prefers backhaul when offered; coverage is
+  derived. Merged as `6925d32` (22 conflicted files resolved by hand; the wire gained `join`); the
+  full suites ran green on the merged tree except `test_site_shots`, which regenerates with the shots.
+- **Doc-rot review (2026-09-12):** repo-wide read-only pass, ~55 P1 findings, applied in nine
+  `--only` commits: one generator for both UI catalogs, new hygiene guards (dead links, closed ids
+  cited as open, amendment citations resolve to real code), 39 closed-experiment scripts deleted.
+- **Presentation profile (A11)** is built: presets, per-event sound + gun-LED burst + headset colour.
+  **Voices (A15–A15.3):** 24 personas, varied per event, ours for spawn/pain, native for the scream.
+  **Loadout:** three slots (A14), sidearms (A12), Quick Switch via `$WEAP` tok15 (F4/F22).
+  **LEDs (A16–A16.5):** team-colour dim rest + transient pool readout, night overlay, down pulse.
+  **Utility station (A13):** MC arms a spare phone as a BLE-beacon respawn station from MUSTER ITEMS.
+- **Hit audio (A17):** metal for armour, an energy note for shield, health deliberately silent (an
+  empty slot falls through to the neighbouring pool, not to nothing). `low_health` fires below 15 HP.
 - **The public site has two doors, one source:** `docs/platform/*.md` → `/`, `/docs/*`, `/download`;
-  `docs/manual/*.md` → `/manual/*`. Landings are plain markdown read by shape (`docs/site/FORMAT.md`); the
-  build FAILS on a date, version or status word in them. Gate: `cd site && npm test`. Detail in the log.
-- **Environment:** WSL2 has no Bluetooth; run anything that touches a gun with
-  `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe`. `mcp/pyproject.toml` pins `mcp>=2,<3`; the
-  2.0 port is done. `~/.brx-mcp/armory.json` is never in git (headset PINs); stickers stay out of docs,
-  use `Tactix-XXXX`. ⚠ **The git remote MOVED to `tony99nyr/open-brx`** — pushes redirect with a warning;
-  `git remote set-url` silences it. Mac install traps are in the game-test sheet's environment notes.
-
-## Recent history (detail in the log; only what still bites is kept here)
-
-- **⭐ Callsign's whole cloud protocol is decoded** (Mac + mitmproxy **WireGuard**, not the HTTP proxy the Unity
-  app ignores; `capture-runbook.md` corrected). Plain-HTTP API; game config rides the **SNS/SQS lobby**, not
-  REST. Model: [`../protocol/callsign-extract/protocol-classes.md`](../protocol/callsign-extract/protocol-classes.md). **P8 largely resolved** (open: weapon stats), **P3 refined**.
-- **Prior sessions 2026-09-11** (log has it): site rebuilt; triage closed 8 ids; A18 `config.mode_params` / A19 `alert.role` + `config.vip_player_id` / A20 `config.stun`.
-- **LEDs (pinned by `test_led_invariants.py`, full block in archive):** never `$HLED,,6` in play (kills the
-  death flash; in-play dark = `$HLED,9,0,,,10,,*`); `$TID` 0-3 only (F35); phones ship `headset.carrier` (S10).
+  `docs/manual/*.md` → `/manual/*`. Plain markdown, no dates/versions/status words allowed in it. Gate:
+  `cd site && npm test`.
+- **Environment:** WSL2 has no Bluetooth; anything touching a gun runs under
+  `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe`. `~/.brx-mcp/armory.json` never in git (headset
+  PINs); use `Tactix-XXXX` in docs, never sticker ids. Remote is `tony99nyr/open-brx`.
 
 ## Next actions
 
-1. **Bench, still open on [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md):** BC-A1/B1/B2 ANSWERED
-   tonight (F69/F91/F23). Remaining: **BC-A2** the t14 rate-of-fire floor (F87/F100), **BC-B3** the capture currency
-   (F70/F76), **BC-C1** the shield grant (F60), **BC-C2** enemy fn 35 (BQ-D6). Also block E (LED metering) and **F15 rung 9**
-   (a proto-8 word at a stun-armed gun). F27 sidearms + melee reload timing are quick adds when a gun is armed. **F59**'s filmed rung is also due: phone at 240 fps on a batched `$GLED`+`$PLAY`, reading announcer/effect/hit-path latency off the video.
-2. **Keyboard, in order:** **E2** the other three touch points (the registry exists) · **B23** the hosted respawn assembly (every link built) ·
-   **F88** multi-point Domination on phones (the ids now reach every HUD) · **S3** extraction on phones · **B19**
-   for F80's real fix · the E1 Designer editor (F107 (h)) · **E5** phone audio when there is an ear for it.
-3. **Work the game-test sheet** ([`game-test-2026-09-11.md`](game-test-2026-09-11.md)): block A is six confirmed
-   bugs behind ONE rebuild-and-install; B/C are MC- and node-side; D needs Tony's decisions; E needs the bench.
-   ⚠ **APK 0.1.8 is still what the Android runs** — cut a fresh one before the next field day (debug-signed, B21).
-4. **Hear A15.3 on a gun** — partly done 2026-09-11 and it found F114/F120; the scream/spawn/pain sweep is open.
-5. ⚠ **Nothing shield-shaped has EVER been on a gun** (F60); rung C1 is the first attempt.
+1. **Install APK 0.2.0 on a real Android phone** and run one match against the merged MC (the wire
+   gained `result` and `join`; `types.APP_MINOR` moved with it in `be1ce39`).
+2. **Contract follow-ups, in order of payoff:** view TypedDicts in Python so the ~29 hand-written
+   `types.ts` view shapes can be generated (F42.9), pyright as a `mcp/` gate (F42.10), `strict: true`
+   for `webapp/mc` (F42.11), JSDoc + `checkJs` on `app/src/transport` (F42.12).
+3. **Bench-gated residuals:** F121 (spawn protection during the countdown), F113 (death-blank LED),
+   F123 (reload bar vs. `$ALCD`), F126 (iPhone WKWebView font); keyboard-only: F129 (M2 UI polish),
+   F130 (unsynced-node late flush), the generated-contract follow-ups (F42.9–F42.13, all `build`, none
+   blocking).
 
-**Bench sheet: [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md)** (self-contained). Queue:
+**Bench sheet:** [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md). Queue:
 [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md). Register: FOLLOWUPS §9. Pre-flight: `gotchas.md`.
 
 ## Machine roles
 
-**Windows PC (WSL2 + Windows Python)** = primary development. **MacBook** = field / match day, and the only capture
-rig (Callsign is effectively iOS-only: the Android build cannot connect a gun; PacketLogger is macOS-only), so capture
-jobs batch for a Mac day (`capture-runbook.md`, `mac-dev-runbook.md`). Code must run on both: macOS gives BLE UUIDs, Windows/BlueZ MACs.
+**Windows PC (WSL2 + Windows Python)** = primary development. **MacBook** = field / match day, and the
+only capture rig (Callsign is effectively iOS-only). Code must run on both: macOS gives BLE UUIDs,
+Windows/BlueZ gives MACs.
 
 ## Where things live
 
 | what | where |
 |---|---|
-| Open work, all of it, by id | `FOLLOWUPS.md` (incl. "Needs Tony at the bench" and "System proofs") |
+| Open work, all of it, by id | `FOLLOWUPS.md` (incl. "Needs Tony at the bench") |
 | Evidence, append after every session | `experiment-log/` (by month) |
 | Field lore by symptom, bench pre-flight | `gotchas.md` |
 | Issues at a live session · Mac-only capture jobs | `field-issues.md` · `capture-runbook.md` |
-| Start MC with no hardware (the command, the busy-port trap) / running a match / armory + muster / Mac setup / one-gun bench page | `../mcp/brx_mcp/mc/README.md` → *Start it* · `field-runbook-mc.md` · `field-process.md` · `mac-dev-runbook.md` · `gun-stage.md` |
+| Start MC with no hardware / running a match / armory + muster / Mac setup / one-gun bench page | `../mcp/brx_mcp/mc/README.md` → *Start it* · `field-runbook-mc.md` · `field-process.md` · `mac-dev-runbook.md` · `gun-stage.md` |
 | Spec of record / protocol truth / confirmed BRX facts | `spec/contracts.md` · `../protocol/brx-protocol.md` · `manual/` |
-| History: closed bench sheets, superseded spec modules, design exports (referenced-only since 2026-09-12) | `archive/` |
+| Node↔MC wire contract, machine copy | `mcp/brx_mcp/mc/types.py` + `envelope.py`, generated into `contract.gen.ts`/`contract.gen.js` by `mcp/tools/gen_contract.py` |
+| History: closed bench sheets, superseded spec modules, design exports | `archive/` |

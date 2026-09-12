@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { setNotice } from '../notice';
 import { coverageLine } from '../api/derive';
-import type { LiveRow } from '../api/types';
+import { STALE_AFTER_MS, type LiveRow } from '../api/types';
 import { useStore } from '../store';
 import { F, T, fmtAge, fmtClock, teamColor } from '../tokens';
 import { columnEdges, type Column } from './columns';
@@ -232,7 +232,7 @@ function TimeCell({ remaining, sub, dim }: { remaining: number; sub: string; dim
 
 function Row({ r }: { r: LiveRow }) {
   const dead = r.status === 'down', stale = r.status === 'stale';
-  const syncWarn = stale || r.sync_age_ms > 8000;
+  const syncWarn = stale || r.sync_age_ms > STALE_AFTER_MS;   // contracts §9, generated from types.py
   const stk = bestStreak(r);
   return (
     <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: GAP, alignItems: 'center', padding: '10px 14px', background: dead ? 'rgba(255,82,82,.05)' : T.panel, border: `1px solid ${T.row}`, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>

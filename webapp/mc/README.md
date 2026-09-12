@@ -9,6 +9,7 @@ npm install
 npm run dev                # http://localhost:5173 — proxies /api + /ui-ws to the Python server on :8765
 npm run dev -- --mode mock # or open http://localhost:5173/?mock — in-browser demo, no server needed
 npm run build              # tsc -b && vite build → dist/ (served by `python -m brx_mcp.mc` at /)
+npm run typecheck          # tsc -b — CI runs this before `npm test`; vitest alone type-checks nothing
 npm test                   # jsdom tests, ~2s — mounts every screen, no server, no browser
 npm run e2e                # starts `npm run dev` + a real MC and clicks the KotH setup flow in Chromium
                            #   ONLY=<step> npm run e2e   runs one step; HEADED=1 to watch
@@ -77,8 +78,17 @@ same width.
 Layout: `src/tokens.ts` (design tokens) · `src/ui/` (Chamfer, Brackets, SegBar, Tag, Seg, Toggle,
 StripedSlot, HazardButton, …) · `src/frame/` (command bar, stepper, telemetry strip, PANIC w/ confirm,
 join QR) · `src/screens/` (Armory A1, Build A2, Kit A3/A4, Lobby A5, Armed A6, Live A7, Recap A8, **Spectate**) ·
-`src/api/` (types mirroring API.md + the REST/WS client) · `src/mock/` (stateful in-browser backend with
-the design's demo data — guns are `GUN-A…H`; real sticker ids never enter the repo) · `src/store.tsx`.
+`src/api/` (`contract.gen.ts` — GENERATED, see below — plus the UI-only view types and the REST/WS
+client) · `src/mock/` (stateful in-browser backend with the design's demo data — guns are
+`GUN-A…H`; real sticker ids never enter the repo) · `src/store.tsx`.
+
+**Where `src/api/contract.gen.ts` comes from.** It is not hand-kept: `mcp/tools/gen_contract.py`
+renders it from `mcp/brx_mcp/mc/types.py` + `envelope.py` (the node↔MC wire's constants, kind
+vocabularies, required-field tables and the 18 shared shapes), and `mcp/tests/test_contract_generated.py`
+fails CI when it drifts from the source. Regenerate with `python3 mcp/tools/gen_contract.py` from the
+repo root after touching either Python module. **Never hand-edit `contract.gen.ts`** — `types.ts`
+re-exports from it and adds only the UI-only view types (`State`, `NodeView`, `LiveView`, …) that have
+no Python shape yet.
 
 Rules encoded in the UI (contracts A5): player numbers 1–63 shown as-is; the A1 gate is *no reds* —
 amber never blocks; headset/screen are amber before the config push; abort reaches only nodes in range so

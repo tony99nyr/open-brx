@@ -1,26 +1,25 @@
-// Node↔MC envelope helpers — mirrors mcp/brx_mcp/mc/envelope.py + types.py (contracts.md §5/§9, A6).
-// Dependency-free ESM; runs in the Capacitor WebView and in Node ≥ 22.
+// Node↔MC envelope helpers (contracts.md §5/§9, A6). Dependency-free ESM; runs in the Capacitor
+// WebView and in Node ≥ 22.
 //
 // The constants and the four wire tables (PERSISTED_EVENT_TYPES/NODE_KINDS/MC_KINDS/CONTROL_CMDS
-// kind vocabularies, REQUIRED/EVENT_REQUIRED/ACCEPT_MIN required-field tables) are GENERATED from
-// the Python source of truth (mcp/brx_mcp/mc/types.py + envelope.py) by
-// `python3 mcp/tools/gen_contract.py` — see contract.gen.js. Every name this file exported before
-// that split is re-exported here unchanged, so logsync.js/clock.js/utility.js/transport.js/
-// engine.js and the tests keep importing from envelope.js with no change on their end.
+// kind vocabularies, REQUIRED/EVENT_REQUIRED/ACCEPT_MIN required-field tables) come from
+// contract.gen.js, GENERATED from the Python source of truth (mcp/brx_mcp/mc/types.py +
+// envelope.py) by `python3 mcp/tools/gen_contract.py`. Only the validation logic below mirrors
+// mcp/brx_mcp/mc/envelope.py by hand. Every name this file exported before the generator split is
+// re-exported here unchanged, so logsync.js/clock.js/utility.js/transport.js/engine.js and the
+// tests keep importing from envelope.js with no change on their end.
 export {
   PROTOCOL_V, STATUS_HEARTBEAT_MS, STALE_AFTER_MS, SYNC_FRESH_MS, FEEDBACK_MAX_AGE_MS,
   LATE_ARM_GRACE_MS, DEATH_LATCH_MS, RESYNC_PROBE_S, MAX_PLAYERS, MAX_ENVELOPE_BYTES,
-  MAX_LOG_CHUNK_BYTES, CONFIG_TTL_MS,
+  MAX_LOG_CHUNK_BYTES, CONFIG_TTL_MS, T_MIN_MS, T_MAX_MS,
   PERSISTED_EVENT_TYPES, NODE_KINDS, MC_KINDS, CONTROL_CMDS,
 } from './contract.gen.js';
 
 import {
-  PROTOCOL_V, MAX_ENVELOPE_BYTES, MAX_LOG_CHUNK_BYTES, MAX_PLAYERS,
+  PROTOCOL_V, MAX_ENVELOPE_BYTES, MAX_LOG_CHUNK_BYTES, MAX_PLAYERS, T_MIN_MS, T_MAX_MS,
   PERSISTED_EVENT_TYPES, NODE_KINDS, MC_KINDS, CONTROL_CMDS,
   REQUIRED, EVENT_REQUIRED, ACCEPT_MIN,
 } from './contract.gen.js';
-
-const T_MIN_MS = 1_500_000_000_000, T_MAX_MS = 4_000_000_000_000;
 
 export class EnvelopeError extends Error {
   constructor(reason, detail = '') { super(detail ? `${reason}: ${detail}` : reason); this.reason = reason; this.detail = detail; }

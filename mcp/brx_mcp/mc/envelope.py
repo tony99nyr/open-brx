@@ -17,7 +17,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from .types import MC_KINDS, NODE_KINDS, PROTOCOL_V
+from .types import MAX_PLAYERS, MC_KINDS, NODE_KINDS, PROTOCOL_V
 
 MAX_ENVELOPE_BYTES = 64 * 1024        # net.md §8 size cap
 MAX_LOG_CHUNK_BYTES = 48 * 1024       # log_data chunk cap (fits under the envelope cap)
@@ -28,8 +28,8 @@ PERSISTED_EVENT_TYPES = {"hit_taken", "death", "respawn", "team_change", "posses
 
 # Plausibility window for `t` (Unix ms): reject obvious garbage (seconds instead of ms, negative,
 # far future). A node with a wrong clock still lands inside this window; MC keeps t_recv anyway.
-_T_MIN_MS = 1_500_000_000_000   # 2017-07
-_T_MAX_MS = 4_000_000_000_000   # 2096
+T_MIN_MS = 1_500_000_000_000   # 2017-07
+T_MAX_MS = 4_000_000_000_000   # 2096
 
 # Required body fields per kind. `event`'s body is an Event and is checked separately.
 REQUIRED: dict[str, tuple[str, ...]] = {
@@ -172,8 +172,8 @@ def validate_event(ev: Any, *, require_seq_on: dict[str, Any] | None = None) -> 
         raise EnvelopeError("bad_event", "t is not a number")
     if etype in ("hit_taken", "death"):
         num = ev["shooter_num"]
-        if not isinstance(num, int) or not 0 <= num <= 63:
-            raise EnvelopeError("bad_event", f"shooter_num {num!r} out of 0..63")
+        if not isinstance(num, int) or not 0 <= num <= MAX_PLAYERS:
+            raise EnvelopeError("bad_event", f"shooter_num {num!r} out of 0..{MAX_PLAYERS}")
     return ev
 
 
@@ -195,13 +195,13 @@ def validate(env: Any, *, direction: str = "node") -> dict[str, Any]:
     if v != PROTOCOL_V:
         raise EnvelopeError("version", f"v={v!r}, expected {PROTOCOL_V}")
     kind = env.get("kind")
-    allowed = NODE_KINDS if direction == "node" else (MC_KINDS | {"apply"})
+    allowed = NODE_KINDS if direction == "node" else MC_KINDS
     if kind not in allowed:
         raise EnvelopeError("unknown_kind", repr(kind))
     if not isinstance(env.get("id"), str) or not env["id"]:
         raise EnvelopeError("missing_field", "id")
     t = env.get("t")
-    if not isinstance(t, (int, float)) or not (_T_MIN_MS <= t <= _T_MAX_MS):
+    if not isinstance(t, (int, float)) or not (T_MIN_MS <= t <= T_MAX_MS):
         raise EnvelopeError("bad_t", repr(t))
     body = env.get("body")
     if not isinstance(body, dict):

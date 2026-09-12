@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { STALE_AFTER_MS } from '../api/types';
 import { RUNWAYS, useRunway } from '../runway';
 import { coverageLine } from '../api/derive';
 import { useStore } from '../store';
@@ -41,7 +42,7 @@ export function Armed() {
   const tMinus = Math.max(0, st.go_live_t - serverNow());
   const nodes = state.players.map(p => ({ p, n: st.per_node[p.player_id], nv: state.nodes.find(x => x.player_id === p.player_id) }));
   const armed = nodes.filter(x => x.n?.arm_state === 'armed' || x.n?.arm_state === 'live').length;
-  const inRange = nodes.filter(x => (x.n?.last_seen_ms ?? 1e9) < 8000).length;
+  const inRange = nodes.filter(x => (x.n?.last_seen_ms ?? 1e9) < STALE_AFTER_MS).length;
   const outOfRange = nodes.length - inRange;
 
   return (
@@ -93,7 +94,7 @@ export function Armed() {
           const ack = n?.arm_state === 'armed' || n?.arm_state === 'live';
           const live = n?.arm_state === 'live';
           const color = live ? T.acc : ack ? T.ok : T.warn;
-          const stale = (n?.last_seen_ms ?? 1e9) > 8000;
+          const stale = (n?.last_seen_ms ?? 1e9) > STALE_AFTER_MS;
           return (
             <div key={p.player_id} style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${color}`, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>

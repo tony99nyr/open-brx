@@ -13,6 +13,7 @@ failed).
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import subprocess
 
@@ -30,7 +31,10 @@ MAX_BYTES = 450 * 1024
 
 
 def _skip(reason: str) -> None:
-    if pytest is not None:
+    # Under pytest, skip the pytest way. Under run_tests.py, raise ITS Skipped: `pytest.skip` raises a
+    # BaseException that run_tests.py does not catch, so with pytest importable (the venv) and a dirty
+    # UI tree the whole run used to die at this file with no summary (found 2026-09-12).
+    if pytest is not None and os.environ.get("PYTEST_CURRENT_TEST"):
         pytest.skip(reason)
     raise Skipped(reason)
 
@@ -120,7 +124,9 @@ def _dirty_ui_files() -> list[str] | None:
     out = _git("status", "--porcelain", "--untracked-files=normal", "--", *_UI_DIRS)
     if out is None:
         return None
-    return sorted({ln[3:].strip().strip('"') for ln in out.split("\n") if ln.strip()})
+    # `_git` strips the output, so the FIRST porcelain line has lost its leading status column; split on
+    # the first run of whitespace instead of slicing at a fixed column (a quoted path keeps its spaces).
+    return sorted({ln.strip().split(maxsplit=1)[-1].strip('"') for ln in out.split("\n") if ln.strip()})
 
 
 def test_site_shots_match_the_ui_working_tree():

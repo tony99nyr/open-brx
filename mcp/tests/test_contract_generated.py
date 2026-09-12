@@ -34,6 +34,14 @@ COMMAND = "python3 mcp/tools/gen_contract.py"
 def _load():
     spec = importlib.util.spec_from_file_location("gen_contract", GENERATOR)
     mod = importlib.util.module_from_spec(spec)
+    # Register BEFORE exec: gen_contract.py's `_Model` is a `@dataclass` under `from __future__
+    # import annotations`, and dataclass's own postponed-annotation handling looks the defining
+    # module up via `sys.modules[cls.__module__]` while the class body runs -- a module built with
+    # `module_from_spec` but never registered has no entry there yet, so the class decoration
+    # itself crashes (AttributeError on `sys.modules.get(...).__dict__`) with no gen_contract.py
+    # bug at all. `importlib.util.module_from_spec` docs call this registration step out for
+    # exactly this reason (it also lets one class in the module resolve another by name).
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
 
@@ -127,10 +135,10 @@ def test_a_literal_alias_renders_as_a_union_type():
 
 def test_a_field_with_its_own_trailing_comment_keeps_an_unindented_run_below_it():
     """FrameBundle.cues has a same-line comment ("A6.3: key -> ...") followed by an EIGHT-line block
-    ("game_over?, victory?, ..." through the A15.3 lines) with only single-space `#` indent -- no
-    8-space continuation marker. That block describes `cues`, not the next field (`leds`), so it must
-    land in cues' JSDoc even without the indent, because `cues` already has a trailing comment of its
-    own. Regression for a real bug: the block used to be misread as `leds`' preface."""
+    ("game_over?, victory?, ..." through the A15.3 lines), wrapped 8+ spaces after `#` (types.py's
+    style for a continuation, per review finding #1: the indent alone is what claims it for `cues`,
+    not the next field, `leds` -- `cues` having its own trailing comment is no longer what decides
+    it). Regression for a real bug: the block used to be misread as `leds`' preface."""
     ts, _js = _ts_js()
     cues_i, leds_i = ts.index("cues: Record<string, string>;"), ts.index("leds?: Record<string, unknown[]>;")
     cues_block = ts[max(0, cues_i - 1500):cues_i]
@@ -183,6 +191,129 @@ def test_config_ttl_ms_is_emitted_for_the_app_to_import():
     ts, js = _ts_js()
     assert "export const CONFIG_TTL_MS = 1800000;" in ts
     assert "export const CONFIG_TTL_MS = 1800000;" in js
+
+
+def test_a_comment_only_run_with_less_indent_is_the_next_symbols_preface_not_a_continuation():
+    """Regression for review finding #1: the old rule relaxed the continuation indent requirement
+    whenever the ABOVE field already had its own trailing comment, so envelope.py's "This is a
+    WHITELIST ..." preface (meant for PERSISTED_EVENT_TYPES, unindented) used to get misattached to
+    MAX_LOG_CHUNK_BYTES's JSDoc instead, just because MAX_LOG_CHUNK_BYTES has its own same-line
+    comment. The only continuation rule now is "8+ spaces after `#`"."""
+    ts, _js = _ts_js()
+    max_log_i = ts.index("export const MAX_LOG_CHUNK_BYTES")
+    max_log_block = ts[max(0, max_log_i - 400):max_log_i]
+    assert "WHITELIST" not in max_log_block, "the WHITELIST preface leaked into MAX_LOG_CHUNK_BYTES' JSDoc"
+    pet_i = ts.index("export const PERSISTED_EVENT_TYPES")
+    pet_block = ts[max(0, pet_i - 400):pet_i]
+    assert "WHITELIST" in pet_block, "PERSISTED_EVENT_TYPES lost its own preface"
+
+
+def test_max_players_is_imported_by_envelope_py_not_a_literal_63():
+    """Review finding #2: `validate_event`'s shooter_num bound must read MAX_PLAYERS from types.py,
+    not repeat the literal 63."""
+    assert _envelope.MAX_PLAYERS == 63
+    ev = {"type": "hit_taken", "t": 1_700_000_000_000, "node_id": "n", "player_id": "p",
+          "match_id": "m", "shooter_num": _envelope.MAX_PLAYERS, "shooter_team": "a", "dmg": 10}
+    _envelope.validate_event(ev)   # must not raise: MAX_PLAYERS itself is IN range
+    ev["shooter_num"] = _envelope.MAX_PLAYERS + 1
+    try:
+        _envelope.validate_event(ev)
+    except _envelope.EnvelopeError as e:
+        assert e.reason == "bad_event"
+        return
+    raise AssertionError(f"shooter_num {ev['shooter_num']} (one past MAX_PLAYERS={_envelope.MAX_PLAYERS}) was accepted")
+
+
+def test_the_shooter_num_bound_reads_max_players_by_name():
+    """The behavioural test above cannot tell `<= MAX_PLAYERS` from `<= 63` while the two agree, so pin
+    the SOURCE: the comparison line in envelope.py must name MAX_PLAYERS and must not carry the literal."""
+    src = (REPO / "mcp" / "brx_mcp" / "mc" / "envelope.py").read_text(encoding="utf-8")
+    cmp = [ln for ln in src.splitlines() if re.search(r"0\s*<=\s*num\s*<=", ln)]
+    assert len(cmp) == 1, f"expected exactly one shooter_num range check in envelope.py, found {len(cmp)}: {cmp}"
+    assert "MAX_PLAYERS" in cmp[0] and not re.search(r"<=\s*63\b", cmp[0]), (
+        f"envelope.py's shooter_num bound does not read MAX_PLAYERS by name: {cmp[0].strip()!r}")
+    assert re.search(r"^from \.types import .*\bMAX_PLAYERS\b", src, re.M), "envelope.py does not import MAX_PLAYERS from .types"
+
+
+def test_t_min_ms_is_emitted_in_both_files():
+    """Review finding #3: T_MIN_MS/T_MAX_MS are public on envelope.py and reach both generated files
+    via the same generic module-level-constant scan as the two size caps, and envelope.js imports
+    them from contract.gen.js instead of hand-mirroring the literals."""
+    ts, js = _ts_js()
+    assert "export const T_MIN_MS = 1500000000000;" in ts
+    assert "export const T_MIN_MS = 1500000000000;" in js
+    assert "export const T_MAX_MS = 4000000000000;" in ts
+    assert "export const T_MAX_MS = 4000000000000;" in js
+
+
+def test_the_js_file_carries_comments_too():
+    """Second review pass: `_render_js` used to emit no JSDoc at all, so the phone side lost the
+    PERSISTED_EVENT_TYPES whitelist warning and every constant's comment even though A33 and the
+    READMEs describe contract.gen.ts/.js as one generation. Constants and kind sets now carry the
+    same JSDoc blocks as the TS file (interfaces/aliases have no JS equivalent, so those don't)."""
+    _ts, js = _ts_js()
+    assert "This is a WHITELIST" in js, "PERSISTED_EVENT_TYPES's preface did not reach contract.gen.js"
+    t_min_i = js.index("export const T_MIN_MS")
+    assert "Plausibility window for `t`" in js[max(0, t_min_i - 400):t_min_i], \
+        "T_MIN_MS's preface comment did not reach contract.gen.js"
+
+
+def test_a_literal_alias_carries_its_preface_comment_as_jsdoc():
+    """Review finding #4: `_render_ts` used to emit a Literal alias's `export type` with no JSDoc at
+    all, dropping the preface comment above it. ItemKind's comment in types.py is the proof case."""
+    ts, _js = _ts_js()
+    item_kind_i = ts.index("export type ItemKind =")
+    block = ts[max(0, item_kind_i - 400):item_kind_i]
+    assert "policy.PRIMARY_KINDS" in block and "sidearm-tagged rows" in block, \
+        "ItemKind's preface comment from types.py did not reach its generated JSDoc"
+
+
+def test_a_section_divider_comment_never_becomes_a_symbols_jsdoc():
+    """Review finding #5: types.py's "# ---- §9 constants ... ----" heading sits directly above
+    ASSIST_WINDOW_MS (the first constant in that block) and must never be read as ITS preface --
+    a divider is dropped, not attached to whatever symbol happens to sit next to it."""
+    ts, _js = _ts_js()
+    assist_i = ts.index("export const ASSIST_WINDOW_MS")
+    block = ts[max(0, assist_i - 200):assist_i]
+    assert "§9 constants" not in block, "the section-divider heading leaked into ASSIST_WINDOW_MS' JSDoc"
+
+
+def test_station_source_ids_keep_source_order_not_sorted():
+    """Review finding #6: STATION_SOURCES is a `dict`, not a Python `set` -- only a `set`'s order is
+    meaningless and needs sorting for determinism. The real dict happens to read alphabetically
+    already, so it alone would not catch a regression back to `sorted()`; this pins the mechanism
+    with a deliberately out-of-order fake dict instead."""
+    import sys
+    types_mod = sys.modules["brx_mcp.mc.types"]
+    original = types_mod.STATION_SOURCES
+    types_mod.STATION_SOURCES = {"phone": "x", "grenade": "y", "ir_station": "z"}
+    try:
+        rendered = _load().render()
+    finally:
+        types_mod.STATION_SOURCES = original
+    ts, js = rendered[TS_OUT], rendered[JS_OUT]
+    assert "export const STATION_SOURCE_IDS = ['phone', 'grenade', 'ir_station'] as const;" in ts
+    js_block = re.search(r"STATION_SOURCE_IDS = new Set\(\[(.*?)\]\)", js, re.S).group(1)
+    assert re.findall(r"'([a-z_]+)'", js_block) == ["phone", "grenade", "ir_station"], \
+        "STATION_SOURCE_IDS was reordered instead of kept as written"
+
+
+def test_a_non_string_literal_member_raises_unmapped_type():
+    """Review finding #7: nothing on the wire is a bare int/bool Literal today, but the mapper must
+    refuse one loudly (naming the field) rather than silently render `'1' | '2'`, which would be
+    indistinguishable from the string literals `"1"` and `"2"`."""
+    mod = _load()
+
+    class _Probe(typing.TypedDict):
+        code: typing.Literal[1, 2]
+
+    hints = typing.get_type_hints(_Probe, include_extras=True)
+    try:
+        mod._map_type(hints["code"], f"{_Probe.__name__}.code", {}, set())
+    except mod.UnmappedType as e:
+        assert "code" in str(e), f"the error does not name the offending field: {e}"
+        return
+    raise AssertionError("the type mapper accepted a non-string Literal instead of raising")
 
 
 def test_the_generator_cannot_be_fooled_by_a_tuple_field():

@@ -393,6 +393,14 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   is a real behavioural default, not a flag awaiting cleanup: F38 proved `$SIR` REPLACES the `$PSET` pool
   sound rather than layering, so enabling it silences the material layer. The stock `$SIR` rows' empty sound
   tokens are what make the pool sounds audible, not a gap to fill. `build`.
+  **F42.9** (filed 2026-09-12, contract-DRY phase 1) the ~29 UI-only view types (`State`, `LiveView`,
+  `RecapView`, `NodeView`, `StationView`, `WeaponView`, …) have no Python TypedDict because `api.py` builds
+  them untyped, so `gen_contract.py` cannot generate them yet — needs the view shapes typed first (pyright
+  cleanup's job, F42.10). **F42.10** pyright as a CI gate for `mcp/`: first run 2026-09-12, 249 errors, 81%
+  of defs already annotated; hot files `state.py` (79) and `stage/stage.py` (56). **F42.11** `webapp/mc`'s
+  `tsconfig` is not `strict: true` yet. **F42.12** `app/src/transport` (`envelope.js`/`transport.js`) has no
+  JSDoc + `checkJs` reading a generated `.d.ts`. None of F42.9–F42.12 block anything; contract-DRY phase 1 (types.py/envelope.py → generated
+  `contract.gen.ts`/`contract.gen.js`) is DONE, see contracts.md A33.
 
 - **F40 🟠** **"absence reports as health" — three instances in one evening (2026-09-07), so treat it as a class, not
   three bugs.** (1) `mcp/run_tests.py` aborted the whole run on one file's import error, so ~30 later files silently

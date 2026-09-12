@@ -1,7 +1,8 @@
 // Small pure helpers derived FROM the server's shapes — not part of the wire contract.
 //
-// `types.ts` mirrors `mcp/brx_mcp/mc/API.md` field for field, so UI policy does not belong in it
-// (review 2026-09-01). Nothing here talks to the network; everything is a pure function of `State`.
+// `types.ts` is the contract (the wire shapes generated from `mcp/brx_mcp/mc/types.py`, the view
+// shapes mirroring `mc/API.md`), so UI policy does not belong in it (review 2026-09-01). Nothing here
+// talks to the network; everything is a pure function of `State`.
 import type { NodeView, State } from './types';
 /** A stable fingerprint of "which guns does MC know about right now".
  *

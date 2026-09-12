@@ -21,6 +21,12 @@ src/demo.js          ?demo — a scripted fake gun + fake MC for desktop-browser
 www/index.html       the holo-theme CSS + #frame stage (design brief: docs/spec/design/phone-hud.md; the 2026-08-25 export is archived at docs/archive/design/hud-export/)
 ```
 
+**Where the wire types come from:** `src/transport/contract.gen.js` is generated, not hand-kept — see
+`src/transport/README.md`. It renders from `mcp/brx_mcp/mc/types.py` + `envelope.py` by
+`python3 mcp/tools/gen_contract.py` (repo root), and `mcp/tests/test_contract_generated.py` fails CI
+when it drifts from the source. Never hand-edit `contract.gen.js`; `envelope.js` imports its tables
+and re-exports them under the names it already exported.
+
 ## Run it
 
 ```bash

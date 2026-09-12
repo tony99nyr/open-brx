@@ -142,6 +142,11 @@ class LoadoutOverrides(TypedDict, total=False):
 
 
 class Loadout(TypedDict):
+    """weapons[] is canonical: [primary] or [primary, secondary]; `perk` is its OWN slot and rides
+    beside a secondary weapon (AR + pistol + Quick Switch). The one exception: a perk whose
+    effects.alt_reload is true (Easy Reload) takes the ALT button, so the server refuses it beside
+    a second weapon; the UI warns and drops the other one (A9/A14, loadout.md §2).
+    """
     weapons: list[WeaponSel]              # [primary] or [primary, secondary]; index == gun slot; NEVER empty (A10)
     perk: NotRequired[str | None]         # A14: the perk slot — rides beside a secondary weapon (loadout.md §2); an ALT-button perk (easy_reload) is the one that can't
     overrides: NotRequired[LoadoutOverrides]
@@ -223,6 +228,9 @@ class SlotRule(TypedDict):
 
 
 class LoadoutPolicy(TypedDict):
+    """A14: `perk` is the third rule (kinds always ['perk']; choice may be 'off'). No legacy shape
+    is supported (Tony 2026-09-04).
+    """
     preset: LoadoutPreset
     hud_select: bool
     primary: SlotRule
@@ -231,6 +239,9 @@ class LoadoutPolicy(TypedDict):
 
 
 class LoadoutPool(TypedDict):
+    """allowed ids per slot, catalog order, computed server-side (loadout.md §3.2); `perks` is the
+    perk slot's list (A14).
+    """
     primary: list[str]
     secondary_weapons: list[str]
     perks: list[str]                      # A14: the perk slot's pool
@@ -374,14 +385,14 @@ class FrameBundle(TypedDict):
     team_flip: NotRequired[dict[str, list[str]]]
     team_flip_take: NotRequired[dict[str, list[str]]]   # F86: per-tid [blank, rest] the node takes the gun with after a flip
     cues: dict[str, str]  # A6.3: key -> PRE-COMPOSED frame the node writes verbatim. countdown, kill,
-    # game_over?, victory?, tick?, klaxon?, multi?, medal?, runway_*?, and the once-per-life
-    # low-health pair hurt?/hurt_led? (hurt_led is an $HLED, not a $PLAY — see compile.cues)
-    # A11: plus one key per presentation EVENT that carries a sound (hit_taken … vip_down); "" = deliberately mute.
-    # A15.2: `spawn` = the character's spawn line, written by the node IMMEDIATELY after the spawn / revive frames
-    # (the head's $PSET ships an empty battleRespawnCry, so the firmware itself says nothing on $SPAWN).
-    # A15.3: `pain_short` / `pain_long` / `pain_melee` = the pain the node plays on a $HIR (the $PSET pain fields ship
-    # empty): a melee word -> pain_melee; damage >= voice.pain_long_min -> pain_long; else pain_short. At most one per
-    # 600 ms, none on the lethal hit (the firmware's death scream covers it).
+    #        game_over?, victory?, tick?, klaxon?, multi?, medal?, runway_*?, and the once-per-life
+    #        low-health pair hurt?/hurt_led? (hurt_led is an $HLED, not a $PLAY — see compile.cues)
+    #        A11: plus one key per presentation EVENT that carries a sound (hit_taken … vip_down); "" = deliberately mute.
+    #        A15.2: `spawn` = the character's spawn line, written by the node IMMEDIATELY after the spawn / revive frames
+    #        (the head's $PSET ships an empty battleRespawnCry, so the firmware itself says nothing on $SPAWN).
+    #        A15.3: `pain_short` / `pain_long` / `pain_melee` = the pain the node plays on a $HIR (the $PSET pain fields ship
+    #        empty): a melee word -> pain_melee; damage >= voice.pain_long_min -> pain_long; else pain_short. At most one per
+    #        600 ms, none on the lethal hit (the firmware's death scream covers it).
     leds: NotRequired[dict[str, list]]   # A11: event -> [[frame, hold_s], ...] -- the tuned $GLED burst (+ optional $HLED)
     presentation: NotRequired[dict]      # A11: presentation.summary() -- preset + switches, for the UI/HUD
     gun: NotRequired[dict]               # A11.7: {in_play team|dark|health, blank, rest, bands?[[frac,f]]} -- absent for native

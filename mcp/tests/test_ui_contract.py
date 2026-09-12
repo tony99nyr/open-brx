@@ -213,23 +213,34 @@ def test_types_ts_re_exports_the_generated_shapes_and_declares_none_of_them():
 _TS_KEY = re.compile(r"([A-Za-z_$][A-Za-z0-9_$]*)\s*:")
 
 
+_TS_SPREAD = re.compile(r"\.\.\.([A-Za-z_$][A-Za-z0-9_$]*)")
+
+
 def _ts_object(text: str, start: int) -> tuple[dict, int]:
     """Evaluate the TS object literal whose `{` is at `text[start]`. Handles exactly the grammar
-    `gameSummary.ts`'s rule helpers use: string / boolean / null values, string arrays, and nested
-    object literals. Anything else raises `Skipped` rather than guessing -- a rewritten helper must
-    be re-read by a human, not silently half-parsed."""
+    `gameSummary.ts`'s rule helpers use: string / boolean / null values, string arrays, nested
+    object literals, and a trailing `...identifier` spread (recorded as key `"...identifier"` with
+    value `None` -- callers that need to tolerate it, e.g. `rule()`'s `...over`, pop it back out).
+    Anything else is a genuine parser gap, not a renamed or missing shape, so it fails the test
+    loudly (`AssertionError`) instead of skipping -- a skip here previously hid the fact that this
+    very test never ran (2026-09-12)."""
     assert text[start] == "{"
     i, out = start + 1, {}
     while True:
         while i < len(text) and text[i] in " \n\r\t,":
             i += 1
-        if i >= len(text) and True:
-            raise Skipped("an unterminated object literal in gameSummary.ts")
+        if i >= len(text):
+            raise AssertionError(f"an unterminated object literal in gameSummary.ts near {text[start:start + 40]!r}")
         if text[i] == "}":
             return out, i + 1
+        m_spread = _TS_SPREAD.match(text, i)
+        if m_spread:
+            out[f"...{m_spread.group(1)}"] = None
+            i = m_spread.end()
+            continue
         m = _TS_KEY.match(text, i)
         if not m:
-            raise Skipped(f"an unparsable entry in gameSummary.ts near {text[i:i + 40]!r}")
+            raise AssertionError(f"an unparsable entry in gameSummary.ts near {text[i:i + 40]!r}")
         key, i = m.group(1), m.end()
         while text[i] == " ":
             i += 1
@@ -250,7 +261,7 @@ def _ts_object(text: str, start: int) -> tuple[dict, int]:
             elif raw.startswith(("'", '"')):
                 out[key] = raw[1:-1]
             else:
-                raise Skipped(f"an unparsable value for {key!r} in gameSummary.ts: {raw!r}")
+                raise AssertionError(f"an unparsable value for {key!r} in gameSummary.ts: {raw!r}")
 
 
 def _ts_call_object(text: str, decl: str) -> dict:
@@ -274,6 +285,7 @@ def _ts_default_policy() -> dict:
     if not m:
         raise Skipped("`const perkRule` in gameSummary.ts (renamed or restructured?)")
     perk_over, _ = _ts_object(text, m.end())
+    perk_over.pop("...over", None)
     perk_rule = {**rule, **perk_over}
 
     m = re.search(r"const DEFAULT_POLICY\s*=.*?=>\s*\(\s*(?=\{)", text, re.S)
@@ -293,7 +305,9 @@ def _ts_default_policy() -> dict:
         elif val.startswith(("'", '"')):
             out[key] = val[1:-1]
         else:
-            raise Skipped(f"DEFAULT_POLICY.{key} is {val!r} -- not a plain rule() call any more")
+            # A found DEFAULT_POLICY with a value shape our scanner doesn't know is a parser gap,
+            # not a rename -- fail loudly rather than skipping the comparison silently.
+            raise AssertionError(f"DEFAULT_POLICY.{key} is {val!r} in gameSummary.ts -- not a plain rule() call any more")
     return out
 
 
