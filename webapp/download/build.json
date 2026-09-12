@@ -1,12 +1,12 @@
 {
- "file": "brx-companion-0.1.8-android-debug.apk",
- "version": "0.1.8",
+ "file": "brx-companion-0.2.0-android-debug.apk",
+ "version": "0.2.0",
  "variant": "debug",
- "built": "2026-09-10T23:19:46.724Z",
- "bytes": 5423482,
- "sha256": "c8933d30f8b76113afb9f6f01af134b3db726753ff0f430bbfa417efb20bc42e",
- "git": "cfe2a8e",
+ "built": "2026-09-12T14:58:21.054Z",
+ "bytes": 5395163,
+ "sha256": "da2affb6ac5252fb5922f6ee1f2fa55bb4949a8da4ad538956e6cbfec97e636f",
+ "git": "47a71bd",
  "dirty": false,
- "url": "https://github.com/tony99nyr/open-brx/releases/download/app-v0.1.8/brx-companion-0.1.8-android-debug.apk",
- "release": "app-v0.1.8"
+ "url": "https://github.com/tony99nyr/open-brx/releases/download/app-v0.2.0/brx-companion-0.2.0-android-debug.apk",
+ "release": "app-v0.2.0"
 }
