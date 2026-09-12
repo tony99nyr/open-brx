@@ -9,8 +9,8 @@ import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, StripedSlot, T
 import { PerkGlyph } from './Kit';
 import { AdvancedPresentation } from './AdvancedPresentation';
 import { STATION_SOURCES, TEMPLATE_RULES, admitsWeapons, computePool, gameSig, objectiveLine, presetOf, rulesLine, withPolicy } from './gameSummary';
+import { MODE_ART } from '../modeArt';
 
-const MODE_ART = new Set(['tdm', 'ffa', 'infection', 'lms', 'extraction']);
 const TEMPLATES: { value: LoadoutPreset; label: string; hint: string }[] = [
   { value: 'open', label: 'OPEN', hint: 'Everything, players pick all three slots' },
   { value: 'no_heavies', label: 'NO HEAVIES', hint: 'Rockets, rail, cannon and launchers off in both weapon slots; every perk open' },

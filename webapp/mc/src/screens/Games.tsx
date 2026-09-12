@@ -7,8 +7,7 @@ import { useStore } from '../store';
 import { F, PERK_COLOR, T, TAB } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, Shelf, StripedSlot, Tag, Toggle, onKey } from '../ui';
 import { gameSig, objectiveLine, rulesLine } from './gameSummary';
-
-const MODE_ART = new Set(['tdm', 'ffa', 'infection', 'lms', 'extraction']);   // public/assets/modes/*.jpg
+import { MODE_ART } from '../modeArt';
 
 export function Games() {
   const { state, modes, weapons, perks, run, api, setView, openDesigner } = useStore();
