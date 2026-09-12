@@ -259,7 +259,7 @@ function noteJoinUrl(url) { if (url && /^wss?:\/\//i.test(url)) currentJoinUrl =
 /**
  * @param {string} url the LAN join url
  * @param {boolean} [remember] discovery/sweep never overwrites the user's explicit target (polish-loop)
- * @param {{pub?:string|null, secret?:string|null}} [join] A28.2: from a QR scan or a typed full join
+ * @param {{pub?:string|null, secret?:string|null, trusted?:boolean}} [join] A28.2: from a QR scan or a typed full join
  *   code — when given, replaces whatever backhaul target/secret Transport is holding. When omitted
  *   (every discovery/sweep/remembered-address reconnect) neither is passed at all: Transport's OWN
  *   persisted, url-scoped pub/secret stand as-is (it clears them itself if `url` differs from the one
@@ -294,7 +294,8 @@ function connectMc(url, remember = true, join = {}) {
     // door after 15 s of failing to connect and used to stay open for the rest of the session, so a
     // momentary drop mid-match could hand this phone to a second MC on the LAN (deferred low).
     if (s === 'bound') { allowAssist = false; if (assistTimer) { clearTimeout(assistTimer); assistTimer = null; } logsync.onBound();
-      if (transport && transport.reach === 'lan') noteJoinUrl(transport.url); }   // F139: a url we actually welcomed over IS the current join
+      if (transport && transport.reach === 'lan') noteJoinUrl(transport.url);
+      hud.discovered = null; }   // F139: a url we actually welcomed over IS the current join
     // ...and re-open it if we stay unbound: its only opener used to be a one-shot 15 s boot timer,
     // so after the first successful bind discovery could never rescue us again — exactly the case
     // where MC restarts on a new IP mid-match (review 2026-09-01).
@@ -302,7 +303,10 @@ function connectMc(url, remember = true, join = {}) {
     engine.setWsState(s, transport.rejected);
     log(s === 'rejected' ? `MC REFUSED: ${transport.rejected && transport.rejected.reason} (${transport.rejected && transport.rejected.code})` : `MC link ${s}`, s === 'bound' ? 'lk' : s === 'rejected' ? 'le' : 'li');
   });
-  transport.connect({ url, pub: join.pub, secret: join.secret }).then(() => log('MC hydrated', 'lk')).catch(e => log('MC connect: ' + (e && e.message || e), 'le'));
+  // `trusted:false` (a LAN-sweep address — nobody typed or scanned it) keeps this node's takeover key
+  // and the join secret off the hello until that peer proves it is MC by welcoming us.
+  transport.connect({ url, pub: join.pub, secret: join.secret, trusted: join.trusted !== false })
+    .then(() => log('MC hydrated', 'lk')).catch(e => log('MC connect: ' + (e && e.message || e), 'le'));
 }
 
 // ---------- HUD handlers ----------
@@ -383,6 +387,16 @@ Object.assign(hud.h, {
     connectMc(url, !!settings.mcUrl);
   },
   onScanQr: () => { scanQrForMc().catch(e => log('QR scan failed: ' + e.message, 'le')); },
+  // The LAN sweep's hit is a SUGGESTION, never a join (review pass 1, security): any host on the subnet
+  // can accept a websocket upgrade on the node port, and a phone that dials one on its own has handed a
+  // squatter its hello. The player taps this; the address is still treated as untrusted on the wire.
+  onJoinDiscovered: () => {
+    const d = hud.discovered; if (!d || !d.url) return;
+    hud.discovered = null; haptic('tap');
+    log('joining the Mission Control found on the LAN: ' + d.url, 'lk');
+    noteJoinUrl(d.url);
+    connectMc(d.url, true, { trusted: false });
+  },
   onEndOk: () => { engine.ackEnd(); },
   // onPanic removed 2026-08-26: a player-side panic only safes THIS gun and knocks the player out until a
   // re-push — a mishit mid-game ruins their match. Fleet safety = MC's PANIC + the physical power switch.
@@ -466,10 +480,19 @@ function onForeground(fg) {
   if (fg) { engine.resume(); keepAwake(true); }
 }
 document.addEventListener('visibilitychange', () => onForeground(document.visibilityState !== 'hidden'));
-// F153c, the web/webview half of the same signal (the Capacitor listener is wired at boot): `online`
-// fires in a desktop browser and in the webview, and costs nothing when the plugin already covered it —
-// `dialNow()` is a no-op once there is a live link.
-window.addEventListener('online', () => { if (transport) transport.dialNow(); });
+/** F153c: the network came back. Android fires the Capacitor `networkStatusChange` AND the webview's
+ *  `online` for the same transition, and two kicks abort each other's dial and reset the backoff twice —
+ *  a flapping radio would then never back off at all. One entry point, coalesced to 1 s (review pass 1). */
+let lastKickAt = 0;
+function kickDial(why) {
+  const now = Date.now();
+  if (now - lastKickAt < 1000) return false;   // the same transition reaching us twice
+  lastKickAt = now;
+  if (transport) { if (transport.dialNow()) log(`network back (${why}) — dialling Mission Control now`, 'li'); return true; }
+  if (settings.mcUrl) { log(`network back (${why}) — connecting: ${settings.mcUrl}`, 'lk'); connectMc(settings.mcUrl); return true; }
+  return false;
+}
+window.addEventListener('online', () => kickDial('online'));
 window.addEventListener('pageshow', () => engine.resume());
 
 // ---------- MC auto-discovery (mDNS _openbrx._tcp — MC advertises, we watch) ----------
@@ -575,10 +598,15 @@ async function sweepForMc() {
   const found = await sweepSubnetsForMc({ ...plan, wsFactory: url => new WebSocket(url), shouldStop,
     onSubnet: sn => log(`sweep: ${sn}.0/24`, 'li') });
   if (!found) { log('sweep found no Mission Control — QR/manual join', 'li'); return; }
-  log(`Mission Control found by port sweep: ${found}`, 'lk');
   if (shouldStop()) return;
-  noteJoinUrl(found);
-  connectMc(found, false);
+  // A SUGGESTION, not a join (review pass 1, security): this address was never typed, scanned or
+  // advertised — a websocket upgrade is all it answered, which any squatter on the node port can do, and
+  // the hello that followed used to carry this node's takeover key. The player taps JOIN (the HUD reads
+  // `hud.discovered`; `onJoinDiscovered` above does the dialling), and even then it is dialled untrusted.
+  const host = (found.match(/\/\/([^/]+)/) || [])[1] || found;
+  hud.discovered = { url: found, at: Date.now() };
+  log(`MISSION CONTROL FOUND AT ${host} — tap JOIN`, 'lk');
+  scheduleRender();
 }
 
 // ---------- boot ----------
@@ -603,8 +631,7 @@ async function sweepForMc() {
         const up = !!(st && st.connected);
         log(`network ${up ? 'up' : 'down'} (${(st && st.connectionType) || '—'})`, 'li');
         if (!up) return;
-        if (transport) { if (transport.dialNow()) log('network back — dialling Mission Control now', 'li'); }
-        else if (settings.mcUrl) connectMc(settings.mcUrl);
+        kickDial((st && st.connectionType) || 'network');
         refreshPreflight().catch(() => { /* ignore */ });
       });
     }

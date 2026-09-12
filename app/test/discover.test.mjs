@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { subnetOf, parseWsTarget, localIpFrom, sweepPlan, probeWsOpen, sweepForMc,
-         DEFAULT_SUBNETS, MC_WS_PORT } from '../src/transport/discover.js';
+         DEFAULT_SUBNETS, MC_WS_PORT, PROBE_POOL, PROBE_PACING_MS } from '../src/transport/discover.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_JS = path.resolve(HERE, '../src/app.js');
@@ -137,8 +137,39 @@ test('F139: the sweep never has more than `pool` sockets open at a time', async 
     w.close = (c, r) => { if (!w.closed) open--; orig(c, r); };
     return w;
   };
-  await sweepForMc({ subnets: ['192.168.0'], ports: [8766], wsFactory, timeoutMs: 5, pool: 8, hosts: 40 });
-  assert.ok(peak <= 8, `peak in flight ${peak} <= pool 8`);
+  await sweepForMc({ subnets: ['192.168.0'], ports: [8766], wsFactory, timeoutMs: 5, hosts: 40, pacingMs: 0 });
+  assert.ok(peak <= PROBE_POOL, `peak in flight ${peak} <= the default pool ${PROBE_POOL}`);
+  // Closing a socket that is still CONNECTING does not free it in a WebView, so the default is small on
+  // purpose: a wide pool leaves hundreds half-open and starves the probes behind them.
+  assert.ok(PROBE_POOL <= 8, 'the default pool stays small');
+  assert.ok(PROBE_PACING_MS > 0, 'and batches are paced, so the platform can reap what we closed');
+});
+
+test('F139: a probe queued behind earlier batches gets its FULL window — the clock starts when it dials', async () => {
+  // The MC on this LAN is the LAST host swept and answers 25 ms after ITS OWN socket is built. If the
+  // timeout were armed when the sweep started rather than when this probe dialled, its window would be
+  // long gone by the time its turn came and the one MC on the LAN would be reported as absent.
+  const mc = 'ws://192.168.0.6:8766/ws';
+  const sockets = [];
+  const wsFactory = url => {
+    const w = new FakeWS(url); sockets.push(w);
+    if (url === mc) setTimeout(() => w.onopen && w.onopen(), 25);
+    return w;
+  };
+  const found = await sweepForMc({ subnets: ['192.168.0'], ports: [8766], wsFactory, timeoutMs: 40,
+                                   pool: 2, hosts: 6, pacingMs: 1 });
+  assert.equal(found, mc);
+  assert.ok(sockets.length >= 6, 'it really did work through the earlier batches first');
+});
+
+test('F139: the sweep stops the moment a host answers — no further ports, no further batches', async () => {
+  const mc = 'ws://192.168.0.1:8766/ws';
+  const { sockets, wsFactory } = lan([mc]);
+  const found = await sweepForMc({ subnets: ['192.168.0'], ports: [8766, 9999], path: '/ws', wsFactory,
+                                   timeoutMs: 20, pool: 4, hosts: 254, pacingMs: 1 });
+  assert.equal(found, mc);
+  assert.ok(sockets.every(s => !s.url.includes(':9999')), 'the second port was never tried once one answered');
+  assert.ok(sockets.length <= 4, `only the batch that found it was opened (${sockets.length})`);
 });
 
 // ---------------- the guard: app.js must actually USE this, and not the blocked path ----------------
@@ -154,6 +185,10 @@ test('F139 guard: app.js sweeps over ws:// from discover.js, never an http fetch
   assert.doesNotMatch(body, /settings\.mcUrl\s*\|\||joinUrl:\s*settings\.mcUrl/, 'a remembered address must never pick the subnet');
   assert.match(body, /sweepPlan\(\{[^}]*joinUrl:\s*currentJoinUrl/, 'the subnet comes from THIS run\'s join');
   assert.match(body, /new WebSocket\(url\)/, 'and the probe is a websocket, the scheme the LAN join path already uses');
+  // security (review pass 1): a websocket upgrade is all a squatter on the node port has to answer, and
+  // the hello that follows carries this node's takeover key. A hit is a suggestion the player taps.
+  assert.doesNotMatch(body, /connectMc\(/, 'the sweep must NEVER dial its own hit');
+  assert.match(body, /hud\.discovered = \{ url: found/, 'it records the suggestion for the HUD instead');
   assert.match(src, /import \{ sweepPlan, localIpFrom, sweepForMc as sweepSubnetsForMc \} from '\.\/transport\/discover\.js'/);
 });
 
@@ -163,4 +198,28 @@ test('F153c guard: app.js wires a network-change listener to the transport\'s im
   assert.match(src, /addListener\('networkStatusChange'/);
   assert.match(src, /transport\.dialNow\(\)/, 'a change to connected must kick a dial, not wait out a backoff');
   assert.match(src, /window\.addEventListener\('online'/, 'the web half of the same signal');
+});
+
+test('F139 guard: the discovered address is joined only by an explicit tap, and even then untrusted', () => {
+  const src = readFileSync(APP_JS, 'utf8');
+  const i = src.indexOf('onJoinDiscovered:');
+  assert.ok(i > 0, 'the JOIN handler the HUD calls is gone — FIX this guard, do not delete it');
+  const body = src.slice(i, src.indexOf('\n  },', i));
+  assert.match(body, /hud\.discovered/, 'it dials what the sweep suggested');
+  assert.match(body, /connectMc\(d\.url, true, \{ trusted: false \}\)/, 'and says on the wire that nobody vouched for this address');
+  // and the transport half of that promise
+  const t = readFileSync(path.resolve(HERE, '../src/transport/transport.js'), 'utf8');
+  assert.match(t, /this\.secret && this\.trusted \? \{ secret: this\.secret \}/);
+  assert.match(t, /this\.nodeKey && this\.trusted \? \{ node_key: this\.nodeKey \}/);
+});
+
+test('F153c guard: ONE coalesced entry point for the network-came-back signal', () => {
+  const src = readFileSync(APP_JS, 'utf8');
+  // Android fires the Capacitor networkStatusChange AND the webview's `online` for the same transition;
+  // two kicks abort each other's dial and reset the backoff twice, so a flapping radio never backs off.
+  assert.equal((src.match(/transport\.dialNow\(\)/g) || []).length, 1, 'exactly one caller');
+  assert.match(src, /function kickDial\(/);
+  assert.match(src, /now - lastKickAt < 1000/, 'coalesced');
+  assert.match(src, /addListener\('networkStatusChange', st => \{[\s\S]*?kickDial\(/);
+  assert.match(src, /window\.addEventListener\('online', \(\) => kickDial\('online'\)\)/);
 });

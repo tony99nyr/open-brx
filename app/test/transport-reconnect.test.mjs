@@ -195,3 +195,75 @@ test('F153b/c: an in-flight pub REACHABILITY PROBE is torn down by a new connect
   assert.equal(probe.onopen, null, 'and detached, so it cannot drop the new link when it settles');
   t.close();
 });
+
+// ---------------- review pass 1 ----------------
+
+test('F153c: dialNow() keeps the connect() timeout RUNNING — a kept promise must still settle', async () => {
+  const { sockets, wsFactory } = factory();
+  const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
+    backoff: { baseMs: 10000, capMs: 10000, jitter: 0 }, lanGiveupMs: 5000, welcomeTimeoutMs: 300 });
+  const p = t.connect({ url: 'ws://lan/ws' });
+  const settled = p.then(() => 'resolved', e => e.message);
+  await sleep(50);
+  assert.equal(t.dialNow(), true);
+  // _clearTimers() CANCELS the connect timer; restoring the saved handle afterwards does not un-cancel
+  // it, so this promise used to hang forever instead of telling the app the join failed.
+  assert.match(await settled, /no welcome within 300 ms/);
+  t.close();
+});
+
+test('security: a hello to an address nobody typed or scanned carries no node_key and no join secret', async () => {
+  const { sockets, wsFactory } = factory();
+  const store = memoryStorage();
+  const t = new Transport({ storage: store, wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
+    backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  const p = t.connect({ url: 'ws://lan/ws', secret: 'sek' });
+  sockets[0].open();
+  sockets[0].recv(welcome({ node_key: 'KEY-1' }));
+  await p;
+  assert.equal(t.nodeKey, 'KEY-1');
+  t.close();
+  // ...now the LAN sweep suggests some other host and the player taps JOIN: same node, untrusted peer
+  const p2 = t.connect({ url: 'ws://192.168.0.77:8766/ws', trusted: false });
+  p2.catch(() => { /* closed below */ });
+  sockets[1].open();
+  const hello = sockets[1].sent[0];
+  assert.equal(hello.kind, 'hello');
+  assert.equal('node_key' in hello.body, false, 'the A8.2 takeover key is not handed to a host that has proved nothing');
+  assert.equal('secret' in hello.body, false, 'nor is the A28.2 join secret');
+  assert.equal(hello.body.node_id, t.nodeId, 'it is still us — only the credentials are withheld');
+  t.close();
+});
+
+test('security: an untrusted peer that WELCOMES us has proved itself — the next hello carries the key again', async () => {
+  const { sockets, wsFactory } = factory();
+  const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
+    backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  const p = t.connect({ url: 'ws://192.168.0.77:8766/ws', trusted: false, secret: 'sek' });
+  assert.equal(t.trusted, false);
+  sockets[0].open();
+  assert.equal('secret' in sockets[0].sent[0].body, false);
+  sockets[0].recv(welcome({ node_key: 'KEY-2', join: { pub: null, secret: 'sek2' } }));
+  await p;
+  assert.equal(t.trusted, true, 'a welcome is the proof');
+  sockets[0].close(4002, 'drop');
+  await sleep(10);
+  sockets[1].open();
+  assert.equal(sockets[1].sent[0].body.node_key, 'KEY-2', 'without the key a reconnect cannot take its own node_id back (A8.2)');
+  assert.equal(sockets[1].sent[0].body.secret, 'sek2');
+  t.close();
+});
+
+test('security: a plain connect() is trusted — the ordinary QR/typed/remembered join is unchanged', async () => {
+  const { sockets, wsFactory } = factory();
+  const store = memoryStorage();
+  store.setItem('brx.node_key', 'KEY-0');
+  const t = new Transport({ storage: store, wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
+    backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  const p = t.connect({ url: 'ws://lan/ws', secret: 'sek' });
+  p.catch(() => { /* closed below */ });
+  sockets[0].open();
+  assert.equal(sockets[0].sent[0].body.node_key, 'KEY-0');
+  assert.equal(sockets[0].sent[0].body.secret, 'sek');
+  t.close();
+});

@@ -94,6 +94,11 @@ export class Transport {
     this.context = {};                       // last welcome.node / assign / config / start
     this.ring = new Ring({ storage, key: `${keyPrefix}.outbox`, now });
     this.clock = new Clock({ storage, key: `${keyPrefix}.clock`, now });
+    // Review pass 1 (security): a url the USER never provided -- one the LAN sweep found by opening a
+    // socket to it -- is an UNTRUSTED peer until it proves it is Mission Control by welcoming us. Any
+    // host on the subnet can accept a websocket upgrade on the node port, and `hello` otherwise hands it
+    // this node's takeover key (A8.2) and the join secret (A28.2). Both are stripped while untrusted.
+    this.trusted = true;
     this.armedOrLive = false;                // app sets true in ARMED/LIVE → reconnect is unbounded
     this.preflight = {};                     // app merges via setPreflight()
     this.statusProvider = null;              // app: () => status body (hp, armor, ammo, alive, shots, arm_state, ...)
@@ -108,7 +113,7 @@ export class Transport {
   }
 
   // ---------- public API (net.md §6) ----------
-  connect({ url, mdns, qr, pub, secret } = {}) {
+  connect({ url, mdns, qr, pub, secret, trusted = true } = {}) {
     // F153b (field 2026-09-12): a new connect() SUPERSEDES whatever dial is already in flight. A QR
     // rescan after the tunnel restarted, a typed address, RECONNECT MC -- each hands us a new triple,
     // and the socket already connecting was aimed at the old one. Left alone it holds the slot until the
@@ -117,6 +122,7 @@ export class Transport {
     // old connect() promise, and dial the new target from the top of the ladder below.
     this._abortInFlight('superseded by a new connect()', 'reconnect');
     this.attempt = 0;
+    this.trusted = trusted !== false;   // stays false until this peer welcomes us (see `trusted` above)
     const nextUrl = url || qr || this.url;
     // A28.2 security: pub/secret are only ever valid for the MC that issued them. A different LAN
     // target (a phone told to join a different MC) means the tunnel/secret held for the OLD one must
@@ -217,7 +223,12 @@ export class Transport {
    *  connect() supersedes the old one) -- pass null when the caller is about to re-dial for that same
    *  promise (dialNow), and the connect() timeout is then left running. */
   _abortInFlight(rejectReason = null, wsReason = 'redial') {
-    const keepConnectTimer = rejectReason ? null : this._connectTimer;
+    // `_clearTimers()` CANCELS `_connectTimer`, and putting the handle back afterwards does not un-cancel
+    // it -- a kept promise would then never settle either way (review pass 1: dialNow() at 50 ms left a
+    // welcomeTimeoutMs=300 connect() still pending at 800 ms). Hide it from the clear, exactly as
+    // `_onOngoingClose` does, so the timeout the caller is keeping keeps running.
+    let keepConnectTimer = null;
+    if (!rejectReason) { keepConnectTimer = this._connectTimer; this._connectTimer = null; }
     this._clearTimers(); this._clearPubRetry();
     this._connectTimer = keepConnectTimer;
     this._probeStale = false;
@@ -278,9 +289,9 @@ export class Transport {
   _helloBody(via) {
     return {
       node_id: this.nodeId, node_type: this.nodeType, app_ver: this.appVer, platform: this.platformName(), via,   // A29 + A28.3
-      ...(this.secret ? { secret: this.secret } : {}),
+      ...(this.secret && this.trusted ? { secret: this.secret } : {}),
       gun: this.gun ? { name: this.gun.name, tail: this.gun.tail, ...(this.gun.fw ? { fw: this.gun.fw } : {}) } : undefined,
-      seq_next: this.ring.seqNext, ...(this.nodeKey ? { node_key: this.nodeKey } : {}),
+      seq_next: this.ring.seqNext, ...(this.nodeKey && this.trusted ? { node_key: this.nodeKey } : {}),
     };
   }
   _open() {
@@ -449,6 +460,9 @@ export class Transport {
     if (body.session_id && this._persistedSessionId && body.session_id !== this._persistedSessionId) {
       this._setPub(null); this._setSecret(null);
     }
+    // It welcomed us, so it speaks the M-NET protocol and is the MC we dialled: the next hello may carry
+    // the key (a keyless hello cannot take a still-live node_id back, A8.2) and the secret.
+    this.trusted = true;
     if (body.session_id) { this._persistedSessionId = body.session_id; this._store(this._sessionKey, body.session_id); }
     this.sessionId = body.session_id;
     if (typeof body.node_key === 'string' && body.node_key) { this.nodeKey = body.node_key; this._store(this._keyKey, body.node_key); }

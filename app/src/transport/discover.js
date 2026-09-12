@@ -20,8 +20,11 @@
 //      reason: MC's node registry is one-socket-per-node, so a hello from a probe would make MC hand the
 //      node over and close the real link.
 //
-// Bounded on purpose: `pool` sockets in flight, `timeoutMs` each, and `shouldStop()` is consulted between
-// every batch so a join that lands mid-sweep ends it.
+// Bounded on purpose: `pool` sockets in flight, `timeoutMs` each, a pause between batches, and
+// `shouldStop()` is consulted between every batch so a join that lands mid-sweep ends it. A full pass of
+// one /24 is ~254/8 batches x (timeout + pacing) ~= 24 s, and the phone's own subnet is swept first, so
+// the case that matters answers early. The sweep is a background fallback and its result is a
+// SUGGESTION the player taps, never an automatic join -- see app.js.
 
 /** The ranges a phone is actually likely to be on: home routers, Google Wifi, and the two phone-hotspot
  *  defaults (iOS 172.20.10.0/24, Android 192.168.43.0/24). */
@@ -29,8 +32,14 @@ export const DEFAULT_SUBNETS = ['192.168.0', '192.168.1', '192.168.86', '10.0.0'
 /** MC's node websocket port (`mc/__main__.py --ws-port`, default 8766). NOT 8765 — that is the operator
  *  HTTP API, which is what the old http sweep probed. */
 export const MC_WS_PORT = 8766;
-export const PROBE_TIMEOUT_MS = 800;
-export const PROBE_POOL = 32;
+export const PROBE_TIMEOUT_MS = 700;
+/** Review pass 1: 32 in flight is far too many. Closing a socket that is still CONNECTING does not free
+ *  it in a WebView, so a wide pool leaves the phone holding hundreds of half-open sockets and the ones
+ *  behind them never get to dial before their own timeout expires -- the sweep would then miss the one
+ *  MC on the LAN. Eight at a time, with a breath between batches, keeps every probe honest. */
+export const PROBE_POOL = 8;
+/** Idle between batches so the platform can actually reap the sockets we just closed. */
+export const PROBE_PACING_MS = 40;
 export const HOSTS_PER_SUBNET = 254;
 
 /** '192.168.0.149' → '192.168.0'; anything that is not a dotted-quad IPv4 → null. */
@@ -100,6 +109,9 @@ export function probeWsOpen(url, { wsFactory, timers = globalThis, timeoutMs = P
       }
       resolve(ok);
     };
+    // The clock starts when this probe DIALS, never when it was queued: an earlier version armed the
+    // timer before the socket existed, so a probe waiting its turn could burn its whole window without
+    // having opened anything and report a live MC as dead.
     try { ws = wsFactory(url); } catch (_) { resolve(false); return; }
     timer = timers.setTimeout(() => finish(false), timeoutMs);
     ws.onopen = () => finish(true);          // upgraded — a server is there. No hello, ever.
@@ -116,24 +128,27 @@ export function probeWsOpen(url, { wsFactory, timers = globalThis, timeoutMs = P
  */
 export async function sweepForMc({ subnets = [], ports = [MC_WS_PORT], path = '/ws', wsFactory,
                                    timers = globalThis, timeoutMs = PROBE_TIMEOUT_MS, pool = PROBE_POOL,
-                                   hosts = HOSTS_PER_SUBNET, shouldStop = () => false, onSubnet = null } = {}) {
+                                   pacingMs = PROBE_PACING_MS, hosts = HOSTS_PER_SUBNET,
+                                   shouldStop = () => false, onSubnet = null } = {}) {
+  let hit = null;
+  const idle = () => new Promise(r => timers.setTimeout(r, pacingMs));
   for (const sn of subnets) {
-    if (shouldStop()) return null;
+    if (hit || shouldStop()) break;
     if (onSubnet) { try { onSubnet(sn); } catch (_) { /* ignore */ } }
     for (let start = 1; start <= hosts; start += pool) {
-      if (shouldStop()) return null;
+      if (hit || shouldStop()) break;
       const batch = [];
       for (let i = start; i < start + pool && i <= hosts; i++) batch.push(i);
-      const hits = await Promise.all(batch.map(async i => {
+      await Promise.all(batch.map(async i => {
         for (const port of ports) {
+          if (hit) return;                  // one answered inside this very batch -- stop, don't finish the row
           const url = `ws://${sn}.${i}:${port}${path}`;
-          if (await probeWsOpen(url, { wsFactory, timers, timeoutMs })) return url;
+          if (await probeWsOpen(url, { wsFactory, timers, timeoutMs })) { if (!hit) hit = url; return; }
         }
-        return null;
       }));
-      const found = hits.find(Boolean);
-      if (found) return found;
+      if (hit) break;
+      if (pacingMs > 0) await idle();
     }
   }
-  return null;
+  return hit;
 }
