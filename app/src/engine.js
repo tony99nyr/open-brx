@@ -2301,9 +2301,17 @@ export class Engine {
     // it does is hardware-UNVERIFIED; this guard makes it safe either way). Counting it would book a magazine of
     // phantom shots, and recording it would make the restore re-send 0 -- a gun disarmed for the rest of the life.
     if (this.stunned) return;
-    // F147: the gun's own confirmation that a try-out weapon write actually took — a fresh magazine at the
-    // new weapon's full clip. Any slot: a try-out weapon can land in the primary OR the secondary rack.
-    if (this.tryoutArming && mag === this.tryoutArming.clip) this.tryoutArming = null;
+    // F147 (tightened, polish-loop pass 1 LOW): the gun's own confirmation that a try-out weapon write
+    // actually took — a fresh magazine at the new weapon's full clip. Any slot: a try-out weapon can land
+    // in the primary OR the secondary rack. Only the FIRST ammo report after the write counts, and only if
+    // it is an exact clip match with nothing else in between: an old weapon that happened to share the same
+    // clip size, or a shot/reload that lands on that number by coincidence a few reports later, must not
+    // pass for confirmation of THIS write. A report that fails the check never gets a second chance — it
+    // marks the arming unconfirmable-by-ammo, and the TRYOUT_ARM_MAX_MS timeout is what resolves it instead.
+    if (this.tryoutArming) {
+      if (!this.tryoutArming.seen && mag === this.tryoutArming.clip) this.tryoutArming = null;
+      else this.tryoutArming.seen = true;
+    }
     const prev = this._prevAmmo[slot];
     if (prev != null && mag < prev && this.phase === 'live') this.shots += (prev - mag);
     if (this.resync && prev != null && mag < prev) this._resyncEvidence('alcd-dec');

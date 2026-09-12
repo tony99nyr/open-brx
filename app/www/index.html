@@ -443,6 +443,21 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 #diag .mcjoinnote{font:700 11px var(--fl);letter-spacing:.14em;color:var(--glow)}
 #diag .mcjoin .mcin input{width:auto;flex:1 1 auto;min-width:0}
 #diag .mcjoin .qrbtn{align-self:flex-start}
+/* Polish-loop pass 1 (2026-09-12): what CONNECT/SCAN QR are for, normally — or, armed/live only, the
+   two-tap warning (`.warn`) `hud.js`'s `_click` swaps it for. Empty when there is nothing to say (put()
+   never touches an unchanged section, so an empty string here collapses it to no visible gap). */
+#diag .mcjoinhint{font:11px/1.4 ui-monospace,monospace;color:var(--mut)}
+#diag .mcjoinhint .warn{color:var(--warn);font-weight:700}
+/* Polish-loop pass 1: a LAN-sweep hit MC, offered rather than auto-joined — one tap accepts it. Same row
+   in the pre-join screen (`.lobby .discoveredrow`, glow-styled like the rest of that screen) and the ⓘ
+   panel (dark/monospace, `#diag .discoveredrow`) — absent (not merely empty) when nothing was found, so it
+   never reserves space of its own. */
+.discoveredrow{display:flex;align-items:center;justify-content:center;min-height:44px;padding:0 14px;background:rgba(57,224,124,.12);border:1px solid var(--ok);color:var(--ok);font-weight:700;font-size:12px;letter-spacing:.1em;text-align:center;pointer-events:auto;cursor:pointer}
+#diag .discoveredrow{font-family:ui-monospace,monospace}
+/* `.foot` is a single-row flex line (mcin/qrbtn/note share it) — a flex ITEM here just squeezes into that
+   row and wraps its own text across several narrow lines. Same fix as `.kitlock` right above it: lift it
+   out of the flex flow into its own row directly above `.foot`. */
+.lobby .foot .discoveredrow{position:absolute;left:0;right:0;bottom:100%;margin-bottom:10px;font-family:var(--fl);letter-spacing:.14em;white-space:nowrap}
 
 /* ============ keyframes ============ */
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}

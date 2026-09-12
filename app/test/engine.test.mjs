@@ -1575,6 +1575,33 @@ test('tutorial end push quiets the gun and clears the try-out state', () => {
 });
 
 
+test('F147: tryoutArming clears on the gun\'s own confirming ammo report', () => {
+  const h = harness().kit();
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 30 }, frames: ['$WEAP,0,*'] } });
+  assert.equal(h.eng.state().tryoutArming, true, 'arming while unconfirmed');
+  h.frame('$ALCD,30,100,0,50,0,*');
+  assert.equal(h.eng.state().tryoutArming, false, 'the matching report confirms it');
+});
+
+// Polish-loop pass 1 (2026-09-12 LOW): the untightened version confirmed on ANY later report equal to the
+// clip -- an unrelated ammo line (a stray resend, or a shot/reload landing back on that number) could pass
+// for confirmation of a DIFFERENT weapon's write. Only the FIRST report after arming gets a vote.
+test('F147 (tightened): a non-matching first report forecloses a later coincidental match', () => {
+  const h = harness().kit();
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 30 }, frames: ['$WEAP,0,*'] } });
+  h.frame('$ALCD,20,100,0,50,0,*');           // the FIRST report after arming: does not match
+  assert.equal(h.eng.state().tryoutArming, true, 'still arming -- no match yet');
+  h.frame('$ALCD,30,100,0,50,0,*');           // a LATER report happens to equal the clip
+  assert.equal(h.eng.state().tryoutArming, true, 'a later coincidental match must not confirm once the first report missed');
+});
+
+test('F147: an unconfirmed try-out arm assumes done after the timeout', () => {
+  const h = harness().kit();
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 30 }, frames: ['$WEAP,0,*'] } });
+  h.adv(3100); h.eng.tick();
+  assert.equal(h.eng.state().tryoutArming, false, 'the timeout resolves it with no confirming report');
+});
+
 test('apply.preview plays sound-only frames at the bench; non-preview stays live-only (A9.1)', () => {
   const h = harness().kit();
   h.writes.length = 0;

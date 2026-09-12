@@ -36,6 +36,9 @@ const ALERT_FAMILY = { objective_taken: 'objective', objective_scored: 'objectiv
 const OUTCOME_WORD = { win: 'WIN', lose: 'LOSE', draw: 'DRAW', undecided: 'UNDECIDED' };
 const MEDAL_LABEL = { first_blood: 'FIRST BLOOD', double_kill: 'DOUBLE KILL', triple_kill: 'TRIPLE KILL', killtacular: 'KILLTACULAR', killing_spree: 'KILLING SPREE', unstoppable: 'UNSTOPPABLE' };
 const splitGun = g => { if (!g) return ['—', '']; return [esc(g.basename || g.name || ''), esc(g.tail || '')]; };
+// Polish-loop pass 1 (2026-09-12): the discovered-MC row shows the HOST, never the raw ws://…/ws join URL.
+const mcHost = url => { try { return new URL(url).host; } catch (_) { return String(url || ''); } };
+const discoveredRow = d => d ? `<div class="discoveredrow" data-act="onJoinDiscovered"><span class="unskew">MISSION CONTROL FOUND AT ${esc(mcHost(d.url))} · JOIN</span></div>` : '';
 // A10: human labels for catalog rows (never the raw $WEAP class id — design review round 3)
 const ROLE_NAME = { assault: 'ASSAULT', cqb: 'CLOSE RANGE', marksman: 'SNIPER', support: 'SUPPORT', power: 'HEAVY', melee: 'MELEE', sidearm: 'SIDEARM' };
 /** A secondary rule whose kinds hold `sidearm` but not `weapon` is a pistols-only slot (policy.py, 2026-09-04). */
@@ -103,6 +106,8 @@ export class Hud {
     this.overlay = root.querySelector('#overlay'); this.chips = root.querySelector('#chips');
     this.diag = root.querySelector('#diag'); this.info = root.querySelector('#info');
     this.sig = null; this.scan = []; this.link = {}; this.diagData = {}; this.mcUrl = '';
+    this.discovered = null;   // {url, at} a LAN-sweep hit MC never auto-joined — null once bound or nothing found
+    this._joinConfirm = null; // {act, at} the armed/live two-tap guard on CONNECT / SCAN QR (below)
     this.lo = { tab: 'primary', filter: 'weapons', focus: null, confirm: null };   // LOADOUT browser UI state (tab / filter / focused row / A14 two-tap confirm {key, drop})
     this._moment = null; this._momentTimer = null; this._lastTminus = null; this.mcPill = false;   // live: the MC-range pill is opt-in (tap the MC label)
     // A24 FINAL RESULTS: which screen the player has reopened after OK (null | 'result' | 'history') and which
@@ -153,6 +158,18 @@ export class Hud {
       this.sig = null; if (this._lastSt) this.render(this._lastSt);
       return;
     }
+    // Polish-loop pass 1 (2026-09-12, MEDIUM security+UX): CONNECT / SCAN QR are reachable in every phase
+    // (F156) with nothing stopping a stray tap mid-match — CONNECT redials and drops the live MC link,
+    // SCAN QR blacks the HUD out behind the camera. Both stay one-tap everywhere they always were
+    // (idle/connected/kitted/lobby/over); only armed/live — an active match — gate them behind a second
+    // tap, the same two-tap shape A14's loadout conflict already uses. The warning lives in
+    // `dg-mcjoinhint` (`renderDiag`), patched from this state rather than a structural rebuild so it
+    // shows on the SAME render the first tap produced.
+    if ((act === 'onSetUrl' || act === 'onScanQr') && this._lastSt && (this._lastSt.phase === 'armed' || this._lastSt.phase === 'live')) {
+      const now = Date.now();
+      if (this._joinConfirm && this._joinConfirm.act === act && now - this._joinConfirm.at < 4000) { this._joinConfirm = null; this.renderDiag(); }   // second tap: revert the warning now, then let it through below
+      else { this._joinConfirm = { act, at: now }; this.renderDiag(); return; }
+    } else if (this._joinConfirm) this._joinConfirm = null;   // any other tap (or a phase change) drops a stale confirm
     if (act === 'onEndOk') this.view = null;                                     // OK still acks the end (app handler below)
     else if (act === 'onShowResults' || act === 'onShowHistory' || act === 'onCloseView' || act === 'onResultTab') {
       if (act === 'onShowResults') this.view = 'result';
@@ -166,6 +183,9 @@ export class Hud {
   }
   setScan(list) { this.scan = list; this.sig = null; }
   setLink(link) { this.link = link; }
+  // Polish-loop pass 1 (2026-09-12): a LAN sweep hit MC is no longer auto-joined (app.js, another lane) — it
+  // hands the player the choice instead. `null` clears the row (nothing found, or MC is already bound).
+  setDiscovered(d) { this.discovered = d || null; this.sig = null; }
   setDiag(d) { this.diagData = d; if (this.diag.classList.contains('open')) this.renderDiag(); }
   // F156/F135/ledger#31 (field 2026-09-12): the diag panel now carries its own `#mcurl` + SCAN QR (below), the
   // one join control reachable in EVERY phase. The pre-join screen's own copy (same id) must not coexist with
@@ -189,6 +209,7 @@ export class Hud {
     const sig = [st.phase, st.alive, !!st.killedBy, st.night, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
       st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.battery != null && st.battery <= 15,
       st.kills > 0, st.deaths > 0, st.assists > 0, accShown(st) != null, st.reserve != null, this.scan.length, st.bleUp, st.ended,
+      this.discovered && this.discovered.url,   // Polish-loop pass 1: the discovered-MC row on the pre-join screen (`_joinConfirm` only touches the diag panel, patched directly, not here)
       st.rejoin, !!st.pendingTeardown, this.sync && this.sync.bound, this.sync && this.sync.pending,
       // F137 (field 2026-09-12, found verifying the fix below): the pre-kit CONNECTED screen swaps a whole
       // block (the type-address box vs "MC LINKED") on `wsState`, not just text — `_patch` only ever touched
@@ -342,7 +363,7 @@ export class Hud {
         ? `<div class="mclinked"><span class="unskew">MC LINKED ✓ — WAITING FOR KIT-OUT</span></div><div class="note">Mission Control has this gun. Your callsign and loadout arrive with the kit.</div>`
         : diagHasJoin
         ? `<div class="note join">Connecting from the ⓘ panel, top right — it's already open.</div>`
-        : `<div class="mcin"><input id="mcurl" value="${esc(this.mcUrl)}" placeholder="ws://mission-control-ip:8766/ws" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div><button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button><div class="note join">Same Wi-Fi as Mission Control? It connects by itself. Otherwise scan the QR on the MC screen, or type its address.</div>`;
+        : `${discoveredRow(this.discovered)}<div class="mcin"><input id="mcurl" value="${esc(this.mcUrl)}" placeholder="ws://mission-control-ip:8766/ws" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div><button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button><div class="note join">Same Wi-Fi as Mission Control? It connects by itself. Otherwise scan the QR on the MC screen, or type its address.</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     } else if (mode === 'setup') {
       // §4.1: calm, not an error — the host hasn't picked the game yet
@@ -1131,7 +1152,12 @@ export class Hud {
     // above claims/releases the `mcurl` id on it (`.mcurlfield` is the stable hook) so there is never a
     // moment with the id on TWO inputs, hidden or not; `getElementById` on a genuine duplicate is
     // browser-defined, not something to lean on across Android WebView / iOS WKWebView.
+    // Polish-loop pass 1 (2026-09-12): `dg-discovered` (a LAN-sweep hit MC no longer auto-joins into) and
+    // `dg-mcjoinhint` (what these controls are FOR, or — armed/live only — the two-tap warning) are both
+    // live-patched by `renderDiag`, never rebuilt structurally, so a tap on them is never eaten by a render.
     const mcjoin = `<div class="mcjoin"><div class="mcjoinnote" id="dg-mcjoinnote">MISSION CONTROL</div>
+        <div id="dg-discovered"></div>
+        <div class="mcjoinhint" id="dg-mcjoinhint"></div>
         <div class="mcin"><input class="mcurlfield" value="${esc(this.mcUrl)}" placeholder="ws://mission-control-ip:8766/ws" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div>
         <button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button></div>`;
     this.diag.innerHTML = `<button class="close" data-act="onCloseDiag">✕</button>${mcjoin}
@@ -1160,6 +1186,19 @@ export class Hud {
       : mcs === 'rejected' ? 'MISSION CONTROL · REJECTED — ASK THE HOST'
       : mcs === 'connecting' || mcs === 'open' ? 'MISSION CONTROL · CONNECTING…'
       : lk.mc_url ? 'MISSION CONTROL · NOT CONNECTED' : 'MISSION CONTROL · NO ADDRESS YET — SCAN THE QR');
+    // Polish-loop pass 1 (2026-09-12): the discovered-MC row, and the line above CONNECT/SCAN QR — normally
+    // what they are FOR, or (armed/live, within the 4 s window `_click` opened) the two-tap warning itself.
+    put('dg-discovered', discoveredRow(this.discovered));
+    const confirmPending = !!(this._joinConfirm && Date.now() - this._joinConfirm.at < 4000);
+    if (this._joinConfirm && !confirmPending) this._joinConfirm = null;
+    put('dg-mcjoinhint', confirmPending
+      ? `<span class="warn">⚠ TAP AGAIN TO ${this._joinConfirm.act === 'onScanQr' ? 'SCAN A NEW QR' : 'RECONNECT'} — THIS DROPS YOUR MISSION CONTROL LINK MID-MATCH</span>`
+      : 'NEW MISSION CONTROL ADDRESS? (after a tunnel restart or a different host)');
+    // F147-adjacent (pass 1 LOW): this input was built once from `this.mcUrl` and never rebuilt, so a QR
+    // rescan (which sets `hud.mcUrl` — app.js, another lane) left the panel showing the address it replaced.
+    // Only while the field is not focused — the same rule `render()`'s own `typing` guard already applies.
+    const mcInp = this.diag.querySelector('.mcurlfield');
+    if (mcInp && document.activeElement !== mcInp && mcInp.value !== (this.mcUrl || '')) mcInp.value = this.mcUrl || '';
     put('dg-pf', kv(pf));
     put('dg-link', kv(d.link || {}));
     put('dg-eng', kv(d.engine || {}));

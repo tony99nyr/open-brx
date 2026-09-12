@@ -1360,6 +1360,78 @@ await step('F156 connected: closing the ⓘ panel restores the pre-join screen\'
   must(!r.open, 'the panel did not close');
   must(r.count === 1 && r.outsideDiag, 'the pre-join screen did not get its own #mcurl back: ' + JSON.stringify(r));
 });
+// ---------- Polish-loop pass 1 (2026-09-12): armed/live gate a mid-match CONNECT / SCAN QR behind a second tap ----------
+await step('polish-1 diag-live: CONNECT is a two-tap confirm mid-match, and reverts if not confirmed', async () => {
+  const pg = await open(VIEWS[0], 'diag-live', '', 5200);
+  await pg.evaluate(() => { window.__calls = 0; window.brx.hud.h.onSetUrl = () => { window.__calls++; }; });
+  const before = await pg.evaluate(() => (document.getElementById('dg-mcjoinhint') || {}).textContent || '');
+  await pg.click('[data-act="onSetUrl"]');
+  await pg.waitForTimeout(80);
+  const afterOne = await pg.evaluate(() => ({ calls: window.__calls, hint: (document.getElementById('dg-mcjoinhint') || {}).textContent || '' }));
+  await pg.click('[data-act="onSetUrl"]');
+  await pg.waitForTimeout(80);
+  const afterTwo = await pg.evaluate(() => ({ calls: window.__calls, hint: (document.getElementById('dg-mcjoinhint') || {}).textContent || '' }));
+  await pg.close();
+  must(!/TAP AGAIN/.test(before), 'the warning is showing before any tap: ' + before);
+  must(afterOne.calls === 0, 'the first tap mid-match reached onSetUrl instead of being swallowed');
+  must(/TAP AGAIN/.test(afterOne.hint) && /MISSION CONTROL LINK MID-MATCH/.test(afterOne.hint), 'no mid-match warning after the first tap: ' + afterOne.hint);
+  must(afterTwo.calls === 1, 'the second tap within the window did not reach onSetUrl: ' + JSON.stringify(afterTwo));
+  must(!/TAP AGAIN/.test(afterTwo.hint), 'the warning did not clear once confirmed: ' + afterTwo.hint);
+});
+await step('polish-1 idle-diag: SCAN QR stays one-tap outside a live match', async () => {
+  const pg = await open(VIEWS[0], 'idle-diag');
+  await pg.evaluate(() => { window.__calls = 0; window.brx.hud.h.onScanQr = () => { window.__calls++; }; });
+  await pg.click('[data-act="onScanQr"]');
+  await pg.waitForTimeout(80);
+  const r = await pg.evaluate(() => ({ calls: window.__calls, hint: (document.getElementById('dg-mcjoinhint') || {}).textContent || '' }));
+  await pg.close();
+  must(r.calls === 1, 'SCAN QR needed a second tap outside a match: ' + JSON.stringify(r));
+  must(!/TAP AGAIN/.test(r.hint), 'a one-tap phase still shows the mid-match warning: ' + r.hint);
+});
+
+// ---------- Polish-loop pass 1: the discovered-MC row (LAN sweep, offered rather than auto-joined) ----------
+await step('polish-1 connected: the discovered-MC row is absent by default, appears on setDiscovered, and JOINs on tap', async () => {
+  const pg = await open(VIEWS[0], 'connected');
+  must((await pg.evaluate(() => document.querySelectorAll('.discoveredrow').length)) === 0, 'a row appeared with nothing discovered');
+  await pg.evaluate(() => { window.__calls = 0; window.brx.hud.h.onJoinDiscovered = () => { window.__calls++; };
+    window.brx.hud.setDiscovered({ url: 'ws://192.168.1.42:8766/ws', at: Date.now() }); window.brx.hud.render(window.brx.engine.state()); });
+  await pg.waitForTimeout(80);
+  const row = await pg.evaluate(() => { const e = document.querySelector('.lobby .discoveredrow'); const foot = document.querySelector('.lobby .foot');
+    if (!e) return null; const r = e.getBoundingClientRect(), f = foot.getBoundingClientRect();
+    return { text: e.textContent, aboveFoot: r.bottom <= f.top + 1, oneLine: e.scrollWidth <= e.clientWidth + 1 }; });
+  must(row, 'the discovered row never rendered on the pre-join screen');
+  must(/192\.168\.1\.42:8766/.test(row.text) && /JOIN/.test(row.text), 'row text: ' + row.text);
+  must(row.aboveFoot, 'the discovered row overlaps the CONNECT/SCAN QR row instead of sitting above it');
+  must(row.oneLine, 'the discovered row wrapped');
+  await pg.click('.lobby .discoveredrow');
+  await pg.waitForTimeout(80);
+  const calls = await pg.evaluate(() => window.__calls);
+  await pg.close();
+  must(calls === 1, 'tapping the discovered row did not call onJoinDiscovered');
+});
+await step('polish-1 idle-diag: the discovered-MC row also renders inside the ⓘ panel', async () => {
+  const pg = await open(VIEWS[0], 'idle-diag');
+  await pg.evaluate(() => { window.brx.hud.setDiscovered({ url: 'ws://192.168.1.42:8766/ws', at: Date.now() }); window.brx.hud.renderDiag(); });
+  await pg.waitForTimeout(80);
+  const r = await pg.evaluate(() => { const e = document.querySelector('#diag .discoveredrow'); return e ? e.textContent : null; });
+  await pg.close();
+  must(r && /192\.168\.1\.42:8766/.test(r) && /JOIN/.test(r), 'no discovered row in the diag panel: ' + r);
+});
+
+// ---------- Polish-loop pass 1 (LOW): the diag panel's address field follows hud.mcUrl after a rescan ----------
+await step('polish-1 idle-diag: the address field updates after mcUrl changes (e.g. a QR rescan), unless focused', async () => {
+  const pg = await open(VIEWS[0], 'idle-diag');
+  await pg.evaluate(() => { window.brx.hud.mcUrl = 'ws://9.9.9.9:8766/ws'; window.brx.hud.renderDiag(); });
+  await pg.waitForTimeout(80);
+  const unfocused = await pg.evaluate(() => (document.querySelector('.mcurlfield') || {}).value);
+  must(unfocused === 'ws://9.9.9.9:8766/ws', 'the field did not pick up the new mcUrl: ' + unfocused);
+  await pg.click('.mcurlfield'); await pg.keyboard.type('typing');
+  await pg.evaluate(() => { window.brx.hud.mcUrl = 'ws://1.1.1.1:8766/ws'; window.brx.hud.renderDiag(); });
+  await pg.waitForTimeout(80);
+  const whileTyping = await pg.evaluate(() => (document.querySelector('.mcurlfield') || {}).value);
+  await pg.close();
+  must(/typing/.test(whileTyping), 'a live mcUrl push overwrote what the player was typing: ' + whileTyping);
+});
 await b.close(); srv.close();
 console.log(`\n${pass} passed, ${fail} failed${fail ? ': ' + errs.join(', ') : ''}`);
 process.exit(fail ? 1 : 0);
