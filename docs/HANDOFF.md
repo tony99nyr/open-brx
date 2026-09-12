@@ -133,7 +133,8 @@ Android-only symptom is a version candidate first. Evidence: `~/mc-20260911-1927
 ## Machine roles
 
 **Windows PC (WSL2 + Windows Python)** = primary development. **MacBook** = field / match day, and the only
-capture rig (Callsign is iOS-only, PacketLogger macOS-only), so capture jobs batch for a Mac day
+capture rig (Callsign is effectively iOS-only: the Android build cannot
+connect a gun; PacketLogger is macOS-only), so capture jobs batch for a Mac day
 (`capture-runbook.md`, `mac-dev-runbook.md`). Code must run on both: macOS gives BLE UUIDs, Windows/BlueZ MACs.
 
 ## Where things live
