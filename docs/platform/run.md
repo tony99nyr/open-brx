@@ -1,5 +1,5 @@
 # Running a match
-Last verified: 2026-09-09
+Last verified: 2026-09-12
 
 How to get from a bag of taggers to a finished game with a scoreboard. There are two ways to run
 one, and the simpler way needs nothing but a laptop.
@@ -45,6 +45,8 @@ For Mission Control plus phones, all of the above, and:
 - One phone per player, with the BRX Combat HUD installed and paired to that player's tagger
   **before** match day. Install it at home, where there is internet.
 - The armory map for your taggers (`~/.brx-mcp/armory.json`) on the machine that will host.
+- Optional, for phones that have a data plan: internet at the laptop and `cloudflared` installed. See
+  *Reaching phones over the internet* below.
 
 ## Before the players arrive
 
@@ -106,6 +108,30 @@ This is the per-game arming, and it is where a bad start gets caught.
 On the laptop-only way, muster is the same eyeball check plus the one `play` command, which
 configures every tagger first and then spawns them together.
 
+## Reaching phones over the internet
+
+By default the field is an island: phones reach Mission Control over the field Wi-Fi and nothing else. If the
+laptop has internet (a travel router with a SIM, or tethered to a phone), you can also let any player phone
+that has a data plan reach Mission Control from wherever it has signal. Nothing is installed or configured on
+the phones. This is optional, and a match never depends on it.
+
+1. Install `cloudflared` on the laptop once (`brew install cloudflared` on a Mac). No account, no login.
+2. Start Mission Control as usual. On the **Armory** screen, in the join panel, find **REACH** and press
+   **TURN ON** under INTERNET. The row reads STARTING, then UP with a hostname. If it reads ERROR, the text
+   beside it is the reason; the usual one is no internet at the laptop.
+3. The join QR now carries both addresses. New phones scan it as always. Phones that already joined over
+   Wi-Fi pick the internet address up by themselves; nobody rescans.
+4. In the **Lobby**, each row shows LAN or BACKHAUL, and the header says how many phones are on backhaul. A
+   phone on backhaul keeps getting kill confirms, score and the result anywhere it has signal. When every
+   phone on the board is on backhaul, the score-cap and last-one-standing ends become live across the whole
+   park.
+
+What it needs and what it does not do: the laptop must have internet; the phone must have a data plan and a
+signal, so a park with no cell service plays exactly as it does without it; the time limit is still required.
+If the tunnel dies, a banner says so on every screen and the phones fall back to Wi-Fi on their own. Turning
+it back on gives a new hostname, which only matters for a phone that never comes back into Wi-Fi range: that
+one rescans the QR. You can also start with the tunnel on: `python -m brx_mcp.mc --tunnel`.
+
 ## During the match
 
 Mission Control is setup, start and recap only. It is **not** Bluetooth-connected to any tagger while
@@ -142,7 +168,8 @@ join, silently. Look for the rainbow blink, fix the headset, power-cycle that ta
 **A phone shows as on the wrong Wi-Fi, or Mission Control unreachable.** The field router has no
 internet, so Android decides the network is dead and moves the phone onto mobile data. The link then
 leaves over cellular and never arrives. Turn mobile data off on that phone, and check auto-join is
-on for the game network.
+on for the game network. With the internet tunnel on (see *Reaching phones over the internet*) this stops
+being a fault: that phone reaches Mission Control over mobile data anyway and its row reads BACKHAUL.
 
 **A tagger will not connect, or connects and drops straight away.** A tagger left powered all day
 starts doing this: power-rest the taggers between sessions. Establishing a Bluetooth link succeeds
