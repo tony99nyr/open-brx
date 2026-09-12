@@ -167,7 +167,19 @@ export class Hud {
   setScan(list) { this.scan = list; this.sig = null; }
   setLink(link) { this.link = link; }
   setDiag(d) { this.diagData = d; if (this.diag.classList.contains('open')) this.renderDiag(); }
-  toggleDiag() { this.diag.classList.toggle('open'); if (this.diag.classList.contains('open')) this.renderDiag(); }
+  // F156/F135/ledger#31 (field 2026-09-12): the diag panel now carries its own `#mcurl` + SCAN QR (below), the
+  // one join control reachable in EVERY phase. The pre-join screen's own copy (same id) must not coexist with
+  // it in the DOM at once, so opening/closing the panel claims/releases the id on the diag copy AND forces the
+  // underlying screen to rebuild around it (`_lobby` hides its own copy while this one holds the id) — same
+  // pattern `onLoInfo` already uses to swap a pane with no engine-state change behind it.
+  toggleDiag() {
+    this.diag.classList.toggle('open');
+    const open = this.diag.classList.contains('open');
+    if (open) this.renderDiag();   // builds the shell (and the .mcurlfield input) on first open
+    const inp = this.diag.querySelector('.mcurlfield');
+    if (inp) { if (open) inp.id = 'mcurl'; else inp.removeAttribute('id'); }
+    this.sig = null; if (this._lastSt) this.render(this._lastSt);
+  }
 
   render(st) {
     this._lastSt = st;
@@ -178,8 +190,16 @@ export class Hud {
       st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.battery != null && st.battery <= 15,
       st.kills > 0, st.deaths > 0, st.assists > 0, accShown(st) != null, st.reserve != null, this.scan.length, st.bleUp, st.ended,
       st.rejoin, !!st.pendingTeardown, this.sync && this.sync.bound, this.sync && this.sync.pending,
+      // F137 (field 2026-09-12, found verifying the fix below): the pre-kit CONNECTED screen swaps a whole
+      // block (the type-address box vs "MC LINKED") on `wsState`, not just text — `_patch` only ever touched
+      // `#mcstatus`'s TEXT, so with wsState excluded from the signature that swap needed some UNRELATED field
+      // to change too before it would ever rebuild; on the otherwise-static pre-kit screen it often never
+      // did, and MC could bind with the player never told. The `typing` guard below already protects the
+      // input from a rebuild while it has focus, so this does not reopen the "never rebuild while typing"
+      // case the old comment (still true of `synced`/`headEcho`, which stay patched-only) was written for.
+      st.wsState,
       // A10 loadout browser + slot plates
-      st.browsing, st.canPickPrimary, st.canPickSecondary, st.canPickPerk, st.tryoutSeen, this.lo.tab, this.lo.filter, this.lo.focus, this.lo.confirm && this.lo.confirm.key,
+      st.browsing, st.canPickPrimary, st.canPickSecondary, st.canPickPerk, st.tryoutSeen, st.tryoutArming, this.lo.tab, this.lo.filter, this.lo.focus, this.lo.confirm && this.lo.confirm.key,
       st.kitOpen, st.briefSeen, st.kitLocked, st.game && st.game.name, st.game && st.game.loadout_line,
       st.loadoutAck && st.loadoutAck.t, st.pendingPick && st.pendingPick.id, st.pendingPick && st.pendingPick.kind,
       st.loadout && st.loadout.primary && st.loadout.primary.weapon_id, st.loadout && st.loadout.secondary && st.loadout.secondary.weapon_id, st.loadout && st.loadout.perk && st.loadout.perk.perk_id,
@@ -189,7 +209,7 @@ export class Hud {
       // message arriving — nothing else in the signature moves at that moment.
       this.view, this.rtab, st.resultWait, st.result && st.result.match_id, st.result && st.result.outcome,
       st.result && st.result.provisional, st.result && st.result.rows && st.result.rows.length,
-      this.history && this.history.length, this.sessionId, st.game && st.game.mc_verify].join('|');   // wsState / synced / headEcho are patched in place (never rebuild while typing the MC URL)
+      this.history && this.history.length, this.sessionId, st.game && st.game.mc_verify].join('|');   // synced / headEcho stay patched in place (F137: wsState moved INTO the signature above — see the note there)
     const panel = st.phase === 'kitted' && ((st.ended && (!st.endAck || !!this.view)) || (!st.ended && st.kitOpen && !st.briefSeen && !this._tryoutShown(st)) || (!st.ended && st.browsing && !this._tryoutShown(st)));
     const screen = st.phase === 'live' ? 'live' : st.phase === 'armed' ? 'armed' : st.phase === 'idle' ? 'idle' : panel ? (st.browsing ? 'lo' : 'panel') : 'lobby';
     if (this.frame.dataset.screen !== screen) this.frame.dataset.screen = screen;
@@ -207,6 +227,22 @@ export class Hud {
     this._chips(st);
     this._moments(st);
     this._fitBriefing();
+    this._fitMcLinked();
+  }
+
+  /** F137 (field 2026-09-12): "MC LINKED ✓ — WAITING FOR KIT-OUT" at the design 28px wrapped to two
+   *  uncentred lines inside a padding-less box (the first line ran to the border) at every width this was
+   *  checked at — nothing here ever fitted it. Same measure-then-shrink loop as `_fitBriefing`/`_redeploy`;
+   *  the CSS gives it `white-space:nowrap` so `scrollWidth` reports the true one-line width to shrink against,
+   *  same contract those two already rely on. */
+  _fitMcLinked() {
+    const nm = this.hudEl.querySelector('.mclinked .unskew');
+    if (!nm) { this._mlFit = null; return; }
+    const key = nm.textContent + '|' + (nm.parentElement ? nm.parentElement.clientWidth : 0);
+    if (this._mlFit !== key) { this._mlFit = key; nm.style.fontSize = ''; }
+    if (nm.scrollWidth <= nm.clientWidth + 1) return;
+    let fs = parseFloat(getComputedStyle(nm).fontSize) || 28;
+    while (nm.scrollWidth > nm.clientWidth + 1 && fs > 15) { fs -= 1; nm.style.fontSize = fs + 'px'; }
   }
 
   /** F110 (review): `.bfbody` is a fixed 268 px box whose rows are `flex:0 0 auto`, i.e. purely additive — a
@@ -297,9 +333,15 @@ export class Hud {
     const lead = (mode === 'kitted' || mode === 'lobby') && (refusal || st.kitLocked)
       ? `<div class="kitlock">${refusal ? esc(refusal.toUpperCase()) : 'THE HOST LOCKED KITS — you play what you had'}</div>` : '';
     let foot, status;
+    // F156/F135 (field 2026-09-12): the join controls now also live in the ⓘ panel (`_diagShell`), reachable
+    // from every phase — same `#mcurl` id, so this copy steps aside rather than duplicate it while that
+    // panel is open (`onSetUrl` reads the input by id; app.js is another lane, so there can only be one).
+    const diagHasJoin = this.diag.classList.contains('open');
     if (mode === 'connected') {
       foot = st.wsState === 'bound'
         ? `<div class="mclinked"><span class="unskew">MC LINKED ✓ — WAITING FOR KIT-OUT</span></div><div class="note">Mission Control has this gun. Your callsign and loadout arrive with the kit.</div>`
+        : diagHasJoin
+        ? `<div class="note join">Connecting from the ⓘ panel, top right — it's already open.</div>`
         : `<div class="mcin"><input id="mcurl" value="${esc(this.mcUrl)}" placeholder="ws://mission-control-ip:8766/ws" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div><button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button><div class="note join">Same Wi-Fi as Mission Control? It connects by itself. Otherwise scan the QR on the MC screen, or type its address.</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     } else if (mode === 'setup') {
@@ -419,13 +461,17 @@ export class Hud {
         : tab === 'perk' ? `<div class="lofilt"><button class="fch on" data-act="onLoFilter" data-arg="perks"><span class="unskew">PERKS · ${rows.length}</span></button>${noneBtn}</div>` : '';
       const head = tab === 'primary' ? `<div class="locount">${rows.length} WEAPON${rows.length === 1 ? '' : 'S'} · SCROLL FOR MORE</div>` : '';
       list = head + filt + (rows.length ? rows.map(r => {
-        const eq = r.key === eqKey && !pend, pn = r.key === pend, fo = r.key === focusKey, rj = !!(ack && !ack.ok && ack.key === r.key), wn = !!(cf && cf.key === r.key);
+        // F147: MC acked this row (`eqKey`) but engine.js's `tryoutArming` says the gun has not confirmed the
+        // write yet — that row keeps the SAME in-flight look (glow border, blinking ⟳) `pend` already has,
+        // never the settled ✓, until the gun's own ammo report closes it out (or the timeout assumes it).
+        const eq = r.key === eqKey && !pend && !st.tryoutArming, arming = r.key === eqKey && !pend && !!st.tryoutArming, pn = r.key === pend, fo = r.key === focusKey, rj = !!(ack && !ack.ok && ack.key === r.key), wn = !!(cf && cf.key === r.key);
         const thumb = r.kind === 'perk' ? `<span class="thumb perk">${perkGlyph(r.id)}</span>` : `<span class="thumb" style="background-image:url('assets/weapons/${esc(r.id)}.jpg')"></span>`;
         const body = r.kind === 'perk' ? `<span class="nm2"><b>${esc(name(r)).toUpperCase()}</b><small>${esc(perkEffect(r.row))}</small></span>` : `<span class="nm">${esc(name(r)).toUpperCase()}</span><span class="role">${esc(roleName(r.row))}</span><span class="mag tab">MAG ${r.row.clip != null ? r.row.clip : '—'}</span>`;
-        // A26: ✓ = MC acked this pick, ⟳ = still arming (in the node's debounce window or waiting on the ack).
+        // A26: ✓ = MC acked this pick AND the gun confirmed the write, ⟳ = still arming (the node's debounce
+        // window, waiting on MC's ack, or — F147 — MC acked but the gun has not answered the $WEAP write yet).
         // The ⓘ is how a row is READ without being equipped — tapping the row itself now commits it.
         const info = `<button class="linfo" data-act="onLoInfo" data-arg="${r.key}" aria-label="Details">${INFO_SVG}</button>`;
-        return `<div class="lrow ${eq ? 'eq' : ''} ${pn ? 'pend' : ''} ${fo ? 'fo' : ''} ${rj ? 'rej' : ''} ${wn ? 'warn' : ''}" data-act="onPickItem" data-arg="${r.key}">${thumb}${body}<span class="st">${eq ? '✓' : pn ? '⟳' : wn ? '▲' : ''}</span>${info}</div>`;
+        return `<div class="lrow ${eq ? 'eq' : ''} ${(pn || arming) ? 'pend' : ''} ${fo ? 'fo' : ''} ${rj ? 'rej' : ''} ${wn ? 'warn' : ''}" data-act="onPickItem" data-arg="${r.key}">${thumb}${body}<span class="st">${eq ? '✓' : (pn || arming) ? '⟳' : wn ? '▲' : ''}</span>${info}</div>`;
       }).join('') : '<div class="small" style="padding:14px 4px">Nothing to pick here for this game.</div>');
     }
     // detail pane
@@ -435,13 +481,21 @@ export class Hud {
       const bar = (label, v) => v == null ? '' : `<div class="tb"><span>${label}</span><i><b style="width:${Math.max(0, Math.min(100, v))}%"></b></i></div>`;
       // A26 hero tag: the same ⟳-vs-✓ condition the row uses (`pend` is already scoped to this tab), so the
       // hero pane never claims EQUIPPED while the row it belongs to still reads ⟳ waiting on the host's ack.
-      const heroTag = focus.key === pend ? '<span class="eqtag arming">ARMING…</span>' : (focus.key === eqKey && !pend ? '<span class="eqtag">EQUIPPED</span>' : '');
+      // F147 (field 2026-09-12, "shows EQUIPPED/READY on the send; the gun takes a few more seconds"): MC's ack
+      // (`eqKey`) is only the network round-trip. `st.tryoutArming` is engine.js's own confirmation that the
+      // gun has ANSWERED the new $WEAP write with a matching ammo report — same family as F123, and the same
+      // "never claim what the hardware has not confirmed" rule the live SWITCHING takeover already follows.
+      const heroTag = focus.key === pend ? '<span class="eqtag arming">ARMING…</span>'
+        : (focus.key === eqKey && !pend && st.tryoutArming) ? '<span class="eqtag arming">SWITCHING…</span>'
+        : (focus.key === eqKey && !pend) ? '<span class="eqtag">EQUIPPED</span>' : '';
       if (focus.kind === 'perk') detail = `<div class="art perk">${perkGlyph(focus.id)}</div><div class="nm">${esc(r.name).toUpperCase()}${heroTag}</div><div class="ln pk">PERK · ${esc(perkEffect(r))}${r.verified === false ? ' · <span style="color:var(--warn)">NOT YET FIELD-TESTED</span>' : ''}</div><div class="desc">${esc(r.desc || '')}</div>`;
       else detail = `<div class="art" style="background-image:url('assets/weapons/${esc(focus.id)}.jpg')"></div><div class="nm">${esc(r.name).toUpperCase()} <span class="rolechip">${esc(roleName(r))}</span>${heroTag}</div><div class="ln">MAG ${r.clip != null ? r.clip : '—'} · RESERVE ${r.reserve != null ? r.reserve : '—'}${r.reload_s != null ? ' · RELOAD ' + r.reload_s + 'S' : ''}</div>${statBlock(r)}${r.caution ? `<div class="caution">▲ ${esc(r.caution)}</div>` : ''}<div class="desc">${esc(r.desc || '')}</div>`;
     } else if (can) detail = `<div class="small" style="padding-top:30px">${tab === 'secondary' ? (sidearmOnly(rule) ? 'Pick a sidearm — or leave it on NONE.' : 'Pick a second weapon — or leave it on NONE.') : tab === 'perk' ? 'Pick a perk — or leave it on NONE.' : 'Pick your main weapon.'}</div>`;
     // A14: the two-tap confirm outranks everything else in the action bar; an ack that dropped the other slot says so
+    // F147: MC's ack alone must not read as EQUIPPED while `st.tryoutArming` says the gun has not answered
+    // the write yet — SWITCHING… holds the same slot the acked-but-not-yet-armed row does.
     const ackChip = cf ? `<span class="ackchip warn cf"><span class="unskew">${esc(cf.text).toUpperCase()} · TAP AGAIN</span></span>`
-      : ack ? `<span class="ackchip ${ack.ok ? 'ok' : 'bad'}"><span class="unskew">${ack.ok ? ('EQUIPPED ✓' + (ack.dropped ? ' · ' + esc(ack.dropped.name).toUpperCase() + ' DROPPED' : '')) : esc(ack.reason || 'THE HOST SAID NO').toUpperCase()}</span></span>` : (pend ? '<span class="ackchip"><span class="unskew">ASKING THE HOST…</span></span>' : (st.tutorial ? '<span class="ackchip warn"><span class="unskew">TRY-OUT ARMED — FIRE A FEW ROUNDS</span></span>' : ''));
+      : ack ? `<span class="ackchip ${ack.ok ? 'ok' : 'bad'}"><span class="unskew">${ack.ok ? (st.tryoutArming ? 'SWITCHING…' : ('EQUIPPED ✓' + (ack.dropped ? ' · ' + esc(ack.dropped.name).toUpperCase() + ' DROPPED' : ''))) : esc(ack.reason || 'THE HOST SAID NO').toUpperCase()}</span></span>` : (pend ? '<span class="ackchip"><span class="unskew">ASKING THE HOST…</span></span>' : (st.tutorial ? '<span class="ackchip warn"><span class="unskew">TRY-OUT ARMED — FIRE A FEW ROUNDS</span></span>' : ''));
     // A26: TRY IT is gone — the pick IS the try-out. The forward action is REVIEW KIT ▸, which closes the rack
     // onto the three-plate kit summary (PRIMARY · SECONDARY · PERK) where READY UP lives; CLOSE is the same
     // exit without the commitment framing.
@@ -1068,7 +1122,19 @@ export class Hud {
     if (this._diagBuilt) return;
     this._diagBuilt = true;
     const sec = (t, id, pre) => `<h3>${t}</h3>${pre ? `<pre id="${id}"></pre>` : `<div class="kv" id="${id}"></div>`}`;
-    this.diag.innerHTML = `<button class="close" data-act="onCloseDiag">✕</button>
+    // F156/F135/ledger#2+#31 (field 2026-09-12): SCAN QR + the typed address, reachable from every phase —
+    // before, the join panel was the ONLY door, gun-first only, and once an address was held there was no
+    // way back to it short of clearing app data. This is the one door now; `_lobby`'s own pre-join copy
+    // (same eventual #mcurl id — `onSetUrl` reads it by that id, app.js is another lane) hides itself while
+    // this one is open. This copy is built ONCE and never destroyed (F122: a rebuilt panel eats a mid-tap
+    // touch), so it stays in the DOM behind `#diag{display:none}` after the panel closes — `toggleDiag`
+    // above claims/releases the `mcurl` id on it (`.mcurlfield` is the stable hook) so there is never a
+    // moment with the id on TWO inputs, hidden or not; `getElementById` on a genuine duplicate is
+    // browser-defined, not something to lean on across Android WebView / iOS WKWebView.
+    const mcjoin = `<div class="mcjoin"><div class="mcjoinnote" id="dg-mcjoinnote">MISSION CONTROL</div>
+        <div class="mcin"><input class="mcurlfield" value="${esc(this.mcUrl)}" placeholder="ws://mission-control-ip:8766/ws" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div>
+        <button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button></div>`;
+    this.diag.innerHTML = `<button class="close" data-act="onCloseDiag">✕</button>${mcjoin}
       <div class="dbody" id="dbody">
         ${sec('PREFLIGHT', 'dg-pf')}${sec('LINK', 'dg-link')}${sec('ENGINE', 'dg-eng')}${sec('TIMINGS', 'dg-tim')}
         ${sec('LAST FRAMES', 'dg-frames', true)}${sec('HISTORY', 'dg-hist')}${sec('LOG', 'dg-log', true)}
@@ -1088,6 +1154,12 @@ export class Hud {
       // "was reading the tail" — hold the BOTTOM, so a growing log keeps following; anywhere else, hold the offset.
       return { el, top: el.scrollTop, bottom: el.scrollHeight - el.clientHeight - el.scrollTop <= 4 }; }).filter(Boolean);
     const put = (id, html) => { const el = this.diag.querySelector('#' + id); if (el && el.innerHTML !== html) el.innerHTML = html; };   // an unchanged section is not touched at all
+    // MISSION CONTROL join status, one line: never touches the #mcurl input itself (typing survives every push).
+    const lk = d.link || {}; const mcs = lk.mc || 'none';
+    put('dg-mcjoinnote', mcs === 'bound' ? `MISSION CONTROL · LINKED${lk.reach ? ' · ' + esc(String(lk.reach)).toUpperCase() : ''}`
+      : mcs === 'rejected' ? 'MISSION CONTROL · REJECTED — ASK THE HOST'
+      : mcs === 'connecting' || mcs === 'open' ? 'MISSION CONTROL · CONNECTING…'
+      : lk.mc_url ? 'MISSION CONTROL · NOT CONNECTED' : 'MISSION CONTROL · NO ADDRESS YET — SCAN THE QR');
     put('dg-pf', kv(pf));
     put('dg-link', kv(d.link || {}));
     put('dg-eng', kv(d.engine || {}));

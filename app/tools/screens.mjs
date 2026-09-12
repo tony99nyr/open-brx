@@ -1274,6 +1274,92 @@ await step('F110 briefing at 812\u00d7375 (the iPhone the report came from)', as
   notSheared(r, sels);
   must(!fit.over && fit.last <= fit.footTop - 4, JSON.stringify(fit));
 });
+// ---------- F145 (field 2026-09-12): the rack row's ⓘ needs its own real hit target ----------
+await step('F145 loadout-primary: the ⓘ has a ≥44px hit target that reads the row without equipping it', async () => {
+  const pg = await open(VIEWS[0], 'loadout-primary');
+  // A real tap 2px OUTSIDE the icon's 40px visual box (the old edge) but inside the new invisible 44px zone —
+  // a synthetic `el.click()` on the icon itself would pass even with no expanded target at all (it bypasses
+  // real hit-testing), which is exactly the false-pass shape this suite exists to avoid.
+  const before = await pg.evaluate(() => document.querySelectorAll('.lrow .linfo').length);
+  must(before > 1, 'need at least two rack rows for this check');
+  // #frame is scaled to fit the viewport (`fit()` in hud.js): a rect from getBoundingClientRect() is already
+  // in rendered px, so the "1 design px past the edge" offset — and the sanity check on the box itself —
+  // must scale with it, not assume a literal 40/44 (design 2026-09-12).
+  const at = await pg.evaluate(() => { const row = document.querySelectorAll('.lrow')[1]; const icon = row.querySelector('.linfo'); const r = icon.getBoundingClientRect();
+    const scale = parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1) || 1;
+    return { arg: row.dataset.arg, x: r.right + scale, y: r.top + r.height / 2, hitSize: r.width, scale }; });
+  must(at.hitSize <= 40 * at.scale + 1, 'the visual icon box grew past its design 40px — this check assumes it stayed the same and only the tap zone widened: ' + JSON.stringify(at));
+  await pg.mouse.click(at.x, at.y);
+  await pg.waitForTimeout(200);
+  const r = await pg.evaluate(() => ({ focus: window.brx.hud.lo.focus, pendingPick: window.brx.engine.state().pendingPick }));
+  await pg.close();
+  must(r.focus === at.arg, `a tap just past the visual icon edge did not open its detail (focus: ${r.focus}, wanted ${at.arg})`);
+  must(!r.pendingPick, 'the edge tap equipped the row instead of reading it: ' + JSON.stringify(r.pendingPick));
+});
+await step('F145 loadout-primary: a tap on the row body (clear of the icon) still equips', async () => {
+  const pg = await open(VIEWS[0], 'loadout-primary');
+  const at = await pg.evaluate(() => { const row = document.querySelectorAll('.lrow')[4]; row.scrollIntoView({ block: 'center' }); const nm = row.querySelector('.nm'); const r = nm.getBoundingClientRect();
+    return { arg: row.dataset.arg, x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+  await pg.mouse.click(at.x, at.y);
+  await pg.waitForTimeout(200);
+  const r = await pg.evaluate(() => window.brx.engine.state().pendingPick);
+  await pg.close();
+  must(r && r.id === at.arg.slice(7), `the row body no longer equips on tap: ${JSON.stringify(r)}, wanted ${at.arg}`);
+});
+
+// ---------- F137 (field 2026-09-12): MC LINKED, one line, inside its box ----------
+await step('F137 connected-linked: MC LINKED fits on one line and stays inside the box at every checked width', async () => {
+  for (const view of [VIEWS[0], VIEWS[1], { name: 'design', width: 844, height: 390 }]) {
+    const pg = await open(view, 'connected-linked');
+    const r = await pg.evaluate(() => { const e = document.querySelector('.mclinked'); if (!e) return null; const u = e.querySelector('.unskew');
+      const eb = e.getBoundingClientRect(), ub = u.getBoundingClientRect();
+      return { oneLine: u.scrollWidth <= u.clientWidth + 1, inside: ub.left >= eb.left - 0.5 && ub.right <= eb.right + 0.5 }; });
+    await pg.close();
+    must(r, `${view.name}: MC LINKED never rendered — a sig field it depends on may have regressed out of the signature`);
+    must(r.oneLine, `${view.name}: MC LINKED wrapped to a second line`);
+    must(r.inside, `${view.name}: the text ran past the box`);
+  }
+});
+
+// ---------- F156/F135/ledger#2+#31 (field 2026-09-12): SCAN QR + the typed address reachable in every phase ----------
+await step('F156 idle-diag: the ⓘ panel carries SCAN QR + the address field BEFORE a gun is linked', async () => {
+  const pg = await open(VIEWS[0], 'idle-diag');
+  const r = await pg.evaluate(() => { const d = document.getElementById('diag'), i = document.getElementById('mcurl'), q = document.querySelector('[data-act="onScanQr"]');
+    return { open: d.classList.contains('open'), input: !!i, insideDiag: !!(i && d.contains(i)), scan: !!q, scanInsideDiag: !!(q && d.contains(q)), setUrl: typeof window.brx.hud.h.onSetUrl }; });
+  await pg.close();
+  must(r.open, 'the ⓘ panel never opened');
+  must(r.input && r.insideDiag, 'no #mcurl address field in the diag panel while idle (no gun linked yet): ' + JSON.stringify(r));
+  must(r.scan && r.scanInsideDiag, 'no SCAN QR button in the diag panel while idle: ' + JSON.stringify(r));
+});
+await step('F156 kitted/live: the ⓘ panel still carries SCAN QR + the address field after a gun is linked', async () => {
+  for (const stage of ['diag', 'diag-live']) {
+    const pg = await open(VIEWS[0], stage, '', 5200);
+    const r = await pg.evaluate(() => { const d = document.getElementById('diag'); return { input: !!d.querySelector('#mcurl'), scan: !!d.querySelector('[data-act="onScanQr"]') }; });
+    await pg.close();
+    must(r.input && r.scan, `${stage}: join controls missing from the diag panel: ` + JSON.stringify(r));
+  }
+});
+await step('F156 connected-diag: only ONE #mcurl exists — the pre-join screen steps aside for the diag panel', async () => {
+  // Before this fix the pre-join screen's own copy (same id, `onSetUrl` reads it by that id — app.js is
+  // another lane) would sit in the DOM at the same time as the diag panel's, and `getElementById('mcurl')`
+  // would silently read whichever one document order favours — not necessarily the one the player is typing into.
+  const pg = await open(VIEWS[0], 'connected-diag');
+  const r = await pg.evaluate(() => { const all = document.querySelectorAll('#mcurl'); const d = document.getElementById('diag');
+    return { count: all.length, insideDiag: all.length === 1 && d.contains(all[0]), lobbyNote: (document.querySelector('.lobby .note.join') || {}).textContent || '' }; });
+  await pg.close();
+  must(r.count === 1, `expected exactly one #mcurl in the DOM, found ${r.count}`);
+  must(r.insideDiag, 'the surviving #mcurl is not the diag panel\'s own — it is the stale pre-join copy');
+  must(/ⓘ panel/.test(r.lobbyNote), 'the pre-join screen does not say where the join controls moved to: ' + r.lobbyNote);
+});
+await step('F156 connected: closing the ⓘ panel restores the pre-join screen\'s own copy', async () => {
+  const pg = await open(VIEWS[0], 'connected-diag');
+  await pg.click('[data-act="onCloseDiag"].close');   // the panel sits ABOVE #info (z-index 6 vs 5) while open, so this is the real close path
+  await pg.waitForTimeout(150);
+  const r = await pg.evaluate(() => { const d = document.getElementById('diag'); return { open: d.classList.contains('open'), count: document.querySelectorAll('#mcurl').length, outsideDiag: !!(document.getElementById('mcurl') && !d.contains(document.getElementById('mcurl'))) }; });
+  await pg.close();
+  must(!r.open, 'the panel did not close');
+  must(r.count === 1 && r.outsideDiag, 'the pre-join screen did not get its own #mcurl back: ' + JSON.stringify(r));
+});
 await b.close(); srv.close();
 console.log(`\n${pass} passed, ${fail} failed${fail ? ': ' + errs.join(', ') : ''}`);
 process.exit(fail ? 1 : 0);

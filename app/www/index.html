@@ -560,8 +560,12 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .down .recap .capwarn{flex:0 0 100%;text-align:center;font-size:12px;letter-spacing:.16em;color:var(--warn);font-weight:700;transform:skewX(-10deg)}
 .down .recap .capwarn .unskew{display:inline-block;transform:skewX(10deg);white-space:normal}
 /* connected screen: unmistakable MC state (bench 2026-08-25) */
-.mclinked{flex:1;display:flex;align-items:center;justify-content:center;min-height:96px;border:1px solid var(--ok);color:var(--ok);font-family:var(--fd);font-style:italic;font-weight:700;font-size:28px;letter-spacing:.2em;transform:skewX(-10deg);box-shadow:0 0 40px -12px var(--ok)}
-.mclinked .unskew{display:inline-block;transform:skewX(10deg)}
+.mclinked{flex:1;display:flex;align-items:center;justify-content:center;min-height:96px;padding:0 22px;border:1px solid var(--ok);color:var(--ok);font-family:var(--fd);font-style:italic;font-weight:700;font-size:28px;letter-spacing:.2em;transform:skewX(-10deg);box-shadow:0 0 40px -12px var(--ok)}
+/* F137 (field 2026-09-12): no padding + no nowrap let "MC LINKED ✓ — WAITING FOR KIT-OUT" wrap to two
+   UNCENTRED lines (the flex box centres the BLOCK, not each wrapped line) with the first touching the
+   border. nowrap+overflow:hidden restores the measure-then-shrink contract every other long-string button
+   in this file already uses (`.redeploy .r .t`, `_fitBriefing`) — `_fitMcLinked` (hud.js) does the shrinking. */
+.mclinked .unskew{display:inline-block;min-width:0;max-width:100%;overflow:hidden;white-space:nowrap;transform:skewX(10deg)}
 
 /* kit-out try-out panel + loadout weapon thumb (2026-08-26) */
 .tryout{position:absolute;top:118px;left:36px;right:36px;display:flex;gap:16px;border:1px solid var(--edge);background:var(--plate);padding:8px 18px;transform:skewX(-8deg)}   /* slanted like the plates and the buttons beside it (review #28) */
@@ -643,7 +647,13 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .lrow .st{width:18px;text-align:center;font-size:16px;color:var(--ok);font-weight:700}
 /* A26: tapping a row EQUIPS AND ARMS it, so reading one without committing needs its own control. 40x40 so it
    is a real tap target on a phone, and it sits inside the row's own skew like every other cell. */
-.lrow .linfo{flex:0 0 40px;height:40px;display:flex;align-items:center;justify-content:center;background:none;border:1px solid var(--edge);color:var(--mut);padding:0;pointer-events:auto}
+/* F145 (field 2026-09-12): the ⓘ read as tappable but sat at 40px with no expanded hit area, immediately
+   against the row's own much larger tap zone (`onPickItem`) — a finger a couple px off the visual glyph
+   landed on the row and equipped the weapon instead of opening its detail. `::after` is the SAME
+   invisible-44px-hit-target trick `.infobtn`/`.qrbtn`/`.mcin button` already use in this file; it stays a
+   CHILD of `.linfo` so a tap inside it still resolves (and delegates) to `.linfo`, never to the row under it. */
+.lrow .linfo{flex:0 0 40px;height:40px;display:flex;align-items:center;justify-content:center;background:none;border:1px solid var(--edge);color:var(--mut);padding:0;position:relative;pointer-events:auto}
+.lrow .linfo::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44px;height:44px}
 .lrow .linfo .infog{width:19px;height:19px}
 .lrow.fo .linfo{color:var(--glow);border-color:var(--glow)}
 .lrow.pend{border-color:var(--glow)}
