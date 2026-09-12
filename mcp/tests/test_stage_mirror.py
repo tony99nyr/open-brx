@@ -1075,23 +1075,40 @@ _JS_KEYWORDS = {"if", "for", "while", "switch", "catch", "do", "else", "return",
                 "function", "try"}
 
 
-# `^  ` is exactly the class-body indent: `\s*` anywhere before the name would swallow deeper
-# indentation and pull local function calls (`      paint(next, ...)`) in as methods. A `get`/`set`
-# prefix must be followed by real whitespace, or `setReady(` parses as `set` + `Ready`.
-_METHOD = _re.compile(r"^  (?:static\s+)?(?:async\s+)?(?:(?:get|set)\s+)?(\*\s*)?(\w+)\s*\(", _re.M)
+# `^  ` is exactly the class-body indent ONCE THE CALLER SLICES TO THE CLASS BODY (below): `\s*` anywhere
+# before the name would swallow deeper indentation and pull local function calls (`      paint(next,
+# ...)`) in as methods, and without the slice it would also pull in the two MODULE-level functions above
+# the class (`handoverPool`, `toks`) that happen to share this file's two-space indent for their own
+# statements. A `get`/`set` prefix must be followed by real whitespace, or `setReady(` parses as `set` +
+# `Ready`. The generator star is non-capturing: it is never read, only the name at group 1 is.
+_METHOD = _re.compile(r"^  (?:static\s+)?(?:async\s+)?(?:(?:get|set)\s+)?(?:\*\s*)?(\w+)\s*\(", _re.M)
+
+_CLASS_DECL = _re.compile(r"^(?:export\s+)?class\s+(\w+)\s*\{", _re.M)
 
 
 def _engine_methods() -> set[str]:
-    """Names declared at one indent level inside the Engine class.
+    """Names declared at one indent level inside the Engine class body -- and ONLY the class body.
 
     2026-09-12 polish pass: the original pattern only saw `  foo(` / `  async foo(`, so it missed all
     thirteen ACCESSORS — and accessors are where engine.js keeps its config rules (`maxHp`, `maxArmor`,
     `respawnDelayMs`, `respawnType`, `respawnGate`, `stunMs`, `timeLimitMs`). A rule the scan cannot see
     is a rule the stage can silently fail to model, which is the one thing this file exists to catch.
     `static`, `get`/`set` and generator (`*name`) declarations are all read now.
+
+    2026-09-12 polish pass 2: the regex used to run over the WHOLE FILE, so the two module-level
+    functions above the class (`handoverPool`, `toks`) were exposed to it too -- today only their `if (`
+    lines match (filtered by `_JS_KEYWORDS`), but the first plain call statement either one grew at the
+    same two-space indent would have been read as a new Engine method. Slice from the class declaration
+    (to its closing brace, if one is found; else to EOF) before scanning.
     """
     text = _ENGINE_JS.read_text(encoding="utf-8")
-    return {m.group(2) for m in _METHOD.finditer(text)} - _JS_KEYWORDS
+    decl = _CLASS_DECL.search(text)
+    assert decl, f"no `class ... {{` declaration found in {_ENGINE_JS}"
+    body = text[decl.start():]
+    closes = list(_re.finditer(r"^\}$", body, _re.M))
+    if closes:
+        body = body[:closes[-1].end()]
+    return {m.group(1) for m in _METHOD.finditer(body)} - _JS_KEYWORDS
 
 
 def _stage_methods() -> set[str]:
@@ -1177,7 +1194,6 @@ def test_stage_ports_every_engine_method_it_claims():
     stale = sorted(KNOWN_UNMIRRORED - unmirrored)
     ported = [m for m in stale if m in engine]
     vanished = [m for m in stale if m not in engine]
-    stale = [m for m in stale if m in ported or m in vanished]
     assert not stale, "; ".join(filter(None, [
         ("now mirrored on the stage — delete them from KNOWN_UNMIRRORED so the set keeps shrinking: "
          + ", ".join(ported)) if ported else "",
