@@ -5,7 +5,7 @@ fields are fine, renames are an amendment.
 """
 from __future__ import annotations
 
-from typing import Literal, NotRequired, TypedDict
+from typing import Literal, NotRequired, TypedDict, get_args
 
 # ---- §9 constants (single source; modules reference by name) ----
 ASSIST_WINDOW_MS = 4000
@@ -53,7 +53,7 @@ PROTOCOL_V = 1
 # `(major, minor)` while major == 0 and `major` alone from 1.0.0 on. `APP_MINOR` is read ONLY in the 0.x
 # regime; once the app cuts 1.0.0, bump APP_MAJOR and APP_MINOR stops mattering.
 APP_MAJOR = 0
-APP_MINOR = 1
+APP_MINOR = 2
 
 
 def parse_app_ver(app_ver: str | None) -> tuple[int, int, int] | None:
@@ -95,6 +95,10 @@ def compatible(app_ver: str | None) -> bool | None:
     return (v[0], v[1]) == (APP_MAJOR, APP_MINOR) if APP_MAJOR == 0 else v[0] == APP_MAJOR
 
 ArmState = Literal["idle", "connected", "kitted", "lobby", "armed", "live"]
+# The MC session's own phase vocabulary. The SERVER owns it: `state.py PHASES = get_args(Phase)` is the
+# tuple every phase guard tests against, and the console's `Phase` is generated from this alias, so a new
+# phase cannot reach one side without the other.
+Phase = Literal["muster", "build", "kit", "lobby", "armed", "live", "recap"]
 
 
 # ---- §1 armory ----
@@ -130,10 +134,17 @@ class WeaponSel(TypedDict):
     weapon_id: str
 
 
+class LoadoutOverrides(TypedDict, total=False):
+    """Per-player HP/armour handicap (modes §1.1). Both keys are optional and BOTH may be absent:
+    `state.py _check_loadout` drops the whole `overrides` key when neither survives validation."""
+    max_hp: int          # 1..999 (`state.py _check_loadout`); 0 is a corpse, not a pool
+    max_armor: int       # 0..999 -- 0 is legal and means "one shot with a sniper"
+
+
 class Loadout(TypedDict):
     weapons: list[WeaponSel]              # [primary] or [primary, secondary]; index == gun slot; NEVER empty (A10)
     perk: NotRequired[str | None]         # A14: the perk slot — rides beside a secondary weapon (loadout.md §2); an ALT-button perk (easy_reload) is the one that can't
-    overrides: NotRequired[dict]
+    overrides: NotRequired[LoadoutOverrides]
 
 
 class Team(TypedDict):
@@ -192,9 +203,19 @@ class Siphon(TypedDict):
     armor: int
 
 
+# `policy.CHOICES` -- who fills a slot. `policy._check_rule` refuses anything else (and refuses "off"
+# for the primary: a player with no primary weapon has nothing to play with).
+SlotChoice = Literal["player", "host", "fixed", "off"]
+# `policy.PRIMARY_KINDS` / `SEC_KINDS` / `PERK_KINDS` together. A POLICY kind, never a request kind: a
+# pistol is a "weapon" on the wire, and "sidearm" (A12) narrows a weapon slot to the sidearm-tagged rows.
+ItemKind = Literal["weapon", "perk", "sidearm"]
+# `policy.PRESET_NAMES` -- the named rulesets, plus "custom" for a hand-edited one.
+LoadoutPreset = Literal["open", "no_heavies", "snipers", "custom"]
+
+
 class SlotRule(TypedDict):
-    choice: Literal["player", "host", "fixed", "off"]
-    kinds: list[str]                      # primary/secondary: "weapon" | "sidearm" (A12); the perk rule is always ["perk"] (A14)
+    choice: SlotChoice
+    kinds: list[ItemKind]                 # primary/secondary: "weapon" | "sidearm" (A12); the perk rule is always ["perk"] (A14)
     exclude_tags: list[str]
     exclude_ids: list[str]
     only_ids: list[str]
@@ -202,7 +223,7 @@ class SlotRule(TypedDict):
 
 
 class LoadoutPolicy(TypedDict):
-    preset: Literal["open", "no_heavies", "snipers", "custom"]
+    preset: LoadoutPreset
     hud_select: bool
     primary: SlotRule
     secondary: SlotRule
@@ -215,13 +236,23 @@ class LoadoutPool(TypedDict):
     perks: list[str]                      # A14: the perk slot's pool
 
 
+class PerkEffects(TypedDict, total=False):
+    """The effect knobs the compiler acts on -- exactly `perks.EFFECT_KEYS`, which `PerkCatalog.__init__`
+    refuses a perks.json row for exceeding. Every key is optional: a row carries only what it changes."""
+    max_armor_add: int      # added to $PSET armour, capped at 255 (`compile.armed_armor`)
+    ammo_mult: float        # scales the clip/reserve the head writes
+    reload_mult: float      # scales the weapon's reload time
+    alt_reload: bool        # A14: claims the ALT button ($BMAP,1,97) -- cannot ride with a second weapon
+    switch_mult: float      # scales $WEAP tok15, the gun's swap delay (bench 2026-09-04)
+
+
 class PerkView(TypedDict):
     perk_id: str
     name: str
     desc: str
     tags: list[str]
     mechanism: Literal["passive", "slot_frame"]
-    effects: dict
+    effects: PerkEffects
     verified: bool
     hidden: bool
 
@@ -261,8 +292,16 @@ STATION_SOURCES = {
 
 # A13 / spec/utility.md §5: what a utility phone can be. Mirrors `KIND` in `app/src/beacon.js` (the advert
 # byte 8) and `KIND_LABEL` in `app/src/utility.js`; a `station_config` naming anything else is refused at PUT.
-STATION_KINDS = ("respawn", "powerup", "extraction", "bomb", "control")
+StationKind = Literal["respawn", "powerup", "extraction", "bomb", "control"]
+STATION_KINDS = get_args(StationKind)
 STATION_TEAM_ANY = 255        # advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral
+
+
+class StationRef(TypedDict):
+    """One armed utility item on `GameConfig.stations` -- exactly what `state.py _station_ids()` builds
+    (`{"id": a["id"], "kind": a["kind"]}`), sorted by id. Both keys are always present."""
+    id: int
+    kind: StationKind
 
 
 class Stun(TypedDict):
@@ -282,7 +321,7 @@ class GameConfig(TypedDict):
     led: NotRequired[dict]
     player_num_base: NotRequired[int]   # A6.5
     siphon: NotRequired[Siphon]         # S14: heal-on-kill; absent or {0,0} = off
-    stations: NotRequired[list[dict]]   # A13.1 (F104): `[{id, kind}]` -- the utility items MC armed for THIS game, when at least one is assigned.
+    stations: NotRequired[list[StationRef]]   # A13.1 (F104): the utility items MC armed for THIS game, when at least one is assigned.
     #                                     Set by `Session._wire_config()` from the ITEMS assignments, never by the
     #                                     operator; a player phone honours only these ids (`engine.js _stationAllowed`) --
     #                                     and when the list is ABSENT (nothing assigned) it honours ANY station (the hand-armed fallback).
@@ -304,7 +343,7 @@ class GameConfig(TypedDict):
     #                                              victim's node for `duration_s` (default 10, 1..60). Absent = the stock
     #                                              charge-rifle damage row, byte-for-byte. Source: a $WEAP t3=8 slot
     #                                              (the charge rifle) or a proto-8 station.
-    coverage: NotRequired[str]                   # A31/A4.8: the VENUE's radio coverage -- "full" = every phone is on
+    coverage: NotRequired[Literal["full", "partial"]]   # A31/A4.8: the VENUE's radio coverage -- "full" = every phone is on
     #                                              the LAN for the whole match (the only case where `time_limit_s` may
     #                                              be null and where an MC-decided end needs no "verify at MC" warning).
     #                                              Absent/anything else = partial. `compile.full_coverage()` is the one
@@ -451,47 +490,77 @@ class ScoreRow(TypedDict):
     kd: float
     streak: int            # CURRENT streak — 0 for whoever died last. `best_streak` is the one to show.
     medals: list[str]
-    # --- additive, 2026-09-11 (F116 / F119). Every field below is new; an older UI ignores them. ---
-    shots_total: int       # shots incl. the pre-hot-swap baseline (A6.2); == `shots`
-    best_streak: int       # F116: the LONGEST streak this match. `streak` stayed for compatibility.
-    multi_best: int        # the biggest multi-kill (2 = double, 3 = triple, 4+ = killtacular); 0 = none
-    first_blood: bool      # this player drew first blood
-    acc_provisional: bool  # F119: `accuracy` is not settled yet — render it as settling, not as fact
+    # --- additive, 2026-09-11 (F116 / F119). NotRequired, not merely new: `scoring.py` fills all five on
+    # every LIVE row, but a session PERSISTED before the change replays rows without them, so a reader that
+    # assumes them crashes on last week's recap. Never read one without a fallback. ---
+    shots_total: NotRequired[int]      # shots incl. the pre-hot-swap baseline (A6.2); == `shots`
+    best_streak: NotRequired[int]      # F116: the LONGEST streak this match. `streak` stayed for compatibility.
+    multi_best: NotRequired[int]       # the biggest multi-kill (2 = double, 3 = triple, 4+ = killtacular); 0 = none
+    first_blood: NotRequired[bool]     # this player drew first blood
+    acc_provisional: NotRequired[bool] # F119: `accuracy` is not settled yet — render it as settling, not as fact
 
 
-class ReadinessRow(TypedDict, total=False):
-    gun_id: str
-    sticker: str
-    tail: str
+class LogView(TypedDict):
+    """A25: one node's log-sync state, as `state.py _set_log()` writes it. Fed ONLY by what the PHONE
+    reports (`status.log`, `log_offer`, the `log_data` stream) -- MC asking does not make it `offered`.
+
+    `state` and `last_t` are written on every call; the other three are carried only when the node said
+    something about them (`reason` is cleared on every state change, so it never goes stale).
+    `complete` sticks until something new happens: the phone idles straight back to `none` when it
+    finishes, and taking that literally would erase the one state the operator is waiting for.
+    """
+    state: Literal["none", "offered", "pulling", "held", "complete"]
+    last_t: int
+    reason: NotRequired[str]     # the node's own words out of `held(2 facts pending)`
+    lines: NotRequired[int]
+    bytes: NotRequired[int]
+
+
+class ReadinessRow(TypedDict):
+    """One player's row on the readiness board. `state.py readiness()` is the ONLY producer.
+
+    NOT `total=False`: every path through `readiness()` writes every key here -- the opening literal, all
+    three arms of the headset branch, and the closing `row.update`. So a reader guarding for a MISSING key
+    is guarding against nothing, while the fields that really are uncertain arrive as an explicit `None`
+    and were the ones being read unguarded. What is unknown on this row is the VALUE, never the key, and
+    `| None` is how that is said.
+    """
+    gun_id: str                  # "" for a player with no gun assigned
+    sticker: str                 # falls back to the gun_id, then to an em dash
+    tail: str                    # "" when the gun is not in the armory
     player_id: str
     player_num: int
-    present: bool
+    present: bool                # is a node bound to this player at all
     identity: Literal["ok", "unconfirmed", "reverted", "unknown", "manual"]
     node: Literal["none", "linked"]
     headset: Literal["proven", "unknown", "absent"]
     # A32: HOW the headset was proven, so the UI can say it -- `"echo"` = the gun answered the config
     # push, `"link"` = a BLE link that has held for HEADSET_LINK_PROOF_MS, `None` = not proven (yet).
     headset_proof: Literal["echo", "link"] | None
-    battery_pct: int
-    battery_age_ms: int
-    fw: str
-    phone_batt: int
-    ssid_ok: bool
-    mc_reachable: bool
-    synced: bool
-    screen_on: bool
-    foreground: bool
+    # Everything below is the NODE's last word, passed through verbatim. `None` = the node has not said
+    # it (or no node is bound): the KEY is always here, the answer may not be.
+    battery_pct: int | None
+    battery_age_ms: int | None
+    last_seen_age_ms: int | None    # ms since this node's last packet; None when no node is bound
+    gun_linked: bool | None         # `status.preflight.gun_linked` as last reported
+    fw: str | None
+    phone_batt: int | None
+    ssid_ok: bool | None
+    mc_reachable: bool | None
+    synced: bool | None
+    screen_on: bool | None
+    foreground: bool | None
     # A29: the phone's real build, as it reported it (`"0.1.9+abc123"`), and its platform. Rendered on
     # the row so the operator can read WHICH phone is behind without opening the node list.
-    app_ver: str
-    platform: str
-    # A25: this node's log-sync state, the same dict as `NodeView.log` (state/reason/lines/bytes/last_t).
-    log: dict
+    app_ver: str | None
+    platform: str | None
+    # A25: the same log view the node card carries, on the per-player board.
+    log: LogView | None
     # `waiting` = the phone has not connected yet. Blocks the start exactly like `red`, but it is
     # not a fault and the UI must not paint it as one (field 2026-09-01).
     status: Literal["green", "amber", "red", "waiting"]
     blockers: list[str]      # things that actually gate the start
-    ambers: list[str]        # advisories — never gate anything
+    ambers: list[str]        # advisories -- never gate anything
 
 
 class ReadinessSnapshot(TypedDict):
