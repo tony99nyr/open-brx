@@ -653,17 +653,16 @@ class Session:
         return weapons, perks
 
     def policy(self) -> dict:
-        pol = self.config.get("loadout_policy")
-        if not pol:
-            pol = self.config["loadout_policy"] = _policy.default_policy(self.config["mode"])
-        elif not _policy.admits_weapons(pol.get("primary") or {}):
-            # F146 round 2: a primary rule that admits NO KIND of weapon empties the pool for a reason
-            # the operator never chose and cannot see. `_check_rule` refuses an empty `kinds` and
-            # `normalize` fills a missing one, so a policy in this shape reached `self.config` without
-            # passing either — a hand-edited session.json, a fixture, a direct write. HEAL it (that is
-            # what `normalize` is for) rather than hard-blocking the push on a filter nobody set.
-            pol = self.config["loadout_policy"] = _policy.normalize(pol, self.config["mode"])
-        return pol
+        """The loadout ruleset in force. **PURE** — it returns a view and never writes.
+
+        It used to store what it derived, which meant a plain `GET /api/state` mutated the session's
+        config (with no `config_id` bump, so nothing downstream could tell it had moved). Every route
+        that WRITES a policy already normalises — `_merge_config` runs `_policy.merge`, `set_config`
+        heals whatever it ends up holding, `restore_snapshot` calls `normalize`, `default_config` uses
+        `default_policy` — so the repair belongs there and this is only the fallback view for a config
+        that reached `self.config` past all of them (a fixture, a direct write). Round-2 review
+        2026-09-12."""
+        return _policy.effective(self.config.get("loadout_policy"), self.config["mode"])
 
     def loadout_pool(self) -> dict:
         weapons, perks = self._catalog_rows()
@@ -678,20 +677,21 @@ class Session:
         game's catalog does not contain, where there are no exclusions to clear at all (round-2 review
         2026-09-12). The `kinds` case never reaches here: `policy()` heals it.
         """
-        if self.loadout_pool()["primary"]:
+        lp = self.loadout_pool()
+        if lp["primary"]:
             return None
         rule = self.policy()["primary"]
-        weapons, _perks = self._catalog_rows()
-        ids = {w["weapon_id"] for w in weapons}
-        if rule.get("choice") == "fixed":
+        # One classifier, two vocabularies: `policy.pool()` hands out a CODE (its own copy is the HUD's,
+        # shown verbatim to a player) and the console writes the operator's line for it.
+        code = (lp.get("reasons") or {}).get("primary", "filtered")
+        if code == "fixed_missing":
             return (f"LOADOUT RULES: THE PRIMARY IS FIXED TO {rule.get('fixed_id')!r}, WHICH IS NOT A "
                     "WEAPON IN THIS GAME — pick the fixed primary again in the primary slot, or set "
                     "the slot back to a player pick")
-        only = [i for i in (rule.get("only_ids") or []) if i in ids]
-        if (rule.get("only_ids") or []) and not only:
+        if code == "only_ids_missing":
             return ("LOADOUT RULES: THE PRIMARY IS LIMITED TO WEAPONS THIS GAME DOES NOT HAVE "
-                    f"({', '.join(sorted(rule['only_ids']))}) — clear the primary slot's ALLOW list, "
-                    "or name weapons that are in the catalog")
+                    f"({', '.join(sorted(rule.get('only_ids') or []))}) — clear the primary slot's "
+                    "ALLOW list, or name weapons that are in the catalog")
         return ("LOADOUT RULES: THE PRIMARY FILTER EXCLUDES EVERY WEAPON — no legal primary weapon is "
                 "left. Clear a class or id exclusion in the primary slot, or pick a preset")
 
@@ -1216,6 +1216,12 @@ class Session:
                 if k not in patch and k in self.config:
                     cfg[k] = copy.deepcopy(self.config[k])
         cfg = self._merge_config(cfg, patch, mode)
+        # F146 round 2: `_merge_config` normalises a policy the PATCH names, and nothing else. A config
+        # already holding a broken rule (a fixture, a restored file from another build) survived a PUT
+        # of an unrelated key untouched. This is a write, with a fresh `config_id` below, so it is the
+        # right place to repair it — `policy()` is a read and must not.
+        if not _policy.admits_weapons((cfg.get("loadout_policy") or {}).get("primary") or {}):
+            cfg["loadout_policy"] = _policy.normalize(cfg.get("loadout_policy"), mode)
         cfg["config_id"] = uuid.uuid4().hex[:8]
         self.config = cfg
         self.teams = list(cfg["teams"])

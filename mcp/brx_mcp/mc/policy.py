@@ -199,6 +199,20 @@ def merge(current: dict | None, patch: dict) -> dict:
     return base
 
 
+def effective(pol: dict | None, mode: str = "tdm") -> dict:
+    """The ruleset a reader should apply, derived and NEVER stored (round-2 review 2026-09-12).
+
+    `Session.policy()` used to repair a broken rule by writing it back, so a `GET /api/state` mutated
+    the session config with no `config_id` bump. The write paths all normalise already; this is the
+    pure view for a policy that got past them — absent, or a primary rule that admits no kind of
+    weapon, which empties the pool for a reason no operator set and none of them can see."""
+    if not pol:
+        return default_policy(mode)
+    if not admits_weapons(pol.get("primary") or {}):
+        return normalize(pol, mode)
+    return pol
+
+
 def normalize(pol: dict | None, mode: str = "tdm") -> dict:
     """A stored config may predate policies (session.json) or carry a shape this engine no longer reads — the mode default then."""
     if not pol:
@@ -240,9 +254,33 @@ def admits_weapons(rule: dict) -> bool:
     return bool({"weapon", SIDEARM_TAG} & set(rule.get("kinds") or ()))
 
 
+# Why a slot's pool came out EMPTY. A closed vocabulary of CODES, not sentences: this module's copy is
+# the HUD's (`_R_*`, shown verbatim to a player) and the console needs its own words for the same fact,
+# so the one classifier hands out a code and each audience writes its own line. Round-2 review
+# 2026-09-12 — the console blamed the PERK slot's filters when S37 had pruned the last perk for having
+# no second weapon to switch to, which is a fact about the SECONDARY slot.
+POOL_EMPTY_CODES = ("off", "fixed_missing", "only_ids_missing", "needs_secondary", "filtered")
+
+
+def _empty_code(rule: dict, rows: list[dict], key: str) -> str:
+    """Why `_filter`/the choice left this slot with nothing. See `POOL_EMPTY_CODES`."""
+    if rule.get("choice") == "off":
+        return "off"
+    ids = {r[key] for r in rows}
+    if rule.get("choice") == "fixed":
+        return "fixed_missing" if rule.get("fixed_id") not in ids else "filtered"
+    only = rule.get("only_ids") or []
+    if only and not (set(only) & ids):
+        return "only_ids_missing"
+    return "filtered"
+
+
 def pool(policy: dict, weapons: list[dict], perks: list[dict]) -> dict:
     """Allowed ids per slot (catalog order) — `State.loadout_pool` (§3.2). `weapons`/`perks` are the
-    VISIBLE catalog rows (each with `tags`)."""
+    VISIBLE catalog rows (each with `tags`).
+
+    An empty slot also gets an entry in `reasons` (absent when every slot has something), so a UI can
+    say WHICH control emptied it instead of guessing at the nearest one."""
     prim, sec, pr = policy["primary"], policy["secondary"], policy["perk"]
     if prim["choice"] == "fixed":
         primary = [prim["fixed_id"]] if any(w["weapon_id"] == prim["fixed_id"] for w in weapons) else []
@@ -260,12 +298,26 @@ def pool(policy: dict, weapons: list[dict], perks: list[dict]) -> dict:
         sp = [pr["fixed_id"]] if any(p["perk_id"] == pr["fixed_id"] for p in perks) else []
     else:
         sp = _filter(pr, perks, "perk_id")
+    pruned_swap: list[str] = []
     if not sw:
         # S37: with no legal secondary there is nothing to switch to, so a swap perk is not a choice —
         # it is a dead slot. Removing it from the POOL is what makes it disappear from both UIs and
         # from a stored loadout (`apply` clears a perk that is not in the pool) with no extra rule.
-        sp = [rid for rid in sp if not swaps_weapons(_perk_row(perks, rid))]
-    return {"primary": primary, "secondary_weapons": sw, "perks": sp}
+        keep = [rid for rid in sp if not swaps_weapons(_perk_row(perks, rid))]
+        pruned_swap, sp = [rid for rid in sp if rid not in keep], keep
+    out = {"primary": primary, "secondary_weapons": sw, "perks": sp}
+    reasons: dict[str, str] = {}
+    if not primary:
+        reasons["primary"] = _empty_code(prim, weapons, "weapon_id")
+    if not sw:
+        reasons["secondary_weapons"] = _empty_code(sec, weapons, "weapon_id")
+    if not sp:
+        # The S37 prune first: it is the only cause that is NOT about this slot's own rule, and blaming
+        # the perk filters for it sends the operator to the wrong control entirely.
+        reasons["perks"] = "needs_secondary" if pruned_swap else _empty_code(pr, perks, "perk_id")
+    if reasons:
+        out["reasons"] = reasons
+    return out
 
 
 # ---- validation / auto-apply ------------------------------------------------------

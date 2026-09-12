@@ -92,7 +92,9 @@ def test_presets_and_pools():
     assert len(lp["primary"]) == 16 and "rail_gun" not in lp["primary"] and "amr" in lp["primary"]   # 13 + the three sidearms
     assert "rocket_launcher" not in lp["secondary_weapons"] and len(lp["perks"]) == 5
     lp = P.pool(P.preset_rules("snipers"), W, PK)
-    assert lp == {"primary": ["sniper_rifle"], "secondary_weapons": [], "perks": []}
+    # `reasons` is additive and present only where a slot came out empty (round-2 review 2026-09-12)
+    assert lp == {"primary": ["sniper_rifle"], "secondary_weapons": [], "perks": [],
+                  "reasons": {"secondary_weapons": "off", "perks": "off"}}
     assert P.default_policy("ffa")["preset"] == "no_heavies" and P.default_policy("tdm")["preset"] == "open"
     assert default_config("ffa")["loadout_policy"]["preset"] == "no_heavies"
 
@@ -212,7 +214,8 @@ def test_host_patch_is_policy_checked_and_apply_policy_on_config_change():
     for p in s.players.values():
         assert p["loadout"] == {"weapons": [{"weapon_id": "sniper_rifle"}]}
     assert len(net.pushes("assign", "node0")) == n_assign + 1
-    assert s.snapshot()["loadout_pool"] == {"primary": ["sniper_rifle"], "secondary_weapons": [], "perks": []}
+    assert s.snapshot()["loadout_pool"] == {"primary": ["sniper_rifle"], "secondary_weapons": [], "perks": [],
+                                            "reasons": {"secondary_weapons": "off", "perks": "off"}}
     # a MODE CHANGE applies the mode default (same mode = "run it back", the ruleset is kept);
     # a new player obeys the ruleset from birth
     s.set_config({"mode": "tdm"})
@@ -1140,3 +1143,78 @@ def test_f146_a_healthy_ruleset_is_never_refused():
         s.set_config({"loadout_policy": {"preset": preset}})
         s._validate()
         assert not any("PRIMARY" in e for e in s.config_errors), (preset, s.config_errors)
+
+
+def test_policy_is_a_read_and_never_writes_the_config():
+    """Round-2 review 2026-09-12, LOW. `policy()` healed a broken rule by STORING it, so a plain
+    `GET /api/state` mutated the session config — and with no `config_id` bump, nothing downstream
+    could tell it had moved. The repair belongs on the write paths."""
+    import copy as _copy
+    s, _net, _clock, _ps = mk(1, compiler=Compiler())
+    blank = {"choice": "player", "kinds": [], "exclude_tags": [], "exclude_ids": [],
+             "only_ids": [], "fixed_id": None}
+    broken = {"preset": "custom", "hud_select": True, "primary": dict(blank),
+              "secondary": {**blank, "kinds": ["weapon"]}, "perk": {**blank, "kinds": ["perk"]}}
+    s.config["loadout_policy"] = _copy.deepcopy(broken)
+    before, cid = _copy.deepcopy(s.config), s.config["config_id"]
+    # every read path, several times over
+    for _ in range(3):
+        assert s.policy()["primary"]["kinds"] == ["weapon"]        # the VIEW is healed
+        s.loadout_pool(); s.snapshot(); s._validate(); s.game_brief()
+    assert s.config == before, "a read path wrote the config"
+    assert s.config["loadout_policy"] == broken, "policy() stored what it derived"
+    assert s.config["config_id"] == cid
+
+    # ...and a WRITE repairs it, with a new config_id, because that is a change
+    s.set_config({"time_limit_s": 120})
+    assert s.config["loadout_policy"]["primary"]["kinds"] == ["weapon"], s.config["loadout_policy"]
+    assert s.config["config_id"] != cid
+
+
+def test_policy_falls_back_without_installing_a_default_either():
+    """The same rule for the older self-heal: an absent policy reads as the mode default, and the
+    config is left exactly as the operator left it."""
+    s, _net, _clock, _ps = mk(1, compiler=Compiler())
+    s.config.pop("loadout_policy", None)
+    assert s.policy() == P.default_policy(s.config["mode"])
+    assert "loadout_policy" not in s.config, "a read installed a policy the operator never set"
+    assert s.loadout_pool()["primary"], "the fallback view did not produce a usable pool"
+
+
+def test_an_empty_slot_says_WHICH_control_emptied_it():
+    """Round-2 review 2026-09-12: the console blamed the PERK slot's filters when S37 had pruned the
+    last perk for having no second weapon to switch to — a fact about the SECONDARY slot. `pool()` now
+    hands out a code per empty slot; sentences stay with each audience (`_R_*` is the HUD's copy)."""
+    def pl(patch):
+        return P.pool(P.normalize({**P.preset_rules("open"), **patch}, "tdm"), W, PK)
+
+    # the bug: secondary off, and the only allowed perk was the swap perk
+    r = pl({"secondary": P._rule("off", ("weapon",)),
+            "perk": P._rule("player", ("perk",), only_ids=("quick_switch",))})
+    assert r["perks"] == [] and r["reasons"]["perks"] == "needs_secondary", r
+    assert r["reasons"]["secondary_weapons"] == "off"
+
+    # every other cause keeps its own code
+    assert pl({"perk": P._rule("off", ("perk",))})["reasons"]["perks"] == "off"
+    assert pl({"perk": P._rule("player", ("perk",), only_ids=("nope",))})["reasons"]["perks"] == "only_ids_missing"
+    assert pl({"primary": P._rule("fixed", ("weapon",), fixed_id="plasma_bazooka")})["reasons"]["primary"] == "fixed_missing"
+    assert pl({"primary": P._rule("player", ("weapon",), only_ids=("nope",))})["reasons"]["primary"] == "only_ids_missing"
+    assert pl({"primary": P._rule("player", ("weapon",), exclude_tags=(
+        "assault", "cqb", "marksman", "sniper", "support", "power", "heavy",
+        "sidearm", "pistol", "melee"))})["reasons"]["primary"] == "filtered"
+    # an ALLOW list of real weapons that the exclusions then empty is a FILTER problem
+    assert pl({"primary": P._rule("player", ("weapon",), only_ids=("assault_rifle",),
+                                  exclude_ids=("assault_rifle",))})["reasons"]["primary"] == "filtered"
+    # nothing empty, nothing said
+    assert "reasons" not in pl({})
+    for code in (pl({"secondary": P._rule("off", ("weapon",))})["reasons"]).values():
+        assert code in P.POOL_EMPTY_CODES, code
+
+
+def test_the_console_copy_is_driven_by_the_pool_code():
+    """One classifier, two vocabularies — the console line must follow the code, not re-derive it."""
+    s, _net, _clock, _ps = mk(1, compiler=Compiler())
+    s.set_config({"loadout_policy": {"preset": "custom",
+                                     "primary": {"choice": "fixed", "fixed_id": "plasma_bazooka"}}})
+    assert s.loadout_pool()["reasons"]["primary"] == "fixed_missing"
+    assert "FIXED TO 'plasma_bazooka'" in s._primary_pool_refusal()
