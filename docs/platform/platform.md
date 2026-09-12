@@ -53,6 +53,26 @@ Start from a stock mode. Change the score cap, the clock, respawn, health and ar
 
 Each phone holds the Bluetooth link to its own tagger and runs the match from the bundle it already has. Players walk out of the laptop's range and nothing stops.
 
+## Topology
+
+### Three links. Only one has to hold.
+
+Each phone holds a Bluetooth link to one tagger. Taggers hit each other by infrared, line of sight. Phones talk to Mission Control over the field Wi-Fi, and that is the link allowed to drop. The laptop holds no link to any tagger while the match runs.
+
+- **Bluetooth rides the player.** One phone, one tagger, in the same pocket. The link never leaves range, so the match runs from the bundle the phone already holds.
+- **The laptop goes dark on purpose.** Mission Control pushes the game, then talks to no tagger until the recap. Players scatter across a park and nothing stops.
+- **Wi-Fi is allowed to drop.** Kills, deaths and objective time queue on the phone and flush the next time it reaches Mission Control. Results are never wrong, only late.
+- **No signal at go.** The start is a clock time agreed in advance. Every phone counts itself down, so the first second of the match needs no network at all.
+- **Backhaul for phones with data.** Turn the tunnel on in Mission Control and any phone with a data plan reaches it from wherever it has signal. Nothing to install or set up on the phone: the join code carries both addresses.
+- **Full coverage unlocks more.** When every phone on the board is on backhaul, Mission Control knows it, and the score cap and last-one-standing ends become live across the whole park.
+
+What the shape costs, stated plainly:
+
+- **You always know you died. You may learn the kill later.** A kill is seen by the tagger that took it. The confirm reaches the shooter through Mission Control, so out of coverage it lands when both phones next have a path.
+- **One phone, one tagger.** A dead phone takes its player out of the match. There is no spare link.
+- **Backhaul needs the host online.** The tunnel needs internet at the laptop, and the phone needs a plan and a signal. A park with no cell service plays exactly as it does without it.
+- **The board settles when everyone is home.** Kills live in the victims' reports, so the scoreboard is provisional until every phone has flushed.
+
 ## Recap
 
 ### Scores come home when the phones do.

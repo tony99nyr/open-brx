@@ -57,7 +57,7 @@ export type LoadoutPreset = 'open' | 'no_heavies' | 'snipers' | 'custom';
 export type StationKind = 'respawn' | 'powerup' | 'extraction' | 'bomb' | 'control';
 
 // ---- kind vocabularies ----
-export const MC_KINDS = ['ack', 'alert', 'apply', 'assign', 'config', 'control', 'feedback', 'loadout_ack', 'pull_log', 'result', 'score', 'start', 'station_config', 'time_res', 'tutorial', 'welcome'] as const;
+export const MC_KINDS = ['ack', 'alert', 'apply', 'assign', 'config', 'control', 'feedback', 'join', 'loadout_ack', 'pull_log', 'result', 'score', 'start', 'station_config', 'time_res', 'tutorial', 'welcome'] as const;
 export type McKind = typeof MC_KINDS[number];
 export const NODE_KINDS = ['ack_config', 'bind', 'event', 'event_batch', 'hello', 'loadout_browse', 'loadout_request', 'log_data', 'log_offer', 'ready', 'status', 'time_req'] as const;
 export type NodeKind = typeof NODE_KINDS[number];
@@ -581,6 +581,7 @@ export const REQUIRED: Record<string, readonly string[]> = {
   alert: ['kind', 'text', 'player_id', 't'],
   result: ['match_id', 'outcome', 'winner', 'rows', 'provisional', 't'],
   station_config: ['kind', 'team', 'id'],
+  join: ['pub', 'secret'],
 };
 export const EVENT_REQUIRED: Record<string, readonly string[]> = {
   hit_taken: ['shooter_num', 'shooter_team', 'dmg'],

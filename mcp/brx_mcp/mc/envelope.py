@@ -70,6 +70,10 @@ REQUIRED: dict[str, tuple[str, ...]] = {
     "result": ("match_id", "outcome", "winner", "rows", "provisional", "t"),
     # A13.5 (F104): the arming message. `threshold` / `game` / `valid_ids` are optional (utility.md §5c).
     "station_config": ("kind", "team", "id"),
+    # A28.2: the tunnel came up or went down. `pub` is required but NULLABLE -- null is the fact "there
+    # is no public URL any more", which the node has to act on; the check above is `key not in body`,
+    # so a present null passes and an omitted key (an MC that forgot to say) is refused.
+    "join": ("pub", "secret"),
 }
 
 # A24 (2026-09-11): what a RECEIVER of a `result` (the node) checks, vs what `REQUIRED["result"]`

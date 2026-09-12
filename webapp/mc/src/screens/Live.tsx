@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { setNotice } from '../notice';
+import { coverageLine } from '../api/derive';
 import type { LiveRow } from '../api/types';
 import { useStore } from '../store';
 import { F, T, fmtAge, fmtClock, teamColor } from '../tokens';
@@ -87,13 +88,19 @@ export function Live() {
   const teamIds = state.config.mode === 'ffa' ? [] : state.config.teams.map(t => t.team_id);
   const rows = [...lv.rows].sort((a, b) => b.kills - a.kills);
   const cap = state.config.scoring.frag_limit;
+  // A28.4: derived, never asserted — grey the count while the tunnel is off, since it can only be 0.
+  // Same readout as LOBBY/ARMED: a tunnel that dies mid-match must not go silent just because the
+  // operator moved on to MATCH.
+  const cLine = coverageLine(state);
+  const cColor = state.lan.public?.status !== 'up' ? T.micro : state.coverage?.level === 'full' ? T.ok : T.warn;
 
   return (
     <div className="screen">
-      {/* S25: the way to the room-facing board. A NEW TAB on purpose — the operator keeps this console
-          on the laptop and drags the other window to the projector; navigating this one away would take
-          END and RECALL with it. `search` is carried so `?mock` opens a mock spectator board. */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        {cLine && <Tag color={cColor} size={9} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{cLine}</Tag>}
+        {/* S25: the way to the room-facing board. A NEW TAB on purpose — the operator keeps this console on the
+            laptop and drags the other window to the projector; navigating this one away would take END and RECALL
+            with it. `search` is carried so `?mock` opens a mock spectator board. */}
         <a data-spectate-link="1" href={`${location.pathname}${location.search}#spectate`} target="_blank" rel="noopener"
           className="hov-acc" title="Open the read-only spectator board in a new tab — no controls, safe on a projector"
           style={{ font: F.chk(700, 12), letterSpacing: '.16em', color: T.dim, textDecoration: 'none',

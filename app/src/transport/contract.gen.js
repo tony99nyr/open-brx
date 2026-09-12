@@ -31,6 +31,7 @@ export const MC_KINDS = new Set([
   'config',
   'control',
   'feedback',
+  'join',
   'loadout_ack',
   'pull_log',
   'result',
@@ -111,6 +112,7 @@ export const REQUIRED = {
   alert: ['kind', 'text', 'player_id', 't'],
   result: ['match_id', 'outcome', 'winner', 'rows', 'provisional', 't'],
   station_config: ['kind', 'team', 'id'],
+  join: ['pub', 'secret'],
 };
 export const EVENT_REQUIRED = {
   hit_taken: ['shooter_num', 'shooter_team', 'dmg'],

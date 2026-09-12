@@ -119,9 +119,13 @@ class FakeCompiler:
     def validate(self, config: GameConfig, roster: list[Player], opts: dict | None = None) -> dict:
         errors, warnings = [], []
         opts = opts or {}
-        if not config.get("time_limit_s") and opts.get("coverage") != "full":
+        # A28.4: the same two opts the real compiler reads — `venue_coverage` (asserted) unlocks
+        # time_limit_s, `coverage` (derived from backhaul) only clears the frag warning.
+        asserted = opts.get("venue_coverage") == "full"
+        covered = asserted or opts.get("coverage") == "full"
+        if not config.get("time_limit_s") and not asserted:
             errors.append("time_limit_s is required on the phone path")
-        if config.get("scoring", {}).get("frag_limit") and opts.get("coverage") != "full":
+        if config.get("scoring", {}).get("frag_limit") and not covered:
             warnings.append("frag_limit only ends the match for nodes in coverage; everyone stops at time_limit_s")
         nums = [p["player_num"] for p in roster]
         if len(set(nums)) != len(nums):
@@ -172,10 +176,11 @@ class FakeNet:
 
     def __init__(self):
         self._hydrate = None
-        self._cb = {"node": [], "event": [], "status": [], "msg": [], "stale": [], "return": []}
+        self._cb = {"node": [], "event": [], "status": [], "msg": [], "stale": [], "return": [], "gone": []}
         self.pushed: list[tuple[str | None, str, dict]] = []
         self.host, self.port, self.ws_path = "0.0.0.0", 0, "/ws"
         self.session_id = "fake-session"
+        self.join_secret, self._pub, self._armed = "", None, False       # A28.2
 
     # NetServer surface
     def start(self, host: str, port: int, ws_path: str = "/ws") -> None:
@@ -183,6 +188,17 @@ class FakeNet:
     def join_info(self) -> dict:
         url = f"ws://{self.host}:{self.port}{self.ws_path}"
         return {"url": url, "session_id": self.session_id, "qr": url}
+    def set_join(self, *, secret: str | None = None, pub: str | None = None,
+                 armed: bool | object | None = None) -> None:
+        if secret is not None:
+            self.join_secret = str(secret)
+        self._pub = pub or None
+        if armed is not None:
+            self._armed = armed          # bool OR callable, exactly as NetServer takes it
+    def gate_armed(self) -> bool:
+        return bool(self._armed() if callable(self._armed) else self._armed)
+    def join_body(self) -> dict:
+        return {"pub": self._pub, "secret": self.join_secret}
     def hydrate(self, cb): self._hydrate = cb
     def on_node(self, cb): self._cb["node"].append(cb)
     def on_event(self, cb): self._cb["event"].append(cb)
@@ -190,24 +206,31 @@ class FakeNet:
     def on_node_message(self, cb): self._cb["msg"].append(cb)
     def on_stale(self, cb): self._cb["stale"].append(cb)
     def on_return(self, cb): self._cb["return"].append(cb)
+    def on_disconnect(self, cb): self._cb["gone"].append(cb)
     def push(self, node_id: str, kind: str, body: dict) -> None: self.pushed.append((node_id, kind, body))
     def broadcast(self, kind: str, body: dict) -> None: self.pushed.append((None, kind, body))
 
     # simulation helpers (what a node would cause)
     def simulate_hello(self, node_id: str, gun_name: str, node_type: str = "phone", fw: str | None = "v4.32",
-                       app_ver: str | None = None, platform: str = "android") -> dict | None:
-        # A29: the fake reports a REAL semver, because MC now reads one. The old literal `"fake"` is what
-        # the app itself used to send (`hud-0.2`) and it parses as nothing -- every fake node would carry
-        # an "APP VERSION UNKNOWN" amber and the suite would be testing a phone that cannot exist.
-        # `fake_app_ver()` tracks `types.APP_MAJOR/APP_MINOR` so this never goes stale on its own.
+                       app_ver: str | None = None, platform: str = "android", via: str | None = None) -> dict | None:
+        # A29: the fake reports a REAL semver, because MC now reads one (the old literal `"fake"` parsed as nothing
+        # and every fake node carried an "APP VERSION UNKNOWN" amber). `fake_app_ver()` tracks APP_MAJOR/APP_MINOR.
+        # A28.3: `via` is MC's own stamp off the socket in the real server; the fake mirrors it as `reach`.
         tail = gun_name.rsplit("-", 1)[-1] if "-" in gun_name else ""
         av = app_ver or fake_app_ver()
         hello = {"node_id": node_id, "node_type": node_type, "app_ver": av, "platform": platform, "seq_next": 1,
                  "gun": {"name": gun_name, "tail": tail, "fw": fw}}
+        if via:
+            hello["via"] = via
         node = self._hydrate(hello) if self._hydrate else None
+        info = {"node_id": node_id, "node_type": node_type, "gun_name": gun_name, "gun_tail": tail, "fw": fw}
+        if via:
+            # A28.3: in the real server this is MC's own stamp off the socket, never the hello's claim.
+            # A FakeNet that does not mirror the real one is how F106(b) hid for a month.
+            info["reach"] = via
         for cb in self._cb["node"]:
-            cb({"node_id": node_id, "node_type": node_type, "gun_name": gun_name, "gun_tail": tail, "fw": fw,
-                "app_ver": av})       # `net.py _fire_node` carries app_ver (F106(b)) but not platform
+            info["app_ver"] = av       # `net.py _fire_node` carries app_ver (F106(b)) but not platform
+            cb(info)
         return node
     def simulate_utility_hello(self, node_id: str, app_ver: str = "utility") -> dict | None:
         """A13.5: a station phone's hello -- `node_type: "utility"`, no gun (utility.js `connectMc`)."""
@@ -231,6 +254,10 @@ class FakeNet:
         for cb in self._cb["stale"]: cb(node_id, age_ms)
     def simulate_return(self, node_id: str):
         for cb in self._cb["return"]: cb(node_id)
+    def simulate_disconnect(self, node_id: str):
+        """A28.3: the socket dropped -- `NetServer._handler`'s finally clause. A FakeNet that cannot do
+        this is a FakeNet that hides the path-clearing rule (the F106(b) shape)."""
+        for cb in self._cb["gone"]: cb(node_id)
     def pushes(self, kind: str | None = None, node_id: str | None = None):
         return [p for p in self.pushed if (kind is None or p[1] == kind) and (node_id is None or p[0] in (node_id, None))]
 

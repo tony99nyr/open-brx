@@ -84,5 +84,20 @@ def validate_mode_params(mode: str, values: dict | None) -> tuple[dict, list[str
     return _params.validate(params_schema(mode), values, mode=mode)
 
 
+def requires_coverage(mode: str) -> bool:
+    """A28.4: does this mode refuse to be pushed without FULL coverage?
+
+    A mode declares it as the flag `requires_coverage: True` in its `PARAMS` (`params.schema_of`
+    filters flags out of the tunables). MC's lobby push answers `409 {error, coverage}` while
+    `Session.coverage()` is not `"full"`. No catalog mode declares it — the hook is reserved for modes
+    where MC knows something no gun can (bounties, VIP swaps, park-wide zone control), and it exists
+    now so the first such mode is one attribute rather than a new gate."""
+    try:
+        cls = engine_class(mode)
+    except ValueError:
+        return False               # an unknown mode is refused elsewhere; this must not raise
+    return bool((getattr(cls, "PARAMS", {}) or {}).get("requires_coverage") is True)
+
+
 __all__ = ["Param", "Schema", "register_mode", "known_modes", "engine_class", "params_schema",
-           "params_schema_json", "default_params", "validate_mode_params"]
+           "params_schema_json", "default_params", "validate_mode_params", "requires_coverage"]

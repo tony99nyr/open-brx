@@ -9,7 +9,7 @@ import { Engine, C } from './engine.js';
 import { BrxLink } from './brxlink.js';
 import { Transport } from './transport/transport.js';
 import { Hud } from './hud/hud.js';
-import { parseMcQr } from './mcurl.js';
+import { parseMcJoin } from './mcurl.js';
 import { Presence, encodeUuid, stationView } from './beacon.js';   // utility items (docs/spec/utility.md)
 import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // background log sync (contracts A25)
 import { APP_VER, platformName } from './build.js';                  // the REAL build id (contracts A29)
@@ -231,6 +231,9 @@ async function syncPlayerAdvert() {
 const preflight = { ssid_ok: true, mc_reachable: false, auto_join_ok: true, cellular_off: true, dnd_on: false, phone_batt: null, screen_on: true, foreground: true, gun_linked: false, headset_ok: false };
 async function refreshPreflight() {
   try { if (plugins.device) { const b = await plugins.device.getBatteryInfo(); if (b && b.batteryLevel != null) preflight.phone_batt = Math.round(b.batteryLevel * 100); } } catch (_) { /* ignore */ }
+  // Report ssid_ok truthfully (contracts A28.3: MC itself downgrades this to a warning, not a red, for
+  // a node reporting reach:"backhaul" — forcing it true here made that server-side downgrade dead code
+  // and showed the board a phone that IS on the field Wi-Fi when it is not).
   try { if (plugins.network) { const s = await plugins.network.getStatus(); preflight.ssid_ok = s.connectionType === 'wifi'; } } catch (_) { /* ignore */ }
   preflight.mc_reachable = !!(transport && transport.state === 'bound');
   preflight.gun_linked = engine.bleUp; preflight.headset_ok = !!engine.headEcho;
@@ -246,7 +249,19 @@ let assistTimer = null;
 /** The last URL we actually dialled — including a discovery-only one that `settings.mcUrl` never
  *  records. RECONNECT MC falls back to it. */
 let lastMcUrl = null;
-function connectMc(url, remember = true) {
+/**
+ * @param {string} url the LAN join url
+ * @param {boolean} [remember] discovery/sweep never overwrites the user's explicit target (polish-loop)
+ * @param {{pub?:string|null, secret?:string|null}} [join] A28.2: from a QR scan or a typed full join
+ *   code — when given, replaces whatever backhaul target/secret Transport is holding. When omitted
+ *   (every discovery/sweep/remembered-address reconnect) neither is passed at all: Transport's OWN
+ *   persisted, url-scoped pub/secret stand as-is (it clears them itself if `url` differs from the one
+ *   they were learned for) — passing a stale app-level copy here used to force-clear whatever Transport
+ *   had just learned from welcome.join on every single reconnect, so a phone that learned its pub in
+ *   the field lost it again immediately, or a cold boot out of Wi-Fi had no other path to MC (review
+ *   fix). Transport's own persistence is the single store now — there is no app-level mirror to keep.
+ */
+function connectMc(url, remember = true, join = {}) {
   if (!url) return;
   if (remember) { settings.mcUrl = url; hud.mcUrl = url; }   // discovery never overwrites the explicit target (polish-loop)
   // ...but RECONNECT MC has to have something to dial. It read `settings.mcUrl`, which a
@@ -279,7 +294,7 @@ function connectMc(url, remember = true) {
     engine.setWsState(s, transport.rejected);
     log(s === 'rejected' ? `MC REFUSED: ${transport.rejected && transport.rejected.reason} (${transport.rejected && transport.rejected.code})` : `MC link ${s}`, s === 'bound' ? 'lk' : s === 'rejected' ? 'le' : 'li');
   });
-  transport.connect({ url }).then(() => log('MC hydrated', 'lk')).catch(e => log('MC connect: ' + (e && e.message || e), 'le'));
+  transport.connect({ url, pub: join.pub, secret: join.secret }).then(() => log('MC hydrated', 'lk')).catch(e => log('MC connect: ' + (e && e.message || e), 'le'));
 }
 
 // ---------- HUD handlers ----------
@@ -336,7 +351,12 @@ Object.assign(hud.h, {
   onBriefDone: () => { engine.closeBriefing(); haptic('tap'); },
   onBriefing: () => { engine.openBriefing(); haptic('tap'); },
   onTryDone: () => { engine.dismissTryout(); haptic('tap'); },
-  onSetUrl: () => { const el = $('mcurl'); if (el && el.value.trim()) connectMc(el.value.trim()); },
+  onSetUrl: () => {
+    const el = $('mcurl'); const v = el && el.value.trim(); if (!v) return;
+    const j = parseMcJoin(v);
+    if (j) connectMc(j.url, true, { pub: j.pub, secret: j.secret });
+    else connectMc(v);   // not a recognised join code — let it through as a bare address (the mandatory floor, §5)
+  },
   onToggleNight: () => { engine.night = !engine.night; settings.night = engine.night; hud.sig = null; scheduleRender(); },
   onToggleMcPill: () => { hud.mcPill = !hud.mcPill; scheduleRender(); },   // live: show/hide the out-of-range detail (review #32)
   onCloseDiag: () => hud.toggleDiag(),
@@ -414,7 +434,7 @@ function renderNow() {
   const st = engine.state();
   hud.render(st);
   hud.setDiag({
-    preflight, link: { app: APP_VER, platform: platformName(), log: logsync.state(), deviceId: link.deviceId, connected: link.connected, retries: link.retries, mc: transport ? transport.state : 'none', mc_url: settings.mcUrl, node_id: transport ? transport.nodeId : '—' },
+    preflight, link: { app: APP_VER, platform: platformName(), log: logsync.state(), deviceId: link.deviceId, connected: link.connected, retries: link.retries, mc: transport ? transport.state : 'none', mc_url: settings.mcUrl, node_id: transport ? transport.nodeId : '—', reach: transport ? transport.reach : null, pub: transport ? transport.pub : null },
     engine: { phase: st.phase, alive: st.alive, hp: st.hp, armor: st.armor, ammo: st.ammo, reserve: st.reserve, shots: st.shots, deaths: st.deaths, match_id: st.matchId, player_num: st.playerNum, latch: engine.latch ? `${engine.latch.shooter_num}/${engine.latch.shooter_team}` : '—', resync: st.resync ? st.resync.step : '—' },
     timings: { offset_ms: transport ? Math.round(transport.clock.offset || 0) : 0, synced: st.synced, queue: transport ? transport.ring.pending().length : 0, t_minus_ms: st.tMinusMs, clock_ms: st.clockMs },
     frames: link.frames.slice(-14), log: logLines.slice(-30),
@@ -501,8 +521,8 @@ async function scanQrForMc() {
       ctx.drawImage(video, 0, 0);
       const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
-      const url = code && code.data ? parseMcQr(code.data) : null;
-      if (url) { stop(); log('QR scanned — connecting: ' + url, 'lk'); connectMc(url); return; }
+      const join = code && code.data ? parseMcJoin(code.data) : null;
+      if (join) { stop(); log('QR scanned — connecting: ' + join.url, 'lk'); connectMc(join.url, true, { pub: join.pub, secret: join.secret }); return; }
       // A code the camera READ but that is not an MC join code used to look identical to reading
       // nothing at all — the operator kept aiming at a Wi-Fi or URL QR wondering why (deferred low).
       if (code && code.data && code.data !== lastRejected) {

@@ -96,8 +96,12 @@ Schema = dict[str, Param]
 
 
 def schema_of(engine_cls: type) -> Schema:
-    """The `PARAMS` an engine class declares (empty for one that declares nothing)."""
-    return dict(getattr(engine_cls, "PARAMS", {}) or {})
+    """The `PARAMS` an engine class declares (empty for one that declares nothing).
+
+    Non-`Param` entries are FILTERED OUT: A28.4 lets a mode declare the flag `requires_coverage: True`
+    alongside its tunables, and a bare `True` here would blow up `defaults_of` (`p.default`) inside a
+    config default. Flags are read by name (`registry.requires_coverage`), never as parameters."""
+    return {k: v for k, v in (getattr(engine_cls, "PARAMS", {}) or {}).items() if isinstance(v, Param)}
 
 
 def defaults_of(schema: Schema) -> dict:

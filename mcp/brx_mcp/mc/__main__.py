@@ -22,6 +22,39 @@ def _lan_ip() -> str:
         return "127.0.0.1"
 
 
+def _check_public_url(url):
+    """A28.1: `--public-url` goes straight into every QR and every `welcome`, so a typo would be
+    discovered one phone at a time on the field. Refuse it here instead.
+
+    And refuse PLAINTEXT to a public host outright. A `ws://` node socket over the internet carries the
+    join secret and every `node_key` in clear, to anyone on the path -- which hands over exactly what
+    A28.2's gate exists to protect. Plaintext is allowed only to a LITERAL loopback or private address
+    (a local forward, or a `100.x` tailnet address): a HOSTNAME cannot be classified without resolving
+    it, and a name that happens to resolve privately today is not a promise about tomorrow."""
+    if not url:
+        return None
+    from urllib.parse import urlsplit
+    from .net import peer_class
+    u = urlsplit(str(url))
+    if u.scheme not in ("ws", "wss") or not u.netloc:
+        raise SystemExit(f"--public-url must be a ws:// or wss:// URL with a host (got {url!r}); "
+                         "it is the address every phone dials, e.g. wss://mc.example.org/ws")
+    if "@" in u.netloc:
+        # Userinfo in a URL every phone is handed, and which MC prints on a banner and encodes into a QR.
+        raise SystemExit(f"--public-url {url!r} carries userinfo before the host (the `@`). The node "
+                         "socket authenticates with the join secret (A28.2), not with URL credentials, "
+                         "and this URL is printed, QR-encoded and handed to every phone — drop it.")
+    if u.scheme == "ws":
+        host = (u.hostname or "").strip("[]")
+        if peer_class(host) not in ("loopback", "private"):
+            raise SystemExit(
+                f"--public-url {url!r} is PLAINTEXT to a public host. The node socket carries the join "
+                "secret and every node_key, so over the internet it must be wss://. (ws:// is accepted "
+                "only for a literal loopback or private ADDRESS, e.g. ws://127.0.0.1:8766/ws or a "
+                "100.x tailnet address -- a hostname cannot be checked without resolving it.)")
+    return str(url)
+
+
 def build(args):
     from .fakes import DemoDriver, FakeArmory, FakeCompiler, FakeNet, demo_armory, DEMO_NAMES
     from .state import Session
@@ -59,6 +92,31 @@ def build(args):
     ip = args.host if args.host not in ("0.0.0.0", "") else _lan_ip()
     ws_url = f"ws://{ip}:{args.ws_port}/ws"
     session = Session(compiler, net, armory, lan={"mode": "unknown", "ip": ip, "port": args.port, "ws_url": ws_url, "qr": ws_url})
+    # A28.1: the tunnel exists in every run (so `lan.public.available` is honest and the UI can show the
+    # install line); it only spawns anything on --tunnel or POST /api/tunnel.
+    from pathlib import Path as _PT
+    from .tunnel import Tunnel
+    public_url = _check_public_url(getattr(args, "public_url", None))
+    if args.demo or getattr(args, "ephemeral", False):
+        import tempfile
+        pid_dir = _PT(tempfile.mkdtemp(prefix="brx-mc-tunnel-"))
+    else:
+        pid_dir = _PT.home() / ".brx-mcp"
+    # The file inside is named per WS PORT and records this MC's own pid, so two Mission Controls on one
+    # laptop neither share a file nor reap each other's tunnel (`Tunnel.pid_path`).
+    tunnel = Tunnel(public_url=public_url, ws_port=args.ws_port, pid_dir=pid_dir)
+    if public_url and getattr(args, "tunnel", False):
+        print("  backhaul: --tunnel ignored (--public-url already names a public node URL)", flush=True)
+    # A cloudflared we started and never stopped (a hard crash, a SIGKILL) still points its hostname at
+    # this ws port, and THIS process has no child -- so the secret gate would be down on a socket the
+    # internet can still reach. Kill it before we bind.
+    orphan = tunnel.reap_orphan()
+    if orphan:
+        print(f"  backhaul: killed an orphaned cloudflared (pid {orphan}) from a previous run", flush=True)
+    tunnel.on_change(lambda pub: print(
+        f"  backhaul: {pub['status']}" + (f"  {pub['ws_url']}" if pub.get("ws_url") else "")
+        + (f"  ({pub['error']})" if pub.get("error") else ""), flush=True))
+    session.attach_tunnel(tunnel)
     restored_from_file = 0
     if getattr(args, "session_file", None):
         # explicit session file (e2e boots from a fixture, e.g. a pre-A10 snapshot) — honoured even with --demo
@@ -87,8 +145,10 @@ def build(args):
             # trusted the JOIN strip then dialed ws://…:0/ws (e2e, 2026-08-26).
             try:
                 ji = net.join_info()
-                session.lan.update({"ws_url": ji.get("url") or ws_url, "qr": ji.get("qr") or ji.get("url") or ws_url,
-                                    "session_id": ji.get("session_id")})
+                session.lan["session_id"] = ji.get("session_id")
+                # A28.2: `qr` is DERIVED (secret, and the public URL when the tunnel is up) -- set the
+                # bare URL and let the session render it, or the join strip loses the join secret.
+                session.set_ws_url(ji.get("url") or ws_url)
             except Exception as e:  # pragma: no cover
                 log.warning("join_info: %s", e)
             try:
@@ -105,9 +165,21 @@ def build(args):
             # print the nodes line HERE (not in the pre-loop banner) so the REAL bound port shows —
             # the banner renders before this async bind, when the port is still 0/unbound.
             print(f"  nodes: {session.lan['ws_url']}   (scan the join QR / enter this URL on each phone)", flush=True)
+            if getattr(args, "tunnel", False) and tunnel.stoppable:
+                # A28.1: start on boot, once the ws port is REAL. Failures land in `lan.public.error`
+                # and the LAN path is untouched, so this must never stop MC coming up.
+                try:
+                    tunnel.start(net.port or args.ws_port)
+                    print("  backhaul: starting a cloudflared quick tunnel (the public URL prints when it is up)", flush=True)
+                except Exception as e:
+                    print(f"  backhaul: NOT started -- {e}", flush=True)
         extra.append(_start_net)
     else:
         net.start(ip, args.ws_port, "/ws")
+        if getattr(args, "tunnel", False):
+            # --fake-net has no socket to expose, so --tunnel has nothing to do. SAY so: a flag that is
+            # silently ignored is the shape of half the bugs in this repo's history.
+            print("  backhaul: --tunnel ignored (--fake-net has no node socket to expose)", flush=True)
     try:
         session.store = Store(session.session_id)
     except Exception as e:
@@ -163,6 +235,11 @@ def main(argv=None):
     ap.add_argument("--demo-speed", type=float, default=1.0)
     ap.add_argument("--token", default=None, help="operator token (default: random per launch)")
     ap.add_argument("--no-auth", action="store_true", help="disable the operator token (open API — trusted LAN only)")
+    ap.add_argument("--tunnel", action="store_true",
+                    help="A28: expose the NODE socket (never the API) through a cloudflared quick tunnel at boot")
+    ap.add_argument("--public-url", default=None,
+                    help="A28: a public wss:// node URL you already run (named tunnel, Tailscale Funnel, port "
+                         "forward). provider: manual — MC hands it out but never starts or stops it")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -179,6 +256,9 @@ def main(argv=None):
         # sync/fake net is already bound → its ws_url is real now. The async NetServer prints the nodes
         # line from _start_net once it binds (avoids the stale ws://<ip>:0 placeholder before the bind).
         print(f"  nodes: {session.lan.get('ws_url') or 'ws://'+ip+':'+str(args.ws_port)+'/ws'}", flush=True)
+    pub = session.lan.get("public") or {}
+    if pub.get("status") == "up":
+        print(f"  public nodes: {pub['ws_url']}   (provider: {pub.get('provider')})", flush=True)
     if token:
         print(f"  operator token: {token}   (open the URL above — it carries the token; --no-auth to disable)", flush=True)
     else:

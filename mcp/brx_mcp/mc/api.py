@@ -16,7 +16,8 @@ from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from .state import Session
+from .state import CoverageRequired, Session
+from .tunnel import TunnelError
 
 log = logging.getLogger("brx.mc.api")
 UI_DIST = Path(__file__).resolve().parents[3] / "webapp" / "mc" / "dist"
@@ -357,8 +358,23 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         b = await body(req)
         try:
             return JSONResponse(s.push_config(force=bool(b.get("force"))))
+        except CoverageRequired as e:
+            # A28.4: not a 400 -- the config is fine, the FIELD is not (yet). The UI needs the numbers to
+            # say which phones are missing, so the coverage block rides along with the error.
+            return JSONResponse({"error": str(e), "coverage": e.coverage}, status_code=409)
         except ValueError as e:
             return _err(str(e))
+
+    async def tunnel(req):
+        """A28.1: start / stop the public node socket. `lan.public` is the answer in every case."""
+        b = await body(req)
+        on = b.get("on")
+        if not isinstance(on, bool):
+            return _err("on must be true or false")
+        try:
+            return JSONResponse(await s.set_tunnel(on))
+        except TunnelError as e:
+            return _err(str(e), e.status)
 
     async def start(req):
         b = await body(req)
@@ -616,6 +632,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/stations/{nid}", delete_station, methods=["DELETE"]),
         Route("/api/players/{pid}/ready", ready, methods=["POST"]),
         Route("/api/lobby/push", lobby_push, methods=["POST"]),
+        Route("/api/tunnel", tunnel, methods=["POST"]),
         Route("/api/start", start, methods=["POST"]),
         Route("/api/start/reschedule", reschedule, methods=["POST"]),
         Route("/api/start/abort", abort, methods=["POST"]),
@@ -642,6 +659,12 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         finally:
             for t in tasks:
                 t.cancel()
+            # A28.1: the cloudflared child dies with MC. Killing it here rather than leaving it to the
+            # OS means a --reload / test teardown does not leave a tunnel pointing at a dead port.
+            tun = getattr(s, "tunnel", None)
+            if tun is not None:
+                with contextlib.suppress(Exception):
+                    await tun.shutdown()
 
     app = Starlette(routes=routes, lifespan=lifespan,
                     middleware=[Middleware(CORSMiddleware, allow_origins=["*"],

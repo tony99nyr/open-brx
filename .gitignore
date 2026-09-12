@@ -46,3 +46,6 @@ webapp/download/*.apk
 
 # Playwright runner artifacts (written wherever playwright is invoked from)
 test-results/
+
+# a node_modules SYMLINK (a worktree artifact) is a file, so `node_modules/` alone does not ignore it (merge 2026-09-12)
+node_modules

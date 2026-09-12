@@ -45,6 +45,8 @@ JUDGED = {
     "_T_MIN_MS": "an envelope timestamp sanity bound, not a timer",
     "_T_MAX_MS": "an envelope timestamp sanity bound, not a timer",
     "REPLAY_PERIOD_MS": "the F77 detector's own window for a ~5 s replay; it MEASURES the period rather than resetting on it",
+    "START_TIMEOUT_S": "A28.1: how long MC waits for cloudflared to print its URL, on the child process's stdout -- no IR frame reaches it, and it runs on the host, not on a gun",
+    "TERM_GRACE_S": "A28.1: terminate-then-kill grace for the cloudflared child; a process wait, not a game timer",
 }
 
 _CONST = re.compile(r"^\s*([A-Z_][A-Z0-9_]*_(S|MS))\s*(?::\s*[\w\[\], ]+)?\s*=\s*\(?\s*(-?\d[\d_.]*)", re.M)

@@ -591,6 +591,9 @@ MC_KINDS = {"welcome", "assign", "tutorial", "config", "start", "feedback", "con
             "result",   # A24 (2026-09-11): the match result to EVERY node, losers included. The phone's
                         # `MC_KINDS` (app/src/transport/envelope.js) must list it too or every result is
                         # dropped as malformed -- `test_mc_envelope_kinds.py` pins the two lists equal.
+            "join",     # A28.2 (2026-09-12): the tunnel came up or went down -- pub + secret, the same body
+                        # `welcome.join` carries. Broadcast, not pushed, so `test_mc_envelope_kinds.py`'s AST
+                        # scan (which reads `self.net.push(...)` sites only) does NOT cover it.
             "station_config"}   # A13.5 (F104, 2026-09-11): MC -> a utility node. The same trap as `alert`:
                                 # the phone's `MC_KINDS` (app/src/transport/envelope.js) must list it too, or
                                 # the arming message is dropped as malformed before `onMessage` ever sees it.

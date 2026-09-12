@@ -81,6 +81,9 @@ export interface NodeView {
   platform?: string | null;
   /** A25: the log sync as this phone reports it. Optional — absent before the phone says anything. */
   log?: LogView | null;
+  /** A28.3: the live socket's path, from `hello.via` then every `status`. Absent on a server that
+   *  predates A28, or before the node's first status has landed. */
+  reach?: 'lan' | 'backhaul';
 }
 
 export type LiveRow = ScoreRow & {
@@ -176,11 +179,40 @@ export interface StationView {
   game: number;                  // the game byte stations are armed with THIS match
 }
 
+/** A28.1 — MC's optional public node-socket tunnel. Opt-in and additive: the LAN path is untouched,
+ *  and the host needs internet only if they turn it on. */
+export type TunnelStatus = 'off' | 'starting' | 'up' | 'error';
+export type TunnelProvider = 'cloudflared' | 'manual' | null;
+export interface LanPublic {
+  ws_url: string | null; status: TunnelStatus; provider: TunnelProvider;
+  /** the `cloudflared` binary was found on PATH at launch — when false the UI shows the install
+   *  line, never hides the control (A28.1). */
+  available: boolean;
+  /** the last output line from a tunnel that failed to come up within 20s, or exited. */
+  error?: string;
+}
+/** A28.4 — derived, never asserted: `"full"` iff every bound player node is connected with
+ *  `reach == "backhaul"`. */
+export interface Coverage { level: 'full' | 'zones'; on_backhaul: number; bound: number }
+
 export interface State {
   session_id: string;
   phase: Phase;
   t: number;
-  lan: { mode: 'router' | 'hotspot' | 'unknown'; ssid?: string; ip: string; port: number; ws_url: string; qr: string; auth_required?: boolean };
+  lan: {
+    mode: 'router' | 'hotspot' | 'unknown'; ssid?: string; ip: string; port: number; ws_url: string;
+    /** A28.2: `ws://<ip>:<ws-port>/ws?s=<join_secret>[&pub=<url-encoded public ws_url>]` — no
+     *  longer the same as `ws_url`; carries the public URL only while `public.status == "up"`. */
+    qr: string;
+    /** A28.2: 8 url-safe chars, per session, persisted. Absent on a server that predates A28. */
+    join_secret?: string;
+    /** A28.1. Absent on a server that predates A28 — the UI must not invent a toggle for a route
+     *  that does not exist there. */
+    public?: LanPublic;
+    auth_required?: boolean;
+  };
+  /** A28.4. Absent on a server that predates A28. */
+  coverage?: Coverage;
   nodes: NodeView[];
   stations?: StationView[];      // A13.5: absent on a server older than 2026-09-11
   game_no?: number;
@@ -297,6 +329,9 @@ export interface Api {
    *  so never gated by `log_sync`. `ok` is whether the ASK went out, not whether a log arrived: the
    *  node answers when it is safe to and MC never waits on it. */
   pullLog(node_id: string): Promise<{ ok: boolean; node_id: string; log?: LogView | null }>;
+  /** A28.1: `POST /api/tunnel {on}` → `lan.public`. 409 (available:false / provider:"manual") — the
+   *  server's `error` text is the whole point of the rejection, never swallow it. */
+  setTunnel(on: boolean): Promise<LanPublic>;
   /** A13.5: assign a utility phone (kind / team / id / threshold); MC pushes `station_config` at once. 400 in the operator's voice. */
   putStation(node_id: string, a: { kind: StationKind; team: number | string; id: number; threshold?: number }): Promise<StationView>;
   deleteStation(node_id: string): Promise<void>;
