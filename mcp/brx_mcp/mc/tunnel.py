@@ -25,11 +25,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import os
 import pathlib
 import re
 import shutil
+import signal
 import subprocess
 import time
 from typing import Any, Awaitable, Callable
@@ -64,7 +66,7 @@ class Tunnel:
                  ws_port: int = 0, spawn: Callable[[list[str]], Awaitable[Any]] | None = None,
                  which: Callable[[str], str | None] | None = None,
                  timeout_s: float = START_TIMEOUT_S, term_grace_s: float = TERM_GRACE_S,
-                 pid_path: "pathlib.Path | None" = None):
+                 pid_dir: "pathlib.Path | None" = None):
         self.binary = binary
         self.ws_port = ws_port
         self.timeout_s = timeout_s
@@ -76,7 +78,9 @@ class Tunnel:
         # resolved again by the OS at exec time, against whatever PATH we inherited.
         self._resolved = self._which(self.binary)
         self.available = bool(self._resolved)
-        self.pid_path = pid_path if pid_path is not None else (pathlib.Path.home() / ".brx-mcp" / "tunnel.pid")
+        self._pid_dir = pid_dir if pid_dir is not None else (pathlib.Path.home() / ".brx-mcp")
+        self._pid_owned = False
+        self._orphan_pid: int | None = None   # an orphan we could not kill; keeps `armed` True
         self._listeners: list[Callable[[dict], None]] = []
         self._proc: Any = None
         self._task: asyncio.Task | None = None
@@ -104,6 +108,11 @@ class Tunnel:
         """`--public-url` is not MC's to stop (A28.1)."""
         return self.provider != "manual"
 
+    def _owns(self, proc) -> bool:
+        """Is `proc` still THE child? Every mutation `_run` makes is guarded on this: a `_run` whose
+        process has been superseded must report, but never write."""
+        return self._proc is proc
+
     @property
     def armed(self) -> bool:
         """Is there a public path into the node socket RIGHT NOW? This, not `status`, is what gates the
@@ -118,6 +127,8 @@ class Tunnel:
         confirmed dead, plus the manual provider, whose URL is up by assertion."""
         if self.provider == "manual":
             return True
+        if self._orphan_pid is not None:
+            return True                 # an orphan we could not kill is still a public path (see reap_orphan)
         proc = self._proc
         return proc is not None and proc.returncode is None
 
@@ -154,6 +165,7 @@ class Tunnel:
         if port <= 0:
             raise TunnelError("the node WebSocket port is not bound yet — try again once MC has started")
         self.ws_port = port
+        self._orphan_pid = None        # an explicit start supersedes an un-killable orphan latch
         self._stopping = False
         self._last_line = ""
         self._set("starting", None, None, "cloudflared")
@@ -175,6 +187,7 @@ class Tunnel:
     async def shutdown(self) -> None:
         """Kill the child if we own one and settle on `off`. Never raises — MC's own shutdown path calls it."""
         self._stopping = True
+        self._orphan_pid = None        # an explicit stop supersedes the latch too
         # `self._proc` is NOT released until the child is confirmed dead: `armed` reads it, and a gate
         # that comes off while the process is still routing is the bug this whole method exists around.
         proc = self._proc
@@ -188,8 +201,15 @@ class Tunnel:
                     proc.kill()
                 with contextlib.suppress(Exception):
                     await asyncio.wait_for(proc.wait(), timeout=self.term_grace_s)
-        self._proc = None
-        self._clear_pid()
+        if proc is not None and proc.returncode is None:
+            # Terminated, killed, and still not reaped. We do NOT own-nothing here: `armed` reads
+            # `_proc`, and releasing a process we could not confirm dead would drop the gate on a
+            # cloudflared that may still be routing. `_run` releases it when `proc.wait()` returns.
+            log.warning("cloudflared did not die within %.0fs — keeping the join gate ARMED until it does",
+                        self.term_grace_s * 2)
+        else:
+            self._proc = None
+            self._clear_pid()
         task, self._task = self._task, None
         if task is not None and not task.done():
             with contextlib.suppress(Exception):
@@ -198,16 +218,55 @@ class Tunnel:
             self._set("off", None, None, None)
 
     # ---------------- orphan reaping across an MC crash ----------------
+    @property
+    def pid_path(self) -> pathlib.Path:
+        """One file PER WS PORT. A single shared name meant two Mission Controls on one laptop (a bench
+        MC and a field MC, or a second one on another port) reaped each other's tunnel at launch."""
+        return self._pid_dir / f"tunnel-{self.ws_port}.pid"
+
     def _write_pid(self, pid: int) -> None:
         try:
-            self.pid_path.parent.mkdir(parents=True, exist_ok=True)
-            self.pid_path.write_text(str(pid))
+            self._pid_dir.mkdir(parents=True, exist_ok=True)
+            # `owner` is THIS MC. A file whose owner is still alive belongs to a running Mission
+            # Control, not to a crash, and must never be reaped out from under it.
+            self.pid_path.write_text(json.dumps({"pid": pid, "owner": os.getpid(), "ws_port": self.ws_port}))
+            self._pid_owned = True
         except Exception:          # a pid file we cannot write must never stop the tunnel
             log.debug("could not write %s", self.pid_path, exc_info=True)
 
     def _clear_pid(self) -> None:
+        """Remove the pid file ONLY if this MC wrote it — never one another MC is relying on."""
+        if not self._pid_owned:
+            return
+        self._pid_owned = False
         with contextlib.suppress(Exception):
             self.pid_path.unlink()
+
+    def _read_pid_file(self) -> tuple[int, int | None] | None:
+        """`(child_pid, owner_pid)` or None. Tolerates the bare-integer form."""
+        try:
+            raw = self.pid_path.read_text().strip()
+        except Exception:
+            return None
+        try:
+            d = json.loads(raw)
+            return int(d["pid"]), (int(d["owner"]) if d.get("owner") is not None else None)
+        except Exception:
+            pass
+        try:
+            return int(raw), None
+        except ValueError:
+            with contextlib.suppress(Exception):
+                self.pid_path.unlink()
+            return None
+
+    @staticmethod
+    def _alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+            return True
+        except Exception:
+            return False
 
     @staticmethod
     def _cmdline(pid: int) -> str:
@@ -227,38 +286,63 @@ class Tunnel:
     def reap_orphan(self) -> int | None:
         """Kill a cloudflared we started and then died without stopping (a hard MC crash, a SIGKILL).
 
-        The orphan keeps the random hostname pointed at the ws port, and the FRESH MC has no child, so
-        `armed` is False and the secret gate is down — an internet-reachable node socket nobody is
+        The orphan keeps the random hostname pointed at this ws port, and the FRESH MC has no child, so
+        `armed` would be False and the secret gate down — an internet-reachable node socket nobody is
         guarding. Returns the pid it killed, or None.
 
-        The cmdline check is the safety catch: pids are reused, and terminating whatever now holds the
-        number in a stale file would be far worse than leaving a tunnel up."""
-        try:
-            raw = self.pid_path.read_text().strip()
-        except Exception:
+        Two safety catches. Pids are reused, so the process must still LOOK like cloudflared before
+        anything is signalled. And the file's `owner` must be dead: a live owner means another Mission
+        Control is running this tunnel on purpose.
+
+        If the orphan survives SIGTERM and SIGKILL we do NOT pretend it is gone: `_orphan_pid` latches,
+        `armed` stays True, and the join secret keeps being demanded until someone starts or stops the
+        tunnel explicitly. An unguarded public socket is the worse failure."""
+        if os.name == "nt":
+            # `os.kill(pid, 0)` is TerminateProcess on Windows — the liveness probe would KILL the pid
+            # before the cmdline check could veto it, and `_cmdline` has no /proc or ps to read anyway.
+            log.info("orphan tunnel reaping is not supported on Windows — skipping (%s)", self.pid_path)
             return None
-        try:
-            pid = int(raw)
-        except ValueError:
-            self._clear_pid()
+        got = self._read_pid_file()
+        if got is None:
             return None
+        pid, owner = got
         if pid <= 0:
-            self._clear_pid()
+            self._drop_pid_file()
             return None
-        try:
-            os.kill(pid, 0)                     # alive? (raises ProcessLookupError if not)
-        except Exception:
-            self._clear_pid()
+        if owner is not None and owner != os.getpid() and self._alive(owner):
+            log.info("tunnel pid file %s belongs to a LIVE Mission Control (pid %d) — leaving it alone",
+                     self.pid_path, owner)
+            return None
+        if not self._alive(pid):
+            self._drop_pid_file()
             return None
         if "cloudflared" not in self._cmdline(pid):
             log.info("stale tunnel pid %d is not cloudflared any more — leaving it alone", pid)
-            self._clear_pid()
+            self._drop_pid_file()
             return None
         log.warning("killing orphaned cloudflared pid %d from a previous Mission Control (%s)", pid, self.pid_path)
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            with contextlib.suppress(Exception):
+                os.kill(pid, sig)
+            deadline = time.monotonic() + self.term_grace_s
+            while time.monotonic() < deadline:
+                if not self._alive(pid):
+                    self._orphan_pid = None
+                    self._drop_pid_file()
+                    return pid
+                time.sleep(0.05)
+        # Still there. Do not clear the file and do not lower the gate.
+        self._orphan_pid = pid
+        log.error("orphaned cloudflared pid %d SURVIVED SIGTERM and SIGKILL — it may still be routing "
+                  "to this port, so the join secret stays REQUIRED. Kill it by hand.", pid)
+        return None
+
+    def _drop_pid_file(self) -> None:
+        """Remove a pid file we have just judged stale (a different rule from `_clear_pid`, which only
+        removes the one THIS MC wrote)."""
+        self._pid_owned = False
         with contextlib.suppress(Exception):
-            os.kill(pid, 15)
-        self._clear_pid()
-        return pid
+            self.pid_path.unlink()
 
     # ---------------- the child ----------------
     def argv(self, ws_port: int) -> list[str]:
@@ -277,6 +361,16 @@ class Tunnel:
             proc = await self._spawn(cmd)
         except Exception as e:
             self._fail(f"could not start {self.binary}: {type(e).__name__}: {e}")
+            return
+        if self._stopping:
+            # `stop()` ran while we were awaiting the spawn, so it had nothing to kill and has already
+            # settled on `off`. Kill what we just made and claim nothing, or MC leaks a live cloudflared
+            # it no longer believes in -- with the gate down, because `_proc` was never published.
+            with contextlib.suppress(Exception):
+                proc.kill()
+            with contextlib.suppress(Exception):
+                await proc.wait()
+            log.info("tunnel stopped while the child was starting — killed it")
             return
         self._proc = proc
         self._write_pid(proc.pid)
@@ -299,10 +393,11 @@ class Tunnel:
                             proc.kill()
                         with contextlib.suppress(Exception):
                             await proc.wait()
-                        self._proc = None
-                        self._clear_pid()
-                        self._fail(f"no tunnel URL within {self.timeout_s:.0f}s: "
-                                   f"{self._last_line or 'no output'}")
+                        if self._owns(proc):
+                            self._proc = None
+                            self._clear_pid()
+                            self._fail(f"no tunnel URL within {self.timeout_s:.0f}s: "
+                                       f"{self._last_line or 'no output'}")
                         return
                 else:
                     raw = await proc.stdout.readline()
@@ -313,7 +408,7 @@ class Tunnel:
                     self._last_line = line
                     log.debug("cloudflared: %s", line)
                 m = QUICK_TUNNEL_RE.search(line)
-                if m and self.status != "up":
+                if m and self.status != "up" and self._owns(proc) and not self._stopping:
                     host = m.group(0).split("//", 1)[1]
                     self._set("up", f"wss://{host}{WS_PATH}", None, "cloudflared")
         except asyncio.CancelledError:
@@ -333,6 +428,12 @@ class Tunnel:
         except Exception:
             log.exception("could not wait on the cloudflared child — leaving the tunnel status alone")
             return                       # `armed` still reads the live returncode; nothing is claimed
+        if not self._owns(proc):
+            # A LATER child is the live one now: our `shutdown()` timed out, kept `_proc`, and a fresh
+            # `start()` replaced it. Nulling `_proc` here would disarm the gate on a cloudflared that is
+            # routing right now, which is the same class of bug as the stdout-EOF one -- one step later.
+            log.info("an old cloudflared (%s) exited; a newer child owns the tunnel", rc)
+            return
         self._proc = None
         self._clear_pid()
         if self._stopping:

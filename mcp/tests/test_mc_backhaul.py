@@ -11,9 +11,11 @@ from __future__ import annotations
 import asyncio
 import json
 import pathlib
+import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from urllib.parse import parse_qs, urlsplit
 
@@ -663,11 +665,15 @@ def test_an_orphaned_cloudflared_is_killed_at_the_next_launch():
         # a long-lived stand-in whose cmdline says cloudflared, exactly as the real orphan's would
         proc = subprocess.Popen([sys.executable, "-c", "import time  # cloudflared\ntime.sleep(60)"])
         try:
-            pid_file.write_text(str(proc.pid))
-            t = Tunnel(which=lambda _b: "/usr/bin/cloudflared", pid_path=pid_file)
+            t = Tunnel(which=lambda _b: "/usr/bin/cloudflared", pid_dir=pid_file.parent, ws_port=8766)
+            t.pid_path.write_text(json.dumps({"pid": proc.pid}))   # no owner recorded: a crash, or legacy
+            # A REAL orphan is nobody's child. This one is ours, so without a concurrent wait() it would
+            # linger as a zombie that `os.kill(pid, 0)` still reports as alive, and the poll below would
+            # correctly refuse to declare it dead.
+            threading.Thread(target=lambda: proc.wait(), daemon=True).start()
             assert t.reap_orphan() == proc.pid
-            assert proc.wait(timeout=5) is not None
-            assert not pid_file.exists(), "the pid file goes with the process"
+            assert proc.poll() is not None
+            assert not t.pid_path.exists(), "the pid file goes with the process"
         finally:
             if proc.poll() is None:
                 proc.kill()
@@ -681,35 +687,36 @@ def test_reaping_never_kills_a_pid_that_is_no_longer_cloudflared():
         pid_file = pathlib.Path(d) / "tunnel.pid"
         proc = subprocess.Popen([sys.executable, "-c", "import time\ntime.sleep(30)"])
         try:
-            pid_file.write_text(str(proc.pid))
-            t = Tunnel(which=lambda _b: None, pid_path=pid_file)
+            t = Tunnel(which=lambda _b: None, pid_dir=pid_file.parent, ws_port=8766)
+            t.pid_path.write_text(str(proc.pid))            # the bare-integer form still reads
             assert t.reap_orphan() is None
             assert proc.poll() is None, "an innocent process was killed"
-            assert not pid_file.exists(), "...but the stale file is cleared"
+            assert not t.pid_path.exists(), "...but the stale file is cleared"
         finally:
             proc.kill()
             proc.wait(timeout=5)
     # a missing or junk file is simply nothing to do
     with tempfile.TemporaryDirectory() as d:
-        t = Tunnel(which=lambda _b: None, pid_path=pathlib.Path(d) / "nope.pid")
+        t = Tunnel(which=lambda _b: None, pid_dir=pathlib.Path(d))
         assert t.reap_orphan() is None
-        junk = pathlib.Path(d) / "junk.pid"
-        junk.write_text("not-a-pid")
-        assert Tunnel(which=lambda _b: None, pid_path=junk).reap_orphan() is None
-        assert not junk.exists()
+        t.pid_path.write_text("not-a-pid")
+        assert Tunnel(which=lambda _b: None, pid_dir=pathlib.Path(d)).reap_orphan() is None
+        assert not t.pid_path.exists()
 
 
 def test_a_running_tunnel_writes_its_pid_and_clears_it_on_stop():
     with tempfile.TemporaryDirectory() as d:
         pid_file = pathlib.Path(d) / "tunnel.pid"
-        t = _tunnel(_fake_child(delay_s=0.02), pid_path=pid_file)
+        t = _tunnel(_fake_child(delay_s=0.02), pid_dir=pid_file.parent)
 
         async def go():
             t.start(8766)
             assert await _until(lambda: t.status == "up"), t.public()
-            assert int(pid_file.read_text()) == t._proc.pid
+            rec = json.loads(t.pid_path.read_text())
+            assert rec["pid"] == t._proc.pid and rec["owner"] == os.getpid() and rec["ws_port"] == 8766
+            assert t.pid_path.name == "tunnel-8766.pid", "one file per ws port, not one per machine"
             await t.stop()
-            assert not pid_file.exists()
+            assert not t.pid_path.exists()
         run(go())
 
 
@@ -754,7 +761,8 @@ def test_a_public_peer_always_needs_the_secret_even_with_no_tunnel_running():
         ws = _FakeWs(host)
         assert net.through_backhaul(ws) is False, host
         assert net._secret_ok(ws, {}) is True, host
-    # an unreadable peer is treated as LAN: locking every node out on a platform quirk is the worse bug
+    # an unreadable peer follows the GATE: with none armed there is nothing to guard, so it is LAN and
+    # the typed-address floor still works (§5)
     assert net._secret_ok(_FakeWs(None), {}) is True
 
 
@@ -768,3 +776,180 @@ def test_the_cf_header_and_loopback_only_count_while_the_gate_is_armed():
     assert net.through_backhaul(cf) is True and net._secret_ok(cf, {}) is False
     assert net.through_backhaul(_FakeWs("127.0.0.1")) is True
     assert net.through_backhaul(_FakeWs("192.168.1.40")) is False, "a LAN peer is still a LAN peer"
+
+
+def test_a_pid_file_whose_owner_is_still_alive_is_left_alone():
+    """Two Mission Controls on one laptop must not reap each other. The file is already per-ws-port; the
+    owner pid is the second catch, for the case where the ports DO collide (a restart racing a shutdown,
+    a copy-pasted command)."""
+    with tempfile.TemporaryDirectory() as d:
+        child = subprocess.Popen([sys.executable, "-c", "import time  # cloudflared\ntime.sleep(30)"])
+        owner = subprocess.Popen([sys.executable, "-c", "import time\ntime.sleep(30)"])
+        try:
+            t = Tunnel(which=lambda _b: "/usr/bin/cloudflared", pid_dir=pathlib.Path(d), ws_port=8766)
+            t.pid_path.write_text(json.dumps({"pid": child.pid, "owner": owner.pid}))
+            assert t.reap_orphan() is None
+            assert child.poll() is None, "another live MC's tunnel was killed"
+            assert t.pid_path.exists(), "...and its file was left where it belongs"
+        finally:
+            for proc in (child, owner):
+                proc.kill()
+                proc.wait(timeout=5)
+
+
+def test_an_unkillable_orphan_keeps_the_gate_armed_rather_than_pretending_it_is_gone():
+    """If we cannot kill it, it may still be routing to this port. Lowering the gate then would leave an
+    internet-reachable node socket with nobody asking for the secret, so the latch holds until someone
+    starts or stops the tunnel explicitly."""
+    with tempfile.TemporaryDirectory() as d:
+        t = Tunnel(which=lambda _b: "/usr/bin/cloudflared", pid_dir=pathlib.Path(d),
+                   ws_port=8766, term_grace_s=0.1)
+        t.pid_path.write_text(json.dumps({"pid": 4242}))
+        t._alive = staticmethod(lambda _pid: True)          # never dies, whatever we send it
+        t._cmdline = staticmethod(lambda _pid: "/usr/bin/cloudflared tunnel --url http://127.0.0.1:8766")
+        with_kills: list = []
+        assert t.reap_orphan() is None
+        assert t._orphan_pid == 4242
+        assert t.armed is True, "an orphan we could not kill is still a public path"
+        assert t.pid_path.exists(), "the file stays: the process it names is still there"
+        assert with_kills == []
+        # an explicit start or stop is the operator taking charge of the port, and clears the latch
+        run(t.stop())
+        assert t._orphan_pid is None and t.armed is False
+
+
+# --------------------------------------------------------------------------- review 2: ownership
+def test_an_old_run_never_disarms_the_gate_on_the_child_that_replaced_it():
+    """The pass-2 MEDIUM. `shutdown()`'s post-kill wait can time out (suppressed) and a fresh `start()`
+    then spawns a new child. When the OLD `_run` finally returned from `proc.wait()` it nulled `_proc`
+    and called `_fail()` — disarming the gate on a cloudflared that was routing right then."""
+    t = _tunnel(_fake_child(delay_s=0.02))
+
+    async def go():
+        t.start(8766)
+        assert await _until(lambda: t.status == "up"), t.public()
+        first, first_task = t._proc, t._task
+
+        # a second child takes over without the first's reader having finished
+        second = await asyncio.create_subprocess_exec(
+            *_fake_child(), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        t._proc = second
+        try:
+            first.kill()                     # the old reader's `proc.wait()` returns now
+            await asyncio.wait_for(asyncio.shield(first_task), timeout=5)
+            assert t._proc is second, "the old _run released a process it no longer owned"
+            assert t.armed is True, "the gate came down on a live child"
+            assert t.status == "up" and t.error is None
+        finally:
+            second.kill()
+            await second.wait()
+    run(go())
+
+
+def test_a_stop_inside_the_spawn_window_kills_the_child_it_could_not_see():
+    """`stop()` between `start()` and the spawn returning had nothing to kill and settled on `off`, and
+    `_run` then published a child MC no longer believed in — live, routing, gate down."""
+    started = asyncio.Event()
+    holder: list = []
+
+    async def slow_spawn(cmd):
+        started.set()
+        await asyncio.sleep(0.2)                       # stop() lands in here
+        proc = await asyncio.create_subprocess_exec(
+            *_fake_child(), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        holder.append(proc)
+        return proc
+
+    t = Tunnel(spawn=slow_spawn, which=lambda _b: "/usr/bin/cloudflared")
+
+    async def go():
+        t.start(8766)
+        await asyncio.wait_for(started.wait(), timeout=5)
+        await t.stop()
+        assert t.status == "off" and t.armed is False
+        await asyncio.sleep(0.5)                       # let the spawn land and _run decide
+        assert t.status == "off", "a stopped tunnel resurrected itself"
+        assert t._proc is None and t.armed is False
+        assert holder and holder[0].returncode is not None, "the child we could not see was leaked"
+    run(go())
+
+
+def test_a_child_that_will_not_die_keeps_the_gate_armed_instead_of_being_written_off():
+    """`shutdown()` used to null `_proc` unconditionally after its kill, so a cloudflared that outlived
+    SIGKILL left the gate down while it kept routing."""
+    t = _tunnel(_fake_child(), term_grace_s=0.05)
+
+    async def go():
+        t.start(8766)
+        assert await _until(lambda: t.status == "up"), t.public()
+        real = t._proc
+        t._proc = type("Undead", (), {"returncode": None,
+                                      "terminate": lambda self: None, "kill": lambda self: None,
+                                      "wait": lambda self: asyncio.sleep(60)})()
+        await t.shutdown()
+        assert t._proc is not None, "a process we could not confirm dead must not be released"
+        assert t.armed is True, "...so the join secret is still required"
+        t._proc = real
+        await t.shutdown()
+        assert t.armed is False
+    run(go())
+
+
+# --------------------------------------------------------------------------- review 2: the low items
+def test_every_path_that_ends_a_socket_clears_reach():
+    """`on_disconnect` has to fire from all four sites, not just the handler's `finally`. An evict, a
+    takeover, a node_id switch and a refused bind end a socket just as surely as a dropped link — and a
+    coverage fix that covers one of them is not a fix."""
+    needs(HAVE_WS, "websockets")
+
+    async def go():
+        async with _NetHarness() as h:
+            gone: list[str] = []
+            h.net.on_disconnect(gone.append)
+            w = await _say_hello(h.url, node_id="n1")
+            assert isinstance(w, dict)
+            rec = h.net.nodes["n1"]
+            assert await _until(lambda: "n1" in gone)          # the plain drop
+            assert rec.via is None
+
+            rec.ws = object()                                   # a socket to take away again
+            rec.via = "backhaul"
+            assert h.net.evict("n1") is True
+            assert gone.count("n1") == 2 and rec.via is None, "evict must clear the path too"
+    run(go())
+
+
+def test_the_mapped_ipv4_prefix_is_matched_whatever_its_case():
+    from brx_mcp.mc.net import peer_class
+    assert peer_class("::FFFF:127.0.0.1") == "loopback"
+    assert peer_class("::ffff:192.168.1.9") == "private"
+    assert peer_class("::FFFF:8.8.8.8") == "public"
+
+
+def test_an_unreadable_peer_is_gated_once_there_is_a_public_path():
+    from brx_mcp.mc.net import NetServer
+    net = NetServer()
+    net.set_join(secret="s3cr3t99", armed=False)
+    blind = _FakeWs(None)
+    assert net._secret_ok(blind, {}) is True, "no public path: the typed-address floor (§5) still holds"
+    net.set_join(armed=True)
+    assert net.through_backhaul(blind) is True
+    assert net._secret_ok(blind, {}) is False, "with a tunnel up, a peer we cannot read is not waved past"
+    assert net._secret_ok(blind, {"secret": "s3cr3t99"}) is True
+
+
+def test_public_url_refuses_plaintext_to_a_public_host():
+    from brx_mcp.mc.__main__ import _check_public_url
+    assert _check_public_url(None) is None
+    assert _check_public_url("wss://mc.example.org/ws") == "wss://mc.example.org/ws"
+    # a local forward or a tailnet is inside the trust boundary §5b already draws
+    for ok in ("ws://127.0.0.1:8766/ws", "ws://localhost:8766/ws", "ws://192.168.1.10:8766/ws",
+               "ws://100.100.3.4:8766/ws"):
+        assert _check_public_url(ok) == ok, ok
+    for bad, why in (("ws://mc.example.org/ws", "PLAINTEXT"), ("ws://8.8.8.8:8766/ws", "PLAINTEXT"),
+                     ("http://mc.example.org", "ws:// or wss://"), ("wss://", "ws:// or wss://")):
+        try:
+            _check_public_url(bad)
+            raise AssertionError(f"accepted {bad!r}")
+        except SystemExit as e:
+            assert why in str(e), (bad, str(e))

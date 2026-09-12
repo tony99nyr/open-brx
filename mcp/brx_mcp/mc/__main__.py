@@ -24,14 +24,27 @@ def _lan_ip() -> str:
 
 def _check_public_url(url):
     """A28.1: `--public-url` goes straight into every QR and every `welcome`, so a typo would be
-    discovered one phone at a time on the field. Refuse it here instead."""
+    discovered one phone at a time on the field. Refuse it here instead.
+
+    And refuse PLAINTEXT to a public host outright. A `ws://` node socket over the internet carries the
+    join secret and every `node_key` in clear, to anyone on the path -- which hands over exactly what
+    A28.2's gate exists to protect. Plaintext to a loopback or private host is fine: that is a local
+    forward or a tailnet, inside the trust boundary §5b already draws."""
     if not url:
         return None
     from urllib.parse import urlsplit
+    from .net import peer_class
     u = urlsplit(str(url))
     if u.scheme not in ("ws", "wss") or not u.netloc:
         raise SystemExit(f"--public-url must be a ws:// or wss:// URL with a host (got {url!r}); "
                          "it is the address every phone dials, e.g. wss://mc.example.org/ws")
+    if u.scheme == "ws":
+        host = (u.hostname or "").strip("[]")
+        if peer_class(host) not in ("loopback", "private"):
+            raise SystemExit(
+                f"--public-url {url!r} is PLAINTEXT to a public host. The node socket carries the join "
+                "secret and every node_key, so over the internet it must be wss://. (ws:// is accepted "
+                "only to a loopback or private address, e.g. a local forward or a tailnet.)")
     return str(url)
 
 
@@ -79,10 +92,12 @@ def build(args):
     public_url = _check_public_url(getattr(args, "public_url", None))
     if args.demo or getattr(args, "ephemeral", False):
         import tempfile
-        pid_path = _PT(tempfile.mkdtemp(prefix="brx-mc-tunnel-")) / "tunnel.pid"
+        pid_dir = _PT(tempfile.mkdtemp(prefix="brx-mc-tunnel-"))
     else:
-        pid_path = _PT.home() / ".brx-mcp" / "tunnel.pid"
-    tunnel = Tunnel(public_url=public_url, ws_port=args.ws_port, pid_path=pid_path)
+        pid_dir = _PT.home() / ".brx-mcp"
+    # The file inside is named per WS PORT and records this MC's own pid, so two Mission Controls on one
+    # laptop neither share a file nor reap each other's tunnel (`Tunnel.pid_path`).
+    tunnel = Tunnel(public_url=public_url, ws_port=args.ws_port, pid_dir=pid_dir)
     if public_url and getattr(args, "tunnel", False):
         print("  backhaul: --tunnel ignored (--public-url already names a public node URL)", flush=True)
     # A cloudflared we started and never stopped (a hard crash, a SIGKILL) still points its hostname at

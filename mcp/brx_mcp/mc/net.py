@@ -78,7 +78,7 @@ def peer_class(host: str | None) -> str:
     if not host:
         return "unknown"
     h = str(host)
-    if h.startswith("::ffff:"):
+    if h.lower().startswith("::ffff:"):      # the mapped-IPv4 prefix is hex and may arrive upper-cased
         h = h[7:]
     if h in _LOOPBACK:
         return "loopback"
@@ -354,14 +354,17 @@ class NetServer:
         * loopback or a `Cf-Connecting-Ip` header counts only while the gate is ARMED, because
           cloudflared dials us on 127.0.0.1 — with no tunnel running, loopback is just a dev box.
 
-        An UNKNOWN peer (no address off the transport) is treated as LAN: the mandatory floor is that a
-        typed address works (§5), and locking every node out on a platform quirk is worse on a match day
-        than the narrow case this would catch."""
-        if peer_class(_peer_host(ws)) == "public":
+        An UNKNOWN peer (no address off the transport) follows the gate. With no public path there is
+        nothing to guard and it counts as LAN, because the mandatory floor is that a typed address works
+        (§5) and locking the field out on a platform quirk is the worse match-day bug. With the gate
+        ARMED there IS a public path, and a peer we cannot read is precisely the case not to wave
+        through, so it is gated."""
+        cls = peer_class(_peer_host(ws))
+        if cls == "public":
             return True
         if not self._gate_armed():
             return False
-        return peer_class(_peer_host(ws)) == "loopback" or self._has_cf_header(ws)
+        return cls in ("loopback", "unknown") or self._has_cf_header(ws)
 
     def _secret_ok(self, ws, body: dict) -> bool:
         if not self.join_secret:
@@ -511,11 +514,21 @@ class NetServer:
                 log.exception("handler error for %s", rec.node_id if rec else peer)
         finally:
             if rec is not None and rec.ws is ws:
-                rec.ws = None
-                rec.via = None                 # A28.3: a dead socket has no path
                 log.info("node %s disconnected (last seq %d)", rec.node_id, rec.seq_hi)
-                for cb in self._on_disconnect:
-                    self._call(cb, rec.node_id)
+                self._drop_socket(rec)
+
+    def _drop_socket(self, rec: NodeRecord):
+        """THE one place a record loses its socket. Returns the socket so a caller can close it.
+
+        Every path that used to write `rec.ws = None` by hand is routed here, because `reach` and the
+        `on_disconnect` fan-out have to happen at all four of them, not just at the handler's `finally`.
+        A takeover, an evict, a node_id switch and a refused bind end a socket just as surely as a
+        dropped connection does -- and a coverage fix that covers only one of them is not a fix."""
+        ws, rec.ws = rec.ws, None
+        rec.via = None                     # A28.3: a dead socket has no path
+        for cb in self._on_disconnect:
+            self._call(cb, rec.node_id)
+        return ws
 
     def _send_raw(self, ws, kind: str, body: dict) -> None:
         if self._loop is None:
@@ -575,8 +588,7 @@ class NetServer:
                 continue                      # stale (or keyed) and already disconnected: nothing to displace
             self.stats["takeovers"] += 1
             log.warning("gun %s re-bound at %s from %s node %s to %s", gun_name or gun_tail, where, "keyed" if fresh else "stale", other.node_id, rec.node_id)
-            old = other.ws
-            other.ws = None
+            old = self._drop_socket(other)
             self._loop.create_task(self._close_quiet(old, _CLOSE_TAKEOVER, "gun taken over"))
         return None
 
@@ -586,7 +598,7 @@ class NetServer:
         rec = self.nodes.get(node_id)
         if rec is None:
             return False
-        ws, rec.ws = rec.ws, None
+        ws = self._drop_socket(rec)
         if ws is not None and self._loop is not None:
             self._loop.create_task(self._close_quiet(ws, _CLOSE_TAKEOVER, "evicted by operator"))
         rec.last_seen = -1e9                      # stale immediately (finite: view() still renders an age)
@@ -743,7 +755,7 @@ class NetServer:
                 # one socket, one node_id: a second hello with another id would create a record sharing this socket
                 self.stats["malformed"] += 1
                 log.warning("node %s sent a hello for %r on its live socket — closing", rec.node_id, body.get("node_id"))
-                ws, rec.ws = rec.ws, None
+                ws = self._drop_socket(rec)
                 self._loop.create_task(self._close_quiet(ws, _CLOSE_POLICY, "node_id changed"))
                 return
             # a second hello on a live socket: treat as a refresh (re-hydrate), not an error
@@ -787,7 +799,7 @@ class NetServer:
         # did not prove blocks; a stale one is displaced (hot-swap).
         if gun_name or gun_tail:
             if self._claim_gun(rec, rec.node_key, gun_name, gun_tail, "bind") is not None:
-                ws, rec.ws = rec.ws, None
+                ws = self._drop_socket(rec)
                 self._loop.create_task(self._close_quiet(ws, _CLOSE_INUSE, "gun in use"))
                 return
         rec.gun_name, rec.gun_tail = gun_name or rec.gun_name, gun_tail or rec.gun_tail
