@@ -432,6 +432,9 @@ MC_KINDS = {"welcome", "assign", "tutorial", "config", "start", "feedback", "con
             "time_res", "pull_log", "ack", "apply", "score", "loadout_ack",             # A10: loadout_ack
             "alert",    # A11.4 -- omitted here until 2026-09-07, so every alert MC sent was rejected
                         # by envelope.validate() at the node and silently dropped (contracts.md §MC->node).
+            "join",     # A28.2 (2026-09-12): the tunnel came up or went down -- `{pub, secret}`, the same body
+                        # `welcome.join` carries. Broadcast, not pushed, so `test_mc_envelope_kinds.py`'s AST
+                        # scan (which reads `self.net.push(...)` sites only) does NOT cover it.
             "station_config"}   # A13.5 (F104, 2026-09-11): MC -> a utility node. The same trap as `alert`:
                                 # the phone's `MC_KINDS` (app/src/transport/envelope.js) must list it too, or
                                 # the arming message is dropped as malformed before `onMessage` ever sees it.

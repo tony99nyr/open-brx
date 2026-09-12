@@ -1154,17 +1154,32 @@ class Compiler:
 
     def validate(self, config: GameConfig, roster: list[Player],
                  opts: dict | None = None) -> dict:
-        """§7 rules → {ok, errors, warnings} (A6: frag-limit-without-coverage is a WARNING)."""
+        """§7 rules → {ok, errors, warnings} (A6: frag-limit-without-coverage is a WARNING).
+
+        **Two coverage opts, deliberately (A28.4).** `coverage` is the DERIVED one MC now computes every
+        time it validates (`Session.coverage()`: "full" iff every bound player node is connected over
+        backhaul). `venue_coverage` is the ASSERTED one — a human saying this park has coverage
+        everywhere — which nothing sets today. They do different work:
+
+          * either one clears the A6.1 frag-limit warning and makes a frag-limit / survival end authoritative;
+          * only `venue_coverage` unlocks `time_limit_s: null`.
+
+        A28.4 is explicit about the asymmetry: a cell signal is less trustworthy than a venue assertion,
+        and a phone that loses data mid-match must still hold an end it can reach alone. One opt could
+        not express that, so the derived value got the new name and the old one kept its meaning.
+        """
         opts = opts or {}
         errors: list[str] = []
         warnings: list[str] = []
         mode = config.get("mode", "tdm")
-        covered = opts.get("coverage") == "full"
+        asserted = opts.get("venue_coverage") == "full"
+        covered = asserted or opts.get("coverage") == "full"
 
         # time limit: required (>0) on the phone path unless a fully-covered venue is asserted
         tl = config.get("time_limit_s")
-        if not covered and (tl is None or tl <= 0):
-            errors.append("time_limit_s is required (>0) unless opts.coverage=='full' (A4.8)")
+        if not asserted and (tl is None or tl <= 0):
+            errors.append("time_limit_s is required (>0) unless opts.venue_coverage=='full' (A4.8; "
+                          "observed backhaul coverage does NOT lift it — A28.4)")
 
         # player_num: unique + 1..63 across the roster
         nums = [p.get("player_num") for p in roster]

@@ -67,6 +67,10 @@ _REQUIRED: dict[str, tuple[str, ...]] = {
     "alert": ("kind", "text", "player_id", "t"),
     # A13.5 (F104): the arming message. `threshold` / `game` / `valid_ids` are optional (utility.md §5c).
     "station_config": ("kind", "team", "id"),
+    # A28.2: the tunnel came up or went down. `pub` is required but NULLABLE -- null is the fact "there
+    # is no public URL any more", which the node has to act on; the check above is `key not in body`,
+    # so a present null passes and an omitted key (an MC that forgot to say) is refused.
+    "join": ("pub", "secret"),
 }
 
 _EVENT_REQUIRED: dict[str, tuple[str, ...]] = {

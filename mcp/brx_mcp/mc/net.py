@@ -43,6 +43,30 @@ _CLOSE_POLICY = 1008
 _CLOSE_TAKEOVER = 4000
 _CLOSE_VERSION = 4001
 _CLOSE_INUSE = 4003     # A8: another live node holds this node_id/gun and the key did not match
+_CLOSE_NO_SECRET = 4004  # A28.2: a hello through the TUNNEL without the session's join secret
+
+_LOOPBACK = {"127.0.0.1", "::1", "localhost"}
+
+
+def _request_headers(ws) -> list[tuple[str, str]]:
+    """The upgrade request's headers, across websockets versions.
+
+    `>=13` hangs them off `ws.request.headers`; older releases expose `ws.request_headers`. We read
+    them for exactly one thing (`Cf-Connecting-Ip`, A28.2), so a version that offers neither simply
+    falls back to the peer-address test rather than failing the connection."""
+    h = getattr(getattr(ws, "request", None), "headers", None)
+    if h is None:
+        h = getattr(ws, "request_headers", None)
+    if h is None:
+        return []
+    for getter in ("raw_items", "items"):
+        fn = getattr(h, getter, None)
+        if fn is not None:
+            try:
+                return [(str(k), str(v)) for k, v in fn()]
+            except Exception:
+                continue
+    return []
 
 
 def lan_ip() -> str:
@@ -74,6 +98,7 @@ class NodeRecord:
     stale: bool = False
     seq_hi: int = 0                    # highest persisted seq applied
     node_key: str = ""                # A8: secret to re-claim this node_id / its gun
+    via: str | None = None            # A28.3: which join URL this socket dialled ("lan" | "backhaul")
     displaced_keys: set = field(default_factory=set)   # keys of the (stale) holders this record displaced WITHOUT proving them
     applied: deque = field(default_factory=lambda: deque(maxlen=REORDER_WINDOW))
     malformed: E.MalformedCounter = field(default_factory=E.MalformedCounter)
@@ -88,6 +113,9 @@ class NodeRecord:
             "gun_name": self.gun_name, "gun_tail": self.gun_tail, "gun_fw": self.gun_fw,
             "player_id": self.player_id, "connected": self.connected, "stale": self.stale,
             "last_seen_ms": int((time.monotonic() - self.last_seen) * 1000), "seq_hi": self.seq_hi,
+            # A28.3: the live socket's path. Meaningless once the socket is gone, so a disconnected
+            # record reports nothing rather than the path it used last.
+            "reach": self.via if self.connected else None,
         }
 
 
@@ -126,6 +154,11 @@ class NetServer:
         # timeout abandons the AWAIT, not the thread. These two guard the late finisher.
         self._mdns_lock = threading.Lock()
         self._mdns_abort = threading.Event()
+        # A28.2: the join body every `welcome` carries, and the secret the tunnel path is gated on.
+        # Session owns all three values and pushes them down with `set_join()`.
+        self.join_secret = ""
+        self._pub: str | None = None
+        self._public_up = False
         self.stats = {"malformed": 0, "quarantined": 0, "takeovers": 0, "replays": 0, "events": 0, "rejected": 0, "evicted": 0}
 
     # ---------------- registration (interfaces.NetServer) ----------------
@@ -217,6 +250,41 @@ class NetServer:
             host = self._host if self._host not in ("", "0.0.0.0", "::") else lan_ip()
         url = f"ws://{host}:{self._port}{self._ws_path}"
         return {"url": url, "session_id": self.session_id, "qr": url}
+
+    # ---------------- A28.2 join (secret + public URL) ----------------
+    def set_join(self, *, secret: str | None = None, pub: str | None = None,
+                 public_up: bool | None = None) -> None:
+        """Session hands the net the current join body. `public_up` is what ARMS the secret gate: with
+        the tunnel off, a hello needs no secret at all (typed address stays the mandatory floor, §5)."""
+        if secret is not None:
+            self.join_secret = str(secret)
+        self._pub = pub or None
+        if public_up is not None:
+            self._public_up = bool(public_up)
+
+    def join_body(self) -> dict[str, Any]:
+        """`welcome.join`, and the body of the MC→node `join` push (A28.2)."""
+        return {"pub": self._pub, "secret": self.join_secret}
+
+    def _via_tunnel(self, ws) -> bool:
+        """Did this upgrade arrive through the tunnel? Loopback (cloudflared dials 127.0.0.1 on our
+        behalf) or a `Cf-Connecting-Ip` header the edge stamped on. Both are heuristics, and both err
+        towards ASKING for the secret rather than skipping it."""
+        for k, _v in _request_headers(ws):
+            if k.lower() == "cf-connecting-ip":
+                return True
+        peer = getattr(ws, "remote_address", None)
+        host = str(peer[0]) if isinstance(peer, (tuple, list)) and peer else ""
+        if host.startswith("::ffff:"):
+            host = host[7:]
+        return host in _LOOPBACK
+
+    def _secret_ok(self, ws, body: dict) -> bool:
+        if not self._public_up or not self.join_secret:
+            return True                     # tunnel off (or no secret set): the LAN rules, unchanged
+        if not self._via_tunnel(ws):
+            return True                     # A28.2: a LAN hello is never refused for lacking one
+        return secrets.compare_digest(str(body.get("secret") or ""), self.join_secret)
 
     def advertise_mdns(self) -> bool:
         """Publish `_openbrx._tcp` via zeroconf if the package is available (net.md §3). Returns
@@ -471,6 +539,14 @@ class NetServer:
 
     async def _hello_gate(self, ws, body: dict, rec: NodeRecord, presented_key: str) -> NodeRecord:
         node_id = rec.node_id
+        # A28.2: the secret's one job is keeping internet strangers off the node socket, so it is
+        # checked FIRST — before any record is touched — and only for a hello that came through the
+        # tunnel while the tunnel is up.
+        if not self._secret_ok(ws, body):
+            self.stats["quarantined"] += 1
+            log.warning("hello for %s arrived through the tunnel without the join secret — closing 4004", node_id)
+            await ws.close(_CLOSE_NO_SECRET, "no_secret")
+            raise _Rejected()
         if rec.ws is None and rec.hello_ok and presented_key != rec.node_key:
             if self._fresh(rec):
                 # A8: a known node_id that dropped a beat ago is still its owner's — a keyless hello must not
@@ -509,6 +585,9 @@ class NetServer:
         rec.hello_ok = True
         rec.node_type = str(body.get("node_type", "phone"))
         rec.app_ver = str(body.get("app_ver", ""))
+        via = str(body.get("via") or "")
+        if via in ("lan", "backhaul"):
+            rec.via = via                  # A28.3: which URL this socket dialled; `status.reach` refreshes it
         if gun0:
             rec.gun_name = gun0.get("name") or rec.gun_name
             rec.gun_tail = gun0.get("tail") or rec.gun_tail
@@ -528,7 +607,11 @@ class NetServer:
             pid = node_ctx.get("player", {}).get("player_id") if isinstance(node_ctx.get("player"), dict) else None
             if pid:
                 self._set_player(rec, pid)
-        welcome = {"session_id": self.session_id, "server_t": E.now_ms(), "seq_hi": rec.seq_hi, "node_key": rec.node_key}
+        welcome = {"session_id": self.session_id, "server_t": E.now_ms(), "seq_hi": rec.seq_hi,
+                   "node_key": rec.node_key,
+                   # A28.2: every welcome hands over both, so a phone that joined over the LAN before the
+                   # tunnel existed — or typed the address — learns them without rescanning the QR.
+                   "join": self.join_body()}
         if node_ctx:
             welcome["node"] = node_ctx
         await ws.send(E.encode(E.make_envelope("welcome", welcome)))
@@ -542,6 +625,8 @@ class NetServer:
         # forever except on `FakeNet`, whose hand-rolled `simulate_*_hello` info dicts included it and
         # so never caught this.
         info = {"node_id": rec.node_id, "node_type": rec.node_type, "app_ver": rec.app_ver}
+        if rec.via:
+            info["reach"] = rec.via        # A28.3: the NodeView's first `reach`, before any status lands
         if rec.gun_name:
             info["gun_name"] = rec.gun_name
         if rec.gun_tail:

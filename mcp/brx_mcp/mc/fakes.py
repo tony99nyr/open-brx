@@ -114,9 +114,13 @@ class FakeCompiler:
     def validate(self, config: GameConfig, roster: list[Player], opts: dict | None = None) -> dict:
         errors, warnings = [], []
         opts = opts or {}
-        if not config.get("time_limit_s") and opts.get("coverage") != "full":
+        # A28.4: the same two opts the real compiler reads — `venue_coverage` (asserted) unlocks
+        # time_limit_s, `coverage` (derived from backhaul) only clears the frag warning.
+        asserted = opts.get("venue_coverage") == "full"
+        covered = asserted or opts.get("coverage") == "full"
+        if not config.get("time_limit_s") and not asserted:
             errors.append("time_limit_s is required on the phone path")
-        if config.get("scoring", {}).get("frag_limit") and opts.get("coverage") != "full":
+        if config.get("scoring", {}).get("frag_limit") and not covered:
             warnings.append("frag_limit only ends the match for nodes in coverage; everyone stops at time_limit_s")
         nums = [p["player_num"] for p in roster]
         if len(set(nums)) != len(nums):
@@ -159,6 +163,7 @@ class FakeNet:
         self.pushed: list[tuple[str | None, str, dict]] = []
         self.host, self.port, self.ws_path = "0.0.0.0", 0, "/ws"
         self.session_id = "fake-session"
+        self.join_secret, self._pub, self._public_up = "", None, False   # A28.2
 
     # NetServer surface
     def start(self, host: str, port: int, ws_path: str = "/ws") -> None:
@@ -166,6 +171,14 @@ class FakeNet:
     def join_info(self) -> dict:
         url = f"ws://{self.host}:{self.port}{self.ws_path}"
         return {"url": url, "session_id": self.session_id, "qr": url}
+    def set_join(self, *, secret: str | None = None, pub: str | None = None, public_up: bool | None = None) -> None:
+        if secret is not None:
+            self.join_secret = str(secret)
+        self._pub = pub or None
+        if public_up is not None:
+            self._public_up = bool(public_up)
+    def join_body(self) -> dict:
+        return {"pub": self._pub, "secret": self.join_secret}
     def hydrate(self, cb): self._hydrate = cb
     def on_node(self, cb): self._cb["node"].append(cb)
     def on_event(self, cb): self._cb["event"].append(cb)
@@ -177,13 +190,19 @@ class FakeNet:
     def broadcast(self, kind: str, body: dict) -> None: self.pushed.append((None, kind, body))
 
     # simulation helpers (what a node would cause)
-    def simulate_hello(self, node_id: str, gun_name: str, node_type: str = "phone", fw: str | None = "v4.32") -> dict | None:
+    def simulate_hello(self, node_id: str, gun_name: str, node_type: str = "phone", fw: str | None = "v4.32",
+                       via: str | None = None) -> dict | None:
         tail = gun_name.rsplit("-", 1)[-1] if "-" in gun_name else ""
         hello = {"node_id": node_id, "node_type": node_type, "app_ver": "fake", "seq_next": 1,
                  "gun": {"name": gun_name, "tail": tail, "fw": fw}}
+        if via:
+            hello["via"] = via
         node = self._hydrate(hello) if self._hydrate else None
-        for cb in self._cb["node"]:
-            cb({"node_id": node_id, "node_type": node_type, "gun_name": gun_name, "gun_tail": tail, "fw": fw})
+        info = {"node_id": node_id, "node_type": node_type, "gun_name": gun_name, "gun_tail": tail, "fw": fw}
+        if via:
+            info["reach"] = via        # A28.3: mirrors `NetServer._fire_node` — the FakeNet that does NOT
+        for cb in self._cb["node"]:    # mirror the real one is how F106(b) hid for a month
+            cb(info)
         return node
     def simulate_utility_hello(self, node_id: str, app_ver: str = "utility") -> dict | None:
         """A13.5: a station phone's hello -- `node_type: "utility"`, no gun (utility.js `connectMc`)."""
