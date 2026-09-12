@@ -91,7 +91,11 @@ def build(args):
 
     ip = args.host if args.host not in ("0.0.0.0", "") else _lan_ip()
     ws_url = f"ws://{ip}:{args.ws_port}/ws"
-    session = Session(compiler, net, armory, lan={"mode": "unknown", "ip": ip, "port": args.port, "ws_url": ws_url, "qr": ws_url})
+    # F143 (field 2026-09-12): `mode` used to be the literal "unknown", and the REACH panel printed it
+    # as a display word — "UNKNOWN · 192.168.28.167:8765". Best-effort SSID per platform, never fatal,
+    # and the no-answer case is "lan" with no ssid (`netinfo.lan_info`).
+    from . import netinfo as _netinfo
+    session = Session(compiler, net, armory, lan=_netinfo.lan_info(ip, args.port, ws_url))
     # A28.1: the tunnel exists in every run (so `lan.public.available` is honest and the UI can show the
     # install line); it only spawns anything on --tunnel or POST /api/tunnel.
     from pathlib import Path as _PT
@@ -117,6 +121,9 @@ def build(args):
         f"  backhaul: {pub['status']}" + (f"  {pub['ws_url']}" if pub.get("ws_url") else "")
         + (f"  ({pub['error']})" if pub.get("error") else ""), flush=True))
     session.attach_tunnel(tunnel)
+    # F142 (field 2026-09-12): mark the session BEFORE any restore or persist, so the marker is what
+    # `restore_snapshot` compares against and what the first write records.
+    session.demo_session = bool(args.demo)
     restored_from_file = 0
     if getattr(args, "session_file", None):
         # explicit session file (e2e boots from a fixture, e.g. a pre-A10 snapshot) — honoured even with --demo
@@ -134,6 +141,10 @@ def build(args):
         restored = session.restore_snapshot()
         if restored:
             print(f"  session restored: {restored} player(s) from the last run (NEW MATCH > fresh session clears it)")
+        elif session._persist_path.exists():
+            # F142: a snapshot that was there and was DECLINED (the demo/real boundary) says so out loud;
+            # `restore_snapshot` logged the detail.
+            print("  session file present but NOT restored — see the log line above", flush=True)
     extra = []
     import inspect
     if inspect.iscoroutinefunction(getattr(net, "start", None)):

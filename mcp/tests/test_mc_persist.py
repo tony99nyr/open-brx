@@ -252,3 +252,77 @@ def test_a_pre_a18_snapshot_restores_the_modes_complete_params():
     s3, net3, clock3, ps3 = mk()
     s3.set_config({"mode": "tdm"})
     assert "mode_params" not in s3.config
+
+
+# ------------------------------------------------------------- F142: demo never wakes up in a match
+def _snap_path():
+    return pathlib.Path(tempfile.mkdtemp()) / "session.json"
+
+
+def _saved(session, demo: bool, path):
+    session._persist_path = path
+    session.demo_session = demo
+    session.add_player("ALPHA", team_id="blue")
+    session._persist_last = 0.0
+    session._persist()
+    return path
+
+
+def test_f142_a_demo_snapshot_is_not_restored_into_a_real_launch():
+    """Field 2026-09-12: ALPHA on GUN-A and BRAVO on GUN-B were restored into a real field session and
+    sat on the roster with no phone. Tagging the two REAL phones then created two more players, so a
+    match would have been pushed to a four-player roster with two ghosts. The operator's only clue was
+    one banner line in a terminal."""
+    tmp = _saved(mk()[0] if isinstance(mk(), tuple) else mk(), True, _snap_path())
+    assert json.loads(tmp.read_text())["demo"] is True
+
+    real = mk(); real = real[0] if isinstance(real, tuple) else real
+    real._persist_path, real.demo_session = tmp, False
+    before = dict(real.players)
+    assert real.restore_snapshot() == 0, "a demo roster was restored into a real session"
+    assert real.players == before, "the real session's own roster was overwritten by a demo file"
+    assert real.restored_from is None
+
+
+def test_f142_a_real_snapshot_is_not_restored_into_a_demo_launch_either():
+    """The other direction, and for the same reason: a demo run that inherits the bench roster was the
+    original 2026-08-26 bug (a restored bare-tail gun_id stole the e2e fake gun)."""
+    tmp = _saved(mk()[0] if isinstance(mk(), tuple) else mk(), False, _snap_path())
+    assert json.loads(tmp.read_text())["demo"] is False
+    demo = mk(); demo = demo[0] if isinstance(demo, tuple) else demo
+    demo._persist_path, demo.demo_session = tmp, True
+    assert demo.restore_snapshot() == 0
+
+
+def test_f142_a_matching_snapshot_still_restores_and_says_so_on_the_state():
+    tmp = _saved(mk()[0] if isinstance(mk(), tuple) else mk(), False, _snap_path())
+    s = mk(); s = s[0] if isinstance(s, tuple) else s
+    s._persist_path, s.demo_session = tmp, False
+    n = s.restore_snapshot()
+    assert n == 3 and any(p["display"] == "ALPHA" for p in s.players.values())
+    # F142: the board is TOLD, instead of the operator being expected to read a terminal
+    assert s.restored_from == {"at": json.loads(tmp.read_text())["saved_ms"], "players": n}
+    assert s.snapshot()["restored_from"] == s.restored_from
+    # ...and FRESH SESSION is the answer to it
+    s.new_session(keep_roster=False)
+    assert s.restored_from is None and "restored_from" not in s.snapshot()
+
+
+def test_f142_a_pre_f142_snapshot_with_no_marker_reads_as_a_real_one():
+    """Every session.json written before today has no `demo` key. Treating a missing marker as `real`
+    keeps a genuine bench roster restorable; the demo side is the one that has to opt in."""
+    tmp = _snap_path()
+    s = mk(); s = s[0] if isinstance(s, tuple) else s
+    s._persist_path = tmp
+    s.add_player("ALPHA", team_id="blue")
+    s._persist_last = 0.0
+    s._persist()
+    raw = json.loads(tmp.read_text())
+    raw.pop("demo")
+    tmp.write_text(json.dumps(raw))
+    s2 = mk(); s2 = s2[0] if isinstance(s2, tuple) else s2
+    s2._persist_path, s2.demo_session = tmp, False
+    assert s2.restore_snapshot() == 3
+    s3 = mk(); s3 = s3[0] if isinstance(s3, tuple) else s3
+    s3._persist_path, s3.demo_session = tmp, True
+    assert s3.restore_snapshot() == 0

@@ -947,3 +947,125 @@ def test_the_chain_rule_reads_the_catalog_in_play_not_the_shipped_file():
     # so this catalog's own shotgun row is still a chain reload and still drops the perk.
     assert P.set_slot({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "easy_reload"},
                       "primary", "weapon", "shotgun", PK, cat) == {"weapons": [{"weapon_id": "shotgun"}]}
+
+
+# --------------------------------------------------- S37: a swap perk needs something to swap to
+def _pool(policy_patch):
+    pol = P.normalize({**P.preset_rules("open"), **policy_patch}, "tdm")
+    return pol, P.pool(pol, W, PK)
+
+
+def test_s37_quick_switch_leaves_the_perk_pool_when_there_is_no_secondary():
+    """Tony, field 2026-09-12: "if either weapon slot is disabled, the Quick Switch perk must be
+    disabled/hidden too — it is the $WEAP tok15 swap delay; with one weapon there is nothing to swap."
+    Taking it out of the POOL is what makes it vanish from both UIs, and `apply()` clears a stored one,
+    with no second rule anywhere."""
+    _, open_pool = _pool({})
+    assert "quick_switch" in open_pool["perks"]
+    for patch in ({"secondary": P._rule("off", ("weapon",))},                       # slot switched off
+                  {"secondary": P._rule("player", ("weapon",), exclude_tags=(       # filtered to nothing
+                      "assault", "cqb", "marksman", "sniper", "support", "power", "heavy",
+                      "sidearm", "pistol", "melee"))}):
+        pol, lp = _pool(patch)
+        assert lp["secondary_weapons"] == [], patch
+        assert "quick_switch" not in lp["perks"], lp["perks"]
+        # every OTHER perk is untouched — this is one perk's rule, not a blanket
+        assert {"body_armor", "extended_mags", "quick_hands"} <= set(lp["perks"]), lp["perks"]
+
+
+def test_s37_a_stored_quick_switch_is_cleared_by_apply_and_refused_by_validate():
+    pol, lp = _pool({"secondary": P._rule("off", ("weapon",))})
+    held = {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "quick_switch"}
+    assert P.apply(pol, lp, held, W, PK).get("perk") is None
+    ok, why = P.validate_loadout(pol, lp, held, W, PK)
+    assert ok is False and "second weapon" in why, why
+
+
+def test_s37_the_phones_pick_is_refused_with_a_reason_that_says_why():
+    """`loadout_ack.reason` is shown verbatim on the HUD, so "Quick Switch isn't allowed in this game"
+    (what the generic pool rejection said) is not good enough: the operator did not ban the perk, the
+    ruleset left nothing to switch to."""
+    s, net, clock, ps = mk(1)
+    s.set_config({"loadout_policy": {"preset": "custom", "secondary": {"choice": "off"}}})
+    online(s, net, clock, ps[0], 0)
+    _req(net, 0, "perk", "perk", "quick_switch")
+    ack = _last_ack(net, 0)
+    assert ack["ok"] is False and ack["slot"] == "perk"
+    assert "Quick Switch" in ack["reason"] and "second weapon" in ack["reason"], ack["reason"]
+    assert s.players[ps[0]["player_id"]]["loadout"].get("perk") is None
+    # the pool the phone reads no longer offers it, so the control disappears on its own
+    assert "quick_switch" not in s.loadout_pool()["perks"]
+
+
+def test_s37_the_rule_is_asked_of_the_effect_not_of_the_perk_id():
+    """`swaps_weapons` reads `effects.switch_mult`, the way `takes_alt` reads `effects.alt_reload`, so
+    a second swap perk is covered the day it exists."""
+    assert P.swaps_weapons({"perk_id": "quick_switch", "effects": {"switch_mult": 0.5}}) is True
+    assert P.swaps_weapons({"perk_id": "future_swap", "effects": {"switch_mult": 0.25}}) is True
+    assert P.swaps_weapons({"perk_id": "body_armor", "effects": {"max_armor_add": 50}}) is False
+    assert P.swaps_weapons(None) is False
+
+
+# --------------------------------------------------- F146: an empty primary set is refused, not degraded
+def test_f146_a_primary_filter_that_excludes_every_weapon_is_refused_at_validate():
+    """Field 2026-09-12: the Kit primary filter ended up excluding every class, policy found no legal
+    primary, `apply()` fell through to whatever was held, and the operator got "2 LOADOUTS RESET BY
+    PISTOLS ONLY" (a warning) followed by a hard weapon error about a pistol they never chose. The
+    empty ruleset is the actual mistake and it has to say so, naming the control to touch."""
+    s, net, clock, ps = mk(2, compiler=Compiler())
+    assert not s._validate()["errors"] or not any("PRIMARY FILTER" in e for e in s.config_errors)
+    s.set_config({"loadout_policy": {
+        "preset": "custom",
+        "primary": {"choice": "player", "kinds": ["weapon"],
+                    "exclude_tags": ["assault", "cqb", "marksman", "sniper", "support",
+                                     "power", "heavy", "sidearm", "pistol", "melee"]}}})
+    assert s.loadout_pool()["primary"] == []
+    s._validate()
+    said = [e for e in s.config_errors if "PRIMARY FILTER" in e]
+    assert said, s.config_errors
+    assert "EXCLUDES EVERY WEAPON" in said[0] and "primary slot" in said[0], said[0]
+    # and it clears the moment the ruleset is legal again
+    s.set_config({"loadout_policy": {"preset": "open"}})
+    s._validate()
+    assert not any("PRIMARY FILTER" in e for e in s.config_errors), s.config_errors
+
+
+def test_f146_a_players_own_illegal_pick_still_gets_the_reset_warning():
+    """The half that is KEPT: a ruleset with a legal pool that simply does not admit what somebody was
+    already holding is a reset, not a refusal, and the notice is how the host learns it happened."""
+    s, net, clock, ps = mk(2, compiler=Compiler())
+    s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "rocket_launcher"}]})
+    s.set_config({"loadout_policy": {"preset": "no_heavies"}})
+    s.apply_policy()
+    s._validate()
+    assert any("RESET BY" in w for w in s.config_warnings), s.config_warnings
+    assert not any("PRIMARY FILTER" in e for e in s.config_errors), s.config_errors
+
+
+# --------------------------------------------------- S39: the voice preview plays the INTRO
+def test_s39_the_voice_pick_preview_plays_the_characters_intro_line():
+    """Tony, field 2026-09-12: selecting a character voice should play that character's INTRO line, not
+    their kill line. Hearing a voice announce a kill says nothing about who you just picked."""
+    from brx_mcp import voices as V
+    c = Compiler()
+    for voice in ("male", "female", "jay"):
+        frame = c.voice_preview(voice)
+        assert frame.endswith(",,,,*") and frame.startswith("$PLAY,,4,6,"), frame
+        assert V.role_id(voice, "intro") in frame, (voice, frame)
+        assert frame != c.cues(voice)["kill"], f"{voice}: still previewing the kill line"
+
+
+def test_s39_the_preview_frame_reaches_the_bound_node_on_a_voice_change():
+    s, net, clock, ps = mk(1, compiler=Compiler())
+    online(s, net, clock, ps[0], 0)
+    s.patch_player(ps[0]["player_id"], voice="female")
+    pushes = [b for _k, _n, b in net.pushes("apply", "node0") if b.get("preview")]
+    assert pushes, "no A9.1 preview reached the node"
+    from brx_mcp import voices as V
+    assert pushes[-1]["frames"] == [f"$PLAY,,4,6,{V.role_id('female', 'intro')},,,,*"], pushes[-1]
+
+
+def test_s39_the_intro_frame_is_not_added_to_the_compiled_bundle():
+    """Deliberately not a `cues()` entry: `cues()` is compiled into every FrameBundle on the wire and
+    into `golden_bundle.json`, which the phone app's tests read. A bench preview is not a match frame."""
+    assert "intro" not in Compiler().cues("male")

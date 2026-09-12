@@ -23,16 +23,44 @@ Server sends `{ "kind": "snapshot", "state": <State> }` on connect and on every 
 ```jsonc
 State {
   active_preset_id?: string | null,             // A10 §8: the saved game that was APPLIED (null once the config is edited) — GAMES marks it PLAYING
+  restored_from?: { at: number, players: number },   // F142 (field 2026-09-12): this roster came back off disk.
+                                               // ABSENT when nothing was restored, so presence is the rule for showing
+                                               // "restored from <date>" on the board beside a FRESH SESSION control
+                                               // (`POST /api/session/new` with keep_roster false, which clears this).
+                                               // A snapshot is restored only into a run of the SAME kind — a `--demo`
+                                               // session is never restored into a real launch, or the other way round:
+                                               // two demo players sat on a real field roster all night and the only
+                                               // hint was one banner line in a terminal
   session_id, phase, t,                      // server time (Unix ms)
   mc_confidence: { confident: boolean, missing: string[], stale: string[], unflushed: string[] },   // A11.5: player_ids; gates the MC-driven global-state events
-  lan: { mode: "router"|"hotspot"|"unknown", ssid?: string, ip: string, port: number, ws_url: string,
+  lan: { mode: "router"|"hotspot"|"lan", ssid: string|null, ip: string, port: number, ws_url: string,
+         // F143 (field 2026-09-12): `"unknown"` is GONE. It was hard-coded at launch and the REACH panel
+         // printed it as a display word — "UNKNOWN · 192.168.28.167:8765". MC now detects the SSID per
+         // platform (best effort, 2 s cap, never fatal); when nothing answers the mode is `"lan"` and
+         // `ssid` is null, which renders as "LAN · <ip>:<port>". `router`/`hotspot` are reserved for a
+         // detector that can tell them apart. NEVER render a mode value that is not a real word.
          qr: string,   // A28.2: `ws://<ip>:<ws-port>/ws?s=<join_secret>[&pub=<url-encoded public ws_url>]` -- NOT the same as ws_url any more
          join_secret: string,   // A28.2: 8 url-safe chars, per session, persisted; enforced only on hellos that arrive through the tunnel
-         public: { ws_url: string|null, status: "off"|"starting"|"up"|"error", provider: "cloudflared"|"manual"|null, available: boolean, error?: string } },  // A28.1
+         public: { ws_url: string|null, status: "off"|"starting"|"up"|"error", provider: "cloudflared"|"manual"|null, available: boolean, error?: string,
+                   detail?: string } },  // A28.1; `detail` is F140 (field 2026-09-12): the sub-state under
+         // `starting` — `"resolving <host>"` while MC waits for the tunnel hostname to answer at
+         // Cloudflare's own resolver, and a warning line under `up` when it never did inside 60 s.
+         // `status` does NOT reach `"up"` (and `qr` carries no `&pub=`, and no `join` is pushed) until
+         // the name resolves: cloudflared printing the URL is not the moment the world can reach it, and
+         // a phone that dialled a second too early had the miss negative-cached for ~250 s.
   coverage: { level: "full"|"zones", on_backhaul: number, bound: number },   // A28.4: full iff every bound player node is connected with reach == "backhaul"
   nodes: NodeView[],                          // every node that ever said hello this session
   stations: StationView[], game_no: number,   // A13.5: the ITEMS panel (see GET /api/stations); game_no = the advert `game` byte stations are armed with THIS match (bumps on the first push after a match started)
-  readiness: ReadinessSnapshot,               // A25/A29: each ReadinessRow also carries `app_ver`, `platform` and `log` (same shape as
+  readiness: ReadinessSnapshot,               // Each ReadinessRow also carries `reach` and `last_reach` (same values as NodeView).
+                                               // F144 (field 2026-09-12): `reach == "backhaul"` is GREEN — a phone MC is
+                                               // talking to right now is ready. Render the path as a TAG on the card, never
+                                               // as a CHECK; the amber "NOT ON THE FIELD WI-FI — ON BACKHAUL" is gone, and
+                                               // amber/red are only for a node MC cannot reach at all.
+                                               // F155: for a node whose `last_reach` was `"backhaul"` the red reads
+                                               // "NOT REACHED FOR <n> s — BLOCKS START" (with a "TUNNEL DOWN — " lead while
+                                               // `lan.public.status` is `"error"`), NEVER "WRONG WI-FI / MC UNREACHABLE" —
+                                               // the phone was on the right network and the tunnel is what went away.
+                                               // A25/A29: each row also carries `app_ver`, `platform` and `log` (same shape as
                                                // NodeView.log). A29 adds one RED blocker — `APP <x.y.z> INCOMPATIBLE WITH MC (NEEDS <tier>) —
                                                // UPDATE THE APP` — and three ambers: `APP OLDER THAN THE FIELD (<mine> < <newest>)`,
                                                // `APP OLDER THAN THE RELEASE (<mine> < <release>)` and `APP VERSION UNKNOWN (<raw>)`.
@@ -67,10 +95,16 @@ State {
     mc_major: string                           //   the tier MC is compatible with: "0.1" while the app is on 0.x, "2" from 1.0.0 on
   },
   config: GameConfig,                         // current draft (validated on PUT); A18: `mode_params` (complete, or absent for a mode with none); A19: `vip_player_id?`; A20: `stun?: {duration_s?}` (absent = no EMP row); A10: carries loadout_policy {preset, hud_select, primary: SlotRule, secondary: SlotRule, perk: SlotRule}; A12: a weapon slot's kinds ∈ ("weapon"|"sidearm")[] — "sidearm" admits only the pistols; A14: `perk` is its own rule (kinds always ["perk"], choice may be "off") (loadout.md §3)
-  config_errors: string[], config_warnings: string[],   // warnings: e.g. frag_limit without full coverage (A6.1); A10: "N LOADOUTS RESET BY <ruleset>" after a policy change overwrote picks (cleared on the next PUT); a warning starting `SETUP: ` is a PHYSICAL step the operator must do on the field before the push (F70: power-cycle the grenade so the hill starts neutral; an `ir_station` source says instead that we have never had one on the bench) — the GAMES rail renders those verbatim, and so do the LOBBY and ARMED headers, where the operator is standing when the step is actionable
+  config_errors: string[], config_warnings: string[],   // warnings: e.g. frag_limit without full coverage (A6.1); A10: "N LOADOUTS RESET BY <ruleset>" after a policy change overwrote picks (cleared on the next PUT); a warning starting `SETUP: ` is a PHYSICAL step the operator must do on the field before the push (F70: power-cycle the grenade so the hill starts neutral; an `ir_station` source says instead that we have never had one on the bench) — the GAMES rail renders those verbatim, and so do the LOBBY and ARMED headers, where the operator is standing when the step is actionable. **F146 (field 2026-09-12)**: the weapon-design §2.1 one-magazine rule is a WARNING, not an error — `PRIMARY <WEAPON> CANNOT KILL ON ONE MAGAZINE: mag N < H hits at D dmg vs a P pool`. It grades the PRIMARY slot only (a sidearm is a backup and is exempt) against the BASE pool and the weapon's own magazine (no perks), because grading the perk-armed pool meant one player's Body Armor banned every sidearm in the game, as a hard error, at a real match. What IS an error now is a ruleset with no legal primary at all: `LOADOUT RULES: THE PRIMARY FILTER EXCLUDES EVERY WEAPON …`, which used to degrade silently to "N LOADOUTS RESET BY <ruleset>" and then fail on a pistol the operator never chose
   players: Player[], teams: Team[],
   kit: { kitted: number, total: number, trying: { [player_id]: weapon_id }, browsing: { [player_id]: t_ms } },   // A10 browsing = HUD has its loadout browser open ("PICKING…"), 60 s expiry
   loadout_pool: { primary: string[], secondary_weapons: string[], perks: string[] },   // A10/A14: allowed ids per slot under config.loadout_policy (server-computed; render, don't re-derive)
+                                               // S37 (field 2026-09-12): with `secondary_weapons` empty, a perk that only
+                                               // does something with a SECOND weapon (`effects.switch_mult` — Quick Switch,
+                                               // the $WEAP tok15 swap delay) is NOT in `perks`. Render the pool and the
+                                               // control disappears by itself; a phone that picks it anyway is answered
+                                               // `loadout_ack {ok:false, reason:"Quick Switch switches between two weapons,
+                                               // and there is no second weapon this game"}`
   lobby: { ready: number, total: number, pushed: boolean, acks: { [player_id]: { ok: boolean, gun_echo?: string, err?: string } } },
   start?: { match_id, go_live_t, seq, countdown_s, per_node: { [player_id]: { arm_state, t_minus_ms?, synced, last_seen_ms } } },
   live?: LiveView,
@@ -104,7 +138,8 @@ NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last
            } }
        // `complete` = a whole `last`-terminated stream landed. It STAYS complete when the phone idles back to `none`, until the
        // next ask — otherwise the one state the operator was waiting for is erased two seconds after it appears.
-NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last_seen_ms, synced, preflight?, battery?, fw?, hp?, armor?, ammo?, alive?, reach?: "lan"|"backhaul" /* A28.3: stamped by MC from the socket's arrival path (loopback / Cf-Connecting-Ip / public peer = backhaul), never from the phone's claim; cleared on disconnect */ }
+NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last_seen_ms, synced, preflight?, battery?, fw?, hp?, armor?, ammo?, alive?, reach?: "lan"|"backhaul" /* A28.3: stamped by MC from the socket's arrival path (loopback / Cf-Connecting-Ip / public peer = backhaul), never from the phone's claim; cleared on disconnect */,
+           last_reach?: "lan"|"backhaul" /* F155 (field 2026-09-12): the path this node was last HEARD over. `reach` goes away with the socket; this outlives it, and it is what makes an unreachable row's reason honest */ }
 LiveView { match_id, go_live_t, time_limit_s, ends_t, score: { [team_id]: number }, rows: LiveRow[] }
 LiveRow  = ScoreRow + { status: "alive"|"down"|"stale", respawn_in_s?: number, sync_age_ms: number }
 ScoreRow { player_id, display, team_id: string|null, kills, deaths, assists, shots, shots_total, hits,
@@ -117,6 +152,13 @@ ScoreRow { player_id, display, team_id: string|null, kills, deaths, assists, sho
                                     // so a 1v1 — where honors are empty by design — showed nothing at
                                     // all. Render the strings verbatim, in order; the leading ones are
                                     // the whole-match verdicts.
+                                    // F150 (field 2026-09-12): the per-kill medals are no longer gated on
+                                    // the VICTIM node's clock being synced. That gate is A5.7's, it is
+                                    // decided on the node that reported the death, and every medal on
+                                    // that kill belongs to somebody else — one unsynced phone wiped the
+                                    // medal column of whoever killed them (11-5, no medals). Only the
+                                    // MULTI-KILL tier, which really is a time window, stays suppressed;
+                                    // first blood and the streak medals are a count and an ordering
            // --- additive 2026-09-11 (F116/F119); an older UI ignores them, an older server omits them ---
            best_streak: number,     // F116: the LONGEST streak this match. SHOW THIS ONE. `streak` is the
                                     // CURRENT streak and is 0 for whoever died last, which is how a 9-kill
@@ -139,7 +181,11 @@ RecapView { winner: Winner, score: { [team_id]: number }, rows: ScoreRow[],
                                        // (a player kept playing, or a phone flushed minutes late) and it counts
                                        // for nothing. `winner` may itself carry `tie: player_id[]|team_id[]` when
                                        // two sides reached the frag cap within CLOCK_TIE_MS (1 s, contracts §7):
-                                       // MC cannot order two kills inside the clock band and does not pretend to
+                                       // MC cannot order two kills inside the clock band and does not pretend to.
+                                       // F154 (field 2026-09-12): an FFA whose TOP ROWS ARE EQUAL is a tie too —
+                                       // `{player_id: null, tie: [...]}`, so each of them is told `outcome: "draw"`.
+                                       // `rows[0]` is a sort artefact and used to be published as the winner, which
+                                       // is how a phone was shown LOSE on a 1-1 board
             possession?: { by_team: { [team_id]: number /* SECONDS held */ }, neutral_s: number, sites: number,
                            reports: number /* nodes that reported */, observed_s: number /* best single observer */,
                            of_s: number|null /* the match length it is measured against */ },

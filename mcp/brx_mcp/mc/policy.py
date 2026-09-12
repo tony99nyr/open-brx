@@ -52,11 +52,23 @@ _R_ALT_CHAIN = "{weapon} loads shell by shell — {perk} only taps the button on
 _R_DROPPED_WEAPON = "{perk} takes the ALT button — {weapon} dropped"
 _R_DROPPED_PERK = "{weapon} needs the ALT button to switch — {perk} dropped"
 _R_DROPPED_PERK_CHAIN = "{weapon} loads shell by shell — {perk} dropped"
+# S37 (field 2026-09-12, Tony): a swap perk with nothing to swap to
+_R_NO_SWITCH = "{perk} switches between two weapons, and there is no second weapon this game"
 
 
 def takes_alt(row: dict | None) -> bool:
     """Does this perk claim the ALT button (`effects.alt_reload`)? Then no second weapon can be switched to."""
     return bool(((row or {}).get("effects") or {}).get("alt_reload"))
+
+
+def swaps_weapons(row: dict | None) -> bool:
+    """Does this perk do NOTHING without a second weapon? (`effects.switch_mult` — Quick Switch, which
+    compiles to the `$WEAP` tok15 swap delay.)
+
+    S37 (field 2026-09-12, Tony): "if either weapon slot is disabled, the Quick Switch perk must be
+    disabled too — with one weapon there is nothing to swap." Asked of the EFFECT rather than of the
+    perk id, the same way `takes_alt` is, so a second swap perk is covered the day it exists."""
+    return bool(((row or {}).get("effects") or {}).get("switch_mult"))
 
 
 @functools.lru_cache(maxsize=1)
@@ -248,6 +260,11 @@ def pool(policy: dict, weapons: list[dict], perks: list[dict]) -> dict:
         sp = [pr["fixed_id"]] if any(p["perk_id"] == pr["fixed_id"] for p in perks) else []
     else:
         sp = _filter(pr, perks, "perk_id")
+    if not sw:
+        # S37: with no legal secondary there is nothing to switch to, so a swap perk is not a choice —
+        # it is a dead slot. Removing it from the POOL is what makes it disappear from both UIs and
+        # from a stored loadout (`apply` clears a perk that is not in the pool) with no extra rule.
+        sp = [rid for rid in sp if not swaps_weapons(_perk_row(perks, rid))]
     return {"primary": primary, "secondary_weapons": sw, "perks": sp}
 
 
@@ -330,6 +347,8 @@ def validate_loadout(policy: dict, lp: dict, loadout: dict, weapons: list[dict],
     if kr["choice"] == "fixed" and perk != kr["fixed_id"]:
         return False, _R_FIXED.format(what="Perk", name=_name(perks, "perk_id", kr["fixed_id"]))
     if perk and perk not in lp["perks"]:
+        if swaps_weapons(_perk_row(perks, perk)) and not lp["secondary_weapons"]:
+            return False, _R_NO_SWITCH.format(perk=_name(perks, "perk_id", perk))   # S37
         return False, _why_not(kr, perks, "perk_id", perk, "perk")
     c = conflict(loadout, perks)
     if c:
@@ -406,6 +425,8 @@ def check_request(policy: dict, lp: dict, slot: str, kind: str, rid: str | None,
         if kind != "perk":
             return False, _R_ONLY_PERKS
         if rid not in lp["perks"]:
+            if swaps_weapons(_perk_row(perks, rid)) and not lp["secondary_weapons"]:
+                return False, _R_NO_SWITCH.format(perk=_name(perks, "perk_id", rid))   # S37
             return False, _why_not(rule, perks, "perk_id", rid, "perk")
         # F123: an ALT-button perk cannot reload a chain-reload weapon the player already has equipped.
         # Refused rather than resolved: the conflicting weapon is the PRIMARY, and a primary is mandatory,

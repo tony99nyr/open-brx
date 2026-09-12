@@ -120,7 +120,14 @@ def test_batch_rebasing_for_unsynced_node_suppresses_awards():
     sc.ingest_batch("n1", evs, T0 + 60_000)
     assert sc.kills[-1]["t"] == T0 + 60_000 and sc.kills[0]["t"] == T0 + 59_000   # re-based, order kept
     r = {x["player_id"]: x for x in sc.rows()}
-    assert r["p0"]["kills"] == 2 and sc.kills[-1]["multi"] == 1 and sc.first_blood is None and not fb
+    # the CLOCK-WINDOW award is still suppressed: two kills 1 s apart on a re-based clock are not a
+    # double kill, and no live cue is fired at a player for a flush that arrived a minute late.
+    assert r["p0"]["kills"] == 2 and sc.kills[-1]["multi"] == 1 and not fb
+    # F150 (field 2026-09-12): first blood is an ORDERING, not a window, and the suppression is decided on
+    # the VICTIM's node — so gating it here silently wiped the KILLER's medals. It is credited now.
+    assert sc.first_blood == "p0"
+    assert "FIRST BLOOD" in r["p0"]["medals"], r["p0"]["medals"]
+    assert not any(m.startswith("DOUBLE") for m in r["p0"]["medals"])
 
 
 def test_winner_ffa_vs_team_and_honors():
@@ -231,3 +238,90 @@ def test_infection_last_survivor_counts_only_the_uninfected_side():
     assert alerts[-1] == ("last_survivor", "all", {"player_id": "p3"}), alerts
     sc.ingest("n1", {"type": "respawn", "t": T0 + 2000, "match_id": "m1", "node_id": "n1", "player_id": "p1"}, T0 + 2000)
     assert sum(1 for a in alerts if a[0] == "last_survivor") == 1     # once per match, and a turned player's respawn is not a survivor
+
+
+# --------------------------------------------------------------- F150: the medals reach the row
+def _duel(synced_nodes: dict[str, bool], order: list[str], gap_ms: int = 5000):
+    """A scripted 1v1 FFA. `order` is the KILLER of each kill in turn ("p0" or "p1")."""
+    ps = {"p0": {"player_id": "p0", "player_num": 1, "display": "OTHERGUY", "team_id": "ffa",
+                 "node_id": "n0", "gun_id": None, "loadout": {"weapons": []}, "voice": "male", "ready": True},
+          "p1": {"player_id": "p1", "player_num": 2, "display": "TONY", "team_id": "ffa",
+                 "node_id": "n1", "gun_id": None, "loadout": {"weapons": []}, "voice": "male", "ready": True}}
+    sc = Scorer("m1", T0, 600, "ffa", ps, _teams("ffa"), {"n0": "p0", "n1": "p1"},
+                dict(synced_nodes), now_ms=lambda: T0 + 10_000_000)
+    for i, killer in enumerate(order):
+        victim, vnode = ("p1", "n1") if killer == "p0" else ("p0", "n0")
+        shooter_num = 1 if killer == "p0" else 2
+        sc.ingest(vnode, {"type": "death", "t": T0 + 1000 + i * gap_ms, "match_id": "m1",
+                          "player_id": victim, "shooter_num": shooter_num}, T0 + 1000 + i * gap_ms,
+                  seq=i + 1)
+    return sc
+
+
+def test_f150_an_eleven_kill_run_carries_its_streak_medals_to_the_recap_row():
+    """Field 2026-09-12: OTHERGUY finished 11-5 in a 1v1 FFA and the recap showed him NO medals, while
+    the other row carried FIRST BLOOD. `honors()` is empty under three players by design, so `medals`
+    is the per-kill ledger alone — and the per-kill ledger was being thrown away."""
+    # n1 (the victim node for every one of p0's kills) was never marked synced at the lobby.
+    sc = _duel({"n0": True}, ["p0"] * 6 + ["p1"] * 5 + ["p0"] * 5)
+    rows = {r["player_id"]: r for r in sc.rows()}
+    assert (rows["p0"]["kills"], rows["p0"]["deaths"]) == (11, 5)
+    assert rows["p0"]["best_streak"] == 6
+    assert rows["p0"]["medals"] == ["FIRST BLOOD", "KILLING SPREE ×2"], rows["p0"]["medals"]
+    # the recap sheet is what the operator reads, and it carries the same list
+    recap = sc.recap()
+    assert recap["honors"] == [], "under 3 players there are no honors — medals are the whole story"
+    got = {r["player_id"]: r["medals"] for r in recap["rows"]}
+    assert "KILLING SPREE ×2" in got["p0"], got
+
+
+def test_f150_the_victims_clock_no_longer_decides_the_killers_medals():
+    """The mechanism: `suppress` is A5.7's judgement about the node that REPORTED the death, and every
+    medal on that kill belongs to somebody else."""
+    both = _duel({"n0": True, "n1": True}, ["p0"] * 11)
+    one = _duel({"n0": True}, ["p0"] * 11)                 # p0's victim node unsynced
+    assert [r["medals"] for r in both.rows() if r["player_id"] == "p0"] == \
+           [r["medals"] for r in one.rows() if r["player_id"] == "p0"]
+    assert "UNSTOPPABLE" in one.rows()[0]["medals"], one.rows()[0]["medals"]
+
+
+def test_f150_the_multi_kill_tier_is_still_suppressed_on_an_untrusted_clock():
+    """What stays gated, and why: a double kill is two kills inside MULTI_KILL_MS, and a node whose
+    clock MC never saw synced cannot be asked what "inside 4 s" means."""
+    fast = _duel({"n0": True, "n1": True}, ["p0"] * 2, gap_ms=1000)
+    assert any(m.startswith("DOUBLE KILL") for m in fast.rows()[0]["medals"])
+    blind = _duel({"n0": True}, ["p0"] * 2, gap_ms=1000)
+    assert not any(m.startswith("DOUBLE KILL") for m in blind.rows()[0]["medals"]), blind.rows()[0]["medals"]
+    assert "FIRST BLOOD" in blind.rows()[0]["medals"]
+
+
+# --------------------------------------------------------------- F154: a tie is a DRAW
+def test_f154_equal_top_rows_in_ffa_are_a_draw_not_a_win_for_whoever_sorted_first():
+    """Field 2026-09-12: rows tied 1-1 and the Pixel 4 was shown LOSE. `rows[0]` is a sort artefact,
+    not a winner."""
+    sc = _duel({"n0": True, "n1": True}, ["p0", "p1"])
+    rows = {r["player_id"]: r for r in sc.rows()}
+    assert (rows["p0"]["kills"], rows["p1"]["kills"]) == (1, 1)
+    assert sc.winner() == {"player_id": None, "tie": ["p0", "p1"]}
+    # ...and one clear kill ahead still names a winner
+    sc2 = _duel({"n0": True, "n1": True}, ["p0", "p1", "p0"])
+    assert sc2.winner() == {"player_id": "p0"}
+
+
+def test_f154_a_tied_ffa_tells_every_phone_it_was_a_draw():
+    """The end of the chain: `_outcome_for` already understood `tie` (the cap-tie path built it) — FFA
+    simply never produced one."""
+    from brx_mcp.mc.state import Session
+    from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
+    net = FakeNet(); net.start("10.0.0.5", 8766, "/ws")
+    s = Session(FakeCompiler(), net, FakeArmory(demo_armory()))
+    s.set_config({"mode": "ffa", "time_limit_s": 600})
+    a = s.add_player("ALPHA", gun_id="GUN-A")
+    b = s.add_player("BRAVO", gun_id="GUN-B")
+    s.scorer = _duel({"n0": True, "n1": True}, ["p0", "p1"])
+    s.scorer.players = {a["player_id"]: a, b["player_id"]: b}
+    winner = {"player_id": None, "tie": [a["player_id"], b["player_id"]]}
+    assert s._outcome_for(winner, a) == "draw"
+    assert s._outcome_for(winner, b) == "draw"
+    c = s.add_player("CHARLIE", gun_id="GUN-C")
+    assert s._outcome_for(winner, c) == "lose", "a player outside the tie did not draw"

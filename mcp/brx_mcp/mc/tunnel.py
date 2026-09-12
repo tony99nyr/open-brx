@@ -34,6 +34,8 @@ import shutil
 import signal
 import subprocess
 import time
+import urllib.parse
+import urllib.request
 from typing import Any, Awaitable, Callable
 
 log = logging.getLogger("brx.mc.tunnel")
@@ -45,6 +47,43 @@ QUICK_TUNNEL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 START_TIMEOUT_S = 20.0      # A28.1: no starting→up inside this → status "error"
 TERM_GRACE_S = 3.0          # terminate, then kill
 WS_PATH = "/ws"
+
+# F140 (field 2026-09-12): cloudflared printing the hostname is NOT the moment the world can reach it.
+# The home router's resolver was asked for the new quick-tunnel name a second after the QR was scanned,
+# before the record existed, and NEGATIVE-CACHED the NXDOMAIN: Chrome on the Pixel 4 said
+# ERR_NAME_NOT_RESOLVED for ~250 s while 1.1.1.1 had the answer at once. So MC stays `starting`
+# (sub-state `resolving`) until the name answers at Cloudflare's own resolver, and only then renders
+# the QR, announces UP and pushes `join`.
+DNS_POLL_S = 2.0            # between DoH queries while resolving
+DNS_CAP_S = 60.0            # then UP anyway, with a warning — a tunnel nobody can announce is worse
+DOH_URL = "https://cloudflare-dns.com/dns-query"
+DOH_TIMEOUT_S = 5.0
+
+
+def _doh_has_a(host: str, timeout_s: float = DOH_TIMEOUT_S) -> bool:
+    """Does `host` have an A record, asked of Cloudflare over DNS-over-HTTPS?
+
+    Deliberately NOT the system resolver: the whole point is to bypass the local one, which on the
+    field rig was the very thing serving a stale NXDOMAIN. stdlib only (`urllib`), so no dependency
+    rides in on a field fix. Blocking — callers run it off the event loop.
+    """
+    url = f"{DOH_URL}?name={urllib.parse.quote(host, safe='')}&type=A"
+    req = urllib.request.Request(url, headers={"accept": "application/dns-json"})
+    with urllib.request.urlopen(req, timeout=timeout_s) as resp:      # noqa: S310 (fixed https host)
+        data = json.loads(resp.read().decode("utf-8", "replace"))
+    # type 1 = A. A NOERROR with no Answer (or NXDOMAIN, status 3) is "not yet".
+    return any(a.get("type") == 1 and a.get("data") for a in (data.get("Answer") or []))
+
+
+async def _resolves(host: str) -> bool:
+    """`_doh_has_a` off the event loop. Any failure is "not yet", never an exception: a DoH query that
+    cannot be made must not take the tunnel down."""
+    loop = asyncio.get_running_loop()
+    try:
+        return await loop.run_in_executor(None, _doh_has_a, host)
+    except Exception:
+        log.debug("DoH query for %s failed", host, exc_info=True)
+        return False
 
 INSTALL_HINT = ("cloudflared is not on PATH — install it (macOS: `brew install cloudflared`; "
                 "Linux: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/"
@@ -66,11 +105,17 @@ class Tunnel:
                  ws_port: int = 0, spawn: Callable[[list[str]], Awaitable[Any]] | None = None,
                  which: Callable[[str], str | None] | None = None,
                  timeout_s: float = START_TIMEOUT_S, term_grace_s: float = TERM_GRACE_S,
-                 pid_dir: "pathlib.Path | None" = None):
+                 pid_dir: "pathlib.Path | None" = None,
+                 resolve: Callable[[str], Awaitable[bool]] | None = None,
+                 dns_poll_s: float = DNS_POLL_S, dns_cap_s: float = DNS_CAP_S):
         self.binary = binary
         self.ws_port = ws_port
         self.timeout_s = timeout_s
         self.term_grace_s = term_grace_s
+        # F140: injectable so the tests need neither DNS nor the internet.
+        self._resolve = resolve or _resolves
+        self.dns_poll_s = dns_poll_s
+        self.dns_cap_s = dns_cap_s
         self._spawn = spawn or self._default_spawn
         self._which = which or shutil.which
         # A28.1: `available` is decided at LAUNCH, not per call — the UI shows the install line when it is
@@ -86,6 +131,9 @@ class Tunnel:
         self._task: asyncio.Task | None = None
         self._stopping = False
         self._last_line = ""
+        self._saw_url = False                 # F140: the URL line has been read; the start deadline is done
+        self._dns_task: asyncio.Task | None = None
+        self.detail: str | None = None        # F140: the sub-state under `starting` ("resolving <host>")
         if public_url:
             self.status, self.provider, self.ws_url, self.error = "up", "manual", str(public_url), None
         else:
@@ -96,6 +144,8 @@ class Tunnel:
         """`State.lan.public` (A28.1). `error` is present only when there is one."""
         out: dict[str, Any] = {"ws_url": self.ws_url, "status": self.status,
                                "provider": self.provider, "available": self.available}
+        if self.detail:
+            out["detail"] = self.detail      # F140: the sub-state under `starting`, and the DNS warning under `up`
         err = self.error
         if self._orphan_pid is not None:
             # Say it where the UI already renders errors. Without this, an MC that could not kill the
@@ -148,11 +198,22 @@ class Tunnel:
             except Exception:          # a listener must never take the tunnel (or MC) down
                 log.exception("tunnel on_change listener raised")
 
-    def _set(self, status: str, ws_url: str | None, error: str | None, provider: str | None) -> None:
-        if (status, ws_url, error, provider) == (self.status, self.ws_url, self.error, self.provider):
+    def _set(self, status: str, ws_url: str | None, error: str | None, provider: str | None,
+             detail: str | None = None) -> None:
+        if (status, ws_url, error, provider, detail) == (self.status, self.ws_url, self.error,
+                                                         self.provider, self.detail):
             return                      # no-op transitions must not re-render the QR or re-broadcast `join`
         self.status, self.ws_url, self.error, self.provider = status, ws_url, error, provider
+        self.detail = detail
         log.info("tunnel %s%s", status, f" {ws_url}" if ws_url else (f" ({error})" if error else ""))
+        self._emit()
+
+    def _set_detail(self, detail: str | None) -> None:
+        """F140: move the sub-state without touching `status` — `resolving` is still `starting`, so the
+        QR, `join` and `_pub_url()` all stay exactly where they were."""
+        if detail == self.detail:
+            return
+        self.detail = detail
         self._emit()
 
     def _set_orphan(self, pid: int | None) -> None:
@@ -188,6 +249,7 @@ class Tunnel:
         self.ws_port = port
         self._stopping = False
         self._last_line = ""
+        self._saw_url = False
         self._set("starting", None, None, "cloudflared")
         if loop is None:
             try:
@@ -207,6 +269,13 @@ class Tunnel:
     async def shutdown(self) -> None:
         """Kill the child if we own one and settle on `off`. Never raises — MC's own shutdown path calls it."""
         self._stopping = True
+        dns, self._dns_task = self._dns_task, None      # F140: a resolver poll must not announce UP after a stop
+        if dns is not None and not dns.done():
+            dns.cancel()
+            # CancelledError is a BaseException, so `suppress(Exception)` would let it escape and take
+            # MC's own shutdown path with it.
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await dns
         if self._orphan_pid is not None and not self._alive(self._orphan_pid):
             self._set_orphan(None)     # it finally died; the latch has nothing left to guard
         # `self._proc` is NOT released until the child is confirmed dead: `armed` reads it, and a gate
@@ -396,6 +465,33 @@ class Tunnel:
         return await asyncio.create_subprocess_exec(
             *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
 
+    async def _await_dns(self, host: str, ws_url: str, proc) -> None:
+        """F140: hold `starting` until `host` has an A record at Cloudflare, then announce UP.
+
+        Capped: after `dns_cap_s` we go UP anyway and say why. A tunnel that never announces is worse
+        than one announced early — the operator can at least see the hostname and wait — but the field
+        cost of announcing too early is a phone whose resolver cached the miss for minutes, so the cap
+        is long and the line that follows it is a warning, not a shrug.
+        """
+        deadline = time.monotonic() + self.dns_cap_s
+        while True:
+            if self._stopping or not self._owns(proc) or self.status != "starting":
+                return                      # stopped, superseded, or already settled elsewhere
+            if await self._resolve(host):
+                if not self._stopping and self._owns(proc) and self.status == "starting":
+                    log.info("tunnel hostname %s resolves — announcing UP", host)
+                    self._set("up", ws_url, None, "cloudflared")
+                return
+            if time.monotonic() >= deadline:
+                break
+            await asyncio.sleep(self.dns_poll_s)
+        if self._stopping or not self._owns(proc) or self.status != "starting":
+            return
+        warn = (f"{host} did not resolve at Cloudflare within {self.dns_cap_s:.0f}s — announcing UP "
+                f"anyway; a phone whose resolver already cached the miss may need several minutes")
+        log.warning("tunnel: %s", warn)
+        self._set("up", ws_url, None, "cloudflared", detail=warn)
+
     async def _run(self, ws_port: int) -> None:
         cmd = self.argv(ws_port)
         try:
@@ -422,7 +518,11 @@ class Tunnel:
         deadline = time.monotonic() + self.timeout_s
         try:
             while True:
-                if self.status == "starting":
+                # F140: the 20 s start cap is about READING THE URL, not about reaching `up`. Keying it
+                # on `status` meant the DNS wait below (which deliberately holds `starting`) ran under
+                # the same deadline and KILLED a perfectly good cloudflared that had already printed
+                # its hostname.
+                if self.status == "starting" and not self._saw_url:
                     remaining = deadline - time.monotonic()
                     timed_out = remaining <= 0
                     if not timed_out:
@@ -454,9 +554,15 @@ class Tunnel:
                         self._last_line = line
                     log.debug("cloudflared: %s", line)
                 m = QUICK_TUNNEL_RE.search(line)
-                if m and self.status != "up" and self._owns(proc) and not self._stopping:
+                if m and not self._saw_url and self.status != "up" and self._owns(proc) and not self._stopping:
                     host = m.group(0).split("//", 1)[1]
-                    self._set("up", f"wss://{host}{WS_PATH}", None, "cloudflared")
+                    self._saw_url = True
+                    # F140: NOT `up` yet. The hostname has to answer at Cloudflare's own resolver first,
+                    # in a task of its own so this loop keeps draining the child's stdout (a full pipe
+                    # would wedge cloudflared itself).
+                    self._set("starting", None, None, "cloudflared", detail=f"resolving {host}")
+                    self._dns_task = asyncio.ensure_future(
+                        self._await_dns(host, f"wss://{host}{WS_PATH}", proc))
         except asyncio.CancelledError:
             raise
         except Exception:
