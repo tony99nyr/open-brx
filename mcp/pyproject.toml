@@ -10,6 +10,14 @@ dependencies = [
     "mcp>=2,<3",
 ]
 
+# Two venvs, two extras (CLAUDE.md "Environment"): the WSL `.venv` runs Mission Control and needs
+# `mc`; the Windows venv (`C:\Users\Tony\.brx-mcp\venv`) runs the bench tools and needs `bench`.
+# Neither venv is a plain `pip install -e ./mcp` today (both are hand-built per CLAUDE.md), but this
+# is the accurate dependency list for whichever install path replaces that by hand.
+[project.optional-dependencies]
+mc = ["websockets>=13", "starlette", "uvicorn", "zeroconf"]
+bench = ["numpy", "pillow", "pyserial", "librosa", "faster-whisper"]
+
 [project.scripts]
 brx-mcp = "brx_mcp.server:main"
 

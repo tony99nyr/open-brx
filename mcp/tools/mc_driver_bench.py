@@ -23,7 +23,7 @@ import time
 import serial
 
 import bench_common as B
-from f11_ab import SENSOR, witnessed, word
+from bench_common import SENSOR, witnessed, word
 from brx_mcp.irbridge import IRBridge
 from brx_mcp.gameconfig import GameConfig
 from brx_mcp.modes.driver import GameDriver

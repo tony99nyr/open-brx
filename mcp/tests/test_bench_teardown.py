@@ -47,10 +47,10 @@ SIRISH = re.compile(r"SIR")
 RESTORE_CALLS = {"teardown_frames", "arming_frames"}
 
 # These deliberately leave the gun stranded, or strand it on purpose as a phase of the experiment.
+# `clear_spawn_repro.py` and `desync_fuzz.py` used to be here too (they reproduced the fault on
+# purpose); both were deleted 2026-09-12 (doc-rot review) once F11 was closed, so their exemption
+# went with them.
 EXEMPT = {
-    # Reproduce the fault; leaving the gun stranded is the whole point.
-    "clear_spawn_repro.py",
-    "desync_fuzz.py",
     # Strands the gun in PHASE 2 ("the F11 fault") and proves GameDriver.setup() RECOVERS it in
     # PHASE 3. The restore is real but goes through driver.setup(), which no static check can see.
     "mc_driver_bench.py",

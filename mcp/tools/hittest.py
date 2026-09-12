@@ -8,7 +8,7 @@ Usage: python hittest.py <shooter_addr> <victim_addr>
 """
 import asyncio, sys
 
-from bench_common import AR, arming_frames   # one copy of the arming frames + their ORDER
+from bench_common import AR, arming_frames, connected, sessions_of   # one copy of the arming frames + their ORDER
 
 
 async def main() -> None:
@@ -16,10 +16,8 @@ async def main() -> None:
     weapon = sys.argv[3] if len(sys.argv) > 3 else AR
     from brx_mcp.ble import ConnectionManager
     mgr = ConnectionManager()
-    print("connecting victim...", flush=True); await mgr.connect(victim, "victim")
-    print("connecting shooter...", flush=True); await mgr.connect(shooter, "shooter")
-    try:
-        sessions = next((getattr(mgr, a) for a in ("sessions", "_sessions") if isinstance(getattr(mgr, a, None), dict)), {})
+    async with connected(mgr, (victim, "victim"), (shooter, "shooter")):
+        sessions = sessions_of(mgr)
 
         async def send(alias, fr):
             await mgr.send(alias, fr, reply_window_ms=300)
@@ -58,12 +56,6 @@ async def main() -> None:
         print("VICTIM: %d hit frames" % len(hits), flush=True)
         for h in hits[:6]:
             print("   ", h, flush=True)
-        await mgr.disconnect("shooter"); await mgr.disconnect("victim")
-    finally:
-        import contextlib
-        with contextlib.suppress(Exception): await mgr.disconnect("shooter")
-        with contextlib.suppress(Exception): await mgr.disconnect("victim")
-
 
 
 asyncio.run(main())

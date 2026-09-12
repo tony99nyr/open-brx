@@ -26,7 +26,7 @@ import time
 import serial
 
 import bench_common as B
-from f11_ab import SENSOR, witnessed, word
+from bench_common import SENSOR, witnessed, word
 from brx_mcp.irbridge import IRBridge
 
 VICTIM_TEAM, ENEMY_TEAM, PID = 1, 2, 40

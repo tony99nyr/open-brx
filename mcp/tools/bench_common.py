@@ -15,6 +15,9 @@ no-drift property.
 from __future__ import annotations
 
 import contextlib
+import re
+
+from brx_mcp.irbridge import payload_parity
 
 # The captured Callsign Assault Rifle at its STOCK 100 ms cycle — the bench reference weapon.
 # (MC ships it at 140 ms for balance; a bench run wants the frame Battle Company sent.)
@@ -121,7 +124,7 @@ async def connected(mgr, *pairs: tuple[str, str]):
 def arm_receiver(rx) -> None:
     """Verify the capture board is answering AND that RAW is ON. Raise if not.
 
-    RAW must be ON because `f11_ab.witnessed()` grades on EDGE COUNTS, which only appear on RAW
+    RAW must be ON because `witnessed()` below grades on EDGE COUNTS, which only appear on RAW
     lines. The firmware's 'r' is a TOGGLE and its state survives until the board is power-cycled, so
     "send r once" is not enough -- it can just as easily turn RAW off.
     """
@@ -162,3 +165,35 @@ def teardown_frames() -> list[str]:
     the table back.
     """
     return ["$CLEAR,*"] + list(SIRS)
+
+
+# --- IR witness helpers (hoisted from tools/f11_ab.py, doc-rot review 2026-09-12, FOLLOWUPS F42.2) #
+# f11_ab.py itself was a one-shot F11 experiment (closed, docs/archive/followups-closed.md), but
+# SENSOR/witnessed()/word() were being imported from it as a library by mc_driver_bench.py and
+# range_step.py -- exactly the "one-off experiment doubling as shared infra" shape F42.2 flagged.
+
+_RAWE = re.compile(r"^RAW\s+\d+\s+edges=(\d+)")
+FULL_FRAME_EDGES = 50      # a 25-bit BRX word is 52 edges; allow a couple lost to noise
+
+# $HIR token1 -> sensor id, bench-mapped 2026-08/09 (protocol/brx-protocol.md).
+SENSOR = {0: "dome0", 1: "dome1", 2: "dome2", 3: "dome3", 4: "GUNBODY"}
+
+
+def witnessed(lines) -> bool:
+    """Did a FULL frame's worth of light arrive? Graded on EDGES, not on a clean decode.
+
+    Measured 2026-09-02: this receiver splits an arriving frame into 2-4 bursts and then fails to
+    decode each piece -- our emitter decoded whole only 4/20, and a REAL BRX GUN only 3/44. Real guns
+    demonstrably hit real taggers, so the fragmentation is this receiver mis-assembling what arrives,
+    not something wrong with the transmission. The EDGE COUNT survives it perfectly: every one of 20
+    emitter shots summed to exactly 52 edges across its fragments. So sum the edges and ignore the
+    decode -- that is the one thing this board measures reliably, and it is all a witness needs.
+    """
+    return sum(int(m.group(1)) for m in (_RAWE.match(l.strip()) for l in lines) if m) >= FULL_FRAME_EDGES
+
+
+def word(mag, proto, team, sub=0, pid=42, crit=0) -> str:
+    """Build a raw BRX IR payload word (as the emitter rig sends it), parity included."""
+    f = lambda v, n: format(v & ((1 << n) - 1), "0%db" % n)
+    pay = f(proto, 4) + f(pid, 6) + f(team, 2) + f(mag, 8) + f(crit, 1) + f(sub, 2)
+    return pay + payload_parity(pay)
