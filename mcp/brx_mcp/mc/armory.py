@@ -6,7 +6,7 @@ import logging
 import platform
 import time
 
-from .types import ArmoryRecord, ScanRow
+from .types import ArmoryRecord, BleId, ScanRow
 
 log = logging.getLogger("brx.mc.armory")
 
@@ -14,9 +14,12 @@ log = logging.getLogger("brx.mc.armory")
 def _to_record(serial: str, r: dict) -> ArmoryRecord:
     addr = r.get("ble_address") or ""
     tail = "".join(ch for ch in addr if ch.isalnum())[-4:].upper() if addr else ""
-    ble = {"tail": tail}
+    ble: BleId = {"tail": tail}
     if addr:
-        ble["uuid" if platform.system() == "Darwin" else "address"] = addr
+        if platform.system() == "Darwin":
+            ble["uuid"] = addr
+        else:
+            ble["address"] = addr
     return {"gun_id": serial, "sticker": (r.get("gun_name") or f"Tactix-{tail}").strip(), "headset_pin": serial,
             "ble": ble, "gen": "gen1" if r.get("gen") == "gen1" else "gen2_3", "fw": r.get("firmware") or r.get("fw"),
             "labeled": bool(r.get("labeled")), "notes": r.get("notes", "")}

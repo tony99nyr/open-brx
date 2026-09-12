@@ -71,7 +71,10 @@ class Tunnel:
         self.ws_port = ws_port
         self.timeout_s = timeout_s
         self.term_grace_s = term_grace_s
-        self._spawn = spawn or self._default_spawn
+        # Explicit annotation: `spawn or self._default_spawn` would otherwise narrow to a union that
+        # includes `_default_spawn`'s own inferred (concrete `Process`) return type, which is exactly
+        # what the injectable-spawn contract above (`Awaitable[Any]`) exists to hide from callers.
+        self._spawn: Callable[[list[str]], Awaitable[Any]] = spawn or self._default_spawn
         self._which = which or shutil.which
         # A28.1: `available` is decided at LAUNCH, not per call — the UI shows the install line when it is
         # false and never hides the control. The resolved ABSOLUTE path is what we spawn: a bare name is
@@ -420,6 +423,8 @@ class Tunnel:
         self._set_orphan(None)
         self._write_pid(proc.pid)
         deadline = time.monotonic() + self.timeout_s
+        raw: bytes = b""     # every branch below reassigns this before `if not raw:` reads it (both
+        # branches that skip the reassignment `return` first); the seed keeps the checker satisfied.
         try:
             while True:
                 if self.status == "starting":

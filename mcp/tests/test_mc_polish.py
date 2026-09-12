@@ -31,6 +31,31 @@ def test_config_validation_rejects_bad_values():
     assert r["config"]["time_limit_s"] == 300 and "bogus" not in r["config"]
 
 
+def test_config_nested_bags_are_whitelisted_2026_09_12():
+    """2026-09-12 polish: `led`/`station_source`/`vip_player_id`/`stun` drop on a null patch, and the
+    inner bags (`respawn`/`scoring`/`health`) rebuild their own shape rather than merging the patch's
+    dict verbatim -- so a client-injected extra key inside one of them is dropped, not stored."""
+    s = _sess()
+    r = s.set_config({"respawn": {"type": "auto", "delay_s": 15, "bogus": 1}})
+    assert "bogus" not in r["config"]["respawn"] and r["config"]["respawn"] == {"type": "auto", "delay_s": 15}
+    r = s.set_config({"led": {"x": 1}})
+    assert r["config"]["led"] == {"x": 1}
+    r = s.set_config({"led": None})
+    assert "led" not in r["config"]
+    # the top-level whitelist (patch keys outside `_CONFIG_KEYS`) is exercised above by "bogus"/"time_limit_s"
+
+
+def test_set_config_scoring_survives_a_restored_snapshot_missing_win_by():
+    """HIGH (2026-09-12): a restored snapshot's config can lack `scoring.win_by` (`set_config`'s own
+    comment on this). A patch that only touches `frag_limit` must not KeyError on the missing key --
+    it falls back to the mode's default `win_by` instead."""
+    s = _sess()
+    del s.config["scoring"]["win_by"]      # simulate the restored-snapshot case
+    r = s.set_config({"scoring": {"frag_limit": 5}})
+    assert r["config"]["scoring"]["frag_limit"] == 5
+    assert r["config"]["scoring"]["win_by"]        # backfilled from the mode default, never KeyErrors
+
+
 def test_scorer_multikill_after_suppressed_death_does_not_crash():
     s = _sess(); s.set_config({"mode": "ffa", "time_limit_s": 120})
     a = s.add_player("A", gun_id="GUN-A"); b = s.add_player("B", gun_id="GUN-B"); c = s.add_player("C", gun_id="GUN-C")

@@ -13,9 +13,10 @@ import logging
 import pathlib
 import time
 import uuid
-from typing import Callable
+from typing import Any, Callable, Mapping
 
 from ..storage import BASE_DIR
+from .types import GameConfig
 
 log = logging.getLogger("brx.mc.presets")
 
@@ -53,7 +54,7 @@ class PresetStore:
     """CRUD over SavedGame rows. `sanitize(config) -> GameConfig` is the PUT /api/config validator (raises
     ValueError on junk); `path=None` keeps the store in memory (tests / throwaway hosts)."""
 
-    def __init__(self, path: pathlib.Path | None, sanitize: Callable[[dict], dict], default_config, merge_policy,
+    def __init__(self, path: pathlib.Path | None, sanitize: Callable[[dict], GameConfig], default_config, merge_policy,
                  now_ms: Callable[[], int] | None = None):
         self.path = path
         self.sanitize = sanitize
@@ -146,11 +147,11 @@ class PresetStore:
                 return copy.deepcopy(r)
         raise PresetError(404, "no such preset")
 
-    def create(self, name, desc, config: dict, replace: bool = False) -> dict:
+    def create(self, name, desc, config: Mapping[str, Any], replace: bool = False) -> dict:   # raw OR validated: sanitized inside
         name = self._check_name(name)
         if self._is_builtin_name(name):
             raise PresetError(403, f"\"{name}\" is a built-in game — pick another name")
-        cfg = self.sanitize(config)
+        cfg = self.sanitize(dict(config))
         cfg.pop("config_id", None)
         now = self.now_ms()
         clash = self._find_name(name)
@@ -166,7 +167,7 @@ class PresetStore:
         self._save()
         return copy.deepcopy(row)
 
-    def update(self, preset_id: str, name=None, desc=None, config: dict | None = None) -> dict:
+    def update(self, preset_id: str, name=None, desc=None, config: Mapping[str, Any] | None = None) -> dict:
         if any(b["preset_id"] == preset_id for b in self._builtin):
             raise PresetError(403, "built-in games can't be edited — apply it, tune, then SAVE AS a new one")
         row = next((r for r in self._rows if r["preset_id"] == preset_id), None)
@@ -182,7 +183,7 @@ class PresetStore:
         if desc is not None:
             row["desc"] = self._check_desc(desc)
         if config is not None:
-            cfg = self.sanitize(config)
+            cfg = self.sanitize(dict(config))
             cfg.pop("config_id", None)
             row["config"] = cfg
         row["updated_t"] = self.now_ms()

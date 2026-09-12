@@ -7,8 +7,10 @@ its own team via a unique $TID, so shooter-team → the specific killer).
 
 from __future__ import annotations
 
+from typing import Optional
+
 from .base import (
-    Action, Callout, Eliminate, Heal, Respawn, Score, ScoredEngine,
+    Action, Callout, Eliminate, Heal, Player, Respawn, Score, ScoredEngine,
     hp_values, is_hit, shooter_team, shooter_player_id,
 )
 from .announcer import KillAnnouncer
@@ -23,7 +25,8 @@ class DeathmatchEngine(ScoredEngine):
     def __init__(self, config, now: float = 0.0):
         super().__init__(config, now)
         self.team_score: dict[int, int] = {}
-        self._last_shot: dict[str, tuple[int, float]] = {}  # victim_id → (shooter team, when)
+        # victim_id → (shooter team, when, shooter's wire player id or None)
+        self._last_shot: dict[str, tuple[int, float, Optional[int]]] = {}
         self._ffa = (config.mode == "ffa")
         self._last_damage: dict[str, float] = {}   # player_id → time last hit (for regen)
         self._last_pools: dict[str, int] = {}      # player_id → hp+armor+shield, to tell a real
@@ -51,7 +54,7 @@ class DeathmatchEngine(ScoredEngine):
         hv = hp_values(ev)
         if hv is not None:
             if hv[0] == 0 and p.alive:                 # $HP,0 = died
-                return self._handle_death(player_id, now)
+                return self._handle_death(p, now)
             # A non-fatal $HP is NOT automatically damage (bench 2026-09-10). A grenade hill
             # beacon registering through a protocol-15 $SIR row emits $HIR + $HP every ~5.0 s
             # with pools UNCHANGED — and regen_delay_s is 6.0. Resetting the idle timer on the
@@ -66,8 +69,9 @@ class DeathmatchEngine(ScoredEngine):
                 self._regenerated.discard(player_id)
         return []
 
-    def _handle_death(self, victim_id: str, now: float) -> list[Action]:
-        v = self.roster.get(victim_id)
+    def _handle_death(self, victim: Player, now: float) -> list[Action]:
+        victim_id = victim.player_id
+        v = victim  # local alias: the rest of this method predates the Player param
         v.alive = False
         v.deaths += 1
         v.dead_since = now
@@ -80,8 +84,8 @@ class DeathmatchEngine(ScoredEngine):
 
         entry = self._last_shot.pop(victim_id, None)
         fresh = entry is not None and now - entry[1] <= ATTRIB_FUSE_S
-        killer_team = entry[0] if fresh else None
-        killer_wire_id = entry[2] if (fresh and len(entry) > 2) else None
+        killer_team = entry[0] if fresh and entry is not None else None
+        killer_wire_id = entry[2] if fresh and entry is not None else None
         if killer_team is not None and killer_team != v.team:
             self.team_score[killer_team] = self.team_score.get(killer_team, 0) + 1
             # Credit the specific killer. Prefer the shooter's PLAYER id ($HIR token 3,
@@ -173,10 +177,10 @@ class DeathmatchEngine(ScoredEngine):
             return self._end(f"team{next(iter(teams))}" if teams else "draw")
         return []
 
-    def _end(self, winner: str) -> list[Action]:
+    def _end(self, winner: str, detail: str = "") -> list[Action]:
         if self.over:
             return []
-        return super()._end(winner, detail=f"scores={self.team_score}")
+        return super()._end(winner, detail=detail or f"scores={self.team_score}")
 
     def snapshot(self) -> dict:
         return {

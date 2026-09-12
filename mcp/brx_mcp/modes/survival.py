@@ -7,7 +7,7 @@ converted. Win: last human alive (humans win at time limit if any survive).
 
 from __future__ import annotations
 
-from .base import Action, Callout, Respawn, ScoredEngine, SetTeam
+from .base import Action, Callout, Player, Respawn, ScoredEngine, SetTeam
 
 HUMAN_TEAM = 1
 INFECTED_TEAM = 2
@@ -29,17 +29,16 @@ class InfectionEngine(ScoredEngine):
     # that shared prologue+dispatch is byte-identical to LMS's (clone review,
     # 2026-09-07).
 
-    def _handle_death(self, victim_id: str, now: float) -> list[Action]:
-        v = self.roster.get(victim_id)
-        v.alive = False
-        v.deaths += 1
-        v.dead_since = now
+    def _handle_death(self, victim: Player, now: float) -> list[Action]:
+        victim.alive = False
+        victim.deaths += 1
+        victim.dead_since = now
         actions: list[Action] = []
         # a human who dies becomes infected
-        if v.team == self.human_team:
-            v.team = self.infected_team
-            actions.append(SetTeam(victim_id, self.infected_team))
-            actions.append(Callout(f"{victim_id} was infected!"))
+        if victim.team == self.human_team:
+            victim.team = self.infected_team
+            actions.append(SetTeam(victim.player_id, self.infected_team))
+            actions.append(Callout(f"{victim.player_id} was infected!"))
             actions += self._check_win()
         return actions
 

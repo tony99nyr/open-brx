@@ -25,8 +25,8 @@ the repo root. **Never hand-edit `contract.gen.ts` / `contract.gen.js`.**
 to generate from (FOLLOWUPS F42.9); `webapp/mc/src/mock/policy.ts DEFAULT_POLICY` (mirrors `policy.py`'s
 default — logic, not a shape); `beacon.js KIND`/`utility.js KIND_LABEL` (mirror `STATION_KINDS`, pinned
 by a node test, not generated); `webapp/mc`'s `tsconfig` is not `strict` yet (F42.11); `envelope.js`/
-`transport.js` have no JSDoc + `checkJs` reading a `.d.ts` yet (F42.12); pyright for `mcp/` is unstarted
-(first manual run 2026-09-12: 249 errors, 81% of defs already annotated — F42.10).
+`transport.js` have no JSDoc + `checkJs` reading a `.d.ts` yet (F42.12); pyright gates `mcp/` in CI
+(F42.10 closed; `brx_mcp/stage/stage.py` excluded, F42.14).
 
 **Concurrency lesson:** a `git commit --only <file>` from another session, while this lane had
 `types.py` open, swept 139 unrelated lines into `be1ce39` alongside the intended app-version bump —
@@ -84,12 +84,12 @@ just the path list, whenever more than one session has the same file open.
 1. **Install APK 0.2.0 on a real Android phone** and run one match against the merged MC (the wire
    gained `result` and `join`; `types.APP_MINOR` moved with it in `be1ce39`).
 2. **Contract follow-ups, in order of payoff:** view TypedDicts in Python so the ~29 hand-written
-   `types.ts` view shapes can be generated (F42.9), pyright as a `mcp/` gate (F42.10), `strict: true`
-   for `webapp/mc` (F42.11), JSDoc + `checkJs` on `app/src/transport` (F42.12).
+   `types.ts` view shapes can be generated (F42.9), `strict: true` for `webapp/mc` (F42.11), JSDoc +
+   `checkJs` on `app/src/transport` (F42.12).
 3. **Bench-gated residuals:** F121 (spawn protection during the countdown), F113 (death-blank LED),
    F123 (reload bar vs. `$ALCD`), F126 (iPhone WKWebView font); keyboard-only: F129 (M2 UI polish),
-   F130 (unsynced-node late flush), the generated-contract follow-ups (F42.9–F42.12, all `build`, none
-   blocking).
+   F130 (unsynced-node late flush), the generated-contract follow-ups (F42.9, F42.11, F42.12, F42.14,
+   all `build`, none blocking).
 
 **Bench sheet:** [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md). Queue:
 [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md). Register: FOLLOWUPS §9. Pre-flight: `gotchas.md`.

@@ -36,7 +36,10 @@ cd mcp && python3 run_tests.py            # everything
 cd mcp && python3 run_tests.py modes cs   # only files matching these substrings
 ```
 No hardware needed; tests that require optional extras (websockets etc.) skip cleanly if they're
-missing rather than failing the run.
+missing rather than failing the run. The suite includes a static-type gate: `pip install pyright`
+once (the WSL venv already has it), then `cd mcp && python3 -m pyright` for the full list of errors.
+`run_tests.py pyright` is what actually gates the suite — it SKIPS cleanly where pyright isn't
+installed (the bench box's system python), and CI installs pyright for its second, with-extras pass.
 
 **Phone app (`app/`)**, native Capacitor app for Android + iOS:
 ```bash

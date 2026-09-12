@@ -217,6 +217,14 @@ class ScoredEngine(GameEngine):
         self.over = False
         self.winner: Optional[str] = None
 
+    def _handle_death(self, victim: Player, now: float) -> list[Action]:
+        """Modes that use the default `on_event` below (LMS, Infection) implement
+        this; Deathmatch and the objective modes (Domination/CTF) define their own
+        `on_event` instead and never call it. Not `@abstractmethod`: those modes
+        would otherwise be unable to skip it. Takes the already-resolved `Player`
+        (never None — the caller just confirmed it) rather than an id to re-look-up."""
+        raise NotImplementedError
+
     def _live_player(self, player_id: str) -> Optional[Player]:
         """Resolve `player_id` to its live `Player`, or None once the game is
         over or the id was never registered — the on_event prologue every
@@ -234,7 +242,7 @@ class ScoredEngine(GameEngine):
         p = self._live_player(player_id)
         if p is None or not (is_death(ev) and p.alive):
             return []
-        return self._handle_death(player_id, now)
+        return self._handle_death(p, now)
 
     def _end(self, winner: str, detail: str = "") -> list[Action]:
         """End the match once: set over/winner, emit exactly one `GameOver`. A

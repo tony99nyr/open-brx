@@ -6,6 +6,7 @@ import contextlib
 import json
 import logging
 from pathlib import Path
+from typing import Callable
 
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
@@ -16,7 +17,8 @@ from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from .state import CoverageRequired, Session
+from .state import CoverageRequired, NotReadyError, Session
+from .types import PerkView
 from .tunnel import TunnelError
 
 log = logging.getLogger("brx.mc.api")
@@ -106,6 +108,8 @@ class _AuthMiddleware:
     def _eq(self, candidate) -> bool:
         """Constant-time token compare that never raises (non-ASCII / smart quotes → simply False)."""
         import hmac
+        if self.token is None:      # only ever called (via `_ok`) from `__call__`'s `if self.token and ...` gate
+            return False
         try:
             return bool(candidate) and hmac.compare_digest(str(candidate).encode("utf-8"), self.token.encode("utf-8"))
         except (TypeError, ValueError, UnicodeError):
@@ -204,14 +208,27 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     def _perr(e: PresetError):
         return _err(str(e), e.status)
 
+    def _presets(s: Session) -> PresetStore:
+        """`s.presets` is only ever None before the memory-only fallback above runs -- which happens
+        unconditionally in this same function, before any route can be dispatched -- but it stays
+        Optional on `Session` (attached by `__main__`/here), so every route reads it through this
+        rather than five copies of the same narrowing."""
+        if s.presets is None:
+            raise PresetError(409, "saved games are not available for this session")
+        return s.presets
+
     async def presets_list(_):
-        return JSONResponse(s.presets.list())
+        try:
+            return JSONResponse(_presets(s).list())
+        except PresetError as e:
+            return _perr(e)
 
     async def presets_create(req):
         b = await body(req)
-        cfg = b.get("config") if isinstance(b.get("config"), dict) else s.config
+        raw = b.get("config")
+        cfg = raw if isinstance(raw, dict) else s.config   # one read, so the checker sees the narrowing
         try:
-            return JSONResponse(s.presets.create(b.get("name"), b.get("desc"), cfg, replace=bool(b.get("replace"))))
+            return JSONResponse(_presets(s).create(b.get("name"), b.get("desc"), cfg, replace=bool(b.get("replace"))))
         except PresetError as e:
             return _perr(e)
         except ValueError as e:
@@ -220,8 +237,8 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     async def presets_update(req):
         b = await body(req)
         try:
-            return JSONResponse(s.presets.update(req.path_params["pid"], name=b.get("name"), desc=b.get("desc"),
-                                                 config=b.get("config") if isinstance(b.get("config"), dict) else None))
+            return JSONResponse(_presets(s).update(req.path_params["pid"], name=b.get("name"), desc=b.get("desc"),
+                                                    config=b.get("config") if isinstance(b.get("config"), dict) else None))
         except PresetError as e:
             return _perr(e)
         except ValueError as e:
@@ -229,7 +246,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
 
     async def presets_delete(req):
         try:
-            s.presets.delete(req.path_params["pid"])
+            _presets(s).delete(req.path_params["pid"])
             if s.active_preset_id == req.path_params["pid"]:
                 s.active_preset_id = None; s._changed()
         except PresetError as e:
@@ -238,7 +255,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
 
     async def presets_apply(req):
         try:
-            row = s.presets.get(req.path_params["pid"])
+            row = _presets(s).get(req.path_params["pid"])
             return JSONResponse(s.apply_preset(row["preset_id"], row["config"]))   # PUT /api/config path + remembers which game is playing
         except PresetError as e:
             return _perr(e)
@@ -253,7 +270,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         try:
             pol = _policy.merge(_policy.default_policy(b.get("mode") or s.config.get("mode", "tdm")), b.get("loadout_policy") or {})
             weapons = [w for w in s.compiler.weapon_catalog() if not w.get("hidden")]
-            pc = getattr(s.compiler, "perk_catalog", None)
+            pc: Callable[[], list[PerkView]] | None = getattr(s.compiler, "perk_catalog", None)
             perks = list(pc()) if callable(pc) else []
             return JSONResponse({"policy": pol, "pool": _policy.pool(pol, weapons, perks)})
         except ValueError as e:
@@ -261,7 +278,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
 
     async def perks(_):
         """A10: visible perks (loadout.md §1.2) — `PerkView[]`."""
-        pc = getattr(s.compiler, "perk_catalog", None)
+        pc: Callable[[], list[PerkView]] | None = getattr(s.compiler, "perk_catalog", None)
         try:
             return JSONResponse(list(pc()) if callable(pc) else [])
         except Exception:
@@ -473,11 +490,11 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     async def set_phase(req):
         b = await body(req)
         try:
-            s.set_phase(b.get("phase"), force=bool(b.get("force")))
+            s.set_phase(b.get("phase") or "", force=bool(b.get("force")))
         except ValueError as e:
             # A27: NotReadyError is a ConflictError (409) and carries WHO is not ready — the UI's second
             # CONTINUE tap names them. Every other ValueError is the old 400.
-            payload = e.body() if hasattr(e, "body") else None
+            payload = e.body() if isinstance(e, NotReadyError) else None
             if payload is not None:
                 return JSONResponse(payload, status_code=getattr(e, "status", 409))
             return _err(str(e), getattr(e, "status", 400))

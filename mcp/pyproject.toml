@@ -32,3 +32,17 @@ packages = ["brx_mcp"]
 
 [tool.setuptools.package-data]
 brx_mcp = ["data/*.json", "mc/*.json", "stage/*.html"]
+
+[tool.pyright]
+# The static-type gate for the server (2026-09-12, contract-DRY follow-up F42.10). `standard` mode: the
+# hints already on 81% of defs are checked, not just decorative. `mcp/tests/test_pyright.py` runs this and
+# fails on any error; CI installs pyright for its second (with-extras) pass. Regenerate nothing: the
+# generated contract files are TS/JS and out of scope here.
+include = ["brx_mcp"]
+# The bench stage drives the phone from raw JSON (stage.py); typing it is its own job -- FOLLOWUPS F42.14.
+exclude = ["brx_mcp/stage"]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+# `serial` / `bleak` are optional on the machine running the checker (WSL has no Bluetooth).
+reportMissingModuleSource = false
+

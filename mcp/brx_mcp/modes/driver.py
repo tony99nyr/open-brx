@@ -27,8 +27,12 @@ from .base import (
     Action, Callout, Eliminate, GameEngine, GameOver, Heal, KillConfirm, PlaySound, Respawn,
     Score, SendFrame, SetTeam,
 )
+from .extraction_adapter import ExtractionEngineAdapter
 
-Sender = Callable[[str, str], Awaitable[None]]
+# The real BLE sender accepts an optional `reply_window_ms` kwarg (§ _send below); fakes used in
+# tests take only (pid, frame) and rely on the TypeError fallback there. `Callable[..., ...]`
+# reflects that variability -- a fixed 2-arg signature would be wrong about what senders actually do.
+Sender = Callable[..., Awaitable[None]]
 
 # How long a player may go un-hit before the operator is told. Long enough that a quiet opening or a
 # cautious player is not flagged, short enough to catch an unhittable gun while the match can still
@@ -185,7 +189,7 @@ class GameDriver:
         wire_map = {wire: pid for pid, wire in self.player_ids.items()}
         if roster is not None and hasattr(roster, "wire_ids"):
             roster.wire_ids = wire_map
-        elif hasattr(self.engine, "wire_ids"):
+        elif isinstance(self.engine, ExtractionEngineAdapter):
             # Engines with no Roster of their own (the extraction adapter) expose the map directly.
             # Without this branch they never see a wire id and fall back to team resolution forever.
             self.engine.wire_ids = wire_map

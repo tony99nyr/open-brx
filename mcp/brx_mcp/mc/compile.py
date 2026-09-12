@@ -20,7 +20,8 @@ from ..gameconfig import END_SEQUENCE, WEAPON_TAILS, _SIR_TABLE, GameConfig as _
 from .. import hitaudio as _ha
 from ..protocol import PANIC_SEQUENCE
 from .perks import PerkCatalog
-from .types import MAX_PLAYERS, OBJECTIVE_MODES, STATION_SOURCES, FrameBundle, GameConfig, Player, Team, Weapon
+from .types import (MAX_PLAYERS, OBJECTIVE_MODES, STATION_SOURCES, FrameBundle, GameConfig, PerkView,
+                    Player, Team, Weapon)
 from . import presentation as _pres
 from .. import poolgauge as pg
 from .. import voices as _voices
@@ -443,7 +444,7 @@ _STATION_GATED_MODES = {"domination", "koth", "ctf", "cs", "bomb"}
 MC_VERIFY_PLAYER = "A WIN IS CONFIRMED AT MISSION CONTROL · RETURN AFTER THE WHISTLE"
 
 
-def full_coverage(config: dict | None = None, opts: dict | None = None) -> bool:
+def full_coverage(config: GameConfig | None = None, opts: dict | None = None) -> bool:
     """Is the VENUE asserted to cover every phone for the whole match? (A4.8, A31.)
 
     THE coverage model, and the only reader of either field: `opts.coverage` is the per-call CLI/sim
@@ -456,7 +457,7 @@ def full_coverage(config: dict | None = None, opts: dict | None = None) -> bool:
     return (o.get("venue_coverage") or o.get("coverage") or (config or {}).get("coverage")) == "full"
 
 
-def mc_decided_end(config: dict) -> bool:
+def mc_decided_end(config: GameConfig) -> bool:
     """Does MISSION CONTROL decide when this game is over, rather than the clock on every phone?
 
     Three shapes (A31): a frag cap (MC counts the kills and calls it), an objective `win_by` (possession
@@ -472,7 +473,7 @@ def mc_decided_end(config: dict) -> bool:
     return config.get("mode") in ("lms", "infection")
 
 
-def mc_verify(config: dict, opts: dict | None = None, off_grid: bool = False) -> str | None:
+def mc_verify(config: GameConfig, opts: dict | None = None, off_grid: bool = False) -> str | None:
     """The player-facing line, or None when this match does not need it (A31).
 
     Three conditions, all required: MC decides the end, the venue is not full coverage, and at least
@@ -485,7 +486,7 @@ def mc_verify(config: dict, opts: dict | None = None, off_grid: bool = False) ->
     return MC_VERIFY_PLAYER
 
 
-def station_source_of(config: dict, opts: dict | None = None) -> str | None:
+def station_source_of(config: GameConfig, opts: dict | None = None) -> str | None:
     """Where this game's objective comes from: `opts` wins (the CLI/sim path passes it per call),
     else the GameConfig field the MC operator sets (`state.py` `_CONFIG_KEYS`)."""
     return (opts or {}).get("station_source") or config.get("station_source")
@@ -552,7 +553,7 @@ class WeaponCatalog:
         for w in self._rows:
             if w.get("hidden"):
                 continue
-            out.append({
+            row: Weapon = {
                 "weapon_id": w["weapon_id"], "name": w["name"], "cls": str(w["cls"]),
                 "desc": w.get("desc", ""),
                 "tags": list(w.get("tags") or []), "role": w.get("role", ""),   # A10 policy vocabulary
@@ -567,8 +568,10 @@ class WeaponCatalog:
                           "charged": self._frame_int(w["weapon_id"], "mode") in self._CHARGE_MODES},
                 "weap_frame": self.resolve(w["weapon_id"], 0),
                 "verified": bool(w.get("verified", False)),
-                **({"caution": w["caution"]} if w.get("caution") else {}),  # A10: known live problem, human copy
-            })
+            }
+            if w.get("caution"):    # A10: known live problem, human copy
+                row["caution"] = w["caution"]
+            out.append(row)
         return out
 
     def _row(self, weapon_id: str) -> dict:
@@ -949,7 +952,7 @@ class Compiler:
         every standard hit -- which is why the shipped rows keep the EMPTY sound token Callsign ships.
         Those empty tokens are not a gap to fill; they are what makes the pool sounds audible."""
         cells = _sir_cells(_SIR_TABLE)
-        rows = list(_SIR_TABLE)
+        rows: list[str] = list(_SIR_TABLE)
         by_fn: dict[int, str] = {}
         for row, cell in zip(_SIR_TABLE, cells):
             fn = _sir_index([row]).get(cell)
@@ -1220,7 +1223,12 @@ class Compiler:
             for role in ("pain_short", "pain_long", "pain_melee"):
                 ids = voice_map.get(role) or []
                 if ids:
-                    bundle["cues"][role] = _pres.play_frame(f"voice:{role}", voice_map)
+                    # `ids` truthy means `voice_map[role]` resolves, so play_frame's own lookup always
+                    # hits -- but its return type is honest about the general case (an unmatched role
+                    # -> None), so guard rather than write a None into a wire field typed str.
+                    fr = _pres.play_frame(f"voice:{role}", voice_map)
+                    if fr is not None:
+                        bundle["cues"][role] = fr
                     if len(ids) > 1:
                         bundle["cue_pools"][role] = [f"$PLAY,,4,6,{i},,,,*" for i in ids]
         # A15.2: the SPAWN LINE is ours. The head's $PSET carries an EMPTY battleRespawnCry (the firmware then says
@@ -1229,7 +1237,9 @@ class Compiler:
         if voice_switch == "on":
             spawn_ids = voice_map.get("spawn") or []
             if spawn_ids:
-                bundle["cues"]["spawn"] = _pres.play_frame("voice:spawn", voice_map)
+                fr = _pres.play_frame("voice:spawn", voice_map)
+                if fr is not None:
+                    bundle["cues"]["spawn"] = fr
                 if len(spawn_ids) > 1:
                     bundle["cue_pools"]["spawn"] = [f"$PLAY,,4,6,{i},,,,*" for i in spawn_ids]
         low = frames.pop("low_health", None)
@@ -1408,7 +1418,7 @@ class Compiler:
         if mode in _OBJECTIVE_MODES:
             tid_of = {t.get("team_id"): t.get("tid") for t in config.get("teams", [])}
             on_neutral = sorted({str(p.get("player_id")) for p in roster
-                                 if tid_of.get(p.get("team_id")) == _NEUTRAL_TEAM})
+                                 if tid_of.get(p.get("team_id") or "") == _NEUTRAL_TEAM})
             if on_neutral:
                 errors.append(
                     f"F82: mode {mode!r} cannot roster players on $TID {_NEUTRAL_TEAM} "
@@ -1648,7 +1658,7 @@ class Compiler:
     def weapon_catalog(self) -> list[Weapon]:
         return self.catalog.all()
 
-    def perk_catalog(self) -> list[dict]:
+    def perk_catalog(self) -> list[PerkView]:
         """Visible perks (loadout.md §1.2) — `PerkView` rows."""
         return self.perks.all()
 

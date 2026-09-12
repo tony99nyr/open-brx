@@ -7,7 +7,7 @@ life and host-respawns while lives remain; at zero lives the player is eliminate
 
 from __future__ import annotations
 
-from .base import Action, Callout, Eliminate, Respawn, ScoredEngine
+from .base import Action, Callout, Eliminate, Player, Respawn, ScoredEngine
 from .params import Param, resolve as _resolve_params
 
 
@@ -33,17 +33,16 @@ class LastManStandingEngine(ScoredEngine):
     # LMS reacts to, and that shared prologue+dispatch is byte-identical to
     # Infection's (clone review, 2026-09-07).
 
-    def _handle_death(self, victim_id: str, now: float) -> list[Action]:
-        v = self.roster.get(victim_id)
-        v.alive = False
-        v.deaths += 1
-        v.dead_since = now
-        if v.lives is not None:
-            v.lives -= 1
+    def _handle_death(self, victim: Player, now: float) -> list[Action]:
+        victim.alive = False
+        victim.deaths += 1
+        victim.dead_since = now
+        if victim.lives is not None:
+            victim.lives -= 1
         actions: list[Action] = []
-        if v.lives is not None and v.lives <= 0:
-            actions.append(Eliminate(victim_id))
-            actions.append(Callout(f"{victim_id} eliminated"))
+        if victim.lives is not None and victim.lives <= 0:
+            actions.append(Eliminate(victim.player_id))
+            actions.append(Callout(f"{victim.player_id} eliminated"))
             actions += self._check_win()
         return actions
 

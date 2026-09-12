@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import math
 
+from typing import Sequence
+
 from .compile import DEFAULT_POOL
+from .types import Weapon
 
 # The pool one hit is measured against when the caller does not say: 45 HP + 70 armour (GameConfig
 # defaults). `stats.dmg` in weapons.json is the SHARE of that pool a single hit removes.
@@ -48,7 +51,7 @@ def _num(v):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
 
-def weapon_view(w: dict, pool: int = DEFAULT_POOL) -> dict:
+def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> dict:
     """contracts §3 `Weapon` → API.md `WeaponView`. A10 adds `tags` + `role`.
 
     Emits the REAL numbers (damage per hit, reload seconds, mag/reserve, hits- and time-to-kill).
@@ -103,10 +106,10 @@ def weapon_view(w: dict, pool: int = DEFAULT_POOL) -> dict:
             "verified": bool(w.get("verified")),
             "tags": list(w.get("tags") or []), "role": w.get("role", ""),
             "htk": htk, "ttk_ms": ttk_ms,                                       # A10, now at the host's pool
-            **({"caution": w["caution"]} if w.get("caution") else {})}          # A10: known live problem
+            **({"caution": caution} if (caution := w.get("caution")) else {})}  # A10: known live problem
 
 
-def weapon_views(catalog: list[dict], pool: int = DEFAULT_POOL) -> list[dict]:
+def weapon_views(catalog: Sequence[Weapon], pool: int = DEFAULT_POOL) -> list[dict]:
     """Every weapon as a `WeaponView`, plus a `bars` block ranked ACROSS the arsenal.
 
     bars.power  — damage per hit, ranked (weapons.json `dmg`)

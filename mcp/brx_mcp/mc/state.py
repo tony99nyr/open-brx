@@ -14,7 +14,7 @@ import secrets
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Callable, get_args
+from typing import TYPE_CHECKING, Any, Callable, NotRequired, TypedDict, get_args
 from urllib.parse import quote
 
 from . import presentation as _pres
@@ -30,9 +30,13 @@ from ..modes.registry import default_params as _default_params, params_schema_js
 from .tunnel import TunnelError
 from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS,
                     OBJECTIVE_MODES, OFFLINE_AFTER_MS,
-                    STALE_AFTER_MS, STATION_KINDS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, GameConfig,
-                    Phase, Player, ReadinessRow, ReadinessSnapshot, ScanRow, Team, app_tier, compatible,
-                    parse_app_ver)
+                    STALE_AFTER_MS, STATION_KINDS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, Event,
+                    GameConfig, Loadout, LoadoutOverrides, LoadoutPolicy, LoadoutPool, PerkView,
+                    Phase, Player, ReadinessRow, ReadinessSnapshot, Respawn, ScanRow, StationRef,
+                    Stun, Team, Weapon, WeaponSel, app_tier, compatible, parse_app_ver)
+
+if TYPE_CHECKING:                      # `presets.PresetStore` is attached by `__main__`/`create_app`
+    from .presets import PresetStore
 
 PHASES = get_args(Phase)      # the vocabulary itself lives on `types.Phase`, so the console's is generated from it
 
@@ -72,7 +76,7 @@ class CoverageRequired(ValueError):
         self.coverage = coverage
         self.status = 409
 
-TEAM_DEFS = {  # $TID: 1=blue, 2=yellow, 0=red (protocol §7i); green provisional 3
+TEAM_DEFS: dict[str, Team] = {  # $TID: 1=blue, 2=yellow, 0=red (protocol §7i); green provisional 3
     "blue": {"team_id": "blue", "name": "BLUE TEAM", "color": "#3a86ff", "tid": 1},
     "yellow": {"team_id": "yellow", "name": "YELLOW TEAM", "color": "#ffd23f", "tid": 2},
     "red": {"team_id": "red", "name": "RED TEAM", "color": "#ff5252", "tid": 0},
@@ -88,7 +92,27 @@ TEAM_DEFS = {  # $TID: 1=blue, 2=yellow, 0=red (protocol §7i); green provisiona
 # `proven`: the mode has run a whole match on real taggers (TDM 2026-08-25 and 2026-09-01, FFA 2026-08-30,
 # KotH through the gun 2026-09-10). The public site badges the others "in development" off this flag;
 # flip it here, never on the site, when a mode has its first real match.
-MODES = [
+class ModeRow(TypedDict):
+    """One row of `MODES` below. The catalogue is data, not wire shape, so it lives here rather than in
+    `types.py`; the keys are exactly what `default_config()`, `modes()` and `game_brief()` read."""
+    mode: str
+    name: str
+    abbr: str
+    desc: str
+    brief: str
+    teams_text: str
+    win_text: str
+    respawn_text: str
+    teams: list[str]                    # keys into TEAM_DEFS
+    win_by: str
+    frag_limit: int | None
+    respawn: Respawn
+    preset: str                         # led-language.md §4 / G3: the presentation preset the mode resolves to
+    proven: bool
+    station_source: NotRequired[str]    # F70: only the modes with an objective emitter carry one
+
+
+MODES: list[ModeRow] = [
     {"mode": "tdm", "name": "TEAM DEATHMATCH", "abbr": "TDM", "desc": "Teams score per elimination",
      "brief": "Squads score a point per elimination. Downed players respawn after the delay and rejoin. First team to the score cap — or the highest score at the time limit — takes the match.",
      "teams_text": "2–4 TEAMS", "win_text": "SCORE CAP / TIME", "respawn_text": "ON · TIMED",
@@ -193,17 +217,17 @@ _KIT_FIELDS = ("loadout", "voice", "voice_slots", "player_num", "gun_id")
 def default_config(mode: str = "tdm") -> GameConfig:
     m = next(x for x in MODES if x["mode"] == mode)
     cfg: GameConfig = {"config_id": uuid.uuid4().hex[:8], "mode": mode, "environment": "outdoor", "night": False,
-                       "time_limit_s": 600, "respawn": dict(m["respawn"]),
+                       "time_limit_s": 600, "respawn": m["respawn"].copy(),
                        "scoring": {"frag_limit": m["frag_limit"], "win_by": m["win_by"]},
                        "health": {"max_hp": 45, "max_armor": 70},
-                       "teams": [dict(TEAM_DEFS[t]) for t in m["teams"]],
+                       "teams": [TEAM_DEFS[t].copy() for t in m["teams"]],
                        "loadout_policy": _policy.default_policy(mode),      # A10: ffa → no_heavies, else open
                        "presentation": _pres.profile_from_preset(m.get("preset", "standard"))}   # A11 / G3: the mode row's own preset
     # Only the modes that HAVE an objective emitter carry the key at all, so every other mode's config
     # is byte-identical to what it was before the field existed (a saved game's identity is the whole
     # config -- `gameSummary.ts` `gameSig` -- and a null nobody set would have re-keyed all of them).
-    if m.get("station_source"):
-        cfg["station_source"] = m["station_source"]
+    if src := m.get("station_source"):
+        cfg["station_source"] = src
     # A18: the same rule for the mode's own parameters -- present and COMPLETE (every default) only when the
     # engine declares some (koth, lms, extraction); tdm / ffa / infection declare none and stay byte-identical.
     mp = _default_params(mode)
@@ -256,7 +280,7 @@ class Session:
         self._policy_notice: str | None = None    # A10: "N LOADOUTS RESET BY …" — shown in config_warnings until the next config PUT
         self.active_preset_id: str | None = None  # A10 §8: the saved game that was APPLIED — GAMES marks it PLAYING (content-matching
                                                   # cannot tell a duplicate from its source: review 2026-08-27 #0)
-        self.presets = None                       # A10 §8: PresetStore, attached by __main__/create_app (memory store when absent)
+        self.presets: PresetStore | None = None   # A10 §8: attached by __main__/create_app (memory store when absent)
         # A17: `lobby_pushed` is ALSO the real guard on `_pinned_hit_plan` below. It is set True in exactly
         # one place (`push_config`, which clears the pin as its first statement), and every path that can
         # compile (`_resend`, `_bind`, hydrate) is gated on it -- so a pin can never survive into a new
@@ -325,7 +349,7 @@ class Session:
     # An MC restart must not dump the roster: 3x on 2026-08-26 a restart mid-setup left connected
     # phones on "WAITING FOR KIT-OUT" with every gun ghosted NOT SEEN. Snapshot the human work
     # (players/teams/config) — never live link state (node_id, phase, acks).
-    _persist_path = None            # set by __main__; None = persistence off (tests)
+    _persist_path: Path | None = None   # set by __main__; None = persistence off (tests)
     _persist_last = 0.0
     _persist_dirty = False
 
@@ -604,26 +628,31 @@ class Session:
         return {"level": "full" if bound and on == bound else "zones", "on_backhaul": on, "bound": bound}
 
     # ---------- A10 loadout policy / catalog ----------
-    def _catalog_rows(self) -> tuple[list[dict], list[dict]]:
+    def _catalog_rows(self) -> tuple[list[Weapon], list[PerkView]]:
         """(visible weapons, visible perks) — the rows the policy engine filters by tag."""
-        try:
-            weapons = [w for w in self.compiler.weapon_catalog() if isinstance(w, dict)]
-        except Exception:
-            weapons = []
-        pc = getattr(self.compiler, "perk_catalog", None)
-        try:
-            perks = [r for r in pc()] if callable(pc) else []
-        except Exception:
-            perks = []
+        wc: Callable[[], list[Weapon]] | None = getattr(self.compiler, "weapon_catalog", None)
+        weapons: list[Weapon] = []
+        if wc is not None:
+            try:
+                weapons = [w for w in wc() if isinstance(w, dict)]
+            except Exception:
+                weapons = []
+        pc: Callable[[], list[PerkView]] | None = getattr(self.compiler, "perk_catalog", None)
+        perks: list[PerkView] = []
+        if pc is not None:
+            try:
+                perks = list(pc())
+            except Exception:
+                perks = []
         return weapons, perks
 
-    def policy(self) -> dict:
+    def policy(self) -> LoadoutPolicy:
         pol = self.config.get("loadout_policy")
         if not pol:
             pol = self.config["loadout_policy"] = _policy.default_policy(self.config["mode"])
         return pol
 
-    def loadout_pool(self) -> dict:
+    def loadout_pool(self) -> LoadoutPool:
         weapons, perks = self._catalog_rows()
         return _policy.pool(self.policy(), weapons, perks)
 
@@ -750,10 +779,10 @@ class Session:
         else:
             n = len(lp["perks"])
             parts.append((f"a perk of your choice ({n})" if pol.get("hud_select") and kr["choice"] == "player" else "the host sets your perk"))
-        preset_lbl = _policy.PRESET_LABELS.get(pol.get("preset"), "")
+        preset_lbl = _policy.PRESET_LABELS.get(pol.get("preset") or "", "")
         saved = None
         try:
-            if getattr(self, "presets", None) is not None:
+            if self.presets is not None:
                 sig = {k: v for k, v in cfg.items() if k not in ("config_id", "vip_player_id")}   # A19: never in a saved game, so never in the match
                 saved = next((r for r in self.presets.list() if {k: v for k, v in r["config"].items() if k != "config_id"} == sig), None)
         except Exception:
@@ -799,9 +828,9 @@ class Session:
                 self.tryout(pid, None)                   # → tutorial {end} teardown on the node
             self._resend(pl)
         if changed:
-            label = _policy.PRESET_LABELS.get(self.policy().get("preset"), "THE LOADOUT RULES")
+            label = _policy.PRESET_LABELS.get(self.policy().get("preset") or "", "THE LOADOUT RULES")
             try:
-                if self.active_preset_id and getattr(self, "presets", None) is not None:
+                if self.active_preset_id and self.presets is not None:
                     label = self.presets.get(self.active_preset_id)["name"].upper()
             except Exception:
                 pass
@@ -865,7 +894,7 @@ class Session:
                 if p["team_id"] in counts:
                     counts[p["team_id"]] += 1
             team_id = min(counts, key=lambda k: (counts[k], list(counts).index(k)))
-        lo = self._check_loadout(loadout) if loadout else {"weapons": [{"weapon_id": "assault_rifle"}]}
+        lo: Loadout = self._check_loadout(loadout) if loadout else {"weapons": [{"weapon_id": "assault_rifle"}]}
         lo = _policy.apply(self.policy(), self.loadout_pool(), lo, *self._catalog_rows())   # §3.3: a new player obeys the ruleset
         p: Player = {"player_id": pid, "player_num": self._next_num(), "display": display.strip().upper() or f"OPERATOR {pid[:4]}",
                      "team_id": team_id, "node_id": None, "gun_id": gun_id,
@@ -969,15 +998,17 @@ class Session:
 
     def _voice_ids(self) -> set[str]:
         ids = {"male", "female"}
-        opts = getattr(self.compiler, "voice_options", None)
-        if callable(opts):
+        opts: Callable[[], list[dict]] | None = getattr(self.compiler, "voice_options", None)
+        if opts is not None:
             try:
-                ids |= {o.get("id") for o in opts() if isinstance(o, dict) and o.get("id")}
+                for o in opts():
+                    if isinstance(o, dict) and isinstance(o.get("id"), str) and o["id"]:
+                        ids.add(o["id"])
             except Exception:
                 pass
         return ids
 
-    def _check_loadout(self, lo) -> dict:
+    def _check_loadout(self, lo) -> Loadout:
         """Loadout must be {weapons: [{weapon_id}] | [{primary}, {secondary}], perk?: perk_id, overrides?: {max_hp?, max_armor?}};
         ids from the catalog when known. A14: `perk` is its own slot beside the weapons (loadout.md §2); the one
         pairing the hardware forbids (an ALT-button perk + a second weapon) is a POLICY reject, not a shape error."""
@@ -986,20 +1017,21 @@ class Session:
         if len(lo["weapons"]) > 2:
             raise ValueError("loadout.weapons holds at most a primary and a secondary")
         known: set[str] = set()
-        cat = getattr(self.compiler, "weapon_catalog", None)
-        if callable(cat):
+        cat: Callable[[], list[dict]] | None = getattr(self.compiler, "weapon_catalog", None)
+        if cat is not None:
             try:
-                known = {w.get("weapon_id") for w in cat() if isinstance(w, dict)}
+                known = {w["weapon_id"] for w in cat()
+                         if isinstance(w, dict) and isinstance(w.get("weapon_id"), str)}
             except Exception:
                 known = set()
-        weapons = []
+        weapons: list[WeaponSel] = []
         for w in lo["weapons"]:
             if not isinstance(w, dict) or not isinstance(w.get("weapon_id"), str) or not w["weapon_id"]:
                 raise ValueError("each loadout weapon needs a weapon_id")
             if known and w["weapon_id"] not in known:
                 raise ValueError(f"unknown weapon_id {w['weapon_id']!r}")
             weapons.append({"weapon_id": w["weapon_id"]})
-        out: dict = {"weapons": weapons}
+        out: Loadout = {"weapons": weapons}
         perk = lo.get("perk")
         if perk is not None and perk != "":
             if not isinstance(perk, str):
@@ -1012,15 +1044,19 @@ class Session:
         if ov is not None:
             if not isinstance(ov, dict):
                 raise ValueError("loadout.overrides must be an object")
-            clean = {}
+            clean: LoadoutOverrides = {}
             # armour may be 0 (the game config allows it: "0 means one-shot with a sniper"), so a
             # per-player override must be able to say 0 too, or the handicap can raise a pool but
             # never strip one. HP 0 is not a pool, it is a corpse.
             for k, lo_ in (("max_hp", 1), ("max_armor", 0)):
                 if k in ov and ov[k] is not None:
-                    if isinstance(ov[k], bool) or not isinstance(ov[k], int) or not lo_ <= ov[k] <= 999:
+                    v = ov[k]
+                    if isinstance(v, bool) or not isinstance(v, int) or not lo_ <= v <= 999:
                         raise ValueError(f"overrides.{k} must be an integer {lo_}..999")
-                    clean[k] = ov[k]
+                    if k == "max_hp":            # written key by key: `clean` is a TypedDict, not a bag
+                        clean["max_hp"] = v
+                    else:
+                        clean["max_armor"] = v
             if clean:
                 out["overrides"] = clean
         return out
@@ -1029,8 +1065,9 @@ class Session:
         if self.phase not in self.ROSTER_PHASES:
             raise ValueError("cannot remove a player after the match has started")
         p = self.players.pop(pid)
-        if p.get("node_id"):
-            self.node_player.pop(p["node_id"], None)
+        nid = p.get("node_id")
+        if nid:
+            self.node_player.pop(nid, None)
         self.acks.pop(pid, None); self.bundles.pop(pid, None); self.trying.pop(pid, None); self.browsing.pop(pid, None)
         self._changed()
 
@@ -1138,9 +1175,16 @@ class Session:
             # the same patch and hid two thirds of it; `coverage` it did not, so a full-coverage site
             # silently became partial and the A31 verify-at-MC warning appeared out of nowhere. Anything
             # the patch itself names still wins -- this only fills what the swap would have dropped.
-            for k in ("environment", "night", "coverage"):
-                if k not in patch and k in self.config:
-                    cfg[k] = copy.deepcopy(self.config[k])
+            # Written key by key rather than through a loop variable: `cfg` is a `GameConfig` and the
+            # three carried keys do not share a value type. The `in self.config` guards are kept: a
+            # RESTORED snapshot's config is taken verbatim (`restore_snapshot`), so it is the one config
+            # in MC that can be missing a key the type says is required.
+            if "environment" not in patch and "environment" in self.config:
+                cfg["environment"] = self.config["environment"]
+            if "night" not in patch and "night" in self.config:
+                cfg["night"] = self.config["night"]
+            if "coverage" not in patch and (cov := self.config.get("coverage")) is not None:
+                cfg["coverage"] = cov
         cfg = self._merge_config(cfg, patch, mode)
         cfg["config_id"] = uuid.uuid4().hex[:8]
         self.config = cfg
@@ -1172,21 +1216,29 @@ class Session:
         cfg.pop("vip_player_id", None)       # A19: a saved game names no person; the VIP is picked per session
         return cfg
 
-    def _merge_config(self, cfg: dict, patch: dict, mode: str) -> dict:
-        """Whitelist + range-check every key of `patch` onto `cfg` (A8.3). Pure; raises ValueError."""
+    def _merge_config(self, cfg: GameConfig, patch: dict, mode: str) -> GameConfig:
+        """Whitelist + range-check every key of `patch` onto `cfg` (A8.3). Pure; raises ValueError.
+
+        Every branch writes its LITERAL key rather than `cfg[k]`: `cfg` is a `GameConfig` and its keys do
+        not share a value type. The optional ones (`coverage`, `led`, `station_source`, `mode_params`,
+        `vip_player_id`, `stun`) are REMOVED on a null rather than set to one, and the sub-objects are
+        rebuilt as their own shapes, so a patch that smuggles an extra key INSIDE `respawn` / `scoring` /
+        `health` / `stun` no longer stores it -- the whitelist rule the top level has always had
+        (2026-09-12: `led` and those four inner bags were the holes).
+        """
         for k, v in patch.items():
             if k not in self._CONFIG_KEYS:
                 continue                         # ignore unknown / client-injected keys
             if k == "time_limit_s":
                 if v is not None and not (isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 7200):
                     raise ValueError("time_limit_s must be an integer 1..7200 or null")
-                cfg[k] = v
+                cfg["time_limit_s"] = v
             elif k == "environment":
                 if v not in ("indoor", "outdoor"):
                     raise ValueError("environment must be indoor|outdoor")
-                cfg[k] = v
+                cfg["environment"] = v
             elif k == "night":
-                cfg[k] = bool(v)
+                cfg["night"] = bool(v)
             elif k == "coverage":
                 # A31/A4.8: the venue's radio coverage. "full" is an ASSERTION the operator makes about
                 # the site (every phone on the LAN the whole match) and it unlocks a null `time_limit_s`
@@ -1194,13 +1246,14 @@ class Session:
                 if v is not None and v not in ("full", "partial"):
                     raise ValueError("coverage must be full|partial or null")
                 if v is None:
-                    cfg.pop(k, None)
+                    cfg.pop("coverage", None)
                 else:
-                    cfg[k] = v
+                    cfg["coverage"] = v
             elif k in ("respawn", "scoring", "health"):
                 if not isinstance(v, dict):
                     raise ValueError(f"{k} must be an object")
-                merged = {**cfg[k], **v}
+                current = cfg["respawn"] if k == "respawn" else cfg["scoring"] if k == "scoring" else cfg["health"]
+                merged: dict[str, Any] = {**current, **v}
                 if k == "respawn":
                     if merged.get("type") not in ("auto", "scanner", "none"):
                         raise ValueError("respawn.type must be auto|scanner|none")
@@ -1216,11 +1269,19 @@ class Session:
                     if d in (1, 2):
                         raise ValueError("respawn.delay_s of 1-2s wedges the headset in the relay's "
                                          "out-blink (F13); use 0 (no respawn) or >= 3")
+                    cfg["respawn"] = {"type": merged["type"], "delay_s": d}
                 if k == "scoring":
                     fl = merged.get("frag_limit")
                     if fl is not None and not (isinstance(fl, int) and not isinstance(fl, bool) and fl > 0):
                         raise ValueError("scoring.frag_limit must be a positive integer or null")
+                    # `merged["win_by"]` is not guaranteed: a RESTORED snapshot's config can be missing
+                    # it (see `set_config`'s own comment on `cfg` above), and a patch that only touches
+                    # `frag_limit` then leaves `merged` without one too -- so this fell through to a
+                    # KeyError on `PUT /api/config {"scoring": {...}}` (2026-09-12).
+                    cfg["scoring"] = {"frag_limit": fl,
+                                      "win_by": merged.get("win_by") or default_config(mode)["scoring"]["win_by"]}
                 if k == "health":
+                    pools: dict[str, int] = {}
                     for hk in ("max_hp", "max_armor"):
                         hv = merged.get(hk, 0)
                         lo = 1 if hk == "max_hp" else 0
@@ -1228,7 +1289,8 @@ class Session:
                             # 255 is a POLICY ceiling, not a hardware one -- $PSET pools are
                             # wider than 8 bits (bench 2026-08-27, see FOLLOWUPS/experiment-log).
                             raise ValueError(f"health.{hk} must be {lo}..255")
-                cfg[k] = merged
+                        pools[hk] = hv
+                    cfg["health"] = {"max_hp": pools["max_hp"], "max_armor": pools["max_armor"]}
             elif k == "teams":
                 if not (isinstance(v, list) and all(isinstance(t, dict) and "team_id" in t
                                                    and isinstance(t.get("tid"), int) and not isinstance(t.get("tid"), bool) for t in v)):
@@ -1264,11 +1326,19 @@ class Session:
                         f"F82: mode {mode!r} cannot have a team on $TID {_NEUTRAL_TEAM} at all — that "
                         "is the value a NEUTRAL grenade hill broadcasts, so anyone put on it later reads "
                         "every uncaptured point as their own and takes no hill damage. Use tid 0, 1 or 3.")
-                cfg[k] = v
+                cfg["teams"] = v
             elif k == "led":
                 if v is not None and not isinstance(v, dict):
                     raise ValueError("led must be an object")
-                cfg[k] = v
+                if v is None:
+                    # 2026-09-12: `led: null` used to STORE the null, alone among the nullable keys
+                    # (coverage / station_source / vip_player_id / stun all drop theirs), and
+                    # `GameConfig.led` says the value is an object. Nothing has ever sent it -- no
+                    # caller in `webapp/mc` or `app/` names the key -- and the one reader
+                    # (`compile.py`: `config.get("led") or {}`) cannot tell the two apart.
+                    cfg.pop("led", None)
+                else:
+                    cfg["led"] = v
             elif k == "station_source":
                 # F70: what is on the field emitting this game's objective. A CLOSED vocabulary --
                 # the compiler used to accept any non-empty string, so a typo shipped a hill mode
@@ -1278,9 +1348,9 @@ class Session:
                     raise ValueError("station_source must be null or one of: "
                                      + ", ".join(f"{k2} ({d})" for k2, d in sorted(STATION_SOURCES.items())))
                 if v is None:
-                    cfg.pop(k, None)
+                    cfg.pop("station_source", None)
                 else:
-                    cfg[k] = v
+                    cfg["station_source"] = v
             elif k == "mode_params":
                 # A18 (E1): the mode's own rules, checked against what ITS ENGINE declares (`modes/params.py`).
                 # A partial patch merges onto the current values; what is stored is the COMPLETE resolved set
@@ -1290,23 +1360,22 @@ class Session:
                     v = {}
                 if not isinstance(v, dict):
                     raise ValueError("mode_params must be an object (the mode's parameters, GET /api/modes .params)")
-                merged = {**(cfg.get("mode_params") or {}), **v}
-                resolved, errs = _validate_mode_params(mode, merged)
+                resolved, errs = _validate_mode_params(mode, {**(cfg.get("mode_params") or {}), **v})
                 if errs:
                     raise ValueError("; ".join(errs))
                 if resolved:
-                    cfg[k] = resolved
+                    cfg["mode_params"] = resolved
                 else:
-                    cfg.pop(k, None)             # a mode with no parameters carries no key at all
+                    cfg.pop("mode_params", None)   # a mode with no parameters carries no key at all
             elif k == "vip_player_id":
                 # A19 (S10): who the VIP is. Roster membership is `validate()`'s to check (this merge is pure);
                 # here only the shape. `null` clears it.
                 if v is not None and not (isinstance(v, str) and v):
                     raise ValueError("vip_player_id must be a player_id string or null")
                 if v is None:
-                    cfg.pop(k, None)
+                    cfg.pop("vip_player_id", None)
                 else:
-                    cfg[k] = v
+                    cfg["vip_player_id"] = v
             elif k == "stun":
                 # F15 / A20: `{duration_s?}` enables the EMP row; range and the source warning are `validate()`'s
                 # (`compile._validate_stun`). `null` clears it. Until 2026-09-11 this key was not in
@@ -1314,23 +1383,26 @@ class Session:
                 if v is not None and not isinstance(v, dict):
                     raise ValueError("stun must be an object {duration_s} or null (F15/A20)")
                 if v is None:
-                    cfg.pop(k, None)
+                    cfg.pop("stun", None)
                 else:
-                    cfg[k] = dict(v)
+                    stun: Stun = {}
+                    if "duration_s" in v:
+                        stun["duration_s"] = v["duration_s"]
+                    cfg["stun"] = stun
             elif k == "player_num_base":
                 if not (isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= MAX_PLAYERS):
                     raise ValueError("player_num_base must be 1..63")
-                cfg[k] = v
+                cfg["player_num_base"] = v
             elif k == "loadout_policy":
                 # A10 §3: a preset name rewrites the rules; a rule edit that matches no preset → custom
-                cfg[k] = _policy.merge(cfg.get("loadout_policy") or _policy.default_policy(mode), v)
+                cfg["loadout_policy"] = _policy.merge(cfg.get("loadout_policy") or _policy.default_policy(mode), v)
             elif k == "presentation":
                 # A11: a preset name replaces the profile; a field edit marks it custom; bad ids/colours raise
-                cfg[k] = _pres.merge(cfg.get("presentation") or _pres.default_for(mode), v)
+                cfg["presentation"] = _pres.merge(cfg.get("presentation") or _pres.default_for(mode), v)
             elif k == "config_id":
                 continue                                     # never client-set; minted by set_config
-            else:
-                cfg[k] = v
+            else:                                            # `mode` -- the only whitelisted key left
+                cfg["mode"] = v
         return cfg
 
     def _validate(self) -> dict:
@@ -1362,9 +1434,10 @@ class Session:
             self.game_no += 1
             self._game_no_started = False
 
-    def _station_ids(self) -> list[dict]:
-        return sorted(({"id": a["id"], "kind": a["kind"]} for st in self.stations.values() if (a := st.get("assigned"))),
-                      key=lambda x: x["id"])
+    def _station_ids(self) -> list[StationRef]:
+        rows: list[StationRef] = [{"id": a["id"], "kind": a["kind"]}
+                                  for st in self.stations.values() if (a := st.get("assigned"))]
+        return sorted(rows, key=lambda x: x["id"])
 
     def _wire_config(self) -> GameConfig:
         """The config a NODE receives: the operator's config plus `stations`, the allow-list of station ids MC
@@ -1486,7 +1559,9 @@ class Session:
         """Push `station_config` to one assigned station. Best-effort: an offline phone is flagged
         `arm_pending` (roadmap A4 "bring back to re-arm") and armed on its next hello, never retried on a timer."""
         st = self.stations.get(nid)
-        a = st.get("assigned") if st else None
+        if st is None:
+            return False
+        a = st.get("assigned")
         if not a:
             return False
         body = {"kind": a["kind"], "team": a["team"], "id": a["id"], "threshold": a["threshold"],
@@ -1535,12 +1610,15 @@ class Session:
     def stations_view(self) -> list[dict]:
         return [self._station_view(nid) for nid in sorted(self.stations)]
 
-    def _scorer_recap(self) -> dict:
+    def _scorer_recap(self, sc: Scorer) -> dict:
         """THE recap: the scorer's sheet plus the stations rows (A6). Every call site goes through here -- the
         late-fact re-store (`_restore_recap`) used to call `scorer.recap()` bare, so the first fact after END
         (the outbox flush, i.e. the normal case) silently dropped `stations` from `last_recap` and the DB row
-        (polish review 2026-09-11)."""
-        return self.scorer.recap(stations=self._recap_stations())
+        (polish review 2026-09-11).
+
+        The scorer is PASSED, not read off `self`: all three callers already hold a non-None one, and
+        naming it here is what makes that visible (there is no recap without a scorer)."""
+        return sc.recap(stations=self._recap_stations())
 
     def _recap_stations(self) -> list[dict]:
         """Roadmap A6: a stations row for the recap sheet, one per ASSIGNED station, from its own
@@ -1779,7 +1857,7 @@ class Session:
             rows = self.scorer.rows()
             row = next((r for r in rows if r["player_id"] == p["player_id"]), None)
             if row:
-                node["score"] = dict(row, board=self._score_board(), rows=rows)   # same shape as the live push: the swapped phone's DOWN recap has the race
+                node["score"] = dict(row, board=self._score_board(self.scorer), rows=rows)   # same shape as the live push: the swapped phone's DOWN recap has the race
         if self.phase == "recap" and self.last_recap and self._played_this_match(p["player_id"]):
             # A24: a phone that comes back into coverage AFTER the whistle still learns how it ended —
             # the only route to a result for a node that was off the LAN when `_finish` pushed it.
@@ -1843,8 +1921,10 @@ class Session:
             self.scorer.ingest_status(nid, body, t_recv)
         self._changed()
 
-    def _on_event(self, nid: str, ev: dict, t_recv: int):
-        seq = (ev.pop("_seq", None) if isinstance(ev, dict) else None) or (ev.get("seq") if isinstance(ev, dict) else None)
+    def _on_event(self, nid: str, ev: Event, t_recv: int):
+        # `seq` is stamped onto the fact by `net.py` (`ev["seq"] = seq`) before it reaches here.
+        # It used to be read from `_seq` first; NOTHING has ever written that key, so that half was dead.
+        seq = ev.get("seq")
         self._node_view(nid)["last_seen_ms"] = t_recv
         parked = bool(self.scorer and ev.get("match_id") != self.scorer.match_id) or not self.scorer
         self._log(nid, ev.get("type", "event"), ev, t_recv, seq=seq, parked=parked)
@@ -1861,7 +1941,7 @@ class Session:
             self._push_scores()
             self._changed()
 
-    def ingest_batch(self, nid: str, events: list[dict], t_recv: int):
+    def ingest_batch(self, nid: str, events: list[Event], t_recv: int):
         self._node_view(nid)["last_seen_ms"] = t_recv
         for ev in events:
             self._log(nid, ev.get("type", "event"), ev, t_recv, seq=ev.get("seq"),
@@ -1904,7 +1984,7 @@ class Session:
         if self.phase != "recap" or not self.scorer:
             return
         try:
-            self.last_recap = self._scorer_recap()
+            self.last_recap = self._scorer_recap(self.scorer)
             if self.store:               # the ARCHIVE row; the live recap above is re-taken either way
                 self.store.match_ended(self.scorer.match_id, self.last_recap)
             self._push_result()          # A24: the field is re-told whenever the recap moves
@@ -1924,7 +2004,7 @@ class Session:
             if not p or not p.get("node_id"):
                 continue
             body = dict(row); body["shots_total"] = self.scorer.shots_total(pid)
-            body["board"] = self._score_board()     # the race to the cap, for the HUD's DOWN-screen recap (review 2026-09-03 #25/#26)
+            body["board"] = self._score_board(self.scorer)  # the race to the cap, for the HUD's DOWN-screen recap (review 2026-09-03 #25/#26)
             body["rows"] = rows                     # A24: EVERY player's row, all modes — the phone's mid-match leaderboard
             if self._score_pushed.get(pid) == body:
                 continue
@@ -2068,7 +2148,7 @@ class Session:
             return t if (t is not None and self.synced_at_lobby.get(r.get("node_id"), False)) else tr
         return sorted(facts, key=eff)
 
-    def _replay(self, facts: list[dict], freeze_at: int | None = None) -> Scorer:
+    def _replay(self, old: Scorer, facts: list[dict], freeze_at: int | None = None) -> Scorer:
         """Re-derive a Scorer for THIS match from stored facts. Pure: no feedback, no alerts, no feed,
         no cap callback — a replay must never re-fire a cue at a player standing in the debrief.
 
@@ -2078,7 +2158,6 @@ class Session:
         `old.players` IS `self.players`, so a re-team made in the debrief would otherwise replay the
         finished match on the new teams and hand the win to a side that never held it.
         """
-        old = self.scorer
         sc = Scorer(old.match_id, old.go_live_t, old.time_limit_s, old.mode,
                     self._match_players if self._match_players is not None else old.players,
                     list(old.teams.values()), old.node_player, old.synced_at_lobby,
@@ -2086,10 +2165,11 @@ class Session:
         if freeze_at is not None:
             sc.set_end(freeze_at)
         for r in facts:
-            sc.ingest(r["node_id"], dict(r["body"]), r.get("t_recv") or 0, seq=r.get("seq"))
+            body: Event = r["body"]
+            sc.ingest(r["node_id"], body.copy(), r.get("t_recv") or 0, seq=r.get("seq"))
         return sc
 
-    def _adopt_scorer(self, sc: Scorer) -> None:
+    def _adopt_scorer(self, old: Scorer, sc: Scorer) -> None:
         """Swap a replayed Scorer in for the live one, carrying the state facts cannot re-derive.
 
         `shots` arrives on the ~2 s status heartbeat and is a LATEST-WINS sample, not an event log, so
@@ -2098,7 +2178,6 @@ class Session:
         marked flushed by `_mark_flushed_live` (connected, fresh, nothing pending) never sent a fact to
         prove it, and losing that mark would make a settled recap provisional again.
         """
-        old = self.scorer
         for pid, st in sc.stats.items():
             o = old.stats.get(pid)
             if o is None:
@@ -2121,7 +2200,7 @@ class Session:
         sc.on_limit = lambda t, _sc=sc: self._on_frag_limit(t, _sc)
         self.scorer = sc
 
-    def _reconcile_end(self, nid: str, events: list[dict], t_recv: int) -> bool:
+    def _reconcile_end(self, nid: str, events: list[Event], t_recv: int) -> bool:
         """A24/M2: a fact landed after the whistle that can move the END ITSELF. Re-derive everything.
 
         The match ends at the TIMESTAMP of the kill that reached the cap — not when MC learned of it.
@@ -2136,19 +2215,20 @@ class Session:
         """
         if self.phase != "recap" or not self.scorer or not self.store or self.end_reason != "frag_limit":
             return False
-        end_t = self.scorer.end_t
+        live = self.scorer            # a local, because the genexp below is its own scope
+        end_t = live.end_t
         if end_t is None:
             return False
         # A death inside the scored window can move the cap EARLIER; one inside the clock band just
         # after the end can reveal a DEAD HEAT (`check_cap_tie`). Anything later than that changes
         # neither, and is already reported as an after-the-whistle fact.
-        if not any(ev.get("type") == "death" and self.scorer.eff_t(nid, ev, t_recv) <= end_t + CLOCK_TIE_MS
+        if not any(ev.get("type") == "death" and live.eff_t(nid, ev, t_recv) <= end_t + CLOCK_TIE_MS
                    for ev in events if isinstance(ev, dict)):
             return False
-        facts = self._match_facts(self.scorer.match_id)
+        facts = self._match_facts(live.match_id)
         if not facts:
             return False
-        probe = self._replay(facts)              # no freeze: where does the cap fall on ALL the facts?
+        probe = self._replay(live, facts)        # no freeze: where does the cap fall on ALL the facts?
         cap_t = probe.limit_reached_t
         if cap_t is None:                        # the cap no longer stands (it cannot un-happen; be safe)
             return False
@@ -2159,10 +2239,10 @@ class Session:
             # into the official tally, minutes after everyone was told `control{end}`. Leave the end
             # where it was; the late fact stays an after-the-whistle fact (round-2 review 2026-09-12).
             return False
-        sc = self._replay(facts, freeze_at=cap_t)
+        sc = self._replay(live, facts, freeze_at=cap_t)
         sc.cap_tie = sc.check_cap_tie(CLOCK_TIE_MS)
-        before = (self.scorer.winner(), end_t)
-        self._adopt_scorer(sc)
+        before = (live.winner(), end_t)
+        self._adopt_scorer(live, sc)
         if cap_t < end_t:
             moved = (end_t - cap_t) / 1000.0
             self._on_feed({"t_match_s": max(0, (cap_t - sc.go_live_t) // 1000), "tag": "RESCORED", "kind": "alert",
@@ -2173,13 +2253,17 @@ class Session:
                            "text": "THE WINNER CHANGED on re-scored facts — the field has been re-told the result"})
         return True
 
-    def _score_board(self) -> dict:
-        """Team totals + the frag cap; in FFA the top three players stand in for teams."""
+    def _score_board(self, scorer: Scorer) -> dict:
+        """Team totals + the frag cap; in FFA the top three players stand in for teams.
+
+        The scorer is PASSED for the same reason `_scorer_recap` takes one: both callers are already
+        inside an `if self.scorer` and there is no board without one. Spelled `scorer`, not `sc`: the
+        team comprehension below already binds `sc` to a SCORE."""
         cap = (self.config.get("scoring") or {}).get("frag_limit")
         if self.config.get("mode") == "ffa":
-            top = sorted(self.scorer.rows(), key=lambda r: -r["kills"])[:3]
+            top = sorted(scorer.rows(), key=lambda r: -r["kills"])[:3]
             return {"teams": [{"team_id": "ffa", "name": r["display"], "score": r["kills"]} for r in top], "cap": cap}
-        totals = self.scorer.team_scores()
+        totals = scorer.team_scores()
         names = {t["team_id"]: str(t.get("name") or t["team_id"]).replace(" TEAM", "") for t in self.teams}
         return {"teams": [{"team_id": tid, "name": names.get(tid, tid), "score": sc} for tid, sc in totals.items()], "cap": cap}
 
@@ -2405,7 +2489,9 @@ class Session:
             ambers.append(f"APP VERSION UNKNOWN ({av})" if isinstance(av, str) and av else "APP VERSION UNKNOWN")
             return blockers, ambers
         if not ok:
-            blockers.append(f"APP {av.split('+', 1)[0]} INCOMPATIBLE WITH MC (NEEDS {app_tier()}) — UPDATE THE APP")
+            # `compatible()` answered a bool, so `parse_app_ver` parsed `av`: it is a version STRING.
+            shown = av.split("+", 1)[0] if isinstance(av, str) else av
+            blockers.append(f"APP {shown} INCOMPATIBLE WITH MC (NEEDS {app_tier()}) — UPDATE THE APP")
             return blockers, ambers
         mine = parse_app_ver(av)
         newest = self._newest_field_version()
@@ -2427,13 +2513,10 @@ class Session:
             nv = self.nodes.get(nid, {}) if nid else {}
             pf = nv.get("preflight") or {}
             blockers, ambers = [], []
-            row: ReadinessRow = {"gun_id": p.get("gun_id") or "", "sticker": g.get("sticker", p.get("gun_id") or "—"),
-                                 "tail": g.get("ble", {}).get("tail", ""), "player_id": p["player_id"], "player_num": p["player_num"],
-                                 "present": bool(nid), "node": "linked" if nid else "none"}
             if g:
                 claimed.add(g.get("sticker", "").lower())
             scan = next((s for s in self.scan_rows if s.get("gun_id") == p.get("gun_id")), None)
-            row["identity"] = scan["identity"] if scan else ("ok" if g else "unknown")
+            identity = scan["identity"] if scan else ("ok" if g else "unknown")
             if not nid:
                 # NOT a fault: before a phone has ever connected this is the expected state.
                 # It still blocks the start (a player with no phone cannot play), but it must not
@@ -2473,14 +2556,14 @@ class Session:
                 vb, va = self._version_flags(nv)          # A29: the app build this phone is actually running
                 blockers.extend(vb)
                 ambers.extend(va)
-            if row["identity"] in ("reverted", "unknown") and g:
+            if identity in ("reverted", "unknown") and g:
                 blockers.append("IDENTITY REVERTED — RE-STAMP $NAME")
             ack = self.acks.get(p["player_id"])
             if self.lobby_pushed and ack is not None and (not ack.get("ok") or not ack.get("gun_echo")):
                 blockers.append("GUN DID NOT ANSWER CONFIG — HEADSET OFF? BLOCKS START")
-                row["headset"], row["headset_proof"] = "absent", None
+                headset, headset_proof = "absent", None
             elif nv.get("headset") == "proven":
-                row["headset"], row["headset_proof"] = "proven", "echo"   # the gun answered the push: settled
+                headset, headset_proof = "proven", "echo"     # the gun answered the push: settled
             else:
                 # A32: no echo yet, so the LINK is the evidence. A headless gun drops inside ~6 s, so a link
                 # this node has held for HEADSET_LINK_PROOF_MS is a headset. Until then the board says so out
@@ -2492,30 +2575,38 @@ class Session:
                 if since is not None and (now - nv.get("last_seen_ms", 0)) > OFFLINE_AFTER_MS:
                     since = None
                 if since is not None and (now - since) >= HEADSET_LINK_PROOF_MS:
-                    row["headset"], row["headset_proof"] = "proven", "link"
+                    headset, headset_proof = "proven", "link"
                 else:
-                    row["headset"], row["headset_proof"] = "unknown", None
+                    headset, headset_proof = "unknown", None
                     if since is not None:
                         ambers.append(f"HEADSET · CONFIRMING (LINK {(now - since) // 1000} s)")
-            row.update({"battery_pct": nv.get("battery"), "battery_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,
-                        "last_seen_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,   # the UI showed "0s AGO" reading a field that didn't exist (2026-08-26)
-                        "gun_linked": pf.get("gun_linked"),
-                        "fw": nv.get("fw"), "phone_batt": pf.get("phone_batt"), "ssid_ok": pf.get("ssid_ok"),
-                        "mc_reachable": pf.get("mc_reachable"), "synced": nv.get("synced"), "screen_on": pf.get("screen_on"),
-                        "foreground": pf.get("foreground"),
-                        "app_ver": nv.get("app_ver"), "platform": nv.get("platform"),   # A29
-                        "log": nv.get("log"),                                           # A25
-                        # kept APART. Merging them meant the lobby printed "GUN LINK LOST - BLOCKS
-                        # START, STALE LINK - DOES NOT BLOCK, SCREEN OFF - DOES NOT BLOCK YET" as one
-                        # run-on blocker string, so a real fault read the same as a shrug.
-                        "blockers": blockers, "ambers": ambers,
-                        # `waiting` blocks exactly like `red` but is not a fault: nothing has gone
-                        # wrong, the phone simply has not arrived yet. Only when the MISSING NODE is
-                        # the sole complaint — a real problem alongside it still reads red.
-                        # `waiting` covers BOTH "no phone yet" and "the phone went away": each blocks
-                        # the start, neither is a fault, and both must read as inactive rather than red.
-                        "status": ("waiting" if len(blockers) == 1 and (not nid or blockers[0].startswith("OFFLINE"))
-                                   else "red") if blockers else ("amber" if ambers else "green")})
+            # ONE literal, at the end: `ReadinessRow` is total and its docstring is the promise that
+            # every path fills every key. Built incrementally that promise was unenforceable; built here
+            # the checker holds it.
+            row: ReadinessRow = {
+                "gun_id": p.get("gun_id") or "", "sticker": g.get("sticker", p.get("gun_id") or "—"),
+                "tail": g.get("ble", {}).get("tail", ""), "player_id": p["player_id"], "player_num": p["player_num"],
+                "present": bool(nid), "node": "linked" if nid else "none", "identity": identity,
+                "headset": headset, "headset_proof": headset_proof,
+                "battery_pct": nv.get("battery"), "battery_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,
+                "last_seen_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,   # the UI showed "0s AGO" reading a field that didn't exist (2026-08-26)
+                "gun_linked": pf.get("gun_linked"),
+                "fw": nv.get("fw"), "phone_batt": pf.get("phone_batt"), "ssid_ok": pf.get("ssid_ok"),
+                "mc_reachable": pf.get("mc_reachable"), "synced": nv.get("synced"), "screen_on": pf.get("screen_on"),
+                "foreground": pf.get("foreground"),
+                "app_ver": nv.get("app_ver"), "platform": nv.get("platform"),   # A29
+                "log": nv.get("log"),                                           # A25
+                # kept APART. Merging them meant the lobby printed "GUN LINK LOST - BLOCKS
+                # START, STALE LINK - DOES NOT BLOCK, SCREEN OFF - DOES NOT BLOCK YET" as one
+                # run-on blocker string, so a real fault read the same as a shrug.
+                "blockers": blockers, "ambers": ambers,
+                # `waiting` blocks exactly like `red` but is not a fault: nothing has gone
+                # wrong, the phone simply has not arrived yet. Only when the MISSING NODE is
+                # the sole complaint — a real problem alongside it still reads red.
+                # `waiting` covers BOTH "no phone yet" and "the phone went away": each blocks
+                # the start, neither is a fault, and both must read as inactive rather than red.
+                "status": ("waiting" if len(blockers) == 1 and (not nid or blockers[0].startswith("OFFLINE"))
+                           else "red") if blockers else ("amber" if ambers else "green")}
             board.append(row)
         unclaimed = [s for s in self.scan_rows if s.get("basename", "").lower() not in claimed]
         greens = sum(1 for r in board if r["status"] == "green")
@@ -2550,8 +2641,11 @@ class Session:
             # the pick (re-push) and only reports the try-out as closed
             ok, reason = False, "Mission Control is still setting up the game"
         dropped = None
+        # `new` is only READ under the same `ok` that assigns it below, but nothing said so; bound here
+        # to the untouched kit, which is also what a refused pick leaves in place.
+        before: Loadout = p.get("loadout") or {"weapons": []}
+        new = before
         if ok:
-            before = p.get("loadout") or {"weapons": []}
             new = _policy.set_slot(before, slot, kind, rid, perks, weapons)
             try:
                 new = self._check_loadout(new)
@@ -2664,7 +2758,7 @@ class Session:
         `_spawn()` and logs "hot-join (+N s)". That path must stay open."""
         if (self.acks.get(p["player_id"]) or {}).get("ok"):
             return True
-        return (self.nodes.get(p.get("node_id")) or {}).get("arm_state") in ("armed", "live")
+        return (self.nodes.get(p.get("node_id") or "") or {}).get("arm_state") in ("armed", "live")
 
     def _push_config_to(self, p: Player):
         # The guard `push_config` carries, narrowed to ONE player: a `config` is a head write, and in
@@ -2754,6 +2848,10 @@ class Session:
     # ---------- start ----------
     def _start_body(self) -> dict:
         s = self.start_info
+        if s is None:
+            # Unreachable today: every caller is inside `if self.start_info`, and `_schedule` writes it
+            # one statement before broadcasting. Said out loud so it stays that way.
+            raise ConflictError("no match is scheduled — there is no start to send")
         return {"match_id": s["match_id"], "go_live_t": s["go_live_t"], "config_id": self.config["config_id"],
                 "seq": s["seq"], "countdown_s": s["countdown_s"]}
 
@@ -2782,7 +2880,7 @@ class Session:
         self.scorer = sc
         # A24/M2: the roster AS IT GOES IN. `_replay` builds its Scorer from this, never from the live
         # dict, so a re-team made after the whistle cannot re-play the match on teams nobody wore.
-        self._match_players = {pid: dict(p) for pid, p in self.players.items()}
+        self._match_players = {pid: p.copy() for pid, p in self.players.items()}
         # A25: the ~1 MB pulled-log budget is PER MATCH, not per session. It was never reset, so after
         # three or four matches of logs every node was over it and the recap ask stopped going out --
         # silently, on the match most likely to be the one worth debugging.
@@ -3071,7 +3169,8 @@ class Session:
                     "error": "no match is being scored — nothing to end (RECALL returns the field to KIT)"}
         reached = self._broadcast_control(cmd)
         if cmd == "end":
-            self.scorer.set_end(self.now_ms())           # A6.1 end freeze
+            if self.scorer is not None:                  # an END with no scorer already returned above
+                self.scorer.set_end(self.now_ms())       # A6.1 end freeze
             self.end_reason = "host"                     # A24/M2: a whistle is a moment; it never moves
             self._finish()
         else:                                            # recall/panic stop a live game → KITTED (A5.9)
@@ -3160,8 +3259,8 @@ class Session:
         self._log_match = (self.start_info or {}).get("match_id") or (self.scorer.match_id if self.scorer else None)
         # A24/M2: the roster as the field WORE it at the whistle -- mid-match re-teams included, recap
         # edits excluded. Everything `_replay` re-derives is measured against this copy.
-        self._match_players = {pid: dict(p) for pid, p in self.players.items()}
-        self.last_recap = self._scorer_recap() if self.scorer else None
+        self._match_players = {pid: p.copy() for pid, p in self.players.items()}
+        self.last_recap = self._scorer_recap(self.scorer) if self.scorer else None
         self._push_victory(self.last_recap)              # winners' guns play the victory sting (in coverage)
         self._push_result()                              # A24: EVERY node learns the outcome, losers included
         if self.store and self.start_info and self.last_recap:
@@ -3204,7 +3303,7 @@ class Session:
     def recap(self) -> dict | None:
         if self.scorer:
             self._mark_flushed_live()
-            r = self._scorer_recap()                                 # A6: live recap gets the row too, not just the final one
+            r = self._scorer_recap(self.scorer)                      # A6: live recap gets the row too, not just the final one
             if self.phase != "recap":
                 r["provisional"] = True
             r.update(self.settling())     # advisory only — never gates, see settling()
@@ -3259,7 +3358,7 @@ class Session:
             return {"settling": False, "awaiting": [], "since_end_ms": None}
         awaiting = [p["player_id"] for p in self.players.values()
                     if p.get("node_id")
-                    and self.nodes.get(p["node_id"], {}).get("last_seen_ms", 0) < end_t]
+                    and self.nodes.get(p["node_id"] or "", {}).get("last_seen_ms", 0) < end_t]
         return {"settling": bool(awaiting), "awaiting": awaiting, "since_end_ms": now - end_t}
 
     def new_session(self, keep_roster: bool = True) -> None:

@@ -171,7 +171,7 @@ CATALOG: list[DiagCase] = [
 ]
 
 
-def cases_for(available: set[Capability]) -> list[DiagCase]:
+def cases_for(available: set[Cap]) -> list[DiagCase]:
     """All cases (in catalog order); a case whose requirements aren't all in
     `available` will SKIP at run time. Returned whole so the scorecard shows skips."""
     return list(CATALOG)

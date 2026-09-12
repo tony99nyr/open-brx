@@ -390,7 +390,7 @@ class GameConfig:
         """Button map. With `alt_reload`, the orange alt-fire button (id 1) is remapped
         from weapon-cycle (fn 100) to RELOAD (fn 97) — a kid-friendly reload that also
         drops the secondary weapon-switch. The reload handle (id 2) stays reload too."""
-        bmap = list(_BMAP)
+        bmap: list[str] = list(_BMAP)
         if self.alt_reload:
             bmap[1] = "$BMAP,1,97,,,,,*"
         return bmap

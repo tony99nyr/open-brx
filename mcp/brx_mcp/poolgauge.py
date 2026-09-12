@@ -100,6 +100,8 @@ def display_colour(tid: int | None, overrides: dict[int, int] | None = None) -> 
     """The colour to PAINT for wire team `tid`: an explicit per-tid override first (a future
     presentation-profile knob -- none ships yet, this is the hook for it), else `TEAM_DISPLAY_COLOURS`,
     else the generic fallback. `tid` itself is never returned as a colour by assumption."""
+    if tid is None:
+        return DEFAULT_TEAM_COLOUR
     if overrides and tid in overrides:
         return overrides[tid]
     return TEAM_DISPLAY_COLOURS.get(tid, DEFAULT_TEAM_COLOUR)

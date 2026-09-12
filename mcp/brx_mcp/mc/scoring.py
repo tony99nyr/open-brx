@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import csv
 import io
-from typing import Callable
+from typing import Any, Callable, Mapping
 
 from .types import (ACC_MIN_SHOTS, ASSIST_WINDOW_MS, FEEDBACK_MAX_AGE_MS, MULTI_KILL_MS,
                     STALE_AFTER_MS, Event, Player, ScoreRow, Team)
@@ -101,7 +101,7 @@ class Scorer:
                  node_player: dict[str, str], synced_at_lobby: dict[str, bool],
                  on_feedback: Feedback | None = None, on_feed: Callable[[Feed], None] | None = None,
                  now_ms: Callable[[], int] | None = None, win_by: str | None = None,
-                 on_alert: Callable[[str, str, dict], None] | None = None, frag_limit: int | None = None,
+                 on_alert: Callable[[str, str, dict], object] | None = None, frag_limit: int | None = None,
                  on_limit: Callable[[int], None] | None = None):
         self.match_id = match_id
         self.go_live_t = go_live_t
@@ -249,7 +249,7 @@ class Scorer:
         st.shots = 0
 
     # ---- helpers ----
-    def _pid(self, node_id: str, body: dict) -> str | None:
+    def _pid(self, node_id: str, body: Mapping[str, Any]) -> str | None:
         """The server's binding is the only identity a fact gets. A body whose player_id disagrees with the node's
         binding is dropped (and counted) — a node can only ever speak for the player MC bound it to."""
         pid = self.node_player.get(node_id)
@@ -786,8 +786,9 @@ class Scorer:
             bk = max(non, key=lambda kv: (kv[1].kills / max(kv[1].deaths, 1), kv[1].kills))[0]
             b = self.stats[bk]
             add("BEST K/D · NON-MVP", bk, f"K/D {b.kills / max(b.deaths,1):.1f} · {b.kills} K")
-        shooters = [(pid, self._accuracy(st)) for pid, st in items
-                    if (st.shots_baseline + st.shots) >= ACC_MIN_SHOTS and self._accuracy(st) is not None]
+        shooters = [(pid, acc) for pid, st in items
+                    if (st.shots_baseline + st.shots) >= ACC_MIN_SHOTS
+                    and (acc := self._accuracy(st)) is not None]
         if shooters:
             ss = max(shooters, key=lambda x: x[1])
             add("SHARPSHOOTER", ss[0], f"{ss[1]:.0f}% ACCURACY")

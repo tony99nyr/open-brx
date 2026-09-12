@@ -8,7 +8,7 @@ import time
 from typing import Callable
 
 from .compile import HEADSET_ALERT_BRIGHTNESS, VOL_TRYOUT, play_volume   # one volume policy for the real and the fake paths
-from .types import (ArmoryRecord, FrameBundle, GameConfig, Player, ScanRow, Team, Weapon,
+from .types import (ArmoryRecord, FrameBundle, GameConfig, PerkView, Player, ScanRow, Team, Weapon,
                     MAX_PLAYERS)
 
 _WEAPONS = [  # (weapon_id, name, cls, clip, mags, reload_s, dmg, rpm, rng)
@@ -52,7 +52,7 @@ def weapon_views() -> list[dict]:
     that, whenever `/api/weapons` fell back to this list the UI reverted to reading raw `dmg` and showed
     exactly the near-empty meters the ranked bars exist to replace (review finding, 2026-08-31)."""
     from .views import weapon_views as rank
-    rows = [{"weapon_id": w[0], "name": w[1], "cls": w[2],
+    rows: list[Weapon] = [{"weapon_id": w[0], "name": w[1], "cls": w[2], "weap_frame": "",
              "stats": {"mag": w[3], "reserve": w[3] * w[4], "reload_ms": int(w[5] * 1000),
                        "dmg": w[6], "rof": w[7], "rng": w[8],
                        "htk": max(1, round(13 * 55 / max(w[6], 1)))},
@@ -154,7 +154,7 @@ class FakeCompiler:
                  "tags": _tags(w[0], w[2]), "role": w[2].lower()}
                 for w in _WEAPONS]
 
-    def perk_catalog(self) -> list[dict]:
+    def perk_catalog(self) -> list[PerkView]:
         """A10: the REAL perks.json rows — static data, no hardware, safe for the fake."""
         from .perks import default_perks
         return default_perks().all()
