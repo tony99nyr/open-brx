@@ -177,7 +177,12 @@ export class MockBackend implements Api {
     }));
     this.trying = { p4: 'smg' };
     this.browsing = { p6: now() };   // SABLE is browsing on the phone
-    if (this.demoLastStale) this.gunOverride['GUN-F'] = 'r';   // GUN-F goes dark for the F155 demo row above
+    // F155 pass 1 (2026-09-12): GUN-F reported backhaul EARLIER this session, then dropped — `lastReach`
+    // is what `readiness()` reads for the row's own `last_reach` (below), so it must be seeded before
+    // the override forces the row red, or the row would show no history at all (this is what made the
+    // earlier version of this demo bolt on a second, disconnected NodeView instead — the actual source
+    // of the "NEVER THIS SESSION" + "NOT REACHED FOR" contradiction pass 1 caught).
+    if (this.demoLastStale) { this.lastReach['A0B3'] = 'backhaul'; this.gunOverride['GUN-F'] = 'r'; }
     // F142 (field 2026-09-12, ISSUE 11/11b): two ghosts with no phone ever bound, exactly as a
     // restored `--demo` session left them on a real board — present from the FIRST snapshot, same as
     // the real bug (the banner has to be there before the operator ever does anything).
@@ -234,6 +239,13 @@ export class MockBackend implements Api {
       const confirming = !red && !this.pushed && sticker === 'GUN-F';
       if (confirming) ambers.push('HEADSET · CONFIRMING (LINK 4 s)');
       const proof = red || confirming ? null : this.pushed ? 'echo' as const : 'link' as const;
+      // F155 pass 1 (2026-09-12): `?mock&laststale=1` puts GUN-F through a node that WAS bound (it
+      // reported over the internet path earlier this session — `lastReach` seeded in the constructor)
+      // and has since gone dark, as distinct from a gun that was NEVER powered at all. `present` (and
+      // a real `last_seen_age_ms`, not null) is what tells the two apart — without it every red row
+      // reads as "never seen", and a genuinely-dropped one shows a contradiction ("NEVER THIS
+      // SESSION" over "NOT REACHED FOR 2m10s", the exact bug pass 1 found).
+      const droppedBackhaul = red && this.demoLastStale && sticker === 'GUN-F';
       return {
         ...ver,
         log: this.logFor(`node_${tail}`),            // A25: the same view, on the per-player board
@@ -243,13 +255,13 @@ export class MockBackend implements Api {
         // boards every gun so the muster screen is not empty before players are typed in, so it says
         // "nobody" the way the wire does -- "" and the reserved wire id 0 (types.py MAX_PLAYERS comment).
         gun_id: sticker, sticker, tail, player_id: pl?.player_id ?? '', player_num: pl?.player_num ?? 0,
-        present: !red, identity: 'ok', node: red ? 'none' : 'linked',
+        present: !red || droppedBackhaul, identity: 'ok', node: red ? 'none' : 'linked',
         headset: red ? 'absent' : proof ? 'proven' : 'unknown',
         headset_proof: proof,
         // null, not undefined: these are the NODE's last word and the server sends an explicit null for
         // one it has not heard (`readiness()`'s closing `row.update`).
         battery_pct: batt ?? null, battery_age_ms: batt == null ? null : 4000,
-        last_seen_age_ms: red ? null : link * 1000,
+        last_seen_age_ms: red ? (droppedBackhaul ? 130_000 : null) : link * 1000,
         gun_linked: red ? null : true,
         fw: 'v4.32', phone_batt: 80, ssid_ok: true, mc_reachable: !red, synced: !red, screen_on: true, foreground: true,
         // A28.3 / F155: the server stamps `reach` from the socket path and clears it on disconnect; `last_reach` outlives it.
@@ -303,16 +315,12 @@ export class MockBackend implements Api {
         reach, last_reach: this.lastReach[b.tail],
       };
     });
-    // A node that ever said hello stays in `state.nodes` after it drops (mc/API.md: "every node that
-    // ever said hello this session") — `reach` is cleared, `last_reach` is not. The demo hook
-    // `?mock&laststale=1` puts one such row on the board so F155's wording can be proven without
-    // simulating a real socket drop: GUN-F goes dark while its last path was the internet tunnel.
-    if (this.demoLastStale) {
-      nodes.push({ node_id: 'node_A0B3', node_type: 'phone', gun_name: 'GUN-F-A0B3', gun_tail: 'A0B3',
-        player_id: this.players.find(p => p.gun_id === 'GUN-F')?.player_id ?? '', arm_state: 'connected',
-        last_seen_ms: 130_000, synced: false, battery: null, fw: null, app_ver: null, platform: null,
-        log: { state: 'none', last_t: now() }, last_reach: 'backhaul' });
-    }
+    // F155 pass 1 (2026-09-12): the earlier version of this demo bolted a SECOND, disconnected NodeView
+    // onto `state.nodes` here to carry `last_reach` for GUN-F — decoupled from GUN-F's own readiness
+    // ROW (which stayed `node: 'none'`), so the card read "NEVER THIS SESSION" and "NOT REACHED FOR
+    // 2m10s" at once. `readiness()` now stamps `reach`/`last_reach` on the row itself (seeded via
+    // `lastReach['A0B3']` in the constructor), so there is nothing to bolt on here any more — the ONE
+    // row already carries the ONE explanation.
     const kitted = this.players.filter(p => PLAYERS.find(x => x[0] === p.display)?.[3] === 'kitted' || (p.player_id in this.acks)).length;
     return {
       session_id: this.session_id, phase: this.phase, t,

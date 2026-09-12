@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { isRoutableLanIp, reachLabel, reachTooltip, registrySig, staleReachReason } from '../api/derive';
-import { STALE_AFTER_MS, type LogView, type NodeView, type ReadinessRow, type TunnelStatus } from '../api/types';
+import { STALE_AFTER_MS, type LogView, type ReadinessRow, type TunnelStatus } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
 import { CHAMFER, F, T, TAB, fmtAge } from '../tokens';
@@ -259,11 +259,18 @@ function GunCard({ g }: { g: ReadinessRow }) {
   // S38 (field 2026-09-12, ISSUE 13): the gamertag lived only in the connected-nodes strip at the top —
   // the card that carries everything ELSE about this player's gear said nothing about who was holding it.
   const player = g.player_id ? (state?.players ?? []).find(p => p.player_id === g.player_id) : undefined;
-  // F144/F155 (field 2026-09-12, ISSUE 14/30): the node's own view of its path to MC. `reach` is the
-  // LIVE path (present only while connected); `last_reach` survives a disconnect, which is what lets a
-  // dropped tunnel say so instead of reading as a Wi-Fi fault.
-  const node: NodeView | undefined = (state?.nodes ?? []).find(n => !!n.gun_tail && !!g.tail && n.gun_tail.toUpperCase() === g.tail.toUpperCase());
-  const reachReason = staleReachReason(node, state?.lan.public?.status);
+  // F144/F155 (field 2026-09-12, ISSUE 14/30): the row's own view of its path to MC — `reach`/`last_reach`
+  // now ride directly on the ReadinessRow (state.py stamps them the same way it stamps everything else
+  // here), so this reads the ROW, never a separate `state.nodes` lookup that could name a different node
+  // than the one this card is actually about.
+  //
+  // Pass 1 (2026-09-12): gated on `present` — a card with NO node ever bound (`g.node === 'none'`,
+  // "NEVER THIS SESSION") is a DIFFERENT fact than a node that dropped after being reached over the
+  // internet, and showing both on one card ("NEVER THIS SESSION" over "NOT REACHED FOR 2m10s") read as
+  // a card contradicting itself.
+  const reachReason = g.present
+    ? staleReachReason({ reach: g.reach ?? undefined, last_reach: g.last_reach ?? undefined, last_seen_ms: g.last_seen_age_ms ?? 0 }, state?.lan.public?.status)
+    : null;
   // A32: the server says WHETHER the headset is proven and HOW — `link` = a BLE link this phone has held
   // for 10 s, which a headless gun cannot do (it drops in ~6 s), `echo` = the gun answered the config push.
   // The "still confirming" count-up is an ordinary server amber and is rendered by the amber list below;
@@ -291,9 +298,9 @@ function GunCard({ g }: { g: ReadinessRow }) {
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: '0 0 auto' }}>
           {/* F144 (field 2026-09-12): a node reached over the internet tunnel is READY, not a fault —
               this is information about the PATH, riding beside the status, never instead of GREEN. */}
-          {g.node === 'linked' && !!node?.reach && (
-            <OutlineTag color={node.reach === 'backhaul' ? T.acc : T.micro} border={node.reach === 'backhaul' ? T.acc : T.line} title={reachTooltip(node.reach)}>
-              {reachLabel(node.reach)}
+          {g.node === 'linked' && !!g.reach && (
+            <OutlineTag color={g.reach === 'backhaul' ? T.acc : T.micro} border={g.reach === 'backhaul' ? T.acc : T.line} title={reachTooltip(g.reach)}>
+              {reachLabel(g.reach)}
             </OutlineTag>
           )}
           <Tag color={color} style={{ whiteSpace: 'nowrap' }}>

@@ -8,7 +8,7 @@ import { F, PERK_COLOR, ROLE, T, TAB, roleOf } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, StripedSlot, Toggle, ValueBox } from '../ui';
 import { PerkGlyph } from './Kit';
 import { AdvancedPresentation } from './AdvancedPresentation';
-import { STATION_SOURCES, TEMPLATE_RULES, admitsWeapons, computePool, gameSig, objectiveLine, presetOf, rulesLine, withPolicy } from './gameSummary';
+import { STATION_SOURCES, TEMPLATE_RULES, admitsWeapons, computePool, emptyRequiredSlots, gameSig, objectiveLine, presetOf, rulesLine, withPolicy } from './gameSummary';
 import { MODE_ART } from '../modeArt';
 import { CONFIG_EDITABLE_PHASES, lockedReason } from './Games';
 
@@ -86,6 +86,16 @@ export function Designer() {
   // F151 (field 2026-09-12): PLAY / APPLY both end in `PUT /api/config`, valid only in
   // muster/build/kit — reachable here whenever CUSTOMIZE was opened before the field moved on.
   const configLocked = !CONFIG_EDITABLE_PHASES.has(state.phase);
+  // F141 polish (field 2026-09-12, pass 1): the "THIS EXCLUDES EVERY WEAPON" warning rendered on the
+  // slot itself but nothing stopped SAVE/PLAY — a zero-weapon primary reached KIT and every arsenal
+  // tile there was locked with no way out. The whole screen refuses until at least one slot has
+  // something to carry, exactly like the phase lock above.
+  const poolEmpty = emptyRequiredSlots(pol, pool);
+  const poolEmptyReason = poolEmpty.any
+    ? `${[poolEmpty.primary && 'PRIMARY', poolEmpty.secondary && 'SECONDARY', poolEmpty.perk && 'PERK'].filter(Boolean).join(' + ')} EXCLUDES EVERYTHING IT NEEDS — ALLOW AT LEAST ONE, OR SET WHO PICKS TO FIXED/OFF, BEFORE SAVING OR PLAYING.`
+    : '';
+  const blocked = configLocked || poolEmpty.any;
+  const blockedReason = configLocked ? lockedReason(state.phase) : poolEmpty.any ? poolEmptyReason : undefined;
 
   const save = async (asNew = false) => {
     const nm = name.trim(); if (!nm) { setSaved('NAME IT FIRST'); return null; }
@@ -229,19 +239,19 @@ export function Designer() {
             <div style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.45, minHeight: 18 }}>{desc.trim() || (mode?.brief ?? '')}</div>
             <div style={{ height: 1, background: T.line }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <PrimaryButton onClick={play} disabled={configLocked} title={configLocked ? lockedReason(state.phase) : name.trim() ? 'Save, apply, and go to KIT' : 'Apply without saving and go to KIT'}>PLAY THIS NOW ▸</PrimaryButton>
-              {configLocked && <div role="alert" style={{ font: F.mono(600, 10.5), letterSpacing: '.1em', color: T.bad, lineHeight: 1.5 }}>▲ {lockedReason(state.phase)}</div>}
-              {!configLocked && !name.trim() && <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro }}>PLAYS TONIGHT WITHOUT SAVING — NAME IT ABOVE TO KEEP IT ON THE SHELF</div>}
+              <PrimaryButton onClick={play} disabled={blocked} title={blocked ? blockedReason : name.trim() ? 'Save, apply, and go to KIT' : 'Apply without saving and go to KIT'}>PLAY THIS NOW ▸</PrimaryButton>
+              {blocked && <div role="alert" style={{ font: F.mono(600, 10.5), letterSpacing: '.1em', color: T.bad, lineHeight: 1.5 }}>▲ {blockedReason}</div>}
+              {!blocked && !name.trim() && <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro }}>PLAYS TONIGHT WITHOUT SAVING — NAME IT ABOVE TO KEEP IT ON THE SHELF</div>}
               <div style={{ display: 'flex', gap: 6 }}>
-                <GhostButton size={11} pad="9px 12px" color={dirty ? T.ink : T.micro} border={dirty ? T.acc : T.line} onClick={() => save(false)} title={editing ? `Update "${editing.name}"` : 'Save under the name above'}>{editing ? 'SAVE' : 'SAVE GAME'}</GhostButton>
-                {editing && <GhostButton size={11} pad="9px 12px" onClick={() => save(true)} title="Keep the original, save this as a new game">SAVE AS NEW</GhostButton>}
+                <GhostButton size={11} pad="9px 12px" color={dirty ? T.ink : T.micro} border={dirty ? T.acc : T.line} disabled={blocked} onClick={() => save(false)} title={blocked ? blockedReason : editing ? `Update "${editing.name}"` : 'Save under the name above'}>{editing ? 'SAVE' : 'SAVE GAME'}</GhostButton>
+                {editing && <GhostButton size={11} pad="9px 12px" disabled={blocked} onClick={() => save(true)} title={blocked ? blockedReason : 'Keep the original, save this as a new game'}>SAVE AS NEW</GhostButton>}
               </div>
               {saved && <div role="status" style={{ font: F.mono(600, 10.5), letterSpacing: '.14em', color: saved.startsWith('NAME') ? T.warn : T.ok }}>{saved}</div>}
               {saved && !saved.startsWith('NAME') && editing && state.active_preset_id === editing.preset_id && gameSig(editing.config) !== gameSig(state.config) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{ font: F.mono(600, 10.5), letterSpacing: '.12em', color: T.warn }}>▲ TONIGHT'S GAME STILL RUNS THE OLD VERSION</div>
-                  <GhostButton size={11} pad="9px 12px" color={configLocked ? T.micro : T.ink} border={T.warn} title={configLocked ? lockedReason(state.phase) : undefined}
-                    onClick={async () => { if (configLocked) return; const r = await run(() => api.applyPreset(editing.preset_id)); if (r) await run(() => api.putConfig({ environment: state.config.environment, night: state.config.night })); }}>APPLY TO TONIGHT'S GAME ▸</GhostButton>
+                  <GhostButton size={11} pad="9px 12px" color={T.ink} border={T.warn} disabled={blocked} title={blocked ? blockedReason : undefined}
+                    onClick={async () => { if (blocked) return; const r = await run(() => api.applyPreset(editing.preset_id)); if (r) await run(() => api.putConfig({ environment: state.config.environment, night: state.config.night })); }}>APPLY TO TONIGHT'S GAME ▸</GhostButton>
                 </div>
               )}
             </div>

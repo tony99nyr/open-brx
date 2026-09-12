@@ -93,7 +93,11 @@ export function Recap() {
   // live config no longer describes that game
   const teamLabel = (id: string) => ((past ? undefined : state.teams.find(t => t.team_id === id)?.name) ?? id).toUpperCase();
   const winColor = w.team_id ? teamColor(w.team_id) : T.ink;
-  const winnerBlock = w.tie?.length ? { text: `TIE — ${w.tie.map(teamLabel).join(' / ')}`, tail: '' }
+  // F154 polish (field 2026-09-12, pass 1): `winner.tie` holds PLAYER ids in FFA (a frag-cap dead
+  // heat has no team to name) and TEAM ids everywhere else — `teamLabel` on a player id falls through
+  // to the raw hex id ("TIE — 7F3A2B1C / 4D8E90AB"), since no team in `state.teams` ever matches one.
+  const tieLabel = (id: string) => ((past ? past.mode : state.config.mode) === 'ffa' ? name(id) : teamLabel(id));
+  const winnerBlock = w.tie?.length ? { text: `TIE — ${w.tie.map(tieLabel).join(' / ')}`, tail: '' }
     : w.undecided ? { text: `UNDECIDED — ${w.undecided.toUpperCase()}`, tail: ' · HOST DECIDES' }
     : w.player_id ? { text: name(w.player_id), tail: ' WINS' }
     : w.team_id ? { text: teamLabel(w.team_id), tail: ' WINS' }

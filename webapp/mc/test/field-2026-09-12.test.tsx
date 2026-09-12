@@ -8,6 +8,7 @@ import { Armory } from '../src/screens/Armory';
 import { Designer } from '../src/screens/Designer';
 import { Games } from '../src/screens/Games';
 import { Recap } from '../src/screens/Recap';
+import { Spectate } from '../src/screens/Spectate';
 import type { RecapView, State } from '../src/api/types';
 import { demo, mountScreen } from './harness';
 
@@ -54,6 +55,14 @@ describe('F141 — Designer class chip toggle', () => {
     }
     expect(m.find('[data-testid="primary-empty-pool"]').length, 'excluding every class shows the empty-pool warning, not a bare "0 OF N"').toBe(1);
     expect(m.text()).toContain('THIS EXCLUDES EVERY');
+    // pass 1 (2026-09-12): the warning used to be purely cosmetic — PLAY/SAVE stayed enabled and
+    // pushed a zero-weapon primary to KIT, where every arsenal tile ended up locked with no way out.
+    const playBtn = m.find('button').find(b => (b.textContent ?? '').includes('PLAY THIS NOW')) as HTMLButtonElement | undefined;
+    expect(playBtn, 'the PLAY THIS NOW control is on screen').toBeTruthy();
+    expect(playBtn!.disabled, 'PLAY THIS NOW is disabled while the primary pool is empty').toBe(true);
+    const saveBtn = m.find('button').find(b => (b.textContent ?? '').includes('SAVE GAME')) as HTMLButtonElement | undefined;
+    expect(saveBtn, 'the SAVE GAME control is on screen').toBeTruthy();
+    expect(saveBtn!.disabled, 'SAVE GAME is disabled too — a broken policy must never be persisted either').toBe(true);
     m.unmount();
   });
 });
@@ -82,6 +91,21 @@ describe('F151 — Games settings lock past kit', () => {
     expect(m.find('[data-testid="games-locked"]').length).toBe(0);
     const continueBtn = m.find('button').find(b => (b.textContent ?? '').includes('CONTINUE'));
     expect((continueBtn as HTMLButtonElement).disabled).toBe(false);
+    m.unmount();
+  });
+
+  it('refuses CONTINUE when the applied config\'s own pool has an empty required slot, even with no Designer visit', async () => {
+    const d = await demo();
+    // a policy that excludes every primary weapon, ALREADY applied to state.config — the pool the
+    // server would compute for it is empty, exactly as if a bad saved game had just been played.
+    const policy = { ...d.state.config.loadout_policy, primary: { ...d.state.config.loadout_policy.primary, only_ids: ['nonexistent_weapon_id'] } };
+    const state: State = { ...d.state, phase: 'build', config: { ...d.state.config, loadout_policy: policy },
+      loadout_pool: { primary: [], secondary_weapons: d.state.loadout_pool.secondary_weapons, perks: d.state.loadout_pool.perks } };
+    const m = await mountScreen(<Games />, { ...d, state });
+    expect(m.find('[data-testid="games-locked"]').length, 'a banner explains the empty pool').toBe(1);
+    expect(m.text()).toContain('PRIMARY');
+    const continueBtn = m.find('button').find(b => (b.textContent ?? '').includes('CONTINUE')) as HTMLButtonElement;
+    expect(continueBtn.disabled, 'CONTINUE refuses to carry an empty primary into KIT').toBe(true);
     m.unmount();
   });
 });
@@ -130,17 +154,31 @@ describe('F144/F155 — Armory gun card reach', () => {
   it('a stale node whose last path was the internet reads NOT REACHED FOR <age>, never WRONG WI-FI', async () => {
     const d = await demo();
     const redRow = d.state.readiness.board.find(b => b.status === 'red');
-    expect(redRow, 'the demo fixture has a red (no-phone) gun to attach the stale node to').toBeTruthy();
-    // give that row a synthetic blocker in the old wifi-worded style, AND a node with a known
-    // internet-path history — the honest reason must replace the wifi wording, not sit beside it.
+    expect(redRow, 'the demo fixture has a red gun to turn into a dropped-backhaul row').toBeTruthy();
+    // pass 1 (2026-09-12): `reach`/`last_reach` now ride on the READINESS ROW itself (state.py stamps
+    // them there), never a separate `state.nodes` entry — a row with `present: true` (a node WAS
+    // bound) but no live `reach` and `last_reach: 'backhaul'` is exactly a dropped-tunnel gun. The old
+    // wifi-worded blocker must be REPLACED, never sit beside the honest one.
     const board = d.state.readiness.board.map(b => b.sticker === redRow!.sticker
-      ? { ...b, blockers: ['WRONG WI-FI / MC UNREACHABLE — BLOCKS START'] } : b);
-    const nodes = [...d.state.nodes, { node_id: 'node_ghost_stale', node_type: 'phone', gun_tail: redRow!.tail,
-      last_reach: 'backhaul' as const, last_seen_ms: 95_000, arm_state: 'connected' as const, synced: false }];
-    const state: State = { ...d.state, readiness: { ...d.state.readiness, board }, nodes };
+      ? { ...b, present: true, reach: null, last_reach: 'backhaul' as const, last_seen_age_ms: 95_000,
+          blockers: ['WRONG WI-FI / MC UNREACHABLE — BLOCKS START'] } : b);
+    const state: State = { ...d.state, readiness: { ...d.state.readiness, board } };
     const m = await mountScreen(<Armory />, { ...d, state });
     expect(m.text()).toContain('NOT REACHED FOR');
     expect(m.text()).not.toContain('WRONG WI-FI');
+    m.unmount();
+  });
+
+  it('a card with NO node ever bound never gets a reach explanation at all — one card, one fact', async () => {
+    const d = await demo();
+    const neverRow = d.state.readiness.board.find(b => b.node === 'none' && !b.present);
+    expect(neverRow, 'the demo fixture has a never-connected gun (present: false)').toBeTruthy();
+    const board = d.state.readiness.board.map(b => b.sticker === neverRow!.sticker
+      ? { ...b, last_reach: 'backhaul' as const } : b);   // even if the server sent stray history, present:false must win
+    const state: State = { ...d.state, readiness: { ...d.state.readiness, board } };
+    const m = await mountScreen(<Armory />, { ...d, state });
+    expect(m.text()).toContain('NEVER THIS SESSION');
+    expect(m.text()).not.toContain('NOT REACHED FOR');
     m.unmount();
   });
 });
@@ -230,6 +268,39 @@ describe('S41 — Recap hides AFTER THE WHISTLE when it has nothing to show', ()
     const m = await mountScreen(<Recap />, { ...d, state });
     expect(m.text()).toContain('AFTER THE WHISTLE');
     expect(m.text()).toContain('WITHOUT THE PER-PLAYER SPLIT');
+    m.unmount();
+  });
+});
+
+describe('F154 polish — an FFA tie names players, never raw ids', () => {
+  const ffaTieState = (d: Awaited<ReturnType<typeof demo>>): State => {
+    const [p1, p2] = d.state.players;
+    const recap: RecapView = {
+      winner: { tie: [p1.player_id, p2.player_id] }, score: {},
+      rows: d.state.players.map(p => ({ player_id: p.player_id, display: p.display, team_id: p.team_id, kills: 5, deaths: 5,
+        assists: 0, shots: 40, shots_total: 40, hits: 20, accuracy: 50, kd: 1, streak: 0, medals: [],
+        best_streak: 1, multi_best: 0, first_blood: false, acc_provisional: false })),
+      honors: [], provisional: false, missing: [] };
+    return { ...d.state, phase: 'recap', config: { ...d.state.config, mode: 'ffa' }, recap, live: undefined };
+  };
+
+  it('Recap names the tied players by display name, not their raw ids', async () => {
+    const d = await demo();
+    const state = ffaTieState(d);
+    const m = await mountScreen(<Recap />, { ...d, state });
+    const [p1, p2] = d.state.players;
+    expect(m.text()).toContain(`TIE — ${p1.display} / ${p2.display}`);
+    expect(m.text()).not.toContain(p1.player_id);
+    m.unmount();
+  });
+
+  it('Spectate (the projector board) names the tied players too', async () => {
+    const d = await demo();
+    const state = ffaTieState(d);
+    const m = await mountScreen(<Spectate />, { ...d, state });
+    const [p1, p2] = d.state.players;
+    expect(m.text()).toContain(`TIE — ${p1.display} / ${p2.display}`);
+    expect(m.text()).not.toContain(p1.player_id);
     m.unmount();
   });
 });

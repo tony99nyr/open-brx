@@ -25,6 +25,21 @@ export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: Perk
   return { primary: prim, secondary_weapons: sw, perks: sp };
 }
 
+/** F141 polish (field 2026-09-12, pass 1): which of the three slots would hand nobody anything, given
+ *  the CURRENT pool and WHO PICKS for each — `off`/`fixed` are exempt (an off slot is meant to be
+ *  empty; a fixed slot always has exactly its one id). Shared by DESIGNER (a draft's own pool, so
+ *  PLAY/SAVE can be refused before the bad policy is ever applied) and GAMES (the server-computed
+ *  `state.loadout_pool` against the config actually in play, so CONTINUE is refused too — a policy
+ *  can reach `state.config` from an older saved game or a race even if this session's Designer never
+ *  produced it). Absent pool (not loaded yet) reads as nothing empty, never a false block. */
+export function emptyRequiredSlots(policy: LoadoutPolicy, pool: LoadoutPool | null): { primary: boolean; secondary: boolean; perk: boolean; any: boolean } {
+  if (!pool) return { primary: false, secondary: false, perk: false, any: false };
+  const primary = policy.primary.choice !== 'fixed' && pool.primary.length === 0;
+  const secondary = policy.secondary.choice !== 'off' && policy.secondary.choice !== 'fixed' && pool.secondary_weapons.length === 0;
+  const perk = policy.perk.choice !== 'off' && policy.perk.choice !== 'fixed' && pool.perks.length === 0;
+  return { primary, secondary, perk, any: primary || secondary || perk };
+}
+
 const rule = (over: Partial<SlotRule> = {}): SlotRule => ({ choice: 'player', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: null, ...over });
 const perkRule = (over: Partial<SlotRule> = {}): SlotRule => rule({ kinds: ['perk'], ...over });
 /** OPEN — what the server means by "no policy". A config from a session persisted before A10, or served by an older MC,

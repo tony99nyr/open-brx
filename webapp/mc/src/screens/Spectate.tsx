@@ -308,7 +308,11 @@ function FinalCard({ SZ, fit }: { SZ: SZ; fit: boolean }) {
   const w = rc.winner ?? {};
   const label = (id: string) => (state?.teams.find(t => t.team_id === id)?.name ?? id).toUpperCase();
   const name = (id: string) => rc.rows.find(r => r.player_id === id)?.display ?? id;
-  const headline = w.tie?.length ? `TIE — ${w.tie.map(label).join(' / ')}`
+  // F154 polish (field 2026-09-12, pass 1): `winner.tie` holds PLAYER ids in FFA (no team to name a
+  // frag-cap dead heat with) and TEAM ids everywhere else — `label` on a player id fell through to
+  // the raw hex id.
+  const tieLabel = (id: string) => (state?.config.mode === 'ffa' ? name(id) : label(id));
+  const headline = w.tie?.length ? `TIE — ${w.tie.map(tieLabel).join(' / ')}`
     : w.player_id ? `${name(w.player_id)} WINS`
     : w.team_id ? `${label(w.team_id)} WINS`
     : 'MATCH OVER';

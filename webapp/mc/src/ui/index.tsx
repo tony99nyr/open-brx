@@ -173,11 +173,12 @@ export function PrimaryButton({ children, onClick, disabled, clip = CHAMFER.tl10
 }
 
 /** Ghost / outline button. */
-export function GhostButton({ children, onClick, color = T.dim, border = T.line, hoverClass = 'hov-acc', size = 11, pad = '9px 16px', title }:
-  { children: ReactNode; onClick?: () => void; color?: string; border?: string; hoverClass?: string; size?: number; pad?: string; title?: string }) {
+export function GhostButton({ children, onClick, color = T.dim, border = T.line, hoverClass = 'hov-acc', size = 11, pad = '9px 16px', title, disabled }:
+  { children: ReactNode; onClick?: () => void; color?: string; border?: string; hoverClass?: string; size?: number; pad?: string; title?: string; disabled?: boolean }) {
   return (
-    <button className={hoverClass} onClick={onClick} title={title}
-      style={{ font: F.chk(600, size), letterSpacing: '.16em', padding: pad, background: 'transparent', color, border: `1px solid ${border}`, cursor: 'pointer', minHeight: 44 }}>
+    <button className={disabled ? undefined : hoverClass} onClick={disabled ? undefined : onClick} disabled={disabled} title={title}
+      style={{ font: F.chk(600, size), letterSpacing: '.16em', padding: pad, background: 'transparent', color: disabled ? T.faint : color,
+               border: `1px solid ${disabled ? T.line : border}`, cursor: disabled ? 'not-allowed' : 'pointer', minHeight: 44 }}>
       {children}
     </button>
   );
