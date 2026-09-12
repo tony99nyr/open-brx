@@ -2,12 +2,13 @@
 
 Written 2026-09-04 by the APK-analysis agent to recover the BRX headset LED request layouts (MessageParameter
 indices = token order, enum literal values, [Range] attributes) from callsign-base.apk (metadata v39). Usage: point
-it at assets/bin/Data/Managed/Metadata/global-metadata.dat extracted from ~/.brx-mcp/callsign-base.apk. Results are
+it at apk/assets/bin/Data/Managed/Metadata/global-metadata.dat (the path pass 1 opens, relative to the
+working directory) extracted from ~/.brx-mcp/callsign-base.apk. Run il2cpp_meta.py first: this script imports it. Results are
 in brx-protocol.md ($LED, $BLINK, $CHASE, $HLOOP, $HLED, $GLED, $BHIT, $IRTX, $HFIRE rows) and the 2026-09-04
 experiment-log entry "HEADSET LED LAYOUTS READ FROM THE METADATA". Kept so the next question can be answered by
 reading tables, not by guessing shapes on the bench.
 """
-from meta import *
+from il2cpp_meta import *
 TO,TS,TC=T[19]; FO,FS,FC=T[11]; DO,DS,DC=T[7]; DDO,DDS,DDC=T[8]; MO,MS,MC=T[5]; PO,PS,PC=T[10]; PRO,PRS,PRC=T[4]; AO,AS,AC=T[24]; ARO,ARS,ARC=T[25]
 def td(k):
     raw=b[TO+k*76:TO+k*76+76]; ints=struct.unpack_from('<19i',raw,0)

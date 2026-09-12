@@ -55,7 +55,9 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 - **[mac-dev-runbook.md](mac-dev-runbook.md)** — working on the MacBook: the setup that is not in git, restart-MC
   vs hard-reload.
 - **[gun-stage.md](gun-stage.md)** — the click-to-try page + walkthrough for one real gun.
-- **[capture-runbook.md](capture-runbook.md)** — the Mac-only Callsign capture jobs (PacketLogger flow).
+- **[capture-runbook.md](capture-runbook.md)** — how to take a capture (iOS PacketLogger, Android HCI
+  snoop, the ESP32 IR rig, the decoders and their gotchas) and the capture jobs still open. The method
+  half moved here out of `manual/dev.md` on 2026-09-12.
 
 ## Spec of record — build against this
 - **[spec/README.md](spec/README.md)** (invariants + module map + amendment index) →
@@ -111,6 +113,9 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 
 ## Building the software
 - **[../app/README.md](../app/README.md)** — the native phone app (Capacitor → Android + iOS), the APK publish path.
+- **[../mcp/README.md](../mcp/README.md)** — `brx-mcp`: install, first contact, the CLI and MCP tool
+  tables, `diag-game`, platform notes. Split out of `manual/dev.md` on 2026-09-12, which is the
+  protocol, not our tooling.
 - **[../mcp/brx_mcp/mc/README.md](../mcp/brx_mcp/mc/README.md)** — the Mission Control server: how to start it, every flag, the UI it serves.
 - **[../webapp/mc/README.md](../webapp/mc/README.md)** — the Mission Control web UI.
 - **[manual/README.md](manual/README.md)** + **[site/README.md](site/README.md)** — the public site: how a fact

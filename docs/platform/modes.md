@@ -1,21 +1,22 @@
 # Modes and game setup
-Last verified: 2026-09-09
+Last verified: 2026-09-12
 
 This page covers the modes Open BRX itself runs, and the pieces you choose when you build a game.
 The stock on-tagger and Callsign modes are a separate thing and live on the [gameplay page](/manual/gameplay).
 
 ## What you can run
 
-Two of the modes have been played on real taggers, start to finish, with a scoreboard at the end.
-The rest are written and covered by tests, but have never been fired at a person. That gap is real:
-a mode that has never met a tagger can still surprise you.
+Three of the modes have been run on real taggers with a scoreboard at the end. The rest are written
+and covered by tests, but have never been fired at a person. That gap is real: a mode that has never
+met a tagger can still surprise you.
 
 **Played on hardware:**
 
 | Mode | The rule | Proven by |
 |---|---|---|
-| Team Deathmatch | Teams score a point per elimination. Downed players respawn after a delay. Highest score at the cap or the clock wins. | A two-tagger laptop match on 2026-08-25 (frag limit, correct winner) and an outdoor two-phone match on 2026-09-01. |
+| Team Deathmatch | Teams score a point per elimination. Downed players respawn after a delay. Highest score at the cap or the clock wins. | The laptop-only path on 2026-08-25: two taggers, one command, spawn, hits, deaths, host-driven respawn, a frag limit and the correct winner. The Mission Control plus phones path ran outdoors on 2026-09-01 with two Android phones, but its frag limit only started ending the match on 2026-09-12, when the check moved into Mission Control's own scorer. |
 | Free-for-all | No teams. Every elimination scores for the shooter. First to the frag limit, or the top score at the clock. | A 300 second match on 2026-08-30: two phones, two taggers, 12 kills over 126 landed hits. |
+| King of the Hill | One point. Hold the hill and possession scores for your team. | Proven end to end through a tagger on 2026-09-10. The hill is a BRX Smart Grenade in hill mode, so the mode needs no station hardware at all: the grenade beacons its owner, the tagger reports the beacon over Bluetooth, and Mission Control scores possession. |
 
 **Written, never played on taggers:**
 
@@ -26,7 +27,6 @@ a mode that has never met a tagger can still surprise you.
 | Extraction | Loot, reach the extraction point, hold a loud channel, survive it to bank what you carry. Die and you drop the lot. | The mode is in Mission Control's list and compiles a tagger head. Its objective rules (the zone, the loot, the channel) run only on the laptop command line and have not run on hardware. |
 | Counter-Strike (plant and defuse) | Attackers plant at a site, defenders defuse. The round ends on detonate, defuse, or a side wiped out. | Needs a station to report plant and defuse. Not in the Mission Control mode list. |
 | Domination | Teams hold capture points. Score accrues per second held. | Needs a station per point. Not in the Mission Control mode list. |
-| King of the Hill | Domination with one point: hold the hill for time. | Same as Domination. |
 | Capture the Flag | Grab the enemy flag, carry it home. Tag the carrier to send it back. | Needs a station to report grab, capture and drop. Not in the Mission Control mode list. |
 
 Two rule variants sit in the same "written, not played" bucket. **Syphon** heals the killer on every
@@ -106,11 +106,39 @@ A player can also try a weapon before the game starts. The tagger is armed with 
 privately, at a lower volume, with no team and no identity, so they can pull the trigger and feel
 the reload without it counting for anything.
 
+## Control points: the grenade or a phone
+
+A control point is a place on the field a team can own: the King of the Hill point, a Domination point, a bomb site. There are two ways to put one on your field, and the choice is not cheap against expensive.
+
+**The Smart Grenade is what works today.** It is the only control point you can shoot, and the only one that plays inside a native game with no host running at all. What it does and what it costs are on the [gameplay page](/manual/gameplay). King of the Hill uses it, and that is the mode that has been played on hardware.
+
+**A phone as a control point is designed and specified, and not built.** Read the table below as the plan. It is what you reach for when you want more than one point, or want the point to count people, or want it to keep scoring after you walk away.
+
+| | Smart Grenade, Hill mode | A phone as a control point |
+|---|---|---|
+| Status | works today, in native games too | designed, not built |
+| How you capture it | shoot it. Charge accumulates, any weapon counts | stand on it |
+| More than one point | no. A beacon carries no point id, so two grenades cannot be told apart on the wire | yes. Every point carries its own station id |
+| Do more attackers capture faster | no. It counts the charge fired into it, not the people | yes. It counts living players present per team, and nets the leading team against the largest single rival team |
+| Downed players | no idea they are there | ignored, so reviving on the point matters |
+| Contested | not readable. A non-capturing hit emits nothing we can decode | a real state it can see and announce |
+| Progress you can watch | the LED colour and a beep | a percentage on the air for other phones and stations, and an animated bar on its own screen, so a defender can see the point going |
+| A point nobody is standing on | ownership travels only over IR and only a gun receives IR, so nobody learns that a far point flipped until a player walks into range | the phone sits on the point all match and keeps its own clock, so it keeps scoring for its owner with nobody there. That is what makes a Territories game possible |
+| Points talking to each other | no | yes, with no network at all. The adverts are broadcast, so a respawn station can read a control point |
+| Presence range | you aim a gun at it | a bubble of roughly 10 feet at the tuned default, with no direction at all |
+| It fights back | yes. An enemy-held hill emits an ordinary damage word, so pushing onto a point you do not own costs you health | no |
+| Security | a beacon is unauthenticated | an advert is unauthenticated too. Fine for friends on a private network, not a guarantee |
+| What it costs | about $200 for ours, bought from Battle Company | a second-hand Android phone, a small fraction of that |
+
+The money does not buy capability, then. It buys the interaction: you can shoot the grenade, everybody nearby sees and hears it flip, and it works in a native game with nothing else switched on.
+
+**One caveat if you run a hill game today.** An enemy-held hill emits an ordinary damage word, so in a hosted game its chip damage is currently indistinguishable from being shot. A fix is under investigation (moving our own weapons off the IR protocol the hill uses) and it has not been tested.
+
 ## What is not built yet
 
-- The objective modes (Domination, King of the Hill, Capture the Flag, Counter-Strike) cannot be configured from Mission Control. Their settings do not cross the wire yet.
+- The remaining objective modes (Domination, Capture the Flag, Counter-Strike) cannot be configured from Mission Control. Their settings do not cross the wire yet. King of the Hill is the exception: it is in the mode list, and its hill is a Smart Grenade rather than a station.
 - Extraction's objective rules (the zone, the loot, the channel timer) run only on the laptop command line. The phone knows nothing about them.
 - Syphon and regenerating health are laptop-only for the same reason.
-- Mission Control does not arm respawn or objective stations at muster. A station is set up by hand.
+- Mission Control arms utility phones from the muster items panel: a spare phone can be armed as a respawn station or a control point before the match. Dedicated station hardware does not exist yet, and the Smart Grenade is set by its own button, not by Mission Control.
 - Per-player handicaps stop at the health and armor pool. Damage, fire rate, respawn delay and lives are not adjustable per player.
 - No mode has been run with more than two phones.

@@ -1,5 +1,5 @@
 # What the lights mean in a game
-Last verified: 2026-09-09
+Last verified: 2026-09-12
 
 In an Open BRX game the host takes over the tagger body LEDs and the headset ring, so what you see is
 ours. For the stock behaviour of a tagger nobody is hosting, see [Meet the BRX](/manual/hardware).
@@ -125,10 +125,12 @@ Index 9 and above are dark, which is how a segment is switched off. Pools read l
 Only health changes hue as it falls. Shield and armour keep one colour and let the bar length carry
 the level.
 
-**You will not see a shield bar today.** The shield pool is IR-only on the BRX: it cannot be written
-over Bluetooth, and a real tagger reports shield 0 on every life. The teal row above is what Open BRX
-paints when a shield exists, and it has never appeared on a tagger. Everything else on this page has
-been watched on real hardware.
+**You will not see a shield bar in a game today.** A tagger spawns with shield 0 and reports 0 on
+every life, because nothing Open BRX compiles grants one. The pool itself is writable: on 2026-09-11
+the bench filled it over Bluetooth with `$LIFE,0,0,20,*` and emptied it again with a negative, on a
+tagger with no shield row in its IR table at all. So the teal row above is a design waiting on a game
+that hands shields out, not a limit of the hardware. Everything else on this page has been watched on
+real hardware.
 
 Teams paint red (team 0), blue (team 1), yellow (team 2) and purple (team 3). Team 3 fights as green
 on the wire and paints purple, because green is what a headset flashes on a hit and out. Free-for-all

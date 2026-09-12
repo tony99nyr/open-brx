@@ -15,12 +15,16 @@ never ship Battle Company's assets.** The APK itself is NOT committed.
 
 ## Wins
 
-- **`sound-bank.md` — the complete 2166-id sound inventory** (with durations), from
-  `Sounds.json`. This is the deliverable the architecture doc §5 asked for, and it kills the
-  microphone-sweep dead end (experiment-log #7): any id not in the list is invalid, so no
-  fallback-sound ambiguity. IDs are the app's own names — the protocol uses them directly. The
-  raw `Sounds.json` id → duration map is restated as `mcp/brx_mcp/data/sound_ids.json`
+- **`sound-bank.md` — the APP's complete 2166-id sound inventory** (with durations), from
+  `Sounds.json`. IDs are the app's own names, and the protocol uses them directly. The raw
+  `Sounds.json` id → duration map is restated as `mcp/brx_mcp/data/sound_ids.json`
   (`RAW_ASSETS_NOTE.md`).
+  ⚠️ **This is the app's bank, not the gun's, and it is not a validity test.** A gun carries
+  **2,477** `.LTP` files, of which 157 in the app's list are absent; the authority for what a
+  tagger can actually play is `docs/reference/sound-catalog.md` (generated from
+  `mcp/brx_mcp/data/sound_catalog.json`, read off a real gun on 2026-09-03). An id the gun does not
+  have plays a **fallback sound, not silence** (`../brx-protocol.md` §3.1, `$PLAY`), so an id being
+  absent from either list is not something you can hear as an error.
 - **`config-facts.md`** — restated (not copied) facts from the app's config JSONs: weapon
   category ids 0–12, the post-game medal set and the stats it implies, and killstreak
   rewards. Per repo policy (`RAW_ASSETS_NOTE.md`) the raw assets are never committed; the full
@@ -61,3 +65,16 @@ adb pull <base.apk path>
 unzip -o base.apk 'assets/Configs/*' -d extracted
 # native logic: unzip split_config.arm64_v8a.apk 'lib/*/libil2cpp.so'; metadata in base
 ```
+
+**Reading the IL2CPP metadata** (where the `$LED` / `$BLINK` / `$CHASE` / `$HLOOP` / `$HLED` /
+`$GLED` / `$BHIT` / `$IRTX` / `$HFIRE` token orders came from, 2026-09-04). Two passes over
+`assets/bin/Data/Managed/Metadata/global-metadata.dat`, in order:
+
+```
+python tools/il2cpp_meta.py    # pass 1: table offsets + string calibration
+python tools/il2cpp_meta2.py   # pass 2: type/field/enum/attribute dump (imports pass 1)
+```
+
+Both read the metadata file at `apk/assets/bin/Data/Managed/Metadata/global-metadata.dat` relative
+to the working directory, so extract the APK into `apk/` first, or edit the path at the top of
+`tools/il2cpp_meta.py`.

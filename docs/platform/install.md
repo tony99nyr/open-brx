@@ -1,11 +1,11 @@
 # Install
-Last verified: 2026-09-11
+Last verified: 2026-09-12
 
 ## What you need
 
 - A laptop with a Bluetooth radio (Windows, macOS or Linux), for `brx-mcp` and for arming taggers at the bench.
 - Any laptop on the same LAN, for Mission Control. It does not need Bluetooth: it talks to phones over Wi-Fi.
-- One Android phone per player, for the Companion app. iOS builds from source.
+- One Android phone per player, for the BRX Companion. iOS builds from source.
 
 ## The Android app
 

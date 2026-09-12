@@ -1,7 +1,7 @@
 # Developer reference
-Last verified: 2026-09-09
+Last verified: 2026-09-12
 
-This is the interoperability spec for the BRX tagger and headset: transport, framing, every known command and event with its field map, the `$WEAP` / `$GSET` / `$PSET` / `$SIR` tables, the optical IR word, the USB console, and a path from `pip install` to a live game. Every command, token, field name and wire value on this page is literal.
+This is the interoperability spec for the BRX tagger and headset: transport, framing, every known command and event with its field map, the `$WEAP` / `$GSET` / `$PSET` / `$SIR` tables, the optical IR word, the USB console, and the headset link. Every command, token, field name and wire value on this page is literal.
 
 > **Credit, first.** The BRX serial protocol was discovered and proven by **LaserTagMods** (the JEDGE / JBOX / NRFL-Bases projects, github.com/LaserTagMods). Everything on this page is an independent, clean-room restatement. We verified it on our own taggers, decoded it from public app metadata, or captured it off the air. It contains no Battle Company code or assets. If you build on this, credit them too.
 
@@ -117,7 +117,7 @@ Every known command, with args and meaning: host to tagger, tagger to host, and 
 | `$SPAWN,,*` | >> | **one empty token** | **Go-live** and **respawn**. Restores HP/armor and (on respawn) ammo; echoes `$LCD,<hp>,<armor>,0,0,<mag>,<reserve>,*`. Also clears the `$SIR` fn-23 state (`$ALCD` token 2 back to 100). `$SPAWN,*` (no empty token) is not the same command. **Leave at least 3 seconds after a death before respawning**, or the headset stays stuck in the green out-blink. |
 | `$AMMO,<slot>,<mag>,<reserve>,<flag>,*` | >> | slot, magazine, reserve, 1 | Load magazines. Must follow `$SPAWN` at initial go-live or the gun is live with no ammunition. e.g. `$AMMO,0,36,108,1,*`. A bare `$WEAP` re-push resets ammo to the frame's baked values. Re-send `$AMMO` after any weapon swap. |
 | `$PLAYX,0,*` | >> | 0 | Stop/clear sound playback. Sent right after `$STOP` on connect and just before the go-live cue. |
-| `$PLAY,<sound>,<vol>,<prio>,<announcer>,,,,*` | >> | 8 tokens | Play a sound id (2,477 on the gun; see docs/reference/sound-catalog.md for what each one is). **Two independent slots**: token 1 = local/effect sound, **token 4 = announcer/voice channel**. `$PLAY,,4,6,V3A,,,,*` speaks "kill" with token 1 empty; `$PLAY,VSF,4,6,JAY,,,,*` uses both. **Tokens 2-3 are required**: `$PLAY,VA33,,,,,,,*` is silent, `$PLAY,VA33,4,6,,,,,*` speaks. Numeric values vary by client (`3,9` Android app, `3,6` iOS, `4,6` JEDGE). APK field names: soundName, addToQue1, addToQue2, loopingTime, stun, isNeedQueue. |
+| `$PLAY,<sound>,<vol>,<prio>,<announcer>,,,,*` | >> | 8 tokens | Play a sound id (2,477 on the gun; see [the sound catalog](../reference/sound-catalog.md) for what each one is). An id the gun does not have plays a fallback sound, not silence. **Two slots that behave differently, and the behaviour belongs to the slot, not to the kind of id** (bench 2026-09-11, six trials): **token 1 INTERRUPTS**, cutting whatever is playing in either slot, mid-word if it has to, and **token 4 QUEUES**, waiting its turn behind whatever is ahead of it (depth 3 or more observed). An effect id dropped into token 4 queues exactly like a voice line. `$PLAY,,4,6,V3A,,,,*` speaks "kill" with token 1 empty; `$PLAY,VSF,4,6,JAY,,,,*` uses both in one frame, with no layering. A sound that must not step on an announcer line goes in token 4; a hit-path or urgent sound goes in token 1 and accepts that it can cut a line off. **Tokens 2-3 are required**: `$PLAY,VA33,,,,,,,*` is silent, `$PLAY,VA33,4,6,,,,,*` speaks. Numeric values vary by client (`3,9` Android app, `3,6` iOS, `4,6` JEDGE). APK field names: soundName, addToQue1, addToQue2, loopingTime, stun, isNeedQueue. |
 | `$VOL,<0-100>,<n2>,*` | >> | volume, 0 | Master volume. Android app sends `$VOL,100,0,*`; iOS `$VOL,69,0,*`. 30 is inaudible for game audio. Open BRX plays at 80 indoors / 90 outdoors; try-outs at 69. |
 | `$NAME,<name>,*` | >> | name | Sets the gun's **persistent** name (the USB `Gun Name` field; survives power-cycle). Opening the official app rewrites it to `Tactix2`. |
 | `$VERSION,*` | >> | n/a | Query firmware. Reply `$VERSION,v4.32,?,4,,devhost.03,*`. Token 2 is the **headset** firmware (`hds.59`) when a headset is linked. |
@@ -131,9 +131,9 @@ Every known command, with args and meaning: host to tagger, tagger to host, and 
 | `$SFLASH,*` | >> | n/a | **The shooter's green-sight kill-confirm flash.** The host sends exactly one per kill the holder scores, ~0.4 s after the trigger burst ends. (The APK lists it under notifications; on the wire the phone sends it.) |
 | `$LIFE,<hp>,<armor>,<shields>,*` | >> | addedHP, addedArmor, addedShields | Grant **or drain** a pool. Additive, clamped at the pool max, never an absolute set, and it **does self-emit `$HP`** (bench 2026-09-09). It **accepts negative values and drains**: `$LIFE,0,-5,0,*` took armour 66 to 61. A negative is per pool and floors at 0 with no spill into the next pool. A negative that empties health really kills the gun, but announces it with `$LCD,0,0,0,0,<mag>,<reserve>,*` and never `$HP,0,0,0`. |
 | `$BUMP,<hp>,<armor>,<shields>,*` | >> | hP, armor, shields | **Inert on v4.32.** Bench 2026-09-09: it does nothing in either direction, with a validated read either side. Use `$LIFE`. |
-| `$BHIT,<damage>,<isCrit>,<powerLevel>,*` | >> | damage, isCriticalShot, powerLevel | Four shapes sent on v4.32: each was echoed and **applied no damage**. |
-| `$HFIRE,…,*` | >> | Range, CountIRPulses, RateOfFire, FlashLED | Five shapes sent on v4.32: **zero IR emitted** (receiver control passing before and after). |
-| `$IRTX,…,*` | >> | iRPower, soundOnHit, rangeOutdoor, rangeIndoor | Five shapes sent on v4.32: **zero IR emitted** (receiver control passing before and after). |
+| `$BHIT,<bulletType>,<playerId>,<team>,<damage>,<isCrit>,<powerLevel>,<direction>,*` | >> | 7 fields, the `$HIR` field set | A host-injected hit that runs the firmware's own hit path. The 7-field layout was read out of the app's metadata on 2026-09-04. **The real shape has never been sent.** The four shapes tried on v4.32 all used a 3-token guess, and each was echoed and applied no damage. |
+| `$HFIRE,…,*` | >> | **11 fields** (names not recorded) | Heavy or burst fire. The metadata read on 2026-09-04 gives 11 fields including a `FlashLED` flag; the four names this row used to list came from an earlier partial read. **The real shape is untested.** The five shapes tried on v4.32 were 4-field guesses and emitted zero IR, with a receiver control passing before and after. |
+| `$IRTX,…,*` | >> | **11 fields** (names not recorded) | Raw IR transmit. Same story as `$HFIRE`: 11 fields per the metadata, real shape untested, and the 4-field guesses emitted zero IR against a passing receiver control. |
 | `$MELEE,<intensity>,*` | >> | intensity | `$MELEE,255,*` returns `$BUT,4,0,*` and fires no IR. |
 | `$STUN,*` | >> | n/a | Listed in the APK. **Proven no-op over BLE.** |
 | `$GLED,<led1>,<led2>,<led3>,<apply-gate>,<brightness>,,*` | >> | three LED colours | **Gun LED colour, per LED.** Tokens 1 to 3 are the three body LEDs, each a direct palette index. The palette is nine colours: **0 red, 1 blue, 2 yellow, 3 green, 4 purple, 5 teal, 6 white, 7 pink, 8 orange**; 9 and 10 are dark. **Token 4 is an apply gate**, not an effect enum and not an off switch: it decides whether the colour tokens in the same frame take effect at all. Values **0, 6, 7, 8, 9 and 10 apply** the colours at full brightness. Value **5 turns the LEDs OFF**, whatever the colour tokens say. Values **1, 2, 3 and 4 are no-ops**: the colour tokens are ignored and the gun keeps whatever it was already showing, which is why a sweep of this token reads differently depending on whether it blanks between rows. No token-4 value animates. `$GLED,,,,5,,,*`, the frame Callsign itself sends on death, blanks the gun because **token 4 = 5 is the off value**. Token 4 = 5 is therefore the one gate value never to send with real colour tokens: it discards them. Sending the blank once takes the strip out of the firmware's breathing loop for the rest of the life, and it is **mandatory before any paint holds**: a dark paint sent without a prior blank is simply overwritten by the breathing. It is idempotent, and after it every revert should be a dark PAINT (`$GLED,9,9,9,0,10,,*`) rather than another blank. **An EMPTY colour token is RED, not "leave this LED alone".** A blank field parses as 0, and 0 is red. Measured on the gun 2026-09-09 by a controlled test: with the strip held at three solid purple, `$GLED,,9,,0,10,,*` produced red, dark, red. **Always write all three colour tokens**, or the ones you leave empty turn red. There is no way to move one segment without restating the others. Token 5 is brightness and is the ONLY brightness control: 0 off, 1 dim, 2 and above full, saturating at 2 so that 2 through 255 are indistinguishable. It is **global**, applying to all three LEDs at once, so a bar of two bright segments and one dim one is not possible; a partial step has to be a blinking segment instead. Token 5 = 1 is what night mode uses. A held paint survives ordinary game traffic (`$AMMO`, `$PLAY`, `$HLED`, `$LED`) untouched, and keeps its hue at the dim setting. On a spawned gun the set colour alternates with the team colour, because a spawned gun is also using these LEDs as its own health gauge. Verified on the bench 2026-08-30: a gun held on team 1 took six different colours on command, and `$GLED,3,2,1,0,10` was predicted and confirmed as green, yellow, blue. Palette completed on 2026-09-02 with a camera rig, and token 4 re-measured the same day from a known lit start, three trials per value; normalised R/G/B signatures, all three LEDs agreeing on every row: 0 = 1.00/0.16/0.26, 1 = 0.19/0.59/1.00, 2 = 0.88/1.00/0.59, 3 = 0.18/1.00/0.54, 4 = 0.59/0.49/1.00, 5 = 0.23/1.00/0.85, 6 = 0.73/0.79/1.00, 7 = 1.00/0.30/0.66, 8 = 1.00/0.38/0.30. The camera separates the indices from each other; it does not name absolute hues, so the reading rests on relative separation measured back to back under identical conditions, on three LEDs agreeing, and on a match with an independent community source. Token 4 = 5 is OFF, not dim: measured on a blanked, host-owned strip, alternating `$GLED,3,3,3,0,10` against `$GLED,3,3,3,5,10` four times, it is bright then off with no step in between. Token 5, A/B tested the same way, is the only control that dims. **Do NOT repaint this at speed to hold a colour against the gun's own animation**: it takes roughly 30 writes a second to win, and the result strobes. Flicker in the 10 to 25 Hz band is the photosensitive epilepsy trigger range. Signal an event with a short burst of three flashes instead. |
@@ -389,10 +389,37 @@ These two frames set the on-gun rules and the player's pools, identity and voice
 | 2 | n/a | 0 | 0 in every capture; 0/1/7 gave byte-identical behaviour. Inert. |
 | 3 | HP | 45 | Starting/max HP. Echoed as `$LCD` token 1 after `$SPAWN`. |
 | 4 | armor | 70 | Armor pool (`$LCD` token 2, `$HP` token 2). |
-| 5 | shield | 70 | Shield **maximum**. The pool starts at 0 and only fills via an IR `$SIR` grant function. It is not BLE-writable as a value. |
+| 5 | shield | 70 | Shield **maximum**, not a starting value: the pool starts at 0. It fills from an IR `$SIR` grant function (or armor overflow), and over BLE from `$LIFE,0,0,<n>,*`, which adds to the pool and takes negatives (bench 2026-09-11, measured with no shield row in the `$SIR` table). Both saturate at this token. |
 | 6 | n/a | 50 | (unknown) |
 | 7 | (empty) | n/a | |
-| 8+ | **positional voice pack** | H44 JAD V33 V3I V3C V3G V3E V37 H06 H55 H13 H21 H02 U15 W71 A10 | Sixteen sound ids on the wire. The app's metadata declares these voice-pack fields: deathAlarm, stealthDeathScream, musicMixOnDeath, deathScream, battleRespawnCry, meleeGrunt, shortPain, longPain, painRelief, missShothit, hitHp, hitArrmor, hitShield, hitCrit, emptyUnboundButtonSound, ammoOrGearPickUp, energyShieldLoop. Which wire slot carries which name: (unknown). |
+| 8+ | **positional voice pack** | H44 JAD V33 V3I V3C V3G V3E V37 H06 H55 H13 H21 H02 U15 W71 A10 | Sixteen sound ids on the wire, in the order the app's metadata lists them. See the table below. |
+
+**The voice pack, slot by slot.** The alignment was confirmed on the bench on 2026-09-07: a voice line placed in the `hitShield` position was heard on a shield hit, and an intermediate "the slots are swapped" reading was retracted after a control showed the sound had not moved. The metadata names **seventeen** fields for **sixteen** wire slots, and `emptyUnboundButtonSound` is the one with no slot of its own.
+
+| Slot (token) | Field name | Captured id |
+|---:|---|---|
+| 1 (8) | deathAlarm | `H44` |
+| 2 (9) | stealthDeathScream | `JAD` |
+| 3 (10) | musicMixOnDeath | `V33` |
+| 4 (11) | deathScream | `V3I` |
+| 5 (12) | battleRespawnCry | `V3C` |
+| 6 (13) | meleeGrunt | `V3G` |
+| 7 (14) | shortPain | `V3E` |
+| 8 (15) | longPain | `V37` |
+| 9 (16) | painRelief | `H06` |
+| 10 (17) | missShothit | `H55` |
+| 11 (18) | hitHp | `H13` |
+| 12 (19) | hitArrmor | `H21` |
+| 13 (20) | hitShield | `H02` |
+| 14 (21) | hitCrit | `U15` |
+| 15 (22) | ammoOrGearPickUp | `W71` |
+| 16 (23) | energyShieldLoop | `A10` |
+
+Three more things about this tail, all measured the same day:
+
+- **An empty effect field is not silence. It falls through outward to the neighbouring pool's clip.** An empty `hitShield` plays the armor clip. `hitHp` is silent when empty only because it is the innermost pool, with nothing further in to fall to. This is not the same rule as an empty voice field, which really does make the gun say nothing.
+- **`energyShieldLoop` is a real loop.** It runs for as long as the shield is up, survives a `$PSET` rewrite, and stops only on `$PLAYX,0,*` or the shield reaching zero. Callsign's stock `A10` is a ticking clip, so it plays under every shield-band hit.
+- **A non-empty `$SIR` `<soundID>` overrides the `$PSET` sound** on the row that fired. The two do not layer, so per-weapon and per-pool audio compete for one hit.
 
 > **Numbering a fleet is one token.** Give every gun a distinct `$PSET` token 1 at arm time and per-player kill attribution is BLE-native: no cable, no IR receiver. Show operators 1-based ids; write `id − 1`.
 
@@ -419,7 +446,7 @@ $SIR,2,1,VA8C,11,0,0,1,,*   add shields
 $SIR,3,0,VA16,13,0,0,1,,*   add armor
 $SIR,6,0,H02,1,0,90,1,40,*  Rail Gun
 $SIR,8,0,,38,0,0,1,,*       Charge Rifle
-$SIR,9,3,,24,10,0,,,*       Energy Launcher (fn 24 is a no-pool status; deals zero damage as shipped)
+$SIR,9,3,,24,10,0,,,*       Energy Launcher (fn 24, under investigation: see the function map)
 $SIR,10,0,X13,1,0,100,2,60,* Rocket Launcher
 $SIR,11,0,VA2,28,0,0,1,,*   Tear gas
 $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer (melee)
@@ -441,7 +468,8 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 | Add armor | 13, 15, 20, 22 | 0 to 20 to 40; overflow spills to shields | ally only (20 also strips enemy armor) |
 | Add shield | 11, 18 | 0 to 20 to 40 | ally only |
 | **`$ALCD` token-2 drop** | 23 | Registers a hit, no pool change; `$ALCD` token 2 drops 100 to 0 and recovers over about 6-8 s while the gun keeps firing. The state clears on `$SPAWN,,*`. | enemy |
-| Registers, no pool change | enemy 8, 24, 25, 26, 27, 28, 35 · ally 31, 32, 34 | `$HIR` fires, pools unchanged, no other frame. The enemy functions are identical on protocols 0/5/7/9/10, `fn 28` on protocol 5 included. The ally functions are not protocol tested. **The reading is scoped, not general.** The victim is at full health for these trials (HP 45, armour 70), and a heal or armour grant into a full pool is clamped, so it reads as no change: `fn 10` is respawn plus add HP and belongs in that class, not this one. The seven enemy functions here moved no pool with 150 shield available, so for them the reading is real. `fn 3` drains shield exactly as plain damage does and is classed as damage. | n/a |
+| Registers, no pool change | enemy 8, 25, 26, 27, 28, 35 · ally 31, 32, 34 | `$HIR` fires and no pool changes at the cell itself. **fn 28 registers with no sound, no headset flash and no vibration** (bench 2026-09-10), so a host can read an IR event the player never perceives. `fn 8` is silent but still flashes and vibrates. `fn 25`, `26` and `27` play a long grenade-like clip; whether they also flash or vibrate was never observed. The enemy functions are identical on protocols 0/5/7/9/10, `fn 28` on protocol 5 included. The ally functions are not protocol tested. **The reading is scoped, not general.** The victim is at full health for these trials (HP 45, armour 70), and a heal or armour grant into a full pool is clamped, so it reads as no change: `fn 10` is respawn plus add HP and belongs in that class, not this one. The seven enemy functions here moved no pool with 150 shield available, so for them the reading is real. `fn 3` drains shield exactly as plain damage does and is classed as damage. | n/a |
+| **Delayed blast, under investigation** | 24 | Registers on arrival with no immediate pool change, then applies damage ticks a few seconds later. Measured against a grenade beacon on 2026-09-11: 1 to 3 ordinary `$HIR` ticks about 4 s after the word, each carrying the original magnitude and team. It was filed as an inert status until then. Whether the Energy Launcher row (`$SIR,9,3`) ticks the same way is untested, and so are functions 25, 26 and 27, which share fn 24's clip. Open as **P18**: do not rely on either reading. | enemy, as measured |
 | No registration | 0, 39-45 | n/a. 0/39/40 measured 2026-08-27; 41-45 untested. | n/a |
 
 > **Support functions are team-gated in firmware.** With `$GSET` friendlyFire = 0, heals/armor/shield grants register **only from a same-team source**, and damage registers only from another team. Set friendlyFire = 1 and everything lands from anyone. A medic gun enforces "allies only" with zero host logic.
@@ -451,6 +479,7 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 - **Heals clamp** at the pool max. Magnitude 200 is a fill, not a stack.
 - **No function is a damage-over-time.** 18 s watched after each status hit: no ticks.
 - **Dead guns accept no IR at all.**
+- **A magnitude-0 word is a miss, and it is invisible over Bluetooth.** The victim's gun vibrates and plays its `$PSET` miss sound, but emits **no `$HIR` and no `$HP` at all** (bench 2026-09-09, against a same-aim magnitude-9 control that produced both). A miss reaches the player and reaches the software not at all, so nothing on either phone can react to one.
 
 ### Is there a stun?
 
@@ -703,131 +732,8 @@ Which state lives where, and what a BLE drop, a headset switch-off, or a power-c
 
 > **Screamers.** A tagger left powered all day can stop holding BLE. It still advertises, but the connection drops or hangs. The community calls this the "screamer" state. Power-rest guns between sessions; keep them charged (firmware will not re-pair below a battery threshold).
 
-## Getting started with `brx-mcp`
+## Tooling and captures
 
-From `pip install` to a live game in six commands, plus the MCP tools for driving a gun from an AI agent.
+The `brx-mcp` command line and MCP server, which is how this project drives a tagger, is documented in [the `mcp/` directory of the repository](https://github.com/tony99nyr/open-brx/tree/main/mcp), in its `README.md`.
 
-> `brx-mcp` is the project's lab instrument: a pure-Python (`bleak` + `mcp`) CLI and MCP server that runs on **whichever machine owns the Bluetooth radio**: Windows, macOS or Linux. It enforces the known-safe list, refuses malformed frames, records every session, and has a `panic` tool.
-
-```bash
-# on the machine with the BLE radio (Windows PowerShell, macOS terminal, or Linux):
-python -m venv .venv && . .venv/bin/activate     # Windows: .venv\Scripts\activate
-pip install -e ./mcp
-
-# first contact, no MCP client needed:
-python -m brx_mcp scan             # find taggers (Gen2/3 advertise the Nordic UART service)
-python -m brx_mcp identify <addr>  # $PING → generation check, firmware, host image
-python -m brx_mcp listen <addr>    # read-only live console: pull the trigger, watch $BUT/$HIR/$HP
-```
-
-```bash
-# ...and now actually play. Your laptop drives the guns directly over BLE,
-# so everyone stays within BLE range of it (a room or a yard).
-python -m brx_mcp play tdm <addr1> <addr2>             # a real Team Deathmatch with live scoring
-python -m brx_mcp play tdm <addr1> <addr2> outdoor=1 volume=90   # outdoors: louder, longer range
-#   modes: tdm ffa infection lms cs domination koth ctf extraction
-#   run `python -m brx_mcp` with no arguments for the full command list
-
-# no guns to hand? this needs no hardware at all:
-python -m brx_mcp game-sim tdm                         # narrated demo match in your terminal
-
-# read the USB device record (tagger on the Programing Port):
-python -m brx_mcp usb-query                            # QUERY over the Teensy serial console
-```
-
-```bash
-# register with Claude Code as an MCP server:
-claude mcp add brx -- python -m brx_mcp
-# WSL2 has no Bluetooth: develop in WSL, run the server with Windows Python:
-claude mcp add brx -- python.exe -m brx_mcp
-```
-
-**CLI commands**
-
-| Command | What it does |
-|---|---|
-| `scan` · `identify <addr>` · `listen <addr>` · `probe <addr>` | Discover, check, watch, probe a single gun |
-| `startgame <addr>` · `deathmatch <addr>` · `arena <addr1> <addr2>` · `fieldstart …` | Single-purpose game drivers (the arm sequence) |
-| `play <mode> <addr…> [volume=N]` | Hosted match with live scoring; modes tdm ffa infection lms cs domination koth ctf extraction. Volume defaults to 80, the indoor play level; pass `outdoor=1 volume=90` outdoors |
-| `game-sim <mode>` · `extraction-sim` | Hardware-free narrated simulations |
-| `diag <addr>` · `diagnose <addr>` · `diag-game <addr>` · `fleet` | Diagnostics, fleet battery/reachability sweep |
-| `usb-query [port]` · `enroll` · `armory` · `rename` · `reset` | USB device record, armory enrolment, persistent `$NAME`, reset |
-| `ir-capture` · `ir-emit` · `ir-range` | Drive the ESP32 IR transceiver rig |
-
-**`diag-game`: the repeatable diagnostic game**
-
-| Item | Value |
-|---|---|
-| What | A structured pass/fail scorecard of every BLE capability on one tagger: connectivity (ping, firmware, battery), config + spawn echoes, trigger and button events, audio (a sound by id, volume audible at 75), team LEDs, and with a second gun as shooter, damage (armor absorbs, `$LIFE` heals) and `$HIR` shooter attribution, plus the grenade Hill/Respawn beacon (`$HIR` token 2 = 15). |
-| Run it | `python -m brx_mcp diag-game <addr>` · `… 2guns` adds the shooter · `… 2guns ir` adds the ESP32 IR bridge. Cases a rig cannot serve **skip**, they do not fail; a run is **CLEAN** when nothing failed or errored. |
-| How it judges | Declarative cases (`diag/cases.py`) with pure predicates over the parsed receive stream (`diag/model.py`, unit-tested with no BLE); a human answers y/N where the wire cannot judge ("did you hear it?", "are the LEDs blue?"). Reports save as JSON under `~/.brx-mcp/diag-reports/`. |
-| Why | A regression baseline. A firmware update or a new tagger? Re-run and diff the scorecard instead of re-deriving "does health-write work?" each session. |
-
-**MCP tools (what an agent can call)**
-
-| Tool | Purpose |
-|---|---|
-| `scan(duration_s)` · `identify(address)` · `diagnostics(address)` · `fleet_status(addresses)` | Discovery and health |
-| `connect(address, alias)` · `disconnect(alias)` · `list_connections()` | Session management |
-| `send(alias, command, confirm=False)` · `send_batch(alias, commands, gap_ms=100)` | Write frames; anything outside the known-safe list needs `confirm=True` |
-| `get_events(alias, since_seq)` · `wait_for(alias, prefix, timeout_s)` | Read the buffered event stream / block on a message |
-| `session_log(alias, action, label)` · `diff_captures(file_a, file_b)` | Record and diff sessions |
-| `panic(alias)` | `$CLEAR,*` then `$SP,99,*` |
-| `parse_query_dump(text)` | Parse a USB `QUERY` record |
-| Resources: `protocol_doc`, `known_devices`, `capture` | The protocol reference, the device registry, capture files |
-
-> **Platform notes.** macOS: grant your terminal Bluetooth permission; CoreBluetooth reports per-machine **UUIDs instead of MAC addresses**, so never pattern-match on address format, and expect to re-scan per machine. Gen1 taggers use Bluetooth Classic. `bleak` is BLE-only, so pair in the OS and use the serial port. Captures and the device registry live in `~/.brx-mcp/`.
-
-**Recommended first session (safe order)**
-
-1. `scan` to note the address. `identify` to confirm `$PONG` and read the `$VERSION` reply.
-2. `listen` read-only: pull the trigger, get tagged by another gun, watch `$BUT`/`$HIR`/`$HP`. Send **no** config yet.
-3. `play tdm …` on two guns; confirm each echoes `$LCD,45,70,0,0,36,216` on spawn.
-4. If anything looks wrong: `panic`, then power-cycle. That always restores the tagger.
-
-## Captures: recording and decoding the official app
-
-How every fact here was obtained, and how to take the next one.
-
-> **Method.** Almost everything here came from three instruments: BLE HCI captures of the official Callsign app (Android HCI snoop; iOS via macOS PacketLogger), a VS1838B/ESP32 IR receiver and emitter, and a live tagger driven one token at a time. Captures are decoded with `python -m brx_mcp.btsnoop <file>` into `>>` (host to tagger) and `<<` (tagger to host) transcripts.
-
-**iOS (the one that works; Callsign is effectively iOS-only)**
-
-1. Plug the iPhone into a Mac. Open **PacketLogger** (Xcode additional tools), then **File → New iOS Trace**. **Confirm lines are scrolling before you do anything.**
-2. Make sure the tagger's **headset is on and paired**. The app silently drops a headset-less gun and you capture nothing. Get the app's connection icon green first.
-3. Drive the app: connect, create/join, arm, play, end. For a differential capture change **exactly one** setting per trace.
-4. **File → Export → btsnoop**. Two traps: export acts on the *frontmost* window (easy to re-export an old trace), and a trace that was not recording writes a silently useless file.
-5. `python -m brx_mcp.btsnoop <file>` gives the transcript. `python -m brx_mcp.gsetdiff <capA> <capB> [capC]` diffs the config frames across raw captures.
-
-**Android (partial; the app rarely holds a connection here)**
-
-1. Enable **Developer options → Bluetooth HCI snoop log**.
-2. Run the app; then `adb bugreport` (5-10 min; keep the phone still). The btsnoop log rides inside.
-3. Decode with `python -m brx_mcp.btsnoop`. This route yielded the connect ritual and the version exchange, never a game.
-
-```bash
-python -m brx_mcp.btsnoop capture.btsnoop            # → '>> $CLEAR,*' / '<< $LCD,…' transcript with timestamps
-python -m brx_mcp.gsetdiff cap5.btsnoop cap6.btsnoop # byte-diff the $GSET/$PSET frames across captures
-python -m brx_mcp.weapmap cap14.btsnoop cap15.btsnoop # token × weapon table from operator-annotated captures
-```
-
-> **Decoder gotchas.** Apple's btsnoop export uses datalink 1001 (no HCI type byte; the type is in the record flags), which decoded to zero frames until handled. With two guns in one trace, streams must be keyed on the **ACL connection handle** or they merge into garbage silently.
-
-**Published transcripts** (decoded frames only; raw btsnoop files contain all of a phone's Bluetooth traffic and are not published)
-
-| File | Shows |
-|---|---|
-| `2026-08-23-ios-callsign-game-start.txt` | The full working arm sequence (findings §7e) |
-| `2026-08-23-ios-callsign-two-tagger-combat.txt` | `$HIR`/`$HP` damage, death, host-driven respawn (findings §7f) |
-| `2026-08-23-gset-respawn15.txt` / `-respawn30.txt` / `-respawn05.txt` | Byte-identical `$GSET` at three respawn values; `respawn15` also contains a complete game ending (findings §7n) |
-| `2026-08-23-no-headset-disconnects.txt` | App ritual completes, zero frames back, hangs up about 1.2 s later (findings §7m) |
-
-**IR capture rig (ESP32-S3 + VS1838B)**
-
-1. A phone camera **cannot** see the ~5 mA IR LED. Judge with the receiver, never a camera.
-2. Turn the sketch's per-frame RAW dump **off** (`r`) for any capture that matters; it takes about 15-20 ms at 115200 and truncates the next frame into a prefix.
-3. Attenuate at close range. The VS1838B's AGC saturates point-blank. A gun at 1 m decodes cleanly where an LED at 5 cm does not.
-4. Never fire toward the rig from the gun under test: reflected IR hits your own headset, drains armor and kills the player mid-window.
-5. Bound the sync to about 1800-2200 µs and require 25 bits plus `Z0 ≠ Z1`, or a TV remote will decode as a BRX frame.
-
-> **Measurement discipline that mattered.** Check the control *before* reading the result; one clean-looking run is not a result (everything that held was measured three times with alternating conditions, or came from a human's senses); a host-visible field that correlates with a state is not evidence of that state; damage is a property of the (weapon, victim `$SIR` table) pair, never of the weapon alone.
+How every fact on this page was captured, and how to take the next capture, is the [capture runbook](https://github.com/tony99nyr/open-brx/blob/main/docs/capture-runbook.md).

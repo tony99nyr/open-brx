@@ -2,7 +2,8 @@
 
 Written 2026-09-04 by the APK-analysis agent to recover the BRX headset LED request layouts (MessageParameter
 indices = token order, enum literal values, [Range] attributes) from callsign-base.apk (metadata v39). Usage: point
-it at assets/bin/Data/Managed/Metadata/global-metadata.dat extracted from ~/.brx-mcp/callsign-base.apk. Results are
+it at apk/assets/bin/Data/Managed/Metadata/global-metadata.dat (the path it opens, relative to the working
+directory) extracted from ~/.brx-mcp/callsign-base.apk. Results are
 in brx-protocol.md ($LED, $BLINK, $CHASE, $HLOOP, $HLED, $GLED, $BHIT, $IRTX, $HFIRE rows) and the 2026-09-04
 experiment-log entry "HEADSET LED LAYOUTS READ FROM THE METADATA". Kept so the next question can be answered by
 reading tables, not by guessing shapes on the bench.

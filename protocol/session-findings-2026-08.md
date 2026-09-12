@@ -28,6 +28,7 @@ including claims that were later retracted; the table first says which ones.
 | 2026-08-25 | Per-player attribution needs the USB `SETUP` console or an IR receiver | BLE-native: `$PSET` token 1 → `$HIR` token 3 (§7p, §7q) |
 | 2026-08-25 §7q | `$HIR` token 1: 4 = armor absorbed, 0 = HP, 2 = kill | Token 1 is the sensor that caught the IR (0 front dome, 1 back dome, 4 gun body) (§7r) |
 | 2026-08-25 §7r | Crit is a fixed ×1.5 | Crit = magnitude × (1 + `$GSET` t7/100); 1.5 is the shipped t7 = 50 (2026-08-27) |
+| 2026-08-27 (the replacement above) | A single flat crit formula, applied to any hit | **Superseded 2026-09-11 (F23).** There is no flat crit term. t7 is the HEADSET-sensor multiplier on `$SIR` fn 36/37 rows only: fn 36 = magnitude × (1 + t7/200), fn 37 = magnitude × (1 + 2·t7/100). The gun-body sensor is ×1 on every function. The `$HIR` crit bit read 0 on all 15 headset hits and is a separate, unset axis. See `callsign-extract/protocol-classes.md` (`t5`) and `brx-protocol.md` §5 |
 | 2026-08-26 §6.1 | Fire mode is not located and may not exist | `$WEAP` t20 is the fire mode, proven by one-field flip the same day |
 | 2026-08-26 §6.1 | t15 is a constant 850 of unknown function | t15 is the weapon-swap delay in ms (2026-09-04) |
 | 2026-08-26 §6.1 | t19 = reloadType | Broken by the Plasma Sniper (shell reload, t19 = 0); t19 is unknown |
@@ -35,6 +36,7 @@ including claims that were later retracted; the table first says which ones.
 | 2026-08-26 | `$SIR` damage is not friendly-fire gated under either `$GSET` t1 value | Friendly fire is firmware-enforced, both polarities (2026-08-27) |
 | 2026-08-27 | `$SIR` fn 23 is a weapon disable / the EMP | fn 23 is audio suppression: `$ALCD` token 2 drops to 0 and recovers over ~6–8 s while the gun keeps firing (same day) |
 | 2026-08-27 | fn 36 / fn 37 do nothing (24-cell ×1.0 matrix) | fn 36 = floor(magnitude × 1.25), fn 37 = magnitude × 2, 16 trials with fn 1 controls (2026-09-02); the ×1.0 run is outvoted, not explained |
+| 2026-09-02 (the replacement above) | The ×1.0 run is "outvoted, not explained", and the multipliers are flat ×1.25 / ×2 | **Superseded 2026-09-11 (F23): both readings were right, and they measured different sensors.** The multiplier is sensor-gated. The 2026-08-27 ×1.0 matrix was rig-pinned to the gun body, where every function lands ×1; the 2026-09-02 run was on the headset, where fn 36 and 37 scale with `$GSET` t7 and read ×1.25 / ×2 at the shipped t7 = 50. Confirmed across t7 = 0/50/100, with a t7 = 0 closing control reading fn 37 back to ×1 |
 | 2026-08-27 | `$SIR` fn 3 registers with no pool change | fn 3 drains shield exactly like plain damage; the earlier run started with shield 0 (re-test with a shield granted) |
 | 2026-08-26 §7r vs addendum | `$SPAWN,,*` alone after a BLE drop revives with config intact / a dead gun does not revive on `$SPAWN` alone | Two contradicting readings, never reconciled; the published rule is: re-send the whole head after a reconnect |
 
@@ -288,7 +290,7 @@ independently restated observations. Anyone building on this should credit them 
 ## 7e. SOLVED — remote game start (iOS Callsign capture, 2026-08-23)
 
 Captured with PacketLogger from the official iOS Callsign app driving a full game on a
-Tactix2 (fw v4.32). Decoded transcript: `protocol/captures/2026-08-23-ios-callsign-game-start.txt`.
+Tactix2 (fw v4.32). Decoded transcript: `protocol/captures/2026-08-23-solo-game-full-arm.txt`.
 This is the sequence that actually takes a tagger live. Three pieces were missing from our
 previous `GAME_SEQUENCE`, which is why config was accepted but the gun never fired.
 
@@ -375,7 +377,7 @@ reportedly been the only platform Callsign works on for years. So the honest sum
 ## 7f. Combat, death and respawn (two-tagger iOS Callsign capture, 2026-08-23)
 
 Second PacketLogger capture, two taggers in a live game, tracing the **victim's** phone.
-Decoded transcript: `protocol/captures/2026-08-23-ios-callsign-two-tagger-combat.txt`
+Decoded transcript: `protocol/captures/2026-08-23-two-tagger-combat.txt`
 (372 frames; 23 `$HIR`, 23 `$HP`, 3 `$SPAWN`). Fills the §7e gap.
 
 ### `$HP,<hp>,<armor>,<shield>,*`

@@ -1,5 +1,5 @@
 # Running a match
-Last verified: 2026-09-09
+Last verified: 2026-09-12
 
 How to get from a bag of taggers to a finished game with a scoreboard. There are two ways to run
 one, and the simpler way needs nothing but a laptop.
@@ -20,8 +20,8 @@ Get the addresses from `python -m brx_mcp scan`. Add `outdoor=1 volume=90` outdo
 volume of 80 is set for indoors, and anything near 69 is roughly on-tagger level 2 and is inaudible in
 the open.
 
-**Mission Control plus a phone on every tagger.** Each player carries a phone running the BRX Combat
-HUD, which holds the Bluetooth link to that player's tagger and runs that player's game. Mission
+**Mission Control plus a phone on every tagger.** Each player carries a phone running the BRX
+Companion, which holds the Bluetooth link to that player's tagger and runs that player's game. Mission
 Control on a laptop writes the game, starts it and adds up the results over the field Wi-Fi. This
 is what scales to a real field, because the Bluetooth link rides the player instead of sitting on
 the laptop. It has run whole matches: a 300 second free-for-all on 2026-08-30 with two iPhones and
@@ -42,7 +42,7 @@ For Mission Control plus phones, all of the above, and:
 
 - A Wi-Fi router for the field. It needs no internet. A battery travel router is the recommended
   option and is what both live matches used. The laptop's own hotspot works for a small game.
-- One phone per player, with the BRX Combat HUD installed and paired to that player's tagger
+- One phone per player, with the BRX Companion installed and paired to that player's tagger
   **before** match day. Install it at home, where there is internet.
 - The armory map for your taggers (`~/.brx-mcp/armory.json`) on the machine that will host.
 

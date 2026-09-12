@@ -1,11 +1,14 @@
 """Grounded BRX sound catalog — semantic names → verified `$PLAY` sound IDs.
 
-The gun's **2166-id bank** (`protocol/callsign-extract/sound-bank.md`, restated from the
-Callsign app's own bank as `data/sound_ids.json` -- see
-protocol/callsign-extract/RAW_ASSETS_NOTE.md) is the set of valid `$PLAY,<id>,…` arguments —
-an id not in the bank plays a fallback (experiment-log #7). This module gives the engines
-*semantic* names so they emit the RIGHT clip instead of a raw literal, and records
-how sure we are of each mapping.
+Two banks, and they are not the same size. The **APP's** bank is 2,166 ids
+(`protocol/callsign-extract/sound-bank.md`, restated as `data/sound_ids.json` -- see
+protocol/callsign-extract/RAW_ASSETS_NOTE.md). The **GUN's** bank is 2,477 `.LTP` files
+(`data/sound_catalog.json`, published as `docs/reference/sound-catalog.md`, read off a real
+tagger 2026-09-03), and 157 ids in the app's list are not on the gun. The gun's bank is what
+decides whether a `$PLAY,<id>,…` argument sounds like the clip you meant; an id the gun does not
+have plays a fallback, not silence (experiment-log #7). This module gives the engines *semantic*
+names so they emit the RIGHT clip instead of a raw literal, and records how sure we are of each
+mapping.
 
 Confidence:
   CONFIRMED   — heard in a capture, in the `$SIR` table, or in David Knox's
@@ -57,7 +60,7 @@ HILL_LOST = "VB0P"          # "Hill Lost!"     (by ear 2026-09-10)
 # ⚠ `V8Q` is catalogued "Hill Confirmed" and says "KILL Confirmed" on the gun (BY_EAR_CORRECTIONS): never a hill line.
 BOMB_PLANTED = "VA1I"       # "Bomb Planted"
 FLAG_RETURNED = "VB0D"      # "Flag returned."
-# --- Extraction (game-modes.md §Extraction; ARC Raiders / Fortnite-Sprites shape) --------- #
+# --- Extraction (extraction-design.md; ARC Raiders / Fortnite-Sprites shape) --------- #
 EXTRACTION_CALLED = "VA1C"  # "Black Hawk inbound." -- the extractor's own LOUD call
 EXTRACTION_OPEN = "VA1U"    # "Incoming Chopper." -- the window is open
 EXTRACTION_ALERT = "VA1S"   # "enemy chopper detected." -- what everyone else hears

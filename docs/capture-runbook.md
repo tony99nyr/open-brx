@@ -1,15 +1,87 @@
-# Capture runbook — the MacBook + iPhone jobs
+# Capture runbook — how to take a capture, and the jobs still open
 
-**The open unknowns that need a capture nobody has written down how to take.** Two of the three jobs
-need the **MacBook**: Callsign is *effectively* iOS-only (the Android build installs and opens, but
-cannot connect a gun or play a game), and PacketLogger (the BLE tracer) is macOS-only. Job 3 needs
-neither. Batch the Mac jobs for when the Mac is out — that is the whole reason they keep slipping.
+**How every protocol fact in this repo was obtained, and how to take the next one.** Part 1 is the
+method for each instrument. Part 2 is the open unknowns that need a capture.
 
-Covers: **P8** (cloud protocol: captured 2026-09-11, two leftovers) · **G3** (grenade config) · **C2**
-(FB re-scrape; was called R2 here until 2026-09-06, renamed because FOLLOWUPS R2 is the IR emitter
-power control). **Job 2 as it stood until 2026-09-11 (P12, re-testing `$PB*` on v4.32) is gone:** P12 was
-answered NEGATIVE on 2026-08-27 — all twelve `$PB*` shapes plus `$INIT` are silent on v4.32, so the enums
-cannot be mapped by capture; the values, if anyone still wants them, come out of P8.
+Only **one** of the three open jobs needs the **MacBook** (Job 2): Callsign is *effectively* iOS-only
+(the Android build installs and opens, but cannot connect a gun or play a game), and PacketLogger
+(the BLE tracer) is macOS-only. Job 1 is captured, and Job 3 needs neither a Mac nor a gun. Batch the
+Mac work for when the Mac is out — that is the whole reason it keeps slipping.
+
+Jobs covered: **P8** (cloud protocol: captured 2026-09-11, two leftovers) · **G3** (grenade config) ·
+the Facebook group re-scrape (called R2 here until 2026-09-06, renamed because FOLLOWUPS R2 is the IR
+emitter power control). **The job that stood here until 2026-09-11 (P12, re-testing `$PB*` on v4.32)
+is gone:** P12 was answered NEGATIVE on 2026-08-27 — all twelve `$PB*` shapes plus `$INIT` are silent
+on v4.32, so the enums cannot be mapped by capture; the values, if anyone still wants them, come out
+of P8.
+
+---
+
+## Part 1 — the three instruments
+
+Almost everything we know came from three instruments: BLE HCI captures of the official Callsign app
+(iOS via macOS PacketLogger; Android HCI snoop), a VS1838B/ESP32 IR receiver and emitter, and a live
+tagger driven one token at a time. Captures decode with `python -m brx_mcp.btsnoop <file>` into `>>`
+(host to tagger) and `<<` (tagger to host) transcripts.
+
+### BLE capture on iOS (the one that works)
+
+1. Plug the iPhone into a Mac. Open **PacketLogger** (it ships in Apple's "Additional Tools for
+   Xcode" download, not in Xcode itself), then **File → New iOS Trace**. **Confirm lines are
+   scrolling before you do anything.**
+2. Make sure the tagger's **headset is on and paired**. The app silently drops a headset-less gun and
+   you capture nothing. Get the app's connection icon green first.
+3. Drive the app: connect, create/join, arm, play, end. For a differential capture change **exactly
+   one** setting per trace.
+4. **File → Export → btsnoop.** Two traps that have each cost a capture: export acts on the
+   *frontmost* window (easy to re-export an old trace), and a trace that was not actually recording
+   writes a silently useless file.
+5. Decode it:
+
+```bash
+python -m brx_mcp.btsnoop capture.btsnoop            # '>> $CLEAR,*' / '<< $LCD,…' with timestamps
+python -m brx_mcp.gsetdiff cap5.btsnoop cap6.btsnoop # byte-diff the $GSET/$PSET frames across captures
+python -m brx_mcp.weapmap cap14.btsnoop cap15.btsnoop # token x weapon table from annotated captures
+```
+
+> **Decoder gotchas.** Apple's btsnoop export uses datalink 1001 (no HCI type byte; the type is in
+> the record flags), which decoded to zero frames until it was handled. With two guns in one trace,
+> streams must be keyed on the **ACL connection handle** or they merge into garbage silently.
+
+Decoded transcripts live in [`../protocol/captures/`](../protocol/captures/) and the raw traces in
+[`../protocol/captures/raw/`](../protocol/captures/raw/).
+
+### BLE capture on Android (partial)
+
+The app rarely holds a connection on Android, so this route yielded the connect ritual and the
+version exchange, never a game.
+
+1. Enable **Developer options → Bluetooth HCI snoop log**.
+2. Run the app, then `adb bugreport` (5 to 10 minutes; keep the phone still). The btsnoop log rides
+   inside.
+3. Decode with `python -m brx_mcp.btsnoop`.
+
+### The IR capture rig (ESP32-S3 + VS1838B)
+
+1. A phone camera **cannot** see the ~5 mA IR LED. Judge with the receiver, never a camera.
+2. Turn the sketch's per-frame RAW dump **off** (`r`) for any capture that matters. It takes about 15
+   to 20 ms at 115200 and truncates the next frame into a prefix.
+3. Attenuate at close range. The VS1838B's AGC saturates point-blank. A gun at 1 m decodes cleanly
+   where an LED at 5 cm does not.
+4. Never fire toward the rig from the gun under test: reflected IR hits your own headset, drains
+   armor and kills the player mid-window.
+5. Bound the sync to about 1800 to 2200 µs and require 25 bits plus `Z0 != Z1`, or a TV remote will
+   decode as a BRX frame.
+
+> **Measurement discipline that mattered.** Check the control *before* reading the result. One
+> clean-looking run is not a result: everything that held was measured three times with alternating
+> conditions, or came from a human's senses. A host-visible field that correlates with a state is not
+> evidence of that state. Damage is a property of the (weapon, victim `$SIR` table) pair, never of
+> the weapon alone.
+
+---
+
+## Part 2 — the jobs still open
 
 **⚠ Any job that pairs Callsign to one of OUR guns (Job 2 here) rewrites that gun's `$NAME` to `Tactix2`
 on connect** (it bit us 2026-08-25). Finish with `python.exe -m brx_mcp rename` from the armory, and
@@ -71,7 +143,7 @@ re-export an old trace), and a trace that isn't actually recording writes a sile
 
 ---
 
-## Job 3 — C2: re-scrape the FB group with comments expanded
+## Job 3 — re-scrape the Facebook group with comments expanded
 **No Mac, no gun.** The 2026-08-24 crawl expanded post "See more" but **not** "View more comments" —
 so the comment threads, where most of the Q&A lives, were missed.
 Method: the Chrome-over-CDP setup in memory (`chrome-cdp-crawling`), clicking "view/more comments" and

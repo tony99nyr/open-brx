@@ -2,11 +2,17 @@
 
 The single most valuable outside source for this project. **Jay** (YouTube
 [@extremelasertag3602](https://www.youtube.com/@extremelasertag3602), "Extreme Laser Tag And More!")
-has spent years building an ESP32-based DIY ecosystem around BRX — objective stations, in-gun
-controllers, radio links, and a field host that ran **45 BRX rifles at once**. His "J" devices
-(**JBOX, JCUBE, JBOX Mini, JTOWER, JHALO, JEDGE**) are, in effect, **a proven, shipped instance of
-the exact architecture Open BRX is planning**: per-device nodes, IR objective stations, ESP-NOW/LoRa
-field networking, browser-based config, store-and-forward.
+has spent years building and demonstrating an ESP32-based DIY ecosystem around BRX — objective
+stations, in-gun controllers, radio links, and a field host that ran **45 BRX rifles at once**. The
+"J" device family (**JBOX, JCUBE, JBOX Mini, JTOWER, JHALO, JEDGE**) is, in effect, **a proven,
+shipped instance of the exact architecture Open BRX is planning**: per-device nodes, IR objective
+stations, ESP-NOW/LoRa field networking, browser-based config, store-and-forward.
+
+⚠️ **Attribution is not settled, so do not read the table below as "Jay's hardware".** **JEDGE** and
+**JBOX** are LaserTagMods projects (github.com/LaserTagMods, `lasertagmods.md`), and that is who this
+repo credits for the protocol work. Whether Jay builds these boards, sells them, or demonstrates
+someone else's is not something the video transcripts settle. The numbers and behaviours below are
+the point of this file; the ownership line is not, and it is an open question in `../FOLLOWUPS.md`.
 
 This doc distills ~30 of his videos (transcript analysis; credit the channel — subscribe/support him).
 It complements `grenade.md` (his grenade videos), `lasertagmods.md` (JEDGE/JBOX from LaserTagMods),

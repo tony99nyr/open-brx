@@ -1,5 +1,5 @@
 # Gameplay
-Last verified: 2026-09-10
+Last verified: 2026-09-12
 
 This page covers every weapon the BRX can fire, how health and damage work, every native game mode and its settings, the classes and perks the Callsign app models, and the Smart Grenade's objective modes.
 
@@ -160,13 +160,11 @@ Every player is a pool of points: 45 health and 70 armor by default, which is 11
 | Default pool? | 45 HP + 70 armor = 115. Modes like Battle Royale offer Low / Medium / Full starting health. |
 | Does armor reduce damage? | No. It is extra hit points, and it drains first. Armor never makes a hit weaker. |
 | Do I heal over time? | No. Armor shot down to 18 stayed at 18 for 30 s. Any healing you see comes from a class ability, a medic, or a host that refills you. |
-| What is a shield? | A third pool that sits above armor. Nexus-style classes use it (Guardian 125, Marauder 150, Sentinel 175). It only fills from an IR "activate shield" event. A phone cannot just set it. |
+| What is a shield? | A third pool that sits above armor. Nexus-style classes use it (Guardian 125, Marauder 150, Sentinel 175). You spawn with it empty: `$PSET` token 5 sets the ceiling, not the starting amount. Two things fill it. An IR grant (a `$SIR` shield function, or armor that overflows) fills it in a native game, and a host can fill or drain it over Bluetooth with `$LIFE,0,0,<n>,*`, measured on the bench on 2026-09-11 with no IR involved. |
 | Can a medic heal me? | Yes. The Supremacy Medic's medi-gel pulse is a heal shot, and the community confirms it heals by shooting teammates. A host can also grant health directly. |
 | Do heals overfill? | No. A heal adds to your pool and stops at the maximum. |
 | Head shots? | The headset has four sensor domes, one of them at the back, and the gun body has a sensor of its own. Every shot carries a crit flag, but no stock weapon sets it. A crit multiplies damage by `1 + $GSET t7/100`. That is a per-game setting: x1.5 at the shipped t7=50, and t7=0 turns crits off. |
-| Can friendly fire hurt me? | Only if the game turns it on. The documented rule: with friendly fire off, the gun itself blocks same-team damage (and blocks enemy "heals"). One bench result contradicts that rule (see the note below). FFA is one team with friendly fire on. |
-
-> **Friendly-fire polarity is not settled.** The rule above is the documented one: with friendly fire off, a gun drops a shot that names the gun's own team. One bench run on 2026-09-07 came out backwards. With friendly fire off, a shot claiming the gun's own team registered and a shot claiming an enemy team did not, each reproduced twice. Nothing has explained it yet, so treat same-team behaviour as unproven until something does.
+| Can friendly fire hurt me? | Only if the game turns it on. With friendly fire off the gun itself blocks same-team damage, and blocks enemy "heals" the same way. Free-for-all is one team with friendly fire on. |
 
 > **Heals and boosts "add", they never "set".** When a phone or host gives health to a live gun, the amount is added to your current pool and stops at the maximum. Nobody can set you to a lower number this way, and a grant to a full-health player does nothing. That is why Halo-style regenerating shields, health-on-kill and medic roles all work the same way: a host watches your pool and tops it up.
 
@@ -189,7 +187,7 @@ A BRX "bullet" is a burst of infrared light 25 bits long, sent on a 38 kHz carri
 
 1. **Fire.** The trigger pull sends the IR word: a 2 ms start pulse, then 25 bits (a long pulse is 1, a short one is 0). Damage type (4 bits), player id (6 bits, 0-63), team (2 bits, 4 teams), damage (8 bits, up to 255), crit flag, effect subtype, 2 check bits.
 2. **Catch.** Your target has five receivers: four domes on the headset, one of them at the back, and a sensor on the gun body. Whichever one catches the word reports it, and the wire tells front from back from gun. Across the field that tells you where the shot came from. At point-blank range the IR floods every sensor, and the first one to see it wins.
-3. **Resolve.** The target's gun checks the team bits first. Same team with friendly fire off means the shot is dropped, which is the documented rule that one unexplained bench result contradicts (see *Health, armor and damage*). Then it looks up the damage type in its effect table and applies the damage: armor first, then health.
+3. **Resolve.** The target's gun checks the team bits first. Same team with friendly fire off means the shot is dropped. Then it looks up the damage type in its effect table and applies the damage: armor first, then health.
 4. **Feedback.** The target's headset flashes green once on a hit, and blinks green steadily while they are out, and plays the pain or death sound. The gun reports the hit and the new health to any connected phone. Melee, explosive and other damage types each get their own hit sound.
 5. **Confirm.** On a kill the shooter's sight flashes green and the announcer says "kill". In a phoneless gun-menu game the guns do this on their own, with no phone involved. In an app-hosted game the phone scores the kill and drives the same flash and voice line.
 
@@ -399,52 +397,26 @@ The BRX Smart Grenade is more than a bomb. Hold its button and it turns into a p
 
 > **Where the grenade sounds come from.** The detonation, the flashbang and gas effects, the CTF music, "control point captured": all of it plays from the gun and headset, triggered by the grenade's IR. The grenade itself only chirps and flashes for status. Swap the tagger's sound files and every grenade "sounds" different, without touching the accessory.
 
-## Beyond stock: modes Open BRX adds
+## Beyond stock: what a host can add
 
-The gun keeps no game state, so any rule you can write over hits, teams, health and spawns is a mode. Open BRX runs those rules on a laptop (Mission Control) and on a small node per player. So the same gear plays modes Battle Company never shipped, and modes that need props scale up through cheap tiers.
+The gun keeps no game state, so any rule you can write over hits, teams, health and spawns is a mode, and the host that runs it does not have to be Battle Company's app. That is what Open BRX is: a laptop and a phone per player, running rules the tagger never had to know about. The modes it runs, what each one needs and which have been played on real taggers are on the [Open BRX modes page](/docs/modes); the wider catalog of mode designs lives in the repository, in [`docs/game-modes.md`](https://github.com/tony99nyr/open-brx/blob/main/docs/game-modes.md).
 
-| Tier | What you add | Modes in the catalog |
-|---|---|---|
-| Tier 0: laptop-only with `brx-mcp` (taggers plus a laptop you own) | nothing | FFA, Team Death Match, Survival/Infection, The Swarm, Generals, Commander, Supremacy, Last Man Standing, Syphon (health on kill), Halo-style regenerating health, overshield / medic roles, small-scale Extraction, grenade-site Counter-Strike |
-| Tier 1: plus props (objective stations, flags, QR codes, or the grenade) | contested places | Domination, King of the Hill / Territory, Capture the Flag (standard, one-sided, centre-flag), Assault, Team Arena, VIP escort, Hostage rescue, a real Extraction point |
-| Tier 2: plus broadcast (a live field-wide downlink; location on each node) | live global awareness | Battle Royale, live scoreboards and "flag taken!" callouts on a big no-WiFi field, hidden multi-extracts |
+## The grenade as a control point
 
-Two Tier 0 entries carry a caveat. Syphon (health on kill) and small-scale Extraction exist only in the laptop's `brx-mcp` CLI path. Neither has run on hardware, and neither the phone node nor the node/MC bundle knows anything about them, so neither is playable in a real match yet.
+A control point is a place on the field a team can own: a King of the Hill point, a Domination point, a bomb site. A Smart Grenade in Hill mode is a complete one on its own. No phone, no host, no app, and it works in native games. You shoot it to capture it, and nothing else on the BRX does that.
 
-Three modes stock BRX does not ship:
+Everything below was measured on the bench.
 
-- **Extraction**: drop in, loot, then reach an extraction point and channel it. That takes 30 to 60 s and it is loud, so everyone comes running. Survive and you bank the loot. Die and you drop all of it. You can play it for $0 with the grenade as the beacon and phones as loot wallets. A rules engine exists, but only on the laptop CLI path, and it has not run on hardware.
-- **Counter-Strike (plant / defuse)**: the grenade or a phone is the bomb. Attackers arm it (by dwell, IR, or an on-screen code) and defenders defuse it (by IR or a puzzle). The round ends on detonate, defuse or elimination.
-- **Syphon and regenerating health**: the host credits the exact killer (every shot names its shooter) and tops up their pool. Or it refills anyone who has gone T seconds without taking damage. Both are host rules on top of the "heals add, never set" write. Syphon is written for the laptop CLI path and has never run on hardware, so today it is a design rather than a mode you can play.
+- **Capture is by charge, not by shots.** Any weapon can take a point, and the attacker wins ties. One Assault Rifle round took a neutral point; about four rounds' worth of charge took one an enemy team was holding.
+- **It beacons its owner every 5 seconds** to every gun in range, and it changes colour and beeps, so everyone nearby knows the moment it flips.
+- **It holds its owner with nobody standing there.** Ten straight beacons on one owner, with no one shooting it.
+- **Ownership travels only over IR, and only a gun receives IR.** So nobody learns that a far point flipped until a player walks into range. Reception is solid close in and intermittent by about 30 feet, with dropouts of 85 and 145 seconds measured at the edge.
+- **One beacon carries no point id**, so two grenades cannot be told apart on the wire. That caps you at one usable point per game.
+- **A non-capturing hit emits nothing we can decode**, so a contested point is not a state anything can read. Downed players on the point are invisible to it too.
+- **A beacon is unauthenticated.**
 
-> **Honest limits.** Phones have no IR, so shoot-the-point needs a station or the grenade. One phone can hold only a handful of gun links. A field without WiFi means live global state needs a radio tier.
+**The hill chips you, and that is measured.** An unattended enemy hill killed a player in about 106 seconds, 8 damage every 5 seconds, with no host involved. In a native game that is the mode working: it punishes standing on someone else's point.
 
-## Control points: the grenade or a phone
+**Do not put a player on team 2 in a hill game.** A neutral hill broadcasts team 2. The gun's own filter compares that against the gun's team, so a player on team 2 reads every neutral point as already theirs and takes no hill damage. Use teams 0, 1 and 3. That consequence follows from two measured facts and has not been tested directly.
 
-A control point is a place on the field a team can own: a King of the Hill point, a Domination point, a bomb site. There are two ways to put one on your field, and the choice is not cheap against expensive. The grenade is the only control point you can shoot, and the only one that plays inside a native game with no host running at all. A phone is what you reach for when you want more than one point, or want the point to count people, or want it to keep scoring after you walk away.
-
-A Smart Grenade in Hill mode is a complete control point on its own: no phone, no host, no app, and it works in native games. You shoot it to capture it, and nothing else replicates that. Capture is by charge, so any weapon can take a point and the attacker wins ties: on the bench one Assault Rifle round took a neutral point, and about four rounds' worth of charge took one an enemy team was holding. It beacons its owner to every gun in range every 5 seconds, it changes colour and beeps so everyone nearby knows what just happened, and it holds its owner with nobody standing there (ten straight beacons on one owner with no one shooting it).
-
-A phone can be a control point too, and everything in the phone column below is designed and specified but **not built yet**. Read it as the plan, not as something you can play this weekend.
-
-| | Smart Grenade, Hill mode | A phone as a control point |
-|---|---|---|
-| Status | works today, in native games too | designed, not built |
-| How you capture it | shoot it. Charge accumulates, any weapon counts | stand on it |
-| More than one point | no. A beacon carries no point id, so two grenades cannot be told apart on the wire | yes. Every point carries its own station id |
-| Do more attackers capture faster | no. It counts the charge fired into it, not the people | yes. It counts living players present per team, and nets the leading team against the largest single rival team |
-| Downed players | no idea they are there | ignored, so reviving on the point matters |
-| Contested | not readable. A non-capturing hit emits nothing we can decode | a real state it can see and announce |
-| Progress you can watch | the LED colour and a beep | a percentage on the air for other phones and stations, and an animated bar on its own screen, so a defender can see the point going |
-| A point nobody is standing on | ownership travels only over IR and only a gun receives IR, so nobody learns that a far point flipped until a player walks into range. Reception is solid close in and intermittent by about 30 feet, with dropouts of 85 and 145 seconds measured at the edge | the phone sits on the point all match and keeps its own clock, so it keeps scoring for its owner with nobody there. That is what makes a Territories game possible |
-| Points talking to each other | no | yes, with no network at all. The adverts are broadcast, so a respawn station can read a control point |
-| Presence range | you aim a gun at it | a bubble of roughly 10 feet at the tuned default, with no direction at all |
-| It fights back | yes. An enemy-held hill emits an ordinary damage word, so pushing onto a point you do not own costs you health | no |
-| Security | a beacon is unauthenticated | an advert is unauthenticated too. Fine for friends on a private network, not a guarantee |
-| What it costs | about $200 for ours, bought from Battle Company | a second-hand Android phone, a small fraction of that |
-
-**The hill chips you, and that is measured.** An unattended enemy hill killed a player in about 106 seconds on the bench, 8 damage every 5 seconds, with no host involved. In a native game that is the mode working: it punishes standing on someone else's point. In an Open BRX game it is currently indistinguishable from being shot. A fix is under investigation (moving our own weapons off the IR protocol the hill uses, which would make the hill's damage land in a cell nothing is listening to) and it has not been tested.
-
-**Do not put a player on team 2 in a hill game.** A neutral hill broadcasts team 2, which is measured. The gun's own filter compares that against the gun's team, so a player on team 2 should read every neutral point as already theirs and take no hill damage at all. Use teams 0, 1 and 3. The consequence follows from two measured facts but has not been tested directly.
-
-**What the money actually buys.** We paid about $200 for our Smart Grenade, from Battle Company. Read that as what was paid rather than as a current price: retail moves, it varies by region, and it is one purchase. A second-hand Android phone costs a small fraction of that, and you can add several of them, where grenades stop at one usable point. So the grenade is not the budget option, it is the expensive one, and the money does not buy capability. It buys the interaction: you can shoot it, everybody nearby sees and hears it flip, and it works in a native game with nothing else switched on. That is worth paying for if that is the game you want to play.
+**What it costs.** We paid about $200 for our Smart Grenade, from Battle Company. Read that as what was paid rather than as a current price: retail moves, it varies by region, and it is one purchase.

@@ -1,5 +1,5 @@
 # Fix, mod and accessorise
-Last verified: 2026-09-09
+Last verified: 2026-09-12
 
 Diagnose a tagger that won't fire, work through the fix ladders for pairing, sound and battery,
 and see what the community repairs, mods and accessories actually look like.
@@ -23,9 +23,8 @@ and the locks. Work the ladder in order and stop at the first check that says ye
 1. **Is the headset slow-blinking a rainbow?** → yes → It is disconnected. The gun will not join a
    hosted or app game until the headset links. Power the headset on and wait for it to settle to
    team colour. That can take up to 3 minutes in a room full of Bluetooth. If it never settles,
-   re-pair (see "Headset, pairing & Bluetooth"). Whether a gun booted with no headset at all can
-   still fire a local, on-gun game is unresolved: Battle Company's V7 manual says it can, operators
-   report it cannot, and the clean test has not been run. Link the headset either way.
+   re-pair (see "Headset, pairing & Bluetooth"). Link the headset before you play, whichever game you
+   are playing.
 2. **Did the headset drop after the game started?** (it was fine, then the gun "charges its energy
    weapon but nothing happens on the trigger") → yes → That is the anti-cheat lockout. Re-link the
    headset. If it will not link, power-cycle both and restart the round.
@@ -186,10 +185,9 @@ When the gun fires but nothing lands, nothing is heard, or nothing lasts.
 
 ### "IR isn't registering hits"
 
-1. **Same team, friendly fire off?** → yes → Zero damage is the documented rule, and the firmware
-   is meant to enforce it in both directions. One bench run on 2026-09-07 came out backwards: a
-   shot claiming the gun's own team registered and an enemy shot did not, each reproduced twice.
-   That result is unexplained, so do not treat team polarity as settled while you are chasing it.
+1. **Same team, friendly fire off?** → yes → Zero damage. The firmware enforces it in both
+   directions: a same-team shot lands nothing, and an enemy heal lands nothing either. Turn friendly
+   fire on in the game settings if you want same-team hits to count.
 2. **Is the target alive and in a started game?** → no → A dead tagger accepts no IR at all. A
    tagger that is set up but not started ignores it too. Silence from a corpse proves nothing.
 3. **Bright sunlight?** → The gun's hit radius shrinks by about half in full sun, because of IR

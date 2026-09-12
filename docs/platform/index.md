@@ -35,7 +35,7 @@ Mission Control runs on the laptop. It sees every tagger's headset, battery and 
 
 ### Your phone, on the tagger.
 
-The Companion app holds the Bluetooth link to one tagger and shows what the tagger cannot: health and armor, ammo and reserve, the clock, the weapon in hand, who is on the net. It picks the loadout, calls the hits, and tells you when you redeploy.
+The BRX Companion holds the Bluetooth link to one tagger and shows what the tagger cannot: health and armor, ammo and reserve, the clock, the weapon in hand, who is on the net. It picks the loadout, calls the hits, and tells you when you redeploy.
 
 ![Live HUD: health, rounds, the match clock, weapons hot](/shots/hud-live.jpg)
 
@@ -46,7 +46,7 @@ The Companion app holds the Bluetooth link to one tagger and shows what the tagg
 
 ## Game modes
 
-### Six modes. Every rule yours.
+### Every rule yours.
 
 Play the defaults or change the cap, the clock, respawn, health, armor and what each slot may carry. Save it. Modes are Python, and new ones are welcome.
 
@@ -56,7 +56,7 @@ modes
 
 ## Arsenal
 
-### Twenty-two weapons. Three slots.
+### The whole arsenal. Three slots.
 
 A primary, a secondary and a perk. Sidearms that swap fast. Every weapon is written to the tagger as its own definition: fire mode, rate of fire, damage, magazine, reload and swap delay, so a shotgun, a bolt rifle and a charge rifle feel like different weapons on the same tagger.
 
@@ -101,7 +101,7 @@ Set a BRX smart grenade to hill mode and it becomes a king-of-the-hill objective
 
 ### A tagger, a headset, a phone and a mount.
 
-Everything a player carries. The tagger and headset are stock Battle Company BRX. The phone is any Android or iPhone with Bluetooth, running the Companion app. The mount is an ordinary rail phone clamp. The taggers stay exactly as they shipped.
+Everything a player carries. The tagger and headset are stock Battle Company BRX. The phone is any Android or iPhone with Bluetooth, running the BRX Companion. The mount is an ordinary rail phone clamp. The taggers stay exactly as they shipped.
 
 ![The kit laid out: BRX tagger, headset, phone with the HUD, and the rail mount](/photos/kit.jpg)
 
