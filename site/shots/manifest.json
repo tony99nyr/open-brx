@@ -1,6 +1,6 @@
 {
-  "taken": "2026-09-12T16:30:03.473Z",
-  "mc_src": "e1379dd975e2e2453715225fdadd6d6045934fea",
+  "taken": "2026-09-12T19:30:40.238Z",
+  "mc_src": "b312abbe77a2804e2e40e725b2759184fb113820",
   "hud_src": "e0cbe756c63a7ba134d3f8131af20a2fdef80e25",
   "files": {
     "mc-armory.jpg": {
@@ -16,7 +16,7 @@
     "mc-kit.jpg": {
       "w": 1280,
       "h": 800,
-      "bytes": 242169
+      "bytes": 242134
     },
     "mc-lobby.jpg": {
       "w": 1280,
