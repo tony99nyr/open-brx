@@ -1,7 +1,8 @@
 // In-browser mock of the MC server (mcp/brx_mcp/mc/API.md). Stateful enough for every UI interaction.
 import type {
-  Api, FeedEntry, GameConfig, LiveRow, Loadout, LoadoutPolicy, MatchHistoryRow, ModeInfo, PerkView, Phase, Player, ReadinessRow, ReadinessSnapshot,
-  RecapStationRow, RecapView, SavedGame, ScanRow, ScoreRow, StartView, State, StationAssignment, StationKind, StationView, WeaponView,
+  Api, Coverage, FeedEntry, GameConfig, LanPublic, LiveRow, Loadout, LoadoutPolicy, MatchHistoryRow, ModeInfo, NodeView, PerkView, Phase, Player,
+  ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, SavedGame, ScanRow, ScoreRow, StartView, State, StationAssignment, StationKind,
+  StationView, TunnelProvider, TunnelStatus, WeaponView,
 } from '../api/types';
 import { STATION_KINDS } from '../api/types';
 import { GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
@@ -128,6 +129,19 @@ export class MockBackend implements Api {
   private gunOverride: Partial<Record<string, 'g' | 'r'>> = {};
   private timer: number | null = null;
   private session_id = uid('sess');
+  // A28: the demo's own tunnel — off by default, available (cloudflared "found"), never manual —
+  // so ?mock can walk the whole TURN ON -> STARTING -> UP loop without a real server.
+  private joinSecret = 'k7q2m9xz';
+  private tunnelStatus: TunnelStatus = 'off';
+  private tunnelWsUrl: string | null = null;
+  private tunnelProvider: TunnelProvider = 'cloudflared';
+  private tunnelAvailable = true;
+  private tunnelError?: string;
+  private tunnelTimer: number | null = null;
+  // Mock-only debug hook, read once at construction: `?mock&tunnelfail=1` makes the NEXT TURN ON fail
+  // instead of coming up, so the e2e suite (and a human) can drive the persistent "TUNNEL DOWN" banner
+  // without a real cloudflared process to kill. One-shot, like a real flaky start.
+  private tunnelFailNext = typeof location !== 'undefined' && new URLSearchParams(location.search).get('tunnelfail') === '1';
   // the server's validate() errors ride on every snapshot (config_errors); the demo used to hardcode []
   // so a refusal shown in the PUT response vanished from the rail on the very next tick
   private cfgErrors: string[] = [];
@@ -166,18 +180,42 @@ export class MockBackend implements Api {
     return { t: now(), roster_size: board.length, greens: board.filter(b => b.status === 'green').length, board, unclaimed: [], go: !board.some(b => b.status === 'red') };
   }
 
+  /** A28.1: MC's own view of the tunnel it (may have) started. */
+  private publicView(): LanPublic {
+    return { ws_url: this.tunnelWsUrl, status: this.tunnelStatus, provider: this.tunnelProvider, available: this.tunnelAvailable, error: this.tunnelError };
+  }
+  /** A28.2: the LAN URL first, the join secret always, the public URL only while the tunnel is up. */
+  private joinQr(): string {
+    const base = `ws://192.168.8.10:8765/ws?s=${this.joinSecret}`;
+    return this.tunnelStatus === 'up' && this.tunnelWsUrl ? `${base}&pub=${encodeURIComponent(this.tunnelWsUrl)}` : base;
+  }
+  /** A28.4: derived from the nodes' own reach, never asserted. A node with no player_id is not
+   *  "bound" — an unclaimed phone joining over backhaul does not move the needle. */
+  private coverage(nodes: Pick<NodeView, 'player_id' | 'reach'>[]): Coverage {
+    const bound = nodes.filter(n => n.player_id).length;
+    const on_backhaul = nodes.filter(n => n.player_id && n.reach === 'backhaul').length;
+    return { level: bound > 0 && on_backhaul === bound ? 'full' : 'zones', on_backhaul, bound };
+  }
+
   private state(): State {
     const t = now();
     const readiness = this.readiness();
-    const nodes = readiness.board.filter(b => b.node === 'linked' && !this.evicted.has(`node_${b.tail}`)).map(b => ({
+    // A28.3: half the demo's connected nodes report backhaul once the tunnel is up (and only then —
+    // a node cannot be on a path that does not exist), so `?mock` can show a mixed LAN/BACKHAUL board.
+    const nodes = readiness.board.filter(b => b.node === 'linked' && !this.evicted.has(`node_${b.tail}`)).map((b, i) => ({
       node_id: `node_${b.tail}`, node_type: 'phone', gun_name: `${b.sticker}-${b.tail}`, gun_tail: b.tail,
       player_id: b.player_id, arm_state: this.armStateFor(b.player_id), last_seen_ms: b.last_seen_ms ?? 0,
       synced: true, battery: b.battery_pct, fw: b.fw,
+      reach: (this.tunnelStatus === 'up' && i % 2 === 0 ? 'backhaul' : 'lan') as 'lan' | 'backhaul',
     }));
     const kitted = this.players.filter(p => PLAYERS.find(x => x[0] === p.display)?.[3] === 'kitted' || (p.player_id in this.acks)).length;
     return {
       session_id: this.session_id, phase: this.phase, t,
-      lan: { mode: 'router', ssid: 'BRX-FIELD', ip: '192.168.8.10', port: 8765, ws_url: 'ws://192.168.8.10:8765/ws', qr: 'ws://192.168.8.10:8765/ws' },
+      lan: {
+        mode: 'router', ssid: 'BRX-FIELD', ip: '192.168.8.10', port: 8765, ws_url: 'ws://192.168.8.10:8765/ws',
+        qr: this.joinQr(), join_secret: this.joinSecret, public: this.publicView(),
+      },
+      coverage: this.coverage(nodes),
       // The demo mirrors the server's own `SETUP: ` warning for a grenade objective (compile.py validate),
       // so the KotH rail in `?mock` shows the same field step the real MC does.
       nodes, readiness, config: clone(this.config), config_errors: [...this.cfgErrors],
@@ -490,6 +528,37 @@ export class MockBackend implements Api {
   }
   async deletePlayer(id: string) { this.players = this.players.filter(p => p.player_id !== id); this.emit(); }
   async evictNode(id: string) { this.evicted.add(id); this.emit(); }
+  /** A28.1: `POST /api/tunnel {on}` — mirrors the real MC: `on:true` answers `starting` at once and
+   *  flips to `up` with a fresh fake hostname after a beat; `on:false` is immediate. 409s the same
+   *  way the server does when the demo has been told to pretend the binary is missing or the tunnel
+   *  is a manual (`--public-url`) one — nothing here is MC's to stop in that case. */
+  async setTunnel(on: boolean): Promise<LanPublic> {
+    if (!this.tunnelAvailable) {
+      throw Object.assign(new Error('cloudflared was not found on PATH — install it: brew install cloudflared (mac) / winget install Cloudflare.cloudflared (windows) / apt install cloudflared (linux)'), { status: 409 });
+    }
+    if (this.tunnelProvider === 'manual') {
+      throw Object.assign(new Error("this MC was started with --public-url — the tunnel is not MC's to stop from here"), { status: 409 });
+    }
+    if (this.tunnelTimer) { window.clearTimeout(this.tunnelTimer); this.tunnelTimer = null; }
+    if (on) {
+      if (this.tunnelStatus === 'up' || this.tunnelStatus === 'starting') return this.publicView();   // idempotent, like the server
+      this.tunnelStatus = 'starting'; this.tunnelError = undefined; this.emit();
+      this.tunnelTimer = window.setTimeout(() => {
+        if (this.tunnelFailNext) {
+          this.tunnelFailNext = false;
+          this.tunnelStatus = 'error'; this.tunnelWsUrl = null;
+          this.tunnelError = 'cloudflared exited before printing a trycloudflare.com hostname (connect: network is unreachable)';
+        } else {
+          this.tunnelStatus = 'up';
+          this.tunnelWsUrl = `wss://${Math.random().toString(36).slice(2, 10)}.trycloudflare.com/ws`;
+        }
+        this.emit();
+      }, 1000);
+    } else {
+      this.tunnelStatus = 'off'; this.tunnelWsUrl = null; this.tunnelError = undefined; this.emit();
+    }
+    return this.publicView();
+  }
   private verdicts: Record<string, { weapon_id: string; verdict: 'pass' | 'issue'; note: string; t: number }> = {};
   async rangeVerdicts() { return { ...this.verdicts }; }
   async rangeVerdict(weapon_id: string, verdict: 'pass' | 'issue', note = '') { const r = { weapon_id, verdict, note, t: Date.now() }; this.verdicts[weapon_id] = r; return r; }
@@ -579,5 +648,5 @@ export class MockBackend implements Api {
     if (!keep_roster) this.players = []; else for (const p of this.players) p.ready = false;
     this.emit(); return this.state();
   }
-  dispose() { if (this.timer) window.clearInterval(this.timer); }
+  dispose() { if (this.timer) window.clearInterval(this.timer); if (this.tunnelTimer) window.clearTimeout(this.tunnelTimer); }
 }

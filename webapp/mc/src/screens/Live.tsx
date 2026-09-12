@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { setNotice } from '../notice';
+import { coverageLine } from '../api/derive';
 import type { LiveRow } from '../api/types';
 import { useStore } from '../store';
 import { F, T, TAB, fmtAge, fmtClock, teamColor } from '../tokens';
@@ -44,9 +45,19 @@ export function Live() {
   const teamIds = state.config.mode === 'ffa' ? [] : state.config.teams.map(t => t.team_id);
   const rows = [...lv.rows].sort((a, b) => b.kills - a.kills);
   const cap = state.config.scoring.frag_limit;
+  // A28.4: derived, never asserted — grey the count while the tunnel is off, since it can only be 0.
+  // Same readout as LOBBY/ARMED: a tunnel that dies mid-match must not go silent just because the
+  // operator moved on to MATCH.
+  const cLine = coverageLine(state);
+  const cColor = state.lan.public?.status !== 'up' ? T.micro : state.coverage?.level === 'full' ? T.ok : T.warn;
 
   return (
     <div className="screen">
+      {cLine && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <Tag color={cColor} size={9} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{cLine}</Tag>
+        </div>
+      )}
       {/* score strip */}
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'stretch', gap: 2, marginBottom: 16 }}>
         {teamIds.length >= 2 ? (

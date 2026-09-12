@@ -61,6 +61,8 @@ than 8765 work for the SERVED UI only: the Vite dev server proxies to :8765 and 
 | `--demo --fake-net` | the two together are what "simulated nodes" means: `DemoDriver` plays 8 fake phones through the whole match. |
 | `--ephemeral` | no `~/.brx-mcp/session.json` read or write, and a throwaway presets shelf. `--demo` already implies both; the flag matters for a REAL run you do not want to inherit or overwrite the last bench roster with. |
 | `--no-auth` | no operator token. Otherwise the URL is printed with `#tok=…` and every non-GET needs it (`API.md` → Operator auth). |
+| `--tunnel` | A28: expose the **node socket only** through a `cloudflared` quick tunnel at boot — no account, no domain, no login. The public `wss://…trycloudflare.com/ws` goes into `lan.public`, into the join QR as `&pub=`, and out to every connected node as `join`. Needs `cloudflared` on PATH (`lan.public.available` says whether it was found); `POST /api/tunnel {on}` is the same switch at runtime. The LAN path is untouched either way. |
+| `--public-url wss://…` | A28: a public node URL **you** already run (named Cloudflare tunnel, Tailscale Funnel, port forward). `provider: "manual"` — MC hands it out and never starts or stops it, so `POST /api/tunnel` answers 409. |
 | `--port` / `--ws-port` / `--host` | HTTP UI+REST (8765), node WebSocket (8766), bind address (default 0.0.0.0, already every interface). |
 | `-v` | debug logging. The banner is stdout, the log lines are **stderr**; capture both (`… > mc.log 2>&1`, `docs/mac-dev-runbook.md` §2). |
 

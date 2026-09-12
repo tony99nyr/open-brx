@@ -505,7 +505,7 @@ MQTT rationale is in `docs/archive/spec-net.md` §1). **Discovery:** MC advertis
 Bonjour with TXT `{ ver, session_id, ws_path, server_name }`; nodes browse it, **or scan MC's QR** (`ws://ip:port`
 + session, the field default), or type the address (the mandatory floor: mDNS fails on hostile Wi-Fi, some
 Android OEM stacks, and locked-down routers). Discovery is used only to find MC the first time and after a full
-address change; a warm socket is never re-discovered. **Do not hard-code or cache an MC IP across sessions.**
+address change; a warm socket is never re-discovered. **Do not hard-code or cache an MC IP across sessions.** (A28: the public hostname is random per tunnel start and arrives in the QR/`welcome.join`; it is held for the session only.)
 The LAN is a battery travel router (primary) or a Mac hotspot (small-game fallback; ~5-10 clients); MC must
 never assume it is the AP (ADR-0002). All messages are JSON envelopes.
 
@@ -518,11 +518,11 @@ for idempotent replay. `status` carries no `seq`.
 **Node → MC** (`kind`):
 | kind | body | when |
 |---|---|---|
-| `hello` | `{ node_id, node_type:"phone"|"companion"|"utility", app_ver, platform?, gun?: {name, tail, fw?}, seq_next, node_key? }` | on connect. **A29:** `app_ver` = `"<package version>+<git sha>[-dirty]"` baked at build time, `platform` = `android`/`ios`/`web`; both repeat on every `status` so a phone that upgraded mid-session is seen. `gun.name` = the full **advert name** (`<sticker>-<tail>`); `tail` is parsed from it, **never from the platform deviceId** (iOS gives UUIDs) [A5.5]. `seq_next` = the node's next event seq (so MC can spot a wiped install) [A4.5]. `node_key` = the secret from a prior `welcome` [A8.2] — proves a re-claim of a still-live node_id/gun. `node_type:"utility"` = a station phone, no gun, never bound [A13.5]. |
+| `hello` | `{ node_id, node_type:"phone"|"companion"|"utility", app_ver, platform?, gun?: {name, tail, fw?}, seq_next, node_key? }` | on connect. **A29:** `app_ver` = `"<package version>+<git sha>[-dirty]"` baked at build time, `platform` = `android`/`ios`/`web`; both repeat on every `status` so a phone that upgraded mid-session is seen. `gun.name` = the full **advert name** (`<sticker>-<tail>`); `tail` is parsed from it, **never from the platform deviceId** (iOS gives UUIDs) [A5.5]. `seq_next` = the node's next event seq (so MC can spot a wiped install) [A4.5]. `node_key` = the secret from a prior `welcome` [A8.2] — proves a re-claim of a still-live node_id/gun. `node_type:"utility"` = a station phone, no gun, never bound [A13.5]. **`via`/`secret?` [A28.2]**: which join URL this socket dialled and the QR's join secret (enforced only through the tunnel). |
 | `bind` | `{ node_id, player_id?, gun_name, gun_tail }` | node claims/confirms its gun & player. `gun_name`/`gun_tail` come from the advert name [A5.5] |
 | `event` | one persisted `Event` (§4) | as they happen (queued if offline) |
 | `event_batch` | `{ events: Event[] }` | store-and-forward flush on reconnect |
-| `status` | one `status` body (§4) | every `STATUS_HEARTBEAT_MS` while connected; live-only, no seq |
+| `status` | one `status` body (§4) | every `STATUS_HEARTBEAT_MS` while connected; live-only, no seq. **`reach: "lan"|"backhaul"` [A28.3]** = the live socket's path |
 | `ack_config` | `{ config_id, ok:boolean, err?, gun_echo?: string }` | after writing `FrameBundle.head`; `gun_echo` = the `$LCD`/`$ALCD` line the gun answered with — proof the gun **answered the head** (it reads `$LCD,0,0,0,0,0,0`; a headset-off gun answers nothing and drops the link, bench 2026-08-25 §7r) [A4.4, A6.7] |
 | `time_req` | `{ t_node }` | clock-sync ping (§7) |
 | `log_offer` | `{ node_id, bytes, lines }` | node has a diagnostic log MC can pull |
@@ -543,6 +543,7 @@ for idempotent replay. `status` carries no `seq`.
 | `feedback` | `{ player_id, kind:"kill"|"victory"|(legacy "multi"|"medal"), t, cue?:string, medals?:string[] }` | MC scored you a kill → node `$SFLASH` + `$PLAY` (`cue` if present, else `frames.cues[kind]`; missing → flash only). `t` = the death time; node ignores it if older than `FEEDBACK_MAX_AGE_MS` [A4.3]. `medals` [A11.4]. |
 | `alert` | `{ kind, text, player_id, t, hud?:boolean, player_id_subject?, carrier?, flag_tid?, role?: { name, on, tid? } }` | A11.4: a named game event (`player_id` = the recipient; `player_id_subject` = who turned / the last survivor); node plays its own `cues[kind]`/`leds[kind]` + shows `text` as a HUD alert (`hud:false` = sound/lights only); stale (> `FEEDBACK_MAX_AGE_MS`) → dropped. Scope is MC's: all / one team / one player. `carrier`/`flag_tid` start the flag-carrier headset blink [A11.6]. **`role` [A19]** = a HELD headset state (led-language.md §3.3: `carrier`\|`infected`\|`vip`\|`beacon`\|`extracted`) the recipient now holds (`on:true`) or stops holding; `tid` only for a tid-keyed role. The node routes it to `_setRole` (the same mechanism the carrier blink and the infection flip use), paints from ITS OWN `headset.role` table, and logs-and-ignores a name outside the five. Kind `role` is not a presentation event (no cue plays) and the push bypasses the profile's `mc_events` switch: a role is a rule, not a flourish. MC sends `vip` to `config.vip_player_id` **`ROLE_SETTLE_MS` (3 s) after go-live and after each of that player's `respawn` facts** — the node's own start/respawn flash (+1 s, ~1 s) would paint over anything sent at the whistle. `beacon`/`extracted` have no MC-side signal yet (no node→MC fact says who is extracting or extracted), so only the contract exists for them. |
 | `control` | `{ cmd, seq?, ... }`, cmd ∈ `end`\|`panic`\|`abort_start`\|`recall` | **one meaning each [A2, A5.9]**: `abort_start`=cancel a *pending* schedule (by `seq`) while ARMED → LOBBY (gun still holds `head`); if the node is already LIVE for that `seq`, it behaves as `recall`. `recall`=stop a *live/armed* game → node writes `frames.end` (+ `cues.game_over`) → **KITTED**; `end`=normal match end → same → KITTED; `panic`=`frames.panic` → KITTED. In KITTED/LOBBY an `end`/`recall` writes `frames.end` iff a bundle is held, then → KITTED. **`pause` is removed** [A4.6]. |
+| `join` | `{ pub: string|null, secret: string }` | **A28.2**: the tunnel came up or went down — every connected node adopts `pub` (and re-dials per the A28.3 preference). The same body rides in `welcome.join` on every welcome. |
 | `apply` | `{ frames: string[], reason?: string, preview?: boolean }` | A6.4: best-effort "write these frames now" — coverage-zone runtime effects only (syphon heal, regen refill, extraction boost). Node writes verbatim, never persists, ignores unless LIVE. **A9.1:** `preview:true` with frames that are ALL `$PLAY`/`$SFLASH` may be written in `connected`/`kitted`/`lobby` too (the tagger speaks a voice sample when the host changes a voice or gamertag). |
 | `score` | `ScoreRow` + `{ shots_total, board?, rows? }` | A7: MC pushes a player's current row to its node whenever it changes (best-effort, coverage-zone). The HUD shows K/D/A (and ACC only once `hits ≥ 1` and `shots ≥ 10`); still "—" until the first push or `welcome.node.score`. **`board?`** (2026-09-03, additive) = `{ teams: [{ team_id, name, score }], cap }` — the race to the frag cap for the HUD's DOWN-screen recap; in FFA the top three players stand in for teams.  **`rows?` [A24]** (2026-09-11, additive) = EVERY player's `ScoreRow` (all modes), so a phone can show a leaderboard mid-match and at the end; a node that does not know the field ignores it. `ScoreRow` itself gained `best_streak`, `first_blood`, `multi_best`, `acc_provisional` [A24] — the HUD shows `best_streak` (the current `streak` is ~0 for whoever died last) and dims ACC while `acc_provisional`. |
 | `result` | `{ match_id, outcome: "win"|"lose"|"draw"|"undecided", winner: { team_id?, player_id?, tie? }, mode, win_by, team_scores: [{ team_id, name, score }], rows: ScoreRow[], my: ScoreRow|null, honors: [{ medal, player_id, display }], possession?: { by_team: {tid: s}, ... }, provisional: boolean, t }` | **A24 (2026-09-11): the MATCH RESULT reaches EVERY player node, losers included.** MC sends it from `_finish()` to every bound player node (best-effort, coverage-zone), re-sends it while `provisional` whenever the recap changes (a parked flush moved a row), and carries the final one in `welcome.node.result` while the session is in `recap`, so a phone that comes back into coverage after the whistle still learns how it ended. `outcome` is computed per RECIPIENT by MC from `winner` (team match → my team; FFA → me; `tie` containing my team → `draw`; `undecided` → `undecided`). **The node NEVER infers win or lose**: before a `result` arrives the results screen says the match is over and the result is pending ("MC NOT REACHED" after the settle window), because a `victory` cue that did not arrive means "lost" and "out of coverage" identically (game test 2026-09-11 D3). `rows` is every player, so a team match shows per-player lines; `my` is the recipient's own row (null for a player MC never scored). Hill/possession and objective totals ride in `possession` / `team_scores` — the HUD's results screen is mode-aware from `mode`/`win_by` and never hard-codes five cells. The node also folds `outcome`, `team_scores`, `best_streak`, `medals` and its own hill hold into the `onEnd` history entry, so a match played before the phone learned this field has them missing, never wrong. |
@@ -614,6 +615,80 @@ corrupt its own score line; there is no wire command that lets one node write an
 | (g) | **Calls / notifications** suspend the webview | timers stop (node.md §3.11) | Do-Not-Disturb on; preflight `dnd_on`; the resume→reconcile path |
 
 Any of (a)–(e) failing is a **red** on the readiness board for that node, with the gate named.
+
+### 5d. Backhaul — a phone with its own data path reaches MC off the field Wi-Fi [A28]
+
+**Why.** ADR-0002 §Context 5 named the two-radio phone and deferred it. A28 takes the half that costs a player
+nothing: **a phone that has a data plan uses it to reach MC when the field Wi-Fi cannot**, so its kill confirms,
+score, result and log pull keep landing across the whole park. Nothing about the match outcome depends on it (A4.8
+still holds); a phone with no data plan behaves exactly as before. **No per-phone setup, ever:** the whole thing
+rides in the join QR and `welcome`.
+
+**A28.1 The public node socket.** MC may expose **the node socket port only** (never the operator API) through a
+tunnel. `State.lan.public = { ws_url: string|null, status: "off"|"starting"|"up"|"error", provider:
+"cloudflared"|"manual"|null, available: boolean, error?: string }`. `POST /api/tunnel {on: boolean}` (operator
+token) starts or stops `cloudflared tunnel --url http://127.0.0.1:<ws-port> --no-autoupdate` as an MC **child
+process** (dies with MC; nothing to clean up); MC reads the `https://<x>.trycloudflare.com` line from its output
+and sets `public.ws_url = "wss://<x>.trycloudflare.com/ws"`. That is Cloudflare's **quick tunnel: no account, no
+domain, no login** — the one path a stranger who cloned the repo can use; its hostname is random per start, which
+is why the node holds the LAN URL as well (A28.2). `available` = the `cloudflared` binary was found on PATH at
+launch; when it is not, the UI shows the install line, never hides the control. `--tunnel` (start on boot) and
+`--public-url wss://…` (`provider:"manual"`, for a named Cloudflare tunnel, Tailscale Funnel or a port forward)
+are the CLI forms. No `starting`→`up` within 20 s, or the process exiting, is `status:"error"` with the last output
+line in `error`; `ws_url` goes back to null. The tunnel is **opt-in and additive**: the LAN path is untouched and
+the host needs internet only if they turn it on.
+
+**A28.2 The two-URL join.** `lan.qr` becomes `ws://<lan-ip>:<ws-port>/ws?s=<join_secret>[&pub=<url-encoded
+public ws_url>]` — the LAN URL first, the join secret always, the public URL when `public.status == "up"`.
+`Session.join_secret` is 8 url-safe chars, random per session and **persisted with the session snapshot** so a
+restore keeps every printed QR valid. The node splits the query off before dialling (`mcurl.parseMcJoin` →
+`{ url, pub, secret }`; `parseMcQr` keeps returning the bare LAN URL for old callers) and stores all three.
+`hello` gains `via: "lan"|"backhaul"` (which URL this socket dialled) and `secret?`. **`welcome.join = { pub:
+string|null, secret }`** hands both to every node on every welcome, so a phone that joined over the LAN before
+the tunnel existed, or typed the address, learns them without rescanning; a change of the USABLE public URL (up with a new hostname, or gone) is pushed to every
+connected node as MC→node **`join {pub, secret}`** (same body); `starting`→`error` with no URL ever offered pushes nothing. **The secret is enforced only where it matters** (rule tightened by the 2026-09-12 review): a hello must carry
+the current secret when (a) its peer address is **not private** (not loopback, RFC1918, link-local or ULA) — always,
+so a `--public-url` fronted by a plain port forward is covered — or (b) its peer is loopback or carries a
+`Cf-Connecting-Ip` header **while the gate is armed**, where armed = MC owns a tunnel child it has not confirmed dead,
+or the provider is manual. The gate keys on the CHILD PROCESS being alive, never on `public.status`: a reader hiccup
+that flips the status to `error` while cloudflared still routes must not disarm it, and MC only declares `error` after
+`proc.wait()` returns. A failing hello is closed `4004 no_secret` and leaves no record. A LAN hello is never refused for
+lacking a secret (typed address stays the mandatory floor, §5). On a hard MC crash the child is orphaned, so MC
+records its pid and reaps a leftover at the next launch. Local tooling that dials the node socket over loopback while
+MC was started with `--public-url` must present the secret. The secret is readable
+by anyone on the LAN via `GET /api/state`, deliberately: the LAN is already the trust boundary (§5b); the secret's
+one job is keeping internet strangers off the node socket.
+
+**A28.3 Reach policy on the node — backhaul is PREFERRED when offered.** The Transport holds `{ url, pub }`.
+When `pub` is set it dials **`pub` first**; on failure (`BACKHAUL_GIVEUP_MS = 8000` without a welcome, or an
+immediate error) it dials `url`; while on the LAN with a `pub` in hand it re-tries `pub` every `PUB_RETRY_MS =
+30000` and switches when it welcomes (close + reconnect; the ring covers the gap). With no `pub` the loop is
+exactly today's. Rationale: the URL that works everywhere is the primary; the LAN is the fallback for phones with
+no data path. This is what makes coverage **observed** (A28.4): a phone that can use backhaul is on it from the
+lobby, one that cannot is visibly on the LAN, and an MC whose internet dies sees every node fall back within a
+reconnect. Traffic is tiny (a status every `STATUS_HEARTBEAT_MS` plus events, well under 1 MB/h) and the added
+round trip through the tunnel edge touches nothing time-critical (§7 start/end are pre-shared; feedback is
+best-effort). `status.reach: "lan"|"backhaul"` reports the live socket's path as the phone sees it, but **MC stamps `NodeView.reach`
+itself from the socket's arrival path** (the same test as the secret gate) and never from the claim: coverage and the
+readiness amber are server facts. The 30 s re-try from the LAN is a **reachability probe, not a second session**: the
+node opens a socket to `pub`, and on a successful open closes it without a hello and re-dials pub-first on its ONE
+socket (the server's one-socket-per-node takeover rule would otherwise kill the LAN link on every probe).
+§5c gates (d) and (f) become **warnings, not reds**, for a node that reports `reach:"backhaul"`.
+
+**A28.4 Coverage is derived, no longer asserted.** `Session.coverage()` → `"full"` iff **every bound player node
+is connected with `reach == "backhaul"`**, else `"zones"`; it rides on the snapshot as `coverage: { level, on_backhaul,
+bound }` and is passed to `Compiler.validate(..., {coverage})` at config validation and at the lobby push. Full
+coverage **clears the A6.1 frag-limit warning and makes frag-limit / survival ends authoritative** (`scoring.frag_limit`,
+`win_by:"survival"`). It does **not** unlock `time_limit_s: null`: a cell signal is less trustworthy than a venue
+assertion, and a phone that loses data mid-match must still hold an end it can reach alone — that clause of A4.8
+stays a venue assertion, which nothing sets today. A mode may declare `requires_coverage: true` in its `PARAMS`
+(A18); the lobby push refuses it (`409 {error, coverage}`) unless coverage is full at push time. No catalog mode
+does yet; the hook is reserved for modes where MC knows something no gun can (bounties, VIP swaps, park-wide
+zone control).
+
+**A28.5 Unchanged.** Kill confirm needs the victim's report and the shooter's feedback, each over whatever path
+that phone has; `FEEDBACK_MAX_AGE_MS` still drops a late one. Autonomy (node.md §3.7) is untouched: a phone that
+loses both paths plays on. Coverage-zone features are now simply "wherever this phone reaches MC".
 
 ## 6. Node lifecycle (state the HUD + MC both reason about)
 
@@ -696,6 +771,7 @@ Volume per §3. BLE writes chunk at 20 bytes (§app).
 | A31 | 2026-09-12 | THE "VERIFY AT MC" PRE-GAME WARNING (Tony 2026-09-12): a game whose END STATE is decided by MC — `scoring.frag_limit` set, an objective `win_by`, a survival win — carries a compiled `briefing.mc_verify` line when the venue is NOT full-coverage and at least one rostered phone has no backhaul (A28). The compiler emits it ONCE (`assign.game.mc_verify` / `FrameBundle.briefing`), so MC and the phones cannot disagree: the HOST sees it on LOBBY and ARMED (`WIN IS CONFIRMED AT MC · 3 PHONES OFF-GRID · TELL PLAYERS TO RETURN AFTER THE WHISTLE`, naming the phones), every PLAYER sees it on the ARMED screen after the config lands and before the countdown (`A WIN IS CONFIRMED AT MISSION CONTROL · RETURN AFTER THE WHISTLE`), and the DOWN screen at cap−1 and the results screen repeat the same fact (A24). Absent when full coverage or every phone has backhaul. | §3 `assign.game` / `FrameBundle`; `compile.py`; `Lobby.tsx`/`Armed.tsx`; `hud.js` armed screen |
 | A30 | 2026-09-12 | THE KIT LOCKS AT START. While the session is `armed` or `live`, a phone `loadout_request` is answered `loadout_ack {ok:false, reason:"THE MATCH HAS STARTED — YOUR KIT IS LOCKED UNTIL THE NEXT ONE"}`, the host's `PATCH /api/players/{id}` loadout/voice/number edits are refused (409), and `_push_config_to` refuses as a backstop — the same guard `POST /api/lobby/push` gained (no `force` past it). **Why:** a `config` to a live node writes the head, clears `spawned` and keeps the phase, and `resumeSchedule()` returns early for `live`, so nothing re-spawns that gun: it cannot fire and, after A23, cannot be hurt. `assign` (roster/display, no frames) still flows, and a node that has not yet taken this match's config (no ack for it, not reporting armed/live) still hot-joins per E5 — it receives `config` + the same `start`, because the head it is missing is the one that puts it IN the match. A loadout change after START belongs to the next match. | §5 `loadout_request`/`loadout_ack`; `mc/API.md`; `state.py` (`_push_config_to`, `_on_loadout_request`, `_after_player_change`); `loadout.md` §4.4 |
 | A29 | 2026-09-12 | PHONES REPORT THEIR REAL BUILD, AND MC WANTS ONE VERSION AT MUSTER (Tony 2026-09-12): `hello.app_ver` and `status.app_ver` carry `"<package version>+<git sha>[-dirty]"` baked into the bundle at build time (the app had sent a hard-coded `hud-0.2`, so MC could not tell APK 0.1.8 from today's tree — game test 2026-09-11), plus `platform: "android"|"ios"|"web"`. MC keeps it per node (`NodeView.app_ver`, `.platform`), shows it on the Armory card and the readiness row, and summarises the field in muster (`PHONES · 3 × 0.1.9 · 1 × 0.1.8`). **Versions are SEMVER and the tiers carry meaning (Tony 2026-09-12): MAJOR = anything the game or the wire depends on (protocol, engine rules, bundle shape); MINOR = HUD-facing features with no game impact; PATCH = fixes.** MC holds `APP_MAJOR`, the app major it is compatible with, as one constant beside the protocol version (`types.py`); a phone on another major is a **RED** readiness blocker `APP MAJOR 1 ≠ MC 2 — UPDATE THE APP` (it can misplay the match), while MINOR/PATCH may differ per phone: two AMBER flags, never red (A1: amber never blocks) — `APP OLDER THAN THE FIELD (1.1.8 < 1.2.0)` when behind the newest player node, and `APP OLDER THAN THE RELEASE` when behind `webapp/download/build.json`, the card carrying the release URL. **While the app is on 0.x, semver's own rule applies: MINOR is the breaking tier (0.1 ≠ 0.2 is RED) and only PATCH may differ**, until 1.0.0 is cut. Utility phones report the same way. Followup (store builds): a phone behind gets a one-tap UPDATE THE APP screen into the store listing. | §5 `hello`/`status`; `mc/API.md` NodeView + ReadinessRow; `app/package.json` build script (esbuild define); `state.py readiness()`; `Armory.tsx` |
+| A28 | 2026-09-12 | BACKHAUL (B30): a phone with a data plan reaches MC off the field Wi-Fi, no per-phone setup. A28.1 MC exposes the NODE SOCKET ONLY through a tunnel (`lan.public`, `POST /api/tunnel`, cloudflared quick tunnel = no account/domain/login; `--tunnel`, `--public-url`); A28.2 two-URL join QR `ws://lan/ws?s=<secret>&pub=<wss>`, `hello.via/secret`, `welcome.join` + MC→node `join`, secret enforced only through the tunnel; A28.3 the node PREFERS backhaul when offered and falls back to the LAN (`status.reach`); A28.4 coverage is DERIVED (`Session.coverage()`, every bound node on backhaul ⇒ `full`): frag/survival ends authoritative, `time_limit_s` still required, `PARAMS.requires_coverage` reserved. (A26/A27 are taken by uncommitted 2026-09-11 work; numbered past them on purpose.) | §5 tables, **§5d** |
 | A27 | 2026-09-11 | CONTINUE IS GUARDED ON BOTH SIDES (F127): `POST /api/phase {phase:"lobby", force?}` from `kit` is refused (409, `{error, not_ready: [display…], greens, roster_size}`) while any rostered player is not ready unless `force:true`; the MC UI's CONTINUE reads `CONTINUE · greens / roster_size READY` and needs a second tap that names who is not ready. On the node, a host advance that lands while a player is mid-kit is NOT silent: the engine raises `moment {kind: "kit_locked_by_host"}` and the lobby screen leads with "THE HOST LOCKED KITS — you play what you had" (loadout.md §4.4). | `mc/API.md` `POST /api/phase`; `state.py set_phase`; `Kit.tsx`; `engine.js`; `loadout.md` §4.4 |
 | A26 | 2026-09-11 | TRY-OUT COLLAPSES INTO SELECTION (S20): in the LOADOUT browser **tapping a weapon row equips it AND arms it for test-firing** (`loadout_request {try:true}`) after a **400 ms debounce** on the node (scrolling through rows never spams MC or `$WEAP`); the ✓ marks the row MC acked, an ⟳ the one still arming. `TRY IT` is gone; the action bar reads **`REVIEW KIT ▸`** (opens the three-plate kit summary with READY UP) and a row's ⓘ opens its detail. Perks still equip on tap with no try. Wire unchanged — the collapse is node-side timing plus copy. | `loadout.md` §4.5; `engine.js`; `hud.js` |
 | A25 | 2026-09-11 | BACKGROUND LOG SYNC (S26): `pull_log {reason?}` gains a reason and a gate — MC asks at recap / on offer / from the button / on the reconnect of a node whose match log never arrived, under the session option `log_sync: "auto"|"manual"` (`PUT /api/options`); the NODE answers only when not ARMED/LIVE and its fact ring is empty, defers with backoff otherwise, chunks wait for socket drain, `State.nodes[].log` shows the state. The phone's `pull_log` handler did not exist before this (MC had asked at every recap since A3 and no phone ever answered). | §5 `pull_log`; `node.md` §6; `state.py`; `app/src/app.js` |

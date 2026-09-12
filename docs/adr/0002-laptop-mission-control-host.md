@@ -95,3 +95,10 @@ need now. Revisit if community demand or a connected-spectator feature justifies
    store-and-forward, node-type-agnostic (phone or Companion).
 3. **Laptop MC server** — game create/author, push mode to nodes, aggregate scoreboard, recap.
 4. Same protocol later carries the ADR-0001 Companions with no node-side change.
+
+## Amended 2026-09-12 (contracts A28, backhaul)
+
+Context 5 is taken up in its cheap half: **not** phone-as-MC, but a laptop MC that optionally exposes its node socket through a
+tunnel so a player phone with its own data plan reaches MC off the field Wi-Fi. The laptop is still the host and still needs no
+internet unless the operator turns the tunnel on; the field is still an island by default; no phone is configured. Coverage
+(contracts A4.8) becomes an observed per-node fact rather than a venue assertion. The consequence table above is unchanged.

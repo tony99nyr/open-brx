@@ -67,6 +67,11 @@ export function Debug() {
         <Row k="SSID" v={state?.lan.ssid ?? state?.lan.mode?.toUpperCase() ?? '—'} />
         <Row k="MC ADDRESS" v={state?.lan.ip ? `${state.lan.ip}:${state.lan.port}` : '—'} />
         <Row k="NODE SOCKET" v={state?.lan.ws_url ?? '—'} />
+        {/* A28.1: absent entirely on a server that predates backhaul — say so rather than a blank row */}
+        <Row k="PUBLIC SOCKET"
+          v={!state?.lan.public ? 'not supported by this server' : state.lan.public.status === 'up' ? (state.lan.public.ws_url ?? '—') : state.lan.public.status.toUpperCase()}
+          color={state?.lan.public?.status === 'up' ? T.ok : state?.lan.public?.status === 'error' ? T.bad : undefined} />
+        <Row k="JOIN SECRET" v={state?.lan.join_secret ?? '—'} />
         <Row k="NODES" v={`${state?.nodes.length ?? 0} known · ${linked} linked · ${synced} clock-synced`} />
       </Grid>
 

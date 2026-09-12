@@ -2,7 +2,7 @@
 //
 // `types.ts` mirrors `mcp/brx_mcp/mc/API.md` field for field, so UI policy does not belong in it
 // (review 2026-09-01). Nothing here talks to the network; everything is a pure function of `State`.
-import type { State } from './types';
+import type { NodeView, State } from './types';
 /** A stable fingerprint of "which guns does MC know about right now".
  *
  *  For effects that must refetch the armory when the fleet CHANGES. Never key such an effect on
@@ -31,4 +31,21 @@ export function isRoutableLanIp(ip: string | undefined | null): boolean {
   if (!v) return false;
   if (v === '0.0.0.0' || v === '::' || v === '::1') return false;
   return !/^127\./.test(v);
+}
+
+/** A28.3 — LAN is the honest default: a node that has never reported a `reach` (an older server, or
+ *  the first status has not landed yet) is never shown as BACKHAUL it hasn't earned. */
+export function reachOf(n: Pick<NodeView, 'reach'> | undefined | null): 'lan' | 'backhaul' {
+  return n?.reach === 'backhaul' ? 'backhaul' : 'lan';
+}
+
+/** A28.4 — the one-line coverage readout, or null when there is nothing to say yet (no bound player
+ *  node this session). `bound` is the true denominator even while the tunnel is off — the count is
+ *  what should read as unearned, not the sentence. */
+export function coverageLine(state: State | null): string | null {
+  const c = state?.coverage;
+  if (!c || c.bound === 0) return null;
+  return c.level === 'full'
+    ? `FULL COVERAGE — ${c.on_backhaul} OF ${c.bound} ON BACKHAUL`
+    : `COVERAGE ZONES — ${c.on_backhaul} OF ${c.bound} ON BACKHAUL`;
 }

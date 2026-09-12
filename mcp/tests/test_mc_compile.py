@@ -205,8 +205,14 @@ def test_validate_ok_tdm():
 def test_validate_requires_time_limit_unless_full_coverage():
     r = C.validate(_cfg(time_limit_s=None), [_player(num=1)])
     assert not r["ok"] and any("time_limit_s" in e for e in r["errors"])
-    r2 = C.validate(_cfg(time_limit_s=None), [_player(num=1)], {"coverage": "full"})
-    assert r2["ok"], "full coverage lifts the time_limit requirement"
+    r2 = C.validate(_cfg(time_limit_s=None), [_player(num=1)], {"venue_coverage": "full"})
+    assert r2["ok"], "an ASSERTED full-coverage venue lifts the time_limit requirement"
+    # A28.4: the DERIVED coverage (every phone on backhaul) must NOT -- a cell signal is less
+    # trustworthy than a venue assertion, and a phone that loses data mid-match still needs an end it
+    # can reach alone. This is the whole reason the two opts are separate.
+    r3 = C.validate(_cfg(time_limit_s=None), [_player(num=1)], {"coverage": "full"})
+    assert not r3["ok"] and any("time_limit_s" in e for e in r3["errors"]), \
+        "observed backhaul coverage must not unlock time_limit_s: null"
 
 
 def test_validate_duplicate_player_num():

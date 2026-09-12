@@ -14,9 +14,11 @@ the old `manual/07-platform.md`).
 > yet run on hardware. The distinction is load-bearing here — see §7.
 
 > **Short answer, if you own taggers and a laptop:** you can play **today**, in one room, with the
-> laptop driving the guns directly over BLE — that path is proven on hardware (§3, Tier 0). What you
-> cannot yet do is take it to a real field with phones: that half has only ever been run one phone at
-> a time at a bench, and not through a whole match (§7).
+> laptop driving the guns directly over BLE — that path is proven on hardware (§3, Tier 0). Phones as
+> nodes have played **three whole matches on two phones** (2026-08-30 outdoors, 2026-09-01 outdoors,
+> 2026-09-11 on the Mac); a field of more than two phones, a dispersed timed start and recovery from a
+> real coverage loss have not been run (§7). The optional **backhaul** (a phone's own data plan reaching
+> Mission Control through a tunnel, §2.1) is specified and software-tested only (2026-09-12).
 
 ---
 
@@ -79,6 +81,9 @@ flowchart LR
   end
   MC <-.->|"field Wi-Fi · WebSocket<br/>best-effort, store-and-forward"| PH1
   MC <-.->|"field Wi-Fi · WebSocket"| PH2
+  TUN["tunnel · optional<br/>(cloudflared on the laptop,<br/>node socket only)"]
+  MC <-.-> TUN
+  TUN <-.->|"BACKHAUL · the phone's own data plan<br/>wss:// · same socket, same rules"| PH2
   MC <-.->|"Wi-Fi at muster only<br/>(station_config)"| ST
   ST -.->|"BLE advert · presence"| PH1
   G1 -->|"IR shot · line of sight"| G2
@@ -92,14 +97,40 @@ connect to anything.
 
 **There is deliberately no line from Mission Control to any gun during play.**
 
+### 2.1 Backhaul — the one optional line (contracts A28, 2026-09-12; ⬜ specified, software-tested, never run on hardware)
+
+The dashed Wi-Fi line is the only thing the field LAN carries: the config push at the lobby, store-and-forward
+events, and best-effort feedback. Nothing gameplay-critical rides it, which is exactly why it can be extended
+without touching the rest of the shape. **Backhaul** is that extension: Mission Control may expose its **node
+socket port, and only that port,** through a tunnel (`cloudflared` quick tunnel: no account, no domain, no
+login; or a named tunnel / Tailscale Funnel / port forward via `--public-url`). The join QR then carries **both**
+addresses plus a join secret, and a phone that has its own data plan **prefers the public address and falls back
+to the LAN**; a phone without one never notices. Nothing is configured on any phone, ever. What it changes:
+
+- a phone with data keeps receiving kill confirms, score, the result and log pulls from wherever it has signal;
+- Mission Control **sees which phones are on backhaul** (`NodeView.reach`) and derives **coverage** from it
+  instead of asking the operator to assert it: every bound phone on backhaul = full coverage, which makes the
+  frag-limit and survival ends authoritative across the whole park (the time limit stays required: a cell
+  signal is not a venue assertion);
+- a mode may declare that it needs full coverage; none does yet.
+
+What it does **not** change: the laptop still never talks to a gun during play; the field is still an island by
+default (the tunnel is opt-in and the laptop needs internet only if the host turns it on); a park with no cell
+signal gets nothing extra; kill confirm still needs the victim's phone *and* the shooter's phone to reach MC by
+some path. The full contract is `spec/contracts.md` §5d; the join-secret rule (enforced only on hellos that arrive
+through the tunnel) is there too. Rejected on the way: a project-run relay service (ADR-0002's cloud backend, again),
+and per-phone VPNs (Tailscale on every phone is setup on every phone).
+
 **Every link, and what limits it**
 
 | Link | Transport | Limit | Status |
 |---|---|---|---|
 | Gun ↔ headset | vendor link | headset must be present or the gun drops BLE entirely | proven, bench |
 | **Node (phone) ↔ gun** | **BLE** | **exactly one gun per node**; link must hold all match | proven, single-gun bench |
-| Node ↔ Mission Control | Wi-Fi (WebSocket) | best-effort; buffered when down | proven, two phones over field Wi-Fi, two whole matches (2026-08-30, 2026-09-01) |
-| Operator ↔ Mission Control | HTTP on localhost / LAN | `:8765` UI, `:8766` node socket | software-tested only |
+| Node ↔ Mission Control | Wi-Fi (WebSocket) | best-effort; buffered when down | proven, two phones over field Wi-Fi, three whole matches (2026-08-30, 2026-09-01, 2026-09-11) |
+| Node → Mission Control discovery | mDNS `_openbrx._tcp`, or the join QR, or a typed address | mDNS fails on hostile Wi-Fi and some Android stacks; the QR/typed address is the floor | mDNS auto-join proven 2026-09-11 (game test); QR proven |
+| **Node ↔ Mission Control, backhaul** | the phone's own data plan → tunnel → the node socket (`wss://`) | opt-in; laptop needs internet; phone needs a plan and signal; same best-effort rules | ⬜ specified 2026-09-12 (A28), software-tested on branch `backhaul-a28`, never run on hardware |
+| Operator ↔ Mission Control | HTTP on localhost / LAN | `:8765` UI, `:8766` node socket; the tunnel never exposes `:8765` | run at the 2026-09-11 game test (Mac host) |
 | Gun → gun | **IR**, line of sight | the only player-to-player channel | proven |
 | Laptop ↔ gun | BLE | **setup and recap only**, never during play (Tier 0 excepted) | proven |
 | Laptop ↔ gun | USB | one-time armory setup per gun | proven |
@@ -140,7 +171,7 @@ flowchart TB
     L0 <-->|BLE| g3
     L0 <-->|BLE| g4
   end
-  subgraph T1["TIER 1 — phones as nodes ⚠ ONE PHONE PART-WAY, NEVER A FIELD"]
+  subgraph T1["TIER 1 — phones as nodes ⚠ TWO PHONES, THREE WHOLE MATCHES; A BIGGER FIELD UNTESTED"]
     direction LR
     L1["Laptop = Mission Control<br/>+ field Wi-Fi"]
     p1["phone"]
@@ -165,10 +196,11 @@ scoring, respawn, frag limit, correct winner, BLE holding the whole match
 (FOLLOWUPS B10). The constraint is that **everyone stays in the laptop's BLE range** — a room, a
 yard, a small field.
 
-**Tier 1 is what buys you a real field**, and it is the thinly-tested half. At the bench, one phone
-has gone as far as MC pushing a weapon try-out that fired a real gun, and a phone respawn station revived a
-dead gun (2026-09-04) — but not a whole match, and never a *field* of phones on a router-hosted LAN with a
-dispersed timed start. See §7.
+**Tier 1 is what buys you a real field**, and it is the thinner-tested half. Two phones have played three whole
+matches (FFA 2026-08-30 and TDM 2026-09-01 outdoors on a router LAN; a 1v1 game test 2026-09-11 on the Mac, which
+found the frag-limit end and the END button broken, F124/F125), a phone respawn station has revived a dead gun
+(2026-09-04) and a grenade hill has been captured through the gun (2026-09-10). Not run: more than two phones, a
+dispersed timed start, and store-and-forward across a real coverage loss. See §7.
 
 ---
 
@@ -183,12 +215,12 @@ of gun commands.
 ```mermaid
 flowchart LR
   A["0 · ARMORY<br/>USB to each gun<br/>one time, at home"]
-  B["1 · MUSTER<br/>node-gun BLE UP<br/>node-MC Wi-Fi UP<br/>stations armed"]
+  B["1 · MUSTER<br/>node-gun BLE UP<br/>node-MC Wi-Fi UP<br/>stations armed<br/>(tunnel on, if the host wants backhaul)"]
   C["2 · GAMES<br/>host picks the game<br/>no guns involved"]
   D["3 · KIT<br/>Wi-Fi UP · BLE UP<br/>try-out pushes real frames"]
   E["4 · LOBBY<br/>MC pushes the FrameBundle;<br/>each node writes it to its gun"]
   F["5 · DISPERSED START<br/>players walk out of range;<br/>each node counts down LOCALLY<br/>no signal needed at T-0"]
-  G["6 · LIVE PLAY<br/>node-gun BLE UP<br/>node-MC Wi-Fi best-effort<br/>MC-gun BLE: NEVER"]
+  G["6 · LIVE PLAY<br/>node-gun BLE UP<br/>node-MC Wi-Fi or backhaul, best-effort<br/>MC-gun BLE: NEVER"]
   H["7 · RECAP<br/>players return, nodes flush,<br/>MC reconciles"]
   A --> B --> C --> D --> E --> F --> G --> H
 ```
@@ -217,7 +249,8 @@ flowchart TB
 ```
 
 So on a large field, with patchy coverage: **you always know you died. You may not learn you got a
-kill until you walk back into range.** The spec calls this "coverage honesty"
+kill until you walk back into range** — or, with backhaul on (§2.1), until both phones next have signal. The
+spec calls this "coverage honesty"
 ([`spec/README.md`](spec/README.md) §2, contracts A4.8) and it is a deliberate trade, not a bug. Since
 2026-09-04 the rule is broader (contracts A11.4): the node fires every event its own gun can witness from the
 bundle it already holds; MC pushes only what no single gun can know.
@@ -231,7 +264,9 @@ provisional until every node has flushed.
 
 | Failure | What happens | Status |
 |---|---|---|
-| Field Wi-Fi drops | Nodes keep playing; events queue locally and flush on return | software-tested only |
+| Field Wi-Fi drops | Nodes keep playing; events queue locally and flush on return | software-tested only; mid-match resync after a phone crash worked at the 2026-09-11 game test |
+| Tunnel dies mid-match (backhaul) | Backhaul phones fall back to the LAN within one reconnect; a restarted quick tunnel has a NEW hostname, so a phone that never reaches the LAN again must rescan the QR | ⬜ software-tested only |
+| Laptop loses internet (backhaul) | Every backhaul phone falls back to the LAN; the match never depended on it | ⬜ software-tested only |
 | BLE drops mid-match | The node re-probes on reconnect; **the gun's config survives a BLE drop** | proven, bench |
 | Gun is power-cycled | Config is **wiped**; a zeroed `$LCD` echo is the node's tell to re-push | proven, bench |
 | Phone dies | That player is out. One phone = one gun = one node, with no backup | design |
@@ -247,10 +282,9 @@ drops the link).
 
 ## 7. Proven vs. specified — read this before trusting a diagram
 
-The resolution to trust, in one line: **Tier 0 is proven on two guns; one phone got as far as a try-out that
-fired a real gun and a station that revived one; nobody has run a whole match on phones, and never a field of
-phones over a router-hosted LAN, a dispersed timed start, the local timed end, or store-and-forward recovery
-across a real outage.** The Companion is spec only; the Utility Box's IR emit is proven from the rig; the
+The resolution to trust, in one line: **Tier 0 is proven on two guns; two phones have played three whole matches
+(two outdoors on a router LAN, one on the Mac at a 1v1 game test); nobody has run more than two phones, a dispersed
+timed start, or store-and-forward recovery across a real outage; backhaul has never touched hardware.** The Companion is spec only; the Utility Box's IR emit is proven from the rig; the
 utility *phone* station is built and bench-proven.
 
 **A green test suite is not a working field.** That distinction is stated in FOLLOWUPS B15 in the
@@ -275,20 +309,24 @@ project's own words: "a green test ≠ 'works on real guns' — that's earned on
 | The ×1.25 / ×2 multiplier rows (functions 36 and 37): fn 36 lands the **floor** of magnitude ×1.25, fn 37 lands magnitude ×2 | proven, 16 trials, 4 magnitudes, 8 row-tail shapes, fn 1 control in every trial | 2026-09-02 |
 | Native phone app: connects, drives `$SFLASH`, arms a full game, stable session | proven, single gun | 2026-08-25 |
 | Phone → Mission Control → gun: hello, roster bind, try-out fired a real gun | proven, single node, bench | 2026-08-25 night |
-| Mission Control full stack (Muster → Recap), FrameBundle compiler, operator auth, discovery, loadout policy, saved games | software-tested only | ~500 Python tests, 42 e2e, 2026-08-26 / 27 |
+| Mission Control full stack (Muster → Recap), FrameBundle compiler, operator auth, discovery, loadout policy, saved games | run at a real 1v1 game test on the Mac; the frag-limit end and END were found broken there (F124/F125) | 2026-09-11 game test; ~1,300 Python tests plus the MC e2e suite |
+| **Backhaul** (A28): tunnelled node socket, two-URL QR, backhaul-preferred node, derived coverage | ⬜ specified, software-tested on branch `backhaul-a28` | 2026-09-12; FOLLOWUPS B30 is the bench gate |
 | FFA / Infection / LMS / CS / Domination / KotH / CTF / Extraction engines | software-tested only | 156 sim scenarios; objective modes wait on a station |
-| **MC ↔ two phones over a real field Wi-Fi, a whole match** | proven, 2 phones | 2026-08-30 FFA (300 s, 12 kills) and 2026-09-01 outdoor TDM; more than two phones untested |
+| **MC ↔ two phones over a real field Wi-Fi, a whole match** | proven, 2 phones | 2026-08-30 FFA (300 s, 12 kills), 2026-09-01 outdoor TDM, 2026-09-11 1v1 game test (Mac host, mDNS auto-join); more than two phones untested |
+| Grenade as a control point (King of the Hill through the gun, over BLE) | proven | 2026-09-10; MC arms a phone point (F104/S5) |
 | **Dispersed timed start on a real field** (players out of range before T-0) | never run | n/a |
 | **Store-and-forward recovery after real coverage loss** | never run | n/a |
 | 20-minute two-node soak (screen-lock, backgrounding, out of Wi-Fi range) | open | verification-checklist §NEXT 4 |
 | Loadout v2 (three slots: primary, secondary, perk; policy presets, phone picks) | software-tested only | 2026-08-27 and 2026-09-04, not bench-verified |
 | BRX Companion (ESP32-S3 rider) | specified only | ADR-0001 accepted 2026-08-25; bench kit arrived 2026-08-26 |
-| Utility Box / objective station | design only; the IR emit side is proven | build is "a packaging exercise" |
+| Utility phone station (respawn beacon) armed from MC | proven on hardware, not yet used at a field | 2026-09-04 revive; MC arming merged 2026-09-11 |
+| Utility Box / objective station hardware | design; the IR emit side is proven; M5StickS3 kit on order | build is "a packaging exercise" (H7) |
 | Effect nodes (relay, WLED, DMX) | specified only | `firmware/` empty |
 | Field radio (LoRa / the gun's nRF) | specified only | nRF unprobed (D1) |
 
 **Honest gaps (what is NOT proven yet)**, from `docs/archive/verification-checklist.md`:
-- **Mission Control ↔ more than two phones over a real field Wi-Fi**: two phones have played two whole matches (2026-08-30, 2026-09-01); larger fleets have not.
+- **Mission Control ↔ more than two phones over a real field Wi-Fi**: two phones have played three whole matches (2026-08-30, 2026-09-01, 2026-09-11); larger fleets have not.
+- **Backhaul (A28)**: never on hardware. The gate is one Pixel with Wi-Fi off and data on, joining through a quick tunnel and receiving a kill confirm (B30).
 - **A dispersed timed start on a real field** (players out of range before T-0): never run.
 - **Store-and-forward recovery after real coverage loss**: never run.
 - **20-minute two-node soak** with a screen-lock and a backgrounding, out of Wi-Fi range: open.
@@ -330,7 +368,10 @@ already own. No mods, no builds, no purchases required beyond Tier 0.
   jump in capability for the least money, because the link rides the player. Full-field roaming for
   every Tier-0 mode, a per-player HUD, offline play with results syncing at the base. Native app on
   Android + iOS (ADR-0003), one phone per gun. Two phones have run two whole matches on real hardware
-  outdoors (2026-08-30, 2026-09-01); more than two phones is untested.
+  outdoors (2026-08-30, 2026-09-01) and a third on the Mac (2026-09-11); more than two phones is untested.
+  **Optional, ~$0–50 more:** internet at the laptop (a SIM travel router, or tether it) turns on **backhaul**
+  (§2.1): any player phone with a data plan then reaches Mission Control from anywhere it has signal, with
+  nothing to set up on the phone (specified 2026-09-12, not yet on hardware).
 - **Tier 2 — ESP32 Companion per tagger, ~$12–25 each** (specified, not built): a purpose-built,
   rugged, phone-free node that rebuilds the native kill flash and audio. Power-ups (extra life,
   faster fire, damage boost, shields) as decoded command sequences. ESP-NOW mesh between Companions

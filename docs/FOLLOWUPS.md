@@ -6,8 +6,8 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F129 · G11 · H8 ·
-K7 · P19 · Q20 · R3 · S28.** (2026-09-12 desk pass: F128, P18, S27 taken; F110 F115 F116 F117 F118 F119 F122 F124 F125 closed → archive.) (2026-09-11 night game test: F110-F127 and S20-S26 taken, see [`game-test-2026-09-11.md`](game-test-2026-09-11.md).) (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D5 · E8 · F129 · G11 · H8 ·
+K7 · P19 · Q20 · R3 · S28.** (2026-09-12 backhaul, PR #3: B30 and B31 taken.) (2026-09-12 desk pass: F128, P18, S27 taken; F110 F115 F116 F117 F118 F119 F122 F124 F125 closed → archive.) (2026-09-11 night game test: F110-F127 and S20-S26 taken, see [`game-test-2026-09-11.md`](game-test-2026-09-11.md).) (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
 ids are retired, never reused.) (2026-09-10: F94/F95/F98 taken — the phone control point
 (`spec/utility.md` §5d), its LAN-coupled roaming variant (§5e) and Territories (§5f). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
 wider than the hill's period" generalisation, the double-`$HIR`-per-beacon dedupe finding (F85, closed same
@@ -153,6 +153,35 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   node paints the dead look, station beacon arrives via the passthrough row, node checks team + delay, restores pools.
   Every link is proven separately; the assembly is not. Open: a downed gun still takes IR damage; FF must be ON for a
   same-team beacon. `build`.
+- **B30 🟠** BACKHAUL (contracts A28, 2026-09-12): a phone with a data plan reaches MC off the field Wi-Fi with no per-phone
+  setup -- MC tunnels the node socket (cloudflared quick tunnel, `POST /api/tunnel`), the QR carries LAN + public URL + secret,
+  the node prefers backhaul and falls back to the LAN, coverage is DERIVED from observed reach. Built on branch `backhaul-a28`
+  in three lanes (server · MC UI · app transport). **Bench gate:** one Pixel, Wi-Fi OFF, mobile data on, scan the QR, join,
+  take a kill and see KILL CONFIRMED; then Wi-Fi back on and watch `reach` stay `backhaul`. Left for the HUD session: the
+  preflight chips still say Wi-Fi/`cellular_off` (contracts §5c d/f are warnings on backhaul now). **Known, by design:**
+  no REAL cloudflared has run against the URL parser (every test drives a stand-in; the first real run is the gate);
+  `available` is decided once at launch; coverage drops on staleness, not the instant a backhaul socket closes; the
+  envelope-kind parity guard walks `push()` call sites only, so a broadcast-only kind (`join`) has no generative guard;
+  `serve()` sets no `origins=`; no per-peer cap on pre-hello sockets through the tunnel (the 5 s hello window is the only
+  throttle; the secret plus a random hostname make brute force moot, a cap is defence-in-depth); a LAN peer forging
+  `Cf-Connecting-Ip` is gated but counts toward coverage; **pre-existing, not this branch** -- `net.py` `_hello_gate`'s keyed
+  takeover sets `rec.ws` to the new socket before the gun claim runs, so a claim REFUSED right after leaves the record owning a
+  socket that is being closed and `_drop_socket`/`on_disconnect` never run for it. Three review passes (2026-09-12) closed
+  1 high + 13 medium. `build` · `capture`.
+- **B31 🟠** KILL CONFIRM OVER THE BLE ADVERT (Tony 2026-09-12): the victim's player advert (utility.md §2) already
+  carries alive + seq and has three spare bytes (11 value, 14 threshold, 15 reserved); the victim's node already
+  latches the shooter's player_num from its last `$HIR`. Put `killed_by` in the value byte while the alive bit is
+  off (it stays up for the whole respawn delay), have player phones read player adverts (only utility phones do
+  today), and a dead player in my game whose value byte is my number, deduped per (victim, seq), fires KILL
+  CONFIRMED locally (A11.4 HUD-driven event, class "peer-witnessed") with no LAN, backhaul or MC. Range = BLE
+  advert range (~10-30 m outdoors at medium TX). **Presentation only:** adverts are unauthenticated (utility.md
+  §2 posture), so the confirm never scores; the kill still enters the board from the victim's own report and the
+  recap stays victim-authoritative. Phase 2 (optional): a backhaul phone relays the death advert to MC as a
+  PROVISIONAL kill, reconciled against the victim's event on flush. Cost: one byte definition in utility.md §2,
+  a player-advert consumer + dedupe set in `app.js`/`engine.js`, one engine event reusing the KILL CONFIRMED
+  moment, one line in contracts A11.4. Hardware caveats: iOS advertises the service UUID cleanly only in the
+  foreground (play already requires it); Android scan starvation (the 7 s restart already fights it). Complements
+  B30, not part of it. `build` · `capture`.
 
 ## 4. Hardware, prints, research (H, R)
 

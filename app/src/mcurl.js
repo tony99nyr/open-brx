@@ -4,25 +4,58 @@
 // at import time, so nothing inside it can be exercised by `node --test`. This is pure.
 
 /**
- * The websocket URL an MC join QR encodes, or null if this is not one.
+ * The full join target an MC join QR (or the console's join link, or a hand-typed address) encodes:
+ * the bare LAN websocket URL (query stripped), the join secret, and — when MC's tunnel is up — the
+ * public backhaul URL (contracts A28.2). Returns null if this is not an MC code at all.
  *
- * Accepts a bare `ws://`/`wss://` string, or any URL carrying the target in a `?ws=` / `#ws=`
- * parameter (which is how the console's own join link is shaped). Case-insensitive on the scheme:
- * URI schemes are case-insensitive (RFC 3986 §3.1) and a QR generator is free to emit `WS://`,
- * which the scanner used to silently ignore.
+ * Accepts the same input shapes `parseMcQr` accepts: a bare `ws://`/`wss://` string (the query, if
+ * any, carries `s=`/`pub=`), or any URL carrying the target in a `?ws=`/`#ws=` wrapper (the console's
+ * own join link) — case-insensitive on the scheme in both the outer wrapper and the target itself
+ * (URI schemes are case-insensitive, RFC 3986 §3.1).
+ *
+ * @param {string|null|undefined} text raw text decoded from the QR (or typed by hand)
+ * @returns {{url:string, pub:string|null, secret:string|null}|null}
+ */
+export function parseMcJoin(text) {
+  const t = (text || '').trim();
+  let target;
+  if (/^wss?:\/\//i.test(t)) {
+    target = t;
+  } else {
+    const m = /[?#&]ws=([^&\s]+)/i.exec(t);
+    if (!m) return null;
+    try {
+      target = decodeURIComponent(m[1]);
+    } catch {
+      return null;                            // a malformed %-escape is not an MC code either
+    }
+    if (!/^wss?:\/\//i.test(target)) return null;   // a ?ws= that is not a websocket URL is not an MC code
+  }
+  const qIdx = target.indexOf('?');
+  const url = qIdx < 0 ? target : target.slice(0, qIdx);
+  let pub = null, secret = null;
+  if (qIdx >= 0) {
+    const params = new URLSearchParams(target.slice(qIdx + 1));
+    if (params.has('s')) secret = params.get('s') || null;
+    if (params.has('pub')) {
+      const raw = params.get('pub');
+      // A28.2: pub is the optional half — the LAN url + secret are the mandatory floor (§5) and must
+      // survive a malformed pub (rare: MC generates this value itself, but a typed/OCR'd code is not
+      // MC's to control). Drop only pub, not the whole code.
+      if (raw && /^wss?:\/\//i.test(raw)) pub = raw;
+    }
+  }
+  return { url, pub, secret };
+}
+
+/**
+ * The websocket URL an MC join QR encodes, or null if this is not one. Legacy shape kept for old
+ * callers (A28.2): `parseMcJoin` is now the source of truth, this just returns its `url`.
  *
  * @param {string|null|undefined} text raw text decoded from the QR
  * @returns {string|null}
  */
 export function parseMcQr(text) {
-  const t = (text || '').trim();
-  if (/^wss?:\/\//i.test(t)) return t;
-  const m = /[?#&]ws=([^&\s]+)/i.exec(t);
-  if (!m) return null;
-  try {
-    const u = decodeURIComponent(m[1]);
-    return /^wss?:\/\//i.test(u) ? u : null;   // a ?ws= that is not a websocket URL is not an MC code
-  } catch {
-    return null;                               // a malformed %-escape is not an MC code either
-  }
+  const j = parseMcJoin(text);
+  return j ? j.url : null;
 }

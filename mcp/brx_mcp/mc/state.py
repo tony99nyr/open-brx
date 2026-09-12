@@ -9,9 +9,12 @@ from __future__ import annotations
 import copy
 import json
 import random
+import re
+import secrets
 import time
 import uuid
 from typing import Any, Callable
+from urllib.parse import quote
 
 from . import presentation as _pres
 from .. import poolgauge as _pg
@@ -20,12 +23,28 @@ from . import policy as _policy
 from .scoring import Scorer
 from ..modes.hillbeacon import NEUTRAL_TEAM as _NEUTRAL_TEAM     # F82: the tid a NEUTRAL hill broadcasts
 from ..modes.registry import default_params as _default_params, params_schema_json as _params_schema_json, \
-    validate_mode_params as _validate_mode_params                  # A18: the mode's own rules, engine-declared
+    validate_mode_params as _validate_mode_params, \
+    requires_coverage as _requires_coverage                        # A18: the mode's own rules, engine-declared
+from .tunnel import TunnelError
 from .types import (DEFAULT_RUNWAY_S, MAX_PLAYERS, OBJECTIVE_MODES, OFFLINE_AFTER_MS, STALE_AFTER_MS, STATION_KINDS,
                     STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, GameConfig, Player, ReadinessRow,
                     ReadinessSnapshot, ScanRow, Team)
 
 PHASES = ("muster", "build", "kit", "lobby", "armed", "live", "recap")
+
+# A28.1: `lan.public` before anything has been started. `available` is overwritten the moment a Tunnel
+# is attached; until then MC honestly says it has not looked.
+PUBLIC_OFF = {"ws_url": None, "status": "off", "provider": None, "available": False}
+
+
+class CoverageRequired(ValueError):
+    """A28.4: this mode declares `requires_coverage` and coverage is not full. The API answers 409
+    `{error, coverage}` — a ValueError so every existing `except ValueError` path still catches it."""
+
+    def __init__(self, msg: str, coverage: dict):
+        super().__init__(msg)
+        self.coverage = coverage
+        self.status = 409
 
 TEAM_DEFS = {  # $TID: 1=blue, 2=yellow, 0=red (protocol §7i); green provisional 3
     "blue": {"team_id": "blue", "name": "BLUE TEAM", "color": "#3a86ff", "tid": 1},
@@ -183,6 +202,13 @@ class Session:
         self.synced_at_lobby: dict[str, bool] = {}
         self.scan_rows: list[ScanRow] = []
         self.lan = lan or {"mode": "unknown", "ip": "0.0.0.0", "port": 0, "ws_url": "", "qr": ""}
+        # A28.2: 8 url-safe chars, random per session, PERSISTED with the snapshot so an MC restart does
+        # not invalidate every QR already printed and taped to a wall. It is readable by anyone on the
+        # LAN via GET /api/state, deliberately (§5b: the LAN is already the trust boundary) — its one
+        # job is keeping internet strangers off the node socket once the tunnel is up.
+        self.join_secret = secrets.token_urlsafe(6)
+        self.lan.setdefault("public", dict(PUBLIC_OFF))
+        self.tunnel = None                        # A28.1: attached by __main__ (`attach_tunnel`)
         self.trying: dict[str, str] = {}          # player_id -> weapon_id
         self.browsing: dict[str, int] = {}        # A10: player_id -> t_ms the HUD opened its loadout browser
         self._policy_notice: str | None = None    # A10: "N LOADOUTS RESET BY …" — shown in config_warnings until the next config PUT
@@ -215,6 +241,7 @@ class Session:
         self._listeners: list[Callable[[], None]] = []
         self._feed_listeners: list[Callable[[dict], None]] = []
         self._attach_net()
+        self._render_join()
         self._gun_index()
 
     # ---------- plumbing ----------
@@ -258,7 +285,9 @@ class Session:
             snap = {"v": 1, "saved_ms": self.now_ms(),
                     "players": [{**p, "node_id": None, "ready": False} for p in self.players.values()],
                     "teams": self.teams, "config": self.config, "active_preset_id": self.active_preset_id,
-                    "stations": stations, "game_no": self.game_no, "game_no_started": self._game_no_started}
+                    "stations": stations, "game_no": self.game_no, "game_no_started": self._game_no_started,
+                    # A28.2: a restore must keep every printed QR valid, so the secret is human work too.
+                    "join_secret": self.join_secret}
             tmp = self._persist_path.with_suffix(".tmp")
             tmp.write_text(json.dumps(snap))
             tmp.replace(self._persist_path)
@@ -291,6 +320,9 @@ class Session:
                                             "synced": False, "last_seen_ms": 0})
             self.game_no = snap.get("game_no", self.game_no)
             self._game_no_started = bool(snap.get("game_no_started", False))
+            if isinstance(snap.get("join_secret"), str) and snap["join_secret"]:
+                self.join_secret = snap["join_secret"]     # A28.2: the QRs already printed stay valid
+                self._render_join()
             self._repair_player_nums()
             self.config["loadout_policy"] = _policy.normalize(self.config.get("loadout_policy"), self.config["mode"])
             # A18: a snapshot persisted before mode_params existed restores a koth/lms/extraction config with
@@ -386,11 +418,121 @@ class Session:
         n.on_node_message(self._on_node_message)
         n.on_stale(lambda nid, age: self._touch(nid, stale=True))
         n.on_return(lambda nid: self._touch(nid, stale=False))
+        if hasattr(n, "on_disconnect"):
+            n.on_disconnect(self._on_disconnect)
         try:
             ji = n.join_info()
-            self.lan.update({"ws_url": ji.get("url", ""), "qr": ji.get("qr", ji.get("url", ""))})
+            self.set_ws_url(ji.get("url", ""))
         except Exception:
             pass
+
+    # ---------- A28 backhaul: the join QR, the tunnel, derived coverage ----------
+    def set_ws_url(self, url: str) -> None:
+        """The bare LAN node URL (`lan.ws_url`). `lan.qr` is DERIVED from it and never set directly —
+        the two used to be the same string, and A28.2 made the QR carry a query the URL must not."""
+        if url:
+            self.lan["ws_url"] = url
+        self._render_join()
+
+    def _public(self) -> dict:
+        return self.lan.get("public") or dict(PUBLIC_OFF)
+
+    def _pub_url(self) -> str | None:
+        """The public ws URL when it is usable — i.e. only while `status == "up"` (A28.2)."""
+        pub = self._public()
+        return pub.get("ws_url") if pub.get("status") == "up" else None
+
+    def join_body(self) -> dict:
+        """`welcome.join` / the MC→node `join` push (A28.2)."""
+        return {"pub": self._pub_url(), "secret": self.join_secret}
+
+    def _render_join(self) -> str:
+        """`lan.qr` = `ws://<lan-ip>:<ws-port>/ws?s=<secret>[&pub=<url-encoded public ws_url>]`.
+
+        Re-rendered whenever the ws URL, the secret or the public status changes, and the net is handed
+        the same three values so `welcome.join` and the secret gate cannot drift from the printed QR."""
+        base = self.lan.get("ws_url") or ""
+        pub = self._pub_url()
+        qr = base
+        if base:
+            qr = f"{base}{'&' if '?' in base else '?'}s={quote(self.join_secret, safe='')}"
+            if pub:
+                qr += f"&pub={quote(pub, safe='')}"
+        self.lan["qr"] = qr
+        self.lan["join_secret"] = self.join_secret
+        setter = getattr(self.net, "set_join", None)
+        if setter is not None:
+            try:
+                # `armed` is a CALLABLE, not `bool(pub)`: the QR only advertises a URL we can currently
+                # use, but the secret gate must stay up for as long as the child process is routing --
+                # including after its stdout dies and `status` has gone to `error`.
+                setter(secret=self.join_secret, pub=pub, armed=self._gate_armed)
+            except Exception:
+                import logging; logging.getLogger("brx.mc").exception("net.set_join failed")
+        return qr
+
+    def _gate_armed(self) -> bool:
+        """A28.2: is there a public path into the node socket right now? Read live off the Tunnel."""
+        t = self.tunnel
+        return bool(t is not None and t.armed)
+
+    def attach_tunnel(self, tunnel) -> None:
+        """A28.1: MC owns at most one tunnel; its status changes drive `lan.public`, the QR and the
+        `join` broadcast."""
+        self.tunnel = tunnel
+        tunnel.on_change(self._tunnel_changed)
+        self._tunnel_changed(tunnel.public())
+
+    def _tunnel_changed(self, pub: dict) -> None:
+        was = self._pub_url()
+        self.lan["public"] = dict(pub)
+        self._render_join()
+        now = self._pub_url()
+        if now != was:
+            # A28.2: every connected node adopts the new `pub` and re-dials per A28.3. Best-effort, like
+            # every other MC→node push: a node that misses it gets the same body in its next welcome.
+            try:
+                self.net.broadcast("join", self.join_body())
+            except Exception:
+                import logging; logging.getLogger("brx.mc").exception("join broadcast failed")
+        self._changed()
+
+    def _ws_port(self) -> int:
+        p = getattr(self.net, "port", 0) or 0
+        if p:
+            return int(p)
+        m = re.search(r":(\d+)", (self.lan.get("ws_url") or "").split("//")[-1])
+        return int(m.group(1)) if m else 0
+
+    async def set_tunnel(self, on: bool) -> dict:
+        """`POST /api/tunnel` (A28.1). Returns `lan.public`; raises `TunnelError` (409) when there is
+        nothing MC may start or stop."""
+        t = self.tunnel
+        if t is None:
+            raise TunnelError("this Mission Control was built without tunnel support")
+        if on:
+            t.start(self._ws_port())
+        else:
+            await t.stop()
+        return dict(self._public())
+
+    def coverage(self) -> dict:
+        """A28.4: coverage is DERIVED, not asserted — `"full"` iff every bound player node is connected
+        with `reach == "backhaul"`.
+
+        "Connected" is read as "not stale": that is the same freshness MC uses everywhere else, and it is
+        what the operator is looking at on the board. A node that drops off the tunnel goes stale and
+        coverage falls back to `"zones"` within `STALE_AFTER_MS` — one reconnect, exactly as A28.3
+        describes."""
+        bound = on = 0
+        for nid, pid in self.node_player.items():
+            if pid not in self.players:
+                continue
+            bound += 1
+            nv = self.nodes.get(nid) or {}
+            if nv.get("reach") == "backhaul" and not nv.get("stale"):
+                on += 1
+        return {"level": "full" if bound and on == bound else "zones", "on_backhaul": on, "bound": bound}
 
     # ---------- A10 loadout policy / catalog ----------
     def _catalog_rows(self) -> tuple[list[dict], list[dict]]:
@@ -1063,7 +1205,11 @@ class Session:
 
     def _validate(self) -> dict:
         try:
-            res = self.compiler.validate(self.config, list(self.players.values()), None)
+            # A28.4: the DERIVED coverage rides on every validation (and so on the lobby push, which
+            # calls this). `venue_coverage` — the assertion that would lift `time_limit_s` — is
+            # deliberately NOT passed: nothing sets it today (compile.validate's docstring).
+            res = self.compiler.validate(self.config, list(self.players.values()),
+                                         {"coverage": self.coverage()["level"]})
         except Exception as e:  # a broken compiler must not take MC down
             res = {"ok": False, "errors": [f"validate failed: {e}"]}
         self.config_errors = list(res.get("errors", []))
@@ -1293,6 +1439,15 @@ class Session:
         return out
 
     # ---------- nodes ----------
+    def _on_disconnect(self, nid: str):
+        """A28.3: the socket is gone, so its PATH is gone with it -- `coverage()` must not keep counting
+        a phone as on backhaul until it goes stale STALE_AFTER_MS later. `NodeRecord.view()` already
+        nulls `reach` on a dead socket, but the snapshot is built from THESE dicts and never consults
+        that view, so nulling it there alone would have been dead code (the F33/F40 shape)."""
+        nv = self.nodes.get(nid)
+        if nv is not None and nv.pop("reach", None) is not None:
+            self._changed()
+
     def _touch(self, nid: str, stale: bool | None = None):
         nv = self.nodes.setdefault(nid, {"node_id": nid, "node_type": "phone", "arm_state": "idle", "last_seen_ms": 0, "synced": False})
         if stale is not None:
@@ -1405,7 +1560,7 @@ class Session:
     def _on_node(self, n: dict):
         nid = n["node_id"]
         nv = self.nodes.setdefault(nid, {"node_id": nid, "arm_state": "idle", "synced": False})
-        nv.update({k: v for k, v in n.items() if k in ("node_type", "gun_name", "gun_tail", "fw")})
+        nv.update({k: v for k, v in n.items() if k in ("node_type", "gun_name", "gun_tail", "fw", "reach", "reach_claimed")})
         nv["last_seen_ms"] = self.now_ms()
         if n.get("node_type") == "utility":
             # F106(c): the SAME node_id said hello as a player once (a phone switched OUT of the HUD role
@@ -1467,6 +1622,12 @@ class Session:
     def _on_status(self, nid: str, body: dict, t_recv: int):
         nv = self.nodes.setdefault(nid, {"node_id": nid, "node_type": "phone"})
         nv.update({k: body.get(k) for k in ("arm_state", "synced", "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "t_minus_ms", "shots", "dropped", "pending") if k in body})
+        # A28.3: `reach` is NOT taken from the status body. It feeds `coverage()` (which can gate a whole
+        # mode) and the readiness amber (which un-blocks a start), so a client-asserted value would let a
+        # phone claim its way past both. MC stamps it from the socket in `net._hello_gate`; the node's
+        # own claim is kept beside it, unused, so a disagreement is visible instead of silent.
+        if "reach" in body:
+            nv["reach_claimed"] = body.get("reach")
         nv["last_seen_ms"] = t_recv
         nv["stale"] = False
         # A8 + polish review 2026-09-11: a STATUS body never changes what a BOUND node IS. A player HUD that
@@ -1651,7 +1812,14 @@ class Session:
                 if not nv.get("synced"):
                     blockers.append("CLOCK NOT SYNCED — BLOCKS START")
                 if pf.get("ssid_ok") is False or pf.get("mc_reachable") is False:
-                    blockers.append("WRONG WI-FI / MC UNREACHABLE — BLOCKS START")
+                    # A28.3: for a node that is actually TALKING to us over backhaul, the field Wi-Fi is
+                    # not the path that matters — §5c gates (d)/(f) become warnings, not reds. Blocking
+                    # the start on "wrong Wi-Fi" for a phone whose status arrived over its data plan
+                    # would make backhaul unusable on exactly the fields it exists for.
+                    if nv.get("reach") == "backhaul":
+                        ambers.append("NOT ON THE FIELD WI-FI — ON BACKHAUL, DOES NOT BLOCK")
+                    else:
+                        blockers.append("WRONG WI-FI / MC UNREACHABLE — BLOCKS START")
                 if pf.get("gun_linked") is False:
                     blockers.append("GUN LINK LOST — BLOCKS START")
                 if nv.get("battery") is None:
@@ -1889,6 +2057,15 @@ class Session:
         rd = self.readiness()
         if not self.players:
             raise ValueError("no players — add someone to the roster first")   # force must not bypass this
+        # A28.4: a mode that declares `requires_coverage` needs FULL coverage at push time. Not a red on
+        # the board and not `force`-able: the mode is asking for something no gun can do alone, so a
+        # push without it would arm a game that cannot be scored.
+        if _requires_coverage(self.config.get("mode", "")):
+            cov = self.coverage()
+            if cov["level"] != "full":
+                raise CoverageRequired(
+                    f"{self.config.get('mode')} needs FULL coverage (every player's phone on backhaul); "
+                    f"{cov['on_backhaul']} of {cov['bound']} bound node(s) are", cov)
         if not rd["go"] and not force:
             reds = [f"{r['player_num']}:{'/'.join(r['blockers'])}" for r in rd["board"] if r["status"] == "red"]
             raise ValueError("readiness has reds — clear them before pushing, or push with force: "
@@ -2459,6 +2636,7 @@ class Session:
                             "synced": nv.get("synced", False), "last_seen_ms": now - nv.get("last_seen_ms", 0)}
             start = {**self._start_body(), "per_node": per}
         return {"session_id": self.session_id, "phase": self.phase, "t": now, "lan": self.lan,
+                "coverage": self.coverage(),                    # A28.4: derived, not asserted
                 "mc_confidence": self.mc_confidence(),          # A11.5: gates MC-driven global-state events
                 "nodes": [{**nv, "last_seen_ms": now - nv.get("last_seen_ms", 0)} for nv in self.nodes.values()],
                 "stations": self.stations_view(), "game_no": self._game_byte(),   # A13.5: the ITEMS panel
