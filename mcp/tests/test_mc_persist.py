@@ -326,3 +326,58 @@ def test_f142_a_pre_f142_snapshot_with_no_marker_reads_as_a_real_one():
     s3 = mk(); s3 = s3[0] if isinstance(s3, tuple) else s3
     s3._persist_path, s3.demo_session = tmp, True
     assert s3.restore_snapshot() == 0
+
+
+def test_f142_a_run_with_no_real_armory_is_marked_demo_even_without_the_flag():
+    """Round-2 review 2026-09-12, HIGH. `--demo` was never the only way to end up holding demo guns:
+    `__main__` falls back to `FakeArmory(demo_armory())` whenever `LocalArmory` cannot import (no
+    bleak — WSL, CI, a laptop with the radio off), and a roster built from THAT scan is GUN-A..H. That
+    is the roster that was restored into a real field day, and the old marker called it real."""
+    import inspect
+    from brx_mcp.mc import __main__ as M
+    src = inspect.getsource(M.build)
+    assert "demo_armory_in_use = isinstance(armory, FakeArmory)" in src, src[:0] or "the marker does not read the armory"
+    assert "session.demo_session = bool(args.demo) or demo_armory_in_use" in src
+    # and the operator is told which of the two it was, not left to infer it
+    assert "no real armory" in src and "--demo" in src
+
+
+def test_f142_the_marker_describes_the_armory_not_the_flag():
+    """The behaviour behind that wiring: a session holding stand-in guns persists as demo, so the next
+    real run declines it — which is the whole incident, and the `--demo` flag was never involved."""
+    from brx_mcp.mc.fakes import FakeArmory, demo_armory
+    fake = FakeArmory(demo_armory())
+    assert isinstance(fake, FakeArmory)
+    tmp = _snap_path()
+    s = mk(); s = s[0] if isinstance(s, tuple) else s
+    s._persist_path = tmp
+    s.demo_session = True                 # what `__main__` sets for a bleak-less run with NO --demo
+    s.add_player("ALPHA", team_id="blue")
+    s._persist_last = 0.0
+    s._persist()
+    assert json.loads(tmp.read_text())["demo"] is True
+    real = mk(); real = real[0] if isinstance(real, tuple) else real
+    real._persist_path, real.demo_session = tmp, False       # a MacBook with a radio, no flag
+    assert real.restore_snapshot() == 0
+
+
+def test_f142_restored_from_at_is_a_number_or_absent_never_whatever_the_file_said():
+    """`session.json` is a file on disk and `restored_from.at` goes straight out on /api/state for a UI
+    to hand to `new Date(...)`. Round-2 review 2026-09-12."""
+    for junk, want in (("2026-09-12", None), (None, None), (True, None), ([], None),
+                       (1757700000000, 1757700000000), (1757700000000.0, 1757700000000)):
+        tmp = _snap_path()
+        s = mk(); s = s[0] if isinstance(s, tuple) else s
+        s._persist_path = tmp
+        s.add_player("ALPHA", team_id="blue")
+        s._persist_last = 0.0
+        s._persist()
+        raw = json.loads(tmp.read_text())
+        raw["saved_ms"] = junk
+        tmp.write_text(json.dumps(raw))
+        s2 = mk(); s2 = s2[0] if isinstance(s2, tuple) else s2
+        s2._persist_path = tmp
+        assert s2.restore_snapshot() == 3
+        got = s2.restored_from["at"]
+        assert got == want and (got is None or type(got) is int), (junk, got)
+        assert s2.restored_from["players"] == 3

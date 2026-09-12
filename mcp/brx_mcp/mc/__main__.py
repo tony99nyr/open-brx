@@ -88,6 +88,12 @@ def build(args):
         except Exception as e:
             log.warning("armory: FAKE (%s)", e)
             armory = FakeArmory(demo_armory())
+    # F142 round 2: `--demo` is NOT the only way a session ends up holding demo guns. A run with no
+    # bleak (WSL, a CI box, a laptop with the radio off) falls back to `FakeArmory(demo_armory())`
+    # above, and a roster built from THAT scan is GUN-A..H — which is exactly the roster that was
+    # restored into a real field day. The marker has to describe the ARMORY the roster came from, not
+    # the flag the operator typed.
+    demo_armory_in_use = isinstance(armory, FakeArmory)
 
     ip = args.host if args.host not in ("0.0.0.0", "") else _lan_ip()
     ws_url = f"ws://{ip}:{args.ws_port}/ws"
@@ -123,7 +129,11 @@ def build(args):
     session.attach_tunnel(tunnel)
     # F142 (field 2026-09-12): mark the session BEFORE any restore or persist, so the marker is what
     # `restore_snapshot` compares against and what the first write records.
-    session.demo_session = bool(args.demo)
+    session.demo_session = bool(args.demo) or demo_armory_in_use
+    if session.demo_session:
+        why = "--demo" if args.demo else "no real armory (bleak unavailable) — the guns are stand-ins"
+        print(f"  session: DEMO ({why}) — it will not be restored into, or persisted for, a real run",
+              flush=True)
     restored_from_file = 0
     if getattr(args, "session_file", None):
         # explicit session file (e2e boots from a fixture, e.g. a pre-A10 snapshot) — honoured even with --demo

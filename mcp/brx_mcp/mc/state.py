@@ -438,8 +438,13 @@ class Session:
             self._gun_index()
             if self.players:
                 # F142: the board says what came back, and from when. `saved_ms` is this machine's own
-                # clock at the last write, which is exactly what "restored from <date>" needs.
-                self.restored_from = {"at": snap.get("saved_ms"), "players": len(self.players)}
+                # clock at the last write, which is exactly what "restored from <date>" needs — but
+                # session.json is a file on disk that anything can write, and this value goes straight
+                # out on `/api/state` for a UI to hand to `new Date(...)`. Coerce, and drop it rather
+                # than publish a string or a null into a numeric field (round-2 review 2026-09-12).
+                at = snap.get("saved_ms")
+                at = int(at) if isinstance(at, (int, float)) and not isinstance(at, bool) else None
+                self.restored_from = {"at": at, "players": len(self.players)}
             return len(self.players)
         except Exception:
             import logging; logging.getLogger("brx.mc").exception("session snapshot restore failed — starting clean")
@@ -651,11 +656,44 @@ class Session:
         pol = self.config.get("loadout_policy")
         if not pol:
             pol = self.config["loadout_policy"] = _policy.default_policy(self.config["mode"])
+        elif not _policy.admits_weapons(pol.get("primary") or {}):
+            # F146 round 2: a primary rule that admits NO KIND of weapon empties the pool for a reason
+            # the operator never chose and cannot see. `_check_rule` refuses an empty `kinds` and
+            # `normalize` fills a missing one, so a policy in this shape reached `self.config` without
+            # passing either — a hand-edited session.json, a fixture, a direct write. HEAL it (that is
+            # what `normalize` is for) rather than hard-blocking the push on a filter nobody set.
+            pol = self.config["loadout_policy"] = _policy.normalize(pol, self.config["mode"])
         return pol
 
     def loadout_pool(self) -> dict:
         weapons, perks = self._catalog_rows()
         return _policy.pool(self.policy(), weapons, perks)
+
+    def _primary_pool_refusal(self) -> str | None:
+        """F146: why is there no legal primary weapon? `None` when there is one.
+
+        An empty primary pool blocks the push either way, but the operator has to be sent to the
+        control that is actually wrong. A single "clear a class or id exclusion" line sent them to the
+        class chips no matter what emptied the pool — including a `fixed_id` naming a weapon this
+        game's catalog does not contain, where there are no exclusions to clear at all (round-2 review
+        2026-09-12). The `kinds` case never reaches here: `policy()` heals it.
+        """
+        if self.loadout_pool()["primary"]:
+            return None
+        rule = self.policy()["primary"]
+        weapons, _perks = self._catalog_rows()
+        ids = {w["weapon_id"] for w in weapons}
+        if rule.get("choice") == "fixed":
+            return (f"LOADOUT RULES: THE PRIMARY IS FIXED TO {rule.get('fixed_id')!r}, WHICH IS NOT A "
+                    "WEAPON IN THIS GAME — pick the fixed primary again in the primary slot, or set "
+                    "the slot back to a player pick")
+        only = [i for i in (rule.get("only_ids") or []) if i in ids]
+        if (rule.get("only_ids") or []) and not only:
+            return ("LOADOUT RULES: THE PRIMARY IS LIMITED TO WEAPONS THIS GAME DOES NOT HAVE "
+                    f"({', '.join(sorted(rule['only_ids']))}) — clear the primary slot's ALLOW list, "
+                    "or name weapons that are in the catalog")
+        return ("LOADOUT RULES: THE PRIMARY FILTER EXCLUDES EVERY WEAPON — no legal primary weapon is "
+                "left. Clear a class or id exclusion in the primary slot, or pick a preset")
 
     def health_pool(self, p: Player | None = None) -> int:
         """hp + armour a full-health player carries — what hits-to-kill is quoted against.
@@ -1387,10 +1425,8 @@ class Session:
         # act on. A ruleset that excludes every weapon is the operator's mistake to fix, and this is the
         # sentence that tells them which control to touch.
         try:
-            if not self.loadout_pool()["primary"]:
-                bad = ("LOADOUT RULES: THE PRIMARY FILTER EXCLUDES EVERY WEAPON — no legal primary "
-                       "weapon is left. Clear a class or id exclusion in the primary slot, or pick a "
-                       "preset")
+            bad = self._primary_pool_refusal()
+            if bad:
                 self.config_errors.append(bad)
                 res = dict(res, ok=False, errors=list(res.get("errors", [])) + [bad])
         except Exception:          # a broken pool must not take the validation down

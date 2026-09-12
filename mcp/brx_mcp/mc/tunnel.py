@@ -208,13 +208,6 @@ class Tunnel:
         log.info("tunnel %s%s", status, f" {ws_url}" if ws_url else (f" ({error})" if error else ""))
         self._emit()
 
-    def _set_detail(self, detail: str | None) -> None:
-        """F140: move the sub-state without touching `status` — `resolving` is still `starting`, so the
-        QR, `join` and `_pub_url()` all stay exactly where they were."""
-        if detail == self.detail:
-            return
-        self.detail = detail
-        self._emit()
 
     def _set_orphan(self, pid: int | None) -> None:
         """The latch is visible state (`public()["error"]`), so a change in it is a change listeners see."""

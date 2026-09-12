@@ -41,7 +41,10 @@ _IW_SSID = re.compile(r"^\s*ssid\s+(.+?)\s*$", re.M)
 # pattern is not anchored to the start of the field, and it is the line right underneath.
 _NETSH_SSID = re.compile(r"^\s*SSID\s*:\s*(.+?)\s*$", re.M)
 
-_NOT_SSID = {"", "none", "<none>", "--", "not associated"}
+# `<redacted>` is what macOS 14+ returns to a process without Location Services permission — a real
+# answer to the query and a non-answer to the question, so it is an absence like the rest. Printing it
+# on the REACH panel would be the F143 bug again with a different word (round-2 review 2026-09-12).
+_NOT_SSID = {"", "none", "<none>", "--", "not associated", "<redacted>", "redacted"}
 
 
 def _clean(v: str | None) -> str | None:

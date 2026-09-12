@@ -1309,6 +1309,17 @@ def test_f140_the_doh_query_reads_an_a_record_out_of_the_json_answer():
         _json.loads(raw)        # the fixture is real JSON
 
 
+def test_f140_the_sub_state_moves_only_through_the_one_setter():
+    """Round-2 review 2026-09-12: a second `_set_detail` path existed with no call site. One writer for
+    `status`/`ws_url`/`error`/`detail` is what keeps a no-op transition from re-rendering the QR and
+    re-broadcasting `join`."""
+    import inspect
+    from brx_mcp.mc.tunnel import Tunnel as _T
+    src = inspect.getsource(_T)
+    assert "_set_detail" not in src, "the unused sub-state setter is back"
+    assert src.count("def _set(") == 1
+
+
 def test_f140_a_doh_query_that_cannot_be_made_is_not_yet_never_an_exception():
     from brx_mcp.mc import tunnel as _t
 

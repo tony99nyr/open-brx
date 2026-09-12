@@ -1069,3 +1069,74 @@ def test_s39_the_intro_frame_is_not_added_to_the_compiled_bundle():
     """Deliberately not a `cues()` entry: `cues()` is compiled into every FrameBundle on the wire and
     into `golden_bundle.json`, which the phone app's tests read. A bench preview is not a match frame."""
     assert "intro" not in Compiler().cues("male")
+
+
+def test_f146_an_empty_primary_pool_names_the_control_that_is_actually_wrong():
+    """Round-2 review 2026-09-12. An empty primary pool blocks the push however it got there, but the
+    operator has to be sent to the right control. One "clear a class or id exclusion" line sent them to
+    the class chips even when a `fixed_id` named a weapon this game does not have — where there are no
+    exclusions to clear at all."""
+    def sess():
+        s, _net, _clock, _ps = mk(1, compiler=Compiler())
+        return s
+
+    # (a) fixed to a weapon the catalog does not contain
+    s = sess()
+    s.set_config({"loadout_policy": {"preset": "custom",
+                                     "primary": {"choice": "fixed", "fixed_id": "plasma_bazooka"}}})
+    s._validate()
+    said = [e for e in s.config_errors if "PRIMARY" in e]
+    assert said and "FIXED TO 'plasma_bazooka'" in said[0], said
+    assert "exclusion" not in said[0], "sent the operator to the class chips for a fixed-id problem"
+
+    # (b) an ALLOW list naming nothing real
+    s = sess()
+    s.set_config({"loadout_policy": {"preset": "custom",
+                                     "primary": {"choice": "player", "only_ids": ["nope_gun"]}}})
+    s._validate()
+    said = [e for e in s.config_errors if "PRIMARY" in e]
+    assert said and "LIMITED TO WEAPONS THIS GAME DOES NOT HAVE" in said[0], said
+    assert "nope_gun" in said[0], said
+
+    # (c) the real filter case still says the real filter thing
+    s = sess()
+    s.set_config({"loadout_policy": {"preset": "custom", "primary": {
+        "choice": "player", "exclude_tags": ["assault", "cqb", "marksman", "sniper", "support",
+                                             "power", "heavy", "sidearm", "pistol", "melee"]}}})
+    s._validate()
+    said = [e for e in s.config_errors if "PRIMARY" in e]
+    assert said and "FILTER EXCLUDES EVERY WEAPON" in said[0], said
+
+    # (d) an ALLOW list of real weapons that the exclusions then empty is a FILTER problem, not (b)
+    s = sess()
+    s.set_config({"loadout_policy": {"preset": "custom", "primary": {
+        "choice": "player", "only_ids": ["assault_rifle"], "exclude_ids": ["assault_rifle"]}}})
+    s._validate()
+    said = [e for e in s.config_errors if "PRIMARY" in e]
+    assert said and "FILTER EXCLUDES EVERY WEAPON" in said[0], said
+
+
+def test_f146_a_primary_rule_that_admits_no_kind_of_weapon_is_healed_not_refused():
+    """A rule with an empty `kinds` is not a ruleset anyone built: `_check_rule` refuses an empty list
+    and `normalize` fills a missing one, so a policy in this shape reached `self.config` past both (a
+    hand-edited session.json, a fixture). Blocking the push on a filter nobody set is the wrong answer;
+    `policy()` normalises it back. Round-2 review 2026-09-12."""
+    s, _net, _clock, _ps = mk(1, compiler=Compiler())
+    blank = {"choice": "player", "kinds": [], "exclude_tags": [], "exclude_ids": [],
+             "only_ids": [], "fixed_id": None}
+    s.config["loadout_policy"] = {
+        "preset": "custom", "hud_select": True, "primary": dict(blank),
+        "secondary": {**blank, "kinds": ["weapon"]}, "perk": {**blank, "kinds": ["perk"]}}
+    assert s.policy()["primary"]["kinds"] == ["weapon"], "the broken rule was not healed"
+    assert s.loadout_pool()["primary"], "healing left the pool empty"
+    s._validate()
+    assert not any("PRIMARY" in e for e in s.config_errors), s.config_errors
+
+
+def test_f146_a_healthy_ruleset_is_never_refused():
+    """The guard must stay quiet for every shipped preset — it is an ERROR and it blocks the whistle."""
+    for preset in P.PRESET_NAMES:
+        s, _net, _clock, _ps = mk(1, compiler=Compiler())
+        s.set_config({"loadout_policy": {"preset": preset}})
+        s._validate()
+        assert not any("PRIMARY" in e for e in s.config_errors), (preset, s.config_errors)

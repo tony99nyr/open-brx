@@ -73,6 +73,17 @@ def test_a_placeholder_word_is_never_an_ssid():
         assert N._clean(junk) is None, junk
 
 
+def test_macos_redacts_the_ssid_without_location_services():
+    """macOS 14+ answers the query and withholds the answer when the process has no Location Services
+    permission. `<redacted>` is a real reply and a non-answer to the question, so it is an absence —
+    printing it on the REACH panel is the F143 bug with a different word (round-2 review 2026-09-12)."""
+    assert N.parse_macos_networksetup("Current Wi-Fi Network: <redacted>\n") is None
+    assert N.parse_macos_ipconfig("  SSID : <redacted>\n") is None
+    assert N._clean("<redacted>") is None and N._clean("REDACTED") is None
+    # a network genuinely CALLED something with redacted inside it is still a network
+    assert N._clean("redacted-guest") == "redacted-guest"
+
+
 def test_lan_info_never_reports_unknown_as_a_display_word():
     real = N.detect_ssid
     try:
