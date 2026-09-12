@@ -162,7 +162,9 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   no REAL cloudflared has run against the URL parser (every test drives a stand-in; the first real run is the gate);
   `available` is decided once at launch; coverage drops on staleness, not the instant a backhaul socket closes; the
   envelope-kind parity guard walks `push()` call sites only, so a broadcast-only kind (`join`) has no generative guard;
-  `serve()` sets no `origins=`. `build` · `capture`.
+  `serve()` sets no `origins=`; no per-peer cap on pre-hello sockets through the tunnel (the 5 s hello window is the only
+  throttle; the secret plus a random hostname make brute force moot, a cap is defence-in-depth); a LAN peer forging
+  `Cf-Connecting-Ip` is gated but counts toward coverage. Two review passes (2026-09-12) closed 1 high + 9 medium. `build` · `capture`.
 
 ## 4. Hardware, prints, research (H, R)
 
