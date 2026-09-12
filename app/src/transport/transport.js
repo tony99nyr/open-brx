@@ -5,8 +5,16 @@
 //
 // A28 backhaul (contracts §5d): when MC hands us a `pub` (its tunnel URL) alongside the LAN `url`,
 // backhaul is PREFERRED — dialled first on every fresh attempt, with a LAN fallback if it doesn't
-// welcome inside BACKHAUL_GIVEUP_MS; while riding the LAN with a pub in hand we re-probe it every
-// PUB_RETRY_MS and switch over the moment it welcomes. With no pub the loop is exactly what it was.
+// welcome inside BACKHAUL_GIVEUP_MS; while riding the LAN with a pub in hand we check every
+// PUB_RETRY_MS whether it is reachable and, if so, drop the LAN link so the ordinary dial ladder
+// claims it over pub. With no pub the loop is exactly what it was.
+//
+// The pub reachability check (`_probePub`) NEVER sends a hello: MC's node registry is one-socket-
+// per-node (net.py), so a hello from this node_id/node_key on a second socket makes MC hand the
+// connection over and close the first one immediately — well before any client-side "wait for
+// welcome, then decide" logic could run. So the probe only proves the websocket upgrade succeeds,
+// then closes and lets `dropLink()` + the normal reconnect loop (which already prefers pub) claim
+// the node the one correct way.
 import * as E from './envelope.js';
 import { Ring, defaultStorage } from './ring.js';
 import { Clock } from './clock.js';
@@ -37,9 +45,11 @@ export class Transport {
     this._keyKey = `${keyPrefix}.node_key`;
     this.nodeKey = this._persisted(this._keyKey);        // contracts A8: takeover key issued in welcome
     this._pubKey = `${keyPrefix}.pub`; this._secretKey = `${keyPrefix}.secret`; this._sessionKey = `${keyPrefix}.session_id`;
-    this.pub = this._persisted(this._pubKey) || null;               // A28.2: the tunnel URL, session-scoped
-    this.secret = this._persisted(this._secretKey) || null;         // A28.2: the QR's join secret, session-scoped
+    this._pubUrlKey = `${keyPrefix}.pub_url`;
+    this.pub = this._persisted(this._pubKey) || null;               // A28.2: the tunnel URL, session- AND url-scoped
+    this.secret = this._persisted(this._secretKey) || null;         // A28.2: the QR's join secret, session- AND url-scoped
     this._persistedSessionId = this._persisted(this._sessionKey) || null;
+    this._pubUrl = this._persisted(this._pubUrlKey) || null;        // A28.2: the LAN url this pub/secret pair belongs to
     this.reach = null;                       // A28.3: 'lan' | 'backhaul' | null (not yet welcomed)
     this.nodeType = node.node_type || 'phone'; this.appVer = node.app_ver || 'app';
     this.gun = gun; this.playerId = null; this.playerNum = 0; this.matchId = null; this.sessionId = null;
@@ -53,16 +63,23 @@ export class Transport {
     this.stats = { sent: 0, received: 0, malformed: 0, batches: 0 };
     this._ws = null; this._hbTimer = null; this._rcTimer = null; this._helloTimer = null; this._syncTimer = null;
     this._viaCurrent = null;                 // which url `this._ws` (the live/primary socket) dialled
-    this._pubRetryTimer = null; this._probeWs = null; this._probeGiveupTimer = null; this._pubJustLearned = false;
-    this._onMessage = []; this._onState = []; this._onHydrate = [];
+    this._pubRetryTimer = null; this._probeWs = null; this._probeGiveupTimer = null;
+    this._pubJustLearned = false; this._probeStale = false;
+    this._onMessage = []; this._onState = []; this._onHydrate = []; this._onJoin = [];
     this._firstWelcome = null;
   }
 
   // ---------- public API (net.md §6) ----------
   connect({ url, mdns, qr, pub, secret } = {}) {
-    this.url = url || qr || this.url;
+    const nextUrl = url || qr || this.url;
+    // A28.2 security: pub/secret are only ever valid for the MC that issued them. A different LAN
+    // target (a phone told to join a different MC) means the tunnel/secret held for the OLD one must
+    // not be dialled or offered — drop both before adopting whatever THIS call gives us.
+    if (nextUrl && this._pubUrl && nextUrl !== this._pubUrl) { this._setPub(null); this._setSecret(null); }
+    this.url = nextUrl;
     if (pub !== undefined) this._setPub(pub);
     if (secret !== undefined) this._setSecret(secret);
+    if (this.url) { this._pubUrl = this.url; this._store(this._pubUrlKey, this.url); }
     if (!this.url) return Promise.reject(new Error('connect: no url (mdns is not implemented on the phone yet — scan the QR or type the address)'));
     this.closed = false; this.rejected = null;
     return new Promise((resolve, reject) => {
@@ -112,10 +129,14 @@ export class Transport {
   onState(cb) { this._onState.push(cb); return () => { this._onState = this._onState.filter(f => f !== cb); }; }
   /** Fires on every welcome (first connect AND reconnects) with welcome.node — the re-hydration hook. */
   onHydrate(cb) { this._onHydrate.push(cb); return () => { this._onHydrate = this._onHydrate.filter(f => f !== cb); }; }
+  /** A28.2: fires with `{pub, secret}` whenever the WIRE (welcome.join or an MC->node `join` push) tells
+   *  us something about the backhaul target — the app's own hook to mirror it (e.g. into its own
+   *  persisted settings) without having to poll `transport.pub`/`transport.secret`. */
+  onJoin(cb) { this._onJoin.push(cb); return () => { this._onJoin = this._onJoin.filter(f => f !== cb); }; }
   setPreflight(p) { Object.assign(this.preflight, p || {}); }
   setStatusProvider(fn) { this.statusProvider = fn; }
   close() {
-    this.closed = true; this._clearTimers(); this._clearPubRetry();
+    this.closed = true; this._clearTimers(); this._clearPubRetry(); this._probeStale = false;
     if (this._probeGiveupTimer) { this.timers.clearTimeout(this._probeGiveupTimer); this._probeGiveupTimer = null; }
     if (this._probeWs) { const p = this._probeWs; this._probeWs = null; try { p.onopen = p.onmessage = p.onerror = p.onclose = null; p.close(); } catch (_) { /* ignore */ } }
     if (this._firstWelcome) { const p = this._firstWelcome; this._firstWelcome = null; p.reject(new Error('connect: transport closed')); }
@@ -143,11 +164,19 @@ export class Transport {
   _setSecret(secret) { this.secret = secret || null; if (this.secret) this._store(this._secretKey, this.secret); else this._remove(this._secretKey); }
   /** A28.3: MC handed us a (possibly changed, possibly null) pub. `null` = the tunnel went down. A
    *  newly (or differently) learned pub is probed on the very next chance (`_kickPubRetry`), not left
-   *  to wait out a stale PUB_RETRY_MS countdown — "prefer backhaul when offered" means offered NOW. */
+   *  to wait out a stale PUB_RETRY_MS countdown — "prefer backhaul when offered" means offered NOW.
+   *  A pub that changes WHILE a probe is already in flight (that probe is now checking a value we no
+   *  longer want) is re-checked the moment it settles (`_probeStale`); `pub:null` aborts it outright —
+   *  there is nothing left to probe for. */
   _adoptPub(pub) {
     const changed = this._setPub(pub);
     if (!this.pub) {
       this._clearPubRetry();
+      if (this._probeWs) {
+        const ws = this._probeWs; this._probeWs = null; this._probeStale = false;
+        if (this._probeGiveupTimer) { this.timers.clearTimeout(this._probeGiveupTimer); this._probeGiveupTimer = null; }
+        try { ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null; ws.close(); } catch (_) { /* ignore */ }
+      }
       if (this.reach === 'backhaul') {
         // the tunnel we're riding just went away — fall back to the LAN via the normal reconnect loop
         this._log('backhaul tunnel down — falling back to LAN');
@@ -155,9 +184,13 @@ export class Transport {
       }
       return;
     }
-    if (changed) this._pubJustLearned = true;
+    if (changed) {
+      this._pubJustLearned = true;
+      if (this._probeWs) this._probeStale = true;   // an in-flight probe is checking the OLD value — recheck the new one once it settles
+    }
   }
   _adoptSecret(secret) { if (secret !== undefined) this._setSecret(secret); }
+  _fireJoin() { for (const cb of this._onJoin) { try { cb({ pub: this.pub, secret: this.secret }); } catch (e) { this._log('onJoin cb', e); } } }
   _log(...a) { if (globalThis.__BRX_TRANSPORT_DEBUG) console.log('[transport]', ...a); }
   _setState(s) { if (this.state === s) return; this.state = s; for (const cb of this._onState) { try { cb(s); } catch (e) { this._log('onState cb', e); } } }
   _clearTimers() {
@@ -231,9 +264,10 @@ export class Transport {
     const delay = raw * (1 - jitter + 2 * jitter * this.random());
     this._rcTimer = this.timers.setTimeout(() => { this._rcTimer = null; this._open(); }, delay);
   }
-  /** A28.3: while riding the LAN with a pub in hand, re-try pub every PUB_RETRY_MS and switch over the
-   *  moment it welcomes. A side-channel probe — the LAN socket (`this._ws`) stays primary and untouched
-   *  unless/until the probe actually welcomes. */
+  /** A28.3: while riding the LAN with a pub in hand, re-check every PUB_RETRY_MS whether pub is
+   *  reachable. A side-channel probe — the LAN socket (`this._ws`) stays primary and untouched unless/
+   *  until the probe actually proves pub is up, at which point it drops LAN and lets the normal dial
+   *  ladder (which already prefers pub) take it from there. */
   _schedulePubRetry() {
     this._clearPubRetry();
     if (this.state !== 'bound' || this.reach !== 'lan' || !this.pub) return;
@@ -249,6 +283,16 @@ export class Transport {
     if (this.state !== 'bound' || this.reach !== 'lan' || !this.pub) return;
     this._probePub();
   }
+  /** A28.3: is pub reachable at all — a REACHABILITY CHECK ONLY. Deliberately never sends hello: MC's
+   *  node registry is one-socket-per-node, so a hello from this node_id/node_key here would make MC
+   *  hand the connection over and close the LAN socket server-side, immediately, before any client-side
+   *  "wait for welcome, then switch" logic could run — dropping a perfectly good LAN link (including
+   *  mid-match) on nothing more than the probe finding pub alive. Instead: open the socket, and on
+   *  `onopen` (the websocket upgrade succeeded — pub answers) close it right back with 1000 'probe' and
+   *  drop the LAN link so the ORDINARY dial ladder (already pub-first) claims the node the one correct
+   *  way. If it errors or closes before ever opening, do nothing and let the normal PUB_RETRY_MS cadence
+   *  continue — that giveup window also covers a socket that opens but never even completes the upgrade
+   *  in time. */
   _probePub() {
     this._pubRetryTimer = null;
     if (this.state !== 'bound' || this.reach !== 'lan' || !this.pub || this._probeWs) return;
@@ -256,42 +300,27 @@ export class Transport {
     try { ws = this.wsFactory(this.pub); } catch (e) { this._log('pub probe ws factory', e); this._schedulePubRetry(); return; }
     this._probeWs = ws;
     let done = false;
-    const giveUp = () => {
+    const finish = reachable => {
       if (done) return; done = true;
-      this._probeGiveupTimer = null; this._probeWs = null;
-      try { ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null; ws.close(); } catch (_) { /* ignore */ }
-      this._schedulePubRetry();
-    };
-    this._probeGiveupTimer = this.timers.setTimeout(giveUp, this.backhaulGiveupMs);
-    ws.onopen = () => { this._sendRaw(E.makeEnvelope('hello', this._helloBody('backhaul')), ws); };
-    ws.onerror = () => { /* onclose follows */ };
-    ws.onclose = giveUp;
-    ws.onmessage = evt => {
-      if (done) return;
-      const text = typeof evt.data === 'string' ? evt.data : String(evt.data);
-      let env;
-      try { env = E.decode(text, 'mc'); } catch (_) { return; }   // not a welcome yet (or malformed) — keep waiting for the giveup
-      if (env.kind !== 'welcome') return;
-      done = true;
       if (this._probeGiveupTimer) { this.timers.clearTimeout(this._probeGiveupTimer); this._probeGiveupTimer = null; }
       this._probeWs = null;
-      this._switchTo(ws, env);
+      const stale = this._probeStale; this._probeStale = false;
+      if (stale) { this._probePub(); return; }   // pub changed mid-flight — this result is about the OLD value; check the current one now
+      if (reachable) { this._log('pub reachable — dropping LAN so the dial ladder claims it over pub'); this.dropLink(); }
+      else this._schedulePubRetry();
     };
-  }
-  /** The pub probe welcomed: adopt it as the primary socket, drop the LAN one (the ring covers the gap —
-   *  anything not yet acked is in `this.ring` and `_onWelcome`'s `_flush()` re-sends it on the new link). */
-  _switchTo(ws, welcomeEnv) {
-    this._log('backhaul reachable — switching from LAN');
-    const old = this._ws;
-    this._clearTimers();                       // the LAN socket's heartbeat/sync/hello timers no longer apply
-    this._viaCurrent = 'backhaul';
-    this._ws = ws;
-    ws.onopen = null;
+    this._probeGiveupTimer = this.timers.setTimeout(() => {
+      try { ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null; ws.close(); } catch (_) { /* ignore */ }
+      finish(false);
+    }, this.backhaulGiveupMs);
+    ws.onopen = () => {
+      // reachable — prove it and stop. No hello: this is not a session, just a probe.
+      try { ws.onmessage = ws.onerror = ws.onclose = null; ws.close(1000, 'probe'); } catch (_) { /* ignore */ }
+      finish(true);
+    };
     ws.onerror = () => { /* onclose follows */ };
-    ws.onmessage = evt => { if (ws === this._ws) this._onFrame(typeof evt.data === 'string' ? evt.data : String(evt.data)); };
-    ws.onclose = evt => { if (ws !== this._ws) return; this._ws = null; this._onOngoingClose(evt); };
-    if (old) { try { old.onopen = old.onmessage = old.onerror = old.onclose = null; old.close(); } catch (_) { /* ignore */ } }
-    this._onWelcome(welcomeEnv.body);
+    ws.onclose = () => finish(false);
+    ws.onmessage = () => { /* no hello was ever sent — nothing meaningful can arrive here */ };
   }
   _sendRaw(env, ws = this._ws) {
     if (!ws) return false;
@@ -309,7 +338,7 @@ export class Transport {
     if (kind === 'assign') { this._absorb({ player: body.player, team: body.team, roster: body.roster }); }
     if (kind === 'config') { this._absorb({ config: body.config, frames: body.frames, roster: body.roster }); }
     if (kind === 'start') { this._absorb({ start: body, match_id: body.match_id }); }
-    if (kind === 'join') { this._adoptSecret(body.secret); this._adoptPub(body.pub); this._kickPubRetry(); }
+    if (kind === 'join') { this._adoptSecret(body.secret); this._adoptPub(body.pub); this._kickPubRetry(); this._fireJoin(); }
     if (DELIVERED.has(kind)) for (const cb of this._onMessage) { try { cb({ kind, body, t: env.t, id: env.id }); } catch (e) { this._log('onMessage cb', e); } }
   }
   _onWelcome(body) {
@@ -325,7 +354,7 @@ export class Transport {
     this.ring.adoptSeqHi(Number(body.seq_hi));
     this.clock.newBurst(); this.clock.seed(Number(body.server_t), this.now());
     this.reach = this._viaCurrent === 'backhaul' ? 'backhaul' : 'lan';   // A28.3: the live socket's path
-    if (body.join && typeof body.join === 'object') { this._adoptSecret(body.join.secret); this._adoptPub(body.join.pub); }
+    if (body.join && typeof body.join === 'object') { this._adoptSecret(body.join.secret); this._adoptPub(body.join.pub); this._fireJoin(); }
     if (body.node && typeof body.node === 'object') this._absorb(body.node);
     this._setState('open');
     this.bind();

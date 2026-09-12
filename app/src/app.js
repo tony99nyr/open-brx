@@ -217,13 +217,23 @@ let lastMcUrl = null;
  * @param {string} url the LAN join url
  * @param {boolean} [remember] discovery/sweep never overwrites the user's explicit target (polish-loop)
  * @param {{pub?:string|null, secret?:string|null}} [join] A28.2: from a QR scan or a typed full join
- *   code — when given, replaces whatever backhaul target/secret was remembered for this url; when
- *   omitted (every discovery/sweep/remembered-address reconnect), the last-known pub/secret carries
- *   over so those paths still offer backhaul without having to rescan.
+ *   code — when given, replaces whatever backhaul target/secret was remembered for this url. When
+ *   omitted (every discovery/sweep/remembered-address reconnect) neither is passed to Transport at
+ *   all: the Transport's OWN persisted, url-scoped pub/secret stand as-is (it clears them itself if
+ *   `url` differs from the one they were learned for) — passing `settings.mcPub || null` here used to
+ *   force-clear whatever Transport had learned from welcome.join on every single reconnect, so a phone
+ *   that learned its pub in the field lost it again on the very next reconnect, or on a cold boot out
+ *   of Wi-Fi with no other path to MC (review fix). `settings.mcPub`/`mcSecret` are still kept as an
+ *   app-level mirror — seeded here on an explicit join, and kept current afterward via `onJoin` below.
  */
 function connectMc(url, remember = true, join = {}) {
   if (!url) return;
-  if (remember) { settings.mcUrl = url; hud.mcUrl = url; }   // discovery never overwrites the explicit target (polish-loop)
+  if (remember) {
+    // A28.2 security: pub/secret only ever belong to the MC that issued them (Transport enforces this
+    // itself too) — a different remembered target means don't keep mirroring the old one.
+    if (settings.mcUrl && settings.mcUrl !== url) { settings.mcPub = ''; settings.mcSecret = ''; }
+    settings.mcUrl = url; hud.mcUrl = url;   // discovery never overwrites the explicit target (polish-loop)
+  }
   // ...but RECONNECT MC has to have something to dial. It read `settings.mcUrl`, which a
   // discovery-only connect deliberately never writes — so after an auto-discovered join the button
   // called connectMc(undefined) and returned on line 1, doing nothing at all (deferred low).
@@ -235,6 +245,7 @@ function connectMc(url, remember = true, join = {}) {
   transport = new Transport({ node: { app_ver: APP_VER }, gun });
   transport.setStatusProvider(() => engine.statusBody(preflight));
   transport.onHydrate(node => engine.hydrate(node));
+  transport.onJoin(({ pub, secret }) => { settings.mcPub = pub || ''; settings.mcSecret = secret || ''; });
   transport.onMessage(m => { engine.onMcMessage(m); if (m.kind === 'feedback' && m.body && m.body.kind === 'kill') haptic('kill'); });
   transport.onState(s => {
     // Bound to an MC: stop letting discovery/sweep pick a different one. `allowAssist` opens that
@@ -248,7 +259,7 @@ function connectMc(url, remember = true, join = {}) {
     engine.setWsState(s, transport.rejected);
     log(s === 'rejected' ? `MC REFUSED: ${transport.rejected && transport.rejected.reason} (${transport.rejected && transport.rejected.code})` : `MC link ${s}`, s === 'bound' ? 'lk' : s === 'rejected' ? 'le' : 'li');
   });
-  transport.connect({ url, pub: settings.mcPub || null, secret: settings.mcSecret || null }).then(() => log('MC hydrated', 'lk')).catch(e => log('MC connect: ' + (e && e.message || e), 'le'));
+  transport.connect({ url, pub: join.pub, secret: join.secret }).then(() => log('MC hydrated', 'lk')).catch(e => log('MC connect: ' + (e && e.message || e), 'le'));
 }
 
 // ---------- HUD handlers ----------
