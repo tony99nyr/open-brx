@@ -72,7 +72,13 @@ function statBlock(r, opts = {}) {
   const ttk = pick(r && r.ttk_ms, st.ttk_ms);
   const pool = pick(r && r.pool, st.pool);
   const reload = pick(r && r.reload_s, st.reload_s, st.reload_ms != null ? st.reload_ms / 1000 : null);
-  const facts = [
+  const facts = (opts.compact ? [
+    // the TRY-OUT panel's one line: dmg · hits to kill · kill time. Pool and reload stay in the ⓘ pane — with them the
+    // line ran 394 px into a 312 px box (screen-truth invariants, 2026-09-12).
+    dmgHit != null ? `DMG <b>${dmgHit}</b>/HIT` : null,
+    htk != null ? `HITS TO KILL <b>${htk}</b>` : null,
+    ttk != null ? `KILL <b>${(ttk / 1000).toFixed(2)}S</b>` : null,
+  ] : [
     dmgHit != null ? `DMG <b>${dmgHit}</b>/HIT` : null,
     // the pool is part of the number: MC quotes htk against the HOST'S health config now, so the
     // same "13" means a different thing between games (API.md GET /api/weapons; the MC screens
@@ -80,7 +86,7 @@ function statBlock(r, opts = {}) {
     htk != null ? `HITS TO KILL <b>${htk}</b>${pool != null ? ` · ${pool}` : ''}` : null,
     ttk != null ? `KILL <b>${(ttk / 1000).toFixed(2)}S</b>` : null,
     reload != null ? `RELOAD <b>${(+reload).toFixed(1)}S</b>` : null,
-  ].filter(Boolean).join(' · ');
+  ]).filter(Boolean).join(' · ');
   // `compact` = the TRY-OUT panel: two bars + one facts line. The panel sits above READY UP in a fixed box; when the
   // catalog began carrying all four bars and the kill/reload facts (the regenerated demo catalog, 2026-09-12 — and MC's
   // real WeaponView always did), the four-bar block grew the panel into the footer: the F111 hypothesis, made real.
