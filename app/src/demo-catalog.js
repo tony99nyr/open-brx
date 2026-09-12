@@ -1,5 +1,6 @@
-// GENERATED for ?demo from mcp/brx_mcp/mc/weapons.json (shape = WeaponView / PerkView, docs/spec/loadout.md §1).
-// A copy, not an import: the phone bundle must not depend on the server tree. Regenerate: see app/src/demo.js header.
+// GENERATED for ?demo from mcp/brx_mcp/mc/weapons.json + perks.json (shapes = WeaponView / PerkView,
+// docs/spec/loadout.md §1). A copy, not an import: the phone bundle must not depend on the server tree.
+// Regenerate: python3 mcp/tools/gen_ui_catalog.py - never hand-edit between the markers.
 // GENERATED-START weapons
 export const DEMO_WEAPONS = [
   {
@@ -626,73 +627,83 @@ export const DEMO_WEAPONS = [
   }
 ];
 // GENERATED-END weapons
+// GENERATED-START perks
 export const DEMO_PERKS = [
- {
-  "perk_id": "body_armor",
-  "name": "Body Armor",
-  "desc": "Plate up. You start every life with +50 armor over the game default \u2014 more hits before your health takes a scratch.",
-  "tags": [
-   "passive"
-  ],
-  "mechanism": "passive",
-  "effects": {
-   "max_armor_add": 50
+  {
+    "perk_id": "body_armor",
+    "name": "Body Armor",
+    "desc": "Start every life with 50 extra armor. Armor soaks hits before your health does — you survive one or two more shots in every fight.",
+    "tags": [
+      "passive",
+      "defense"
+    ],
+    "mechanism": "passive",
+    "effects": {
+      "max_armor_add": 50
+    },
+    "verified": true,
+    "hidden": false
   },
-  "verified": true,
-  "hidden": false
- },
- {
-  "perk_id": "extended_mags",
-  "name": "Extended Mags",
-  "desc": "Double-capacity magazines and twice the reserve for your primary. Reload half as often.",
-  "tags": [
-   "passive"
-  ],
-  "mechanism": "passive",
-  "effects": {
-   "ammo_mult": 2
+  {
+    "perk_id": "extended_mags",
+    "name": "Extended Mags",
+    "desc": "Double the magazine and double the reserve on your primary. Fewer reloads, longer fights, more rounds to burn.",
+    "tags": [
+      "passive",
+      "ammo"
+    ],
+    "mechanism": "passive",
+    "effects": {
+      "ammo_mult": 2
+    },
+    "verified": true,
+    "hidden": false
   },
-  "verified": true,
-  "hidden": false
- },
- {
-  "perk_id": "quick_hands",
-  "name": "Quick Hands",
-  "desc": "Your primary reloads in half the time.",
-  "tags": [
-   "passive"
-  ],
-  "mechanism": "passive",
-  "effects": {
-   "reload_mult": 0.5
+  {
+    "perk_id": "quick_hands",
+    "name": "Quick Hands",
+    "desc": "Reload in half the time. Your primary is back in the fight before theirs is.",
+    "tags": [
+      "passive",
+      "handling"
+    ],
+    "mechanism": "passive",
+    "effects": {
+      "reload_mult": 0.5
+    },
+    "verified": false,
+    "hidden": false
   },
-  "verified": false,
-  "hidden": false
- },
- {
-  "perk_id": "easy_reload",
-  "name": "Easy Reload",
-  "desc": "The orange side button reloads \u2014 no need to work the pull-back lever.",
-  "tags": [
-   "passive"
-  ],
-  "mechanism": "passive",
-  "effects": {
-   "alt_reload": true
+  {
+    "perk_id": "easy_reload",
+    "name": "Easy Reload",
+    "desc": "Press the orange ALT button to reload — no pump needed. For anyone who finds the pull-back reload hard to work.",
+    "tags": [
+      "passive",
+      "handling",
+      "assist"
+    ],
+    "mechanism": "passive",
+    "effects": {
+      "alt_reload": true
+    },
+    "verified": true,
+    "hidden": false
   },
-  "verified": true,
-  "hidden": false
- },
- {
-  "perk_id": "quick_switch",
-  "name": "Quick Switch",
-  "desc": "Draw your second weapon in half the time: the gun's swap delay drops from 0.85 s to 0.43 s.",
-  "tags": ["passive", "handling"],
-  "mechanism": "passive",
-  "effects": {
-   "switch_mult": 0.5
-  },
-  "verified": true,
-  "hidden": false
- }
+  {
+    "perk_id": "quick_switch",
+    "name": "Quick Switch",
+    "desc": "Draw your second weapon in half the time: the gun's swap delay drops from 0.85 s to 0.43 s.",
+    "tags": [
+      "passive",
+      "handling"
+    ],
+    "mechanism": "passive",
+    "effects": {
+      "switch_mult": 0.5
+    },
+    "verified": true,
+    "hidden": false
+  }
 ];
+// GENERATED-END perks

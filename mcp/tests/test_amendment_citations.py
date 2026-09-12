@@ -38,8 +38,10 @@ _SYMBOL = re.compile(r"/api/[a-z0-9_/{}.-]+"
 ALLOW: dict[str, str] = {}
 
 
-def _amendment_rows() -> list[tuple[str, str]]:
-    text = CONTRACTS.read_text(encoding="utf-8")
+def _amendment_rows(text: str | None = None) -> list[tuple[str, str]]:
+    """(amendment id, its "folded into" cell) for every §10 row. `text` overrides the file, so the
+    floor test below can feed the REAL parser a fabricated row."""
+    text = CONTRACTS.read_text(encoding="utf-8") if text is None else text
     head = "## 10. Amendment index"
     assert head in text, "contracts.md no longer has the §10 amendment index"
     section = text[text.index(head):].split("\n## ")[0]
@@ -51,9 +53,9 @@ def _amendment_rows() -> list[tuple[str, str]]:
     return rows
 
 
-def _cited_symbols() -> dict[str, set[str]]:
+def _cited_symbols(text: str | None = None) -> dict[str, set[str]]:
     out: dict[str, set[str]] = collections.defaultdict(set)
-    for aid, folded in _amendment_rows():
+    for aid, folded in _amendment_rows(text):
         for span in re.finditer(r"`([^`]+)`", folded):
             for part in re.split(r"[\s,;]+", span.group(1)):
                 part = part.strip("().,;:*|→-")
@@ -78,10 +80,12 @@ def _haystack() -> tuple[str, set[str]]:
     return "\n".join(text), names
 
 
-def test_every_amendment_citation_resolves():
-    source, names = _haystack()
+def _unresolved(cited: dict[str, set[str]], source: str, names: set[str]) -> dict[str, list[str]]:
+    """THE check, as one function both the real test and its floor call. It used to live inline in the
+    test body, which is why the "can actually fail" test below could only assert that two invented
+    strings were absent from the haystack — it never ran a line of the resolver it was vouching for."""
     missing: dict[str, list[str]] = collections.defaultdict(list)
-    for aid, syms in _cited_symbols().items():
+    for aid, syms in cited.items():
         for s in sorted(syms):
             if s in ALLOW:
                 continue
@@ -92,6 +96,12 @@ def test_every_amendment_citation_resolves():
             needle = s if s.startswith("/api/") else s.split(".")[-1]
             if needle not in source:
                 missing[aid].append(s)
+    return missing
+
+
+def test_every_amendment_citation_resolves():
+    source, names = _haystack()
+    missing = _unresolved(_cited_symbols(), source, names)
     assert not missing, (
         "contracts.md §10 points at code that does not exist (rename the row, or build the symbol): "
         + "; ".join(f"{k}: {v}" for k, v in sorted(missing.items())))
@@ -108,8 +118,37 @@ def test_the_citation_check_reads_real_rows():
     assert len(source) > 500_000, f"the source haystack is only {len(source)} chars — the code dirs stopped being read"
 
 
+# A §10 table the parser must read exactly as it reads contracts.md's own: one real symbol, one symbol
+# nobody wrote, and one missing file. Tabs/pipes match the live table's shape.
+_FAKE_SECTION = """## 10. Amendment index
+
+| id | date | what | folded into |
+| --- | --- | --- | --- |
+| A99 | 2026-09-12 | a fabricated row | `weapon_view`, `def_nonexistent_symbol_xyz`, `no_such_module.py` |
+
+## 11. Next
+"""
+
+
 def test_the_citation_check_can_actually_fail():
-    """Provoke it: a plausible-looking symbol nobody wrote must be reported."""
+    """Run the REAL parser and the REAL resolver over a fabricated §10 row.
+
+    Two symbols in it do not exist and one does, so this pins both directions at once: the check must
+    report exactly the two, and must not report the one. Asserting only that an invented string is
+    absent from the haystack (what this test did before) passes just as happily when the resolver is
+    broken, because it never calls it.
+    """
+    cited = _cited_symbols(_FAKE_SECTION)
+    assert "A99" in cited, f"the row parser did not read the fabricated §10 row: {dict(cited)}"
+    assert {"weapon_view", "def_nonexistent_symbol_xyz", "no_such_module.py"} <= cited["A99"], cited["A99"]
+
     source, names = _haystack()
-    assert "a_symbol_nobody_ever_wrote" not in source
-    assert "no_such_module.py" not in names
+    missing = _unresolved(cited, source, names)
+    assert "def_nonexistent_symbol_xyz" in missing.get("A99", []), (
+        "the resolver did not report a symbol nobody ever wrote — it would pass a §10 index pointing at "
+        f"nothing: {dict(missing)}")
+    assert "no_such_module.py" in missing.get("A99", []), (
+        f"the resolver did not report a cited FILE that does not exist: {dict(missing)}")
+    assert "weapon_view" not in missing.get("A99", []), (
+        "the resolver reported `weapon_view`, which `mcp/brx_mcp/mc/views.py` really defines — it is "
+        "failing everything, so the real test above proves nothing either")

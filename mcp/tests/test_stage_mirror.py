@@ -1075,11 +1075,23 @@ _JS_KEYWORDS = {"if", "for", "while", "switch", "catch", "do", "else", "return",
                 "function", "try"}
 
 
+# `^  ` is exactly the class-body indent: `\s*` anywhere before the name would swallow deeper
+# indentation and pull local function calls (`      paint(next, ...)`) in as methods. A `get`/`set`
+# prefix must be followed by real whitespace, or `setReady(` parses as `set` + `Ready`.
+_METHOD = _re.compile(r"^  (?:static\s+)?(?:async\s+)?(?:(?:get|set)\s+)?(\*\s*)?(\w+)\s*\(", _re.M)
+
+
 def _engine_methods() -> set[str]:
-    """Names declared at one indent level inside the Engine class (`  foo(` / `  async foo(`)."""
+    """Names declared at one indent level inside the Engine class.
+
+    2026-09-12 polish pass: the original pattern only saw `  foo(` / `  async foo(`, so it missed all
+    thirteen ACCESSORS — and accessors are where engine.js keeps its config rules (`maxHp`, `maxArmor`,
+    `respawnDelayMs`, `respawnType`, `respawnGate`, `stunMs`, `timeLimitMs`). A rule the scan cannot see
+    is a rule the stage can silently fail to model, which is the one thing this file exists to catch.
+    `static`, `get`/`set` and generator (`*name`) declarations are all read now.
+    """
     text = _ENGINE_JS.read_text(encoding="utf-8")
-    found = {m.group(1) for m in _re.finditer(r"^  (?:async\s+)?(_?[A-Za-z][A-Za-z0-9_]*)\s*\(", text, _re.M)}
-    return found - _JS_KEYWORDS
+    return {m.group(2) for m in _METHOD.finditer(text)} - _JS_KEYWORDS
 
 
 def _stage_methods() -> set[str]:
@@ -1101,11 +1113,14 @@ def _unmirrored() -> set[str]:
     return {m for m in _engine_methods() if m not in stage and _snake(m) not in stage}
 
 
-# Pinned from the tree of 2026-09-12 (95 names). Shrinking it is progress; GROWING it needs a reason.
+# Pinned from the tree of 2026-09-12 (107 names, re-pinned once the accessor scan above started seeing
+# getters). Shrinking it is progress; GROWING it needs a reason.
 KNOWN_UNMIRRORED = {
     # transport / MC session: the stage talks to a gun, never to Mission Control
     "onMcMessage", "onBleConnected", "onBleDropped", "setWsState", "hydrate", "statusBody", "resume",
     "resumeSchedule", "_event", "_probe", "_checkEcho", "ackEnd", "onResultPush", "resultWait",
+    # app lifecycle + the A26 pick debounce: the stage has no foreground/background and no MC to pick from
+    "_awake", "commitPick",
     "_beginReconcile", "_endReconcile", "_reportPossession", "feedback", "alert", "control", "_cue",
     "_beginResync", "_resyncButton", "_resyncDone", "_resyncEvidence", "_resyncNotLive", "_resyncTick",
     # persistence + config application (the stage is configured directly, not by a pushed bundle)
@@ -1126,6 +1141,18 @@ KNOWN_UNMIRRORED = {
     "_headsetDeath", "_headsetDelayed", "_headsetFlash", "_headsetRest", "_reassertDeathBlink",
     # roles + stations
     "_carrier", "_setRole", "_respawnStation", "_stationRevivable", "setStations",
+    # ---- accessors (2026-09-12: newly VISIBLE to the scan, not newly unmirrored) ----
+    # config values the stage resolves into plain attributes rather than same-named accessors:
+    # `_apply_config` sets `self.max_hp` / `self.max_armor` from the same `health` block, and `stun_s`
+    # is the stage's `stunMs` under the unit it works in (seconds). Mirrored in substance, not in name.
+    "maxHp", "maxArmor", "stunMs",
+    # match CLOCK: the stage has none. The operator drives spawn, revive and end by hand from the
+    # bench script, which is why `startAt`/`tick`/`_endLocal` are pinned above; these are the config
+    # readers that only a self-running clock would need.
+    "respawnDelayMs", "respawnType", "respawnGate", "timeLimitMs", "goLiveT", "endT",
+    # display helpers over `this.team` / the equipped weapon — HUD surface, no gun-side behaviour
+    "teamTid", "teamKey", "weaponName",
+    # `stunEnabled` is deliberately ABSENT: the stage has `stun_enabled`, and it must stay paired.
 }
 
 
@@ -1142,16 +1169,29 @@ def test_stage_ports_every_engine_method_it_claims():
     assert not new, (
         "new engine.js method(s) with no GunStage counterpart — port them to the stage, or pin them in "
         "KNOWN_UNMIRRORED with a reason: " + ", ".join(new))
-    healed = sorted(KNOWN_UNMIRRORED - unmirrored)
-    assert not healed, (
-        "these are now mirrored on the stage — delete them from KNOWN_UNMIRRORED so the set keeps "
-        "shrinking: " + ", ".join(healed))
+    # A pinned name that no longer turns up unmirrored is EITHER ported to the stage OR gone from
+    # engine.js (removed, renamed, or moved out of the class body). Those need opposite follow-ups, and
+    # the old message asserted the happy one for both — sending a reader to look for a stage method that
+    # was never written. Say which it is; fail either way, so the pin gets cleaned.
+    engine = _engine_methods()
+    stale = sorted(KNOWN_UNMIRRORED - unmirrored)
+    ported = [m for m in stale if m in engine]
+    vanished = [m for m in stale if m not in engine]
+    assert not stale, "; ".join(filter(None, [
+        ("now mirrored on the stage — delete them from KNOWN_UNMIRRORED so the set keeps shrinking: "
+         + ", ".join(ported)) if ported else "",
+        ("no longer declared in app/src/engine.js at all (REMOVED or RENAMED, not mirrored) — find the new "
+         "name and re-pin it, or drop the entry: " + ", ".join(vanished)) if vanished else "",
+    ]))
 
 
 def test_the_mirror_scan_sees_both_classes():
     """The floor: two empty sets agree perfectly. Both parsers must find real methods."""
     eng, stg = _engine_methods(), _stage_methods()
     assert len(eng) > 100, f"only {len(eng)} engine.js methods parsed — the declaration pattern moved"
+    for getter in ("maxHp", "respawnDelayMs", "timeLimitMs", "stunEnabled"):
+        assert getter in eng, (f"`get {getter}()` is not parsed out of engine.js — the accessor pattern "
+                               "regressed and every config RULE is invisible to this file again")
     assert len(stg) > 100, f"only {len(stg)} GunStage methods parsed — the class body pattern moved"
     mirrored = eng - _unmirrored()
     assert len(mirrored) > 25, f"only {len(mirrored)} engine methods resolve to a stage method"

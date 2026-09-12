@@ -254,6 +254,24 @@ def test_handoff_is_one_screen_by_bytes_too():
         "of banners — overwrite it, never append")
 
 
+# The two id scans below were `DOCS.glob("*.md")` — top level only, so `docs/spec/` (contracts.md, the
+# spec of record) and `docs/manual/` were exempt from both. 2026-09-12: 27 files scanned, 70 tracked.
+# `archive/` is history by policy (CLAUDE.md: grep it, do not read it) and `experiment-log/` is the lab
+# notebook, where an entry written on the day an item was open is a correct record, not rot.
+_ID_SCAN_SKIP_DIRS = ("archive", "experiment-log")
+
+
+def _living_docs() -> list[pathlib.Path]:
+    """Every tracked markdown page a reader is meant to TRUST, at any depth under docs/."""
+    out = []
+    for f in sorted(DOCS.rglob("*.md")):
+        parts = f.relative_to(DOCS).parts
+        if parts[:-1] and parts[0] in _ID_SCAN_SKIP_DIRS:
+            continue
+        out.append(f)
+    return out
+
+
 def _dated_closed_ids() -> set[str]:
     """Ids with a `- YYYY-MM-DD **F42** ...` closure line in the archive — CLAUDE.md's one-line-per-item
     session-close format. A block heading in the older part of the file is deliberately NOT counted."""
@@ -274,7 +292,7 @@ def _closed_ids_cited_as_open() -> list[str]:
     and a heading whose id appears BEFORE its glyph (`### B1 · F124 · title 🔴`)."""
     closed = _dated_closed_ids()
     hits = []
-    for f in sorted(DOCS.glob("*.md")):
+    for f in _living_docs():
         for n, line in enumerate(f.read_text(encoding="utf-8", errors="ignore").split("\n"), 1):
             found = []
             m = _ROW.match(line)
@@ -312,8 +330,23 @@ def test_the_closed_as_open_check_can_actually_fail():
 # weapon-design.md's own local question register, so those two letters are a different namespace that
 # happens to share the shape (2026-09-12: scanning them produced 54 false positives and 0 real ones).
 _CITED_ID = re.compile(r"\*\*([FSBEPQKDGR]\d{1,3})\b")
+# An entry is either a bare id (allowed anywhere) or a `(file name, id)` pair (allowed in that page
+# only) — the same two-level shape `_CLOSED_AS_OPEN_ALLOW` above uses.
+#
 # `B0` is bench-grenade.md's own rung label ("**B0** (geometry) is not **B**"), not a followup id.
-_CITED_ID_ALLOW = {"B0"}
+#
+# 2026-09-12, when this scan grew from `docs/*.md` to every living page: `docs/spec/` turned out to hold
+# two LOCAL registers that happen to share a FOLLOWUPS letter, exactly like the `H`/`U` case the
+# `_CITED_ID` comment above describes. `node.md` §10 "Open questions" numbers its own Q1…Q12 (FOLLOWUPS
+# separately owns Q13/Q15/Q16/Q18), and `start-sequence.md` numbers its own edge cases E1…E11 (FOLLOWUPS
+# separately owns E2…E7, the extensibility items). Both define every id they cite, in the same file, a
+# few lines away — so they are self-resolving, not dangling. Pinned per FILE rather than by bare id, so
+# a genuinely missing **Q2** cited from anywhere else still fails.
+_CITED_ID_ALLOW: set = {
+    "B0",
+    *(("node.md", i) for i in ("Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q10")),
+    *(("start-sequence.md", i) for i in ("E9", "E10", "E11")),
+}
 
 
 def _known_ids() -> set[str]:
@@ -332,15 +365,30 @@ def _known_ids() -> set[str]:
 def test_every_cited_followup_id_resolves():
     """A bolded **F42** that is in neither FOLLOWUPS nor the archive is a dangling reference: the reader
     cannot find out what it was, and the usual cause is an id renumbered or dropped rather than closed."""
-    known = _known_ids() | _CITED_ID_ALLOW
+    known = _known_ids() | {a for a in _CITED_ID_ALLOW if isinstance(a, str)}
     missing: dict[str, str] = {}
-    for f in sorted(DOCS.glob("*.md")):
+    for f in _living_docs():
         for n, line in enumerate(f.read_text(encoding="utf-8", errors="ignore").split("\n"), 1):
             for m in _CITED_ID.finditer(line):
+                if (f.name, m.group(1)) in _CITED_ID_ALLOW:
+                    continue                       # a local register that numbers its own ids (see above)
                 missing.setdefault(m.group(1), f"{f.relative_to(REPO)}:{n}")
     dangling = {k: v for k, v in missing.items() if k not in known}
     assert not dangling, ("docs/ cites followup ids that resolve to nothing (not in FOLLOWUPS.md, not in "
                           "archive/followups-closed.md, not in the snapshot): " + str(dangling))
+
+
+def test_the_id_scans_reach_the_whole_docs_tree():
+    """The widening itself: both id scans read `docs/*.md` only until 2026-09-12, which exempted
+    `docs/spec/` (the spec of record) and `docs/manual/` (the published manual) from either check."""
+    pages = _living_docs()
+    names = {f.relative_to(DOCS).as_posix() for f in pages}
+    assert len(pages) > 60, f"only {len(pages)} living docs pages scanned — the walk stopped recursing"
+    for required in ("spec/contracts.md", "manual/operate.md", "FOLLOWUPS.md", "adr/0001-companion-rider-architecture.md"):
+        assert required in names, f"docs/{required} is not in the id scan's file list"
+    for excluded in pages:
+        assert excluded.relative_to(DOCS).parts[0] not in _ID_SCAN_SKIP_DIRS, (
+            f"{excluded} is history/lab-notebook and must stay out of the id scans")
 
 
 def test_the_id_resolution_check_sees_real_ids():

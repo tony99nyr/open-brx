@@ -11,10 +11,17 @@ and 39 rof when the shipped weapon is 192 and 54, and its mode blurbs were a rel
 `mc/state.py`. A demo that shows numbers the server does not send is worse than no demo: it is what
 the operator learns the arsenal from.
 
-Source of truth, in both cases the thing MC actually publishes:
+2026-09-12 polish pass: the PERK arrays were the last hand copies. Both files carried one OUTSIDE the
+markers and all three texts had drifted apart (`body_armor`'s blurb read differently in perks.json, in
+the mock and in the demo), so the operator and the player were being taught three different perks.
+They are generated now too.
+
+Source of truth, in every case the thing MC actually publishes:
   weapons  `Compiler().weapon_catalog()` -> `views.weapon_views()`  (the API.md `WeaponView`, so the
            derived fields (mags, dmg_per_hit, pool, ttk_ms, ammo_total, bars, caution) come along,
            and a `hidden` row like `melee` is dropped exactly where the server drops it)
+  perks    `perks.default_perks().all()` -> the API.md `PerkView` (`PerkCatalog.view()`, the same rows
+           `GET /api/perks` serves), so hidden `slot_frame` rows are dropped where the server drops them
   modes    `mc/state.py MODES`, prose fields only (`params`/`defaults` stay hand-written TS)
 
 Only the text BETWEEN the marker comments is replaced; everything else in each file is left alone.
@@ -46,6 +53,15 @@ def weapon_views() -> list[dict]:
     return sorted(out, key=lambda w: w["weapon_id"])
 
 
+def perk_views() -> list[dict]:
+    """Every VISIBLE perk as a `PerkView` — `PerkCatalog.all()` is the exact list `/api/perks` serves,
+    so the demo browses the perks the server would hand a phone, with perks.json's own copy."""
+    sys.path.insert(0, str(REPO / "mcp"))
+    from brx_mcp.mc.perks import default_perks
+
+    return default_perks().all()
+
+
 def mode_text() -> list[dict]:
     sys.path.insert(0, str(REPO / "mcp"))
     from brx_mcp.mc.state import MODES
@@ -63,7 +79,10 @@ def _lit(obj, indent: int) -> str:
 def _splice(text: str, tag: str, block: str, path: pathlib.Path) -> str:
     start, end = f"// GENERATED-START {tag}", f"// GENERATED-END {tag}"
     if start not in text or end not in text:
-        raise SystemExit(f"{path}: missing the {start} / {end} markers - add them around the block first")
+        # RuntimeError, not SystemExit: `run_tests.py` catches Exception, and a SystemExit from an
+        # in-process render would kill the whole suite instead of failing one test. `main()` turns it
+        # back into exit 1 for the CLI.
+        raise RuntimeError(f"{path}: missing the {start} / {end} markers - add them around the block first")
     head = text[:text.index(start) + len(start)]
     tail = text[text.index(end):]
     return f"{head}\n{block.rstrip()}\n{tail}"
@@ -71,7 +90,7 @@ def _splice(text: str, tag: str, block: str, path: pathlib.Path) -> str:
 
 def render() -> dict[pathlib.Path, str]:
     """The two files as they SHOULD be. Pure: reads the sources, touches nothing."""
-    weapons, modes = weapon_views(), mode_text()
+    weapons, perks, modes = weapon_views(), perk_views(), mode_text()
 
     ts = DATA_TS.read_text(encoding="utf-8")
     ts = _splice(ts, "weapons",
@@ -81,17 +100,26 @@ def render() -> dict[pathlib.Path, str]:
                  "// Prose only; `params` and `defaults` below stay hand-written.\n"
                  "const MODE_TEXT: Record<string, Omit<ModeInfo, 'params' | 'defaults'>> = "
                  + _lit({m["mode"]: m for m in modes}, 0) + ";", DATA_TS)
+    ts = _splice(ts, "perks",
+                 "// Visible perks only, exactly as `GET /api/perks` serves them.\n"
+                 "export const PERKS: PerkView[] = " + _lit(perks, 0) + ";", DATA_TS)
 
     js = DEMO_JS.read_text(encoding="utf-8")
     js = _splice(js, "weapons", "export const DEMO_WEAPONS = " + _lit(weapons, 0) + ";", DEMO_JS)
+    js = _splice(js, "perks", "export const DEMO_PERKS = " + _lit(perks, 0) + ";", DEMO_JS)
 
     return {DATA_TS: ts, DEMO_JS: js}
 
 
 def main(argv: list[str]) -> int:
     check = "--check" in argv
+    try:
+        targets = render()
+    except RuntimeError as exc:          # a renamed/missing marker: a CLI error, exit 1, no traceback
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
     stale = []
-    for path, want in render().items():
+    for path, want in targets.items():
         if path.read_text(encoding="utf-8") == want:
             continue
         stale.append(str(path.relative_to(REPO)))

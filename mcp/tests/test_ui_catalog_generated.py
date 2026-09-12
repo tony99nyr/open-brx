@@ -1,10 +1,14 @@
-"""The two UI weapon catalogs are GENERATED — this fails when either drifts from the server.
+"""The two UI weapon/perk catalogs are GENERATED — this fails when either drifts from the server.
 
 2026-09-12 doc-rot review (Tony's D5). `webapp/mc/src/mock/data.ts` and `app/src/demo-catalog.js` each
 hold a copy of the weapon catalog under a "GENERATED from weapons.json" banner, written by a script
 nobody checked in, so in practice they were hand-maintained and both had drifted: the mock showed the
 assault rifle at 384 reserve / 39 rof against a shipped 192 / 54, and the mode blurbs trailed
 `mc/state.py`. The demo IS where the arsenal gets learned, so a wrong number there teaches a wrong gun.
+
+The PERK arrays were the same story a layer down (polish pass, 2026-09-12): each file carried a
+hand-typed copy of `perks.json` OUTSIDE the markers, and `body_armor`'s blurb read differently in all
+three places. They are spliced from `PerkCatalog.all()` now, so the demo perk is the served perk.
 
 `mcp/tools/gen_ui_catalog.py` is now that script, and this test runs it in memory.
 
@@ -79,3 +83,61 @@ def test_the_generated_numbers_are_the_shipped_ones():
         block = text[text.index('"weapon_id": "assault_rifle"'):][:1200]
         assert f'"reserve": {ar["reserve"]}' in block, f"{path.name} does not quote weapons.json reserve"
         assert f'"rpm": {ar["rof"]}' in block, f"{path.name} does not quote weapons.json rof"
+
+
+def test_the_generated_perks_are_the_shipped_ones():
+    """The perk blurb the player reads in the demo is the one `GET /api/perks` serves.
+
+    Pin the TEXT, not just the ids: three copies of `body_armor` with three different descriptions is
+    what this block replaced, and only a text assertion catches that coming back.
+    """
+    import json
+    raw = json.loads((REPO / "mcp" / "brx_mcp" / "mc" / "perks.json").read_text(encoding="utf-8"))
+    visible = [p for p in raw["perks"] if not p.get("hidden")]
+    hidden = [p for p in raw["perks"] if p.get("hidden")]
+    assert visible and hidden, "perks.json no longer has both a visible and a hidden row to tell apart"
+    for path, text in _render().items():
+        assert "GENERATED-START perks" in text, f"{path.name} has no generated perk block"
+        block = text[text.index("GENERATED-START perks"):text.index("GENERATED-END perks")]
+        for p in visible:
+            assert f'"perk_id": "{p["perk_id"]}"' in block, f"{path.name} lost perk {p['perk_id']}"
+            assert json.dumps(p["desc"], ensure_ascii=False) in block, (
+                f"{path.name}'s {p['perk_id']} text is not perks.json's — run `{COMMAND}`")
+        for p in hidden:
+            assert f'"perk_id": "{p["perk_id"]}"' not in block, (
+                f"{path.name} publishes the hidden perk {p['perk_id']}; the server does not")
+
+
+def test_no_perk_array_survives_outside_the_markers():
+    """The defect itself: a second, hand-typed perk list somewhere else in the file. Only the generated
+    block may declare one, or the copies drift apart again."""
+    for path in (REPO / "webapp" / "mc" / "src" / "mock" / "data.ts", REPO / "app" / "src" / "demo-catalog.js"):
+        if not path.is_file():
+            raise Skipped(f"{path.relative_to(REPO)} is missing")
+        text = path.read_text(encoding="utf-8")
+        assert "GENERATED-START perks" in text, f"{path.relative_to(REPO)} has no perk markers"
+        outside = text[:text.index("GENERATED-START perks")] + text[text.index("GENERATED-END perks"):]
+        assert "perk_id:" not in outside and '"perk_id"' not in outside, (
+            f"{path.relative_to(REPO)} declares perk rows outside the generated block — move them inside "
+            f"the markers and run `{COMMAND}`")
+
+
+def test_the_missing_marker_error_does_not_kill_the_suite():
+    """`_splice` used to raise SystemExit, which `run_tests.py` (catching Exception) would not catch: one
+    renamed marker took the whole suite down instead of failing one test."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("gen_ui_catalog_probe", GENERATOR)
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except ImportError as e:
+        raise Skipped(f"gen_ui_catalog imports: {e}")
+    try:
+        mod._splice("no markers here", "perks", "block", pathlib.Path("probe.ts"))
+    except RuntimeError as e:
+        assert "markers" in str(e)
+        return
+    except SystemExit:
+        raise AssertionError("_splice still raises SystemExit — run_tests.py catches only Exception, so a "
+                             "missing marker would abort the suite instead of failing this test")
+    raise AssertionError("_splice accepted text with no markers at all")

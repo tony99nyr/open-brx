@@ -16,7 +16,9 @@ dependencies = [
 # is the accurate dependency list for whichever install path replaces that by hand.
 [project.optional-dependencies]
 mc = ["websockets>=13", "starlette", "uvicorn", "zeroconf"]
-bench = ["numpy", "pillow", "pyserial", "librosa", "faster-whisper"]
+# `matplotlib`: `tools/soundbank_analyze.py` imports it for the spectrogram/envelope plots and was
+# the one undeclared third-party import in tools/ (found 2026-09-12 by tests/test_optional_deps.py).
+bench = ["numpy", "pillow", "pyserial", "librosa", "faster-whisper", "matplotlib"]
 
 [project.scripts]
 brx-mcp = "brx_mcp.server:main"
