@@ -24,7 +24,9 @@ fix lanes, fail-first tests), a real-browser pass on every changed screen, long 
   `test_stage_mirror` spun to 23 GB under a hand clock and crashed WSL three times (fixed; run suites under the watchdog).
 - **Doc-rot pass (another session, same day):** eleven `--only` commits 5e4ced8..edeb0d3 — the triage list and the banner
   archive are gone (old banners: `git log -p -- docs/HANDOFF.md`), one generator for both UI catalogs
-  (`mcp/tools/gen_ui_catalog.py`, drift-tested), new hygiene guards. Its ledger is the artifact "Open BRX Rot Ledger".
+  (`mcp/tools/gen_ui_catalog.py`, drift-tested), new hygiene guards (links repo-wide, closed ids cited as open, spec kinds vs
+  whitelists, §10 symbols, stage coverage). Ledger: the artifact "Open BRX Rot Ledger"; method: `.claude/skills/doc-rot-review/`.
+  Left open from it: F131 F132 · R3 · S32-S36; the ledger's D1 (unbuilt amendments in §10) is now a test with an empty allowlist.
 - **Verified at the M2 commit:** python 1403+/0 (4 GB cap) · app 333 · MC UI 247 · `e2e:kit` `e2e:m2` `e2e` koth `ui:logsync`
   · HUD screen-truth under the watchdog · site shots regenerated.
 - **Next:** cut **APK 0.2.0** (bump `app/package.json` AND `types.APP_MINOR` together — the wire gained `result`; 0.x MINOR
@@ -39,7 +41,7 @@ fix lanes, fail-first tests), a real-browser pass on every changed screen, long 
   (phone point; capture rate = leader minus the largest single rival) · MC's `koth` with `station_source`
   `grenade`/`ir_station`/`phone`. ✅ F104/S5 MC arms utility phones. ✅ **F69/F91 CLOSED tonight** — the hill does
   NOT chip anyone with the shipped fn-28 row. 🟡 **F82** never a player on tid 2; **F97** refuses a fourth team.
-  Spec: `spec/utility.md` §5b-§5f. Triage: `followups-triage.md` (retired 2026-09-12, see FOLLOWUPS §0).
+  Spec: `spec/utility.md` §5b-§5d; the roaming-hill and Territories designs are `utility-roadmap.md` §8.
 - ⭐⭐ **SIMULATED RECOIL IS REAL AND OURS TO DRIVE (2026-09-09, F46 closed).** `$WEAP` **t21 = accuracy
   ceiling · t22 = floor · `$ALCD` tok2 = live accuracy**; falls in five steps toward the floor, races a native
   recovery (**t14 sets how hard it bites**), resets on reload, and below the ceiling a shot emits **IR magnitude
@@ -47,7 +49,7 @@ fix lanes, fail-first tests), a real-browser pass on every changed screen, long 
   **S17** after **F68 🔴**. Mechanism: `protocol/brx-protocol.md`.
 
 - **The stack runs whole matches on real hardware.** MC compiles a per-player `FrameBundle`; each phone
-  (`app/`, the Companion HUD) drives its own gun over BLE and reports over the LAN. MC is setup, start and
+  (`app/`, the BRX Companion) drives its own gun over BLE and reports over the LAN. MC is setup, start and
   recap only; it is never BLE-connected to guns during play. Verified: FFA 2026-08-30, TDM 2026-09-01,
   and the 1v1 game test 2026-09-11.
 - **APK 0.1.8 is published** (`app-v0.1.8`, 2026-09-10): A16, A17 and the hill work; nothing since (see Next actions 4).
@@ -97,11 +99,11 @@ fix lanes, fail-first tests), a real-browser pass on every changed screen, long 
 
 ## Next actions
 
-1. **Bench, still open on [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md):** A1/B1/B2 ANSWERED
-   tonight (F69/F91/F23). Remaining: **A2** the t14 rate-of-fire floor (F87/F100), **B3** the capture currency
-   (F70/F76), **C1** the shield grant (F60), **C2** enemy fn 35 (D6). Also block E (LED metering) and **F15 rung 9**
+1. **Bench, still open on [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md):** BC-A1/B1/B2 ANSWERED
+   tonight (F69/F91/F23). Remaining: **BC-A2** the t14 rate-of-fire floor (F87/F100), **BC-B3** the capture currency
+   (F70/F76), **BC-C1** the shield grant (F60), **BC-C2** enemy fn 35 (BQ-D6). Also block E (LED metering) and **F15 rung 9**
    (a proto-8 word at a stun-armed gun). F27 sidearms + melee reload timing are quick adds when a gun is armed. **F59**'s filmed rung is also due: phone at 240 fps on a batched `$GLED`+`$PLAY`, reading announcer/effect/hit-path latency off the video.
-2. **Keyboard, in order** (`followups-triage.md` §7): **E2** the other three touch points (the registry exists) · **B23** the hosted respawn assembly (every link built) ·
+2. **Keyboard, in order:** **E2** the other three touch points (the registry exists) · **B23** the hosted respawn assembly (every link built) ·
    **F88** multi-point Domination on phones (the ids now reach every HUD) · **S3** extraction on phones · **B19**
    for F80's real fix · the E1 Designer editor (F107 (h)) · **E5** phone audio when there is an ear for it.
 3. **Work the game-test sheet** ([`game-test-2026-09-11.md`](game-test-2026-09-11.md)): block A is six confirmed
@@ -129,4 +131,4 @@ jobs batch for a Mac day (`capture-runbook.md`, `mac-dev-runbook.md`). Code must
 | Issues at a live session · Mac-only capture jobs | `field-issues.md` · `capture-runbook.md` |
 | Start MC with no hardware (the command, the busy-port trap) / running a match / armory + muster / Mac setup / one-gun bench page | `../mcp/brx_mcp/mc/README.md` → *Start it* · `field-runbook-mc.md` · `field-process.md` · `mac-dev-runbook.md` · `gun-stage.md` |
 | Spec of record / protocol truth / confirmed BRX facts | `spec/contracts.md` · `../protocol/brx-protocol.md` · `manual/` |
-| History: old handoff banners, closed bench sheets, superseded handoffs | `archive/` |
+| History: closed bench sheets, superseded spec modules, design exports (referenced-only since 2026-09-12) | `archive/` |

@@ -6,8 +6,8 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F131 · G11 · H8 ·
-K7 · P19 · Q20 · R3 · S32.** (2026-09-12 M2 close: S20 S21 S22 S23 S24 S26 F127 closed → archive; F129 F130 new; S25 v1 shipped, ESPN pass open.) (2026-09-12 midday: S28 all-weapons retune, S29 shield recharge taken.) (2026-09-12 desk pass: F128, P18, S27 taken; F110 F115 F116 F117 F118 F119 F122 F124 F125 closed → archive.) (2026-09-11 night game test: F110-F127 and S20-S26 taken, see [`game-test-2026-09-11.md`](game-test-2026-09-11.md).) (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F133 · G11 · H8 ·
+K7 · P19 · Q20 · R4 · S37.** (2026-09-12 doc-rot close: F131 F132, R3, S32-S36 taken; F42.2/F42.3 closed → archive.) (2026-09-12 M2 close: S20 S21 S22 S23 S24 S26 F127 closed → archive; F129 F130 new; S25 v1 shipped, ESPN pass open.) (2026-09-12 midday: S28 all-weapons retune, S29 shield recharge taken.) (2026-09-12 desk pass: F128, P18, S27 taken; F110 F115 F116 F117 F118 F119 F122 F124 F125 closed → archive.) (2026-09-11 night game test: F110-F127 and S20-S26 taken, see [`game-test-2026-09-11.md`](game-test-2026-09-11.md).) (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
 ids are retired, never reused.) (2026-09-10: F94/F95/F98 taken — the phone control point
 (`spec/utility.md` §5d), its LAN-coupled roaming variant (§5e) and Territories (§5f). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
 wider than the hill's period" generalisation, the double-`$HIR`-per-beacon dedupe finding (F85, closed same
@@ -118,6 +118,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   citing Battle Company's V7 manual. `fix.md`'s ladder step 1, `hardware.md` and `operate.md` all say a gun whose
   headset is off, unpaired or flat refuses to join or fire at all, citing operators. Both are load-bearing and
   they cannot both be right. One gun, headset removed, try a local game. `trigger`.
+  → 2026-09-12: the manual no longer publishes the contradiction; `manual/fix.md` "Won't fire" step 1 is the line to update when this closes.
 - **B27 🟡 Needs Tony at the bench** is `$SIR` function 23 an audio-silence weapon? `sound.md` states it mutes the
   victim's gun audio for 6 to 8 s. `dev.md` records only that `$ALCD` token 2 drops 100 to 0 and recovers over
   6 to 8 s while the gun keeps firing, and marks token 2's meaning unknown. Take a fn 23 hit and LISTEN. `ears`.
@@ -160,12 +161,14 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   **H3 ⬜** Companion mount + ported audio box (with B1). **H4 ⬜** station enclosure (with B4). **H5 ⬜** skins.
   **H6 🟡** curated MIT sound pack + load guide (data-port swap, `community-notes.md`). All blocked on Tony's caliper
   measurements (reload socket, D-pad, rail). `hardware/print-files.md`.
-- **H7 🟡** M5StickS3 station: 2× Stick + 3× Seeed Grove IR emitter ordered 2026-09-11 (`hardware/inventory.md`);
+- **H7 🟡** M5StickS3 station: station hardware on order (quantities and date live in `hardware/inventory.md`, not here);
   firmware `hardware/m5sticks3/`. Gates: (1) a `proto=15 mag=8` grenade beacon decoded on G42 over RMT with the speaker
   amp off; (2) a HUD phone sees the Stick's kind-5 advert carrying that owner; (3) Grove-emitter range walk against the
   bare-LED cliff (8 to 10 ft). Ring + power bank are planned, not ordered. `hardware`.
 - **R2 🟢** software `DUTY <0-255>` (and `PULSES`) command on the IR emitter, echoing its own duty; re-run the fn 1
   control at every duty before trusting a result. A nicety again since the emitter was fixed (2026-09-03). `build`.
+
+- **R3 🟡 IS JAY (EXTREME LASER TAG) THE SAME PROJECT AS LASERTAGMODS?** `reference/jay-ecosystem.md` presented JBOX/JCUBE/JBOX Mini/JTOWER/JHALO/JEDGE as his devices; `reference/lasertagmods.md` and CLAUDE.md credit JEDGE and JBOX to LaserTagMods. Two sources disagree, so the ownership claim was withdrawn 2026-09-12. Settle it (channel about page vs GitHub org commit authorship); it decides the public credit line. `research`.
 
 ## 5. Tony's asks (K)
 
@@ -216,6 +219,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   on "FF is irrelevant" (F48) or on any polarity rule until this is explained: diff the two heads frame by frame
   on the wire (`$PSET` player_num differs: 1 vs 7 — the emitted word's player id is 42 in both), and re-run with
   each difference isolated. This cost most of an evening's bench time and produced four wrong diagnoses. `trigger`.
+  → 2026-09-12: the manual no longer carries this caveat (`manual/gameplay.md` Health/armor/damage + How a kill works, `manual/fix.md` "IR isn't registering" step 1); if the backwards reading is ever confirmed, all three need the correction.
 - **F56 🟠 HALF CLOSED 2026-09-09 ON THE GUN — the DAY half is fixed and verified, the NIGHT half stands.**
   Fix shipped: the in-play rest is the team colour at brightness 1 while the readout paints at full, so
   brightness separates them. Tony, watching purple armour over the dim blue rest: *"way brighter, reads as an
@@ -259,7 +263,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   **(b) ✅ CLOSED 2026-09-11 (late, second session): `stage.py` `_on_pools` now fires `healed`/`armour_up`/`shield_up` on a pool rise with engine.js's exact drop rules (`test_stage_mirror.py`).** It used to fire
   none of them — zero occurrences of `healed` in the file. So the bench instrument cannot exercise the heal
   path AT ALL, which is why this went unnoticed: the surface built to predict the phone is missing the branch.
-  That is the eighth stage-vs-phone divergence in a week (see [[stage-must-mirror-the-phone]] reasoning in
+  That is the eighth stage-vs-phone divergence in a week (see the "stage must mirror the phone" reasoning in
   `experiment-log`), and the first one where the STAGE is the side missing a feature rather than mis-copying it.
   **(c) ✅ RESOLVED the same evening, and it was NOT a bug — recorded so nobody re-opens it.** The LED gain
   animation DOES step correctly on the gun: a `$LIFE,20` heal at hp 4 gave `$HP,24` and the strip wrote
@@ -317,7 +321,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   it ticks. Needs a spec section before code. `build`.
 - **F62 🟡 `$WEAP` t6 `primaryCritChance` — can we emit crits?** The crit bit reads 0 on every stock weapon,
   "not dead, just never set", and t6 would be a per-shot firmware roll. Design already written in
-  `bench-weap-tokens-discovery-2026-09-04.md` §t6 (~10 min): t6 0 → 100 → 50 → 0 with `$GSET` t7=100 so a crit
+  `archive/bench-weap-tokens-discovery-2026-09-04.md` §t6 (~10 min): t6 0 → 100 → 50 → 0 with `$GSET` t7=100 so a crit
   exactly doubles; read `$HIR` tok6 and 9-vs-18 damage. Also the cheapest proof that the firmware rolls dice
   per shot at all, which is what F46 and F63 both assume. `trigger` (bench C2).
   ⚠ **Warning added 2026-09-11 (bench):** the "9-vs-18" expectation this design was built on is the fn-37
@@ -340,11 +344,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 
 - **F42 🟡** **the DRY-review backlog** (2026-09-07 Python review, agent team). Six bugs from that pass are FIXED
   and pushed; what is left is real but none of it is blocking. Evidence: every item below was measured, not read.
-  **F42.1 ✅ ANSWERED 2026-09-11 (evening, bench):** the token slots are not equivalent — token 1 INTERRUPTS, token 4 QUEUES, and that is a property of the slot, not of the id (six trials, see `experiment-log/2026-09.md` → *the sound pass*). `presentation.cue_frames`'s token-4 `game_over` (VA33) is the one to keep: it queues behind an in-flight effect rather than cutting it, which is the right behaviour for an announcer line. `Compiler.cues()`'s `game_over`/`medal`/`multi` keys are dead — `cue_frames` overwrites them for the same resolved profile and nothing reads the stale copies — delete them on the next pass through `compile.py`. VA81 in slot 1 for the countdown stays confirmed and correct, unaffected by this. **F42.2** 12 bench tools hand-roll the body of `B.teardown_frames()`
-  instead of calling it (~55-60 lines); `tools/f11_ab.py`, a one-shot experiment, is imported as a LIBRARY by 18
-  scripts for `SENSOR`/`witnessed`/`word` — those three belong in `bench_common.py`. **F42.3**
-  `tools/led_ingame_usable.py` reaches into `led_effects.py` through a hardcoded Windows UNC path and `exec()`s a
-  slice of its source to borrow `record_roi`; a same-directory import replaces it. **F42.4** still zero-coverage:
+  **F42.1 ✅ ANSWERED 2026-09-11 (evening, bench):** the token slots are not equivalent — token 1 INTERRUPTS, token 4 QUEUES, and that is a property of the slot, not of the id (six trials, see `experiment-log/2026-09.md` → *the sound pass*). `presentation.cue_frames`'s token-4 `game_over` (VA33) is the one to keep: it queues behind an in-flight effect rather than cutting it, which is the right behaviour for an announcer line. `Compiler.cues()`'s `game_over`/`medal`/`multi` keys are dead — `cue_frames` overwrites them for the same resolved profile and nothing reads the stale copies — delete them on the next pass through `compile.py`. VA81 in slot 1 for the countdown stays confirmed and correct, unaffected by this. **F42.2 ✅ CLOSED 2026-09-12 (doc-rot pass):** `SENSOR`/`witnessed`/`word` moved into `bench_common.py`, the four surviving hand-rolled teardowns use `bench_common.connected()`, and `f11_ab.py` plus 39 other closed-experiment scripts were deleted (git keeps them). **F42.3 ✅ CLOSED 2026-09-12:** `led_ingame_usable.py` and `led_effects.py` went with the closed experiments. **F42.4** still zero-coverage:
   `ble.ConnectionManager` (monkeypatched everywhere, asserted nowhere), `protocol.py`'s pure helpers,
   `storage.py`, `btsnoop.py` (no malformed-capture case), `usbconsole.py`, `irbridge.py`, `mock_node`'s
   reconnect/persisted-fact ring, and ~85% of `__main__.py`. **F42.5** god modules unsplit: `state.py` 1665,
@@ -439,7 +439,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   the arming burst is unverified (echo proves the gun got it, not that the headset executed it) `eyes`.
 - **F14 🟢** HUD moment nits: a `gain` inside the 250 ms rare-moment guard is dropped (deliberate); the night hit-chip
   lost the shooter's team colour (deliberate); `engine.js` drops a `gain` when a frame damages and grants in one tick.
-- **F16 🟡** `bench_common` half fixed: `BMAP` + `spawn_tail()` exist and `stun_hunt.py` uses them; the other
+- **F16 🟡** `bench_common` half fixed: `BMAP` + `spawn_tail()` exist and the surviving tools use them (`stun_hunt.py` was deleted 2026-09-12); the other
   operator-fires tools (`hittest`/`damage_bench` style) and a test pinning `BMAP` to MC's `_bmap()` remain. Re-read any
   past "trigger did nothing" negative from such a tool with this in mind. `build`.
 - **F17 🟢** lives cap: DOWN recap shows LIVES LEFT only if `config.respawn.lives` exists; no mode sets it. `build`.
@@ -478,6 +478,9 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 - **D1 🟡** the nRF radio (`NRFhost 1` / `NRFslave 1`): a bonus long-range channel only; not needed for feedback or
   attribution. Time-box the mesh tap to 30 min. **D3 🟡** reproduce Jay's 45-gun LoRa host (`reference/jay-ecosystem.md`).
   **D4 🟡** does the native "double kill" callout fire under OUR config (3 guns + ears)? `build` / `ears`.
+
+- **F131 🟡 TWO `spec/modes.md` §8 QUESTIONS WITHOUT IDS** (surfaced 2026-09-12): (a) the mid-match revive drops `$HLOOP,0,0` and the headset returns via the A11.6 respawn sequence; confirm on hardware nothing else needed it; (b) `Compiler.cues()` ships runway_30/20 and the klaxon silent while start-sequence §2 names the lines; pin by ear. `bench` · `ears`.
+- **F132 🟡 HANDOFF BYTE RATCHET.** `test_docs_hygiene._HANDOFF_MAX_BYTES` is 13,400 against a one-screen intent of ~9,000; the line rule passes because the bullets are paragraph-length. Trim on each close and lower the cap. `hygiene`.
 
 ## 7. September build items (S)
 
@@ -574,6 +577,12 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   .3 real Counter-Strike audio stays out of the repo (convert with `ltp_convert.py`, copy over the data port) `build`;
   .5 a stock `pistols` template in START FROM. `build`.
 
+- **S32 🟡 MODE ART FOR koth (MC + phone) AND MELEE WEAPON ART.** `state.py` MODES has six modes; `webapp/mc/public/assets/modes/` and `app/www/assets/modes/` have five images. `hud.js` builds the art path with no fallback; MC's GAMES rail shows the placeholder caption (`webapp/mc/src/modeArt.ts` names the gap). `melee` is in `weapons.json` with no `melee.jpg` in either tree. With it, decide the D7 duplication from the doc-rot ledger: the two asset trees are byte-identical (720 KB); make one the source and copy at build, or genuinely downscale for the phone. `build`.
+- **S33 🟠 WIRE THE `ir.*` DIAGNOSTIC CASES TO `IRBridge`.** `diag/cases.py` `ir.capture`/`ir.emit`/`ir.sir_sweep` carry no send/verify and skip; their docstring said the bridge did not exist. It does (`brx_mcp/irbridge.py`, `hardware/esp32-ir-bridge/README.md` ~line 137). `build` · `bench`.
+- **S34 🟡 SELF-HOST THE HUD AND MC FONTS.** `app/www/index.html:8` and `webapp/mc/index.html:7` load Saira Condensed / Oswald / Chakra Petch from Google; the field Wi-Fi has no internet (`ios-setup.sh` allows local networking only), so both faces fail on the one network that matters. `site/public/fonts/` already self-hosts Chakra Petch and Oswald; Saira Condensed is the missing face. Was item 14 of the "MC build Lows" bullet in §11. `build`.
+- **S35 🟡 `app/src/app.js` (node.md §3.11 lifecycle, §3.14 log sync) AND `app/src/utility.js` HAVE NO TESTS**; `engine.test.mjs` covers neither §3.13 match result nor §3.14 (S26 built the sync; the gate is `ui:logsync`, not a unit). `build`.
+- **S36 🟡 UTILITY LEFTOVERS cut from the roadmap's status table 2026-09-12** (check each against F106/S5 before working): ITEMS-panel assignments do not survive an MC restart; the phone utility screen does not render `valid_ids`; B1's two-phone soak (73d391a) has not been run; the A6 recap stations row (revives per station vs the station's own count) is unbuilt. `build` · `bench`.
+
 ## 8. Protocol unknowns (P), grenade (G), bench unknowns (U)
 
 - **P3 🟡** `$PSET` voice-pack token → line map. **2026-09-11:** the field is `SquadLeaderVoices` in the
@@ -601,7 +610,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   ally 31, 32, 34 are genuine status functions (re-measured from depleted pools). Only a human holding the gun can name
   them. **Narrowed 2026-09-10 (F73, closed — `archive/followups-closed.md`): enemy 8 and 24-28 are swept and written
   up** (fn 28 registers with nothing at all, fn 8 is silent but flashes and buzzes, fn 24-27 fire one long
-  grenade-ish clip). **Left here: enemy 35, and ally 31 / 32 / 34** — bench-queue rung **D6**, whose three
+  grenade-ish clip). **Left here: enemy 35, and ally 31 / 32 / 34** — bench-queue rung **BQ-D6**, whose three
   run-voiding traps are mandatory. Moot for the product if F15 ships. `trigger` (bench 1.5).
 - **Explained 2026-09-11 (F23):** the 2026-08-27 24-cell ×1.0 matrix was the GUN BODY (always ×1); the ×1.25/×2
   runs measured the HEADSET. Different sensors, both correct. Kept: one 16/16 vs 4/10 registration run under
@@ -880,14 +889,14 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   **A4.8** exception; the same rotation logic serves both sources. `build`.
 - **F87 🟢 GRANT A RATE-OF-FIRE BOOST TO THE TEAM HOLDING A HILL, FROM THE NODE.** Tony's ask; designed
   2026-09-10 evening, not built. The grenade will not do it for us: holding a hill under fn 28 changes `$ALCD`
-  cadence not at all (102.0 ms/round owned vs 101.6 enemy-held, control inside the measurement, bench-queue D7).
+  cadence not at all (102.0 ms/round owned vs 101.6 enemy-held, control inside the measurement, bench-queue BQ-D7).
   ⚠ Hosted-only — a native game drops the BLE link, so this does not disprove a native buff. **And the firmware
   cannot be made to grant it either:** every hill word lands in the single `$SIR` cell `<15,0>`, so an
   ally-polarity grant at `$GSET` t1 = 0 would gate on the owner correctly and go **blind to enemy-held hills**
   (rejected words emit no `$HIR`, so capture detection dies), while t1 = 1 lifts the gate and the grant fires on
   ANY beacon, boosting a player standing in an ENEMY hill. **One cell cannot both read every owner and grant only
   to the owner** — so read with fn 28 at t1 = 1 and apply the boost node-side. ⚠ Whether any ally function buffs
-  RoF at all is UNMEASURED (fn 31/32/34 unswept, bench-queue D6); the conflict stands either way.
+  RoF at all is UNMEASURED (fn 31/32/34 unswept, bench-queue BQ-D6); the conflict stands either way.
   **The build:** on "my team owns it and the beacon is fresh", push the player's `$WEAP` with a reduced **t14**
   and then IMMEDIATELY `$AMMO,<slot>,<live mag>,<live reserve>,1,*` from the count `engine.js` already reads off
   `$ALCD`; reverse both on loss or staleness (≥ 2 missed beacons, ~12 s). 🔴 **The `$AMMO` restore is not

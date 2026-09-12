@@ -258,7 +258,8 @@ def _dated_closed_ids() -> set[str]:
     """Ids with a `- YYYY-MM-DD **F42** ...` closure line in the archive — CLAUDE.md's one-line-per-item
     session-close format. A block heading in the older part of the file is deliberately NOT counted."""
     text = (DOCS / "archive" / "followups-closed.md").read_text(encoding="utf-8")
-    return {m.group(1) for m in re.finditer(r"^- \d{4}-\d{2}-\d{2} \*\*([A-Z]\d{1,3})\b", text, re.M)}
+    # `(?!\.\d)`: a sub-item closure (`**F42.2**`) does not close its parent row (`F42`), which stays open.
+    return {m.group(1) for m in re.finditer(r"^- \d{4}-\d{2}-\d{2} \*\*([A-Z]\d{1,3})\b(?!\.\d)", text, re.M)}
 
 
 _OPEN_GLYPHS = ("🔴", "🟠", "🟡")
