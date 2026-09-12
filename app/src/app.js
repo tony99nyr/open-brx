@@ -330,7 +330,9 @@ Object.assign(hud.h, {
   onReady: () => { if (engine.phase === 'kitted') { engine.setReady(!engine.ready); haptic('tap'); } },
   // A10 self-serve kitting (docs/spec/loadout.md §4.5): slot plates → LOADOUT browser → tap-to-equip / TRY IT / DONE
   onOpenLoadout: slot => { if (!engine.canPick(slot)) return; hud.lo.tab = slot; hud.lo.focus = null; hud.lo.filter = 'weapons'; hud.lo.confirm = null; engine.browse(true); haptic('tap'); },
-  onLoTab: slot => { if (!engine.canPick(slot)) return; hud.lo.tab = slot === 'secondary' ? 'secondary' : slot === 'perk' ? 'perk' : 'primary'; hud.lo.focus = null; hud.lo.confirm = null; hud.sig = null; scheduleRender(); },
+  // A26: leaving a rack COMMITS the pick sitting in its debounce window — the same rule as CLOSE and READY UP.
+  // Without this, tapping a weapon and switching tab inside 400 ms dropped the pick on the floor (review 2026-09-12).
+  onLoTab: slot => { if (!engine.canPick(slot)) return; engine.commitPick('tab switch'); hud.lo.tab = slot === 'secondary' ? 'secondary' : slot === 'perk' ? 'perk' : 'primary'; hud.lo.focus = null; hud.lo.confirm = null; hud.sig = null; scheduleRender(); },
   onLoFilter: f => { hud.lo.filter = f === 'perks' ? 'perks' : 'weapons'; hud.lo.focus = null; hud.sig = null; scheduleRender(); },
   onLoNone: slot => { hud.lo.confirm = null; engine.requestLoadout(slot === 'perk' ? 'perk' : 'secondary', 'none'); haptic('tap'); },
   // A14: a pick that would knock the other slot out (Easy Reload vs a second weapon) needs a second tap on the same row

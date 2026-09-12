@@ -5,7 +5,7 @@ import { STALE_AFTER_MS, type LiveRow } from '../api/types';
 import { useStore } from '../store';
 import { F, T, fmtAge, fmtClock, teamColor } from '../tokens';
 import { columnEdges, type Column } from './columns';
-import { Blink, GhostButton, Num, Tag } from '../ui';
+import { Blink, GhostButton, Num, ScrollX, Tag } from '../ui';
 
 // S24 (game test 2026-09-11, D4): the board was `minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px …`
 // at `gap:'0 10px'` with 9 px headers over 14-16 px values, and K/D/A were three identical right-aligned
@@ -96,8 +96,13 @@ export function Live() {
 
   return (
     <div className="screen">
-      <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-        {cLine && <Tag color={cColor} size={9} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{cLine}</Tag>}
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+        {/* 11px, not 9: it names how much of the park is covered, which is content, not decoration
+            (the console's floor, audit 2026-09-12 — this tag was the one the sweep still caught).
+            It also has to FIT: right-aligned and `nowrap`, a full coverage line ran off the LEFT of a
+            393px screen ("…GE ZONES — 0 OF 7 ON BACKHAUL"), so the row wraps and the tag may too. */}
+        {cLine && <Tag data-coverage="1" color={cColor} size={11}
+          style={{ letterSpacing: '.16em', padding: '3px 10px', whiteSpace: 'normal', maxWidth: '100%' }}>{cLine}</Tag>}
         {/* S25: the way to the room-facing board. A NEW TAB on purpose — the operator keeps this console on the
             laptop and drags the other window to the projector; navigating this one away would take END and RECALL
             with it. `search` is carried so `?mock` opens a mock spectator board. */}
@@ -129,9 +134,12 @@ export function Live() {
         )}
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
-        <div style={{ flex: '2 1 560px', minWidth: 0, overflowX: 'auto' }}>
+        <div style={{ flex: '2 1 560px', minWidth: 0 }}>
           {/* the widened S24 columns total ~780px; the wrapper has to say so or the scroll container
-              under-reports how much there is to scroll to on a phone */}
+              under-reports how much there is to scroll to on a phone. <ScrollX> is what TELLS the
+              operator it was cut: on a 393px phone the board is 783px in a 345px box, and it used to
+              end at K/D with nothing on screen saying there was more (393px walk, 2026-09-12). */}
+          <ScrollX hint="▸ SCROLL FOR K/D · ACC · STK · STATUS">
           <div style={{ minWidth: 780 }}>
             <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: GAP, padding: '9px 14px', background: T.panelAlt, border: `1px solid ${T.line}`, font: F.mono(600, 11), letterSpacing: '.14em', color: T.dim }}>
               {COLUMNS.map(c => (
@@ -162,6 +170,7 @@ export function Live() {
               <span style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>EARLY END / RECALL REACH ONLY NODES IN RANGE — THE REST END AT {fmtClock(lv.time_limit_s)}.</span>
             </div>
           </div>
+          </ScrollX>
         </div>
         <div style={{ flex: '1 1 280px', maxWidth: 400 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', background: T.panelAlt, border: `1px solid ${T.line}`, borderBottom: 'none' }}>

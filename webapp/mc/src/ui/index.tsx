@@ -82,9 +82,10 @@ export function SegBar({ pct, color = T.ink, height = 10, cell = 10, style }: { 
   );
 }
 
-/** Solid tag: status-color background, dark ink. */
-export function Tag({ children, color = T.acc, ink = T.accInk, size = 11, style }: { children: ReactNode; color?: string; ink?: string; size?: number; style?: Sx }) {
-  return <span style={merge({ font: F.chk(700, size), letterSpacing: '.18em', color: ink, background: color, padding: '2px 8px', whiteSpace: 'nowrap' }, style)}>{children}</span>;
+/** Solid tag: status-color background, dark ink. `data-*` rides through so a test can name one. */
+export function Tag({ children, color = T.acc, ink = T.accInk, size = 11, style, ...rest }:
+  { children: ReactNode; color?: string; ink?: string; size?: number; style?: Sx } & Record<`data-${string}`, string | undefined>) {
+  return <span {...rest} style={merge({ font: F.chk(700, size), letterSpacing: '.18em', color: ink, background: color, padding: '2px 8px', whiteSpace: 'nowrap' }, style)}>{children}</span>;
 }
 
 /** Outline tag (READY / WAIT). */
@@ -278,6 +279,39 @@ export function Progress({ n, total, label, color = T.acc }: { n: number; total:
 /** Blinking dot. */
 export function Blink({ color = T.ok, period = 2.4, size = 7 }: { color?: string; period?: number; size?: number }) {
   return <span style={{ width: size, height: size, background: color, animation: `linkBlink ${period}s infinite`, display: 'inline-block' }} />;
+}
+
+/** A region that scrolls sideways — and SAYS so.
+ *
+ *  The LIVE board is ~780 px of columns and the spectator board ~540; in a 345 px container on a
+ *  phone both simply cut off at K/D, with no edge, no scrollbar (touch scrollbars are invisible
+ *  until you drag) and nothing on screen suggesting there was more (393 px walk, 2026-09-12). So the
+ *  cut edge FADES and a hint says which way to go — both only while there is actually something
+ *  further right, because a fade on a table that fits dims its own last column.
+ *
+ *  The hint is always in the DOM and toggled with `hidden`: jsdom lays nothing out, so `scrollWidth`
+ *  is 0 there and a hint rendered only when it overflows could never be asserted at all. The jsdom
+ *  test proves it EXISTS; the e2e run at 393 px proves it is VISIBLE when the table overflows. */
+export function ScrollX({ children, hint, hintSize = 11, style, hintStyle }:
+  { children: ReactNode; hint: string; hintSize?: number; style?: Sx; hintStyle?: Sx }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [over, setOver] = useState(false);
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    const check = () => setOver(el.scrollWidth > el.clientWidth + 2 && el.scrollLeft + el.clientWidth < el.scrollWidth - 2);
+    check();
+    const ro = new ResizeObserver(check); ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);   // the content grows too (rows arriving)
+    el.addEventListener('scroll', check, { passive: true });
+    return () => { ro.disconnect(); el.removeEventListener('scroll', check); };
+  }, []);
+  return (
+    <>
+      <span data-scroll-hint={over ? '1' : '0'} hidden={!over}
+        style={merge({ font: F.mono(600, hintSize), letterSpacing: '.14em', color: T.micro, padding: '0 0 6px', flex: 'none' }, hintStyle)}>{hint}</span>
+      <div ref={ref} className={over ? 'scroll-x' : undefined} style={merge({ overflowX: 'auto' }, style)}>{children}</div>
+    </>
+  );
 }
 
 /** Horizontal shelf: fades its cut edge ONLY while it actually overflows (a fade on a shelf that fits dims the last card). */

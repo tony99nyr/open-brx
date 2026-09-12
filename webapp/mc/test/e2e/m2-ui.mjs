@@ -327,6 +327,45 @@ async function runMock(browser, viteBase, vp, tag) {
     `the board fits at ${vp.width} or scrolls in its own container (${tbl.sw}/${tbl.cw})`);
   ok(`layout at ${vp.width}: page ${scroll.doc}px, table ${tbl.sw}px in ${tbl.cw}px`);
 
+  // F129: a board that is CUT has to say so. 783px of columns in a 345px box ended at K/D with no
+  // edge, no scrollbar and nothing on screen suggesting there was more (393px walk, 2026-09-12).
+  // Asserted in BOTH directions — the hint must be gone on a desk, or it is just furniture.
+  const hintOf = sel => pg.evaluate(root => {
+    const h = document.querySelector(`${root} [data-scroll-hint]`);
+    if (!h) return null;
+    const box = h.nextElementSibling;
+    const r = h.getBoundingClientRect();
+    return { flag: h.dataset.scrollHint, shown: r.width > 0 && r.height > 0, text: (h.textContent || '').trim(),
+             fs: parseFloat(getComputedStyle(h).fontSize), mask: getComputedStyle(box).maskImage || getComputedStyle(box).webkitMaskImage,
+             sw: box.scrollWidth, cw: box.clientWidth };
+  }, sel);
+  // and nothing on this screen may hang off the LEFT either: the coverage tag is right-aligned and
+  // was `nowrap`, so a full line read "…GE ZONES — 0 OF 7 ON BACKHAUL" on a 393px phone
+  const cov = await pg.evaluate(() => {
+    const el = document.querySelector('[data-coverage]');
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return { t: (el.textContent || '').trim(), left: Math.round(r.left), right: Math.round(r.right), vw: window.innerWidth };
+  });
+  if (cov) {
+    expect(cov.left >= 0 && cov.right <= cov.vw + 1,
+      `the coverage tag fits the screen at ${vp.width} ("${cov.t}" spans ${cov.left}–${cov.right} of ${cov.vw})`);
+    ok(`coverage tag: "${cov.t}" ${cov.left}–${cov.right}px of ${cov.vw}px`);
+  }
+
+  const liveHint = await hintOf('main');
+  expect(liveHint != null, 'the LIVE board carries a scroll hint element at all');
+  if (liveHint) {
+    const cut = liveHint.sw > liveHint.cw + 2;
+    expect(cut === (liveHint.flag === '1' && liveHint.shown),
+      `the hint is on screen exactly while the table is cut (cut ${cut}, hint ${liveHint.flag}/${liveHint.shown}, ${liveHint.sw}px in ${liveHint.cw}px)`);
+    if (cut) {
+      expect(/SCROLL/.test(liveHint.text.toUpperCase()), `and says which way to go (${JSON.stringify(liveHint.text)})`);
+      expect((liveHint.mask || 'none') !== 'none', 'the cut edge fades, so the table does not just stop mid-column');
+    }
+    ok(`scroll affordance at ${vp.width}: table ${liveHint.sw}px in ${liveHint.cw}px → hint ${liveHint.shown ? `"${liveHint.text}"` : 'hidden (it fits)'}`);
+  }
+
   // RECAP: the same columns, plus A6.1's "after the whistle" block. END the demo match through the
   // control the operator actually presses, not by poking the backend.
   await pg.evaluate(async () => { await window.__MC_MOCK__.control('end'); });
@@ -400,6 +439,16 @@ async function runMock(browser, viteBase, vp, tag) {
   } else {
     ok(`fit: ${fitm.n} rows at ${fitm.rowFs}px — ${vp.width}x${vp.height} is a phone, so the page is allowed to scroll (${fitm.docSH}px)`);
   }
+  const specHint = await hintOf('[data-spectate="board"]');
+  expect(specHint != null, 'the spectator board carries a scroll hint element');
+  if (specHint) {
+    const cut = specHint.sw > specHint.cw + 2;
+    expect(cut === (specHint.flag === '1' && specHint.shown),
+      `the spectator hint is on screen exactly while the board is cut (cut ${cut}, hint ${specHint.flag}/${specHint.shown}, ${specHint.sw}px in ${specHint.cw}px)`);
+    // this board is read across a room: even the hint obeys the 16px floor
+    if (cut) expect(specHint.fs >= 16, `and is legible at ${specHint.fs}px`);
+    ok(`spectator scroll affordance at ${vp.width}: ${specHint.sw}px in ${specHint.cw}px → ${specHint.shown ? `"${specHint.text}" at ${specHint.fs}px` : 'hidden (it fits)'}`);
+  }
   const sideways = await pg.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: window.innerWidth }));
   expect(sideways.doc <= sideways.win + 1, `the spectator board does not scroll the PAGE sideways at ${vp.width} (${sideways.doc}px)`);
   ok(`spectator board: no controls, no command bar, score ${scoreFs}px   ${await shot(pg, `02-${tag}-spectate`)}`);
@@ -441,6 +490,18 @@ async function runMock(browser, viteBase, vp, tag) {
   expect(chips.length > 0 && chips.every(c => c.length > 0), `every phone card carries a build (${chips.length} chips)`);
   ok(`A29: "${sum}" · chips ${chips.slice(0, 3).join(' | ')}   ${await shot(pg, `03-${tag}-armory-versions`)}`);
 
+  // A32 copy (F129): both proofs mean the headset is ON, and they have to READ that way —
+  // `PROVEN BY LINK` beside a bare `CONNECTED` read as two different states.
+  const headsets = await pg.locator('[data-headset]').evaluateAll(els =>
+    els.map(e => `${e.dataset.headset}=${e.textContent.replace(/\s+/g, ' ').trim()}`));
+  expect(headsets.length > 0, 'the readiness cards carry a headset row');
+  expect(headsets.filter(h => h.startsWith('link=')).every(h => h === 'link=CONNECTED (LINK)'),
+    `a link-proven headset reads CONNECTED (LINK) (${[...new Set(headsets)].join(' | ')})`);
+  expect(headsets.filter(h => h.startsWith('echo=')).every(h => h === 'echo=CONNECTED (ECHO)'),
+    `an echo-proven headset reads CONNECTED (ECHO) (${[...new Set(headsets)].join(' | ')})`);
+  expect(!headsets.some(h => /PROVEN BY LINK/.test(h)), 'the old non-parallel copy is gone');
+  ok(`A32 headset copy: ${[...new Set(headsets)].join(' | ')}`);
+
   // A25: the LOG SYNC switch and the per-node LOGS button
   const modeNow = () => pg.locator('[data-logsync]').getAttribute('data-logsync');
   expect(await pg.locator('[data-logsync]').count() === 1, 'the LOG SYNC switch is on the muster header');
@@ -448,6 +509,14 @@ async function runMock(browser, viteBase, vp, tag) {
   await pg.locator('[data-logsync] button', { hasText: before === 'auto' ? 'MANUAL' : 'AUTO' }).click();
   await until(async () => (await modeNow()) !== before, 8000, 'the LOG SYNC switch to move');
   ok(`A25: LOG SYNC ${before} → ${await modeNow()} (the switch writes and the snapshot comes back)`);
+  // F129: what AUTO does, and that LOGS ignores the switch, lived only in a `title` — unhoverable on
+  // a touch console. It is a visible legend now, and it follows the switch.
+  const legend = await pg.locator('[data-logsync-legend]').evaluate(el =>
+    ({ t: (el.textContent || '').replace(/\s+/g, ' ').trim(), fs: parseFloat(getComputedStyle(el).fontSize) }));
+  expect(/NEVER GATED/.test(legend.t.toUpperCase()), `the legend says the LOGS button is never gated (saw ${JSON.stringify(legend.t)})`);
+  expect(new RegExp(`^${await modeNow()}`, 'i').test(legend.t), `and it describes the mode the switch is in (${legend.t.slice(0, 24)}…)`);
+  expect(legend.fs >= 11, `at ${legend.fs}px`);
+  ok(`A25 legend: "${legend.t}"`);
   const states = await pg.locator('[data-node-card] [data-log-state]').evaluateAll(els =>
     els.map(e => `${e.dataset.logState}:${e.textContent.replace(/\s+/g, ' ').trim()}`));
   expect(states.length > 0, 'every node card carries a log row');
@@ -462,6 +531,45 @@ async function runMock(browser, viteBase, vp, tag) {
     'the LOGS tap to be answered on screen');
   ok(`A25: LOGS asked and said so   ${await shot(pg, `05-${tag}-logsync`)}`);
   await audit(pg, 'main', `${tag} ARMORY`);
+
+  // F129, and only on a phone: the LOGS tap above left a toast in the command bar, and the match is
+  // over, so NEW MATCH is beside it. They used to share one nowrap row and the toast took the width:
+  // "NEW MATCH ▸" wrapped onto three lines, a 72px button (measured 2026-09-12). The toast has its
+  // own row under the bar now. Measured with a toast ON SCREEN — that is the whole condition.
+  if (vp.width < 500) {
+    const cb = await pg.evaluate(() => {
+      const group = document.querySelector('header .cb-notices');
+      const toast = group && (group.textContent || '').trim() ? group : null;   // the group is always there; a TOAST is not
+      const btn = [...document.querySelectorAll('header button')].find(b => /NEW MATCH/.test(b.textContent || ''));
+      if (!toast || !btn) return { toast: !!toast, btn: !!btn };
+      const t = toast.getBoundingClientRect(), b = btn.getBoundingClientRect();
+      return { toast: true, btn: true, h: Math.round(b.height), w: Math.round(b.width),
+               ownRow: Math.round(t.bottom) <= Math.round(b.top) + 2 || Math.round(b.bottom) <= Math.round(t.top) + 2,
+               text: (toast.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40) };
+    });
+    expect(cb.toast && cb.btn, `the walk has both a toast and NEW MATCH on screen (toast ${cb.toast}, button ${cb.btn})`);
+    if (cb.toast && cb.btn) {
+      expect(cb.h <= 56, `NEW MATCH stays one line beside a toast (${cb.h}px tall, ${cb.w}px wide)`);
+      expect(cb.ownRow, 'and the toast is on a row of its own, not squeezing it');
+      ok(`F129 toast row: NEW MATCH ${cb.h}px with "${cb.text}…" above it   ${await shot(pg, `07-${tag}-toast-row`)}`);
+    }
+
+    // the KIT roster becomes a horizontal strip on a phone, and its status tag used to be pushed
+    // past the row and off the screen (x=407 on a 393px viewport)
+    await pg.evaluate(() => { location.hash = '#kit'; });
+    await until(() => pg.locator('.kit-row').count().then(n => n > 0), 15000, 'the KIT roster strip');
+    const tags = await pg.locator('.kit-row').evaluateAll(rows => rows.map(r => {
+      const tag = r.lastElementChild;
+      const tb = tag.getBoundingClientRect(), rb = r.getBoundingClientRect();
+      return { t: (tag.textContent || '').trim(), right: Math.round(tb.right), rowRight: Math.round(rb.right), vw: window.innerWidth };
+    }));
+    expect(tags.length > 0, 'the roster rendered rows to measure');
+    const spill = tags.filter(x => x.right > x.rowRight + 1);
+    expect(spill.length === 0, `no status tag hangs out of its row (${spill.map(x => `"${x.t}" ${x.right}>${x.rowRight}`).join(', ')})`);
+    const first = tags[0];
+    expect(first.right <= first.vw, `the FIRST row's "${first.t}" is on the screen (ends at ${first.right}px of ${first.vw}px)`);
+    ok(`F129 roster tags: first "${first.t}" ends at ${first.right}px of ${first.vw}px   ${await shot(pg, `08-${tag}-kit-roster`)}`);
+  }
   await pg.context().close();
 }
 
@@ -509,7 +617,14 @@ async function runReal(browser, viteBase, mcBase, vp, tag) {
   // caught on 2026-09-12).
   await gateBtn.click();
   await until(async () => (await phaseNow()) === 'lobby', 8000, 'the second tap to reach lobby');
-  ok(`A27: two taps, server now in lobby   ${await shot(pg, `12-${tag}-kit-advanced`)}`);
+  // The console follows the phase, so by the time this is shot KIT is gone and the LOBBY is on
+  // screen — `12-desk-kit-advanced.png` was byte-identical to `13-desk-lobby.png` and the only
+  // evidence of the kit gate was the shot before it (round-2 review 2026-09-12). Named for what it
+  // shows, and asserted so the name cannot drift from the screen again.
+  await until(() => pg.locator('[data-continue="kit"]').count().then(n => n === 0), 8000, 'KIT to give way');
+  expect(await pg.locator('main', { hasText: 'Team Assignment' }).count() > 0,
+    'the console followed the advance and is showing the LOBBY');
+  ok(`A27: two taps, server now in lobby   ${await shot(pg, `12-${tag}-advanced-to-lobby`)}`);
   await pg.context().close();
 }
 

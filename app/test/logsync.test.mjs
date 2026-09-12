@@ -252,3 +252,31 @@ test('logsync: both log routes cut at ONE size — the manual SHARE LOG cannot d
   assert.match(app, /chunkByBytes\(snap\.text, DEFAULT_CHUNK_BYTES\)/, 'SHARE LOG no longer cuts at the shared size');
   assert.doesNotMatch(app, /chunkByBytes\([^)]*\d+\s*\*\s*1024\s*\)/, 'SHARE LOG cuts at a hard-coded size of its own');
 });
+
+// `onBound()` re-offers so MC asks again after a reconnect (A25). It checked `want` but not `busy`, so a
+// relink that landed MID-UPLOAD put a SECOND `log_offer` on the wire — inviting MC to pull a log we were
+// halfway through sending — and reset `attempt`, throwing away the backoff the in-flight upload's own
+// failure path was about to need (review 2026-09-12).
+test('logsync: a reconnect MID-UPLOAD does not re-offer — one log_offer, and the in-flight stream finishes', async () => {
+  const timers = fakeTimers();
+  const t = new FakeTransport();
+  let release; const gate = new Promise(r => { release = r; });
+  const ls = new LogSync({ transport: () => t, snapshot: snapshotter(lines(2000)), phase: () => 'lobby', timers,
+                           chunkBytes: 4 * 1024, drainBytes: 1024, sleep: () => gate });
+  t.buffered = 64 * 1024;                    // the socket is backed up: the upload parks between chunks
+  ls.request('recap');
+  assert.equal(ls.busy, true, 'an upload is in flight');
+  assert.equal(t.kinds().filter(k => k === 'log_offer').length, 1);
+  const chunksBefore = t.chunks().length;
+
+  ls.attempt = 3;                            // a backoff the in-flight upload has earned
+  ls.onBound();                              // the socket flapped and re-bound mid-stream
+  assert.equal(t.kinds().filter(k => k === 'log_offer').length, 1, 'no second offer: MC must not be invited to pull a log already streaming');
+  assert.equal(t.chunks().length, chunksBefore, 'and no second stream started alongside the first');
+  assert.equal(ls.attempt, 3, 'the in-flight upload keeps its backoff');
+
+  t.buffered = 0; release(); await ls._inflight;
+  assert.equal(ls.state(), 'none', 'the original upload still completes');
+  assert.ok(t.chunks().at(-1).body.last, 'MC gets exactly one `last`-terminated stream');
+  assert.equal(t.kinds().filter(k => k === 'log_offer').length, 1);
+});

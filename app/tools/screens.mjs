@@ -1171,6 +1171,28 @@ for (const view of VIEWS) {
     must(r.rack === 1 && r.takeover === 0, 'the try-out panel ejected the player from the rack: ' + JSON.stringify(r));
     must(/EQUIPPED/.test(r.chip), 'ack chip: ' + r.chip);
   });
+  await step(`${view.name} #65 F129 A26 hero: the detail pane never says EQUIPPED while its own row is still ⟳`, async () => {
+    const pg = await open(view, 'loadout-arming');
+    const before = await pg.evaluate(() => { const nm = document.querySelector('.lodetail .nm'); const tag = nm ? nm.querySelector('.eqtag') : null;
+      return { nm: nm ? nm.textContent.trim() : null, tagText: tag ? tag.textContent.trim() : null,
+               arming: tag ? tag.classList.contains('arming') : null,
+               fs: tag ? parseFloat(getComputedStyle(tag).fontSize) : null, color: tag ? getComputedStyle(tag).color : null,
+               rowMark: (document.querySelector('.lrow.pend .st') || {}).textContent }; });
+    must(/SMG/.test(before.nm || ''), 'the hero is not focused on the arming row: ' + JSON.stringify(before));
+    must(before.rowMark && before.rowMark.trim() === '⟳', 'this stage is not mid-arm, so the step proves nothing: ' + JSON.stringify(before));
+    must(before.tagText === 'ARMING…', 'the hero still claims EQUIPPED while the row reads ⟳: ' + JSON.stringify(before));
+    must(before.arming === true, 'the hero tag is not wearing the amber .arming look: ' + JSON.stringify(before));
+    must(before.fs >= 11, 'hero tag text is under 11px: ' + before.fs);
+    must(before.color !== 'rgb(57, 224, 124)', 'the hero tag is still the green EQUIPPED colour, not amber: ' + before.color);
+    await pg.close();
+    const pg2 = await open(view, 'loadout-picked');
+    const after = await pg2.evaluate(() => { const nm = document.querySelector('.lodetail .nm'); const tag = nm ? nm.querySelector('.eqtag') : null;
+      return { nm: nm ? nm.textContent.trim() : null, tagText: tag ? tag.textContent.trim() : null, arming: tag ? tag.classList.contains('arming') : null }; });
+    await pg2.close();
+    must(/SMG/.test(after.nm || ''), 'the hero is not focused on the acked weapon: ' + JSON.stringify(after));
+    must(after.tagText === 'EQUIPPED', 'the hero never turned to EQUIPPED once the ack landed: ' + JSON.stringify(after));
+    must(after.arming === false, 'the hero kept the amber arming look after the ack: ' + JSON.stringify(after));
+  });
   await step(`${view.name} #61 A26: REVIEW KIT ▸ lands on the three-plate kit summary with READY UP`, async () => {
     const pg = await open(view, 'loadout-primary');
     await pg.click('.lobar .lobtn.review'); await pg.waitForTimeout(500);

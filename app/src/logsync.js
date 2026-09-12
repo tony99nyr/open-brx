@@ -93,6 +93,11 @@ export class LogSync {
   /** Transport reached `bound`. A node that reconnects RE-OFFERS so MC asks again (A25). */
   onBound() {
     if (!this.want) return;
+    // A reconnect that lands MID-UPLOAD must not re-offer: `_try()` would return early anyway (busy), but the
+    // `log_offer` would already be on the wire, inviting MC to pull a log we are in the middle of sending —
+    // and `attempt = 0` would throw away the backoff the in-flight upload's own `catch` is about to arm.
+    // Nothing is lost: the upload either completes (MC has the tail) or aborts and re-schedules itself.
+    if (this.busy) return;
     const t = this._transport();
     if (t && t.state === 'bound') {
       const snap = this._peek();

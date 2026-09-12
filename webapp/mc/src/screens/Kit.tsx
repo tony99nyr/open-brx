@@ -45,6 +45,14 @@ export function kitGate(players: Player[] | null | undefined) {
   return {
     known, total: roster.length, ready: known ? roster.length - waiting.length : 0,
     waiting: waiting.map(p => (p.display || `#${p.player_num}`).toUpperCase()),
+    // WHAT THE ROSTER IS RIGHT NOW — every player and whether they are ready, not just the unready
+    // names. A server refusal describes the roster it was raised against; when ANY of this changes it
+    // is describing something else and has to go. The unready NAMES alone were not enough: a refusal
+    // raised while this console already read everyone as ready (the skew the A27 guard exists for)
+    // had an empty name set before and after the missing player arrived and readied, so its sentence
+    // — and its frozen 8/9 count — stayed on screen over a roster that was now green (round-2
+    // review 2026-09-12).
+    sig: roster.map(p => `${p.player_id}:${p.ready ? 1 : 0}`).join(','),
   };
 }
 /** Three names, then a count: a squad of 12 must not wrap the header to three lines. */
@@ -127,7 +135,7 @@ function ContinueToLobby({ gate, onGo }: { gate: ReturnType<typeof kitGate>; onG
   if (armedFor !== null && armedFor !== who) setArmedFor(null);
   // a refusal describes a roster; when the roster changes it is describing something else
   const [refusedAt, setRefusedAt] = useState<string | null>(null);
-  if (refusal != null && refusedAt !== who) { setRefusal(null); setRefusedAt(null); setRefusedForce(false); }
+  if (refusal != null && refusedAt !== gate.sig) { setRefusal(null); setRefusedAt(null); setRefusedForce(false); }
   // ...and it expires on its own, like the A14 loadout confirm: an armed warning left on screen is a
   // trap, because the next tap is the one that moves everybody.
   // ...EXCEPT once the override itself has been refused: expiring that would quietly turn the next
@@ -150,7 +158,7 @@ function ContinueToLobby({ gate, onGo }: { gate: ReturnType<typeof kitGate>; onG
     const forced = armed;
     const r = await onGo(forced);
     // the server said no, and said who — and whether it was the OVERRIDE it turned down
-    if (r.refusal) { setRefusal(r.refusal); setRefusedAt(who); setRefusedForce(forced); return; }
+    if (r.refusal) { setRefusal(r.refusal); setRefusedAt(gate.sig); setRefusedForce(forced); return; }
     if (r.ok) { setArmedFor(null); setRefusal(null); setRefusedAt(null); setRefusedForce(false); }  // otherwise it threw: the red strip says why, stay put
   };
   return (
@@ -414,8 +422,8 @@ export function Kit() {
               return (
                 <div key={pl.player_id} className="hov-acc kit-row" role="button" tabIndex={0} aria-pressed={on} onClick={() => setSelPlayer(pl.player_id)} onKeyDown={onKey(() => setSelPlayer(pl.player_id))}
                   style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: on ? 'rgba(57,180,255,.06)' : 'transparent', border: `1px solid ${on ? T.acc : 'transparent'}`, cursor: 'pointer', minHeight: 44 }}>
-                  <span style={{ width: 4, alignSelf: 'stretch', background: teamColor(pl.team_id) }} />
-                  <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ width: 4, flex: 'none', alignSelf: 'stretch', background: teamColor(pl.team_id) }} />
+                  <span style={{ flex: '1 1 0', minWidth: 0 }}>
                     <span style={{ display: 'block', font: F.chk(700, 14), letterSpacing: '.14em' }}><span style={{ color: T.micro, font: F.mono(500, 10) }}>#{pl.player_num} </span>{pl.display}</span>
                     <span style={{ display: 'flex', gap: 8, font: F.mono(500, 10), letterSpacing: '.06em', color: T.micro, whiteSpace: 'nowrap', overflow: 'hidden' }}>
                       <span>{pl.gun_id ?? 'NO GUN'}</span>
@@ -430,7 +438,11 @@ export function Kit() {
                         : null; })()}
                     </span>
                   </span>
-                  {chip}
+                  {/* READY / TRYING / NO PHONE never shrinks and never wraps: on a phone the roster
+                      becomes a 210px horizontal strip, and this tag was the part pushed past the row
+                      (and off the screen: x=407 on a 393px phone, measured 2026-09-12). The callsign
+                      and the loadout line beside it already ellipsise. */}
+                  <span style={{ flex: 'none', whiteSpace: 'nowrap' }}>{chip}</span>
                 </div>
               );
             })}

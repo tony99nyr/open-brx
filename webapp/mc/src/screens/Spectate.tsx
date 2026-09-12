@@ -34,7 +34,7 @@ import { useEffect, useState } from 'react';
 import type { LiveRow, ScoreRow } from '../api/types';
 import { useStore } from '../store';
 import { F, T, fmtClock, teamColor } from '../tokens';
-import { Num } from '../ui';
+import { Num, ScrollX } from '../ui';
 import { bestStreak } from './Live';
 
 /** Type sizes, in px, computed from the viewport the same way `clamp(min, Npx-per-vh, max)` would.
@@ -77,13 +77,13 @@ function useViewport() {
 const isProjector = (vp: { w: number; h: number }) => vp.w >= 900 && vp.h >= 500;
 
 export function Spectate() {
-  const { state, feed, serverNow, connected } = useStore();
+  const { state, feed, serverNow, connected, wantedView } = useStore();
   const [, tick] = useState(0);
   const vp = useViewport();
   const SZ = sizes(vp.h);
   const fit = isProjector(vp);
   useEffect(() => { const id = setInterval(() => tick(x => x + 1), 500); return () => clearInterval(id); }, []);
-  const frame = { fit, frozen: !connected, SZ };
+  const frame = { fit, frozen: !connected, SZ, wanted: wantedView };
   if (!state) {
     return <Frame {...frame} frozen={false}><Waiting text="CONNECTING TO MISSION CONTROL" SZ={SZ} /></Frame>;
   }
@@ -152,7 +152,7 @@ export function Spectate() {
  *  `frozen` is the WHOLE board's treatment, not the clock's. MC going offline used to dim one cell
  *  and leave a full scoreboard of numbers at full strength beside it — a room reads that as the live
  *  score, and it is whatever was true when the link dropped (review 2026-09-12). */
-function Frame({ children, fit, frozen, SZ }: { children: React.ReactNode; fit: boolean; frozen: boolean; SZ: SZ }) {
+function Frame({ children, fit, frozen, SZ, wanted }: { children: React.ReactNode; fit: boolean; frozen: boolean; SZ: SZ; wanted?: string | null }) {
   const pad = SZ.frame;
   return (
     <div data-spectate="board" data-frozen={frozen ? '1' : '0'}
@@ -172,6 +172,17 @@ function Frame({ children, fit, frozen, SZ }: { children: React.ReactNode; fit: 
                  opacity: frozen ? 0.5 : 1, filter: frozen ? 'grayscale(0.5)' : undefined }}>
         {children}
       </div>
+      {/* The way OUT of the latch, said on the screen that is refusing. A tab that loaded at
+       *  `#spectate` will not leave the board during this session (store.tsx) — which used to mean
+       *  the operator typed `#kit`, watched the URL snap back, and had no way of knowing that a
+       *  reload would now honour it (round-2 review 2026-09-12). Text only: no control may exist on
+       *  a screen a room can touch. */}
+      {wanted && (
+        <div data-spectate="escape" role="status"
+          style={{ ...chk(600, SZ.label), letterSpacing: '.18em', color: T.micro, marginTop: 12, flex: 'none' }}>
+          {wanted.toUpperCase()} IS A CONSOLE SCREEN — THIS TAB IS THE BOARD. RELOAD IT TO OPEN {wanted.toUpperCase()}.
+        </div>
+      )}
     </div>
   );
 }
@@ -220,8 +231,14 @@ function Board({ rows, SZ, fit }: { rows: (LiveRow | ScoreRow)[]; SZ: SZ; fit: b
   // `overflowY` is pinned to `hidden` under the fit rule because `overflow-x:auto` on its own computes
   // overflow-y to `auto` as well — which would have let the rows scroll vertically inside a frame
   // that is supposed to guarantee they fit.
+  //
+  // And on a phone it has to SAY it scrolls: 613 px of columns in a 325 px box ended at D with no
+  // edge and no scrollbar (393 px walk, 2026-09-12). <ScrollX> fades the cut edge and prints the
+  // hint, and only while there is more to the right — so a projector, which never overflows, shows
+  // neither. Its hint carries the board's own type size: nothing on this screen goes under 16 px.
   return (
-    <div style={{ overflowX: 'auto', ...(fit ? { overflowY: 'hidden', flex: '1 1 0px', minHeight: 0, display: 'flex', flexDirection: 'column' } : null) }}>
+    <ScrollX hint="▸ SCROLL FOR D · A · STK" hintSize={SZ.label} hintStyle={{ letterSpacing: '.18em', padding: '0 0 6px 18px' }}
+      style={{ ...(fit ? { overflowY: 'hidden', flex: '1 1 0px', minHeight: 0, display: 'flex', flexDirection: 'column' } : null) }}>
     <div style={{ minWidth: 540, ...(fit ? { flex: '1 1 0px', minHeight: 0, display: 'flex', flexDirection: 'column' } : null) }}>
       <div style={{ display: 'grid', gridTemplateColumns: BOARD_COLS, gap: '0 16px', padding: `${SZ.pad}px 18px`, flex: 'none',
                     background: T.panelAlt, border: `1px solid ${T.line}`, ...chk(700, SZ.label), letterSpacing: '.18em', color: T.dim }}>
@@ -255,7 +272,7 @@ function Board({ rows, SZ, fit }: { rows: (LiveRow | ScoreRow)[]; SZ: SZ; fit: b
         })}
       </div>
     </div>
-    </div>
+    </ScrollX>
   );
 }
 

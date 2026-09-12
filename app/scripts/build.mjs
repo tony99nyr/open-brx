@@ -19,29 +19,46 @@ import * as esbuild from 'esbuild';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pkg = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 
-const git = args => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-let stamp = 'unknown';
-try {
-  const sha = git(['rev-parse', '--short', 'HEAD']);
-  if (sha) {
-    // Tracked changes only: half the repo is generated or ignored, and an untracked scratch file is
-    // not a different build. Read-only — this script never touches the index.
-    let dirty = '';
-    try { if (git(['status', '--porcelain', '--untracked-files=no'])) dirty = '-dirty'; } catch (_) { /* keep clean */ }
-    stamp = sha + dirty;
-  }
-} catch (_) { /* no git: `unknown` */ }
+/** Read-only git, in the app tree. Throws on any non-zero exit. This script never touches the index. */
+export const gitIn = (cwd = ROOT) => args => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
 
-const APP_VER = `${pkg.version}+${stamp}`;
+/** `<short sha>[-dirty|-unknown-dirty]`, or `unknown` where there is no git at all.
+ *  `run` is injected so the failure modes below are testable without a repo in a given state. */
+export function gitStamp(run = gitIn()) {
+  let sha = '';
+  try { sha = run(['rev-parse', '--short', 'HEAD']); } catch (_) { return 'unknown'; }   // no git: `unknown`
+  if (!sha) return 'unknown';
+  // Tracked changes only: half the repo is generated or ignored, and an untracked scratch file is
+  // not a different build.
+  //
+  // A FAILED probe is not a clean tree. `git status` can fail for reasons that say nothing about the
+  // working copy — an index.lock held by a concurrent session is the one that bites here — and the old
+  // `catch` fell through to the empty string, stamping a dirty tree CLEAN. That is the single outcome
+  // this stamp exists to prevent: "is that phone running the code we just fixed" must never be answered
+  // with a confident lie. An unreadable tree stamps `-unknown-dirty` — visibly not a clean build.
+  let dirty = '';
+  try { if (run(['status', '--porcelain', '--untracked-files=no'])) dirty = '-dirty'; }
+  catch (e) { dirty = '-unknown-dirty'; console.warn(`build: could not read the working tree (${e && e.message || e}) — stamping ${sha}-unknown-dirty`); }
+  return sha + dirty;
+}
+
+/** The string baked into the bundle as `__APP_VER__`. */
+export function appVer(run = gitIn()) { return `${pkg.version}+${gitStamp(run)}`; }
+
 const ENTRIES = [['src/app.js', 'www/app.js'], ['src/utility.js', 'www/utility.js']];
 
-await Promise.all(ENTRIES.map(([entry, out]) => esbuild.build({
-  entryPoints: [path.join(ROOT, entry)],
-  outfile: path.join(ROOT, out),
-  bundle: true,
-  format: 'iife',
-  define: { __APP_VER__: JSON.stringify(APP_VER) },
-  logLevel: 'warning',
-})));
+export async function build() {
+  const APP_VER = appVer();
+  await Promise.all(ENTRIES.map(([entry, out]) => esbuild.build({
+    entryPoints: [path.join(ROOT, entry)],
+    outfile: path.join(ROOT, out),
+    bundle: true,
+    format: 'iife',
+    define: { __APP_VER__: JSON.stringify(APP_VER) },
+    logLevel: 'warning',
+  })));
+  console.log(`built ${APP_VER} -> ${ENTRIES.map(([, o]) => o).join(', ')}`);
+}
 
-console.log(`built ${APP_VER} -> ${ENTRIES.map(([, o]) => o).join(', ')}`);
+// Importing this file (the stamp tests do) must NOT cut a build.
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await build();

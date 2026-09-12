@@ -173,6 +173,27 @@ describe('S25 · the spectator board', () => {
     m.unmount();
   });
 
+  it('says how to leave the board when somebody tries to, and stays free of controls', async () => {
+    // The latch is released by a RELOAD (store.tsx). That was unreachable in practice: typing `#kit`
+    // put `#spectate` straight back in the URL bar, and nothing on screen said the request had been
+    // kept for the next load (round-2 review 2026-09-12). The way out belongs on the screen that is
+    // refusing — as TEXT: no control may exist on a screen a room can touch.
+    const m = await spectate({}, { wantedView: 'kit' });
+    const line = m.find('[data-spectate="escape"]')[0];
+    expect(line, 'the board says which screen is waiting').toBeTruthy();
+    expect(line.textContent).toMatch(/RELOAD/);
+    expect(line.textContent).toContain('KIT');
+    expect(fontOf(line), 'readable like everything else on this board').toBeGreaterThanOrEqual(16);
+    expect(m.find('button, a[href], input, [role="button"]').length, 'still not a control in sight').toBe(0);
+    m.unmount();
+  });
+
+  it('and says nothing at all until somebody does', async () => {
+    const m = await spectate();
+    expect(m.find('[data-spectate="escape"]').length).toBe(0);
+    m.unmount();
+  });
+
   it('shows the RESULT after the whistle, not a live table with a stopped clock', async () => {
     // Both MCs keep sending `live` through the recap phase, so "no live block" never arrives: the
     // board has to read the PHASE. Without this the room watched a frozen scoreboard and the result

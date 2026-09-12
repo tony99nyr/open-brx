@@ -49,7 +49,8 @@ export function makeStore(f: Fixture, base?: Partial<Store>): Store {
   return {
     api: fixtureApi(f.api ?? {}),
     state: f.state ?? null, feed: [], modes: [], weapons: f.weapons ?? [], perks: f.perks ?? [],
-    view: f.view ?? 'muster', setView: () => {}, designerSeed: null, openDesigner: () => {},
+    view: f.view ?? 'muster', setView: () => {}, latched: false, wantedView: null,
+    designerSeed: null, openDesigner: () => {},
     selPlayer: f.selPlayer ?? null, setSelPlayer: () => {}, error: null, clearError: () => {},
     run: async fn => { try { return await fn(); } catch { return undefined; } },
     serverNow: () => Date.now(), mock: true, connected: true, authRequired: false, serverOld: false,

@@ -124,12 +124,23 @@ export function Armory() {
           {/* A25: the session switch. Rendered ONLY when the server sends an option table — an older MC
               has no `/api/options` to PUT to, and a switch that writes to a 404 is worse than none. */}
           {state.options?.log_sync && (
-            <span data-logsync={state.options.log_sync} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
-              title="AUTO: MC asks each phone for its log on its own — at the recap, when a phone offers one, and when one comes back into range. MANUAL: only the LOGS button asks.">
-              <span style={{ font: F.mono(600, 11), letterSpacing: '.16em', color: T.micro }}>LOG SYNC</span>
-              <Seg label="log sync" value={state.options.log_sync}
-                options={[{ value: 'auto' as const, label: 'AUTO' }, { value: 'manual' as const, label: 'MANUAL' }]}
-                onChange={v => run(() => api.setOptions({ log_sync: v }))} pad="5px 12px" />
+            // What AUTO means, and that the LOGS button ignores this switch, lived ONLY in a `title`
+            // — which nobody hovers and a touch console cannot show at all, so the one rule the
+            // operator needs was invisible (round-2 review 2026-09-12). One legend line under the
+            // switch, at the console's 11 px floor for text that carries meaning.
+            <span data-logsync={state.options.log_sync} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: 5, maxWidth: 380 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ font: F.mono(600, 11), letterSpacing: '.16em', color: T.micro }}>LOG SYNC</span>
+                <Seg label="log sync" value={state.options.log_sync}
+                  options={[{ value: 'auto' as const, label: 'AUTO' }, { value: 'manual' as const, label: 'MANUAL' }]}
+                  onChange={v => run(() => api.setOptions({ log_sync: v }))} pad="5px 12px" />
+              </span>
+              <span data-logsync-legend="1" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro, lineHeight: 1.5, textAlign: 'left' }}>
+                {state.options.log_sync === 'auto'
+                  ? 'AUTO: MC ASKS EACH PHONE ON ITS OWN — AT THE RECAP, ON AN OFFER, AND WHEN ONE COMES BACK IN RANGE.'
+                  : 'MANUAL: MC NEVER ASKS ON ITS OWN — ONLY THE LOGS BUTTON DOES.'}
+                {' · '}THE LOGS BUTTON IS NEVER GATED BY IT.
+              </span>
             </span>
           )}
           {phones.length > 0 && (
@@ -215,8 +226,11 @@ function GunCard({ g }: { g: ReadinessRow }) {
   // for 10 s, which a headless gun cannot do (it drops in ~6 s), `echo` = the gun answered the config push.
   // The "still confirming" count-up is an ordinary server amber and is rendered by the amber list below;
   // this card never times anything itself, so it cannot disagree with the board.
+  // Both proofs mean the SAME THING — the headset is on — and they must read that way. `PROVEN BY
+  // LINK` beside a plain `CONNECTED` read as two different states, with the echo sounding like the
+  // weaker one (round-2 review 2026-09-12): one word for the fact, the proof in brackets after it.
   const hs = stale ? 'UNKNOWN'
-    : g.headset === 'proven' ? (g.headset_proof === 'link' ? 'PROVEN BY LINK' : 'CONNECTED')
+    : g.headset === 'proven' ? (g.headset_proof === 'link' ? 'CONNECTED (LINK)' : 'CONNECTED (ECHO)')
     : g.headset === 'absent' ? '—' : 'UNKNOWN';
   return (
     <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${color}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, clipPath: CHAMFER.tr12, opacity: waiting ? 0.62 : 1 }}>
@@ -451,7 +465,7 @@ function JoinPanel() {
         <div style={{ font: F.chk(700, 11), letterSpacing: '.22em', color: T.dim }}>JOIN — TAP SCAN QR IN THE APP</div>
         {url && <div style={{ background: '#ffffff', padding: 10, lineHeight: 0, boxShadow: `0 0 0 1px ${T.line}, 0 8px 24px rgba(0,0,0,.45)` }}><img src={url} width={200} height={200} alt="node join QR" style={{ display: 'block', imageRendering: 'pixelated' }} /></div>}
         {url && (
-          <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.micro, textAlign: 'center' }}>
+          <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro, textAlign: 'center' }}>
             {pub?.status === 'up' ? 'CARRIES THE LAN + INTERNET JOIN' : 'CARRIES THE LAN JOIN ONLY'}
           </div>
         )}
@@ -505,13 +519,13 @@ function ReachBlock() {
     <div style={{ alignSelf: 'stretch', borderTop: `1px solid ${T.line2}`, paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ font: F.chk(700, 11), letterSpacing: '.28em', color: T.acc }}>▸ REACH</div>
       <div style={{ display: 'grid', gridTemplateColumns: '76px 1fr', gap: '6px 10px', alignItems: 'center', width: '100%' }}>
-        <span style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro }}>NETWORK</span>
+        <span style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro }}>NETWORK</span>
         <span style={{ font: F.chk(600, 12), color: T.ink, wordBreak: 'break-word' }}>{lan.ssid ?? lan.mode.toUpperCase()} · {lan.ip ? `${lan.ip}:${lan.port}` : '—'}</span>
-        <span style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro }}>INTERNET</span>
+        <span style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro }}>INTERNET</span>
         <span style={{ font: F.chk(700, 11), color: statusColor, wordBreak: 'break-word' }}>{statusText}</span>
       </div>
       {!supported && (
-        <div style={{ font: F.mono(500, 9), letterSpacing: '.1em', color: T.warn, lineHeight: 1.6 }}>
+        <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.warn, lineHeight: 1.6 }}>
           ▲ THIS MC SERVER PREDATES BACKHAUL — restart it to get an internet join option
         </div>
       )}
@@ -519,8 +533,8 @@ function ReachBlock() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button type="button" disabled title="cloudflared was not found on this machine's PATH"
             style={{ alignSelf: 'flex-start', minHeight: 36, background: 'transparent', border: `1px solid ${T.line2}`, color: T.micro,
-                     font: F.chk(700, 10), letterSpacing: '.2em', padding: '8px 16px', cursor: 'not-allowed' }}>TURN ON</button>
-          <div style={{ font: F.mono(500, 9), letterSpacing: '.05em', color: T.micro, lineHeight: 1.7 }}>
+                     font: F.chk(700, 11), letterSpacing: '.2em', padding: '8px 16px', cursor: 'not-allowed' }}>TURN ON</button>
+          <div style={{ font: F.mono(500, 11), letterSpacing: '.05em', color: T.micro, lineHeight: 1.7 }}>
             INSTALL CLOUDFLARED — mac: <span style={{ color: T.dim }}>brew install cloudflared</span>
             {' '}· windows: <span style={{ color: T.dim }}>winget install Cloudflare.cloudflared</span>
             {' '}· linux: <span style={{ color: T.dim }}>apt install cloudflared</span>
@@ -528,7 +542,7 @@ function ReachBlock() {
         </div>
       )}
       {supported && available && manual && (
-        <div style={{ font: F.mono(500, 9), letterSpacing: '.08em', color: T.micro, lineHeight: 1.6 }}>
+        <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro, lineHeight: 1.6 }}>
           SET BY --public-url ON THE MC COMMAND LINE — not MC's to turn off from here.
         </div>
       )}
@@ -536,13 +550,13 @@ function ReachBlock() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button type="button" onClick={toggle} disabled={busyOrPending} className={busyOrPending ? undefined : 'hov-acc'}
             style={{ alignSelf: 'flex-start', minHeight: 36, background: 'transparent', border: `1px solid ${T.line2}`,
-                     color: busyOrPending ? T.micro : T.dim, font: F.chk(700, 10), letterSpacing: '.2em', padding: '8px 16px',
+                     color: busyOrPending ? T.micro : T.dim, font: F.chk(700, 11), letterSpacing: '.2em', padding: '8px 16px',
                      cursor: busyOrPending ? 'not-allowed' : 'pointer' }}>
             {status === 'starting' ? 'STARTING…' : turningOn ? 'TURN ON' : 'TURN OFF'}
           </button>
           {/* A28.2: `welcome.join`/MC→node `join` push this to phones that joined over the LAN before
               the tunnel existed — nothing on their end needs to change for them to pick it up. */}
-          <div style={{ font: F.mono(500, 9), letterSpacing: '.05em', color: T.micro, lineHeight: 1.6 }}>
+          <div style={{ font: F.mono(500, 11), letterSpacing: '.05em', color: T.micro, lineHeight: 1.6 }}>
             PHONES ALREADY JOINED PICK THIS UP AUTOMATICALLY. NEW PHONES SCAN THE QR.
           </div>
         </div>

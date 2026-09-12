@@ -37,12 +37,20 @@ async function kitScreen(refusal: PhaseRefusal, { always = false } = {}) {
   });
   // the console's OWN roster looks green: every disagreement here is the server's to win
   const state: State = { ...d.state, players: d.state.players.map(p => ({ ...p, ready: true })) };
-  const store = makeStore({ ...d, state, view: 'kit' }, {
-    api,
-    run: async fn => { try { return await fn(); } catch (e) { errors.push((e as Error).message); return undefined; } },
+  const render = (s: State) => {
+    const store = makeStore({ ...d, state: s, view: 'kit' }, {
+      api,
+      run: async fn => { try { return await fn(); } catch (e) { errors.push((e as Error).message); return undefined; } },
+    });
+    return <StoreCtx.Provider value={store}><Kit /></StoreCtx.Provider>;
+  };
+  const m = await mount(render(state));
+  return Object.assign(m, {
+    calls, errors, base: state,
+    btn: () => m.find('[data-continue="kit"] button').slice(-1)[0],
+    /** the next snapshot arrives, as a pushed WS frame would */
+    push: (next: State) => m.update(render(next)),
   });
-  const m = await mount(<StoreCtx.Provider value={store}><Kit /></StoreCtx.Provider>);
-  return Object.assign(m, { calls, errors, btn: () => m.find('[data-continue="kit"] button').slice(-1)[0] });
 }
 
 afterEach(() => { vi.useRealTimers(); });
@@ -105,6 +113,40 @@ describe('A27 · a refused OVERRIDE', () => {
     expect(m.find('[data-continue-refusal]').length, 'the refusal is still on screen').toBe(1);
     await act(async () => { m.btn().click(); });
     expect(m.calls, 'the third tap re-forces rather than starting over').toEqual([undefined, true, true]);
+    m.unmount();
+  });
+
+  it('a roster that goes green takes the refusal and its frozen count with it', async () => {
+    // THE STALE LINE (round-2 review 2026-09-12). A refused override never expires — deliberately,
+    // so the next tap can force again — and it used to be cleared only when the set of UNREADY
+    // NAMES changed. In the case the A27 guard exists for that set is empty on both sides of the
+    // event: the console already reads its own roster as green, and the player the SERVER is
+    // holding out for is one this console has not seen yet. So when ROCCO finally arrived, readied,
+    // the sentence "1 of 9 are not READY: ROCCO" and its 8/9 count stayed on a screen where every
+    // player was green, with no tap that could clear it.
+    const m = await kitScreen({ error: '1 of 9 are not READY: ROCCO', not_ready: ['ROCCO'], greens: 8, roster_size: 9 }, { always: true });
+    await act(async () => { m.btn().click(); });                     // refused
+    await act(async () => { m.btn().click(); });                     // override refused: no expiry
+    expect(m.find('[data-continue-refusal]')[0].getAttribute('data-override-refused')).toBe('1');
+    expect(m.btn().textContent, "the server's tally while it is refusing").toBe('CONTINUE ANYWAY · 8/9 READY ▸');
+
+    // the snapshot catches up: ROCCO is on the roster, and ready
+    const rocco = { ...m.base.players[0], player_id: 'rocco', player_num: 99, display: 'ROCCO', ready: true };
+    await m.push({ ...m.base, players: [...m.base.players, rocco] });
+    expect(m.find('[data-continue-refusal]').length, 'the refusal described a roster that no longer exists').toBe(0);
+    expect(m.btn().textContent, 'and the count is the console\'s own again').toBe('CONTINUE · 9/9 READY ▸');
+    expect(m.calls, 'nothing was sent by the snapshot arriving').toEqual([undefined, true]);
+    m.unmount();
+  });
+
+  it('but a snapshot that changes nothing about the roster leaves it alone', async () => {
+    // The control. Snapshots arrive ~4x a second; if any of them cleared the refusal the operator
+    // would never get to read it, let alone answer it.
+    const m = await kitScreen({ error: 'THE LOBBY IS CLOSED', greens: 8, roster_size: 8 }, { always: true });
+    await act(async () => { m.btn().click(); });
+    await act(async () => { m.btn().click(); });
+    await m.push({ ...m.base, t: m.base.t + 250 });
+    expect(m.find('[data-continue-refusal]')[0].textContent).toBe('MC REFUSED THE OVERRIDE — THE LOBBY IS CLOSED');
     m.unmount();
   });
 

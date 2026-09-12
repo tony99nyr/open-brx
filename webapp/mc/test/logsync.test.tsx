@@ -65,12 +65,41 @@ describe('A25 · the LOG SYNC switch', () => {
     m.unmount();
   });
 
-  it('says what AUTO means, so the switch is not a mystery', async () => {
+  // What AUTO does, and the fact that LOGS ignores the switch, used to live ONLY in a `title`
+  // attribute — which nobody hovers and a touch console cannot show at all, so the rule the operator
+  // most needs was invisible on screen (round-2 review 2026-09-12). It is a LEGEND now: visible text,
+  // at the console's 11 px floor, under the switch it explains.
+  it('says what AUTO means on screen, at a size that can be read', async () => {
     const d = await demo();
     const state: State = { ...d.state, options: { log_sync: 'auto' } };
     const m = await mountScreen(<Armory />, { ...d, state, view: 'muster' });
-    const sw = m.find('[data-logsync]')[0];
-    expect((sw.getAttribute('title') ?? '').toLowerCase()).toMatch(/recap|reconnect|on its own/);
+    const legend = m.find('[data-logsync] [data-logsync-legend]')[0];
+    expect(legend, 'a visible legend under the switch, not a tooltip').toBeTruthy();
+    const t = (legend.textContent ?? '').toLowerCase();
+    expect(t).toMatch(/recap/);
+    expect(t).toMatch(/on its own/);
+    expect(parseFloat(getComputedStyle(legend).fontSize)).toBeGreaterThanOrEqual(11);
+    m.unmount();
+  });
+
+  it('the legend says the LOGS button is never gated by the switch', async () => {
+    // The one rule that decides whether the operator has to flip the switch before asking for a log.
+    for (const mode of ['auto', 'manual'] as const) {
+      const d = await demo();
+      const state: State = { ...d.state, options: { log_sync: mode } };
+      const m = await mountScreen(<Armory />, { ...d, state, view: 'muster' });
+      const t = (m.find('[data-logsync] [data-logsync-legend]')[0].textContent ?? '').toUpperCase();
+      expect(t, `the ${mode} legend`).toMatch(/LOGS BUTTON IS NEVER GATED/);
+      m.unmount();
+    }
+  });
+
+  it('says what MANUAL means too — the legend follows the switch', async () => {
+    const d = await demo();
+    const state: State = { ...d.state, options: { log_sync: 'manual' } };
+    const m = await mountScreen(<Armory />, { ...d, state, view: 'muster' });
+    const t = (m.find('[data-logsync] [data-logsync-legend]')[0].textContent ?? '').toUpperCase();
+    expect(t).toMatch(/MC NEVER ASKS ON ITS OWN/);
     m.unmount();
   });
 });

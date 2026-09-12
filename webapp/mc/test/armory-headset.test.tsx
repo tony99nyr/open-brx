@@ -22,17 +22,19 @@ async function boardWith(row: Partial<ReadinessRow>) {
 }
 
 describe('ARMORY · how a headset was proven (A32)', () => {
-  it('a link that has held says PROVEN BY LINK', async () => {
+  it('a link that has held says CONNECTED (LINK)', async () => {
     const { m, cell } = await boardWith({ headset: 'proven', headset_proof: 'link', gun_linked: true });
     expect(cell().getAttribute('data-headset')).toBe('link');
-    expect(cell().textContent, 'the operator must be able to tell the two proofs apart').toBe('PROVEN BY LINK');
+    // Both proofs mean the headset is ON. `PROVEN BY LINK` next to a bare `CONNECTED` read as two
+    // different states rather than one fact with two provenances (round-2 review 2026-09-12).
+    expect(cell().textContent, 'the operator must be able to tell the two proofs apart').toBe('CONNECTED (LINK)');
     m.unmount();
   });
 
-  it('the config echo still says CONNECTED', async () => {
+  it('the config echo says CONNECTED (ECHO) — the same word, a different proof', async () => {
     const { m, cell } = await boardWith({ headset: 'proven', headset_proof: 'echo', gun_linked: true });
     expect(cell().getAttribute('data-headset')).toBe('echo');
-    expect(cell().textContent).toBe('CONNECTED');
+    expect(cell().textContent).toBe('CONNECTED (ECHO)');
     m.unmount();
   });
 
@@ -59,9 +61,9 @@ describe('ARMORY · how a headset was proven (A32)', () => {
     m.unmount();
   });
 
-  it('an older server that sends no headset_proof still renders CONNECTED, not a blank', async () => {
+  it('an older server that sends no headset_proof still reads as connected, not a blank', async () => {
     const { m, cell } = await boardWith({ headset: 'proven', headset_proof: undefined, gun_linked: true });
-    expect(cell().textContent).toBe('CONNECTED');
+    expect(cell().textContent).toBe('CONNECTED (ECHO)');
     m.unmount();
   });
 
@@ -71,7 +73,7 @@ describe('ARMORY · how a headset was proven (A32)', () => {
     const kinds = m.find('[data-headset]').map(e => e.getAttribute('data-headset'));
     expect(kinds, 'the demo board must not be all one state').toContain('link');
     expect(kinds).toContain('unknown');
-    expect(m.text()).toContain('PROVEN BY LINK');
+    expect(m.text()).toContain('CONNECTED (LINK)');
     expect(m.text()).toContain('HEADSET · CONFIRMING (LINK 4 s)');
     m.unmount();
   });

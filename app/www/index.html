@@ -656,7 +656,9 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .lotab.locked{opacity:.55;cursor:default}
 .locount{font-size:10px;letter-spacing:.22em;color:var(--mut);font-weight:700;padding:2px 4px;flex:0 0 auto}
 .lo .lolist{-webkit-mask-image:linear-gradient(#000 86%,transparent);mask-image:linear-gradient(#000 86%,transparent);padding-bottom:28px}
-.eqtag{font-family:var(--fl);font-style:normal;font-size:10px;letter-spacing:.2em;color:var(--ok);border:1px solid var(--ok);padding:2px 7px;margin-left:8px;vertical-align:middle;font-weight:700}
+.eqtag{font-family:var(--fl);font-style:normal;font-size:11px;letter-spacing:.2em;color:var(--ok);border:1px solid var(--ok);padding:2px 7px;margin-left:8px;vertical-align:middle;font-weight:700}
+.eqtag.arming{color:var(--warn);border-color:var(--warn)}   /* A26/F129: the hero pane while st.pendingPick names this weapon — never claims EQUIPPED before the ack */
+[data-env="night"] .eqtag.arming{color:var(--num);border-color:var(--num)}
 .lo .lodetail{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;overflow:hidden auto;padding-bottom:34px;-webkit-mask-image:linear-gradient(#000 90%,transparent);mask-image:linear-gradient(#000 90%,transparent)}
 .lo .lodetail > *{flex:0 0 auto}
 .lodetail .caution{color:var(--bad);font-family:var(--fm,monospace);font-size:11px;letter-spacing:.08em;margin-top:4px}

@@ -13,16 +13,28 @@ export type View = Phase | 'designer' | 'catalog' | 'debug' | 'spectate';
 // client.ts). Whitelisted on the way in so a hand-typed hash can never select a view that does not
 // exist — that is what blanked the console when a non-phase view reached the phase-indexed label.
 export const VIEWS: View[] = ['muster', 'build', 'designer', 'kit', 'lobby', 'armed', 'live', 'recap', 'catalog', 'debug', 'spectate'];
+const asView = (h: string): View | null => ((VIEWS as string[]).includes(h) ? (h as View) : null);
+const hashParts = (): string[] => {
+  try { return decodeURIComponent(location.hash.replace(/^#/, '')).split('&').map(x => x.trim()); }
+  catch { return []; }
+};
 function viewFromHash(): View | null {
-  try {
-    const h = decodeURIComponent(location.hash.replace(/^#/, '')).split('&')[0].trim();
-    return (VIEWS as string[]).includes(h) ? (h as View) : null;
-  } catch { return null; }
+  return asView(hashParts()[0] ?? '');
 }
-function writeHash(v: View) {
+/** The view a LATCHED tab was asked for and could not have (see the latch below). It rides in the
+ *  hash beside the view, `#spectate&want=kit`, exactly the way the operator token does — so the URL
+ *  still says SPECTATE (what is on screen), and a RELOAD of that URL is a fresh load that carries
+ *  the request and releases the board. */
+function wantFromHash(): View | null {
+  const w = hashParts().slice(1).find(x => x.startsWith('want='));
+  const v = w ? asView(w.slice(5)) : null;
+  return v && v !== 'spectate' ? v : null;
+}
+function writeHash(v: View, want?: View | null) {
   try {
-    if (viewFromHash() === v) return;
-    history.replaceState(null, '', location.pathname + location.search + '#' + v);
+    const h = '#' + v + (want ? `&want=${want}` : '');
+    if (location.hash === h) return;
+    history.replaceState(null, '', location.pathname + location.search + h);
   } catch { /* no history: the view still works, it just will not survive a refresh */ }
 }
 /** what the designer opens with: an existing saved game to edit, a stock mode to customise, or the live draft */
@@ -42,6 +54,10 @@ export interface Store {
   /** the screen the operator is looking at (free navigation); `state.phase` is the server's phase */
   view: View;
   setView: (p: View) => void;
+  /** this tab LOADED at `#spectate`: it is the projector, and it refuses every other view (S25) */
+  latched: boolean;
+  /** the view this latched tab was last asked for — it opens on the next reload, and the board says so */
+  wantedView: View | null;
   designerSeed: DesignerSeed | null;
   openDesigner: (seed: DesignerSeed) => void;
   selPlayer: string | null;
@@ -77,23 +93,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [modes, setModes] = useState<ModeInfo[]>([]);
   const [weapons, setWeapons] = useState<WeaponView[]>([]);
   const [perks, setPerks] = useState<PerkView[]>([]);
-  const [view, setViewRaw] = useState<View>(() => viewFromHash() ?? 'muster');
   // S25 — THE PROJECTOR LATCH. A tab that LOADS at `#spectate` is the one pointed at the room, and it
   // carries the operator token like any other tab: reaching the console from it is reaching PANIC,
   // END MATCH and RECALL, in front of whoever is standing next to the screen. The hash was the way
   // in — `#kit` typed into that window, or a back button — because `hashchange` moved every tab
-  // alike (review 2026-09-12). So the tab is latched read-only AT LOAD and never unlatched: hash
-  // navigation away from the board is ignored and the hash is put back, and a full RELOAD (a
-  // deliberate act, at a keyboard) is the only way to turn that window back into a console.
-  const spectatorTab = useRef<boolean>(viewFromHash() === 'spectate');
+  // alike (review 2026-09-12). So the tab is latched read-only AT LOAD: hash navigation away from
+  // the board is refused for the rest of the session and the hash is put back.
+  //
+  // A reload was always meant to be the way out — but the rewrite made that unreachable: typing
+  // `#kit` put `#spectate` straight back in the URL bar, so the reload that followed reloaded the
+  // BOARD, and the latch could never be released at all (round-2 review 2026-09-12). The typed view
+  // is now REMEMBERED in the hash as `&want=`, which this tab ignores and the NEXT load honours: type
+  // the view, reload, and the tab comes back as a console on that screen. Still a deliberate act at a
+  // keyboard, which is the whole point — nothing a passer-by does to the projector can reach PANIC.
+  const loadedWant = useRef<View | null>(wantFromHash());
+  const spectatorTab = useRef<boolean>(viewFromHash() === 'spectate' && !loadedWant.current);
+  const [view, setViewRaw] = useState<View>(() => loadedWant.current ?? viewFromHash() ?? 'muster');
+  // the request has been spent: the URL says the view it opened, not the one it came from
+  useEffect(() => { if (loadedWant.current) { writeHash(loadedWant.current); loadedWant.current = null; } }, []);
+  // what a latched tab was last asked for, so the board can say how to get there (nothing is rendered
+  // until somebody actually tries)
+  const [wanted, setWanted] = useState<View | null>(null);
   const setView = useCallback((v: View) => {
-    if (spectatorTab.current) { writeHash('spectate'); return; }
+    if (spectatorTab.current) { setWanted(v === 'spectate' ? null : v); writeHash('spectate', v === 'spectate' ? null : v); return; }
     writeHash(v); setViewRaw(v);
   }, []);
   // back/forward and a hand-edited hash both move the console
   useEffect(() => {
     const onHash = () => {
-      if (spectatorTab.current) { writeHash('spectate'); return; }   // the board stays the board
+      if (spectatorTab.current) {
+        const asked = viewFromHash();
+        const want = asked && asked !== 'spectate' ? asked : wantFromHash();
+        setWanted(want);
+        writeHash('spectate', want);      // the board stays the board; the request survives a reload
+        return;
+      }
       const v = viewFromHash(); if (v) setViewRaw(v);
     };
     window.addEventListener('hashchange', onHash);
@@ -170,13 +204,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const store = useMemo<Store>(() => ({
     api, state, feed, modes, weapons, perks, view, setView, selPlayer, setSelPlayer, error, mock,
+    latched: spectatorTab.current, wantedView: wanted,
     designerSeed, openDesigner: seed => { setDesignerSeed(seed); setView('designer'); },
     connected: mock ? true : connected, authRequired, serverOld, hasToken: !!getToken(),
     setToken: tok => { saveToken(tok); setAuthRequired(false); setTokenVersion(v => v + 1); },
     clearError: () => setError(null),
     run: async fn => { try { setError(null); return await fn(); } catch (e) { setError((e as Error).message); return undefined; } },
     serverNow: () => Date.now() + offset.current,
-  }), [api, state, feed, modes, weapons, perks, view, setView, selPlayer, error, mock, connected, authRequired, designerSeed, serverOld]);
+  }), [api, state, feed, modes, weapons, perks, view, setView, wanted, selPlayer, error, mock, connected, authRequired, designerSeed, serverOld]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

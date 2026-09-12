@@ -72,7 +72,12 @@ export function CommandBar() {
             );
           })}
         </nav>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {/* THE TOASTS, in a row of their own. They used to share the nowrap row below with the phase
+            tag, NEW MATCH and the menu, so at 393px a notice took the width and squeezed
+            "NEW MATCH ▸" onto three lines — a 72px button, measured (round-2 review 2026-09-12).
+            `.cb-notices` keeps them inline on a desk and gives them a full-width row under the bar on
+            a phone; the controls beside them wrap rather than compress. */}
+        <div className="cb-notices">
           {/* an action that failed must still say so somewhere immediate */}
           {error && (
             // This was one `nowrap` line clipped at 420px with `title="dismiss"`, so the server's most
@@ -97,6 +102,8 @@ export function CommandBar() {
             <button type="button" onClick={() => setPanicked(null)} title="dismiss"
               style={{ background: 'rgba(255,82,82,.12)', border: `1px solid ${T.bad}`, color: T.bad, font: F.chk(600, 12), padding: '6px 12px', cursor: 'pointer' }}>▲ {panicked} ✕</button>
           )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           {/* Auth is the one thing that must stay in the header: nothing works without it. */}
           {authRequired && <button type="button" onClick={() => setView('debug')}
             style={{ background: 'transparent', border: `1px solid ${T.warn}`, color: T.warn, font: F.chk(700, 12), padding: '7px 12px', cursor: 'pointer', minHeight: 40 }}>

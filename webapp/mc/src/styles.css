@@ -49,12 +49,28 @@ button:focus:not(:focus-visible), input:focus:not(:focus-visible) { outline: non
   .kit-roster { max-width: none !important; flex: 1 1 100% !important; }
   .kit-roster-rows { flex-direction: row !important; overflow-x: auto; flex-wrap: nowrap; scroll-snap-type: x proximity; -webkit-mask-image: linear-gradient(90deg,#000 90%,transparent); mask-image: linear-gradient(90deg,#000 90%,transparent); }
   .kit-roster-rows .kit-row { scroll-snap-align: start; }
-  .kit-roster-rows .kit-row { flex: 0 0 210px; }
+  /* 210px is the WIDTH, not just the basis: `min-width:auto` let a row grow to its content, so the
+     first row's READY tag sat at x=407 on a 393px phone — off the screen entirely (measured
+     2026-09-12). The name and the loadout line already shrink and ellipsise; the tag never does. */
+  .kit-roster-rows .kit-row { flex: 0 0 210px; max-width: 210px; min-width: 0; }
   .kit-roster-rows form { flex: 0 0 180px; }
 }
 /* horizontal shelves (saved games): fade the cut edge so the overflow is discoverable */
 .shelf-x { -webkit-mask-image: linear-gradient(90deg,#000 calc(100% - 56px),transparent); mask-image: linear-gradient(90deg,#000 calc(100% - 56px),transparent); scroll-snap-type: x proximity; }
 .shelf-x > * { scroll-snap-align: start; }
+/* the same fade for a TABLE that is wider than its container (LIVE, SPECTATE) — applied by <ScrollX>
+   only while there is something further right, so a board that fits keeps its last column at full
+   strength. The <ScrollX> hint says which way to go; this says where the page was cut. */
+.scroll-x { -webkit-mask-image: linear-gradient(90deg,#000 calc(100% - 40px),transparent); mask-image: linear-gradient(90deg,#000 calc(100% - 40px),transparent); }
+
+/* The command bar's toasts (an action's notice, the red error strip, PANIC's receipt). They used to
+   sit in the same nowrap row as the phase tag, NEW MATCH and the menu, so at 393px a notice squeezed
+   "NEW MATCH \u25b8" onto three lines (72px tall, measured 2026-09-12). On a phone they take a row of
+   their own under the bar instead. */
+.cb-notices { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+@media (max-width: 820px) {
+  .cb-notices { order: 9; flex: 1 1 100%; justify-content: flex-start; }
+}
 
 /* designer on a tablet: the summary rail (PLAY / SAVE) comes first, not below NAME & NOTES */
 @media (max-width: 900px) {

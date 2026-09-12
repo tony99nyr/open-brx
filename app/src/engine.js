@@ -31,6 +31,13 @@ const TEAM_NAME = { 0: 'RED', 1: 'BLUE', 2: 'YELLOW', 3: 'GREEN' };
 // "alt-fire", which is also the native 3s indoor/outdoor toggle and is remapped to RELOAD by the
 // easy_reload perk, so a press is not proof a weapon changed (review 2026-08-31).
 const RECONCILE_MS = 3000;           // rejoin: hold the gun disarmed this long while we reconcile state (anti-cheat: a restart is slow + gains nothing; a real crash costs 3 s, which is rare and fine — Tony 2026-09-04)
+// node.md §3.11: how long the engine must have been ASLEEP before a foreground counts as a suspension.
+// `resume()` fires on every `visibilitychange` and `pageshow`, which includes a notification shade, a
+// glance at the lock screen and an app switch of half a second — none of which froze the webview. A
+// reconcile costs the player RECONCILE_MS disarmed AND re-arms from `frames.spawn`'s $AMMO, so running one
+// on a phone that never stopped ticking is both a mid-fight disarm and a free full magazine on demand
+// (review 2026-09-12). The engine ticks at 250 ms, so 5 s is ~20 missed ticks: a real freeze, never jitter.
+const RESUME_GAP_MS = 5000;
 const HEADSET_REBLINK_MS = 120000;   // re-paint the DOWN out-blink every 2 min (< the ~160 s blink count) so a long scanner walk stays lit
 const PICK_DEBOUNCE_MS = 400;        // A26 (S20): a WEAPON pick equips AND arms it for test-firing, so every tap costs an MC round-trip and a $WEAP write on the gun. Scrolling the rack must not spam either: only the last row tapped inside this window is sent (loadout.md §4.5)
 const SWITCH_MAX_MS = 850;       // the stock $WEAP tok15 (bench 2026-09-04: 850 ms, linear, no floor) — a fallback; the bundle carries the real value in frames.swap_ms
@@ -286,7 +293,12 @@ export class Engine {
     this.pendingTeardown = null;    // 'end' | 'panic' owed to the gun once it relinks
     this.stations = [];             // utility items in radio range (beacon.js Presence entries), newest snapshot from the app
     this._stationSig = '';
+    this._awakeAt = 0;              // §3.11: `now()` of the last tick or gun frame — the evidence the webview was RUNNING. 0 = never (a cold start), which resume() reads as a full suspension.
   }
+
+  /** The engine's proof of life: tick() and every frame off the gun stamp it, so `resume()` can tell a
+   *  webview that was frozen from one that never stopped ticking (RESUME_GAP_MS). */
+  _awake() { this._awakeAt = this.now(); }
 
   // ---------- persistence (§3.7) ----------
   _save() {
@@ -492,7 +504,11 @@ export class Engine {
     if (game) this.game = game;
     if (!wasOpen && this.kitOpen()) { this.briefSeen = false; this.kitLocked = false; }   // §4.6: the kit just opened — show the BRIEFING, the player taps through; A27: and last match's lock notice is retired
     if (!this.kitOpen()) this.browse(false);                   // MC went back to setting up: no browser while the kit is closed
-    if (this.ended) { this.ended = false; this.endAck = false; this.matchId = null; this.start = null; this.result = null; this.resultAt = 0; this.endedAt = 0; this.log('new match from MC — leaving the match-complete screen', 'lk'); }
+    // A27: the lock notice belongs to the match it was raised in. It normally retires on the kit_open
+    // false→true EDGE above — but an MC that never sends `kit_open:false` (and an older MC with no
+    // `policy` at all) never gives that edge, so the latch survived into every later lobby and the screen
+    // read "THE HOST LOCKED KITS" for ever (review 2026-09-12). A new match retires it too.
+    if (this.ended) { this.ended = false; this.endAck = false; this.matchId = null; this.start = null; this.result = null; this.resultAt = 0; this.endedAt = 0; this.kitLocked = false; this.log('new match from MC — leaving the match-complete screen', 'lk'); }
     this.player = player || this.player; this.team = team || this.team; if (roster) this.roster = roster;
     if (this.phase === 'connected' || this.phase === 'idle') { if (this.bleUp) this._set('kitted'); }
     this._changed();
@@ -585,6 +601,12 @@ export class Engine {
     if (slot === 'secondary' && kind !== 'weapon' && kind !== 'none') return false;   // A14: perks have their own slot
     if (slot === 'perk' && kind !== 'perk' && kind !== 'none') return false;
     if (kind === 'none' && slot === 'primary') return false;
+    // The debounce is ONE slot wide, and `pendingPick` moves with it. So a PRIMARY tap followed inside the
+    // 400 ms window by a SECONDARY tap — or by a perk NONE, which sends immediately and nulls `_pickDue` on
+    // the way past — used to DESTROY the first pick: nothing reached MC, nothing logged, and the player's
+    // ⟳ row quietly became somebody else's ✓ (review 2026-09-12). The window exists to stop a thumb spamming
+    // ONE rack; a pick in a DIFFERENT slot is the player having moved on, so it commits the old one first.
+    if (this._pickDue && this._pickDue.slot !== slot) this._flushPick('slot switch');
     this.pendingPick = { slot, kind, id: kind === 'none' ? null : id, at: this.now() };
     this.loadoutAck = null;
     if (kind === 'weapon') this._pickDue = { slot, kind, id, at: this.now(), try: true };   // A26: coalesce; tick()/_flushPick sends it
@@ -609,6 +631,9 @@ export class Engine {
   }
   /** A26: drop a queued pick that will never be sent (the kit locked under it). */
   _cancelPick() { this._pickDue = null; this.pendingPick = null; }
+  /** A26: the HUD's way to commit a queued pick without closing the browser — switching the PRIMARY /
+   *  SECONDARY / PERK tab leaves that rack behind, so the pick sitting in its window goes now. */
+  commitPick(why = 'commit') { return this._flushPick(why); }
   browse(open) {
     open = !!open;
     if (this.browsing === open) return;
@@ -619,10 +644,14 @@ export class Engine {
   }
   _loadoutAck({ slot, ok, reason, dropped, loadout }) {
     if (loadout && this.player) this.player.loadout = loadout;   // MC's echo is the truth (applies on ok AND on a reject → reverts the optimistic row)
-    const pk = this.pendingPick;
-    this.loadoutAck = { slot, ok: !!ok, reason: reason || null, dropped: dropped || null, t: this.now(), key: pk ? (pk.kind === 'none' ? 'none' : `${pk.kind}:${pk.id}`) : null };   // A14: `dropped` = the other slot this pick knocked out
+    // The ack names its SLOT, and only a pending pick for THAT slot is the one it answers. Clearing blind
+    // let a perk ack retire a queued weapon's ⟳ (two slots can be in flight at once since the slot-switch
+    // flush above), and stamped the ack's `key` from the wrong row — so a later refusal marked nothing and
+    // the browser showed an equipped weapon MC had rejected (review 2026-09-12).
+    const pk = this.pendingPick, mine = !!(pk && pk.slot === slot);
+    this.loadoutAck = { slot, ok: !!ok, reason: reason || null, dropped: dropped || null, t: this.now(), key: mine ? (pk.kind === 'none' ? 'none' : `${pk.kind}:${pk.id}`) : null };   // A14: `dropped` = the other slot this pick knocked out
     if (dropped) this.log(`pick ${slot} dropped ${dropped.slot} ${dropped.id}: ${reason || ''}`, 'lk');
-    this.pendingPick = null;
+    if (mine) this.pendingPick = null;
     this._changed();
   }
   /** DONE on the try-out panel: hide it (the gun stays armed until MC ends the try-out or the player readies). */
@@ -664,6 +693,7 @@ export class Engine {
     const newMatch = body.match_id !== this.matchId;
     if (newMatch) { this.score = null; this.scoreAt = null; this.result = null; this.resultAt = 0; this.endedAt = 0; }   // a new match: last match's K/A/board — and last match's RESULT — must not show on the first DOWN
     this.matchId = body.match_id; this.cuesFired = new Set(); this.shots = 0; this.deaths = 0; this.ended = false; this._resyncRevive = false;
+    this.kitLocked = false;             // A27: the lock notice is spent the moment the countdown starts — it must never lead the NEXT lobby
     // A NEW match supersedes any in-flight reconnect resync of the OLD one. Without this the resync
     // stays set, the T-0 spawn (guarded on `!this.resync`) never runs, and the gun sits alive-with-0-hp
     // until the player pulls the trigger (bench 2026-09-04, S7). Clear it so the new match spawns clean.
@@ -1611,6 +1641,7 @@ export class Engine {
   // ---------- clock tick (call every ~250 ms) ----------
   tick() {
     const now = this.now();
+    this._awakeAt = now;             // §3.11: the heartbeat IS the proof the webview is running (see resume())
     this._checkEcho();
     if (this.loadoutAck && now - this.loadoutAck.t > 4000) { this.loadoutAck = null; this._changed(); }
     if (this._pickDue && now - this._pickDue.at >= PICK_DEBOUNCE_MS) this._flushPick('debounce');   // A26: the last row tapped in the window goes now
@@ -1921,6 +1952,7 @@ export class Engine {
 
   // ---------- BRX frames (§3.2) ----------
   feedFrame(f) {
+    this._awake();                   // §3.11: a frame off the gun is proof too — the JS ran to parse it
     const t = toks(f), cmd = t[0];
     switch (cmd) {
       case 'HP': this._onHp(+t[1] || 0, +t[2] || 0, t[3] !== undefined && t[3] !== '' ? (+t[3] || 0) : this.shield); break;
@@ -2560,16 +2592,27 @@ export class Engine {
 
   // ---------- app lifecycle (§3.11) ----------
   resume() {
-    this.log('app resumed — reconciling', 'li');
+    this.log('app resumed', 'li');
     if (this.phase === 'live') {
       if (this.endT && this.now() >= this.endT) { this._endLocal('expired-while-suspended'); return; }
       // node.md §3.10: a LIVE resume RECONCILES (disarm, keep the restored pools, re-arm if alive) — the same
       // path the BLE relink takes. It must NOT be `_beginResync`: that is the retired trigger-first evidence
       // protocol, which mis-concluded "dead" and let auto-respawn heal the player on restart (bench 2026-09-04).
       // The evidence protocol survives ONLY for lobby/armed, where there is no live state to get wrong.
-      if (this.bleUp) this._beginReconcile();
+      //
+      // ...but ONLY on evidence the webview was actually frozen. `resume()` is wired to `visibilitychange`
+      // and `pageshow` (app.js), so it also fires on a notification shade, a lock-screen glance and an app
+      // switch of half a second. Reconciling on those wrote `$AMMO,0,0,0,1` mid-fight — disarming the player
+      // for RECONCILE_MS — and then re-armed from `frames.spawn`, which is a FULL MAGAZINE: pull the shade
+      // down, get your ammo back (review 2026-09-12). No gap, no write at all. A link that went down while
+      // we were away needs nothing here either: `onBleConnected` runs this same reconcile on the relink.
+      const gap = this._awakeAt ? this.now() - this._awakeAt : Infinity;
+      if (!this.bleUp) this.log('resume: gun link down — the relink will reconcile', 'li');
+      else if (gap < RESUME_GAP_MS) this.log(`resume: ${gap} ms since the last tick — the app never stopped, nothing to reconcile`, 'li');
+      else this._beginReconcile();
     }
     if (this.start) this.resumeSchedule();
+    this._awake();   // both `visibilitychange` and `pageshow` can fire for one foreground: the second must not read the first's gap and reconcile again
     this._changed();
   }
 

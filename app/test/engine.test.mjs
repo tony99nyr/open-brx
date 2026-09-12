@@ -1152,6 +1152,7 @@ test('node.md §3.10: resume() in LIVE RECONCILES — it never runs the retired 
   h.frame('$LCD,29,70,0,0,10,384,*');            // alive at 29 hp — the state a resume must not touch
   assert.equal(h.eng.alive, true); assert.equal(h.eng.hp, 29);
   const before = h.writes.length;
+  h.adv(30000);                                   // the webview really was frozen: 30 s with no tick and no frame
   h.eng.resume();                                 // app foregrounded, gun still linked
   const st = h.eng.state();
   assert.ok(st.reconciling, 'a live resume opens the disarmed reconcile window');
@@ -1163,6 +1164,55 @@ test('node.md §3.10: resume() in LIVE RECONCILES — it never runs the retired 
   assert.equal(h.eng.state().reconciling, false, 'the window closes on its own — no trigger pull is asked of the player');
   assert.equal(h.eng.hp, 29, 'still no heal');
   assert.ok(!h.writes.slice(before).some(f => f.startsWith('$SPAWN')), 'a resume can never re-spawn');
+});
+
+// §3.11: `resume()` is wired to visibilitychange AND pageshow, so it fires on a notification shade, a
+// lock-screen glance and a half-second app switch. Reconciling on those disarms a live player for
+// RECONCILE_MS and then re-arms from frames.spawn — a full magazine on demand (review 2026-09-12).
+test('§3.11: a LIVE foreground with the link up and no real gap writes NOTHING — no disarm, no reconcile, no free magazine', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$LCD,29,70,0,0,4,120,*');              // alive at 29 hp with 4 rounds left in the mag
+  const before = h.writes.length;
+  h.adv(200); h.eng.resume();                     // the shade came down and went back up
+  const st = h.eng.state();
+  assert.equal(st.reconciling, false, 'the app never stopped ticking — there is nothing to reconcile');
+  assert.deepEqual(h.writes.slice(before), [], 'and so NOTHING goes to the gun: no $AMMO disarm, no re-arm');
+  assert.equal(h.eng.hp, 29); assert.equal(h.eng.alive, true);
+});
+
+test('§3.11 CONTROL: the same foreground after a real 30 s freeze DOES reconcile (the gate is evidence, not a ban)', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$LCD,29,70,0,0,4,120,*');
+  const before = h.writes.length;
+  h.adv(30000); h.eng.resume();                   // 30 s with no tick and no frame: the webview was frozen
+  assert.ok(h.eng.state().reconciling, 'a real suspension still opens the disarmed window');
+  assert.ok(h.writes.slice(before).some(f => f === '$AMMO,0,0,0,1,*'), 'and still disarms while state settles');
+});
+
+test('§3.11: a tick or a gun frame is proof of life — a long gap that was actually spent RUNNING reconciles nothing', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.adv(30000);
+  h.eng.tick();                                   // the app was awake the whole time; this is the latest heartbeat
+  const before = h.writes.length;
+  h.adv(200); h.eng.resume();
+  assert.equal(h.eng.state().reconciling, false, 'the gap is measured from the last tick, not from the last resume');
+  assert.deepEqual(h.writes.slice(before), []);
+  const h2 = harness().kit().config_().echo().start(0); h2.adv(10); h2.eng.tick();
+  h2.adv(30000); h2.frame('$LCD,29,70,0,0,4,120,*');   // a frame off the gun is proof the JS ran too
+  const before2 = h2.writes.length;
+  h2.adv(100); h2.eng.resume();
+  assert.equal(h2.eng.state().reconciling, false, 'a frame is evidence as good as a tick');
+  assert.deepEqual(h2.writes.slice(before2), []);
+});
+
+test('§3.11: visibilitychange and pageshow both firing for ONE foreground reconcile once, not twice', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.adv(30000);
+  h.eng.resume();                                 // visibilitychange
+  const after1 = h.writes.length;
+  assert.ok(h.eng.state().reconciling);
+  h.eng.resume();                                 // pageshow, same instant
+  assert.equal(h.writes.length, after1, 'the second resume is not a second suspension — no second disarm');
 });
 
 test('node.md §3.10 CONTROL: the evidence protocol survives for ARMED — a relink there re-writes the head, and a LOBBY resume reconciles nothing', () => {
@@ -1685,6 +1735,54 @@ test('A26: closing the browser and READY UP both flush a pick still inside the d
   assert.deepEqual(picks(h).map(p => p.id), ['smg', 'assault_rifle'], 'READY UP commits the kit, debounce window or not');
 });
 
+// The A26 window is ONE slot wide and `pendingPick` moves with it, so a pick in a DIFFERENT slot used to
+// destroy the one still queued: nothing reached MC, nothing logged, and the row kept its ⟳ for ever.
+test('A26: a PRIMARY tap then a SECONDARY tap inside the window sends BOTH, in order — the second never eats the first', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('primary', 'weapon', 'smg');
+  h.adv(300);                                        // still well inside the 400 ms window
+  h.eng.requestLoadout('secondary', 'weapon', 'assault_rifle');
+  assert.deepEqual(picks(h).map(p => [p.slot, p.id]), [['primary', 'smg']], 'switching rack COMMITS the primary at once');
+  h.adv(400); h.eng.tick();
+  assert.deepEqual(picks(h).map(p => [p.slot, p.id]), [['primary', 'smg'], ['secondary', 'assault_rifle']], 'and the secondary follows on its own debounce');
+  assert.equal(picks(h)[0].try, true); assert.equal(picks(h)[1].try, true);
+});
+
+test('A26: a perk NONE behind a queued weapon pick does not swallow it (NONE sends immediately and used to null the window)', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('primary', 'weapon', 'smg');
+  h.adv(100);
+  h.eng.requestLoadout('perk', 'none');               // the perk tab's NONE chip — straight out, no debounce
+  assert.deepEqual(picks(h).map(p => [p.slot, p.kind]), [['primary', 'weapon'], ['perk', 'none']], 'the weapon went first, then the NONE');
+  h.adv(400); h.eng.tick();
+  assert.equal(picks(h).length, 2, 'and the flushed weapon is not sent a second time');
+});
+
+test('A26 CONTROL: two taps in the SAME slot still coalesce (the flush is on the slot switch, not on every tap)', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('secondary', 'weapon', 'smg');
+  h.adv(100);
+  h.eng.requestLoadout('secondary', 'weapon', 'assault_rifle');
+  assert.equal(picks(h).length, 0, 'same rack, same thumb — still one request');
+  h.adv(400); h.eng.tick();
+  assert.deepEqual(picks(h).map(p => p.id), ['assault_rifle']);
+});
+
+test('A26: loadout_ack only answers ITS OWN slot — a perk ack never clears a weapon still arming', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('primary', 'weapon', 'smg');
+  h.adv(500); h.eng.tick();                           // on the wire, ⟳ waiting on MC
+  assert.equal(h.eng.state().pendingPick.slot, 'primary');
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'perk', ok: true, loadout: { weapons: [{ weapon_id: 'assault_rifle' }], perk: 'body_armor' } } });
+  const st = h.eng.state();
+  assert.equal(st.pendingPick && st.pendingPick.slot, 'primary', 'the weapon is still arming — the perk ack was not about it');
+  assert.equal(st.loadoutAck.key, null, 'and the ack chip does not key off a row it never answered');
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: false, reason: 'Host locked this slot', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] } } });
+  const st2 = h.eng.state();
+  assert.equal(st2.pendingPick, null, 'the primary ack retires the primary row');
+  assert.equal(st2.loadoutAck.key, 'weapon:smg', 'and the refusal marks the row the player actually tapped');
+});
+
 test('A26: a try-out arriving while the browser is open does NOT take the screen (the rack stays, the row arms)', () => {
   const h = kitA10();
   h.eng.browse(true);
@@ -1706,6 +1804,33 @@ test('A30: a lobby push while this player is mid-kit raises kit_locked_by_host a
   assert.equal(st.kitLocked, true, 'the lobby screen leads with it');
   assert.equal(st.browsing, false);
   assert.equal(picks(h).length, 0, 'the queued pick is dropped, not sent into a locked kit');
+});
+
+// The latch cleared on ONE edge only: `kit_open` going false→true. An MC that never sends `kit_open:false`
+// (and an older MC with no `policy` at all) never gives that edge, so it survived into every later lobby
+// and the screen read "THE HOST LOCKED KITS" for ever (review 2026-09-12).
+test('A27: START retires the lock notice — the countdown spends it, with no kit_open edge needed', () => {
+  const h = kitA10();
+  h.eng.browse(true);
+  h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: h.bundle, roster: h.roster } });
+  assert.equal(h.eng.state().kitLocked, true, 'the lock is raised (policy here never sends kit_open, so there is no edge to clear it)');
+  h.echo(); h.start(9000);
+  assert.equal(h.eng.phase, 'armed');
+  assert.equal(h.eng.state().kitLocked, false, 'the notice belongs to the lobby it was raised in');
+});
+
+test('A27: a new match from MC retires the lock notice from the match-complete screen', () => {
+  const h = kitA10();
+  h.eng.browse(true);
+  h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: h.bundle, roster: h.roster } });
+  h.echo(); h.start(0); h.adv(10); h.eng.tick();
+  assert.equal(h.eng.phase, 'live');
+  h.adv(600000); h.eng.tick();                       // the clock runs out
+  assert.equal(h.eng.state().ended, true);
+  h.eng.kitLocked = true;                            // a latch that outlived its lobby by any route reaches here
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, catalog: CAT, policy: POL } });
+  assert.equal(h.eng.state().ended, false, 'the new match leaves the match-complete screen');
+  assert.equal(h.eng.state().kitLocked, false, 'and takes last match\'s lock notice with it');
 });
 
 test('A30 CONTROL: a player who had already readied up gets no lock notice (they asked for the advance)', () => {
