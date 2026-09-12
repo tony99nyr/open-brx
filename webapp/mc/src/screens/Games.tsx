@@ -7,7 +7,7 @@ import { setNotice } from '../notice';
 import { useStore } from '../store';
 import { F, PERK_COLOR, T, TAB } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, Shelf, StripedSlot, Tag, Toggle, onKey } from '../ui';
-import { emptyRequiredSlots, gameSig, objectiveLine, rulesLine } from './gameSummary';
+import { emptyRequiredSlots, gameSig, objectiveLine, poolEmptyMessage, rulesLine } from './gameSummary';
 import { MODE_ART } from '../modeArt';
 
 /** F151 (field 2026-09-12, ISSUE 25) — `PUT /api/config` (and everything that rides on it: playing a
@@ -42,9 +42,12 @@ export function Games() {
   // F141 polish (field 2026-09-12, pass 1): the applied config's OWN pool, server-computed — a policy
   // that excludes every weapon in a slot can reach `state.config` from a saved game or a race even
   // without visiting DESIGNER this session, so CONTINUE has to refuse it here too, not just there.
-  const poolEmpty = emptyRequiredSlots(cfg.loadout_policy, state.loadout_pool);
+  // Pass 2: named per the pool's own `reasons` code, same wording as DESIGNER.
+  const poolEmpty = emptyRequiredSlots(state.loadout_pool);
   const poolEmptyReason = poolEmpty.any
-    ? `${[poolEmpty.primary && 'PRIMARY', poolEmpty.secondary && 'SECONDARY', poolEmpty.perk && 'PERK'].filter(Boolean).join(' + ')} HAS NOTHING LEGAL TO GIVE A PLAYER — OPEN CUSTOMIZE AND ALLOW AT LEAST ONE.`
+    ? [poolEmpty.primary && poolEmptyMessage('PRIMARY', state.loadout_pool.reasons!.primary!),
+       poolEmpty.secondary && poolEmptyMessage('SECONDARY', state.loadout_pool.reasons!.secondary_weapons!),
+       poolEmpty.perk && poolEmptyMessage('PERK', state.loadout_pool.reasons!.perks!)].filter(Boolean).join(' ')
     : '';
   const blocked = locked || poolEmpty.any;
   const blockedReason = locked ? lockedReason(state.phase) : poolEmpty.any ? poolEmptyReason : undefined;

@@ -2,13 +2,13 @@
 // with a sticky summary rail that reads like the card will and holds SAVE / SAVE AS NEW / PLAY THIS NOW.
 // Edits a DRAFT: nothing touches the live config until PLAY. Pool preview comes from the server's rule engine.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LoadoutPreset, PerkView, SavedGame, SlotChoice, SlotRule, WeaponView } from '../api/types';
+import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LoadoutPoolReasons, LoadoutPreset, PerkView, SavedGame, SlotChoice, SlotRule, WeaponView } from '../api/types';
 import { useStore } from '../store';
 import { F, PERK_COLOR, ROLE, T, TAB, roleOf } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, StripedSlot, Toggle, ValueBox } from '../ui';
 import { PerkGlyph } from './Kit';
 import { AdvancedPresentation } from './AdvancedPresentation';
-import { STATION_SOURCES, TEMPLATE_RULES, admitsWeapons, computePool, emptyRequiredSlots, gameSig, objectiveLine, presetOf, rulesLine, withPolicy } from './gameSummary';
+import { STATION_SOURCES, TEMPLATE_RULES, admitsWeapons, computePool, emptyRequiredSlots, gameSig, objectiveLine, poolEmptyMessage, presetOf, rulesLine, withPolicy } from './gameSummary';
 import { MODE_ART } from '../modeArt';
 import { CONFIG_EDITABLE_PHASES, lockedReason } from './Games';
 
@@ -54,7 +54,7 @@ export function Designer() {
   // The pool is computed HERE from the rules being edited — every chip/tile/who-picks change shows instantly and needs
   // no server. (Tony, round 8: a server-only preview with an "all allowed" fallback made HEAVY-off and tile taps do
   // nothing visible.) The server preview only re-derives the preset name (OPEN / NO HEAVIES / … / CUSTOM).
-  const pool: LoadoutPool | null = useMemo(() => cfg?.loadout_policy ? computePool(cfg.loadout_policy, weapons, perks) : null, [cfg, weapons, perks]);
+  const pool: (LoadoutPool & { reasons?: LoadoutPoolReasons }) | null = useMemo(() => cfg?.loadout_policy ? computePool(cfg.loadout_policy, weapons, perks) : null, [cfg, weapons, perks]);
   const tick = useRef(0);
   useEffect(() => {
     if (!cfg?.loadout_policy) return;
@@ -90,9 +90,16 @@ export function Designer() {
   // slot itself but nothing stopped SAVE/PLAY — a zero-weapon primary reached KIT and every arsenal
   // tile there was locked with no way out. The whole screen refuses until at least one slot has
   // something to carry, exactly like the phase lock above.
-  const poolEmpty = emptyRequiredSlots(pol, pool);
+  //
+  // Pass 2: named per the pool's OWN `reasons` code (policy.py `pool()`), never a generic sentence —
+  // "fixed" is no longer assumed safe (the server refuses a push whose fixed id is not in the catalog,
+  // `_primary_pool_refusal`), and a perk pruned for having no secondary to swap to gets its own true
+  // cause instead of the perk filters taking the blame.
+  const poolEmpty = emptyRequiredSlots(pool);
   const poolEmptyReason = poolEmpty.any
-    ? `${[poolEmpty.primary && 'PRIMARY', poolEmpty.secondary && 'SECONDARY', poolEmpty.perk && 'PERK'].filter(Boolean).join(' + ')} EXCLUDES EVERYTHING IT NEEDS — ALLOW AT LEAST ONE, OR SET WHO PICKS TO FIXED/OFF, BEFORE SAVING OR PLAYING.`
+    ? [poolEmpty.primary && poolEmptyMessage('PRIMARY', pool!.reasons!.primary!),
+       poolEmpty.secondary && poolEmptyMessage('SECONDARY', pool!.reasons!.secondary_weapons!),
+       poolEmpty.perk && poolEmptyMessage('PERK', pool!.reasons!.perks!)].filter(Boolean).join(' ')
     : '';
   const blocked = configLocked || poolEmpty.any;
   const blockedReason = configLocked ? lockedReason(state.phase) : poolEmpty.any ? poolEmptyReason : undefined;
@@ -265,7 +272,7 @@ export function Designer() {
 /* ---------- pieces ---------- */
 
 function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
-  { slot: 'primary' | 'secondary' | 'perk'; rule: SlotRule; pool: LoadoutPool | null; weapons: WeaponView[]; perks: PerkView[]; onRule: (r: Partial<SlotRule>) => void }) {
+  { slot: 'primary' | 'secondary' | 'perk'; rule: SlotRule; pool: (LoadoutPool & { reasons?: LoadoutPoolReasons }) | null; weapons: WeaponView[]; perks: PerkView[]; onRule: (r: Partial<SlotRule>) => void }) {
   const sec = slot === 'secondary', isPerk = slot === 'perk';   // A14: the perk is its own slot
   const allowedW = pool ? (sec ? pool.secondary_weapons : pool.primary) : [];
   const allowedK = pool ? pool.perks : [];
@@ -282,8 +289,10 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
   // say only "0 OF 18 WEAPONS" — nothing on screen said the slot would DEGRADE at kit-out (primary
   // falls back to pistols only, which then failed its own one-magazine guard and blocked the push).
   // Say the failure in place, at the moment it is created, not three screens later as an unreadable
-  // push error.
-  const emptyPool = !off && !fixed && ((isPerk && allowedK.length === 0) || (!isPerk && allowedW.length === 0));
+  // push error. Pass 2: driven by the pool's own `reasons` code, not a re-derived `!off && !fixed` —
+  // a FIXED slot can be just as empty (`fixed_missing`) and must say so too.
+  const emptyCode = pool?.reasons?.[isPerk ? 'perks' : sec ? 'secondary_weapons' : 'primary'];
+  const emptyPool = !!emptyCode && emptyCode !== 'off';
   const WHO: Record<string, string> = isPerk
     ? { player: 'players pick a perk from what is allowed below (the host can override)', host: 'the host picks each player\'s perk on the KIT page', fixed: 'everyone gets the one perk you tap below', off: 'nobody gets a perk this game' }
     : { player: 'players choose from what is allowed below (the host can override)', host: 'the host chooses for each player on the KIT page', fixed: 'everyone gets the one weapon you tap below', off: 'nobody gets a slot 2 — the alt-fire button does nothing' };
@@ -318,10 +327,7 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
       </div>
       {emptyPool && (
         <div role="alert" data-testid={`${slot}-empty-pool`} style={{ font: F.chk(700, 12), letterSpacing: '.04em', color: T.bad, background: 'rgba(255,82,82,.1)', border: `1px solid ${T.bad}`, padding: '8px 10px', lineHeight: 1.5 }}>
-          ▲ THIS EXCLUDES EVERY {isPerk ? 'PERK' : sidearmsOnly ? 'PISTOL' : 'WEAPON'} —
-          {' '}{sec || isPerk
-            ? ' NOBODY WILL GET THIS SLOT, EVEN THOUGH IT IS NOT SET TO OFF. SWITCH IT OFF ON PURPOSE, OR ALLOW AT LEAST ONE.'
-            : ' NOBODY CAN GET A PRIMARY. ALLOW AT LEAST ONE CLASS OR WEAPON, OR SET WHO PICKS TO FIXED AND CHOOSE ONE.'}
+          ▲ {poolEmptyMessage(isPerk ? 'PERK' : sec ? 'SECONDARY' : 'PRIMARY', emptyCode!)}
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>

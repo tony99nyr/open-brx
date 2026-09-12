@@ -207,6 +207,19 @@ export interface LanPublic {
  *  `reach == "backhaul"`. */
 export interface Coverage { level: 'full' | 'zones'; on_backhaul: number; bound: number }
 
+/** loadout.md §3.2 (server pass 2, 2026-09-12) — why a slot's pool came out EMPTY. A closed
+ *  vocabulary of CODES, not sentences: `policy.py`'s copy of these is the HUD's (`_R_*`, shown
+ *  verbatim to a player) and the console needs its own words for the same fact, so there is one
+ *  classifier and two vocabularies (mirrored client-side in `screens/gameSummary.ts computePool`,
+ *  which the mock's own pool delegates to, so `?mock` carries the same codes). Additive: not yet in
+ *  the generated `LoadoutPool` (`mcp/brx_mcp/mc/types.py` has not been given the field yet), which is
+ *  why it rides on `LoadoutPoolReasons` here rather than in `contract.gen.ts`. */
+export type PoolEmptyCode = 'off' | 'fixed_missing' | 'only_ids_missing' | 'needs_secondary' | 'filtered';
+/** One optional code per slot that came out empty; a slot with nothing to say here has something in
+ *  its pool. Keyed by the SAME names as `LoadoutPool`'s own fields (`primary`, `secondary_weapons`,
+ *  `perks`), not `secondary`/`perk` — those are the POLICY's slot names, these are the POOL's. */
+export interface LoadoutPoolReasons { primary?: PoolEmptyCode; secondary_weapons?: PoolEmptyCode; perks?: PoolEmptyCode }
+
 export interface State {
   session_id: string;
   phase: Phase;
@@ -240,7 +253,7 @@ export interface State {
   players: Player[];
   teams: Team[];
   kit: { kitted: number; total: number; trying: Record<string, string>; browsing: Record<string, number> };
-  loadout_pool: LoadoutPool;
+  loadout_pool: LoadoutPool & { reasons?: LoadoutPoolReasons };
   active_preset_id?: string | null;   // the saved game that was applied (null after any real config edit)
   lobby: { ready: number; total: number; pushed: boolean; acks: Record<string, { ok: boolean; gun_echo?: string; err?: string }> };
   start?: StartView;

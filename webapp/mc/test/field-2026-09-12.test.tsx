@@ -9,6 +9,7 @@ import { Designer } from '../src/screens/Designer';
 import { Games } from '../src/screens/Games';
 import { Recap } from '../src/screens/Recap';
 import { Spectate } from '../src/screens/Spectate';
+import { computePool } from '../src/screens/gameSummary';
 import type { RecapView, State } from '../src/api/types';
 import { demo, mountScreen } from './harness';
 
@@ -54,7 +55,9 @@ describe('F141 — Designer class chip toggle', () => {
       if (c && c.getAttribute('aria-pressed') !== 'false') await act(async () => { c.click(); });
     }
     expect(m.find('[data-testid="primary-empty-pool"]').length, 'excluding every class shows the empty-pool warning, not a bare "0 OF N"').toBe(1);
-    expect(m.text()).toContain('THIS EXCLUDES EVERY');
+    // pass 2 (2026-09-12): named per the pool's own `reasons` code — a class/id filter that leaves
+    // nothing is "filtered", not a generic "excludes every weapon" sentence.
+    expect(m.text()).toContain("PRIMARY'S CLASS/ID FILTERS EXCLUDE EVERYTHING");
     // pass 1 (2026-09-12): the warning used to be purely cosmetic — PLAY/SAVE stayed enabled and
     // pushed a zero-weapon primary to KIT, where every arsenal tile ended up locked with no way out.
     const playBtn = m.find('button').find(b => (b.textContent ?? '').includes('PLAY THIS NOW')) as HTMLButtonElement | undefined;
@@ -96,16 +99,60 @@ describe('F151 — Games settings lock past kit', () => {
 
   it('refuses CONTINUE when the applied config\'s own pool has an empty required slot, even with no Designer visit', async () => {
     const d = await demo();
-    // a policy that excludes every primary weapon, ALREADY applied to state.config — the pool the
-    // server would compute for it is empty, exactly as if a bad saved game had just been played.
+    // a policy whose only_ids names a weapon that is not in this game — the server (and the mock's
+    // own computePool) would compute an empty primary pool for it, reason `only_ids_missing`, exactly
+    // as if a bad saved game had just been played.
     const policy = { ...d.state.config.loadout_policy, primary: { ...d.state.config.loadout_policy.primary, only_ids: ['nonexistent_weapon_id'] } };
-    const state: State = { ...d.state, phase: 'build', config: { ...d.state.config, loadout_policy: policy },
-      loadout_pool: { primary: [], secondary_weapons: d.state.loadout_pool.secondary_weapons, perks: d.state.loadout_pool.perks } };
+    const pool = computePool(policy, d.weapons, d.perks);
+    const state: State = { ...d.state, phase: 'build', config: { ...d.state.config, loadout_policy: policy }, loadout_pool: pool };
+    expect(pool.reasons?.primary, 'the pool computes only_ids_missing for this policy').toBe('only_ids_missing');
     const m = await mountScreen(<Games />, { ...d, state });
     expect(m.find('[data-testid="games-locked"]').length, 'a banner explains the empty pool').toBe(1);
-    expect(m.text()).toContain('PRIMARY');
+    expect(m.text()).toContain("PRIMARY'S ALLOW-LIST NAMES NOTHING THIS GAME HAS");
     const continueBtn = m.find('button').find(b => (b.textContent ?? '').includes('CONTINUE')) as HTMLButtonElement;
     expect(continueBtn.disabled, 'CONTINUE refuses to carry an empty primary into KIT').toBe(true);
+    m.unmount();
+  });
+
+  it('the secondary being deliberately OFF never blocks CONTINUE — "off" is a fact, not a fault', async () => {
+    const d = await demo();
+    const policy = { ...d.state.config.loadout_policy, secondary: { ...d.state.config.loadout_policy.secondary, choice: 'off' as const } };
+    const pool = computePool(policy, d.weapons, d.perks);
+    expect(pool.reasons?.secondary_weapons, 'an off slot still gets a reason code').toBe('off');
+    const state: State = { ...d.state, phase: 'build', config: { ...d.state.config, loadout_policy: policy }, loadout_pool: pool };
+    const m = await mountScreen(<Games />, { ...d, state });
+    expect(m.find('[data-testid="games-locked"]').length, 'no banner for a deliberately-off slot').toBe(0);
+    const continueBtn = m.find('button').find(b => (b.textContent ?? '').includes('CONTINUE')) as HTMLButtonElement;
+    expect(continueBtn.disabled).toBe(false);
+    m.unmount();
+  });
+
+  it('a FIXED primary whose weapon is not in this game blocks CONTINUE too (pass 2: fixed is no longer exempt)', async () => {
+    const d = await demo();
+    const policy = { ...d.state.config.loadout_policy, primary: { ...d.state.config.loadout_policy.primary, choice: 'fixed' as const, fixed_id: 'not_a_real_weapon' } };
+    const pool = computePool(policy, d.weapons, d.perks);
+    expect(pool.reasons?.primary, 'a missing fixed weapon reads fixed_missing').toBe('fixed_missing');
+    const state: State = { ...d.state, phase: 'build', config: { ...d.state.config, loadout_policy: policy }, loadout_pool: pool };
+    const m = await mountScreen(<Games />, { ...d, state });
+    expect(m.text()).toContain("PRIMARY'S FIXED PICK IS NOT IN THIS GAME");
+    const continueBtn = m.find('button').find(b => (b.textContent ?? '').includes('CONTINUE')) as HTMLButtonElement;
+    expect(continueBtn.disabled, 'a fixed slot can be just as empty as a filtered one, and must block the same way').toBe(true);
+    m.unmount();
+  });
+
+  it('a Quick Switch perk pruned for having no secondary blames the SECONDARY, never the perk filters', async () => {
+    const d = await demo();
+    const policy = { ...d.state.config.loadout_policy,
+      secondary: { ...d.state.config.loadout_policy.secondary, choice: 'off' as const },
+      perk: { ...d.state.config.loadout_policy.perk, choice: 'fixed' as const, fixed_id: 'quick_switch' } };
+    const pool = computePool(policy, d.weapons, d.perks);
+    expect(pool.reasons?.perks, 'a swap perk with no secondary reads needs_secondary, not off/filtered').toBe('needs_secondary');
+    const state: State = { ...d.state, phase: 'build', config: { ...d.state.config, loadout_policy: policy }, loadout_pool: pool };
+    const m = await mountScreen(<Games />, { ...d, state });
+    expect(m.text()).toContain('QUICK SWITCH NEEDS A SECONDARY');
+    // never blame the PERK slot's own filters/who-picks for a cause that is entirely about the secondary
+    expect(m.text()).not.toContain("PERK'S CLASS/ID FILTERS");
+    expect(m.text()).not.toContain("PERK'S FIXED PICK");
     m.unmount();
   });
 });

@@ -1,5 +1,5 @@
 // Shared game-summary helpers (GAMES cards, the DESIGNER rail, the KIT rules chip) — one generator everywhere.
-import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, PerkView, SlotRule, StationSourceId, WeaponView } from '../api/types';
+import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LoadoutPoolReasons, PerkView, PoolEmptyCode, SlotRule, StationSourceId, WeaponView } from '../api/types';
 import { STATION_SOURCE_IDS } from '../api/types';
 
 /** The rule engine, mirrored from mcp/brx_mcp/mc/policy.py `pool()`. The DESIGNER computes the pool from the rules
@@ -13,31 +13,83 @@ export const kindRows = (r: SlotRule, weapons: WeaponView[]): WeaponView[] =>
 export const admitsWeapons = (r: SlotRule) => r.kinds.includes('weapon') || r.kinds.includes('sidearm');
 /** A14: does this perk claim the ALT button (`effects.alt_reload`)? Then no second weapon can ride with it (policy.py `takes_alt`). */
 export const takesAlt = (k?: PerkView | null) => !!k?.effects?.alt_reload;
-export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: PerkView[]): LoadoutPool {
+/** S37: does this perk do NOTHING without a second weapon (`effects.switch_mult` — Quick Switch,
+ *  which compiles to the $WEAP tok15 swap delay)? Mirrors policy.py `swaps_weapons`, asked of the
+ *  EFFECT rather than the perk id so a second swap perk is covered the day it exists. */
+export const swapsWeapons = (k?: PerkView | null) => !!k?.effects?.switch_mult;
+
+/** Why `_filter`/the choice left this slot with nothing — mirrors policy.py `_empty_code` exactly,
+ *  including checking `ids` against the FULL catalog (never the kind-filtered subset): a fixed id
+ *  missing from the whole game's weapon list is `fixed_missing` regardless of which kind excluded it. */
+function emptyCode(rule: SlotRule, ids: Set<string>): PoolEmptyCode {
+  if (rule.choice === 'off') return 'off';
+  if (rule.choice === 'fixed') return rule.fixed_id != null && ids.has(rule.fixed_id) ? 'filtered' : 'fixed_missing';
+  const only = rule.only_ids ?? [];
+  if (only.length && !only.some(id => ids.has(id))) return 'only_ids_missing';
+  return 'filtered';
+}
+
+export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: PerkView[]): LoadoutPool & { reasons?: LoadoutPoolReasons } {
   const prim = p.primary.choice === 'fixed' ? weapons.filter(w => w.weapon_id === p.primary.fixed_id).map(w => w.weapon_id)
     : kindRows(p.primary, weapons).filter(w => inPool(p.primary, w.weapon_id, w.tags ?? [])).map(w => w.weapon_id);
   const s = p.secondary, k = p.perk;
   let sw: string[] = [], sp: string[] = [];
   if (s.choice === 'fixed') sw = weapons.filter(w => w.weapon_id === s.fixed_id).map(w => w.weapon_id);
   else if (s.choice !== 'off') sw = kindRows(s, weapons).filter(w => inPool(s, w.weapon_id, w.tags ?? [])).map(w => w.weapon_id);   // 'sidearm' = pistols only (policy.py weapon_kind_rows)
-  if (k.choice === 'fixed') sp = perks.filter(x => x.perk_id === k.fixed_id).map(x => x.perk_id);                                  // A14: the perk rule is its own slot
-  else if (k.choice !== 'off') sp = perks.filter(x => !x.hidden && inPool(k, x.perk_id, x.tags ?? [])).map(x => x.perk_id);
-  return { primary: prim, secondary_weapons: sw, perks: sp };
+  const visiblePerks = perks.filter(x => !x.hidden);   // pool() is handed only the visible catalog server-side
+  if (k.choice === 'fixed') sp = visiblePerks.filter(x => x.perk_id === k.fixed_id).map(x => x.perk_id);                           // A14: the perk rule is its own slot
+  else if (k.choice !== 'off') sp = visiblePerks.filter(x => inPool(k, x.perk_id, x.tags ?? [])).map(x => x.perk_id);
+  // S37 (field 2026-09-12): a swap perk (Quick Switch) with no legal secondary has nothing to switch
+  // to — pruned from the pool itself, the same way apply()/a stored loadout drops it, so it disappears
+  // from both UIs with no extra rule. `neededSecondary` records whether THIS is why `sp` went empty,
+  // which the perk slot's own `_empty_code` must never be blamed for instead (policy.py pool()).
+  let neededSecondary = false;
+  if (sw.length === 0 && sp.length > 0) {
+    const kept = sp.filter(id => !swapsWeapons(visiblePerks.find(x => x.perk_id === id)));
+    neededSecondary = kept.length !== sp.length;
+    sp = kept;
+  }
+  const out: LoadoutPool & { reasons?: LoadoutPoolReasons } = { primary: prim, secondary_weapons: sw, perks: sp };
+  const weaponIds = new Set(weapons.map(w => w.weapon_id));
+  const perkIds = new Set(visiblePerks.map(x => x.perk_id));
+  const reasons: LoadoutPoolReasons = {};
+  if (prim.length === 0) reasons.primary = emptyCode(p.primary, weaponIds);
+  if (sw.length === 0) reasons.secondary_weapons = emptyCode(s, weaponIds);
+  if (sp.length === 0) reasons.perks = neededSecondary ? 'needs_secondary' : emptyCode(k, perkIds);
+  if (Object.keys(reasons).length) out.reasons = reasons;
+  return out;
 }
 
-/** F141 polish (field 2026-09-12, pass 1): which of the three slots would hand nobody anything, given
- *  the CURRENT pool and WHO PICKS for each — `off`/`fixed` are exempt (an off slot is meant to be
- *  empty; a fixed slot always has exactly its one id). Shared by DESIGNER (a draft's own pool, so
- *  PLAY/SAVE can be refused before the bad policy is ever applied) and GAMES (the server-computed
- *  `state.loadout_pool` against the config actually in play, so CONTINUE is refused too — a policy
- *  can reach `state.config` from an older saved game or a race even if this session's Designer never
- *  produced it). Absent pool (not loaded yet) reads as nothing empty, never a false block. */
-export function emptyRequiredSlots(policy: LoadoutPolicy, pool: LoadoutPool | null): { primary: boolean; secondary: boolean; perk: boolean; any: boolean } {
-  if (!pool) return { primary: false, secondary: false, perk: false, any: false };
-  const primary = policy.primary.choice !== 'fixed' && pool.primary.length === 0;
-  const secondary = policy.secondary.choice !== 'off' && policy.secondary.choice !== 'fixed' && pool.secondary_weapons.length === 0;
-  const perk = policy.perk.choice !== 'off' && policy.perk.choice !== 'fixed' && pool.perks.length === 0;
+/** F141 polish (field 2026-09-12, pass 1 + pass 2): which of the three slots would hand nobody
+ *  anything, given the pool's OWN `reasons` (server pass 2, policy.py `pool()`/`_empty_code`) — a slot
+ *  is fine only when its code is `off` (a deliberately empty slot) or absent (something is allowed).
+ *  Pass 1 exempted `choice === 'fixed'` too, on the theory a fixed slot always has its one id — but the
+ *  server's own push refusal (`_primary_pool_refusal`) blocks exactly the case where a fixed id is NOT
+ *  in the catalog, so that exemption let PLAY/SAVE/CONTINUE through into a refused push. Shared by
+ *  DESIGNER (a draft's own pool, so PLAY/SAVE can refuse before the bad policy is ever applied) and
+ *  GAMES (the server-computed `state.loadout_pool` against the config actually in play, so CONTINUE
+ *  refuses too — a policy can reach `state.config` from an older saved game or a race even if this
+ *  session's Designer never produced it). Absent pool (not loaded yet) reads as nothing empty, never a
+ *  false block. */
+export function emptyRequiredSlots(pool: (LoadoutPool & { reasons?: LoadoutPoolReasons }) | null): { primary: boolean; secondary: boolean; perk: boolean; any: boolean } {
+  const r = pool?.reasons;
+  const blocks = (code?: PoolEmptyCode) => !!code && code !== 'off';
+  const primary = blocks(r?.primary), secondary = blocks(r?.secondary_weapons), perk = blocks(r?.perks);
   return { primary, secondary, perk, any: primary || secondary || perk };
+}
+
+/** The console's own words for a pool-empty code (policy.py's copy of these is the HUD's, `_R_*`,
+ *  shown verbatim to a PLAYER — this is the OPERATOR's, and names the control to fix). `slot` picks
+ *  the pronoun; `needs_secondary` only ever occurs on the perk slot but is worded generically in case
+ *  a second swap-effect perk ever lands on another slot. */
+export function poolEmptyMessage(slot: 'PRIMARY' | 'SECONDARY' | 'PERK', code: PoolEmptyCode): string {
+  switch (code) {
+    case 'fixed_missing': return `${slot}'S FIXED PICK IS NOT IN THIS GAME — CHOOSE A DIFFERENT ONE.`;
+    case 'only_ids_missing': return `${slot}'S ALLOW-LIST NAMES NOTHING THIS GAME HAS — ADD A VALID ID OR CLEAR IT.`;
+    case 'needs_secondary': return 'QUICK SWITCH NEEDS A SECONDARY — TURN THE SECONDARY ON, OR PICK ANOTHER PERK.';
+    case 'filtered': return `${slot}'S CLASS/ID FILTERS EXCLUDE EVERYTHING — CLEAR ONE, OR SET WHO PICKS TO FIXED.`;
+    case 'off': return '';   // never shown — an off slot is not a problem
+  }
 }
 
 const rule = (over: Partial<SlotRule> = {}): SlotRule => ({ choice: 'player', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: null, ...over });
