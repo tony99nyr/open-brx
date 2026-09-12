@@ -1083,7 +1083,7 @@ _JS_KEYWORDS = {"if", "for", "while", "switch", "catch", "do", "else", "return",
 # `Ready`. The generator star is non-capturing: it is never read, only the name at group 1 is.
 _METHOD = _re.compile(r"^  (?:static\s+)?(?:async\s+)?(?:(?:get|set)\s+)?(?:\*\s*)?(\w+)\s*\(", _re.M)
 
-_CLASS_DECL = _re.compile(r"^(?:export\s+)?class\s+(\w+)\s*\{", _re.M)
+_CLASS_DECL = _re.compile(r"^(?:export\s+)?class\s+Engine\s*\{", _re.M)
 
 
 def _engine_methods() -> set[str]:
@@ -1103,12 +1103,15 @@ def _engine_methods() -> set[str]:
     """
     text = _ENGINE_JS.read_text(encoding="utf-8")
     decl = _CLASS_DECL.search(text)
-    assert decl, f"no `class ... {{` declaration found in {_ENGINE_JS}"
+    assert decl, f"no `class Engine {{` declaration found in {_ENGINE_JS} -- pinned to the name so a " \
+                  f"helper class declared above it can never be the one sliced"
     body = text[decl.start():]
     closes = list(_re.finditer(r"^\}$", body, _re.M))
     if closes:
-        body = body[:closes[-1].end()]
-    return {m.group(1) for m in _METHOD.finditer(body)} - _JS_KEYWORDS
+        body = body[:closes[0].end()]      # the FIRST column-0 `}` closes THIS class; a later one is the next declaration
+    methods = {m.group(1) for m in _METHOD.finditer(body)} - _JS_KEYWORDS
+    assert methods, f"no methods found inside the Engine class body in {_ENGINE_JS} -- the slice is wrong, not the file"
+    return methods
 
 
 def _stage_methods() -> set[str]:

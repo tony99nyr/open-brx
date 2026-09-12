@@ -311,7 +311,7 @@ def test_no_unknown_third_party_module():
     reported here: add the row to `DIST`, then declare the package."""
     unknown: dict[str, str] = {}
     for root, glob in ((TOOLS, "*.py"), (MC, "**/*.py"), (STAGE, "**/*.py"),
-                       (REPO / "mcp" / "brx_mcp", "*.py")):
+                       (BRX_MCP, "*.py"), (BRX_MCP / "modes", "*.py"), (BRX_MCP / "diag", "*.py")):
         for f in _tree(root, glob):
             for mod in _third_party(f):
                 if mod not in DIST:
