@@ -252,6 +252,8 @@ export class MockBackend implements Api {
         last_seen_age_ms: red ? null : link * 1000,
         gun_linked: red ? null : true,
         fw: 'v4.32', phone_batt: 80, ssid_ok: true, mc_reachable: !red, synced: !red, screen_on: true, foreground: true,
+        // A28.3 / F155: the server stamps `reach` from the socket path and clears it on disconnect; `last_reach` outlives it.
+        reach: red ? null : (this.lastReach[tail] ?? 'lan'), last_reach: this.lastReach[tail] ?? (red ? null : 'lan'),
         status: red ? 'red' : a1 || a2 || ambers.length ? 'amber' : 'green', blockers,
       };
     });
