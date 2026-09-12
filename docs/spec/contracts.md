@@ -505,7 +505,7 @@ MQTT rationale is in `docs/archive/spec-net.md` §1). **Discovery:** MC advertis
 Bonjour with TXT `{ ver, session_id, ws_path, server_name }`; nodes browse it, **or scan MC's QR** (`ws://ip:port`
 + session, the field default), or type the address (the mandatory floor: mDNS fails on hostile Wi-Fi, some
 Android OEM stacks, and locked-down routers). Discovery is used only to find MC the first time and after a full
-address change; a warm socket is never re-discovered. **Do not hard-code or cache an MC IP across sessions.**
+address change; a warm socket is never re-discovered. **Do not hard-code or cache an MC IP across sessions.** (A28: the public hostname is random per tunnel start and arrives in the QR/`welcome.join`; it is held for the session only.)
 The LAN is a battery travel router (primary) or a Mac hotspot (small-game fallback; ~5-10 clients); MC must
 never assume it is the AP (ADR-0002). All messages are JSON envelopes.
 
@@ -518,11 +518,11 @@ for idempotent replay. `status` carries no `seq`.
 **Node → MC** (`kind`):
 | kind | body | when |
 |---|---|---|
-| `hello` | `{ node_id, node_type:"phone"|"companion"|"utility", app_ver, gun?: {name, tail, fw?}, seq_next, node_key? }` | on connect. `gun.name` = the full **advert name** (`<sticker>-<tail>`); `tail` is parsed from it, **never from the platform deviceId** (iOS gives UUIDs) [A5.5]. `seq_next` = the node's next event seq (so MC can spot a wiped install) [A4.5]. `node_key` = the secret from a prior `welcome` [A8.2] — proves a re-claim of a still-live node_id/gun. `node_type:"utility"` = a station phone, no gun, never bound [A13.5]. |
+| `hello` | `{ node_id, node_type:"phone"|"companion"|"utility", app_ver, gun?: {name, tail, fw?}, seq_next, node_key? }` | on connect. `gun.name` = the full **advert name** (`<sticker>-<tail>`); `tail` is parsed from it, **never from the platform deviceId** (iOS gives UUIDs) [A5.5]. `seq_next` = the node's next event seq (so MC can spot a wiped install) [A4.5]. `node_key` = the secret from a prior `welcome` [A8.2] — proves a re-claim of a still-live node_id/gun. `node_type:"utility"` = a station phone, no gun, never bound [A13.5]. **`via`/`secret?` [A28.2]**: which join URL this socket dialled and the QR's join secret (enforced only through the tunnel). |
 | `bind` | `{ node_id, player_id?, gun_name, gun_tail }` | node claims/confirms its gun & player. `gun_name`/`gun_tail` come from the advert name [A5.5] |
 | `event` | one persisted `Event` (§4) | as they happen (queued if offline) |
 | `event_batch` | `{ events: Event[] }` | store-and-forward flush on reconnect |
-| `status` | one `status` body (§4) | every `STATUS_HEARTBEAT_MS` while connected; live-only, no seq |
+| `status` | one `status` body (§4) | every `STATUS_HEARTBEAT_MS` while connected; live-only, no seq. **`reach: "lan"|"backhaul"` [A28.3]** = the live socket's path |
 | `ack_config` | `{ config_id, ok:boolean, err?, gun_echo?: string }` | after writing `FrameBundle.head`; `gun_echo` = the `$LCD`/`$ALCD` line the gun answered with — proof the gun **answered the head** (it reads `$LCD,0,0,0,0,0,0`; a headset-off gun answers nothing and drops the link, bench 2026-08-25 §7r) [A4.4, A6.7] |
 | `time_req` | `{ t_node }` | clock-sync ping (§7) |
 | `log_offer` | `{ node_id, bytes, lines }` | node has a diagnostic log MC can pull |
@@ -543,6 +543,7 @@ for idempotent replay. `status` carries no `seq`.
 | `feedback` | `{ player_id, kind:"kill"|"victory"|(legacy "multi"|"medal"), t, cue?:string, medals?:string[] }` | MC scored you a kill → node `$SFLASH` + `$PLAY` (`cue` if present, else `frames.cues[kind]`; missing → flash only). `t` = the death time; node ignores it if older than `FEEDBACK_MAX_AGE_MS` [A4.3]. `medals` [A11.4]. |
 | `alert` | `{ kind, text, player_id, t, hud?:boolean, player_id_subject?, carrier?, flag_tid?, role?: { name, on, tid? } }` | A11.4: a named game event (`player_id` = the recipient; `player_id_subject` = who turned / the last survivor); node plays its own `cues[kind]`/`leds[kind]` + shows `text` as a HUD alert (`hud:false` = sound/lights only); stale (> `FEEDBACK_MAX_AGE_MS`) → dropped. Scope is MC's: all / one team / one player. `carrier`/`flag_tid` start the flag-carrier headset blink [A11.6]. **`role` [A19]** = a HELD headset state (led-language.md §3.3: `carrier`\|`infected`\|`vip`\|`beacon`\|`extracted`) the recipient now holds (`on:true`) or stops holding; `tid` only for a tid-keyed role. The node routes it to `_setRole` (the same mechanism the carrier blink and the infection flip use), paints from ITS OWN `headset.role` table, and logs-and-ignores a name outside the five. Kind `role` is not a presentation event (no cue plays) and the push bypasses the profile's `mc_events` switch: a role is a rule, not a flourish. MC sends `vip` to `config.vip_player_id` **`ROLE_SETTLE_MS` (3 s) after go-live and after each of that player's `respawn` facts** — the node's own start/respawn flash (+1 s, ~1 s) would paint over anything sent at the whistle. `beacon`/`extracted` have no MC-side signal yet (no node→MC fact says who is extracting or extracted), so only the contract exists for them. |
 | `control` | `{ cmd, seq?, ... }`, cmd ∈ `end`\|`panic`\|`abort_start`\|`recall` | **one meaning each [A2, A5.9]**: `abort_start`=cancel a *pending* schedule (by `seq`) while ARMED → LOBBY (gun still holds `head`); if the node is already LIVE for that `seq`, it behaves as `recall`. `recall`=stop a *live/armed* game → node writes `frames.end` (+ `cues.game_over`) → **KITTED**; `end`=normal match end → same → KITTED; `panic`=`frames.panic` → KITTED. In KITTED/LOBBY an `end`/`recall` writes `frames.end` iff a bundle is held, then → KITTED. **`pause` is removed** [A4.6]. |
+| `join` | `{ pub: string|null, secret: string }` | **A28.2**: the tunnel came up or went down — every connected node adopts `pub` (and re-dials per the A28.3 preference). The same body rides in `welcome.join` on every welcome. |
 | `apply` | `{ frames: string[], reason?: string, preview?: boolean }` | A6.4: best-effort "write these frames now" — coverage-zone runtime effects only (syphon heal, regen refill, extraction boost). Node writes verbatim, never persists, ignores unless LIVE. **A9.1:** `preview:true` with frames that are ALL `$PLAY`/`$SFLASH` may be written in `connected`/`kitted`/`lobby` too (the tagger speaks a voice sample when the host changes a voice or gamertag). |
 | `score` | `ScoreRow` + `{ shots_total, board? }` | A7: MC pushes a player's current row to its node whenever it changes (best-effort, coverage-zone). The HUD shows K/D/A (and ACC only once `hits ≥ 1` and `shots ≥ 10`); still "—" until the first push or `welcome.node.score`. **`board?`** (2026-09-03, additive) = `{ teams: [{ team_id, name, score }], cap }` — the race to the frag cap for the HUD's DOWN-screen recap; in FFA the top three players stand in for teams. |
 | `station_config` | `{ kind, team, id, threshold?, game?, valid_ids? }` | A13.5: MC → a **utility** node at muster (and on re-arm). The phone applies it to its advert, marks itself MC-ARMED and locks its on-device config. `game` absent = 0 (any); the authoritative allow-list players enforce stays `config.stations` in the bundle (utility.md §5c). **Server side built 2026-09-11 (F104):** MC sends it on the phone's hello (if assigned), on every `PUT /api/stations/{node_id}` and on every lobby push; `game` = MC's per-match byte (1-255, bumped on the first push after a match started — the phone resets its point when it changes); `valid_ids` = every id MC assigned this session. ⚠ It is in BOTH kind whitelists (`types.MC_KINDS` and the phone's `envelope.js`); `test_mc_stations.py` pins them equal. |
@@ -613,6 +614,70 @@ corrupt its own score line; there is no wire command that lets one node write an
 | (g) | **Calls / notifications** suspend the webview | timers stop (node.md §3.11) | Do-Not-Disturb on; preflight `dnd_on`; the resume→reconcile path |
 
 Any of (a)–(e) failing is a **red** on the readiness board for that node, with the gate named.
+
+### 5d. Backhaul — a phone with its own data path reaches MC off the field Wi-Fi [A28]
+
+**Why.** ADR-0002 §Context 5 named the two-radio phone and deferred it. A28 takes the half that costs a player
+nothing: **a phone that has a data plan uses it to reach MC when the field Wi-Fi cannot**, so its kill confirms,
+score, result and log pull keep landing across the whole park. Nothing about the match outcome depends on it (A4.8
+still holds); a phone with no data plan behaves exactly as before. **No per-phone setup, ever:** the whole thing
+rides in the join QR and `welcome`.
+
+**A28.1 The public node socket.** MC may expose **the node socket port only** (never the operator API) through a
+tunnel. `State.lan.public = { ws_url: string|null, status: "off"|"starting"|"up"|"error", provider:
+"cloudflared"|"manual"|null, available: boolean, error?: string }`. `POST /api/tunnel {on: boolean}` (operator
+token) starts or stops `cloudflared tunnel --url http://127.0.0.1:<ws-port> --no-autoupdate` as an MC **child
+process** (dies with MC; nothing to clean up); MC reads the `https://<x>.trycloudflare.com` line from its output
+and sets `public.ws_url = "wss://<x>.trycloudflare.com/ws"`. That is Cloudflare's **quick tunnel: no account, no
+domain, no login** — the one path a stranger who cloned the repo can use; its hostname is random per start, which
+is why the node holds the LAN URL as well (A28.2). `available` = the `cloudflared` binary was found on PATH at
+launch; when it is not, the UI shows the install line, never hides the control. `--tunnel` (start on boot) and
+`--public-url wss://…` (`provider:"manual"`, for a named Cloudflare tunnel, Tailscale Funnel or a port forward)
+are the CLI forms. No `starting`→`up` within 20 s, or the process exiting, is `status:"error"` with the last output
+line in `error`; `ws_url` goes back to null. The tunnel is **opt-in and additive**: the LAN path is untouched and
+the host needs internet only if they turn it on.
+
+**A28.2 The two-URL join.** `lan.qr` becomes `ws://<lan-ip>:<ws-port>/ws?s=<join_secret>[&pub=<url-encoded
+public ws_url>]` — the LAN URL first, the join secret always, the public URL when `public.status == "up"`.
+`Session.join_secret` is 8 url-safe chars, random per session and **persisted with the session snapshot** so a
+restore keeps every printed QR valid. The node splits the query off before dialling (`mcurl.parseMcJoin` →
+`{ url, pub, secret }`; `parseMcQr` keeps returning the bare LAN URL for old callers) and stores all three.
+`hello` gains `via: "lan"|"backhaul"` (which URL this socket dialled) and `secret?`. **`welcome.join = { pub:
+string|null, secret }`** hands both to every node on every welcome, so a phone that joined over the LAN before
+the tunnel existed, or typed the address, learns them without rescanning; a tunnel status change is pushed to every
+connected node as MC→node **`join {pub, secret}`** (same body). **The secret is enforced only where it matters:** a
+hello arriving through the tunnel (peer is loopback and/or a `Cf-Connecting-Ip` header is present) while
+`public.status == "up"` must carry the current secret or is closed `4003 in_use`-style as `4004 no_secret`;
+a LAN hello is never refused for lacking one (typed address stays the mandatory floor, §5). The secret is readable
+by anyone on the LAN via `GET /api/state`, deliberately: the LAN is already the trust boundary (§5b); the secret's
+one job is keeping internet strangers off the node socket.
+
+**A28.3 Reach policy on the node — backhaul is PREFERRED when offered.** The Transport holds `{ url, pub }`.
+When `pub` is set it dials **`pub` first**; on failure (`BACKHAUL_GIVEUP_MS = 8000` without a welcome, or an
+immediate error) it dials `url`; while on the LAN with a `pub` in hand it re-tries `pub` every `PUB_RETRY_MS =
+30000` and switches when it welcomes (close + reconnect; the ring covers the gap). With no `pub` the loop is
+exactly today's. Rationale: the URL that works everywhere is the primary; the LAN is the fallback for phones with
+no data path. This is what makes coverage **observed** (A28.4): a phone that can use backhaul is on it from the
+lobby, one that cannot is visibly on the LAN, and an MC whose internet dies sees every node fall back within a
+reconnect. Traffic is tiny (a status every `STATUS_HEARTBEAT_MS` plus events, well under 1 MB/h) and the added
+round trip through the tunnel edge touches nothing time-critical (§7 start/end are pre-shared; feedback is
+best-effort). `status.reach: "lan"|"backhaul"` reports the live socket's path; `NodeView.reach` mirrors it.
+§5c gates (d) and (f) become **warnings, not reds**, for a node that reports `reach:"backhaul"`.
+
+**A28.4 Coverage is derived, no longer asserted.** `Session.coverage()` → `"full"` iff **every bound player node
+is connected with `reach == "backhaul"`**, else `"zones"`; it rides on the snapshot as `coverage: { level, on_backhaul,
+bound }` and is passed to `Compiler.validate(..., {coverage})` at config validation and at the lobby push. Full
+coverage **clears the A6.1 frag-limit warning and makes frag-limit / survival ends authoritative** (`scoring.frag_limit`,
+`win_by:"survival"`). It does **not** unlock `time_limit_s: null`: a cell signal is less trustworthy than a venue
+assertion, and a phone that loses data mid-match must still hold an end it can reach alone — that clause of A4.8
+stays a venue assertion, which nothing sets today. A mode may declare `requires_coverage: true` in its `PARAMS`
+(A18); the lobby push refuses it (`409 {error, coverage}`) unless coverage is full at push time. No catalog mode
+does yet; the hook is reserved for modes where MC knows something no gun can (bounties, VIP swaps, park-wide
+zone control).
+
+**A28.5 Unchanged.** Kill confirm needs the victim's report and the shooter's feedback, each over whatever path
+that phone has; `FEEDBACK_MAX_AGE_MS` still drops a late one. Autonomy (node.md §3.7) is untouched: a phone that
+loses both paths plays on. Coverage-zone features are now simply "wherever this phone reaches MC".
 
 ## 6. Node lifecycle (state the HUD + MC both reason about)
 
@@ -692,6 +757,7 @@ Volume per §3. BLE writes chunk at 20 bytes (§app).
 
 | id | date | what | folded into |
 |---|---|---|---|
+| A28 | 2026-09-12 | BACKHAUL (B30): a phone with a data plan reaches MC off the field Wi-Fi, no per-phone setup. A28.1 MC exposes the NODE SOCKET ONLY through a tunnel (`lan.public`, `POST /api/tunnel`, cloudflared quick tunnel = no account/domain/login; `--tunnel`, `--public-url`); A28.2 two-URL join QR `ws://lan/ws?s=<secret>&pub=<wss>`, `hello.via/secret`, `welcome.join` + MC→node `join`, secret enforced only through the tunnel; A28.3 the node PREFERS backhaul when offered and falls back to the LAN (`status.reach`); A28.4 coverage is DERIVED (`Session.coverage()`, every bound node on backhaul ⇒ `full`): frag/survival ends authoritative, `time_limit_s` still required, `PARAMS.requires_coverage` reserved. (A26/A27 are taken by uncommitted 2026-09-11 work; numbered past them on purpose.) | §5 tables, **§5d** |
 | A20 | 2026-09-11 | HOST-DRIVEN STUN (F15): `GameConfig.stun = {duration_s?}` (default 10 s, 1..60). **The gun does not stun itself** — the proven chain is a proto-8 IR word → the victim's `$SIR,8,0,,24` row (fn 24: a STATUS function, `$HIR` fires, no pool moves, no `$HP` follows) → the NODE writes `$AMMO,<slot>,0,0,1,*` for every live slot → the node restores the **LIVE** counts (last `$ALCD` per slot, else the frame's spawn values; F87: a re-push refills, a stun must not) when the timer runs out. **The cell is the charge rifle's** (`<8,0>`, stock fn 38), so with stun on the charge rifle IS the EMP source and deals no damage; the other source is a proto-8 station. `compile.sir_table(stun=True)` swaps the row's function in place (stock order kept, sound token carried over — F43, never invented) on the head AND on every `sir_pool` take (a revive that re-wrote the stock row would un-stun the game). **Rules the node keeps** (`engine.js _stun`/`_stunRestore`, mirrored in `stage.py`): only under `config.stun`, only LIVE and spawned and alive; a second EMP EXTENDS the window (no second disarm write, never a double restore); death CANCELS with no write (`frames.revive` re-arms); a rejoin reconcile takes the stun over (coarse: it re-arms with the frame's counts); a link that is down at expiry gets no write and the relink reconcile re-arms it; `$ALCD` while stunned is ignored (a gun that cannot fire has nothing to count, and the echo of our own `$AMMO,0` must not become the count we restore — hardware-UNVERIFIED whether it echoes). HUD: `moment {kind: stunned, data:{ms}}` / `stun_over`, `state().stunned = {until, leftMs}`; presentation hooks `stunned` / `stun_over` (no profile carries them yet). No wire fact (a status row moves no pool, so there is no `hit_taken`; MC does not learn of stuns — open). `validate()`: shape, range, refused with `hit_audio_rekey` (the re-key would move the charge rifle off the EMP cell with its damage intact), a WARNING naming the rostered weapons that become stunners, and a WARNING when nothing in the game can stun. Exposed at `PUT /api/config` (`stun: {duration_s?}` or `null` to clear; the shape is a 400, the range and the source warning are `validate()`'s). **The native stun is not relied on** (2/5 singles, lasts until death). | §3 GameConfig; `node.md` §3.12; `mcp/brx_mcp/mc/compile.py` (`_STUN_SIR_ROW`); `protocol/brx-protocol.md` §5 fn 24 |
 | A21 | 2026-09-11 | `$PLAY` SLOT SEMANTICS, and a per-event `slot`: `presentation.events.<event>.slot = "queue" | "interrupt" | null`. **Bench-proven 2026-09-11 (six trials, one gun): `$PLAY` token 1 INTERRUPTS whatever the gun is playing, in either slot, mid-word; token 4 QUEUES behind it (depth ≥ 3 observed) — and that is a property of the SLOT, not of the id: an fx id sent in token 4 queues like a voice line.** `play_frame()` keeps the old rule by default (V-family ids → token 4, everything else → token 1); an explicit `slot` overrides it, and `voice:<role>` sounds always queue. First use: `extraction_tick` ships `JAS` (a 10.7 s track) with `slot: "queue"`, so the ~10 s tick becomes a seamless loop that never cuts a call — which also means a queued tick's cadence must be ≥ the clip length or the queue accumulates (S3 design note). `merge()` validates the value (400 at `PUT /api/config`); the ADVANCED table and `GET /api/presentation` carry it. The node is unchanged: it writes the pre-composed frame verbatim. | §3 `GameConfig.presentation`; `mcp/brx_mcp/mc/presentation.py` (`play_frame`, `merge`); `protocol/brx-protocol.md` `$PLAY` row; `experiment-log/2026-09.md` → *the sound pass* |
 | A22 | 2026-09-11 | PER-GAME VOICE SWITCH for the player's OWN voice lines: `presentation.voice = "on" \| "hits_only" \| "off"` (default `"on"`). **Tony, 2026-09-11: "let the config drive it. silenced snipers no grunts could be legit."** `"on"` plays everything (today's behaviour); `"hits_only"` keeps the three pain cues (`cues.pain_short`/`pain_long`/`pain_melee` + their `cue_pools`) but drops the spawn line; `"off"` drops both. The spawn line is TWO bundle keys for ONE line — `cues.spawn` (played by `engine.js _spawn()` on the first life) and `cues.respawned` (played by `_revive()` on every life after that, `presentation.EVENTS["respawned"]`, source `hud`) — both are withheld together, or the recurring respawn line would keep speaking under `"hits_only"`/`"off"` while only the very first spawn went quiet. `announcer` is untouched and independent (it gates MC/announcer feedback, not the player's own cues); the native death scream (`pset_pool`) and the A17 material hit sounds are unchanged in all three — the scream is firmware, not a `$PLAY`, and a death already gives no position away. `merge()`/`resolve()` validate and carry the field (400 at `PUT /api/config` on any other value); the `silenced` preset sets it `off`, every other preset `on`; any field edit still makes the preset `custom`. The node is unchanged: a missing `cues[kind]`/`cue_pools[kind]` already reads as silence. | §3 `GameConfig.presentation`; `mcp/brx_mcp/mc/presentation.py` (`_BASE`, `VOICE_VALUES`, `merge`, `resolve`, `summary`, `PRESETS["silenced"]`); `mcp/brx_mcp/mc/compile.py` (`voice_switch`, ~L994-1046) |

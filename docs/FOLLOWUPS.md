@@ -1,12 +1,12 @@
 # Followups — open work only
 
-Updated: 2026-09-11. **Everything in this file is open.** Closed items are in
+Updated: 2026-09-12. **Everything in this file is open.** Closed items are in
 [`archive/followups-closed.md`](archive/followups-closed.md), verbatim and ordered by close date; the evidence
 behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date). Session close = strike or
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B30 · D5 · E8 · F128 · G11 · H8 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B31 · D5 · E8 · F128 · G11 · H8 ·
 K7 · P18 · Q20 · R3 · S27.** (2026-09-11 night game test: F110-F127 and S20-S26 taken, see [`game-test-2026-09-11.md`](game-test-2026-09-11.md).) (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
 ids are retired, never reused.) (2026-09-10: F94/F95/F98 taken — the phone control point
 (`spec/utility.md` §5d), its LAN-coupled roaming variant (§5e) and Territories (§5f). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
@@ -153,6 +153,12 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   node paints the dead look, station beacon arrives via the passthrough row, node checks team + delay, restores pools.
   Every link is proven separately; the assembly is not. Open: a downed gun still takes IR damage; FF must be ON for a
   same-team beacon. `build`.
+- **B30 🟠** BACKHAUL (contracts A28, 2026-09-12): a phone with a data plan reaches MC off the field Wi-Fi with no per-phone
+  setup -- MC tunnels the node socket (cloudflared quick tunnel, `POST /api/tunnel`), the QR carries LAN + public URL + secret,
+  the node prefers backhaul and falls back to the LAN, coverage is DERIVED from observed reach. Built on branch `backhaul-a28`
+  in three lanes (server · MC UI · app transport). **Bench gate:** one Pixel, Wi-Fi OFF, mobile data on, scan the QR, join,
+  take a kill and see KILL CONFIRMED; then Wi-Fi back on and watch `reach` stay `backhaul`. Left for the HUD session: the
+  preflight chips still say Wi-Fi/`cellular_off` (contracts §5c d/f are warnings on backhaul now). `build` · `capture`.
 
 ## 4. Hardware, prints, research (H, R)
 
