@@ -59,9 +59,9 @@ test('parseMcJoin: the ?ws=/#ws= wrapper carries a full join code, query and all
   assert.deepEqual(parseMcJoin(`http://mc/#ws=${encodeURIComponent(inner)}`), { url: 'ws://mc/ws', pub, secret: 'xyz' });
 });
 
-test('parseMcJoin: a bad pub (not a websocket URL) rejects the whole code', () => {
-  assert.equal(parseMcJoin('ws://mc/ws?s=abc&pub=http%3A%2F%2Fnotws'), null);
-  assert.equal(parseMcJoin('ws://mc/ws?s=abc&pub=not-a-url-at-all'), null);
+test('parseMcJoin: a bad pub (not a websocket URL) degrades gracefully — url + secret survive, only pub drops', () => {
+  assert.deepEqual(parseMcJoin('ws://mc/ws?s=abc&pub=http%3A%2F%2Fnotws'), { url: 'ws://mc/ws', pub: null, secret: 'abc' });
+  assert.deepEqual(parseMcJoin('ws://mc/ws?s=abc&pub=not-a-url-at-all'), { url: 'ws://mc/ws', pub: null, secret: 'abc' });
 });
 
 test('parseMcJoin: an empty pub= is the same as no pub at all', () => {

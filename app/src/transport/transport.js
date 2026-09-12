@@ -53,7 +53,7 @@ export class Transport {
     this.stats = { sent: 0, received: 0, malformed: 0, batches: 0 };
     this._ws = null; this._hbTimer = null; this._rcTimer = null; this._helloTimer = null; this._syncTimer = null;
     this._viaCurrent = null;                 // which url `this._ws` (the live/primary socket) dialled
-    this._pubRetryTimer = null; this._probeWs = null; this._probeGiveupTimer = null;
+    this._pubRetryTimer = null; this._probeWs = null; this._probeGiveupTimer = null; this._pubJustLearned = false;
     this._onMessage = []; this._onState = []; this._onHydrate = [];
     this._firstWelcome = null;
   }
@@ -116,6 +116,7 @@ export class Transport {
   setStatusProvider(fn) { this.statusProvider = fn; }
   close() {
     this.closed = true; this._clearTimers(); this._clearPubRetry();
+    if (this._probeGiveupTimer) { this.timers.clearTimeout(this._probeGiveupTimer); this._probeGiveupTimer = null; }
     if (this._probeWs) { const p = this._probeWs; this._probeWs = null; try { p.onopen = p.onmessage = p.onerror = p.onclose = null; p.close(); } catch (_) { /* ignore */ } }
     if (this._firstWelcome) { const p = this._firstWelcome; this._firstWelcome = null; p.reject(new Error('connect: transport closed')); }
     const ws = this._ws; this._ws = null;
@@ -133,16 +134,28 @@ export class Transport {
     try { const v = this.storage.getItem(key); if (v) return v; const id = `node-${E.uid(10)}`; this.storage.setItem(key, id); return id; }
     catch (_) { return `node-${E.uid(10)}`; }
   }
-  _setPub(pub) { this.pub = pub || null; if (this.pub) this._store(this._pubKey, this.pub); else this._remove(this._pubKey); }
+  /** @returns {boolean} whether the held pub actually changed (including null <-> a url) */
+  _setPub(pub) {
+    const next = pub || null; const changed = next !== this.pub; this.pub = next;
+    if (this.pub) this._store(this._pubKey, this.pub); else this._remove(this._pubKey);
+    return changed;
+  }
   _setSecret(secret) { this.secret = secret || null; if (this.secret) this._store(this._secretKey, this.secret); else this._remove(this._secretKey); }
-  /** A28.3: MC handed us a (possibly changed, possibly null) pub. `null` = the tunnel went down. */
+  /** A28.3: MC handed us a (possibly changed, possibly null) pub. `null` = the tunnel went down. A
+   *  newly (or differently) learned pub is probed on the very next chance (`_kickPubRetry`), not left
+   *  to wait out a stale PUB_RETRY_MS countdown — "prefer backhaul when offered" means offered NOW. */
   _adoptPub(pub) {
-    this._setPub(pub);
-    if (!this.pub && this.reach === 'backhaul') {
-      // the tunnel we're riding just went away — fall back to the LAN via the normal reconnect loop
-      this._log('backhaul tunnel down — falling back to LAN');
-      this.dropLink();
+    const changed = this._setPub(pub);
+    if (!this.pub) {
+      this._clearPubRetry();
+      if (this.reach === 'backhaul') {
+        // the tunnel we're riding just went away — fall back to the LAN via the normal reconnect loop
+        this._log('backhaul tunnel down — falling back to LAN');
+        this.dropLink();
+      }
+      return;
     }
+    if (changed) this._pubJustLearned = true;
   }
   _adoptSecret(secret) { if (secret !== undefined) this._setSecret(secret); }
   _log(...a) { if (globalThis.__BRX_TRANSPORT_DEBUG) console.log('[transport]', ...a); }
@@ -226,6 +239,16 @@ export class Transport {
     if (this.state !== 'bound' || this.reach !== 'lan' || !this.pub) return;
     this._pubRetryTimer = this.timers.setTimeout(() => this._probePub(), this.pubRetryMs);
   }
+  /** Call after adopting a pub (welcome.join or an MC->node `join` push): a newly/differently learned
+   *  pub is probed right now — "prefer backhaul when offered" means offered NOW, not on the next
+   *  PUB_RETRY_MS tick — while an unchanged pub (an ordinary re-welcome) just keeps the normal cadence. */
+  _kickPubRetry() {
+    const immediate = this._pubJustLearned; this._pubJustLearned = false;
+    if (!immediate) { this._schedulePubRetry(); return; }
+    this._clearPubRetry();
+    if (this.state !== 'bound' || this.reach !== 'lan' || !this.pub) return;
+    this._probePub();
+  }
   _probePub() {
     this._pubRetryTimer = null;
     if (this.state !== 'bound' || this.reach !== 'lan' || !this.pub || this._probeWs) return;
@@ -286,7 +309,7 @@ export class Transport {
     if (kind === 'assign') { this._absorb({ player: body.player, team: body.team, roster: body.roster }); }
     if (kind === 'config') { this._absorb({ config: body.config, frames: body.frames, roster: body.roster }); }
     if (kind === 'start') { this._absorb({ start: body, match_id: body.match_id }); }
-    if (kind === 'join') { this._adoptSecret(body.secret); this._adoptPub(body.pub); this._schedulePubRetry(); }
+    if (kind === 'join') { this._adoptSecret(body.secret); this._adoptPub(body.pub); this._kickPubRetry(); }
     if (DELIVERED.has(kind)) for (const cb of this._onMessage) { try { cb({ kind, body, t: env.t, id: env.id }); } catch (e) { this._log('onMessage cb', e); } }
   }
   _onWelcome(body) {
@@ -311,7 +334,7 @@ export class Transport {
     this._flush();
     this._startHeartbeat();
     this._syncTimer = this.timers.setTimeout(() => this._periodicSync(), this.syncIntervalMs);
-    this._schedulePubRetry();
+    this._kickPubRetry();
     for (const cb of this._onHydrate) { try { cb(body.node || null, body); } catch (e) { this._log('onHydrate cb', e); } }
     if (this._firstWelcome) { const p = this._firstWelcome; this._firstWelcome = null; p.resolve(body); }
   }

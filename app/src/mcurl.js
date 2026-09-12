@@ -39,10 +39,10 @@ export function parseMcJoin(text) {
     if (params.has('s')) secret = params.get('s') || null;
     if (params.has('pub')) {
       const raw = params.get('pub');
-      if (raw) {
-        if (!/^wss?:\/\//i.test(raw)) return null;   // A28.2: a pub that is not a websocket URL is not an MC code
-        pub = raw;
-      }
+      // A28.2: pub is the optional half — the LAN url + secret are the mandatory floor (§5) and must
+      // survive a malformed pub (rare: MC generates this value itself, but a typed/OCR'd code is not
+      // MC's to control). Drop only pub, not the whole code.
+      if (raw && /^wss?:\/\//i.test(raw)) pub = raw;
     }
   }
   return { url, pub, secret };

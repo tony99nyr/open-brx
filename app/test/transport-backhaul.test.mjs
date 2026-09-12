@@ -139,6 +139,44 @@ test('A28.2: MC push join {pub:null} while on backhaul drops pub and falls back 
   t.close();
 });
 
+test('A28.3: a join push handing us a brand-new pub while bound on LAN probes it right away, no PUB_RETRY_MS wait', async () => {
+  const { sockets, wsFactory } = factory();
+  // a large pubRetryMs -- if the probe waited for the normal cadence this test would time out first
+  const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'GUN-A', tail: '3D4F' },
+    backoff: { baseMs: 1, capMs: 2, jitter: 0 }, pubRetryMs: 30000 });
+  const p = t.connect({ url: 'ws://lan/ws' });   // no pub at all yet
+  sockets[0].open();
+  sockets[0].recv(welcome());                    // plain LAN welcome, no join
+  await p;
+  assert.equal(t.reach, 'lan'); assert.equal(t.pub, null);
+  sockets[0].recv(E.makeEnvelope('join', { pub: 'wss://pub/ws', secret: 'sek' }));
+  assert.equal(t.pub, 'wss://pub/ws');
+  await sleep(5);   // no 30s advance -- the probe dial is immediate, not on the next PUB_RETRY_MS tick
+  assert.equal(sockets.length, 2, 'the newly learned pub was probed right away');
+  assert.equal(sockets[1].url, 'wss://pub/ws');
+  sockets[1].open();
+  assert.equal(sockets[1].sent[0].body.via, 'backhaul');
+  sockets[1].recv(welcome());
+  await sleep(5);
+  assert.equal(t.reach, 'backhaul', 'and switched over once it welcomed');
+  t.close();
+});
+
+test('A28.3: welcome.join handing us a brand-new pub on the very first connect (dialled over LAN) also probes it right away', async () => {
+  const { sockets, wsFactory } = factory();
+  const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'GUN-A', tail: '3D4F' },
+    backoff: { baseMs: 1, capMs: 2, jitter: 0 }, pubRetryMs: 30000 });
+  const p = t.connect({ url: 'ws://lan/ws' });   // no pub known at connect time -> dials LAN
+  sockets[0].open();
+  sockets[0].recv(welcome({ join: { pub: 'wss://pub/ws', secret: 'sek' } }));   // the FIRST welcome hands us a pub
+  await p;
+  assert.equal(t.reach, 'lan'); assert.equal(t.pub, 'wss://pub/ws');
+  await sleep(5);
+  assert.equal(sockets.length, 2, 'probed immediately rather than waiting out PUB_RETRY_MS');
+  assert.equal(sockets[1].url, 'wss://pub/ws');
+  t.close();
+});
+
 test('A28.2: pub/secret are session-scoped -- a session change (new session_id) clears them; unchanged across a same-session reconnect', async () => {
   const { sockets, wsFactory } = factory();
   const store = memoryStorage();
