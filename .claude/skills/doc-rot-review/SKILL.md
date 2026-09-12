@@ -146,6 +146,35 @@ Nothing is changed in this step. Say so in the message.
 - Push a subagent per disjoint group (sonnet for mechanical moves); keep design decisions and
   commits in the main session.
 
+### Apply-phase lessons (2026-09-12, eight lanes, ten commits)
+
+- **Ownership must be exclusive and written down.** Give each lane a "files this lane OWNS" list
+  and name the other lanes' files it must not touch; two lanes still both edited `bench-queue`,
+  `VISION.md`, `session-findings` and `gotchas.md`. Sequential edits in one working tree do not
+  conflict in git, but a lane's `Write` can clobber another's edit, so tell every lane to re-read
+  right before writing and to keep shared-file edits line-level.
+- **The peer's dirty set is authoritative, and it moves.** Have every lane run `git status
+  --porcelain` itself at start and treat that list as off-limits; a file that was clean at review
+  time (`webapp/mc/README.md`, `client.test.ts`) was dirty by apply time and the lane correctly
+  skipped it. Route the skipped items to the deferred list, not to a retry.
+- **`git commit --only <new file>` fails until the path is known**: `git add <exact path>` first,
+  then `--only` the same paths. `--only <dir>` picks up tracked changes under it and ignores
+  untracked files there, which is the safe default when another lane is creating files nearby.
+- **A "one-off" can be a library.** The inventory classed `f11_ab.py` as a closed experiment; it
+  was imported by 18 scripts. Before deleting any script, grep for `from <name> import` and
+  `import <name>`, not just the basename in docs.
+- **Lanes cannot touch the three status files** (HANDOFF, FOLLOWUPS, log): every lane writes its
+  closed lines, new rows and repoints to `scratchpad/status-writes/<lane>.md`, and the main session
+  applies them once, after the peer's close has landed. Same for `docs/README.md`.
+- **Expect two red tests mid-pass** and know why: the link check goes red while sheets move and the
+  index has not caught up; the shots guard goes red on a dirty UI tree. Both must be green before
+  the close.
+- **A lane will find the review was wrong** (objective time IS sent; the two "exclusive" reference
+  facts were already in the manual). Ask each lane to re-verify evidence before editing and to report
+  contradictions rather than obey the brief.
+- **Model choice held**: sonnet was enough for prune, tools, root and webapp; the four lanes that
+  had to rewrite prose against code (move, manual, design, guards) needed opus.
+
 ## Step 6 — Refresh this skill
 
 Every run finds a rot shape this checklist does not name. Add it below with a one-line example.
