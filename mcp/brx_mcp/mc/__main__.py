@@ -139,7 +139,11 @@ def build(args):
     if inspect.iscoroutinefunction(getattr(net, "start", None)):
         # Real M-NET: an asyncio server — start it inside the app's event loop (lifespan task).
         async def _start_net():
-            await net.start(ip, args.ws_port, "/ws")
+            # Bind every interface, advertise the LAN address. Binding the resolved LAN IP alone left
+            # loopback closed, so the cloudflared origin (http://127.0.0.1:<ws-port>) answered 502 on the
+            # first real tunnel (field test 2026-09-12): the QR scanned, the phone dialled, nothing landed.
+            bind = args.host if args.host not in ("0.0.0.0", "") else "0.0.0.0"
+            await net.start(bind, args.ws_port, "/ws", advertise_host=ip)
             # join info FIRST — it fills lan.ws_url with the REAL bound port. The mDNS advert below is
             # best-effort and once HUNG in a sandboxed netns, leaving ws_url at port 0: every phone that
             # trusted the JOIN strip then dialed ws://…:0/ws (e2e, 2026-08-26).
