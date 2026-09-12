@@ -26,8 +26,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
+import pathlib
 import re
 import shutil
+import subprocess
 import time
 from typing import Any, Awaitable, Callable
 
@@ -60,7 +63,8 @@ class Tunnel:
     def __init__(self, *, binary: str = "cloudflared", public_url: str | None = None,
                  ws_port: int = 0, spawn: Callable[[list[str]], Awaitable[Any]] | None = None,
                  which: Callable[[str], str | None] | None = None,
-                 timeout_s: float = START_TIMEOUT_S, term_grace_s: float = TERM_GRACE_S):
+                 timeout_s: float = START_TIMEOUT_S, term_grace_s: float = TERM_GRACE_S,
+                 pid_path: "pathlib.Path | None" = None):
         self.binary = binary
         self.ws_port = ws_port
         self.timeout_s = timeout_s
@@ -68,8 +72,11 @@ class Tunnel:
         self._spawn = spawn or self._default_spawn
         self._which = which or shutil.which
         # A28.1: `available` is decided at LAUNCH, not per call — the UI shows the install line when it is
-        # false and never hides the control.
-        self.available = bool(self._which(self.binary))
+        # false and never hides the control. The resolved ABSOLUTE path is what we spawn: a bare name is
+        # resolved again by the OS at exec time, against whatever PATH we inherited.
+        self._resolved = self._which(self.binary)
+        self.available = bool(self._resolved)
+        self.pid_path = pid_path if pid_path is not None else (pathlib.Path.home() / ".brx-mcp" / "tunnel.pid")
         self._listeners: list[Callable[[dict], None]] = []
         self._proc: Any = None
         self._task: asyncio.Task | None = None
@@ -96,6 +103,23 @@ class Tunnel:
     def stoppable(self) -> bool:
         """`--public-url` is not MC's to stop (A28.1)."""
         return self.provider != "manual"
+
+    @property
+    def armed(self) -> bool:
+        """Is there a public path into the node socket RIGHT NOW? This, not `status`, is what gates the
+        join secret (A28.2).
+
+        The two must not be the same question. `status` is what we have managed to read off the child's
+        stdout; the child is what actually routes. They come apart in the obvious way: cloudflared's
+        stdout closes (a log rotation, a pipe error, anything our reader cannot parse) while the process
+        keeps serving the same hostname. Arming the gate on `status == "up"` meant that the moment we
+        stopped being able to READ the child, we stopped asking strangers for the secret — while the
+        hostname they had was still live. So the question is ownership of a process we have not
+        confirmed dead, plus the manual provider, whose URL is up by assertion."""
+        if self.provider == "manual":
+            return True
+        proc = self._proc
+        return proc is not None and proc.returncode is None
 
     def _emit(self) -> None:
         pub = self.public()
@@ -151,7 +175,9 @@ class Tunnel:
     async def shutdown(self) -> None:
         """Kill the child if we own one and settle on `off`. Never raises — MC's own shutdown path calls it."""
         self._stopping = True
-        proc, self._proc = self._proc, None
+        # `self._proc` is NOT released until the child is confirmed dead: `armed` reads it, and a gate
+        # that comes off while the process is still routing is the bug this whole method exists around.
+        proc = self._proc
         if proc is not None and proc.returncode is None:
             with contextlib.suppress(Exception):
                 proc.terminate()
@@ -162,6 +188,8 @@ class Tunnel:
                     proc.kill()
                 with contextlib.suppress(Exception):
                     await asyncio.wait_for(proc.wait(), timeout=self.term_grace_s)
+        self._proc = None
+        self._clear_pid()
         task, self._task = self._task, None
         if task is not None and not task.done():
             with contextlib.suppress(Exception):
@@ -169,9 +197,73 @@ class Tunnel:
         if self.provider != "manual":
             self._set("off", None, None, None)
 
+    # ---------------- orphan reaping across an MC crash ----------------
+    def _write_pid(self, pid: int) -> None:
+        try:
+            self.pid_path.parent.mkdir(parents=True, exist_ok=True)
+            self.pid_path.write_text(str(pid))
+        except Exception:          # a pid file we cannot write must never stop the tunnel
+            log.debug("could not write %s", self.pid_path, exc_info=True)
+
+    def _clear_pid(self) -> None:
+        with contextlib.suppress(Exception):
+            self.pid_path.unlink()
+
+    @staticmethod
+    def _cmdline(pid: int) -> str:
+        """The process's command line, or "" when we cannot tell. `/proc` on Linux, `ps` everywhere else
+        (the match-day machine is a MacBook, which has no `/proc`)."""
+        try:
+            return pathlib.Path(f"/proc/{pid}/cmdline").read_bytes().decode("utf-8", "replace")
+        except Exception:
+            pass
+        try:
+            out = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
+                                 capture_output=True, timeout=3, check=False)
+            return out.stdout.decode("utf-8", "replace")
+        except Exception:
+            return ""
+
+    def reap_orphan(self) -> int | None:
+        """Kill a cloudflared we started and then died without stopping (a hard MC crash, a SIGKILL).
+
+        The orphan keeps the random hostname pointed at the ws port, and the FRESH MC has no child, so
+        `armed` is False and the secret gate is down — an internet-reachable node socket nobody is
+        guarding. Returns the pid it killed, or None.
+
+        The cmdline check is the safety catch: pids are reused, and terminating whatever now holds the
+        number in a stale file would be far worse than leaving a tunnel up."""
+        try:
+            raw = self.pid_path.read_text().strip()
+        except Exception:
+            return None
+        try:
+            pid = int(raw)
+        except ValueError:
+            self._clear_pid()
+            return None
+        if pid <= 0:
+            self._clear_pid()
+            return None
+        try:
+            os.kill(pid, 0)                     # alive? (raises ProcessLookupError if not)
+        except Exception:
+            self._clear_pid()
+            return None
+        if "cloudflared" not in self._cmdline(pid):
+            log.info("stale tunnel pid %d is not cloudflared any more — leaving it alone", pid)
+            self._clear_pid()
+            return None
+        log.warning("killing orphaned cloudflared pid %d from a previous Mission Control (%s)", pid, self.pid_path)
+        with contextlib.suppress(Exception):
+            os.kill(pid, 15)
+        self._clear_pid()
+        return pid
+
     # ---------------- the child ----------------
     def argv(self, ws_port: int) -> list[str]:
-        return [self.binary, "tunnel", "--url", f"http://127.0.0.1:{ws_port}", "--no-autoupdate"]
+        return [self._resolved or self.binary, "tunnel", "--url",
+                f"http://127.0.0.1:{ws_port}", "--no-autoupdate"]
 
     async def _default_spawn(self, cmd: list[str]):
         # stderr folded into stdout: cloudflared writes its banner (URL included) to stderr, and one
@@ -187,6 +279,7 @@ class Tunnel:
             self._fail(f"could not start {self.binary}: {type(e).__name__}: {e}")
             return
         self._proc = proc
+        self._write_pid(proc.pid)
         deadline = time.monotonic() + self.timeout_s
         try:
             while True:
@@ -199,13 +292,17 @@ class Tunnel:
                         except asyncio.TimeoutError:
                             timed_out = True
                     if timed_out:
-                        self._fail(f"no tunnel URL within {self.timeout_s:.0f}s: "
-                                   f"{self._last_line or 'no output'}")
-                        self._proc = None
+                        # Kill FIRST, then report. `armed` reads `proc.returncode`, so declaring the
+                        # failure before the child is actually dead would disarm the gate while it was
+                        # still running -- the same ordering bug as the reader-EOF path below.
                         with contextlib.suppress(Exception):
                             proc.kill()
                         with contextlib.suppress(Exception):
-                            await asyncio.wait_for(proc.wait(), timeout=self.term_grace_s)
+                            await proc.wait()
+                        self._proc = None
+                        self._clear_pid()
+                        self._fail(f"no tunnel URL within {self.timeout_s:.0f}s: "
+                                   f"{self._last_line or 'no output'}")
                         return
                 else:
                     raw = await proc.stdout.readline()
@@ -222,10 +319,22 @@ class Tunnel:
         except asyncio.CancelledError:
             raise
         except Exception:
-            log.exception("tunnel reader failed")
+            # We have stopped being able to READ the child. That says nothing about whether it is still
+            # routing, so it must not change `status` and must not disarm the gate.
+            log.exception("tunnel reader failed — the child may still be serving; waiting for it to exit")
+        # Losing stdout is not the child dying. Wait on the PROCESS, with no timeout: a 3 s cap here was
+        # the HIGH finding — it returned rc=None for a perfectly live cloudflared, `_fail()` ran, and the
+        # secret gate came off a hostname that still worked.
         rc = None
-        with contextlib.suppress(Exception):
-            rc = await asyncio.wait_for(proc.wait(), timeout=self.term_grace_s)
+        try:
+            rc = await proc.wait()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("could not wait on the cloudflared child — leaving the tunnel status alone")
+            return                       # `armed` still reads the live returncode; nothing is claimed
+        self._proc = None
+        self._clear_pid()
         if self._stopping:
             self._set("off", None, None, None)
         else:

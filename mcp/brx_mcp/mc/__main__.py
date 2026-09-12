@@ -22,6 +22,19 @@ def _lan_ip() -> str:
         return "127.0.0.1"
 
 
+def _check_public_url(url):
+    """A28.1: `--public-url` goes straight into every QR and every `welcome`, so a typo would be
+    discovered one phone at a time on the field. Refuse it here instead."""
+    if not url:
+        return None
+    from urllib.parse import urlsplit
+    u = urlsplit(str(url))
+    if u.scheme not in ("ws", "wss") or not u.netloc:
+        raise SystemExit(f"--public-url must be a ws:// or wss:// URL with a host (got {url!r}); "
+                         "it is the address every phone dials, e.g. wss://mc.example.org/ws")
+    return str(url)
+
+
 def build(args):
     from .fakes import DemoDriver, FakeArmory, FakeCompiler, FakeNet, demo_armory, DEMO_NAMES
     from .state import Session
@@ -61,8 +74,23 @@ def build(args):
     session = Session(compiler, net, armory, lan={"mode": "unknown", "ip": ip, "port": args.port, "ws_url": ws_url, "qr": ws_url})
     # A28.1: the tunnel exists in every run (so `lan.public.available` is honest and the UI can show the
     # install line); it only spawns anything on --tunnel or POST /api/tunnel.
+    from pathlib import Path as _PT
     from .tunnel import Tunnel
-    tunnel = Tunnel(public_url=getattr(args, "public_url", None), ws_port=args.ws_port)
+    public_url = _check_public_url(getattr(args, "public_url", None))
+    if args.demo or getattr(args, "ephemeral", False):
+        import tempfile
+        pid_path = _PT(tempfile.mkdtemp(prefix="brx-mc-tunnel-")) / "tunnel.pid"
+    else:
+        pid_path = _PT.home() / ".brx-mcp" / "tunnel.pid"
+    tunnel = Tunnel(public_url=public_url, ws_port=args.ws_port, pid_path=pid_path)
+    if public_url and getattr(args, "tunnel", False):
+        print("  backhaul: --tunnel ignored (--public-url already names a public node URL)", flush=True)
+    # A cloudflared we started and never stopped (a hard crash, a SIGKILL) still points its hostname at
+    # this ws port, and THIS process has no child -- so the secret gate would be down on a socket the
+    # internet can still reach. Kill it before we bind.
+    orphan = tunnel.reap_orphan()
+    if orphan:
+        print(f"  backhaul: killed an orphaned cloudflared (pid {orphan}) from a previous run", flush=True)
     tunnel.on_change(lambda pub: print(
         f"  backhaul: {pub['status']}" + (f"  {pub['ws_url']}" if pub.get("ws_url") else "")
         + (f"  ({pub['error']})" if pub.get("error") else ""), flush=True))

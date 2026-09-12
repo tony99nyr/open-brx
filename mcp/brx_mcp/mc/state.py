@@ -385,6 +385,8 @@ class Session:
         n.on_node_message(self._on_node_message)
         n.on_stale(lambda nid, age: self._touch(nid, stale=True))
         n.on_return(lambda nid: self._touch(nid, stale=False))
+        if hasattr(n, "on_disconnect"):
+            n.on_disconnect(self._on_disconnect)
         try:
             ji = n.join_info()
             self.set_ws_url(ji.get("url", ""))
@@ -428,10 +430,18 @@ class Session:
         setter = getattr(self.net, "set_join", None)
         if setter is not None:
             try:
-                setter(secret=self.join_secret, pub=pub, public_up=bool(pub))
+                # `armed` is a CALLABLE, not `bool(pub)`: the QR only advertises a URL we can currently
+                # use, but the secret gate must stay up for as long as the child process is routing --
+                # including after its stdout dies and `status` has gone to `error`.
+                setter(secret=self.join_secret, pub=pub, armed=self._gate_armed)
             except Exception:
                 import logging; logging.getLogger("brx.mc").exception("net.set_join failed")
         return qr
+
+    def _gate_armed(self) -> bool:
+        """A28.2: is there a public path into the node socket right now? Read live off the Tunnel."""
+        t = self.tunnel
+        return bool(t is not None and t.armed)
 
     def attach_tunnel(self, tunnel) -> None:
         """A28.1: MC owns at most one tunnel; its status changes drive `lan.public`, the QR and the
@@ -1384,6 +1394,15 @@ class Session:
         return out
 
     # ---------- nodes ----------
+    def _on_disconnect(self, nid: str):
+        """A28.3: the socket is gone, so its PATH is gone with it -- `coverage()` must not keep counting
+        a phone as on backhaul until it goes stale STALE_AFTER_MS later. `NodeRecord.view()` already
+        nulls `reach` on a dead socket, but the snapshot is built from THESE dicts and never consults
+        that view, so nulling it there alone would have been dead code (the F33/F40 shape)."""
+        nv = self.nodes.get(nid)
+        if nv is not None and nv.pop("reach", None) is not None:
+            self._changed()
+
     def _touch(self, nid: str, stale: bool | None = None):
         nv = self.nodes.setdefault(nid, {"node_id": nid, "node_type": "phone", "arm_state": "idle", "last_seen_ms": 0, "synced": False})
         if stale is not None:
@@ -1489,7 +1508,7 @@ class Session:
     def _on_node(self, n: dict):
         nid = n["node_id"]
         nv = self.nodes.setdefault(nid, {"node_id": nid, "arm_state": "idle", "synced": False})
-        nv.update({k: v for k, v in n.items() if k in ("node_type", "gun_name", "gun_tail", "fw", "reach")})
+        nv.update({k: v for k, v in n.items() if k in ("node_type", "gun_name", "gun_tail", "fw", "reach", "reach_claimed")})
         nv["last_seen_ms"] = self.now_ms()
         if n.get("node_type") == "utility":
             # F106(c): the SAME node_id said hello as a player once (a phone switched OUT of the HUD role
@@ -1550,10 +1569,13 @@ class Session:
 
     def _on_status(self, nid: str, body: dict, t_recv: int):
         nv = self.nodes.setdefault(nid, {"node_id": nid, "node_type": "phone"})
-        # A28.3: `reach` is the live socket's path. It arrives first on the hello (`_on_node`) and is
-        # refreshed by every status, which is how a node that switched from the LAN to backhaul mid-game
-        # (or fell back) shows up on the board without a re-hello.
-        nv.update({k: body.get(k) for k in ("arm_state", "synced", "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "t_minus_ms", "shots", "dropped", "pending", "reach") if k in body})
+        nv.update({k: body.get(k) for k in ("arm_state", "synced", "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "t_minus_ms", "shots", "dropped", "pending") if k in body})
+        # A28.3: `reach` is NOT taken from the status body. It feeds `coverage()` (which can gate a whole
+        # mode) and the readiness amber (which un-blocks a start), so a client-asserted value would let a
+        # phone claim its way past both. MC stamps it from the socket in `net._hello_gate`; the node's
+        # own claim is kept beside it, unused, so a disagreement is visible instead of silent.
+        if "reach" in body:
+            nv["reach_claimed"] = body.get("reach")
         nv["last_seen_ms"] = t_recv
         nv["stale"] = False
         # A8 + polish review 2026-09-11: a STATUS body never changes what a BOUND node IS. A player HUD that

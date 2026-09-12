@@ -48,6 +48,55 @@ _CLOSE_NO_SECRET = 4004  # A28.2: a hello through the TUNNEL without the session
 _LOOPBACK = {"127.0.0.1", "::1", "localhost"}
 
 
+# A28.2: where a FIELD node may legitimately dial MC from. Named explicitly rather than taken from
+# `ipaddress.is_private`, which also counts the documentation ranges (192.0.2/24, 198.51.100/24,
+# 203.0.113/24), 198.18/15 and 240/4 as private -- none of which is a LAN, and every one of which
+# would have been waved past the secret. RFC1918 + RFC6598 (a tailnet) + link-local + ULA, and no more.
+_PRIVATE_NETS: list = []
+
+
+def _private_nets():
+    global _PRIVATE_NETS
+    if not _PRIVATE_NETS:
+        import ipaddress
+        _PRIVATE_NETS = [ipaddress.ip_network(n) for n in (
+            "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16",   # RFC1918
+            "100.64.0.0/10",                                    # RFC6598 / CGNAT -- a Tailscale tailnet
+            "169.254.0.0/16", "fe80::/10",                      # link-local
+            "fc00::/7",                                         # IPv6 ULA
+        )]
+    return _PRIVATE_NETS
+
+
+def peer_class(host: str | None) -> str:
+    """`"loopback"` | `"private"` | `"public"` | `"unknown"` for a peer address (A28.2).
+
+    A PUBLIC peer is the one case where the join secret is required no matter what the tunnel is doing:
+    a port forward or a Tailscale Funnel puts strangers straight onto the node socket with no
+    `Cf-Connecting-Ip` header and no loopback hop to notice them by, which the first version of this
+    gate missed entirely."""
+    if not host:
+        return "unknown"
+    h = str(host)
+    if h.startswith("::ffff:"):
+        h = h[7:]
+    if h in _LOOPBACK:
+        return "loopback"
+    try:
+        import ipaddress
+        ip = ipaddress.ip_address(h)
+    except ValueError:
+        return "unknown"
+    if ip.is_loopback:
+        return "loopback"
+    return "private" if any(ip in n for n in _private_nets() if ip.version == n.version) else "public"
+
+
+def _peer_host(ws) -> str | None:
+    peer = getattr(ws, "remote_address", None)
+    return str(peer[0]) if isinstance(peer, (tuple, list)) and peer else None
+
+
 def _request_headers(ws) -> list[tuple[str, str]]:
     """The upgrade request's headers, across websockets versions.
 
@@ -98,7 +147,8 @@ class NodeRecord:
     stale: bool = False
     seq_hi: int = 0                    # highest persisted seq applied
     node_key: str = ""                # A8: secret to re-claim this node_id / its gun
-    via: str | None = None            # A28.3: which join URL this socket dialled ("lan" | "backhaul")
+    via: str | None = None            # A28.3: the socket's path, STAMPED BY MC ("lan" | "backhaul")
+    via_claimed: str | None = None    # what the node SAID (hello.via / status.reach) — diagnostics only
     displaced_keys: set = field(default_factory=set)   # keys of the (stale) holders this record displaced WITHOUT proving them
     applied: deque = field(default_factory=lambda: deque(maxlen=REORDER_WINDOW))
     malformed: E.MalformedCounter = field(default_factory=E.MalformedCounter)
@@ -116,6 +166,7 @@ class NodeRecord:
             # A28.3: the live socket's path. Meaningless once the socket is gone, so a disconnected
             # record reports nothing rather than the path it used last.
             "reach": self.via if self.connected else None,
+            "reach_claimed": self.via_claimed,
         }
 
 
@@ -142,6 +193,7 @@ class NetServer:
         self._on_node_message: list[Callable[[str, str, dict, int], None]] = []
         self._on_stale: list[Callable[[str, int], None]] = []
         self._on_return: list[Callable[[str], None]] = []
+        self._on_disconnect: list[Callable[[str], None]] = []
         self._server = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._stale_task: asyncio.Task | None = None
@@ -158,7 +210,7 @@ class NetServer:
         # Session owns all three values and pushes them down with `set_join()`.
         self.join_secret = ""
         self._pub: str | None = None
-        self._public_up = False
+        self._armed: bool | Callable[[], bool] = False
         self.stats = {"malformed": 0, "quarantined": 0, "takeovers": 0, "replays": 0, "events": 0, "rejected": 0, "evicted": 0}
 
     # ---------------- registration (interfaces.NetServer) ----------------
@@ -191,6 +243,12 @@ class NetServer:
 
     def on_return(self, cb: Callable[[str], None]) -> None:
         self._on_return.append(cb)
+
+    def on_disconnect(self, cb: Callable[[str], None]) -> None:
+        """The socket for this node_id just went away. Distinct from `on_stale`, which fires
+        STALE_AFTER_MS later: a path (`reach`) stops being true the instant the socket does, and the
+        snapshot is built from Session's own node dicts, which never see `NodeRecord.view()`."""
+        self._on_disconnect.append(cb)
 
     # ---------------- lifecycle ----------------
     async def start(self, host: str = "0.0.0.0", port: int = 8765, ws_path: str = "/ws",
@@ -253,36 +311,62 @@ class NetServer:
 
     # ---------------- A28.2 join (secret + public URL) ----------------
     def set_join(self, *, secret: str | None = None, pub: str | None = None,
-                 public_up: bool | None = None) -> None:
-        """Session hands the net the current join body. `public_up` is what ARMS the secret gate: with
-        the tunnel off, a hello needs no secret at all (typed address stays the mandatory floor, §5)."""
+                 armed: bool | Callable[[], bool] | None = None) -> None:
+        """Session hands the net the current join body.
+
+        `armed` is "is there a public path into this socket right now", and it may be a CALLABLE —
+        Session passes one that reads `Tunnel.armed` live. It must not be a snapshot of the tunnel's
+        `status`: status is what we last read off the child's stdout, and the gate has to stay up for as
+        long as the child is routing, however little we can read from it."""
         if secret is not None:
             self.join_secret = str(secret)
         self._pub = pub or None
-        if public_up is not None:
-            self._public_up = bool(public_up)
+        if armed is not None:
+            self._armed = armed
+
+    def _gate_armed(self) -> bool:
+        a = self._armed
+        if callable(a):
+            try:
+                return bool(a())
+            except Exception as e:
+                # One line, not a traceback: this is a decision, not a crash, and the decision is to
+                # fail CLOSED — ask for the secret rather than skip it.
+                log.warning("join gate callback raised (%s: %s) — treating the tunnel as ARMED",
+                            type(e).__name__, e)
+                return True
+        return bool(a)
 
     def join_body(self) -> dict[str, Any]:
         """`welcome.join`, and the body of the MC→node `join` push (A28.2)."""
         return {"pub": self._pub, "secret": self.join_secret}
 
-    def _via_tunnel(self, ws) -> bool:
-        """Did this upgrade arrive through the tunnel? Loopback (cloudflared dials 127.0.0.1 on our
-        behalf) or a `Cf-Connecting-Ip` header the edge stamped on. Both are heuristics, and both err
-        towards ASKING for the secret rather than skipping it."""
-        for k, _v in _request_headers(ws):
-            if k.lower() == "cf-connecting-ip":
-                return True
-        peer = getattr(ws, "remote_address", None)
-        host = str(peer[0]) if isinstance(peer, (tuple, list)) and peer else ""
-        if host.startswith("::ffff:"):
-            host = host[7:]
-        return host in _LOOPBACK
+    def _has_cf_header(self, ws) -> bool:
+        return any(k.lower() == "cf-connecting-ip" for k, _v in _request_headers(ws))
+
+    def through_backhaul(self, ws) -> bool:
+        """Did this socket come in over a public path (A28.2/A28.3)? One predicate, two jobs: it decides
+        whether the join secret is required AND it is what stamps `reach`, because those are the same
+        question and MC must not answer them differently.
+
+        * a PUBLIC peer is backhaul whatever the tunnel is doing — that is the port-forward /
+          Tailscale-Funnel case, which carries no `Cf-Connecting-Ip` and never touches loopback;
+        * loopback or a `Cf-Connecting-Ip` header counts only while the gate is ARMED, because
+          cloudflared dials us on 127.0.0.1 — with no tunnel running, loopback is just a dev box.
+
+        An UNKNOWN peer (no address off the transport) is treated as LAN: the mandatory floor is that a
+        typed address works (§5), and locking every node out on a platform quirk is worse on a match day
+        than the narrow case this would catch."""
+        if peer_class(_peer_host(ws)) == "public":
+            return True
+        if not self._gate_armed():
+            return False
+        return peer_class(_peer_host(ws)) == "loopback" or self._has_cf_header(ws)
 
     def _secret_ok(self, ws, body: dict) -> bool:
-        if not self._public_up or not self.join_secret:
-            return True                     # tunnel off (or no secret set): the LAN rules, unchanged
-        if not self._via_tunnel(ws):
+        if not self.join_secret:
+            return True                     # no secret exists to check (a pre-A28 session)
+        if not self.through_backhaul(ws):
             return True                     # A28.2: a LAN hello is never refused for lacking one
         return secrets.compare_digest(str(body.get("secret") or ""), self.join_secret)
 
@@ -428,7 +512,10 @@ class NetServer:
         finally:
             if rec is not None and rec.ws is ws:
                 rec.ws = None
+                rec.via = None                 # A28.3: a dead socket has no path
                 log.info("node %s disconnected (last seq %d)", rec.node_id, rec.seq_hi)
+                for cb in self._on_disconnect:
+                    self._call(cb, rec.node_id)
 
     def _send_raw(self, ws, kind: str, body: dict) -> None:
         if self._loop is None:
@@ -544,8 +631,11 @@ class NetServer:
         # tunnel while the tunnel is up.
         if not self._secret_ok(ws, body):
             self.stats["quarantined"] += 1
-            log.warning("hello for %s arrived through the tunnel without the join secret — closing 4004", node_id)
-            await ws.close(_CLOSE_NO_SECRET, "no_secret")
+            log.warning("hello for %s arrived over a PUBLIC path without the join secret — closing 4004", node_id)
+            # Suppressed: if the close itself raises, the exception escapes past `_on_hello`'s
+            # `except _Rejected` and the stranger's NodeRecord is never swept.
+            with contextlib.suppress(Exception):
+                await ws.close(_CLOSE_NO_SECRET, "no_secret")
             raise _Rejected()
         if rec.ws is None and rec.hello_ok and presented_key != rec.node_key:
             if self._fresh(rec):
@@ -585,9 +675,15 @@ class NetServer:
         rec.hello_ok = True
         rec.node_type = str(body.get("node_type", "phone"))
         rec.app_ver = str(body.get("app_ver", ""))
-        via = str(body.get("via") or "")
-        if via in ("lan", "backhaul"):
-            rec.via = via                  # A28.3: which URL this socket dialled; `status.reach` refreshes it
+        # A28.3: `reach` is MC's own observation of the socket in front of it, NOT the node's claim.
+        # `hello.via` is a client-supplied string, and it feeds `coverage()` (which gates a mode) and the
+        # readiness amber (which un-blocks a start) -- a phone could assert its way past both. Keep the
+        # claim beside the stamp so a disagreement is visible in diagnostics rather than silent.
+        rec.via = "backhaul" if self.through_backhaul(ws) else "lan"
+        claimed = str(body.get("via") or "")
+        rec.via_claimed = claimed if claimed in ("lan", "backhaul") else None
+        if rec.via_claimed and rec.via_claimed != rec.via:
+            log.info("node %s says via=%s; the socket says %s", node_id, rec.via_claimed, rec.via)
         if gun0:
             rec.gun_name = gun0.get("name") or rec.gun_name
             rec.gun_tail = gun0.get("tail") or rec.gun_tail
@@ -626,7 +722,9 @@ class NetServer:
         # so never caught this.
         info = {"node_id": rec.node_id, "node_type": rec.node_type, "app_ver": rec.app_ver}
         if rec.via:
-            info["reach"] = rec.via        # A28.3: the NodeView's first `reach`, before any status lands
+            info["reach"] = rec.via        # A28.3: MC's stamp — the only `reach` the NodeView ever gets
+        if rec.via_claimed:
+            info["reach_claimed"] = rec.via_claimed
         if rec.gun_name:
             info["gun_name"] = rec.gun_name
         if rec.gun_tail:

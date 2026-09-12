@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import pathlib
+import subprocess
 import sys
 import tempfile
 import time
@@ -123,7 +124,9 @@ def test_tunnel_goes_starting_then_up_parses_the_url_and_stops_back_to_off():
     run(go())
     assert [p["status"] for p in seen] == ["starting", "up", "off"], seen
     # the argv MC would really have run
-    assert t.spawned[0] == ["cloudflared", "tunnel", "--url", "http://127.0.0.1:8766", "--no-autoupdate"]
+    # the ABSOLUTE resolved path, not the bare name: PATH must not be re-read at exec time
+    assert t.spawned[0] == ["/usr/bin/cloudflared", "tunnel", "--url",
+                            "http://127.0.0.1:8766", "--no-autoupdate"]
 
 
 def test_a_tunnel_that_never_prints_a_url_errors_at_the_cap_with_the_last_output_line():
@@ -200,12 +203,16 @@ def test_the_qr_carries_the_secret_and_gains_pub_only_while_the_tunnel_is_up():
 
 def test_the_net_is_handed_the_same_secret_and_pub_the_qr_shows():
     s = _sess()
-    assert s.net.join_secret == s.join_secret and s.net._pub is None and s.net._public_up is False
+    assert s.net.join_secret == s.join_secret and s.net._pub is None
+    assert s.net.gate_armed() is False, "no tunnel attached, nothing to guard"
     assert s.net.join_body() == {"pub": None, "secret": s.join_secret}
     s._tunnel_changed({"ws_url": "wss://abc.trycloudflare.com/ws", "status": "up",
                        "provider": "cloudflared", "available": True})
-    assert s.net._public_up is True and s.net.join_body() == {
-        "pub": "wss://abc.trycloudflare.com/ws", "secret": s.join_secret}
+    assert s.net.join_body() == {"pub": "wss://abc.trycloudflare.com/ws", "secret": s.join_secret}
+    # ...and the gate reads the TUNNEL, not that status dict: still nothing attached, still nothing armed
+    assert s.net.gate_armed() is False
+    s.attach_tunnel(Tunnel(public_url="wss://mc.example.org/ws", which=lambda _b: None))
+    assert s.net.gate_armed() is True, "a manual provider is a public path, so the gate is up"
 
 
 def test_the_join_secret_survives_a_snapshot_restore_so_a_printed_qr_stays_valid():
@@ -304,7 +311,7 @@ def test_the_secret_gate_matrix():
             assert w["body"]["join"] == {"pub": None, "secret": ""}
 
         # (2) tunnel UP, loopback (i.e. through cloudflared), NO secret → 4004 and no record left behind
-        async with _NetHarness(secret="s3cr3t99", pub="wss://x.trycloudflare.com/ws", public_up=True) as h:
+        async with _NetHarness(secret="s3cr3t99", pub="wss://x.trycloudflare.com/ws", armed=True) as h:
             assert await _say_hello(h.url, node_id="stranger") == 4004
             # the close frame reaches the client before the server unwinds, so wait for the sweep
             assert await _until(lambda: "stranger" not in h.net.nodes), \
@@ -325,56 +332,93 @@ def test_the_secret_gate_matrix():
                                     headers={"Cf-Connecting-Ip": "203.0.113.9"}) == 4004
 
         # (6) a secret is set but the tunnel is DOWN: the LAN rules, unchanged
-        async with _NetHarness(secret="s3cr3t99", pub=None, public_up=False) as h:
+        async with _NetHarness(secret="s3cr3t99", pub=None, armed=False) as h:
             w = await _say_hello(h.url, node_id="lan-2")
             assert isinstance(w, dict) and w["kind"] == "welcome"
     run(go())
 
 
-def test_reach_comes_from_the_hello_then_from_every_status():
+def test_reach_is_stamped_by_mc_from_the_socket_not_taken_from_the_node():
+    """A28.3 + review: `reach` gates things (coverage, and the readiness amber that un-blocks a start),
+    so it must be MC's observation of the socket, never a string the client sent. The node's claim is
+    kept beside it as `reach_claimed` so a disagreement shows up instead of being silently believed."""
     needs(HAVE_WS, "websockets")
 
     async def go():
         import websockets
+        # gate DOWN: a loopback socket is just a dev box, whatever the node calls it
         async with _NetHarness() as h:
+            await _say_hello(h.url, node_id="liar", via="backhaul")
+            rec = h.net.nodes["liar"]
+            assert rec.via == "lan", "a node cannot assert its way onto backhaul"
+            assert rec.via_claimed == "backhaul"
+            assert rec.view()["reach"] == "lan" and rec.view()["reach_claimed"] == "backhaul"
+
+        # gate UP: the same loopback socket IS the tunnel hop, so now it really is backhaul
+        async with _NetHarness(secret="s3cr3t99", pub="wss://x.trycloudflare.com/ws", armed=True) as h:
             seen: list[dict] = []
             h.net.on_node(seen.append)
             async with websockets.connect(h.url) as ws:
-                await ws.send(_hello(node_id="n1", via="backhaul"))
+                await ws.send(_hello(node_id="n1", secret="s3cr3t99", via="lan"))
                 await asyncio.wait_for(ws.recv(), timeout=3)
-                assert await _until(lambda: any(i.get("reach") == "backhaul" for i in seen)), seen
+                assert await _until(lambda: any(i.get("reach") for i in seen)), seen
                 rec = h.net.nodes["n1"]
-                assert rec.via == "backhaul" and rec.view()["reach"] == "backhaul"
+                assert rec.via == "backhaul" and rec.via_claimed == "lan"
             assert await _until(lambda: not h.net.nodes["n1"].connected)
-            assert h.net.nodes["n1"].view()["reach"] is None, "a dead socket has no path"
+            assert h.net.nodes["n1"].via is None, "a dead socket has no path"
+            assert h.net.nodes["n1"].view()["reach"] is None
     run(go())
 
 
-def test_a_hello_with_a_nonsense_via_is_ignored_rather_than_believed():
+def test_a_hello_with_a_nonsense_via_leaves_no_claim_behind():
     needs(HAVE_WS, "websockets")
 
     async def go():
         async with _NetHarness() as h:
             await _say_hello(h.url, node_id="n1", via="satellite")
-            assert h.net.nodes["n1"].via is None
+            assert h.net.nodes["n1"].via_claimed is None
+            assert h.net.nodes["n1"].via == "lan"
     run(go())
 
 
-def test_the_session_records_reach_from_the_hello_and_from_a_status():
+def test_a_status_body_cannot_move_reach_but_its_claim_is_kept():
     s = _sess()
     p = s.add_player("reaper", gun_id="GUN-A")
-    s.net.simulate_hello("n1", "GUN-A", via="backhaul")
-    assert s.nodes["n1"]["reach"] == "backhaul"
-    assert s.snapshot()["nodes"][0]["reach"] == "backhaul"
-    s.net.simulate_status("n1", {"node_id": "n1", "arm_state": "kitted", "synced": True, "reach": "lan"}, s.now_ms())
+    s.net.simulate_hello("n1", "GUN-A", via="lan")
     assert s.nodes["n1"]["reach"] == "lan"
+    s.net.simulate_status("n1", {"node_id": "n1", "arm_state": "kitted", "synced": True,
+                                 "reach": "backhaul"}, s.now_ms())
+    assert s.nodes["n1"]["reach"] == "lan", "a status body must not re-path a node"
+    assert s.nodes["n1"]["reach_claimed"] == "backhaul"
+    assert s.coverage() == {"level": "zones", "on_backhaul": 0, "bound": 1}
+    assert s.snapshot()["nodes"][0]["reach"] == "lan"
     assert s.node_player["n1"] == p["player_id"]
+
+
+def test_a_dropped_socket_clears_reach_on_the_view_the_snapshot_is_built_from():
+    """The review's LOW: `NodeRecord.view()` nulls `reach` on a dead socket, but `snapshot()` renders
+    Session's own node dicts and never reads that view -- so without this the null was dead code and a
+    phone stayed "covered" for a full STALE_AFTER_MS after its socket went."""
+    s = _sess()
+    s.add_player("reaper", gun_id="GUN-A")
+    s.net.simulate_hello("n1", "GUN-A", via="backhaul")
+    assert s.coverage()["level"] == "full"
+    s.net.simulate_disconnect("n1")
+    assert "reach" not in s.nodes["n1"]
+    assert s.coverage() == {"level": "zones", "on_backhaul": 0, "bound": 1}
+    assert s.snapshot()["nodes"][0].get("reach") is None
 
 
 # --------------------------------------------------------------------------- A28.4 coverage
 def _two_players_on(s: Session, reach_a: str | None, reach_b: str | None):
     s.add_player("a", gun_id="GUN-A")
     s.add_player("b", gun_id="GUN-B")
+    _redial(s, reach_a, reach_b)
+
+
+def _redial(s: Session, reach_a: str | None, reach_b: str | None):
+    """Both phones reconnect. A28.3 says a path change IS a reconnect (close + re-dial), and `reach` is
+    stamped at the hello, so this is the only way a node's path moves."""
     s.net.simulate_hello("n-a", "GUN-A", via=reach_a)
     s.net.simulate_hello("n-b", "GUN-B", via=reach_b)
 
@@ -384,7 +428,7 @@ def test_coverage_is_full_only_when_every_bound_node_is_on_backhaul():
     assert s.coverage() == {"level": "zones", "on_backhaul": 0, "bound": 0}, "nobody bound is not coverage"
     _two_players_on(s, "backhaul", "lan")
     assert s.coverage() == {"level": "zones", "on_backhaul": 1, "bound": 2}
-    s.net.simulate_status("n-b", {"node_id": "n-b", "arm_state": "kitted", "synced": True, "reach": "backhaul"}, s.now_ms())
+    s.net.simulate_hello("n-b", "GUN-B", via="backhaul")        # it re-dialled and got the tunnel
     assert s.coverage() == {"level": "full", "on_backhaul": 2, "bound": 2}
     assert s.snapshot()["coverage"]["level"] == "full"
     # a node that goes stale is not "connected" any more, whatever path it last used
@@ -397,8 +441,7 @@ def test_full_coverage_clears_the_frag_warning_but_never_the_time_limit():
     s.set_config({"mode": "tdm", "time_limit_s": 600, "scoring": {"frag_limit": 25, "win_by": "kills"}})
     _two_players_on(s, "lan", "lan")
     assert any("frag_limit" in w for w in s.config_warnings), s.config_warnings
-    for nid in ("n-a", "n-b"):
-        s.net.simulate_status(nid, {"node_id": nid, "arm_state": "kitted", "synced": True, "reach": "backhaul"}, s.now_ms())
+    _redial(s, "backhaul", "backhaul")
     s._validate()
     assert not any("frag_limit" in w for w in s.config_warnings), s.config_warnings
     # …and A4.8's floor is untouched: a null time limit is still an error under FULL backhaul coverage
@@ -437,9 +480,9 @@ def test_a_mode_that_requires_coverage_refuses_the_lobby_push_until_it_has_it():
             assert "coveragetest" in str(e)
         assert not s.lobby_pushed, "a refused push must not leave the session in LOBBY"
 
+        _redial(s, "backhaul", "backhaul")
         for nid in ("n-a", "n-b"):
-            s.net.simulate_status(nid, {"node_id": nid, "arm_state": "kitted", "synced": True,
-                                        "reach": "backhaul"}, s.now_ms())
+            s.net.simulate_status(nid, {"node_id": nid, "arm_state": "kitted", "synced": True}, s.now_ms())
         s.push_config(force=True)
         assert s.lobby_pushed and s.phase == "lobby"
     finally:
@@ -540,8 +583,188 @@ def test_a_backhaul_node_is_not_red_for_being_off_the_field_wifi():
     assert any("WRONG WI-FI" in b for b in row["blockers"]), row
     assert row["status"] == "red"
 
-    s.net.simulate_status("n1", dict(off_wifi, reach="backhaul"), s.now_ms())
+    s.net.simulate_hello("n1", "GUN-A", via="backhaul")          # re-dialled, MC stamps the new path
+    s.net.simulate_status("n1", dict(off_wifi), s.now_ms())
     row = next(r for r in s.readiness()["board"] if r["player_id"] == p["player_id"])
     assert not any("WI-FI" in b for b in row["blockers"]), row["blockers"]
     assert any("BACKHAUL" in a for a in row["ambers"]), row["ambers"]
     assert row["status"] != "red", row
+
+
+# --------------------------------------------------------------------------- review: the gate's arming
+def test_losing_the_childs_stdout_does_not_disarm_the_gate_while_it_still_routes():
+    """The HIGH finding. `_run` used to exit its read loop on stdout EOF, wait 3 s for the process, get
+    rc=None for a perfectly live child and call `_fail()` — status went to `error`, the gate came down,
+    and the still-working trycloudflare hostname was then open to anyone with no secret.
+
+    The stand-in prints its URL, CLOSES stdout, and keeps running."""
+    argv = [sys.executable, "-c",
+            "import os, sys, time\n"
+            f"print('|  {FAKE_HOST}  |', flush=True)\n"
+            "os.close(1); os.close(2)\n"       # stdout gone, process very much alive
+            "time.sleep(60)\n"]
+    t = _tunnel(argv)
+
+    async def go():
+        t.start(8766)
+        assert await _until(lambda: t.status == "up"), t.public()
+        await asyncio.sleep(0.3)               # long enough for the old 3 s-cap path to have fired
+        assert t.armed is True, "the child is still routing — the gate must stay up"
+        assert t.status == "up", "we stopped READING it; that is not the same as it dying"
+        await t.stop()
+        assert t.armed is False and t.status == "off"
+    run(go())
+
+
+def test_the_secret_is_still_required_after_stdout_dies():
+    """The same fault, end to end: a hello through the tunnel with no secret must still be refused."""
+    needs(HAVE_WS, "websockets")
+    argv = [sys.executable, "-c",
+            "import os, sys, time\n"
+            f"print('|  {FAKE_HOST}  |', flush=True)\n"
+            "os.close(1); os.close(2)\n"
+            "time.sleep(60)\n"]
+    t = _tunnel(argv)
+
+    async def go():
+        from brx_mcp.mc.net import NetServer
+        net = NetServer(hello_timeout_s=2.0)
+        net.set_join(secret="s3cr3t99", pub=None, armed=lambda: t.armed)
+        await net.start("127.0.0.1", 0)
+        try:
+            t.start(8766)
+            assert await _until(lambda: t.status == "up")
+            await asyncio.sleep(0.3)
+            url = f"ws://127.0.0.1:{net.port}/ws"
+            assert await _say_hello(url, node_id="stranger") == 4004
+            w = await _say_hello(url, node_id="ok-1", secret="s3cr3t99")
+            assert isinstance(w, dict) and w["kind"] == "welcome"
+        finally:
+            await t.stop()
+            await net.stop()
+    run(go())
+
+
+def test_the_gate_fails_closed_when_the_arming_callback_raises():
+    from brx_mcp.mc.net import NetServer
+    net = NetServer()
+
+    def boom():
+        raise RuntimeError("tunnel went away")
+
+    net.set_join(secret="s3cr3t99", armed=boom)
+    assert net._gate_armed() is True, "a gate we cannot evaluate must ASK for the secret, not skip it"
+
+
+# --------------------------------------------------------------------------- review: orphan reaping
+def test_an_orphaned_cloudflared_is_killed_at_the_next_launch():
+    with tempfile.TemporaryDirectory() as d:
+        pid_file = pathlib.Path(d) / "tunnel.pid"
+        # a long-lived stand-in whose cmdline says cloudflared, exactly as the real orphan's would
+        proc = subprocess.Popen([sys.executable, "-c", "import time  # cloudflared\ntime.sleep(60)"])
+        try:
+            pid_file.write_text(str(proc.pid))
+            t = Tunnel(which=lambda _b: "/usr/bin/cloudflared", pid_path=pid_file)
+            assert t.reap_orphan() == proc.pid
+            assert proc.wait(timeout=5) is not None
+            assert not pid_file.exists(), "the pid file goes with the process"
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=5)
+
+
+def test_reaping_never_kills_a_pid_that_is_no_longer_cloudflared():
+    """Pids are reused. Terminating whatever now holds the number in a stale file would be far worse
+    than leaving a tunnel up, so the cmdline is checked before anything is signalled."""
+    with tempfile.TemporaryDirectory() as d:
+        pid_file = pathlib.Path(d) / "tunnel.pid"
+        proc = subprocess.Popen([sys.executable, "-c", "import time\ntime.sleep(30)"])
+        try:
+            pid_file.write_text(str(proc.pid))
+            t = Tunnel(which=lambda _b: None, pid_path=pid_file)
+            assert t.reap_orphan() is None
+            assert proc.poll() is None, "an innocent process was killed"
+            assert not pid_file.exists(), "...but the stale file is cleared"
+        finally:
+            proc.kill()
+            proc.wait(timeout=5)
+    # a missing or junk file is simply nothing to do
+    with tempfile.TemporaryDirectory() as d:
+        t = Tunnel(which=lambda _b: None, pid_path=pathlib.Path(d) / "nope.pid")
+        assert t.reap_orphan() is None
+        junk = pathlib.Path(d) / "junk.pid"
+        junk.write_text("not-a-pid")
+        assert Tunnel(which=lambda _b: None, pid_path=junk).reap_orphan() is None
+        assert not junk.exists()
+
+
+def test_a_running_tunnel_writes_its_pid_and_clears_it_on_stop():
+    with tempfile.TemporaryDirectory() as d:
+        pid_file = pathlib.Path(d) / "tunnel.pid"
+        t = _tunnel(_fake_child(delay_s=0.02), pid_path=pid_file)
+
+        async def go():
+            t.start(8766)
+            assert await _until(lambda: t.status == "up"), t.public()
+            assert int(pid_file.read_text()) == t._proc.pid
+            await t.stop()
+            assert not pid_file.exists()
+        run(go())
+
+
+# --------------------------------------------------------------------------- review: the public peer
+class _FakeWs:
+    """Just enough websocket to drive the peer rules — the injected peer address."""
+
+    def __init__(self, host, headers=None):
+        self.remote_address = (host, 41234) if host else None
+        self.request = type("R", (), {"headers": dict(headers or {})})()
+
+
+def test_peer_class_sorts_loopback_private_and_public():
+    from brx_mcp.mc.net import peer_class
+    assert peer_class("127.0.0.1") == "loopback" and peer_class("::1") == "loopback"
+    assert peer_class("::ffff:127.0.0.1") == "loopback"
+    for lan in ("192.168.1.40", "10.0.0.5", "172.16.3.9", "169.254.4.4", "fd00::1"):
+        assert peer_class(lan) == "private", lan
+    for pub in ("203.0.113.9", "8.8.8.8", "2606:4700::1111"):
+        # 203.0.113/24 is TEST-NET-3, which `ipaddress.is_private` calls private. It is not a LAN, so
+        # the classifier names its private ranges explicitly instead of borrowing that answer.
+        assert peer_class(pub) == "public", pub
+    assert peer_class("100.100.3.4") == "private", "a Tailscale tailnet is LAN-equivalent"
+    assert peer_class(None) == "unknown" and peer_class("not-an-ip") == "unknown"
+
+
+def test_a_public_peer_always_needs_the_secret_even_with_no_tunnel_running():
+    """The review's port-forward hole: `--public-url` behind a plain forward gives a routable peer and
+    no `Cf-Connecting-Ip`, so the old loopback/header test never fired and the socket was wide open."""
+    from brx_mcp.mc.net import NetServer
+    net = NetServer()
+    net.set_join(secret="s3cr3t99", armed=False)          # gate DOWN on purpose
+
+    stranger = _FakeWs("203.0.113.9")
+    assert net.through_backhaul(stranger) is True
+    assert net._secret_ok(stranger, {}) is False
+    assert net._secret_ok(stranger, {"secret": "nope"}) is False
+    assert net._secret_ok(stranger, {"secret": "s3cr3t99"}) is True
+
+    # ...while the LAN and a gate-off loopback stay secret-free, which is the mandatory floor (§5)
+    for host in ("192.168.1.40", "10.0.0.5", "127.0.0.1"):
+        ws = _FakeWs(host)
+        assert net.through_backhaul(ws) is False, host
+        assert net._secret_ok(ws, {}) is True, host
+    # an unreadable peer is treated as LAN: locking every node out on a platform quirk is the worse bug
+    assert net._secret_ok(_FakeWs(None), {}) is True
+
+
+def test_the_cf_header_and_loopback_only_count_while_the_gate_is_armed():
+    from brx_mcp.mc.net import NetServer
+    net = NetServer()
+    net.set_join(secret="s3cr3t99", armed=False)
+    cf = _FakeWs("192.168.1.40", {"Cf-Connecting-Ip": "203.0.113.9"})
+    assert net.through_backhaul(cf) is False, "no tunnel running, so nothing came through one"
+    net.set_join(armed=True)
+    assert net.through_backhaul(cf) is True and net._secret_ok(cf, {}) is False
+    assert net.through_backhaul(_FakeWs("127.0.0.1")) is True
+    assert net.through_backhaul(_FakeWs("192.168.1.40")) is False, "a LAN peer is still a LAN peer"

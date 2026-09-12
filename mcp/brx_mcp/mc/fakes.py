@@ -159,11 +159,11 @@ class FakeNet:
 
     def __init__(self):
         self._hydrate = None
-        self._cb = {"node": [], "event": [], "status": [], "msg": [], "stale": [], "return": []}
+        self._cb = {"node": [], "event": [], "status": [], "msg": [], "stale": [], "return": [], "gone": []}
         self.pushed: list[tuple[str | None, str, dict]] = []
         self.host, self.port, self.ws_path = "0.0.0.0", 0, "/ws"
         self.session_id = "fake-session"
-        self.join_secret, self._pub, self._public_up = "", None, False   # A28.2
+        self.join_secret, self._pub, self._armed = "", None, False       # A28.2
 
     # NetServer surface
     def start(self, host: str, port: int, ws_path: str = "/ws") -> None:
@@ -171,12 +171,15 @@ class FakeNet:
     def join_info(self) -> dict:
         url = f"ws://{self.host}:{self.port}{self.ws_path}"
         return {"url": url, "session_id": self.session_id, "qr": url}
-    def set_join(self, *, secret: str | None = None, pub: str | None = None, public_up: bool | None = None) -> None:
+    def set_join(self, *, secret: str | None = None, pub: str | None = None,
+                 armed: bool | object | None = None) -> None:
         if secret is not None:
             self.join_secret = str(secret)
         self._pub = pub or None
-        if public_up is not None:
-            self._public_up = bool(public_up)
+        if armed is not None:
+            self._armed = armed          # bool OR callable, exactly as NetServer takes it
+    def gate_armed(self) -> bool:
+        return bool(self._armed() if callable(self._armed) else self._armed)
     def join_body(self) -> dict:
         return {"pub": self._pub, "secret": self.join_secret}
     def hydrate(self, cb): self._hydrate = cb
@@ -186,6 +189,7 @@ class FakeNet:
     def on_node_message(self, cb): self._cb["msg"].append(cb)
     def on_stale(self, cb): self._cb["stale"].append(cb)
     def on_return(self, cb): self._cb["return"].append(cb)
+    def on_disconnect(self, cb): self._cb["gone"].append(cb)
     def push(self, node_id: str, kind: str, body: dict) -> None: self.pushed.append((node_id, kind, body))
     def broadcast(self, kind: str, body: dict) -> None: self.pushed.append((None, kind, body))
 
@@ -200,8 +204,10 @@ class FakeNet:
         node = self._hydrate(hello) if self._hydrate else None
         info = {"node_id": node_id, "node_type": node_type, "gun_name": gun_name, "gun_tail": tail, "fw": fw}
         if via:
-            info["reach"] = via        # A28.3: mirrors `NetServer._fire_node` — the FakeNet that does NOT
-        for cb in self._cb["node"]:    # mirror the real one is how F106(b) hid for a month
+            # A28.3: in the real server this is MC's own stamp off the socket, never the hello's claim.
+            # A FakeNet that does not mirror the real one is how F106(b) hid for a month.
+            info["reach"] = via
+        for cb in self._cb["node"]:
             cb(info)
         return node
     def simulate_utility_hello(self, node_id: str, app_ver: str = "utility") -> dict | None:
@@ -226,6 +232,10 @@ class FakeNet:
         for cb in self._cb["stale"]: cb(node_id, age_ms)
     def simulate_return(self, node_id: str):
         for cb in self._cb["return"]: cb(node_id)
+    def simulate_disconnect(self, node_id: str):
+        """A28.3: the socket dropped -- `NetServer._handler`'s finally clause. A FakeNet that cannot do
+        this is a FakeNet that hides the path-clearing rule (the F106(b) shape)."""
+        for cb in self._cb["gone"]: cb(node_id)
     def pushes(self, kind: str | None = None, node_id: str | None = None):
         return [p for p in self.pushed if (kind is None or p[1] == kind) and (node_id is None or p[0] in (node_id, None))]
 
