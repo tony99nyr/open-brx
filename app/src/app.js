@@ -9,7 +9,7 @@ import { Engine, C } from './engine.js';
 import { BrxLink } from './brxlink.js';
 import { Transport } from './transport/transport.js';
 import { Hud } from './hud/hud.js';
-import { parseMcQr } from './mcurl.js';
+import { parseMcJoin } from './mcurl.js';
 import { Presence, encodeUuid, stationView } from './beacon.js';   // utility items (docs/spec/utility.md)
 
 const APP_VER = 'hud-0.2';
@@ -57,6 +57,13 @@ async function haptic(kind) {
 const settings = {
   get mcUrl() { try { return localStorage.getItem('brx.mc_url') || ''; } catch (_) { return ''; } },
   set mcUrl(v) { try { localStorage.setItem('brx.mc_url', v); } catch (_) { /* ignore */ } },
+  // A28.2: the backhaul URL + join secret last learned for this LAN url, remembered across app restarts
+  // independent of the Transport's own (session-scoped) copy so a fresh Transport object still has them
+  // to offer on its very first connect() after a cold boot.
+  get mcPub() { try { return localStorage.getItem('brx.mc_pub') || ''; } catch (_) { return ''; } },
+  set mcPub(v) { try { if (v) localStorage.setItem('brx.mc_pub', v); else localStorage.removeItem('brx.mc_pub'); } catch (_) { /* ignore */ } },
+  get mcSecret() { try { return localStorage.getItem('brx.mc_secret') || ''; } catch (_) { return ''; } },
+  set mcSecret(v) { try { if (v) localStorage.setItem('brx.mc_secret', v); else localStorage.removeItem('brx.mc_secret'); } catch (_) { /* ignore */ } },
   get night() { try { return localStorage.getItem('brx.night') === '1'; } catch (_) { return false; } },
   set night(v) { try { localStorage.setItem('brx.night', v ? '1' : '0'); } catch (_) { /* ignore */ } },
   // 'hud' (default) or 'utility': the same install is either a player's HUD or a utility item on the field
@@ -189,6 +196,9 @@ const preflight = { ssid_ok: true, mc_reachable: false, auto_join_ok: true, cell
 async function refreshPreflight() {
   try { if (plugins.device) { const b = await plugins.device.getBatteryInfo(); if (b && b.batteryLevel != null) preflight.phone_batt = Math.round(b.batteryLevel * 100); } } catch (_) { /* ignore */ }
   try { if (plugins.network) { const s = await plugins.network.getStatus(); preflight.ssid_ok = s.connectionType === 'wifi'; } } catch (_) { /* ignore */ }
+  // A28.3: §5c(d) is a warning, not a red, on a node reaching MC over backhaul — it has a working data path
+  // even though it is not (or not usefully) on the field Wi-Fi. The HUD session rewords the chip itself.
+  if (transport && transport.reach === 'backhaul') preflight.ssid_ok = true;
   preflight.mc_reachable = !!(transport && transport.state === 'bound');
   preflight.gun_linked = engine.bleUp; preflight.headset_ok = !!engine.headEcho;
   preflight.foreground = document.visibilityState !== 'hidden'; preflight.screen_on = preflight.foreground;
@@ -203,13 +213,23 @@ let assistTimer = null;
 /** The last URL we actually dialled — including a discovery-only one that `settings.mcUrl` never
  *  records. RECONNECT MC falls back to it. */
 let lastMcUrl = null;
-function connectMc(url, remember = true) {
+/**
+ * @param {string} url the LAN join url
+ * @param {boolean} [remember] discovery/sweep never overwrites the user's explicit target (polish-loop)
+ * @param {{pub?:string|null, secret?:string|null}} [join] A28.2: from a QR scan or a typed full join
+ *   code — when given, replaces whatever backhaul target/secret was remembered for this url; when
+ *   omitted (every discovery/sweep/remembered-address reconnect), the last-known pub/secret carries
+ *   over so those paths still offer backhaul without having to rescan.
+ */
+function connectMc(url, remember = true, join = {}) {
   if (!url) return;
   if (remember) { settings.mcUrl = url; hud.mcUrl = url; }   // discovery never overwrites the explicit target (polish-loop)
   // ...but RECONNECT MC has to have something to dial. It read `settings.mcUrl`, which a
   // discovery-only connect deliberately never writes — so after an auto-discovered join the button
   // called connectMc(undefined) and returned on line 1, doing nothing at all (deferred low).
   lastMcUrl = url;
+  if (join.pub !== undefined) settings.mcPub = join.pub || '';
+  if (join.secret !== undefined) settings.mcSecret = join.secret || '';
   if (transport) { try { transport.close(); } catch (_) { /* ignore */ } }
   const gun = engine.gun ? { name: engine.gun.name, tail: engine.gun.tail, fw: engine.fw || undefined } : null;
   transport = new Transport({ node: { app_ver: APP_VER }, gun });
@@ -228,7 +248,7 @@ function connectMc(url, remember = true) {
     engine.setWsState(s, transport.rejected);
     log(s === 'rejected' ? `MC REFUSED: ${transport.rejected && transport.rejected.reason} (${transport.rejected && transport.rejected.code})` : `MC link ${s}`, s === 'bound' ? 'lk' : s === 'rejected' ? 'le' : 'li');
   });
-  transport.connect({ url }).then(() => log('MC hydrated', 'lk')).catch(e => log('MC connect: ' + (e && e.message || e), 'le'));
+  transport.connect({ url, pub: settings.mcPub || null, secret: settings.mcSecret || null }).then(() => log('MC hydrated', 'lk')).catch(e => log('MC connect: ' + (e && e.message || e), 'le'));
 }
 
 // ---------- HUD handlers ----------
@@ -285,7 +305,12 @@ Object.assign(hud.h, {
   onBriefDone: () => { engine.closeBriefing(); haptic('tap'); },
   onBriefing: () => { engine.openBriefing(); haptic('tap'); },
   onTryDone: () => { engine.dismissTryout(); haptic('tap'); },
-  onSetUrl: () => { const el = $('mcurl'); if (el && el.value.trim()) connectMc(el.value.trim()); },
+  onSetUrl: () => {
+    const el = $('mcurl'); const v = el && el.value.trim(); if (!v) return;
+    const j = parseMcJoin(v);
+    if (j) connectMc(j.url, true, { pub: j.pub, secret: j.secret });
+    else connectMc(v);   // not a recognised join code — let it through as a bare address (the mandatory floor, §5)
+  },
   onToggleNight: () => { engine.night = !engine.night; settings.night = engine.night; hud.sig = null; scheduleRender(); },
   onToggleMcPill: () => { hud.mcPill = !hud.mcPill; scheduleRender(); },   // live: show/hide the out-of-range detail (review #32)
   onToggleCam: async () => {
@@ -381,7 +406,7 @@ function renderNow() {
   const st = engine.state();
   hud.render(st);
   hud.setDiag({
-    preflight, link: { deviceId: link.deviceId, connected: link.connected, retries: link.retries, mc: transport ? transport.state : 'none', mc_url: settings.mcUrl, node_id: transport ? transport.nodeId : '—' },
+    preflight, link: { deviceId: link.deviceId, connected: link.connected, retries: link.retries, mc: transport ? transport.state : 'none', mc_url: settings.mcUrl, node_id: transport ? transport.nodeId : '—', reach: transport ? transport.reach : null, pub: transport ? transport.pub : null },
     engine: { phase: st.phase, alive: st.alive, hp: st.hp, armor: st.armor, ammo: st.ammo, reserve: st.reserve, shots: st.shots, deaths: st.deaths, match_id: st.matchId, player_num: st.playerNum, latch: engine.latch ? `${engine.latch.shooter_num}/${engine.latch.shooter_team}` : '—', resync: st.resync ? st.resync.step : '—' },
     timings: { offset_ms: transport ? Math.round(transport.clock.offset || 0) : 0, synced: st.synced, queue: transport ? transport.ring.pending().length : 0, t_minus_ms: st.tMinusMs, clock_ms: st.clockMs },
     frames: link.frames.slice(-14), log: logLines.slice(-30),
@@ -468,8 +493,8 @@ async function scanQrForMc() {
       ctx.drawImage(video, 0, 0);
       const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
-      const url = code && code.data ? parseMcQr(code.data) : null;
-      if (url) { stop(); log('QR scanned — connecting: ' + url, 'lk'); connectMc(url); return; }
+      const join = code && code.data ? parseMcJoin(code.data) : null;
+      if (join) { stop(); log('QR scanned — connecting: ' + join.url, 'lk'); connectMc(join.url, true, { pub: join.pub, secret: join.secret }); return; }
       // A code the camera READ but that is not an MC join code used to look identical to reading
       // nothing at all — the operator kept aiming at a Wi-Fi or URL QR wondering why (deferred low).
       if (code && code.data && code.data !== lastRejected) {

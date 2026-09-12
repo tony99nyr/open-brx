@@ -19,8 +19,9 @@ export const NODE_KINDS = new Set(['hello', 'bind', 'event', 'event_batch', 'sta
 export const MC_KINDS = new Set(['welcome', 'assign', 'tutorial', 'config', 'start', 'feedback',
   'control', 'time_res', 'pull_log', 'ack', 'apply', 'score', 'loadout_ack',
   'alert',            // A11.4
-  'station_config']); // A13.5 (F104): MC -> a utility phone. Unlisted here it was dropped as malformed before
+  'station_config',   // A13.5 (F104): MC -> a utility phone. Unlisted here it was dropped as malformed before
                       // utility.js's onMessage ever saw it -- the second half of "MC never arms a station".
+  'join']);           // A28.2: the tunnel came up or went down -- every connected node adopts pub/secret.
 export const CONTROL_CMDS = new Set(['end', 'panic', 'abort_start', 'recall']);
 
 const T_MIN_MS = 1_500_000_000_000, T_MAX_MS = 4_000_000_000_000;
@@ -44,6 +45,10 @@ const REQUIRED = {
   loadout_ack: ['slot', 'ok'],
   alert: ['kind', 'text', 'player_id', 't'],
   station_config: ['kind', 'team', 'id'],   // threshold / game / valid_ids optional (utility.md §5c)
+  // A28.2: `pub` is `string|null` (its KEY must still be present) -- the tunnel up/down signal rides on it.
+  // welcome.join carries the same shape but is NOT required here: an MC/mock that predates A28 never sends
+  // it, and welcome must stay valid without it (backward compatible, no-pub path is unchanged).
+  join: ['pub', 'secret'],
 };
 const EVENT_REQUIRED = { hit_taken: ['shooter_num', 'shooter_team', 'dmg'], death: ['shooter_num', 'shooter_team'], respawn: [], team_change: ['tid'] };
 
