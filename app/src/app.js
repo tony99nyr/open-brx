@@ -10,6 +10,7 @@ import { BrxLink } from './brxlink.js';
 import { Transport } from './transport/transport.js';
 import { Hud } from './hud/hud.js';
 import { parseMcJoin } from './mcurl.js';
+import { sweepPlan, localIpFrom, sweepForMc as sweepSubnetsForMc } from './transport/discover.js';   // F139
 import { Presence, encodeUuid, stationView } from './beacon.js';   // utility items (docs/spec/utility.md)
 import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // background log sync (contracts A25)
 import { APP_VER, platformName } from './build.js';                  // the REAL build id (contracts A29)
@@ -249,6 +250,12 @@ let assistTimer = null;
 /** The last URL we actually dialled — including a discovery-only one that `settings.mcUrl` never
  *  records. RECONNECT MC falls back to it. */
 let lastMcUrl = null;
+/** F139: the LAN url of THIS RUN's join — a QR scan, a typed address, an mDNS hit, or a url we actually
+ *  welcomed over. Deliberately NOT `settings.mcUrl`: that survives across days, and the field sweep used
+ *  it to pick a subnet, so a phone on 192.168.0.x spent its whole sweep on the iPhone-hotspot range it
+ *  had joined the previous game test. A remembered address says where MC was, never where we are. */
+let currentJoinUrl = null;
+function noteJoinUrl(url) { if (url && /^wss?:\/\//i.test(url)) currentJoinUrl = url; }
 /**
  * @param {string} url the LAN join url
  * @param {boolean} [remember] discovery/sweep never overwrites the user's explicit target (polish-loop)
@@ -286,7 +293,8 @@ function connectMc(url, remember = true, join = {}) {
     // Bound to an MC: stop letting discovery/sweep pick a different one. `allowAssist` opens that
     // door after 15 s of failing to connect and used to stay open for the rest of the session, so a
     // momentary drop mid-match could hand this phone to a second MC on the LAN (deferred low).
-    if (s === 'bound') { allowAssist = false; if (assistTimer) { clearTimeout(assistTimer); assistTimer = null; } logsync.onBound(); }
+    if (s === 'bound') { allowAssist = false; if (assistTimer) { clearTimeout(assistTimer); assistTimer = null; } logsync.onBound();
+      if (transport && transport.reach === 'lan') noteJoinUrl(transport.url); }   // F139: a url we actually welcomed over IS the current join
     // ...and re-open it if we stay unbound: its only opener used to be a one-shot 15 s boot timer,
     // so after the first successful bind discovery could never rescue us again — exactly the case
     // where MC restarts on a new IP mid-match (review 2026-09-01).
@@ -359,6 +367,7 @@ Object.assign(hud.h, {
   onSetUrl: () => {
     const el = $('mcurl'); const v = el && el.value.trim(); if (!v) return;
     const j = parseMcJoin(v);
+    noteJoinUrl(j ? j.url : v);
     if (j) connectMc(j.url, true, { pub: j.pub, secret: j.secret });
     else connectMc(v);   // not a recognised join code — let it through as a bare address (the mandatory floor, §5)
   },
@@ -457,6 +466,10 @@ function onForeground(fg) {
   if (fg) { engine.resume(); keepAwake(true); }
 }
 document.addEventListener('visibilitychange', () => onForeground(document.visibilityState !== 'hidden'));
+// F153c, the web/webview half of the same signal (the Capacitor listener is wired at boot): `online`
+// fires in a desktop browser and in the webview, and costs nothing when the plugin already covered it —
+// `dialNow()` is a no-op once there is a live link.
+window.addEventListener('online', () => { if (transport) transport.dialNow(); });
 window.addEventListener('pageshow', () => engine.resume());
 
 // ---------- MC auto-discovery (mDNS _openbrx._tcp — MC advertises, we watch) ----------
@@ -472,6 +485,7 @@ function startDiscovery() {
         const path = (svc.txtRecord && svc.txtRecord.ws_path) || '/ws';
         const url = `ws://${ip}:${svc.port}${path}`;
         log(`Mission Control discovered: ${url}`, 'lk');
+        noteJoinUrl(url);
         // Assist only when we have NO target of our own (nothing remembered AND nothing already
         // dialled), or when assist has been explicitly re-opened by a spell of not being bound.
         // The old `!settings.mcUrl` disjunct was true for exactly the phones a discovery-only join
@@ -527,7 +541,7 @@ async function scanQrForMc() {
       const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' });
       const join = code && code.data ? parseMcJoin(code.data) : null;
-      if (join) { stop(); log('QR scanned — connecting: ' + join.url, 'lk'); connectMc(join.url, true, { pub: join.pub, secret: join.secret }); return; }
+      if (join) { stop(); log('QR scanned — connecting: ' + join.url, 'lk'); noteJoinUrl(join.url); connectMc(join.url, true, { pub: join.pub, secret: join.secret }); return; }
       // A code the camera READ but that is not an MC join code used to look identical to reading
       // nothing at all — the operator kept aiming at a Wi-Fi or URL QR wondering why (deferred low).
       if (code && code.data && code.data !== lastRejected) {
@@ -542,38 +556,29 @@ async function scanQrForMc() {
 }
 
 // Fallback discovery: mDNS can die on AP-isolated/multicast-filtered routers — sweep the likely /24s for
-// MC's HTTP port (8765) and let /api/state hand us the exact ws_url (CORS is open server-side for this).
+// MC's NODE SOCKET and, if one answers the websocket upgrade, join it.
+//
+// F139 (field 2026-09-12): this used to fetch `http://<ip>:8765/api/state`, which Android blocks as Mixed
+// Content from the app's https origin — every request, every time, so the sweep had never worked on a
+// phone. It also took its subnet from the REMEMBERED address. Both live in transport/discover.js now,
+// where they are testable; this is the app's half: where the inputs come from, and what to do with a hit.
 async function sweepForMc() {
   if (transport && transport.state === 'bound') return;
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return;   // no network, no sweep
+  let localIp = null;
+  try { if (plugins.network) localIp = localIpFrom(await plugins.network.getStatus()); } catch (_) { /* ignore */ }
+  const plan = sweepPlan({ localIp, joinUrl: currentJoinUrl });
   const urlAtStart = settings.mcUrl;
-  const subnets = [];
-  const m = /ws:\/\/(\d+\.\d+\.\d+)\.(\d+):/.exec(settings.mcUrl || '');
-  if (m) subnets.push(m[1]);
-  for (const sn of ['192.168.0', '192.168.1', '192.168.86', '10.0.0', '172.20.10']) if (!subnets.includes(sn)) subnets.push(sn);
-  log('sweeping for Mission Control on :8765…', 'li');
-  for (const sn of subnets) {
-    if (transport && transport.state === 'bound') return;
-    const hosts = []; for (let i = 1; i <= 254; i++) hosts.push(`${sn}.${i}`);
-    const POOL = 32;
-    let found = null;
-    const probe = async ip => {
-      const ac = new AbortController(); const t = setTimeout(() => ac.abort(), 500);
-      try {
-        const r = await fetch(`http://${ip}:8765/api/state`, { signal: ac.signal });
-        const j = await r.json();
-        if (j && j.lan && j.lan.ws_url) found = j.lan.ws_url;
-      } catch (_) { /* not MC */ } finally { clearTimeout(t); }
-    };
-    for (let i = 0; i < hosts.length && !found; i += POOL) await Promise.all(hosts.slice(i, i + POOL).map(probe));
-    if (found) {
-      log(`Mission Control found by port sweep: ${found}`, 'lk');
-      if (settings.mcUrl && settings.mcUrl !== urlAtStart) return;   // the user typed/scanned mid-sweep — their target wins (polish-loop)
-      if (!transport || transport.state !== 'bound') connectMc(found, false);
-      return;
-    }
-  }
-  log('sweep found no Mission Control — QR/manual join', 'li');
+  // the user typing/scanning mid-sweep wins (polish-loop), and a join landing ends it early
+  const shouldStop = () => !!(transport && transport.state === 'bound') || settings.mcUrl !== urlAtStart;
+  log(`sweeping for Mission Control on ${plan.subnets.map(sn => sn + '.x').join(', ')} :${plan.ports.join('/')}…`, 'li');
+  const found = await sweepSubnetsForMc({ ...plan, wsFactory: url => new WebSocket(url), shouldStop,
+    onSubnet: sn => log(`sweep: ${sn}.0/24`, 'li') });
+  if (!found) { log('sweep found no Mission Control — QR/manual join', 'li'); return; }
+  log(`Mission Control found by port sweep: ${found}`, 'lk');
+  if (shouldStop()) return;
+  noteJoinUrl(found);
+  connectMc(found, false);
 }
 
 // ---------- boot ----------
@@ -588,6 +593,22 @@ async function sweepForMc() {
   await loadPlugins();
   await lockLandscape(); await keepAwake(true);
   try { if (plugins.app) plugins.app.addListener('appStateChange', ({ isActive }) => onForeground(!!isActive)); } catch (_) { /* ignore */ }
+  // F153c: the radio came back (mobile data restored, Wi-Fi rejoined, the hotspot came up). Whatever the
+  // transport is sitting on was started while there was no route: a backoff counting down, or a dial
+  // hanging on an address nothing could reach. Dial from the top of the ladder NOW. Field cost of not
+  // doing this: mobile data came back mid-match and the node took ~3 minutes to reappear.
+  try {
+    if (plugins.network && plugins.network.addListener) {
+      plugins.network.addListener('networkStatusChange', st => {
+        const up = !!(st && st.connected);
+        log(`network ${up ? 'up' : 'down'} (${(st && st.connectionType) || '—'})`, 'li');
+        if (!up) return;
+        if (transport) { if (transport.dialNow()) log('network back — dialling Mission Control now', 'li'); }
+        else if (settings.mcUrl) connectMc(settings.mcUrl);
+        refreshPreflight().catch(() => { /* ignore */ });
+      });
+    }
+  } catch (e) { log('network listener: ' + (e && e.message || e), 'li'); }
   const params = new URLSearchParams(location.search);
   if (params.has('demo')) {
     const { startDemo } = await import('./demo.js');
