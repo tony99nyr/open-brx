@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B31 · D5 · E8 · F128 · G11 · H8 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D5 · E8 · F128 · G11 · H8 ·
 K7 · P18 · Q20 · R3 · S27.** (2026-09-11 night game test: F110-F127 and S20-S26 taken, see [`game-test-2026-09-11.md`](game-test-2026-09-11.md).) (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
 ids are retired, never reused.) (2026-09-10: F94/F95/F98 taken — the phone control point
 (`spec/utility.md` §5d), its LAN-coupled roaming variant (§5e) and Territories (§5f). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
@@ -168,6 +168,20 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   takeover sets `rec.ws` to the new socket before the gun claim runs, so a claim REFUSED right after leaves the record owning a
   socket that is being closed and `_drop_socket`/`on_disconnect` never run for it. Three review passes (2026-09-12) closed
   1 high + 13 medium. `build` · `capture`.
+- **B31 🟠** KILL CONFIRM OVER THE BLE ADVERT (Tony 2026-09-12): the victim's player advert (utility.md §2) already
+  carries alive + seq and has three spare bytes (11 value, 14 threshold, 15 reserved); the victim's node already
+  latches the shooter's player_num from its last `$HIR`. Put `killed_by` in the value byte while the alive bit is
+  off (it stays up for the whole respawn delay), have player phones read player adverts (only utility phones do
+  today), and a dead player in my game whose value byte is my number, deduped per (victim, seq), fires KILL
+  CONFIRMED locally (A11.4 HUD-driven event, class "peer-witnessed") with no LAN, backhaul or MC. Range = BLE
+  advert range (~10-30 m outdoors at medium TX). **Presentation only:** adverts are unauthenticated (utility.md
+  §2 posture), so the confirm never scores; the kill still enters the board from the victim's own report and the
+  recap stays victim-authoritative. Phase 2 (optional): a backhaul phone relays the death advert to MC as a
+  PROVISIONAL kill, reconciled against the victim's event on flush. Cost: one byte definition in utility.md §2,
+  a player-advert consumer + dedupe set in `app.js`/`engine.js`, one engine event reusing the KILL CONFIRMED
+  moment, one line in contracts A11.4. Hardware caveats: iOS advertises the service UUID cleanly only in the
+  foreground (play already requires it); Android scan starvation (the 7 s restart already fights it). Complements
+  B30, not part of it. `build` · `capture`.
 
 ## 4. Hardware, prints, research (H, R)
 
