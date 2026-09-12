@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { isRoutableLanIp, registrySig } from '../api/derive';
-import { STALE_AFTER_MS, type LogView, type ReadinessRow, type TunnelStatus } from '../api/types';
+import { isRoutableLanIp, reachLabel, reachTooltip, registrySig, staleReachReason } from '../api/derive';
+import { STALE_AFTER_MS, type LogView, type NodeView, type ReadinessRow, type TunnelStatus } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
 import { CHAMFER, F, T, TAB, fmtAge } from '../tokens';
-import { CountBlock, GhostButton, Micro, ScreenHeader, SectionRule, Seg, SegBar, Tag } from '../ui';
+import { CountBlock, GhostButton, Micro, OutlineTag, ScreenHeader, SectionRule, Seg, SegBar, Tag } from '../ui';
 import { Items } from './Items';
 
 const statusColor = (s: ReadinessRow['status']) =>
@@ -115,6 +115,7 @@ export function Armory() {
 
   return (
     <div className="screen" style={{ maxWidth: 1380, margin: '0 auto' }}>
+      <RestoredBanner />
       <ScreenHeader kicker="[ A1 // GEAR CHECK ]" title="Readiness Board" right={
         <>
           <GhostButton onClick={async () => { setScanning(true); await run(() => api.scan(6)); setScanning(false); }}>{scanning ? 'SCANNING…' : '⟳ SCAN ARMORY'}</GhostButton>
@@ -213,7 +214,40 @@ export function Armory() {
   );
 }
 
+/** F142 (field 2026-09-12, ISSUE 11/11b) — a `--demo` session persisted into `~/.brx-mcp/` and was
+ *  silently RESTORED on the next real launch: two ghost players with no phone sat on the roster and
+ *  were mistaken for real ones until match 2 was already mid-setup. The only tell in the field was one
+ *  line MC printed to a terminal nobody was watching. This puts the fact on the board itself, with a
+ *  one-tap way out — `state.restored_from` is optional (absent on a clean session, and on a server
+ *  that predates the fix), so a fresh launch renders nothing here at all. */
+function RestoredBanner() {
+  const { state, run, api } = useStore();
+  const [busy, setBusy] = useState(false);
+  const r = state?.restored_from;
+  if (!r) return null;
+  const when = new Date(r.at);
+  const stamp = Number.isFinite(when.getTime())
+    ? when.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : '—';
+  return (
+    <div role="alert" data-testid="restored-banner" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+      background: 'rgba(255,176,32,.08)', border: `1px solid ${T.warn}`, borderLeft: `3px solid ${T.warn}`, padding: '12px 16px' }}>
+      <span style={{ font: F.chk(700, 12), letterSpacing: '.1em', color: T.warn, lineHeight: 1.5 }}>
+        ▲ RESTORED FROM {stamp.toUpperCase()} · {r.players} PLAYER{r.players === 1 ? '' : 'S'} CARRIED OVER FROM THE LAST SESSION —
+        {' '}CHECK THE ROSTER BEFORE YOU KIT OUT.
+      </span>
+      <button type="button" disabled={busy} className={busy ? undefined : 'hov-warnbg'}
+        onClick={async () => { setBusy(true); try { await run(() => api.newSession(false)); } finally { setBusy(false); } }}
+        style={{ marginLeft: 'auto', font: F.chk(700, 11), letterSpacing: '.2em', padding: '8px 16px', minHeight: 36,
+                 background: 'transparent', border: `1px solid ${T.warn}`, color: busy ? T.micro : T.warn, cursor: busy ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
+        {busy ? 'STARTING…' : 'FRESH SESSION ▸'}
+      </button>
+    </div>
+  );
+}
+
 function GunCard({ g }: { g: ReadinessRow }) {
+  const { state } = useStore();
   const color = statusColor(g.status);
   const red = g.status === 'red';
   const waiting = g.status === 'waiting';   // no phone yet: inactive, NOT a fault
@@ -222,6 +256,14 @@ function GunCard({ g }: { g: ReadinessRow }) {
   const age = g.last_seen_age_ms ?? g.battery_age_ms ?? null;                 // real link age from the server
   const stale = age != null && age > 60_000;                                   // >1 min old = show nothing as live truth
   const linkText = g.node === 'none' ? 'NO PHONE' : age == null ? '—' : `${fmtAge(age)} AGO`;
+  // S38 (field 2026-09-12, ISSUE 13): the gamertag lived only in the connected-nodes strip at the top —
+  // the card that carries everything ELSE about this player's gear said nothing about who was holding it.
+  const player = g.player_id ? (state?.players ?? []).find(p => p.player_id === g.player_id) : undefined;
+  // F144/F155 (field 2026-09-12, ISSUE 14/30): the node's own view of its path to MC. `reach` is the
+  // LIVE path (present only while connected); `last_reach` survives a disconnect, which is what lets a
+  // dropped tunnel say so instead of reading as a Wi-Fi fault.
+  const node: NodeView | undefined = (state?.nodes ?? []).find(n => !!n.gun_tail && !!g.tail && n.gun_tail.toUpperCase() === g.tail.toUpperCase());
+  const reachReason = staleReachReason(node, state?.lan.public?.status);
   // A32: the server says WHETHER the headset is proven and HOW — `link` = a BLE link this phone has held
   // for 10 s, which a headless gun cannot do (it drops in ~6 s), `echo` = the gun answered the config push.
   // The "still confirming" count-up is an ordinary server amber and is rendered by the amber list below;
@@ -243,10 +285,21 @@ function GunCard({ g }: { g: ReadinessRow }) {
           {!!g.tail && !g.sticker.toUpperCase().endsWith(g.tail.toUpperCase())
             && <span style={{ font: F.mono(500, 11), color: T.micro, whiteSpace: 'nowrap' }}>-{g.tail}</span>}
           {g.player_num != null && <span style={{ font: F.mono(500, 11), color: T.acc, whiteSpace: 'nowrap' }}>#{g.player_num}</span>}
+          {/* S38: the gamertag once a player is bound — this card is where the operator is looking. */}
+          {player && <span style={{ font: F.chk(700, 12), letterSpacing: '.06em', color: T.dim, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{player.display}</span>}
         </div>
-        <Tag color={color} style={{ whiteSpace: 'nowrap', flex: '0 0 auto' }}>
-          {red ? 'BLOCKED' : g.status === 'waiting' ? (g.node === 'none' ? 'NO PHONE YET' : 'OFFLINE') : g.status === 'amber' ? 'CHECK' : 'READY'}
-        </Tag>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: '0 0 auto' }}>
+          {/* F144 (field 2026-09-12): a node reached over the internet tunnel is READY, not a fault —
+              this is information about the PATH, riding beside the status, never instead of GREEN. */}
+          {g.node === 'linked' && !!node?.reach && (
+            <OutlineTag color={node.reach === 'backhaul' ? T.acc : T.micro} border={node.reach === 'backhaul' ? T.acc : T.line} title={reachTooltip(node.reach)}>
+              {reachLabel(node.reach)}
+            </OutlineTag>
+          )}
+          <Tag color={color} style={{ whiteSpace: 'nowrap' }}>
+            {red ? 'BLOCKED' : g.status === 'waiting' ? (g.node === 'none' ? 'NO PHONE YET' : 'OFFLINE') : g.status === 'amber' ? 'CHECK' : 'READY'}
+          </Tag>
+        </div>
       </div>
       {g.node === 'none' ? (
         <div style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: '6px 10px', alignItems: 'center' }}>
@@ -270,12 +323,21 @@ function GunCard({ g }: { g: ReadinessRow }) {
         {/* COMPANION row returns when the ESP32 rider exists — an always-empty row reads as broken (critic #25) */}
       </div>
       )}
-      {[...(g.blockers ?? []), ...(g.ambers ?? [])].length > 0 && (
+      {(() => {
+        const raw = [...(g.blockers ?? []).map(b => [b, true] as const), ...(g.ambers ?? []).map(b => [b, false] as const)];
+        // F155 (field 2026-09-12, ISSUE 30): a node whose last known path was the internet tunnel used
+        // to read "WRONG WI-FI" the moment that tunnel dropped — sending the operator to the phone's
+        // Wi-Fi settings for a fault that is entirely MC's tunnel. When we know the real reason, it
+        // REPLACES any wifi-worded line rather than sitting beside it (two explanations for one fault
+        // is worse than one, even a partial one).
+        const items = reachReason ? [...raw.filter(([b]) => !/WI-?FI/i.test(b)), [reachReason, red] as const] : raw;
+        if (items.length === 0) return null;
+        return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {/* Every message is `STATEMENT — INSTRUCTION`. As one uppercase run-on in a 248px card it
               wrapped mid-phrase and read as noise; split, the statement carries and the instruction
               sits under it quietly (field 2026-09-02). */}
-          {[...(g.blockers ?? []).map(b => [b, true] as const), ...(g.ambers ?? []).map(b => [b, false] as const)].map(([b, blocking]) => {
+          {items.map(([b, blocking]) => {
             const [head, ...rest] = b.split(' — ');
             const hint = rest.join(' — ').replace(/\b(DOES NOT BLOCK( YET)?|BLOCKS START)\b/g, '').trim();
             return (
@@ -291,7 +353,8 @@ function GunCard({ g }: { g: ReadinessRow }) {
             );
           })}
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
@@ -454,7 +517,7 @@ function JoinPanel() {
   }, [qr]);
   if (!qr) return null;
   return (
-    <div style={{ flex: '0 0 300px', background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderTop: `2px solid ${T.acc}`, padding: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+    <div style={{ flex: '1 1 320px', maxWidth: 380, background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderTop: `2px solid ${T.acc}`, padding: 18, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
       <div style={{ alignSelf: 'stretch', font: F.chk(700, 11), letterSpacing: '.28em', color: T.acc }}>▸ JOIN THE NET</div>
       <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.dim, textAlign: 'center', lineHeight: 1.8 }}>PHONES ON THIS WI-FI FIND MC <span style={{ color: T.ink }}>AUTOMATICALLY</span> — OPEN BRX COMPANION AND WAIT A BEAT</div>
       <div style={{ font: F.mono(600, 12), letterSpacing: '.04em', color: T.ink, textAlign: 'center', wordBreak: 'break-all' }}>{state?.lan.ws_url}</div>
@@ -463,7 +526,23 @@ function JoinPanel() {
       </button>
       {showQr && <>
         <div style={{ font: F.chk(700, 11), letterSpacing: '.22em', color: T.dim }}>JOIN — TAP SCAN QR IN THE APP</div>
-        {url && <div style={{ background: '#ffffff', padding: 10, lineHeight: 0, boxShadow: `0 0 0 1px ${T.line}, 0 8px 24px rgba(0,0,0,.45)` }}><img src={url} width={200} height={200} alt="node join QR" style={{ display: 'block', imageRendering: 'pixelated' }} /></div>}
+        {/* F138 (field 2026-09-12): the QR now carries the LAN url + secret + the url-encoded public
+            url once the tunnel is up — ~140 characters, a denser code than before, and 200px was hard
+            for an older phone camera to lock onto. At least 280px on desktop, and full width up to
+            that on a phone screen; the hint says what an operator has never needed to be told before. */}
+        {/* the QR itself (not the white card around it) is the ≥280px target — box-sizing:border-box
+            on a 280px card with 10px padding left only 260px for the image (caught in the browser
+            verification pass 2026-09-12), so the card is 20px WIDER than the image it holds. */}
+        {url && (
+          <div style={{ width: 'min(300px, 100%)', background: '#ffffff', padding: 10, lineHeight: 0, boxShadow: `0 0 0 1px ${T.line}, 0 8px 24px rgba(0,0,0,.45)`, boxSizing: 'border-box' }}>
+            <img src={url} width={280} height={280} alt="node join QR" style={{ display: 'block', width: '100%', height: 'auto', imageRendering: 'pixelated' }} />
+          </div>
+        )}
+        {url && (
+          <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro, textAlign: 'center' }}>
+            HOLD THE PHONE 20–30 CM AWAY
+          </div>
+        )}
         {url && (
           <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro, textAlign: 'center' }}>
             {pub?.status === 'up' ? 'CARRIES THE LAN + INTERNET JOIN' : 'CARRIES THE LAN JOIN ONLY'}
@@ -500,6 +579,12 @@ function hostnameOf(url: string | null | undefined): string {
 function ReachBlock() {
   const { state, run, api } = useStore();
   const [busy, setBusy] = useState(false);
+  // 27b (field 2026-09-12, ISSUE 27b): turning the tunnel off — or a restart, which is the same
+  // action from a phone's point of view — orphans every phone on the internet path with no way back
+  // in but a rescan (a quick tunnel's hostname changes every time). That cost the field 4+ minutes of
+  // "why did everyone stop working" before. A two-step confirm, in the console's own style, buys one
+  // more look before it happens.
+  const [confirmOff, setConfirmOff] = useState(false);
   if (!state) return null;
   const lan = state.lan;
   const pub = lan.public;
@@ -509,10 +594,16 @@ function ReachBlock() {
   const manual = pub?.provider === 'manual';
   const turningOn = status === 'off' || status === 'error';
   const busyOrPending = busy || status === 'starting';
-  const toggle = async () => { setBusy(true); try { await run(() => api.setTunnel(turningOn)); } finally { setBusy(false); } };
+  const toggle = async () => {
+    if (!turningOn && !confirmOff) { setConfirmOff(true); return; }   // arm the warning, do nothing yet
+    setConfirmOff(false);
+    setBusy(true); try { await run(() => api.setTunnel(turningOn)); } finally { setBusy(false); }
+  };
   const statusColor = status === 'up' ? T.ok : status === 'error' ? T.bad : status === 'starting' ? T.warn : T.micro;
   const statusText = status === 'up' ? `UP ${hostnameOf(pub?.ws_url) || pub?.ws_url}`
-    : status === 'starting' ? 'STARTING…'
+    // field 2026-09-12 (ISSUE 7): cloudflared's own "up" line is premature for OTHER people's DNS
+    // resolvers — `detail` carries whatever the server is doing while the hostname is still resolving.
+    : status === 'starting' ? (pub?.detail || 'STARTING…')
     : status === 'error' ? `ERROR ${pub?.error ?? ''}`.trim()
     : 'OFF';
   return (
@@ -520,7 +611,11 @@ function ReachBlock() {
       <div style={{ font: F.chk(700, 11), letterSpacing: '.28em', color: T.acc }}>▸ REACH</div>
       <div style={{ display: 'grid', gridTemplateColumns: '76px 1fr', gap: '6px 10px', alignItems: 'center', width: '100%' }}>
         <span style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro }}>NETWORK</span>
-        <span style={{ font: F.chk(600, 12), color: T.ink, wordBreak: 'break-word' }}>{lan.ssid ?? lan.mode.toUpperCase()} · {lan.ip ? `${lan.ip}:${lan.port}` : '—'}</span>
+        {/* F143 (field 2026-09-12, ISSUE 12): no platform ever told router from hotspot apart, so this
+            fell back to printing the MODE WORD ("UNKNOWN") as if it were the network's name. `ssid` is
+            `null`/absent, never the string "unknown", when it genuinely could not be read — the
+            fallback is now always the generic "LAN", never a mode name standing in for one. */}
+        <span style={{ font: F.chk(600, 12), color: T.ink, wordBreak: 'break-word' }}>{lan.ssid || 'LAN'} · {lan.ip ? `${lan.ip}:${lan.port}` : '—'}</span>
         <span style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro }}>INTERNET</span>
         <span style={{ font: F.chk(700, 11), color: statusColor, wordBreak: 'break-word' }}>{statusText}</span>
       </div>
@@ -548,11 +643,17 @@ function ReachBlock() {
       )}
       {supported && available && !manual && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <button type="button" onClick={toggle} disabled={busyOrPending} className={busyOrPending ? undefined : 'hov-acc'}
-            style={{ alignSelf: 'flex-start', minHeight: 36, background: 'transparent', border: `1px solid ${T.line2}`,
-                     color: busyOrPending ? T.micro : T.dim, font: F.chk(700, 11), letterSpacing: '.2em', padding: '8px 16px',
+          {confirmOff && !turningOn && (
+            <div role="alert" style={{ font: F.chk(700, 11), letterSpacing: '.08em', color: T.warn, lineHeight: 1.6 }}>
+              ▲ EVERY PHONE ON THE INTERNET PATH WILL DROP AND MUST RESCAN THE QR. TURN OFF?
+            </div>
+          )}
+          <button type="button" onClick={toggle} disabled={busyOrPending} className={busyOrPending ? undefined : (confirmOff ? 'hov-warnbg' : 'hov-acc')}
+            style={{ alignSelf: 'flex-start', minHeight: 36, background: confirmOff ? 'rgba(255,176,32,.12)' : 'transparent',
+                     border: `1px solid ${confirmOff ? T.warn : T.line2}`,
+                     color: busyOrPending ? T.micro : confirmOff ? T.warn : T.dim, font: F.chk(700, 11), letterSpacing: '.2em', padding: '8px 16px',
                      cursor: busyOrPending ? 'not-allowed' : 'pointer' }}>
-            {status === 'starting' ? 'STARTING…' : turningOn ? 'TURN ON' : 'TURN OFF'}
+            {status === 'starting' ? 'STARTING…' : turningOn ? 'TURN ON' : confirmOff ? 'CONFIRM — TURN OFF' : 'TURN OFF'}
           </button>
           {/* A28.2: `welcome.join`/MC→node `join` push this to phones that joined over the LAN before
               the tunnel existed — nothing on their end needs to change for them to pick it up. */}

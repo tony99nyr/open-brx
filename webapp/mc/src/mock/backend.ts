@@ -155,6 +155,19 @@ export class MockBackend implements Api {
   // the server's validate() errors ride on every snapshot (config_errors); the demo used to hardcode []
   // so a refusal shown in the PUT response vanished from the rail on the very next tick
   private cfgErrors: string[] = [];
+  // F155/F143/F142 demo hooks — none change default `?mock` behaviour, each proves one field fix:
+  private lastReach: Record<string, 'lan' | 'backhaul'> = {};
+  /** `?mock&laststale=1` — one node goes dark with a known internet-tunnel history, so the console can
+   *  show "NOT REACHED FOR Ns" (and "TUNNEL DOWN" once the tunnel is also off) without a real dropped
+   *  socket to arrange. */
+  private demoLastStale = typeof location !== 'undefined' && new URLSearchParams(location.search).get('laststale') === '1';
+  /** `?mock&nossid=1` — MC could not read the phone's Wi-Fi network name (any platform without a
+   *  detector), so the REACH block must print "LAN · ip:port", never a mode word standing in for one. */
+  private demoNoSsid = typeof location !== 'undefined' && new URLSearchParams(location.search).get('nossid') === '1';
+  /** `?mock&restored=1` — a `--demo` (or any prior) session persisted and was silently restored: two
+   *  ghost players with no phone ever bound sit on the roster from the first snapshot. */
+  private demoRestored = typeof location !== 'undefined' && new URLSearchParams(location.search).get('restored') === '1';
+  private restoredFrom: { at: number; players: number } | null = null;
 
   constructor() {
     this.players = PLAYERS.map(([display, team_id, gi], i) => ({
@@ -164,6 +177,17 @@ export class MockBackend implements Api {
     }));
     this.trying = { p4: 'smg' };
     this.browsing = { p6: now() };   // SABLE is browsing on the phone
+    if (this.demoLastStale) this.gunOverride['GUN-F'] = 'r';   // GUN-F goes dark for the F155 demo row above
+    // F142 (field 2026-09-12, ISSUE 11/11b): two ghosts with no phone ever bound, exactly as a
+    // restored `--demo` session left them on a real board — present from the FIRST snapshot, same as
+    // the real bug (the banner has to be there before the operator ever does anything).
+    if (this.demoRestored) {
+      this.players.push(
+        { player_id: 'p_ghost1', player_num: 9, display: 'ALPHA', team_id: 'blue', node_id: null, gun_id: 'GUN-A', loadout: { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, voice: 'male', ready: false },
+        { player_id: 'p_ghost2', player_num: 10, display: 'BRAVO', team_id: 'yellow', node_id: null, gun_id: 'GUN-B', loadout: { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, voice: 'male', ready: false },
+      );
+      this.restoredFrom = { at: now() - 11 * 60 * 60 * 1000, players: 2 };   // "last night", like the field find
+    }
     this.timer = window.setInterval(() => this.tick(), 1000);
   }
 
@@ -236,7 +260,12 @@ export class MockBackend implements Api {
 
   /** A28.1: MC's own view of the tunnel it (may have) started. */
   private publicView(): LanPublic {
-    return { ws_url: this.tunnelWsUrl, status: this.tunnelStatus, provider: this.tunnelProvider, available: this.tunnelAvailable, error: this.tunnelError };
+    return { ws_url: this.tunnelWsUrl, status: this.tunnelStatus, provider: this.tunnelProvider, available: this.tunnelAvailable, error: this.tunnelError,
+      // field 2026-09-12 (ISSUE 7): cloudflared's own "up" line is premature for OTHER people's DNS —
+      // a phone can get ERR_NAME_NOT_RESOLVED for minutes after MC calls it up. The demo's own
+      // `starting` phase is instant, so this is aspirational text the real server will earn once it
+      // waits on DNS-over-HTTPS before announcing UP; kept here so the console's rendering is proven.
+      detail: this.tunnelStatus === 'starting' ? 'RESOLVING HOSTNAME…' : undefined };
   }
   /** A28.2: the LAN URL first, the join secret always, the public URL only while the tunnel is up. */
   private joinQr(): string {
@@ -256,21 +285,44 @@ export class MockBackend implements Api {
     const readiness = this.readiness();
     // A28.3: half the demo's connected nodes report backhaul once the tunnel is up (and only then —
     // a node cannot be on a path that does not exist), so `?mock` can show a mixed LAN/BACKHAUL board.
-    const nodes = readiness.board.filter(b => b.node === 'linked' && !this.evicted.has(`node_${b.tail}`)).map((b, i) => ({
-      node_id: `node_${b.tail}`, node_type: 'phone', gun_name: `${b.sticker}-${b.tail}`, gun_tail: b.tail,
-      player_id: b.player_id, arm_state: this.armStateFor(b.player_id), last_seen_ms: b.last_seen_age_ms ?? 0,
-      synced: true, battery: b.battery_pct, fw: b.fw,
-      app_ver: b.app_ver, platform: b.platform,      // A29
-      log: this.logFor(`node_${b.tail}`),            // A25
-      reach: (this.tunnelStatus === 'up' && i % 2 === 0 ? 'backhaul' : 'lan') as 'lan' | 'backhaul',
-    }));
+    const linked = readiness.board.filter(b => b.node === 'linked' && !this.evicted.has(`node_${b.tail}`));
+    const nodes: NodeView[] = linked.map((b, i) => {
+      const reach = (this.tunnelStatus === 'up' && i % 2 === 0 ? 'backhaul' : 'lan') as 'lan' | 'backhaul';
+      // F155 (field 2026-09-12): `last_reach` survives past whatever CLEARS `reach` on a real server
+      // (a disconnect) — the demo tracks it the same way, keyed by tail, so a card that goes stale
+      // still knows which path it lost.
+      this.lastReach[b.tail] = reach;
+      return {
+        node_id: `node_${b.tail}`, node_type: 'phone', gun_name: `${b.sticker}-${b.tail}`, gun_tail: b.tail,
+        player_id: b.player_id, arm_state: this.armStateFor(b.player_id), last_seen_ms: b.last_seen_age_ms ?? 0,
+        synced: true, battery: b.battery_pct, fw: b.fw,
+        app_ver: b.app_ver, platform: b.platform,      // A29
+        log: this.logFor(`node_${b.tail}`),            // A25
+        reach, last_reach: this.lastReach[b.tail],
+      };
+    });
+    // A node that ever said hello stays in `state.nodes` after it drops (mc/API.md: "every node that
+    // ever said hello this session") — `reach` is cleared, `last_reach` is not. The demo hook
+    // `?mock&laststale=1` puts one such row on the board so F155's wording can be proven without
+    // simulating a real socket drop: GUN-F goes dark while its last path was the internet tunnel.
+    if (this.demoLastStale) {
+      nodes.push({ node_id: 'node_A0B3', node_type: 'phone', gun_name: 'GUN-F-A0B3', gun_tail: 'A0B3',
+        player_id: this.players.find(p => p.gun_id === 'GUN-F')?.player_id ?? '', arm_state: 'connected',
+        last_seen_ms: 130_000, synced: false, battery: null, fw: null, app_ver: null, platform: null,
+        log: { state: 'none', last_t: now() }, last_reach: 'backhaul' });
+    }
     const kitted = this.players.filter(p => PLAYERS.find(x => x[0] === p.display)?.[3] === 'kitted' || (p.player_id in this.acks)).length;
     return {
       session_id: this.session_id, phase: this.phase, t,
       lan: {
-        mode: 'router', ssid: 'BRX-FIELD', ip: '192.168.8.10', port: 8765, ws_url: 'ws://192.168.8.10:8765/ws',
+        // F143 (field 2026-09-12): the server no longer tells router/hotspot apart (nothing ever did) —
+        // it sends the flat "lan" and, separately, an `ssid` it may or may not have been able to read.
+        // `?mock&nossid=1` demos the "could not read one" case, which must print "LAN", never a
+        // placeholder word standing in for a network name.
+        mode: 'lan', ssid: this.demoNoSsid ? null : 'BRX-FIELD', ip: '192.168.8.10', port: 8765, ws_url: 'ws://192.168.8.10:8765/ws',
         qr: this.joinQr(), join_secret: this.joinSecret, public: this.publicView(),
       },
+      ...(this.restoredFrom ? { restored_from: this.restoredFrom } : {}),
       coverage: this.coverage(nodes),
       // The demo mirrors the server's own `SETUP: ` warning for a grenade objective (compile.py validate),
       // so the KotH rail in `?mock` shows the same field step the real MC does.
@@ -564,6 +616,13 @@ export class MockBackend implements Api {
     return r;
   }
   async putConfig(partial: Partial<GameConfig>) {
+    // F151 (field 2026-09-12, ISSUE 25): `PUT /api/config` is only valid in muster/build/kit (mc/API.md)
+    // — the mock used to accept it in ANY phase, which let `?mock` show a Games/Designer screen that
+    // looked fully live even after the field had moved on to lobby/armed/live/recap, hiding the exact
+    // "silent tap" defect the console has to guard against on a real server.
+    if (!(['muster', 'build', 'kit'] as Phase[]).includes(this.phase)) {
+      throw Object.assign(new Error(`game settings are locked: the match is already in ${this.phase.toUpperCase()} — RECALL or END it first to edit the game again`), { status: 409 });
+    }
     const prevMode = this.config.mode, prevPol = this.config.loadout_policy;
     // F70: `station_source` is a CLOSED vocabulary server-side (state.py _merge_config raises, the API
     // answers 400 naming every legal value). The demo refuses the same way, so the OBJECTIVE SOURCE
@@ -783,6 +842,7 @@ export class MockBackend implements Api {
   async newSession(keep_roster: boolean) {
     this.phase = 'muster'; this.pushed = false; this.acks = {}; this.start_ = undefined; this.live_ = undefined; this.recap_ = undefined;
     this.session_id = uid('sess');
+    this.restoredFrom = null;   // F142: FRESH SESSION is the acknowledgment — a restored banner never lingers
     if (!keep_roster) this.players = []; else for (const p of this.players) p.ready = false;
     this.emit(); return this.state();
   }

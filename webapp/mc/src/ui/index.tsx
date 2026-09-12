@@ -89,8 +89,8 @@ export function Tag({ children, color = T.acc, ink = T.accInk, size = 11, style,
 }
 
 /** Outline tag (READY / WAIT). */
-export function OutlineTag({ children, color, border }: { children: ReactNode; color: string; border: string }) {
-  return <span style={{ font: F.chk(700, 11), letterSpacing: '.14em', color, border: `1px solid ${border}`, padding: '3px 9px' }}>{children}</span>;
+export function OutlineTag({ children, color, border, title }: { children: ReactNode; color: string; border: string; title?: string }) {
+  return <span title={title} style={{ font: F.chk(700, 11), letterSpacing: '.14em', color, border: `1px solid ${border}`, padding: '3px 9px' }}>{children}</span>;
 }
 
 /** Segmented control. */

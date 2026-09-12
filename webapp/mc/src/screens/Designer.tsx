@@ -10,6 +10,7 @@ import { PerkGlyph } from './Kit';
 import { AdvancedPresentation } from './AdvancedPresentation';
 import { STATION_SOURCES, TEMPLATE_RULES, admitsWeapons, computePool, gameSig, objectiveLine, presetOf, rulesLine, withPolicy } from './gameSummary';
 import { MODE_ART } from '../modeArt';
+import { CONFIG_EDITABLE_PHASES, lockedReason } from './Games';
 
 const TEMPLATES: { value: LoadoutPreset; label: string; hint: string }[] = [
   { value: 'open', label: 'OPEN', hint: 'Everything, players pick all three slots' },
@@ -82,6 +83,9 @@ export function Designer() {
   const applyTemplate = (preset: LoadoutPreset) => { if (preset !== 'custom') setCfg(c => c ? { ...c, loadout_policy: clone(TEMPLATE_RULES[preset]) } : c); };
   const setBase = (m: typeof modes[number]) => { if (m.mode !== cfg.mode) setCfg(withPolicy({ ...clone(m.defaults), environment: cfg.environment, night: cfg.night })); };
   const dirty = editing ? gameSig(editing.config) !== gameSig(cfg) || editing.name !== name.trim() || (editing.desc ?? '') !== desc.trim() : true;
+  // F151 (field 2026-09-12): PLAY / APPLY both end in `PUT /api/config`, valid only in
+  // muster/build/kit — reachable here whenever CUSTOMIZE was opened before the field moved on.
+  const configLocked = !CONFIG_EDITABLE_PHASES.has(state.phase);
 
   const save = async (asNew = false) => {
     const nm = name.trim(); if (!nm) { setSaved('NAME IT FIRST'); return null; }
@@ -225,8 +229,9 @@ export function Designer() {
             <div style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.45, minHeight: 18 }}>{desc.trim() || (mode?.brief ?? '')}</div>
             <div style={{ height: 1, background: T.line }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <PrimaryButton onClick={play} title={name.trim() ? 'Save, apply, and go to KIT' : 'Apply without saving and go to KIT'}>PLAY THIS NOW ▸</PrimaryButton>
-              {!name.trim() && <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro }}>PLAYS TONIGHT WITHOUT SAVING — NAME IT ABOVE TO KEEP IT ON THE SHELF</div>}
+              <PrimaryButton onClick={play} disabled={configLocked} title={configLocked ? lockedReason(state.phase) : name.trim() ? 'Save, apply, and go to KIT' : 'Apply without saving and go to KIT'}>PLAY THIS NOW ▸</PrimaryButton>
+              {configLocked && <div role="alert" style={{ font: F.mono(600, 10.5), letterSpacing: '.1em', color: T.bad, lineHeight: 1.5 }}>▲ {lockedReason(state.phase)}</div>}
+              {!configLocked && !name.trim() && <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro }}>PLAYS TONIGHT WITHOUT SAVING — NAME IT ABOVE TO KEEP IT ON THE SHELF</div>}
               <div style={{ display: 'flex', gap: 6 }}>
                 <GhostButton size={11} pad="9px 12px" color={dirty ? T.ink : T.micro} border={dirty ? T.acc : T.line} onClick={() => save(false)} title={editing ? `Update "${editing.name}"` : 'Save under the name above'}>{editing ? 'SAVE' : 'SAVE GAME'}</GhostButton>
                 {editing && <GhostButton size={11} pad="9px 12px" onClick={() => save(true)} title="Keep the original, save this as a new game">SAVE AS NEW</GhostButton>}
@@ -235,7 +240,8 @@ export function Designer() {
               {saved && !saved.startsWith('NAME') && editing && state.active_preset_id === editing.preset_id && gameSig(editing.config) !== gameSig(state.config) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{ font: F.mono(600, 10.5), letterSpacing: '.12em', color: T.warn }}>▲ TONIGHT'S GAME STILL RUNS THE OLD VERSION</div>
-                  <GhostButton size={11} pad="9px 12px" color={T.ink} border={T.warn} onClick={async () => { const r = await run(() => api.applyPreset(editing.preset_id)); if (r) await run(() => api.putConfig({ environment: state.config.environment, night: state.config.night })); }}>APPLY TO TONIGHT'S GAME ▸</GhostButton>
+                  <GhostButton size={11} pad="9px 12px" color={configLocked ? T.micro : T.ink} border={T.warn} title={configLocked ? lockedReason(state.phase) : undefined}
+                    onClick={async () => { if (configLocked) return; const r = await run(() => api.applyPreset(editing.preset_id)); if (r) await run(() => api.putConfig({ environment: state.config.environment, night: state.config.night })); }}>APPLY TO TONIGHT'S GAME ▸</GhostButton>
                 </div>
               )}
             </div>
@@ -262,6 +268,12 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
     : isPerk ? `${allowedK.length} OF ${perks.length} PERKS`
     : sidearmsOnly ? `SIDEARMS ONLY · ${allowedW.length} OF ${pistols} PISTOLS`
     : `${allowedW.length} OF ${weapons.length} WEAPONS`;   // review #22
+  // F141 (field 2026-09-12, ISSUE 19): a PLAYER/HOST slot whose filters exclude every candidate used to
+  // say only "0 OF 18 WEAPONS" — nothing on screen said the slot would DEGRADE at kit-out (primary
+  // falls back to pistols only, which then failed its own one-magazine guard and blocked the push).
+  // Say the failure in place, at the moment it is created, not three screens later as an unreadable
+  // push error.
+  const emptyPool = !off && !fixed && ((isPerk && allowedK.length === 0) || (!isPerk && allowedW.length === 0));
   const WHO: Record<string, string> = isPerk
     ? { player: 'players pick a perk from what is allowed below (the host can override)', host: 'the host picks each player\'s perk on the KIT page', fixed: 'everyone gets the one perk you tap below', off: 'nobody gets a perk this game' }
     : { player: 'players choose from what is allowed below (the host can override)', host: 'the host chooses for each player on the KIT page', fixed: 'everyone gets the one weapon you tap below', off: 'nobody gets a slot 2 — the alt-fire button does nothing' };
@@ -272,18 +284,36 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
     const n = members.filter(w => allowedW.includes(w.weapon_id)).length;
     return n === members.length ? 'on' : `${n}/${members.length}`;
   };
+  // F141 (field 2026-09-12): a chip reading PARTIAL — some of its own weapons off, usually because a
+  // DIFFERENT class chip already excludes them (the AMR is support AND sniper; switching HEAVY off
+  // switches the Ion Sniper off too, which reads as "sniper: 4/5") — used to fall into the "turn
+  // everything back ON" branch on tap. Tapping SNIPER then cleared its exclude_ids but never touched
+  // exclude_tags, so if every one of its own members was already off via ANOTHER tag the pool never
+  // changed and the chip looked stuck ("cannot deselect it" — exactly what a field operator hit while
+  // excluding heavy/support/assault/cqb and then reaching for sniper last). The rule is simpler and
+  // matches the chip's own on/off reading: anything but fully OFF taps to OFF; only OFF taps to ON.
   const tapTag = (tag: string) => {
-    const st = tagState(tag);
-    if (st === 'on') onRule({ exclude_tags: [...rule.exclude_tags, tag] });                                    // whole class off
-    else onRule({ exclude_tags: rule.exclude_tags.filter(t => t !== tag),                                    // whole class back ON, incl. members switched off by id
-                  exclude_ids: rule.exclude_ids.filter(id => !(weapons.find(w => w.weapon_id === id)?.tags ?? []).includes(tag)) });   // review #14
+    if (tagState(tag) === 'off') {
+      onRule({ exclude_tags: rule.exclude_tags.filter(t => t !== tag),                                    // whole class back ON, incl. members switched off by id
+               exclude_ids: rule.exclude_ids.filter(id => !(weapons.find(w => w.weapon_id === id)?.tags ?? []).includes(tag)) });   // review #14
+    } else {
+      onRule({ exclude_tags: [...rule.exclude_tags, tag] });                                              // whole class off, on or partial alike
+    }
   };
   return (
     <div role="group" aria-label={`${slot} slot rules`} style={{ background: T.panelDeep, border: `1px solid ${T.line}`, borderTop: `2px solid ${isPerk ? PERK_COLOR : T.acc}`, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ font: F.chk(700, 13), letterSpacing: '.2em' }}>{isPerk ? 'PERK' : sec ? 'SECONDARY' : 'PRIMARY'}</span>
-        <span data-testid={`${slot}-summary`} style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.acc }}>{summary}</span>
+        <span data-testid={`${slot}-summary`} style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: emptyPool ? T.bad : T.acc }}>{summary}</span>
       </div>
+      {emptyPool && (
+        <div role="alert" data-testid={`${slot}-empty-pool`} style={{ font: F.chk(700, 12), letterSpacing: '.04em', color: T.bad, background: 'rgba(255,82,82,.1)', border: `1px solid ${T.bad}`, padding: '8px 10px', lineHeight: 1.5 }}>
+          ▲ THIS EXCLUDES EVERY {isPerk ? 'PERK' : sidearmsOnly ? 'PISTOL' : 'WEAPON'} —
+          {' '}{sec || isPerk
+            ? ' NOBODY WILL GET THIS SLOT, EVEN THOUGH IT IS NOT SET TO OFF. SWITCH IT OFF ON PURPOSE, OR ALLOW AT LEAST ONE.'
+            : ' NOBODY CAN GET A PRIMARY. ALLOW AT LEAST ONE CLASS OR WEAPON, OR SET WHO PICKS TO FIXED AND CHOOSE ONE.'}
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ font: F.mono(600, 10.5), letterSpacing: '.2em', color: T.micro }} title="Who decides what goes in this slot">WHO PICKS</span>
         <Seg value={rule.choice} pad="5px 11px" options={[{ value: 'player', label: 'PLAYER' }, { value: 'host', label: 'HOST' }, { value: 'fixed', label: 'FIXED' }, ...(sec || isPerk ? [{ value: 'off' as SlotChoice, label: 'OFF' }] : [])]}
@@ -382,7 +412,7 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
 function Chip({ on, partial, color, onClick, children }: { on: boolean; partial?: string; color: string; onClick: () => void; children: React.ReactNode }) {
   const mixed = on && !!partial;
   return (
-    <button type="button" aria-pressed={mixed ? 'mixed' : on} onClick={onClick} className="hit44" title={mixed ? `${partial} of this class allowed — tap to allow all` : on ? 'Allowed — tap to switch the whole class off' : 'Off — tap to allow the class'}
+    <button type="button" aria-pressed={mixed ? 'mixed' : on} onClick={onClick} className="hit44" title={mixed ? `${partial} of this class allowed (the rest off by another chip or by id) — tap to switch the whole class off` : on ? 'Allowed — tap to switch the whole class off' : 'Off — tap to allow the class'}
       style={{ ...BTN_RESET, font: F.chk(600, 12), letterSpacing: '.02em', padding: '7px 12px', minHeight: 36, cursor: 'pointer',
                // No fill. Five saturated blocks, twice on screen, were the loudest thing on the page —
                // "the colors of the buttons are too harsh maybe just border color or a dimmer hue"

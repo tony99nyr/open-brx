@@ -82,8 +82,14 @@ export interface NodeView {
   /** A25: the log sync as this phone reports it. Optional — absent before the phone says anything. */
   log?: LogView | null;
   /** A28.3: the live socket's path, from `hello.via` then every `status`. Absent on a server that
-   *  predates A28, or before the node's first status has landed. */
+   *  predates A28, or before the node's first status has landed. Cleared on disconnect (A28.3 doc
+   *  above) — `last_reach` below is what survives that. */
   reach?: 'lan' | 'backhaul';
+  /** A28.3 (2026-09-12 field fix) — the node's LAST KNOWN `reach` before it went stale/disconnected.
+   *  `reach` itself is cleared the moment the socket drops, so a card showing a stale/offline node had
+   *  no way to say WHICH path it lost (a tunnel dying reads identically to a phone on the wrong Wi-Fi —
+   *  field 2026-09-12, ISSUE 30). Absent on a server that predates this, or a node never seen connected. */
+  last_reach?: 'lan' | 'backhaul';
 }
 
 export type LiveRow = ScoreRow & {
@@ -190,6 +196,12 @@ export interface LanPublic {
   available: boolean;
   /** the last output line from a tunnel that failed to come up within 20s, or exited. */
   error?: string;
+  /** field 2026-09-12 (ISSUE 7): `status:"up"` from cloudflared's own line is premature for OTHER
+   *  people's resolvers — a phone that dials the hostname before it has propagated gets
+   *  ERR_NAME_NOT_RESOLVED for minutes. `detail` carries the server's own words for what it is doing
+   *  while `status` is `"starting"` past the process-up moment (e.g. "RESOLVING HOSTNAME…"). Optional:
+   *  an older server has no second phase to report. Render verbatim, never invent a stage of our own. */
+  detail?: string;
 }
 /** A28.4 — derived, never asserted: `"full"` iff every bound player node is connected with
  *  `reach == "backhaul"`. */
@@ -200,7 +212,12 @@ export interface State {
   phase: Phase;
   t: number;
   lan: {
-    mode: 'router' | 'hotspot' | 'unknown'; ssid?: string; ip: string; port: number; ws_url: string;
+    /** field 2026-09-12 (ISSUE 12/F143): no platform ever told `router` from `hotspot` apart, so the
+     *  field always read `unknown` and the console printed that WORD as if it were the network name.
+     *  The server now sends the flat `"lan"` and, separately, `ssid` — `null` (never the string
+     *  `"unknown"`) when it genuinely could not read one. `router`/`hotspot` still decode for an older
+     *  server; the console must never print a MODE as a placeholder network name either way. */
+    mode: 'router' | 'hotspot' | 'unknown' | 'lan'; ssid?: string | null; ip: string; port: number; ws_url: string;
     /** A28.2: `ws://<ip>:<ws-port>/ws?s=<join_secret>[&pub=<url-encoded public ws_url>]` — no
      *  longer the same as `ws_url`; carries the public URL only while `public.status == "up"`. */
     qr: string;
@@ -248,6 +265,13 @@ export interface State {
    *  older server, and the field name is whatever `mc/API.md` documents once the server lane lands —
    *  this is built against `notices.mc_verify` and renders nothing at all when it is missing. */
   notices?: { mc_verify?: string };
+  /** field 2026-09-12 (ISSUE 11/F142): a `--demo` session used to persist into `~/.brx-mcp/` and get
+   *  silently RESTORED on the next real launch — two ghost players with no phone sat on a live roster
+   *  and were mistaken for real ones until match 2 was already mid-setup. Present only on the FIRST
+   *  snapshot(s) after a session was hydrated from a previous run (demo or real); absent once the
+   *  operator has acknowledged it (FRESH SESSION) or on a session that started clean. `players` is how
+   *  many roster rows came back with it, so the banner can say a number instead of "some". */
+  restored_from?: { at: number; players: number };
 }
 
 export interface ModeInfo {

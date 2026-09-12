@@ -391,6 +391,13 @@ function AfterWhistle({ rc, name }: { rc: RecapView; name: (id: string) => strin
 
 function AfterEnd({ a, name }: { a: NonNullable<RecapView['after_end']>; name: (id: string) => string }) {
   const rows = Object.entries(a.by_player).filter(([, v]) => (v.kills || 0) + (v.deaths || 0) > 0);
+  // S41 (field 2026-09-12): a titled, dashed section whose only content was "NOTHING ATTRIBUTED TO A
+  // PLAYER" read as an empty box to the operator — `facts > 0` with an empty `by_player` is real (a
+  // late fact the scorer could not pin on anyone), but it is not something the board can SHOW, so it
+  // must not spend a whole section saying so. The bare-count block above (the `!a` branch in
+  // `AfterWhistle`) still covers the one case where a count with no breakdown IS all there is to say —
+  // that is an older MC's honest shape, not this one.
+  if (rows.length === 0) return null;
   return (
     <div data-testid="after-end" style={{ marginBottom: 18, border: `1px dashed ${T.line2}`, background: T.panelDeep }}>
       <SectionRule label="AFTER THE WHISTLE" hint={lateLine(a.facts)} />
@@ -398,20 +405,16 @@ function AfterEnd({ a, name }: { a: NonNullable<RecapView['after_end']>; name: (
         <div style={{ font: F.chk(600, 12), letterSpacing: '.06em', color: T.dim, lineHeight: 1.5 }}>
           RECORDED, NOT COUNTED — THESE LANDED AFTER SCORING FROZE AND ARE NOT IN THE RESULT ABOVE.
         </div>
-        {rows.length === 0 ? (
-          <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>NOTHING ATTRIBUTED TO A PLAYER.</div>
-        ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {rows.map(([pid, v]) => (
-              <span key={pid} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10, background: T.panel, border: `1px solid ${T.line}`, padding: '8px 14px' }}>
-                <span style={{ font: F.chk(700, 12), letterSpacing: '.06em' }}>{name(pid)}</span>
-                <span style={{ font: F.mono(600, 11), letterSpacing: '.08em', color: T.micro }}>
-                  {v.kills ? <>+<Num value={v.kills} /> K</> : null}{v.kills && v.deaths ? ' · ' : ''}{v.deaths ? <>+<Num value={v.deaths} /> D</> : null}
-                </span>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {rows.map(([pid, v]) => (
+            <span key={pid} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 10, background: T.panel, border: `1px solid ${T.line}`, padding: '8px 14px' }}>
+              <span style={{ font: F.chk(700, 12), letterSpacing: '.06em' }}>{name(pid)}</span>
+              <span style={{ font: F.mono(600, 11), letterSpacing: '.08em', color: T.micro }}>
+                {v.kills ? <>+<Num value={v.kills} /> K</> : null}{v.kills && v.deaths ? ' · ' : ''}{v.deaths ? <>+<Num value={v.deaths} /> D</> : null}
               </span>
-            ))}
-          </div>
-        )}
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   );
