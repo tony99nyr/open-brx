@@ -242,10 +242,9 @@ async function refreshPreflight() {
   if (transport) transport.setPreflight(preflight);
 }
 
-/** Discovery/sweep may pick an MC for us. Opened after 15 s of failing to connect, and closed again
- *  the moment we bind — declared up here because `connectMc`'s onState handler clears it. */
-let allowAssist = false;
-/** Pending "we have been unbound for 15s" timer; see the onState handler in connectMc. */
+/** Pending "we have been unbound for 15s" timer; see the onState handler in connectMc. It starts a
+ *  sweep, which now only ever OFFERS what it finds (`suggestMc`) — so the `allowAssist` flag that used
+ *  to gate auto-joining is gone with the thing it gated (review pass 2). */
 let assistTimer = null;
 /** The last URL we actually dialled — including a discovery-only one that `settings.mcUrl` never
  *  records. RECONNECT MC falls back to it. */
@@ -258,7 +257,12 @@ let currentJoinUrl = null;
 function noteJoinUrl(url) { if (url && /^wss?:\/\//i.test(url)) currentJoinUrl = url; }
 /**
  * @param {string} url the LAN join url
- * @param {boolean} [remember] discovery/sweep never overwrites the user's explicit target (polish-loop)
+ * @param {boolean} [remember] show this as the HUD's MC target right away — an EXPLICIT join (QR, typed,
+ *   remembered). It no longer PERSISTS anything: `settings.mcUrl` is written from the `bound` branch
+ *   below, once the MC at this address has actually welcomed and bound us (review pass 2). Writing it at
+ *   dial time let a tapped JOIN-row address overwrite the operator's scanned target, suppress the boot
+ *   sweep, and come back on the next boot as a url nothing had ever vouched for — dialled trusted,
+ *   because trust lives on the Transport instance and does not survive a restart.
  * @param {{pub?:string|null, secret?:string|null, trusted?:boolean}} [join] A28.2: from a QR scan or a typed full join
  *   code — when given, replaces whatever backhaul target/secret Transport is holding. When omitted
  *   (every discovery/sweep/remembered-address reconnect) neither is passed at all: Transport's OWN
@@ -270,7 +274,7 @@ function noteJoinUrl(url) { if (url && /^wss?:\/\//i.test(url)) currentJoinUrl =
  */
 function connectMc(url, remember = true, join = {}) {
   if (!url) return;
-  if (remember) { settings.mcUrl = url; hud.mcUrl = url; }   // discovery never overwrites the explicit target (polish-loop)
+  if (remember) hud.mcUrl = url;   // what we are DIALLING, for the HUD; nothing is persisted until we bind
   // ...but RECONNECT MC has to have something to dial. It read `settings.mcUrl`, which a
   // discovery-only connect deliberately never writes — so after an auto-discovered join the button
   // called connectMc(undefined) and returned on line 1, doing nothing at all (deferred low).
@@ -290,16 +294,18 @@ function connectMc(url, remember = true, join = {}) {
     if (m.kind === 'pull_log') logsync.request((m.body && m.body.reason) || 'pull');
   });
   transport.onState(s => {
-    // Bound to an MC: stop letting discovery/sweep pick a different one. `allowAssist` opens that
-    // door after 15 s of failing to connect and used to stay open for the rest of the session, so a
-    // momentary drop mid-match could hand this phone to a second MC on the LAN (deferred low).
-    if (s === 'bound') { allowAssist = false; if (assistTimer) { clearTimeout(assistTimer); assistTimer = null; } logsync.onBound();
+    // Bound to an MC: no suggestion row, no sweep.
+    if (s === 'bound') { if (assistTimer) { clearTimeout(assistTimer); assistTimer = null; } logsync.onBound();
       if (transport && transport.reach === 'lan') noteJoinUrl(transport.url);
+      // An address is REMEMBERED only now: this MC welcomed us, issued a node_key and bound this node.
+      // Anything in `settings.mcUrl` has therefore passed that bar, so the boot dial at the bottom of
+      // this file can present the key and the join secret without asking who suggested the address.
+      if (transport && transport.url) { settings.mcUrl = transport.url; hud.mcUrl = transport.url; }
       hud.discovered = null; }   // F139: a url we actually welcomed over IS the current join
-    // ...and re-open it if we stay unbound: its only opener used to be a one-shot 15 s boot timer,
-    // so after the first successful bind discovery could never rescue us again — exactly the case
-    // where MC restarts on a new IP mid-match (review 2026-09-01).
-    else if (!assistTimer) assistTimer = setTimeout(() => { assistTimer = null; if (!transport || transport.state !== 'bound') { allowAssist = true; sweepForMc().catch(() => {}); } }, 15000);
+    // ...and sweep again if we stay unbound: the boot sweep used to be a one-shot, so after the first
+    // successful bind nothing could rescue us again — exactly the case where MC restarts on a new IP
+    // mid-match (review 2026-09-01).
+    else if (!assistTimer) assistTimer = setTimeout(() => { assistTimer = null; if (!transport || transport.state !== 'bound') sweepForMc().catch(() => {}); }, 15000);
     engine.setWsState(s, transport.rejected);
     log(s === 'rejected' ? `MC REFUSED: ${transport.rejected && transport.rejected.reason} (${transport.rejected && transport.rejected.code})` : `MC link ${s}`, s === 'bound' ? 'lk' : s === 'rejected' ? 'le' : 'li');
   });
@@ -393,9 +399,12 @@ Object.assign(hud.h, {
   onJoinDiscovered: () => {
     const d = hud.discovered; if (!d || !d.url) return;
     hud.discovered = null; haptic('tap');
-    log('joining the Mission Control found on the LAN: ' + d.url, 'lk');
+    log(`joining the Mission Control ${d.source === 'mdns' ? 'advertised on' : 'found on'} the LAN: ${d.url}`, 'lk');
     noteJoinUrl(d.url);
-    connectMc(d.url, true, { trusted: false });
+    // `false`: not shown as the explicit target and never written to settings by this call — if it IS
+    // Mission Control it will welcome us, and the `bound` branch remembers it then. `trusted:false`
+    // keeps the node_key and the join secret off the hello until that happens.
+    connectMc(d.url, false, { trusted: false });
   },
   onEndOk: () => { engine.ackEnd(); },
   // onPanic removed 2026-08-26: a player-side panic only safes THIS gun and knocks the player out until a
@@ -507,18 +516,30 @@ function startDiscovery() {
         if (!ip || !svc.port) return;
         const path = (svc.txtRecord && svc.txtRecord.ws_path) || '/ws';
         const url = `ws://${ip}:${svc.port}${path}`;
-        log(`Mission Control discovered: ${url}`, 'lk');
         noteJoinUrl(url);
-        // Assist only when we have NO target of our own (nothing remembered AND nothing already
-        // dialled), or when assist has been explicitly re-opened by a spell of not being bound.
-        // The old `!settings.mcUrl` disjunct was true for exactly the phones a discovery-only join
-        // had connected — `remember=false` never writes it — so those phones could be re-bound to a
-        // second MC on any momentary drop, which is the hijack `allowAssist` exists to stop
-        // (review 2026-09-01).
-        if ((allowAssist || !(settings.mcUrl || lastMcUrl)) && (!transport || transport.state !== 'bound')) connectMc(url, false);
+        // OFFERED, never dialled (review pass 2): anything on the field Wi-Fi can advertise
+        // `_openbrx._tcp`, and the phone used to hand the first answer its takeover key and the join
+        // secret with no one having chosen it. One tap is the whole difference.
+        suggestMc(url, 'mdns');
       } catch (e) { log('discovery: ' + (e && e.message || e), 'li'); }
     }).catch(e => log('discovery watch: ' + (e && e.message || e), 'li'));
   } catch (e) { log('discovery init: ' + (e && e.message || e), 'li'); }
+}
+
+/** Offer an address the PLAYER never named — a sweep hit or an mDNS advert — as a one-tap JOIN row
+ *  (`hud.discovered`; `hud.h.onJoinDiscovered` dials it). Never dials anything itself.
+ *  Review pass 2: mDNS used to auto-join, and advertising `_openbrx._tcp` on the field Wi-Fi is easier
+ *  than answering a port sweep — the phone handed its A8.2 takeover key and the A28.2 join secret to
+ *  whoever answered first. The 2026-09-11 game test leaned on that auto-join (no QR was scanned all
+ *  night); this row is the replacement, and the log line says so. */
+function suggestMc(url, source) {
+  if (!url) return;
+  if (transport && transport.state === 'bound') return;                 // already home
+  if (hud.discovered && hud.discovered.url === url) return;             // mDNS re-resolves constantly
+  hud.discovered = { url, at: Date.now(), source };
+  const host = (url.match(/\/\/([^/]+)/) || [])[1] || url;
+  log(`MISSION CONTROL FOUND AT ${host} — tap JOIN (it is no longer joined automatically)`, 'lk');
+  scheduleRender();
 }
 
 // In-app QR scanner: camera → jsQR → connect. No copy/paste, no native plugin (webview getUserMedia,
@@ -601,12 +622,8 @@ async function sweepForMc() {
   if (shouldStop()) return;
   // A SUGGESTION, not a join (review pass 1, security): this address was never typed, scanned or
   // advertised — a websocket upgrade is all it answered, which any squatter on the node port can do, and
-  // the hello that followed used to carry this node's takeover key. The player taps JOIN (the HUD reads
-  // `hud.discovered`; `onJoinDiscovered` above does the dialling), and even then it is dialled untrusted.
-  const host = (found.match(/\/\/([^/]+)/) || [])[1] || found;
-  hud.discovered = { url: found, at: Date.now() };
-  log(`MISSION CONTROL FOUND AT ${host} — tap JOIN`, 'lk');
-  scheduleRender();
+  // the hello that followed used to carry this node's takeover key. The player taps JOIN.
+  suggestMc(found, 'sweep');
 }
 
 // ---------- boot ----------
@@ -665,7 +682,7 @@ async function sweepForMc() {
     startDiscovery();
     if (!settings.mcUrl) setTimeout(() => { sweepForMc().catch(() => {}); }, 5000);   // fallback only when NO explicit target (typed/QR wins)
     setTimeout(() => {   // a REMEMBERED url that keeps failing must not disable discovery forever (polish-loop)
-      if (!transport || transport.state !== 'bound') { allowAssist = true; sweepForMc().catch(() => {}); }
+      if (!transport || transport.state !== 'bound') sweepForMc().catch(() => {});
     }, 15000);
   }
   await refreshPreflight(); scheduleRender();

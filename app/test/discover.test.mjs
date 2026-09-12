@@ -188,7 +188,7 @@ test('F139 guard: app.js sweeps over ws:// from discover.js, never an http fetch
   // security (review pass 1): a websocket upgrade is all a squatter on the node port has to answer, and
   // the hello that follows carries this node's takeover key. A hit is a suggestion the player taps.
   assert.doesNotMatch(body, /connectMc\(/, 'the sweep must NEVER dial its own hit');
-  assert.match(body, /hud\.discovered = \{ url: found/, 'it records the suggestion for the HUD instead');
+  assert.match(body, /suggestMc\(found, 'sweep'\)/, 'it OFFERS the hit for the player to tap instead');
   assert.match(src, /import \{ sweepPlan, localIpFrom, sweepForMc as sweepSubnetsForMc \} from '\.\/transport\/discover\.js'/);
 });
 
@@ -206,7 +206,8 @@ test('F139 guard: the discovered address is joined only by an explicit tap, and 
   assert.ok(i > 0, 'the JOIN handler the HUD calls is gone — FIX this guard, do not delete it');
   const body = src.slice(i, src.indexOf('\n  },', i));
   assert.match(body, /hud\.discovered/, 'it dials what the sweep suggested');
-  assert.match(body, /connectMc\(d\.url, true, \{ trusted: false \}\)/, 'and says on the wire that nobody vouched for this address');
+  assert.match(body, /connectMc\(d\.url, false, \{ trusted: false \}\)/,
+    'remember:FALSE — a tapped address is not the explicit target and is persisted only if it binds us; trusted:false keeps the key off the hello');
   // and the transport half of that promise
   const t = readFileSync(path.resolve(HERE, '../src/transport/transport.js'), 'utf8');
   assert.match(t, /this\.secret && this\.trusted \? \{ secret: this\.secret \}/);
@@ -222,4 +223,51 @@ test('F153c guard: ONE coalesced entry point for the network-came-back signal', 
   assert.match(src, /now - lastKickAt < 1000/, 'coalesced');
   assert.match(src, /addListener\('networkStatusChange', st => \{[\s\S]*?kickDial\(/);
   assert.match(src, /window\.addEventListener\('online', \(\) => kickDial\('online'\)\)/);
+});
+
+// ---------------- review pass 2 ----------------
+
+test('security guard: nothing persists an MC address before that MC has bound us', () => {
+  const src = readFileSync(APP_JS, 'utf8');
+  const writes = [...src.matchAll(/settings\.mcUrl\s*=/g)];
+  assert.equal(writes.length, 1, 'exactly one place writes the remembered address');
+  // ...and it is inside the `bound` branch of the transport's state handler.
+  const bound = src.indexOf("if (s === 'bound')");
+  assert.ok(bound > 0 && writes[0].index > bound && writes[0].index < bound + 900,
+    'the write lives in the bound branch — an address written at DIAL time comes back next boot as a url nothing vouched for, dialled trusted, because trust does not survive a restart');
+  assert.match(writes[0].input.slice(writes[0].index, writes[0].index + 60), /settings\.mcUrl = transport\.url/,
+    'and it remembers the url that actually bound us, not whatever was dialled');
+  // the head of connectMc — where the write used to be — now only touches the DISPLAYED target
+  const connect = src.indexOf('function connectMc(');
+  const head = src.slice(connect, src.indexOf('lastMcUrl = url;', connect));
+  assert.doesNotMatch(head, /settings\.mcUrl\s*=/, 'nothing is persisted at dial time');
+  assert.match(head, /if \(remember\) hud\.mcUrl = url;/, 'it only shows the target it is dialling');
+});
+
+test('security guard: an mDNS advert is offered, never dialled — same one-tap row as a sweep hit', () => {
+  const src = readFileSync(APP_JS, 'utf8');
+  const i = src.indexOf('function startDiscovery(');
+  assert.ok(i > 0, 'startDiscovery is gone — FIX this guard, do not delete it');
+  const body = src.slice(i, src.indexOf('\n}\n', i));
+  assert.doesNotMatch(body, /connectMc\(/, 'anything on the field Wi-Fi can advertise _openbrx._tcp');
+  assert.match(body, /suggestMc\(url, 'mdns'\)/);
+  // and the offer itself dials nothing
+  const j = src.indexOf('function suggestMc(');
+  const offer = src.slice(j, src.indexOf('\n}\n', j));
+  assert.doesNotMatch(offer, /connectMc\(/);
+  assert.match(offer, /hud\.discovered = \{ url, at: Date\.now\(\), source \}/);
+  assert.match(offer, /tap JOIN \(it is no longer joined automatically\)/, 'the 2026-09-11 game test joined with no QR at all — the log line has to say what replaced that');
+  assert.match(offer, /state === 'bound'/, 'never offered while we are already home');
+});
+
+test('security guard: no automatic dial is left anywhere — every connectMc caller is a tap, a scan, or a url that bound us', () => {
+  const src = readFileSync(APP_JS, 'utf8');
+  const callers = [...src.matchAll(/connectMc\(/g)].map(m => {
+    const line = src.slice(src.lastIndexOf('\n', m.index) + 1, src.indexOf('\n', m.index)).trim();
+    return line;
+  }).filter(l => !l.startsWith('*') && !l.startsWith('//'));
+  for (const l of callers) {
+    assert.ok(/params|d\.url|j\.url|join\.url|settings\.mcUrl|\bv\)|\burl,|\burl\)/.test(l), `unexpected connectMc caller: ${l}`);
+  }
+  assert.ok(callers.length >= 4, 'the real callers are still there');
 });

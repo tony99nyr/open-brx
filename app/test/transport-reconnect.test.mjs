@@ -14,7 +14,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as E from '../src/transport/envelope.js';
 import { memoryStorage } from '../src/transport/ring.js';
-import { Transport, LAN_GIVEUP_MS, BACKHAUL_GIVEUP_MS } from '../src/transport/transport.js';
+import { Transport, LAN_GIVEUP_MS, BACKHAUL_GIVEUP_MS, RECLAIM_RETRY_MS } from '../src/transport/transport.js';
+import { STALE_AFTER_MS } from '../src/transport/envelope.js';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -266,4 +267,60 @@ test('security: a plain connect() is trusted — the ordinary QR/typed/remembere
   assert.equal(sockets[0].sent[0].body.node_key, 'KEY-0');
   assert.equal(sockets[0].sent[0].body.secret, 'sek');
   t.close();
+});
+
+test('security: a 4003 on an UNTRUSTED dial waits out the stale window and tries once more (A8.2)', async () => {
+  const { sockets, wsFactory } = factory();
+  const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
+    backoff: { baseMs: 1, capMs: 2, jitter: 0 }, reclaimRetryMs: 30, welcomeTimeoutMs: 5000 });
+  const p = t.connect({ url: 'ws://192.168.0.77:8766/ws', trusted: false });
+  sockets[0].open();
+  sockets[0].close(4003, 'gun or node in use');
+  // Not terminal: the holder MC is refusing us over is very likely OUR OWN socket, and a stale holder is
+  // displaced with no key at all. A dead end here means clearing app data in the middle of a match.
+  assert.equal(t.state, 'offline'); assert.equal(t.rejected, null);
+  assert.equal(sockets.length, 1, 'it waits — an instant retry would be refused for the same reason');
+  await sleep(45);
+  assert.equal(sockets.length, 2, 'one more try after the stale window');
+  sockets[1].open();
+  assert.equal('node_key' in sockets[1].sent[0].body, false, 'still untrusted, still keyless — that is what makes the displacement legal');
+  sockets[1].recv(welcome({ node_key: 'KEY-3' }));
+  await p;
+  assert.equal(t.state, 'bound'); assert.equal(t.trusted, true);
+  t.close();
+});
+
+test('security: the untrusted reclaim is spent ONCE — a second 4003 is authoritative', async () => {
+  const { sockets, wsFactory } = factory();
+  const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
+    backoff: { baseMs: 1, capMs: 2, jitter: 0 }, reclaimRetryMs: 20, welcomeTimeoutMs: 5000 });
+  const p = t.connect({ url: 'ws://192.168.0.77:8766/ws', trusted: false });
+  sockets[0].open(); sockets[0].close(4003, 'in use');
+  await sleep(35);
+  sockets[1].open(); sockets[1].close(4003, 'in use');
+  await assert.rejects(p, /refused.*4003/);
+  assert.equal(t.state, 'rejected');
+  await sleep(35);
+  assert.equal(sockets.length, 2, 'no third dial — someone else really does hold this gun');
+  t.close();
+});
+
+test('security: a TRUSTED dial keeps the old contract — 4003 and 4001 are terminal at once', async () => {
+  for (const code of [4003, 4001]) {
+    const { sockets, wsFactory } = factory();
+    const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
+      backoff: { baseMs: 1, capMs: 2, jitter: 0 }, reclaimRetryMs: 20 });
+    const p = t.connect({ url: 'ws://lan/ws' });
+    sockets[0].open(); sockets[0].close(code, 'refused');
+    await assert.rejects(p, /refused/);
+    assert.equal(t.state, 'rejected');
+    await sleep(35);
+    assert.equal(sockets.length, 1, `no retry after ${code} on a trusted dial`);
+    t.close();
+  }
+});
+
+test('security: RECLAIM_RETRY_MS clears the contract stale window it is derived from', () => {
+  assert.ok(RECLAIM_RETRY_MS > STALE_AFTER_MS, 'retrying inside the window would just be refused again');
+  assert.ok(RECLAIM_RETRY_MS < STALE_AFTER_MS + 5000, 'and the player is standing there waiting');
 });

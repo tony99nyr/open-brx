@@ -57,6 +57,12 @@ export const PUB_RETRY_MS = 30000;        // A28.3: while riding the LAN with a 
  *  the match. With this the ladder is pub -> lan -> pub -> lan ..., with the ordinary backoff (cap 10 s)
  *  between full passes, so a data blip costs seconds. */
 export const LAN_GIVEUP_MS = 8000;
+/** Review pass 2: an UNTRUSTED dial (a JOIN-row address, so we withheld our node_key) can be refused
+ *  `4003 in_use` for one reason that is not an attack and not a mistake: OUR OWN previous socket at that
+ *  MC has not gone stale yet. A8.2 is explicit that a stale holder is displaced WITHOUT a key, so the fix
+ *  is to wait out the stale window and try once more. Derived from the contract constant so the two
+ *  cannot drift apart. Only ever spent once per connect(), and only while untrusted. */
+export const RECLAIM_RETRY_MS = E.STALE_AFTER_MS + 1500;
 
 export class Transport {
   /**
@@ -70,10 +76,10 @@ export class Transport {
                 heartbeatMs = E.STATUS_HEARTBEAT_MS, now = () => Date.now(), timers = globalThis,
                 random = Math.random, backoff = { baseMs: 500, capMs: 10000, jitter: 0.2 }, helloTimeoutMs = 5000,
                 welcomeTimeoutMs = 10000, keyPrefix = 'brx', backhaulGiveupMs = BACKHAUL_GIVEUP_MS,
-                pubRetryMs = PUB_RETRY_MS, lanGiveupMs = LAN_GIVEUP_MS } = {}) {
+                pubRetryMs = PUB_RETRY_MS, lanGiveupMs = LAN_GIVEUP_MS, reclaimRetryMs = RECLAIM_RETRY_MS } = {}) {
     this.storage = storage; this.wsFactory = wsFactory; this.now = now; this.timers = timers; this.random = random;
     this.backoff = backoff; this.helloTimeoutMs = helloTimeoutMs; this.heartbeatMs = heartbeatMs; this.welcomeTimeoutMs = welcomeTimeoutMs;
-    this.backhaulGiveupMs = backhaulGiveupMs; this.pubRetryMs = pubRetryMs; this.lanGiveupMs = lanGiveupMs;
+    this.backhaulGiveupMs = backhaulGiveupMs; this.pubRetryMs = pubRetryMs; this.lanGiveupMs = lanGiveupMs; this.reclaimRetryMs = reclaimRetryMs;
     this.syncIntervalMs = Math.min(5000, Math.floor(E.SYNC_FRESH_MS / 2));   // keep synced() fresh (SYNC_FRESH_MS = 10 s)
     this.nodeId = node.node_id || this._persistedNodeId(`${keyPrefix}.node_id`);
     this._keyKey = `${keyPrefix}.node_key`;
@@ -98,7 +104,7 @@ export class Transport {
     // socket to it -- is an UNTRUSTED peer until it proves it is Mission Control by welcoming us. Any
     // host on the subnet can accept a websocket upgrade on the node port, and `hello` otherwise hands it
     // this node's takeover key (A8.2) and the join secret (A28.2). Both are stripped while untrusted.
-    this.trusted = true;
+    this.trusted = true; this._reclaimTried = false;
     this.armedOrLive = false;                // app sets true in ARMED/LIVE → reconnect is unbounded
     this.preflight = {};                     // app merges via setPreflight()
     this.statusProvider = null;              // app: () => status body (hp, armor, ammo, alive, shots, arm_state, ...)
@@ -123,6 +129,7 @@ export class Transport {
     this._abortInFlight('superseded by a new connect()', 'reconnect');
     this.attempt = 0;
     this.trusted = trusted !== false;   // stays false until this peer welcomes us (see `trusted` above)
+    this._reclaimTried = false;
     const nextUrl = url || qr || this.url;
     // A28.2 security: pub/secret are only ever valid for the MC that issued them. A different LAN
     // target (a phone told to join a different MC) means the tunnel/secret held for the OLD one must
@@ -360,6 +367,19 @@ export class Transport {
    *  ordinary drop of an already-welcomed link. Shared by every socket this Transport ever owns. */
   _onOngoingClose(evt) {
     const code = evt && evt.code;
+    // A 4003 on an UNTRUSTED dial is very often us: the hello was keyless by design, and MC still holds
+    // a live record for this node_id from the socket we just lost. That holder goes stale in
+    // STALE_AFTER_MS and is then displaced with no key at all (A8.2) — so one patient retry turns a
+    // dead end ("MC REFUSED: gun or node in use", with no way forward but clearing app data) into a
+    // join that lands ~10 s later. A trusted dial keeps the old behaviour: refusal is authoritative.
+    if (code === 4003 && !this.trusted && !this._reclaimTried && !this.closed) {
+      this._reclaimTried = true;
+      this._log(`4003 while untrusted — waiting out the stale window (${this.reclaimRetryMs} ms), then one more try`);
+      const ct = this._connectTimer; this._connectTimer = null; this._clearTimers(); this._connectTimer = ct;
+      this._setState('offline');
+      if (!this._rcTimer) this._rcTimer = this.timers.setTimeout(() => { this._rcTimer = null; this._open(); }, this.reclaimRetryMs);
+      return;
+    }
     if (code === 4001 || code === 4003) {
       this.rejected = { code, reason: (evt && evt.reason) || (code === 4003 ? 'gun or node in use' : 'protocol version') };
       this.closed = true; this._clearTimers();
@@ -462,7 +482,7 @@ export class Transport {
     }
     // It welcomed us, so it speaks the M-NET protocol and is the MC we dialled: the next hello may carry
     // the key (a keyless hello cannot take a still-live node_id back, A8.2) and the secret.
-    this.trusted = true;
+    this.trusted = true; this._reclaimTried = false;
     if (body.session_id) { this._persistedSessionId = body.session_id; this._store(this._sessionKey, body.session_id); }
     this.sessionId = body.session_id;
     if (typeof body.node_key === 'string' && body.node_key) { this.nodeKey = body.node_key; this._store(this._keyKey, body.node_key); }
