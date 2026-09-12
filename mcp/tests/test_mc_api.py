@@ -96,7 +96,9 @@ def test_archived_match_csv_exports_that_match_not_the_live_one():
     assert 'filename="recap-m1.csv"' in r.headers["content-disposition"]
     body = r.text.splitlines()
     assert body[0].startswith("operator,team,kills")
-    assert body[1].startswith("ALPHA,blue,4,1,2,4.0,31,3,40,12,MVP")
+    # F116 (2026-09-11): `best_streak` sits after `streak` — an ARCHIVED recap predates the field, so
+    # `rows_csv` reads it defensively and this stored row exports 0 for it.
+    assert body[1].startswith("ALPHA,blue,4,1,2,4.0,31,3,0,40,12,MVP")
     assert "ALPHA" not in c.get("/api/matches/m2.csv").text        # a different match, different rows
     # there is no live scorer at all here — the archived export must not depend on one
     assert s.scorer is None and c.get("/api/recap.csv").status_code == 404
@@ -112,7 +114,7 @@ def test_archived_match_csv_edge_cases():
     s.store.match_started("m3", {"mode": "ffa"}, 3000)
     s.store.match_ended("m3", {"winner": {}, "rows": []})
     r = c.get("/api/matches/m3.csv")
-    assert r.status_code == 200 and r.text.strip() == "operator,team,kills,deaths,assists,kd,accuracy,streak,shots,hits,medals"
+    assert r.status_code == 200 and r.text.strip() == "operator,team,kills,deaths,assists,kd,accuracy,streak,best_streak,shots,hits,medals"
     # and it is READ-ONLY: no operator token, exactly like GET /api/matches
     assert c.get("/api/matches").status_code == 200
 
@@ -157,3 +159,30 @@ def test_station_routes_refuse_in_the_operators_voice_while_armed_or_live():
     s.phase = "lobby"
     assert c.delete("/api/stations/util-1").status_code == 200
     assert c.delete("/api/stations/never").status_code == 404
+
+
+def test_the_kit_locks_at_start_over_http_with_a_409():
+    """A30: a host kit edit during a running match is a CONFLICT (the request is fine, the moment is not),
+    so the route answers 409 and not the blanket 400 every other player error gets. The fields that never
+    reach the gun still patch."""
+    needs(HAVE, "starlette + httpx")
+    from brx_mcp.mc.fakes import demo_armory
+    c, s, net = _client()
+    assert c.put("/api/config", json={"mode": "tdm", "time_limit_s": 60}).json()["ok"]
+    p = c.post("/api/players", json={"display": "reaper", "gun_id": "GUN-A"}).json()
+    tail = demo_armory()[0]["ble"]["tail"]
+    net.simulate_hello("node0", f"GUN-A-{tail}")
+    assert c.post("/api/lobby/push", json={"force": True}).status_code == 200
+    net.simulate_node_message("node0", "ack_config", {"config_id": s.config["config_id"], "ok": True,
+                                                      "gun_echo": "x"}, s.now_ms())
+    assert c.post("/api/start", json={"runway_s": 30, "force": True}).status_code == 200
+    pushes = len(net.pushes("config", "node0"))
+    r = c.patch(f"/api/players/{p['player_id']}", json={"loadout": {"weapons": [{"weapon_id": "shotgun"}]}})
+    assert r.status_code == 409, (r.status_code, r.json())
+    assert "kit is locked" in r.json()["error"] and "loadout" in r.json()["error"], r.json()
+    assert c.patch(f"/api/players/{p['player_id']}", json={"voice": "female"}).status_code == 409
+    # a gamertag never reaches the gun, so it is still allowed — and nothing re-pushed frames
+    assert c.patch(f"/api/players/{p['player_id']}", json={"display": "rocco"}).json()["display"] == "ROCCO"
+    assert len(net.pushes("config", "node0")) == pushes
+    # …and the ordinary validation errors are still 400
+    assert c.patch(f"/api/players/{p['player_id']}", json={"team_id": "nope"}).status_code == 400

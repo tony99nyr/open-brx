@@ -611,9 +611,26 @@ export class MockBackend implements Api {
   }
   async control(cmd: 'end' | 'recall' | 'panic', confirm?: boolean) {
     if (cmd === 'panic' && !confirm) throw new Error('panic requires confirm');
-    if (cmd === 'end' && this.live_) { this.endMatch(); return { ok: true }; }
-    this.start_ = undefined; this.live_ = undefined; this.phase = this.pushed ? 'lobby' : 'kit'; this.pushed = false; this.acks = {};
-    this.emit(); return { ok: true };
+    const nodes = this.players.filter(p => p.node_id).length;
+    // `?mock` must never look more permissive than a real MC (the rule at `putStation` above; here it
+    // is `state.py` `control`). An END with no scorer — or a second END once the recap is written —
+    // ends NOTHING and moves NO phase, and says so in `error`. This used to fall through to the
+    // recall branch: the demo answered a bare `{ok:true}` and quietly reset the session, which is the
+    // exact defect the server fixed. The press IS still forwarded, so `pushed` is non-zero while
+    // `reached` is 0 and `ended` is false.
+    if (cmd === 'end' && !this.live_) {
+      return { ok: false, ended: false, reached: 0, pushed: nodes, nodes, phase: this.phase,
+               error: this.phase === 'recap'
+                 ? 'this match has already ended — the recap stands (RECALL returns the field to KIT)'
+                 : 'no match is being scored — nothing to end (RECALL returns the field to KIT)' };
+    }
+    if (cmd === 'end') { this.endMatch(); return { ok: true, ended: true, reached: nodes, pushed: nodes, nodes, phase: this.phase }; }
+    // recall/panic stop a live game -> KITTED (A5.9), the same landing `state.py` gives them. The
+    // mock used to go back to LOBBY whenever a config head had been pushed, so a recall in `?mock`
+    // ended somewhere a recall on a real MC never does.
+    this.start_ = undefined; this.live_ = undefined; this.phase = 'kit'; this.pushed = false; this.acks = {};
+    this.emit();
+    return { ok: true, ended: true, reached: nodes, pushed: nodes, nodes, phase: this.phase };
   }
   async matchHistory() { return clone(this.history_); }
   async getRecap() { if (!this.recap_) throw new Error('no recap yet'); return clone(this.recap_); }

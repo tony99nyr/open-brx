@@ -38,7 +38,7 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
     throw err;
   }
   if (method !== 'GET') notifyAuth(false);
-  if (r.status === 204) return undefined as T;
+  if (r.status === 204) return {} as T;   // NEVER `undefined`: callers read undefined as "the call failed" (`store.run`), so a 204 must not look like one
   return (await r.json()) as T;
 }
 const post = <T,>(path: string, body: unknown = {}) => j<T>(path, { method: 'POST', body: JSON.stringify(body) });

@@ -211,7 +211,11 @@ def test_the_bundle_publishes_what_a_hit_will_sound_like():
     # default and ships no rolled tables at all -- turning it on would silence the ear-confirmed
     # material layer on every standard hit.
     assert b["sir_pool"] == [], "the class layer ships off; sir_pool is empty"
-    assert [f for f in b["head"] if f.startswith("$SIR")] == list(C._SIR_TABLE), "stock rows, verbatim"
+    # F121/A23: the live table now rides the spawn burst, not the head. Stock rows, verbatim, is still
+    # the property under test -- it just has a new address. The head carries the same cells DISARMED.
+    assert [f for f in b["spawn"] if f.startswith("$SIR")] == list(C._SIR_TABLE), "stock rows, verbatim"
+    assert [f for f in b["revive"] if f.startswith("$SIR")] == list(C._SIR_TABLE), "and again every life"
+    assert all(f.split(",")[4] == "28" for f in b["head"] if f.startswith("$SIR")), "the head arms nothing"
 
 
 def test_rekeying_is_off_unless_the_config_explicitly_asks_for_it():

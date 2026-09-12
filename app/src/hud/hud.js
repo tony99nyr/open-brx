@@ -6,6 +6,16 @@
 const TEAM_COLOR = { blue: 'var(--team-blue)', yellow: 'var(--team-yellow)', red: 'var(--team-red)', green: 'var(--team-green)' };
 const TEAM_INK = { blue: '#04121e', yellow: '#1a1400', red: '#1a0404', green: '#041a0c' };
 const pad2 = n => String(Math.max(0, Math.floor(n))).padStart(2, '0');
+/** A countdown as one fixed-width cell per digit (F115). Saira Condensed has no tabular figures, so
+ *  `font-variant-numeric:tabular-nums` silently does nothing and every value is a different width:
+ *  "11" measured 113px and "88" 179px at the DOWN size. The number lives in a centred flex column, so
+ *  each tick re-centred and re-laid-out the glyphs WHILE `animation:heartbeat` was transforming them,
+ *  which is the tearing Tony saw. Fixed cells make the width a constant of the digit COUNT alone.
+ *
+ *  TWO cells, always: three of them at .56em of a 170px frame overrun it, and `respawnIn` is a server
+ *  number — a 120 s penalty box or a stalled clock is not the HUD's to render as a layout break. 99 is
+ *  the honest ceiling for a countdown you watch tick (review 2026-09-12). */
+const digits = n => pad2(Math.min(99, Math.max(0, Math.floor(n)))).split('').map(c => `<span class="d">${c}</span>`).join('');
 const mmss = ms => { const s = Math.max(0, Math.round(ms / 1000)); return `${pad2(s / 60)}:${pad2(s % 60)}`; };
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 /** Accuracy is hits/shots where hits come from the VICTIMS' phones — shown only once MC has counted at least one
@@ -147,6 +157,25 @@ export class Hud {
     this._patch(st);
     this._chips(st);
     this._moments(st);
+    this._fitBriefing();
+  }
+
+  /** F110 (review): `.bfbody` is a fixed 268 px box whose rows are `flex:0 0 auto`, i.e. purely additive — a
+   *  game NAME that wraps to two lines at 40 px pushes the rows below it straight through the CTA footer.
+   *  The kicker and the loadout line are clamped in CSS; the name is the row that carries a host's arbitrary
+   *  text, so it is fitted to whatever room is left, the same measure-then-shrink loop `_redeploy` uses. */
+  _fitBriefing() {
+    const body = this.hudEl.querySelector('.bf .bfbody');
+    if (!body) { this._bfFit = null; return; }
+    const nm = body.querySelector('.bfname'); if (!nm) return;
+    // Re-checked every render, not memoised on the text: the webfont swaps in AFTER the first paint and a name
+    // that fitted on one line in the fallback face wraps to two in Saira Condensed — a one-shot fit measured
+    // the wrong font and left the overflow on screen. New content starts again from the design size.
+    const key = nm.textContent + '|' + body.clientHeight;
+    if (this._bfFit !== key) { this._bfFit = key; nm.style.fontSize = ''; }
+    if (body.scrollHeight <= body.clientHeight) return;
+    let fs = parseFloat(getComputedStyle(nm).fontSize) || 40;
+    while (body.scrollHeight > body.clientHeight && fs > 18) { fs -= 2; nm.style.fontSize = fs + 'px'; }
   }
 
   // ---------- structure per phase ----------
@@ -225,7 +254,13 @@ export class Hud {
       foot = `<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓' : 'READY UP'}</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>${st.game ? '<button class="briefbtn" data-act="onBriefing"><span class="unskew">▤ BRIEFING</span></button>' : ''}`;
     } else if (mode === 'over') {
-      foot = `<button class="ready wait ${st.ready ? 'on' : ''}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓' : 'MATCH COMPLETE'}</span></button><div class="note">${st.ready ? 'Standing by — the next match kits you automatically.' : "Scores reconcile at Mission Control. Tap when you're set for the next match."}</div>`;
+      // F117: this is the one control gating the next match and it read as a status line — declarative label,
+      // muted grey, 20px against the pre-match 26px, and the SAME classes as the genuinely inert STANDING BY
+      // button. It now wears the pre-match READY UP treatment exactly, and the note leads with the instruction.
+      // The note is `_readyNote`, the same one the kitted screen renders and patches: `setReady` REFUSES while
+      // the clock is unsynced, and the hard-coded note said nothing about it — the one control gating the next
+      // match went dead with no explanation on screen.
+      foot = `<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓' : 'READY FOR NEXT MATCH ▸'}</span></button><div class="note" id="readynote">${this._readyNote(st, 'over')}</div>`;
       status = `<div class="status">D ${st.deaths} · K ${st.kills != null ? st.kills : '—'}</div>`;
     } else {
       foot = `<button class="ready wait"><span class="unskew">STANDING BY</span></button><div class="note">Loadout is on the gun. Waiting for the host to start the countdown.</div>`;
@@ -405,7 +440,7 @@ export class Hud {
     this._downHintSig = this._downHintKey(st);
     let hint = st.respawnHint || (st.respawnType === 'auto' ? 'timer' : st.respawnType === 'none' ? 'out' : 'find_station');
     if (st.respawnType === 'scanner' && (hint === 'timer' || hint === 'wait')) hint = 'find_station';   // an older engine: teach from the first second, never a 00
-    if (hint === 'timer') return `<span class="n tab" id="rd">${pad2(st.respawnIn)}</span><span class="lab">${st.respawnIn ? 'REDEPLOY IN' : 'AWAITING REDEPLOY'}</span>`;
+    if (hint === 'timer') return `<span class="n tab" id="rd">${digits(st.respawnIn)}</span><span class="lab">${st.respawnIn ? 'REDEPLOY IN' : 'AWAITING REDEPLOY'}</span>`;
     if (hint === 'out') return `<span class="n nn">✕</span><span class="lab">NO RESPAWNS THIS MODE</span>`;
     const s = st.station || {}; const thr = s.threshold != null && s.threshold !== 0 ? s.threshold : -74; const rssi = s.rssi != null ? Math.round(s.rssi) : null;   // -74 = the bench-tuned station default (≈10 ft at high TX)
     const pct = rssi == null ? 0 : Math.max(0, Math.min(100, Math.round(100 * (rssi - (thr - 30)) / 30)));   // 30 dB below the threshold = 0, at it = 100
@@ -453,9 +488,17 @@ export class Hud {
     if (mode === 'lobby') return `<b>LOCKED IN ✓</b>${st.headEcho ? '' : ' · <span class="bad">GUN NOT ANSWERING — CHECK HEADSET</span>'} · ${clock}`;
     return `${st.tutorial ? '<span style="color:var(--warn)">TRY-OUT ARMED — FIRE A FEW ROUNDS</span><br>' : ''}${mc} · ${clock}`;
   }
-  _readyNote(st) {
+  /** The line under the READY button. The UNSYNCED case is shared by both screens because `engine.setReady`
+   *  refuses the tap until the clock is synced — on either of them, and silently. */
+  _readyNote(st, mode) {
+    if (!st.synced && !st.ready) return 'Syncing clock with Mission Control… you can ready up in a moment.';
+    // NOT "the host cannot start until everyone has": `_all_ready` gates KIT -> LOBBY only, so after a
+    // match the host pushes the next one whenever they like. Promising a veto the player does not have is
+    // how someone sits out a round waiting to be waited for (review 2026-09-12).
+    if (mode === 'over') return st.ready ? 'Standing by — the next match kits you automatically.'
+      : 'Tap to ready up for the next match — the host sees who is ready. Scores reconcile at Mission Control.';
     return st.ready ? 'Waiting for the host to arm the match. Tap again to un-ready.'
-      : (st.synced ? 'Tap when you are set. The host pushes the game once everyone is ready.' : 'Syncing clock with Mission Control…');
+      : 'Tap when you are set. The host pushes the game once everyone is ready.';
   }
   _patch(st) {
     const q = id => this.hudEl.querySelector('#' + id);
@@ -464,7 +507,7 @@ export class Hud {
     if (st.phase === 'connected' || st.phase === 'kitted' || st.phase === 'lobby') {
       const mode = st.phase === 'connected' ? 'connected' : st.phase === 'lobby' ? 'lobby' : (st.ended ? 'over' : 'kitted');
       if (mode !== 'over') setHtml('mcstatus', this._statusLine(st, mode));
-      if (mode === 'kitted') setHtml('readynote', this._readyNote(st));
+      if (mode === 'kitted' || mode === 'over') setHtml('readynote', this._readyNote(st, mode));   // `synced` is patched, never in the render signature — the over screen needs the same live note
     }
     if (st.phase === 'live') {
       set('clock', mmss(st.clockMs)); set('hp', st.hp); set('sh', st.armor); set('mag', pad2(st.ammo)); set('res', `/${st.reserve != null ? st.reserve : '—'}`);
@@ -541,7 +584,7 @@ export class Hud {
           <div class="recap" id="downrecap">${this._downRecap(st)}</div></div>`;
         this._flash();
       } else {
-        const el = this.overlay.querySelector('#rd'); if (el) el.textContent = pad2(st.respawnIn);
+        const el = this.overlay.querySelector('#rd'); if (el) { const h = digits(st.respawnIn); if (el.innerHTML !== h) el.innerHTML = h; }
         const hk = this._downHintKey(st); if (hk !== this._downHintSig) { const h = this.overlay.querySelector('#dnhint'); if (h) h.innerHTML = this._downHint(st); }
         const rc = this.overlay.querySelector('#downrecap'); if (rc) { const h = this._downRecap(st); if (rc.innerHTML !== h) rc.innerHTML = h; }
       }
@@ -563,15 +606,33 @@ export class Hud {
 
     // RELOADING (persistent for the weapon's reload time; the gun will not fire until the mag is back)
     if (reloadUp) {
-      const pct = Math.min(100, Math.round(100 * st.reloadMs / st.reloadTotalMs)), left = Math.max(0, (st.reloadTotalMs - st.reloadMs) / 1000);
-      if (this._moment !== 'reload') {
-        this._moment = 'reload';
-        this.overlay.innerHTML = `<div class="mo reloading"><div class="c"><span class="t">RELOADING</span><span class="s">${esc(st.weapon)}</span>
+      // `reloadTotalMs` is only the NOMINAL length, and on a chain weapon it is the PER-SHELL time — a 6-shell
+      // tube spends most of its reload past it. Counting "0.0S" down at a bar pinned to 100% for two seconds is
+      // a wrong number, so once `reloadOverrun` is up the bar goes indeterminate and the countdown goes away.
+      // LATCHED for the takeover: on a chain weapon `reloadOverrun` blinks off at every shell and back on
+      // 400 ms later, and a bar that alternates between indeterminate and a wrong number is worse than either.
+      // Keyed on WHICH reload this is (`st.reloadAt`), because `_moment` cannot tell two apart: a $ALCD
+      // (fired) and a $BUT,2,1 in ONE BLE batch end and re-open the takeover between two renders, so
+      // `_moment` never left 'reload' and the new reload opened on the old one's latch — already pulsing,
+      // its countdown already gone, at a magazine that had only just started moving (review 2026-09-12).
+      const fresh = this._moment !== 'reload' || this._rlAt !== st.reloadAt;
+      const over = !!st.reloadOverrun || (!fresh && this._rlOver === true);
+      const pct = over ? 100 : Math.min(100, Math.round(100 * st.reloadMs / st.reloadTotalMs)), left = Math.max(0, (st.reloadTotalMs - st.reloadMs) / 1000);
+      if (fresh) {
+        this._moment = 'reload'; this._rlOver = null; this._rlAt = st.reloadAt;
+        this.overlay.innerHTML = `<div class="mo reloading"><div class="c"><span class="t" id="rlt">RELOADING</span><span class="s">${esc(st.weapon)}</span>
           <div class="track"><i id="rlbar" style="width:${pct}%"></i></div><span class="n tab" id="rlleft">${left.toFixed(1)}S</span></div></div>`;
         this.h.onHaptic && this.h.onHaptic('tap');
-      } else { const b = this.overlay.querySelector('#rlbar'); if (b) b.style.width = pct + '%'; const n = this.overlay.querySelector('#rlleft'); if (n) n.textContent = left.toFixed(1) + 'S'; }
+      }
+      if (this._rlOver !== over) {
+        this._rlOver = over;
+        const mo = this.overlay.querySelector('.mo.reloading'); if (mo) mo.classList.toggle('over', over);
+        const t = this.overlay.querySelector('#rlt'); if (t) t.textContent = over ? 'RELOADING…' : 'RELOADING';
+      }
+      const b = this.overlay.querySelector('#rlbar'); if (b) b.style.width = pct + '%';
+      const n = this.overlay.querySelector('#rlleft'); if (n && !over) n.textContent = left.toFixed(1) + 'S';
       // no early return: hits, gains and kills append ABOVE the takeover — reloading is exactly when you get shot (suite audit 2026-09-03)
-    } else if (this._moment === 'reload') { this._moment = null; this.overlay.innerHTML = ''; }   // (reloadUp is the single source of truth for the flag AND the overlay)
+    } else if (this._moment === 'reload') { this._moment = null; this._rlAt = null; this.overlay.innerHTML = ''; }   // (reloadUp is the single source of truth for the flag AND the overlay)
 
     // SWITCHING WEAPON (persistent for the assumed swap window; the gun will not fire mid-swap). Ends with a 'switched' moment.
     if (switchUp) {
@@ -725,17 +786,44 @@ export class Hud {
   }
 
   // ---------- diagnostics ----------
+  /** The panel's chrome, built ONCE. F122: `renderDiag` used to replace the whole panel's innerHTML on
+   *  every render (app.js pushes fresh diag data 4x/s), which did three things at once — it reset
+   *  `scrollTop` to 0, it destroyed the element under the player's finger so a touch that straddled a
+   *  render produced NO click at all, and it kept the action row below a growing log. The chrome and the
+   *  buttons are now permanent nodes; only the readouts are rewritten, and only when they changed. */
+  _diagShell() {
+    if (this._diagBuilt) return;
+    this._diagBuilt = true;
+    const sec = (t, id, pre) => `<h3>${t}</h3>${pre ? `<pre id="${id}"></pre>` : `<div class="kv" id="${id}"></div>`}`;
+    this.diag.innerHTML = `<button class="close" data-act="onCloseDiag">✕</button>
+      <div class="dbody" id="dbody">
+        ${sec('PREFLIGHT', 'dg-pf')}${sec('LINK', 'dg-link')}${sec('ENGINE', 'dg-eng')}${sec('TIMINGS', 'dg-tim')}
+        ${sec('LAST FRAMES', 'dg-frames', true)}${sec('HISTORY', 'dg-hist')}${sec('LOG', 'dg-log', true)}
+      </div>
+      <div class="btns"><button data-act="onCloseDiag" class="closex">CLOSE</button><button data-act="onReconnectGun">RELINK GUN</button><button data-act="onReconnectMc">RELINK MC</button><button data-act="onShareLog">SHARE LOG</button><button data-act="onToggleNight">NIGHT</button></div>`;
+  }
   renderDiag() {
+    this._diagShell();
     const d = this.diagData || {}; const pf = d.preflight || {};
     const kv = o => Object.entries(o).map(([k, v]) => `<span>${esc(k)}</span><span class="${v === true ? 'ok' : v === false ? 'bad' : ''}">${esc(typeof v === 'object' ? JSON.stringify(v) : v)}</span>`).join('');
-    this.diag.innerHTML = `<button class="close" data-act="onCloseDiag">✕</button>
-      <h3>PREFLIGHT</h3><div class="kv">${kv(pf)}</div>
-      <h3>LINK</h3><div class="kv">${kv(d.link || {})}</div>
-      <h3>ENGINE</h3><div class="kv">${kv(d.engine || {})}</div>
-      <h3>TIMINGS</h3><div class="kv">${kv(d.timings || {})}</div>
-      <h3>LAST FRAMES</h3><pre>${esc((d.frames || []).map(f => `${f.dir === 'tx' ? '>>' : '<<'} ${f.f}`).join('\n'))}</pre>
-      <h3>HISTORY</h3><div class="kv">${kv((() => { const all = this.history || []; const t = all.reduce((a, g) => ({ games: a.games + 1, kills: a.kills + (g.kills || 0), deaths: a.deaths + (g.deaths || 0) }), { games: 0, kills: 0, deaths: 0 }); return { 'all-time on this phone': `${t.games} games · ${t.kills} K · ${t.deaths} D`, 'this MC session': this.sessionId || '(not joined)' }; })())}</div>
-      <h3>LOG</h3><pre>${esc((d.log || []).join('\n'))}</pre>
-      <div class="btns"><button data-act="onCloseDiag" class="closex">CLOSE ✕</button><button data-act="onReconnectGun">RECONNECT GUN</button><button data-act="onReconnectMc">RECONNECT MC</button><button data-act="onShareLog">SHARE LOG</button><button data-act="onToggleNight">NIGHT</button></div>`;
+    // F122 (review): read the scroll positions BEFORE the first write. A section that SHRINKS clamps the
+    // scroller to its new height, so a position captured afterwards is already the clamped one and "holding
+    // the reader's place" would hold the wrong place. The two <pre> scrollers need it as much as the body:
+    // they are replaced wholesale ~4x/s and jumped to the top under the reader's thumb.
+    const body = this.diag.querySelector('#dbody'), keep = body ? body.scrollTop : 0;
+    const pres = ['dg-frames', 'dg-log'].map(id => { const el = this.diag.querySelector('#' + id); if (!el) return null;
+      // "was reading the tail" — hold the BOTTOM, so a growing log keeps following; anywhere else, hold the offset.
+      return { el, top: el.scrollTop, bottom: el.scrollHeight - el.clientHeight - el.scrollTop <= 4 }; }).filter(Boolean);
+    const put = (id, html) => { const el = this.diag.querySelector('#' + id); if (el && el.innerHTML !== html) el.innerHTML = html; };   // an unchanged section is not touched at all
+    put('dg-pf', kv(pf));
+    put('dg-link', kv(d.link || {}));
+    put('dg-eng', kv(d.engine || {}));
+    put('dg-tim', kv(d.timings || {}));
+    put('dg-frames', esc((d.frames || []).map(f => `${f.dir === 'tx' ? '>>' : '<<'} ${f.f}`).join('\n')));
+    const all = this.history || []; const t = all.reduce((a, g) => ({ games: a.games + 1, kills: a.kills + (g.kills || 0), deaths: a.deaths + (g.deaths || 0) }), { games: 0, kills: 0, deaths: 0 });
+    put('dg-hist', kv({ 'all-time on this phone': `${t.games} games · ${t.kills} K · ${t.deaths} D`, 'this MC session': this.sessionId || '(not joined)' }));
+    put('dg-log', esc((d.log || []).join('\n')));
+    if (body && keep && body.scrollTop !== keep) body.scrollTop = keep;   // the LOG grows under the reader's thumb; hold their place
+    for (const p of pres) { const want = p.bottom ? p.el.scrollHeight - p.el.clientHeight : p.top; if (p.el.scrollTop !== want) p.el.scrollTop = want; }
   }
 }

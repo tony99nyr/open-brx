@@ -17,7 +17,7 @@ let pass = 0, fail = 0; const errs = [];
 const must = (c, m) => { if (!c) throw new Error(m); };
 const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });   // scrollbars ON: what a desktop reviewer sees
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
-const LONG = new Set(['resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted']);
+const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted']);
 const step = async (name, fn) => { if (ONLY && !name.includes(ONLY)) return; try { await fn(); console.log(`  ok   ${name}`); pass++; } catch (e) { console.log(`  FAIL ${name}: ${String(e.message || e).slice(0, 300)}`); fail++; errs.push(name); } };
 const open = async (view, stage, extra = '', ms) => {
   const pg = await b.newPage({ viewport: { width: view.width, height: view.height } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
@@ -48,6 +48,28 @@ const invariants = pg => pg.evaluate(() => {
 // "one line" = the element's text paints as ONE line box (a Range over its contents yields rects whose tops agree), not a height guess
 const oneLine = (pg, sel) => pg.evaluate(sel => Array.from(document.querySelectorAll(sel)).map(e => { const r = document.createRange(); r.selectNodeContents(e); const rects = Array.from(r.getClientRects()).filter(x => x.width > 1 && x.height > 1); const tops = new Set(rects.map(x => Math.round(x.top / 4))); return [sel, e.textContent.trim().slice(0, 30), rects.length > 0 && tops.size === 1]; }), sel);   // hidden text is NOT "one line"
 const text = pg => pg.evaluate(() => document.body.innerText.replace(/\s+/g, ' '));
+// "sheared" = the box is SHORTER than the same element laid out at its natural height. A flex item that is
+// squeezed below its own content height paints its text and then clips it, and the PARENT never overflows —
+// which is exactly why no overflow check caught F110. offsetHeight is layout px, so the #frame scale is out
+// of it (a getBoundingClientRect comparison silently fails at any viewport where the scale is not 1).
+// Every outcome carries the SAME shape, and a missing element is its own verdict: the old code returned a
+// 2-tuple for ABSENT, so `x[3]` was `undefined` and a row that never rendered was reported as if it had been
+// sheared — the suite could not tell "the box clipped the text" from "the box is not on screen".
+const sheared = (pg, sels) => pg.evaluate(sels => sels.map(sel => {
+  const e = document.querySelector(sel); if (!e) return { sel, want: null, got: null, verdict: 'ABSENT' };
+  const c = e.cloneNode(true); c.style.cssText = getComputedStyle(e).cssText;
+  c.style.position = 'absolute'; c.style.left = '-9999px'; c.style.top = '0'; c.style.width = e.clientWidth + 'px';
+  c.style.height = 'auto'; c.style.maxHeight = 'none'; c.style.flex = 'none'; c.style.animation = 'none';
+  e.parentElement.appendChild(c); const want = c.offsetHeight; c.remove();
+  return { sel, want, got: e.clientHeight, verdict: want > e.clientHeight + 1 ? 'SHEARED' : 'ok' };
+}), sels);
+/** Both halves of a `sheared()` result, asserted separately so a failure names which one it is. */
+const notSheared = (r, sels) => {
+  const missing = r.filter(x => x.verdict === 'ABSENT').map(x => x.sel);
+  must(missing.length === 0, 'a row this step exists to measure is not on screen: ' + missing.join(', '));
+  must(r.length === sels.length, `asked about ${sels.length} rows, got ${r.length}`);
+  must(r.every(x => x.verdict === 'ok'), JSON.stringify(r));
+};
 
 for (const view of VIEWS) {
   console.log(`\n== ${view.name} ${view.width}×${view.height} ==`);
@@ -633,12 +655,244 @@ for (const view of VIEWS) {
   await step(`${view.name} #21 accuracy shown only once MC has counted hits (result)`, async () => {
     const pg = await open(view, 'result'); const t = await text(pg); await pg.close(); must(/41%\s*ACCURACY/.test(t), 'result should show 41% here: ' + t.slice(0, 120)); must(!t.includes('✓MC'), 'badge');
   });
-  await step(`${view.name} #22 MATCH COMPLETE on one line, plates intact`, async () => { const pg = await open(view, 'over'); const r = await oneLine(pg, '.ready.wait'); must(r.length === 1, 'no MATCH COMPLETE button'); const btn = await pg.evaluate(() => document.querySelector('.ready.wait').textContent.trim()); await pg.close(); must(btn === 'MATCH COMPLETE', 'button copy: ' + btn); must(r.every(x => x[2]), JSON.stringify(r)); });
+  await step(`${view.name} #22 the post-match button is one line, plates intact`, async () => { const pg = await open(view, 'over'); const r = await oneLine(pg, '.foot .ready'); must(r.length === 1, 'no post-match button'); const btn = await pg.evaluate(() => document.querySelector('.foot .ready').textContent.trim()); await pg.close(); must(btn === 'READY FOR NEXT MATCH \u25b8', 'button copy: ' + btn); must(r.every(x => x[2]), JSON.stringify(r)); });   // F117 2026-09-11: was "MATCH COMPLETE", which read as a status line
+
+  // ---------- 2026-09-11 field session, Block A (docs/game-test-2026-09-11.md) ----------
+  await step(`${view.name} F110 briefing: the title and the description are not sheared by their box`, async () => {
+    const sels = ['.bfname', '.bfdesc', '.bfk', '.bfrules', '.bfload'];
+    const pg = await open(view, 'briefing'); const r = await sheared(pg, sels); await pg.close();
+    notSheared(r, sels);
+  });
+  await step(`${view.name} F110 briefing: the body never reaches the CTA footer`, async () => {
+    // Driven with the LONG payload, not the demo's one short line of each: against the demo payload this step
+    // passed on the CSS that shipped the bug, which makes it a tautology. A host writes the name, the ruleset
+    // and the loadout line, and a two-line name over a wrapped loadout line is what ran into the footer.
+    const pg = await open(view, 'briefing-long');
+    const r = await pg.evaluate(() => { const b = document.querySelector('.bfbody'), f = document.querySelector('.bffoot');
+      const R = e => e.getBoundingClientRect(); const ft = R(f);
+      const hit = a => a.left < ft.right - 2 && a.right > ft.left + 2 && a.top < ft.bottom - 2 && a.bottom > ft.top + 2;
+      return { over: b.scrollHeight > b.clientHeight + 1, name: document.querySelector('.bfname').textContent,
+               onFoot: Array.from(b.children).filter(e => hit(R(e))).map(e => e.className.split(' ')[0]),
+               last: Math.max(...Array.from(b.children).map(e => R(e).bottom)), footTop: ft.top }; });
+    await pg.close();
+    must(/THUNDERDOME/.test(r.name), 'the long payload never reached the screen: ' + r.name);
+    must(r.onFoot.length === 0, 'briefing rows sit on top of the CTA footer: ' + r.onFoot.join(','));
+    must(!r.over, 'the briefing body overflows its own box: ' + JSON.stringify(r));
+    must(r.last <= r.footTop - 4, `the last briefing row runs into the footer: ${Math.round(r.last)} > ${Math.round(r.footTop)}`);
+  });
+  await step(`${view.name} F117 over: READY FOR NEXT MATCH is a control, styled like READY UP`, async () => {
+    const read = pg => pg.evaluate(() => { const e = document.querySelector('.foot .ready'); const cs = getComputedStyle(e);
+      return { txt: e.textContent.trim(), act: e.dataset.act || null, color: cs.color, fs: cs.fontSize, wait: e.classList.contains('wait'), clipped: e.scrollWidth > e.clientWidth + 1 }; });
+    const a = await open(view, 'kitted'); const kitted = await read(a); await a.close();
+    const b2 = await open(view, 'over'); const over = await read(b2); await b2.close();
+    must(over.act === 'onReady', 'the post-match button is not wired: ' + JSON.stringify(over));
+    must(/READY/.test(over.txt) && over.txt !== 'MATCH COMPLETE', 'the label still states a fact instead of asking for a tap: ' + over.txt);
+    must(!over.wait, 'the post-match button wears `.wait`, the INERT button\'s own class: ' + JSON.stringify(over));
+    must(over.color === kitted.color && over.fs === kitted.fs, `post-match control reads dimmer/smaller than the pre-match one: ${JSON.stringify(over)} vs ${JSON.stringify(kitted)}`);
+    must(!over.clipped, 'the label is clipped: ' + JSON.stringify(over));
+  });
+  await step(`${view.name} F117 .wait dresses the genuinely inert button and nothing else`, async () => {
+    const seen = [];
+    for (const stage of ['lobby', 'over', 'kitted']) { const pg = await open(view, stage); seen.push(...await pg.evaluate(s => Array.from(document.querySelectorAll('.ready.wait')).map(e => [s, e.textContent.trim(), e.dataset.act || null]), stage)); await pg.close(); }
+    must(seen.length > 0, 'no inert button found on any screen — has STANDING BY moved?');
+    must(seen.every(x => x[2] === null), 'a real control is dressed as the inert one: ' + JSON.stringify(seen));
+  });
+  await step(`${view.name} F122 diag: SHARE LOG is reachable without scrolling`, async () => {
+    const pg = await open(view, 'diag-live', '', 5200);
+    const r = await pg.evaluate(() => { const d = document.getElementById('diag'), s = document.querySelector('[data-act="onShareLog"]');
+      if (!d.classList.contains('open')) return { open: false }; if (!s) return { open: true, share: false };
+      const rb = s.getBoundingClientRect(), rd = d.getBoundingClientRect(); const hit = document.elementFromPoint(rb.x + rb.width / 2, rb.y + rb.height / 2);
+      const sc = parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1) || 1;   // the #frame is scaled: tap targets are judged in DESIGN px, as step #23 does
+      const f = d.querySelector('.btns'), tops = new Set(Array.from(f.children).map(e => Math.round(e.getBoundingClientRect().top)));
+      const last = f.children[f.children.length - 1].getBoundingClientRect();   // the row is right-aligned: the LAST child is the one that runs off
+      return { open: true, share: true, inside: rb.bottom <= rd.bottom + 1 && rb.top >= rd.top - 1, topmost: hit === s, h: rb.height / sc,
+               rightIn: last.right <= rd.right + 1 && last.left >= rd.left - 1, over: Math.round(last.right - rd.right),
+               rows: tops.size, footH: f.getBoundingClientRect().height / sc, scroller: d.scrollHeight > d.clientHeight + 1 }; });
+    await pg.close();
+    must(r.open && r.share, 'no diagnostics panel / no SHARE LOG: ' + JSON.stringify(r));
+    must(r.inside, 'SHARE LOG is off the bottom of the panel — the operator has to scroll a growing log to reach it');
+    // Vertical containment alone passed a row whose last button hung off the RIGHT edge: the panel does not
+    // scroll sideways, so that button is simply unreachable at 390px (review 2026-09-12).
+    must(r.rightIn, `the last action button is ${r.over}px past the right edge of the panel — nothing scrolls sideways, so it cannot be tapped`);
+    must(r.topmost, 'something is on top of SHARE LOG');
+    must(r.h >= 43.5, 'tap target ' + r.h.toFixed(1) + 'px (design px)');
+    must(r.rows === 1, `the action row wraps to ${r.rows} rows — every extra row is taken from the log above it`);
+    must(r.footH <= 56, `the action row is ${r.footH.toFixed(1)} design px of a 390px panel`);
+  });
+  await step(`${view.name} F122 diag: the reader's scroll position survives the render churn`, async () => {
+    const pg = await open(view, 'diag-live', '', 5200);
+    await pg.evaluate(() => { const b = document.getElementById('dbody') || document.getElementById('diag'); b.scrollTop = Math.round((b.scrollHeight - b.clientHeight) / 2); window.__st = b.scrollTop; });
+    const before = await pg.evaluate(() => window.__st); must(before > 20, 'the panel does not scroll here, so this step proves nothing: ' + before);
+    await pg.waitForTimeout(2000);   // app.js pushes fresh diag data every 250 ms
+    const after = await pg.evaluate(() => (document.getElementById('dbody') || document.getElementById('diag')).scrollTop); await pg.close();
+    must(Math.abs(after - before) <= 2, `scroll jumped ${before} -> ${after} under the render loop`);
+  });
+  await step(`${view.name} F122 diag: a press that straddles a re-render still fires SHARE LOG`, async () => {
+    const pg = await open(view, 'diag-live', '', 5200);
+    await pg.evaluate(() => { window.__n = 0; window.brx.hud.h.onShareLog = () => { window.__n++; }; });   // count the tap, never run the real share
+    for (let i = 0; i < 4; i++) {
+      const at = await pg.evaluate(() => { const r = document.querySelector('[data-act="onShareLog"]').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+      await pg.mouse.move(at.x, at.y); await pg.mouse.down(); await pg.waitForTimeout(400); await pg.mouse.up(); await pg.waitForTimeout(150);   // 400 ms spans at least one 250 ms render
+    }
+    const n = await pg.evaluate(() => window.__n); await pg.close();
+    must(n === 4, `${n} of 4 presses became taps — a re-render destroyed the button under the finger`);
+  });
+  await step(`${view.name} F126 diag: text inflation is pinned off (WKWebView)`, async () => {
+    const pg = await open(view, 'diag-live', '', 5200);
+    const r = await pg.evaluate(() => ['html', 'body', '#diag'].map(s => [s, getComputedStyle(document.querySelector(s)).webkitTextSizeAdjust])); await pg.close();
+    must(r.every(x => x[1] === '100%'), 'WKWebView will inflate this text: ' + JSON.stringify(r));
+  });
+  await step(`${view.name} F115 down: the countdown is the same width at every value`, async () => {
+    const pg = await open(view, 'down', '', 5200);
+    const r = await pg.evaluate(() => { const n = document.querySelector('.down .n'); if (!n) return null; const keep = n.innerHTML;
+      const set = v => { n.innerHTML = String(v).split('').map(c => `<span class="d">${c}</span>`).join(''); };
+      const w = {}; for (const v of ['11', '10', '09', '08', '88', '00']) { set(v); w[v] = +n.getBoundingClientRect().width.toFixed(2); }
+      const clip = []; for (const c of '0123456789') { set(c); const d = n.querySelector('.d'); if (d.scrollWidth > d.clientWidth + 1) clip.push(c); }
+      n.innerHTML = keep; return { w, clip, cells: n.querySelectorAll('.d').length }; });
+    await pg.close();
+    must(r, 'no DOWN countdown'); must(r.cells === 2, 'the countdown is not built from per-digit cells: ' + JSON.stringify(r));
+    const ws = Object.values(r.w); must(Math.max(...ws) - Math.min(...ws) < 1, 'the digits re-lay-out on every tick: ' + JSON.stringify(r.w));
+    must(r.clip.length === 0, 'digits clipped by their own cell: ' + r.clip.join(''));
+  });
+  await step(`${view.name} F115 down: the digits do not stand over the label under them`, async () => {
+    const pg = await open(view, 'down', '', 5200);
+    const r = await pg.evaluate(() => { const n = document.querySelector('.down .n'), l = document.querySelector('.down .lab'), rc = document.querySelector('.down .recap');
+      const R = e => e.getBoundingClientRect(); return { grow: n.scrollHeight - n.clientHeight, nBottom: R(n).bottom, labTop: R(l).top, recapTop: rc ? R(rc).top : 1e9, labBottom: R(l).bottom }; });
+    await pg.close();
+    // `nBottom <= labTop` used to be asserted here and was a TAUTOLOGY: `.n` and `.lab` are siblings in the
+    // `.dn` flex column, so their BOXES can never overlap however the glyphs paint. `grow` is the real F115
+    // check — it measures the glyph box standing outside the element. The recap check is not a tautology:
+    // `.down .c` is absolutely positioned, so it genuinely can land on `.recap`.
+    must(r.labBottom <= r.recapTop + 1, 'the label runs into the recap');
+    must(r.grow < 40, `the glyph box stands ${r.grow}px past the element — line-height is fighting the font (F115)`);
+  });
+  // ---------- 2026-09-12 review of the Block A diff ----------
+  await step(`${view.name} F117 over: an UNSYNCED clock is explained under the button that refuses the tap`, async () => {
+    const pg = await open(view, 'over');
+    await pg.evaluate(() => { window.brx.engine.isSynced = () => false; window.brx.hud.render(window.brx.engine.state()); });
+    await pg.waitForTimeout(300);
+    const r = await pg.evaluate(() => { const n = document.querySelector('.foot .note');
+      return { note: n ? n.textContent.trim() : null, btn: document.querySelector('.foot .ready').textContent.trim(),
+               took: window.brx.engine.setReady(true) }; });
+    await pg.screenshot({ path: `${OUT}/${view.name}-over-unsynced.png` });
+    await pg.close();
+    must(/READY/.test(r.btn), 'this is not the post-match screen: ' + r.btn);
+    must(r.took === false, 'setReady no longer refuses an unsynced clock — this step proves nothing');
+    must(/[Ss]yncing/.test(r.note || ''), 'the button silently refuses and the note says nothing about it: ' + r.note);
+  });
+  await step(`${view.name} F122 diag: a reader at the tail of the LOG keeps following it as it grows`, async () => {
+    // Chromium CLAMPS a scroller across an innerHTML replacement rather than resetting it, so a growing log
+    // does not jump to the top — it drifts off the tail, which is the end a person reading a live log wants.
+    const pg = await open(view, 'diag-live', '', 5200);
+    const before = await pg.evaluate(() => { const h = window.brx.hud;
+      window.__log = ((h.diagData && h.diagData.log) || []).concat(Array.from({ length: 80 }, (_, i) => 'log line ' + i));
+      h.setDiag({ ...(h.diagData || {}), log: window.__log.slice() });
+      const p = document.getElementById('dg-log');
+      if (p.scrollHeight - p.clientHeight < 40) return null;
+      p.scrollTop = p.scrollHeight;                                   // the reader is AT THE BOTTOM
+      return { max: p.scrollHeight - p.clientHeight, top: p.scrollTop }; });
+    must(before && before.top > 10, 'the LOG pre does not scroll here, so this step proves nothing: ' + JSON.stringify(before));
+    const after = await pg.evaluate(() => { const h = window.brx.hud;
+      for (let i = 0; i < 8; i++) { window.__log.push('grew ' + i); h.setDiag({ ...(h.diagData || {}), log: window.__log.slice() }); }
+      const p = document.getElementById('dg-log');
+      return { gap: p.scrollHeight - p.clientHeight - p.scrollTop }; });
+    await pg.close();
+    must(after.gap <= 4, `the reader was left ${Math.round(after.gap)}px behind the tail as the log grew`);
+  });
+  await step(`${view.name} F123 reload: past the nominal time the bar goes indeterminate, not "0.0S"`, async () => {
+    // A chain weapon's `reloadTotalMs` is the PER-SHELL time, so the bar pinned at 100% and counted 0.0S for
+    // most of the reload. Once overrun is up the countdown goes away and the bar pulses instead.
+    const pg = await open(view, 'live-reload-overrun');
+    const r = await pg.evaluate(() => { const mo = document.querySelector('.mo.reloading'); if (!mo) return { none: true };
+      const n = mo.querySelector('.n'), bar = mo.querySelector('#rlbar'), t = mo.querySelector('.t');
+      return { over: mo.classList.contains('over'), head: t.textContent.trim(), overrun: window.brx.engine.state().reloadOverrun,
+               numShown: getComputedStyle(n).display !== 'none', num: n.textContent,
+               anim: getComputedStyle(bar).animationName, width: bar.style.width }; });
+    await pg.screenshot({ path: `${OUT}/${view.name}-live-reload-overrun.png` });
+    await pg.close();
+    must(!r.none, 'no RELOADING takeover on screen');
+    must(r.over, 'the overrun treatment is not up: ' + JSON.stringify(r));
+    must(!r.numShown, 'a wrong countdown is still on screen: "' + r.num + '"');
+    must(r.head === 'RELOADING…', 'the headline does not say the wait is open-ended: ' + r.head);
+    must(r.anim === 'rlpulse', 'the bar is not pulsing (it is pinned at a full, wrong 100%): ' + r.anim);
+  });
+  await step(`${view.name} F123 reload: a second reload in ONE BLE batch opens fresh, not on the last one's latch`, async () => {
+    // The overrun treatment is LATCHED for the life of one takeover, and `_moment` could not tell two apart:
+    // a $ALCD (fired) and a $BUT,2,1 arriving in ONE BLE batch end and re-open the takeover between two
+    // renders, so the NEW reload opened already pulsing with its countdown gone — at a magazine that had
+    // only just started moving (review 2026-09-12).
+    const pg = await open(view, 'live-reload-overrun');
+    const before = await pg.evaluate(() => !!document.querySelector('.mo.reloading.over'));
+    must(before, 'the first reload is not in overrun here, so this step would prove nothing');
+    const r = await pg.evaluate(async () => {
+      const d = window.brxDemo; d.fire(1); d.reloadPull();      // ONE synchronous batch: no render between them
+      await new Promise(res => setTimeout(res, 120));           // …and well inside the new reload's nominal time
+      const mo = document.querySelector('.mo.reloading'); const st = window.brx.engine.state();
+      return mo ? { over: mo.classList.contains('over'), head: mo.querySelector('.t').textContent.trim(),
+                    engineOverrun: st.reloadOverrun, numShown: getComputedStyle(mo.querySelector('.n')).display !== 'none' }
+                : { none: true, reloading: st.reloading };
+    });
+    await pg.close();
+    must(!r.none, 'the second pull raised no takeover: ' + JSON.stringify(r));
+    must(!r.engineOverrun, 'the new reload is genuinely in overrun already, so the class proves nothing: ' + JSON.stringify(r));
+    must(!r.over, "the new reload opened on the OLD one's overrun latch: " + JSON.stringify(r));
+    must(r.numShown && r.head === 'RELOADING', 'a reload that just started is dressed as an open-ended one: ' + JSON.stringify(r));
+  });
+  await step(`${view.name} F115 down: a three-digit countdown is clamped, never a third cell`, async () => {
+    // `respawnIn` is a server number — a long penalty box, or a stalled clock, is not the HUD's to render as
+    // a layout break. Three .56em cells at 170px do not fit the frame the countdown lives in.
+    const pg = await open(view, 'down', '', 5200);
+    const r = await pg.evaluate(async () => {
+      const e = window.brx.engine, real = e.state.bind(e);
+      e.state = () => ({ ...real(), respawnType: 'auto', respawnHint: 'timer', respawnIn: 120 });
+      window.brx.hud.render(e.state());
+      await new Promise(res => setTimeout(res, 150));
+      const n = document.querySelector('.down .n');
+      return n ? { cells: n.querySelectorAll('.d').length, text: n.textContent.trim() } : { none: true };
+    });
+    await pg.close();
+    must(!r.none, 'no DOWN countdown');
+    must(r.cells === 2, `respawnIn 120 rendered ${r.cells} cells ("${r.text}") — the frame holds two`);
+    must(r.text === '99', 'the clamp shows the ceiling, not a truncated or wrapped value: ' + r.text);
+  });
+  await step(`${view.name} F117 over: the ready note promises no veto the player does not have`, async () => {
+    // `state.py` `_on_ready` auto-advances ONLY in KIT (contracts §4.4): after a match the host pushes the
+    // next one whenever they like. "the host cannot start until everyone has" is how somebody sits a round out.
+    const pg = await open(view, 'over');
+    const r = await pg.evaluate(() => ({ note: (document.querySelector('.foot .note') || { textContent: '' }).textContent.trim(),
+                                         ready: window.brx.engine.state().ready }));
+    await pg.close();
+    must(!r.ready, 'this player is already readied, so the un-readied note is not the one on screen: ' + JSON.stringify(r));
+    must(!/cannot start until/i.test(r.note), 'the note still promises a veto the player does not have: ' + r.note);
+    must(/host sees who is ready/i.test(r.note), 'the note does not say what readying up actually does: ' + r.note);
+  });
   await step(`${view.name} #24 night: the kit plates stay visible`, async () => {
     const pg = await open(view, 'kitted', '&night'); const r = await pg.evaluate(() => Array.from(document.querySelectorAll('.plate')).map(p => getComputedStyle(p).backgroundColor)); await pg.close();
     must(r.length >= 3 && r.every(c => c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent'), 'transparent plates: ' + r.join(' '));
   });
 }
+await step('F110 briefing with a LONG name at 812\u00d7375 (the iPhone the report came from)', async () => {
+  const v = { name: 'iphone', width: 812, height: 375 };
+  const pg = await open(v, 'briefing-long');
+  const r = await pg.evaluate(() => { const b = document.querySelector('.bfbody'), f = document.querySelector('.bffoot');
+    const R = e => e.getBoundingClientRect(); const ft = R(f);
+    const hit = a => a.left < ft.right - 2 && a.right > ft.left + 2 && a.top < ft.bottom - 2 && a.bottom > ft.top + 2;
+    return { over: b.scrollHeight > b.clientHeight + 1, onFoot: Array.from(b.children).filter(e => hit(R(e))).map(e => e.className.split(' ')[0]),
+             last: Math.max(...Array.from(b.children).map(e => R(e).bottom)), footTop: ft.top }; });
+  await pg.close();
+  must(r.onFoot.length === 0, 'briefing rows sit on top of the CTA footer: ' + r.onFoot.join(','));
+  must(!r.over && r.last <= r.footTop - 4, JSON.stringify(r));
+});
+await step('F110 briefing at 812\u00d7375 (the iPhone the report came from)', async () => {
+  const v = { name: 'iphone', width: 812, height: 375 };
+  const sels = ['.bfname', '.bfdesc', '.bfk', '.bfrules', '.bfload'];
+  const pg = await open(v, 'briefing'); const r = await sheared(pg, sels);
+  const fit = await pg.evaluate(() => { const b = document.querySelector('.bfbody'), f = document.querySelector('.bffoot');
+    return { over: b.scrollHeight > b.clientHeight + 1, last: Math.max(...Array.from(b.children).map(e => e.getBoundingClientRect().bottom)), footTop: f.getBoundingClientRect().top }; });
+  await pg.close();
+  notSheared(r, sels);
+  must(!fit.over && fit.last <= fit.footTop - 4, JSON.stringify(fit));
+});
 await b.close(); srv.close();
 console.log(`\n${pass} passed, ${fail} failed${fail ? ': ' + errs.join(', ') : ''}`);
 process.exit(fail ? 1 : 0);

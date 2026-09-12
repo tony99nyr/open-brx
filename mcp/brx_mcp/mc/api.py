@@ -292,7 +292,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         try:
             return JSONResponse(s.patch_player(pid, **allowed))
         except (ValueError, TypeError, KeyError) as e:
-            return _err(str(e))
+            return _err(str(e), getattr(e, "status", 400))   # A30: the kit lock is a 409 (state of play), not a 400
 
     async def delete_player(req):
         pid = req.path_params["pid"]

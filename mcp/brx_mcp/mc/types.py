@@ -13,6 +13,11 @@ MULTI_KILL_MS = 4000
 FEEDBACK_MAX_AGE_MS = 3000
 STATUS_HEARTBEAT_MS = 2000
 STALE_AFTER_MS = 8000
+# F119: the smallest shot count an accuracy number is worth believing. Hits arrive per EVENT and shots
+# only on the ~2 s status heartbeat, so a row with a handful of shots swings wildly between samples and
+# can read over 100 %. `honors()` already refused SHARPSHOOTER below this; `ScoreRow.acc_provisional`
+# now says the same thing about the live number instead of leaving the UI to guess.
+ACC_MIN_SHOTS = 10
 # Past this, a node has not merely gone quiet — it is gone (phone asleep, app closed, gear packed
 # away). Everything else the board would say about it (gun link lost, clock unsynced, wrong wi-fi,
 # screen off) is a CONSEQUENCE of that, and listing them as separate faults turns a switched-off
@@ -377,8 +382,14 @@ class ScoreRow(TypedDict):
     hits: int
     accuracy: float | None
     kd: float
-    streak: int
+    streak: int            # CURRENT streak — 0 for whoever died last. `best_streak` is the one to show.
     medals: list[str]
+    # --- additive, 2026-09-11 (F116 / F119). Every field below is new; an older UI ignores them. ---
+    shots_total: int       # shots incl. the pre-hot-swap baseline (A6.2); == `shots`
+    best_streak: int       # F116: the LONGEST streak this match. `streak` stayed for compatibility.
+    multi_best: int        # the biggest multi-kill (2 = double, 3 = triple, 4+ = killtacular); 0 = none
+    first_blood: bool      # this player drew first blood
+    acc_provisional: bool  # F119: `accuracy` is not settled yet — render it as settling, not as fact
 
 
 class ReadinessRow(TypedDict, total=False):

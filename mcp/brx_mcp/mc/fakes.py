@@ -75,11 +75,16 @@ class FakeCompiler:
                 f"$GSET,{1 if config['mode'] == 'ffa' else 0},{1 if config['environment'] == 'outdoor' else 0},1,0,1,0,50,1,*",
                 f"$PSET,{player['player_num']},0,{hp},{ar},{ar},50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"]
         head += [f"$WEAP,{i},<{w}>,*" for i, w in enumerate(weapons[:2])] + ["$WEAP,4,<melee>,*"]
-        head += ["$SIR,0,0,,1,0,0,1,,*", "$BMAP,0,0,,,,,*", f"$TID,{tid},*"]
+        # F121/A23: this class is a RUNTIME FALLBACK that can reach a real tagger, so it is spawn-protected
+        # like the real compiler -- fn 28 pregame (registers a `$HIR`, moves no pool, no player feedback),
+        # the damage row with `$SPAWN` and with every revive. It still satisfies F11 either way: rows are
+        # PRESENT after the `$CLEAR`, which is what makes a gun hittable at all.
+        head += ["$SIR,0,0,,28,0,0,1,,*", "$BMAP,0,0,,,,,*", f"$TID,{tid},*"]
+        sir_live = ["$SIR,0,0,,1,0,0,1,,*"]
         ammo = [f"$AMMO,{i},36,108,1,*" for i in range(len(weapons[:2]))]
         return {"config_id": config["config_id"], "player_id": player["player_id"], "head": head,
-                "spawn": ["$PLAYX,0,*", "$SPAWN,,*", *ammo, "$BMAP,0,0,,,,,*"],
-                "revive": ["$SPAWN,,*", *ammo],
+                "spawn": [*sir_live, "$PLAYX,0,*", "$SPAWN,,*", *ammo, "$BMAP,0,0,,,,,*"],
+                "revive": [*sir_live, "$SPAWN,,*", *ammo],
                 "end": ["$SPAWN,,*", "$PLAYX,0,*", "$STOP,*", "$CLEAR,*", "$HLOOP,0,0,*", "$HLED,0,0,0,0,0,0,*"],
                 "panic": ["$CLEAR,*", "$SP,99,*"],
                 "team_flip": {str(t["tid"]): [f"$TID,{t['tid']},*"] for t in teams if t["tid"] != tid},

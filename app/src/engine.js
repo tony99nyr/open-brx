@@ -48,6 +48,14 @@ const STUN_DEFAULT_S = 10;          // F15: how long an EMP (proto-8 $HIR under 
 const MIN_RESPAWN_S = 3;
 const MEDAL_GAP_MS = 2000;       // A11.4: medal lines are 1.5-2.5 s; play them back to back, not on top of each other   // A11: no two LED bursts inside a second (three flashes per second is the ceiling)
 const RELOAD_GRACE_MS = 600;     // a reload the gun never echoed still clears the takeover this long after reload_s
+// F27 (HANDOFF): handle-pull -> mag-refill on HARDWARE runs consistently LONGER than the catalog
+// `reload_ms` — AR 1701 vs 1400, burst 2160 vs 1700, charge 3220 vs 2500, i.e. ~1.22-1.29x. A flat
+// 600 ms grace covers the first two and misses the charge rifle by 120 ms, which would end the takeover
+// on the frame BEFORE the gun's own echo and book a real reload as failed. The ceiling is therefore
+// proportional as well as flat, and `_reloadDeadline` takes the larger of the two.
+const RELOAD_OVERRUN = 0.5;      // ...and half the nominal reload on top, which clears every measured overrun
+// $BUT ids (protocol §$BUT — `$BUT,<id>,<state>`; state 1 press / 0 release).
+const BTN_TRIGGER = 0, BTN_ALT = 1, BTN_RELOAD = 2;
 const TEAM_KEY = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green' };
 // A16.5 (2026-09-09): outermost -> innermost, the order BRX depletes -- shield goes, then armour, then
 // health. Mirrors `poolgauge.py`'s `READOUT_POOL_INWARD`; kept as its own constant here too rather than
@@ -248,7 +256,12 @@ export class Engine {
     this.hurtFired = false;         // low-health alert already sent this life
     this.stunned = null;            // F15: {at, until, ammo:{slot:[mag,reserve]}} while an EMP has the gun disarmed; the ammo is the LIVE count to restore
     this.switching = null;          // {at, from} while an ALT weapon swap is in flight (field 2026-08-30)
-    this.reloading = null;          // {at, ms, slot} from the reload-handle pull ($BUT,2) until the mag comes back ($ALCD up) — HUD takeover (review 2026-09-03 #15)
+    // {at, ms, slot, from, cap, mag, lastGainAt} from the reload-handle pull ($BUT,2) until the gun's OWN
+    // $ALCD says the mag came back (review 2026-09-03 #15; reconciled against real ammo for F123).
+    this.reloading = null;
+    this._reloadOutcome = null;     // F123: how the LAST takeover ended — {ok, filled, from, to, cap, gained, slot, ms, why, at}; null before the first reload of a life
+    this.held = {};                 // F123: $BUT id -> the `now()` of the press that is still down (a release deletes the entry)
+    this.lastButton = null;         // the last $BUT edge either way: {id, state, at, heldMs}
     this.lastSwitchMs = null;       // measured duration of the last completed swap
     this._prevAmmo = {};            // per weapon slot ($ALCD token 3): last mag seen
     this._prevReserve = {};         // per weapon slot: last reserve seen ($ALCD token 4) -- the stun restore needs the LIVE pair, not the frame's (F15/F87)
@@ -368,7 +381,7 @@ export class Engine {
     if (this.start && (this.phase === 'lobby' || this.phase === 'armed')) this.resumeSchedule();
     this._changed();
   }
-  onBleDropped() { this.bleUp = false; this.reloading = null; this.switching = null; this._lightGen = (this._lightGen || 0) + 1; this.log('gun link lost', 'le'); this._changed(); }   // no link, no reload echo: the takeover would be fiction (pass-2 UX review 2026-09-03); the gen bump means a stray delayed write can't reach a gun that relinks mid-flight either
+  onBleDropped() { this.bleUp = false; this._endReload('dropped'); this.switching = null; this.held = {}; this.lastButton = null; this._lightGen = (this._lightGen || 0) + 1; this.log('gun link lost', 'le'); this._changed(); }   // no link, no reload echo: the takeover would be fiction (pass-2 UX review 2026-09-03); the gen bump means a stray delayed write can't reach a gun that relinks mid-flight either. `held` goes with it: `_onButton` keeps the FIRST edge, so a press whose release never arrived before the drop would read as held forever — and `lastButton` with it, for the same reason: the last thing the gun said would otherwise sit on the diag panel as a live edge the link can no longer complete (review 2026-09-12)
   setWsState(s, info) { this.wsState = s; this.wsReason = s === 'rejected' && info ? `${info.reason || 'refused'} (${info.code})` : null; this._changed(); }
 
   /** Pre-config probe set: only in CONNECTED/KITTED, never after a head is written (contracts §3). */
@@ -655,6 +668,29 @@ export class Engine {
       if (life !== this._gunLife || this._lightGen !== lg || !this.alive) return;
       this._write(take, 'gun take'); this._gunTaken = true; this._gunBand = rest; this._readoutFrame = rest;   // A16: the strip now shows `rest` — dark until a pool change paints a band
     });
+  }
+  /** F113 (2026-09-11) — blank the gun strip at death, overturning A16 §5's "no gun write here".
+   *
+   *  A16 §5 left the strip wherever the native hit flash put it, on the assumption that that was somewhere
+   *  sensible. The field killed the assumption: "killed with sniper rifle, 2 shots. it took down to 1 led of
+   *  purple and then dead. while dead it stayed at 1 purple." A fast kill lands DEATH in the middle of the
+   *  drop animation, A16.3 cancels the animation outright, nothing is written after it — so the strip freezes
+   *  at a partial level and reads as "a sliver of health left" for the whole death. The bigger the damage per
+   *  shot the worse it looks, which is why a sniper shows it and a 13-hit rifle mostly does not.
+   *
+   *  ONE frame, the same `$GLED,,,,5,,,*` blank `gun.take` already opens with (led-language.md §3.2; gate 5
+   *  applies empty colour tokens = OFF, and it is also what stops the firmware breathing). NOT `$HLED` —
+   *  the A16 hard rule that `$HLED,,6` is never sent in play is untouched here, and nothing on the HEADSET is
+   *  written at death at all, so the firmware's own out-flash still runs (that is the whole point of §3.2).
+   *  The repaint on the way back is `_gunTake`'s, unchanged: blank + rest, `after_spawn_s` after `$SPAWN`.
+   *
+   *  A game whose gun is `in_play: 'native'` ships no frames and no blank: the strip was never ours, so it is
+   *  not ours to turn off either. */
+  _gunBlankOnDeath() {
+    const g = this.frames && this.frames.gun;
+    if (!g || !g.blank) return;
+    this._gunTaken = false; this._gunBand = null;   // nothing is painted any more; a later rest paint must not be suppressed as a no-op
+    this._write([g.blank], 'gun blank (down)');
   }
   /** A11.7: the gun body's resting frame when the game owns it (frames.gun; absent = firmware breathing).
    *  team/dark: a fixed frame; health: the band for the current hp (bands highest-first, [fraction, frame]). */
@@ -1131,7 +1167,7 @@ export class Engine {
     this._cue('klaxon');
     // Spawn shield is ALWAYS 0 on hardware -- $PSET t5 is a capacity filled by an fn-11
     // grant, never a starting pool (bench 2026-08-27).
-    this.spawned = true; this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.killedBy = null; this.deadAt = 0; this.reloading = null;
+    this.spawned = true; this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.killedBy = null; this.deadAt = 0; this.reloading = null; this._reloadOutcome = null; this.held = {};
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
     this._gunTake();   // A11.7
     if (this.frames.headset) this._headsetDelayed(this.frames.headset.start, 'start');   // A16 §D: scheduled +1.0 s after $SPAWN, not inline (A11.6: white flash marks the start, then dark/team)
@@ -1543,6 +1579,7 @@ export class Engine {
       this._reassertDeathBlink(now);   // A11.6: keep the headset out-blink lit through a long DOWN (colour opt-in only)
       this._downRearm(now);            // §3.2: one $HLOOP rearm after the hands-off window (belt-and-braces; the native flash is already running)
       this._gunReadoutTick(now);       // A16 §3.1: revert the gun-body readout to rest once its hold has run out
+      this._reloadTick(now);           // F123: end a takeover the gun stopped feeding — and BOOK whether the mag actually came back
       this._hillTick(now);             // the possession tick on OUR ~1 s clock, and the >= 2-missed-beacon presence expiry
       this._reportPossession(now);     // and the possession CLOCK, which is what the mode is scored on
       if (this.moment && now - this.moment.at > 4000) { this.moment = null; }
@@ -1559,7 +1596,7 @@ export class Engine {
   }
 
   _revive(resync, stationId = null) {
-    this.reloading = null;                          // a reload that started in the last life does not follow you into this one
+    this.reloading = null; this._reloadOutcome = null; this.held = {};   // a reload that started in the last life does not follow you into this one, and no button is held across a death
     if (!this.frames) return;
     const down = this.frames.headset && this.frames.headset.down;
     if (down && down.stop) this._write([down.stop], 'down stop');   // §3.2: `$HLOOP,0,0,*` before $SPAWN — belt-and-braces, $SPAWN clears the loop on its own
@@ -1597,7 +1634,7 @@ export class Engine {
     this._reportPossession(this.now(), true);
     if (this.matchId && !this.endedMatches.includes(this.matchId)) this.endedMatches.push(this.matchId);
     if (this.bleUp) this._writeTeardown('end', why); else { this.pendingTeardown = 'end'; this.log(`end (${why}) owed to the gun — link down`, 'le'); }
-    this.spawned = false; this.alive = false; this.resync = null; this.reconciling = null; this.start = null; this._resyncRevive = false; this.reloading = null;
+    this.spawned = false; this.alive = false; this.resync = null; this.reconciling = null; this.start = null; this._resyncRevive = false; this.reloading = null; this._reloadOutcome = null; this.held = {};
     this.stunned = null;   // F15: the end frames own the gun now
     this.ready = false;
     this.moment = { kind: 'match_over', at: this.now() };
@@ -1843,13 +1880,7 @@ export class Engine {
       case 'VERSION': { if (t[1]) this.fw = t[1]; break; }
       case 'BUT': {
         if (this.resync) this._resyncButton(+t[1], +t[2]);
-        // $BUT id 1 = ALT (protocol §$BUT: 0=trigger 1=alt-fire 2=reload 3=select 4/5=left/right).
-        // Field 2026-08-30: the HUD only ever learned the live slot from $ALCD, which the gun sends on a
-        // SHOT -- so after an ALT swap it kept showing the old weapon "until you press trigger". The
-        // button event is the earliest evidence a swap started; $ALCD's slot still gets the last word.
-        if (+t[1] === 1 && +t[2] === 1) this._altPressed();
-        if (+t[1] === 2 && +t[2] === 1) this._reloadPulled();
-        if (+t[1] === 0 && +t[2] === 1) this._triggerPulled();   // a DEAD gun still reports the pull (bench 2026-09-04): the station-revive gate
+        this._onButton(+t[1], +t[2]);
         break;
       }
       default: break;
@@ -1959,10 +1990,61 @@ export class Engine {
     return this.respawnGate === 'trigger' ? 'pull_trigger' : 'reviving';
   }
 
+  /** Every `$BUT` edge — PRESS **and** RELEASE (protocol §$BUT: id 0 trigger · 1 alt-fire · 2 reload
+   *  handle · 3 select · 4/5 left/right; state 1 press / 0 release).
+   *
+   *  F123: until 2026-09-11 this read `state === 1` only and threw every release on the floor, so a HELD
+   *  button was invisible to the node — and the shotgun's reload is a HELD per-shell chain, which is why
+   *  `easy_reload` (a momentary `$BMAP,1,97` remap of ALT) could not reload it and nothing here could see
+   *  that it hadn't. The release edge was already on the wire the whole time; the frame ring from the
+   *  2026-09-11 game has `$BUT,0,1` → `$ALCD` → `$BUT,0,0` 224 ms later.
+   *
+   *  `held` is the map of buttons still down (id → the `now()` of the press). A repeat press with no
+   *  release between keeps the FIRST edge, so `heldMs` measures the hold and not the last repeat. */
+  _onButton(id, state) {
+    if (!Number.isFinite(id)) return;
+    const now = this.now();
+    if (state === 1) {
+      if (this.held[id] == null) this.held[id] = now;
+      this.lastButton = { id, state: 1, at: now, heldMs: null };
+      // Field 2026-08-30: the HUD only ever learned the live slot from $ALCD, which the gun sends on a
+      // SHOT -- so after an ALT swap it kept showing the old weapon "until you press trigger". The
+      // button event is the earliest evidence a swap started; $ALCD's slot still gets the last word.
+      if (id === BTN_ALT) this._altPressed();
+      else if (id === BTN_RELOAD) this._reloadPulled();
+      else if (id === BTN_TRIGGER) this._triggerPulled();   // a DEAD gun still reports the pull (bench 2026-09-04): the station-revive gate
+      return;                                                // `feedFrame` fires the one `_changed()` for this frame
+    }
+    if (state !== 0) return;
+    const since = this.held[id];
+    delete this.held[id];
+    const heldMs = since != null ? now - since : null;
+    this.lastButton = { id, state: 0, at: now, heldMs };
+    // A release is OBSERVATIONAL only. It must not cancel a reload: on a magazine weapon the handle is
+    // let go instantly and the reload still completes ~1.4 s later. Whether a reload actually happened is
+    // decided by the gun's ammo (`_onAmmo` / `_reloadDeadline`), never by a button edge or a timer.
+    if (id === BTN_RELOAD && this.reloading) this.reloading.releasedAt = now;
+  }
+  /** How long each still-down button has been held, in ms. PURE — read from `state()` on every render. */
+  heldMs() {
+    const now = this.now(), out = {};
+    for (const id of Object.keys(this.held)) out[id] = now - this.held[id];
+    return out;
+  }
+
   /** ALT pressed: a weapon swap has begun. Shooting is disabled until the gun finishes it. */
   _altPressed() {
     if (this.phase !== 'live' || !this.alive || this.tutorial) return;
+    // A20/F15, the same reason `_reloadPulled` refuses: a STUNNED gun is disarmed ($AMMO,<slot>,0,0) and
+    // `_onAmmo` drops every $ALCD for the whole window, so a SWITCHING takeover opened here has nothing
+    // that can confirm it — it runs to `switchWindowMs()` and then books an ASSUMED swap, leaving
+    // `activeSlot` on a weapon the player is not holding for the rest of the life (review 2026-09-12).
+    if (this.stunned) { this.log('ALT ignored — the gun is stunned', 'li'); return; }
     if (this._slotCount() < 2) { this._reloadPulled(); return; }   // empty slot 1: ALT falls back to reload (loadout.md §2) — same takeover as the handle
+    // A swap ABANDONS a running reload: the gun is putting a different weapon in your hands, so the old
+    // slot's magazine stops moving and no further $ALCD can reconcile the takeover. Left running it would
+    // sit on the chip bar to its deadline (`reloadUp` outranks `switchUp` in hud.js) and hide SWITCHING.
+    if (this.reloading) this._endReload('swapped');
     this.switching = { at: this.now(), from: this.activeSlot };
     this._changed();
   }
@@ -1970,6 +2052,10 @@ export class Engine {
   /** Reload handle pulled: the gun refuses fire for the weapon's reload time (catalog reload_s; 1.5 s when unknown). */
   _reloadPulled() {
     if (this.phase !== 'live' || !this.alive || this.tutorial || this.resync || this.reconciling) return;   // resync/reconcile: the gun is disarmed and unverified, no takeover
+    // A20/F15: a STUNNED gun is disarmed ($AMMO,<slot>,0,0) and `_onAmmo` drops every $ALCD for the whole
+    // window, so a takeover started here could never be reconciled: it would run to its deadline and book
+    // `ok:false` on a reload the player never asked the gun for. Refuse the pull instead.
+    if (this.stunned) { this.log('reload pull ignored — the gun is stunned', 'li'); return; }
     const cap = this._ammoBySlot()[this.activeSlot] ?? this.mag;                 // the spawn $AMMO cap, not the biggest count seen so far
     if (cap && this.ammo >= cap && (this.reserve || 0) > 0) return;             // nothing to reload — the gun ignores the pull
     if (!(this.reserve > 0)) return;                                           // dry reserve: no reload happens (whatever is in the mag)
@@ -1980,15 +2066,56 @@ export class Engine {
     const pk = this.player && this.player.loadout && this.player.loadout.perk ? this.perkRow(this.player.loadout.perk) : null;
     const rm = pk && pk.effects && pk.effects.reload_mult ? +pk.effects.reload_mult : 1;
     if (rm > 0 && rm !== 1 && this.activeSlot === 0) secs *= rm;   // compile applies reload_mult to slot 0 only (slot 1 gets swap_mods)
-    this.reloading = { at: this.now(), ms: Math.max(300, Math.round(secs * 1000)), slot: this.activeSlot };
+    const now = this.now();
+    // `from`/`cap`/`mag` are what make this a RECONCILIATION and not an animation: `ms` is only the
+    // nominal length, and the takeover ends on what the gun's own $ALCD says the magazine did.
+    this.reloading = { at: now, ms: Math.max(300, Math.round(secs * 1000)), slot: this.activeSlot,
+                       from: this.ammo, cap: cap || null, mag: this.ammo, lastGainAt: now, releasedAt: null };
+    this._reloadOutcome = null;
     this._gunReadoutReloadGlance();   // A16 §3.1: reload gets a glance at the current readout
     this._changed();
+  }
+  /** When a running takeover gives up waiting for the gun.
+   *
+   *  F123: `reloadingMs()` used to be a PURE TIMER, so a reload that never happened animated exactly like
+   *  one that did — the 2026-09-11 field report ("the hud animates reloading, but the gun doesnt actually
+   *  reload") is that timer. The deadline is now measured from the last time the MAGAZINE MOVED, not from
+   *  the pull, which covers both real behaviours in one rule:
+   *    · a magazine weapon gains its rounds in one $ALCD, late (F27) — the flat+proportional ceiling covers it;
+   *    · a shell-by-shell chain (the shotgun: 6 × ~420 ms) feeds one round at a time, and each shell pushes
+   *      the deadline out again, so the bar runs for as long as the gun is really loading and no longer.
+   *  No per-weapon "is this a chain reload" flag is needed on the phone for this: the gun tells us. */
+  _reloadDeadline() {
+    const r = this.reloading; if (!r) return 0;
+    return Math.max(r.at, r.lastGainAt || 0) + r.ms + Math.max(RELOAD_GRACE_MS, Math.round(r.ms * RELOAD_OVERRUN));
+  }
+  /** Book the end of a takeover and record WHAT THE GUN DID, so a failed reload can never read as a success.
+   *  `why`: 'filled' (mag reached the spawn cap) · 'fired' (a round left the mag, the reload is over) ·
+   *  'swapped' (an ALT swap took the weapon away) · 'timeout' (the gun stopped feeding) · 'dropped' (link lost). */
+  _endReload(why) {
+    const r = this.reloading; if (!r) return;
+    this.reloading = null;
+    const gained = Math.max(0, (r.mag ?? r.from) - r.from);
+    this._reloadOutcome = { ok: gained > 0, filled: r.cap != null ? r.mag >= r.cap : gained > 0,
+                            from: r.from, to: r.mag, cap: r.cap, gained, slot: r.slot,
+                            ms: this.now() - r.at, why, at: this.now() };
+    // A shot mid-reload is the PLAYER cancelling it, not the gun failing to feed — 'reload did NOT take'
+    // read as a defect in the log of every chain weapon anybody fires out of (review 2026-09-12).
+    if (why === 'fired' && !this._reloadOutcome.filled) this.log(`reload cancelled by a shot: ${r.mag} of ${r.cap ?? r.mag} loaded`, 'li');
+    else if (!gained) this.log(`reload did NOT take (${why}) — mag still ${r.mag}`, 'le');
+    else if (!this._reloadOutcome.filled) this.log(`reload partial: ${r.from} → ${r.mag} of ${r.cap} (${why})`, 'li');
+    this._changed();
+  }
+  /** tick(): end a takeover the gun has stopped feeding. The decision lives HERE, not in `reloadingMs()`,
+   *  which stays pure — but both read the same deadline, so a render between ticks can never disagree. */
+  _reloadTick(now) {
+    if (this.reloading && now > this._reloadDeadline()) this._endReload('timeout');
   }
   /** Milliseconds into the current reload, or null when none is running (PURE, read by state()). */
   reloadingMs() {
     if (!this.reloading) return null;
-    const ms = this.now() - this.reloading.at;
-    return ms > this.reloading.ms + RELOAD_GRACE_MS ? null : ms;
+    const now = this.now();
+    return now > this._reloadDeadline() ? null : now - this.reloading.at;
   }
 
   _slotCount() {
@@ -2023,7 +2150,21 @@ export class Engine {
     if (prev != null && mag < prev && this.phase === 'live') this.shots += (prev - mag);
     if (this.resync && prev != null && mag < prev) this._resyncEvidence('alcd-dec');
     if (this.resync && prev != null && mag > prev) this._resyncEvidence('alcd-inc');
-    if (this.reloading && prev != null && mag > prev && slot === this.reloading.slot) { this.reloading = null; }   // the mag is back: the gun fires again
+    // F123: the takeover is reconciled against the REAL magazine, one $ALCD at a time. A rise feeds it
+    // (and pushes the deadline out, which is what lets a shell-by-shell chain run to the end instead of
+    // clearing on shell #1); reaching the spawn cap finishes it; a round leaving the mag ends it, because
+    // the player has started shooting again. It is no longer cleared by "the mag went up" alone.
+    if (this.reloading && prev != null && slot === this.reloading.slot) {
+      if (mag > prev) {
+        this.reloading.mag = mag; this.reloading.lastGainAt = this.now();
+        if (this.reloading.cap != null && mag >= this.reloading.cap) this._endReload('filled');
+      } else if (mag < prev) {
+        // Book the outcome from the PRE-SHOT magazine. Overwriting `r.mag` with the post-shot count first
+        // made a shotgun chain that loaded two shells and then fired read as `gained:0, ok:false` — the exact
+        // false verdict F123 exists to prevent. The shot is not part of what the reload achieved.
+        this._endReload('fired');
+      }
+    }
     if (this.switching && slot !== this.switching.from && slot < 2) {
       // slot 4 is MELEE and arrives on its own $ALCD — it is not the weapon swap we were waiting for.
       // NB this interval is ALT-press -> next SHOT, so it includes the player's reaction time. It is a
@@ -2165,7 +2306,7 @@ export class Engine {
   }
 
   _death(desync) {
-    this.reloading = null; this.switching = null;   // the gun stops the reload/swap when you drop; so does the HUD
+    this.reloading = null; this.switching = null; this._reloadOutcome = null; this.held = {};   // the gun stops the reload/swap when you drop; so does the HUD
     const fresh = this.latch && this.now() - this.latch.at <= C.DEATH_LATCH_MS;
     const shooter_num = fresh ? this.latch.shooter_num : 0;
     const shooter_team = fresh ? this.latch.shooter_team : (this.latch ? this.latch.shooter_team : 0);
@@ -2176,13 +2317,13 @@ export class Engine {
     const unknown = !fresh || shooter_num === 0;
     this.alive = false; this.deaths++; this.deadAt = this.now(); this._downRearmSent = false;   // §3.2: fresh rearm gate for this life
     this._stunRestore('died');   // F15: death cancels the stun -- no restore write; the revive's own $AMMO re-arms the next life
-    // A16 §5: death clears the readout — NO gun write here, the strip simply sits wherever the native hit
-    // flash left it until the next `_gunTake` blanks it; a pending hold from this life must not fire later.
+    // A16 §5 (AMENDED 2026-09-11 by F113): death clears the readout AND blanks the strip.
     this._readoutFrame = null; this._readoutHoldActive = false; this._readoutLastWriteAt = null; this._readoutLastPool = null;
     // A16.3: death cancels any drop/gain animation outright (bar-spec: "Cancel everything ... on death") --
     // the killing hit itself never reaches here (`_gunPoolPaint` is only called `if (hp > 0)`), but a hit
     // just before it can still be mid-animation when death registers.
     this._roGen = (this._roGen || 0) + 1; this._roLevel = null; this._roPool = null; this._roAnimating = false; this._roBlinkAt = 0; this._roBlinkOn = false;
+    this._gunBlankOnDeath();   // F113: ...and then turn the strip OFF, rather than leaving it frozen mid-animation
     this._activeRole = null;   // A16 §3.3: cleared BEFORE the infection check below, which may assign a fresh 'infected' role in the same call
     this.killedBy = unknown
       ? { num: 0, team: null, name: null, teamName: null, teamKey: null, unknown: true }
@@ -2374,7 +2515,23 @@ export class Engine {
       ...(ms => ({ switching: ms != null, switchingMs: ms }))(this.switchingMs()),
       switchWindowMs: this.switchWindowMs(), lastSwitchMs: this.lastSwitchMs, activeSlot: this.activeSlot,
       switchFrom: this.switching ? this.switching.from : null, switchTo: this.switching ? (this.switching.from === 0 ? 1 : 0) : null,
-      ...(ms => ({ reloading: ms != null, reloadMs: ms, reloadTotalMs: this.reloading ? this.reloading.ms : null }))(this.reloadingMs()),
+      // F123: `reloading` is no longer a timer's opinion — it runs until the GUN's ammo says the reload is
+      // done (or stopped). `reloadOverrun` is true once the nominal time has passed and the magazine still
+      // has not come back (normal on hardware: F27 measures handle-to-refill at ~1.25x the catalog figure).
+      // `reloadOutcome` is the last takeover's verdict, and `ok:false` is the F123 symptom made visible.
+      // The four move together: between the deadline and the tick that books the timeout `this.reloading` is
+      // still set while `reloadingMs()` is already null, and a reader saw `reloading:false` beside a live
+      // total and gain. `ms == null` is the single gate for all of them.
+      ...(ms => ({ reloading: ms != null, reloadMs: ms, reloadTotalMs: ms != null ? this.reloading.ms : null,
+                   // WHICH takeover this is. The HUD latches `reloadOverrun` for the life of one reload, and
+                   // without an identity it could not tell a second reload from the first: a $ALCD (fired) and
+                   // a $BUT,2,1 in ONE BLE batch end and re-open the takeover between two renders, and the new
+                   // one opened already pulsing on the old one's latch (review 2026-09-12).
+                   reloadAt: ms != null ? this.reloading.at : null,
+                   reloadOverrun: !!(ms != null && ms > this.reloading.ms),
+                   reloadGained: ms != null ? Math.max(0, this.reloading.mag - this.reloading.from) : null }))(this.reloadingMs()),
+      reloadOutcome: this._reloadOutcome,
+      held: this.heldMs(), lastButton: this.lastButton,
       hits: this.score ? this.score.hits : null, board: this.score ? this.score.board : null,
       fragLimit: this.config && this.config.scoring ? this.config.scoring.frag_limit : null,
       lives: (this.config && this.config.respawn && this.config.respawn.lives != null) ? Math.max(0, this.config.respawn.lives - this.deaths) : null,

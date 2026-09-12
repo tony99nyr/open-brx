@@ -22,6 +22,8 @@ export function Armory() {
   if (!state) return null;
   const { readiness } = state;
   const board = readiness.board;
+  // A13.5: a utility phone is a station, not a companion; it has its own card in ITEMS below.
+  const phones = (state.nodes ?? []).filter(n => n.node_type !== 'utility');
   const nGreen = board.filter(g => g.status === 'green').length;
   const nAmber = board.filter(g => g.status === 'amber').length;
   const nRed = board.filter(g => g.status === 'red').length;
@@ -33,7 +35,7 @@ export function Armory() {
   // a disabled status on the button and thats it" — so the button IS the status: it says what it is
   // waiting for, and is disabled while it waits.
   const gateLabel = nRed ? `${nRed} GUN${nRed === 1 ? '' : 'S'} BLOCKED` : 'CONTINUE ▸';
-  const gateWhy = nRed ? (firstRed?.blockers[0] ?? 'Clear the fault to continue')
+  const gateWhy = nRed ? (firstRed?.blockers?.[0] ?? 'Clear the fault to continue')
     : nWaiting ? 'Open the BRX app on each phone and set its gun'
     : nGreen ? '' : 'Power the guns and open the app on each phone';
 
@@ -68,12 +70,14 @@ export function Armory() {
         </div>
       </div>
       <Items />
-      {/* A13.5: a utility phone is a station, not a companion; it has its own card in ITEMS above */}
-      {(state?.nodes ?? []).filter(n => n.node_type !== 'utility').length > 0 && (
-        <div style={{ marginTop: 20 }}>
-          <SectionRule label={`PHONES ON THE NET // ${(state?.nodes ?? []).filter(n => n.node_type !== 'utility').length}`} hint="WITH OR WITHOUT A GUN" />
+      {phones.length > 0 && (
+        /* `data-nodes` is the count this section BELIEVES it is rendering; each card carries
+           `data-node-card`. A test can then wait for "every phone card is on screen" instead of
+           sleeping through the first snapshots — the sleep is what hid the arm_state crash below. */
+        <div style={{ marginTop: 20 }} data-nodes={phones.length}>
+          <SectionRule label={`PHONES ON THE NET // ${phones.length}`} hint="WITH OR WITHOUT A GUN" />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 12 }}>
-            {(state?.nodes ?? []).filter(n => n.node_type !== 'utility').map(n => <NodeCard key={n.node_id} n={n} registry={registry} />)}
+            {phones.map(n => <NodeCard key={n.node_id} n={n} registry={registry} />)}
           </div>
         </div>
       )}
@@ -149,12 +153,12 @@ function GunCard({ g }: { g: ReadinessRow }) {
         {/* COMPANION row returns when the ESP32 rider exists — an always-empty row reads as broken (critic #25) */}
       </div>
       )}
-      {[...g.blockers, ...(g.ambers ?? [])].length > 0 && (
+      {[...(g.blockers ?? []), ...(g.ambers ?? [])].length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {/* Every message is `STATEMENT — INSTRUCTION`. As one uppercase run-on in a 248px card it
               wrapped mid-phrase and read as noise; split, the statement carries and the instruction
               sits under it quietly (field 2026-09-02). */}
-          {[...g.blockers.map(b => [b, true] as const), ...(g.ambers ?? []).map(b => [b, false] as const)].map(([b, blocking]) => {
+          {[...(g.blockers ?? []).map(b => [b, true] as const), ...(g.ambers ?? []).map(b => [b, false] as const)].map(([b, blocking]) => {
             const [head, ...rest] = b.split(' — ');
             const hint = rest.join(' — ').replace(/\b(DOES NOT BLOCK( YET)?|BLOCKS START)\b/g, '').trim();
             return (
@@ -180,8 +184,14 @@ function Val({ children, color }: { children: React.ReactNode; color: string }) 
 }
 
 
-/** A connected companion phone — with or without a gun. Same card language as GunCard. */
-function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { tail?: string } }[]; n: { node_id: string; gun_tail?: string | null; gun_name?: string | null; arm_state: string; last_seen_ms?: number | null; player_id?: string | null; battery?: number | null; fw?: string | null; preflight?: { phone_batt?: number | null } | null } }) {
+/** A connected companion phone — with or without a gun. Same card language as GunCard.
+ *
+ *  EVERY field here is optional on purpose, `NodeView` notwithstanding. A node that has said hello
+ *  but not yet sent its first `status` has NO `arm_state`, and `n.arm_state.toUpperCase()` took the
+ *  whole console down with it for the first ~300 ms of every session — the e2e walk had been
+ *  sleeping past it rather than seeing it (review 2026-09-12). The skill's rule: write down what
+ *  the UI does when a field is absent, because an older server or an earlier snapshot is normal. */
+function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { tail?: string } }[]; n: { node_id?: string | null; gun_tail?: string | null; gun_name?: string | null; arm_state?: string | null; last_seen_ms?: number | null; player_id?: string | null; battery?: number | null; fw?: string | null; preflight?: { phone_batt?: number | null } | null } }) {
   const { state, run, api } = useStore();
   const [name, setName] = useState('');
   const hasGun = !!n.gun_name;
@@ -201,13 +211,13 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
   const accent = hasGun ? T.acc : T.warn;
   const age = n.last_seen_ms ?? 0;
   return (
-    <div style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${accent}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, clipPath: CHAMFER.tr12 }}>
+    <div data-node-card={n.node_id ?? '?'} style={{ background: T.panel, border: `1px solid ${T.line}`, borderLeft: `3px solid ${accent}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 11, clipPath: CHAMFER.tr12 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
         <span style={{ font: F.osw(700, 18), letterSpacing: '.08em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{hasGun ? n.gun_name : 'NO GUN SET'}</span>
-        <Tag color={accent}>{n.arm_state.toUpperCase()}</Tag>
+        <Tag color={accent}>{(n.arm_state ?? 'unknown').toUpperCase()}</Tag>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: '6px 10px', alignItems: 'center' }}>
-        <Micro>PHONE</Micro><Val color={T.dim}>{n.node_id.slice(0, 12)}</Val>
+        <Micro>PHONE</Micro><Val color={T.dim}>{(n.node_id ?? '—').slice(0, 12)}</Val>
         <Micro>LINK</Micro><Val color={age > 8000 ? T.warn : T.dim}>{fmtAge(age)} AGO</Val>
         {n.preflight?.phone_batt != null && (<><Micro>PH BATT</Micro><Val color={n.preflight.phone_batt < 20 ? T.bad : T.dim}>{n.preflight.phone_batt}%</Val></>)}
         {n.battery != null && (<><Micro>GUN BATT</Micro><Val color={T.dim}>{n.battery}%</Val></>)}

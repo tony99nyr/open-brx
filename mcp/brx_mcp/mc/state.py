@@ -118,6 +118,35 @@ MODES = [
 TRYOUT_TEARDOWN = ("$SPAWN,,*", "$PLAYX,0,*", "$STOP,*", "$CLEAR,*", "$HLOOP,0,0,*",
                    "$HLED,0,0,0,0,0,0,*")
 
+# The OPERATOR's line for an event whose subject MC could not name (`_alert_feed_text`). Every entry
+# here is a `presentation.MC_TEXT` template that needs a `{who}`: with no subject, `feed_text` falls back
+# to the HUD's own second-person copy, which is F118 all over again on the host console. These say the
+# same thing about nobody in particular; the unresolved id is appended after them.
+_MC_TEXT_NO_SUBJECT = {"lead_taken": "THE LEAD CHANGED", "lead_lost": "THE LEAD CHANGED",
+                       "last_survivor": "ONE PLAYER IS LEFT STANDING", "infected": "A PLAYER WAS INFECTED"}
+
+# THE KIT LOCKS AT START (2026-09-12). Everything a player carries is compiled into `frames`, and the only
+# way to change a gun's frames is a `config` envelope -- which rewrites `frames.head`. Since A23/F121 that
+# head is the DISARMED fn-28 `$SIR` table (the real one rides `frames.spawn`/`frames.revive`), and
+# `engine.js _applyConfig` sets `spawned = false` while KEEPING an armed/live phase, with `resumeSchedule()`
+# returning early in `live` -- so nothing re-spawns that gun. The player is then hit by everything, moves no
+# pool and cannot fire, for the rest of the match. So no kit change is accepted once a match is running: the
+# phone is told in its own words, the host in the operator's.
+KIT_LOCKED = "THE MATCH HAS STARTED — YOUR KIT IS LOCKED UNTIL THE NEXT ONE"
+
+
+class ConflictError(ValueError):
+    """A refusal about the STATE OF PLAY rather than the request: correct, just not now (A30 → HTTP 409).
+
+    Still a ValueError, so every existing caller and route keeps working unchanged; `api.py` reads
+    `.status` where it matters. `PresetError` has carried the same field since the saved-games lane."""
+    status = 409
+
+_KIT_LOCKED_HOST = ("the match is {phase}: a player's kit is locked until it ends — changing {what} now would "
+                    "re-arm that gun with the disarmed head and it could not fire or take damage again this "
+                    "match. RECALL or END first")
+_KIT_FIELDS = ("loadout", "voice", "voice_slots", "player_num", "gun_id")
+
 
 def default_config(mode: str = "tdm") -> GameConfig:
     m = next(x for x in MODES if x["mode"] == mode)
@@ -201,6 +230,10 @@ class Session:
         self._role_due: list[tuple[int, str, str, bool, int | None]] = []
         self.start_seq = 0
         self.scorer: Scorer | None = None
+        # F124: a frag cap reached while a BATCH is being scored waits for the batch (`ingest_batch`), so
+        # the recap is snapshotted from every fact in it and not from the half the cap interrupted.
+        self._batch_depth = 0
+        self._pending_limit_t: int | None = None
         self._score_pushed: dict[str, dict] = {}   # A7: last ScoreRow pushed per player
         self._log_bytes: dict[str, int] = {}       # per-node pulled-log byte budget
         self.last_recap: dict | None = None
@@ -742,6 +775,12 @@ class Session:
 
     def patch_player(self, pid: str, **fields) -> Player:
         p = self.players[pid]
+        if self.phase in ("armed", "live"):
+            # Only the fields that would be COMPILED to the gun are refused. A mid-match re-team, a ready
+            # flag and a gamertag ride in `assign` (roster/display) and never touch the head, so they stay.
+            locked = [k for k in _KIT_FIELDS if k in fields and fields[k] is not None]
+            if locked:
+                raise ConflictError(_KIT_LOCKED_HOST.format(phase=self.phase.upper(), what="/".join(locked)))
         old_voice, old_display, old_slots = p.get("voice"), p.get("display"), dict(p.get("voice_slots") or {})
         if "player_num" in fields and fields["player_num"] is not None:
             if self.lobby_pushed:
@@ -899,15 +938,21 @@ class Session:
         `ack_config` ~1.5 s later. Re-sending `start` would be a no-op anyway: `startAt()` returns
         `reason: 'noop'` for a repeat with the same seq and match_id.
 
-        Pinned by `tests/test_mc_loadout_after_start.py` -- if you are about to "fix" this asymmetry,
-        read that first."""
+        ⚠ ARMED/LIVE: the config leg is skipped for a node that has already TAKEN this match's config,
+        because the kit is locked once a match starts (`KIT_LOCKED`, A30). `assign` still goes -- it is
+        roster and display, it never reaches the gun -- and every caller that could change what is
+        COMPILED refuses before it gets here, so that skip is a backstop, not a silent drop. A node that
+        has NOT taken the config still gets it, plus the same `start`: that is the hot join (E5, see
+        `_took_this_config`). Pinned by `tests/test_mc_loadout_after_start.py`."""
         if not p.get("node_id"):
             return
         self.net.push(p["node_id"], "assign", self._assign_body(p))
-        if self.lobby_pushed:
+        if self.lobby_pushed and not (self.phase in ("armed", "live") and self._took_this_config(p)):
             self._push_config_to(p)
             if with_start and self.start_info:
                 self.net.push(p["node_id"], "start", self._start_body())
+        elif with_start and self.start_info:
+            self.net.push(p["node_id"], "start", self._start_body())
 
     def _after_player_change(self, p: Player, new: bool = False):
         self._resend(p, with_start=True)
@@ -1464,7 +1509,14 @@ class Session:
         if self.phase in ("kit", "lobby", "armed") and self.nodes.get(nid, {}).get("synced"):
             self.synced_at_lobby[nid] = True   # same pre-live gate as _on_status (A5.7)
         # A5.6 late joiner: a node binding a player after the lobby push gets its bundle (+ the running start) now.
-        if self.lobby_pushed and p["player_id"] not in self.bundles:
+        # Mid-match too: a node that never took this match's config HOT JOINS on it (contracts §5 `start`,
+        # node.md M-START E5). A30's lock is about a gun already in play, and this path DECIDES it rather
+        # than letting `_push_config_to` raise: a node that acked this config or reports itself armed/live
+        # is bound and left alone, no config and no start. Round-2 review 2026-09-12 -- everything above
+        # has already run by the time we get here (the node rebound, the previous holder cleared, the
+        # scorer rebased), so an exception escaping from HERE leaves a half-bound node, and the route is
+        # real: a bundle-less player added mid-match adopting a phone that is already playing.
+        if self.lobby_pushed and p["player_id"] not in self.bundles and not self._took_this_config(p):
             self._push_config_to(p)
             if self.start_info:
                 self.net.push(nid, "start", self._start_body())
@@ -1616,6 +1668,7 @@ class Session:
                 self._queue_role(pid, "vip", True)
         if self.scorer:
             self.scorer.ingest(nid, ev, t_recv, seq=seq)
+            self._flush_pending_limit()   # a cap deferred by a batch never waits on the NEXT batch
             self._restore_recap()
             self._push_scores()
             self._changed()
@@ -1626,9 +1679,25 @@ class Session:
             self._log(nid, ev.get("type", "event"), ev, t_recv, seq=ev.get("seq"),
                       parked=not self.scorer or ev.get("match_id") != self.scorer.match_id)
         if self.scorer:
-            self.scorer.ingest_batch(nid, events, t_recv)
-            if any(ev.get("match_id") == self.scorer.match_id for ev in events):   # no SYNC POINT for an all-parked batch
-                self.scorer.sync_point(t_recv, sum(1 for s in self.scorer.stats.values() if s.flushed), len(self.players))
+            # F124 (polish review 2026-09-12): the cap callback fires from INSIDE this loop, so ending the
+            # match there snapshotted the recap (`store.match_ended`) and pushed the victory cue while the
+            # rest of the batch was still being scored — two deaths on the same millisecond, one batch, and
+            # the stored recap (and the winner it names) was taken from a half-ingested batch. The end
+            # FREEZE is still taken at the winning kill, inside the loop (so the A6.1 rule is unchanged and
+            # a later fact in the batch still parks as post_end); only the finish waits for the batch.
+            self._batch_depth += 1
+            try:
+                self.scorer.ingest_batch(nid, events, t_recv)
+                if any(ev.get("match_id") == self.scorer.match_id for ev in events):   # no SYNC POINT for an all-parked batch
+                    self.scorer.sync_point(t_recv, sum(1 for s in self.scorer.stats.values() if s.flushed), len(self.players))
+            finally:
+                # Round-2 review 2026-09-12: the flush belongs INSIDE the `finally`. The freeze is taken
+                # at the winning kill; if a later event in the batch raised, the deferred finish was
+                # simply dropped and nothing else ever flushed it — a scorer frozen by A6.1 (no fact can
+                # score again) under a phase stuck on `live`. `tick()` and the single-event path flush it
+                # too, so a cap left pending by any route is finished by the next thing that happens.
+                self._batch_depth -= 1
+                self._flush_pending_limit()
             self._restore_recap()
             self._push_scores()
             self._changed()
@@ -1811,7 +1880,14 @@ class Session:
         slot, kind = str(body.get("slot") or ""), str(body.get("kind") or "")
         rid = body.get("id") if isinstance(body.get("id"), str) else None
         weapons, perks = self._catalog_rows()
-        ok, reason = _policy.check_request(self.policy(), self.loadout_pool(), slot, kind, rid, weapons, perks)
+        # F123: the last argument is the player's CURRENT kit. Only one rule needs it -- `easy_reload` on a
+        # chain-reload weapon -- and without it the phone's pick came back ok:true and then silently did not
+        # apply (`set_slot` refuses to store the pairing), so the player got no reason at all. The host path
+        # (PATCH /api/players) already refused it; this is the phone path catching up.
+        ok, reason = _policy.check_request(self.policy(), self.loadout_pool(), slot, kind, rid, weapons, perks,
+                                           p.get("loadout"))
+        if ok and self.phase in ("armed", "live"):
+            ok, reason = False, KIT_LOCKED          # the kit locks at START: nothing is stored, nothing is pushed
         if ok and not self.lobby_pushed and self.phase != "kit":
             # before KIT the phones are on "setting up" (§4.6); after the push the existing path below still applies
             # the pick (re-push) and only reports the try-out as closed
@@ -1819,7 +1895,7 @@ class Session:
         dropped = None
         if ok:
             before = p.get("loadout") or {"weapons": []}
-            new = _policy.set_slot(before, slot, kind, rid, perks)
+            new = _policy.set_slot(before, slot, kind, rid, perks, weapons)
             try:
                 new = self._check_loadout(new)
             except ValueError as e:
@@ -1918,12 +1994,52 @@ class Session:
             logging.getLogger("brx.mc").debug("voice roll for %s: %s", p.get("display"), rolled)
         return bundle
 
+    def _took_this_config(self, p: Player) -> bool:
+        """Is this player's node already PLAYING this match's config?
+
+        Two independent signals, either of which is enough: it acked the config it was pushed (an ack is
+        cleared by every push, so one that is standing belongs to the head the node holds now), or its own
+        status reports it armed/live. Both mean a fresh head would un-spawn a gun that is in play.
+
+        A node with neither has never taken this match's config — a late joiner, or a phone that arrived
+        after the push — and for it a `config` + the same `start` is the HOT JOIN (contracts §5 `start`,
+        node.md M-START E5): `engine.js resumeSchedule()` sees a phase that is not `live`, so it reaches
+        `_spawn()` and logs "hot-join (+N s)". That path must stay open."""
+        if (self.acks.get(p["player_id"]) or {}).get("ok"):
+            return True
+        return (self.nodes.get(p.get("node_id")) or {}).get("arm_state") in ("armed", "live")
+
     def _push_config_to(self, p: Player):
+        # The guard `push_config` carries, narrowed to ONE player: a `config` is a head write, and in
+        # armed/live that head is the F121 disarmed table with nothing to re-spawn a gun already in play.
+        # A node that never took this match's config is the exception — that write is its hot join.
+        if self.phase in ("armed", "live") and self._took_this_config(p):
+            raise ConflictError(_KIT_LOCKED_HOST.format(phase=self.phase.upper(), what="the frames"))
         bundle = self._compile_rolled(p)
         self.bundles[p["player_id"]] = bundle
         self.acks.pop(p["player_id"], None)
         if p.get("node_id"):
             self.net.push(p["node_id"], "config", {"config": self._wire_config(), "frames": bundle, "roster": self.roster()})
+
+    def _refuse_push_in_play(self) -> None:
+        """A full config push during a running match is a SAFETY refusal, not a readiness one.
+
+        The node writes `frames.head` on every `config` (`engine.js _applyConfig`) and sets
+        `spawned = false` with no spawn or revive behind it. Since A23/F121 that head is the fn-28
+        DISARMED `$SIR` table — every cell registers a `$HIR` with no sound, no flash and no pool
+        movement — and the REAL table now rides `frames.spawn` / `frames.revive`. So a push to a live
+        gun leaves a player who still hears their own gun fire, still gets hit, and takes no damage
+        until their next life. Before F121 the same push merely re-armed the live table, which is why
+        it was only ever a note ("never push config after START") and is now a guard.
+
+        Deliberately NOT bypassable by `force`: `force` is the operator's override of a READINESS
+        judgement (a red row they can see and accept). This is a statement about what the push does to
+        a gun that is in play, and no amount of operator intent changes it. RECALL or END first.
+        """
+        if self.phase in ("armed", "live"):
+            raise ValueError(f"the match is {self.phase.upper()}: pushing the config now would re-arm every "
+                             "gun with the DISARMED head and leave it unable to take damage until its next "
+                             "life. RECALL to return the field to KIT, or END the match first")
 
     def push_config(self, force: bool = False) -> dict:
         """Compile + push every player's bundle. `force` is the OPERATOR OVERRIDE.
@@ -1933,7 +2049,10 @@ class Session:
         recourse. `start()` has had a `force` since A6; push did not, which is the inconsistency that
         stranded the session. A forced push still compiles and sends to every BOUND node; a player
         whose gun is not linked simply will not ack, which the lobby already shows.
+
+        ⚠ NOT in ARMED or LIVE, and `force` does not open that door (`_refuse_push_in_play`).
         """
+        self._refuse_push_in_play()       # before any side effect: a refused push must change nothing
         self._pinned_hit_plan = None      # A17: a full re-push is the ONE place the hit-audio plan re-derives
         rd = self.readiness()
         if not self.players:
@@ -1994,11 +2113,17 @@ class Session:
         now = self.now_ms()
         self.start_info = {"match_id": uuid.uuid4().hex[:10], "go_live_t": now + runway_s * 1000,
                            "seq": self.start_seq, "countdown_s": runway_s}
-        self.scorer = Scorer(self.start_info["match_id"], self.start_info["go_live_t"], self.config["time_limit_s"],
-                             self.config["mode"], self.players, self.teams, self.node_player, self.synced_at_lobby,
-                             on_feedback=lambda pid, body: self._feedback(pid, body), on_feed=self._on_feed, now_ms=self.now_ms,
-                             on_alert=self._alert, frag_limit=(self.config.get("scoring") or {}).get("frag_limit"),
-                             win_by=(self.config.get("scoring") or {}).get("win_by"))
+        sc = Scorer(self.start_info["match_id"], self.start_info["go_live_t"], self.config["time_limit_s"],
+                    self.config["mode"], self.players, self.teams, self.node_player, self.synced_at_lobby,
+                    on_feedback=lambda pid, body: self._feedback(pid, body), on_feed=self._on_feed, now_ms=self.now_ms,
+                    on_alert=self._alert, frag_limit=(self.config.get("scoring") or {}).get("frag_limit"),
+                    win_by=(self.config.get("scoring") or {}).get("win_by"))
+        # The cap callback names the scorer that fired it. A Scorer outlives the Session's pointer to it
+        # (a recap's frozen scorer, a scorer replaced by a re-start, a copy a caller kept), and a late fact
+        # ingested into one of those would otherwise end the match that is running NOW.
+        sc.on_limit = lambda t, _sc=sc: self._on_frag_limit(t, _sc)
+        self.scorer = sc
+        self._pending_limit_t = None           # a new match owes nothing to the last one's cap
         self.feed = []
         self.last_recap = None
         if self.store:
@@ -2074,6 +2199,48 @@ class Session:
         ok = not (missing or stale or unflushed) and bool(self.players)
         return {"confident": ok, "missing": missing, "stale": stale, "unflushed": unflushed}
 
+    def _display_for(self, ident: str | None) -> str | None:
+        """An alert's subject id → what the OPERATOR reads: a player's display name, a team's name.
+
+        F118, field 2026-09-11: the console printed `Your Team Takes The Lead (002803e7)`. The KILL
+        rows in the same feed resolve their ids (`Scorer._name`) and the alert path simply did not —
+        so the one line that names a winner named a hex string instead. Returns None for an id on
+        neither the roster nor the team list; the caller decides what to say about that.
+        """
+        if not ident or ident == "all":
+            return None
+        p = self.players.get(ident)
+        if p:
+            return str(p.get("display") or ident)
+        t = self.team(ident)
+        if t:
+            return str(t.get("name") or ident).replace(" TEAM", "")   # "RED TEAM" is the roster label, not a sentence
+        return None
+
+    def _alert_feed_text(self, kind: str, scope: str, extra: dict | None = None) -> str:
+        """The MC console's line for an alert: third person, mode-aware, ids resolved (F118).
+
+        The SUBJECT is whatever the event is about — `extra.player_id` when it carries one (who turned,
+        who is the last standing), otherwise the `scope` itself, which for a lead change IS the new
+        leader: a team_id in a team mode, a PLAYER id in FFA. `presentation.feed_text` supplies the
+        operator's wording, so "YOUR TEAM TAKES THE LEAD" (right on the player's own phone, wrong on a
+        host console, and meaningless in an FFA with no teams) becomes "ROCCO takes the lead".
+        """
+        who = self._display_for((extra or {}).get("player_id")) or self._display_for(scope)
+        tmpl = _pres.MC_TEXT.get(kind) or ""
+        if who is None and "{who}" in tmpl:
+            # F118 again (polish 2026-09-12): `feed_text` degrades a subject-less `{who}` template to the
+            # HUD's own copy, and the HUD's copy is SECOND PERSON — so an id MC could not resolve put
+            # "YOUR TEAM TAKES THE LEAD" back on the host console, which is the exact line F118 fixed.
+            # The subject is unknown, not the sentence: say it in the third person and let the caller
+            # append the raw id below.
+            text = _MC_TEXT_NO_SUBJECT.get(kind, kind.replace("_", " ").upper())
+        else:
+            text = _pres.feed_text(kind, who)
+        if who is None and scope != "all":
+            text += f" ({scope})"        # an id on neither list: say so plainly rather than drop it
+        return text
+
     def _alert(self, kind: str, scope: str, extra: dict | None = None) -> int:
         """A11.4: push a named game event to every node it concerns. `scope` = "all" | team_id | player_id.
         The node plays `cues[kind]` + `leds[kind]` from its OWN bundle (its presentation profile) and shows
@@ -2088,7 +2255,7 @@ class Session:
             conf = self.mc_confidence()
             if not conf["confident"]:
                 self._on_feed({"t_match_s": max(0, (self.now_ms() - (self.scorer.go_live_t if self.scorer else self.now_ms())) // 1000),
-                               "text": f"{_pres.TEXT.get(kind, kind)} withheld: MC not confident "
+                               "text": f"{self._alert_feed_text(kind, scope, extra)} — withheld: MC not confident "
                                        f"(offline {len(conf['missing'])}, stale {len(conf['stale'])}, unflushed {len(conf['unflushed'])})",
                                "tag": "WITHHELD", "kind": "alert"})
                 return 0
@@ -2107,7 +2274,7 @@ class Session:
             if self.net.push(p["node_id"], "alert", body) is not False:   # fakes return None; the real net False = no socket
                 n += 1
         self._on_feed({"t_match_s": max(0, (self.now_ms() - (self.scorer.go_live_t if self.scorer else self.now_ms())) // 1000),
-                       "text": base["text"].title() + (f" ({scope})" if scope != "all" else ""), "tag": "ALERT", "kind": "alert"})
+                       "text": self._alert_feed_text(kind, scope, extra), "tag": "ALERT", "kind": "alert"})
         return n
 
     # ---------- held headset roles (A19 / S10, led-language.md §3.3) ----------
@@ -2165,31 +2332,78 @@ class Session:
         for cb in self._feed_listeners:
             cb(entry)
 
-    def control(self, cmd: str, confirm: bool = False) -> dict:
-        if cmd not in ("end", "recall", "panic"):
-            raise ValueError("unknown control")
-        if cmd == "panic" and not confirm:
-            raise ValueError("panic requires confirm")
-        # broadcast() returns how many nodes it actually reached and this discarded it, so END MATCH
-        # EARLY reported success even when it landed on nobody (field 2026-09-01: "end game early on
-        # MC did not go to each hud"). The operator needs the number — `abort` already shows one.
-        # F31 residual (2026-09-11): `broadcast` counted every live SOCKET (a utility phone, a phone with no
-        # player) while `nodes` below counts PLAYERS with a bound node, so "END REACHED 3 OF 2" was
-        # possible and "2 of 2" did not mean both HUDs. Sent per bound player node now, so the two numbers
-        # are the same population; a node with no player has no match to end.
+    def _broadcast_control(self, cmd: str) -> int:
+        """Push `control{cmd}` to every non-utility node; return how many BOUND PLAYER nodes took it.
+
+        broadcast() returns how many nodes it actually reached and `control` used to discard it, so END
+        MATCH EARLY reported success even when it landed on nobody (field 2026-09-01: "end game early on
+        MC did not go to each hud"). F31 residual (2026-09-11): `broadcast` counted every live SOCKET (a
+        utility phone, a phone with no player) while `nodes` counts PLAYERS with a bound node, so
+        "END REACHED 3 OF 2" was possible and "2 of 2" did not mean both HUDs.
+
+        Delivery goes to EVERY non-utility node MC knows — a HUD whose binding was lost mid-match still
+        runs the match on its gun and must still get END/PANIC (review 2026-09-11) — while the COUNT is
+        over the bound player nodes, so it is the same population the operator sees as `nodes`.
+        """
         body = {"cmd": cmd}
         bound_nodes = {p["node_id"] for p in self.players.values() if p.get("node_id")}
         reached = 0
-        # Delivery goes to EVERY non-utility node MC knows (a HUD whose binding was lost mid-match still runs
-        # the match on its gun and must still get END/PANIC -- review 2026-09-11); the COUNT is over the bound
-        # player nodes, the same population as `nodes` below.
         for nid, nv in list(self.nodes.items()):
             if nv.get("node_type") == "utility":
                 continue
             ok = self.net.push(nid, "control", body)
             if nid in bound_nodes and ok is not False:
                 reached += 1
-        if cmd == "end" and self.scorer:
+        return reached
+
+    def control(self, cmd: str, confirm: bool = False) -> dict:
+        """`reached` counts nodes an END/RECALL/PANIC that ACTUALLY HAPPENED got to — never a push alone.
+
+        F125, field 2026-09-11: *"MC says end reached 2 of 2 nodes but game is still going."* `reached`
+        was counted BEFORE the branch that ends anything, so an `end` that ended nothing still returned
+        `{ok: True, reached: 2, nodes: 2}` (measured against the pre-fix build). The node ran on ~18 s
+        and ended on its OWN time limit — `write end (time-expiry)` in the Android's log. That count has
+        now been wrong three times; it is reported after the fact from here on.
+
+        ⚠ The sheet's note on the old `:2018` branch ("NEVER sets phase") is not what the code did: the
+        recall/panic branch DOES set `phase = "kit"`, so an END with no scorer used to perform a
+        recall-shaped transition — silently, on a press that wrote no recap. That is the second half of
+        the defect, and it is why the no-scorer case now changes no phase at all and names RECALL
+        instead: an END press must never quietly do something else.
+        """
+        if cmd not in ("end", "recall", "panic"):
+            raise ValueError("unknown control")
+        if cmd == "panic" and not confirm:
+            raise ValueError("panic requires confirm")
+        bound = sum(1 for p in self.players.values() if p.get("node_id"))
+        if cmd == "end" and self.phase == "recap":
+            # The match is already over and its recap is written. A second END used to run `set_end` +
+            # `_finish` again on the frozen scorer — re-writing the recap and re-pushing the victory cue to
+            # the winners, who are standing in a debrief (polish review 2026-09-12). The press is still
+            # FORWARDED (a node that missed the first END is exactly why an operator presses it twice), but
+            # it ends nothing, so it must not claim to. PANIC and RECALL are untouched.
+            pushed = self._broadcast_control("end")
+            self._on_feed({"t_match_s": 0, "tag": "WITHHELD", "kind": "alert",
+                           "text": f"END AGAIN — the match already ended and the recap stands. "
+                                   f"{pushed} node(s) were told to stop again"})
+            self._changed()
+            return {"ok": False, "ended": False, "reached": 0, "pushed": pushed, "nodes": bound,
+                    "phase": self.phase,
+                    "error": "this match has already ended — the recap stands (RECALL returns the field to KIT)"}
+        if cmd == "end" and self.scorer is None:
+            # Nothing is being scored: there is no match to freeze and no recap to write, so this END
+            # ends NOTHING and must not claim otherwise. The nodes are still told to stop — one of them
+            # may well be running a match MC lost track of, which is exactly how this is reached.
+            pushed = self._broadcast_control("end")
+            self._on_feed({"t_match_s": 0, "tag": "WITHHELD", "kind": "alert",
+                           "text": f"END DID NOTHING — no match is being scored (phase {self.phase.upper()}). "
+                                   f"{pushed} node(s) were told to stop; RECALL returns the field to KIT"})
+            self._changed()
+            return {"ok": False, "ended": False, "reached": 0, "pushed": pushed, "nodes": bound,
+                    "phase": self.phase,
+                    "error": "no match is being scored — nothing to end (RECALL returns the field to KIT)"}
+        reached = self._broadcast_control(cmd)
+        if cmd == "end":
             self.scorer.set_end(self.now_ms())           # A6.1 end freeze
             self._finish()
         else:                                            # recall/panic stop a live game → KITTED (A5.9)
@@ -2199,8 +2413,53 @@ class Session:
             self.acks = {}
             self.phase = "kit"
         self._changed()
+        return {"ok": True, "ended": True, "reached": reached, "pushed": reached, "nodes": bound,
+                "phase": self.phase}
+
+    def _on_frag_limit(self, t: int, scorer=None) -> None:
+        """F124: the cap is reached — end the match, down the same path `control('end')` takes.
+
+        `compile.py` already documents the intent ("frag_limit on a non-full-coverage venue is an
+        in-coverage EARLY END only"): MC ends on the kills it can see. That is precisely why every node
+        is pushed `control{end}` and not just the ones that scored — the cap is display-only on the HUD
+        and the gun never reads `frag_limit` at all, so this push IS the thing that stops the field.
+
+        `scorer` is the Scorer that fired, and it must be the one being played: a frozen recap scorer or
+        one replaced by a re-start can still be handed a late fact, and it must not end the CURRENT match.
+
+        The freeze is taken here, at the winning kill. The finish is not, when this arrives mid-batch:
+        see `ingest_batch`.
+        """
+        if scorer is not None and scorer is not self.scorer:
+            return
+        if not self.scorer or self.phase not in ("armed", "live"):
+            return
+        self.scorer.set_end(t)                           # A6.1 end freeze, at the kill that won it
+        if self._batch_depth:
+            self._pending_limit_t = t if self._pending_limit_t is None else min(self._pending_limit_t, t)
+            return
+        self._end_on_frag_limit(t)
+
+    def _flush_pending_limit(self) -> None:
+        """Finish a cap that was reached mid-batch, now that the whole batch is scored."""
+        t, self._pending_limit_t = self._pending_limit_t, None
+        if t is not None:
+            self._end_on_frag_limit(t)
+
+    def _end_on_frag_limit(self, t: int) -> None:
+        if not self.scorer or self.phase not in ("armed", "live"):
+            return
+        cap, t_match_s = self.scorer.frag_limit, max(0, (t - self.scorer.go_live_t) // 1000)
+        reached = self._broadcast_control("end")
         bound = sum(1 for p in self.players.values() if p.get("node_id"))
-        return {"ok": True, "reached": reached, "nodes": bound}
+        self.scorer.set_end(t)
+        self._finish()
+        # One line, after the fact, saying what actually happened — the same honesty rule `control`
+        # now follows. A node MC could not reach ends on its own time limit, so the operator needs
+        # to see that this END was partial while they are still standing on the field.
+        self._on_feed({"t_match_s": t_match_s, "tag": "ALERT" if reached >= bound else "WITHHELD", "kind": "alert",
+                       "text": f"FRAG LIMIT {cap} REACHED — MATCH OVER · END REACHED {reached} OF {bound} NODE(S)"})
+        self._changed()
 
     def _push_victory(self, recap: dict | None) -> None:
         """At recap, the WINNING team's (or FFA winner's) connected nodes get the `victory` cue; losers
@@ -2246,6 +2505,7 @@ class Session:
 
     def tick(self) -> None:
         """Call periodically (≥1 Hz): armed→live at go_live_t; live→recap at the timed end (+5 s grace)."""
+        self._flush_pending_limit()   # last resort: a cap deferred mid-batch ends even if no fact follows
         if not self.start_info:
             return
         now = self.now_ms()

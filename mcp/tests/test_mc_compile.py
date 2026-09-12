@@ -71,7 +71,13 @@ def test_tid_resolves_from_team_id():
 def test_spawn_shape():
     b = C.compile(_cfg(), _player(), _TEAMS)
     sp = b["spawn"]
-    assert sp[0] == "$PLAYX,0,*" and sp[1] == "$SPAWN,,*"
+    # F121/A23: the REAL $SIR table leads the burst -- the head shipped the same cells disarmed, and
+    # this is where hit reception is armed, immediately before the `$SPAWN` that makes the player live.
+    sir = [f for f in sp if f.startswith("$SIR")]
+    assert sp[:len(sir)] == sir, "the $SIR rows lead the spawn burst"
+    rest = sp[len(sir):]
+    assert rest[0] == "$PLAYX,0,*" and rest[1] == "$SPAWN,,*"
+    sp = rest
     assert not any(f.startswith("$GLED") for f in sp)                    # A11.7: the node takes the body on a timer, not in the burst
     # $BMAP,0,0 closes the T-0 tail. A11.6: the headset is DARK in play by default, so no $HLED follows;
     # with headset.in_play == "team" one does -- see test_headset_team.py.
@@ -82,6 +88,12 @@ def test_spawn_shape():
 def test_revive_is_spawn_plus_ammo_no_bmap_no_hloop():
     b = C.compile(_cfg(), _player(), _TEAMS)
     rv = b["revive"]
+    # F121/A23: the real table leads a revive too -- `engine.js _resyncNotLive` re-writes the (disarmed)
+    # HEAD on a live node and revives from there, so a revive that did not re-arm leaves that player
+    # immortal for the rest of the match.
+    sir = [f for f in rv if f.startswith("$SIR")]
+    assert rv[:len(sir)] == sir and sir, "the $SIR rows lead the revive write"
+    rv = rv[len(sir):]
     assert rv[0] == "$SPAWN,,*"
     assert all(f.startswith("$AMMO,") for f in rv[1:])          # A11.6: dark headset in play -> no $HLED tail; A11.7: no $GLED here
     assert not any(f.startswith("$BMAP") for f in rv), "revive must not re-map buttons"
@@ -1072,22 +1084,28 @@ def _sir_fn(head, cell=("8", "0")):
 
 def test_stun_ships_the_emp_row_only_when_the_config_asks():
     """`config.stun` present -> the `<8,0>` cell is fn 24 (status: `$HIR`, no pool change); absent -> the stock
-    charge-rifle row, byte-for-byte (the golden bundle must not move)."""
+    charge-rifle row, byte-for-byte (the golden bundle must not move).
+
+    F121/A23 moved the LIVE table out of the head and into the spawn burst, so the stun row is asserted
+    where it now lands. The head's copy of the cell is a disarmed fn-28 registrar in both cases -- a
+    countdown EMP must not stun either."""
     from brx_mcp.mc.compile import _STUN_SIR_ROW
     from brx_mcp.gameconfig import _SIR_TABLE
     # CONTROL: no stun -> the stock table, in stock order, untouched
-    head = C.compile(_cfg(), _player(), _TEAMS)["head"]
-    assert _sir_fn(head) == 38, "stock: the charge rifle's plain damage"
-    assert [f for f in head if f.startswith("$SIR,")] == list(_SIR_TABLE)
+    b = C.compile(_cfg(), _player(), _TEAMS)
+    assert _sir_fn(b["spawn"]) == 38, "stock: the charge rifle's plain damage"
+    assert [f for f in b["spawn"] if f.startswith("$SIR,")] == list(_SIR_TABLE)
+    assert _sir_fn(b["head"]) == 28, "F121: the head's copy of the cell moves no pool"
     # stun on -> fn 24 on the SAME cell, in the SAME position, nothing else moved
-    on = C.compile(dict(_cfg(), stun={"duration_s": 10}), _player(), _TEAMS)["head"]
-    rows_on = [f for f in on if f.startswith("$SIR,")]
-    assert _sir_fn(on) == 24
+    on = C.compile(dict(_cfg(), stun={"duration_s": 10}), _player(), _TEAMS)
+    rows_on = [f for f in on["spawn"] if f.startswith("$SIR,")]
+    assert _sir_fn(on["spawn"]) == 24
+    assert _sir_fn(on["head"]) == 28, "F121: fn 24 is a DELAYED BLAST -- it may never ship pregame"
     assert rows_on.index(_STUN_SIR_ROW) == list(_SIR_TABLE).index("$SIR,8,0,,38,0,0,1,,*"), "in place, not appended"
     assert [r for r in rows_on if not r.startswith("$SIR,8,0,")] == [r for r in _SIR_TABLE if not r.startswith("$SIR,8,0,")]
     assert "$SIR,8,0,,24,0,0,1,,*" in rows_on and _STUN_SIR_ROW.split(",")[3] == "", "the sound token stays EMPTY (F43: never invent a sound id)"
     # `{}` is the 10 s default and still ships the row
-    assert _sir_fn(C.compile(dict(_cfg(), stun={}), _player(), _TEAMS)["head"]) == 24
+    assert _sir_fn(C.compile(dict(_cfg(), stun={}), _player(), _TEAMS)["spawn"]) == 24
 
 
 def test_stun_row_rides_every_sir_pool_take_too():

@@ -124,6 +124,24 @@ export function startDemo({ engine, log }) {
       assign: () => engine.onMcMessage({ kind: 'assign', body: { player, team, roster, catalog, policy, game } }),
       kitOpen: open => { policy.kit_open = open; ev.assign(); },
       briefing: () => engine.openBriefing(), briefDone: () => engine.closeBriefing(),
+      // F110 (review): the WORST briefing payload a host can produce — a game name that wraps to two lines
+      // over a loadout line that wraps too. The demo payload is one short line of each, which is the F111
+      // mistake: a layout only ever driven with its happy-path data.
+      longGame: () => { Object.assign(game, {
+        name: 'Operation Midnight Thunderdome Extended',
+        desc: 'Two squads, one contested corridor, and a scoreboard that only moves when a body hits the floor. Downed players redeploy from their own spawn after the delay and walk straight back into it.',
+        ruleset: 'NO HEAVIES · NO SIDEARMS · ONE LIFE PER PUSH',
+        loadout_line: 'You pick your primary from the full rack, a second weapon in slot two, and a perk of your choice — the host has locked nothing this game, so every one of them is yours to change until you ready up.' });
+        ev.assign(); },
+      // F123: a per-shell chain — the gun feeds the tube one round at a time, SLOWER than the per-shell
+      // nominal, so the reload bar spends the whole chain past `reloadTotalMs` (the overrun treatment).
+      reloadChain: (shells = 18, everyMs = 800) => {
+        engine.feedFrame('$BUT,2,1,*');
+        let n = 0;
+        const shell = () => { if (n++ >= shells || !engine.reloading || mag >= 31) return;
+          mag++; if (reserve > 0) reserve--; engine.feedFrame(`$ALCD,${mag},100,0,${reserve},0,*`); setTimeout(shell, everyMs); };
+        setTimeout(shell, everyMs);
+      },
       ready: v => engine.setReady(v == null ? !engine.ready : !!v),
       openLoadout: slot => { const h = hud(); if (h) { h.lo.tab = slot || 'primary'; h.lo.focus = null; h.lo.filter = 'weapons'; } engine.browse(true); },
       closeLoadout: () => engine.browse(false),
@@ -176,6 +194,9 @@ export function startDemo({ engine, log }) {
         engine.setStations(list); },
       scanner: (delay_s = 3, gate = 'trigger') => { config.respawn = { type: 'scanner', delay_s, gate }; },   // stage-time: the SHORTEST legal delay (F13/F34: the engine floors anything under 3 s, so a 1 s fixture silently ran at 3 s and the harness read HOLD where it expected the trigger prompt)
       state: () => engine.state(),
+      // the diagnostics panel (the ⓘ button). `on` omitted = toggle. F122's screen-truth steps drive it
+      // while the 250 ms render loop keeps pushing fresh diag data underneath.
+      diag: on => { const h = hud(); if (!h) return; const open = h.diag.classList.contains('open'); if (on == null || !!on !== open) h.toggleDiag(); },
     };
     // each STAGE is a list of [delayMs, step] — the delays give the app's boot + render loop room between steps
     const kit = [[0, 'linkGun'], [50, () => ev.battery(82)], [150, 'assign'], [200, 'mcBound']];
@@ -187,6 +208,7 @@ export function startDemo({ engine, log }) {
       'connected':         [[0, 'linkGun'], [50, () => ev.battery(82)]],
       'setup':             [[0, () => { policy.kit_open = false; }], ...kit],
       'briefing':          kit,
+      'briefing-long':     [...kit, [250, 'longGame']],                                                       // F110: a two-line name AND a wrapped loadout line
       'kitted':            kitted,
       'kitted-ready':      [...kitted, [400, () => ev.ready(true)]],
       'loadout-primary':   [...kitted, [400, () => ev.openLoadout('primary')]],
@@ -209,6 +231,7 @@ export function startDemo({ engine, log }) {
       'live-kill':         [...live, [2300, () => ev.killConfirm()]],
       'down':              [...live, [2300, () => ev.score(3, 1, 1)], [2350, 'die']],
       'live-reload':       [...live, [2300, () => ev.fire(12)], [2600, 'reloadCycle']],
+      'live-reload-overrun': [[0, () => { player.loadout = { weapons: [{ weapon_id: 'shotgun' }] }; }], ...live, [2300, () => ev.fire(20)], [2600, () => ev.reloadChain(18, 800)]],   // F123: the chain reload — nominal is the PER-SHELL time, so the bar is in overrun for the whole reload
       'live-switch':       [[0, 'twoWeapons'], ...live, [2300, () => ev.fire(3)], [2600, 'altCycle']],
       'live-switch-perk':  [[0, 'quickSwitch'], ...live, [2300, () => ev.fire(3)], [2600, 'alt']],
       'down-hold':         [[0, () => ev.scanner(8)], ...live, [2300, 'die'], [2400, () => ev.station(-70, true)]],
@@ -227,6 +250,8 @@ export function startDemo({ engine, log }) {
       'result':            [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end']],
       'over':              [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, 'endOk']],
       'panic':             [...live, [2300, 'panic']],
+      'diag':              [...kitted, [400, () => ev.diag(true)]],                                            // F122: the ⓘ panel, nothing churning under it
+      'diag-live':         [...live, [2300, () => ev.diag(true)]],                                             // F122: the SAME panel while the live clock rewrites its data 4×/s
     };
     const steps = STAGES[stageName];
     if (!steps) log(`stage "${stageName}" unknown — one of: ${Object.keys(STAGES).join(' ')}`, 'le');

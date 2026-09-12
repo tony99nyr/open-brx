@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "node test/e2e/koth.mjs",
-    "e2e:backhaul": "node test/e2e/backhaul.mjs"
+    "e2e:backhaul": "node test/e2e/backhaul.mjs",
+    "e2e:kit": "node test/e2e/kit-continue.mjs"
   },
   "dependencies": {
     "qrcode": "^1.5.4",

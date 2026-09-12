@@ -833,7 +833,10 @@ def test_revive_writes_exactly_one_spawn_line_in_the_revive_write():
             new = all_[i:]
             plays = _voice_plays(new)
             assert len(plays) == 1 and plays[0] in pool, f"one spawn line per revive, got {plays} in {new}"
-            assert new.index(plays[0]) == len(st.bundle["revive"]), "the take rides in the revive write, right after its frames"
+            # `new` is sliced from the LAST $SPAWN, so compare against the revive frames from $SPAWN on
+            # -- F121/A23 put the real $SIR table ahead of it, and those rows are before the slice.
+            tail = st.bundle["revive"][st.bundle["revive"].index("$SPAWN,,*"):]
+            assert new.index(plays[0]) == len(tail), "the take rides in the revive write, right after its frames"
             why = next(l["why"] for l in reversed(st.log) if l["text"] == plays[0])
             assert "spawn line (" in why, why    # A15.3: "revive + scream Vxx N/3 + spawn line (…)" -- a fresh death scream now rides ahead too
             # "respawned" carries no default gun/headset LED burst any more (A16 §6 finding #5: a
