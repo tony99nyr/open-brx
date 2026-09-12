@@ -91,6 +91,7 @@ npm run build           # bundle src/app.js -> www/app.js  (scripts/build.mjs, e
 
 npm run ios:setup       # build, add the iOS platform if missing, apply our iOS config
 npm run ios:open        # open the project in Xcode  (needs full Xcode)
+npm run ios:push        # build + install + launch on every paired iPhone, over Wi-Fi (see below)
 
 npm run android:setup   # build, add the Android platform if missing, sync
 npm run android:apk     # build the APK the public site hands out (-> webapp/download/)
@@ -115,6 +116,24 @@ release" amber all need a real number. Everything that ships the app runs `npm r
 (`sync`, `ios:setup`, `android:setup`, `android:apk`, `ui:stage`, `ui:screens`), so everything bakes
 it. The dirty flag counts TRACKED changes only, and a checkout with no git reads `<version>+unknown`.
 The first two rows of the debug panel's LINK section show what this phone is actually running.
+
+### Getting a build onto an iPhone
+
+`npm run ios:push` is the iOS equivalent of sideloading an APK: it bundles `src/`, re-applies
+`ios-setup.sh`, then builds, installs and launches on **every paired iPhone** — over the local
+network, no cable. `-- --list` shows the targets without building, `-- <text>` filters by name or
+UDID, `-- --no-launch` leaves the app closed. Like `android:apk`, it bakes in the **working tree**
+and warns about anything uncommitted; it prints the short SHA it built from, so a phone can always
+be traced back to a tree.
+
+The phone must be on the same Wi-Fi, awake, paired, with **Developer Mode** on
+(*Settings > Privacy & Security*) and this Mac's certificate trusted
+(*Settings > General > VPN & Device Management*). The script names whichever of those is missing
+rather than leaving you with xcodebuild's *"Timed out waiting for all destinations"*.
+
+⚠ This is a **development** install signed with the project's `DEVELOPMENT_TEAM`. On a free Apple ID
+the app stops launching after **7 days** — re-run to refresh. TestFlight is a separate path and
+this script never uploads anything.
 
 ### Publishing the Android build
 
@@ -221,7 +240,9 @@ Xcode's own error messages don't explain most of these, so in order:
 6. **First launch fails as an untrusted developer.** On the phone:
    **Settings ▸ General ▸ VPN & Device Management** → your Apple ID → **Trust**. Then Run again.
 
-With a free Apple ID the build **expires after 7 days** and must be re-run from Xcode.
+With a free Apple ID the build **expires after 7 days**. Re-run it from Xcode, or with
+`npm run ios:push` (*Getting a build onto an iPhone*, above), which needs no cable once the
+phone has been paired once.
 
 ## What's generated vs. committed
 

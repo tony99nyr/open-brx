@@ -9,6 +9,7 @@
     "sync": "npm run build && npx cap sync",
     "ios:setup": "npm run build && ./scripts/ios-setup.sh",
     "ios:open": "npx cap open ios",
+    "ios:push": "./scripts/ios-push.sh",
     "android:setup": "npm run build && ./scripts/android-setup.sh",
     "android:apk": "./scripts/android-apk.sh",
     "android:install": "./scripts/android-install.sh",
