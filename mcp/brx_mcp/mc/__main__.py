@@ -126,6 +126,10 @@ def build(args):
         extra.append(_start_net)
     else:
         net.start(ip, args.ws_port, "/ws")
+        if getattr(args, "tunnel", False):
+            # --fake-net has no socket to expose, so --tunnel has nothing to do. SAY so: a flag that is
+            # silently ignored is the shape of half the bugs in this repo's history.
+            print("  backhaul: --tunnel ignored (--fake-net has no node socket to expose)", flush=True)
     try:
         session.store = Store(session.session_id)
     except Exception as e:
