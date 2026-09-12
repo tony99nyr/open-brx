@@ -18,7 +18,7 @@ specified. Then **[`manual/`](manual/)**, the confirmed-facts manual the public 
   machine roles. Overwritten each session, never stacked.
 - **[FOLLOWUPS.md](FOLLOWUPS.md)** — **every open item and nothing else**, with a "Needs Tony at the bench"
   section (the bench queue) and "System proofs" (needs players / space). Ids are permanent. The rows are
-  the only index: a separate triage file drifted eleven closed ids behind within a day and was retired.
+  the only index.
 - **[experiment-log/](experiment-log/)** — the append-only lab notebook, one file per month;
   [`experiment-log.md`](experiment-log.md) is its index. **Append after every session.** Nobody reads it
   for orientation; grep it.
@@ -35,7 +35,7 @@ Around them: **[`gotchas.md`](gotchas.md)** (field lore by symptom, plus the ben
 | [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) | the WHOLE queue, grouped by setup block. FOLLOWUPS §9 is the register (ids); this is the running order |
 | [`bench-grenade.md`](bench-grenade.md) | the grenade/hill rungs. Read its *What is answered* table first, then *Still to run* |
 | [`bench-super-indoor-2026-09-07.md`](bench-super-indoor-2026-09-07.md) | Q15, MacBook-only, entirely outstanding and needing its own plumbing pass |
-| [`bench-flash-control-2026-09-05.md`](bench-flash-control-2026-09-05.md) | the flash ladder, written up once; the queue CITES it rather than re-deriving it. The t6/t21/t22/F23 designs moved to [`archive/bench-weap-tokens-discovery-2026-09-04.md`](archive/bench-weap-tokens-discovery-2026-09-04.md), still cited from the queue's BQ-D1 row |
+| [`bench-flash-control-2026-09-05.md`](bench-flash-control-2026-09-05.md) | the flash ladder, written up once; the queue CITES it rather than re-deriving it. The t6/t21/t22/F23 designs are in [`archive/bench-weap-tokens-discovery-2026-09-04.md`](archive/bench-weap-tokens-discovery-2026-09-04.md), cited from the queue's BQ-D1 row |
 
 ### Session close is three writes
 1. One entry in the current month's experiment log (the evidence).
@@ -58,8 +58,7 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
   install path, first contact, where captures land.
 - **[gun-stage.md](gun-stage.md)** — the click-to-try page + walkthrough for one real gun.
 - **[capture-runbook.md](capture-runbook.md)** — how to take a capture (iOS PacketLogger, Android HCI
-  snoop, the ESP32 IR rig, the decoders and their gotchas) and the capture jobs still open. The method
-  half moved here out of `manual/dev.md`.
+  snoop, the ESP32 IR rig, the decoders and their gotchas) and the capture jobs still open.
 
 ## Spec of record — build against this
 - **[spec/README.md](spec/README.md)** (invariants + module map + amendment index) →
@@ -77,9 +76,9 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 - **[VISION.md](VISION.md)** — strategy + naming.
 - **[game-modes.md](game-modes.md)** — the mode catalog, the infrastructure tiers, and the hard ceilings per mode.
 - **[extraction-design.md](extraction-design.md)** — the flagship Extraction mode: the event ladder, the BRX
-  mechanic mapping, the tier ladder and the genre research. Split out of `game-modes.md`.
+  mechanic mapping, the tier ladder and the genre research.
 - **[edge-brp.md](edge-brp.md)** — the competitive study of Battle Company's EDGE + Battle Rifle Pro, and the
-  parity targets it sets. Moved out of `reference/`: it is strategy context, not manual evidence.
+  parity targets it sets. It is strategy context, not manual evidence.
 - **[weapon-design.md](weapon-design.md)** — the balance rationale and the open flatten-vs-retune decision.
 - **[utility-roadmap.md](utility-roadmap.md)** — the objective-station work in order, the grenade-as-control-point
   evidence, and two designs (roaming hills, Territories) that are specified but not built. What it costs an
@@ -116,8 +115,8 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 ## Building the software
 - **[../app/README.md](../app/README.md)** — the native phone app (Capacitor → Android + iOS), the APK publish path.
 - **[../mcp/README.md](../mcp/README.md)** — `brx-mcp`: install, first contact, the CLI and MCP tool
-  tables, `diag-game`, platform notes. Split out of `manual/dev.md`, which is the
-  protocol, not our tooling.
+  tables, `diag-game`, platform notes — the tooling docs, as opposed to the protocol facts in
+  `manual/dev.md`.
 - **[../mcp/brx_mcp/mc/README.md](../mcp/brx_mcp/mc/README.md)** — the Mission Control server: how to start it, every flag, the UI it serves.
 - **[../webapp/mc/README.md](../webapp/mc/README.md)** — the Mission Control web UI.
 - **[manual/README.md](manual/README.md)** — the public site: how a fact gets in. **[site/README.md](site/README.md)**

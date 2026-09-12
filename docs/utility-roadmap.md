@@ -591,7 +591,7 @@ proposed again by somebody:
 captured base (linear-ish); *Strongholds* in Halo 5 / Infinite is the majority threshold. The reference is useful
 for the shape of each model and settles nothing by itself.
 
-⬜ **And a third option that is still open: scale ADVANTAGE, not points** — holding more territories shortens your
+**And a third option, open, undecided: scale ADVANTAGE, not points** — holding more territories shortens your
 respawn delay, *Dominion*'s approach. It answers the superlinear objection (board control compounds, the score does
 not snowball) and it is the one item here Tony has not ruled on. Written up in **§5f.7**.
 

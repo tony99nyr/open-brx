@@ -181,8 +181,8 @@ them, which is worth knowing before anyone designs a mode around them.
 Rungs S, Y, R and appendix steps 2, 3 and 4 are done. The rig commands, controls and traps they used are
 copied below in *Setup*, so this sheet does not depend on the archive to run anything. The findings, the
 run history and the by-ear detail are archived whole at
-[`archive/bench-grenade-answered.md`](archive/bench-grenade-answered.md) — run history only. Do not
-re-run them.
+[`archive/bench-grenade-answered.md`](archive/bench-grenade-answered.md) — run history, plus the
+original command appendix. Do not re-run them.
 
 ## Setup (5 min)
 
@@ -216,7 +216,9 @@ depends on the archive to run the rig; the findings they produced are in
   ```
 
   Expect a beacon every ~2.5 s shown as `GRENADE RESPAWN owner=team2`, the witness reporting 52 edges
-  per beacon, both stopping in the box. ⚠ **Trap:** if the witness reports more than 54 edges per
+  per beacon, both stopping in the box. At the end it prints the **replay word** for each distinct
+  beacon. Write the word down if it differs from the predicted `1111000000100000011000001` (owner
+  team2) or `1111000000010000011000001` (owner team1). ⚠ **Trap:** if the witness reports more than 54 edges per
   beacon the grenade uses a longer word than a shot, and any replay must use the raw word from this
   log, not the gun echo.
 

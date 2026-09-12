@@ -137,8 +137,8 @@ Nothing is changed in this step. Say so in the message.
   merge → fix-stale text → split.
 - **Concurrent sessions share one git index** here: `git commit --only <paths>` for every commit;
   never `git add -A`.
-- After every group: `cd mcp && python3 run_tests.py` (link/stamp/id guards) and, if `docs/manual/`
-  or `docs/platform/` moved, `cd site && npm test`.
+- After every group: see CLAUDE.md → Environment for the four suites — run the Python suite
+  (link/stamp/id guards) always, and the site suite too if `docs/manual/` or `docs/platform/` moved.
 - A file that leaves the living tree because its work ran goes to `docs/archive/` with its name kept;
   its FOLLOWUPS ids get one dated line in `docs/archive/followups-closed.md`. Deleting is for
   scratch, generated output and one-off tool exports that git history already holds.

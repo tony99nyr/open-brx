@@ -1,5 +1,8 @@
 # Grenade IR bench — the answered half
 
+The commands in Appendix B were copied back into `../bench-grenade.md` Setup on 2026-09-12; the living
+sheet is the one to run from.
+
 Archived 2026-09-12 out of `docs/bench-grenade.md`, which now carries only what is still to run, the
 setup and the traps. Nothing here is re-run. The WIRE facts these runs produced live in
 `protocol/brx-ir-protocol.md` §"The grenade beacon" — that is the canonical home, not this file.

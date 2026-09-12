@@ -307,8 +307,6 @@ presentation.resolve(config)     -> rows for GET /api/presentation (A11.5)
 - **`$SIR` table: flatten to fn 1 or retune the five multiplied weapons** — `../weapon-design.md` §6.2, Tony's
   call; the Energy Launcher bug is fixed either way in the same commit.
 - **Voice per-slot map** beyond HEAVY — by ear or the `voice-profiles` endpoint (apk-harvest).
-- **Pin the runway lines + klaxon by ear** (start-sequence §2; `Compiler.cues()` ships runway_30/20 silent).
-- **`revive` vs `$HLOOP`** — the mid-match revive drops `$HLOOP,0,0`; the headset comes back through the A11.6
-  `respawn` sequence instead. Confirm on hardware that nothing else needed it.
+- Open questions from this module are FOLLOWUPS rows: F131 (revive vs `$HLOOP`, runway lines by ear).
 - **E2 and E3** — the catalog / preset / scorer halves of `register_mode`, and one config schema.
   (`mode_params`, E1, is built: §2.1, A18.)

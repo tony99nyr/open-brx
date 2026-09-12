@@ -93,12 +93,11 @@ for you: uninstalling wipes the app's data. Both phones (Pixel 10 Pro, Pixel 4) 
 
 ## 3. Test suites, and their two traps
 
+The suites are listed in [`../CLAUDE.md`](../CLAUDE.md) → Environment. On the Mac, the Python suite
+runs through the Mac venv's own interpreter, not the WSL one:
+
 ```bash
-cd mcp       && ../.venv/bin/python run_tests.py   # the Python suite
-cd webapp/mc && npm test                           # ~69, vitest + jsdom
-cd app       && node --test test/*.test.mjs        # ~75, engine + brxlink
-cd app       && npm run ui:e2e                     # 75 steps, real MC + 2 HUDs
-cd site      && npx playwright test                # the site gate, only if you touched the website
+cd mcp && ../.venv/bin/python run_tests.py
 ```
 
 - **Stale e2e ports.** A killed run leaves a server on 8865–8875 and the next run fails with

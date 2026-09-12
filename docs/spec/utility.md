@@ -439,5 +439,6 @@ they are built.
 
 ## 7. Open
 
-Open items for the utility work are FOLLOWUPS rows (S5, S6, S36 and the K-series); resolved ones are in
-`archive/followups-closed.md`. Nothing in this spec carries status.
+Verified on two Pixels 2026-09-04 (respawn end to end). Open items for the utility work are FOLLOWUPS
+rows (S6, S36 and the K-series); S5 is closed, in
+[`../archive/followups-closed.md`](../archive/followups-closed.md).
