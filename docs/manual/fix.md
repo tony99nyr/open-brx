@@ -186,8 +186,10 @@ When the gun fires but nothing lands, nothing is heard, or nothing lasts.
 ### "IR isn't registering hits"
 
 1. **Same team, friendly fire off?** → yes → Zero damage. The firmware enforces it in both
-   directions: a same-team shot lands nothing, and an enemy heal lands nothing either. Turn friendly
-   fire on in the game settings if you want same-team hits to count.
+   directions (one 2026-09-07 bench run registered team hits the other way round and is still
+   unexplained; treat the rule as documented, not proven): a same-team shot lands nothing, and an
+   enemy heal lands nothing either. Turn friendly fire on in the game settings if you want same-team
+   hits to count.
 2. **Is the target alive and in a started game?** → no → A dead tagger accepts no IR at all. A
    tagger that is set up but not started ignores it too. Silence from a corpse proves nothing.
 3. **Bright sunlight?** → The gun's hit radius shrinks by about half in full sun, because of IR

@@ -14,7 +14,7 @@ met a tagger can still surprise you.
 
 | Mode | The rule | Proven by |
 |---|---|---|
-| Team Deathmatch | Teams score a point per elimination. Downed players respawn after a delay. Highest score at the cap or the clock wins. | The laptop-only path on 2026-08-25: two taggers, one command, spawn, hits, deaths, host-driven respawn, a frag limit and the correct winner. The Mission Control plus phones path ran outdoors on 2026-09-01 with two Android phones, but its frag limit only started ending the match on 2026-09-12, when the check moved into Mission Control's own scorer. |
+| Team Deathmatch | Teams score a point per elimination. Downed players respawn after a delay. Highest score at the cap or the clock wins. | The laptop-only path on 2026-08-25: two taggers, one command, spawn, hits, deaths, host-driven respawn, a frag limit and the correct winner. The Mission Control plus phones path ran outdoors on 2026-09-01 with two Android phones, and the frag limit ends the match from Mission Control's own scorer. |
 | Free-for-all | No teams. Every elimination scores for the shooter. First to the frag limit, or the top score at the clock. | A 300 second match on 2026-08-30: two phones, two taggers, 12 kills over 126 landed hits. |
 | King of the Hill | One point. Hold the hill and possession scores for your team. | Proven end to end through a tagger on 2026-09-10. The hill is a BRX Smart Grenade in hill mode, so the mode needs no station hardware at all: the grenade beacons its owner, the tagger reports the beacon over Bluetooth, and Mission Control scores possession. |
 
@@ -114,9 +114,8 @@ A control point is a place on the field a team can own: the King of the Hill poi
 
 **A phone as a control point is designed and specified, and not built.** Read the table below as the plan. It is what you reach for when you want more than one point, or want the point to count people, or want it to keep scoring after you walk away.
 
-| | Smart Grenade, Hill mode | A phone as a control point |
+| | Smart Grenade, Hill mode | A phone as a control point (written, never played on taggers) |
 |---|---|---|
-| Status | works today, in native games too | designed, not built |
 | How you capture it | shoot it. Charge accumulates, any weapon counts | stand on it |
 | More than one point | no. A beacon carries no point id, so two grenades cannot be told apart on the wire | yes. Every point carries its own station id |
 | Do more attackers capture faster | no. It counts the charge fired into it, not the people | yes. It counts living players present per team, and nets the leading team against the largest single rival team |

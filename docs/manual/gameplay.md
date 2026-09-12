@@ -164,7 +164,7 @@ Every player is a pool of points: 45 health and 70 armor by default, which is 11
 | Can a medic heal me? | Yes. The Supremacy Medic's medi-gel pulse is a heal shot, and the community confirms it heals by shooting teammates. A host can also grant health directly. |
 | Do heals overfill? | No. A heal adds to your pool and stops at the maximum. |
 | Head shots? | The headset has four sensor domes, one of them at the back, and the gun body has a sensor of its own. Every shot carries a crit flag, but no stock weapon sets it. A crit multiplies damage by `1 + $GSET t7/100`. That is a per-game setting: x1.5 at the shipped t7=50, and t7=0 turns crits off. |
-| Can friendly fire hurt me? | Only if the game turns it on. With friendly fire off the gun itself blocks same-team damage, and blocks enemy "heals" the same way. Free-for-all is one team with friendly fire on. |
+| Can friendly fire hurt me? | Only if the game turns it on. With friendly fire off the gun itself blocks same-team damage, and blocks enemy "heals" the same way (one 2026-09-07 bench run registered team hits the other way round and is still unexplained; treat the rule as documented, not proven). Free-for-all is one team with friendly fire on. |
 
 > **Heals and boosts "add", they never "set".** When a phone or host gives health to a live gun, the amount is added to your current pool and stops at the maximum. Nobody can set you to a lower number this way, and a grant to a full-health player does nothing. That is why Halo-style regenerating shields, health-on-kill and medic roles all work the same way: a host watches your pool and tops it up.
 
@@ -187,7 +187,7 @@ A BRX "bullet" is a burst of infrared light 25 bits long, sent on a 38 kHz carri
 
 1. **Fire.** The trigger pull sends the IR word: a 2 ms start pulse, then 25 bits (a long pulse is 1, a short one is 0). Damage type (4 bits), player id (6 bits, 0-63), team (2 bits, 4 teams), damage (8 bits, up to 255), crit flag, effect subtype, 2 check bits.
 2. **Catch.** Your target has five receivers: four domes on the headset, one of them at the back, and a sensor on the gun body. Whichever one catches the word reports it, and the wire tells front from back from gun. Across the field that tells you where the shot came from. At point-blank range the IR floods every sensor, and the first one to see it wins.
-3. **Resolve.** The target's gun checks the team bits first. Same team with friendly fire off means the shot is dropped. Then it looks up the damage type in its effect table and applies the damage: armor first, then health.
+3. **Resolve.** The target's gun checks the team bits first. Same team with friendly fire off means the shot is dropped (one 2026-09-07 bench run registered team hits the other way round and is still unexplained; treat the rule as documented, not proven). Then it looks up the damage type in its effect table and applies the damage: armor first, then health.
 4. **Feedback.** The target's headset flashes green once on a hit, and blinks green steadily while they are out, and plays the pain or death sound. The gun reports the hit and the new health to any connected phone. Melee, explosive and other damage types each get their own hit sound.
 5. **Confirm.** On a kill the shooter's sight flashes green and the announcer says "kill". In a phoneless gun-menu game the guns do this on their own, with no phone involved. In an app-hosted game the phone scores the kill and drives the same flash and voice line.
 
@@ -220,7 +220,7 @@ The mode LED colour shows what you picked. Modes marked with a star are Callsign
 
 (*) = Callsign-Live unlock on the gun.
 
-> **More than four teams.** The hardware supports four native teams, with on-gun friendly-fire protection (subject to the polarity caveat under *Health, armor and damage*) and a per-team LED colour. For more squads, run everyone as one team with friendly fire on. Hand out armbands, and let Mission Control keep the real teams and scores. There is no on-gun friendly-fire protection in that mode.
+> **More than four teams.** The hardware supports four native teams, with on-gun friendly-fire protection (one 2026-09-07 bench run registered team hits the other way round and is still unexplained; treat the rule as documented, not proven) and a per-team LED colour. For more squads, run everyone as one team with friendly fire on. Hand out armbands, and let Mission Control keep the real teams and scores. There is no on-gun friendly-fire protection in that mode.
 
 **Starting a gun-menu game:**
 
