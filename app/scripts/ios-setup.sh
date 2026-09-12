@@ -47,6 +47,18 @@ BT_MSG="Open BRX connects to your BRX tagger over Bluetooth to set up games and 
 set_str NSBluetoothAlwaysUsageDescription "$BT_MSG"
 set_str NSBluetoothPeripheralUsageDescription "$BT_MSG"   # iOS 12 and earlier
 
+# --- Camera usage string ------------------------------------------------------
+# Same trap as Bluetooth above, and it bit for real (Tony, iPhone, field 2026-09-11):
+# iOS TERMINATES the app the instant it touches the camera without this key. No prompt,
+# no error, no log line -- the HUD just dies. Two callers need it:
+#   (a) the CAM look-through button (@capacitor-community/camera-preview, src/app.js:295)
+#   (b) the in-app MC join QR scanner (webview getUserMedia, src/app.js:429)
+# android-setup.sh had carried android.permission.CAMERA for both since it was written;
+# only the iOS side was ever missing. Audio is NOT needed -- cam.start() passes
+# disableAudio:true -- so no NSMicrophoneUsageDescription here on purpose.
+CAM_MSG="Open BRX uses the camera for the see-through HUD and to scan the Mission Control join code."
+set_str NSCameraUsageDescription "$CAM_MSG"
+
 # --- Field LAN gates (net.md §8b) --------------------------------------------
 # The phone talks ws:// to Mission Control on a private IP over a Wi-Fi with NO
 # INTERNET. Without these three the socket silently never opens.
@@ -76,7 +88,7 @@ $PB -c "Add :UISupportedInterfaceOrientations:0 string UIInterfaceOrientationLan
 $PB -c "Add :UISupportedInterfaceOrientations:1 string UIInterfaceOrientationLandscapeLeft" "$PLIST"
 
 echo "==> Info.plist keys now set:"
-for k in NSBluetoothAlwaysUsageDescription NSLocalNetworkUsageDescription \
+for k in NSBluetoothAlwaysUsageDescription NSCameraUsageDescription NSLocalNetworkUsageDescription \
          NSAppTransportSecurity:NSAllowsLocalNetworking NSBonjourServices:0 UIBackgroundModes:0; do
   printf '   %s = ' "$k"; $PB -c "Print :$k" "$PLIST"
 done

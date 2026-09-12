@@ -32,6 +32,7 @@ Around them: **[`gotchas.md`](gotchas.md)** (field lore by symptom, plus the ben
 
 | sheet | what it is |
 |---|---|
+| **[`game-test-2026-09-11.md`](game-test-2026-09-11.md)** | **the 2026-09-11 game test.** Every issue from a 1v1 on two taggers, self-contained: symptom, evidence, mechanism, fix |
 | **[`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md)** | **the NEXT sitting.** Six readings, deliberately self-contained — run it without reading anything else |
 | [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) | the WHOLE queue, grouped by setup block. FOLLOWUPS §9 is the register (ids); this is the running order |
 | [`bench-grenade.md`](bench-grenade.md) | the grenade/hill rungs. Read its *What is answered* table first, then *Still to run* |

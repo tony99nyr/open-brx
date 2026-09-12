@@ -11,6 +11,24 @@ Legend — ✅ fixed & tested · 🔧 fixed, needs a field check (see **Check ne
 
 ---
 
+## Session 3 — 2026-09-11 night, MacBook host, 1v1 on two taggers
+
+**The whole session is written up, issue by issue, in [`game-test-2026-09-11.md`](game-test-2026-09-11.md) — do not duplicate it here.**
+iPhone on that day's tree, Android on APK 0.1.8. 25 ids filed: **F110-F127** and **S20-S26**.
+
+- 🔍 **F124** the frag limit is never enforced · 🔍 **F125** END reports "reached 2 of 2" and the match runs on
+- 🔍 **F121** hit reception is armed at config push, so the countdown and spawn are both live
+- 🔍 **F127** MC's CONTINUE locks out everyone still kitting
+- 🔧 **F112** the CAM button crashed iOS (missing `NSCameraUsageDescription`); fixed at source, **not yet
+  verified on device** — that is the field check.
+- 🔍 **F122/F126** the debug panel eats taps and inflates its font on iOS, so SHARE LOG never delivered from
+  the iPhone · 🔍 **F123** the HUD animates reloads the gun never performs
+- 💭 **S20-S26** the design asks: results screen, balance, spectator view, passive log sync
+- ✅ **Worked:** mid-match resync after a crash · early end + `game_over` + `victory` · `next_kill_wins` ·
+  mDNS auto-join with no QR
+
+---
+
 ## Session 2 — 2026-09-01, two Android HUDs, TDM, outdoors
 Evidence: `~/.brx-mcp/mc/session-8bbf96ab.sqlite` (both phones' BLE frame rings were shared).
 
