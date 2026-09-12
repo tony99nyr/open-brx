@@ -178,10 +178,11 @@ them, which is worth knowing before anyone designs a mode around them.
 
 ## Answered rungs, and the answered appendix steps
 
-Rungs S, Y, R and appendix steps 2, 3 and 4 are done. They were kept for the METHOD and the traps they
-cost, and they are archived whole at
-[`archive/bench-grenade-answered.md`](archive/bench-grenade-answered.md) — commands, controls and traps
-included. Do not re-run them; read them only when a new rung reuses the same rig.
+Rungs S, Y, R and appendix steps 2, 3 and 4 are done. The rig commands, controls and traps they used are
+copied below in *Setup*, so this sheet does not depend on the archive to run anything. The findings, the
+run history and the by-ear detail are archived whole at
+[`archive/bench-grenade-answered.md`](archive/bench-grenade-answered.md) — run history only. Do not
+re-run them.
 
 ## Setup (5 min)
 
@@ -202,6 +203,54 @@ PY=/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe
 cd /home/tony/gitrepos/battlecompany/mcp/tools
 GUN=DF:F5:DA:08:94:98
 ```
+
+**The rig commands, controls and traps from the answered steps** (kept here so this sheet never
+depends on the archive to run the rig; the findings they produced are in
+[`archive/bench-grenade-answered.md`](archive/bench-grenade-answered.md)):
+
+- **Bare watch + box test.** Grenade emitter side facing the headset front, 1 ft. Hands off. At the
+  **BOX IT NOW** call, put the grenade in the closed box.
+
+  ```bash
+  $PY grenade_bench.py watch $GUN 40 bare COM7
+  ```
+
+  Expect a beacon every ~2.5 s shown as `GRENADE RESPAWN owner=team2`, the witness reporting 52 edges
+  per beacon, both stopping in the box. ⚠ **Trap:** if the witness reports more than 54 edges per
+  beacon the grenade uses a longer word than a shot, and any replay must use the raw word from this
+  log, not the gun echo.
+
+- **Passthrough watch, gun spawned in a game.** Same placement. At about 10 s, shoot the grenade once
+  with this gun (it should chime and turn blue). No box this time.
+
+  ```bash
+  $PY grenade_bench.py watch $GUN 30 passthru
+  ```
+
+  Expect beacons still visible while spawned, flipping from `owner=team2` to `owner=team1/blue` after
+  the shot. If none appear, run the control to confirm the row is the variable, then move on:
+
+  ```bash
+  $PY grenade_bench.py watch $GUN 20 game
+  ```
+
+- **Respawn station (5 min, the big one).** Power-cycle the grenade first so it is neutral again.
+  Emitter at a dome, ≤ 3 ft.
+
+  ```bash
+  $PY grenade_bench.py respawn $GUN COM8 passthru COM7
+  ```
+
+  Phases, each announced on screen with its length: (1) **CLAIM + ARM (30 s)** — shoot the grenade
+  once, hold it facing the headset front, press its button once at the 15 s call; (2) **KILL** — the
+  emitter shoots the gun dead, move it closer and re-run if it prints NOT killed; (3) **GRENADE BUTTON
+  (15 s)** — press the button next to the dead headset, twice on the calls; (4) **HEADSET-FRONT +
+  TRIGGER (15 s)**, only if still dead — face the grenade with the headset front, pull the trigger
+  twice; (5) **REPLAY (about 25 s)**, only if still dead — box the real grenade, the emitter sends the
+  beacon words; (6) **HOST `$SPAWN`** — kills the gun again if something revived it, then sends the
+  host respawn; (7) **AFTERMATH (10 s)** — hands off. It ends with a verdict table. ⚠ **Trap: a
+  receive-only arm cannot shoot.** Include a `$WEAP` row with ammo whenever this rung is repeated (the
+  first pass of the capture rung failed for exactly this reason).
 
 ## Appendix — the original step-by-step programme (written 2026-09-04)
 

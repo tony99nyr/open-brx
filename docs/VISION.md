@@ -47,13 +47,9 @@ provides it), and the built-in **nRF radio is unprobed** (D1) — potential free
 
 ## What the BRP does that the BRX can't (mostly hardware, not gameplay)
 
-On-gun **LCD live scoring**; **built-in WiFi to Edge** + dual Bluetooth; **swappable/hot-swap
-batteries**; **removable flip magazine** (XL) / **battery recoil + metal** (Metal); removable-SD custom
-sounds (the BRX takes them over USB); powered-scope port; sunlight-visible head-sensor LEDs. **These are
-ergonomics/durability/convenience — not different game logic.** Our **Companion rider** closes the
-*functional* gap (WiFi, HUD, powerups, custom audio) in software + cheap hardware; the *physical* niceties are
-molded into BRP and we can't retrofit them. Edge itself says **BRX can be used commercially** — the software
-tier is the real gate, not the gun.
+The hardware gap is real but shallow: it's ergonomics/durability/convenience, not different game logic,
+and Edge itself says **BRX can be used commercially** — the software tier is the real gate, not the gun.
+The detail is [`edge-brp.md`](edge-brp.md).
 
 ## What BRP + Edge does that we can't (the genuine gaps)
 

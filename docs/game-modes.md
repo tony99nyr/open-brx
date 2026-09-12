@@ -6,8 +6,8 @@ mode design has to respect. The flagship Extraction design has its own page, `ex
 **This page carries no status**: what is built today is `HANDOFF.md`, and what is still open is
 `FOLLOWUPS.md`. The MC config schema per mode is `spec/modes.md` §2;
 the grenade's own modes are `reference/grenade.md` and the public manual (`manual/gameplay.md`). Consolidated
-2026-09-06: the constraints ledger (`mode-limits.md`) and the grenade section moved out; the ceilings that
-survive are §Hard ceilings below.
+2026-09-06: the constraints ledger (`mode-limits.md`) was dropped and the grenade section moved out; the
+surviving conclusions are the §Hard ceilings below.
 
 Sources: `reference/brx-manual-notes.md`, `reference/brx-extended-user-guide.md`,
 `callsign-extract/apk-harvest.md`. Win conditions (APK): Score, Death (elimination), Slayer (most

@@ -176,7 +176,7 @@ def _classify(patch: np.ndarray, wp=None) -> tuple[str, tuple[float, float, floa
     # WHICH SAMPLE carries the colour depends on how big the emitter is in frame:
     #   gun LEDs are pinpoints that blow out to white  -> the hue is only in the dim FRINGE
     #   headset modules fill most of their box         -> the fringe is just dark surround, use MEAN
-    # Same rule as ledsweep.classify -- they must not drift apart.
+    # (was shared with ledsweep.classify until that script was retired 2026-09-12)
     if len(patch) > 1500:
         r, g, b = patch.mean(0)
         if r + g + b < 30:

@@ -21,7 +21,6 @@ F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (col
 
 | You want | Go to |
 |---|---|
-| **The whole file TRIAGED** (bug in active code · core platform gap · bench-gated · decision · future · hygiene, with doer and dependencies) | `followups-triage.md` (retired 2026-09-12, see FOLLOWUPS §0) — an index over this file; if it disagrees with a row, the row is right |
 | **The bench running order** (setup blocks, exact command, reading, control per rung) | [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md). §9 below is the REGISTER: ids live here, order lives there |
 | **The grenade / hill rungs** | [`bench-grenade.md`](bench-grenade.md) §"Still to run" |
 | **Open BUILD items** (no hardware needed) | §2 extensibility · §3 build · §7 September build items · the `build`-tagged rows in §6 |
@@ -45,7 +44,7 @@ latch, though the original self-replay-with-no-IR observation is still unreprodu
 **Two questions cover the whole file: does it need a gun, or does it need a keyboard?** The lists below are
 just the rows re-sorted; the rows themselves are the truth. An id appears in BOTH lists when it carries both a
 hardware tag and `build` (S10 is the biggest of those: the LED language is code that then needs an eye on it).
-**Re-sorted 2026-09-11 (late) after the triage session closed 18 ids; the categorised view is `followups-triage.md` (retired 2026-09-12, see FOLLOWUPS §0).** ⚠ **This index has no guard.** It is the `tag` at the end of each row, re-sorted by hand
+**Re-sorted 2026-09-11 (late) after the triage session closed 18 ids.** ⚠ **This index has no guard.** It is the `tag` at the end of each row, re-sorted by hand
 (`grep -n '\`bench\`' docs/FOLLOWUPS.md` and friends rebuild it); **if it disagrees with a row, the ROW is
 right** and this index is stale. Do not cite it as evidence that something is or is not open.
 
@@ -1151,8 +1150,8 @@ From `verification-checklist.md` (archived 2026-09-06); what is ⬜ there and st
   never-applied seq >256 behind a newer live seq is dropped as replay; `time_req.t_node` oversize raises inside `_send`;
   UI allows `max_hp` 999, server caps 255; phone `pull_log`/`log_offer` unimplemented; `statusBody` omits `dropped`;
   `hit_taken` 1000 ms latch hardcoded; a stale-latch death reports the stale team; feed backlog not seeded from the
-  snapshot; `lobby.all_acked` unused; `T.micro` contrast; PANIC copy is protocol jargon; fonts Google-hosted (self-host
-  before a no-internet field); spec §3 prose says `damage`/`rof` are substituted into `$WEAP` (they are not).
+  snapshot; `lobby.all_acked` unused; `T.micro` contrast; PANIC copy is protocol jargon; spec §3 prose says
+  `damage`/`rof` are substituted into `$WEAP` (they are not).
 - **HUD 2026-08-25:** top-right cluster cramped on device; a distinct no-cam layout (design pass, Tony owns visuals);
   a browsable per-match history view.
 - **Design ideas parked:** directional hit mechanics on tok1 (backstab bonus, flank callout) after field-distance

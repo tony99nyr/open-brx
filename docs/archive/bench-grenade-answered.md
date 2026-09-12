@@ -8,9 +8,9 @@ setup and the traps. Nothing here is re-run. The WIRE facts these runs produced 
 
 | run | what it answered | write-up |
 |---|---|---|
-| **2026-09-04 (morning)** | the respawn station is ONE IR word: beacon / button / boot words captured (all 25-bit, proto 15); the emitter arms and revives a native-game gun with the grenade out of the building (4/4, team-gated); hosted games ignore every station word (→ B23); the passthrough row works | [`experiment-log/2026-09.md`](experiment-log/2026-09.md) 2026-09-04 "THE RESPAWN STATION IS ONE IR WORD" |
-| **2026-09-10 (early)** | the HILL is decoded: the beacon carries the owner, neutral is team 2, shooting a neutral hill claims it, and one `$SIR` row makes a hosted game see it (answering step 3's Q3 **yes**, and explaining B23) | [`experiment-log/2026-09.md`](experiment-log/2026-09.md) 2026-09-10 |
-| **2026-09-10 (evening)** | capture proven end to end over BLE; every hosted callout confirmed by ear (rung S); fn 28 confirmed on a real beacon and shown to ignore `<soundID>` (rung Y); the rate-of-fire null (rung D, hosted half); range by estimate (rung R) | [`experiment-log/2026-09.md`](experiment-log/2026-09.md) 2026-09-10 (evening, cont.) |
+| **2026-09-04 (morning)** | the respawn station is ONE IR word: beacon / button / boot words captured (all 25-bit, proto 15); the emitter arms and revives a native-game gun with the grenade out of the building (4/4, team-gated); hosted games ignore every station word (→ B23); the passthrough row works | [`experiment-log/2026-09.md`](../experiment-log/2026-09.md) 2026-09-04 "THE RESPAWN STATION IS ONE IR WORD" |
+| **2026-09-10 (early)** | the HILL is decoded: the beacon carries the owner, neutral is team 2, shooting a neutral hill claims it, and one `$SIR` row makes a hosted game see it (answering step 3's Q3 **yes**, and explaining B23) | [`experiment-log/2026-09.md`](../experiment-log/2026-09.md) 2026-09-10 |
+| **2026-09-10 (evening)** | capture proven end to end over BLE; every hosted callout confirmed by ear (rung S); fn 28 confirmed on a real beacon and shown to ignore `<soundID>` (rung Y); the rate-of-fire null (rung D, hosted half); range by estimate (rung R) | [`experiment-log/2026-09.md`](../experiment-log/2026-09.md) 2026-09-10 (evening, cont.) |
 
 🔴 **The one hazard to carry to the bench:** a hill also emits an ordinary `proto=0 mag=8` damage word, which
 our standard `$SIR,0,0,,1` row applies in full. It killed the operator in ~106 s with nothing in the event

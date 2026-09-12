@@ -151,7 +151,7 @@ on the same run.
 
 ## ⭐ Not a token, but the wire says it: applied damage depends on the SENSOR
 
-`2026-08-23-ios-callsign-two-tagger-combat.txt`, one Burst Rifle shooter (t5 = 9, subtype 3 → fn 37),
+`2026-08-23-two-tagger-combat.txt`, one Burst Rifle shooter (t5 = 9, subtype 3 → fn 37),
 crit 0 on all 23 hits, same victim, same life: the **3 hits on headset sensor 0 took 18 each**
 (armour 70→52→34→16); the **20 hits on gun-body sensor 4 took 9 each**. This is the unresolved
 fn 36/37 "×1.0 vs ×2" dispute: the 2026-08-27 ×1.0 matrix was measured with the rig pinned to the

@@ -439,26 +439,5 @@ they are built.
 
 ## 7. Open
 
-Verified on two Pixels 2026-09-04 (respawn end to end). Followups, roughly in priority:
-
-Resolved since the first draft (see FOLLOWUPS + experiment-log):
-- **Headset out-blink while down — BUILT** (A11.6/A11.7). The node paints the headset green out-blink (`$HLED`)
-  on death and clears it on revive; the gun-body look while down is `presentation.gun` (health/dark modes).
-- **Reconnect / new-match reconciliation — BUILT + VALIDATED ON HARDWARE** (S7.1; contracts A6.8; node.md §3.10).
-  A live rejoin runs a 3 s disarmed reconcile that keeps the real pools and **never heals or infers death**; a
-  new match clears an in-flight reconcile and spawns clean. Closed the force-close-at-low-HP cheat on Tactix-E20D.
-- **Station doesn't see player adverts at high TX — FIXED in code** (S6, commit 73d391a): the station scans
-  low-latency and restarts the scan every 8 s to recover an Android-stalled scan. Still needs the two-Pixel
-  bench to confirm; a lower station TX is the fallback.
-
-Still open:
-- **Per-match scoping (half done).** The station carries a game byte in its advert and `station_config` pushes it
-  (A13.5); the player-side `Presence.game` filter honours it. Pending: the compiler emitting `config.stations`
-  (the authoritative allow-list players enforce). Today's fallback is disjoint ids (§3).
-- **Station kinds 2–5** state machines (powerup/extraction/bomb/control) — build order in
-  `docs/utility-roadmap.md` (K1 control point first). **kind 5 `control` is now fully specified in §5d**, with the
-  roaming-hill and Territories designs in `utility-roadmap.md` §8; kinds 2–4 are still the §5 table only. **MC muster / arming assignment is FOLLOWUPS S5** (brx).
-- iOS build + test of `BrxBeaconPlugin.swift` on the MacBook (the superseded-start + power-toggle re-assert
-  paths are written but unbuilt).
-- Bench-tuned defaults are -74 dBm / 0.8 s / high TX (§3); revisit per station-kind (an extraction zone wants
-  a looser, bigger bubble than a respawn point).
+Open items for the utility work are FOLLOWUPS rows (S5, S6, S36 and the K-series); resolved ones are in
+`archive/followups-closed.md`. Nothing in this spec carries status.

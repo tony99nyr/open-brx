@@ -1165,7 +1165,8 @@ Two taggers (GUN-A = player 6 / team 1, GUN-B = player 19 / team 2), the MC gold
 
 ### 7r bench addendum — 2026-08-26 (handoff experiment 2): damage exact, armor model, `$HIR` tok2/tok7
 
-Two guns, victim rebuilt to full 45/70 before each single shot (`mcp/tools/damage_bench.py`):
+Two guns, victim rebuilt to full 45/70 before each single shot (`mcp/tools/damage_bench.py`,
+script retired 2026-09-12; the matrix stands):
 
 - **`$HIR` token 5 = the RAW magnitude carried in the IR word** (= the shooter's `$WEAP` `t5`), **not
   necessarily the applied damage.** ⚠ Refined 2026-08-26 (night, brx-ir emitter) — the **applied**
@@ -1194,4 +1195,4 @@ Two guns, victim rebuilt to full 45/70 before each single shot (`mcp/tools/damag
   not revive on `$SPAWN` alone** — a full cold start (`$CLEAR`→`$START`→…→`$SPAWN`) is needed; and a
   victim registers **non-standard IR only if its `$SIR` table has the matching protocol/subtype rows**
   — a single-row `$SIR,0,0` ignores the sniper's subtype-1 hit (the full 10-row captured `$SIR` table
-  is in `damage_bench.py`).
+  is in `damage_bench.py`, script retired 2026-09-12; the matrix stands).

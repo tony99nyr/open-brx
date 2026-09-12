@@ -207,7 +207,7 @@ scoped as building a station; for Hill and Respawn the hardware exists and the p
 the owner, score possession — plus an MC catalog entry and scorer, which K1 needed anyway. That is a materially
 shorter path to the first playable objective mode than building a station first.
 
-🔴 **The "$30 grenade" that used to open this section was WRONG, by about 7x.** Tony, who bought it, 2026-09-10:
+**The "$30 grenade" that used to open this section was WRONG, by about 7x.** Tony, who bought it, 2026-09-10:
 *"pretty sure i paid $200 for the grenade from BC."* That is a first-hand purchase report and it inverts the
 argument: a grenade is the **expensive** way to get a control point, not the cheap one, and what the money buys is
 shoot-to-capture plus native-game compatibility, not capability. A second-hand Android phone is a small fraction of
@@ -219,15 +219,15 @@ points: the grenade or a phone" (2026-09-10), phone column marked designed-not-b
 above. Keep it in step when K1 lands or F91/F82 resolve.
 
 **Three constraints the bench found, which any design here must respect:**
-1. 🔴 **The damage word lands in hosted games TODAY** (F69). Protocol 0 is our standard damage row, so a hill
+1. **The damage word lands in hosted games TODAY** (F69). Protocol 0 is our standard damage row, so a hill
    chips and kills players while MC cannot say why. Ship the protocol-15 row so the node can name it, or
    document the hazard loudly, before anyone takes a grenade to a match.
-2. ✅ **The row is SILENT, and that took choosing the right function.** fn **24** — the one this mechanism was
+2. **The row is SILENT, and that took choosing the right function.** fn **24** — the one this mechanism was
    first proved with — makes the gun acknowledge every beacon with a vibration, a headset flash and a long
    grenade-ish clip, for as long as anyone stands on the point: unbearable within a minute. fn **28** registers
    with nothing at all, and **ignores the row's `<soundID>` outright** (rung Y), so a gun-native beacon cue is
    not available and all hill audio is node work. That is what ships (F73).
-3. ✅ **Any weapon can capture, and the contest tunes itself** (F70, settled 2026-09-10). It is CHARGE, not a
+3. **Any weapon can capture, and the contest tunes itself** (F70, settled 2026-09-10). It is CHARGE, not a
    special emission, so a rifleman plays the objective and no weapon needs special tokens. **That much is
    multiply-sourced** — the bench run, `reference/grenade.md`'s prior hardware-confirmed charge mechanic, and
    Tony's own native play, which a three-weapon mechanism could never explain.
@@ -248,12 +248,13 @@ above. Keep it in step when K1 lands or F91/F82 resolve.
 `$HIR,<sensor>,15,0,<owner>,8,0,0` about every 5 s. One frame, two facts: **who owns the point**, and **that
 this player is near it**.
 
-🔴 **NEVER ASSIGN TEAM 2 IN A HILL MODE.** A neutral hill broadcasts **team 2** (F70), and the firmware's
+**NEVER ASSIGN TEAM 2 IN A HILL MODE.** A neutral hill broadcasts **team 2** (F70), and the firmware's
 polarity gate compares that against the receiving gun's own `$TID`. So a roster that actually contains team 2
 reads every NEUTRAL hill as *its own team's*: under an enemy-only row those players go **deaf to neutral
 points** entirely, and the `proto=0` damage word — the enemy-only one that punishes intruders — **cannot land
 on them**, handing team 2 free run of any uncaptured point. This falls straight out of "neutral is team 2" and
-nothing anywhere said it. ✅ **MC now refuses it at three layers and this paragraph is the WHY, not open work**
+nothing anywhere said it. **MC now refuses it at three layers and this paragraph is the WHY, not open work,
+answered (F82, archive)**
 (**F82**): `mc/state.py`'s validate rejects a hill config containing tid 2 at all, `DominationEngine.add_player`
 rejects the player, and `assign_teams` defaults domination/koth to 1/3 — one `NEUTRAL_TEAM` constant imported
 from `modes/hillbeacon.py` drives all three. ⚠ What is still open in F82 is the **measurement**: the consequence
@@ -284,7 +285,7 @@ vibration** with it — the firmware's response to any registered IR event. Tony
 row loaded: flash, hit sound and buzz every 5 s, **and it queues** (acknowledgements kept arriving after the
 grenade was switched off).
 
-✅ **ANSWERED 2026-09-10: `$SIR` fn 28 registers with ZERO player feedback** — no sound, no headset flash, no
+**Answered (F73, archive): `$SIR` fn 28 registers with ZERO player feedback** — no sound, no headset flash, no
 vibration — so a node can read a hill beacon every ~5 s and the player perceives nothing. **That is the row to
 ship on protocol 15**, and it removes the "a control point buzzes at you" objection entirely (F73).
 **One `$GSET` bit decides how much the node can see.** fn 28 is **enemy-only** with FF off, so you hear only
@@ -307,9 +308,9 @@ it changes hands. Mapped against what the wire actually carries:
 
 | native behaviour | hosted? | how |
 |---|---|---|
-| ticking while YOU hold it | ✅ direct | beacon owner == my team → node plays a tick; the ~5 s beacon is a ready-made cadence |
-| silence while THEY hold it | ✅ direct | beacon owner != my team → play nothing; purely a node decision |
-| "hill lost" on a switch | ✅ direct | the `mag=50` capture word carries the NEW owner |
+| ticking while YOU hold it | direct | beacon owner == my team → node plays a tick; the ~5 s beacon is a ready-made cadence |
+| silence while THEY hold it | direct | beacon owner != my team → play nothing; purely a node decision |
+| "hill lost" on a switch | direct | the `mag=50` capture word carries the NEW owner |
 | **"control point contested"** | ⚠️ **inferred, no signal exists** | node reasons: *I fired* (`$ALCD` decrement) + *enemy hill in range* + *no capture word followed* |
 
 **A non-capturing hit produces NO DECODABLE WORD** — checked across four runs where a hill was shot and did not
@@ -337,7 +338,7 @@ without it.
 
 ### Where the hill audio has to live
 
-**✅ MEASURED 2026-09-10 (evening) — the gun CANNOT speak on a beacon, at least not through fn 28.** The
+**Measured (evening, archive) — the gun CANNOT speak on a beacon, at least not through fn 28.** The
 reasoning below was the prediction going in (a `$SIR` row's `<soundID>` field plays on the victim when that
 cell fires, so `$SIR,15,0,<soundID>,28,0,0,1,,*` should make every hill beacon audible with no node involved);
 it does not hold. Armed live with `$SIR,15,0,U100,28,0,0,1,,*` — `U100` known audible, confirmed by ear the
@@ -546,7 +547,7 @@ the LAN. That is only true of one *form* of it:
 | **the target decides the winner at the horn** — the match runs its full clock, MC sums each station's tally at recap, and the team past the target (or with the most territory-seconds if nobody reached it) wins | **No.** Fully offline. No A4.8 exception, no Wi-Fi requirement, nothing to warn the operator about |
 | ~~**a live race that ENDS THE MATCH the moment someone crosses the target**~~ | **Yes**, and only this. Somebody must hold the running sum *during* the match to blow the horn early, and no station knows another station's contribution. 🔴 **DECLINED (Tony, 2026-09-10): not being built** |
 
-✅ **Tony took the first, 2026-09-10: the target is read AT THE HORN.** To players the two are nearly
+**Tony took the first: the target is read AT THE HORN.** To players the two are nearly
 indistinguishable — a BRX match runs a clock anyway, and the runway is the normal one — and the first costs nothing
 architecturally. So the §5e exception narrows to **roaming hills alone** (a match rule taking orders from the
 laptop mid-match, which genuinely cannot be done offline), with no second exception held in reserve.
@@ -626,10 +627,10 @@ playtested.
 
 Both **Tony, 2026-09-10**:
 
-- ✅ **A neutral point ticks for NOBODY.** (§5d.2 said this already — but that was the spec's own sentence, not a
+- **A neutral point ticks for NOBODY.** (§5d.2 said this already — but that was the spec's own sentence, not a
   ruling, and an earlier draft wrongly cited it as settled. Now it is his, so §5d.2 is backed rather than
   self-referential.) An **owned** point ticks whether or not anyone is present; that is the mode.
-- ✅ **A station powered off mid-match KEEPS the seconds it accrued up to its last advert, then stops.** The tally
+- **A station powered off mid-match KEEPS the seconds it accrued up to its last advert, then stops.** The tally
   is **not** voided. Rationale, recorded because the opposite is the tidier-looking choice: voiding everything
   punishes a dead battery far more harshly than the information loss warrants, and **the seconds up to the last
   advert were genuinely earned**. What is lost is only the dark interval — an owner is silently under-paid for it,

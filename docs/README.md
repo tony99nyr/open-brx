@@ -18,7 +18,7 @@ specified. Then **[`manual/`](manual/)**, the confirmed-facts manual the public 
   machine roles. Overwritten each session, never stacked.
 - **[FOLLOWUPS.md](FOLLOWUPS.md)** — **every open item and nothing else**, with a "Needs Tony at the bench"
   section (the bench queue) and "System proofs" (needs players / space). Ids are permanent. The rows are
-  the only index: a separate triage file drifted eleven closed ids behind within a day and was retired 2026-09-12.
+  the only index: a separate triage file drifted eleven closed ids behind within a day and was retired.
 - **[experiment-log/](experiment-log/)** — the append-only lab notebook, one file per month;
   [`experiment-log.md`](experiment-log.md) is its index. **Append after every session.** Nobody reads it
   for orientation; grep it.
@@ -54,10 +54,12 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 - **[field-process.md](field-process.md)** — the **Armory Setup** + **Muster** operator processes.
 - **[mac-dev-runbook.md](mac-dev-runbook.md)** — working on the MacBook: the setup that is not in git, restart-MC
   vs hard-reload.
+- **[wsl-dev-runbook.md](wsl-dev-runbook.md)** — working on the WSL/Windows box: the two-Python split, the UNC
+  install path, first contact, where captures land.
 - **[gun-stage.md](gun-stage.md)** — the click-to-try page + walkthrough for one real gun.
 - **[capture-runbook.md](capture-runbook.md)** — how to take a capture (iOS PacketLogger, Android HCI
   snoop, the ESP32 IR rig, the decoders and their gotchas) and the capture jobs still open. The method
-  half moved here out of `manual/dev.md` on 2026-09-12.
+  half moved here out of `manual/dev.md`.
 
 ## Spec of record — build against this
 - **[spec/README.md](spec/README.md)** (invariants + module map + amendment index) →
@@ -75,9 +77,9 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 - **[VISION.md](VISION.md)** — strategy + naming.
 - **[game-modes.md](game-modes.md)** — the mode catalog, the infrastructure tiers, and the hard ceilings per mode.
 - **[extraction-design.md](extraction-design.md)** — the flagship Extraction mode: the event ladder, the BRX
-  mechanic mapping, the tier ladder and the genre research. Split out of `game-modes.md` 2026-09-12.
+  mechanic mapping, the tier ladder and the genre research. Split out of `game-modes.md`.
 - **[edge-brp.md](edge-brp.md)** — the competitive study of Battle Company's EDGE + Battle Rifle Pro, and the
-  parity targets it sets. Moved out of `reference/` 2026-09-12: it is strategy context, not manual evidence.
+  parity targets it sets. Moved out of `reference/`: it is strategy context, not manual evidence.
 - **[weapon-design.md](weapon-design.md)** — the balance rationale and the open flatten-vs-retune decision.
 - **[utility-roadmap.md](utility-roadmap.md)** — the objective-station work in order, the grenade-as-control-point
   evidence, and two designs (roaming hills, Territories) that are specified but not built. What it costs an
@@ -114,12 +116,12 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 ## Building the software
 - **[../app/README.md](../app/README.md)** — the native phone app (Capacitor → Android + iOS), the APK publish path.
 - **[../mcp/README.md](../mcp/README.md)** — `brx-mcp`: install, first contact, the CLI and MCP tool
-  tables, `diag-game`, platform notes. Split out of `manual/dev.md` on 2026-09-12, which is the
+  tables, `diag-game`, platform notes. Split out of `manual/dev.md`, which is the
   protocol, not our tooling.
 - **[../mcp/brx_mcp/mc/README.md](../mcp/brx_mcp/mc/README.md)** — the Mission Control server: how to start it, every flag, the UI it serves.
 - **[../webapp/mc/README.md](../webapp/mc/README.md)** — the Mission Control web UI.
-- **[manual/README.md](manual/README.md)** + **[site/README.md](site/README.md)** — the public site: how a fact
-  gets in, and the build + Playwright gate.
+- **[manual/README.md](manual/README.md)** — the public site: how a fact gets in. **[site/README.md](site/README.md)**
+  (how to run the build + gate) and **[site/FORMAT.md](site/FORMAT.md)** (the page contract).
 
 ## Archive
 **[`archive/`](archive/)** — not maintained; grep it, do not read it. Closed followups, dated bench sheets that
