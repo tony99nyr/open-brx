@@ -10,6 +10,8 @@ real IR shot from the emitter shows the whole picture, firmware + ours, on the b
 """
 from __future__ import annotations
 
+import re
+
 import asyncio
 import math
 import random
@@ -638,6 +640,18 @@ class GunStage:
         self.recompile(roll=True)
         self._log("rolled: " + (self.roll_text() or "nothing to roll (every field is pinned or has one take)") + " -- written to the gun on ARM", "info")
         return self.state()
+
+    def _tryoutFrameSlot(self, frames) -> int:
+        """Mirror of engine.js `_tryoutFrameSlot` (polish-loop pass 3, field 2026-09-12): the gun-wire slot a
+        try-out's `$WEAP`/`$AMMO` frames actually target, read from the frames rather than guessed from the
+        rack tab (a try-out always lands in slot 0). First frame naming a slot wins; frames with no slot token
+        are skipped; falls back to 0. The stage has no try-out path of its own, so this exists to keep the
+        mirror honest: the same frames must resolve to the same slot on both sides."""
+        for f in frames or []:
+            m = re.match(r"^\$(?:WEAP|AMMO),(\d+),", f)
+            if m:
+                return int(m.group(1))
+        return 0
 
     def _pick_cue(self, kind: str) -> tuple[str | None, str]:
         """A15: one random take from `cue_pools[kind]` (kill confirms + taunts on a kill, the pains, …), else `cues[kind]`.

@@ -6,8 +6,8 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D5 · E8 · F135 · G11 · H8 ·
-K7 · P19 · Q20 · R4 · S37.** (2026-09-12 pyright gate: F134 filed; F42.10 closed → archive, F42.14 filed.) (2026-09-12 evening: F129 closed → archive; F133 filed.) (2026-09-12 backhaul, PR #3: B30 and B31 taken.) (2026-09-12 doc-rot close: F131 F132, R3, S32-S36 taken; F42.2/F42.3 closed → archive.) (2026-09-12 M2 close: S20 S21 S22 S23 S24 S26 F127 closed → archive; F129 F130 new; S25 v1 shipped, ESPN pass open.) (2026-09-12 midday: S28 all-weapons retune, S29 shield recharge taken.) (2026-09-12 desk pass: F128, P18, S27 taken; F110 F115 F116 F117 F118 F119 F122 F124 F125 closed → archive.) (2026-09-11 night game test: F110-F127 and S20-S26 taken, see [`game-test-2026-09-11.md`](game-test-2026-09-11.md).) (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D6 · E8 · F162 · G11 · H8 ·
+K9 · P19 · Q20 · R4 · S42.** (2026-09-12 pyright gate: F134 filed; F42.10 closed → archive, F42.14 filed.) (2026-09-12 field test of the backhaul, WSL host + Pixel 10 on cellular: F135-F157 + F161, K7-K8, S37-S41, D5 taken (F134 went to the pyright gate on main the same day, so the gun-picker row became F161); F136 closed the same hour.) (2026-09-12 evening: F129 closed → archive; F133 filed.) (2026-09-12 backhaul, PR #3: B30 and B31 taken.) (2026-09-12 doc-rot close: F131 F132, R3, S32-S36 taken; F42.2/F42.3 closed → archive.) (2026-09-12 M2 close: S20 S21 S22 S23 S24 S26 F127 closed → archive; F129 F130 new; S25 v1 shipped, ESPN pass open.) (2026-09-12 midday: S28 all-weapons retune, S29 shield recharge taken.) (2026-09-12 desk pass: F128, P18, S27 taken; F110 F115 F116 F117 F118 F119 F122 F124 F125 closed → archive.) (2026-09-11 night game test: F110-F127 and S20-S26 taken, see [`game-test-2026-09-11.md`](game-test-2026-09-11.md).) (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
 ids are retired, never reused.) (2026-09-10: F94/F95/F98 taken — the phone control point
 (`spec/utility.md` §5d), its LAN-coupled roaming variant (§5e) and Territories (§5f). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
 wider than the hill's period" generalisation, the double-`$HIR`-per-beacon dedupe finding (F85, closed same
@@ -153,21 +153,11 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   node paints the dead look, station beacon arrives via the passthrough row, node checks team + delay, restores pools.
   Every link is proven separately; the assembly is not. Open: a downed gun still takes IR damage; FF must be ON for a
   same-team beacon. `build`.
-- **B30 🟠** BACKHAUL (contracts A28, 2026-09-12): a phone with a data plan reaches MC off the field Wi-Fi with no per-phone
-  setup -- MC tunnels the node socket (cloudflared quick tunnel, `POST /api/tunnel`), the QR carries LAN + public URL + secret,
-  the node prefers backhaul and falls back to the LAN, coverage is DERIVED from observed reach. Built on branch `backhaul-a28`
-  in three lanes (server · MC UI · app transport). **Bench gate:** one Pixel, Wi-Fi OFF, mobile data on, scan the QR, join,
-  take a kill and see KILL CONFIRMED; then Wi-Fi back on and watch `reach` stay `backhaul`. Left for the HUD session: the
-  preflight chips still say Wi-Fi/`cellular_off` (contracts §5c d/f are warnings on backhaul now). **Known, by design:**
-  no REAL cloudflared has run against the URL parser (every test drives a stand-in; the first real run is the gate);
-  `available` is decided once at launch; coverage drops on staleness, not the instant a backhaul socket closes; the
-  envelope-kind parity guard walks `push()` call sites only, so a broadcast-only kind (`join`) has no generative guard;
-  `serve()` sets no `origins=`; no per-peer cap on pre-hello sockets through the tunnel (the 5 s hello window is the only
-  throttle; the secret plus a random hostname make brute force moot, a cap is defence-in-depth); a LAN peer forging
-  `Cf-Connecting-Ip` is gated but counts toward coverage; **pre-existing, not this branch** -- `net.py` `_hello_gate`'s keyed
-  takeover sets `rec.ws` to the new socket before the gun claim runs, so a claim REFUSED right after leaves the record owning a
-  socket that is being closed and `_drop_socket`/`on_disconnect` never run for it. Three review passes (2026-09-12) closed
-  1 high + 13 medium. `build` · `capture`.
+- **B30 🟡** BACKHAUL (contracts A28) — **FIELD-PROVEN 2026-09-12** (WSL host, cloudflared quick tunnel, Pixel 10 on cellular with
+  Wi-Fi off, Pixel 4 on home Wi-Fi): join, kills scored, KILL CONFIRMED on the shooter's HUD, result to both HUDs, logs pulled,
+  stranger hellos refused 4004, coverage FULL 2/2 derived, store-and-forward across a real data loss (flushed exactly once).
+  Needed one fix first (F136, bind loopback). Left: the manual `--public-url` / named-tunnel path (Tony, later); the field
+  findings are their own rows (F140 F142 F144 F146 F153 F155 F156 F157, S40, D5). `capture`.
 - **B31 🟠** KILL CONFIRM OVER THE BLE ADVERT (Tony 2026-09-12): the victim's player advert (utility.md §2) already
   carries alive + seq and has three spare bytes (11 value, 14 threshold, 15 reserved); the victim's node already
   latches the shooter's player_num from its last `$HIR`. Put `killed_by` in the value byte while the alive bit is
@@ -209,6 +199,8 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 - **K6 ⬜** per-game weapon tuning (damage / fire sound / rate inside a saved game); `SavedGame.weapon_tuning` is
   reserved in `spec/loadout.md` §8. Needs its own spec. `build`.
 
+- **K7 ⬜** Shields as a game-config option (Tony, field 2026-09-12). Blocked on a GRANT mechanism: the shield pool is not BLE-writable (P16; contracts §3), only an IR fn-11 word grants it, and F60 "nothing shield-shaped has ever been on a gun" is still open (bench C1). A station/grenade word at spawn, or a self-emitted fn-11, comes first. `decision` · `trigger`.
+- **K8 ⬜** A volume control at MC (Tony, field 2026-09-12): play volume comes only from the venue (80 indoors / 90 outdoors, try-outs 69) with no operator override; add a bounded per-game knob in the config + Kit, still defaulting from the venue. `build`.
 ## 6. Field bugs, protocol gaps, questions (F, Q, D)
 
 **Game test 2026-09-11 (1v1, two taggers). Full sheet: [`game-test-2026-09-11.md`](game-test-2026-09-11.md).**
@@ -522,6 +514,31 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 - **F131 🟡 TWO `spec/modes.md` §8 QUESTIONS WITHOUT IDS** (surfaced 2026-09-12): (a) the mid-match revive drops `$HLOOP,0,0` and the headset returns via the A11.6 respawn sequence; confirm on hardware nothing else needed it; (b) `Compiler.cues()` ships runway_30/20 and the klaxon silent while start-sequence §2 names the lines; pin by ear. `bench` · `ears`.
 - **F132 🟡 HANDOFF BYTE RATCHET.** `test_docs_hygiene._HANDOFF_MAX_BYTES` is 13,400 against a one-screen intent of ~9,000; the line rule passes because the bullets are paragraph-length. Trim on each close and lower the cap. `hygiene`.
 
+- **F161 🟡** HUD gun picker does not refresh live: a gun powered on while the list is open updates the RSSI bars but never appears until "Set my gun" is tapped again (field 2026-09-12). `build`.
+- **F135 🟠** The HUD's SCAN QR is only reachable AFTER a gun is linked, so an MC-first join (which the transport supports) is impossible on the phone (field 2026-09-12). Folded into F156's fix. `build`.
+- **F137 🟢** HUD: the "MC LINKED — WAITING FOR KIT-OUT" label is misaligned in its button, touching the edge (field 2026-09-12). `build`.
+- **F138 🟡** The join QR now encodes ~140 chars (LAN url + secret + url-encoded public url); the Pixel 10 needed two scans and the Pixel 4 struggled. Render it larger and add a distance hint; consider a short join code that resolves to the long one (field 2026-09-12). `build`.
+- **F139 🟡** The phone's discovery SWEEP has never worked on Android: every `http://<subnet>.x:8765/api/state` probe is blocked as Mixed Content (page origin https://localhost), and it swept the subnet of a REMEMBERED MC url (an iPhone hotspot from 09-11) while the phone sat on 192.168.0.x (Pixel 4 logcat, field 2026-09-12). Probe with a WebSocket open, derive the subnet from the current join. `build`.
+- **F140 🔴** A quick-tunnel hostname is announced UP before other resolvers can see it: the home router negative-cached NXDOMAIN because the phone asked in the first seconds, and took ~250 s to resolve (1.1.1.1 had it at once; carrier DNS on the Pixel 10 too). MC must hold `starting` until DNS-over-HTTPS at Cloudflare answers, then render the QR and push `join` (field 2026-09-12). `build`.
+- **F141 🟠** MC Kit loadout filters: the "sniper" class chip cannot be deselected; the resulting empty primary set silently degraded both loadouts to pistols (see F146) (field 2026-09-12). `build`.
+- **F142 🔴** MC restored two --demo players (ALPHA/BRAVO on GUN-A/GUN-B) into a REAL session with one terminal banner line as the only tell; tagging the two real phones then made a 4-player roster with two ghosts. Never restore a demo snapshot into a non-demo launch; show a restore on the board with FRESH SESSION; rows with no phone must look different (field 2026-09-12, Tony: "big bug"). `build`.
+- **F143 🟢** `lan.mode` is hard-coded "unknown" and the REACH block printed "UNKNOWN · ip:port"; there is no SSID detection on any platform (field 2026-09-12). `build`.
+- **F144 🟠** A node on backhaul shows CHECK/amber on the Armory (the A28.3 readiness softening as built). A phone MC can reach is READY: green with a reach tag; amber/red only when unreachable (field 2026-09-12). `build`.
+- **F145 🟠** HUD loadout browser: the weapon "i" (info) icon cannot be tapped since A26 made the row tap equip + try-out; the weapon detail page is unreachable (field 2026-09-12). `build`.
+- **F146 🔴** The weapon-design §2.1 one-magazine guard fires as a HARD ERROR (a) on the pistols-only fallback the operator never chose ("usp cannot kill on one magazine … 190 pool") and (b) on a SECONDARY sidearm against a pool that includes the Body Armor perk, which bans every sidearm whenever anyone takes Body Armor. Twice it blocked the push at the field. Primary slot only, base pool, a WARNING that names slot + weapon + number; refuse an empty primary filter at validate instead of degrading (field 2026-09-12). `build`.
+- **F147 🟠** HUD try-out shows EQUIPPED / READY on the SEND; the gun needs a few more seconds. READY must follow the gun's echo of the write (F123's family) (field 2026-09-12). `build`.
+- **F148 🟠** A player can be HIT during the HUD's REDEPLOYED screen, before they can shoot: A23 protected the pregame head; the respawn path still arms `$SIR` at `$SPAWN` while the countdown runs (field 2026-09-12). Bench: the frame order at respawn. `trigger`.
+- **F149 🟠** The low-health breathing loop played AFTER a death: the lethal hit crosses the 15 HP threshold on the way to `$HP,0` and the death does not cancel `low_health` (field 2026-09-12). `build`.
+- **F150 🟡** Recap: an 11-5 line had an empty medals list (only the other row's FIRST BLOOD showed); streak / multi-kill medals missing on the recap view or never computed per kill (field 2026-09-12). `build`.
+- **F151 🟡** MC Games tab: CUSTOMIZE on FFA without saving, back to Games → the loaded config is locked with no explanation (phase was lobby; config had no preset) (field 2026-09-12). `build`.
+- **F152 🟠** Right after a redeploy the HEADSET kept BLINKING GREEN until something reset it: a `$HLOOP` not stopped before `$SPAWN`, or the spawn's stop frame ordered wrong (field 2026-09-12). Bench, with F148. `trigger`.
+- **F153 🔴** RECONNECT LATENCY: after mobile data came back the Pixel 10 took ~3 min to rejoin (the pub dial fails at once with no data → the ladder falls to the unroutable LAN url → that dial has no pre-open giveup → Android's ~2 min connect timeout), and after a tunnel restart a fresh QR scan waited behind the same hung dial. Tony: "impatient players won't wait; it feels like something is wrong". LAN dial giveup (8 s), pub→lan→pub, a new connect() aborts any in-flight dial, dial on network-change (field 2026-09-12). `build`.
+- **F154 🟡** The Pixel 4's result read LOST while the rows were tied 1-1 in FFA (should be DRAW); it flipped to WIN after the late flush re-sent the result (field 2026-09-12). `build`.
+- **F155 🟡** While the tunnel was down the Armory card read "LOST CONNECTION" then "WRONG WI-FI / UNREACHABLE" (red, blocks the Lobby) for a phone that was on the right network. A node whose last reach was the internet should read "NOT REACHED FOR n s" / "TUNNEL DOWN" (field 2026-09-12). `build`.
+- **F156 🔴** NO WAY BACK TO SCAN QR: once the HUD holds an MC address there is no scan control in any state (kitted, lobby, "reconnecting", debug relink), so a tunnel restart (new hostname) or a change of MC strands every phone; today's recovery was CLEAR APP DATA on both phones (hydration by gun then rebound the players correctly). SCAN QR + typed address reachable from the MC chip in every state (field 2026-09-12, Tony: "clear storage shouldn't be a normal workflow"). `build`.
+- **F157 🟡** Log-pull storm: one session holds 126 `log_offer` + 126 `log_data` rows of ~30-40 KB each — the phone re-offers on every reconnect/status and MC re-pulls the same log (~4 MB over cellular). Dedupe per (node, match, length/hash); and pulled logs are reachable only by SQL in the session store, no export from MC (S26's other half) (field 2026-09-12). `build`.
+- **F158 🟠** F149's fix stops the low-health loop at death with `$PLAYX,0,*`; NOT bench-verified whether that also clips the NATIVE death scream (A15.3 keeps the scream native). One gun, one death, listen (field-fix lane 2026-09-12). `ears`.
+- **D5 ⬜** PISTOL BALANCE (Tony, field 2026-09-12): a Deagle killed in 3 hits (check the headset x2 row before touching damage) and Extended Mags takes the USP to 40. Tony: the perk SHOULD apply to a pistol carried as the primary; the numbers are the question — sidearm base mags, or a fixed count / smaller multiplier for sidearms instead of x2. `decision`.
 ## 7. September build items (S)
 
 **From the 2026-09-11 game test ([`game-test-2026-09-11.md`](game-test-2026-09-11.md)):**
@@ -623,6 +640,11 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 - **S35 🟡 `app/src/app.js` (node.md §3.11 lifecycle, §3.14 log sync) AND `app/src/utility.js` HAVE NO TESTS**; `engine.test.mjs` covers neither §3.13 match result nor §3.14 (S26 built the sync; the gate is `ui:logsync`, not a unit). `build`.
 - **S36 🟡 UTILITY LEFTOVERS cut from the roadmap's status table 2026-09-12** (check each against F106/S5 before working): ITEMS-panel assignments do not survive an MC restart; the phone utility screen does not render `valid_ids`; B1's two-phone soak (73d391a) has not been run; the A6 recap stations row (revives per station vs the station's own count) is unbuilt. `build` · `bench`.
 
+- **S37 🟠** Quick Switch is illegal when a weapon slot is off (Tony, field 2026-09-12): with one weapon there is nothing to swap; policy refuses it, the phone's pool drops it. `build`.
+- **S38 🟡** Armory gun card shows the bound player's gamertag (today only the connected-nodes strip does) (field 2026-09-12). `build`.
+- **S39 🟡** Picking a character voice previews the INTRO line, not the kill line (A9.1/A15) (Tony, field 2026-09-12). `build`.
+- **S40 🟡** Rename the reach tags LAN / BACKHAUL → LAN / INTERNET (the REACH block already says INTERNET) and phrase them as the path to MC, not the phone's radio: a phone on home Wi-Fi read BACKHAUL because the WSL host had no reachable LAN address (field 2026-09-12). `build`.
+- **S41 🟢** Recap: hide "AFTER THE WHISTLE" when it has no data (Tony, field 2026-09-12). `build`.
 ## 8. Protocol unknowns (P), grenade (G), bench unknowns (U)
 
 - **P3 🟡** `$PSET` voice-pack token → line map. **2026-09-11:** the field is `SquadLeaderVoices` in the

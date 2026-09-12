@@ -62,7 +62,7 @@ describe('Armory REACH panel', () => {
     m.unmount();
   });
 
-  it('up: shows UP <hostname>, and the QR caption says it carries the internet URL; TURN OFF posts {on:false}', async () => {
+  it('up: shows UP <hostname>, and the QR caption says it carries the internet URL; TURN OFF warns once then posts {on:false}', async () => {
     const setTunnel = vi.fn(async () => ({ ws_url: null, status: 'off', provider: 'cloudflared', available: true }) as LanPublic);
     const d = await withPublic({ ws_url: 'wss://abcd1234.trycloudflare.com/ws', status: 'up', provider: 'cloudflared', available: true });
     const m = await mountScreen(<Armory />, { ...d, api: { setTunnel } });
@@ -70,7 +70,12 @@ describe('Armory REACH panel', () => {
     expect(m.text()).toContain('abcd1234.trycloudflare.com');
     await m.click('SHOW QR CODES');
     expect(m.text()).toContain('CARRIES THE LAN + INTERNET JOIN');
+    // 27b (field 2026-09-12): the first tap only arms the warning — every phone on the internet path
+    // would drop and have to rescan the QR — and must not call the API yet.
     await m.click('TURN OFF');
+    expect(setTunnel).not.toHaveBeenCalled();
+    expect(m.text()).toContain('EVERY PHONE ON THE INTERNET PATH WILL DROP');
+    await m.click('TURN OFF');   // the confirm button's text still contains "TURN OFF"
     expect(setTunnel).toHaveBeenCalledWith(false);
     m.unmount();
   });
@@ -126,7 +131,7 @@ describe('Lobby coverage line and per-node reach tags', () => {
     const state: State = { ...d.state, coverage: { level: 'zones', on_backhaul: 2, bound: 5 },
       lan: { ...d.state.lan, public: { ws_url: 'wss://x.trycloudflare.com/ws', status: 'up', provider: 'cloudflared', available: true } } };
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
-    expect(m.text()).toContain('COVERAGE ZONES — 2 OF 5 ON BACKHAUL');
+    expect(m.text()).toContain('COVERAGE ZONES — 2 OF 5 ON THE INTERNET PATH');
     m.unmount();
   });
 
@@ -135,16 +140,18 @@ describe('Lobby coverage line and per-node reach tags', () => {
     const state: State = { ...d.state, coverage: { level: 'full', on_backhaul: 5, bound: 5 },
       lan: { ...d.state.lan, public: { ws_url: 'wss://x.trycloudflare.com/ws', status: 'up', provider: 'cloudflared', available: true } } };
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
-    expect(m.text()).toContain('FULL COVERAGE — 5 OF 5 ON BACKHAUL');
+    expect(m.text()).toContain('FULL COVERAGE — 5 OF 5 ON THE INTERNET PATH');
     m.unmount();
   });
 
   /** the roster-row reach tag only, never the coverage-line text (which also contains the word
-   *  "BACKHAUL" and would make a whole-page substring check pass for the wrong reason) */
+   *  "INTERNET" and would make a whole-page substring check pass for the wrong reason). S40 (field
+   *  2026-09-12): the tag itself now reads INTERNET, not BACKHAUL — "on cellular" was the wrong read
+   *  a real operator gave it in the field. */
   const reachTags = (m: { find(sel: string): HTMLElement[] }) =>
-    m.find('span').map(s => (s.textContent ?? '').trim()).filter(t => t === 'LAN' || t === 'BACKHAUL');
+    m.find('span').map(s => (s.textContent ?? '').trim()).filter(t => t === 'LAN' || t === 'INTERNET');
 
-  it('a node connected over backhaul shows a BACKHAUL tag on its roster row; a LAN node shows LAN', async () => {
+  it('a node connected over the internet path shows an INTERNET tag on its roster row; a LAN node shows LAN', async () => {
     const d = await demo();
     const firstNodePid = d.state.nodes.find(n => n.player_id)?.player_id;
     expect(firstNodePid, 'the demo fixture has at least one bound node — control for the assertion below').toBeTruthy();
@@ -152,7 +159,7 @@ describe('Lobby coverage line and per-node reach tags', () => {
     const state: State = { ...d.state, nodes };
     const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
     const tags = reachTags(m);
-    expect(tags).toContain('BACKHAUL');
+    expect(tags).toContain('INTERNET');
     expect(tags).toContain('LAN');
     m.unmount();
   });
@@ -202,7 +209,7 @@ describe('Armed and Live carry the same coverage line as Lobby', () => {
     const state: State = { ...d.state, start: undefined, coverage: { level: 'zones', on_backhaul: 1, bound: 4 },
       lan: { ...d.state.lan, public: { ws_url: 'wss://x.trycloudflare.com/ws', status: 'up', provider: 'cloudflared', available: true } } };
     const m = await mountScreen(<Armed />, { ...d, state, view: 'armed' });
-    expect(m.text()).toContain('COVERAGE ZONES — 1 OF 4 ON BACKHAUL');
+    expect(m.text()).toContain('COVERAGE ZONES — 1 OF 4 ON THE INTERNET PATH');
     m.unmount();
   });
 
@@ -212,7 +219,7 @@ describe('Armed and Live carry the same coverage line as Lobby', () => {
     const state: State = { ...d.state, live, coverage: { level: 'full', on_backhaul: 4, bound: 4 },
       lan: { ...d.state.lan, public: { ws_url: 'wss://x.trycloudflare.com/ws', status: 'up', provider: 'cloudflared', available: true } } };
     const m = await mountScreen(<Live />, { ...d, state, view: 'live' });
-    expect(m.text()).toContain('FULL COVERAGE — 4 OF 4 ON BACKHAUL');
+    expect(m.text()).toContain('FULL COVERAGE — 4 OF 4 ON THE INTERNET PATH');
     m.unmount();
   });
 

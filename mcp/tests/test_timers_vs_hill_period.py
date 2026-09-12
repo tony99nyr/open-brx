@@ -47,6 +47,8 @@ JUDGED = {
     "REPLAY_PERIOD_MS": "the F77 detector's own window for a ~5 s replay; it MEASURES the period rather than resetting on it",
     "START_TIMEOUT_S": "A28.1: how long MC waits for cloudflared to print its URL, on the child process's stdout -- no IR frame reaches it, and it runs on the host, not on a gun",
     "TERM_GRACE_S": "A28.1: terminate-then-kill grace for the cloudflared child; a process wait, not a game timer",
+    "DNS_CAP_S": "F140: how long MC holds `starting` while the tunnel hostname does not resolve at Cloudflare; driven by DNS-over-HTTPS answers on the host, and nothing on the IR wire reaches it",
+    "DOH_TIMEOUT_S": "F140: the socket timeout on one DNS-over-HTTPS query; an HTTP wait on the host, not a game timer",
 }
 
 _CONST = re.compile(r"^\s*([A-Z_][A-Z0-9_]*_(S|MS))\s*(?::\s*[\w\[\], ]+)?\s*=\s*\(?\s*(-?\d[\d_.]*)", re.M)

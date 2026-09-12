@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine, handoverPool } from '../src/engine.js';
+import { Engine, handoverPool, PLAYX } from '../src/engine.js';
 import { CONTROL_STATE } from '../src/control.js';   // the phone control point's advert bits (K1)
 import { Presence, encodeUuid } from '../src/beacon.js';   // the REAL advert path, for the clock-mismatch guard
 
@@ -1575,6 +1575,109 @@ test('tutorial end push quiets the gun and clears the try-out state', () => {
 });
 
 
+test('F147: tryoutArming clears on the gun\'s own confirming ammo report', () => {
+  const h = harness().kit();
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 30 }, frames: ['$WEAP,0,*'] } });
+  assert.equal(h.eng.state().tryoutArming, true, 'arming while unconfirmed');
+  h.frame('$ALCD,30,100,0,50,0,*');
+  assert.equal(h.eng.state().tryoutArming, false, 'the matching report confirms it');
+});
+
+// Polish-loop pass 1 (2026-09-12 LOW): the untightened version confirmed on ANY later report equal to the
+// clip -- an unrelated ammo line (a stray resend, or a shot/reload landing back on that number) could pass
+// for confirmation of a DIFFERENT weapon's write. Only the FIRST report after arming gets a vote.
+test('F147 (tightened): a non-matching first report forecloses a later coincidental match', () => {
+  const h = harness().kit();
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 30 }, frames: ['$WEAP,0,*'] } });
+  h.frame('$ALCD,20,100,0,50,0,*');           // the FIRST report after arming: does not match
+  assert.equal(h.eng.state().tryoutArming, true, 'still arming -- no match yet');
+  h.frame('$ALCD,30,100,0,50,0,*');           // a LATER report happens to equal the clip
+  assert.equal(h.eng.state().tryoutArming, true, 'a later coincidental match must not confirm once the first report missed');
+});
+
+test('F147: an unconfirmed try-out arm assumes done after the timeout', () => {
+  const h = harness().kit();
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 30 }, frames: ['$WEAP,0,*'] } });
+  h.adv(3100); h.eng.tick();
+  assert.equal(h.eng.state().tryoutArming, false, 'the timeout resolves it with no confirming report');
+});
+
+// ── polish-loop pass 2: scope to the arming SLOT, an honest timeout, no EQUIPPED flash before the write ──
+test('polish-2: the ack itself arms a placeholder -- no EQUIPPED flash before the tutorial write lands', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('primary', 'weapon', 'smg', true);
+  assert.equal(h.eng.state().tryoutArming, false, 'nothing armed before MC answers');
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
+  assert.equal(h.eng.state().tryoutArming, true, 'the ack alone must already read as arming, before the gun write ever lands');
+});
+// Polish-loop pass 3 (HIGH): a try-out is written to GUN SLOT 0 always, primary or secondary rack alike
+// (compile.py `resolve(wid, 0)` + `$AMMO,0,…`) -- the earlier version of this test hand-fed `$ALCD,…,1,…`
+// for a secondary pick, which the real gun never sends (every secondary try-out was timing out
+// UNCONFIRMED against real hardware as a result). Corrected to the real frame shape, plus a dedicated
+// case proving a secondary pick still confirms -- on slot 0, same as primary.
+test('polish-3: a report on a DIFFERENT gun slot never forecloses confirmation', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('primary', 'weapon', 'smg', true);
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 72 }, frames: ['$WEAP,0,*', '$AMMO,0,72,0,1,*'] } });
+  h.frame('$ALCD,10,100,1,50,0,*');           // slot 1 -- some OTHER weapon's traffic, irrelevant to this arm (gun slot 0)
+  assert.equal(h.eng.state().tryoutArming, true, 'an other-slot report must not foreclose');
+  h.frame('$ALCD,72,100,0,20,0,*');           // slot 0, the arming slot, matches the clip
+  assert.equal(h.eng.state().tryoutArming, false, 'the same-slot matching report still confirms');
+});
+test('polish-3: a SECONDARY pick is also written to gun slot 0, and confirms there', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('secondary', 'weapon', 'smg', true);
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'secondary', ok: true, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] } } });
+  // A REAL secondary try-out's frames still target gun slot 0 -- the compiled bundle never writes slot 1
+  // for a try-out no matter which rack tab picked it.
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 72 }, frames: ['$WEAP,0,*', '$AMMO,0,72,0,1,*'] } });
+  assert.equal(h.eng.state().tryoutArming, true, 'still arming, waiting on the gun');
+  h.frame('$ALCD,72,100,0,20,0,*');           // the gun's REAL report for a secondary try-out: slot 0
+  assert.equal(h.eng.state().tryoutArming, false, 'a secondary pick must confirm on gun slot 0 -- where the gun actually reports it');
+});
+test('polish-2: a same-slot report equal to the OLD weapon\'s magazine (the baseline) does not confirm', () => {
+  const h = kitA10();
+  h.frame('$ALCD,30,100,0,50,0,*');           // the OLD weapon already sits at 30 on slot 0
+  h.eng.requestLoadout('primary', 'weapon', 'smg', true);
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 30 }, frames: ['$WEAP,0,*'] } });   // same clip by coincidence
+  h.frame('$ALCD,30,100,0,50,0,*');           // a routine resend of the OLD weapon's own state -- proves nothing about the NEW one
+  assert.equal(h.eng.state().tryoutArming, true, 'a baseline-matching report must not pass as confirmation');
+});
+test('polish-2/3: an unconfirmed timeout is honest -- tryoutUnconfirmed carries {tab, kind}, never a silent ✓', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('primary', 'weapon', 'smg', true);
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 30 }, frames: ['$WEAP,0,*'] } });
+  h.adv(3100); h.eng.tick();
+  const st = h.eng.state();
+  assert.equal(st.tryoutArming, false);
+  assert.deepEqual(st.tryoutUnconfirmed, { tab: 'primary', kind: 'weapon' }, 'the timeout must mark it unconfirmed (identified), not a plain confirm');
+});
+test('polish-2/3: a fresh successful arm clears a stale tryoutUnconfirmed from the previous one', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('primary', 'weapon', 'smg', true);
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 30 }, frames: ['$WEAP,0,*'] } });
+  h.adv(3100); h.eng.tick();
+  assert.ok(h.eng.state().tryoutUnconfirmed);
+  h.eng.requestLoadout('primary', 'weapon', 'assault_rifle', true);
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'assault_rifle' }] } } });
+  assert.equal(h.eng.state().tryoutUnconfirmed, null, 'a new pick must not still say the PREVIOUS one was unconfirmed');
+});
+test('polish-3: an unrelated PERK pick after a timed-out weapon arm never clears or claims its identity', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('primary', 'weapon', 'smg', true);
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 30 }, frames: ['$WEAP,0,*'] } });
+  h.adv(3100); h.eng.tick();
+  assert.deepEqual(h.eng.state().tryoutUnconfirmed, { tab: 'primary', kind: 'weapon' });
+  h.eng.requestLoadout('perk', 'perk', 'body_armor');   // perks never arm a try-out at all
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'perk', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }], perk: 'body_armor' } } });
+  assert.deepEqual(h.eng.state().tryoutUnconfirmed, { tab: 'primary', kind: 'weapon' }, 'the perk pick must not touch a flag that was never about it (hud.js is what keeps it off the perk row: tab/kind mismatch)');
+});
+
 test('apply.preview plays sound-only frames at the bench; non-preview stays live-only (A9.1)', () => {
   const h = harness().kit();
   h.writes.length = 0;
@@ -2058,6 +2161,29 @@ test('a respawn re-arms the low-health alert', () => {
   h.eng._spawn(false);                                           // back on your feet
   h.frame('$HP,12,0,0,*');
   assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 1, 'a new life gets a new alert');
+});
+
+// ── F149 (field 2026-09-12): a death must stop a still-playing low-health loop ────────────────────
+test('F149: a death that follows a low-health alert stops the loop with $PLAYX,0,*', () => {
+  // The realistic field shape: one hit crosses under 15 HP (fires `cues.hurt`, a several-second voice
+  // sample), a SEPARATE later hit finishes the kill. `cues.died` is never populated (A15.3: the scream
+  // stays native), so nothing else would ever interrupt the sample -- the loop played on past the death.
+  const h = goLive(harness());
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,12,0,0,*');       // under 15: the alert fires
+  assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 1, 'sanity: the loop did start');
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,0,0,0,*');        // a later, separate hit finishes the kill
+  assert.equal(h.writes.filter(f => f === PLAYX).length, 1, 'death sends the stop-playback frame');
+});
+
+test('F149: an ordinary death (never under 15 HP) sends no extra stop frame', () => {
+  // The guard is scoped to hurtFired, not to every death -- a death with no alert this life must not
+  // grow a new BLE write on every single kill.
+  const h = goLive(harness());
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,0,0,0,*');        // straight to zero, one hit, alert never armed
+  assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 0, 'control: the alert never fired');
+  assert.equal(h.writes.filter(f => f === PLAYX).length, 0, 'so death sends nothing extra');
 });
 
 // ── empty-mag state, replayed at the REAL cadence (capture 2026-08-26-weapons-smg-plus-amr) ──────

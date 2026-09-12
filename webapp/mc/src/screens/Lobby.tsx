@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { RUNWAYS, useRunway } from '../runway';
-import { coverageLine, reachOf } from '../api/derive';
+import { coverageLine, reachLabel, reachOf, reachTooltip } from '../api/derive';
 import type { Player } from '../api/types';
 import { useStore } from '../store';
 import { F, T, TAB, teamColor } from '../tokens';
@@ -32,6 +32,10 @@ export function Lobby() {
     const n = state.nodes.find(x => x.player_id === pid);
     return n ? reachOf(n) : undefined;   // no node connected yet: no tag to show, never invent LAN
   };
+  // F142 (field 2026-09-12, ISSUE 11b): a restored roster carried two players with no phone ever bound
+  // — they looked exactly like real, connected operators here. `noPhone` drives the same dim treatment
+  // KIT now gives that row.
+  const noPhoneOf = (pid: string) => !state.nodes.some(x => x.player_id === pid);
   // Field 2026-08-30: the rail said only "E20D RED ON THE BOARD" and the operator read it as MC being
   // stuck — the REASON (GUN LINK LOST) was on the muster board, a screen away. Carry the blocker here.
   const redRows = readiness.board.filter(b => b.status === 'red');
@@ -78,7 +82,7 @@ export function Lobby() {
               <span style={{ font: F.osw(600, 12), ...TAB, color: T.dim }}>{col.members.length} OPERATORS</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3, border: `1px solid ${drag ? T.acc : T.line}`, padding: 6, background: T.panelDeep, minHeight: 200 }}>
-              {col.members.map(mb => <MemberRow key={mb.player_id} p={mb} teamIds={teamIds} reach={reachOfPlayer(mb.player_id)} onDragStart={() => setDrag(mb.player_id)} onMove={t => reteam(mb, t)} />)}
+              {col.members.map(mb => <MemberRow key={mb.player_id} p={mb} teamIds={teamIds} reach={reachOfPlayer(mb.player_id)} noPhone={noPhoneOf(mb.player_id)} onDragStart={() => setDrag(mb.player_id)} onMove={t => reteam(mb, t)} />)}
             </div>
           </div>
         ))}
@@ -86,7 +90,7 @@ export function Lobby() {
           <div style={{ flex: '1 1 240px' }}>
             <div style={{ padding: '10px 14px', background: T.panelAlt, border: `1px solid ${T.line}`, borderBottom: 'none', borderTop: `2px solid ${T.warn}`, font: F.chk(700, 13), letterSpacing: '.24em', color: T.warn }}>UNASSIGNED</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3, border: `1px solid ${T.line}`, padding: 6, background: T.panelDeep }}>
-              {unassigned.map(mb => <MemberRow key={mb.player_id} p={mb} teamIds={teamIds} reach={reachOfPlayer(mb.player_id)} onDragStart={() => setDrag(mb.player_id)} onMove={t => reteam(mb, t)} />)}
+              {unassigned.map(mb => <MemberRow key={mb.player_id} p={mb} teamIds={teamIds} reach={reachOfPlayer(mb.player_id)} noPhone={noPhoneOf(mb.player_id)} onDragStart={() => setDrag(mb.player_id)} onMove={t => reteam(mb, t)} />)}
             </div>
           </div>
         )}
@@ -164,19 +168,25 @@ export function Lobby() {
   );
 }
 
-function MemberRow({ p, teamIds, reach, onDragStart, onMove }: { p: Player; teamIds: string[]; reach?: 'lan' | 'backhaul'; onDragStart: () => void; onMove: (team_id: string) => void }) {
+function MemberRow({ p, teamIds, reach, noPhone, onDragStart, onMove }: { p: Player; teamIds: string[]; reach?: 'lan' | 'backhaul'; noPhone?: boolean; onDragStart: () => void; onMove: (team_id: string) => void }) {
   const others = teamIds.filter(t => t !== p.team_id);
   return (
-    <div className="hov-acc" draggable onDragStart={onDragStart}
-      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: T.panel, border: `1px solid ${T.line}`, cursor: 'grab', minHeight: 44, flexWrap: 'wrap' }}>
+    <div className="hov-acc" draggable onDragStart={onDragStart} data-no-phone={noPhone ? '1' : undefined}
+      // F142 (field 2026-09-12, ISSUE 11b): a restored player with no phone bound read exactly like a
+      // real, connected one — dim the row and say so, the same treatment KIT now gives it.
+      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: T.panel, border: `1px solid ${T.line}`, cursor: 'grab', minHeight: 44, flexWrap: 'wrap', opacity: noPhone ? 0.55 : 1 }}>
       <span aria-hidden style={{ font: F.mono(600, 12), color: T.faint, letterSpacing: '-.1em' }}>⠿</span>
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: 'block', font: F.chk(700, 14), letterSpacing: '.14em' }}><span style={{ color: T.micro, font: F.mono(500, 10) }}>#{p.player_num} </span>{p.display}</span>
         <span style={{ display: 'block', font: F.mono(500, 10), color: T.micro }}>{p.gun_id ?? 'NO GUN'}</span>
       </span>
+      {noPhone && <OutlineTag color={T.micro} border={T.line}>NO PHONE</OutlineTag>}
       {/* A28.3: which path this node's live socket is actually on right now — absent until a node
-          connects, never invented for one that hasn't (older server included). */}
-      {reach && <OutlineTag color={reach === 'backhaul' ? T.acc : T.micro} border={reach === 'backhaul' ? T.acc : T.line}>{reach.toUpperCase()}</OutlineTag>}
+          connects, never invented for one that hasn't (older server included). S40 (field 2026-09-12):
+          "BACKHAUL" read to an operator as "on cellular" — the word is now the same one the REACH
+          block uses (INTERNET), and the tooltip says what it is a fact ABOUT: the path to MC, never
+          the phone's own radio. */}
+      {reach && <OutlineTag color={reach === 'backhaul' ? T.acc : T.micro} border={reach === 'backhaul' ? T.acc : T.line} title={reachTooltip(reach)}>{reachLabel(reach)}</OutlineTag>}
       {/* tap-to-move (tablets have no HTML5 drag): one chip per other team */}
       <span role="group" style={{ display: 'inline-flex', gap: 3 }} aria-label={`move ${p.display} to`}>
         {others.map(t => (

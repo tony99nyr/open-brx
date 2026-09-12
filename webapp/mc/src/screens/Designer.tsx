@@ -2,14 +2,15 @@
 // with a sticky summary rail that reads like the card will and holds SAVE / SAVE AS NEW / PLAY THIS NOW.
 // Edits a DRAFT: nothing touches the live config until PLAY. Pool preview comes from the server's rule engine.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LoadoutPreset, PerkView, SavedGame, SlotChoice, SlotRule, WeaponView } from '../api/types';
+import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LoadoutPoolReasons, LoadoutPreset, PerkView, SavedGame, SlotChoice, SlotRule, WeaponView } from '../api/types';
 import { useStore } from '../store';
 import { F, PERK_COLOR, ROLE, T, TAB, roleOf } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, StripedSlot, Toggle, ValueBox } from '../ui';
 import { PerkGlyph } from './Kit';
 import { AdvancedPresentation } from './AdvancedPresentation';
-import { STATION_SOURCES, TEMPLATE_RULES, admitsWeapons, computePool, gameSig, objectiveLine, presetOf, rulesLine, withPolicy } from './gameSummary';
+import { STATION_SOURCES, TEMPLATE_RULES, admitsWeapons, computePool, emptyRequiredSlots, gameSig, objectiveLine, poolEmptyMessage, presetOf, rulesLine, withPolicy } from './gameSummary';
 import { MODE_ART } from '../modeArt';
+import { CONFIG_EDITABLE_PHASES, lockedReason } from './Games';
 
 const TEMPLATES: { value: LoadoutPreset; label: string; hint: string }[] = [
   { value: 'open', label: 'OPEN', hint: 'Everything, players pick all three slots' },
@@ -53,7 +54,7 @@ export function Designer() {
   // The pool is computed HERE from the rules being edited — every chip/tile/who-picks change shows instantly and needs
   // no server. (Tony, round 8: a server-only preview with an "all allowed" fallback made HEAVY-off and tile taps do
   // nothing visible.) The server preview only re-derives the preset name (OPEN / NO HEAVIES / … / CUSTOM).
-  const pool: LoadoutPool | null = useMemo(() => cfg?.loadout_policy ? computePool(cfg.loadout_policy, weapons, perks) : null, [cfg, weapons, perks]);
+  const pool: (LoadoutPool & { reasons?: LoadoutPoolReasons }) | null = useMemo(() => cfg?.loadout_policy ? computePool(cfg.loadout_policy, weapons, perks) : null, [cfg, weapons, perks]);
   const tick = useRef(0);
   useEffect(() => {
     if (!cfg?.loadout_policy) return;
@@ -82,6 +83,26 @@ export function Designer() {
   const applyTemplate = (preset: LoadoutPreset) => { if (preset !== 'custom') setCfg(c => c ? { ...c, loadout_policy: clone(TEMPLATE_RULES[preset]) } : c); };
   const setBase = (m: typeof modes[number]) => { if (m.mode !== cfg.mode) setCfg(withPolicy({ ...clone(m.defaults), environment: cfg.environment, night: cfg.night })); };
   const dirty = editing ? gameSig(editing.config) !== gameSig(cfg) || editing.name !== name.trim() || (editing.desc ?? '') !== desc.trim() : true;
+  // F151 (field 2026-09-12): PLAY / APPLY both end in `PUT /api/config`, valid only in
+  // muster/build/kit — reachable here whenever CUSTOMIZE was opened before the field moved on.
+  const configLocked = !CONFIG_EDITABLE_PHASES.has(state.phase);
+  // F141 polish (field 2026-09-12, pass 1): the "THIS EXCLUDES EVERY WEAPON" warning rendered on the
+  // slot itself but nothing stopped SAVE/PLAY — a zero-weapon primary reached KIT and every arsenal
+  // tile there was locked with no way out. The whole screen refuses until at least one slot has
+  // something to carry, exactly like the phase lock above.
+  //
+  // Pass 2: named per the pool's OWN `reasons` code (policy.py `pool()`), never a generic sentence —
+  // "fixed" is no longer assumed safe (the server refuses a push whose fixed id is not in the catalog,
+  // `_primary_pool_refusal`), and a perk pruned for having no secondary to swap to gets its own true
+  // cause instead of the perk filters taking the blame.
+  const poolEmpty = emptyRequiredSlots(pool);
+  const poolEmptyReason = poolEmpty.any
+    ? [poolEmpty.primary && poolEmptyMessage('PRIMARY', pool!.reasons!.primary!),
+       poolEmpty.secondary && poolEmptyMessage('SECONDARY', pool!.reasons!.secondary_weapons!),
+       poolEmpty.perk && poolEmptyMessage('PERK', pool!.reasons!.perks!)].filter(Boolean).join(' ')
+    : '';
+  const blocked = configLocked || poolEmpty.any;
+  const blockedReason = configLocked ? lockedReason(state.phase) : poolEmpty.any ? poolEmptyReason : undefined;
 
   const save = async (asNew = false) => {
     const nm = name.trim(); if (!nm) { setSaved('NAME IT FIRST'); return null; }
@@ -225,17 +246,19 @@ export function Designer() {
             <div style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.45, minHeight: 18 }}>{desc.trim() || (mode?.brief ?? '')}</div>
             <div style={{ height: 1, background: T.line }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <PrimaryButton onClick={play} title={name.trim() ? 'Save, apply, and go to KIT' : 'Apply without saving and go to KIT'}>PLAY THIS NOW ▸</PrimaryButton>
-              {!name.trim() && <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro }}>PLAYS TONIGHT WITHOUT SAVING — NAME IT ABOVE TO KEEP IT ON THE SHELF</div>}
+              <PrimaryButton onClick={play} disabled={blocked} title={blocked ? blockedReason : name.trim() ? 'Save, apply, and go to KIT' : 'Apply without saving and go to KIT'}>PLAY THIS NOW ▸</PrimaryButton>
+              {blocked && <div role="alert" style={{ font: F.mono(600, 10.5), letterSpacing: '.1em', color: T.bad, lineHeight: 1.5 }}>▲ {blockedReason}</div>}
+              {!blocked && !name.trim() && <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro }}>PLAYS TONIGHT WITHOUT SAVING — NAME IT ABOVE TO KEEP IT ON THE SHELF</div>}
               <div style={{ display: 'flex', gap: 6 }}>
-                <GhostButton size={11} pad="9px 12px" color={dirty ? T.ink : T.micro} border={dirty ? T.acc : T.line} onClick={() => save(false)} title={editing ? `Update "${editing.name}"` : 'Save under the name above'}>{editing ? 'SAVE' : 'SAVE GAME'}</GhostButton>
-                {editing && <GhostButton size={11} pad="9px 12px" onClick={() => save(true)} title="Keep the original, save this as a new game">SAVE AS NEW</GhostButton>}
+                <GhostButton size={11} pad="9px 12px" color={dirty ? T.ink : T.micro} border={dirty ? T.acc : T.line} disabled={blocked} onClick={() => save(false)} title={blocked ? blockedReason : editing ? `Update "${editing.name}"` : 'Save under the name above'}>{editing ? 'SAVE' : 'SAVE GAME'}</GhostButton>
+                {editing && <GhostButton size={11} pad="9px 12px" disabled={blocked} onClick={() => save(true)} title={blocked ? blockedReason : 'Keep the original, save this as a new game'}>SAVE AS NEW</GhostButton>}
               </div>
               {saved && <div role="status" style={{ font: F.mono(600, 10.5), letterSpacing: '.14em', color: saved.startsWith('NAME') ? T.warn : T.ok }}>{saved}</div>}
               {saved && !saved.startsWith('NAME') && editing && state.active_preset_id === editing.preset_id && gameSig(editing.config) !== gameSig(state.config) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{ font: F.mono(600, 10.5), letterSpacing: '.12em', color: T.warn }}>▲ TONIGHT'S GAME STILL RUNS THE OLD VERSION</div>
-                  <GhostButton size={11} pad="9px 12px" color={T.ink} border={T.warn} onClick={async () => { const r = await run(() => api.applyPreset(editing.preset_id)); if (r) await run(() => api.putConfig({ environment: state.config.environment, night: state.config.night })); }}>APPLY TO TONIGHT'S GAME ▸</GhostButton>
+                  <GhostButton size={11} pad="9px 12px" color={T.ink} border={T.warn} disabled={blocked} title={blocked ? blockedReason : undefined}
+                    onClick={async () => { if (blocked) return; const r = await run(() => api.applyPreset(editing.preset_id)); if (r) await run(() => api.putConfig({ environment: state.config.environment, night: state.config.night })); }}>APPLY TO TONIGHT'S GAME ▸</GhostButton>
                 </div>
               )}
             </div>
@@ -249,7 +272,7 @@ export function Designer() {
 /* ---------- pieces ---------- */
 
 function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
-  { slot: 'primary' | 'secondary' | 'perk'; rule: SlotRule; pool: LoadoutPool | null; weapons: WeaponView[]; perks: PerkView[]; onRule: (r: Partial<SlotRule>) => void }) {
+  { slot: 'primary' | 'secondary' | 'perk'; rule: SlotRule; pool: (LoadoutPool & { reasons?: LoadoutPoolReasons }) | null; weapons: WeaponView[]; perks: PerkView[]; onRule: (r: Partial<SlotRule>) => void }) {
   const sec = slot === 'secondary', isPerk = slot === 'perk';   // A14: the perk is its own slot
   const allowedW = pool ? (sec ? pool.secondary_weapons : pool.primary) : [];
   const allowedK = pool ? pool.perks : [];
@@ -262,6 +285,14 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
     : isPerk ? `${allowedK.length} OF ${perks.length} PERKS`
     : sidearmsOnly ? `SIDEARMS ONLY · ${allowedW.length} OF ${pistols} PISTOLS`
     : `${allowedW.length} OF ${weapons.length} WEAPONS`;   // review #22
+  // F141 (field 2026-09-12, ISSUE 19): a PLAYER/HOST slot whose filters exclude every candidate used to
+  // say only "0 OF 18 WEAPONS" — nothing on screen said the slot would DEGRADE at kit-out (primary
+  // falls back to pistols only, which then failed its own one-magazine guard and blocked the push).
+  // Say the failure in place, at the moment it is created, not three screens later as an unreadable
+  // push error. Pass 2: driven by the pool's own `reasons` code, not a re-derived `!off && !fixed` —
+  // a FIXED slot can be just as empty (`fixed_missing`) and must say so too.
+  const emptyCode = pool?.reasons?.[isPerk ? 'perks' : sec ? 'secondary_weapons' : 'primary'];
+  const emptyPool = !!emptyCode && emptyCode !== 'off';
   const WHO: Record<string, string> = isPerk
     ? { player: 'players pick a perk from what is allowed below (the host can override)', host: 'the host picks each player\'s perk on the KIT page', fixed: 'everyone gets the one perk you tap below', off: 'nobody gets a perk this game' }
     : { player: 'players choose from what is allowed below (the host can override)', host: 'the host chooses for each player on the KIT page', fixed: 'everyone gets the one weapon you tap below', off: 'nobody gets a slot 2 — the alt-fire button does nothing' };
@@ -272,18 +303,33 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
     const n = members.filter(w => allowedW.includes(w.weapon_id)).length;
     return n === members.length ? 'on' : `${n}/${members.length}`;
   };
+  // F141 (field 2026-09-12): a chip reading PARTIAL — some of its own weapons off, usually because a
+  // DIFFERENT class chip already excludes them (the AMR is support AND sniper; switching HEAVY off
+  // switches the Ion Sniper off too, which reads as "sniper: 4/5") — used to fall into the "turn
+  // everything back ON" branch on tap. Tapping SNIPER then cleared its exclude_ids but never touched
+  // exclude_tags, so if every one of its own members was already off via ANOTHER tag the pool never
+  // changed and the chip looked stuck ("cannot deselect it" — exactly what a field operator hit while
+  // excluding heavy/support/assault/cqb and then reaching for sniper last). The rule is simpler and
+  // matches the chip's own on/off reading: anything but fully OFF taps to OFF; only OFF taps to ON.
   const tapTag = (tag: string) => {
-    const st = tagState(tag);
-    if (st === 'on') onRule({ exclude_tags: [...rule.exclude_tags, tag] });                                    // whole class off
-    else onRule({ exclude_tags: rule.exclude_tags.filter(t => t !== tag),                                    // whole class back ON, incl. members switched off by id
-                  exclude_ids: rule.exclude_ids.filter(id => !(weapons.find(w => w.weapon_id === id)?.tags ?? []).includes(tag)) });   // review #14
+    if (tagState(tag) === 'off') {
+      onRule({ exclude_tags: rule.exclude_tags.filter(t => t !== tag),                                    // whole class back ON, incl. members switched off by id
+               exclude_ids: rule.exclude_ids.filter(id => !(weapons.find(w => w.weapon_id === id)?.tags ?? []).includes(tag)) });   // review #14
+    } else {
+      onRule({ exclude_tags: [...rule.exclude_tags, tag] });                                              // whole class off, on or partial alike
+    }
   };
   return (
     <div role="group" aria-label={`${slot} slot rules`} style={{ background: T.panelDeep, border: `1px solid ${T.line}`, borderTop: `2px solid ${isPerk ? PERK_COLOR : T.acc}`, padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ font: F.chk(700, 13), letterSpacing: '.2em' }}>{isPerk ? 'PERK' : sec ? 'SECONDARY' : 'PRIMARY'}</span>
-        <span data-testid={`${slot}-summary`} style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.acc }}>{summary}</span>
+        <span data-testid={`${slot}-summary`} style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: emptyPool ? T.bad : T.acc }}>{summary}</span>
       </div>
+      {emptyPool && (
+        <div role="alert" data-testid={`${slot}-empty-pool`} style={{ font: F.chk(700, 12), letterSpacing: '.04em', color: T.bad, background: 'rgba(255,82,82,.1)', border: `1px solid ${T.bad}`, padding: '8px 10px', lineHeight: 1.5 }}>
+          ▲ {poolEmptyMessage(isPerk ? 'PERK' : sec ? 'SECONDARY' : 'PRIMARY', emptyCode!)}
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ font: F.mono(600, 10.5), letterSpacing: '.2em', color: T.micro }} title="Who decides what goes in this slot">WHO PICKS</span>
         <Seg value={rule.choice} pad="5px 11px" options={[{ value: 'player', label: 'PLAYER' }, { value: 'host', label: 'HOST' }, { value: 'fixed', label: 'FIXED' }, ...(sec || isPerk ? [{ value: 'off' as SlotChoice, label: 'OFF' }] : [])]}
@@ -382,7 +428,7 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
 function Chip({ on, partial, color, onClick, children }: { on: boolean; partial?: string; color: string; onClick: () => void; children: React.ReactNode }) {
   const mixed = on && !!partial;
   return (
-    <button type="button" aria-pressed={mixed ? 'mixed' : on} onClick={onClick} className="hit44" title={mixed ? `${partial} of this class allowed — tap to allow all` : on ? 'Allowed — tap to switch the whole class off' : 'Off — tap to allow the class'}
+    <button type="button" aria-pressed={mixed ? 'mixed' : on} onClick={onClick} className="hit44" title={mixed ? `${partial} of this class allowed (the rest off by another chip or by id) — tap to switch the whole class off` : on ? 'Allowed — tap to switch the whole class off' : 'Off — tap to allow the class'}
       style={{ ...BTN_RESET, font: F.chk(600, 12), letterSpacing: '.02em', padding: '7px 12px', minHeight: 36, cursor: 'pointer',
                // No fill. Five saturated blocks, twice on screen, were the loudest thing on the page —
                // "the colors of the buttons are too harsh maybe just border color or a dimmer hue"

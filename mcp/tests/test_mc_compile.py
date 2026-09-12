@@ -387,16 +387,56 @@ def test_hits_to_kill_reads_the_resolved_frame():
     assert cat.hits_to_kill("assault_rifle", 115) == 13
 
 
-def test_validate_rejects_weapon_that_cannot_kill_on_one_magazine():
+def test_validate_warns_when_a_primary_cannot_kill_on_one_magazine():
     """The invariant the pre-rebalance rail gun broke: mag 1 while needing 2 hits at the 115 pool.
-    Pinned on a synthetic row so the test keeps testing the RULE after the roster is retuned."""
+    Pinned on a synthetic row so the test keeps testing the RULE after the roster is retuned.
+
+    F146 (field 2026-09-12): a WARNING, not an error. It is a guideline out of a design doc, and as a
+    hard error it stood between an operator and the whistle twice at a real match with a line they
+    could not act on. It still has to say the slot, the weapon and both numbers."""
     broken = WeaponCatalog(rows=[{"weapon_id": "coilgun", "name": "Coilgun", "cls": 7, "mag": 1,
                                   "reserve": 6, "reload_ms": 2400, "dmg": 78, "rof": 25, "rng": 75,
                                   "base": "ar", "wire": {"dmg": 90}}])
     r = Compiler(broken).validate(_cfg(), [_player(weapons=("coilgun",))])
-    assert not r["ok"]
-    assert any("coilgun cannot kill on one magazine: mag 1 < 2 hits at 90 dmg vs 115 pool" in e
-               for e in r["errors"]), r["errors"]
+    assert not any("one magazine" in e for e in r["errors"]), r["errors"]
+    said = [w for w in r["warnings"] if "ONE MAGAZINE" in w]
+    assert said, r["warnings"]
+    assert "PRIMARY COILGUN CANNOT KILL ON ONE MAGAZINE" in said[0], said
+    assert "mag 1 < 2 hits at 90 dmg vs a 115 pool" in said[0], said
+
+
+def test_f146_a_sidearm_is_never_held_to_the_one_magazine_rule():
+    """Field 2026-09-12, two blocked pushes. The guard ran over EVERY equipped weapon, so it graded a
+    backup pistol by the standard of the gun you fight with: "deagle cannot kill on one magazine:
+    mag 7 < 8 hits at 26 dmg vs 190 pool" refused an ordinary sniper + deagle kit. A sidearm is
+    carried for the moments the primary is empty; one magazine was never its job."""
+    # as the SECONDARY, beside a legal primary: nothing is said at all
+    r = C.validate(_cfg(), [_player(weapons=("sniper_rifle", "deagle"))])
+    assert not any("ONE MAGAZINE" in w for w in r["warnings"]), r["warnings"]
+    assert not any("one magazine" in e for e in r["errors"]), r["errors"]
+    # and as the PRIMARY (the pistols-only fallback the operator never chose) it is still exempt
+    r2 = C.validate(_cfg(), [_player(weapons=("usp",))])
+    assert not any("ONE MAGAZINE" in w for w in r2["warnings"]), r2["warnings"]
+    assert r2["ok"], r2["errors"]
+
+
+def test_f146_the_guard_grades_the_BASE_pool_so_one_players_perk_cannot_ban_a_weapon():
+    """Field 2026-09-12: graded against the perk-ARMED pool, Body Armor (+50) took a 140-point pool to
+    190 — past what any pistol's magazine can do — so one player taking that perk banned every sidearm
+    in the game. A weapon's design is a fact about the weapon and the host's health setting; what a
+    player straps on top is not the weapon's fault."""
+    tiny = WeaponCatalog(rows=[{"weapon_id": "popgun", "name": "Popgun", "cls": 0, "mag": 13,
+                                "reserve": 90, "reload_ms": 1400, "dmg": 10, "rof": 54, "rng": 75,
+                                "base": "ar", "wire": {"dmg": 10}}])
+    c = Compiler(tiny)
+    cfg = dict(_cfg(), health={"max_hp": 45, "max_armor": 70})       # base pool 115 -> htk 12, mag 13
+    plain = c.validate(cfg, [_player(weapons=("popgun",))])
+    assert not any("ONE MAGAZINE" in w for w in plain["warnings"]), plain["warnings"]
+    armoured = _player(weapons=("popgun",))
+    armoured["loadout"]["perk"] = "body_armor"                        # armed at 165 -> htk 17 > mag 13
+    r = c.validate(cfg, [armoured])
+    assert not any("ONE MAGAZINE" in w for w in r["warnings"]), (
+        "a perk on one player re-graded the weapon for everyone: " + repr(r["warnings"]))
 
 
 def test_validate_accepts_weapons_that_can_kill_on_one_magazine():
@@ -411,9 +451,11 @@ def test_mag_invariant_follows_the_per_player_health_override():
     assert not any("one magazine" in e for e in C.validate(_cfg(), [ok])["errors"])
     over = _player(weapons=("sniper_rifle",))
     over["loadout"]["overrides"] = {"max_hp": 150, "max_armor": 150}
-    errs = C.validate(_cfg(), [over])["errors"]
-    assert any("sniper_rifle cannot kill on one magazine" in e for e in errs), errs
-    assert any("mag 4 < 5 hits at 60 dmg vs 300 pool" in e for e in errs), errs
+    # F146: a WARNING now, and still per-player — an override is the HOST's health model for that
+    # player, not a perk the player chose, so it still moves the pool the weapon is graded against.
+    warns = C.validate(_cfg(), [over])["warnings"]
+    assert any("PRIMARY SNIPER RIFLE CANNOT KILL ON ONE MAGAZINE" in w for w in warns), warns
+    assert any("mag 4 < 5 hits at 60 dmg vs a 300 pool" in w for w in warns), warns
 
 
 def test_mag_invariant_reports_each_weapon_once_per_pool():
@@ -421,8 +463,8 @@ def test_mag_invariant_reports_each_weapon_once_per_pool():
     ov = {"max_hp": 150, "max_armor": 150}
     a, b = _player(num=7, weapons=("sniper_rifle",)), _player(num=8, weapons=("sniper_rifle",))
     a["loadout"]["overrides"] = b["loadout"]["overrides"] = ov
-    errs = [e for e in C.validate(_cfg(), [a, b])["errors"] if "one magazine" in e]
-    assert len(errs) == 1, errs
+    said = [w for w in C.validate(_cfg(), [a, b])["warnings"] if "ONE MAGAZINE" in w]
+    assert len(said) == 1, said
 
 
 # ---- $SIR effect guard (weapon-design.md §6.2) -----------------------------
@@ -707,10 +749,12 @@ def test_an_override_may_not_write_an_ammo_token():
 
 
 def test_validate_grades_against_the_pool_the_gun_is_ARMED_with():
-    """`validate()`'s mag>=htk gate used to build a THIRD pool arithmetic that omitted the
-    `body_armor` perk and the 255 cap, so it graded that player at 115 while the gun was armed at
-    165 — and used the raw catalog mag rather than the one an `ammo_mult` perk actually grants
-    (review 2026-09-01). All three arithmetics must agree."""
+    """The two ARMING arithmetics (`health_pool()` and `_to_gc()`'s `$PSET`) must agree, perk and 255
+    ceiling included — that is what the first half pins, and it is unchanged.
+
+    The one-magazine guard was a third site that used to be pinned to them (review 2026-09-01). F146
+    (field 2026-09-12) deliberately un-pinned it: it grades the WEAPON against the host's health
+    model, so it reads neither the perk's armour nor the perk's magazine. See the F146 tests above."""
     from brx_mcp.mc.compile import Compiler
     c = Compiler()
     cfg = dict(_cfg(), health={"max_hp": 45, "max_armor": 70})
@@ -727,29 +771,30 @@ def test_validate_grades_against_the_pool_the_gun_is_ARMED_with():
 
     assert armed_pool(None) == 115 and armed_pool("body_armor") == 165
 
-    # a weapon whose magazine is exactly enough at 115 but NOT at 165 must be reported for the
-    # armoured player. The sniper: 60 dmg, mag 4 -> htk 2 at 115, htk 3 at 165; still fine. Use a
-    # synthetic roster pool instead so the assertion does not depend on the shipped balance.
+    # F146 (field 2026-09-12): the one-magazine GUARD no longer reads the armed pool — see
+    # `test_f146_the_guard_grades_the_BASE_pool_so_one_players_perk_cannot_ban_a_weapon` for why one
+    # player's perk must not re-grade a weapon for the whole field. The two ARMING arithmetics above
+    # are unchanged and still pinned to each other; what the guard quotes is the BASE pool, clamped
+    # the same way.
     hi = dict(cfg, health={"max_hp": 45, "max_armor": 250})       # 295 base, +50 perk -> capped 255
     head = c.compile(hi, roster("body_armor")[0], hi["teams"])["head"]
     t = next(f for f in head if f.startswith("$PSET")).split(",")
     assert int(t[4]) == 255, "armour is capped at the policy ceiling"
-    armed = 45 + 255                                     # what the gun is actually armed with
-    # validate() must quote that CAPPED pool, not the uncapped 45 + (250 + 50) = 345
-    errs = c.validate(hi, roster("body_armor", "rail_gun"))["errors"]
-    quoted = [e for e in errs if " pool " in e]
-    assert quoted, "the rail gun cannot kill on one magazine at this pool — expected an error"
-    for e in quoted:
-        assert f" {armed} pool" in e, f"validate did not use the armed pool ({armed}): {e}"
-        assert " 345 pool" not in e, f"validate used the UNCAPPED pool: {e}"
-
-    # and the perk must actually move the grade: without it the same config is a smaller pool
-    plain = [e for e in c.validate(hi, roster(None, "rail_gun"))["errors"] if " pool " in e]
-    assert plain and " 295 pool" in plain[0], plain
+    warns = c.validate(hi, roster("body_armor", "rail_gun"))["warnings"]
+    quoted = [w for w in warns if " pool" in w and "ONE MAGAZINE" in w]
+    assert quoted, f"the rail gun cannot kill on one magazine at this pool — expected a warning: {warns}"
+    # 45 + min(255, 250) = 295, with NO +50 from the perk
+    assert "vs a 295 pool" in quoted[0], quoted
+    assert " 345 pool" not in quoted[0], f"the guard used the UNCAPPED pool: {quoted[0]}"
+    # ...and the perk must make NO difference to the grade (F146): the same config, no perk, same line
+    plain = [w for w in c.validate(hi, roster(None, "rail_gun"))["warnings"] if "ONE MAGAZINE" in w]
+    assert plain and plain[0] == quoted[0], (plain, quoted)
 
 
-def test_validate_uses_the_magazine_the_perk_actually_grants():
-    """An `ammo_mult` perk changes the magazine the gun is given; the gate must grade THAT."""
+def test_validate_uses_the_weapons_own_magazine_not_the_perks():
+    """F146 (field 2026-09-12): the guard reads the weapon's own magazine against the base pool. It
+    used to read the perk-granted one against the perk-armed pool, which is how Body Armor on one
+    player banned every sidearm in the game as a HARD ERROR."""
     from brx_mcp.mc.compile import Compiler, WeaponCatalog
     c = Compiler()
     # a weapon that cannot kill on one mag at the base size, but can once a perk enlarges it
@@ -764,19 +809,21 @@ def test_validate_uses_the_magazine_the_perk_actually_grants():
                  "loadout": {"weapons": [{"weapon_id": "tiny"}], "perk": perk}}]
 
     # mag 4 vs htk 13 at the 115 pool: cannot kill on one magazine
-    errs = c.validate(cfg, player(None))["errors"]
-    assert any("mag 4 <" in e for e in errs), errs
+    warns = c.validate(cfg, player(None))["warnings"]
+    assert any("mag 4 <" in w for w in warns), warns
 
-    # `extended_mags` doubles it (perks.json ammo_mult: 2). The gate must grade the magazine the gun
-    # is GIVEN, not the catalog's — the raw-`mag` version reported 4 for a gun that was handed 8.
-    errs2 = c.validate(cfg, player("extended_mags"))["errors"]
+    # F146 (field 2026-09-12) REVERSED this leg on purpose. The guard is a statement about the WEAPON
+    # against the host's health model, so both halves of the comparison are now perk-free: the base
+    # pool and the base magazine. Reading `extended_mags` here while ignoring `body_armor` there would
+    # be the worst of both, and reading both is what let one player's Body Armor ban every sidearm.
+    # What the gun is actually GIVEN is still pinned, by the $PSET and $WEAP tests.
+    warns2 = c.validate(cfg, player("extended_mags"))["warnings"]
     granted = c.catalog._ammo("tiny", {"ammo_mult": 2})[0]
     assert granted == 8, granted
-    quoted = [e for e in errs2 if "cannot kill on one magazine" in e]
-    assert quoted, errs2
-    for e in quoted:
-        assert f"mag {granted} <" in e, f"validate graded the catalog mag, not the granted one: {e}"
-        assert "mag 4 <" not in e, e
+    quoted = [w for w in warns2 if "ONE MAGAZINE" in w]
+    assert quoted, warns2
+    for w in quoted:
+        assert "mag 4 <" in w, f"the guard read a perk's magazine, not the weapon's: {w}"
 
 
 def test_what_the_captures_actually_say_about_HLED():

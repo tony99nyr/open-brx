@@ -437,6 +437,27 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 #diag .btns button.danger{border-color:var(--bad);color:var(--bad)}
 #diag pre{white-space:pre-wrap;word-break:break-all;margin:0;max-height:160px;overflow:auto;background:#000;padding:6px}
 #diag .close{position:absolute;top:14px;right:16px;font:700 14px var(--fl);color:var(--num);padding:6px 10px;border:1px solid var(--edge)}
+/* F156/F135 (field 2026-09-12): SCAN QR + the typed address, reachable from every phase — fixed at the top of
+   the panel (never scrolls away with the readouts below it), the same way SHARE LOG is fixed at the bottom. */
+#diag .mcjoin{flex:0 0 auto;display:flex;flex-direction:column;gap:8px;padding:44px 24px 14px;border-bottom:1px solid var(--edge)}
+#diag .mcjoinnote{font:700 11px var(--fl);letter-spacing:.14em;color:var(--glow)}
+#diag .mcjoin .mcin input{width:auto;flex:1 1 auto;min-width:0}
+#diag .mcjoin .qrbtn{align-self:flex-start}
+/* Polish-loop pass 1 (2026-09-12): what CONNECT/SCAN QR are for, normally — or, armed/live only, the
+   two-tap warning (`.warn`) `hud.js`'s `_click` swaps it for. Empty when there is nothing to say (put()
+   never touches an unchanged section, so an empty string here collapses it to no visible gap). */
+#diag .mcjoinhint{font:11px/1.4 ui-monospace,monospace;color:var(--mut)}
+#diag .mcjoinhint .warn{color:var(--warn);font-weight:700}
+/* Polish-loop pass 1: a LAN-sweep hit MC, offered rather than auto-joined — one tap accepts it. Same row
+   in the pre-join screen (`.lobby .discoveredrow`, glow-styled like the rest of that screen) and the ⓘ
+   panel (dark/monospace, `#diag .discoveredrow`) — absent (not merely empty) when nothing was found, so it
+   never reserves space of its own. */
+.discoveredrow{display:flex;align-items:center;justify-content:center;min-height:44px;padding:0 14px;background:rgba(57,224,124,.12);border:1px solid var(--ok);color:var(--ok);font-weight:700;font-size:12px;letter-spacing:.1em;text-align:center;pointer-events:auto;cursor:pointer}
+#diag .discoveredrow{font-family:ui-monospace,monospace}
+/* `.foot` is a single-row flex line (mcin/qrbtn/note share it) — a flex ITEM here just squeezes into that
+   row and wraps its own text across several narrow lines. Same fix as `.kitlock` right above it: lift it
+   out of the flex flow into its own row directly above `.foot`. */
+.lobby .foot .discoveredrow{position:absolute;left:0;right:0;bottom:100%;margin-bottom:10px;font-family:var(--fl);letter-spacing:.14em;white-space:nowrap}
 
 /* ============ keyframes ============ */
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
@@ -560,8 +581,12 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .down .recap .capwarn{flex:0 0 100%;text-align:center;font-size:12px;letter-spacing:.16em;color:var(--warn);font-weight:700;transform:skewX(-10deg)}
 .down .recap .capwarn .unskew{display:inline-block;transform:skewX(10deg);white-space:normal}
 /* connected screen: unmistakable MC state (bench 2026-08-25) */
-.mclinked{flex:1;display:flex;align-items:center;justify-content:center;min-height:96px;border:1px solid var(--ok);color:var(--ok);font-family:var(--fd);font-style:italic;font-weight:700;font-size:28px;letter-spacing:.2em;transform:skewX(-10deg);box-shadow:0 0 40px -12px var(--ok)}
-.mclinked .unskew{display:inline-block;transform:skewX(10deg)}
+.mclinked{flex:1;display:flex;align-items:center;justify-content:center;min-height:96px;padding:0 22px;border:1px solid var(--ok);color:var(--ok);font-family:var(--fd);font-style:italic;font-weight:700;font-size:28px;letter-spacing:.2em;transform:skewX(-10deg);box-shadow:0 0 40px -12px var(--ok)}
+/* F137 (field 2026-09-12): no padding + no nowrap let "MC LINKED ✓ — WAITING FOR KIT-OUT" wrap to two
+   UNCENTRED lines (the flex box centres the BLOCK, not each wrapped line) with the first touching the
+   border. nowrap+overflow:hidden restores the measure-then-shrink contract every other long-string button
+   in this file already uses (`.redeploy .r .t`, `_fitBriefing`) — `_fitMcLinked` (hud.js) does the shrinking. */
+.mclinked .unskew{display:inline-block;min-width:0;max-width:100%;overflow:hidden;white-space:nowrap;transform:skewX(10deg)}
 
 /* kit-out try-out panel + loadout weapon thumb (2026-08-26) */
 .tryout{position:absolute;top:118px;left:36px;right:36px;display:flex;gap:16px;border:1px solid var(--edge);background:var(--plate);padding:8px 18px;transform:skewX(-8deg)}   /* slanted like the plates and the buttons beside it (review #28) */
@@ -643,7 +668,13 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .lrow .st{width:18px;text-align:center;font-size:16px;color:var(--ok);font-weight:700}
 /* A26: tapping a row EQUIPS AND ARMS it, so reading one without committing needs its own control. 40x40 so it
    is a real tap target on a phone, and it sits inside the row's own skew like every other cell. */
-.lrow .linfo{flex:0 0 40px;height:40px;display:flex;align-items:center;justify-content:center;background:none;border:1px solid var(--edge);color:var(--mut);padding:0;pointer-events:auto}
+/* F145 (field 2026-09-12): the ⓘ read as tappable but sat at 40px with no expanded hit area, immediately
+   against the row's own much larger tap zone (`onPickItem`) — a finger a couple px off the visual glyph
+   landed on the row and equipped the weapon instead of opening its detail. `::after` is the SAME
+   invisible-44px-hit-target trick `.infobtn`/`.qrbtn`/`.mcin button` already use in this file; it stays a
+   CHILD of `.linfo` so a tap inside it still resolves (and delegates) to `.linfo`, never to the row under it. */
+.lrow .linfo{flex:0 0 40px;height:40px;display:flex;align-items:center;justify-content:center;background:none;border:1px solid var(--edge);color:var(--mut);padding:0;position:relative;pointer-events:auto}
+.lrow .linfo::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44px;height:44px}
 .lrow .linfo .infog{width:19px;height:19px}
 .lrow.fo .linfo{color:var(--glow);border-color:var(--glow)}
 .lrow.pend{border-color:var(--glow)}
@@ -659,6 +690,11 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .eqtag{font-family:var(--fl);font-style:normal;font-size:11px;letter-spacing:.2em;color:var(--ok);border:1px solid var(--ok);padding:2px 7px;margin-left:8px;vertical-align:middle;font-weight:700}
 .eqtag.arming{color:var(--warn);border-color:var(--warn)}   /* A26/F129: the hero pane while st.pendingPick names this weapon — never claims EQUIPPED before the ack */
 [data-env="night"] .eqtag.arming{color:var(--num);border-color:var(--num)}
+/* Polish-loop pass 2: the 3s arming timeout resolved with no confirming report — muted, never the ok-green
+   a real gun-confirmed EQUIPPED gets, so the two are never mistaken for each other at a glance. */
+.eqtag.unconf{color:var(--mut);border-color:var(--edge)}
+.lrow.unconf{border-color:var(--edge)}
+.lrow.unconf .st{color:var(--mut)}
 .lo .lodetail{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;overflow:hidden auto;padding-bottom:34px;-webkit-mask-image:linear-gradient(#000 90%,transparent);mask-image:linear-gradient(#000 90%,transparent)}
 .lo .lodetail > *{flex:0 0 auto}
 .lodetail .caution{color:var(--bad);font-family:var(--fm,monospace);font-size:11px;letter-spacing:.08em;margin-top:4px}
@@ -687,6 +723,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .ackchip.ok{color:var(--ok)}
 .ackchip.bad{color:var(--bad)}
 .ackchip.warn{color:var(--warn)}
+.ackchip.unconf{color:var(--mut)}   /* polish-loop pass 2: an honest timeout, never the ok-green a real confirm gets */
 .plate .h.tab{letter-spacing:0;font-size:17px;white-space:nowrap}
 .lolock{padding:24px 18px;border:1px solid var(--edge);background:var(--plate);display:flex;flex-direction:column;gap:10px}
 .lolock .big{font-family:var(--fd);font-weight:700;font-size:22px;letter-spacing:.1em}

@@ -14,7 +14,7 @@ import secrets
 import time
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, NotRequired, TypedDict, get_args
+from typing import TYPE_CHECKING, Any, Callable, NotRequired, TypedDict, cast, get_args
 from urllib.parse import quote
 
 from . import presentation as _pres
@@ -32,7 +32,7 @@ from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_P
                     OBJECTIVE_MODES, OFFLINE_AFTER_MS,
                     STALE_AFTER_MS, STATION_KINDS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, Event,
                     GameConfig, Loadout, LoadoutOverrides, LoadoutPolicy, LoadoutPool, PerkView,
-                    Phase, Player, ReadinessRow, ReadinessSnapshot, Respawn, ScanRow, StationRef,
+                    Phase, Player, ReadinessRow, ReadinessSnapshot, Respawn, ScanRow, SlotRule, StationRef,
                     Stun, Team, Weapon, WeaponSel, app_tier, compatible, parse_app_ver)
 
 if TYPE_CHECKING:                      # `presets.PresetStore` is attached by `__main__`/`create_app`
@@ -275,6 +275,15 @@ class Session:
         self.join_secret = secrets.token_urlsafe(6)
         self.lan.setdefault("public", dict(PUBLIC_OFF))
         self.tunnel = None                        # A28.1: attached by __main__ (`attach_tunnel`)
+        # F142 (field 2026-09-12): is THIS process a demo? Set by `__main__` when `--demo` seeds the
+        # roster, persisted with the snapshot, and compared on restore — a demo roster must never wake
+        # up inside a real match day, and a real roster must never be handed to a demo run.
+        self.demo_session = False
+        # F142: what the operator was never shown. Two demo players (ALPHA on GUN-A, BRAVO on GUN-B)
+        # were restored into a real session; the only hint was ONE banner line in a terminal nobody was
+        # looking at, and the Lobby then listed four players with two ghosts. `{at, players}` rides on
+        # the state so the board can say "restored from <date>" beside a FRESH SESSION control.
+        self.restored_from: dict | None = None
         self.trying: dict[str, str] = {}          # player_id -> weapon_id
         self.browsing: dict[str, int] = {}        # A10: player_id -> t_ms the HUD opened its loadout browser
         self._policy_notice: str | None = None    # A10: "N LOADOUTS RESET BY …" — shown in config_warnings until the next config PUT
@@ -376,6 +385,8 @@ class Session:
             # `restore_snapshot` re-derives it from the next hello anyway).
             stations = {nid: st["assigned"] for nid, st in self.stations.items() if st.get("assigned")}
             snap = {"v": 1, "saved_ms": self.now_ms(),
+                    # F142: which KIND of run wrote this. Read back by `restore_snapshot`.
+                    "demo": bool(self.demo_session),
                     "players": [{**p, "node_id": None, "ready": False} for p in self.players.values()],
                     "teams": self.teams, "config": self.config, "active_preset_id": self.active_preset_id,
                     "stations": stations, "game_no": self.game_no, "game_no_started": self._game_no_started,
@@ -388,11 +399,26 @@ class Session:
             import logging; logging.getLogger("brx.mc").exception("session snapshot failed (play continues)")
 
     def restore_snapshot(self) -> int:
-        """Load a prior session.json (if any). Returns the number of players restored."""
+        """Load a prior session.json (if any). Returns the number of players restored.
+
+        F142 (field 2026-09-12): a snapshot is restored only into a run of the SAME kind. Two demo
+        players were silently restored into a real field session, sat on the roster with no phone, and
+        tagging the two real phones then CREATED two more — a real match would have been pushed to a
+        four-player roster with two ghosts. The kind is a marker in the file, not a guess about the
+        roster, and the refusal is logged rather than silent.
+        """
         if not self._persist_path or not self._persist_path.exists():
             return 0
         try:
             snap = json.loads(self._persist_path.read_text())
+            was_demo = bool(snap.get("demo", False))
+            if was_demo != bool(self.demo_session):
+                import logging
+                logging.getLogger("brx.mc").warning(
+                    "session snapshot at %s is from a %s run and this is a %s run — NOT restoring its "
+                    "%d player(s)", self._persist_path, "demo" if was_demo else "real",
+                    "demo" if self.demo_session else "real", len(snap.get("players") or []))
+                return 0
             self.players = {p["player_id"]: p for p in snap.get("players", [])}
             if snap.get("teams"):
                 self.teams = snap["teams"]
@@ -434,6 +460,15 @@ class Session:
                 pl["loadout"] = _policy.apply(self.config["loadout_policy"], self.loadout_pool(), pl.get("loadout") or {"weapons": []},
                                               *self._catalog_rows())
             self._gun_index()
+            if self.players:
+                # F142: the board says what came back, and from when. `saved_ms` is this machine's own
+                # clock at the last write, which is exactly what "restored from <date>" needs — but
+                # session.json is a file on disk that anything can write, and this value goes straight
+                # out on `/api/state` for a UI to hand to `new Date(...)`. Coerce, and drop it rather
+                # than publish a string or a null into a numeric field (round-2 review 2026-09-12).
+                at = snap.get("saved_ms")
+                at = int(at) if isinstance(at, (int, float)) and not isinstance(at, bool) else None
+                self.restored_from = {"at": at, "players": len(self.players)}
             return len(self.players)
         except Exception:
             import logging; logging.getLogger("brx.mc").exception("session snapshot restore failed — starting clean")
@@ -647,14 +682,47 @@ class Session:
         return weapons, perks
 
     def policy(self) -> LoadoutPolicy:
-        pol = self.config.get("loadout_policy")
-        if not pol:
-            pol = self.config["loadout_policy"] = _policy.default_policy(self.config["mode"])
-        return pol
+        """The loadout ruleset in force. **PURE** — it returns a view and never writes.
+
+        It used to store what it derived, which meant a plain `GET /api/state` mutated the session's
+        config (with no `config_id` bump, so nothing downstream could tell it had moved). Every route
+        that WRITES a policy already normalises — `_merge_config` runs `_policy.merge`, `set_config`
+        heals whatever it ends up holding, `restore_snapshot` calls `normalize`, `default_config` uses
+        `default_policy` — so the repair belongs there and this is only the fallback view for a config
+        that reached `self.config` past all of them (a fixture, a direct write). Round-2 review
+        2026-09-12."""
+        return _policy.effective(self.config.get("loadout_policy"), self.config["mode"])
 
     def loadout_pool(self) -> LoadoutPool:
         weapons, perks = self._catalog_rows()
         return _policy.pool(self.policy(), weapons, perks)
+
+    def _primary_pool_refusal(self) -> str | None:
+        """F146: why is there no legal primary weapon? `None` when there is one.
+
+        An empty primary pool blocks the push either way, but the operator has to be sent to the
+        control that is actually wrong. A single "clear a class or id exclusion" line sent them to the
+        class chips no matter what emptied the pool — including a `fixed_id` naming a weapon this
+        game's catalog does not contain, where there are no exclusions to clear at all (round-2 review
+        2026-09-12). The `kinds` case never reaches here: `policy()` heals it.
+        """
+        lp = self.loadout_pool()
+        if lp["primary"]:
+            return None
+        rule = self.policy()["primary"]
+        # One classifier, two vocabularies: `policy.pool()` hands out a CODE (its own copy is the HUD's,
+        # shown verbatim to a player) and the console writes the operator's line for it.
+        code = (lp.get("reasons") or {}).get("primary", "filtered")
+        if code == "fixed_missing":
+            return (f"LOADOUT RULES: THE PRIMARY IS FIXED TO {rule.get('fixed_id')!r}, WHICH IS NOT A "
+                    "WEAPON IN THIS GAME — pick the fixed primary again in the primary slot, or set "
+                    "the slot back to a player pick")
+        if code == "only_ids_missing":
+            return ("LOADOUT RULES: THE PRIMARY IS LIMITED TO WEAPONS THIS GAME DOES NOT HAVE "
+                    f"({', '.join(sorted(rule.get('only_ids') or []))}) — clear the primary slot's "
+                    "ALLOW list, or name weapons that are in the catalog")
+        return ("LOADOUT RULES: THE PRIMARY FILTER EXCLUDES EVERY WEAPON — no legal primary weapon is "
+                "left. Clear a class or id exclusion in the primary slot, or pick a preset")
 
     def health_pool(self, p: Player | None = None) -> int:
         """hp + armour a full-health player carries — what hits-to-kill is quoted against.
@@ -983,14 +1051,20 @@ class Session:
         return p
 
     def _push_voice_preview(self, p: Player) -> None:
-        """A9.1: best-effort `apply{preview}` of the voice family's kill line so a VOICE/gamertag change is
-        audible on the bound tagger. One $PLAY frame — the node's preview gate drops anything that isn't
-        $PLAY/$SFLASH and ignores a preview once past LOBBY, so this is safe to fire optimistically."""
+        """A9.1: best-effort `apply{preview}` of the voice family's INTRO line so a VOICE/gamertag change
+        is audible on the bound tagger. One $PLAY frame — the node's preview gate drops anything that
+        isn't $PLAY/$SFLASH and ignores a preview once past LOBBY, so this is safe to fire optimistically.
+
+        S39 (field 2026-09-12, Tony): the preview used to play the KILL line, which tells the operator
+        nothing about the character they just picked. The intro is that character introducing
+        themselves. A family with no intro take falls back to the kill line rather than going silent."""
         nid = p.get("node_id")
         if not nid:
             return
+        voice, slots = p.get("voice") or "male", p.get("voice_slots")
         try:
-            cue = self.compiler.cues(p.get("voice") or "male", p.get("voice_slots")).get("kill")
+            prev = getattr(self.compiler, "voice_preview", None)
+            cue = prev(voice, slots) if callable(prev) else self.compiler.cues(voice, slots).get("kill")
         except Exception:
             cue = None
         if cue:
@@ -1186,6 +1260,13 @@ class Session:
             if "coverage" not in patch and (cov := self.config.get("coverage")) is not None:
                 cfg["coverage"] = cov
         cfg = self._merge_config(cfg, patch, mode)
+        # F146 round 2: `_merge_config` normalises a policy the PATCH names, and nothing else. A config
+        # already holding a broken rule (a fixture, a restored file from another build) survived a PUT
+        # of an unrelated key untouched. This is a write, with a fresh `config_id` below, so it is the
+        # right place to repair it — `policy()` is a read and must not.
+        _pol = cfg.get("loadout_policy") or {}
+        if not _policy.admits_weapons(cast(SlotRule, _pol.get("primary") or {})):
+            cfg["loadout_policy"] = _policy.normalize(cfg.get("loadout_policy"), mode)
         cfg["config_id"] = uuid.uuid4().hex[:8]
         self.config = cfg
         self.teams = list(cfg["teams"])
@@ -1415,6 +1496,23 @@ class Session:
         except Exception as e:  # a broken compiler must not take MC down
             res = {"ok": False, "errors": [f"validate failed: {e}"]}
         self.config_errors = list(res.get("errors", []))
+        # F146 (field 2026-09-12): a loadout policy whose filters leave NO legal primary is refused
+        # HERE, where the pool is known — `compile.validate()` sees compiled loadouts, never the rules
+        # that produced them. Until now the emptiness was resolved silently by `_policy.apply()`, which
+        # falls through to whatever the player already held, and the operator's only clue was
+        # "2 LOADOUTS RESET BY PISTOLS ONLY" (a warning) followed by a hard weapon error they could not
+        # act on. A ruleset that excludes every weapon is the operator's mistake to fix, and this is the
+        # sentence that tells them which control to touch.
+        try:
+            bad = self._primary_pool_refusal()
+            if bad:
+                self.config_errors.append(bad)
+                # Mutated in place, never rebound: `res` carries the compiler's shape and a fresh
+                # `dict(res, ...)` widened it enough to break the `warnings` read two lines down.
+                res["ok"] = False
+                res["errors"] = list(self.config_errors)
+        except Exception:          # a broken pool must not take the validation down
+            import logging; logging.getLogger("brx.mc").exception("loadout pool check failed")
         self.config_warnings = list(res.get("warnings", []))
         self.config_warnings.extend(self._station_warnings())
         if self._policy_notice:
@@ -1653,8 +1751,11 @@ class Session:
         nulls `reach` on a dead socket, but the snapshot is built from THESE dicts and never consults
         that view, so nulling it there alone would have been dead code (the F33/F40 shape)."""
         nv = self.nodes.get(nid)
-        if nv is not None and nv.pop("reach", None) is not None:
-            self._changed()
+        if nv is not None:
+            gone = nv.pop("reach", None)
+            if gone is not None:
+                nv["last_reach"] = gone      # F155: the PATH it was last heard over outlives the socket
+                self._changed()
 
     def _touch(self, nid: str, stale: bool | None = None):
         nv = self._node_view(nid)
@@ -1789,6 +1890,12 @@ class Session:
         self._log_asked.discard(nid)
         nv = self._node_view(nid)
         nv.update({k: v for k, v in n.items() if k in ("node_type", "gun_name", "gun_tail", "fw", "reach", "reach_claimed")})
+        # F155 (field 2026-09-12): `reach` is nulled the moment the socket dies, and the readiness reason
+        # for a node MC can no longer hear DEPENDS on which path it was last heard over. Keeping the last
+        # known path is what lets a tunnel outage say "NOT REACHED FOR 40 s" instead of accusing a phone
+        # on the right Wi-Fi of being on the wrong one.
+        if nv.get("reach"):
+            nv["last_reach"] = nv["reach"]
         self._note_version(nid, n.get("app_ver"), n.get("platform"))   # A29
         nv["last_seen_ms"] = self.now_ms()
         if n.get("node_type") == "utility":
@@ -2540,7 +2647,18 @@ class Session:
                     # the start on "wrong Wi-Fi" for a phone whose status arrived over its data plan
                     # would make backhaul unusable on exactly the fields it exists for.
                     if nv.get("reach") == "backhaul":
-                        ambers.append("NOT ON THE FIELD WI-FI — ON BACKHAUL, DOES NOT BLOCK")
+                        # F144 (field 2026-09-12): not even amber. A phone MC IS TALKING TO is ready, and
+                        # an amber CHECK on every backhaul player made the first real tunnel match read as
+                        # a board full of faults. The path is a TAG on the row (`reach`), not a complaint.
+                        pass
+                    elif nv.get("last_reach") == "backhaul":
+                        # F155: this phone's last known path to MC was the internet, so "WRONG WI-FI" is
+                        # a lie — it is on the network it has always been on and the TUNNEL is what went
+                        # away. Say the thing the operator can act on: how long since we heard from it.
+                        pub = (self.lan.get("public") or {}).get("status")
+                        secs = max(0, age) // 1000
+                        lead = "TUNNEL DOWN — " if pub == "error" else ""
+                        blockers.append(f"{lead}NOT REACHED FOR {secs} s — BLOCKS START")
                     else:
                         blockers.append("WRONG WI-FI / MC UNREACHABLE — BLOCKS START")
                 if pf.get("gun_linked") is False:
@@ -2591,6 +2709,10 @@ class Session:
                 "battery_pct": nv.get("battery"), "battery_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,
                 "last_seen_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,   # the UI showed "0s AGO" reading a field that didn't exist (2026-08-26)
                 "gun_linked": pf.get("gun_linked"),
+                # A28.3/F144: the path MC is reaching this phone over right now, and the last one it was
+                # heard on. The Armory card renders the first as a tag and the second is what makes an
+                # unreachable row's reason honest (F155). `ReadinessRow` requires both.
+                "reach": nv.get("reach"), "last_reach": nv.get("last_reach"),
                 "fw": nv.get("fw"), "phone_batt": pf.get("phone_batt"), "ssid_ok": pf.get("ssid_ok"),
                 "mc_reachable": pf.get("mc_reachable"), "synced": nv.get("synced"), "screen_on": pf.get("screen_on"),
                 "foreground": pf.get("foreground"),
@@ -3393,6 +3515,7 @@ class Session:
             self.node_player = {}
             for nv in self.nodes.values():
                 nv.pop("player_id", None)
+            self.restored_from = None      # F142: FRESH SESSION is the answer to the restore notice
         self._changed()
         if keep_roster:
             self.persist_now()                       # roster survives a crash right after NEW MATCH
@@ -3434,6 +3557,8 @@ class Session:
                 "kit": {"kitted": kitted, "total": len(self.players), "trying": dict(self.trying), "browsing": dict(self.browsing)},
                 "loadout_pool": self.loadout_pool(),
                 "active_preset_id": self.active_preset_id,
+                # F142: absent when nothing was restored, so presence is the rule for showing the notice
+                **({"restored_from": self.restored_from} if self.restored_from else {}),
                 "lobby": {"ready": sum(1 for p in self.players.values() if p["ready"]), "total": len(self.players),
                           "pushed": self.lobby_pushed, "acks": self.acks, "all_acked": self.all_acked()},
                 "start": start, "live": live, "recap": self.recap() if self.phase in ("live", "recap") else None,

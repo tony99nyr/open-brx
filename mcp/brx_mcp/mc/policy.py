@@ -23,7 +23,7 @@ import copy
 import functools
 import json
 import pathlib
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, Sequence, cast
 
 from .types import (ItemKind, Loadout, LoadoutPolicy, LoadoutPool, LoadoutPreset, PerkView, SlotChoice,
                     SlotRule, Weapon, WeaponSel)
@@ -56,11 +56,23 @@ _R_ALT_CHAIN = "{weapon} loads shell by shell — {perk} only taps the button on
 _R_DROPPED_WEAPON = "{perk} takes the ALT button — {weapon} dropped"
 _R_DROPPED_PERK = "{weapon} needs the ALT button to switch — {perk} dropped"
 _R_DROPPED_PERK_CHAIN = "{weapon} loads shell by shell — {perk} dropped"
+# S37 (field 2026-09-12, Tony): a swap perk with nothing to swap to
+_R_NO_SWITCH = "{perk} switches between two weapons, and there is no second weapon this game"
 
 
 def takes_alt(row: PerkView | None) -> bool:
     """Does this perk claim the ALT button (`effects.alt_reload`)? Then no second weapon can be switched to."""
     return bool(((row or {}).get("effects") or {}).get("alt_reload"))
+
+
+def swaps_weapons(row: PerkView | None) -> bool:
+    """Does this perk do NOTHING without a second weapon? (`effects.switch_mult` — Quick Switch, which
+    compiles to the `$WEAP` tok15 swap delay.)
+
+    S37 (field 2026-09-12, Tony): "if either weapon slot is disabled, the Quick Switch perk must be
+    disabled too — with one weapon there is nothing to swap." Asked of the EFFECT rather than of the
+    perk id, the same way `takes_alt` is, so a second swap perk is covered the day it exists."""
+    return bool(((row or {}).get("effects") or {}).get("switch_mult"))
 
 
 @functools.lru_cache(maxsize=1)
@@ -214,6 +226,20 @@ def merge(current: LoadoutPolicy | None, patch: Mapping[str, Any]) -> LoadoutPol
             "secondary": base["secondary"], "perk": base["perk"]}
 
 
+def effective(pol: LoadoutPolicy | None, mode: str = "tdm") -> LoadoutPolicy:
+    """The ruleset a reader should apply, derived and NEVER stored (round-2 review 2026-09-12).
+
+    `Session.policy()` used to repair a broken rule by writing it back, so a `GET /api/state` mutated
+    the session config with no `config_id` bump. The write paths all normalise already; this is the
+    pure view for a policy that got past them — absent, or a primary rule that admits no kind of
+    weapon, which empties the pool for a reason no operator set and none of them can see."""
+    if not pol:
+        return default_policy(mode)
+    if not admits_weapons(pol.get("primary") or cast(SlotRule, {})):
+        return normalize(pol, mode)
+    return pol
+
+
 def normalize(pol: LoadoutPolicy | None, mode: str = "tdm") -> LoadoutPolicy:
     """A stored config may predate policies (session.json) or carry a shape this engine no longer reads — the mode default then."""
     if not pol:
@@ -255,9 +281,33 @@ def admits_weapons(rule: SlotRule) -> bool:
     return bool({"weapon", SIDEARM_TAG} & set(rule.get("kinds") or ()))
 
 
+# Why a slot's pool came out EMPTY. A closed vocabulary of CODES, not sentences: this module's copy is
+# the HUD's (`_R_*`, shown verbatim to a player) and the console needs its own words for the same fact,
+# so the one classifier hands out a code and each audience writes its own line. Round-2 review
+# 2026-09-12 — the console blamed the PERK slot's filters when S37 had pruned the last perk for having
+# no second weapon to switch to, which is a fact about the SECONDARY slot.
+POOL_EMPTY_CODES = ("off", "fixed_missing", "only_ids_missing", "needs_secondary", "filtered")
+
+
+def _empty_code(rule: SlotRule, rows: Sequence[Mapping[str, Any]], key: str) -> str:
+    """Why `_filter`/the choice left this slot with nothing. See `POOL_EMPTY_CODES`."""
+    if rule.get("choice") == "off":
+        return "off"
+    ids = {r[key] for r in rows}
+    if rule.get("choice") == "fixed":
+        return "fixed_missing" if rule.get("fixed_id") not in ids else "filtered"
+    only = rule.get("only_ids") or []
+    if only and not (set(only) & ids):
+        return "only_ids_missing"
+    return "filtered"
+
+
 def pool(policy: LoadoutPolicy, weapons: Sequence[Weapon], perks: Sequence[PerkView]) -> LoadoutPool:
     """Allowed ids per slot (catalog order) — `State.loadout_pool` (§3.2). `weapons`/`perks` are the
-    VISIBLE catalog rows (each with `tags`)."""
+    VISIBLE catalog rows (each with `tags`).
+
+    An empty slot also gets an entry in `reasons` (absent when every slot has something), so a UI can
+    say WHICH control emptied it instead of guessing at the nearest one."""
     prim, sec, pr = policy["primary"], policy["secondary"], policy["perk"]
     if prim["choice"] == "fixed":
         prim_fid = prim["fixed_id"]     # `_check_rule` refuses choice "fixed" with no fixed_id
@@ -278,7 +328,30 @@ def pool(policy: LoadoutPolicy, weapons: Sequence[Weapon], perks: Sequence[PerkV
         sp = [pr_fid] if pr_fid and any(p["perk_id"] == pr_fid for p in perks) else []
     else:
         sp = _filter(pr, perks, "perk_id")
-    return {"primary": primary, "secondary_weapons": sw, "perks": sp}
+    pruned_swap: list[str] = []
+    if not sw:
+        # S37: with no legal secondary there is nothing to switch to, so a swap perk is not a choice —
+        # it is a dead slot. Removing it from the POOL is what makes it disappear from both UIs and
+        # from a stored loadout (`apply` clears a perk that is not in the pool) with no extra rule.
+        keep = [rid for rid in sp if not swaps_weapons(_perk_row(perks, rid))]
+        pruned_swap, sp = [rid for rid in sp if rid not in keep], keep
+    out: LoadoutPool = {"primary": primary, "secondary_weapons": sw, "perks": sp}
+    reasons: dict[str, str] = {}
+    if not primary:
+        reasons["primary"] = _empty_code(prim, weapons, "weapon_id")
+    if not sw:
+        reasons["secondary_weapons"] = _empty_code(sec, weapons, "weapon_id")
+    if not sp:
+        # The S37 prune first: it is the only cause that is NOT about this slot's own rule, and blaming
+        # the perk filters for it sends the operator to the wrong control entirely.
+        reasons["perks"] = "needs_secondary" if pruned_swap else _empty_code(pr, perks, "perk_id")
+    if reasons:
+        # Additive, and deliberately NOT declared on the `LoadoutPool` TypedDict yet: that type is the
+        # source of `webapp/mc/src/api/contract.gen.ts` and `app/src/transport/contract.gen.js`, which
+        # belong to the UI lanes. Declare it there as `NotRequired[dict[str, str]]` and regenerate
+        # (`python3 mcp/tools/gen_contract.py`) in the commit that renders it.
+        cast(dict, out)["reasons"] = reasons
+    return out
 
 
 # ---- validation / auto-apply ------------------------------------------------------
@@ -361,6 +434,8 @@ def validate_loadout(policy: LoadoutPolicy, lp: LoadoutPool, loadout: Loadout, w
     if kr["choice"] == "fixed" and perk != kr["fixed_id"]:
         return False, _R_FIXED.format(what="Perk", name=_name(perks, "perk_id", kr["fixed_id"] or ""))
     if perk and perk not in lp["perks"]:
+        if swaps_weapons(_perk_row(perks, perk)) and not lp["secondary_weapons"]:
+            return False, _R_NO_SWITCH.format(perk=_name(perks, "perk_id", perk))   # S37
         return False, _why_not(kr, perks, "perk_id", perk, "perk")
     c = conflict(loadout, perks)
     if c:
@@ -445,6 +520,8 @@ def check_request(policy: LoadoutPolicy, lp: LoadoutPool, slot: str, kind: str, 
         if kind != "perk":
             return False, _R_ONLY_PERKS
         if rid not in lp["perks"]:
+            if swaps_weapons(_perk_row(perks, rid)) and not lp["secondary_weapons"]:
+                return False, _R_NO_SWITCH.format(perk=_name(perks, "perk_id", rid))   # S37
             return False, _why_not(rule, perks, "perk_id", rid, "perk")
         # F123: an ALT-button perk cannot reload a chain-reload weapon the player already has equipped.
         # Refused rather than resolved: the conflicting weapon is the PRIMARY, and a primary is mandatory,

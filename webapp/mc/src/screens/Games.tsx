@@ -3,11 +3,31 @@
 // Defining a game happens in the DESIGNER (opened from here) — this page has no forms.
 import { useCallback, useEffect, useState } from 'react';
 import type { ModeInfo, SavedGame } from '../api/types';
+import { setNotice } from '../notice';
 import { useStore } from '../store';
 import { F, PERK_COLOR, T, TAB } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, Shelf, StripedSlot, Tag, Toggle, onKey } from '../ui';
-import { gameSig, objectiveLine, rulesLine } from './gameSummary';
+import { emptyRequiredSlots, gameSig, objectiveLine, poolEmptyMessage, rulesLine } from './gameSummary';
 import { MODE_ART } from '../modeArt';
+
+/** F151 (field 2026-09-12, ISSUE 25) — `PUT /api/config` (and everything that rides on it: playing a
+ *  saved game, playing a stock mode, applying a preset) is only VALID in muster/build/kit (mc/API.md).
+ *  Once the field has moved on — a push already happened, the match is armed or live, or even sitting
+ *  in the debrief — a tap here used to fail SILENTLY: the store's `error` is a small dismissable strip
+ *  the operator can easily miss, and nothing on the Games screen itself said why nothing happened. That
+ *  read exactly like "the loaded game config's controls are locked, with no explanation" (round-2 field
+ *  report). This says which door is still open — and pass 1 (2026-09-12) made it name the RIGHT door:
+ *  `lobby` has no RECALL at all (the control endpoint is armed/live only) — it is undone by a plain
+ *  phase move back to kit; `armed` is undone by ABORT, not RECALL; `recap` is undone by NEW MATCH, which
+ *  is already on screen (CommandBar renders it whenever phase is recap) rather than a tab to jump to. */
+export const CONFIG_EDITABLE_PHASES = new Set(['muster', 'build', 'kit']);
+export function lockedReason(phase: string): string {
+  if (phase === 'lobby') return 'GAME SETTINGS ARE LOCKED — CONFIG WAS ALREADY PUSHED TO THE LOBBY. GO BACK TO KIT TO EDIT IT.';
+  if (phase === 'armed') return 'GAME SETTINGS ARE LOCKED — THE MATCH IS ARMED. ABORT ON THE MATCH TAB RETURNS IT TO THE LOBBY.';
+  if (phase === 'live') return 'GAME SETTINGS ARE LOCKED — THE MATCH IS LIVE. END OR RECALL IT ON THE MATCH TAB TO EDIT THE GAME AGAIN.';
+  if (phase === 'recap') return 'GAME SETTINGS ARE LOCKED — THIS MATCH ALREADY ENDED. NEW MATCH (TOP RIGHT) STARTS A SESSION YOU CAN EDIT.';
+  return `GAME SETTINGS ARE LOCKED — THE MATCH IS ALREADY IN ${phase.toUpperCase()}.`;
+}
 
 export function Games() {
   const { state, modes, weapons, perks, run, api, setView, openDesigner } = useStore();
@@ -18,6 +38,19 @@ export function Games() {
   useEffect(() => { reload(); }, [reload]);
   if (!state) return null;
   const cfg = state.config;
+  const locked = !CONFIG_EDITABLE_PHASES.has(state.phase);
+  // F141 polish (field 2026-09-12, pass 1): the applied config's OWN pool, server-computed — a policy
+  // that excludes every weapon in a slot can reach `state.config` from a saved game or a race even
+  // without visiting DESIGNER this session, so CONTINUE has to refuse it here too, not just there.
+  // Pass 2: named per the pool's own `reasons` code, same wording as DESIGNER.
+  const poolEmpty = emptyRequiredSlots(state.loadout_pool);
+  const poolEmptyReason = poolEmpty.any
+    ? [poolEmpty.primary && poolEmptyMessage('PRIMARY', state.loadout_pool.reasons!.primary!),
+       poolEmpty.secondary && poolEmptyMessage('SECONDARY', state.loadout_pool.reasons!.secondary_weapons!),
+       poolEmpty.perk && poolEmptyMessage('PERK', state.loadout_pool.reasons!.perks!)].filter(Boolean).join(' ')
+    : '';
+  const blocked = locked || poolEmpty.any;
+  const blockedReason = locked ? lockedReason(state.phase) : poolEmpty.any ? poolEmptyReason : undefined;
   const sig = gameSig(cfg);
   // identity = the game the server APPLIED (a duplicate is content-identical to its source — review #0); content match is the fallback for an older MC
   const activeSaved = (state.active_preset_id ? games.find(g => g.preset_id === state.active_preset_id) : null) ?? (state.active_preset_id === undefined ? games.find(g => gameSig(g.config) === sig) : null) ?? null;
@@ -26,8 +59,15 @@ export function Games() {
   const custom = !activeSaved && !activeStock;   // a tuned draft nobody saved yet
   const venue = { environment: cfg.environment, night: cfg.night };
 
-  // a TUNED (unsaved) draft is discarded by playing something else — ask once (review #16)
-  const guarded = (key: string, go: () => void) => { if (custom && confirmSwitch !== key) { setConfirmSwitch(key); return; } setConfirmSwitch(null); go(); };
+  // a TUNED (unsaved) draft is discarded by playing something else — ask once (review #16). Only the
+  // PHASE lock applies here — `poolEmpty` describes the config ALREADY applied, and picking a
+  // DIFFERENT game/mode is exactly how an operator escapes a bad one; it must never be the gate that
+  // traps them.
+  const guarded = (key: string, go: () => void) => {
+    if (locked) { setNotice(lockedReason(state.phase), true); return; }   // never a silent tap (F151)
+    if (custom && confirmSwitch !== key) { setConfirmSwitch(key); return; }
+    setConfirmSwitch(null); go();
+  };
   const playSaved = (g: SavedGame) => guarded(g.preset_id, async () => {
     const r = await run(() => api.applyPreset(g.preset_id));
     if (r) await run(() => api.putConfig(venue));   // the venue is tonight's, never the saved game's
@@ -46,14 +86,31 @@ export function Games() {
         </div>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 14, flexWrap: 'wrap' }}>
           {/* VENUE — where you're playing, not what game it is */}
-          <div role="group" aria-label="venue" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 12px', border: `1px solid ${T.line}`, background: T.panelDeep }}>
+          <div role="group" aria-label="venue" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 12px', border: `1px solid ${T.line}`, background: T.panelDeep, opacity: locked ? 0.5 : 1 }}>
             <span style={{ font: F.mono(600, 10), letterSpacing: '.24em', color: T.dim }}>VENUE</span>
-            <Seg value={cfg.environment} options={[{ value: 'indoor', label: 'INDOOR' }, { value: 'outdoor', label: 'OUTDOOR' }]} onChange={v => run(() => api.putConfig({ environment: v }))} pad="9px 14px" />
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: F.chk(600, 11), letterSpacing: '.14em', color: cfg.night ? T.ink : T.dim }}>NIGHT OPS <Toggle on={cfg.night} onChange={v => run(() => api.putConfig({ night: v }))} label="night ops" /></span>
+            <Seg value={cfg.environment} options={[{ value: 'indoor', label: 'INDOOR' }, { value: 'outdoor', label: 'OUTDOOR' }]} onChange={v => { if (!locked) run(() => api.putConfig({ environment: v })); }} pad="9px 14px" />
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: F.chk(600, 11), letterSpacing: '.14em', color: cfg.night ? T.ink : T.dim }}>NIGHT OPS <Toggle on={cfg.night} onChange={v => { if (!locked) run(() => api.putConfig({ night: v })); }} label="night ops" /></span>
           </div>
-          <PrimaryButton onClick={async () => { await run(() => api.setPhase('kit')); setView('kit'); }}>CONTINUE ▸</PrimaryButton>
+          <PrimaryButton disabled={blocked} title={blockedReason} onClick={async () => { await run(() => api.setPhase('kit')); setView('kit'); }}>CONTINUE ▸</PrimaryButton>
         </div>
       </div>
+      {blocked && (
+        <div role="alert" data-testid="games-locked" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          background: 'rgba(255,82,82,.08)', border: `1px solid ${T.bad}`, borderLeft: `3px solid ${T.bad}`, padding: '12px 16px' }}>
+          <span style={{ font: F.chk(700, 12), letterSpacing: '.06em', color: T.bad, lineHeight: 1.5 }}>▲ {blockedReason}</span>
+          {/* pass 1 (2026-09-12): the banner NAMED the fix (RECALL/ABORT/BACK TO KIT) but not where to
+              find it — one tap gets there instead of the operator hunting the nav for it. LOBBY has no
+              such control at all (a plain phase move undoes the push); RECAP's fix (NEW MATCH) is
+              already on screen in the header, so no jump target is offered for either. */}
+          {state.phase === 'lobby' && (
+            <GhostButton size={11} pad="8px 14px" color={T.ink} border={T.bad}
+              onClick={async () => { await run(() => api.setPhase('kit')); setView('kit'); }}>◂ BACK TO KIT</GhostButton>
+          )}
+          {(state.phase === 'armed' || state.phase === 'live') && (
+            <GhostButton size={11} pad="8px 14px" color={T.ink} border={T.bad} onClick={() => setView(state.phase)}>JUMP TO MATCH ▸</GhostButton>
+          )}
+        </div>
+      )}
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' }}>
         <div style={{ flex: '2 1 560px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 22 }}>

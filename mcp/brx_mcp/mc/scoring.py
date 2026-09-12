@@ -399,6 +399,14 @@ class Scorer:
                 ks.kills += 1
                 ks.streak += 1
                 ks.best_streak = max(ks.best_streak, ks.streak)
+                # F150 (field 2026-09-12): `suppress` is A5.7's "this node's clock cannot be trusted", and
+                # it is decided on the VICTIM's node — while every medal here belongs to the KILLER. The
+                # whole block used to sit inside it, so one phone whose clock MC never saw synced wiped the
+                # medal ledger of whoever killed them: OTHERGUY finished 11-5 with an empty medals column
+                # while the other row (whose deaths came in over a synced node) showed FIRST BLOOD.
+                # Only the MULTI-KILL tier is a clock-window award, so only it is suppressed now. A streak
+                # is a COUNT of consecutive kills and first blood is an ORDERING — neither reads a
+                # timestamp, so neither has any business being decided by the victim's clock.
                 if not suppress:
                     if ks.last_kill_t is not None and t - ks.last_kill_t <= MULTI_KILL_MS:
                         if ks.multis:
@@ -409,27 +417,28 @@ class Scorer:
                     else:
                         ks.multis.append(1)
                     ks.multi_best = max(ks.multi_best, kill["multi"])
-                    # Halo-style: a kill can earn SEVERAL medals at once (a killtacular AND a killing
-                    # spree), and each plays. First blood, the multi tier, then the streak threshold.
-                    medals: list[str] = []
-                    if self.first_blood is None:
-                        self.first_blood = killer
-                        medals.append("first_blood")
-                    if kill["multi"] == 2:
-                        medals.append("double_kill")
-                    elif kill["multi"] == 3:
-                        medals.append("triple_kill")
-                    elif kill["multi"] >= 4:
-                        medals.append("killtacular")
-                    if ks.streak == 5:
-                        medals.append("killing_spree")
-                    elif ks.streak == 10:
-                        medals.append("unstoppable")
-                    kill["medals"] = medals
-                    if medals:
-                        tag = " + ".join(m.replace("_", " ").upper() for m in medals)
-                    elif ks.streak >= 3:
-                        tag = f"STREAK ×{ks.streak}"
+                # Halo-style: a kill can earn SEVERAL medals at once (a killtacular AND a killing
+                # spree), and each plays. First blood, the multi tier, then the streak threshold.
+                # `kill["multi"]` stays 1 under suppression, so the multi tier simply cannot fire there.
+                medals: list[str] = []
+                if self.first_blood is None:
+                    self.first_blood = killer
+                    medals.append("first_blood")
+                if kill["multi"] == 2:
+                    medals.append("double_kill")
+                elif kill["multi"] == 3:
+                    medals.append("triple_kill")
+                elif kill["multi"] >= 4:
+                    medals.append("killtacular")
+                if ks.streak == 5:
+                    medals.append("killing_spree")
+                elif ks.streak == 10:
+                    medals.append("unstoppable")
+                kill["medals"] = medals
+                if medals:
+                    tag = " + ".join(m.replace("_", " ").upper() for m in medals)
+                elif ks.streak >= 3:
+                    tag = f"STREAK ×{ks.streak}"
                 ks.last_kill_t = t
                 # assists: other players who damaged the victim inside the window
                 # assists: each OTHER player who damaged the victim inside the window gets exactly one
@@ -737,7 +746,15 @@ class Scorer:
             return {key: None, "tie": list(self.cap_tie)}
         if self.mode == "ffa":
             rows = self.rows()
-            return {"player_id": rows[0]["player_id"]} if rows else {}
+            if not rows:
+                return {}
+            # F154 (field 2026-09-12): `rows` is SORTED, and taking `rows[0]` handed the match to
+            # whichever of two identical rows the sort happened to put first — the Pixel 4 was told it
+            # LOST a 1-1 FFA. Equal top rows are a draw, said the same way the cap tie above says it.
+            key = (-rows[0]["kills"], -rows[0]["kd"], rows[0]["deaths"])
+            tops = [r["player_id"] for r in rows
+                    if (-r["kills"], -r["kd"], r["deaths"]) == key]
+            return {"player_id": tops[0]} if len(tops) == 1 else {"player_id": None, "tie": sorted(tops)}
         if self.win_by not in (None, "", "kills"):
             # An OBJECTIVE mode is won on possession when the field actually reported some: the top
             # team by held seconds, a tie when two are level. This is the one thing that made the koth

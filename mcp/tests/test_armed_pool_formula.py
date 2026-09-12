@@ -64,25 +64,33 @@ def test_health_pool_and_to_gc_and_validate_agree_across_hp_armor_perk_spread():
         assert got_health_pool == want, f"health_pool hp={hp} armor={armor} perk={perk}: got {got_health_pool}, want {want}"
         assert got_pset_pool == want, f"$PSET pool hp={hp} armor={armor} perk={perk}: got {got_pset_pool}, want {want}"
 
-    # -- validate()'s pool is never returned; observe it through the mag>=htk gate instead --
+    # -- validate()'s pool is never returned; observe it through the mag>=htk guard instead --
+    #
+    # F146 (field 2026-09-12) took the guard OFF this formula on purpose, and the third leg records
+    # the new rule rather than being deleted. The guard grades the weapon against the host's health
+    # model — the BASE pool, no perk — because grading against the armed pool meant one player's Body
+    # Armor (+50) re-graded every weapon for the whole field, and as a hard error it blocked two
+    # pushes at a real match. The 255 ceiling still applies, and so does a per-player health override.
 
-    # rocket_launcher resolves at 115 dmg / mag 2 -> threshold 230. The perk alone must swing this.
+    # rocket_launcher resolves at 115 dmg / mag 2 -> threshold 230. The perk must NOT swing this.
     ok = C.validate(_cfg(45, 150), [_player("rocket_launcher")])
-    assert not any("one magazine" in e for e in ok["errors"]), ok["errors"]        # pool 195, legal
+    assert not any("ONE MAGAZINE" in w for w in ok["warnings"]), ok["warnings"]     # pool 195, legal
     tipped = C.validate(_cfg(45, 150), [_player("rocket_launcher", perk="body_armor")])
-    errs = [e for e in tipped["errors"] if "one magazine" in e]
-    assert errs and "245 pool" in errs[0], (
-        "body_armor must push the pool from 195 to 245 inside validate()'s own arithmetic too "
-        f"(rocket_launcher mag 2, threshold 230): {tipped['errors']}"
+    assert not any("ONE MAGAZINE" in w for w in tipped["warnings"]), (
+        "body_armor re-graded the weapon: the guard reads the BASE pool (195), not the armed 245: "
+        f"{tipped['warnings']}"
     )
+    # ...and the base pool itself still moves it: 45 + 200 = 245 > 230 is over the line
+    over = C.validate(_cfg(45, 200), [_player("rocket_launcher")])
+    said = [w for w in over["warnings"] if "ONE MAGAZINE" in w]
+    assert said and "245 pool" in said[0], over["warnings"]
+    assert C.validate(_cfg(45, 200), [_player("rocket_launcher")])["ok"], "a guideline never blocks"
 
-    # amr resolves at 24 dmg / mag 14 -> threshold 336. With max_armor=255 + body_armor's +50, the
-    # UNCLAMPED sum would be 45+305=350 (illegal: ceil(350/24)=15 > mag 14); the 255-clamped pool
-    # is 45+255=300 (legal: ceil(300/24)=13 <= mag 14). This isolates the clamp itself, not just
-    # the perk -- a naive validate() that forgot the ceiling would flag this player's amr as
-    # unable to kill on one magazine when the gun is actually armed well inside the limit.
-    clamped = C.validate(_cfg(45, 255), [_player("amr", perk="body_armor")])
-    assert not any("one magazine" in e for e in clamped["errors"]), (
-        "the 255 ceiling must be applied inside validate()'s pool too, or it grades a player "
-        f"armed at 300 as if they were armed at 350: {clamped['errors']}"
+    # amr resolves at 24 dmg / mag 14 -> threshold 336. The 255 ceiling is clamped inside the guard's
+    # own pool too: max_armor=300 would be 45+300=345 unclamped (illegal: ceil(345/24)=15 > mag 14)
+    # and is 45+255=300 clamped (legal: ceil(300/24)=13 <= mag 14).
+    clamped = C.validate(_cfg(45, 300), [_player("amr")])
+    assert not any("ONE MAGAZINE" in w for w in clamped["warnings"]), (
+        "the 255 ceiling must be applied inside the guard's pool too, or it grades a player "
+        f"armed at 300 as if they were armed at 345: {clamped['warnings']}"
     )

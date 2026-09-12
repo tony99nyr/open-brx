@@ -46,6 +46,8 @@ const RESULT_SETTLE_MS = 30000;     // A24/node.md §3.13: after the whistle the
                                     // then, and only with MC unreachable, does it say MC NOT REACHED. It NEVER says lost.
 const READOUT_COALESCE_MS = 300;    // A16 §3.1/§5: a change within this of the last READOUT WRITE only restarts the hold, it does not write again
 const PAIN_GAP_MS = 600;            // A15.3: at most one pain grunt per 600 ms (drop, never queue)
+const TRYOUT_ARM_MAX_MS = 3000;     // F147: past this with no confirming $ALCD/$LCD, assume the write took anyway — same
+                                     // "the real duration has never been timed" precedent as `switchWindowMs()`, so SWITCHING… never hangs forever
 // A17.2: HP below which the once-per-life low-health alert fires (Tony, bench 2026-09-07). ABSOLUTE, not
 // a fraction of maxHp. Set to 15 rather than the first-cut 20 precisely BECAUSE it is absolute: 20 is a
 // third of the 45 HP default but well over half a 35 HP scout, so the smallest pool would have been warned
@@ -251,6 +253,8 @@ export class Engine {
     this.spawned = false; this.ended = false;
     this.cuesFired = new Set();
     this.tutorial = false; this.tutorialWeapon = null;
+    this.tryoutArming = null;       // F147: {at, clip, gunSlot, baseline, tab, kind} between a try-out weapon write and the gun's own confirming $ALCD/$LCD
+    this.tryoutUnconfirmed = null;  // polish-loop pass 3: {tab, kind} | null — the LAST try-out arm timed out with no confirming report (honest, distinct from a real ✓; identified so a later pick on a DIFFERENT row/kind never inherits it)
     // A10 — self-serve kitting (docs/spec/loadout.md §4)
     this.catalog = null;            // {weapons: WeaponView[], perks: PerkView[]} — arrives in `assign`
     this.policy = null;             // {hud_select, primary:{choice, allowed_ids}, secondary:{choice, kinds, allowed_weapon_ids}, perk:{choice, allowed_perk_ids}} (A14)
@@ -529,7 +533,7 @@ export class Engine {
     this.browse(false);   // the LOADOUT browser is a KITTED-phase screen; a config push ends kit-out
     this.frames = frames || this.frames; if (roster) this.roster = roster;
     if (config && config.night != null) this.night = !!config.night;
-    this.tutorial = false; this.tutorialWeapon = null;
+    this.tutorial = false; this.tutorialWeapon = null; this.tryoutArming = null; this.tryoutUnconfirmed = null;
     this._gunRestFrame = null;   // F86: a new bundle's rest is `gun.rest` until this match's first take says otherwise
     if (!this.frames || !this.frames.head) { this.log('config without frames — ignored', 'le'); return; }
     if (!this.bleUp) { this.configPending = true; this.log('config stored; gun not linked yet — head will be written on relink', 'li'); this._changed(); return; }
@@ -552,7 +556,7 @@ export class Engine {
   _tutorial({ frames, weapon, end }) {
     if (this.phase !== 'kitted' || !frames) return;
     if (end) {                               // host ended the try-out: quiet the gun, drop the panel
-      this.tutorial = false; this.tutorialWeapon = null;
+      this.tutorial = false; this.tutorialWeapon = null; this.tryoutArming = null; this.tryoutUnconfirmed = null;
       this._write(frames, 'tutorial end');
       this._changed();
       return;
@@ -560,8 +564,41 @@ export class Engine {
     this.tutorial = true;
     this.tutorialWeapon = weapon || null;    // shown on the HUD: image + details of what's being tried
     this.tryoutSeen = null;                  // a fresh try-out always shows its panel
+    // F147 (field 2026-09-12, "try-out shows EQUIPPED/READY on the send; the gun takes a few more seconds"):
+    // this call is the ONE place that writes a fresh `$WEAP` table to the gun for a try-out — MC's
+    // `loadout_ack` (the rack's ✓) is only the NETWORK round-trip and never waited on this. `$WEAP` has no
+    // echo of its own (protocol.md), so — same family as F123 — the observable proxy is the gun's OWN next
+    // ammo report on the new weapon's full clip (`_onAmmo`, mirroring how the live SWITCHING takeover
+    // confirms on the next $ALCD rather than trusting the write). No clip on the row (an older/stub
+    // catalog entry) arms nothing to wait for, so the ⓘ / rack read EQUIPPED at once, as before.
+    // Polish-loop pass 3 (HIGH): `gunSlot` is NOT `pk.slot` — a try-out is written to gun slot 0 ALWAYS,
+    // primary or secondary alike (compile.py `resolve(wid, 0)` + `$AMMO,0,…`; state.py routes every
+    // weapon pick through `tryout()`), so the earlier "secondary → slot 1" guess meant the gun's own
+    // $ALCD (which really does arrive on slot 0) was read as an OTHER-slot report and ignored — every
+    // secondary pick timed out UNCONFIRMED even on a real gun. Derive it from the frames actually being
+    // written instead of guessing: the first `$WEAP,<n>,` or `$AMMO,<n>,` frame names the true slot.
+    // `baseline` is the OLD weapon's last-known magazine on THAT slot: a same-slot report that just
+    // repeats it is not new information and must not pass for confirmation.
+    const clip = weapon ? [weapon.clip, weapon.stats && weapon.stats.mag, weapon.mag].find(v => v != null) : null;
+    const gunSlot = this._tryoutFrameSlot(frames);
+    // `tab`/`kind` (HUD row identity, polish-loop pass 3 MEDIUM) ride along from the ack's placeholder when
+    // there is one; an MC-pushed try-out with no phone-side pick behind it has none, so default to the
+    // primary rack (the only tab an old-style host push could mean).
+    const tab = (this.tryoutArming && this.tryoutArming.tab) || 'primary';
+    const kind = (this.tryoutArming && this.tryoutArming.kind) || 'weapon';
+    this.tryoutArming = clip != null ? { at: this.now(), clip, gunSlot, baseline: this._prevAmmo[gunSlot] != null ? this._prevAmmo[gunSlot] : null, tab, kind } : null;
+    this.tryoutUnconfirmed = null;
     this._write(frames, 'tutorial');
     this._changed();
+  }
+  /** Polish-loop pass 3: the gun-wire slot a try-out's $WEAP/$AMMO frames actually target — read from the
+   *  frames themselves rather than guessed from which rack tab the pick came from (a try-out always lands
+   *  in slot 0 regardless of tab; §above). The first frame naming a slot wins; frames with no slot token
+   *  (`$CLEAR,*`, `$TID,1,*`, …) are skipped. Falls back to 0 — the one slot a try-out is ever written to —
+   *  if somehow neither frame is present. */
+  _tryoutFrameSlot(frames) {
+    for (const f of (frames || [])) { const m = /^\$(?:WEAP|AMMO),(\d+),/.exec(f); if (m) return +m[1]; }
+    return 0;
   }
 
   // ---------- A10 self-serve kitting (docs/spec/loadout.md §4) ----------
@@ -652,6 +689,16 @@ export class Engine {
     this.loadoutAck = { slot, ok: !!ok, reason: reason || null, dropped: dropped || null, t: this.now(), key: mine ? (pk.kind === 'none' ? 'none' : `${pk.kind}:${pk.id}`) : null };   // A14: `dropped` = the other slot this pick knocked out
     if (dropped) this.log(`pick ${slot} dropped ${dropped.slot} ${dropped.id}: ${reason || ''}`, 'lk');
     if (mine) this.pendingPick = null;
+    // F147/polish-loop pass 2: MC's ack lands BEFORE the `tutorial` message that actually writes the gun —
+    // a real gap of up to ~250 ms during which the rack used to read a plain EQUIPPED (`tryoutArming` was
+    // still null). Arm a PLACEHOLDER right here so SWITCHING… covers the whole gap, not just its tail;
+    // `_tutorial` below fills in the real clip (and derives `gunSlot` from the actual frames, since the
+    // placeholder cannot know it yet). `tab`/`kind` are carried purely for hud.js identity (polish-loop
+    // pass 3): which RACK ROW this belongs to, so it is never confused with the gun-wire slot the ammo
+    // confirmation itself keys on (pass 3: a try-out is ALWAYS written to gun slot 0 — compile.py's
+    // `resolve(wid, 0)` — regardless of which rack tab the pick came from, so `gunSlot` can never tell a
+    // primary pick from a secondary one; that is what `tab` is for).
+    if (ok && mine && pk && pk.kind === 'weapon') { this.tryoutArming = { at: this.now(), clip: null, gunSlot: 0, tab: pk.slot, kind: pk.kind }; this.tryoutUnconfirmed = null; }
     this._changed();
   }
   /** DONE on the try-out panel: hide it (the gun stays armed until MC ends the try-out or the player readies). */
@@ -1646,6 +1693,18 @@ export class Engine {
     if (this.loadoutAck && now - this.loadoutAck.t > 4000) { this.loadoutAck = null; this._changed(); }
     if (this._pickDue && now - this._pickDue.at >= PICK_DEBOUNCE_MS) this._flushPick('debounce');   // A26: the last row tapped in the window goes now
     if (this.pendingPick && now - this.pendingPick.at > 6000) { this.pendingPick = null; this._changed(); }   // MC never answered — drop the optimistic row
+    // F147: past TRYOUT_ARM_MAX_MS with no confirming $ALCD/$LCD, resolve it HONESTLY (polish-loop pass 2)
+    // rather than silently claiming the same gun-confirmed EQUIPPED — `tryoutUnconfirmed` is what tells
+    // hud.js to keep saying so (EQUIPPED · UNCONFIRMED, muted, its own glyph) instead of a settled ✓.
+    // Pass 3 (MEDIUM): carries `{tab, kind}` (never just a bare flag) so hud.js can tell WHICH row this
+    // was ever about — otherwise a perk picked after a timed-out weapon arm inherited the same badge on a
+    // row that was never arming anything (`tryoutUnconfirmed` used to outlive the weapon it described).
+    // The real duration has never been bench-timed, same as the live SWITCHING timeout this mirrors.
+    if (this.tryoutArming && now - this.tryoutArming.at > TRYOUT_ARM_MAX_MS) {
+      this.tryoutUnconfirmed = { tab: this.tryoutArming.tab, kind: this.tryoutArming.kind };
+      this.tryoutArming = null;
+      this.log('try-out arm timed out — resolved UNCONFIRMED (no confirming ammo report)', 'li'); this._changed();
+    }
     if (this.phase === 'armed' && this.start) {
       const rem = this.goLiveT - now;
       // Runway cues are EDGE-triggered: fire only when crossing the threshold from above. With a runway shorter
@@ -2286,6 +2345,22 @@ export class Engine {
     // it does is hardware-UNVERIFIED; this guard makes it safe either way). Counting it would book a magazine of
     // phantom shots, and recording it would make the restore re-send 0 -- a gun disarmed for the rest of the life.
     if (this.stunned) return;
+    // F147 (tightened, polish-loop passes 1+2): the gun's own confirmation that a try-out weapon write
+    // actually took — a fresh magazine at the new weapon's full clip, on the SLOT that weapon is landing
+    // in. Pass 2 bug: `$LCD` reports whichever slot is ACTIVE, so a routine report for the gun's CURRENT
+    // (old) weapon — a different slot entirely — used to foreclose confirmation just by arriving first;
+    // an other-slot report is now simply ignored, neither confirming nor foreclosing. Within the right
+    // slot: only the FIRST report counts, it must be an exact clip match, AND it must differ from the
+    // baseline (the old weapon's last-known magazine on that same slot before the write) — a same-slot
+    // resend that just repeats what was already there proves nothing new happened. `clip == null` is the
+    // ack-time placeholder (`_loadoutAck`) with no weapon confirmed yet: nothing to match against, so no
+    // report can pass or fail it until `_tutorial` fills the clip in. A report that fails the check never
+    // gets a second chance — it marks the arming unconfirmable-by-ammo, and the TRYOUT_ARM_MAX_MS timeout
+    // is what resolves it (honestly, as unconfirmed — see `tick()`).
+    if (this.tryoutArming && this.tryoutArming.clip != null && slot === this.tryoutArming.gunSlot) {
+      if (!this.tryoutArming.seen && mag === this.tryoutArming.clip && mag !== this.tryoutArming.baseline) { this.tryoutArming = null; this.tryoutUnconfirmed = null; }
+      else this.tryoutArming.seen = true;
+    }
     const prev = this._prevAmmo[slot];
     if (prev != null && mag < prev && this.phase === 'live') this.shots += (prev - mag);
     if (this.resync && prev != null && mag < prev) this._resyncEvidence('alcd-dec');
@@ -2456,6 +2531,16 @@ export class Engine {
     // says the killer is unknown. A stale latch (older than DEATH_LATCH_MS) is the same case: nobody we can name.
     const unknown = !fresh || shooter_num === 0;
     this.alive = false; this.deaths++; this.deadAt = this.now(); this._downRearmSent = false;   // §3.2: fresh rearm gate for this life
+    // F149 (field 2026-09-12, "the low-health breathing loop played AFTER a death"): `cues.hurt` (A17.2) is a
+    // several-second voice sample, and a death can land while it is still playing -- the killing hit itself
+    // was often a SEPARATE $HP frame moments after the one that first crossed under 15 HP. Death has nothing
+    // of its own to interrupt it with: A15.3 keeps the death sound NATIVE on purpose (`cues.died` is never
+    // populated, contracts.md A11.2/golden_bundle.json), so `_event('died')` below writes nothing. `$PLAYX,0,*`
+    // is the one bench-proven stop-playback frame (protocol.md; the same trick `_hillSay`'s preempt already
+    // uses) -- write it once, only when THIS life actually fired the alert, so an ordinary death never sends
+    // an extra frame. ⚠ NOT bench-verified: whether this also clips the firmware's own native scream, which
+    // fires off the same $HP,0 packet -- needs a real gun (FOLLOWUPS F149).
+    if (this.hurtFired) this._write([PLAYX], 'death: stop the low-health loop (F149)');
     this._stunRestore('died');   // F15: death cancels the stun -- no restore write; the revive's own $AMMO re-arms the next life
     // A16 §5 (AMENDED 2026-09-11 by F113): death clears the readout AND blanks the strip.
     this._readoutFrame = null; this._readoutHoldActive = false; this._readoutLastWriteAt = null; this._readoutLastPool = null;
@@ -2661,6 +2746,9 @@ export class Engine {
       tMinusMs: this.phase === 'armed' && this.goLiveT ? Math.max(0, this.goLiveT - now) : null,
       clockMs: this.endT ? Math.max(0, this.endT - now) : (this.timeLimitMs || 0),
       ready: !!this.ready, tutorial: this.tutorial, tutorialWeapon: this.tutorialWeapon,
+      tryoutArming: !!this.tryoutArming,   // F147: true between a try-out weapon write and the gun's own confirming ammo report
+      tryoutUnconfirmed: this.tryoutUnconfirmed,   // polish-loop pass 3: {tab, kind} | null — the last arm settled with no confirming report — honest, not a real ✓, and identified so it never bleeds onto an unrelated row
+
       // follows the LIVE slot, not always the primary (field 2026-08-30)
       weaponId: (() => { const ws = this.player && this.player.loadout && this.player.loadout.weapons; const w = ws && (ws[this.activeSlot] || ws[0]); return w ? w.weapon_id : null; })(),
       resync: this.resync ? { step: this.resync.step, prompt: this.resync.prompt } : null,

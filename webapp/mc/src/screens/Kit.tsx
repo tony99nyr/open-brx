@@ -420,8 +420,13 @@ export function Kit() {
               else if (!liveNode) chip = <span style={{ font: F.chk(700, 10), letterSpacing: '.14em', color: T.micro }}>NO PHONE</span>;
               else chip = <span style={{ font: F.chk(700, 10), letterSpacing: '.14em', color: kittedRow ? T.dim : T.micro }}>{kittedRow ? 'KITTED' : pl.gun_id ? 'FITTING' : 'NO GUN'}</span>;
               return (
-                <div key={pl.player_id} className="hov-acc kit-row" role="button" tabIndex={0} aria-pressed={on} onClick={() => setSelPlayer(pl.player_id)} onKeyDown={onKey(() => setSelPlayer(pl.player_id))}
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: on ? 'rgba(57,180,255,.06)' : 'transparent', border: `1px solid ${on ? T.acc : 'transparent'}`, cursor: 'pointer', minHeight: 44 }}>
+                <div key={pl.player_id} className="hov-acc kit-row" role="button" tabIndex={0} aria-pressed={on} data-no-phone={liveNode ? undefined : '1'}
+                  onClick={() => setSelPlayer(pl.player_id)} onKeyDown={onKey(() => setSelPlayer(pl.player_id))}
+                  // F142 (field 2026-09-12, ISSUE 11b): a restored roster row with no phone read exactly
+                  // like a real, kitted operator — two ghost players sat on the board through an entire
+                  // kit-out before anyone noticed. `liveNode` already drove the NO PHONE chip; the ROW
+                  // itself now dims too, so the difference is visible at a glance, not just on hover.
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: on ? 'rgba(57,180,255,.06)' : 'transparent', border: `1px solid ${on ? T.acc : 'transparent'}`, cursor: 'pointer', minHeight: 44, opacity: liveNode ? 1 : 0.55 }}>
                   <span style={{ width: 4, flex: 'none', alignSelf: 'stretch', background: teamColor(pl.team_id) }} />
                   <span style={{ flex: '1 1 0', minWidth: 0 }}>
                     <span style={{ display: 'block', font: F.chk(700, 14), letterSpacing: '.14em' }}><span style={{ color: T.micro, font: F.mono(500, 10) }}>#{pl.player_num} </span>{pl.display}</span>
