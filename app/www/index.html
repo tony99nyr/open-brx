@@ -690,6 +690,11 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .eqtag{font-family:var(--fl);font-style:normal;font-size:11px;letter-spacing:.2em;color:var(--ok);border:1px solid var(--ok);padding:2px 7px;margin-left:8px;vertical-align:middle;font-weight:700}
 .eqtag.arming{color:var(--warn);border-color:var(--warn)}   /* A26/F129: the hero pane while st.pendingPick names this weapon — never claims EQUIPPED before the ack */
 [data-env="night"] .eqtag.arming{color:var(--num);border-color:var(--num)}
+/* Polish-loop pass 2: the 3s arming timeout resolved with no confirming report — muted, never the ok-green
+   a real gun-confirmed EQUIPPED gets, so the two are never mistaken for each other at a glance. */
+.eqtag.unconf{color:var(--mut);border-color:var(--edge)}
+.lrow.unconf{border-color:var(--edge)}
+.lrow.unconf .st{color:var(--mut)}
 .lo .lodetail{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;overflow:hidden auto;padding-bottom:34px;-webkit-mask-image:linear-gradient(#000 90%,transparent);mask-image:linear-gradient(#000 90%,transparent)}
 .lo .lodetail > *{flex:0 0 auto}
 .lodetail .caution{color:var(--bad);font-family:var(--fm,monospace);font-size:11px;letter-spacing:.08em;margin-top:4px}
@@ -718,6 +723,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .ackchip.ok{color:var(--ok)}
 .ackchip.bad{color:var(--bad)}
 .ackchip.warn{color:var(--warn)}
+.ackchip.unconf{color:var(--mut)}   /* polish-loop pass 2: an honest timeout, never the ok-green a real confirm gets */
 .plate .h.tab{letter-spacing:0;font-size:17px;white-space:nowrap}
 .lolock{padding:24px 18px;border:1px solid var(--edge);background:var(--plate);display:flex;flex-direction:column;gap:10px}
 .lolock .big{font-family:var(--fd);font-weight:700;font-size:22px;letter-spacing:.1em}

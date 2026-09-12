@@ -38,7 +38,16 @@ const MEDAL_LABEL = { first_blood: 'FIRST BLOOD', double_kill: 'DOUBLE KILL', tr
 const splitGun = g => { if (!g) return ['—', '']; return [esc(g.basename || g.name || ''), esc(g.tail || '')]; };
 // Polish-loop pass 1 (2026-09-12): the discovered-MC row shows the HOST, never the raw ws://…/ws join URL.
 const mcHost = url => { try { return new URL(url).host; } catch (_) { return String(url || ''); } };
-const discoveredRow = d => d ? `<div class="discoveredrow" data-act="onJoinDiscovered"><span class="unskew">MISSION CONTROL FOUND AT ${esc(mcHost(d.url))} · JOIN</span></div>` : '';
+// Polish-loop pass 2: `d.source` (app.js, landed) is 'sweep' (a port sweep on the joined Wi-Fi) or 'mdns'
+// (a broadcast advert) — worded so a player can tell which kind of "found" this is; the action is the same.
+const discoveredRow = d => { if (!d) return '';
+  const label = d.source === 'mdns' ? 'FOUND BY BROADCAST' : 'FOUND ON THE NETWORK';
+  return `<div class="discoveredrow" data-act="onJoinDiscovered"><span class="unskew">MISSION CONTROL ${label} AT ${esc(mcHost(d.url))} · JOIN</span></div>`; };
+// Polish-loop pass 1+2: every join control that redials/drops the live MC link needs the armed/live
+// two-tap guard (`_click` below) — `onJoinDiscovered` (an address the player never typed) and
+// `onReconnectMc` (the same teardown, same button row) joined `onSetUrl`/`onScanQr` in pass 2.
+const JOIN_GATED_ACTS = new Set(['onSetUrl', 'onScanQr', 'onJoinDiscovered', 'onReconnectMc']);
+const JOIN_ACT_VERB = { onScanQr: 'SCAN A NEW QR', onJoinDiscovered: 'JOIN THAT ADDRESS', onReconnectMc: 'RECONNECT', onSetUrl: 'RECONNECT' };
 // A10: human labels for catalog rows (never the raw $WEAP class id — design review round 3)
 const ROLE_NAME = { assault: 'ASSAULT', cqb: 'CLOSE RANGE', marksman: 'SNIPER', support: 'SUPPORT', power: 'HEAVY', melee: 'MELEE', sidearm: 'SIDEARM' };
 /** A secondary rule whose kinds hold `sidearm` but not `weapon` is a pistols-only slot (policy.py, 2026-09-04). */
@@ -158,14 +167,15 @@ export class Hud {
       this.sig = null; if (this._lastSt) this.render(this._lastSt);
       return;
     }
-    // Polish-loop pass 1 (2026-09-12, MEDIUM security+UX): CONNECT / SCAN QR are reachable in every phase
-    // (F156) with nothing stopping a stray tap mid-match — CONNECT redials and drops the live MC link,
-    // SCAN QR blacks the HUD out behind the camera. Both stay one-tap everywhere they always were
-    // (idle/connected/kitted/lobby/over); only armed/live — an active match — gate them behind a second
-    // tap, the same two-tap shape A14's loadout conflict already uses. The warning lives in
+    // Polish-loop pass 1+2 (2026-09-12, MEDIUM security+UX): CONNECT / SCAN QR / RELINK MC / JOIN (a
+    // discovered address, never one the player typed themselves) are reachable in every phase (F156) with
+    // nothing stopping a stray tap mid-match — any of the four redials and drops the live MC link, and
+    // SCAN QR additionally blacks the HUD out behind the camera. All four stay one-tap everywhere they
+    // always were (idle/connected/kitted/lobby/over); only armed/live — an active match — gate them behind
+    // a second tap, the same two-tap shape A14's loadout conflict already uses. The warning lives in
     // `dg-mcjoinhint` (`renderDiag`), patched from this state rather than a structural rebuild so it
     // shows on the SAME render the first tap produced.
-    if ((act === 'onSetUrl' || act === 'onScanQr') && this._lastSt && (this._lastSt.phase === 'armed' || this._lastSt.phase === 'live')) {
+    if (JOIN_GATED_ACTS.has(act) && this._lastSt && (this._lastSt.phase === 'armed' || this._lastSt.phase === 'live')) {
       const now = Date.now();
       if (this._joinConfirm && this._joinConfirm.act === act && now - this._joinConfirm.at < 4000) { this._joinConfirm = null; this.renderDiag(); }   // second tap: revert the warning now, then let it through below
       else { this._joinConfirm = { act, at: now }; this.renderDiag(); return; }
@@ -220,7 +230,7 @@ export class Hud {
       // case the old comment (still true of `synced`/`headEcho`, which stay patched-only) was written for.
       st.wsState,
       // A10 loadout browser + slot plates
-      st.browsing, st.canPickPrimary, st.canPickSecondary, st.canPickPerk, st.tryoutSeen, st.tryoutArming, this.lo.tab, this.lo.filter, this.lo.focus, this.lo.confirm && this.lo.confirm.key,
+      st.browsing, st.canPickPrimary, st.canPickSecondary, st.canPickPerk, st.tryoutSeen, st.tryoutArming, st.tryoutUnconfirmed, this.lo.tab, this.lo.filter, this.lo.focus, this.lo.confirm && this.lo.confirm.key,
       st.kitOpen, st.briefSeen, st.kitLocked, st.game && st.game.name, st.game && st.game.loadout_line,
       st.loadoutAck && st.loadoutAck.t, st.pendingPick && st.pendingPick.id, st.pendingPick && st.pendingPick.kind,
       st.loadout && st.loadout.primary && st.loadout.primary.weapon_id, st.loadout && st.loadout.secondary && st.loadout.secondary.weapon_id, st.loadout && st.loadout.perk && st.loadout.perk.perk_id,
@@ -249,6 +259,7 @@ export class Hud {
     this._moments(st);
     this._fitBriefing();
     this._fitMcLinked();
+    this._fitLoDetailName();
   }
 
   /** F137 (field 2026-09-12): "MC LINKED ✓ — WAITING FOR KIT-OUT" at the design 28px wrapped to two
@@ -264,6 +275,22 @@ export class Hud {
     if (nm.scrollWidth <= nm.clientWidth + 1) return;
     let fs = parseFloat(getComputedStyle(nm).fontSize) || 28;
     while (nm.scrollWidth > nm.clientWidth + 1 && fs > 15) { fs -= 1; nm.style.fontSize = fs + 'px'; }
+  }
+
+  /** Polish-loop pass 2 (found verifying "EQUIPPED · UNCONFIRMED"): the rack's detail-pane `.nm` (weapon
+   *  name + role chip + heroTag, all on one `white-space:nowrap` line) has no shrink of its own — a long
+   *  enough combination overflows and gets clipped by the CSS ellipsis with no visible fallback. Confirmed
+   *  pre-existing (a plain "ASSAULT RIFLE" + role chip + "EQUIPPED" already overflowed at some widths,
+   *  independent of this pass); the longer UNCONFIRMED badge just made it reliably visible. Same
+   *  measure-then-shrink loop as `_fitMcLinked`/`_fitBriefing`. */
+  _fitLoDetailName() {
+    const nm = this.hudEl.querySelector('.lodetail .nm');
+    if (!nm) { this._loNmFit = null; return; }
+    const key = nm.textContent + '|' + nm.clientWidth;
+    if (this._loNmFit !== key) { this._loNmFit = key; nm.style.fontSize = ''; }
+    if (nm.scrollWidth <= nm.clientWidth + 1) return;
+    let fs = parseFloat(getComputedStyle(nm).fontSize) || 24;
+    while (nm.scrollWidth > nm.clientWidth + 1 && fs > 13) { fs -= 1; nm.style.fontSize = fs + 'px'; }
   }
 
   /** F110 (review): `.bfbody` is a fixed 268 px box whose rows are `flex:0 0 auto`, i.e. purely additive — a
@@ -363,7 +390,9 @@ export class Hud {
         ? `<div class="mclinked"><span class="unskew">MC LINKED ✓ — WAITING FOR KIT-OUT</span></div><div class="note">Mission Control has this gun. Your callsign and loadout arrive with the kit.</div>`
         : diagHasJoin
         ? `<div class="note join">Connecting from the ⓘ panel, top right — it's already open.</div>`
-        : `${discoveredRow(this.discovered)}<div class="mcin"><input id="mcurl" value="${esc(this.mcUrl)}" placeholder="ws://mission-control-ip:8766/ws" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div><button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button><div class="note join">Same Wi-Fi as Mission Control? It connects by itself. Otherwise scan the QR on the MC screen, or type its address.</div>`;
+        // Polish-loop pass 2: mDNS no longer auto-joins (app.js review pass 2 — a phone must never hand its
+        // takeover key/join secret to whoever answers first), so "it connects by itself" was now FALSE.
+        : `${discoveredRow(this.discovered)}<div class="mcin"><input id="mcurl" value="${esc(this.mcUrl)}" placeholder="ws://mission-control-ip:8766/ws" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div><button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button><div class="note join">On the same Wi-Fi it appears here: tap JOIN. Otherwise scan the QR or type its address.</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     } else if (mode === 'setup') {
       // §4.1: calm, not an error — the host hasn't picked the game yet
@@ -484,15 +513,21 @@ export class Hud {
       list = head + filt + (rows.length ? rows.map(r => {
         // F147: MC acked this row (`eqKey`) but engine.js's `tryoutArming` says the gun has not confirmed the
         // write yet — that row keeps the SAME in-flight look (glow border, blinking ⟳) `pend` already has,
-        // never the settled ✓, until the gun's own ammo report closes it out (or the timeout assumes it).
-        const eq = r.key === eqKey && !pend && !st.tryoutArming, arming = r.key === eqKey && !pend && !!st.tryoutArming, pn = r.key === pend, fo = r.key === focusKey, rj = !!(ack && !ack.ok && ack.key === r.key), wn = !!(cf && cf.key === r.key);
+        // never the settled ✓, until the gun's own ammo report closes it out. Polish-loop pass 2: past the
+        // 3 s timeout `tryoutArming` clears WITHOUT a confirming report — `tryoutUnconfirmed` marks that
+        // honestly (`≈`, muted) instead of the same ✓ a real gun-confirmed pick gets.
+        const eq = r.key === eqKey && !pend && !st.tryoutArming && !st.tryoutUnconfirmed,
+          arming = r.key === eqKey && !pend && !!st.tryoutArming,
+          unconf = r.key === eqKey && !pend && !st.tryoutArming && !!st.tryoutUnconfirmed,
+          pn = r.key === pend, fo = r.key === focusKey, rj = !!(ack && !ack.ok && ack.key === r.key), wn = !!(cf && cf.key === r.key);
         const thumb = r.kind === 'perk' ? `<span class="thumb perk">${perkGlyph(r.id)}</span>` : `<span class="thumb" style="background-image:url('assets/weapons/${esc(r.id)}.jpg')"></span>`;
         const body = r.kind === 'perk' ? `<span class="nm2"><b>${esc(name(r)).toUpperCase()}</b><small>${esc(perkEffect(r.row))}</small></span>` : `<span class="nm">${esc(name(r)).toUpperCase()}</span><span class="role">${esc(roleName(r.row))}</span><span class="mag tab">MAG ${r.row.clip != null ? r.row.clip : '—'}</span>`;
         // A26: ✓ = MC acked this pick AND the gun confirmed the write, ⟳ = still arming (the node's debounce
-        // window, waiting on MC's ack, or — F147 — MC acked but the gun has not answered the $WEAP write yet).
+        // window, waiting on MC's ack, or — F147 — MC acked but the gun has not answered the $WEAP write yet),
+        // ≈ = the arming window ran out with no confirming report (pass 2: honest, not a real ✓).
         // The ⓘ is how a row is READ without being equipped — tapping the row itself now commits it.
         const info = `<button class="linfo" data-act="onLoInfo" data-arg="${r.key}" aria-label="Details">${INFO_SVG}</button>`;
-        return `<div class="lrow ${eq ? 'eq' : ''} ${(pn || arming) ? 'pend' : ''} ${fo ? 'fo' : ''} ${rj ? 'rej' : ''} ${wn ? 'warn' : ''}" data-act="onPickItem" data-arg="${r.key}">${thumb}${body}<span class="st">${eq ? '✓' : (pn || arming) ? '⟳' : wn ? '▲' : ''}</span>${info}</div>`;
+        return `<div class="lrow ${eq ? 'eq' : ''} ${(pn || arming) ? 'pend' : ''} ${unconf ? 'unconf' : ''} ${fo ? 'fo' : ''} ${rj ? 'rej' : ''} ${wn ? 'warn' : ''}" data-act="onPickItem" data-arg="${r.key}">${thumb}${body}<span class="st">${eq ? '✓' : (pn || arming) ? '⟳' : unconf ? '≈' : wn ? '▲' : ''}</span>${info}</div>`;
       }).join('') : '<div class="small" style="padding:14px 4px">Nothing to pick here for this game.</div>');
     }
     // detail pane
@@ -506,8 +541,14 @@ export class Hud {
       // (`eqKey`) is only the network round-trip. `st.tryoutArming` is engine.js's own confirmation that the
       // gun has ANSWERED the new $WEAP write with a matching ammo report — same family as F123, and the same
       // "never claim what the hardware has not confirmed" rule the live SWITCHING takeover already follows.
+      // Polish-loop pass 2: the timeout resolution is honest — EQUIPPED · UNCONFIRMED (muted, its own class)
+      // rather than the plain EQUIPPED a gun-confirmed pick earns.
       const heroTag = focus.key === pend ? '<span class="eqtag arming">ARMING…</span>'
         : (focus.key === eqKey && !pend && st.tryoutArming) ? '<span class="eqtag arming">SWITCHING…</span>'
+        // Shorter than the ackChip's "EQUIPPED · UNCONFIRMED": this badge sits on the SAME nowrap line as
+        // the weapon name + role chip (`.lodetail .nm`, `_fitLoDetailName`'s shrink loop only has so much
+        // room before 13px stops being legible), and the weapon name here already says what's equipped.
+        : (focus.key === eqKey && !pend && st.tryoutUnconfirmed) ? '<span class="eqtag unconf">UNCONFIRMED</span>'
         : (focus.key === eqKey && !pend) ? '<span class="eqtag">EQUIPPED</span>' : '';
       if (focus.kind === 'perk') detail = `<div class="art perk">${perkGlyph(focus.id)}</div><div class="nm">${esc(r.name).toUpperCase()}${heroTag}</div><div class="ln pk">PERK · ${esc(perkEffect(r))}${r.verified === false ? ' · <span style="color:var(--warn)">NOT YET FIELD-TESTED</span>' : ''}</div><div class="desc">${esc(r.desc || '')}</div>`;
       else detail = `<div class="art" style="background-image:url('assets/weapons/${esc(focus.id)}.jpg')"></div><div class="nm">${esc(r.name).toUpperCase()} <span class="rolechip">${esc(roleName(r))}</span>${heroTag}</div><div class="ln">MAG ${r.clip != null ? r.clip : '—'} · RESERVE ${r.reserve != null ? r.reserve : '—'}${r.reload_s != null ? ' · RELOAD ' + r.reload_s + 'S' : ''}</div>${statBlock(r)}${r.caution ? `<div class="caution">▲ ${esc(r.caution)}</div>` : ''}<div class="desc">${esc(r.desc || '')}</div>`;
@@ -516,7 +557,7 @@ export class Hud {
     // F147: MC's ack alone must not read as EQUIPPED while `st.tryoutArming` says the gun has not answered
     // the write yet — SWITCHING… holds the same slot the acked-but-not-yet-armed row does.
     const ackChip = cf ? `<span class="ackchip warn cf"><span class="unskew">${esc(cf.text).toUpperCase()} · TAP AGAIN</span></span>`
-      : ack ? `<span class="ackchip ${ack.ok ? 'ok' : 'bad'}"><span class="unskew">${ack.ok ? (st.tryoutArming ? 'SWITCHING…' : ('EQUIPPED ✓' + (ack.dropped ? ' · ' + esc(ack.dropped.name).toUpperCase() + ' DROPPED' : ''))) : esc(ack.reason || 'THE HOST SAID NO').toUpperCase()}</span></span>` : (pend ? '<span class="ackchip"><span class="unskew">ASKING THE HOST…</span></span>' : (st.tutorial ? '<span class="ackchip warn"><span class="unskew">TRY-OUT ARMED — FIRE A FEW ROUNDS</span></span>' : ''));
+      : ack ? `<span class="ackchip ${!ack.ok ? 'bad' : st.tryoutUnconfirmed ? 'unconf' : 'ok'}"><span class="unskew">${ack.ok ? (st.tryoutArming ? 'SWITCHING…' : st.tryoutUnconfirmed ? 'EQUIPPED · UNCONFIRMED' : ('EQUIPPED ✓' + (ack.dropped ? ' · ' + esc(ack.dropped.name).toUpperCase() + ' DROPPED' : ''))) : esc(ack.reason || 'THE HOST SAID NO').toUpperCase()}</span></span>` : (pend ? '<span class="ackchip"><span class="unskew">ASKING THE HOST…</span></span>' : (st.tutorial ? '<span class="ackchip warn"><span class="unskew">TRY-OUT ARMED — FIRE A FEW ROUNDS</span></span>' : ''));
     // A26: TRY IT is gone — the pick IS the try-out. The forward action is REVIEW KIT ▸, which closes the rack
     // onto the three-plate kit summary (PRIMARY · SECONDARY · PERK) where READY UP lives; CLOSE is the same
     // exit without the commitment framing.
@@ -1192,7 +1233,7 @@ export class Hud {
     const confirmPending = !!(this._joinConfirm && Date.now() - this._joinConfirm.at < 4000);
     if (this._joinConfirm && !confirmPending) this._joinConfirm = null;
     put('dg-mcjoinhint', confirmPending
-      ? `<span class="warn">⚠ TAP AGAIN TO ${this._joinConfirm.act === 'onScanQr' ? 'SCAN A NEW QR' : 'RECONNECT'} — THIS DROPS YOUR MISSION CONTROL LINK MID-MATCH</span>`
+      ? `<span class="warn">⚠ TAP AGAIN TO ${JOIN_ACT_VERB[this._joinConfirm.act] || 'RECONNECT'} — THIS DROPS YOUR MISSION CONTROL LINK MID-MATCH</span>`
       : 'NEW MISSION CONTROL ADDRESS? (after a tunnel restart or a different host)');
     // F147-adjacent (pass 1 LOW): this input was built once from `this.mcUrl` and never rebuilt, so a QR
     // rescan (which sets `hud.mcUrl` — app.js, another lane) left the panel showing the address it replaced.

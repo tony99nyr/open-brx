@@ -1602,6 +1602,54 @@ test('F147: an unconfirmed try-out arm assumes done after the timeout', () => {
   assert.equal(h.eng.state().tryoutArming, false, 'the timeout resolves it with no confirming report');
 });
 
+// ── polish-loop pass 2: scope to the arming SLOT, an honest timeout, no EQUIPPED flash before the write ──
+test('polish-2: the ack itself arms a placeholder -- no EQUIPPED flash before the tutorial write lands', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('primary', 'weapon', 'smg', true);
+  assert.equal(h.eng.state().tryoutArming, false, 'nothing armed before MC answers');
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
+  assert.equal(h.eng.state().tryoutArming, true, 'the ack alone must already read as arming, before the gun write ever lands');
+});
+test('polish-2: a report on the OTHER slot never forecloses confirmation of this arm', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('secondary', 'weapon', 'smg', true);
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'secondary', ok: true, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'smg' }] } } });
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 72 }, frames: ['$WEAP,1,*'] } });
+  h.frame('$ALCD,10,100,0,50,0,*');           // slot 0 (primary) -- the OLD weapon's own traffic, irrelevant to this SECONDARY arm
+  assert.equal(h.eng.state().tryoutArming, true, 'an other-slot report must not foreclose');
+  h.frame('$ALCD,72,100,1,20,0,*');           // slot 1 (secondary), the arming slot, matches the clip
+  assert.equal(h.eng.state().tryoutArming, false, 'the same-slot matching report still confirms');
+});
+test('polish-2: a same-slot report equal to the OLD weapon\'s magazine (the baseline) does not confirm', () => {
+  const h = kitA10();
+  h.frame('$ALCD,30,100,0,50,0,*');           // the OLD weapon already sits at 30 on slot 0
+  h.eng.requestLoadout('primary', 'weapon', 'smg', true);
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 30 }, frames: ['$WEAP,0,*'] } });   // same clip by coincidence
+  h.frame('$ALCD,30,100,0,50,0,*');           // a routine resend of the OLD weapon's own state -- proves nothing about the NEW one
+  assert.equal(h.eng.state().tryoutArming, true, 'a baseline-matching report must not pass as confirmation');
+});
+test('polish-2: an unconfirmed timeout is honest -- tryoutUnconfirmed, never a silent ✓', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('primary', 'weapon', 'smg', true);
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 30 }, frames: ['$WEAP,0,*'] } });
+  h.adv(3100); h.eng.tick();
+  const st = h.eng.state();
+  assert.equal(st.tryoutArming, false); assert.equal(st.tryoutUnconfirmed, true, 'the timeout must mark it unconfirmed, not a plain confirm');
+});
+test('polish-2: a fresh successful arm clears a stale tryoutUnconfirmed from the previous one', () => {
+  const h = kitA10();
+  h.eng.requestLoadout('primary', 'weapon', 'smg', true);
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
+  h.eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 30 }, frames: ['$WEAP,0,*'] } });
+  h.adv(3100); h.eng.tick();
+  assert.equal(h.eng.state().tryoutUnconfirmed, true);
+  h.eng.requestLoadout('primary', 'weapon', 'assault_rifle', true);
+  h.eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'assault_rifle' }] } } });
+  assert.equal(h.eng.state().tryoutUnconfirmed, false, 'a new pick must not still say the PREVIOUS one was unconfirmed');
+});
+
 test('apply.preview plays sound-only frames at the bench; non-preview stays live-only (A9.1)', () => {
   const h = harness().kit();
   h.writes.length = 0;

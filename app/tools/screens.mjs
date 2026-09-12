@@ -1432,6 +1432,68 @@ await step('polish-1 idle-diag: the address field updates after mcUrl changes (e
   await pg.close();
   must(/typing/.test(whileTyping), 'a live mcUrl push overwrote what the player was typing: ' + whileTyping);
 });
+// ---------- Polish-loop pass 2: the two-tap guard also covers onJoinDiscovered and onReconnectMc ----------
+await step('polish-2 diag-live: JOIN (a discovered address) and RELINK MC are ALSO two-tap mid-match', async () => {
+  const pg = await open(VIEWS[0], 'diag-live', '', 5200);
+  await pg.evaluate(() => { window.brx.hud.setDiscovered({ url: 'ws://1.2.3.4:8766/ws', at: Date.now(), source: 'sweep' }); window.brx.hud.renderDiag();
+    window.__calls = {}; ['onJoinDiscovered', 'onReconnectMc'].forEach(a => { window.brx.hud.h[a] = () => { window.__calls[a] = (window.__calls[a] || 0) + 1; }; }); });
+  for (const [act, sel] of [['onJoinDiscovered', '.discoveredrow'], ['onReconnectMc', '[data-act="onReconnectMc"]']]) {
+    await pg.click(sel); await pg.waitForTimeout(60);
+    const mid = await pg.evaluate(a => window.__calls[a] || 0, act);
+    await pg.click(sel); await pg.waitForTimeout(60);
+    const after = await pg.evaluate(a => window.__calls[a] || 0, act);
+    must(mid === 0, `${act}: the first tap mid-match reached the handler instead of being swallowed`);
+    must(after === 1, `${act}: the second tap within the window did not reach the handler`);
+  }
+  await pg.close();
+});
+
+// ---------- Polish-loop pass 2: the discovered-row wording names its source ----------
+await step('polish-2 connected: the discovered row words itself by source (sweep vs mdns)', async () => {
+  const pg = await open(VIEWS[0], 'connected');
+  const texts = {};
+  for (const source of ['sweep', 'mdns']) {
+    texts[source] = await pg.evaluate(src => { window.brx.hud.setDiscovered({ url: 'ws://1.2.3.4:8766/ws', at: Date.now(), source: src }); window.brx.hud.render(window.brx.engine.state());
+      return (document.querySelector('.lobby .discoveredrow') || {}).textContent || ''; }, source);
+  }
+  await pg.close();
+  must(/FOUND ON THE NETWORK/.test(texts.sweep), 'sweep wording: ' + texts.sweep);
+  must(/FOUND BY BROADCAST/.test(texts.mdns), 'mdns wording: ' + texts.mdns);
+  must(texts.sweep !== texts.mdns, 'the two sources read identically');
+});
+await step('polish-2 connected: the pre-join copy no longer claims mDNS auto-joins', async () => {
+  const pg = await open(VIEWS[0], 'connected');
+  const note = await pg.evaluate(() => (document.querySelector('.lobby .note.join') || {}).textContent || '');
+  await pg.close();
+  must(!/connects by itself/i.test(note), 'the copy still claims an address connects by itself: ' + note);
+  must(/tap JOIN/i.test(note), 'the copy does not point at the JOIN row: ' + note);
+});
+
+// ---------- Polish-loop pass 2: an honest, muted EQUIPPED · UNCONFIRMED after the arming timeout ----------
+await step('polish-2 loadout-primary: an arm that times out reads EQUIPPED · UNCONFIRMED, muted, its own glyph, and fits', async () => {
+  const pg = await open(VIEWS[0], 'loadout-primary');
+  await pg.evaluate(() => {
+    const eng = window.brx.engine;
+    eng.requestLoadout('primary', 'weapon', 'smg', true);
+    if (eng._flushPick) eng._flushPick('test');
+    eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
+    eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 72 }, frames: ['$WEAP,0,*'] } });
+    eng.now = () => Date.now() + 3200; eng.tick();   // jump past TRYOUT_ARM_MAX_MS with no confirming report
+    window.brx.hud.sig = null; window.brx.hud.render(eng.state());
+  });
+  await pg.waitForTimeout(150);
+  const r = await pg.evaluate(() => {
+    const row = document.querySelector('.lrow.unconf'), hero = document.querySelector('.eqtag.unconf'), chip = document.querySelector('.ackchip.unconf'), nm = document.querySelector('.lodetail .nm');
+    return { rowMark: row ? (row.querySelector('.st') || {}).textContent : null, hero: hero ? hero.textContent : null, chip: chip ? chip.textContent : null,
+      nmFits: nm ? nm.scrollWidth <= nm.clientWidth + 1 : null, engineConfirmed: window.brx.engine.state().tryoutArming === false && window.brx.engine.state().tryoutUnconfirmed === true };
+  });
+  await pg.close();
+  must(r.engineConfirmed, 'the engine never settled into the unconfirmed state');
+  must(r.rowMark === '≈', 'the row does not show the distinct ≈ glyph: ' + r.rowMark);
+  must(r.hero === 'UNCONFIRMED', 'the hero pane badge: ' + r.hero);
+  must(r.chip === 'EQUIPPED · UNCONFIRMED', 'the action-bar chip: ' + r.chip);
+  must(r.nmFits, 'the hero pane name + role + badge overflows its line');
+});
 await b.close(); srv.close();
 console.log(`\n${pass} passed, ${fail} failed${fail ? ': ' + errs.join(', ') : ''}`);
 process.exit(fail ? 1 : 0);
