@@ -82,10 +82,9 @@ Android-only symptom is a version candidate first. Evidence: `~/mc-20260911-1927
 - **Gun stage** (`python -m brx_mcp stage`, `docs/gun-stage.md`): click-to-try page for one real gun, a
   walkthrough with PASS/FAIL verdicts, and the voice soundboard (§8) for all 24 characters. `--gun` links in
   the background (S11 closed).
-- **Utility station (A13):** a spare phone as a BLE-beacon respawn station is proven on hardware and **MC arms
-  it from the MUSTER ITEMS panel** (S5/F104; not yet used at a field). Hosted games ignore the grenade's IR
-  station words (B23). **Station hardware on order:** 2x M5StickS3 + 3x Grove IR emitters; firmware
-  `hardware/m5sticks3/`; gates in **H7**.
+- **Utility station (A13):** a spare phone as a BLE-beacon respawn station is proven on hardware and **MC arms it from the
+  MUSTER ITEMS panel** (S5/F104; not yet used at a field). Hosted games ignore the grenade's IR station words (B23).
+  **Station hardware on order:** 2x M5StickS3 + 3x Grove IR emitters; firmware `hardware/m5sticks3/`; gates in **H7**.
 - **`$PLAY` token 1 interrupts / token 4 queues (2026-09-11, A21, per-event `slot`).** 249 of 2477 (`fx:hit` complete) clips audited by ear; F45, F48, W4a, S-A12.1, F58(a) and the defeat line closed by ear, S9 all but the preset sweep; F59 is firmware not clips (`soundbank_leadin.py`), one filmed rung left. **Later the same night:** F44 closed (the shield loop is A10, heard live via `$LIFE,0,0,20,*`), S12 decided and built (`presentation.voice`, A22), and **F109** filed: `$LIFE` grants shields over BLE, so host-granted overshields/heals need no IR word.
 - **Hit audio (A17, ear-confirmed 2026-09-07):** metal for armour (`H02/H36/H37`), an energy note for shield
   (`H22`), **health deliberately SILENT**. ⚠ **An empty slot is not silence** — it falls through to a
@@ -95,20 +94,21 @@ Android-only symptom is a version candidate first. Evidence: `~/mc-20260911-1927
 - **IR rig:** emitter (board B, COM8) registers 6/6 at 3 ft, 10/10 at 6 ft, cliff at 10 ft; work at
   6 ft or less. Receiver (board A, COM7) fragments frames but `native_capture.py` stitches them (F12
   worked around). Never end a run on a bare `$CLEAR`: it wipes the `$SIR` table (F11).
-- **The public site has two doors and one source:** `docs/platform/*.md` → `/`, `/docs/*`, `/download`;
-  `docs/manual/*.md` → `/manual/*`. Landings are plain markdown read by shape (`docs/site/FORMAT.md`); the build
-  FAILS on a date, version or status word. Gate: `cd site && npm test`. Detail in the log.
+- **The public site has two doors, one source:** `docs/platform/*.md` → `/`, `/docs/*`, `/download`;
+  `docs/manual/*.md` → `/manual/*`. Landings are plain markdown read by shape (`docs/site/FORMAT.md`); the
+  build FAILS on a date, version or status word in them. Gate: `cd site && npm test`. Detail in the log.
 - **Environment:** WSL2 has no Bluetooth; run anything that touches a gun with
   `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe`. `mcp/pyproject.toml` pins `mcp>=2,<3`; the
-  2.0 port is done. `~/.brx-mcp/armory.json` is never in git (headset PINs); stickers stay out of
-  docs, use `Tactix-XXXX`.
+  2.0 port is done. `~/.brx-mcp/armory.json` is never in git (headset PINs); stickers stay out of docs,
+  use `Tactix-XXXX`. ⚠ **The git remote MOVED to `tony99nyr/open-brx`** — pushes redirect with a warning;
+  `git remote set-url` silences it. Mac install traps are in the game-test sheet's environment notes.
 
 ## Recent history (detail in the log; only what still bites is kept here)
 
 - **⭐ Callsign's whole cloud protocol is decoded** (Mac + mitmproxy **WireGuard**, not the HTTP proxy the Unity
   app ignores; `capture-runbook.md` corrected). Plain-HTTP API; game config rides the **SNS/SQS lobby**, not
   REST. Model: [`../protocol/callsign-extract/protocol-classes.md`](../protocol/callsign-extract/protocol-classes.md). **P8 largely resolved** (open: weapon stats), **P3 refined**.
-- **Prior sessions 2026-09-11** (log has it): site rebuilt; triage closed 8 ids; amendments A18 `config.mode_params` / A19 `alert.role` + `config.vip_player_id` / A20 `config.stun`.
+- **Prior sessions 2026-09-11** (log has it): site rebuilt; triage closed 8 ids; A18 `config.mode_params` / A19 `alert.role` + `config.vip_player_id` / A20 `config.stun`.
 - **LEDs (pinned by `test_led_invariants.py`, full block in archive):** never `$HLED,,6` in play (kills the
   death flash; in-play dark = `$HLED,9,0,,,10,,*`); `$TID` 0-3 only (F35); phones ship `headset.carrier` (S10).
 
@@ -132,10 +132,10 @@ Android-only symptom is a version candidate first. Evidence: `~/mc-20260911-1927
 
 ## Machine roles
 
-**Windows PC (WSL2 + Windows Python)** = primary development (code, protocol, Android captures, the IR rig, the
-gun stage). **MacBook** = field / match day, and the only capture rig (Callsign is iOS-only, PacketLogger
-macOS-only), so capture jobs batch for a Mac day (`docs/capture-runbook.md`, `docs/mac-dev-runbook.md`). Code
-must run on both: macOS gives BLE UUIDs, Windows/BlueZ give MACs; never pattern-match the format.
+**Windows PC (WSL2 + Windows Python)** = primary development. **MacBook** = field / match day, and the only
+capture rig (Callsign is iOS-only, PacketLogger macOS-only), so capture jobs batch for a Mac day
+(`capture-runbook.md`, `mac-dev-runbook.md`). Code must run on both: macOS gives BLE UUIDs, Windows/BlueZ MACs.
+
 ## Where things live
 
 | what | where |
