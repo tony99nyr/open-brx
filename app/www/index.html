@@ -437,6 +437,12 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 #diag .btns button.danger{border-color:var(--bad);color:var(--bad)}
 #diag pre{white-space:pre-wrap;word-break:break-all;margin:0;max-height:160px;overflow:auto;background:#000;padding:6px}
 #diag .close{position:absolute;top:14px;right:16px;font:700 14px var(--fl);color:var(--num);padding:6px 10px;border:1px solid var(--edge)}
+/* F156/F135 (field 2026-09-12): SCAN QR + the typed address, reachable from every phase — fixed at the top of
+   the panel (never scrolls away with the readouts below it), the same way SHARE LOG is fixed at the bottom. */
+#diag .mcjoin{flex:0 0 auto;display:flex;flex-direction:column;gap:8px;padding:44px 24px 14px;border-bottom:1px solid var(--edge)}
+#diag .mcjoinnote{font:700 11px var(--fl);letter-spacing:.14em;color:var(--glow)}
+#diag .mcjoin .mcin input{width:auto;flex:1 1 auto;min-width:0}
+#diag .mcjoin .qrbtn{align-self:flex-start}
 
 /* ============ keyframes ============ */
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
