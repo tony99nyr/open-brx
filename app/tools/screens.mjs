@@ -1378,6 +1378,16 @@ await step('polish-1 diag-live: CONNECT is a two-tap confirm mid-match, and reve
   must(afterTwo.calls === 1, 'the second tap within the window did not reach onSetUrl: ' + JSON.stringify(afterTwo));
   must(!/TAP AGAIN/.test(afterTwo.hint), 'the warning did not clear once confirmed: ' + afterTwo.hint);
 });
+// Polish-loop pass 3 (UX, a11y HIGH): the hint text changing in place is the ONLY signal a first tap did
+// anything while armed/live -- with no live region a screen-reader user hears nothing and it reads as dead.
+await step('polish-3 diag-live: the two-tap hint is an assertive live region', async () => {
+  const pg = await open(VIEWS[0], 'diag-live', '', 5200);
+  const r = await pg.evaluate(() => { const el = document.getElementById('dg-mcjoinhint'); return el ? { role: el.getAttribute('role'), live: el.getAttribute('aria-live') } : null; });
+  await pg.close();
+  must(r, 'no #dg-mcjoinhint in the diag panel');
+  must(r.role === 'status', 'missing role="status": ' + JSON.stringify(r));
+  must(r.live === 'assertive', 'missing/weak aria-live (must be assertive, not polite): ' + JSON.stringify(r));
+});
 await step('polish-1 idle-diag: SCAN QR stays one-tap outside a live match', async () => {
   const pg = await open(VIEWS[0], 'idle-diag');
   await pg.evaluate(() => { window.__calls = 0; window.brx.hud.h.onScanQr = () => { window.__calls++; }; });

@@ -1211,9 +1211,14 @@ export class Hud {
     // Polish-loop pass 1 (2026-09-12): `dg-discovered` (a LAN-sweep hit MC no longer auto-joins into) and
     // `dg-mcjoinhint` (what these controls are FOR, or — armed/live only — the two-tap warning) are both
     // live-patched by `renderDiag`, never rebuilt structurally, so a tap on them is never eaten by a render.
+    // Pass 3 (UX, a11y HIGH): `dg-mcjoinhint`'s text changing in place is the ONLY signal a first tap on
+    // JOIN/RELINK MC/SCAN QR/CONNECT did anything while armed/live — with no live region a screen-reader
+    // user hears nothing and the tap reads as dead. `role="status"`/`aria-live="assertive"` announce the
+    // swap to the warning text immediately (assertive, not polite: it is safety-relevant — the second tap
+    // drops the live MC link).
     const mcjoin = `<div class="mcjoin"><div class="mcjoinnote" id="dg-mcjoinnote">MISSION CONTROL</div>
         <div id="dg-discovered"></div>
-        <div class="mcjoinhint" id="dg-mcjoinhint"></div>
+        <div class="mcjoinhint" id="dg-mcjoinhint" role="status" aria-live="assertive"></div>
         <div class="mcin"><input class="mcurlfield" value="${esc(this.mcUrl)}" placeholder="ws://mission-control-ip:8766/ws" inputmode="url"><button data-act="onSetUrl">CONNECT</button></div>
         <button class="qrbtn" data-act="onScanQr">▣ SCAN QR</button></div>`;
     this.diag.innerHTML = `<button class="close" data-act="onCloseDiag">✕</button>${mcjoin}
