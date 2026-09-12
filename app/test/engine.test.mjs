@@ -1904,11 +1904,155 @@ test('a reload the gun never echoes still clears after reload_s plus grace; no r
   assert.equal(h.eng.state().reloading, true);
   assert.equal(h.eng.state().reloadTotalMs, 1500, 'unknown weapon → 1.5 s default');
   h.adv(1500 + 600 + 1);
+  // F27: hardware takes ~1.25x the catalog reload_ms to put the mag back (charge rifle 3220 vs 2500), so
+  // the ceiling is `ms + max(600, ms/2)` — at 1.5 s nominal that is 2250 ms, and 2101 is still inside it.
+  assert.equal(h.eng.state().reloading, true, 'still waiting for the gun inside the overrun allowance');
+  assert.equal(h.eng.state().reloadOverrun, true, 'past nominal, magazine not back yet');
+  h.adv(200); h.eng.tick();
   assert.equal(h.eng.state().reloading, false, 'expired without an echo');
+  const out = h.eng.state().reloadOutcome;
+  // F123: the whole point — a reload the gun never performed must NOT read as a success
+  assert.ok(out && out.ok === false && out.gained === 0 && out.why === 'timeout', 'booked as a FAILED reload: ' + JSON.stringify(out));
   h.frame('$HP,0,0,0,*');
   h.frame('$BUT,2,1,*');
   assert.equal(h.eng.state().reloading, false, 'dead: no reload');
 });
+// ── F123: $BUT releases, held buttons, and a reload takeover reconciled against REAL ammo ────────
+// Field 2026-09-11: "easy reload does not work with the shotgun… holding alt fire doesnt work", then
+// "the hud animates reloading, but the gun doesnt actually reload". Three stacked faults; these cover
+// the two that live here (the third, the easy_reload + chain-reload pairing, is excluded by MC policy).
+
+/** A live gun on slot 1 (golden `$AMMO,1,6,24` = a 6-round tube) with a shell-by-shell reload time. */
+function shellHarness() {
+  const h = goLive(harness());
+  h.eng.catalog = { weapons: [{ weapon_id: 'assault_rifle', name: 'AR', reload_s: 1.4 },
+                              { weapon_id: 'shotgun', name: 'Shotgun', reload_s: 0.4 }], perks: [] };
+  h.eng.player = { ...h.eng.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }, { weapon_id: 'shotgun' }] } };
+  h.frame('$ALCD,1,100,1,24,0,*');    // on the shotgun, one shell left
+  return h;
+}
+
+test('F123: a $BUT release is recorded — held buttons are observable, and the hold is measured', () => {
+  // brx-protocol.md §$BUT: "state 1 press / 0 release". The release was on the wire all along and the node
+  // discarded it, which is why a HELD button (the shotgun's per-shell reload chain) could not be seen.
+  const h = goLive(harness());
+  h.frame('$BUT,2,1,*');
+  assert.deepEqual(h.eng.state().held, { 2: 0 }, 'the reload handle is down');
+  h.adv(700);
+  assert.deepEqual(h.eng.state().held, { 2: 700 }, 'and has been down 700 ms');
+  h.frame('$BUT,2,0,*');
+  assert.deepEqual(h.eng.state().held, {}, 'released');
+  assert.deepEqual(h.eng.state().lastButton, { id: 2, state: 0, at: h.eng.now(), heldMs: 700 });
+  // a repeat press with no release between keeps the FIRST edge, so a hold is not reset by key repeat
+  h.frame('$BUT,0,1,*'); h.adv(100); h.frame('$BUT,0,1,*'); h.adv(100);
+  assert.equal(h.eng.state().held[0], 200, 'the hold is measured from the first press');
+});
+
+test('F123: a release NEVER cancels a reload — a magazine weapon is let go instantly and still loads', () => {
+  const h = shellHarness();
+  h.frame('$ALCD,10,100,0,192,0,*');            // back on the rifle, part-empty
+  h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*'); // tap the handle and let go, as you do on a magazine weapon
+  assert.equal(h.eng.state().reloading, true, 'the takeover survives the release');
+  h.adv(1450); h.eng.tick();
+  assert.equal(h.eng.state().reloading, true, 'and is still waiting for the gun past nominal');
+  h.frame('$ALCD,32,100,0,160,0,*');            // the gun puts the mag back
+  const st = h.eng.state();
+  assert.equal(st.reloading, false);
+  assert.ok(st.reloadOutcome.ok && st.reloadOutcome.filled, 'a real reload reads as a success');
+  assert.equal(st.reloadOutcome.why, 'filled');
+});
+
+test('F123: a shell-by-shell chain runs to the end — shell #1 no longer ends the animation', () => {
+  const h = shellHarness();
+  h.frame('$BUT,2,1,*');                        // the handle goes down and STAYS down
+  assert.equal(h.eng.state().reloading, true);
+  assert.equal(h.eng.state().reloadTotalMs, 400, 'nominal is the PER-SHELL time on a chain weapon');
+  for (const [ms, mag] of [[420, 2], [423, 3], [390, 4]]) {
+    h.adv(ms); h.eng.tick(); h.frame(`$ALCD,${mag},100,1,${24 - (mag - 1)},0,*`);
+    assert.equal(h.eng.state().reloading, true, `still reloading after shell ${mag} — the chain is not over`);
+  }
+  assert.equal(h.eng.state().reloadGained, 3, 'three shells in so far');
+  h.adv(420); h.frame('$ALCD,5,100,1,19,0,*');
+  h.adv(420); h.frame('$ALCD,6,100,1,18,0,*');  // the tube is full: cap from the spawn $AMMO,1,6,24
+  const st = h.eng.state();
+  assert.equal(st.reloading, false, 'the tube is full — the takeover ends on the AMMO, not on a timer');
+  assert.deepEqual({ ok: st.reloadOutcome.ok, filled: st.reloadOutcome.filled, gained: st.reloadOutcome.gained, why: st.reloadOutcome.why },
+                   { ok: true, filled: true, gained: 5, why: 'filled' });
+});
+
+test('F123: a chain the player breaks off part-way is booked as PARTIAL, not as a success', () => {
+  const h = shellHarness();
+  h.frame('$BUT,2,1,*');
+  h.adv(420); h.frame('$ALCD,2,100,1,23,0,*');
+  h.adv(420); h.frame('$ALCD,3,100,1,22,0,*');
+  h.frame('$BUT,2,0,*');                        // let go: the gun stops feeding shells
+  h.adv(1200); h.eng.tick();
+  const out = h.eng.state().reloadOutcome;
+  assert.equal(h.eng.state().reloading, false);
+  assert.deepEqual({ ok: out.ok, filled: out.filled, gained: out.gained, to: out.to, cap: out.cap },
+                   { ok: true, filled: false, gained: 2, to: 3, cap: 6 }, 'two shells in, four short');
+});
+
+test('F123: the reload the GUN NEVER DID does not animate as a success (the easy_reload symptom)', () => {
+  // easy_reload compiles to `$BMAP,1,97` — a MOMENTARY alt-fire remap. On a chain-reload weapon one tap
+  // emits one reload event and the mag never comes back. The old `reloadingMs()` was a pure timer, so this
+  // looked identical to a completed reload. It must not.
+  const h = shellHarness();
+  h.eng.player = { ...h.eng.player, loadout: { weapons: [{ weapon_id: 'shotgun' }] } };   // one slot: ALT falls back to reload
+  h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
+  assert.equal(h.eng.state().reloading, true, 'the takeover starts');
+  h.adv(2000); h.eng.tick();                     // nothing arrives from the gun
+  const st = h.eng.state();
+  assert.equal(st.reloading, false);
+  assert.equal(st.reloadOutcome.ok, false, 'booked as a FAILED reload');
+  assert.equal(st.reloadOutcome.gained, 0);
+  assert.equal(st.reloadOutcome.why, 'timeout');
+});
+
+test('F27: hardware takes ~1.25x the catalog reload time and the takeover still waits for it', () => {
+  // Measured handle-to-refill (HANDOFF): AR 1701 vs a 1400 catalog, burst 2160 vs 1700, charge 3220 vs 2500.
+  // A flat 600 ms grace clears the first two and misses the charge rifle, ending the takeover one frame
+  // before the gun's own echo — i.e. booking a real reload as a failure.
+  for (const [nominal, real] of [[1.4, 1701], [1.7, 2160], [2.5, 3220]]) {
+    const h = goLive(harness());
+    h.eng.catalog = { weapons: [{ weapon_id: 'assault_rifle', name: 'AR', reload_s: nominal }], perks: [] };
+    h.frame('$ALCD,10,100,0,192,0,*');
+    h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+    h.adv(real); h.eng.tick();
+    assert.equal(h.eng.state().reloading, true, `${nominal}s nominal: still waiting at ${real} ms`);
+    h.frame('$ALCD,32,100,0,170,0,*');
+    assert.equal(h.eng.state().reloadOutcome.ok, true, `${nominal}s nominal: the late refill is a success`);
+  }
+});
+
+test('F123: firing during a reload ends the takeover, and reloadingMs() stays pure', () => {
+  const h = shellHarness();
+  h.frame('$BUT,2,1,*');
+  h.adv(420); h.frame('$ALCD,2,100,1,23,0,*');
+  h.adv(300); h.frame('$ALCD,1,100,1,23,0,*');   // a shot: the player stopped loading and started shooting
+  const st = h.eng.state();
+  assert.equal(st.reloading, false);
+  assert.equal(st.reloadOutcome.why, 'fired');
+  // PURE: state() is called on every render and must not move anything
+  const before = JSON.stringify([h.eng.ammo, h.eng.activeSlot, h.eng.reloading]);
+  for (let i = 0; i < 5; i++) h.eng.state();
+  assert.equal(JSON.stringify([h.eng.ammo, h.eng.activeSlot, h.eng.reloading]), before);
+});
+
+test('F123: death and a lost link clear the takeover and do not leave a stale verdict', () => {
+  const h = shellHarness();
+  h.frame('$BUT,2,1,*');
+  h.frame('$HP,0,0,0,*');
+  assert.equal(h.eng.state().reloading, false);
+  assert.equal(h.eng.state().reloadOutcome, null, 'a death is not a reload verdict');
+  assert.deepEqual(h.eng.state().held, {}, 'no button survives a death');
+  const g = shellHarness();
+  g.frame('$BUT,2,1,*');
+  g.eng.onBleDropped();
+  assert.equal(g.eng.state().reloading, false);
+  assert.equal(g.eng.state().reloadOutcome.why, 'dropped', 'the link went away, not the reload');
+});
+
 test('score push exposes hits and the board; lives derive from config.respawn.lives minus deaths', () => {
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
   h.eng.onMcMessage({ kind: 'score', body: { kills: 4, deaths: 1, assists: 0, accuracy: 40, hits: 8, shots_total: 20, board: { teams: [{ team_id: 'blue', name: 'BLUE', score: 18 }, { team_id: 'yellow', name: 'YELLOW', score: 21 }], cap: 25 } } });
@@ -1969,7 +2113,7 @@ test('a swap the gun never confirms is assumed done at the window; a link drop c
 // ── A16 (led-language.md §3.1): a hit paints the readout, not a burst; death/revive gun bursts are ──
 // gone by design (the killing hit's native flash + the hands-off window own death; the readout paint IS
 // the hit feedback; a respawn burst fought the breathing window, §3.1 "Dropped from today's defaults"). ─
-test('a hit paints the gun readout (not a multi-step burst); death writes nothing to the gun; a revive re-takes it, no burst', () => {
+test('a hit paints the gun readout (not a multi-step burst); death BLANKS the gun (F113); a revive re-takes it, no burst', () => {
   const h = goLive(harness());
   const readout = golden.gun.readout;
   assert.ok(readout && Array.isArray(readout.pools) && readout.pools.length, 'golden bundle carries a gun.readout table');
@@ -1987,7 +2131,12 @@ test('a hit paints the gun readout (not a multi-step burst); death writes nothin
   h.writes.length = 0;
   h.adv(1500);
   h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');              // death
-  assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'death writes nothing to the gun (hands-off window; there is no "died" burst to play any more)');
+  // F113 (2026-09-11, amends A16 §5): ONE frame at death -- the blank. There is still no "died" burst and
+  // still nothing written to the HEADSET (the firmware's own out-flash is the down signal), but the strip
+  // is no longer left frozen at whatever partial level the killing hit's animation had reached.
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [golden.gun.blank], 'death blanks the gun, and writes nothing else');
+  assert.equal(h.writes.filter(f => f.startsWith('$HLED')).length, 0, 'and still writes NOTHING to the headset at death');
+  h.writes.length = 0;
   h.adv(9000); h.eng.tick();                                              // auto respawn (delay 8 s) -- the take fires inline in this tick
   assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), golden.gun.take, 'the revive re-takes the gun (blank then rest) -- no separate "respawned" burst');
 });
@@ -2868,14 +3017,38 @@ test('A16 readout: a reload paints the CURRENT readout for reload_glance_s, even
   assert.equal(g.writes.filter(f => f.startsWith('$GLED')).length, 0, 'nothing has moved yet -> nothing to glance');
 });
 
-test('A16 readout: no gun write during the death hands-off window; the strip is simply left as-is until the next take', () => {
+test('F113: death BLANKS the strip and nothing else reaches the gun for the rest of the death', () => {
+  // Was "death writes nothing and the strip is left as-is" (A16 §5). The field killed that: a fast kill
+  // lands death mid-animation, A16.3 cancels the animation, and the strip froze at a partial pool level
+  // for the whole death -- "it took down to 1 led of purple and then dead. while dead it stayed at 1 purple."
   const h = readoutHarness();
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,25,0,0,*');   // -> RO_H2, hold running
   h.writes.length = 0;
   h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');   // death
-  assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'death itself writes nothing to the gun');
+  assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [golden.gun.blank], 'death blanks the strip -- exactly one frame');
+  h.writes.length = 0;
   for (let i = 0; i < 12; i++) { h.adv(250); h.eng.tick(); }   // 3 s down — past the old hold_s and a typical hands-off window
   assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'no stray readout write reaches the gun while down');
+});
+
+test('F113: a death mid-drop-animation still ends dark, and the blank is a bare gate-5 $GLED, never an $HLED', () => {
+  // The exact shape of the field report: a hit starts the drop animation, the next hit kills before it lands.
+  const h = readoutHarness();
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,40,0,0,*');
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');   // killed mid-animation
+  const last = h.writes.filter(f => f.startsWith('$GLED')).pop();
+  assert.equal(last, '$GLED,,,,5,,,*', 'the LAST thing the strip is told is the blank');
+  // A16 hard rule, unchanged: $HLED,,6 disables the firmware death flash for the life and is NEVER sent in play
+  assert.ok(!h.writes.some(f => f.startsWith('$HLED') && f.split(',')[2] === '6'), 'no $HLED effect 6 in play');
+});
+
+test('F113: a bundle whose gun is native (no frames) is NOT blanked at death', () => {
+  const h = readoutHarness();
+  h.eng.frames = { ...h.eng.frames, gun: null };   // in_play: 'native' -- the strip was never ours
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');
+  assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'a game that never took the strip does not turn it off');
 });
 
 test('A16 readout: an event burst ends on the LIVE readout frame while its hold is running, and on rest once the hold has expired', () => {
@@ -3387,4 +3560,148 @@ test('F15: config.stun.duration_s sizes the window; an absent duration is the 10
   d.eng.onBleDropped(); d.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   assert.equal(d.eng.stunned, null, 'the reconcile cancels the stun timer');
   assert.ok(d.eng.reconciling, 'and holds the gun disarmed itself');
+});
+
+// ── 2026-09-12 review of the F123/A20 diff (docs/game-test-2026-09-11.md, Blocks A/C2) ───────────
+
+test('A20: a handle pull while the gun is STUNNED starts no takeover — it could never be reconciled', () => {
+  // `_onAmmo` drops every $ALCD for the whole stun window (F15), so a takeover opened here has nothing that
+  // can end it: it runs to its deadline over a DISARMED gun and books `ok:false` on a reload nobody did.
+  const h = stunHarness();
+  h.frame('$ALCD,10,100,0,150,0,*');            // a part-empty magazine: a pull would otherwise take
+  h.frame('$HIR,4,8,19,2,15,0,0,*');            // the EMP word — every live slot disarmed
+  assert.ok(h.eng.stunned, 'stunned');
+  h.frame('$BUT,2,1,*');                        // the player yanks the handle at a gun that cannot fire
+  assert.equal(h.eng.state().reloading, false, 'no RELOADING takeover over a disarmed gun');
+  assert.equal(h.eng.reloading, null);
+  assert.equal(h.eng.state().reloadOutcome, null, 'and nothing is booked as a failed reload either');
+  // CONTROL: the same pull once the stun is over does take
+  h.adv(10100); h.eng.tick();
+  assert.equal(h.eng.stunned, null, 'stun over');
+  h.frame('$BUT,2,1,*');
+  assert.equal(h.eng.state().reloading, true, 'CONTROL: the pull takes again once the gun is re-armed');
+});
+
+test('F123: a chain that fed shells and then FIRED books what the RELOAD gained, not the post-shot magazine', () => {
+  // The shot that ends a chain is not part of what the reload achieved. Booking from the post-shot count
+  // made "two shells in, then fire" read as `gained:0, ok:false` — the exact false verdict F123 exists to stop.
+  const h = shellHarness();                     // slot 1, one shell in a 6-round tube
+  h.frame('$BUT,2,1,*');
+  h.adv(420); h.frame('$ALCD,2,100,1,23,0,*');
+  h.adv(420); h.frame('$ALCD,3,100,1,22,0,*');  // two shells in
+  assert.equal(h.eng.state().reloadGained, 2);
+  h.adv(300); h.frame('$ALCD,2,100,1,22,0,*');  // the player shoots — the chain is over
+  const out = h.eng.state().reloadOutcome;
+  assert.equal(h.eng.state().reloading, false);
+  assert.deepEqual({ ok: out.ok, gained: out.gained, from: out.from, to: out.to, why: out.why },
+                   { ok: true, gained: 2, from: 1, to: 3, why: 'fired' });
+});
+
+test('F123: an ALT swap during a reload ENDS the takeover — SWITCHING is never hidden behind a stale RELOADING', () => {
+  // `reloadUp` outranks `switchUp` in the HUD, so a takeover left running to its deadline swallows the
+  // SWITCHING screen; and the swapped-away slot can never send the $ALCD that would have reconciled it.
+  const h = shellHarness();
+  h.frame('$ALCD,10,100,0,192,0,*');            // back on the rifle, part-empty
+  h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  assert.equal(h.eng.state().reloading, true);
+  h.adv(300); h.frame('$BUT,1,1,*');            // ALT with two weapons loaded = a swap
+  const st = h.eng.state();
+  assert.equal(st.reloading, false, 'the reload is over — the gun is drawing another weapon');
+  assert.equal(st.switching, true, 'and SWITCHING is what the player sees');
+  assert.equal(st.reloadOutcome.why, 'swapped');
+});
+
+test('F123: a BLE drop clears the held-button map — a press whose release never arrived cannot read as held forever', () => {
+  const h = goLive(harness());
+  h.frame('$BUT,0,1,*');                        // the trigger goes down
+  h.adv(500);
+  assert.equal(h.eng.state().held[0], 500, 'down for half a second');
+  h.eng.onBleDropped();                         // …and the link dies before the release
+  assert.deepEqual(h.eng.state().held, {}, 'the drop clears it — no release can ever arrive now');
+  h.adv(60000);
+  assert.deepEqual(h.eng.state().held, {}, 'and it does not come back as a minute-long hold');
+});
+
+test('review: reloading / reloadTotalMs / reloadGained / reloadOverrun are always read together', () => {
+  const h = goLive(harness());
+  h.frame('$ALCD,10,100,0,192,0,*');
+  h.frame('$BUT,2,1,*');
+  let s = h.eng.state();
+  assert.ok(s.reloading && s.reloadTotalMs != null && s.reloadGained != null, 'live: all three set');
+  h.adv(5000);                                  // past the deadline, BEFORE the tick that books the timeout
+  s = h.eng.state();
+  assert.deepEqual([s.reloading, s.reloadMs, s.reloadTotalMs, s.reloadGained, s.reloadOverrun],
+                   [false, null, null, null, false],
+                   'a render between the deadline and the next tick must not report a live total/gain beside reloading:false');
+  assert.ok(h.eng.reloading, 'the takeover object is still there — the tick is what books it');
+});
+
+// ── 2026-09-12 round-2 review of the same diff ───────────────────────────────────────────────────
+
+test('A20: an ALT press while the gun is STUNNED raises no swap — nothing could ever confirm one', () => {
+  // `_reloadPulled` refused a stunned gun; `_altPressed` did not, and it is the same hole. `_onAmmo` drops
+  // every $ALCD in the window, so a SWITCHING takeover opened here runs to `switchWindowMs()` and then books
+  // an ASSUMED swap — leaving `activeSlot` on a weapon the player never drew for the rest of the life.
+  const h = twoWeapons(stunHarness());
+  h.frame('$ALCD,10,100,0,150,0,*');
+  h.frame('$HIR,4,8,19,2,15,0,0,*');            // the EMP word — every live slot disarmed
+  assert.ok(h.eng.stunned, 'stunned');
+  h.frame('$BUT,1,1,*');                        // the player thumbs ALT at a gun that cannot fire
+  assert.equal(h.eng.state().switching, false, 'no SWITCHING takeover over a disarmed gun');
+  assert.equal(h.eng.switching, null);
+  h.adv(h.eng.switchWindowMs() + 100); h.eng.tick();
+  assert.equal(h.eng.state().activeSlot, 0, 'and no assumed swap books a weapon the player is not holding');
+  // CONTROL: the same press, once the stun is over, switches
+  h.adv(10100); h.eng.tick();
+  assert.equal(h.eng.stunned, null, 'stun over');
+  h.frame('$BUT,1,1,*');
+  assert.equal(h.eng.state().switching, true, 'CONTROL: the same press switches once the gun is re-armed');
+});
+
+test('a BLE drop also forgets the LAST button edge — no link, no completing it', () => {
+  // `held` was cleared on a drop and `lastButton` was not, so the diag panel kept showing a press whose
+  // release can never arrive as the newest thing the gun said, for as long as the link stayed down.
+  const h = goLive(harness());
+  h.frame('$BUT,0,1,*');
+  assert.equal(h.eng.state().lastButton.id, 0, 'the press is on record');
+  h.eng.onBleDropped();
+  assert.equal(h.eng.state().lastButton, null, 'the drop clears it, exactly as it clears `held`');
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  assert.equal(h.eng.state().lastButton, null, 'and the relink does not invent an edge either');
+});
+
+test('firing mid-reload reads as the player CANCELLING it, not as a reload that did not take', () => {
+  // `reload did NOT take (fired)` put a failure in the log for the one outcome that is not one: the player
+  // chose to shoot. Every chain weapon fired out of mid-reload logged it.
+  const h = shellHarness();
+  const logs = []; h.eng.log = m => logs.push(String(m));
+  h.frame('$BUT,2,1,*');
+  h.adv(420); h.frame('$ALCD,2,100,1,23,0,*');  // one shell in…
+  h.adv(300); h.frame('$ALCD,1,100,1,23,0,*');  // …and the player shoots
+  assert.equal(h.eng.state().reloading, false);
+  assert.equal(h.eng.state().reloadOutcome.why, 'fired');
+  assert.ok(logs.some(m => /reload cancelled by a shot: 2 of 6 loaded/.test(m)), 'the log says who stopped it: ' + JSON.stringify(logs));
+  assert.ok(!logs.some(m => /did NOT take/.test(m)), 'and never calls the player\'s own choice a failure: ' + JSON.stringify(logs));
+  // CONTROL: a reload the GUN never fed, ended by the deadline, is still a failure in plain words
+  const c = shellHarness();
+  const cl = []; c.eng.log = m => cl.push(String(m));
+  c.frame('$BUT,2,1,*'); c.adv(5000); c.eng.tick();
+  assert.equal(c.eng.state().reloadOutcome.why, 'timeout');
+  assert.ok(cl.some(m => /reload did NOT take \(timeout\)/.test(m)), 'CONTROL: a gun that fed nothing still reads as a failure: ' + JSON.stringify(cl));
+});
+
+test('state() names WHICH takeover is running, so a second reload is never read as the first', () => {
+  // The HUD latches `reloadOverrun` for the life of ONE reload. A $ALCD (fired) and a $BUT,2,1 in one BLE
+  // batch end and re-open the takeover between two renders, and with no identity on it the new reload opened
+  // on the old one's latch — already pulsing, its countdown already gone.
+  const h = shellHarness();
+  h.frame('$BUT,2,1,*');
+  const first = h.eng.state().reloadAt;
+  assert.ok(first > 0, 'a running takeover carries its start time');
+  h.adv(300); h.frame('$ALCD,0,100,1,23,0,*'); h.frame('$BUT,2,1,*');   // fired + pulled again, ONE batch
+  const s = h.eng.state();
+  assert.equal(s.reloading, true, 'the second pull took');
+  assert.ok(s.reloadAt > first, `a NEW takeover, not the old one: ${first} -> ${s.reloadAt}`);
+  h.adv(5000); h.eng.tick();
+  assert.equal(h.eng.state().reloadAt, null, 'and it goes null with the rest of the takeover');
 });

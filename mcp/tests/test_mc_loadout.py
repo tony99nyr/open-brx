@@ -297,6 +297,95 @@ def test_compile_validate_perks():
     assert C.validate(_cfg(), [_player({"weapons": [{"weapon_id": "sniper_rifle"}], "perk": "easy_reload"})])["ok"]
 
 
+# ------------------------------------------------------------------ F123: easy_reload vs a chain reload
+def test_chain_reload_is_an_explicit_attribute_and_the_shotgun_is_the_only_proven_one():
+    """The Shotgun's per-shell walk is bench-measured; nothing else is. The attribute must stay pinned to
+    what the wire proved, and it must NOT be inferred from `$WEAP` t19 — the Plasma Sniper has an
+    operator-confirmed shell reload at t19 = 0 (protocol/callsign-extract/protocol-classes.md)."""
+    import json
+    import pathlib
+
+    import brx_mcp.mc.compile as _compile
+    rows = json.loads((pathlib.Path(_compile.__file__).with_name("weapons.json")).read_text())["weapons"]
+    chain = {w["weapon_id"] for w in rows if w.get("reload_type") == "chain"}
+    assert chain == {"shotgun"}, chain
+    assert P.chain_reload({"weapon_id": "shotgun"}) and not P.chain_reload({"weapon_id": "assault_rifle"})
+    # an explicit field on the row WINS over the id lookup, so the day the compiled catalog publishes
+    # `reload_type` this stops reading the data file at all
+    assert not P.chain_reload({"weapon_id": "shotgun", "reload_type": "magazine"})
+    assert P.chain_reload({"weapon_id": "made_up_gun", "reload_type": "chain"})
+    assert not P.chain_reload(None) and not P.chain_reload({})
+    # and the t19 reading stays refuted: the Shotgun carries 2, but so does nothing else that shell-reloads
+    shotgun = next(w for w in rows if w["weapon_id"] == "shotgun")
+    assert shotgun["capture"]["frame"].split(",")[20] == "2"
+    plasma = next(w for w in rows if w["weapon_id"] == "plasma_sniper")
+    assert plasma["capture"]["frame"].split(",")[20] == "0", "t19 is not reloadType — do not infer from it"
+
+
+def test_easy_reload_is_refused_beside_a_chain_reload_weapon():
+    """F123 (field 2026-09-11): "easy reload does not work with the shotgun… holding alt fire doesnt work".
+    `easy_reload` is a MOMENTARY `$BMAP,1,97`; the Shotgun wants the handle HELD for six shells. Excluded."""
+    op = P.preset_rules("open"); lp = P.pool(op, W, PK)
+    bad = {"weapons": [{"weapon_id": "shotgun"}], "perk": "easy_reload"}
+    ok, why = P.validate_loadout(op, lp, bad, W, PK)
+    assert ok is False
+    assert why == "Shotgun loads shell by shell — Easy Reload only taps the button once, so it can't reload it"
+    assert P.chain_conflict(bad, W, PK) == {"perk": "easy_reload", "weapon": "shotgun"}
+    # every other perk is fine on the shotgun, and easy_reload is fine on every magazine weapon
+    for pid in ("body_armor", "extended_mags", "quick_hands", "quick_switch"):
+        assert P.validate_loadout(op, lp, {"weapons": [{"weapon_id": "shotgun"}], "perk": pid}, W, PK)[0], pid
+    for wid in ("assault_rifle", "smg", "sniper_rifle", "plasma_sniper", "charge_rifle"):
+        assert P.validate_loadout(op, lp, {"weapons": [{"weapon_id": wid}], "perk": "easy_reload"}, W, PK)[0], wid
+    assert P.chain_conflict({"weapons": [{"weapon_id": "shotgun"}], "perk": "quick_hands"}, W, PK) is None
+
+
+def test_a_chain_reload_pick_drops_the_perk_and_says_so():
+    """The resolution is the OPPOSITE way round to the second-weapon rule, because a primary is mandatory:
+    picking the Shotgun drops Easy Reload, and picking Easy Reload onto a Shotgun is simply refused."""
+    before = {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "easy_reload"}
+    after = P.set_slot(before, "primary", "weapon", "shotgun", PK)
+    assert after == {"weapons": [{"weapon_id": "shotgun"}]}
+    dropped, why = P.dropped_by(before, after, W, PK)
+    assert dropped == {"slot": "perk", "id": "easy_reload", "name": "Easy Reload"}
+    assert why == "Shotgun loads shell by shell — Easy Reload dropped"
+    # The other direction has nothing to drop — a primary is mandatory — so `check_request` refuses it with
+    # the hint, and `set_slot` is the backstop that never STORES the pairing even if a caller skips the check.
+    op = P.preset_rules("open"); lp = P.pool(op, W, PK)
+    held = {"weapons": [{"weapon_id": "shotgun"}]}
+    ok, why = P.check_request(op, lp, "perk", "perk", "easy_reload", W, PK, held)
+    assert ok is False
+    assert why == "Shotgun loads shell by shell — Easy Reload only taps the button once, so it can't reload it"
+    assert P.check_request(op, lp, "perk", "perk", "quick_hands", W, PK, held)[0] is True, "only the ALT perk is refused"
+    assert P.check_request(op, lp, "perk", "perk", "easy_reload", W, PK,
+                           {"weapons": [{"weapon_id": "assault_rifle"}]})[0] is True, "and only beside a chain weapon"
+    assert P.check_request(op, lp, "perk", "perk", "easy_reload", W, PK)[0] is True, "no loadout given → the rule cannot fire"
+    assert P.set_slot(held, "perk", "perk", "easy_reload", PK) == held, "the pairing is never stored"
+    # a HOST-side auto-fix (a config change, no tap) drops the perk rather than the mandatory primary
+    bad = {"weapons": [{"weapon_id": "shotgun"}], "perk": "easy_reload"}
+    assert P.apply(op, lp, bad, W, PK) == {"weapons": [{"weapon_id": "shotgun"}]}
+
+
+def test_the_phone_gets_the_hint_when_it_asks_for_easy_reload_on_a_shotgun():
+    """End to end on the fake net: the reject must be DELIVERED as a `loadout_ack`, with the reason the HUD
+    shows verbatim (loadout.md §4.2)."""
+    s, net, clock, ps = mk(1)
+    pid = ps[0]["player_id"]
+    online(s, net, clock, ps[0], 0)
+    s.patch_player(pid, loadout={"weapons": [{"weapon_id": "shotgun"}]})
+    _req(net, 0, "perk", "perk", "easy_reload")
+    ack = _last_ack(net, 0)
+    assert ack["ok"] is False
+    assert ack["reason"] == "Shotgun loads shell by shell — Easy Reload only taps the button once, so it can't reload it"
+    assert s.players[pid]["loadout"] == {"weapons": [{"weapon_id": "shotgun"}]}, "the refused pick did not apply"
+    # and the other way: picking the shotgun while holding the perk applies, and the ack says what it cost
+    s.patch_player(pid, loadout={"weapons": [{"weapon_id": "assault_rifle"}], "perk": "easy_reload"})
+    _req(net, 0, "primary", "weapon", "shotgun")
+    ack = _last_ack(net, 0)
+    assert ack["ok"] is True and ack["dropped"] == {"slot": "perk", "id": "easy_reload", "name": "Easy Reload"}
+    assert ack["reason"] == "Shotgun loads shell by shell — Easy Reload dropped"
+    assert s.players[pid]["loadout"] == {"weapons": [{"weapon_id": "shotgun"}]}
+
+
 def test_compile_sniper_fixed_end_to_end_through_session():
     s, net, clock, ps = mk(1, compiler=C)
     s.set_config({"loadout_policy": {"preset": "snipers"}})
@@ -816,3 +905,46 @@ def test_swap_delay_token_and_quick_switch():
     assert _tok(f0, 15) == "425" and b["swap_ms"] == 425
     assert _tok(f4, 15) == "50"                                          # melee's 100 scales too (every slot)
     assert _tok(f0, 18) == "1400"                                       # reload untouched by a swap perk
+
+
+def test_a_perk_that_cannot_take_moves_nothing_else():
+    """Polish review 2026-09-12: a pick that is REFUSED must leave the whole kit alone.
+
+    With a chain-reload primary AND a second weapon, tapping Easy Reload used to run the ALT rule first
+    (drop the second weapon) and THEN the F123 backstop (revert the perk) — so the player lost their
+    secondary to a pick that never applied, and `dropped_by` (which looks at the perk) reported nothing at
+    all. CONTROL: the same tap on a MAGAZINE primary still drops the second weapon, and still says so."""
+    held = {"weapons": [{"weapon_id": "shotgun"}, {"weapon_id": "smg"}]}
+    after = P.set_slot(held, "perk", "perk", "easy_reload", PK, W)
+    assert after == held, f"a refused perk moved the rest of the kit: {after}"
+    assert P.dropped_by(held, after, W, PK) == (None, None), "nothing was dropped, so nothing may be reported"
+    # CONTROL: on a magazine primary the pick DOES take, and the second weapon goes with a reason
+    ok = {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}]}
+    after = P.set_slot(ok, "perk", "perk", "easy_reload", PK, W)
+    assert after == {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "easy_reload"}
+    dropped, why = P.dropped_by(ok, after, W, PK)
+    assert dropped == {"slot": "secondary", "id": "smg", "name": "SMG"}
+    assert why == "Easy Reload takes the ALT button — SMG dropped"
+
+
+def test_the_chain_rule_reads_the_catalog_in_play_not_the_shipped_file():
+    """`chain_reload` answers from the row this GAME is running. A synthetic catalog that makes a
+    non-shotgun a chain reload must be obeyed everywhere the rule fires — including `set_slot`, which used
+    to ask a bare `{weapon_id: ...}` and so could only ever be answered by `weapons.json`."""
+    cat = [{"weapon_id": "smg", "name": "SMG", "cls": "1", "tags": [], "reload_type": "chain",
+            "stats": {"mag": 30, "reserve": 60, "reload_ms": 1400, "dmg": 50, "rof": 50, "rng": 50}},
+           {"weapon_id": "shotgun", "name": "Shotgun", "cls": "2", "tags": [],
+            "stats": {"mag": 6, "reserve": 24, "reload_ms": 2400, "dmg": 70, "rof": 30, "rng": 50}}]
+    op = P.preset_rules("open"); lp = P.pool(op, cat, PK)
+    held = {"weapons": [{"weapon_id": "smg"}]}
+    assert P.chain_conflict({**held, "perk": "easy_reload"}, cat, PK) == {"perk": "easy_reload", "weapon": "smg"}
+    assert P.check_request(op, lp, "perk", "perk", "easy_reload", cat, PK, held)[0] is False
+    assert P.set_slot(held, "perk", "perk", "easy_reload", PK, cat) == held, "set_slot must read the same catalog"
+    # and picking the chain primary drops the ALT perk, again on this catalog's say-so
+    on_ar = {"weapons": [{"weapon_id": "shotgun"}], "perk": "easy_reload"}
+    assert P.set_slot(on_ar, "primary", "weapon", "smg", PK, cat) == {"weapons": [{"weapon_id": "smg"}]}
+    # CONTROL: a row that carries NO `reload_type` still falls back to the shipped file, which is what
+    # keeps the F123 rule alive on the compiled catalog (it publishes stats/tags and not the attribute) —
+    # so this catalog's own shotgun row is still a chain reload and still drops the perk.
+    assert P.set_slot({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "easy_reload"},
+                      "primary", "weapon", "shotgun", PK, cat) == {"weapons": [{"weapon_id": "shotgun"}]}

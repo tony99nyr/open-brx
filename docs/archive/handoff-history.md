@@ -905,3 +905,52 @@ pattern: nothing was intermittent, the headset was simply linked sometimes and n
   and painted red into every bar. **Write all three colour tokens, always.** The stage's LED SIMULATOR
   encoded the same wrong rule and so drew it correctly — a simulator that encodes an assumption launders it
   rather than testing it. `test_led_invariants` now forbids the shape.
+
+---
+
+# Banners retired 2026-09-12 (were HANDOFF.md L6–L50 on 2026-09-11)
+
+## ⭐ The game test (2026-09-11 night, two taggers, 1v1) — 25 new ids, NOT committed
+
+**Self-contained sheet, written for an agent to work from: [`game-test-2026-09-11.md`](game-test-2026-09-11.md).**
+F110-F127 + S20-S26. iPhone built and installed from today's tree; **Android still on APK 0.1.8**, so an
+Android-only symptom is a version candidate first. Evidence: `~/mc-20260911-1927.log`, session `8b501cfd`.
+
+- 🔴 **F124 the frag limit is NEVER enforced** — "next kill wins" announces and nothing ends the match; the end
+  lives in `modes/deathmatch.py:110` and was never ported to MC's scorer. 9 kills against a limit of 7.
+- 🔴 **F125 END reported "reached 2 of 2" and the match ran on** — the node log says `time-expiry` 18 s later.
+  `state.py:2015` falls through to the recall/panic `else`, which never sets `phase`.
+- 🔴 **F121 hit reception is armed at CONFIG PUSH and never disarmed** — damage lands during the countdown and
+  before your gun arms. `compile.py:934` ships `sir_rows` in the SAME head as the pregame team colour, and per
+  F11 the `$SIR` table IS the arming, so **the team colour is the visible marker that you are hittable**. No
+  spawn protection exists. Fix in-tree: `_SIR_NO_POOL` pregame, real table at `$SPAWN`.
+- 🔴 **F127 MC's CONTINUE locks out everyone still kitting** — `Kit.tsx:193` bypasses MC's own documented
+  "advance only when EVERY player is ready" with a bare `setPhase('lobby')`; `greens`/`roster_size` already exist.
+- 🟠 **F123 / F113 / F121 share one theme: the HUD asserts what the hardware never confirmed** — the reload
+  animation is a blind timer that writes nothing to the gun, the LED strip freezes because death is "deliberately
+  hands-off", and countdown damage is ignored by software while the hardware reacts.
+- 🟠 **S26 passive log sync is HALF-BUILT**: MC already pushes `pull_log` at recap and the mock node answers it;
+  **the real app has no handler**, so no phone has ever answered. **S23** folds six reports into one results job
+  (⚠ win/lose cannot be inferred node-side: silence means "lost" and "out of coverage" identically).
+- **Worked, on hardware:** mid-match resync after a crash · early end + `game_over` + `victory` (never
+  field-confirmed before) · `next_kill_wins` · mDNS auto-join with no QR.
+- ⚠ **Install traps:** never kill a `devicectl` install mid-transfer (it wedges `remotepairingd`; a reboot clears
+  it and the install then takes 13 s), and `system_profiler SPUSBDataType` returns NOTHING under the agent
+  sandbox — use `ioreg -p IOUSB`.
+
+## Tonight's bench (2026-09-11, three closes, all written up, tests green, NOT committed)
+
+- **F69 + F91 CLOSED.** No ambient `proto=0` word exists: a receiver on a live neutral hill saw only
+  `proto=15` beacons for ~5 min while the gun bled. The chip damage is manufactured INSIDE the gun by the
+  fn-24 blast row; with the SHIPPED `$SIR,15,0,,28` a 100/200 gun took nothing beside a live hill for 70 s.
+  Moving weapons off protocol 0 solved a non-problem; retired. **Rule: never ship fn 24-27 on any cell.**
+- **F74 → 🟡.** The "phantom replay" was emitter + grenade pinging a fn-24-armed gun, plus a tool trap:
+  `ir-emit` returns instantly while the board fires ~0.15 s/repeat; it now prints an estimate and takes
+  `--wait`. The zero-IR self-replay was NOT reproduced; kept open.
+- **F23 CLOSED.** Damage depends on the SENSOR: body always ×1; headset fn 36 ×(1+t7/200), fn 37 ×(1+2·t7/100),
+  t7 = `$GSET` critModifier (default 50 → ×1.25 / ×2). Crit bit never fired; reconciles the Aug/Sep dispute
+  (different sensors). `compile.py` has `headset_multiplier()`; htk/ttk stay on the body number; docs fixed ×7.
+  ⚠ side effects: sidearms inherit subtype 3 (top headset bonus); kid_mode halves t7.
+- **F27 (open):** handle-to-refill is SLOWER than catalog on all three (AR 1701 vs 1400, burst 2160 vs 1700,
+  charge 3220 vs 2500), so the RELOADING HUD bar ends early; sidearms/melee open. ⚠ **Link:** after ~55 min
+  the BLE link dropped ~15 s into every long `send_batch`; fixed by the 4-frame spawn tail post-arm.

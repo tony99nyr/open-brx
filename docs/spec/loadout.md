@@ -187,8 +187,12 @@ State.kit += { browsing: { [player_id]: t_ms } }             // MC roster shows 
 ### 4.4 Ready-up semantics (fixes, `state.py`)
 - `ready` from a player **ends that player's try-out** (existing `tutorial {end}` teardown) — the gun must not stay
   armed with an uncredited identity.
-- **kit → lobby auto-advance only when every rostered player is ready** (was: first ready — brx-opus2 S1). The host's
-  CONTINUE ▸ is unaffected.
+- **kit → lobby auto-advance only when every rostered player is ready** (was: first ready — brx-opus2 S1). **A27 (F127,
+  2026-09-11): the host's CONTINUE ▸ is guarded too** — `POST /api/phase {phase:"lobby"}` from `kit` is refused (409,
+  `not_ready` names) unless `force:true`; the MC button shows `greens / roster_size READY` and forces only on a second
+  tap that names who is not ready. A player moved out of the kit editor by a forced advance sees "THE HOST LOCKED KITS —
+  you play what you had" on the lobby screen (`moment kit_locked_by_host`), never a silent screen swap.
+- **A30 (2026-09-12): the kit LOCKS at START** — in `armed`/`live` a phone pick is refused (`loadout_ack ok:false`, reason above) and host edits are 409; a `config` to a live gun un-spawns it and nothing re-spawns it (engine.js `_applyConfig` + `resumeSchedule`). Picks before START still re-push in LOBBY as before.
 - `tryout()` refuses only when **the lobby has been pushed** (`lobby_pushed`) — no longer "any node in LOBBY". Its
   error text is the `loadout_ack.reason` / the MC toast.
 ### 4.5 Phone screens (B0 KITTED grows one screen)
@@ -197,7 +201,10 @@ State.kit += { browsing: { [player_id]: t_ms } }             // MC roster shows 
   plates not tappable. An empty PERK plate reads "NONE · NO PERK"; an empty SECONDARY "NONE · NO ALT-FIRE".
 - **LOADOUT browser** (landscape 844×390): tab bar `PRIMARY | SECONDARY | PERK`; list **left** (rows ≥44 px: thumb, name,
   class chip, MAG; the secondary tab has `WEAPONS · NONE` chips, the perk tab `PERKS · NONE`), detail **right** (art,
-  DMG/ROF/RNG bars, MAG/RESERVE, one-line desc); bottom action bar ≥44 px: `TRY IT` (weapons, sends `try:true`), `CLOSE`.
+  DMG/ROF/RNG bars, MAG/RESERVE, one-line desc); bottom action bar ≥44 px: **`REVIEW KIT ▸`** (A26: opens the three-plate
+  kit summary with READY UP) and `CLOSE`. **A26 (S20, 2026-09-11): `TRY IT` is gone — tapping a weapon row equips it AND
+  arms it for test-firing** (`loadout_request {try:true}`) after a 400 ms node-side debounce, so scrolling never spams MC or
+  `$WEAP`; ✓ = MC acked the pick, ⟳ = still arming. The row's ⓘ opens its detail.
   A12: when `policy.secondary.kinds` holds `"sidearm"` and not `"weapon"` the weapons chip reads `SIDEARMS · n`
   (the pool already holds only pistols) and the hint reads "Pick a sidearm"; role label `SIDEARM`.
   **Tap a row = equip** (sends `loadout_request`, row shows ✓ on `loadout_ack`); perks equip on tap, no try.

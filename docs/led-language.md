@@ -126,7 +126,15 @@ the frame is unchanged, a change inside 300 ms of the last write only restarts t
 the live readout frame if its hold is running, never on the top band. Segment count is the primary channel
 (lit-vs-dark reads in sun, at night and for red-green colour-blind players); hue confirms it.
 
-**Death is hands-off.** Between `$HP,0` and +2.5 s the node writes nothing to either surface: the killing hit's native gun flash, the native headset flash and the firmware's death handling occur automatically and are the brightest thing we have; a write inside that window can only mask them or wedge the relay (F13: 2.0 s sticks, 2.5 s clean). The `died` gun burst is dropped for the same reason (the death sound and the HUD carry it); the strip is blanked at +2.5 s and the down pulse starts then.
+**Death is hands-off on the HEADSET, and blanks the GUN immediately (amended 2026-09-11, F113).** The node still writes nothing to the headset between `$HP,0` and +2.5 s: the native headset flash and the firmware's death handling run on their own, they are the brightest thing we have, and a write inside that window can only mask them or wedge the relay (F13: 2.0 s sticks, 2.5 s clean). The `died` gun burst stays dropped for the same reason (the death sound and the HUD carry it), and the down pulse still starts at +2.5 s.
+
+What changed is the gun body. A16 §5 originally left the strip wherever the killing hit's native flash put it, on the assumption that that was somewhere sensible. **The field killed the assumption**: *"killed with sniper rifle, 2 shots. it took down to 1 led of purple and then dead. while dead it stayed at 1 purple."* A fast kill lands death in the middle of a drop animation, A16.3 cancels the animation outright, nothing is written after it, and the strip freezes at a partial pool level for the entire death — a dead player's gun reading "a sliver of health left". The bigger the damage per shot the worse it is: a sniper jumps from a high level to dead in one step, a 13-hit rifle walks the strip down and at least lands near-empty.
+
+So `_death` now writes **one frame, the blank `$GLED,,,,5,,,*`**, immediately — the same frame `gun.take` already opens every life with. Dark gun = dead gun, with no dependence on where an interrupted animation happened to stop. The repaint on the way back is unchanged: `_gunTake`'s blank + rest, `after_spawn_s` after `$SPAWN`.
+
+Three things this deliberately does **not** do. It does not touch the headset, so the firmware's own out-flash (§3.2) still runs and the A16 hard rule that `$HLED,,6` is never sent in play is untouched. It does not paint a "dead" colour — dark is the down state, and a colour would compete with the down pulse. And it does not fire for a game whose gun is `in_play: "native"`: that bundle ships no frames and no blank, the strip was never ours, so it is not ours to turn off.
+
+⚠ **Open, for the bench.** The blank goes out at `$HP,0`, not at +2.5 s. On the headset the hands-off window is bench-backed (F13 is a relay-settling measurement); on the gun body it is an assumption, and the one thing it protects is the killing hit's own native BODY flash, which this blank may now cut short. Nobody has watched for that. If it turns out to matter, the fix is to move the blank to the end of the hands-off window instead — the behaviour is one call in `_death` (`_gunBlankOnDeath`). Worth resolving alongside bench gates L1–L11.
 
 Dropped from today's defaults, with the reason: the `hit_taken` gun burst (the firmware already flashes the body
 on a registered hit, the readout step is the feedback, and native + three of ours can exceed three flashes a
@@ -306,8 +314,9 @@ headset: { rest: "$HLED,9,0,,,10,,*",   // dark BY COLOUR: $HLED,,6 (effect 6) w
 
 Node rules (engine.js): on every `$HP`, `pool = changed_pool(prev, now)`, band by `level/max`, write only on frame
 change, restart the hold, revert to `rest` on expiry; bursts end on `rest`, re-write the live readout frame after
-a burst if its hold is running; `_death` clears the readout and cancels every pending gun/headset step, writes NOTHING for
-`quiet_after_death_ms` (native hit flash + death handling), then blanks the gun; the down pulse starts after the same gap, stops `quiet_before_spawn_ms` before an auto `$SPAWN`, and a scanner revive blanks,
+a burst if its hold is running; `_death` clears the readout, cancels every pending gun/headset step and **blanks the gun strip at once**
+(F113, §3.1 — one `gun.blank`, and nothing at all when the bundle has no `gun` table), then writes nothing to the
+HEADSET for `quiet_after_death_ms` (native flash + death handling); the down pulse starts after that gap, stops `quiet_before_spawn_ms` before an auto `$SPAWN`, and a scanner revive blanks,
 waits, then spawns; the respawn white flash is scheduled ≥ 1.0 s after `$SPAWN`; one `_lightGen` bumped in
 `_endLocal`, panic, resync, reconcile and BLE drop cancels every pending light step; `max` for shield comes from
 MC (`$PSET` token 5), never parsed from a frame. Night arrives pre-compiled: no engine change.

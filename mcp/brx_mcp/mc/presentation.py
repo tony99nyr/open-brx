@@ -169,6 +169,41 @@ TEXT = {
 }
 
 
+# ---- the OPERATOR's copy for the same events (B4 / F118) ---------------------------------------
+# `TEXT` above is the PLAYER's line: second person, on their own phone, where "YOUR TEAM TAKES THE
+# LEAD" is exactly right. The MC console is a third-person report about somebody ELSE, and it is read
+# in FFA as often as in a team game -- where "your team" names a thing that does not exist (the match
+# that produced F118 was FFA, so `leader` was a PLAYER id and the feed still said "Your Team"). Only
+# the lines that actually differ live here; everything else falls through to `TEXT`, because
+# "FLAG CAPTURED" reads the same to both audiences.
+# `{who}` is the resolved SUBJECT -- a player's display name or a team's name -- filled in by
+# `Session._alert`, which resolves the id with the same roster the kill rows use.
+MC_TEXT = {
+    "lead_taken":    "{who} takes the lead",
+    "lead_lost":     "{who} loses the lead",
+    "last_survivor": "{who} is the last one standing",
+    "infected":      "{who} has been infected",
+    "survivors_win": "THE SURVIVORS HELD THEIR GROUND",
+    "vip_hit":       "THE VIP IS UNDER FIRE",
+    "vip_down":      "THE VIP IS DOWN",
+}
+
+
+def feed_text(kind: str, who: str | None = None) -> str:
+    """One MC feed line for a named event: third person, subject resolved.
+
+    A `{who}` template with no subject degrades to the HUD line rather than printing "None" -- an
+    unresolvable id is the caller's business to report, not this function's to invent.
+    """
+    hud = TEXT.get(kind, kind.replace("_", " ").upper())
+    tmpl = MC_TEXT.get(kind)
+    if tmpl is None:
+        return hud
+    if "{who}" in tmpl:
+        return tmpl.format(who=who) if who else hud
+    return tmpl
+
+
 def alert_body(kind: str, extra: dict | None = None) -> dict:
     """The MC→node `alert` body for a named event (A11.4): the node plays cues[kind] + leds[kind] from
     its OWN bundle (so the presentation profile is honoured per player) and shows `text` as a HUD alert.

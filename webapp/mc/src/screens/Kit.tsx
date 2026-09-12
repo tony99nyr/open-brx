@@ -5,7 +5,7 @@ import { useStore } from '../store';
 import { EvictButton } from '../ui/EvictButton';
 import { CHAMFER, F, PERK_COLOR, T, TAB, fmtAge, roleOf, teamColor } from '../tokens';
 import { takesAlt } from './gameSummary';
-import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, SectionRule, Seg, SegBar, StripedSlot, Tag, ValueBox, onKey, PrimaryButton } from '../ui';
+import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, SectionRule, Seg, SegBar, StripedSlot, Tag, ValueBox, onKey } from '../ui';
 
 type Slot = 'primary' | 'secondary' | 'perk';   // A14: the perk is its own slot
 
@@ -25,6 +25,98 @@ export function poolOf(p: Player | undefined, gameHp: number, gameAr: number) {
   };
 }
 const PRESET_LABEL: Record<string, string> = { open: 'OPEN', no_heavies: 'NO HEAVIES', snipers: 'SNIPERS ONLY', custom: 'CUSTOM RULES' };
+
+/** F127 (field 2026-09-11) -- who KIT -> LOBBY would strand.
+ *
+ *  MC's own rule is `state.py` `_all_ready` (contracts §4.4): "kit → lobby advances only when EVERY
+ *  rostered player is ready". The phone FOLLOWS the phase -- `engine.js` moves a node that is not
+ *  armed/live to `lobby` and `hud.js` then renders the lobby screen instead of the kit panel -- so
+ *  the bare `setPhase('lobby')` this screen used to fire took the screen out from under everyone
+ *  still choosing a loadout, silently, on both sides. The operator KEEPS the override (a phoneless
+ *  player must not be able to hold up the night); it is now a two-tap that says whose screen it takes.
+ *
+ *  `known` is false for a roster this console cannot judge -- no players yet, or a snapshot with no
+ *  `ready` field at all (an older MC). Say "readiness unknown" rather than invent a count.
+ */
+export function kitGate(players: Player[] | null | undefined) {
+  const roster = Array.isArray(players) ? players : [];
+  const known = roster.length > 0 && roster.every(p => typeof p?.ready === 'boolean');
+  const waiting = known ? roster.filter(p => !p.ready) : [];
+  return {
+    known, total: roster.length, ready: known ? roster.length - waiting.length : 0,
+    waiting: waiting.map(p => (p.display || `#${p.player_num}`).toUpperCase()),
+  };
+}
+/** Three names, then a count: a squad of 12 must not wrap the header to three lines. */
+const waitingNames = (names: string[]) => (names.length <= 3 ? names.join(', ') : `${names.slice(0, 3).join(', ')} +${names.length - 3} MORE`);
+
+/** The KIT -> LOBBY button: the ready count IS the status, and a short roster is a two-tap confirm. */
+function ContinueToLobby({ gate, onGo }: { gate: ReturnType<typeof kitGate>; onGo: () => Promise<boolean> }) {
+  const blocked = gate.known && gate.waiting.length > 0;
+  const who = gate.waiting.join('|');
+  // The confirm is armed FOR a named set of players, not as a flag, so it disarms itself the moment
+  // what it is confirming changes under the operator: everyone readied, or it is a DIFFERENT set that
+  // would be stranded now. (Derived during render, so there is no disarm effect to lag a snapshot
+  // behind the button.) Leaving KIT unmounts this, which disarms it too.
+  const [armedFor, setArmedFor] = useState<string | null>(null);
+  const armed = blocked && armedFor === who;
+  // Deriving `armed` HIDES the confirm the moment the roster stops matching — but the armed-for set
+  // also has to be FORGOTTEN, and the trigger is the SET CHANGING, not the roster unblocking. Clearing
+  // only on `!blocked` left the old set behind through a roster that was still blocked by somebody
+  // else: arm on SABLE|DRIFT, SABLE readies (who = DRIFT, still blocked, so the clear never ran), SABLE
+  // un-readies, and `armed` flipped true again with no tap — the operator's very next tap moved
+  // everybody. Exactly the F127 accident, two snapshots later (review 2026-09-12). Cleared DURING
+  // render (React's "adjust state when the input changes" — there is no effect to lag a snapshot
+  // behind, and no frame in which the button is armed at a set it was not armed for). Unmount needs no
+  // cleanup: leaving KIT destroys this state with the component.
+  if (armedFor !== null && armedFor !== who) setArmedFor(null);
+  // ...and it expires on its own, like the A14 loadout confirm: an armed warning left on screen is a
+  // trap, because the next tap is the one that moves everybody.
+  useEffect(() => { if (!armed) return; const h = setTimeout(() => setArmedFor(null), 12_000); return () => clearTimeout(h); }, [armed]);
+  // The count rides on BOTH labels. Dropping it while armed left the strip's only number as the
+  // KITTED tally — a different count, of a different thing, at the moment the operator is deciding.
+  const count = gate.known ? ` · ${gate.ready}/${gate.total} READY` : '';
+  const label = `${armed ? 'CONTINUE ANYWAY' : 'CONTINUE'}${count} ▸`;
+  const go = async () => {
+    if (blocked && !armed) { setArmedFor(who); return; }   // first tap: arm on THIS set of names, send nothing
+    if (await onGo()) setArmedFor(null);                   // `run()` returned undefined on a 4xx: stay put
+  };
+  return (
+    <span data-continue="kit" data-armed={armed ? '1' : '0'} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, maxWidth: '100%' }}>
+      {/* CANCEL + CONTINUE are both nowrap, and armed they are 398px side by side — 5px wider than a
+          393px phone, which pushed CANCEL off the right edge of the console (e2e 2026-09-12). Let the
+          pair wrap instead: one row on the desk, stacked and still right-aligned on a phone. */}
+      <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8, maxWidth: '100%' }}>
+        {armed && <GhostButton size={11} pad="9px 14px" onClick={() => setArmedFor(null)}>CANCEL</GhostButton>}
+        {/* ONE element in both states, styled two ways. Swapping <button> for PrimaryButton when the
+            roster blocks threw the focused element away mid-decision, so a keyboard operator lost the
+            gate at the exact moment it started asking a question (review 2026-09-12). The transparent
+            border keeps the box the same size in both looks, so nothing jumps either. */}
+        <button type="button" className={blocked ? 'hov-warnbg' : 'hov-accbg'} onClick={go}
+          title={armed ? `Move ${waitingNames(gate.waiting)} to the lobby before they have finished kitting`
+                       : blocked ? `${gate.waiting.length} player${gate.waiting.length === 1 ? ' is' : 's are'} still kitting`
+                       : undefined}
+          style={{ font: F.chk(700, 12), letterSpacing: '.2em', padding: '9px 18px', whiteSpace: 'nowrap', ...TAB,
+                   background: blocked ? 'transparent' : T.acc, color: blocked ? T.warn : T.accInk,
+                   border: `1px solid ${blocked ? T.warn : 'transparent'}`, clipPath: CHAMFER.tl10,
+                   cursor: 'pointer', minHeight: 44 }}>
+          {label}
+        </button>
+      </span>
+      {armed && (
+        // The CONSEQUENCE, on screen. It used to live in a `title` tooltip — which the operator was
+        // never going to hover, and which a touch console has no way to show at all — so the visible
+        // line said only that someone was "waiting", not that a tap takes their screen away (F127).
+        <span role="alert" data-continue-warn="1" style={{ font: F.chk(600, 12), letterSpacing: '.06em', color: T.warn, maxWidth: 'min(620px, calc(100vw - 48px))', textAlign: 'right', lineHeight: 1.45 }}>
+          {waitingNames(gate.waiting)} {gate.waiting.length === 1 ? 'IS' : 'ARE'} STILL KITTING AND WILL LOSE THEIR SCREEN — CONTINUE ANYWAY?
+        </span>
+      )}
+      {!gate.known && gate.total > 0 && (
+        <span style={{ font: F.mono(500, 11), letterSpacing: '.14em', color: T.micro }}>READINESS UNKNOWN</span>
+      )}
+    </span>
+  );
+}
 
 export function Kit() {
   const { state, weapons, perks, selPlayer, setSelPlayer, run, api, setView } = useStore();
@@ -74,7 +166,7 @@ export function Kit() {
   // counts only players we can actually reach: a loadout with no phone on the net cannot be pushed
   const kitted = players.filter(p => (p.loadout?.weapons?.length ?? 0) > 0 && p.team_id && p.gun_id
     && state.nodes.some(n => n.player_id === p.player_id)).length;
-  const nReady = players.filter(p => p.ready).length;
+  const gate = kitGate(players);            // F127: who CONTINUE would take the kit screen away from
   const node = sp ? state.nodes.find(n => n.player_id === sp.player_id) : undefined;
 
   // Gun options = the armory registry PLUS any connected node whose gun is not registered.
@@ -189,8 +281,19 @@ export function Kit() {
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
           {rulesChip}
           <Progress n={kitted} total={players.length} label="KITTED" />
-          <span style={{ font: F.osw(700, 20), ...TAB, color: nReady === players.length && players.length ? T.ok : T.ink }}>{nReady}<span style={{ color: T.micro }}>/{players.length} READY</span></span>
-          <PrimaryButton size={12} pad="9px 18px" onClick={async () => { await run(() => api.setPhase('lobby')); setView('lobby'); }}>CONTINUE ▸</PrimaryButton>
+          {/* The ready tally used to sit beside the button as its own number and the button ignored it.
+              It is ON the button now: one status, and it is the one the tap acts on (F127). */}
+          {/* `run()` returns undefined on a THROW and the call's own value otherwise — and a phase change
+              is a body nobody reads, so `api.setPhase` resolving `undefined` (a 204, or any api that
+              does not echo) would have read as a refusal and stranded the operator on KIT with no error
+              strip to explain it. Return the sentinel from INSIDE `run`, so the only refusal is a throw
+              (review 2026-09-12). */}
+          <ContinueToLobby gate={gate} onGo={async () => {
+            const ok = await run(async () => { await api.setPhase('lobby'); return true; });
+            if (!ok) return false;                // threw: the error strip says why, stay on KIT
+            setView('lobby');
+            return true;
+          }} />
         </span>} />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'flex-start' }}>
         {/* roster */}

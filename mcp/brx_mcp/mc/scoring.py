@@ -8,14 +8,32 @@ import csv
 import io
 from typing import Callable
 
-from .types import (ASSIST_WINDOW_MS, FEEDBACK_MAX_AGE_MS, MULTI_KILL_MS, STALE_AFTER_MS,
-                    Event, Player, ScoreRow, Team)
+from .types import (ACC_MIN_SHOTS, ASSIST_WINDOW_MS, FEEDBACK_MAX_AGE_MS, MULTI_KILL_MS,
+                    STALE_AFTER_MS, Event, Player, ScoreRow, Team)
 
 Feed = dict
 Feedback = Callable[[str, dict], None]     # (player_id, feedback body)
 
 CSV_COLUMNS = ["operator", "team", "kills", "deaths", "assists", "kd", "accuracy", "streak",
-               "shots", "hits", "medals"]
+               "best_streak", "shots", "hits", "medals"]
+
+# F116: the per-kill Halo medals, in the order a row lists them. They were computed at every kill,
+# fired as A11.4 alerts and then DISCARDED, so `ScoreRow.medals` could only ever carry an `honors()`
+# award -- and honors need 3+ players by design (a 1-player recap once crowned itself MVP), so every
+# 1v1 showed an empty medals column all match. The labels are deliberately a local map, not an import
+# of `presentation.TEXT`: that is the HUD's banner copy and it answers to a different audience.
+MEDAL_LABEL = {"first_blood": "FIRST BLOOD", "double_kill": "DOUBLE KILL", "triple_kill": "TRIPLE KILL",
+               "killtacular": "KILLTACULAR", "killing_spree": "KILLING SPREE", "unstoppable": "UNSTOPPABLE"}
+# The per-kill label an `honors()` award ALREADY stands for. FIRST BLOOD is the same word in both lists
+# and needs no entry; the multi-kill honor is called MULTIKILL and is awarded for a double/triple, so
+# without this a 3+ player row printed `MULTIKILL` and `DOUBLE KILL ×2` as two separate chips for one
+# thing (polish review 2026-09-12). Base labels only -- the `×N` suffix is stripped before the lookup.
+HONOR_ALIAS = {"DOUBLE KILL": "MULTIKILL", "TRIPLE KILL": "MULTIKILL", "KILLTACULAR": "MULTIKILL"}
+
+
+def _stands(label: str, honors: set[str]) -> bool:
+    """Is this earned chip already on the row, under its own name or the honor's name for it?"""
+    return label in honors or HONOR_ALIAS.get(label) in honors
 
 
 def _csv_safe(v):
@@ -42,7 +60,7 @@ def rows_csv(rows) -> str:
             medals = [medals]
         w.writerow([_csv_safe(r.get("display", "")), _csv_safe(r.get("team_id") or ""),
                     r.get("kills", 0), r.get("deaths", 0), r.get("assists", 0), r.get("kd", 0),
-                    "" if acc is None else acc, r.get("streak", 0),
+                    "" if acc is None else acc, r.get("streak", 0), r.get("best_streak", 0),
                     r.get("shots", 0), r.get("hits", 0),
                     _csv_safe(" · ".join(str(m) for m in medals))])
     return buf.getvalue()
@@ -50,14 +68,18 @@ def rows_csv(rows) -> str:
 
 class _P:
     __slots__ = ("kills", "deaths", "assists", "hits", "friendly_kills", "streak", "best_streak",
-                 "multi_best", "multis", "last_kill_t", "shots", "shots_t", "alive", "deadline_s",
-                 "hp", "armor", "last_status_t", "flushed", "team_id", "shots_baseline")
+                 "multi_best", "multis", "last_kill_t", "last_hit_t", "shots", "shots_t", "alive",
+                 "deadline_s", "hp", "armor", "last_status_t", "flushed", "team_id", "shots_baseline")
 
     def __init__(self, team_id: str | None):
         self.kills = self.deaths = self.assists = self.hits = self.friendly_kills = 0
         self.streak = self.best_streak = self.multi_best = 0
         self.multis: list[int] = []
         self.last_kill_t: int | None = None
+        # F119: when this player last LANDED a hit. Hits are the accuracy numerator and arrive per
+        # event; shots are the denominator and arrive on the ~2 s heartbeat. A `shots_t` older than
+        # this is a denominator that has not caught up yet -- detectable, not guessed.
+        self.last_hit_t: int | None = None
         self.shots = 0                 # latest status.shots from the CURRENT node session
         self.shots_baseline = 0        # total at the moment a new node_id bound this player (A6.2)
         self.shots_t: int | None = None
@@ -75,7 +97,8 @@ class Scorer:
                  node_player: dict[str, str], synced_at_lobby: dict[str, bool],
                  on_feedback: Feedback | None = None, on_feed: Callable[[Feed], None] | None = None,
                  now_ms: Callable[[], int] | None = None, win_by: str | None = None,
-                 on_alert: Callable[[str, str, dict], None] | None = None, frag_limit: int | None = None):
+                 on_alert: Callable[[str, str, dict], None] | None = None, frag_limit: int | None = None,
+                 on_limit: Callable[[int], None] | None = None):
         self.match_id = match_id
         self.go_live_t = go_live_t
         self.time_limit_s = time_limit_s
@@ -89,7 +112,12 @@ class Scorer:
         self.on_feedback = on_feedback or (lambda pid, body: None)
         # A11.4 match-state alerts: (kind, scope, extra) where scope is "all" | a team_id | a player_id
         self.on_alert = on_alert or (lambda kind, scope, extra: None)
+        # F124: fired ONCE, with the effective time of the kill that reached the cap. The Scorer is pure,
+        # so it does not end anything itself -- the Session's handler ends the match down the same path
+        # `control('end')` takes (`set_end` + `_finish`), and pushes `control{end}` to the field.
+        self.on_limit = on_limit or (lambda t: None)
         self.frag_limit = frag_limit
+        self.limit_reached_t: int | None = None    # when the cap was hit (None = it never was)
         self._leader: str | None = None            # team_id (or player_id in FFA) currently in the lead
         self._announced: set[str] = set()          # once-per-match alerts already sent (next_kill_wins, last_survivor)
         self._infected_team: str | None = None      # infection: the team players flip TO (learned from team_change)
@@ -241,6 +269,8 @@ class Scorer:
                 self.hits_log.append((t, shooter, pid, int(ev.get("dmg", 0) or 0)))
                 if not self._friendly(shooter, pid):
                     self.stats[shooter].hits += 1
+                    ss = self.stats[shooter]
+                    ss.last_hit_t = t if ss.last_hit_t is None else max(ss.last_hit_t, t)
             return "scored"
         if kind == "death":
             return self._death(pid, ev, t, suppress_awards)
@@ -345,7 +375,36 @@ class Scorer:
         if tag == "FIRST BLOOD":
             text = f"{self._name(killer)} drew FIRST BLOOD on {self._name(victim)}"
         self._push_feed(t, text, tag, "kill")
+        # LAST, and deliberately: the cap is judged on the board this kill leaves behind, and the
+        # kill must already be in `self.kills` + the feed before the Session freezes scoring on it.
+        self._check_frag_limit(t)
         return "scored"
+
+    def _check_frag_limit(self, t: int) -> None:
+        """F124: the frag limit ENDS the match.
+
+        It was configured, announced at cap-1 (`next_kill_wins`), displayed on the HUD -- and enforced
+        by nobody. The end exists in the standalone CLI engine (`modes/deathmatch.py`) and was never
+        ported to MC; the node exposes `fragLimit` for display only and the gun never reads it at all.
+        Field 2026-09-11: *"the player got the 7th kill after the 'next kill wins' audio and the game
+        didnt end"* -- ROCCO finished on 9 kills against a cap of 7, phase still `live`.
+
+        Only a KILLS game can be decided this way: an objective or survival `win_by` is settled by
+        possession or by the last player standing, so a kill cap means nothing there and MC must not
+        invent one. Fires once; `set_end` + `_finish` happen in the Session's handler, so the victory
+        push, the recap and the stored match are byte-identical to a manual END.
+        """
+        if not self.frag_limit or "frag_limit" in self._announced:
+            return
+        if self.win_by not in (None, "", "kills"):
+            return
+        scores = ({pid: st.kills for pid, st in self.stats.items()} if self.mode == "ffa"
+                  else self.team_scores())
+        if not scores or max(scores.values()) < self.frag_limit:
+            return
+        self._announced.add("frag_limit")
+        self.limit_reached_t = t
+        self.on_limit(t)
 
     def _match_state_alerts(self, t: int) -> None:
         """A11.4: lead changes, next-kill-wins and the last survivor, to the nodes they concern.
@@ -395,6 +454,50 @@ class Scorer:
             return None
         return round(100.0 * st.hits / total, 1)
 
+    def _acc_provisional(self, st: _P) -> bool:
+        """F119: is this row's accuracy a number the operator should act on yet?
+
+        Numerator and denominator run on different clocks -- a hit is a fact, pushed the moment it
+        happens; `shots` is SAMPLED off the ~2 s status heartbeat. Land two or three hits between
+        samples and ACC spikes, and it can read over 100 %. Two conditions say "not settled":
+
+        * fewer than `ACC_MIN_SHOTS` shots -- the small-sample precedent `honors()` already sets by
+          refusing SHARPSHOOTER below the same floor; and
+        * a `shots_t` that PREDATES the last landed hit, i.e. the denominator has not caught up with
+          a numerator that already moved.
+
+        No accuracy at all (no status since go-live, or no shots) is provisional too: there is nothing
+        settled to show. Advisory and additive -- it never changes `accuracy` itself.
+        """
+        if self._accuracy(st) is None:
+            return True
+        if st.shots_baseline + st.shots < ACC_MIN_SHOTS:
+            return True
+        return st.last_hit_t is not None and (st.shots_t is None or st.shots_t < st.last_hit_t)
+
+    def earned_medals(self) -> dict[str, list[str]]:
+        """F116: the per-kill Halo medals each player actually WON, as row labels.
+
+        Read back off `self.kills` rather than tallied on a second counter, so the row can never
+        disagree with the feed it was built from. Repeats collapse to `×N` (three double kills is one
+        `DOUBLE KILL ×3` chip, not three), and the order is the canonical `MEDAL_LABEL` order so two
+        rows are comparable at a glance. This is what makes a 1v1 show medals at all: `honors()` is
+        empty below three scored players, by design.
+        """
+        counts: dict[str, dict[str, int]] = {}
+        for k in self.kills:
+            killer = k.get("killer")
+            if not killer:
+                continue
+            for m in (k.get("medals") or []):
+                if m in MEDAL_LABEL:
+                    counts.setdefault(killer, {})[m] = counts.setdefault(killer, {}).get(m, 0) + 1
+        out: dict[str, list[str]] = {}
+        for pid, got in counts.items():
+            out[pid] = [MEDAL_LABEL[m] + (f" ×{got[m]}" if got[m] > 1 else "")
+                        for m in MEDAL_LABEL if m in got]
+        return out
+
     def rows(self) -> list[ScoreRow]:
         out: list[ScoreRow] = []
         for pid, st in self.stats.items():
@@ -404,12 +507,26 @@ class Scorer:
                 "kills": st.kills, "deaths": st.deaths, "assists": st.assists,
                 "shots": st.shots_baseline + st.shots, "shots_total": st.shots_baseline + st.shots,
                 "hits": st.hits, "accuracy": self._accuracy(st),
+                "acc_provisional": self._acc_provisional(st),
                 "kd": round(st.kills / max(st.deaths, 1), 2), "streak": st.streak, "medals": [],
+                # F116: `streak` is the CURRENT one and is 0 for whoever died last, which is how a
+                # 9-kill match reported "streak 0". Kept for compatibility; `best_streak` is the
+                # number to show. `multi_best` / `first_blood` were tracked and never exposed either.
+                "best_streak": st.best_streak, "multi_best": st.multi_best,
+                "first_blood": self.first_blood == pid,
             })
         out.sort(key=lambda r: (-r["kills"], -r["kd"], r["deaths"]))
-        medals = self.medals()
+        medals, earned = self.medals(), self.earned_medals()
         for r in out:
-            r["medals"] = medals.get(r["player_id"], [])
+            honors = medals.get(r["player_id"], [])
+            # honors first (MVP, MOST KILLS -- the whole-match verdicts), then what was won kill by
+            # kill. `honors()` already awards FIRST BLOOD and MULTIKILL above 3 players, so drop an
+            # earned chip whose base label is already standing -- under EITHER of its names
+            # (`HONOR_ALIAS`): the honor is called MULTIKILL and the thing it is awarded for is called
+            # DOUBLE KILL, so a 3+ player row printed both until 2026-09-12.
+            base = {h.split(" ×")[0] for h in honors}
+            r["medals"] = honors + [m for m in earned.get(r["player_id"], [])
+                                    if not _stands(m.split(" ×")[0], base)]
         return out
 
     def live_rows(self, now: int, node_last_seen: dict[str, int]) -> list[dict]:
@@ -573,7 +690,8 @@ class Scorer:
             bk = max(non, key=lambda kv: (kv[1].kills / max(kv[1].deaths, 1), kv[1].kills))[0]
             b = self.stats[bk]
             add("BEST K/D · NON-MVP", bk, f"K/D {b.kills / max(b.deaths,1):.1f} · {b.kills} K")
-        shooters = [(pid, self._accuracy(st)) for pid, st in items if (st.shots_baseline + st.shots) >= 10 and self._accuracy(st) is not None]
+        shooters = [(pid, self._accuracy(st)) for pid, st in items
+                    if (st.shots_baseline + st.shots) >= ACC_MIN_SHOTS and self._accuracy(st) is not None]
         if shooters:
             ss = max(shooters, key=lambda x: x[1])
             add("SHARPSHOOTER", ss[0], f"{ss[1]:.0f}% ACCURACY")

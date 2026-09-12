@@ -7,6 +7,14 @@ import { Blink, GhostButton, Tag } from '../ui';
 
 const COLS = 'minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px minmax(100px,1fr) 84px';
 
+/** How far a control actually got. An older MC sends no `nodes` at all, and "REACHED 0 OF 0" is a
+ *  worse answer than not claiming a number — so the clause is dropped rather than invented. */
+type ControlResult = { ok: boolean; ended?: boolean; reached?: number; pushed?: number; nodes?: number };
+const reachTxt = (r: ControlResult) =>
+  (r.nodes == null ? '' : ` · REACHED ${r.reached ?? 0} OF ${r.nodes} NODE${r.nodes === 1 ? '' : 'S'}`);
+/** short of the bound = amber: some node did not hear it */
+const short = (r: ControlResult) => r.nodes != null && (r.reached ?? 0) < r.nodes;
+
 export function Live() {
   const { state, feed, run, api, serverNow, connected } = useStore();
   const [endConfirm, setEndConfirm] = useState(false);
@@ -18,6 +26,20 @@ export function Live() {
   if (!lv) {
     return <div className="screen" style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.micro }}>NO MATCH LIVE — THE BOARD FILLS WHEN NODES GO LIVE AT T-0.</div>;
   }
+  // POST /api/control answers 200 with `ok:false` when it REFUSES — an END with no scorer, or a
+  // second END after the recap is written (state.py `control`). The old handler read `reached`/`nodes`
+  // and threw `error` away, so the one press that did nothing reported "END REACHED 0 OF 8 NODE(S)":
+  // a number, where the server had sent a sentence saying nothing was ended and what to press instead.
+  // Throwing puts that sentence in the red strip, the way every other refusal reaches the operator,
+  // and `run()` returns undefined so no success notice fires behind it.
+  const control = async (cmd: 'end' | 'recall') => {
+    const r = await api.control(cmd);
+    if (r.ok === false) {
+      const also = r.pushed ? ` (${r.pushed} node${r.pushed === 1 ? ' was' : 's were'} still told to stop)` : '';
+      throw new Error(`${r.error || `THE SERVER REFUSED ${cmd.toUpperCase()}`}${also}`);
+    }
+    return r;
+  };
   const remaining = Math.max(0, lv.ends_t - serverNow()) / 1000;
   const teamIds = state.config.mode === 'ffa' ? [] : state.config.teams.map(t => t.team_id);
   const rows = [...lv.rows].sort((a, b) => b.kills - a.kills);
@@ -59,14 +81,14 @@ export function Live() {
               {endConfirm ? (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.bad }}>FREEZE SCORING NOW? LATER KILLS WON'T COUNT.</span>
-                  <GhostButton color={T.bad} border={T.bad} onClick={async () => { setEndConfirm(false); const r = await run(() => api.control('end')); if (r) setNotice(`END REACHED ${r.reached ?? 0} OF ${r.nodes ?? 0} NODE(S)`, (r.reached ?? 0) < (r.nodes ?? 0)); }}>CONFIRM END</GhostButton>
+                  <GhostButton color={T.bad} border={T.bad} onClick={async () => { setEndConfirm(false); const r = await run(() => control('end')); if (r) setNotice(`${r.ended ? 'MATCH ENDED' : 'END SENT'}${reachTxt(r)}`, short(r)); }}>CONFIRM END</GhostButton>
                   <GhostButton onClick={() => setEndConfirm(false)}>CANCEL</GhostButton>
                 </span>
               ) : (
                 <GhostButton onClick={() => setEndConfirm(true)} title="Early end: reaches only nodes in range; the rest end at the time limit (confirm step)">END MATCH EARLY</GhostButton>
               )}
               {recallConfirm ? (<>
-                <GhostButton color={T.warn} border={T.warn} onClick={async () => { setRecallConfirm(false); const r = await run(() => api.control('recall')); if (r) setNotice(`RECALL REACHED ${r.reached ?? 0} OF ${r.nodes ?? 0} NODE(S)`, (r.reached ?? 0) < (r.nodes ?? 0)); }}>CONFIRM RECALL — REVIVES &amp; HOLDS EVERYONE IN RANGE</GhostButton>
+                <GhostButton color={T.warn} border={T.warn} onClick={async () => { setRecallConfirm(false); const r = await run(() => control('recall')); if (r) setNotice(`RECALLED${reachTxt(r)}`, short(r)); }}>CONFIRM RECALL — REVIVES &amp; HOLDS EVERYONE IN RANGE</GhostButton>
                 <GhostButton onClick={() => setRecallConfirm(false)}>CANCEL</GhostButton>
               </>) : (
                 <GhostButton color={T.warn} border={T.warn} hoverClass="hov-warnbg" onClick={() => setRecallConfirm(true)} title="Two-step: revive and hold every node in range">RECALL</GhostButton>

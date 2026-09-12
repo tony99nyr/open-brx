@@ -261,6 +261,31 @@ reach nodes in coverage. `time_limit_s == null` (full-coverage venues only) mean
 node also fires its own `time_60/30/10` callouts and, in extraction, `raid_ending`/`raid_over` from this clock
 (A11.4). ⚠ The composed time-expiry flow has not been run on hardware (FOLLOWUPS).
 
+### 3.13 The match result (contracts A24) — pushed, never inferred
+
+The end of a match is two facts on the node. **"It ended"** is local (§3.9) or an `end`/`recall`. **"How it
+ended"** only ever comes from MC as a **`result`** envelope: `outcome` is already computed for THIS recipient
+(`win`/`lose`/`draw`/`undecided`), with the winner, every player's `ScoreRow`, team totals, honors and
+possession. The engine stores it as `state().result` (null until it arrives), folds `outcome`, `team_scores`,
+`best_streak`, `medals` and its own hill hold (`this.hold`) into the `onEnd` history entry, and accepts a
+`result` for the CURRENT `match_id` only (a stale one is logged and dropped). `welcome.node.result` hydrates it
+on a rejoin during recap. **Rule:** no code path on the node may write WIN or LOSE from the absence of a
+message — a `victory` cue that never came means "lost" and "out of coverage" identically. The FINAL RESULTS
+screen (§4.4) shows "RESULT PENDING" until the push, and "MC NOT REACHED — see Mission Control" once the
+settle window (30 s) passes with no MC link; it is mode-aware from `result.mode`/`win_by`, with a TEAM view
+(totals + each team's players) and a PLAYER view (the leaderboard), medals and best streak from the rows, and
+never hard-codes a cell set. `OK` leaves it (`ackEnd`); a `RESULTS` button on the MATCH COMPLETE screen and a
+`HISTORY` list (per session, from `localStorage['brx.history']`) reopen it.
+
+### 3.14 Background log sync (contracts A25) — game sync has priority
+
+`pull_log` is answered by the node only when **not ARMED and not LIVE** and **`ring.pending() === 0`** (no
+unacked fact in the store-and-forward ring, §5a). Otherwise the request is parked and retried on a 5 s → 60 s
+backoff until it can be served; a reconnect re-sends `log_offer` so MC asks again. The upload is the existing
+`log_offer` + `log_data` chunk stream (≤ 48 KB), one chunk in flight, the next only after the socket buffer
+drains, so a log never delays a fact. The phone keeps `uploadedThrough` (the log line count MC has) and a
+later pull sends only the tail. The debug panel's SHARE LOG stays as the manual route.
+
 ### 3.10 BLE reconnect — reconcile from persisted state, never guess (S7.1, contracts A6.8)
 
 **The node persists and restores combat state.** `_save`/`_load` carry `alive/hp/armor/shield/deadAt/killedBy`
@@ -449,7 +474,7 @@ The panel is diagnostic-only — it must not be a path to arm/fire the gun in a 
   frames in/out, connect/disconnect + reason codes, state transitions, emitted Events, config/bundle applied,
   resync/reconcile actions, panic.
 - **Offer to MC:** on connect (or when MC asks) the node sends `log_offer{node_id, bytes, lines}`; MC replies
-  `pull_log{}`; the node uploads the buffer as **`log_data{seq, chunk, last}`** messages, chunks **≤ 48 KB**
+  `pull_log{reason?}` (A25: gated on the node — never while ARMED/LIVE or with unacked facts, §3.14); the node uploads the buffer as **`log_data{seq, chunk, last}`** messages, chunks **≤ 48 KB**
   (under the 64 KB envelope cap).
 - **Share out:** a **Share** button in diagnostics uses the native share sheet to export the log as a text
   file — `brx-node-<gun_tail>-<ts>.log`.

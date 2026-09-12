@@ -9,6 +9,7 @@ stage on `time.monotonic` (SECONDS); every test below drives `self.now` by hand 
 from __future__ import annotations
 
 import asyncio
+import time
 
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage import stage as S
@@ -545,16 +546,27 @@ def test_the_reload_glance_repaints_the_last_moved_pool_solid_for_reload_glance_
         n = mark(mgr)
         st.reload(); await settle(st)
         assert since(mgr, n) == ["L4", "REST"], since(mgr, n)      # SOLID, once, then rest -- no L0 blink, no steps
-        assert sleeps == [0.7], f"the glance holds for reload_glance_s, not hold_s: slept {sleeps}"
+        # F123: the pull now also arms the reload WATCHDOG, whose one sleep is the takeover deadline
+        # -- so the glance is the FIRST sleep, and hold_s (0.3) is nowhere. The deadline is the ACTIVE
+        # weapon's own reload (the stage's slot 0 is the AR: 1.4 s) plus max(0.6, 0.5 x 1.4) = 2.1 s;
+        # it was 2.25 while the stage hardcoded 1.5 s for every gun (polish review 2026-09-12).
+        assert sleeps[0] == 0.7 and 0.3 not in sleeps, f"the glance holds for reload_glance_s, not hold_s: slept {sleeps}"
+        assert [round(x, 3) for x in sleeps[1:]] == [2.1], f"the watchdog sleeps once, to the deadline, and never spins: {sleeps}"
         assert st.reloading and st.reloading["slot"] == 0
         # the glance shows the CURRENT level even if the pool changed since the last paint
         st.hp = 2
         n = mark(mgr)
         st.reload(); await settle(st)
         assert since(mgr, n) == ["L2", "REST"], since(mgr, n)
-        # the mag coming back on that slot ends the reload
-        st.alcd(mag=30, reserve=0, slot=0)
-        assert st.reloading is None
+        # F123: the mag coming back on that slot ends the reload only when it reaches the CAP (engine.js
+        # `_onAmmo`: a rise FEEDS the takeover -- a shell-by-shell chain must not clear on shell #1). Short of
+        # the cap it keeps waiting; at the cap it books a filled outcome.
+        cap = st.reloading["cap"]
+        assert cap is not None and cap > 11, f"the test needs a known spawn cap above the partial mag: {cap}"
+        st.alcd(mag=11, reserve=0, slot=0)
+        assert st.reloading is not None and st.reloading["mag"] == 11, "a partial refill keeps the takeover open"
+        st.alcd(mag=cap, reserve=0, slot=0)
+        assert st.reloading is None and st.reload_outcome and st.reload_outcome["ok"] and st.reload_outcome["filled"], st.reload_outcome
     asyncio.run(go())
 
 
@@ -686,8 +698,12 @@ def test_an_emp_under_config_stun_disarms_every_slot_extends_on_a_second_word_an
         st, mgr, clock = mk_stun(stun=10)
         assert st.stun_enabled and st.stun_s == 10.0
         await live(st)
+        # F121/A23: the live table rides the SPAWN burst now -- the head ships the cell disarmed (fn 28),
+        # because fn 24 is the delayed-blast family and must never reach a gun before go-live.
+        live_rows = [f for f in st.bundle["spawn"] if f.startswith("$SIR,8,0,")]
+        assert live_rows and live_rows[0].split(",")[4] == "24", f"the <8,0> cell is fn 24 (a status row) when stun is on: {live_rows}"
         head = [f for f in st.bundle["head"] if f.startswith("$SIR,8,0,")]
-        assert head and head[0].split(",")[4] == "24", f"the <8,0> cell is fn 24 (a status row) when stun is on: {head}"
+        assert head and head[0].split(",")[4] == "28", f"the head must not arm the EMP cell: {head}"
         spawn = st._spawn_ammo()
         assert set(spawn) == {0, 1}, spawn
         # a shot on slot 0 first, so the restore must use the LIVE pair there and the frame's on slot 1
@@ -734,7 +750,7 @@ def test_an_emp_under_config_stun_disarms_every_slot_extends_on_a_second_word_an
         c, cm, cclock = mk_stun(stun=None)
         assert not c.stun_enabled and "stun" not in c.config
         await live(c)
-        head = [f for f in c.bundle["head"] if f.startswith("$SIR,8,0,")]
+        head = [f for f in c.bundle["spawn"] if f.startswith("$SIR,8,0,")]
         assert head and head[0].split(",")[4] != "24", f"stock plain-damage cell without config.stun: {head}"
         n = mark(cm)
         await c.ir("emp"); c.poll(); await settle(c)
@@ -778,4 +794,257 @@ def test_a_stun_before_the_first_shot_of_a_new_life_restores_this_lifes_reserve_
         await st.ir("emp"); st.poll(); await settle(st)
         clock.advance(10.5); n = mark(mgr); st.poll(); await settle(st)
         assert "$AMMO,0,31,190,1,*" in ammo_writes(mgr, n)
+    asyncio.run(go())
+
+
+# ======================================================================================================
+# F123 (polish review 2026-09-12) -- the rest of the reload takeover, mirrored from engine.js
+# ======================================================================================================
+def test_the_takeover_is_as_long_as_THIS_weapon_not_a_flat_1_5s():
+    """engine.js `_reloadPulled` times the takeover from the ACTIVE slot's catalog `reload_s`, then the
+    perk's `reload_mult` on slot 0. The stage hardcoded 1.5 s for every gun and every perk, so the bench
+    predicted a deadline the phone would never use -- on the Shotgun (0.4 s per shell) by a factor of
+    nearly four, and on a quick_hands AR (0.7 s) by more than two."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        st.reload(); await settle(st)
+        assert st.reloading["s"] == 1.4, f"slot 0 is the AR (reload_ms 1400): {st.reloading}"
+        # the second slot is its own weapon: the stage's is the Shotgun, whose row is a 0.4 s per-shell chain
+        st._end_reload("fired"); st.active_slot = 1
+        st.alcd(mag=2, reserve=12, slot=1); await settle(st)
+        st.reload(); await settle(st)
+        assert st.reloading["s"] == 0.4, f"slot 1 is the Shotgun (reload_ms 400): {st.reloading}"
+        # a reload perk shrinks slot 0 only -- compile writes `reload_mult` into slot 0's $WEAP and nowhere else
+        st._end_reload("fired")
+        st.player["loadout"]["perk"] = "quick_hands"
+        st.reload(); await settle(st)
+        assert st.reloading["s"] == 0.4, "slot 1 does not get the perk's multiplier"
+        st._end_reload("fired"); st.active_slot = 0
+        st.reload(); await settle(st)
+        assert st.reloading["s"] == 0.7, f"quick_hands halves the AR's 1.4 s: {st.reloading}"
+    asyncio.run(go())
+
+
+def test_a_new_life_and_the_end_of_the_match_clear_the_whole_takeover_not_just_the_bar():
+    """engine.js clears `reloading`, `_reloadOutcome` AND `held` at `_afterSpawn`/`_revive` (~1170),
+    `_endLocal` (~1599) and on PANIC. The stage cleared only `reloading`, so the last life's VERDICT
+    ("reload did NOT take") stayed on the page to be read as this life's, and a button pressed before a
+    death stayed down forever."""
+    async def go():
+        for finish in ("revive", "end", "panic"):
+            st, mgr, clock = mk_reload()
+            await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+            st.alcd(mag=10, reserve=20); await settle(st)
+            st._on_rx("$BUT,2,1,*")                      # a pull, still held: `held` carries the press
+            assert st.reloading and st.held, (st.reloading, st.held)
+            st._end_reload("timeout")
+            assert st.reload_outcome and st.reload_outcome["ok"] is False, "the life ends on a failed reload"
+            if finish == "revive":
+                await st.ir("kill"); st.poll(); await settle(st)
+                # `_death` already clears all three; the clear in `_afterSpawn`/`_revive` is the phone's
+                # BACKSTOP for anything that lands while you are down, so put something there to be cleared.
+                st.reloading = {"at": st.now(), "s": 1.4, "slot": 0, "from": 0, "cap": 30, "mag": 0,
+                                "last_gain_at": st.now(), "released_at": None}
+                st.reload_outcome = {"ok": False, "why": "timeout"}; st.held = {2: st.now()}
+                await st.revive(); await settle(st)
+            else:
+                await getattr(st, finish)(); await settle(st)
+            assert st.reloading is None, finish
+            assert st.reload_outcome is None, f"{finish}: last life's verdict survived into the next"
+            assert st.held == {}, f"{finish}: a button was left down across it"
+    asyncio.run(go())
+
+
+def test_a_ble_drop_ends_the_takeover_because_no_echo_can_ever_arrive():
+    """engine.js `onBleDropped` (~384) calls `_endReload('dropped')`: with no link there is no `$ALCD` to
+    reconcile against, so a bar left running is fiction -- the exact F123 symptom. Both of `poll()`'s
+    drop branches must do it (the manager reporting the link down, and `get_events` raising)."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        st.reload(); await settle(st)
+        assert st.reloading
+        mgr.drop("stage")
+        assert st.poll() == [] and st.connected is False
+        assert st.reloading is None, "a takeover cannot outlive the link it would be confirmed on"
+        assert st.reload_outcome and st.reload_outcome["why"] == "dropped", st.reload_outcome
+        assert st.reload_outcome["ok"] is False, "nothing was gained: the verdict must not read as a success"
+        # the other branch: `get_events` itself raises
+        st2, mgr2, _c2 = mk_reload()
+        await st2.connect(GUN); await st2.arm(); await st2.spawn(); await settle(st2)
+        st2.alcd(mag=10, reserve=20); await settle(st2)
+        st2.reload(); await settle(st2)
+        def boom(*a, **k):
+            raise RuntimeError("link lost")
+        mgr2.get_events = boom
+        assert st2.poll() == [] and st2.connected is False
+        assert st2.reloading is None and st2.reload_outcome["why"] == "dropped", st2.reload_outcome
+    asyncio.run(go())
+
+
+def test_a_stunned_gun_refuses_the_pull_and_takes_it_again_once_the_stun_is_over():
+    """engine.js `_reloadPulled`: a stunned gun is disarmed and `_on_ammo` drops every $ALCD in the window,
+    so a takeover started there could only ever book `ok:false` on a reload nobody asked the gun for.
+    CONTROL: the same pull takes the moment the stun expires."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        st.load_config({**st.config, "stun": {"duration_s": 2}}, source="test")
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        await st.ir("emp"); st.poll(); await settle(st)
+        assert st.stunned, "fixture: the EMP word must actually stun this game"
+        st.reload(); await settle(st)
+        assert st.reloading is None, "a stunned gun takes no reload"
+        assert any("stunned" in l["text"] for l in st.log if "reload pull ignored" in l["text"])
+        clock.advance(2.5); st.poll(); await settle(st)
+        assert not st.stunned, "fixture: the stun expired"
+        st.alcd(mag=10, reserve=20); await settle(st)
+        st.reload(); await settle(st)
+        assert st.reloading, "the same pull takes once the gun is back"
+    asyncio.run(go())
+
+
+def test_a_chain_that_loaded_then_fired_books_what_it_LOADED():
+    """engine.js `_onAmmo`: `_endReload('fired')` runs BEFORE `mag` is overwritten with the post-shot count.
+    Overwriting first made a shotgun chain that loaded 1 -> 3 and then fired read `gained: 0, ok: false` --
+    the false verdict F123 exists to prevent. CONTROL: a reload that gained nothing still books ok:false."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.alcd(mag=1, reserve=20); await settle(st)
+        st.reload(); await settle(st)
+        st.alcd(mag=2, reserve=19); st.alcd(mag=3, reserve=18)      # two shells of a chain
+        assert st.reloading and st.reloading["mag"] == 3
+        st.alcd(mag=2, reserve=18)                                   # …and the player fires
+        assert st.reloading is None
+        o = st.reload_outcome
+        assert (o["ok"], o["from"], o["to"], o["gained"], o["why"]) == (True, 1, 3, 2, "fired"), o
+        # CONTROL: a pull the gun never fed, ended by a shot, is still a failure
+        st.reload(); await settle(st)
+        st.alcd(mag=1, reserve=18)
+        assert st.reload_outcome["ok"] is False and st.reload_outcome["gained"] == 0, st.reload_outcome
+    asyncio.run(go())
+
+
+def test_an_alt_swap_abandons_the_takeover_on_the_same_frame():
+    """engine.js `_altPressed`: a swap puts a different weapon in your hands, so the old slot's magazine
+    stops moving and no $ALCD can ever reconcile the takeover. `switching` and `reloading` are never both
+    set. CONTROL: the confirming $ALCD on the other slot clears `switching` and times it."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        st.reload(); await settle(st)
+        assert st.reloading and st._slot_count() == 2
+        st._on_rx("$BUT,1,1,*")                                      # ALT
+        assert st.reloading is None and st.switching, (st.reloading, st.switching)
+        assert st.reload_outcome["why"] == "swapped", st.reload_outcome
+        m = st.state()["model"]
+        assert m["reloading"] is None and m["switching"]["from"] == 0, (m["reloading"], m["switching"])
+        clock.advance(0.2)
+        st.alcd(mag=6, reserve=12, slot=1)
+        assert st.switching is None and st.last_switch_s == 0.2, (st.switching, st.last_switch_s)
+        assert st.active_slot == 1
+        # and a swap the gun never confirms is ASSUMED past the window rather than shown for ever
+        st._on_rx("$BUT,1,1,*")
+        assert st.switching
+        clock.advance(st._switch_window_s() + 0.1); st.poll(); await settle(st)
+        assert st.switching is None and st.active_slot == 0, st.active_slot
+    asyncio.run(go())
+
+
+def test_a_ble_drop_also_lets_go_of_every_button():
+    """engine.js `onBleDropped` clears `held`: `_on_button` keeps the FIRST edge, so a press whose release
+    never arrived before the drop would read as held for the rest of the life. The reconnect does not reset
+    buttons either, so it stays empty until a real press."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        st._on_rx("$BUT,2,1,*")                                      # pressed, never released
+        assert st.held and st.reloading
+        mgr.drop("stage")
+        assert st.poll() == [] and st.connected is False
+        assert st.held == {} and st.switching is None, st.held
+        assert st.state()["model"]["held"] == {}
+        st.connected = True                     # the page relinks; nothing on the way back re-presses a button
+        st.poll(); await settle(st)
+        assert st.held == {}, "a relink does not invent a press either"
+    asyncio.run(go())
+
+
+def test_the_published_takeover_goes_null_all_at_once_past_the_deadline():
+    """engine.js `state()` gates `reloading`/`reloadMs`/`reloadTotalMs`/`reloadGained`/`reloadOverrun` on one
+    `reloadingMs()`, so between the deadline and the tick that books the timeout a reader can never see a
+    live elapsed beside `reloading: false`. The stage publishes one object, so it is null or whole."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        st.reload(); await settle(st)
+        v = st.state()["model"]["reloading"]
+        assert v and v["elapsed_s"] == 0 and v["overrun"] is False, v
+        clock.advance(st.reloading["s"] + 0.05)                      # past nominal, inside the deadline
+        v = st.state()["model"]["reloading"]
+        assert v and v["overrun"] is True, v
+        clock.advance(st._reload_deadline() - clock.t + 0.01)        # past the deadline, before any tick
+        assert st.reloading is not None, "the model still holds it: only the tick books the timeout"
+        assert st.state()["model"]["reloading"] is None, "but nothing stale is published under it"
+        st.poll(); await settle(st)
+        assert st.reloading is None and st.reload_outcome["why"] == "timeout"
+    asyncio.run(go())
+
+
+def test_a_stunned_gun_raises_no_swap_on_alt_and_takes_it_again_once_the_stun_is_over():
+    """engine.js `_altPressed`, the mirror of the guard `_reloadPulled` already had: a stunned gun is
+    disarmed and `_on_ammo` drops every $ALCD in the window, so a swap opened there can never be confirmed
+    -- it runs to the switch window and then books an ASSUMED swap, leaving `active_slot` on a weapon the
+    player never drew for the rest of the life. CONTROL: the same press swaps once the stun expires."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        st.load_config({**st.config, "stun": {"duration_s": 2}}, source="test")
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        assert st._slot_count() == 2, "fixture: two weapons, so ALT is a swap and not a reload"
+        await st.ir("emp"); st.poll(); await settle(st)
+        assert st.stunned, "fixture: the EMP word must actually stun this game"
+        st._on_rx("$BUT,1,1,*")
+        assert st.switching is None, "a stunned gun raises no swap"
+        assert any("ALT ignored" in l["text"] for l in st.log)
+        clock.advance(st._switch_window_s() + 0.1); st.poll(); await settle(st)
+        assert st.active_slot == 0, "and no assumed swap books a weapon the player is not holding"
+        clock.advance(2.5); st.poll(); await settle(st)
+        assert not st.stunned, "fixture: the stun expired"
+        st._on_rx("$BUT,1,1,*")
+        assert st.switching, "CONTROL: the same press swaps once the gun is back"
+    asyncio.run(go())
+
+
+def test_the_reload_watchdog_hands_the_deadline_to_poll_instead_of_busy_spinning():
+    """The anti-spin guard was ONE-SIDED: it returned only when the clock had not moved at all, which is the
+    hand-driven stage every test above builds. `test_stage.py` `mk()` builds the other kind -- a no-op
+    `sleep` beside the REAL `time.monotonic` -- so every pass of the `while True` saw a moved clock, re-armed
+    and spun at 100% CPU to the wall-clock deadline (2.1 s for the AR, and a chain pushing `last_gain_at`
+    moves it as it goes). No `mk()` test pulls the handle yet, so this is the crash class, not a live bug.
+    CONTROL: the deadline still lands -- `poll()` books it, the way engine.js `_reloadTick` does."""
+    async def go():
+        mgr = FakeConnectionManager([FakeTagger(GUN, "FAKE-STAGE", team=1)])
+        st = GunStage(mgr, None, sleep=_nosleep, voice_verdict_sink=lambda _r: None)   # no-op sleep, REAL clock
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.alcd(mag=10, reserve=20); await settle(st)
+        st.reload()
+        assert st.reloading, "fixture: the pull took, so there IS a watchdog that could spin"
+        assert st._reload_deadline() - st.now() > 1.5, "fixture: the deadline is far enough away to measure a spin"
+        t0 = time.monotonic()
+        await asyncio.wait_for(settle(st), 5)          # a true hang fails here rather than wedging the suite
+        spent = time.monotonic() - t0
+        assert spent < 0.5, f"the watchdog spun {spent:.2f}s to the wall-clock deadline instead of handing it to poll()"
+        assert st.reloading, "and it booked nothing on the way out -- the takeover is still the gun's to end"
+        # CONTROL: the deadline is not lost, it is just `poll()`'s now
+        st.reloading["at"] -= 10.0; st.reloading["last_gain_at"] -= 10.0
+        st.poll(); await asyncio.wait_for(settle(st), 5)
+        assert st.reloading is None and st.reload_outcome["why"] == "timeout", st.reload_outcome
     asyncio.run(go())

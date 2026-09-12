@@ -364,8 +364,17 @@ export interface Api {
   reschedule(runway_s: number): Promise<{ match_id: string; go_live_t: number; seq: number }>;
   abort(): Promise<{ ok: boolean; reached: string[]; unreachable: string[] }>;
   /** `reached` = how many nodes the broadcast actually landed on, out of `nodes` bound. A control
-   *  that reaches nobody used to report plain success (field 2026-09-01). */
-  control(cmd: 'end' | 'recall' | 'panic', confirm?: boolean): Promise<{ ok: boolean; reached?: number; nodes?: number }>;
+   *  that reaches nobody used to report plain success (field 2026-09-01).
+   *
+   *  `ok: false` is a REFUSAL, not a transport failure, and it arrives with a 200: an END with no
+   *  scorer, or a second END after the recap is written, ends nothing and says why in `error`. The
+   *  press is still forwarded in both cases, so `pushed` can be non-zero while `reached` is 0 and
+   *  `ended` is false — "the guns were told to stop, but nothing was ended". `phase` is what MC holds
+   *  AFTER the call (a refused END deliberately moves no phase). Every field is optional: an older MC
+   *  answers with `{ok, reached, nodes}` alone and the console must still render. */
+  control(cmd: 'end' | 'recall' | 'panic', confirm?: boolean): Promise<{
+    ok: boolean; ended?: boolean; reached?: number; pushed?: number; nodes?: number; phase?: Phase; error?: string;
+  }>;
   getRecap(): Promise<RecapView>;
   matchHistory(): Promise<MatchHistoryRow[]>;
   recapCsvUrl(): string;
