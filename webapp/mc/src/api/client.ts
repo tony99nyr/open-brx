@@ -98,6 +98,7 @@ export function createHttpApi(): Api {
     patchPlayer: (id, patch: Partial<Player>) => j(`/api/players/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
     deletePlayer: async id => { await j(`/api/players/${id}`, { method: 'DELETE' }); },
     evictNode: async id => { await j(`/api/nodes/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
+    setTunnel: on => post('/api/tunnel', { on }),
     putStation: (id, a) => j(`/api/stations/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(a) }),
     deleteStation: async id => { await j(`/api/stations/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
     armStations: () => post('/api/stations/arm'),

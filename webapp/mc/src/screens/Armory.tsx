@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { isRoutableLanIp, registrySig } from '../api/derive';
-import type { ReadinessRow } from '../api/types';
+import type { ReadinessRow, TunnelStatus } from '../api/types';
 import { useStore } from '../store';
 import { CHAMFER, F, T, TAB, fmtAge } from '../tokens';
 import { CountBlock, GhostButton, Micro, ScreenHeader, SectionRule, SegBar, Tag } from '../ui';
@@ -251,6 +251,7 @@ function JoinPanel() {
   const [url, setUrl] = useState<string | null>(null);
   const [showQr, setShowQr] = useState(false);
   const qr = state?.lan.qr;
+  const pub = state?.lan.public;   // A28.1 — absent on a server that predates backhaul
   // routable, not merely truthy: `lan.ip` falls back to 127.0.0.1, and a QR for loopback sends the
   // operator's phone to its own browser (review 2026-09-01)
   const apkUrl = isRoutableLanIp(state?.lan.ip) ? `http://${state!.lan.ip}:${state!.lan.port || 8765}/openbrx.apk` : '';
@@ -275,6 +276,11 @@ function JoinPanel() {
       {showQr && <>
         <div style={{ font: F.chk(700, 10), letterSpacing: '.26em', color: T.dim }}>JOIN — TAP SCAN QR IN THE APP</div>
         {url && <div style={{ background: '#ffffff', padding: 10, lineHeight: 0, boxShadow: `0 0 0 1px ${T.line}, 0 8px 24px rgba(0,0,0,.45)` }}><img src={url} width={200} height={200} alt="node join QR" style={{ display: 'block', imageRendering: 'pixelated' }} /></div>}
+        {url && (
+          <div style={{ font: F.mono(500, 9), letterSpacing: '.12em', color: T.micro, textAlign: 'center' }}>
+            {pub?.status === 'up' ? 'CARRIES THE LAN + INTERNET JOIN' : 'CARRIES THE LAN JOIN ONLY'}
+          </div>
+        )}
         {/* no lan.ip means no download URL to print and no QR to scan — the header alone told the
             operator to point a camera at nothing (polish-loop deferred low) */}
         {apkUrl ? (
@@ -290,11 +296,79 @@ function JoinPanel() {
           </div>
         )}
       </>}
+      <ReachBlock />
     </div>
   );
 }
 
+function hostnameOf(url: string | null | undefined): string {
+  if (!url) return '';
+  try { return new URL(url).hostname; } catch { return url; }
+}
 
+/** A28 — the phone's own data path to MC when the field Wi-Fi can't reach it. Opt-in and additive:
+ *  the control is always SHOWN, never hidden, even when it cannot be used (F70-style: a missing
+ *  capability is named, not swallowed). */
+function ReachBlock() {
+  const { state, run, api } = useStore();
+  const [busy, setBusy] = useState(false);
+  if (!state) return null;
+  const lan = state.lan;
+  const pub = lan.public;
+  const supported = pub !== undefined;
+  const status: TunnelStatus = pub?.status ?? 'off';
+  const available = pub?.available ?? false;
+  const manual = pub?.provider === 'manual';
+  const turningOn = status === 'off' || status === 'error';
+  const busyOrPending = busy || status === 'starting';
+  const toggle = async () => { setBusy(true); try { await run(() => api.setTunnel(turningOn)); } finally { setBusy(false); } };
+  const statusColor = status === 'up' ? T.ok : status === 'error' ? T.bad : status === 'starting' ? T.warn : T.micro;
+  const statusText = status === 'up' ? `UP ${hostnameOf(pub?.ws_url) || pub?.ws_url}`
+    : status === 'starting' ? 'STARTING…'
+    : status === 'error' ? `ERROR ${pub?.error ?? ''}`.trim()
+    : 'OFF';
+  return (
+    <div style={{ alignSelf: 'stretch', borderTop: `1px solid ${T.line2}`, paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ font: F.chk(700, 11), letterSpacing: '.28em', color: T.acc }}>▸ REACH</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '76px 1fr', gap: '6px 10px', alignItems: 'center', width: '100%' }}>
+        <span style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro }}>NETWORK</span>
+        <span style={{ font: F.chk(600, 12), color: T.ink, wordBreak: 'break-word' }}>{lan.ssid ?? lan.mode.toUpperCase()} · {lan.ip ? `${lan.ip}:${lan.port}` : '—'}</span>
+        <span style={{ font: F.mono(500, 9), letterSpacing: '.14em', color: T.micro }}>INTERNET</span>
+        <span style={{ font: F.chk(700, 12), letterSpacing: '.04em', color: statusColor, wordBreak: 'break-word' }}>{statusText}</span>
+      </div>
+      {!supported && (
+        <div style={{ font: F.mono(500, 9), letterSpacing: '.1em', color: T.warn, lineHeight: 1.6 }}>
+          ▲ THIS MC SERVER PREDATES BACKHAUL — restart it to get an internet join option
+        </div>
+      )}
+      {supported && !available && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button type="button" disabled title="cloudflared was not found on this machine's PATH"
+            style={{ alignSelf: 'flex-start', minHeight: 36, background: 'transparent', border: `1px solid ${T.line2}`, color: T.micro,
+                     font: F.chk(700, 10), letterSpacing: '.2em', padding: '8px 16px', cursor: 'not-allowed' }}>TURN ON</button>
+          <div style={{ font: F.mono(500, 9), letterSpacing: '.05em', color: T.micro, lineHeight: 1.7 }}>
+            INSTALL CLOUDFLARED — mac: <span style={{ color: T.dim }}>brew install cloudflared</span>
+            {' '}· windows: <span style={{ color: T.dim }}>winget install Cloudflare.cloudflared</span>
+            {' '}· linux: <span style={{ color: T.dim }}>apt install cloudflared</span>
+          </div>
+        </div>
+      )}
+      {supported && available && manual && (
+        <div style={{ font: F.mono(500, 9), letterSpacing: '.08em', color: T.micro, lineHeight: 1.6 }}>
+          SET BY --public-url ON THE MC COMMAND LINE — not MC's to turn off from here.
+        </div>
+      )}
+      {supported && available && !manual && (
+        <button type="button" onClick={toggle} disabled={busyOrPending} className={busyOrPending ? undefined : 'hov-acc'}
+          style={{ alignSelf: 'flex-start', minHeight: 36, background: 'transparent', border: `1px solid ${T.line2}`,
+                   color: busyOrPending ? T.micro : T.dim, font: F.chk(700, 10), letterSpacing: '.2em', padding: '8px 16px',
+                   cursor: busyOrPending ? 'not-allowed' : 'pointer' }}>
+          {status === 'starting' ? 'STARTING…' : turningOn ? 'TURN ON' : 'TURN OFF'}
+        </button>
+      )}
+    </div>
+  );
+}
 
 /** "OPEN THE APP AND SET THE GUN" -> "Open the app and set the gun". Shouted instructions are what
  *  made these cards read as noise; the STATEMENT still shouts, the instruction does not. */
