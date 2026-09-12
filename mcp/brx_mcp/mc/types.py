@@ -558,6 +558,8 @@ class ReadinessRow(TypedDict):
     phone_batt: int | None
     ssid_ok: bool | None
     mc_reachable: bool | None
+    reach: Literal["lan", "backhaul"] | None       # A28.3, stamped by MC from the socket path; None once the socket is gone
+    last_reach: Literal["lan", "backhaul"] | None  # field 2026-09-12 (F155): outlives the socket so a stale row can say which path it had
     synced: bool | None
     screen_on: bool | None
     foreground: bool | None

@@ -538,6 +538,10 @@ export interface ReadinessRow {
   phone_batt: number | null;
   ssid_ok: boolean | null;
   mc_reachable: boolean | null;
+  /** A28.3, stamped by MC from the socket path; None once the socket is gone */
+  reach: 'lan' | 'backhaul' | null;
+  /** field 2026-09-12 (F155): outlives the socket so a stale row can say which path it had */
+  last_reach: 'lan' | 'backhaul' | null;
   synced: boolean | null;
   screen_on: boolean | null;
   foreground: boolean | null;
