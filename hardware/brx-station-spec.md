@@ -143,7 +143,8 @@ state — with different firmware rules:
 
 The box is the **capture/hold primitive** (IR RX = who shot me + which team; IR TX = beacon owner + push
 perks; LED = owner). **Extraction and Bomb** are that primitive **+ a defended countdown timer** (run on
-the box, reported to MC) + the loot/round rules that live in the host engine (`extraction.py`) and the
+the box, reported to MC) + the loot/round rules that live in the host engine
+(`mcp/brx_mcp/modes/extraction.py`) and the
 player node (`brx-companion-spec.md`). **Team identity** comes free from the IR hit. Note **P2 is now
 solved on the BLE side** (per-player attribution is BLE-native/exact: `$PSET` tok1 / `$HIR` tok3) — but
 a **station has no BLE-to-gun link**, so decoding the player-id from the IR hit stays a legitimate

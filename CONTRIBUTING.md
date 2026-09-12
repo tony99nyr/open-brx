@@ -54,15 +54,20 @@ cd webapp/mc && npm test        # vitest run
 cd webapp/mc && npm run dev     # local dev server; add ?mock for the in-browser demo, no server needed
 ```
 
-**Public website generator (`site/`)**, builds `webapp/` from `docs/manual/`:
+**Public website generator (`site/`)**, two doors onto one source (`docs/platform/*.md` → the
+marketing landing, `/docs/*` and `/download`; `docs/manual/*.md` → `/manual/*`), built to the contract
+in `docs/site/README.md` + `docs/site/FORMAT.md`:
 ```bash
+cd app && npm run build   # the landing embeds the real phone HUD; site/build.mjs fails without app/www
 cd site && npm run build && npm test
 ```
-`npm test` builds first, then runs the Playwright suite. That suite is the UI verification checklist
-for the generated site and refuses to run against a stale build, so always let it build rather than
-reusing an old `webapp/`. A push to `main` deploys the site automatically (Cloudflare builds `webapp/`
-straight from the repo), so a stale committed `webapp/` publishes stale content. If you change
-`docs/manual/`, rebuild and commit `webapp/` in the same commit.
+`npm test` builds first, then runs the Playwright suite (~90 browser steps). That suite is the UI
+verification checklist for the generated site and refuses to run against a stale build, so always let
+it build rather than reusing an old `webapp/`. **The generated pages are git-ignored** (`.gitignore`):
+a push to `main` deploys the site, and Cloudflare rebuilds it itself (`wrangler.toml`'s `[build]` runs
+`npm run build:ci`), so there is nothing to rebuild or commit locally. Commit only the source
+(`docs/platform/`, `docs/manual/`, `site/`); never hand-commit `webapp/` output. `webapp/mc/` and
+`webapp/download/build.json` are the exception — they're hand-kept, not generated, and stay tracked.
 
 ## The evidence culture
 
@@ -72,20 +77,20 @@ from); `docs/spec/contracts.md` is the spec of record for the software's data mo
 Read [`docs/manual/README.md`](docs/manual/README.md) before adding or editing a manual page — in
 short:
 
-- Every fact block in the manual carries a provenance badge: ✅ verified on our bench, 📖 official
-  Battle Company docs, 🔍 decoded from the Callsign APK, or 👥 community-reported, plus a `src:` line
-  pointing at the evidence (an experiment-log entry, a capture, a reference note).
-- Nothing unconfirmed, hedged, or contradicted between sources gets published. If it's a guess, it
-  belongs in that file's "Research backlog (held, NOT published)" section, not the page itself.
+- The manual is **plain markdown**, one file per page: no block syntax, no provenance badge, and no
+  per-sentence `src:` line (`docs/site/FORMAT.md`). Confidence lives outside the page, in
+  `docs/experiment-log/` and `docs/FOLLOWUPS.md`, not attached to each sentence.
+- Only confirmed facts get published. If it's a guess, it belongs in a FOLLOWUPS row or the
+  experiment log, not the manual page itself.
 - A fact lives in exactly one manual file. Other docs link to it; they don't restate it.
 - If you're wrong and something needs retracting, fix it **at the source**: the `protocol/` row, the
   manual page, the spec, and the code/comment built on it, in the same change. A stale answer left in
   place recruits the next person who reads it; an open question only warns them.
 
-`docs/manual/` also has a house style worth knowing before you write a page: no em dashes anywhere (the
-site build fails if one lands on a rendered page), short sentences, write for a player not a spec
-reviewer, except the developer-reference section where exact command/token/field names matter more
-than prose style.
+`docs/manual/` and `docs/platform/` also have a house style worth knowing before you write a page: no
+em dashes anywhere (the site build fails if one lands on a rendered page), short sentences, write for
+a player not a spec reviewer, except the developer-reference section where exact command/token/field
+names matter more than prose style.
 
 ## Session-close discipline
 
@@ -115,19 +120,20 @@ answer and writing it into the manual.
 ## What never gets committed
 
 - **No raw third-party assets.** Anything extracted from Battle Company's own APK or app data is
-  restated in our own words, never committed verbatim. See
-  `protocol/callsign-extract/RAW_ASSETS_NOTE.md` for the one deliberate, temporary exception and its
-  ground rules.
+  restated in our own words, never committed verbatim. The one deliberate exception is closed
+  (`protocol/callsign-extract/RAW_ASSETS_NOTE.md`): the repo is public now, so raw configs never land
+  here again, even temporarily.
 - **No device identifiers.** Headset sticker ids and Bluetooth MAC/UUID addresses never enter the repo.
   Use a placeholder like `Tactix-XXXX` or `GUN-A` in examples. `mcp/tests/test_docs_hygiene.py`
   mechanically checks tracked files for sticker-id patterns and will fail the build if one lands; keep
   MAC addresses and other device-specific identifiers out on the same principle even where nothing
   greps for them yet.
-- **No em dashes in `docs/manual/`.** The site build enforces it.
-- **No hand-edits to generated output.** `app/ios/`, `app/android/`, `app/www/app.js`, and `webapp/`
-  are all built from source and git-ignored or committed-as-built; a regeneration wipes anything you
-  hand-edited there. If something in a generated tree is wrong, fix the generator or the source it
-  reads, not the output.
+- **No em dashes in `docs/manual/` or `docs/platform/`.** The site build enforces it.
+- **No hand-edits to generated output.** `app/ios/`, `app/android/`, `app/www/app.js`, and the site
+  generator's output under `webapp/` are all git-ignored and rebuilt from source; a regeneration wipes
+  anything you hand-edited there. `webapp/mc/` and `webapp/download/build.json` are the opposite case:
+  hand-kept and tracked, never touched by the site build. If something in a generated tree is wrong,
+  fix the generator or the source it reads, not the output.
 
 ## Proposing a change
 

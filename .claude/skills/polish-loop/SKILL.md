@@ -133,6 +133,7 @@ After the fix pass, run validation appropriate to the project. Detect by repo fi
 
 | Repo signal | Validation commands |
 |---|---|
+| **This repo** (Open BRX) | `cd mcp && python3 run_tests.py` (Python server + Mission Control); `cd webapp/mc && npm test` (+ `npm run e2e`/`npm run e2e:m2` for a UI change) (Mission Control web UI); `cd app && npm test` (phone app); `cd site && npm test` (public site, needs `cd app && npm run build` first) |
 | `package.json` with `pnpm-lock.yaml` | `pnpm typecheck`; `pnpm test` if it exists and changes touched tested behavior; `pnpm lint` if clean (skip if pre-existing failures) |
 | `package.json` with `package-lock.json` | `npm run typecheck`; same logic |
 | `package.json` with `yarn.lock` | `yarn typecheck`; same logic |

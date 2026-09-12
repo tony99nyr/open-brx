@@ -1,7 +1,9 @@
 # BRX Companion — per-tagger accessory module (hardware spec)
 
-**Status:** proposal, 2026-08-24. This is the full hardware realization of the `firmware/bridge/`
-node (see `docs/spec/` + the ADRs), informed by everything the protocol teardown proved.
+**Status:** proposal, 2026-08-24. This is the full hardware realization of the Companion firmware
+node (see `docs/spec/` + the ADRs), informed by everything the protocol teardown proved. That
+firmware is unwritten; the only ESP32 code that exists today is `hardware/esp32-ir-bridge/` and
+`hardware/m5sticks3/`.
 Working name **BRX Companion** (aka "the rider" — the tagger-rider ESP32 concept is credited to
 LaserTagMods; this is a fresh design). Design goal: **the one cheap accessory every BRX modder
 wants** — clips on, never touches stock firmware, and turns a dumb tagger into a fully
@@ -87,8 +89,9 @@ needs IR wiring + a mount; avoid.
 A Companion must reliably connect to the gun it's clipped to, not an identical tagger 30 cm away on
 the rack. A button alone can't disambiguate (adjacent guns are all close; RSSI is unreliable).
 **Primary mechanism: MC-assigned binding at muster** — each Companion registers with MC over the
-muster Wi-Fi (it's there for OTA anyway); MC, which knows every gun's BLE address + self-ID
-([[tagger-naming-architecture]]), hands each Companion the **exact address** of its gun.
+muster Wi-Fi (it's there for OTA anyway); MC, which knows every gun's BLE address and self-ID (a
+gun's `$NAME` is the headset sticker identity, the hardware truth it self-reports over BLE; see
+`docs/spec/contracts.md`'s roster section), hands each Companion the **exact address** of its gun.
 Deterministic, no RSSI guessing. **The button** is then for power + a manual field re-bind when MC
 isn't in range. Stateless/interchangeable (ADR-0001) means any Companion binds to any gun this way.
 **Still to design:** the registration handshake, what a Companion does if it can't reach MC, and the
@@ -201,8 +204,8 @@ toggled by what's populated.
 - **Scales to 20+** — each player is autonomous; Mission Control aggregates over Wi-Fi (WebSocket), never holding
   20 direct BLE links.
 - **Reuses the whole stack** — same `brx-mcp` command layer, same LAN contracts (WebSocket), same decoded
-  protocol. The Companion firmware lives in `firmware/bridge/` (this spec supersedes the bare
-  "bridge" sketch in the architecture doc).
+  protocol. The Companion firmware is still to write (this spec supersedes the bare "bridge" sketch
+  in the architecture doc); see the note at the top of this file for what ESP32 code exists today.
 
 ## How it fits the system (the three pieces)
 

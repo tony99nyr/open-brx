@@ -59,7 +59,8 @@ set_str NSBluetoothPeripheralUsageDescription "$BT_MSG"   # iOS 12 and earlier
 CAM_MSG="Open BRX uses the camera for the see-through HUD and to scan the Mission Control join code."
 set_str NSCameraUsageDescription "$CAM_MSG"
 
-# --- Field LAN gates (net.md §8b) --------------------------------------------
+# --- Field LAN gates (docs/spec/contracts.md §5, the node<->MC wire; retired net.md is in
+# docs/archive/spec-net.md) ---------------------------------------------------
 # The phone talks ws:// to Mission Control on a private IP over a Wi-Fi with NO
 # INTERNET. Without these three the socket silently never opens.
 #  (a) ATS does NOT exempt ws:// to an IP literal → allow local networking.

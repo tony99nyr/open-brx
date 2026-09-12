@@ -8,6 +8,14 @@
 # re-applied on every machine), build a DEBUG apk, and copy it to
 # `webapp/download/brx-companion-<version>-android-debug.apk`, replacing any older apk there.
 #
+# It bakes in the WORKING TREE, not the last commit, and warns loudly if app/ has uncommitted
+# changes. It then PUBLISHES a public GitHub Release (tag `app-v<version>`) via `gh release
+# create`/`gh release upload`, and rewrites the release's asset URL into the `webapp/download/
+# build.json` sidecar the site reads. Set `APK_PUBLISH=0` to skip the release step (local build
+# only); `APK_OUT_DIR` overrides the output directory for a trial build that must not touch the
+# site (a non-default `APK_OUT_DIR` also skips publishing). Never fatal: no `gh`, no auth, or no
+# network still leaves a complete local build and a valid sidecar.
+#
 # Why debug and not release: there is no release keystore in this project yet. A debug apk
 # sideloads fine, but it is signed with the throwaway Android debug key, so the first
 # release-signed build will NOT upgrade over it (players will have to uninstall first).

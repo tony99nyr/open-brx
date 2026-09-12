@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  mcp:
+    name: Python server + Mission Control
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # System-python pass first: no extras installed, matches the bench box's system python3
+      # (CLAUDE.md); tests needing websockets/starlette/etc. skip cleanly rather than failing.
+      - run: cd mcp && python3 run_tests.py
+      # Second pass with the MC extras installed, so the Mission Control tests actually run.
+      - run: pip install -e ./mcp starlette uvicorn websockets httpx zeroconf
+      - run: cd mcp && python3 run_tests.py
+
+  webapp-mc:
+    name: Mission Control web UI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: cd webapp/mc && npm ci && npm test
+
+  app:
+    name: Phone app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: cd app && npm ci && npm test
+
+  # site:
+  #   Not wired up here: `site/` needs a built `app/www` (the landing embeds the real phone HUD)
+  #   plus Playwright's browser binaries, and its gate is a ~90-step Playwright suite meant to be
+  #   run and read locally (`cd site && npm test`), not as a fast CI signal. Revisit if it needs
+  #   to gate merges.

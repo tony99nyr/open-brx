@@ -1,6 +1,7 @@
 # Cloudflare Workers static-site config.
-# Serves ONLY the webapp/ folder (ble-test.html, mission-control.html, later the
-# PWA + BRX manual) — the rest of the (private) repo is NOT published.
+# Serves the site generator's output: the platform landing (/), /docs/*, /manual/* and /download,
+# generated from docs/platform/ + docs/manual/ (docs/site/FORMAT.md) — plus the hand-kept
+# webapp/mc/ (Mission Control UI) and the webapp/download/ build.json sidecar. This is a public repo.
 # No `main` script → assets-only static site.
 name = "open-brx"
 compatibility_date = "2024-11-01"
@@ -9,12 +10,10 @@ compatibility_date = "2024-11-01"
 directory = "./webapp"
 not_found_handling = "404-page"   # serves webapp/404.html with a 404 status
 
-# The site is GENERATED from docs/manual/*.md by `npm run build` at the repo root.
-# ⚠ TODAY THE BUILT PAGES ARE STILL COMMITTED and Cloudflare serves ./webapp exactly as pushed.
 # THIS IS THE DEPLOY-TIME BUILD. Workers Builds runs `npx wrangler deploy` on a push to main, and
 # `wrangler deploy` runs this [build] command before it reads ./webapp. So the site is generated from
-# docs/manual/*.md on Cloudflare's side and the built pages are NOT committed (see .gitignore).
-# No dashboard build command is needed; the default deploy command is what runs this.
+# docs/platform/ + docs/manual/ on Cloudflare's side and the built pages are NOT committed (see
+# .gitignore). No dashboard build command is needed; the default deploy command is what runs this.
 # Proven 2026-09-09 by pushing a source-only change with deliberately stale output and watching the
 # live site serve the new text 60 s later.
 [build]

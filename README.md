@@ -3,9 +3,10 @@
 An open-source (MIT) platform that turns **Battle Company BRX** laser taggers into one connected laser tag
 system: hosted game modes, live scoring, custom weapons, objectives and a laptop Mission Control, on stock
 guns with stock firmware. It is a self-hosted alternative to Battle Company's Edge software: no subscription,
-no location lock, and it is designed for large fields with no venue Wi-Fi. The same repo is also the source of
-**The Ultimate BRX Manual**, the public reference for the tagger and headset, built from `docs/manual/` and
-served at <https://open-brx.iamrossi.workers.dev/>.
+no location lock, and it is designed for large fields with no venue Wi-Fi. The same repo is the source of two
+public doors built from one static-site generator: the platform landing/docs (`docs/platform/`) at
+<https://open-brx.iamrossi.workers.dev/>, and **The Ultimate BRX Manual**, the public reference for the tagger
+and headset, built from `docs/manual/` and served at <https://open-brx.iamrossi.workers.dev/manual/>.
 
 Today a laptop runs a full scored Team Deathmatch on real taggers over Bluetooth LE (Tier 0), and the
 per-player phone app (the BRX Combat HUD) plus the Mission Control console have run two whole multi-phone
@@ -36,14 +37,13 @@ the manual, the spec of record (`docs/spec/`), the ADRs and the open-work list.
 
 | Path | What |
 |---|---|
-| `docs/` | **[`docs/README.md`](docs/README.md)** index: the manual (`docs/manual/`, canonical BRX facts and the site source), the spec of record (`docs/spec/`), ADRs, followups, reference notes, the lab notebook |
+| `docs/` | **[`docs/README.md`](docs/README.md)** index: the platform pages (`docs/platform/`), the manual (`docs/manual/`, canonical BRX facts), the spec of record (`docs/spec/`), ADRs, followups, reference notes, the lab notebook |
 | `protocol/` | The serial command reference (`brx-protocol.md`), the IR word (`brx-ir-protocol.md`), the Callsign APK teardown (`callsign-extract/`: command/field maps, `$WEAP` token map) and the decoded captures |
 | `mcp/` | **brx-mcp**, the MCP server + CLI that drives taggers over BLE, and **`mcp/brx_mcp/mc/`**, the Mission Control server (game modes, scoring, the frame compiler; `API.md` is the server⇄UI contract) |
 | `app/` | **BRX Combat HUD**, the native per-player phone app (Capacitor: one codebase → Android + iOS, native BLE). See [`app/README.md`](app/README.md) |
-| `webapp/` | **Generated output, do not hand-edit.** The public site built from `docs/manual/` by `site/`, plus `webapp/mc/` (the Mission Control console, Vite/React) and `webapp/download/` (the `build.json` sidecar for the Android build, which itself lives on the GitHub Release) |
-| `site/` | The static-site generator and its Playwright verification suite |
-| `hardware/` | `esp32-ir-bridge/` (the IR capture/emit rig, built and proven), the Companion and Utility Box specs, print-file notes |
-| `firmware/` | Empty. Companion / station firmware is still to write; the only ESP32 code that exists is the IR bridge in `hardware/` |
+| `webapp/` | The site generator's output lands here, git-ignored (built from `docs/platform/` + `docs/manual/` by `site/`). `webapp/mc/` (the Mission Control console, Vite/React) and `webapp/download/build.json` (the Android build sidecar, which points at the GitHub Release) are hand-kept and tracked |
+| `site/` | The static-site generator (two doors, one source: `docs/site/FORMAT.md`) and its Playwright verification suite |
+| `hardware/` | `esp32-ir-bridge/` and `m5sticks3/` (built ESP32 rigs), the Companion and Station specs, print-file notes |
 
 ## brx-mcp quickstart
 

@@ -3,7 +3,7 @@
 Open-source platform orchestrating Battle Company BRX laser taggers.
 **Strategy/vision:** `docs/VISION.md`; mode catalog:
 `docs/game-modes.md`. **Spec of record: `docs/spec/`** (`contracts.md` = the node↔MC wire + game data
-model, amendments A1–A31 folded into the body (§10 is the index; the newest rows sit at its top); + the module docs) — the software is built + tested against it. Architecture
+model, amendments folded into the body; §10 is the index, newest first; + the module docs) — the software is built + tested against it. Architecture
 decisions: `docs/adr/` (0001 per-player node · 0002 laptop Mission Control + local LAN · 0003 native app
 over Web Bluetooth). Ground truth for tagger I/O: `protocol/brx-protocol.md`.
 
@@ -47,59 +47,31 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
 ## Environment (important)
 
 - WSL Python dev venv: `.venv/` (`.venv/bin/python`; has websockets/starlette/uvicorn/zeroconf/pytest;
-  system python3 has no pip — bootstrap via get-pip if recreating). `python3 run_tests.py` must stay green
-  under system python (tests needing extras skip cleanly).
-- Development happens in **WSL2, which has no Bluetooth**. The `brx-mcp` instrument (anything that
-  touches a gun) runs on **Windows Python** via WSL interop:
-  - Windows venv: `C:\Users\Tony\.brx-mcp\venv` (from WSL: `/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe`)
-  - Installed editable from `\\wsl.localhost\Ubuntu-24.04\home\tony\gitrepos\battlecompany\mcp`
-    — code edits in WSL take effect immediately, no reinstall.
-  - CLI first contact: `python.exe -m brx_mcp scan|identify|listen`.
-- **Mission Control (`python -m brx_mcp.mc`) is the exception: it runs from the WSL `.venv`.** Its one
-  radio route is the match-day armory scan, which is the MacBook's job. Plain Linux/macOS: the same venv
-  recipe, `pip install -e ./mcp` plus starlette/uvicorn/websockets.
-- Working **on the MacBook** (dev or field): read **`docs/mac-dev-runbook.md`** first — the setup
+  system python3 has no pip — bootstrap via get-pip if recreating). `cd mcp && python3 run_tests.py`
+  must stay green under system python (tests needing extras skip cleanly).
+- Development happens in **WSL2, which has no Bluetooth**; the `brx-mcp` instrument (anything that
+  touches a gun) runs on **Windows Python** via WSL interop instead. Match-day target is a
+  **MacBook**: everything in `mcp/` must stay cross-platform (bleak: WinRT/CoreBluetooth/BlueZ) —
+  macOS gives BLE UUIDs, not MAC addresses, so never assume address formats. (The WSL→Windows env-var
+  rule above applies whenever you cross that boundary.)
+- Working on **this WSL/Windows box**: read **`docs/wsl-dev-runbook.md`** (the two-Python split, the
+  UNC install path, first contact, where captures land).
+- Working on **the MacBook** (dev or field): read **`docs/mac-dev-runbook.md`** first — the setup
   that is not in git, and the restart-MC-vs-hard-reload rule that has caused three false bug reports.
-- Match-day target is a **MacBook**: everything in `mcp/` must stay cross-platform
-  (bleak: WinRT/CoreBluetooth/BlueZ). macOS gives BLE UUIDs, not MAC addresses — never
-  assume address formats.
-- Captures + device registry live in `~/.brx-mcp/` on the machine running the server
-  (i.e. `C:\Users\Tony\.brx-mcp\` here).
 
 ## Layout
 
-`mcp/` Python MCP server (lab instrument) **+ `mcp/brx_mcp/mc/` = the Mission Control server** (M-MC: API.md is the server⇄UI contract; **to see it running with no hardware: `cd mcp && ../.venv/bin/python -m brx_mcp.mc --demo --fake-net --no-auth --ephemeral`** — WSL venv, not Windows Python; `--fake-net` alone shows an empty board; the banner prints BEFORE the port binds, so a busy :8765 looks like success — `mcp/brx_mcp/mc/README.md` → *Start it*) ·
-`app/` native phone app (Capacitor → Android + iOS; see `app/README.md` — `npm run android:apk` cuts a
-build and publishes it to the `app-v<version>` GitHub Release; the site links the releases page, not a
-pinned asset, so a new cut does not stale a manual page) ·
-`firmware/` does not exist yet (Companion/station firmware is still to write; the ESP32 code that exists is `hardware/esp32-ir-bridge/` and `hardware/m5sticks3/`) · `webapp/mc/` the **Mission Control web UI** (Vite/React/TS; `npm run dev`, `?mock` for the in-browser demo; design brief `docs/spec/design/mission-control.md`). ⚠ **To verify MC in a real browser there is NOTHING to build** — it is a web app, so run the dev server and drive it (Playwright is already installed under `webapp/mc/`, `app/` and `site/`; the script must live under one of them). The phone HUD needs its stage harness (`app && npm run ui:stage`) because it drives a tagger over BLE; MC drives nothing, so it needs no stand-in. `webapp/mc/README.md` has the detail, and for any UI change follow the `ui-build-verify` skill (`.claude/skills/ui-build-verify/SKILL.md`, plain markdown, in the repo) · `webapp/` the Cloudflare deploy root: the site generator's git-ignored output lands here beside the hand-kept `webapp/mc/` and `webapp/download/`; the old Web-BT harness is gone (Web BT is not the player path — ADR-0003) ·
-`hardware/` STLs/BOM · `protocol/` + `docs/` reference · **`site/`** the static generator for the public
-website. **Two doors, one source (2026-09-11):** `docs/platform/*.md` → `/` (the MARKETING landing for the
-Open BRX ecosystem), `/docs/*` and `/download`; `docs/manual/*.md` → `/manual/*` (the BRX manual; its
-`index.md` is the manual's own landing). Two templates in `site/build.mjs`: `doc` (one readable column,
-light/dark) and `landing` (dark, Mission Control's type, rendered from PLAIN markdown by
-`site/lib/landing.mjs`: `##` = section, `###` = its headline, an image-only paragraph = a row of shots,
-a `**Bold.**` list = captions, a link list = buttons, a bare code fence = a terminal, a ```data fence =
-a generated component: `counts`/`modes`/`roles`/`manual`/`release`/`download`, all read from repo
-source by `site/lib/facts.mjs`). **Landing pages carry capabilities, never status**: the build FAILS on
-a date, a version number, "not yet"/"unfinished"/"coming soon" or a match report in `docs/platform/index.md`
-or `docs/manual/index.md`; the only moving number is the app version, rendered from
-`webapp/download/build.json`. **Screenshots are generated, never taken**: `cd site && npm run shots`
-drives the built MC UI (`?mock`) and the HUD (`?demo`) with Playwright into `site/shots/` (committed,
-content-hashed on publish), and `mcp/tests/test_site_shots.py` fails when `webapp/mc/src` or `app/src`
-has moved past `site/shots/manifest.json`. Staged photos live in `site/photos/` (`hero.*`, `grenade.*`;
-SVG placeholders until real ones land). Fonts are self-hosted from `site/public/fonts/`. **The landing embeds the REAL HUD** (`app/www` → `/demo/hud/`, `?demo&kit`) as a tap-to-try demo, so the site build needs `cd app && npm run build` first; root `build:ci` does that on Cloudflare and `site/build.mjs` fails if `app/www` is missing. The contract is
-`docs/site/FORMAT.md`; `cd site && npm test` builds and runs the gate (~90 browser steps at 1280 and 390,
-incl. the landing steps 12–12g); **a push to `main` deploys the site**, and Cloudflare REBUILDS it:
-Workers Builds runs `wrangler deploy`, which runs `[build]` in `wrangler.toml` (`npm run build:ci`).
-**The built pages are git-ignored**, so there is no stale-output failure mode and nothing to rebuild
-before committing. `webapp/mc/`, `webapp/download/build.json`, `webapp/favicon.svg` and
-`webapp/.assetsignore` are hand-kept and stay tracked; `webapp/mc/` is the separate MC UI and is never
-touched by the site build; **`webapp/download/`** holds the `build.json` sidecar (the generated
-`/download` page shares the directory and is ignored): the APK itself is **git-ignored and lives on
-the `app-v<version>` GitHub Release** (a committed APK cost ~5 MB of history per cut). `npm run android:apk`
-builds it, publishes the release and writes the asset URL into the sidecar. `mcp/tests/test_published_build.py` fails if the sidecar
-goes stale, names a commit that does not exist, or an APK gets committed).
+| Path | What | Where the detail lives |
+|---|---|---|
+| `mcp/` | Python MCP server (lab instrument) **+ `mcp/brx_mcp/mc/`**, the Mission Control server (M-MC) | `mcp/brx_mcp/mc/README.md` → *Start it* (no-hardware demo: `cd mcp && ../.venv/bin/python -m brx_mcp.mc --demo --fake-net --no-auth --ephemeral`, the WSL venv, not Windows Python; the banner prints BEFORE the port binds, so a busy :8765 looks like success). `API.md` is the server⇄UI contract |
+| `app/` | Native phone app (Capacitor → Android + iOS) | `app/README.md`; `npm run android:apk` cuts a build and publishes it to the `app-v<version>` GitHub Release, and the site links the releases page (not a pinned asset) so a new cut never stales a manual page |
+| `firmware/` | Does not exist yet | Companion/station firmware is still to write; the ESP32 code that exists is `hardware/esp32-ir-bridge/` and `hardware/m5sticks3/` |
+| `webapp/mc/` | The Mission Control web UI (Vite/React/TS) | `webapp/mc/README.md`: `npm run dev`, `?mock` for the in-browser demo, design brief `docs/spec/design/mission-control.md`. **Nothing to build to verify it in a real browser** — it's a web app, so run the dev server and drive it. (Unlike MC, the phone HUD drives a real tagger over BLE and needs its stage harness: `app && npm run ui:stage`.) Any UI change follows the `ui-build-verify` skill; a repo-wide accuracy pass follows `doc-rot-review` (`.claude/skills/ui-build-verify/SKILL.md`, `.claude/skills/doc-rot-review/SKILL.md`) |
+| `webapp/` | **The Cloudflare deploy root**: the site generator's git-ignored output lands here beside the hand-kept `webapp/mc/` and `webapp/download/` | — |
+| `hardware/` | STLs/BOM, the Companion + Station specs | `hardware/brx-companion-spec.md`, `hardware/brx-station-spec.md`, `hardware/inventory.md` |
+| `protocol/` + `docs/` | Reference | `docs/README.md` |
+| `site/` | The static generator for the public site. **Two doors, one source:** `docs/platform/*.md` → `/`, `/docs/*` and `/download`; `docs/manual/*.md` → `/manual/*` | The whole contract is `docs/site/FORMAT.md`; how to run it is `docs/site/README.md`. A push to `main` deploys the site and Cloudflare rebuilds it itself (`wrangler.toml`'s `[build]`); the built pages are git-ignored, so there is nothing to rebuild before committing |
+
 **No em dashes in `docs/manual/` or `docs/platform/`**: the build fails if one reaches a page. See
 `docs/manual/README.md` for the house style.
 
