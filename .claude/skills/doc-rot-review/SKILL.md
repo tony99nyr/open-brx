@@ -143,6 +143,9 @@ Nothing is changed in this step. Say so in the message.
   its FOLLOWUPS ids get one dated line in `docs/archive/followups-closed.md`. Deleting is for
   scratch, generated output and one-off tool exports that git history already holds.
 - Close the session with the three writes (log entry · FOLLOWUPS diff · HANDOFF replacement).
+- **Then run `polish-loop` over the apply commits before calling the pass done.** A cleanup pass writes its
+  own rot (dated breadcrumbs, "GENERATED" headers that outrun the generator, a hedge pasted four times, a guard
+  that cannot fail); on 2026-09-12 three review rounds found ~25 such items in the apply commits themselves.
 - Push a subagent per disjoint group (sonnet for mechanical moves); keep design decisions and
   commits in the main session.
 
