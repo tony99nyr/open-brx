@@ -1,19 +1,24 @@
-"""Contract test: does the Mission Control UI's hand-mirrored TypeScript still match the Python
-source of truth it claims to mirror?
+"""Contract test: does the Mission Control UI still take its shapes from the Python source?
 
-`webapp/mc/src/api/types.ts` says at its own top "Mirrors mcp/brx_mcp/mc/API.md + types.py ...
-Keep field names identical" -- in a COMMENT. `webapp/mc/src/mock/policy.ts` says it mirrors
-`mcp/brx_mcp/mc/policy.py`. `webapp/mc/src/mock/data.ts` says its weapon table is GENERATED from
-`mcp/brx_mcp/mc/weapons.json`. Nothing checks any of that: the two sides can drift silently (a field
-added on the Python TypedDict, a weapon added to the JSON catalog) and only a human re-reading both
-files side by side would ever notice.
+The 18 wire shapes are no longer hand-mirrored: `mcp/tools/gen_contract.py` renders them into
+`webapp/mc/src/api/contract.gen.ts`, `test_contract_generated.py` proves that file is fresh, and
+`webapp/mc/src/api/types.ts` RE-EXPORTS them. So the six field-name comparisons this file used to run
+(Player, GameConfig, SlotRule, LoadoutPolicy, LoadoutPool, PerkView) are superseded by the generator
+itself -- a field can no longer be added on one side only. What replaces them is one structural test:
+types.ts re-exports every generated shape and DECLARES none of them, which is the whole property the
+old six were approximating.
 
-This test parses the Python side with `ast` (TypedDict field names; dict-literal keys for the two
-plain-dict shapes that predate a TypedDict) and the TypeScript side with a small depth-aware brace
-scanner (an `interface Foo { ... }` body, top-level fields only -- a nested inline object type like
-PerkView.effects does not leak its own keys in as top-level fields). No TS parser dependency, and the
-Python server is never imported -- both sides are read as plain text, so this stays dependency-free
-under the system python (see mcp/run_tests.py, mcp/tests/_skip.py).
+What is still hand-mirrored, and so still checked here:
+  * `webapp/mc/src/mock/policy.ts` / `screens/gameSummary.ts` `DEFAULT_POLICY()` vs `policy.py`'s
+    default. `withPolicy()` falls back to it whenever a served config arrives with no
+    `loadout_policy`, and the `ConfigView` type then calls the result valid -- so if the two defaults
+    drift, the console hands the server a policy it would refuse and nothing says so.
+  * `GET /api/voices` rows (a plain dict, no TypedDict to generate from).
+  * `webapp/mc/src/mock/data.ts`'s weapon table vs `weapons.json`.
+
+Both sides are read as plain text (`ast` for Python, small scanners for TypeScript) except
+`policy.py`, which is imported -- it is dependency-free and imports cleanly under the system python,
+the same call `test_contract_generated.py` makes. No TS parser dependency.
 
 No pytest: plain test_* functions, run by run_tests.py under the system python.
 """
@@ -23,15 +28,21 @@ import ast
 import json
 import pathlib
 import re
+import sys
 
 from _skip import Skipped
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "mcp"))
+from brx_mcp.mc import policy as _policy   # noqa: E402  -- dependency-free under bare system python
+
 TYPES_PY = REPO / "mcp" / "brx_mcp" / "mc" / "types.py"
 VOICES_PY = REPO / "mcp" / "brx_mcp" / "voices.py"
 COMPILE_PY = REPO / "mcp" / "brx_mcp" / "mc" / "compile.py"
 WEAPONS_JSON = REPO / "mcp" / "brx_mcp" / "mc" / "weapons.json"
 TYPES_TS = REPO / "webapp" / "mc" / "src" / "api" / "types.ts"
+CONTRACT_TS = REPO / "webapp" / "mc" / "src" / "api" / "contract.gen.ts"
+SUMMARY_TS = REPO / "webapp" / "mc" / "src" / "screens" / "gameSummary.ts"
 DATA_TS = REPO / "webapp" / "mc" / "src" / "mock" / "data.ts"
 
 
@@ -155,40 +166,159 @@ def _assert_fields_match(shape: str, ts_fields, py_fields, ts_loc: str, py_loc: 
     assert not msgs, "; ".join(msgs)
 
 
-def test_player_fields_match():
-    ts = _ts_interface_fields(TYPES_TS, "Player")
-    py = _py_typeddict_fields(TYPES_PY, "Player")
-    _assert_fields_match("Player", ts, py, str(TYPES_TS), str(TYPES_PY))
+def test_types_ts_re_exports_the_generated_shapes_and_declares_none_of_them():
+    """`types.ts` is a RE-EXPORT of `contract.gen.ts`, never a second copy of it.
+
+    This supersedes the six per-shape field comparisons this file used to run. They existed because
+    the wire shapes were hand-mirrored; they are generated now, so the only way the console can drift
+    from the server again is by declaring a shape of its own that SHADOWS the generated one -- which
+    compiles, and which no type error would ever point at. Both halves are asserted: every generated
+    name is re-exported (a shape the generator adds cannot go unpublished), and none is re-declared.
+    """
+    if not CONTRACT_TS.is_file():
+        raise Skipped(f"{CONTRACT_TS} (missing -- run python3 mcp/tools/gen_contract.py)")
+    if not TYPES_TS.is_file():
+        raise Skipped(f"{TYPES_TS} (missing)")
+    gen = CONTRACT_TS.read_text(encoding="utf-8")
+    generated = set(re.findall(r"^export interface (\w+)", gen, re.M))
+    generated |= set(re.findall(r"^export type (\w+)", gen, re.M))
+    if len(generated) < 15:
+        raise Skipped(f"only {len(generated)} shapes in {CONTRACT_TS.name} (restructured?)")
+
+    text = TYPES_TS.read_text(encoding="utf-8")
+    declared = set(re.findall(r"^export (?:interface|type) (\w+)", text, re.M))
+    # every `export type { A, B } from './contract.gen'` / `export { X } from './contract.gen'` body
+    re_exported: set[str] = set()
+    for body in re.findall(r"^export(?:\s+type)?\s*\{([^}]*)\}\s*from\s*'\./contract\.gen'", text, re.M | re.S):
+        for part in body.split(","):
+            name = part.strip().split(" as ")[0].strip()
+            if name:
+                re_exported.add(name)
+
+    missing = sorted(generated - re_exported)
+    shadowed = sorted(generated & declared)
+    msgs = []
+    if missing:
+        msgs.append(f"{TYPES_TS} does not re-export the generated {missing} "
+                    f"(add them to the `from './contract.gen'` block)")
+    if shadowed:
+        msgs.append(f"{TYPES_TS} DECLARES {shadowed}, which {CONTRACT_TS.name} already generates -- "
+                    f"delete the local copy and re-export instead")
+    assert not msgs, "; ".join(msgs)
 
 
-def test_gameconfig_fields_match():
-    ts = _ts_interface_fields(TYPES_TS, "GameConfig")
-    py = _py_typeddict_fields(TYPES_PY, "GameConfig")
-    _assert_fields_match("GameConfig", ts, py, str(TYPES_TS), str(TYPES_PY))
+# ---------------------------------------------------------------------------
+# `DEFAULT_POLICY()` (gameSummary.ts) vs `policy.default_policy()` -- still hand-mirrored.
+# ---------------------------------------------------------------------------
+_TS_KEY = re.compile(r"([A-Za-z_$][A-Za-z0-9_$]*)\s*:")
 
 
-def test_slotrule_fields_match():
-    ts = _ts_interface_fields(TYPES_TS, "SlotRule")
-    py = _py_typeddict_fields(TYPES_PY, "SlotRule")
-    _assert_fields_match("SlotRule", ts, py, str(TYPES_TS), str(TYPES_PY))
+def _ts_object(text: str, start: int) -> tuple[dict, int]:
+    """Evaluate the TS object literal whose `{` is at `text[start]`. Handles exactly the grammar
+    `gameSummary.ts`'s rule helpers use: string / boolean / null values, string arrays, and nested
+    object literals. Anything else raises `Skipped` rather than guessing -- a rewritten helper must
+    be re-read by a human, not silently half-parsed."""
+    assert text[start] == "{"
+    i, out = start + 1, {}
+    while True:
+        while i < len(text) and text[i] in " \n\r\t,":
+            i += 1
+        if i >= len(text) and True:
+            raise Skipped("an unterminated object literal in gameSummary.ts")
+        if text[i] == "}":
+            return out, i + 1
+        m = _TS_KEY.match(text, i)
+        if not m:
+            raise Skipped(f"an unparsable entry in gameSummary.ts near {text[i:i + 40]!r}")
+        key, i = m.group(1), m.end()
+        while text[i] == " ":
+            i += 1
+        if text[i] == "{":
+            out[key], i = _ts_object(text, i)
+        elif text[i] == "[":
+            j = text.index("]", i)
+            out[key] = [x.strip().strip("'\"") for x in text[i + 1:j].split(",") if x.strip()]
+            i = j + 1
+        else:
+            j = min((k for k in (text.find(",", i), text.find("}", i)) if k != -1), default=-1)
+            raw = text[i:j].strip()
+            i = j
+            if raw in ("true", "false"):
+                out[key] = raw == "true"
+            elif raw == "null":
+                out[key] = None
+            elif raw.startswith(("'", '"')):
+                out[key] = raw[1:-1]
+            else:
+                raise Skipped(f"an unparsable value for {key!r} in gameSummary.ts: {raw!r}")
 
 
-def test_loadoutpolicy_fields_match():
-    ts = _ts_interface_fields(TYPES_TS, "LoadoutPolicy")
-    py = _py_typeddict_fields(TYPES_PY, "LoadoutPolicy")
-    _assert_fields_match("LoadoutPolicy", ts, py, str(TYPES_TS), str(TYPES_PY))
+def _ts_call_object(text: str, decl: str) -> dict:
+    """The object literal in `const <decl> = ... => ({ ... })`."""
+    m = re.search(rf"const {re.escape(decl)}\s*=.*?=>\s*\(?\s*(?=\{{)", text, re.S)
+    if not m:
+        raise Skipped(f"`const {decl}` in gameSummary.ts (renamed or restructured?)")
+    obj, _ = _ts_object(text, m.end())
+    return obj
 
 
-def test_loadoutpool_fields_match():
-    ts = _ts_interface_fields(TYPES_TS, "LoadoutPool")
-    py = _py_typeddict_fields(TYPES_PY, "LoadoutPool")
-    _assert_fields_match("LoadoutPool", ts, py, str(TYPES_TS), str(TYPES_PY))
+def _ts_default_policy() -> dict:
+    """`DEFAULT_POLICY()` from gameSummary.ts, with `rule()` / `perkRule()` expanded."""
+    if not SUMMARY_TS.is_file():
+        raise Skipped(f"{SUMMARY_TS} (missing)")
+    text = _COMMENT.sub(" ", SUMMARY_TS.read_text(encoding="utf-8"))
+    rule = _ts_call_object(text, "rule")
+    rule.pop("...over", None)
+    # `perkRule = (over = {}) => rule({ kinds: ['perk'], ...over })`
+    m = re.search(r"const perkRule\s*=.*?rule\(\s*(?=\{)", text, re.S)
+    if not m:
+        raise Skipped("`const perkRule` in gameSummary.ts (renamed or restructured?)")
+    perk_over, _ = _ts_object(text, m.end())
+    perk_rule = {**rule, **perk_over}
+
+    m = re.search(r"const DEFAULT_POLICY\s*=.*?=>\s*\(\s*(?=\{)", text, re.S)
+    if not m:
+        raise Skipped("`const DEFAULT_POLICY` in gameSummary.ts (renamed or restructured?)")
+    end = _matching_brace(text, m.end())
+    body = text[m.end() + 1:end]
+    out: dict = {}
+    for key, val in re.findall(r"([A-Za-z_$][A-Za-z0-9_$]*)\s*:\s*([^,}]+)", body):
+        val = val.strip()
+        if val == "rule()":
+            out[key] = dict(rule)
+        elif val == "perkRule()":
+            out[key] = dict(perk_rule)
+        elif val in ("true", "false"):
+            out[key] = val == "true"
+        elif val.startswith(("'", '"')):
+            out[key] = val[1:-1]
+        else:
+            raise Skipped(f"DEFAULT_POLICY.{key} is {val!r} -- not a plain rule() call any more")
+    return out
 
 
-def test_perkview_fields_match():
-    ts = _ts_interface_fields(TYPES_TS, "PerkView")
-    py = _py_typeddict_fields(TYPES_PY, "PerkView")
-    _assert_fields_match("PerkView", ts, py, str(TYPES_TS), str(TYPES_PY))
+def test_default_policy_matches_the_server_default():
+    """`gameSummary.DEFAULT_POLICY()` must equal `policy.default_policy()` field for field.
+
+    It is not decoration. `withPolicy()` substitutes this object whenever a config reaches the store
+    with no `loadout_policy` (a session persisted before A10, an older MC), and `ConfigView` then
+    types the result as a complete config -- so a drift here is a policy the SERVER would refuse
+    travelling through the console with the type system calling it valid. `default_policy` takes the
+    mode because `ffa` defaults to NO HEAVIES; the console's fallback is the mode-independent OPEN
+    one, which is what every other mode resolves to."""
+    ts = _ts_default_policy()
+    py = _policy.default_policy("tdm")          # MODE_DEFAULT_PRESET has no tdm entry -> the "open" rules
+    assert py.get("preset") == "open", f"policy.default_policy('tdm') is no longer the OPEN preset: {py.get('preset')!r}"
+    msgs = []
+    for k in sorted(set(py) | set(ts)):
+        if k not in ts:
+            msgs.append(f"DEFAULT_POLICY() has no {k!r}, which policy.py's default sets to {py[k]!r}")
+        elif k not in py:
+            msgs.append(f"DEFAULT_POLICY() sets {k!r}={ts[k]!r}, which policy.py's default does not have")
+        elif ts[k] != py[k]:
+            msgs.append(f"DEFAULT_POLICY().{k} is {ts[k]!r}, policy.py's default is {py[k]!r}")
+    assert not msgs, ("webapp/mc/src/screens/gameSummary.ts DEFAULT_POLICY() has drifted from "
+                      "mcp/brx_mcp/mc/policy.py default_policy(): " + "; ".join(msgs))
 
 
 def test_voice_option_fields_match():

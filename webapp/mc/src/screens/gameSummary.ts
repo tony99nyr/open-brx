@@ -1,5 +1,6 @@
 // Shared game-summary helpers (GAMES cards, the DESIGNER rail, the KIT rules chip) — one generator everywhere.
-import type { GameConfig, LoadoutPolicy, LoadoutPool, PerkView, SlotRule, WeaponView } from '../api/types';
+import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, PerkView, SlotRule, StationSourceId, WeaponView } from '../api/types';
+import { STATION_SOURCE_IDS } from '../api/types';
 
 /** The rule engine, mirrored from mcp/brx_mcp/mc/policy.py `pool()`. The DESIGNER computes the pool from the rules
  *  being edited on every change (instant, server-independent); the server re-derives on save/apply and is the authority. */
@@ -41,19 +42,27 @@ export function presetOf(p: LoadoutPolicy): LoadoutPolicy['preset'] {
   for (const k of ['open', 'no_heavies', 'snipers'] as const) if (strip(TEMPLATE_RULES[k]) === strip(p)) return k;
   return 'custom';
 }
-export const withPolicy = (c: GameConfig): GameConfig => (c.loadout_policy?.primary && c.loadout_policy.secondary && c.loadout_policy.perk ? c : { ...c, loadout_policy: DEFAULT_POLICY() });
+export const withPolicy = (c: GameConfig): ConfigView =>
+  (c.loadout_policy?.primary && c.loadout_policy.secondary && c.loadout_policy.perk
+    ? (c as ConfigView) : { ...c, loadout_policy: DEFAULT_POLICY() });
 
 const PRESET_LABEL: Record<string, string> = { open: 'OPEN', no_heavies: 'NO HEAVIES', snipers: 'SNIPERS ONLY', custom: 'CUSTOM RULES' };
 
-// F70 — the objective-source vocabulary, mirroring `STATION_SOURCES` in mcp/brx_mcp/mc/types.py. It is a
-// CLOSED list on the server (a PUT with anything else 400s naming these values), so the console offers
-// exactly these three and nothing else. An unknown value that somehow arrives in a config still renders
-// (see `objectiveLine`) rather than vanishing — a field we cannot show is a field nobody can fix.
-export const STATION_SOURCES: { value: string; label: string; hint: string }[] = [
-  { value: 'grenade', label: 'GRENADE', hint: 'A BRX Smart Grenade in hill mode. Bench-proven 2026-09-10; drives exactly ONE point (F88).' },
-  { value: 'ir_station', label: 'IR STATION', hint: 'A BRX station / Utility Box speaking $CAPTURE. UNPROVEN — we have never had one on the bench.' },
-  { value: 'phone', label: 'PHONE', hint: 'A spare phone in the UTILITY role as a BLE control point: capture by presence, armed by MC at muster. Announces contested; can name its point (several are possible).' },
-];
+// F70 — the objective-source vocabulary. The IDS are NOT mirrored here: they come from the generated
+// `STATION_SOURCE_IDS` (mcp/brx_mcp/mc/types.py `STATION_SOURCES`), and this map is keyed by
+// `StationSourceId`, so a source added on the server fails this file's compile instead of quietly
+// missing from the control. Only the OPERATOR COPY is ours — the server's `desc` is written for an API
+// error, not for a button. It is a CLOSED list server-side (a PUT with anything else 400s naming every
+// legal value), so the console offers exactly these and nothing else. An unknown value that somehow
+// arrives in a config still renders (see `objectiveLine`) rather than vanishing — a field we cannot
+// show is a field nobody can fix.
+const SOURCE_COPY: Record<StationSourceId, { label: string; hint: string }> = {
+  grenade: { label: 'GRENADE', hint: 'A BRX Smart Grenade in hill mode. Bench-proven 2026-09-10; drives exactly ONE point (F88).' },
+  ir_station: { label: 'IR STATION', hint: 'A BRX station / Utility Box speaking $CAPTURE. UNPROVEN — we have never had one on the bench.' },
+  phone: { label: 'PHONE', hint: 'A spare phone in the UTILITY role as a BLE control point: capture by presence, armed by MC at muster. Announces contested; can name its point (several are possible).' },
+};
+export const STATION_SOURCES: { value: StationSourceId; label: string; hint: string }[] =
+  STATION_SOURCE_IDS.map(value => ({ value, ...SOURCE_COPY[value] }));
 /** the OBJECTIVE row shown on GAMES and in the designer rail, or null for a mode with no station source */
 export const objectiveLine = (cfg: GameConfig): string | null => {
   const src = cfg.station_source;

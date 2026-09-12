@@ -32,7 +32,7 @@ _T_MIN_MS = 1_500_000_000_000   # 2017-07
 _T_MAX_MS = 4_000_000_000_000   # 2096
 
 # Required body fields per kind. `event`'s body is an Event and is checked separately.
-_REQUIRED: dict[str, tuple[str, ...]] = {
+REQUIRED: dict[str, tuple[str, ...]] = {
     # node → MC
     "hello": ("node_id", "node_type", "app_ver", "seq_next"),
     "bind": ("node_id", "gun_name", "gun_tail"),
@@ -72,7 +72,18 @@ _REQUIRED: dict[str, tuple[str, ...]] = {
     "station_config": ("kind", "team", "id"),
 }
 
-_EVENT_REQUIRED: dict[str, tuple[str, ...]] = {
+# A24 (2026-09-11): what a RECEIVER of a `result` (the node) checks, vs what `REQUIRED["result"]`
+# says the SENDER (MC) promises. Everything below `match_id` stays optional to the node: a result
+# that loses a field to an older/newer MC must still REACH the engine, which logs what it dropped
+# -- a required field that is missing drops the frame silently, and a silently dropped result is
+# indistinguishable from "MC never reached us", which is the one thing A24 forbids. The rule lives
+# once, here: `validate(env, direction="mc")` (a node receiving) checks `ACCEPT_MIN.get(kind,
+# REQUIRED[kind])`; `direction="node"` (MC receiving) always checks `REQUIRED[kind]`.
+ACCEPT_MIN: dict[str, tuple[str, ...]] = {
+    "result": ("match_id",),
+}
+
+EVENT_REQUIRED: dict[str, tuple[str, ...]] = {
     "hit_taken": ("shooter_num", "shooter_team", "dmg"),
     "death": ("shooter_num", "shooter_team"),
     "respawn": (),
@@ -150,7 +161,7 @@ def validate_event(ev: Any, *, require_seq_on: dict[str, Any] | None = None) -> 
             raise EnvelopeError("bad_event", f"missing {key}")
     if "match_id" not in ev:
         raise EnvelopeError("bad_event", "missing match_id")
-    for key in _EVENT_REQUIRED[etype]:
+    for key in EVENT_REQUIRED[etype]:
         if key not in ev:
             raise EnvelopeError("bad_event", f"{etype} missing {key}")
     if not isinstance(ev["t"], (int, float)):
@@ -164,6 +175,12 @@ def validate_event(ev: Any, *, require_seq_on: dict[str, Any] | None = None) -> 
 
 def validate(env: Any, *, direction: str = "node") -> dict[str, Any]:
     """Validate a decoded envelope. `direction` = "node" (node→MC) or "mc" (MC→node).
+
+    Required-field check: `direction="node"` (MC receiving a node frame) always checks
+    `REQUIRED[kind]` -- MC is the strict side. `direction="mc"` (a node receiving an MC frame)
+    checks `ACCEPT_MIN.get(kind, REQUIRED[kind])` -- for the handful of kinds in `ACCEPT_MIN`
+    (currently just `result`, A24) the node accepts a body missing everything but those minimal
+    fields, so a result short a field still reaches the engine instead of being dropped silently.
 
     Raises EnvelopeError with reason ∈ {not_object, version, unknown_kind, missing_field,
     bad_t, bad_event, oversize}.
@@ -185,7 +202,8 @@ def validate(env: Any, *, direction: str = "node") -> dict[str, Any]:
     body = env.get("body")
     if not isinstance(body, dict):
         raise EnvelopeError("missing_field", "body")
-    for key in _REQUIRED[kind]:
+    required = ACCEPT_MIN.get(kind, REQUIRED[kind]) if direction == "mc" else REQUIRED[kind]
+    for key in required:
         if key not in body:
             raise EnvelopeError("missing_field", f"{kind}.{key}")
 

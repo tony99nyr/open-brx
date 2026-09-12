@@ -55,7 +55,9 @@ def test_station_config_is_an_mc_kind_on_both_ends_of_the_wire():
         raise AssertionError("station_config without an id was accepted")
     except E.EnvelopeError as e:
         assert e.reason == "missing_field", e.reason
-    js = (REPO / "app/src/transport/envelope.js").read_text(encoding="utf-8")
+    # MC_KINDS is generated (contract-DRY, contract-dry-spec.md §4): envelope.js re-exports it from
+    # contract.gen.js rather than defining it literally, so the parity check reads the generated file.
+    js = (REPO / "app/src/transport/contract.gen.js").read_text(encoding="utf-8")
     m = re.search(r"export const MC_KINDS = new Set\(\[(.*?)\]\);", js, re.S)
     assert m, "the phone's MC_KINDS moved"
     phone = set(re.findall(r"'([a-z_]+)'", m.group(1)))

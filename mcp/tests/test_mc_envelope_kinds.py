@@ -63,7 +63,7 @@ def _body_for(kind: str) -> dict:
     Derived rather than hand-written, so a new required field automatically shows up here instead of
     silently making this test assert less than it looks like it does."""
     return {k: _SAMPLE.get(k, 1 if k.endswith(("_t", "_s", "seq", "seq_hi", "bytes", "lines")) else k)
-            for k in E._REQUIRED[kind]}
+            for k in E.REQUIRED[kind]}
 
 
 def test_every_kind_mc_pushes_survives_a_real_encode_decode_round_trip():
@@ -79,12 +79,12 @@ def test_every_kind_mc_pushes_survives_a_real_encode_decode_round_trip():
 
 
 def test_every_registered_kind_has_a_required_field_entry():
-    """`validate()` does a BARE `_REQUIRED[kind]` lookup, so a kind registered in MC_KINDS/NODE_KINDS
+    """`validate()` does a BARE `REQUIRED[kind]` lookup, so a kind registered in MC_KINDS/NODE_KINDS
     with no entry here raises a raw KeyError instead of a clean EnvelopeError — the caller sees a
     crash rather than a rejected frame. Registering `alert` hit exactly this on the way in."""
-    missing = sorted((T.MC_KINDS | T.NODE_KINDS) - set(E._REQUIRED))
+    missing = sorted((T.MC_KINDS | T.NODE_KINDS) - set(E.REQUIRED))
     assert not missing, (
-        f"these kinds are registered but have no _REQUIRED entry, so validate() will raise KeyError "
+        f"these kinds are registered but have no REQUIRED entry, so validate() will raise KeyError "
         f"instead of EnvelopeError: {missing}")
 
 

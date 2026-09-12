@@ -30,7 +30,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - run: cd webapp/mc && npm ci && npm test
+      # `tsc -b` first: vitest type-checks nothing, and the generated contract (contract.gen.ts,
+      # from mcp/brx_mcp/mc/types.py) only earns its keep if a drifted UI fails to compile here.
+      - run: cd webapp/mc && npm ci && npm run typecheck && npm test
 
   app:
     name: Phone app

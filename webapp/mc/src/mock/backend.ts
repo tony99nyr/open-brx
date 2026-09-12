@@ -1,16 +1,17 @@
 // In-browser mock of the MC server (mcp/brx_mcp/mc/API.md). Stateful enough for every UI interaction.
 import type {
-  Api, FeedEntry, GameConfig, LiveRow, Loadout, LoadoutPolicy, LogView, MatchHistoryRow, ModeInfo, PerkView, Phase, Player, ReadinessRow, ReadinessSnapshot,
-  RecapStationRow, RecapView, SavedGame, ScanRow, ScoreRow, StartView, State, StationAssignment, StationKind, StationView, WeaponView,
+  Api, ConfigView, FeedEntry, GameConfig, LiveRow, Loadout, LoadoutPolicy, LogView, MatchHistoryRow, ModeInfo, PerkView, Phase, Player, ReadinessRow, ReadinessSnapshot,
+  RecapStationRow, RecapView, SavedGame, ScanRow, ScoreRow, StartView, State, StationAssignment, StationKind, StationSourceId, StationView, WeaponView,
 } from '../api/types';
-import { STATION_KINDS } from '../api/types';
+import { STATION_KINDS, STATION_SOURCE_IDS } from '../api/types';
+import { withPolicy } from '../screens/gameSummary';
 import { GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
 import { PRESETS, apply as applyPolicy, conflict, defaultPolicy, pool as poolOf, presetOf, reject } from './policy';
 
 const now = () => Date.now();
 // loadout.md §8 — the shipped example so the SAVED GAMES shelf is never empty on first use
 const BUILTIN_SNIPER = (): SavedGame => {
-  const ffa = clone(MODES.find(m => m.mode === 'ffa')!.defaults);
+  const ffa: ConfigView = clone(MODES.find(m => m.mode === 'ffa')!.defaults);
   ffa.health = { ...ffa.health, max_armor: 0 };
   ffa.loadout_policy = { preset: 'custom', hud_select: false,
     primary: { choice: 'fixed', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'sniper_rifle' },
@@ -36,12 +37,15 @@ const SETUP_WARNING: Record<string, string> = {
   ir_station: 'SETUP: PLACE AND POWER THE IR STATION, AND CHECK IT READS NEUTRAL BEFORE THE WHISTLE — ⚠ UNPROVEN: we have never had one on the bench, so nothing confirms it speaks the protocol our nodes read. Run the grenade if you want a hill we have measured',
   phone: 'SETUP: THE CONTROL POINT IS A PHONE — open the app in the UTILITY role, kind CONTROL, confirm it shows MC-ARMED for THIS game (arming resets the point; do NOT power-cycle it), leave the screen awake on the point, and check its battery. Players must be advertising (the HUD does this) or the point counts nobody',
 };
-// mirrors STATION_SOURCES in mcp/brx_mcp/mc/types.py, including the wording of the refusal
-const MOCK_STATION_SOURCES = [
-  { value: 'grenade', desc: 'a BRX Smart Grenade in hill mode (protocol-15 beacons; bench-proven 2026-09-10)' },
-  { value: 'ir_station', desc: 'a BRX station / Utility Box emitting $CAPTURE objective events (unproven on our bench)' },
-  { value: 'phone', desc: 'a spare phone in the utility role as a BLE control point, capture by presence (spec/utility.md §5d)' },
-];
+// The refusal wording, mirroring `STATION_SOURCES` in mcp/brx_mcp/mc/types.py. The IDS are not mirrored:
+// they come from the generated `STATION_SOURCE_IDS`, and the map is keyed by `StationSourceId`, so a source
+// added on the server fails this file's compile instead of quietly going missing from the demo's refusal.
+const MOCK_SOURCE_DESC: Record<StationSourceId, string> = {
+  grenade: 'a BRX Smart Grenade in hill mode (protocol-15 beacons; bench-proven 2026-09-10)',
+  ir_station: 'a BRX station / Utility Box emitting $CAPTURE objective events (unproven on our bench)',
+  phone: 'a spare phone in the utility role as a BLE control point, capture by presence (spec/utility.md §5d)',
+};
+const MOCK_STATION_SOURCES = STATION_SOURCE_IDS.map(value => ({ value, desc: MOCK_SOURCE_DESC[value] }));
 const uid = (p: string) => `${p}_${Math.random().toString(36).slice(2, 8)}`;
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 
@@ -50,7 +54,7 @@ type Sub = { snap: (s: State) => void; feed: (e: FeedEntry) => void };
 export class MockBackend implements Api {
   private subs = new Set<Sub>();
   private phase: Phase = 'muster';
-  private config: GameConfig = clone(MODES[0].defaults);
+  private config: ConfigView = clone(MODES[0].defaults);
   private players: Player[] = [];
   private trying: Record<string, string> = {};
   private browsing: Record<string, number> = {};
@@ -196,13 +200,20 @@ export class MockBackend implements Api {
         ...ver,
         log: this.logFor(`node_${tail}`),            // A25: the same view, on the per-player board
         ambers,
-        gun_id: sticker, sticker, tail, player_id: pl?.player_id, player_num: pl?.player_num,
+        // `player_id`/`player_num` are REQUIRED on the row: `state.py readiness()` walks the ROSTER, so a
+        // real board never carries a gun nobody is holding (an unclaimed gun goes in `unclaimed`). This demo
+        // boards every gun so the muster screen is not empty before players are typed in, so it says
+        // "nobody" the way the wire does -- "" and the reserved wire id 0 (types.py MAX_PLAYERS comment).
+        gun_id: sticker, sticker, tail, player_id: pl?.player_id ?? '', player_num: pl?.player_num ?? 0,
         present: !red, identity: 'ok', node: red ? 'none' : 'linked',
         headset: red ? 'absent' : proof ? 'proven' : 'unknown',
         headset_proof: proof,
-        battery_pct: batt ?? undefined, battery_age_ms: batt == null ? undefined : 4000,
+        // null, not undefined: these are the NODE's last word and the server sends an explicit null for
+        // one it has not heard (`readiness()`'s closing `row.update`).
+        battery_pct: batt ?? null, battery_age_ms: batt == null ? null : 4000,
+        last_seen_age_ms: red ? null : link * 1000,
+        gun_linked: red ? null : true,
         fw: 'v4.32', phone_batt: 80, ssid_ok: true, mc_reachable: !red, synced: !red, screen_on: true, foreground: true,
-        last_seen_ms: link * 1000,
         status: red ? 'red' : a1 || a2 || ambers.length ? 'amber' : 'green', blockers,
       };
     });
@@ -214,7 +225,7 @@ export class MockBackend implements Api {
     const readiness = this.readiness();
     const nodes = readiness.board.filter(b => b.node === 'linked' && !this.evicted.has(`node_${b.tail}`)).map(b => ({
       node_id: `node_${b.tail}`, node_type: 'phone', gun_name: `${b.sticker}-${b.tail}`, gun_tail: b.tail,
-      player_id: b.player_id, arm_state: this.armStateFor(b.player_id), last_seen_ms: b.last_seen_ms ?? 0,
+      player_id: b.player_id, arm_state: this.armStateFor(b.player_id), last_seen_ms: b.last_seen_age_ms ?? 0,
       synced: true, battery: b.battery_pct, fw: b.fw,
       app_ver: b.app_ver, platform: b.platform,      // A29
       log: this.logFor(`node_${b.tail}`),            // A25
@@ -455,7 +466,7 @@ export class MockBackend implements Api {
     const clash = this.presets.find(x => x.name.toLowerCase() === name.toLowerCase());
     if (clash?.builtin) throw new Error(`"${clash.name}" is a built-in game — pick another name`);
     if (clash && !p.replace) throw new Error(`A saved game called "${clash.name}" already exists`);
-    const { config_id: _cid, ...cfg } = clone(p.config ?? this.config); void _cid;
+    const { config_id: _cid, ...cfg } = withPolicy(clone(p.config ?? this.config)); void _cid;
     const t = now();
     const sg: SavedGame = { preset_id: clash?.preset_id ?? uid('preset'), name, desc: p.desc ?? clash?.desc ?? '', builtin: false, created_t: clash?.created_t ?? t, updated_t: t, config: { ...cfg, config_id: '' } };
     this.presets = [...this.presets.filter(x => x !== clash), sg];
@@ -477,7 +488,7 @@ export class MockBackend implements Api {
       sg.name = nm;
     }
     if (p.desc != null) sg.desc = p.desc;
-    if (p.config) { const { config_id: _c, ...cfg } = clone(p.config); void _c; sg.config = { ...cfg, config_id: '' } as GameConfig; }
+    if (p.config) { const { config_id: _c, ...cfg } = withPolicy(clone(p.config)); void _c; sg.config = { ...cfg, config_id: '' }; }
     sg.updated_t = now();
     return clone(sg);
   }

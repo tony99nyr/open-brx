@@ -32,7 +32,7 @@ const verCmp = (a: string, b: string) => {
  *  `field` is the server's own count (`state.py versions()`, `State.versions.field`) when the snapshot
  *  carries it; otherwise the console counts the nodes it can see. Both produce the same sentence, and
  *  neither decides anything: every version VERDICT arrives already worded, in a readiness row. */
-export function appVerSummary(nodes: { app_ver?: string }[], field?: Record<string, number>): string {
+export function appVerSummary(nodes: { app_ver?: string | null }[], field?: Record<string, number>): string {
   const counts = new Map<string, number>();
   if (field && Object.keys(field).length) {
     for (const [v, n] of Object.entries(field)) counts.set(verShort(v) || 'UNKNOWN', (counts.get(verShort(v) || 'UNKNOWN') ?? 0) + n);

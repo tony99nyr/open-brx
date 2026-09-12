@@ -1,5 +1,5 @@
 // Demo data from the design export (guns renamed GUN-A…GUN-H — real sticker ids never enter the repo).
-import type { GameConfig, ModeInfo, ModeParamSpec, PerkView, Team, WeaponView } from '../api/types';
+import type { ConfigView, GameConfig, ModeInfo, ModeParamSpec, PerkView, Team, WeaponView } from '../api/types';
 import { defaultPolicy } from './policy';
 
 export const TEAMS: Team[] = [
@@ -641,14 +641,14 @@ export const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_');
 
 // mirrors mcp/brx_mcp/mc/perks.json (loadout.md §1.2) — v1 is passive-only; slot-frame perks stay hidden until benched.
 export const PERKS: PerkView[] = [
-  { perk_id: 'body_armor', name: 'Body Armor', desc: 'Start every life with 50 extra armor. Armor soaks hits before health does.', tags: ['passive'], mechanism: 'passive', effects: { max_armor_add: 50 }, verified: true },
-  { perk_id: 'extended_mags', name: 'Extended Mags', desc: 'Double the magazine and the reserve on your primary. Fewer reloads, longer fights.', tags: ['passive'], mechanism: 'passive', effects: { ammo_mult: 2 }, verified: true },
-  { perk_id: 'quick_hands', name: 'Quick Hands', desc: 'Reload your primary in half the time.', tags: ['passive'], mechanism: 'passive', effects: { reload_mult: 0.5 }, verified: false },
-  { perk_id: 'easy_reload', name: 'Easy Reload', desc: 'The orange alt-fire button reloads — no lever pull. For players who struggle with the mechanic.', tags: ['passive'], mechanism: 'passive', effects: { alt_reload: true }, verified: true },
-  { perk_id: 'quick_switch', name: 'Quick Switch', desc: 'Draw your second weapon in half the time: the gun\'s swap delay drops from 0.85 s to 0.43 s.', tags: ['passive'], mechanism: 'passive', effects: { switch_mult: 0.5 }, verified: true },
+  { perk_id: 'body_armor', name: 'Body Armor', desc: 'Start every life with 50 extra armor. Armor soaks hits before health does.', tags: ['passive'], mechanism: 'passive', effects: { max_armor_add: 50 }, verified: true, hidden: false },
+  { perk_id: 'extended_mags', name: 'Extended Mags', desc: 'Double the magazine and the reserve on your primary. Fewer reloads, longer fights.', tags: ['passive'], mechanism: 'passive', effects: { ammo_mult: 2 }, verified: true, hidden: false },
+  { perk_id: 'quick_hands', name: 'Quick Hands', desc: 'Reload your primary in half the time.', tags: ['passive'], mechanism: 'passive', effects: { reload_mult: 0.5 }, verified: false, hidden: false },
+  { perk_id: 'easy_reload', name: 'Easy Reload', desc: 'The orange alt-fire button reloads — no lever pull. For players who struggle with the mechanic.', tags: ['passive'], mechanism: 'passive', effects: { alt_reload: true }, verified: true, hidden: false },
+  { perk_id: 'quick_switch', name: 'Quick Switch', desc: 'Draw your second weapon in half the time: the gun\'s swap delay drops from 0.85 s to 0.43 s.', tags: ['passive'], mechanism: 'passive', effects: { switch_mult: 0.5 }, verified: true, hidden: false },
 ];
 
-const base = (mode: string, over: Partial<GameConfig> = {}): GameConfig => ({
+const base = (mode: string, over: Partial<GameConfig> = {}): ConfigView => ({
   config_id: `cfg_${mode}`,
   mode,
   environment: 'outdoor',

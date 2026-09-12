@@ -84,7 +84,7 @@ describe("A25 · what each phone says it holds", () => {
     ['held', /HOLDING/],
     ['complete', /DELIVERED/],
   ])('a %s log reads as something an operator can act on', async (st, want) => {
-    const { d, s } = await state({ state: st as LogView['state'] });
+    const { d, s } = await state({ state: st as LogView['state'], last_t: 1_000 });
     const m = await mountScreen(<Armory />, { ...d, state: s, view: 'muster' });
     // scoped to the node card: the readiness gun cards carry their OWN log row, from the readiness
     // board, and they come first in the DOM
@@ -96,7 +96,7 @@ describe("A25 · what each phone says it holds", () => {
   });
 
   it("shows the node's own reason verbatim", async () => {
-    const { d, s } = await state({ state: 'held', reason: '2 facts pending' });
+    const { d, s } = await state({ state: 'held', reason: '2 facts pending', last_t: 1_000 });
     const m = await mountScreen(<Armory />, { ...d, state: s, view: 'muster' });
     expect(m.find('[data-node-card] [data-log-state]')[0].textContent).toContain('2 facts pending');
     m.unmount();
@@ -106,7 +106,7 @@ describe("A25 · what each phone says it holds", () => {
     const d = await demo();
     const state: State = {
       ...d.state,
-      readiness: { ...d.state.readiness, board: d.state.readiness.board.map(b => ({ ...b, log: { state: 'held' as const, reason: '2 facts pending' } })) },
+      readiness: { ...d.state.readiness, board: d.state.readiness.board.map(b => ({ ...b, log: { state: 'held' as const, reason: '2 facts pending', last_t: 1_000 } })) },
     };
     const m = await mountScreen(<Armory />, { ...d, state, view: 'muster' });
     // every LINKED gun card carries one; the node cards keep their own, unchanged
@@ -135,7 +135,7 @@ describe('A25 · the LOGS button', () => {
     const d = await demo();
     const asked: string[] = [];
     const api = fixtureApi({ pullLog: async (id: string) => { asked.push(id); return result; } });
-    const store = makeStore({ ...d, state: withLogs(d.state, { state: 'none' }), view: 'muster' }, { api });
+    const store = makeStore({ ...d, state: withLogs(d.state, { state: 'none', last_t: 1_000 }), view: 'muster' }, { api });
     const m = await mount(<StoreCtx.Provider value={store}><><CommandBar /><Armory /></></StoreCtx.Provider>);
     return Object.assign(m, { asked });
   }
@@ -151,7 +151,7 @@ describe('A25 · the LOGS button', () => {
   });
 
   it('says so on screen when the ask went out', async () => {
-    const m = await armoryWith({ ok: true, node_id: 'node_3D4F', log: { state: 'none' } });
+    const m = await armoryWith({ ok: true, node_id: 'node_3D4F', log: { state: 'none', last_t: 1_000 } });
     await m.click('LOGS');
     expect(m.text()).toMatch(/ASKED/i);
     m.unmount();

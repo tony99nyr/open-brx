@@ -12,7 +12,7 @@ import random
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, get_args
 
 from . import presentation as _pres
 from .. import poolgauge as _pg
@@ -26,9 +26,10 @@ from ..modes.registry import default_params as _default_params, params_schema_js
 from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS,
                     OBJECTIVE_MODES, OFFLINE_AFTER_MS,
                     STALE_AFTER_MS, STATION_KINDS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, GameConfig,
-                    Player, ReadinessRow, ReadinessSnapshot, ScanRow, Team, app_tier, compatible, parse_app_ver)
+                    Phase, Player, ReadinessRow, ReadinessSnapshot, ScanRow, Team, app_tier, compatible,
+                    parse_app_ver)
 
-PHASES = ("muster", "build", "kit", "lobby", "armed", "live", "recap")
+PHASES = get_args(Phase)      # the vocabulary itself lives on `types.Phase`, so the console's is generated from it
 
 # A25: the session option table. `log_sync` gates the AUTOMATIC `pull_log` asks (recap / offer /
 # reconnect); the operator's LOGS button (`reason: "manual"`) is never gated -- the whole point of

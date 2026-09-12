@@ -1,99 +1,38 @@
-// Mirrors mcp/brx_mcp/mc/API.md + types.py (contracts A5). Keep field names identical.
+// The server⇒UI contract. The WIRE shapes are NOT written here: they are GENERATED from the one
+// Python source (`mcp/brx_mcp/mc/types.py` + `envelope.py`) into `./contract.gen.ts` by
+// `python3 mcp/tools/gen_contract.py`, and this file re-exports them so every screen keeps importing
+// from one place. A field added on the Python TypedDict reaches the console by running that script;
+// forgetting to run it fails `mcp/tests/test_contract_generated.py`.
+//
+// What stays HAND-WRITTEN below is everything the server builds as an untyped dict and the console
+// therefore has no Python shape for: the VIEW types (`State`, `NodeView`, `LiveView`, `RecapView`,
+// `StationView`, `WeaponView`, ...), the `Api` surface itself, and the response bodies. Never
+// re-declare a generated shape here -- `mcp/tests/test_ui_contract.py` fails if this file does.
 
-export type Phase = 'muster' | 'build' | 'kit' | 'lobby' | 'armed' | 'live' | 'recap';
-export type ArmState = 'idle' | 'connected' | 'kitted' | 'lobby' | 'armed' | 'live';
+// ---- generated wire shapes (contract.gen.ts) ----
+export type {
+  ArmoryRecord, BleId, Envelope, Event, FrameBundle, GameConfig, Health, Loadout, LoadoutOverrides,
+  LoadoutPolicy, LoadoutPool, LogView, PerkEffects, PerkView, Player, Preflight, ReadinessRow,
+  ReadinessSnapshot, Respawn, RosterEntry, ScanRow, ScoreRow, Scoring, Siphon, SlotRule, StationRef,
+  Stun, Team, Weapon, WeaponSel,
+} from './contract.gen';
+export type {
+  ArmState, ControlCmd, ItemKind, LoadoutPreset, McKind, NodeKind, PersistedEventType, Phase,
+  SlotChoice, StationKind, StationSourceId,
+} from './contract.gen';
+// values (verbatimModuleSyntax: a value re-export may not ride in a `export type` statement)
+export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, STATION_KINDS, STATION_SOURCE_IDS } from './contract.gen';
 
-export interface WeaponSel { weapon_id: string }
-/** contracts A9/A14 / docs/spec/loadout.md §2 — weapons[] is canonical: [primary] or [primary, secondary]; `perk` is its OWN slot and
- *  rides beside a secondary weapon (AR + pistol + Quick Switch). The one exception: a perk whose `effects.alt_reload` is true (Easy
- *  Reload) takes the ALT button, so the server refuses it beside a second weapon — the UI warns and drops the other one. */
-export interface Loadout { weapons: WeaponSel[]; perk?: string | null; overrides?: { max_hp?: number; max_armor?: number } }
+import type { ArmState, GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, Player, Preflight,
+  PerkView, ReadinessSnapshot, ScanRow, ScoreRow, StationKind, Team } from './contract.gen';
 
-export type SlotChoice = 'player' | 'host' | 'fixed' | 'off';
-export type ItemKind = 'weapon' | 'perk' | 'sidearm';   // 'sidearm' (A12): a policy kind — only the pistols; never a request kind (a pistol is a 'weapon' on the wire). A14: 'perk' only ever in the perk rule
-export interface SlotRule {
-  choice: SlotChoice; kinds: ItemKind[];
-  exclude_tags: string[]; exclude_ids: string[]; only_ids: string[];
-  fixed_id?: string | null;
-}
-export type LoadoutPreset = 'open' | 'no_heavies' | 'snipers' | 'custom';
-/** A14: `perk` is the third rule (kinds always ['perk']; choice may be 'off'). No legacy shape is supported (Tony 2026-09-04). */
-export interface LoadoutPolicy { preset: LoadoutPreset; hud_select: boolean; primary: SlotRule; secondary: SlotRule; perk: SlotRule }
-/** allowed ids per slot, catalog order — computed server-side (loadout.md §3.2). A14: `perks` is the perk slot's list. */
-export interface LoadoutPool { primary: string[]; secondary_weapons: string[]; perks: string[] }
-
-export interface Team { team_id: string; name: string; color: string; tid: number }
-
-export interface Player {
-  player_id: string;
-  player_num: number; // 1..63 on the wire; 0 reserved
-  display: string;
-  team_id: string | null;
-  node_id: string | null;
-  gun_id: string | null;
-  loadout: Loadout;
-  voice: string;
-  ready: boolean;
-  /** A15: {role: sound id} picks for the $PSET voice fields + the kill line -- WHICH death scream /
-   *  pain line / respawn cry of the family the gun plays. Absent = the family defaults. */
-  voice_slots?: Record<string, string>;
-}
-
-export interface Respawn { type: 'auto' | 'scanner' | 'none'; delay_s: number }
-export interface Scoring { frag_limit: number | null; win_by: string }
-export interface Health { max_hp: number; max_armor: number }
-
-export interface GameConfig {
-  config_id: string;
-  mode: string;
-  environment: 'indoor' | 'outdoor';
-  night: boolean;
-  time_limit_s: number | null;
-  respawn: Respawn;
-  scoring: Scoring;
-  health: Health;
-  teams: Team[];
-  led?: Record<string, unknown>;
-  /** A6.5: disjoint player-number ranges for concurrent games sharing one venue. */
-  player_num_base?: number;
-  /** S14 heal-on-kill. Both are ADDED to the killer's own pool and clamped by the gun, so an
-   *  overheal is silently dropped -- show what was gained, not what was granted. No shield: that
-   *  pool is IR-only (P16). Absent or {0,0} = off. */
-  siphon?: { hp: number; armor: number };
-  /** F70: what is on the field emitting this game's objective — 'grenade' (a BRX Smart Grenade in hill
-   *  mode) or 'ir_station'. Present only for the modes that need one (koth/domination/ctf/cs/bomb), which
-   *  the server REFUSES to push without it. Server vocabulary: `mc/types.py` STATION_SOURCES. */
-  stations?: { id: number; kind: StationKind }[];   // A13.1 (F104): the utility items MC armed this game — derived on the wire, never edited
-  station_source?: string;
-  /** A31/A4.8 — the VENUE's radio coverage, and an ASSERTION the operator makes about the site: 'full'
-   *  means every phone is on the LAN for the whole match. It is the only thing that lets `time_limit_s`
-   *  be null, and it suppresses `State.notices.mc_verify`. Absent = partial, which is the default,
-   *  because a venue nobody has vouched for is one MC cannot promise to hear. */
-  coverage?: 'full' | 'partial';
-  loadout_policy: LoadoutPolicy;
-  /** A11: sounds + lights per event (preset or custom). Optional — an older server never sends it. */
-  presentation?: Record<string, unknown>;
-  /** A17: give each weapon FAMILY its own $SIR cell, so a shotgun and a suppressor stop sounding
-   *  identical to the player they hit. DEFAULT OFF — an unmatched cell is silently ignored (the F11
-   *  shape), so it stays off until the bench clears FOLLOWUPS F38/F39. The material layer (metal on
-   *  armour, body on health) and the rolled variety are always on and need no flag. */
-  /** A17: per-weapon $SIR sounds. DEFAULT OFF — a non-empty $SIR sound REPLACES the $PSET pool
-   *  sound rather than layering with it (bench 2026-09-07), so enabling this silences the
-   *  ear-confirmed material layer (armour metal / shield fizz / silent health) on every hit. */
-  /** F15/A20: the host-driven stun (EMP). Present = the `<8,0>` $SIR cell ships as a status row and a proto-8 hit disarms
-   *  the victim's node for `duration_s` (default 10, 1..60). Absent = the stock charge-rifle damage row. */
-  stun?: { duration_s?: number };
-  hit_audio_class?: boolean;
-  hit_audio_rekey?: boolean;
-  /** A18 (E1): the MODE's own rules, exactly the keys its engine declares (`ModeInfo.params` is the schema).
-   *  Present and complete for a mode that declares any (koth / lms / extraction), absent otherwise. The server
-   *  refuses an unknown key or an out-of-range value at PUT — render controls from `ModeInfo.params`, never
-   *  from a list of knobs living here. Rides the wire to the phone as-is. */
-  mode_params?: Record<string, number | string | boolean>;
-  /** A19 (S10): the VIP's player_id. Must be on the roster (validate() names it otherwise); MC pushes that
-   *  player the white `vip` headset role once the match is live. Never part of a saved game. */
-  vip_player_id?: string | null;
-}
+/** A config as the console READS one. `GameConfig.loadout_policy` is `NotRequired` on the Python side
+ *  because a PUT body legitimately omits it -- but every config the server SERVES has been through
+ *  `state.py`'s policy fill (`_apply_config` / `modes()`), so a config that arrived from MC always has
+ *  one. Those are two types, not one type with a hole: this is what MC hands us, `Partial<GameConfig>`
+ *  is what we hand back, and `withPolicy()` is the runtime guard at the one place a config from
+ *  anywhere else (a session persisted before A10, an older MC) enters the store. */
+export type ConfigView = GameConfig & { loadout_policy: LoadoutPolicy };
 
 /** A18: one row of a mode's parameter schema (`GET /api/modes` → `ModeInfo.params`). Render `int`/`float` as a
  *  number field bounded by `min`/`max`, `bool` as a switch, `str` with `choices` as a segmented control. */
@@ -125,106 +64,23 @@ export interface PresentationView {
   presets: string[];
 }
 
-export interface ScanRow {
-  tail: string; name: string; basename: string; gun_id: string | null; rssi: number;
-  identity: 'ok' | 'unconfirmed' | 'reverted' | 'unknown'; t: number;
-}
-
-export interface ArmoryRecord {
-  gun_id: string; sticker: string; headset_pin: string;
-  ble: { address?: string; uuid?: string; tail: string };
-  gen: 'gen2_3' | 'gen1'; fw: string | null; labeled: boolean; notes?: string;
-}
-
-export interface Preflight {
-  ssid_ok?: boolean; mc_reachable?: boolean; auto_join_ok?: boolean; cellular_off?: boolean;
-  dnd_on?: boolean; phone_batt?: number; screen_on?: boolean; foreground?: boolean;
-  gun_linked?: boolean; headset_ok?: boolean;
-}
-
-export interface ReadinessRow {
-  gun_id?: string; sticker: string; tail: string; player_id?: string; player_num?: number;
-  present: boolean;
-  identity: 'ok' | 'unconfirmed' | 'reverted' | 'unknown' | 'manual';
-  node: 'none' | 'linked';
-  headset: 'proven' | 'unknown' | 'absent';
-  /** A32: HOW the headset was proven — `echo` = the gun answered the config push, `link` = a BLE link
-   *  the phone has held for 10 s (a headless gun drops in ~6 s), `null`/absent = not proven. While a
-   *  link is still counting up the server sends the amber `HEADSET · CONFIRMING (LINK <n> s)`; the UI
-   *  renders that through the normal amber path and does NO timing of its own. */
-  headset_proof?: 'echo' | 'link' | null;
-  battery_pct?: number; battery_age_ms?: number; fw?: string; phone_batt?: number;
-  last_seen_age_ms?: number | null;
-  gun_linked?: boolean | null;
-  ssid_ok?: boolean; mc_reachable?: boolean; synced?: boolean; screen_on?: boolean; foreground?: boolean;
-  last_seen_ms?: number;
-  /** `waiting` = no phone yet. Blocks the start like `red`, but it is NOT a fault — render it
-   *  as inactive, never as an error (field 2026-09-01). */
-  status: 'green' | 'amber' | 'red' | 'waiting';
-  blockers: string[];   // things that actually gate the start
-  ambers?: string[];    // advisories — never gate anything
-  /** A29: the phone's build + platform on the readiness row. Optional (older server). The version
-   *  RULES live in `blockers`/`ambers` as the server worded them — the console never re-derives them. */
-  app_ver?: string;
-  platform?: string;
-  /** A25: the same log view the node card carries, on the per-player board. */
-  log?: LogView;
-}
-
-export interface ReadinessSnapshot {
-  t: number; roster_size: number; greens: number; board: ReadinessRow[]; unclaimed: ScanRow[]; go: boolean;
-}
-
-export interface ScoreRow {
-  player_id: string; display: string; team_id: string | null;
-  kills: number; deaths: number; assists: number; shots: number; hits: number;
-  accuracy: number | null; kd: number; streak: number; medals: string[];
-  // --- A24 (F116/F119), additive 2026-09-11. EVERY ONE IS OPTIONAL: an older MC omits them, and a
-  // session persisted before the change has rows without them. Never read one without a fallback. ---
-  /** the shots ACCURACY is quoted against (`shots` is the same number today; kept separate because
-   *  the wire does, and because a row that has not sampled its shot counter yet reports 0 here). */
-  shots_total?: number;
-  /** F116: the LONGEST streak of the match. SHOW THIS ONE — `streak` is the CURRENT streak and is 0
-   *  for whoever died last, which is how a 9-kill row read "streak 0". Fall back to `streak`. */
-  best_streak?: number;
-  /** biggest multi-kill (2 double / 3 triple / 4+ killtacular; 0 = none) */
-  multi_best?: number;
-  /** this player drew first blood */
-  first_blood?: boolean;
-  /** F119: `accuracy` has NOT settled (hits arrive per event, `shots` only on the ~2 s heartbeat, so
-   *  a young row can spike past 100 %). Render the number as settling, never as fact. */
-  acc_provisional?: boolean;
-}
-
-/** A25 — the operator's view of ONE node's log sync, fed only by what the PHONE reports (`status.log`,
- *  `log_offer`, the `log_data` stream). MC asking does not make it `offered`: the phone answers when it
- *  is safe to, and the board has to show the phone's truth rather than MC's intention.
- *
- *  `held` carries a `reason` the node worded itself (`"held(2 facts pending)"` → `"2 facts pending"`).
- *  `complete` sticks until something new happens — the phone idles straight back to `none` when it
- *  finishes, and taking that literally would erase the one state the operator is waiting for. */
-export interface LogView {
-  state: 'none' | 'offered' | 'pulling' | 'held' | 'complete';
-  reason?: string;
-  lines?: number;
-  bytes?: number;
-  last_t?: number;
-}
-
 export interface NodeView {
   node_id: string; node_type: string; gun_name?: string; gun_tail?: string; player_id?: string;
   arm_state: ArmState; last_seen_ms: number; synced: boolean; preflight?: Preflight;
-  battery?: number; fw?: string; hp?: number; armor?: number; ammo?: number; alive?: boolean;
+  /** the node's own last word, copied through verbatim by `state.py _on_status` -- an explicit `null`
+   *  is what a phone that cannot read the value sends, and is NOT the same as the key being absent. */
+  battery?: number | null; fw?: string | null; hp?: number | null; armor?: number | null;
+  ammo?: number | null; alive?: boolean | null;
   pending?: number | null;
   /** A29 (2026-09-12): the phone's REAL build — `"<package version>+<git sha>[-dirty]"` baked in at
    *  build time — and `android`/`ios`/`web`. Optional: the app sent a hard-coded `hud-0.2` until
    *  A29, and an MC that predates the change never forwards either. Render what arrived, and say
    *  "UNKNOWN" rather than guess. The RED/AMBER semver rules are the SERVER's (`state.py readiness()`
    *  holds `APP_MAJOR`); the console renders the strings it is sent and derives no version rule. */
-  app_ver?: string;
-  platform?: string;
+  app_ver?: string | null;
+  platform?: string | null;
   /** A25: the log sync as this phone reports it. Optional — absent before the phone says anything. */
-  log?: LogView;
+  log?: LogView | null;
 }
 
 export type LiveRow = ScoreRow & {
@@ -304,8 +160,6 @@ export interface StartView {
 /** A13.5 (F104): a utility phone as MC sees it — the ITEMS panel's row. `assigned` is the operator's call,
  *  `armed` what the phone was last told, `report` the phone's own heartbeat (for a control point that carries
  *  the self-authoritative recap: owner, progress, hold_ms per team). */
-export type StationKind = 'respawn' | 'powerup' | 'extraction' | 'bomb' | 'control';
-export const STATION_KINDS: StationKind[] = ['respawn', 'powerup', 'extraction', 'bomb', 'control'];
 export interface StationAssignment { kind: StationKind; team: number; id: number; threshold: number; at?: number }
 export interface StationView {
   node_id: string;
@@ -331,7 +185,7 @@ export interface State {
   stations?: StationView[];      // A13.5: absent on a server older than 2026-09-11
   game_no?: number;
   readiness: ReadinessSnapshot;
-  config: GameConfig;
+  config: ConfigView;
   config_errors: string[];
   config_warnings?: string[];
   players: Player[];
@@ -366,7 +220,7 @@ export interface State {
 
 export interface ModeInfo {
   mode: string; name: string; abbr: string; desc: string; brief: string;
-  teams_text: string; win_text: string; respawn_text: string; defaults: GameConfig;
+  teams_text: string; win_text: string; respawn_text: string; defaults: ConfigView;
   /** A18: what this mode lets the operator tune (`defaults.mode_params` carries the values). Optional — an
    *  older server never sends it; `[]` for a mode that takes none. */
   params?: ModeParamSpec[];
@@ -396,18 +250,11 @@ export interface WeaponView {
   caution?: string;    // human copy for a weapon with a known live problem (energy_launcher: zero damage in the shipped $SIR row)
 }
 
-export interface PerkView {
-  perk_id: string; name: string; desc: string; tags: string[];
-  mechanism: 'passive' | 'slot_frame';
-  effects: { max_armor_add?: number; ammo_mult?: number; reload_mult?: number; alt_reload?: boolean; switch_mult?: number };
-  verified: boolean; hidden?: boolean;
-}
-
 /** loadout.md §8 — a whole GameConfig saved under a name on the MC host ("mode creation"). */
 export interface SavedGame {
   preset_id: string; name: string; desc: string; builtin: boolean;
   created_t: number; updated_t: number;
-  config: GameConfig;
+  config: ConfigView;
   weapon_tuning?: Record<string, unknown>;   // RESERVED — future weapon-tuning spec
 }
 
@@ -431,13 +278,13 @@ export interface Api {
   getPresets(): Promise<SavedGame[]>;
   savePreset(p: { name: string; desc?: string; config?: GameConfig; replace?: boolean }): Promise<SavedGame>;
   deletePreset(id: string): Promise<void>;
-  applyPreset(id: string): Promise<{ ok: boolean; errors: string[]; config: GameConfig }>;
+  applyPreset(id: string): Promise<{ ok: boolean; errors: string[]; config: ConfigView }>;
   updatePreset(id: string, p: { name?: string; desc?: string; config?: GameConfig }): Promise<SavedGame>;
   /** preview the pool a DRAFT policy would allow (designer) — same rule engine, nothing applied */
   previewPool(policy: Partial<LoadoutPolicy>, mode?: string): Promise<{ policy: LoadoutPolicy; pool: LoadoutPool }>;
   /** A11: tonight's presentation profile, resolved, for the read-only ADVANCED view. Rejects with status 404 on an older server. */
   getPresentation(): Promise<PresentationView>;
-  putConfig(partial: Partial<GameConfig>): Promise<{ ok: boolean; errors: string[]; config: GameConfig }>;
+  putConfig(partial: Partial<GameConfig>): Promise<{ ok: boolean; errors: string[]; config: ConfigView }>;
   addPlayer(p: { display: string; team_id?: string; gun_id?: string; voice?: string; voice_slots?: Record<string, string> }): Promise<Player>;
   patchPlayer(id: string, patch: Partial<Player>): Promise<Player>;
   deletePlayer(id: string): Promise<void>;

@@ -1,56 +1,26 @@
 // Node↔MC envelope helpers — mirrors mcp/brx_mcp/mc/envelope.py + types.py (contracts.md §5/§9, A6).
 // Dependency-free ESM; runs in the Capacitor WebView and in Node ≥ 22.
+//
+// The constants and the four wire tables (PERSISTED_EVENT_TYPES/NODE_KINDS/MC_KINDS/CONTROL_CMDS
+// kind vocabularies, REQUIRED/EVENT_REQUIRED/ACCEPT_MIN required-field tables) are GENERATED from
+// the Python source of truth (mcp/brx_mcp/mc/types.py + envelope.py) by
+// `python3 mcp/tools/gen_contract.py` — see contract.gen.js. Every name this file exported before
+// that split is re-exported here unchanged, so logsync.js/clock.js/utility.js/transport.js/
+// engine.js and the tests keep importing from envelope.js with no change on their end.
+export {
+  PROTOCOL_V, STATUS_HEARTBEAT_MS, STALE_AFTER_MS, SYNC_FRESH_MS, FEEDBACK_MAX_AGE_MS,
+  LATE_ARM_GRACE_MS, DEATH_LATCH_MS, RESYNC_PROBE_S, MAX_PLAYERS, MAX_ENVELOPE_BYTES,
+  MAX_LOG_CHUNK_BYTES, CONFIG_TTL_MS,
+  PERSISTED_EVENT_TYPES, NODE_KINDS, MC_KINDS, CONTROL_CMDS,
+} from './contract.gen.js';
 
-export const PROTOCOL_V = 1;
-export const STATUS_HEARTBEAT_MS = 2000;
-export const STALE_AFTER_MS = 8000;
-export const SYNC_FRESH_MS = 10000;
-export const FEEDBACK_MAX_AGE_MS = 3000;
-export const LATE_ARM_GRACE_MS = 8000;
-export const DEATH_LATCH_MS = 2000;
-export const RESYNC_PROBE_S = 10;
-export const MAX_PLAYERS = 63;
-export const MAX_ENVELOPE_BYTES = 64 * 1024;
-export const MAX_LOG_CHUNK_BYTES = 48 * 1024;
-
-export const PERSISTED_EVENT_TYPES = new Set(['hit_taken', 'death', 'respawn', 'team_change']);
-export const NODE_KINDS = new Set(['hello', 'bind', 'event', 'event_batch', 'status', 'ack_config',
-  'time_req', 'log_offer', 'log_data', 'ready', 'loadout_request', 'loadout_browse']);   // A10: phone self-serve kitting
-export const MC_KINDS = new Set(['welcome', 'assign', 'tutorial', 'config', 'start', 'feedback',
-  'control', 'time_res', 'pull_log', 'ack', 'apply', 'score', 'loadout_ack',
-  'alert',            // A11.4
-  'result',           // A24: the match result, computed per recipient by MC. The node NEVER infers win/lose.
-  'station_config']); // A13.5 (F104): MC -> a utility phone. Unlisted here it was dropped as malformed before
-                      // utility.js's onMessage ever saw it -- the second half of "MC never arms a station".
-export const CONTROL_CMDS = new Set(['end', 'panic', 'abort_start', 'recall']);
+import {
+  PROTOCOL_V, MAX_ENVELOPE_BYTES, MAX_LOG_CHUNK_BYTES, MAX_PLAYERS,
+  PERSISTED_EVENT_TYPES, NODE_KINDS, MC_KINDS, CONTROL_CMDS,
+  REQUIRED, EVENT_REQUIRED, ACCEPT_MIN,
+} from './contract.gen.js';
 
 const T_MIN_MS = 1_500_000_000_000, T_MAX_MS = 4_000_000_000_000;
-
-const REQUIRED = {
-  hello: ['node_id', 'node_type', 'app_ver', 'seq_next'],   // optional: gun{name,tail,fw}, node_key (A8 takeover key)
-  bind: ['node_id', 'gun_name', 'gun_tail'],
-  event: [], event_batch: ['events'],
-  status: ['node_id', 'arm_state', 'synced'],
-  ack_config: ['config_id', 'ok'], time_req: ['t_node'],
-  log_offer: ['node_id', 'bytes', 'lines'], log_data: ['node_id', 'seq', 'chunk', 'last'],
-  ready: ['node_id', 'player_id', 'ready'],
-  // A10 (docs/spec/loadout.md §4): id / try / reason / loadout stay OPTIONAL — a required field that is missing DROPS the frame
-  loadout_request: ['node_id', 'player_id', 'slot', 'kind'], loadout_browse: ['node_id', 'player_id', 'open'],
-  welcome: ['session_id', 'server_t', 'seq_hi'], assign: ['player', 'team', 'roster'],
-  tutorial: ['frames'],   // weapon optional: an end-of-try-out push carries {end, frames} only (2026-08-26)
-  config: ['config', 'frames', 'roster'],
-  start: ['match_id', 'go_live_t', 'config_id', 'seq', 'countdown_s'],
-  feedback: ['player_id', 'kind', 't'], control: ['cmd'], time_res: ['t_node', 'server_t'],
-  pull_log: [], ack: ['seq_hi'], apply: ['frames'], score: ['player_id'],
-  loadout_ack: ['slot', 'ok'],
-  alert: ['kind', 'text', 'player_id', 't'],
-  // A24: everything below `match_id` stays OPTIONAL. A `result` that loses a field to an older/newer MC must
-  // still REACH the engine, which logs what it dropped — a required field that is missing drops the frame silently,
-  // and a silently dropped result is indistinguishable from "MC never reached us", which is the one thing A24 forbids.
-  result: ['match_id'],
-  station_config: ['kind', 'team', 'id'],   // threshold / game / valid_ids optional (utility.md §5c)
-};
-const EVENT_REQUIRED = { hit_taken: ['shooter_num', 'shooter_team', 'dmg'], death: ['shooter_num', 'shooter_team'], respawn: [], team_change: ['tid'] };
 
 export class EnvelopeError extends Error {
   constructor(reason, detail = '') { super(detail ? `${reason}: ${detail}` : reason); this.reason = reason; this.detail = detail; }
@@ -90,11 +60,16 @@ export function validateEvent(ev) {
   if (!isNum(ev.t)) throw new EnvelopeError('bad_event', 't is not a number');
   if (ev.type === 'hit_taken' || ev.type === 'death') {
     const n = ev.shooter_num;
-    if (!Number.isInteger(n) || n < 0 || n > 63) throw new EnvelopeError('bad_event', `shooter_num ${n} out of 0..63`);
+    if (!Number.isInteger(n) || n < 0 || n > MAX_PLAYERS) throw new EnvelopeError('bad_event', `shooter_num ${n} out of 0..${MAX_PLAYERS}`);
   }
   return ev;
 }
 
+/** direction = 'node' (node→MC, MC receiving) always checks the full REQUIRED[kind] — MC is the
+ *  strict side. direction = 'mc' (MC→node, a node receiving) checks ACCEPT_MIN[kind] ?? REQUIRED[kind]:
+ *  for the handful of kinds ACCEPT_MIN lists (currently just `result`, A24) the node accepts a body
+ *  missing everything but those minimal fields, so a result short a field still reaches the engine
+ *  instead of being dropped silently as `missing_field`. Mirrors envelope.py's validate() exactly. */
 export function validate(env, direction = 'node') {
   if (!isObj(env)) throw new EnvelopeError('not_object');
   if (env.v !== PROTOCOL_V) throw new EnvelopeError('version', `v=${env.v}, expected ${PROTOCOL_V}`);
@@ -103,7 +78,8 @@ export function validate(env, direction = 'node') {
   if (typeof env.id !== 'string' || !env.id) throw new EnvelopeError('missing_field', 'id');
   if (!isNum(env.t) || env.t < T_MIN_MS || env.t > T_MAX_MS) throw new EnvelopeError('bad_t', String(env.t));
   if (!isObj(env.body)) throw new EnvelopeError('missing_field', 'body');
-  for (const k of REQUIRED[env.kind]) if (!(k in env.body)) throw new EnvelopeError('missing_field', `${env.kind}.${k}`);
+  const required = direction === 'mc' ? (ACCEPT_MIN[env.kind] ?? REQUIRED[env.kind]) : REQUIRED[env.kind];
+  for (const k of required) if (!(k in env.body)) throw new EnvelopeError('missing_field', `${env.kind}.${k}`);
   const b = env.body;
   if (env.kind === 'event') {
     if (!Number.isInteger(env.seq)) throw new EnvelopeError('missing_field', 'event.seq (envelope)');

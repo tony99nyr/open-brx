@@ -2,7 +2,7 @@
 // with a sticky summary rail that reads like the card will and holds SAVE / SAVE AS NEW / PLAY THIS NOW.
 // Edits a DRAFT: nothing touches the live config until PLAY. Pool preview comes from the server's rule engine.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { GameConfig, LoadoutPolicy, LoadoutPool, LoadoutPreset, PerkView, SavedGame, SlotChoice, SlotRule, WeaponView } from '../api/types';
+import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LoadoutPreset, PerkView, SavedGame, SlotChoice, SlotRule, WeaponView } from '../api/types';
 import { useStore } from '../store';
 import { F, PERK_COLOR, ROLE, T, TAB, roleOf } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, StripedSlot, Toggle, ValueBox } from '../ui';
@@ -30,14 +30,14 @@ export function Designer() {
   // SAVE updates this one; builtins save as new. Once a draft is saved, further SAVEs / PLAY update that game
   // (a second POST of the same name 409s — found on the real server).
   const [editing, setEditing] = useState<SavedGame | null>(seed?.game && !seed.game.builtin && !seed.copy ? seed.game : null);
-  const initial = useMemo<GameConfig | null>(() => {
+  const initial = useMemo<ConfigView | null>(() => {
     if (!state) return null;
     if (seed?.fromLive) return withPolicy(clone(state.config));
     if (seed?.game) return withPolicy(clone(seed.game.config));
     const m = modes.find(x => x.mode === (seed?.mode ?? state.config.mode));
     return withPolicy(m ? clone(m.defaults) : clone(state.config));
   }, [seed, modes, state]);
-  const [cfg, setCfg] = useState<GameConfig | null>(() => initial);   // the seed is fixed for the page's lifetime
+  const [cfg, setCfg] = useState<ConfigView | null>(() => initial);   // the seed is fixed for the page's lifetime
   // ...but a lazy initialiser runs ONCE, so mounting before the first snapshot arrived captured
   // `null` and the designer stayed blank forever. Seed it only while still empty — `initial` also
   // changes with every snapshot (it depends on `state`), and re-seeding on that would throw away
