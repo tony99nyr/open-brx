@@ -644,11 +644,17 @@ restore keeps every printed QR valid. The node splits the query off before diall
 `{ url, pub, secret }`; `parseMcQr` keeps returning the bare LAN URL for old callers) and stores all three.
 `hello` gains `via: "lan"|"backhaul"` (which URL this socket dialled) and `secret?`. **`welcome.join = { pub:
 string|null, secret }`** hands both to every node on every welcome, so a phone that joined over the LAN before
-the tunnel existed, or typed the address, learns them without rescanning; a tunnel status change is pushed to every
-connected node as MC→node **`join {pub, secret}`** (same body). **The secret is enforced only where it matters:** a
-hello arriving through the tunnel (peer is loopback and/or a `Cf-Connecting-Ip` header is present) while
-`public.status == "up"` must carry the current secret or is closed `4003 in_use`-style as `4004 no_secret`;
-a LAN hello is never refused for lacking one (typed address stays the mandatory floor, §5). The secret is readable
+the tunnel existed, or typed the address, learns them without rescanning; a change of the USABLE public URL (up with a new hostname, or gone) is pushed to every
+connected node as MC→node **`join {pub, secret}`** (same body); `starting`→`error` with no URL ever offered pushes nothing. **The secret is enforced only where it matters** (rule tightened by the 2026-09-12 review): a hello must carry
+the current secret when (a) its peer address is **not private** (not loopback, RFC1918, link-local or ULA) — always,
+so a `--public-url` fronted by a plain port forward is covered — or (b) its peer is loopback or carries a
+`Cf-Connecting-Ip` header **while the gate is armed**, where armed = MC owns a tunnel child it has not confirmed dead,
+or the provider is manual. The gate keys on the CHILD PROCESS being alive, never on `public.status`: a reader hiccup
+that flips the status to `error` while cloudflared still routes must not disarm it, and MC only declares `error` after
+`proc.wait()` returns. A failing hello is closed `4004 no_secret` and leaves no record. A LAN hello is never refused for
+lacking a secret (typed address stays the mandatory floor, §5). On a hard MC crash the child is orphaned, so MC
+records its pid and reaps a leftover at the next launch. Local tooling that dials the node socket over loopback while
+MC was started with `--public-url` must present the secret. The secret is readable
 by anyone on the LAN via `GET /api/state`, deliberately: the LAN is already the trust boundary (§5b); the secret's
 one job is keeping internet strangers off the node socket.
 
@@ -661,7 +667,11 @@ no data path. This is what makes coverage **observed** (A28.4): a phone that can
 lobby, one that cannot is visibly on the LAN, and an MC whose internet dies sees every node fall back within a
 reconnect. Traffic is tiny (a status every `STATUS_HEARTBEAT_MS` plus events, well under 1 MB/h) and the added
 round trip through the tunnel edge touches nothing time-critical (§7 start/end are pre-shared; feedback is
-best-effort). `status.reach: "lan"|"backhaul"` reports the live socket's path; `NodeView.reach` mirrors it.
+best-effort). `status.reach: "lan"|"backhaul"` reports the live socket's path as the phone sees it, but **MC stamps `NodeView.reach`
+itself from the socket's arrival path** (the same test as the secret gate) and never from the claim: coverage and the
+readiness amber are server facts. The 30 s re-try from the LAN is a **reachability probe, not a second session**: the
+node opens a socket to `pub`, and on a successful open closes it without a hello and re-dials pub-first on its ONE
+socket (the server's one-socket-per-node takeover rule would otherwise kill the LAN link on every probe).
 §5c gates (d) and (f) become **warnings, not reds**, for a node that reports `reach:"backhaul"`.
 
 **A28.4 Coverage is derived, no longer asserted.** `Session.coverage()` → `"full"` iff **every bound player node

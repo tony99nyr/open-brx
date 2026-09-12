@@ -158,7 +158,11 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   the node prefers backhaul and falls back to the LAN, coverage is DERIVED from observed reach. Built on branch `backhaul-a28`
   in three lanes (server · MC UI · app transport). **Bench gate:** one Pixel, Wi-Fi OFF, mobile data on, scan the QR, join,
   take a kill and see KILL CONFIRMED; then Wi-Fi back on and watch `reach` stay `backhaul`. Left for the HUD session: the
-  preflight chips still say Wi-Fi/`cellular_off` (contracts §5c d/f are warnings on backhaul now). `build` · `capture`.
+  preflight chips still say Wi-Fi/`cellular_off` (contracts §5c d/f are warnings on backhaul now). **Known, by design:**
+  no REAL cloudflared has run against the URL parser (every test drives a stand-in; the first real run is the gate);
+  `available` is decided once at launch; coverage drops on staleness, not the instant a backhaul socket closes; the
+  envelope-kind parity guard walks `push()` call sites only, so a broadcast-only kind (`join`) has no generative guard;
+  `serve()` sets no `origins=`. `build` · `capture`.
 
 ## 4. Hardware, prints, research (H, R)
 
