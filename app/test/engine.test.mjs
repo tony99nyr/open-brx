@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine, handoverPool } from '../src/engine.js';
+import { Engine, handoverPool, PLAYX } from '../src/engine.js';
 import { CONTROL_STATE } from '../src/control.js';   // the phone control point's advert bits (K1)
 import { Presence, encodeUuid } from '../src/beacon.js';   // the REAL advert path, for the clock-mismatch guard
 
@@ -2058,6 +2058,29 @@ test('a respawn re-arms the low-health alert', () => {
   h.eng._spawn(false);                                           // back on your feet
   h.frame('$HP,12,0,0,*');
   assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 1, 'a new life gets a new alert');
+});
+
+// ── F149 (field 2026-09-12): a death must stop a still-playing low-health loop ────────────────────
+test('F149: a death that follows a low-health alert stops the loop with $PLAYX,0,*', () => {
+  // The realistic field shape: one hit crosses under 15 HP (fires `cues.hurt`, a several-second voice
+  // sample), a SEPARATE later hit finishes the kill. `cues.died` is never populated (A15.3: the scream
+  // stays native), so nothing else would ever interrupt the sample -- the loop played on past the death.
+  const h = goLive(harness());
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,12,0,0,*');       // under 15: the alert fires
+  assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 1, 'sanity: the loop did start');
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,0,0,0,*');        // a later, separate hit finishes the kill
+  assert.equal(h.writes.filter(f => f === PLAYX).length, 1, 'death sends the stop-playback frame');
+});
+
+test('F149: an ordinary death (never under 15 HP) sends no extra stop frame', () => {
+  // The guard is scoped to hurtFired, not to every death -- a death with no alert this life must not
+  // grow a new BLE write on every single kill.
+  const h = goLive(harness());
+  h.writes.length = 0;
+  h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,0,0,0,*');        // straight to zero, one hit, alert never armed
+  assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 0, 'control: the alert never fired');
+  assert.equal(h.writes.filter(f => f === PLAYX).length, 0, 'so death sends nothing extra');
 });
 
 // ── empty-mag state, replayed at the REAL cadence (capture 2026-08-26-weapons-smg-plus-amr) ──────
