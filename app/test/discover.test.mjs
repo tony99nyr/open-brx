@@ -227,21 +227,34 @@ test('F153c guard: ONE coalesced entry point for the network-came-back signal', 
 
 // ---------------- review pass 2 ----------------
 
-test('security guard: nothing persists an MC address before that MC has bound us', () => {
+test('security guard: a SUGGESTED address persists only once it binds us; a USER-PROVIDED one persists at the dial', () => {
   const src = readFileSync(APP_JS, 'utf8');
   const writes = [...src.matchAll(/settings\.mcUrl\s*=/g)];
-  assert.equal(writes.length, 1, 'exactly one place writes the remembered address');
-  // ...and it is inside the `bound` branch of the transport's state handler.
-  const bound = src.indexOf("if (s === 'bound')");
-  assert.ok(bound > 0 && writes[0].index > bound && writes[0].index < bound + 900,
-    'the write lives in the bound branch — an address written at DIAL time comes back next boot as a url nothing vouched for, dialled trusted, because trust does not survive a restart');
-  assert.match(writes[0].input.slice(writes[0].index, writes[0].index + 60), /settings\.mcUrl = transport\.url/,
-    'and it remembers the url that actually bound us, not whatever was dialled');
-  // the head of connectMc — where the write used to be — now only touches the DISPLAYED target
+  assert.equal(writes.length, 2, 'two write sites and no more: the user-provided dial, and the bind');
+
+  // 1. the dial-time write is gated on `remember`, which only a user-provided address gets
   const connect = src.indexOf('function connectMc(');
   const head = src.slice(connect, src.indexOf('lastMcUrl = url;', connect));
-  assert.doesNotMatch(head, /settings\.mcUrl\s*=/, 'nothing is persisted at dial time');
-  assert.match(head, /if \(remember\) hud\.mcUrl = url;/, 'it only shows the target it is dialling');
+  assert.match(head, /if \(remember\) \{ settings\.mcUrl = url; hud\.mcUrl = url; \}/,
+    'a QR scanned or an address typed while MC is down must still be there on the next launch');
+  assert.equal([...head.matchAll(/settings\.mcUrl\s*=/g)].length, 1);
+
+  // 2. ...and the suggestion path passes remember:false, so nothing is written until it binds
+  const tap = src.slice(src.indexOf('onJoinDiscovered:'), src.indexOf('\n  },', src.indexOf('onJoinDiscovered:')));
+  assert.match(tap, /connectMc\(d\.url, false, \{ trusted: false \}\)/,
+    'an address the user never named: not persisted at the dial, and keyless on the wire');
+
+  // 3. the second write is the bind — which is what finally remembers a suggestion that was right
+  const bound = src.indexOf("if (s === 'bound')");
+  assert.ok(bound > 0 && writes[1].index > bound && writes[1].index < bound + 900, 'the second write is in the bound branch');
+  assert.match(src.slice(writes[1].index, writes[1].index + 60), /settings\.mcUrl = transport\.url/,
+    'and it remembers the url that actually bound us, not whatever was dialled');
+
+  // 4. the user-provided callers really do ask to be remembered
+  const qr = src.slice(src.indexOf('QR scanned — connecting'), src.indexOf('QR scanned — connecting') + 240);
+  assert.match(qr, /connectMc\(join\.url, true, \{ pub: join\.pub, secret: join\.secret \}\)/, 'a scanned QR is the user naming an address');
+  const typed = src.slice(src.indexOf('onSetUrl:'), src.indexOf('\n  },', src.indexOf('onSetUrl:')));
+  assert.match(typed, /connectMc\(j\.url, true, \{ pub: j\.pub, secret: j\.secret \}\)/, 'so is a typed join code');
 });
 
 test('security guard: an mDNS advert is offered, never dialled — same one-tap row as a sweep hit', () => {

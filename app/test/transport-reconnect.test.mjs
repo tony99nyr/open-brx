@@ -324,3 +324,52 @@ test('security: RECLAIM_RETRY_MS clears the contract stale window it is derived 
   assert.ok(RECLAIM_RETRY_MS > STALE_AFTER_MS, 'retrying inside the window would just be refused again');
   assert.ok(RECLAIM_RETRY_MS < STALE_AFTER_MS + 5000, 'and the player is standing there waiting');
 });
+
+test('review final: the reclaim wait does not reject the connect() the player is waiting on', async () => {
+  const { sockets, wsFactory } = factory();
+  // The real numbers are RECLAIM_RETRY_MS 9500 under welcomeTimeoutMs 10000, so the promise rejected
+  // ~500 ms into a retry that then succeeded and the HUD logged "no welcome within 10000 ms" over a join
+  // that had landed. Same shape here, scaled down: the wait is LONGER than the welcome timeout.
+  const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
+    backoff: { baseMs: 1, capMs: 2, jitter: 0 }, reclaimRetryMs: 60, welcomeTimeoutMs: 30 });
+  const p = t.connect({ url: 'ws://192.168.0.77:8766/ws', trusted: false });
+  let rejected = null;
+  p.catch(e => { rejected = e.message; });
+  sockets[0].open(); sockets[0].close(4003, 'in use');
+  await sleep(45);
+  assert.equal(rejected, null, 'the old timeout would have fired by now, mid-wait');
+  await sleep(30);
+  assert.equal(sockets.length, 2, 'the retry went out');
+  sockets[1].open(); sockets[1].recv(welcome({ node_key: 'KEY-4' }));
+  await p;                                  // resolves — no spurious rejection to log
+  assert.equal(rejected, null);
+  assert.equal(t.state, 'bound');
+  t.close();
+});
+
+test('review final: and if the reclaim retry itself never welcomes, the promise still settles — on the EXTENDED deadline', async () => {
+  // The deadline is re-armed, not discarded: cancelling it (what `_clearTimers()` does on its own) would
+  // leave the app waiting on a promise that can never settle either way, which is the same class of bug
+  // as the dialNow() one. The new deadline is the wait plus a full welcome window.
+  const { sockets, wsFactory } = factory();
+  const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
+    backoff: { baseMs: 1, capMs: 2, jitter: 0 }, lanGiveupMs: 5000, reclaimRetryMs: 40, welcomeTimeoutMs: 30 });
+  const p = t.connect({ url: 'ws://192.168.0.77:8766/ws', trusted: false });
+  const settled = p.then(() => 'resolved', e => e.message);
+  sockets[0].open(); sockets[0].close(4003, 'in use');
+  await sleep(50);
+  assert.equal(sockets.length, 2, 'the retry went out');
+  assert.equal(await Promise.race([settled, sleep(10).then(() => 'pending')]), 'pending', 'not settled while the retry is still in its window');
+  sockets[1].open();                          // dials, says hello, and is never answered
+  assert.equal(await settled, 'connect: no welcome within 70 ms', 'the wait (40) plus the welcome window (30)');
+  t.close();
+});
+
+test('review final: an ordinary connect() still rejects on its own welcomeTimeoutMs, message unchanged', async () => {
+  const { sockets, wsFactory } = factory();
+  const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
+    backoff: { baseMs: 1, capMs: 2, jitter: 0 }, lanGiveupMs: 5000, welcomeTimeoutMs: 40 });
+  const p = t.connect({ url: 'ws://lan/ws' });
+  await assert.rejects(p, /connect: no welcome within 40 ms/);
+  t.close();
+});

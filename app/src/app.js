@@ -257,12 +257,14 @@ let currentJoinUrl = null;
 function noteJoinUrl(url) { if (url && /^wss?:\/\//i.test(url)) currentJoinUrl = url; }
 /**
  * @param {string} url the LAN join url
- * @param {boolean} [remember] show this as the HUD's MC target right away — an EXPLICIT join (QR, typed,
- *   remembered). It no longer PERSISTS anything: `settings.mcUrl` is written from the `bound` branch
- *   below, once the MC at this address has actually welcomed and bound us (review pass 2). Writing it at
- *   dial time let a tapped JOIN-row address overwrite the operator's scanned target, suppress the boot
- *   sweep, and come back on the next boot as a url nothing had ever vouched for — dialled trusted,
- *   because trust lives on the Transport instance and does not survive a restart.
+ * @param {boolean} [remember] this address came FROM THE USER — a scanned QR, a typed address, or one
+ *   already remembered. It is shown as the HUD's target and persisted at the dial, so a QR scanned while
+ *   MC is down still works on the next launch. `false` is for an address the user did not name (a JOIN-row
+ *   suggestion out of the sweep or an mDNS advert): it is persisted only if that MC actually welcomes and
+ *   binds us, from the `bound` branch below. A suggestion written at dial time would overwrite the
+ *   operator's scanned target, suppress the boot sweep, and come back next boot as a url nothing ever
+ *   vouched for — dialled trusted, since trust lives on the Transport and does not survive a restart.
+ *   Both things that CAN persist are therefore trusted: the user named it, or it bound us.
  * @param {{pub?:string|null, secret?:string|null, trusted?:boolean}} [join] A28.2: from a QR scan or a typed full join
  *   code — when given, replaces whatever backhaul target/secret Transport is holding. When omitted
  *   (every discovery/sweep/remembered-address reconnect) neither is passed at all: Transport's OWN
@@ -274,7 +276,7 @@ function noteJoinUrl(url) { if (url && /^wss?:\/\//i.test(url)) currentJoinUrl =
  */
 function connectMc(url, remember = true, join = {}) {
   if (!url) return;
-  if (remember) hud.mcUrl = url;   // what we are DIALLING, for the HUD; nothing is persisted until we bind
+  if (remember) { settings.mcUrl = url; hud.mcUrl = url; }   // the user named this one; a suggestion waits for the bind
   // ...but RECONNECT MC has to have something to dial. It read `settings.mcUrl`, which a
   // discovery-only connect deliberately never writes — so after an auto-discovered join the button
   // called connectMc(undefined) and returned on line 1, doing nothing at all (deferred low).
@@ -297,9 +299,10 @@ function connectMc(url, remember = true, join = {}) {
     // Bound to an MC: no suggestion row, no sweep.
     if (s === 'bound') { if (assistTimer) { clearTimeout(assistTimer); assistTimer = null; } logsync.onBound();
       if (transport && transport.reach === 'lan') noteJoinUrl(transport.url);
-      // An address is REMEMBERED only now: this MC welcomed us, issued a node_key and bound this node.
-      // Anything in `settings.mcUrl` has therefore passed that bar, so the boot dial at the bottom of
-      // this file can present the key and the join secret without asking who suggested the address.
+      // A SUGGESTED address (sweep hit, mDNS advert) is remembered only now, having welcomed us, issued
+      // a node_key and bound this node. A user-provided one was written at the dial. So everything in
+      // `settings.mcUrl` was either named by the user or proved itself, and the boot dial can present the
+      // key and the join secret without having to ask which.
       if (transport && transport.url) { settings.mcUrl = transport.url; hud.mcUrl = transport.url; }
       hud.discovered = null; }   // F139: a url we actually welcomed over IS the current join
     // ...and sweep again if we stay unbound: the boot sweep used to be a one-shot, so after the first

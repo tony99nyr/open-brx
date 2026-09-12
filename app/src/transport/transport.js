@@ -143,10 +143,22 @@ export class Transport {
     this.closed = false; this.rejected = null;
     return new Promise((resolve, reject) => {
       this._firstWelcome = { resolve, reject };
+      // Armed BEFORE the dial: `_open()` can reach a close handler synchronously, and a handler that
+      // re-arms this timeout (the reclaim retry below) would otherwise have its timer overwritten here.
+      this._armConnectTimeout(this.welcomeTimeoutMs);
       this._open();
-      // Reject the connect() promise if no welcome ever arrives; the reconnect loop keeps running regardless.
-      this._connectTimer = this.timers.setTimeout(() => { this._connectTimer = null; if (this._firstWelcome) { const p = this._firstWelcome; this._firstWelcome = null; p.reject(new Error('connect: no welcome within ' + this.welcomeTimeoutMs + ' ms')); } }, this.welcomeTimeoutMs);
     });
+  }
+  /** Arm (or re-arm, from `ms` NOW) the deadline that rejects the pending connect() when no welcome ever
+   *  arrives. The reconnect loop keeps running either way — this only settles the promise the caller is
+   *  holding. No pending promise, no timer. */
+  _armConnectTimeout(ms) {
+    if (this._connectTimer) { this.timers.clearTimeout(this._connectTimer); this._connectTimer = null; }
+    if (!this._firstWelcome) return;
+    this._connectTimer = this.timers.setTimeout(() => {
+      this._connectTimer = null;
+      if (this._firstWelcome) { const p = this._firstWelcome; this._firstWelcome = null; p.reject(new Error('connect: no welcome within ' + ms + ' ms')); }
+    }, ms);
   }
   bind({ player_id, gun } = {}) {
     if (gun && gun.name) this.gun = gun;      // gun linked AFTER connect (MC-first join order) — without this the bind never carried the gun (rig find, 2026-08-26)
@@ -375,7 +387,12 @@ export class Transport {
     if (code === 4003 && !this.trusted && !this._reclaimTried && !this.closed) {
       this._reclaimTried = true;
       this._log(`4003 while untrusted — waiting out the stale window (${this.reclaimRetryMs} ms), then one more try`);
-      const ct = this._connectTimer; this._connectTimer = null; this._clearTimers(); this._connectTimer = ct;
+      this._clearTimers();
+      // ...and the pending connect() must not reject part-way through a wait WE scheduled: the stale
+      // window (9.5 s) sits just under the default welcome timeout (10 s), so the HUD used to log "no
+      // welcome within 10000 ms" over a join that then landed a second later. Give it the wait plus a
+      // full welcome window, measured from now.
+      this._armConnectTimeout(this.reclaimRetryMs + this.welcomeTimeoutMs);
       this._setState('offline');
       if (!this._rcTimer) this._rcTimer = this.timers.setTimeout(() => { this._rcTimer = null; this._open(); }, this.reclaimRetryMs);
       return;
