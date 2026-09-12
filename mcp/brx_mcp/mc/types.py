@@ -245,6 +245,9 @@ class LoadoutPool(TypedDict):
     primary: list[str]
     secondary_weapons: list[str]
     perks: list[str]                      # A14: the perk slot's pool
+    reasons: NotRequired[dict[str, Literal["off", "fixed_missing", "only_ids_missing", "needs_secondary", "filtered"]]]
+    # field 2026-09-12 (F146/S37): one code per EMPTY slot (keys: primary / secondary_weapons / perks), absent when every
+    # slot has something; `policy.POOL_EMPTY_CODES` is the vocabulary, `policy._empty_code` the classifier.
 
 
 class PerkEffects(TypedDict, total=False):

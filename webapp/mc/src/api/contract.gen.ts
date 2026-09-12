@@ -220,6 +220,7 @@ export interface LoadoutPool {
   secondary_weapons: string[];
   /** A14: the perk slot's pool */
   perks: string[];
+  reasons?: Record<string, 'off' | 'fixed_missing' | 'only_ids_missing' | 'needs_secondary' | 'filtered'>;
 }
 
 /** The effect knobs the compiler acts on -- exactly `perks.EFFECT_KEYS`, which `PerkCatalog.__init__`
