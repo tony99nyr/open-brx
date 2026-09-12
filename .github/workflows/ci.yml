@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # test_published_build resolves the sha the APK sidecar names; a shallow clone cannot see it
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -29,7 +31,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"   # Capacitor 8 needs >= 22, and `node --test "test/*.test.mjs"` only expands the glob on >= 21
       # `tsc -b` first: vitest type-checks nothing, and the generated contract (contract.gen.ts,
       # from mcp/brx_mcp/mc/types.py) only earns its keep if a drifted UI fails to compile here.
       - run: cd webapp/mc && npm ci && npm run typecheck && npm test
@@ -41,7 +43,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"   # Capacitor 8 needs >= 22, and `node --test "test/*.test.mjs"` only expands the glob on >= 21
       - run: cd app && npm ci && npm test
 
   # site:

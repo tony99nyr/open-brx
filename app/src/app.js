@@ -349,6 +349,9 @@ Object.assign(hud.h, {
     const key = (hud.lo.focus && rows.some(r => r.key === hud.lo.focus)) ? hud.lo.focus : (eq && eq.kind === 'weapon' ? 'weapon:' + eq.weapon_id : (rows[0] && rows[0].key));
     if (!key || !key.startsWith('weapon:')) return; hud.lo.confirm = null; if (engine.requestLoadout(tab, 'weapon', key.slice(7), true)) haptic('tap'); },
   onLoDone: () => { hud.lo.confirm = null; engine.browse(false); haptic('tap'); },
+  // A26: REVIEW KIT ▸ is the rack's PRIMARY way out — the same close as CLOSE (the plates + READY UP are the review),
+  // under its own action so a locator can name the primary control (the site gate's step 12j tripped on two `onLoDone`).
+  onLoReview: () => { hud.lo.confirm = null; engine.browse(false); haptic('tap'); },
   // A10 §4.6: BRIEFING → BUILD MY KIT ▸ reveals the plates; BRIEFING on the KITTED screen reopens it
   onBriefDone: () => { engine.closeBriefing(); haptic('tap'); },
   onBriefing: () => { engine.openBriefing(); haptic('tap'); },

@@ -448,7 +448,7 @@ export class Hud {
     return `<div class="lobby lo"><div class="scan"></div><div class="edgeglow"></div>
       <div class="lotop">${tabBtn('primary', lo.primary)}${tabBtn('secondary', lo.secondary)}${tabBtn('perk', lo.perk)}<span class="who"><span class="cs">${esc(st.callsign || '')}</span>${st.playerNum ? `<span class="num">#${st.playerNum}</span>` : ''}</span></div>
       <div class="lobody"><div class="lolist" data-tab="${tab}">${list}</div><div class="lodetail">${detail}</div></div>
-      <div class="lobar"><span class="ackslot">${ackChip}</span><button class="lobtn review" data-act="onLoDone"><span class="unskew">REVIEW KIT ▸</span></button><button class="lobtn done" data-act="onLoDone"><span class="unskew">CLOSE</span></button></div></div>`;
+      <div class="lobar"><span class="ackslot">${ackChip}</span><button class="lobtn review" data-act="onLoReview"><span class="unskew">REVIEW KIT ▸</span></button><button class="lobtn done" data-act="onLoDone"><span class="unskew">CLOSE</span></button></div></div>`;
   }
 
   // ---------- A24 / node.md §3.13: the FINAL RESULTS screen ----------
