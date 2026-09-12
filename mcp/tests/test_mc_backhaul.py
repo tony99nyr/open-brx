@@ -67,6 +67,9 @@ def _fake_child(*, delay_s: float = 0.0, url: str | None = FAKE_HOST, exit_after
     return [sys.executable, "-c", src]
 
 
+_PID_DIRS: list = []
+
+
 def _tunnel(argv: list[str], **kw) -> Tunnel:
     seen: list[list[str]] = []
 
@@ -75,6 +78,11 @@ def _tunnel(argv: list[str], **kw) -> Tunnel:
         return await asyncio.create_subprocess_exec(
             *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
 
+    if "pid_dir" not in kw:
+        # NEVER the default `~/.brx-mcp`: a test that writes a pid file into the real home can reap
+        # (or be reaped by) a tunnel belonging to an actual Mission Control on this machine.
+        _PID_DIRS.append(tempfile.TemporaryDirectory())
+        kw["pid_dir"] = pathlib.Path(_PID_DIRS[-1].name)
     t = Tunnel(spawn=spawn, which=lambda _b: "/usr/bin/cloudflared", **kw)
     t.spawned = seen            # test-visible: what the REAL argv would have been
     return t
@@ -662,8 +670,10 @@ def test_the_gate_fails_closed_when_the_arming_callback_raises():
 def test_an_orphaned_cloudflared_is_killed_at_the_next_launch():
     with tempfile.TemporaryDirectory() as d:
         pid_file = pathlib.Path(d) / "tunnel.pid"
-        # a long-lived stand-in whose cmdline says cloudflared, exactly as the real orphan's would
-        proc = subprocess.Popen([sys.executable, "-c", "import time  # cloudflared\ntime.sleep(60)"])
+        # a long-lived stand-in whose cmdline looks like the real orphan's: cloudflared AND our ws port,
+        # because the binary name alone is not identity (the user may run another cloudflared)
+        proc = subprocess.Popen([sys.executable, "-c",
+                                 "import time  # cloudflared --url http://127.0.0.1:8766\ntime.sleep(60)"])
         try:
             t = Tunnel(which=lambda _b: "/usr/bin/cloudflared", pid_dir=pid_file.parent, ws_port=8766)
             t.pid_path.write_text(json.dumps({"pid": proc.pid}))   # no owner recorded: a crash, or legacy
@@ -783,7 +793,8 @@ def test_a_pid_file_whose_owner_is_still_alive_is_left_alone():
     owner pid is the second catch, for the case where the ports DO collide (a restart racing a shutdown,
     a copy-pasted command)."""
     with tempfile.TemporaryDirectory() as d:
-        child = subprocess.Popen([sys.executable, "-c", "import time  # cloudflared\ntime.sleep(30)"])
+        child = subprocess.Popen([sys.executable, "-c",
+                                  "import time  # cloudflared --url http://127.0.0.1:8766\ntime.sleep(30)"])
         owner = subprocess.Popen([sys.executable, "-c", "import time\ntime.sleep(30)"])
         try:
             t = Tunnel(which=lambda _b: "/usr/bin/cloudflared", pid_dir=pathlib.Path(d), ws_port=8766)
@@ -799,23 +810,140 @@ def test_a_pid_file_whose_owner_is_still_alive_is_left_alone():
 
 def test_an_unkillable_orphan_keeps_the_gate_armed_rather_than_pretending_it_is_gone():
     """If we cannot kill it, it may still be routing to this port. Lowering the gate then would leave an
-    internet-reachable node socket with nobody asking for the secret, so the latch holds until someone
-    starts or stops the tunnel explicitly."""
+    internet-reachable node socket with nobody asking for the secret."""
     with tempfile.TemporaryDirectory() as d:
         t = Tunnel(which=lambda _b: "/usr/bin/cloudflared", pid_dir=pathlib.Path(d),
                    ws_port=8766, term_grace_s=0.1)
         t.pid_path.write_text(json.dumps({"pid": 4242}))
-        t._alive = staticmethod(lambda _pid: True)          # never dies, whatever we send it
+        alive = {"yes": True}
+        t._alive = staticmethod(lambda _pid: alive["yes"])      # never dies, whatever we send it
         t._cmdline = staticmethod(lambda _pid: "/usr/bin/cloudflared tunnel --url http://127.0.0.1:8766")
-        with_kills: list = []
         assert t.reap_orphan() is None
         assert t._orphan_pid == 4242
         assert t.armed is True, "an orphan we could not kill is still a public path"
         assert t.pid_path.exists(), "the file stays: the process it names is still there"
-        assert with_kills == []
-        # an explicit start or stop is the operator taking charge of the port, and clears the latch
+        # the operator has to be TOLD, where the UI already renders it
+        assert "4242" in t.public()["error"] and "join secret" in t.public()["error"]
+
+        # turning the tunnel "off" must not drop a gate the orphan is still the reason for
         run(t.stop())
-        assert t._orphan_pid is None and t.armed is False
+        assert t._orphan_pid == 4242 and t.armed is True
+        assert "4242" in t.public()["error"]
+
+        # ...and once it really is gone, the latch goes with it
+        alive["yes"] = False
+        run(t.stop())
+        assert t._orphan_pid is None and t.armed is False and not t.public().get("error")
+
+
+def test_the_latch_survives_the_whole_starting_window_not_just_until_start_is_called():
+    """The pass-3 MEDIUM. `start()` cleared the latch at the top, but `_proc` is not published until the
+    spawn returns — so for the whole `starting` window (up to 20 s, and `--tunnel` runs it at launch
+    before a phone has joined) `armed` was False while the un-killable orphan still routed here."""
+    started = asyncio.Event()
+
+    async def slow_spawn(cmd):
+        started.set()
+        await asyncio.sleep(0.3)
+        return await asyncio.create_subprocess_exec(
+            *_fake_child(), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+
+    t = Tunnel(spawn=slow_spawn, which=lambda _b: "/usr/bin/cloudflared")
+    t._alive = staticmethod(lambda _pid: True)
+    t._set_orphan(4242)
+
+    async def go():
+        assert t.armed is True
+        t.start(8766)
+        await asyncio.wait_for(started.wait(), timeout=5)
+        assert t.status == "starting"
+        assert t.armed is True, "the gate went down while the orphan was still routing"
+        assert t._orphan_pid == 4242
+        assert await _until(lambda: t.status == "up"), t.public()
+        # a child of our own supersedes it: we now know what is on the port
+        assert t._orphan_pid is None and t.armed is True
+        await t.stop()
+    run(go())
+
+
+def test_an_orphan_we_cannot_identify_is_latched_rather_than_killed_or_ignored():
+    """Alive, and no readable command line. Killing blind is how a reused pid becomes someone else's
+    dead process; assuming it innocent is how the port ends up unguarded."""
+    with tempfile.TemporaryDirectory() as d:
+        t = Tunnel(which=lambda _b: "/usr/bin/cloudflared", pid_dir=pathlib.Path(d), ws_port=8766)
+        t.pid_path.write_text(json.dumps({"pid": 4242}))
+        t._alive = staticmethod(lambda _pid: True)
+        t._cmdline = staticmethod(lambda _pid: "")
+        assert t.reap_orphan() is None
+        assert t._orphan_pid == 4242 and t.armed is True
+        assert t.pid_path.exists(), "we did not resolve it, so the file still means something"
+
+
+def test_a_pid_that_is_a_DIFFERENT_cloudflared_is_left_alone():
+    """The user may well run cloudflared for something else. The binary name alone is not identity --
+    the `--url http://127.0.0.1:<our ws port>` is."""
+    with tempfile.TemporaryDirectory() as d:
+        t = Tunnel(which=lambda _b: "/usr/bin/cloudflared", pid_dir=pathlib.Path(d), ws_port=8766)
+        t.pid_path.write_text(json.dumps({"pid": 4242}))
+        t._alive = staticmethod(lambda _pid: True)
+        t._cmdline = staticmethod(lambda _pid: "cloudflared tunnel --url http://127.0.0.1:3000")
+        assert t.reap_orphan() is None
+        assert t._orphan_pid is None, "someone else's tunnel is not our problem to guard against"
+        assert not t.pid_path.exists()
+
+
+def test_a_process_we_may_not_signal_counts_as_alive():
+    """`PermissionError` from `os.kill(pid, 0)` means the process IS there and is not ours to touch --
+    the strongest possible reason not to declare the port unguarded. Only ProcessLookupError is death."""
+    def raiser(exc):
+        def _k(_pid, _sig=0):
+            raise exc
+        return _k
+
+    import brx_mcp.mc.tunnel as TU
+    real = TU.os.kill
+    try:
+        TU.os.kill = raiser(PermissionError())
+        assert Tunnel._alive(4242) is True
+        TU.os.kill = raiser(ProcessLookupError())
+        assert Tunnel._alive(4242) is False
+        TU.os.kill = raiser(OSError("something else entirely"))
+        assert Tunnel._alive(4242) is True, "unknown means alive: never fail open"
+    finally:
+        TU.os.kill = real
+
+
+def test_start_refuses_to_double_spawn_over_an_undead_child():
+    t = _tunnel(_fake_child(), term_grace_s=0.05)
+
+    async def go():
+        t.start(8766)
+        assert await _until(lambda: t.status == "up"), t.public()
+        real = t._proc
+        t._proc = type("Undead", (), {"returncode": None,
+                                      "terminate": lambda self: None, "kill": lambda self: None,
+                                      "wait": lambda self: asyncio.sleep(60)})()
+        await t.shutdown()
+        assert t.status == "off" and t.armed is True
+        try:
+            t.start(8766)
+            raise AssertionError("spawned a second child over one that had not exited")
+        except TunnelError as e:
+            assert e.status == 409 and "not exited" in str(e)
+        t._proc = real
+        await t.shutdown()
+    run(go())
+
+
+def test_public_url_refuses_userinfo_in_the_netloc():
+    from brx_mcp.mc.__main__ import _check_public_url
+    for bad in ("wss://user:pw@mc.example.org/ws", "wss://tok@mc.example.org/ws"):
+        try:
+            _check_public_url(bad)
+            raise AssertionError(f"accepted {bad!r}")
+        except SystemExit as e:
+            assert "userinfo" in str(e), str(e)
+    assert _check_public_url("wss://mc.example.org/ws") == "wss://mc.example.org/ws"
 
 
 # --------------------------------------------------------------------------- review 2: ownership
@@ -897,25 +1025,57 @@ def test_a_child_that_will_not_die_keeps_the_gate_armed_instead_of_being_written
 
 # --------------------------------------------------------------------------- review 2: the low items
 def test_every_path_that_ends_a_socket_clears_reach():
-    """`on_disconnect` has to fire from all four sites, not just the handler's `finally`. An evict, a
-    takeover, a node_id switch and a refused bind end a socket just as surely as a dropped link — and a
-    coverage fix that covers one of them is not a fix."""
+    """`on_disconnect` has to fire from all FOUR sites, not just the handler's `finally`. An evict, a
+    gun takeover, a node_id switch and a refused bind end a socket just as surely as a dropped link --
+    and a coverage fix that covers one of them is not a fix. Each case below fails if its site goes back
+    to a bare `rec.ws = None`."""
     needs(HAVE_WS, "websockets")
 
     async def go():
+        import websockets
         async with _NetHarness() as h:
             gone: list[str] = []
             h.net.on_disconnect(gone.append)
-            w = await _say_hello(h.url, node_id="n1")
-            assert isinstance(w, dict)
+
+            # (1) the plain drop
+            assert isinstance(await _say_hello(h.url, node_id="n1"), dict)
             rec = h.net.nodes["n1"]
-            assert await _until(lambda: "n1" in gone)          # the plain drop
+            assert await _until(lambda: "n1" in gone)
             assert rec.via is None
 
-            rec.ws = object()                                   # a socket to take away again
+            # (2) the operator evict
+            rec.ws = object()
             rec.via = "backhaul"
             assert h.net.evict("n1") is True
             assert gone.count("n1") == 2 and rec.via is None, "evict must clear the path too"
+
+            # (3) the node_id switch: a second hello for a DIFFERENT id on one live socket
+            async with websockets.connect(h.url) as ws:
+                await ws.send(_hello(node_id="switch-1"))
+                await asyncio.wait_for(ws.recv(), timeout=3)
+                sw = h.net.nodes["switch-1"]
+                assert sw.via == "lan" and sw.connected
+                await ws.send(_hello(node_id="switch-2"))          # one socket, two ids -> closed
+                assert await _until(lambda: "switch-1" in gone), gone
+                assert sw.ws is None and sw.via is None, "the node_id switch left a path behind"
+
+            # (4) the refused bind: a fresh holder owns the gun and this node cannot prove its key. The
+            # holder's socket is held OPEN throughout -- a disconnected holder would be displaced, and
+            # the bind would be allowed rather than refused.
+            async with websockets.connect(h.url) as owner:
+                await owner.send(_hello(node_id="holder", gun={"name": "GUN-A", "tail": "3D4F"}))
+                await asyncio.wait_for(owner.recv(), timeout=3)
+                assert h.net.nodes["holder"].connected
+                async with websockets.connect(h.url) as ws:
+                    await ws.send(_hello(node_id="thief"))          # no gun in the hello...
+                    await asyncio.wait_for(ws.recv(), timeout=3)
+                    th = h.net.nodes["thief"]
+                    assert th.via == "lan" and th.connected
+                    await ws.send(E.encode(E.make_envelope(          # ...the gun is claimed at BIND
+                        "bind", {"node_id": "thief", "gun_name": "GUN-A", "gun_tail": "3D4F"})))
+                    assert await _until(lambda: "thief" in gone), gone
+                    assert th.ws is None and th.via is None, "the refused bind left a path behind"
+                assert h.net.nodes["holder"].connected, "the rightful holder kept its socket"
     run(go())
 
 

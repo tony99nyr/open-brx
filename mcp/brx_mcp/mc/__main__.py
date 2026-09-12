@@ -28,8 +28,9 @@ def _check_public_url(url):
 
     And refuse PLAINTEXT to a public host outright. A `ws://` node socket over the internet carries the
     join secret and every `node_key` in clear, to anyone on the path -- which hands over exactly what
-    A28.2's gate exists to protect. Plaintext to a loopback or private host is fine: that is a local
-    forward or a tailnet, inside the trust boundary §5b already draws."""
+    A28.2's gate exists to protect. Plaintext is allowed only to a LITERAL loopback or private address
+    (a local forward, or a `100.x` tailnet address): a HOSTNAME cannot be classified without resolving
+    it, and a name that happens to resolve privately today is not a promise about tomorrow."""
     if not url:
         return None
     from urllib.parse import urlsplit
@@ -38,13 +39,19 @@ def _check_public_url(url):
     if u.scheme not in ("ws", "wss") or not u.netloc:
         raise SystemExit(f"--public-url must be a ws:// or wss:// URL with a host (got {url!r}); "
                          "it is the address every phone dials, e.g. wss://mc.example.org/ws")
+    if "@" in u.netloc:
+        # Userinfo in a URL every phone is handed, and which MC prints on a banner and encodes into a QR.
+        raise SystemExit(f"--public-url {url!r} carries userinfo before the host (the `@`). The node "
+                         "socket authenticates with the join secret (A28.2), not with URL credentials, "
+                         "and this URL is printed, QR-encoded and handed to every phone — drop it.")
     if u.scheme == "ws":
         host = (u.hostname or "").strip("[]")
         if peer_class(host) not in ("loopback", "private"):
             raise SystemExit(
                 f"--public-url {url!r} is PLAINTEXT to a public host. The node socket carries the join "
                 "secret and every node_key, so over the internet it must be wss://. (ws:// is accepted "
-                "only to a loopback or private address, e.g. a local forward or a tailnet.)")
+                "only for a literal loopback or private ADDRESS, e.g. ws://127.0.0.1:8766/ws or a "
+                "100.x tailnet address -- a hostname cannot be checked without resolving it.)")
     return str(url)
 
 

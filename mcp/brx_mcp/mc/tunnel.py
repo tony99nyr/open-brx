@@ -96,8 +96,16 @@ class Tunnel:
         """`State.lan.public` (A28.1). `error` is present only when there is one."""
         out: dict[str, Any] = {"ws_url": self.ws_url, "status": self.status,
                                "provider": self.provider, "available": self.available}
-        if self.error:
-            out["error"] = self.error
+        err = self.error
+        if self._orphan_pid is not None:
+            # Say it where the UI already renders errors. Without this, an MC that could not kill the
+            # previous tunnel showed a serene "off" while the old hostname still reached this port and
+            # every node was being asked for a secret the operator had no idea was in force.
+            note = (f"an older cloudflared (pid {self._orphan_pid}) could not be stopped; it may still "
+                    f"reach this port, so the join secret stays required")
+            err = f"{err}; {note}" if err else note
+        if err:
+            out["error"] = err
         return out
 
     def on_change(self, cb: Callable[[dict], None]) -> None:
@@ -147,6 +155,13 @@ class Tunnel:
         log.info("tunnel %s%s", status, f" {ws_url}" if ws_url else (f" ({error})" if error else ""))
         self._emit()
 
+    def _set_orphan(self, pid: int | None) -> None:
+        """The latch is visible state (`public()["error"]`), so a change in it is a change listeners see."""
+        if pid == self._orphan_pid:
+            return
+        self._orphan_pid = pid
+        self._emit()
+
     def _fail(self, why: str) -> None:
         self._set("error", None, why, self.provider or "cloudflared")
 
@@ -161,11 +176,16 @@ class Tunnel:
             raise TunnelError(INSTALL_HINT)
         if self.status in ("starting", "up"):
             return self.public()        # idempotent (API.md: a no-op 200)
+        proc = self._proc
+        if proc is not None and proc.returncode is None:
+            # An undead shutdown left `status` at "off" while the child lives on. Spawning a second one
+            # would orphan the first for good -- nothing would hold a handle to it again.
+            raise TunnelError("the previous cloudflared has not exited yet (it survived terminate and "
+                              "kill); wait for it to go, or kill it by hand, before starting another")
         port = int(ws_port or self.ws_port or 0)
         if port <= 0:
             raise TunnelError("the node WebSocket port is not bound yet — try again once MC has started")
         self.ws_port = port
-        self._orphan_pid = None        # an explicit start supersedes an un-killable orphan latch
         self._stopping = False
         self._last_line = ""
         self._set("starting", None, None, "cloudflared")
@@ -187,7 +207,8 @@ class Tunnel:
     async def shutdown(self) -> None:
         """Kill the child if we own one and settle on `off`. Never raises — MC's own shutdown path calls it."""
         self._stopping = True
-        self._orphan_pid = None        # an explicit stop supersedes the latch too
+        if self._orphan_pid is not None and not self._alive(self._orphan_pid):
+            self._set_orphan(None)     # it finally died; the latch has nothing left to guard
         # `self._proc` is NOT released until the child is confirmed dead: `armed` reads it, and a gate
         # that comes off while the process is still routing is the bug this whole method exists around.
         proc = self._proc
@@ -262,11 +283,20 @@ class Tunnel:
 
     @staticmethod
     def _alive(pid: int) -> bool:
+        """Alive, as far as we can tell — and "cannot tell" counts as ALIVE.
+
+        `PermissionError` from `os.kill(pid, 0)` means the process is there and is not ours to signal,
+        which is the strongest possible reason not to declare the port unguarded. Only
+        `ProcessLookupError` is proof of death."""
         try:
             os.kill(pid, 0)
             return True
-        except Exception:
+        except ProcessLookupError:
             return False
+        except PermissionError:
+            return True
+        except Exception:
+            return True
 
     @staticmethod
     def _cmdline(pid: int) -> str:
@@ -316,8 +346,19 @@ class Tunnel:
         if not self._alive(pid):
             self._drop_pid_file()
             return None
-        if "cloudflared" not in self._cmdline(pid):
-            log.info("stale tunnel pid %d is not cloudflared any more — leaving it alone", pid)
+        cmd = self._cmdline(pid)
+        if not cmd:
+            # Alive, and we cannot see what it is. Killing blind is how a reused pid becomes someone
+            # else's dead process; assuming it is innocent is how the port ends up unguarded. Latch.
+            self._set_orphan(pid)
+            log.error("cannot read the command line of live tunnel pid %d — not killing it, and the "
+                      "join secret stays REQUIRED until the tunnel is started or stopped by hand", pid)
+            return None
+        # "cloudflared" alone is not enough: the user may well run another one for something else, and a
+        # reused pid could be it. The `--url http://127.0.0.1:<our ws port>` is what makes it OURS.
+        if "cloudflared" not in cmd or f"127.0.0.1:{self.ws_port}" not in cmd:
+            log.info("stale tunnel pid %d is not a cloudflared serving 127.0.0.1:%s — leaving it alone",
+                     pid, self.ws_port)
             self._drop_pid_file()
             return None
         log.warning("killing orphaned cloudflared pid %d from a previous Mission Control (%s)", pid, self.pid_path)
@@ -327,12 +368,12 @@ class Tunnel:
             deadline = time.monotonic() + self.term_grace_s
             while time.monotonic() < deadline:
                 if not self._alive(pid):
-                    self._orphan_pid = None
+                    self._set_orphan(None)
                     self._drop_pid_file()
                     return pid
                 time.sleep(0.05)
         # Still there. Do not clear the file and do not lower the gate.
-        self._orphan_pid = pid
+        self._set_orphan(pid)
         log.error("orphaned cloudflared pid %d SURVIVED SIGTERM and SIGKILL — it may still be routing "
                   "to this port, so the join secret stays REQUIRED. Kill it by hand.", pid)
         return None
@@ -373,6 +414,10 @@ class Tunnel:
             log.info("tunnel stopped while the child was starting — killed it")
             return
         self._proc = proc
+        # ONLY here. Clearing it in `start()` left `armed` False for the whole `starting` window (up to
+        # 20 s, and the --tunnel-at-launch path runs it before a single phone has joined) while the
+        # orphan we could not kill was still routing to this very port.
+        self._set_orphan(None)
         self._write_pid(proc.pid)
         deadline = time.monotonic() + self.timeout_s
         try:
@@ -405,7 +450,8 @@ class Tunnel:
                     break                          # EOF — the child is gone
                 line = raw.decode("utf-8", "replace").strip()
                 if line:
-                    self._last_line = line
+                    if self._owns(proc):       # an old reader's output is not this tunnel's last word
+                        self._last_line = line
                     log.debug("cloudflared: %s", line)
                 m = QUICK_TUNNEL_RE.search(line)
                 if m and self.status != "up" and self._owns(proc) and not self._stopping:
