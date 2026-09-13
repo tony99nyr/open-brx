@@ -1141,6 +1141,10 @@ KNOWN_UNMIRRORED = {
     "resumeSchedule", "_event", "_probe", "_checkEcho", "ackEnd", "onResultPush", "resultWait",
     # app lifecycle + the A26 pick debounce: the stage has no foreground/background and no MC to pick from
     "_awake", "commitPick",
+    # B5: guards a BLE frame-race (a stale zero-HP echo the gun queued before it processed $SPAWN landing
+    # just after a `_spawn`/`_revive` write) against a shooter `latch` the stage has no equivalent of --
+    # the bench drives spawn/revive and pool frames deterministically by hand and never races a real echo.
+    "_deathPending",
     "_beginReconcile", "_endReconcile", "_reportPossession", "feedback", "alert", "control", "_cue",
     "_beginResync", "_resyncButton", "_resyncDone", "_resyncEvidence", "_resyncNotLive", "_resyncTick",
     # persistence + config application (the stage is configured directly, not by a pushed bundle)

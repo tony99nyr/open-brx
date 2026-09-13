@@ -1095,6 +1095,38 @@ test('auto respawn writes revive and emits respawn', () => {
   assert.ok(h.facts.some(f => f.type === 'respawn'));
 });
 
+test('B5: a stale zero-HP echo right after a respawn is not a phantom death, and a fast real kill right after it still counts', () => {
+  // Field evidence 2026-09-12: 0.55 s after an auto-respawn the engine emitted a death with shooter_num 0
+  // ("by UNKNOWN"), then ~2 s of real hits from a shooter, and the real kill was swallowed (`alive` was
+  // already false). Cause: the revive write sets `alive`/`hp` locally right away, but a stale zero-HP
+  // frame the gun queued BEFORE it processed $SPAWN can still land -- it reflects the life that just
+  // ended, not this one.
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$LCD,45,70,0,0,36,216,*');                     // the gun confirms the first life
+  h.frame('$HIR,4,0,7,2,45,0,3,*'); h.frame('$HP,0,0,0,*');   // get the player down once, for a REAL revive below
+  assert.equal(h.eng.alive, false, 'setup: player is down');
+  h.adv(8000); h.eng.tick();                              // auto-respawn (delay 8 s) -> _revive; the settle window starts here
+  assert.equal(h.eng.alive, true, 'setup: revived');
+  const deathsAfterRevive = h.eng.deaths;
+
+  // The stale echo: no fresh latch (the shot that killed the first life is long gone), 0.55 s after the
+  // revive write. Must NOT be treated as a death.
+  h.adv(550);
+  h.frame('$LCD,0,0,0,0,36,216,*');
+  assert.equal(h.eng.alive, true, 'phantom death must not fire on the stale echo');
+  assert.equal(h.eng.deaths, deathsAfterRevive, 'no death counted for the stale echo');
+
+  // A REAL hit lands moments later, still inside the settle window, and finishes the kill. It carries its
+  // OWN fresh latch, so a spawn-camp kill must still count immediately, correctly attributed.
+  h.adv(100);
+  h.frame('$HIR,4,0,19,2,45,0,3,*'); h.frame('$HP,0,0,0,*');
+  assert.equal(h.eng.alive, false, 'the real kill lands');
+  assert.equal(h.eng.deaths, deathsAfterRevive + 1, 'exactly one death counted (the phantom did not eat it)');
+  const death = h.facts.filter(f => f.type === 'death').pop();
+  assert.equal(death.shooter_num, 19, 'the real shooter is credited, not swallowed by the earlier phantom');
+  assert.equal(h.eng.killedBy.unknown, undefined, 'DOWN screen names the real shooter');
+});
+
 test('shots counter: $ALCD decrements count, increases (reload) ignored', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$ALCD,32,100,0,384,0,*'); h.frame('$ALCD,31,100,0,384,0,*'); h.frame('$ALCD,30,100,0,384,0,*');

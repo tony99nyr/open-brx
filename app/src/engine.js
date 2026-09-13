@@ -196,6 +196,8 @@ export class Engine {
     this._activeRole = null;        // A16 §3.3: {name, tid} — the ONE headset role currently held (carrier|infected|vip|beacon|extracted), re-asserted after every hit, cleared on death
     this._lastHeadsetFlashAt = null; // led-language.md §2 (safety: bursts ≥ 1 s apart) / §5: node-initiated headset FLASH sequences (hit flash, role re-assert) share the gun burst's 1 s minimum — never the down rearm or the low-health alert
     this.latch = null;              // {shooter_num, shooter_team, at, ir_proto}
+    this._spawnAt = null;            // B5: this.now() of the last _spawn/_revive WRITE — the settle window below is measured from here
+    this._armedThisLife = false;     // B5: true once the gun has reported hp>0 on the wire since that write — clears the settle gate early
     this.beacon = null;             // F72: {owner_team, magnitude, sensor, at} — last grenade/station beacon (proto-15 $HIR)
     this._lastBeaconKey = null;     // F85: `${owner_team}:${magnitude}` of the last beacon ACCEPTED (not merely seen), for dedupe below
     this._lastBeaconAt = 0;         // F85: this.now() of that acceptance
@@ -1279,6 +1281,7 @@ export class Engine {
     // grant, never a starting pool (bench 2026-08-27).
     this.spawned = true; this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.killedBy = null; this.deadAt = 0; this.reloading = null; this._reloadOutcome = null; this.held = {};
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
+    this._spawnAt = this.now(); this._armedThisLife = false;   // B5: a settle window starts here — see `_deathPending`
     this._gunTake();   // A11.7
     if (this.frames.headset) this._headsetDelayed(this.frames.headset.start, 'start');   // led-language.md §3.1/§5: scheduled +1.0 s after $SPAWN, not inline (A11.6: white flash marks the start, then dark/team)
     this.moment = { kind: 'go', at: this.now() };
@@ -1725,6 +1728,7 @@ export class Engine {
     this._prevAmmo = {}; this._prevReserve = {}; this.activeSlot = 0;   // both maps: a stun before the first shot of a NEW life must snapshot this life's reserve, not the last one's (polish review 2026-09-11)   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null;
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
+    this._spawnAt = this.now(); this._armedThisLife = false;   // B5: a settle window starts here — see `_deathPending`
     this._gunTake();   // A11.7
     this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}), ...(stationId != null ? { station: stationId } : {}) });
     this.moment = { kind: 'redeploy', at: this.now() };
@@ -1958,6 +1962,7 @@ export class Engine {
       case 'HP': this._onHp(+t[1] || 0, +t[2] || 0, t[3] !== undefined && t[3] !== '' ? (+t[3] || 0) : this.shield); break;
       case 'LCD': {
         this.hp = +t[1] || 0; this.armor = +t[2] || 0;
+        if (this.hp > 0) this._armedThisLife = true;   // B5: the gun has now confirmed a life on the wire -- the settle window is over
         // NOTE: do NOT write this.shield from $LCD token 3. Unlike $HP, $LCD's tokens 3-4 are
         // UNDOCUMENTED (docs/manual/dev.md, protocol/brx-protocol.md "semantics TBD") and
         // read 0 in every observed frame -- so writing it can only ZERO a live shield, never set one,
@@ -1967,7 +1972,7 @@ export class Engine {
         if (this.awaitingEcho && !this.headEcho) this.headEcho = f;
         const wasResync = !!this.resync;
         if (this.resync) this._resyncEvidence('lcd');
-        if (this.phase === 'live' && this.hp === 0 && this.alive) this._death(wasResync);
+        if (this.phase === 'live' && this.hp === 0 && this.alive && !this._deathPending()) this._death(wasResync);
         break;
       }
       case 'ALCD': {
@@ -2322,6 +2327,7 @@ export class Engine {
   }
 
   _onHp(hp, armor, shield) {
+    if (hp > 0) this._armedThisLife = true;   // B5: the gun has now confirmed a life on the wire -- the settle window is over
     // Damage drains shield -> armor -> HP (bench 2026-08-27). Omitting shield from the
     // total made every shield-absorbed hit compute dmg === 0, which the guard below then
     // dropped entirely -- no hit_taken fact, no HUD feedback, no score. See FOLLOWUPS Q12.
@@ -2442,7 +2448,29 @@ export class Engine {
     if (hp > 0) this._gunPoolPaint(movedPool);   // A16 §3.1 (readout) / A11.7 legacy (a hit does not clear a held paint, bench 2026-09-04; only the band change is written)
     const wasResync = !!this.resync || !!this.reconciling;
     if (this.resync) this._resyncEvidence('hp');
-    if (hp === 0 && this.alive && this.phase === 'live') this._death(wasResync);   // a death learned during resync/reconcile is a desync death
+    if (hp === 0 && this.alive && this.phase === 'live' && !this._deathPending()) this._death(wasResync);   // a death learned during resync/reconcile is a desync death
+  }
+
+  /** B5 (phantom death on spawn race): a zero-HP frame the instant after a `_spawn`/`_revive` write can be a
+   *  STALE echo the gun queued before it processed `$SPAWN` -- it reflects the life that just ended, not this
+   *  one. The write sets `alive`/`hp` locally right away, but nothing proves the GUN has caught up until it
+   *  reports hp>0 on the wire. So for a short settle window after that write, an unattributed zero is presumed
+   *  stale and dropped rather than manufacturing a shooter-0 death (which then swallows the REAL kill a moment
+   *  later, since `alive` is already false when it arrives). Two ways out of the window, either is real evidence:
+   *  the gun has reported hp>0 since the write (`_armedThisLife`), or there is a FRESH latch -- a spawn-camp kill
+   *  is a real hit and must still count, immediately, with the shooter attributed. Past the window with neither,
+   *  fall through to `_death`'s existing stale-latch handling (shooter unknown) -- that is attribution loss, a
+   *  different and already-handled case, not this one. */
+  _deathPending() {
+    // S7.1 reconcile (a BLE-drop rejoin, not a spawn/revive write) trusts a real $HP,0 outright -- that
+    // path already restores hp/alive from the gun's own state rather than a local write, so there is no
+    // queued-before-$SPAWN echo to guard against, and "never infer death" there means never guess one
+    // from silence, not suppress one the gun just reported.
+    if (this.reconciling) return false;
+    if (this._armedThisLife) return false;
+    const now = this.now();
+    if (this.latch && now - this.latch.at <= C.DEATH_LATCH_MS) return false;
+    return this._spawnAt != null && now - this._spawnAt < C.DEATH_LATCH_MS;
   }
 
   _death(desync) {

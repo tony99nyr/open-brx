@@ -317,6 +317,16 @@ class Session:
         # and by the first `log_data` chunk (the node is answering). The manual button is never deduped:
         # "manual" means the button is the only asker, not that the button stops working.
         self._log_asked: set[str] = set()
+        # B7: node_ids with a log STREAM actually in flight (any `log_data` chunk received, not yet the
+        # `last` one). Distinct from `_log_asked` above (which a manual ask deliberately never joins, and
+        # which itself clears on the FIRST chunk so a `reconnect`+`offer` double-fire on the same hello
+        # cannot re-ask a node that has already started answering). Without this, a `log_offer` the node
+        # re-sends midway through an upload -- manual or automatic -- reads as a NEW offer: MC's `offer`
+        # ask goes out again, the node queues it, the current upload finishes, the queued pull sends one
+        # fresh line then offers again, and the pair free-runs until the per-node byte budget cuts it
+        # (observed 44x, field session 2026-09-12). This set gates ONLY the log_offer handler's own
+        # re-ask, never `pull_log` itself, so a manual re-press still always goes out.
+        self._log_inflight: set[str] = set()
         # A24/M2: the roster AS PLAYED. `_replay` must not build its Scorer from the LIVE roster --
         # the operator can re-team a player during recap, and a late flush would then replay the
         # finished match on the new teams. Frozen at `_schedule` and again at the whistle.
@@ -1878,6 +1888,7 @@ class Session:
         # A25: a hello is a NEW socket. Any `pull_log` we sent the old one never landed, so the ask
         # stops being outstanding here -- before the `reconnect` trigger below decides to make a new one.
         self._log_asked.discard(nid)
+        self._log_inflight.discard(nid)   # B7: the old socket's stream is dead too; no more chunks are coming on it
         nv = self._node_view(nid)
         nv.update({k: v for k, v in n.items() if k in ("node_type", "gun_name", "gun_tail", "fw", "reach", "reach_claimed")})
         self._note_version(nid, n.get("app_ver"), n.get("platform"))   # A29
@@ -2384,9 +2395,17 @@ class Session:
                           reason=body.get("reason") if isinstance(body.get("reason"), str) else None,
                           lines=body.get("lines") if isinstance(body.get("lines"), int) else None,
                           nbytes=body.get("bytes") if isinstance(body.get("bytes"), int) else None)
-            self.pull_log(nid, "offer")
+            # B7: a stream from this node is already in flight (manual or automatic) -- a `log_offer`
+            # arriving mid-upload is the node re-announcing what it holds, not a fresh request. Answering
+            # it with another `pull_log` queues a second ask the node runs the moment the first finishes,
+            # which re-offers, which asks again... free-running until the byte budget cuts it (B7, field
+            # session 2026-09-12). The already-running stream is the single legitimate ask; do not stack
+            # a second one on top of it.
+            if nid not in self._log_inflight:
+                self.pull_log(nid, "offer")
         elif kind == "log_data":
             self._log_asked.discard(nid)          # A25: the node is answering; the ask is no longer outstanding
+            self._log_inflight.add(nid)           # B7: ...and the stream itself is running until its `last` chunk
             n = len(str(body.get("chunk", "")))
             self._log_bytes[nid] = self._log_bytes.get(nid, 0) + n
             # A25: only a COMPLETE `last`-terminated stream counts as delivered -- a half-uploaded log
@@ -2395,6 +2414,7 @@ class Session:
             if body.get("last"):
                 self._set_log(nid, "complete", nbytes=self._log_bytes.get(nid, 0))
                 self._log_done[nid] = self._log_match
+                self._log_inflight.discard(nid)   # B7: stream over -- the NEXT log_offer is a new ask, not a loop
             else:
                 self._set_log(nid, "pulling", nbytes=self._log_bytes.get(nid, 0))
         self._log(nid, kind, body, t_recv)
@@ -2977,6 +2997,7 @@ class Session:
         # silently, on the match most likely to be the one worth debugging.
         self._log_bytes = {}
         self._log_asked = set()
+        self._log_inflight = set()
         self._pending_limit_t = None           # a new match owes nothing to the last one's cap
         self._result_pushed = {}               # A24: nor to the last one's result
         self.end_reason = None
