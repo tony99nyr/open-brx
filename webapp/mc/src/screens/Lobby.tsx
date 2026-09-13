@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { RUNWAYS, useRunway } from '../runway';
-import { blocksPush, coverageLine, curedByPush, reachLabel, reachOf, reachTooltip, sentenceCase, splitBlocker } from '../api/derive';
+import { STALE_ACK_FAULT, blocksPush, coverageLine, curedByPush, curedByPushRow, reachLabel, reachOf, reachTooltip, sentenceCase, splitBlocker } from '../api/derive';
 import type { Player } from '../api/types';
 import { useStore } from '../store';
 import { F, T, TAB, teamColor } from '../tokens';
@@ -10,6 +10,10 @@ import { McVerify } from '../ui/McVerify';
 import { StandDownChip, StandbySection } from '../ui/Standby';
 import { GameEditPanel } from '../ui/GameEditPanel';
 
+
+/** The name of the control, spelled once (F8a). Every server blocker line, every disabled title and
+ *  the rail's own stale-ack sentence point at the same words, and those words are the button's. */
+const RE_PUSH_HERE = 'RE-PUSH CONFIG on LOBBY';
 
 export function Lobby() {
   const { state, run, api, setView } = useStore();
@@ -62,8 +66,10 @@ export function Lobby() {
   const staleAcked = Object.entries(lobby.acks).filter(([, a]) => a.ok && !ackIsCurrent(a)).map(([id]) => nameOf(id));
   // U-1: computed from the ACKS, independently of the board — a stale ack is always ALSO a red row,
   // so anything that asked "are there faults?" first could never reach this sentence.
+  // F8a: ONE instruction string, everywhere. "push again" named no control; `RE-PUSH CONFIG on
+  // LOBBY` is the label of the button three lines below it.
   const staleAckLine = staleAcked.length
-    ? `${staleAcked.join(', ')} still answering for an older config — push again`
+    ? `${staleAcked.join(', ')} still answering for an older config — ${RE_PUSH_HERE}`
     : '';
   // A36/C-5: the SERVER's own answer wins wherever it is present (`types.ts` has said so since A36 and
   // nothing here read it). `all_acked` walks the roster the way `start()` does — it skips a player with
@@ -93,9 +99,19 @@ export function Lobby() {
   // R2-2: PUSH's gate is the SERVER's (`state.py push_config._blocks_push`, mirrored in
   // `derive.blocksPush`) — A36's three proofs are cured BY the push, so they cannot be allowed to
   // refuse it. Anything else red, and every phone that has not arrived, still does.
-  const pushBlockedCount = readiness.board.filter(blocksPush).length;
-  // The rows a re-push would clear, and the reason the RE-PUSH button exists at all.
-  const curableRows = redRows.filter(b => (b.blockers ?? []).length > 0 && (b.blockers ?? []).every(curedByPush));
+  // F3: …and a RE-push is the same gate asked with `repush`, which is where the two differ: a phone
+  // that has not arrived refuses the FIRST push and nothing else (`state.py push_config.is_repush`).
+  const pushBlockedCount = readiness.board.filter(r => blocksPush(r, { repush: lobby.pushed })).length;
+  // The rows a re-push would clear, and the reason the RE-PUSH button exists at all. F1: `some`, not
+  // `every` — a row can need a re-push AND something else, and the something else must not take the
+  // cure off the screen (`derive.curedByPushRow`).
+  const curableRows = redRows.filter(curedByPushRow);
+  // F8b: R2-8's suppression compared red ROWS with stale ACKS, so one row carrying a stale ack AND a
+  // second red made "N guns cannot start" vanish for every other red on the board. The question is
+  // which rows the stale-ack sentence does NOT already account for: the ones whose blockers are not
+  // ALL stale acks.
+  const notOnlyStale = redRows.filter(b => !((b.blockers ?? []).length > 0
+    && (b.blockers ?? []).every(w => w.startsWith(STALE_ACK_FAULT))));
   // ONLY what actually gates the start. `ambers` (STALE LINK, SCREEN OFF, …) are advisories and were
   // printed in the same run-on sentence, which made a real fault read like a shrug.
   const faults = redRows.map(b => ({ who: b.sticker, why: b.blockers ?? [] }));
@@ -120,6 +136,33 @@ export function Lobby() {
     try { await run(() => api.pushLobby(force)); } finally { setBusy(false); }
   };
   const reteam = (p: Player, team_id: string) => { if (p.team_id !== team_id) run(() => api.patchPlayer(p.player_id, { team_id })); };
+
+  // ---- the two buttons' gates, written once ------------------------------------------------
+  // F1: the RE-PUSH shows whenever a re-push would CHANGE something — a row carrying a blocker only a
+  // push clears, or a roster that has not finished acking the head it already has. It is disabled,
+  // never merely erroring, when the server would refuse it whatever the operator does.
+  const showRePush = lobby.pushed && (curableRows.length > 0 || !allAcked);
+  const rePushDisabled = busy || !balancedForTeams;
+  const staleish = staleAcked.length || curableRows.length;
+  const armGating = readiness.board.filter(r => blocksPush(r, { repush: false }));
+  const armDisabled = (lobby.pushed ? blockedCount > 0 : pushBlockedCount > 0) || !balancedForTeams
+                      || players.length === 0 || (lobby.pushed && !allAcked);
+  // F1: …and a disabled primary ALWAYS says why. This used to fall through to `''` for every reason
+  // except an unplayable roster and a stale ack — so the commonest case of all, a red nobody can
+  // re-push away, left the operator hovering a dead button that said nothing. Each reason is a
+  // sentence; they are joined rather than ranked, because a board can carry more than one.
+  const armWhy = [
+    !balancedForTeams ? rosterFault ?? 'This roster cannot play' : '',
+    players.length === 0 ? 'Add someone to the roster first' : '',
+    staleish ? `${staleish} gun${staleish === 1 ? '' : 's'} answered for an older config — ${RE_PUSH_HERE}` : '',
+    !staleish && lobby.pushed && !allAcked ? `Waiting for every gun to echo the config — or ${RE_PUSH_HERE}` : '',
+    armGating.length
+      ? `${armGating.length} row${armGating.length === 1 ? '' : 's'} no push can clear: ${armGating
+          .map(r => `${r.sticker} ${(r.blockers ?? []).filter(b => !curedByPush(b)).map(b => splitBlocker(b).head).join(', ') || 'phone not arrived'}`)
+          .join(' · ')}`
+      : '',
+  ].filter(Boolean).join('  ·  ');
+  const armTitle = armDisabled ? armWhy || 'Not ready to arm yet' : '';
 
   return (
     <div className="screen">
@@ -194,34 +237,32 @@ export function Lobby() {
               primary after a push is ARM COUNTDOWN, and a re-push is not the thing to do by
               default. Shown when a re-push would actually change something: a row only a push can
               clear, or a roster that has not finished acking the head it already has. */}
-          {lobby.pushed && (curableRows.length > 0 || !allAcked) && (
+          {showRePush && (
             <button type="button" data-repush="1" data-repush-force={pushBlockedCount > 0 ? '1' : undefined}
-              className={busy ? undefined : 'hov-acc-ink hit44'} disabled={busy}
-              style={{ ...BTN_RESET, cursor: busy ? 'default' : 'pointer',
-                       color: busy ? T.micro : pushBlockedCount > 0 ? T.warn : T.acc,
+              className={rePushDisabled ? undefined : 'hov-acc-ink hit44'} disabled={rePushDisabled}
+              style={{ ...BTN_RESET, cursor: rePushDisabled ? 'not-allowed' : 'pointer',
+                       color: rePushDisabled ? T.micro : pushBlockedCount > 0 ? T.warn : T.acc,
                        font: F.chk(700, 13), letterSpacing: '.06em', minHeight: 44, padding: '0 6px' }}
               // A re-push IS a push, so it meets the push gate. When something the push cannot cure is
-              // also on the board (a phone that has not arrived, a gun that is not powered) the server
-              // refuses it unforced — and START refuses a stale ack even WITH force, so an operator
-              // with both on the board would have no way out at all. The button says which of the two
-              // it is about to do rather than erroring on the click or quietly forcing.
-              title={pushBlockedCount > 0
-                ? `Sends this same config to every gun again, over ${pushBlockedCount} row${pushBlockedCount === 1 ? '' : 's'} no push can clear. A gun that is not linked simply will not ack.`
-                : 'Compiles and sends this same config to every gun again. The ack count drops to 0 and climbs as each one answers.'}
+              // also on the board (a gun that is not powered) the server refuses it unforced — and
+              // START refuses a stale ack even WITH force, so an operator with both on the board would
+              // have no way out at all. The button says which of the two it is about to do rather than
+              // erroring on the click or quietly forcing.
+              //
+              // F1: and an UNPLAYABLE roster disables it outright. `_refuse_one_team` is checked after
+              // the force gate on the server, so `force` does not open it — a clickable button here
+              // could only ever throw, into a toast, about a fault whose fix is on this same screen.
+              title={rosterFault
+                ? rosterFault
+                : pushBlockedCount > 0
+                  ? `Sends this config to every gun again, over ${pushBlockedCount} row${pushBlockedCount === 1 ? '' : 's'} no push can clear. A gun that is not linked simply will not ack.`
+                  : 'Compiles and sends this config to every gun again. The ack count drops to 0 and climbs as each one answers.'}
               onClick={() => rePush(pushBlockedCount > 0)}>
               {busy ? 'RE-PUSHING…'
                 : pushBlockedCount > 0 ? `RE-PUSH CONFIG OVER ${pushBlockedCount} BLOCKED ▸` : 'RE-PUSH CONFIG ▸'}
             </button>
           )}
-          <PrimaryButton onClick={() => pushAndArm()}
-            disabled={(lobby.pushed ? blockedCount > 0 : pushBlockedCount > 0) || !balancedForTeams
-                      || players.length === 0 || (lobby.pushed && !allAcked)}
-            title={!balancedForTeams ? rosterFault ?? ''
-              : lobby.pushed && (curableRows.length > 0 || !allAcked)
-                ? (staleAcked.length || curableRows.length
-                    ? `${(staleAcked.length || curableRows.length)} gun${(staleAcked.length || curableRows.length) === 1 ? '' : 's'} answered for an older config — RE-PUSH CONFIG on LOBBY`
-                    : 'Waiting for every gun to echo the config — or RE-PUSH CONFIG on LOBBY')
-                : ''}>
+          <PrimaryButton onClick={() => pushAndArm()} disabled={armDisabled} title={armTitle}>
             {lobby.pushed ? 'ARM COUNTDOWN ▸' : 'PUSH CONFIG & ARM ▸'}
           </PrimaryButton>
         </div>
@@ -250,8 +291,8 @@ export function Lobby() {
               With two stale acks and nothing else, every red IS the stale ack, and "2 guns cannot
               start" beside "REAPER, VIPER still answering for an older config" counts the same two
               guns twice — which reads as four problems. */}
-          {staleAckLine && faults.length > staleAcked.length && (
-            <span style={{ color: T.micro }}>{`  ·  ${faults.length} gun${faults.length === 1 ? '' : 's'} cannot start`}</span>
+          {staleAckLine && notOnlyStale.length > 0 && (
+            <span style={{ color: T.micro }}>{`  ·  ${notOnlyStale.length} gun${notOnlyStale.length === 1 ? '' : 's'} cannot start`}</span>
           )}
         </div>
 

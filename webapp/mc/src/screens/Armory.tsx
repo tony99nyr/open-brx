@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { curedByPush, isRoutableLanIp, reachLabel, reachTooltip, registrySig, sentenceCase, splitBlocker, staleReachReason } from '../api/derive';
+import { blocksPush, isRoutableLanIp, reachLabel, reachTooltip, registrySig, sentenceCase, splitBlocker, staleReachReason } from '../api/derive';
 import { STALE_AFTER_MS, type LogView, type ReadinessRow, type TunnelStatus } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
@@ -112,8 +112,11 @@ export function Armory() {
   // LOBBY is where A36's three proofs are CURED — so a row whose only reds are the three must not
   // stand between the operator and the button that fixes it. `nRed` stays the honest count on the
   // RED tile (those rows ARE red); `nRedGating` is what the gate asks.
-  const curableRed = (g: ReadinessRow) => (g.blockers ?? []).length > 0 && (g.blockers ?? []).every(curedByPush);
-  const gatingReds = board.filter(g => g.status === 'red' && !curableRed(g));
+  // F1 (iteration 3): the gate asks the SERVER's question (`derive.blocksPush`, mirroring
+  // `push_config._blocks_push`) instead of "is every blocker on this row push-cured". The two differ
+  // on a row carrying a curable blocker AND an uncurable one — that row still has to block CONTINUE,
+  // and it still has to be counted as one a re-push will partly help.
+  const gatingReds = board.filter(g => g.status === 'red' && blocksPush(g));
   const nRedGating = gatingReds.length;
   const nRedCurable = nRed - nRedGating;
   const gateLabel = nRedGating ? `${nRedGating} GUN${nRedGating === 1 ? '' : 'S'} BLOCKED` : 'CONTINUE ▸';

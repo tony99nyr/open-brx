@@ -440,3 +440,141 @@ describe('R2-8 · the rail states the count once', () => {
     m.unmount();
   });
 });
+
+// ============ ROUND 3 (polish loop iteration 3, 2026-09-13) ================================= //
+// Every fix below is a case where the console's own rule was NARROWER than the fault it describes,
+// so the control it names disappeared exactly when the operator was told to press it.
+
+describe('F1 · the RE-PUSH is offered whenever a re-push would change something', () => {
+  it('a row with a curable red BESIDE an uncurable one still offers RE-PUSH', async () => {
+    // The `every(curedByPush)` filter dropped this row: an echo mismatch leaves the ack CURRENT, so
+    // `all_acked` is true as well, and the button vanished on the one board that names it three times.
+    const { d, state } = await lobbyWith({ 0: { status: 'red', blockers: [ECHO, LINK_LOST] } });
+    const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
+    expect(btn(m, 'RE-PUSH CONFIG'), 'the echo mismatch is still cured by a push').toBeTruthy();
+    m.unmount();
+  });
+
+  it('a stale ack beside a link loss offers RE-PUSH, and the disabled ARM is never silent', async () => {
+    const { d, state } = await lobbyWith({ 0: { status: 'red', blockers: [STALE, LINK_LOST] } });
+    const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
+    expect(btn(m, 'RE-PUSH CONFIG')).toBeTruthy();
+    const arm = btn(m, 'ARM COUNTDOWN')!;
+    expect(arm.disabled).toBe(true);
+    expect(arm.title, 'a disabled button with no title is a dead end').not.toBe('');
+    expect(arm.title).toContain('RE-PUSH CONFIG on LOBBY');
+    m.unmount();
+  });
+
+  it('a disabled ARM always says why, even when nothing is curable', async () => {
+    const { d, state } = await lobbyWith({ 0: { status: 'red', blockers: [LINK_LOST] } });
+    const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
+    const arm = btn(m, 'ARM COUNTDOWN')!;
+    expect(arm.disabled).toBe(true);
+    expect(arm.title).not.toBe('');
+    expect(arm.title).toContain('GUN LINK LOST');
+    m.unmount();
+  });
+
+  it('an unplayable roster DISABLES the RE-PUSH and says so, rather than erroring on the click', async () => {
+    // The server refuses a one-team push with `force` included (`_refuse_one_team`), so a clickable
+    // RE-PUSH here can only ever throw — and the throw lands in a toast, not on the control.
+    const { d, state: base } = await lobbyWith({ 0: { status: 'red', blockers: [STALE] } }, { all_acked: false });
+    const state = { ...base, readiness: { ...base.readiness,
+      roster_faults: ['ONLY ONE SIDE HAS PLAYERS — a match fought on one side cannot register a hit; move players between teams'] } } as State;
+    const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
+    const repush = btn(m, 'RE-PUSH CONFIG')!;
+    expect(repush.disabled).toBe(true);
+    expect(repush.title.toLowerCase()).toContain('one side');
+    m.unmount();
+  });
+});
+
+describe('F3 · a phone that has not arrived blocks the FIRST push, not a re-push', () => {
+  it('derive.blocksPush asks the two questions separately', async () => {
+    const { blocksPush } = await import('../src/api/derive');
+    const waiting = { status: 'waiting', blockers: [] };
+    expect(blocksPush(waiting), 'the first push cannot reach a phone that is not here').toBe(true);
+    expect(blocksPush(waiting, { repush: true }), 'a re-push is delivered on that phone\'s hello').toBe(false);
+    const red = { status: 'red', blockers: [LINK_LOST] };
+    expect(blocksPush(red, { repush: true }), 'a red no push cures still refuses either way').toBe(true);
+    expect(blocksPush({ status: 'red', blockers: [STALE] }, { repush: true })).toBe(false);
+  });
+
+  it('the RE-PUSH reads as ORDINARY when the only other row is a phone that has not arrived', async () => {
+    const { d, state } = await lobbyWith({ 0: { status: 'red', blockers: [STALE] }, 1: { status: 'waiting', blockers: [] } },
+      { all_acked: false });
+    const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
+    const repush = btn(m, 'RE-PUSH CONFIG')!;
+    expect(repush.textContent, 'it is not forcing anything — the head reaches that phone on its hello')
+      .not.toContain('BLOCKED');
+    expect(repush.disabled).toBe(false);
+    m.unmount();
+  });
+
+  it('…but the FIRST push is still disabled by it', async () => {
+    const { d, state } = await lobbyWith({ 1: { status: 'waiting', blockers: [] } },
+      { pushed: false, all_acked: false, acks: {} });
+    const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
+    expect(btn(m, 'PUSH CONFIG & ARM')!.disabled).toBe(true);
+    m.unmount();
+  });
+});
+
+describe('F6 · the mock mints a fresh config_id on a re-push, as the server does', () => {
+  it('the id moves and the call reports it', async () => {
+    const d = await demo();
+    const first = await d.api.pushLobby(true);
+    const before = (await d.api.getState()).config.config_id;
+    expect(first.config_id, 'the server returns the id it pushed').toBe(before);
+    const again = await d.api.pushLobby(true);
+    const after = (await d.api.getState()).config.config_id;
+    expect(again.repushed).toBe(true);
+    expect(after, 'a re-push that cannot be told apart cannot be proven to have landed').not.toBe(before);
+    expect(again.config_id).toBe(after);
+    for (const a of Object.values((await d.api.getState()).lobby.acks)) {
+      if (a.ok) expect(a.config_id).toBe(after);
+    }
+  });
+});
+
+describe('F8 · one instruction, one count', () => {
+  it('the rail names the button, not "push again"', async () => {
+    const { d, state: base } = await lobbyWith({ 0: { status: 'red', blockers: [STALE] } }, { all_acked: false });
+    const [p0] = base.players;
+    const state = { ...base, lobby: { ...base.lobby, acks: { ...base.lobby.acks,
+      [p0.player_id]: { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: 'deadbeef' } } } } as State;
+    const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
+    expect(m.text()).toContain('RE-PUSH CONFIG on LOBBY');
+    expect(m.text()).not.toContain('push again');
+    m.unmount();
+  });
+
+  it('a stale ack that ALSO carries another red is still counted as a gun that cannot start', async () => {
+    // R2-8 compared red ROWS with stale ACKS, so one row carrying both suppressed the count entirely.
+    const { d, state: base } = await lobbyWith({ 0: { status: 'red', blockers: [STALE, LINK_LOST] } }, { all_acked: false });
+    const [p0] = base.players;
+    const state = { ...base, lobby: { ...base.lobby, acks: { ...base.lobby.acks,
+      [p0.player_id]: { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: 'deadbeef' } } } } as State;
+    const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
+    expect(m.text()).toContain('still answering for an older config');
+    expect(m.text(), 'that gun is also off the net — a re-push alone will not start it').toContain('cannot start');
+    m.unmount();
+  });
+
+  it('the pin test reads the SERVER\'s PUSH_CURES tuple, so a fourth cure cannot be missed', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const py = readFileSync(resolve(process.cwd(), '../../mcp/brx_mcp/mc/state.py'), 'utf8');
+    const { PUSH_CURES } = await import('../src/api/derive');
+    const tuple = py.match(/^PUSH_CURES = \(([^)]*)\)$/m);
+    expect(tuple, 'state.py must still define PUSH_CURES as a tuple of named constants').toBeTruthy();
+    const names = tuple![1].split(',').map(x => x.trim()).filter(Boolean);
+    expect(names.length, `the server cures ${names.length} blockers: ${names.join(', ')}`).toBe(PUSH_CURES.length);
+    for (const name of names) {
+      const m = py.match(new RegExp(`^${name} = "(.+)"$`, 'm'));
+      expect(m, `state.py must define ${name}`).toBeTruthy();
+      expect(PUSH_CURES as readonly string[], `${name} = ${JSON.stringify(m![1])}`).toContain(m![1]);
+    }
+  });
+});

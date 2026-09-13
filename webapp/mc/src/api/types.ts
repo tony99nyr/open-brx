@@ -392,10 +392,13 @@ export interface Api {
   rangeVerdict(weapon_id: string, verdict: 'pass' | 'issue', note?: string): Promise<unknown>;
   endTryout(id: string): Promise<void>;
   setReady(id: string, ready: boolean): Promise<Player>;
-  /** `repushed` (R2-1): this call landed on an ALREADY-PUSHED lobby, so it was a RE-PUSH — same
-   *  `config_id`, same game number, fresh heads, every judgement about the old head dropped.
-   *  Optional: a server that predates it simply omits the field. */
-  pushLobby(force?: boolean): Promise<{ ok: boolean; acks: State['lobby']['acks']; repushed?: boolean }>;
+  /** `repushed` (R2-1): this call landed on an ALREADY-PUSHED lobby, so it was a RE-PUSH — same game
+   *  number, fresh heads, every judgement about the old head dropped. `config_id` is the head that
+   *  was just pushed; a RE-push MINTS A FRESH ONE (F6), which is what makes it provable — an ack
+   *  already on the wire when the acks were cleared is then stale and says so, instead of being
+   *  recorded as an ack for a head that gun never took. Both optional: a server that predates them
+   *  simply omits the fields. */
+  pushLobby(force?: boolean): Promise<{ ok: boolean; acks: State['lobby']['acks']; repushed?: boolean; config_id?: string }>;
   start(runway_s: number, force?: boolean): Promise<{ match_id: string; go_live_t: number; seq: number }>;
   reschedule(runway_s: number): Promise<{ match_id: string; go_live_t: number; seq: number }>;
   abort(): Promise<{ ok: boolean; reached: string[]; unreachable: string[] }>;

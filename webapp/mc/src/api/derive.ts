@@ -87,17 +87,38 @@ export function staleReachReason(n: Pick<NodeView, 'reach' | 'last_reach' | 'las
  *  told them to CLEAR, which is the opposite of what `force` is for. */
 export const PUSH_CURES = ['ACKED AN OLDER CONFIG', 'GUN ECHO ≠ CONFIG', 'GUN POOL ≠ CONFIG'] as const;
 
+/** The stale ack alone — the one blocker the rail's own sentence already accounts for by name. */
+export const STALE_ACK_FAULT = PUSH_CURES[0];
+
 /** Is this one blocker cured by a re-push? (`state.py cured_by_push`.) */
 export const curedByPush = (blocker: string): boolean => PUSH_CURES.some(p => blocker.startsWith(p));
 
+/** Does this RED row carry anything a re-push would clear? (`some`, deliberately, not `every`.)
+ *
+ *  F1 (polish loop iteration 3, 2026-09-13): both screens asked whether EVERY blocker on the row was
+ *  push-cured, which is a different and much narrower question. A gun with an echo mismatch (or a
+ *  stale ack) plus any second red — GUN LINK LOST, IDENTITY REVERTED, a version blocker — fell out of
+ *  that filter, and an echo mismatch leaves the ack CURRENT, so `all_acked` was true as well: the
+ *  RE-PUSH button disappeared from the one board that names RE-PUSH three times, the disabled ARM
+ *  carried an EMPTY title, and the host override then threw a force-proof refusal naming a control
+ *  that was not on screen. Whether a row ALSO needs something else done to it is the push gate's
+ *  question (`blocksPush`), not this one's. */
+export const curedByPushRow = (row: { blockers?: string[] | null }): boolean =>
+  (row.blockers ?? []).some(curedByPush);
+
 /** Does this readiness row REFUSE A PUSH? (`state.py push_config._blocks_push`, exactly.)
  *
- *  `waiting` always does — no push reaches a phone that has not arrived. A `red` does only when it
- *  carries at least one blocker a push cannot cure. Every OTHER gate (START, the host override's own
- *  copy) still reads the plain red/waiting counts: a re-push replaces the head, it does not switch a
- *  gun on. */
-export function blocksPush(row: { status?: string; blockers?: string[] | null }): boolean {
-  if (row.status === 'waiting') return true;
+ *  A `red` refuses only when it carries at least one blocker a push cannot cure. A `waiting` row — a
+ *  phone that has not arrived — refuses the FIRST push and not a re-push (F3, matching the server's
+ *  `is_repush`): nothing reaches a phone that is not there yet, but `_repush_lobby_config` compiles
+ *  for the WHOLE roster and `_hydrate` hands that bundle over on the phone's hello, so the head is
+ *  delivered. Counting it made the ordinary re-push render as the forcing variant, "RE-PUSH CONFIG
+ *  OVER 1 BLOCKED", because one operator had not switched their phone on yet.
+ *
+ *  Every OTHER gate (START, the host override's own copy) still reads the plain red/waiting counts:
+ *  a re-push replaces the head, it does not switch a gun on. */
+export function blocksPush(row: { status?: string; blockers?: string[] | null }, opts?: { repush?: boolean }): boolean {
+  if (row.status === 'waiting') return !opts?.repush;
   return row.status === 'red' && (row.blockers ?? []).some(b => !curedByPush(b));
 }
 

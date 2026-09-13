@@ -243,6 +243,16 @@ export class MockBackend implements Api {
     // earlier version of this demo bolt on a second, disconnected NodeView instead — the actual source
     // of the "NEVER THIS SESSION" + "NOT REACHED FOR" contradiction pass 1 caught).
     if (this.demoLastStale) { this.lastReach['A0B3'] = 'backhaul'; this.gunOverride['GUN-F'] = 'r'; }
+    // F3 (iteration 3): under `?mock&faults=1` the one row NO push can cure is a phone that has not
+    // arrived, not a gun nobody switched on. That is what makes the RE-PUSH's two labels visible: the
+    // FIRST push is refused unforced (nothing reaches a phone that is not here), and the RE-push is
+    // ORDINARY — the head is handed over on that phone's hello — so the button reads plain
+    // `RE-PUSH CONFIG ▸` rather than the forcing `OVER 1 BLOCKED` variant.
+    if (this.demoFaults) {
+      this.gunOverride['GUN-D'] = 'g';
+      const drift = this.players.find(x => x.gun_id === 'GUN-D');
+      if (drift) drift.node_id = null;
+    }
     // F142 (field 2026-09-12, ISSUE 11/11b): two ghosts with no phone ever bound, exactly as a
     // restored `--demo` session left them on a real board — present from the FIRST snapshot, same as
     // the real bug (the banner has to be there before the operator ever does anything).
@@ -406,6 +416,11 @@ export class MockBackend implements Api {
       // reads as "never seen", and a genuinely-dropped one shows a contradiction ("NEVER THIS
       // SESSION" over "NOT REACHED FOR 2m10s", the exact bug pass 1 found).
       const droppedBackhaul = red && this.demoLastStale && sticker === 'GUN-F';
+      // F3: the server's `waiting` row — a rostered player whose phone has never said hello. It is not
+      // a fault and carries no blockers; it is the commonest thing on a real muster board, and the
+      // mock could not produce one at all, which is why nothing here predicted the push gate's
+      // FIRST-push-only rule for it.
+      const waiting = !!pl && !pl.node_id;
       return {
         ...ver,
         log: this.logFor(`node_${tail}`),            // A25: the same view, on the per-player board
@@ -415,22 +430,26 @@ export class MockBackend implements Api {
         // boards every gun so the muster screen is not empty before players are typed in, so it says
         // "nobody" the way the wire does -- "" and the reserved wire id 0 (types.py MAX_PLAYERS comment).
         gun_id: sticker, sticker, tail, player_id: pl?.player_id ?? '', player_num: pl?.player_num ?? 0,
-        present: !red || droppedBackhaul, identity: 'ok', node: red ? 'none' : 'linked',
-        headset: red ? 'absent' : proof ? 'proven' : 'unknown',
-        headset_proof: proof,
+        present: waiting ? false : (!red || droppedBackhaul), identity: 'ok',
+        node: waiting || red ? 'none' : 'linked',
+        headset: waiting ? 'unknown' : red ? 'absent' : proof ? 'proven' : 'unknown',
+        headset_proof: waiting ? null : proof,
         // A37: the WEAPON check's own three-state answer. `null` until a push has been answered (and
         // for a stale ack, whose own blocker owns that row); `not_echoed` is neutral, never green.
-        echo: !this.pushed || red || !pl || !this.acks[pl.player_id]?.ok || fault === 'stale' ? null
+        echo: !this.pushed || red || waiting || !pl || !this.acks[pl.player_id]?.ok || fault === 'stale' ? null
           : fault === 'echo' ? 'mismatch' : fault === 'noecho' ? 'not_echoed' : 'proven',
         // null, not undefined: these are the NODE's last word and the server sends an explicit null for
         // one it has not heard (`readiness()`'s closing `row.update`).
-        battery_pct: batt ?? null, battery_age_ms: batt == null ? null : 4000,
-        last_seen_age_ms: red ? (droppedBackhaul ? 130_000 : null) : link * 1000,
-        gun_linked: red ? null : true,
-        fw: 'v4.32', phone_batt: 80, ssid_ok: true, mc_reachable: !red, synced: !red, screen_on: true, foreground: true,
+        battery_pct: waiting ? null : batt ?? null, battery_age_ms: waiting || batt == null ? null : 4000,
+        last_seen_age_ms: waiting ? null : red ? (droppedBackhaul ? 130_000 : null) : link * 1000,
+        gun_linked: waiting || red ? null : true,
+        fw: 'v4.32', phone_batt: 80, ssid_ok: true, mc_reachable: !red && !waiting, synced: !red && !waiting,
+        screen_on: true, foreground: true,
         // A28.3 / F155: the server stamps `reach` from the socket path and clears it on disconnect; `last_reach` outlives it.
-        reach: red ? null : (this.lastReach[tail] ?? 'lan'), last_reach: this.lastReach[tail] ?? (red ? null : 'lan'),
-        status: red || proofRed ? 'red' : a1 || a2 || ambers.length ? 'amber' : 'green', blockers,
+        reach: red || waiting ? null : (this.lastReach[tail] ?? 'lan'),
+        last_reach: waiting ? null : this.lastReach[tail] ?? (red ? null : 'lan'),
+        status: waiting ? 'waiting' : red || proofRed ? 'red' : a1 || a2 || ambers.length ? 'amber' : 'green',
+        blockers: waiting ? [] : blockers,
       };
     });
     const rf = this.rosterFault();
@@ -1025,9 +1044,11 @@ export class MockBackend implements Api {
     const rf = this.rosterFault();
     if (rf) throw new Error(rf);          // round-2 B: not a readiness judgement, so `force` does not open it
     // A37: the three A36 proofs all SAY "RE-PUSH" and are cured by this very call, so they do not
-    // refuse it (`state.py push_config`). Every other red and every `waiting` row still does.
+    // refuse it (`state.py push_config`). Every other red still does. F3: a `waiting` row — a phone
+    // that has not arrived — refuses the FIRST push only; a re-push is handed over on that phone's
+    // hello (`state.py push_config.is_repush`).
     const blocking = this.readiness().board.filter(r =>
-      r.status === 'waiting' || (r.status === 'red' && (r.blockers ?? []).some(b => !curedByPush(b))));
+      (r.status === 'waiting' && !this.pushed) || (r.status === 'red' && (r.blockers ?? []).some(b => !curedByPush(b))));
     if (blocking.length && !force) {
       // R2-10: the server names what blocks, never an empty list after the colon.
       const waiting = blocking.filter(r => r.status === 'waiting').map(r => r.sticker);
@@ -1037,11 +1058,15 @@ export class MockBackend implements Api {
                      reds.length ? `red: ${reds.join('; ')}` : ''].filter(Boolean);
       throw new Error(`readiness blocks the push — clear it before pushing, or push with force: ${parts.join(' · ')}`);
     }
-    // R2-1: a push onto an ALREADY-PUSHED lobby is a RE-PUSH — same `config_id`, and the game number
-    // does not move (nobody has started a game on it). The server says which one it did so the
-    // console can label the action; the mock has to predict that or `?mock` demos a flow the real
-    // server would not produce.
+    // R2-1: a push onto an ALREADY-PUSHED lobby is a RE-PUSH, and the game number does not move
+    // (nobody has started a game on it). The server says which one it did so the console can label
+    // the action; the mock has to predict that or `?mock` demos a flow the real server would not
+    // produce.
     const repushed = this.pushed;
+    // F6 (iteration 3): a re-push MINTS A FRESH `config_id`, exactly as the server does. Holding the
+    // id constant made the re-push unprovable — an ack already on the wire when the acks were cleared
+    // landed afterwards carrying the same id and counted as current.
+    if (repushed) this.config = { ...this.config, config_id: uid('cfg') };
     // The number still moves only on the first push AFTER a match started (`Session._next_game_no`,
     // gated on `_game_no_started`). The two signals cannot disagree on a real server: `_finish()`
     // drops `lobby_pushed`, and a push while the match is still armed/live is refused outright.
@@ -1051,8 +1076,10 @@ export class MockBackend implements Api {
     if (repushed) this.demoCured = true;
     for (const n of Object.keys(this.stations)) this.armStation(n);
     this.phase = 'lobby'; this.pushed = true; this.trying = {}; this.acks = {};
-    for (const p of this.players) this.acks[p.player_id] = this.ackFor(p, this.config.config_id);
-    this.emit(); return { ok: true, acks: clone(this.acks), repushed };
+    // ...and only a phone that is ON THE NET answers one: `_push_config_to` compiles for every player
+    // and sends to those with a socket, so a player whose phone has not arrived has a bundle and no ack.
+    for (const p of this.players) if (p.node_id) this.acks[p.player_id] = this.ackFor(p, this.config.config_id);
+    this.emit(); return { ok: true, acks: clone(this.acks), repushed, config_id: this.config.config_id };
   }
   private schedule(runway_s: number, seq: number, match_id: string) {
     const go_live_t = now() + runway_s * 1000;
