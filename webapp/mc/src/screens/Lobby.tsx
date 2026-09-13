@@ -4,7 +4,7 @@ import { STALE_ACK_FAULT, blocksPush, coverageLine, curedByPush, curedByPushRow,
 import type { Player } from '../api/types';
 import { useStore } from '../store';
 import { F, T, TAB, teamColor } from '../tokens';
-import { BTN_RESET, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag } from '../ui';
+import { BTN_RESET, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag, useNarrow } from '../ui';
 import { SetupSteps } from '../ui/SetupSteps';
 import { McVerify } from '../ui/McVerify';
 import { StandDownChip, StandbySection } from '../ui/Standby';
@@ -362,6 +362,56 @@ export function Lobby() {
 
 function MemberRow({ p, teamIds, reach, noPhone, onDragStart, onMove }: { p: Player; teamIds: string[]; reach?: 'lan' | 'backhaul'; noPhone?: boolean; onDragStart: () => void; onMove: (team_id: string) => void }) {
   const others = teamIds.filter(t => t !== p.team_id);
+  // F-7 (2026-09-13): the wide layout wraps to 3-4 lines at 393 px — name, gun, NO PHONE, reach,
+  // move-to chips, STAND DOWN and the ready tag all competing for one flex-wrap row with nothing
+  // grouped. `useNarrow` (ui/index.tsx, same watched-viewport pattern Spectate.tsx's own
+  // `useViewport` established) switches to a two-row compact layout under 480 px: identity + ready
+  // pinned on row one (never wraps — the callsign ellipsises instead), every other control on row
+  // two. jsdom lays nothing out, so this is proved as a MECHANISM here (`data-compact-row` appears,
+  // the row count is right) and re-measured in pixels at 393 px by the e2e walk.
+  const narrow = useNarrow();
+  const readyTag = p.ready ? <OutlineTag color={T.ok} border="rgba(46,204,113,.5)">READY</OutlineTag> : <OutlineTag color={T.micro} border={T.line}>WAIT</OutlineTag>;
+  // A28.3: which path this node's live socket is actually on right now — absent until a node
+  // connects, never invented for one that hasn't (older server included). S40 (field 2026-09-12):
+  // "BACKHAUL" read to an operator as "on cellular" — the word is now the same one the REACH
+  // block uses (INTERNET), and the tooltip says what it is a fact ABOUT: the path to MC, never
+  // the phone's own radio.
+  const statusTags = <>
+    {noPhone && <OutlineTag color={T.micro} border={T.line}>NO PHONE</OutlineTag>}
+    {reach && <OutlineTag color={reach === 'backhaul' ? T.acc : T.micro} border={reach === 'backhaul' ? T.acc : T.line} title={reachTooltip(reach)}>{reachLabel(reach)}</OutlineTag>}
+  </>;
+  // tap-to-move (tablets have no HTML5 drag): one chip per other team
+  const moveChips = (
+    <span role="group" style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap' }} aria-label={`move ${p.display} to`}>
+      {others.map(t => (
+        <button key={t} type="button" className="hit44" onClick={() => onMove(t)} title={`Move ${p.display} to ${t.toUpperCase()}`}
+          style={{ ...BTN_RESET, font: F.chk(700, 9), letterSpacing: '.14em', padding: '4px 8px', color: teamColor(t), border: `1px solid ${T.line}`, minHeight: 28, display: 'inline-flex', alignItems: 'center' }}>
+          ▸ {t.toUpperCase()}
+        </button>
+      ))}
+    </span>
+  );
+  if (narrow) {
+    return (
+      <div className="hov-acc" draggable onDragStart={onDragStart} data-no-phone={noPhone ? '1' : undefined} data-compact-row="1"
+        style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', background: T.panel, border: `1px solid ${T.line}`, cursor: 'grab', minHeight: 44, opacity: noPhone ? 0.55 : 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span aria-hidden style={{ font: F.mono(600, 12), color: T.faint, letterSpacing: '-.1em', flex: 'none' }}>⠿</span>
+          <span style={{ flex: '1 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ font: F.chk(700, 14), letterSpacing: '.12em' }}><span style={{ color: T.micro, font: F.mono(500, 10) }}>#{p.player_num} </span>{p.display}</span>
+            <span style={{ color: T.faint }}> · </span>
+            <span style={{ font: F.mono(500, 10), color: T.micro }}>{p.gun_id ?? 'NO GUN'}</span>
+          </span>
+          <span style={{ flex: 'none' }}>{readyTag}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          {statusTags}
+          {moveChips}
+          <StandDownChip p={p} />
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="hov-acc" draggable onDragStart={onDragStart} data-no-phone={noPhone ? '1' : undefined}
       // F142 (field 2026-09-12, ISSUE 11b): a restored player with no phone bound read exactly like a
@@ -377,24 +427,10 @@ function MemberRow({ p, teamIds, reach, noPhone, onDragStart, onMove }: { p: Pla
         <span style={{ display: 'block', font: F.chk(700, 14), letterSpacing: '.14em' }}><span style={{ color: T.micro, font: F.mono(500, 10) }}>#{p.player_num} </span>{p.display}</span>
         <span style={{ display: 'block', font: F.mono(500, 10), color: T.micro }}>{p.gun_id ?? 'NO GUN'}</span>
       </span>
-      {noPhone && <OutlineTag color={T.micro} border={T.line}>NO PHONE</OutlineTag>}
-      {/* A28.3: which path this node's live socket is actually on right now — absent until a node
-          connects, never invented for one that hasn't (older server included). S40 (field 2026-09-12):
-          "BACKHAUL" read to an operator as "on cellular" — the word is now the same one the REACH
-          block uses (INTERNET), and the tooltip says what it is a fact ABOUT: the path to MC, never
-          the phone's own radio. */}
-      {reach && <OutlineTag color={reach === 'backhaul' ? T.acc : T.micro} border={reach === 'backhaul' ? T.acc : T.line} title={reachTooltip(reach)}>{reachLabel(reach)}</OutlineTag>}
-      {/* tap-to-move (tablets have no HTML5 drag): one chip per other team */}
-      <span role="group" style={{ display: 'inline-flex', gap: 3 }} aria-label={`move ${p.display} to`}>
-        {others.map(t => (
-          <button key={t} type="button" className="hit44" onClick={() => onMove(t)} title={`Move ${p.display} to ${t.toUpperCase()}`}
-            style={{ ...BTN_RESET, font: F.chk(700, 9), letterSpacing: '.14em', padding: '4px 8px', color: teamColor(t), border: `1px solid ${T.line}`, minHeight: 28, display: 'inline-flex', alignItems: 'center' }}>
-            ▸ {t.toUpperCase()}
-          </button>
-        ))}
-      </span>
+      {statusTags}
+      {moveChips}
       <StandDownChip p={p} />
-      {p.ready ? <OutlineTag color={T.ok} border="rgba(46,204,113,.5)">READY</OutlineTag> : <OutlineTag color={T.micro} border={T.line}>WAIT</OutlineTag>}
+      {readyTag}
     </div>
   );
 }
