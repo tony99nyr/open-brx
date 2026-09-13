@@ -6,8 +6,8 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D5 · E8 · F136 · G11 · H8 ·
-K7 · P19 · Q20 · R4 · S37.** (2026-09-12 bug dossier: F135 filed, the B6 outdoor-range bench sweep.) (2026-09-12 pyright gate: F134 filed; F42.10 closed → archive, F42.14 filed.) (2026-09-12 evening: F129 closed → archive; F133 filed.) (2026-09-12 backhaul, PR #3: B30 and B31 taken.) (2026-09-12 doc-rot close: F131 F132, R3, S32-S36 taken; F42.2/F42.3 closed → archive.) (2026-09-12 M2 close: S20 S21 S22 S23 S24 S26 F127 closed → archive; F129 F130 new; S25 v1 shipped, ESPN pass open.) (2026-09-12 midday: S28 all-weapons retune, S29 shield recharge taken.) (2026-09-12 desk pass: F128, P18, S27 taken; F110 F115 F116 F117 F118 F119 F122 F124 F125 closed → archive.) (2026-09-11 night game test: F110-F127 and S20-S26 taken, see [`game-test-2026-09-11.md`](game-test-2026-09-11.md).) (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D5 · E8 · F137 · G11 · H8 ·
+K7 · P19 · Q20 · R4 · S37.** (2026-09-12 bug dossier: F135 filed, the B6 outdoor-range bench sweep.) (2026-09-12 B4 link-watchdog lane: F136 filed.) (2026-09-12 pyright gate: F134 filed; F42.10 closed → archive, F42.14 filed.) (2026-09-12 evening: F129 closed → archive; F133 filed.) (2026-09-12 backhaul, PR #3: B30 and B31 taken.) (2026-09-12 doc-rot close: F131 F132, R3, S32-S36 taken; F42.2/F42.3 closed → archive.) (2026-09-12 M2 close: S20 S21 S22 S23 S24 S26 F127 closed → archive; F129 F130 new; S25 v1 shipped, ESPN pass open.) (2026-09-12 midday: S28 all-weapons retune, S29 shield recharge taken.) (2026-09-12 desk pass: F128, P18, S27 taken; F110 F115 F116 F117 F118 F119 F122 F124 F125 closed → archive.) (2026-09-11 night game test: F110-F127 and S20-S26 taken, see [`game-test-2026-09-11.md`](game-test-2026-09-11.md).) (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
 ids are retired, never reused.) (2026-09-10: F94/F95/F98 taken — the phone control point
 (`spec/utility.md` §5d), its LAN-coupled roaming variant (§5e) and Territories (§5f). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
 wider than the hill's period" generalisation, the double-`$HIR`-per-beacon dedupe finding (F85, closed same
@@ -683,6 +683,23 @@ never advance an operator-in-the-loop sweep on a timer; never end a run on a bar
 the Windows venv (`/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp …`); the ESP32 rig is board A =
 receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 
+**B4 link watchdog** (one gun, a real drop; `bench`):
+- **F136 🟡 Needs Tony at the bench** B4 (2026-09-12 field session: all four guns ended `bleUp:false`)
+  shipped a link-silence watchdog blind — no BLE in WSL, so none of this ran against a real gun.
+  `engine.js` (`lastGunFrameAt`/`LINK_STALE_MS=75s` in `tick()`) force-reconnects a gun the OS still calls
+  "connected" but that has sent nothing — not even `$VOLTS` — for 75s; every relink also resends a bare
+  `$PHONE,*` (`brxlink.js` `noteStale()` does the actual `ble.disconnect()` + reconnect). Three things
+  only a real gun answers: **(a)** does the `$PHONE,*` event tap actually close across a real BLE
+  disconnect/reconnect mid-match, or does it survive one — the 2026-08-25 bench note ("dead gun
+  volunteers nothing on reconnect") only covered a quick, deliberate drop, never an extended or
+  marginal-signal one? **(b)** is 75s right — does real `$VOLTS` cadence (~30s, "only reliably returned
+  at good RSSI") ever gap wider than that at the edge of range (a false trip), or did tonight's hits stop
+  registering well inside 75s of true silence (too slow to help)? **(c)** does `noteStale()`'s forced
+  `disconnect()` + reconnect actually recover a gun whose native BLE stack has gone stale, on Android AND
+  iOS? Run the existing unchecked **20-minute two-node soak** (§10) with a diagnostic watch on
+  `link.frames` (brxlink's last-60 in/out ring, surfaced in the app's debug panel) to see the real silence
+  gap before any native disconnect callback fires. `bench`.
+
 **A17 hit audio** (one gun, our compiled game, an armoured life; `ears` + `trigger`):
 - **F39 🟡 The real `$SIR` row ceiling.** "Max 14 distinct IR recognitions per game" is a community figure we have
   never measured; `hitaudio.MAX_SIR_ROWS` treats it as a soft budget. Push a 20-row table and check every row still
@@ -1135,7 +1152,8 @@ From `verification-checklist.md` (archived 2026-09-06); what is ⬜ there and st
 - **Hold-across-disperse 5 min**: config head written, gun left unspawned 5+ min, then `$SPAWN` + `$AMMO` goes live with
   config intact (2 min passed; the 5 min run was cut). Else the T-10 s head re-write becomes default.
 - **20-minute two-node soak** (Pixel + iPhone): screen-lock one at T+5, background the other at T+10, walk out of Wi-Fi;
-  BLE held, engine reconciled on unlock, outbox flushed on return, timed end fired locally on both.
+  BLE held, engine reconciled on unlock, outbox flushed on return, timed end fired locally on both. **F136** wants the
+  same run watched for a SILENT (not disconnected) link and the new watchdog's recovery.
 - **Phone auto-rejoin** to the no-internet SSID after 3 min out of range, mobile data on vs off, per OS.
 - **iOS locked-phone BLE**: lock mid-match, take 3 hits, unlock; did the queued `$HIR`/`$HP` reach the engine?
 - **`$VOLTS` % token**: controlled discharge sweep of tokens 3 and 4 (HUD reads tok3 today).

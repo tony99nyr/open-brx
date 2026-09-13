@@ -96,6 +96,7 @@ const engine = new Engine({
   storage: (() => { try { return new URLSearchParams(location.search).has('demo') ? null : localStorage; } catch (_) { return null; } })(),
   log, onChange: () => scheduleRender(),
 });
+engine.onGunStale = () => link.noteStale();   // B4: the engine's silence watchdog forces BrxLink to actually cycle the radio
 engine.night = settings.night;
 hud.mcUrl = settings.mcUrl;
 // per-match history (bench request 2026-08-25): node-local, survives restarts, capped
