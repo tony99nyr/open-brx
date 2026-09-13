@@ -97,14 +97,22 @@ export function GameSettings({ rows, testid, minCol = 320, style }:
  *  never ack, the same one LOBBY's step 2 lives with) is a different fact and must not be worded as
  *  an in-progress push forever. Once `recent` has expired, an incomplete count reads as what it now
  *  is: how many guns are actually caught up. */
-export function LoadStatus({ pushed, acked, total, recent, allAcked, testid = 'game-edit-repush' }:
-  { pushed: boolean; acked: number; total: number; recent: boolean; allAcked: boolean; testid?: string }) {
+export function LoadStatus({ pushed, acked, total, recent, testid = 'game-edit-repush' }:
+  { pushed: boolean; acked: number; total: number; recent: boolean; testid?: string }) {
   if (!pushed) return <span data-testid={testid} style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>NOT LOADED YET — nothing on the guns to update</span>;
-  const repushing = !allAcked && recent;
+  // A CLAIM MUST NEVER OUTRUN THE NUMBER BESIDE IT. This used to be handed the server's `all_acked`,
+  // which walks the roster the way `start()` does and SKIPS every player with no node bound -- so with
+  // nobody's phone up yet it is vacuously true, and this line read "ALL GUNS ON THIS CONFIG (0/8)"
+  // directly above "Waiting for 8 phones" (seen on the koth screenshot, 2026-09-13). That is exactly
+  // the false reassurance the LOAD work exists to remove, in the one place the operator looks for it.
+  // The wording is derived from the count it is printing, so the two cannot disagree; `all_acked`
+  // remains the SERVER's gate for what may be armed, which is a different question.
+  const everyone = total > 0 && acked >= total;
+  const repushing = !everyone && recent;
   return (
-    <span role="status" data-testid={testid} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: F.chk(700, 11.5), letterSpacing: '.1em', color: allAcked ? T.ok : T.warn }}>
+    <span role="status" data-testid={testid} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: F.chk(700, 11.5), letterSpacing: '.1em', color: everyone ? T.ok : T.warn }}>
       {repushing && <Blink color={T.warn} size={7} />}
-      {allAcked ? `ALL GUNS ON THIS CONFIG (${acked}/${total})`
+      {everyone ? `ALL GUNS ON THIS CONFIG (${acked}/${total})`
         : repushing ? `CONFIG CHANGED — RE-PUSHING TO EVERY GUN… ${acked}/${total} CONFIRMED`
         : `${acked}/${total} GUNS CONFIRMED ON THIS CONFIG`}
     </span>

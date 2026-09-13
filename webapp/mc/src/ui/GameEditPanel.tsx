@@ -63,7 +63,6 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone }:
   const pushed = state.lobby.pushed;
   const acked = Object.values(state.lobby.acks).filter(a => a.ok).length;
   const total = state.players.length;
-  const allAcked = pushed && total > 0 && acked === total;
   const open = draft !== null;
 
   /** The config a patch is measured AGAINST. A mode switch rebuilds the whole config from that mode's
@@ -155,7 +154,7 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone }:
               when they wonder. A successful SAVE closes the draft — and the seconds right after it
               are exactly when "are the guns caught up?" is the live question, so closing the panel
               must not take the answer off the screen with it (caught by the jsdom suite, 2026-09-13). */}
-          <LoadStatus pushed={pushed} acked={acked} total={total} recent={recentEdit} allAcked={allAcked} />
+          <LoadStatus pushed={pushed} acked={acked} total={total} recent={recentEdit} />
           {locked && <span role="status" style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: T.warn }}>LOCKED — {state.phase.toUpperCase()}</span>}
         </button>
       )}
@@ -222,7 +221,7 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone }:
               {/* while the draft is open the header above is not rendered (or is the toggle row of a
                   panel whose own copy is hidden behind it), so this is the one on screen */}
               <LoadStatus testid={alwaysOpen ? 'game-edit-repush' : 'game-edit-repush-open'}
-                pushed={pushed} acked={acked} total={total} recent={recentEdit} allAcked={allAcked} />
+                pushed={pushed} acked={acked} total={total} recent={recentEdit} />
               <span data-testid="game-edit-dirty" style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: dirty ? T.warn : T.micro }}>
                 {dirty ? `UNSAVED: ${Object.keys(patch).map(k => k.replace('loadout_policy', 'weapons').toUpperCase()).join(' · ')}` : 'NO CHANGES YET'}
               </span>

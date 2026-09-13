@@ -152,7 +152,11 @@ export function Games() {
   const loadWhy = blockedReason ?? gate.pushWhy ?? '';
   const canForce = !blocked && !gate.refused && gate.pushBlockedCount > 0;
   // The cure, on this screen too: the same control LOBBY carries and every A36 fault line names.
-  const showRePush = loaded && !locked && (gate.curableRows.length > 0 || !gate.allAcked);
+  // The honest predicate, not the server's `all_acked` (which is vacuously true while no phone is
+  // bound -- see `LoadStatus`): with 0 of 8 answering, a re-push is exactly what this screen should
+  // still be offering, and the rail must not paint itself green.
+  const everyoneAcked = gate.total > 0 && gate.acked >= gate.total;
+  const showRePush = loaded && !locked && (gate.curableRows.length > 0 || !everyoneAcked);
   const faults = gate.redRows.map(b => ({ who: b.sticker, why: b.blockers ?? [] }));
   const notOnlyStale = gate.redRows.filter(b => !((b.blockers ?? []).length > 0 && (b.blockers ?? []).every(w => w.startsWith(STALE_ACK_FAULT))));
 
@@ -331,14 +335,14 @@ export function Games() {
       {loaded ? (
         <div data-testid="active-game-config" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* WHAT THE GUNS ARE HOLDING — the answer to "did it push?", above everything else. */}
-          <div style={{ background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderLeft: `3px solid ${gate.allAcked ? T.ok : T.warn}` }}>
+          <div style={{ background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderLeft: `3px solid ${everyoneAcked ? T.ok : T.warn}` }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 20px', padding: '14px 18px' }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ font: F.mono(600, 10.5), letterSpacing: '.26em', color: custom ? T.warn : activeSaved ? PERK_COLOR : T.acc }}>{custom ? 'TUNED — NOT SAVED' : activeSaved ? 'SAVED GAME' : 'STOCK MODE'} // LOADED</div>
                 <div data-testid="playing-title" style={{ font: F.osw(700, 28), letterSpacing: '.08em', textTransform: 'uppercase', marginTop: 2, lineHeight: 1.1 }}>{title}</div>
               </div>
               <span style={{ flex: 1 }} />
-              <LoadStatus testid="game-load-status" pushed acked={gate.acked} total={gate.total} recent={recentLoad} allAcked={gate.allAcked} />
+              <LoadStatus testid="game-load-status" pushed acked={gate.acked} total={gate.total} recent={recentLoad} />
               {showRePush && (
                 <button type="button" data-repush="1" data-repush-force={gate.pushBlockedCount > 0 ? '1' : undefined}
                   className={busy ? undefined : 'hov-acc-ink hit44'} disabled={busy || !!gate.rosterFault}
@@ -361,11 +365,11 @@ export function Games() {
             {/* The same sentence LOBBY's rail carries, from the same derivation: a stale ack names the
                 guns and the cure, a red names what cannot be pushed away, and a clean board says so. */}
             <div style={{ padding: '0 18px 14px', font: F.chk(600, 13), lineHeight: 1.5,
-                          color: faults.length ? T.bad : gate.waitRows.length ? T.micro : gate.allAcked ? T.ok : T.warn }}>
+                          color: faults.length ? T.bad : gate.waitRows.length ? T.micro : everyoneAcked ? T.ok : T.warn }}>
               {gate.staleAckLine
                 || (faults.length ? `${faults.length} gun${faults.length === 1 ? '' : 's'} cannot start`
                   : gate.waitWhy
-                    || (!gate.allAcked ? `No config echo from ${gate.noEcho.join(', ') || 'some guns'} — headset off, or gun asleep?`
+                    || (!everyoneAcked ? `No config echo from ${gate.noEcho.join(', ') || 'some guns'} — headset off, or gun asleep?`
                       : 'Every gun is holding this config. Adjust it here and SAVE AND LOAD, or continue to KIT.'))}
               {gate.staleAckLine && notOnlyStale.length > 0 && (
                 <span style={{ color: T.micro }}>{`  ·  ${notOnlyStale.length} gun${notOnlyStale.length === 1 ? '' : 's'} cannot start`}</span>

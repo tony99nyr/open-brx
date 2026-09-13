@@ -118,6 +118,21 @@ describe('GAMES · LOAD is the push', () => {
     g.m.unmount();
   });
 
+  it('never claims ALL GUNS for a count that is not all of them', async () => {
+    // `state.py all_acked()` walks the roster the way `start()` does and SKIPS every player with no
+    // node bound — so before anybody's phone is up it is VACUOUSLY TRUE. Handing that to the readout
+    // printed "ALL GUNS ON THIS CONFIG (0/8)" directly above "Waiting for 8 phones" (caught by eye on
+    // the koth screenshot, 2026-09-13, after every assertion in this file had passed). False
+    // reassurance in the one place the operator looks is the exact thing this screen exists to remove.
+    const g = await games({ push: true, patch: s => ({ ...s, lobby: { ...s.lobby, all_acked: true, acks: {} } }) });
+    const line = g.q('[data-testid="game-load-status"]')!.textContent ?? '';
+    expect(line, `saw ${JSON.stringify(line)}`).not.toMatch(/ALL GUNS/);
+    expect(line).toContain(`0/${g.state().players.length}`);
+    // ...and the cure is still offered rather than the screen painting itself green
+    expect(g.q('button[data-repush="1"]'), 'RE-PUSH CONFIG stays available while guns are unconfirmed').toBeTruthy();
+    g.m.unmount();
+  });
+
   it('CONTINUE TO KIT is the way on, and it is what advances the phase', async () => {
     const g = await games({ push: true });
     const on = g.btn('[data-testid="game-continue-kit"]');
