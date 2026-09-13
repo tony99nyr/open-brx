@@ -1,6 +1,6 @@
 # Followups — open work only
 
-Updated: 2026-09-12. **Everything in this file is open.** Closed items are in
+Updated: 2026-09-13. **Everything in this file is open.** Closed items are in
 [`archive/followups-closed.md`](archive/followups-closed.md), verbatim and ordered by close date; the evidence
 behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date). Session close = strike or
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
@@ -511,6 +511,15 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   separately toggle `$GSET` t2 as a control, record hit/no-hit. Compile-side plumbing
   (`RANGE_ENV_OVERRIDE`/`gun_range_pct` in `mc/compile.py`) is staged as a NO-OP (outdoor == indoor == 75) behind
   this id; flip the one "outdoor" value there once the sweep lands a confirmed number.
+  **2026-09-13 — three more runs and a second gate.** The same entry now carries **Run C** (`$GSET` t3
+  `gunLaserRegion` in isolation, with a control cell at each distance), **Run D** (is the on-gun ALT-hold state the
+  same bit as `$GSET` t2? BLE capture while holding ALT, then a power-cycle read-back — **run this one first if
+  bench time is short**, it decides whether MC can own the venue at all), and **Run E** (`$IRTX` at 10/20/30/40 ft,
+  plus a "does it stick" trigger pull). The compile side for C and E is `DRIVE_IO_MODE` in `mc/compile.py`
+  (`"off"` → the head stays byte-identical; `GSET_T3_BY_ENV` / `IRTX_BY_ENV` hold the values), pinned by
+  `mcp/tests/test_venue_mode.py`. ⚠️ `$IRTX` has TWO field lists and the 4-field one is wrong (it already emitted
+  zero IR) — read the `$IRTX` row in `protocol/brx-protocol.md` before sending it. Until a run lands, the operator
+  does it by hand: MC shows "SET EACH GUN TO INDOOR/OUTDOOR (HOLD ALT 3 S)" on GAMES and KIT (`ui/VenueModeReminder`).
   `space` (bench) + `trigger`.
 - **Q18 🟡** ✅ the print half closed 2026-09-11 (late, second session): `modes/driver.py` probes `$PHONE` and waits for the gun's `$BUT`
   before it prints, counts or re-arms a reconnect (`test_reconnect_is_not_declared_until_the_gun_answers_the_probe`). Still untested: can a gun absent at START join a running match? `build` + `space`.

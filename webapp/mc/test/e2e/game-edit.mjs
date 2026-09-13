@@ -2,7 +2,7 @@
 // browser, against a real server (mock AND python), with the re-push/re-ack made visible.
 //
 //   npm run e2e:game-edit                # everything (~40 s)
-//   ONLY=mock npm run e2e:game-edit      # one run: mock | real | locked | stale
+//   ONLY=mock npm run e2e:game-edit      # one run: mock | real | locked | stale | venue
 //   MC_PORT=… VITE_PORT=… MC_PY=…        # move the ports / pick the interpreter
 //
 // Runs: mock (in-browser backend — the fast, deterministic walk: edit on KIT, push, edit again on
@@ -10,7 +10,9 @@
 // from ARMORY like kit-continue.mjs, proving the same flow against the real server this worktree
 // carries), locked (armed/live refuses an edit and says RECALL), stale (an MC with `/api/modes`
 // missing and no `loadout_policy` on the wire — the shape a pre-A10 or older server would send —
-// renders without crashing and shows the degraded state instead of a blank control).
+// renders without crashing and shows the degraded state instead of a blank control), venue (F162:
+// the "SET EACH GUN TO <VENUE> (HOLD ALT 3 S)" reminder on GAMES + KIT at desk and phone width, its
+// dismissal, its re-arm on a venue change, and a config with no `environment` at all).
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -357,6 +359,113 @@ async function runStale(browser, viteBase, mcBase) {
   void mcBase;
 }
 
+// ------------------------------------------------------------------- venue (F162, the ALT backstop)
+/** The indoor/outdoor reminder, driven the way the operator drives it: pick the venue on GAMES, walk
+ *  to KIT, dismiss it, change the venue, watch it come back. MC cannot set the gun's own indoor/
+ *  outdoor mode (compile.py `DRIVE_IO_MODE` is "off" and every candidate is unverified), so this
+ *  reminder is the ONLY thing that puts a rack of guns into the venue the operator just picked —
+ *  which is why it gets a real-browser step rather than only a jsdom one.
+ *
+ *  Runs against the REAL python MC, at desk and phone width, and then against a server whose config
+ *  carries no `environment` at all (the pre-venue shape) — where it must say nothing rather than
+ *  name a venue nobody picked. */
+const reminder = pg => pg.locator('[data-testid="venue-mode-reminder"]');
+/** GAMES is the `build` view; reach it the way the operator does, through the nav tab. */
+async function toGames(pg) {
+  await pg.locator('header nav button:has-text("GAMES")').first().click();
+  await until(() => pg.locator('main [role="group"][aria-label="venue"]').count().then(n => n > 0), 10000, 'GAMES and its VENUE control');
+}
+async function toKit(pg) {
+  await pg.locator('header nav button:has-text("KIT")').first().click();
+  await until(() => onKit(pg), 10000, 'KIT to open');
+}
+async function pickVenue(pg, want, mcBase) {
+  await pg.locator(`main [role="group"][aria-label="venue"] button:has-text("${want.toUpperCase()}")`).click();
+  await until(async () => (await (await fetch(`${mcBase}/api/state`)).json()).config.environment === want,
+    5000, `the real server to hold environment=${want}`);
+}
+async function runVenue(browser, viteBase, mcBase, vp = { width: 1280, height: 800 }, tag = 'desk') {
+  step = `venue/${tag}`; stepFailedAt = failures.length;
+  console.log(`\n[${step}] the ALT-hold reminder on GAMES + KIT, ${vp.width}x${vp.height}`);
+  const pg = await newPage(browser, viteBase, vp);
+  await pg.goto(`${viteBase}/`, { waitUntil: 'domcontentloaded' });
+  await until(() => pg.locator('header nav button').count().then(n => n > 0), 15000, 'the command bar');
+  await toGames(pg);
+  await noCrash(pg);
+
+  // Start from INDOOR so the OUTDOOR pick below is always a real change (the desk run leaves the
+  // shared server wherever it finished, and a no-op click proves nothing).
+  await pickVenue(pg, 'indoor', mcBase);
+  await pickVenue(pg, 'outdoor', mcBase);
+  // The reminder may already be on screen naming the OLD venue, so waiting for `count() === 1` would
+  // pass against the previous render. Wait for the TEXT that changes.
+  await until(async () => /SET EACH GUN TO OUTDOOR/.test(await reminder(pg).innerText().catch(() => '')),
+    5000, 'the reminder on GAMES to name OUTDOOR');
+  const txt = (await reminder(pg).innerText()).replace(/\s+/g, ' ');
+  expect(/SET EACH GUN TO OUTDOOR/.test(txt), `it names the venue that was just picked (saw ${JSON.stringify(txt.slice(0, 120))})`);
+  expect(/ALT 3 S/.test(txt), 'it says HOW (hold ALT 3 s)');
+  expect(/PERSISTS ACROSS POWER CYCLES/.test(txt), 'it says WHY it matters even at the venue you played last');
+  // it must be readable, not a 9px footnote, and it must fit the viewport it is in
+  const box = await reminder(pg).boundingBox();
+  expect(box && box.width <= vp.width, `it fits the ${vp.width}px viewport (width ${box && Math.round(box.width)})`);
+  ok(`GAMES: "${txt.slice(0, 90)}"   ${await shot(pg, `40-venue-games-outdoor-${tag}`)}`);
+
+  // the step is actionable on KIT too — that is where the guns are handed out
+  await toKit(pg);
+  await until(() => reminder(pg).count().then(n => n === 1), 5000, 'the reminder to be on KIT as well');
+  ok(`KIT carries the same reminder   ${await shot(pg, `41-venue-kit-outdoor-${tag}`)}`);
+
+  // DISMISS is a real control: it removes it, here AND on the screen it was raised from
+  const btn = pg.locator('[data-testid="venue-mode-dismiss"]');
+  const bb = await btn.boundingBox();
+  expect(bb && bb.height >= 36 && bb.width >= 36, `DISMISS is a real tap target (${bb && Math.round(bb.width)}x${bb && Math.round(bb.height)})`);
+  await btn.click();
+  await until(() => reminder(pg).count().then(n => n === 0), 4000, 'the reminder to go away on KIT');
+  await toGames(pg);
+  expect(await reminder(pg).count() === 0, 'the dismissal is one reminder, not one per screen');
+  ok(`dismissed on KIT, still dismissed on GAMES   ${await shot(pg, `42-venue-dismissed-${tag}`)}`);
+
+  // ...but changing the venue is a NEW physical step on every gun, so it must come back
+  await pickVenue(pg, 'indoor', mcBase);
+  await until(async () => /SET EACH GUN TO INDOOR/.test(await reminder(pg).innerText().catch(() => '')),
+    5000, 'the reminder to re-arm after a venue change, naming the NEW venue');
+  expect(await reminder(pg).count() === 1, 'exactly one reminder is back');
+  ok(`venue change re-armed it, naming INDOOR   ${await shot(pg, `43-venue-rearmed-${tag}`)}`);
+  await pg.context().close();
+}
+
+/** An MC whose config has no `environment` key at all (the shape before the venue existed), stripped
+ *  over REST *and* the WebSocket. A reminder that guessed a venue here would send the operator to
+ *  change a persisted hardware setting on every gun for no reason. */
+async function runVenueStale(browser, viteBase) {
+  step = 'venue/stale'; stepFailedAt = failures.length;
+  console.log('\n[venue/stale] no `environment` on the config, over REST AND the WebSocket');
+  const pg = await newPage(browser, viteBase);
+  const strip = s => { const c = { ...s.config }; delete c.environment; return { ...s, config: c }; };
+  await pg.route('**/api/state', async route => {
+    const res = await route.fetch();
+    let body; try { body = await res.json(); } catch { return route.fulfill({ response: res }); }
+    await route.fulfill({ response: res, body: JSON.stringify(strip(body)), headers: { ...res.headers(), 'content-type': 'application/json' } });
+  });
+  await pg.routeWebSocket(/\/ui-ws/, ws => {
+    const server = ws.connectToServer();
+    ws.onMessage(m => server.send(m));
+    server.onMessage(m => {
+      try {
+        const msg = JSON.parse(String(m));
+        if (msg.kind === 'snapshot' && msg.state) { msg.state = strip(msg.state); ws.send(JSON.stringify(msg)); return; }
+        ws.send(m);
+      } catch { ws.send(m); }
+    });
+  });
+  await pg.goto(`${viteBase}/#kit`, { waitUntil: 'domcontentloaded' });
+  await until(() => onKit(pg), 15000, 'KIT to render with no environment on the wire');
+  await noCrash(pg);
+  expect(await reminder(pg).count() === 0, 'no reminder is shown when no venue is known');
+  ok(`stale server: KIT alive, no invented venue   ${await shot(pg, '44-venue-stale')}`);
+  await pg.unrouteAll({ behavior: 'ignoreErrors' }); await pg.context().close();
+}
+
 // ---------------------------------------------------------------------------- main
 const DESK = { width: 1280, height: 800 }, PHONE = { width: 393, height: 830 };
 fs.mkdirSync(SHOTS, { recursive: true });
@@ -368,6 +477,7 @@ try {
   if (!ONLY || ONLY === 'real') { await runReal(browser, vite.base, mc.base, DESK, 'desk'); await runReal(browser, vite.base, mc.base, PHONE, 'phone'); }
   if (!ONLY || ONLY === 'locked') await runLocked(browser, vite.base);
   if (!ONLY || ONLY === 'stale') await runStale(browser, vite.base, mc.base);
+  if (!ONLY || ONLY === 'venue') { await runVenue(browser, vite.base, mc.base, DESK, 'desk'); await runVenue(browser, vite.base, mc.base, PHONE, 'phone'); await runVenueStale(browser, vite.base); }
 } finally {
   await browser.close();
   await vite.stop();

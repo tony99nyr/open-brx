@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import math
 import pathlib
-from typing import Any
+from typing import Any, Literal
 
 import random as _random
 
@@ -80,6 +80,97 @@ def gun_range_pct(base_rng: int, environment: str | None) -> int:
     t41 moves emitted range and what value reaches 30-40 ft outdoors."""
     override = RANGE_ENV_OVERRIDE.get((environment or "").strip().lower())
     return base_rng if override is None else override
+
+
+# ---------------------------------------------------------------------------
+# Venue mode: MC driving the gun's INDOOR/OUTDOOR setting over BLE (F162)
+# ---------------------------------------------------------------------------
+# The gun has a native indoor/outdoor toggle -- hold ALT 3 s -- that changes IR range and hit-LED
+# brightness and PERSISTS across power cycles (docs/manual/operate.md). The 2026-09-12 field session
+# ran outdoors at ~7-32% hit rate against ~41% indoors and could not register a hit at 30-40 ft
+# (bug-dossier-2026-09-12.md B6). Tony's call: drive it over BLE if we can, with the ALT-hold
+# checklist as the backstop (the reminder MC shows on the Games/Kit rails).
+#
+# ⚠️ NOTHING BELOW IS BENCH-CONFIRMED. Not one of these commands has ever been flipped on a gun with
+# a receiver control, so whether ANY of them moves emitted IR range is UNKNOWN -- including whether
+# the ALT-hold state and `$GSET` t2 are even the same persisted bit. `DRIVE_IO_MODE` is therefore
+# "off" and the compiled head is byte-identical to the head the field ran on; `mcp/tests/
+# test_venue_mode.py` pins that. The candidates exist so a bench session can enable ONE of them by
+# editing this single line and get the frames it needs -- Runs C/D/E of the 2026-09-12 range entry in
+# docs/experiment-log/2026-09.md. Do NOT flip this to ship a fix; a bench result flips it.
+#
+# This is the SECOND lever staged for the same field bug. The first is `RANGE_ENV_OVERRIDE` above
+# ($WEAP t41, Runs A/B) -- deliberately separate, because t41 is per-weapon and these are per-gun,
+# and a bench run that moves both proves nothing about either.
+DRIVE_IO_MODE: Literal["off", "gset_t3", "irtx"] = "off"
+
+# Candidate (b): `$GSET` token 3, `gunLaserRegion` -- "IR transmit power, as a regional legal limit
+# (USA vs International) ... the one field that looks like a direct power control, so it is the first
+# thing to try" (docs/manual/dev.md). The APK's `GunLaserRegion` enum recovers as USA / International
+# in declaration order (protocol/callsign-extract/apk-harvest.md "Region / legal power"), i.e. 0 and
+# 1 -- but which region permits MORE power is not documented anywhere we have, and the teardown
+# recovers names in declaration order with no values, so even 0/1 is an inference.
+#
+# Hence the direction of this table: every capture we hold, and every head MC has ever pushed, is
+# t3 = 1, and INDOOR is the venue that works -- so indoor keeps 1 and emits nothing at all. OUTDOOR
+# is the venue that is failing, so it gets the one untried value. An unknown venue resolves to 1,
+# today's value, so it can never emit a surprise. Run C measures the direction with its own control.
+GSET_T3_BY_ENV: dict[str, int] = {"indoor": 1, "outdoor": 0}
+
+# Candidate (c): `$IRTX`. ⚠️ TWO FIELD LISTS EXIST AND THE OLDER ONE IS WRONG.
+# `protocol/callsign-extract/protocol-classes.md` carries a 4-field row
+# (`iRPower, soundOnHit, rangeOutdoor, rangeIndoor`) which reads exactly like the venue control we
+# want -- but that shape was already probed on the bench and emitted ZERO IR against a receiver
+# control, and the 2026-09-04 metadata read recovered the real, 11-field shape
+# (protocol/brx-protocol.md §3.2; docs/bench-flash-control-2026-09-05.md):
+#     $IRTX,<Direction>,<BulletType>,<PlayerId>,<Team>,<Damage>,<IsCriticalShot>,
+#           <Power>,<IrRange>,<LoopFire>,<IrPulse>,<FlashLED>,*
+# In that shape `$IRTX` is a RAW TRANSMIT, not a mode: `Power`/`IrRange` are parameters of the word
+# it sends. Whether they also stick for the trigger's own shots is exactly what Run E asks. So the
+# frame below is a deliberately HARMLESS probe -- Damage 0, PlayerId 0 (the A5.1 "no identity" id, so
+# a stray word can never be credited), Team 0, no loop, no pulse train, no flash -- with the venue
+# moving only the (Power, IrRange) pair. Enabling this gate makes every gun emit one such word during
+# config; that is the point of the gate, and it is why it ships "off".
+#
+# The magnitudes are a STARTING POINT, not a finding: both scales are unmapped. Indoor borrows the
+# `$WEAP` t41 stock magnitude (75) so the two range levers read on one scale at the bench, and
+# outdoor takes the top of it. An unknown venue resolves to the indoor (quieter) pair.
+IRTX_BY_ENV: dict[str, tuple[int, int]] = {"indoor": (75, 75), "outdoor": (100, 100)}
+
+
+def venue_mode_frames(gset: str, environment: str | None,
+                      mode: Literal["off", "gset_t3", "irtx"] | None = None) -> list[str]:
+    """The venue-mode frames that ride in the head right after `$GSET`, for `DRIVE_IO_MODE` (F162).
+
+    `[]` today and at every venue -- see `DRIVE_IO_MODE` above for why, and read it before changing
+    anything here. `gset` is the head's own `$GSET` frame, passed in so the `gset_t3` candidate can
+    re-issue a BYTE COPY of it with exactly one token moved: a bench rung that changes two things at
+    once measures neither, and rebuilding the frame from parts is how a second token drifts.
+    `mode` overrides the module gate (tests; a bench driver that wants one rung without an edit).
+    """
+    m = DRIVE_IO_MODE if mode is None else mode
+    if m == "off":
+        return []
+    env = (environment or "").strip().lower()
+    if m == "gset_t3":
+        tokens = gset.split(",")
+        # $GSET,<t1>,..,<t8>,*  -> t3 is index 3. A frame that is not the 8-token $GSET we compiled
+        # is not something to guess at: emit nothing rather than corrupt the head.
+        if len(tokens) != 10 or tokens[0] != "$GSET":
+            return []
+        want = str(GSET_T3_BY_ENV.get(env, GSET_T3_BY_ENV["indoor"]))
+        if tokens[3] == want:
+            return []          # already what the head carries: no redundant re-issue
+        return [",".join(tokens[:3] + [want] + tokens[4:])]
+    if m == "irtx":
+        power, ir_range = IRTX_BY_ENV.get(env, IRTX_BY_ENV["indoor"])
+        #        dir bullet pid team dmg crit  power     range     loop pulse flash
+        return [f"$IRTX,0,0,0,0,0,0,{power},{ir_range},0,0,0,*"]
+    # ⚠️ NOT a fallthrough to `$IRTX`. This gate is edited by hand between bench rungs, and `$IRTX` is
+    # the one candidate that TRANSMITS -- so "anything I don't recognise" must never resolve to the
+    # frame that fires IR. `Literal` + the pyright gate catch a typo in the constant above; this
+    # catches one that arrives any other way.
+    raise ValueError(f"DRIVE_IO_MODE: unknown venue-mode gate {m!r} (off | gset_t3 | irtx)")
 
 
 # The health pool every published weapon stat is quoted against: 45 HP + 70 armour, the GameConfig
@@ -1100,8 +1191,13 @@ class Compiler:
             plan = self.hit_plan([player], rekey=False)
         # head — config, per player, SILENT (no $SPAWN, no $PLAY,VA81); ends with $TID (§1.1)
         env = config.get("environment")
+        _gset = gc._gset()
         head = [f"$VOL,{play_volume(env)},0,*", "$CLEAR,*", "$START,*",
-                gc._gset(), gc._pset(pnum, player.get("voice"), voice_slots),   # the voice pack is per-PLAYER (§PSET); A15 slot picks / A15.1 rolls
+                _gset,
+                # F162: EMPTY today (`DRIVE_IO_MODE` is "off") -- the staged venue-mode candidates,
+                # right after $GSET so a bench rung changes one thing next to the frame it copies.
+                *venue_mode_frames(_gset, env),
+                gc._pset(pnum, player.get("voice"), voice_slots),   # the voice pack is per-PLAYER (§PSET); A15 slot picks / A15.1 rolls
                 self._rekey(self.catalog.resolve(w0, 0, mods, environment=env), plan.cell_for(w0))]
         if w1:
             head.append(self._rekey(self.catalog.resolve(w1, 1, swap_mods, environment=env), plan.cell_for(w1)))   # slot 1 only when a secondary exists (A10)
