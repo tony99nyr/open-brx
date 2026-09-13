@@ -303,6 +303,23 @@ describe('round-2 B — an empty team is a BLOCKING red on the lobby, never an a
     split.unmount();
   });
 
+  it('F-8 (2026-09-13): HOST OVERRIDE vanishes under a roster fault, and the banner says why', async () => {
+    // Before F-8 the override tray simply did not render while `rosterFault` stood — even with a red
+    // row also on the board, which is exactly the situation an operator reaches for HOST OVERRIDE in.
+    // Nothing on screen said the control could not be there because of the roster, not the red row.
+    const d = await demo();
+    const players = d.state.players.map(p => ({ ...p, team_id: 'blue', ready: true }));
+    const board = d.state.readiness.board.map((b, i) => ({ ...b, status: (i === 0 ? 'red' : 'green') as 'red' | 'green', blockers: i === 0 ? ['GUN LINK LOST'] : [] }));
+    const readiness = { ...d.state.readiness, board, go: false, roster_faults: ['ONLY ONE SIDE HAS PLAYERS — move players between teams'] };
+    const state: State = { ...d.state, phase: 'lobby', players, config: { ...d.state.config, mode: 'tdm' },
+      lobby: { ...d.state.lobby, pushed: false, acks: {} }, readiness };
+    const m = await mountScreen(<Lobby />, { ...d, state });
+    expect(m.find('[data-override="1"]').length, 'no override control while the roster is unplayable').toBe(0);
+    expect(m.find('[data-no-override-reason]').length, 'the fault banner says why it is missing').toBe(1);
+    expect(m.text()).toContain('CANNOT BE OVERRIDDEN');
+    m.unmount();
+  });
+
   it('the mock refuses the push and the start the same way the server does', async () => {
     const backend = new MockBackend();
     await backend.pushLobby(true);                 // pushed while the teams are still split

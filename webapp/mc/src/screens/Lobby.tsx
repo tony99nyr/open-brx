@@ -176,9 +176,14 @@ export function Lobby() {
         </>
       } />
       {rosterFault && (
-        <div role="alert" data-testid="roster-fault" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        <div role="alert" data-testid="roster-fault" style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 6,
           background: 'rgba(255,82,82,.08)', border: `1px solid ${T.bad}`, borderLeft: `3px solid ${T.bad}`, padding: '12px 16px' }}>
           <span style={{ font: F.chk(700, 12), letterSpacing: '.06em', color: T.bad, lineHeight: 1.5 }}>▲ {rosterFault}</span>
+          {/* F-8 (2026-09-13): HOST OVERRIDE (below, in the rail) never renders while a roster fault
+              stands — `one_team_fault` refuses `force` on the server, so there is nothing an override
+              tap could do here. It used to just vanish with no reason on screen, which read as a bug
+              rather than as "this one isn't optional". */}
+          <span data-no-override-reason style={{ font: F.chk(600, 11), letterSpacing: '.1em', color: T.micro }}>CANNOT BE OVERRIDDEN — FIX THE ROSTER FIRST</span>
         </div>
       )}
       {/* the field steps (power-cycle the grenade, place it) — see ui/SetupSteps */}
