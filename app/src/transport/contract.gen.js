@@ -98,6 +98,7 @@ export const CONTROL_CMDS = new Set([
   'end',
   'panic',
   'recall',
+  'release_utility',
 ]);
 /** ⚠ This is a WHITELIST and an unlisted type is REJECTED at the socket, not ignored downstream --
  *  so a fact the phone learns to send reaches nothing until it is named here (the F40/F60 shape:

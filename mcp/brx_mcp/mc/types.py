@@ -662,4 +662,9 @@ MC_KINDS = {"welcome", "assign", "tutorial", "config", "start", "feedback", "con
             "station_config"}   # A13.5 (F104, 2026-09-11): MC -> a utility node. The same trap as `alert`:
                                 # the phone's `MC_KINDS` (app/src/transport/envelope.js) must list it too, or
                                 # the arming message is dropped as malformed before `onMessage` ever sees it.
-CONTROL_CMDS = {"end", "panic", "abort_start", "recall"}
+CONTROL_CMDS = {"end", "panic", "abort_start", "recall",
+                "release_utility"}   # A41 (2026-09-13): MC -> ONE utility node, an operator-driven cure for a
+                                      # phone stuck in utility mode (field 2026-09-12: the phone's own exit is
+                                      # the same undiscoverable seven-tap gesture its settings drawer uses, and
+                                      # no MC message could reach it at all). `utility.js` takes it exactly the
+                                      # way its own BACK TO HUD button does -- `state.py release_station`.

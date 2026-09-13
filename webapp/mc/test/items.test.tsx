@@ -234,4 +234,28 @@ describe('ITEMS — the ASSIGN + ARM / CLEAR buttons a person actually presses',
     expect(idBox(m).value, 'a report-only change must not remount the card and reset the draft').toBe('42');
     m.unmount();
   });
+
+  // A41 (field 2026-09-12): a phone stuck in utility mode had no MC-side cure at all -- the server half
+  // is `mcp/tests/test_mc_stations.py`; this is the button an operator actually presses.
+  it('RELEASE ▸ HUD calls releaseStation for that node and reports SENT once it lands', async () => {
+    const { m, api } = await muster();
+    const sent: string[] = [];
+    const orig = api.releaseStation.bind(api);
+    api.releaseStation = (async (node_id: string) => { sent.push(node_id); return orig(node_id); }) as Api['releaseStation'];
+    await m.click('RELEASE ▸ HUD');   // util-a1b2c3 (seeded ONLINE) is the first card in DOM order
+    expect(sent).toEqual(['util-a1b2c3']);
+    expect(m.find('[data-testid="items-panel"]')[0].textContent).toMatch(/SENT/);
+    m.unmount();
+  });
+
+  it('RELEASE ▸ HUD is disabled for a station with no live socket (OUT OF WI-FI)', async () => {
+    const { m } = await muster();
+    const buttons = m.find('[data-testid="items-panel"] button') as HTMLButtonElement[];
+    const release = buttons.filter(b => b.textContent?.trim() === 'RELEASE ▸ HUD');
+    // F106(i)'s two seeded phones: util-a1b2c3 online, util-d4e5f6 OUT OF WI-FI -- nothing to push to
+    expect(release.length).toBe(2);
+    expect(release[0].disabled, 'util-a1b2c3 has a live socket').toBe(false);
+    expect(release[1].disabled, 'util-d4e5f6 is offline: there is no socket to push a release to').toBe(true);
+    m.unmount();
+  });
 });

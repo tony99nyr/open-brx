@@ -366,6 +366,14 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     async def arm_stations(_):
         return JSONResponse({"ok": True, **s.arm_stations()})
 
+    async def release_station(req):
+        """A41: the operator's cure for a phone stuck in utility mode -- releases in ANY phase, so no
+        `_refuse_station_change_in_play` here (see `release_station`'s own docstring)."""
+        nid = req.path_params["nid"]
+        if nid not in s.stations:
+            return _err("no such station", 404)
+        return JSONResponse({"ok": s.release_station(nid)})
+
     async def evict_node(req):
         nid = req.path_params["nid"]
         if not s.evict_node(nid):
@@ -705,6 +713,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/stations/arm", arm_stations, methods=["POST"]),
         Route("/api/stations/{nid}", put_station, methods=["PUT"]),
         Route("/api/stations/{nid}", delete_station, methods=["DELETE"]),
+        Route("/api/stations/{nid}/release", release_station, methods=["POST"]),
         Route("/api/players/{pid}/ready", ready, methods=["POST"]),
         Route("/api/lobby/push", lobby_push, methods=["POST"]),
         Route("/api/tunnel", tunnel, methods=["POST"]),

@@ -339,6 +339,57 @@ for (const view of VIEWS) {
     must(s3.ids === 'VALID IDS: 4, 7', 'valid ids survive reload: ' + JSON.stringify(s3));
     must(s3.armed === 'MC-ARMED · GAME 3' && s3.status === 'LIVE', 'after reload: ' + JSON.stringify(s3));
   });
+  // A41 (field 2026-09-12): the ONLY exit from utility mode was the same undiscoverable ⓘ ×7 gesture as
+  // the settings drawer, with ZERO feedback on a single tap, and no MC message could reach a stuck phone
+  // at all. #66-#68 pin the three-part fix: visible tap progress, a plain HOLD-TO-EXIT for a phone
+  // nobody has claimed as a station yet, and a real MC-side release that works even on a deployed one.
+  await step(`${view.name} #66 A41: ⓘ shows tap progress and clears it; HOLD TO EXIT shows unassigned, hides once MC-armed`, async () => {
+    const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
+    await pg.goto('http://127.0.0.1:4192/utility.html?stage'); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
+    for (let i = 0; i < 3; i++) await pg.click('#info');
+    const prog = await pg.evaluate(() => ({ hidden: document.getElementById('infoProg').hidden, text: document.getElementById('infoProg').textContent }));
+    for (let i = 0; i < 4; i++) await pg.click('#info'); await pg.waitForTimeout(150);   // taps 4-7: the drawer opens
+    const afterOpen = await pg.evaluate(() => ({ progHidden: document.getElementById('infoProg').hidden, cfgHidden: document.getElementById('cfg').hidden }));
+    await pg.click('#cfgClose'); await pg.waitForTimeout(100);
+    const exitVisible = await pg.evaluate(() => !document.getElementById('exitHud').hidden);
+    await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 'blue', id: 2 })); await pg.waitForTimeout(300);
+    const exitHiddenWhenArmed = await pg.evaluate(() => document.getElementById('exitHud').hidden);
+    await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.close();
+    must(perr.length === 0, perr.join('|'));
+    must(!prog.hidden && prog.text === '3', 'tap progress after 3 taps: ' + JSON.stringify(prog));
+    must(!afterOpen.cfgHidden && afterOpen.progHidden, 'drawer opened on tap 7 and the progress badge cleared: ' + JSON.stringify(afterOpen));
+    must(exitVisible, 'HOLD TO EXIT is on screen for a phone nobody has assigned/armed yet');
+    must(exitHiddenWhenArmed, 'HOLD TO EXIT hides the moment MC arms this phone as a real station');
+  });
+  await step(`${view.name} #67 A41: HOLD TO EXIT (unarmed) resets brx.role to hud and leaves utility.html for the HUD`, async () => {
+    const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
+    await pg.goto('http://127.0.0.1:4192/utility.html?stage'); await pg.evaluate(() => { try { localStorage.setItem('brx.role', 'utility'); localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
+    const box = await pg.evaluate(() => { const r = document.getElementById('exitHud').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+    await pg.mouse.move(box.x, box.y); await pg.mouse.down();
+    await Promise.all([pg.waitForURL(/index\.html\?hud/, { timeout: 5000 }), pg.waitForTimeout(1400).then(() => pg.mouse.up())]);
+    const role = await pg.evaluate(() => { try { return localStorage.getItem('brx.role'); } catch (_) { return null; } });
+    const url = pg.url();
+    await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); localStorage.removeItem('brx.role'); } catch {} }).catch(() => {});
+    await pg.close();
+    must(perr.length === 0, perr.join('|'));
+    must(role === 'hud', 'brx.role after HOLD TO EXIT: ' + role);
+    must(/index\.html/.test(url) && /hud/.test(url), 'left utility.html for the HUD: ' + url);
+  });
+  await step(`${view.name} #68 A41: an MC release (control{cmd:release_utility}) does what BACK TO HUD does, even on a DEPLOYED station`, async () => {
+    const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
+    await pg.goto('http://127.0.0.1:4192/utility.html?stage'); await pg.evaluate(() => { try { localStorage.setItem('brx.role', 'utility'); localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
+    // Armed FIRST: the point of the release is that MC can reach a phone the plain HOLD TO EXIT no
+    // longer shows (#66 already proves that hiding); the seven-tap gate is still the only PHYSICAL way in.
+    await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 'blue', id: 2 })); await pg.waitForTimeout(300);
+    const armedFirst = await pg.evaluate(() => document.getElementById('exitHud').hidden);
+    await Promise.all([pg.waitForURL(/index\.html\?hud/, { timeout: 5000 }), pg.evaluate(() => window.brxUtility.mcMessage('control', { cmd: 'release_utility' }))]);
+    const role = await pg.evaluate(() => { try { return localStorage.getItem('brx.role'); } catch (_) { return null; } });
+    await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); localStorage.removeItem('brx.role'); } catch {} }).catch(() => {});
+    await pg.close();
+    must(perr.length === 0, perr.join('|'));
+    must(armedFirst, 'sanity: this station is MC-armed (HOLD TO EXIT hidden) before the release is tested');
+    must(role === 'hud', 'brx.role after the MC release: ' + role);
+  });
   // ---- K1: the control point, on the real screen. Every assertion below is what a PERSON SEES (rendered
   // text, a painted bar width) driven through the REAL presence path — the stage's fake player phones, whose
   // RSSI these steps pin so presence is deterministic instead of drifting. Presence is NOT instant (EMA α
