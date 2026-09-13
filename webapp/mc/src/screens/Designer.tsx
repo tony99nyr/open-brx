@@ -96,6 +96,8 @@ export function Designer() {
     if (nm) { const r = await save(); if (!r) return; await run(() => api.applyPreset(r.preset_id)); }
     else { await run(() => api.putConfig({ ...cfg, config_id: state.config.config_id })); }
     await run(() => api.putConfig({ environment: state.config.environment, night: state.config.night }));
+    // Opened from the LOADED game (GameEditPanel): applying must not silently drop LOBBY back to KIT.
+    if (seed?.fromLive) { setView(state.phase === 'lobby' ? 'lobby' : 'kit'); return; }
     await run(() => api.setPhase('kit')); setView('kit');
   };
 

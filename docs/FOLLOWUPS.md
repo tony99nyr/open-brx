@@ -53,7 +53,7 @@ right** and this index is stale. Do not cite it as evidence that something is or
 [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md)):
 - 🔴 **B26** · **F49** · **K4** · **Q15** · **S10**
 - 🟠 **F13** · **F50** · **F58** · **F59** · **F71** · **F135** · **P8** · **Q16** · **S9**
-- 🟡 **B27** · **B28** · **B29** · **D1** · **F3** · **F21** · **F26** · **F27** · **F28** · **F30** · **F36** · **F62** · **F63** · **F66** · **F67** · **F74** · **F75** · **F76** · **F82** · **F88** · **G3** · **K1** · **P3** · **P15** · **Q18** · **S1** · **S2** · **S7** · **U11′**
+- 🟡 **B27** · **B28** · **B29** · **D1** · **F3** · **F21** · **F26** · **F27** · **F28** · **F30** · **F36** · **F62** · **F63** · **F66** · **F67** · **F74** · **F75** · **F76** · **F82** · **F88** · **F136** · **G3** · **K1** · **P3** · **P15** · **Q18** · **S1** · **S2** · **S7** · **U11′**
 - 🟢 **B20** · **F29** · **F65** · **F87** · **F99** · **P4** · **P12** · **S4** · **S8**
 
 **Keyboard only** (tagged `build` or `decision` — no gun, no rig, no dim room):
@@ -686,15 +686,19 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 **B4 link watchdog** (one gun, a real drop; `bench`):
 - **F136 🟡 Needs Tony at the bench** B4 (2026-09-12 field session: all four guns ended `bleUp:false`)
   shipped a link-silence watchdog blind — no BLE in WSL, so none of this ran against a real gun.
-  `engine.js` (`lastGunFrameAt`/`LINK_STALE_MS=75s` in `tick()`) force-reconnects a gun the OS still calls
-  "connected" but that has sent nothing — not even `$VOLTS` — for 75s; every relink also resends a bare
-  `$PHONE,*` (`brxlink.js` `noteStale()` does the actual `ble.disconnect()` + reconnect). Three things
+  `engine.js` (`lastGunFrameAt`/`LINK_STALE_MS=150s` in `tick()`) force-reconnects a gun the OS still calls
+  "connected" but that has sent nothing — not even `$VOLTS` — for 150s; every relink also resends a bare
+  `$PHONE,*` (`brxlink.js` `noteStale()` does the actual `ble.disconnect()` + reconnect). It shipped at 75s
+  and was raised to 150s on 2026-09-12 (round-1 polish review): 75s is only ~2.5 `$VOLTS` cadences, so a
+  healthy-but-marginal link whose player took no hits and fired no shots for 75s was force-dropped
+  mid-firefight — and the reconcile that follows re-arms from `frames.spawn`'s `$AMMO`, i.e. a free full
+  magazine. 150s is a desk guess at "five cadences"; only the bench can say. Three things
   only a real gun answers: **(a)** does the `$PHONE,*` event tap actually close across a real BLE
   disconnect/reconnect mid-match, or does it survive one — the 2026-08-25 bench note ("dead gun
   volunteers nothing on reconnect") only covered a quick, deliberate drop, never an extended or
-  marginal-signal one? **(b)** is 75s right — does real `$VOLTS` cadence (~30s, "only reliably returned
+  marginal-signal one? **(b)** is 150s right — does real `$VOLTS` cadence (~30s, "only reliably returned
   at good RSSI") ever gap wider than that at the edge of range (a false trip), or did tonight's hits stop
-  registering well inside 75s of true silence (too slow to help)? **(c)** does `noteStale()`'s forced
+  registering well inside 150s of true silence (too slow to help)? **(c)** does `noteStale()`'s forced
   `disconnect()` + reconnect actually recover a gun whose native BLE stack has gone stale, on Android AND
   iOS? Run the existing unchecked **20-minute two-node soak** (§10) with a diagnostic watch on
   `link.frames` (brxlink's last-60 in/out ring, surfaced in the app's debug panel) to see the real silence

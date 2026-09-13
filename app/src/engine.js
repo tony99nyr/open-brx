@@ -43,7 +43,14 @@ const RESUME_GAP_MS = 5000;
 // Set well above the $VOLTS cadence (protocol: "only reliably returned at good RSSI") so a couple of
 // missed samples at the edge of range never trips it, while still catching a truly stale link inside a
 // normal-length match.
-const LINK_STALE_MS = 75000;
+// Shipped at 75 s and raised to 150 s (~5 cadences) by the round-1 polish review 2026-09-12: 75 s is
+// only ~2.5 cadences, so a healthy-but-marginal link whose player happened to take no hits and fire no
+// shots for 75 s was force-disconnected — and what follows is not free. `_beginReconcile()` disarms
+// both slots for RECONCILE_MS and `_endReconcile()` re-arms from `frames.spawn`'s $AMMO, i.e. a
+// mid-firefight disarm plus a full magazine, which is the exact cheat RESUME_GAP_MS above exists to
+// close. 150 s is still a DESK number: only a gun at the edge of range can say what the real silence
+// looks like, which is FOLLOWUPS F136 (the B4 bench item, with the 20-minute two-node soak).
+const LINK_STALE_MS = 150000;
 const HEADSET_REBLINK_MS = 120000;   // re-paint the DOWN out-blink every 2 min (< the ~160 s blink count) so a long scanner walk stays lit
 const PICK_DEBOUNCE_MS = 400;        // A26 (S20): a WEAPON pick equips AND arms it for test-firing, so every tap costs an MC round-trip and a $WEAP write on the gun. Scrolling the rack must not spam either: only the last row tapped inside this window is sent (loadout.md §4.5)
 const SWITCH_MAX_MS = 850;       // the stock $WEAP tok15 (bench 2026-09-04: 850 ms, linear, no floor) — a fallback; the bundle carries the real value in frames.swap_ms
@@ -1714,6 +1721,18 @@ export class Engine {
       // (timer, scanner hint, revive gate) all bail, so a recovered player is stuck with no way back
       // (bench 2026-09-04: "it isn't sensing the respawn station"). Stamp it: they are down as of now.
       if (this.reconciling && now - this.reconciling.since >= RECONCILE_MS) this._endReconcile();
+      // B5's settle window HOLDS an unattributed zero-HP frame rather than manufacturing a phantom death
+      // out of a stale echo. A REAL death inside that window with no latch — grenade or station damage
+      // (neither carries an $HIR to latch onto), or an $HIR simply lost — was then dropped forever:
+      // `_onHp` had already written hp 0 while `alive` stayed true and `deadAt` stayed 0, the respawn
+      // clock requires `!alive`, and a dead gun sends no further zero-HP frames. The player spent the
+      // rest of the life a zombie at 0 HP: no DOWN screen, no respawn, no death fact for MC to score.
+      // So re-examine it once the window has expired — the evidence (hp 0, on the wire) never went away,
+      // only the reason to distrust it. The spawn-camp case is untouched: a FRESH latch clears
+      // `_deathPending()` outright, so `_onHp` still takes that death immediately with the shooter
+      // named. Held off during resync/reconcile, where the engine deliberately infers nothing and the
+      // gun's own report is what moves state; the next tick after either ends catches it.
+      if (this.hp === 0 && this.alive && !this.resync && !this.reconciling && !this._deathPending()) this._death(false);
       if (!this.alive && !this.deadAt && !this.resync && !this.reconciling) { this.deadAt = now; this.log('recovered while down — respawn clock started', 'li'); }
       if (this.endT) {   // A11.4 clock callouts from the node's own synced end time: edge-triggered, once each
         const left = this.endT - now, prev = this._prevLeft != null ? this._prevLeft : left; this._prevLeft = left;

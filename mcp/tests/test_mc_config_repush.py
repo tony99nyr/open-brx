@@ -161,3 +161,28 @@ def test_ffa_edit_in_lobby_repushes_and_keeps_the_single_team():
     assert len(net.pushes("config", node_id="node0")) == before + 1
     cfg = net.pushes("config", node_id="node0")[-1][2]["config"]
     assert len(cfg["teams"]) == 1 and cfg["mode"] == "ffa", cfg
+
+
+# ---------------------------------------------------------------------------------------------
+# Round-1 polish review 2026-09-12 — ONE edit is ONE push
+# ---------------------------------------------------------------------------------------------
+def test_a_policy_edit_pushes_each_gun_exactly_one_fresh_config():
+    """The B3 fix keeps `lobby_pushed` True across `apply_policy()` — and `_resend` takes its config leg
+    for every player the new ruleset re-kitted, so `_repush_lobby_config` then pushed the WHOLE roster a
+    second time. One operator edit, two full compiles and two `config` frames per gun; the first of them
+    compiled against the not-yet-cleared `_pinned_hit_plan`, so the two pushes could disagree about the
+    shared hit-audio plan (A17) and a gun re-armed from the earlier one has no row for a rekeyed cell.
+
+    `test_editing_mode_health_or_weapons_...` above cannot see this: a health edit changes no loadout, so
+    `apply_policy` resends nothing. A PRESET edit re-kits everyone, which is where the double push lives."""
+    s, net, clock, ps = _push_lobby(2, "tdm")
+    before = {f"node{i}": len(net.pushes("config", node_id=f"node{i}")) for i in range(2)}
+    s.set_config({"loadout_policy": {"preset": "snipers"}})
+    assert [w["weapon_id"] for p in s.players.values() for w in p["loadout"]["weapons"]] == \
+        ["sniper_rifle", "sniper_rifle"], "setup: the preset must actually re-kit both players"
+    for i in range(2):
+        n = len(net.pushes("config", node_id=f"node{i}")) - before[f"node{i}"]
+        assert n == 1, f"node{i} got {n} config pushes for ONE edit"
+    assert s.lobby_pushed is True and s.acks == {}
+    head = _head_to(net, "node0")
+    assert any("<sniper_rifle>" in f for f in head), ("the one push must carry the NEW ruleset", head)

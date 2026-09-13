@@ -1584,7 +1584,7 @@ class Compiler:
         # so a kill cost charge + shot + full reload + charge again. Pool is per-player: loadout overrides
         # win over config health, exactly as `_gset` reads them.
         health = config.get("health") or {}
-        seen: set[tuple[str, int, int]] = set()
+        seen: set[tuple[str, int, int, bool]] = set()
         for p in roster:
             ov = ((p.get("loadout") or {}).get("overrides")) or {}
             hp, armor = ov.get("max_hp", health.get("max_hp")), ov.get("max_armor", health.get("max_armor"))
@@ -1598,21 +1598,28 @@ class Compiler:
             fx = self._perk_effects(p)
             pool = armed_pool(hp, armor, fx)
             mods = {k: fx[k] for k in ("ammo_mult", "reload_mult", "switch_mult") if fx.get(k)}
-            for w in (p.get("loadout", {}) or {}).get("weapons", []):
+            for slot, w in enumerate((p.get("loadout", {}) or {}).get("weapons", [])):
                 wid = w.get("weapon_id")
                 if wid not in self.catalog._by_id:
                     continue                                 # unknown ids already reported above
                 # ...and the MODDED magazine, which is what the gun is actually given
                 mag = self.catalog._ammo(wid, mods)[0]
-                if (wid, pool, mag) in seen:
+                # A12's exemption below is about the SLOT, not the tag. `policy.PRIMARY_KINDS` admits
+                # "sidearm" (`_R_SIDEARM_ONLY` is the copy for it), so a pistols-only round puts a pistol
+                # in slot 1 as the player's ONLY gun -- and a main gun that cannot finish a kill on one
+                # magazine is precisely the broken kit §2.1 exists to refuse (round-1 polish review
+                # 2026-09-12: the tag test shipped that as a warning the operator can walk past).
+                backup = slot > 0
+                if (wid, pool, mag, backup) in seen:
                     continue
-                seen.add((wid, pool, mag))
+                seen.add((wid, pool, mag, backup))
                 htk = self.catalog.hits_to_kill(wid, pool)
                 if htk and mag < htk:
-                    if "sidearm" in (self.catalog._by_id[wid].get("tags") or []):
-                        # A sidearm is the BACKUP by design (A12): needing a reload to finish a kill at a
-                        # big pool is its nature, not a broken kit. Tony's push was blocked twice by
-                        # deagle + body_armor at a 190 pool (2026-09-12) -- a warning, never an error.
+                    if backup and "sidearm" in (self.catalog._by_id[wid].get("tags") or []):
+                        # A sidearm RIDING AS THE SECONDARY is the BACKUP by design (A12): needing a
+                        # reload to finish a kill at a big pool is its nature, not a broken kit. Tony's
+                        # push was blocked twice by deagle + body_armor at a 190 pool (2026-09-12) -- a
+                        # warning, never an error. As somebody's only weapon it is an error, above.
                         warnings.append(f"{wid} is a sidearm and cannot kill on one magazine at this pool - "
                                         f"it will need a reload (mag {mag} < {htk} hits at "
                                         f"{self.catalog.damage(wid)} dmg vs {pool} pool)")

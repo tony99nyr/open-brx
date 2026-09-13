@@ -211,10 +211,10 @@ async function runMock(browser, viteBase) {
 }
 
 // ---------------------------------------------------------------------------- real (python MC)
-async function runReal(browser, viteBase, mcBase) {
-  step = 'real'; stepFailedAt = failures.length;
-  console.log(`\n[${step}] a real python MC on :${MC_PORT}`);
-  const pg = await newPage(browser, viteBase);
+async function runReal(browser, viteBase, mcBase, vp = { width: 1280, height: 800 }, tag = 'desk') {
+  step = `real/${tag}`; stepFailedAt = failures.length;
+  console.log(`\n[${step}] a real python MC on :${MC_PORT}, ${vp.width}x${vp.height}`);
+  const pg = await newPage(browser, viteBase, vp);
   await pg.goto(`${viteBase}/#kit`, { waitUntil: 'domcontentloaded' });
   await until(() => pg.locator('header').count().then(n => n > 0), 10000, 'the command bar');
   await until(() => onKit(pg), 15000, 'KIT (a --demo --fake-net server seeds a ready roster)');
@@ -225,7 +225,7 @@ async function runReal(browser, viteBase, mcBase) {
   await panel(pg).locator('[role="switch"]').click();
   await until(async () => (await (await fetch(`${mcBase}/api/state`)).json()).config.night !== (nightBefore === 'true'),
     5000, 'the real server to hold the new NIGHT value');
-  ok(`NIGHT OPS applied against the real server   ${await shot(pg, '10-real-night')}`);
+  ok(`NIGHT OPS applied against the real server   ${await shot(pg, `10-real-night-${tag}`)}`);
 
   // A modest bump, not an arbitrary one: the real server's OWN balance rule (docs/weapon-design.md
   // §2.1, "cannot kill on one magazine") 400s a health/armor pool pushed too high for the shipped
@@ -244,7 +244,7 @@ async function runReal(browser, viteBase, mcBase) {
   const pushBtn = pg.locator('main button:has-text("PUSH CONFIG & ARM")');
   if (await pushBtn.count()) { await pushBtn.click(); }
   await until(async () => (await (await fetch(`${mcBase}/api/state`)).json()).lobby.pushed === true, 8000, 'the real server to report pushed');
-  ok(`LOBBY pushed on the real server   ${await shot(pg, '11-real-lobby-pushed')}`);
+  ok(`LOBBY pushed on the real server   ${await shot(pg, `11-real-lobby-pushed-${tag}`)}`);
 
   await openPanel(pg);
   await panel(pg).locator('[role="switch"]').click();   // NIGHT again — any edit re-pushes
@@ -333,13 +333,14 @@ async function runStale(browser, viteBase, mcBase) {
 }
 
 // ---------------------------------------------------------------------------- main
+const DESK = { width: 1280, height: 800 }, PHONE = { width: 393, height: 830 };
 fs.mkdirSync(SHOTS, { recursive: true });
 const mc = await startMC();
 const vite = await startVite();
 const browser = await chromium.launch();
 try {
   if (!ONLY || ONLY === 'mock') await runMock(browser, vite.base);
-  if (!ONLY || ONLY === 'real') await runReal(browser, vite.base, mc.base);
+  if (!ONLY || ONLY === 'real') { await runReal(browser, vite.base, mc.base, DESK, 'desk'); await runReal(browser, vite.base, mc.base, PHONE, 'phone'); }
   if (!ONLY || ONLY === 'locked') await runLocked(browser, vite.base);
   if (!ONLY || ONLY === 'stale') await runStale(browser, vite.base, mc.base);
 } finally {

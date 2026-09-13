@@ -161,7 +161,7 @@ function PoolEditor({ label, rule, allowed, weapons, onToggleId }:
   const candidates = kindRows(rule, weapons);
   return (
     <div>
-      <div style={{ font: F.mono(600, 10), letterSpacing: '.2em', color: T.micro, marginBottom: 6 }}>{label} · {allowed.length} OF {candidates.length} ALLOWED</div>
+      <div style={{ font: F.mono(600, 11), letterSpacing: '.2em', color: T.micro, marginBottom: 6 }}>{label} · {allowed.length} OF {candidates.length} ALLOWED</div>
       <div role="group" aria-label={`${label.toLowerCase()} weapons available`} style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
         {[...candidates].sort((a, b) => a.name.localeCompare(b.name)).map(w => {
           const on = allowed.includes(w.weapon_id);
@@ -182,13 +182,13 @@ function PoolEditor({ label, rule, allowed, weapons, onToggleId }:
   );
 }
 function PoolNote({ label, text }: { label: string; text: string }) {
-  return <div style={{ font: F.chk(500, 12), color: T.dim }}><b style={{ font: F.mono(600, 10), letterSpacing: '.2em', color: T.micro }}>{label} </b>{text}</div>;
+  return <div style={{ font: F.chk(500, 12), color: T.dim }}><b style={{ font: F.mono(600, 11), letterSpacing: '.2em', color: T.micro }}>{label} </b>{text}</div>;
 }
 
 function RepushStatus({ pushed, acked, total, recent, allAcked }: { pushed: boolean; acked: number; total: number; recent: boolean; allAcked: boolean }) {
   if (!pushed) return <span style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro }}>NOT PUSHED YET — nothing on the guns to update</span>;
   // "RE-PUSHING" is a CLAIM that something is actively in flight -- true for the ~1.5s a real gun
-  // takes to echo (`recent` -- the 20s window after THIS panel's own edit), but a standing fault (one
+  // takes to echo (`recent` -- the 4s window after THIS panel's own edit), but a standing fault (one
   // gun that will never ack, same as LOBBY's own step 2) is a different fact and must not be worded as
   // an in-progress push forever. Once `recent` has expired, an incomplete count reads as what it now
   // is: how many guns are actually caught up.

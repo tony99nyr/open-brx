@@ -293,6 +293,9 @@ class Session:
         # anything else without re-checking it.
         self.lobby_pushed = False
         self._pinned_hit_plan = None      # A17: one hit-audio plan per MATCH -- see `_hit_plan`
+        # Raised while a `set_config` edit is on its way to `_repush_lobby_config()`, so `_resend`'s
+        # config leg stands down and ONE edit costs exactly ONE compile + push per gun.
+        self._repush_pending = False
         self.acks: dict[str, dict] = {}
         self.bundles: dict[str, dict] = {}
         self.start_info: dict | None = None
@@ -1214,7 +1217,10 @@ class Session:
         if not p.get("node_id"):
             return
         self.net.push(p["node_id"], "assign", self._assign_body(p))
-        if self.lobby_pushed and not (self.phase in ("armed", "live") and self._took_this_config(p)):
+        # `_repush_pending`: a `set_config` edit is about to re-push the WHOLE roster from
+        # `_repush_lobby_config()`, so taking the config leg here too pushes every re-kitted gun twice.
+        if self.lobby_pushed and not self._repush_pending \
+                and not (self.phase in ("armed", "live") and self._took_this_config(p)):
             self._push_config_to(p)
             if with_start and self.start_info:
                 self.net.push(p["node_id"], "start", self._start_body())
@@ -1315,8 +1321,22 @@ class Session:
         if self.phase == "muster":
             self.phase = "build"
         repush = self.lobby_pushed
-        self.apply_policy()                                  # §3.3: every loadout obeys the (new) ruleset
-        res = self._validate()
+        if repush:
+            # ONE edit is ONE push. `apply_policy()` below re-kits every player the new ruleset moved and
+            # `_resend`s them; with `lobby_pushed` still True that took the config leg -- a full compile
+            # and push per re-kitted gun, immediately followed by `_repush_lobby_config()` doing the whole
+            # roster AGAIN (measured: 2 `config` frames to one node for one preset edit, round-1 polish
+            # review 2026-09-12). Worse, that first push compiled against the PREVIOUS `_pinned_hit_plan`,
+            # so the two pushes could disagree about the shared hit-audio plan and a gun re-armed from the
+            # earlier one has no row for a rekeyed cell (A17). The plan is cleared here, BEFORE anything
+            # recompiles, and the flag stands `_resend` down until the single re-push below.
+            self._pinned_hit_plan = None
+            self._repush_pending = True
+        try:
+            self.apply_policy()                              # §3.3: every loadout obeys the (new) ruleset
+            res = self._validate()
+        finally:
+            self._repush_pending = False
         if repush:
             # B1/B3 (2026-09-12): editing a LOADED game in KIT/LOBBY used to silently drop the push here
             # (`lobby_pushed=False`, acks cleared) and NEVER re-compile -- every gun kept the STALE head
@@ -2100,8 +2120,14 @@ class Session:
         if mid:
             if mid == current:
                 return
-            if mid not in self._ended and current is not None:
-                return          # a match this MC never ran (another session's), while ours is on: leave it be
+            if mid not in self._ended:
+                # Round-1 polish review 2026-09-12: this used to be skipped whenever `current is None`,
+                # which is exactly the state a RESTARTED MC is in -- `_ended` empty, phase `muster`, so
+                # `current` is None and the first heartbeat off a phone playing a REAL match was answered
+                # with `control{end}`: MC ended a live game because it had forgotten it. Only a match MC
+                # KNOWS it retired may be reconciled; one it cannot account for (another session's, or
+                # its own from before a restart) is left strictly alone.
+                return
         elif current is not None:
             return              # no match_id and MC is running one: an old app, not a stale phone
         last = self._stale_told.get((nid, mid))
@@ -2118,10 +2144,20 @@ class Session:
         pid = self.node_player.get(nid)
         p = self.players.get(pid) if pid else None
         ended = self._ended.get(mid) if mid else None
-        if p and ended and ended.get("recap") and (ended.get("players") is None or p["player_id"] in ended["players"]):
+        recap = ended.get("recap") if ended else None
+        told_result = False
+        if p and ended and recap and (ended.get("players") is None or p["player_id"] in ended["players"]):
             roster = ended.get("players") or self.players
-            self.net.push(nid, "result", self._result_body(ended["recap"], p, match_id=mid, roster=roster))
-        if self.start_info and self.phase in ("armed", "live"):
+            self.net.push(nid, "result", self._result_body(recap, p, match_id=mid, roster=roster))
+            told_result = True
+        # The `start` is the E5 hot join, and it is NOT sent in the same breath as a `result`: `startAt`
+        # CLEARS `this.result` on a new match (`app/src/engine.js`), so the phone would end M1 and hot-join
+        # M2 without ever showing M1's outcome -- which is the whole thing A34 exists to deliver. A node
+        # told how its match ended hot-joins on the normal hello/welcome path instead, which carries
+        # `start` anyway. Gated on `p` for a second reason: an UNBOUND node has no roster row and no
+        # scorer entry, so handing it a start would spawn it into the match under a stale `player_num`
+        # that `_next_num` may since have given to somebody else (round-1 polish review 2026-09-12).
+        if p and not told_result and self.start_info and self.phase in ("armed", "live"):
             self.net.push(nid, "start", self._start_body())
         who = (p or {}).get("display") or nid
         self._on_feed({"t_match_s": 0, "tag": "RECONCILED", "kind": "alert",
@@ -3605,6 +3641,10 @@ class Session:
         self.trying = {}
         self.browsing = {}
         self.synced_at_lobby = {}
+        # A34: who we have already told to END. Never pruned and never cleared, an entry from the last
+        # session could suppress a legitimate reconcile in this one -- and a phone still out on the field
+        # holding the old match is exactly the case a NEW session is most likely to meet.
+        self._stale_told = {}
         if keep_roster:
             for p in self.players.values():
                 p["ready"] = False

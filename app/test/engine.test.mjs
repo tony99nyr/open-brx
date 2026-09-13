@@ -4195,7 +4195,7 @@ test('A34: control end with no match_id behaves as before (the operator END/RECA
 // brxlink.js `noteStale()`), the drop is surfaced immediately (HUD pill + MC's status body), and a
 // relink resyncs the gun exactly like a real disconnect does, so a hit after recovery is never
 // silently swallowed. Mirrors engine.js's (unexported, like RECONCILE_MS above) LINK_STALE_MS.
-const LINK_STALE_MS = 75000;
+const LINK_STALE_MS = 150000;
 
 test('B4: total silence from the gun for LINK_STALE_MS trips the watchdog, even though bleUp never went false on its own', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
@@ -4263,4 +4263,46 @@ test('B4: a relink after the first probe re-opens the event tap with a bare $PHO
   const after = h.writes.slice(before);
   assert.ok(after.includes('$PHONE,*'), 'the relink defensively re-opens the event tap ($VOLTS/$BUT depend on it)');
   assert.ok(!after.includes('$STOP,*'), 'never $STOP mid-match — that frame is only for the first-ever connect ritual');
+});
+
+// ── Round-1 polish review 2026-09-12 ────────────────────────────────────────────────────────────
+test('B5: a death suppressed by the spawn-settle window is RE-EXAMINED once the window expires', () => {
+  // The B5 gate drops an unattributed zero-HP frame inside the settle window as a stale echo of the
+  // life that just ended. A REAL death in that window with NO latch — grenade or station damage (which
+  // carry no $HIR the phone can latch), or an $HIR simply lost — was then dropped FOREVER: `_onHp` had
+  // already written hp 0 while `alive` stayed true and `deadAt` stayed 0, the respawn clock requires
+  // `!alive`, and a dead gun sends no further zero-HP frames. The player spent the rest of the life as
+  // a zombie at 0 HP: no DOWN screen, no respawn, no death fact for MC to score.
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$LCD,45,70,0,0,36,216,*');                     // the gun confirms the first life
+  h.frame('$HIR,4,0,7,2,45,0,3,*'); h.frame('$HP,0,0,0,*');
+  assert.equal(h.eng.alive, false, 'setup: down once');
+  h.adv(8000); h.eng.tick();                              // auto-respawn — the settle window starts here
+  assert.equal(h.eng.alive, true, 'setup: revived');
+  const deaths = h.eng.deaths;
+
+  h.adv(400);
+  h.frame('$HP,0,0,0,*');                                 // a real death, inside the window, with no latch
+  assert.equal(h.eng.alive, true, 'B5 still holds it at the time — nothing yet proves the gun caught up');
+  assert.equal(h.eng.hp, 0, 'but the zero IS written: this is the zombie state');
+
+  h.adv(2000); h.eng.tick();                              // past the settle window
+  assert.equal(h.eng.alive, false, 'the held death is re-examined and taken');
+  assert.equal(h.eng.deaths, deaths + 1, 'exactly one death');
+  assert.ok(h.eng.deadAt > 0, 'and the respawn clock is running');
+  assert.equal(h.eng.killedBy.unknown, true, 'no latch to name a shooter — attribution loss, not a lost death');
+  const death = h.facts.filter(f => f.type === 'death').pop();
+  assert.equal(death.shooter_num, 0, 'MC is told, with wire id 0 for "nobody we can name"');
+});
+
+test('B4: a marginal link that gaps two or three $VOLTS cadences is NOT force-dropped', () => {
+  // The watchdog shipped at 75 s — only ~2.5 $VOLTS cadences, and the protocol says $VOLTS is "only
+  // reliably returned at good RSSI". A healthy-but-marginal link whose player took no hits and fired no
+  // shots for 75 s was force-disconnected mid-firefight: `_beginReconcile` disarms both slots for
+  // RECONCILE_MS and `_endReconcile` re-arms from `frames.spawn`'s $AMMO — a free full magazine, the
+  // exact cheat RESUME_GAP_MS exists to close. The real number is bench-gated (FOLLOWUPS F136).
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  let staleFired = 0; h.eng.onGunStale = () => { staleFired++; };
+  h.adv(90000); h.eng.tick();
+  assert.equal(staleFired, 0, 'three missed $VOLTS at the edge of range is not a dead link');
 });

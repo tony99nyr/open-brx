@@ -405,8 +405,11 @@ def test_sidearm_that_cannot_kill_on_one_magazine_is_a_warning_not_an_error():
     same numbers stays an error."""
     row = {"weapon_id": "coilgun", "name": "Coilgun", "cls": 7, "mag": 1, "reserve": 6, "reload_ms": 2400,
            "dmg": 78, "rof": 25, "rng": 75, "base": "ar", "wire": {"dmg": 90}}
-    side = Compiler(WeaponCatalog(rows=[{**row, "tags": ["sidearm"], "role": "sidearm"}]))
-    r = side.validate(_cfg(), [_player(weapons=("coilgun",))])
+    # ...as the SECONDARY, beside a primary that can (round-1 polish review 2026-09-12: the exemption is
+    # about the slot, not the tag -- as somebody's only gun the same pistol is still an error, below).
+    side = Compiler(WeaponCatalog(rows=[{**row, "weapon_id": "workhorse", "mag": 32, "reserve": 96, "tags": ["rifle"]},
+                                        {**row, "tags": ["sidearm"], "role": "sidearm"}]))
+    r = side.validate(_cfg(), [_player(weapons=("workhorse", "coilgun"))])
     assert not any("one magazine" in e for e in r["errors"]), r["errors"]
     assert any("coilgun is a sidearm and cannot kill on one magazine at this pool - it will need a reload" in w
                for w in r["warnings"]), r["warnings"]
@@ -1162,3 +1165,22 @@ def test_validate_stun_shape_and_names_the_source():
     # CONTROL: the plain config validates clean with no stun chatter at all
     v = C.validate(_cfg(), roster)
     assert v["ok"] and not any("stun" in w for w in v["warnings"]), v
+
+
+# ---------------------------------------------------------------------------------------------
+# Round-1 polish review 2026-09-12 — the A12 exemption is about the SLOT, not the tag
+# ---------------------------------------------------------------------------------------------
+_SIDEARM_ROW = {"weapon_id": "coilgun", "name": "Coilgun", "cls": 7, "mag": 1, "reserve": 6,
+                "reload_ms": 2400, "dmg": 78, "rof": 25, "rng": 75, "base": "ar",
+                "wire": {"dmg": 90}, "tags": ["sidearm"], "role": "sidearm"}
+
+def test_a_sidearm_that_is_the_players_only_weapon_is_still_an_error():
+    """The A12 exemption tested the weapon's TAG and not its SLOT. `policy.PRIMARY_KINDS` admits
+    `"sidearm"` (`_R_SIDEARM_ONLY` is the copy for it), so a pistols-only round puts the sidearm in
+    slot 1 as the player's ONLY gun — and "cannot kill on one magazine" then shipped as a warning the
+    operator can walk straight past. A backup that needs a reload is its nature; a MAIN gun that cannot
+    finish a kill on a magazine is the broken kit §2.1 exists to refuse."""
+    side = Compiler(WeaponCatalog(rows=[_SIDEARM_ROW]))
+    r = side.validate(_cfg(), [_player(weapons=("coilgun",))])
+    assert any("coilgun cannot kill on one magazine" in e for e in r["errors"]), r["errors"]
+    assert not any("is a sidearm" in w for w in r["warnings"]), r["warnings"]
