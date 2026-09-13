@@ -273,10 +273,16 @@ def test_the_phone_puts_its_held_config_id_on_every_heartbeat():
 # --------------------------------------------------------- 5. the reset between games ------ #
 
 def test_next_match_clears_every_proof_and_demands_a_fresh_full_push():
-    s, net, clock, ps = mk(2)
+    # The REAL compiler on purpose: `FakeCompiler` has no `hit_plan`, so `_pinned_hit_plan` never
+    # gets set with it and the A17 half of this assertion would pass by never having been true.
+    s, net, clock, ps = mk(2, compiler=Compiler())
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
     _live_status(net, clock, 0, ps[0], 45, 70, info["match_id"])
+    clock["t"] += POOL_CHECK_SETTLE_MS + 100
+    _live_status(net, clock, 0, ps[0], 45, 115, info["match_id"])     # earn a pool fault to clear
+    assert s._pool_faults, "control: there is something to reset"
+    assert s._pinned_hit_plan is not None, "control: the match really did pin a hit-audio plan"
     clock["t"] = info["go_live_t"] + 60_000 + 6000
     s.tick()
     assert s.phase == "recap"
