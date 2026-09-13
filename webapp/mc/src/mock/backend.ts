@@ -241,6 +241,11 @@ export class MockBackend implements Api {
 
   private oneTeamFault(): boolean {
     if ((this.config.teams ?? []).length < 2 || this.players.length < 2) return false;
+    // FFA shares one team BY DESIGN. On the server that falls out of the team count
+    // (`default_config("ffa")` declares a single team); here a bare `{ mode: 'ffa' }` patch leaves the
+    // previous mode's `teams` in place, so the clause is stated as well as implied — both sides ask
+    // the identical question, which is the whole point of MERGE-0.
+    if (this.config.mode === 'ffa') return false;
     return this.populatedTids().size < 2;
   }
 

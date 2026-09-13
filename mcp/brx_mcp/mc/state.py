@@ -3322,6 +3322,12 @@ class Session:
         """
         if len(self.config.get("teams") or []) < 2 or len(self.players) < 2:
             return False
+        if self.config.get("mode") == "ffa":
+            # Belt: `default_config("ffa")` declares the single `ffa` team, so the team-count clause
+            # above already covers it HERE — but the console's demo backend applies a bare `{mode}`
+            # patch without rebuilding `teams`, and sharing the one team is the design in FFA however
+            # many teams the config still carries. One predicate for both sides means both clauses.
+            return False
         return len(self.populated_tids()) < 2
 
     def _one_team_fault(self) -> str | None:
