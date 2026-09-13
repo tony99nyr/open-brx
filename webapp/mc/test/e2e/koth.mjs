@@ -36,6 +36,19 @@ const expect = (cond, what) => {
 // summary at the bottom was honest, but anyone scanning the ticks read a pass. `ok` refuses.
 let stepFailedAt = 0;
 const ok = what => console.log(failures.length > stepFailedAt ? `    ⊘ ${what} (step already failed above)` : `    ✓ ${what}`);
+/** Like `until`, but returns false instead of RECORDING A FAILURE: for asking "which state is the
+ *  screen in?" rather than "did the thing I require happen?". Using `until` to ask a question marks
+ *  the step failed before anything is even decided. */
+const probe = async (pred, ms) => {
+  const end = Date.now() + ms;
+  for (;;) {
+    let v = false;
+    try { v = await pred(); } catch { v = false; }
+    if (v) return true;
+    if (Date.now() > end) return false;
+    await new Promise(r => setTimeout(r, 60));
+  }
+};
 const until = async (pred, ms, what) => {
   const end = Date.now() + ms;
   for (;;) {
@@ -187,23 +200,39 @@ const tdmCard = pg => pg.locator('div[role="button"][aria-label="play TEAM DEATH
  *  ui-build-verify skill names — assert the thing that CHANGES after the action. The 11px check rides
  *  along because this confirm is the newest meaning-bearing copy on the screen `audit-text` guards.
  *  `test/games-confirm-contract.test.tsx` is the fast (jsdom, binds nothing) twin of this contract. */
-async function pickTile(pg, card, { what = 'the mode tile', playing = true, ms = 8000, confirm = true } = {}) {
+async function pickTile(pg, card, { what = 'the mode tile', playing = true, ms = 8000, confirm = 'auto' } = {}) {
+  // ALREADY PLAYING: `Games.tsx tappable()` swallows the tap on purpose outside recap, so no confirm
+  // can ever arm and nothing changes. Several steps share ONE server and pick the same mode a second
+  // time (recap-coverage-floor's 2nd open, recap-settling's pg2) — waiting for a confirm there hangs
+  // on a screen that is already exactly right.
+  if ((await card.getAttribute('aria-pressed')) === 'true') {
+    if (confirm === 'required') expect(false, `${what}: expected a real switch, but the tile is already the playing game`);
+    return;
+  }
   await card.click();
-  if (confirm) {
-    const box = card.locator('[data-testid="confirm-switch"]');
-    if (await until(() => box.count().then(n => n > 0), 6000, `${what}: the switch confirm on the first tap`)) {
-      expect(await box.isVisible(), `${what}: the confirm is visible before anything moves`);
-      const split = card.locator('[data-testid="confirm-split"]');
-      if (await split.count() > 0) {
-        const t = (await split.textContent()).trim();
-        expect(/^▲ \d+ PLAYERS? → [A-Z]+ \d+ \/ [A-Z]+ \d+$/.test(t),
-          `${what}: the confirm names the predicted split (saw ${JSON.stringify(t)})`);
-        const px = await split.evaluate(e => parseFloat(getComputedStyle(e).fontSize));
-        expect(px >= 11, `${what}: the split line is legible (${px}px, must be >= 11px)`);
-      }
-      expect((await card.getAttribute('aria-pressed')) === 'false', `${what}: the first tap has NOT switched the game`);
+  const box = card.locator('[data-testid="confirm-switch"]');
+  const armed = await probe(() => box.count().then(n => n > 0), 2500);
+  if (armed) {
+    // A RESHAPING switch: tap one shows the split and sends nothing.
+    expect(await box.isVisible(), `${what}: the confirm is visible before anything moves`);
+    const split = card.locator('[data-testid="confirm-split"]');
+    if (await split.count() > 0) {
+      const t = (await split.textContent()).trim();
+      expect(/^▲ \d+ PLAYERS? → [A-Z]+ \d+ \/ [A-Z]+ \d+$/.test(t),
+        `${what}: the confirm names the predicted split (saw ${JSON.stringify(t)})`);
+      const px = await split.evaluate(e => parseFloat(getComputedStyle(e).fontSize));
+      expect(px >= 11, `${what}: the split line is legible (${px}px, must be >= 11px)`);
     }
+    expect((await card.getAttribute('aria-pressed')) === 'false', `${what}: the first tap has NOT switched the game`);
     await card.click();
+  } else {
+    // NO reshape to confirm: fewer than two rostered, or the target declares the same teams. One tap
+    // is then the CORRECT behaviour — and it must actually have applied, or the tap did nothing at all.
+    if (confirm === 'required') {
+      expect(false, `${what}: no confirm armed, but this step seeded a roster that must reshape — a two-tap tile has gone one-tap`);
+    }
+    expect(await probe(async () => (await card.getAttribute('aria-pressed')) === 'true', 5000),
+      `${what}: nothing to confirm here, so the single tap must have applied the pick`);
   }
   if (playing) await until(async () => (await card.getAttribute('aria-pressed')) === 'true', ms, what);
 }
@@ -330,8 +359,10 @@ step('koth-selectable', async ({ browser, base }) => {
   expect(await card.count() === 1, 'a KING OF THE HILL card exists in STOCK MODES');
   expect((await card.getAttribute('aria-pressed')) === 'false', 'KotH is not already the playing game');
   expect(await card.locator('text=KOTH').count() > 0, 'the card carries the KOTH abbreviation');
-  await card.click();
-  await until(async () => (await card.getAttribute('aria-pressed')) === 'true', 6000, 'the KotH card to report itself PLAYING');
+  // 🔴 The SEEDED-ROSTER step: `resetTdm` above deals 8 demo players across blue/yellow, so a koth
+  // pick MUST reshape and MUST confirm. `confirm: 'required'` makes a tile that silently goes back to
+  // one tap fail HERE, which is the whole point of keeping a step that walks the real path.
+  await pickTile(pg, card, { what: 'the KotH card to report itself PLAYING', ms: 6000, confirm: 'required' });
   expect(await card.locator('span:text-is("PLAYING")').count() > 0, 'the card shows the PLAYING tag');
   const title = pg.getByTestId('playing-title');
   await until(async () => (await title.textContent()).trim() === 'KING OF THE HILL', 6000, 'the rail title to name the game');
