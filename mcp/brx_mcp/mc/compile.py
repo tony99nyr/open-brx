@@ -158,13 +158,19 @@ def venue_mode_frames(gset: str, environment: str | None,
         # is not something to guess at: emit nothing rather than corrupt the head.
         if len(tokens) != 10 or tokens[0] != "$GSET":
             return []
-        want = str(GSET_T3_BY_ENV.get(env, 1))
+        want = str(GSET_T3_BY_ENV.get(env, GSET_T3_BY_ENV["indoor"]))
         if tokens[3] == want:
             return []          # already what the head carries: no redundant re-issue
         return [",".join(tokens[:3] + [want] + tokens[4:])]
-    power, ir_range = IRTX_BY_ENV.get(env, IRTX_BY_ENV["indoor"])
-    #        dir bullet pid team dmg crit  power     range     loop pulse flash
-    return [f"$IRTX,0,0,0,0,0,0,{power},{ir_range},0,0,0,*"]
+    if m == "irtx":
+        power, ir_range = IRTX_BY_ENV.get(env, IRTX_BY_ENV["indoor"])
+        #        dir bullet pid team dmg crit  power     range     loop pulse flash
+        return [f"$IRTX,0,0,0,0,0,0,{power},{ir_range},0,0,0,*"]
+    # ⚠️ NOT a fallthrough to `$IRTX`. This gate is edited by hand between bench rungs, and `$IRTX` is
+    # the one candidate that TRANSMITS -- so "anything I don't recognise" must never resolve to the
+    # frame that fires IR. `Literal` + the pyright gate catch a typo in the constant above; this
+    # catches one that arrives any other way.
+    raise ValueError(f"DRIVE_IO_MODE: unknown venue-mode gate {m!r} (off | gset_t3 | irtx)")
 
 
 # The health pool every published weapon stat is quoted against: 45 HP + 70 armour, the GameConfig

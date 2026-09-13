@@ -111,6 +111,33 @@ def test_the_two_candidates_are_never_both_emitted():
                 assert all(f.startswith("$IRTX,") for f in frames)
 
 
+def test_an_unrecognised_gate_value_refuses_rather_than_transmitting():
+    """⚠ A TYPO AT THE BENCH MUST NOT FIRE IR. The gate is edited by hand between rungs, and `$IRTX`
+    is the one candidate that TRANSMITS — so "anything that is not off or gset_t3" must never be
+    allowed to mean "irtx". `Literal` + pyright catch a typo in the module constant; this catches one
+    that reaches the function any other way (a bench driver, a mangled env read, a rename)."""
+    for typo in ("gset", "GSET_T3", "on", "true", "", "IRTX"):
+        try:
+            frames = mcc.venue_mode_frames(_GSET, "outdoor", mode=typo)  # type: ignore[arg-type]
+        except ValueError:
+            continue                       # refusing loudly is the intended behaviour
+        assert frames == [], f"{typo!r} silently emitted {frames}"
+
+
+def test_unknown_venue_tracks_the_indoor_value_rather_than_a_literal():
+    """Both candidate tables resolve an unknown venue to their INDOOR entry, by reference. A
+    hardcoded fallback stops tracking the table the moment a bench result moves indoor."""
+    was = dict(mcc.GSET_T3_BY_ENV)
+    try:
+        mcc.GSET_T3_BY_ENV["indoor"] = 7
+        # the head already carries t3 = 1, so an unknown venue that resolved to a literal 1 would
+        # emit nothing; one that follows the table re-issues t3 = 7
+        assert mcc.venue_mode_frames(_GSET, None, mode="gset_t3") == ["$GSET,0,1,7,0,1,0,50,1,*"]
+    finally:
+        mcc.GSET_T3_BY_ENV.clear()
+        mcc.GSET_T3_BY_ENV.update(was)
+
+
 def test_gate_reaches_the_head_when_it_is_turned_on():
     """The bench edit actually lands, and it lands RIGHT AFTER `$GSET` (before `$PSET`) — the
     position the Run C/D/E procedures assume.
