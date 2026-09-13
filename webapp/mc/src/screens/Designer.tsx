@@ -8,7 +8,7 @@ import { F, PERK_COLOR, ROLE, T, TAB, roleOf } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, StripedSlot, Toggle, ValueBox } from '../ui';
 import { PerkGlyph } from './Kit';
 import { AdvancedPresentation } from './AdvancedPresentation';
-import { STATION_SOURCES, TEMPLATE_RULES, admitsWeapons, computePool, emptyRequiredSlots, gameSig, objectiveLine, poolEmptyMessage, presetOf, rulesLine, unplayablePick, withPolicy } from './gameSummary';
+import { STATION_SOURCES, TEMPLATE_RULES, UNPLAYABLE_IDS, admitsWeapons, computePool, emptyRequiredSlots, gameSig, objectiveLine, poolEmptyMessage, presetOf, rulesLine, unplayablePick, withPolicy } from './gameSummary';
 import { MODE_ART } from '../modeArt';
 import { CONFIG_EDITABLE_PHASES, MODE_PICK_PHASES, lockedReason } from './Games';
 
@@ -292,7 +292,10 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
   const summary = off ? (isPerk ? 'OFF — NO PERKS' : 'OFF — ALT-FIRE DOES NOTHING') : fixed ? `EVERYONE GETS ${(weapons.find(w => w.weapon_id === rule.fixed_id)?.name ?? perks.find(k => k.perk_id === rule.fixed_id)?.name ?? '—').toUpperCase()}`
     : isPerk ? `${allowedK.length} OF ${perks.length} PERKS`
     : sidearmsOnly ? `SIDEARMS ONLY · ${allowedW.length} OF ${pistols} PISTOLS`
-    : `${allowedW.length} OF ${weapons.length} WEAPONS`;   // review #22
+    // F-9 (2026-09-13): the denominator is what a player could actually be issued — the launcher in
+    // `UNPLAYABLE_IDS` never leaves the catalogue (Catalog/Kit both filter it the same way) and was
+    // inflating "N OF {weapons.length}" by one everywhere this slot is open.
+    : `${allowedW.length} OF ${weapons.filter(w => !UNPLAYABLE_IDS.has(w.weapon_id)).length} WEAPONS`;   // review #22
   // F141 (field 2026-09-12, ISSUE 19): a PLAYER/HOST slot whose filters exclude every candidate used to
   // say only "0 OF 18 WEAPONS" — nothing on screen said the slot would DEGRADE at kit-out (primary
   // falls back to pistols only, which then failed its own one-magazine guard and blocked the push).
