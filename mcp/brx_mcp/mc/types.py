@@ -630,6 +630,10 @@ class ReadinessSnapshot(TypedDict):
     # today exactly one, "all players on one team", which `push_config` and `start` refuse outright
     # (`force` included). Each entry is operator-facing copy; a non-empty list forces `go` false.
     roster_faults: list[str]
+    # F-3 (2026-09-13): a connected companion phone with a gun set, claimed by nobody on the roster
+    # and not parked on STANDBY either — never blocks `go`, it is the field's own "4 guns connected,
+    # only 2 in lobby" confusion made visible on KIT/LOBBY (`state.py unrostered_phone_count()`).
+    unrostered_phones: int
     go: bool
 
 

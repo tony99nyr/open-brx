@@ -9,6 +9,7 @@ import { SetupSteps } from '../ui/SetupSteps';
 import { McVerify } from '../ui/McVerify';
 import { StandDownChip, StandbySection } from '../ui/Standby';
 import { GameEditPanel } from '../ui/GameEditPanel';
+import { UnrosteredPhonesBanner } from '../ui/UnrosteredPhones';
 
 
 /** The name of the control, spelled once (F8a). Every server blocker line, every disabled title and
@@ -190,6 +191,9 @@ export function Lobby() {
       <SetupSteps style={{ marginBottom: 12 }} />
       {/* A31: the standing "this win is settled at MC" line, naming the phones with no backhaul */}
       <McVerify style={{ marginBottom: 12 }} />
+      {/* F-3/A38: a connected phone with nobody in the roster claiming it — last night's "4 guns
+          connected, only 2 in lobby" confusion, made visible where the operator is actually looking. */}
+      <UnrosteredPhonesBanner style={{ marginBottom: 12 }} />
       {/* B3: mode/night/health/weapon-pool, editable right here — no stepper, no recall needed pre-arm */}
       <GameEditPanel style={{ marginBottom: 12 }} />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>

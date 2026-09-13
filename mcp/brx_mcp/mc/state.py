@@ -2136,13 +2136,19 @@ class Session:
             nv["stale"] = stale
         self._changed()
 
-    def _find_player_for_gun(self, gun_name: str | None, gun_tail: str | None) -> Player | None:
+    def _find_player_for_gun(self, gun_name: str | None, gun_tail: str | None,
+                              roster: dict[str, Player] | None = None) -> Player | None:
+        """`roster` defaults to the active roster (`self.players`); F-3 (2026-09-13) passes `self.standby`
+        too, so a gun still worn by a PARKED player resolves the same way for whoever asks — the ARMORY
+        claim card's own "ON STANDBY" check and the KIT/LOBBY unrostered-phone count now share one
+        matcher instead of the count re-deriving it without the registry the card has."""
         if not gun_name and not gun_tail:
             return None
+        roster = self.players if roster is None else roster
         base = (gun_name or "").rsplit("-", 1)[0].lower()
         tail = (gun_tail or (gun_name or "").rsplit("-", 1)[-1]).lower()
         full = (gun_name or "").lower()
-        for p in self.players.values():
+        for p in roster.values():
             gid = (p.get("gun_id") or "").lower()
             if not gid:
                 continue                      # a gun-less roster entry never matches (an empty name would equal "")
@@ -2152,11 +2158,33 @@ class Session:
                 return p
             if gid in {x for x in (base, full) if x}:
                 return p
-        for p in self.players.values():
+        for p in roster.values():
             gid = (p.get("gun_id") or "").lower()
             if gid and tail and gid == tail:  # device-first claim: gun_id may be just the tail —
                 return p                      # SECOND pass: an exact registry match always wins first
         return None
+
+    def unrostered_phone_count(self) -> int:
+        """F-3 (2026-09-13, field 2026-09-12: "4 guns connected, only 2 in lobby"). A connected companion
+        phone that has a gun set, is not claimed by anyone on the active roster, and is not the gun of a
+        player currently on STANDBY (a deliberate stand-down, not a stray) — exactly what ARMORY's own
+        NodeCard renders a claim form for. Feeds the KIT/LOBBY 'N CONNECTED PHONES NOT IN THE ROSTER'
+        banner so that confusion is visible on the screens an operator is actually looking at, not only
+        on ARMORY. A phone with no gun set yet ("WAITING FOR ITS GUN") is a different situation and does
+        not count here."""
+        n = 0
+        for nv in self.nodes.values():
+            if nv.get("node_type") == "utility":
+                continue
+            name, tail = nv.get("gun_name") or "", nv.get("gun_tail") or ""
+            if not (name or tail):
+                continue
+            if self._find_player_for_gun(name or None, tail or None) is not None:
+                continue
+            if self._find_player_for_gun(name or None, tail or None, roster=self.standby) is not None:
+                continue
+            n += 1
+        return n
 
     def _adopt_node_for_gun(self, p: Player):
         """Roster changed after nodes said hello: bind any connected node whose reported gun resolves to THIS
@@ -3419,7 +3447,7 @@ class Session:
         # rule client-side to know the push is going to be refused.
         roster_faults = [f] if (f := self._one_team_fault()) else []
         return {"t": now, "roster_size": len(board), "greens": greens, "board": board, "unclaimed": unclaimed,
-                "roster_faults": roster_faults,
+                "roster_faults": roster_faults, "unrostered_phones": self.unrostered_phone_count(),
                 "go": all(r["status"] not in ("red", "waiting") for r in board) and bool(board) and not roster_faults}
 
     async def scan(self, duration_s: int = 6) -> list[ScanRow]:
