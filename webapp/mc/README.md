@@ -20,6 +20,19 @@ npm run e2e:m2             # S24/S25/A25/A27/A29/A31: the live board, the specta
 npm run lint               # oxlint
 ```
 
+## `?mock` demo switches
+
+`?mock` is a full in-browser backend, and these flags put it into a state a clean demo can never
+reach — each one exists because a screen was unverifiable by eye without it.
+
+| flag | what it demos |
+|---|---|
+| `?mock&faults=1` | **A36/A37 — the four config-proof states, one gun each.** GUN-A acks an OLDER `config_id` (a stale ack: `ok: true`, which is exactly why truthiness alone missed it in the field), GUN-B echoes a mismatched `$ALCD` (`GUN ECHO ≠ CONFIG`), GUN-C reports a pool above what its head grants (`GUN POOL ≠ CONFIG`), and GUN-E answers with `$START`'s `$LCD` only — **NOT ECHOED**, the ordinary answer on v4.32 firmware, rendered neutral grey and never counted as a proof. Sticky: the faults survive a re-push, because the point is to look at them. Without it the mock always acked with the config it had just pushed and none of the four could be shown. |
+| `?mock&laststale=1` | a node that WAS reached over the internet tunnel and has since gone dark (F155) |
+| `?mock&nossid=1` | MC could not read the phone's Wi-Fi name — the REACH block must print `LAN · ip:port` |
+| `?mock&restored=1` | a persisted session silently restored, two ghost players with no phone ever bound (F142) |
+| `?mock&tunnelfail=1` | the next TURN ON of the tunnel fails instead of coming up (A28) |
+
 ## Verifying it in a real browser — there is nothing to build
 
 **MC is a web app: `npm run dev` and point a browser at it.** That is the whole answer, and it is written

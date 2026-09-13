@@ -318,6 +318,22 @@ function GunCard({ g }: { g: ReadinessRow }) {
       <div style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: '6px 10px', alignItems: 'center' }}>
         <Micro>GUN</Micro><Val color={stale ? T.warn : g.gun_linked ? T.ink : g.gun_linked === false ? T.bad : T.micro}>{stale ? `UNKNOWN — LAST DATA ${fmtAge(age ?? 0)} AGO` : g.gun_linked ? 'LINKED' : g.gun_linked === false ? 'LINK LOST' : '—'}</Val>
         <Micro>HEADSET</Micro><span data-headset={stale ? 'stale' : g.headset_proof ?? g.headset}><Val color={stale ? T.micro : g.headset === 'proven' ? T.ink : g.headset === 'absent' ? T.micro : T.warn}>{hs}</Val></span>
+        {/* A37 — the WEAPON check, said out loud in THREE states. The headset row above answers "did
+            the gun answer at all"; this one answers "did it answer with the weapon we compiled". It
+            is separate because `not_echoed` is the NORMAL answer on v4.32 firmware (the `$WEAP` echo
+            has never been seen from our units, protocol.md), and a board that showed only "no fault"
+            was reading GREEN for a check that never ran. Neutral grey, never amber: an unproven
+            check is not a warning about this gun, it is the absence of a proof. */}
+        {g.echo && (<>
+          <Micro>WEAPON</Micro>
+          <span data-echo={g.echo}>
+            <Val color={g.echo === 'proven' ? T.ink : g.echo === 'mismatch' ? T.bad : T.micro}>
+              {g.echo === 'proven' ? 'ECHO MATCHES CONFIG'
+                : g.echo === 'mismatch' ? 'ECHO ≠ CONFIG'
+                : 'GUN DID NOT ECHO ITS WEAPON — UNPROVEN ON THIS FIRMWARE'}
+            </Val>
+          </span>
+        </>)}
         <Micro>BATTERY</Micro>
         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ font: F.osw(600, 14), ...TAB, minWidth: 38, color: stale ? T.micro : battColor }}>{batt == null ? '—' : stale ? `${batt}%*` : `${batt}%`}</span>

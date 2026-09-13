@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import { Armory } from '../src/screens/Armory';
 import { Lobby } from '../src/screens/Lobby';
+import { MockBackend } from '../src/mock/backend';
 import type { ReadinessRow, State } from '../src/api/types';
 import { demo, mountScreen } from './harness';
 
@@ -39,6 +40,34 @@ describe('ARMORY · the three A36 proofs appear on the gun card', () => {
       m.unmount();
     });
   }
+
+  // A37 — the weapon echo is THREE-state. `protocol/brx-protocol.md` records the `$WEAP` echo as
+  // never seen from our v4.32 units and `$ALCD` as streaming on ammo events only, so the ordinary
+  // answer to a head write in the field is `$START`'s `$LCD` and nothing more. A board that read
+  // that as "no fault" was showing GREEN for a check that never ran.
+  it('an unproven echo is visible as unproven, and is NOT a fault', async () => {
+    const { d, state } = await boardWith({ status: 'green', blockers: [], ambers: [], echo: 'not_echoed' });
+    const m = await mountScreen(<Armory />, { state, view: 'muster', weapons: d.weapons, perks: d.perks });
+    expect(m.text()).toContain('GUN DID NOT ECHO ITS WEAPON');
+    expect(m.text()).toContain('UNPROVEN ON THIS FIRMWARE');
+    expect(m.find('[data-echo="not_echoed"]').length, 'the state is on the DOM, not only in prose').toBe(1);
+    m.unmount();
+  });
+
+  it('a proven echo says so, and reads differently from an unproven one', async () => {
+    const { d, state } = await boardWith({ status: 'green', blockers: [], ambers: [], echo: 'proven' });
+    const m = await mountScreen(<Armory />, { state, view: 'muster', weapons: d.weapons, perks: d.perks });
+    expect(m.find('[data-echo="proven"]').length).toBe(1);
+    expect(m.text()).not.toContain('UNPROVEN ON THIS FIRMWARE');
+    m.unmount();
+  });
+
+  it('a row with no echo state says nothing about the weapon at all', async () => {
+    const { d, state } = await boardWith({ status: 'green', blockers: [], ambers: [], echo: null });
+    const m = await mountScreen(<Armory />, { state, view: 'muster', weapons: d.weapons, perks: d.perks });
+    expect(m.find('[data-echo]').length).toBe(0);
+    m.unmount();
+  });
 
   it('a heartbeat on an older head is an advisory, not a fault', async () => {
     const { d, state } = await boardWith({ status: 'amber', blockers: [], ambers: [HOLDING] });
@@ -125,12 +154,61 @@ describe('LOBBY · a stale ack is not an ack', () => {
     expect(s.lobby.all_acked).toBe(everyOneCurrent);
   });
 
-  it('the demo backend acks with the config it pushed — so the mock cannot demo a state the server refuses', async () => {
+  it('a plain ?mock acks with the config it pushed — a clean demo stays clean', async () => {
     const d = await demo();
     await d.api.pushLobby(true);
     const s = await d.api.getState();
     const ids = Object.values(s.lobby.acks).filter(a => a.ok).map(a => a.config_id);
     expect(ids.length).toBeGreaterThan(0);
     for (const id of ids) expect(id).toBe(s.config.config_id);
+    expect(s.readiness.board.some(r => (r.blockers ?? []).some(b => /OLDER CONFIG|GUN ECHO|GUN POOL/.test(b))))
+      .toBe(false);
+    expect(s.readiness.board.some(r => r.echo === 'not_echoed')).toBe(false);
+  });
+});
+
+// U-3 — until this switch existed, `?mock` ALWAYS acked with the config it had just pushed, so a
+// stale ack, an echo mismatch, a pool fault and a gun that simply does not echo could be demoed
+// exactly never, and the console's rendering of all four was unverifiable by eye. One query flag,
+// four otherwise-green guns, the server's own strings.
+describe('?mock&faults=1 · all four config-proof states, without a field', () => {
+  async function faultyMock() {
+    const was = location.href;
+    window.history.replaceState({}, '', '/?mock&faults=1');
+    try {
+      const api = new MockBackend();
+      await api.pushLobby(true);
+      return { api, state: await api.getState() };
+    } finally { window.history.replaceState({}, '', was); }
+  }
+
+  it('one stale ack, one echo mismatch, one pool fault, one not-echoed — and the rest proven', async () => {
+    const { state } = await faultyMock();
+    const lines = state.readiness.board.flatMap(r => r.blockers ?? []);
+    expect(lines.some(b => b.startsWith('ACKED AN OLDER CONFIG')), `saw ${JSON.stringify(lines)}`).toBe(true);
+    expect(lines.some(b => b.startsWith('GUN ECHO ≠ CONFIG'))).toBe(true);
+    expect(lines.some(b => b.startsWith('GUN POOL ≠ CONFIG'))).toBe(true);
+    expect(state.readiness.board.filter(r => r.echo === 'not_echoed').length).toBe(1);
+    expect(state.readiness.board.filter(r => r.echo === 'mismatch').length).toBe(1);
+    expect(state.readiness.board.some(r => r.echo === 'proven')).toBe(true);
+  });
+
+  it('the stale ack is stale ON THE WIRE, not just a string on the board', async () => {
+    const { state } = await faultyMock();
+    expect(Object.values(state.lobby.acks).some(a => a.ok && a.config_id !== state.config.config_id)).toBe(true);
+    expect(state.lobby.all_acked, 'so the server would refuse the whistle').toBe(false);
+  });
+
+  it('the four rows survive a re-push — it is a demo switch, not a scripted one-shot failure', async () => {
+    const was = location.href;
+    window.history.replaceState({}, '', '/?mock&faults=1');
+    try {
+      const api = new MockBackend();
+      await api.pushLobby(true);
+      await api.pushLobby(true);
+      const s = await api.getState();
+      expect(s.readiness.board.flatMap(r => r.blockers ?? []).filter(b => /OLDER CONFIG|GUN ECHO|GUN POOL/.test(b)).length)
+        .toBe(3);
+    } finally { window.history.replaceState({}, '', was); }
   });
 });

@@ -4492,6 +4492,45 @@ test('A36: a NEW head clears the previous ammo echo before the new one is collec
   assert.equal(h.eng.ammoEcho, null);
 });
 
+test('A37: an $ALCD that follows a TRIGGER inside the echo window is not the config echo', () => {
+  // F-3 (polish loop, 2026-09-13). `$ALCD` streams on AMMO EVENTS (protocol §"$ALCD"), so anything
+  // captured in the 1500 ms window after a head write carries the LIVE magazine -- and a round fired
+  // or a reload started in that window puts a mag one BELOW the compiled one on the wire. MC compares
+  // it to `$WEAP,0` and turns a perfectly good push red. A `$BUT` is the gun saying a control was
+  // touched: after one, the ammo stream is the player's, not the head's.
+  const h = harness().kit().config_();
+  h.frame('$LCD,0,0,0,0,0,0,*');            // $START's answer: the gun DID answer
+  h.frame('$BUT,0,1,*');                    // trigger pressed inside the window
+  h.frame('$ALCD,31,100,0,192,0,*');        // ...so this is a shot, not the head's echo
+  h.adv(1600); h.eng.tick();
+  const ack = h.reports.find(r => r.k === 'ack_config');
+  assert.equal(ack.b.ok, true, 'the gun answered, so the ack is still ok');
+  assert.equal(ack.b.gun_echo, '$LCD,0,0,0,0,0,0,*', 'MC gets NO weapon claim rather than a wrong one');
+  assert.equal(h.eng.ammoEcho, null);
+});
+
+test('A37: an $ALCD BEFORE any button is still the config echo', () => {
+  const h = harness().kit().config_();
+  h.frame('$LCD,0,0,0,0,0,0,*');
+  h.frame('$ALCD,32,100,0,192,0,*');
+  h.frame('$BUT,0,1,*');                    // the player pulls the trigger AFTER the echo landed
+  h.frame('$ALCD,31,100,0,192,0,*');
+  h.adv(1600); h.eng.tick();
+  const ack = h.reports.find(r => r.k === 'ack_config');
+  assert.equal(ack.b.gun_echo, '$ALCD,32,100,0,192,0,*', 'the full magazine the head wrote');
+});
+
+test('A37: a NEW head re-opens the echo window that a button had closed', () => {
+  const h = harness().kit().config_();
+  h.frame('$BUT,0,1,*');
+  h.adv(1600); h.eng.tick();
+  h.config_();                              // re-push: this head has had no button yet
+  h.frame('$ALCD,32,100,0,192,0,*');
+  h.adv(1600); h.eng.tick();
+  const ack = h.reports.filter(r => r.k === 'ack_config').pop();
+  assert.equal(ack.b.gun_echo, '$ALCD,32,100,0,192,0,*');
+});
+
 test('A36: every status heartbeat names the config this phone is holding', () => {
   const h = harness().kit();
   assert.equal(h.eng.statusBody().config_id, undefined, 'nothing held yet, nothing claimed');

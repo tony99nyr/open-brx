@@ -14,7 +14,7 @@ import secrets
 import time
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, NotRequired, TypedDict, cast, get_args
+from typing import TYPE_CHECKING, Any, Callable, Literal, NotRequired, TypedDict, cast, get_args
 from urllib.parse import quote
 
 from . import presentation as _pres
@@ -3260,6 +3260,9 @@ class Session:
                 "tail": g.get("ble", {}).get("tail", ""), "player_id": p["player_id"], "player_num": p["player_num"],
                 "present": bool(nid), "node": "linked" if nid else "none", "identity": identity,
                 "headset": headset, "headset_proof": headset_proof,
+                # A37: the WEAPON check's own three-state answer, beside the blocker it may also have
+                # produced. `not_echoed` is the field's NORMAL answer and is neutral, never green.
+                "echo": self._echo_state(p["player_id"]),
                 "battery_pct": nv.get("battery"), "battery_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,
                 "last_seen_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,   # the UI showed "0s AGO" reading a field that didn't exist (2026-08-26)
                 "gun_linked": pf.get("gun_linked"),
@@ -3670,15 +3673,39 @@ class Session:
         an ack that answered a previous head carries a previous head's magazine: reading it as a
         weapon mismatch printed two reds for one cause, and only one of them named the cause.
         """
-        ack = self.acks.get(pid) or {}
-        if not self._ack_is_current(pid):
+        if self._echo_state(pid) != "mismatch":
             return None
+        ack = self.acks.get(pid) or {}
         got = _frames.alcd_ammo(ack.get("gun_echo"))
         want = _frames.head_spawn_ammo((self.bundles.get(pid) or {}).get("head"))
-        if got is None or want is None or got == want:
-            return None
+        assert got is not None and want is not None      # `_echo_state` only says "mismatch" for these
         return (f"{_ECHO_FAULT} (WEAPON {got[0]}/{got[1]} echoed vs {want[0]}/{want[1]} "
                 f"expected, mag/reserve) — RE-PUSH")
+
+    def _echo_state(self, pid: str) -> Literal["proven", "mismatch", "not_echoed"] | None:
+        """A37: `"proven"` / `"mismatch"` / `"not_echoed"`, or None when there is no check to report.
+
+        THREE states, because the field has three. `protocol/brx-protocol.md` records the `$WEAP`
+        echo as "never seen from our v4.32 units" and `$ALCD` as streaming on AMMO EVENTS only, so
+        the ordinary answer to a head write on a real gun is `$START`'s `$LCD,0,0,0,0,0,0,*` and
+        nothing more. Under the two-state reading that is "no fault", which on a board full of green
+        rows says the weapon check PASSED -- a check that cannot fail, dressed as a proof. It now
+        says out loud that it did not run, and the console paints it neutral rather than green.
+
+        None (no check at all) when nothing has been pushed, when no ack has come back, when the ack
+        answered ANOTHER head (`ACKED AN OLDER CONFIG` owns that row, `_echo_fault`'s A37 note), or
+        when the head carries no readable `$WEAP,0` -- a stub compiler leaves nothing to compare, and
+        that is a fact about MC, not about the gun.
+        """
+        if not self.lobby_pushed or not self._ack_is_current(pid):
+            return None
+        want = _frames.head_spawn_ammo((self.bundles.get(pid) or {}).get("head"))
+        if want is None:
+            return None
+        got = _frames.alcd_ammo((self.acks.get(pid) or {}).get("gun_echo"))
+        if got is None:
+            return "not_echoed"
+        return "proven" if got == want else "mismatch"
 
     def all_acked(self) -> bool:
         return bool(self.players) and all(

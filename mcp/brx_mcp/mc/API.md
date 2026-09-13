@@ -71,6 +71,16 @@ State {
                                                // (additive) — HOW it was proven. `"echo"` = the gun answered the config push; `"link"` = the
                                                // node's `status.preflight.gun_linked` has been TRUE CONTINUOUSLY for `HEADSET_LINK_PROOF_MS`
                                                // (10 s), which a gun with no headset cannot manage (it drops the link in ~6 s); `null` = not
+                                               // A37: `echo: "proven"|"mismatch"|"not_echoed"|null` is the WEAPON check's own answer,
+                                               // beside (not instead of) the red `GUN ECHO ≠ CONFIG` blocker a `mismatch` also produces.
+                                               // THREE states because the field has three: protocol.md records the `$WEAP` echo as never
+                                               // seen from our v4.32 units and `$ALCD` as streaming on ammo events only, so the ordinary
+                                               // answer to a head write is `$START`'s `$LCD` and nothing more — which the two-state
+                                               // reading rendered as GREEN for a check that never ran. Render `not_echoed` NEUTRAL (grey),
+                                               // never amber and never as a proof; the console's copy for it is the fixed sentence
+                                               // `GUN DID NOT ECHO ITS WEAPON — UNPROVEN ON THIS FIRMWARE`. `null` = no check to report
+                                               // (nothing pushed, no ack yet, an ack for another head, or a head with no readable `$WEAP,0`).
+                                               // `?mock&faults=1` demos all four config-proof states (webapp/mc/README.md).
                                                // proven. A link that drops sends the row back to `unknown` and the clock restarts. While a
                                                // link is counting up the row carries the amber `HEADSET · CONFIRMING (LINK <n> s)`, which
                                                // clears itself at 10 s — the UI renders it through the normal amber path and does NO timing of

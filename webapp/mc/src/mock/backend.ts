@@ -50,6 +50,21 @@ const MOCK_STATION_SOURCES = STATION_SOURCE_IDS.map(value => ({ value, desc: MOC
 const uid = (p: string) => `${p}_${Math.random().toString(36).slice(2, 8)}`;
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 
+// ---- `?mock&faults=1`: A36/A37's four config-proof states, one gun each ---------------------
+// The strings are the SERVER'S, verbatim (`state.py` `_STALE_ACK_FAULT` / `_ECHO_FAULT` /
+// `_POOL_FAULT`) — a demo that paraphrases them is demoing a screen the field will never show.
+// Four guns that are otherwise GREEN, so each state is the only thing wrong with its row.
+const DEMO_FAULT_GUN: Record<string, 'stale' | 'echo' | 'pool' | 'noecho'> = {
+  'GUN-A': 'stale', 'GUN-B': 'echo', 'GUN-C': 'pool', 'GUN-E': 'noecho',
+};
+const DEMO_OLD_CFG = '9f2a1c04';
+const DEMO_STALE_LINE = `ACKED AN OLDER CONFIG (${DEMO_OLD_CFG}) — RE-PUSH`;
+const DEMO_ECHO_LINE = 'GUN ECHO ≠ CONFIG (WEAPON 31/192 echoed vs 32/192 expected, mag/reserve) — RE-PUSH';
+const DEMO_POOL_LINE = 'GUN POOL ≠ CONFIG (REPORTS 45/115, THIS CONFIG GRANTS 45/70, hp/armor) — LIKELY ON AN OLDER HEAD; RE-PUSH';
+/** A37: the three blockers a re-push CURES — `state.py PUSH_CURES`. They do not refuse the push. */
+const PUSH_CURES = ['ACKED AN OLDER CONFIG', 'GUN ECHO ≠ CONFIG', 'GUN POOL ≠ CONFIG'];
+const curedByPush = (b: string) => PUSH_CURES.some(p => b.startsWith(p));
+
 type Sub = { snap: (s: State) => void; feed: (e: FeedEntry) => void };
 
 export class MockBackend implements Api {
@@ -92,6 +107,30 @@ export class MockBackend implements Api {
         last_seen_ms: now() - st.seen, online: !st.offline, attention, game: this.gameNo };
     });
   }
+  /** The demo's config-proof fault for this gun, or undefined — only under `?mock&faults=1`. */
+  private faultOf(gun_id?: string | null) {
+    return this.demoFaults && gun_id ? DEMO_FAULT_GUN[gun_id] : undefined;
+  }
+
+  /** The `ack_config` this player's phone answers a push with — ONE place, so the initial push and
+   *  the A35 re-push after a config edit cannot drift apart (and so the `?mock&faults=1` states are
+   *  produced by the same code path a clean demo uses). */
+  private ackFor(p: Player, cfgId: string): State['lobby']['acks'][string] {
+    const g = GUNS.find(x => x[0] === p.gun_id);
+    if (g?.[2] === 'r' && this.gunOverride[g[0]] !== 'g') return { ok: false, err: 'no_echo' };
+    switch (this.faultOf(p.gun_id)) {
+      // The gun answered — for the game BEFORE this one. `ok: true`, which is exactly why truthiness
+      // alone missed it on the field (A36).
+      case 'stale': return { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: DEMO_OLD_CFG };
+      // Answered this head, with LAST game's magazine.
+      case 'echo': return { ok: true, gun_echo: '$ALCD,31,100,0,192,0,*', config_id: cfgId };
+      // Answered with `$START`'s `$LCD` and nothing else — the NORMAL answer on v4.32 firmware, and
+      // the reason the echo check has a third state at all (A37).
+      case 'noecho': return { ok: true, gun_echo: '$LCD,0,0,0,0,0,0,*', config_id: cfgId };
+      default: return { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: cfgId };
+    }
+  }
+
   /** `state.py all_acked()`: every rostered player with a node bound has answered for THIS config. */
   private allAcked() {
     return this.players.length > 0 && this.players.filter(p => p.node_id).every(p => {
@@ -175,6 +214,12 @@ export class MockBackend implements Api {
   /** `?mock&restored=1` — a `--demo` (or any prior) session persisted and was silently restored: two
    *  ghost players with no phone ever bound sit on the roster from the first snapshot. */
   private demoRestored = typeof location !== 'undefined' && new URLSearchParams(location.search).get('restored') === '1';
+  /** `?mock&faults=1` — A36/A37's four config-proof states, on four otherwise-green guns, so every
+   *  one of them can be looked at without a field and a stale gun. Until this existed the mock always
+   *  acked with the config it had just pushed, which meant `?mock` could demo exactly none of them
+   *  and the console's rendering of all four was unverifiable by eye. STICKY: the faults survive a
+   *  re-push (the point is to look at them), so this is a demo switch, not a scripted failure. */
+  private demoFaults = typeof location !== 'undefined' && ['1', 'stale', 'on'].includes(new URLSearchParams(location.search).get('faults') ?? '');
   private restoredFrom: { at: number; players: number } | null = null;
 
   constructor() {
@@ -324,6 +369,15 @@ export class MockBackend implements Api {
       const red = s === 'r', a1 = s === 'a1', a2 = s === 'a2';
       const blockers: string[] = [];
       if (red) blockers.push('NOT POWERED — BLOCKS START');
+      // A36/A37 under `?mock&faults=1` — the three reds, exactly as `state.py readiness()` writes them.
+      const fault = this.faultOf(sticker);
+      if (this.pushed && fault === 'stale') blockers.push(DEMO_STALE_LINE);
+      if (this.pushed && fault === 'echo') blockers.push(DEMO_ECHO_LINE);
+      if (this.pushed && fault === 'pool') blockers.push(DEMO_POOL_LINE);
+      // …and they are REDS, like the server's. `noecho` is deliberately not here: NOT ECHOED is the
+      // absence of a proof, not a fault, and a row that went amber for it would be amber all night
+      // on every gun in the field.
+      const proofRed = this.pushed && (fault === 'stale' || fault === 'echo' || fault === 'pool');
       if (a1) blockers.push('BATTERY UNREAD — DOES NOT BLOCK');
       if (a2) blockers.push(`STALE LINK (${link}s) — DOES NOT BLOCK`);
       // A29: the version flags are the SERVER's words, amber only (A1: amber never blocks). The demo
@@ -357,6 +411,10 @@ export class MockBackend implements Api {
         present: !red || droppedBackhaul, identity: 'ok', node: red ? 'none' : 'linked',
         headset: red ? 'absent' : proof ? 'proven' : 'unknown',
         headset_proof: proof,
+        // A37: the WEAPON check's own three-state answer. `null` until a push has been answered (and
+        // for a stale ack, whose own blocker owns that row); `not_echoed` is neutral, never green.
+        echo: !this.pushed || red || !pl || !this.acks[pl.player_id]?.ok || fault === 'stale' ? null
+          : fault === 'echo' ? 'mismatch' : fault === 'noecho' ? 'not_echoed' : 'proven',
         // null, not undefined: these are the NODE's last word and the server sends an explicit null for
         // one it has not heard (`readiness()`'s closing `row.update`).
         battery_pct: batt ?? null, battery_age_ms: batt == null ? null : 4000,
@@ -365,7 +423,7 @@ export class MockBackend implements Api {
         fw: 'v4.32', phone_batt: 80, ssid_ok: true, mc_reachable: !red, synced: !red, screen_on: true, foreground: true,
         // A28.3 / F155: the server stamps `reach` from the socket path and clears it on disconnect; `last_reach` outlives it.
         reach: red ? null : (this.lastReach[tail] ?? 'lan'), last_reach: this.lastReach[tail] ?? (red ? null : 'lan'),
-        status: red ? 'red' : a1 || a2 || ambers.length ? 'amber' : 'green', blockers,
+        status: red || proofRed ? 'red' : a1 || a2 || ambers.length ? 'amber' : 'green', blockers,
       };
     });
     const rf = this.rosterFault();
@@ -823,11 +881,7 @@ export class MockBackend implements Api {
       const cfgId = this.config.config_id;
       setTimeout(() => {
         if (!this.pushed || this.config.config_id !== cfgId) return;   // recalled, or superseded by a newer edit
-        for (const p of this.players) {
-          const g = GUNS.find(x => x[0] === p.gun_id);
-          const dead = g?.[2] === 'r' && this.gunOverride[g[0]] !== 'g';
-          this.acks[p.player_id] = dead ? { ok: false, err: 'no_echo' } : { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: cfgId };
-        }
+        for (const p of this.players) this.acks[p.player_id] = this.ackFor(p, cfgId);
         this.emit();
       }, 220);   // long enough for a real-browser poll to see the transitional "re-pushing" state
     }
@@ -958,15 +1012,15 @@ export class MockBackend implements Api {
   async pushLobby(force?: boolean) {
     const rf = this.rosterFault();
     if (rf) throw new Error(rf);          // round-2 B: not a readiness judgement, so `force` does not open it
-    if (!this.readiness().go && !force) throw new Error('readiness has reds — clear them before pushing, or push with force');
+    // A37: the three A36 proofs all SAY "RE-PUSH" and are cured by this very call, so they do not
+    // refuse it (`state.py push_config`). Every other red and every `waiting` row still does.
+    const blocked = this.readiness().board.some(r =>
+      r.status === 'waiting' || (r.status === 'red' && (r.blockers ?? []).some(b => !curedByPush(b))));
+    if (blocked && !force) throw new Error('readiness has reds — clear them before pushing, or push with force');
     if (this.gameStarted) { this.gameNo = (this.gameNo % 255) + 1; this.gameStarted = false; }   // a new match to every station
     for (const n of Object.keys(this.stations)) this.armStation(n);
     this.phase = 'lobby'; this.pushed = true; this.trying = {}; this.acks = {};
-    for (const p of this.players) {
-      const g = GUNS.find(x => x[0] === p.gun_id);
-      const dead = g?.[2] === 'r' && this.gunOverride[g[0]] !== 'g';
-      this.acks[p.player_id] = dead ? { ok: false, err: 'no_echo' } : { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: this.config.config_id };
-    }
+    for (const p of this.players) this.acks[p.player_id] = this.ackFor(p, this.config.config_id);
     this.emit(); return { ok: true, acks: clone(this.acks) };
   }
   private schedule(runway_s: number, seq: number, match_id: string) {

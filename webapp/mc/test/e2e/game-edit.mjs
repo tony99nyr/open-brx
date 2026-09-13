@@ -2,7 +2,7 @@
 // browser, against a real server (mock AND python), with the re-push/re-ack made visible.
 //
 //   npm run e2e:game-edit                # everything (~40 s)
-//   ONLY=mock npm run e2e:game-edit      # one run: mock | real | locked | stale | venue
+//   ONLY=mock npm run e2e:game-edit      # one run: mock | real | locked | stale | venue | faults
 //   MC_PORT=… VITE_PORT=… MC_PY=…        # move the ports / pick the interpreter
 //
 // Runs: mock (in-browser backend — the fast, deterministic walk: edit on KIT, push, edit again on
@@ -12,7 +12,9 @@
 // missing and no `loadout_policy` on the wire — the shape a pre-A10 or older server would send —
 // renders without crashing and shows the degraded state instead of a blank control), venue (F162:
 // the "SET EACH GUN TO <VENUE> (HOLD ALT 3 S)" reminder on GAMES + KIT at desk and phone width, its
-// dismissal, its re-arm on a venue change, and a config with no `environment` at all).
+// dismissal, its re-arm on a venue change, and a config with no `environment` at all), faults
+// (A36/A37: `?mock&faults=1` puts a stale ack, an echo mismatch, a pool fault and a gun that does
+// not echo on four otherwise-green guns, so all four states can be looked at without hardware).
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -127,6 +129,14 @@ const shot = async (pg, name) => {
   return f;
 };
 const onKit = pg => pg.locator('main', { hasText: '[ A3 // KIT-OUT ]' }).count().then(n => n > 0);
+const isMuster = pg => pg.locator('main', { hasText: '[ A1 // GEAR CHECK ]' }).count().then(n => n > 0);
+/** Open the muster board through the nav the way the operator does (it is never phase-gated). */
+const onMuster = async pg => {
+  if (await isMuster(pg)) return true;
+  await until(() => pg.locator('header nav button:has-text("ARMORY")').count().then(n => n > 0), 5000, 'the ARMORY nav tab');
+  await pg.locator('header nav button:has-text("ARMORY")').first().click();
+  return until(() => isMuster(pg), 5000, 'the muster board to open from the nav');
+};
 const onLobby = pg => pg.locator('main', { hasText: '[ A5 // LOBBY' }).count().then(n => n > 0);
 const noCrash = async pg => expect(await pg.locator('text=CONSOLE ERROR').count() === 0, 'no crash boundary');
 const panel = pg => pg.locator('[data-testid="game-edit-panel"]');
@@ -466,6 +476,57 @@ async function runVenueStale(browser, viteBase) {
   await pg.unrouteAll({ behavior: 'ignoreErrors' }); await pg.context().close();
 }
 
+/** A36/A37 (U-3) — the four config-proof states, on screen, in a real browser.
+ *
+ *  `?mock` always acked with the config it had just pushed, so a stale ack, an echo mismatch, a pool
+ *  fault and a gun that simply does not echo could be demoed exactly NEVER — and the console's
+ *  rendering of all four was unverifiable by eye. `?mock&faults=1` puts one of each on four
+ *  otherwise-green guns (webapp/mc/README.md → `?mock` demo switches). */
+async function runFaults(browser, viteBase) {
+  step = 'faults'; stepFailedAt = failures.length;
+  console.log('\n[faults] ?mock&faults=1 — the four config-proof states on the muster board');
+  const pg = await newPage(browser, viteBase);
+  await pg.goto(`${viteBase}/?mock&faults=1#muster`, { waitUntil: 'domcontentloaded' });
+  await until(() => isMuster(pg), 15000, "the muster board");
+  await noCrash(pg);
+  // Push the config the way a host would: the A36 reds do not refuse the push that cures them (A37),
+  // but the demo also ships one gun that is simply not powered, so this run takes the override.
+  await pg.evaluate(async () => { await window.__MC_MOCK__.pushLobby(true); });
+  // The console FOLLOWS a phase that advances, so the push lands us on LOBBY. The muster board is
+  // where the per-gun proof lives, and the nav tab is never phase-gated — the operator's own route.
+  await onMuster(pg);
+  const txt = (await pg.locator('main').innerText()).replace(/\s+/g, ' ');
+  for (const [what, re] of [
+    ['the stale ack', /ACKED AN OLDER CONFIG/],
+    ['the echo mismatch', /GUN ECHO ≠ CONFIG/],
+    ['the pool fault', /GUN POOL ≠ CONFIG/],
+    ['the gun that did not echo', /GUN DID NOT ECHO ITS WEAPON/],
+  ]) expect(re.test(txt), `${what} is on the board (saw ${JSON.stringify(txt.slice(0, 200))})`);
+  // NOT ECHOED is neutral: it is on a row that is not red, and it is not one of the blocker lines.
+  const neutral = await pg.locator('[data-echo="not_echoed"]').count();
+  expect(neutral === 1, `exactly one row reads NOT ECHOED (saw ${neutral})`);
+  const proven = await pg.locator('[data-echo="proven"]').count();
+  expect(proven > 0, `and at least one reads PROVEN, so the two are distinguishable (saw ${proven})`);
+  ok(`all four states visible, NOT ECHOED neutral beside ${proven} proven   ${await shot(pg, '50-faults-board')}`);
+  // The unproven row is the one a human has to be able to READ as unproven, so put it on screen.
+  await pg.locator('[data-echo="not_echoed"]').first().scrollIntoViewIfNeeded();
+  const unprovenRow = await pg.locator('[data-echo="not_echoed"]').first().innerText();
+  expect(/UNPROVEN ON THIS FIRMWARE/.test(unprovenRow), `the unproven row says why (saw ${JSON.stringify(unprovenRow)})`);
+  ok(`the NOT ECHOED row, on screen   ${await shot(pg, '52-faults-not-echoed')}`);
+  // …and a clean ?mock shows none of them: the switch is opt-in, not the demo's new normal.
+  const clean = await newPage(browser, viteBase);
+  await clean.goto(`${viteBase}/?mock#muster`, { waitUntil: 'domcontentloaded' });
+  await until(() => clean.locator('main', { hasText: '[ A1 // GEAR CHECK ]' }).count().then(n => n > 0), 15000, 'the clean board');
+  await clean.evaluate(async () => { await window.__MC_MOCK__.pushLobby(true); });
+  await onMuster(clean);
+  const cleanTxt = (await clean.locator('main').innerText()).replace(/\s+/g, ' ');
+  expect(!/ACKED AN OLDER CONFIG|GUN ECHO ≠ CONFIG|GUN POOL ≠ CONFIG|DID NOT ECHO/.test(cleanTxt),
+    'a plain ?mock demos none of the four');
+  ok(`plain ?mock stays clean   ${await shot(clean, '51-faults-clean')}`);
+  await clean.context().close();
+  await pg.context().close();
+}
+
 // ---------------------------------------------------------------------------- main
 const DESK = { width: 1280, height: 800 }, PHONE = { width: 393, height: 830 };
 fs.mkdirSync(SHOTS, { recursive: true });
@@ -478,6 +539,7 @@ try {
   if (!ONLY || ONLY === 'locked') await runLocked(browser, vite.base);
   if (!ONLY || ONLY === 'stale') await runStale(browser, vite.base, mc.base);
   if (!ONLY || ONLY === 'venue') { await runVenue(browser, vite.base, mc.base, DESK, 'desk'); await runVenue(browser, vite.base, mc.base, PHONE, 'phone'); await runVenueStale(browser, vite.base); }
+  if (!ONLY || ONLY === 'faults') await runFaults(browser, vite.base);
 } finally {
   await browser.close();
   await vite.stop();

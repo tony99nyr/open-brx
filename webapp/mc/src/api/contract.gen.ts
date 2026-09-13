@@ -548,6 +548,18 @@ export interface ReadinessRow {
   /** A32: HOW the headset was proven, so the UI can say it -- `"echo"` = the gun answered the config
    *  push, `"link"` = a BLE link that has held for HEADSET_LINK_PROOF_MS, `None` = not proven (yet). */
   headset_proof: 'echo' | 'link' | null;
+  /** A37: the WEAPON check's own state, and it has THREE answers, not two.
+   *  "proven"     -- the gun's slot-0 `$ALCD` carried the magazine the head's `$WEAP,0` wrote;
+   *  "mismatch"   -- it carried a different one (the row's red `GUN ECHO ≠ CONFIG` blocker);
+   *  "not_echoed" -- the gun answered the head but said nothing about ammo.
+   *  The third state exists because it is the NORMAL one in the field: `protocol/brx-protocol.md`
+   *  records the `$WEAP` echo as never seen from our v4.32 units and `$ALCD` as streaming on ammo
+   *  events only, so the usual answer to a head write is `$START`'s `$LCD,0,0,0,0,0,0,*` and nothing
+   *  else. Rendered NEUTRAL (never red, never counted as proven): a green row that ran no weapon
+   *  check must be visibly different from one that ran it and passed. `None` = nothing pushed, no
+   *  ack yet, the ack is for another head (the stale-ack blocker owns that row), or the head carries
+   *  no readable `$WEAP,0` -- in every one of those there is no check to report on. */
+  echo: 'proven' | 'mismatch' | 'not_echoed' | null;
   /** Everything below is the NODE's last word, passed through verbatim. `None` = the node has not said
    *  it (or no node is bound): the KEY is always here, the answer may not be. */
   battery_pct: number | null;

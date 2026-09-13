@@ -281,8 +281,11 @@ export class Engine {
     // $ALCD echoes arrive right behind it carrying the magazine, which is what lets MC prove the
     // head LANDED rather than merely that something came back (field 2026-09-12: guns ran a
     // previous push in nearly every match and every signal MC had said `ok`).
-    this.ammoEcho = null;
-    this._headTid = null;           // B1 guard: the $TID the gun's written head actually holds (its COMBAT team), parsed from the last head write — null until a head is written, so an unknown head never raises a false divergence
+    // A37/F-3: ...but `$ALCD` only streams on AMMO EVENTS (protocol), so a frame inside the echo
+    // window may equally be a round the player fired. `butSinceHead` closes the window on the gun's
+    // first `$BUT`, and MC then gets NO weapon claim rather than a magazine one round short.
+    this.ammoEcho = null; this.butSinceHead = false;
+    this._headTid = null;        // B1 guard: the $TID the gun's written head actually holds (its COMBAT team), parsed from the last head write — null until a head is written, so an unknown head never raises a false divergence
     this.spawned = false; this.ended = false;
     this.cuesFired = new Set();
     this.tutorial = false; this.tutorialWeapon = null;
@@ -595,6 +598,7 @@ export class Engine {
     if (!this.bleUp) { this.configPending = true; this.log('config stored; gun not linked yet — head will be written on relink', 'li'); this._changed(); return; }
     this.configPending = false; this._panicked = null;
     this.headEcho = null; this.ammoEcho = null; this.awaitingEcho = true; this.headWrittenAt = this.now();
+    this.butSinceHead = false;         // A37/F-3: a fresh head, so the next ammo frame can be its echo again
     this._writeHead(why === 'hydrate' ? 'head (rehydrate)' : 'head');
     this.spawned = false; this.ended = false;
     if (this.phase !== 'armed' && this.phase !== 'live') this._set('lobby');
@@ -2126,9 +2130,20 @@ export class Engine {
       case 'ALCD': {
         if (this.awaitingEcho && !this.headEcho) this.headEcho = f;
         // A36: …and keep the SLOT-0 one, whether or not it was first. Token 3 is the weapon slot;
-        // the head writes slot 0, 1 and 4 and every one of them echoes, so the primary's frame is
-        // the only one whose mag/reserve MC can compare against `$WEAP,0`.
-        if (this.awaitingEcho && !this.ammoEcho && (t[3] === undefined || t[3] === '' || +t[3] === 0)) this.ammoEcho = f;
+        // the head writes slot 0, 1 and 4, so the primary's frame is the only one whose mag/reserve
+        // MC can compare against `$WEAP,0`.
+        //
+        // ⚠ `$ALCD` is an AMMO-EVENT stream (protocol §"$ALCD": "one frame per round fired and per
+        // round reloaded ... only streams on ammo events"), NOT a guaranteed answer to a `$WEAP`
+        // write -- LaserTagMods' `$WEAP` echo has never been seen from our v4.32 units (protocol
+        // §"Echoes reported by LaserTagMods"). So this frame may well be the head's arming report
+        // and may equally be the player pulling the trigger inside the 1500 ms window, in which case
+        // it carries a magazine one BELOW the compiled one and MC would turn a correct push red
+        // (F-3). `butSinceHead` is the cut: a `$BUT` is the gun saying a control was touched, and
+        // after one the ammo stream belongs to the player, not to the head. No echo then, which MC
+        // reads as NOT ECHOED -- no claim, rather than a wrong one.
+        if (this.awaitingEcho && !this.ammoEcho && !this.butSinceHead
+            && (t[3] === undefined || t[3] === '' || +t[3] === 0)) this.ammoEcho = f;
         this._onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null, t[3] !== undefined && t[3] !== '' ? +t[3] : 0);
         break;
       }
@@ -2176,6 +2191,7 @@ export class Engine {
       case 'VOLTS': { const b = parseInt(t[3], 10); if (!Number.isNaN(b)) this.battery = b; this.lastVoltsAt = this.now(); break; }
       case 'VERSION': { if (t[1]) this.fw = t[1]; break; }
       case 'BUT': {
+        this.butSinceHead = true;      // A37/F-3: the ammo stream from here on is the player's, not the head's
         if (this.resync) this._resyncButton(+t[1], +t[2]);
         this._onButton(+t[1], +t[2]);
         break;

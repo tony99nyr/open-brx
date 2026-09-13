@@ -503,6 +503,70 @@ def test_standing_a_player_down_forgets_the_pool_fault_they_earned():
     assert not any("GUN POOL" in b for b in row(s, ps[1]["player_id"])["blockers"])
 
 
+# ------------------------------- 9. the echo is THREE-state, not two (F-2/U-3) -------------- #
+# `protocol/brx-protocol.md` records the `$WEAP` echo as "never seen from our v4.32 units" and
+# `$ALCD` as streaming on AMMO EVENTS only. So in the field the usual answer to a head write is
+# `$START`'s `$LCD,0,0,0,0,0,0,*` and nothing else -- `_echo_fault` is silent, and a board with
+# nothing on it reads GREEN for a check that never ran. A check that cannot fail is not a proof, and
+# it must not be dressed as one.
+
+def test_the_echo_check_reports_proven_mismatch_and_not_echoed():
+    s, net, clock, ps = mk(3, compiler=Compiler())
+    for i in range(3):
+        online(s, net, clock, ps[i], i)
+    assert all(row(s, p["player_id"])["echo"] is None for p in ps), "nothing pushed: nothing to say"
+    s.push_config()
+    assert all(row(s, p["player_id"])["echo"] is None for p in ps), "pushed, not yet answered"
+
+    from brx_mcp.mc import frames as _f
+    mag, reserve = _f.head_spawn_ammo(s.bundles[ps[0]["player_id"]]["head"])
+    ack(net, s, 0, ps[0]["player_id"])                                             # exact echo
+    ack(net, s, 1, ps[1]["player_id"], echo=f"$ALCD,{mag - 1},100,0,{reserve},0,*")  # one round short
+    ack(net, s, 2, ps[2]["player_id"], echo="$LCD,0,0,0,0,0,0,*")                  # answered, said nothing
+
+    r0, r1, r2 = (row(s, p["player_id"]) for p in ps)
+    assert r0["echo"] == "proven" and r0["status"] == "green", r0
+    assert r1["echo"] == "mismatch" and r1["status"] == "red", r1
+    # NOT ECHOED is neutral: it blocks nothing, it is never red, and it is never counted as proven.
+    assert r2["echo"] == "not_echoed", r2
+    assert not any("GUN ECHO" in b for b in r2["blockers"]), r2["blockers"]
+    assert r2["status"] != "red", r2["status"]
+    assert s.readiness()["go"] is False, "row 1 is still red"
+
+
+def test_an_unproven_echo_is_not_a_proven_one_even_on_a_green_board():
+    """The whole point of the third state: a green row that never ran the weapon check must be
+    distinguishable from one that ran it and passed."""
+    s, net, clock, ps = mk(2, compiler=Compiler())
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    s.push_config()
+    ack(net, s, 0, ps[0]["player_id"])
+    ack(net, s, 1, ps[1]["player_id"], echo="$LCD,0,0,0,0,0,0,*")
+    r0, r1 = (row(s, p["player_id"]) for p in ps)
+    assert r0["status"] == r1["status"] == "green"
+    assert r0["echo"] != r1["echo"], "two green rows, two DIFFERENT amounts of proof"
+    assert s.readiness()["go"] is True, "an unproven weapon check does not gate the whistle"
+
+
+def test_a_stub_head_makes_no_echo_claim_at_all():
+    """`FakeCompiler` writes `$WEAP,0,<id>,*` -- no numbers. Nothing to compare, so nothing to say:
+    not `not_echoed` (that is a statement about the GUN), just silence."""
+    s, net, clock, ps = mk(1)
+    online(s, net, clock, ps[0], 0)
+    s.push_config()
+    ack(net, s, 0, ps[0]["player_id"], echo="$ALCD,32,100,0,192,0,*")
+    assert row(s, ps[0]["player_id"])["echo"] is None
+
+
+def test_the_engine_comment_agrees_with_the_protocol_about_weap_echoes():
+    """The engine said "the head writes slot 0, 1 and 4 and every one of them echoes"; the protocol
+    says the `$WEAP` echo has never been seen from our v4.32 units. One of them was wrong, and it was
+    the one the three-state design depends on."""
+    import pathlib
+    src = (pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "engine.js").read_text(encoding="utf-8")
+    assert "every one of them echoes" not in src, "engine.js still claims a $WEAP echo the protocol denies"
+
+
 def test_the_three_proofs_share_one_frame_of_reference():
     """Vocabulary. An operator who learns one of these has learned the shape of the other two."""
     from brx_mcp.mc.state import PUSH_CURES
