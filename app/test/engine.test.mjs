@@ -1474,6 +1474,41 @@ test('head re-write mid-match: the $LCD,0,… echo adds 0 shots', () => {
   assert.equal(h.eng.shots, 3, 'real shots still count');
 });
 
+test('B1: a LOBBY config re-push rewrites the head and the new $TID reaches the gun', () => {
+  // The server-side P0 (2026-09-12): editing a loaded game (e.g. a re-team) in the lobby must put a
+  // FRESH head on the gun, and the gun writes whatever head it is handed. This is the phone half of the
+  // guard: a re-pushed config in LOBBY is applied verbatim, so its $TID — the gun's combat team — lands.
+  const h = harness().kit().config_().echo();
+  assert.equal(h.eng.phase, 'lobby');
+  assert.ok(h.writes.includes('$TID,1,*'), 'the first head carried the original team $TID');
+  const clearsBefore = h.writes.filter(f => f === '$CLEAR,*').length;
+  // MC re-compiles after a team change: same bundle, but the head's LAST frame now names the new team.
+  const reteamed = { ...h.bundle, config_id: 'cfg2', head: [...h.bundle.head.slice(0, -1), '$TID,2,*'] };
+  h.eng.onMcMessage({ kind: 'config', body: { config: { ...h.config, config_id: 'cfg2' }, frames: reteamed, roster: h.roster } });
+  assert.ok(h.writes.filter(f => f === '$CLEAR,*').length > clearsBefore, 'the re-push wrote a fresh head');
+  assert.ok(h.writes.includes('$TID,2,*'), 'the NEW team $TID reached the gun');
+  assert.equal(h.eng.phase, 'lobby', 'still in lobby after the re-push');
+  // and the node will re-ack the new head, so MC can see the re-push land
+  h.adv(1600); h.echo(); h.eng.tick();
+  const ack = h.reports.filter(r => r.k === 'ack_config').pop();
+  assert.ok(ack && ack.b.ok === true && ack.b.config_id === 'cfg2', 'fresh ack for the re-pushed config');
+});
+
+test('B1 guard: a live assign whose team the head never followed is surfaced, a matching one is not', () => {
+  // MC now refuses this, but the node is the backstop: if an `assign` ever re-teams a gun whose head
+  // still holds the old $TID, the player must not silently fight for the wrong side.
+  const h = goLive(harness());                                   // live, head holds $TID,1 (blue, tid 1)
+  assert.equal(h.eng.phase, 'live');
+  // a harmless re-assert of the SAME team raises nothing
+  h.eng.onMcMessage({ kind: 'assign', body: { team: { team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 } } });
+  assert.ok(!h.eng.moment || h.eng.moment.kind !== 'team_tid_mismatch', 'same-team assign is silent');
+  // a re-team to yellow (tid 2) with no config behind it — the head still says $TID,1 — must surface
+  h.eng.onMcMessage({ kind: 'assign', body: { team: { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 } } });
+  assert.equal(h.eng.moment && h.eng.moment.kind, 'team_tid_mismatch');
+  assert.equal(h.eng.moment.teamTid, 2);
+  assert.equal(h.eng.moment.headTid, 1);
+});
+
 test('restored ARMED past the match end: no spawn, ends cleanly', () => {
   const h = harness({ timeLimit: 60 }).kit().config_().echo().start(5000);
   assert.equal(h.eng.phase, 'armed');

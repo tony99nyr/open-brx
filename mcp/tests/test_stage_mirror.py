@@ -1150,6 +1150,11 @@ KNOWN_UNMIRRORED = {
     # persistence + config application (the stage is configured directly, not by a pushed bundle)
     "_save", "_load", "_set", "_changed", "clearPersisted", "_applyConfig", "_assign", "_write",
     "_writeHead", "_writeTeardown", "feedFrame", "reset", "_pickTable",
+    # B1 (2026-09-12): catches an MC `assign` that re-teams the roster without a config re-push rewriting
+    # the gun's $TID. It reads the head `_writeHead` wrote and fires only off `_assign` — both of which
+    # are transport/MC-only and already pinned here. The stage is configured directly (no `assign`, no
+    # pushed head), so there is no divergence for it to detect.
+    "_checkTeamVsHead",
     # kitting / loadout browser — HUD surface, no stage equivalent
     "browse", "canPick", "conflictFor", "kitOpen", "loadoutView", "perkRow", "weaponRow", "slotRule",
     "requestLoadout", "_loadoutAck", "dismissTryout", "_tutorial", "setReady", "_loadAmmo",

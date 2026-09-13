@@ -93,11 +93,14 @@ def test_a_pick_after_start_is_refused_in_the_players_own_words_and_changes_noth
 
 
 def test_the_host_cannot_change_a_kit_mid_match_either_but_a_re_team_still_works():
-    """Same rule from the other side. Only the fields that are COMPILED to the gun are refused; a
-    mid-match re-team, a ready flag and a gamertag ride in `assign` and never touch the head."""
+    """Same rule from the other side. The fields COMPILED to the gun are refused; a ready flag and a
+    gamertag ride in `assign` and never touch the head, so they still go. A TEAM change is refused too
+    (B1, 2026-09-12): the gun's $TID is in the locked head, so a mid-match re-team would move the
+    beacon/LED/scorer while combat kept resolving on the OLD team -- the P0 that ruined a TDM game."""
     s, net, clock, ps = _live_session(live=False)       # the countdown is already too late to re-kit
     pid = ps[0]["player_id"]
     configs_before = len(net.pushes("config", "node0"))
+    assigns_before = len(net.pushes("assign", "node0"))
     for field, value in (("loadout", {"weapons": [{"weapon_id": "shotgun"}]}), ("voice", "female"),
                          ("gun_id", "GUN-Z")):
         try:
@@ -106,10 +109,21 @@ def test_the_host_cannot_change_a_kit_mid_match_either_but_a_re_team_still_works
         except ValueError as e:
             assert s.phase.upper() in str(e) and field in str(e), (field, str(e))
     assert ps[0]["loadout"] == {"weapons": [{"weapon_id": "assault_rifle"}]}, ps[0]["loadout"]
-    s.patch_player(pid, team_id="yellow")                 # the scorer follows a re-team; the gun does not care
-    assert ps[0]["team_id"] == "yellow" and s.scorer.stats[pid].team_id == "yellow"
-    assert len(net.pushes("config", "node0")) == configs_before, "not even an allowed patch re-pushes frames"
-    assert net.pushes("assign", "node0"), "the roster change still reaches the phone"
+    # B1: a mid-match re-team is REFUSED loudly, names RECALL, and changes nothing -- not the roster,
+    # not the scorer, and above all not an `assign` that would desync the gun's $TID from the roster.
+    try:
+        s.patch_player(pid, team_id="yellow")
+        assert False, "the host re-teamed a player on a gun in play"
+    except ValueError as e:
+        assert s.phase.upper() in str(e) and "RECALL" in str(e), str(e)
+    assert ps[0]["team_id"] == "blue", "the refused re-team must not move the roster"
+    assert s.scorer.stats[pid].team_id == "blue", "nor the scorer"
+    assert len(net.pushes("config", "node0")) == configs_before, "no frames re-pushed to a gun in play"
+    assert len(net.pushes("assign", "node0")) == assigns_before, "and no assign carried the stale team"
+    # A ready flag and a gamertag DO still ride in `assign` mid-match (roster/display only, no head).
+    s.patch_player(pid, ready=True, display="REAPER2")
+    assert ps[0]["display"] == "REAPER2" and ps[0]["ready"] is True
+    assert len(net.pushes("assign", "node0")) > assigns_before, "display/ready still reach the phone"
 
 
 def test_the_lobby_is_where_a_pick_still_re_pushes_and_the_ack_self_heals():
