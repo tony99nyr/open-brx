@@ -814,8 +814,22 @@ export class Engine {
     return { primary, secondary, perk };
   }
 
+  // F-4 (2026-09-13): a config push moves this player to 'lobby' whether or not they had readied up
+  // yet (`_applyConfig` below never gates on `ready`), and until now `setReady` refused everywhere but
+  // 'kitted' — a player whose kit-out window closed before they tapped READY UP (a host push that
+  // landed mid-kit, or a re-push after an edit) had no way to ever ready for this match. The lobby
+  // screen may ready up too, but ONLY once the kit is actually closed (`!this.kitOpen()` — the same
+  // flag `_applyConfig`/`_assign` already read, set false by MC's own `_sync_kit_open` around a push):
+  // while the kit is still open a phone belongs in 'kitted', and this stays a plain refusal there.
   setReady(ready) {
-    if (this.phase !== 'kitted') return false;
+    // T2 INTEGRATION (A38 x A39, 2026-09-13): the two lanes met here. A38 parks a benched player in a
+    // KITTED-shaped state, and F-4 above opened `setReady` to 'lobby' as well -- between them, BOTH of
+    // the phases a benched phone can be sitting in now pass the test below. A38's own promise is "no
+    // frames, no kit browsing, NO READY-UP", and the HUD honours it by never drawing the button; this
+    // is the state machine honouring it, so a stale button, a restored `standby` that re-derived to
+    // 'lobby' on relink, or a harness tap cannot ready a player MC has taken off the roster.
+    if (this.standby) { this.log('cannot ready: you are on standby', 'le'); return false; }
+    if (this.phase !== 'kitted' && !(this.phase === 'lobby' && !this.kitOpen())) return false;
     if (ready && !this.isSynced()) { this.log('cannot ready: clock not synced', 'le'); return false; }
     this.ready = !!ready;
     if (this.ready) { this._flushPick('ready up'); this.browse(false); }   // READY UP commits the kit — a pick still inside the A26 debounce goes now, then the browser closes (loadout.md §4.5)

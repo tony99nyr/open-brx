@@ -94,6 +94,23 @@ describe('KIT standby', () => {
     m.unmount();
   });
 
+  it('a double-tap on the detail-panel STAND DOWN sends ONE request (2026-09-13: KIT had no guard)', async () => {
+    const d = await demo();
+    const s = withStandby(d.state);
+    const sel = s.players[0];
+    let calls = 0;
+    let resolveCall: (() => void) | undefined;
+    const m = await mountScreen(<Kit />, { ...d, state: s, view: 'kit', selPlayer: sel.player_id,
+      api: { standbyPlayer: async (_id: string) => { calls++; await new Promise<void>(r => { resolveCall = r; }); return sel; } } });
+    const btn = m.find(`[data-stand-down="${sel.player_id}"]`)[0].closest('button') as HTMLButtonElement;
+    btn.click();
+    btn.click();
+    await new Promise(r => setTimeout(r, 0));
+    expect(calls, 'a double-tap must send exactly one request').toBe(1);
+    resolveCall?.();
+    m.unmount();
+  });
+
   it('older MC: no STAND DOWN, no bench', async () => {
     const d = await demo();
     const s = olderServer(d.state);
@@ -155,6 +172,29 @@ describe('ARMORY and a parked player\'s gun', () => {
     expect(card.textContent).toContain('WHO CARRIES THIS?');
     expect(card.querySelector('[data-standby-holder]')).toBeNull();
     m.unmount();
+  });
+});
+
+describe('one predicate for "is stand-down/PLAY offered" (2026-09-13)', () => {
+  it('Standby.tsx exports it, and Armory.tsx + Kit.tsx both read that export rather than re-typing the phase check', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const standby = readFileSync(resolve(process.cwd(), 'src/ui/Standby.tsx'), 'utf8');
+    const armory = readFileSync(resolve(process.cwd(), 'src/screens/Armory.tsx'), 'utf8');
+    const kit = readFileSync(resolve(process.cwd(), 'src/screens/Kit.tsx'), 'utf8');
+    expect(standby).toMatch(/export const standDownLocked/);
+    // neither screen re-types the phase check — both import and call the shared predicate
+    expect(armory).toMatch(/standDownLocked/);
+    expect(armory).not.toMatch(/phase\s*===\s*'armed'\s*\|\|.*phase\s*===\s*'live'/);
+    expect(kit).toMatch(/standDownLocked/);
+    expect(kit).not.toMatch(/phase\s*!==\s*'armed'\s*&&.*phase\s*!==\s*'live'/);
+  });
+
+  it('the predicate itself: locked only in armed/live, whatever else the phase is', async () => {
+    const { standDownLocked } = await import('../src/ui/Standby');
+    for (const phase of ['setup', 'lobby', 'recap', undefined]) expect(standDownLocked(phase as never)).toBe(false);
+    expect(standDownLocked('armed')).toBe(true);
+    expect(standDownLocked('live')).toBe(true);
   });
 });
 

@@ -7,7 +7,7 @@ import { useStore } from '../store';
 import { CHAMFER, F, T, TAB, fmtAge } from '../tokens';
 import { CountBlock, GhostButton, Micro, OutlineTag, ScreenHeader, SectionRule, Seg, SegBar, Tag } from '../ui';
 import { Items } from './Items';
-import { PlayButton } from '../ui/Standby';
+import { PlayButton, standDownLocked } from '../ui/Standby';
 
 const statusColor = (s: ReadinessRow['status']) =>
   (s === 'red' ? T.bad : s === 'amber' ? T.warn : s === 'waiting' ? T.micro : T.ok);
@@ -477,7 +477,7 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
       {hasGun && !n.player_id && parkedHolder && (
         <div data-standby-holder={parkedHolder.player_id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', borderTop: `1px solid ${T.line2}`, paddingTop: 10 }}>
           <span style={{ flex: 1, minWidth: 0, font: F.chk(700, 11), letterSpacing: '.16em', color: T.micro }}>ON STANDBY · {parkedHolder.display}</span>
-          {state?.phase === 'armed' || state?.phase === 'live'
+          {standDownLocked(state?.phase)
             ? <span style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: T.micro }}>MATCH LIVE</span>
             : <PlayButton p={parkedHolder} />}
         </div>

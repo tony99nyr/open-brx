@@ -2013,6 +2013,44 @@ test('A30 CONTROL: a player who had already readied up gets no lock notice (they
   assert.ok(!st.moment || st.moment.kind !== 'kit_locked_by_host');
 });
 
+// F-4 (2026-09-13). `_applyConfig` has always moved a player to 'lobby' on ANY config, ready or not —
+// `setReady` used to refuse everywhere but 'kitted', so a player whose kit-out window closed before
+// they ever tapped READY UP (a push or re-push that landed mid-kit) had no way left to ready for this
+// match. Least-surprise fix: a re-push while `ready` was already true KEEPS it true (re-ack, never
+// un-ready — mirrors mcp/tests/test_mc_polish.py's server-side proof of the same rule), and `setReady`
+// now also accepts a LOBBY tap once the kit is closed (`!kitOpen()`, the same flag MC's own
+// `_sync_kit_open` flips false around a push).
+test('F-4: a config push keeps `ready` true — the first push and a re-push both', () => {
+  const h = kitA10();
+  h.eng.setReady(true);
+  assert.equal(h.eng.state().ready, true);
+  h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: h.bundle, roster: h.roster } });
+  assert.equal(h.eng.phase, 'lobby');
+  assert.equal(h.eng.state().ready, true, 'the first push does not un-ready a player who had already readied');
+  // a re-push: a fresh config_id, same as a host edit re-pushing over an already-pushed lobby
+  const cfg2 = { ...h.config, config_id: 'cfg_2' };
+  h.eng.onMcMessage({ kind: 'config', body: { config: cfg2, frames: h.bundle, roster: h.roster } });
+  assert.equal(h.eng.phase, 'lobby');
+  assert.equal(h.eng.state().ready, true, 'a re-push keeps ready true — re-ack the config, never un-ready');
+});
+
+test('F-4: READY UP works from the lobby once the kit is closed, and still refuses while it is open', () => {
+  const h = kitA10();
+  h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: h.bundle, roster: h.roster } });
+  assert.equal(h.eng.phase, 'lobby');
+  // control: this harness's policy never sent kit_open:false, so the kit reads open by default
+  assert.equal(h.eng.kitOpen(), true, 'control: kit_open was never sent false');
+  assert.equal(h.eng.setReady(true), false, 'the lobby exception is scoped to a CLOSED kit only');
+  assert.equal(h.eng.state().ready, false);
+  // MC's `_sync_kit_open` re-sends `assign` with kit_open:false around a push — mirrored here
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, catalog: CAT, policy: { ...POL, kit_open: false } } });
+  assert.equal(h.eng.phase, 'lobby', 'still lobby — only the policy flag changed');
+  assert.equal(h.eng.setReady(true), true, 'now accepted: kitted-or-lobby, kit closed');
+  assert.equal(h.eng.state().ready, true);
+  assert.equal(h.eng.setReady(false), true, 'and it un-readies the same way the kitted screen does');
+  assert.equal(h.eng.state().ready, false);
+});
+
 test('A30: the server refusal reason is kept verbatim for the kit screen to print', () => {
   const h = kitA10();
   h.eng.requestLoadout('primary', 'weapon', 'smg');
@@ -4503,6 +4541,74 @@ test('STANDBY: force-close while benched comes back SITTING OUT, not to a normal
   assert.equal(a.standby, true);
   const b = mk();   // force-close -> reopen on the same storage, no relink yet
   assert.equal(b.standby, true, 'standby must survive the restart -- otherwise the benched player is briefly re-kitted');
+});
+
+// -- T2 INTEGRATION (A38 x A39): where the two Tier 2 lanes meet --------------------------------
+// T2-B benched a phone into a KITTED-SHAPED state; T2-A (F-4) opened READY UP to the phones that are
+// in exactly those states. Neither lane could see the other, and the join is the one thing no lane
+// test covers: a player MC has taken OFF the roster must not be able to put themselves back on it.
+
+test('T2 INT: a benched phone cannot READY UP, even though STANDBY is KITTED-shaped', () => {
+  const h = harness().kit();
+  assert.equal(h.eng.setReady(true), true, 'control: an ordinary kitted phone CAN ready up');
+  h.eng.setReady(false);
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, standby: true } });
+  assert.equal(h.eng.phase, 'kitted', 'the phase F-4 opened setReady on is exactly the one A38 parks in');
+  const reportsBefore = h.reports.length;
+  assert.equal(h.eng.setReady(true), false, 'refused: this player is not on the roster any more');
+  assert.equal(h.eng.state().ready, false, 'and nothing was recorded -- a refusal that still sets the flag is not a refusal');
+  assert.equal(h.reports.length, reportsBefore, 'the refused tap told MC nothing -- no `ready` report for an unrostered node');
+});
+
+test('T2 INT: benched out of a pushed LOBBY, the kit-closed lobby READY UP door is shut too', () => {
+  // F-4's second door is `phase === lobby && !kitOpen()`. A38 benches out of LOBBY by pulling the
+  // phase back to 'kitted' -- so the FIRST door is the one that opens, and it has to be shut as well.
+  const h = harness().kit().config_();
+  assert.equal(h.eng.phase, 'lobby');
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, standby: true } });
+  assert.equal(h.eng.setReady(true), false);
+  assert.equal(h.eng.state().ready, false);
+  // PLAY puts them back and the door works again -- the refusal is about STANDBY, not a phase it broke
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster } });
+  assert.equal(h.eng.standby, false);
+  assert.equal(h.eng.setReady(true), true, 'reinstated: READY UP works again');
+});
+
+test('T2 INT: a relink while benched does not re-push the held head or leave LOBBY', () => {
+  // The one path that could have carried a benched phone into phase 'lobby' (where F-4 draws its
+  // READY UP): `onBleConnected` re-applies a head it holds but never wrote. A38's `_applyConfig`
+  // standby guard is what stops it -- pinned here, because if it ever went the lobby screen would
+  // offer the benched player the control.
+  const h = harness().kit().config_();
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, standby: true } });
+  h.eng.onBleDropped();
+  const before = h.writes.length;
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  assert.equal(h.eng.phase, 'kitted', 'the relink must not re-derive a benched phone into LOBBY');
+  assert.equal(h.eng.standby, true);
+  // B4's `$PHONE,*` event-tap resend is the ONE frame a relink owes any phone and is not a head write;
+  // nothing else may go to the gun of a player who is sitting out.
+  const after = h.writes.slice(before);
+  assert.deepEqual(after.filter(f => f !== '$PHONE,*'), [], 'a benched relink wrote more than the event tap: ' + after.join(' '));
+  assert.equal(h.eng.setReady(true), false);
+});
+
+test('T2 INT: READY survives a re-push -- a fresh config_id does not un-ready the phone', () => {
+  // A37(24): a re-push MINTS a fresh `config_id` and resets the server acks. F-4 opened READY UP for
+  // the player whose kit window closed before they tapped; that tap is worthless if the very next
+  // operator edit (which re-pushes) silently clears it. The server never clears `ready`; neither does
+  // the node.
+  const h = harness().kit();
+  assert.equal(h.eng.setReady(true), true);
+  assert.equal(h.eng.ready, true);
+  h.config_();                                     // first push
+  assert.equal(h.eng.phase, 'lobby');
+  assert.equal(h.eng.ready, true, 'the push itself does not un-ready');
+  // the re-push: same bundle, a NEW config_id, exactly what `_repush_lobby_config` sends after an edit
+  const repushed = { ...h.config, config_id: 'cfg-repush-1' };
+  h.eng.onMcMessage({ kind: 'config', body: { config: repushed, frames: h.bundle, roster: h.roster } });
+  assert.equal(h.eng.config.config_id, 'cfg-repush-1', 'the node took the new head');
+  assert.equal(h.eng.ready, true, 'READY survives the re-push -- it is a fact about the player, not about a head');
 });
 
 // ── Round-1 polish review 2026-09-12 ────────────────────────────────────────────────────────────

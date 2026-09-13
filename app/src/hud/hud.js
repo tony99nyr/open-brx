@@ -334,7 +334,17 @@ export class Hud {
         if (!st.ended && !st.briefSeen && !this._tryoutShown(st)) return this._briefing(st);   // §4.6: read the game, then BUILD MY KIT ▸
         if (!st.ended && st.browsing && !this._tryoutShown(st)) return this._loadout(st);
         return this._lobby(st, st.ended ? 'over' : 'kitted');
-      case 'lobby': return this._lobby(st, 'lobby');
+      case 'lobby':
+        // T2 INTEGRATION (A38 x A39): the same override the 'kitted' arm above makes, stated for the
+        // one other phase a benched phone could be READ in. It should not be reachable -- `_assign`
+        // pulls a benched node back to 'kitted' and `_applyConfig`'s own standby guard refuses the
+        // relink re-push that is the only other way back to LOBBY -- so this is the ORDERING rule, not
+        // a live path: standby is decided before F-4's lobby READY UP button (below, `mode === 'lobby'
+        // && !st.kitOpen && !st.ready`) is ever considered. The two lanes landed those two facts
+        // independently; whichever of the three guards is relaxed later, a player MC has taken off the
+        // roster must not be shown the control that puts them back on it.
+        if (st.standby) return this._lobby(st, 'standby');
+        return this._lobby(st, 'lobby');
       case 'armed': return '';
       case 'live': return this._live(st);
       default: return '';
@@ -429,6 +439,13 @@ export class Hud {
       status = `<div class="status">${rw ? `<b class="oc ${esc(String(st.result.outcome))}">${rw}</b> · ` : ''}D ${st.deaths} · K ${st.kills != null ? st.kills : '—'}</div>` +
         `<div class="overbtns"><button class="briefbtn" data-act="onShowResults"><span class="unskew">▣ RESULTS</span></button>` +
         `<button class="briefbtn" data-act="onShowHistory"><span class="unskew">▤ HISTORY</span></button></div>`;
+    } else if (mode === 'lobby' && !st.kitOpen && !st.ready) {
+      // F-4 (2026-09-13): `engine.setReady` now accepts a lobby tap once the kit is closed — for a
+      // player whose kit-out window ended (a push or re-push that landed) before they ever hit READY
+      // UP, this is the only door left. Same control, same note the kitted screen uses; a player who
+      // is already `ready` still reads STANDING BY below, unchanged.
+      foot = `${lead}<button class="ready off" data-act="onReady"><span class="unskew">READY UP</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
+      status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     } else {
       foot = `${lead}<button class="ready wait"><span class="unskew">STANDING BY</span></button><div class="note">${st.kitLocked ? 'The plates above are what you take in. Waiting for the host to start the countdown.' : 'Loadout is on the gun. Waiting for the host to start the countdown.'}</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
@@ -915,9 +932,15 @@ export class Hud {
     const set = (id, v) => { const el = q(id); if (el && el.textContent !== String(v)) el.textContent = v; };
     const setHtml = (id, html) => { const el = q(id); if (el && el.innerHTML !== html) el.innerHTML = html; };
     if (st.phase === 'connected' || st.phase === 'kitted' || st.phase === 'lobby') {
-      const mode = st.phase === 'connected' ? 'connected' : st.phase === 'lobby' ? 'lobby' : (st.ended ? 'over' : 'kitted');
+      // T2 INTEGRATION: a benched phone renders `_lobby(st, 'standby')` from EITHER phase, and that
+      // screen prints `_statusLine(st, 'kitted')` -- so the patch has to agree, or the status line it
+      // rewrites every tick contradicts the structure it was rendered into (LOCKED IN on a phone that
+      // is sitting out). `readynote` does not exist on that screen; `setHtml` is null-safe.
+      const mode = (st.standby && (st.phase === 'kitted' || st.phase === 'lobby')) ? 'kitted' : st.phase === 'connected' ? 'connected' : st.phase === 'lobby' ? 'lobby' : (st.ended ? 'over' : 'kitted');
       if (mode !== 'over') setHtml('mcstatus', this._statusLine(st, mode));
-      if (mode === 'kitted' || mode === 'over') setHtml('readynote', this._readyNote(st, mode));   // `synced` is patched, never in the render signature — the over screen needs the same live note
+      // F-4: the lobby's own READY UP (kit closed, not yet ready) reads the same live note the kitted
+      // screen does — `synced` is patched, never in the render signature.
+      if (mode === 'kitted' || mode === 'over' || (mode === 'lobby' && !st.kitOpen && !st.ready)) setHtml('readynote', this._readyNote(st, mode));
     }
     if (st.phase === 'live') {
       set('clock', mmss(st.clockMs)); set('hp', st.hp); set('sh', st.armor); set('mag', pad2(st.ammo)); set('res', `/${st.reserve != null ? st.reserve : '—'}`);

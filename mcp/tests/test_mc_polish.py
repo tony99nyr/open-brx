@@ -166,6 +166,36 @@ def test_patch_team_mid_match_is_refused_and_display_is_still_capped():
         pass
 
 
+def test_patch_team_id_null_mid_match_is_a_no_op_not_a_409():
+    # F-5 (2026-09-13): `_check_team(None)` reads as `None`, which used to compare unequal against any
+    # rostered player's real team and 409 on a patch that named NO team at all — a client that always
+    # carries `team_id` in its payload (even unchanged) could not touch anything else about a player
+    # once the match started. `None` is "no instruction"; an actual named team that differs is still
+    # refused exactly as the test above proves.
+    s = _sess()
+    a = s.add_player("A", team_id="blue"); b = s.add_player("B", team_id="yellow")
+    s.set_config({"time_limit_s": 60})
+    for p in (a, b):
+        s._bind(f"n-{p['player_id']}", p)
+        s.nodes[f"n-{p['player_id']}"]["synced"] = True
+    s.patch_player(a["player_id"], ready=True); s.patch_player(b["player_id"], ready=True)
+    s.push_config()
+    for pid in (a["player_id"], b["player_id"]):
+        s._on_node_message(s.players[pid]["node_id"], "ack_config", {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD,0,0,0,0,0,0,*"}, s.now_ms())
+    s.start(runway_s=5)
+    # an explicit null must not raise, and must not touch the roster or the scorer
+    s.patch_player(a["player_id"], team_id=None, display="STILL A")
+    assert s.players[a["player_id"]]["team_id"] == "blue", "null is no-op, not a clear, mid-match"
+    assert s.players[a["player_id"]]["display"] == "STILL A", "the rest of the same patch still applies"
+    assert s.scorer.stats[a["player_id"]].team_id == "blue"
+    # a REAL change alongside the null is still refused, same as team_id alone
+    try:
+        s.patch_player(a["player_id"], team_id="yellow", display="NOPE"); assert False
+    except ValueError as e:
+        assert "RECALL" in str(e), str(e)
+    assert s.players[a["player_id"]]["display"] == "STILL A", "nothing in the refused patch is applied"
+
+
 def test_ingest_batch_records_seq_for_dedup():
     s = _sess()
     a = s.add_player("A", team_id="blue"); b = s.add_player("B", team_id="yellow")

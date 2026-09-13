@@ -13,8 +13,23 @@ import { F, T, teamColor } from '../tokens';
 import { BTN_RESET, SectionRule } from '.';
 
 /** Once the match is armed/live the server refuses both directions (the kit is locked), so nothing here
- *  may LOOK tappable in those phases: the controls are not rendered and the section says why. */
-const locked = (phase: string | undefined) => phase === 'armed' || phase === 'live';
+ *  may LOOK tappable in those phases: the controls are not rendered and the section says why. Exported
+ *  because the SAME rule used to be re-typed in ARMORY's node card and KIT's detail panel (three copies,
+ *  one review 2026-09-13) — every place that decides whether to offer STAND DOWN/PLAY reads THIS. */
+export const standDownLocked = (phase: string | undefined): boolean => phase === 'armed' || phase === 'live';
+
+/** A double-tap must send ONE request: the second tap (before the snapshot re-renders the row away) used
+ *  to 404 as "no such player". Keyed by player, module-wide, so a re-mounted chip (or KIT's own STAND
+ *  DOWN button, which shares this instead of re-inventing it) still sees it. */
+const inflight = new Set<string>();
+/** Runs `action` for `key` unless one is already in flight for that key; released when it settles.
+ *  Exported so every STAND DOWN / PLAY control — this chip, `PlayButton`, and KIT's detail-panel
+ *  button — shares one guard rather than each growing its own copy. */
+export function guardedOnce(key: string, action: () => Promise<unknown>): void {
+  if (inflight.has(key)) return;
+  inflight.add(key);
+  action().finally(() => inflight.delete(key));
+}
 
 /** The STAND DOWN control on a roster row. One verb everywhere (review 2026-09-12): the ACTION is STAND
  *  DOWN on both screens, STANDBY is the noun for the bench. Visually apart from the tap-to-move team chips:
@@ -22,11 +37,11 @@ const locked = (phase: string | undefined) => phase === 'armed' || phase === 'li
 export function StandDownChip({ p, style }: { p: Player; style?: React.CSSProperties }) {
   const { api, run, state } = useStore();
   if (!state || !Array.isArray(state.standby)) return null;   // older server: no route, no control
-  if (locked(state.phase)) return null;                        // armed/live: refused by the server, so not offered
+  if (standDownLocked(state.phase)) return null;               // armed/live: refused by the server, so not offered
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, ...style }}>
       <span aria-hidden style={{ width: 1, height: 22, background: T.line2 }} />
-      <button type="button" className="hit44" data-standby={p.player_id} onClick={e => { e.stopPropagation(); if (!inflight.has(p.player_id)) { inflight.add(p.player_id); run(() => api.standbyPlayer(p.player_id)).finally(() => inflight.delete(p.player_id)); } }}
+      <button type="button" className="hit44" data-standby={p.player_id} onClick={e => { e.stopPropagation(); guardedOnce(p.player_id, () => run(() => api.standbyPlayer(p.player_id))); }}
         title={`Pull ${p.display} out of the lobby — kept on STANDBY, PLAY puts them back`}
         style={{ ...BTN_RESET, font: F.chk(600, 11), letterSpacing: '.14em', padding: '4px 8px', color: T.micro, border: `1px dashed ${T.line2}`, background: 'transparent', minHeight: 28, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
         ▸ STAND DOWN
@@ -34,16 +49,13 @@ export function StandDownChip({ p, style }: { p: Player; style?: React.CSSProper
     </span>
   );
 }
-/** A double-tap must send ONE request: the second tap (before the snapshot re-renders the row away) used
- *  to 404 as "no such player". Keyed by player, module-wide, so a re-mounted chip still sees it. */
-const inflight = new Set<string>();
 
 /** The parked players. Hidden when nobody is on standby, and on a server without the field. */
 export function StandbySection({ style }: { style?: React.CSSProperties }) {
   const { state } = useStore();
   const parked = state?.standby;
   if (!Array.isArray(parked) || parked.length === 0) return null;
-  const lock = locked(state?.phase);
+  const lock = standDownLocked(state?.phase);
   return (
     <div data-standby-section style={{ marginTop: 16, ...style }}>
       <SectionRule label={`STANDBY // ${parked.length} SITTING OUT`} hint={lock ? 'MATCH LIVE · PLAY AGAIN AFTER THE WHISTLE' : 'NOT IN THE PUSH · THEIR PHONE STILL SHOWS THE OLD KIT UNTIL PLAY'} />
@@ -71,7 +83,7 @@ export function PlayButton({ p }: { p: Player }) {
   const { api, run } = useStore();
   return (
     <button type="button" className="hit44 hov-acc-ink" data-reinstate={p.player_id}
-      onClick={() => { if (!inflight.has(p.player_id)) { inflight.add(p.player_id); run(() => api.reinstatePlayer(p.player_id)).finally(() => inflight.delete(p.player_id)); } }}
+      onClick={() => guardedOnce(p.player_id, () => run(() => api.reinstatePlayer(p.player_id)))}
       title={`Put ${p.display} back in the lobby`}
       style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.14em', padding: '8px 14px', color: T.ok, border: `1px solid rgba(46,204,113,.5)`, minHeight: 36, display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
       ▸ PLAY

@@ -139,6 +139,13 @@ export function startDemo({ engine, log }) {
       // kit-out
       assign: () => engine.onMcMessage({ kind: 'assign', body: { player, team, roster, catalog, policy, game } }),
       kitOpen: open => { policy.kit_open = open; ev.assign(); },
+      // A38: the ONE extra `assign` `state.py stand_down()` pushes to a still-connected benched phone.
+      // Stated as the real wire body (`standby: true` on an otherwise ordinary assign) rather than by
+      // poking `engine.standby`, so the stage exercises `_assign`'s own branch — the stage exists to
+      // PREDICT `engine.js`, and a fixture that sets the flag directly predicts nothing.
+      bench: (on = true) => engine.onMcMessage({ kind: 'assign', body: on
+        ? { player, team, roster, catalog, policy, game, standby: true }
+        : { player, team, roster, catalog, policy, game } }),
       briefing: () => engine.openBriefing(), briefDone: () => engine.closeBriefing(),
       // F110 (review): the WORST briefing payload a host can produce — a game name that wraps to two lines
       // over a loadout line that wraps too. The demo payload is one short line of each, which is the F111
@@ -291,6 +298,10 @@ export function startDemo({ engine, log }) {
       'lobby':             lobby,
       // A27/A30 (loadout.md §4.4): the host pushed the lobby while this player was still in the rack.
       'lobby-kit-locked':  [...kitted, [400, () => ev.openLoadout('primary')], [700, 'config']],
+      // A38 x A39 (T2 integration): benched from the kit screen, and benched out of a pushed LOBBY —
+      // the second is the one that proves SITTING OUT beats the lobby's own READY UP button.
+      'standby':           [...kitted, [400, () => ev.bench()]],
+      'standby-from-lobby': [...lobby, [700, () => ev.bench()]],
       'kit-refused':       [...kitted, [400, () => ev.refuse()]],                                             // A30: MC's refusal copy, verbatim, on the kit screen
       'armed':             [...lobby, [900, () => ev.start(+q.get('tminus') || 30)]],
       'aborted':           [...lobby, [900, () => ev.start(30)], [1600, 'abort']],

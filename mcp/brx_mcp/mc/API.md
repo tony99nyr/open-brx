@@ -356,6 +356,12 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
   `_refuse_push_in_play`'s reason: a one-side match cannot register a hit at all, so no amount of
   operator intent makes it playable. A mode pick no longer creates one: `set_config` re-teams by team
   INDEX and rebalances if a side would be left empty (`_reteam_for_config`).
+- **`readiness.unrostered_phones`** (A39, 2026-09-13) is a COUNT, not a fault: connected companion
+  phones that have a gun set, that nobody on the roster claims, and that are not the gun of a player
+  parked on STANDBY either (`state.py unrostered_phone_count()`, the same `_find_player_for_gun`
+  matcher ARMORY's claim card uses, asked a second time against `self.standby`). A phone with no gun
+  yet does not count. It never blocks `go` and neither push nor start reads it; KIT and LOBBY render
+  it as *"N CONNECTED PHONES NOT IN THE ROSTER"* linking to ARMORY, which is where the claim is made.
 - **Kit → lobby:** `POST /api/players` assigns `player_num` in roster order (1–63); any player change re-sends `assign`
   (re-compiles + re-pushes `config` once pushed); a phone `loadout_request` goes through the same policy
   (`policy.py`) and is answered `loadout_ack {ok: false, reason: "THE MATCH HAS STARTED — YOUR KIT IS LOCKED UNTIL

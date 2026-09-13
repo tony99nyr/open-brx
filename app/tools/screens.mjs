@@ -1247,6 +1247,44 @@ for (const view of VIEWS) {
     must(!r.clipped, 'the refusal is cut off: ' + r.txt);
     must(r.plates === 3 && !r.onPlate, 'the refusal line sits on the plates');
   });
+  // ---------- A38 x A39 (T2 integration): SITTING OUT, and the READY UP button that must not be on it ----------
+  // T2-A gave the LOBBY screen its own READY UP (a player whose kit window closed before they tapped);
+  // T2-B gave a benched phone a KITTED-shaped state. Both facts are true, and the screen is the only
+  // place their product is visible: there must be no way, from either screen a benched phone can land
+  // on, to put yourself back into a game the host took you out of.
+  for (const st of ['standby', 'standby-from-lobby']) {
+    await step(`${view.name} A38 ${st}: SITTING OUT, and NO ready control anywhere on it`, async () => {
+      const pg = await open(view, st);
+      const r = await pg.evaluate(() => ({
+        txt: (document.querySelector('.lobby .setup .t') || {}).textContent || null,
+        sub: (document.querySelector('.lobby .setup .s') || {}).textContent || null,
+        // every control on screen, by the words a player reads and the action it would fire
+        acts: Array.from(document.querySelectorAll('#hud [data-act]')).map(e => e.getAttribute('data-act')),
+        readyBtns: document.querySelectorAll('.foot .ready').length,
+        body: document.body.innerText.replace(/\s+/g, ' '),
+        standby: window.brx.engine.state().standby, phase: window.brx.engine.state().phase,
+      }));
+      const bad = await invariants(pg);
+      await pg.close();
+      must(r.standby === true, 'the stage never actually benched the engine: ' + JSON.stringify(r));
+      must(r.txt === 'SITTING OUT \u2014 the host puts you back', 'copy: ' + r.txt);
+      must(/not armed/i.test(r.sub || ''), 'the sub-line must say the gun is not armed: ' + r.sub);
+      must(!/READY UP|READY \u2713|STANDING BY/.test(r.body), 'a ready control is on the SITTING OUT screen: ' + r.body.slice(0, 200));
+      must(r.readyBtns === 0, 'a .ready button rendered on the SITTING OUT screen');
+      must(!r.acts.includes('onReady'), 'an onReady control is tappable while benched: ' + r.acts.join(','));
+      must(bad.length === 0, bad.join(' ; '));
+    });
+  }
+  await step(`${view.name} A38: the engine refuses a ready tap while benched, however it is reached`, async () => {
+    // The screen not drawing the button is one guard; `engine.setReady` refusing is the other. Driven
+    // through the app's OWN handler (`hud.h.onReady`, what a real tap fires) rather than the engine, so
+    // this fails if either the handler or the engine stops refusing.
+    const pg = await open(view, 'standby');
+    const r = await pg.evaluate(() => { const before = window.brx.engine.state().ready;
+      window.brx.hud.h.onReady(); return { before, after: window.brx.engine.state().ready }; });
+    await pg.close();
+    must(r.before === false && r.after === false, 'a benched phone readied up: ' + JSON.stringify(r));
+  });
   await step(`${view.name} #24 night: the kit plates stay visible`, async () => {
     const pg = await open(view, 'kitted', '&night'); const r = await pg.evaluate(() => Array.from(document.querySelectorAll('.plate')).map(p => getComputedStyle(p).backgroundColor)); await pg.close();
     must(r.length >= 3 && r.every(c => c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent'), 'transparent plates: ' + r.join(' '));

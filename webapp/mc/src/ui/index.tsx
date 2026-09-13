@@ -12,6 +12,24 @@ export const BTN_RESET: Sx = { background: 'transparent', border: 'none', paddin
 /** Enter/Space activation for non-button interactive elements. */
 export const onKey = (fn: () => void) => (e: { key: string; preventDefault(): void }) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); } };
 
+/** F-7 (2026-09-13): is the viewport under `px` wide RIGHT NOW — watched, not decided once at mount
+ *  (Spectate.tsx's own `useViewport` established the pattern: a window resized, or a phone rotated,
+ *  has to be followed). `window` guarded for SSR/test environments that never see a real layout —
+ *  jsdom applies no media query and reports 1280 by default, so a test drives this by dispatching
+ *  `resize` after setting `window.innerWidth`, never by reading computed layout. */
+export function useNarrow(px = 480): boolean {
+  const read = () => (typeof window === 'undefined' ? false : window.innerWidth < px);
+  const [narrow, setNarrow] = useState(read);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const on = () => setNarrow(read());
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [px]);
+  return narrow;
+}
+
 /** Screen header: mono accent kicker over a 30px Oswald title, with optional right-side content. */
 export function ScreenHeader({ kicker, title, right }: { kicker: string; title: string; right?: ReactNode }) {
   return (

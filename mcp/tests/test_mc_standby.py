@@ -139,6 +139,64 @@ def test_standby_does_not_block_all_acked_and_is_never_rearmed_by_a_repush():
     assert pid_a in s.players and pid_b in s.players and pid_bench not in s.players
 
 
+# ------------------------------------------- T2 INTEGRATION: A38 (standby) x A39 (unrostered count)
+
+def test_a_benched_phone_is_not_counted_as_an_unrostered_stray():
+    """The two Tier 2 lanes meet here. A39 counts connected phones wearing a gun NOBODY on the roster
+    claims and shows them on KIT/LOBBY as *N CONNECTED PHONES NOT IN THE ROSTER* -- and A38's stand_down
+    produces exactly that shape: a still-connected phone, unbound, wearing a gun whose player is no
+    longer in `self.players`. Counted, every stand-down would raise a banner telling the operator to go
+    and claim a phone they deliberately benched thirty seconds ago. `unrostered_phone_count()` asks
+    `_find_player_for_gun` a SECOND time against `self.standby`, which is what keeps it at zero."""
+    s, net, clock, ps = _session()
+    assert s.readiness()["unrostered_phones"] == 0, "control: three rostered phones, no strays"
+    pid = ps[1]["player_id"]
+    s.stand_down(pid)
+    # the phone is still on the socket and still says it is wearing GUN-B -- it just has no player
+    assert s.nodes["node1"].get("player_id") is None, "control: stand_down really did unbind it"
+    assert s.nodes["node1"]["gun_name"], "control: it still reports its gun"
+    assert _pushes(net, "node1", "assign")[-1]["standby"] is True, "control: A38 told it it is benched"
+    assert s.readiness()["unrostered_phones"] == 0, "a benched phone is a stand-down, not a stray"
+    # PLAY puts them back: still zero, by the ordinary claimed path this time
+    s.reinstate(pid)
+    assert s.readiness()["unrostered_phones"] == 0
+    # and a phone nobody has ever claimed IS still counted -- the exemption is standby, not "connected"
+    tail = demo_armory()[5]["ble"]["tail"]
+    net.simulate_hello("stray", f"GUN-F-{tail}")
+    assert s.readiness()["unrostered_phones"] == 1, "the standby exemption must not blind the count entirely"
+
+
+def test_ready_survives_a_repush_by_either_route():
+    """A39's lane opened READY UP to the phone whose kit window closed before it tapped (`engine.js
+    setReady`, the `lobby && !kitOpen()` door). That tap is worth nothing if the operator's next edit
+    silently throws it away -- and every edit in KIT/LOBBY re-pushes. A37(24) made a re-push mint a
+    FRESH `config_id` and reset `acks`, so this pins that `ready` is NOT part of what a re-push resets,
+    down both routes: `push_config()` on an already-pushed lobby, and `set_config()`'s automatic
+    `_repush_lobby_config`."""
+    s, net, clock, ps = _session()
+    for p in ps:
+        s.patch_player(p["player_id"], ready=True)
+    assert all(s.players[p["player_id"]]["ready"] for p in ps)
+    s.push_config(force=True)
+    first_cfg = s.config["config_id"]
+    for i in range(3):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": first_cfg, "ok": True, "gun_echo": "x"}, clock["t"])
+    assert s.all_acked() is True
+
+    # route 1: an explicit re-push of an already-pushed lobby
+    s.push_config(force=True)
+    assert s.config["config_id"] != first_cfg, "control (A37.24): a re-push mints a fresh config_id"
+    assert s.all_acked() is False, "control: and resets the acks it must re-collect"
+    assert all(s.players[p["player_id"]]["ready"] for p in ps), "READY is about the PLAYER, not the head -- a re-push must not clear it"
+
+    # route 2: a config edit, which re-pushes through `_repush_lobby_config` on its own
+    second_cfg = s.config["config_id"]
+    s.set_config({"time_limit_s": 420})
+    assert s.lobby_pushed is True, "control (A35): an edit while pushed re-pushes rather than un-pushing"
+    assert s.config["config_id"] != second_cfg, "control: that re-push mints its own fresh config_id too"
+    assert all(s.players[p["player_id"]]["ready"] for p in ps), "an edit-driven re-push must not clear READY either"
+
+
 # ---------------------------------------------------------------- reinstate
 
 def test_reinstate_rebinds_the_connected_phone_and_keeps_the_number():

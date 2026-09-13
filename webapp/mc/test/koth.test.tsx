@@ -33,7 +33,10 @@ describe('KING OF THE HILL — GAMES', () => {
     expect(g.modes.map(x => x.mode)).toContain('koth');
     expect(g.m.text()).toContain('KING OF THE HILL');
 
-    await g.m.click('KING OF THE HILL');       // the card itself is the play button
+    // F-6 (2026-09-13): an 8-player roster switching family reshapes teams, so the first tap only
+    // confirms the resulting split — the card itself is still the play button, just a two-tap one now.
+    await g.m.click('KING OF THE HILL');
+    await g.m.click('KING OF THE HILL');
     await g.settle();
     const t = g.m.text();
     // the rail's own rows: how it is won, and what is emitting the point (F88: exactly one)
@@ -69,6 +72,7 @@ describe('KING OF THE HILL — GAMES', () => {
     const g = await games();
     const before = await g.api.getState();
     expect(before.players.some(p => p.team_id === 'yellow')).toBe(true);       // control
+    await g.m.click('KING OF THE HILL');       // F-6: first tap confirms the reshape
     await g.m.click('KING OF THE HILL');
     await g.settle();
     const after = await g.api.getState();
@@ -95,9 +99,12 @@ describe('KING OF THE HILL — GAMES', () => {
     // `station_source` left over from the previous game would keep telling a TDM operator to
     // power-cycle a grenade that is not in play.
     const g = await games();
+    // F-6: each switch reshapes an 8-player roster, so each is a two-tap confirm now.
+    await g.m.click('KING OF THE HILL');
     await g.m.click('KING OF THE HILL');
     await g.settle();
     expect(g.m.text()).toMatch(/POWER-CYCLE THE GRENADE/i);
+    await g.m.click('TEAM DEATHMATCH');
     await g.m.click('TEAM DEATHMATCH');
     await g.settle();
     const t = g.m.text();

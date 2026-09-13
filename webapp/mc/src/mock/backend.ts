@@ -453,8 +453,14 @@ export class MockBackend implements Api {
       };
     });
     const rf = this.rosterFault();
+    // F-3/A39 (2026-09-13): a connected phone (`node: 'linked'`) with no player claiming it, and not
+    // the gun of someone currently on STANDBY (a deliberate stand-down, not a stray) — mirrors
+    // `state.py unrostered_phone_count()`. Simpler here than on the server: the mock's `sticker` IS the
+    // `gun_id` a player carries (`GUN-A` etc.), so no registry tail-resolution is needed.
+    const standbyGuns = new Set(this.standby.map(p => (p.gun_id || '').toUpperCase()));
+    const unrostered_phones = board.filter(b => b.node === 'linked' && !b.player_id && !standbyGuns.has(b.sticker.toUpperCase())).length;
     return { t: now(), roster_size: board.length, greens: board.filter(b => b.status === 'green').length, board, unclaimed: [],
-             roster_faults: rf ? [rf] : [], go: !board.some(b => b.status === 'red') && !rf };
+             roster_faults: rf ? [rf] : [], unrostered_phones, go: !board.some(b => b.status === 'red') && !rf };
   }
 
   /** A28.1: MC's own view of the tunnel it (may have) started. */
@@ -856,26 +862,36 @@ export class MockBackend implements Api {
         + MOCK_STATION_SOURCES.map(s => `${s.value} (${s.desc})`).join(', '));
     }
     if (Object.keys(partial).some(k => !['environment', 'night', 'config_id'].includes(k))) this.activePreset = null;   // a real edit: no longer that saved game
-    this.config = { ...this.config, ...partial, config_id: uid('cfg') };
+    // F-10 (2026-09-13): `state.py set_config` rebuilds the WHOLE config from `default_config(mode)`
+    // whenever the mode changes, THEN merges the patch on top — so nothing belonging to the OLD mode
+    // can survive the switch. `station_source` was the one key this mirrored (F70: only the objective
+    // modes carry one); `teams` was not, so a bare `{ mode: 'koth' }` (GameEditPanel's inline mode Seg,
+    // never `Games.tsx`'s full-defaults tile) spread onto the PREVIOUS config left TDM's BLUE/YELLOW in
+    // place instead of KOTH's BLUE/GREEN, and `?mock` predicted a roster the real server never
+    // produces. Venue facts (environment/night/coverage) are carried forward exactly like the server
+    // carries them (`set_config`, same three keys, same "unless the patch itself names them" rule) —
+    // they describe the SITE, not the game.
+    const modeChanged = !!partial.mode && partial.mode !== prevMode;
+    const base: ConfigView = modeChanged ? clone(MODES.find(m => m.mode === partial.mode)!.defaults) : clone(this.config);
+    if (modeChanged) {
+      if (partial.environment === undefined) base.environment = this.config.environment;
+      if (partial.night === undefined) base.night = this.config.night;
+      if (partial.coverage === undefined && this.config.coverage !== undefined) base.coverage = this.config.coverage;
+    }
+    this.config = { ...base, ...partial, config_id: uid('cfg') };
     if (partial.loadout_policy) {
       // mirrors policy.merge (A10 §3): a preset NAME rewrites the rules, then any slot/hud_select keys in the same
-      // patch merge on top, then the name is re-derived (custom if nothing matches)
+      // patch merge on top, then the name is re-derived (custom if nothing matches). The un-named base is the
+      // NEW mode's policy once the mode has changed (`base.loadout_policy`), never the old one (`prevPol`) —
+      // the same "fresh default, patch on top" rule as the rest of this rebuild.
       const lp = partial.loadout_policy as Partial<typeof prevPol>;
-      const base = lp.preset && lp.preset !== 'custom' ? clone(PRESETS[lp.preset]) : clone(prevPol);
-      if (lp.primary) base.primary = { ...base.primary, ...lp.primary };
-      if (lp.secondary) base.secondary = { ...base.secondary, ...lp.secondary };
-      if (lp.perk) base.perk = { ...base.perk, ...lp.perk };
-      if (lp.hud_select != null) base.hud_select = lp.hud_select;
-      base.preset = lp.preset === 'custom' ? 'custom' : presetOf(base);
-      this.config.loadout_policy = base;
-    }
-    // The real server rebuilds the config from `default_config(mode)` whenever the MODE changes, so a
-    // key belonging to the old mode cannot survive the switch. `station_source` is the one such key
-    // today (F70: only the objective modes have one) — leaving a stale 'grenade' on a TDM game would
-    // show the demo a hill setup step the real MC would never send.
-    if (partial.mode && partial.mode !== prevMode && partial.station_source === undefined) {
-      const src = MODES.find(m => m.mode === partial.mode)?.defaults.station_source;
-      if (src) this.config.station_source = src; else delete this.config.station_source;
+      const polBase = lp.preset && lp.preset !== 'custom' ? clone(PRESETS[lp.preset]) : clone(base.loadout_policy);
+      if (lp.primary) polBase.primary = { ...polBase.primary, ...lp.primary };
+      if (lp.secondary) polBase.secondary = { ...polBase.secondary, ...lp.secondary };
+      if (lp.perk) polBase.perk = { ...polBase.perk, ...lp.perk };
+      if (lp.hud_select != null) polBase.hud_select = lp.hud_select;
+      polBase.preset = lp.preset === 'custom' ? 'custom' : presetOf(polBase);
+      this.config.loadout_policy = polBase;
     }
     // 🔴 The real server re-teams anyone left on a team the new mode does not have
     // (state.py `_reteam_for_config`). The demo used to skip this entirely, so `?mock` showed a KING

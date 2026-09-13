@@ -68,6 +68,30 @@ def test_a_real_fault_alongside_a_missing_phone_still_reads_red():
     assert row["status"] == "red", "a reverted identity is a fault even with no phone attached"
 
 
+def test_unrostered_phone_count_excludes_claimed_and_standby_but_counts_a_stray():
+    # F-3 (2026-09-13, field 2026-09-12: "4 guns connected, only 2 in lobby"). A connected phone with a
+    # gun nobody has claimed is a STRAY; the ARMORY claim card already renders one, this just counts
+    # them for the KIT/LOBBY banner.
+    s, net, clock, ps = mk(2)   # rosters GUN-A, GUN-B
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    assert s.readiness()["unrostered_phones"] == 0, "control: both connected phones are rostered"
+    # a third phone connects wearing GUN-C — nobody has claimed it
+    tail_c = demo_armory()[2]["ble"]["tail"]
+    net.simulate_hello("node2", f"GUN-C-{tail_c}")
+    assert s.readiness()["unrostered_phones"] == 1, "a connected, unclaimed gun is a stray"
+    # claiming it drops the count back to 0
+    s.add_player("NEWGUY", gun_id="GUN-C")
+    assert s.readiness()["unrostered_phones"] == 0, "claimed — no longer a stray"
+    # a fourth phone connects wearing GUN-A, whose player is now on STANDBY — not a stray, a stand-down
+    s.stand_down(ps[0]["player_id"])
+    tail_a = demo_armory()[0]["ble"]["tail"]
+    net.simulate_hello("node3", f"GUN-A-{tail_a}")
+    assert s.readiness()["unrostered_phones"] == 0, "the gun's holder is parked on standby, not a stray"
+    # a phone with no gun set at all ("WAITING FOR ITS GUN") is a different situation, not a stray either
+    net.simulate_hello("node4", "")
+    assert s.readiness()["unrostered_phones"] == 0, "no gun set yet is not a roster mismatch"
+
+
 def test_unsynced_and_wrong_ssid_are_red():
     s, net, clock, ps = mk(2)
     online(s, net, clock, ps[0], 0, synced=False); online(s, net, clock, ps[1], 1)

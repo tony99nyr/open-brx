@@ -100,10 +100,15 @@ describe('F151 / round-2 — the GAMES lock is SPLIT the way the server splits i
     await g.settle();
     expect(g.m.find('[data-testid="games-locked"]').length, 'LOBBY is not a locked phase for config edits').toBe(0);
     expect(g.m.text()).not.toContain('GO BACK TO KIT');
+    // F-6 (2026-09-13): an 8-player roster switching family reshapes teams (TDM's BLUE/YELLOW to
+    // KOTH's BLUE/GREEN), so the first tap is now the confirm — same one-more-tap pattern a TUNED
+    // draft already used — never a silent reshape.
+    await g.m.click('KING OF THE HILL');
+    expect((await g.backend.getState()).config.mode, 'the first tap only confirms — nothing reaches the server yet').toBe('tdm');
     await g.m.click('KING OF THE HILL');
     await g.settle();
     const after = await g.backend.getState();
-    expect(after.config.mode, 'the tap reached the server').toBe('koth');
+    expect(after.config.mode, 'the second tap reached the server').toBe('koth');
     expect(after.lobby.pushed, 'and the lobby stays pushed — the edit RE-PUSHES rather than vanishing').toBe(true);
     g.m.unmount();
   });
@@ -130,6 +135,10 @@ describe('F151 / round-2 — the GAMES lock is SPLIT the way the server splits i
     const g = await games('recap');
     const before = await g.backend.getState();
     expect(g.m.text()).toContain('PICK A MODE TO START THE NEXT ONE');
+    // F-6 (2026-09-13): the roster carries over into the rolled session, so this switch reshapes teams
+    // too — first tap confirms, second tap rolls forward.
+    await g.m.click('KING OF THE HILL');
+    expect((await g.backend.getState()).phase, 'the first tap only confirms — the session has not rolled yet').toBe('recap');
     await g.m.click('KING OF THE HILL');
     await g.settle();
     const after = await g.backend.getState();
@@ -301,6 +310,23 @@ describe('round-2 B — an empty team is a BLOCKING red on the lobby, never an a
     const split = await lobbyOn(i => (i % 2 ? 'yellow' : 'blue'), null);
     expect(split.find('[data-testid="roster-fault"]').length).toBe(0);
     split.unmount();
+  });
+
+  it('F-8 (2026-09-13): HOST OVERRIDE vanishes under a roster fault, and the banner says why', async () => {
+    // Before F-8 the override tray simply did not render while `rosterFault` stood — even with a red
+    // row also on the board, which is exactly the situation an operator reaches for HOST OVERRIDE in.
+    // Nothing on screen said the control could not be there because of the roster, not the red row.
+    const d = await demo();
+    const players = d.state.players.map(p => ({ ...p, team_id: 'blue', ready: true }));
+    const board = d.state.readiness.board.map((b, i) => ({ ...b, status: (i === 0 ? 'red' : 'green') as 'red' | 'green', blockers: i === 0 ? ['GUN LINK LOST'] : [] }));
+    const readiness = { ...d.state.readiness, board, go: false, roster_faults: ['ONLY ONE SIDE HAS PLAYERS — move players between teams'] };
+    const state: State = { ...d.state, phase: 'lobby', players, config: { ...d.state.config, mode: 'tdm' },
+      lobby: { ...d.state.lobby, pushed: false, acks: {} }, readiness };
+    const m = await mountScreen(<Lobby />, { ...d, state });
+    expect(m.find('[data-override="1"]').length, 'no override control while the roster is unplayable').toBe(0);
+    expect(m.find('[data-no-override-reason]').length, 'the fault banner says why it is missing').toBe(1);
+    expect(m.text()).toContain('CANNOT BE OVERRIDDEN');
+    m.unmount();
   });
 
   it('the mock refuses the push and the start the same way the server does', async () => {

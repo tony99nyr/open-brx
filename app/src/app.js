@@ -361,7 +361,10 @@ Object.assign(hud.h, {
     scheduleRender();
   },
   onUtility: () => switchRole('utility'),   // the HUD's way into utility mode (brx-hud adds the control; 7 taps on the stage also work)
-  onReady: () => { if (engine.phase === 'kitted') { engine.setReady(!engine.ready); haptic('tap'); } },
+  // F-4 (2026-09-13): `engine.setReady` is the one place that knows when a ready tap is legal (kitted,
+  // or lobby once the kit has closed) — this used to re-type "kitted only" here too, which is exactly
+  // what left a lobby READY UP tap doing nothing once the button existed to tap.
+  onReady: () => { if (engine.setReady(!engine.ready)) haptic('tap'); },
   // A10 self-serve kitting (docs/spec/loadout.md §4.5): slot plates → LOADOUT browser → tap-to-equip / TRY IT / DONE
   onOpenLoadout: slot => { if (!engine.canPick(slot)) return; hud.lo.tab = slot; hud.lo.focus = null; hud.lo.filter = 'weapons'; hud.lo.confirm = null; engine.browse(true); haptic('tap'); },
   // A26: leaving a rack COMMITS the pick sitting in its debounce window — the same rule as CLOSE and READY UP.
