@@ -30,7 +30,7 @@ from ..modes.registry import default_params as _default_params, params_schema_js
 from .tunnel import TunnelError
 from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS,
                     OBJECTIVE_MODES, OFFLINE_AFTER_MS,
-                    STALE_AFTER_MS, STATION_KINDS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, Event,
+                    STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_KINDS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, Event,
                     GameConfig, Loadout, LoadoutOverrides, LoadoutPolicy, LoadoutPool, PerkView,
                     Phase, Player, ReadinessRow, ReadinessSnapshot, Respawn, ScanRow, StationRef,
                     Stun, Team, Weapon, WeaponSel, app_tier, compatible, parse_app_ver)
@@ -306,6 +306,13 @@ class Session:
         self._pending_limit_t: int | None = None
         self._score_pushed: dict[str, dict] = {}   # A7: last ScoreRow pushed per player
         self._result_pushed: dict[str, dict] = {}  # A24: last `result` body pushed per player (minus `t`)
+        # A34 (field 2026-09-12): the matches this MC has RETIRED, newest last -- match_id -> {recap, players,
+        # ended_ms}. A phone that was off the network at the whistle comes back still LIVE in one of these
+        # (its status says so), and MC, already on the next KIT, used to have nothing left to tell it with:
+        # `start_info`, the scorer and `last_recap` were all gone. This ledger is what `_reconcile_stale_live`
+        # answers from. `recap` is None for a match that was recalled / panicked / aborted (nothing to show).
+        self._ended: dict[str, dict] = {}
+        self._stale_told: dict[tuple[str, str | None], int] = {}   # (node_id, match_id) -> last time MC told it to end
         # A24/M2: WHAT ended the last match -- "frag_limit" | "host" | "time" | None. Only a frag cap has
         # an end time that a LATER fact can move (an earlier cap kill flushed minutes late); a whistle and
         # a clock are moments the field already lived through and are never re-derived.
@@ -2021,7 +2028,59 @@ class Session:
         self._log(nid, "status", body, t_recv)
         if self.scorer:
             self.scorer.ingest_status(nid, body, t_recv)
+        if nv.get("node_type") != "utility" and body.get("arm_state") in ("armed", "live"):
+            self._check_stale_live(nid, body.get("match_id"), t_recv)   # A34
         self._changed()
+
+    # ---------- A34: a phone that comes back still LIVE in a match MC has already retired ----------
+    _ENDED_KEEP = 16
+
+    def _record_ended(self, match_id: str | None, recap: dict | None, players: dict[str, Player] | None) -> None:
+        """Remember a retired match so a late phone can still be told how (and that) it ended."""
+        if not match_id:
+            return
+        self._ended.pop(match_id, None)
+        self._ended[match_id] = {"recap": recap, "players": dict(players) if players else None, "ended_ms": self.now_ms()}
+        for old in list(self._ended)[:-self._ENDED_KEEP]:
+            self._ended.pop(old, None)
+
+    def _check_stale_live(self, nid: str, mid: str | None, t_recv: int) -> None:
+        """Field 2026-09-12: a phone dropped off the Wi-Fi at the whistle, came back a minute later still
+        LIVE in the match everyone else had finished, and MC -- already on the next KIT -- had nothing that
+        told it. The status heartbeat is the moment we KNOW it is reachable and wrong, so the answer goes
+        out from here: `control{end, match_id}` (+ that match's `result` if we hold one, + the current
+        `start` if a new match is already scheduled, so it hot-joins per E5). Never for a node reporting
+        the CURRENT match while MC is armed/live -- that is a phone doing its job."""
+        current = (self.start_info or {}).get("match_id") if self.phase in ("armed", "live") else None
+        if mid:
+            if mid == current:
+                return
+            if mid not in self._ended and current is not None:
+                return          # a match this MC never ran (another session's), while ours is on: leave it be
+        elif current is not None:
+            return              # no match_id and MC is running one: an old app, not a stale phone
+        last = self._stale_told.get((nid, mid))
+        if last is not None and t_recv - last < STALE_LIVE_RETELL_MS:
+            return
+        self._stale_told[(nid, mid)] = t_recv
+        self._reconcile_stale_live(nid, mid)
+
+    def _reconcile_stale_live(self, nid: str, mid: str | None) -> None:
+        body: dict = {"cmd": "end"}
+        if mid:
+            body["match_id"] = mid
+        self.net.push(nid, "control", body)
+        pid = self.node_player.get(nid)
+        p = self.players.get(pid) if pid else None
+        ended = self._ended.get(mid) if mid else None
+        if p and ended and ended.get("recap") and (ended.get("players") is None or p["player_id"] in ended["players"]):
+            roster = ended.get("players") or self.players
+            self.net.push(nid, "result", self._result_body(ended["recap"], p, match_id=mid, roster=roster))
+        if self.start_info and self.phase in ("armed", "live"):
+            self.net.push(nid, "start", self._start_body())
+        who = (p or {}).get("display") or nid
+        self._on_feed({"t_match_s": 0, "tag": "RECONCILED", "kind": "alert",
+                       "text": f"{who}'S PHONE CAME BACK STILL LIVE IN AN ENDED MATCH — TOLD TO END"})
 
     def _on_event(self, nid: str, ev: Event, t_recv: int):
         # `seq` is stamped onto the fact by `net.py` (`ev["seq"] = seq`) before it reaches here.
@@ -2114,7 +2173,7 @@ class Session:
             self.net.push(p["node_id"], "score", body)
 
     # ---------- A24: the match result reaches EVERY node, losers included ----------
-    def _as_played(self, p: Player) -> Player:
+    def _as_played(self, p: Player, roster: dict[str, Player] | None = None) -> Player:
         """The recipient AS THE FIELD WORE THEM (A24/M2 round-2 review).
 
         `_replay` was already fixed to score `_match_players`, the roster frozen at the whistle — but
@@ -2122,9 +2181,10 @@ class Session:
         the player who won it `outcome: "lose"`, because the operator had moved them to blue for the
         next match. Which side a recipient wore is a fact about the match that was played.
         """
-        if self._match_players is None:
+        roster = self._match_players if roster is None else roster
+        if roster is None:
             return p
-        return self._match_players.get(p["player_id"], p)
+        return roster.get(p["player_id"], p)
 
     def _played_this_match(self, pid: str) -> bool:
         """Was this player on the roster at the whistle? A player ADDED during the debrief was being
@@ -2133,14 +2193,14 @@ class Session:
         `result` at all -- the HUD's neutral "no result for you" state, contracts §5 `result`."""
         return self._match_players is None or pid in self._match_players
 
-    def _outcome_for(self, winner: dict, p: Player) -> str:
+    def _outcome_for(self, winner: dict, p: Player, roster: dict[str, Player] | None = None) -> str:
         """"win" | "lose" | "draw" | "undecided", FOR THIS RECIPIENT (A24).
 
         The node never infers this: silence means "you lost" and "your phone dropped off the LAN"
         identically (game test 2026-09-11 D3), so MC is the only thing that may say the word.
         The recipient's team is read AS PLAYED (`_as_played`), never as the debrief has it.
         """
-        p = self._as_played(p)
+        p = self._as_played(p, roster)
         if not winner or winner.get("undecided"):
             return "undecided"
         tie = winner.get("tie")
@@ -2163,16 +2223,22 @@ class Session:
         names = {t["team_id"]: str(t.get("name") or t["team_id"]) for t in self.teams}
         return [{"team_id": tid, "name": names.get(tid, tid), "score": sc} for tid, sc in totals.items()]
 
-    def _result_body(self, recap: dict, p: Player) -> dict:
-        """The `result` envelope for ONE player (contracts §5 `result`)."""
-        p = self._as_played(p)                   # the side, the name and the row AS PLAYED, not as edited
+    def _result_body(self, recap: dict, p: Player, *, match_id: str | None = None,
+                     roster: dict[str, Player] | None = None) -> dict:
+        """The `result` envelope for ONE player (contracts §5 `result`).
+
+        A34: `match_id` and `roster` name a PAST match (from the `_ended` ledger) when a phone comes back
+        still live in one; left None they read the current scorer and the roster frozen at the whistle,
+        exactly as before."""
+        if roster is None:
+            roster = self._match_players if self._match_players is not None else self.players
+        p = self._as_played(p, roster)           # the side, the name and the row AS PLAYED, not as edited
         winner = recap.get("winner") or {}
         rows = recap.get("rows") or []
-        roster = self._match_players if self._match_players is not None else self.players
         display = {pl["player_id"]: pl.get("display") for pl in roster.values()}
         body = {
-            "match_id": self.scorer.match_id if self.scorer else None,
-            "outcome": self._outcome_for(winner, p),
+            "match_id": match_id if match_id is not None else (self.scorer.match_id if self.scorer else None),
+            "outcome": self._outcome_for(winner, p, roster),
             "winner": winner,
             "mode": self.config.get("mode"),
             "win_by": (self.config.get("scoring") or {}).get("win_by"),
@@ -3039,6 +3105,7 @@ class Session:
         for nid, nv in list(self.nodes.items()):
             if nv.get("node_type") != "utility":
                 self.net.push(nid, "control", {"cmd": "abort_start", "seq": self.start_info["seq"]})
+        self._record_ended(self.start_info.get("match_id"), None, self._match_players)   # A34: a node that missed the abort
         self.start_info = None
         self.scorer = None
         # F106(a): no match ran on this game number, so the NEXT muster push must not treat it as a new
@@ -3286,6 +3353,7 @@ class Session:
             self.end_reason = "host"                     # A24/M2: a whistle is a moment; it never moves
             self._finish()
         else:                                            # recall/panic stop a live game → KITTED (A5.9)
+            self._record_ended((self.start_info or {}).get("match_id"), None, self._match_players)   # A34
             self.start_info = None
             self.scorer = None
             self.lobby_pushed = False
@@ -3373,6 +3441,7 @@ class Session:
         # edits excluded. Everything `_replay` re-derives is measured against this copy.
         self._match_players = {pid: p.copy() for pid, p in self.players.items()}
         self.last_recap = self._scorer_recap(self.scorer) if self.scorer else None
+        self._record_ended(self._log_match, self.last_recap, self._match_players)   # A34: what a late phone is told
         self._push_victory(self.last_recap)              # winners' guns play the victory sting (in coverage)
         self._push_result()                              # A24: EVERY node learns the outcome, losers included
         if self.store and self.start_info and self.last_recap:
@@ -3474,6 +3543,8 @@ class Session:
         return {"settling": bool(awaiting), "awaiting": awaiting, "since_end_ms": now - end_t}
 
     def new_session(self, keep_roster: bool = True) -> None:
+        if self.start_info and self.phase in ("armed", "live"):
+            self._record_ended(self.start_info.get("match_id"), None, self._match_players)   # A34
         self.session_id = uuid.uuid4().hex[:8]
         self.phase = "muster"
         self.start_info = None

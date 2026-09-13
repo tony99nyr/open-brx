@@ -1873,9 +1873,13 @@ export class Engine {
   }
 
   // ---------- control ----------
-  control({ cmd, seq }) {
+  control({ cmd, seq, match_id }) {
     switch (cmd) {
       case 'end': case 'recall':
+        // A34: MC ends a phone it finds still LIVE in a RETIRED match from that phone's own heartbeat, and names
+        // the match. An end for some OTHER match must never stop the one this node is actually playing (a
+        // reconnect can deliver a stale end after a newer start). No match_id = the operator's END/RECALL as before.
+        if (match_id && this.matchId && match_id !== this.matchId) { this.log(`control ${cmd} for ${match_id} — not this match (${this.matchId}) — ignored`, 'li'); return; }
         if (this.phase === 'live' || this.phase === 'armed' || this.phase === 'lobby') this._endLocal(cmd);
         // Silently ignoring it is why "END MATCH EARLY did not reach the HUDs" was undiagnosable:
         // both phones were already in `kitted`, where this is a no-op, and nothing said so anywhere.

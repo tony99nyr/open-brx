@@ -34,6 +34,9 @@ export const CONFIG_TTL_MS = 1800000;
 /** wire ids 1..63; 0 reserved (tutorial / unknown shooter) */
 export const MAX_PLAYERS = 63;
 export const DEATH_LATCH_MS = 2000;
+/** A34: a phone still LIVE in a match MC has retired is told `control{end}` from its status heartbeat; this
+ *  is how long MC waits before telling the SAME phone about the SAME match again (the first end normally lands). */
+export const STALE_LIVE_RETELL_MS = 10000;
 export const RESYNC_PROBE_S = 10;
 export const DEFAULT_RUNWAY_S = 120;
 export const PROTOCOL_V = 1;

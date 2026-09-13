@@ -4128,3 +4128,26 @@ test('A24: a NEW match retires the previous result before anyone can see it on a
   assert.equal(h.eng.state().result, null);
   assert.equal(h.eng.state().resultWait, 'pending');
 });
+
+// ---------- A34: an END that names a match only ends THAT match ----------
+test('A34: control end for a foreign match_id is ignored — the match being played goes on', () => {
+  const h = goLive(harness());
+  assert.equal(h.eng.phase, 'live');
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end', match_id: 'm0-old' } });
+  assert.equal(h.eng.phase, 'live', 'an end for m0-old cannot stop m1');
+  assert.equal(h.eng.ended, false);
+});
+
+test('A34: control end naming THIS match ends it', () => {
+  const h = goLive(harness());
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end', match_id: 'm1' } });
+  assert.equal(h.eng.ended, true);
+  assert.notEqual(h.eng.phase, 'live');
+});
+
+test('A34: control end with no match_id behaves as before (the operator END/RECALL)', () => {
+  const h = goLive(harness());
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'recall' } });
+  assert.equal(h.eng.ended, true);
+  assert.notEqual(h.eng.phase, 'live');
+});
