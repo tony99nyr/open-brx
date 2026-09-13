@@ -107,6 +107,63 @@ describe('LOBBY · a stale ack is not an ack', () => {
     m.unmount();
   });
 
+  /** The state the SERVER ACTUALLY EMITS for a stale ack: the row is RED with the blocker on it
+   *  (`state.py readiness()` appends `ACKED AN OLDER CONFIG` to `blockers`, and any blocker makes
+   *  the row red), and `all_acked` is false. The earlier version of this suite forced
+   *  `status: 'green', blockers: []` beside a stale ack — a state no server can produce — which is
+   *  exactly how the rail sentence under test came to be dead code (U-1). */
+  async function staleAsTheServerSendsIt() {
+    const { d, base } = await pushedAndClean();
+    const [p0] = base.players;
+    const board = base.readiness.board.map(r => (r.player_id === p0.player_id
+      ? ({ ...r, status: 'red', blockers: [STALE] } as ReadinessRow) : r));
+    const state = {
+      ...base,
+      readiness: { ...base.readiness, board, go: false },
+      lobby: {
+        ...base.lobby, all_acked: false,
+        acks: { ...base.lobby.acks, [p0.player_id]: { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: 'deadbeef' } },
+      },
+    } as State;
+    return { d, state, p0, sticker: board.find(r => r.player_id === p0.player_id)!.sticker };
+  }
+
+  it('U-1: the stale-ack sentence renders on the state the server really sends (a RED row)', async () => {
+    const { d, state, p0 } = await staleAsTheServerSendsIt();
+    const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
+    expect(m.text(), 'the generic "N guns cannot start" count must not swallow the one thing to DO')
+      .toContain(`${p0.display} still answering for an older config`);
+    m.unmount();
+  });
+
+  it('U-2: every A36 line keeps its "what to do" half on the LOBBY fault list', async () => {
+    const { d, base } = await pushedAndClean();
+    const [p0, p1, p2] = base.players;
+    const lines: Record<string, string> = { [p0.player_id]: STALE, [p1.player_id]: ECHO, [p2.player_id]: POOL };
+    const board = base.readiness.board.map(r => (lines[r.player_id]
+      ? ({ ...r, status: 'red', blockers: [lines[r.player_id]] } as ReadinessRow) : r));
+    const state = { ...base, readiness: { ...base.readiness, board, go: false } } as State;
+    const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
+    const txt = m.text();
+    for (const line of [STALE, ECHO, POOL]) {
+      const [head, ...rest] = line.split(' — ');
+      expect(txt, `the statement of ${JSON.stringify(head)}`).toContain(head);
+      expect(txt.toLowerCase(), `the INSTRUCTION half of ${JSON.stringify(head)}`)
+        .toContain(rest.join(' — ').toLowerCase());
+    }
+    m.unmount();
+  });
+
+  it('U-4: the disabled ARM title names a stale ack rather than "waiting to echo"', async () => {
+    const { d, state } = await staleAsTheServerSendsIt();
+    const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
+    const arm = m.find('button').find(b => (b.textContent ?? '').includes('ARM COUNTDOWN')) as HTMLButtonElement;
+    expect(arm.disabled).toBe(true);
+    expect(arm.title.toLowerCase(), `saw ${JSON.stringify(arm.title)}`).toContain('older config');
+    expect(arm.title.toLowerCase()).not.toContain('waiting for every gun to echo');
+    m.unmount();
+  });
+
   it('an older server that sends no config_id on its acks still counts them (no false alarm)', async () => {
     const { d, base } = await pushedAndClean();
     const acks = Object.fromEntries(Object.entries(base.lobby.acks).map(([id, a]) => [id, { ok: a.ok, gun_echo: a.gun_echo }]));

@@ -513,6 +513,19 @@ async function runFaults(browser, viteBase) {
   const unprovenRow = await pg.locator('[data-echo="not_echoed"]').first().innerText();
   expect(/UNPROVEN ON THIS FIRMWARE/.test(unprovenRow), `the unproven row says why (saw ${JSON.stringify(unprovenRow)})`);
   ok(`the NOT ECHOED row, on screen   ${await shot(pg, '52-faults-not-echoed')}`);
+  // U-1/U-2/U-4 — the LOBBY side of the same state: the rail has to NAME the guns answering for an
+  // older config (a count is not an instruction), every fault line has to keep its "what to do" half,
+  // and the disabled ARM button has to say which of the two problems it is.
+  await pg.locator('header nav button:has-text("LOBBY")').first().click();
+  await until(() => onLobby(pg), 5000, 'the LOBBY to open from the nav');
+  const rail = (await pg.locator('main').innerText()).replace(/\s+/g, ' ');
+  expect(/still answering for an older config/.test(rail),
+    `the rail names the stale guns, not just a count (saw ${JSON.stringify(rail.slice(0, 200))})`);
+  expect(/Re-push/i.test(rail), 'the fault list keeps the RE-PUSH half of each A36 line');
+  const arm = pg.locator('button:has-text("ARM COUNTDOWN")').first();
+  const title = await arm.getAttribute('title');
+  expect(/older config/i.test(title ?? ''), `the disabled ARM says WHY (saw ${JSON.stringify(title)})`);
+  ok(`LOBBY names the stale guns and keeps every instruction   ${await shot(pg, '53-faults-lobby')}`);
   // …and a clean ?mock shows none of them: the switch is opt-in, not the demo's new normal.
   const clean = await newPage(browser, viteBase);
   await clean.goto(`${viteBase}/?mock#muster`, { waitUntil: 'domcontentloaded' });

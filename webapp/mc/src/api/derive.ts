@@ -75,3 +75,25 @@ export function staleReachReason(n: Pick<NodeView, 'reach' | 'last_reach' | 'las
   const base = `NOT REACHED FOR ${fmtAge(n.last_seen_ms ?? 0).toUpperCase()}`;
   return tunnelStatus === 'error' ? `${base} — TUNNEL DOWN` : base;
 }
+
+/** Every readiness line the server writes is `STATEMENT — INSTRUCTION` ("ACKED AN OLDER CONFIG
+ *  (9f2a1c04) — RE-PUSH"). Split it: the statement still shouts, the instruction sits under it
+ *  quietly in sentence case, and the trailing severity tag ("BLOCKS START", "DOES NOT BLOCK") comes
+ *  off because the row's own colour already says that.
+ *
+ *  ONE implementation, because the two screens that render these lines disagreed: the Armory card
+ *  split them, and the LOBBY fault list kept only `split(' — ')[0]` — so "ACKED AN OLDER CONFIG
+ *  (id) — RE-PUSH" rendered on the START screen without the RE-PUSH, dropping the "what to do" half
+ *  of every A36 line at the exact moment the operator is deciding what to do (U-2, 2026-09-13). */
+export function splitBlocker(line: string): { head: string; hint: string } {
+  const [head, ...rest] = line.split(' — ');
+  const hint = rest.join(' — ').replace(/\b(DOES NOT BLOCK( YET)?|BLOCKS START)\b/g, '').trim();
+  return { head, hint };
+}
+
+/** "OPEN THE APP AND SET THE GUN" -> "Open the app and set the gun". Shouted instructions are what
+ *  made these cards read as noise; the STATEMENT still shouts, the instruction does not. */
+export function sentenceCase(t: string): string {
+  const s = t.trim().toLowerCase();
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}

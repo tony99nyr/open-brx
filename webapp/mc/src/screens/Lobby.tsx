@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { RUNWAYS, useRunway } from '../runway';
-import { coverageLine, reachLabel, reachOf, reachTooltip } from '../api/derive';
+import { coverageLine, reachLabel, reachOf, reachTooltip, sentenceCase, splitBlocker } from '../api/derive';
 import type { Player } from '../api/types';
 import { useStore } from '../store';
 import { F, T, TAB, teamColor } from '../tokens';
@@ -59,6 +59,11 @@ export function Lobby() {
   const nameOf = (id: string) => players.find(p => p.player_id === id)?.display ?? id;
   const noEcho = Object.entries(lobby.acks).filter(([, a]) => !a.ok).map(([id]) => nameOf(id));
   const staleAcked = Object.entries(lobby.acks).filter(([, a]) => a.ok && !ackIsCurrent(a)).map(([id]) => nameOf(id));
+  // U-1: computed from the ACKS, independently of the board — a stale ack is always ALSO a red row,
+  // so anything that asked "are there faults?" first could never reach this sentence.
+  const staleAckLine = staleAcked.length
+    ? `${staleAcked.join(', ')} still answering for an older config — push again`
+    : '';
   // A36/C-5: the SERVER's own answer wins wherever it is present (`types.ts` has said so since A36 and
   // nothing here read it). `all_acked` walks the roster the way `start()` does — it skips a player with
   // no node bound, which the local count cannot — so a console counting for itself disagreed with the
@@ -164,27 +169,43 @@ export function Lobby() {
               </span>} />
           </div>
           <span style={{ flex: 1 }} />
+          {/* U-4: "waiting to echo" is the wrong sentence for a gun that HAS answered — for the game
+              before this one. Different fault, different fix (RE-PUSH, not wait), and the title is
+              where an operator looks when a button will not move. */}
           <PrimaryButton onClick={() => pushAndArm()} disabled={blockedCount > 0 || !balancedForTeams || players.length === 0 || (lobby.pushed && !allAcked)}
-            title={!balancedForTeams ? rosterFault ?? '' : lobby.pushed && !allAcked ? 'Waiting for every gun to echo the config' : ''}>
+            title={!balancedForTeams ? rosterFault ?? ''
+              : lobby.pushed && !allAcked
+                ? (staleAcked.length
+                    ? `${staleAcked.length} gun${staleAcked.length === 1 ? '' : 's'} acked an older config — push again`
+                    : 'Waiting for every gun to echo the config')
+                : ''}>
             {lobby.pushed ? 'ARM COUNTDOWN ▸' : 'PUSH CONFIG & ARM ▸'}
           </PrimaryButton>
         </div>
 
         <div style={{ padding: '0 20px 14px', font: F.chk(600, 13), lineHeight: 1.5,
                       color: faults.length ? T.bad : waitRows.length ? T.micro : notReady.length ? T.warn : T.ok }}>
-          {faults.length
-            ? `${faults.length} gun${faults.length === 1 ? '' : 's'} cannot start`
-            : waitWhy
-              || (notReady.length ? `Not ready yet: ${notReady.join(', ')}` : '')
-              || (lobby.pushed && !allAcked
-                  // A36: "no echo" and "echoed the LAST game" are different problems with different
-                  // answers, and this line used to be able to name NEITHER — a stale ack is `ok:true`,
-                  // so it fell out of the filter and the sentence rendered as "No config echo from  —
-                  // headset off, or gun asleep?" with an empty list, about guns that had answered.
-                  ? (staleAcked.length
-                      ? `${staleAcked.join(', ')} still answering for an older config — push again`
-                      : `No config echo from ${noEcho.join(', ')} — headset off, or gun asleep?`)
-                  : 'All nodes ready and in range. Push, then walk.')}
+          {/* U-1 (2026-09-13): `staleAcked` used to be consulted ONLY in the no-faults branch — and a
+              stale ack always lands in that row's `blockers` (state.py `readiness()`), which makes the
+              row red, which puts it in `faults`. So the generic count always won and the sentence
+              naming the guns, and the one thing to DO about them, was unreachable on a real server.
+              It is now asked FIRST, whatever else is red: "3 guns cannot start" is a count, and a
+              count is not an instruction. */}
+          {staleAckLine
+            || (faults.length
+              ? `${faults.length} gun${faults.length === 1 ? '' : 's'} cannot start`
+              : waitWhy
+                || (notReady.length ? `Not ready yet: ${notReady.join(', ')}` : '')
+                // A36: "no echo" and "echoed the LAST game" are different problems with different
+                // answers, and this line used to be able to name NEITHER — a stale ack is `ok:true`,
+                // so it fell out of the filter and the sentence rendered as "No config echo from  —
+                // headset off, or gun asleep?" with an empty list, about guns that had answered.
+                || (lobby.pushed && !allAcked
+                    ? `No config echo from ${noEcho.join(', ')} — headset off, or gun asleep?`
+                    : 'All nodes ready and in range. Push, then walk.'))}
+          {staleAckLine && faults.length > 1 && (
+            <span style={{ color: T.micro }}>{`  ·  ${faults.length} gun${faults.length === 1 ? '' : 's'} cannot start`}</span>
+          )}
         </div>
 
         {faults.length > 0 && (
@@ -192,8 +213,21 @@ export function Lobby() {
             {faults.map(f => (
               <div key={f.who} style={{ display: 'flex', gap: 14, alignItems: 'baseline', flexWrap: 'wrap' }}>
                 <span style={{ font: F.osw(700, 15), letterSpacing: '.06em', color: T.ink, minWidth: 130 }}>{f.who}</span>
+                {/* U-2 (2026-09-13): this kept only the text before the first " — ", which is the
+                    STATEMENT half. Every server line is `STATEMENT — INSTRUCTION`, so "ACKED AN
+                    OLDER CONFIG (id) — RE-PUSH" rendered on the START screen as a fault with no fix,
+                    and all three A36 lines lost the only word that says what to do. Same split the
+                    Armory card uses (`derive.splitBlocker`), one implementation. */}
                 <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  {f.why.map(w => <span key={w} style={{ font: F.chk(600, 12), color: T.bad }}>▲ {w.split(' — ')[0]}</span>)}
+                  {f.why.map(w => {
+                    const { head, hint } = splitBlocker(w);
+                    return (
+                      <span key={w} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        <span style={{ font: F.chk(600, 12), color: T.bad }}>▲ {head}</span>
+                        {hint && <span style={{ font: F.chk(500, 11.5), color: T.micro, textTransform: 'none', paddingLeft: 14 }}>{sentenceCase(hint)}</span>}
+                      </span>
+                    );
+                  })}
                 </span>
               </div>
             ))}

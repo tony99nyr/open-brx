@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { isRoutableLanIp, reachLabel, reachTooltip, registrySig, staleReachReason } from '../api/derive';
+import { isRoutableLanIp, reachLabel, reachTooltip, registrySig, sentenceCase, splitBlocker, staleReachReason } from '../api/derive';
 import { STALE_AFTER_MS, type LogView, type ReadinessRow, type TunnelStatus } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
@@ -362,8 +362,7 @@ function GunCard({ g }: { g: ReadinessRow }) {
               wrapped mid-phrase and read as noise; split, the statement carries and the instruction
               sits under it quietly (field 2026-09-02). */}
           {items.map(([b, blocking]) => {
-            const [head, ...rest] = b.split(' — ');
-            const hint = rest.join(' — ').replace(/\b(DOES NOT BLOCK( YET)?|BLOCKS START)\b/g, '').trim();
+            const { head, hint } = splitBlocker(b);
             return (
               <div key={b} style={{ display: 'flex', gap: 8, padding: '7px 10px',
                 background: blocking && red ? 'rgba(255,82,82,.1)' : blocking && !waiting ? 'rgba(255,176,32,.08)' : 'transparent',
@@ -371,7 +370,7 @@ function GunCard({ g }: { g: ReadinessRow }) {
                 <span style={{ font: F.chk(700, 11), color: blocking ? color : T.micro, flex: '0 0 auto' }}>{blocking ? (waiting ? '·' : '▲') : '·'}</span>
                 <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                   <span style={{ font: F.chk(700, 11.5), letterSpacing: '.06em', color: blocking ? color : T.micro }}>{head}</span>
-                  {hint && <span style={{ font: F.chk(500, 11), letterSpacing: '.02em', color: T.micro, textTransform: 'none' }}>{sentence(hint)}</span>}
+                  {hint && <span style={{ font: F.chk(500, 11), letterSpacing: '.02em', color: T.micro, textTransform: 'none' }}>{sentenceCase(hint)}</span>}
                 </span>
               </div>
             );
@@ -700,11 +699,4 @@ function ReachBlock() {
       )}
     </div>
   );
-}
-
-/** "OPEN THE APP AND SET THE GUN" -> "Open the app and set the gun". Shouted instructions are what
- *  made these cards read as noise; the STATEMENT still shouts, the instruction does not. */
-function sentence(t: string) {
-  const s = t.trim().toLowerCase();
-  return s.charAt(0).toUpperCase() + s.slice(1);
 }
