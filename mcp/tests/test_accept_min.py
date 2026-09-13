@@ -5,7 +5,7 @@
 never forgiven a missing field. `direction="mc"` (a node receiving an MC frame) checks
 `ACCEPT_MIN.get(kind, REQUIRED[kind])` instead — for the one kind currently listed, `result`, a body
 missing everything but `match_id` still reaches the node/engine rather than being dropped silently
-as `missing_field` (A24, contract-dry-spec.md §3).
+as `missing_field` (A24, docs/archive/spec-contract-dry-2026-09-12.md §3).
 
 This file pins: the override actually softens `direction="mc"` decoding; `ACCEPT_MIN`'s own
 invariants (its keys are a subset of `MC_KINDS`, and what it accepts is a subset of what

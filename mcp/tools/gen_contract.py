@@ -24,7 +24,7 @@ Whole-file generation, not marker splicing: nothing hand-written lives in either
 only -- no dependency on the MC package having any of its own dependencies installed (it has none;
 this script imports `brx_mcp.mc.types` / `.envelope` directly, which are pure).
 
-2026-09-12 (contract-DRY phase 1, per docs scratch/contract-dry-spec.md). Modeled on
+2026-09-12 (contract-DRY phase 1, per docs/archive/spec-contract-dry-2026-09-12.md). Modeled on
 `gen_ui_catalog.py` (same `render()` / `main()` shape) and `test_ui_catalog_generated.py` (same
 in-memory-render-vs-disk test pattern).
 """
@@ -68,7 +68,7 @@ _DIVIDER_RE = re.compile(r"^\s*-{3,}.*-{3,}\s*$")
 # --------------------------------------------------------------------------- comment extraction #
 #
 # A field's/constant's JSDoc is assembled from three kinds of comment-only or trailing-comment
-# source lines (spec contract-dry-spec.md §2.3):
+# source lines (docs/archive/spec-contract-dry-2026-09-12.md §2.3):
 #   preface     -- the run of comment-only lines directly ABOVE the statement that are not already
 #                  claimed as another field's trailing/continuation comment.
 #   own         -- a comment on the statement's own (last physical) line.
@@ -115,7 +115,7 @@ def _statement_comment(node: ast.AST, comment_only: dict[int, str], trailing: di
     itself is indented 8+ spaces after the `#` (types.py's style for wrapping a trailing comment,
     e.g. GameConfig.mode_params) -- checked per line, and unconditionally: a field's own same-line
     comment does NOT relax this, so a comment-only run with less indent is always the PREFACE of
-    the NEXT symbol, never this one's continuation (contract-dry-spec.md review finding #1).
+    the NEXT symbol, never this one's continuation (docs/archive/spec-contract-dry-2026-09-12.md review finding #1).
 
     A section-divider line (`_DIVIDER_RE`) is never included in either run: it is consumed (so
     nothing else can claim it) but stops the scan in that direction, since it marks the boundary of
@@ -279,7 +279,7 @@ def _toplevel_assign_nodes(tree: ast.Module) -> dict[str, ast.AST]:
 def _literal_aliases(mod, tree: ast.Module) -> list[tuple[str, tuple[Any, ...], ast.AST | None]]:
     """Module-level `Name = Literal[...]` aliases, in module (source) order, with the `ast` node of
     the assignment (or None if it cannot be found) so its preface comment can become the alias's
-    JSDoc (contract-dry-spec.md review finding #4)."""
+    JSDoc (docs/archive/spec-contract-dry-2026-09-12.md review finding #4)."""
     nodes_by_name = _toplevel_assign_nodes(tree)
     out = []
     for name, value in vars(mod).items():
@@ -343,7 +343,7 @@ class ContractInvariantError(ValueError):
 
 def _validate_accept_min(accept_min: dict[str, tuple[str, ...]], mc_kinds: set[str],
                           required: dict[str, tuple[str, ...]]) -> None:
-    """Two invariants ACCEPT_MIN (contract-dry-spec.md §3) must hold, checked at generation time so a
+    """Two invariants ACCEPT_MIN (docs/archive/spec-contract-dry-2026-09-12.md §3) must hold, checked at generation time so a
     typo in envelope.py fails the build loudly instead of shipping a receiver check that can never
     fire (an unknown kind) or that promises more than the sender is ever required to send:
 
