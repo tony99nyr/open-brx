@@ -459,11 +459,41 @@ def test_a_reconnect_and_an_offer_in_the_same_breath_ask_once():
     assert s.nodes["node0"]["log"]["state"] == "offered", "the offer is still shown to the operator"
     # the LOGS button is never deduped — "manual" means the button is the only asker (A25)
     assert s.pull_log("node0", "manual") is True
-    # once the node starts answering, the ask is settled and a later offer may ask again
+    # B7: the node starts answering. A log_offer arriving WHILE that stream is still running is the node
+    # re-announcing what it holds, not a fresh request — answering it queues a second pull the node runs
+    # the instant the first stream finishes, which re-offers, which asks again... (the field loop, 44x).
     s._on_node_message("node0", "log_data", {"node_id": "node0", "seq": 0, "chunk": "x", "last": False}, clock["t"])
     net.pushed.clear()
     s._on_node_message("node0", "log_offer", {"node_id": "node0", "bytes": 10, "lines": 1}, clock["t"])
-    assert pulls(net) == [("node0", "offer")]
+    assert pulls(net) == [], "a log_offer mid-upload must not queue a second pull (B7)"
+    # once that stream actually COMPLETES, the next offer is a fresh, legitimate ask again.
+    s._on_node_message("node0", "log_data", {"node_id": "node0", "seq": 1, "chunk": "y", "last": True}, clock["t"])
+    net.pushed.clear()
+    s._on_node_message("node0", "log_offer", {"node_id": "node0", "bytes": 10, "lines": 1}, clock["t"])
+    assert pulls(net) == [("node0", "offer")], "the stream ended — the next offer is answered normally"
+
+
+def test_log_offer_mid_upload_does_not_free_run_b7():
+    """B7 field bug (2026-09-12): MC answered a log_offer with a fresh pull_log while the PREVIOUS pull's
+    stream was still uploading. The node queued it, the current upload finished, the queued pull sent one
+    new line then offered again -- and the pair free-ran until the ~1 MB per-node budget cut it (observed
+    44x). One ask must stay outstanding until its OWN stream completes, however many times the node
+    re-offers in between."""
+    s, net, clock, ps = mk(1)
+    online(s, net, clock, ps[0], 0)
+    s._on_node_message("node0", "log_offer",
+                       {"node_id": "node0", "bytes": 4096, "lines": 120, "reason": "manual"}, clock["t"])
+    assert pulls(net, "node0") == [("node0", "offer")]
+    for seq in range(5):
+        s._on_node_message("node0", "log_data",
+                           {"node_id": "node0", "seq": seq, "chunk": "x" * 100, "last": False}, clock["t"])
+        s._on_node_message("node0", "log_offer", {"node_id": "node0", "bytes": 4096, "lines": 120}, clock["t"])
+    assert pulls(net, "node0") == [("node0", "offer")], f"looped: {pulls(net, 'node0')}"
+    # the stream finally completes; the NEXT offer is a fresh, legitimate ask.
+    s._on_node_message("node0", "log_data",
+                       {"node_id": "node0", "seq": 5, "chunk": "x" * 10, "last": True}, clock["t"])
+    s._on_node_message("node0", "log_offer", {"node_id": "node0", "bytes": 10, "lines": 1}, clock["t"])
+    assert pulls(net, "node0") == [("node0", "offer"), ("node0", "offer")]
 
 
 def test_the_1mb_log_budget_is_per_match_not_per_session():
