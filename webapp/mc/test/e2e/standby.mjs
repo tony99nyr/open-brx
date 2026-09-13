@@ -62,7 +62,12 @@ async function startMC() {
   } catch { /* free: good */ }
   const wsPort = await freePort();
   const proc = spawn(py, ['-m', 'brx_mcp.mc', '--host', '127.0.0.1', '--port', String(MC_PORT), '--ws-port', String(wsPort),
-    '--demo', '--fake-net', '--no-auth', '--ephemeral'], { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', 'pipe', 'pipe'], detached: true,
+    '--demo', '--fake-net', '--no-auth', '--ephemeral',
+    // T3-A: this suite reads the FIRST `[role="alert"]` in the header to assert the version-skew and
+    // server-reason strips. On a WSL dev box MC now (correctly) raises a standing LAN-unreachability
+    // banner, which is an alert in that same header and displaced both. `--advertise` is T3-A's own
+    // override for "the advertised address is already right", which for a 127.0.0.1 e2e it is.
+    '--advertise', '127.0.0.1'], { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', 'pipe', 'pipe'], detached: true,
     // The MC package must be THIS tree's: the venv's editable install may point at another checkout
     // (a worktree beside the main tree, 2026-09-12). PYTHONPATH puts `<repo>/mcp` first.
     env: { ...process.env, PYTHONPATH: [path.join(REPO, 'mcp'), process.env.PYTHONPATH || ''].filter(Boolean).join(path.delimiter) } });
