@@ -1,16 +1,32 @@
 """Persistence: known-device registry and session capture files.
 
 Everything lives under ~/.brx-mcp/ on whichever machine runs the server
-(on Windows that is C:\\Users\\<you>\\.brx-mcp).
+(on Windows that is C:\\Users\\<you>\\.brx-mcp) -- unless `BRX_MCP_HOME` is
+set, in which case that directory is used instead. A test run (mcp/run_tests.py,
+every e2e boot, the app's fake-game e2e runner) sets `BRX_MCP_HOME` to a throwaway
+directory so it never mixes its output into the operator's real ~/.brx-mcp, which is
+field evidence (F151-class finding, 2026-09-13: hundreds of test session-*.sqlite
+files had to be sifted from the real ones by hand after a field night).
 """
 
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
-BASE_DIR = Path.home() / ".brx-mcp"
+
+def home_dir() -> Path:
+    """The base directory for everything brx-mcp persists. `BRX_MCP_HOME` overrides
+    the default `~/.brx-mcp` -- read fresh on every call (not baked in at import time)
+    so a test that sets the env var before importing anything downstream of this module
+    gets an isolated tree, and so does a subprocess that inherits the env var."""
+    override = os.environ.get("BRX_MCP_HOME")
+    return Path(override) if override else Path.home() / ".brx-mcp"
+
+
+BASE_DIR = home_dir()
 CAPTURES_DIR = BASE_DIR / "captures"
 REGISTRY_PATH = BASE_DIR / "known-devices.json"
 

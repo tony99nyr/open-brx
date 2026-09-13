@@ -2,17 +2,18 @@
 // reported bug turned into an assertion about what a PERSON SEES: rects, wraps, overlaps, visible text —
 // never engine state. Runs the `?demo&stage=` states at the design width AND a narrow phone, with
 // classic (desktop) scrollbars ON, because both of those reproduced the report and headless defaults hide them.
-// Run: node tools/screens.mjs      ONLY=<substring> runs matching steps.
+// Run: node tools/screens.mjs      ONLY=<substring> runs matching steps.      SCREENS_PORT=<port> moves the static server
 import { chromium } from 'playwright';
 import http from 'http'; import fs from 'fs'; import path from 'path';
 import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url)), ROOT = path.resolve(HERE, '..'), WWW = path.join(ROOT, 'www');
 const OUT = path.join(ROOT, 'shots', 'screens'); fs.rmSync(OUT, { recursive: true, force: true }); fs.mkdirSync(OUT, { recursive: true });
 const ONLY = process.env.ONLY;
+const PORT = Number(process.env.SCREENS_PORT || 4192);   // default unchanged; two of these can now run side by side
 const srcNewest = fs.readdirSync(path.join(ROOT, 'src'), { recursive: true }).map(f => path.join(ROOT, 'src', f)).filter(f => { try { return fs.statSync(f).isFile(); } catch { return false; } }).reduce((a, f) => Math.max(a, fs.statSync(f).mtimeMs), 0);
 if (srcNewest > fs.statSync(path.join(WWW, 'app.js')).mtimeMs) { console.error('STALE BUNDLE: run `npm run build` first.'); process.exit(2); }
 const srv = http.createServer((req, res) => { const rel = req.url.split('?')[0] === '/' ? 'index.html' : req.url.split('?')[0];
-  try { res.setHeader('content-type', rel.endsWith('.js') ? 'text/javascript' : rel.endsWith('.html') ? 'text/html' : 'application/octet-stream'); res.end(fs.readFileSync(path.join(WWW, rel))); } catch { res.statusCode = 404; res.end(); } }).listen(4192);
+  try { res.setHeader('content-type', rel.endsWith('.js') ? 'text/javascript' : rel.endsWith('.html') ? 'text/html' : 'application/octet-stream'); res.end(fs.readFileSync(path.join(WWW, rel))); } catch { res.statusCode = 404; res.end(); } }).listen(PORT);
 let pass = 0, fail = 0; const errs = [];
 const must = (c, m) => { if (!c) throw new Error(m); };
 const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });   // scrollbars ON: what a desktop reviewer sees
@@ -23,7 +24,7 @@ const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presenc
 const step = async (name, fn) => { if (ONLY && !name.includes(ONLY)) return; try { await fn(); console.log(`  ok   ${name}`); pass++; } catch (e) { console.log(`  FAIL ${name}: ${String(e.message || e).slice(0, 300)}`); fail++; errs.push(name); } };
 const open = async (view, stage, extra = '', ms) => {
   const pg = await b.newPage({ viewport: { width: view.width, height: view.height } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
-  await pg.goto(`http://127.0.0.1:4192/?demo&stage=${stage}${extra}`); await pg.waitForTimeout(ms || (LONG.has(stage) ? 4200 : 1600));
+  await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=${stage}${extra}`); await pg.waitForTimeout(ms || (LONG.has(stage) ? 4200 : 1600));
   must(perr.length === 0, 'page errors: ' + perr.join(' | '));
   const reached = await pg.evaluate(s => ({ stage: window.brxDemo && window.brxDemo.stage, failed: (window.brx.log || []).filter(l => /stage step failed|unknown/.test(l)) }), stage);
   must(reached.stage === stage && reached.failed.length === 0, `stage not reached: ${JSON.stringify(reached)}`);   // a throwing stage step must not pass as "whatever is on screen"
@@ -85,9 +86,9 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} demo ignores a real session persisted on the same origin (correctness review)`, async () => {
     const pg = await b.newPage({ viewport: { width: view.width, height: view.height } });
-    await pg.goto('http://127.0.0.1:4192/?demo&stage=idle'); await pg.waitForTimeout(600);
+    await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=idle`); await pg.waitForTimeout(600);
     await pg.evaluate(() => localStorage.setItem('brx.engine', JSON.stringify({ phase: 'live', player: { player_id: 'p9', display: 'GHOST', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'smg' }] } }, config: { config_id: 'x', mode: 'tdm' }, frames: { head: ['$START,*'], spawn: [], end: [], panic: [] }, start: { match_id: 'old', go_live_t: Date.now() - 60000, seq: 1 }, spawned: true, savedAt: Date.now() })));
-    await pg.goto('http://127.0.0.1:4192/?demo&stage=connected'); await pg.waitForTimeout(1600);
+    await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=connected`); await pg.waitForTimeout(1600);
     const r = await pg.evaluate(() => ({ phase: window.brx.engine.state().phase, txt: document.body.innerText.slice(0, 80) })); await pg.close();
     must(r.phase === 'connected', 'demo inherited the persisted session: ' + JSON.stringify(r));
   });
@@ -312,7 +313,7 @@ for (const view of VIEWS) {
   await step(`${view.name} #48 utility phone: status only; ⓘ ×7 opens the settings; START sticks across a reload`, async () => {
     const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
     await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }).catch(() => {});
-    await pg.goto('http://127.0.0.1:4192/utility.html?stage'); await pg.waitForTimeout(1600);
+    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.waitForTimeout(1600);
     const s1 = await pg.evaluate(() => ({ hidden: document.getElementById('cfg').hidden, rows: document.querySelectorAll('#players .row:not(.empty)').length, team: document.getElementById('team').textContent, status: document.getElementById('status').textContent }));
     for (let i = 0; i < 6; i++) await pg.click('#info'); const six = await pg.evaluate(() => document.getElementById('cfg').hidden); await pg.click('#info'); await pg.waitForTimeout(150);
     const s2 = await pg.evaluate(() => ({ hidden: document.getElementById('cfg').hidden, defaults: document.querySelectorAll('#cfg .def').length, pressed: document.querySelectorAll('.seg button[aria-pressed="true"]').length, rangeLabel: !!document.querySelector('label[for="thrRange"]') }));
@@ -326,7 +327,7 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} #49 utility phone: a station_config push arms it (MC-ARMED · game, re-keyed advert, live, drawer shut, survives reload)`, async () => {
     const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
-    await pg.goto('http://127.0.0.1:4192/utility.html?stage'); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
+    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
     const s1 = await pg.evaluate(() => document.getElementById('armed').textContent);
     // Through the REAL wire (review 2026-09-11 lane-4): `mcMessage` hands a real `station_config` envelope
     // to the stage's fake socket, which the Transport decodes exactly as it would a live MC push -- not a
@@ -345,7 +346,7 @@ for (const view of VIEWS) {
   // nobody has claimed as a station yet, and a real MC-side release that works even on a deployed one.
   await step(`${view.name} #66 A41: ⓘ shows tap progress and clears it; HOLD TO EXIT shows unassigned, hides once MC-armed`, async () => {
     const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
-    await pg.goto('http://127.0.0.1:4192/utility.html?stage'); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
+    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
     for (let i = 0; i < 3; i++) await pg.click('#info');
     const prog = await pg.evaluate(() => ({ hidden: document.getElementById('infoProg').hidden, text: document.getElementById('infoProg').textContent }));
     for (let i = 0; i < 4; i++) await pg.click('#info'); await pg.waitForTimeout(150);   // taps 4-7: the drawer opens
@@ -363,7 +364,7 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} #67 A41: HOLD TO EXIT (unarmed) resets brx.role to hud and leaves utility.html for the HUD`, async () => {
     const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
-    await pg.goto('http://127.0.0.1:4192/utility.html?stage'); await pg.evaluate(() => { try { localStorage.setItem('brx.role', 'utility'); localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
+    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.setItem('brx.role', 'utility'); localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
     const box = await pg.evaluate(() => { const r = document.getElementById('exitHud').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
     await pg.mouse.move(box.x, box.y); await pg.mouse.down();
     await Promise.all([pg.waitForURL(/index\.html\?hud/, { timeout: 5000 }), pg.waitForTimeout(1400).then(() => pg.mouse.up())]);
@@ -377,7 +378,7 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} #68 A41: an MC release (control{cmd:release_utility}) does what BACK TO HUD does, even on a DEPLOYED station`, async () => {
     const pg = await b.newPage({ viewport: { width: 411, height: 891 } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
-    await pg.goto('http://127.0.0.1:4192/utility.html?stage'); await pg.evaluate(() => { try { localStorage.setItem('brx.role', 'utility'); localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
+    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.setItem('brx.role', 'utility'); localStorage.removeItem('brx.utility'); } catch {} }); await pg.reload(); await pg.waitForTimeout(1500);
     // Armed FIRST: the point of the release is that MC can reach a phone the plain HOLD TO EXIT no
     // longer shows (#66 already proves that hiding); the seven-tap gate is still the only PHYSICAL way in.
     await pg.evaluate(() => window.brxUtility.mcMessage('station_config', { kind: 'respawn', team: 'blue', id: 2 })); await pg.waitForTimeout(300);
@@ -434,7 +435,7 @@ for (const view of VIEWS) {
   const CP_VP = view.name === 'pixel' ? { width: 393, height: 830 } : { width: 360, height: 740 };
   const utilPage = async (at = [ON, FAR, FAR, FAR], mutate = null) => {
     const pg = await b.newPage({ viewport: CP_VP }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
-    await pg.goto('http://127.0.0.1:4192/utility.html?stage'); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); localStorage.removeItem('brx.station.control'); } catch {} }); await pg.reload();
+    await pg.goto(`http://127.0.0.1:${PORT}/utility.html?stage`); await pg.evaluate(() => { try { localStorage.removeItem('brx.utility'); localStorage.removeItem('brx.station.control'); } catch {} }); await pg.reload();
     await pg.waitForFunction(() => !!window.brxUtilityFake, null, { timeout: 8000 });
     await pinFakes(pg, at); if (mutate) await pg.evaluate(mutate);
     for (let i = 0; i < 7; i++) await pg.click('#info');
@@ -676,9 +677,9 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} #51 result: the tally is this MC session's games, not the phone's lifetime`, async () => {
     const pg = await b.newPage({ viewport: { width: view.width, height: view.height } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
-    await pg.goto('http://127.0.0.1:4192/?demo&stage=idle'); await pg.waitForTimeout(500);
+    await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=idle`); await pg.waitForTimeout(500);
     await pg.evaluate(() => localStorage.setItem('brx.history', JSON.stringify([{ session: 'A', kills: 3, deaths: 1 }, { session: 'A', kills: 2, deaths: 2 }, { session: 'B', kills: 9, deaths: 0 }, { kills: 5, deaths: 5 }])));
-    await pg.goto('http://127.0.0.1:4192/?demo&stage=result'); await pg.waitForTimeout(1200); await pg.evaluate(() => { window.brx.hud.sessionId = 'A'; }); await pg.waitForTimeout(3200);
+    await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=result`); await pg.waitForTimeout(1200); await pg.evaluate(() => { window.brx.hud.sessionId = 'A'; }); await pg.waitForTimeout(3200);
     const r = await pg.evaluate(() => ({ line: (document.querySelector('.result .sess') || {}).textContent || '', n: window.brx.hud.history.length }));
     await pg.evaluate(() => { window.brx.hud.sessionId = null; window.brx.engine.ackEnd(); }); await pg.waitForTimeout(300);
     const r2 = await pg.evaluate(() => { window.brx.hud.sessionId = null; return window.brx.hud.history.filter(g => g.session === 'A').length; });
