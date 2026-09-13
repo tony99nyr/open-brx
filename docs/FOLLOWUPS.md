@@ -6,8 +6,8 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D5 · E8 · F135 · G11 · H8 ·
-K7 · P19 · Q20 · R4 · S37.** (2026-09-12 pyright gate: F134 filed; F42.10 closed → archive, F42.14 filed.) (2026-09-12 evening: F129 closed → archive; F133 filed.) (2026-09-12 backhaul, PR #3: B30 and B31 taken.) (2026-09-12 doc-rot close: F131 F132, R3, S32-S36 taken; F42.2/F42.3 closed → archive.) (2026-09-12 M2 close: S20 S21 S22 S23 S24 S26 F127 closed → archive; F129 F130 new; S25 v1 shipped, ESPN pass open.) (2026-09-12 midday: S28 all-weapons retune, S29 shield recharge taken.) (2026-09-12 desk pass: F128, P18, S27 taken; F110 F115 F116 F117 F118 F119 F122 F124 F125 closed → archive.) (2026-09-11 night game test: F110-F127 and S20-S26 taken, see [`game-test-2026-09-11.md`](game-test-2026-09-11.md).) (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D5 · E8 · F136 · G11 · H8 ·
+K7 · P19 · Q20 · R4 · S37.** (2026-09-12 bug dossier: F135 filed, the B6 outdoor-range bench sweep.) (2026-09-12 pyright gate: F134 filed; F42.10 closed → archive, F42.14 filed.) (2026-09-12 evening: F129 closed → archive; F133 filed.) (2026-09-12 backhaul, PR #3: B30 and B31 taken.) (2026-09-12 doc-rot close: F131 F132, R3, S32-S36 taken; F42.2/F42.3 closed → archive.) (2026-09-12 M2 close: S20 S21 S22 S23 S24 S26 F127 closed → archive; F129 F130 new; S25 v1 shipped, ESPN pass open.) (2026-09-12 midday: S28 all-weapons retune, S29 shield recharge taken.) (2026-09-12 desk pass: F128, P18, S27 taken; F110 F115 F116 F117 F118 F119 F122 F124 F125 closed → archive.) (2026-09-11 night game test: F110-F127 and S20-S26 taken, see [`game-test-2026-09-11.md`](game-test-2026-09-11.md).) (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
 ids are retired, never reused.) (2026-09-10: F94/F95/F98 taken — the phone control point
 (`spec/utility.md` §5d), its LAN-coupled roaming variant (§5e) and Territories (§5f). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
 wider than the hill's period" generalisation, the double-`$HIR`-per-beacon dedupe finding (F85, closed same
@@ -52,7 +52,7 @@ right** and this index is stale. Do not cite it as evidence that something is or
 `hardware` — running order in [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md), next sheet
 [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md)):
 - 🔴 **B26** · **F49** · **K4** · **Q15** · **S10**
-- 🟠 **F13** · **F50** · **F58** · **F59** · **F71** · **P8** · **Q16** · **S9**
+- 🟠 **F13** · **F50** · **F58** · **F59** · **F71** · **F135** · **P8** · **Q16** · **S9**
 - 🟡 **B27** · **B28** · **B29** · **D1** · **F3** · **F21** · **F26** · **F27** · **F28** · **F30** · **F36** · **F62** · **F63** · **F66** · **F67** · **F74** · **F75** · **F76** · **F82** · **F88** · **G3** · **K1** · **P3** · **P15** · **Q18** · **S1** · **S2** · **S7** · **U11′**
 - 🟢 **B20** · **F29** · **F65** · **F87** · **F99** · **P4** · **P12** · **S4** · **S8**
 
@@ -508,6 +508,17 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   `space` (bench 2.1).
 - **Q16 🟠** beam divergence: on-axis then 10–50° off-axis at 3 m, 10 shots each, closing control. Sharp fall-off ⇒ skip
   the snoot, cut power (t41, then an aperture attenuator). Black plastic is IR-transparent at 980 nm; test any snoot. `space` (bench 2.4).
+- **F135 🟠 Needs Tony at the bench** no outdoor IR range: 2026-09-12 field session, Tony could not register a hit at
+  30-40 ft outside; point blank worked (`bug-dossier-2026-09-12.md` B6). MC ships `$WEAP` t41 (`gunRangeIndoor`) at
+  75 for every weapon regardless of venue (weapons.json `rng:75`; `compile.py` never raised it) — the outdoor flag
+  only changes `$VOL` and `$GSET` t2. **The opposite direction from Q15** (Q15 is indoor over-range/bounce; this is
+  under-range outdoors). ⚠️ Whether t41 changes emitted IR range AT ALL is UNTESTED
+  (`protocol/brx-protocol.md` ~L272) — do not ship a blind value off this row. **Bench procedure: see
+  `docs/experiment-log/2026-09.md`'s 2026-09-12 entry** — sweep `$WEAP` t41 across values at fixed distances,
+  separately toggle `$GSET` t2 as a control, record hit/no-hit. Compile-side plumbing
+  (`RANGE_ENV_OVERRIDE`/`gun_range_pct` in `mc/compile.py`) is staged as a NO-OP (outdoor == indoor == 75) behind
+  this id; flip the one "outdoor" value there once the sweep lands a confirmed number.
+  `space` (bench) + `trigger`.
 - **Q18 🟡** ✅ the print half closed 2026-09-11 (late, second session): `modes/driver.py` probes `$PHONE` and waits for the gun's `$BUT`
   before it prints, counts or re-arms a reconnect (`test_reconnect_is_not_declared_until_the_gun_answers_the_probe`). Still untested: can a gun absent at START join a running match? `build` + `space`.
 

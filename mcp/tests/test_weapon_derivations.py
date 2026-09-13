@@ -68,6 +68,35 @@ def test_the_frame_builder_does_not_lose_an_ammo_value():
     assert not bad, "\n  ".join(bad)
 
 
+def test_gun_range_pct_is_a_noop_pending_bench_confirmation():
+    """B6/F135 (2026-09-12 field session, `docs/experiment-log/2026-09.md`): Tony could not hit at
+    30-40 ft outside, point blank worked. `resolve()` writes t41 (range) through `gun_range_pct`, a
+    venue mapping staged for that fix — but whether t41 moves emitted IR range at all is UNTESTED
+    (protocol/brx-protocol.md ~L272), so today it MUST be a no-op: every venue ships the weapon's
+    own captured/catalog range, indoor == outdoor == the `weapons.json` `rng` value (75 stock, 20
+    melee). This pins that invariant and the fact that `RANGE_ENV_OVERRIDE` is the single line to
+    change once F135's bench sweep lands a confirmed value — do not hand-edit `resolve()` or
+    `weapons.json` `rng` to "fix" range before then."""
+    from brx_mcp.mc.compile import RANGE_ENV_OVERRIDE, gun_range_pct
+
+    assert RANGE_ENV_OVERRIDE == {"indoor": None, "outdoor": None}, (
+        "RANGE_ENV_OVERRIDE moved off its no-op default — this must only happen once F135 has a "
+        "bench-confirmed value, and the test above should be updated in the same commit")
+    for w in ROWS:
+        wid = w["weapon_id"]
+        no_venue = _tok(wid, "range")
+        indoor = CAT.resolve(wid, 0, environment="indoor").split(",")[WeaponCatalog._T["range"] + 1]
+        outdoor = CAT.resolve(wid, 0, environment="outdoor").split(",")[WeaponCatalog._T["range"] + 1]
+        assert no_venue == indoor == outdoor == str(w["rng"]), (
+            f"{wid}: t41 differs by venue ({no_venue!r}/{indoor!r}/{outdoor!r}) — B6's fix is not "
+            "supposed to land until F135 closes on the bench")
+    # The mapping function itself, independent of any weapon: every venue is `base_rng` unchanged.
+    for base in (20, 75, 100):
+        assert gun_range_pct(base, None) == base
+        assert gun_range_pct(base, "indoor") == base
+        assert gun_range_pct(base, "outdoor") == base
+
+
 def test_every_weapon_has_a_derivable_damage_and_cycle():
     """A weapon with no t5 or no t14 silently disables every check above — catch it directly."""
     for w in ROWS:

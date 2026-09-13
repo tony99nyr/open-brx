@@ -58,6 +58,28 @@ VOL_TRYOUT = 69                    # a try-out is fired at ARM'S LENGTH from the
                                    # so it keeps the quieter Callsign value (review 2026-08-31).
                                    # The field complaint was about hearing a game across a field.
 
+# venue -> $WEAP t41 (gunRange%, APK `gunRangeIndoor`). B6 (2026-09-12 field session): Tony could
+# not register a hit at 30-40 ft outside; point blank worked. MC ships t41 at the weapon's own
+# captured/catalog value (75 stock, 20 melee) for EVERY venue -- outdoor never raises it.
+# ⚠️ Whether t41 changes emitted IR range AT ALL IS UNTESTED (protocol/brx-protocol.md ~L272).
+# This mapping is the STAGED, NO-OP plumbing for that fix, not the fix: until the bench sweep in
+# FOLLOWUPS F135 lands a confirmed value, "outdoor" maps to `None`, meaning "use the weapon's own
+# range, unchanged" -- identical to "indoor". When F135 closes, change ONLY the "outdoor" value
+# below (and update `test_gun_range_pct_is_a_noop_pending_bench_confirmation` in
+# `mcp/tests/test_weapon_derivations.py` alongside it).
+RANGE_ENV_OVERRIDE: dict[str, int | None] = {"indoor": None, "outdoor": None}
+
+
+def gun_range_pct(base_rng: int, environment: str | None) -> int:
+    """$WEAP t41 (gunRange%) for one weapon at one venue.
+
+    NO-OP today (FOLLOWUPS F135): every venue resolves to `base_rng` -- the weapon's own
+    captured/catalog range (weapons.json `rng`) -- so outdoor ships the exact same token 41 as
+    indoor. `RANGE_ENV_OVERRIDE` is the single point to change once the bench confirms both that
+    t41 moves emitted range and what value reaches 30-40 ft outdoors."""
+    override = RANGE_ENV_OVERRIDE.get((environment or "").strip().lower())
+    return base_rng if override is None else override
+
 
 # The health pool every published weapon stat is quoted against: 45 HP + 70 armour, the GameConfig
 # default. It is a DEFAULT, not a constant of the game — MC lets the host change `health`, and
@@ -645,7 +667,8 @@ class WeaponCatalog:
             reserve = (reserve // 2) * 2
         return mag, reserve, reload_ms
 
-    def resolve(self, weapon_id: str, slot: int, mods: dict | None = None) -> str:
+    def resolve(self, weapon_id: str, slot: int, mods: dict | None = None,
+                environment: str | None = None) -> str:
         """`$WEAP` frame for a slot, built from the weapon's OWN captured Callsign frame.
 
         Every weapon carries `capture.frame` — the real frame Battle Company sent for that gun, pulled
@@ -653,8 +676,13 @@ class WeaponCatalog:
         native behaviour we cannot synthesise from a template: the 3-round burst (tok23), bolt/single
         shot, charge, overheat (tok24/35), the per-weapon reload chain, damage type (tok3), reload type
         (tok19) and muzzle flash (tok25/26). On top of that we write ONLY the balance tokens — damage,
-        fire interval, and the ammo/reload trio — preserving the two invariants every captured frame
-        obeys: `tok39 == tok16` (clip start == max clip) and `tok17 == 2 * tok40`.
+        fire interval, the ammo/reload trio, and t41 (range, via `gun_range_pct` — a NO-OP today,
+        F135) — preserving the two invariants every captured frame obeys: `tok39 == tok16` (clip
+        start == max clip) and `tok17 == 2 * tok40`.
+
+        `environment` ("indoor"/"outdoor"/None) only reaches `gun_range_pct`; omitting it (every
+        caller that just wants a weapon's stats, not a shipped frame) is identical to "indoor" —
+        both are a no-op today.
 
         A weapon may additionally declare `overrides` — an explicit, per-token escape hatch for bench
         findings that contradict a stock value (see `_override_index`). Each entry must name a
@@ -688,6 +716,7 @@ class WeaponCatalog:
         put("reserve", reserve); put("reserve_half", reserve // 2)   # tok17 == 2 * tok40 (`_ammo` keeps it even)
         put("reload", reload_ms)
         put("swap", self.swap_ms(weapon_id, mods))
+        put("range", gun_range_pct(int(p[T["range"] + 1] or 0), environment))   # F135: no-op today
         for key, ov in (w.get("overrides") or {}).items():
             idx = self._override_index(weapon_id, key, ov)   # validates before we touch the frame
             p[idx + 1] = str(ov["value"])
@@ -1069,12 +1098,13 @@ class Compiler:
         if plan is None:
             plan = self.hit_plan([player], rekey=False)
         # head — config, per player, SILENT (no $SPAWN, no $PLAY,VA81); ends with $TID (§1.1)
-        head = [f"$VOL,{play_volume(config.get('environment'))},0,*", "$CLEAR,*", "$START,*",
+        env = config.get("environment")
+        head = [f"$VOL,{play_volume(env)},0,*", "$CLEAR,*", "$START,*",
                 gc._gset(), gc._pset(pnum, player.get("voice"), voice_slots),   # the voice pack is per-PLAYER (§PSET); A15 slot picks / A15.1 rolls
-                self._rekey(self.catalog.resolve(w0, 0, mods), plan.cell_for(w0))]
+                self._rekey(self.catalog.resolve(w0, 0, mods, environment=env), plan.cell_for(w0))]
         if w1:
-            head.append(self._rekey(self.catalog.resolve(w1, 1, swap_mods), plan.cell_for(w1)))   # slot 1 only when a secondary exists (A10)
-        head.append(self._rekey(self.catalog.resolve("melee", 4, swap_mods), plan.cell_for("melee")))
+            head.append(self._rekey(self.catalog.resolve(w1, 1, swap_mods, environment=env), plan.cell_for(w1)))   # slot 1 only when a secondary exists (A10)
+        head.append(self._rekey(self.catalog.resolve("melee", 4, swap_mods, environment=env), plan.cell_for("melee")))
         bmap = list(gc._bmap())
         if not w1 and not gc.alt_reload:
             # Empty slot 2 (A10 §2): the stock ALT row cycles to slot 1, which we no longer load — an UNVERIFIED
@@ -1302,7 +1332,7 @@ class Compiler:
             pset,
             "$SIR,0,0,,1,0,0,1,,*",                # standard-weapon IR interpretation so a try-out shot registers
             "$TID,1,*",                            # a team is needed to spawn-to-live (identity stays 0 → uncredited)
-            self.catalog.resolve(wid, 0),          # the one weapon, slot 0
+            self.catalog.resolve(wid, 0, environment=environment),   # the one weapon, slot 0
             "$SPAWN,,*", "$PLAYX,0,*",              # live, then silence the spawn chirp
             f"$AMMO,0,{mag},{reserve},1,*",
             "$BMAP,0,0,,,,,*",
