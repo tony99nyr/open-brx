@@ -46,7 +46,8 @@ function publish(v: Env | null) {
   subs.forEach(fn => fn(v));
 }
 
-/** Tests, and the "NEW MATCH" reset path: forget the dismissal. */
+/** Forget the dismissal. Used by the tests today; the hook a "NEW MATCH" reset would call if the
+ *  reminder ever needs to re-arm for something other than a venue change. */
 export function resetVenueModeDismissal() { publish(null); }
 
 export function VenueModeReminder({ style }: { style?: React.CSSProperties }) {

@@ -519,7 +519,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   (`"off"` → the head stays byte-identical; `GSET_T3_BY_ENV` / `IRTX_BY_ENV` hold the values), pinned by
   `mcp/tests/test_venue_mode.py`. ⚠️ `$IRTX` has TWO field lists and the 4-field one is wrong (it already emitted
   zero IR) — read the `$IRTX` row in `protocol/brx-protocol.md` before sending it. Until a run lands, the operator
-  does it by hand: MC shows "SET EACH GUN TO &lt;VENUE&gt; (HOLD ALT 3 S)" on GAMES and KIT (`ui/VenueModeReminder`).
+  does it by hand: MC shows "SET EACH GUN TO INDOOR/OUTDOOR (HOLD ALT 3 S)" on GAMES and KIT (`ui/VenueModeReminder`).
   `space` (bench) + `trigger`.
 - **Q18 🟡** ✅ the print half closed 2026-09-11 (late, second session): `modes/driver.py` probes `$PHONE` and waits for the gun's `$BUT`
   before it prints, counts or re-arms a reconnect (`test_reconnect_is_not_declared_until_the_gun_answers_the_probe`). Still untested: can a gun absent at START join a running match? `build` + `space`.
