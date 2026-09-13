@@ -14,6 +14,7 @@ The fix: an edit while `lobby_pushed` in KIT/LOBBY AUTO re-pushes fresh frames t
 keeps `lobby_pushed` True (acks reset + re-collected). A team change while armed/live is REFUSED.
 FFA must stay green throughout.
 """
+from brx_mcp.mc.fakes import demo_armory
 from test_mc_block_b import go_live, mk, online
 
 from brx_mcp.mc.state import ConflictError
@@ -186,3 +187,63 @@ def test_a_policy_edit_pushes_each_gun_exactly_one_fresh_config():
     assert s.lobby_pushed is True and s.acks == {}
     head = _head_to(net, "node0")
     assert any("<sniper_rifle>" in f for f in head), ("the one push must carry the NEW ruleset", head)
+
+
+# ---------------------------------------------------------------------------------------------
+# Round-2 fix pass H + J (2026-09-12)
+# ---------------------------------------------------------------------------------------------
+def test_h_a_player_with_no_node_bound_is_recompiled_by_the_repush_too():
+    """H: `_repush_lobby_config` recompiled only `if p.get("node_id")`, but `_push_config_to` (which
+    `push_config` runs for EVERY player) writes `self.bundles[pid]` BEFORE it looks for a socket.
+
+    So a player unbound at edit time -- phone not up yet, or cleared by `evict_node`, which drops
+    `node_id` and the ack but KEEPS the bundle -- kept the PRE-EDIT bundle. On their next hello
+    `_hydrate` finds the id already in `bundles` and the welcome ships the NEW `config_id` beside the
+    OLD frames: `engine.js` `startAt` passes (it holds the new id) and the gun arms on the stale
+    $TID/$GSET, while the board reads pushed. The edit must recompile EVERY player's bundle, exactly
+    as a full push does; only the SENDING is conditional on having a socket."""
+    s, net, clock, ps = _push_lobby(2, "tdm")
+    pid = ps[1]["player_id"]
+    stale_head = list(s.bundles[pid]["head"])
+    assert YELLOW in stale_head, stale_head                     # control: player 1 starts on yellow
+    s.evict_node("node1")                                       # the phone goes away, the bundle stays
+    assert s.players[pid].get("node_id") is None
+
+    s.patch_player(pid, team_id="blue")                         # the edit lands while they are unbound
+    s.patch_player(ps[0]["player_id"], team_id="yellow")        # ...and somebody has to hold the other side
+    fresh = s.bundles[pid]["head"]
+    assert BLUE in fresh, f"the unbound player kept a STALE head: {fresh}"
+    assert YELLOW not in fresh, fresh
+
+    # and the welcome that phone gets on its next hello carries those same fresh frames
+    tail = demo_armory()[1]["ble"]["tail"]
+    node = net.simulate_hello("node1-again", f"GUN-B-{tail}")
+    assert node and node["player"]["player_id"] == pid
+    assert node["frames"]["head"] == fresh, node["frames"]["head"]
+    assert node["config"]["config_id"] == s.config["config_id"]
+
+
+def test_j_a_repush_re_arms_every_assigned_station():
+    """J: `push_config` calls `arm_stations()` (A13.5) and `_repush_lobby_config` did not, so a team or
+    `station_source` edit left an assigned station holding the PRE-EDIT allow-list."""
+    s, net, clock, ps = _push_lobby(2, "tdm")
+    net.simulate_utility_hello("st1")
+    s.set_station("st1", {"kind": "respawn", "team": "blue", "id": 3})
+    before = len(net.pushes("station_config", node_id="st1"))
+    assert before >= 1, "control: the station was armed once when it was assigned"
+    s.set_config({"health": {"max_hp": 33}})
+    after = len(net.pushes("station_config", node_id="st1"))
+    assert after > before, f"the re-push never re-armed the station ({before} -> {after})"
+
+
+def test_h_the_lobby_repush_recompiles_an_unbound_players_bundle_too():
+    """The same defect on `_repush_lobby_config`'s own path (a CONFIG edit, not a player edit): it
+    looped `if p.get("node_id")` while `push_config` loops over the whole roster, because
+    `_push_config_to` stores the bundle before it looks for a socket."""
+    s, net, clock, ps = _push_lobby(2, "tdm")
+    pid = ps[1]["player_id"]
+    s.evict_node("node1")
+    assert s.players[pid].get("node_id") is None
+    s.set_config({"health": {"max_hp": 25}})
+    head = s.bundles[pid]["head"]
+    assert any(f.startswith("$PSET,") and ",25," in f for f in head), head

@@ -1289,6 +1289,13 @@ class Session:
         has NOT taken the config still gets it, plus the same `start`: that is the hot join (E5, see
         `_took_this_config`). Pinned by `tests/test_mc_loadout_after_start.py`."""
         if not p.get("node_id"):
+            # Round-2 fix pass H (2026-09-12): there is no socket to push to, but `self.bundles[pid]` is
+            # what a RECONNECTING phone is handed (`_hydrate` ships the stored frames beside the current
+            # `config_id`), so leaving it on the pre-edit compile is the same stale-head defect
+            # `_repush_lobby_config` had. Recompile, never send. Not in armed/live: the kit is locked
+            # there (A30) and `_push_config_to` refuses for the same reason.
+            if self.lobby_pushed and not self._repush_pending and self.phase not in ("armed", "live"):
+                self.bundles[p["player_id"]] = self._compile_rolled(p)
             return
         self.net.push(p["node_id"], "assign", self._assign_body(p))
         # `_repush_pending`: a `set_config` edit is about to re-push the WHOLE roster from
@@ -1451,9 +1458,19 @@ class Session:
         disarmed head behind the operator's back (`_refuse_push_in_play` / `_push_config_to`)."""
         self._pinned_hit_plan = None
         self.acks = {}
+        # Round-2 fix pass H (2026-09-12): EVERY player, not just the bound ones. `_push_config_to`
+        # writes `self.bundles[pid]` before it looks for a socket, which is exactly why `push_config`
+        # loops over the whole roster -- an unbound player (phone not up yet, or cleared by
+        # `evict_node`, which drops `node_id` and the ack but KEEPS the bundle) used to be skipped here
+        # and kept the PRE-EDIT frames. Their next hello then found the id already in `bundles`
+        # (`_hydrate`), so the welcome shipped the NEW `config_id` beside the OLD frames: `engine.js`
+        # `startAt` passes on the id it holds and the gun arms on the stale $TID/$GSET, while the board
+        # reads pushed. Compiling for all and SENDING only to those with a socket is the invariant.
         for p in self.players.values():
-            if p.get("node_id"):
-                self._push_config_to(p)
+            self._push_config_to(p)
+        # Round-2 fix pass J: the same A13.5 re-arm `push_config` does. Without it a team or
+        # `station_source` edit left every assigned station on the PRE-EDIT allow-list.
+        self.arm_stations()
         self.lobby_pushed = True
 
     def sanitize_config(self, raw: dict) -> GameConfig:
