@@ -152,6 +152,9 @@ INVENTORY_FIELDS = ("serial_head_pin", "gun_name", "gun_version", "headset_versi
 
 
 def inventory_path() -> Path:
+    # NOT home_dir(): `test_usbconsole` monkeypatches `storage.BASE_DIR` by NAME, so calling
+    # home_dir() here reads the real home and un-isolates those tests. Converting this file
+    # means converting them with it.
     from .storage import BASE_DIR
     return BASE_DIR / "armory.json"
 
@@ -267,6 +270,9 @@ def mark_rename(new_name: str, serial: Optional[str] = None,
 
 
 def backup_dir() -> Path:
+    # NOT home_dir(): `test_usbconsole` monkeypatches `storage.BASE_DIR` by NAME, so calling
+    # home_dir() here reads the real home and un-isolates those tests. Converting this file
+    # means converting them with it.
     from .storage import BASE_DIR
     d = BASE_DIR / "device-backups"
     d.mkdir(parents=True, exist_ok=True)

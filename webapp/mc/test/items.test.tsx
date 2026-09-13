@@ -237,14 +237,65 @@ describe('ITEMS — the ASSIGN + ARM / CLEAR buttons a person actually presses',
 
   // A41 (field 2026-09-12): a phone stuck in utility mode had no MC-side cure at all -- the server half
   // is `mcp/tests/test_mc_stations.py`; this is the button an operator actually presses.
-  it('RELEASE ▸ HUD calls releaseStation for that node and reports SENT once it lands', async () => {
+  //
+  // Review finding 2026-09-13: RELEASE used to fire on a single tap, styled identically to CLEAR right
+  // beside it -- but RELEASE moves the phone off the page holding its own socket, in ANY phase
+  // including LIVE, and nothing on this console can reach it again once it lands (the fix is walking
+  // to the tagger and doing the seven-tap gesture). CLEAR only drops the assignment and is fully
+  // recoverable from here. These three tests are the ones that would have caught the bug: the first
+  // FAILS outright against the old single-tap code (it asserts zero calls after one tap, where the old
+  // code made exactly one), and the second checks the confirm actually names what tapping again does,
+  // not just "are you sure".
+  it('one tap on RELEASE ▸ HUD sends nothing — it only raises the confirm', async () => {
+    const { m, api } = await muster();
+    const sent: string[] = [];
+    api.releaseStation = (async (node_id: string) => { sent.push(node_id); return { ok: true }; }) as Api['releaseStation'];
+    await m.click('RELEASE ▸ HUD');   // util-a1b2c3 (seeded ONLINE) is the first card in DOM order
+    expect(sent, 'a single tap must never move the phone off this page — that is the whole bug').toEqual([]);
+    m.unmount();
+  });
+
+  it('the RELEASE confirm names the actual consequence, not just "are you sure"', async () => {
+    const { m } = await muster();
+    await m.click('RELEASE ▸ HUD');
+    const confirm = m.find('[data-testid="confirm-switch"]');
+    expect(confirm.length, 'the tap-again confirm must appear').toBe(1);
+    // the field consequence (blast radius), not a generic warning
+    expect(confirm[0].textContent).toMatch(/EVEN LIVE/);
+    expect(confirm[0].textContent).toMatch(/NOTHING ON THIS CONSOLE CAN REACH IT AGAIN/);
+    expect(confirm[0].textContent).toMatch(/SEVEN-TAP GESTURE/);
+    // and it says what the SECOND tap does, so tapping the same button again is not a guess
+    expect(confirm[0].textContent).toMatch(/TAP RELEASE ▸ HUD AGAIN/);
+    m.unmount();
+  });
+
+  it('tapping RELEASE ▸ HUD again (the confirm) calls releaseStation and reports SENT once it lands', async () => {
     const { m, api } = await muster();
     const sent: string[] = [];
     const orig = api.releaseStation.bind(api);
     api.releaseStation = (async (node_id: string) => { sent.push(node_id); return orig(node_id); }) as Api['releaseStation'];
-    await m.click('RELEASE ▸ HUD');   // util-a1b2c3 (seeded ONLINE) is the first card in DOM order
+    await m.click('RELEASE ▸ HUD');   // 1st tap: confirm only
+    expect(sent).toEqual([]);
+    await m.click('RELEASE ▸ HUD');   // 2nd tap, same button: actually sends it
     expect(sent).toEqual(['util-a1b2c3']);
     expect(m.find('[data-testid="items-panel"]')[0].textContent).toMatch(/SENT/);
+    // and the confirm is gone again — it does not linger once acted on
+    expect(m.find('[data-testid="confirm-switch"]').length).toBe(0);
+    m.unmount();
+  });
+
+  it('CANCEL backs out of the RELEASE confirm without ever calling the api', async () => {
+    const { m, api } = await muster();
+    const sent: string[] = [];
+    api.releaseStation = (async (node_id: string) => { sent.push(node_id); return { ok: true }; }) as Api['releaseStation'];
+    await m.click('RELEASE ▸ HUD');
+    expect(m.find('[data-testid="confirm-switch"]').length).toBe(1);
+    await m.click('CANCEL');
+    expect(m.find('[data-testid="confirm-switch"]').length, 'CANCEL must drop the confirm').toBe(0);
+    expect(sent, 'CANCEL must never send the phone away').toEqual([]);
+    // and RELEASE ▸ HUD is back to its first-tap state, not stuck mid-confirm
+    await m.click('RELEASE ▸ HUD');
+    expect(sent).toEqual([]);
     m.unmount();
   });
 

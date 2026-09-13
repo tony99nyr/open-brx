@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { pushGate } from '../api/derive';
 import type { GameConfig, LoadoutPolicy, SlotRule, WeaponView } from '../api/types';
 import { useStore } from '../store';
 import { F, T, roleOf } from '../tokens';
@@ -61,18 +62,29 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone }:
   const pol = polOf(shown);
   const locked = !EDITABLE.has(state.phase);
   const pushed = state.lobby.pushed;
-  const acked = Object.values(state.lobby.acks).filter(a => a.ok).length;
-  const total = state.players.length;
+  // A36/pushGate, not a second `a.ok` count kept here: an ack with no test against `config.config_id`
+  // reads CONFIRMED for a gun that answered the PREVIOUS config, and did so on KIT and LOBBY the day
+  // `pushGate` was written to stop exactly that -- but this panel had grown its own count and never
+  // heard about it, so a late stale ack read CONFIRMED here and UNCONFIRMED everywhere else.
+  const gate = pushGate(state);
+  const acked = gate.acked;
+  const total = gate.total;
   const open = draft !== null;
 
   /** The config a patch is measured AGAINST. A mode switch rebuilds the whole config from that mode's
    *  defaults server-side (`state.py set_config`), so once the draft has changed mode, "did the
    *  operator change the health" is a question about the NEW mode's defaults, not the old game's --
    *  otherwise the patch would carry the previous mode's numbers and pin them. */
-  const baseFor = (d: GameConfig): GameConfig => {
+  const baseFor = (d: GameConfig): GameConfig | null => {
     if (d.mode === cfg.mode) return cfg;
     const def = modes.find(m => m.mode === d.mode)?.defaults;
-    return def ? ({ ...clone(def), environment: cfg.environment, night: cfg.night } as GameConfig) : cfg;
+    // `null`, never `cfg`, when the new mode's defaults cannot be found (a `modes` catalog that is
+    // empty or missing this entry -- an older/partial fetch). `cfg` still carries the OLD mode's
+    // health/policy, and comparing the draft against it either drops a real edit that happens to
+    // coincide with the old value, or -- the actual bug -- PINS the old mode's numbers into the patch
+    // as if the operator had deliberately chosen them. `patchOf` below reads `null` as "no baseline to
+    // diff against" and sends the draft's own values outright instead.
+    return def ? ({ ...clone(def), environment: cfg.environment, night: cfg.night } as GameConfig) : null;
   };
   /** ONE patch, carrying exactly what the operator changed — never the whole config (which would
    *  re-assert this mode's every default over anything another screen touched meanwhile). */
@@ -81,8 +93,11 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone }:
     const p: Partial<GameConfig> = {};
     if (d.mode !== cfg.mode) p.mode = d.mode;
     if (d.night !== cfg.night) p.night = d.night;
-    if (JSON.stringify(d.health) !== JSON.stringify(b.health)) p.health = d.health;
-    if (JSON.stringify(d.loadout_policy) !== JSON.stringify(b.loadout_policy)) p.loadout_policy = d.loadout_policy;
+    // `!b` (no known baseline for the new mode) always sends health/policy rather than silently
+    // omitting or mis-comparing them -- see `baseFor`. Sent-but-unnecessary is harmless (it repeats a
+    // value the server's own mode rebuild would have chosen anyway); pinned-but-wrong is not.
+    if (!b || JSON.stringify(d.health) !== JSON.stringify(b.health)) p.health = d.health;
+    if (!b || JSON.stringify(d.loadout_policy) !== JSON.stringify(b.loadout_policy)) p.loadout_policy = d.loadout_policy;
     return p;
   };
   const patch = draft ? patchOf(draft) : {};
@@ -92,7 +107,10 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone }:
    *  question belongs to the tap that actually moves people, and that tap is SAVE AND LOAD. */
   const split = draft ? splitLine(state.players, cfg.teams, draft.teams) : '';
 
-  const edit = (fn: (d: GameConfig) => GameConfig) => { setConfirmSave(false); setDraft(d => (d ? fn(d) : d)); };
+  // Clears BOTH confirms, not just SAVE's: an operator who tapped CANCEL once (declining to discard),
+  // then kept editing, has a fresh draft the OLD "TAP CANCEL AGAIN TO DISCARD" would still be primed
+  // for -- one more CANCEL would throw away work it never asked about a second time.
+  const edit = (fn: (d: GameConfig) => GameConfig) => { setConfirmSave(false); setConfirmCancel(false); setDraft(d => (d ? fn(d) : d)); };
   const editPolicy = (p: Partial<LoadoutPolicy>) => edit(d => ({ ...d, loadout_policy: { ...polOf(d), ...p } }));
   const editSlot = (slot: Slot, r: Partial<SlotRule>) => editPolicy({ [slot]: { ...pol[slot], ...r } });
   const pickMode = (v: string) => {

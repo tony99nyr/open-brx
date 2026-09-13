@@ -2,11 +2,23 @@
 
 Everything lives under ~/.brx-mcp/ on whichever machine runs the server
 (on Windows that is C:\\Users\\<you>\\.brx-mcp) -- unless `BRX_MCP_HOME` is
-set, in which case that directory is used instead. A test run (mcp/run_tests.py,
-every e2e boot, the app's fake-game e2e runner) sets `BRX_MCP_HOME` to a throwaway
-directory so it never mixes its output into the operator's real ~/.brx-mcp, which is
-field evidence (F151-class finding, 2026-09-13: hundreds of test session-*.sqlite
-files had to be sifted from the real ones by hand after a field night).
+set, in which case that directory is used instead. The operator's real ~/.brx-mcp
+is field evidence (F151-class finding, 2026-09-13: hundreds of test session-*.sqlite
+files had to be sifted from the real ones by hand after a field night), so a test run
+must never write into it.
+
+TWO MECHANISMS KEEP IT OUT, and it is worth being exact about which covers what -- this
+docstring used to claim that "every e2e boot" set `BRX_MCP_HOME`, and NONE of them did:
+
+  * `BRX_MCP_HOME` is set by `mcp/run_tests.py` (before its first import, so every test
+    and every subprocess inherits it) and by the Mission Control e2e boot in
+    `webapp/mc/test/e2e/koth.mjs`. Those two, and no others.
+  * everything else that boots MC for a test relies on `--demo` / `--ephemeral`, which
+    fall back to a throwaway tempdir for the session store, the presets shelf and the
+    tunnel pidfile (`mc/__main__.py`) whether or not the env var is set.
+
+A harness that is in neither group writes to the real home, by design and by default:
+that is what a bench run IS.
 """
 
 from __future__ import annotations
@@ -26,6 +38,17 @@ def home_dir() -> Path:
     return Path(override) if override else Path.home() / ".brx-mcp"
 
 
+# ⚠ LEGACY, and the one thing in this module that does NOT follow the rule above: these three are
+# resolved ONCE, at import, so a `BRX_MCP_HOME` set afterwards does not move them. They are kept because
+# the bench modules that use them (`usbconsole.py`, the CLI's diag reports, `mc/presets.py`) are
+# monkeypatched by name in `tests/test_usbconsole.py` and `tests/test_rename_flow.py` -- patching
+# `storage.BASE_DIR` is how those tests get an isolated tree, and that only works while the value is a
+# module attribute read at call time.
+#
+# NEW CODE CALLS `home_dir()`, at the point of use. Anything that captures the path at import is a
+# second rule in a module that has one, and it silently ignores an env var set later -- exactly how
+# `mc/api.py`, `mc/tunnel.py` and `stage/stage.py` (which hardcoded `Path.home() / ".brx-mcp"`, worse
+# still) kept writing into the real home after the isolation landed.
 BASE_DIR = home_dir()
 CAPTURES_DIR = BASE_DIR / "captures"
 REGISTRY_PATH = BASE_DIR / "known-devices.json"

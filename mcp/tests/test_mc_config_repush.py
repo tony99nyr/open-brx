@@ -247,3 +247,42 @@ def test_h_the_lobby_repush_recompiles_an_unbound_players_bundle_too():
     s.set_config({"health": {"max_hp": 25}})
     head = s.bundles[pid]["head"]
     assert any(f.startswith("$PSET,") and ",25," in f for f in head), head
+
+
+# ---------------------------------------------------------------------------------------------
+# A per-player recompile after the push MINTS A FRESH `config_id` (2026-09-13)
+# ---------------------------------------------------------------------------------------------
+def test_an_ack_in_flight_across_a_per_player_recompile_is_not_counted():
+    """F6's defect, reached through the per-player door instead of the operator's.
+
+    `push_config`'s re-push mints a fresh `config_id` precisely so the re-push can be PROVEN. A
+    loadout pick or a re-team after the lobby push recompiled ONE player's bundle and popped their
+    ack -- and minted nothing. So the ack that gun had already put on the wire for the head this
+    recompile replaced landed a moment later carrying the SAME id, satisfied `_ack_is_current`, and
+    the board certified the gun as holding the new team while it was still running the old one. A36
+    exists to catch exactly that; this is it wearing the other hat."""
+    s, net, clock, ps = _push_lobby(2, "tdm")
+    pid = ps[1]["player_id"]
+    old_id = s.config["config_id"]
+    assert s._ack_is_current(pid), "control: the gun answered for the head it was pushed"
+    n0_before = len(net.pushes("config", node_id="node0"))
+
+    s.patch_player(pid, team_id="blue")                       # the re-team: ONE player recompiled
+    s.patch_player(ps[0]["player_id"], team_id="yellow")      # ...and somebody holds the other side
+    assert s.config["config_id"] != old_id, "a fresh head is unprovable without a fresh config_id"
+
+    # the mint is only safe because it reaches EVERY gun: a new id with a stale roster behind it is
+    # `_refuse_stale_ack` blocking the whistle on guns nobody ever re-pushed.
+    assert len(net.pushes("config", node_id="node0")) > n0_before, "the untouched player was stranded"
+    assert s.sync_summary()["totals"]["gun_sent"] == 2, "every gun must be compiled for the NEW head"
+
+    # ...and now the ack the gun had already sent for the PREVIOUS head arrives.
+    net.simulate_node_message("node1", "ack_config",
+                              {"config_id": old_id, "ok": True, "gun_echo": "$LCD"}, clock["t"])
+    assert s._ack_is_current(pid) is False, "an ack for the head we just replaced proves nothing"
+    assert s.sync_summary()["totals"]["gun_acked"] == 0
+    try:
+        s.start()
+        raise AssertionError("start() certified a gun that never answered the head it holds")
+    except ValueError as e:
+        assert old_id in str(e), f"the refusal must name the OLDER head the gun answered: {e}"

@@ -126,7 +126,11 @@ class Tunnel:
         # resolved again by the OS at exec time, against whatever PATH we inherited.
         self._resolved = self._which(self.binary)
         self.available = bool(self._resolved)
-        self._pid_dir = pid_dir if pid_dir is not None else (pathlib.Path.home() / ".brx-mcp")
+        # `home_dir()` (storage.py), not a hardcoded `~/.brx-mcp`: the pidfile is persisted state like the
+        # session store beside it, so `BRX_MCP_HOME` has to move it too -- a test that constructed a
+        # Tunnel without passing `pid_dir` wrote into the operator's real home.
+        from ..storage import home_dir
+        self._pid_dir = pid_dir if pid_dir is not None else home_dir()
         self._pid_owned = False
         self._orphan_pid: int | None = None   # an orphan we could not kill; keeps `armed` True
         self._listeners: list[Callable[[dict], None]] = []

@@ -346,9 +346,22 @@ function render() {
   const armed = settings.mcArmed;
   $('armed').textContent = armed ? `MC-ARMED · GAME ${armed.game || 0}` : 'NOT ARMED BY MISSION CONTROL';
   $('armed').className = 'armed ' + (armed ? 'on' : '');
-  // A41: the plain exit is for a phone NOBODY has claimed as a field item yet -- the moment MC arms one
-  // (`applyStationConfig`), it is a deployed station and drops back behind the seven-tap gate.
-  if ($('exitHud')) $('exitHud').hidden = !!armed;
+  // A41 / field-safety fix (2026-09-13): the plain exit is for a phone NOBODY has claimed as a field
+  // item yet. MC-arming is not the only way that happens -- the seven-tap gate's own drawer has a
+  // START button (`btnStart`), and the station warnings promise exactly that: a station can be armed
+  // BY HAND, behind the seven-tap gate, with no Mission Control involved at all. `!!armed` alone missed
+  // that path entirely, so a hand-armed station -- a live control point, respawn station, whatever kind
+  // -- kept a one-second-hold exit sitting in the open on its main screen. `wireExit()`'s hold handler
+  // checks nothing but this element's `hidden`, so that hold was the ONLY guard standing between a
+  // stray press and pulling a live objective off the field mid-match. `advertising` is true exactly
+  // when this phone is actually broadcasting itself as a field item, by either arming path (MC or
+  // hand), so gate on that instead of re-deriving "hand-armed" separately. A phone that is merely
+  // configured but not yet started (drawer open, START not pressed) is inert -- nothing is on the air
+  // for a player to have found -- so it correctly keeps the quick exit. The deliberate way back out for
+  // a genuinely live station stays: the seven-tap gate -> drawer -> BACK TO HUD (`btnHud`, unconditional
+  // once you're behind the gate) for the operator standing at the phone, and MC's
+  // `control{cmd:"release_utility"}` (`exitToHud` via `onMessage`, above) for one that isn't reachable.
+  if ($('exitHud')) $('exitHud').hidden = !!armed || advertising;
   // S5(d): the allow-list this phone was armed with -- the operator's own confirmation that MC's ITEMS
   // panel and this phone's advert agree on which ids are live in this game.
   const idsEl = $('ids');

@@ -620,8 +620,11 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
                                  "(or `npm run dev` and open http://localhost:5173). API: /api/state")
 
     def _range_path():
-        from pathlib import Path as _P
-        return _P.home() / ".brx-mcp" / "weapon-verdicts.jsonl"
+        # `home_dir()`, not `Path.home() / ".brx-mcp"`: the bench log belongs wherever this MC persists
+        # everything else, which `BRX_MCP_HOME` moves for a test run (storage.py). Hardcoding the real
+        # dotfile path here meant a suite that posted a verdict wrote into the operator's field evidence.
+        from ..storage import home_dir
+        return home_dir() / "weapon-verdicts.jsonl"
 
     # A bench day appends one line per try-out and never prunes; the GET re-read and re-parsed the
     # whole file on every KIT mount. Only the LAST verdict per weapon is ever shown, so read the tail
@@ -681,9 +684,9 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
 
     async def apk(_):
         """The companion APK, served from a stable path (webapp rebuilds wipe dist copies)."""
-        from pathlib import Path as _P
         from starlette.responses import FileResponse
-        for cand in (_P.home() / ".brx-mcp" / "openbrx-node-debug.apk", UI_DIST / "openbrx.apk"):
+        from ..storage import home_dir          # the staged APK lives wherever this MC persists things
+        for cand in (home_dir() / "openbrx-node-debug.apk", UI_DIST / "openbrx.apk"):
             if cand.exists():
                 return FileResponse(str(cand), media_type="application/vnd.android.package-archive", filename="openbrx.apk")
         return JSONResponse({"error": "no apk staged"}, status_code=404)

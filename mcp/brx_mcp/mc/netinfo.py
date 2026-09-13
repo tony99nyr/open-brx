@@ -155,7 +155,7 @@ WSL_UNREACHABLE_WARNING = (
 )
 
 
-def wsl_lan_warning(*, advertise_overridden: bool) -> str | None:
+def wsl_lan_warning(*, advertise_overridden: bool, public_url: bool = False) -> str | None:
     """An INFERENCE layered on top of the `is_wsl()` DETECTION above: this process can tell it is
     running inside WSL for certain, but it has no phone to ask and no reliable, non-fatal way to learn
     from inside the VM whether the address `_lan_ip()` found is actually reachable from outside the
@@ -165,19 +165,27 @@ def wsl_lan_warning(*, advertise_overridden: bool) -> str | None:
     addresses are the same thing; there is no cheap way to tell the two modes apart from here, so the
     warning is worded as what MC actually knows ("looks like") rather than a flat claim, and it stays
     silent the moment the operator has told us the real address with `--advertise` (or has otherwise
-    overridden what gets advertised) — at that point MC has nothing left to warn about."""
-    if advertise_overridden or not is_wsl():
+    overridden what gets advertised) — at that point MC has nothing left to warn about.
+
+    `public_url` (A28) is the second way there is nothing left to warn about: this whole warning is about
+    the LAN address in the QR, and a phone dialling a public `wss://` node URL never uses it. MC on WSL
+    with a backhaul URL is a WORKING setup, and warning on it is how an operator learns to ignore the
+    warning that matters. A tunnel that comes UP later is the same fact arriving later — the session
+    re-reads it then (`state.py _refresh_lan_warning`), and puts the warning back if it goes away."""
+    if advertise_overridden or public_url or not is_wsl():
         return None
     return WSL_UNREACHABLE_WARNING
 
 
-def lan_info(ip: str, port: int, ws_url: str, *, advertise_overridden: bool = False) -> dict:
+def lan_info(ip: str, port: int, ws_url: str, *, advertise_overridden: bool = False,
+             public_url: bool = False) -> dict:
     """The `State.lan` block at launch. `mode` is never a placeholder word: with no SSID it is `"lan"`,
     which the REACH panel renders as "LAN · <ip>:<port>" — true everywhere and nothing to explain.
 
     `warning` (T3-A) is `None` everywhere except WSL with nothing telling MC the advertised address is
-    already correct — see `wsl_lan_warning` for exactly what is detected and what is inferred."""
+    already correct and no public URL for phones to reach it by — see `wsl_lan_warning` for exactly what
+    is detected and what is inferred."""
     ssid = detect_ssid()
-    warning = wsl_lan_warning(advertise_overridden=advertise_overridden)
+    warning = wsl_lan_warning(advertise_overridden=advertise_overridden, public_url=public_url)
     return {"mode": "lan", "ssid": ssid, "ip": ip, "port": port, "ws_url": ws_url, "qr": ws_url,
             "warning": warning}

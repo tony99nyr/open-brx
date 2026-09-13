@@ -226,3 +226,117 @@ def test_sync_summary_does_not_count_an_ack_for_an_older_config():
     tot = s.sync_summary()["totals"]
     assert tot["gun_acked"] == 0, "an ack for an older head proves nothing about this one"
     assert tot["in_sync"] is False
+
+
+# ---------------------------------------------------------------- `sent` counts EVERY delivery
+def test_a_phone_that_binds_after_the_load_is_counted_as_told():
+    """`game_sent` was stamped once, inside `load_game`, for the phones bound AT THAT MOMENT.
+
+    But the welcome carries `game_brief()` exactly as an `assign` does, and `engine.js` stores
+    `node.game` from both -- so a phone that binds AFTER the load genuinely holds the current game
+    while the console reported it as never told. In the ordinary order of a night (LOAD at build,
+    players walking up afterwards) that is EVERY phone, so the column was permanently short: a check
+    that always reads failure about phones that are fine."""
+    from brx_mcp.mc.fakes import demo_armory
+
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0)
+    s.load_game()
+    assert s.game_sent_n() == 1, "control: only one phone was here for the LOAD"
+
+    tail = demo_armory()[1]["ble"]["tail"]
+    node = net.simulate_hello("node1", f"GUN-B-{tail}")       # the second player walks up
+    assert node and "game" in node, "the welcome really does carry the game brief"
+
+    assert s.game_sent_n() == 2, "a phone holding the game must not read as never told"
+    rows = {r["player_id"]: r for r in s.sync_summary()["rows"]}
+    assert rows[ps[1]["player_id"]]["phone_game"] is True
+    assert s.snapshot()["game"]["sent"] == 2
+
+
+def test_a_phone_that_is_taken_away_stops_counting_as_told():
+    """The other direction. The tick is a fact about a PHONE, so it cannot outlive the binding."""
+    s, net, clock, ps = mk(2)
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.load_game()
+    assert s.game_sent_n() == 2, "control: both phones were told"
+    s.evict_node("node1")
+    assert s.game_sent_n() == 1, "an unbound player has no phone holding anything"
+
+
+def test_standing_a_player_down_forgets_that_their_phone_was_told():
+    """STAND DOWN + PLAY. The last thing that phone heard from us is the benched `assign`, which is
+    the OPPOSITE of holding the game -- so a tick left standing hands the player back a green phone
+    column for a phone last told to sit out."""
+    s, net, clock, ps = mk(2)
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.load_game()
+    pid = ps[1]["player_id"]
+    assert s.game_sent_n() == 2
+
+    s.stand_down(pid)
+    assert pid not in s.game_sent, "the bench is not a delivery of the game"
+    s.evict_node("node1")                      # their phone walks off while they are sitting out
+    s.reinstate(pid)
+
+    assert s.players[pid].get("node_id") is None, "setup: they come back with no phone bound"
+    assert s.game_sent_n() == 1, "a reinstated player whose phone is gone was told nothing"
+    rows = {r["player_id"]: r for r in s.sync_summary()["rows"]}
+    assert rows[pid]["phone_game"] is False
+
+
+# ---------------------------------------------------------------- the block names the ANNOUNCED game
+def test_the_snapshot_game_block_reports_the_announced_game_not_the_live_head():
+    """`game.config_id` said `self.config["config_id"]` -- the LIVE config. That is the head, and the
+    head moves without the phones being told anything: a re-team after the lobby push mints a fresh
+    id so the new head can be proven (`_fresh_head_repush`) and announces nothing, because the GAME
+    did not change. Reporting the live id there made the block state that the phones had been told
+    about a game that had never left MC."""
+    s, net, clock, ps = mk(2)
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.load_game()
+    announced = s.config["config_id"]
+    assert s.snapshot()["game"]["config_id"] == announced, "control: they agree until a head moves"
+
+    s.push_config()
+    for i in range(2):
+        net.simulate_node_message(f"node{i}", "ack_config",
+                                  {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD"}, clock["t"])
+    s.patch_player(ps[1]["player_id"], team_id="blue")        # a head-only change...
+    s.patch_player(ps[0]["player_id"], team_id="yellow")
+    assert s.config["config_id"] != announced, "control: the head really did move"
+
+    g = s.snapshot()["game"]
+    assert s.game_cfg == announced
+    assert g["config_id"] == announced, "the block must name the game that went OUT to the phones"
+    assert g["sent"] == 2, "...and both phones still hold it -- a head re-push tells them nothing new"
+
+
+def test_a_session_with_nothing_announced_names_no_game_at_all():
+    """`config_id?: string` in the UI contract: "no announcement" is the ABSENCE of an id, never one."""
+    s, _net, _clock, _ps = mk(2)
+    g = s.snapshot()["game"]
+    assert g["loaded"] is False and "config_id" not in g, g
+    assert g["sent"] == 0
+
+
+# ---------------------------------------------------------------- the fake matches the real net
+def test_the_fake_nets_broadcast_returns_a_count_like_the_real_one():
+    """`net.py NetServer.broadcast` returns the number of live sockets it sent to, and
+    `tests/test_mc_net.py` asserts that count against the real server (`assert n == 1`). The fake
+    returned None -- the same defect already fixed on its `push` -- so anything reading the count to
+    mean "this reached N nodes" measures nothing against a fake that reached the whole field."""
+    from brx_mcp.mc.fakes import FakeNet
+
+    net = FakeNet()
+    assert net.broadcast("join", {}) == 0, "nobody is connected yet"
+    net.simulate_hello("node0", "GUN-A-3D4F")
+    net.simulate_utility_hello("st1")
+    n = net.broadcast("start", {"match_id": "m1"})
+    assert isinstance(n, int) and not isinstance(n, bool), f"a COUNT, as net.broadcast returns: {n!r}"
+    assert n == 2, n
+    net.simulate_disconnect("st1")
+    assert net.broadcast("start", {"match_id": "m1"}) == 1, "a dead socket is not a node reached"

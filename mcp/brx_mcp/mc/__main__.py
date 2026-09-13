@@ -34,13 +34,35 @@ def _check_advertise(value):
     It is spliced into `ws://<here>:<port>/ws`, so a scheme or a path here is a mistake worth catching
     before it reaches a QR code, not after (mDNS also needs a literal IPv4 -- `NetServer.advertise_mdns`
     -- so a hostname here still fixes the QR but silently drops mDNS, which is not this function's job
-    to police)."""
+    to police).
+
+    A PORT is the likeliest typo of all, and it used to pass: `--advertise 192.168.1.42:8766` was accepted
+    whole and spliced to `ws://192.168.1.42:8766:8766/ws` -- a doubled port, in the QR, on the flag whose
+    entire reason to exist is that a wrong address in the QR cost a field night. The port comes from
+    `--ws-port`; this is the host alone. (A bracketed IPv6 literal is refused by the same rule rather than
+    half-supported: mDNS needs a literal IPv4, and nothing in the field path has ever been exercised on
+    v6.) Anything left has to LOOK like a host -- an IP address, or a DNS name -- because a value that
+    cannot be one at all can only produce a URL no phone will dial."""
     if not value:
         return None
     v = str(value).strip()
     if "://" in v or "/" in v:
         raise SystemExit(f"--advertise must be a bare host/IP, e.g. 192.168.1.42 (got {v!r}); it is "
                          "spliced into ws://<here>:<port>/ws, not a URL by itself")
+    if ":" in v or v.startswith("[") or v.endswith("]"):
+        raise SystemExit(f"--advertise takes the HOST only, with no port (got {v!r}); it is spliced into "
+                         f"ws://<here>:<port>/ws, so a port here is handed to every phone twice — the port "
+                         "comes from --ws-port. (An IPv6 literal is not supported: mDNS advertises IPv4.)")
+    try:
+        import ipaddress
+        ipaddress.ip_address(v)
+        return v
+    except ValueError:
+        pass
+    import re as _re
+    if not _re.fullmatch(r"[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*", v):
+        raise SystemExit(f"--advertise must be an IP address or a hostname (got {v!r}); it is spliced into "
+                         "ws://<here>:<port>/ws and printed into every phone's QR")
     return v
 
 
@@ -125,13 +147,20 @@ def build(args):
     if advertise_override:
         ip = advertise_override
     ws_url = f"ws://{ip}:{args.ws_port}/ws"
+    # A28.1: checked HERE, before the session is built, because `lan_info` needs to know whether phones
+    # already have a public way in -- a backhaul URL makes the WSL LAN-address warning below moot, and
+    # firing it on a working tunnel setup is how an operator learns to ignore it. (The Tunnel that carries
+    # this URL is constructed further down; this is only the validation, and it must not move after the
+    # first use of its result.)
+    public_url = _check_public_url(getattr(args, "public_url", None))
     # F143 (field 2026-09-12): `mode` used to be the literal "unknown", and the REACH panel printed it
     # as a display word — "UNKNOWN · 192.168.28.167:8765". Best-effort SSID per platform, never fatal,
     # and the no-answer case is "lan" with no ssid (`netinfo.lan_info`).
     from . import netinfo as _netinfo
     session = Session(compiler, net, armory,
                        lan=_netinfo.lan_info(ip, args.port, ws_url,
-                                              advertise_overridden=bool(advertise_override)))
+                                              advertise_overridden=bool(advertise_override),
+                                              public_url=bool(public_url)))
     # T3-A / field 2026-09-12: WSL2's own NAT address advertised in the QR/mDNS looked identical to a
     # real LAN address, so no phone could connect and MC never said why. LOUD on purpose -- this is the
     # one line an operator glancing at a scrolling boot log must not be able to miss.
@@ -144,7 +173,6 @@ def build(args):
     # install line); it only spawns anything on --tunnel or POST /api/tunnel.
     from pathlib import Path as _PT
     from .tunnel import Tunnel
-    public_url = _check_public_url(getattr(args, "public_url", None))
     from ..storage import home_dir
     if args.demo or getattr(args, "ephemeral", False):
         import tempfile

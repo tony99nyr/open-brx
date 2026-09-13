@@ -182,7 +182,7 @@ async function walkToKit(pg, url, fromArmory = true) {
     // there and the host's real path is the override beside it.
     if (await load.isEnabled().catch(() => false)) await load.click();
     else await pg.locator('main [data-load-force="1"]').click();
-    await until(() => kitBtn.count().then(n => n > 0), 12000, 'the ACTIVE GAME CONFIG state after LOAD');
+    await until(() => kitBtn.count().then(n => n > 0), 12000, 'the LOADED GAME state after LOAD');
   }
   await kitBtn.click();
   await until(() => onKit(pg), 10000, 'KIT to open from CONTINUE TO KIT');

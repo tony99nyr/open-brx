@@ -106,7 +106,7 @@ export function endDeliveryLine(ed: EndDeliveryView | null | undefined): { ok: b
   return { ok: false, text: `${head} — TOLD ${tries} TIMES, STILL NOTHING. THAT TAGGER MAY STILL BE IN THE MATCH: END IT ON THE GUN` };
 }
 
-export const PUSH_CURES =['ACKED AN OLDER CONFIG', 'GUN ECHO ≠ CONFIG', 'GUN POOL ≠ CONFIG'] as const;
+export const PUSH_CURES = ['ACKED AN OLDER CONFIG', 'GUN ECHO ≠ CONFIG', 'GUN POOL ≠ CONFIG'] as const;
 
 /** The stale ack alone — the one blocker the rail's own sentence already accounts for by name. */
 export const STALE_ACK_FAULT = PUSH_CURES[0];
@@ -194,7 +194,19 @@ export interface PushGate {
 }
 
 export function pushGate(state: State): PushGate {
-  const { players, lobby, readiness, config } = state;
+  const { players, lobby, config } = state;
+  // An older MC sends NO `readiness` at all. `types.ts` declares it REQUIRED, so nothing ever forced a
+  // guard here -- and while LOBBY was the only caller that was survivable, because an old server does
+  // not land you on LOBBY. Since GAMES and the KIT editor started reading this same gate (2026-09-13),
+  // a missing tally became a THROW on the KIT RENDER PATH, which `kit-continue.mjs` pins: "readiness
+  // is the SERVER's tally; the gate counts the roster's own ready flags, so stripping it must change
+  // nothing."
+  // `roster_faults` is deliberately left UNDEFINED here rather than defaulted to []: `serverKnows`
+  // below reads the DIFFERENCE between "the server says this roster is fine" and "the server never
+  // said", and an empty array would silently switch the local one-team fallback off for precisely the
+  // old servers that still need it.
+  const readiness = (state.readiness ?? {}) as State['readiness'];
+  const rows = readiness.board ?? [];
   // A36: an ack for a PREVIOUS config is not an ack for this one — the server refuses the whistle on
   // it, `force` included. `config_id` absent = an older server that never sent one; fall back to `ok`
   // rather than reading every ack as stale.
@@ -217,11 +229,11 @@ export function pushGate(state: State): PushGate {
     && new Set(config.teams.filter(t => players.some(p => p.team_id === t.team_id)).map(t => t.tid)).size < 2;
   const rosterFault = (readiness.roster_faults ?? [])[0] ?? (!serverKnows && oneSideLocally ? LOCAL_ONE_TEAM_FAULT : null);
 
-  const redRows = readiness.board.filter(b => b.status === 'red');
-  const waitRows = readiness.board.filter(b => b.status === 'waiting');
+  const redRows = rows.filter(b => b.status === 'red');
+  const waitRows = rows.filter(b => b.status === 'waiting');
   const curableRows = redRows.filter(curedByPushRow);
   const blockedCount = redRows.length + waitRows.length;
-  const pushBlockedCount = readiness.board.filter(r => blocksPush(r, { repush: lobby.pushed })).length;
+  const pushBlockedCount = rows.filter(r => blocksPush(r, { repush: lobby.pushed })).length;
   const waitWhy = waitRows.length
     ? `Waiting for ${waitRows.length} phone${waitRows.length === 1 ? '' : 's'}: ${waitRows.map(b => b.sticker).join(', ')}`
     : '';
@@ -232,7 +244,7 @@ export function pushGate(state: State): PushGate {
     rosterFault ?? '',
     players.length === 0 ? 'Add someone to the roster first' : '',
     pushBlockedCount > 0
-      ? readiness.board.filter(r => blocksPush(r, { repush: lobby.pushed }))
+      ? rows.filter(r => blocksPush(r, { repush: lobby.pushed }))
           .map(r => `${r.sticker} ${(r.blockers ?? []).filter(b => !curedByPush(b)).map(b => splitBlocker(b).head).join(', ') || 'phone not arrived'}`)
           .join(' · ')
       : '',

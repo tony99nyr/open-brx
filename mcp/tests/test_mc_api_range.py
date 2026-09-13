@@ -1,8 +1,16 @@
 """Weapon test-range verdict API — POST /api/range/verdict, GET /api/range/verdicts (api.py).
 
-Verdicts append to ~/.brx-mcp/weapon-verdicts.jsonl via `Path.home()`, so each test owns $HOME
-(a throwaway dir) for its body — the suite never touches the real ~/.brx-mcp. Guards the starlette
-extras like the other API tests so `python3 run_tests.py` skips cleanly under system python.
+Verdicts append to `storage.home_dir() / weapon-verdicts.jsonl`, so each test owns BOTH $HOME and
+`BRX_MCP_HOME` (one throwaway dir) for its body — the suite never touches the real ~/.brx-mcp. Guards
+the starlette extras like the other API tests so `python3 run_tests.py` skips cleanly under system
+python.
+
+2026-09-13: `api.py` used to spell the path `Path.home() / ".brx-mcp"` itself, which meant a POSTed
+verdict ignored `BRX_MCP_HOME` and landed in the operator's real home — field evidence, not a scratch
+pad — whenever the caller was not this test. It now calls `home_dir()` like everything else that
+persists, and this harness redirects the same thing the server reads rather than the layer underneath
+it. `run_tests.py` already sets `BRX_MCP_HOME` for the whole suite; overriding it per test is what
+keeps each body's log file its own.
 """
 import os
 import shutil
@@ -27,18 +35,21 @@ def _sess():
 
 def _verdict_log():
     """Where api.py's nested `_range_path()` writes — inside a `_Home()` block, a throwaway dir."""
-    import pathlib
-    return pathlib.Path.home() / ".brx-mcp" / "weapon-verdicts.jsonl"
+    from brx_mcp.storage import home_dir
+    return home_dir() / "weapon-verdicts.jsonl"
 
 
 class _Home:
-    """Redirect Path.home() (→ os.path.expanduser('~') → $HOME/USERPROFILE) to a throwaway dir for the
-    test body, then restore — so the verdict log lands in a temp file, never the real ~/.brx-mcp."""
+    """Redirect `storage.home_dir()` — `BRX_MCP_HOME`, and Path.home() (→ $HOME/USERPROFILE) under it —
+    to a throwaway dir for the test body, then restore, so the verdict log lands in a temp file and never
+    in the real ~/.brx-mcp. Both halves: the env var is what the server reads, and $HOME is the fallback
+    that would be used if anything here ever stopped setting it."""
     def __enter__(self):
         self._dir = tempfile.mkdtemp(prefix="brx-range-")
-        self._saved = {k: os.environ.get(k) for k in ("HOME", "USERPROFILE")}
+        self._saved = {k: os.environ.get(k) for k in ("HOME", "USERPROFILE", "BRX_MCP_HOME")}
         os.environ["HOME"] = self._dir
         os.environ["USERPROFILE"] = self._dir
+        os.environ["BRX_MCP_HOME"] = self._dir
         return self._dir
 
     def __exit__(self, *exc):

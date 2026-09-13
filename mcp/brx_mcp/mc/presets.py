@@ -15,7 +15,7 @@ import time
 import uuid
 from typing import Any, Callable, Mapping
 
-from ..storage import BASE_DIR
+from ..storage import home_dir
 from .types import GameConfig
 
 log = logging.getLogger("brx.mc.presets")
@@ -201,4 +201,4 @@ class PresetStore:
 
 
 def default_path() -> pathlib.Path:
-    return BASE_DIR / "presets.json"
+    return home_dir() / "presets.json"  # home_dir(), not the import-time BASE_DIR: BRX_MCP_HOME must redirect this (test isolation)

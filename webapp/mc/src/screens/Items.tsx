@@ -11,7 +11,7 @@ import type { StationKind, StationView } from '../api/types';
 import { STATION_KINDS } from '../api/types';
 import { useStore } from '../store';
 import { CHAMFER, F, T, fmtAge, teamColor } from '../tokens';
-import { GhostButton, Micro, SectionRule, Seg, Tag, ValueBox } from '../ui';
+import { GhostButton, Micro, SectionRule, Seg, SwitchConfirm, Tag, ValueBox } from '../ui';
 
 const KIND_LABEL: Record<StationKind, string> = { respawn: 'RESPAWN', powerup: 'POWERUP', extraction: 'EXTRACTION', bomb: 'BOMB SITE', control: 'CONTROL POINT' };
 /** the picker's labels: short enough for five in a card row */
@@ -51,6 +51,14 @@ function StationCard({ s }: { s: StationView }) {
   const [threshold, setThreshold] = useState<number>(a?.threshold ?? s.report.threshold ?? -74);
   const [busy, setBusy] = useState(false);
   const [released, setReleased] = useState<boolean | null>(null);   // A41: last RELEASE result, this card only
+  // HIGH (review, 2026-09-13): RELEASE used to fire on a single tap, styled identically to CLEAR right
+  // beside it -- but the two are not remotely equivalent. CLEAR only drops the assignment (the phone
+  // keeps advertising; recoverable from this console). RELEASE navigates the phone AWAY from the page
+  // that holds its own socket, in ANY phase including LIVE -- after which nothing on this console can
+  // reach it again; the only way back is walking to the tagger and doing the seven-tap gesture. A
+  // mis-tap here costs a walk across the field mid-match, so it gets the same tap-again confirm
+  // `Games.tsx` uses before it moves the roster (`SwitchConfirm`), not just matching CLEAR's look.
+  const [confirmRelease, setConfirmRelease] = useState(false);
   const control = kind === 'control';
   const status = !a ? 'NOT ASSIGNED' : s.arm_pending ? 'ARM PENDING' : s.armed ? `MC-ARMED · GAME ${s.armed.game}` : 'ASSIGNED';
   const color = !a ? T.micro : s.attention.length || s.arm_pending ? T.warn : T.ok;
@@ -124,6 +132,14 @@ function StationCard({ s }: { s: StationView }) {
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Micro>ID</Micro><ValueBox value={id} min={1} max={65535} label={`station id for ${s.node_id}`} onChange={setId} /></span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Micro>BUBBLE</Micro><ValueBox value={threshold} unit="dBm" min={-100} max={-30} label={`threshold for ${s.node_id}`} onChange={setThreshold} /></span>
         </div>
+        {/* the confirm sits ABOVE the row it guards, same placement `Games.tsx` uses for `SwitchConfirm`
+            under a card it's about to switch away from -- read there before it's acted on, not buried
+            beside the button that triggers it. */}
+        {confirmRelease && (
+          <SwitchConfirm dropsDraft={false}
+            split={`RELEASE SENDS THIS PHONE BACK TO ITS OWN HUD RIGHT NOW, EVEN LIVE — ONCE IT LEAVES, NOTHING ON THIS CONSOLE CAN REACH IT AGAIN. THE ONLY WAY BACK IS WALKING TO IT AND DOING THE SEVEN-TAP GESTURE.`}
+            action="TAP RELEASE ▸ HUD AGAIN TO SEND IT" />
+        )}
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <button type="button" className={dirty ? 'hov-accbg' : ''} disabled={busy || (!dirty && !needsRearm)} onClick={apply}
             style={{ font: F.osw(700, 15), letterSpacing: '.18em', padding: '8px 18px', whiteSpace: 'nowrap',
@@ -135,13 +151,27 @@ function StationCard({ s }: { s: StationView }) {
           {/* A41: the cure for a phone stuck in utility mode -- a player's own exit is the same seven-tap
               gesture that opens this card's settings, undiscoverable on the phone and with no feedback on
               a single tap. This works in ANY phase, armed/live included, and on ANY utility phone here,
-              assigned or not (the stuck case usually is not). It does not un-assign or re-arm anything. */}
-          <GhostButton onClick={async () => { setReleased(null); const r = await run(() => api.releaseStation(s.node_id)); setReleased(r ? r.ok : false); }}
+              assigned or not (the stuck case usually is not). It does not un-assign or re-arm anything.
+              Unlike CLEAR (recoverable here — the phone just keeps advertising) this is NOT: it moves the
+              phone off the page holding its socket, so the console loses it the moment it lands. That
+              blast-radius mismatch is why it needs its own tap-again confirm rather than CLEAR's look —
+              review finding 2026-09-13. First tap only arms the confirm; it sends nothing. */}
+          <GhostButton
+            onClick={async () => {
+              if (!confirmRelease) { setConfirmRelease(true); return; }
+              setConfirmRelease(false);
+              setReleased(null);
+              const r = await run(() => api.releaseStation(s.node_id));
+              setReleased(r ? r.ok : false);
+            }}
             disabled={!s.online}
-            title={s.online ? 'send this phone back to its own HUD — the fix for a phone stuck in utility mode, with no seven-tap gesture needed on the phone itself'
-              : 'no live socket to this phone right now, so there is nothing to push to it'}>
+            color={confirmRelease ? T.warn : undefined} border={confirmRelease ? T.warn : undefined}
+            title={!s.online ? 'no live socket to this phone right now, so there is nothing to push to it'
+              : confirmRelease ? 'tap again to confirm — this sends the phone away from this page and nothing here can reach it again until someone walks to it'
+              : 'send this phone back to its own HUD — the fix for a phone stuck in utility mode, with no seven-tap gesture needed on the phone itself'}>
             RELEASE ▸ HUD
           </GhostButton>
+          {confirmRelease && <GhostButton size={11} onClick={() => setConfirmRelease(false)} title="back out — nothing was sent">CANCEL</GhostButton>}
           {released != null && <Tag color={released ? T.ok : T.warn} ink={T.ink}>{released ? 'SENT' : 'NO SOCKET'}</Tag>}
           {a && <span style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: teamColor(TID_NAME[a.team]?.toLowerCase() ?? 'any') }}>{TID_NAME[a.team] ?? a.team}</span>}
         </div>

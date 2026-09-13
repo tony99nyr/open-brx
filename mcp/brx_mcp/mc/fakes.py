@@ -179,6 +179,9 @@ class FakeNet:
         self._hydrate = None
         self._cb = {"node": [], "event": [], "status": [], "msg": [], "stale": [], "return": [], "gone": []}
         self.pushed: list[tuple[str | None, str, dict]] = []
+        # The node ids with a live socket, so `broadcast` can answer with a COUNT as the real server
+        # does. A hello opens one, `simulate_disconnect` closes it.
+        self._seen: set[str] = set()
         self.host, self.port, self.ws_path = "0.0.0.0", 0, "/ws"
         self.session_id = "fake-session"
         self.join_secret, self._pub, self._armed = "", None, False       # A28.2
@@ -214,7 +217,13 @@ class FakeNet:
     def push(self, node_id: str, kind: str, body: dict) -> bool:
         self.pushed.append((node_id, kind, body))
         return True
-    def broadcast(self, kind: str, body: dict) -> None: self.pushed.append((None, kind, body))
+    # ...and `broadcast` answers with the NUMBER of live sockets it reached, as `net.broadcast` does
+    # (`tests/test_mc_net.py` asserts that count against the real server). It returned None -- the same
+    # shape as the `push` defect above -- so a caller reading the count to mean "this reached N nodes"
+    # measures nothing against a fake that had in fact reached the whole field.
+    def broadcast(self, kind: str, body: dict) -> int:
+        self.pushed.append((None, kind, body))
+        return len(self._seen)
 
     # simulation helpers (what a node would cause)
     def simulate_hello(self, node_id: str, gun_name: str, node_type: str = "phone", fw: str | None = "v4.32",
@@ -226,6 +235,7 @@ class FakeNet:
         av = app_ver or fake_app_ver()
         hello = {"node_id": node_id, "node_type": node_type, "app_ver": av, "platform": platform, "seq_next": 1,
                  "gun": {"name": gun_name, "tail": tail, "fw": fw}}
+        self._seen.add(node_id)                 # a hello is a live socket: `broadcast` counts it
         if via:
             hello["via"] = via
         node = self._hydrate(hello) if self._hydrate else None
@@ -241,6 +251,7 @@ class FakeNet:
     def simulate_utility_hello(self, node_id: str, app_ver: str = "utility") -> dict | None:
         """A13.5: a station phone's hello -- `node_type: "utility"`, no gun (utility.js `connectMc`)."""
         hello = {"node_id": node_id, "node_type": "utility", "app_ver": app_ver, "seq_next": 1}
+        self._seen.add(node_id)                 # a station holds a socket like any other node
         node = self._hydrate(hello) if self._hydrate else None
         for cb in self._cb["node"]:
             cb({"node_id": node_id, "node_type": "utility", "app_ver": app_ver})
@@ -263,6 +274,7 @@ class FakeNet:
     def simulate_disconnect(self, node_id: str):
         """A28.3: the socket dropped -- `NetServer._handler`'s finally clause. A FakeNet that cannot do
         this is a FakeNet that hides the path-clearing rule (the F106(b) shape)."""
+        self._seen.discard(node_id)             # the socket is gone, so `broadcast` no longer counts it
         for cb in self._cb["gone"]: cb(node_id)
     def pushes(self, kind: str | None = None, node_id: str | None = None):
         return [p for p in self.pushed if (kind is None or p[1] == kind) and (node_id is None or p[0] in (node_id, None))]

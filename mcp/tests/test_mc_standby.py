@@ -491,3 +491,25 @@ def test_s2_a_benched_node_is_not_sent_the_start():
     assert "node2" not in got, "the benched phone must never be handed the start"
     assert "util" not in got, "a station never held this start (abort_start's own rule)"
     assert pid not in s._match_players, "control: they are not in the scorer either"
+
+
+def test_a_parked_players_short_gun_id_cannot_shadow_an_active_players_phone():
+    """The exclusion above is made by MATCHING each node's reported gun against the parked roster, and it
+    used to accept a TRAILING FRAGMENT of the name: `_find_player_for_gun`'s second, device-first pass
+    takes a `gun_id` that is nothing but a BLE tail. So a benched player whose gun_id is a short device
+    id -- `3D4F`, which is also the tail of OP0's `GUN-A-3D4F` -- resolved as the owner of OP0's node,
+    and OP0's phone was left out of the addressed start SILENTLY: no error, no red row, one player
+    standing on the field with a gun that never spawned.
+
+    `_check_gun_free`, the rule that decides whether two players may hold one gun at all, compares whole
+    `gun_id` strings -- so the fragment match here was also claiming a collision the roster does not
+    consider one. Parked nodes now match on the registry pass only."""
+    s, net, clock, ps = _session(2)
+    tail = demo_armory()[0]["ble"]["tail"]            # node0 said hello as GUN-A-<tail>
+    shadow = s.add_player("BENCHED", gun_id=tail)     # a device-first id, in nobody's registry
+    s.stand_down(shadow["player_id"])
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    got = {n for (n, k, _b) in net.pushed if k == "start"}
+    assert "node0" in got, "a benched short gun id must not shadow an active player's phone"
+    assert "node1" in got

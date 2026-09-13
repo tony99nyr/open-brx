@@ -178,9 +178,10 @@ def ir_words(kind: str, team: int, damage: int | None = None) -> list[str]:
 
 
 def _append_verdict(rec: dict, name: str = "stage-verdicts.jsonl") -> None:
-    """Default verdict sink: one JSON line per verdict in ~/.brx-mcp/<name>."""
-    import json, pathlib
-    p = pathlib.Path.home() / ".brx-mcp" / name
+    """Default verdict sink: one JSON line per verdict in ~/.brx-mcp/<name> (or `BRX_MCP_HOME`)."""
+    import json
+    from ..storage import home_dir      # never a hardcoded dotfile path: a test run must land elsewhere
+    p = home_dir() / name
     p.parent.mkdir(parents=True, exist_ok=True)
     with p.open("a", encoding="utf-8") as f:
         f.write(json.dumps(rec) + "\n")
@@ -192,10 +193,11 @@ def _append_voice_verdict(rec: dict) -> None:
 
 def _load_voice_verdicts() -> dict:
     """{voice: {id: {ok, note}}} from ~/.brx-mcp/voice-verdicts.jsonl (best-effort; the latest line per id wins)."""
-    import json, pathlib
+    import json
+    from ..storage import home_dir
     out: dict = {}
     try:
-        p = pathlib.Path.home() / ".brx-mcp" / "voice-verdicts.jsonl"
+        p = home_dir() / "voice-verdicts.jsonl"
         for line in p.read_text(encoding="utf-8").splitlines():
             try:
                 r = json.loads(line)

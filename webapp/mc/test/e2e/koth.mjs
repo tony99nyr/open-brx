@@ -702,7 +702,7 @@ step('f88-multipoint-refused', async ({ browser, base }) => {
 });
 
 // The operator's own walk, 2026-09-13: LOAD (which announces the game to the PHONES and writes no
-// gun), the ACTIVE GAME CONFIG state it lands in, an EDIT that sends nothing until SAVE AND LOAD,
+// gun), the LOADED GAME state it lands in, an EDIT that sends nothing until SAVE AND LOAD,
 // the LOBBY push that actually configures the guns, and only then CONTINUE TO KIT.
 //
 // "Weapons have to go with the arm" (Tony). The first cut of LOAD called the real config push, which
@@ -749,9 +749,9 @@ step('load-path', async ({ browser, base }) => {
     `…stated against the whole roster (saw ${loaded.game?.total}/${loaded.players.length})`);
   // ...and the TAB stays. This is the whole reversal: a tab cannot "change state to active game
   // config" if its own success navigates it to the LOBBY screen (store.holdPhase).
-  await until(() => pg.locator('[data-testid="active-game-config"]').count().then(n => n > 0), 8000, 'the ACTIVE GAME CONFIG state');
+  await until(() => pg.locator('[data-testid="active-game-config"]').count().then(n => n > 0), 8000, 'the LOADED GAME state');
   expect(new URL(pg.url()).hash === '#build', `LOAD left the console on GAMES (saw ${JSON.stringify(new URL(pg.url()).hash)})`);
-  expect(await pg.locator('main', { hasText: 'ACTIVE GAME CONFIG' }).count() > 0, 'the tab says which state it is in');
+  expect(await pg.locator('main', { hasText: 'LOADED GAME' }).count() > 0, 'the tab says which state it is in');
 
   // --- every setting, and the id the guns must echo --------------------------------------------
   const cfgId = await railRow(pg, 'CONFIG ID').innerText();
@@ -806,7 +806,7 @@ step('load-path', async ({ browser, base }) => {
   expect((pushed.sync?.totals?.gun_sent ?? 0) > 0, `the guns have a head NOW (saw ${pushed.sync?.totals?.gun_sent})`);
   ok(`the LOBBY push is what wrote the guns  ${await shot(pg, '10c-pushed')}`);
   await pg.locator('header nav button:has-text("GAMES")').first().click();
-  await until(() => pg.locator('[data-testid="active-game-config"]').count().then(n => n > 0), 8000, 'back on the active game config');
+  await until(() => pg.locator('[data-testid="active-game-config"]').count().then(n => n > 0), 8000, 'back on the loaded game');
 
   // --- and only THEN, KIT ----------------------------------------------------------------------
   await pg.locator('[data-testid="game-continue-kit"] button').click();

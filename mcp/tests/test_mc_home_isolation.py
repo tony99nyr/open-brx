@@ -105,3 +105,41 @@ def test_run_tests_py_sets_BRX_MCP_HOME_before_importing_any_test_module():
     assert set_at != -1, "run_tests.py no longer sets BRX_MCP_HOME"
     assert first_import != -1, "run_tests.py's structure changed -- update this test's anchor"
     assert set_at < first_import, "BRX_MCP_HOME is wired AFTER test-module imports can start"
+
+
+def test_the_tunnel_pidfile_and_the_stage_verdict_log_follow_BRX_MCP_HOME_too():
+    """Two more writers that hardcoded `Path.home() / ".brx-mcp"` and so ignored the isolation entirely:
+    the cloudflared pidfile (any `Tunnel()` built without an explicit `pid_dir` -- every test that
+    constructs one) and the bench stage's verdict sink. Neither is a session store, and both landed in
+    the operator's real home whatever BRX_MCP_HOME said."""
+    from brx_mcp.mc.tunnel import Tunnel
+    from brx_mcp.stage import stage as _stage
+    with _FakeRealHome() as fake_home:
+        tmp = pathlib.Path(tempfile.mkdtemp(prefix="brx-mcp-home-"))
+        os.environ["BRX_MCP_HOME"] = str(tmp)
+        assert Tunnel()._pid_dir == tmp
+        _stage._append_verdict({"ok": True}, "home-isolation-test.jsonl")
+        assert (tmp / "home-isolation-test.jsonl").exists()
+        strays = [p for p in fake_home.rglob("*") if p.is_file()]
+        assert strays == [], f"something still wrote into the (stand-in) real home: {strays}"
+
+
+def test_no_mission_control_module_hardcodes_the_dotfile_path():
+    """The rule, checked where it can be broken. `storage.home_dir()` is the one place `~/.brx-mcp` is
+    spelled, so anything that re-spells it is a writer the isolation cannot move -- which is exactly how
+    `mc/api.py` (the bench verdict log, the staged APK) and `mc/tunnel.py` (the pidfile) kept writing
+    into the real home after BRX_MCP_HOME landed.
+
+    Scope: the MC server package, which is what a test run boots. The bench CLI's own paths
+    (`brx_mcp/__main__.py`'s sound-audit log, and `usbconsole.py` / `mc/presets.py` through the legacy
+    import-time `storage.BASE_DIR`) are the same shape and are NOT covered here -- see storage.py's note
+    on BASE_DIR."""
+    root = pathlib.Path(__file__).resolve().parents[1] / "brx_mcp" / "mc"
+    bad = []
+    for f in sorted(root.rglob("*.py")):
+        for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            if ".brx-mcp" not in line or line.lstrip().startswith("#"):
+                continue
+            if "home()" in line or "expanduser" in line:
+                bad.append(f"{f.name}:{i}: {line.strip()}")
+    assert not bad, "hardcoded dotfile path instead of storage.home_dir(): " + "; ".join(bad)

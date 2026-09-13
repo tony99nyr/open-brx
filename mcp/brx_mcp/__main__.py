@@ -813,7 +813,7 @@ async def _diag_game(address: str, extra_caps: list[str]) -> None:
     import json
     from .diag import CATALOG, Capability
     from .diag.runner import run_game
-    from .storage import BASE_DIR  # ~/.brx-mcp
+    from .storage import home_dir  # ~/.brx-mcp, unless BRX_MCP_HOME redirects it
 
     caps = {Capability.BLE, Capability.HUMAN}  # a person drives it by default
     if "2guns" in extra_caps:
@@ -825,7 +825,7 @@ async def _diag_game(address: str, extra_caps: list[str]) -> None:
     report = await run_game(address, CATALOG, caps)
     print(report.scorecard())
     try:
-        d = BASE_DIR / "diag-reports"
+        d = home_dir() / "diag-reports"
         d.mkdir(parents=True, exist_ok=True)
         # no timestamp helper here (Date.now-free); name by target + seq count
         path = d / f"diag-{address.replace(':', '')}.json"
@@ -917,7 +917,10 @@ def _sounds(query: str, addr: str | None) -> None:
         out_path = None
         if audit:
             import os
-            out_path = os.path.join(os.path.expanduser("~"), ".brx-mcp", "sound-audit.jsonl")
+            # expanduser("~") ignored BRX_MCP_HOME outright, so a test or a --demo run wrote its
+            # audit into the operator's REAL data directory.
+            from .storage import home_dir
+            out_path = str(home_dir() / "sound-audit.jsonl")
             print("\nAUDIT MODE: each sound prints its label, then plays. Then type + Enter:\n"
                   "  [Enter] = label is right     x = label is wrong (it asks what you heard)\n"
                   "  any other text = CONTEXT for this sound (what it is used for / what it evokes), label kept\n"

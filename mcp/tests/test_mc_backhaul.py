@@ -1332,3 +1332,23 @@ def test_f140_a_doh_query_that_cannot_be_made_is_not_yet_never_an_exception():
         assert run(_t._resolves("x.trycloudflare.com")) is False
     finally:
         _t.urllib.request.urlopen = real
+
+
+def test_the_wsl_address_warning_is_suppressed_while_a_public_path_is_up_and_comes_back_with_it():
+    """T3-A's "PHONES CANNOT REACH THIS ADDRESS" is about the LAN address in the QR, and a phone that
+    joins over the backhaul never dials it. MC on WSL with the tunnel up is a WORKING setup, and it was
+    showing that red alert on every console screen -- beside a backhaul panel saying the field was
+    reachable. It is SUPPRESSED, never deleted: if the public path errors out, the LAN address is the
+    only way in again, and on WSL it is the wrong one."""
+    from brx_mcp.mc import netinfo as N
+    lan = {"mode": "lan", "ssid": None, "ip": "172.19.5.9", "port": 8765,
+           "ws_url": "ws://172.19.5.9:8766/ws", "qr": "", "warning": N.WSL_UNREACHABLE_WARNING}
+    s = _sess(lan=lan)
+    assert s.snapshot()["lan"]["warning"] == N.WSL_UNREACHABLE_WARNING
+    s._tunnel_changed({"ws_url": FAKE_HOST.replace("https://", "wss://") + "/ws", "status": "up",
+                       "provider": "quick", "available": True})
+    assert s.snapshot()["lan"]["warning"] is None, "a working backhaul must not raise a red alert"
+    assert "&pub=" in s.lan["qr"], "control: the QR really is carrying the public URL"
+    s._tunnel_changed({"ws_url": None, "status": "error", "provider": "quick", "available": True,
+                       "error": "the child exited"})
+    assert s.snapshot()["lan"]["warning"] == N.WSL_UNREACHABLE_WARNING, "the LAN address matters again"

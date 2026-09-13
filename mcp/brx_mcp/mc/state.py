@@ -54,6 +54,12 @@ PULL_REASONS = ("recap", "offer", "manual", "reconnect")
 # backing off to a minute, and then STOPPING: past ~137 s a phone is not slow to answer, it is gone, and
 # A34's reconcile answers it from its own first heartbeat for as long as MC remembers the match (`_ended`).
 END_RETRY_MS = (2_000, 5_000, 10_000, 20_000, 40_000, 60_000)
+# A42: the phone phases that are a RECEIPT for the end of a NAMED match. `engine.js _endLocal` writes
+# `frames.end` and moves the HUD to `kitted` while deliberately KEEPING `match_id` -- that pairing is the
+# whole ack, and nothing else on the wire says "I took your end". Every other phase the engine can report
+# (`idle`, `connected`, `lobby`, `armed`, `live` -- PHASES in engine.js) is NO CLAIM: see `_note_end_confirm`
+# for why the absence of a denial must never be read as one.
+END_CONFIRM_PHASES = ("kitted",)
 
 
 def release_app_version() -> str | None:
@@ -321,6 +327,9 @@ class Session:
         # job is keeping internet strangers off the node socket once the tunnel is up.
         self.join_secret = secrets.token_urlsafe(6)
         self.lan.setdefault("public", dict(PUBLIC_OFF))
+        # T3-A: the boot-time address warning, kept so `_refresh_lan_warning` can put it back if the public
+        # path it is suppressed by goes away again.
+        self._lan_warning: str | None = self.lan.get("warning")
         self.tunnel = None                        # A28.1: attached by __main__ (`attach_tunnel`)
         # F142 (field 2026-09-12): is THIS process a demo? Set by `__main__` when `--demo` seeds the
         # roster, persisted with the snapshot, and compared on restore — a demo roster must never wake
@@ -354,7 +363,9 @@ class Session:
         # gate, `kit_open`) belongs to the push that actually writes guns.
         self.game_loaded = False
         self.game_cfg: str | None = None          # the config_id the last announcement carried
-        self.game_sent: dict[str, str] = {}       # player_id -> config_id a SOCKET accepted (delivery, not receipt)
+        # player_id -> the ANNOUNCED `config_id` (`game_cfg`) a SOCKET accepted. Delivery, not receipt,
+        # and written in ONE place (`_send_assign`) so every route that ships the same body counts.
+        self.game_sent: dict[str, str] = {}
         self._pinned_hit_plan = None      # A17: one hit-audio plan per MATCH -- see `_hit_plan`
         # Raised while a `set_config` edit is on its way to `_repush_lobby_config()`, so `_resend`'s
         # config leg stands down and ONE edit costs exactly ONE compile + push per gun.
@@ -704,6 +715,20 @@ class Session:
         t = self.tunnel
         return bool(t is not None and t.armed)
 
+    def _refresh_lan_warning(self) -> None:
+        """T3-A's "PHONES CANNOT REACH THIS ADDRESS" is a statement about the LAN address in the QR — and a
+        phone that joins over the backhaul never dials it.
+
+        MC on WSL with a tunnel up (A28) is a WORKING setup: the QR carries the public `wss://` URL
+        (`_render_join`'s `&pub=`), phones connect over it, and the console was nonetheless showing a red
+        alert on every screen telling the operator to go and find a Windows LAN address they do not need —
+        beside a backhaul panel saying the field was reachable. A warning that fires on a working setup is
+        how an operator learns to ignore the one that fires on a broken one.
+
+        It comes BACK if the public path does (a tunnel that errors, a stop): at that moment the LAN
+        address is the only way in again, and on WSL it is the wrong one. Suppressed, never deleted."""
+        self.lan["warning"] = None if self._pub_url() else self._lan_warning
+
     def attach_tunnel(self, tunnel) -> None:
         """A28.1: MC owns at most one tunnel; its status changes drive `lan.public`, the QR and the
         `join` broadcast."""
@@ -715,6 +740,7 @@ class Session:
         was = self._pub_url()
         self.lan["public"] = dict(pub)
         self._render_join()
+        self._refresh_lan_warning()      # a public path makes the LAN-address warning moot (and back again)
         now = self._pub_url()
         if now != was:
             # A28.2: every connected node adopts the new `pub` and re-dials per A28.3. Best-effort, like
@@ -905,6 +931,36 @@ class Session:
                 # READY UP and no control on screen, while the console showed them rostered (T2 review S1).
                 "standby": p["player_id"] in self.standby}
 
+    def _send_assign(self, p: Player, extra: dict | None = None) -> bool:
+        """Push `assign` to `p`'s node and record that this phone has been told the ANNOUNCED game.
+
+        `game_sent` used to be written in exactly one place -- `load_game`'s own loop -- so it
+        described the phones that happened to be bound AT THE MOMENT OF THE LOAD and nothing else.
+        Every other route that delivers the same body leaves the phone genuinely holding the current
+        game: `_resend` on a pick or a re-team, `_sync_kit_open`, and above all the welcome in
+        `_hydrate` (`engine.js` stores `node.game` from the welcome and from `assign` alike). In the
+        ordinary order of a night -- LOAD at build, players walking up afterwards -- almost every
+        phone's first sight of the game arrives on one of those, so the column was permanently short.
+        A check that always reads failure about phones that are fine is a check the operator learns to
+        ignore, which is worse than not having it.
+
+        Stamped with `game_cfg`, the ANNOUNCED game, and not with `self.config["config_id"]`: a head
+        re-push mints a fresh config id without changing what the phones were told (the brief is the
+        mode and the rules, never the head), so keying the tick to the head would blank the phone
+        column on every re-team. Nothing is stamped before a LOAD -- with no announcement there is
+        nothing a delivery could be evidence of.
+        """
+        nid = p.get("node_id")
+        if not nid:
+            return False
+        body = self._assign_body(p)
+        if extra:
+            body = {**body, **extra}
+        ok = bool(self.net.push(nid, "assign", body))
+        if ok and self.game_loaded and self.game_cfg and p["player_id"] in self.players:
+            self.game_sent[p["player_id"]] = self.game_cfg
+        return ok
+
     def _off_grid(self) -> list[str]:
         """A28/A31: the rostered players whose phone cannot be reached after the whistle, by display name.
 
@@ -1021,20 +1077,27 @@ class Session:
         # tell us which game it holds -- its heartbeat reports `config_id` from `this.config`
         # (engine.js), which only a FRAMES push sets -- so this is the honest fact available, and the
         # console words it as "sent", never as "have".
-        sent: dict[str, str] = {}
+        # A fresh announcement retires every earlier delivery, so the record is cleared here and
+        # re-stamped by `_send_assign` -- the one place a delivery is written (see its docstring).
+        self.game_sent = {}
         for p in self.players.values():
-            nid = p.get("node_id")
-            if nid and self.net.push(nid, "assign", self._assign_body(p)):
-                sent[p["player_id"]] = cfg_id
-        self.game_sent = sent
+            self._send_assign(p)
         if self.phase == "muster":
             self.phase = "build"
         self._changed()
-        return {"ok": True, "config_id": cfg_id, "sent": len(sent), "total": len(self.players)}
+        return {"ok": True, "config_id": cfg_id, "sent": len(self.game_sent), "total": len(self.players)}
 
     def game_sent_n(self) -> int:
-        """How many rostered players a socket accepted THIS config's announcement for."""
-        cur = self.config.get("config_id")
+        """How many rostered players a socket accepted the ANNOUNCED game's `assign` for.
+
+        Counted against `game_cfg` and not against the live `config_id`: the two diverge whenever a
+        head is re-pushed without a re-announcement (a re-team after the lobby push mints a fresh id
+        so the new head can be proven -- `_fresh_head_repush` -- and tells the phones nothing new,
+        because the GAME did not change). Counting against the head would read that as every phone
+        having been un-told."""
+        cur = self.game_cfg
+        if not cur:
+            return 0                 # nothing announced: no delivery is evidence of anything yet
         return sum(1 for p in self.players.values() if self.game_sent.get(p["player_id"]) == cur)
 
     def sync_summary(self) -> dict:
@@ -1046,7 +1109,7 @@ class Session:
         to verify BOTH halves and say which one is missing, for which player.
 
         Four independent facts per player, never collapsed into one tick:
-          `phone_game`  a socket took this config's `assign` (delivery -- see `load_game`)
+          `phone_game`  a socket took the ANNOUNCED game's `assign` (delivery -- see `_send_assign`)
           `gun_sent`    MC compiled and SENT this config's frames for this player (`bundles`)
           `gun_acked`   the gun answered for THIS `config_id` (A36 `_ack_is_current`)
           `gun_echo`    "proven" | "mismatch" | "not_echoed" (`_echo_state`; `not_echoed` is the
@@ -1066,7 +1129,9 @@ class Session:
                 "player_id": pid, "display": p.get("display") or pid,
                 "gun_id": p.get("gun_id") or "", "player_num": p.get("player_num") or 0,
                 "bound": bool(p.get("node_id")),
-                "phone_game": self.game_sent.get(pid) == cur,
+                # the ANNOUNCED game (`game_cfg`), not the head: see `game_sent_n`. Guarded against
+                # `game_cfg` being None, or "told nobody" would compare equal to "told everybody".
+                "phone_game": bool(self.game_cfg) and self.game_sent.get(pid) == self.game_cfg,
                 "gun_sent": bool(bundle) and bundle.get("config_id") == cur,
                 "gun_acked": self._ack_is_current(pid),
                 "gun_echo": self._echo_state(pid),
@@ -1133,7 +1198,7 @@ class Session:
         self._kit_open_sent = cur
         for pl in self.players.values():
             if pl.get("node_id"):
-                self.net.push(pl["node_id"], "assign", self._assign_body(pl))
+                self._send_assign(pl)
 
     def apply_policy(self) -> list[str]:
         """§3.3: force every loadout to obey the policy (fixed → set, off → cleared, out-of-pool → replaced).
@@ -1443,6 +1508,10 @@ class Session:
             if nv is not None:
                 nv.pop("player_id", None)
         self.acks.pop(pid, None); self.bundles.pop(pid, None); self.trying.pop(pid, None); self.browsing.pop(pid, None)
+        # ...and what their phone was TOLD. The last thing it heard from us is `stand_down`'s benched
+        # `assign`, which is the opposite of holding the game -- so a STAND DOWN + PLAY that left the
+        # tick standing handed the player back a green phone column for a phone last told to sit out.
+        self.game_sent.pop(pid, None)
         # A37: and the A36 pool judgement, which is a fact about the head that just went with the
         # bundle. It was outliving both, so a STAND DOWN + PLAY handed the player back their old red.
         # R2-4/R2-6: the amber grade of the same judgement goes with it, for the same reason.
@@ -1529,39 +1598,43 @@ class Session:
         `ack_config` ~1.5 s later. Re-sending `start` would be a no-op anyway: `startAt()` returns
         `reason: 'noop'` for a repeat with the same seq and match_id.
 
+        The config leg is a WHOLE-ROSTER re-push under a fresh `config_id` (`_fresh_head_repush`), not
+        a lone `_push_config_to(p)`. One player's pick changes one player's head, but the id that
+        PROVES a head is MC-wide, so it cannot move for one gun alone -- see that method for why
+        moving it is not optional.
+
         ⚠ ARMED/LIVE: the config leg is skipped for a node that has already TAKEN this match's config,
         because the kit is locked once a match starts (`KIT_LOCKED`, A30). `assign` still goes -- it is
         roster and display, it never reaches the gun -- and every caller that could change what is
         COMPILED refuses before it gets here, so that skip is a backstop, not a silent drop. A node that
         has NOT taken the config still gets it, plus the same `start`: that is the hot join (E5, see
         `_took_this_config`). Pinned by `tests/test_mc_loadout_after_start.py`."""
-        if not p.get("node_id"):
-            # Round-2 fix pass H (2026-09-12): there is no socket to push to, but `self.bundles[pid]` is
-            # what a RECONNECTING phone is handed (`_hydrate` ships the stored frames beside the current
-            # `config_id`), so leaving it on the pre-edit compile is the same stale-head defect
-            # `_repush_lobby_config` had. Recompile, never send. Not in armed/live: the kit is locked
-            # there (A30) and `_push_config_to` refuses for the same reason.
-            #
-            # Round-3 MERGE-2 (2026-09-13): and the ACK goes with it, exactly as `_push_config_to`
-            # drops it beside the same recompile. `_bind` clears a displaced player's `node_id`
-            # without touching their ack, so an unbound player can be sitting on `ok: true` + a gun
-            # echo for frames this line has just replaced. The moment their phone comes back,
-            # `all_acked()` reads that echo, certifies a head no node ever took, and `start()` goes
-            # through with no `force` and nothing on screen.
-            if self.lobby_pushed and not self._repush_pending and self.phase not in ("armed", "live"):
-                self.bundles[p["player_id"]] = self._compile_rolled(p)
-                self.acks.pop(p["player_id"], None)
-            return
-        self.net.push(p["node_id"], "assign", self._assign_body(p))
+        nid = p.get("node_id")
+        if nid:
+            self._send_assign(p)
         # `_repush_pending`: a `set_config` edit is about to re-push the WHOLE roster from
         # `_repush_lobby_config()`, so taking the config leg here too pushes every re-kitted gun twice.
-        if self.lobby_pushed and not self._repush_pending \
-                and not (self.phase in ("armed", "live") and self._took_this_config(p)):
-            self._push_config_to(p)
-            if with_start and self.start_info:
-                self.net.push(p["node_id"], "start", self._start_body())
-        elif with_start and self.start_info:
-            self.net.push(p["node_id"], "start", self._start_body())
+        if self.lobby_pushed and not self._repush_pending:
+            if self.phase not in ("armed", "live"):
+                # Round-2 fix pass H (2026-09-12) is covered by this too, and for free: an UNBOUND
+                # player has no socket to push to, but `self.bundles[pid]` is what a RECONNECTING phone
+                # is handed (`_hydrate` ships the stored frames beside the current `config_id`), so
+                # leaving it on the pre-edit compile is the stale-head defect in its other clothes.
+                # `_repush_lobby_config` compiles for EVERY player and sends only to those with a
+                # socket, which is exactly the invariant that pass wanted; Round-3 MERGE-2's ack drop
+                # rides along, because `_push_config_to` retires the ack beside every recompile.
+                self._fresh_head_repush()
+            elif nid and not self._took_this_config(p):
+                # THE HOT JOIN, and the one recompile that must KEEP the id: `start` has already gone
+                # out naming this match's config and `engine.js startAt()` refuses a start for a config
+                # it does not hold, so a fresh id here would lock the late phone out of the match it is
+                # joining. Nor could it re-push the roster -- those guns are in play and would take the
+                # F121 disarmed head (`_refuse_push_in_play`). The in-flight-ack window stays open on
+                # this path alone, and narrowly: `_took_this_config` has just established that this node
+                # has neither acked this head nor reported itself armed.
+                self._push_config_to(p)
+        if nid and with_start and self.start_info:
+            self.net.push(nid, "start", self._start_body())
 
     def _after_player_change(self, p: Player, new: bool = False):
         self._resend(p, with_start=True)
@@ -1804,6 +1877,26 @@ class Session:
         # `station_source` edit left every assigned station on the PRE-EDIT allow-list.
         self.arm_stations()
         self.lobby_pushed = True
+
+    def _fresh_head_repush(self) -> None:
+        """A NEW HEAD FOR THE WHOLE ROSTER, under a fresh `config_id`. One operation, never two.
+
+        The `config_id` is what a gun's ack NAMES, and MC has exactly one of them. So a head that
+        changes must change the id or the change cannot be PROVEN -- and an id that changes must reach
+        every gun, or the rest of the roster is instantly holding a head MC calls stale and
+        `_refuse_stale_ack` blocks the whistle with no cure the operator was ever offered. Those two
+        facts are why the mint and the roster-wide re-push cannot be separated.
+
+        `push_config`'s re-push branch has minted and re-pushed together since F6. `_push_config_to` on
+        its own did NEITHER: a per-player recompile after the lobby push -- a loadout pick, a re-team --
+        popped that player's ack and wrote a fresh head to their gun under the OLD id. The ack already
+        in flight for the head it had just replaced then landed carrying that same id, satisfied
+        `_ack_is_current`, and the board certified the gun as holding the new team and weapons while it
+        was in fact still running the pre-edit ones. That is precisely the failure A36 exists to catch,
+        reached through the per-player door instead of the operator's.
+        """
+        self.config["config_id"] = uuid.uuid4().hex[:8]
+        self._repush_lobby_config()
 
     def sanitize_config(self, raw: dict) -> GameConfig:
         """A10 §8: the PUT /api/config validator as a pure function — a stored preset config is rebuilt from the
@@ -2180,11 +2273,30 @@ class Session:
         HUD). Deliberately NOT phase-gated (unlike `set_station`/`clear_station`): a stranded phone needs
         releasing in every phase, armed/live included, and this never re-arms or re-pushes anything else.
         Best-effort like `_arm_station`: a phone with no socket has nothing to retry against, and its own
-        seven-tap gate is still there under this if the push never lands."""
+        seven-tap gate is still there under this if the push never lands.
+
+        ...and the ASSIGNMENT goes with the phone. A release used to leave it standing, so MC kept vouching
+        for a field item that had walked away: the ITEMS card still rendered its kind/id/team as a deployed
+        station, `_station_warnings` still counted it as the control point or respawn point this game's
+        rules need (so a station-gated game read as SET UP with nothing on the field emitting anything --
+        the F104 failure mode, produced by MC's own bookkeeping), and `_station_ids()` still handed its id
+        to every player's `config.stations` allow-list.
+
+        Cleared ONLY when the push was taken. A release that reached no socket changed nothing on the field
+        -- that phone is still a station -- and clearing the row then would be the same lie pointing the
+        other way. The cleanup is `clear_station`'s, minus its phase gate: `_repush_stations_to_players` is
+        LOBBY-only on its own, so nothing re-arms a live gun here, which is what lets this stay ungated."""
         if nid not in self.stations:
             return False
-        ok = self.net.push(nid, "control", {"cmd": "release_utility"})
-        return ok is not False
+        ok = self.net.push(nid, "control", {"cmd": "release_utility"}) is not False
+        st = self.stations.get(nid)
+        if ok and st is not None and (st.get("assigned") or st.get("armed")):
+            st["assigned"], st["armed"], st["arm_pending"] = None, None, False
+            self.arm_stations()                    # the survivors' valid_ids shrink
+            self._repush_stations_to_players()
+            self._validate()                       # ...and the SETUP warnings tell the truth again
+            self._changed()
+        return ok
 
     def _refuse_station_change_in_play(self) -> None:
         """An assignment or clear is a `config` re-push to every player (below), and the phone's
@@ -2323,11 +2435,20 @@ class Session:
         self._changed()
 
     def _find_player_for_gun(self, gun_name: str | None, gun_tail: str | None,
-                              roster: dict[str, Player] | None = None) -> Player | None:
+                              roster: dict[str, Player] | None = None, *,
+                              tail_claim: bool = True) -> Player | None:
         """`roster` defaults to the active roster (`self.players`); F-3 (2026-09-13) passes `self.standby`
         too, so a gun still worn by a PARKED player resolves the same way for whoever asks — the ARMORY
         claim card's own "ON STANDBY" check and the KIT/LOBBY unrostered-phone count now share one
-        matcher instead of the count re-deriving it without the registry the card has."""
+        matcher instead of the count re-deriving it without the registry the card has.
+
+        TWO PASSES, and a caller may ask for only the first. The REGISTRY pass compares the node's gun
+        against the armory row (sticker base, BLE tail) or against the whole `gun_id` string. The second,
+        `tail_claim`, is the device-first fallback for a `gun_id` that IS a bare tail with no registry row
+        behind it — a TRAILING FRAGMENT of the name the node reported, which is a far looser thing to match
+        on: any short id can be the tail of somebody else's gun name. It is right for a claim form, where a
+        false match is visible and reversible; it is wrong wherever a match silently EXCLUDES a node from
+        something (`_standby_node_ids`), so those callers pass `tail_claim=False`."""
         if not gun_name and not gun_tail:
             return None
         roster = self.players if roster is None else roster
@@ -2344,10 +2465,11 @@ class Session:
                 return p
             if gid in {x for x in (base, full) if x}:
                 return p
-        for p in roster.values():
-            gid = (p.get("gun_id") or "").lower()
-            if gid and tail and gid == tail:  # device-first claim: gun_id may be just the tail —
-                return p                      # SECOND pass: an exact registry match always wins first
+        if tail_claim:
+            for p in roster.values():
+                gid = (p.get("gun_id") or "").lower()
+                if gid and tail and gid == tail:  # device-first claim: gun_id may be just the tail —
+                    return p                      # SECOND pass: an exact registry match always wins first
         return None
 
     def unrostered_phone_count(self) -> int:
@@ -2387,7 +2509,16 @@ class Session:
         A parked player has no `node_id` -- that is precisely what `_unroster` takes away -- so the only
         route back to their phone is the gun it reports, through the same matcher the unrostered count
         and the ARMORY claim card use. Callers use this to leave a benched phone out of a fan-out that
-        would otherwise reach every socket."""
+        would otherwise reach every socket.
+
+        THE REGISTRY PASS ONLY (`tail_claim=False`). Every use of this set EXCLUDES a node from something
+        -- today, from the addressed `start` -- and an exclusion made on a TRAILING FRAGMENT of a gun name
+        is an exclusion nobody can see. A benched player whose `gun_id` is a short device id equal to the
+        tail of an ACTIVE player's gun name shadowed that player's node, and their phone then silently
+        never received the start: no error, no red row, one player standing on the field with a gun that
+        never spawned. `_check_gun_free` -- the rule that decides whether two players may hold one gun at
+        all -- compares whole `gun_id` strings, so a fragment match here was also claiming a collision the
+        roster does not consider a collision."""
         out: set[str] = set()
         if not self.standby:
             return out
@@ -2395,7 +2526,8 @@ class Session:
             name, tail = nv.get("gun_name") or "", nv.get("gun_tail") or ""
             if not (name or tail):
                 continue
-            if self._find_player_for_gun(name or None, tail or None, roster=self.standby) is not None:
+            if self._find_player_for_gun(name or None, tail or None, roster=self.standby,
+                                         tail_claim=False) is not None:
                 out.add(nid)
         return out
 
@@ -2412,12 +2544,16 @@ class Session:
                 self._bind(nid, p)
 
     def _bind(self, nid: str, p: Player):
+        # Whoever loses this socket loses the record of what it was told along with it: the phone
+        # speaks for somebody else now, so "their phone has the game" is no longer a fact about them.
         old = self.node_player.get(nid)
         if old and old != p["player_id"] and old in self.players:
             self.players[old]["node_id"] = None
+            self.game_sent.pop(old, None)
         for q in self.players.values():
             if q.get("node_id") == nid and q["player_id"] != p["player_id"]:
                 q["node_id"] = None
+                self.game_sent.pop(q["player_id"], None)
         prev = p.get("node_id")
         if prev and prev != nid:
             if self.scorer:
@@ -2457,8 +2593,16 @@ class Session:
                 p["node_id"] = None
                 p["ready"] = False
                 self.acks.pop(p["player_id"], None)
+                self.game_sent.pop(p["player_id"], None)   # the phone is gone: what it was told is not a fact about them
         self.nodes.pop(nid, None)
         self.synced_at_lobby.pop(nid, None)
+        # A42: and the end-delivery watch over it. This was the one watch-ending path that did not clear
+        # the ledger (`_schedule`, `new_session` and `_arm_end_delivery`'s own match filter are the
+        # others), so evicting a node during RECAP left an entry re-pushing `control{end}` at a socket MC
+        # has just closed and naming that player as a straggler on LIVE and RECAP for the rest of the
+        # session. Bounded by the ladder, but a delivery fact about a node that no longer exists is not a
+        # fact at all.
+        self._end_delivery.pop(nid, None)
         if (self.stations.pop(nid, None) or {}).get("assigned"):
             # An assigned station left with its id still in every other station's `valid_ids` and every
             # HUD's `config.stations` (polish review 2026-09-11): shrink both, as `clear_station` does.
@@ -2523,6 +2667,7 @@ class Session:
                 pl["node_id"] = None
                 pl["ready"] = False                # as `evict_node`: kit->lobby must not advance on a phone that is now a station
                 self.acks.pop(pid, None)
+                self.game_sent.pop(pid, None)      # a station is not a phone holding this player's game
             # A13.5: a station phone. No gun, never bound; if the operator already assigned it, this hello
             # (first contact, or a reconnect after a reboot) is what arms it -- with the CURRENT game number,
             # which is how a station that missed the muster push still resets for the new match.
@@ -2577,6 +2722,12 @@ class Session:
             return None
         self._bind(hello["node_id"], p)
         node = self._assign_body(p)                          # A10: welcome carries catalog + policy too
+        # ...and it carries `game_brief()` exactly as an `assign` does (`engine.js _welcome` stores
+        # `node.game` from both), so this IS a delivery of the announced game and is recorded as one.
+        # It is the commonest delivery there is: a night LOADs at build and the players walk up
+        # afterwards, so for most phones the game arrives HERE and on no other route.
+        if self.game_loaded and self.game_cfg:
+            self.game_sent[p["player_id"]] = self.game_cfg
         if self.lobby_pushed:
             if p["player_id"] not in self.bundles:          # A5.6 late joiner hydrated on first hello
                 self.bundles[p["player_id"]] = self._compile_rolled(p)
@@ -2973,18 +3124,39 @@ class Session:
         e["exhausted"] = e["tries"] >= 1 + len(END_RETRY_MS)
 
     def _note_end_confirm(self, nid: str, body: dict) -> None:
-        """The ack, read off the heartbeat the phone was already sending — no new wire kind, and an app
-        that predates A42 confirms exactly as well as one that does not."""
+        """The ack, read off the heartbeat the phone was already sending — no new wire kind.
+
+        A CONFIRMATION IS SOMETHING THE PHONE SAYS, NEVER THE ABSENCE OF A DENIAL. This was written the
+        other way round: it returned early only for `armed`/`live` and confirmed on EVERY other value. That
+        is the exact false assurance A42 exists to remove, re-introduced inside the fix for it — a phone
+        that force-closes and relaunches mid-match comes back as `idle` until its gun relinks (`engine.js
+        _load`: *"Phase is re-derived when the gun reconnects; until then we are idle"*), ships that `idle`
+        on its next ~2 s heartbeat, and MC marked it confirmed PERMANENTLY: it stopped re-delivering, took
+        the name off the board, and told the operator every HUD had confirmed the end while that tagger may
+        still have been in the match. A restarted phone is not a rare shape — it is what a player does when
+        the app misbehaves, mid-match, which is exactly when this matters.
+
+        So only two shapes confirm, and both are positive claims:
+          * `END_CONFIRM_PHASES` (`kitted`) FOR THIS `match_id` — the receipt A42 names: `_endLocal` moves
+            the HUD there and deliberately keeps the match id, so the pair means "I ran your end";
+          * a DIFFERENT `match_id` — whatever phase it reports, it is in another match, and an end for this
+            one is no longer anything it could act on (A34's node-side rule, from the other side).
+
+        Everything else is NO CLAIM and the watch stays open: `idle`/`connected` (restarting, or a lost
+        context), `lobby`/`armed`/`live`, and a body with no `arm_state` at all. The cost of that is a
+        straggler line for a phone that is merely quiet; the cost of the other direction was a match.
+
+        The TAGGER was never the exposure: A34's reconcile still ends the gun on its next `armed`/`live`
+        heartbeat for a retired match (`_check_stale_live`). What lied was the OPERATOR's green line, and
+        that is what this restores.
+        """
         e = self._end_delivery.get(nid)
         if not e or e["confirmed"]:
             return
-        arm = body.get("arm_state")
-        if arm is None:
-            return          # an app that says nothing claims nothing: keep waiting, never assume
-        mid = body.get("match_id")
-        # Still `armed`/`live` for THIS match (or naming none at all, an older app) = it has not taken the
-        # end. Anything else — `kitted`, or live in a DIFFERENT match — means it is no longer in ours.
-        if arm in ("armed", "live") and (mid is None or mid == e["match_id"]):
+        arm, mid = body.get("arm_state"), body.get("match_id")
+        moved_on = mid is not None and mid != e["match_id"]          # it is playing something else
+        took_ours = arm in END_CONFIRM_PHASES and mid == e["match_id"]
+        if not (moved_on or took_ours):
             return
         e["confirmed"], e["confirmed_t"] = True, self.now_ms()
         if e["tries"] > 1:
@@ -4220,8 +4392,9 @@ class Session:
             # in-flight ack is simply stale (the row says so, naming the old id) until the gun answers
             # the head it now holds, and the phone's own "start for a config I do not hold" check does
             # the same work on its side. No new wire field buys that.
-            self.config["config_id"] = uuid.uuid4().hex[:8]
-            self._repush_lobby_config()        # fresh heads, acks/echo/pool judgements dropped
+            # ...the same operation a per-player recompile takes (`_fresh_head_repush`): fresh id,
+            # fresh heads for everybody, acks/echo/pool judgements dropped.
+            self._fresh_head_repush()
             self.phase = "lobby"
             self._changed()
             return {"ok": True, "acks": self.acks, "repushed": True,
@@ -4603,7 +4776,14 @@ class Session:
         runs the match on its gun and must still get END/PANIC (review 2026-09-11) — while the COUNT is
         over the bound player nodes, so it is the same population the operator sees as `nodes`.
         """
-        mid = (self.start_info or {}).get("match_id")
+        # The match this `end` is about. `start_info` is cleared by `_finish()`, so in RECAP -- where the
+        # operator's SECOND end lands, the manual retry for a phone they can see did not stop -- it is
+        # `_log_match` that names the match that just ended. Without this fallback that press carried no
+        # `match_id` at all: nothing armed, nothing counted, and the try counter the operator is reading
+        # never moved for the one delivery they made by hand. (A34's node rule makes the name safe: a phone
+        # holding a different match ignores it, and A42's whole point is that an end may only ever stop the
+        # match it names.)
+        mid = (self.start_info or {}).get("match_id") or (self._log_match if self.phase == "recap" else None)
         # A42: the operator's END now NAMES its match. A34 gave `control{end}` an optional `match_id` and
         # taught the node to ignore an end naming a match it is not playing; the operator's end never
         # carried one, so re-delivering it would have been a blunt instrument able to stop a LATER match.
@@ -4990,7 +5170,14 @@ class Session:
                 # LOAD: the GAME the phones have been told about. `loaded` is what the GAMES tab keys
                 # its ACTIVE GAME CONFIG state on -- `lobby.pushed` no longer becomes true at LOAD,
                 # which is the whole point of the split. `sent` is DELIVERY (see `load_game`).
-                "game": {"loaded": self.game_loaded, "config_id": self.config.get("config_id"),
+                # `config_id` is `game_cfg`, the game that was ANNOUNCED -- NOT the live one. The two
+                # diverge the moment a head is re-pushed without a re-announcement (a re-team after the
+                # lobby push mints a fresh id: `_fresh_head_repush`), and reporting the live id here
+                # made this block say the phones had been told about a game that never left MC.
+                # ABSENT, not null, when nothing has been announced: the UI contract is
+                # `config_id?: string` and "no announcement" is the absence, not an id.
+                "game": {"loaded": self.game_loaded,
+                         **({"config_id": self.game_cfg} if self.game_cfg else {}),
                          "sent": self.game_sent_n(), "total": len(self.players)},
                 "sync": self.sync_summary(),      # the pre-arm "is the field in sync" summary
                 "start": start, "live": live, "recap": self.recap() if self.phase in ("live", "recap") else None,

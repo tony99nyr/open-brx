@@ -89,7 +89,7 @@ describe('GAMES · LOAD announces the game and writes no gun', () => {
     expect(g.views, 'nothing navigated the console away from GAMES').toEqual([]);
     await g.settle();
     expect(g.q('[data-testid="active-game-config"]'), 'the tab changed state').toBeTruthy();
-    expect(g.m.text()).toMatch(/Active Game Config/i);
+    expect(g.m.text()).toMatch(/Loaded Game/i);
     g.m.unmount();
   });
 
@@ -147,6 +147,39 @@ describe('GAMES · the two counts are different facts and are worded as such', (
     const g = await games({ load: true, push: true });
     expect(g.q('[data-testid="game-load-status"]')!.textContent).toMatch(/GAME SENT TO/);
     expect(g.q('[data-testid="game-gun-status"]')!.textContent).toMatch(/CONFIG/);
+    g.m.unmount();
+  });
+
+  it('F.3: an older server with no `game` block renders no phone-delivery line — never a fabricated count', async () => {
+    // `gameSent`/`gameTotal` fall back to 0 and the roster size when `state.game` is absent (an older
+    // server never sent one), which LOOKS exactly like a real "0 of N delivered" under a pushed
+    // lobby -- rendering it unconditionally produced "GAME SENT TO 0/N PHONES" on a config the phones
+    // plainly already have (2026-09-13). Absence is a different fact from zero.
+    const g = await games({ push: true, patch: s => ({ ...s, game: undefined }) });
+    expect(g.q('[data-testid="active-game-config"]'), 'control: `loaded` still falls back off lobby.pushed').toBeTruthy();
+    expect(g.q('[data-testid="game-load-status"]'), 'no game block, no delivery claim at all').toBeFalsy();
+    expect(g.q('[data-testid="game-gun-status"]'), 'the gun count is a fact about the LOBBY push, unaffected').toBeTruthy();
+    g.m.unmount();
+  });
+
+  it('int-n1: "the phones have the game" is gated on delivery, not just a clean readiness board', async () => {
+    // Independent server facts: the readiness board (guns) can read clean while the phone-delivery
+    // count (a DIFFERENT call, `state.game.sent/total`) is still catching up right after a LOAD. The
+    // old sentence asserted delivery unconditionally whenever the board had nothing to complain
+    // about, so it could sit directly under a counter reading 5 of 8.
+    const g = await games({
+      load: true,
+      patch: s => ({
+        ...s,
+        game: { loaded: true, sent: 5, total: 8 },
+        // clear the demo's one deliberately-unreachable gun so the readiness board reads clean and
+        // cannot itself explain why this sentence should be cautious.
+        readiness: { ...s.readiness, board: s.readiness.board.map(b => (b.status === 'red' ? { ...b, status: 'green' as const, blockers: [] } : b)) },
+      }),
+    });
+    const txt = g.m.text();
+    expect(txt, `saw ${JSON.stringify(txt)}`).not.toContain('The phones have the game.');
+    expect(txt).toMatch(/5 of 8 phones? have the game/i);
     g.m.unmount();
   });
 });
@@ -259,6 +292,22 @@ describe('GAMES · EDIT is a draft, SAVE AND LOAD is the only thing that sends',
     await tap(g.btn('[data-testid="game-edit-cancel"]'));
     expect(g.q('[data-testid="game-edit-panel"]'), 'the second CANCEL discards it').toBeFalsy();
     expect(g.calls.putConfig, 'nothing was ever sent').toEqual([]);
+    g.m.unmount();
+  });
+
+  it('F.2: a mode/game card tap while EDIT is open is blocked, not raced against the open draft', async () => {
+    const g = await games({ load: true });
+    await openEdit(g);
+    await tap(g.q('[data-testid="pick-another"]'));   // shows the shelves next to the open draft
+    const other = g.modes.find(mm => mm.mode !== g.state().config.mode)!;
+    const card = g.q(`[aria-label="play ${other.name}"]`);
+    expect(card, 'control: the shelf offers a different mode to tap').toBeTruthy();
+    await tap(card);
+    // F.2 (2026-09-13): this used to call `putConfig`/`applyPreset` IMMEDIATELY -- the draft stayed
+    // open but its patch is diffed against `cfg` (`GameEditPanel.patchOf`), and this tap had just
+    // moved `cfg` out from under it, so SAVE would then send a patch against a game nobody drafted.
+    expect(g.calls.putConfig, 'the card tap must not reach the server while a draft is open').toEqual([]);
+    expect(g.q('[data-testid="game-edit-panel"]'), 'the draft stays open, untouched').toBeTruthy();
     g.m.unmount();
   });
 

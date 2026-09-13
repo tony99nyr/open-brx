@@ -617,15 +617,29 @@ export class MockBackend implements Api {
    *  did, which is the sentence the operator asked to see); `?mock&faults=1` shows one phone that never
    *  confirmed, which is the state the field hit twice on 2026-09-12 and the only way to look at that
    *  notice without a match on the ground. Mirrors `state.py _end_delivery_view()`. */
+  /** `state.py END_RETRY_MS`, mirrored so the demo cannot invent a different ladder. The whistle's own
+   *  push is try 1, so try N falls due at the sum of the first N-1 gaps: 0, 2s, 7s, 17s, 37s, 77s,
+   *  137s -- after which the server STOPS and A34's reconcile is the long tail. */
+  private static readonly END_RETRY_MS = [2_000, 5_000, 10_000, 20_000, 40_000, 60_000];
+  /** when the whistle blew (`endedAt`), so `tries`/`retrying` are DERIVED the way the server derives
+   *  them rather than frozen at the spent end of the ladder. */
+  private endedAt?: number;
+
   private endDelivery() {
-    if (!this.recap_) return undefined;
+    if (this.endedAt === undefined) return undefined;
     const total = this.players.length;
     if (!total) return undefined;
     const out = this.demoFaults ? [this.players[total - 1]] : [];
+    const since = Math.max(0, now() - this.endedAt);
+    // Count the attempts that have actually fallen due, exactly as `_end_delivery_tried` does.
+    let tries = 1, due = 0;
+    for (const gap of MockBackend.END_RETRY_MS) { due += gap; if (since >= due) tries += 1; else break; }
+    const exhausted = tries >= 1 + MockBackend.END_RETRY_MS.length;
     return {
-      match_id: this.live_?.match_id ?? 'm-mock', total, confirmed: total - out.length, retrying: false,
+      match_id: this.live_?.match_id ?? 'm-mock', total, confirmed: total - out.length,
+      retrying: out.length > 0 && !exhausted,
       unconfirmed: out.map(p => ({ player_id: p.player_id, display: p.display, node_id: `node-${p.player_id}`,
-                                   tries: 7, since_ms: 140_000, reached: true, retrying: false })),
+                                   tries, since_ms: since, reached: true, retrying: !exhausted })),
     };
   }
   private armStateFor(pid?: string) {
@@ -727,12 +741,16 @@ export class MockBackend implements Api {
         shots_total: 0, best_streak: 0, multi_best: 0, first_blood: false, acc_provisional: true,
         accuracy: null, kd: 0, streak: 0, medals: [], status: d[6] === 'stale' ? 'stale' : 'alive', sync_age_ms: d[7] * 1000 };
     });
-    this.live_ = { rows, feed: [], go_live_t: s.go_live_t, match_id: s.match_id };
+    this.live_ = { rows, feed: [], go_live_t: s.go_live_t, match_id: s.match_id }; this.endedAt = undefined;
     this.feed({ t_match_s: 0, text: `MATCH LIVE — ${rows.length} NODES SPAWNED`, kind: 'sync', tag: 'SYNC POINT' });
   }
   private endMatch() {
     const l = this.live_; if (!l) return;
     this.phase = 'recap';
+    // A42: the server arms the end-delivery watch in `_finish()` -- AT THE WHISTLE -- not when the
+    // operator happens to open RECAP. Stamping it here is what lets the demo reach the RE-DELIVERING
+    // state and the LIVE banner at all; keyed off `recap_` it could only ever show the spent ladder.
+    this.endedAt = now();
     // R2-1: `state.py _finish()` drops `lobby_pushed` and the acks at the whistle — the next match
     // needs a FULL fresh head push (A36), which is also what makes that push a first push rather
     // than a re-push, so the game number moves for it. The mock kept `pushed` true across the END,
@@ -1269,7 +1287,7 @@ export class MockBackend implements Api {
     // recall/panic stop a live game -> KITTED (A5.9), the same landing `state.py` gives them. The
     // mock used to go back to LOBBY whenever a config head had been pushed, so a recall in `?mock`
     // ended somewhere a recall on a real MC never does.
-    this.start_ = undefined; this.live_ = undefined; this.phase = 'kit'; this.pushed = false; this.acks = {};
+    this.start_ = undefined; this.live_ = undefined; this.phase = 'kit'; this.pushed = false; this.acks = {}; this.endedAt = undefined;
     this.emit();
     return { ok: true, ended: true, reached: nodes, pushed: nodes, nodes, phase: this.phase };
   }
@@ -1284,7 +1302,7 @@ export class MockBackend implements Api {
     return 'data:text/csv;charset=utf-8,' + encodeURIComponent(lines.join('\n'));
   }
   async newSession(keep_roster: boolean) {
-    this.phase = 'muster'; this.pushed = false; this.acks = {}; this.start_ = undefined; this.live_ = undefined; this.recap_ = undefined;
+    this.phase = 'muster'; this.pushed = false; this.acks = {}; this.start_ = undefined; this.live_ = undefined; this.recap_ = undefined; this.endedAt = undefined;
     this.gameLoaded = false; this.gameSent = {};
     this.session_id = uid('sess');
     this.restoredFrom = null;   // F142: FRESH SESSION is the acknowledgment — a restored banner never lingers

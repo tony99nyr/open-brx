@@ -287,3 +287,93 @@ def test_the_fake_and_the_real_net_agree_about_a_push_with_no_socket():
     `is not False` convention this file relies on."""
     net = FakeNet()
     assert net.push("nobody", "control", {"cmd": "end"}) is not False
+
+
+# --------------------------------------------------------------------------------------------------
+# A CONFIRMATION IS SOMETHING THE PHONE SAYS (2026-09-13: the A42 defect, inside A42's own fix)
+# --------------------------------------------------------------------------------------------------
+def test_a_phone_that_restarted_mid_match_is_not_read_as_having_taken_the_end():
+    """The field shape this whole amendment is about, arriving by a different door.
+
+    A player force-closes the app mid-match and reopens it. `engine.js _load` restores the match, the
+    pools and the gun — but NOT the phase: *"Phase is re-derived when the gun reconnects; until then we
+    are idle"*. So the next ~2 s heartbeat says `arm_state: "idle"` for a match that is still on the gun.
+
+    Read as "not armed/live, therefore done", that marked the node confirmed PERMANENTLY: the
+    re-delivery stopped, the name came off the board, and MC printed that every HUD had confirmed the
+    end while that tagger may still have been in the match. A34's reconcile still covers the GUN; what
+    lied was the operator's green line."""
+    s, net, clock, ps, info = go_live(2)
+    s.control("end")
+    clock["t"] += 500
+    _hb(net, clock, "node0", ps[0]["player_id"], "kitted", info["match_id"], alive=False)
+    _hb(net, clock, "node1", ps[1]["player_id"], "idle", info["match_id"])
+    assert _unconfirmed(s) == ["OP1"], _view(s)
+    # ...and the watch is still running, which is the half that actually rescues the match: the next
+    # rung of the ladder still goes out to the phone that has not said it stopped.
+    n1 = len(_ends_to(net, "node1"))
+    clock["t"] += END_RETRY_MS[0]
+    s.tick()
+    assert len(_ends_to(net, "node1")) == n1 + 1, "a restarted phone must still be re-delivered to"
+
+
+def test_no_phase_short_of_the_receipt_confirms_the_end():
+    """`engine.js PHASES` in full, minus the one that IS the receipt. Two of these (`idle`, `connected`)
+    are a phone that has just restarted, two (`armed`, `live`) are a phone still in the match, and
+    `lobby` is a phone that took a config. None of them says "I ran your end", with or without a match
+    named — and the rule this replaces confirmed on every one of them except the last two."""
+    for phase in ("idle", "connected", "lobby", "armed", "live"):
+        s, net, clock, ps, info = go_live(2)
+        s.control("end")
+        clock["t"] += 500
+        _hb(net, clock, "node1", ps[1]["player_id"], phase, info["match_id"])
+        assert "OP1" in _unconfirmed(s), f"{phase!r} for this match was read as a confirmation"
+        _hb(net, clock, "node1", ps[1]["player_id"], phase, None)
+        assert "OP1" in _unconfirmed(s), f"{phase!r} naming no match was read as a confirmation"
+
+
+def test_the_receipt_is_kitted_AND_this_match_named_together():
+    """`_endLocal` moves the HUD to `kitted` and deliberately KEEPS `match_id` — the pair is the ack,
+    and half of it is not. A phone reporting `kitted` about nothing in particular (a lost context, an
+    expired store) has said nothing about the match whose end we are chasing."""
+    s, net, clock, ps, info = go_live(2)
+    s.control("end")
+    clock["t"] += 500
+    _hb(net, clock, "node1", ps[1]["player_id"], "kitted", None)
+    assert "OP1" in _unconfirmed(s), "kitted, naming no match, is not a receipt for THIS one"
+    _hb(net, clock, "node1", ps[1]["player_id"], "kitted", info["match_id"], alive=False)
+    assert "OP1" not in _unconfirmed(s), "and the real receipt still confirms"
+
+
+def test_evicting_a_node_ends_its_watch_instead_of_leaving_a_ghost_straggler():
+    """Every other way a watch ends clears the ledger (`_schedule`, `new_session`, a watch for another
+    match). Eviction did not, so a node kicked during RECAP kept being re-pushed `control{end}` at a
+    socket MC had just closed, and kept its player named as a straggler on LIVE and RECAP."""
+    s, net, clock, ps, info = go_live(2)
+    s.control("end")
+    assert "OP1" in _unconfirmed(s)
+    n1 = len(_ends_to(net, "node1"))
+    assert s.evict_node("node1") is True
+    assert "OP1" not in _unconfirmed(s), _view(s)
+    assert _view(s)["total"] == 1
+    for _ in range(200):
+        clock["t"] += 1000
+        s.tick()
+    assert len(_ends_to(net, "node1")) == n1, "no re-delivery at a socket MC itself closed"
+
+
+def test_the_second_end_pressed_in_recap_names_the_match_and_counts_as_a_delivery():
+    """The operator's manual retry: a tagger is visibly still playing, so they press END again on the
+    recap screen. That press ends nothing (the recap stands) but it IS forwarded — and it went out
+    UNNAMED, because `_finish()` has cleared `start_info` by then. So the one delivery the operator made
+    by hand was the one delivery A42 could not see: nothing armed, no try counted, and the STATUS cell
+    they were watching did not move. `_log_match` is what names the match once the recap is written."""
+    s, net, clock, ps, info = go_live(2)
+    s.control("end")
+    _hb(net, clock, "node0", ps[0]["player_id"], "kitted", info["match_id"], alive=False)
+    before = next(r["tries"] for r in _view(s)["unconfirmed"] if r["display"] == "OP1")
+    r = s.control("end")
+    assert r["ok"] is False and r["ended"] is False and s.phase == "recap", r
+    assert _ends_to(net, "node1")[-1] == {"cmd": "end", "match_id": info["match_id"]}
+    after = next(r2["tries"] for r2 in _view(s)["unconfirmed"] if r2["display"] == "OP1")
+    assert after == before + 1, "the operator's own re-delivery must reach the counter they are reading"

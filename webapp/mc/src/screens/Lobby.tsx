@@ -6,7 +6,7 @@ import { useStore } from '../store';
 import { F, T, TAB, teamColor } from '../tokens';
 import { BTN_RESET, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag, useNarrow } from '../ui';
 import { SetupSteps } from '../ui/SetupSteps';
-import { PreArmSummary } from '../ui/PreArmSummary';
+import { PreArmSummary, armOverrideCopy } from '../ui/PreArmSummary';
 import { McVerify } from '../ui/McVerify';
 import { StandDownChip, StandbySection } from '../ui/Standby';
 import { GameEditPanel } from '../ui/GameEditPanel';
@@ -114,6 +114,16 @@ export function Lobby() {
       : '',
   ].filter(Boolean).join('  ·  ');
   const armTitle = armDisabled ? armWhy || 'Not ready to arm yet' : '';
+  // …and the OVERRIDE says what overriding actually costs. `armDisabled` above is true in every state
+  // that trips the server's `_refuse_unconfigured_gun` (a player with no phone bound is a `waiting`
+  // row, so `blockedCount` covers it), which makes `pushAndArm(true)` the ONLY reachable path past
+  // that gate — and this button used to promise "Nodes still blocked will not arm; everyone else
+  // starts on time." on the way through it. That is false exactly where it matters: a gun that never
+  // took this config is not inert, it arms on the head it is still holding. The words now come from
+  // the server's own `sync` block (`ui/PreArmSummary.armOverrideCopy`), naming the players and what
+  // will happen to them. The override itself is untouched — this informs the judgement, it does not
+  // take it away.
+  const override = armOverrideCopy(state.sync);
 
   return (
     <div className="screen">
@@ -289,15 +299,29 @@ export function Lobby() {
           gate (state.py `one_team_fault`), so the tray must not be on screen claiming otherwise. */}
       {(lobby.pushed ? blockedCount > 0 : pushBlockedCount > 0) && balancedForTeams && (
         <div data-override="1" style={{ marginTop: 10, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* The risk goes ABOVE the button and ON THE SCREEN, in the console's fault shape (shouted
+              statement, quiet cure). It was a tooltip, and this runs on a tablet where there is no
+              hover at all — so the one sentence that could have stopped the 2026-09-12 start was
+              unreachable on the device the operator was holding. */}
+          {lobby.pushed && override.warn.length > 0 && (
+            <div data-testid="override-risk" role="status" style={{ flexBasis: '100%', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {override.warn.map(w => (
+                <span key={w.head} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <span style={{ font: F.chk(700, 12), color: T.bad, lineHeight: 1.5 }}>▲ {w.head}</span>
+                  <span style={{ font: F.chk(500, 11.5), color: T.micro, textTransform: 'none', paddingLeft: 14, lineHeight: 1.5 }}>{w.hint}</span>
+                </span>
+              ))}
+            </div>
+          )}
           {/* F7: 11 px is the console's floor for a word that carries meaning, and this one names the
               whole tray. It sat at 10 and was the only thing in the action rail below the floor. */}
           <span style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: T.micro }}>HOST OVERRIDE</span>
           <button type="button" className="hov-acc-ink hit44" style={{ ...BTN_RESET, cursor: 'pointer', color: T.bad, font: F.chk(700, 13), minHeight: 36 }}
             title={lobby.pushed
-              ? 'Arms the countdown anyway. Nodes still blocked will not arm; everyone else starts on time.'
+              ? override.title
               : 'Compiles and pushes to every bound node anyway. A gun that is not linked will simply not ack.'}
             onClick={() => pushAndArm(true)}>
-            {lobby.pushed ? 'Arm anyway' : `Push anyway, over ${[reds.length && `${reds.length} fault${reds.length === 1 ? '' : 's'}`, waitRows.length && `${waitRows.length} missing phone${waitRows.length === 1 ? '' : 's'}`].filter(Boolean).join(' and ')}`} ▸
+            {lobby.pushed ? override.label : `Push anyway, over ${[reds.length && `${reds.length} fault${reds.length === 1 ? '' : 's'}`, waitRows.length && `${waitRows.length} missing phone${waitRows.length === 1 ? '' : 's'}`].filter(Boolean).join(' and ')}`} ▸
           </button>
         </div>
       )}

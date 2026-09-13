@@ -625,3 +625,36 @@ def test_release_station_is_not_phase_gated_unlike_set_and_clear_station():
         raise AssertionError("a station reassignment during LIVE was accepted")
     except ValueError as e:
         assert "LIVE" in str(e)
+
+
+def test_releasing_a_station_takes_its_assignment_with_it():
+    """A release that left the assignment standing kept MC vouching for a field item that had walked
+    away. The ITEMS card still rendered its kind/team/id as deployed, `_station_warnings` still counted
+    it as the respawn point (or control point) this game's rules need -- so a station-gated game read as
+    SET UP with nothing on the field emitting anything, which is the F104 failure mode produced by MC's
+    own bookkeeping -- and its id stayed in every player's `config.stations` allow-list."""
+    s = _joined(_sess(respawn={"type": "scanner", "delay_s": 15}))
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "respawn", "team": "any", "id": 9})
+    assert [x["id"] for x in s._station_ids()] == [9]
+    assert not [w for w in s.config_warnings if "NO RESPAWN STATION" in w]
+
+    assert s.release_station("util-1") is True
+    assert s.stations["util-1"]["assigned"] is None and s.stations["util-1"]["armed"] is None
+    assert s._station_ids() == [], "a released phone's id must leave the allow-list"
+    assert [w for w in s.config_warnings if "NO RESPAWN STATION" in w], \
+        "scanner respawn with nothing assigned is a SETUP warning again"
+
+
+def test_a_release_that_reached_no_socket_leaves_the_assignment_alone():
+    """The other direction of the same honesty. A release is best-effort (there is no ack kind for
+    `control`); one that reached no socket changed NOTHING on the field -- that phone is still a station,
+    propped up wherever it was left -- so clearing the row then would be the same lie pointing the other
+    way. `ok` means only that a socket took the push, and the bookkeeping follows exactly that."""
+    s = _joined(_sess(respawn={"type": "scanner", "delay_s": 15}))
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "respawn", "team": "any", "id": 9})
+    s.net.push = lambda nid, kind, body: False           # NetServer: "no live socket"
+    assert s.release_station("util-1") is False
+    assert (s.stations["util-1"]["assigned"] or {}).get("id") == 9
+    assert [x["id"] for x in s._station_ids()] == [9]

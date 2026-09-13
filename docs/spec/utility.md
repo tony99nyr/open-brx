@@ -34,8 +34,10 @@ so a player cannot wander in and fiddle with a deployed station mid-game). Leavi
 concern: getting back to your own HUD is rejoining the game you are locked out of, not a cheat. **A41
 (2026-09-13, field: the seven-tap gate was the ONLY way out, with zero feedback and no MC-side cure)** adds
 two more exits that touch nothing in the drawer: a plain, HELD `#exitHud` control on the utility screen's main
-view, shown only while nobody has claimed this phone as a field item yet (`!mcArmed` — a deployed, MC-armed
-station stays behind the seven-tap gate exactly as before); and an operator's MC-side release,
+view, shown only while nobody has claimed this phone as a field item yet AND it is not already broadcasting as
+one (`!mcArmed && !advertising` — a station stays behind the seven-tap gate exactly as before, whether MC
+armed it or an operator armed it BY HAND in the drawer, and a LIVE station stays there too: hiding is the
+only guard, since the hold handler asks nothing but whether the button is hidden); and an operator's MC-side release,
 `control{cmd:"release_utility"}` (§5c), which works on a deployed station too, in any phase.
 
 ## 2. The advert (the wire between phones)

@@ -121,6 +121,14 @@ export function Games() {
   // (round-3 FIELD-1's index-map + rebalance — no longer "everyone onto teams[0]", but still a move).
   const splitFor = (targetTeams: { team_id: string }[]) => splitLine(state.players, cfg.teams, targetTeams);
   const guarded = (key: string, targetTeams: { team_id: string }[], go: () => void) => {
+    // F.2 (2026-09-13): the loaded state shows the EDIT draft and "PLAY A DIFFERENT GAME" on screen
+    // together, and a card tap here used to call `putConfig`/`applyPreset` IMMEDIATELY. The draft
+    // stayed open, but its patch is diffed against `cfg` (`GameEditPanel`'s `patchOf`), and this tap
+    // had just moved `cfg` out from under it -- so SAVE would then send a patch against a game nobody
+    // drafted. Editing and switching games are two different intents; block the second until the
+    // first is finished (SAVE AND LOAD) or discarded (CANCEL), the same way a dirty draft already
+    // asks before letting CANCEL itself discard it.
+    if (editing) { setNotice('FINISH EDITING FIRST — SAVE AND LOAD, OR CANCEL THE OPEN DRAFT, BEFORE PICKING ANOTHER GAME', true); return; }
     if (modeLocked) { setNotice(lockedReason(state.phase), true); return; }   // never a silent tap (F151)
     if ((custom || splitFor(targetTeams)) && confirmSwitch !== key) { setConfirmSwitch(key); return; }
     setConfirmSwitch(null); go();
@@ -298,7 +306,11 @@ export function Games() {
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '14px 28px', marginBottom: 20 }}>
         <div>
           <div style={{ font: F.mono(600, 10), letterSpacing: '.3em', color: T.acc }}>[ A2 // GAMES ]</div>
-          <div style={{ font: F.osw(700, 30), letterSpacing: '.1em', textTransform: 'uppercase', marginTop: 2 }}>{loaded ? 'Active Game Config' : 'Pick the Game'}</div>
+          {/* int-n1 (2026-09-13): "Active Game Config" fused the two words this whole screen exists to
+              keep apart -- the GAME is announced to phones, the CONFIG is what gets pushed to guns.
+              "Loaded Game" names only the fact this title is entitled to: something has been LOADED.
+              The testid stays `active-game-config` -- a stable hook, not operator-facing copy. */}
+          <div style={{ font: F.osw(700, 30), letterSpacing: '.1em', textTransform: 'uppercase', marginTop: 2 }}>{loaded ? 'Loaded Game' : 'Pick the Game'}</div>
         </div>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 14, flexWrap: 'wrap' }}>
           {/* VENUE — where you're playing, not what game it is */}
@@ -343,7 +355,12 @@ export function Games() {
                   game (LOAD, delivery), and how many GUNS are confirmed on the head (the lobby push).
                   The second only exists once there has been a push, and saying nothing is the honest
                   answer until then — a gun count before any push would be a count of nothing. */}
-              <GameSentStatus testid="game-load-status" sent={gameSent} total={gameTotal} recent={recentLoad} />
+              {/* F.3 (2026-09-13): rendered unconditionally, this read "GAME SENT TO 0/N PHONES" on a
+                  server too old to send a `game` block at all -- `gameSent`/`gameTotal` fall back to
+                  0 and the roster size, which LOOKS like a real (and alarming) delivery count instead
+                  of "this server never told us". Absence is a different fact from zero, and only one
+                  of them is true here. */}
+              {state.game && <GameSentStatus testid="game-load-status" sent={gameSent} total={gameTotal} recent={recentLoad} />}
               {state.lobby.pushed
                 ? <LoadStatus testid="game-gun-status" pushed acked={gate.acked} total={gate.total} recent={false} />
                 : <span data-testid="game-gun-status" style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>GUNS NOT CONFIGURED YET — WEAPONS GO AT THE LOBBY PUSH, AFTER KITTING</span>}
@@ -374,7 +391,14 @@ export function Games() {
                 || (faults.length ? `${faults.length} gun${faults.length === 1 ? '' : 's'} cannot start`
                   : gate.waitWhy
                     || (!state.lobby.pushed
-                        ? 'The phones have the game. Kitting is next, and the guns are configured at the lobby push.'
+                        // int-n1 (2026-09-13): this used to say "The phones have the game" whenever the
+                        // readiness board was clean, WITHOUT checking delivery -- a fact from a
+                        // different server call (`state.game.sent/total`) that can lag behind a LOAD
+                        // for as long as a phone takes to answer. The two diverge for real, right after
+                        // LOAD, so the claim could sit directly under a counter reading 5 of 8.
+                        ? (state.game && gameSent < gameTotal
+                            ? `${gameSent} of ${gameTotal} phone${gameTotal === 1 ? '' : 's'} have the game so far — the rest are not connected. Kitting is next, and the guns are configured at the lobby push.`
+                            : 'The phones have the game. Kitting is next, and the guns are configured at the lobby push.')
                         : !everyoneAcked ? `No config echo from ${gate.noEcho.join(', ') || 'some guns'} — headset off, or gun asleep?`
                           : 'Every gun is holding this config. Adjust it here and SAVE AND LOAD, or continue to KIT.'))}
               {gate.staleAckLine && notOnlyStale.length > 0 && (

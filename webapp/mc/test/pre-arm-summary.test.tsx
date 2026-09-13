@@ -11,8 +11,9 @@
 // below proves the summary fails when the thing it checks is ABSENT, not merely when it is wrong.
 import { act } from 'react';
 import { describe, expect, it } from 'vitest';
-import type { State } from '../src/api/types';
+import type { Api, State } from '../src/api/types';
 import { Lobby } from '../src/screens/Lobby';
+import { T } from '../src/tokens';
 import { demo, mountScreen } from './harness';
 
 type Row = NonNullable<State['sync']>['rows'][number];
@@ -133,6 +134,171 @@ describe('PRE-ARM CHECK — nothing checked is never something satisfied', () =>
   it('a server that sends no `sync` block renders NOTHING rather than a summary it made up', async () => {
     const v = await lobby(undefined);
     expect(v.q('[data-testid="pre-arm-summary"]'), 'a pre-arm check that invents its answer is worse than none').toBeFalsy();
+    v.m.unmount();
+  });
+});
+
+/** `#rrggbb` as jsdom reports an inline style back — the panel's green/amber is a fact about what the
+ *  operator sees, so it is asserted as a colour, not as "some element exists". */
+const rgb = (hex: string) => {
+  const v = parseInt(hex.replace('#', ''), 16);
+  return `rgb(${(v >> 16) & 255}, ${(v >> 8) & 255}, ${v & 255})`;
+};
+
+describe('PRE-ARM CHECK — the verdict can never be greener than the rows beneath it', () => {
+  it('a phone that never took this game is not "IN SYNC", however happy the gun columns are', async () => {
+    // `totals.in_sync` is computed server-side from the GUN columns ALONE (`state.py sync_summary`:
+    // gun_sent and gun_acked), so this fixture — every gun pushed and acked, one phone that never
+    // took the game — made the panel print "IN SYNC — EVERY GUN HAS THIS CONFIG" in green directly
+    // above a row rendering PHONE ✕. LOAD split those two halves; a verdict that only reads one of
+    // them is the `(0/8)` false reassurance in a new place.
+    const v = await lobby(syncOf([row(), row({ player_id: 'p2', display: 'DRIFT', phone_game: false })]));
+    const verdict = v.q('[data-testid="pre-arm-verdict"]')!;
+    expect(verdict.textContent, `saw ${JSON.stringify(verdict.textContent)}`).not.toMatch(/IN SYNC/);
+    expect(verdict.textContent).toBe('GUNS READY — BUT THIS GAME REACHED ONLY 1 OF 2 PHONES');
+    expect(v.all('[data-testid="pre-arm-row"]').length, 'and the row it is about is listed').toBe(1);
+    v.m.unmount();
+  });
+
+  it('…and the panel is not painted green while it is listing somebody', async () => {
+    const v = await lobby(syncOf([row(), row({ player_id: 'p2', display: 'DRIFT', phone_game: false })]));
+    expect(v.q('[data-testid="pre-arm-verdict"]')!.style.color, 'amber, not the green of an all-clear').toBe(rgb(T.warn));
+    expect(v.q('[data-testid="pre-arm-summary"]')!.style.borderLeftColor, 'including the bar down the side').toBe(rgb(T.warn));
+    v.m.unmount();
+  });
+
+  it('a server insisting `in_sync` over a failing row still cannot make this read all-clear', async () => {
+    // Not a state today's MC can produce — it is what an older or a newer one might send. The green
+    // is derived from the RENDERED rows for exactly this reason: whatever the totals claim, the panel
+    // must not call itself clear while it is naming somebody.
+    const s = syncOf([row({ phone_game: false })]);
+    const v = await lobby({ ...s, totals: { ...s.totals, in_sync: true, phone_game: 1 } });
+    expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).not.toMatch(/IN SYNC/);
+    expect(v.q('[data-testid="pre-arm-verdict"]')!.style.color).toBe(rgb(T.warn));
+    v.m.unmount();
+  });
+
+  it('the GUN axis says PUSHED, so "SENT" stays the phone axis\'s word', async () => {
+    // int-n1, 2026-09-13: SENT meant phone delivery on the loaded-game view and a gun-side fact here,
+    // on the one feature whose whole purpose is keeping those apart. Worst in the table, where a
+    // green GUN SENT sits beside a red ACKED and reads as "done".
+    const v = await lobby(syncOf([row({ gun_acked: false })]));
+    const panel = v.q('[data-testid="pre-arm-summary"]')!.textContent ?? '';
+    expect(v.q('[data-testid="pre-arm-counts"]')!.textContent).toContain('GUNS PUSHED');
+    expect(panel, 'neither the count nor the column header may say SENT of a gun').not.toMatch(/GUNS? SENT/);
+    v.m.unmount();
+  });
+
+  it('at phone width the instruction gets a row of its own, and follows a resize', async () => {
+    // jsdom lays nothing out, so this is proved as a MECHANISM (the same way MemberRow's compact row
+    // is) and re-measured in pixels by the e2e walk. Four fixed 92 px columns left the one line the
+    // operator needs fastest wrapping to seven lines of one or two words at 393 px.
+    const was = window.innerWidth;
+    const setWidth = (px: number) => Object.defineProperty(window, 'innerWidth', { value: px, configurable: true, writable: true });
+    try {
+      setWidth(393);
+      const v = await lobby(syncOf([row({ phone_game: false })]));
+      expect(v.q('[data-testid="pre-arm-todo"]')!.getAttribute('data-narrow'), 'full-width at 393 px').toBe('1');
+      expect(v.q('[data-testid="pre-arm-row"]')!.getAttribute('data-compact')).toBe('1');
+      expect(v.q('[data-testid="pre-arm-summary"]')!.textContent, 'the header it would label is gone with it').not.toContain('WHAT TO DO');
+      setWidth(1280);
+      await act(async () => { window.dispatchEvent(new Event('resize')); });
+      expect(v.q('[data-testid="pre-arm-todo"]')!.getAttribute('data-narrow'), 'watched, not decided once at mount').toBe('0');
+      v.m.unmount();
+    } finally {
+      setWidth(was);
+    }
+  });
+});
+
+/** The only state in which the HOST OVERRIDE tray renders on a PUSHED lobby: a playable roster, the
+ *  config already pushed, and at least one blocked row on the board. A `waiting` row — a rostered
+ *  player whose phone never arrived — is exactly what `state.py _refuse_unconfigured_gun` is about,
+ *  and is why the override is the only reachable path past that gate (ARM itself is disabled here). */
+async function overrideTray(sync: State['sync'], apiOver: Partial<Api> = {}) {
+  const d = await demo();
+  const board = d.state.readiness.board.map((b, i) => ({ ...b, blockers: [], status: (i === 0 ? 'waiting' : 'green') as 'waiting' | 'green' }));
+  const state: State = { ...d.state, phase: 'lobby', sync,
+    readiness: { ...d.state.readiness, board, go: false, roster_faults: [] },
+    lobby: { ...d.state.lobby, pushed: true, all_acked: false, acks: {} } } as State;
+  const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby', api: apiOver });
+  return {
+    m,
+    btn: m.el.querySelector('[data-override="1"] button') as HTMLButtonElement,
+    risk: m.el.querySelector('[data-testid="override-risk"]') as HTMLElement | null,
+  };
+}
+
+/** A rostered player whose phone never arrived: MC has sent their gun nothing at all. */
+const awol = (over: Partial<Row>): Row =>
+  row({ bound: false, phone_game: false, gun_sent: false, gun_acked: false, gun_echo: null, ...over });
+
+describe('HOST OVERRIDE — the button says what overriding actually costs', () => {
+  it('names the guns that will play the head they are still holding', async () => {
+    // The 2026-09-12 field failure, printed as reassurance: this button used to read "Arm anyway"
+    // under a tooltip promising that blocked nodes would not arm. A gun that never took this config
+    // is not inert — it arms on its old head, on the old team, with the old weapons.
+    const v = await overrideTray(syncOf([row(), awol({ player_id: 'p2', display: 'DRIFT' }), awol({ player_id: 'p3', display: 'SABLE' })]));
+    expect(v.btn, 'the override is on screen').toBeTruthy();
+    expect(v.btn.textContent, `saw ${JSON.stringify(v.btn.textContent)}`)
+      .toContain('2 guns will play the head they are still holding: DRIFT, SABLE');
+    v.m.unmount();
+  });
+
+  it('the tooltip no longer promises that a blocked gun stays inert', async () => {
+    const v = await overrideTray(syncOf([row(), awol({ player_id: 'p2', display: 'DRIFT' })]));
+    const title = v.btn.getAttribute('title') ?? '';
+    expect(title, 'the sentence that made the start look safe').not.toMatch(/will not arm/);
+    expect(title, 'nobody is promised a clean start here').not.toMatch(/starts on time/);
+    expect(title).toContain('NOT inert');
+    expect(title).toContain("previous game's team and weapons");
+    expect(title, 'and it names who it is about').toContain('DRIFT');
+    v.m.unmount();
+  });
+
+  it('puts the risk ON THE SCREEN, not only in a tooltip the tablet cannot show', async () => {
+    const v = await overrideTray(syncOf([row(), awol({ player_id: 'p2', display: 'DRIFT' })]));
+    expect(v.risk, 'the tray carries a visible warning').toBeTruthy();
+    expect(v.risk!.textContent).toContain('1 GUN HAS NEVER TAKEN THIS CONFIG: DRIFT');
+    expect(v.risk!.textContent, 'with the cure, not just the alarm').toMatch(/PUSH CONFIG/);
+    expect(v.risk!.textContent, 'and the reason the override exists at all').toMatch(/hot-joins/);
+    v.m.unmount();
+  });
+
+  it('still forces the start — informing the judgement is not taking it away', async () => {
+    const calls: (boolean | undefined)[] = [];
+    const v = await overrideTray(syncOf([row(), awol({ player_id: 'p2', display: 'DRIFT' })]), {
+      start: async (_runway_s: number, force?: boolean) => { calls.push(force); return { match_id: 'm1', go_live_t: 0, seq: 1 }; },
+    });
+    expect(v.btn.disabled, 'the override is never disabled — that is the whole point of it').toBe(false);
+    await act(async () => { v.btn.click(); });
+    expect(calls, 'the click reached the server, carrying force').toEqual([true]);
+    v.m.unmount();
+  });
+
+  it('a gun that was pushed but has not answered is UNKNOWN, never reported as wrong', async () => {
+    const v = await overrideTray(syncOf([row(), row({ player_id: 'p2', display: 'VIPER', gun_acked: false, gun_echo: 'not_echoed' })]));
+    expect(v.btn.textContent).toContain('1 gun has not confirmed this config: VIPER');
+    expect(v.btn.textContent, 'it may well have taken the head and said nothing').not.toMatch(/still holding/);
+    expect(v.btn.getAttribute('title')).toContain('unknown, not proven wrong');
+    v.m.unmount();
+  });
+
+  it('claims no risk when there is none — every gun on this config leaves a phone problem, not a wrong head', async () => {
+    const v = await overrideTray(syncOf([row(), row({ player_id: 'p2', display: 'VIPER' })]));
+    expect(v.risk, 'nothing to warn about, so nothing invented').toBeFalsy();
+    expect(v.btn.textContent?.trim()).toBe('Arm anyway ▸');
+    expect(v.btn.getAttribute('title')).toContain('not a wrong head');
+    expect(v.btn.getAttribute('title')).not.toMatch(/starts on time/);
+    v.m.unmount();
+  });
+
+  it('an older server with no `sync` block says it CANNOT CHECK, never that all is well', async () => {
+    const v = await overrideTray(undefined);
+    const title = v.btn.getAttribute('title') ?? '';
+    expect(title).toContain('CANNOT TELL YOU');
+    expect(title).not.toMatch(/starts on time/);
+    expect(v.risk!.textContent).toContain('MC CANNOT CHECK THE GUNS ON THIS SERVER');
     v.m.unmount();
   });
 });

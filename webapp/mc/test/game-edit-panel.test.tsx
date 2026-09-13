@@ -112,7 +112,7 @@ describe('GameEditPanel — a DRAFT: nothing leaves the panel until SAVE', () =>
     m.unmount();
   });
 
-  it('SAVE sends ONE patch carrying the whole change', async () => {
+  it('SAVE sends ONE patch carrying the whole change, and it round-trips back into the control', async () => {
     const { m, calls, open, night, save, resync } = await gameScreen('kit');
     await open();
     await click(night());
@@ -121,6 +121,11 @@ describe('GameEditPanel — a DRAFT: nothing leaves the panel until SAVE', () =>
     expect(calls).toEqual([{ night: true }]);
     const state = await resync();
     expect(state.config.night).toBe(true);
+    // F.6 (2026-09-13): a SUCCESSFUL save closes the draft, so this is the only way left to prove the
+    // round trip reaches the CONTROL and not just the snapshot object -- reopening seeds a fresh draft
+    // from whatever the server actually holds now.
+    await open();
+    expect(night()!.getAttribute('aria-checked'), 'the switch itself reads back what was applied').toBe('true');
     m.unmount();
   });
 
@@ -146,8 +151,8 @@ describe('GameEditPanel — a DRAFT: nothing leaves the panel until SAVE', () =>
     m.unmount();
   });
 
-  it('editing HP sends the whole health block, keeping armor', async () => {
-    const { m, d, calls, open, inPanel, save } = await gameScreen('kit');
+  it('editing HP sends the whole health block, keeping armor, and the box shows the applied value', async () => {
+    const { m, d, calls, open, inPanel, save, resync } = await gameScreen('kit');
     await open();
     const hp = inPanel('input[aria-label="default health"]') as HTMLInputElement;
     await act(async () => {
@@ -158,6 +163,12 @@ describe('GameEditPanel — a DRAFT: nothing leaves the panel until SAVE', () =>
     });
     await click(save());
     expect(calls).toEqual([{ health: { max_hp: 60, max_armor: d.state.config.health.max_armor } }]);
+    // F.6 (2026-09-13): proving the request is not proving the round trip -- reopen (SAVE closed the
+    // draft) and read the box back off the server's own applied config.
+    await resync();
+    await open();
+    expect((inPanel('input[aria-label="default health"]') as HTMLInputElement).value,
+      'the round trip reaches the control, not only the outgoing request').toBe('60');
     m.unmount();
   });
 
@@ -180,6 +191,12 @@ describe('GameEditPanel — a DRAFT: nothing leaves the panel until SAVE', () =>
     expect(calls[0].loadout_policy?.primary?.exclude_ids).toContain(w.weapon_id);
     const state = await resync();
     expect(state.config.loadout_policy!.primary.exclude_ids).toContain(w.weapon_id);
+    // F.6 (2026-09-13): the request payload and the raw server state are not the same proof as "the
+    // control itself reads it back" -- reopen (SAVE closed the draft) and check the chip again, seeded
+    // fresh from what the server now holds.
+    await open();
+    expect(group().querySelectorAll(`[aria-label="${w.name}, off"]`).length, 'the same chip now reads off, seeded from the server').toBe(1);
+    expect(group().querySelectorAll(`[aria-label="${w.name}, allowed"]`).length).toBe(0);
     m.unmount();
   });
 
@@ -201,6 +218,32 @@ describe('GameEditPanel — a DRAFT: nothing leaves the panel until SAVE', () =>
     expect(panel().querySelector('[data-testid="game-edit-discard"]'), 'the first CANCEL asks').toBeTruthy();
     await click(cancel());
     expect(m.el.querySelector('[data-testid="game-edit-panel"] [role="switch"]'), 'the second discards the draft').toBeFalsy();
+    expect(calls).toEqual([]);
+    m.unmount();
+  });
+
+  it('F.4: a further edit after ONE cancel-confirm asks again -- editing does not spend the confirm silently', async () => {
+    const { m, calls, open, night, cancel, panel, inPanel } = await gameScreen('kit');
+    await open();
+    await click(night());
+    await click(cancel());
+    expect(panel().querySelector('[data-testid="game-edit-discard"]'), 'the first CANCEL asks').toBeTruthy();
+    // The operator did NOT confirm the discard -- they kept working, editing something ELSE (not
+    // toggling NIGHT back to its original value, which would make the draft clean again and cancel
+    // outright for an unrelated reason). `edit()` used to clear only `confirmSave`, leaving
+    // `confirmCancel` primed: the NEXT tap of CANCEL would discard this fresh work immediately, on
+    // what reads to the operator as its own first ask.
+    const hp = inPanel('input[aria-label="default health"]') as HTMLInputElement;
+    await act(async () => {
+      hp.focus();
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(hp, '77');
+      hp.dispatchEvent(new Event('input', { bubbles: true }));
+      hp.blur();
+    });
+    expect(panel().querySelector('[data-testid="game-edit-discard"]'), 'editing again stands the ask down').toBeFalsy();
+    await click(cancel());
+    expect(panel().querySelector('[data-testid="game-edit-discard"]'), 'so CANCEL has to ask again, not discard on the spot').toBeTruthy();
+    expect(m.el.querySelector('[data-testid="game-edit-panel"] [role="switch"]'), 'the draft is still here after just one CANCEL').toBeTruthy();
     expect(calls).toEqual([]);
     m.unmount();
   });
@@ -352,5 +395,67 @@ describe('GameEditPanel — a session from before loadout policy existed (OLD DA
       expect(m.find('[aria-label*="allowed"], [aria-label*="off"]').length, 'the weapon pool still renders from the OPEN fallback').toBeGreaterThan(0);
       m.unmount();
     }
+  });
+});
+
+describe('GameEditPanel — an ack for a PREVIOUS config is not confirmation (A36)', () => {
+  it('routes the count through pushGate, the SAME predicate LOBBY and KIT use, not its own bare a.ok count', async () => {
+    const d = await demo();
+    await d.api.setPhase('kit', true);
+    const base = await d.api.getState();
+    // A single-player roster makes the bug visible without any noise from the demo's other (real)
+    // fleet faults: one gun, one stale ack, so a naive `a.ok` count reads it as "ALL GUNS ON THIS
+    // CONFIG (1/1)" -- confirmed -- for a gun that has never laid eyes on the config on screen now.
+    const player = base.players[0];
+    const state: State = {
+      ...base,
+      phase: 'kit',
+      players: [player],
+      lobby: { ...base.lobby, pushed: true, all_acked: false,
+        acks: { [player.player_id]: { ok: true, config_id: 'a-config-from-before-this-one' } } },
+    };
+    const modes = await d.api.getModes();
+    const store = makeStore({ ...d, state, view: 'kit' }, { modes });
+    const m = await mount(<StoreCtx.Provider value={store}><Kit /></StoreCtx.Provider>);
+    await click(m.find('[data-testid="game-edit-toggle"]')[0]);
+    const status = m.el.querySelector('[data-testid="game-edit-repush-open"]')!.textContent ?? '';
+    expect(status, `saw ${JSON.stringify(status)} -- a stale ack must never read as this config confirmed`).not.toMatch(/ALL GUNS/);
+    expect(status, 'the honest count: zero acks are CURRENT for this config').toMatch(/0\/1 GUNS CONFIRMED/);
+    m.unmount();
+  });
+});
+
+describe('GameEditPanel — a mode this console has no defaults for (F.5)', () => {
+  it('SAVE sends health/policy outright rather than comparing the draft to the OLD mode and pinning its numbers', async () => {
+    const d = await demo();
+    await d.api.setPhase('kit', true);
+    const state = await d.api.getState();
+    const realModes = await d.api.getModes();
+    const target = realModes.find(mm => mm.mode !== state.config.mode)!;
+    // Present in the CONSOLE's own catalog (so its chip renders and is tappable) but with no
+    // `defaults` -- a partial/incomplete `/api/modes` fetch, or a mode the server has not finished
+    // configuring for this console. The real `MockBackend` (mirroring `state.py`) still knows the
+    // mode fully; only THIS console's local copy of it is missing the piece `baseFor` needs.
+    const broken = { ...target, defaults: undefined as unknown as typeof target.defaults };
+    const modes = realModes.map(mm => (mm.mode === target.mode ? broken : mm));
+    const calls: Partial<GameConfig>[] = [];
+    const api = fixtureApi({ putConfig: async (patch: Partial<GameConfig>) => { calls.push(patch); return d.api.putConfig(patch); } }, d.api);
+    const store = makeStore({ state, view: 'kit' }, { api, modes });
+    const m = await mount(<StoreCtx.Provider value={store}><Kit /></StoreCtx.Provider>);
+    await click(m.find('[data-testid="game-edit-toggle"]')[0]);
+    const chip = m.find('[aria-label="mode"] button').find(b => (b.textContent ?? '').trim() === target.abbr)!;
+    await click(chip);
+    await click(m.el.querySelector('[data-testid="game-edit-save"] button'));
+    expect(calls.length).toBe(1);
+    expect(calls[0].mode).toBe(target.mode);
+    // Neither field was touched by the operator -- the mode switch alone kept them at the OLD mode's
+    // values (no defaults to rebuild from). Without the fix, comparing that against `cfg` (the SAME
+    // old values) reads as "unchanged" and DROPS them from the patch, silently relying on the
+    // server's own rebuild -- which, unlike this console, actually knows the new mode's real
+    // defaults, so the two would then disagree about what just got applied. Sending them explicitly
+    // is the correct, WYSIWYG-safe choice: what the draft shows is what gets sent.
+    expect(calls[0].health, 'health rides along explicitly -- there is no known default to diff against').toEqual(state.config.health);
+    expect(calls[0].loadout_policy, 'same for the weapon policy').toEqual(state.config.loadout_policy);
+    m.unmount();
   });
 });

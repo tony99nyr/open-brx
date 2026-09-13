@@ -185,9 +185,12 @@ input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:0}   /*
     <div id="players"></div>
   </section>
 
-  <!-- A41 / field 2026-09-12: leaving utility mode is NOT the anti-cheat concern the ⓘ gate protects
-       (that stays on kind/team/id/threshold, behind the seven-tap gesture, unchanged) -- this is only
-       for a phone nobody has armed as a field item yet. `utility.js render()` hides it once MC arms one. -->
+  <!-- A41 / field 2026-09-12, tightened field-safety fix 2026-09-13: leaving utility mode is NOT the
+       anti-cheat concern the ⓘ gate protects (that stays on kind/team/id/threshold, behind the
+       seven-tap gesture, unchanged) -- this is only for a phone nobody has claimed as a field item yet.
+       `utility.js render()` hides it once the phone is armed EITHER way -- an MC push, or the
+       seven-tap drawer's own START button -- or once it is simply advertising (live), so a deployed
+       station never keeps this one-hold exit sitting in the open. -->
   <button id="exitHud" class="exitbtn" aria-label="hold about one second to leave utility mode and go back to your HUD"><span class="fill" id="exitFill"></span><span class="lbl unskew">STUCK? HOLD TO EXIT ▸ HUD</span></button>
 
   <div class="foot">OPEN BRX · UTILITY ITEM</div>

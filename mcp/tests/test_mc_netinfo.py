@@ -192,3 +192,22 @@ def test_lan_info_on_a_non_wsl_host_is_byte_for_byte_what_it_was_before():
         assert lan["warning"] is None
     finally:
         N.is_wsl = real
+
+
+def test_the_wsl_warning_is_silent_when_a_public_url_gives_phones_another_way_in():
+    """A28: this warning is about the LAN address in the QR, and a phone dialling a public `wss://` node
+    URL never uses it. MC on WSL with a backhaul URL is a WORKING setup, and it was getting the red
+    alert on every console screen plus the loud boot banner — telling the operator to go and find a
+    Windows LAN address they do not need. A warning that fires on a working setup is how an operator
+    learns to ignore the one that matters."""
+    real = N.is_wsl
+    try:
+        N.is_wsl = lambda: True
+        assert N.wsl_lan_warning(advertise_overridden=False) is not None          # control
+        assert N.wsl_lan_warning(advertise_overridden=False, public_url=True) is None
+        lan = N.lan_info("172.19.5.9", 8765, "ws://172.19.5.9:8766/ws", public_url=True)
+        assert lan["warning"] is None
+        # ...and with no public URL it is exactly what it always was
+        assert N.lan_info("172.19.5.9", 8765, "ws://172.19.5.9:8766/ws")["warning"] == N.WSL_UNREACHABLE_WARNING
+    finally:
+        N.is_wsl = real

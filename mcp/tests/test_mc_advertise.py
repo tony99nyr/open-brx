@@ -111,3 +111,45 @@ def test_build_prints_nothing_extra_off_wsl_pin():
     assert session.lan["warning"] is None
     assert "PHONES CANNOT REACH" not in out
     assert "!" * 78 not in out
+
+
+def test_check_advertise_rejects_a_host_carrying_a_port():
+    """The likeliest typo of all, and it used to pass whole: `--advertise 192.168.1.42:8766` was spliced
+    into `ws://192.168.1.42:8766:8766/ws` — a doubled port, in the QR, on the one flag whose entire
+    reason to exist is that a wrong address in the QR cost a field night."""
+    for bad in ("192.168.1.42:8766", "[fe80::1]", "fe80::1"):
+        try:
+            M._check_advertise(bad)
+            raise AssertionError(f"accepted {bad!r}")
+        except SystemExit as e:
+            assert "port" in str(e) or "IPv6" in str(e), str(e)
+
+
+def test_check_advertise_rejects_something_that_cannot_be_a_host_at_all():
+    for bad in ("not a host", "192.168.1.42,8766", "-leading-hyphen"):
+        try:
+            M._check_advertise(bad)
+            raise AssertionError(f"accepted {bad!r}")
+        except SystemExit as e:
+            assert "IP address or a hostname" in str(e), str(e)
+    # ...and a real hostname is still a bare host, not a URL: the QR takes either
+    assert M._check_advertise("mc.local") == "mc.local"
+
+
+def test_build_does_not_warn_about_the_lan_address_when_a_public_node_url_is_configured():
+    """A28 + T3-A together: MC on WSL reached through a public `wss://` node URL is a working setup, and
+    it was getting the loud boot banner AND a red alert on every console screen telling the operator to
+    find a Windows LAN address no phone needs."""
+    real_is_wsl = N.is_wsl
+    buf = io.StringIO()
+    try:
+        N.is_wsl = lambda: True
+        with _Env():
+            with contextlib.redirect_stdout(buf):
+                session, net, extra = M.build(_args(public_url="wss://mc.example.org/ws"))
+    finally:
+        N.is_wsl = real_is_wsl
+    out = buf.getvalue()
+    assert session.lan["warning"] is None
+    assert "PHONES CANNOT REACH" not in out
+    assert "!" * 78 not in out
