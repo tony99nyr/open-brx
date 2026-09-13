@@ -173,6 +173,41 @@ const shot = async (pg, name) => {
 /** the value cell of a "LABEL   value" row in the GAMES / rail grids */
 const railRow = (pg, label) => pg.locator(`main span:text-is("${label}") + span`).first();
 const kothCard = pg => pg.locator('div[role="button"][aria-label="play KING OF THE HILL"]');
+const tdmCard = pg => pg.locator('div[role="button"][aria-label="play TEAM DEATHMATCH"]');
+/** Pick a mode TILE the way the operator does — and PROVE what the first tap puts on screen.
+ *
+ *  T2-A (9a1570d, "GAMES confirms a mode/game switch that reshapes >=2 rostered players") made a
+ *  tile that would move >=2 rostered players a TWO-tap control: tap one shows the resulting split and
+ *  sends NOTHING, tap two commits. This suite picked with ONE tap, so from that commit onward every
+ *  pick silently no-opped and ten assertions across this file cascaded off it — invisible to the
+ *  lanes, because koth.mjs is the one suite that hardcodes :8765 and so the one nobody can run.
+ *
+ *  It asserts the confirm rather than blind-double-clicking: a double click would pass just as
+ *  happily against a tile that had quietly gone back to one tap, which is exactly the false-pass the
+ *  ui-build-verify skill names — assert the thing that CHANGES after the action. The 11px check rides
+ *  along because this confirm is the newest meaning-bearing copy on the screen `audit-text` guards.
+ *  `test/games-confirm-contract.test.tsx` is the fast (jsdom, binds nothing) twin of this contract. */
+async function pickTile(pg, card, { what = 'the mode tile', playing = true, ms = 8000, confirm = true } = {}) {
+  await card.click();
+  if (confirm) {
+    const box = card.locator('[data-testid="confirm-switch"]');
+    if (await until(() => box.count().then(n => n > 0), 6000, `${what}: the switch confirm on the first tap`)) {
+      expect(await box.isVisible(), `${what}: the confirm is visible before anything moves`);
+      const split = card.locator('[data-testid="confirm-split"]');
+      if (await split.count() > 0) {
+        const t = (await split.textContent()).trim();
+        expect(/^▲ \d+ PLAYERS? → [A-Z]+ \d+ \/ [A-Z]+ \d+$/.test(t),
+          `${what}: the confirm names the predicted split (saw ${JSON.stringify(t)})`);
+        const px = await split.evaluate(e => parseFloat(getComputedStyle(e).fontSize));
+        expect(px >= 11, `${what}: the split line is legible (${px}px, must be >= 11px)`);
+      }
+      expect((await card.getAttribute('aria-pressed')) === 'false', `${what}: the first tap has NOT switched the game`);
+    }
+    await card.click();
+  }
+  if (playing) await until(async () => (await card.getAttribute('aria-pressed')) === 'true', ms, what);
+}
+const pickKoth = (pg, opts = {}) => pickTile(pg, kothCard(pg), { what: 'KotH playing', ...opts });
 /** put the shared server back on a blue/yellow TDM so "pick KotH" is a real transition, not a no-op */
 async function resetTdm(base) {
   // Every step shares ONE server, so a step that ARMS a match (setup-steps-prematch does) leaves
@@ -309,15 +344,14 @@ step('koth-selectable', async ({ browser, base }) => {
 step('objective-row', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
-  await kothCard(pg).click();
-  await until(async () => (await kothCard(pg).getAttribute('aria-pressed')) === 'true', 6000, 'KotH playing');
+  await pickKoth(pg, { ms: 6000, what: 'KotH playing' });
   const row = railRow(pg, 'OBJECTIVE');
   expect(await row.count() > 0, 'the rail has an OBJECTIVE row for a station-gated mode');
   const v = (await row.textContent()).trim();
   expect(v === 'GRENADE HILL · ONE POINT', `OBJECTIVE reads "GRENADE HILL · ONE POINT" (saw ${JSON.stringify(v)})`);
   expect(await row.isVisible(), 'the OBJECTIVE row is visible, not merely in the DOM');
   // and it must be ABSENT for a mode that has no station source — the row is not decoration
-  await pg.locator('div[role="button"][aria-label="play TEAM DEATHMATCH"]').click();
+  await pickTile(pg, tdmCard(pg), { what: 'TDM playing', playing: false });
   await until(async () => (await railRow(pg, 'OBJECTIVE').count()) === 0, 6000, 'the OBJECTIVE row to disappear for TDM');
   ok(`OBJECTIVE = GRENADE HILL · ONE POINT on koth, absent on tdm  ${await shot(pg, '03-objective-row')}`);
   await closePage(pg);
@@ -328,7 +362,7 @@ step('setup-warning', async ({ browser, base }) => {
   const pg = await go(await newPage(browser, base), 'build');
   // it must NOT be on screen before a hill mode is picked
   expect(await pg.locator('text=POWER-CYCLE THE GRENADE').count() === 0, 'no grenade setup step is shown for the default mode');
-  await kothCard(pg).click();
+  await pickKoth(pg, { playing: false });
   await until(async () => (await pg.locator('text=POWER-CYCLE THE GRENADE').count()) > 0, 8000, 'the SETUP warning to arrive with the snapshot');
   const warn = pg.locator('main div[role="status"] div', { hasText: 'POWER-CYCLE THE GRENADE' }).first();
   expect(await warn.isVisible(), 'the SETUP warning is visible in the rail');
@@ -355,8 +389,7 @@ step('setup-warning', async ({ browser, base }) => {
 step('setup-steps-prematch', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
-  await kothCard(pg).click();
-  await until(async () => (await kothCard(pg).getAttribute('aria-pressed')) === 'true', 6000, 'KotH playing');
+  await pickKoth(pg, { ms: 6000, what: 'KotH playing' });
   // CONTROL: the server really is sending advisories alongside the SETUP step, or "they are not on
   // screen" would pass on an empty list. A frag limit on a venue with no coverage model adds a second
   // kind (compile.py) — set it so the negative covers more than the $SIR rows.
@@ -423,8 +456,7 @@ step('teams-never-yellow', async ({ browser, base }) => {
   // the demo roster starts half BLUE half YELLOW on tdm — prove that, so the koth assertion is not vacuous
   const preTeams = await (await fetch(`${base}/api/state`)).json();
   expect(preTeams.players.some(p => p.team_id === 'yellow'), 'the roster really does start with yellow players (control)');
-  await kothCard(pg).click();
-  await until(async () => (await kothCard(pg).getAttribute('aria-pressed')) === 'true', 6000, 'KotH playing');
+  await pickKoth(pg, { ms: 6000, what: 'KotH playing' });
 
   await go(pg, 'kit');
   const group = pg.locator('span[role="group"][aria-label="team"]');
@@ -460,8 +492,7 @@ step('teams-never-yellow', async ({ browser, base }) => {
 step('reteam-visible', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
-  await kothCard(pg).click();
-  await until(async () => (await kothCard(pg).getAttribute('aria-pressed')) === 'true', 6000, 'KotH playing');
+  await pickKoth(pg, { ms: 6000, what: 'KotH playing' });
   await go(pg, 'lobby');
   const st = await (await fetch(`${base}/api/state`)).json();
   const counts = {};
@@ -485,8 +516,7 @@ step('reteam-visible', async ({ browser, base }) => {
 step('station-source-control', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
-  await kothCard(pg).click();
-  await until(async () => (await kothCard(pg).getAttribute('aria-pressed')) === 'true', 6000, 'KotH playing');
+  await pickKoth(pg, { ms: 6000, what: 'KotH playing' });
   // the operator opens the game in the designer — that is where every other rule is edited
   await pg.locator('button[aria-label="customize KING OF THE HILL"]').click();
   await until(() => pg.locator('main', { hasText: '[ A2b // GAME DESIGNER ]' }).count().then(n => n > 0), 8000, 'the designer');
@@ -518,7 +548,8 @@ step('station-source-refused', async ({ browser, base }) => {
   await pg.route('**/api/config', r => r.request().method() === 'PUT'
     ? r.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: VOCAB }) })
     : r.continue());
-  await kothCard(pg).click();
+  // two taps: the confirm arms, the commit fires the PUT the route below refuses
+  await pickKoth(pg, { playing: false });
   const strip = errorStrip(pg);
   await until(() => strip.count().then(n => n > 0), 8000, 'the refusal to reach the error strip');
   expect(await strip.isVisible(), 'the refusal is VISIBLE, not swallowed');
@@ -569,8 +600,7 @@ step('f88-multipoint-refused', async ({ browser, base }) => {
 step('continue-path', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
-  await kothCard(pg).click();
-  await until(async () => (await kothCard(pg).getAttribute('aria-pressed')) === 'true', 6000, 'KotH playing');
+  await pickKoth(pg, { ms: 6000, what: 'KotH playing' });
   // the user's real path: the CONTINUE button, not the nav tab
   await pg.locator('main button:has-text("CONTINUE ▸")').first().click();
   await until(() => pg.locator('main', { hasText: '[ A3 // KIT-OUT ]' }).count().then(n => n > 0), 8000, 'KIT to open from CONTINUE');
@@ -593,7 +623,7 @@ step('recap-possession', async ({ browser, base }) => {
   const pg = await newPage(browser, base);
   const seen = await patchSnapshots(pg, st => { st.recap = rc; });
   await go(pg, 'build');
-  await kothCard(pg).click();
+  await pickKoth(pg);
   await go(pg, 'recap');
   const poss = pg.getByTestId('possession');
   await until(() => poss.count().then(n => n > 0), 10000, 'the POSSESSION panel to render');
@@ -632,7 +662,7 @@ step('recap-coverage-floor', async ({ browser, base }) => {
     const pg = await newPage(browser, base);
     await patchSnapshots(pg, st => { st.recap = recapFixture(['--coverage', coverage]); });
     await go(pg, 'build');
-    await kothCard(pg).click();
+    await pickKoth(pg);
     await go(pg, 'recap');
     const line = pg.getByTestId('possession').locator('div', { hasText: 'BEST COVERAGE' }).last();
     await until(() => line.count().then(n => n > 0), 10000, `the coverage line (${coverage})`);
@@ -668,7 +698,7 @@ step('recap-settling', async ({ browser, base }) => {
   const pg = await newPage(browser, base);
   await patchSnapshots(pg, st => { st.recap = rc; });
   await go(pg, 'build');
-  await kothCard(pg).click();
+  await pickKoth(pg);
   await go(pg, 'recap');
   const band = pg.getByTestId('settling');
   await until(() => band.count().then(n => n > 0), 10000, 'the STILL SETTLING banner');
@@ -691,7 +721,7 @@ step('recap-settling', async ({ browser, base }) => {
   const pg2 = await newPage(browser, base);
   await patchSnapshots(pg2, st => { st.recap = recapFixture(['--coverage', 'full']); });
   await go(pg2, 'build');
-  await kothCard(pg2).click();
+  await pickKoth(pg2);
   await go(pg2, 'recap');
   await until(() => pg2.getByTestId('possession').count().then(n => n > 0), 10000, 'the settled recap to render');
   expect(await pg2.getByTestId('settling').count() === 0, 'a settled recap renders NO settling banner');
@@ -713,8 +743,7 @@ step('mode-card-host-call', async ({ browser, base }) => {
     const pg = await newPage(browser, base);
     await pg.goto(url, { waitUntil: 'domcontentloaded' });
     await until(() => pg.locator('main', { hasText: '[ A2 // GAMES ]' }).count().then(n => n > 0), 12000, `the GAMES screen (${url})`);
-    await kothCard(pg).click();
-    await until(async () => (await kothCard(pg).getAttribute('aria-pressed')) === 'true', 8000, `KotH playing (${url})`);
+    await pickKoth(pg, { ms: 8000, what: `KotH playing (${url})` });
     const win = (await railRow(pg, 'WIN').textContent()).trim();
     expect(win === WIN, `${url.includes('mock') ? '?mock' : 'server'}: the WIN row reads ${JSON.stringify(WIN)} (saw ${JSON.stringify(win)})`);
     await shot(pg, `20-win-text-${url.includes('mock') ? 'mock' : 'server'}`);
@@ -756,8 +785,7 @@ step('stale-server', async ({ browser, base }) => {
   const banner = await pg.locator('header [role="alert"]:has-text("PREDATES THIS UI")').first().textContent();
   expect(/python -m brx_mcp\.mc/.test(banner), 'the banner gives the restart command');
   // picking KotH must still work locally, and the missing field must simply not render
-  await kothCard(pg).click();
-  await until(async () => (await kothCard(pg).getAttribute('aria-pressed')) === 'true', 8000, 'KotH selectable against a stale server');
+  await pickKoth(pg, { ms: 8000, what: 'KotH selectable against a stale server' });
   expect(await railRow(pg, 'OBJECTIVE').count() === 0, 'no OBJECTIVE row is invented when the server sends no station_source');
   expect(await pg.locator('text=POWER-CYCLE THE GRENADE').count() === 0, 'no SETUP warning is invented when the server sends none');
   expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, 'GAMES survives a missing station_source (no undefined.something)');
@@ -779,7 +807,8 @@ step('failure-path', async ({ browser, base }) => {
     puts.push(JSON.parse(r.request().postData() || '{}'));
     return r.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"compiler exploded"}' });
   });
-  await kothCard(pg).click();
+  // the first tap only arms the confirm, so exactly ONE PUT goes out — the commit's
+  await pickKoth(pg, { playing: false });
   await until(() => errorStrip(pg).count().then(n => n > 0), 8000, 'the 500 to surface in the strip');
   expect(/COMPILER EXPLODED|compiler exploded/.test(await errorStrip(pg).textContent()), 'the server message is shown verbatim, not "something went wrong"');
   await new Promise(r => setTimeout(r, 700));
@@ -795,8 +824,7 @@ for (const [name, vp] of [['pixel4', { width: 393, height: 830 }], ['tablet', { 
   step(`viewport-${name}`, async ({ browser, base }) => {
     await resetTdm(base);
     const pg = await go(await newPage(browser, base, vp), 'build');
-    await kothCard(pg).click();
-    await until(async () => (await kothCard(pg).getAttribute('aria-pressed')) === 'true', 8000, 'KotH playing');
+    await pickKoth(pg, { ms: 8000, what: 'KotH playing' });
     for (const view of ['build', 'kit']) {
       await go(pg, view);
       const over = await pg.evaluate(() => ({ doc: document.documentElement.scrollWidth, win: window.innerWidth,
@@ -821,8 +849,7 @@ for (const [name, vp] of [['pixel4', { width: 393, height: 830 }], ['tablet', { 
 step('audit-taps', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
-  await kothCard(pg).click();
-  await until(async () => (await kothCard(pg).getAttribute('aria-pressed')) === 'true', 6000, 'KotH playing');
+  await pickKoth(pg, { ms: 6000, what: 'KotH playing' });
   const scan = async where => pg.evaluate(() => [...document.querySelectorAll('main button, main [role="button"], main [role="switch"], main [role="radio"]')]
     .filter(el => el.offsetParent !== null)
     .map(el => { const r = el.getBoundingClientRect(); return { t: (el.getAttribute('aria-label') || el.textContent || '?').trim().slice(0, 34), h: Math.round(r.height), w: Math.round(r.width) }; })
@@ -849,7 +876,7 @@ step('audit-taps', async ({ browser, base }) => {
 step('audit-text', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
-  await kothCard(pg).click();
+  await pickKoth(pg, { playing: false });
   await until(async () => (await pg.locator('text=POWER-CYCLE THE GRENADE').count()) > 0, 8000, 'the SETUP warning');
   // meaning-carrying text only: the nav's 01..05 digits and the mode-card abbreviations are decorative
   const tiny = await pg.evaluate(() => [...document.querySelectorAll('main *')]
@@ -869,8 +896,7 @@ step('mock-demo', async ({ browser, base }) => {
   const pg = await newPage(browser, base);
   await pg.goto(`${base}/?mock#build`, { waitUntil: 'domcontentloaded' });
   await until(() => pg.locator('main', { hasText: '[ A2 // GAMES ]' }).count().then(n => n > 0), 10000, 'the mock GAMES screen');
-  await kothCard(pg).click();
-  await until(async () => (await kothCard(pg).getAttribute('aria-pressed')) === 'true', 6000, 'KotH playing in the demo');
+  await pickKoth(pg, { ms: 6000, what: 'KotH playing in the demo' });
   expect((await railRow(pg, 'OBJECTIVE').textContent()).trim() === 'GRENADE HILL · ONE POINT', 'the demo shows the same OBJECTIVE row');
   expect(await pg.locator('text=POWER-CYCLE THE GRENADE').first().isVisible(), 'the demo shows the same SETUP step');
   // the demo backend lives in the page, so a reload restarts it — walk to KIT with the CONTINUE button
@@ -897,8 +923,7 @@ step('old-data-boot', async ({ browser, base, swapMC }) => {
     expect(pre.players.some(p => p.team_id === 'yellow'), 'the restored roster is on YELLOW (control for F82)');
     const pg = await go(await newPage(browser, base), 'build');
     expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, 'the console opens a pre-koth session without crashing');
-    await kothCard(pg).click();
-    await until(async () => (await kothCard(pg).getAttribute('aria-pressed')) === 'true', 8000, 'KotH playing on an old session');
+    await pickKoth(pg, { ms: 8000, what: 'KotH playing on an old session' });
     const post = await (await fetch(`${base}/api/state`)).json();
     const tidOf = Object.fromEntries(post.config.teams.map(t => [t.team_id, t.tid]));
     expect(!post.players.some(p => tidOf[p.team_id] === 2), '🔴 F82: a restored YELLOW roster is moved off $TID 2 by the koth pick');

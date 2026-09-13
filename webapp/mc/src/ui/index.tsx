@@ -106,6 +106,26 @@ export function Tag({ children, color = T.acc, ink = T.accInk, size = 11, style,
   return <span {...rest} style={merge({ font: F.chk(700, size), letterSpacing: '.18em', color: ink, background: color, padding: '2px 8px', whiteSpace: 'nowrap' }, style)}>{children}</span>;
 }
 
+/** The two-tap confirm on a GAMES card/tile — "this moves people, tap again if you meant it".
+ *
+ *  ONE primitive, because there are two call sites (a saved-game card and a stock-mode tile) that
+ *  must never drift: `koth.mjs` locates both by `data-testid`, and a copy that changed in one place
+ *  only would take the e2e's locators with it. 11px, not 10: both lines carry something the operator
+ *  ACTS on (the roster is about to move / an unsaved game is about to be lost), and the console's
+ *  floor for meaning-bearing text is 11px (audit 2026-09-12) — the same floor `SectionRule`'s hint
+ *  above is held to, and the size `Designer.tsx`'s own leave-confirm already uses. */
+export function SwitchConfirm({ dropsDraft, split, action, style }:
+  { dropsDraft: boolean; split: string; action: string; style?: Sx }) {
+  return (
+    <div role="status" data-testid="confirm-switch"
+      style={merge({ display: 'flex', flexDirection: 'column', gap: 3, font: F.chk(700, 11), letterSpacing: '.12em', color: T.warn }, style)}>
+      {dropsDraft && <span>▲ THIS DROPS YOUR UNSAVED TUNED GAME</span>}
+      {split && <span data-testid="confirm-split">▲ {split}</span>}
+      <span>{action}</span>
+    </div>
+  );
+}
+
 /** Outline tag (READY / WAIT). */
 export function OutlineTag({ children, color, border, title }: { children: ReactNode; color: string; border: string; title?: string }) {
   return <span title={title} style={{ font: F.chk(700, 11), letterSpacing: '.14em', color, border: `1px solid ${border}`, padding: '3px 9px' }}>{children}</span>;

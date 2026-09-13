@@ -6,7 +6,7 @@ import type { ModeInfo, SavedGame } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
 import { F, PERK_COLOR, T, TAB } from '../tokens';
-import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, Shelf, StripedSlot, Tag, Toggle, onKey } from '../ui';
+import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, Shelf, StripedSlot, SwitchConfirm, Tag, Toggle, onKey } from '../ui';
 import { emptyRequiredSlots, gameSig, objectiveLine, poolEmptyMessage, rulesLine, splitLine } from './gameSummary';
 import { MODE_ART } from '../modeArt';
 import { VenueModeReminder } from '../ui/VenueModeReminder';
@@ -160,11 +160,7 @@ export function Games() {
                     <div style={{ font: F.mono(500, 10.5), letterSpacing: '.1em', color: T.acc, lineHeight: 1.5 }}>{rulesLine(g.config, weapons, perks)}</div>
                     <div style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.45, flex: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{g.desc || `${gm?.name ?? g.config.mode} · ${Math.round((g.config.time_limit_s ?? 0) / 60)} MIN · HP ${g.config.health.max_hp} / ARMOR ${g.config.health.max_armor}`}</div>
                     {confirmSwitch === g.preset_id && (
-                      <div role="status" data-testid="confirm-switch" style={{ display: 'flex', flexDirection: 'column', gap: 3, font: F.chk(700, 10), letterSpacing: '.12em', color: T.warn }}>
-                        {custom && <span>▲ THIS DROPS YOUR UNSAVED TUNED GAME</span>}
-                        {splitFor(g.config.teams) && <span data-testid="confirm-split">▲ {splitFor(g.config.teams)}</span>}
-                        <span>TAP AGAIN TO PLAY THIS</span>
-                      </div>
+                      <SwitchConfirm dropsDraft={custom} split={splitFor(g.config.teams)} action="TAP AGAIN TO PLAY THIS" />
                     )}
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
                       {del ? (
@@ -211,11 +207,7 @@ export function Games() {
                       <div style={{ font: F.osw(600, 15), letterSpacing: '.08em' }}>{m.name}</div>
                       <div style={{ font: F.chk(500, 12), color: T.dim, marginTop: 3 }}>{m.desc}</div>
                       {confirmSwitch === m.mode && (
-                        <div role="status" data-testid="confirm-switch" style={{ display: 'flex', flexDirection: 'column', gap: 3, font: F.chk(700, 10), letterSpacing: '.12em', color: T.warn, marginTop: 6 }}>
-                          {custom && <span>▲ THIS DROPS YOUR UNSAVED TUNED GAME</span>}
-                          {splitFor(m.defaults.teams) && <span data-testid="confirm-split">▲ {splitFor(m.defaults.teams)}</span>}
-                          <span>TAP AGAIN</span>
-                        </div>
+                        <SwitchConfirm dropsDraft={custom} split={splitFor(m.defaults.teams)} action="TAP AGAIN" style={{ marginTop: 6 }} />
                       )}
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
