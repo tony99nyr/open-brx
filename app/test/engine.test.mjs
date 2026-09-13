@@ -4449,6 +4449,62 @@ test('B4/T2-B-1: probeSent survives an app restart mid-match, so the relink rese
   assert.equal(secondRelinkWrites.filter(f => f === '$PHONE,*').length, 1, 'exactly one resend per relink, not zero and not repeated');
 });
 
+// ── T2-B item 2: STANDBY (benched) ──────────────────────────────────────────────────────────────
+test('STANDBY: an assign with standby:true drops a kitted node to sitting-out, no frames written', () => {
+  const h = harness().kit();
+  assert.equal(h.eng.phase, 'kitted');
+  const before = h.writes.length;
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, standby: true } });
+  assert.equal(h.eng.standby, true);
+  assert.equal(h.eng.phase, 'kitted', 'STANDBY is a KITTED-shaped state, not a new phase');
+  assert.equal(h.eng.state().standby, true, 'the HUD reads this to show SITTING OUT');
+  assert.equal(h.writes.length, before, 'no frame was written by benching this player');
+});
+
+test('STANDBY: benching a player who already holds a pushed config (LOBBY) drops back to KITTED and writes nothing more', () => {
+  const h = harness().kit().config_();     // config pushed, head written, phase -> lobby
+  assert.equal(h.eng.phase, 'lobby');
+  const before = h.writes.length;
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, standby: true } });
+  assert.equal(h.eng.standby, true);
+  assert.equal(h.eng.phase, 'kitted', 'no longer LOBBY -- there is no game this node is arming for any more');
+  assert.equal(h.writes.length, before, 'benching writes no frame, even though this node already held a head');
+});
+
+test('STANDBY: a config message that somehow still arrives while benched is refused -- no head write', () => {
+  const h = harness().kit();
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, standby: true } });
+  const before = h.writes.length;
+  h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: h.bundle, roster: h.roster } });
+  assert.equal(h.writes.length, before, 'the standby guard in _applyConfig refuses it -- belt and braces');
+  assert.equal(h.eng.phase, 'kitted');
+});
+
+test('STANDBY: PLAY (a normal assign, no standby field) clears it and the kit works again', () => {
+  const h = harness().kit();
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, standby: true } });
+  assert.equal(h.eng.standby, true);
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster } });   // PLAY: no `standby` key at all
+  assert.equal(h.eng.standby, false);
+  assert.equal(h.eng.state().standby, false);
+  // and the kit is live again: config_() (the config push PLAY's reinstate would trigger) now arms normally
+  h.config_();
+  assert.equal(h.eng.phase, 'lobby');
+  assert.ok(h.writes.includes('$START,*'), 'the head is written -- PLAY actually re-arms the gun');
+});
+
+test('STANDBY: force-close while benched comes back SITTING OUT, not to a normal kit screen', () => {
+  const store = mkStorage();
+  let clock = 4_000_000;
+  const mk = () => new Engine({ writer: () => {}, emit: () => {}, report: () => {}, now: () => clock, synced: () => true, storage: store, log: () => {} });
+  const a = mk();
+  a.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  a.onMcMessage({ kind: 'assign', body: { player: { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' }, team: { team_id: 'blue', tid: 1, name: 'BLUE', color: 'blue' }, roster: [], standby: true } });
+  assert.equal(a.standby, true);
+  const b = mk();   // force-close -> reopen on the same storage, no relink yet
+  assert.equal(b.standby, true, 'standby must survive the restart -- otherwise the benched player is briefly re-kitted');
+});
+
 // ── Round-1 polish review 2026-09-12 ────────────────────────────────────────────────────────────
 test('B5: a death suppressed by the spawn-settle window is RE-EXAMINED once the window expires', () => {
   // The B5 gate drops an unattributed zero-HP frame inside the settle window as a stale echo of the
