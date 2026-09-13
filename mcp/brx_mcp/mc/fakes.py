@@ -208,7 +208,12 @@ class FakeNet:
     def on_stale(self, cb): self._cb["stale"].append(cb)
     def on_return(self, cb): self._cb["return"].append(cb)
     def on_disconnect(self, cb): self._cb["gone"].append(cb)
-    def push(self, node_id: str, kind: str, body: dict) -> None: self.pushed.append((node_id, kind, body))
+    # Returns True like the real `net.push` (net.py: False when the node has no live socket).
+    # It returned None, which is FALSY -- so any caller that reads the result to mean "delivered"
+    # (`state.load_game`) recorded nothing under a fake that had in fact recorded the push.
+    def push(self, node_id: str, kind: str, body: dict) -> bool:
+        self.pushed.append((node_id, kind, body))
+        return True
     def broadcast(self, kind: str, body: dict) -> None: self.pushed.append((None, kind, body))
 
     # simulation helpers (what a node would cause)

@@ -168,9 +168,24 @@ async function walkToKit(pg, url, fromArmory = true) {
     ok(`ARMORY: ${await pg.locator('[data-node-card]').count()} phone cards, no crash boundary`);
     await pg.locator('main button:has-text("CONTINUE ▸")').first().click();
   }
-  await until(() => pg.locator('main', { hasText: 'PLAYING GAME' }).count().then(n => n > 0), 10000, 'GAMES to open');
-  await pg.locator('main button:has-text("CONTINUE ▸")').first().click();
-  await until(() => onKit(pg), 10000, 'KIT to open from CONTINUE');
+  await until(() => pg.locator('main', { hasText: '[ A2 // GAMES ]' }).count().then(n => n > 0), 10000, 'GAMES to open');
+  // GAMES has TWO states since 2026-09-13 (Tony: "instead of continue it should be Load"). Unloaded,
+  // the primary is LOAD and it pushes; loaded, the tab IS the active game config and the way on is
+  // CONTINUE TO KIT. A `--demo --fake-net` server can be in either (it boots into LOBBY, and whether
+  // a head has been pushed depends on what the run before it did), so the walk takes whichever door
+  // is actually on screen rather than assuming one — and LOADS when that is the door, because that
+  // is now the operator's own path to KIT.
+  const kitBtn = pg.locator('main [data-testid="game-continue-kit"] button');
+  if (await kitBtn.count() === 0) {
+    const load = pg.locator('main [data-testid="game-load"] button');
+    // the ?mock fixture ships one deliberately RED gun, so the unforced push is (correctly) refused
+    // there and the host's real path is the override beside it.
+    if (await load.isEnabled().catch(() => false)) await load.click();
+    else await pg.locator('main [data-load-force="1"]').click();
+    await until(() => kitBtn.count().then(n => n > 0), 12000, 'the ACTIVE GAME CONFIG state after LOAD');
+  }
+  await kitBtn.click();
+  await until(() => onKit(pg), 10000, 'KIT to open from CONTINUE TO KIT');
 }
 
 /** The SECONDARY plate: `✕ CLEAR` is positioned in the card's bottom-right corner and the weapon's

@@ -1,6 +1,12 @@
 // B3 — editing the LOADED game (mode/night/health/weapon pool) inline on KIT and LOBBY, in a real
 // browser, against a real server (mock AND python), with the re-push/re-ack made visible.
 //
+// 2026-09-13: the panel is a DRAFT. Every tap used to apply immediately (one PUT, and one re-push to
+// every gun, per tap); Tony asked for "Click Edit to modify and then Save and Load to update all
+// phones", so the walk below changes a control, PROVES the server did not move, and only then hits
+// SAVE. The per-tap assertions this replaces could not be kept: they asserted the behaviour the field
+// asked us to remove.
+//
 //   npm run e2e:game-edit                # everything (~40 s)
 //   ONLY=mock npm run e2e:game-edit      # one run: mock | real | locked | stale | venue | faults
 //                                      # (`faults` runs the desk scene AND the 393px phone one)
@@ -183,6 +189,21 @@ async function runMock(browser, viteBase) {
   // --- KIT: open, and edit MODE + NIGHT + HEALTH right there ---
   await openPanel(pg);
   ok(`KIT: game-edit panel open   ${await shot(pg, '01-mock-kit-open')}`);
+  // Count the writes: a draft that quietly applied on every tap would still LOOK right on screen,
+  // and that is the regression this whole rewrite is about.
+  //
+  // NOT with `pg.route`: `?mock` has no network at all — the backend runs IN the page — so a request
+  // counter sits at zero whatever the panel does, and every "nothing was sent" assertion below would
+  // pass for the wrong reason (it did, on the first run of this rewrite). Count where the calls
+  // actually happen: on the in-page api object the store is holding.
+  await pg.evaluate(() => {
+    const api = window.__MC_MOCK__;
+    window.__PUTS__ = 0;
+    const orig = api.putConfig.bind(api);
+    api.putConfig = async p => { window.__PUTS__++; return orig(p); };
+  });
+  const puts = () => pg.evaluate(() => window.__PUTS__ ?? 0);
+  expect(await puts() === 0, 'CONTROL: the write counter starts at zero and is really attached');
   const before = await panel(pg).locator('[data-testid="game-edit-toggle"]').innerText();
   // pick whichever mode option is NOT already selected
   const modeBtn = panel(pg).locator('[aria-label="mode"] button:not([aria-pressed="true"])').first();
@@ -208,48 +229,71 @@ async function runMock(browser, viteBase) {
   } else {
     console.log('      (this mode shares its team layout — nothing to confirm, one tap is correct)');
   }
-  await until(async () => (await panel(pg).locator('[data-testid="game-edit-toggle"]').innerText()) !== before, 5000, 'the header to pick up the new mode');
+  await pg.waitForTimeout(300);
+  expect(await puts() === 0, `picking a MODE in the draft sent NOTHING (saw ${await puts()} write/s)`);
+  expect((await panel(pg).locator('[data-testid="game-edit-toggle"]').innerText()) === before,
+    'the header still names the LOADED game, not the draft — nothing has been applied yet');
+  await panel(pg).locator('[data-testid="game-edit-save"] button').click();
+  await until(async () => (await panel(pg).locator('[data-testid="game-edit-toggle"]').innerText()) !== before, 5000, 'the header to pick up the new mode after SAVE');
   expect((await panel(pg).locator('[data-testid="game-edit-toggle"]').innerText()).includes(modeLabel), `header now shows ${modeLabel}`);
-  ok(`MODE -> ${modeLabel} applied   ${await shot(pg, '02-mock-mode')}`);
+  expect(await puts() === 1, `ONE write carried the change (saw ${await puts()})`);
+  ok(`MODE -> ${modeLabel} drafted, then SAVEd in one request   ${await shot(pg, '02-mock-mode')}`);
+  await openPanel(pg);   // a successful save closes the draft; open a fresh one for the next edit
 
   // ...and now a switch that DOES reshape the roster, so the confirm itself is walked rather than
   // skipped. The step above picks the first unselected mode, which is FFA -- one declared team, so
   // `splitLine` has nothing to say and one tap is correct. That means it proves the no-confirm
   // branch only. KOTH declares BLUE+GREEN, so an 8-player roster really moves and the gate fires.
+  // The confirm now belongs to SAVE, not to the mode chip: the tap that MOVES people is the one that
+  // asks. (The chip moves nobody — it edits a draft.)
   const kothBtn = panel(pg).locator('[aria-label="mode"] button').filter({ hasText: /^KOTH$/ }).first();
   if (await kothBtn.count() > 0) {
     const beforeKoth = await panel(pg).locator('[data-testid="game-edit-toggle"]').innerText();
     await kothBtn.click();
+    expect(await panel(pg).locator('[data-testid="confirm-switch"]').count() === 0,
+      'picking the mode does not ask — nothing has moved yet');
+    const save2 = panel(pg).locator('[data-testid="game-edit-save"] button');
+    await save2.click();
     const c = panel(pg).locator('[data-testid="confirm-switch"]');
-    await until(() => c.count().then(n => n > 0), 5000, 'the MODE reshape confirm on the first tap');
-    expect(await c.isVisible(), 'the MODE confirm is visible before anything moves');
+    await until(() => c.count().then(n => n > 0), 5000, 'the reshape confirm on the first SAVE tap');
+    expect(await c.isVisible(), 'the confirm is visible before anything moves');
     expect((await panel(pg).locator('[data-testid="game-edit-toggle"]').innerText()) === beforeKoth,
-      'the first tap on a reshaping MODE has NOT switched the game');
+      'the first SAVE tap on a reshaping draft has NOT switched the game');
     const sp = panel(pg).locator('[data-testid="confirm-split"]');
-    expect(await sp.count() > 0, 'the MODE confirm names the predicted split');
+    expect(await sp.count() > 0, 'the confirm names the predicted split');
     const spText = (await sp.textContent()).trim();
     expect(/^\u25B2 \d+ PLAYERS? \u2192 [A-Z]+ \d+ \/ [A-Z]+ \d+$/.test(spText),
       `the split line reads as a split (saw ${JSON.stringify(spText)})`);
     const spPx = await sp.evaluate(e => parseFloat(getComputedStyle(e).fontSize));
-    expect(spPx >= 11, `the MODE confirm's split line is legible (${spPx}px)`);
-    await kothBtn.click();
+    expect(spPx >= 11, `the confirm's split line is legible (${spPx}px)`);
+    await save2.click();
     await until(async () => (await panel(pg).locator('[data-testid="game-edit-toggle"]').innerText()) !== beforeKoth,
-      5000, 'the second tap to commit the KOTH switch');
-    ok(`MODE reshape confirmed then committed: "${spText}"   ${await shot(pg, '02b-mock-mode-reshape')}`);
+      5000, 'the second SAVE tap to commit the KOTH switch');
+    ok(`reshape confirmed at SAVE time, then committed: "${spText}"   ${await shot(pg, '02b-mock-mode-reshape')}`);
+    await openPanel(pg);
   } else {
     expect(false, 'no KOTH chip in the MODE control — the reshape confirm was never walked');
   }
 
+  // TWO edits, ONE request — the thing the per-tap panel could not do, and the reason the operator
+  // watched several ack counters race each other while players waited.
+  const putsBefore = await puts();
   const night = panel(pg).locator('[role="switch"]');
   const nightBefore = await night.getAttribute('aria-checked');
   await night.click();
-  await until(async () => (await night.getAttribute('aria-checked')) !== nightBefore, 5000, 'NIGHT OPS to flip');
-  ok(`NIGHT OPS -> ${await night.getAttribute('aria-checked')}   ${await shot(pg, '03-mock-night')}`);
-
+  await until(async () => (await night.getAttribute('aria-checked')) !== nightBefore, 5000, 'NIGHT OPS to flip in the draft');
   const hp = panel(pg).locator('input[aria-label="default health"]');
   await hp.fill('180'); await hp.press('Enter');
-  await until(async () => (await hp.inputValue()) === '180', 5000, 'the HP box to hold the applied value');
-  ok('DEFAULT HEALTH -> 180 applied');
+  await until(async () => (await hp.inputValue()) === '180', 5000, 'the HP box to hold the drafted value');
+  await pg.waitForTimeout(300);
+  expect(await puts() === putsBefore, `neither edit has been sent yet (saw ${(await puts()) - putsBefore} write/s)`);
+  expect((await panel(pg).locator('[data-testid="game-edit-dirty"]').innerText()).includes('UNSAVED'),
+    'the panel says what is staged rather than leaving the operator guessing');
+  ok(`NIGHT + HEALTH drafted, nothing sent   ${await shot(pg, '03-mock-night')}`);
+  await panel(pg).locator('[data-testid="game-edit-save"] button').click();
+  await pg.waitForTimeout(400);
+  expect(await puts() === putsBefore + 1, `ONE write carried both edits (saw ${(await puts()) - putsBefore})`);
+  ok('DEFAULT HEALTH -> 180 and NIGHT applied in a single SAVE');
 
   // --- push the lobby (through the console's own control, not a fetch) so the RE-push has something
   //     to re-push TO --- then move to LOBBY and edit again.
@@ -270,11 +314,17 @@ async function runMock(browser, viteBase) {
   expect(/ALL GUNS ON THIS CONFIG|RE-PUSHING|GUNS CONFIRMED ON THIS CONFIG/.test(repushBefore), `the repush line reads a real state before the edit (saw ${JSON.stringify(repushBefore)})`);
   const stepTextBefore = (await pg.locator('main').innerText()).replace(/\s+/g, ' ').match(/Config pushed[^A-Z]*\d+\/\d+/)?.[0] ?? '';
 
-  // WEAPONS AVAILABLE — switch one primary weapon off
+  // WEAPONS AVAILABLE — switch one primary weapon off, then SAVE AND LOAD (the label the button
+  // wears once there IS a head on the guns).
   const primaryGroup = panel(pg).locator('[aria-label="primary weapons available"]');
   const chip = primaryGroup.locator('button[aria-label$=", allowed"]').first();
   const chipName = (await chip.innerText()).replace(/^✓\s*/, '').trim();
   await chip.click();
+  expect((await primaryGroup.locator(`button[aria-label="${chipName}, off"]`).count()) === 1,
+    'the chip repaints from the DRAFT immediately (client-side pool), with nothing sent');
+  const saveLoad = panel(pg).locator('[data-testid="game-edit-save"] button');
+  expect((await saveLoad.innerText()).includes('SAVE AND LOAD'), `with a head on the guns the button says SAVE AND LOAD (saw ${JSON.stringify(await saveLoad.innerText())})`);
+  await saveLoad.click();
 
   // The edit RE-PUSHES: the ack count must visibly MOVE (drop, then recover) — this is the
   // observable half of B3 (the un-push used to leave it looking untouched). Both indicators read the
@@ -288,7 +338,9 @@ async function runMock(browser, viteBase) {
 
   await until(async () => !/RE-PUSHING/.test(await repushText(pg)), 6000, 'the acks to recover');
   ok(`acks recovered: "${await repushText(pg)}"   ${await shot(pg, '06-mock-repushed')}`);
-  expect(await primaryGroup.locator(`button[aria-label="${chipName}, off"]`).count() === 1, `${chipName} now reads off`);
+  await openPanel(pg);
+  expect(await panel(pg).locator(`[aria-label="primary weapons available"] button[aria-label="${chipName}, off"]`).count() === 1,
+    `${chipName} is off in the config the server now holds`);
 
   await pg.context().close();
 }
@@ -306,19 +358,33 @@ async function runReal(browser, viteBase, mcBase, vp = { width: 1280, height: 80
   await openPanel(pg);
   const nightBefore = await panel(pg).locator('[role="switch"]').getAttribute('aria-checked');
   await panel(pg).locator('[role="switch"]').click();
+  await pg.waitForTimeout(400);
+  expect((await (await fetch(`${mcBase}/api/state`)).json()).config.night === (nightBefore === 'true'),
+    'the REAL server has not moved: the draft is local until SAVE');
+  await panel(pg).locator('[data-testid="game-edit-save"] button').click();
   await until(async () => (await (await fetch(`${mcBase}/api/state`)).json()).config.night !== (nightBefore === 'true'),
-    5000, 'the real server to hold the new NIGHT value');
-  ok(`NIGHT OPS applied against the real server   ${await shot(pg, `10-real-night-${tag}`)}`);
+    5000, 'the real server to hold the new NIGHT value after SAVE');
+  ok(`NIGHT OPS drafted then SAVEd against the real server   ${await shot(pg, `10-real-night-${tag}`)}`);
+  await openPanel(pg);
 
   // A modest bump, not an arbitrary one: the real server's OWN balance rule (docs/weapon-design.md
   // §2.1, "cannot kill on one magazine") 400s a health/armor pool pushed too high for the shipped
   // clip sizes -- found the hard way probing this suite against the real server. 55 keeps the pool
   // (55+70=125) close to the default (45+70=115) while still being a value nothing else would set.
+  // A modest bump, not an arbitrary one: the real server's OWN balance rule (docs/weapon-design.md
+  // §2.1, "cannot kill on one magazine") 400s a health/armor pool pushed too high for the shipped clip
+  // sizes. 50 and 55 both keep the pool at or under the 125 the default (45+70=115) sits near.
+  // It ALTERNATES because this run happens twice (desk, then phone) against the SAME server, and a
+  // draft is only sendable when something actually changed — re-typing the value the config already
+  // holds leaves SAVE correctly disabled, which is the product working and the suite asking wrong.
+  const hpNow = (await (await fetch(`${mcBase}/api/state`)).json()).config.health.max_hp;
+  const hpWant = hpNow === 55 ? 50 : 55;
   const hp = panel(pg).locator('input[aria-label="default health"]');
-  await hp.fill('55'); await hp.press('Enter');
-  await until(async () => (await (await fetch(`${mcBase}/api/state`)).json()).config.health.max_hp === 55,
-    5000, 'the real server to hold the new health value');
-  ok('DEFAULT HEALTH applied against the real server');
+  await hp.fill(String(hpWant)); await hp.press('Enter');
+  await panel(pg).locator('[data-testid="game-edit-save"] button').click();
+  await until(async () => (await (await fetch(`${mcBase}/api/state`)).json()).config.health.max_hp === hpWant,
+    5000, `the real server to hold the new health value (${hpNow} -> ${hpWant})`);
+  ok(`DEFAULT HEALTH ${hpNow} -> ${hpWant} applied against the real server`);
 
   // push, then edit again — the real-server half of the re-push proof (mock already proved the
   // console-side indicator; this proves the SERVER really does re-push rather than un-push).
@@ -330,7 +396,8 @@ async function runReal(browser, viteBase, mcBase, vp = { width: 1280, height: 80
   ok(`LOBBY pushed on the real server   ${await shot(pg, `11-real-lobby-pushed-${tag}`)}`);
 
   await openPanel(pg);
-  await panel(pg).locator('[role="switch"]').click();   // NIGHT again — any edit re-pushes
+  await panel(pg).locator('[role="switch"]').click();   // NIGHT again — any SAVEd edit re-pushes
+  await panel(pg).locator('[data-testid="game-edit-save"] button').click();
   await pg.waitForTimeout(400);
   const afterEdit = await (await fetch(`${mcBase}/api/state`)).json();
   // The SERVER-SIDE half of B3 is a coordinated change owned by another lane (lane-teams,

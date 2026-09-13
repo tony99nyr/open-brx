@@ -1,20 +1,17 @@
 import { useState } from 'react';
 import { RUNWAYS, useRunway } from '../runway';
-import { STALE_ACK_FAULT, blocksPush, coverageLine, curedByPush, curedByPushRow, reachLabel, reachOf, reachTooltip, sentenceCase, splitBlocker } from '../api/derive';
+import { RE_PUSH_HERE, STALE_ACK_FAULT, blocksPush, coverageLine, curedByPush, pushGate, reachLabel, reachOf, reachTooltip, sentenceCase, splitBlocker } from '../api/derive';
 import type { Player } from '../api/types';
 import { useStore } from '../store';
 import { F, T, TAB, teamColor } from '../tokens';
 import { BTN_RESET, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag, useNarrow } from '../ui';
 import { SetupSteps } from '../ui/SetupSteps';
+import { PreArmSummary } from '../ui/PreArmSummary';
 import { McVerify } from '../ui/McVerify';
 import { StandDownChip, StandbySection } from '../ui/Standby';
 import { GameEditPanel } from '../ui/GameEditPanel';
 import { UnrosteredPhonesBanner } from '../ui/UnrosteredPhones';
 
-
-/** The name of the control, spelled once (F8a). Every server blocker line, every disabled title and
- *  the rail's own stale-ack sentence point at the same words, and those words are the button's. */
-const RE_PUSH_HERE = 'RE-PUSH CONFIG on LOBBY';
 
 export function Lobby() {
   const { state, run, api, setView } = useStore();
@@ -28,55 +25,21 @@ export function Lobby() {
   const unassigned = players.filter(p => !teamIds.includes(p.team_id ?? ''));
   const counts = cols.map(c => c.members.length);
   const balanced = Math.max(...counts) - Math.min(...counts) <= 1 && unassigned.length === 0;
-  // Round-2 fix pass B (2026-09-12): an EMPTY team in a teams game is not "unbalanced", it is
-  // unplayable — the gun refuses friendly damage, so a one-side match registers nothing for its whole
-  // length and says nothing about it. The field hit it by switching FFA -> TDM, which used to re-team
-  // every player onto `teams[0]`. The server refuses the push and the start outright
-  // (`one_team_fault`, which `force` does NOT open) and names the fault in `readiness.roster_faults`;
-  // that is what this renders, falling back to the same rule locally for a server that predates it.
-  // Round-3 MERGE-0: the rule is stated on the populated $TIDs, so two teams sharing a tid are one
-  // side and a third, empty team is not a fault. This mirror asks the same question.
-  const teamsMode = state.config.mode !== 'ffa' && cols.length > 1;
-  const rosterFaults = readiness.roster_faults ?? [];
-  // FIELD-3 (round-3 fix pass, 2026-09-13): the local rule is a FALLBACK FOR AN OLDER SERVER, so it
-  // runs only when the field is ABSENT. It used to run whenever the server reported no fault, which
-  // means a present-but-EMPTY `roster_faults` — the server saying "this roster is fine" — was
-  // silently overridden by the console's own cruder rule, and any future server-side narrowing (the
-  // tid-based predicate of MERGE-0 is exactly that: a 2/2/0 over three declared teams now PLAYS)
-  // would be undone here with nothing to notice it.
-  const serverKnows = readiness.roster_faults !== undefined;
-  const oneSideLocally = teamsMode && players.length > 1
-    && new Set(state.config.teams.filter(t => players.some(p => p.team_id === t.team_id)).map(t => t.tid)).size < 2;
-  const rosterFault = rosterFaults[0]
-    ?? (!serverKnows && oneSideLocally
-      ? 'ONLY ONE SIDE HAS PLAYERS — a match fought on one side cannot register a hit; move players between teams'
-      : null);
+  // EVERY judgement about pushing this config — the unplayable roster, the ack count, A36's three
+  // proofs, which rows refuse a first push versus a re-push — is `derive.pushGate`, and GAMES's LOAD
+  // reads the identical function. Two copies of these predicates is how the console ends up refusing
+  // on one screen what it offers on the other (F151/R2-2); the reasoning that used to live here, and
+  // why each rule is shaped the way it is, moved WITH the code into `derive.ts`.
+  const gate = pushGate(state);
+  const rosterFault = gate.rosterFault;
   const balancedForTeams = !rosterFault;
   const nReady = players.filter(p => p.ready).length;
   const notReady = players.filter(p => !p.ready).map(p => p.display);
   const allReady = nReady === players.length && players.length > 0;
-  // A36: an ack for a PREVIOUS config is not an ack for this one — the server refuses the whistle on
-  // it, `force` included, so a counter that reads "4/4 acked" beside a refused START would be lying
-  // in exactly the place the operator looks. `config_id` absent = an older server that never sent
-  // one; fall back to `ok` rather than reading every ack as stale.
-  const ackIsCurrent = (a: { ok: boolean; config_id?: string }) =>
-    a.ok && (a.config_id === undefined || a.config_id === state.config.config_id);
-  const acked = Object.values(lobby.acks).filter(ackIsCurrent).length;
-  const nameOf = (id: string) => players.find(p => p.player_id === id)?.display ?? id;
-  const noEcho = Object.entries(lobby.acks).filter(([, a]) => !a.ok).map(([id]) => nameOf(id));
-  const staleAcked = Object.entries(lobby.acks).filter(([, a]) => a.ok && !ackIsCurrent(a)).map(([id]) => nameOf(id));
-  // U-1: computed from the ACKS, independently of the board — a stale ack is always ALSO a red row,
-  // so anything that asked "are there faults?" first could never reach this sentence.
-  // F8a: ONE instruction string, everywhere. "push again" named no control; `RE-PUSH CONFIG on
-  // LOBBY` is the label of the button three lines below it.
-  const staleAckLine = staleAcked.length
-    ? `${staleAcked.join(', ')} still answering for an older config — ${RE_PUSH_HERE}`
-    : '';
-  // A36/C-5: the SERVER's own answer wins wherever it is present (`types.ts` has said so since A36 and
-  // nothing here read it). `all_acked` walks the roster the way `start()` does — it skips a player with
-  // no node bound, which the local count cannot — so a console counting for itself disagreed with the
-  // refusal exactly where it matters. The count stays as the fallback for a server that predates it.
-  const allAcked = lobby.pushed && (lobby.all_acked ?? (acked === players.length));
+  // U-1: the stale-ack sentence is computed from the ACKS, independently of the board — a stale ack
+  // is always ALSO a red row, so anything that asked "are there faults?" first could never reach it.
+  // F8a: ONE instruction string, everywhere (`RE_PUSH_HERE` is the label of the button below).
+  const { acked, allAcked, noEcho, staleAcked, staleAckLine } = gate;
   // A28.4: derived, never asserted — "grey" the count while the tunnel is off, since it can only be 0.
   const cLine = coverageLine(state);
   const cColor = state.lan.public?.status !== 'up' ? T.micro : state.coverage?.level === 'full' ? T.ok : T.warn;
@@ -90,23 +53,13 @@ export function Lobby() {
   const noPhoneOf = (pid: string) => !state.nodes.some(x => x.player_id === pid);
   // Field 2026-08-30: the rail said only "E20D RED ON THE BOARD" and the operator read it as MC being
   // stuck — the REASON (GUN LINK LOST) was on the muster board, a screen away. Carry the blocker here.
-  const redRows = readiness.board.filter(b => b.status === 'red');
-  const waitRows = readiness.board.filter(b => b.status === 'waiting');
   // Both block the push, but they are different situations and must not be described the same way:
-  // `red` is a fault, `waiting` is just a phone that has not arrived (field 2026-09-01).
+  // `red` is a fault, `waiting` is just a phone that has not arrived (field 2026-09-01). START's gate
+  // is `blockedCount` (a red is a red, whatever cures it); PUSH's is `pushBlockedCount`, which is the
+  // SERVER's own (`state.py push_config._blocks_push`) and differs on both counts — A37's three
+  // proofs are cured BY the push, and a phone that has not arrived refuses the FIRST push only.
+  const { redRows, waitRows, blockedCount, pushBlockedCount, curableRows, waitWhy } = gate;
   const reds = redRows.map(b => b.sticker);
-  // START's gate: a red is a red, whatever cures it. A gun on last game's head must not be armed.
-  const blockedCount = redRows.length + waitRows.length;
-  // R2-2: PUSH's gate is the SERVER's (`state.py push_config._blocks_push`, mirrored in
-  // `derive.blocksPush`) — A36's three proofs are cured BY the push, so they cannot be allowed to
-  // refuse it. Anything else red, and every phone that has not arrived, still does.
-  // F3: …and a RE-push is the same gate asked with `repush`, which is where the two differ: a phone
-  // that has not arrived refuses the FIRST push and nothing else (`state.py push_config.is_repush`).
-  const pushBlockedCount = readiness.board.filter(r => blocksPush(r, { repush: lobby.pushed })).length;
-  // The rows a re-push would clear, and the reason the RE-PUSH button exists at all. F1: `some`, not
-  // `every` — a row can need a re-push AND something else, and the something else must not take the
-  // cure off the screen (`derive.curedByPushRow`).
-  const curableRows = redRows.filter(curedByPushRow);
   // F8b: R2-8's suppression compared red ROWS with stale ACKS, so one row carrying a stale ack AND a
   // second red made "N guns cannot start" vanish for every other red on the board. The question is
   // which rows the stale-ack sentence does NOT already account for: the ones whose blockers are not
@@ -116,9 +69,6 @@ export function Lobby() {
   // ONLY what actually gates the start. `ambers` (STALE LINK, SCREEN OFF, …) are advisories and were
   // printed in the same run-on sentence, which made a real fault read like a shrug.
   const faults = redRows.map(b => ({ who: b.sticker, why: b.blockers ?? [] }));
-  const waitWhy = waitRows.length
-    ? `Waiting for ${waitRows.length} phone${waitRows.length === 1 ? '' : 's'}: ${waitRows.map(b => b.sticker).join(', ')}`
-    : '';
 
   // Two deliberate clicks (design-critic #5): PUSH, verify the acks/echoes land, THEN arm the countdown.
   const pushAndArm = async (force = false) => {
@@ -221,6 +171,9 @@ export function Lobby() {
       </div>
       {/* STANDBY (2026-09-12): who is sitting this one out, and the way back in */}
       <StandbySection />
+      {/* The pre-arm check (2026-09-13). LOAD split "the game is loaded" from "the guns are
+          configured", so the two halves have to be verified separately and named per player. */}
+      <PreArmSummary />
       {/* Action rail — rebuilt 2026-09-01: "lots of small uppercase text. poor organization and
           readability and usability". One status line in sentence case, faults as a real per-gun list
           (blockers only — the advisories used to be jammed into the same run-on string), one primary

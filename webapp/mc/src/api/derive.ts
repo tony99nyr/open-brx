@@ -143,6 +143,104 @@ export function blocksPush(row: { status?: string; blockers?: string[] | null },
   return row.status === 'red' && (row.blockers ?? []).some(b => !curedByPush(b));
 }
 
+/** The name of the control that cures A36's three proofs, spelled ONCE (F8a). Every server blocker
+ *  line, every disabled title and the LOBBY rail's stale-ack sentence point at the same words, and
+ *  those words are the button's. GAMES carries an identically-labelled RE-PUSH CONFIG since the LOAD
+ *  work (2026-09-13), so the instruction names a control on whichever screen the operator is on. */
+export const RE_PUSH_HERE = 'RE-PUSH CONFIG on LOBBY';
+
+/** The local fallback for a server too old to send `readiness.roster_faults` — the SERVER's sentence
+ *  wherever the server has one. */
+export const LOCAL_ONE_TEAM_FAULT =
+  'ONLY ONE SIDE HAS PLAYERS — a match fought on one side cannot register a hit; move players between teams';
+
+/** Everything the console knows about "may this config be sent to the guns, and did it land".
+ *
+ *  ONE implementation, because there are now two screens that ask it: LOBBY's PUSH CONFIG & ARM /
+ *  RE-PUSH CONFIG rail, and GAMES's LOAD (2026-09-13 — Tony: "instead of continue it should be Load.
+ *  Load pushes that config to phones"). A second copy of these predicates is how the console ends up
+ *  refusing something the server allows, or offering something the server refuses, on one of the two
+ *  screens only — the F151/R2-2 failure exactly. Pure: a function of the snapshot, nothing else. */
+export interface PushGate {
+  /** a head has been sent at least once (`state.py lobby_pushed`) — so any further push is a RE-push */
+  pushed: boolean;
+  /** acks that are CURRENT for `config.config_id` (A36: an older ack proves nothing) */
+  acked: number;
+  total: number;
+  /** the SERVER's own `all_acked` wherever it is present; the count is the fallback for an older MC */
+  allAcked: boolean;
+  /** the unplayable roster (`state.py one_team_fault`). `force` does NOT open this one. */
+  rosterFault: string | null;
+  /** displays of the guns that answered — for the game BEFORE this one */
+  staleAcked: string[];
+  /** displays of the guns that have not echoed at all */
+  noEcho: string[];
+  /** the stale-ack sentence, naming the guns and the control that cures them ('' when there are none) */
+  staleAckLine: string;
+  redRows: State['readiness']['board'];
+  waitRows: State['readiness']['board'];
+  /** red rows carrying anything a re-push would clear (F1: `some`, not `every`) */
+  curableRows: State['readiness']['board'];
+  /** START's gate: every red and every phone that has not arrived */
+  blockedCount: number;
+  /** THIS push's gate (`state.py push_config._blocks_push`, repush-aware) */
+  pushBlockedCount: number;
+  /** "Waiting for 2 phones: DRIFT, SABLE" ('' when none) */
+  waitWhy: string;
+  /** would a push be refused outright, with nothing `force` could do about it? */
+  refused: boolean;
+  /** why a push is refused, or what `force` would be overriding ('' when the way is clear) */
+  pushWhy: string;
+}
+
+export function pushGate(state: State): PushGate {
+  const { players, lobby, readiness, config } = state;
+  // A36: an ack for a PREVIOUS config is not an ack for this one — the server refuses the whistle on
+  // it, `force` included. `config_id` absent = an older server that never sent one; fall back to `ok`
+  // rather than reading every ack as stale.
+  const ackIsCurrent = (a: { ok: boolean; config_id?: string }) =>
+    a.ok && (a.config_id === undefined || a.config_id === config.config_id);
+  const acked = Object.values(lobby.acks).filter(ackIsCurrent).length;
+  const nameOf = (id: string) => players.find(p => p.player_id === id)?.display ?? id;
+  const noEcho = Object.entries(lobby.acks).filter(([, a]) => !a.ok).map(([id]) => nameOf(id));
+  const staleAcked = Object.entries(lobby.acks).filter(([, a]) => a.ok && !ackIsCurrent(a)).map(([id]) => nameOf(id));
+  const staleAckLine = staleAcked.length ? `${staleAcked.join(', ')} still answering for an older config — ${RE_PUSH_HERE}` : '';
+  // A36/C-5: the SERVER's own answer wins wherever it is present — `all_acked` walks the roster the
+  // way `start()` does (it skips a player with no node bound, which a local count cannot).
+  const allAcked = lobby.pushed && (lobby.all_acked ?? (acked === players.length));
+  // FIELD-3: the local one-side rule is a FALLBACK FOR AN OLDER SERVER, so it runs only when the
+  // field is ABSENT — a present-but-empty `roster_faults` is the server saying this roster is fine.
+  const teamIds = config.mode === 'ffa' ? ['ffa'] : config.teams.map(t => t.team_id);
+  const teamsMode = config.mode !== 'ffa' && teamIds.length > 1;
+  const serverKnows = readiness.roster_faults !== undefined;
+  const oneSideLocally = teamsMode && players.length > 1
+    && new Set(config.teams.filter(t => players.some(p => p.team_id === t.team_id)).map(t => t.tid)).size < 2;
+  const rosterFault = (readiness.roster_faults ?? [])[0] ?? (!serverKnows && oneSideLocally ? LOCAL_ONE_TEAM_FAULT : null);
+
+  const redRows = readiness.board.filter(b => b.status === 'red');
+  const waitRows = readiness.board.filter(b => b.status === 'waiting');
+  const curableRows = redRows.filter(curedByPushRow);
+  const blockedCount = redRows.length + waitRows.length;
+  const pushBlockedCount = readiness.board.filter(r => blocksPush(r, { repush: lobby.pushed })).length;
+  const waitWhy = waitRows.length
+    ? `Waiting for ${waitRows.length} phone${waitRows.length === 1 ? '' : 's'}: ${waitRows.map(b => b.sticker).join(', ')}`
+    : '';
+  // A push with nobody on the roster is refused by the server before anything else, and `force` does
+  // not bypass it either (`state.py push_config`: "no players — add someone to the roster first").
+  const refused = !!rosterFault || players.length === 0;
+  const pushWhy = [
+    rosterFault ?? '',
+    players.length === 0 ? 'Add someone to the roster first' : '',
+    pushBlockedCount > 0
+      ? readiness.board.filter(r => blocksPush(r, { repush: lobby.pushed }))
+          .map(r => `${r.sticker} ${(r.blockers ?? []).filter(b => !curedByPush(b)).map(b => splitBlocker(b).head).join(', ') || 'phone not arrived'}`)
+          .join(' · ')
+      : '',
+  ].filter(Boolean).join('  ·  ');
+  return { pushed: lobby.pushed, acked, total: players.length, allAcked, rosterFault, staleAcked, noEcho,
+           staleAckLine, redRows, waitRows, curableRows, blockedCount, pushBlockedCount, waitWhy, refused, pushWhy };
+}
+
 /** Every readiness line the server writes is `STATEMENT — INSTRUCTION` ("ACKED AN OLDER CONFIG
  *  (9f2a1c04) — RE-PUSH"). Split it: the statement still shouts, the instruction sits under it
  *  quietly in sentence case, and the trailing severity tag ("BLOCKS START", "DOES NOT BLOCK") comes

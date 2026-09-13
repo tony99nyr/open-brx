@@ -17,7 +17,16 @@ import { demo, mountScreen } from './harness';
 
 const withStandby = (s: State): State => {
   const [parked, ...rest] = s.players;
-  return { ...s, players: rest, standby: [{ ...parked, node_id: null, ready: false }] };
+  // `sync` goes with the roster. `state.py sync_summary()` walks `self.players`, and `stand_down`
+  // takes the parked player OUT of it — so a fixture that benched someone in `players` while leaving
+  // them in `sync` describes a state no server produces, and the pre-arm check would honestly render
+  // a count against a roster that no longer exists (caught when that panel landed, 2026-09-13).
+  const sync = s.sync && {
+    ...s.sync,
+    rows: s.sync.rows.filter(r => r.player_id !== parked.player_id),
+    totals: { ...s.sync.totals, rostered: rest.length },
+  };
+  return { ...s, players: rest, standby: [{ ...parked, node_id: null, ready: false }], sync };
 };
 /** a server that predates the field: no `standby` key at all */
 const olderServer = (s: State): State => { const { standby: _drop, ...rest } = s; return rest as State; };
