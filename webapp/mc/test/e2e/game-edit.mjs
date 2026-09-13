@@ -3,6 +3,7 @@
 //
 //   npm run e2e:game-edit                # everything (~40 s)
 //   ONLY=mock npm run e2e:game-edit      # one run: mock | real | locked | stale | venue | faults
+//                                      # (`faults` runs the desk scene AND the 393px phone one)
 //   MC_PORT=… VITE_PORT=… MC_PY=…        # move the ports / pick the interpreter
 //
 // Runs: mock (in-browser backend — the fast, deterministic walk: edit on KIT, push, edit again on
@@ -139,6 +140,28 @@ const onMuster = async pg => {
 };
 const onLobby = pg => pg.locator('main', { hasText: '[ A5 // LOBBY' }).count().then(n => n > 0);
 const noCrash = async pg => expect(await pg.locator('text=CONSOLE ERROR').count() === 0, 'no crash boundary');
+/** Every control in the LOBBY action rail (and the host-override tray under it) is tappable, and
+ *  every word in it is readable — the same floors `kit-continue.mjs` and `standby.mjs` assert.
+ *  Scoped to the rail on purpose: it is the region this suite owns. */
+async function auditRail(pg, where) {
+  const rows = await pg.evaluate(() => Array.from(document.querySelectorAll('[data-rail="lobby"], [data-override="1"]'))
+    .flatMap(root => Array.from(root.querySelectorAll('button, select, span, b')))
+    .filter(n => (n.textContent || '').trim() && !n.querySelector('button, select, span, b'))
+    .map(n => {
+      const b = n.closest('button') || n;
+      const r = b.getBoundingClientRect();
+      const hit = Math.max(r.height, b.classList.contains('hit44') ? 44 : 0);
+      return { tag: b.tagName, t: (b.textContent || '').trim().slice(0, 24),
+               h: Math.round(hit), fs: parseFloat(getComputedStyle(n).fontSize),
+               off: r.right > innerWidth + 1 || r.left < -1 };
+    }));
+  for (const r of rows) {
+    if (r.tag === 'BUTTON' || r.tag === 'SELECT') expect(r.h >= 36, `tap target "${r.t}" is ${r.h}px tall (${where})`);
+    expect(r.fs >= 11, `text "${r.t}" is ${r.fs}px (${where})`);
+    expect(!r.off, `"${r.t}" is inside the viewport (${where})`);
+  }
+  return `${rows.length} controls audited`;
+}
 const panel = pg => pg.locator('[data-testid="game-edit-panel"]');
 const openPanel = async pg => { await panel(pg).locator('[data-testid="game-edit-toggle"]').click(); await panel(pg).waitFor({ state: 'visible' }); };
 const repushText = async pg => (await panel(pg).locator('[data-testid="game-edit-repush"]').innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
@@ -498,7 +521,8 @@ async function runFaults(browser, viteBase) {
   await until(() => isMuster(pg), 15000, "the muster board");
   await noCrash(pg);
   // Push the config the way a host would: the A36 reds do not refuse the push that cures them (A37),
-  // but the demo also ships one gun that is simply not powered, so this run takes the override.
+  // but the demo also ships one phone that has never arrived, and the FIRST push is refused for that
+  // (nothing reaches a phone that is not here) — so this run takes the override.
   await pg.evaluate(async () => { await window.__MC_MOCK__.pushLobby(true); });
   // The console FOLLOWS a phase that advances, so the push lands us on LOBBY. The muster board is
   // where the per-gun proof lives, and the nav tab is never phase-gated — the operator's own route.
@@ -540,7 +564,13 @@ async function runFaults(browser, viteBase) {
   const repush = pg.locator('button[data-repush="1"]').first();
   expect(await repush.count() > 0, 'a curable red puts RE-PUSH CONFIG on the rail');
   expect(await repush.isEnabled(), 'and it is clickable — this is the cure, not another refusal');
-  ok(`RE-PUSH CONFIG is on screen and enabled   ${await shot(pg, '54-faults-repush')}`);
+  // F3 — the only row no push can cure here is a phone that has not arrived, and a RE-push IS
+  // delivered to it (on its own hello), so this is the ORDINARY re-push, not the forcing variant.
+  const repushLabel = (await repush.innerText()).replace(/\s+/g, ' ').trim();
+  expect(!/BLOCKED/.test(repushLabel),
+    `a waiting phone does not make the re-push a forcing one (saw ${JSON.stringify(repushLabel)})`);
+  expect(await repush.getAttribute('data-repush-force') === null, 'and it is not about to force');
+  ok(`RE-PUSH CONFIG is on screen, enabled and ordinary   ${await shot(pg, '54-faults-repush')}`);
   await repush.click();
   await until(async () => {
     const s = (await pg.locator('main').innerText()).replace(/\s+/g, ' ');
@@ -548,12 +578,14 @@ async function runFaults(browser, viteBase) {
   }, 8000, 'the three curable reds to clear after the re-push');
   const cured = (await pg.locator('main').innerText()).replace(/\s+/g, ' ');
   expect(!/still answering for an older config/.test(cured), 'the rail sentence goes with them');
-  // The demo also ships one gun that is simply NOT POWERED, which still reds the board and still
-  // holds the whistle — the point is that the reason has changed from one the operator was told to
-  // re-push for to one they have to go and fix.
+  // The demo also ships one phone that has never arrived, which still holds the whistle — the point
+  // is that the reason has changed from one the operator was told to re-push for to one they have to
+  // go and fix. F1: and the disabled ARM says so, rather than carrying an empty title.
   const armTitle = await pg.locator('button:has-text("ARM COUNTDOWN")').first().getAttribute('title');
   expect(!/older config/i.test(armTitle ?? ''), `the ARM no longer blames a stale head (saw ${JSON.stringify(armTitle)})`);
-  expect(/NOT POWERED/.test(cured), 'the one red left is the gun nobody switched on');
+  expect((armTitle ?? '').trim().length > 0, 'a disabled ARM is never silent about why');
+  expect(/no push can clear/i.test(armTitle ?? ''), `...and names what is left (saw ${JSON.stringify(armTitle)})`);
+  expect(/Waiting for 1 phone/.test(cured), 'the one row left is the phone nobody brought');
   ok(`the re-push cured all three   ${await shot(pg, '55-faults-cured')}`);
   // …and NOT ECHOED survives it: that row is the v4.32 firmware, not a stale head.
   await onMuster(pg);
@@ -574,6 +606,69 @@ async function runFaults(browser, viteBase) {
   await pg.context().close();
 }
 
+/** F7 (polish loop iteration 3) — the SAME scene at 393 px, because that is the width the console is
+ *  actually read at when the operator is standing at the rack with the tablet in one hand.
+ *  `runFaults` above shot the desk page only, so the one screen where three controls (RE-PUSH, ARM
+ *  and the HOST OVERRIDE) compete for one row had never been looked at narrow. Asserts what the
+ *  suite's other tap-target audits assert: on screen without sideways scroll, 36 px of hit area,
+ *  11 px of type for anything that carries meaning. */
+async function runFaultsPhone(browser, viteBase) {
+  step = 'faults/phone'; stepFailedAt = failures.length;
+  console.log('\n[faults/phone] the LOBBY rail at 393 px: RE-PUSH, ARM and the override on one screen');
+  const pg = await newPage(browser, viteBase, PHONE);
+  await pg.goto(`${viteBase}/?mock&faults=1#muster`, { waitUntil: 'domcontentloaded' });
+  await until(() => isMuster(pg), 15000, 'the muster board');
+  await noCrash(pg);
+  await pg.evaluate(async () => { await window.__MC_MOCK__.pushLobby(true); });
+  await pg.locator('header nav button:has-text("LOBBY")').first().click();
+  await until(() => onLobby(pg), 5000, 'the LOBBY to open from the nav');
+
+  // (a) the page itself never scrolls sideways, and each of the three controls is inside the viewport
+  const sideways = await pg.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(sideways <= 1, `the page scrolls ${sideways}px sideways at 393px`);
+  for (const [what, sel] of [
+    ['RE-PUSH CONFIG', 'button[data-repush="1"]'],
+    ['ARM COUNTDOWN', 'main button:has-text("ARM COUNTDOWN")'],
+    ['the host override', '[data-override="1"] button'],
+  ]) {
+    const el = pg.locator(sel).first();
+    expect(await el.count() > 0, `${what} is on the phone-width rail at all`);
+    const box = await el.boundingBox();
+    expect(box && box.x >= -1 && box.x + box.width <= 393 + 1,
+      `${what} is inside the viewport (saw ${JSON.stringify(box)})`);
+  }
+  // ...and nothing on this screen paints outside its own box. The roster row's callsign span was
+  // `flex: 1; minWidth: 0`, which at 393 px collapsed to 26 px — narrower than one callsign — so the
+  // name overflowed and was drawn ON TOP of the LAN tag next to it (measured here, 2026-09-13).
+  const spills = await pg.evaluate(() => Array.from(document.querySelectorAll('main [draggable="true"]'))
+    .flatMap(row => Array.from(row.children))
+    .filter(el => el.scrollWidth > el.clientWidth + 1)
+    .map(el => `${(el.textContent || '').trim().slice(0, 20)} ${el.scrollWidth}>${el.clientWidth}`));
+  expect(spills.length === 0, `roster rows overflow their own boxes: ${JSON.stringify(spills)}`);
+  const audit = await auditRail(pg, 'phone');
+  // The rail sits below the roster at this width, so the SHOT has to be of the rail — a screenshot of
+  // the top of the page would prove nothing about the three controls this step is here to look at.
+  const rail = pg.locator('[data-rail="lobby"]').first();
+  await rail.scrollIntoViewIfNeeded();
+  ok(`LOBBY rail at 393px: ${audit}   ${await shot(pg, '53p-faults-lobby-phone')}`);
+
+  // (b) the cure, pressed at phone width
+  const repush = pg.locator('button[data-repush="1"]').first();
+  expect(await repush.isEnabled(), 'RE-PUSH is pressable at phone width too');
+  await repush.scrollIntoViewIfNeeded();
+  ok(`RE-PUSH CONFIG, phone width   ${await shot(pg, '54p-faults-repush-phone')}`);
+  await repush.click();
+  await until(async () => {
+    const t = (await pg.locator('main').innerText()).replace(/\s+/g, ' ');
+    return !/ACKED AN OLDER CONFIG|GUN ECHO ≠ CONFIG|GUN POOL ≠ CONFIG/.test(t);
+  }, 8000, 'the three curable reds to clear after the phone-width re-push');
+  await noCrash(pg);
+  const after = await auditRail(pg, 'phone/cured');
+  await pg.locator('[data-rail="lobby"]').first().scrollIntoViewIfNeeded();
+  ok(`cured, and the rail still reads at 393px: ${after}   ${await shot(pg, '55p-faults-cured-phone')}`);
+  await pg.context().close();
+}
+
 // ---------------------------------------------------------------------------- main
 const DESK = { width: 1280, height: 800 }, PHONE = { width: 393, height: 830 };
 fs.mkdirSync(SHOTS, { recursive: true });
@@ -586,7 +681,7 @@ try {
   if (!ONLY || ONLY === 'locked') await runLocked(browser, vite.base);
   if (!ONLY || ONLY === 'stale') await runStale(browser, vite.base, mc.base);
   if (!ONLY || ONLY === 'venue') { await runVenue(browser, vite.base, mc.base, DESK, 'desk'); await runVenue(browser, vite.base, mc.base, PHONE, 'phone'); await runVenueStale(browser, vite.base); }
-  if (!ONLY || ONLY === 'faults') await runFaults(browser, vite.base);
+  if (!ONLY || ONLY === 'faults') { await runFaults(browser, vite.base); await runFaultsPhone(browser, vite.base); }
 } finally {
   await browser.close();
   await vite.stop();

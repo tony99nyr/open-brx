@@ -216,7 +216,7 @@ export function Lobby() {
           readability and usability". One status line in sentence case, faults as a real per-gun list
           (blockers only — the advisories used to be jammed into the same run-on string), one primary
           action, and the overrides in a separate tray instead of a second copy of the same sentence. */}
-      <div style={{ marginTop: 16, background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}` }}>
+      <div data-rail="lobby" style={{ marginTop: 16, background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}` }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '16px 28px', padding: '16px 20px' }}>
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
             <Step n={1} done={allReady} label={<>Ready <b style={{ font: F.osw(700, 16), color: allReady ? T.ok : T.warn }}>{nReady}/{players.length}</b></>} />
@@ -326,8 +326,10 @@ export function Lobby() {
       {/* `force` is the operator's override of a READINESS judgement. It does not open the one-team
           gate (state.py `one_team_fault`), so the tray must not be on screen claiming otherwise. */}
       {(lobby.pushed ? blockedCount > 0 : pushBlockedCount > 0) && balancedForTeams && (
-        <div style={{ marginTop: 10, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ font: F.mono(500, 10), letterSpacing: '.16em', color: T.micro }}>HOST OVERRIDE</span>
+        <div data-override="1" style={{ marginTop: 10, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* F7: 11 px is the console's floor for a word that carries meaning, and this one names the
+              whole tray. It sat at 10 and was the only thing in the action rail below the floor. */}
+          <span style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: T.micro }}>HOST OVERRIDE</span>
           <button type="button" className="hov-acc-ink hit44" style={{ ...BTN_RESET, cursor: 'pointer', color: T.bad, font: F.chk(700, 13), minHeight: 36 }}
             title={lobby.pushed
               ? 'Arms the countdown anyway. Nodes still blocked will not arm; everyone else starts on time.'
@@ -338,8 +340,8 @@ export function Lobby() {
         </div>
       )}
       {!allReady && players.length > 0 && (
-        <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', font: F.mono(500, 9), letterSpacing: '.14em', color: T.dim }}>
-          <span style={{ font: F.mono(500, 10), letterSpacing: '.16em', color: T.micro, marginRight: 4 }}>MARK READY</span>
+        <div data-mark-ready="1" style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', font: F.mono(500, 11), letterSpacing: '.14em', color: T.dim }}>
+          <span style={{ font: F.mono(500, 11), letterSpacing: '.16em', color: T.micro, marginRight: 4 }}>MARK READY</span>
           {players.filter(p => !p.ready).map(p => (
             <button key={p.player_id} type="button" className="hov-acc-ink hit44" style={{ ...BTN_RESET, cursor: 'pointer', color: T.dim, minHeight: 28 }} onClick={() => run(() => api.setReady(p.player_id, true))}>{p.display} ▸</button>
           ))}
@@ -357,7 +359,12 @@ function MemberRow({ p, teamIds, reach, noPhone, onDragStart, onMove }: { p: Pla
       // real, connected one — dim the row and say so, the same treatment KIT now gives it.
       style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: T.panel, border: `1px solid ${T.line}`, cursor: 'grab', minHeight: 44, flexWrap: 'wrap', opacity: noPhone ? 0.55 : 1 }}>
       <span aria-hidden style={{ font: F.mono(600, 12), color: T.faint, letterSpacing: '-.1em' }}>⠿</span>
-      <span style={{ flex: 1, minWidth: 0 }}>
+      {/* F7 (phone-width pass, 2026-09-13): `flex: 1` with `minWidth: 0` let this collapse to 26 px at
+          393 px — narrower than the word "VIPER" — and a callsign is one unbreakable word, so it
+          OVERFLOWED and painted on top of the LAN tag beside it. Measured on the faults scene's phone
+          shot. A basis wide enough for a callsign, and `anywhere` so nothing can ever paint outside
+          the box again; the row already wraps, so the chips drop to their own line instead. */}
+      <span style={{ flex: '1 1 116px', minWidth: 0, overflowWrap: 'anywhere' }}>
         <span style={{ display: 'block', font: F.chk(700, 14), letterSpacing: '.14em' }}><span style={{ color: T.micro, font: F.mono(500, 10) }}>#{p.player_num} </span>{p.display}</span>
         <span style={{ display: 'block', font: F.mono(500, 10), color: T.micro }}>{p.gun_id ?? 'NO GUN'}</span>
       </span>
