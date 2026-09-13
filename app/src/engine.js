@@ -308,6 +308,10 @@ export class Engine {
     this.pendingPick = null;        // optimistic highlight until the ack lands: {slot, kind, id, at} — the row's ⟳
     this._pickDue = null;           // A26: a weapon pick waiting out PICK_DEBOUNCE_MS before it goes to MC: {slot, kind, id, at, try}
     this.kitLocked = false;         // A27/A30: the host advanced the phase while this player was still kitting — the lobby screen says so (loadout.md §4.4)
+    // T2-B item 2 (2026-09-13): STANDBY (M-STANDBY §3): MC benched this player (`assign.standby: true`).
+    // Forced back to KITTED-shaped, no frames written, no kit browsing -- "SITTING OUT" until PLAY sends
+    // an ordinary `assign` (standby absent/false) and clears it.
+    this.standby = false;
     this.tryoutSeen = null;         // weapon_id of a try-out panel the player dismissed with DONE (panel hides, gun stays armed)
     this.resync = null;             // §3.10 state machine: {step, since, lastAmmo, lastReserve}
     this.reconciling = null;        // {since} — a rejoin's disarmed reconcile window (S7.1); no death is inferred here
@@ -379,6 +383,12 @@ export class Engine {
         alive: this.alive, hp: this.hp, armor: this.armor, shield: this.shield, deadAt: this.deadAt, killedBy: this.killedBy,
         endedMatches: this.endedMatches.slice(-8), configPending: this.configPending, pendingTeardown: this.pendingTeardown,
         catalog: this.catalog, policy: this.policy, game: this.game, briefSeen: this.briefSeen,
+        // B4/T2-B-1: without this, a restart mid-match forgets the probe ran and the relink's defensive
+        // `$PHONE,*` resend (onBleConnected) never fires -- exactly the case it was added for.
+        probeSent: this.probeSent,
+        // T2-B item 2: a benched player who force-closes must come back SITTING OUT, not to a normal
+        // kit screen that lets them browse/ready while MC still thinks they are parked.
+        standby: this.standby,
       }));
     } catch (_) { /* ignore */ }
   }
@@ -393,7 +403,8 @@ export class Engine {
         spawned: !!s.spawned, ended: !!s.ended, endedAt: s.endedAt || 0, result: s.result || null, resultAt: s.resultAt || 0,
         endedMatches: s.endedMatches || [], configPending: !!s.configPending, pendingTeardown: s.pendingTeardown || null,
         alive: !!s.alive, hp: s.hp || 0, armor: s.armor || 0, shield: s.shield || 0, deadAt: s.deadAt || 0, killedBy: s.killedBy || null,
-        catalog: s.catalog || null, policy: s.policy || null, game: s.game || null, briefSeen: !!s.briefSeen });
+        catalog: s.catalog || null, policy: s.policy || null, game: s.game || null, briefSeen: !!s.briefSeen,
+        probeSent: !!s.probeSent, standby: !!s.standby });
       // Phase is re-derived when the gun reconnects (resumeSchedule); until then we are idle.
       this._pendingPhase = s.phase;
     } catch (_) { /* ignore */ }
@@ -566,7 +577,19 @@ export class Engine {
     return 'pending';
   }
 
-  _assign({ player, team, roster, catalog, policy, game }) {
+  _assign({ player, team, roster, catalog, policy, game, standby }) {
+    this.standby = !!standby;
+    if (this.standby) {
+      // T2-B item 2: benched. No frames, no kit browsing, no ready-up -- just SITTING OUT, wherever the
+      // lobby had gotten to (never armed/live: the server refuses stand_down there). Nothing already
+      // written to the gun (a previous head, an armed $SIR table) is touched or re-armed by this.
+      this.browse(false);
+      this.player = player || this.player; this.team = team || this.team; if (roster) this.roster = roster;
+      if ((this.phase === 'connected' || this.phase === 'idle') && this.bleUp) this._set('kitted');
+      else if (this.phase === 'lobby') this._set('kitted');
+      this._changed();
+      return;
+    }
     const wasOpen = this.kitOpen();
     if (catalog) this.catalog = catalog;
     if (policy) this.policy = policy;
@@ -586,6 +609,10 @@ export class Engine {
   }
 
   _applyConfig({ config, frames, roster }, why) {
+    // T2-B item 2: a benched player is never on the roster `push_config`/`_repush_lobby_config` loop, so
+    // this should not arrive at all -- guarded anyway, belt-and-braces, since "no gun frames written"
+    // while sitting out is the whole point of the state.
+    if (this.standby) { this.log('config ignored while benched (standby)', 'li'); return; }
     // A27/A30 (loadout.md §4.4): a host advance that lands while this player is still kitting is NOT a silent
     // screen swap. A queued pick is dropped (the kit is locked — sending it would only earn a refusal), and the
     // lobby screen leads with "THE HOST LOCKED KITS". A player who had already readied up asked for this.
@@ -2961,6 +2988,7 @@ export class Engine {
       catalog: this.catalog, policy: this.policy, loadout: this.loadoutView(), browsing: this.browsing, loadoutAck: this.loadoutAck, pendingPick: this.pendingPick,
       canPickPrimary: this.canPick('primary'), canPickSecondary: this.canPick('secondary'), canPickPerk: this.canPick('perk'), tryoutSeen: this.tryoutSeen,
       game: this.game, kitOpen: this.kitOpen(), briefSeen: this.briefSeen, kitLocked: this.kitLocked,
+      standby: !!this.standby,   // T2-B item 2: benched — the HUD shows SITTING OUT instead of the kit/lobby screen
     };
   }
 }

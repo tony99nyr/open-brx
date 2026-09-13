@@ -4412,6 +4412,99 @@ test('B4: a relink after the first probe re-opens the event tap with a bare $PHO
   assert.ok(!after.includes('$STOP,*'), 'never $STOP mid-match — that frame is only for the first-ever connect ritual');
 });
 
+test('B4/T2-B-1: probeSent survives an app restart mid-match, so the relink resend still fires', () => {
+  // Same shape as the ANTI-CHEAT force-close test: shared storage stands in for two app processes.
+  const store = mkStorage();
+  let clock = 2_500_000;
+  const cfg = { config_id: golden.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 600,
+    respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 },
+    teams: [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }] };
+  const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
+  const team = { team_id: 'blue', tid: 1, name: 'BLUE', color: 'blue' };
+  const bundle = { ...golden, player_id: 'p1' };
+  const mk = writer => new Engine({ writer, emit: () => {}, report: () => {}, now: () => clock, synced: () => true, storage: store, log: () => {}, delay: (ms, fn) => fn() });
+
+  // process 1: kit → config → echo → start → live. The first connect runs the full probe ritual.
+  const a = mk(() => {});
+  a.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  a.onMcMessage({ kind: 'assign', body: { player, team, roster: [player] } });
+  a.onMcMessage({ kind: 'config', body: { config: cfg, frames: bundle, roster: [player] } });
+  a.feedFrame('$LCD,0,0,0,0,0,0,*');
+  assert.ok(a.probeSent, 'the very first connect ran the probe');
+  a.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
+  clock += 10; a.tick();
+  assert.equal(a.phase, 'live');
+
+  // process 2: force-close mid-match → reopen on the same storage → relink.
+  const b = mk(() => {});
+  assert.ok(b.probeSent, 'probeSent must be restored from storage, not reset to false by the restart');
+  const writes = [];
+  b.writer = fr => writes.push(...fr);
+  b.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  assert.ok(writes.includes('$PHONE,*'), 'a relink after a restart mid-match must still resend $PHONE,* — this is the exact case the resend was added for');
+  const secondRelinkWrites = [];
+  b.writer = fr => secondRelinkWrites.push(...fr);
+  b.onBleDropped();
+  b.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  assert.equal(secondRelinkWrites.filter(f => f === '$PHONE,*').length, 1, 'exactly one resend per relink, not zero and not repeated');
+});
+
+// ── T2-B item 2: STANDBY (benched) ──────────────────────────────────────────────────────────────
+test('STANDBY: an assign with standby:true drops a kitted node to sitting-out, no frames written', () => {
+  const h = harness().kit();
+  assert.equal(h.eng.phase, 'kitted');
+  const before = h.writes.length;
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, standby: true } });
+  assert.equal(h.eng.standby, true);
+  assert.equal(h.eng.phase, 'kitted', 'STANDBY is a KITTED-shaped state, not a new phase');
+  assert.equal(h.eng.state().standby, true, 'the HUD reads this to show SITTING OUT');
+  assert.equal(h.writes.length, before, 'no frame was written by benching this player');
+});
+
+test('STANDBY: benching a player who already holds a pushed config (LOBBY) drops back to KITTED and writes nothing more', () => {
+  const h = harness().kit().config_();     // config pushed, head written, phase -> lobby
+  assert.equal(h.eng.phase, 'lobby');
+  const before = h.writes.length;
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, standby: true } });
+  assert.equal(h.eng.standby, true);
+  assert.equal(h.eng.phase, 'kitted', 'no longer LOBBY -- there is no game this node is arming for any more');
+  assert.equal(h.writes.length, before, 'benching writes no frame, even though this node already held a head');
+});
+
+test('STANDBY: a config message that somehow still arrives while benched is refused -- no head write', () => {
+  const h = harness().kit();
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, standby: true } });
+  const before = h.writes.length;
+  h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: h.bundle, roster: h.roster } });
+  assert.equal(h.writes.length, before, 'the standby guard in _applyConfig refuses it -- belt and braces');
+  assert.equal(h.eng.phase, 'kitted');
+});
+
+test('STANDBY: PLAY (a normal assign, no standby field) clears it and the kit works again', () => {
+  const h = harness().kit();
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, standby: true } });
+  assert.equal(h.eng.standby, true);
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster } });   // PLAY: no `standby` key at all
+  assert.equal(h.eng.standby, false);
+  assert.equal(h.eng.state().standby, false);
+  // and the kit is live again: config_() (the config push PLAY's reinstate would trigger) now arms normally
+  h.config_();
+  assert.equal(h.eng.phase, 'lobby');
+  assert.ok(h.writes.includes('$START,*'), 'the head is written -- PLAY actually re-arms the gun');
+});
+
+test('STANDBY: force-close while benched comes back SITTING OUT, not to a normal kit screen', () => {
+  const store = mkStorage();
+  let clock = 4_000_000;
+  const mk = () => new Engine({ writer: () => {}, emit: () => {}, report: () => {}, now: () => clock, synced: () => true, storage: store, log: () => {} });
+  const a = mk();
+  a.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  a.onMcMessage({ kind: 'assign', body: { player: { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' }, team: { team_id: 'blue', tid: 1, name: 'BLUE', color: 'blue' }, roster: [], standby: true } });
+  assert.equal(a.standby, true);
+  const b = mk();   // force-close -> reopen on the same storage, no relink yet
+  assert.equal(b.standby, true, 'standby must survive the restart -- otherwise the benched player is briefly re-kitted');
+});
+
 // ── Round-1 polish review 2026-09-12 ────────────────────────────────────────────────────────────
 test('B5: a death suppressed by the spawn-settle window is RE-EXAMINED once the window expires', () => {
   // The B5 gate drops an unattributed zero-HP frame inside the settle window as a stale echo of the

@@ -1288,15 +1288,22 @@ class Session:
         unbound and drops back to a plain connected phone, so the next push, the readiness board and the kit
         counts no longer wait on it. `reinstate` is the way back. Roster phases only, like REMOVE.
 
-        v1 gap, documented in API.md: nothing is pushed to the phone. An unbound node receives no frames, so
-        its HUD keeps the last `assign` it was handed until it is reinstated or the next kit."""
+        T2-B item 2 (2026-09-13, closes the v1 gap documented until now): if the player's phone is still
+        connected, it gets ONE extra `assign` -- the same shape `_assign_body` always builds, plus
+        `standby: true` (contracts A38) -- so `engine.js` can drop it to a SITTING OUT screen instead of
+        leaving its last `assign` to go stale. Still no `config`/frames: an unbound node is never in
+        `self.players`, so `push_config`/`_repush_lobby_config` (which loop the roster, not the sockets)
+        cannot reach it, re-push or no."""
         if pid not in self.players:
             raise KeyError(pid)
         if self.phase not in self.ROSTER_PHASES:
             raise ValueError("cannot stand a player down after the match has started")
         p = self._unroster(pid)
+        nid = p.get("node_id")
         parked: Player = {**p, "node_id": None, "ready": False}
         self.standby[pid] = parked
+        if nid:
+            self.net.push(nid, "assign", {**self._assign_body(parked), "standby": True})
         self._changed()
         return parked
 

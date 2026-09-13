@@ -84,11 +84,32 @@ def test_stand_down_forgets_their_ready_ack_tryout_and_browse():
     assert s.standby[pid]["ready"] is False
 
 
-def test_stand_down_pushes_nothing_to_the_phone():
-    """v1 (API.md): an unbound node receives no frames — the HUD keeps its last assign until PLAY."""
+def test_stand_down_pushes_an_explicit_standby_assign_to_the_phone():
+    """T2-B item 2 (2026-09-13): the v1 gap is closed. STAND DOWN used to push nothing at all, leaving an
+    unbound node's HUD on whatever `assign` it last held until PLAY or the next kit. It now pushes ONE
+    extra `assign`, carrying `standby: true`, so `engine.js` can drop the phone to a SITTING OUT screen
+    with no frames written -- the config leg is untouched, exactly as v1 promised (`config` never follows
+    an unbound node)."""
     s, net, clock, ps = _session()
+    pid = ps[1]["player_id"]
     before = len(net.pushed)
-    s.stand_down(ps[0]["player_id"])
+    parked = s.stand_down(pid)
+    assert len(net.pushed) == before + 1, "exactly one new push: the benched assign, no frames"
+    pushes = _pushes(net, "node1", "assign")
+    assert len(pushes) == 1
+    body = pushes[0]
+    assert body["standby"] is True
+    assert body["player"]["player_id"] == pid, "the phone still gets its own (now-parked) context"
+    assert body["roster"] == s.roster(), "the roster it is handed no longer lists itself"
+    assert _pushes(net, "node1", "config") == [], "v1's promise holds: no frames follow an unbound node"
+
+
+def test_stand_down_pushes_nothing_when_the_node_was_never_bound():
+    """A player with no gun/phone at all (never `_adopt_node_for_gun`'d) has no socket to push to."""
+    s, net, clock, ps = _session()
+    q = s.add_player("SPARE")   # no gun_id -> no node_id
+    before = len(net.pushed)
+    s.stand_down(q["player_id"])
     assert len(net.pushed) == before
 
 
@@ -96,6 +117,26 @@ def test_stand_down_unknown_id_is_a_key_error():
     s, *_ = _session()
     with raises(KeyError):
         s.stand_down("nobody")
+
+
+def test_standby_does_not_block_all_acked_and_is_never_rearmed_by_a_repush():
+    """T2-B item 2: check how the A36/A37 fresh-config_id-on-re-push and ack reset interact with a
+    benched phone -- it must not count against `all_acked()`, and a re-push (which mints a fresh
+    `config_id` and clears every ack) must never reach it again with a real head."""
+    s, net, clock, ps = _session()
+    pid_bench, pid_a, pid_b = ps[0]["player_id"], ps[1]["player_id"], ps[2]["player_id"]
+    s.push_config(force=True)
+    for i in (1, 2):   # only two of three ack -- the one about to be benched never does
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True, "gun_echo": "x"}, clock["t"])
+    assert s.all_acked() is False, "the un-acked player still blocks it"
+    s.stand_down(pid_bench)
+    assert s.all_acked() is True, "benching the never-acked player must not leave them counted against it"
+    n_assign = len(_pushes(net, "node0", "assign"))
+    n_config = len(_pushes(net, "node0", "config"))
+    s.push_config(force=True)   # a RE-push: mints a fresh config_id, clears every ack, re-arms every bound node
+    assert len(_pushes(net, "node0", "assign")) == n_assign, "a re-push must never reach the benched node again"
+    assert len(_pushes(net, "node0", "config")) == n_config, "...and must never re-arm it with a fresh head"
+    assert pid_a in s.players and pid_b in s.players and pid_bench not in s.players
 
 
 # ---------------------------------------------------------------- reinstate

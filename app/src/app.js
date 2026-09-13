@@ -16,6 +16,7 @@ import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // 
 import { APP_VER, platformName } from './build.js';                  // the REAL build id (contracts A29)
 import { applyResult, HISTORY_MAX } from './history.js';             // per-match history + the A24 result patch
 import { LogRing } from './logring.js';                              // T1-B: a match's own lines must survive to the recap pull
+import { createTapHoldGate } from './tapgate.js';                    // T2-B: taps AND a hold on the last, for the hidden utility-mode door
 
 const $ = id => document.getElementById(id);
 // T1-B (field 2026-09-12): a flat 400-line ring rolled a whole failing match's early lines out
@@ -645,10 +646,24 @@ async function sweepForMc() {
 (async () => {
   const params0 = new URLSearchParams(location.search);
   if (settings.role === 'utility' && !params0.has('demo') && !params0.has('gun') && !params0.has('hud')) { location.replace('utility.html'); return; }
-  // 7 taps on the stage within 3 s while nothing is connected → utility mode (a hidden door until the HUD grows a button)
+  // 7 taps on the stage within 3 s, the LAST one HELD 1.5 s, while nothing is connected → utility mode
+  // (a hidden door until the HUD grows a button). T2-B item 3: taps alone used to fire on an idle-stage
+  // jostle (phone face-down in a bag/pocket can deliver several brief contacts); requiring a deliberate
+  // hold on the final contact — see tapgate.js — means an accidental burst can no longer cross by itself.
   try {
-    let taps = []; const stage = document.getElementById('frame') || document.body;
-    stage.addEventListener('pointerdown', () => { const now = Date.now(); taps = taps.filter(t => now - t < 3000); taps.push(now); if (taps.length >= 7 && engine.phase === 'idle' && !link.connected) { taps = []; switchRole('utility'); } }, { passive: true });
+    const gate = createTapHoldGate();
+    let holdTimer = null;
+    const clearHoldTimer = () => { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } };
+    const stage = document.getElementById('frame') || document.body;
+    stage.addEventListener('pointerdown', () => {
+      clearHoldTimer();
+      if (!(engine.phase === 'idle' && !link.connected)) { gate.cancel(); return; }
+      const now = Date.now();
+      gate.down(now);
+      holdTimer = setTimeout(() => { if (gate.held(Date.now())) switchRole('utility'); }, 1500);
+    }, { passive: true });
+    stage.addEventListener('pointerup', () => { clearHoldTimer(); gate.up(); }, { passive: true });
+    stage.addEventListener('pointercancel', () => { clearHoldTimer(); gate.cancel(); }, { passive: true });
   } catch (_) { /* ignore */ }
   await loadPlugins();
   await lockLandscape(); await keepAwake(true);

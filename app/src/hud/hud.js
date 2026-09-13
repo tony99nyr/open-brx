@@ -236,7 +236,7 @@ export class Hud {
       st.browsing, st.canPickPrimary, st.canPickSecondary, st.canPickPerk, st.tryoutSeen, st.tryoutArming,
       st.tryoutUnconfirmed && st.tryoutUnconfirmed.tab, st.tryoutUnconfirmed && st.tryoutUnconfirmed.kind,
       this.lo.tab, this.lo.filter, this.lo.focus, this.lo.confirm && this.lo.confirm.key,
-      st.kitOpen, st.briefSeen, st.kitLocked, st.game && st.game.name, st.game && st.game.loadout_line,
+      st.kitOpen, st.briefSeen, st.kitLocked, st.standby, st.game && st.game.name, st.game && st.game.loadout_line,
       st.loadoutAck && st.loadoutAck.t, st.pendingPick && st.pendingPick.id, st.pendingPick && st.pendingPick.kind,
       st.loadout && st.loadout.primary && st.loadout.primary.weapon_id, st.loadout && st.loadout.secondary && st.loadout.secondary.weapon_id, st.loadout && st.loadout.perk && st.loadout.perk.perk_id,
       !!(st.catalog && st.catalog.weapons && st.catalog.weapons.length),
@@ -322,6 +322,11 @@ export class Hud {
       case 'idle': return this._idle(st);
       case 'connected': return this._lobby(st, 'connected');
       case 'kitted':
+        // T2-B item 2: benched overrides everything else on this phase -- no results/briefing/loadout
+        // screen should ever race a SITTING OUT one (the server refuses stand_down once a match is
+        // armed/live, so `st.ended` and `st.standby` should never actually coincide; this is the order
+        // that stays true even if they somehow did).
+        if (st.standby) return this._lobby(st, 'standby');
         // A24: the results screen is reachable twice — before OK, and again from RESULTS / HISTORY on the over screen.
         if (st.ended && this.view === 'history') return this._history(st);
         if (st.ended && (!st.endAck || this.view === 'result')) return this._result(st);
@@ -402,6 +407,10 @@ export class Hud {
     } else if (mode === 'setup') {
       // §4.1: calm, not an error — the host hasn't picked the game yet
       foot = `<div class="setup"><div class="pulse"><i></i><i></i><i></i></div><div class="in"><div class="t">HOST IS SETTING UP THE GAME</div><div class="s">Your kit opens as soon as the host picks the game. Nothing to do yet.</div></div></div>`;
+      status = `<div class="status" id="mcstatus">${this._statusLine(st, 'kitted')}</div>`;
+    } else if (mode === 'standby') {
+      // T2-B item 2: MC benched this player. Calm, not an error, same shape as `setup` above.
+      foot = `<div class="setup"><div class="pulse"><i></i><i></i><i></i></div><div class="in"><div class="t">SITTING OUT — the host puts you back</div><div class="s">Nothing to do for now. Your gun is not armed.</div></div></div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, 'kitted')}</div>`;
     } else if (mode === 'kitted') {
       foot = `${lead}<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓' : 'READY UP'}</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
