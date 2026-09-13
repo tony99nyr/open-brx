@@ -3,7 +3,7 @@ import { registrySig } from '../api/derive';
 import type { Loadout, PerkView, PhaseRefusal, Player, WeaponView } from '../api/types';
 import { useStore } from '../store';
 import { EvictButton } from '../ui/EvictButton';
-import { StandbySection } from '../ui/Standby';
+import { StandbySection, guardedOnce, standDownLocked } from '../ui/Standby';
 import { CHAMFER, F, PERK_COLOR, T, TAB, fmtAge, roleOf, teamColor } from '../tokens';
 import { UNPLAYABLE_IDS, takesAlt } from './gameSummary';
 import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, SectionRule, Seg, SegBar, StripedSlot, Tag, ValueBox, onKey } from '../ui';
@@ -487,9 +487,9 @@ export function Kit() {
               </div>
               {/* STANDBY (2026-09-12): pull this operator out of the lobby without losing what was just typed.
                   Only when the server has the route (`state.standby` present) — never a dead control. */}
-              {Array.isArray(state.standby) && state.phase !== 'armed' && state.phase !== 'live' && (
+              {Array.isArray(state.standby) && !standDownLocked(state.phase) && (
                 <GhostButton size={11} pad="6px 12px" title={`Pull ${sp.display} out of the lobby — kept on STANDBY, PLAY puts them back`}
-                  onClick={() => run(() => api.standbyPlayer(sp.player_id))}>
+                  onClick={() => guardedOnce(sp.player_id, () => run(() => api.standbyPlayer(sp.player_id)))}>
                   <span data-stand-down={sp.player_id}>▸ STAND DOWN</span>
                 </GhostButton>
               )}
