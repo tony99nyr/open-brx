@@ -40,7 +40,7 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
    Visible only while nobody has claimed this phone as a field item (utility.js render(), `mcArmed`
    gates `hidden`); a deployed station stays behind the ⓘ gate, unchanged. HELD, not tapped, so a bag
    jostle cannot cross it and a passerby needs a deliberate ~1.2 s press, same order as the entry gate. ---- */
-.exitbtn{position:relative;overflow:hidden;align-self:center;margin-top:2px;padding:9px 18px;border:1px solid var(--edge);color:var(--mut);font:600 11px var(--fl);letter-spacing:.16em;background:var(--plate2);-webkit-user-select:none;user-select:none;touch-action:none}
+.exitbtn{position:relative;overflow:hidden;align-self:center;margin-top:2px;padding:12px 18px;min-height:38px;box-sizing:border-box;border:1px solid var(--edge);color:var(--mut);font:600 11px var(--fl);letter-spacing:.16em;background:var(--plate2);-webkit-user-select:none;user-select:none;touch-action:none}
 .exitbtn[hidden]{display:none}
 .exitbtn .fill{position:absolute;inset:0;left:0;width:0;background:color-mix(in srgb, var(--warn) 34%, transparent)}
 .exitbtn .lbl{position:relative}
