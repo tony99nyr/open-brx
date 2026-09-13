@@ -1238,3 +1238,55 @@ def test_the_console_copy_is_driven_by_the_pool_code():
                                      "primary": {"choice": "fixed", "fixed_id": "plasma_bazooka"}}})
     assert s.loadout_pool()["reasons"]["primary"] == "fixed_missing"
     assert "FIXED TO 'plasma_bazooka'" in s._primary_pool_refusal()
+
+
+def test_round3_ux2_a_slot_fixed_to_an_unplayable_weapon_gets_its_own_code():
+    """UX-2 (round-3 fix pass, 2026-09-13). `_empty_code` classified against the UNFILTERED catalog,
+    so a slot FIXED to `energy_launcher` — a real row, present in the catalog, and excluded from every
+    pool by `UNPLAYABLE_IDS` — came out `filtered`. The console then told the operator their CLASS/ID
+    FILTERS excluded everything and offered "set who picks to FIXED", which is what they already did.
+    `unplayable` is its own fact and beats `filtered`."""
+    assert "unplayable" in P.POOL_EMPTY_CODES
+
+    def pl(patch):
+        return P.pool(P.normalize({**P.preset_rules("open"), **patch}, "tdm"), W, PK)
+
+    fixed = pl({"primary": P._rule("fixed", ("weapon",), fixed_id="energy_launcher")})
+    assert fixed["primary"] == [], fixed
+    assert fixed["reasons"]["primary"] == "unplayable", fixed["reasons"]
+    # an allow-list naming nothing BUT the launcher is the same fact, not `only_ids_missing`
+    assert pl({"primary": P._rule("player", ("weapon",),
+                                  only_ids=("energy_launcher",))})["reasons"]["primary"] == "unplayable"
+    # ...and an allow-list that also names a playable weapon is not empty at all
+    assert pl({"primary": P._rule("player", ("weapon",),
+                                  only_ids=("energy_launcher", "assault_rifle"))})["primary"] == ["assault_rifle"]
+    # a fixed id the catalog does not have at all is still `fixed_missing`
+    assert pl({"primary": P._rule("fixed", ("weapon",),
+                                  fixed_id="plasma_bazooka")})["reasons"]["primary"] == "fixed_missing"
+    for code in fixed["reasons"].values():
+        assert code in P.POOL_EMPTY_CODES, code
+
+
+def test_round3_merge4_a_policy_fixed_to_an_unplayable_weapon_self_corrects_and_still_pushes():
+    """MERGE-4. `apply()`'s last fallback (`prim or "assault_rifle"`) kept the STORED id whenever the
+    pool came out empty, so a policy fixing `energy_launcher` left the launcher in every loadout and
+    `compile.validate()` then refused the push naming a weapon the Designer no longer offers — with no
+    control on screen able to change it. `UNPLAYABLE_IDS` is OUR build's limitation, not the
+    operator's mistake: the pick is dropped, the slot falls to a legal weapon, and the `unplayable`
+    reason says what happened."""
+    pol = P.normalize({**P.preset_rules("open"),
+                       "primary": P._rule("fixed", ("weapon",), fixed_id="energy_launcher")}, "tdm")
+    lp = P.pool(pol, W, PK)
+    out = P.apply(pol, lp, {"weapons": [{"weapon_id": "energy_launcher"}]}, W, PK)
+    assert out["weapons"][0]["weapon_id"] == "assault_rifle", out
+
+    s, _net, _clock, _ps = mk(2, compiler=Compiler())
+    res = s.set_config({"loadout_policy": {"preset": "custom",
+                                           "primary": {"choice": "fixed", "fixed_id": "energy_launcher"}}})
+    assert s.loadout_pool()["reasons"]["primary"] == "unplayable"
+    for p in s.players.values():
+        assert p["loadout"]["weapons"][0]["weapon_id"] != "energy_launcher", p["loadout"]
+    assert res["ok"], res["errors"]
+    assert s._primary_pool_refusal() is None, s._primary_pool_refusal()
+    assert any("ENERGY LAUNCHER" in w.upper() for w in s.config_warnings), s.config_warnings
+    s.push_config(force=True)     # `force` is only about the missing phones, not the ruleset

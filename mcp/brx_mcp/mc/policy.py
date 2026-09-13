@@ -305,20 +305,47 @@ def admits_weapons(rule: SlotRule) -> bool:
 # so the one classifier hands out a code and each audience writes its own line. Round-2 review
 # 2026-09-12 — the console blamed the PERK slot's filters when S37 had pruned the last perk for having
 # no second weapon to switch to, which is a fact about the SECONDARY slot.
-POOL_EMPTY_CODES = ("off", "fixed_missing", "only_ids_missing", "needs_secondary", "filtered")
+POOL_EMPTY_CODES = ("off", "fixed_missing", "only_ids_missing", "needs_secondary", "unplayable", "filtered")
 
 
 def _empty_code(rule: SlotRule, rows: Sequence[Mapping[str, Any]], key: str) -> str:
-    """Why `_filter`/the choice left this slot with nothing. See `POOL_EMPTY_CODES`."""
+    """Why `_filter`/the choice left this slot with nothing. See `POOL_EMPTY_CODES`.
+
+    Round-3 UX-2 (2026-09-13) added `unplayable`, and it BEATS `filtered`. `rows` is the UNFILTERED
+    catalog on purpose (a fixed id missing from the whole game is `fixed_missing` whichever filter
+    would also have excluded it) — but that made a slot fixed to a weapon in `UNPLAYABLE_IDS` read
+    `filtered`, and the console's line for that code tells the operator to clear a filter or set the
+    slot to FIXED. It IS fixed, there is no filter, and the sentence never named the weapon. The
+    candidate being unplayable is its own fact, on the slot and on an allow-list that names nothing
+    else."""
     if rule.get("choice") == "off":
         return "off"
     ids = {r[key] for r in rows}
+    unplayable = UNPLAYABLE_IDS if key == "weapon_id" else frozenset()
     if rule.get("choice") == "fixed":
-        return "fixed_missing" if rule.get("fixed_id") not in ids else "filtered"
-    only = rule.get("only_ids") or []
-    if only and not (set(only) & ids):
-        return "only_ids_missing"
+        fid = rule.get("fixed_id")
+        if fid not in ids:
+            return "fixed_missing"
+        return "unplayable" if fid in unplayable else "filtered"
+    only = set(rule.get("only_ids") or ())
+    if only:
+        hit = only & ids
+        if not hit:
+            return "only_ids_missing"
+        if hit <= unplayable:
+            return "unplayable"
     return "filtered"
+
+
+def unplayable_pick(rule: SlotRule) -> str | None:
+    """The `UNPLAYABLE_IDS` weapon this slot's rule is asking for, when that is why its pool is empty.
+
+    One accessor so the console line, the config warning and the HUD copy all name the SAME weapon
+    rather than each re-deriving it from the rule."""
+    if rule.get("choice") == "fixed":
+        return fid if (fid := rule.get("fixed_id")) in UNPLAYABLE_IDS else None
+    only = set(rule.get("only_ids") or ())
+    return sorted(only)[0] if only and only <= UNPLAYABLE_IDS else None
 
 
 def pool(policy: LoadoutPolicy, weapons: Sequence[Weapon], perks: Sequence[PerkView]) -> LoadoutPool:
@@ -479,6 +506,18 @@ def apply(policy: LoadoutPolicy, lp: LoadoutPool, loadout: Loadout, weapons: Seq
     sec_w = ws[1]["weapon_id"] if len(ws) > 1 else None
     perk = out.get("perk") or None
     sr, kr = policy["secondary"], policy["perk"]
+    # Round-3 MERGE-4 (2026-09-13): drop an UNPLAYABLE pick BEFORE the fallback chain. `prim not in
+    # lp["primary"]` is already true for one (the pool never offers it), but the chain's last resort is
+    # `prim or "assault_rifle"` — which KEEPS the stored id whenever the pool came out empty, which is
+    # exactly the fixed-to-`energy_launcher` case. The loadout then carried a weapon
+    # `compile.validate()` refuses as unkillable, so the push died naming a weapon the Designer no
+    # longer offers and no control on screen could change it (the F146 shape). `UNPLAYABLE_IDS` is OUR
+    # build's limitation, not the operator's mistake: the slot falls to a legal weapon and the
+    # `unplayable` pool reason explains what happened.
+    if prim in UNPLAYABLE_IDS:
+        prim = None
+    if sec_w in UNPLAYABLE_IDS:
+        sec_w = None
     if prim not in lp["primary"]:
         prim = ("assault_rifle" if "assault_rifle" in lp["primary"] else (lp["primary"][0] if lp["primary"] else prim or "assault_rifle"))
     # every branch above (and every value already in `lp["primary"]`, a list of ids -- never None) ends
