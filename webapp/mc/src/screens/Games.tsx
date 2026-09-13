@@ -15,10 +15,16 @@
 // well founded. Everything here exists to answer it: one control that loads, one readout of how many
 // guns took it, and the config_id they echoed.
 //
-// LOAD deliberately does NOT advance to KIT. `state.py push_config` sets the phase to `lobby` itself,
-// so the tab holds that advance (`store.holdPhase`) rather than being thrown onto the LOBBY screen by
-// its own success — a tab cannot "change state to active game config" if it navigates away. CONTINUE
-// TO KIT ▸ is the way on, one tap, on the active state.
+// LOAD ANNOUNCES THE GAME; IT DOES NOT WRITE A GUN. Tony, 2026-09-13: "weapons have to go with the
+// arm." The first cut of this screen called the real config push, which compiles a weapon head per
+// player — and nobody has kitted at that point, so it wrote policy-DEFAULT loadouts to every gun and
+// re-pushed on every kit pick. LOAD now sends the game (mode, teams, health, night, respawn, venue,
+// the rules) to the phones and leaves the guns alone; weapons still reach them at the LOBBY push
+// after kitting, exactly as before. So `lobby.pushed` stays FALSE through a LOAD, and this tab keys
+// its two states on `state.game.loaded` instead.
+//
+// LOAD deliberately does NOT advance to KIT either: a tab cannot "change state to active game config"
+// if it navigates away. CONTINUE TO KIT ▸ is the way on, one tap, on the active state.
 //
 // Defining a game happens in the DESIGNER (opened from here) — this page has no forms.
 import { useCallback, useEffect, useState } from 'react';
@@ -32,7 +38,7 @@ import { emptyRequiredSlots, gameSig, poolEmptyMessage, rulesLine, splitLine } f
 import { MODE_ART } from '../modeArt';
 import { VenueModeReminder } from '../ui/VenueModeReminder';
 import { GameEditPanel } from '../ui/GameEditPanel';
-import { GameSettings, LoadStatus, gameSettingRows } from '../ui/LoadedGame';
+import { GameSentStatus, GameSettings, LoadStatus, gameSettingRows } from '../ui/LoadedGame';
 
 /** F151 (field 2026-09-12, ISSUE 25) — `PUT /api/config` (and everything that rides on it: playing a
  *  saved game, playing a stock mode, applying a preset) is only VALID in muster/build/kit/lobby
@@ -56,7 +62,7 @@ export function lockedReason(phase: string): string {
 }
 
 export function Games() {
-  const { state, modes, weapons, perks, run, api, setView, openDesigner, holdPhase } = useStore();
+  const { state, modes, weapons, perks, run, api, setView, openDesigner } = useStore();
   const [games, setGames] = useState<SavedGame[]>([]);
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
   const [confirmSwitch, setConfirmSwitch] = useState<string | null>(null);   // tapping a card while the draft is TUNED — NOT SAVED (review #16)
@@ -92,12 +98,16 @@ export function Games() {
   const venue = { environment: cfg.environment, night: cfg.night };
   const title = activeSaved?.name ?? mode?.name ?? cfg.mode;
 
-  // ---- has this config been sent to the guns? -------------------------------------------------
-  // `lobby.pushed` is the ONE fact that separates the two states of this tab. It survives armed and
-  // live (so a match in play still shows what is loaded, read-only) and `_finish()` drops it, so a
-  // debrief is back to picking the next game.
+  // ---- has a game been LOADED? -----------------------------------------------------------------
+  // `game.loaded` is the key, NOT `lobby.pushed`. A LOAD announces the game to the phones and
+  // deliberately does not write a gun, so `pushed` no longer becomes true at LOAD — that split is the
+  // whole point. A lobby push still implies a loaded game (and is what an older server without a
+  // `game` block reports), so it counts too. Both survive armed/live and both are dropped by
+  // `_finish()`, so a debrief is back to picking the next game.
   const gate = pushGate(state);
-  const loaded = state.lobby.pushed;
+  const loaded = !!state.game?.loaded || state.lobby.pushed;
+  const gameSent = state.game?.sent ?? 0;
+  const gameTotal = state.game?.total ?? state.players.length;
 
   // a TUNED (unsaved) draft is discarded by playing something else — ask once (review #16). Only the
   // PHASE lock applies here — `poolEmpty` describes the config ALREADY applied, and picking a
@@ -124,39 +134,42 @@ export function Games() {
   const copyOf = (g: SavedGame) => openDesigner({ game: g, copy: true });
   const remove = async (g: SavedGame) => { await run(() => api.deletePreset(g.preset_id)); setConfirmDel(null); await reload(); };
 
-  /** THE PUSH. The only one on this screen, and the same call LOBBY's own two buttons make
-   *  (`api.pushLobby` → `POST /api/lobby/push` → `state.py push_config`), so there is exactly one
-   *  way a config reaches a gun and exactly one set of refusals to understand. */
-  const load = async (force = false) => {
+  /** LOAD — tell every connected phone WHICH GAME is loaded. It writes no gun.
+   *
+   *  `POST /api/games/load` → `state.py load_game()`, which pushes an `assign` (the kind that carries
+   *  a game and no head; a `config` cannot express "no frames" — `envelope.REQUIRED` makes them
+   *  mandatory). Weapons reach the guns at the LOBBY push, after kitting. */
+  const load = async () => {
     if (busy) return;
     setBusy(true);
-    const wasPhase = state.phase;
-    // A successful push lands the SESSION in `lobby`. The store follows a phase that advances, which
-    // would throw this tab onto the LOBBY screen at the exact moment it is supposed to become the
-    // ACTIVE GAME CONFIG — so the advance is accounted for before it arrives. On a refusal the phase
-    // has not moved, and the baseline goes back to where it was so the next real advance still moves
-    // the console.
-    holdPhase('lobby');
     try {
-      const r = await run(() => api.pushLobby(force));
-      if (r === undefined) { holdPhase(wasPhase); return; }
-      setRecentLoad(true);
+      const r = await run(() => api.loadGame());
+      if (r !== undefined) setRecentLoad(true);
     } finally { setBusy(false); }
   };
+  /** …and the re-push, which IS a gun write: the same call LOBBY's own buttons make. Only reachable
+   *  once a real push has happened, because before that there is no head on a gun to be stale. */
+  const rePush = async (force: boolean) => {
+    if (busy) return;
+    setBusy(true);
+    try { await run(() => api.pushLobby(force)); } finally { setBusy(false); }
+  };
 
-  // ---- LOAD's gate, which is the SERVER's (derive.pushGate → state.py push_config) -------------
-  // A36/A37's three proofs are cured BY the push, so they never refuse it; a roster with one side
-  // populated is refused and `force` does NOT open it; a phone that has not arrived refuses the FIRST
-  // push only. Every one of those is the same judgement LOBBY renders, read from the same place.
-  const loadDisabled = blocked || busy || gate.refused || gate.pushBlockedCount > 0;
-  const loadWhy = blockedReason ?? gate.pushWhy ?? '';
-  const canForce = !blocked && !gate.refused && gate.pushBlockedCount > 0;
-  // The cure, on this screen too: the same control LOBBY carries and every A36 fault line names.
+  // ---- LOAD's gate ----------------------------------------------------------------------------
+  // An announcement is NOT a push, so the push's refusals do not apply to it: the one-team fault,
+  // A36's three proofs and "a phone has not arrived" are every one of them about a HEAD being
+  // written, and LOAD writes none. What does apply is the phase — `load_game` refuses in armed/live —
+  // and an empty required pool, which is a game nobody can be kitted for and is worth stopping at the
+  // door rather than at the whistle.
+  const loadDisabled = blocked || busy;
+  const loadWhy = blockedReason ?? '';
   // The honest predicate, not the server's `all_acked` (which is vacuously true while no phone is
   // bound -- see `LoadStatus`): with 0 of 8 answering, a re-push is exactly what this screen should
   // still be offering, and the rail must not paint itself green.
   const everyoneAcked = gate.total > 0 && gate.acked >= gate.total;
-  const showRePush = loaded && !locked && (gate.curableRows.length > 0 || !everyoneAcked);
+  // The cure for a stale HEAD belongs to the push that writes heads, so it appears only once there
+  // has been one. Before that there is nothing on a gun to be stale.
+  const showRePush = state.lobby.pushed && !locked && (gate.curableRows.length > 0 || !everyoneAcked);
   const faults = gate.redRows.map(b => ({ who: b.sticker, why: b.blockers ?? [] }));
   const notOnlyStale = gate.redRows.filter(b => !((b.blockers ?? []).length > 0 && (b.blockers ?? []).every(w => w.startsWith(STALE_ACK_FAULT))));
 
@@ -297,7 +310,7 @@ export function Games() {
             </span>
           ) : (
             <span data-testid="game-load">
-              <PrimaryButton disabled={loadDisabled} title={loadDisabled ? (loadWhy || 'Not ready to load yet') : 'Compiles this game and sends it to every gun. The count then says how many have confirmed it.'}
+              <PrimaryButton disabled={loadDisabled} title={loadDisabled ? (loadWhy || 'Not ready to load yet') : 'Sends this game to every connected phone — mode, teams, health, night, respawn, venue and the rules. It does NOT write the guns: weapons go with the arm, at the lobby push after kitting.'}
                 onClick={() => load()}>{busy ? 'LOADING…' : 'LOAD ▸'}</PrimaryButton>
             </span>
           )}
@@ -316,33 +329,24 @@ export function Games() {
           )}
         </div>
       )}
-      {/* A LOAD that is refused says so where the button is, not only in the error strip — and says
-          whether it is a judgement the operator may override or one they have to go and fix. */}
-      {!loaded && loadDisabled && !blocked && loadWhy && (
-        <div role="alert" data-testid="load-blocked" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
-          background: 'rgba(255,176,32,.08)', border: `1px solid ${T.warn}`, borderLeft: `3px solid ${T.warn}`, padding: '12px 16px' }}>
-          <span style={{ font: F.chk(700, 12), letterSpacing: '.06em', color: T.warn, lineHeight: 1.5 }}>▲ {loadWhy}</span>
-          {canForce ? (
-            <button type="button" data-load-force="1" className="hov-acc-ink hit44" style={{ ...BTN_RESET, cursor: 'pointer', color: T.bad, font: F.chk(700, 13), minHeight: 36 }}
-              title="Compiles and sends to every bound node anyway. A gun that is not linked will simply not ack."
-              onClick={() => load(true)}>LOAD ANYWAY, OVER {gate.pushBlockedCount} ▸</button>
-          ) : (
-            <span data-no-override-reason style={{ font: F.chk(600, 11), letterSpacing: '.1em', color: T.micro }}>CANNOT BE OVERRIDDEN — FIX THE ROSTER FIRST</span>
-          )}
-        </div>
-      )}
-
       {loaded ? (
         <div data-testid="active-game-config" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* WHAT THE GUNS ARE HOLDING — the answer to "did it push?", above everything else. */}
-          <div style={{ background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderLeft: `3px solid ${everyoneAcked ? T.ok : T.warn}` }}>
+          <div style={{ background: `linear-gradient(180deg,${T.panelSoft},${T.panelDeep})`, border: `1px solid ${T.line}`, borderLeft: `3px solid ${state.lobby.pushed && everyoneAcked ? T.ok : T.warn}` }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '12px 20px', padding: '14px 18px' }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ font: F.mono(600, 10.5), letterSpacing: '.26em', color: custom ? T.warn : activeSaved ? PERK_COLOR : T.acc }}>{custom ? 'TUNED — NOT SAVED' : activeSaved ? 'SAVED GAME' : 'STOCK MODE'} // LOADED</div>
                 <div data-testid="playing-title" style={{ font: F.osw(700, 28), letterSpacing: '.08em', textTransform: 'uppercase', marginTop: 2, lineHeight: 1.1 }}>{title}</div>
               </div>
               <span style={{ flex: 1 }} />
-              <LoadStatus testid="game-load-status" pushed acked={gate.acked} total={gate.total} recent={recentLoad} />
+              {/* TWO different facts, never merged into one tick: how many PHONES were told about the
+                  game (LOAD, delivery), and how many GUNS are confirmed on the head (the lobby push).
+                  The second only exists once there has been a push, and saying nothing is the honest
+                  answer until then — a gun count before any push would be a count of nothing. */}
+              <GameSentStatus testid="game-load-status" sent={gameSent} total={gameTotal} recent={recentLoad} />
+              {state.lobby.pushed
+                ? <LoadStatus testid="game-gun-status" pushed acked={gate.acked} total={gate.total} recent={false} />
+                : <span data-testid="game-gun-status" style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>GUNS NOT CONFIGURED YET — WEAPONS GO AT THE LOBBY PUSH, AFTER KITTING</span>}
               {showRePush && (
                 <button type="button" data-repush="1" data-repush-force={gate.pushBlockedCount > 0 ? '1' : undefined}
                   className={busy ? undefined : 'hov-acc-ink hit44'} disabled={busy || !!gate.rosterFault}
@@ -350,7 +354,7 @@ export function Games() {
                            color: busy || gate.rosterFault ? T.micro : gate.pushBlockedCount > 0 ? T.warn : T.acc,
                            font: F.chk(700, 13), letterSpacing: '.06em', minHeight: 44, padding: '0 6px' }}
                   title={gate.rosterFault ?? 'Compiles and sends this config to every gun again. The ack count drops to 0 and climbs as each one answers.'}
-                  onClick={() => load(gate.pushBlockedCount > 0)}>
+                  onClick={() => rePush(gate.pushBlockedCount > 0)}>
                   {busy ? 'RE-PUSHING…' : gate.pushBlockedCount > 0 ? `RE-PUSH CONFIG OVER ${gate.pushBlockedCount} BLOCKED ▸` : 'RE-PUSH CONFIG ▸'}
                 </button>
               )}
@@ -369,8 +373,10 @@ export function Games() {
               {gate.staleAckLine
                 || (faults.length ? `${faults.length} gun${faults.length === 1 ? '' : 's'} cannot start`
                   : gate.waitWhy
-                    || (!everyoneAcked ? `No config echo from ${gate.noEcho.join(', ') || 'some guns'} — headset off, or gun asleep?`
-                      : 'Every gun is holding this config. Adjust it here and SAVE AND LOAD, or continue to KIT.'))}
+                    || (!state.lobby.pushed
+                        ? 'The phones have the game. Kitting is next, and the guns are configured at the lobby push.'
+                        : !everyoneAcked ? `No config echo from ${gate.noEcho.join(', ') || 'some guns'} — headset off, or gun asleep?`
+                          : 'Every gun is holding this config. Adjust it here and SAVE AND LOAD, or continue to KIT.'))}
               {gate.staleAckLine && notOnlyStale.length > 0 && (
                 <span style={{ color: T.micro }}>{`  ·  ${notOnlyStale.length} gun${notOnlyStale.length === 1 ? '' : 's'} cannot start`}</span>
               )}
@@ -435,7 +441,7 @@ export function Games() {
                 <GhostButton size={10} pad="8px 14px" onClick={() => openDesigner(activeSaved && !activeSaved.builtin ? { game: activeSaved } : { fromLive: true, game: activeSaved ?? undefined, copy: !!activeSaved })} title="Open this game in the designer">{activeSaved && !activeSaved.builtin ? 'EDIT THIS GAME ▸' : custom ? 'SAVE THIS AS A GAME ▸' : activeSaved ? 'MAKE MY OWN ▸' : 'CUSTOMIZE ▸'}</GhostButton>
               </div>
               {errorsAndWarnings}
-              <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro, lineHeight: 1.6 }}>VENUE = WHERE YOU ARE PLAYING TONIGHT (NOT PART OF THE GAME). LOAD ▸ SENDS THIS GAME TO EVERY GUN AND KEEPS YOU HERE, ON THE ACTIVE GAME CONFIG, WHERE YOU CAN EDIT IT AND LOAD AGAIN. CONTINUE TO KIT ▸ IS THEN ONE TAP. A "BASE" TAG MARKS THE STOCK MODE THE PLAYING GAME IS BUILT ON.</div>
+              <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro, lineHeight: 1.6 }}>VENUE = WHERE YOU ARE PLAYING TONIGHT (NOT PART OF THE GAME). LOAD ▸ SENDS THIS GAME TO EVERY CONNECTED PHONE AND KEEPS YOU HERE, ON THE ACTIVE GAME CONFIG, WHERE YOU CAN EDIT IT AND LOAD AGAIN. IT DOES NOT WRITE THE GUNS — WEAPONS GO WITH THE ARM, AT THE LOBBY PUSH AFTER KITTING. CONTINUE TO KIT ▸ IS THEN ONE TAP. A "BASE" TAG MARKS THE STOCK MODE THE PLAYING GAME IS BUILT ON.</div>
             </div>
           </div>
         </div>

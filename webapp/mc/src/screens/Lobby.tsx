@@ -6,6 +6,7 @@ import { useStore } from '../store';
 import { F, T, TAB, teamColor } from '../tokens';
 import { BTN_RESET, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag, useNarrow } from '../ui';
 import { SetupSteps } from '../ui/SetupSteps';
+import { PreArmSummary } from '../ui/PreArmSummary';
 import { McVerify } from '../ui/McVerify';
 import { StandDownChip, StandbySection } from '../ui/Standby';
 import { GameEditPanel } from '../ui/GameEditPanel';
@@ -170,6 +171,9 @@ export function Lobby() {
       </div>
       {/* STANDBY (2026-09-12): who is sitting this one out, and the way back in */}
       <StandbySection />
+      {/* The pre-arm check (2026-09-13). LOAD split "the game is loaded" from "the guns are
+          configured", so the two halves have to be verified separately and named per player. */}
+      <PreArmSummary />
       {/* Action rail — rebuilt 2026-09-01: "lots of small uppercase text. poor organization and
           readability and usability". One status line in sentence case, faults as a real per-gun list
           (blockers only — the advisories used to be jammed into the same run-on string), one primary

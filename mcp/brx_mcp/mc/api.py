@@ -394,6 +394,14 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         except ValueError as e:
             return _err(str(e))
 
+    async def games_load(_req):
+        """LOAD: announce the game to every bound phone. No frames, no head, no gun write --
+        `state.py load_game()`. The LOBBY push is still the only thing that configures a gun."""
+        try:
+            return JSONResponse(s.load_game())
+        except ValueError as e:
+            return _err(str(e))
+
     async def lobby_push(req):
         b = await body(req)
         try:
@@ -706,6 +714,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/stations/{nid}", put_station, methods=["PUT"]),
         Route("/api/stations/{nid}", delete_station, methods=["DELETE"]),
         Route("/api/players/{pid}/ready", ready, methods=["POST"]),
+        Route("/api/games/load", games_load, methods=["POST"]),
         Route("/api/lobby/push", lobby_push, methods=["POST"]),
         Route("/api/tunnel", tunnel, methods=["POST"]),
         Route("/api/start", start, methods=["POST"]),

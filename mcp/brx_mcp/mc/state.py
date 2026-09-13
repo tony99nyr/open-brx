@@ -338,6 +338,17 @@ class Session:
         # invariant is load-bearing and invisible from `_hit_plan` alone; do not gate a compile path on
         # anything else without re-checking it.
         self.lobby_pushed = False
+        # LOAD (2026-09-13). The GAME has been announced to the phones -- mode, teams, health, night,
+        # respawn, venue, the rules -- with NO frames, NO head and NO gun write. Deliberately a
+        # SEPARATE fact from `lobby_pushed`: Tony, "weapons have to go with the arm". The first cut of
+        # LOAD called the real config push, which compiles a weapon head per player -- and before
+        # anyone has kitted that head carries policy DEFAULTS, so it wrote default loadouts to every
+        # gun and re-pushed on every kit pick. `lobby_pushed` must stay FALSE through a LOAD, because
+        # every guarantee hanging off it (the one-team refusal, A36's three proofs, the stale-ack
+        # gate, `kit_open`) belongs to the push that actually writes guns.
+        self.game_loaded = False
+        self.game_cfg: str | None = None          # the config_id the last announcement carried
+        self.game_sent: dict[str, str] = {}       # player_id -> config_id a SOCKET accepted (delivery, not receipt)
         self._pinned_hit_plan = None      # A17: one hit-audio plan per MATCH -- see `_hit_plan`
         # Raised while a `set_config` edit is on its way to `_repush_lobby_config()`, so `_resend`'s
         # config leg stands down and ONE edit costs exactly ONE compile + push per gun.
@@ -974,6 +985,135 @@ class Session:
             **({"mc_verify": mcv} if (mcv := self._mc_verify_player_line()) else {}),
         }
 
+    def load_game(self) -> dict:
+        """LOAD: tell every bound phone WHICH GAME is loaded. No frames, no head, no gun write.
+
+        Tony, 2026-09-13: "weapons have to go with the arm." The first cut of LOAD called
+        `push_config`, which compiles a per-player weapon head -- and nobody has kitted at that point,
+        so it wrote POLICY-DEFAULT loadouts to every gun and then re-pushed on every kit pick.
+
+        This sends `assign`, the body a phone already gets on a hello or a roster change. It carries
+        `game_brief()` (mode, teams, win condition, respawn, health, venue, night, the loadout rules)
+        and the kit-open policy, and `engine.js _assign` stores them without touching the gun. It is
+        `assign` and not `config` because `envelope.REQUIRED["config"]` makes `frames` MANDATORY: a
+        frameless `config` is dropped by the node's own validator before the engine ever sees it, so
+        "a config with no frames" is not a thing this wire can express. No contract change needed.
+
+        `lobby_pushed` is NOT set. The LOBBY push remains the first and only write to a gun and keeps
+        every gate that hangs off it; `start()` still refuses with "push config first".
+        """
+        if self.phase in ("armed", "live"):
+            raise ValueError("cannot load a game once the match has started - ABORT or RECALL first")
+        cfg_id = self.config["config_id"]
+        self.game_loaded = True
+        self.game_cfg = cfg_id
+        # DELIVERY, not receipt: `net.push` answers whether a socket took the frame. The phone cannot
+        # tell us which game it holds -- its heartbeat reports `config_id` from `this.config`
+        # (engine.js), which only a FRAMES push sets -- so this is the honest fact available, and the
+        # console words it as "sent", never as "have".
+        sent: dict[str, str] = {}
+        for p in self.players.values():
+            nid = p.get("node_id")
+            if nid and self.net.push(nid, "assign", self._assign_body(p)):
+                sent[p["player_id"]] = cfg_id
+        self.game_sent = sent
+        if self.phase == "muster":
+            self.phase = "build"
+        self._changed()
+        return {"ok": True, "config_id": cfg_id, "sent": len(sent), "total": len(self.players)}
+
+    def game_sent_n(self) -> int:
+        """How many rostered players a socket accepted THIS config's announcement for."""
+        cur = self.config.get("config_id")
+        return sum(1 for p in self.players.values() if self.game_sent.get(p["player_id"]) == cur)
+
+    def sync_summary(self) -> dict:
+        """The pre-arm answer to "is the field in sync?" -- per player, and as an HONEST total.
+
+        LOAD split one event into two. Before it, "the game is loaded" and "the guns are configured"
+        happened together at the push; now a phone can hold the current game while its gun has never
+        been given weapons at all, and the second half only happens at the LOBBY push. So arming has
+        to verify BOTH halves and say which one is missing, for which player.
+
+        Four independent facts per player, never collapsed into one tick:
+          `phone_game`  a socket took this config's `assign` (delivery -- see `load_game`)
+          `gun_sent`    MC compiled and SENT this config's frames for this player (`bundles`)
+          `gun_acked`   the gun answered for THIS `config_id` (A36 `_ack_is_current`)
+          `gun_echo`    "proven" | "mismatch" | "not_echoed" (`_echo_state`; `not_echoed` is the
+                        ordinary v4.32 answer and is neutral, never a fault)
+
+        NO COUNT MAY READ AS SATISFIED BECAUSE NOTHING WAS CHECKED. Every total is reported against
+        the ROSTERED count, and `in_sync` is False for an empty roster -- the "ALL GUNS ON THIS CONFIG
+        (0/8)" defect of 2026-09-13 was exactly a vacuously-true predicate (`all_acked()` skips every
+        player with no node bound) rendered as a claim about everybody.
+        """
+        cur = self.config.get("config_id")
+        rows = []
+        for p in self.players.values():
+            pid = p["player_id"]
+            bundle = self.bundles.get(pid) or {}
+            rows.append({
+                "player_id": pid, "display": p.get("display") or pid,
+                "gun_id": p.get("gun_id") or "", "player_num": p.get("player_num") or 0,
+                "bound": bool(p.get("node_id")),
+                "phone_game": self.game_sent.get(pid) == cur,
+                "gun_sent": bool(bundle) and bundle.get("config_id") == cur,
+                "gun_acked": self._ack_is_current(pid),
+                "gun_echo": self._echo_state(pid),
+            })
+        rows.sort(key=lambda r: r["player_num"])
+        n = len(rows)
+        tot = {
+            "rostered": n,
+            "phone_game": sum(1 for r in rows if r["phone_game"]),
+            "gun_sent": sum(1 for r in rows if r["gun_sent"]),
+            "gun_acked": sum(1 for r in rows if r["gun_acked"]),
+            "gun_echo_proven": sum(1 for r in rows if r["gun_echo"] == "proven"),
+        }
+        # The ARM question, stated once: every rostered gun has taken THIS config and answered for it.
+        # `gun_echo` is deliberately NOT part of it -- `not_echoed` is what our v4.32 units normally
+        # answer (A37), so requiring it would refuse every whistle in the field.
+        tot["in_sync"] = n > 0 and tot["gun_sent"] == n and tot["gun_acked"] == n
+        return {"rows": rows, "totals": tot,
+                "unconfigured": [r["display"] for r in rows if not r["gun_acked"]]}
+
+    def _refuse_unconfigured_gun(self, force: bool = False) -> None:
+        """No whistle while a rostered player's gun has never taken THIS config AT ALL.
+
+        `all_acked()` asks its question only of players WITH A NODE BOUND -- so a rostered player
+        whose phone never arrived, or whose node was unbound after the push, was skipped entirely and
+        the start went through with nothing said about them. ABSENCE and STALENESS are different
+        failures and only staleness was caught: `_refuse_stale_ack` catches a gun naming an OLDER
+        head, this catches a gun that has named NONE. LOAD is what makes the gap reachable in a new
+        way -- a phone can now hold the game while its gun has no head at all.
+
+        FORCEABLE, and deliberately so: a phone that has not arrived yet HOT JOINS on its bind
+        (`_bind` pushes the bundle and the running `start`), which is a real and supported way to
+        field a late player. What must not happen is starting without being TOLD -- so the refusal
+        names every player it is about, and `force` is the operator saying they know.
+        """
+        if force:
+            return
+        # TWO failures, named separately, because they have different causes and different fixes.
+        # A player whose phone IS bound but whose gun has not answered for this head is the case
+        # `all_acked()` already asked about -- and the word it is asked by, "acked", is load-bearing
+        # (`test_mc_state`'s MERGE-2 guard reads the refusal for it). A player with NO phone bound was
+        # skipped by `all_acked()` ENTIRELY: that is the absence this gate exists for, and the one
+        # LOAD makes newly reachable, because a phone can now hold the game while its gun has no head.
+        unacked = [p.get("display") or pid for pid, p in self.players.items()
+                   if p.get("node_id") and not self._ack_is_current(pid)]
+        never = [p.get("display") or pid for pid, p in self.players.items()
+                 if not p.get("node_id") and not self._ack_is_current(pid)]
+        parts = []
+        if unacked:
+            parts.append(f"{len(unacked)} gun(s) have not acked this config: {', '.join(unacked)}")
+        if never:
+            parts.append(f"{len(never)} player(s) have no phone bound, so their gun has never been "
+                         f"sent this config at all: {', '.join(never)}")
+        if parts:
+            raise ValueError(" · ".join(parts) + ". A gun with no head cannot play — PUSH CONFIG on "
+                             "LOBBY (or move them to STANDBY) before the whistle")
+
     def _sync_kit_open(self) -> None:
         """Re-send `assign` to every bound node when kit_open flips (phase/push transitions) so the HUD switches
         between "setting up" and the kit editor without waiting for an unrelated change."""
@@ -1602,6 +1742,11 @@ class Session:
             res = self._validate()
         finally:
             self._repush_pending = False
+        # SAVE AND LOAD: a game that has been ANNOUNCED is re-announced on every edit, so the phones'
+        # briefing never describes a game nobody is playing. Independent of the frames re-push below:
+        # after a real LOBBY push both happen; before one, only this does.
+        if self.game_loaded and res["ok"]:
+            self.load_game()
         if repush:
             # B1/B3 (2026-09-12): editing a LOADED game in KIT/LOBBY used to silently drop the push here
             # (`lobby_pushed=False`, acks cleared) and NEVER re-compile -- every gun kept the STALE head
@@ -4023,6 +4168,10 @@ class Session:
         self._refuse_one_team()           # round-2 B: a team can empty out between the push and the whistle
         self._refuse_stale_ack()          # A36: and a gun can answer for LAST game's head at any moment
         self._refuse_echo_mismatch(force)  # R2-5: ...or answer THIS head carrying another weapon (F2: forceable)
+        # ...or never have answered at all. `all_acked()` below skips a player with no node bound, so
+        # ABSENCE was invisible to it; LOAD makes that reachable in a new way (a phone can hold the
+        # game while its gun has no head), which is why this gate arrives with it.
+        self._refuse_unconfigured_gun(force)
         if not self.all_acked() and not force:
             raise ValueError("not every node has acked the config with a gun echo")
         return self._schedule(runway_s or DEFAULT_RUNWAY_S)
@@ -4454,6 +4603,14 @@ class Session:
         for _nid in list(self.nodes):
             self.pull_log(_nid, "recap")        # A25: gated by `log_sync`; utility nodes refused inside
         self.lobby_pushed = False
+        # ...and the ANNOUNCED game goes with the pushed one. A finished match is not a loaded game:
+        # the GAMES tab keys its ACTIVE GAME CONFIG state on `game_loaded`, so leaving it true would
+        # strand the operator on the last match's settings instead of the card picker, which is the
+        # documented play-again path (a MODE tap in `recap` rolls the session forward). RECALL is
+        # deliberately NOT this: it returns the field to KIT with the same game still loaded.
+        self.game_loaded = False
+        self.game_cfg = None
+        self.game_sent = {}
         self.acks = {}
         # A32: `acks` is what turns the echo into a red "GUN DID NOT ANSWER CONFIG" for the NEXT lobby,
         # so the proof it set resets with it -- otherwise a gun whose headset died in the debrief reads
@@ -4553,6 +4710,9 @@ class Session:
         self._result_pushed = {}
         self.feed = []
         self.lobby_pushed = False
+        self.game_loaded = False          # ...and the announced game goes with it
+        self.game_cfg = None
+        self.game_sent = {}
         self.acks = {}
         self.bundles = {}
         # A36 — RECAP → NEXT MATCH is a DETERMINISTIC RESET. Nothing about the last game may be
@@ -4641,6 +4801,12 @@ class Session:
                 **({"restored_from": self.restored_from} if self.restored_from else {}),
                 "lobby": {"ready": sum(1 for p in self.players.values() if p["ready"]), "total": len(self.players),
                           "pushed": self.lobby_pushed, "acks": self.acks, "all_acked": self.all_acked()},
+                # LOAD: the GAME the phones have been told about. `loaded` is what the GAMES tab keys
+                # its ACTIVE GAME CONFIG state on -- `lobby.pushed` no longer becomes true at LOAD,
+                # which is the whole point of the split. `sent` is DELIVERY (see `load_game`).
+                "game": {"loaded": self.game_loaded, "config_id": self.config.get("config_id"),
+                         "sent": self.game_sent_n(), "total": len(self.players)},
+                "sync": self.sync_summary(),      # the pre-arm "is the field in sync" summary
                 "start": start, "live": live, "recap": self.recap() if self.phase in ("live", "recap") else None,
                 "notices": self._notices(),      # A31: standing host lines (absent keys = nothing to say)
                 "feed": self.feed[:50]}

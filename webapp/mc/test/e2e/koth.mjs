@@ -682,8 +682,14 @@ step('f88-multipoint-refused', async ({ browser, base }) => {
   await closePage(pg);
 });
 
-// The operator's own walk, 2026-09-13: LOAD (which PUSHES, and stays), the ACTIVE GAME CONFIG state
-// it lands in, an EDIT that sends nothing until SAVE AND LOAD, and only then CONTINUE TO KIT.
+// The operator's own walk, 2026-09-13: LOAD (which announces the game to the PHONES and writes no
+// gun), the ACTIVE GAME CONFIG state it lands in, an EDIT that sends nothing until SAVE AND LOAD,
+// the LOBBY push that actually configures the guns, and only then CONTINUE TO KIT.
+//
+// "Weapons have to go with the arm" (Tony). The first cut of LOAD called the real config push, which
+// compiles a weapon head per player -- and nobody has kitted at that point, so it wrote policy-DEFAULT
+// loadouts to every gun and re-pushed on every kit pick. The assertions below pin BOTH halves: that
+// LOAD reaches the phones, and that it reaches nothing else.
 //
 // The step this replaces clicked `CONTINUE ▸` and asserted the phase moved to kit — which is exactly
 // what the field complained about: "several times while players were kitting I wanted to make
@@ -707,11 +713,21 @@ step('load-path', async ({ browser, base }) => {
   const load = pg.locator('main [data-testid="game-load"] button');
   expect(await load.count() === 1, 'the primary control on an un-loaded GAMES tab is LOAD');
   expect((await load.innerText()).includes('LOAD'), `it says LOAD (saw ${JSON.stringify(await load.innerText())})`);
-  if (await load.isEnabled()) await load.click();
-  else await pg.locator('main [data-load-force="1"]').click();   // a board with a row no push can clear
-  await until(async () => (await (await fetch(`${base}/api/state`)).json()).lobby.pushed === true, 10000, 'the server to report the config pushed');
+  await load.click();
+  await until(async () => (await (await fetch(`${base}/api/state`)).json()).game?.loaded === true, 10000, 'the server to report the game loaded');
   const loaded = await (await fetch(`${base}/api/state`)).json();
-  expect(loaded.phase === 'lobby', `the push moves the SESSION to lobby, as state.py does (saw ${loaded.phase})`);
+  // 🔴 THE REVISION, asserted on the server's own state: the phones were told, the guns were not.
+  expect(loaded.lobby.pushed === false, `LOAD must NOT push config to the guns (saw pushed=${loaded.lobby.pushed})`);
+  expect((loaded.sync?.totals?.gun_sent ?? 0) === 0, `no gun has been sent a head (saw ${loaded.sync?.totals?.gun_sent})`);
+  // DELIVERY, and delivery is allowed to be zero. This suite drives MC WITHOUT `--fake-net`, so no
+  // phone is bound at all and the honest answer is 0 of 8 — asserting "> 0" here would have demanded
+  // the count lie about a field that is not there. What must hold is that it counts the phones that
+  // ARE connected, against the whole roster.
+  const boundNow = (loaded.players || []).filter(p => p.node_id).length;
+  expect((loaded.game?.sent ?? -1) === boundNow,
+    `the phone count is the phones actually connected (saw ${loaded.game?.sent}, bound ${boundNow})`);
+  expect((loaded.game?.total ?? -1) === loaded.players.length,
+    `…stated against the whole roster (saw ${loaded.game?.total}/${loaded.players.length})`);
   // ...and the TAB stays. This is the whole reversal: a tab cannot "change state to active game
   // config" if its own success navigates it to the LOBBY screen (store.holdPhase).
   await until(() => pg.locator('[data-testid="active-game-config"]').count().then(n => n > 0), 8000, 'the ACTIVE GAME CONFIG state');
@@ -726,8 +742,10 @@ step('load-path', async ({ browser, base }) => {
     expect(settings.includes(label), `the loaded config names ${label} (saw ${JSON.stringify(settings.slice(0, 160))}…)`);
   }
   const status = (await pg.locator('[data-testid="game-load-status"]').innerText()).replace(/\s+/g, ' ');
-  expect(/\d+\/\d+|ALL GUNS/.test(status), `the ack counter answers "did it push?" (saw ${JSON.stringify(status)})`);
-  ok(`LOAD pushed and the tab became the active config  ${await shot(pg, '10-loaded')}`);
+  expect(/GAME SENT TO/.test(status), `the phone count is worded as DELIVERY (saw ${JSON.stringify(status)})`);
+  const gunLine = (await pg.locator('[data-testid="game-gun-status"]').innerText()).replace(/\s+/g, ' ');
+  expect(/NOT CONFIGURED YET/.test(gunLine), `and the gun count says what it truly is (saw ${JSON.stringify(gunLine)})`);
+  ok(`LOAD told the phones and left the guns alone  ${await shot(pg, '10-loaded')}`);
 
   // --- EDIT is a DRAFT: nothing is sent until SAVE AND LOAD ------------------------------------
   await pg.locator('[data-testid="game-edit-open"] button').click();
@@ -738,13 +756,38 @@ step('load-path', async ({ browser, base }) => {
   const midEdit = await (await fetch(`${base}/api/state`)).json();
   expect(midEdit.config.night === nightBefore, `a tap in the draft sends NOTHING (server night still ${nightBefore})`);
   const save = pg.locator('[data-testid="game-edit-save"] button');
-  expect((await save.innerText()).includes('SAVE AND LOAD'), `the button says SAVE AND LOAD once a head is on the guns (saw ${JSON.stringify(await save.innerText())})`);
+  // A plain SAVE, deliberately: nothing has been pushed to a gun yet, so there is no head to re-load
+  // and the button must not promise one. It becomes SAVE AND LOAD once the lobby push has happened
+  // (both labels are pinned in `test/game-edit-panel.test.tsx`).
+  const saveLabel = (await save.innerText()).replace(/\s+/g, ' ').trim();
+  expect(/^SAVE\b/.test(saveLabel) && !/AND LOAD/.test(saveLabel),
+    `with no head on the guns the button is a plain SAVE (saw ${JSON.stringify(saveLabel)})`);
   await save.click();
-  await until(async () => (await (await fetch(`${base}/api/state`)).json()).config.night !== nightBefore, 8000, 'the server to take the whole edit at SAVE AND LOAD');
+  await until(async () => (await (await fetch(`${base}/api/state`)).json()).config.night !== nightBefore, 8000, 'the server to take the whole edit at SAVE');
   const afterEdit = await (await fetch(`${base}/api/state`)).json();
-  expect(afterEdit.lobby.pushed === true, 'the edit RE-pushes rather than un-pushing (B1/B3)');
-  expect(afterEdit.config.config_id !== loaded.config.config_id, 'a fresh config_id: the guns are being asked for a new proof (A36)');
-  ok(`EDIT → SAVE AND LOAD re-pushed  ${await shot(pg, '10b-saved')}`);
+  expect(afterEdit.config.config_id !== loaded.config.config_id, 'a fresh config_id');
+  expect(afterEdit.game?.config_id === afterEdit.config.config_id, 'the phones were re-told about the edited game');
+  expect(afterEdit.lobby.pushed === false, 'and SAVE still writes no gun before the lobby push');
+  ok(`EDIT → SAVE re-announced, guns still untouched  ${await shot(pg, '10b-saved')}`);
+
+  // --- the LOBBY push is what configures a gun, and only then is the field in sync ---------------
+  await pg.locator('header nav button:has-text("LOBBY")').first().click();
+  await until(() => pg.locator('main', { hasText: '[ A5 // LOBBY' }).count().then(n => n > 0), 8000, 'the LOBBY');
+  // the pre-arm check is the operator's one place to look, and it must NOT read as ready yet
+  const preArm = pg.locator('[data-testid="pre-arm-summary"]');
+  if (await preArm.count() > 0) {
+    const verdict = (await pg.locator('[data-testid="pre-arm-verdict"]').innerText()).replace(/\s+/g, ' ');
+    expect(!/IN SYNC/.test(verdict), `before the push the pre-arm check is not satisfied (saw ${JSON.stringify(verdict)})`);
+  }
+  const pushBtn = pg.locator('main button:has-text("PUSH CONFIG & ARM")');
+  if (await pushBtn.isEnabled().catch(() => false)) await pushBtn.click();
+  else await pg.locator('main [data-override="1"] button').first().click();
+  await until(async () => (await (await fetch(`${base}/api/state`)).json()).lobby.pushed === true, 10000, 'the LOBBY push to configure the guns');
+  const pushed = await (await fetch(`${base}/api/state`)).json();
+  expect((pushed.sync?.totals?.gun_sent ?? 0) > 0, `the guns have a head NOW (saw ${pushed.sync?.totals?.gun_sent})`);
+  ok(`the LOBBY push is what wrote the guns  ${await shot(pg, '10c-pushed')}`);
+  await pg.locator('header nav button:has-text("GAMES")').first().click();
+  await until(() => pg.locator('[data-testid="active-game-config"]').count().then(n => n > 0), 8000, 'back on the active game config');
 
   // --- and only THEN, KIT ----------------------------------------------------------------------
   await pg.locator('[data-testid="game-continue-kit"] button').click();

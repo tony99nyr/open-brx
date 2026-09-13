@@ -266,6 +266,28 @@ export interface State {
    *  answer to the same question and wins wherever it is present. */
   lobby: { ready: number; total: number; pushed: boolean; all_acked?: boolean;
            acks: Record<string, { ok: boolean; gun_echo?: string; err?: string; config_id?: string }> };
+  /** LOAD (2026-09-13) — the GAME the phones have been told about: mode, teams, health, night,
+   *  respawn, venue, the rules. NO frames and NO head go with it (`state.py load_game` pushes
+   *  `assign`), so `lobby.pushed` stays FALSE through a LOAD and the LOBBY push remains the only
+   *  thing that ever configures a gun. `sent` is DELIVERY — how many phones' sockets accepted the
+   *  announcement — and is NOT a claim that a phone rendered it, nor anything to do with a gun ack.
+   *  Absent on a server that predates LOAD; treat that as "no game announced". */
+  game?: { loaded: boolean; config_id?: string; sent: number; total: number };
+  /** The pre-arm "is the field in sync" summary (`state.py sync_summary`). Four independent facts per
+   *  rostered player; `totals.in_sync` is FALSE for an empty roster, because a zero-of-zero must
+   *  never read as ready. Absent on an older server. */
+  sync?: {
+    rows: { player_id: string; display: string; gun_id: string; player_num: number; bound: boolean;
+            phone_game: boolean; gun_sent: boolean; gun_acked: boolean;
+            /** A37 (`state.py _echo_state`). FOUR states, and `null` is one of them: the server
+             *  returns it when there is NO check to report — nothing pushed, no ack for this config,
+             *  or no readable `$WEAP` in the head. `not_echoed` is the ordinary answer on our v4.32
+             *  units. Only `mismatch` is a fault; the other three must never render as one. */
+            gun_echo: 'proven' | 'mismatch' | 'not_echoed' | null }[];
+    totals: { rostered: number; phone_game: number; gun_sent: number; gun_acked: number;
+              gun_echo_proven: number; in_sync: boolean };
+    unconfigured: string[];
+  };
   start?: StartView;
   live?: LiveView;
   recap?: RecapView;
@@ -398,6 +420,9 @@ export interface Api {
    *  already on the wire when the acks were cleared is then stale and says so, instead of being
    *  recorded as an ack for a head that gun never took. Both optional: a server that predates them
    *  simply omits the fields. */
+  /** LOAD — announce the game to every bound phone. No frames, no head, no gun write, and it does
+   *  NOT set `lobby.pushed`: `pushLobby` below is still the only call that configures a gun. */
+  loadGame(): Promise<{ ok: boolean; config_id?: string; sent: number; total: number }>;
   pushLobby(force?: boolean): Promise<{ ok: boolean; acks: State['lobby']['acks']; repushed?: boolean; config_id?: string }>;
   start(runway_s: number, force?: boolean): Promise<{ match_id: string; go_live_t: number; seq: number }>;
   reschedule(runway_s: number): Promise<{ match_id: string; go_live_t: number; seq: number }>;

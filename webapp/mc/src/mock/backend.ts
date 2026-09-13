@@ -179,6 +179,11 @@ export class MockBackend implements Api {
   }
   async armStations() { for (const n of Object.keys(this.stations)) this.armStation(n); this.emit(); return { ok: true, armed: this.stationIds().length, pending: [] }; }
   private pushed = false;
+  // LOAD (2026-09-13): the GAME has been announced to the phones. Deliberately SEPARATE from
+  // `pushed`, which means "the guns have a head" -- Tony: "weapons have to go with the arm". The
+  // demo has to predict that split or `?mock` shows a console the real server cannot produce.
+  private gameLoaded = false;
+  private gameSent: Record<string, string> = {};   // player_id -> config_id a socket accepted
   private acks: State['lobby']['acks'] = {};
   private start_?: State['start'];
   // A25: the session option table and the per-node log state, mirrored so `?mock` shows the LOG SYNC
@@ -567,6 +572,12 @@ export class MockBackend implements Api {
       // sends it too — without it `?mock` exercised only the fallback path.
       lobby: { ready: this.players.filter(p => p.ready).length, total: this.players.length, pushed: this.pushed,
                acks: clone(this.acks), all_acked: this.allAcked() },
+      // LOAD: the game the phones were told about (no frames, no head) — what the GAMES tab keys its
+      // ACTIVE GAME CONFIG state on, and a different fact from `lobby.pushed` above.
+      game: { loaded: this.gameLoaded, config_id: this.config.config_id,
+              sent: this.players.filter(p => this.gameSent[p.player_id] === this.config.config_id).length,
+              total: this.players.length },
+      sync: this.syncSummary(),
       options: { ...this.options },      // A25
       // A31: the compiler writes this ONCE, so MC and the phones cannot disagree. The demo raises it
       // whenever the game's end state is MC's call (a frag cap, or an objective win_by) — which is the
@@ -689,6 +700,7 @@ export class MockBackend implements Api {
     // than a re-push, so the game number moves for it. The mock kept `pushed` true across the END,
     // and with a re-push now being a distinct action that difference is visible.
     this.pushed = false; this.acks = {};
+    this.gameLoaded = false; this.gameSent = {};   // a finished match is not a loaded game (`_finish`)
     const rows: ScoreRow[] = l.rows.map(r => {
       const d = RECAP.find(x => x[0] === r.display);
       const kills = r.kills || d?.[1] || 0, deaths = r.deaths || d?.[2] || 0;
@@ -942,6 +954,11 @@ export class MockBackend implements Api {
     // `lobby_pushed = False; acks = {}`) — an invalid config cannot arm a gun, so the push is dropped
     // and the errors are what the operator sees. A mock that re-pushes an invalid config demos a
     // "pushed" lobby the real MC would never produce.
+    // SAVE AND LOAD: an ANNOUNCED game is re-announced on every edit, so the briefing on the phones
+    // never describes a game nobody is playing. Independent of the frames re-push below.
+    if (this.gameLoaded && !errors.length) {
+      this.gameSent = Object.fromEntries(this.players.filter(p => p.node_id).map(p => [p.player_id, this.config.config_id]));
+    }
     if (this.pushed && errors.length) { this.pushed = false; this.acks = {}; }
     else if (this.pushed) {
       this.acks = {};
@@ -1083,6 +1100,52 @@ export class MockBackend implements Api {
     if (this.phase === 'kit' && this.players.length && this.players.every(x => x.ready)) this.phase = 'lobby';
     this.emit(); return clone(p);
   }
+  /** LOAD: announce the game, write no gun (`state.py load_game`). `pushed` stays FALSE. */
+  async loadGame() {
+    if (this.phase === 'armed' || this.phase === 'live') {
+      throw new Error('cannot load a game once the match has started — ABORT or RECALL first');
+    }
+    const cfg = this.config.config_id;
+    this.gameLoaded = true;
+    // DELIVERY: only a player whose phone is actually connected is counted. The demo ships one
+    // player whose phone has never arrived, so this is never a full house by accident.
+    this.gameSent = Object.fromEntries(this.players.filter(p => p.node_id).map(p => [p.player_id, cfg]));
+    if (this.phase === 'muster') this.phase = 'build';
+    this.emit();
+    return { ok: true, config_id: cfg, sent: Object.keys(this.gameSent).length, total: this.players.length };
+  }
+
+  /** `state.py sync_summary()` — the four pre-arm facts per player, with honest denominators. */
+  private syncSummary() {
+    const cur = this.config.config_id;
+    const rows = this.players.map(p => ({
+      player_id: p.player_id, display: p.display, gun_id: p.gun_id ?? '', player_num: p.player_num,
+      bound: !!p.node_id,
+      phone_game: this.gameSent[p.player_id] === cur,
+      // the mock has no compiled bundles; a real push is what configures a gun, and its ack is the
+      // proof of it, so both halves are read off the same push the demo models.
+      gun_sent: this.pushed,
+      gun_acked: !!(this.acks[p.player_id]?.ok) && this.acks[p.player_id]?.config_id === cur,
+      // mirrors `state.py _echo_state`: NULL when there is no check to report at all (nothing pushed,
+      // or no ack for THIS config). A demo that reported `not_echoed` there would be inventing a
+      // check that never ran, which is what the console must never render.
+      gun_echo: (!this.pushed || !(this.acks[p.player_id]?.ok && this.acks[p.player_id]?.config_id === cur)
+        ? null
+        : (this.acks[p.player_id]?.gun_echo ? 'proven' : 'not_echoed')) as 'proven' | 'mismatch' | 'not_echoed' | null,
+    })).sort((a, b) => a.player_num - b.player_num);
+    const n = rows.length;
+    const totals = {
+      rostered: n,
+      phone_game: rows.filter(r => r.phone_game).length,
+      gun_sent: rows.filter(r => r.gun_sent).length,
+      gun_acked: rows.filter(r => r.gun_acked).length,
+      gun_echo_proven: rows.filter(r => r.gun_echo === 'proven').length,
+      // a zero-of-zero is never in sync
+      in_sync: n > 0 && rows.every(r => r.gun_sent && r.gun_acked),
+    };
+    return { rows, totals, unconfigured: rows.filter(r => !r.gun_acked).map(r => r.display) };
+  }
+
   async pushLobby(force?: boolean) {
     const rf = this.rosterFault();
     if (rf) throw new Error(rf);          // round-2 B: not a readiness judgement, so `force` does not open it
@@ -1184,6 +1247,7 @@ export class MockBackend implements Api {
   }
   async newSession(keep_roster: boolean) {
     this.phase = 'muster'; this.pushed = false; this.acks = {}; this.start_ = undefined; this.live_ = undefined; this.recap_ = undefined;
+    this.gameLoaded = false; this.gameSent = {};
     this.session_id = uid('sess');
     this.restoredFrom = null;   // F142: FRESH SESSION is the acknowledgment — a restored banner never lingers
     if (!keep_roster) this.players = []; else for (const p of this.players) p.ready = false;

@@ -90,6 +90,27 @@ export function GameSettings({ rows, testid, minCol = 320, style }:
   );
 }
 
+/** How many PHONES were told about the game that is loaded.
+ *
+ *  A different fact from every count beside it, and worded so it cannot be mistaken for one. LOAD
+ *  sends the game and writes no gun (`state.py load_game`), so this says nothing about weapons: the
+ *  guns get their head at the LOBBY push, and `LoadStatus` below is the count for that. It is also
+ *  DELIVERY, not receipt — MC knows a socket accepted the announcement, not that a phone rendered it
+ *  — so the word is SENT. And it never says ALL of anything for a count that is not all of them,
+ *  nor for a roster of nobody (the `ALL GUNS ON THIS CONFIG (0/8)` defect, 2026-09-13). */
+export function GameSentStatus({ sent, total, recent, testid = 'game-sent-status' }:
+  { sent: number; total: number; recent?: boolean; testid?: string }) {
+  const everyone = total > 0 && sent >= total;
+  return (
+    <span role="status" data-testid={testid} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: F.chk(700, 11.5), letterSpacing: '.1em', color: everyone ? T.ok : T.warn }}>
+      {recent && !everyone && <Blink color={T.warn} size={7} />}
+      {total === 0 ? 'NOBODY IS ROSTERED YET — NO PHONE HAS THIS GAME'
+        : everyone ? `GAME SENT TO ALL ${total} PHONE${total === 1 ? '' : 'S'}`
+        : `GAME SENT TO ${sent}/${total} PHONES — THE REST ARE NOT CONNECTED`}
+    </span>
+  );
+}
+
 /** How many guns are confirmed on the config MC is holding RIGHT NOW.
  *
  *  "RE-PUSHING" is a CLAIM that something is actively in flight -- true for the ~1.5s a real gun
