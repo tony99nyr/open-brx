@@ -58,6 +58,7 @@ export class MockBackend implements Api {
   private config: ConfigView = clone(MODES[0].defaults);
   private players: Player[] = [];
   private trying: Record<string, string> = {};
+  private standby: Player[] = [];   // STANDBY: parked players (never counted in kit/lobby/readiness)
   private browsing: Record<string, number> = {};
   private presets: SavedGame[] = [BUILTIN_SNIPER()];
   private activePreset: string | null = null;
@@ -285,6 +286,7 @@ export class MockBackend implements Api {
           ? ['SETUP: NO RESPAWN STATION IS ASSIGNED — respawn is SCANNER, so a downed player can only come back at a station; assign a utility phone as RESPAWN in ITEMS and arm it'] : []),
       ],
       players: clone(this.players), teams: clone(TEAMS),
+      standby: clone(this.standby),
       kit: { kitted, total: this.players.length, trying: { ...this.trying }, browsing: { ...this.browsing } },
       loadout_pool: this.pool(),
       active_preset_id: this.activePreset,
@@ -615,6 +617,8 @@ export class MockBackend implements Api {
     return { ok: errors.length === 0, errors, config: clone(this.config) };
   }
   async addPlayer(p: { display: string; team_id?: string; gun_id?: string; voice?: string }): Promise<Player> {
+    const parked = p.gun_id && this.standby.find(x => (x.gun_id || '').toUpperCase() === p.gun_id!.toUpperCase());
+    if (parked) throw new Error(`gun ${p.gun_id} is on standby with ${parked.display} - PLAY puts them back`);
     const used = new Set(this.players.map(x => x.player_num));
     let n = 1; while (used.has(n)) n++;
     const pl: Player = { player_id: uid('p'), player_num: n, display: p.display.toUpperCase(), team_id: p.team_id ?? null, node_id: null,
@@ -645,6 +649,25 @@ export class MockBackend implements Api {
     this.emit(); return clone(p);
   }
   async deletePlayer(id: string) { this.players = this.players.filter(p => p.player_id !== id); this.emit(); }
+  async standbyPlayer(id: string): Promise<Player> {
+    const p = this.players.find(x => x.player_id === id); if (!p) throw new Error('no such player');
+    if (this.phase === 'armed' || this.phase === 'live') throw new Error('cannot stand a player down after the match has started');   // the pushed LOBBY is fine, as on the real server
+    this.players = this.players.filter(x => x !== p);
+    delete this.trying[id]; delete this.browsing[id]; delete this.acks[id];
+    const parked: Player = { ...p, node_id: null, ready: false };
+    this.standby.push(parked); this.emit(); return clone(parked);
+  }
+  async reinstatePlayer(id: string): Promise<Player> {
+    const p = this.standby.find(x => x.player_id === id); if (!p) throw new Error('no such player on standby');
+    if (this.phase === 'armed' || this.phase === 'live') throw new Error('cannot reinstate a player after the match has started');
+    const holder = p.gun_id && this.players.find(x => x.gun_id === p.gun_id);
+    if (holder) throw new Error(`gun ${p.gun_id} is now assigned to ${holder.display}`);
+    this.standby = this.standby.filter(x => x !== p);
+    const used = new Set(this.players.map(x => x.player_num));
+    let n = p.player_num; if (used.has(n)) { n = 1; while (used.has(n)) n++; }
+    const back: Player = { ...p, player_num: n, ready: false, node_id: p.gun_id ? `node_${GUNS.find(g => g[0] === p.gun_id)?.[1] ?? 'x'}` : null };
+    this.players.push(back); this.emit(); return clone(back);
+  }
   async evictNode(id: string) { this.evicted.add(id); this.emit(); }
 
   // ---------- A25 ----------

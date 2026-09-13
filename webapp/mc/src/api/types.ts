@@ -221,6 +221,10 @@ export interface State {
   config_errors: string[];
   config_warnings?: string[];
   players: Player[];
+  /** STANDBY (2026-09-12): players pulled out of the roster but kept (callsign, team, gun, loadout) so PLAY
+   *  puts them straight back. Absent on a server that predates it — the console then shows no standby
+   *  section and never invents a control for a route that is not there. */
+  standby?: Player[];
   teams: Team[];
   kit: { kitted: number; total: number; trying: Record<string, string>; browsing: Record<string, number> };
   loadout_pool: LoadoutPool;
@@ -320,6 +324,10 @@ export interface Api {
   addPlayer(p: { display: string; team_id?: string; gun_id?: string; voice?: string; voice_slots?: Record<string, string> }): Promise<Player>;
   patchPlayer(id: string, patch: Partial<Player>): Promise<Player>;
   deletePlayer(id: string): Promise<void>;
+  /** STANDBY: `POST /api/players/{id}/standby` — park a rostered player (stand down). Rejects with status 404 on an older server. */
+  standbyPlayer(id: string): Promise<Player>;
+  /** STANDBY: `DELETE /api/players/{id}/standby` — put a parked player back (PLAY). */
+  reinstatePlayer(id: string): Promise<Player>;
   evictNode(node_id: string): Promise<void>;   // DELETE /api/nodes/{id} — operator kick (closes 4000, unbinds, rotates key)
   /** A25: `GET /api/options`. Rejects with status 404 on a server that predates the option table. */
   getOptions(): Promise<{ log_sync?: 'auto' | 'manual' }>;

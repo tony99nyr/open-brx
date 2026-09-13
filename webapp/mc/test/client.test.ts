@@ -49,6 +49,8 @@ describe('the client only calls routes the server actually serves', () => {
     ['setOptions', (a: ReturnType<typeof createHttpApi>) => a.setOptions({ log_sync: 'manual' }), 'PUT', '/api/options'],
     ['pullLog', (a: ReturnType<typeof createHttpApi>) => a.pullLog('node-1'), 'POST', '/api/nodes/node-1/pull_log'],
     ['setPhase', (a: ReturnType<typeof createHttpApi>) => a.setPhase('lobby', true), 'POST', '/api/phase'],
+    ['standbyPlayer', (a: ReturnType<typeof createHttpApi>) => a.standbyPlayer('p1'), 'POST', '/api/players/p1/standby'],
+    ['reinstatePlayer', (a: ReturnType<typeof createHttpApi>) => a.reinstatePlayer('p1'), 'DELETE', '/api/players/p1/standby'],
   ])('%s calls %s %s, and it is a real route', async (_name, call, method, path) => {
     const seen: { url: string; method: string; body?: string }[] = [];
     const real = globalThis.fetch;
@@ -92,3 +94,25 @@ describe('the client only calls routes the server actually serves', () => {
     expect(url.split('/').length).toBe(4);   // '', 'api', 'matches', '..%2Frecap.csv'
   });
 });
+
+// STANDBY (2026-09-12): a 404 from the standby route is version skew ONLY when the ROUTE is missing.
+// The handler's own 404 ("no such player" — the second tap of a double-tap) is the server's words.
+// Review 2026-09-12: the first cut told the operator to RESTART a server that was fine.
+describe('the standby route tells a missing route from a missing player', () => {
+  const with404 = async (body: string, type: string, call: (a: ReturnType<typeof createHttpApi>) => Promise<unknown>) => {
+    const real = globalThis.fetch;
+    globalThis.fetch = (async () => new Response(body, { status: 404, headers: { 'content-type': type } })) as typeof fetch;
+    try { await call(createHttpApi()); return ''; } catch (e) { return (e as Error).message; } finally { globalThis.fetch = real; }
+  };
+  it('a JSON `error` from the handler surfaces as the server\'s own words', async () => {
+    expect(await with404('{"error":"no such player"}', 'application/json', a => a.standbyPlayer('p1'))).toBe('no such player');
+    expect(await with404('{"error":"no such player on standby"}', 'application/json', a => a.reinstatePlayer('p1'))).toBe('no such player on standby');
+  });
+  it('a bare 404 (no route on an older MC) surfaces the skew text, with the restart command', async () => {
+    const msg = await with404('Not Found', 'text/plain', a => a.standbyPlayer('p1'));
+    expect(msg).toMatch(/PREDATES THIS UI/);
+    expect(msg).toMatch(/RESTART IT: python -m brx_mcp\.mc/);
+    expect(await with404('Not Found', 'text/plain', a => a.reinstatePlayer('p1'))).toMatch(/PREDATES THIS UI/);
+  });
+});
+
