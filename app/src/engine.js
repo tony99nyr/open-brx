@@ -248,6 +248,7 @@ export class Engine {
     this.result = null;             // the `result` body for THIS match (contracts §5 `result`)
     this.resultAt = 0;
     this.headEcho = null; this.headWrittenAt = 0; this.awaitingEcho = false;
+    this._headTid = null;           // B1 guard: the $TID the gun's written head actually holds (its COMBAT team), parsed from the last head write — null until a head is written, so an unknown head never raises a false divergence
     this.spawned = false; this.ended = false;
     this.cuesFired = new Set();
     this.tutorial = false; this.tutorialWeapon = null;
@@ -510,6 +511,7 @@ export class Engine {
     // read "THE HOST LOCKED KITS" for ever (review 2026-09-12). A new match retires it too.
     if (this.ended) { this.ended = false; this.endAck = false; this.matchId = null; this.start = null; this.result = null; this.resultAt = 0; this.endedAt = 0; this.kitLocked = false; this.log('new match from MC — leaving the match-complete screen', 'lk'); }
     this.player = player || this.player; this.team = team || this.team; if (roster) this.roster = roster;
+    if (team) this._checkTeamVsHead();   // B1: a mid-match re-team the head never followed must not be silent
     if (this.phase === 'connected' || this.phase === 'idle') { if (this.bleUp) this._set('kitted'); }
     this._changed();
     if (this.browsing && !this.canPick('primary') && !this.canPick('secondary') && !this.canPick('perk')) this.browse(false);   // A10: rules locked every slot while the browser was open
@@ -2587,7 +2589,27 @@ export class Engine {
   /** Every head write goes through here: the head starts with $CLEAR, so its $LCD,0,0,… echo must read as a
    *  reset (prev=0 per slot), never as a magazine dump into `shots`. */
   /** Every head write starts with $CLEAR → the gun is back on weapon slot 0 (so $LCD, which carries no slot, books to slot 0). */
-  _writeHead(label) { this._prevAmmo = {}; this._prevReserve = {}; this.activeSlot = 0; this._write(this.frames.head, label); }
+  _writeHead(label) {
+    this._prevAmmo = {}; this._prevReserve = {}; this.activeSlot = 0;
+    // B1 guard: the gun's COMBAT team is whatever `$TID` this head carries, and only a config re-push
+    // can change it. Remember it so `_assign` can catch a roster re-team that the head never followed.
+    const tidFrame = (this.frames.head || []).find(f => typeof f === 'string' && f.startsWith('$TID,'));
+    this._headTid = tidFrame ? Number(tidFrame.split(',')[1]) : this._headTid;
+    this._write(this.frames.head, label);
+  }
+
+  /** B1 belt-and-braces (2026-09-12): the gun resolves combat on the `$TID` in its written head; the
+   *  roster team rides in `assign`. MC now refuses a team change once armed/live and re-pushes a fresh
+   *  head in the lobby, so these never disagree — but if one ever does (an older/buggy MC, a lost
+   *  config), the node must SAY SO rather than play a match where the beacon shows one team and the gun
+   *  shoots for another. Detection only: the node cannot rewrite a locked head itself. */
+  _checkTeamVsHead() {
+    if (this.phase !== 'armed' && this.phase !== 'live') return;   // a lobby re-team arrives WITH its config
+    if (this._headTid == null || !this.team || this.team.tid == null) return;
+    if (Number(this.team.tid) === this._headTid) return;
+    this.log(`WARNING: roster team tid ${this.team.tid} but the gun head holds $TID ${this._headTid} — combat resolves on the gun's team until a config re-push (RECALL to fix)`, 'le');
+    this.moment = { kind: 'team_tid_mismatch', at: this.now(), teamTid: Number(this.team.tid), headTid: this._headTid };
+  }
   _resyncDone(why) { this.log(`resync: ${why}`, 'lk'); this.resync = null; this._changed(); }
 
   // ---------- app lifecycle (§3.11) ----------

@@ -915,11 +915,23 @@ class Session:
     def patch_player(self, pid: str, **fields) -> Player:
         p = self.players[pid]
         if self.phase in ("armed", "live"):
-            # Only the fields that would be COMPILED to the gun are refused. A mid-match re-team, a ready
-            # flag and a gamertag ride in `assign` (roster/display) and never touch the head, so they stay.
+            # Only the fields that would be COMPILED to the gun are refused. A ready flag and a gamertag
+            # ride in `assign` (roster/display) and never touch the head, so they stay.
             locked = [k for k in _KIT_FIELDS if k in fields and fields[k] is not None]
             if locked:
                 raise ConflictError(_KIT_LOCKED_HOST.format(phase=self.phase.upper(), what="/".join(locked)))
+            # B1 (2026-09-12): a TEAM change is NOT a display-only `assign`. The gun's $TID lives in the
+            # config head (compile.py), and A30 locks the head once the match starts -- so a mid-match
+            # re-team used to move only the beacon/LED/scorer while combat kept resolving on the OLD team
+            # (a same-team shot does no damage). MC must never let the roster's team and the gun's $TID
+            # silently disagree, so this is refused LOUDLY. The scorer's own re-team (below) is reached
+            # only in pre-start or recap now, where the head is free to be rewritten.
+            if "team_id" in fields and self._check_team(fields["team_id"]) != p.get("team_id"):
+                raise ConflictError(
+                    f"the match is {self.phase.upper()}: changing a player's TEAM now moves the beacon, "
+                    "LEDs and scoring but NOT the gun's $TID -- combat would still resolve on the old "
+                    "team and same-team shots would do no damage. RECALL to return the field to KIT, "
+                    "change teams there, and re-push")
         old_voice, old_display, old_slots = p.get("voice"), p.get("display"), dict(p.get("voice_slots") or {})
         if "player_num" in fields and fields["player_num"] is not None:
             if self.lobby_pushed:
@@ -1194,13 +1206,46 @@ class Session:
                 p["team_id"] = self.teams[0]["team_id"] if self.teams else None
         if self.phase == "muster":
             self.phase = "build"
-        if self.lobby_pushed:
-            self.lobby_pushed = False
-            self.acks = {}
+        repush = self.lobby_pushed
         self.apply_policy()                                  # §3.3: every loadout obeys the (new) ruleset
         res = self._validate()
+        if repush:
+            # B1/B3 (2026-09-12): editing a LOADED game in KIT/LOBBY used to silently drop the push here
+            # (`lobby_pushed=False`, acks cleared) and NEVER re-compile -- every gun kept the STALE head
+            # (old $TID/mode/health/weapons) with nothing on screen saying so. A TDM whose teams, mode or
+            # health the operator tweaked then played on the PREVIOUS frames: the guns' effective $TID
+            # never moved, so combat resolved them as one team -- "they can't shoot each other" (the
+            # field P0 this traces). Re-push instead, as long as the new config is VALID (an invalid one
+            # cannot arm a gun -- fall back to the old drop and let the errors show). Never armed/live
+            # here: `set_config` refuses a config change once the match has started (above).
+            if res["ok"]:
+                self._repush_lobby_config()
+            else:
+                self.lobby_pushed = False
+                self.acks = {}
         self._changed()
         return {"ok": res["ok"], "errors": res["errors"], "config": self.config}
+
+    def _repush_lobby_config(self) -> None:
+        """B1/B3 (2026-09-12): a config / team / loadout edit made while the lobby is ALREADY pushed, in
+        KIT or LOBBY, re-compiles and re-pushes every bound node's frames so no gun is left holding a
+        STALE head. `lobby_pushed` stays TRUE -- the lobby is still the source of truth -- and `acks`
+        reset to {} then re-collect as each node echoes the new head, so the operator's "pushed X/Y"
+        counter drops to 0 and climbs back rather than the push vanishing silently.
+
+        `_pinned_hit_plan` is cleared first so the shared hit-audio plan re-derives ONCE across the whole
+        roster (exactly as a full `push_config` does): every gun must be recompiled against the same
+        plan, or a rekeyed cell on one gun has no row on another and those hits drop in silence (A17).
+
+        NOT reachable in armed/live: `set_config` refuses a config change there and `patch_player`
+        refuses a team change there (both name RECALL), so a gun in play is never re-armed with the
+        disarmed head behind the operator's back (`_refuse_push_in_play` / `_push_config_to`)."""
+        self._pinned_hit_plan = None
+        self.acks = {}
+        for p in self.players.values():
+            if p.get("node_id"):
+                self._push_config_to(p)
+        self.lobby_pushed = True
 
     def sanitize_config(self, raw: dict) -> GameConfig:
         """A10 §8: the PUT /api/config validator as a pure function — a stored preset config is rebuilt from the
