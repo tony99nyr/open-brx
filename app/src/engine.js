@@ -216,6 +216,13 @@ export class Engine {
     this.start = null;              // {match_id, go_live_t, seq, countdown_s}
     this.matchId = null;
     this.hp = 0; this.armor = 0; this.shield = 0; this.ammo = 0; this.reserve = null; this.mag = null;
+    // R2-3 (A37): WHERE the pool above came from, reported on every heartbeat. `_spawn`/`_revive`
+    // fill hp/armor from `config.health` -- this phone's MODEL of the pool -- and the GUN's own
+    // numbers arrive afterwards on `$LCD`/`$HP`. MC compares the heartbeat against the `$PSET` it
+    // pushed, which bakes `loadout.overrides.max_hp/max_armor` and the body_armor perk, so the two
+    // legitimately disagree until the gun has spoken: a player overridden DOWN to 30 hp under a 45 hp
+    // config reported 45 and MC read it as a gun running an older head. Per LIFE, not per match.
+    this.poolSrc = 'model';
     this.alive = false; this.deaths = 0; this.shots = 0; this.battery = null; this.fw = null;
     this.carrying = null;   // A11.6: flag team whose colour the headset is blinking while this player carries it (kept for back-compat reads; the source of truth is `_activeRole` once `headset.role` exists)
     this._activeRole = null;        // A16 §3.3: {name, tid} — the ONE headset role currently held (carrier|infected|vip|beacon|extracted), re-asserted after every hit, cleared on death
@@ -1389,6 +1396,7 @@ export class Engine {
     // Spawn shield is ALWAYS 0 on hardware -- $PSET t5 is a capacity filled by an fn-11
     // grant, never a starting pool (bench 2026-08-27).
     this.spawned = true; this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.killedBy = null; this.deadAt = 0; this.reloading = null; this._reloadOutcome = null; this.held = {};
+    this.poolSrc = 'model';        // R2-3: those two numbers are config.health, not the gun's answer
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
     this._spawnAt = this.now(); this._armedThisLife = false;   // B5: a settle window starts here — see `_deathPending`
     this._gunTake();   // A11.7
@@ -1874,6 +1882,7 @@ export class Engine {
     this.hurtFired = false;
     this._prevAmmo = {}; this._prevReserve = {}; this.activeSlot = 0;   // both maps: a stun before the first shot of a NEW life must snapshot this life's reserve, not the last one's (polish review 2026-09-11)   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null;
+    this.poolSrc = 'model';        // R2-3: a fresh life, and again from config.health until the gun speaks
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
     this._spawnAt = this.now(); this._armedThisLife = false;   // B5: a settle window starts here — see `_deathPending`
     this._gunTake();   // A11.7
@@ -2114,6 +2123,7 @@ export class Engine {
       case 'HP': this._onHp(+t[1] || 0, +t[2] || 0, t[3] !== undefined && t[3] !== '' ? (+t[3] || 0) : this.shield); break;
       case 'LCD': {
         this.hp = +t[1] || 0; this.armor = +t[2] || 0;
+        this.poolSrc = 'gun';            // R2-3: the pool in the next heartbeat is the GUN's, not our model's
         if (this.hp > 0) this._armedThisLife = true;   // B5: the gun has now confirmed a life on the wire -- the settle window is over
         // NOTE: do NOT write this.shield from $LCD token 3. Unlike $HP, $LCD's tokens 3-4 are
         // UNDOCUMENTED (docs/manual/dev.md, protocol/brx-protocol.md "semantics TBD") and
@@ -2511,6 +2521,7 @@ export class Engine {
   }
 
   _onHp(hp, armor, shield) {
+    this.poolSrc = 'gun';                     // R2-3: same as $LCD -- this pool is the gun's own word
     if (hp > 0) this._armedThisLife = true;   // B5: the gun has now confirmed a life on the wire -- the settle window is over
     // Damage drains shield -> armor -> HP (bench 2026-08-27). Omitting shield from the
     // total made every shield-absorbed hit compute dmg === 0, which the guard below then
@@ -2863,6 +2874,8 @@ export class Engine {
     const now = this.now();
     return {
       hp: this.hp, armor: this.armor, shield: this.shield, ammo: this.ammo, alive: this.alive, shots: this.shots,
+      // A37/R2-3: which of the two the hp/armor above are. MC's pool proof judges `"gun"` ONLY.
+      pool_src: this.poolSrc,
       ...(this.phase === 'live' && !this.alive && this.deadAt ? { deadline_s: Math.max(0, Math.ceil((this.respawnDelayMs - (now - this.deadAt)) / 1000)) } : {}),
       ...(this.battery != null ? { battery: this.battery } : {}), ...(this.fw ? { fw: this.fw } : {}),
       arm_state: this.phase, ...(this.phase === 'armed' && this.goLiveT ? { t_minus_ms: Math.max(0, this.goLiveT - now) } : {}),

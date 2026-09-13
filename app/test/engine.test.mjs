@@ -4537,3 +4537,32 @@ test('A36: every status heartbeat names the config this phone is holding', () =>
   h.config_();
   assert.equal(h.eng.statusBody().config_id, h.config.config_id);
 });
+
+// R2-3 (polish loop iteration 2, 2026-09-13) — WHERE THE POOL IN A HEARTBEAT CAME FROM.
+//
+// `_spawn` fills hp/armor from `config.health` (the phone's MODEL of the pool) and the gun's own
+// numbers arrive afterwards on `$LCD`/`$HP`. MC's A36 pool check compares the heartbeat against the
+// `$PSET` it pushed, which bakes `loadout.overrides.max_hp/max_armor` and the body_armor perk — so a
+// player overridden DOWN reported the model's bigger number until the first gun frame landed, and MC
+// read that as "this gun is on an older head". The heartbeat now says which of the two it is holding,
+// and MC judges only the gun's.
+test('R2-3: the status body says whether its pool came from the GUN or from this phone\'s model', () => {
+  const h = harness().kit().config_().echo().start(0);
+  h.adv(10); h.eng.tick();                       // T-0: spawn writes hp/armor from config.health
+  assert.equal(h.eng.phase, 'live');
+  assert.equal(h.eng.statusBody().pool_src, 'model', 'nothing off the gun has been applied this life');
+  h.frame('$LCD,30,0,0,0,0,0,*');                // the gun's own pool, smaller than the model's 45/70
+  assert.equal(h.eng.statusBody().pool_src, 'gun');
+  assert.equal(h.eng.hp, 30);
+});
+
+test('R2-3: $HP is the gun speaking too, and a NEW life goes back to the model', () => {
+  const h = harness().kit().config_().echo().start(0);
+  h.adv(10); h.eng.tick();
+  h.frame('$HP,40,70,0,*');
+  assert.equal(h.eng.statusBody().pool_src, 'gun');
+  h.frame('$HP,0,0,0,*');                        // down
+  h.adv(9000); h.eng.tick();                     // auto-respawn
+  assert.equal(h.eng.alive, true, 'control: a new life started');
+  assert.equal(h.eng.statusBody().pool_src, 'model', 'the claim is per LIFE, not per match');
+});

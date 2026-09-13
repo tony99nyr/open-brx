@@ -325,6 +325,10 @@ class DemoDriver:
                    "armed": "armed", "live": "live", "recap": "kitted"}[phase]
             pool = nd.get("pool") or (45, 70)
             body = {"node_id": nd["node_id"], "player_id": nd["player_id"], "hp": pool[0] if nd["alive"] else 0, "armor": pool[1] if nd["alive"] else 0,
+                    # A37/R2-3: this fake stands in for a gun that HAS answered -- `nd["pool"]` is the
+                    # pool the demo wants MC to see, not a phone-side model of it. An omitted
+                    # `pool_src` would make `_check_pool` silent and the demo's stale-pool node moot.
+                    "pool_src": "gun",
                     **({"config_id": nd["config_id"]} if nd.get("config_id") else {}),
                     "ammo": 36, "alive": nd["alive"], "shots": nd["shots"], "battery": 60 + (hash(nd["node_id"]) % 40),
                     "fw": "v4.32", "arm_state": arm, "synced": True, "match_id": self.s.start_info["match_id"] if self.s.start_info else None,

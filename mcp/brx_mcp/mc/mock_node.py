@@ -208,6 +208,7 @@ class MockNode:
             "shots": self.shots, "battery": self.battery, "fw": self.gun_fw,
             "arm_state": self.arm_state, "synced": self.synced, "dropped": 0,
             "preflight": dict(self.preflight),
+            "pool_src": "gun",                                               # A37/R2-3: this node's pool IS the gun's word
             **({"config_id": self.config_id} if self.config_id else {}),     # A36
         }
         if self.arm_state == "armed" and self.go_live_t:

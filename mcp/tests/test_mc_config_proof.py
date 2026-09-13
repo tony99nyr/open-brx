@@ -17,7 +17,7 @@ Run: python3 run_tests.py mc_config_proof
 """
 from brx_mcp.mc.compile import Compiler
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
-from brx_mcp.mc.state import Session
+from brx_mcp.mc.state import PUSH_CURES, Session
 from brx_mcp.mc.types import POOL_CHECK_SETTLE_MS
 
 T0 = 5_000_000
@@ -192,9 +192,12 @@ def _go_live(s, net, clock, ps, runway_s=10):
     return info
 
 
-def _live_status(net, clock, i, p, hp, armor, mid, alive=True):
+def _live_status(net, clock, i, p, hp, armor, mid, alive=True, pool_src="gun"):
+    # A37/R2-3: the default is `"gun"` because that is what these tests are ABOUT -- the pool the gun
+    # itself reported. `_live_status_src` (section 12) is the one that varies it.
     net.simulate_status(f"node{i}", {"player_id": p["player_id"], "hp": hp, "armor": armor, "alive": alive,
                                      "shots": 0, "synced": True, "arm_state": "live", "match_id": mid,
+                                     "pool_src": pool_src,
                                      "preflight": {"gun_linked": True, "ssid_ok": True, "mc_reachable": True}},
                         clock["t"])
 
@@ -211,13 +214,13 @@ def test_first_settled_pool_above_the_pushed_pset_is_the_fault():
     _live_status(net, clock, 1, ps[1], 45, 70, mid)
     clock["t"] += POOL_CHECK_SETTLE_MS + 100
     _live_status(net, clock, 0, ps[0], 45, 70, mid)      # exactly the pushed $PSET
-    _live_status(net, clock, 1, ps[1], 45, 115, mid)     # a PREVIOUS game's armour
+    _live_status(net, clock, 1, ps[1], 115, 70, mid)     # a PREVIOUS game's HEALTH pool
 
     r0, r1 = row(s, ps[0]["player_id"]), row(s, ps[1]["player_id"])
     assert not any("GUN POOL" in b for b in r0["blockers"]), r0["blockers"]
     assert r1["status"] == "red"
     fault = next(b for b in r1["blockers"] if "GUN POOL" in b)
-    assert "45/115" in fault and "45/70" in fault, fault
+    assert "115/70" in fault and "45/70" in fault, fault
     assert any("GUN POOL" in (e.get("text") or "") for e in s.feed), s.feed
 
 
@@ -231,7 +234,7 @@ def test_the_settle_window_and_a_damaged_pool_both_suppress_the_pool_check():
     _live_status(net, clock, 0, ps[0], 45, 70, mid)
     _live_status(net, clock, 1, ps[1], 45, 70, mid)
     clock["t"] += POOL_CHECK_SETTLE_MS - 500
-    _live_status(net, clock, 0, ps[0], 45, 115, mid)     # still settling: no claim
+    _live_status(net, clock, 0, ps[0], 115, 70, mid)     # still settling: no claim
     assert not any("GUN POOL" in b for b in row(s, ps[0]["player_id"])["blockers"])
 
     net.simulate_event("node1", {"type": "hit_taken", "t": clock["t"], "match_id": mid,
@@ -281,7 +284,7 @@ def test_next_match_clears_every_proof_and_demands_a_fresh_full_push():
     info = _go_live(s, net, clock, ps)
     _live_status(net, clock, 0, ps[0], 45, 70, info["match_id"])
     clock["t"] += POOL_CHECK_SETTLE_MS + 100
-    _live_status(net, clock, 0, ps[0], 45, 115, info["match_id"])     # earn a pool fault to clear
+    _live_status(net, clock, 0, ps[0], 115, 70, info["match_id"])     # earn a pool fault to clear
     assert s._pool_faults, "control: there is something to reset"
     assert s._pinned_hit_plan is not None, "control: the match really did pin a hit-audio plan"
     clock["t"] = info["go_live_t"] + 60_000 + 6000
@@ -392,10 +395,10 @@ def test_a_pool_ABOVE_what_the_head_grants_is_the_fault_and_says_so_as_a_suspici
     mid = info["match_id"]
     _live_status(net, clock, 1, ps[1], 45, 70, mid)
     clock["t"] += POOL_CHECK_SETTLE_MS + 100
-    _live_status(net, clock, 1, ps[1], 45, 120, mid)            # 120 armour on a head that grants 70
+    _live_status(net, clock, 1, ps[1], 120, 70, mid)            # 120 hp on a head that grants 45
     r = row(s, ps[1]["player_id"])
     fault = next((b for b in r["blockers"] if "GUN POOL" in b), None)
-    assert fault and "45/120" in fault and "45/70" in fault, r["blockers"]
+    assert fault and "120/70" in fault and "45/70" in fault, r["blockers"]
     # worded as a SUSPICION, not a verdict: this is one ~2 s sample against one compiled frame
     assert "LIKELY" in fault and "RE-PUSH" in fault, fault
     assert "THE GUN IS ON ANOTHER HEAD" not in fault, fault
@@ -408,7 +411,7 @@ def test_the_pool_fault_clears_on_the_re_push_and_re_ack():
     mid = info["match_id"]
     _live_status(net, clock, 1, ps[1], 45, 70, mid)
     clock["t"] += POOL_CHECK_SETTLE_MS + 100
-    _live_status(net, clock, 1, ps[1], 45, 120, mid)
+    _live_status(net, clock, 1, ps[1], 120, 70, mid)
     assert s._pool_faults, "control: there is a fault to clear"
     s.control("end", confirm=True)                              # back out of play so a push is allowed
     s.push_config(force=True)
@@ -461,15 +464,12 @@ def test_start_still_refuses_a_stale_ack_that_the_push_gate_now_lets_through():
     assert s.phase == "lobby"
 
 
-def test_a_red_that_a_push_does_NOT_cure_still_refuses_the_unforced_push():
-    """The control. Opening the gate for the A36 three must not open it for anything else."""
-    s, net, clock, ps = mk(3)
-    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)   # ps[2] never brings a phone
-    try:
-        s.push_config()
-        raise AssertionError("push_config accepted a roster with a phone that has never arrived")
-    except ValueError as e:
-        assert "readiness has reds" in str(e) or "force" in str(e), str(e)
+# The control for this -- "opening the gate for the A36 three must not open it for anything else" --
+# used to live here and was VACUOUS: it drove a `waiting` row, which `_blocks_push` refuses on its
+# own branch, so it passed with the red branch deleted entirely (proven by deleting it, R2-9). It is
+# replaced by a pair in section 13: `test_a_red_carrying_a_blocker_no_push_can_cure_...` (a real RED,
+# and it fails when the red branch goes) and `test_a_waiting_row_still_refuses_...` (the waiting
+# case, kept, and now also pinning the refusal's wording).
 
 
 def test_a_stale_ack_that_also_changed_weapon_is_ONE_red_not_two():
@@ -494,7 +494,7 @@ def test_standing_a_player_down_forgets_the_pool_fault_they_earned():
     info = _go_live(s, net, clock, ps)
     _live_status(net, clock, 1, ps[1], 45, 70, info["match_id"])
     clock["t"] += POOL_CHECK_SETTLE_MS + 100
-    _live_status(net, clock, 1, ps[1], 45, 120, info["match_id"])
+    _live_status(net, clock, 1, ps[1], 120, 70, info["match_id"])
     assert ps[1]["player_id"] in s._pool_faults, "control: the fault was earned"
     s.control("recall", confirm=True)                  # back to KIT with the roster intact
     s.stand_down(ps[1]["player_id"])
@@ -579,3 +579,293 @@ def test_the_three_proofs_share_one_frame_of_reference():
     ack(net, s, 0, ps[0]["player_id"], echo=f"$ALCD,{mag - 1},100,0,{reserve},0,*")
     fault = next(b for b in row(s, ps[0]["player_id"])["blockers"] if "GUN ECHO" in b)
     assert fault.startswith("GUN ECHO ≠ CONFIG (WEAPON"), fault
+
+
+# ================ ROUND 2 (polish loop iteration 2, 2026-09-13) ============================= #
+# Iteration 1 left A36's three proofs honest about WHEN they fire and silent about what to DO
+# about them. Iteration 2 is about the CURE: the re-push is now a first-class action with its own
+# code path, the START gate refuses everything the board calls red for a reason START cares about,
+# and the pool claim is graded by what actually supports it (see section 12).
+
+
+# --------------------- 10. the re-push is the same action, whoever asks for it -------------- #
+# R2-1. `push_config` on an ALREADY-PUSHED lobby is a RE-PUSH: the same config, the same game
+# number, a fresh head to every gun and every judgement made about the old head dropped. It had its
+# own inline body -- it bumped the game number and re-derived "pushed" from scratch -- while
+# `_repush_lobby_config` (the one `set_config` calls) did the careful version. Two bodies for one
+# action is how the console came to have a button for only one of them.
+
+def _pushed_and_acked():
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    s.push_config()
+    for i, p in enumerate(ps):
+        ack(net, s, i, p["player_id"])
+    return s, net, clock, ps
+
+
+def test_a_re_push_is_the_same_head_again_not_a_new_game():
+    """The operator's second PUSH is a RE-PUSH. It says so, it keeps the `config_id` the board is
+    showing, and it does not renumber the game the stations are armed for."""
+    s, net, clock, ps = _pushed_and_acked()
+    cid, gno = s.config["config_id"], s.game_no
+    res = s.push_config()
+    assert res.get("repushed") is True, res
+    assert s.config["config_id"] == cid, "a re-push is the SAME config, not a new one"
+    assert s.game_no == gno, "no gun changed game; the stations must not be re-armed for a new number"
+    assert s.acks == {}, "every ack describes the head that was just replaced"
+    assert s.lobby_pushed and s.phase == "lobby"
+
+
+def test_a_first_push_is_not_reported_as_a_re_push():
+    """The control for the flag the console reads."""
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    res = s.push_config()
+    assert not res.get("repushed"), res
+    assert res["ok"] and s.lobby_pushed
+
+
+def test_an_unforced_re_push_clears_a_stale_ack_an_echo_mismatch_and_a_pool_fault():
+    """All three A36 reds, on three guns, cured by the one action all three of them name."""
+    s, net, clock, ps = mk(3, compiler=Compiler())
+    for i in range(3):
+        online(s, net, clock, ps[i], i)
+    s.push_config()
+    old_id = s.config["config_id"]
+    s.set_config({"time_limit_s": 120})                  # A35 re-push: acks clear, then these land
+    ack(net, s, 0, ps[0]["player_id"], config_id=old_id)                  # stale
+    ack(net, s, 1, ps[1]["player_id"], echo="$ALCD,1,100,0,2,0,*")        # echo mismatch
+    ack(net, s, 2, ps[2]["player_id"])
+    s._pool_faults[ps[2]["player_id"]] = "GUN POOL ≠ CONFIG (REPORTS 60/70, THIS CONFIG GRANTS 45/70, hp/armor) — LIKELY ON AN OLDER HEAD; RE-PUSH BEFORE THE NEXT GAME"
+    lines = [b for r in s.readiness()["board"] for b in r["blockers"]]
+    assert sum(b.startswith(PUSH_CURES) for b in lines) == 3, lines
+
+    res = s.push_config()                                 # UNFORCED, and it is a re-push
+    assert res.get("repushed") is True
+    assert s._pool_faults == {}, "the pool judgement was made against a head that no longer exists"
+    for i in range(3):
+        ack(net, s, i, ps[i]["player_id"])
+    assert s.all_acked()
+    assert not any(r["blockers"] for r in s.readiness()["board"]), s.readiness()["board"]
+
+
+# ------------------------- 11. START refuses every proof the board reds ---------------------- #
+# R2-5. `state.py`'s own docstring said "START still refuses on every one of them" and it refused on
+# exactly one: an ECHO MISMATCH satisfies `_ack_is_current`, so `all_acked()` was true and the
+# whistle blew on a gun that had just told us it is holding another weapon.
+
+def test_start_refuses_an_echo_MISMATCH_and_force_does_not_open_it():
+    s, net, clock, ps = mk(1, compiler=Compiler())
+    online(s, net, clock, ps[0], 0)
+    s.push_config()
+    ack(net, s, 0, ps[0]["player_id"], echo="$ALCD,1,100,0,2,0,*")
+    assert s.all_acked(), "control: the ack IS current -- this is why the old gate let it through"
+    for force in (False, True):
+        try:
+            s.start(runway_s=10, force=force)
+            raise AssertionError(f"start() accepted an echo mismatch (force={force})")
+        except ValueError as e:
+            assert "RE-PUSH CONFIG" in str(e).upper(), str(e)
+    assert s.phase == "lobby"
+
+
+def test_a_gun_that_simply_did_not_echo_never_refuses_the_start():
+    """`not_echoed` is the ORDINARY field answer on v4.32 (A37). It is the absence of a proof, and
+    an absence must never hold the whistle."""
+    s, net, clock, ps = mk(1, compiler=Compiler())
+    online(s, net, clock, ps[0], 0)
+    s.push_config()
+    ack(net, s, 0, ps[0]["player_id"], echo="$LCD,0,0,0,0,0,0,*")
+    assert s._echo_state(ps[0]["player_id"]) == "not_echoed"
+    s.start(runway_s=10)
+    assert s.phase == "armed"
+
+
+# ------------------- 12. what the pool can actually prove, and what it can only suggest ------ #
+# R2-3: the claim must come FROM THE GUN. `engine.js` sets hp/armor from `config.health` at spawn
+# and the gun's real pool arrives later on `$LCD`/`$HP`; `$PSET` bakes the per-player override and
+# the body_armor perk. A player overridden DOWN to 30 hp under a 45 hp config reported 45 until the
+# first `$LCD` landed -- which reads as 45 > 30, a false red, every life.
+# R2-4/R2-6: and EXCEEDS-only is blind in one direction and over-confident in the other.
+
+def _live_status_src(net, clock, i, p, hp, armor, mid, src="gun", alive=True):
+    body = {"player_id": p["player_id"], "hp": hp, "armor": armor, "alive": alive, "shots": 0,
+            "synced": True, "arm_state": "live", "match_id": mid,
+            "preflight": {"gun_linked": True, "ssid_ok": True, "mc_reachable": True}}
+    if src is not None:
+        body["pool_src"] = src
+    net.simulate_status(f"node{i}", body, clock["t"])
+
+
+def _overridden_roster(max_hp=30, max_armor=0):
+    """One player whose `$PSET` grants LESS than `config.health` does -- the shape R2-3 is about."""
+    s, net, clock, ps = mk(2, compiler=Compiler())
+    s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "assault_rifle"}],
+                                                "overrides": {"max_hp": max_hp, "max_armor": max_armor}})
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    return s, net, clock, ps
+
+
+def test_a_model_sourced_pool_makes_no_claim_and_the_check_keeps_waiting():
+    """R2-3. The phone's own `config.health` model is not evidence about the GUN."""
+    s, net, clock, ps = _overridden_roster()
+    info = _go_live(s, net, clock, ps)
+    mid = info["match_id"]
+    import brx_mcp.mc.frames as _f
+    assert _f.head_pool(s.bundles[ps[0]["player_id"]]["head"]) == (30, 0), "control: the head grants 30/0"
+    _live_status_src(net, clock, 0, ps[0], 45, 0, mid, src="model")
+    clock["t"] += POOL_CHECK_SETTLE_MS + 100
+    _live_status_src(net, clock, 0, ps[0], 45, 0, mid, src="model")      # 45 > 30, but the GUN never said so
+    r = row(s, ps[0]["player_id"])
+    assert not any("GUN POOL" in b for b in r["blockers"]), r["blockers"]
+    assert not any("GUN POOL" in (e.get("text") or "") for e in s.feed), s.feed
+    # ...and the check is still WAITING: the first gun-sourced frame of the same life is judged.
+    clock["t"] += 500
+    _live_status_src(net, clock, 0, ps[0], 45, 0, mid, src="gun")
+    r = row(s, ps[0]["player_id"])
+    assert any("GUN POOL" in b for b in r["blockers"]), r["blockers"]
+
+
+def test_an_app_that_does_not_say_where_its_pool_came_from_makes_no_claim():
+    """The A36 rule for every optional field on the wire: silence is not a claim."""
+    s, net, clock, ps = _overridden_roster()
+    info = _go_live(s, net, clock, ps)
+    mid = info["match_id"]
+    _live_status_src(net, clock, 0, ps[0], 45, 0, mid, src=None)
+    clock["t"] += POOL_CHECK_SETTLE_MS + 100
+    _live_status_src(net, clock, 0, ps[0], 45, 0, mid, src=None)
+    assert not any("GUN POOL" in b for b in row(s, ps[0]["player_id"])["blockers"])
+
+
+def test_only_hp_ABOVE_the_compiled_head_is_red_armour_above_it_is_an_amber_advisory():
+    """R2-6. `compile._SIR_GRANT` (fn 9-22) and `engine.js armour_up` can ADD armour mid-life, and
+    the replayed store shows a body-armor node's first life going 70 -> 120 as the baked perk
+    arrives. Armour above the ceiling is therefore a MECHANISM, not proof of a stale head."""
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    info = _go_live(s, net, clock, ps)
+    mid = info["match_id"]
+    _live_status_src(net, clock, 1, ps[1], 45, 70, mid)
+    clock["t"] += POOL_CHECK_SETTLE_MS + 100
+    _live_status_src(net, clock, 1, ps[1], 45, 200, mid)       # 200 armour on a head that grants 70
+    r = row(s, ps[1]["player_id"])
+    assert not any("GUN POOL ≠ CONFIG" in b for b in r["blockers"]), r["blockers"]
+    amber = next((a for a in r["ambers"] if "GUN ARMOR ABOVE CONFIG" in a), None)
+    assert amber and "45/200" in amber and "45/70" in amber, r["ambers"]
+    assert "RE-PUSH BEFORE THE NEXT GAME" in amber, amber
+
+    _live_status_src(net, clock, 0, ps[0], 45, 70, mid)
+    clock["t"] += POOL_CHECK_SETTLE_MS + 100
+    _live_status_src(net, clock, 0, ps[0], 60, 70, mid)        # 60 hp on a head that grants 45
+    r0 = row(s, ps[0]["player_id"])
+    fault = next((b for b in r0["blockers"] if "GUN POOL ≠ CONFIG" in b), None)
+    assert fault and "60/70" in fault and "45/70" in fault, r0["blockers"]
+
+
+def test_a_pool_BELOW_the_config_on_a_clean_first_life_is_an_amber_advisory():
+    """R2-4. EXCEEDS-only is blind to the SMALLER stale pool: match 1 grants 45/0, match 2 grants
+    100/70, and a gun still on match 1's head reports 45 <= 100 in silence forever."""
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    info = _go_live(s, net, clock, ps)
+    mid = info["match_id"]
+    _live_status_src(net, clock, 1, ps[1], 45, 70, mid)
+    clock["t"] += POOL_CHECK_SETTLE_MS + 100
+    _live_status_src(net, clock, 1, ps[1], 20, 0, mid)         # first life, never hit, 20/0 of 45/70
+    r = row(s, ps[1]["player_id"])
+    assert not any("GUN POOL" in b for b in r["blockers"]), "an advisory NEVER gates"
+    amber = next((a for a in r["ambers"] if "GUN POOL BELOW CONFIG" in a), None)
+    assert amber and "20/0" in amber and "45/70" in amber, r["ambers"]
+    assert "RE-PUSH BEFORE THE NEXT GAME" in amber, amber
+
+
+def test_the_below_config_advisory_makes_no_claim_after_a_hit_or_on_a_later_life():
+    """The two ways a smaller pool has an ordinary explanation: damage this life, or any life after
+    the first (there is no life after the first that has not been played)."""
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    info = _go_live(s, net, clock, ps)
+    mid = info["match_id"]
+    # (a) a hit this life
+    _live_status_src(net, clock, 1, ps[1], 45, 70, mid)
+    net.simulate_event("node1", {"type": "hit_taken", "t": clock["t"], "match_id": mid,
+                                 "player_id": ps[1]["player_id"], "shooter_num": ps[0]["player_num"],
+                                 "shooter_team": 1, "dmg": 9}, clock["t"], seq=1)
+    clock["t"] += POOL_CHECK_SETTLE_MS + 100
+    _live_status_src(net, clock, 1, ps[1], 45, 61, mid)
+    assert not any("BELOW CONFIG" in a for a in row(s, ps[1]["player_id"])["ambers"])
+    # (b) a LATER life, clean
+    clock["t"] += 1000
+    _live_status_src(net, clock, 1, ps[1], 0, 0, mid, alive=False)
+    net.simulate_event("node1", {"type": "respawn", "t": clock["t"], "match_id": mid,
+                                 "player_id": ps[1]["player_id"]}, clock["t"], seq=2)
+    clock["t"] += 500
+    _live_status_src(net, clock, 1, ps[1], 30, 0, mid)
+    clock["t"] += POOL_CHECK_SETTLE_MS + 100
+    _live_status_src(net, clock, 1, ps[1], 30, 0, mid)
+    assert not any("BELOW CONFIG" in a for a in row(s, ps[1]["player_id"])["ambers"]), \
+        "life 2 has been played; a smaller pool there is the game working"
+
+
+def test_the_pool_fault_tells_the_operator_when_the_push_is_possible():
+    """R2-7. The pool red can only arise in LIVE, and `push_config` is refused in LIVE -- so a bare
+    'RE-PUSH' names an action the operator cannot take at the moment they read it."""
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    info = _go_live(s, net, clock, ps)
+    mid = info["match_id"]
+    _live_status_src(net, clock, 1, ps[1], 45, 70, mid)
+    clock["t"] += POOL_CHECK_SETTLE_MS + 100
+    _live_status_src(net, clock, 1, ps[1], 60, 70, mid)
+    fault = next(b for b in row(s, ps[1]["player_id"])["blockers"] if "GUN POOL" in b)
+    assert fault.endswith("RE-PUSH BEFORE THE NEXT GAME"), fault
+
+
+def test_a_pool_fault_earned_in_play_is_gone_by_the_next_lobby():
+    """R2-7's other half: END -> recap -> the next push must leave nothing of it behind."""
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    info = _go_live(s, net, clock, ps)
+    _live_status_src(net, clock, 1, ps[1], 45, 70, info["match_id"])
+    clock["t"] += POOL_CHECK_SETTLE_MS + 100
+    _live_status_src(net, clock, 1, ps[1], 60, 70, info["match_id"])
+    assert s._pool_faults, "control: there is a fault to clear"
+    s.control("end", confirm=True)
+    s.new_session()
+    assert s._pool_faults == {} and s._pool_ambers == {}
+    s.push_config()
+    assert not any(r["blockers"] or [a for a in r["ambers"] if "GUN POOL" in a or "GUN ARMOR" in a]
+                   for r in s.readiness()["board"]), s.readiness()["board"]
+
+
+# ------------------------------- 13. the push refusal says what blocks it ------------------- #
+
+def test_a_red_carrying_a_blocker_no_push_can_cure_still_refuses_the_unforced_push():
+    """R2-9. The control for C-2 used a `waiting` row, which `_blocks_push` refuses on its own
+    branch -- so it passed with the whole red branch deleted. This one is a RED."""
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0)
+    online(s, net, clock, ps[1], 1, synced=False)     # CLOCK NOT SYNCED -- a red no push can cure
+    r = row(s, ps[1]["player_id"])
+    assert r["status"] == "red" and any("CLOCK NOT SYNCED" in b for b in r["blockers"]), r
+    try:
+        s.push_config()
+        raise AssertionError("push_config accepted a red that a push does not cure")
+    except ValueError as e:
+        assert "CLOCK NOT SYNCED" in str(e), str(e)
+
+
+def test_a_waiting_row_still_refuses_the_unforced_push_and_the_message_names_the_phone():
+    """R2-10. The refusal listed RED rows only, so a roster blocked solely by a phone that has not
+    arrived printed 'readiness has reds ... : ' with an empty list after the colon."""
+    s, net, clock, ps = mk(3)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)   # ps[2] never brings a phone
+    try:
+        s.push_config()
+        raise AssertionError("push_config accepted a roster with a phone that has never arrived")
+    except ValueError as e:
+        msg = str(e)
+        assert not msg.rstrip().endswith(":"), f"an empty list of blockers: {msg!r}"
+        assert "phone" in msg.lower(), msg
+        assert ps[2]["display"] in msg or str(ps[2]["player_num"]) in msg, msg

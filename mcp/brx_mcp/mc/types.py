@@ -499,6 +499,13 @@ class Event(TypedDict, total=False):
     synced: bool
     dropped: int
     preflight: Preflight
+    # A37/R2-3: WHERE `hp`/`armor` above came from THIS LIFE. `engine.js` fills them from
+    # `config.health` at spawn/revive -- the phone's MODEL of the pool -- and overwrites them with the
+    # gun's own numbers on the first `$LCD`/`$HP`. The `$PSET` MC pushed bakes
+    # `loadout.overrides.max_hp/max_armor` and the body_armor perk, so the two legitimately disagree
+    # until the gun has spoken, and `state.py _check_pool` judges `"gun"` ONLY. Optional: an app that
+    # omits it makes no claim at all, and the check keeps waiting rather than guessing.
+    pool_src: Literal["gun", "model"]
     # A36: the `config_id` of the head this node is CURRENTLY holding (`engine.js statusBody`).
     # `ack_config` says which config a gun took at the moment it took it; this says which one it is
     # still on, every ~2 s, for the rest of the game -- the difference that made a whole field night
