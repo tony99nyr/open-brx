@@ -61,7 +61,13 @@ async function startMC() {
   } catch { /* free: good */ }
   const wsPort = await freePort();
   const proc = spawn(py, ['-m', 'brx_mcp.mc', '--host', '127.0.0.1', '--port', String(MC_PORT), '--ws-port', String(wsPort),
-    '--demo', '--fake-net', '--no-auth', '--ephemeral'], { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    '--demo', '--fake-net', '--no-auth', '--ephemeral',
+    // T3-A: `header [role="alert"]` below matches ONE alert by design. T3-A's WSL
+    // LAN-unreachability banner is a second one, so on a WSL box the locator matched two,
+    // Playwright strict mode threw, and the `.catch(() => '')` turned the server's 400 reason
+    // into an empty string. `--advertise` is T3-A's own "this address is already right" override,
+    // which for a 127.0.0.1 e2e it is.
+    '--advertise', '127.0.0.1'], { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', 'pipe', 'pipe'], detached: true });
   let log = ''; proc.stdout.on('data', d => { log += d; }); proc.stderr.on('data', d => { log += d; });
   const base = `http://127.0.0.1:${MC_PORT}`;
   for (let i = 0; i < 200; i++) {
