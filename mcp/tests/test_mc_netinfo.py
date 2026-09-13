@@ -119,52 +119,76 @@ def test_main_builds_the_lan_block_from_the_detector():
 # from the one thing that is an INFERENCE (that the address found is unreachable from a phone) — see
 # `netinfo.wsl_lan_warning`'s docstring for exactly which is which.
 
-def test_is_wsl_detects_the_microsoft_kernel_tag(monkeypatch):
-    monkeypatch.setattr(N, "_read_proc_version",
-                         lambda: "Linux version 5.15.167.4-microsoft-standard-WSL2 (...)\n")
-    assert N.is_wsl() is True
-    monkeypatch.setattr(N, "_read_proc_version",
-                         lambda: "Linux version 6.8.0-45-generic (buildd@lcy02-amd64-... ) #45\n")
-    assert N.is_wsl() is False
-    # WSL1 carries the same tag on an otherwise very different kernel string
-    monkeypatch.setattr(N, "_read_proc_version",
-                         lambda: "Linux version 4.4.0-19041-Microsoft (Microsoft@Microsoft.com)\n")
-    assert N.is_wsl() is True
+def test_is_wsl_detects_the_microsoft_kernel_tag():
+    # `run_tests.py` is a zero-dependency, no-fixture runner (system Python has no pytest) — every
+    # monkeypatch here is manual save/restore in a try/finally, same convention as
+    # `test_lan_info_never_reports_unknown_as_a_display_word` above.
+    real = N._read_proc_version
+    try:
+        N._read_proc_version = lambda: "Linux version 5.15.167.4-microsoft-standard-WSL2 (...)\n"
+        assert N.is_wsl() is True
+        N._read_proc_version = lambda: "Linux version 6.8.0-45-generic (buildd@lcy02-amd64-... ) #45\n"
+        assert N.is_wsl() is False
+        # WSL1 carries the same tag on an otherwise very different kernel string
+        N._read_proc_version = lambda: "Linux version 4.4.0-19041-Microsoft (Microsoft@Microsoft.com)\n"
+        assert N.is_wsl() is True
+    finally:
+        N._read_proc_version = real
 
 
-def test_is_wsl_is_false_and_never_raises_with_no_proc(monkeypatch):
-    monkeypatch.setattr(N, "_read_proc_version", lambda: "")
-    assert N.is_wsl() is False
+def test_is_wsl_is_false_and_never_raises_with_no_proc():
+    real = N._read_proc_version
+    try:
+        N._read_proc_version = lambda: ""
+        assert N.is_wsl() is False
+    finally:
+        N._read_proc_version = real
 
 
-def test_wsl_warning_fires_only_under_wsl_and_only_unless_overridden(monkeypatch):
-    monkeypatch.setattr(N, "is_wsl", lambda: True)
-    warned = N.wsl_lan_warning(advertise_overridden=False)
-    assert warned and "PHONES CANNOT REACH THIS ADDRESS" in warned and "--advertise" in warned
-    # the operator already told MC the real address -- nothing left to warn about
-    assert N.wsl_lan_warning(advertise_overridden=True) is None
+def test_wsl_warning_fires_only_under_wsl_and_only_unless_overridden():
+    real = N.is_wsl
+    try:
+        N.is_wsl = lambda: True
+        warned = N.wsl_lan_warning(advertise_overridden=False)
+        assert warned and "PHONES CANNOT REACH THIS ADDRESS" in warned and "--advertise" in warned
+        # the operator already told MC the real address -- nothing left to warn about
+        assert N.wsl_lan_warning(advertise_overridden=True) is None
+    finally:
+        N.is_wsl = real
 
 
-def test_wsl_warning_is_silent_off_wsl_no_matter_what(monkeypatch):
+def test_wsl_warning_is_silent_off_wsl_no_matter_what():
     """Pins the "no behaviour change on macOS/Linux" requirement at the function that decides it."""
-    monkeypatch.setattr(N, "is_wsl", lambda: False)
-    assert N.wsl_lan_warning(advertise_overridden=False) is None
-    assert N.wsl_lan_warning(advertise_overridden=True) is None
+    real = N.is_wsl
+    try:
+        N.is_wsl = lambda: False
+        assert N.wsl_lan_warning(advertise_overridden=False) is None
+        assert N.wsl_lan_warning(advertise_overridden=True) is None
+    finally:
+        N.is_wsl = real
 
 
-def test_lan_info_carries_the_warning_key_through(monkeypatch):
-    monkeypatch.setattr(N, "is_wsl", lambda: True)
-    lan = N.lan_info("192.168.28.167", 8765, "ws://192.168.28.167:8766/ws")
-    assert lan["warning"] and "PHONES CANNOT REACH" in lan["warning"]
-    lan2 = N.lan_info("10.0.1.9", 8765, "ws://10.0.1.9:8766/ws", advertise_overridden=True)
-    assert lan2["warning"] is None
+def test_lan_info_carries_the_warning_key_through():
+    real = N.is_wsl
+    try:
+        N.is_wsl = lambda: True
+        lan = N.lan_info("192.168.28.167", 8765, "ws://192.168.28.167:8766/ws")
+        assert lan["warning"] and "PHONES CANNOT REACH" in lan["warning"]
+        lan2 = N.lan_info("10.0.1.9", 8765, "ws://10.0.1.9:8766/ws", advertise_overridden=True)
+        assert lan2["warning"] is None
+    finally:
+        N.is_wsl = real
 
 
-def test_lan_info_on_a_non_wsl_host_is_byte_for_byte_what_it_was_before(monkeypatch):
+def test_lan_info_on_a_non_wsl_host_is_byte_for_byte_what_it_was_before():
     """The Mac/Linux pin: every field a pre-T3-A caller relied on is unchanged, and the new key is
     always present (never a KeyError surprise for a caller that indexes it) but always falsy."""
-    monkeypatch.setattr(N, "is_wsl", lambda: False)
-    lan = N.lan_info("10.0.1.9", 8765, "ws://10.0.1.9:8766/ws")
-    assert lan["mode"] == "lan" and lan["ip"] == "10.0.1.9" and lan["port"] == 8765
-    assert lan["ws_url"] == "ws://10.0.1.9:8766/ws" and lan["qr"] == "ws://10.0.1.9:8766/ws"
-    assert lan["warning"] is None
+    real = N.is_wsl
+    try:
+        N.is_wsl = lambda: False
+        lan = N.lan_info("10.0.1.9", 8765, "ws://10.0.1.9:8766/ws")
+        assert lan["mode"] == "lan" and lan["ip"] == "10.0.1.9" and lan["port"] == 8765
+        assert lan["ws_url"] == "ws://10.0.1.9:8766/ws" and lan["qr"] == "ws://10.0.1.9:8766/ws"
+        assert lan["warning"] is None
+    finally:
+        N.is_wsl = real

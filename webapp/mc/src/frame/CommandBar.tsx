@@ -38,6 +38,15 @@ export function CommandBar() {
           <span style={{ font: F.mono(500, 10), letterSpacing: '.12em', color: T.dim }}>SAVED GAMES, PERKS AND LOADOUT RULES ARE UNAVAILABLE UNTIL THEN</span>
         </div>
       )}
+      {/* T3-A (field 2026-09-12): MC advertised a WSL2 NAT address in the QR/mDNS, so every phone
+          failed to connect and the console never said why -- it looked like the phones were broken.
+          Same shared-frame reasoning as the tunnel banner below: every screen (including LOBBY's
+          readiness board) reads this, not just the one screen with a network control on it. */}
+      {state?.lan.warning && (
+        <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 20px', background: 'rgba(255,82,82,.12)', borderBottom: `1px solid ${T.bad}`, font: F.chk(700, 12), letterSpacing: '.14em', color: T.bad }}>
+          ▲ {state.lan.warning}
+        </div>
+      )}
       {/* A28: a tunnel that dies mid-match is invisible past the ARMORY screen unless it rides in the
           shared frame — every screen reads this, not just the one with the TURN ON/OFF control. The
           ▲ glyph carries the same meaning as the colour, so this still reads on a colour-blind or

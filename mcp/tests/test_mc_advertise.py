@@ -1,10 +1,17 @@
 """T3-A (field 2026-09-12): MC advertised a WSL2 NAT address in the QR/mDNS and no phone could reach
 it. `--advertise <ip>` lets the operator hand out a different address than the one `_lan_ip()` guesses
 -- WITHOUT moving where the socket binds -- and `build()` prints netinfo's loud warning at boot when
-nothing has told it the advertised address is already correct."""
+nothing has told it the advertised address is already correct.
+
+No pytest fixtures here: `run_tests.py` (the system-Python gate, F42) calls each `test_*` with no
+arguments, so every patch below is manual save/restore in a try/finally, same convention as
+`test_mc_netinfo.py`."""
 import argparse
 import io
+import os
 import contextlib
+import shutil
+import tempfile
 
 from brx_mcp.mc import __main__ as M
 from brx_mcp.mc import netinfo as N
@@ -34,42 +41,72 @@ def _args(**over):
     return argparse.Namespace(**base)
 
 
-def test_build_advertises_the_override_ip_without_touching_bind(monkeypatch, tmp_path):
+class _Env:
+    """Manual `monkeypatch.setenv` substitute: a `BRX_MC_DIR` pointed at a throwaway directory, so
+    `Store()` (opened unconditionally inside `build()`) never touches the real `~/.brx-mcp` (the exact
+    litter T3-B's item 2 is about) -- restored, and the directory removed, on exit either way."""
+    def __enter__(self):
+        self.tmp = tempfile.mkdtemp(prefix="brx-mc-advertise-test-")
+        self.had, self.old = "BRX_MC_DIR" in os.environ, os.environ.get("BRX_MC_DIR")
+        os.environ["BRX_MC_DIR"] = self.tmp
+        return self.tmp
+
+    def __exit__(self, *exc):
+        if self.had:
+            os.environ["BRX_MC_DIR"] = self.old
+        else:
+            os.environ.pop("BRX_MC_DIR", None)
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+
+def test_build_advertises_the_override_ip_without_touching_bind():
     """The whole point: `session.lan['ip']` and what the net layer actually hands out (`join_info` --
     the thing `advertise_mdns`/the QR read) follow `--advertise`, and nothing about `--host` (what the
     real bind would use) is read from it. (`session.lan['ws_url']` itself is NOT asserted here: with
     `--fake-net`, `Session._attach_net` snapshots `net.join_info()` at construction time -- before
     `build()` ever calls `net.start()` -- so it is stale at "ws://0.0.0.0:0/ws" for EVERY `--fake-net`
     run regardless of `--advertise`, a pre-existing gap unrelated to T3-A; see the report.)"""
-    monkeypatch.setenv("BRX_MC_DIR", str(tmp_path))
-    monkeypatch.setattr(N, "is_wsl", lambda: True)   # would warn if NOT overridden
-    session, net, extra = M.build(_args(advertise="203.0.113.9"))
+    real_is_wsl = N.is_wsl
+    try:
+        N.is_wsl = lambda: True   # would warn if NOT overridden
+        with _Env():
+            session, net, extra = M.build(_args(advertise="203.0.113.9"))
+    finally:
+        N.is_wsl = real_is_wsl
     assert session.lan["ip"] == "203.0.113.9"
     assert net.join_info()["url"].startswith("ws://203.0.113.9:")
     assert net.host == "203.0.113.9", "the fake net's own host, set by build()'s net.start(ip, ...)"
     assert session.lan["warning"] is None, "an explicit --advertise means nothing left to warn about"
 
 
-def test_build_prints_the_loud_warning_on_wsl_with_no_override(monkeypatch, tmp_path):
-    monkeypatch.setenv("BRX_MC_DIR", str(tmp_path))
-    monkeypatch.setattr(N, "is_wsl", lambda: True)
+def test_build_prints_the_loud_warning_on_wsl_with_no_override():
+    real_is_wsl = N.is_wsl
     buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        session, net, extra = M.build(_args())
+    try:
+        N.is_wsl = lambda: True
+        with _Env():
+            with contextlib.redirect_stdout(buf):
+                session, net, extra = M.build(_args())
+    finally:
+        N.is_wsl = real_is_wsl
     out = buf.getvalue()
     assert session.lan["warning"] == N.WSL_UNREACHABLE_WARNING
     assert "PHONES CANNOT REACH THIS ADDRESS" in out
     assert "--advertise" in out
 
 
-def test_build_prints_nothing_extra_off_wsl_pin(monkeypatch, tmp_path):
+def test_build_prints_nothing_extra_off_wsl_pin():
     """The Mac/Linux pin at the call site that actually prints: off WSL, boot output carries none of
-    this — `session.lan['warning']` is None and the loud banner never fires."""
-    monkeypatch.setenv("BRX_MC_DIR", str(tmp_path))
-    monkeypatch.setattr(N, "is_wsl", lambda: False)
+    this -- `session.lan['warning']` is None and the loud banner never fires."""
+    real_is_wsl = N.is_wsl
     buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        session, net, extra = M.build(_args())
+    try:
+        N.is_wsl = lambda: False
+        with _Env():
+            with contextlib.redirect_stdout(buf):
+                session, net, extra = M.build(_args())
+    finally:
+        N.is_wsl = real_is_wsl
     out = buf.getvalue()
     assert session.lan["warning"] is None
     assert "PHONES CANNOT REACH" not in out
