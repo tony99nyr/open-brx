@@ -1104,7 +1104,17 @@ class Session:
             # (a same-team shot does no damage). MC must never let the roster's team and the gun's $TID
             # silently disagree, so this is refused LOUDLY. The scorer's own re-team (below) is reached
             # only in pre-start or recap now, where the head is free to be rewritten.
-            if "team_id" in fields and self._check_team(fields["team_id"]) != p.get("team_id"):
+            # F-5 (2026-09-13): an explicit `team_id: null` used to hit this same check -- `_check_team(None)`
+            # is `None`, which reads as a "change" against any rostered player's real team and 409'd on
+            # what a caller meant as NO instruction (some client always carries the field). `None` here
+            # is "no change": drop it before the equality check (and out of `fields` entirely, so the
+            # general write loop below cannot re-apply it as a clear) rather than refuse it as one. An
+            # actual named team that differs from the player's own is still refused exactly as before --
+            # pre-match `team_id: null` still clears the team (test_mc_polish.py), only armed/live reads
+            # `None` as "nothing asked".
+            if "team_id" in fields and fields["team_id"] is None:
+                fields = {k: v for k, v in fields.items() if k != "team_id"}
+            elif "team_id" in fields and self._check_team(fields["team_id"]) != p.get("team_id"):
                 raise ConflictError(
                     f"the match is {self.phase.upper()}: changing a player's TEAM now moves the beacon, "
                     "LEDs and scoring but NOT the gun's $TID -- combat would still resolve on the old "
