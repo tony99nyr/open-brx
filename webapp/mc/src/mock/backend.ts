@@ -225,6 +225,11 @@ export class MockBackend implements Api {
   /** `?mock&nossid=1` — MC could not read the phone's Wi-Fi network name (any platform without a
    *  detector), so the REACH block must print "LAN · ip:port", never a mode word standing in for one. */
   private demoNoSsid = typeof location !== 'undefined' && new URLSearchParams(location.search).get('nossid') === '1';
+  /** `?mock&lanwarn=1` — T3-A (field 2026-09-12): MC is running under WSL and nothing has told it the
+   *  advertised address is already correct, so the CommandBar's reachability banner must be visible
+   *  without a real WSL host to boot MC on. Wording mirrors `netinfo.WSL_UNREACHABLE_WARNING` server-side
+   *  (kept in sync by hand -- there is no shared string across the Python/TS boundary). */
+  private demoLanWarning = typeof location !== 'undefined' && new URLSearchParams(location.search).get('lanwarn') === '1';
   /** `?mock&restored=1` — a `--demo` (or any prior) session persisted and was silently restored: two
    *  ghost players with no phone ever bound sit on the roster from the first snapshot. */
   private demoRestored = typeof location !== 'undefined' && new URLSearchParams(location.search).get('restored') === '1';
@@ -549,6 +554,16 @@ export class MockBackend implements Api {
         // placeholder word standing in for a network name.
         mode: 'lan', ssid: this.demoNoSsid ? null : 'BRX-FIELD', ip: '192.168.8.10', port: 8765, ws_url: 'ws://192.168.8.10:8765/ws',
         qr: this.joinQr(), join_secret: this.joinSecret, public: this.publicView(),
+        // T3-A: `?mock&lanwarn=1` — see `demoLanWarning` above.
+        warning: this.demoLanWarning
+          ? 'PHONES CANNOT REACH THIS ADDRESS — this looks like WSL2\'s own private network, not the '
+            + 'Windows host\'s LAN. Pass --advertise <windows-lan-ip> (find it with `ipconfig` on '
+            + 'Windows) to put the real address in the QR and mDNS without moving where MC binds, and '
+            + 'forward the ports with a netsh portproxy (`netsh interface portproxy add v4tov4 '
+            + 'listenaddress=<windows-lan-ip> listenport=8766 connectaddress=<this WSL IP> '
+            + 'connectport=8766`, and again for 8765) — the WSL IP changes on every restart, so redo '
+            + 'the portproxy each time.'
+          : null,
       },
       ...(this.restoredFrom ? { restored_from: this.restoredFrom } : {}),
       coverage: this.coverage(nodes),

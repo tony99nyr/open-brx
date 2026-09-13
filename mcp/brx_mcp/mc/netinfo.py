@@ -123,8 +123,61 @@ def detect_ssid() -> str | None:
         return None
 
 
-def lan_info(ip: str, port: int, ws_url: str) -> dict:
+def _read_proc_version() -> str:
+    """Broken out so tests can stand in for the kernel without touching a real file (`test_mc_netinfo.py`
+    monkeypatches this, never `is_wsl` itself, so the string-matching stays exercised)."""
+    try:
+        with open("/proc/version", "r", encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def is_wsl() -> bool:
+    """DETECTION, not inference: every WSL kernel (WSL1 and WSL2 alike) stamps `/proc/version` with
+    "microsoft" — Microsoft's own build tag, present since WSL shipped and unrelated to which Linux
+    distro is running on top. A machine with no `/proc` at all (macOS, a locked-down container) or a
+    read that fails for any reason is simply not WSL; this must never raise (`_read_proc_version`
+    swallows the OSError itself)."""
+    return "microsoft" in _read_proc_version().lower()
+
+
+# T3-A (field 2026-09-12): MC advertised a WSL2 NAT address in the QR and over mDNS, and no phone on
+# the real LAN could reach it — the operator was told, over chat, to find the Windows LAN address by
+# hand and forward it with a `netsh portproxy`, which points at a WSL IP that changes on every restart.
+WSL_UNREACHABLE_WARNING = (
+    "PHONES CANNOT REACH THIS ADDRESS — this looks like WSL2's own private network, not the Windows "
+    "host's LAN. Pass --advertise <windows-lan-ip> (find it with `ipconfig` on Windows) to put the "
+    "real address in the QR and mDNS without moving where MC binds, and forward the ports with a "
+    "netsh portproxy (`netsh interface portproxy add v4tov4 listenaddress=<windows-lan-ip> "
+    "listenport=8766 connectaddress=<this WSL IP> connectport=8766`, and again for 8765) — the WSL IP "
+    "changes on every restart, so redo the portproxy each time."
+)
+
+
+def wsl_lan_warning(*, advertise_overridden: bool) -> str | None:
+    """An INFERENCE layered on top of the `is_wsl()` DETECTION above: this process can tell it is
+    running inside WSL for certain, but it has no phone to ask and no reliable, non-fatal way to learn
+    from inside the VM whether the address `_lan_ip()` found is actually reachable from outside the
+    Windows host. In WSL2's default (NAT) networking mode it never is — that address is a virtual
+    adapter private to the host, which is exactly what burned the 2026-09-12 field night. The one setup
+    where this inference is WRONG is WSL's mirrored networking mode, where the WSL and Windows LAN
+    addresses are the same thing; there is no cheap way to tell the two modes apart from here, so the
+    warning is worded as what MC actually knows ("looks like") rather than a flat claim, and it stays
+    silent the moment the operator has told us the real address with `--advertise` (or has otherwise
+    overridden what gets advertised) — at that point MC has nothing left to warn about."""
+    if advertise_overridden or not is_wsl():
+        return None
+    return WSL_UNREACHABLE_WARNING
+
+
+def lan_info(ip: str, port: int, ws_url: str, *, advertise_overridden: bool = False) -> dict:
     """The `State.lan` block at launch. `mode` is never a placeholder word: with no SSID it is `"lan"`,
-    which the REACH panel renders as "LAN · <ip>:<port>" — true everywhere and nothing to explain."""
+    which the REACH panel renders as "LAN · <ip>:<port>" — true everywhere and nothing to explain.
+
+    `warning` (T3-A) is `None` everywhere except WSL with nothing telling MC the advertised address is
+    already correct — see `wsl_lan_warning` for exactly what is detected and what is inferred."""
     ssid = detect_ssid()
-    return {"mode": "lan", "ssid": ssid, "ip": ip, "port": port, "ws_url": ws_url, "qr": ws_url}
+    warning = wsl_lan_warning(advertise_overridden=advertise_overridden)
+    return {"mode": "lan", "ssid": ssid, "ip": ip, "port": port, "ws_url": ws_url, "qr": ws_url,
+            "warning": warning}

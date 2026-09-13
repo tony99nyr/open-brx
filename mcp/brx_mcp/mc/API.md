@@ -42,6 +42,18 @@ State {
          // `ssid` is null, which renders as "LAN · <ip>:<port>". `router`/`hotspot` are reserved for a
          // detector that can tell them apart. NEVER render a mode value that is not a real word.
          qr: string,   // A28.2: `ws://<ip>:<ws-port>/ws?s=<join_secret>[&pub=<url-encoded public ws_url>]` -- NOT the same as ws_url any more
+         warning?: string | null,   // T3-A (field 2026-09-12): MC advertised a WSL2 NAT address in the QR/mDNS
+                                     // and no phone could reach it -- the operator was told over chat to find
+                                     // the Windows LAN address by hand and forward it with a netsh portproxy
+                                     // that points at a WSL IP changing on every restart. Set only when
+                                     // netinfo.is_wsl() DETECTS a Microsoft kernel (/proc/version) AND nothing
+                                     // (`--advertise <ip>`) has told MC the advertised address is already
+                                     // correct. The reachability claim itself is an INFERENCE, not a
+                                     // measurement -- MC has no phone here to ask, and cannot tell WSL2's
+                                     // default NAT networking mode (always wrong) from mirrored mode (the one
+                                     // case this warning is wrong) from inside the VM -- so render it verbatim,
+                                     // never strengthen the wording. null/absent on every non-WSL host (macOS,
+                                     // plain Linux never set this -- pinned by test_mc_netinfo.py/test_mc_advertise.py).
          join_secret: string,   // A28.2: 8 url-safe chars, per session, persisted; enforced only on hellos that arrive through the tunnel
          public: { ws_url: string|null, status: "off"|"starting"|"up"|"error", provider: "cloudflared"|"manual"|null, available: boolean, error?: string,
                    detail?: string } },  // A28.1; `detail` is F140 (field 2026-09-12): the sub-state under

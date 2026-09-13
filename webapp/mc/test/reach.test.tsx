@@ -203,6 +203,29 @@ describe('CommandBar: the tunnel-down banner rides on every screen, not just Arm
   });
 });
 
+describe('CommandBar: the WSL LAN-reachability warning (T3-A)', () => {
+  it('lan.warning renders as a persistent, non-colour-only banner naming the fix', async () => {
+    const d = await demo();
+    const state: State = { ...d.state, lan: { ...d.state.lan, warning: 'PHONES CANNOT REACH THIS ADDRESS — pass --advertise <windows-lan-ip>.' } };
+    const m = await mountScreen(<CommandBar />, { ...d, state });
+    const alert = m.find('[role="alert"]').find(el => /PHONES CANNOT REACH THIS ADDRESS/.test(el.textContent ?? ''));
+    expect(alert, 'a role=alert banner names the reachability warning').toBeTruthy();
+    // ▲ carries the same meaning as the colour — never colour-only (same rule as the tunnel banner)
+    expect((alert!.textContent ?? '').trim().startsWith('▲')).toBe(true);
+    m.unmount();
+  });
+
+  it('no banner when lan.warning is absent or null — every non-WSL host (the Mac/Linux pin)', async () => {
+    for (const warning of [undefined, null]) {
+      const d = await demo();
+      const state: State = { ...d.state, lan: { ...d.state.lan, warning } };
+      const m = await mountScreen(<CommandBar />, { ...d, state });
+      expect(m.find('[role="alert"]').some(el => /PHONES CANNOT REACH/.test(el.textContent ?? ''))).toBe(false);
+      m.unmount();
+    }
+  });
+});
+
 describe('Armed and Live carry the same coverage line as Lobby', () => {
   it('Armed (no schedule yet) shows the coverage line in its header', async () => {
     const d = await demo();

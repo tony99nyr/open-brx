@@ -233,6 +233,13 @@ export interface State {
     /** A28.2: `ws://<ip>:<ws-port>/ws?s=<join_secret>[&pub=<url-encoded public ws_url>]` — no
      *  longer the same as `ws_url`; carries the public URL only while `public.status == "up"`. */
     qr: string;
+    /** T3-A (field 2026-09-12): MC advertised a WSL2 NAT address in the QR/mDNS and no phone could
+     *  reach it. Set only when the server DETECTED it is running under WSL and nothing (`--advertise`)
+     *  has told it the advertised address is already correct -- the reachability claim itself is an
+     *  INFERENCE (there is no phone on the server to ask), so render it verbatim rather than
+     *  paraphrasing it into a stronger claim. `null`/absent everywhere else, including every non-WSL
+     *  host — macOS and plain Linux never set this. */
+    warning?: string | null;
     /** A28.2: 8 url-safe chars, per session, persisted. Absent on a server that predates A28. */
     join_secret?: string;
     /** A28.1. Absent on a server that predates A28 — the UI must not invent a toggle for a route
