@@ -40,6 +40,9 @@ LATE_ARM_GRACE_MS = 8000
 CONFIG_TTL_MS = 1_800_000
 MAX_PLAYERS = 63          # wire ids 1..63; 0 reserved (tutorial / unknown shooter)
 DEATH_LATCH_MS = 2000
+# A34: a phone still LIVE in a match MC has retired is told `control{end}` from its status heartbeat; this
+# is how long MC waits before telling the SAME phone about the SAME match again (the first end normally lands).
+STALE_LIVE_RETELL_MS = 10_000
 RESYNC_PROBE_S = 10
 DEFAULT_RUNWAY_S = 120
 PROTOCOL_V = 1

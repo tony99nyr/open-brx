@@ -28,6 +28,8 @@ JUDGED = {
     "LATE_ARM_GRACE_MS": "a one-shot window after go-live for a node to arm; nothing resets it",
     "CONFIG_TTL_MS": "how long a pushed config stays valid; nothing resets it",
     "RESYNC_PROBE_S": "the node's resync prompt cadence, driven by the operator's trigger pull",
+    "STALE_LIVE_RETELL_MS": "A34: how long MC waits before re-telling the SAME phone that the SAME retired match "
+                            "ended; keyed off that phone's status heartbeat (`arm_state`/`match_id`), never an IR frame",
     "DEFAULT_RUNWAY_S": "the countdown length, not a fuse",
     "PRUNE_AFTER_MS": "unbound-node record lifetime on the socket's silence",
     "HELLO_TIMEOUT_S": "grace for a hello after connect; a frame cannot reset it",
