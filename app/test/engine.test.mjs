@@ -4323,8 +4323,29 @@ test('A34: control end with no match_id behaves as before (the operator END/RECA
 // silently swallowed. Mirrors engine.js's (unexported, like RECONCILE_MS above) LINK_STALE_MS.
 const LINK_STALE_MS = 150000;
 
-test('B4: total silence from the gun for LINK_STALE_MS trips the watchdog, even though bleUp never went false on its own', () => {
+// Round-2 fix pass I (2026-09-12): the watchdog SHIPS DISABLED (`linkWatchdog`, default
+// `LINK_WATCHDOG_ENABLED = false`) until the bench gives it a real number -- FOLLOWUPS F163. 150 s is
+// a desk guess at "five $VOLTS cadences", `$VOLTS` is the only idle traffic and is unreliable at
+// marginal RSSI, and what a false trip costs is not nothing: `_beginReconcile` disarms both slots for
+// RECONCILE_MS and `_endReconcile` re-arms from `frames.spawn`'s $AMMO -- a mid-firefight disarm plus
+// a free full magazine, which is exactly the cheat RESUME_GAP_MS exists to deny. A defender at the
+// edge of range who neither fires nor is hit is the player it would hit. Every B4 test below turns it
+// ON explicitly, because the MECHANISM still has to be correct for the day the bench says 90 or 300.
+const armWatchdog = h => { h.eng.linkWatchdog = true; return h; };
+
+test('I: with the watchdog OFF (the shipped default) ten minutes of total silence trips NOTHING', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$ALCD,32,100,0,384,0,*');
+  assert.equal(h.eng.linkWatchdog, false, 'it ships disabled — F163 is the bench gate');
+  let staleFired = 0; h.eng.onGunStale = () => { staleFired++; };
+  for (let i = 0; i < 4; i++) { h.adv(LINK_STALE_MS); h.eng.tick(); }   // 10 minutes, four times over the threshold
+  assert.equal(staleFired, 0, 'no forced reconnect');
+  assert.equal(h.eng.bleUp, true, 'and no local drop either — the link is left alone');
+  assert.equal(h.eng.reconciling ?? h.eng.state().reconciling, false, 'nothing disarmed, so no free magazine on the way back');
+});
+
+test('B4: total silence from the gun for LINK_STALE_MS trips the watchdog, even though bleUp never went false on its own', () => {
+  const h = armWatchdog(harness().kit().config_().echo().start(0)); h.adv(10); h.eng.tick();
   h.frame('$ALCD,32,100,0,384,0,*');
   assert.equal(h.eng.alive, true);
   let staleFired = 0; h.eng.onGunStale = () => { staleFired++; };
@@ -4336,7 +4357,7 @@ test('B4: total silence from the gun for LINK_STALE_MS trips the watchdog, even 
 });
 
 test('B4: any frame off the gun — not just $VOLTS — resets the watchdog clock', () => {
-  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  const h = armWatchdog(harness().kit().config_().echo().start(0)); h.adv(10); h.eng.tick();
   let staleFired = 0; h.eng.onGunStale = () => { staleFired++; };
   h.adv(LINK_STALE_MS - 5000); h.eng.tick();
   h.frame('$VOLTS,7662,3921,55,70,*');            // a heartbeat, nothing more — but proof of life
@@ -4345,7 +4366,7 @@ test('B4: any frame off the gun — not just $VOLTS — resets the watchdog cloc
 });
 
 test('B4: with no link to cycle (demo/tests — onGunStale unset) the watchdog still surfaces the drop locally', () => {
-  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  const h = armWatchdog(harness().kit().config_().echo().start(0)); h.adv(10); h.eng.tick();
   h.frame('$ALCD,32,100,0,384,0,*');
   assert.equal(h.eng.onGunStale, null);
   h.adv(LINK_STALE_MS + 1000); h.eng.tick();
@@ -4353,7 +4374,7 @@ test('B4: with no link to cycle (demo/tests — onGunStale unset) the watchdog s
 });
 
 test('B4: a watchdog-forced reconnect reconciles like any relink — no spurious death, and a real hit lands afterward', () => {
-  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  const h = armWatchdog(harness().kit().config_().echo().start(0)); h.adv(10); h.eng.tick();
   h.frame('$LCD,29,70,0,0,10,384,*');             // alive at 29 hp
   assert.equal(h.eng.alive, true); assert.equal(h.eng.hp, 29);
   h.eng.onGunStale = () => h.eng.onBleDropped();   // stand-in for BrxLink.noteStale(): drop now, relink lands a beat later

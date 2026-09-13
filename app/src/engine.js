@@ -51,6 +51,16 @@ const RESUME_GAP_MS = 5000;
 // close. 150 s is still a DESK number: only a gun at the edge of range can say what the real silence
 // looks like, which is FOLLOWUPS F136 (the B4 bench item, with the 20-minute two-node soak).
 const LINK_STALE_MS = 150000;
+// 🔴 ...and it SHIPS OFF (round-2 fix pass I, 2026-09-12). 150 s is a desk number, `$VOLTS` is the only
+// idle traffic the threshold can be measured against and it is unreliable at exactly the marginal RSSI
+// this is supposed to catch, and a FALSE trip is not free: `_beginReconcile()` disarms both slots for
+// RECONCILE_MS and `_endReconcile()` re-arms from `frames.spawn`'s $AMMO — a mid-firefight disarm plus a
+// full magazine and reserve, which is the cheat RESUME_GAP_MS exists to deny. The player it would hit is
+// a defender at the edge of range who neither fires nor is hit: the one the watchdog is least able to
+// tell from a real drop. So the mechanism stays (and stays tested — the B4 suite sets the flag on), but
+// nothing trips until the bench gives it a measured number. Gate: FOLLOWUPS **F163**, the B4 bench item
+// with the 20-minute two-node soak.
+const LINK_WATCHDOG_ENABLED = false;
 const HEADSET_REBLINK_MS = 120000;   // re-paint the DOWN out-blink every 2 min (< the ~160 s blink count) so a long scanner walk stays lit
 const PICK_DEBOUNCE_MS = 400;        // A26 (S20): a WEAPON pick equips AND arms it for test-firing, so every tap costs an MC round-trip and a $WEAP write on the gun. Scrolling the rack must not spam either: only the last row tapped inside this window is sent (loadout.md §4.5)
 const SWITCH_MAX_MS = 850;       // the stock $WEAP tok15 (bench 2026-09-04: 850 ms, linear, no floor) — a fallback; the bundle carries the real value in frames.swap_ms
@@ -299,6 +309,9 @@ export class Engine {
     // above the ~30 s $VOLTS cadence (protocol §"idle taggers are silent" — outside app mode nothing
     // unsolicited is sent, but $VOLTS streams every ~30 s once it is opened).
     this.lastGunFrameAt = 0;
+    // Per-instance so the bench harness / a future remote flag can turn it on without editing the
+    // module, and so the B4 tests exercise the mechanism while the field ships with it off (F163).
+    this.linkWatchdog = LINK_WATCHDOG_ENABLED;
     this.hurtFired = false;         // low-health alert already sent this life
     this.stunned = null;            // F15: {at, until, ammo:{slot:[mag,reserve]}} while an EMP has the gun disarmed; the ammo is the LIVE count to restore
     this.switching = null;          // {at, from} while an ALT weapon swap is in flight (field 2026-08-30)
@@ -1732,7 +1745,9 @@ export class Engine {
     // clears LINK_STALE_MS and let `onGunStale` (BrxLink) force the radio to actually let go and retry —
     // falling back to a local `onBleDropped()` when nothing is wired (demo/tests), so the drop is at
     // least surfaced even without a real link to cycle.
-    if (this.bleUp && this.lastGunFrameAt && now - this.lastGunFrameAt >= LINK_STALE_MS) {
+    // ⚠ `this.linkWatchdog` ships FALSE (see LINK_WATCHDOG_ENABLED): until F163 is benched, silence is
+    // left alone rather than paid for with a disarm and a free magazine.
+    if (this.linkWatchdog && this.bleUp && this.lastGunFrameAt && now - this.lastGunFrameAt >= LINK_STALE_MS) {
       const silentMs = now - this.lastGunFrameAt;
       this.lastGunFrameAt = now;   // don't refire every tick while the forced reconnect runs its course
       this.log(`gun link silent ${Math.round(silentMs / 1000)}s — forcing a reconnect`, 'le');

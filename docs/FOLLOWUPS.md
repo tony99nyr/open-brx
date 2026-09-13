@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D6 · E8 · F164 · G11 · H8 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D6 · E8 · F165 · G11 · H8 ·
 K9 · P19 · Q20 · R4 · S42.** (2026-09-12 integration of the field branch into the fix branch: the two rows the fix branch had filed as F135 and F136 collide with the field session's own F135/F136 and are **RENUMBERED to F162** (no outdoor IR range) and **F163** (the B4 link watchdog) — the second collision renumber in this file, same cause as 2026-09-06: two sessions read "next free" at once. No upstream row moved. F146 and F157 closed → archive with the merge; the PR #4 list closed → archive (F135 F137-F145 F147 F149-F151 F153-F156, S37-S41).) (2026-09-12 pyright gate: F134 filed; F42.10 closed → archive, F42.14 filed.) (2026-09-12 field test of the backhaul, WSL host + Pixel 10 on cellular: F135-F157 + F161, K7-K8, S37-S41, D5 taken (F134 went to the pyright gate on main the same day, so the gun-picker row became F161); F136 closed the same hour.) (2026-09-12 evening: F129 closed → archive; F133 filed.) (2026-09-12 backhaul, PR #3: B30 and B31 taken.) (2026-09-12 doc-rot close: F131 F132, R3, S32-S36 taken; F42.2/F42.3 closed → archive.) (2026-09-12 M2 close: S20 S21 S22 S23 S24 S26 F127 closed → archive; F129 F130 new; S25 v1 shipped, ESPN pass open.) (2026-09-12 midday: S28 all-weapons retune, S29 shield recharge taken.) (2026-09-12 desk pass: F128, P18, S27 taken; F110 F115 F116 F117 F118 F119 F122 F124 F125 closed → archive.) (2026-09-11 night game test: F110-F127 and S20-S26 taken, see [`game-test-2026-09-11.md`](game-test-2026-09-11.md).) (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
 ids are retired, never reused.) (2026-09-10: F94/F95/F98 taken — the phone control point
 (`spec/utility.md` §5d), its LAN-coupled roaming variant (§5e) and Territories (§5f). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
@@ -684,6 +684,14 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 **B4 link watchdog** (one gun, a real drop; `bench`):
 - **F163 🟡 Needs Tony at the bench** B4 (2026-09-12 field session: all four guns ended `bleUp:false`; filed as F136 on the fix branch, renumbered on the 2026-09-12 integration)
   shipped a link-silence watchdog blind — no BLE in WSL, so none of this ran against a real gun.
+  **⚠ IT NOW SHIPS DISABLED** (round-2 fix pass, 2026-09-12): `engine.js` `LINK_WATCHDOG_ENABLED = false`,
+  read once into `this.linkWatchdog`, and `tick()` checks it — so nothing trips in the field until the
+  bench answers (b) below. The mechanism, `noteStale()` and the whole B4 test suite are untouched (the
+  tests turn the flag on), so the day there is a measured number this is a one-line change. It was
+  disabled because the cost of a FALSE trip is not neutral: the reconcile that follows disarms both
+  slots and then re-arms from `frames.spawn`'s `$AMMO`, i.e. a free full magazine and reserve, handed
+  to the player least distinguishable from a real drop — a defender at the edge of range who neither
+  fires nor is hit.
   `engine.js` (`lastGunFrameAt`/`LINK_STALE_MS=150s` in `tick()`) force-reconnects a gun the OS still calls
   "connected" but that has sent nothing — not even `$VOLTS` — for 150s; every relink also resends a bare
   `$PHONE,*` (`brxlink.js` `noteStale()` does the actual `ble.disconnect()` + reconnect). It shipped at 75s
@@ -701,6 +709,14 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   iOS? Run the existing unchecked **20-minute two-node soak** (§10) with a diagnostic watch on
   `link.frames` (brxlink's last-60 in/out ring, surfaced in the app's debug panel) to see the real silence
   gap before any native disconnect callback fires. `bench`.
+- **F164 🟠 A reconcile hands out a FREE FULL MAGAZINE, on any reconcile.** `engine.js` `_endReconcile()`
+  re-arms both slots from `frames.spawn`'s `$AMMO` — the SPAWN magazine plus the spawn reserve — whatever
+  the reconcile was. So even a genuine BLE drop mid-firefight (and F163's watchdog, if it is ever turned
+  on) refills a player who was one round from empty: exactly the resume-gap cheat `RESUME_GAP_MS` exists
+  to deny, arriving through the door beside it. It should re-arm from the LAST-KNOWN LIVE counts (the
+  `$ALCD`/`$LCD` the phone already tracks) and fall back to the spawn frame only when it has never seen a
+  count this life. Pre-existing S7.1 behaviour, found by the round-2 review of the 2026-09-12 field
+  branch; separate from F163 and not fixed in that pass.
 
 **A17 hit audio** (one gun, our compiled game, an armoured life; `ears` + `trigger`):
 - **F39 🟡 The real `$SIR` row ceiling.** "Max 14 distinct IR recognitions per game" is a community figure we have
