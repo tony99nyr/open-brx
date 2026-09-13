@@ -2,14 +2,17 @@
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import time
 from pathlib import Path
 
+from ..storage import home_dir
+
 
 def mc_dir() -> Path:
-    d = Path(os.environ.get("BRX_MC_DIR") or (Path.home() / ".brx-mcp" / "mc"))
+    """`<BRX_MCP_HOME or ~/.brx-mcp>/mc` -- where session-*.sqlite files live. Honours
+    `BRX_MCP_HOME` via `storage.home_dir()` so a test run never lands here for real."""
+    d = home_dir() / "mc"
     d.mkdir(parents=True, exist_ok=True)
     return d
 

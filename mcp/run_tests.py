@@ -8,10 +8,27 @@ The system Python here has no pytest/pip, so this is the suite entry point:
 Each test is a top-level `test_*` function; a raised assertion/exception = fail.
 Exits non-zero if anything fails (CI-friendly).
 """
+import atexit
 import importlib
+import os
 import pathlib
+import shutil
 import sys
+import tempfile
 import traceback
+
+# The operator's real ~/.brx-mcp is field evidence (session-*.sqlite from real games), not a test
+# scratch pad -- 2026-09-13, hundreds of empty test-run sqlite files had to be sifted from the four
+# real ones by hand after a field night. Every brx_mcp module that persists anything reads
+# BRX_MCP_HOME (storage.home_dir()) instead of hardcoding ~/.brx-mcp, so setting it here, before the
+# first import of anything under brx_mcp, is the one place that makes the WHOLE suite -- and any
+# subprocess it spawns, since children inherit the environment -- write into a throwaway directory
+# instead. An operator who explicitly set BRX_MCP_HOME (e.g. to inspect what a run wrote) keeps their
+# own value, and it is never ours to delete -- cleanup is scheduled only for a tempdir we create.
+if "BRX_MCP_HOME" not in os.environ:
+    _tmp_home = tempfile.mkdtemp(prefix="brx-mcp-run_tests-")
+    os.environ["BRX_MCP_HOME"] = _tmp_home
+    atexit.register(shutil.rmtree, _tmp_home, ignore_errors=True)
 
 ROOT = pathlib.Path(__file__).resolve().parent
 sys.path[:0] = [str(ROOT), str(ROOT / "tests")]

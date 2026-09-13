@@ -5,6 +5,7 @@ import argparse
 import asyncio
 import inspect
 import logging
+import os
 import secrets
 import socket
 
@@ -107,11 +108,12 @@ def build(args):
     from pathlib import Path as _PT
     from .tunnel import Tunnel
     public_url = _check_public_url(getattr(args, "public_url", None))
+    from ..storage import home_dir
     if args.demo or getattr(args, "ephemeral", False):
         import tempfile
         pid_dir = _PT(tempfile.mkdtemp(prefix="brx-mc-tunnel-"))
     else:
-        pid_dir = _PT.home() / ".brx-mcp"
+        pid_dir = home_dir()
     # The file inside is named per WS PORT and records this MC's own pid, so two Mission Controls on one
     # laptop neither share a file nor reap each other's tunnel (`Tunnel.pid_path`).
     tunnel = Tunnel(public_url=public_url, ws_port=args.ws_port, pid_dir=pid_dir)
@@ -144,8 +146,7 @@ def build(args):
     elif not (args.demo or getattr(args, "ephemeral", False)):
         # --demo / --ephemeral runs (e2e, CI) must not inherit or write a bench session:
         # a restored roster with a bare-tail gun_id once stole the e2e fake gun (2026-08-26).
-        from pathlib import Path as _P
-        session._persist_path = _P.home() / ".brx-mcp" / "session.json"
+        session._persist_path = home_dir() / "session.json"
         import atexit
         atexit.register(session.persist_now)         # flush the debounced final write on exit
         restored = session.restore_snapshot()
@@ -213,7 +214,20 @@ def build(args):
             # silently ignored is the shape of half the bugs in this repo's history.
             print("  backhaul: --tunnel ignored (--fake-net has no node socket to expose)", flush=True)
     try:
-        session.store = Store(session.session_id)
+        # 2026-09-13: a demo/ephemeral boot -- every e2e boot, run_tests.py, the app's fake-game
+        # runner -- must never create a session-*.sqlite under the operator's real ~/.brx-mcp, which
+        # is field evidence (hundreds of test session-*.sqlite files had to be sifted from the real
+        # ones by hand after a field night). `Store()`'s default path already honours `BRX_MCP_HOME`
+        # (mc_dir() -> storage.home_dir()), but a harness that boots --demo/--ephemeral WITHOUT
+        # setting that env var (a human at a shell, or a caller this list misses) still got a real
+        # path -- unlike the presets shelf and the tunnel pidfile above, which already fall back to a
+        # throwaway tempdir. Give the store the same fallback.
+        if (args.demo or getattr(args, "ephemeral", False)) and not os.environ.get("BRX_MCP_HOME"):
+            import tempfile
+            store_path = _PT(tempfile.mkdtemp(prefix="brx-mc-store-")) / f"session-{session.session_id}.sqlite"
+            session.store = Store(session.session_id, store_path)
+        else:
+            session.store = Store(session.session_id)
     except Exception as e:
         log.warning("store disabled: %s", e)
 
