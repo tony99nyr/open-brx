@@ -4412,6 +4412,43 @@ test('B4: a relink after the first probe re-opens the event tap with a bare $PHO
   assert.ok(!after.includes('$STOP,*'), 'never $STOP mid-match — that frame is only for the first-ever connect ritual');
 });
 
+test('B4/T2-B-1: probeSent survives an app restart mid-match, so the relink resend still fires', () => {
+  // Same shape as the ANTI-CHEAT force-close test: shared storage stands in for two app processes.
+  const store = mkStorage();
+  let clock = 2_500_000;
+  const cfg = { config_id: golden.config_id, mode: 'tdm', environment: 'outdoor', night: false, time_limit_s: 600,
+    respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: 25, win_by: 'kills' }, health: { max_hp: 45, max_armor: 70 },
+    teams: [{ team_id: 'blue', name: 'BLUE', color: 'blue', tid: 1 }, { team_id: 'yellow', name: 'YELLOW', color: 'yellow', tid: 2 }] };
+  const player = { player_id: 'p1', player_num: 7, display: 'REAPER', team_id: 'blue', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' };
+  const team = { team_id: 'blue', tid: 1, name: 'BLUE', color: 'blue' };
+  const bundle = { ...golden, player_id: 'p1' };
+  const mk = writer => new Engine({ writer, emit: () => {}, report: () => {}, now: () => clock, synced: () => true, storage: store, log: () => {}, delay: (ms, fn) => fn() });
+
+  // process 1: kit → config → echo → start → live. The first connect runs the full probe ritual.
+  const a = mk(() => {});
+  a.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  a.onMcMessage({ kind: 'assign', body: { player, team, roster: [player] } });
+  a.onMcMessage({ kind: 'config', body: { config: cfg, frames: bundle, roster: [player] } });
+  a.feedFrame('$LCD,0,0,0,0,0,0,*');
+  assert.ok(a.probeSent, 'the very first connect ran the probe');
+  a.onMcMessage({ kind: 'start', body: { match_id: 'm1', go_live_t: clock, config_id: golden.config_id, seq: 1, countdown_s: 0 } });
+  clock += 10; a.tick();
+  assert.equal(a.phase, 'live');
+
+  // process 2: force-close mid-match → reopen on the same storage → relink.
+  const b = mk(() => {});
+  assert.ok(b.probeSent, 'probeSent must be restored from storage, not reset to false by the restart');
+  const writes = [];
+  b.writer = fr => writes.push(...fr);
+  b.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  assert.ok(writes.includes('$PHONE,*'), 'a relink after a restart mid-match must still resend $PHONE,* — this is the exact case the resend was added for');
+  const secondRelinkWrites = [];
+  b.writer = fr => secondRelinkWrites.push(...fr);
+  b.onBleDropped();
+  b.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  assert.equal(secondRelinkWrites.filter(f => f === '$PHONE,*').length, 1, 'exactly one resend per relink, not zero and not repeated');
+});
+
 // ── Round-1 polish review 2026-09-12 ────────────────────────────────────────────────────────────
 test('B5: a death suppressed by the spawn-settle window is RE-EXAMINED once the window expires', () => {
   // The B5 gate drops an unattributed zero-HP frame inside the settle window as a stale echo of the
