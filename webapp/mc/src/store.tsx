@@ -54,6 +54,15 @@ export interface Store {
   /** the screen the operator is looking at (free navigation); `state.phase` is the server's phase */
   view: View;
   setView: (p: View) => void;
+  /** "I already know the phase is about to become this — do not navigate for it."
+   *
+   *  The store FOLLOWS a phase that advances, which is right for a phase the server advanced on its
+   *  own (armed → live → recap). It is wrong for a phase the operator's own click advanced while
+   *  deliberately staying put: `state.py push_config` sets `phase = "lobby"`, so LOAD on the GAMES
+   *  tab — which must stay on GAMES and become the ACTIVE GAME CONFIG (Tony, 2026-09-13) — would be
+   *  thrown onto the LOBBY screen by its own success. This pre-seeds the follow baseline so that one
+   *  advance is a no-op; every later phase change still moves the console. */
+  holdPhase: (p: Phase) => void;
   /** this tab LOADED at `#spectate`: it is the projector, and it refuses every other view (S25) */
   latched: boolean;
   /** the view this latched tab was last asked for — it opens on the next reload, and the board says so */
@@ -202,8 +211,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     api.getState().then(s => setState(prev => prev ?? s)).catch(() => {});
   }, [authRequired, api, mock]);
 
+  // `followed` is a ref, so this never re-renders anything: it only says "count this phase as
+  // already followed". Safe if the action then FAILS — the phase stays where it was, the next
+  // snapshot's phase differs from the baseline again, and the ordinary follow resumes.
+  const holdPhase = useCallback((p: Phase) => { followed.current = p; }, []);
+
   const store = useMemo<Store>(() => ({
-    api, state, feed, modes, weapons, perks, view, setView, selPlayer, setSelPlayer, error, mock,
+    api, state, feed, modes, weapons, perks, view, setView, holdPhase, selPlayer, setSelPlayer, error, mock,
     latched: spectatorTab.current, wantedView: wanted,
     designerSeed, openDesigner: seed => { setDesignerSeed(seed); setView('designer'); },
     connected: mock ? true : connected, authRequired, serverOld, hasToken: !!getToken(),
@@ -211,7 +225,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     clearError: () => setError(null),
     run: async fn => { try { setError(null); return await fn(); } catch (e) { setError((e as Error).message); return undefined; } },
     serverNow: () => Date.now() + offset.current,
-  }), [api, state, feed, modes, weapons, perks, view, setView, wanted, selPlayer, error, mock, connected, authRequired, designerSeed, serverOld]);
+  }), [api, state, feed, modes, weapons, perks, view, setView, holdPhase, wanted, selPlayer, error, mock, connected, authRequired, designerSeed, serverOld]);
 
   return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
 }

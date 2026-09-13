@@ -73,6 +73,17 @@ describe('F141 — Designer class chip toggle', () => {
   });
 });
 
+/** The demo fixture ships one deliberately RED gun (a real muster has one) and one phone that has
+ *  not arrived. GAMES's primary is LOAD now, and LOAD reads the SERVER's push gate
+ *  (`derive.pushGate` → `state.py push_config`), so a board left as-is refuses it for a reason that
+ *  has nothing to do with the phase these tests are about — and "the button is disabled" would pass
+ *  for the wrong reason, which is the failure mode this suite exists to catch. Green the board, and
+ *  the phase lock is the only thing left that could refuse. */
+const greenBoard = (s: State): State => ({
+  ...s,
+  readiness: { ...s.readiness, roster_faults: [], board: s.readiness.board.map(r => ({ ...r, status: 'green' as const, blockers: [], ambers: [] })) },
+});
+
 describe('F151 / round-2 — the GAMES lock is SPLIT the way the server splits it', () => {
   /** GAMES with a live mock backend behind it and the `modes` list loaded, the way `store.tsx` loads
    *  it — the ONLY way a mode card is a real one-tap play (with `modes` empty every card reads as a
@@ -100,6 +111,10 @@ describe('F151 / round-2 — the GAMES lock is SPLIT the way the server splits i
     await g.settle();
     expect(g.m.find('[data-testid="games-locked"]').length, 'LOBBY is not a locked phase for config edits').toBe(0);
     expect(g.m.text()).not.toContain('GO BACK TO KIT');
+    // 2026-09-13: with a head on the guns this tab IS the active game config, so the card shelves sit
+    // behind PLAY A DIFFERENT GAME. Picking another game is still one tap away — it just is not what
+    // the screen is FOR any more — and this test is about the tap being taken, not about where it is.
+    await act(async () => { (g.m.find('[data-testid="pick-another"]')[0] as HTMLElement).click(); });
     // F-6 (2026-09-13): an 8-player roster switching family reshapes teams (TDM's BLUE/YELLOW to
     // KOTH's BLUE/GREEN), so the first tap is now the confirm — same one-more-tap pattern a TUNED
     // draft already used — never a silent reshape.
@@ -120,8 +135,13 @@ describe('F151 / round-2 — the GAMES lock is SPLIT the way the server splits i
       expect(g.m.find('[data-testid="games-locked"]').length, 'a visible banner explains the lock').toBe(1);
       expect(g.m.text()).toContain('GAME SETTINGS ARE LOCKED');
       expect(g.m.text()).toContain(phase.toUpperCase());
-      const continueBtn = g.m.find('button').find(b => (b.textContent ?? '').includes('CONTINUE'));
-      expect((continueBtn as HTMLButtonElement).disabled).toBe(true);
+      // The primary is LOAD since 2026-09-13, and that makes this a STRONGER claim than it was for
+      // CONTINUE: CONTINUE only navigated, LOAD writes the disarmed head to every gun. `state.py
+      // _refuse_push_in_play` refuses it and `force` does not open that door, so the console must
+      // not offer the tap at all.
+      const load = g.m.find('[data-testid="game-load"] button')[0] as HTMLButtonElement | undefined;
+      expect(load, 'the control is greyed, not hidden').toBeTruthy();
+      expect(load!.disabled).toBe(true);
       await g.m.click('TEAM DEATHMATCH');
       expect(putConfig).not.toHaveBeenCalled();
       g.m.unmount();
@@ -159,55 +179,60 @@ describe('F151 / round-2 — the GAMES lock is SPLIT the way the server splits i
   it('is fully interactive in muster/build/kit AND lobby (unaffected by the lock)', async () => {
     for (const phase of ['muster', 'build', 'kit', 'lobby'] as const) {
       const d = await demo();
-      const state: State = { ...d.state, phase };
+      const state: State = greenBoard({ ...d.state, phase });
       const m = await mountScreen(<Games />, { ...d, state });
       expect(m.find('[data-testid="games-locked"]').length, `${phase} is editable`).toBe(0);
-      const continueBtn = m.find('button').find(b => (b.textContent ?? '').includes('CONTINUE'));
-      expect((continueBtn as HTMLButtonElement).disabled, `${phase} CONTINUE is live`).toBe(false);
+      const load = m.find('[data-testid="game-load"] button')[0] as HTMLButtonElement;
+      expect(load.disabled, `${phase} LOAD is live`).toBe(false);
       m.unmount();
     }
   });
 
-  it('refuses CONTINUE when the applied config\'s own pool has an empty required slot, even with no Designer visit', async () => {
+  it('refuses LOAD when the applied config\'s own pool has an empty required slot, even with no Designer visit', async () => {
     const d = await demo();
     // a policy whose only_ids names a weapon that is not in this game — the server (and the mock's
     // own computePool) would compute an empty primary pool for it, reason `only_ids_missing`, exactly
     // as if a bad saved game had just been played.
     const policy = { ...d.state.config.loadout_policy, primary: { ...d.state.config.loadout_policy.primary, only_ids: ['nonexistent_weapon_id'] } };
     const pool = computePool(policy, d.weapons, d.perks);
-    const state: State = { ...d.state, phase: 'build', config: { ...d.state.config, loadout_policy: policy }, loadout_pool: pool };
+    const state: State = greenBoard({ ...d.state, phase: 'build', config: { ...d.state.config, loadout_policy: policy }, loadout_pool: pool });
     expect(pool.reasons?.primary, 'the pool computes only_ids_missing for this policy').toBe('only_ids_missing');
+    // CONTROL: the same fixture with an untouched policy LOADS — so the refusal below is the POOL,
+    // not the board and not the phase.
+    const ctrl = await mountScreen(<Games />, { ...d, state: greenBoard({ ...d.state, phase: 'build' }) });
+    expect((ctrl.find('[data-testid="game-load"] button')[0] as HTMLButtonElement).disabled, 'CONTROL: a good pool loads').toBe(false);
+    ctrl.unmount();
     const m = await mountScreen(<Games />, { ...d, state });
     expect(m.find('[data-testid="games-locked"]').length, 'a banner explains the empty pool').toBe(1);
     expect(m.text()).toContain("PRIMARY'S ALLOW-LIST NAMES NOTHING THIS GAME HAS");
-    const continueBtn = m.find('button').find(b => (b.textContent ?? '').includes('CONTINUE')) as HTMLButtonElement;
-    expect(continueBtn.disabled, 'CONTINUE refuses to carry an empty primary into KIT').toBe(true);
+    const load = m.find('[data-testid="game-load"] button')[0] as HTMLButtonElement;
+    expect(load.disabled, 'LOAD refuses to send an empty primary to the guns — the server would refuse it too').toBe(true);
     m.unmount();
   });
 
-  it('the secondary being deliberately OFF never blocks CONTINUE — "off" is a fact, not a fault', async () => {
+  it('the secondary being deliberately OFF never blocks LOAD — "off" is a fact, not a fault', async () => {
     const d = await demo();
     const policy = { ...d.state.config.loadout_policy, secondary: { ...d.state.config.loadout_policy.secondary, choice: 'off' as const } };
     const pool = computePool(policy, d.weapons, d.perks);
     expect(pool.reasons?.secondary_weapons, 'an off slot still gets a reason code').toBe('off');
-    const state: State = { ...d.state, phase: 'build', config: { ...d.state.config, loadout_policy: policy }, loadout_pool: pool };
+    const state: State = greenBoard({ ...d.state, phase: 'build', config: { ...d.state.config, loadout_policy: policy }, loadout_pool: pool });
     const m = await mountScreen(<Games />, { ...d, state });
     expect(m.find('[data-testid="games-locked"]').length, 'no banner for a deliberately-off slot').toBe(0);
-    const continueBtn = m.find('button').find(b => (b.textContent ?? '').includes('CONTINUE')) as HTMLButtonElement;
-    expect(continueBtn.disabled).toBe(false);
+    const load = m.find('[data-testid="game-load"] button')[0] as HTMLButtonElement;
+    expect(load.disabled).toBe(false);
     m.unmount();
   });
 
-  it('a FIXED primary whose weapon is not in this game blocks CONTINUE too (pass 2: fixed is no longer exempt)', async () => {
+  it('a FIXED primary whose weapon is not in this game blocks LOAD too (pass 2: fixed is no longer exempt)', async () => {
     const d = await demo();
     const policy = { ...d.state.config.loadout_policy, primary: { ...d.state.config.loadout_policy.primary, choice: 'fixed' as const, fixed_id: 'not_a_real_weapon' } };
     const pool = computePool(policy, d.weapons, d.perks);
     expect(pool.reasons?.primary, 'a missing fixed weapon reads fixed_missing').toBe('fixed_missing');
-    const state: State = { ...d.state, phase: 'build', config: { ...d.state.config, loadout_policy: policy }, loadout_pool: pool };
+    const state: State = greenBoard({ ...d.state, phase: 'build', config: { ...d.state.config, loadout_policy: policy }, loadout_pool: pool });
     const m = await mountScreen(<Games />, { ...d, state });
     expect(m.text()).toContain("PRIMARY'S FIXED PICK IS NOT IN THIS GAME");
-    const continueBtn = m.find('button').find(b => (b.textContent ?? '').includes('CONTINUE')) as HTMLButtonElement;
-    expect(continueBtn.disabled, 'a fixed slot can be just as empty as a filtered one, and must block the same way').toBe(true);
+    const load = m.find('[data-testid="game-load"] button')[0] as HTMLButtonElement;
+    expect(load.disabled, 'a fixed slot can be just as empty as a filtered one, and must block the same way').toBe(true);
     m.unmount();
   });
 

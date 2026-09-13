@@ -77,7 +77,14 @@ controls. **GAMES** (the stepper step): `YOUR GAMES` cards (saved games — name
 rules line, EDIT / DUPLICATE / delete-with-confirm, `+ CREATE A GAME`), `STOCK MODES` cards (defaults;
 CUSTOMIZE), a **VENUE** strip (indoor/outdoor, night ops — about where you play, never saved into a game;
 re-asserted after a game is applied), a sticky "what the players get" summary rail (name, mode board, rule
-rows, loadout line, reset notices) and `CONTINUE ▸`. No forms. Mode boards render uncropped at native aspect
+rows, loadout line, reset notices) and `LOAD ▸`. No forms. **LOAD is the push** (`POST /api/lobby/push`,
+the same call LOBBY's own two buttons make) and it STAYS on the tab: the screen then becomes the
+**ACTIVE GAME CONFIG** — every setting of the loaded config including the ones no control edits
+(stun, siphon, presentation, hit audio, mode rules, coverage, VIP, LED, player numbering, and the
+`config_id` the guns must echo), the ack count, `RE-PUSH CONFIG ▸`, `EDIT ▸` and `CONTINUE TO KIT ▸`.
+`EDIT` opens a DRAFT (nothing is sent while editing); `SAVE AND LOAD ▸` fires one `PUT /api/config`
+with the whole patch and the server re-pushes it, so the ack count drops to 0/N and climbs. A draft
+that would reshape the roster shows the predicted split at SAVE time; abandoning one asks once. Mode boards render uncropped at native aspect
 (they carry baked-in text). `State.active_preset_id` marks which saved game is PLAYING — never content
 identity (a copy is identical to its source). Verbs: CUSTOMIZE (stock) · EDIT (yours) · COPY / MAKE MY OWN
 (opens a draft; nothing written until SAVE). Playing another card while the draft is TUNED — NOT SAVED asks once.
@@ -94,7 +101,7 @@ card will and holds `PLAY THIS NOW ▸` / `SAVE` / `SAVE AS NEW`. Edits a DRAFT;
 until PLAY (an unnamed draft plays without being saved, and says so). The pool is computed ON THE CLIENT from the
 rules being edited (`POST /api/loadout/pool` only re-confirms the preset name). Discard guards on BACK TO GAMES.
 Mode-card click applies defaults on *change* only (round 4 #15). Phones show "setting up the game" until the
-host CONTINUEs to KIT, then the BRIEFING (`phone-hud.md` B7), then their kit.
+host continues to KIT, then the BRIEFING (`phone-hud.md` B7), then their kit.
 
 ### A3 · KIT — each player, the centerpiece
 A **per-player card**, filled while the player gears up and sizes their strap. **Player number** (1–63,

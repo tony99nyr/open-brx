@@ -3,107 +3,170 @@ import type { GameConfig, LoadoutPolicy, SlotRule, WeaponView } from '../api/typ
 import { useStore } from '../store';
 import { F, T, roleOf } from '../tokens';
 import { DEFAULT_POLICY, computePool, kindRows, splitLine } from '../screens/gameSummary';
-import { Blink, GhostButton, Seg, SwitchConfirm, Toggle, ValueBox } from './index';
+import { GhostButton, PrimaryButton, Seg, SwitchConfirm, Toggle, ValueBox } from './index';
+import { LoadStatus } from './LoadedGame';
 
 type Slot = 'primary' | 'secondary';
 const toggleId = (xs: string[], x: string) => (xs.includes(x) ? xs.filter(y => y !== x) : [...xs, x]);
+const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
+/** the phases `state.py set_config` takes a full config patch in (recap takes a MODE only, and that
+ *  path is a mode card on GAMES, not this panel) */
+const EDITABLE = new Set(['muster', 'build', 'kit', 'lobby']);
 
 /** B3 (field 2026-09-12): editing the LOADED game meant leaving KIT/LOBBY for the GAMES stepper or the
- *  full DESIGNER, and an edit made while the lobby was already pushed used to un-push it SILENTLY
- *  (`state.py set_config` cleared `lobby_pushed`/`acks` and pushed nothing back) -- the root cause
- *  chased down as B1's "guns keep stale config with nothing on screen saying so". Tony: "the flow for
- *  editing the current loaded game is very bad. i need to be able to edit the current loaded game on
- *  the fly." This is that edit, inline, on the screen the operator is already looking at, for exactly
- *  the four knobs he asked for: MODE, NIGHT, DEFAULT HEALTH, WHICH WEAPONS ARE AVAILABLE. Team editing
- *  is NOT here -- that is the lobby roster drag, a different lane's ground.
+ *  full DESIGNER. Tony: "the flow for editing the current loaded game is very bad. i need to be able
+ *  to edit the current loaded game on the fly." This is that edit, inline, on the screen the operator
+ *  is already looking at, for exactly the knobs he asked for: MODE, NIGHT, DEFAULT HEALTH, WHICH
+ *  WEAPONS ARE AVAILABLE. Team editing is NOT here -- that is the lobby roster drag.
  *
- *  `set_config` (2026-09-12, coordinated with the server-side B3 fix) now keeps `lobby_pushed` true
- *  across an edit and RE-PUSHES the fresh config to every already-bound node, clearing and
- *  re-collecting acks instead of going silently stale. The status line below reads the exact same
- *  `state.lobby.acks` the LOBBY screen's own "config pushed" step reads -- one source, so the two can
- *  never disagree about whether the guns are caught up.
+ *  2026-09-13 — A DRAFT, NOT A LIVE WIRE. Every tap used to apply IMMEDIATELY (one `PUT /api/config`
+ *  per tap, each one re-pushing the whole roster when the lobby was already pushed), so setting mode
+ *  + health + three weapons mid-kit sent five heads to every gun and the operator watched five ack
+ *  counters race each other. Tony's ask makes the model explicit: "Click Edit to modify and then Save
+ *  and Load to update all phones." Nothing leaves this panel until SAVE AND LOAD, which fires ONE PUT
+ *  with the whole patch; the server's `set_config` then re-pushes once (`_repush_lobby_config`) and
+ *  the ack counter below drops to 0/N and climbs -- the one visible proof that the guns took it.
  *
- *  Only meant to be mounted on KIT and LOBBY, and only ACTIONABLE while `state.phase` is one of those
- *  two -- the server refuses a config edit once the match has started (armed/live) and refuses it
- *  differently again once it is over (recap). But the console's own nav lets the host free-browse to
- *  KIT/LOBBY at ANY phase (`CommandBar`'s tabs are not phase-gated), so this panel does not trust it is
- *  only ever mounted at the right time -- it gates itself on `state.phase`, disables every control with
- *  a real HTML `disabled` (never a tap that quietly does nothing), and still carries a fallback: if a
- *  request lands in the race between the phase advancing and this panel's next render, the server's
- *  refusal is rewritten with the one instruction that unblocks it (RECALL) and surfaces in the normal
- *  error strip -- never swallowed. */
-export function GameEditPanel({ style }: { style?: React.CSSProperties }) {
+ *  Only ACTIONABLE while the phase is one the server accepts a config edit in. The console's own nav
+ *  lets the host free-browse to KIT/LOBBY at ANY phase (`CommandBar`'s tabs are not phase-gated), so
+ *  this panel does not trust it is only ever mounted at the right time -- it gates itself on
+ *  `state.phase`, disables every control with a real HTML `disabled` (never a tap that quietly does
+ *  nothing), and still carries a fallback: if the request lands in the race between the phase
+ *  advancing and this panel's next render, the server's refusal is rewritten with the one instruction
+ *  that unblocks it (RECALL) and surfaces in the normal error strip -- never swallowed. */
+export function GameEditPanel({ style, alwaysOpen = false, onDone }:
+  { style?: React.CSSProperties; alwaysOpen?: boolean; onDone?: () => void }) {
   const { state, modes, weapons, perks, run, api, openDesigner } = useStore();
-  const [open, setOpen] = useState(false);
-  // Says "RE-PUSHING" for a few seconds after a successful edit -- comfortably past a real gun's
+  /** the config being edited, or null for "not editing". NOTHING here is sent until SAVE AND LOAD. */
+  const [draft, setDraft] = useState<GameConfig | null>(() => (alwaysOpen && state ? clone(state.config) : null));
+  const [confirmSave, setConfirmSave] = useState(false);      // a reshaping SAVE asks once (see `split`)
+  const [confirmCancel, setConfirmCancel] = useState(false);  // abandoning a dirty draft asks once
+  const [saving, setSaving] = useState(false);
+  // Says "RE-PUSHING" for a few seconds after a successful save -- comfortably past a real gun's
   // ~1.5s echo (state.py `ack_config`) -- so cause and effect stay legible right when the count starts
   // moving. It has to expire: a gun that never acks (a standing fault, same one LOBBY's own step 2
-  // lives with) would otherwise leave this claiming an active push forever, which is worse than no
-  // claim at all. Expires on its own, like the KIT confirms it borrows the pattern from
-  // (Kit.tsx `confirm`/`hostPick`).
+  // lives with) would otherwise leave this claiming an active push forever.
   const [recentEdit, setRecentEdit] = useState(false);
-  // A mode switch RE-TEAMS every player onto the new mode's declared teams (state.py
-  // `_reteam_for_config`). GAMES confirms that (T2-A, 9a1570d); this control reached the same
-  // reshape on one unconfirmed tap, and its helper line spoke only about the venue.
-  const [confirmMode, setConfirmMode] = useState<string | null>(null);
   useEffect(() => { if (!recentEdit) return; const h = setTimeout(() => setRecentEdit(false), 4_000); return () => clearTimeout(h); }, [recentEdit]);
+  // mounted with the editor already open (GAMES's EDIT state): seed the draft as soon as there is a
+  // config to seed it from.
+  const cfgId = state?.config.config_id;
+  useEffect(() => { if (alwaysOpen && !draft && state) setDraft(clone(state.config)); }, [alwaysOpen, draft, state, cfgId]);
   if (!state) return null;
   const cfg = state.config;
   // Defensive like KIT's own `pol` read: a session restored from before A10 (or an older MC) can carry
   // a config with no policy at all -- `ConfigView` promises one, a persisted snapshot does not.
-  const pol: LoadoutPolicy = cfg.loadout_policy?.primary ? cfg.loadout_policy : DEFAULT_POLICY();
-  const locked = state.phase !== 'kit' && state.phase !== 'lobby';
+  const polOf = (c: GameConfig): LoadoutPolicy => (c.loadout_policy?.primary ? c.loadout_policy : DEFAULT_POLICY());
+  const shown = draft ?? cfg;                 // what the controls read while open; the header reads `cfg`
+  const pol = polOf(shown);
+  const locked = !EDITABLE.has(state.phase);
   const pushed = state.lobby.pushed;
   const acked = Object.values(state.lobby.acks).filter(a => a.ok).length;
   const total = state.players.length;
   const allAcked = pushed && total > 0 && acked === total;
+  const open = draft !== null;
 
-  const putGame = (patch: Partial<GameConfig>) => run(async () => {
-    try {
-      const r = await api.putConfig(patch);
-      setRecentEdit(true);
-      return r;
-    } catch (e) {
-      const err = e as Error;
-      // The one server refusal this panel can actually provoke (state.py `set_config`, phase guard).
-      // The raw sentence is true but gives no next step; RECALL is the next step.
-      if (/cannot change config after the match/i.test(err.message)) throw new Error(`${err.message.toUpperCase()} — RECALL FIRST, THEN EDIT AGAIN.`);
-      throw e;
-    }
-  });
-  const putPolicy = (p: Partial<LoadoutPolicy>) => putGame({ loadout_policy: { ...pol, ...p } });
-  const putSlot = (slot: Slot, r: Partial<SlotRule>) => putPolicy({ [slot]: { ...pol[slot], ...r } });
+  /** The config a patch is measured AGAINST. A mode switch rebuilds the whole config from that mode's
+   *  defaults server-side (`state.py set_config`), so once the draft has changed mode, "did the
+   *  operator change the health" is a question about the NEW mode's defaults, not the old game's --
+   *  otherwise the patch would carry the previous mode's numbers and pin them. */
+  const baseFor = (d: GameConfig): GameConfig => {
+    if (d.mode === cfg.mode) return cfg;
+    const def = modes.find(m => m.mode === d.mode)?.defaults;
+    return def ? ({ ...clone(def), environment: cfg.environment, night: cfg.night } as GameConfig) : cfg;
+  };
+  /** ONE patch, carrying exactly what the operator changed — never the whole config (which would
+   *  re-assert this mode's every default over anything another screen touched meanwhile). */
+  const patchOf = (d: GameConfig): Partial<GameConfig> => {
+    const b = baseFor(d);
+    const p: Partial<GameConfig> = {};
+    if (d.mode !== cfg.mode) p.mode = d.mode;
+    if (d.night !== cfg.night) p.night = d.night;
+    if (JSON.stringify(d.health) !== JSON.stringify(b.health)) p.health = d.health;
+    if (JSON.stringify(d.loadout_policy) !== JSON.stringify(b.loadout_policy)) p.loadout_policy = d.loadout_policy;
+    return p;
+  };
+  const patch = draft ? patchOf(draft) : {};
+  const dirty = Object.keys(patch).length > 0;
+  /** The reshape this SAVE would produce -- the SAME predicate GAMES's mode tiles show, never a second
+   *  one. Asked of the DRAFT, which is why the per-tap confirm this panel used to carry is gone: the
+   *  question belongs to the tap that actually moves people, and that tap is SAVE AND LOAD. */
+  const split = draft ? splitLine(state.players, cfg.teams, draft.teams) : '';
+
+  const edit = (fn: (d: GameConfig) => GameConfig) => { setConfirmSave(false); setDraft(d => (d ? fn(d) : d)); };
+  const editPolicy = (p: Partial<LoadoutPolicy>) => edit(d => ({ ...d, loadout_policy: { ...polOf(d), ...p } }));
+  const editSlot = (slot: Slot, r: Partial<SlotRule>) => editPolicy({ [slot]: { ...pol[slot], ...r } });
+  const pickMode = (v: string) => {
+    if (!draft || v === draft.mode) return;
+    const def = modes.find(m => m.mode === v)?.defaults;
+    // mirrors `set_config`: rebuild from the mode's defaults, carry the VENUE (a fact about the site,
+    // not about the game) and whatever the operator has already set in this draft for it.
+    edit(d => (def ? ({ ...clone(def), config_id: d.config_id, environment: cfg.environment, night: d.night } as GameConfig) : { ...d, mode: v }));
+  };
+
+  const startEdit = () => { setConfirmCancel(false); setConfirmSave(false); setDraft(clone(cfg)); };
+  const cancel = () => {
+    if (dirty && !confirmCancel) { setConfirmCancel(true); return; }   // abandoning a draft asks ONCE
+    setConfirmCancel(false); setConfirmSave(false); setDraft(null); onDone?.();
+  };
+  const save = async () => {
+    if (!draft || saving || locked) return;
+    if (!dirty) { cancel(); return; }                       // nothing changed: closing is the honest action
+    if (split && !confirmSave) { setConfirmSave(true); return; }
+    setSaving(true);
+    const r = await run(async () => {
+      try {
+        return await api.putConfig(patch);
+      } catch (e) {
+        const err = e as Error;
+        // The one server refusal this panel can actually provoke (state.py `set_config`, phase guard).
+        // The raw sentence is true but gives no next step; RECALL is the next step.
+        if (/cannot change config after the match/i.test(err.message)) throw new Error(`${err.message.toUpperCase()} — RECALL FIRST, THEN EDIT AGAIN.`);
+        throw e;
+      }
+    });
+    setSaving(false);
+    // `run` answers `undefined` ONLY on a throw — the refusal is already in the error strip and the
+    // draft stays exactly as the operator left it, so nothing they typed is lost to a 409.
+    if (r === undefined) return;
+    setRecentEdit(true); setConfirmSave(false); setConfirmCancel(false); setDraft(null); onDone?.();
+  };
 
   // Computed client-side from the DRAFT policy, same rule engine as the DESIGNER (gameSummary.ts
   // mirrors mcp/brx_mcp/mc/policy.py `pool()`) -- every tap shows instantly and needs no round trip.
   const pool = computePool(pol, weapons, perks);
   const poolOf = (slot: Slot) => (slot === 'primary' ? pool.primary : pool.secondary_weapons);
-  /** The split this switch would produce -- the SAME predicate GAMES shows, never a second one. */
-  const modeSplit = (v: string) => {
-    const target = modes.find(m => m.mode === v);
-    return target ? splitLine(state.players, cfg.teams, target.defaults.teams) : '';
-  };
+  const saveLabel = pushed ? 'SAVE AND LOAD ▸' : 'SAVE ▸';
 
   return (
     <div data-testid="game-edit-panel" style={{ border: `1px solid ${T.line}`, background: T.panelSoft, ...style }}>
-      <button type="button" data-testid="game-edit-toggle" onClick={() => setOpen(o => !o)} aria-expanded={open}
-        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 14px',
-                 background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', minHeight: 44, color: T.ink }}>
-        <span style={{ font: F.chk(700, 12), letterSpacing: '.2em', color: T.acc }}>{open ? '▾' : '▸'} EDIT LOADED GAME</span>
-        {/* G (round-2, 2026-09-12): 11px, not 10.5 — this chip and the LOCKED badge below are the two
-            things a host reads at arm's length on the collapsed row. */}
-        <span style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>
-          {(modes.find(m => m.mode === cfg.mode)?.abbr ?? cfg.mode.toUpperCase())} · {cfg.night ? 'NIGHT' : 'DAY'} · HP {cfg.health.max_hp}/{cfg.health.max_armor}
-        </span>
-        <span style={{ flex: 1 }} />
-        {locked && <span role="status" style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: T.warn }}>LOCKED — {state.phase.toUpperCase()}</span>}
-      </button>
+      {!alwaysOpen && (
+        <button type="button" data-testid="game-edit-toggle" onClick={() => (open ? cancel() : startEdit())} aria-expanded={open}
+          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 14px',
+                   background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', minHeight: 44, color: T.ink }}>
+          <span style={{ font: F.chk(700, 12), letterSpacing: '.2em', color: T.acc }}>{open ? '▾' : '▸'} EDIT LOADED GAME</span>
+          {/* G (round-2, 2026-09-12): 11px, not 10.5 — this chip and the LOCKED badge below are the two
+              things a host reads at arm's length on the collapsed row. */}
+          <span style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>
+            {(modes.find(m => m.mode === cfg.mode)?.abbr ?? cfg.mode.toUpperCase())} · {cfg.night ? 'NIGHT' : 'DAY'} · HP {cfg.health.max_hp}/{cfg.health.max_armor}
+          </span>
+          <span style={{ flex: 1 }} />
+          {/* The count lives on the COLLAPSED row too, because that is where the operator is standing
+              when they wonder. A successful SAVE closes the draft — and the seconds right after it
+              are exactly when "are the guns caught up?" is the live question, so closing the panel
+              must not take the answer off the screen with it (caught by the jsdom suite, 2026-09-13). */}
+          <LoadStatus pushed={pushed} acked={acked} total={total} recent={recentEdit} allAcked={allAcked} />
+          {locked && <span role="status" style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: T.warn }}>LOCKED — {state.phase.toUpperCase()}</span>}
+        </button>
+      )}
       {open && (
-        <div style={{ borderTop: `1px solid ${T.line}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ borderTop: alwaysOpen ? undefined : `1px solid ${T.line}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 16 }}>
           {locked && (
             <div role="alert" data-testid="game-edit-locked" style={{ font: F.chk(700, 12), letterSpacing: '.08em', lineHeight: 1.5,
                                                                        color: T.warn, background: 'rgba(255,176,32,.08)', border: `1px solid ${T.warn}`, padding: '9px 12px' }}>
-              ▲ THE MATCH IS {state.phase.toUpperCase()} — MC REFUSES CONFIG EDITS ONCE IT HAS STARTED. RECALL FIRST, THEN EDIT.
+              {state.phase === 'recap'
+                ? '▲ THIS MATCH ENDED — PICK A MODE ON GAMES TO ROLL THE SESSION FORWARD, OR PRESS NEW MATCH.'
+                : `▲ THE MATCH IS ${state.phase.toUpperCase()} — MC REFUSES CONFIG EDITS ONCE IT HAS STARTED. RECALL FIRST, THEN EDIT.`}
             </div>
           )}
           {/* A real `disabled`, not a tap that quietly does nothing (ui-build-verify): every control
@@ -112,56 +175,75 @@ export function GameEditPanel({ style }: { style?: React.CSSProperties }) {
             <Row label="MODE">
               {modes.length > 0 ? (
                 <>
-                  <Seg label="mode" value={cfg.mode} wrap options={modes.map(m => ({ value: m.mode, label: m.abbr }))}
+                  <Seg label="mode" value={shown.mode} wrap options={modes.map(m => ({ value: m.mode, label: m.abbr }))}
                     titles={Object.fromEntries(modes.map(m => [m.mode, m.name]))}
-                    onChange={v => {
-                      if (v === cfg.mode) return;                      // already playing it: nothing moves
-                      if (modeSplit(v) && confirmMode !== v) { setConfirmMode(v); return; }
-                      setConfirmMode(null);
-                      putGame({ mode: v });
-                    }} />
-                  {confirmMode && (
-                    <SwitchConfirm dropsDraft={false} split={modeSplit(confirmMode)} style={{ marginTop: 6 }}
-                      action={`TAP ${(modes.find(m => m.mode === confirmMode)?.abbr ?? confirmMode.toUpperCase())} AGAIN TO SWITCH`} />
-                  )}
-                  <div style={{ font: F.chk(500, 11.5), color: T.micro, marginTop: 6 }}>Switching mode replaces time limit, respawn, health and weapon rules with that mode's defaults, and moves players onto that mode's teams. Venue (day/night) stays.</div>
+                    onChange={pickMode} />
+                  <div style={{ font: F.chk(500, 11.5), color: T.micro, marginTop: 6 }}>Switching mode replaces time limit, respawn, health and weapon rules with that mode's defaults, and moves players onto that mode's teams. Venue (day/night) stays. Nothing is sent until {saveLabel.replace(' ▸', '')}.</div>
                 </>
               ) : (
-                <span style={{ font: F.chk(600, 12), color: T.micro }}>{cfg.mode.toUpperCase()} — mode list unavailable (server predates this UI?)</span>
+                <span style={{ font: F.chk(600, 12), color: T.micro }}>{shown.mode.toUpperCase()} — mode list unavailable (server predates this UI?)</span>
               )}
             </Row>
             <Row label="NIGHT OPS">
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-                <Toggle on={cfg.night} onChange={v => putGame({ night: v })} label="night ops" />
-                <span style={{ font: F.chk(600, 12), color: cfg.night ? T.ink : T.dim }}>{cfg.night ? 'NIGHT' : 'DAY'}</span>
+                <Toggle on={shown.night} onChange={v => edit(d => ({ ...d, night: v }))} label="night ops" />
+                <span style={{ font: F.chk(600, 12), color: shown.night ? T.ink : T.dim }}>{shown.night ? 'NIGHT' : 'DAY'}</span>
               </span>
             </Row>
             <Row label="DEFAULT HEALTH">
               <span style={{ display: 'inline-flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                <ValueBox value={cfg.health.max_hp} unit="HP" min={1} max={999} label="default health" onChange={v => putGame({ health: { ...cfg.health, max_hp: v } })} />
-                <ValueBox value={cfg.health.max_armor} unit="AR" min={0} max={999} label="default armor" onChange={v => putGame({ health: { ...cfg.health, max_armor: v } })} />
+                <ValueBox value={shown.health.max_hp} unit="HP" min={1} max={999} label="default health" onChange={v => edit(d => ({ ...d, health: { ...d.health, max_hp: v } }))} />
+                <ValueBox value={shown.health.max_armor} unit="AR" min={0} max={999} label="default armor" onChange={v => edit(d => ({ ...d, health: { ...d.health, max_armor: v } }))} />
                 <span style={{ font: F.mono(500, 10), letterSpacing: '.1em', color: T.micro }}>a player's own POOL override (on KIT) still wins over this</span>
               </span>
             </Row>
             <Row label="WEAPONS AVAILABLE">
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>
                 <PoolEditor label="PRIMARY" rule={pol.primary} allowed={poolOf('primary')} weapons={weapons}
-                  onToggleId={id => putSlot('primary', { exclude_ids: toggleId(pol.primary.exclude_ids, id) })} />
+                  onToggleId={id => editSlot('primary', { exclude_ids: toggleId(pol.primary.exclude_ids, id) })} />
                 <PoolEditor label="SECONDARY" rule={pol.secondary} allowed={poolOf('secondary')} weapons={weapons}
-                  onToggleId={id => putSlot('secondary', { exclude_ids: toggleId(pol.secondary.exclude_ids, id) })} />
+                  onToggleId={id => editSlot('secondary', { exclude_ids: toggleId(pol.secondary.exclude_ids, id) })} />
               </div>
             </Row>
           </fieldset>
+
+          {/* The one place anything leaves this panel. */}
+          {confirmSave && split && (
+            <SwitchConfirm dropsDraft={false} split={split} action={`TAP ${saveLabel.replace(' ▸', '')} AGAIN TO APPLY`} />
+          )}
+          {confirmCancel && (
+            <div role="status" data-testid="game-edit-discard" style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: T.warn, display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <span>▲ THIS DISCARDS YOUR UNSAVED CHANGES</span>
+              <span>TAP CANCEL AGAIN TO DISCARD THEM</span>
+            </div>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', borderTop: `1px solid ${T.line}`, paddingTop: 12 }}>
-            <RepushStatus pushed={pushed} acked={acked} total={total} recent={recentEdit} allAcked={allAcked} />
-            {/* Round-2 fix pass F (2026-09-12): this sat OUTSIDE the fieldset above, so the ONE control
-                on this panel that navigates somewhere was the one the lock did not reach — tappable
-                while the match was live, and dead-ending on the DESIGNER's own lock banner with
-                nothing to do there. Gated on the same `locked`, disabled rather than hidden so the
-                operator can still see what lives behind it. */}
-            <GhostButton size={10.5} pad="8px 12px" disabled={locked}
-              title={locked ? `THE MATCH IS ${state.phase.toUpperCase()} — RECALL FIRST, THEN EDIT.` : undefined}
-              onClick={() => { if (!locked) openDesigner({ fromLive: true }); }}>WHO PICKS / FIXED / SIDEARMS-ONLY RULES — OPEN GAME DESIGNER ▸</GhostButton>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              {/* while the draft is open the header above is not rendered (or is the toggle row of a
+                  panel whose own copy is hidden behind it), so this is the one on screen */}
+              <LoadStatus testid={alwaysOpen ? 'game-edit-repush' : 'game-edit-repush-open'}
+                pushed={pushed} acked={acked} total={total} recent={recentEdit} allAcked={allAcked} />
+              <span data-testid="game-edit-dirty" style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: dirty ? T.warn : T.micro }}>
+                {dirty ? `UNSAVED: ${Object.keys(patch).map(k => k.replace('loadout_policy', 'weapons').toUpperCase()).join(' · ')}` : 'NO CHANGES YET'}
+              </span>
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {/* Round-2 fix pass F (2026-09-12): this sat OUTSIDE the fieldset above, so the ONE control
+                  on this panel that navigates somewhere was the one the lock did not reach. */}
+              <GhostButton size={10.5} pad="8px 12px" disabled={locked}
+                title={locked ? `THE MATCH IS ${state.phase.toUpperCase()} — RECALL FIRST, THEN EDIT.` : undefined}
+                onClick={() => { if (!locked) openDesigner({ fromLive: true }); }}>WHO PICKS / FIXED / SIDEARMS-ONLY RULES — OPEN GAME DESIGNER ▸</GhostButton>
+              <span data-testid="game-edit-cancel"><GhostButton size={11} pad="9px 14px" onClick={cancel}>CANCEL</GhostButton></span>
+              <span data-testid="game-edit-save">
+                <PrimaryButton onClick={save} disabled={locked || saving || !dirty}
+                  title={locked ? `THE MATCH IS ${state.phase.toUpperCase()} — RECALL FIRST, THEN EDIT.`
+                    : !dirty ? 'Nothing has changed yet'
+                    : pushed ? 'Sends the whole change to MC in one go, then re-pushes it to every gun. The count on the left drops to 0 and climbs as each one answers.'
+                    : 'Applies the change. Nothing has been loaded to the guns yet — LOAD on the GAMES tab sends it.'}>
+                  {saving ? 'SAVING…' : saveLabel}
+                </PrimaryButton>
+              </span>
+            </span>
           </div>
         </div>
       )}
@@ -210,22 +292,4 @@ function PoolEditor({ label, rule, allowed, weapons, onToggleId }:
 }
 function PoolNote({ label, text }: { label: string; text: string }) {
   return <div style={{ font: F.chk(500, 12), color: T.dim }}><b style={{ font: F.mono(600, 11), letterSpacing: '.2em', color: T.micro }}>{label} </b>{text}</div>;
-}
-
-function RepushStatus({ pushed, acked, total, recent, allAcked }: { pushed: boolean; acked: number; total: number; recent: boolean; allAcked: boolean }) {
-  if (!pushed) return <span style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro }}>NOT PUSHED YET — nothing on the guns to update</span>;
-  // "RE-PUSHING" is a CLAIM that something is actively in flight -- true for the ~1.5s a real gun
-  // takes to echo (`recent` -- the 4s window after THIS panel's own edit), but a standing fault (one
-  // gun that will never ack, same as LOBBY's own step 2) is a different fact and must not be worded as
-  // an in-progress push forever. Once `recent` has expired, an incomplete count reads as what it now
-  // is: how many guns are actually caught up.
-  const repushing = !allAcked && recent;
-  return (
-    <span role="status" data-testid="game-edit-repush" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: F.chk(700, 11.5), letterSpacing: '.1em', color: allAcked ? T.ok : T.warn }}>
-      {repushing && <Blink color={T.warn} size={7} />}
-      {allAcked ? `ALL GUNS ON THIS CONFIG (${acked}/${total})`
-        : repushing ? `CONFIG CHANGED — RE-PUSHING TO EVERY GUN… ${acked}/${total} CONFIRMED`
-        : `${acked}/${total} GUNS CONFIRMED ON THIS CONFIG`}
-    </span>
-  );
 }

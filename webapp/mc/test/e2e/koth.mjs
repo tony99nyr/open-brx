@@ -8,12 +8,20 @@
 //   npm run e2e                            # all steps
 //   ONLY=teams npm run e2e                 # one step (every step self-navigates)
 //   HEADED=1 / KEEP_SHOTS=1 / MC_PY=...    # watch it / keep screenshots / pick the interpreter
+//   MC_PORT=… MC_WS_PORT=… VITE_PORT=…     # move the ports (defaults: 8765, a free one, a free one)
+//
+// ⚠ This suite used to hardcode :8765 — the port `vite.config.ts` proxies to — which made it the ONE
+// suite a parallel worker could not run without driving someone else's server, and TWO regressions
+// hid behind that in a single day (2026-09-12/13: the mode tile becoming a two-tap control, and the
+// LOAD reshape). `MC_PORT` now moves the server AND the proxy (`vite.config.ts` reads
+// `MC_PROXY_PORT`, which `startVite` below sets), so any lane can run the whole file on its own ports.
 //
 // Component logic that is NOT about what a person sees stays in test/koth.test.tsx (jsdom, 2s).
 import { chromium } from 'playwright';
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -22,6 +30,16 @@ const MC = path.resolve(HERE, '../..');                 // webapp/mc
 const REPO = path.resolve(MC, '../..');
 const SHOTS = path.join(HERE, 'shots');
 const ONLY = process.env.ONLY || '';
+// Defaults unchanged: :8765 for MC (what `vite.config.ts` proxies to out of the box) and a free port
+// for vite and for the node socket. `0` here means "pick a free one", exactly as before.
+// Where the server keeps its data. A test run must NEVER write into the operator's real
+// `~/.brx-mcp`: hundreds of near-empty session files from suite runs landed there, and after the
+// field night Tony had to sift them by size and timestamp to find the four real games. One temp dir
+// per run, removed at the end — and nothing under the real home is ever touched.
+const MC_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'brx-koth-home-'));
+const MC_PORT = Number(process.env.MC_PORT || 8765);
+const MC_WS_PORT = Number(process.env.MC_WS_PORT || 0);
+const VITE_PORT = Number(process.env.VITE_PORT || 0);
 
 // ---------------------------------------------------------------- assertions
 let failures = [];
@@ -48,8 +66,21 @@ const until = async (pred, ms, what) => {
 };
 
 // ---------------------------------------------------------------- the two processes the owner runs
+/** Every child this run started, so a hard exit cannot leave an MC or a vite squatting the ports.
+ *
+ *  `process.exit(3)` (a missing interpreter, a port already taken, a fixture that would not build)
+ *  skips the runner's own cleanup at the bottom of the file — so a single early exit left :8765 and
+ *  the dev server alive, and the NEXT run refused to start because "something is already serving"
+ *  itself. Killing the group synchronously from an exit handler is the one thing that still works at
+ *  that point (an async stop never gets its turn). Observed twice on 2026-09-13. */
+const spawned = new Set();
+process.on('exit', () => {
+  for (const proc of spawned) { try { process.kill(-proc.pid, 'SIGKILL'); } catch { /* already gone */ } }
+});
+
 /** `npm run dev` is npm -> sh -> vite: signal the GROUP, or vite survives holding our stdio pipe */
 const killGroup = proc => new Promise(done => {
+  spawned.delete(proc);
   let settled = false;
   const finish = () => { if (!settled) { settled = true; done(); } };
   proc.once('exit', finish);
@@ -63,27 +94,43 @@ const freePort = () => new Promise((res, rej) => {
   s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); });
 });
 
-async function startMC({ sessionFile = null, label = 'fresh' } = {}) {
-  const py = process.env.MC_PY || path.join(REPO, '.venv', 'bin', 'python');
-  if (!fs.existsSync(py) && !process.env.MC_PY) {
-    console.error(`NO PYTHON — ${py} is missing. Set MC_PY to an interpreter with starlette/uvicorn/websockets.`);
-    process.exit(3);
+/** This worktree may carry no `.venv` of its own (it is gitignored and not duplicated per worktree) —
+ *  the shared WSL venv lives on the MAIN checkout. Falling back to it borrows an INTERPRETER BINARY
+ *  (read-only exec, never a write); the CODE it runs is still pinned to THIS tree by `cwd` below,
+ *  which is the part that matters. Same fallback `game-edit.mjs` already has: without it this suite
+ *  exits "NO PYTHON" for every lane working in a worktree, which is half of why nobody ran it. */
+function findPython() {
+  if (process.env.MC_PY) return process.env.MC_PY;
+  const local = path.join(REPO, '.venv', 'bin', 'python');
+  if (fs.existsSync(local)) return local;
+  const marker = '/.claude/worktrees/';
+  if (REPO.includes(marker)) {
+    const main = path.join(REPO.slice(0, REPO.indexOf(marker)), '.venv/bin/python');
+    if (fs.existsSync(main)) return main;
   }
-  const port = 8765;                      // vite.config.ts proxies /api and /ui-ws to exactly this
-  // If something already answers on 8765 we would silently drive THAT server and report on it —
+  console.error(`NO PYTHON — ${local} is missing. Set MC_PY to an interpreter with starlette/uvicorn/websockets.`);
+  process.exit(3);
+}
+
+async function startMC({ sessionFile = null, label = 'fresh' } = {}) {
+  const py = findPython();
+  const port = MC_PORT;                   // …and vite is pointed at it (startVite sets MC_PROXY_PORT)
+  // If something already answers there we would silently drive THAT server and report on it —
   // which is how a run "passes" against a process it never started. Refuse instead.
   try {
     const squatter = await fetch(`http://127.0.0.1:${port}/api/state`, { signal: AbortSignal.timeout(1500) });
     if (squatter.ok) {
-      console.error(`SOMETHING IS ALREADY SERVING :${port} — that is the port vite.config.ts proxies to.`);
-      console.error('Stop your own `python -m brx_mcp.mc` (or a leftover run) and try again.');
+      console.error(`SOMETHING IS ALREADY SERVING :${port} — that is the port this run's vite proxies to.`);
+      console.error('Stop your own `python -m brx_mcp.mc` (or a leftover run), or set MC_PORT= to somewhere free.');
       process.exit(3);
     }
   } catch { /* nothing there: good */ }
-  const wsPort = await freePort();
+  const wsPort = MC_WS_PORT || await freePort();
   const args = ['-m', 'brx_mcp.mc', '--host', '127.0.0.1', '--port', String(port), '--ws-port', String(wsPort), '--demo', '--no-auth'];
   if (sessionFile) args.push('--session-file', sessionFile); else args.push('--ephemeral');
-  const proc = spawn(py, args, { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+  const proc = spawn(py, args, { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', 'pipe', 'pipe'], detached: true,
+    env: { ...process.env, BRX_MCP_HOME: MC_HOME } });
+  spawned.add(proc);
   let log = '';
   proc.stdout.on('data', d => { log += d; });
   proc.stderr.on('data', d => { log += d; });
@@ -98,7 +145,7 @@ async function startMC({ sessionFile = null, label = 'fresh' } = {}) {
   })();
   if (!up) {
     console.error(`MC (${label}) DID NOT START on :${port}:\n${log}`);
-    console.error('If something else is already on 8765 that is probably your own MC — stop it, or run this against it by hand.');
+    console.error(`If something else is already on :${port} that is probably your own MC — stop it, set MC_PORT=, or run this against it by hand.`);
     proc.kill('SIGKILL'); process.exit(3);
   }
   // The squatter check above is a PRE-check and it can lose a race (a server that came up in the
@@ -117,8 +164,12 @@ async function startMC({ sessionFile = null, label = 'fresh' } = {}) {
 
 /** `npm run dev` — the same command the owner types. Vite serves src, so there is no bundle to stale. */
 async function startVite() {
-  const port = await freePort();
-  const proc = spawn('npm', ['run', 'dev', '--', '--port', String(port), '--strictPort'], { cwd: MC, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+  const port = VITE_PORT || await freePort();
+  // `MC_PROXY_PORT` is what makes this suite movable: `vite.config.ts` proxies /api and /ui-ws to it
+  // (default :8765), so the dev server this starts talks to the MC THIS run started and to no other.
+  const proc = spawn('npm', ['run', 'dev', '--', '--port', String(port), '--strictPort'],
+    { cwd: MC, stdio: ['ignore', 'pipe', 'pipe'], detached: true, env: { ...process.env, MC_PROXY_PORT: String(MC_PORT) } });
+  spawned.add(proc);
   let log = '';
   proc.stdout.on('data', d => { log += d; });
   proc.stderr.on('data', d => { log += d; });
@@ -154,7 +205,24 @@ async function go(pg, view) {
   await until(() => pg.locator('header').count().then(n => n > 0), 8000, 'the command bar to render');
   // the first snapshot has arrived when the screen is no longer the CONNECTING placeholder
   await until(() => pg.locator('text=CONNECTING TO MISSION CONTROL').count().then(n => n === 0), 12000, 'the first snapshot');
+  if (view === 'build') await showCards(pg);
   return pg;
+}
+
+/** Make the GAMES card shelves reachable, whichever of the tab's two states it is in.
+ *
+ *  Since 2026-09-13 (Tony: "the tab should then change state to active game config") a GAMES tab with
+ *  a head already on the guns IS the active game config, and the shelves sit behind PLAY A DIFFERENT
+ *  GAME. Every step here is about the CARDS, and they share ONE server — so a step that pushed leaves
+ *  the next one looking at the other state. `go()` calls this; so must any step that navigates with a
+ *  raw `goto` (`mode-card-host-call`, `mock-demo`). The `load-path` step drives both states
+ *  deliberately and starts from a session nothing has been loaded into. */
+async function showCards(pg) {
+  const picker = pg.locator('[data-testid="pick-another"]');
+  if (await picker.count() > 0 && await pg.locator('div[role="button"][aria-label^="play "]').count() === 0) {
+    await picker.click();
+    await until(() => pg.locator('div[role="button"][aria-label^="play "]').count().then(n => n > 0), 6000, 'the card shelves to open');
+  }
 }
 /** close a page that has routes attached — an in-flight `route.fetch` after close throws globally */
 const closePage = async pg => {
@@ -188,6 +256,13 @@ const tdmCard = pg => pg.locator('div[role="button"][aria-label="play TEAM DEATH
  *  along because this confirm is the newest meaning-bearing copy on the screen `audit-text` guards.
  *  `test/games-confirm-contract.test.tsx` is the fast (jsdom, binds nothing) twin of this contract. */
 async function pickTile(pg, card, { what = 'the mode tile', playing = true, ms = 8000, confirm = true } = {}) {
+  // Already playing? Then "pick it" is a no-op and there is nothing to confirm — `Games.tsx tappable()`
+  // swallows the tap on purpose (re-picking what is on is only a real action in RECAP, where it means
+  // "run it back"). Steps that reach this twice — `recap-coverage-floor` opens two pages and picks on
+  // each — used to pass because a second click was harmless; T2-A's two-tap made them wait 8 s for a
+  // confirm that correctly never comes. Same rot as `koth-selectable`, same cause: nobody could run
+  // this suite (2026-09-13: `MC_PORT` fixes that).
+  if ((await card.getAttribute('aria-pressed')) === 'true') return;
   await card.click();
   if (confirm) {
     const box = card.locator('[data-testid="confirm-switch"]');
@@ -265,8 +340,13 @@ async function armMatch(base) {
  *  literal in this file. Nothing on `app/src` sends a `possession` fact yet, so a browser run cannot
  *  reach a recap that has one by playing; this is the honest substitute. */
 function recapFixture(args = []) {
-  const py = process.env.MC_PY || path.join(REPO, '.venv', 'bin', 'python');
-  const r = spawnSync(py, [path.join(HERE, 'recap_fixture.py'), ...args], { cwd: path.join(REPO, 'mcp'), encoding: 'utf8' });
+  // `findPython()`, not the raw `.venv` path: a worktree has no venv of its own, and this used to
+  // fail with `status null` and an EMPTY stderr — "recap_fixture.py failed (null): undefined" — which
+  // reads as a broken fixture rather than as a missing interpreter. Same temp `BRX_MCP_HOME` as the
+  // server, so nothing a test runs can write into the operator's real data directory.
+  const py = findPython();
+  const r = spawnSync(py, [path.join(HERE, 'recap_fixture.py'), ...args],
+    { cwd: path.join(REPO, 'mcp'), encoding: 'utf8', env: { ...process.env, BRX_MCP_HOME: MC_HOME } });
   if (r.status !== 0) { console.error(`recap_fixture.py failed (${r.status}):\n${r.stderr}`); process.exit(3); }
   return JSON.parse(r.stdout);
 }
@@ -330,7 +410,12 @@ step('koth-selectable', async ({ browser, base }) => {
   expect(await card.count() === 1, 'a KING OF THE HILL card exists in STOCK MODES');
   expect((await card.getAttribute('aria-pressed')) === 'false', 'KotH is not already the playing game');
   expect(await card.locator('text=KOTH').count() > 0, 'the card carries the KOTH abbreviation');
-  await card.click();
+  // Through `pickTile`, like every other step: T2-A (9a1570d) made a tile that would reshape >= 2
+  // rostered players a TWO-tap control, and this step was left clicking ONCE — so from that commit
+  // onward it asserted a card that had only armed its confirm, and failed for a reason that had
+  // nothing to do with KotH. Nobody saw it, because :8765 made this the one suite a lane could not
+  // run (2026-09-13: that is now `MC_PORT`).
+  await pickTile(pg, card, { what: 'KotH playing', playing: false });
   await until(async () => (await card.getAttribute('aria-pressed')) === 'true', 6000, 'the KotH card to report itself PLAYING');
   expect(await card.locator('span:text-is("PLAYING")').count() > 0, 'the card shows the PLAYING tag');
   const title = pg.getByTestId('playing-title');
@@ -597,19 +682,79 @@ step('f88-multipoint-refused', async ({ browser, base }) => {
   await closePage(pg);
 });
 
-step('continue-path', async ({ browser, base }) => {
+// The operator's own walk, 2026-09-13: LOAD (which PUSHES, and stays), the ACTIVE GAME CONFIG state
+// it lands in, an EDIT that sends nothing until SAVE AND LOAD, and only then CONTINUE TO KIT.
+//
+// The step this replaces clicked `CONTINUE ▸` and asserted the phase moved to kit — which is exactly
+// what the field complained about: "several times while players were kitting I wanted to make
+// adjustments and I would have to remake a game type and hit continue hoping it pushed the updates".
+// CONTINUE pushed NOTHING (a bare `setPhase`), so a suite that asserted it worked was asserting the
+// defect. Every line below is about the thing the operator could not see: whether the guns have it.
+step('load-path', async ({ browser, base }) => {
+  // Every step shares ONE server, and a step that pushed (`setup-steps-prematch` arms a match) leaves
+  // the session LOADED — which is the other state of this tab. The un-loaded half of this walk needs a
+  // session nothing has been loaded into, and NEW MATCH keeping the roster is the operator's own way
+  // to get one (`state.py new_session`: phase muster, `lobby_pushed` false, acks dropped, roster kept).
+  const fresh = await fetch(`${base}/api/session/new`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"keep_roster":true}' });
+  if (!fresh.ok) throw new Error(`load-path: POST /api/session/new ${fresh.status} ${(await fresh.text()).slice(0, 160)}`);
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
   await pickKoth(pg, { ms: 6000, what: 'KotH playing' });
-  // the user's real path: the CONTINUE button, not the nav tab
-  await pg.locator('main button:has-text("CONTINUE ▸")').first().click();
-  await until(() => pg.locator('main', { hasText: '[ A3 // KIT-OUT ]' }).count().then(n => n > 0), 8000, 'KIT to open from CONTINUE');
+  const before = await (await fetch(`${base}/api/state`)).json();
+  expect(before.lobby.pushed === false, `CONTROL: nothing is loaded yet (saw pushed=${before.lobby.pushed})`);
+
+  // --- LOAD: it PUSHES, and it does not navigate away -----------------------------------------
+  const load = pg.locator('main [data-testid="game-load"] button');
+  expect(await load.count() === 1, 'the primary control on an un-loaded GAMES tab is LOAD');
+  expect((await load.innerText()).includes('LOAD'), `it says LOAD (saw ${JSON.stringify(await load.innerText())})`);
+  if (await load.isEnabled()) await load.click();
+  else await pg.locator('main [data-load-force="1"]').click();   // a board with a row no push can clear
+  await until(async () => (await (await fetch(`${base}/api/state`)).json()).lobby.pushed === true, 10000, 'the server to report the config pushed');
+  const loaded = await (await fetch(`${base}/api/state`)).json();
+  expect(loaded.phase === 'lobby', `the push moves the SESSION to lobby, as state.py does (saw ${loaded.phase})`);
+  // ...and the TAB stays. This is the whole reversal: a tab cannot "change state to active game
+  // config" if its own success navigates it to the LOBBY screen (store.holdPhase).
+  await until(() => pg.locator('[data-testid="active-game-config"]').count().then(n => n > 0), 8000, 'the ACTIVE GAME CONFIG state');
+  expect(new URL(pg.url()).hash === '#build', `LOAD left the console on GAMES (saw ${JSON.stringify(new URL(pg.url()).hash)})`);
+  expect(await pg.locator('main', { hasText: 'ACTIVE GAME CONFIG' }).count() > 0, 'the tab says which state it is in');
+
+  // --- every setting, and the id the guns must echo --------------------------------------------
+  const cfgId = await railRow(pg, 'CONFIG ID').innerText();
+  expect(cfgId.trim() === loaded.config.config_id, `the CONFIG ID on screen is the server's (saw ${JSON.stringify(cfgId.trim())}, server ${loaded.config.config_id})`);
+  const settings = (await pg.locator('[data-testid="game-settings"]').innerText()).replace(/\s+/g, ' ');
+  for (const label of ['TEAMS', 'RESPAWN', 'HEALTH', 'LOADOUT', 'VENUE', 'STUN (EMP)', 'SIPHON', 'HIT AUDIO', 'MODE RULES', 'PRESENTATION']) {
+    expect(settings.includes(label), `the loaded config names ${label} (saw ${JSON.stringify(settings.slice(0, 160))}…)`);
+  }
+  const status = (await pg.locator('[data-testid="game-load-status"]').innerText()).replace(/\s+/g, ' ');
+  expect(/\d+\/\d+|ALL GUNS/.test(status), `the ack counter answers "did it push?" (saw ${JSON.stringify(status)})`);
+  ok(`LOAD pushed and the tab became the active config  ${await shot(pg, '10-loaded')}`);
+
+  // --- EDIT is a DRAFT: nothing is sent until SAVE AND LOAD ------------------------------------
+  await pg.locator('[data-testid="game-edit-open"] button').click();
+  const nightSwitch = pg.locator('[data-testid="game-edit-panel"] [role="switch"]');
+  const nightBefore = (await (await fetch(`${base}/api/state`)).json()).config.night;
+  await nightSwitch.click();
+  await pg.waitForTimeout(400);
+  const midEdit = await (await fetch(`${base}/api/state`)).json();
+  expect(midEdit.config.night === nightBefore, `a tap in the draft sends NOTHING (server night still ${nightBefore})`);
+  const save = pg.locator('[data-testid="game-edit-save"] button');
+  expect((await save.innerText()).includes('SAVE AND LOAD'), `the button says SAVE AND LOAD once a head is on the guns (saw ${JSON.stringify(await save.innerText())})`);
+  await save.click();
+  await until(async () => (await (await fetch(`${base}/api/state`)).json()).config.night !== nightBefore, 8000, 'the server to take the whole edit at SAVE AND LOAD');
+  const afterEdit = await (await fetch(`${base}/api/state`)).json();
+  expect(afterEdit.lobby.pushed === true, 'the edit RE-pushes rather than un-pushing (B1/B3)');
+  expect(afterEdit.config.config_id !== loaded.config.config_id, 'a fresh config_id: the guns are being asked for a new proof (A36)');
+  ok(`EDIT → SAVE AND LOAD re-pushed  ${await shot(pg, '10b-saved')}`);
+
+  // --- and only THEN, KIT ----------------------------------------------------------------------
+  await pg.locator('[data-testid="game-continue-kit"] button').click();
+  await until(() => pg.locator('main', { hasText: '[ A3 // KIT-OUT ]' }).count().then(n => n > 0), 8000, 'KIT to open from CONTINUE TO KIT');
   expect(await pg.locator('main', { hasText: 'Kit Each Player' }).count() > 0, 'the KIT screen title is on screen');
-  expect(new URL(pg.url()).hash === '#kit', `CONTINUE moved the URL to #kit (saw ${JSON.stringify(new URL(pg.url()).hash)})`);
+  expect(new URL(pg.url()).hash === '#kit', `CONTINUE TO KIT moved the URL to #kit (saw ${JSON.stringify(new URL(pg.url()).hash)})`);
   expect(await pg.locator('text=▲ CONSOLE ERROR').count() === 0, 'KIT does not crash for a koth game');
   const st = await (await fetch(`${base}/api/state`)).json();
-  expect(st.phase === 'kit', `CONTINUE advanced the server phase to kit (saw ${st.phase})`);
-  ok(`GAMES → CONTINUE ▸ → KIT  ${await shot(pg, '10-continue-kit')}`);
+  expect(st.phase === 'kit', `CONTINUE TO KIT advanced the server phase to kit (saw ${st.phase})`);
+  ok(`GAMES → LOAD ▸ → EDIT → SAVE AND LOAD ▸ → CONTINUE TO KIT ▸  ${await shot(pg, '10-continue-kit')}`);
   await closePage(pg);
 });
 
@@ -743,6 +888,7 @@ step('mode-card-host-call', async ({ browser, base }) => {
     const pg = await newPage(browser, base);
     await pg.goto(url, { waitUntil: 'domcontentloaded' });
     await until(() => pg.locator('main', { hasText: '[ A2 // GAMES ]' }).count().then(n => n > 0), 12000, `the GAMES screen (${url})`);
+    await showCards(pg);
     await pickKoth(pg, { ms: 8000, what: `KotH playing (${url})` });
     const win = (await railRow(pg, 'WIN').textContent()).trim();
     expect(win === WIN, `${url.includes('mock') ? '?mock' : 'server'}: the WIN row reads ${JSON.stringify(WIN)} (saw ${JSON.stringify(win)})`);
@@ -896,11 +1042,14 @@ step('mock-demo', async ({ browser, base }) => {
   const pg = await newPage(browser, base);
   await pg.goto(`${base}/?mock#build`, { waitUntil: 'domcontentloaded' });
   await until(() => pg.locator('main', { hasText: '[ A2 // GAMES ]' }).count().then(n => n > 0), 10000, 'the mock GAMES screen');
+  await showCards(pg);
   await pickKoth(pg, { ms: 6000, what: 'KotH playing in the demo' });
   expect((await railRow(pg, 'OBJECTIVE').textContent()).trim() === 'GRENADE HILL · ONE POINT', 'the demo shows the same OBJECTIVE row');
   expect(await pg.locator('text=POWER-CYCLE THE GRENADE').first().isVisible(), 'the demo shows the same SETUP step');
-  // the demo backend lives in the page, so a reload restarts it — walk to KIT with the CONTINUE button
-  await pg.locator('main button:has-text("CONTINUE ▸")').first().click();
+  // The demo backend lives in the page, so a reload restarts it: `go()` is out, and the walk has to
+  // be a real click. The nav tab is the right one here — this step is about the KIT team chips, not
+  // about pushing, and the demo's deliberately RED gun would make LOAD the forcing variant.
+  await pg.locator('header nav button:has-text("KIT")').first().click();
   await until(() => pg.locator('span[role="group"][aria-label="team"]').count().then(n => n > 0), 10000, 'the demo KIT team chips');
   const chips = (await pg.locator('span[role="group"][aria-label="team"] button').allTextContents()).map(x => x.trim());
   expect(JSON.stringify(chips) === JSON.stringify(['BLUE', 'GREEN']), `the demo offers BLUE+GREEN only (saw ${JSON.stringify(chips)})`);
@@ -974,6 +1123,8 @@ step('old-data-boot', async ({ browser, base, swapMC }) => {
   await browser.close();
   await vite.stop();
   await mc.stop();
+  // only the directory THIS run created, and only under the OS temp dir
+  if (MC_HOME.startsWith(os.tmpdir())) fs.rmSync(MC_HOME, { recursive: true, force: true });
   currentStep = 'js-errors';
   const noisy = jsErrors.filter(e => !/favicon|ERR_CONNECTION|Failed to load resource/i.test(e));
   expect(noisy.length === 0, `no uncaught JS / console errors in the whole run (${noisy.length}): ${JSON.stringify(noisy.slice(0, 6))}`);
