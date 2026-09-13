@@ -49,7 +49,16 @@ export function Lobby() {
   const nReady = players.filter(p => p.ready).length;
   const notReady = players.filter(p => !p.ready).map(p => p.display);
   const allReady = nReady === players.length && players.length > 0;
-  const acked = Object.values(lobby.acks).filter(a => a.ok).length;
+  // A36: an ack for a PREVIOUS config is not an ack for this one — the server refuses the whistle on
+  // it, `force` included, so a counter that reads "4/4 acked" beside a refused START would be lying
+  // in exactly the place the operator looks. `config_id` absent = an older server that never sent
+  // one; fall back to `ok` rather than reading every ack as stale.
+  const ackIsCurrent = (a: { ok: boolean; config_id?: string }) =>
+    a.ok && (a.config_id === undefined || a.config_id === state.config.config_id);
+  const acked = Object.values(lobby.acks).filter(ackIsCurrent).length;
+  const nameOf = (id: string) => players.find(p => p.player_id === id)?.display ?? id;
+  const noEcho = Object.entries(lobby.acks).filter(([, a]) => !a.ok).map(([id]) => nameOf(id));
+  const staleAcked = Object.entries(lobby.acks).filter(([, a]) => a.ok && !ackIsCurrent(a)).map(([id]) => nameOf(id));
   const allAcked = lobby.pushed && acked === players.length;
   // A28.4: derived, never asserted — "grey" the count while the tunnel is off, since it can only be 0.
   const cLine = coverageLine(state);
@@ -164,7 +173,13 @@ export function Lobby() {
             : waitWhy
               || (notReady.length ? `Not ready yet: ${notReady.join(', ')}` : '')
               || (lobby.pushed && !allAcked
-                  ? `No config echo from ${Object.entries(lobby.acks).filter(([, a]) => !a.ok).map(([id]) => players.find(p => p.player_id === id)?.display).join(', ')} — headset off, or gun asleep?`
+                  // A36: "no echo" and "echoed the LAST game" are different problems with different
+                  // answers, and this line used to be able to name NEITHER — a stale ack is `ok:true`,
+                  // so it fell out of the filter and the sentence rendered as "No config echo from  —
+                  // headset off, or gun asleep?" with an empty list, about guns that had answered.
+                  ? (staleAcked.length
+                      ? `${staleAcked.join(', ')} still answering for an older config — push again`
+                      : `No config echo from ${noEcho.join(', ')} — headset off, or gun asleep?`)
                   : 'All nodes ready and in range. Push, then walk.')}
         </div>
 

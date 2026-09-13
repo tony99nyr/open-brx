@@ -4453,3 +4453,48 @@ test('B4: a marginal link that gaps two or three $VOLTS cadences is NOT force-dr
   h.adv(90000); h.eng.tick();
   assert.equal(staleFired, 0, 'three missed $VOLTS at the edge of range is not a dead link');
 });
+
+// --------------------------------------------------------------------------------------------
+// A36 — MC has to be able to PROVE that the head it pushed is the head this gun is running.
+// Field night 2026-09-12: guns ran a previous push in nearly every match and every signal MC had
+// still read "ok". Two of the three proofs are written from here.
+// --------------------------------------------------------------------------------------------
+test('A36: the ack carries the SLOT-0 $ALCD echo, not just the $START $LCD that arrives first', () => {
+  // A real tagger answers the head with `$START`'s `$LCD,0,0,0,0,0,0,*` FIRST and the $WEAP echoes
+  // behind it. Reporting "the first frame back" therefore reports the one frame that says nothing
+  // about the weapon, which is why the old echo check could only ever test for truthiness.
+  const h = harness().kit().config_();
+  h.frame('$LCD,0,0,0,0,0,0,*');            // $START's answer, first, exactly as the gun sends it
+  h.frame('$ALCD,32,100,0,192,0,*');        // the primary's echo: mag 32 / reserve 192
+  h.frame('$ALCD,24,100,1,12,0,*');         // the secondary's -- a different slot, must NOT be taken
+  h.adv(1600); h.eng.tick();
+  const ack = h.reports.find(r => r.k === 'ack_config');
+  assert.equal(ack.b.gun_echo, '$ALCD,32,100,0,192,0,*', 'the slot-0 ammo echo is what MC gets');
+  assert.equal(ack.b.config_id, h.config.config_id);
+  // ...and the headset proof is untouched: a gun that answered at all answered.
+  assert.equal(h.eng.statusBody().preflight.headset_ok, true);
+});
+
+test('A36: a gun that only answers $LCD still acks -- with the $LCD (no evidence is not a fault)', () => {
+  const h = harness().kit().config_().echo();
+  h.adv(1600); h.eng.tick();
+  const ack = h.reports.find(r => r.k === 'ack_config');
+  assert.equal(ack.b.ok, true);
+  assert.equal(ack.b.gun_echo, '$LCD,0,0,0,0,0,0,*');
+});
+
+test('A36: a NEW head clears the previous ammo echo before the new one is collected', () => {
+  const h = harness().kit().config_();
+  h.frame('$ALCD,32,100,0,192,0,*');
+  h.adv(1600); h.eng.tick();
+  assert.equal(h.eng.ammoEcho, '$ALCD,32,100,0,192,0,*');
+  h.config_();                                  // a re-push: the old echo describes a head that is gone
+  assert.equal(h.eng.ammoEcho, null);
+});
+
+test('A36: every status heartbeat names the config this phone is holding', () => {
+  const h = harness().kit();
+  assert.equal(h.eng.statusBody().config_id, undefined, 'nothing held yet, nothing claimed');
+  h.config_();
+  assert.equal(h.eng.statusBody().config_id, h.config.config_id);
+});

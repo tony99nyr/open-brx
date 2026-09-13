@@ -21,6 +21,7 @@ from . import presentation as _pres
 from .. import poolgauge as _pg
 from .. import voices as _voices
 from . import compile as _compile      # A31: `mc_verify` / `full_coverage` — one coverage model
+from . import frames as _frames      # A36: reading a pushed head / a gun's echo back
 from . import policy as _policy
 from .scoring import Scorer
 from ..modes.hillbeacon import NEUTRAL_TEAM as _NEUTRAL_TEAM     # F82: the tid a NEUTRAL hill broadcasts
@@ -29,7 +30,7 @@ from ..modes.registry import default_params as _default_params, params_schema_js
     requires_coverage as _requires_coverage                        # A18: the mode's own rules, engine-declared
 from .tunnel import TunnelError
 from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS,
-                    OBJECTIVE_MODES, OFFLINE_AFTER_MS,
+                    OBJECTIVE_MODES, OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS,
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_KINDS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, Event,
                     GameConfig, Loadout, LoadoutOverrides, LoadoutPolicy, LoadoutPool, PerkView,
                     Phase, Player, ReadinessRow, ReadinessSnapshot, Respawn, ScanRow, SlotRule, StationRef,
@@ -307,6 +308,11 @@ class Session:
         self._repush_pending = False
         self.acks: dict[str, dict] = {}
         self.bundles: dict[str, dict] = {}
+        # A36: player_id -> the worded board line for a gun whose REPORTED pool disagreed with the
+        # `$PSET` MC pushed it. Judged once per life in `_check_pool` (a settled frame, no hits yet)
+        # and held until the next push re-arms that gun, so the operator still sees it after the
+        # player has since been shot.
+        self._pool_faults: dict[str, str] = {}
         self.start_info: dict | None = None
         # A19: held-role pushes waiting for the node's own start / respawn flash to settle (`_queue_role`).
         self._role_due: list[tuple[int, str, str, bool, int | None]] = []
@@ -1667,6 +1673,24 @@ class Session:
                 if not (isinstance(v, list) and all(isinstance(t, dict) and "team_id" in t
                                                    and isinstance(t.get("tid"), int) and not isinstance(t.get("tid"), bool) for t in v)):
                     raise ValueError("teams must be a list of team objects with team_id + integer tid")
+                # A36 belt-and-braces, alongside F35/F82/F97 below. Two teams sharing a `team_id`
+                # make `Session.team()` (a `next(...)` over the list) resolve every player on either
+                # one to the FIRST, so half the roster is silently re-teamed on the console while the
+                # gun is armed from the other; two sharing a `$TID` are ONE side on the field however
+                # they are named -- `populated_tids()` already says so, and `one_team_fault()` exists
+                # because that shape shipped a match that could not register a hit. Neither is worth
+                # detecting downstream when the config can simply refuse to hold it.
+                for key, label in (("team_id", "team_id"), ("tid", "$TID")):
+                    counts_: dict[str, int] = {}
+                    for t in v:
+                        counts_[str(t[key])] = counts_.get(str(t[key]), 0) + 1
+                    dupes = sorted(k for k, n in counts_.items() if n > 1)
+                    if dupes:
+                        raise ValueError(
+                            f"duplicate {label} {dupes} in teams: two teams "
+                            f"sharing a {label} are one side on the field (a shared $TID cannot register a "
+                            f"hit between them; a shared team_id resolves every player to the first of "
+                            f"the two). Give each team its own.")
                 # F35 (bench 2026-09-07): the IR word's team field is 2 bits -- a gun armed on $TID 4-7
                 # transmits tid&3 while the victim compares its own FULL tid, so teammates on either
                 # side of that split damage each other and a tid>=4 player's shots can read as a lower,
@@ -2268,7 +2292,8 @@ class Session:
 
     def _on_status(self, nid: str, body: dict, t_recv: int):
         nv = self._node_view(nid)
-        nv.update({k: body.get(k) for k in ("arm_state", "synced", "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "t_minus_ms", "shots", "dropped", "pending") if k in body})
+        was_alive = nv.get("alive")          # A36: read BEFORE the update -- a life starts on the edge
+        nv.update({k: body.get(k) for k in ("arm_state", "synced", "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "t_minus_ms", "shots", "dropped", "pending", "config_id") if k in body})
         # A28.3: `reach` is NOT taken from the status body. It feeds `coverage()` (which can gate a whole
         # mode) and the readiness amber (which un-blocks a start), so a client-asserted value would let a
         # phone claim its way past both. MC stamps it from the socket in `net._hello_gate`; the node's
@@ -2322,7 +2347,74 @@ class Session:
             self.scorer.ingest_status(nid, body, t_recv)
         if nv.get("node_type") != "utility" and body.get("arm_state") in ("armed", "live"):
             self._check_stale_live(nid, body.get("match_id"), t_recv)   # A34
+        if nv.get("node_type") != "utility":
+            self._check_pool(nid, body, t_recv, was_alive)              # A36
         self._changed()
+
+    def _note_pool_life(self, nid: str, events: list[Event]) -> None:
+        """A36: a node's facts, read ONLY for what they say about its pool this life.
+
+        A `hit_taken` retires the pool check for the life it lands in (the pool is supposed to move
+        now), and a `respawn` starts a fresh one. Both come from the node's OWN engine, so they are
+        the same authority as the heartbeat they qualify. Deliberately runs BEFORE the parked/scorer
+        gates that follow it: a fact parked because it names another match still tells us this node's
+        gun took a hit, and the check must not judge a pool that has been shot at either way."""
+        nv = self._node_view(nid)
+        for ev in events:
+            kind = ev.get("type")
+            if kind == "hit_taken":
+                nv["pool_life_hit"] = True
+            elif kind == "respawn":
+                nv.pop("pool_life_t", None)
+
+    # ---------- A36: does the gun's own pool match the `$PSET` we pushed it? ----------
+    def _check_pool(self, nid: str, body: dict, t_recv: int, was_alive) -> None:
+        """The check that caught the 2026-09-12 staleness retroactively.
+
+        A gun still holding a PREVIOUS head spawns into that head's pool and then says so on every
+        ~2 s heartbeat for the whole match. Nothing read it. This does, once per life, against the
+        `$PSET` in the bundle MC actually pushed (`frames.head_pool`) -- so per-player overrides and
+        the `body_armor` perk are already baked in and there is no second arithmetic to drift.
+
+        Three deliberate silences, each a way this check could otherwise LIE:
+          * inside `POOL_CHECK_SETTLE_MS` of the life starting -- `$SPAWN` and the head's `$PSET` are
+            two BLE writes and a relay apart, and the heartbeat can be sampled between them;
+          * once the player has taken a hit this life -- a pool BELOW the compiled one is then the
+            game working, not a stale head;
+          * when the head carries no readable `$PSET` (a stub compiler) or the body no integer pool.
+        """
+        nv = self._node_view(nid)
+        if body.get("arm_state") != "live" or not body.get("alive"):
+            if body.get("alive") is False:
+                nv.pop("pool_life_t", None)          # dead: the next alive frame is a NEW life
+            return
+        if not was_alive or nv.get("pool_life_t") is None:
+            nv["pool_life_t"] = t_recv
+            nv["pool_life_hit"] = False
+            nv["pool_life_judged"] = False
+            return
+        if nv.get("pool_life_judged") or nv.get("pool_life_hit"):
+            return
+        if t_recv - int(nv["pool_life_t"]) < POOL_CHECK_SETTLE_MS:
+            return
+        pid = self.node_player.get(nid)
+        if not pid or pid not in self.players:
+            return
+        want = _frames.head_pool((self.bundles.get(pid) or {}).get("head"))
+        got = (body.get("hp"), body.get("armor"))
+        if want is None or not all(isinstance(v, int) and not isinstance(v, bool) for v in got):
+            return
+        nv["pool_life_judged"] = True
+        if (got[0], got[1]) == want:
+            self._pool_faults.pop(pid, None)
+            return
+        self._pool_faults[pid] = (f"GUN POOL ≠ CONFIG (got {got[0]}/{got[1]}, expected {want[0]}/{want[1]}, "
+                                  f"hp/armor) — THE GUN IS ON ANOTHER HEAD")
+        who = (self.players[pid].get("display") or pid).upper()
+        self._on_feed({"t_match_s": max(0, (t_recv - self.scorer.go_live_t) // 1000) if self.scorer else 0,
+                       "tag": "CONFIG", "kind": "alert",
+                       "text": f"{who}'S GUN POOL ≠ CONFIG — REPORTS {got[0]}/{got[1]}, "
+                               f"COMPILED {want[0]}/{want[1]} (hp/armor)"})
 
     # ---------- A34: a phone that comes back still LIVE in a match MC has already retired ----------
     _ENDED_KEEP = 16
@@ -2357,6 +2449,18 @@ class Session:
                 return
         elif current is not None:
             return              # no match_id and MC is running one: an old app, not a stale phone
+        elif not self._ended:
+            # Round-3 T1-A, the same hole the round-1 review closed for a NAMED match: with no
+            # `match_id` on the heartbeat AND nothing running, `current` is None and this fell
+            # through to `control{end}` -- so a RESTARTED MC (empty `_ended`, phase `muster`) would
+            # end a real, running game reported by an older app, for exactly the reason it must not
+            # end a named one: it cannot account for the match. MC may only reconcile a match it
+            # KNOWS it retired, and with the ledger empty it has retired none.
+            #
+            # Unreachable from today's app -- `transport.js` always stamps `match_id` -- which is
+            # precisely why both shapes are pinned in `test_mc_stale_live`: the only thing that can
+            # reach this branch is an older build, on the field, mid-match.
+            return
         last = self._stale_told.get((nid, mid))
         if last is not None and t_recv - last < STALE_LIVE_RETELL_MS:
             return
@@ -2395,6 +2499,7 @@ class Session:
         # It used to be read from `_seq` first; NOTHING has ever written that key, so that half was dead.
         seq = ev.get("seq")
         self._node_view(nid)["last_seen_ms"] = t_recv
+        self._note_pool_life(nid, [ev])            # A36
         parked = bool(self.scorer and ev.get("match_id") != self.scorer.match_id) or not self.scorer
         self._log(nid, ev.get("type", "event"), ev, t_recv, seq=seq, parked=parked)
         if not parked and ev.get("type") == "respawn":
@@ -2412,6 +2517,7 @@ class Session:
 
     def ingest_batch(self, nid: str, events: list[Event], t_recv: int):
         self._node_view(nid)["last_seen_ms"] = t_recv
+        self._note_pool_life(nid, events)          # A36
         for ev in events:
             self._log(nid, ev.get("type", "event"), ev, t_recv, seq=ev.get("seq"),
                       parked=not self.scorer or ev.get("match_id") != self.scorer.match_id)
@@ -2756,7 +2862,11 @@ class Session:
             else:
                 self.browsing.pop(pid, None)
         elif kind == "ack_config" and pid in self.players:
-            self.acks[pid] = {"ok": bool(body.get("ok")), "gun_echo": body.get("gun_echo"), "err": body.get("err")}
+            # A36: `config_id` is KEPT. It has always been on the wire (`envelope.REQUIRED`) and was
+            # dropped here, so an ack for a PREVIOUS head satisfied `all_acked()` on truthiness alone
+            # and the whistle blew on a roster still running last game's frames (field 2026-09-12).
+            self.acks[pid] = {"ok": bool(body.get("ok")), "gun_echo": body.get("gun_echo"),
+                              "err": body.get("err"), "config_id": body.get("config_id")}
             if body.get("ok") and body.get("gun_echo"):
                 self.nodes[nid]["headset"] = "proven"
         elif kind == "event_batch":
@@ -3076,6 +3186,25 @@ class Session:
                     headset, headset_proof = "unknown", None
                     if since is not None:
                         ambers.append(f"HEADSET · CONFIRMING (LINK {(now - since) // 1000} s)")
+            # A36 — THE THREE PROOFS THAT THE GUN IS RUNNING THE CONFIG WE PUSHED. Kept apart from
+            # the headset chain above: that chain answers "did the gun answer AT ALL", these answer
+            # "did it answer for THIS game, with THIS weapon, and is it still holding THAT pool".
+            # Every one of them compares against the head MC ACTUALLY PUSHED
+            # (`self.bundles[pid]["head"]`), never a fresh re-derivation of it.
+            if self.lobby_pushed and (older := self._stale_ack_id(p["player_id"])):
+                blockers.append(f"ACKED AN OLDER CONFIG ({older}) — RE-PUSH")
+            if self.lobby_pushed and (echo := self._echo_fault(p["player_id"])):
+                blockers.append(echo)
+            if (pool := self._pool_faults.get(p["player_id"])) is not None:
+                blockers.append(pool)
+            # The heartbeat's own answer to "which head am I on". Amber, not red: the ack is the
+            # authority (it is the gun's word at the moment of the write) and this is a ~2 s sample
+            # that can legitimately be one beat behind a fresh push -- so it stands only until the
+            # node re-acks.
+            if (self.lobby_pushed and nv.get("config_id")
+                    and nv["config_id"] != self.config.get("config_id")
+                    and not self._ack_is_current(p["player_id"])):
+                ambers.append(f"HOLDING OLDER CONFIG ({nv['config_id']}) — RE-PUSH TO BE SURE")
             # ONE literal, at the end: `ReadinessRow` is total and its docstring is the promise that
             # every path fills every key. Built incrementally that promise was unenforceable; built here
             # the checker holds it.
@@ -3261,7 +3390,7 @@ class Session:
         after the push — and for it a `config` + the same `start` is the HOT JOIN (contracts §5 `start`,
         node.md M-START E5): `engine.js resumeSchedule()` sees a phase that is not `live`, so it reaches
         `_spawn()` and logs "hot-join (+N s)". That path must stay open."""
-        if (self.acks.get(p["player_id"]) or {}).get("ok"):
+        if self._ack_is_current(p["player_id"]):     # A36: an ack for a PREVIOUS head proves nothing here
             return True
         return (self.nodes.get(p.get("node_id") or "") or {}).get("arm_state") in ("armed", "live")
 
@@ -3274,8 +3403,14 @@ class Session:
         bundle = self._compile_rolled(p)
         self.bundles[p["player_id"]] = bundle
         self.acks.pop(p["player_id"], None)
-        if p.get("node_id"):
-            self.net.push(p["node_id"], "config", {"config": self._wire_config(), "frames": bundle, "roster": self.roster()})
+        # A36: a fresh head retires every judgement made about the old one. The ack above, the echo
+        # that rode with it (derived from the ack, so it goes too) and the pool fault this gun earned
+        # against the PREVIOUS `$PSET` all describe a head that no longer exists.
+        self._pool_faults.pop(p["player_id"], None)
+        if nid := p.get("node_id"):
+            for k in ("pool_life_t", "pool_life_hit", "pool_life_judged"):
+                self._node_view(nid).pop(k, None)
+            self.net.push(nid, "config", {"config": self._wire_config(), "frames": bundle, "roster": self.roster()})
 
     _ONE_TEAM_REFUSAL = ("ONLY ONE SIDE HAS PLAYERS — a match fought on one side cannot register a "
                          "hit; move players between teams")
@@ -3337,6 +3472,25 @@ class Session:
     def _refuse_one_team(self) -> None:
         if fault := self._one_team_fault():
             raise ValueError(fault)
+
+    def _refuse_stale_ack(self) -> None:
+        """A36: no whistle while a gun is on record as holding a PREVIOUS head.
+
+        Deliberately NOT bypassable by `force`, for `_refuse_push_in_play`'s reason. `force` is the
+        operator's override of a READINESS judgement they can see and accept -- a phone that is off,
+        a battery MC never read. This is not a judgement: it is the gun telling us, in its own
+        words, which game it is running, and it is exactly the field failure of 2026-09-12 (guns ran
+        a previous push in nearly every match and nothing on screen said so). RE-PUSH clears it in
+        one click; dropping the player to STANDBY clears it too.
+        """
+        stale = [(self.players[pid].get("display") or pid, cid)
+                 for pid in self.players if (cid := self._stale_ack_id(pid))]
+        if stale:
+            who = ", ".join(f"{d} (acked {c})" for d, c in stale)
+            raise ValueError(
+                f"{len(stale)} gun(s) last answered an OLDER config: {who}. The head they are holding "
+                f"is not the game you are about to start — RE-PUSH the config (or move them to "
+                f"STANDBY) before the whistle")
 
     def _refuse_push_in_play(self) -> None:
         """A full config push during a running match is a SAFETY refusal, not a readiness one.
@@ -3415,9 +3569,56 @@ class Session:
         self._changed()
         return {"ok": True, "acks": self.acks}
 
+    # ---------- A36: is the ack we are holding an ack for the config we are about to start? ----------
+    def _ack_is_current(self, pid: str) -> bool:
+        """An ack proves the CURRENT head or it proves nothing.
+
+        An ack with no `config_id` at all is NOT current. Every app that has ever shipped sends one
+        (`envelope.REQUIRED["ack_config"]` has required it since the wire existed) and MC's own fakes
+        send one, so the only way to reach this is a hand-built body -- and "I could not tell you
+        which game I took" must never read as "I took yours"."""
+        ack = self.acks.get(pid) or {}
+        return bool(ack.get("ok") and ack.get("gun_echo")
+                    and ack.get("config_id") == self.config.get("config_id"))
+
+    def _stale_ack_id(self, pid: str) -> str | None:
+        """The PREVIOUS `config_id` this player's gun answered for, when that is what it answered for.
+
+        Only for an ack that is otherwise good (ok + an echo): a `{ok: false}` ack is already the
+        board's "GUN DID NOT ANSWER CONFIG" and saying both about one row helps nobody."""
+        ack = self.acks.get(pid) or {}
+        if not (ack.get("ok") and ack.get("gun_echo")):
+            return None
+        cid = ack.get("config_id")
+        return str(cid) if cid and cid != self.config.get("config_id") else None
+
+    def _echo_fault(self, pid: str) -> str | None:
+        """A36: does the gun's own answer to the head match the WEAPON that head wrote?
+
+        `gun_echo` was only ever tested for truthiness. It is the gun repeating back the magazine it
+        was just given (`$ALCD,<mag>,<acc>,<slot>,<reserve>,<heat>,*`), and comparing it to the
+        `$WEAP,0` frame in the bundle MC pushed is the cheapest proof that the write landed -- a gun
+        still on last game's loadout echoes last game's magazine.
+
+        Silent (None) whenever the echo is not a slot-0 `$ALCD`, or the head carries no readable
+        `$WEAP,0`. `$START` answers the head with `$LCD,0,0,0,0,0,0,*`, which proves the gun answered
+        and says nothing about ammo, and an older app reports exactly that -- so "no evidence" has to
+        stay quiet. `test_mc_config_proof` pins both halves so this can never quietly become a check
+        that only ever reads its own artefact.
+        """
+        ack = self.acks.get(pid) or {}
+        if not ack.get("ok"):
+            return None
+        got = _frames.alcd_ammo(ack.get("gun_echo"))
+        want = _frames.head_spawn_ammo((self.bundles.get(pid) or {}).get("head"))
+        if got is None or want is None or got == want:
+            return None
+        return (f"GUN ECHO ≠ COMPILED WEAPON ({got[0]}/{got[1]} echoed vs {want[0]}/{want[1]} "
+                f"expected, mag/reserve) — RE-PUSH")
+
     def all_acked(self) -> bool:
         return bool(self.players) and all(
-            self.acks.get(p["player_id"], {}).get("ok") and self.acks.get(p["player_id"], {}).get("gun_echo")
+            self._ack_is_current(p["player_id"])
             for p in self.players.values() if p.get("node_id"))
 
     # ---------- start ----------
@@ -3434,6 +3635,7 @@ class Session:
         if not self.lobby_pushed:
             raise ValueError("push config first")
         self._refuse_one_team()           # round-2 B: a team can empty out between the push and the whistle
+        self._refuse_stale_ack()          # A36: and a gun can answer for LAST game's head at any moment
         if not self.all_acked() and not force:
             raise ValueError("not every node has acked the config with a gun echo")
         return self._schedule(runway_s or DEFAULT_RUNWAY_S)
@@ -3956,6 +4158,19 @@ class Session:
         self.lobby_pushed = False
         self.acks = {}
         self.bundles = {}
+        # A36 — RECAP → NEXT MATCH is a DETERMINISTIC RESET. Nothing about the last game may be
+        # carried into this one, and with `lobby_pushed` false above, `start()` refuses until a FULL
+        # fresh head has been pushed to every gun (`_resend`'s config leg is gated on the same flag,
+        # so there is no incremental path back in either). `_pinned_hit_plan` in particular used to
+        # survive: it is cleared in `push_config`, which made the invariant true by luck rather than
+        # by statement, and one caller compiling before that would have re-used the last match's
+        # plan (A17: a rekeyed cell on one gun with no row on another drops those hits in silence).
+        self._pinned_hit_plan = None
+        self._repush_pending = False
+        self._pool_faults = {}
+        for nv in self.nodes.values():
+            for k in ("pool_life_t", "pool_life_hit", "pool_life_judged", "config_id"):
+                nv.pop(k, None)
         self.trying = {}
         self.browsing = {}
         self.synced_at_lobby = {}

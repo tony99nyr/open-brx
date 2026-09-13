@@ -275,6 +275,13 @@ export class Engine {
     this.result = null;             // the `result` body for THIS match (contracts §5 `result`)
     this.resultAt = 0;
     this.headEcho = null; this.headWrittenAt = 0; this.awaitingEcho = false;
+    // A36: the SLOT-0 $ALCD the gun answers a head write with. `headEcho` is whatever frame came
+    // back FIRST, and on a real tagger that is always $START's `$LCD,0,0,0,0,0,0,*` (protocol §3) --
+    // proof the gun answered, and no evidence at all about which weapon it was just written. The
+    // $ALCD echoes arrive right behind it carrying the magazine, which is what lets MC prove the
+    // head LANDED rather than merely that something came back (field 2026-09-12: guns ran a
+    // previous push in nearly every match and every signal MC had said `ok`).
+    this.ammoEcho = null;
     this._headTid = null;           // B1 guard: the $TID the gun's written head actually holds (its COMBAT team), parsed from the last head write — null until a head is written, so an unknown head never raises a false divergence
     this.spawned = false; this.ended = false;
     this.cuesFired = new Set();
@@ -587,7 +594,7 @@ export class Engine {
     if (!this.frames || !this.frames.head) { this.log('config without frames — ignored', 'le'); return; }
     if (!this.bleUp) { this.configPending = true; this.log('config stored; gun not linked yet — head will be written on relink', 'li'); this._changed(); return; }
     this.configPending = false; this._panicked = null;
-    this.headEcho = null; this.awaitingEcho = true; this.headWrittenAt = this.now();
+    this.headEcho = null; this.ammoEcho = null; this.awaitingEcho = true; this.headWrittenAt = this.now();
     this._writeHead(why === 'hydrate' ? 'head (rehydrate)' : 'head');
     this.spawned = false; this.ended = false;
     if (this.phase !== 'armed' && this.phase !== 'live') this._set('lobby');
@@ -598,7 +605,11 @@ export class Engine {
     if (!this.awaitingEcho || this.now() - this.headWrittenAt < 1500) return;
     this.awaitingEcho = false;
     const cid = this.config && this.config.config_id;
-    if (this.headEcho) this.report('ack_config', { config_id: cid, ok: true, gun_echo: this.headEcho });
+    // The MOST INFORMATIVE echo of the window, not the first one: the $ALCD carries the magazine the
+    // head just wrote, so MC can check it against the `$WEAP,0` it compiled. `headEcho` stays the
+    // headset proof (`preflight.headset_ok`) either way — a gun that answered with only the $START
+    // $LCD still answered.
+    if (this.headEcho) this.report('ack_config', { config_id: cid, ok: true, gun_echo: this.ammoEcho || this.headEcho });
     else this.report('ack_config', { config_id: cid, ok: false, err: 'no_echo' });
   }
 
@@ -2114,6 +2125,10 @@ export class Engine {
       }
       case 'ALCD': {
         if (this.awaitingEcho && !this.headEcho) this.headEcho = f;
+        // A36: …and keep the SLOT-0 one, whether or not it was first. Token 3 is the weapon slot;
+        // the head writes slot 0, 1 and 4 and every one of them echoes, so the primary's frame is
+        // the only one whose mag/reserve MC can compare against `$WEAP,0`.
+        if (this.awaitingEcho && !this.ammoEcho && (t[3] === undefined || t[3] === '' || +t[3] === 0)) this.ammoEcho = f;
         this._onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null, t[3] !== undefined && t[3] !== '' ? +t[3] : 0);
         break;
       }
@@ -2836,6 +2851,10 @@ export class Engine {
       ...(this.battery != null ? { battery: this.battery } : {}), ...(this.fw ? { fw: this.fw } : {}),
       arm_state: this.phase, ...(this.phase === 'armed' && this.goLiveT ? { t_minus_ms: Math.max(0, this.goLiveT - now) } : {}),
       synced: this.isSynced(), wsReason: this.wsReason || null, ...(this.matchId ? { match_id: this.matchId } : {}),
+      // A36: WHICH HEAD THIS PHONE IS HOLDING, on every heartbeat. `ack_config` says which config a
+      // gun took at the moment it took it; this says which one it is still on for the rest of the
+      // game, which is the difference that made a whole field night of stale pushes invisible.
+      ...(this.config && this.config.config_id ? { config_id: this.config.config_id } : {}),
       preflight: { gun_linked: this.bleUp, headset_ok: !!this.headEcho, ...preflight },
     };
   }

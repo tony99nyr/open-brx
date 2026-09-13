@@ -8,6 +8,7 @@ import time
 from typing import Callable
 
 from .compile import HEADSET_ALERT_BRIGHTNESS, VOL_TRYOUT, play_volume   # one volume policy for the real and the fake paths
+from . import frames as _frames        # A36: a fake gun answers from the head it was actually sent
 from .types import (ArmoryRecord, FrameBundle, GameConfig, PerkView, Player, ScanRow, Team, Weapon,
                     MAX_PLAYERS)
 
@@ -322,7 +323,9 @@ class DemoDriver:
             st = self.s.scorer.stats.get(nd["player_id"]) if self.s.scorer else None
             arm = {"muster": "kitted", "build": "kitted", "kit": "kitted", "lobby": "lobby" if self.s.lobby_pushed else "kitted",
                    "armed": "armed", "live": "live", "recap": "kitted"}[phase]
-            body = {"node_id": nd["node_id"], "player_id": nd["player_id"], "hp": 45 if nd["alive"] else 0, "armor": 70 if nd["alive"] else 0,
+            pool = nd.get("pool") or (45, 70)
+            body = {"node_id": nd["node_id"], "player_id": nd["player_id"], "hp": pool[0] if nd["alive"] else 0, "armor": pool[1] if nd["alive"] else 0,
+                    **({"config_id": nd["config_id"]} if nd.get("config_id") else {}),
                     "ammo": 36, "alive": nd["alive"], "shots": nd["shots"], "battery": 60 + (hash(nd["node_id"]) % 40),
                     "fw": "v4.32", "arm_state": arm, "synced": True, "match_id": self.s.start_info["match_id"] if self.s.start_info else None,
                     "preflight": {"ssid_ok": True, "mc_reachable": True, "auto_join_ok": True, "cellular_off": True, "dnd_on": True,
@@ -338,8 +341,18 @@ class DemoDriver:
                 body["_acked"] = True
                 target = [n for n in self.nodes if n["player_id"] == body["frames"]["player_id"]]
                 for n in target:
+                    # A36: answer from the HEAD THIS NODE WAS SENT, the way a tagger does -- the $ALCD
+                    # echo carries the magazine the `$WEAP,0` frame just wrote, and the node then
+                    # reports that head's `$PSET` pool on every heartbeat. Without this the demo acked
+                    # with a frame that says nothing, so both A36 checks were unreachable in `--demo`
+                    # and could have shipped reading nothing but their own defaults.
+                    head = (body.get("frames") or {}).get("head")
+                    n["config_id"] = body["config"]["config_id"]
+                    n["pool"] = _frames.head_pool(head)
+                    ammo = _frames.head_spawn_ammo(head)
+                    echo = f"$ALCD,{ammo[0]},100,0,{ammo[1]},0,*" if ammo else "$LCD,0,0,0,0,0,0,*"
                     self.net.simulate_node_message(n["node_id"], "ack_config",
-                        {"config_id": body["config"]["config_id"], "ok": True, "gun_echo": "$LCD,0,0,0,0,0,0,*"}, now)
+                        {"config_id": body["config"]["config_id"], "ok": True, "gun_echo": echo}, now)
         if phase != "live" or not self.s.start_info:
             return
         mid = self.s.start_info["match_id"]

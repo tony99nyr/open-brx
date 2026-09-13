@@ -386,8 +386,14 @@ def test_round3_merge0_the_team_fault_is_tid_based_and_allows_a_third_empty_team
     s.push_config()
 
     # (b) two teams, one $TID: 2 v 2 on paper, ONE side on the field.
-    s.set_config({"mode": "tdm", "time_limit_s": 60,
-                  "teams": [dict(TEAM_DEFS["blue"]), {**TEAM_DEFS["yellow"], "tid": 1}]})
+    # Written straight onto the config rather than through `set_config`, which since A36 REFUSES a
+    # duplicate `$TID` outright (`test_mc_config_proof`). This shape can still ARRIVE -- a restored
+    # snapshot's config is taken verbatim, and a preset saved by an older build has never been
+    # re-validated -- so the predicate is still the backstop it was written to be, and the point of
+    # this half is that the predicate reads TIDS, not `team_id`s.
+    dup = [dict(TEAM_DEFS["blue"]), {**TEAM_DEFS["yellow"], "tid": 1}]
+    s.config["teams"] = dup
+    s.teams = list(dup)
     counts = {}
     for p in s.players.values():
         counts[p["team_id"]] = counts.get(p["team_id"], 0) + 1

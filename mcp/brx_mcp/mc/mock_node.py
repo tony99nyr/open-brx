@@ -24,6 +24,7 @@ import uuid
 from typing import Any
 
 from . import envelope as E
+from . import frames as _frames      # A36: answer a head write the way a tagger does
 from .types import STATUS_HEARTBEAT_MS
 
 log = logging.getLogger("brx.mc.mock_node")
@@ -40,6 +41,8 @@ class MockNode:
         self.gun_name, self.gun_tail, self.gun_fw = gun_name, gun_tail, gun_fw
         self.node_type, self.app_ver = node_type, app_ver
         self.gun_echo = gun_echo
+        self.config_id: str | None = None       # A36: the head this node is holding
+        self.spawn_ammo: tuple[int, int] | None = None
         self.heartbeat_ms = heartbeat_ms
         self.max_hp, self.max_armor = max_hp, max_armor
         self.backoff_cap_s = backoff_cap_s
@@ -205,6 +208,7 @@ class MockNode:
             "shots": self.shots, "battery": self.battery, "fw": self.gun_fw,
             "arm_state": self.arm_state, "synced": self.synced, "dropped": 0,
             "preflight": dict(self.preflight),
+            **({"config_id": self.config_id} if self.config_id else {}),     # A36
         }
         if self.arm_state == "armed" and self.go_live_t:
             body["t_minus_ms"] = max(0, self.go_live_t - self.synced_now())
@@ -322,8 +326,19 @@ class MockNode:
                 self.max_hp = int(hp)
             if ar:
                 self.max_armor = int(ar)
+            self.config_id = config.get("config_id") or self.config_id
             if node.get("frames") and self.arm_state == "kitted":
                 self.arm_state = "lobby"
+        head = (node.get("frames") or {}).get("head")
+        if head:
+            # A36: the pool and the magazine THIS head arms, read back off the frames MC sent. The
+            # mock used to invent 45/70 from `config.health` and echo `$LCD,0,0,0,0,0,0,*`, so it
+            # agreed with MC by construction rather than by having taken the write -- and a
+            # per-player override or a `body_armor` perk would have made it disagree while a real
+            # gun agreed.
+            if (pool := _frames.head_pool(head)) is not None:
+                self.max_hp, self.max_armor = pool
+            self.spawn_ammo = _frames.head_spawn_ammo(head)
         start = node.get("start")
         if isinstance(start, dict):
             self._apply_start(start)
@@ -372,7 +387,11 @@ class MockNode:
             self.arm_state = "lobby"
             ack = {"config_id": (body.get("config") or {}).get("config_id"), "ok": True}
             if self.gun_echo:
-                ack["gun_echo"] = self.gun_echo
+                # A36: a real gun answers the head's `$WEAP,0` with a slot-0 `$ALCD` carrying that
+                # weapon's magazine. Fall back to the configured `gun_echo` only when the head has no
+                # readable `$WEAP,0` (a stub compiler) -- never invent numbers.
+                ack["gun_echo"] = (f"$ALCD,{self.spawn_ammo[0]},100,0,{self.spawn_ammo[1]},0,*"
+                                   if self.spawn_ammo else self.gun_echo)
             else:
                 ack = {"config_id": ack["config_id"], "ok": False, "err": "no_echo"}
             self._send(E.make_envelope("ack_config", ack))

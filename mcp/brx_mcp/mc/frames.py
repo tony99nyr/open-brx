@@ -1,0 +1,89 @@
+"""Reading BACK the handful of tagger frames MC needs to check a gun against its own push.
+
+Pure, stdlib-only, no package dependencies -- `state.py`, `fakes.py` and `mock_node.py` all import
+it, and `mock_node` must stay runnable on its own.
+
+Everything here is a READER. `compile.py` owns emitting frames; this module owns the one direction
+that used to be done nowhere: taking a head MC actually sent, or an echo a gun actually answered,
+and turning it back into the two or three numbers a comparison needs.
+
+⚠ Every function returns `None` rather than a guess when the frame is not the shape it expects. A
+caller must treat `None` as NO EVIDENCE and say nothing -- never as a mismatch. A red on every row
+of a field running an older app would be worse than the silence these checks replace.
+
+Frame shapes (protocol/brx-protocol.md, docs/manual/dev.md):
+  `$PSET,<playerId>,0,<hp>,<armor>,<shield>,…`            -- the pool the head arms
+  `$WEAP,<slot>,…` 44 fields, t16 = maxClip, t17 = ammoReserv (`compile.WeaponCatalog._T`)
+  `$ALCD,<mag>,<accuracy>,<slot>,<reserve>,<heat>,*`      -- the gun's ammo/weapon stream
+"""
+from __future__ import annotations
+
+# Index into the comma-split frame. `$WEAP` token N lives at index N + 1 (index 1 is the slot),
+# which is the same arithmetic `compile.WeaponCatalog.resolve()` writes with (`p[T[key] + 1]`).
+_WEAP_MAG = 17            # t16 maxClip -- what `$ALCD` reports as the magazine at spawn
+_WEAP_RESERVE = 18        # t17 ammoReserv
+_WEAP_FIELDS = 44         # a full captured frame; anything shorter is a template/stub, not evidence
+
+_PSET_HP = 3
+_PSET_ARMOR = 4
+
+_ALCD_MAG = 1
+_ALCD_SLOT = 3
+_ALCD_RESERVE = 4
+
+
+def _int(parts: list[str], i: int) -> int | None:
+    """`parts[i]` as a non-negative int, or None. Empty tokens are ordinary in these frames."""
+    if i >= len(parts):
+        return None
+    tok = parts[i].strip()
+    if not tok or not tok.isdigit():      # `isdigit` also rejects the sign: no pool or count is negative
+        return None
+    return int(tok)
+
+
+def _find(head: list[str] | None, prefix: str) -> list[str] | None:
+    for f in head or []:
+        if isinstance(f, str) and f.startswith(prefix):
+            return f.split(",")
+    return None
+
+
+def head_spawn_ammo(head: list[str] | None) -> tuple[int, int] | None:
+    """(mag, reserve) the head's `$WEAP,0` frame arms the PRIMARY slot with, or None.
+
+    None for a stub frame (`FakeCompiler` emits `$WEAP,0,<assault_rifle>,*`, which carries no
+    numbers at all) -- the caller then has nothing to compare and must say nothing.
+    """
+    p = _find(head, "$WEAP,0,")
+    if p is None or len(p) < _WEAP_FIELDS:
+        return None
+    mag, reserve = _int(p, _WEAP_MAG), _int(p, _WEAP_RESERVE)
+    return None if mag is None or reserve is None else (mag, reserve)
+
+
+def head_pool(head: list[str] | None) -> tuple[int, int] | None:
+    """(hp, armor) the head's `$PSET` arms, or None. This is the pool AS PUSHED -- per-player
+    overrides and the `body_armor` perk are already baked into the frame by `Compiler._to_gc`, so a
+    caller comparing against it needs no perk model of its own and cannot drift from one."""
+    p = _find(head, "$PSET,")
+    if p is None:
+        return None
+    hp, armor = _int(p, _PSET_HP), _int(p, _PSET_ARMOR)
+    return None if hp is None or armor is None else (hp, armor)
+
+
+def alcd_ammo(frame: str | None, slot: int = 0) -> tuple[int, int] | None:
+    """(mag, reserve) from an `$ALCD` frame for `slot`, or None when it is not one.
+
+    Not an `$ALCD` at all, a different slot, or an unparseable token → None. `$START` answers the
+    head with `$LCD,0,0,0,0,0,0,*` (protocol §3), which is a perfectly good proof that the gun
+    ANSWERED and no evidence whatsoever about the magazine: it lands here as None by design.
+    """
+    if not isinstance(frame, str) or not frame.startswith("$ALCD,"):
+        return None
+    p = frame.split(",")
+    if _int(p, _ALCD_SLOT) != slot:
+        return None
+    mag, reserve = _int(p, _ALCD_MAG), _int(p, _ALCD_RESERVE)
+    return None if mag is None or reserve is None else (mag, reserve)

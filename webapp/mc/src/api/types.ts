@@ -258,7 +258,14 @@ export interface State {
   kit: { kitted: number; total: number; trying: Record<string, string>; browsing: Record<string, number> };
   loadout_pool: LoadoutPool;   // `reasons` rides on the generated type now
   active_preset_id?: string | null;   // the saved game that was applied (null after any real config edit)
-  lobby: { ready: number; total: number; pushed: boolean; acks: Record<string, { ok: boolean; gun_echo?: string; err?: string }> };
+  /** `acks[player_id].config_id` (A36) is WHICH config that gun answered for. An ack naming a
+   *  previous one is not an ack for the game about to start — the server refuses the whistle on it
+   *  (not even with `force`) and names it in the row's `blockers`, so anything counting "acked" here
+   *  has to ask the same question. Optional: an older server sends none, and the console then falls
+   *  back to `ok` alone rather than reading every ack as stale. `all_acked` is the server's own
+   *  answer to the same question and wins wherever it is present. */
+  lobby: { ready: number; total: number; pushed: boolean; all_acked?: boolean;
+           acks: Record<string, { ok: boolean; gun_echo?: string; err?: string; config_id?: string }> };
   start?: StartView;
   live?: LiveView;
   recap?: RecapView;
