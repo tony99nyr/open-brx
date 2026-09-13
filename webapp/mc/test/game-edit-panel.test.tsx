@@ -174,6 +174,33 @@ describe('GameEditPanel — locked once the match has started (armed/live)', () 
     expect(fieldset.disabled, 'one real disabled locks every control at once').toBe(true);
     m.unmount();
   });
+
+  it('OPEN GAME DESIGNER is inside that lock too — it used to stay tappable and dead-end on the Designer banner', async () => {
+    // Round-2 fix pass F (2026-09-12): the button sat OUTSIDE the disabled fieldset, so the one control
+    // on this panel that navigates somewhere was the one control the lock did not reach. The operator
+    // tapped it while the match was live and landed on a second lock banner with nothing to do there.
+    const d = await demo();
+    const modes = await d.api.getModes();
+    const designer = (state: State) => {
+      const store = makeStore({ ...d, state, view: 'kit' }, { modes });
+      return mount(<StoreCtx.Provider value={store}><Kit /></StoreCtx.Provider>);
+    };
+    const find = (m: Awaited<ReturnType<typeof designer>>) =>
+      m.find('button').find(b => (b.textContent ?? '').includes('OPEN GAME DESIGNER')) as HTMLButtonElement | undefined;
+
+    const live = await designer({ ...d.state, phase: 'live' });
+    await click(live.find('[data-testid="game-edit-toggle"]')[0]);
+    const lockedBtn = find(live);
+    expect(lockedBtn, 'the control is still on screen — greyed, not hidden').toBeTruthy();
+    expect(lockedBtn!.disabled, 'a real HTML disabled, never a tap that quietly goes nowhere').toBe(true);
+    live.unmount();
+
+    // CONTROL: in KIT it is live, so the lock is what disabled it and not the button always being dead.
+    const kit = await designer({ ...d.state, phase: 'kit' });
+    await click(kit.find('[data-testid="game-edit-toggle"]')[0]);
+    expect(find(kit)!.disabled).toBe(false);
+    kit.unmount();
+  });
 });
 
 describe('GameEditPanel — a request that lands in the phase-race window is still refused clearly', () => {

@@ -81,11 +81,13 @@ export function GameEditPanel({ style }: { style?: React.CSSProperties }) {
         style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 14px',
                  background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', minHeight: 44, color: T.ink }}>
         <span style={{ font: F.chk(700, 12), letterSpacing: '.2em', color: T.acc }}>{open ? '▾' : '▸'} EDIT LOADED GAME</span>
-        <span style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro }}>
+        {/* G (round-2, 2026-09-12): 11px, not 10.5 — this chip and the LOCKED badge below are the two
+            things a host reads at arm's length on the collapsed row. */}
+        <span style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>
           {(modes.find(m => m.mode === cfg.mode)?.abbr ?? cfg.mode.toUpperCase())} · {cfg.night ? 'NIGHT' : 'DAY'} · HP {cfg.health.max_hp}/{cfg.health.max_armor}
         </span>
         <span style={{ flex: 1 }} />
-        {locked && <span role="status" style={{ font: F.chk(700, 10.5), letterSpacing: '.14em', color: T.warn }}>LOCKED — {state.phase.toUpperCase()}</span>}
+        {locked && <span role="status" style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: T.warn }}>LOCKED — {state.phase.toUpperCase()}</span>}
       </button>
       {open && (
         <div style={{ borderTop: `1px solid ${T.line}`, padding: 14, display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -134,7 +136,14 @@ export function GameEditPanel({ style }: { style?: React.CSSProperties }) {
           </fieldset>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', borderTop: `1px solid ${T.line}`, paddingTop: 12 }}>
             <RepushStatus pushed={pushed} acked={acked} total={total} recent={recentEdit} allAcked={allAcked} />
-            <GhostButton size={10.5} pad="8px 12px" onClick={() => openDesigner({ fromLive: true })}>WHO PICKS / FIXED / SIDEARMS-ONLY RULES — OPEN GAME DESIGNER ▸</GhostButton>
+            {/* Round-2 fix pass F (2026-09-12): this sat OUTSIDE the fieldset above, so the ONE control
+                on this panel that navigates somewhere was the one the lock did not reach — tappable
+                while the match was live, and dead-ending on the DESIGNER's own lock banner with
+                nothing to do there. Gated on the same `locked`, disabled rather than hidden so the
+                operator can still see what lives behind it. */}
+            <GhostButton size={10.5} pad="8px 12px" disabled={locked}
+              title={locked ? `THE MATCH IS ${state.phase.toUpperCase()} — RECALL FIRST, THEN EDIT.` : undefined}
+              onClick={() => { if (!locked) openDesigner({ fromLive: true }); }}>WHO PICKS / FIXED / SIDEARMS-ONLY RULES — OPEN GAME DESIGNER ▸</GhostButton>
           </div>
         </div>
       )}
