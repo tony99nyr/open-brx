@@ -207,6 +207,51 @@ def test_diag_matches_route():
     assert [m["match_id"] for m in r.json()] == ["m1"]
 
 
+def test_diag_matches_needs_the_operator_token_and_refuses_mid_match():
+    """F-5 (polish loop, 2026-09-13). This route runs a FULL-SESSION sqlite scan — every `status`
+    and every event row of every match this session has played. Three problems, one fix each:
+
+      * it was OPEN. `_AuthMiddleware` leaves GETs open so a spectator board can watch `/api/state`;
+        this one hands anybody on the field LAN the whole session's raw telemetry, and it is a
+        scan, so it is also the cheapest way to make MC unresponsive from a phone.
+      * it ran ON THE EVENT LOOP. A night's store is tens of thousands of rows; every hit, every
+        heartbeat and the whole UI feed wait behind it.
+      * it was reachable in ARMED and LIVE, which is exactly when neither of the above is tolerable
+        and when nobody is reading a post-match diagnostic anyway.
+    """
+    needs(HAVE, "starlette + httpx")
+    from brx_mcp.mc.api import create_app
+    c, s, _net = _client_with_history()
+    tok = "s3cret-operator-token"
+    gated = TestClient(create_app(s, token=tok))
+    assert gated.get("/api/diag/matches").status_code == 401, "the session's raw telemetry is not spectator data"
+    assert gated.get("/api/state").status_code == 200, "…and an ordinary read-only GET is still open"
+    r = gated.get("/api/diag/matches", params={"tok": tok})
+    assert r.status_code == 200 and sorted(m["match_id"] for m in r.json()) == ["m1", "m2"]
+    r = gated.get("/api/diag/matches", headers={"Authorization": f"Bearer {tok}"})
+    assert r.status_code == 200
+
+    # …and not while a match is on, token or no token.
+    for phase in ("armed", "live"):
+        s.phase = phase
+        r = gated.get("/api/diag/matches", params={"tok": tok})
+        assert r.status_code == 409, (phase, r.status_code)
+        assert "match" in r.json().get("error", "").lower(), r.json()
+    s.phase = "recap"
+    assert gated.get("/api/diag/matches", params={"tok": tok}).status_code == 200
+
+
+def test_diag_matches_does_not_scan_sqlite_on_the_event_loop():
+    """F-5. The scan belongs on a worker thread: the route must await, not block."""
+    needs(HAVE, "starlette + httpx")
+    import inspect
+    from brx_mcp.mc import api as _api
+    src = inspect.getsource(_api.create_app)
+    body = src[src.index("async def diag_matches"):]
+    body = body[:body.index("_SAFE_NAME")]
+    assert "run_in_executor" in body, "a full-session sqlite scan must not run on the event loop"
+
+
 def test_standby_routes():
     """STANDBY (2026-09-12): POST parks, DELETE reinstates, both answer with the Player; 404s name the id's side."""
     needs(HAVE, "starlette + httpx")

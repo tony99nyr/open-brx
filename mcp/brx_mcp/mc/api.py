@@ -85,6 +85,12 @@ class _AuthMiddleware:
     Non-GET /api/* needs `Authorization: Bearer <token>` or `?tok=`; /ui-ws needs `?tok=`.
     Read-only GETs stay open so a spectator board / phone can watch. token=None disables auth."""
 
+    # F-5: the read-only GETs that are NOT spectator data. "Read-only" answers whether a request can
+    # CHANGE the game; it does not answer whether a stranger on the field LAN may have the thing.
+    # `/api/diag/matches` serves the whole session's raw telemetry and scans the store to build it —
+    # so it is gated like a write even though it writes nothing.
+    _TOKEN_GETS = ("/api/diag/matches",)
+
     def __init__(self, app, token: str | None):
         self.app, self.token = app, token
 
@@ -93,7 +99,8 @@ class _AuthMiddleware:
             path = scope.get("path", "")
             method = scope.get("method", "GET")
             need = (scope["type"] == "websocket" and path == "/ui-ws") or \
-                   (scope["type"] == "http" and path.startswith("/api/") and method not in ("GET", "HEAD", "OPTIONS"))
+                   (scope["type"] == "http" and path.startswith("/api/")
+                    and (method not in ("GET", "HEAD", "OPTIONS") or path in self._TOKEN_GETS))
             if need and not self._ok(scope):
                 if scope["type"] == "websocket":
                     await send({"type": "websocket.accept"})          # accept, then close so the client sees 4401
@@ -462,15 +469,32 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
     async def diag_matches(req):
         """T1-B: the post-match diagnostic (`brx_mcp.mc.diag`) as JSON, over THIS session's own store —
         go_live/ended/duration, mode/config_id/environment/cfg health, shots/hits/hit%/deaths, per-node
-        arm_state + alive + gun_linked distributions, the perk-aware hp/armor mismatch flags, and each
-        node's `ack_config` vs the match it was pushed for. Read-only (shares the store's own connection,
-        never a second handle on the file), no operator token — same rule as `GET /api/matches`.
-        `?match=<id>` narrows to one match."""
+        arm_state + alive + gun_linked distributions, the hp/armor comparison (vs the config AND vs the
+        head actually pushed), the first settled pool of each node's first life, and each node's
+        `ack_config` vs the match it was pushed for. Read-only, sharing the store's own connection
+        rather than a second handle on the file. `?match=<id>` narrows to one match.
+
+        F-5 (polish loop, 2026-09-13) — three guards this route did not have. It is a FULL-SESSION
+        sqlite scan (every `status` row and every event of every match played tonight):
+          * **operator token.** `_AuthMiddleware` leaves GETs open so a spectator board can watch
+            `/api/state`; this one is the session's raw telemetry, and a scan is also the cheapest
+            way for anyone on the field LAN to make MC unresponsive. It is in `_TOKEN_GETS`.
+          * **off the event loop.** `run_in_executor`: a night's store is tens of thousands of rows,
+            and every hit, every heartbeat and the whole UI feed queue behind a blocking scan.
+            `Store` opens its connection with `check_same_thread=False`, so a worker may read it.
+          * **not mid-match.** 409 while `armed`/`live`. Nobody reads a post-match diagnostic during
+            the match, and that is exactly when the two costs above are least affordable.
+        """
+        if s.phase in ("armed", "live"):
+            return _err(f"the match is {s.phase.upper()} — the diagnostic scans the whole session store "
+                        f"and is not run while a game is on; ask again at the recap", 409)
         if not s.store:
             return JSONResponse([])
         from . import diag
+        db, match = s.store.db, req.query_params.get("match")
         try:
-            return JSONResponse(diag.build_report(s.store.db, req.query_params.get("match")))
+            loop = asyncio.get_running_loop()
+            return JSONResponse(await loop.run_in_executor(None, lambda: diag.build_report(db, match)))
         except Exception:
             import logging
             logging.getLogger("brx.mc").exception("diag unavailable")
