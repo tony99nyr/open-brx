@@ -872,7 +872,7 @@ export class MockBackend implements Api {
     // carries them (`set_config`, same three keys, same "unless the patch itself names them" rule) —
     // they describe the SITE, not the game.
     const modeChanged = !!partial.mode && partial.mode !== prevMode;
-    const base: GameConfig = modeChanged ? clone(MODES.find(m => m.mode === partial.mode)!.defaults) : clone(this.config);
+    const base: ConfigView = modeChanged ? clone(MODES.find(m => m.mode === partial.mode)!.defaults) : clone(this.config);
     if (modeChanged) {
       if (partial.environment === undefined) base.environment = this.config.environment;
       if (partial.night === undefined) base.night = this.config.night;

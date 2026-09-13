@@ -101,7 +101,7 @@ describe('KIT standby', () => {
     let calls = 0;
     let resolveCall: (() => void) | undefined;
     const m = await mountScreen(<Kit />, { ...d, state: s, view: 'kit', selPlayer: sel.player_id,
-      api: { standbyPlayer: async (id: string) => { calls++; await new Promise<void>(r => { resolveCall = r; }); return sel; } } });
+      api: { standbyPlayer: async (_id: string) => { calls++; await new Promise<void>(r => { resolveCall = r; }); return sel; } } });
     const btn = m.find(`[data-stand-down="${sel.player_id}"]`)[0].closest('button') as HTMLButtonElement;
     btn.click();
     btn.click();
