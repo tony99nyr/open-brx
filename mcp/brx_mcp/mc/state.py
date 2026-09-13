@@ -196,13 +196,15 @@ KIT_LOCKED = "THE MATCH HAS STARTED — YOUR KIT IS LOCKED UNTIL THE NEXT ONE"
 # therefore does not count them as reds standing in its own way (A37) -- a blocker that says RE-PUSH
 # while refusing the push is only clearable with `force`, which is the opposite of what it is for.
 #
-# START refuses TWO of the three, neither of them `force`-able: `_refuse_stale_ack` (the gun is on
-# record holding another game's head) and `_refuse_echo_mismatch` (it answered THIS head with
-# another weapon's magazine). R2-5, polish loop iteration 2: this comment used to claim "START still
-# refuses on every one of them" and START refused on exactly one -- an echo mismatch leaves the ack
-# CURRENT, so `all_acked()` was true and the whistle blew on a gun that had just said it is carrying
-# something else. The pool fault is the third, and it is deliberately not a START gate: it can only
-# be earned in LIVE, by which time this game's whistle has already gone.
+# START refuses TWO of the three, and they are refused DIFFERENTLY (F2, iteration 3):
+# `_refuse_stale_ack` is force-PROOF -- the gun is on record naming another game's head, which is a
+# fact, not a judgement -- while `_refuse_echo_mismatch` is FORCEABLE, because it rests on an
+# inference nobody has benched (what a v4.32 gun emits in the 1.5 s after a `$WEAP` write; see that
+# method). R2-5, polish loop iteration 2: this comment used to claim "START still refuses on every
+# one of them" and START refused on exactly one -- an echo mismatch leaves the ack CURRENT, so
+# `all_acked()` was true and the whistle blew on a gun that had just said it is carrying something
+# else. The pool fault is the third, and it is deliberately not a START gate: it can only be earned
+# in LIVE, by which time this game's whistle has already gone.
 _STALE_ACK_FAULT = "ACKED AN OLDER CONFIG"
 _ECHO_FAULT = "GUN ECHO ≠ CONFIG"
 _POOL_FAULT = "GUN POOL ≠ CONFIG"
@@ -2410,11 +2412,20 @@ class Session:
 
         R2-4 brings the flag back for the AMBER only, where its weakness does not matter: a missed
         `hit_taken` there costs an advisory that says "re-push before the next game", not a red that
-        strands a gun running the right head. The red never reads it."""
+        strands a gun running the right head. The red never reads it.
+
+        F4 (iteration 3): the flag is CLEARED HERE, on the `respawn` that starts the life, and
+        nowhere else. It used to be cleared by `_check_pool`'s life-start branch instead -- but this
+        stream and the `status` stream are not ordered against each other, so a `hit_taken` that
+        beat the first heartbeat of its life was written and then immediately erased, and a player
+        who had been shot was judged as if they had not. One writer, on the fact that actually
+        starts a life."""
         nv = self._node_view(nid)
         for ev in events:
             if ev.get("type") == "respawn":
                 nv.pop("pool_life_t", None)
+                nv["pool_life_hit"] = False
+                nv.pop("pool_amber_pending", None)
             elif ev.get("type") == "hit_taken":
                 nv["pool_life_hit"] = True
 
@@ -2442,6 +2453,11 @@ class Session:
             direction, and it is a real field shape: match 1 grants 45/0, match 2 grants 100/70, and
             a gun still holding match 1's head reports 45 <= 100 in silence for the whole match. A
             later life, or any hit, has an ordinary explanation and makes NO claim.
+
+        Both AMBERS need TWO CONSECUTIVE AGREEING frames past the settle window, the RED needs one
+        (F5, iteration 3): the settle window is 2000 ms and the replayed store has a body-armor pool
+        landing at +2.0 s, so a correct gun can be sampled mid-application exactly once. Nothing can
+        ADD health, so a single frame of excess health is already the whole claim.
 
         And every grade is judged ONLY on a pool the GUN reported (`pool_src == "gun"`, R2-3).
         `engine.js` sets hp/armor from `config.health` at spawn and the gun's own pool arrives after,
@@ -2480,7 +2496,13 @@ class Session:
         if not was_alive or nv.get("pool_life_t") is None:
             nv["pool_life_t"] = t_recv
             nv["pool_life_judged"] = False
-            nv["pool_life_hit"] = False              # R2-4: this life has not been shot yet
+            # F4: `setdefault`, never `= False`. `_note_pool_life` writes this flag from the EVENT
+            # stream, which is not ordered against `status` -- a `hit_taken` that arrived before the
+            # first heartbeat of this life was erased right here, and a damaged player was then judged
+            # as never shot. The `respawn` fact clears it; this branch only fills in a life that has
+            # no flag at all (the first one of the match).
+            nv.setdefault("pool_life_hit", False)
+            nv.pop("pool_amber_pending", None)       # F5: a new life re-opens the two-frame agreement
             nv["pool_life_n"] = int(nv.get("pool_life_n") or 0) + 1
             return
         if nv.get("pool_life_judged"):
@@ -2502,9 +2524,9 @@ class Session:
         if body.get("pool_src") != "gun":
             return
         got = (hp, armor)
-        nv["pool_life_judged"] = True
         tail = "RE-PUSH BEFORE THE NEXT GAME"    # R2-7: this can only be READ in play, where push is refused
         if hp > want[0]:
+            nv["pool_life_judged"] = True
             # Worded as a SUSPICION, not a verdict: one ~2 s sample against one compiled frame. It is
             # red on the board because a gun on an older head is the field failure this whole
             # amendment is about, and the cure -- a re-push, which A37 also stopped this row from
@@ -2520,15 +2542,34 @@ class Session:
             return
         # The health is within what this head grants, so nothing here supports the red any more.
         self._pool_faults.pop(pid, None)
-        if armor > want[1]:
-            self._pool_ambers[pid] = (f"{_POOL_ARMOR_ADVISORY} (REPORTS {got[0]}/{got[1]}, THIS CONFIG "
-                                      f"GRANTS {want[0]}/{want[1]}, hp/armor) — {tail}")
-            return
-        if (nv.get("pool_life_n") == 1 and not nv.get("pool_life_hit")
+        # F5 (iteration 3): BOTH ambers need TWO CONSECUTIVE AGREEING gun-sourced frames past the
+        # settle window, with no hit recorded either time. `POOL_CHECK_SETTLE_MS` is 2000 ms and the
+        # replayed field store (session-25eebce5) has a body-armor pool landing at +2.0 s exactly --
+        # so the very first frame a correct gun is judged on can be sampled mid-application (70 of
+        # 120 armour, or 45/0 of a 45/70 head) and an advisory fired on a gun that is about to be
+        # right. A gun that says the same smaller pool twice in a row is not mid-application. The
+        # hp-above RED keeps its single-frame rule above: nothing can ADD health, so one frame of
+        # excess health is already the whole claim.
+        amber: str | None = None
+        if armor > want[1] and not nv.get("pool_life_hit"):
+            amber = (f"{_POOL_ARMOR_ADVISORY} (REPORTS {got[0]}/{got[1]}, THIS CONFIG "
+                     f"GRANTS {want[0]}/{want[1]}, hp/armor) — {tail}")
+        elif (nv.get("pool_life_n") == 1 and not nv.get("pool_life_hit")
                 and (hp < want[0] or armor < want[1])):
-            self._pool_ambers[pid] = (f"{_POOL_BELOW_ADVISORY} (REPORTS {got[0]}/{got[1]}, THIS CONFIG "
-                                      f"GRANTS {want[0]}/{want[1]}, hp/armor) — {tail}")
+            amber = (f"{_POOL_BELOW_ADVISORY} (REPORTS {got[0]}/{got[1]}, THIS CONFIG "
+                     f"GRANTS {want[0]}/{want[1]}, hp/armor) — {tail}")
+        if amber is not None:
+            if nv.get("pool_amber_pending") == list(got):
+                nv["pool_life_judged"] = True
+                nv.pop("pool_amber_pending", None)
+                self._pool_ambers[pid] = amber
+            else:
+                # The first of the pair. The life stays UNJUDGED on purpose: the check has not made a
+                # claim yet, and the frame that settles it is the next one of this same life.
+                nv["pool_amber_pending"] = list(got)
             return
+        nv.pop("pool_amber_pending", None)
+        nv["pool_life_judged"] = True
         if got == want:
             # The only POSITIVE evidence this check ever gets: the gun reported exactly the pool the
             # head grants. A damaged later life proves nothing either way, so it clears nothing.
@@ -3622,7 +3663,7 @@ class Session:
 
     _RE_PUSH_ON_LOBBY = "RE-PUSH CONFIG on LOBBY"
 
-    def _refuse_echo_mismatch(self) -> None:
+    def _refuse_echo_mismatch(self, force: bool = False) -> None:
         """R2-5: nor while a gun has answered THIS head with another weapon's magazine.
 
         The second of A36's three proofs was red on the board and silent at the whistle. An echo
@@ -3630,21 +3671,33 @@ class Session:
         disagrees), so `all_acked()` was true and `start()` had nothing to refuse on -- while the
         board was telling the operator the gun is carrying last game's loadout.
 
-        Not `force`-able, for `_refuse_stale_ack`'s reason: `force` overrides a readiness JUDGEMENT
-        the operator can see and accept (a phone that is off, a battery MC never read). This is the
-        gun repeating back a magazine that is not the one we compiled for it.
+        FORCEABLE, unlike `_refuse_stale_ack` (F3-lane iteration 3, 2026-09-13). The stale ack is
+        the gun NAMING another game; this one rests on an INFERENCE we have never benched.
+        `protocol/brx-protocol.md` records `$ALCD` as streaming one frame per round FIRED and one
+        per round RELOADED, and `engine.js` latches the first slot-0 `$ALCD` of the 1.5 s window
+        after the head write -- nobody has measured what a v4.32 gun actually emits there. If a
+        `$WEAP` write makes it emit a RELOAD burst, the echo carries a partial magazine, every
+        re-push reproduces that byte for byte, and a force-proof refusal would leave STANDBY as the
+        only way to field that player. The refusal therefore names BOTH exits.
+
+        TODO-FOLLOWUP: bench what a v4.32 gun emits in the 1.5 s after a `$WEAP` head write (a full
+        magazine `$ALCD`, a reload burst, or nothing). That measurement decides whether this
+        refusal can go back to being force-proof.
 
         `not_echoed` NEVER refuses: on our v4.32 units the ordinary answer to a head write is
         `$START`'s `$LCD` and nothing more (A37), so refusing on it would refuse every whistle in
         the field. The absence of a proof is not a fault.
         """
+        if force:
+            return
         bad = [(self.players[pid].get("display") or pid) for pid in self.players
                if self._echo_state(pid) == "mismatch"]
         if bad:
             raise ValueError(
                 f"{len(bad)} gun(s) echoed a weapon this config did not compile: {', '.join(bad)}. "
-                f"They answered this push holding another loadout — {self._RE_PUSH_ON_LOBBY} (or move "
-                f"them to STANDBY) before the whistle")
+                f"They answered this push holding another loadout — {self._RE_PUSH_ON_LOBBY}, or "
+                f"HOST OVERRIDE if the gun keeps echoing the same magazine (the echo rule is "
+                f"unbenched on this firmware)")
 
     def _refuse_push_in_play(self) -> None:
         """A full config push during a running match is a SAFETY refusal, not a readiness one.
@@ -3702,9 +3755,19 @@ class Session:
         # operator with `force` as the only exit from a state the board had just told them to leave.
         # `force` is the override of a judgement they can see and accept; this is not that. START is
         # untouched — `_refuse_stale_ack` refuses the whistle and `force` does not open it either.
+        # F3 (iteration 3): `waiting` blocks the FIRST push only. A phone that has not arrived cannot
+        # be handed a head it has never been offered one of -- that is the field rule of 2026-09-01 and
+        # it still stands. But a RE-push is a different question: `lobby_pushed` is already True, this
+        # roster has a compiled bundle per player (`_repush_lobby_config` loops the whole roster, not
+        # the bound ones), and `_hydrate` hands the bundle over on the node's hello. So the head IS
+        # delivered to the phone that is still walking to the field, and counting it as a blocker made
+        # the ordinary re-push render on the console as the forcing variant -- "RE-PUSH CONFIG OVER 1
+        # BLOCKED" -- because one operator had not switched their phone on yet.
+        is_repush = self.lobby_pushed
+
         def _blocks_push(r) -> bool:
             if r["status"] == "waiting":
-                return True                       # a phone that has not arrived: no push reaches it
+                return not is_repush              # first push only: no push reaches a phone that is not here
             return r["status"] == "red" and any(not cured_by_push(b) for b in r["blockers"])
 
         rows_blocked = any(_blocks_push(r) for r in rd["board"])
@@ -3715,7 +3778,8 @@ class Session:
             # ... : " and then nothing at all after the colon. An empty list is worse than no list:
             # it reads as a bug in MC rather than as a phone somebody has to go and switch on.
             waiting = [self.players[r["player_id"]].get("display") or r["sticker"]
-                       for r in rd["board"] if r["status"] == "waiting" and r["player_id"] in self.players]
+                       for r in rd["board"] if _blocks_push(r) and r["status"] == "waiting"
+                       and r["player_id"] in self.players]
             reds = [f"{r['player_num']}:{'/'.join(b for b in r['blockers'] if not cured_by_push(b))}"
                     for r in rd["board"] if r["status"] == "red" and _blocks_push(r)]
             parts = []
@@ -3746,11 +3810,22 @@ class Session:
         # console ended up with a button for only one of them: every new fault line says RE-PUSH, and
         # the only control that reached this path was labelled PUSH CONFIG & ARM, which disappears
         # the moment the first push lands. `repushed` is what lets the console say which one it did.
-        if self.lobby_pushed:
-            self._repush_lobby_config()        # same config_id, fresh heads, acks/echo/pool judgements dropped
+        if is_repush:
+            # F6 (iteration 3): and it MINTS A FRESH `config_id`, exactly as the edit path does.
+            # R2-1 kept the id on the grounds that a re-push is "the same head again" -- and that made
+            # the re-push impossible to PROVE. `_repush_lobby_config` clears `acks`; an ack that was
+            # already on the wire when it did lands a moment later carrying the SAME id, satisfies
+            # `_ack_is_current`, and the board reads ACKED for a head that gun never took. That is the
+            # exact failure A36 exists to catch, re-introduced by its own cure. With a fresh id the
+            # in-flight ack is simply stale (the row says so, naming the old id) until the gun answers
+            # the head it now holds, and the phone's own "start for a config I do not hold" check does
+            # the same work on its side. No new wire field buys that.
+            self.config["config_id"] = uuid.uuid4().hex[:8]
+            self._repush_lobby_config()        # fresh heads, acks/echo/pool judgements dropped
             self.phase = "lobby"
             self._changed()
-            return {"ok": True, "acks": self.acks, "repushed": True}
+            return {"ok": True, "acks": self.acks, "repushed": True,
+                    "config_id": self.config["config_id"]}
         self._next_game_no()
         for p in self.players.values():
             self._push_config_to(p)
@@ -3758,7 +3833,8 @@ class Session:
         self.lobby_pushed = True
         self.phase = "lobby"
         self._changed()
-        return {"ok": True, "acks": self.acks, "repushed": False}
+        return {"ok": True, "acks": self.acks, "repushed": False,
+                "config_id": self.config["config_id"]}
 
     # ---------- A36: is the ack we are holding an ack for the config we are about to start? ----------
     def _ack_is_current(self, pid: str) -> bool:
@@ -3855,7 +3931,7 @@ class Session:
             raise ValueError("push config first")
         self._refuse_one_team()           # round-2 B: a team can empty out between the push and the whistle
         self._refuse_stale_ack()          # A36: and a gun can answer for LAST game's head at any moment
-        self._refuse_echo_mismatch()      # R2-5: ...or answer THIS head carrying another weapon
+        self._refuse_echo_mismatch(force)  # R2-5: ...or answer THIS head carrying another weapon (F2: forceable)
         if not self.all_acked() and not force:
             raise ValueError("not every node has acked the config with a gun echo")
         return self._schedule(runway_s or DEFAULT_RUNWAY_S)

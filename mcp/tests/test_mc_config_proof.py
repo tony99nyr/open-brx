@@ -604,14 +604,16 @@ def _pushed_and_acked():
     return s, net, clock, ps
 
 
-def test_a_re_push_is_the_same_head_again_not_a_new_game():
-    """The operator's second PUSH is a RE-PUSH. It says so, it keeps the `config_id` the board is
-    showing, and it does not renumber the game the stations are armed for."""
+def test_a_re_push_is_a_fresh_head_not_a_new_game():
+    """The operator's second PUSH is a RE-PUSH: it says so, and it does not renumber the game the
+    stations are armed for. F6 (iteration 3) reversed the other half of this test -- the id is now
+    FRESH, because a re-push that cannot be told apart from the push before it cannot be proven to
+    have landed (see `test_an_ack_in_flight_across_a_re_push_is_not_current`)."""
     s, net, clock, ps = _pushed_and_acked()
     cid, gno = s.config["config_id"], s.game_no
     res = s.push_config()
     assert res.get("repushed") is True, res
-    assert s.config["config_id"] == cid, "a re-push is the SAME config, not a new one"
+    assert s.config["config_id"] != cid, "the new head must be distinguishable from the old one"
     assert s.game_no == gno, "no gun changed game; the stations must not be re-armed for a new number"
     assert s.acks == {}, "every ack describes the head that was just replaced"
     assert s.lobby_pushed and s.phase == "lobby"
@@ -655,18 +657,20 @@ def test_an_unforced_re_push_clears_a_stale_ack_an_echo_mismatch_and_a_pool_faul
 # exactly one: an ECHO MISMATCH satisfies `_ack_is_current`, so `all_acked()` was true and the
 # whistle blew on a gun that had just told us it is holding another weapon.
 
-def test_start_refuses_an_echo_MISMATCH_and_force_does_not_open_it():
+def test_start_refuses_an_echo_MISMATCH():
+    """R2-5. The mismatch leaves the ack CURRENT, so `all_acked()` was true and the whistle blew.
+    Whether `force` opens it is F2's question, answered in section 14: it does, because the rule
+    behind the mismatch is an unbenched inference about this firmware."""
     s, net, clock, ps = mk(1, compiler=Compiler())
     online(s, net, clock, ps[0], 0)
     s.push_config()
     ack(net, s, 0, ps[0]["player_id"], echo="$ALCD,1,100,0,2,0,*")
     assert s.all_acked(), "control: the ack IS current -- this is why the old gate let it through"
-    for force in (False, True):
-        try:
-            s.start(runway_s=10, force=force)
-            raise AssertionError(f"start() accepted an echo mismatch (force={force})")
-        except ValueError as e:
-            assert "RE-PUSH CONFIG" in str(e).upper(), str(e)
+    try:
+        s.start(runway_s=10)
+        raise AssertionError("start() accepted an echo mismatch")
+    except ValueError as e:
+        assert "RE-PUSH CONFIG" in str(e).upper(), str(e)
     assert s.phase == "lobby"
 
 
@@ -749,6 +753,8 @@ def test_only_hp_ABOVE_the_compiled_head_is_red_armour_above_it_is_an_amber_advi
     _live_status_src(net, clock, 1, ps[1], 45, 70, mid)
     clock["t"] += POOL_CHECK_SETTLE_MS + 100
     _live_status_src(net, clock, 1, ps[1], 45, 200, mid)       # 200 armour on a head that grants 70
+    clock["t"] += 500
+    _live_status_src(net, clock, 1, ps[1], 45, 200, mid)       # F5: and it says so twice running
     r = row(s, ps[1]["player_id"])
     assert not any("GUN POOL ≠ CONFIG" in b for b in r["blockers"]), r["blockers"]
     amber = next((a for a in r["ambers"] if "GUN ARMOR ABOVE CONFIG" in a), None)
@@ -773,6 +779,8 @@ def test_a_pool_BELOW_the_config_on_a_clean_first_life_is_an_amber_advisory():
     _live_status_src(net, clock, 1, ps[1], 45, 70, mid)
     clock["t"] += POOL_CHECK_SETTLE_MS + 100
     _live_status_src(net, clock, 1, ps[1], 20, 0, mid)         # first life, never hit, 20/0 of 45/70
+    clock["t"] += 500
+    _live_status_src(net, clock, 1, ps[1], 20, 0, mid)         # F5: two agreeing frames, not one
     r = row(s, ps[1]["player_id"])
     assert not any("GUN POOL" in b for b in r["blockers"]), "an advisory NEVER gates"
     amber = next((a for a in r["ambers"] if "GUN POOL BELOW CONFIG" in a), None)
@@ -869,3 +877,209 @@ def test_a_waiting_row_still_refuses_the_unforced_push_and_the_message_names_the
         assert not msg.rstrip().endswith(":"), f"an empty list of blockers: {msg!r}"
         assert "phone" in msg.lower(), msg
         assert ps[2]["display"] in msg or str(ps[2]["player_num"]) in msg, msg
+
+
+# ===== 14. polish loop iteration 3 (2026-09-13) ============================================= #
+# Four corrections to the corrections, each one a claim the code could not actually support.
+
+
+# ------------- F2: the echo-mismatch refusal rests on an INFERENCE, so `force` opens it ----- #
+# `protocol/brx-protocol.md` records `$ALCD` as streaming one frame per round FIRED and per round
+# RELOADED. `engine.js` latches the first slot-0 `$ALCD` of the 1.5 s window after the head write;
+# nobody has benched what a v4.32 gun emits there. If a `$WEAP` write makes it emit a RELOAD burst,
+# the echo carries a partial magazine, every re-push reproduces it byte for byte, and a force-proof
+# refusal leaves STANDBY as the only way to field that player.
+
+def test_an_echo_mismatch_refuses_the_unforced_start_and_says_what_to_do():
+    s, net, clock, ps = mk(1, compiler=Compiler())
+    online(s, net, clock, ps[0], 0)
+    s.push_config()
+    ack(net, s, 0, ps[0]["player_id"], echo="$ALCD,1,100,0,2,0,*")
+    assert s.all_acked(), "control: the ack IS current -- it is the ECHO inside it that disagrees"
+    try:
+        s.start(runway_s=10)
+        raise AssertionError("start() accepted an echo mismatch unforced")
+    except ValueError as e:
+        assert "RE-PUSH CONFIG" in str(e).upper(), str(e)
+        assert "HOST OVERRIDE" in str(e).upper(), "the exit must be named: the rule is unbenched"
+    assert s.phase == "lobby"
+
+
+def test_the_host_override_opens_an_echo_mismatch_because_the_rule_is_unbenched():
+    """F2. A gun whose echo mismatch is reproducible would otherwise be unfieldable."""
+    s, net, clock, ps = mk(1, compiler=Compiler())
+    online(s, net, clock, ps[0], 0)
+    s.push_config()
+    ack(net, s, 0, ps[0]["player_id"], echo="$ALCD,1,100,0,2,0,*")
+    s.start(runway_s=10, force=True)
+    assert s.phase == "armed", "the operator must have a way past an unbenched inference"
+
+
+def test_a_stale_ack_is_still_force_proof_beside_the_forceable_mismatch():
+    """The control for F2: the stale ack is the gun NAMING another game, not an inference."""
+    s, net, clock, ps = mk(1, compiler=Compiler())
+    online(s, net, clock, ps[0], 0)
+    s.push_config()
+    old = s.config["config_id"]
+    s.set_config({"time_limit_s": 120})
+    ack(net, s, 0, ps[0]["player_id"], config_id=old)
+    try:
+        s.start(runway_s=10, force=True)
+        raise AssertionError("force opened a stale ack")
+    except ValueError as e:
+        assert "OLDER" in str(e).upper(), str(e)
+
+
+# ------------- F3: a phone that has not arrived blocks the FIRST push, never a RE-push ------ #
+# `_repush_lobby_config` compiles for EVERY player and `_hydrate` hands the bundle over on the
+# node's hello, so a re-push reaches a phone that is still walking to the field. Counting it as a
+# blocker made the ordinary re-push render as the forcing variant.
+
+def test_a_phone_that_has_not_arrived_does_not_block_a_RE_push():
+    s, net, clock, ps = mk(3)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)   # ps[2] never brings a phone
+    s.push_config(force=True)                                         # the FIRST push needs the override
+    res = s.push_config()                                             # ...the re-push does NOT
+    assert res.get("repushed") is True, res
+    assert ps[2]["player_id"] in s.bundles, "a re-push compiles for the absent phone too"
+
+
+def test_the_first_push_still_refuses_a_phone_that_has_not_arrived():
+    """The control. Field 2026-09-01: the first push must not go out half-delivered in silence."""
+    s, net, clock, ps = mk(3)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    try:
+        s.push_config()
+        raise AssertionError("the FIRST push accepted a phone that has never arrived")
+    except ValueError as e:
+        assert "phone" in str(e).lower(), str(e)
+
+
+def test_a_red_no_push_can_cure_still_refuses_the_RE_push():
+    """...and the re-push exemption is about WAITING only, not about every red."""
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0)
+    online(s, net, clock, ps[1], 1, synced=False)     # CLOCK NOT SYNCED
+    s.push_config(force=True)
+    try:
+        s.push_config()
+        raise AssertionError("the re-push accepted a red no push can cure")
+    except ValueError as e:
+        assert "CLOCK NOT SYNCED" in str(e), str(e)
+
+
+# ------------- F4: the hit flag is set from the EVENT stream, unordered vs `status` --------- #
+
+def test_a_hit_that_beats_the_first_heartbeat_of_a_life_still_counts_as_a_hit():
+    """F4. `_check_pool`'s life-start branch wrote `pool_life_hit = False`, so a `hit_taken` that
+    arrived before the first heartbeat of that life was ERASED and the pool read as never shot."""
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    info = _go_live(s, net, clock, ps)
+    mid = info["match_id"]
+    net.simulate_event("node1", {"type": "hit_taken", "t": clock["t"], "match_id": mid,
+                                 "player_id": ps[1]["player_id"], "shooter_num": ps[0]["player_num"],
+                                 "shooter_team": 1, "dmg": 25}, clock["t"], seq=1)
+    _live_status_src(net, clock, 1, ps[1], 20, 0, mid)          # the FIRST heartbeat of life 1
+    clock["t"] += POOL_CHECK_SETTLE_MS + 100
+    _live_status_src(net, clock, 1, ps[1], 20, 0, mid)
+    clock["t"] += 500
+    _live_status_src(net, clock, 1, ps[1], 20, 0, mid)
+    r = row(s, ps[1]["player_id"])
+    assert not any("BELOW CONFIG" in a for a in r["ambers"]), \
+        f"the hit landed before the first heartbeat and was erased: {r['ambers']}"
+
+
+# ------------- F5: the amber must not be judged on ONE frame at the settle boundary --------- #
+# POOL_CHECK_SETTLE_MS is 2000 and the replayed field store has a body-armor pool landing at +2.0 s,
+# so exactly one frame of a correct gun can be sampled mid-application.
+
+def test_one_low_frame_followed_by_a_correct_one_is_not_an_amber():
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    info = _go_live(s, net, clock, ps)
+    mid = info["match_id"]
+    _live_status_src(net, clock, 1, ps[1], 45, 70, mid)
+    clock["t"] += POOL_CHECK_SETTLE_MS + 100
+    _live_status_src(net, clock, 1, ps[1], 45, 0, mid)          # the perk armour has not landed yet
+    clock["t"] += 500
+    _live_status_src(net, clock, 1, ps[1], 45, 70, mid)         # ...and here it is
+    r = row(s, ps[1]["player_id"])
+    assert not any("BELOW CONFIG" in a for a in r["ambers"]), r["ambers"]
+
+
+def test_two_agreeing_low_frames_are_the_amber():
+    """The positive control: a gun that keeps saying the same smaller pool is not mid-application."""
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    info = _go_live(s, net, clock, ps)
+    mid = info["match_id"]
+    _live_status_src(net, clock, 1, ps[1], 45, 70, mid)
+    clock["t"] += POOL_CHECK_SETTLE_MS + 100
+    _live_status_src(net, clock, 1, ps[1], 20, 0, mid)
+    clock["t"] += 500
+    _live_status_src(net, clock, 1, ps[1], 20, 0, mid)
+    amber = next((a for a in row(s, ps[1]["player_id"])["ambers"] if "BELOW CONFIG" in a), None)
+    assert amber and "20/0" in amber and "45/70" in amber, row(s, ps[1]["player_id"])["ambers"]
+
+
+def test_one_high_armour_frame_followed_by_a_correct_one_is_not_an_amber():
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    info = _go_live(s, net, clock, ps)
+    mid = info["match_id"]
+    _live_status_src(net, clock, 1, ps[1], 45, 70, mid)
+    clock["t"] += POOL_CHECK_SETTLE_MS + 100
+    _live_status_src(net, clock, 1, ps[1], 45, 200, mid)
+    clock["t"] += 500
+    _live_status_src(net, clock, 1, ps[1], 45, 70, mid)
+    assert not any("ARMOR ABOVE" in a for a in row(s, ps[1]["player_id"])["ambers"])
+
+
+def test_the_hp_RED_still_fires_on_a_single_frame():
+    """The control for F5: the red is the one claim a pool can prove, and it is not softened."""
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    info = _go_live(s, net, clock, ps)
+    mid = info["match_id"]
+    _live_status_src(net, clock, 1, ps[1], 45, 70, mid)
+    clock["t"] += POOL_CHECK_SETTLE_MS + 100
+    _live_status_src(net, clock, 1, ps[1], 120, 70, mid)
+    assert any("GUN POOL ≠ CONFIG" in b for b in row(s, ps[1]["player_id"])["blockers"])
+
+
+# ------------- F6: a re-push MINTS a fresh `config_id`, so it can be PROVEN to have landed --- #
+# R2-1 kept the id ("the same head again"), and that made the re-push unprovable: an ack in flight
+# when `_repush_lobby_config` clears `acks` lands afterwards carrying the SAME id and is recorded as
+# current, so the board reads acked for a head that gun never took. The proof matters more.
+
+def test_a_re_push_mints_a_fresh_config_id():
+    s, net, clock, ps = _pushed_and_acked()
+    old, gno = s.config["config_id"], s.game_no
+    res = s.push_config()
+    assert res.get("repushed") is True, res
+    assert s.config["config_id"] != old, "a re-push that cannot be told apart cannot be proven"
+    assert res.get("config_id") == s.config["config_id"], res
+    assert s.game_no == gno, "no gun changed game; the stations must not be re-armed for a new number"
+    assert s.acks == {} and s.lobby_pushed and s.phase == "lobby"
+
+
+def test_an_ack_in_flight_across_a_re_push_is_not_current():
+    s, net, clock, ps = _pushed_and_acked()
+    old = s.config["config_id"]
+    s.push_config()
+    ack(net, s, 0, ps[0]["player_id"], config_id=old)      # the ack that was already on the wire
+    assert not s._ack_is_current(ps[0]["player_id"])
+    r = row(s, ps[0]["player_id"])
+    line = next((b for b in r["blockers"] if b.startswith("ACKED AN OLDER CONFIG")), None)
+    assert line and old in line, r["blockers"]
+    ack(net, s, 0, ps[0]["player_id"])                     # ...and the real one clears it
+    assert s._ack_is_current(ps[0]["player_id"])
+    assert not any(b.startswith("ACKED AN OLDER CONFIG") for b in row(s, ps[0]["player_id"])["blockers"])
+
+
+def test_a_first_push_reports_its_config_id_too():
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    res = s.push_config()
+    assert res.get("config_id") == s.config["config_id"] and not res.get("repushed"), res
