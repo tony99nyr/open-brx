@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { setNotice } from '../notice';
-import { coverageLine } from '../api/derive';
+import { coverageLine, endDeliveryLine } from '../api/derive';
 import { STALE_AFTER_MS, type LiveRow } from '../api/types';
 import { useStore } from '../store';
 import { F, T, fmtAge, fmtClock, teamColor } from '../tokens';
@@ -93,6 +93,13 @@ export function Live() {
   // operator moved on to MATCH.
   const cLine = coverageLine(state);
   const cColor = state.lan.public?.status !== 'up' ? T.micro : state.coverage?.level === 'full' ? T.ok : T.warn;
+  // A42 (field 2026-09-12, twice: a tagger played on after the operator ended the match). The retry is
+  // the server's half; this is the half that matters on the field — the operator finds out WHILE they are
+  // still standing next to the player whose gun is still live. A DELIVERY fact about a phone: it is kept
+  // out of the board's numbers, and the row cell says only that the HUD has not answered.
+  const ed = state.end_delivery;
+  const edLine = endDeliveryLine(ed);
+  const edUnconfirmed = new Set((ed?.unconfirmed ?? []).map(u => u.player_id));
 
   return (
     <div className="screen">
@@ -135,6 +142,14 @@ export function Live() {
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
         <div style={{ flex: '2 1 560px', minWidth: 0 }}>
+          {edLine && (
+            <div data-testid="end-delivery" role={edLine.ok ? undefined : 'alert'}
+              style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${edLine.ok ? T.line2 : T.bad}`,
+                borderLeft: `3px solid ${edLine.ok ? T.ok : T.bad}`, background: edLine.ok ? undefined : 'rgba(255,82,82,.07)',
+                font: F.mono(500, 11), letterSpacing: '.1em', color: edLine.ok ? T.dim : T.bad, lineHeight: 1.5 }}>
+              {edLine.ok ? '✓ ' : '▲ '}{edLine.text}
+            </div>
+          )}
           {/* the widened S24 columns total ~780px; the wrapper has to say so or the scroll container
               under-reports how much there is to scroll to on a phone. <ScrollX> is what TELLS the
               operator it was cut: on a 393px phone the board is 783px in a 345px box, and it used to
@@ -148,7 +163,7 @@ export function Live() {
               ))}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
-              {rows.map(r => <Row key={r.player_id} r={r} />)}
+              {rows.map(r => <Row key={r.player_id} r={r} endUnconfirmed={edUnconfirmed.has(r.player_id)} />)}
             </div>
             <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.dim, marginTop: 8, lineHeight: 1.5 }}>K / A / ACC ARE MC-DERIVED — RECONCILED AT SYNC POINTS. OUT-OF-RANGE NODES SHOW LAST KNOWN + AGE, NEVER "GONE". STK IS THE LONGEST STREAK OF THE MATCH; A <span style={{ color: T.micro }}>~</span> BEFORE ACC MEANS IT HAS NOT SETTLED.</div>
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -239,12 +254,13 @@ function TimeCell({ remaining, sub, dim }: { remaining: number; sub: string; dim
   );
 }
 
-function Row({ r }: { r: LiveRow }) {
+function Row({ r, endUnconfirmed }: { r: LiveRow; endUnconfirmed?: boolean }) {
   const dead = r.status === 'down', stale = r.status === 'stale';
   const syncWarn = stale || r.sync_age_ms > STALE_AFTER_MS;   // contracts §9, generated from types.py
   const stk = bestStreak(r);
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: COLS, gap: GAP, alignItems: 'center', padding: '10px 14px', background: dead ? 'rgba(255,82,82,.05)' : T.panel, border: `1px solid ${T.row}`, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>
+    <div data-end-unconfirmed={endUnconfirmed ? r.player_id : undefined}
+      style={{ display: 'grid', gridTemplateColumns: COLS, gap: GAP, alignItems: 'center', padding: '10px 14px', background: dead ? 'rgba(255,82,82,.05)' : T.panel, border: `1px solid ${endUnconfirmed ? T.bad : T.row}`, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>
       <span style={{ font: F.chk(700, 14), letterSpacing: '.1em' }}>{r.display}</span>
       <span data-cell="k" style={{ textAlign: 'right', font: F.osw(700, 17), ...edge('k') }}><Num value={r.kills} /></span>
       <span data-cell="d" style={{ textAlign: 'right', font: F.osw(600, 16), color: T.dim }}><Num value={r.deaths} /></span>
@@ -252,7 +268,12 @@ function Row({ r }: { r: LiveRow }) {
       <span data-cell="kd" style={{ textAlign: 'right', font: F.osw(600, 15), ...edge('kd') }}><Num value={r.kd.toFixed(1)} /></span>
       <Acc r={r} />
       <span data-cell="stk" style={{ textAlign: 'right', font: F.osw(600, 15), color: stk >= 3 ? T.warn : T.dim, ...edge('stk') }}><Num value={stk} /></span>
-      <span style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: stale ? T.warn : dead ? T.bad : T.ok, ...edge('status') }}>{stale ? 'LAST KNOWN' : dead ? `RESPAWN ${fmtClock(r.respawn_in_s ?? 0).slice(1)}` : 'ALIVE'}</span>
+      {/* A42: the END overrides ALIVE/LAST KNOWN here on purpose. Once the match is over, whether this
+          player was alive is history; whether their HUD took the end is the only live question about
+          them, and it is the one the operator is standing on the field trying to answer. */}
+      <span data-cell="status" data-end-confirm={endUnconfirmed ? 'pending' : undefined}
+        title={endUnconfirmed ? 'This HUD has not confirmed the end — that tagger may still be in the match' : undefined}
+        style={{ font: F.chk(700, 11), letterSpacing: '.12em', color: endUnconfirmed ? T.bad : stale ? T.warn : dead ? T.bad : T.ok, ...edge('status') }}>{endUnconfirmed ? 'END NOT CONFIRMED' : stale ? 'LAST KNOWN' : dead ? `RESPAWN ${fmtClock(r.respawn_in_s ?? 0).slice(1)}` : 'ALIVE'}</span>
       <span style={{ textAlign: 'right', font: F.mono(500, 11), letterSpacing: '.04em', color: syncWarn ? T.warn : T.faint }}>{fmtAge(r.sync_age_ms)}{stale ? ' AGO' : ''}</span>
     </div>
   );

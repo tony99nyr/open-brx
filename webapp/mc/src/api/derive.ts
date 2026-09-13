@@ -3,7 +3,7 @@
 // `types.ts` is the contract (the wire shapes generated from `mcp/brx_mcp/mc/types.py`, the view
 // shapes mirroring `mc/API.md`), so UI policy does not belong in it (review 2026-09-01). Nothing here
 // talks to the network; everything is a pure function of `State`.
-import type { NodeView, State } from './types';
+import type { EndDeliveryView, NodeView, State } from './types';
 import { fmtAge } from '../tokens';
 /** A stable fingerprint of "which guns does MC know about right now".
  *
@@ -85,7 +85,28 @@ export function staleReachReason(n: Pick<NodeView, 'reach' | 'last_reach' | 'las
  *  (A37) and the CONSOLE went on disabling PUSH CONFIG and CONTINUE for them, so the only route past
  *  a stale ack was the "Push anyway" force — the operator overriding a judgement the board had just
  *  told them to CLEAR, which is the opposite of what `force` is for. */
-export const PUSH_CURES = ['ACKED AN OLDER CONFIG', 'GUN ECHO ≠ CONFIG', 'GUN POOL ≠ CONFIG'] as const;
+/** A42 — ONE sentence about end delivery, so LIVE and RECAP cannot say it two different ways.
+ *
+ *  Both halves are the answer the operator asked for: a clean end says ALL N HUDS CONFIRMED (that is the
+ *  thing that was missing), and an unconfirmed one NAMES the phones and, once MC has stopped re-delivering,
+ *  says what only a person can do about it. It is a fact about DELIVERY — never about how anyone played —
+ *  so nothing here may read as a score, and neither screen may render it inside the board.
+ *
+ *  `null` when the server sent nothing (an older MC, or no match has ended yet): render nothing at all
+ *  rather than invent a state for a field that is not there. */
+export function endDeliveryLine(ed: EndDeliveryView | null | undefined): { ok: boolean; text: string } | null {
+  if (!ed || !ed.total) return null;
+  const n = ed.unconfirmed.length;
+  if (!n) return { ok: true, text: `ALL ${ed.total} HUD${ed.total === 1 ? '' : 'S'} CONFIRMED THE END` };
+  const who = ed.unconfirmed.map(u => u.display).join(', ');
+  const head = `${n} OF ${ed.total} HUD${ed.total === 1 ? '' : 'S'} ${n === 1 ? 'HAS' : 'HAVE'} NOT CONFIRMED THE END (${who})`;
+  if (ed.retrying) return { ok: false, text: `${head} — RE-DELIVERING` };
+  // The tries are the server's own count, never a number this file knows: the ladder is `state.py`'s.
+  const tries = Math.max(...ed.unconfirmed.map(u => u.tries), 0);
+  return { ok: false, text: `${head} — TOLD ${tries} TIMES, STILL NOTHING. THAT TAGGER MAY STILL BE IN THE MATCH: END IT ON THE GUN` };
+}
+
+export const PUSH_CURES =['ACKED AN OLDER CONFIG', 'GUN ECHO ≠ CONFIG', 'GUN POOL ≠ CONFIG'] as const;
 
 /** The stale ack alone — the one blocker the rail's own sentence already accounts for by name. */
 export const STALE_ACK_FAULT = PUSH_CURES[0];
