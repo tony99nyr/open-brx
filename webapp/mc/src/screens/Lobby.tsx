@@ -8,6 +8,7 @@ import { BTN_RESET, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag } fro
 import { SetupSteps } from '../ui/SetupSteps';
 import { McVerify } from '../ui/McVerify';
 import { StandDownChip, StandbySection } from '../ui/Standby';
+import { GameEditPanel } from '../ui/GameEditPanel';
 
 
 export function Lobby() {
@@ -69,6 +70,8 @@ export function Lobby() {
       <SetupSteps style={{ marginBottom: 12 }} />
       {/* A31: the standing "this win is settled at MC" line, naming the phones with no backhaul */}
       <McVerify style={{ marginBottom: 12 }} />
+      {/* B3: mode/night/health/weapon-pool, editable right here — no stepper, no recall needed pre-arm */}
+      <GameEditPanel style={{ marginBottom: 12 }} />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
         {cols.map(col => (
           <div key={col.id} style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column' }}
