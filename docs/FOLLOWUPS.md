@@ -6,7 +6,7 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D6 · E8 · F165 · G11 · H8 ·
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D6 · E8 · F197 · G11 · H8 ·
 K9 · P19 · Q20 · R4 · S42.** (2026-09-12 integration of the field branch into the fix branch: the two rows the fix branch had filed as F135 and F136 collide with the field session's own F135/F136 and are **RENUMBERED to F162** (no outdoor IR range) and **F163** (the B4 link watchdog) — the second collision renumber in this file, same cause as 2026-09-06: two sessions read "next free" at once. No upstream row moved. F146 and F157 closed → archive with the merge; the PR #4 list closed → archive (F135 F137-F145 F147 F149-F151 F153-F156, S37-S41).) (2026-09-12 pyright gate: F134 filed; F42.10 closed → archive, F42.14 filed.) (2026-09-12 field test of the backhaul, WSL host + Pixel 10 on cellular: F135-F157 + F161, K7-K8, S37-S41, D5 taken (F134 went to the pyright gate on main the same day, so the gun-picker row became F161); F136 closed the same hour.) (2026-09-12 evening: F129 closed → archive; F133 filed.) (2026-09-12 backhaul, PR #3: B30 and B31 taken.) (2026-09-12 doc-rot close: F131 F132, R3, S32-S36 taken; F42.2/F42.3 closed → archive.) (2026-09-12 M2 close: S20 S21 S22 S23 S24 S26 F127 closed → archive; F129 F130 new; S25 v1 shipped, ESPN pass open.) (2026-09-12 midday: S28 all-weapons retune, S29 shield recharge taken.) (2026-09-12 desk pass: F128, P18, S27 taken; F110 F115 F116 F117 F118 F119 F122 F124 F125 closed → archive.) (2026-09-11 night game test: F110-F127 and S20-S26 taken, see [`game-test-2026-09-11.md`](game-test-2026-09-11.md).) (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
 ids are retired, never reused.) (2026-09-10: F94/F95/F98 taken — the phone control point
 (`spec/utility.md` §5d), its LAN-coupled roaming variant (§5e) and Territories (§5f). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
@@ -963,6 +963,65 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 - **F108 🟡 MC PRINTS ITS "Mission Control http://…:8765/" BANNER BEFORE UVICORN BINDS THE PORT** (`__main__.py main()`), so a launch onto a busy :8765 shows the success line first and the `[Errno 98] address already in use` a line later, and every curl/browser check after that is answered by the squatter (2026-09-11: a 7-hour-old `--demo` MC from an earlier session). Found dogfooding "start Mission Control" as a fresh agent. Fix: probe/bind first (or print after `uvicorn` reports startup), exit non-zero with "something else owns :8765" — the e2e already does this check in JS (`koth.mjs startMC`). Related: `vite.config.ts` proxies :8765 only, so `--port` cannot rescue `npm run dev`; a `MC_PORT` env for the proxy would. Docs now warn (`mc/README.md` → Start it). `build`.
 - **F106 🟢 STATION-ARMING LOWS FROM THE 2026-09-11 POLISH PASS (PR #1).** ✅ (a) (b) (c) (d) (e) (i) fixed 2026-09-11 (late, second session); **(f) (g) (h) stand.** The original list, for the record: (a) `abort_start` leaves `_game_no_started` set, so the next muster push bumps the game byte though no match ran (harmless: the point resets to neutral; the ITEMS "GAME n" counter drifts); (b) `net.py _fire_node` never forwards `app_ver`, so `station.app_ver` is always None off a real socket; (c) a node that was bound as a player and re-hellos as `utility` keeps its `node_player` entry; (d) `_finish` still sends `pull_log` to utility nodes and `abort_start` still broadcasts to them (noise); (e) `engine.js _stationAllowed` is PERMISSIVE when `config.stations` is absent, so clearing the LAST station re-opens the allow-list to everything (matches the seven-tap hand-arm fallback; the `types.py` comment should say so); (f) `control.js` credits possession from `Date.now()` unclamped, so a forward clock step is credited to the owner in full (a cap would also under-report; decide a bound); (g) ITEMS: "n/m ARMED" excludes a card whose only flag is BATTERY LOW; CLEAR has no confirm and the phone keeps advertising the old assignment with nothing on the card saying so; `TID_NAME` hardcodes colour names where LOBBY uses `teams[].name`; the PHONE/LINK rows are unpaired spans for a screen reader; the Recap `warnings` block is styled like PROVISIONAL; (h) `delay_s: 0` still means 10 s on the node with no message; (i) API.md omits `app_ver` from `StationView`; the mock's `online` is always true so OUT OF WI-FI cannot be demoed. `build`.
 - **F107 🟢 LOWS FROM THE 2026-09-11 (LATE, SECOND SESSION) POLISH LOOP.** Noted, not fixed: (a) `net.py _fire_node` never forwards `gun_fw` while `_on_node` copies a `fw` key that never arrives (the `app_ver` shape again); (b) `_role_due` is not cleared on end/recall/panic (the phase gate in `_push_role` covers it); session.json `v` stays 1 though the shape gained `stations`/`game_no`; (c) F57 suppresses the grunt even when the profile writes no `hurt` line (announcer off, pre-A15 bundle): one fully silent hit per life there; (d) a reload pull while stunned starts the HUD RELOADING takeover off the frozen pre-stun reserve; (e) the stage logs a `warn` on every EMP because no profile carries `stunned`/`stun_over` cues (the phone is silent) — **candidates surfaced 2026-09-11 (evening) from the S1 `fx:hit` pass: H20/H21, "hit then electrical pulse, could be EMP disable"** — not auditioned in context, just noted while auditing the wider `fx:hit` batch; (f) `utility.js` `?stage` persists `settings.mc = 'stage://mc'`; (g) `Recap.tsx STATION_TID_NAME` duplicates `Items.tsx TID_NAME`; `types.py Stun.duration_s` is `int` while the validator accepts a float; contracts §10 rows A18-A20 sit above A1; CLAUDE.md still says amendments A1-A14; (h) E1 leftovers: no Designer editor for `mode_params` (not even read-only) and no phone-side consumer; (i) A19 leftovers: `beacon` / `extracted` have no MC-side signal (see S10); (j) `_endReconcile` re-arms with the frame's `$AMMO` but leaves `_prevAmmo`/`_prevReserve` at the pre-drop pair, so a stun before the next `$ALCD` restores the older (lower) pair -- never a refill, same shape on the stage; (k) `restore_snapshot` resets an out-of-range stored `mode_params` value to its default with no log line; (l) the `role: utility` status from a bound player logs once per heartbeat. `build`.
+
+- **F170 🔴 Needs Tony at the bench** ⭐ THE RANGE CONTROL, in this order, like for like, same spot and same light:
+  native IN A GAME at the measured distance and again at 30-40 ft, then ours with MC's config pushed at the same two.
+  2026-09-13: a target-mode test at ~200 ft (80 natural paces, measured) hit 100% with precise aim on three guns, both
+  weapons, both toggle states, and a real native FFA game hit at that distance too. So the emitters, the receiving
+  headset and the game path all reach ~200 ft and a stuck indoor mode is NOT the cause. Native passes; ours is untested.
+  A passes and B fails means the cause is in our compiled frames. `bench`.
+- **F171 🟠 Needs Tony at the bench** quantify the indoor/outdoor AIM TOLERANCE in a real angle. Measured 2026-09-13 at
+  ~200 ft on a red dot: indoor tolerates ~1.5 dot-widths off centre, outdoor ~3. Roughly DOUBLE, on three guns. The
+  toggle is a BEAM-WIDTH control, not a range control. Needs F195 to convert dot-widths to degrees. `bench`.
+- **F195 🟡 Needs Tony at the bench** record the stock BRX Pro sight's dot angular size (MOA). Nothing in `docs/manual/`
+  or `hardware/` has it. Needs the sight and a tape measure at a known distance, NOT a range session. `hardware`.
+- **F166 🟠 Needs Tony at the bench** what does a v4.32 gun emit in the 1.5 s after a `$WEAP` head write: a
+  full-magazine `$ALCD`, a reload burst, or nothing? Decides whether the echo-mismatch START refusal can return to
+  force-proof; it is forceable today only because this is unmeasured. `capture`.
+- **F167 🟡 Needs Tony at the bench** does the gun clamp an fn 9-22 `$SIR` armour grant at the `$PSET` ceiling? Decides
+  whether armour above the compiled ceiling is provable again (red) instead of an amber advisory. `trigger`.
+- **F168 🟡 Needs Tony at the bench** measure the pool settle window. 2 s is reasoned; the real store shows a
+  body-armour pool landing at exactly +2.0 s, i.e. on the boundary. `trigger`.
+- **F169 🟡 Needs Tony at the bench** Run D: does a gun emit anything on an ALT hold? If yes the venue reminder becomes
+  a real per-gun readiness check instead of a prompt. Demoted 2026-09-13: the toggle is no longer a range suspect. `capture`.
+- **F183 🟠 Needs Tony at the bench** confirm the START fan-out change: arm a match with phones connected and confirm
+  every gun spawns at T-0. Delivery moved from a broadcast to addressed sends over the node registry (A40). `trigger`.
+- **F165 🟡 Needs Tony at the bench** re-key the Energy Launcher's IR word. Zero damage on every shipped game's hit row,
+  so it is hidden from KIT and the DESIGNER and tagged NOT PLAYABLE until this closes. `trigger`.
+
+- **F172 🟡** `?mock` `patchPlayer` has no armed/live team-change refusal, so the demo permits what the server 409s. `build`.
+- **F173 🟡** the diagnostic HTTP route shares the store's single sqlite connection through the executor. `build`.
+- **F174 🟡** the diagnostic 409s during ARMED, blocking a read of the PREVIOUS match once the next is on the runway. `build`.
+- **F175 🟡** the diagnostic attributes a node re-bound mid-match to the LAST binding's player. `build`.
+- **F176 🟡** a gun echoing the same wrong magazine every time has only RE-PUSH or STANDBY as an exit; decide whether a
+  repeat mismatch should decay to an advisory. `decision`.
+- **F177 🟡** a mode switch re-teams by INDEX and rebalances only when a side would be EMPTY, so an uneven roster can
+  land 7/1. Decide whether it should balance evenly; the confirm now shows the split either way. `decision`.
+- **F178 🟡** the READY count can include a phone holding an older head; START still refuses via the stale-ack gate. `build`.
+- **F179 🟡** two guards assert behaviour by grepping source text (`lobby-standby.test.tsx`, `tapgate.test.mjs`). `build`.
+- **F180 🟡** the HUD screen-truth standby steps run only under `ui:screens`, never under `npm test`. `build`.
+- **F181 🟡** `m2-ui` has a timing-dependent live-accuracy-settling assertion that flaked once. `build`.
+- **F182 🟠** validation wall-clock is too long to iterate against (Tony, 2026-09-13). Wants a fast inner loop with the
+  full run kept as the merge gate. `build`.
+- **F184 🟡** a released station's entry is never removed when the phone re-hellos as a plain HUD, so ITEMS shows it
+  OUT OF WI-FI until CLEAR. Pre-existing; `clear_station` does not delete the entry either. `build`.
+- **F185 🟡** the LIVE-board end-delivery notice is proven in jsdom only; after the whistle MATCH renders RECAP. `build`.
+- **F186 🟡** `recall`/`panic` are deliberately unwatched by end-delivery; decide if a recall should be confirmed. `decision`.
+- **F187 🟡** the end-delivery ladder is ~137 s, then the A34 reconcile is the long tail; a phone returning after the
+  match is evicted gets nothing. Untested at that boundary. `build`.
+- **F188 🟡** Designer's PLAY THIS NOW jumps to KIT without loading, landing on "NOT LOADED YET". `build`.
+- **F189 🟡** `kit-continue.mjs` hardcodes `.venv/bin/python` and needs `MC_PY` in a worktree. `build`.
+- **F190 🟡** `LoadStatus` counts acks by `ok` while `pushGate` uses the stricter config-id-current test; unify. `build`.
+- **F191 🟡** should a standing WSL banner displace other alerts in the shared header? Fixed in the e2e boots, not in
+  `CommandBar`. A product decision; low field risk. `decision`.
+- **F192 🟡** PRE-EXISTING, reproduced on unmodified main: the session reads its net join info at construction, before
+  the net starts, so any `--fake-net` run leaves the advertised URL and QR stale for the whole run. `build`.
+- **F193 🟡** the mock's WSL warning string is a hand-kept copy with no test pinning it to the server's. `build`.
+- **F194 🟡** `--advertise` is missing from the README CLI flags table. `build`.
+- **F196 🟠** `test_amendment_citations` cannot see SCREAMING_CASE or CamelCase symbols, and its searched directories
+  exclude `mcp/tests`, so those citations are silently skipped. Worse, it only checks that cited symbols EXIST, never
+  that an amendment's citations name THAT amendment, so it could not have caught the 2026-09-13 A41→A42 renumbering in
+  either direction. Add the shapes AND a renumbering check, each proven by a deliberately broken case. `build`.
 - **F80 🟡 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.** ➡ **Narrowed 2026-09-11 (late): the AFTER-the-match surface is built** — the recap's `warnings` count every hit and death from wire id 0 ("a grenade hill's damage word, or a gun whose $PSET never landed") and RECAP renders it, so a mis-armed gun is no longer invisible. **Still open: the ARM-TIME refusal** (`$QUERY` read-back, B19) and a muster flag, which needs a signal the node does not report today (the head echo is an `$LCD`, it carries no id).
   Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
   received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default
