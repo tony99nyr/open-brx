@@ -628,11 +628,16 @@ export class MockBackend implements Api {
     return r;
   }
   async putConfig(partial: Partial<GameConfig>) {
-    // F151 (field 2026-09-12, ISSUE 25): `PUT /api/config` is only valid in muster/build/kit (mc/API.md)
-    // — the mock used to accept it in ANY phase, which let `?mock` show a Games/Designer screen that
-    // looked fully live even after the field had moved on to lobby/armed/live/recap, hiding the exact
-    // "silent tap" defect the console has to guard against on a real server.
-    if (!(['muster', 'build', 'kit'] as Phase[]).includes(this.phase)) {
+    // F151 (field 2026-09-12, ISSUE 25): the mock used to accept `PUT /api/config` in ANY phase, which
+    // let `?mock` show a Games/Designer screen that looked fully live even after the field had moved on
+    // to armed/live/recap, hiding the exact "silent tap" defect the console has to guard against on a
+    // real server. The phase list is `state.py set_config`'s, read off the server and not off API.md:
+    // LOBBY is accepted (it always was server-side, and B3's inline GameEditPanel on KIT and LOBBY is
+    // built on it — an edit there RE-PUSHES rather than being refused). What F151 locks at lobby is the
+    // GAMES STEPPER, and that lock lives in `Games.tsx`, where it can explain itself. A mock stricter
+    // than the server is the same defect in the other direction: a demo that refuses what the field
+    // does every match.
+    if (!(['muster', 'build', 'kit', 'lobby'] as Phase[]).includes(this.phase)) {
       throw Object.assign(new Error(`game settings are locked: the match is already in ${this.phase.toUpperCase()} — RECALL or END it first to edit the game again`), { status: 409 });
     }
     const prevMode = this.config.mode, prevPol = this.config.loadout_policy;
