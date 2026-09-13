@@ -399,6 +399,33 @@ def test_validate_rejects_weapon_that_cannot_kill_on_one_magazine():
                for e in r["errors"]), r["errors"]
 
 
+def test_sidearm_that_cannot_kill_on_one_magazine_is_a_warning_not_an_error():
+    """A12 sidearm at a big pool: the backup is allowed to need a reload (Tony's push was blocked twice by
+    deagle + body_armor at a 190 pool, 2026-09-12). Same rule, same numbers, a WARNING; a rifle on the
+    same numbers stays an error."""
+    row = {"weapon_id": "coilgun", "name": "Coilgun", "cls": 7, "mag": 1, "reserve": 6, "reload_ms": 2400,
+           "dmg": 78, "rof": 25, "rng": 75, "base": "ar", "wire": {"dmg": 90}}
+    side = Compiler(WeaponCatalog(rows=[{**row, "tags": ["sidearm"], "role": "sidearm"}]))
+    r = side.validate(_cfg(), [_player(weapons=("coilgun",))])
+    assert not any("one magazine" in e for e in r["errors"]), r["errors"]
+    assert any("coilgun is a sidearm and cannot kill on one magazine at this pool - it will need a reload" in w
+               for w in r["warnings"]), r["warnings"]
+    rifle = Compiler(WeaponCatalog(rows=[{**row, "tags": ["rifle"]}]))
+    r = rifle.validate(_cfg(), [_player(weapons=("coilgun",))])
+    assert any("coilgun cannot kill on one magazine" in e for e in r["errors"]), r["errors"]
+
+
+def test_deagle_with_body_armor_at_a_big_pool_warns_and_does_not_block():
+    """The field case itself: the shipped deagle, body_armor, hp/armor raised to a ~190 pool."""
+    p = _player(weapons=("assault_rifle", "deagle"))
+    p["loadout"]["perk"] = "body_armor"
+    p["loadout"]["overrides"] = {"max_hp": 100, "max_armor": 90}
+    r = C.validate(_cfg(), [p])
+    assert not any("deagle" in e for e in r["errors"]), r["errors"]
+    side = [w for w in r["warnings"] if w.startswith("deagle is a sidearm")]
+    assert len(side) == 1, r["warnings"]
+
+
 def test_validate_accepts_weapons_that_can_kill_on_one_magazine():
     r = C.validate(_cfg(), [_player(weapons=("assault_rifle", "shotgun"))])
     assert not any("one magazine" in e for e in r["errors"]), r["errors"]

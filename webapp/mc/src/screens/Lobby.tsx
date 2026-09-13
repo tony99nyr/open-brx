@@ -7,6 +7,7 @@ import { F, T, TAB, teamColor } from '../tokens';
 import { BTN_RESET, OutlineTag, PrimaryButton, Progress, ScreenHeader, Tag } from '../ui';
 import { SetupSteps } from '../ui/SetupSteps';
 import { McVerify } from '../ui/McVerify';
+import { StandDownChip, StandbySection } from '../ui/Standby';
 
 
 export function Lobby() {
@@ -91,6 +92,8 @@ export function Lobby() {
           </div>
         )}
       </div>
+      {/* STANDBY (2026-09-12): who is sitting this one out, and the way back in */}
+      <StandbySection />
       {/* Action rail — rebuilt 2026-09-01: "lots of small uppercase text. poor organization and
           readability and usability". One status line in sentence case, faults as a real per-gun list
           (blockers only — the advisories used to be jammed into the same run-on string), one primary
@@ -186,6 +189,7 @@ function MemberRow({ p, teamIds, reach, onDragStart, onMove }: { p: Player; team
           </button>
         ))}
       </span>
+      <StandDownChip p={p} />
       {p.ready ? <OutlineTag color={T.ok} border="rgba(46,204,113,.5)">READY</OutlineTag> : <OutlineTag color={T.micro} border={T.line}>WAIT</OutlineTag>}
     </div>
   );

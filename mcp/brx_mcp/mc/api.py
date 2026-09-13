@@ -313,13 +313,29 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
 
     async def delete_player(req):
         pid = req.path_params["pid"]
-        if pid not in s.players:
+        if pid not in s.players and pid not in s.standby:     # STANDBY: a parked record can be dropped too
             return _err("no such player", 404)
         try:
             s.remove_player(pid)
         except ValueError as e:
             return _err(str(e))
         return JSONResponse({"ok": True})
+
+    async def standby(req):
+        """STANDBY (2026-09-12): POST parks a rostered player (stand down), DELETE puts a parked one back
+        (reinstate). Both answer with the Player as it now stands; a phase refusal is a 400 in the
+        operator's voice, like DELETE /api/players/{id}."""
+        pid = req.path_params["pid"]
+        try:
+            if req.method == "DELETE":
+                if pid not in s.standby:
+                    return _err("no such player on standby", 404)
+                return JSONResponse(s.reinstate(pid))
+            if pid not in s.players:
+                return _err("no such player", 404)
+            return JSONResponse(s.stand_down(pid))
+        except ValueError as e:
+            return _err(str(e))
 
     # ---- A13.5 / F104: utility stations (the ITEMS panel) ----
     async def stations_list(_):
@@ -639,6 +655,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/players/{pid}", patch_player, methods=["PATCH"]),
         Route("/api/players/{pid}", delete_player, methods=["DELETE"]),
         Route("/api/players/{pid}/tryout", tryout, methods=["POST", "DELETE"]),
+        Route("/api/players/{pid}/standby", standby, methods=["POST", "DELETE"]),
         Route("/api/nodes/{nid}", evict_node, methods=["DELETE"]),
         Route("/api/nodes/{nid}/pull_log", node_pull_log, methods=["POST"]),
         Route("/api/options", get_options),

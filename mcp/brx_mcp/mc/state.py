@@ -14,7 +14,7 @@ import secrets
 import time
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, NotRequired, TypedDict, get_args
+from typing import TYPE_CHECKING, Any, Callable, NotRequired, TypedDict, cast, get_args
 from urllib.parse import quote
 
 from . import presentation as _pres
@@ -247,6 +247,10 @@ class Session:
         self.session_id = uuid.uuid4().hex[:8]
         self.phase = "muster"
         self.players: dict[str, Player] = {}
+        # STANDBY (2026-09-12): players pulled out of the roster but not forgotten -- the record (callsign, team,
+        # gun, loadout, voice) parks here so PLAY puts them straight back. Outside `players` on purpose: every
+        # roster loop (readiness, kit counts, compile, push, scoring) then ignores them without a filter each.
+        self.standby: dict[str, Player] = {}
         self.teams: list[Team] = []
         self.config: GameConfig = default_config("tdm")
         self.teams = list(self.config["teams"])
@@ -377,6 +381,7 @@ class Session:
             stations = {nid: st["assigned"] for nid, st in self.stations.items() if st.get("assigned")}
             snap = {"v": 1, "saved_ms": self.now_ms(),
                     "players": [{**p, "node_id": None, "ready": False} for p in self.players.values()],
+                    "standby": [{**p, "node_id": None, "ready": False} for p in self.standby.values()],
                     "teams": self.teams, "config": self.config, "active_preset_id": self.active_preset_id,
                     "stations": stations, "game_no": self.game_no, "game_no_started": self._game_no_started,
                     # A28.2: a restore must keep every printed QR valid, so the secret is human work too.
@@ -394,6 +399,12 @@ class Session:
         try:
             snap = json.loads(self._persist_path.read_text())
             self.players = {p["player_id"]: p for p in snap.get("players", [])}
+            # a snapshot from before STANDBY existed has no such list; a hand-edited one may hold junk rows
+            parked: dict[str, Player] = {}
+            for q in snap.get("standby") or []:
+                if isinstance(q, dict) and q.get("player_id"):
+                    parked[str(q["player_id"])] = cast(Player, q)   # the same untyped JSON row `players` takes one line up
+            self.standby = parked
             if snap.get("teams"):
                 self.teams = snap["teams"]
             if snap.get("config"):
@@ -877,15 +888,25 @@ class Session:
             raise ValueError(f"unknown team_id {team_id!r}")
         return team_id
 
+    def _check_gun_free(self, gun_id: str, except_pid: str | None = None) -> None:
+        """A gun belongs to one player: rostered OR parked on STANDBY (2026-09-12). The parked case names the
+        way back -- an API caller or the ARMORY claim form used to be able to hand a benched player's gun to a
+        new callsign, and PLAY then refused with the collision it had just been allowed to create."""
+        g = gun_id.lower()
+        for q in self.players.values():
+            if q["player_id"] != except_pid and (q.get("gun_id") or "").lower() == g:
+                raise ValueError(f"gun {gun_id} is already assigned to {q['display']}")
+        for q in self.standby.values():
+            if q["player_id"] != except_pid and (q.get("gun_id") or "").lower() == g:
+                raise ValueError(f"gun {gun_id} is on standby with {q['display']} - PLAY puts them back")
+
     def add_player(self, display: str, team_id: str | None = None, gun_id: str | None = None,
                    voice: str = "male", loadout: dict | None = None, voice_slots: dict | None = None) -> Player:
         if len(self.players) >= MAX_PLAYERS:
             raise ValueError("roster full")
         voice_slots = _voices.check_slots(voice_slots)      # A15: {role: id} $PSET picks; bad role / off-gun id -> ValueError
         if gun_id:
-            for q in self.players.values():
-                if (q.get("gun_id") or "").lower() == gun_id.lower():
-                    raise ValueError(f"gun {gun_id} is already assigned to {q['display']}")
+            self._check_gun_free(gun_id)
         pid = uuid.uuid4().hex[:8]
         team_id = self._check_team(team_id)
         if team_id is None and self.teams:
@@ -959,9 +980,7 @@ class Session:
                 raise ValueError("display must not be empty")
             fields["display"] = d
         if fields.get("gun_id"):
-            for q in self.players.values():
-                if q["player_id"] != pid and (q.get("gun_id") or "").lower() == str(fields["gun_id"]).lower():
-                    raise ValueError(f"gun {fields['gun_id']} is already assigned to {q['display']}")
+            self._check_gun_free(str(fields["gun_id"]), except_pid=pid)
         for k in ("display", "team_id", "voice", "loadout", "player_num", "gun_id", "ready"):
             if k in fields and fields[k] is not None or (k in fields and k in ("team_id", "gun_id")):
                 p[k] = fields[k]
@@ -1062,14 +1081,86 @@ class Session:
         return out
 
     def remove_player(self, pid: str) -> None:
+        if pid in self.standby and pid not in self.players:
+            self.standby.pop(pid)            # a parked player is not on any wire: dropping it needs no phase gate
+            self._changed()
+            return
         if self.phase not in self.ROSTER_PHASES:
             raise ValueError("cannot remove a player after the match has started")
+        self._unroster(pid)
+        self._changed()
+
+    def _unroster(self, pid: str) -> Player:
+        """Take `pid` off the roster: unbind its node, forget its acks/bundle/try-out/browse. The shared
+        body of REMOVE and STAND DOWN; the caller decides whether the record is kept."""
         p = self.players.pop(pid)
         nid = p.get("node_id")
         if nid:
             self.node_player.pop(nid, None)
+            nv = self.nodes.get(nid)
+            if nv is not None:
+                nv.pop("player_id", None)
         self.acks.pop(pid, None); self.bundles.pop(pid, None); self.trying.pop(pid, None); self.browsing.pop(pid, None)
+        return p
+
+    def stand_down(self, pid: str) -> Player:
+        """STANDBY: pull a player out of the roster without forgetting them (Tony 2026-09-12: "pull them out
+        into standby" -- a player who walked away mid-lobby). The record parks in `self.standby`; the node is
+        unbound and drops back to a plain connected phone, so the next push, the readiness board and the kit
+        counts no longer wait on it. `reinstate` is the way back. Roster phases only, like REMOVE.
+
+        v1 gap, documented in API.md: nothing is pushed to the phone. An unbound node receives no frames, so
+        its HUD keeps the last `assign` it was handed until it is reinstated or the next kit."""
+        if pid not in self.players:
+            raise KeyError(pid)
+        if self.phase not in self.ROSTER_PHASES:
+            raise ValueError("cannot stand a player down after the match has started")
+        p = self._unroster(pid)
+        parked: Player = {**p, "node_id": None, "ready": False}
+        self.standby[pid] = parked
         self._changed()
+        return parked
+
+    def reinstate(self, pid: str) -> Player:
+        """PLAY: put a parked player back on the roster. Mirrors `add_player` for everything that can have
+        changed while they sat out -- the gun may have been handed to someone else (refused, naming them), the
+        team may be gone (auto-balanced), the policy may have tightened (the loadout is re-fitted) -- and keeps
+        their `player_num` when it is still free so the wire id they were briefed with survives."""
+        if pid not in self.standby:
+            raise KeyError(pid)
+        if self.phase not in self.ROSTER_PHASES:
+            raise ValueError("cannot reinstate a player after the match has started")
+        if len(self.players) >= MAX_PLAYERS:
+            raise ValueError("roster full")
+        parked = self.standby[pid]
+        gun_id = parked.get("gun_id")
+        if gun_id:
+            for q in self.players.values():
+                if (q.get("gun_id") or "").lower() == gun_id.lower():
+                    raise ValueError(f"gun {gun_id} is now assigned to {q['display']}")
+        team_id = parked.get("team_id")
+        if team_id is not None and not any(t["team_id"] == team_id for t in self.teams):
+            team_id = None
+        if team_id is None and self.teams:
+            counts = {t["team_id"]: 0 for t in self.teams}
+            for q in self.players.values():
+                if q["team_id"] in counts:
+                    counts[q["team_id"]] += 1
+            team_id = min(counts, key=lambda k: (counts[k], list(counts).index(k)))
+        lo = _policy.apply(self.policy(), self.loadout_pool(), parked.get("loadout") or {"weapons": [{"weapon_id": "assault_rifle"}]}, *self._catalog_rows())
+        used = {q["player_num"] for q in self.players.values()}
+        num = parked.get("player_num")
+        if not isinstance(num, int) or num in used or not (1 <= num <= MAX_PLAYERS):
+            num = self._next_num()
+        self.standby.pop(pid)
+        p: Player = {**parked, "player_num": num, "team_id": team_id, "node_id": None, "loadout": lo, "ready": False}
+        self.players[pid] = p
+        # (no scorer registration here, unlike add_player: reinstate is ROSTER_PHASES-only and the scorer
+        # exists only from START, so that branch could never run -- review 2026-09-12)
+        if gun_id:
+            self._adopt_node_for_gun(p)
+        self._after_player_change(p, new=True)
+        return p
 
     def _resend(self, p: Player, with_start: bool = False) -> None:
         """Re-send `assign` to `p`'s node, plus a fresh `config` compile if the lobby is already
@@ -3390,6 +3481,7 @@ class Session:
                         pass
         else:
             self.players = {}
+            self.standby = {}
             self.node_player = {}
             for nv in self.nodes.values():
                 nv.pop("player_id", None)
@@ -3431,6 +3523,7 @@ class Session:
                 "versions": self.versions(),        # A29: the muster version header
                 "config_warnings": self.config_warnings,
                 "players": list(self.players.values()), "teams": self.teams,
+                "standby": list(self.standby.values()),      # STANDBY: parked players, never counted above
                 "kit": {"kitted": kitted, "total": len(self.players), "trying": dict(self.trying), "browsing": dict(self.browsing)},
                 "loadout_pool": self.loadout_pool(),
                 "active_preset_id": self.active_preset_id,

@@ -1609,9 +1609,17 @@ class Compiler:
                 seen.add((wid, pool, mag))
                 htk = self.catalog.hits_to_kill(wid, pool)
                 if htk and mag < htk:
-                    errors.append(f"{wid} cannot kill on one magazine: mag {mag} < {htk} hits at "
-                                  f"{self.catalog.damage(wid)} dmg vs {pool} pool "
-                                  f"(docs/weapon-design.md §2.1)")
+                    if "sidearm" in (self.catalog._by_id[wid].get("tags") or []):
+                        # A sidearm is the BACKUP by design (A12): needing a reload to finish a kill at a
+                        # big pool is its nature, not a broken kit. Tony's push was blocked twice by
+                        # deagle + body_armor at a 190 pool (2026-09-12) -- a warning, never an error.
+                        warnings.append(f"{wid} is a sidearm and cannot kill on one magazine at this pool - "
+                                        f"it will need a reload (mag {mag} < {htk} hits at "
+                                        f"{self.catalog.damage(wid)} dmg vs {pool} pool)")
+                    else:
+                        errors.append(f"{wid} cannot kill on one magazine: mag {mag} < {htk} hits at "
+                                      f"{self.catalog.damage(wid)} dmg vs {pool} pool "
+                                      f"(docs/weapon-design.md §2.1)")
 
         # Does each loadout weapon's <t3,t4> key a $SIR row that actually DEALS DAMAGE?
         # The mag>=htk invariant above computes on raw t5 and cannot see this: it passed an Energy

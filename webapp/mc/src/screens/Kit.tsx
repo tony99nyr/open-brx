@@ -3,6 +3,7 @@ import { registrySig } from '../api/derive';
 import type { Loadout, PerkView, PhaseRefusal, Player, WeaponView } from '../api/types';
 import { useStore } from '../store';
 import { EvictButton } from '../ui/EvictButton';
+import { StandbySection } from '../ui/Standby';
 import { CHAMFER, F, PERK_COLOR, T, TAB, fmtAge, roleOf, teamColor } from '../tokens';
 import { takesAlt } from './gameSummary';
 import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, SectionRule, Seg, SegBar, StripedSlot, Tag, ValueBox, onKey } from '../ui';
@@ -453,6 +454,8 @@ export function Kit() {
               <GhostButton size={10} pad="4px 10px">ADD</GhostButton>
             </form>
           </div>
+          {/* STANDBY (2026-09-12): parked players, with PLAY. Nothing on an older server. */}
+          <StandbySection style={{ marginTop: 10 }} />
         </div>
 
         {/* detail */}
@@ -470,6 +473,14 @@ export function Kit() {
                     style={{ font: F.osw(700, 32), letterSpacing: '.1em', width: `${Math.max(6, sp.display.length + 1)}ch`, minHeight: 44 }} />
                 </div>
               </div>
+              {/* STANDBY (2026-09-12): pull this operator out of the lobby without losing what was just typed.
+                  Only when the server has the route (`state.standby` present) — never a dead control. */}
+              {Array.isArray(state.standby) && state.phase !== 'armed' && state.phase !== 'live' && (
+                <GhostButton size={11} pad="6px 12px" title={`Pull ${sp.display} out of the lobby — kept on STANDBY, PLAY puts them back`}
+                  onClick={() => run(() => api.standbyPlayer(sp.player_id))}>
+                  <span data-stand-down={sp.player_id}>▸ STAND DOWN</span>
+                </GhostButton>
+              )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span style={{ font: F.mono(500, 9), letterSpacing: '.22em', color: T.micro }}>TEAM</span>
                 <span role="group" aria-label="team" style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>

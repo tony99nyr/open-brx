@@ -7,6 +7,7 @@ import { useStore } from '../store';
 import { CHAMFER, F, T, TAB, fmtAge } from '../tokens';
 import { CountBlock, GhostButton, Micro, ScreenHeader, SectionRule, Seg, SegBar, Tag } from '../ui';
 import { Items } from './Items';
+import { PlayButton } from '../ui/Standby';
 
 const statusColor = (s: ReadinessRow['status']) =>
   (s === 'red' ? T.bad : s === 'amber' ? T.warn : s === 'waiting' ? T.micro : T.ok);
@@ -318,6 +319,10 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
   // tail; an unregistered gun falls back to its tail, which the server matcher also accepts.
   const gunId = n.gun_tail ? (registry.find((r: { gun_id: string; ble?: { tail?: string } }) => (r.ble?.tail || '').toUpperCase() === n.gun_tail!.toUpperCase())?.gun_id ?? n.gun_tail) : null;
   const gunClaimed = !!gunId && (state?.players ?? []).some((pl: { gun_id?: string | null }) => (pl.gun_id || '').toUpperCase() === String(gunId).toUpperCase());
+  // STANDBY (2026-09-12): a gun still worn by a PARKED player is not a stray — it used to reappear here
+  // with the claim form, and claiming it created the collision PLAY then refused (review). The card says
+  // who is sitting out and offers the way back instead.
+  const parkedHolder = gunId ? (state?.standby ?? []).find(pl => (pl.gun_id || '').toUpperCase() === String(gunId).toUpperCase()) : undefined;
   const [claiming, setClaiming] = useState(false);
   const claim = async (team: string) => {
     if (!name.trim() || !gunId || claiming) return;
@@ -373,7 +378,15 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
       {/* A25: always asks, whatever `log_sync` is set to — `reason: "manual"` is never gated. */}
       <PullLogButton node_id={n.node_id ?? ''} />
       {!hasGun && <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.warn }}>▲ WAITING FOR ITS GUN — SET IT ON THE PHONE</div>}
-      {hasGun && !n.player_id && !gunClaimed && (
+      {hasGun && !n.player_id && parkedHolder && (
+        <div data-standby-holder={parkedHolder.player_id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', borderTop: `1px solid ${T.line2}`, paddingTop: 10 }}>
+          <span style={{ flex: 1, minWidth: 0, font: F.chk(700, 11), letterSpacing: '.16em', color: T.micro }}>ON STANDBY · {parkedHolder.display}</span>
+          {state?.phase === 'armed' || state?.phase === 'live'
+            ? <span style={{ font: F.chk(700, 11), letterSpacing: '.14em', color: T.micro }}>MATCH LIVE</span>
+            : <PlayButton p={parkedHolder} />}
+        </div>
+      )}
+      {hasGun && !n.player_id && !gunClaimed && !parkedHolder && (
         <form onSubmit={e => { e.preventDefault(); claim('blue'); }} style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${T.line2}`, paddingTop: 10 }}>
           <div style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.acc }}>▸ WHO CARRIES THIS?</div>
           <input value={name} onChange={e => setName(e.target.value)} placeholder="GAMERTAG" maxLength={24} aria-label={`gamertag for ${n.gun_name}`}

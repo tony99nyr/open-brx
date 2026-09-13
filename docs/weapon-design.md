@@ -154,7 +154,7 @@ sounds — and moves the numbers.
    hold on all 19 captured frames; `resolve()` maintains both. Pinned by a test.
 3. **Tune damage and ammo before cycle.** Cycle carries fire feel — especially on burst weapons,
    where `t14` is the intra-burst spacing that `t23` is tuned against.
-4. **`mag ≥ htk`, always.** Enforced in `Compiler.validate()` as an error.
+4. **`mag ≥ htk`, always.** Enforced in `Compiler.validate()` as an error, except for a weapon tagged `sidearm`, where it is a warning (the backup is allowed to need a reload at a big pool, 2026-09-12).
 5. **TTK band 1.5–3.5 s** at the 115 pool for everything that is not a one-shot weapon.
 6. **No strict dominance.** No weapon may be ≥ another on TTK, sustained DPS **and** total kills at
    once. Checked in a test, not by eye.

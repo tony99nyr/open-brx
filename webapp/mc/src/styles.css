@@ -46,7 +46,10 @@ button:focus:not(:focus-visible), input:focus:not(:focus-visible) { outline: non
 
 /* Kit-out on a tablet: the roster becomes a horizontal chip strip above the detail (loadout.md §5) */
 @media (max-width: 900px) {
-  .kit-roster { max-width: none !important; flex: 1 1 100% !important; }
+  /* min-width 0: a flex item's default min-width is its content, and the nowrap strip below made the
+     whole roster panel wider than the phone, so anything under the strip (the STANDBY bench, 2026-09-12)
+     ran off the right edge. The strip scrolls INSIDE the panel; the panel stays the width of the screen. */
+  .kit-roster { max-width: none !important; flex: 1 1 100% !important; min-width: 0; }
   .kit-roster-rows { flex-direction: row !important; overflow-x: auto; flex-wrap: nowrap; scroll-snap-type: x proximity; -webkit-mask-image: linear-gradient(90deg,#000 90%,transparent); mask-image: linear-gradient(90deg,#000 90%,transparent); }
   .kit-roster-rows .kit-row { scroll-snap-align: start; }
   /* 210px is the WIDTH, not just the basis: `min-width:auto` let a row grow to its content, so the

@@ -187,3 +187,28 @@ def test_the_kit_locks_at_start_over_http_with_a_409():
     assert len(net.pushes("config", "node0")) == pushes
     # …and the ordinary validation errors are still 400
     assert c.patch(f"/api/players/{p['player_id']}", json={"team_id": "nope"}).status_code == 400
+
+
+def test_standby_routes():
+    """STANDBY (2026-09-12): POST parks, DELETE reinstates, both answer with the Player; 404s name the id's side."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net = _client()
+    assert c.put("/api/config", json={"mode": "ffa", "time_limit_s": 300}).json()["ok"]
+    p = c.post("/api/players", json={"display": "walker", "gun_id": "GUN-A"}).json()
+    pid = p["player_id"]
+    assert c.delete(f"/api/players/{pid}/standby").status_code == 404          # not parked (yet)
+    r = c.post(f"/api/players/{pid}/standby")
+    assert r.status_code == 200 and r.json()["player_id"] == pid and r.json()["ready"] is False
+    st = c.get("/api/state").json()
+    assert [x["player_id"] for x in st["standby"]] == [pid] and st["players"] == [] and st["lobby"]["total"] == 0
+    assert c.post(f"/api/players/{pid}/standby").status_code == 404           # no longer rostered
+    r = c.delete(f"/api/players/{pid}/standby")
+    assert r.status_code == 200 and r.json()["player_id"] == pid and r.json()["player_num"] == p["player_num"]
+    st = c.get("/api/state").json()
+    assert st["standby"] == [] and [x["player_id"] for x in st["players"]] == [pid]
+    assert c.post("/api/players/nobody/standby").status_code == 404
+    # a parked record is dropped by the plain DELETE too
+    c.post(f"/api/players/{pid}/standby")
+    assert c.delete(f"/api/players/{pid}").json()["ok"]
+    assert c.get("/api/state").json()["standby"] == []
+

@@ -46,6 +46,22 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
 const post = <T,>(path: string, body: unknown = {}) => j<T>(path, { method: 'POST', body: JSON.stringify(body) });
 
 /** Real client: REST + `/ui-ws` snapshots with exponential-backoff reconnect. */
+/** A 404 from a route this UI needs is version skew — but ONLY when it is the ROUTE that is missing.
+ *  The handler's own 404 ("no such player", the second tap of a double-tap after the first one parked
+ *  them) comes back as JSON with an `error` field and is the server's own words; Starlette's missing-route
+ *  404 is a plain "Not Found" with no JSON error. Review 2026-09-12: the first cut turned every 404 into
+ *  the RESTART banner, so a double-tap told the operator to restart a server that was fine. */
+export function skewOr404(e: unknown): never {
+  const err = e as Error & { status?: number; body?: unknown };
+  const serverSaid = typeof (err?.body as { error?: unknown } | undefined)?.error === 'string';
+  if (err?.status === 404 && !serverSaid) {
+    const skew = new Error('THE MC SERVER PREDATES THIS UI (no standby route) — RESTART IT: python -m brx_mcp.mc') as Error & { status?: number };
+    skew.status = 404;
+    throw skew;
+  }
+  throw e;
+}
+
 export function createHttpApi(): Api {
   return {
     getState: () => j<State>('/api/state'),
@@ -99,6 +115,10 @@ export function createHttpApi(): Api {
     addPlayer: p => post('/api/players', p),
     patchPlayer: (id, patch: Partial<Player>) => j(`/api/players/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
     deletePlayer: async id => { await j(`/api/players/${id}`, { method: 'DELETE' }); },
+    // STANDBY: a 404 here is the ROUTE missing (an MC older than 2026-09-12), not the player — say so in the
+    // strip, in the words the command bar uses for the same condition, instead of a bare "Not Found".
+    standbyPlayer: id => j<Player>(`/api/players/${id}/standby`, { method: 'POST' }).catch(skewOr404),
+    reinstatePlayer: id => j<Player>(`/api/players/${id}/standby`, { method: 'DELETE' }).catch(skewOr404),
     evictNode: async id => { await j(`/api/nodes/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
     getOptions: () => j('/api/options'),
     setOptions: opts => j('/api/options', { method: 'PUT', body: JSON.stringify(opts) }),
