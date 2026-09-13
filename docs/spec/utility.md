@@ -28,7 +28,15 @@ for players. No connections between phones, ever: adverts are broadcast state, s
 them and the Android 7-connection cap is irrelevant.
 
 Switching: `localStorage brx.role`; the HUD exposes `hud.h.onUtility` (the HUD session adds the control; until
-then 7 taps on the idle stage within 3 s); the utility screen has BACK TO HUD.
+then 7 taps on the idle stage within 3 s, held on the last one); the utility screen has BACK TO HUD, behind the
+same seven-tap-on-ⓘ gate as the rest of its settings drawer (kind/team/id/threshold — the anti-cheat concern,
+so a player cannot wander in and fiddle with a deployed station mid-game). Leaving utility mode is NOT that
+concern: getting back to your own HUD is rejoining the game you are locked out of, not a cheat. **A41
+(2026-09-13, field: the seven-tap gate was the ONLY way out, with zero feedback and no MC-side cure)** adds
+two more exits that touch nothing in the drawer: a plain, HELD `#exitHud` control on the utility screen's main
+view, shown only while nobody has claimed this phone as a field item yet (`!mcArmed` — a deployed, MC-armed
+station stays behind the seven-tap gate exactly as before); and an operator's MC-side release,
+`control{cmd:"release_utility"}` (§5c), which works on a deployed station too, in any phase.
 
 ## 2. The advert (the wire between phones)
 
@@ -173,6 +181,18 @@ Mission Control drives all of the §5 kinds from the ITEMS panel (§5b); station
 report at recap (MC is not live mid-match). (A duplicate of the §5 table that sat here as §5d was removed
 2026-09-06; the roadmap's older "§5d" references mean §5. **§5d below is the control-point spec**, added
 and the roaming-hill variant is `utility-roadmap.md` §8 5e.)
+
+### 5c.1 `control{cmd:"release_utility"}` (M-NET, MC → utility phone) — the release message (A41)
+
+`{ cmd: "release_utility" }`, on the ordinary `control` kind (contracts.md §5, `CONTROL_CMDS`) — MC → ONE
+utility node, any phase. Unlike `station_config` this carries no station fields and touches nothing about
+the assignment or the advert: `utility.js` takes it exactly as its own BACK TO HUD button (`brx.role` →
+`'hud'`, reload into the HUD). It is the field cure for a phone stuck in utility mode (§1): an operator
+presses RELEASE ▸ HUD on the ITEMS card (`state.py release_station`, `POST /api/stations/{nid}/release`).
+Best-effort like `station_config` — no ack kind exists for `control`, so the API's `ok` means only that a
+socket took the push, never that the phone actually reloaded; a phone with no socket has only its own
+seven-tap ⓘ gesture left. Deliberately NOT `_refuse_station_change_in_play`-gated: a stranded phone needs
+releasing in every phase, armed/live most of all.
 
 ## 5d. kind 5 `control` — the phone control point (K1 base)
 

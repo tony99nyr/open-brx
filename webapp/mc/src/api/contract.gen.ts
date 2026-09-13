@@ -82,7 +82,7 @@ export const MC_KINDS = ['ack', 'alert', 'apply', 'assign', 'config', 'control',
 export type McKind = typeof MC_KINDS[number];
 export const NODE_KINDS = ['ack_config', 'bind', 'event', 'event_batch', 'hello', 'loadout_browse', 'loadout_request', 'log_data', 'log_offer', 'ready', 'status', 'time_req'] as const;
 export type NodeKind = typeof NODE_KINDS[number];
-export const CONTROL_CMDS = ['abort_start', 'end', 'panic', 'recall'] as const;
+export const CONTROL_CMDS = ['abort_start', 'end', 'panic', 'recall', 'release_utility'] as const;
 export type ControlCmd = typeof CONTROL_CMDS[number];
 /** ⚠ This is a WHITELIST and an unlisted type is REJECTED at the socket, not ignored downstream --
  *  so a fact the phone learns to send reaches nothing until it is named here (the F40/F60 shape:

@@ -151,7 +151,14 @@ function connectMc(url, { wsFactory } = {}) {
     // have watched any of it (F92).
     ...(settings.kind === 'control' ? { control: { owner: point.owner, progress: Math.round(point.progress), contested: point.contested,
       hold_ms: point.holdMs, capture_log: point.log.slice(-32), capture_s: settings.captureS, net_cap: settings.netCap } } : {}) }));
-  transport.onMessage(m => { if (m && m.kind === 'station_config') applyStationConfig(m.body); });
+  // A41: the operator's MC-side release for a phone stuck in utility mode -- makes the ⓘ gesture's own
+  // BACK TO HUD a real, reachable fix instead of folklore ("something pushed from MC"). Any phase, any
+  // arm state: this is the one message that gets a phone unstuck, so it is never conditioned on anything.
+  transport.onMessage(m => {
+    if (!m) return;
+    if (m.kind === 'station_config') applyStationConfig(m.body);
+    else if (m.kind === 'control' && m.body && m.body.cmd === 'release_utility') { log('Mission Control released this phone back to HUD', 'lk'); exitToHud(); }
+  });
   transport.onState(s => { mcState = s; log(`MC ${s}${transport.rejected ? ' — ' + transport.rejected.reason : ''}`, s === 'bound' ? 'lk' : 'li'); render(); });
   transport.connect({ url }).catch(e => log('MC connect: ' + (e && e.message || e), 'le'));
 }
@@ -183,6 +190,19 @@ async function stopAdvert() {
   advertising = false; settings.live = false; save(); log('advertising stopped'); render();
 }
 async function restartIfLive() { if (advertising) await startAdvert(); else render(); }
+
+/** Field 2026-09-12: the ONLY exit from utility mode was this same code, reachable only through the
+ *  seven-tap-in-3s gate on ⓘ that opens the settings drawer BACK TO HUD lives inside -- one gesture with
+ *  zero feedback on a single tap, and an Android needed its app storage wiped, an iPhone needed someone
+ *  walked through the gesture over chat. Now called from THREE places, all converging here: the drawer's
+ *  own BACK TO HUD button (unchanged), the plain `#exitHud` hold-to-confirm control on the main screen
+ *  (visible only while this phone is NOT MC-armed -- `render()`), and an operator's MC release
+ *  (`control{cmd:"release_utility"}`, A41, `state.py release_station`). */
+async function exitToHud() {
+  await stopAdvert();
+  try { localStorage.setItem('brx.role', 'hud'); } catch (_) { /* ignore */ }
+  location.replace('index.html?hud');
+}
 
 async function startScan() {
   if (scanning || !isNative()) return;
@@ -326,6 +346,9 @@ function render() {
   const armed = settings.mcArmed;
   $('armed').textContent = armed ? `MC-ARMED · GAME ${armed.game || 0}` : 'NOT ARMED BY MISSION CONTROL';
   $('armed').className = 'armed ' + (armed ? 'on' : '');
+  // A41: the plain exit is for a phone NOBODY has claimed as a field item yet -- the moment MC arms one
+  // (`applyStationConfig`), it is a deployed station and drops back behind the seven-tap gate.
+  if ($('exitHud')) $('exitHud').hidden = !!armed;
   // S5(d): the allow-list this phone was armed with -- the operator's own confirmation that MC's ITEMS
   // panel and this phone's advert agree on which ids are live in this game.
   const idsEl = $('ids');
@@ -407,7 +430,7 @@ function renderControl(isControl, v, heldBy) {
 function wire() {
   $('btnStart').onclick = () => (advertising ? stopAdvert() : startAdvert());
   $('btnMc').onclick = () => connectMc($('mcUrl').value.trim());
-  $('btnHud').onclick = async () => { await stopAdvert(); try { localStorage.setItem('brx.role', 'hud'); } catch (_) { /* ignore */ } location.replace('index.html?hud'); };
+  $('btnHud').onclick = exitToHud;
   for (const b of document.querySelectorAll('[data-kind]')) b.onclick = () => { settings.kind = b.dataset.kind; save(); restartIfLive(); };
   for (const b of document.querySelectorAll('[data-team]')) b.onclick = () => { settings.team = +b.dataset.team; save(); restartIfLive(); };
   for (const b of document.querySelectorAll('[data-tx]')) b.onclick = () => { settings.tx = b.dataset.tx; save(); restartIfLive(); };
@@ -432,6 +455,33 @@ function wire() {
     log(`threshold set from player ${p.id}: ${Math.round(p.rssi)} dBm → ${settings.threshold} dBm`, 'lk');
     restartIfLive();
   };
+  wireExit();
+}
+
+// A41 / field 2026-09-12: a SECOND, DISCOVERABLE exit that needs no drawer -- the judgement call the
+// undiscoverable ⓘ gate forced. Getting back to your own HUD is not the anti-cheat concern (the drawer
+// still guards KIND/TEAM/ID/THRESHOLD, untouched); the real risk this button opens is a DEPLOYED station
+// propped up on the field where any passerby, teammate or opponent could reach it. So it is HELD to
+// confirm (a phone jostled in a bag cannot cross it by itself, matching the entry gesture's own hold),
+// and `render()` hides it the moment MC has armed this phone as a real field item (`settings.mcArmed`) --
+// only a phone nobody has claimed as a station yet (exactly the "stuck by accident" case) shows it. A
+// station already in play stays behind the seven-tap gate, same as today.
+const EXIT_HOLD_MS = 1200;
+function wireExit() {
+  const btn = $('exitHud'), fill = $('exitFill');
+  if (!btn) return;
+  let t0 = 0, raf = 0, firing = false;
+  const stop = () => { if (raf) cancelAnimationFrame(raf); raf = 0; t0 = 0; if (fill) fill.style.width = '0%'; };
+  const tick = () => {
+    if (!t0) return;
+    const p = Math.min(1, (Date.now() - t0) / EXIT_HOLD_MS);
+    if (fill) fill.style.width = `${Math.round(p * 100)}%`;
+    if (p >= 1) { firing = true; stop(); exitToHud(); return; }
+    raf = requestAnimationFrame(tick);
+  };
+  const start = e => { if (firing || btn.hidden) return; e.preventDefault(); t0 = Date.now(); tick(); };
+  btn.addEventListener('pointerdown', start);
+  for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) btn.addEventListener(ev, stop);
 }
 
 (async () => {
@@ -454,7 +504,7 @@ function wire() {
   await startScan();
   setInterval(tick, 250);
   if (DEMO) seedDemo();
-  window.brxUtility = { settings, presence, point, advert, startAdvert, stopAdvert, render, log: logLines, stationUuid, advertFields, encodeUuid, applyStationConfig, connectMc, mcMessage: stageMcMessage, get transport() { return transport; } };
+  window.brxUtility = { settings, presence, point, advert, startAdvert, stopAdvert, render, log: logLines, stationUuid, advertFields, encodeUuid, applyStationConfig, connectMc, mcMessage: stageMcMessage, exitToHud, get transport() { return transport; } };
   window.brxUtil = window.brxUtility;
 })();
 

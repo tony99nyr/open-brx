@@ -162,6 +162,20 @@ def test_station_routes_refuse_in_the_operators_voice_while_armed_or_live():
     assert c.delete("/api/stations/never").status_code == 404
 
 
+def test_release_station_route_pushes_the_release_and_works_while_live():
+    """A41: the operator's cure for a phone stuck in utility mode, over the real route -- and, unlike PUT/
+    DELETE above, NOT refused while the match is armed/live (a stranded phone needs releasing most of all
+    exactly then)."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net = _client()
+    net.simulate_utility_hello("util-1")
+    s.phase = "live"
+    r = c.post("/api/stations/util-1/release")
+    assert r.status_code == 200 and r.json() == {"ok": True}, (r.status_code, r.text)
+    assert ("util-1", "control", {"cmd": "release_utility"}) in net.pushed
+    assert c.post("/api/stations/never/release").status_code == 404
+
+
 def test_the_kit_locks_at_start_over_http_with_a_409():
     """A30: a host kit edit during a running match is a CONFLICT (the request is fine, the moment is not),
     so the route answers 409 and not the blanket 400 every other player error gets. The fields that never

@@ -2014,6 +2014,23 @@ class Session:
         self._changed()
         return True
 
+    def release_station(self, nid: str) -> bool:
+        """A41 (2026-09-13 field): the operator's cure for a phone stuck in utility mode, whether it
+        landed there by accident (the HUD's own entry gesture caught by a jostle) or an operator wants a
+        deployed station back as a HUD -- with no way out an operator could drive today: the phone's OWN
+        exit is the same undiscoverable seven-tap gesture its settings drawer uses (F104-adjacent, field
+        2026-09-12: an Android needed its app storage wiped, an iPhone needed someone walked through the
+        gesture over chat). `control{cmd:"release_utility"}` to ONE utility node -- `utility.js` takes it
+        exactly the way its own BACK TO HUD button does (`brx.role` back to `'hud'`, reload into the
+        HUD). Deliberately NOT phase-gated (unlike `set_station`/`clear_station`): a stranded phone needs
+        releasing in every phase, armed/live included, and this never re-arms or re-pushes anything else.
+        Best-effort like `_arm_station`: a phone with no socket has nothing to retry against, and its own
+        seven-tap gate is still there under this if the push never lands."""
+        if nid not in self.stations:
+            return False
+        ok = self.net.push(nid, "control", {"cmd": "release_utility"})
+        return ok is not False
+
     def _refuse_station_change_in_play(self) -> None:
         """An assignment or clear is a `config` re-push to every player (below), and the phone's
         `_applyConfig` rewrites the gun head and sets `spawned = false` whatever the phase -- on a LIVE gun

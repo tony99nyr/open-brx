@@ -127,6 +127,7 @@ export function createHttpApi(): Api {
     putStation: (id, a) => j(`/api/stations/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(a) }),
     deleteStation: async id => { await j(`/api/stations/${encodeURIComponent(id)}`, { method: 'DELETE' }); },
     armStations: () => post('/api/stations/arm'),
+    releaseStation: id => post(`/api/stations/${encodeURIComponent(id)}/release`),
     tryout: async (id, weapon_id) => { await post(`/api/players/${id}/tryout`, { weapon_id }); },
     rangeVerdicts: () => j('/api/range/verdicts'),
     rangeVerdict: (weapon_id, verdict, note) => post('/api/range/verdict', { weapon_id, verdict, note }),

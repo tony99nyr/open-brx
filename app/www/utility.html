@@ -31,6 +31,19 @@ button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:no
 .wm small{font-family:var(--fl);font-style:normal;font-size:10px;letter-spacing:.34em;color:var(--mut);margin-left:10px;vertical-align:middle}
 .infobtn{width:40px;height:40px;border:1px solid var(--edge);color:var(--mut);font:600 15px var(--fl);display:flex;align-items:center;justify-content:center;position:relative}
 .infobtn::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:56px;height:56px}   /* the tap target */
+/* the ⓘ gesture is 7 taps in 3 s with ZERO feedback on any single tap (field 2026-09-12) -- this is the
+   ONLY feedback: a small count that appears on tap 1 and fades on timeout or on the drawer opening. */
+.infoprog{position:absolute;right:-6px;top:-6px;min-width:16px;height:16px;padding:0 3px;border-radius:8px;background:var(--glow);color:var(--team-ink,#04121e);font:700 10px var(--m);display:flex;align-items:center;justify-content:center;pointer-events:none}
+.infoprog[hidden]{display:none}
+
+/* ---- a second, discoverable exit: HOLD to leave utility mode, no drawer, no settings touched.
+   Visible only while nobody has claimed this phone as a field item (utility.js render(), `mcArmed`
+   gates `hidden`); a deployed station stays behind the ⓘ gate, unchanged. HELD, not tapped, so a bag
+   jostle cannot cross it and a passerby needs a deliberate ~1.2 s press, same order as the entry gate. ---- */
+.exitbtn{position:relative;overflow:hidden;align-self:center;margin-top:2px;padding:9px 18px;border:1px solid var(--edge);color:var(--mut);font:600 11px var(--fl);letter-spacing:.16em;background:var(--plate2);-webkit-user-select:none;user-select:none;touch-action:none}
+.exitbtn[hidden]{display:none}
+.exitbtn .fill{position:absolute;inset:0;left:0;width:0;background:color-mix(in srgb, var(--warn) 34%, transparent)}
+.exitbtn .lbl{position:relative}
 
 /* ---- the status display ---- */
 .hero{position:relative;border:1px solid var(--team);background:linear-gradient(180deg,color-mix(in srgb,var(--team) 26%,#04070c) 0%,var(--plate2) 100%);padding:22px 18px 18px;text-align:center;transform:skewX(-4deg);box-shadow:0 0 60px -20px var(--team)}
@@ -144,7 +157,7 @@ input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:0}   /*
 <body>
   <div class="top">
     <span class="wm">BRX<b>/</b><small>UTILITY</small></span>
-    <button id="info" class="infobtn" aria-label="station settings (tap seven times)">ⓘ</button>
+    <button id="info" class="infobtn" aria-label="station settings (tap seven times)">ⓘ<span class="infoprog" id="infoProg" hidden aria-hidden="true"></span></button>
   </div>
 
   <section class="hero">
@@ -171,6 +184,11 @@ input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:0}   /*
     <h3 id="ptitle">PLAYER PHONES IN RANGE</h3>
     <div id="players"></div>
   </section>
+
+  <!-- A41 / field 2026-09-12: leaving utility mode is NOT the anti-cheat concern the ⓘ gate protects
+       (that stays on kind/team/id/threshold, behind the seven-tap gesture, unchanged) -- this is only
+       for a phone nobody has armed as a field item yet. `utility.js render()` hides it once MC arms one. -->
+  <button id="exitHud" class="exitbtn" aria-label="hold about one second to leave utility mode and go back to your HUD"><span class="fill" id="exitFill"></span><span class="lbl unskew">STUCK? HOLD TO EXIT ▸ HUD</span></button>
 
   <div class="foot">OPEN BRX · UTILITY ITEM</div>
 
@@ -241,15 +259,25 @@ input[type=range]{width:100%;height:44px;accent-color:var(--team);margin:0}   /*
   <script>
   // The gate + the drawer live in the page (utility.js owns the station; this owns who may see its settings).
   (() => {
-    const $ = id => document.getElementById(id); const cfg = $('cfg'), info = $('info');
+    const $ = id => document.getElementById(id); const cfg = $('cfg'), info = $('info'), infoProg = $('infoProg');
     let taps = [], idle = null;
     const IDLE_MS = 90000;
     const arm = () => { clearTimeout(idle); idle = setTimeout(close, IDLE_MS); };
     const open = () => { cfg.hidden = false; arm(); };
     const close = () => { cfg.hidden = true; clearTimeout(idle); };
+    // Field 2026-09-12: a single tap gave ZERO feedback, so a player mid-gesture could not tell it was
+    // working at all. `infoProg` is that feedback ONLY -- it shows the running count and fades on a 3 s
+    // gap (the same window `taps` uses) or once the drawer opens; it changes no timing and no threshold.
+    let progIdle = null;
+    const showProg = n => {
+      clearTimeout(progIdle);
+      if (infoProg) { infoProg.hidden = n <= 0; infoProg.textContent = n > 0 ? String(n) : ''; }
+      if (n > 0) progIdle = setTimeout(() => { taps = []; if (infoProg) { infoProg.hidden = true; infoProg.textContent = ''; } }, 3000);
+    };
     info.addEventListener('click', () => {                 // seven taps within three seconds; a lone tap does nothing at all
       const now = Date.now(); taps = taps.filter(t => now - t < 3000); taps.push(now);
-      if (taps.length >= 7) { taps = []; if (cfg.hidden) open(); else close(); }
+      if (taps.length >= 7) { taps = []; showProg(0); if (cfg.hidden) open(); else close(); }
+      else showProg(taps.length);
     });
     $('cfgClose').addEventListener('click', close);
     cfg.addEventListener('pointerdown', arm);                // any touch inside keeps it open a little longer

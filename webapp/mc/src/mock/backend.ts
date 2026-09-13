@@ -178,6 +178,13 @@ export class MockBackend implements Api {
     st.assigned = null; st.armed = null; st.arm_pending = false; this.emit();
   }
   async armStations() { for (const n of Object.keys(this.stations)) this.armStation(n); this.emit(); return { ok: true, armed: this.stationIds().length, pending: [] }; }
+  /** A41: mirrors `state.py release_station` — best-effort, `ok` only says a socket took the push
+   *  (`st.offline` is the mock's stand-in for "no live socket"), and nothing else about the station
+   *  changes (no un-assign, no re-arm). */
+  async releaseStation(node_id: string): Promise<{ ok: boolean }> {
+    const st = this.stations[node_id]; if (!st) throw Object.assign(new Error('no such station'), { status: 404 });
+    return { ok: !st.offline };
+  }
   private pushed = false;
   private acks: State['lobby']['acks'] = {};
   private start_?: State['start'];

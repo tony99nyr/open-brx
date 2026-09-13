@@ -570,3 +570,58 @@ def test_a_player_phone_that_rehellos_as_utility_is_unbound_like_an_evict():
     s.net.pushed.clear()
     s.control("end")
     assert any(n == q["node_id"] and k == "control" for n, k, _ in s.net.pushed), "END reaches the phone the status tried to re-type"
+
+
+# --------------------------------------------------------------------------- A41: release a stuck phone
+def test_release_utility_is_a_control_cmd_on_both_ends_of_the_wire():
+    """Same trap as `station_config` (top of this file): a `control` cmd MC sends and the phone's own
+    whitelist (`app/src/transport/contract.gen.js CONTROL_CMDS`, generated from `types.py`) does not list
+    is dropped as malformed before `onMessage` ever sees it."""
+    from brx_mcp.mc.types import CONTROL_CMDS
+    assert "release_utility" in CONTROL_CMDS
+    env = E.make_envelope("control", {"cmd": "release_utility"})
+    assert E.decode(E.encode(env), direction="mc")["body"]["cmd"] == "release_utility"
+    js = (REPO / "app/src/transport/contract.gen.js").read_text(encoding="utf-8")
+    assert "release_utility" in js, "app/src/transport/contract.gen.js is stale -- rerun mcp/tools/gen_contract.py"
+
+
+def test_release_station_pushes_control_release_utility_to_that_one_node():
+    """A41 (field 2026-09-12): the operator's cure for a phone stuck in utility mode. Works on a phone
+    nobody has assigned yet (the usual stuck case) as much as on a fully armed one, and touches nothing
+    else about the station's own bookkeeping."""
+    s = _sess()
+    s.net.simulate_utility_hello("util-1")
+    assert s.release_station("util-1") is True
+    assert _pushed(s, "control", "util-1") == [{"cmd": "release_utility"}]
+    # it did not assign, arm, or otherwise change the station's own record
+    assert s.stations["util-1"]["assigned"] is None and s.stations["util-1"]["armed"] is None
+
+
+def test_release_station_is_best_effort_like_arm_and_refuses_an_unknown_node():
+    """No socket, no delivery -- there is nothing to retry against a phone with a dead radio (unlike
+    `_arm_station`, a release is a one-shot, never retried on a timer: the phone's own seven-tap gate is
+    still there under it). An unknown node id (never said hello as utility) is a plain False, not a raise
+    -- the same voice `clear_station`/`set_station` use for "not a station"."""
+    s = _sess()
+    assert s.release_station("never-said-hello") is False
+    s.net.simulate_utility_hello("util-1")
+    s.net.push = lambda nid, kind, body: False           # NetServer: "no live socket"
+    assert s.release_station("util-1") is False
+
+
+def test_release_station_is_not_phase_gated_unlike_set_and_clear_station():
+    """A stranded phone needs releasing in every phase -- armed/live most of all, since that is exactly
+    when a phone that fell into utility mode mid-match is missing from the game. Unlike `set_station`/
+    `clear_station` this never calls `_refuse_station_change_in_play`."""
+    s = _joined(_sess())
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "respawn", "team": "any", "id": 9})
+    s.phase = "live"
+    assert s.release_station("util-1") is True
+    assert _pushed(s, "control", "util-1")[-1] == {"cmd": "release_utility"}
+    # CONTROL: an ordinary assignment change IS refused in this phase (the behaviour release deliberately skips)
+    try:
+        s.set_station("util-1", {"kind": "respawn", "team": "any", "id": 10})
+        raise AssertionError("a station reassignment during LIVE was accepted")
+    except ValueError as e:
+        assert "LIVE" in str(e)

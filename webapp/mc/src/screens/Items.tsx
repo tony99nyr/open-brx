@@ -50,6 +50,7 @@ function StationCard({ s }: { s: StationView }) {
   const [id, setId] = useState<number>(a?.id ?? s.report.station_id ?? 1);
   const [threshold, setThreshold] = useState<number>(a?.threshold ?? s.report.threshold ?? -74);
   const [busy, setBusy] = useState(false);
+  const [released, setReleased] = useState<boolean | null>(null);   // A41: last RELEASE result, this card only
   const control = kind === 'control';
   const status = !a ? 'NOT ASSIGNED' : s.arm_pending ? 'ARM PENDING' : s.armed ? `MC-ARMED · GAME ${s.armed.game}` : 'ASSIGNED';
   const color = !a ? T.micro : s.attention.length || s.arm_pending ? T.warn : T.ok;
@@ -131,6 +132,17 @@ function StationCard({ s }: { s: StationView }) {
             {a ? (dirty ? 'ARM WITH CHANGES' : needsRearm ? 'RE-ARM' : 'ARMED') : 'ASSIGN + ARM'}
           </button>
           {a && <GhostButton onClick={async () => { await run(() => api.deleteStation(s.node_id)); }} title="drop the assignment; the phone keeps advertising whatever it was last armed with">CLEAR</GhostButton>}
+          {/* A41: the cure for a phone stuck in utility mode -- a player's own exit is the same seven-tap
+              gesture that opens this card's settings, undiscoverable on the phone and with no feedback on
+              a single tap. This works in ANY phase, armed/live included, and on ANY utility phone here,
+              assigned or not (the stuck case usually is not). It does not un-assign or re-arm anything. */}
+          <GhostButton onClick={async () => { setReleased(null); const r = await run(() => api.releaseStation(s.node_id)); setReleased(r ? r.ok : false); }}
+            disabled={!s.online}
+            title={s.online ? 'send this phone back to its own HUD — the fix for a phone stuck in utility mode, with no seven-tap gesture needed on the phone itself'
+              : 'no live socket to this phone right now, so there is nothing to push to it'}>
+            RELEASE ▸ HUD
+          </GhostButton>
+          {released != null && <Tag color={released ? T.ok : T.warn} ink={T.ink}>{released ? 'SENT' : 'NO SOCKET'}</Tag>}
           {a && <span style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: teamColor(TID_NAME[a.team]?.toLowerCase() ?? 'any') }}>{TID_NAME[a.team] ?? a.team}</span>}
         </div>
       </div>
