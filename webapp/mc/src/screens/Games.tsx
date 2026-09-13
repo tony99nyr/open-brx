@@ -7,7 +7,7 @@ import { setNotice } from '../notice';
 import { useStore } from '../store';
 import { F, PERK_COLOR, T, TAB } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, Shelf, StripedSlot, Tag, Toggle, onKey } from '../ui';
-import { emptyRequiredSlots, gameSig, objectiveLine, poolEmptyMessage, rulesLine } from './gameSummary';
+import { emptyRequiredSlots, gameSig, objectiveLine, poolEmptyMessage, rulesLine, splitLine } from './gameSummary';
 import { MODE_ART } from '../modeArt';
 import { VenueModeReminder } from '../ui/VenueModeReminder';
 
@@ -80,16 +80,22 @@ export function Games() {
   // read `if (!on)` in both, so the one tap the operator most wants was swallowed in silence.
   const runItBack = state.phase === 'recap';
   const tappable = (on: boolean) => !on || runItBack;
-  const guarded = (key: string, go: () => void) => {
+  // F-6 (2026-09-13): a mode/game switch RESHAPES the roster onto the target's own declared teams
+  // (round-3 FIELD-1's index-map + rebalance — no longer "everyone onto teams[0]", but still a move).
+  // With nobody rostered yet, or a target that declares fewer than two teams (FFA/LMS-solo), there is
+  // nothing to reshape and nothing to confirm; otherwise the tap that used to just fire now shows the
+  // resulting split first, the same one-more-tap pattern `custom` already uses.
+  const splitFor = (targetTeams: { team_id: string }[]) => splitLine(state.players, cfg.teams, targetTeams);
+  const guarded = (key: string, targetTeams: { team_id: string }[], go: () => void) => {
     if (modeLocked) { setNotice(lockedReason(state.phase), true); return; }   // never a silent tap (F151)
-    if (custom && confirmSwitch !== key) { setConfirmSwitch(key); return; }
+    if ((custom || splitFor(targetTeams)) && confirmSwitch !== key) { setConfirmSwitch(key); return; }
     setConfirmSwitch(null); go();
   };
-  const playSaved = (g: SavedGame) => guarded(g.preset_id, async () => {
+  const playSaved = (g: SavedGame) => guarded(g.preset_id, g.config.teams, async () => {
     const r = await run(() => api.applyPreset(g.preset_id));
     if (r) await run(() => api.putConfig(venue));   // the venue is tonight's, never the saved game's
   });
-  const playStock = (m: ModeInfo) => guarded(m.mode, async () => { await run(() => api.putConfig({ ...m.defaults, ...venue, config_id: cfg.config_id })); });
+  const playStock = (m: ModeInfo) => guarded(m.mode, m.defaults.teams, async () => { await run(() => api.putConfig({ ...m.defaults, ...venue, config_id: cfg.config_id })); });
   // COPY / MAKE MY OWN open the designer as an UNSAVED draft named after the source — nothing is written until SAVE (review #23)
   const copyOf = (g: SavedGame) => openDesigner({ game: g, copy: true });
   const remove = async (g: SavedGame) => { await run(() => api.deletePreset(g.preset_id)); setConfirmDel(null); await reload(); };
@@ -153,7 +159,13 @@ export function Games() {
                     <div style={{ font: F.osw(600, 17), letterSpacing: '.06em', lineHeight: 1.1, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{g.name.toUpperCase()}</div>
                     <div style={{ font: F.mono(500, 10.5), letterSpacing: '.1em', color: T.acc, lineHeight: 1.5 }}>{rulesLine(g.config, weapons, perks)}</div>
                     <div style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.45, flex: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{g.desc || `${gm?.name ?? g.config.mode} · ${Math.round((g.config.time_limit_s ?? 0) / 60)} MIN · HP ${g.config.health.max_hp} / ARMOR ${g.config.health.max_armor}`}</div>
-                    {confirmSwitch === g.preset_id && <div role="status" style={{ font: F.chk(700, 10), letterSpacing: '.12em', color: T.warn }}>▲ THIS DROPS YOUR UNSAVED TUNED GAME — TAP AGAIN TO PLAY THIS</div>}
+                    {confirmSwitch === g.preset_id && (
+                      <div role="status" data-testid="confirm-switch" style={{ display: 'flex', flexDirection: 'column', gap: 3, font: F.chk(700, 10), letterSpacing: '.12em', color: T.warn }}>
+                        {custom && <span>▲ THIS DROPS YOUR UNSAVED TUNED GAME</span>}
+                        {splitFor(g.config.teams) && <span data-testid="confirm-split">▲ {splitFor(g.config.teams)}</span>}
+                        <span>TAP AGAIN TO PLAY THIS</span>
+                      </div>
+                    )}
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
                       {del ? (
                         <>
@@ -198,7 +210,13 @@ export function Games() {
                     <div style={{ flex: 1 }}>
                       <div style={{ font: F.osw(600, 15), letterSpacing: '.08em' }}>{m.name}</div>
                       <div style={{ font: F.chk(500, 12), color: T.dim, marginTop: 3 }}>{m.desc}</div>
-                      {confirmSwitch === m.mode && <div role="status" style={{ font: F.chk(700, 10), letterSpacing: '.12em', color: T.warn, marginTop: 6 }}>▲ THIS DROPS YOUR UNSAVED TUNED GAME — TAP AGAIN</div>}
+                      {confirmSwitch === m.mode && (
+                        <div role="status" data-testid="confirm-switch" style={{ display: 'flex', flexDirection: 'column', gap: 3, font: F.chk(700, 10), letterSpacing: '.12em', color: T.warn, marginTop: 6 }}>
+                          {custom && <span>▲ THIS DROPS YOUR UNSAVED TUNED GAME</span>}
+                          {splitFor(m.defaults.teams) && <span data-testid="confirm-split">▲ {splitFor(m.defaults.teams)}</span>}
+                          <span>TAP AGAIN</span>
+                        </div>
+                      )}
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
                       <SmallBtn onClick={() => openDesigner({ mode: m.mode })} label={`customize ${m.name}`}>CUSTOMIZE ▸</SmallBtn>

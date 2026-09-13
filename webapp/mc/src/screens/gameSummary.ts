@@ -199,3 +199,63 @@ export function rulesLine(cfg: GameConfig, weapons: { weapon_id: string; name: s
   return out.join(' · ');
 }
 
+/** F-6 (2026-09-13). GAMES's mode tiles reshape the roster onto the new mode's own declared teams —
+ *  round-3 FIELD-1 moved this off "everyone onto teams[0]" and onto index-mapping + a rebalance, so it
+ *  no longer strands a roster on one side, but it still silently MOVES players between teams on a
+ *  single unconfirmed tap. This predicts the split GAMES shows before that tap, mirroring
+ *  `mock/backend.ts reteamForConfig` + `rebalanceSides` (itself mirroring `state.py
+ *  _reteam_for_config`): map by team INDEX so a TDM blue/yellow split survives a KOTH pick as
+ *  blue/green, fill anyone with no mapped index onto the least-populated side, then move the highest
+ *  `player_num` off the fullest side until the spread is 1 — but ONLY when that would otherwise leave
+ *  every player on one team, same trigger as the one-team fault. A preview, not the write itself: the
+ *  actual reteam happens in `putConfig`/`set_config` once the operator confirms. */
+export function predictedSplit(
+  players: { player_num: number; team_id: string | null }[],
+  prevTeams: { team_id: string }[],
+  newTeams: { team_id: string }[],
+): Record<string, number> {
+  const ids = newTeams.map(t => t.team_id);
+  const counts: Record<string, number> = Object.fromEntries(ids.map(id => [id, 0]));
+  if (ids.length === 0 || players.length === 0) return counts;
+  const legal = new Set(ids);
+  const byOldIndex = new Map(prevTeams.map((t, i) => [t.team_id, i]));
+  const ordered = [...players].sort((a, b) => a.player_num - b.player_num);
+  const placed: string[] = new Array(ordered.length);
+  const unplacedIdx: number[] = [];
+  ordered.forEach((p, i) => {
+    if (p.team_id && legal.has(p.team_id)) { placed[i] = p.team_id; return; }
+    const oi = p.team_id ? byOldIndex.get(p.team_id) : undefined;
+    if (oi !== undefined && oi < ids.length) placed[i] = ids[oi];
+    else unplacedIdx.push(i);
+  });
+  for (const t of placed) if (t) counts[t] = (counts[t] ?? 0) + 1;
+  const leastCountTeam = () => ids.reduce((best, id) => (counts[id]! < counts[best]! ? id : best), ids[0]);
+  for (const i of unplacedIdx) { const t = leastCountTeam(); placed[i] = t; counts[t] = (counts[t] ?? 0) + 1; }
+  if (ids.length >= 2 && ordered.length >= 2) {
+    for (let guard = ordered.length * ids.length + 1; guard > 0; guard--) {
+      const fullest = ids.reduce((a, b) => (counts[b]! > counts[a]! ? b : a), ids[0]);
+      const emptiest = ids.reduce((a, b) => (counts[b]! < counts[a]! ? b : a), ids[0]);
+      if (counts[fullest]! - counts[emptiest]! <= 1) break;
+      let moveIdx = -1;
+      for (let i = 0; i < ordered.length; i++) {
+        if (placed[i] === fullest && (moveIdx === -1 || ordered[i].player_num > ordered[moveIdx].player_num)) moveIdx = i;
+      }
+      if (moveIdx === -1) break;
+      counts[fullest]!--; counts[emptiest]!++; placed[moveIdx] = emptiest;
+    }
+  }
+  return counts;
+}
+
+/** "4 PLAYERS → BLUE 2 / YELLOW 2" — the confirm line for a mode-tile switch, or '' when there is
+ *  nothing TO confirm: the new mode declares fewer than two teams (FFA/LMS-solo share one side), or
+ *  its declared team ids are the SAME ones already applied — "run it back" on the recap, or any two
+ *  modes/games that happen to share a team layout, moves nobody and must stay the one-tap it always
+ *  was. */
+export function splitLine(players: { player_num: number; team_id: string | null }[], prevTeams: { team_id: string }[], newTeams: { team_id: string }[]): string {
+  if (newTeams.length < 2 || players.length < 2) return '';   // F-6: "≥2 players rostered" is the trigger
+  if (newTeams.map(t => t.team_id).join('|') === prevTeams.map(t => t.team_id).join('|')) return '';
+  const counts = predictedSplit(players, prevTeams, newTeams);
+  return `${players.length} PLAYER${players.length === 1 ? '' : 'S'} → ${newTeams.map(t => `${t.team_id.toUpperCase()} ${counts[t.team_id] ?? 0}`).join(' / ')}`;
+}
+
