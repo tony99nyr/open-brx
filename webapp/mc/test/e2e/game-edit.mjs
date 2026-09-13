@@ -188,9 +188,57 @@ async function runMock(browser, viteBase) {
   const modeBtn = panel(pg).locator('[aria-label="mode"] button:not([aria-pressed="true"])').first();
   const modeLabel = (await modeBtn.innerText()).trim();
   await modeBtn.click();
+  // The MODE control confirms a switch that would re-team >=2 rostered players, the same gate GAMES
+  // uses (T2-A 9a1570d, extended to this panel 2026-09-13). Tap one shows the split and sends
+  // NOTHING. Assert what it put on screen, then commit -- a blind re-tap would pass just as happily
+  // against a control that had quietly gone back to one tap.
+  const modeConfirm = panel(pg).locator('[data-testid="confirm-switch"]');
+  if (await modeConfirm.count() > 0) {
+    expect((await panel(pg).locator('[data-testid="game-edit-toggle"]').innerText()) === before,
+      'the first tap on MODE has NOT switched the game yet');
+    const split = panel(pg).locator('[data-testid="confirm-split"]');
+    if (await split.count() > 0) {
+      const t = (await split.textContent()).trim();
+      expect(/^\u25B2 \d+ PLAYERS? \u2192 [A-Z]+ \d+ \/ [A-Z]+ \d+$/.test(t),
+        `the MODE confirm names the predicted split (saw ${JSON.stringify(t)})`);
+      const px = await split.evaluate(e => parseFloat(getComputedStyle(e).fontSize));
+      expect(px >= 11, `the MODE confirm's split line is legible (${px}px)`);
+    }
+    await modeBtn.click();
+  } else {
+    console.log('      (this mode shares its team layout — nothing to confirm, one tap is correct)');
+  }
   await until(async () => (await panel(pg).locator('[data-testid="game-edit-toggle"]').innerText()) !== before, 5000, 'the header to pick up the new mode');
   expect((await panel(pg).locator('[data-testid="game-edit-toggle"]').innerText()).includes(modeLabel), `header now shows ${modeLabel}`);
   ok(`MODE -> ${modeLabel} applied   ${await shot(pg, '02-mock-mode')}`);
+
+  // ...and now a switch that DOES reshape the roster, so the confirm itself is walked rather than
+  // skipped. The step above picks the first unselected mode, which is FFA -- one declared team, so
+  // `splitLine` has nothing to say and one tap is correct. That means it proves the no-confirm
+  // branch only. KOTH declares BLUE+GREEN, so an 8-player roster really moves and the gate fires.
+  const kothBtn = panel(pg).locator('[aria-label="mode"] button').filter({ hasText: /^KOTH$/ }).first();
+  if (await kothBtn.count() > 0) {
+    const beforeKoth = await panel(pg).locator('[data-testid="game-edit-toggle"]').innerText();
+    await kothBtn.click();
+    const c = panel(pg).locator('[data-testid="confirm-switch"]');
+    await until(() => c.count().then(n => n > 0), 5000, 'the MODE reshape confirm on the first tap');
+    expect(await c.isVisible(), 'the MODE confirm is visible before anything moves');
+    expect((await panel(pg).locator('[data-testid="game-edit-toggle"]').innerText()) === beforeKoth,
+      'the first tap on a reshaping MODE has NOT switched the game');
+    const sp = panel(pg).locator('[data-testid="confirm-split"]');
+    expect(await sp.count() > 0, 'the MODE confirm names the predicted split');
+    const spText = (await sp.textContent()).trim();
+    expect(/^\u25B2 \d+ PLAYERS? \u2192 [A-Z]+ \d+ \/ [A-Z]+ \d+$/.test(spText),
+      `the split line reads as a split (saw ${JSON.stringify(spText)})`);
+    const spPx = await sp.evaluate(e => parseFloat(getComputedStyle(e).fontSize));
+    expect(spPx >= 11, `the MODE confirm's split line is legible (${spPx}px)`);
+    await kothBtn.click();
+    await until(async () => (await panel(pg).locator('[data-testid="game-edit-toggle"]').innerText()) !== beforeKoth,
+      5000, 'the second tap to commit the KOTH switch');
+    ok(`MODE reshape confirmed then committed: "${spText}"   ${await shot(pg, '02b-mock-mode-reshape')}`);
+  } else {
+    expect(false, 'no KOTH chip in the MODE control — the reshape confirm was never walked');
+  }
 
   const night = panel(pg).locator('[role="switch"]');
   const nightBefore = await night.getAttribute('aria-checked');

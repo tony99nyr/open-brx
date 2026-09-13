@@ -385,7 +385,11 @@ function MemberRow({ p, teamIds, reach, noPhone, onDragStart, onMove }: { p: Pla
     <span role="group" style={{ display: 'inline-flex', gap: 3, flexWrap: 'wrap' }} aria-label={`move ${p.display} to`}>
       {others.map(t => (
         <button key={t} type="button" className="hit44" onClick={() => onMove(t)} title={`Move ${p.display} to ${t.toUpperCase()}`}
-          style={{ ...BTN_RESET, font: F.chk(700, 9), letterSpacing: '.14em', padding: '4px 8px', color: teamColor(t), border: `1px solid ${T.line}`, minHeight: 28, display: 'inline-flex', alignItems: 'center' }}>
+          // F7 follow-up (2026-09-13): 9px was under the console's 11px floor for meaning-bearing
+          // text -- the floor this same file states at :339 -- and these chips NAME the team a tap
+          // moves a player onto. One `moveChips` const feeds both the wide row and the compact 393px
+          // one, so this is the single place it is set; 11px also matches `StandDownChip` beside it.
+          style={{ ...BTN_RESET, font: F.chk(700, 11), letterSpacing: '.14em', padding: '4px 8px', color: teamColor(t), border: `1px solid ${T.line}`, minHeight: 28, display: 'inline-flex', alignItems: 'center' }}>
           ▸ {t.toUpperCase()}
         </button>
       ))}

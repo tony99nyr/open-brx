@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import type { GameConfig, LoadoutPolicy, SlotRule, WeaponView } from '../api/types';
 import { useStore } from '../store';
 import { F, T, roleOf } from '../tokens';
-import { DEFAULT_POLICY, computePool, kindRows } from '../screens/gameSummary';
-import { Blink, GhostButton, Seg, Toggle, ValueBox } from './index';
+import { DEFAULT_POLICY, computePool, kindRows, splitLine } from '../screens/gameSummary';
+import { Blink, GhostButton, Seg, SwitchConfirm, Toggle, ValueBox } from './index';
 
 type Slot = 'primary' | 'secondary';
 const toggleId = (xs: string[], x: string) => (xs.includes(x) ? xs.filter(y => y !== x) : [...xs, x]);
@@ -42,6 +42,10 @@ export function GameEditPanel({ style }: { style?: React.CSSProperties }) {
   // claim at all. Expires on its own, like the KIT confirms it borrows the pattern from
   // (Kit.tsx `confirm`/`hostPick`).
   const [recentEdit, setRecentEdit] = useState(false);
+  // A mode switch RE-TEAMS every player onto the new mode's declared teams (state.py
+  // `_reteam_for_config`). GAMES confirms that (T2-A, 9a1570d); this control reached the same
+  // reshape on one unconfirmed tap, and its helper line spoke only about the venue.
+  const [confirmMode, setConfirmMode] = useState<string | null>(null);
   useEffect(() => { if (!recentEdit) return; const h = setTimeout(() => setRecentEdit(false), 4_000); return () => clearTimeout(h); }, [recentEdit]);
   if (!state) return null;
   const cfg = state.config;
@@ -74,6 +78,11 @@ export function GameEditPanel({ style }: { style?: React.CSSProperties }) {
   // mirrors mcp/brx_mcp/mc/policy.py `pool()`) -- every tap shows instantly and needs no round trip.
   const pool = computePool(pol, weapons, perks);
   const poolOf = (slot: Slot) => (slot === 'primary' ? pool.primary : pool.secondary_weapons);
+  /** The split this switch would produce -- the SAME predicate GAMES shows, never a second one. */
+  const modeSplit = (v: string) => {
+    const target = modes.find(m => m.mode === v);
+    return target ? splitLine(state.players, cfg.teams, target.defaults.teams) : '';
+  };
 
   return (
     <div data-testid="game-edit-panel" style={{ border: `1px solid ${T.line}`, background: T.panelSoft, ...style }}>
@@ -105,8 +114,17 @@ export function GameEditPanel({ style }: { style?: React.CSSProperties }) {
                 <>
                   <Seg label="mode" value={cfg.mode} wrap options={modes.map(m => ({ value: m.mode, label: m.abbr }))}
                     titles={Object.fromEntries(modes.map(m => [m.mode, m.name]))}
-                    onChange={v => putGame({ mode: v })} />
-                  <div style={{ font: F.chk(500, 11.5), color: T.micro, marginTop: 6 }}>Switching mode replaces time limit, respawn, health and weapon rules with that mode's defaults. Venue (day/night) stays.</div>
+                    onChange={v => {
+                      if (v === cfg.mode) return;                      // already playing it: nothing moves
+                      if (modeSplit(v) && confirmMode !== v) { setConfirmMode(v); return; }
+                      setConfirmMode(null);
+                      putGame({ mode: v });
+                    }} />
+                  {confirmMode && (
+                    <SwitchConfirm dropsDraft={false} split={modeSplit(confirmMode)} style={{ marginTop: 6 }}
+                      action={`TAP ${(modes.find(m => m.mode === confirmMode)?.abbr ?? confirmMode.toUpperCase())} AGAIN TO SWITCH`} />
+                  )}
+                  <div style={{ font: F.chk(500, 11.5), color: T.micro, marginTop: 6 }}>Switching mode replaces time limit, respawn, health and weapon rules with that mode's defaults, and moves players onto that mode's teams. Venue (day/night) stays.</div>
                 </>
               ) : (
                 <span style={{ font: F.chk(600, 12), color: T.micro }}>{cfg.mode.toUpperCase()} — mode list unavailable (server predates this UI?)</span>

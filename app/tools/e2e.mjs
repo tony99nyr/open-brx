@@ -187,13 +187,13 @@ await step('CONTINUE ▸ on Armory advances to GAMES — the GAMES screen render
   expect((await mc.locator('text=PICK THE GAME').count()) > 0, 'GAMES header missing');
 });
 await step('GAMES: stock mode cards switch the game — PLAYING tag, rail title and LOADOUT row follow (screen truth)', async () => {
-  await mc.locator('div[role="button"][aria-label="play FREE-FOR-ALL"]').first().click();
+  await playCard('FREE-FOR-ALL');
   await until(async () => (await st()).config.mode === 'ffa', 5000, 'ffa applied');
   // the UI snapshot is coalesced (≤4/s): wait until the card itself shows PLAYING before the next click — a card that
   // still believes it is active ignores the tap (`if (!on)`), which is correct app behaviour and a race in a test
   await until(async () => (await mc.locator('div[role="button"][aria-label="play FREE-FOR-ALL"][aria-pressed="true"]').count()) > 0, 6000, 'FFA card shows PLAYING');
   expect((await mc.locator('div[role="button"][aria-label="play FREE-FOR-ALL"]').first().textContent()).includes('PLAYING'), 'FFA card has no PLAYING tag');
-  await mc.locator('div[role="button"][aria-label="play TEAM DEATHMATCH"]').first().click();
+  await playCard('TEAM DEATHMATCH');
   await until(async () => (await st()).config.mode === 'tdm', 5000, 'tdm back');
   await until(async () => (await mc.locator('div[role="button"][aria-label="play TEAM DEATHMATCH"][aria-pressed="true"]').count()) > 0, 6000, 'TDM card shows PLAYING');
   const rail = await mc.locator('text=STOCK MODE // PLAYING').locator('xpath=..').textContent();
@@ -211,11 +211,11 @@ await step('GAMES: VENUE seg + NIGHT OPS change the venue → summary VENUE row 
   await until(async () => (await st()).config.night === true, 5000, 'night on the server');
   const row = () => mc.locator('text=VENUE').locator('xpath=..').last().textContent();
   await until(async () => /INDOOR · NIGHT OPS/.test(await row()), 5000, 'summary VENUE row reads INDOOR · NIGHT OPS');
-  await mc.locator('div[role="button"][aria-label="play FREE-FOR-ALL"]').first().click();      // venue is tonight's, not the game's
+  await playCard('FREE-FOR-ALL');      // venue is tonight's, not the game's
   await until(async () => (await st()).config.mode === 'ffa', 5000, 'ffa');
   await until(async () => (await mc.locator('div[role="button"][aria-label="play FREE-FOR-ALL"][aria-pressed="true"]').count()) > 0, 6000, 'FFA playing');
   const c = (await st()).config; expect(c.environment === 'indoor' && c.night === true, 'venue was reset by playing a game: ' + c.environment + '/' + c.night);
-  await mc.locator('div[role="button"][aria-label="play TEAM DEATHMATCH"]').first().click();
+  await playCard('TEAM DEATHMATCH');
   await until(async () => (await mc.locator('div[role="button"][aria-label="play TEAM DEATHMATCH"][aria-pressed="true"]').count()) > 0, 6000, 'TDM playing');
   await venue.locator('button:has-text("OUTDOOR")').click(); await venue.locator('button[aria-label="night ops"]').click();
   await until(async () => { const c = (await st()).config; return c.environment === 'outdoor' && c.night === false; }, 5000, 'venue restored');
