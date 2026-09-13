@@ -6,15 +6,15 @@ import assert from 'node:assert/strict';
 import { BrxLink } from '../src/brxlink.js';
 
 function rig() {
-  const attempts = { A: 0, B: 0 }, subs = [], cb = {}, ups = [];
+  const attempts = { A: 0, B: 0 }, subs = [], cb = {}, ups = [], drops = [], disconnects = [];
   const up = { A: true, B: true };
   const ble = {
-    initialize: async () => {}, disconnect: async () => {},
+    initialize: async () => {}, disconnect: async id => { disconnects.push(id); },
     connect: async (id, c) => { attempts[id]++; cb[id] = c; if (!up[id]) throw new Error('powered off'); },
     startNotifications: async id => { subs.push(id); },
   };
-  const link = new BrxLink({ ble, log: () => {}, onUp: a => ups.push(a && a.basename), onDrop: () => {} });
-  return { link, attempts, subs, cb, ups, up };
+  const link = new BrxLink({ ble, log: () => {}, onUp: a => ups.push(a && a.basename), onDrop: () => drops.push(Date.now()) });
+  return { link, attempts, subs, cb, ups, up, drops, disconnects };
 }
 const settle = (ms = 1300) => new Promise(r => setTimeout(r, ms));
 
@@ -66,4 +66,28 @@ test('disconnect() stops the forever-loop', async () => {
   const after = r.attempts.A;
   await settle(1500);
   assert.equal(r.attempts.A, after, 'no attempts may continue once the gun is released');
+});
+
+// B4 (field session 2026-09-12): the engine's link-silence watchdog calls `noteStale()` when the gun has
+// gone quiet for too long while the native BLE stack still reports "connected" — a bad-but-not-dead
+// link the disconnect callback this whole file otherwise depends on may never fire for.
+test('B4: noteStale() forces the OS to release the stale GATT link and runs the exact drop path', async () => {
+  const r = rig();
+  await r.link.connect('A', 'GUN-A-1111');
+  assert.equal(r.link.connected, true);
+  const before = r.attempts.A;   // captured BEFORE noteStale(): the fake `ble.connect` bumps this synchronously, inside noteStale()'s own call stack, once per retry attempt
+  r.link.noteStale();
+  assert.equal(r.link.connected, false, 'flips immediately, exactly like a real disconnect');
+  assert.equal(r.drops.length, 1, 'onDrop fires — the same path the engine/HUD/MC status already trust');
+  assert.deepEqual(r.disconnects, ['A'], 'the OS is told to actually let go of the stale link, not just JS bookkeeping');
+  assert.ok(r.attempts.A > before, 'the forever-reconnect loop takes over exactly as it would after a real disconnect');
+  await settle();
+  await r.link.disconnect();
+});
+
+test('B4: noteStale() is a no-op when there is no live connection to cycle', () => {
+  const r = rig();
+  r.link.noteStale();                 // never connected: no deviceId
+  assert.equal(r.drops.length, 0);
+  assert.equal(r.disconnects.length, 0);
 });

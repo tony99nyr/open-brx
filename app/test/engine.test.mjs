@@ -4096,3 +4096,81 @@ test('A24: a NEW match retires the previous result before anyone can see it on a
   assert.equal(h.eng.state().result, null);
   assert.equal(h.eng.state().resultWait, 'pending');
 });
+
+// ── B4 (field session 2026-09-12): the gun link watchdog ────────────────────────────────────────────
+// All four guns that night ended a session `bleUp:false` while the phone stayed MC-connected — a link
+// the native BLE stack never told us had dropped, so it never recovered and hits stopped registering
+// mid-match. `bleUp` used to depend ENTIRELY on the native disconnect callback; these pin the fix: a
+// silence timeout forces a reconnect (engine.js `lastGunFrameAt`/`tick()`/`onGunStale`,
+// brxlink.js `noteStale()`), the drop is surfaced immediately (HUD pill + MC's status body), and a
+// relink resyncs the gun exactly like a real disconnect does, so a hit after recovery is never
+// silently swallowed. Mirrors engine.js's (unexported, like RECONCILE_MS above) LINK_STALE_MS.
+const LINK_STALE_MS = 75000;
+
+test('B4: total silence from the gun for LINK_STALE_MS trips the watchdog, even though bleUp never went false on its own', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$ALCD,32,100,0,384,0,*');
+  assert.equal(h.eng.alive, true);
+  let staleFired = 0; h.eng.onGunStale = () => { staleFired++; };
+  h.adv(LINK_STALE_MS - 1000); h.eng.tick();
+  assert.equal(staleFired, 0, 'not yet — still inside the window');
+  assert.equal(h.eng.bleUp, true, 'the native link never told us it dropped');
+  h.adv(2000); h.eng.tick();
+  assert.equal(staleFired, 1, 'the watchdog fires once silence clears the threshold');
+});
+
+test('B4: any frame off the gun — not just $VOLTS — resets the watchdog clock', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  let staleFired = 0; h.eng.onGunStale = () => { staleFired++; };
+  h.adv(LINK_STALE_MS - 5000); h.eng.tick();
+  h.frame('$VOLTS,7662,3921,55,70,*');            // a heartbeat, nothing more — but proof of life
+  h.adv(LINK_STALE_MS - 5000); h.eng.tick();      // would have tripped measured from the ORIGINAL mark
+  assert.equal(staleFired, 0, 'the VOLTS frame proved the link alive and restarted the clock');
+});
+
+test('B4: with no link to cycle (demo/tests — onGunStale unset) the watchdog still surfaces the drop locally', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$ALCD,32,100,0,384,0,*');
+  assert.equal(h.eng.onGunStale, null);
+  h.adv(LINK_STALE_MS + 1000); h.eng.tick();
+  assert.equal(h.eng.bleUp, false, 'falls back to onBleDropped() so the HUD pill and MC status still see it');
+});
+
+test('B4: a watchdog-forced reconnect reconciles like any relink — no spurious death, and a real hit lands afterward', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$LCD,29,70,0,0,10,384,*');             // alive at 29 hp
+  assert.equal(h.eng.alive, true); assert.equal(h.eng.hp, 29);
+  h.eng.onGunStale = () => h.eng.onBleDropped();   // stand-in for BrxLink.noteStale(): drop now, relink lands a beat later
+  h.adv(LINK_STALE_MS + 1000); h.eng.tick();
+  assert.equal(h.eng.bleUp, false, 'the drop is surfaced immediately, not just eventually');
+  assert.equal(h.eng.ended, false, 'a transient drop is not a teardown');
+  assert.equal(h.eng.deaths, 0, 'no spurious death from the watchdog itself');
+  h.adv(1500);
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });   // the forced reconnect lands
+  assert.ok(h.eng.state().reconciling, 'the relink reconciles exactly like a real disconnect would');
+  assert.equal(h.eng.alive, true, 'pools carried across — no heal, no inferred death');
+  assert.equal(h.eng.hp, 29);
+  h.adv(3000); h.eng.tick();                       // past RECONCILE_MS
+  assert.equal(h.eng.state().reconciling, false);
+  const deathsBefore = h.eng.deaths;
+  h.frame('$HP,0,0,0,*');                          // a REAL hit after recovery
+  assert.equal(h.eng.deaths, deathsBefore + 1, 'a real hit after recovery registers — link resilience must not leave it stuck');
+});
+
+test('B4: the drop is reflected in the status body MC sees (preflight.gun_linked)', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  assert.equal(h.eng.statusBody().preflight.gun_linked, true);
+  h.eng.onBleDropped();
+  assert.equal(h.eng.statusBody().preflight.gun_linked, false, 'MC must see the link down, not just the phone HUD');
+});
+
+test('B4: a relink after the first probe re-opens the event tap with a bare $PHONE, never $STOP mid-match', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  assert.ok(h.eng.probeSent, 'the very first connect already ran the full probe ritual');
+  const before = h.writes.length;
+  h.eng.onBleDropped();
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  const after = h.writes.slice(before);
+  assert.ok(after.includes('$PHONE,*'), 'the relink defensively re-opens the event tap ($VOLTS/$BUT depend on it)');
+  assert.ok(!after.includes('$STOP,*'), 'never $STOP mid-match — that frame is only for the first-ever connect ritual');
+});

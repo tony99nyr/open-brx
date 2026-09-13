@@ -38,6 +38,12 @@ const RECONCILE_MS = 3000;           // rejoin: hold the gun disarmed this long 
 // on a phone that never stopped ticking is both a mid-fight disarm and a free full magazine on demand
 // (review 2026-09-12). The engine ticks at 250 ms, so 5 s is ~20 missed ticks: a real freeze, never jitter.
 const RESUME_GAP_MS = 5000;
+// B4: how long the gun may go completely silent (no frame of any kind — not even the ~30 s $VOLTS
+// telemetry) while `bleUp` is still true before the watchdog treats it as dead and forces a reconnect.
+// Set well above the $VOLTS cadence (protocol: "only reliably returned at good RSSI") so a couple of
+// missed samples at the edge of range never trips it, while still catching a truly stale link inside a
+// normal-length match.
+const LINK_STALE_MS = 75000;
 const HEADSET_REBLINK_MS = 120000;   // re-paint the DOWN out-blink every 2 min (< the ~160 s blink count) so a long scanner walk stays lit
 const PICK_DEBOUNCE_MS = 400;        // A26 (S20): a WEAPON pick equips AND arms it for test-firing, so every tap costs an MC round-trip and a $WEAP write on the gun. Scrolling the rack must not spam either: only the last row tapped inside this window is sent (loadout.md §4.5)
 const SWITCH_MAX_MS = 850;       // the stock $WEAP tok15 (bench 2026-09-04: 850 ms, linear, no floor) — a fallback; the bundle carries the real value in frames.swap_ms
@@ -270,6 +276,15 @@ export class Engine {
     this.probeSent = false;
     this.night = false;
     this.lastVoltsAt = 0;
+    // B4 (2026-09-12 field session): the native BLE disconnect callback is the ONLY thing `bleUp` ever
+    // relied on — a link that goes silent without the OS ever noticing (marginal RF, a supervision
+    // timeout that hasn't fired, or the gun's own "app mode" tap closing) left `bleUp:true` for the rest
+    // of the match while the gun sent nothing: no $HIR, no $BUT, no $VOLTS. `lastGunFrameAt` is stamped
+    // on every frame off the gun (feedFrame) and reset at each (re)link; `tick()`'s watchdog below
+    // forces a reconnect once nothing at all has been heard for LINK_STALE_MS, which is comfortably
+    // above the ~30 s $VOLTS cadence (protocol §"idle taggers are silent" — outside app mode nothing
+    // unsolicited is sent, but $VOLTS streams every ~30 s once it is opened).
+    this.lastGunFrameAt = 0;
     this.hurtFired = false;         // low-health alert already sent this life
     this.stunned = null;            // F15: {at, until, ammo:{slot:[mag,reserve]}} while an EMP has the gun disarmed; the ammo is the LIVE count to restore
     this.switching = null;          // {at, from} while an ALT weapon swap is in flight (field 2026-08-30)
@@ -288,6 +303,7 @@ export class Engine {
     this.endAck = false;            // result screen shown until the player taps OK (then the 'over' screen)
     this.onEnd = null;              // app hook: called once per ended match with a stats summary (history)
     this.onResult = null;           // A24 app hook: the result landed — PATCH the history entry for that match_id
+    this.onGunStale = null;         // B4 app hook: the gun link watchdog fired — BrxLink should force-cycle the radio (falls back to onBleDropped() if unset, e.g. demo/tests)
     this.endedAt = 0;               // when this node saw the match end (the results screen's 30 s settle window)
     this.configPending = false;     // config arrived while the gun was unlinked → write head on relink
     this.pendingTeardown = null;    // 'end' | 'panic' owed to the gun once it relinks
@@ -389,6 +405,15 @@ export class Engine {
   onBleConnected(gun) {
     const first = !this.bleUp && !this.gun;
     this.gun = gun || this.gun; this.bleUp = true;
+    this.lastGunFrameAt = this.now();   // B4: the watchdog's clock restarts at the moment of (re)link, not from whatever it was before the drop
+    // B4: a RELINK (not the very first connect, which `_probe()` below covers with the full ritual) may
+    // find the gun's own "app mode" event tap closed by whatever caused the drop — a bare `$PHONE,*` is
+    // documented as side-effect-free once the tap is already open (bench 2026-08-25: "$PHONE,* returns
+    // nothing"; it is also the one frame confirmed to wake a gun blind, "after a power-cycle $PHONE,*
+    // alone wakes it") and carries no $STOP, so it never touches game/audio state. Without this a link
+    // that drops and relinks mid-game could sit at `bleUp:true` while the gun stays mute — no $HIR, no
+    // $BUT, no $VOLTS — until something else notices (field 2026-09-12, B4).
+    if (this.probeSent) this._write(['$PHONE,*'], 'reopen event tap on relink');
     if (this.phase === 'idle') {
       // Re-derive the phase from persisted context (§3.7 / §3.11).
       const p = this._pendingPhase; this._pendingPhase = null;
@@ -410,7 +435,7 @@ export class Engine {
     if (this.start && (this.phase === 'lobby' || this.phase === 'armed')) this.resumeSchedule();
     this._changed();
   }
-  onBleDropped() { this.bleUp = false; this._endReload('dropped'); this.switching = null; this.held = {}; this.lastButton = null; this._lightGen = (this._lightGen || 0) + 1; this.log('gun link lost', 'le'); this._changed(); }   // no link, no reload echo: the takeover would be fiction (pass-2 UX review 2026-09-03); the gen bump means a stray delayed write can't reach a gun that relinks mid-flight either. `held` goes with it: `_onButton` keeps the FIRST edge, so a press whose release never arrived before the drop would read as held forever — and `lastButton` with it, for the same reason: the last thing the gun said would otherwise sit on the diag panel as a live edge the link can no longer complete (review 2026-09-12)
+  onBleDropped() { this.bleUp = false; this.lastGunFrameAt = 0; this._endReload('dropped'); this.switching = null; this.held = {}; this.lastButton = null; this._lightGen = (this._lightGen || 0) + 1; this.log('gun link lost', 'le'); this._changed(); }   // no link, no reload echo: the takeover would be fiction (pass-2 UX review 2026-09-03); the gen bump means a stray delayed write can't reach a gun that relinks mid-flight either. `held` goes with it: `_onButton` keeps the FIRST edge, so a press whose release never arrived before the drop would read as held forever — and `lastButton` with it, for the same reason: the last thing the gun said would otherwise sit on the diag panel as a live edge the link can no longer complete (review 2026-09-12). `lastGunFrameAt` resets too (B4): a dead watchdog clock must not immediately re-fire the instant the next relink's first frame is still pending
   setWsState(s, info) { this.wsState = s; this.wsReason = s === 'rejected' && info ? `${info.reason || 'refused'} (${info.code})` : null; this._changed(); }
 
   /** Pre-config probe set: only in CONNECTED/KITTED, never after a head is written (contracts §3). */
@@ -1642,6 +1667,18 @@ export class Engine {
   tick() {
     const now = this.now();
     this._awakeAt = now;             // §3.11: the heartbeat IS the proof the webview is running (see resume())
+    // B4: the link watchdog. `bleUp` otherwise only ever goes false from the native disconnect callback —
+    // a link the OS still calls "connected" but that has gone silent (no $HIR, no $BUT, not even the
+    // ~30 s $VOLTS telemetry) would sit at `bleUp:true` for the rest of the match. Fire once the silence
+    // clears LINK_STALE_MS and let `onGunStale` (BrxLink) force the radio to actually let go and retry —
+    // falling back to a local `onBleDropped()` when nothing is wired (demo/tests), so the drop is at
+    // least surfaced even without a real link to cycle.
+    if (this.bleUp && this.lastGunFrameAt && now - this.lastGunFrameAt >= LINK_STALE_MS) {
+      const silentMs = now - this.lastGunFrameAt;
+      this.lastGunFrameAt = now;   // don't refire every tick while the forced reconnect runs its course
+      this.log(`gun link silent ${Math.round(silentMs / 1000)}s — forcing a reconnect`, 'le');
+      if (this.onGunStale) this.onGunStale(); else this.onBleDropped();
+    }
     this._checkEcho();
     if (this.loadoutAck && now - this.loadoutAck.t > 4000) { this.loadoutAck = null; this._changed(); }
     if (this._pickDue && now - this._pickDue.at >= PICK_DEBOUNCE_MS) this._flushPick('debounce');   // A26: the last row tapped in the window goes now
@@ -1953,6 +1990,7 @@ export class Engine {
   // ---------- BRX frames (§3.2) ----------
   feedFrame(f) {
     this._awake();                   // §3.11: a frame off the gun is proof too — the JS ran to parse it
+    this.lastGunFrameAt = this.now(); // B4: ANY frame is proof the link is alive — feeds the staleness watchdog in tick()
     const t = toks(f), cmd = t[0];
     switch (cmd) {
       case 'HP': this._onHp(+t[1] || 0, +t[2] || 0, t[3] !== undefined && t[3] !== '' ? (+t[3] || 0) : this.shield); break;

@@ -126,6 +126,20 @@ export class BrxLink {
     this.connected = false; this._log(`*** gun disconnected ***`, 'le'); this.onDrop();
     if (this.deviceId) this._reconnect();
   }
+  /** B4: the engine's link watchdog calls this when the gun has gone silent for too long while we still
+   *  read as `connected` — the native disconnect callback this whole file otherwise depends on may never
+   *  fire for a link that is merely bad rather than actually gone (marginal RF, a supervision timeout
+   *  that hasn't tripped yet). Best-effort `disconnect()` first so the OS actually releases the stale
+   *  GATT handle — some stacks reuse it silently on the very next `connect()` otherwise — then run the
+   *  exact same path a real disconnect takes, so the engine, the HUD pill and MC's status all learn about
+   *  it exactly once, and the forever-reconnect loop takes over from here. */
+  noteStale() {
+    if (!this.connected || !this.deviceId) return;
+    const id = this.deviceId;
+    this._log('*** gun link silent — forcing a reconnect ***', 'le');
+    this.ble.disconnect(id).catch(() => { /* best-effort: let the OS release the stale GATT link */ });
+    this._dropped();
+  }
   async _reconnect() {
     if (this._reconnecting && this._reconnectGen === this._gen) return;   // one loop per gun; a second
     this._reconnectGen = this._gen;                  // would double-subscribe notifications
