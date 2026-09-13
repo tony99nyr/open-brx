@@ -416,3 +416,102 @@ def test_the_pool_fault_clears_on_the_re_push_and_re_ack():
         ack(net, s, i, p["player_id"])
     assert s._pool_faults == {}
     assert not any("GUN POOL" in b for b in row(s, ps[1]["player_id"])["blockers"])
+
+
+# --------------------------- 8. a blocker that says RE-PUSH must not refuse the push -------- #
+# C-2. All three A36 reds are cured by the push itself: it replaces the head, clears the ack, the
+# echo derived from that ack and the pool judgement made against that head. `push_config` counted
+# them as reds standing in its own way, so the only way out of the state the row TOLD the operator to
+# leave was `force` -- an override reserved for judgements they can see and accept.
+
+def _stale_acked_roster():
+    """Two guns, pushed, acked, the game edited -- and both phones answering for the OLD head."""
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    s.push_config()
+    old_id = s.config["config_id"]
+    for i, p in enumerate(ps):
+        ack(net, s, i, p["player_id"])
+    s.set_config({"time_limit_s": 120})
+    for i, p in enumerate(ps):
+        ack(net, s, i, p["player_id"], config_id=old_id)
+    return s, net, clock, ps, old_id
+
+
+def test_an_unforced_push_clears_the_three_a36_reds_instead_of_being_refused_by_them():
+    s, net, clock, ps, old_id = _stale_acked_roster()
+    r = row(s, ps[0]["player_id"])
+    assert r["status"] == "red" and all("ACKED AN OLDER CONFIG" in b for b in r["blockers"]), r["blockers"]
+
+    s.push_config()                                   # UNFORCED: the cure must not be blocked by the wound
+    assert s.acks == {} and s.lobby_pushed
+    for i, p in enumerate(ps):
+        ack(net, s, i, p["player_id"])
+    assert s.all_acked()
+    assert not any(r["blockers"] for r in s.readiness()["board"]), s.readiness()["board"]
+
+
+def test_start_still_refuses_a_stale_ack_that_the_push_gate_now_lets_through():
+    s, _net, _clock, _ps, old_id = _stale_acked_roster()
+    try:
+        s.start(runway_s=10)
+        raise AssertionError("start() accepted a stale ack")
+    except ValueError as e:
+        assert old_id in str(e) or "OLDER" in str(e).upper(), str(e)
+    assert s.phase == "lobby"
+
+
+def test_a_red_that_a_push_does_NOT_cure_still_refuses_the_unforced_push():
+    """The control. Opening the gate for the A36 three must not open it for anything else."""
+    s, net, clock, ps = mk(3)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)   # ps[2] never brings a phone
+    try:
+        s.push_config()
+        raise AssertionError("push_config accepted a roster with a phone that has never arrived")
+    except ValueError as e:
+        assert "readiness has reds" in str(e) or "force" in str(e), str(e)
+
+
+def test_a_stale_ack_that_also_changed_weapon_is_ONE_red_not_two():
+    """C-5. The echo is derived FROM the ack: if the ack is not for this head, its echo is not
+    evidence about this head either, and printing both reds describes one cause twice."""
+    s, net, clock, ps = mk(1, compiler=Compiler())
+    online(s, net, clock, ps[0], 0)
+    s.push_config()
+    old_id = s.config["config_id"]
+    s.set_config({"time_limit_s": 120})
+    ack(net, s, 0, ps[0]["player_id"], config_id=old_id, echo="$ALCD,1,100,0,2,0,*")
+    r = row(s, ps[0]["player_id"])
+    assert any("ACKED AN OLDER CONFIG" in b for b in r["blockers"]), r["blockers"]
+    assert not any("GUN ECHO" in b for b in r["blockers"]), r["blockers"]
+
+
+def test_standing_a_player_down_forgets_the_pool_fault_they_earned():
+    """C-5. `_unroster` already forgets the ack and the bundle; the pool fault is a judgement about
+    the same head and was riding back in on the reinstate."""
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    info = _go_live(s, net, clock, ps)
+    _live_status(net, clock, 1, ps[1], 45, 70, info["match_id"])
+    clock["t"] += POOL_CHECK_SETTLE_MS + 100
+    _live_status(net, clock, 1, ps[1], 45, 120, info["match_id"])
+    assert ps[1]["player_id"] in s._pool_faults, "control: the fault was earned"
+    s.control("recall", confirm=True)                  # back to KIT with the roster intact
+    s.stand_down(ps[1]["player_id"])
+    assert s._pool_faults == {}
+    s.reinstate(ps[1]["player_id"])
+    assert not any("GUN POOL" in b for b in row(s, ps[1]["player_id"])["blockers"])
+
+
+def test_the_three_proofs_share_one_frame_of_reference():
+    """Vocabulary. An operator who learns one of these has learned the shape of the other two."""
+    from brx_mcp.mc.state import PUSH_CURES
+    assert all(p.endswith("≠ CONFIG") or "OLDER CONFIG" in p for p in PUSH_CURES), PUSH_CURES
+    s, net, clock, ps = mk(2, compiler=Compiler())
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    s.push_config()
+    from brx_mcp.mc import frames as _f
+    mag, reserve = _f.head_spawn_ammo(s.bundles[ps[0]["player_id"]]["head"])
+    ack(net, s, 0, ps[0]["player_id"], echo=f"$ALCD,{mag - 1},100,0,{reserve},0,*")
+    fault = next(b for b in row(s, ps[0]["player_id"])["blockers"] if "GUN ECHO" in b)
+    assert fault.startswith("GUN ECHO ≠ CONFIG (WEAPON"), fault

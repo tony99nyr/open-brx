@@ -59,7 +59,11 @@ export function Lobby() {
   const nameOf = (id: string) => players.find(p => p.player_id === id)?.display ?? id;
   const noEcho = Object.entries(lobby.acks).filter(([, a]) => !a.ok).map(([id]) => nameOf(id));
   const staleAcked = Object.entries(lobby.acks).filter(([, a]) => a.ok && !ackIsCurrent(a)).map(([id]) => nameOf(id));
-  const allAcked = lobby.pushed && acked === players.length;
+  // A36/C-5: the SERVER's own answer wins wherever it is present (`types.ts` has said so since A36 and
+  // nothing here read it). `all_acked` walks the roster the way `start()` does — it skips a player with
+  // no node bound, which the local count cannot — so a console counting for itself disagreed with the
+  // refusal exactly where it matters. The count stays as the fallback for a server that predates it.
+  const allAcked = lobby.pushed && (lobby.all_acked ?? (acked === players.length));
   // A28.4: derived, never asserted — "grey" the count while the tunnel is off, since it can only be 0.
   const cLine = coverageLine(state);
   const cColor = state.lan.public?.status !== 'up' ? T.micro : state.coverage?.level === 'full' ? T.ok : T.warn;

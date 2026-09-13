@@ -1255,6 +1255,9 @@ class Session:
             if nv is not None:
                 nv.pop("player_id", None)
         self.acks.pop(pid, None); self.bundles.pop(pid, None); self.trying.pop(pid, None); self.browsing.pop(pid, None)
+        # A37: and the A36 pool judgement, which is a fact about the head that just went with the
+        # bundle. It was outliving both, so a STAND DOWN + PLAY handed the player back their old red.
+        self._pool_faults.pop(pid, None)
         return p
 
     def stand_down(self, pid: str) -> Player:
@@ -3585,9 +3588,22 @@ class Session:
         # which is a different refusal with its own (unforceable) wording further down. Gating the
         # override on `go` printed "readiness has reds — clear them before pushing" with an EMPTY list
         # for a one-team roster, and `force` then walked straight past the safety gate's own message.
-        rows_blocked = any(r["status"] in ("red", "waiting") for r in rd["board"])
+        #
+        # A37: …minus A36's three proofs. Each of them SAYS "RE-PUSH" and each of them is cured by
+        # this very call (a fresh head clears the ack, the echo derived from it and the pool
+        # judgement made against it), so counting them as reds in the push's own way left the
+        # operator with `force` as the only exit from a state the board had just told them to leave.
+        # `force` is the override of a judgement they can see and accept; this is not that. START is
+        # untouched — `_refuse_stale_ack` refuses the whistle and `force` does not open it either.
+        def _blocks_push(r) -> bool:
+            if r["status"] == "waiting":
+                return True                       # a phone that has not arrived: no push reaches it
+            return r["status"] == "red" and any(not cured_by_push(b) for b in r["blockers"])
+
+        rows_blocked = any(_blocks_push(r) for r in rd["board"])
         if rows_blocked and not force:
-            reds = [f"{r['player_num']}:{'/'.join(r['blockers'])}" for r in rd["board"] if r["status"] == "red"]
+            reds = [f"{r['player_num']}:{'/'.join(b for b in r['blockers'] if not cured_by_push(b))}"
+                    for r in rd["board"] if r["status"] == "red" and _blocks_push(r)]
             raise ValueError("readiness has reds — clear them before pushing, or push with force: "
                              + "; ".join(reds))
         if rows_blocked:
@@ -3649,15 +3665,19 @@ class Session:
         and says nothing about ammo, and an older app reports exactly that -- so "no evidence" has to
         stay quiet. `test_mc_config_proof` pins both halves so this can never quietly become a check
         that only ever reads its own artefact.
+
+        A37: gated on `_ack_is_current`, not on `ack.ok` alone. The echo is DERIVED FROM the ack, so
+        an ack that answered a previous head carries a previous head's magazine: reading it as a
+        weapon mismatch printed two reds for one cause, and only one of them named the cause.
         """
         ack = self.acks.get(pid) or {}
-        if not ack.get("ok"):
+        if not self._ack_is_current(pid):
             return None
         got = _frames.alcd_ammo(ack.get("gun_echo"))
         want = _frames.head_spawn_ammo((self.bundles.get(pid) or {}).get("head"))
         if got is None or want is None or got == want:
             return None
-        return (f"GUN ECHO ≠ COMPILED WEAPON ({got[0]}/{got[1]} echoed vs {want[0]}/{want[1]} "
+        return (f"{_ECHO_FAULT} (WEAPON {got[0]}/{got[1]} echoed vs {want[0]}/{want[1]} "
                 f"expected, mag/reserve) — RE-PUSH")
 
     def all_acked(self) -> bool:

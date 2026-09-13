@@ -14,9 +14,11 @@ import { Lobby } from '../src/screens/Lobby';
 import type { ReadinessRow, State } from '../src/api/types';
 import { demo, mountScreen } from './harness';
 
+// Verbatim server strings (state.py `_STALE_ACK_FAULT` / `_ECHO_FAULT` / `_POOL_FAULT`). All three
+// read `<WHAT> ≠ CONFIG` on purpose: one frame of reference for the three proofs.
 const STALE = 'ACKED AN OLDER CONFIG (9f2a1c04) — RE-PUSH';
-const ECHO = 'GUN ECHO ≠ COMPILED WEAPON (31/192 echoed vs 32/192 expected, mag/reserve) — RE-PUSH';
-const POOL = 'GUN POOL ≠ CONFIG (got 45/115, expected 45/70, hp/armor) — THE GUN IS ON ANOTHER HEAD';
+const ECHO = 'GUN ECHO ≠ CONFIG (WEAPON 31/192 echoed vs 32/192 expected, mag/reserve) — RE-PUSH';
+const POOL = 'GUN POOL ≠ CONFIG (REPORTS 45/115, THIS CONFIG GRANTS 45/70, hp/armor) — LIKELY ON AN OLDER HEAD; RE-PUSH';
 const HOLDING = 'HOLDING OLDER CONFIG (9f2a1c04) — RE-PUSH TO BE SURE';
 
 /** The demo board with row 0 replaced. */
@@ -84,6 +86,43 @@ describe('LOBBY · a stale ack is not an ack', () => {
     expect(m.text()).toContain(`${state.players.length}/${state.players.length}`);
     expect(m.text()).not.toContain('still answering for an older config');
     m.unmount();
+  });
+
+  // C-5 (polish loop, 2026-09-13). `types.ts` has said since A36 that `lobby.all_acked` "wins wherever
+  // it is present", and `Lobby.tsx` never read it: the console counted the acks itself and disagreed
+  // with the server the moment the server's rule was the narrower one. The local count stays as the
+  // FALLBACK for a server that predates the field.
+  it('the SERVER\'s all_acked wins over the local count when it is present', async () => {
+    const { d, base } = await pushedAndClean();
+    const state = { ...base, lobby: { ...base.lobby, all_acked: false } } as State;
+    const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
+    const arm = m.find('button').find(b => (b.textContent ?? '').includes('ARM COUNTDOWN'));
+    expect((arm as HTMLButtonElement).disabled,
+      'every ack looks current here, but the server says the roster is not acked').toBe(true);
+    m.unmount();
+  });
+
+  it('…and an all_acked: true unlocks ARM even where the local count cannot see every gun', async () => {
+    const { d, base } = await pushedAndClean();
+    const acks = { ...base.lobby.acks };
+    delete acks[base.players[0].player_id];           // e.g. a player with no node bound: the server skips them
+    const state = { ...base, lobby: { ...base.lobby, acks, all_acked: true } } as State;
+    const m = await mountScreen(<Lobby />, { ...d, state, view: 'lobby' });
+    const arm = m.find('button').find(b => (b.textContent ?? '').includes('ARM COUNTDOWN'));
+    expect((arm as HTMLButtonElement).disabled).toBe(false);
+    m.unmount();
+  });
+
+  it('the mock predicts the server: it sends all_acked, and it agrees with its own acks', async () => {
+    const d = await demo();
+    await d.api.pushLobby(true);
+    const s = await d.api.getState();
+    expect(s.lobby.all_acked, 'the mock must send the field the real server sends').not.toBe(undefined);
+    const everyOneCurrent = s.players.every(p => {
+      const a = s.lobby.acks[p.player_id];
+      return !!a && a.ok && a.config_id === s.config.config_id;
+    });
+    expect(s.lobby.all_acked).toBe(everyOneCurrent);
   });
 
   it('the demo backend acks with the config it pushed — so the mock cannot demo a state the server refuses', async () => {

@@ -92,6 +92,13 @@ export class MockBackend implements Api {
         last_seen_ms: now() - st.seen, online: !st.offline, attention, game: this.gameNo };
     });
   }
+  /** `state.py all_acked()`: every rostered player with a node bound has answered for THIS config. */
+  private allAcked() {
+    return this.players.length > 0 && this.players.filter(p => p.node_id).every(p => {
+      const a = this.acks[p.player_id];
+      return !!a && a.ok && a.config_id === this.config.config_id;
+    });
+  }
   private stationIds() { return Object.values(this.stations).flatMap(s => s.assigned ? [s.assigned.id] : []).sort((a, b) => a - b); }
   private armStation(node_id: string) {
     const st = this.stations[node_id]; if (!st?.assigned) return;
@@ -445,7 +452,11 @@ export class MockBackend implements Api {
       kit: { kitted, total: this.players.length, trying: { ...this.trying }, browsing: { ...this.browsing } },
       loadout_pool: this.pool(),
       active_preset_id: this.activePreset,
-      lobby: { ready: this.players.filter(p => p.ready).length, total: this.players.length, pushed: this.pushed, acks: clone(this.acks) },
+      // A36/C-5: `all_acked` is the SERVER's own answer to "has every gun answered for THIS config",
+      // and the console prefers it over its own count. The mock exists to predict the server, so it
+      // sends it too — without it `?mock` exercised only the fallback path.
+      lobby: { ready: this.players.filter(p => p.ready).length, total: this.players.length, pushed: this.pushed,
+               acks: clone(this.acks), all_acked: this.allAcked() },
       options: { ...this.options },      // A25
       // A31: the compiler writes this ONCE, so MC and the phones cannot disagree. The demo raises it
       // whenever the game's end state is MC's call (a frag cap, or an objective win_by) — which is the

@@ -285,9 +285,11 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
     makes `lobby.all_acked` false and `POST /api/start` refuse — **`force` does NOT open this one**:
     `force` overrides a readiness judgement the operator can see and accept, and this is the gun
     saying which game it is running. RE-PUSH, or move the player to STANDBY.
-  - `GUN ECHO ≠ COMPILED WEAPON (m/r echoed vs expected)` (red). The slot-0 `$ALCD` the gun answered
-    the head with does not carry the magazine the head's `$WEAP,0` wrote. No claim when the echo is
-    not an `$ALCD` (`$START` answers `$LCD,0,0,0,0,0,0,*`, which proves only that the gun answered).
+  - `GUN ECHO ≠ CONFIG (WEAPON m/r echoed vs expected)` (red). The slot-0 `$ALCD` the gun answered
+    the head with does not carry the magazine the head's `$WEAP,0` wrote. Only ever asked of a
+    CURRENT ack (A37): an ack that answered a previous head carries a previous head's magazine, and
+    saying so twice describes one cause twice. No claim when the echo is not an `$ALCD` (`$START`
+    answers `$LCD,0,0,0,0,0,0,*`, which proves only that the gun answered).
   - `GUN POOL ≠ CONFIG (REPORTS h/a, THIS CONFIG GRANTS h/a) — LIKELY ON AN OLDER HEAD; RE-PUSH`
     (red) + a `CONFIG` feed alert. The first `status` at least `POOL_CHECK_SETTLE_MS` (2 s) into a
     life reported MORE hp or MORE armor than the `$PSET` MC pushed. **Excess only (A37):** a pool at
@@ -304,7 +306,8 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
   config first"* until a FULL fresh head has gone to every gun. There is no incremental path back in:
   the per-player `config` leg of a roster edit is gated on the same `lobby_pushed` flag. What it does
   NOT clear is the retired-match ledger A34 reconciles against: a phone still out on the field
-  holding the old match is exactly what a new session is most likely to meet. **`readiness.roster_faults`** (round-2 fix pass, 2026-09-12; the predicate
+  holding the old match is exactly what a new session is most likely to meet.
+- **`readiness.roster_faults`** (round-2 fix pass, 2026-09-12; the predicate
   corrected 2026-09-13) is a separate, top-level list about the ROSTER AS A WHOLE rather than any one
   gun — today exactly one entry, *"ONLY ONE SIDE HAS PLAYERS"*, raised whenever a config declaring two
   or more teams has two or more players and fewer than **two populated `$TID`s**. Stated on the tids,
@@ -322,7 +325,11 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
   above); `tryout` pushes `tutorial`, is ended by the player's `ready`, a policy reset or END TRY-OUT, and
   refuses once the lobby is pushed. Kit → lobby auto-advances only when every rostered player is ready.
 - **Push and start are separate:** `POST /api/lobby/push` compiles every bundle and refuses on reds (names them)
-  unless `force`; `POST /api/start` mints `match_id`, stamps a monotonic `seq`, `go_live_t = now + runway_s`
+  unless `force` — **except A36's three proofs (A37)**, which the push CURES rather than trips over: a stale ack,
+  an echo mismatch and a pool fault all name the head, and a fresh head replaces it, so `POST /api/lobby/push`
+  goes through unforced over those three and re-acks. They keep blocking the whistle (`POST /api/start` refuses a
+  stale ack **even with `force`**), and every other red and every `waiting` row still refuses the push.
+  `POST /api/start` mints `match_id`, stamps a monotonic `seq`, `go_live_t = now + runway_s`
   (default `DEFAULT_RUNWAY_S` 120; presets 60/120/180). A same-schedule re-push keeps `seq` + `match_id`; a
   reschedule mints both anew; abort reaches only nodes in range (`reached`/`unreachable`).
 - **Scoring** (`scoring.py`, contracts §4): exact kills/assists, roster-based friendly (never in FFA), accuracy from

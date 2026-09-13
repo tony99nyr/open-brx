@@ -22,7 +22,11 @@ from __future__ import annotations
 # which is the same arithmetic `compile.WeaponCatalog.resolve()` writes with (`p[T[key] + 1]`).
 _WEAP_MAG = 17            # t16 maxClip -- what `$ALCD` reports as the magazine at spawn
 _WEAP_RESERVE = 18        # t17 ammoReserv
-_WEAP_FIELDS = 44         # a full captured frame; anything shorter is a template/stub, not evidence
+# The split length of a `$WEAP` frame `compile.py` WRITES: `$WEAP` + slot + t0..t41 + `*`. A frame
+# captured off a gun runs a token or two longer (protocol §6 §"$WEAP" shows 45+ on several rows), so
+# this is a FLOOR and is only ever asked with `>=`: anything shorter than the compiler's own output
+# cannot be carrying t16/t17 and is a template/stub, not evidence.
+_WEAP_FIELDS = 44
 
 _PSET_HP = 3
 _PSET_ARMOR = 4
