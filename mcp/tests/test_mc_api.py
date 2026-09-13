@@ -189,6 +189,24 @@ def test_the_kit_locks_at_start_over_http_with_a_409():
     assert c.patch(f"/api/players/{p['player_id']}", json={"team_id": "nope"}).status_code == 400
 
 
+def test_diag_matches_route():
+    """T1-B: `GET /api/diag/matches` is `brx_mcp.mc.diag` over THIS session's own store. Read-only,
+    no operator token — same rule as `GET /api/matches` — and `{}`/`[]` on a store-less session
+    rather than a 500."""
+    needs(HAVE, "starlette + httpx")
+    c, s, net = _client()
+    assert c.get("/api/diag/matches").json() == []           # no store yet -- never a 500
+    c, s, net = _client_with_history()
+    r = c.get("/api/diag/matches")
+    assert r.status_code == 200
+    js = r.json()
+    assert sorted(m["match_id"] for m in js) == ["m1", "m2"]
+    m1 = next(m for m in js if m["match_id"] == "m1")
+    assert m1["mode"] == "tdm" and "nodes" in m1 and "hit_pct" in m1
+    r = c.get("/api/diag/matches", params={"match": "m1"})
+    assert [m["match_id"] for m in r.json()] == ["m1"]
+
+
 def test_standby_routes():
     """STANDBY (2026-09-12): POST parks, DELETE reinstates, both answer with the Player; 404s name the id's side."""
     needs(HAVE, "starlette + httpx")

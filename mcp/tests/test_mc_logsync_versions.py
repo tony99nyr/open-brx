@@ -122,6 +122,53 @@ def test_reconnect_asks_only_when_the_last_match_log_is_missing():
     assert pulls(net) == []
 
 
+# T1-B (2026-09-13): "MC already asks every player node for its log at `_finish()` -- make sure the
+# ask survives a node that is briefly offline". The suite's `FakeNet.push` above always "succeeds" (it
+# just records the call) and so never exercises the one branch a REAL offline node hits: `net.push`
+# returning False with no exception (net.py: "Best-effort send... Returns False if the node has no
+# live socket"). `FlakyNet` models that -- and the finding is that `_on_node`'s hello handler already
+# covers it: it unconditionally clears `_log_asked` (so a mark left by a push that silently failed
+# never blocks the next ask) BEFORE checking `_log_done`, so the reconnect re-asks regardless of
+# whether the earlier `_finish()`-time push actually reached the node. This is a REGRESSION test, not
+# a fix -- it is green against the code exactly as it stood before this session touched anything.
+class FlakyNet(FakeNet):
+    def __init__(self):
+        super().__init__()
+        self.offline: set[str] = set()
+
+    def push(self, node_id, kind, body):
+        if node_id in self.offline:
+            return False              # mirrors net.NetServer.push: no live socket, no exception
+        return super().push(node_id, kind, body)
+
+
+def test_pull_log_ask_survives_a_node_offline_exactly_at_finish():
+    clock = {"t": T0}
+    net2 = FlakyNet()
+    s = Session(FakeCompiler(), net2, FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
+    s.set_config({"mode": "tdm", "time_limit_s": 60})
+    ps = [s.add_player("OP0", gun_id="GUN-A")]
+    online(s, net2, clock, ps[0], 0)
+    s.set_ready(ps[0]["player_id"], True, host_override=True)
+    s.push_config(force=True)
+    net2.simulate_node_message("node0", "ack_config", {"config_id": s.config["config_id"], "ok": True,
+                                                       "gun_echo": "$LCD"}, clock["t"])
+    s.start(runway_s=1)
+    clock["t"] += 2000
+    s.tick()
+
+    net2.offline.add("node0")             # the phone drops off the LAN exactly as the whistle blows
+    s.control("end", confirm=True)
+    assert pulls(net2, "node0") == [], "the push never reached a dead socket"
+    assert "node0" in s._log_asked, "…but pull_log still marks it asked, exactly like a real send that raced a close"
+
+    net2.offline.discard("node0")
+    net2.pushed.clear()
+    online(s, net2, clock, ps[0], 0)       # the phone reconnects -- a fresh hello
+    assert pulls(net2, "node0") == [("node0", "reconnect")], \
+        "the reconnect hello must re-ask regardless of whether the recap-time push actually landed"
+
+
 def test_reconnect_is_gated_and_silent_before_any_match():
     s, net, clock, ps = mk(1)
     online(s, net, clock, ps[0], 0)

@@ -15,14 +15,25 @@ import { Presence, encodeUuid, stationView } from './beacon.js';   // utility it
 import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // background log sync (contracts A25)
 import { APP_VER, platformName } from './build.js';                  // the REAL build id (contracts A29)
 import { applyResult, HISTORY_MAX } from './history.js';             // per-match history + the A24 result patch
+import { LogRing } from './logring.js';                              // T1-B: a match's own lines must survive to the recap pull
 
 const $ = id => document.getElementById(id);
-const LOGMAX = 400;
-const logLines = [];
-// `logLines` is a 400-line RING, so its indices are not stable. `logSeq` counts every line ever
-// written and is what `uploadedThrough` is measured in (A25: a later pull sends only the tail).
-let logSeq = 0;
-function log(msg, cls = 'li') { const t = new Date().toISOString().substr(11, 8); logSeq++; logLines.push(`[${t}] ${msg}`); if (logLines.length > LOGMAX) logLines.shift(); if (cls === 'le') console.warn(msg); }
+// T1-B (field 2026-09-12): a flat 400-line ring rolled a whole failing match's early lines out
+// before MC's `pull_log` ever asked for them at the whistle. `LogRing` protects every line written
+// since `startMatch()` — `logLines` stays the SAME array object for the life of the page (LogRing
+// mutates it in place), so `window.brx.log` (stage harness, e2e, screens.mjs) keeps working exactly
+// as an array, unaware anything changed underneath it.
+const logRing = new LogRing();
+const logLines = logRing.lines;
+let _logRingMatchId = null;
+function log(msg, cls = 'li') {
+  const mid = engine.matchId;
+  if (mid && mid !== _logRingMatchId) { _logRingMatchId = mid; logRing.startMatch(); }
+  else if (!mid) { _logRingMatchId = null; }
+  const t = new Date().toISOString().substr(11, 8);
+  logRing.push(`[${t}] ${msg}`);
+  if (cls === 'le') console.warn(msg);
+}
 
 // ---------- Capacitor plugins (all guarded: the web build must run in a desktop browser) ----------
 const plugins = {};
@@ -120,10 +131,7 @@ engine.onResult = (r) => { try {
 // ring (brxlink keeps the last 60 in/out frames) is the only record of what the gun actually said, and
 // without it a field fault on the phone side is undebuggable — so it rides along with the log tail.
 function logSnapshot(from = 0) {
-  const base = logSeq - logLines.length;                 // absolute index of logLines[0]
-  const start = Math.max(0, Math.min(logLines.length, Math.round(from) - base));
-  const lost = Math.max(0, base - Math.round(from));     // lines the ring dropped before MC ever saw them
-  const tail = logLines.slice(start);
+  const { tail, lost } = logRing.tail(from);             // lines the ring dropped before MC ever saw them
   let frames = [];
   try { frames = (link && link.frames || []).map(f => `${f.t} ${f.dir} ${f.f}`); } catch (_) { /* ignore */ }
   const text = [
@@ -134,7 +142,7 @@ function logSnapshot(from = 0) {
     '--- engine state ---',
     (() => { try { return JSON.stringify(engine.state()); } catch (_) { return '{}'; } })(),
   ].filter(x => x !== null).join('\n');
-  return { text, through: logSeq, lines: tail.length, frames: frames.length };
+  return { text, through: logRing.seq, lines: tail.length, frames: frames.length };
 }
 const logsync = new LogSync({
   transport: () => transport,

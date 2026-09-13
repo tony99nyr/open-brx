@@ -459,6 +459,23 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             logging.getLogger("brx.mc").exception("match history unavailable")
             return JSONResponse([])
 
+    async def diag_matches(req):
+        """T1-B: the post-match diagnostic (`brx_mcp.mc.diag`) as JSON, over THIS session's own store —
+        go_live/ended/duration, mode/config_id/environment/cfg health, shots/hits/hit%/deaths, per-node
+        arm_state + alive + gun_linked distributions, the perk-aware hp/armor mismatch flags, and each
+        node's `ack_config` vs the match it was pushed for. Read-only (shares the store's own connection,
+        never a second handle on the file), no operator token — same rule as `GET /api/matches`.
+        `?match=<id>` narrows to one match."""
+        if not s.store:
+            return JSONResponse([])
+        from . import diag
+        try:
+            return JSONResponse(diag.build_report(s.store.db, req.query_params.get("match")))
+        except Exception:
+            import logging
+            logging.getLogger("brx.mc").exception("diag unavailable")
+            return JSONResponse([])
+
     _SAFE_NAME = __import__("re").compile(r"[^A-Za-z0-9._-]")
 
     def _csv(body: str, name: str) -> Response:
@@ -673,6 +690,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/control", control, methods=["POST"]),
         Route("/api/recap", recap),
         Route("/api/matches", match_history),
+        Route("/api/diag/matches", diag_matches),
         Route("/api/recap.csv", recap_csv),
         Route("/api/matches/{mid}.csv", match_csv),
         Route("/api/session/new", new_session, methods=["POST"]),
