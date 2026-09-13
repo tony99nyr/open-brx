@@ -609,7 +609,28 @@ export class MockBackend implements Api {
         + MOCK_STATION_SOURCES.map(x => `'${x.value}' (${x.desc})`).join(', '));
     }
     if (this.config.mode === 'ffa') { const t = this.config.teams[0]; if (t) for (const p of this.players) p.team_id = t.team_id; }
-    if (this.pushed) { this.pushed = false; this.acks = {}; }
+    // B3 (2026-09-12, coordinated with the real server's fix): editing a game that had already been
+    // pushed to the guns used to un-push it SILENTLY -- `pushed` fell false and the acks were just
+    // dropped, with nothing on screen saying the guns were now stale (B1's root cause: guns left
+    // running the OLD config with nothing visible naming the skew). The real `state.py set_config` now
+    // keeps `lobby_pushed` true and RE-PUSHES the fresh config to every bound node; the mock mirrors
+    // that so `?mock` cannot demo a re-edit flow the real server would not produce. Acks clear
+    // IMMEDIATELY (the console's "re-pushing" moment -- `GameEditPanel`'s status line reads this same
+    // `acks` object) and repopulate the way `pushLobby` does, after a short delay standing in for the
+    // real node round-trip (state.py: `ack_config` lands ~1.5s after a push).
+    if (this.pushed) {
+      this.acks = {};
+      const cfgId = this.config.config_id;
+      setTimeout(() => {
+        if (!this.pushed || this.config.config_id !== cfgId) return;   // recalled, or superseded by a newer edit
+        for (const p of this.players) {
+          const g = GUNS.find(x => x[0] === p.gun_id);
+          const dead = g?.[2] === 'r' && this.gunOverride[g[0]] !== 'g';
+          this.acks[p.player_id] = dead ? { ok: false, err: 'no_echo' } : { ok: true, gun_echo: '$LCD,0,0,0,0,0,0,*' };
+        }
+        this.emit();
+      }, 220);   // long enough for a real-browser poll to see the transitional "re-pushing" state
+    }
     this.cfgErrors = errors;
     this.emit();
     return { ok: errors.length === 0, errors, config: clone(this.config) };

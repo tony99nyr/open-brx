@@ -14,7 +14,8 @@
     "e2e": "node test/e2e/koth.mjs",
     "e2e:backhaul": "node test/e2e/backhaul.mjs",
     "e2e:kit": "node test/e2e/kit-continue.mjs",
-    "e2e:m2": "node test/e2e/m2-ui.mjs"
+    "e2e:m2": "node test/e2e/m2-ui.mjs",
+    "e2e:game-edit": "node test/e2e/game-edit.mjs"
   },
   "dependencies": {
     "qrcode": "^1.5.4",

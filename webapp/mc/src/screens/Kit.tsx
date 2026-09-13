@@ -6,6 +6,7 @@ import { EvictButton } from '../ui/EvictButton';
 import { CHAMFER, F, PERK_COLOR, T, TAB, fmtAge, roleOf, teamColor } from '../tokens';
 import { takesAlt } from './gameSummary';
 import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, SectionRule, Seg, SegBar, StripedSlot, Tag, ValueBox, onKey } from '../ui';
+import { GameEditPanel } from '../ui/GameEditPanel';
 
 type Slot = 'primary' | 'secondary' | 'perk';   // A14: the perk is its own slot
 
@@ -398,6 +399,8 @@ export function Kit() {
             return { ok: true };
           }} />
         </span>} />
+      {/* B3: mode/night/health/weapon-pool, editable right here — no stepper, no recall needed pre-arm */}
+      <GameEditPanel style={{ marginBottom: 16 }} />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'flex-start' }}>
         {/* roster */}
         <div className="kit-roster" style={{ flex: '1 1 250px', maxWidth: 330, display: 'flex', flexDirection: 'column' }}>
