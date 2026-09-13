@@ -103,6 +103,19 @@ def test_mc_armed_for_the_next_match_ends_the_old_one_and_leaves_a_correctly_arm
 
 
 def test_a_stale_live_status_with_no_match_id_in_kit_gets_an_end_but_no_result():
+    """BOTH shapes of the no-match-id path are pinned here, because they differ only in a field the
+    caller cannot see: whether MC has ever retired anything.
+
+    (a) MC HAS retired a match (`_ended` non-empty) and a phone reports LIVE with no `match_id` --
+        an older app that never stamped one. That phone is out of date about a game MC knows is
+        over: end it.
+    (b) MC has retired NOTHING and is running NOTHING (`_ended` empty, `current` None) -- a
+        RESTARTED MC, exactly the state the round-1 review found ending live games in. A no-match-id
+        heartbeat there is the SAME evidence as `test_a_fresh_mc_never_ends_a_match_it_has_simply
+        _never_heard_of`'s named one, and must be left just as strictly alone. (Unreachable from
+        today's app -- `transport.js` always stamps `match_id` -- which is why it has to be pinned:
+        the only thing that can reach it is an older build, on the field, mid-match.)
+    """
     s, net, clock, ps, info = _ended_by_cap_and_moved_on()
     base = len(_controls_to(net, "node1")); nres = len(net.pushes("result"))
     clock["t"] += 5_000
@@ -110,6 +123,17 @@ def test_a_stale_live_status_with_no_match_id_in_kit_gets_an_end_but_no_result()
     ctl = _controls_to(net, "node1")[base:]
     assert ctl == [{"cmd": "end"}], "no match named: the operator-style end, nothing to attribute a result to"
     assert len(net.pushes("result")) == nres
+
+    s2, net2, clock2, ps2 = mk(2, "ffa")
+    for i, p in enumerate(ps2):
+        online(s2, net2, clock2, p, i)
+    assert not s2._ended and s2.start_info is None
+    before = len(_controls_to(net2, "node1"))
+    clock2["t"] += 60_000
+    _stale_status(net2, clock2, "node1", None)
+    assert len(_controls_to(net2, "node1")) == before, \
+        "a restarted MC has retired nothing: an un-named live match is not its to end"
+    assert not _reconciled(s2)
 
 
 def test_a_player_added_after_the_match_gets_the_end_but_no_result():

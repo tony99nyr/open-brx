@@ -260,6 +260,31 @@ async function runReal(browser, viteBase, mcBase, vp = { width: 1280, height: 80
   // to a hard `expect`.
   if (afterEdit.lobby.pushed) ok('the real server RE-PUSHED (stayed pushed) across the edit — the B3 server fix is present in this worktree');
   else console.log(`    i the real server UN-PUSHED across the edit (lobby.pushed=false) — this worktree predates the B3 server fix (lane-teams, not yet merged); the console side is proven via the mock + jsdom suite instead`);
+
+  // ---- A36: and the re-push has to be PROVABLE, not merely announced -----------------------
+  // Field 2026-09-12: guns ran a previous push in nearly every match and every signal MC had still
+  // read "ok", because an `ack_config` was only ever tested for truthiness. An ack now carries the
+  // `config_id` it answered for, the whistle is refused on a stale one (force included), and the
+  // board says which older config the gun answered. This walks the recovery: the counter empties at
+  // the edit, refills as the nodes re-ack, and every ack names the config the server is holding NOW.
+  const cfgNow = afterEdit.config.config_id;
+  const acksFresh = async () => {
+    const s = await (await fetch(`${mcBase}/api/state`)).json();
+    const a = Object.values(s.lobby.acks);
+    return a.length >= s.players.filter(p => p.node_id).length && a.every(x => x.ok && x.config_id === cfgNow);
+  };
+  await until(acksFresh, 8000, 'every gun to RE-ACK the new config_id');
+  const settled = await (await fetch(`${mcBase}/api/state`)).json();
+  expect(Object.values(settled.lobby.acks).every(a => a.config_id === cfgNow),
+         'every ack names the config the server is holding now (A36)');
+  expect(settled.lobby.all_acked === true, 'the server counts them as acked');
+  const staleLines = settled.readiness.board.flatMap(r => (r.blockers ?? []).filter(b => /ACKED AN OLDER CONFIG|GUN ECHO|GUN POOL/.test(b)));
+  expect(staleLines.length === 0, `no A36 fault stands once every gun has re-acked (saw ${JSON.stringify(staleLines)})`);
+  // The gun echo really is checked against the pushed weapon: the fake node answers with the head's
+  // own `$WEAP,0` magazine, so a green board here is the check PASSING, not the check being absent.
+  const echoes = Object.values(settled.lobby.acks).map(a => a.gun_echo ?? '');
+  expect(echoes.every(e => e.startsWith('$ALCD,')), `the nodes echo an $ALCD the weapon check can read (saw ${JSON.stringify(echoes)})`);
+  ok(`re-pushed, re-acked on the new config_id, board clean   ${await shot(pg, `12-real-reacked-${tag}`)}`);
   await pg.context().close();
 }
 

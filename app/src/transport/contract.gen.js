@@ -37,6 +37,12 @@ export const DEATH_LATCH_MS = 2000;
 /** A34: a phone still LIVE in a match MC has retired is told `control{end}` from its status heartbeat; this
  *  is how long MC waits before telling the SAME phone about the SAME match again (the first end normally lands). */
 export const STALE_LIVE_RETELL_MS = 10000;
+/** A36: how long after a life begins MC waits before believing the pool a gun reports. The `$SPAWN`
+ *  and the head's `$PSET` are two BLE writes and a relay apart, and the ~2 s status heartbeat can be
+ *  sampled between them -- so the first frame or two of a life legitimately carries the previous
+ *  pool. Past this the gun has had a whole heartbeat to settle and a pool that still disagrees with
+ *  the pushed `$PSET` is the gun running a different game. */
+export const POOL_CHECK_SETTLE_MS = 2000;
 export const RESYNC_PROBE_S = 10;
 export const DEFAULT_RUNWAY_S = 120;
 export const PROTOCOL_V = 1;

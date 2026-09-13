@@ -815,7 +815,7 @@ export class MockBackend implements Api {
         for (const p of this.players) {
           const g = GUNS.find(x => x[0] === p.gun_id);
           const dead = g?.[2] === 'r' && this.gunOverride[g[0]] !== 'g';
-          this.acks[p.player_id] = dead ? { ok: false, err: 'no_echo' } : { ok: true, gun_echo: '$LCD,0,0,0,0,0,0,*' };
+          this.acks[p.player_id] = dead ? { ok: false, err: 'no_echo' } : { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: cfgId };
         }
         this.emit();
       }, 220);   // long enough for a real-browser poll to see the transitional "re-pushing" state
@@ -954,7 +954,7 @@ export class MockBackend implements Api {
     for (const p of this.players) {
       const g = GUNS.find(x => x[0] === p.gun_id);
       const dead = g?.[2] === 'r' && this.gunOverride[g[0]] !== 'g';
-      this.acks[p.player_id] = dead ? { ok: false, err: 'no_echo' } : { ok: true, gun_echo: '$LCD,0,0,0,0,0,0,*' };
+      this.acks[p.player_id] = dead ? { ok: false, err: 'no_echo' } : { ok: true, gun_echo: '$ALCD,32,100,0,192,0,*', config_id: this.config.config_id };
     }
     this.emit(); return { ok: true, acks: clone(this.acks) };
   }
