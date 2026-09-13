@@ -8,6 +8,7 @@ import { CHAMFER, F, PERK_COLOR, T, TAB, fmtAge, roleOf, teamColor } from '../to
 import { UNPLAYABLE_IDS, takesAlt } from './gameSummary';
 import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, SectionRule, Seg, SegBar, StripedSlot, Tag, ValueBox, onKey } from '../ui';
 import { GameEditPanel } from '../ui/GameEditPanel';
+import { VenueModeReminder } from '../ui/VenueModeReminder';
 
 type Slot = 'primary' | 'secondary' | 'perk';   // A14: the perk is its own slot
 
@@ -400,6 +401,9 @@ export function Kit() {
             return { ok: true };
           }} />
         </span>} />
+      {/* F162: the ALT-hold backstop. KIT is where the guns are handed out, so it is the last screen
+          where walking the rack is still cheap — see ui/VenueModeReminder. */}
+      <VenueModeReminder style={{ marginBottom: 12 }} />
       {/* B3: mode/night/health/weapon-pool, editable right here — no stepper, no recall needed pre-arm */}
       <GameEditPanel style={{ marginBottom: 16 }} />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'flex-start' }}>

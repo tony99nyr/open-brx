@@ -9,6 +9,7 @@ import { F, PERK_COLOR, T, TAB } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, Shelf, StripedSlot, Tag, Toggle, onKey } from '../ui';
 import { emptyRequiredSlots, gameSig, objectiveLine, poolEmptyMessage, rulesLine } from './gameSummary';
 import { MODE_ART } from '../modeArt';
+import { VenueModeReminder } from '../ui/VenueModeReminder';
 
 /** F151 (field 2026-09-12, ISSUE 25) — `PUT /api/config` (and everything that rides on it: playing a
  *  saved game, playing a stock mode, applying a preset) is only VALID in muster/build/kit (mc/API.md).
@@ -110,6 +111,10 @@ export function Games() {
           <PrimaryButton disabled={blocked} title={blockedReason} onClick={async () => { await run(() => api.setPhase('kit')); setView('kit'); }}>CONTINUE ▸</PrimaryButton>
         </div>
       </div>
+      {/* F162: the VENUE chips above are a number MC sends AND a switch on every gun that MC cannot
+          reach. This is the half the operator has to do, so it sits directly under the control that
+          raises it rather than at the bottom of the summary rail — see ui/VenueModeReminder. */}
+      <VenueModeReminder style={{ marginBottom: 18 }} />
       {blocked && (
         <div role="alert" data-testid="games-locked" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
           background: 'rgba(255,82,82,.08)', border: `1px solid ${T.bad}`, borderLeft: `3px solid ${T.bad}`, padding: '12px 16px' }}>
