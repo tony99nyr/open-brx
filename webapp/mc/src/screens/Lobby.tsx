@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { RUNWAYS, useRunway } from '../runway';
-import { coverageLine, reachLabel, reachOf, reachTooltip, sentenceCase, splitBlocker } from '../api/derive';
+import { blocksPush, coverageLine, curedByPush, reachLabel, reachOf, reachTooltip, sentenceCase, splitBlocker } from '../api/derive';
 import type { Player } from '../api/types';
 import { useStore } from '../store';
 import { F, T, TAB, teamColor } from '../tokens';
@@ -15,6 +15,7 @@ export function Lobby() {
   const { state, run, api, setView } = useStore();
   const [runway, setRunway] = useRunway();   // survives a tab switch (field 2026-08-30)
   const [drag, setDrag] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);          // RE-PUSH in flight (R2-1)
   if (!state) return null;
   const { players, lobby, readiness, teams } = state;
   const teamIds = state.config.mode === 'ffa' ? ['ffa'] : state.config.teams.map(t => t.team_id);
@@ -87,7 +88,14 @@ export function Lobby() {
   // Both block the push, but they are different situations and must not be described the same way:
   // `red` is a fault, `waiting` is just a phone that has not arrived (field 2026-09-01).
   const reds = redRows.map(b => b.sticker);
+  // START's gate: a red is a red, whatever cures it. A gun on last game's head must not be armed.
   const blockedCount = redRows.length + waitRows.length;
+  // R2-2: PUSH's gate is the SERVER's (`state.py push_config._blocks_push`, mirrored in
+  // `derive.blocksPush`) — A36's three proofs are cured BY the push, so they cannot be allowed to
+  // refuse it. Anything else red, and every phone that has not arrived, still does.
+  const pushBlockedCount = readiness.board.filter(blocksPush).length;
+  // The rows a re-push would clear, and the reason the RE-PUSH button exists at all.
+  const curableRows = redRows.filter(b => (b.blockers ?? []).length > 0 && (b.blockers ?? []).every(curedByPush));
   // ONLY what actually gates the start. `ambers` (STALE LINK, SCREEN OFF, …) are advisories and were
   // printed in the same run-on sentence, which made a real fault read like a shrug.
   const faults = redRows.map(b => ({ who: b.sticker, why: b.blockers ?? [] }));
@@ -100,6 +108,16 @@ export function Lobby() {
     if (!lobby.pushed) { await run(() => api.pushLobby(force)); return; }   // stop here — the rail's step 2 is real now
     const s = await run(() => api.start(runway, force));
     if (s) setView('armed');
+  };
+  // R2-1: the action every A36 fault line NAMES. `api.pushLobby` used to be reachable only while
+  // `lobby.pushed` was false — after the first push the primary becomes ARM COUNTDOWN — so "RE-PUSH"
+  // was a word on three fault lines with no control behind it, and the operator's only way to send a
+  // fresh head was the HOST OVERRIDE force. The server treats a second push as a re-push (same
+  // config_id, no new game number, every judgement about the old head dropped).
+  const rePush = async (force = false) => {
+    if (busy) return;                       // one head per click: a double tap re-compiles the roster twice
+    setBusy(true);
+    try { await run(() => api.pushLobby(force)); } finally { setBusy(false); }
   };
   const reteam = (p: Player, team_id: string) => { if (p.team_id !== team_id) run(() => api.patchPlayer(p.player_id, { team_id })); };
 
@@ -172,12 +190,37 @@ export function Lobby() {
           {/* U-4: "waiting to echo" is the wrong sentence for a gun that HAS answered — for the game
               before this one. Different fault, different fix (RE-PUSH, not wait), and the title is
               where an operator looks when a button will not move. */}
-          <PrimaryButton onClick={() => pushAndArm()} disabled={blockedCount > 0 || !balancedForTeams || players.length === 0 || (lobby.pushed && !allAcked)}
+          {/* R2-1: the control every A36 fault line names. Secondary, beside the primary — the
+              primary after a push is ARM COUNTDOWN, and a re-push is not the thing to do by
+              default. Shown when a re-push would actually change something: a row only a push can
+              clear, or a roster that has not finished acking the head it already has. */}
+          {lobby.pushed && (curableRows.length > 0 || !allAcked) && (
+            <button type="button" data-repush="1" data-repush-force={pushBlockedCount > 0 ? '1' : undefined}
+              className={busy ? undefined : 'hov-acc-ink hit44'} disabled={busy}
+              style={{ ...BTN_RESET, cursor: busy ? 'default' : 'pointer',
+                       color: busy ? T.micro : pushBlockedCount > 0 ? T.warn : T.acc,
+                       font: F.chk(700, 13), letterSpacing: '.06em', minHeight: 44, padding: '0 6px' }}
+              // A re-push IS a push, so it meets the push gate. When something the push cannot cure is
+              // also on the board (a phone that has not arrived, a gun that is not powered) the server
+              // refuses it unforced — and START refuses a stale ack even WITH force, so an operator
+              // with both on the board would have no way out at all. The button says which of the two
+              // it is about to do rather than erroring on the click or quietly forcing.
+              title={pushBlockedCount > 0
+                ? `Sends this same config to every gun again, over ${pushBlockedCount} row${pushBlockedCount === 1 ? '' : 's'} no push can clear. A gun that is not linked simply will not ack.`
+                : 'Compiles and sends this same config to every gun again. The ack count drops to 0 and climbs as each one answers.'}
+              onClick={() => rePush(pushBlockedCount > 0)}>
+              {busy ? 'RE-PUSHING…'
+                : pushBlockedCount > 0 ? `RE-PUSH CONFIG OVER ${pushBlockedCount} BLOCKED ▸` : 'RE-PUSH CONFIG ▸'}
+            </button>
+          )}
+          <PrimaryButton onClick={() => pushAndArm()}
+            disabled={(lobby.pushed ? blockedCount > 0 : pushBlockedCount > 0) || !balancedForTeams
+                      || players.length === 0 || (lobby.pushed && !allAcked)}
             title={!balancedForTeams ? rosterFault ?? ''
-              : lobby.pushed && !allAcked
-                ? (staleAcked.length
-                    ? `${staleAcked.length} gun${staleAcked.length === 1 ? '' : 's'} acked an older config — push again`
-                    : 'Waiting for every gun to echo the config')
+              : lobby.pushed && (curableRows.length > 0 || !allAcked)
+                ? (staleAcked.length || curableRows.length
+                    ? `${(staleAcked.length || curableRows.length)} gun${(staleAcked.length || curableRows.length) === 1 ? '' : 's'} answered for an older config — RE-PUSH CONFIG on LOBBY`
+                    : 'Waiting for every gun to echo the config — or RE-PUSH CONFIG on LOBBY')
                 : ''}>
             {lobby.pushed ? 'ARM COUNTDOWN ▸' : 'PUSH CONFIG & ARM ▸'}
           </PrimaryButton>
@@ -203,7 +246,11 @@ export function Lobby() {
                 || (lobby.pushed && !allAcked
                     ? `No config echo from ${noEcho.join(', ')} — headset off, or gun asleep?`
                     : 'All nodes ready and in range. Push, then walk.'))}
-          {staleAckLine && faults.length > 1 && (
+          {/* R2-8: …and only when there is a fault the sentence above did NOT already account for.
+              With two stale acks and nothing else, every red IS the stale ack, and "2 guns cannot
+              start" beside "REAPER, VIPER still answering for an older config" counts the same two
+              guns twice — which reads as four problems. */}
+          {staleAckLine && faults.length > staleAcked.length && (
             <span style={{ color: T.micro }}>{`  ·  ${faults.length} gun${faults.length === 1 ? '' : 's'} cannot start`}</span>
           )}
         </div>
@@ -237,7 +284,7 @@ export function Lobby() {
 
       {/* `force` is the operator's override of a READINESS judgement. It does not open the one-team
           gate (state.py `one_team_fault`), so the tray must not be on screen claiming otherwise. */}
-      {blockedCount > 0 && balancedForTeams && (
+      {(lobby.pushed ? blockedCount > 0 : pushBlockedCount > 0) && balancedForTeams && (
         <div style={{ marginTop: 10, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ font: F.mono(500, 10), letterSpacing: '.16em', color: T.micro }}>HOST OVERRIDE</span>
           <button type="button" className="hov-acc-ink hit44" style={{ ...BTN_RESET, cursor: 'pointer', color: T.bad, font: F.chk(700, 13), minHeight: 36 }}

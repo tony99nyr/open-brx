@@ -76,6 +76,31 @@ export function staleReachReason(n: Pick<NodeView, 'reach' | 'last_reach' | 'las
   return tunnelStatus === 'error' ? `${base} — TUNNEL DOWN` : base;
 }
 
+/** A37 — the three A36 blockers whose CURE IS THE PUSH ITSELF. Mirrors `state.py`'s
+ *  `_STALE_ACK_FAULT` / `_ECHO_FAULT` / `_POOL_FAULT`, and `config-proof.test.tsx` reads those three
+ *  constants out of `state.py` and pins them to this array — a paraphrase here would quietly re-open
+ *  the gate this closes.
+ *
+ *  R2-2 (polish loop iteration 2, 2026-09-13): the server stopped refusing the push on these rows
+ *  (A37) and the CONSOLE went on disabling PUSH CONFIG and CONTINUE for them, so the only route past
+ *  a stale ack was the "Push anyway" force — the operator overriding a judgement the board had just
+ *  told them to CLEAR, which is the opposite of what `force` is for. */
+export const PUSH_CURES = ['ACKED AN OLDER CONFIG', 'GUN ECHO ≠ CONFIG', 'GUN POOL ≠ CONFIG'] as const;
+
+/** Is this one blocker cured by a re-push? (`state.py cured_by_push`.) */
+export const curedByPush = (blocker: string): boolean => PUSH_CURES.some(p => blocker.startsWith(p));
+
+/** Does this readiness row REFUSE A PUSH? (`state.py push_config._blocks_push`, exactly.)
+ *
+ *  `waiting` always does — no push reaches a phone that has not arrived. A `red` does only when it
+ *  carries at least one blocker a push cannot cure. Every OTHER gate (START, the host override's own
+ *  copy) still reads the plain red/waiting counts: a re-push replaces the head, it does not switch a
+ *  gun on. */
+export function blocksPush(row: { status?: string; blockers?: string[] | null }): boolean {
+  if (row.status === 'waiting') return true;
+  return row.status === 'red' && (row.blockers ?? []).some(b => !curedByPush(b));
+}
+
 /** Every readiness line the server writes is `STATEMENT — INSTRUCTION` ("ACKED AN OLDER CONFIG
  *  (9f2a1c04) — RE-PUSH"). Split it: the statement still shouts, the instruction sits under it
  *  quietly in sentence case, and the trailing severity tag ("BLOCKS START", "DOES NOT BLOCK") comes

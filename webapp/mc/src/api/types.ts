@@ -392,7 +392,10 @@ export interface Api {
   rangeVerdict(weapon_id: string, verdict: 'pass' | 'issue', note?: string): Promise<unknown>;
   endTryout(id: string): Promise<void>;
   setReady(id: string, ready: boolean): Promise<Player>;
-  pushLobby(force?: boolean): Promise<{ ok: boolean; acks: State['lobby']['acks'] }>;
+  /** `repushed` (R2-1): this call landed on an ALREADY-PUSHED lobby, so it was a RE-PUSH — same
+   *  `config_id`, same game number, fresh heads, every judgement about the old head dropped.
+   *  Optional: a server that predates it simply omits the field. */
+  pushLobby(force?: boolean): Promise<{ ok: boolean; acks: State['lobby']['acks']; repushed?: boolean }>;
   start(runway_s: number, force?: boolean): Promise<{ match_id: string; go_live_t: number; seq: number }>;
   reschedule(runway_s: number): Promise<{ match_id: string; go_live_t: number; seq: number }>;
   abort(): Promise<{ ok: boolean; reached: string[]; unreachable: string[] }>;

@@ -107,10 +107,17 @@ export class MockBackend implements Api {
         last_seen_ms: now() - st.seen, online: !st.offline, attention, game: this.gameNo };
     });
   }
-  /** The demo's config-proof fault for this gun, or undefined — only under `?mock&faults=1`. */
+  /** The demo's config-proof fault for this gun, or undefined — only under `?mock&faults=1`.
+   *
+   *  R2-1: STICKY UNTIL THE FIRST RE-PUSH. The point of the switch is to be able to LOOK at the four
+   *  states, so they survive the initial push — but a re-push is their cure on a real server, and a
+   *  demo whose faults outlived it would be demoing a button that does nothing. `noecho` is exempt:
+   *  it is the v4.32 firmware declining to echo its weapon, which no push can change. */
   private faultOf(gun_id?: string | null) {
-    return this.demoFaults && gun_id ? DEMO_FAULT_GUN[gun_id] : undefined;
+    const f = this.demoFaults && gun_id ? DEMO_FAULT_GUN[gun_id] : undefined;
+    return this.demoCured && f !== 'noecho' ? undefined : f;
   }
+  private demoCured = false;
 
   /** The `ack_config` this player's phone answers a push with — ONE place, so the initial push and
    *  the A35 re-push after a config edit cannot drift apart (and so the `?mock&faults=1` states are
@@ -632,6 +639,11 @@ export class MockBackend implements Api {
   private endMatch() {
     const l = this.live_; if (!l) return;
     this.phase = 'recap';
+    // R2-1: `state.py _finish()` drops `lobby_pushed` and the acks at the whistle — the next match
+    // needs a FULL fresh head push (A36), which is also what makes that push a first push rather
+    // than a re-push, so the game number moves for it. The mock kept `pushed` true across the END,
+    // and with a re-push now being a distinct action that difference is visible.
+    this.pushed = false; this.acks = {};
     const rows: ScoreRow[] = l.rows.map(r => {
       const d = RECAP.find(x => x[0] === r.display);
       const kills = r.kills || d?.[1] || 0, deaths = r.deaths || d?.[2] || 0;
@@ -1014,14 +1026,33 @@ export class MockBackend implements Api {
     if (rf) throw new Error(rf);          // round-2 B: not a readiness judgement, so `force` does not open it
     // A37: the three A36 proofs all SAY "RE-PUSH" and are cured by this very call, so they do not
     // refuse it (`state.py push_config`). Every other red and every `waiting` row still does.
-    const blocked = this.readiness().board.some(r =>
+    const blocking = this.readiness().board.filter(r =>
       r.status === 'waiting' || (r.status === 'red' && (r.blockers ?? []).some(b => !curedByPush(b))));
-    if (blocked && !force) throw new Error('readiness has reds — clear them before pushing, or push with force');
-    if (this.gameStarted) { this.gameNo = (this.gameNo % 255) + 1; this.gameStarted = false; }   // a new match to every station
+    if (blocking.length && !force) {
+      // R2-10: the server names what blocks, never an empty list after the colon.
+      const waiting = blocking.filter(r => r.status === 'waiting').map(r => r.sticker);
+      const reds = blocking.filter(r => r.status === 'red')
+        .map(r => `${r.player_num}:${(r.blockers ?? []).filter(b => !curedByPush(b)).join('/')}`);
+      const parts = [waiting.length ? `${waiting.length} phone(s) not arrived: ${waiting.join(', ')}` : '',
+                     reds.length ? `red: ${reds.join('; ')}` : ''].filter(Boolean);
+      throw new Error(`readiness blocks the push — clear it before pushing, or push with force: ${parts.join(' · ')}`);
+    }
+    // R2-1: a push onto an ALREADY-PUSHED lobby is a RE-PUSH — same `config_id`, and the game number
+    // does not move (nobody has started a game on it). The server says which one it did so the
+    // console can label the action; the mock has to predict that or `?mock` demos a flow the real
+    // server would not produce.
+    const repushed = this.pushed;
+    // The number still moves only on the first push AFTER a match started (`Session._next_game_no`,
+    // gated on `_game_no_started`). The two signals cannot disagree on a real server: `_finish()`
+    // drops `lobby_pushed`, and a push while the match is still armed/live is refused outright.
+    if (this.gameStarted) { this.gameNo = (this.gameNo % 255) + 1; this.gameStarted = false; }
+    // …and the demo faults are cured by the cure. `noecho` is NOT: it is the v4.32 firmware not
+    // echoing its weapon, and no number of pushes changes that (webapp/mc/README.md → demo switches).
+    if (repushed) this.demoCured = true;
     for (const n of Object.keys(this.stations)) this.armStation(n);
     this.phase = 'lobby'; this.pushed = true; this.trying = {}; this.acks = {};
     for (const p of this.players) this.acks[p.player_id] = this.ackFor(p, this.config.config_id);
-    this.emit(); return { ok: true, acks: clone(this.acks) };
+    this.emit(); return { ok: true, acks: clone(this.acks), repushed };
   }
   private schedule(runway_s: number, seq: number, match_id: string) {
     const go_live_t = now() + runway_s * 1000;

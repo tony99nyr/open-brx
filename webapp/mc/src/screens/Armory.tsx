@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { isRoutableLanIp, reachLabel, reachTooltip, registrySig, sentenceCase, splitBlocker, staleReachReason } from '../api/derive';
+import { curedByPush, isRoutableLanIp, reachLabel, reachTooltip, registrySig, sentenceCase, splitBlocker, staleReachReason } from '../api/derive';
 import { STALE_AFTER_MS, type LogView, type ReadinessRow, type TunnelStatus } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
@@ -103,14 +103,22 @@ export function Armory() {
   const nAmber = board.filter(g => g.status === 'amber').length;
   const nRed = board.filter(g => g.status === 'red').length;
   const nWaiting = board.filter(g => g.status === 'waiting').length;
-  const firstRed = board.find(g => g.status === 'red');
   // "waiting" is not a fault and must not be reported as one: it just means the phone has not
   // arrived yet (Tony, 2026-09-01 — a board full of disconnected guns "looked like critical errors").
   // No separate status line under CONTINUE. Tony, 2026-09-02: "we dont need this extra status. maybe
   // a disabled status on the button and thats it" — so the button IS the status: it says what it is
   // waiting for, and is disabled while it waits.
-  const gateLabel = nRed ? `${nRed} GUN${nRed === 1 ? '' : 'S'} BLOCKED` : 'CONTINUE ▸';
-  const gateWhy = nRed ? (firstRed?.blockers?.[0] ?? 'Clear the fault to continue')
+  // R2-2 (polish loop iteration 2, 2026-09-13): CONTINUE is navigation towards the LOBBY, and the
+  // LOBBY is where A36's three proofs are CURED — so a row whose only reds are the three must not
+  // stand between the operator and the button that fixes it. `nRed` stays the honest count on the
+  // RED tile (those rows ARE red); `nRedGating` is what the gate asks.
+  const curableRed = (g: ReadinessRow) => (g.blockers ?? []).length > 0 && (g.blockers ?? []).every(curedByPush);
+  const gatingReds = board.filter(g => g.status === 'red' && !curableRed(g));
+  const nRedGating = gatingReds.length;
+  const nRedCurable = nRed - nRedGating;
+  const gateLabel = nRedGating ? `${nRedGating} GUN${nRedGating === 1 ? '' : 'S'} BLOCKED` : 'CONTINUE ▸';
+  const gateWhy = nRedGating ? (gatingReds[0]?.blockers?.[0] ?? 'Clear the fault to continue')
+    : nRedCurable ? `${nRedCurable} gun${nRedCurable === 1 ? '' : 's'} answered for an older config — RE-PUSH CONFIG on LOBBY`
     : nWaiting ? 'Open the BRX app on each phone and set its gun'
     : nGreen ? '' : 'Power the guns and open the app on each phone';
 
@@ -160,12 +168,12 @@ export function Armory() {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
             {/* Disabled on REDS only. Amber never blocked continuing and must not start now — this
                 is navigation to GAMES; the real gate is the lobby push. */}
-            <button type="button" className={!nRed ? 'hov-accbg' : ''} disabled={!!nRed} title={gateWhy}
+            <button type="button" className={!nRedGating ? 'hov-accbg' : ''} disabled={!!nRedGating} title={gateWhy}
               onClick={async () => { await run(() => api.setPhase('build')); setView('build'); }}
               style={{ font: F.osw(700, 20), letterSpacing: '.22em', padding: '10px 26px 10px 32px', whiteSpace: 'nowrap',
-                background: nRed ? 'transparent' : nGreen ? T.ok : T.panelAlt, color: nRed ? T.micro : nGreen ? T.accInk : T.dim,
-                border: `1px solid ${nRed ? T.line2 : nGreen ? T.ok : T.line}`, clipPath: CHAMFER.tl14,
-                cursor: nRed ? 'not-allowed' : 'pointer', minHeight: 48 }}>{gateLabel}</button>
+                background: nRedGating ? 'transparent' : nGreen ? T.ok : T.panelAlt, color: nRedGating ? T.micro : nGreen ? T.accInk : T.dim,
+                border: `1px solid ${nRedGating ? T.line2 : nGreen ? T.ok : T.line}`, clipPath: CHAMFER.tl14,
+                cursor: nRedGating ? 'not-allowed' : 'pointer', minHeight: 48 }}>{gateLabel}</button>
           </div>
         </>
       } />

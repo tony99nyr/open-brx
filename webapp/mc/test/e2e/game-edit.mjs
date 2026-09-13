@@ -533,7 +533,33 @@ async function runFaults(browser, viteBase) {
   const arm = pg.locator('button:has-text("ARM COUNTDOWN")').first();
   const title = await arm.getAttribute('title');
   expect(/older config/i.test(title ?? ''), `the disabled ARM says WHY (saw ${JSON.stringify(title)})`);
+  expect(/RE-PUSH CONFIG on LOBBY/.test(title ?? ''), `...and names the button that fixes it (saw ${JSON.stringify(title)})`);
   ok(`LOBBY names the stale guns and keeps every instruction   ${await shot(pg, '53-faults-lobby')}`);
+  // R2-1 — the button the three fault lines name. Every one of them says RE-PUSH and until now
+  // `api.pushLobby` was reachable only while the lobby was UNPUSHED, so the word named nothing.
+  const repush = pg.locator('button[data-repush="1"]').first();
+  expect(await repush.count() > 0, 'a curable red puts RE-PUSH CONFIG on the rail');
+  expect(await repush.isEnabled(), 'and it is clickable — this is the cure, not another refusal');
+  ok(`RE-PUSH CONFIG is on screen and enabled   ${await shot(pg, '54-faults-repush')}`);
+  await repush.click();
+  await until(async () => {
+    const s = (await pg.locator('main').innerText()).replace(/\s+/g, ' ');
+    return !/ACKED AN OLDER CONFIG|GUN ECHO ≠ CONFIG|GUN POOL ≠ CONFIG/.test(s);
+  }, 8000, 'the three curable reds to clear after the re-push');
+  const cured = (await pg.locator('main').innerText()).replace(/\s+/g, ' ');
+  expect(!/still answering for an older config/.test(cured), 'the rail sentence goes with them');
+  // The demo also ships one gun that is simply NOT POWERED, which still reds the board and still
+  // holds the whistle — the point is that the reason has changed from one the operator was told to
+  // re-push for to one they have to go and fix.
+  const armTitle = await pg.locator('button:has-text("ARM COUNTDOWN")').first().getAttribute('title');
+  expect(!/older config/i.test(armTitle ?? ''), `the ARM no longer blames a stale head (saw ${JSON.stringify(armTitle)})`);
+  expect(/NOT POWERED/.test(cured), 'the one red left is the gun nobody switched on');
+  ok(`the re-push cured all three   ${await shot(pg, '55-faults-cured')}`);
+  // …and NOT ECHOED survives it: that row is the v4.32 firmware, not a stale head.
+  await onMuster(pg);
+  const stillUnproven = await pg.locator('[data-echo="not_echoed"]').count();
+  expect(stillUnproven === 1, `NOT ECHOED is not curable by a push (saw ${stillUnproven})`);
+  ok(`NOT ECHOED survives the cure   ${await shot(pg, '56-faults-not-echoed-after')}`);
   // …and a clean ?mock shows none of them: the switch is opt-in, not the demo's new normal.
   const clean = await newPage(browser, viteBase);
   await clean.goto(`${viteBase}/?mock#muster`, { waitUntil: 'domcontentloaded' });
