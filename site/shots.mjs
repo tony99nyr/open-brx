@@ -1,6 +1,7 @@
 // Marketing screenshots, generated from the real UIs — never taken by hand.
 //
-// Run from site/: `node shots.mjs`
+// Run from site/: `node shots.mjs`      SHOTS_MC_PORT=<port> SHOTS_HUD_PORT=<port> move the two
+// static servers so a concurrent run (a second worker, another lane) does not collide with this one.
 //
 // Serves the built Mission Control UI (webapp/mc/dist) and the built phone HUD (app/www) over two
 // throwaway static servers, drives each with Playwright, and writes JPEGs + a manifest into
@@ -19,8 +20,8 @@ const SHOTS_DIR = path.join(__dirname, 'shots');
 
 const MC_DIST = path.join(REPO_ROOT, 'webapp', 'mc', 'dist');
 const HUD_WWW = path.join(REPO_ROOT, 'app', 'www');
-const MC_PORT = 4180;
-const HUD_PORT = 4181;
+export const MC_PORT = Number(process.env.SHOTS_MC_PORT || 4180);     // defaults unchanged
+export const HUD_PORT = Number(process.env.SHOTS_HUD_PORT || 4181);
 const WARN_BYTES = 420 * 1024;
 
 const CONTENT_TYPES = {
@@ -44,7 +45,14 @@ function contentTypeFor(filePath) {
 
 // SPA static server: serves files under `root`, falling back to index.html for anything that
 // isn't a real file on disk (both UIs reference assets by absolute /assets/... paths).
-function serveStatic(root, port) {
+//
+// `label` names the server in a bind failure — two servers start via Promise.all, so a bare
+// EADDRINUSE does not say which one lost the race. A caller MUST see this loudly and get a non-zero
+// exit, never a run that looks clean because the failure landed after the shots dir was wiped
+// (2026-09-13: a second worker holding one of these ports left the first process's `site/shots/`
+// emptied by `resetShotsDir()`, which used to run before either port was confirmed bound, and that
+// empty directory was committed once before the cause was caught).
+export function serveStatic(root, port, label) {
   const server = http.createServer((req, res) => {
     const urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
     const candidate = path.join(root, urlPath === '/' ? 'index.html' : urlPath);
@@ -66,12 +74,15 @@ function serveStatic(root, port) {
     });
   });
   return new Promise((resolve, reject) => {
-    server.on('error', reject);
+    server.on('error', (err) => reject(new Error(
+      `site/shots.mjs: could not bind 127.0.0.1:${port} for the ${label} server (${err.code || err.message}). `
+      + 'Something else is already using that port -- pass SHOTS_MC_PORT/SHOTS_HUD_PORT to run this '
+      + 'somewhere else, or stop whatever holds it. Nothing was deleted or written.')));
     server.listen(port, '127.0.0.1', () => resolve(server));
   });
 }
 
-function closeServer(server) {
+export function closeServer(server) {
   return new Promise((resolve) => (server ? server.close(() => resolve()) : resolve()));
 }
 
@@ -107,8 +118,6 @@ async function main() {
     'run "cd app && npm run build" first',
   );
 
-  resetShotsDir();
-
   const manifestFiles = {};
   const shot = async (page, name) => {
     const outPath = path.join(SHOTS_DIR, name);
@@ -125,9 +134,11 @@ async function main() {
   let mcServer, hudServer, browser;
   try {
     [mcServer, hudServer] = await Promise.all([
-      serveStatic(MC_DIST, MC_PORT),
-      serveStatic(HUD_WWW, HUD_PORT),
+      serveStatic(MC_DIST, MC_PORT, 'Mission Control dist'),
+      serveStatic(HUD_WWW, HUD_PORT, 'phone HUD www'),
     ]);
+    // Only now -- both ports are actually bound -- is it safe to clear the previous run's output.
+    resetShotsDir();
     browser = await chromium.launch();
 
     // ---- Mission Control: ?mock is the in-browser demo, no server needed ----
@@ -188,7 +199,11 @@ async function main() {
   }
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+// Guarded so a test can `import('./shots.mjs')` (to exercise serveStatic / the port consts / the
+// bind-before-wipe ordering) without that import launching a real browser and writing screenshots.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}
