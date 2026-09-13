@@ -92,6 +92,20 @@ MC-driving script; `test/e2e/koth.mjs` is the worked example), `app/node_modules
 a script must live under one of those directories (ESM resolution ignores `NODE_PATH`), which is why a
 script in `/tmp` fails with `Cannot find package 'playwright'`.
 
+## Post-match diagnostic (T1-B)
+
+`python -m brx_mcp.mc.diag <path/to/session-*.sqlite> [--match ID] [--json]` reproduces, as one
+read-only pass over a session store, the analysis a field report needs by hand: per match — go_live/
+ended/duration, mode/config_id/environment/cfg health, total shots (max `status.shots` per node),
+hits (`hit_taken` rows, plus any nested in an `event_batch` row), hit%, deaths, per-node `arm_state` +
+`alive` + `preflight.gun_linked` distributions, per-node max reported (hp, armor) vs the match config
+(perk-aware: armor ABOVE config is a `body_armor` perk, never flagged; HP or armor BELOW config is
+flagged), `shooter_team` values seen, and each node's most recent `ack_config` before go-live vs the
+match's own `config_id`. Markdown tables by default, `--json` for the raw report. Pure sqlite, no
+`Session` import, read-only (`?mode=ro`) — safe to point at a session MC still has open, or at any
+past night's file under `~/.brx-mcp/mc/`. The same report is served live for the CURRENT session at
+`GET /api/diag/matches` (`API.md`).
+
 ## Where the rest is
 
 - **`API.md`** — the server ⇄ web-UI contract (REST + `/ui-ws` snapshot), incl. the operator-token rule.
