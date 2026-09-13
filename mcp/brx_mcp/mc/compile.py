@@ -1618,13 +1618,15 @@ class Compiler:
         #    of a primary against the host's health model is not something they can act on in the
         #    thirty seconds before the game, and as a hard error it stood between them and the
         #    whistle. It names the slot, the weapon and the numbers now, and the push goes through.
-        #  * **EXCEPT A SIDEARM CARRIED AS THE ONLY GUN, WHICH IS STILL AN ERROR** (round-1 polish
-        #    review 2026-09-12). The A12 exemption is about the SLOT, not the tag: `policy.PRIMARY_KINDS`
-        #    admits "sidearm" (`_R_SIDEARM_ONLY` is the copy for it), so a pistols-only round can put a
-        #    pistol in slot 1 as somebody's ONLY weapon — and then it is the gun they fight with, not a
-        #    backup. That one IS actionable at the whistle (hand the player a primary, or raise the
-        #    pistol / lower the pool), which is exactly the line F146 drew: block what the operator can
-        #    fix, warn about what they cannot.
+        #  * **INCLUDING A SIDEARM CARRIED AS THE ONLY GUN — a warning too, worded for that shape.**
+        #    The round-1 review made that case an ERROR; round-2 pass C put it back to a warning, and
+        #    the code six lines below is the authority (this bullet said the opposite until round-3
+        #    corrected it, 2026-09-13). The A12 exemption is about the SLOT, not the tag:
+        #    `policy.PRIMARY_KINDS` admits "sidearm" (`_R_SIDEARM_ONLY` is the copy for it), so a
+        #    pistols-only round can put a pistol in slot 1 as somebody's ONLY weapon — and then it is
+        #    the gun they fight with, not a backup, which is what `kind` says out loud. A reload still
+        #    kills, so nothing here blocks; what is genuinely UNKILLABLE is the `$SIR`/zero-damage gate
+        #    below, which passes K and FIELD-4 promoted to the errors this guard was standing in for.
         health = config.get("health") or {}
         seen: set[tuple[str, int, int, str]] = set()
         for p in roster:
@@ -1728,6 +1730,18 @@ class Compiler:
                     flagged.add(wid)
                     errors.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, which registers a "
                                   f"hit but moves no pool: the weapon DEALS NO DAMAGE (weapon-design.md §6.2)")
+                elif fn not in _SIR_GRANT and not self.catalog.damage(wid):
+                    # 🔴 Round-3 FIELD-4 (2026-09-13) — the third door into the same unkillable class.
+                    # The two errors above key off the $SIR FUNCTION; a weapon on a perfectly ordinary
+                    # DAMAGE row whose own compiled `dmg` is 0 (a catalog row, or an override) still
+                    # compiles, still pushes, registers every hit and kills nobody. The magazine gate
+                    # cannot see it either -- `hits_to_kill` returns 0 for zero damage, so it skips
+                    # such a weapon entirely. GRANT rows (and the no-pool rows caught above) are
+                    # exempt: a heal/armour/shield weapon is not MEANT to deal damage.
+                    flagged.add(wid)
+                    errors.append(f"{wid} deals 0 DAMAGE on $SIR {key[0]},{key[1]} → function {fn}, a "
+                                  f"damage row: every hit registers and takes nothing off the pool, so "
+                                  f"the weapon cannot kill (weapon-design.md §6.2)")
                 elif fn in _SIR_GRANT:
                     flagged.add(wid)
                     dual = " (16/17/20/21 are DUAL-POLARITY: they still damage enemies, 17/21 armor-piercing)" \

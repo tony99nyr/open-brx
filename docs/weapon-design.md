@@ -684,19 +684,22 @@ The root cause is a modelling error, not a missing rule: **damage is a property 
 `(weapon, $SIR table)` pair, never of the weapon alone.** Every tool we had validated the weapon in
 isolation, so the entire class was invisible.
 
-`validate()` now cross-checks each loadout weapon's `<t3,t4>` against the table MC is about to push
-and warns on three cases:
+`validate()` now cross-checks each loadout weapon's `<t3,t4>` against the table MC is about to push.
+Three of the four cases below are **errors** — the unkillable ones — and the multiplier case is a
+warning:
 
 | case | signature | why it matters |
 |---|---|---|
-| **no row** for that key | every hit **silently dropped** | the quietest failure of the three — it looks exactly like the hardware refusing, and cost several wasted bench trials |
+| **no row** for that key | every hit **silently dropped** | the quietest failure of the four — it looks exactly like the hardware refusing, and cost several wasted bench trials |
 | function in the **no-pool** family | registers a `$HIR`, moves nothing | the Energy Launcher |
+| **zero damage on a damage row** | registers a `$HIR`, takes nothing off the pool | round-3 FIELD-4 (2026-09-13): a catalog row or override at `dmg: 0` is unkillable by a different door, and `hits_to_kill` returns 0 for zero damage so the magazine guard skips it entirely. Grant rows (heals/armour/shields) are exempt — they are not meant to deal damage |
 | function is a **multiplier** (36/37) | lands ×1.25 or ×2 | not broken, but `htk`/`ttk_ms` in `weapons.json` are computed on raw `t5` and are wrong for that weapon |
 
-> 🔴 **The first two cases are ERRORS** (round-2 fix pass 2026-09-12). They are the definition of
-> unkillable, and neither is reachable by the `mag ≥ htk` guard — `hits_to_kill` returns 0 for zero
-> damage, so that check skips such a weapon entirely. The severity ordering used to be inverted: the
-> RELOAD case, a kit that can still win, was the only hard error while these two were advisories.
+> 🔴 **The first three cases are ERRORS** (round-2 fix pass 2026-09-12; the zero-damage row added by
+> round-3 FIELD-4, 2026-09-13). They are the definition of unkillable, and none is reachable by the
+> `mag ≥ htk` guard — `hits_to_kill` returns 0 for zero damage, so that check skips such a weapon
+> entirely. The severity ordering used to be inverted: the RELOAD case, a kit that can still win, was
+> the only hard error while these were advisories.
 > A clean pass exists now because the one row that trips it — the Energy Launcher — is excluded from
 > every pool (`policy.UNPLAYABLE_IDS`), so no operator pick can be blocked at the whistle. The
 > multiplier case stays a warning: under *flatten* it goes quiet on its own; under *retune* it is the

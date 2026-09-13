@@ -1365,3 +1365,47 @@ def test_k_no_stock_weapon_and_no_shipped_pool_is_blocked_by_the_new_errors():
                 assert wid not in _policy.UNPLAYABLE_IDS, f"preset {name} offers {wid} in {slot}"
                 r = real.validate(_cfg(), [_player(weapons=(wid,))])
                 assert r["ok"], f"preset {name} offers {wid} in {slot}, which validate() blocks: {r['errors']}"
+
+
+def test_round3_field4_zero_damage_on_a_DAMAGE_row_is_an_error_and_a_grant_row_is_not():
+    """FIELD-4 (round-3 fix pass, 2026-09-13) — completes pass K.
+
+    K's two new ERRORS key off the `$SIR` FUNCTION: no row for the weapon's cell, or a row on a
+    function that moves no pool. Neither sees a weapon whose own DAMAGE is zero on a perfectly
+    ordinary damage row — a catalog row or an override at `dmg: 0` compiles, pushes, registers every
+    hit and kills nobody, which is the same unkillable class by a different door. `hits_to_kill`
+    returns 0 for zero damage, so the magazine guard skips it too.
+
+    GRANT rows stay exempt: a heal/armour/shield weapon is not meant to deal damage."""
+    from brx_mcp.mc import compile as compile_mod
+    from brx_mcp.mc.compile import _SIR_GRANT, _SIR_TABLE, _sir_index
+    sir = _sir_index(_SIR_TABLE)
+    real = Compiler()
+    T = real.catalog._T
+    frame = real.catalog._by_id["assault_rifle"]["capture"]["frame"]
+    parts = frame.split(",")
+    fn = sir[(parts[T["proto"] + 1] or "0", parts[T["subtype"] + 1] or "0")]
+    assert fn not in _SIR_GRANT, f"control: the rifle's cell is a plain damage row (got fn {fn})"
+
+    dud = {"weapon_id": "dudgun", "name": "Dud", "cls": 0, "mag": 30, "reserve": 90,
+           "reload_ms": 1400, "dmg": 0, "rof": 54, "rng": 75, "wire": {"dmg": 0},
+           "capture": {"frame": frame}}
+    r = Compiler(WeaponCatalog(rows=[dud])).validate(_cfg(), [_player(weapons=("dudgun",))])
+    assert not r["ok"], r
+    assert any("dudgun" in e and "0 DAMAGE" in e.upper() for e in r["errors"]), r["errors"]
+
+    # The same weapon on a GRANT row is a HEAL, not a broken gun: warned about, never blocked. The
+    # shipped table carries no grant row (functions 1, 24, 36, 37, 38 only), so the exemption is
+    # pinned against a table that does -- a bench fix that adds one must not start erroring.
+    assert 11 in _SIR_GRANT and not any(v in _SIR_GRANT for v in sir.values()), sorted(set(sir.values()))
+    hp = list(parts)
+    hp[T["proto"] + 1], hp[T["subtype"] + 1] = "7", "5"
+    heal = {**dud, "weapon_id": "healgun", "name": "Heal", "capture": {"frame": ",".join(hp)}}
+    # patched by hand, not via the pytest fixture: `run_tests.py` is a bare runner with no fixtures
+    compile_mod._SIR_TABLE = tuple(_SIR_TABLE) + ("$SIR,7,5,,11,0,0,1,,*",)
+    try:
+        r2 = Compiler(WeaponCatalog(rows=[heal])).validate(_cfg(), [_player(weapons=("healgun",))])
+    finally:
+        compile_mod._SIR_TABLE = _SIR_TABLE
+    assert r2["ok"], r2["errors"]
+    assert any("healgun" in w and "GRANT" in w for w in r2["warnings"]), r2["warnings"]
