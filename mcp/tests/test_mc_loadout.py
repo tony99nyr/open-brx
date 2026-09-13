@@ -95,10 +95,20 @@ def test_perk_view_forwards_every_effect_key():
 
 
 # ------------------------------------------------------------------ policy engine
+# Round-2 fix pass K (2026-09-12): a weapon whose `$SIR` row cannot move the pool is never OFFERED
+# (`P.UNPLAYABLE_IDS` — `energy_launcher` today), because `Compiler.validate()` now REFUSES a loadout
+# carrying one and a stock pick must never be blocked at the whistle. Counted rather than hard-coded so
+# the day that row is fixed on the bench, deleting the id is the only edit.
+_OPEN = len(W) - len(P.UNPLAYABLE_IDS)
+
+
 def test_presets_and_pools():
+    assert _OPEN == 20, f"the visible arsenal moved ({len(W)} weapons, {len(P.UNPLAYABLE_IDS)} unplayable)"
+    assert "energy_launcher" not in P.pool(P.preset_rules("open"), W, PK)["primary"], "a zero-damage weapon is never offered"
     lp = P.pool(P.preset_rules("open"), W, PK)
-    assert len(lp["primary"]) == 21 and len(lp["secondary_weapons"]) == 21 and len(lp["perks"]) == 5
+    assert len(lp["primary"]) == _OPEN and len(lp["secondary_weapons"]) == _OPEN and len(lp["perks"]) == 5
     lp = P.pool(P.preset_rules("no_heavies"), W, PK)
+    # unchanged by UNPLAYABLE_IDS: `energy_launcher` is tagged `heavy`, so this preset already dropped it
     assert len(lp["primary"]) == 16 and "rail_gun" not in lp["primary"] and "amr" in lp["primary"]   # 13 + the three sidearms
     assert "rocket_launcher" not in lp["secondary_weapons"] and len(lp["perks"]) == 5
     lp = P.pool(P.preset_rules("snipers"), W, PK)
@@ -115,7 +125,7 @@ def test_merge_preset_name_rewrites_and_rule_edit_flips_to_custom():
     pol = P.merge(pol, {"preset": "open"})
     assert pol["preset"] == "open" and pol["hud_select"] is True
     pol = P.merge(pol, {"perk": {"choice": "off"}})                # A14: the perk rule is its own slot
-    assert pol["preset"] == "custom" and P.pool(pol, W, PK)["perks"] == [] and len(P.pool(pol, W, PK)["secondary_weapons"]) == 21
+    assert pol["preset"] == "custom" and P.pool(pol, W, PK)["perks"] == [] and len(P.pool(pol, W, PK)["secondary_weapons"]) == _OPEN
     pol = P.merge(pol, {"perk": {"choice": "player"}})
     assert pol["preset"] == "open"                      # matches a preset again → named again
     pol = P.merge(pol, {"primary": {"exclude_tags": ["heavy"]}, "secondary": {"exclude_tags": ["heavy"]}})
@@ -153,7 +163,7 @@ def test_validate_and_apply_matrix():
     # a fixed perk is set for everyone; the ALT-button one (Easy Reload) also drops the second weapon, Body Armor keeps it
     fixed_perk = P.merge(P.preset_rules("open"), {"perk": {"choice": "fixed", "fixed_id": "easy_reload"}})
     lpf = P.pool(fixed_perk, W, PK)
-    assert lpf["perks"] == ["easy_reload"] and len(lpf["secondary_weapons"]) == 21
+    assert lpf["perks"] == ["easy_reload"] and len(lpf["secondary_weapons"]) == _OPEN
     assert P.apply(fixed_perk, lpf, {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}]}, W, PK) == {"weapons": [{"weapon_id": "smg"}], "perk": "easy_reload"}
     armor = P.merge(P.preset_rules("open"), {"perk": {"choice": "fixed", "fixed_id": "body_armor"}})
     assert P.apply(armor, P.pool(armor, W, PK), {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}]}, W, PK) == {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "perk": "body_armor"}

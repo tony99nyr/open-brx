@@ -1655,16 +1655,24 @@ class Compiler:
                 htk = self.catalog.hits_to_kill(wid, pool)
                 if not (htk and mag < htk):
                     continue
-                if sidearm and kind == "only":
-                    errors.append(f"{wid} cannot kill on one magazine: mag {mag} < {htk} hits at "
-                                  f"{self.catalog.damage(wid)} dmg vs {pool} pool "
-                                  f"(docs/weapon-design.md §2.1)")
-                elif sidearm:
-                    # A sidearm riding BESIDE a primary is the backup by design (A12): needing a
-                    # reload to finish a kill at a big pool is its nature, not a broken kit. Tony's
-                    # push was blocked twice by deagle + body_armor at a 190 pool (2026-09-12) — it
-                    # says so and gets out of the way.
-                    warnings.append(f"{wid} is a sidearm and cannot kill on one magazine at this pool - "
+                if sidearm:
+                    # Round-2 fix pass C (2026-09-12): a WARNING in EVERY slot, worded for the shape
+                    # the kit actually has.
+                    #
+                    # The round-1 review made a lone sidearm an ERROR ("a main gun that cannot finish a
+                    # kill on a magazine is a broken kit"). F146 is the field decision that overrides
+                    # that: a guideline never blocks. The operator cannot retune a weapon against the
+                    # host's health model in the thirty seconds before the whistle, a reload still
+                    # kills, and nothing UNKILLABLE ships either way -- that is the `$SIR` gate below,
+                    # which pass K promoted to the error this one was standing in for.
+                    #
+                    # And the old copy was wrong about the slot. `kind` is "backup" only for slot > 0;
+                    # a sidearm in SLOT 0 with a second weapon behind it read "riding beside a
+                    # primary", which is exactly backwards -- it IS the primary.
+                    what = ("is your only weapon" if kind == "only"
+                            else "is your backup" if kind == "backup"
+                            else "is the gun you fight with (a sidearm in the PRIMARY slot)")
+                    warnings.append(f"{wid} {what} and cannot kill on one magazine at this pool - "
                                     f"it will need a reload (mag {mag} < {htk} hits at "
                                     f"{self.catalog.damage(wid)} dmg vs {pool} pool)")
                 else:
@@ -1678,10 +1686,23 @@ class Compiler:
         # in every game we ship. Validating the weapon alone is not enough; the effect lives in the
         # (weapon, table) pair. Bench-confirmed 2026-08-26, see docs/weapon-design.md §6.2.
         #
-        # ⚠ WARNING-ONLY BY DESIGN, TEMPORARILY. Promote the first two cases to `errors` in the SAME
-        # commit that fixes the Energy Launcher (flatten _SIR_TABLE to fn 1, or move the weapon off
-        # <9,3>) — at that point a clean pass is achievable. It must not sit here as a permanent
-        # warning; the test name records the intent.
+        # 🔴 THE FIRST TWO ARE ERRORS (round-2 fix pass K, 2026-09-12). They are the definition of
+        # unkillable: a weapon whose <t3,t4> keys no row has every hit silently DROPPED, and one on a
+        # `_SIR_NO_POOL` function registers a `$HIR` and moves nothing. Neither can win a match, and
+        # neither is reachable by the magazine gate above -- `hits_to_kill` returns 0 for zero damage,
+        # so that guard skips such a weapon entirely. The severity ordering used to be inverted: the
+        # RELOAD case (a kit that can still win, just slower) was the only error, while these two were
+        # advisories pending an Energy Launcher fix.
+        #
+        # `energy_launcher` is the one shipped row that trips this (its captured word keys $SIR 9,3 =
+        # fn 24, a status function), so it is excluded from every POOL (`policy.UNPLAYABLE_IDS`) rather
+        # than left as a pickable trap -- no stock pick may be blocked at the whistle (F146). When the
+        # bench fixes its row (flatten `_SIR_TABLE` to fn 1, or move the weapon off <9,3>), delete the
+        # id from that set. `test_k_no_stock_weapon_and_no_shipped_pool_is_blocked_by_the_new_errors`
+        # holds both halves together.
+        #
+        # The REST stay warnings: a GRANT row heals the target and an armour-piercing one is a
+        # balance fact -- both are playable, and both are things the operator may have chosen.
         sir = _sir_index(_SIR_TABLE)
         T = self.catalog._T
         # KeyError here is a CODE bug, not bad data — raise loudly rather than letting every
@@ -1701,12 +1722,12 @@ class Compiler:
                 fn = sir.get(key)
                 if fn is None:
                     flagged.add(wid)
-                    warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} — NO ROW in the pushed table, so "
-                                    f"every hit is silently dropped (weapon-design.md §6.2)")
+                    errors.append(f"{wid} keys $SIR {key[0]},{key[1]} — NO ROW in the pushed table, so "
+                                  f"every hit is silently dropped (weapon-design.md §6.2)")
                 elif fn in _SIR_NO_POOL:
                     flagged.add(wid)
-                    warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, which registers a "
-                                    f"hit but moves no pool: the weapon DEALS NO DAMAGE (weapon-design.md §6.2)")
+                    errors.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, which registers a "
+                                  f"hit but moves no pool: the weapon DEALS NO DAMAGE (weapon-design.md §6.2)")
                 elif fn in _SIR_GRANT:
                     flagged.add(wid)
                     dual = " (16/17/20/21 are DUAL-POLARITY: they still damage enemies, 17/21 armor-piercing)" \

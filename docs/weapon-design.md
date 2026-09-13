@@ -6,6 +6,12 @@
 > hit, 3/3 trials** (experiment-log 2026-08-26) — so the weapon is unusable in every game we run.
 > Fix options in **§6.2**; it is a bug, not a design question.
 >
+> **Contained, not fixed (round-2 fix pass 2026-09-12):** `Compiler.validate()` now REFUSES a loadout
+> carrying it (§6.2's first two cases are errors), and `policy.UNPLAYABLE_IDS` / `gameSummary.ts`
+> `UNPLAYABLE_IDS` keep it out of every KIT/DESIGNER pool so nobody can be handed a pick that cannot be
+> pushed. It is still in `weapons.json` and still on the CATALOGUE page with its `caution`. **Delete the
+> id from both sets in the commit that fixes the row.**
+>
 > **Mechanism:** fn 24 is pool-neutral on protocols 0, 5, 7, 9 and 10 (controlled matrix, `fad28f2`); one
 > listen-only run that reported damage on protocol 7 did not reproduce. History of the flip-flop:
 > `docs/experiment-log.md` 2026-08-26/27.
@@ -154,7 +160,11 @@ sounds — and moves the numbers.
    hold on all 19 captured frames; `resolve()` maintains both. Pinned by a test.
 3. **Tune damage and ammo before cycle.** Cycle carries fire feel — especially on burst weapons,
    where `t14` is the intra-burst spacing that `t23` is tuned against.
-4. **`mag ≥ htk`, always.** Enforced in `Compiler.validate()` as an error, except for a weapon tagged `sidearm`, where it is a warning (the backup is allowed to need a reload at a big pool, 2026-09-12).
+4. **`mag ≥ htk`, always.** Reported by `Compiler.validate()` as a **warning**, in every slot (round-2
+   fix pass 2026-09-12, following F146): the operator cannot retune a weapon against the host's health
+   model in the thirty seconds before the whistle, a reload still kills, and a guideline never blocks.
+   The wording names the shape — the gun you fight with, a sidearm in the primary slot, or a backup.
+   What DOES block is a weapon that cannot damage anyone at all (§6.2).
 5. **TTK band 1.5–3.5 s** at the 115 pool for everything that is not a one-shot weapon.
 6. **No strict dominance.** No weapon may be ≥ another on TTK, sustained DPS **and** total kills at
    once. Checked in a test, not by eye.
@@ -683,11 +693,14 @@ and warns on three cases:
 | function in the **no-pool** family | registers a `$HIR`, moves nothing | the Energy Launcher |
 | function is a **multiplier** (36/37) | lands ×1.25 or ×2 | not broken, but `htk`/`ttk_ms` in `weapons.json` are computed on raw `t5` and are wrong for that weapon |
 
-> ⚠ **Warning-only, deliberately and temporarily.** It cannot be an error while the Energy Launcher is
-> still broken, because no clean pass exists. **Promote the first two cases to errors in the same
-> commit that fixes it** — the code comment and the test name (`..._is_WARNING_ONLY_promote_to_error_
-> with_the_energy_launcher_fix`) both carry the reminder. Under flatten the multiplier warning goes
-> quiet on its own; under retune it is the prompt to recompute the published numbers.
+> 🔴 **The first two cases are ERRORS** (round-2 fix pass 2026-09-12). They are the definition of
+> unkillable, and neither is reachable by the `mag ≥ htk` guard — `hits_to_kill` returns 0 for zero
+> damage, so that check skips such a weapon entirely. The severity ordering used to be inverted: the
+> RELOAD case, a kit that can still win, was the only hard error while these two were advisories.
+> A clean pass exists now because the one row that trips it — the Energy Launcher — is excluded from
+> every pool (`policy.UNPLAYABLE_IDS`), so no operator pick can be blocked at the whistle. The
+> multiplier case stays a warning: under *flatten* it goes quiet on its own; under *retune* it is the
+> prompt to recompute the published numbers.
 
 **2. §0's "no multiplier, no reduction" is wrong.** It holds only for a standard-damage row against a
 shieldless victim, and the row multiplier is SENSOR-gated (bench 2026-09-11), not a flat "if crit"

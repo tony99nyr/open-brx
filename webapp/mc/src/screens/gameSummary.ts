@@ -4,12 +4,26 @@ import { STATION_SOURCE_IDS } from '../api/types';
 
 /** The rule engine, mirrored from mcp/brx_mcp/mc/policy.py `pool()`. The DESIGNER computes the pool from the rules
  *  being edited on every change (instant, server-independent); the server re-derives on save/apply and is the authority. */
+/** 🔴 Weapons that are NOT OFFERABLE in this build, whatever the policy says — mirrors
+ *  `policy.py UNPLAYABLE_IDS` (round-2 fix pass K, 2026-09-12). A weapon whose `<t3,t4>` keys a `$SIR`
+ *  row that moves no pool deals no damage at all, and the server's `validate()` now REFUSES a loadout
+ *  carrying one. A pick that cannot be pushed is the F146 failure — the operator finds out at the
+ *  whistle with nothing to do about it — so it is never offered. `energy_launcher` is the only such row
+ *  today (its captured word keys `$SIR 9,3`, function 24, a status cell), which is why the catalogue has
+ *  carried its `caution` since 2026-08-26; the CATALOGUE page still lists it, KIT and the DESIGNER do
+ *  not. Delete the id here AND in policy.py the day its row is fixed on the bench. */
+export const UNPLAYABLE_IDS = new Set(['energy_launcher']);
 const inPool = (r: SlotRule, id: string, tags: string[]) =>
-  (r.only_ids.length === 0 || r.only_ids.includes(id)) && !r.exclude_ids.includes(id) && !tags.some(t => r.exclude_tags.includes(t));
+  !UNPLAYABLE_IDS.has(id)
+  && (r.only_ids.length === 0 || r.only_ids.includes(id)) && !r.exclude_ids.includes(id) && !tags.some(t => r.exclude_tags.includes(t));
 /** The weapon rows a slot's `kinds` admits before the tag/id filters: 'weapon' = every weapon (a pistol is a weapon
  *  too); 'sidearm' alone = only the `sidearm`-tagged rows (the pistols); neither = none. Mirrors policy.py `weapon_kind_rows`. */
-export const kindRows = (r: SlotRule, weapons: WeaponView[]): WeaponView[] =>
-  r.kinds.includes('weapon') ? weapons : r.kinds.includes('sidearm') ? weapons.filter(w => (w.tags ?? []).includes('sidearm')) : [];
+export const kindRows = (r: SlotRule, weapons: WeaponView[]): WeaponView[] => {
+  // `UNPLAYABLE_IDS` is filtered HERE too, not only in `inPool`: these rows feed the DESIGNER's
+  // per-weapon chips, and a chip that can never be switched on is worse than no chip at all.
+  const ws = weapons.filter(w => !UNPLAYABLE_IDS.has(w.weapon_id));
+  return r.kinds.includes('weapon') ? ws : r.kinds.includes('sidearm') ? ws.filter(w => (w.tags ?? []).includes('sidearm')) : [];
+};
 export const admitsWeapons = (r: SlotRule) => r.kinds.includes('weapon') || r.kinds.includes('sidearm');
 /** A14: does this perk claim the ALT button (`effects.alt_reload`)? Then no second weapon can ride with it (policy.py `takes_alt`). */
 export const takesAlt = (k?: PerkView | null) => !!k?.effects?.alt_reload;
@@ -30,11 +44,11 @@ function emptyCode(rule: SlotRule, ids: Set<string>): PoolEmptyCode {
 }
 
 export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: PerkView[]): LoadoutPool & { reasons?: LoadoutPoolReasons } {
-  const prim = p.primary.choice === 'fixed' ? weapons.filter(w => w.weapon_id === p.primary.fixed_id).map(w => w.weapon_id)
+  const prim = p.primary.choice === 'fixed' ? weapons.filter(w => w.weapon_id === p.primary.fixed_id && !UNPLAYABLE_IDS.has(w.weapon_id)).map(w => w.weapon_id)
     : kindRows(p.primary, weapons).filter(w => inPool(p.primary, w.weapon_id, w.tags ?? [])).map(w => w.weapon_id);
   const s = p.secondary, k = p.perk;
   let sw: string[] = [], sp: string[] = [];
-  if (s.choice === 'fixed') sw = weapons.filter(w => w.weapon_id === s.fixed_id).map(w => w.weapon_id);
+  if (s.choice === 'fixed') sw = weapons.filter(w => w.weapon_id === s.fixed_id && !UNPLAYABLE_IDS.has(w.weapon_id)).map(w => w.weapon_id);
   else if (s.choice !== 'off') sw = kindRows(s, weapons).filter(w => inPool(s, w.weapon_id, w.tags ?? [])).map(w => w.weapon_id);   // 'sidearm' = pistols only (policy.py weapon_kind_rows)
   const visiblePerks = perks.filter(x => !x.hidden);   // pool() is handed only the visible catalog server-side
   if (k.choice === 'fixed') sp = visiblePerks.filter(x => x.perk_id === k.fixed_id).map(x => x.perk_id);                           // A14: the perk rule is its own slot

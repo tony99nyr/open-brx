@@ -251,6 +251,23 @@ def normalize(pol: LoadoutPolicy | None, mode: str = "tdm") -> LoadoutPolicy:
 
 
 # ---- pool ---------------------------------------------------------------------
+# 🔴 Round-2 fix pass K (2026-09-12): weapons that are NOT OFFERABLE in this build, whatever the policy
+# says. A weapon whose <t3,t4> keys a $SIR row that cannot move the pool deals no damage at all, and
+# `Compiler.validate()` now refuses a loadout carrying one (an ERROR, not an advisory -- it is the
+# definition of unkillable). A pick that cannot be pushed is the exact F146 failure: the operator finds
+# out at the whistle and has nothing to do about it. So the pool never offers it in the first place.
+#
+# `energy_launcher` is the only such row today: its captured word keys $SIR 9,3 (function 24, a status
+# cell), which is why the catalogue has carried `caution: "deals no damage in our shipped config"` since
+# 2026-08-26. It is still in `weapons.json` and still on the CATALOGUE page with that caution -- this
+# removes it from the KIT/DESIGNER pools only. **Delete the id the moment its row is fixed on the
+# bench** (flatten `_SIR_TABLE` to fn 1, or move the weapon off <9,3>); `test_mc_compile.py`
+# `test_k_no_stock_weapon_and_no_shipped_pool_is_blocked_by_the_new_errors` holds the two halves
+# together in both directions, so a stale entry here fails loudly rather than quietly hiding a weapon.
+# Mirrored in `webapp/mc/src/screens/gameSummary.ts` (`UNPLAYABLE_IDS`).
+UNPLAYABLE_IDS = frozenset({"energy_launcher"})
+
+
 def _filter(rule: SlotRule, rows: Sequence[Mapping[str, Any]], id_key: str) -> list[str]:
     ex_tags = set(rule.get("exclude_tags") or ())
     ex_ids = set(rule.get("exclude_ids") or ())
@@ -258,6 +275,8 @@ def _filter(rule: SlotRule, rows: Sequence[Mapping[str, Any]], id_key: str) -> l
     out = []
     for r in rows:
         rid = r[id_key]
+        if id_key == "weapon_id" and rid in UNPLAYABLE_IDS:
+            continue                      # never offerable, whatever the policy says (round-2 K)
         if only and rid not in only:
             continue
         if rid in ex_ids or (ex_tags & set(r.get("tags") or ())):
@@ -311,14 +330,16 @@ def pool(policy: LoadoutPolicy, weapons: Sequence[Weapon], perks: Sequence[PerkV
     prim, sec, pr = policy["primary"], policy["secondary"], policy["perk"]
     if prim["choice"] == "fixed":
         prim_fid = prim["fixed_id"]     # `_check_rule` refuses choice "fixed" with no fixed_id
-        primary = [prim_fid] if prim_fid and any(w["weapon_id"] == prim_fid for w in weapons) else []
+        primary = [prim_fid] if prim_fid and prim_fid not in UNPLAYABLE_IDS \
+            and any(w["weapon_id"] == prim_fid for w in weapons) else []
     else:
         primary = _filter(prim, weapon_kind_rows(prim, weapons), "weapon_id")
     if sec["choice"] == "off":
         sw = []
     elif sec["choice"] == "fixed":
         sec_fid = sec["fixed_id"]
-        sw = [sec_fid] if sec_fid and any(w["weapon_id"] == sec_fid for w in weapons) else []
+        sw = [sec_fid] if sec_fid and sec_fid not in UNPLAYABLE_IDS \
+            and any(w["weapon_id"] == sec_fid for w in weapons) else []
     else:
         sw = _filter(sec, weapon_kind_rows(sec, weapons), "weapon_id")
     if pr["choice"] == "off":

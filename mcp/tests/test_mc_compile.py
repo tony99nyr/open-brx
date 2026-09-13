@@ -405,19 +405,59 @@ def test_validate_warns_when_a_primary_cannot_kill_on_one_magazine():
     assert "mag 1 < 2 hits at 90 dmg vs a 115 pool" in said[0], said
 
 
-def test_f146_a_sidearm_is_never_held_to_the_one_magazine_rule():
-    """Field 2026-09-12, two blocked pushes. The guard ran over EVERY equipped weapon, so it graded a
-    backup pistol by the standard of the gun you fight with: "deagle cannot kill on one magazine:
-    mag 7 < 8 hits at 26 dmg vs 190 pool" refused an ordinary sniper + deagle kit. A sidearm is
-    carried for the moments the primary is empty; one magazine was never its job."""
-    # as the SECONDARY, beside a legal primary: nothing is said at all
-    r = C.validate(_cfg(), [_player(weapons=("sniper_rifle", "deagle"))])
-    assert not any("ONE MAGAZINE" in w for w in r["warnings"]), r["warnings"]
-    assert not any("one magazine" in e for e in r["errors"]), r["errors"]
-    # and as the PRIMARY (the pistols-only fallback the operator never chose) it is still exempt
-    r2 = C.validate(_cfg(), [_player(weapons=("usp",))])
-    assert not any("ONE MAGAZINE" in w for w in r2["warnings"]), r2["warnings"]
-    assert r2["ok"], r2["errors"]
+# A synthetic pistol that genuinely CANNOT finish a kill on one magazine at the default 115 pool:
+# mag 1, 90 dmg -> 2 hits. Tagged `sidearm`, so it is the same row in every slot and the only thing
+# that changes between the legs below is WHERE it is carried.
+_SIDEARM_ROW_115 = {"weapon_id": "coilgun", "name": "Coilgun", "cls": 7, "mag": 1, "reserve": 6,
+                    "reload_ms": 2400, "dmg": 78, "rof": 25, "rng": 75, "base": "ar",
+                    "wire": {"dmg": 90}, "tags": ["sidearm"], "role": "sidearm"}
+# ...and a plain primary to carry beside it, so the "backup" leg has something in slot 0.
+_PRIMARY_ROW = {"weapon_id": "bigrifle", "name": "Big Rifle", "cls": 0, "mag": 30, "reserve": 90,
+                "reload_ms": 1400, "dmg": 60, "rof": 54, "rng": 75, "base": "ar", "wire": {"dmg": 60}}
+
+
+def test_f146_round2_a_sidearm_that_needs_a_reload_WARNS_in_every_slot_and_never_blocks():
+    """Round-2 fix pass C (2026-09-12). Two things were wrong here.
+
+    (1) The OLD version of this test was VACUOUS. `sniper_rifle + deagle` and a lone `usp` both kill
+    comfortably inside one magazine at the default 115 pool, so neither leg ever reached the guard —
+    it asserted the absence of a warning that could not have been emitted whatever the rule said.
+
+    (2) A sidearm carried as the player's ONLY gun was an ERROR. F146 is Tony's field decision that a
+    guideline never blocks: the tuning of a weapon against the host's health model is not something an
+    operator can act on in the thirty seconds before the whistle, and nothing unkillable ships either
+    way — a reload still kills. So every magazine case is a WARNING now, and the wording branches on
+    the REAL shape instead of calling a slot-0 sidearm "beside a primary"."""
+    side = Compiler(WeaponCatalog(rows=[_SIDEARM_ROW_115, _PRIMARY_ROW]))
+
+    # (i) the LONE sidearm — the gun they fight with
+    r = side.validate(_cfg(), [_player(weapons=("coilgun",))])
+    assert r["ok"], r["errors"]
+    assert not any("one magazine" in e.lower() for e in r["errors"]), r["errors"]
+    said = [w for w in r["warnings"] if "one magazine" in w.lower()]
+    assert len(said) == 1, r["warnings"]
+    assert "coilgun is your only weapon and cannot kill on one magazine" in said[0], said
+    assert "mag 1 < 2 hits at 90 dmg vs 115 pool" in said[0], said
+
+    # (ii) the same pistol as a BACKUP, behind a real primary
+    r = side.validate(_cfg(), [_player(weapons=("bigrifle", "coilgun"))])
+    assert r["ok"], r["errors"]
+    said = [w for w in r["warnings"] if "one magazine" in w.lower()]
+    assert len(said) == 1, r["warnings"]
+    assert "coilgun is your backup and cannot kill on one magazine" in said[0], said
+
+    # (iii) the same pistol in SLOT 0 with a backup behind it — still the gun they fight with, and the
+    # old copy called this one "riding beside a primary", which is exactly backwards.
+    r = side.validate(_cfg(), [_player(weapons=("coilgun", "bigrifle"))])
+    assert r["ok"], r["errors"]
+    said = [w for w in r["warnings"] if "one magazine" in w.lower()]
+    assert len(said) == 1, r["warnings"]
+    assert "coilgun is the gun you fight with" in said[0], said
+    assert "backup" not in said[0].lower(), said
+
+    # CONTROL: a weapon that CAN kill on one magazine says nothing at all, in any slot.
+    quiet = side.validate(_cfg(), [_player(weapons=("bigrifle",))])
+    assert not any("one magazine" in w.lower() for w in quiet["warnings"]), quiet["warnings"]
 
 
 def test_f146_the_guard_grades_the_BASE_pool_so_one_players_perk_cannot_ban_a_weapon():
@@ -442,9 +482,10 @@ def test_f146_the_guard_grades_the_BASE_pool_so_one_players_perk_cannot_ban_a_we
 def test_sidearm_that_cannot_kill_on_one_magazine_is_a_warning_not_an_error():
     """A12 sidearm at a big pool: the backup is allowed to need a reload (Tony's push was blocked twice by
     deagle + body_armor at a 190 pool, 2026-09-12). Same rule, same numbers, a WARNING; a rifle on the
-    same numbers is still REPORTED — as F146's primary line (integration 2026-09-12: F146 demoted
-    every un-killing PRIMARY to a warning; the only hard error left is a sidearm carried as the
-    player's only gun, see `test_a_sidearm_that_is_the_players_only_weapon_is_still_an_error`)."""
+    same numbers is still REPORTED — as F146's primary line. (Integration 2026-09-12 demoted every
+    un-killing PRIMARY to a warning; round-2 pass C demoted the last hard case — a sidearm carried as
+    the player's only gun — for the same reason, so the whole magazine rule is now advisory. See
+    `test_f146_round2_a_sidearm_that_needs_a_reload_WARNS_in_every_slot_and_never_blocks`.)"""
     row = {"weapon_id": "coilgun", "name": "Coilgun", "cls": 7, "mag": 1, "reserve": 6, "reload_ms": 2400,
            "dmg": 78, "rof": 25, "rng": 75, "base": "ar", "wire": {"dmg": 90}}
     # ...as the SECONDARY, beside a primary that can (round-1 polish review 2026-09-12: the exemption is
@@ -453,7 +494,7 @@ def test_sidearm_that_cannot_kill_on_one_magazine_is_a_warning_not_an_error():
                                         {**row, "tags": ["sidearm"], "role": "sidearm"}]))
     r = side.validate(_cfg(), [_player(weapons=("workhorse", "coilgun"))])
     assert not any("one magazine" in e for e in r["errors"]), r["errors"]
-    assert any("coilgun is a sidearm and cannot kill on one magazine at this pool - it will need a reload" in w
+    assert any("coilgun is your backup and cannot kill on one magazine at this pool - it will need a reload" in w
                for w in r["warnings"]), r["warnings"]
     rifle = Compiler(WeaponCatalog(rows=[{**row, "tags": ["rifle"]}]))
     r = rifle.validate(_cfg(), [_player(weapons=("coilgun",))])
@@ -472,8 +513,12 @@ def test_deagle_with_body_armor_at_a_big_pool_warns_and_does_not_block():
     p["loadout"]["overrides"] = {"max_hp": 100, "max_armor": 90}
     r = C.validate(_cfg(), [p])
     assert not any("deagle" in e for e in r["errors"]), r["errors"]
-    side = [w for w in r["warnings"] if w.startswith("deagle is a sidearm")]
+    # Counted on the FACT, not on one branch's wording: the old `startswith("deagle is a sidearm")`
+    # only matched the "beside a primary" copy, so the same finding said in any other shape read as
+    # zero warnings and this test would have gone quietly green on a regression (round-2 pass C).
+    side = [w for w in r["warnings"] if "deagle" in w and "one magazine" in w.lower()]
     assert len(side) == 1, r["warnings"]
+    assert "backup" in side[0].lower(), side
 
 
 def test_validate_accepts_weapons_that_can_kill_on_one_magazine():
@@ -505,22 +550,19 @@ def test_mag_invariant_reports_each_weapon_once_per_pool():
 
 
 # ---- $SIR effect guard (weapon-design.md §6.2) -----------------------------
-def test_sir_effect_guard_is_WARNING_ONLY_promote_to_error_with_the_energy_launcher_fix():
-    """⚠ INTENTIONALLY A WARNING, TEMPORARILY.
-
-    A weapon's damage is a property of the (weapon, `$SIR` table) PAIR — its `<t3,t4>` keys a row
+def test_sir_effect_guard_is_an_ERROR_for_a_weapon_that_deals_no_damage():
+    """A weapon's damage is a property of the (weapon, `$SIR` table) PAIR — its `<t3,t4>` keys a row
     whose FUNCTION decides what the IR magnitude does. The Energy Launcher keys `$SIR,9,3,,24`, a
     status row, and deals ZERO damage in every game we ship — while passing the mag>=htk invariant
     clean, because that computes on raw t5.
 
-    Promote the missing-row and no-pool cases to ERRORS in the same commit that fixes the Energy
-    Launcher (flatten `_SIR_TABLE` to fn 1, or move the weapon off `<9,3>`), when a clean pass is
-    achievable. This test name is the reminder; rename it when you do.
-    """
+    Round-2 fix pass K promoted this from a warning: it is the definition of unkillable, and the
+    magazine rule that WAS the hard error is now the advisory (pass C). The launcher is excluded from
+    every pool (`policy.UNPLAYABLE_IDS`) so the error is unreachable by an operator's pick; when its
+    row is fixed on the bench, that entry goes and this test keeps holding the rule."""
     r = C.validate(_cfg(), [_player(weapons=("energy_launcher",))])
-    assert r["ok"] is True, "warning-only for now — promote with the Energy Launcher fix"
-    assert not r["errors"]
-    assert any("DEALS NO DAMAGE" in w and "energy_launcher" in w for w in r["warnings"]), r["warnings"]
+    assert r["ok"] is False, r
+    assert any("DEALS NO DAMAGE" in e and "energy_launcher" in e for e in r["errors"]), r["errors"]
 
 
 def test_sir_guard_flags_multiplier_rows_because_published_htk_is_computed_on_raw_t5():
@@ -544,7 +586,8 @@ def test_sir_guard_flags_a_weapon_with_no_row_at_all():
                                                        "0,7,100,100,,0,,,S16,,,,D04,D03,D02,D18,,,,,"
                                                        "8,4,75,*"}}])
     r = Compiler(orphan).validate(_cfg(), [_player(weapons=("orphan",))])
-    assert any("NO ROW" in w for w in r["warnings"]), r["warnings"]
+    assert any("NO ROW" in e for e in r["errors"]), r     # round-2 K: an ERROR, not an advisory
+    assert not r["ok"], r
 
 
 def test_sir_guard_flags_the_uncharacterised_and_helpful_functions():
@@ -577,8 +620,9 @@ def test_sir_guard_flags_the_uncharacterised_and_helpful_functions():
 
 def test_sir_guard_reports_each_weapon_once():
     a, b = _player(num=7, weapons=("energy_launcher",)), _player(num=8, weapons=("energy_launcher",))
-    warns = [w for w in C.validate(_cfg(), [a, b])["warnings"] if "energy_launcher" in w]
-    assert len(warns) == 1, warns
+    r = C.validate(_cfg(), [a, b])
+    said = [x for x in r["errors"] + r["warnings"] if "energy_launcher" in x]
+    assert len(said) == 1, said
 
 
 # ---- F70/F79: the objective/hill grenade beacon row -------------------------
@@ -1228,13 +1272,96 @@ _SIDEARM_ROW = {"weapon_id": "coilgun", "name": "Coilgun", "cls": 7, "mag": 1, "
                 "reload_ms": 2400, "dmg": 78, "rof": 25, "rng": 75, "base": "ar",
                 "wire": {"dmg": 90}, "tags": ["sidearm"], "role": "sidearm"}
 
-def test_a_sidearm_that_is_the_players_only_weapon_is_still_an_error():
+def test_a_sidearm_that_is_the_players_only_weapon_warns_in_ITS_OWN_WORDS_and_still_plays():
     """The A12 exemption tested the weapon's TAG and not its SLOT. `policy.PRIMARY_KINDS` admits
     `"sidearm"` (`_R_SIDEARM_ONLY` is the copy for it), so a pistols-only round puts the sidearm in
-    slot 1 as the player's ONLY gun — and "cannot kill on one magazine" then shipped as a warning the
-    operator can walk straight past. A backup that needs a reload is its nature; a MAIN gun that cannot
-    finish a kill on a magazine is the broken kit §2.1 exists to refuse."""
+    slot 1 as the player's ONLY gun — and calling that "a sidearm riding beside a primary" was simply
+    false. It gets its own sentence.
+
+    Round-2 pass C: a WARNING, not an error. It was promoted to an error by the round-1 review on the
+    reasoning that a main gun which cannot finish a kill on one magazine is a broken kit — but F146 is
+    the field decision that a guideline never blocks, the operator cannot retune a weapon at the
+    whistle, and a reload still kills. Nothing unkillable ships either way (that is pass K's job)."""
     side = Compiler(WeaponCatalog(rows=[_SIDEARM_ROW]))
     r = side.validate(_cfg(), [_player(weapons=("coilgun",))])
-    assert any("coilgun cannot kill on one magazine" in e for e in r["errors"]), r["errors"]
-    assert not any("is a sidearm" in w for w in r["warnings"]), r["warnings"]
+    assert r["ok"], r["errors"]
+    assert not any("one magazine" in e.lower() for e in r["errors"]), r["errors"]
+    assert any("coilgun is your only weapon and cannot kill on one magazine" in w for w in r["warnings"]), r["warnings"]
+
+
+# ---------------------------------------------------------------------------------------------
+# Round-2 fix pass K (2026-09-12) - the severity ordering of the loadout gate
+# ---------------------------------------------------------------------------------------------
+def test_k_a_weapon_whose_hits_cannot_move_the_pool_is_an_ERROR_not_a_warning():
+    """The ordering was inverted. "needs a reload" was the only ERROR, while "keys NO $SIR row" (every
+    hit silently dropped) and "registers a hit but moves no pool" (deals NO damage) were warnings - so
+    a kit that could still win was blocked and a kit that cannot kill AT ALL went through.
+
+    `hits_to_kill` returns 0 for zero damage, so the magazine gate skips such a weapon entirely and
+    nothing else was going to catch it. These two conditions are the definition of unkillable."""
+    from brx_mcp.mc.compile import _SIR_NO_POOL, _SIR_TABLE, _sir_index
+    sir = _sir_index(_SIR_TABLE)
+    real = Compiler()
+    T = real.catalog._T
+
+    # (a) the shipped Energy Launcher: a REAL row, on a status function that moves no pool
+    fr = real.catalog.resolve("energy_launcher", 0).split(",")
+    fn = sir[(fr[T["proto"] + 1] or "0", fr[T["subtype"] + 1] or "0")]
+    assert fn in _SIR_NO_POOL, fn
+    r = real.validate(_cfg(), [_player(weapons=("energy_launcher",))])
+    assert not r["ok"], r
+    assert any("DEALS NO DAMAGE" in e for e in r["errors"]), r["errors"]
+
+    # (b) a weapon keyed to a cell with NO row in the pushed table at all
+    src = real.catalog._by_id["energy_launcher"]
+    frame = src["capture"]["frame"].split(",")
+    frame[T["proto"] + 1] = "30"          # an unused protocol: no cell for it in _SIR_TABLE
+    orphan = {"weapon_id": "ghostgun", "name": "Ghost", "cls": 0, "mag": 30, "reserve": 90,
+              "reload_ms": 1400, "dmg": 40, "rof": 54, "rng": 75, "wire": {"dmg": 40},
+              "capture": {"frame": ",".join(frame)}}
+    cat = WeaponCatalog(rows=[orphan])
+    fr = cat.resolve("ghostgun", 0).split(",")
+    key = (fr[T["proto"] + 1] or "0", fr[T["subtype"] + 1] or "0")
+    assert sir.get(key) is None, f"the fixture must key an ABSENT $SIR cell (got {key} -> {sir.get(key)})"
+    r = Compiler(cat).validate(_cfg(), [_player(weapons=("ghostgun",))])
+    assert not r["ok"], r
+    assert any("NO ROW" in e for e in r["errors"]), r["errors"]
+
+
+def test_k_a_real_pistol_that_cannot_kill_on_one_magazine_is_still_only_a_WARNING():
+    """CONTROL for the promotion above: the magazine cases stay warnings (pass C). The deagle at a
+    190 pool deals real damage through a real row - it just needs a reload, which still kills."""
+    p = _player(weapons=("deagle",))
+    p["loadout"]["overrides"] = {"max_hp": 100, "max_armor": 90}
+    r = C.validate(_cfg(), [p])
+    assert r["ok"], r["errors"]
+    assert any("one magazine" in w.lower() for w in r["warnings"]), r["warnings"]
+
+
+def test_k_no_stock_weapon_and_no_shipped_pool_is_blocked_by_the_new_errors():
+    """THE GUARD. Promoting two conditions to errors is only safe if nothing an operator can pick from
+    a shipped pool trips them - a stock pick that cannot be pushed is the F146 failure all over again.
+
+    `energy_launcher` is the one row in `weapons.json` that does (its captured word keys $SIR 9,3, a
+    status function). It is therefore excluded from EVERY pool (`policy.UNPLAYABLE_IDS`), so no player
+    can be handed it; the catalogue page still lists it with its `caution`. The day the launcher's row
+    is fixed on the bench, delete the id from that set."""
+    from brx_mcp.mc import policy as _policy
+    real = Compiler()
+    weapons, perks = real.weapon_catalog(), real.perk_catalog()
+    for w in weapons:
+        wid = w["weapon_id"]
+        r = real.validate(_cfg(), [_player(weapons=(wid,))])
+        if wid in _policy.UNPLAYABLE_IDS:
+            assert not r["ok"], f"{wid} is in UNPLAYABLE_IDS but validates clean - drop it from the set"
+            continue
+        assert r["ok"], f"stock weapon {wid} is BLOCKED by validate(): {r['errors']}"
+
+    for name in ("open", "no_heavies", "snipers"):
+        pol = _policy.preset_rules(name)
+        pl = _policy.pool(pol, weapons, perks)
+        for slot in ("primary", "secondary_weapons"):
+            for wid in pl[slot]:
+                assert wid not in _policy.UNPLAYABLE_IDS, f"preset {name} offers {wid} in {slot}"
+                r = real.validate(_cfg(), [_player(weapons=(wid,))])
+                assert r["ok"], f"preset {name} offers {wid} in {slot}, which validate() blocks: {r['errors']}"
