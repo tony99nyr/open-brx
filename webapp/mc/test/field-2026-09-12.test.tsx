@@ -240,14 +240,20 @@ describe('round-2 B — an empty team is a BLOCKING red on the lobby, never an a
   /** A LOBBY with a clean board (no red/waiting rows of its own), `n` players dealt onto the named
    *  teams. `blockedCount` is what normally disables PUSH, so the board is levelled first: this test
    *  is about the ROSTER gate and nothing else. */
-  const lobbyOn = async (teamOf: (i: number) => string) => {
+  /** `faults` is what the SERVER said: an array (it answered), or `null` for a server that predates
+   *  the field and never sends the key at all. (`null`, not `undefined`: passing `undefined` to a
+   *  defaulted parameter takes the default, which would quietly test the wrong case.) Round-3
+   *  FIELD-3: the console's local rule is the FALLBACK for that older server and nothing else. */
+  const lobbyOn = async (teamOf: (i: number) => string, faults: string[] | null = []) => {
     const d = await demo();
     const players = d.state.players.map((p, i) => ({ ...p, team_id: teamOf(i), ready: true }));
     const board = d.state.readiness.board.map(b => ({ ...b, status: 'green' as const, blockers: [] }));
+    const readiness = { ...d.state.readiness, board, go: true, roster_faults: faults! };
+    if (faults === null) delete (readiness as Partial<State['readiness']>).roster_faults;
     const state: State = { ...d.state, phase: 'lobby', players,
       config: { ...d.state.config, mode: 'tdm' },
       lobby: { ...d.state.lobby, pushed: false, acks: {} },
-      readiness: { ...d.state.readiness, board, go: true, roster_faults: [] } };
+      readiness };
     return mountScreen(<Lobby />, { ...d, state });
   };
   const pushBtn = (m: Awaited<ReturnType<typeof lobbyOn>>) =>
@@ -256,12 +262,14 @@ describe('round-2 B — an empty team is a BLOCKING red on the lobby, never an a
   it('everyone on one team: a red alert says why, and PUSH/ARM is disabled', async () => {
     // The field bug: switching FFA -> TDM re-teamed all four players onto BLUE. A one-team match
     // cannot register a hit (the gun refuses friendly damage), and the only thing on screen about it
-    // was an amber "4 V 0 — UNBALANCED" chip beside a live PUSH button.
-    const m = await lobbyOn(() => 'blue');
+    // was an amber "4 V 0 — UNBALANCED" chip beside a live PUSH button. The SERVER names the fault
+    // (round-3 FIELD-3: the console renders what it was told, and only invents a fault of its own
+    // when the key is absent altogether).
+    const m = await lobbyOn(() => 'blue', ['ONLY ONE SIDE HAS PLAYERS — move players between teams']);
     const alert = m.find('[data-testid="roster-fault"]');
     expect(alert.length, 'the empty team gets its own alert, not a tag').toBe(1);
     expect(alert[0].getAttribute('role')).toBe('alert');
-    expect(m.text()).toContain('ALL PLAYERS ON ONE TEAM');
+    expect(m.text()).toContain('ONLY ONE SIDE HAS PLAYERS');
     expect(pushBtn(m).disabled, 'MC would refuse this push anyway — never offer it').toBe(true);
     m.unmount();
   });
@@ -274,16 +282,39 @@ describe('round-2 B — an empty team is a BLOCKING red on the lobby, never an a
     m.unmount();
   });
 
+  it('FIELD-3: the local rule is a fallback for an OLDER server, not a second opinion', async () => {
+    // Present-and-EMPTY is the server saying "this roster is fine". The console used to run its own
+    // cruder rule whenever it saw no fault at all, so it overrode that answer — and would silently
+    // undo any server-side narrowing (MERGE-0's tid predicate is exactly one).
+    const told = await lobbyOn(() => 'blue', []);
+    expect(told.find('[data-testid="roster-fault"]').length,
+      'the server said there is no fault; the console does not overrule it').toBe(0);
+    told.unmount();
+    // ABSENT is an MC that predates the field: the local rule is all there is.
+    const old = await lobbyOn(() => 'blue', null);
+    expect(old.find('[data-testid="roster-fault"]').length,
+      'against an older server the console still has to say it').toBe(1);
+    expect(old.text()).toContain('ONLY ONE SIDE HAS PLAYERS');
+    old.unmount();
+    // ...and the local rule is the SAME question the server asks: populated $TIDs, so a populated
+    // second side is never a fault even against an old server.
+    const split = await lobbyOn(i => (i % 2 ? 'yellow' : 'blue'), null);
+    expect(split.find('[data-testid="roster-fault"]').length).toBe(0);
+    split.unmount();
+  });
+
   it('the mock refuses the push and the start the same way the server does', async () => {
     const backend = new MockBackend();
     await backend.pushLobby(true);                 // pushed while the teams are still split
-    await backend.putConfig({ mode: 'ffa' });
-    await backend.putConfig({ mode: 'tdm' });      // the re-team that piles everyone onto teams[0]
+    const st0 = await backend.getState();
+    // Round-3 FIELD-1: a mode pick no longer CREATES this roster (it re-teams by index and
+    // rebalances), so the one-side roster is built the way an operator still can — by hand.
+    await Promise.all(st0.players.map(p => backend.patchPlayer(p.player_id, { team_id: st0.config.teams[0].team_id })));
     const st = await backend.getState();
-    expect(new Set(st.players.map(p => p.team_id)).size, 'control: the mock reproduces the pile-up').toBe(1);
-    expect(st.readiness.roster_faults.join(' ')).toContain('ALL PLAYERS ON ONE TEAM');
-    await expect(backend.pushLobby(true)).rejects.toThrow(/ONE TEAM/);
-    await expect(backend.start(10, true)).rejects.toThrow(/ONE TEAM/);
+    expect(new Set(st.players.map(p => p.team_id)).size, 'control: everyone really is on one side').toBe(1);
+    expect(st.readiness.roster_faults.join(' ')).toContain('ONE SIDE');
+    await expect(backend.pushLobby(true)).rejects.toThrow(/ONE SIDE/);
+    await expect(backend.start(10, true)).rejects.toThrow(/ONE SIDE/);
   });
 });
 

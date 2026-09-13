@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useStore } from '../store';
 import { F, T, TAB, roleOf } from '../tokens';
 import { BTN_RESET, GhostButton, ScreenHeader, SectionRule, SegBar, Tag } from '../ui';
+import { UNPLAYABLE_IDS } from './gameSummary';
 
 // Field 2026-08-31, Tony: "on the kit page is there a way to review the weapons myself without
 // setting the kit? like an armory page?" — there was not. KIT is the only place weapon stats were
@@ -112,6 +113,17 @@ export function Catalog() {
                     {w.name.toUpperCase()}
                     {!w.verified && <span title="Retuned from the captured Callsign frame for balance — not the stock numbers" style={{ font: F.mono(500, 8.5), letterSpacing: '.14em', color: T.micro, marginLeft: 8 }}>TUNED</span>}
                     {w.caution && <span role="alert" title={w.caution} style={{ font: F.mono(600, 9), color: T.bad, marginLeft: 8 }}>▲</span>}
+                    {/* FIELD-2 (round-3 fix pass, 2026-09-13): a caution triangle was all this row
+                        ever said, and KIT/DESIGNER quietly stopped offering the weapon — so the one
+                        page that still lists it is the one page that has to say WHY, in words, from
+                        the SAME constant the pools read (`policy.UNPLAYABLE_IDS`, mirrored once in
+                        gameSummary.ts). Delete the id there the day the bench fixes its $SIR row. */}
+                    {UNPLAYABLE_IDS.has(w.weapon_id) && (
+                      <span data-testid="not-playable" title="Its hit row keys a $SIR function that moves no pool, so every hit registers and deals nothing. Excluded from KIT and the DESIGNER until the row is fixed on the bench (docs/weapon-design.md §6.2)."
+                        style={{ font: F.mono(700, 8.5), letterSpacing: '.14em', color: T.accInk, background: T.bad, padding: '2px 6px', marginLeft: 8, whiteSpace: 'nowrap' }}>
+                        NOT PLAYABLE · HIT ROW DEALS NO DAMAGE
+                      </span>
+                    )}
                   </td>
                   <td style={{ padding: '9px 10px' }}><Tag color={r.color} size={9} style={{ letterSpacing: '.18em', padding: '2px 8px' }}>{r.label || '—'}</Tag></td>
                   {num(w.dmg_per_hit)}

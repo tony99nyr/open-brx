@@ -193,13 +193,14 @@ async function resetTdm(base) {
 
 /** Deal the roster round-robin across whatever teams the config declares NOW.
  *
- *  `state.py set_config` re-teams anyone whose team the new config does not have onto `teams[0]`, so
- *  picking a mode with a different team pair (tdm blue/yellow -> koth blue/green) silently empties one
- *  side. Since the round-2 fix pass the server REFUSES to push or start such a roster
- *  (`_one_team_fault`: a one-team match cannot register a hit, and `force` does not open it), so a
- *  step that wants a pushed/armed match has to hand itself a playable roster first — the same
- *  precondition `resetTdm` has always set, for the same reason. The `reteam-visible` step deliberately
- *  does NOT call this: the silent split is what it is there to see.
+ *  A roster with every player on one side cannot register a hit, and the server refuses to push or
+ *  start it (`one_team_fault`, which `force` does NOT open), so a step that wants a pushed/armed match
+ *  hands itself a playable roster first. Round-3 FIELD-1 (2026-09-13) removed the thing that used to
+ *  CREATE that roster — `set_config` re-teamed anyone whose team the new config lacked onto `teams[0]`,
+ *  so a tdm blue/yellow -> koth blue/green pick silently emptied GREEN; it now maps by team INDEX and
+ *  rebalances only if one side would be left empty. This helper is therefore a precondition against
+ *  what a STEP may have done to the roster, not against what a mode pick does. `reteam-visible` still
+ *  does not call it: what that step watches is exactly the mode pick's own re-teaming.
  */
 async function rebalance(base) {
   const st = await (await fetch(`${base}/api/state`)).json();
@@ -213,7 +214,11 @@ const errorStrip = pg => pg.locator('header button[role="alert"]');
 /** Push + arm the real server so ARMED has a schedule to render (`Armed.tsx` early-returns without
  *  one). `force` waves the readiness board — there are no phones in a browser run. */
 async function armMatch(base) {
-  await rebalance(base);          // a mode pick may have emptied a side; MC refuses to push that (round-2 B)
+  // Round-3 FIELD-1 (2026-09-13): the SERVER now re-teams by index and rebalances on a mode pick, so
+  // a pick can no longer empty a side and this is belt-and-braces rather than the precondition it was
+  // (round-2 B). Kept because a step may have dragged the roster onto one side itself, and because a
+  // one-side roster is a refusal `force` does not open — it would fail the push below, not this line.
+  await rebalance(base);
   const push = await fetch(`${base}/api/lobby/push`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"force":true}' });
   if (!push.ok) throw new Error(`armMatch: POST /api/lobby/push ${push.status} ${await push.text()}`);
   const start = await fetch(`${base}/api/start`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"force":true}' });
@@ -448,8 +453,10 @@ step('teams-never-yellow', async ({ browser, base }) => {
   await closePage(pg);
 });
 
-// The hill's team split is silent: everyone who was on yellow lands on teams[0]. If the console does
-// not say so, the operator walks onto the field with 8 v 0 and no idea the server moved anyone.
+// The hill's team split used to be silent AND destructive: everyone on yellow landed on teams[0], so
+// the operator walked onto the field with 8 v 0 and no idea the server had moved anyone. Round-3
+// FIELD-1 (2026-09-13) re-teams by INDEX and rebalances, so the split SURVIVES the pick — and this
+// step now watches for that, plus the console's readout of whatever split results.
 step('reteam-visible', async ({ browser, base }) => {
   await resetTdm(base);
   const pg = await go(await newPage(browser, base), 'build');
@@ -460,17 +467,18 @@ step('reteam-visible', async ({ browser, base }) => {
   const counts = {};
   for (const p of st.players) counts[p.team_id] = (counts[p.team_id] ?? 0) + 1;
   const empty = st.config.teams.filter(t => !counts[t.team_id]);
-  // Switching to koth moves everyone who was on YELLOW onto teams[0] (state.py set_config). That is the
-  // right call for F82, but it is SILENT — so the console has to make the resulting split legible. The
-  // only place it currently shows is the LOBBY column headcount, which is what this asserts. Anything
-  // stronger (a "the hill needs two sides" warning) is a product decision, reported not invented.
-  expect(empty.length === 1 && empty[0].team_id === 'green',
-    `the re-team really does empty one koth side (counts ${JSON.stringify(counts)}) — control for the readout below`);
+  // Switching to koth moves everyone who was on YELLOW onto GREEN — the same INDEX, not `teams[0]`
+  // (state.py `_reteam_for_config`). F82 is still satisfied (nobody on $TID 2) and the operator's own
+  // split is intact, so the match the roster describes is the match they set up.
+  expect(empty.length === 0,
+    `the koth pick keeps both sides populated (counts ${JSON.stringify(counts)})`);
+  expect(!st.players.some(p => p.team_id === 'yellow'), '🔴 F82: nobody is left on YELLOW ($TID 2)');
   const cols = await pg.locator('main span:text-is("GREEN TEAM")').count();
-  expect(cols > 0, 'the LOBBY renders a column for the empty GREEN side rather than hiding it');
-  const zero = await pg.locator('main', { hasText: '0 OPERATORS' }).count();
-  expect(zero > 0, `the LOBBY shows the empty side as "0 OPERATORS" (counts ${JSON.stringify(counts)})`);
-  ok(`the silent re-team is at least legible as 0 OPERATORS  ${await shot(pg, '06-reteam')}`);
+  expect(cols > 0, 'the LOBBY renders the GREEN column the re-team filled');
+  // ...and because nothing is stranded, the one-side fault banner must NOT be on screen.
+  const fault = await pg.locator('[data-testid="roster-fault"]').count();
+  expect(fault === 0, 'a rebalanced roster is not a fault — the banner must stay off');
+  ok(`the mode pick re-teams by index and both sides are live  ${await shot(pg, '06-reteam')}`);
   await closePage(pg);
 });
 

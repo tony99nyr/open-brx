@@ -5,7 +5,7 @@ import { useStore } from '../store';
 import { EvictButton } from '../ui/EvictButton';
 import { StandbySection } from '../ui/Standby';
 import { CHAMFER, F, PERK_COLOR, T, TAB, fmtAge, roleOf, teamColor } from '../tokens';
-import { takesAlt } from './gameSummary';
+import { UNPLAYABLE_IDS, takesAlt } from './gameSummary';
 import { BTN_RESET, Blink, Brackets, DraftText, GhostButton, NumberCell, PanelHeader, Progress, ScreenHeader, SectionRule, Seg, SegBar, StripedSlot, Tag, ValueBox, onKey } from '../ui';
 import { GameEditPanel } from '../ui/GameEditPanel';
 
@@ -580,7 +580,13 @@ export function Kit() {
                 onClear={slot === 'secondary' && secondaryW && !slotLocked('secondary') ? clearSecondary : slot === 'perk' && perk && !slotLocked('perk') ? clearPerk : undefined} onBuild={() => setView('build')} />
               {ruleOf(slot)?.choice === 'off' ? null : showKind === 'weapon' ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(152px,1fr))', gap: 8 }}>
-                  {weapons.map(w => {
+                  {/* MERGE-5 (round-3 fix pass, 2026-09-13): the rack is FILTERED through
+                      `UNPLAYABLE_IDS`, never merely greyed. A tile disabled in every game forever,
+                      titled "Not allowed by this game's rules", states something false about the game
+                      and hides the real reason (its $SIR row deals no damage in this build —
+                      policy.py). The CATALOGUE carries that fact, tagged; KIT does not offer what
+                      nobody can be handed. */}
+                  {weapons.filter(w => !UNPLAYABLE_IDS.has(w.weapon_id)).map(w => {
                     const allowed = (slot === 'primary' ? pool.primary : pool.secondary_weapons).includes(w.weapon_id);
                     const on = slot === 'primary' ? w.weapon_id === primary?.weapon_id : w.weapon_id === secondaryW?.weapon_id;
                     const fixed = ruleOf(slot)?.choice === 'fixed';

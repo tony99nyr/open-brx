@@ -35,12 +35,31 @@ export const swapsWeapons = (k?: PerkView | null) => !!k?.effects?.switch_mult;
 /** Why `_filter`/the choice left this slot with nothing — mirrors policy.py `_empty_code` exactly,
  *  including checking `ids` against the FULL catalog (never the kind-filtered subset): a fixed id
  *  missing from the whole game's weapon list is `fixed_missing` regardless of which kind excluded it. */
-function emptyCode(rule: SlotRule, ids: Set<string>): PoolEmptyCode {
+function emptyCode(rule: SlotRule, ids: Set<string>, weapons = false): PoolEmptyCode {
   if (rule.choice === 'off') return 'off';
-  if (rule.choice === 'fixed') return rule.fixed_id != null && ids.has(rule.fixed_id) ? 'filtered' : 'fixed_missing';
+  const unplayable = (id: string) => weapons && UNPLAYABLE_IDS.has(id);
+  if (rule.choice === 'fixed') {
+    if (rule.fixed_id == null || !ids.has(rule.fixed_id)) return 'fixed_missing';
+    // round-3 UX-2: `unplayable` BEATS `filtered`. A slot fixed to the Energy Launcher used to read
+    // `filtered` — a sentence telling the operator to clear a filter (there is none) or set the slot
+    // to FIXED (it already is), and it never named the weapon.
+    return unplayable(rule.fixed_id) ? 'unplayable' : 'filtered';
+  }
   const only = rule.only_ids ?? [];
-  if (only.length && !only.some(id => ids.has(id))) return 'only_ids_missing';
+  if (only.length) {
+    const hit = only.filter(id => ids.has(id));
+    if (!hit.length) return 'only_ids_missing';
+    if (hit.every(unplayable)) return 'unplayable';
+  }
   return 'filtered';
+}
+
+/** The `UNPLAYABLE_IDS` weapon a slot's rule is asking for, when that is why its pool is empty —
+ *  mirrors policy.py `unplayable_pick`. One accessor, so every line names the SAME weapon. */
+export function unplayablePick(rule: SlotRule): string | null {
+  if (rule.choice === 'fixed') return rule.fixed_id != null && UNPLAYABLE_IDS.has(rule.fixed_id) ? rule.fixed_id : null;
+  const only = rule.only_ids ?? [];
+  return only.length && only.every(id => UNPLAYABLE_IDS.has(id)) ? only[0] : null;
 }
 
 export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: PerkView[]): LoadoutPool & { reasons?: LoadoutPoolReasons } {
@@ -67,8 +86,8 @@ export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: Perk
   const weaponIds = new Set(weapons.map(w => w.weapon_id));
   const perkIds = new Set(visiblePerks.map(x => x.perk_id));
   const reasons: LoadoutPoolReasons = {};
-  if (prim.length === 0) reasons.primary = emptyCode(p.primary, weaponIds);
-  if (sw.length === 0) reasons.secondary_weapons = emptyCode(s, weaponIds);
+  if (prim.length === 0) reasons.primary = emptyCode(p.primary, weaponIds, true);
+  if (sw.length === 0) reasons.secondary_weapons = emptyCode(s, weaponIds, true);
   if (sp.length === 0) reasons.perks = neededSecondary ? 'needs_secondary' : emptyCode(k, perkIds);
   if (Object.keys(reasons).length) out.reasons = reasons;
   return out;
@@ -87,7 +106,11 @@ export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: Perk
  *  false block. */
 export function emptyRequiredSlots(pool: (LoadoutPool & { reasons?: LoadoutPoolReasons }) | null): { primary: boolean; secondary: boolean; perk: boolean; any: boolean } {
   const r = pool?.reasons;
-  const blocks = (code?: PoolEmptyCode) => !!code && code !== 'off';
+  // `unplayable` joins `off` as a NON-blocking code (round-3 MERGE-4): it is OUR build's limitation,
+  // not a rule the operator wrote. The server drops the pick, re-fits every loadout to a legal weapon
+  // and warns — so a console that greyed PLAY/CONTINUE here would trap them behind a control that
+  // cannot fix it, which is the F146 failure exactly. `poolEmptyMessage` still says what happened.
+  const blocks = (code?: PoolEmptyCode) => !!code && code !== 'off' && code !== 'unplayable';
   const primary = blocks(r?.primary), secondary = blocks(r?.secondary_weapons), perk = blocks(r?.perks);
   return { primary, secondary, perk, any: primary || secondary || perk };
 }
@@ -96,11 +119,14 @@ export function emptyRequiredSlots(pool: (LoadoutPool & { reasons?: LoadoutPoolR
  *  shown verbatim to a PLAYER — this is the OPERATOR's, and names the control to fix). `slot` picks
  *  the pronoun; `needs_secondary` only ever occurs on the perk slot but is worded generically in case
  *  a second swap-effect perk ever lands on another slot. */
-export function poolEmptyMessage(slot: 'PRIMARY' | 'SECONDARY' | 'PERK', code: PoolEmptyCode): string {
+export function poolEmptyMessage(slot: 'PRIMARY' | 'SECONDARY' | 'PERK', code: PoolEmptyCode, name?: string | null): string {
   switch (code) {
     case 'fixed_missing': return `${slot}'S FIXED PICK IS NOT IN THIS GAME — CHOOSE A DIFFERENT ONE.`;
     case 'only_ids_missing': return `${slot}'S ALLOW-LIST NAMES NOTHING THIS GAME HAS — ADD A VALID ID OR CLEAR IT.`;
     case 'needs_secondary': return 'QUICK SWITCH NEEDS A SECONDARY — TURN THE SECONDARY ON, OR PICK ANOTHER PERK.';
+    // round-3 UX-2: NAMES the weapon. `name` is the catalogue row's name where the caller has it (the
+    // rule only carries an id); without one the sentence still says the right thing about the slot.
+    case 'unplayable': return `${(name ?? `THE ${slot}'S PICK`).toUpperCase()} CANNOT BE PLAYED — ITS HIT ROW DEALS NO DAMAGE (CATALOGUE); PICK ANOTHER WEAPON.`;
     case 'filtered': return `${slot}'S CLASS/ID FILTERS EXCLUDE EVERYTHING — CLEAR ONE, OR SET WHO PICKS TO FIXED.`;
     case 'off': return '';   // never shown — an off slot is not a problem
   }

@@ -8,7 +8,7 @@ import { F, PERK_COLOR, ROLE, T, TAB, roleOf } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, StripedSlot, Toggle, ValueBox } from '../ui';
 import { PerkGlyph } from './Kit';
 import { AdvancedPresentation } from './AdvancedPresentation';
-import { STATION_SOURCES, TEMPLATE_RULES, admitsWeapons, computePool, emptyRequiredSlots, gameSig, objectiveLine, poolEmptyMessage, presetOf, rulesLine, withPolicy } from './gameSummary';
+import { STATION_SOURCES, TEMPLATE_RULES, admitsWeapons, computePool, emptyRequiredSlots, gameSig, objectiveLine, poolEmptyMessage, presetOf, rulesLine, unplayablePick, withPolicy } from './gameSummary';
 import { MODE_ART } from '../modeArt';
 import { CONFIG_EDITABLE_PHASES, MODE_PICK_PHASES, lockedReason } from './Games';
 
@@ -335,7 +335,10 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
       </div>
       {emptyPool && (
         <div role="alert" data-testid={`${slot}-empty-pool`} style={{ font: F.chk(700, 12), letterSpacing: '.04em', color: T.bad, background: 'rgba(255,82,82,.1)', border: `1px solid ${T.bad}`, padding: '8px 10px', lineHeight: 1.5 }}>
-          ▲ {poolEmptyMessage(isPerk ? 'PERK' : sec ? 'SECONDARY' : 'PRIMARY', emptyCode!)}
+          {/* round-3 UX-2: the `unplayable` line NAMES the weapon, so the rule's id is resolved to a
+              catalogue name here — `unplayablePick` is the one accessor both sides read. */}
+          ▲ {poolEmptyMessage(isPerk ? 'PERK' : sec ? 'SECONDARY' : 'PRIMARY', emptyCode!,
+                              weapons.find(w => w.weapon_id === unplayablePick(rule))?.name)}
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>

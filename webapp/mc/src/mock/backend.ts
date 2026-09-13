@@ -219,23 +219,90 @@ export class MockBackend implements Api {
     return { ...this.logs[node_id] };
   }
 
-  /** Round-2 fix pass B (2026-09-12) — `state.py _one_team_fault()`, mirrored.
+  /** `state.py one_team_fault()`, mirrored — round-2 fix pass B, corrected by round-3 MERGE-0.
    *
-   *  A TEAMS config (2+ declared teams, not `ffa`) whose roster left one of them EMPTY cannot register
-   *  a hit: the gun refuses friendly damage, so the match plays out scoring nothing. Scoped on the
-   *  TEAM COUNT rather than the mode name because `lms` also declares the single `ffa` team, where
-   *  sharing it is the design; and on 2+ players, because "all on one team" says nothing about a solo
-   *  session. `force` does not open it, here or on the server. */
+   *  `(declared teams >= 2) and (rostered players >= 2) and (populated $TIDs < 2)`. Stated on the
+   *  TIDs, not the team ids, because the TID is what the gun reads: two config teams sharing one tid
+   *  are ONE side however they are named, and the old "every declared team is populated" rule was
+   *  wrong in both directions — it refused a perfectly playable 2/2/0 across three declared teams,
+   *  and it passed a 2 v 2 that no hit could register in. Scoped on the TEAM COUNT rather than the
+   *  mode name because `ffa`/`lms` declare the single `ffa` team, where sharing it is the design; and
+   *  on 2+ players, because "one side" says nothing about a solo session. `force` does not open it,
+   *  here or on the server. */
+  private populatedTids(): Set<number> {
+    const byTeam = new Map((this.config.teams ?? []).map(t => [t.team_id, t.tid]));
+    const out = new Set<number>();
+    for (const p of this.players) {
+      const tid = byTeam.get(p.team_id ?? '');
+      if (tid !== undefined) out.add(tid);
+    }
+    return out;
+  }
+
+  private oneTeamFault(): boolean {
+    if ((this.config.teams ?? []).length < 2 || this.players.length < 2) return false;
+    return this.populatedTids().size < 2;
+  }
+
   private rosterFault(): string | null {
-    const teams = this.config.teams ?? [];
-    if (teams.length < 2 || this.config.mode === 'ffa' || this.players.length < 2) return null;
-    const counts = new Map<string, number>(teams.map(t => [t.team_id, 0]));
+    return this.oneTeamFault()
+      ? 'ONLY ONE SIDE HAS PLAYERS — a match fought on one side cannot register a hit; move players between teams'
+      : null;
+  }
+
+  /** `state.py _reteam_for_config()`, mirrored — round-3 FIELD-1.
+   *
+   *  Map by team INDEX (so a TDM blue/yellow split survives a KOTH pick as blue/green), least-count
+   *  fill anyone the new config has no index for, and rebalance ONLY when the one-side predicate is
+   *  then true. The demo used to do what the server used to do — dump everyone onto `teams[0]` — so
+   *  `?mock` stranded itself on one side on every cross-family mode pick, which is a demo predicting
+   *  a state the real MC no longer produces. */
+  private reteamForConfig(prevTeams: { team_id: string }[]) {
+    const ids = this.config.teams.map(t => t.team_id);
+    const legal = new Set(ids);
+    const byOldIndex = new Map(prevTeams.map((t, i) => [t.team_id, i]));
+    const unplaced: typeof this.players = [];
+    for (const p of [...this.players].sort((a, b) => a.player_num - b.player_num)) {
+      if (legal.has(p.team_id ?? '')) continue;
+      const i = byOldIndex.get(p.team_id ?? '');
+      if (i !== undefined && i < ids.length) p.team_id = ids[i];
+      else unplaced.push(p);
+    }
+    for (const p of unplaced) p.team_id = this.leastCountTeam();
+    if (this.oneTeamFault()) this.rebalanceSides();
+  }
+
+  private teamCounts(ids: string[]): Map<string, number> {
+    const counts = new Map(ids.map(id => [id, 0]));
     for (const p of this.players) {
       const n = counts.get(p.team_id ?? '');
       if (n !== undefined) counts.set(p.team_id!, n + 1);
     }
-    return [...counts.values()].every(n => n > 0) ? null
-      : 'ALL PLAYERS ON ONE TEAM — a one-team match cannot register a hit; move players between teams';
+    return counts;
+  }
+
+  private leastCountTeam(): string | null {
+    const ids = this.config.teams.map(t => t.team_id);
+    if (!ids.length) return null;
+    const counts = this.teamCounts(ids);
+    return ids.reduce((best, id) => (counts.get(id)! < counts.get(best)! ? id : best), ids[0]);
+  }
+
+  /** Even the roster out across the declared teams — reached ONLY from a true one-side predicate.
+   *  Moves the HIGHEST `player_num` off the fullest side, so the operator's first picks stay put, and
+   *  stops at a spread of 1 (four on one side come out 2/2, not the 3/1 that merely clears the gate). */
+  private rebalanceSides() {
+    const ids = this.config.teams.map(t => t.team_id);
+    if (ids.length < 2) return;
+    for (let guard = this.players.length * ids.length + 1; guard > 0; guard--) {
+      const counts = this.teamCounts(ids);
+      const fullest = ids.reduce((a, b) => (counts.get(b)! > counts.get(a)! ? b : a), ids[0]);
+      const emptiest = ids.reduce((a, b) => (counts.get(b)! < counts.get(a)! ? b : a), ids[0]);
+      if (counts.get(fullest)! - counts.get(emptiest)! <= 1) return;
+      const movers = this.players.filter(p => p.team_id === fullest);
+      if (!movers.length) return;
+      movers.reduce((a, b) => (b.player_num > a.player_num ? b : a)).team_id = emptiest;
+    }
   }
 
   private readiness(): ReadinessSnapshot {
@@ -675,6 +742,7 @@ export class MockBackend implements Api {
       throw Object.assign(new Error(`game settings are locked: the match is already in ${this.phase.toUpperCase()} — RECALL or END it first to edit the game again`), { status: 409 });
     }
     const prevMode = this.config.mode, prevPol = this.config.loadout_policy;
+    const prevTeams = [...(this.config.teams ?? [])];   // FIELD-1: the INDEX map needs the old order
     // F70: `station_source` is a CLOSED vocabulary server-side (state.py _merge_config raises, the API
     // answers 400 naming every legal value). The demo refuses the same way, so the OBJECTIVE SOURCE
     // control cannot look more permissive in `?mock` than it is against a real MC.
@@ -705,12 +773,12 @@ export class MockBackend implements Api {
       if (src) this.config.station_source = src; else delete this.config.station_source;
     }
     // 🔴 The real server re-teams anyone left on a team the new mode does not have
-    // (state.py set_config: `p["team_id"] = self.teams[0]["team_id"]`). The demo used to skip this, so
-    // `?mock` showed a KING OF THE HILL roster still half YELLOW — the exact $TID 2 the server refuses
-    // (F82) and the one thing this screen must never appear to allow. A demo that predicts the wrong
-    // state is worse than no demo: it is where a "verified" screenshot comes from.
-    const legal = new Set(this.config.teams.map(t => t.team_id));
-    for (const p of this.players) if (!legal.has(p.team_id ?? '')) p.team_id = this.config.teams[0]?.team_id ?? null;
+    // (state.py `_reteam_for_config`). The demo used to skip this entirely, so `?mock` showed a KING
+    // OF THE HILL roster still half YELLOW — the exact $TID 2 the server refuses (F82) and the one
+    // thing this screen must never appear to allow. A demo that predicts the wrong state is worse than
+    // no demo: it is where a "verified" screenshot comes from. Round-3 FIELD-1 moved both sides off
+    // "everyone onto teams[0]" and onto index-mapping + rebalance; this mirrors that rule.
+    this.reteamForConfig(prevTeams);
     this.applyPolicy();
     const errors: string[] = [];
     if (this.config.time_limit_s == null || this.config.time_limit_s <= 0) errors.push('time_limit_s is required on the phone path');

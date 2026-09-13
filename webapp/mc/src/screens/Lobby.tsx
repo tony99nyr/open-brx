@@ -23,16 +23,28 @@ export function Lobby() {
   const counts = cols.map(c => c.members.length);
   const balanced = Math.max(...counts) - Math.min(...counts) <= 1 && unassigned.length === 0;
   // Round-2 fix pass B (2026-09-12): an EMPTY team in a teams game is not "unbalanced", it is
-  // unplayable — the gun refuses friendly damage, so a one-team match registers nothing for its whole
-  // length and says nothing about it. The field hit it by switching FFA -> TDM, which re-teams every
-  // player onto `teams[0]`. The server refuses the push and the start outright (`_one_team_fault`,
-  // which `force` does NOT open) and names the fault in `readiness.roster_faults`; that is what this
-  // renders, falling back to the same rule locally for a server that predates the field.
+  // unplayable — the gun refuses friendly damage, so a one-side match registers nothing for its whole
+  // length and says nothing about it. The field hit it by switching FFA -> TDM, which used to re-team
+  // every player onto `teams[0]`. The server refuses the push and the start outright
+  // (`one_team_fault`, which `force` does NOT open) and names the fault in `readiness.roster_faults`;
+  // that is what this renders, falling back to the same rule locally for a server that predates it.
+  // Round-3 MERGE-0: the rule is stated on the populated $TIDs, so two teams sharing a tid are one
+  // side and a third, empty team is not a fault. This mirror asks the same question.
   const teamsMode = state.config.mode !== 'ffa' && cols.length > 1;
   const rosterFaults = readiness.roster_faults ?? [];
-  const emptyTeam = teamsMode && players.length > 1 && counts.some(n => n === 0);
+  // FIELD-3 (round-3 fix pass, 2026-09-13): the local rule is a FALLBACK FOR AN OLDER SERVER, so it
+  // runs only when the field is ABSENT. It used to run whenever the server reported no fault, which
+  // means a present-but-EMPTY `roster_faults` — the server saying "this roster is fine" — was
+  // silently overridden by the console's own cruder rule, and any future server-side narrowing (the
+  // tid-based predicate of MERGE-0 is exactly that: a 2/2/0 over three declared teams now PLAYS)
+  // would be undone here with nothing to notice it.
+  const serverKnows = readiness.roster_faults !== undefined;
+  const oneSideLocally = teamsMode && players.length > 1
+    && new Set(state.config.teams.filter(t => players.some(p => p.team_id === t.team_id)).map(t => t.tid)).size < 2;
   const rosterFault = rosterFaults[0]
-    ?? (emptyTeam ? 'ALL PLAYERS ON ONE TEAM — a one-team match cannot register a hit; move players between teams' : null);
+    ?? (!serverKnows && oneSideLocally
+      ? 'ONLY ONE SIDE HAS PLAYERS — a match fought on one side cannot register a hit; move players between teams'
+      : null);
   const balancedForTeams = !rosterFault;
   const nReady = players.filter(p => p.ready).length;
   const notReady = players.filter(p => !p.ready).map(p => p.display);
@@ -171,7 +183,7 @@ export function Lobby() {
       </div>
 
       {/* `force` is the operator's override of a READINESS judgement. It does not open the one-team
-          gate (state.py `_one_team_fault`), so the tray must not be on screen claiming otherwise. */}
+          gate (state.py `one_team_fault`), so the tray must not be on screen claiming otherwise. */}
       {blockedCount > 0 && balancedForTeams && (
         <div style={{ marginTop: 10, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ font: F.mono(500, 10), letterSpacing: '.16em', color: T.micro }}>HOST OVERRIDE</span>

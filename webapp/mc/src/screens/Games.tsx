@@ -72,6 +72,13 @@ export function Games() {
   // PHASE lock applies here — `poolEmpty` describes the config ALREADY applied, and picking a
   // DIFFERENT game/mode is exactly how an operator escapes a bad one; it must never be the gate that
   // traps them.
+  // MERGE-3 (round-3 fix pass, 2026-09-13): in RECAP, tapping the game you just played is "run it
+  // back" — the commonest action on that screen, and the server's own documented play-again path
+  // (`state.py set_config` takes a MODE patch in recap and rolls the session forward with the roster
+  // kept). Everywhere else, re-picking what is already playing is correctly a no-op. The card guard
+  // read `if (!on)` in both, so the one tap the operator most wants was swallowed in silence.
+  const runItBack = state.phase === 'recap';
+  const tappable = (on: boolean) => !on || runItBack;
   const guarded = (key: string, go: () => void) => {
     if (modeLocked) { setNotice(lockedReason(state.phase), true); return; }   // never a silent tap (F151)
     if (custom && confirmSwitch !== key) { setConfirmSwitch(key); return; }
@@ -129,8 +136,8 @@ export function Games() {
                 const gm = modes.find(m => m.mode === g.config.mode);
                 const del = confirmDel === g.preset_id;
                 return (
-                  <div key={g.preset_id} className="hov-acc" role="button" tabIndex={0} aria-pressed={on} aria-label={`play ${g.name}`} onClick={() => { if (!on) playSaved(g); }} onKeyDown={onKey(() => { if (!on) playSaved(g); })}
-                    style={{ flex: '0 0 262px', display: 'flex', flexDirection: 'column', gap: 8, padding: 10, cursor: on ? 'default' : 'pointer',
+                  <div key={g.preset_id} className="hov-acc" role="button" tabIndex={0} aria-pressed={on} aria-label={`play ${g.name}`} onClick={() => { if (tappable(on)) playSaved(g); }} onKeyDown={onKey(() => { if (tappable(on)) playSaved(g); })}
+                    style={{ flex: '0 0 262px', display: 'flex', flexDirection: 'column', gap: 8, padding: 10, cursor: tappable(on) ? 'pointer' : 'default',
                       background: on ? 'rgba(196,139,255,.07)' : T.panel, border: `1px solid ${on ? PERK_COLOR : T.line}`, borderTop: `2px solid ${on ? PERK_COLOR : T.line2}` }}>
                     <StripedSlot height={70} style={{ background: gm && MODE_ART.has(gm.mode) ? `url(assets/modes/${gm.mode}.jpg) center/cover no-repeat` : undefined }}
                       corner={<>
@@ -175,8 +182,8 @@ export function Games() {
                 const on = activeStock?.mode === m.mode;
                 const base = !on && cfg.mode === m.mode;   // the current game (saved or tuned) is built on this mode
                 return (
-                  <div key={m.mode} className="hov-acc" role="button" tabIndex={0} aria-pressed={on} aria-label={`play ${m.name}`} onClick={() => { if (!on) playStock(m); }} onKeyDown={onKey(() => { if (!on) playStock(m); })}
-                    style={{ background: on ? 'rgba(57,180,255,.06)' : T.panel, border: `1px solid ${on ? T.acc : T.line}`, borderTop: `2px solid ${on ? T.acc : base ? T.line2 : 'transparent'}`, padding: 10, display: 'flex', flexDirection: 'column', gap: 10, cursor: on ? 'default' : 'pointer' }}>
+                  <div key={m.mode} className="hov-acc" role="button" tabIndex={0} aria-pressed={on} aria-label={`play ${m.name}`} onClick={() => { if (tappable(on)) playStock(m); }} onKeyDown={onKey(() => { if (tappable(on)) playStock(m); })}
+                    style={{ background: on ? 'rgba(57,180,255,.06)' : T.panel, border: `1px solid ${on ? T.acc : T.line}`, borderTop: `2px solid ${on ? T.acc : base ? T.line2 : 'transparent'}`, padding: 10, display: 'flex', flexDirection: 'column', gap: 10, cursor: tappable(on) ? 'pointer' : 'default' }}>
                     <StripedSlot height={76} caption={MODE_ART.has(m.mode) ? undefined : 'mode art'} style={{ background: MODE_ART.has(m.mode) ? `url(assets/modes/${m.mode}.jpg) center/cover no-repeat` : undefined }}
                       corner={<>
                         <span style={{ position: 'absolute', top: 6, left: 6, font: F.osw(700, 12), letterSpacing: '.12em', background: on ? T.acc : T.panelAlt, color: on ? T.accInk : T.dim, padding: '2px 7px' }}>{m.abbr}</span>

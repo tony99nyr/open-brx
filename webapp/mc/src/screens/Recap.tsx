@@ -209,6 +209,18 @@ export function Recap() {
           {/* NEW MATCH stays live-only: an archived match is a record, not a place to start from */}
           {/* disabled in-flight: newSession() rebuilds the whole session, and a double-tap on a slow
               LAN fired it twice — the second landing on a session the first had already replaced */}
+          {/* UX-1 (round-3 fix pass, 2026-09-13): NEW MATCH was the ONLY way forward on this screen,
+              and it throws the roster away. The server's documented play-again path — pick a mode,
+              which rolls the session forward with the roster KEPT (`state.py set_config` in recap) —
+              lived only on GAMES, a tab away, where nothing on the recap pointed. One line, beside
+              the button it qualifies. Absent with nobody rostered: "keep this roster" would be a lie. */}
+          {!past && state.players.length > 0 && (
+            <button type="button" data-testid="recap-play-again" className="hov-acc" onClick={() => setView('build')}
+              style={{ ...BTN_RESET, font: F.chk(700, 12), letterSpacing: '.14em', padding: '11px 18px', minHeight: 44,
+                       background: 'transparent', border: `1px solid ${T.line2}`, color: T.acc, cursor: 'pointer' }}>
+              KEEP THIS ROSTER? PICK A MODE ON GAMES ▸
+            </button>
+          )}
           {!past && <PrimaryButton size={13} disabled={starting} onClick={async () => {
             if (starting) return;
             setStarting(true);
