@@ -98,18 +98,98 @@ def test_hits_count_both_direct_and_event_batch_nested_and_ignore_non_hit_facts(
     assert m["shooter_team_values"] == [1, 2]
 
 
-def test_perk_aware_hp_armor_mismatch_rule():
+def test_perk_aware_hp_armor_mismatch_rule_vs_the_config():
+    """The `_vs_cfg` pair. C-3 renamed these: `config.health` is the NARROW question -- it never
+    carries a per-player override -- and the column now says which question it answered."""
     r = diag.build_report(sqlite3.connect(f"file:{_hand_built_db()}?mode=ro", uri=True))
     nodes = r[0]["nodes"]
     # nodeA: exact match on both — no flags
-    assert nodes["nodeA"]["hp_mismatch"] is False and nodes["nodeA"]["armor_mismatch"] is False
+    assert nodes["nodeA"]["hp_mismatch_vs_cfg"] is False and nodes["nodeA"]["armor_mismatch_vs_cfg"] is False
     assert nodes["nodeA"]["max_hp"] == 70 and nodes["nodeA"]["max_armor"] == 60
     # nodeB: armor ABOVE config (perk) — never flagged, even though it does not equal cfg+any fixed delta
-    assert nodes["nodeB"]["max_armor"] == 110 and nodes["nodeB"]["armor_mismatch"] is False
-    assert nodes["nodeB"]["hp_mismatch"] is False
+    assert nodes["nodeB"]["max_armor"] == 110 and nodes["nodeB"]["armor_mismatch_vs_cfg"] is False
+    assert nodes["nodeB"]["hp_mismatch_vs_cfg"] is False
     # nodeC: hp below config (genuine) AND armor below config (genuine) — both flagged
-    assert nodes["nodeC"]["max_hp"] == 45 and nodes["nodeC"]["hp_mismatch"] is True
-    assert nodes["nodeC"]["max_armor"] == 30 and nodes["nodeC"]["armor_mismatch"] is True
+    assert nodes["nodeC"]["max_hp"] == 45 and nodes["nodeC"]["hp_mismatch_vs_cfg"] is True
+    assert nodes["nodeC"]["max_armor"] == 30 and nodes["nodeC"]["armor_mismatch_vs_cfg"] is True
+
+
+def _override_db() -> pathlib.Path:
+    """C-3: one match where a PER-PLAYER override explains the whole "mismatch".
+
+    `LoadoutOverrides.max_hp/max_armor` are baked into the pushed `$PSET` and never into
+    `config.health`, so a node playing with one reports a pool the config does not name — and the
+    old `hp_mismatch` flagged it in every single match of that game. The head MC actually pushed is
+    persisted beside the config (`state.py _schedule` writes `config["_heads"][player_id]`), so the
+    per-node truth is right there to compare against.
+    """
+    path = _tmp_db()
+    st = Store("sess-3", path)
+    cfg = {"config_id": "cfg-O", "mode": "tdm", "environment": "indoor",
+           "health": {"max_hp": 70, "max_armor": 60},
+           # nodeP's player carries max_hp 100; nodeQ's is the plain config pool
+           "_heads": {"pA": ["$START,*", "$PSET,1,0,100,60,0,*"], "pB": ["$START,*", "$PSET,2,0,70,60,0,*"]}}
+    go_live = 1_000_000
+    st.match_started("mO", cfg, go_live)
+
+    def status(nid, pid, hp, armor, arm_state, alive, t):
+        st.log(nid, "status", None, None, t, "mO", False,
+               {"node_id": nid, "player_id": pid, "match_id": "mO", "hp": hp, "armor": armor,
+                "arm_state": arm_state, "alive": alive, "shots": 1, "preflight": {"gun_linked": True}})
+
+    # nodeP: armed first (not live), then the first LIVE frame of its first life, then damaged.
+    status("nodeP", "pA", 100, 60, "armed", True, go_live - 500)
+    status("nodeP", "pA", 100, 60, "live", True, go_live + 1000)
+    status("nodeP", "pA", 64, 0, "live", True, go_live + 4000)
+    # nodeQ: a stale head — it spawned into 45/115, which is neither the config nor what it was pushed
+    status("nodeQ", "pB", 45, 115, "live", True, go_live + 1000)
+    status("nodeQ", "pB", 45, 115, "live", True, go_live + 4000)
+    st.match_ended("mO", {"winner": {}})
+    st.db.execute("UPDATE matches SET ended_t=? WHERE match_id='mO'", (go_live + 60_000,))
+    st.db.commit()
+    st.close()
+    return path
+
+
+def test_a_per_player_override_is_not_reported_as_a_mismatch():
+    """C-3. The pair is reported, and the boolean says WHICH question it answers."""
+    r = diag.build_report(sqlite3.connect(f"file:{_override_db()}?mode=ro", uri=True))
+    n = r[0]["nodes"]
+    # The pair, both halves, per node: what the config said and what this node was actually pushed.
+    assert n["nodeP"]["cfg_health"] == {"max_hp": 70, "max_armor": 60}
+    assert n["nodeP"]["pushed_pool"] == {"hp": 100, "armor": 60}, n["nodeP"]
+    assert (n["nodeP"]["max_hp"], n["nodeP"]["max_armor"]) == (100, 60)
+    # vs the CONFIG this looks wrong, and the column name now says that is the question it asked…
+    assert n["nodeP"]["hp_mismatch_vs_cfg"] is True
+    # …and vs the head that was actually pushed, it is exactly right.
+    assert n["nodeP"]["hp_mismatch_vs_pushed"] is False and n["nodeP"]["armor_mismatch_vs_pushed"] is False
+    # nodeQ really was on another head: neither the config nor its own push explains 45/115.
+    assert n["nodeQ"]["pushed_pool"] == {"hp": 70, "armor": 60}
+    assert n["nodeQ"]["hp_mismatch_vs_pushed"] is True and n["nodeQ"]["armor_mismatch_vs_pushed"] is True
+
+
+def test_no_persisted_head_means_no_claim_about_the_push():
+    """The hand-built fixture has no `_heads` — a pre-A36 store, or a match MC never compiled for.
+    `None`, never a guess, and the `vs_cfg` columns still do their (narrower) job."""
+    n = diag.build_report(sqlite3.connect(f"file:{_hand_built_db()}?mode=ro", uri=True))[0]["nodes"]
+    assert n["nodeB"]["pushed_pool"] is None
+    assert n["nodeB"]["hp_mismatch_vs_pushed"] is None and n["nodeB"]["armor_mismatch_vs_pushed"] is None
+    assert n["nodeC"]["hp_mismatch_vs_cfg"] is True
+
+
+def test_first_settled_pool_of_the_first_life_is_reported():
+    """C-4: the exact signature the A36 pool check was built for, which `max` cannot see — a node
+    that spawned into the WRONG pool and then self-corrected has a clean `max` and a damning first
+    frame. Taken from the first `status` with `arm_state: live` and `alive: true`."""
+    r = diag.build_report(sqlite3.connect(f"file:{_override_db()}?mode=ro", uri=True))
+    n = r[0]["nodes"]
+    # not the `armed` frame that preceded it, and not the damaged one that followed
+    assert n["nodeP"]["first_live_pool"] == {"hp": 100, "armor": 60}, n["nodeP"]
+    assert n["nodeQ"]["first_live_pool"] == {"hp": 45, "armor": 115}
+    # and a node that never reported a live frame makes no claim
+    n2 = diag.build_report(sqlite3.connect(f"file:{_hand_built_db()}?mode=ro", uri=True))[0]["nodes"]
+    assert n2["nodeA"]["first_live_pool"] == {"hp": 70, "armor": 60}
+    assert diag.render_markdown(r).count("first_live") >= 1
 
 
 def test_arm_state_alive_and_gun_linked_distributions_per_node():

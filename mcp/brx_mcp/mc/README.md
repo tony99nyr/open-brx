@@ -98,10 +98,23 @@ script in `/tmp` fails with `Cannot find package 'playwright'`.
 read-only pass over a session store, the analysis a field report needs by hand: per match — go_live/
 ended/duration, mode/config_id/environment/cfg health, total shots (max `status.shots` per node),
 hits (`hit_taken` rows, plus any nested in an `event_batch` row), hit%, deaths, per-node `arm_state` +
-`alive` + `preflight.gun_linked` distributions, per-node max reported (hp, armor) vs the match config
-(perk-aware: armor ABOVE config is a `body_armor` perk, never flagged; HP or armor BELOW config is
-flagged), `shooter_team` values seen, and each node's most recent `ack_config` before go-live vs the
-match's own `config_id`. Markdown tables by default, `--json` for the raw report. Pure sqlite, no
+`alive` + `preflight.gun_linked` distributions, three per-node POOL pairs, `shooter_team` values seen,
+and each node's most recent `ack_config` before go-live vs the match's own `config_id`.
+
+The pool pairs are `cfg hp/armor`, `pushed hp/armor` and `first_live hp/armor`, with a mismatch flag
+naming which of the first two it was compared against:
+
+- **`hp≠cfg` / `armor≠cfg`** answer the NARROW question — the match's `config.health`. A per-player
+  `LoadoutOverrides.max_hp/max_armor` is baked into the pushed `$PSET` and **never** into
+  `config.health`, so in a game that uses one these flag that node in every match. Perk-aware: armor
+  ABOVE the config is a `body_armor` perk and is never flagged.
+- **`hp≠pushed` / `armor≠pushed`** compare against the `$PSET` in the head MC actually pushed that
+  player (persisted as `config["_heads"][player_id]`), which already has the overrides and the perk
+  in it. These are exact, and they are the ones that mean "this gun was on another head". `-` when
+  the store predates `_heads`, when no status body named a player, or when the head has no `$PSET`.
+- **`first_live hp/armor`** is the first `status` with `arm_state: live` and `alive: true` — the
+  first frame of that node's first life. It is the signature A36's pool check exists for and the one
+  `max` cannot see: a gun that spawned into the wrong pool and self-corrected has a clean max. Markdown tables by default, `--json` for the raw report. Pure sqlite, no
 `Session` import, read-only (`?mode=ro`) — safe to point at a session MC still has open, or at any
 past night's file under `~/.brx-mcp/mc/`. The same report is served live for the CURRENT session at
 `GET /api/diag/matches` (`API.md`).

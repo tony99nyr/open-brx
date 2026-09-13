@@ -1,9 +1,26 @@
 """T1-B (field session 2026-09-12): a post-match diagnostic that reproduces, as ONE command, the
 analysis Tony's session did by hand against `~/.brx-mcp/mc/session-25eebce5.sqlite` — go_live/ended/
 duration, mode/config_id/environment/cfg health, total shots, hits, hit%, deaths, arm_state +
-alive distributions, per-node `preflight.gun_linked` counts, per-node max reported (hp, armor) vs
-the match config (perk-aware), `shooter_team` values seen, and each node's `ack_config` config_id
-vs the match it was pushed for.
+alive distributions, per-node `preflight.gun_linked` counts, the per-node POOL columns below,
+`shooter_team` values seen, and each node's `ack_config` config_id vs the match it was pushed for.
+
+The pool columns, and what each one can and cannot see (C-3/C-4, 2026-09-13):
+
+  * `cfg_health` -- `config.health` for the match. This is the NARROW question: a per-player
+    `LoadoutOverrides.max_hp/max_armor` is baked into the pushed `$PSET` and never into
+    `config.health`, so `hp_mismatch_vs_cfg` / `armor_mismatch_vs_cfg` flag every node in a game
+    that uses one. They are named `_vs_cfg` so the reader is never left guessing which number they
+    were compared against. (Perk-aware: armor ABOVE the config is a `body_armor` perk and is never
+    flagged; armor below it cannot be.)
+  * `pushed_pool` -- the `$PSET` in the head MC ACTUALLY PUSHED this node's player, read back out of
+    the persisted snapshot (`state.py _schedule` stores `config["_heads"][player_id]`). Overrides and
+    the perk are already in it, so `hp_mismatch_vs_pushed` / `armor_mismatch_vs_pushed` are exact and
+    are the flags that mean "this gun was on another head". `None` when the store predates `_heads`,
+    when the node's status bodies never named a player, or when the head carries no readable `$PSET`.
+  * `first_live_pool` -- the (hp, armor) on the FIRST `status` with `arm_state: live` and
+    `alive: true`, i.e. the first frame of that node's first life. This is the exact signature the
+    A36 pool check exists for and the one `max_hp`/`max_armor` cannot see: a gun that spawned into
+    the wrong head's pool and then self-corrected has a clean max and a damning first frame.
 
 Read-only, pure sqlite — no `Session` import needed, so it can be pointed at a real session file
 Mission Control still has open (`GET /api/diag/matches` shares a live `Store.db` connection) or at
@@ -23,6 +40,8 @@ import sqlite3
 import sys
 from pathlib import Path
 from typing import Any
+
+from . import frames as _frames      # the one reader for a `$PSET`/`$WEAP` frame MC actually sent
 
 
 # ---------------------------------------------------------------- data access ---- #
@@ -53,9 +72,14 @@ def _matches(db: sqlite3.Connection, match_id: str | None = None) -> list[dict]:
 
 
 def _status_rows(db: sqlite3.Connection, match_id: str) -> list[tuple[str, dict]]:
+    """Every `status` body of this match, IN ARRIVAL ORDER.
+
+    The order is load-bearing since C-4: "the first live frame of the first life" is a question about
+    sequence, and an unordered SELECT answers it only by luck of the storage engine."""
     out = []
     for node_id, body_json in db.execute(
-            "SELECT node_id, body FROM envelopes WHERE match_id=? AND kind='status'", (match_id,)):
+            "SELECT node_id, body FROM envelopes WHERE match_id=? AND kind='status' ORDER BY t_recv, rowid",
+            (match_id,)):
         try:
             body = json.loads(body_json)
         except (TypeError, ValueError):
@@ -115,6 +139,27 @@ def _latest_ack_before(db: sqlite3.Connection, node_id: str, go_live_t: int | No
     return {"config_id": body.get("config_id"), "ok": body.get("ok"), "t_recv": row[1]}
 
 
+def _pushed_pool(cfg: dict, player_id: str | None) -> dict[str, int] | None:
+    """(hp, armor) the head MC ACTUALLY PUSHED this player arms, from the persisted snapshot.
+
+    `state.py _schedule` stores the compiled head of every player beside the match config as
+    `config["_heads"][player_id]` ("the head is the ground truth -- it shows the token, not a setting
+    that maps to it"). Its `$PSET` has the per-player `LoadoutOverrides` and the `body_armor` perk
+    already baked in by the compiler, so this is the only per-node pool that is true without a second
+    model of the rules. None for a store written before `_heads` existed, for a node whose status
+    bodies never named a player, or for a head with no readable `$PSET` -- in each case the caller
+    must say nothing rather than guess (the same rule `frames.py` states).
+    """
+    heads = cfg.get("_heads")
+    if not player_id or not isinstance(heads, dict):
+        return None
+    head = heads.get(player_id)
+    if not isinstance(head, list):
+        return None
+    pool = _frames.head_pool(head)
+    return None if pool is None else {"hp": pool[0], "armor": pool[1]}
+
+
 # ---------------------------------------------------------------- analysis ---- #
 
 def analyze_match(db: sqlite3.Connection, match: dict) -> dict:
@@ -134,7 +179,21 @@ def analyze_match(db: sqlite3.Connection, match: dict) -> dict:
         alive: dict[str, int] = {"true": 0, "false": 0}
         linked: dict[str, int] = {"true": 0, "false": 0, "none": 0}
         max_shots = max_hp = max_armor = 0
+        first_live: dict[str, int] | None = None      # C-4, below
+        # Which player this node reported for -- the key into the persisted heads (C-3). The status
+        # body carries it on every heartbeat; the LAST one wins, because a node re-bound mid-session
+        # is playing as whoever it says it is now.
+        player_id: str | None = next((b["player_id"] for b in reversed(bodies)
+                                      if isinstance(b.get("player_id"), str) and b["player_id"]), None)
         for b in bodies:
+            # C-4: the pool on the FIRST frame of this node's first life. `max` cannot see the exact
+            # signature the A36 pool check exists for -- a gun that spawned into the WRONG head's
+            # pool and then self-corrected has a clean `max` and a damning first frame -- and that is
+            # the frame a field report is looking for. First life is enough for a table.
+            if first_live is None and b.get("arm_state") == "live" and b.get("alive") is True:
+                hp0, ar0 = b.get("hp"), b.get("armor")
+                if isinstance(hp0, int) and not isinstance(hp0, bool) and isinstance(ar0, int) and not isinstance(ar0, bool):
+                    first_live = {"hp": hp0, "armor": ar0}
             st = b.get("arm_state")
             if st is not None:
                 arm_state[str(st)] = arm_state.get(str(st), 0) + 1
@@ -152,24 +211,49 @@ def analyze_match(db: sqlite3.Connection, match: dict) -> dict:
             if isinstance(b.get("armor"), (int, float)):
                 max_armor = max(max_armor, int(b["armor"]))
 
-        # Perk-aware mismatch rule (evidence 2026-09-12): a `body_armor` perk only ever ADDS to the
-        # armed armor pool, so a reported armor ABOVE the config is expected (the perk, not a stale
-        # push) and is never flagged; a reported armor BELOW the config cannot come from that perk and
-        # is a genuine mismatch. HP has no perk that raises it, so any HP difference is flagged.
-        hp_mismatch = bool(bodies) and cfg_hp is not None and max_hp != cfg_hp
-        armor_mismatch = bool(bodies) and cfg_armor is not None and max_armor < cfg_armor
+        # Perk-aware mismatch rule VS `config.health` (evidence 2026-09-12): a `body_armor` perk only
+        # ever ADDS to the armed armor pool, so a reported armor ABOVE the config is expected (the
+        # perk, not a stale push) and is never flagged; a reported armor BELOW the config cannot come
+        # from that perk and is a genuine mismatch. HP has no perk that raises it, so any HP
+        # difference is flagged.
+        #
+        # C-3: the column names say `_vs_cfg` because that is the only question they answer, and it
+        # is the NARROWER one. `LoadoutOverrides.max_hp/max_armor` are baked into the pushed `$PSET`
+        # and never into `config.health`, so under the old name any game using one reported that node
+        # mismatched in every single match. The PAIR is reported beside the flag, and where the
+        # snapshot carries the head MC actually pushed that player, so is the comparison that
+        # actually matters.
+        hp_mismatch_vs_cfg = bool(bodies) and cfg_hp is not None and max_hp != cfg_hp
+        armor_mismatch_vs_cfg = bool(bodies) and cfg_armor is not None and max_armor < cfg_armor
 
+        # C-3: the per-node truth. `state.py _schedule` persists the compiled head of every player
+        # beside the config (`config["_heads"][player_id]`), and its `$PSET` already has the
+        # per-player overrides and the `body_armor` perk baked in -- so this needs no perk model of
+        # its own and cannot drift from one. None when the snapshot has no head for this node (a
+        # pre-A36 store, or a node whose status bodies never named a player).
+        pushed = _pushed_pool(cfg, player_id)
         ack = _latest_ack_before(db, nid, go_live_t)
         ack_config_id = ack.get("config_id") if ack else None
         nodes[nid] = {
+            "player_id": player_id,
             "arm_state_counts": arm_state,
             "alive_counts": alive,
             "gun_linked_counts": linked,
             "max_shots": max_shots,
             "max_hp": max_hp,
             "max_armor": max_armor,
-            "hp_mismatch": hp_mismatch,
-            "armor_mismatch": armor_mismatch,
+            # C-4: the first settled pool of the first life, beside the max-seen pair.
+            "first_live_pool": first_live,
+            # C-3: both halves of the pair, per node, so the table never asks the reader to remember
+            # which number the flag was compared against.
+            "cfg_health": {"max_hp": cfg_hp, "max_armor": cfg_armor},
+            "pushed_pool": pushed,
+            "hp_mismatch_vs_cfg": hp_mismatch_vs_cfg,
+            "armor_mismatch_vs_cfg": armor_mismatch_vs_cfg,
+            # Exact, not perk-aware: the head IS this node's pool, overrides and perk included, so
+            # there is nothing left for a difference to mean except a gun on another head.
+            "hp_mismatch_vs_pushed": (max_hp != pushed["hp"]) if pushed else None,
+            "armor_mismatch_vs_pushed": (max_armor != pushed["armor"]) if pushed else None,
             "ack_config_id": ack_config_id,
             "ack_matches_config": (ack_config_id == cfg.get("config_id")) if ack_config_id is not None else None,
         }
@@ -215,6 +299,14 @@ def _fmt(v: Any) -> str:
     return "-" if v is None else str(v)
 
 
+def _pair(d: dict | None, a: str, b: str) -> str:
+    """"100/60", or "-" when the pool is unknown. A dash is a fact ("nothing was recorded"); a 0/0
+    would be a claim about a gun."""
+    if not d or d.get(a) is None or d.get(b) is None:
+        return "-"
+    return f"{d[a]}/{d[b]}"
+
+
 def render_markdown(reports: list[dict]) -> str:
     lines = ["| match_id | mode | config_id | environment | duration_s | shots | hits | hit% | deaths |",
              "|---|---|---|---|---|---|---|---|---|"]
@@ -227,14 +319,23 @@ def render_markdown(reports: list[dict]) -> str:
                   f"cfg health: hp={_fmt(r['cfg_health']['max_hp'])} armor={_fmt(r['cfg_health']['max_armor'])} · "
                   f"shooter_team values seen: {r['shooter_team_values']}",
                   "",
-                  "| node_id | arm_state | alive T/F | linked T/F/none | max_shots | max_hp | max_armor | "
-                  "hp_mismatch | armor_mismatch | ack_config_id | ack==cfg |",
-                  "|---|---|---|---|---|---|---|---|---|---|---|"]
+                  # C-3: every pool column is a PAIR, and the two mismatch columns name what they
+                  # were compared against. `vs cfg` is the narrow question (`config.health`, which
+                  # never carries a per-player override); `vs pushed` is the `$PSET` this node's
+                  # player was actually sent, overrides and perk included.
+                  "| node_id | player | arm_state | alive T/F | linked T/F/none | max_shots | "
+                  "first_live hp/armor | max hp/armor | cfg hp/armor | pushed hp/armor | "
+                  "hp≠cfg | armor≠cfg | hp≠pushed | armor≠pushed | ack_config_id | ack==cfg |",
+                  "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
         for nid, n in sorted(r["nodes"].items()):
             lines.append("| " + " | ".join(_fmt(x) for x in (
-                nid, n["arm_state_counts"], f"{n['alive_counts']['true']}/{n['alive_counts']['false']}",
+                nid, n["player_id"], n["arm_state_counts"], f"{n['alive_counts']['true']}/{n['alive_counts']['false']}",
                 f"{n['gun_linked_counts']['true']}/{n['gun_linked_counts']['false']}/{n['gun_linked_counts']['none']}",
-                n["max_shots"], n["max_hp"], n["max_armor"], n["hp_mismatch"], n["armor_mismatch"],
+                n["max_shots"], _pair(n["first_live_pool"], "hp", "armor"),
+                f"{n['max_hp']}/{n['max_armor']}",
+                _pair(n["cfg_health"], "max_hp", "max_armor"), _pair(n["pushed_pool"], "hp", "armor"),
+                n["hp_mismatch_vs_cfg"], n["armor_mismatch_vs_cfg"],
+                n["hp_mismatch_vs_pushed"], n["armor_mismatch_vs_pushed"],
                 n["ack_config_id"], n["ack_matches_config"])) + " |")
     return "\n".join(lines) + "\n"
 
