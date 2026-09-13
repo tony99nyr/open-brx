@@ -3577,7 +3577,8 @@ class Session:
             # config advisory is judged on is the first life under THIS head, and a fresh head is a
             # fresh count. (`push_config` is refused in armed/live, so this never renumbers a life
             # inside a running match.)
-            for k in ("pool_life_t", "pool_life_judged", "pool_life_hit", "pool_life_n"):
+            for k in ("pool_life_t", "pool_life_judged", "pool_life_hit", "pool_life_n",
+                      "pool_amber_pending"):
                 self._node_view(nid).pop(k, None)
             self.net.push(nid, "config", {"config": self._wire_config(), "frames": bundle, "roster": self.roster()})
 
@@ -4466,7 +4467,8 @@ class Session:
         self._pool_faults = {}
         self._pool_ambers = {}
         for nv in self.nodes.values():
-            for k in ("pool_life_t", "pool_life_judged", "pool_life_hit", "pool_life_n", "config_id"):
+            for k in ("pool_life_t", "pool_life_judged", "pool_life_hit", "pool_life_n",
+                      "pool_amber_pending", "config_id"):
                 nv.pop(k, None)
         self.trying = {}
         self.browsing = {}

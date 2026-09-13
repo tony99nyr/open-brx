@@ -1083,3 +1083,20 @@ def test_a_first_push_reports_its_config_id_too():
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     res = s.push_config()
     assert res.get("config_id") == s.config["config_id"] and not res.get("repushed"), res
+
+
+def test_a_half_made_amber_claim_does_not_survive_a_fresh_head():
+    """F5's `pool_amber_pending` is a half-finished claim about ONE head. A re-push (and a new
+    session) replaces the head, so the pair must start again -- otherwise one frame from the old
+    head and one from the new could agree with each other and amber a gun on the right config."""
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    info = _go_live(s, net, clock, ps)
+    _live_status_src(net, clock, 1, ps[1], 45, 70, info["match_id"])
+    clock["t"] += POOL_CHECK_SETTLE_MS + 100
+    _live_status_src(net, clock, 1, ps[1], 20, 0, info["match_id"])       # one half of the pair
+    nv = s.nodes["node1"]
+    assert nv.get("pool_amber_pending") == [20, 0], "control: a claim is half made"
+    s.control("end", confirm=True)
+    s.new_session()
+    assert s.nodes["node1"].get("pool_amber_pending") is None
