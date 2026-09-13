@@ -108,3 +108,100 @@ adversarial pass, no UX/field-safety review. It is a one-line pin plus repinned 
 Python suite (1818 passed) and one operator measurement. Run the loop over it, and specifically check:
 the venue reminder's now-wrong rationale, `docs/spec/` and `protocol/brx-protocol.md`'s two incorrect claims
 about t2, and whether any other code path still reads `self.outdoor` expecting it to reach the wire.
+
+---
+
+# SESSION CLOSE 2026-09-13 — everything open, unverified, or owed
+
+This section is the full outstanding list from a ~20 hour session that ran the 2026-09-12 field night's
+fixes through four tiers, cut app 0.2.1, and then found the real cause in the field. **Nothing below is
+bench-verified against hardware except where it says so.** Read this before trusting any of it.
+
+## 1. CRITICAL — must be verified before the next session with players
+
+1. **`$GSET` t2 pinned to 0 has had NO polish-loop.** One-line change plus five repinned tests, validated
+   by the Python suite and one operator measurement. No review lenses, no adversarial pass, no UX or
+   field-safety review. It shipped straight to main (`ed707d7`).
+2. **The reflection theory is untested and it may invert the fix.** If low sensitivity is deliberately for
+   indoor play (rejecting bounced shots), the correct end state is `indoor -> 1, outdoor -> 0`, the exact
+   inverse of what shipped before. Test: play indoors at t2=0 and look for phantom hits — hits with no line
+   of sight, or hits on players nobody aimed at. Until then t2 stays pinned at 0.
+3. **The venue reminder shipped 2026-09-13 has a disproved rationale.** It tells the operator to set every
+   gun to outdoor because we believed indoor mode shortened range. It does not. The on-gun ALT toggle
+   changes BEAM WIDTH (measured: roughly double the aim tolerance outdoors, three guns). The reminder still
+   has value; its stated reason is wrong and must be rewritten.
+4. **`protocol/brx-protocol.md` carries two wrong claims about t2** (calls it the ALT-hold toggle, lists it
+   as a candidate for emitted range). It gates hit RECEPTION. Correct with the fix.
+5. **Nothing from the whole session is bench-verified on a real gun** except the t2 finding itself and the
+   range measurements. Every proof layer, the end-delivery retry, the station release, the standby work:
+   all desk-proven only.
+
+## 2. Field measurements taken 2026-09-13 — the evidence base
+
+- Native, real game, ~200 ft (80 natural paces, measured; earlier "100 ft" estimates were wrong by half):
+  hits with both AR and shotgun, in BOTH toggle states.
+- The on-gun ALT toggle is a BEAM-WIDTH control: indoor tolerates ~1.5 dot-widths off centre, outdoor ~3.
+  Roughly double, consistent across three guns. NOT a range control.
+- Our `$WEAP` t41 already ships the stock catalogue value at every venue, so it matches native. Range token
+  is not a difference.
+- With t2=1: a full clip at 30 ft registered ZERO hits; only inches registered.
+- With t2=0: 16 hits in 27 shots, then "every single shot at 30ft", then confirmed again on the shipped
+  outdoor config with no overrides.
+- Hit sensor field (`$HIR` token 1) confirms hits arriving on headset domes (0, 3), not just the gun body.
+- **A gun echoed `$ALCD,32,100,0,96,0` against a compiled reserve of 192 — exactly half — on every gun all
+  day.** The echo-mismatch START refusal therefore fires on healthy guns. Shipping it FORCEABLE was correct;
+  force-proof would have blocked arming in the field. Root cause unknown (does the gun clamp reserve?).
+
+## 3. Follow-ups filed but NOT yet written into FOLLOWUPS.md
+
+The session close commit (`5f76da3`) filed F165-F196. These came later, from the field, and are only here:
+
+- **F197** The `$GSET` t2 fix needs its polish-loop (item 1 above).
+- **F198** Test the reflection theory indoors (item 2 above).
+- **F199** Rewrite the venue reminder's rationale (item 3 above).
+- **F200** Correct the two protocol claims (item 4 above).
+- **F201** Why does every gun echo reserve 96 against a compiled 192? Decides whether the echo-mismatch
+  refusal can become force-proof.
+- **F202** The HUD cannot change which tagger a phone owns. Only RELINK GUN and a reconnect pill exist, both
+  of which reconnect the gun it already has. The gun lives in the engine's saved blob (`brx.engine` -> `gun`)
+  and nothing in the UI clears it. Workaround: power the old tagger off so it stops advertising.
+- **F203** A phone keeps its Mission Control address in TWO keys (`brx.mc_url`, `brx.pub_url`) and an
+  unreachable one survives an app upgrade. Both phones today held a WSL NAT address no phone can reach and
+  had fallen back to sweeping whole subnets. The boot warning shipped today tells the OPERATOR the server is
+  advertising something unreachable; it cannot clear a bad address a PHONE already saved.
+- **F204** Nothing on the wire reports headset battery or link quality. Checked: no protocol field, and the
+  phone exposes no headset health. A weak headset can only be observed, never measured.
+- **F205** `app/tools/screens.mjs` hardcodes port 4192 and `site/shots.mjs` hardcodes 4180/4181 (the latter
+  fixed 2026-09-13 to bind before wiping, but the port is still fixed).
+
+## 4. Reviews that were NOT run
+
+- **The t2 fix**: no review of any kind (item 1).
+- **The GAMES tab rebuild (`33f0ea1`)**: three lenses ran and 5 batches of findings were applied, but the
+  FINAL integrated state was never re-reviewed after those fixes landed.
+- **The four lanes that shipped in the morning** (utility exit, end-delivery, address warning, test infra)
+  were reviewed post-hoc, after they were already on main. Findings were applied but the corrected state was
+  never re-reviewed.
+- **`app/tools/e2e.mjs` has never been executed** — it drives real guns and two phones.
+
+## 5. Known-weak guards found during the session
+
+- `test_amendment_citations` cannot see SCREAMING_CASE or CamelCase symbols, and its searched directories
+  exclude `mcp/tests`. Worse, it only checks that cited symbols EXIST, never that an amendment's citations
+  name THAT amendment — so it could not have caught the A41→A42 renumbering in either direction.
+- Two guards assert behaviour by grepping source text (`lobby-standby.test.tsx`, `tapgate.test.mjs`).
+- The HUD screen-truth standby steps run only under `ui:screens`, never `npm test`.
+- `m2-ui` has a timing-dependent assertion that flaked once.
+
+## 6. Process failures worth not repeating
+
+- Two commits were silently orphaned; both were caught only by comparing a committed blob against the
+  working tree, never by `git status`. **A clean merge is not evidence.**
+- One merge was textually clean and semantically wrong: a new port override did not reach the three test
+  steps nobody had ever executed.
+- `site/shots.mjs` wiped its output directory before binding its port, so a failed run looked like a clean
+  slate; the deletion of all 11 shots was committed before it was caught.
+- A lane's cleanup `pkill` matched every Playwright profile on the box and killed another lane's run.
+- **The t2 bug was found by the operator, not by this session.** He said repeatedly that the only difference
+  was hosted versus native config. The session spent an hour on batteries, headset domes and hit tables
+  before testing the one field we write that native never sends.
