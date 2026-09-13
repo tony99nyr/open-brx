@@ -49,6 +49,12 @@ OPTION_VALUES: dict[str, tuple[str, ...]] = {"log_sync": ("auto", "manual")}
 LOG_STATES = ("none", "offered", "pulling", "held", "complete")
 PULL_REASONS = ("recap", "offer", "manual", "reconnect")
 
+# A41: the END re-delivery ladder — the gap before the 1st, 2nd, … re-push to a HUD that has not confirmed
+# the end. Short at first (the ordinary cause is one lost frame to a phone that is standing right there),
+# backing off to a minute, and then STOPPING: past ~137 s a phone is not slow to answer, it is gone, and
+# A34's reconcile answers it from its own first heartbeat for as long as MC remembers the match (`_ended`).
+END_RETRY_MS = (2_000, 5_000, 10_000, 20_000, 40_000, 60_000)
+
 
 def release_app_version() -> str | None:
     """The app version on the GitHub Release, read from `webapp/download/build.json` (the sidecar
@@ -373,6 +379,10 @@ class Session:
         # answers from. `recap` is None for a match that was recalled / panicked / aborted (nothing to show).
         self._ended: dict[str, dict] = {}
         self._stale_told: dict[tuple[str, str | None], int] = {}   # (node_id, match_id) -> last time MC told it to end
+        # A41 (field 2026-09-12, twice): who has CONFIRMED the end of the match just ended.
+        # node_id -> {match_id, player_id, since, tries, next_t, confirmed, confirmed_t, exhausted, last_ok}
+        self._end_delivery: dict[str, dict[str, Any]] = {}
+        self._end_delivery_told: str | None = None   # the match_id we have already said went unconfirmed
         # A24/M2: WHAT ended the last match -- "frag_limit" | "host" | "time" | None. Only a frag cap has
         # an end time that a LATER fact can move (an earlier cap kill flushed minutes late); a whistle and
         # a clock are moments the field already lived through and are never re-derived.
@@ -2484,6 +2494,8 @@ class Session:
         if nv.get("node_type") != "utility" and body.get("arm_state") in ("armed", "live"):
             self._check_stale_live(nid, body.get("match_id"), t_recv)   # A34
         if nv.get("node_type") != "utility":
+            self._note_end_confirm(nid, body)          # A41: this heartbeat IS the ack for the last end
+        if nv.get("node_type") != "utility":
             self._check_pool(nid, body, t_recv, was_alive)              # A36
         self._changed()
 
@@ -2720,7 +2732,12 @@ class Session:
         body: dict = {"cmd": "end"}
         if mid:
             body["match_id"] = mid
-        self.net.push(nid, "control", body)
+        ok = self.net.push(nid, "control", body)
+        if mid:
+            # A41: A34's push and A41's retry are the SAME delivery. Recording it here is what stops the
+            # two pushing in the same breath (this fires from the heartbeat, `_retry_end_delivery` from
+            # the tick 2 Hz later) and what makes the operator's try counter the truth.
+            self._end_delivery_tried(nid, mid, ok is not False)
         pid = self.node_player.get(nid)
         p = self.players.get(pid) if pid else None
         ended = self._ended.get(mid) if mid else None
@@ -2742,6 +2759,136 @@ class Session:
         who = (p or {}).get("display") or nid
         self._on_feed({"t_match_s": 0, "tag": "RECONCILED", "kind": "alert",
                        "text": f"{who}'S PHONE CAME BACK STILL LIVE IN AN ENDED MATCH — TOLD TO END"})
+
+    # ---------- A41: the END is a DELIVERY, and the heartbeat is the receipt ----------
+    # Field 2026-09-12, TWICE: the operator ended the match and a player's tagger played on. `reached` was
+    # never the statement it reads as — `net.push` answers False only when a node has NO SOCKET, and the
+    # send that follows is a fire-and-forget task whose exception is swallowed (`net.py _send`) — so "END
+    # REACHED 2 OF 2" has always been a fact about sockets, never about any HUD. There is no `ack` kind for
+    # `control` (`types.py MC_KINDS`), and inventing one would be confirmed only by phones carrying a NEW
+    # build: useless on the night it is needed.
+    #
+    # The receipt already exists, twice a second, from the build in players' hands TODAY. A bound phone
+    # heartbeats `arm_state` and `match_id` (`engine.js statusBody`), and `_endLocal` moves it to `kitted`
+    # while deliberately KEEPING `match_id`. A phone that took the end says `kitted` for that match; one
+    # that missed it says `live`. MC watches for that, re-delivers to the ones still saying `live` on a
+    # backoff, and — the point of the whole thing — SHOWS the operator who has not confirmed.
+    #
+    # ⚠ IT NEVER GATES. `_finish()` has written the recap and moved MC to recap before the first retry is
+    # even due. A player who walks out of range at the whistle is normal and expected: there is no `await`
+    # on a phone anywhere in the end path, and there must never be one.
+    def _arm_end_delivery(self, match_id: str | None) -> None:
+        """Watch every bound player HUD for its confirmation that `match_id` ended.
+
+        The population is the BOUND PLAYER nodes — the same one the operator reads as `nodes`, and the only
+        one with a name to put on a board. A benched player has no node and is never expected to confirm; a
+        station is not in the match (`node_type: utility`); an UNBOUND node is still pushed the end by
+        `_broadcast_control` (a HUD whose binding was lost is still running the match on its gun) but has no
+        roster row, so there is nobody to name and it is not counted against the operator."""
+        if not match_id:
+            return
+        now = self.now_ms()
+        if any(e["match_id"] != match_id for e in self._end_delivery.values()):
+            self._end_delivery = {n: e for n, e in self._end_delivery.items() if e["match_id"] == match_id}
+            self._end_delivery_told = None
+        for p in self.players.values():
+            nid = p.get("node_id")
+            if not nid or (self.nodes.get(nid) or {}).get("node_type") == "utility" or nid in self._end_delivery:
+                continue
+            self._end_delivery[nid] = {"match_id": match_id, "player_id": p["player_id"], "since": now,
+                                       "tries": 0, "next_t": now + END_RETRY_MS[0], "confirmed": False,
+                                       "confirmed_t": None, "exhausted": False, "last_ok": False}
+
+    def _end_delivery_tried(self, nid: str, match_id: str, ok: bool) -> None:
+        """Record ONE attempt at `nid` — the whistle's own push, A34's reconcile or A41's retry, which are
+        all the same delivery — and set when the next one is due."""
+        e = self._end_delivery.get(nid)
+        if not e or e["match_id"] != match_id or e["confirmed"]:
+            return
+        e["tries"] += 1
+        e["last_ok"] = ok
+        e["next_t"] = self.now_ms() + END_RETRY_MS[min(e["tries"] - 1, len(END_RETRY_MS) - 1)]
+        e["exhausted"] = e["tries"] >= 1 + len(END_RETRY_MS)
+
+    def _note_end_confirm(self, nid: str, body: dict) -> None:
+        """The ack, read off the heartbeat the phone was already sending — no new wire kind, and an app
+        that predates A41 confirms exactly as well as one that does not."""
+        e = self._end_delivery.get(nid)
+        if not e or e["confirmed"]:
+            return
+        arm = body.get("arm_state")
+        if arm is None:
+            return          # an app that says nothing claims nothing: keep waiting, never assume
+        mid = body.get("match_id")
+        # Still `armed`/`live` for THIS match (or naming none at all, an older app) = it has not taken the
+        # end. Anything else — `kitted`, or live in a DIFFERENT match — means it is no longer in ours.
+        if arm in ("armed", "live") and (mid is None or mid == e["match_id"]):
+            return
+        e["confirmed"], e["confirmed_t"] = True, self.now_ms()
+        if e["tries"] > 1:
+            # A line only when the FIRST push did NOT do it — that is the phone the operator was watching.
+            # Every other confirmation is the system working, and belongs in no feed.
+            p = self.players.get(e["player_id"]) or {}
+            secs = max(0, e["confirmed_t"] - e["since"]) // 1000
+            self._on_feed({"t_match_s": 0, "tag": "END", "kind": "alert",
+                           "text": f"{(p.get('display') or e['player_id']).upper()}'S HUD CONFIRMED THE END "
+                                   f"— {secs}S AFTER THE WHISTLE, ON DELIVERY {e['tries']}"})
+        self._changed()
+
+    def _retry_end_delivery(self, now: int) -> None:
+        """Re-push `control{end, match_id}` to the HUDs that have not confirmed. Called from `tick()` (2 Hz).
+
+        ⚠ `tick()` calls this ABOVE its `if not self.start_info: return`: `_finish()` clears `start_info`,
+        and RECAP is the only phase this ever runs in. Below that gate it would be dead code."""
+        for nid, e in list(self._end_delivery.items()):
+            if e["confirmed"] or e["exhausted"] or e["next_t"] > now:
+                continue
+            ok = self.net.push(nid, "control", {"cmd": "end", "match_id": e["match_id"]}) is not False
+            self._end_delivery_tried(nid, e["match_id"], ok)
+        self._say_end_unconfirmed()
+
+    def _say_end_unconfirmed(self) -> None:
+        """Once, when the ladder is spent: NAME the phones that never confirmed, and say what to do about
+        it. A fact about DELIVERY — it says nothing about how anyone played, and must never read as if it
+        does."""
+        if not self._end_delivery:
+            return
+        mid = next(iter(self._end_delivery.values()))["match_id"]
+        if self._end_delivery_told == mid:
+            return
+        left = [e for e in self._end_delivery.values() if not e["confirmed"]]
+        if not left or any(not e["exhausted"] for e in left):
+            return
+        self._end_delivery_told = mid
+        who = ", ".join(sorted((self.players.get(e["player_id"]) or {}).get("display") or e["player_id"]
+                               for e in left))
+        self._on_feed({"t_match_s": 0, "tag": "WITHHELD", "kind": "alert",
+                       "text": f"{len(left)} HUD{'S' if len(left) != 1 else ''} NEVER CONFIRMED THE END ({who}) "
+                               f"— TOLD {1 + len(END_RETRY_MS)} TIMES. THAT TAGGER MAY STILL BE IN THE MATCH: "
+                               f"END IT ON THE GUN"})
+        self._changed()
+
+    def _end_delivery_view(self) -> dict | None:
+        """`API.md State.end_delivery` — what the operator reads while the match is ending and on RECAP.
+
+        Both halves matter: the operator asked to know that every HUD acked, so a clean `4 of 4` is as much
+        the answer as a straggler is. A DELIVERY fact about a phone, never a judgement about a player."""
+        if not self._end_delivery:
+            return None
+        now = self.now_ms()
+        rows = []
+        for nid, e in self._end_delivery.items():
+            if e["confirmed"]:
+                continue
+            p = self.players.get(e["player_id"]) or {}
+            rows.append({"player_id": e["player_id"], "display": p.get("display") or e["player_id"],
+                         "node_id": nid, "tries": e["tries"], "since_ms": now - e["since"],
+                         "reached": bool(e["last_ok"]), "retrying": not e["exhausted"]})
+        rows.sort(key=lambda r: r["display"])
+        total = len(self._end_delivery)
+        return {"match_id": next(iter(self._end_delivery.values()))["match_id"], "total": total,
+                "confirmed": total - len(rows), "unconfirmed": rows,
+                "retrying": any(r["retrying"] for r in rows)}
 
     def _on_event(self, nid: str, ev: Event, t_recv: int):
         # `seq` is stamped onto the fact by `net.py` (`ev["seq"] = seq`) before it reaches here.
@@ -4031,6 +4178,9 @@ class Session:
         self.start_seq += 1
         self._game_no_started = True           # the next muster push is a NEW match to every station
         now = self.now_ms()
+        # A41: whether the LAST match's end reached every HUD is not a fact about THIS one. The operator
+        # has moved on, and a straggler line left standing over a live board would be read as this match's.
+        self._end_delivery, self._end_delivery_told = {}, None
         self.start_info = {"match_id": uuid.uuid4().hex[:10], "go_live_t": now + runway_s * 1000,
                            "seq": self.start_seq, "countdown_s": runway_s}
         sc = Scorer(self.start_info["match_id"], self.start_info["go_live_t"], self.config["time_limit_s"],
@@ -4287,8 +4437,16 @@ class Session:
         runs the match on its gun and must still get END/PANIC (review 2026-09-11) — while the COUNT is
         over the bound player nodes, so it is the same population the operator sees as `nodes`.
         """
-        body = {"cmd": cmd}
+        mid = (self.start_info or {}).get("match_id")
+        # A41: the operator's END now NAMES its match. A34 gave `control{end}` an optional `match_id` and
+        # taught the node to ignore an end naming a match it is not playing; the operator's end never
+        # carried one, so re-delivering it would have been a blunt instrument able to stop a LATER match.
+        # RECALL and PANIC stay deliberately unnamed: they are the stop-everything hammer, and a phone
+        # running a match MC has lost track of is exactly what the operator reaches for them for.
+        body = {"cmd": cmd, **({"match_id": mid} if cmd == "end" and mid else {})}
         bound_nodes = {p["node_id"] for p in self.players.values() if p.get("node_id")}
+        if cmd == "end" and mid:
+            self._arm_end_delivery(mid)
         reached = 0
         for nid, nv in list(self.nodes.items()):
             if nv.get("node_type") == "utility":
@@ -4296,6 +4454,8 @@ class Session:
             ok = self.net.push(nid, "control", body)
             if nid in bound_nodes and ok is not False:
                 reached += 1
+            if cmd == "end" and mid and nid in bound_nodes:
+                self._end_delivery_tried(nid, mid, ok is not False)
         return reached
 
     def control(self, cmd: str, confirm: bool = False) -> dict:
@@ -4440,6 +4600,10 @@ class Session:
         self._match_players = {pid: p.copy() for pid, p in self.players.items()}
         self.last_recap = self._scorer_recap(self.scorer) if self.scorer else None
         self._record_ended(self._log_match, self.last_recap, self._match_players)   # A34: what a late phone is told
+        # A41: watch for every bound HUD to confirm this end. Here rather than only in `_broadcast_control`
+        # because the TIMED end pushes no `control` at all — every phone ends on its own clock — and that
+        # is precisely the end where the operator has least to go on about the one phone that did not.
+        self._arm_end_delivery(self._log_match)
         self._push_victory(self.last_recap)              # winners' guns play the victory sting (in coverage)
         self._push_result()                              # A24: EVERY node learns the outcome, losers included
         if self.store and self.start_info and self.last_recap:
@@ -4467,6 +4631,9 @@ class Session:
     def tick(self) -> None:
         """Call periodically (≥1 Hz): armed→live at go_live_t; live→recap at the timed end (+5 s grace)."""
         self._flush_pending_limit()   # last resort: a cap deferred mid-batch ends even if no fact follows
+        # A41 — ABOVE the `start_info` gate on purpose: `_finish()` clears `start_info`, and RECAP is the
+        # only phase an end re-delivery ever runs in. Below the gate it would be dead code.
+        self._retry_end_delivery(self.now_ms())
         if not self.start_info:
             return
         now = self.now_ms()
@@ -4577,6 +4744,7 @@ class Session:
         # session could suppress a legitimate reconcile in this one -- and a phone still out on the field
         # holding the old match is exactly the case a NEW session is most likely to meet.
         self._stale_told = {}
+        self._end_delivery, self._end_delivery_told = {}, None     # A41: a new session ends the last watch
         if keep_roster:
             for p in self.players.values():
                 p["ready"] = False
@@ -4623,6 +4791,7 @@ class Session:
                 per[pid] = {"arm_state": nv.get("arm_state", "idle"), "t_minus_ms": nv.get("t_minus_ms"),
                             "synced": nv.get("synced", False), "last_seen_ms": now - nv.get("last_seen_ms", 0)}
             start = {**self._start_body(), "per_node": per}
+        end_delivery = self._end_delivery_view()        # A41: absent until a match has ended
         return {"session_id": self.session_id, "phase": self.phase, "t": now, "lan": self.lan,
                 "coverage": self.coverage(),                    # A28.4: derived, not asserted
                 "mc_confidence": self.mc_confidence(),          # A11.5: gates MC-driven global-state events
@@ -4642,5 +4811,6 @@ class Session:
                 "lobby": {"ready": sum(1 for p in self.players.values() if p["ready"]), "total": len(self.players),
                           "pushed": self.lobby_pushed, "acks": self.acks, "all_acked": self.all_acked()},
                 "start": start, "live": live, "recap": self.recap() if self.phase in ("live", "recap") else None,
+                **({"end_delivery": end_delivery} if end_delivery else {}),   # A41
                 "notices": self._notices(),      # A31: standing host lines (absent keys = nothing to say)
                 "feed": self.feed[:50]}

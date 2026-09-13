@@ -288,6 +288,16 @@ export interface State {
    *  older server, and the field name is whatever `mc/API.md` documents once the server lane lands —
    *  this is built against `notices.mc_verify` and renders nothing at all when it is missing. */
   notices?: { mc_verify?: string };
+  /** A41 (2026-09-13) — did the END actually reach every player's HUD? Present from the moment a match
+   *  ends until the next one is scheduled; absent on a server that predates it, and absent before any
+   *  match has ended, so presence is the rule for rendering anything at all.
+   *
+   *  This is a fact about DELIVERY — whether a phone acknowledged the end, read off the heartbeat it
+   *  already sends — and it must never be rendered as, or beside, a judgement about how that player
+   *  played. `confirmed` is `total - unconfirmed.length`; `retrying` says MC is still re-delivering (it
+   *  stops after `tries` reaches the end of the ladder, at which point the answer is a person walking
+   *  over to the gun). */
+  end_delivery?: EndDeliveryView;
   /** field 2026-09-12 (ISSUE 11/F142): a `--demo` session used to persist into `~/.brx-mcp/` and get
    *  silently RESTORED on the next real launch — two ghost players with no phone sat on a live roster
    *  and were mistaken for real ones until match 2 was already mid-setup. Present only on the FIRST
@@ -295,6 +305,20 @@ export interface State {
    *  operator has acknowledged it (FRESH SESSION) or on a session that started clean. `players` is how
    *  many roster rows came back with it, so the banner can say a number instead of "some". */
   restored_from?: { at: number; players: number };
+}
+
+/** A41 — `state.py _end_delivery_view()`. One row per bound player HUD that has NOT confirmed the end of
+ *  `match_id`; a HUD that confirmed simply leaves the list, which is why `confirmed` is a count and not a
+ *  second list. `reached` is whether MC's last push found a socket at all (it is not proof the HUD acted —
+ *  nothing but the heartbeat is), `tries` how many times that phone has been told, `since_ms` how long ago
+ *  the whistle was. */
+export interface EndDeliveryView {
+  match_id: string;
+  total: number;
+  confirmed: number;
+  unconfirmed: { player_id: string; display: string; node_id: string; tries: number; since_ms: number;
+                 reached: boolean; retrying: boolean }[];
+  retrying: boolean;
 }
 
 export interface ModeInfo {

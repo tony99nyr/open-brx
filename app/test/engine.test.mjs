@@ -4846,3 +4846,38 @@ test('S7: benching clears the local READY, so the phone and the board agree afte
   assert.equal(h.eng.state().ready, false, 'reinstated as NOT ready, exactly as MC has them');
   assert.equal(h.eng.setReady(true), true);
 });
+
+// ---------- A41: the phone's half of the END delivery proof ----------
+// The whole of A41 rests on one claim: the receipt MC needs is ALREADY sent, twice a second, by the build
+// in players' hands today — no new message kind, no app update. These pin that claim from this side, so it
+// cannot be broken without a red test. They pass on the pre-A41 engine, which is exactly the point.
+test('A41: after the end the heartbeat says kitted and still NAMES the match — that is the ack', () => {
+  const h = goLive(harness());
+  assert.equal(h.eng.statusBody().arm_state, 'live');
+  assert.equal(h.eng.statusBody().match_id, 'm1');
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end', match_id: 'm1' } });
+  const b = h.eng.statusBody();
+  assert.equal(b.arm_state, 'kitted', 'a phone that TOOK the end reports kitted...');
+  assert.equal(b.match_id, 'm1', '...for the match it just left — MC needs both halves to tell it from a phone that missed the end');
+});
+
+test('A41: a phone that MISSED the end goes on reporting live for that match (the other half of the signal)', () => {
+  const h = goLive(harness());
+  h.adv(30000);
+  const b = h.eng.statusBody();
+  assert.equal(b.arm_state, 'live', 'nothing about a missed end changes what it says');
+  assert.equal(b.match_id, 'm1');
+});
+
+test('A41: a re-delivered END is idempotent — no second teardown, no second history entry', () => {
+  const h = goLive(harness());
+  let entries = 0; h.eng.onEnd = () => { entries += 1; };
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end', match_id: 'm1' } });
+  const writes = h.writes.length, facts = h.facts.length;
+  h.adv(3000);
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end', match_id: 'm1' } });
+  assert.equal(entries, 1, 'the history entry is written once');
+  assert.equal(h.eng.phase, 'kitted');
+  assert.equal(h.writes.length, writes, 'the gun is not torn down a second time');
+  assert.equal(h.facts.length, facts, 'and no second end-of-match fact goes out');
+});

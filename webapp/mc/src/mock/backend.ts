@@ -577,6 +577,22 @@ export class MockBackend implements Api {
       start: this.start_ ? clone(this.start_) : undefined,
       live: this.live_ ? this.liveView() : undefined,
       recap: this.recap_ ? clone(this.recap_) : undefined,
+      end_delivery: this.endDelivery(),      // A41
+    };
+  }
+  /** A41 — did the END reach every player's HUD? Plain `?mock` shows the ordinary answer (all of them
+   *  did, which is the sentence the operator asked to see); `?mock&faults=1` shows one phone that never
+   *  confirmed, which is the state the field hit twice on 2026-09-12 and the only way to look at that
+   *  notice without a match on the ground. Mirrors `state.py _end_delivery_view()`. */
+  private endDelivery() {
+    if (!this.recap_) return undefined;
+    const total = this.players.length;
+    if (!total) return undefined;
+    const out = this.demoFaults ? [this.players[total - 1]] : [];
+    return {
+      match_id: this.live_?.match_id ?? 'm-mock', total, confirmed: total - out.length, retrying: false,
+      unconfirmed: out.map(p => ({ player_id: p.player_id, display: p.display, node_id: `node-${p.player_id}`,
+                                   tries: 7, since_ms: 140_000, reached: true, retrying: false })),
     };
   }
   private armStateFor(pid?: string) {

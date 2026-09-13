@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { MatchHistoryRow, RecapStationRow, RecapView, ScoreRow } from '../api/types';
+import { endDeliveryLine } from '../api/derive';
 import { useStore } from '../store';
 import { CHAMFER, F, T, fmtClock, teamColor } from '../tokens';
 import { BTN_RESET, Brackets, Num, SectionRule, PrimaryButton } from '../ui';
@@ -109,6 +110,12 @@ export function Recap() {
   // export button rather than hand the operator the wrong game. It has its own endpoint now.
   const csv = past ? api.matchCsvUrl(past.match_id) : api.recapCsvUrl();
   const csvName = past ? `brx-recap-${past.match_id}.csv` : 'brx-recap.csv';
+  // A41: whether the END reached every HUD. `state.end_delivery` is about the match MC has in hand, so an
+  // ARCHIVED recap gets none of it — the phone it would name was put away hours ago. The ok-case sentence
+  // is `endDeliveryLine`'s, the same string LIVE shows, so the two screens cannot word it differently.
+  const edv = past ? null : state.end_delivery;
+  const edLine = endDeliveryLine(edv);
+  const edStragglers = edv?.unconfirmed ?? [];
 
   return (
     <div className="screen">
@@ -146,6 +153,24 @@ export function Recap() {
           ▲ STILL SETTLING — {(rc.awaiting ?? []).length} NODE{(rc.awaiting ?? []).length === 1 ? ' HAS' : 'S HAVE'} NOT REPORTED SINCE THE WHISTLE
           {(rc.awaiting ?? []).length ? ` (${(rc.awaiting ?? []).map(name).join(', ')})` : ''}
           {typeof rc.since_end_ms === 'number' ? ` · ${Math.round(rc.since_end_ms / 1000)}S AGO` : ''}. THESE TOTALS CAN STILL CHANGE.
+        </div>
+      )}
+      {/* A41 (field 2026-09-12, twice: a tagger played on after the operator ended the match). Whether an
+          END reached a HUD is a fact about DELIVERY, and it is deliberately stated HERE — above the board,
+          in its own block, in the operator's own words — and never as a column, a mark or a footnote on
+          anybody's score row. A player whose phone dropped off the Wi-Fi did nothing wrong, and a line that
+          sits inside the results reads as if they did. Live match only: an archived recap is read long
+          after the phone in question was put away, and `end_delivery` is about the match in hand. */}
+      {!past && edLine && (
+        <div data-testid="end-delivery-recap" role={edLine.ok ? undefined : 'alert'}
+          style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${edLine.ok ? T.line2 : T.bad}`,
+            borderLeft: `3px solid ${edLine.ok ? T.ok : T.bad}`, background: edLine.ok ? undefined : 'rgba(255,82,82,.07)',
+            font: F.mono(500, 11), letterSpacing: '.1em', color: edLine.ok ? T.dim : T.bad, lineHeight: 1.5 }}>
+          {edLine.ok ? `✓ ${edLine.text}` : (
+            <>▲ {edStragglers.length} HUD{edStragglers.length === 1 ? '' : 'S'} NEVER CONFIRMED THE END
+              {' '}({edStragglers.map(u => u.display).join(', ')}). THIS IS A DELIVERY FACT — IT SAYS NOTHING
+              {' '}ABOUT HOW THEY PLAYED. THAT TAGGER MAY HAVE PLAYED ON AFTER THE WHISTLE: CHECK IT ON THE GUN.</>
+          )}
         </div>
       )}
       {/* an ARCHIVED match must be described by ITS OWN mode, not the config the host is drafting

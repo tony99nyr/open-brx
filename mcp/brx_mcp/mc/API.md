@@ -133,6 +133,25 @@ State {
   start?: { match_id, go_live_t, seq, countdown_s, per_node: { [player_id]: { arm_state, t_minus_ms?, synced, last_seen_ms } } },
   live?: LiveView,
   recap?: RecapView,
+  end_delivery?: {                            // A41 (2026-09-13): DID THE END REACH EVERY HUD? Present from the moment a
+    match_id: string,                         // match ends until the next is scheduled; absent otherwise and on an older
+    total: number,                            // server. `total` = the bound player HUDs the end was expected to reach
+    confirmed: number,                        // (a benched player has no node; a station is not in the match; an UNBOUND
+    retrying: boolean,                        // node is still PUSHED the end but has no roster row to name).
+    unconfirmed: [ { player_id, display, node_id, tries: number, since_ms: number,
+                     reached: boolean, retrying: boolean } ]
+  },                                          // The ack is DERIVED from the ~2 s status heartbeat — `arm_state` plus
+                                              // `match_id` — so no new envelope kind exists and a phone running an OLDER
+                                              // build confirms exactly as well as a new one: `_endLocal` moves it to
+                                              // `kitted` and KEEPS `match_id`, so a HUD that took the end reads `kitted`
+                                              // for that match and one that missed it reads `live`. MC re-pushes
+                                              // `control{end, match_id}` to the unconfirmed on a backoff (`state.py`
+                                              // END_RETRY_MS: 2 s, 5 s, 10 s, 20 s, 40 s, 60 s, then it stops and A34's
+                                              // reconcile is the long tail). ⚠ It NEVER gates: `_finish()` has written
+                                              // the recap and moved MC to `recap` before the first retry is due, because
+                                              // a player who walks out of range at the whistle must not be able to hang
+                                              // it. Render it as a DELIVERY fact (LIVE notice + STATUS cell, RECAP line),
+                                              // never as, or beside, a judgement about how that player played
   notices: { mc_verify?: string }             // A31 (2026-09-12): standing HOST lines the compiler wrote once, so MC
                                               // and the phones cannot disagree. `mc_verify` is present ONLY when this
                                               // game's end state is MC's call (a frag cap, an objective `win_by`, a
