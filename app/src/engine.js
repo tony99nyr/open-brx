@@ -503,6 +503,16 @@ export class Engine {
   // ---------- MC context ----------
   hydrate(node) {
     if (!node) return;
+    // A40 (T2 review S1/S4): the welcome STATES the bench fact, and this is where a returning phone
+    // learns it. `standby` is persisted locally (`_save`), and until now NOTHING in a welcome could
+    // clear it -- only an `assign` with a falsy `standby` could, and that push needs a bound node, which
+    // a benched player does not have. So: bench a player, their phone locks or walks out of range, the
+    // operator taps PLAY, the phone reconnects -- and it came back still locally benched. SITTING OUT,
+    // no frames, no READY UP, no control on the screen, while the console showed them rostered and
+    // ready. Only a force-close plus a data wipe cured it. Applied BEFORE the config/start below, both
+    // of which refuse while benched.
+    if (node.standby != null) this.standby = !!node.standby;
+    if (this.standby) this.ready = false;   // MC parks AND reinstates at ready:false (S7)
     if (node.player) this.player = node.player;
     if (node.team) this.team = node.team;
     if (node.roster) this.roster = node.roster;
@@ -584,6 +594,11 @@ export class Engine {
       // lobby had gotten to (never armed/live: the server refuses stand_down there). Nothing already
       // written to the gun (a previous head, an armed $SIR table) is touched or re-armed by this.
       this.browse(false);
+      // S7 (T2 review): the bench clears READY. MC parks at `ready: False` (`stand_down`) and reinstates
+      // at `ready: False` (`reinstate`), and this phone only ever reports its ready state from
+      // `setReady` -- which refuses while benched. A flag left true therefore showed READY on the HUD
+      // while MC counted the player as WAIT and held the start, with no reason shown on either screen.
+      this.ready = false;
       this.player = player || this.player; this.team = team || this.team; if (roster) this.roster = roster;
       if ((this.phase === 'connected' || this.phase === 'idle') && this.bleUp) this._set('kitted');
       else if (this.phase === 'lobby') this._set('kitted');
@@ -839,6 +854,13 @@ export class Engine {
 
   // ---------- start (M-START) ----------
   startAt(body) {
+    // A40 (T2 review S2): a benched phone refuses the start outright. It still HOLDS the frames it took
+    // before the bench, so `config_id` matches and every other guard below would have waved it through:
+    // armed, then live, and the gun SPAWNS at T-0 -- for a player MC has taken off the roster and out of
+    // the scorer. MC no longer sends one (the start is addressed now, not broadcast); this is the node's
+    // own half of it, because a stale in-flight start, a re-hydrated schedule or a harness call must not
+    // get through either. `_assign`/`_applyConfig`/`setReady` all already guard; this was the gap.
+    if (this.standby) { this.log('start ignored: you are on standby', 'li'); return { ok: false, reason: 'standby' }; }
     this.browse(false);
     if (!body || !body.go_live_t) return { ok: false, reason: 'bad_start' };
     if (body.match_id && this.endedMatches.includes(body.match_id)) { this.log('start for an already-ended match — ignored', 'li'); return { ok: false, reason: 'match_ended' }; }

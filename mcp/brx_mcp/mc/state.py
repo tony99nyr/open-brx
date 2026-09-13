@@ -875,7 +875,14 @@ class Session:
         pol = _policy.node_view(self.policy(), self.loadout_pool())
         pol["kit_open"] = self.kit_open()
         return {"player": p, "team": self.team(p["team_id"]), "roster": self.roster(),
-                "catalog": self._catalog_views(p), "policy": pol, "game": self.game_brief()}
+                "catalog": self._catalog_views(p), "policy": pol, "game": self.game_brief(),
+                # A40: the bench fact is STATED on every assign AND every welcome, never left to be
+                # inferred from an absent key. `standby` is PERSISTED on the phone (engine.js `_save`),
+                # so "no key" cannot mean "you are playing" -- it means "keep believing whatever you last
+                # believed". That is exactly how a benched player whose phone locked or walked out of
+                # range before the operator tapped PLAY came back still SITTING OUT, with no frames, no
+                # READY UP and no control on screen, while the console showed them rostered (T2 review S1).
+                "standby": p["player_id"] in self.standby}
 
     def _off_grid(self) -> list[str]:
         """A28/A31: the rostered players whose phone cannot be reached after the whistle, by display name.
@@ -2183,6 +2190,15 @@ class Session:
         for nv in self.nodes.values():
             if nv.get("node_type") == "utility":
                 continue
+            # T2 review S5: a phone that said hello with a gun and then LEFT kept this banner up with
+            # nothing claimable on ARMORY behind it. `stale` is the flag the net layer already raises
+            # (`_attach_net`'s `on_stale`, STALE_AFTER_MS = 8 s) and `_on_status` clears on the next
+            # heartbeat, so it is the established freshness rule in this file and it reads within
+            # seconds. NOT a `last_seen_ms` vs `OFFLINE_AFTER_MS` comparison: that constant is 600_000,
+            # exactly the window `_prune_unbound_nodes` already drops these records at, so gating on it
+            # would have changed nothing an operator could see.
+            if nv.get("stale"):
+                continue
             name, tail = nv.get("gun_name") or "", nv.get("gun_tail") or ""
             if not (name or tail):
                 continue
@@ -2192,6 +2208,24 @@ class Session:
                 continue
             n += 1
         return n
+
+    def _standby_node_ids(self) -> set[str]:
+        """A40: the node ids whose reported gun belongs to a player parked on STANDBY.
+
+        A parked player has no `node_id` -- that is precisely what `_unroster` takes away -- so the only
+        route back to their phone is the gun it reports, through the same matcher the unrostered count
+        and the ARMORY claim card use. Callers use this to leave a benched phone out of a fan-out that
+        would otherwise reach every socket."""
+        out: set[str] = set()
+        if not self.standby:
+            return out
+        for nid, nv in self.nodes.items():
+            name, tail = nv.get("gun_name") or "", nv.get("gun_tail") or ""
+            if not (name or tail):
+                continue
+            if self._find_player_for_gun(name or None, tail or None, roster=self.standby) is not None:
+                out.add(nid)
+        return out
 
     def _adopt_node_for_gun(self, p: Player):
         """Roster changed after nodes said hello: bind any connected node whose reported gun resolves to THIS
@@ -2356,6 +2390,17 @@ class Session:
         if not p:
             pid = self.node_player.get(hello.get("node_id", ""))
             p = self.players.get(pid) if pid else None
+        if not p:
+            # A40: the returning holder of a PARKED gun. `stand_down` pops them out of `self.players` AND
+            # clears `node_player`, so neither lookup above can see them and this used to answer a
+            # reconnecting benched phone with no `node` at all -- the one case where saying nothing is
+            # indistinguishable from "nobody here claims you". Same matcher F-3 already asks of
+            # `self.standby` for the unrostered count. They are deliberately NOT bound (a parked player
+            # has no `node_id`; that is what being parked IS) and get no config, no frames and no start:
+            # the body is their own context plus the bench fact, and nothing that could arm a gun.
+            parked = self._find_player_for_gun(gun.get("name"), gun.get("tail"), roster=self.standby)
+            if parked is not None:
+                return self._assign_body(parked)
         if not p:
             return None
         self._bind(hello["node_id"], p)
@@ -4025,7 +4070,17 @@ class Session:
                 self.store.match_started(self.start_info["match_id"], snap, self.start_info["go_live_t"])
             except Exception:
                 pass
-        self.net.broadcast("start", self._start_body())
+        # A40 (T2 review S2): ADDRESSED, not broadcast. `net.broadcast()` reaches every live socket, and
+        # that included a BENCHED phone -- which still holds the frames it took before the bench, so its
+        # `config_id` matched, `startAt` carried it armed -> live, and the gun SPAWNED at T-0 for a player
+        # who is not in `_match_players` and therefore not in the scorer at all. Utility nodes are skipped
+        # for the reason `abort_start` already skips them: a station never held this start.
+        start_body = self._start_body()
+        parked_nodes = self._standby_node_ids()
+        for nid, nv in list(self.nodes.items()):
+            if nv.get("node_type") == "utility" or nid in parked_nodes:
+                continue
+            self.net.push(nid, "start", start_body)
         self.phase = "armed"
         self._role_due = []                    # a reschedule re-queues from scratch
         self._queue_roles_for_live()

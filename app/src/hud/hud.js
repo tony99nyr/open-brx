@@ -420,7 +420,7 @@ export class Hud {
       status = `<div class="status" id="mcstatus">${this._statusLine(st, 'kitted')}</div>`;
     } else if (mode === 'standby') {
       // T2-B item 2: MC benched this player. Calm, not an error, same shape as `setup` above.
-      foot = `<div class="setup"><div class="pulse"><i></i><i></i><i></i></div><div class="in"><div class="t">SITTING OUT — the host puts you back</div><div class="s">Nothing to do for now. Your gun is not armed.</div></div></div>`;
+      foot = `<div class="setup"><div class="pulse"><i></i><i></i><i></i></div><div class="in"><div class="t">SITTING OUT — the host puts you back</div><div class="s">Nothing to do for now. Your tagger is STILL LIVE — it can fire, and it can be tagged. The host puts you back in.</div></div></div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, 'kitted')}</div>`;
     } else if (mode === 'kitted') {
       foot = `${lead}<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓' : 'READY UP'}</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;

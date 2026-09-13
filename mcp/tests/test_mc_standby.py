@@ -373,3 +373,121 @@ def test_snapshot_before_standby_existed_restores_with_none():
     s._persist_path = tmp
     assert s.restore_snapshot() == 1
     assert s.standby == {}
+
+
+# ============================================================ T2 review (2026-09-13): the field-safety set
+#
+# S1/S4 are one bug with two doors: `standby` is a flag the PHONE persists, and until now the only thing
+# that could clear it was an `assign` whose `standby` was falsy. A welcome (`_hydrate`) never carried the
+# key at all, so any route that put a player back while their phone was away -- PLAY to a phone that had
+# locked/walked out of range, or NEW MATCH -- left the phone locally benched with the console showing them
+# rostered and ready. The root fix is that the AUTHORITY always states the fact: `_assign_body` carries an
+# explicit `standby` on every assign AND every welcome, both directions.
+
+
+def _hello(net, nid, gun):
+    """A phone (re)connecting. Returns the `welcome.node` body MC answers with, or None."""
+    return net.simulate_hello(nid, gun)
+
+
+def _gun(i):
+    return f"GUN-{chr(65 + i)}-{demo_armory()[i]['ble']['tail']}"
+
+
+def test_every_assign_body_states_the_standby_fact_explicitly():
+    """S1 root: a rostered player's assign says `standby: False` rather than omitting the key. The phone
+    persists the flag, so 'absent' can never be the way 'you are playing' is expressed -- an omitted key
+    is indistinguishable from an older server and leaves whatever the phone already believed."""
+    s, net, clock, ps = _session()
+    body = s._assign_body(ps[0])
+    assert "standby" in body, "the authority must STATE the fact, not leave it to be inferred"
+    assert body["standby"] is False
+    s.stand_down(ps[0]["player_id"])
+    assert s._assign_body(s.standby[ps[0]["player_id"]])["standby"] is True
+
+
+def test_s1_bench_then_play_while_the_phone_is_away_then_it_reconnects_playable():
+    """S1 SCENARIO, the one that strands a player for the rest of the night: bench them, their phone
+    locks or walks out of range, the operator taps PLAY, then the phone comes back. The welcome is the
+    ONLY thing it hears, so the welcome has to say they are playing."""
+    s, net, clock, ps = _session()
+    pid = ps[1]["player_id"]
+    s.stand_down(pid)
+    assert _pushes(net, "node1", "assign")[-1]["standby"] is True, "control: it was told it is benched"
+    # the phone is gone: PLAY happens with nothing on the other end of that socket
+    s.reinstate(pid)
+    # ...and now it comes back. This welcome is the whole of what it learns.
+    node = _hello(net, "node1", _gun(1))
+    assert node is not None, "MC must recognise the returning phone at all"
+    assert node["standby"] is False, "the welcome must clear the phone's persisted bench flag"
+    assert node["player"]["player_id"] == pid
+    assert pid in s.players and pid not in s.standby
+
+
+def test_s1_a_genuinely_benched_phone_that_reconnects_is_told_it_is_still_benched():
+    """The other direction, which must not regress while fixing the first: a phone that reconnects while
+    STILL parked is recognised (it is not a stray) and told `standby: True`, with no config, no frames and
+    no start -- a benched phone is never armed by a welcome."""
+    s, net, clock, ps = _session()
+    pid = ps[1]["player_id"]
+    s.push_config(force=True)
+    s.stand_down(pid)
+    node = _hello(net, "node1", _gun(1))
+    assert node is not None, "MC must recognise the holder of a PARKED gun, not answer with nothing"
+    assert node["standby"] is True
+    assert node["player"]["player_id"] == pid, "it still gets its own (parked) context"
+    assert "config" not in node and "frames" not in node, "a benched phone is never armed by a welcome"
+    assert "start" not in node
+    assert pid in s.standby and pid not in s.players, "recognising it must not silently re-roster it"
+
+
+def test_s4_new_match_then_the_phone_reconnects_playable():
+    """S4: NEW MATCH. A parked player never has a `node_id`, so `new_session(keep_roster=True)`'s re-assign
+    loop cannot reach them, and a FRESH session drops the parked record entirely -- in both cases nothing
+    ever tells the phone it is no longer benched. Same root fix, tested separately because the route in is
+    different (no `reinstate` call at all)."""
+    # (a) keep the roster: they are still parked, so the welcome must still say so
+    s, net, clock, ps = _session()
+    pid = ps[1]["player_id"]
+    s.stand_down(pid)
+    s.new_session(keep_roster=True)
+    assert pid in s.standby, "control: a kept roster keeps the bench (the wipe is the FRESH-session branch)"
+    assert _hello(net, "node1", _gun(1))["standby"] is True
+
+    # (b) PLAY after the new match, phone still away, then it reconnects
+    s.reinstate(pid)
+    assert _hello(net, "node1", _gun(1))["standby"] is False, "reinstated across a NEW MATCH: playable"
+
+    # (c) a FRESH session wipes the bench; the phone is a stray until claimed, and claiming it clears the flag
+    s2, net2, clock2, ps2 = _session()
+    pid2 = ps2[0]["player_id"]
+    s2.stand_down(pid2)
+    s2.new_session(keep_roster=False)
+    assert s2.standby == {} and s2.players == {}
+    q = s2.add_player("OP0", gun_id="GUN-A")
+    assert _hello(net2, "node0", _gun(0))["standby"] is False, "re-claimed after a fresh session: playable"
+    assert q["player_id"] in s2.players
+
+
+def test_s2_a_benched_node_is_not_sent_the_start():
+    """S2: `_schedule` used to `broadcast` the start to every live socket. A benched phone still holds the
+    frames it took before the bench, so a matching `config_id` carried it armed -> live and the gun spawned
+    at T-0 -- for a player who is not in the scorer at all. Utility nodes are skipped for the same reason
+    `abort_start` skips them: a station never held this start."""
+    s, net, clock, ps = _session()
+    s.push_config(force=True)
+    # ps[2], not ps[1]: the roster auto-balances blue/yellow/blue, so benching the MIDDLE player would
+    # empty a side and `start()` would refuse on the one-team fault long before reaching `_schedule`.
+    pid = ps[2]["player_id"]
+    s.stand_down(pid)
+    net.simulate_hello("util", "", node_type="utility")
+    for i in (0, 1):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True, "gun_echo": "x"}, clock["t"])
+    s.start(force=True)
+    assert s.phase == "armed"
+    assert not [b for (n, k, b) in net.pushed if k == "start" and n is None], "no blanket broadcast: the start is addressed"
+    got = {n for (n, k, _b) in net.pushed if k == "start"}
+    assert "node0" in got and "node1" in got, "every PLAYING node is still told"
+    assert "node2" not in got, "the benched phone must never be handed the start"
+    assert "util" not in got, "a station never held this start (abort_start's own rule)"
+    assert pid not in s._match_players, "control: they are not in the scorer either"
