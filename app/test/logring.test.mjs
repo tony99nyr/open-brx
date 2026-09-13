@@ -44,6 +44,63 @@ test('a runaway logger inside the CURRENT match is still bounded by hardCap', ()
   assert.equal(ring.lines[ring.lines.length - 1], 'spam 4999');
 });
 
+// ---------------------------------------------------------------------------------------------
+// F-4 (polish loop, 2026-09-13): protecting ONE match was not enough, and the gap is the exact
+// 2026-09-12 shape. `startMatch()` moved the protected boundary FORWARD, so the moment the next
+// match wrote its first line the previous match's lines were ordinary history again — and MC's
+// `pull_log` for the failing match routinely arrives after the next game has started (the operator
+// presses NEW MATCH, the phones re-join, the parked pull is finally served). The window is two
+// matches: the current one and the one before it, until that one's log has actually been pulled.
+// ---------------------------------------------------------------------------------------------
+
+test('F-4: the PREVIOUS match survives the start of the next one — a late recap pull still gets it', () => {
+  const ring = new LogRing({ historyCap: 400 });
+  ring.startMatch();
+  for (let i = 0; i < 600; i++) ring.push(`A ${i}`);   // the match that FAILED
+  ring.startMatch();                                   // ...and the operator starts the next one
+  for (let i = 0; i < 400; i++) ring.push(`B ${i}`);
+  const { tail } = ring.tail(0);
+  assert.equal(tail.filter(l => l.startsWith('A ')).length, 600,
+    "the previous match's lines must survive until its log has been pulled");
+  assert.equal(tail.filter(l => l.startsWith('B ')).length, 400);
+});
+
+test('F-4: a THIRD match releases the first — two matches, not an unbounded ring', () => {
+  const ring = new LogRing({ historyCap: 400 });
+  ring.startMatch();
+  for (let i = 0; i < 600; i++) ring.push(`A ${i}`);
+  ring.startMatch();
+  for (let i = 0; i < 400; i++) ring.push(`B ${i}`);
+  ring.startMatch();                                   // match C: A is now two games back
+  ring.push('C 0');
+  const { tail } = ring.tail(0);
+  assert.ok(tail.filter(l => l.startsWith('A ')).length < 600, 'the two-games-back match is ordinary history again');
+  assert.equal(tail.filter(l => l.startsWith('B ')).length, 400, 'B is the PREVIOUS match now, and is protected');
+  assert.ok(tail.includes('C 0'));
+});
+
+test('F-4: a completed pull releases the previous match at once (it is safely at MC)', () => {
+  const ring = new LogRing({ historyCap: 400 });
+  ring.startMatch();
+  for (let i = 0; i < 600; i++) ring.push(`A ${i}`);
+  ring.startMatch();
+  ring.pulled(600);                                    // MC now holds every line through A's end
+  for (let i = 0; i < 400; i++) ring.push(`B ${i}`);
+  const { tail } = ring.tail(0);
+  assert.ok(tail.filter(l => l.startsWith('A ')).length < 600, 'A is at MC: its lines are ordinary history');
+  assert.equal(tail.filter(l => l.startsWith('B ')).length, 400);
+});
+
+test('F-4: a pull that does NOT yet cover the previous match releases nothing', () => {
+  const ring = new LogRing({ historyCap: 400 });
+  ring.startMatch();
+  for (let i = 0; i < 600; i++) ring.push(`A ${i}`);
+  ring.startMatch();
+  ring.pulled(120);                                    // a partial pull from the middle of A
+  for (let i = 0; i < 400; i++) ring.push(`B ${i}`);
+  assert.equal(ring.tail(0).tail.filter(l => l.startsWith('A ')).length, 600);
+});
+
 test('tail(from) reports how many earlier lines were dropped, same contract as the old logSnapshot', () => {
   const ring = new LogRing({ historyCap: 5, hardCap: 5 });
   for (let i = 0; i < 5; i++) ring.push(`l${i}`);   // fills the ring; no startMatch() called, so it can still trim

@@ -149,6 +149,9 @@ const logsync = new LogSync({
   snapshot: from => logSnapshot(from),
   phase: () => engine.phase,
   log,
+  // F-4: the ring keeps the PREVIOUS match's lines until MC actually holds them. Only a completed
+  // upload can say that, and this is the one place that knows an upload completed.
+  onUploaded: through => logRing.pulled(through),
 });
 
 // ---------- utility items: watch for stations while connected, and advertise ourselves as a player ----------

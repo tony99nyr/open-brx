@@ -280,3 +280,31 @@ test('logsync: a reconnect MID-UPLOAD does not re-offer — one log_offer, and t
   assert.ok(t.chunks().at(-1).body.last, 'MC gets exactly one `last`-terminated stream');
   assert.equal(t.kinds().filter(k => k === 'log_offer').length, 1);
 });
+
+// F-4 (2026-09-13): the LOG RING keeps the PREVIOUS match's lines until MC actually holds them, and
+// only a COMPLETED upload can say that. If this callback ever stops firing the ring simply keeps two
+// matches for the rest of the session — silently — so it is pinned here, on both routes.
+test('logsync: a completed upload reports how far MC now holds (the ring releases on this)', async () => {
+  const timers = fakeTimers();
+  const t = new FakeTransport();
+  const seen = [];
+  const ls = new LogSync({ transport: () => t, snapshot: snapshotter(lines(40)), phase: () => 'lobby', timers,
+                           sleep: async () => {}, onUploaded: n => seen.push(n) });
+  ls.request('recap');
+  await ls._inflight;
+  assert.deepEqual(seen, [40], 'the absolute line count MC now holds, once, at the end of the stream');
+  ls.markUploaded(120);                    // the manual SHARE LOG route reports it too
+  assert.deepEqual(seen, [40, 120]);
+});
+
+test('logsync: an ABORTED upload reports nothing — the ring must not release a log MC never got', async () => {
+  const timers = fakeTimers();
+  const t = new FakeTransport();
+  const seen = [];
+  t.refuse = kind => kind === 'log_data';   // the socket refuses the stream
+  const ls = new LogSync({ transport: () => t, snapshot: snapshotter(lines(40)), phase: () => 'lobby', timers,
+                           sleep: async () => {}, onUploaded: n => seen.push(n) });
+  ls.request('recap');
+  await ls._inflight;
+  assert.deepEqual(seen, [], 'nothing completed, so nothing is safely at MC');
+});

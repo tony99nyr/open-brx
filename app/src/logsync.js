@@ -56,10 +56,14 @@ export class LogSync {
    * @param {function} o.phase      () => engine phase ('idle'|'lobby'|'kitted'|'armed'|'live'|...)
    * @param {function} [o.log]      app logger
    */
-  constructor({ transport, snapshot, phase, log = () => {}, timers = globalThis, sleep = null,
+  constructor({ transport, snapshot, phase, log = () => {}, onUploaded = () => {}, timers = globalThis, sleep = null,
                 minBackoffMs = 5000, maxBackoffMs = 60000, chunkBytes = DEFAULT_CHUNK_BYTES,
                 drainBytes = 16 * 1024, drainTimeoutMs = 20000, pollMs = 50 } = {}) {
     this._transport = transport; this._snapshot = snapshot; this._phase = phase; this._log = log;
+    // F-4: "MC now holds every line through <n>". The LOG RING needs this — it protects the previous
+    // match's lines until they are safely off the phone (`logring.js pulled()`), and only an upload
+    // that actually completed can say they are.
+    this._onUploaded = onUploaded;
     this.timers = timers;
     this.sleep = sleep || (ms => new Promise(r => setTimeout(r, ms)));
     this.minBackoffMs = minBackoffMs; this.maxBackoffMs = maxBackoffMs;
@@ -110,6 +114,7 @@ export class LogSync {
   /** The manual SHARE LOG route uploaded everything up to `through` — don't re-send it in the background. */
   markUploaded(through) {
     if (Number.isFinite(through) && through > this.uploadedThrough) this.uploadedThrough = through;
+    this._onUploaded(through);
   }
 
   /** `none` | `offered` | `pulling` | `held(<reason>)` — the diag line and `status.log` (A25). */
@@ -201,6 +206,7 @@ export class LogSync {
       if (i < chunks.length - 1) await this._drain(t);
     }
     this.uploadedThrough = snap.through;
+    this._onUploaded(snap.through);        // F-4: the ring may release the previous match now
     this.uploads++; this.bytesSent += bytes;
     this.want = null; this.held = null; this.attempt = 0;
     this._log(`log synced to MC — ${bytes} bytes, ${snap.lines} lines, ${chunks.length} chunk(s) ✓`, 'lk');
