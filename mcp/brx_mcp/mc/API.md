@@ -288,9 +288,13 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
   - `GUN ECHO ≠ COMPILED WEAPON (m/r echoed vs expected)` (red). The slot-0 `$ALCD` the gun answered
     the head with does not carry the magazine the head's `$WEAP,0` wrote. No claim when the echo is
     not an `$ALCD` (`$START` answers `$LCD,0,0,0,0,0,0,*`, which proves only that the gun answered).
-  - `GUN POOL ≠ CONFIG (got h/a, expected h/a)` (red) + a `CONFIG` feed alert. The first `status` at
-    least `POOL_CHECK_SETTLE_MS` (2 s) into a life, with no `hit_taken` yet that life, did not report
-    the `$PSET` hp/armor MC pushed. Judged once per life; cleared by the next push.
+  - `GUN POOL ≠ CONFIG (REPORTS h/a, THIS CONFIG GRANTS h/a) — LIKELY ON AN OLDER HEAD; RE-PUSH`
+    (red) + a `CONFIG` feed alert. The first `status` at least `POOL_CHECK_SETTLE_MS` (2 s) into a
+    life reported MORE hp or MORE armor than the `$PSET` MC pushed. **Excess only (A37):** a pool at
+    or below the compiled one is damage and is never a fault — the engine emits `hit_taken` only for
+    a hit it could attribute, while the pool moves on every `$LCD`/`$HP`, so "equal unless a hit says
+    otherwise" flagged guns running the right head and could not be cleared mid-match. Judged once
+    per life; cleared by the next push (which this row does not block — see the PUSH gate below).
   - `HOLDING OLDER CONFIG (<id>) — RE-PUSH TO BE SURE` (amber). `status.config_id` — the head the
     phone says it is holding right now — is not the current one and the node has not re-acked. Amber,
     not red: the ack is the authority and this is a ~2 s sample that can be one beat behind a push.

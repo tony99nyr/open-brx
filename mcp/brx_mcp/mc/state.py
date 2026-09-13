@@ -185,6 +185,27 @@ _MC_TEXT_NO_SUBJECT = {"lead_taken": "THE LEAD CHANGED", "lead_lost": "THE LEAD 
 # phone is told in its own words, the host in the operator's.
 KIT_LOCKED = "THE MATCH HAS STARTED — YOUR KIT IS LOCKED UNTIL THE NEXT ONE"
 
+# A36's three proofs, each as ONE opening phrase, written once and matched once.
+#
+# They share a frame of reference on purpose (polish-loop 2026-09-13): all three answer "is this gun
+# running the config we pushed?", so all three read `<WHAT> ≠ CONFIG`, and an operator who learns one
+# of them has learned the shape of the other two.
+#
+# They are also the exact set of blockers whose CURE IS THE PUSH ITSELF: a re-push replaces the head,
+# clears the ack, the echo derived from it and the pool judgement made against it. `push_config`
+# therefore does not count them as reds standing in its own way (A37) -- a blocker that says RE-PUSH
+# while refusing the push is only clearable with `force`, which is the opposite of what it is for.
+# START still refuses on every one of them: `_refuse_stale_ack` is not even `force`-able.
+_STALE_ACK_FAULT = "ACKED AN OLDER CONFIG"
+_ECHO_FAULT = "GUN ECHO ≠ CONFIG"
+_POOL_FAULT = "GUN POOL ≠ CONFIG"
+PUSH_CURES = (_STALE_ACK_FAULT, _ECHO_FAULT, _POOL_FAULT)
+
+
+def cured_by_push(blocker: str) -> bool:
+    """Is this readiness blocker one of A36's three proofs, i.e. one a re-push replaces?"""
+    return blocker.startswith(PUSH_CURES)
+
 
 class ConflictError(ValueError):
     """A refusal about the STATE OF PLAY rather than the request: correct, just not now (A30 → HTTP 409).
@@ -2352,35 +2373,51 @@ class Session:
         self._changed()
 
     def _note_pool_life(self, nid: str, events: list[Event]) -> None:
-        """A36: a node's facts, read ONLY for what they say about its pool this life.
+        """A36/A37: a node's facts, read ONLY for what they say about its pool this life.
 
-        A `hit_taken` retires the pool check for the life it lands in (the pool is supposed to move
-        now), and a `respawn` starts a fresh one. Both come from the node's OWN engine, so they are
-        the same authority as the heartbeat they qualify. Deliberately runs BEFORE the parked/scorer
-        gates that follow it: a fact parked because it names another match still tells us this node's
-        gun took a hit, and the check must not judge a pool that has been shot at either way."""
+        A `respawn` starts a fresh life, so the settle window opens again. It comes from the node's
+        OWN engine, the same authority as the heartbeat it qualifies. Deliberately runs BEFORE the
+        parked/scorer gates that follow it: a fact parked because it names another match still tells
+        us this node's gun re-spawned.
+
+        A37 (polish-loop 2026-09-13) removed the other half of this. `hit_taken` used to retire the
+        check for the life it landed in, and that was a rule about a fact the engine only emits when
+        it can ATTRIBUTE a hit (a `$HIR` latch < 1000 ms old, `spawned`, `dmg > 0`) while the POOL
+        moves unconditionally on `$LCD`/`$HP` -- see `_check_pool`."""
         nv = self._node_view(nid)
         for ev in events:
-            kind = ev.get("type")
-            if kind == "hit_taken":
-                nv["pool_life_hit"] = True
-            elif kind == "respawn":
+            if ev.get("type") == "respawn":
                 nv.pop("pool_life_t", None)
 
-    # ---------- A36: does the gun's own pool match the `$PSET` we pushed it? ----------
+    # ---------- A36/A37: is the gun holding MORE pool than the head we pushed grants? ----------
     def _check_pool(self, nid: str, body: dict, t_recv: int, was_alive) -> None:
-        """The check that caught the 2026-09-12 staleness retroactively.
+        """The check that caught the 2026-09-12 staleness retroactively, re-stated so that it can
+        only ever make a claim the pool actually supports (A37, polish-loop 2026-09-13).
 
         A gun still holding a PREVIOUS head spawns into that head's pool and then says so on every
         ~2 s heartbeat for the whole match. Nothing read it. This does, once per life, against the
         `$PSET` in the bundle MC actually pushed (`frames.head_pool`) -- so per-player overrides and
         the `body_armor` perk are already baked in and there is no second arithmetic to drift.
 
-        Three deliberate silences, each a way this check could otherwise LIE:
+        THE RULE: a pool EXCEEDING what the compiled head grants (hp above the compiled hp, or armor
+        above the compiled armor) is the fault. A pool at or BELOW them is consistent with damage and
+        is never a fault.
+
+        The rule it replaces asked for EQUALITY and excused itself with the node's own `hit_taken`
+        fact, and that pair could not be made honest:
+          * the engine emits `hit_taken` only for a hit it could ATTRIBUTE (a `$HIR` latch < 1000 ms
+            old, with `spawned`, `dmg > 0` -- engine.js), while the pool moves unconditionally on
+            `$LCD`/`$HP`. A hit whose `$HIR` was lost or merged (protocol §2) dropped the pool with
+            no fact behind it, and MC latched "THE GUN IS ON ANOTHER HEAD" onto a gun running the
+            right head -- with `push_config` refused in armed/live, unclearable for the whole match;
+          * and the flag was cleared by the life-start branch below, so a respawn followed by a hit
+            that beat the next ~2 s heartbeat erased the excuse as well (C-1).
+        An excess pool has no such second explanation: no perk, no damage and no missed fact can put
+        MORE hp or armor on a gun than the head it is running wrote.
+
+        Two deliberate silences remain, each a way this check could otherwise LIE:
           * inside `POOL_CHECK_SETTLE_MS` of the life starting -- `$SPAWN` and the head's `$PSET` are
             two BLE writes and a relay apart, and the heartbeat can be sampled between them;
-          * once the player has taken a hit this life -- a pool BELOW the compiled one is then the
-            game working, not a stale head;
           * when the head carries no readable `$PSET` (a stub compiler) or the body no integer pool.
         """
         nv = self._node_view(nid)
@@ -2390,10 +2427,9 @@ class Session:
             return
         if not was_alive or nv.get("pool_life_t") is None:
             nv["pool_life_t"] = t_recv
-            nv["pool_life_hit"] = False
             nv["pool_life_judged"] = False
             return
-        if nv.get("pool_life_judged") or nv.get("pool_life_hit"):
+        if nv.get("pool_life_judged"):
             return
         if t_recv - int(nv["pool_life_t"]) < POOL_CHECK_SETTLE_MS:
             return
@@ -2401,20 +2437,28 @@ class Session:
         if not pid or pid not in self.players:
             return
         want = _frames.head_pool((self.bundles.get(pid) or {}).get("head"))
-        got = (body.get("hp"), body.get("armor"))
-        if want is None or not all(isinstance(v, int) and not isinstance(v, bool) for v in got):
+        hp, armor = body.get("hp"), body.get("armor")
+        # Spelled out rather than looped: the comparison below is arithmetic, and a checker that
+        # cannot see the narrowing is telling the truth about a body field that may be anything.
+        if (want is None or not isinstance(hp, int) or isinstance(hp, bool)
+                or not isinstance(armor, int) or isinstance(armor, bool)):
             return
+        got = (hp, armor)
         nv["pool_life_judged"] = True
-        if (got[0], got[1]) == want:
+        if hp <= want[0] and armor <= want[1]:
             self._pool_faults.pop(pid, None)
             return
-        self._pool_faults[pid] = (f"GUN POOL ≠ CONFIG (got {got[0]}/{got[1]}, expected {want[0]}/{want[1]}, "
-                                  f"hp/armor) — THE GUN IS ON ANOTHER HEAD")
+        # Worded as a SUSPICION, not a verdict: one ~2 s sample against one compiled frame. It is red
+        # on the board because a gun on an older head is the field failure this whole amendment is
+        # about, and the cure -- a re-push, which A37 also stopped this row from blocking -- replaces
+        # the head and clears it.
+        self._pool_faults[pid] = (f"{_POOL_FAULT} (REPORTS {got[0]}/{got[1]}, THIS CONFIG GRANTS "
+                                  f"{want[0]}/{want[1]}, hp/armor) — LIKELY ON AN OLDER HEAD; RE-PUSH")
         who = (self.players[pid].get("display") or pid).upper()
         self._on_feed({"t_match_s": max(0, (t_recv - self.scorer.go_live_t) // 1000) if self.scorer else 0,
                        "tag": "CONFIG", "kind": "alert",
-                       "text": f"{who}'S GUN POOL ≠ CONFIG — REPORTS {got[0]}/{got[1]}, "
-                               f"COMPILED {want[0]}/{want[1]} (hp/armor)"})
+                       "text": f"{who}'S GUN POOL ≠ CONFIG — REPORTS {got[0]}/{got[1]}, THIS CONFIG "
+                               f"GRANTS {want[0]}/{want[1]} (hp/armor); LIKELY ON AN OLDER HEAD"})
 
     # ---------- A34: a phone that comes back still LIVE in a match MC has already retired ----------
     _ENDED_KEEP = 16
@@ -3192,7 +3236,7 @@ class Session:
             # Every one of them compares against the head MC ACTUALLY PUSHED
             # (`self.bundles[pid]["head"]`), never a fresh re-derivation of it.
             if self.lobby_pushed and (older := self._stale_ack_id(p["player_id"])):
-                blockers.append(f"ACKED AN OLDER CONFIG ({older}) — RE-PUSH")
+                blockers.append(f"{_STALE_ACK_FAULT} ({older}) — RE-PUSH")
             if self.lobby_pushed and (echo := self._echo_fault(p["player_id"])):
                 blockers.append(echo)
             if (pool := self._pool_faults.get(p["player_id"])) is not None:
@@ -3408,7 +3452,7 @@ class Session:
         # against the PREVIOUS `$PSET` all describe a head that no longer exists.
         self._pool_faults.pop(p["player_id"], None)
         if nid := p.get("node_id"):
-            for k in ("pool_life_t", "pool_life_hit", "pool_life_judged"):
+            for k in ("pool_life_t", "pool_life_judged"):
                 self._node_view(nid).pop(k, None)
             self.net.push(nid, "config", {"config": self._wire_config(), "frames": bundle, "roster": self.roster()})
 
@@ -4169,7 +4213,7 @@ class Session:
         self._repush_pending = False
         self._pool_faults = {}
         for nv in self.nodes.values():
-            for k in ("pool_life_t", "pool_life_hit", "pool_life_judged", "config_id"):
+            for k in ("pool_life_t", "pool_life_judged", "config_id"):
                 nv.pop(k, None)
         self.trying = {}
         self.browsing = {}

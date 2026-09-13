@@ -199,9 +199,10 @@ def _live_status(net, clock, i, p, hp, armor, mid, alive=True):
                         clock["t"])
 
 
-def test_first_settled_pool_must_equal_the_pushed_pset():
+def test_first_settled_pool_above_the_pushed_pset_is_the_fault():
     """This is the check that caught the staleness retroactively: a gun on last game's head spawns
-    into last game's pool, and it says so on every heartbeat."""
+    into last game's pool, and it says so on every heartbeat. Since A37 the claim is EXCESS, not
+    equality -- see section 7 below for why equality could not be asked for honestly."""
     s, net, clock, ps = mk(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
@@ -220,9 +221,9 @@ def test_first_settled_pool_must_equal_the_pushed_pset():
     assert any("GUN POOL" in (e.get("text") or "") for e in s.feed), s.feed
 
 
-def test_the_settle_window_and_a_hit_both_suppress_the_pool_check():
-    """Two honest silences. Inside the settle window the gun may not have applied the head yet; once
-    the player has been hit, a pool BELOW the compiled one is the game working."""
+def test_the_settle_window_and_a_damaged_pool_both_suppress_the_pool_check():
+    """Two honest silences. Inside the settle window the gun may not have applied the head yet; and a
+    pool BELOW the compiled one is the game working, hit fact or no hit fact (A37)."""
     s, net, clock, ps = mk(2)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
     info = _go_live(s, net, clock, ps)
@@ -326,3 +327,92 @@ def test_distinct_teams_still_pass():
                                                  {"team_id": "yellow", "tid": 3, "name": "YELLOW"}]})
     assert res["ok"] or res["errors"]     # valid SHAPE; roster errors are a different judgement
     assert [t["tid"] for t in s.config["teams"]] == [1, 3]
+
+
+# ------------------------------------- 7. the pool rule, redesigned (2026-09-13) ---------- #
+# Polish-loop iteration 1, C-1 + F-1 -- ONE redesign, not two patches.
+#
+# The old rule asked "is the pool EXACTLY the compiled one, unless a `hit_taken` says otherwise",
+# and that question has no honest answer in play:
+#   * C-1: the hit flag was reset in `_check_pool`'s life-start branch, so a respawn followed by a
+#     hit that landed before the next ~2 s heartbeat erased the hit and a damaged player went red;
+#   * F-1: the flag only ever arrives when the ENGINE could attribute a hit (a `$HIR` latch < 1000 ms
+#     old, `spawned`, `dmg > 0` -- engine.js), while the POOL moves unconditionally on `$LCD`/`$HP`.
+#     A hit whose `$HIR` was lost or merged (protocol §2) moves the pool with no fact behind it, and
+#     MC latched "THE GUN IS ON ANOTHER HEAD" on a gun running the RIGHT one -- unclearable in play,
+#     because `push_config` is refused in armed/live.
+#
+# The new rule is the only claim a pool can actually support: a gun can never hold MORE pool than the
+# head it is running grants. At or below is damage; ABOVE is a head that grants more than this one,
+# i.e. an older push. Everything else is silence.
+
+def test_a_hit_that_lands_before_the_next_heartbeat_is_never_a_stale_head():
+    """C-1's exact sequence: respawn, then a hit that arrives BEFORE the next status."""
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    info = _go_live(s, net, clock, ps)
+    mid = info["match_id"]
+    _live_status(net, clock, 1, ps[1], 45, 70, mid)             # life 1 starts
+    clock["t"] += 3000
+    _live_status(net, clock, 1, ps[1], 0, 0, mid, alive=False)  # died
+    net.simulate_event("node1", {"type": "respawn", "t": clock["t"], "match_id": mid,
+                                 "player_id": ps[1]["player_id"]}, clock["t"], seq=1)
+    # ...and the hit lands BEFORE the next heartbeat -- the life-start branch of the OLD `_check_pool`
+    # then ran with the hit already recorded and cleared it, which is C-1 exactly.
+    net.simulate_event("node1", {"type": "hit_taken", "t": clock["t"], "match_id": mid,
+                                 "player_id": ps[1]["player_id"], "shooter_num": ps[0]["player_num"],
+                                 "shooter_team": 1, "dmg": 9}, clock["t"], seq=2)
+    clock["t"] += 500
+    _live_status(net, clock, 1, ps[1], 45, 61, mid)             # life 2, already damaged
+    clock["t"] += POOL_CHECK_SETTLE_MS + 100
+    _live_status(net, clock, 1, ps[1], 45, 61, mid)             # damaged, on the RIGHT head
+    r = row(s, ps[1]["player_id"])
+    assert not any("GUN POOL" in b for b in r["blockers"]), r["blockers"]
+
+
+def test_an_unattributed_pool_drop_is_damage_not_a_stale_head():
+    """F-1. The engine emits `hit_taken` only for a hit it could ATTRIBUTE; the pool moves whether it
+    could or not. A drop with no fact behind it is still a drop, and must never read as staleness."""
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    info = _go_live(s, net, clock, ps)
+    mid = info["match_id"]
+    _live_status(net, clock, 1, ps[1], 45, 70, mid)
+    clock["t"] += POOL_CHECK_SETTLE_MS + 100
+    _live_status(net, clock, 1, ps[1], 45, 0, mid)              # armour gone, no hit_taken ever arrived
+    r = row(s, ps[1]["player_id"])
+    assert not any("GUN POOL" in b for b in r["blockers"]), r["blockers"]
+    assert not any("GUN POOL" in (e.get("text") or "") for e in s.feed), s.feed
+
+
+def test_a_pool_ABOVE_what_the_head_grants_is_the_fault_and_says_so_as_a_suspicion():
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    info = _go_live(s, net, clock, ps)
+    mid = info["match_id"]
+    _live_status(net, clock, 1, ps[1], 45, 70, mid)
+    clock["t"] += POOL_CHECK_SETTLE_MS + 100
+    _live_status(net, clock, 1, ps[1], 45, 120, mid)            # 120 armour on a head that grants 70
+    r = row(s, ps[1]["player_id"])
+    fault = next((b for b in r["blockers"] if "GUN POOL" in b), None)
+    assert fault and "45/120" in fault and "45/70" in fault, r["blockers"]
+    # worded as a SUSPICION, not a verdict: this is one ~2 s sample against one compiled frame
+    assert "LIKELY" in fault and "RE-PUSH" in fault, fault
+    assert "THE GUN IS ON ANOTHER HEAD" not in fault, fault
+
+
+def test_the_pool_fault_clears_on_the_re_push_and_re_ack():
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    info = _go_live(s, net, clock, ps)
+    mid = info["match_id"]
+    _live_status(net, clock, 1, ps[1], 45, 70, mid)
+    clock["t"] += POOL_CHECK_SETTLE_MS + 100
+    _live_status(net, clock, 1, ps[1], 45, 120, mid)
+    assert s._pool_faults, "control: there is a fault to clear"
+    s.control("end", confirm=True)                              # back out of play so a push is allowed
+    s.push_config(force=True)
+    for i, p in enumerate(ps):
+        ack(net, s, i, p["player_id"])
+    assert s._pool_faults == {}
+    assert not any("GUN POOL" in b for b in row(s, ps[1]["player_id"])["blockers"])
