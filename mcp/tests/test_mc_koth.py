@@ -27,10 +27,10 @@ def _roster(session):
 def _rebalance(session):
     """Deal the roster round-robin across the configured teams.
 
-    `set_config` re-teams anyone whose team the NEW config does not have onto `teams[0]`, so a test
-    that swaps modes or teams mid-session ends with everybody on one of them -- which the round-2
-    one-team gate (`_one_team_fault`) refuses to push, rightly. These tests are about hill rows and
-    tids, so they re-deal rather than assert on a roster the field would never be allowed to play."""
+    A roster with every player on one side is refused by the push/start gate (`one_team_fault`),
+    rightly. These tests are about hill rows and tids, not about how a mode pick re-teams (round-3
+    FIELD-1 made `set_config` map by team INDEX and rebalance), so they deal themselves a known split
+    rather than assert on whatever a config swap left behind."""
     ids = [t["team_id"] for t in session.config["teams"]]
     for i, p in enumerate(session.players.values()):
         p["team_id"] = ids[i % len(ids)]

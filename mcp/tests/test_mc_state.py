@@ -1,7 +1,7 @@
 """Session — player_num rules, readiness amber-vs-red (no deadlock), push gate, start/reschedule/abort,
 timed-end mirror, hydrate by gun, hot-swap baseline, controls → KITTED."""
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
-from brx_mcp.mc.state import Session
+from brx_mcp.mc.state import TEAM_DEFS, Session
 from brx_mcp.mc.types import MAX_PLAYERS
 
 T0 = 5_000_000
@@ -294,31 +294,35 @@ def test_f35_team_tid_must_be_0_to_3():
 def test_round2_b_a_one_team_roster_is_refused_by_push_and_start_and_force_does_not_open_it():
     """The safety half of the field's mode-switch bug.
 
-    `set_config` re-teams every player whose team the NEW mode does not have onto `teams[0]`, so an
-    FFA roster switched to TDM lands entirely on BLUE. A one-team match cannot register a hit -- the
-    gun refuses friendly damage -- so the whole session plays out with nothing scoring and no error
-    anywhere. This is a statement about what the field CAN do, not a readiness judgement, so `force`
-    does not open it (the same line `_refuse_push_in_play` draws).
+    A match fought on one side cannot register a hit -- the gun refuses friendly damage -- so the
+    whole session plays out with nothing scoring and no error anywhere. This is a statement about what
+    the field CAN do, not a readiness judgement, so `force` does not open it (the same line
+    `_refuse_push_in_play` draws).
+
+    The mode switch that used to CREATE this roster (FFA -> TDM landing all four on BLUE) is re-teamed
+    by index and rebalanced since round-3 FIELD-1, so the roster is built here the way an operator can
+    still build it: by dragging everyone onto one side. The gate is the backstop, and it must hold.
 
     Full auto-balance is a later tier; 1-v-3 is merely UNEVEN and must still be allowed to play.
     """
     s, net, clock, ps = mk(4)
     for i, p in enumerate(ps):
         online(s, net, clock, p, i)
-    s.set_config({"mode": "ffa", "time_limit_s": 60})
     s.set_config({"mode": "tdm", "time_limit_s": 60})
-    assert len({p["team_id"] for p in s.players.values()}) == 1, "control: the switch really did pile everyone onto one team"
+    for p in ps:
+        s.patch_player(p["player_id"], team_id="blue")
+    assert len({p["team_id"] for p in s.players.values()}) == 1, "control: everyone really is on one side"
 
     rd = s.readiness()
-    assert not rd["go"], "a one-team roster cannot be a GO"
-    assert any("ONE TEAM" in f for f in rd["roster_faults"]), rd["roster_faults"]
+    assert not rd["go"], "a one-side roster cannot be a GO"
+    assert any("ONE SIDE" in f for f in rd["roster_faults"]), rd["roster_faults"]
 
     for force in (False, True):
         try:
             s.push_config(force=force)
             raise AssertionError(f"a one-team roster was pushed (force={force})")
         except ValueError as e:
-            assert "ONE TEAM" in str(e), e
+            assert "ONE SIDE" in str(e), e
 
     # 1 v 3: uneven, legal, and it plays.
     s.patch_player(ps[0]["player_id"], team_id="yellow")
@@ -336,7 +340,7 @@ def test_round2_b_a_one_team_roster_is_refused_by_push_and_start_and_force_does_
             s.start(force=force)
             raise AssertionError(f"a one-team roster was started (force={force})")
         except ValueError as e:
-            assert "ONE TEAM" in str(e), e
+            assert "ONE SIDE" in str(e), e
 
 
 def test_round2_b_the_gate_never_fires_on_a_solo_game_or_an_empty_roster():
@@ -355,3 +359,138 @@ def test_round2_b_the_gate_never_fires_on_a_solo_game_or_an_empty_roster():
     assert s2.readiness()["roster_faults"] == []
     s3 = mk(1)[0]                # a solo session: nobody to shoot whatever the teams say, never this fault
     assert s3.readiness()["roster_faults"] == []
+
+
+# ---- round-3 fix pass (2026-09-13): MERGE-0 / FIELD-1 / MERGE-2 ------------------------------
+def test_round3_merge0_the_team_fault_is_tid_based_and_allows_a_third_empty_team():
+    """MERGE-0. The round-2 gate asked "is EVERY declared team populated?", which is wrong twice.
+
+    (a) TDM advertises 2-4 teams and the objective modes allow three, so a 2/2/0 across three
+        declared sides is an ordinary, perfectly playable match -- two sides can shoot each other.
+        The old rule refused it, and `force` does not open this gate, so the operator was stuck.
+    (b) `counts` was keyed by `team_id` and nothing checks that two teams do not share a `$TID`.
+        Two teams on tid 1 both read "populated" while the GUN sees one side: no hit can register
+        for the whole match, and the gate PASSED it.
+
+    One predicate, stated on the tids that actually have somebody on them.
+    """
+    s, net, clock, ps = mk(4)
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    three = [TEAM_DEFS["blue"], TEAM_DEFS["yellow"], TEAM_DEFS["green"]]
+    s.set_config({"mode": "tdm", "time_limit_s": 60, "teams": three})
+    for p, t in zip(ps, ("blue", "blue", "yellow", "yellow")):
+        s.players[p["player_id"]]["team_id"] = t
+    assert s.readiness()["roster_faults"] == [], "2/2/0 over three declared teams plays"
+    assert s.readiness()["go"], s.readiness()["board"]
+    s.push_config()
+
+    # (b) two teams, one $TID: 2 v 2 on paper, ONE side on the field.
+    s.set_config({"mode": "tdm", "time_limit_s": 60,
+                  "teams": [dict(TEAM_DEFS["blue"]), {**TEAM_DEFS["yellow"], "tid": 1}]})
+    counts = {}
+    for p in s.players.values():
+        counts[p["team_id"]] = counts.get(p["team_id"], 0) + 1
+    assert sorted(counts.values()) == [2, 2], f"control: the roster really is 2 v 2 by team_id ({counts})"
+    assert s.one_team_fault(), "two teams sharing one $TID are ONE side"
+    assert any("ONE SIDE" in f for f in s.readiness()["roster_faults"]), s.readiness()["roster_faults"]
+    try:
+        s._refuse_one_team()
+        raise AssertionError("the gate passed a roster where every player is on one $TID")
+    except ValueError as e:
+        assert "ONE SIDE" in str(e), e
+    # (the compiler's own `duplicate team tid` error refuses the push first — belt and braces, and
+    # the reason the gate must still be right: `start()` re-asks this gate with no compile behind it)
+    for force in (False, True):
+        try:
+            s.push_config(force=force)
+            raise AssertionError(f"a single-$TID roster was pushed (force={force})")
+        except ValueError:
+            pass
+
+
+def test_round3_field1_a_mode_pick_reteams_by_index_and_rebalances():
+    """FIELD-1. `set_config` used to dump every player whose team the new mode does not have onto
+    `teams[0]`, so TDM(blue/yellow) -> KOTH(blue/green) put the whole field on BLUE and the MERGE-0
+    gate then refused the push, unforceably. The operator had to re-drag half the roster on every
+    cross-family mode pick (`koth.mjs` grew a `rebalance()` helper for exactly this).
+
+    The rule now: map by team INDEX, least-count fill whatever is left over, and rebalance ONLY if
+    the one-side predicate is true afterwards.
+    """
+    s, net, clock, ps = mk(4)
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+
+    def tids():
+        return [s.players[p["player_id"]]["team_id"] for p in ps]
+
+    s.set_config({"mode": "tdm", "time_limit_s": 60})
+    for p, t in zip(ps, ("blue", "blue", "yellow", "yellow")):
+        s.players[p["player_id"]]["team_id"] = t
+
+    # (1) tdm 2 v 2 -> koth: the operator's split SURVIVES, yellow -> green by index.
+    s.set_config({"mode": "koth", "time_limit_s": 60})
+    assert tids() == ["blue", "blue", "green", "green"], tids()
+    assert s.readiness()["roster_faults"] == [], "the pick does not strand the roster on one side"
+
+    # (2) a switch that changes nothing leaves the teams alone.
+    s.set_config({"mode": "koth", "time_limit_s": 45})
+    assert tids() == ["blue", "blue", "green", "green"], tids()
+
+    # (3) ffa (one team) -> tdm: everyone lands on index 0, so the rebalance splits them 2/2.
+    s.set_config({"mode": "ffa", "time_limit_s": 60})
+    assert len(set(tids())) == 1, "control: ffa really does share one team"
+    s.set_config({"mode": "tdm", "time_limit_s": 60})
+    got = {}
+    for t in tids():
+        got[t] = got.get(t, 0) + 1
+    assert sorted(got.values()) == [2, 2], got
+    assert s.readiness()["roster_faults"] == []
+
+    # (4) three declared teams -> two: the third team's players are least-count filled, and a 2/2/0
+    #     that already plays is NEVER rebalanced.
+    s.set_config({"mode": "tdm", "time_limit_s": 60,
+                  "teams": [TEAM_DEFS["blue"], TEAM_DEFS["yellow"], TEAM_DEFS["green"]]})
+    for p, t in zip(ps, ("blue", "blue", "green", "green")):
+        s.players[p["player_id"]]["team_id"] = t
+    assert s.readiness()["roster_faults"] == [], "2/2/0 is left alone"
+    assert tids() == ["blue", "blue", "green", "green"], tids()
+    s.set_config({"mode": "tdm", "time_limit_s": 60,
+                  "teams": [TEAM_DEFS["blue"], TEAM_DEFS["yellow"]]})
+    assert tids() == ["blue", "blue", "yellow", "yellow"], tids()
+
+
+def test_round3_merge2_an_unbound_recompile_drops_the_stale_ack():
+    """MERGE-2. `_resend`'s unbound branch (round-2 pass H) recompiles the player's stored bundle but
+    left their ACK in place, and `_bind` drops a displaced player's `node_id` without touching theirs
+    either. So a player could hold `ok: true` + a gun echo for frames that had since been recompiled
+    and never sent -- and the moment their phone came back, `all_acked()` certified the new head on
+    the strength of the old echo and `start()` went through without `force`."""
+    s, net, clock, ps = mk(2)
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.push_config()
+    for i in range(2):
+        net.simulate_node_message(f"node{i}", "ack_config",
+                                  {"config_id": s.config["config_id"], "ok": True, "gun_echo": "$LCD"}, clock["t"])
+    assert s.all_acked()
+    a = ps[0]["player_id"]
+
+    # node0's phone is claimed by the other operator: player 0 is unbound and keeps its ok ack.
+    s._bind("node0", s.players[ps[1]["player_id"]])
+    assert s.players[a]["node_id"] is None, "control: player 0 really is unbound"
+    assert (s.acks.get(a) or {}).get("ok"), "control: the stale ok is still there before the edit"
+
+    # ...and now an edit silently recompiles the frames nobody sent.
+    s.patch_player(a, display="RENAMED")
+    assert a not in s.acks, "the recompile must drop the ack it just invalidated"
+
+    # when the phone comes back the old echo must not certify the new head
+    s._bind("node1", s.players[a])
+    assert not s.all_acked(), "a recompiled, never-sent bundle is not acked"
+    try:
+        s.start()
+        raise AssertionError("start() accepted a roster holding a stale ack")
+    except ValueError as e:
+        assert "acked" in str(e), e

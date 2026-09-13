@@ -266,14 +266,17 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
   lists unclaimed guns. Red (blocks the push) = no node, identity reverted/unknown, never synced, wrong SSID / MC
   unreachable; amber (shown, not gating) = the headset still confirming (A32), battery unsampled, low phone battery,
   screen off, fw unknown. After the push an empty `ack_config.gun_echo` is red and blocks `start`. Fields are aged/decayed, never
-  shown stale as current. **`readiness.roster_faults`** (round-2 fix pass, 2026-09-12) is a separate,
-  top-level list about the ROSTER AS A WHOLE rather than any one gun — today exactly one entry, *"ALL
-  PLAYERS ON ONE TEAM"*, raised whenever a config declaring two or more teams has two or more players
-  and leaves one of those teams EMPTY (`ffa` and `lms` declare a single team and are exempt; a solo
-  roster is exempt). A non-empty list forces `go: false`, and `POST /api/lobby/push` and `POST
-  /api/start` both refuse with that sentence — **`force` does NOT open it**, for `_refuse_push_in_play`'s
-  reason: a one-team match cannot register a hit at all, so no amount of operator intent makes it
-  playable. Reached most often by switching mode (FFA → TDM re-teams everyone onto `teams[0]`).
+  shown stale as current. **`readiness.roster_faults`** (round-2 fix pass, 2026-09-12; the predicate
+  corrected 2026-09-13) is a separate, top-level list about the ROSTER AS A WHOLE rather than any one
+  gun — today exactly one entry, *"ONLY ONE SIDE HAS PLAYERS"*, raised whenever a config declaring two
+  or more teams has two or more players and fewer than **two populated `$TID`s**. Stated on the tids,
+  not the team ids: two config teams sharing a tid are ONE side however they are named, and a third,
+  EMPTY team is not a fault (a 2/2/0 plays). `ffa` and `lms` declare a single team and fall out of the
+  rule; so does a solo roster. A non-empty list forces `go: false`, and `POST /api/lobby/push` and
+  `POST /api/start` both refuse with that sentence — **`force` does NOT open it**, for
+  `_refuse_push_in_play`'s reason: a one-side match cannot register a hit at all, so no amount of
+  operator intent makes it playable. A mode pick no longer creates one: `set_config` re-teams by team
+  INDEX and rebalances if a side would be left empty (`_reteam_for_config`).
 - **Kit → lobby:** `POST /api/players` assigns `player_num` in roster order (1–63); any player change re-sends `assign`
   (re-compiles + re-pushes `config` once pushed); a phone `loadout_request` goes through the same policy
   (`policy.py`) and is answered `loadout_ack {ok: false, reason: "THE MATCH HAS STARTED — YOUR KIT IS LOCKED UNTIL

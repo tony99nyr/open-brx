@@ -744,6 +744,14 @@ class Session:
         # One classifier, two vocabularies: `policy.pool()` hands out a CODE (its own copy is the HUD's,
         # shown verbatim to a player) and the console writes the operator's line for it.
         code = (lp.get("reasons") or {}).get("primary", "filtered")
+        # Round-3 MERGE-4 (2026-09-13): `unplayable` is NOT a refusal. Every other code here is a rule
+        # the operator wrote and can rewrite; this one says the weapon they asked for cannot be shipped
+        # by THIS build (`policy.UNPLAYABLE_IDS`). `policy.apply()` has already re-fitted every loadout
+        # to a legal primary, so the push is safe — blocking it would strand the operator behind a
+        # limitation of ours with nothing on screen to change. `_unplayable_primary_notice()` is what
+        # they see instead.
+        if code == "unplayable":
+            return None
         if code == "fixed_missing":
             return (f"LOADOUT RULES: THE PRIMARY IS FIXED TO {rule.get('fixed_id')!r}, WHICH IS NOT A "
                     "WEAPON IN THIS GAME — pick the fixed primary again in the primary slot, or set "
@@ -754,6 +762,19 @@ class Session:
                     "ALLOW list, or name weapons that are in the catalog")
         return ("LOADOUT RULES: THE PRIMARY FILTER EXCLUDES EVERY WEAPON — no legal primary weapon is "
                 "left. Clear a class or id exclusion in the primary slot, or pick a preset")
+
+    def _unplayable_primary_notice(self) -> str | None:
+        """MERGE-4's other half: the WARNING that replaces the refusal above, naming the weapon.
+
+        Silent self-correction is the failure this whole pass is about — every loadout quietly became
+        an assault rifle and the operator's fixed pick was nowhere on screen."""
+        rule = self.policy()["primary"]
+        wid = _policy.unplayable_pick(rule)
+        if not wid or self.loadout_pool()["primary"]:
+            return None
+        return (f"LOADOUT RULES: {wid.upper().replace('_', ' ')} CANNOT BE PLAYED — ITS HIT ROW DEALS "
+                "NO DAMAGE IN THIS BUILD, so the primary slot fell back to a weapon that can. Pick a "
+                "different primary in the game's rules to choose it yourself")
 
     def health_pool(self, p: Player | None = None) -> int:
         """hp + armour a full-health player carries — what hits-to-kill is quoted against.
@@ -1294,8 +1315,16 @@ class Session:
             # `config_id`), so leaving it on the pre-edit compile is the same stale-head defect
             # `_repush_lobby_config` had. Recompile, never send. Not in armed/live: the kit is locked
             # there (A30) and `_push_config_to` refuses for the same reason.
+            #
+            # Round-3 MERGE-2 (2026-09-13): and the ACK goes with it, exactly as `_push_config_to`
+            # drops it beside the same recompile. `_bind` clears a displaced player's `node_id`
+            # without touching their ack, so an unbound player can be sitting on `ok: true` + a gun
+            # echo for frames this line has just replaced. The moment their phone comes back,
+            # `all_acked()` reads that echo, certifies a head no node ever took, and `start()` goes
+            # through with no `force` and nothing on screen.
             if self.lobby_pushed and not self._repush_pending and self.phase not in ("armed", "live"):
                 self.bundles[p["player_id"]] = self._compile_rolled(p)
+                self.acks.pop(p["player_id"], None)
             return
         self.net.push(p["node_id"], "assign", self._assign_body(p))
         # `_repush_pending`: a `set_config` edit is about to re-push the WHOLE roster from
@@ -1352,6 +1381,79 @@ class Session:
             self.active_preset_id = None
             raise
 
+    def _reteam_for_config(self, prev_teams: list[Team]) -> None:
+        """FIELD-1 (round-3 fix pass, 2026-09-13). Carry the operator's SPLIT across a mode pick.
+
+        The old rule was one line — anyone whose team the new config does not declare landed on
+        `teams[0]` — which is how a TDM(blue/yellow) roster switched to KOTH(blue/green) or
+        INFECTION(blue/red) arrived entirely on BLUE. With `one_team_fault()` refusing that push
+        unforceably (and `force` deliberately not opening it), every cross-family mode pick became
+        "re-drag half the field"; `webapp/mc/test/e2e/koth.mjs` grew a `rebalance()` helper to get
+        past it, which is the symptom, not the fix.
+
+        Three deterministic steps, in order:
+          1. **By INDEX.** A player on the old `teams[i]` lands on the new `teams[i]` when it exists,
+             so yellow -> green and the two sides the operator built stay two sides.
+          2. **Least-count fill** for anyone whose old index the new config does not have (and for any
+             otherwise-invalid `team_id`), stable by `player_num` — the same alternating fill
+             `add_player` uses, so one rule decides where an unplaced player goes.
+          3. **Rebalance ONLY if `one_team_fault()` is then true** (FFA -> TDM: one declared team
+             becomes two and everyone is on index 0). A 2/2/0 across three declared teams already
+             plays and is left exactly as the operator left it.
+
+        Nobody is ever reordered inside a team, and a switch that changes nothing changes nothing."""
+        new_ids = [t["team_id"] for t in self.teams]
+        legal = set(new_ids)
+        by_old_index = {t["team_id"]: i for i, t in enumerate(prev_teams)}
+        unplaced: list[Player] = []
+        for p in sorted(self.players.values(), key=lambda q: q["player_num"]):
+            tid = p.get("team_id")
+            if tid in legal:
+                continue
+            i = by_old_index.get(tid or "")
+            if i is not None and i < len(new_ids):
+                p["team_id"] = new_ids[i]
+            else:
+                unplaced.append(p)
+        for p in unplaced:
+            p["team_id"] = self._least_count_team()
+        if self.one_team_fault():
+            self._rebalance_sides()
+
+    def _least_count_team(self) -> str | None:
+        """The emptiest declared team, ties broken by config order — `add_player`'s alternating fill."""
+        if not self.teams:
+            return None
+        counts = {t["team_id"]: 0 for t in self.teams}
+        for q in self.players.values():
+            if (t := q.get("team_id")) in counts and t is not None:
+                counts[t] += 1
+        return min(counts, key=lambda k: (counts[k], list(counts).index(k)))
+
+    def _rebalance_sides(self) -> None:
+        """Even the roster out across the declared teams — FIELD-1 step 3, reached ONLY from a true
+        `one_team_fault()`. Moves the HIGHEST `player_num` off the fullest team onto the emptiest,
+        which is deterministic and leaves the low numbers (the operator's first picks) where they are.
+        Stops at a spread of 1, so four players on one side come out 2/2 rather than the 3/1 that
+        merely clears the gate. A config whose teams all share one `$TID` cannot be fixed by moving
+        anyone, so the loop simply runs out and the gate refuses — correctly."""
+        order = [t["team_id"] for t in self.teams]
+        if len(order) < 2:
+            return
+        for _ in range(len(self.players) * len(order) + 1):
+            counts = {tid: 0 for tid in order}
+            for p in self.players.values():
+                if (t := p.get("team_id")) in counts and t is not None:
+                    counts[t] += 1
+            fullest = max(order, key=lambda k: (counts[k], -order.index(k)))
+            emptiest = min(order, key=lambda k: (counts[k], order.index(k)))
+            if counts[fullest] - counts[emptiest] <= 1:
+                return
+            movers = [p for p in self.players.values() if p.get("team_id") == fullest]
+            if not movers:
+                return
+            max(movers, key=lambda q: q["player_num"])["team_id"] = emptiest
+
     def set_config(self, patch: dict, _from_preset: bool = False) -> dict:
         if not isinstance(patch, dict):
             raise ValueError("config must be an object")
@@ -1401,11 +1503,10 @@ class Session:
         if not _policy.admits_weapons(cast(SlotRule, _pol.get("primary") or {})):
             cfg["loadout_policy"] = _policy.normalize(cfg.get("loadout_policy"), mode)
         cfg["config_id"] = uuid.uuid4().hex[:8]
+        prev_teams = list(self.teams)
         self.config = cfg
         self.teams = list(cfg["teams"])
-        for p in self.players.values():
-            if p["team_id"] not in {t["team_id"] for t in self.teams}:
-                p["team_id"] = self.teams[0]["team_id"] if self.teams else None
+        self._reteam_for_config(prev_teams)
         if self.phase == "muster":
             self.phase = "build"
         repush = self.lobby_pushed
@@ -1705,6 +1806,8 @@ class Session:
             import logging; logging.getLogger("brx.mc").exception("loadout pool check failed")
         self.config_warnings = list(res.get("warnings", []))
         self.config_warnings.extend(self._station_warnings())
+        if notice := self._unplayable_primary_notice():
+            self.config_warnings.append(notice)          # round-3 MERGE-4: never a silent re-fit
         if self._policy_notice:
             self.config_warnings.append(self._policy_notice)     # A10: the host sees the overwrite
         return res
@@ -3174,38 +3277,56 @@ class Session:
         if p.get("node_id"):
             self.net.push(p["node_id"], "config", {"config": self._wire_config(), "frames": bundle, "roster": self.roster()})
 
-    _ONE_TEAM_REFUSAL = ("ALL PLAYERS ON ONE TEAM — a one-team match cannot register a hit; "
-                         "move players between teams")
+    _ONE_TEAM_REFUSAL = ("ONLY ONE SIDE HAS PLAYERS — a match fought on one side cannot register a "
+                         "hit; move players between teams")
 
-    def _one_team_fault(self) -> str | None:
-        """Round-2 fix pass B (2026-09-12). A TEAMS game whose roster left a configured team EMPTY.
+    def populated_tids(self) -> set[int]:
+        """The distinct `$TID` values that actually have somebody rostered on them.
 
-        Field cause: `set_config` re-teams every player whose team the new mode does not have onto
-        `teams[0]`, so switching a four-player FFA session to TDM puts all four on BLUE. The gun
+        `$TID` and not `team_id`, because the TID is what the gun reads: two config teams sharing one
+        tid are ONE side on the field however they are named, and `_merge_config` does not (yet —
+        Tier 1) refuse that shape."""
+        by_team = {t["team_id"]: int(t["tid"]) for t in (self.config.get("teams") or []) if "tid" in t}
+        return {by_team[t] for p in self.players.values() if (t := p.get("team_id")) in by_team}
+
+    def one_team_fault(self) -> bool:
+        """THE team-fault predicate — round-2 fix pass B, corrected by round-3 MERGE-0 (2026-09-13).
+
+        `(declared teams >= 2) and (rostered players >= 2) and (populated $TIDs < 2)`. Defined ONCE
+        and read by the push/start gate (`_refuse_one_team`), the readiness fault
+        (`readiness()["roster_faults"]`), FIELD-1's rebalance trigger (`_reteam_for_config`) and the
+        console's demo mirror (`webapp/mc/src/mock/backend.ts rosterFault`). Two rules for this could
+        disagree, and the one place they would disagree is a match that scores nothing.
+
+        Field cause: `set_config` used to re-team every player whose team the new mode does not have
+        onto `teams[0]`, so switching a four-player FFA session to TDM put all four on BLUE. The gun
         refuses friendly damage, so such a match registers NOTHING for its whole length and says
-        nothing about it — the worst kind of failure this console can ship.
+        nothing about it — the worst kind of failure this console can ship. (FIELD-1 now re-teams by
+        INDEX and rebalances, so the gate should fire far less often; it is still the backstop.)
 
-        Scoped to a config that declares TWO OR MORE teams, which is the fact that matters rather than
-        the mode name: `ffa` AND `lms` both declare the single `ffa` team, where sharing it is the
-        design. With 2+ teams "every team has someone" already subsumes "not everyone on one team".
-        Uneven is not a fault — 1 v 3 plays, and full auto-balance is a later tier.
+        Round-3 MERGE-0 replaced "every declared team is populated", which was wrong twice:
+          * TDM advertises 2–4 teams and the objective modes allow three, so a 2/2/0 over three
+            declared sides PLAYS — and the old rule refused it unforceably.
+          * `counts` was keyed by `team_id`, so two teams sharing one `$TID` both read "populated"
+            and the gate PASSED a roster where no hit can register.
+
+        Scoped on the TEAM COUNT rather than the mode name: `ffa` AND `lms` both declare the single
+        `ffa` team, where sharing it is the design. `< 2` players: "one side" says nothing about a
+        roster that holds one person — a solo session has nobody to shoot whatever the teams say, and
+        single-player fixtures/bench sessions are an ordinary way to drive MC. Uneven is not a fault —
+        1 v 3 plays, and full auto-balance is a later tier.
 
         Deliberately NOT bypassable by `force`, for `_refuse_push_in_play`'s reason: `force` overrides a
         READINESS judgement the operator can see and accept. This is a statement about what the field
         can physically do, and no amount of operator intent changes it.
         """
-        teams = self.config.get("teams") or []
-        # `< 2` players: "all players on one team" is not a statement about a roster that holds one
-        # person — a solo session has nobody to shoot whatever the teams say, and single-player
-        # fixtures/bench sessions are an ordinary way to drive MC.
-        if len(teams) < 2 or self.config.get("mode") == "ffa" or len(self.players) < 2:
-            return None
-        counts = {t["team_id"]: 0 for t in teams}
-        for p in self.players.values():
-            tid = p.get("team_id")
-            if tid in counts:
-                counts[tid] += 1
-        return None if all(counts.values()) else self._ONE_TEAM_REFUSAL
+        if len(self.config.get("teams") or []) < 2 or len(self.players) < 2:
+            return False
+        return len(self.populated_tids()) < 2
+
+    def _one_team_fault(self) -> str | None:
+        """The one predicate, worded for the operator. Never a second rule."""
+        return self._ONE_TEAM_REFUSAL if self.one_team_fault() else None
 
     def _refuse_one_team(self) -> None:
         if fault := self._one_team_fault():
