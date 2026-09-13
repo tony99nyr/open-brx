@@ -2013,6 +2013,44 @@ test('A30 CONTROL: a player who had already readied up gets no lock notice (they
   assert.ok(!st.moment || st.moment.kind !== 'kit_locked_by_host');
 });
 
+// F-4 (2026-09-13). `_applyConfig` has always moved a player to 'lobby' on ANY config, ready or not —
+// `setReady` used to refuse everywhere but 'kitted', so a player whose kit-out window closed before
+// they ever tapped READY UP (a push or re-push that landed mid-kit) had no way left to ready for this
+// match. Least-surprise fix: a re-push while `ready` was already true KEEPS it true (re-ack, never
+// un-ready — mirrors mcp/tests/test_mc_polish.py's server-side proof of the same rule), and `setReady`
+// now also accepts a LOBBY tap once the kit is closed (`!kitOpen()`, the same flag MC's own
+// `_sync_kit_open` flips false around a push).
+test('F-4: a config push keeps `ready` true — the first push and a re-push both', () => {
+  const h = kitA10();
+  h.eng.setReady(true);
+  assert.equal(h.eng.state().ready, true);
+  h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: h.bundle, roster: h.roster } });
+  assert.equal(h.eng.phase, 'lobby');
+  assert.equal(h.eng.state().ready, true, 'the first push does not un-ready a player who had already readied');
+  // a re-push: a fresh config_id, same as a host edit re-pushing over an already-pushed lobby
+  const cfg2 = { ...h.config, config_id: 'cfg_2' };
+  h.eng.onMcMessage({ kind: 'config', body: { config: cfg2, frames: h.bundle, roster: h.roster } });
+  assert.equal(h.eng.phase, 'lobby');
+  assert.equal(h.eng.state().ready, true, 'a re-push keeps ready true — re-ack the config, never un-ready');
+});
+
+test('F-4: READY UP works from the lobby once the kit is closed, and still refuses while it is open', () => {
+  const h = kitA10();
+  h.eng.onMcMessage({ kind: 'config', body: { config: h.config, frames: h.bundle, roster: h.roster } });
+  assert.equal(h.eng.phase, 'lobby');
+  // control: this harness's policy never sent kit_open:false, so the kit reads open by default
+  assert.equal(h.eng.kitOpen(), true, 'control: kit_open was never sent false');
+  assert.equal(h.eng.setReady(true), false, 'the lobby exception is scoped to a CLOSED kit only');
+  assert.equal(h.eng.state().ready, false);
+  // MC's `_sync_kit_open` re-sends `assign` with kit_open:false around a push — mirrored here
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, catalog: CAT, policy: { ...POL, kit_open: false } } });
+  assert.equal(h.eng.phase, 'lobby', 'still lobby — only the policy flag changed');
+  assert.equal(h.eng.setReady(true), true, 'now accepted: kitted-or-lobby, kit closed');
+  assert.equal(h.eng.state().ready, true);
+  assert.equal(h.eng.setReady(false), true, 'and it un-readies the same way the kitted screen does');
+  assert.equal(h.eng.state().ready, false);
+});
+
 test('A30: the server refusal reason is kept verbatim for the kit screen to print', () => {
   const h = kitA10();
   h.eng.requestLoadout('primary', 'weapon', 'smg');

@@ -420,6 +420,13 @@ export class Hud {
       status = `<div class="status">${rw ? `<b class="oc ${esc(String(st.result.outcome))}">${rw}</b> · ` : ''}D ${st.deaths} · K ${st.kills != null ? st.kills : '—'}</div>` +
         `<div class="overbtns"><button class="briefbtn" data-act="onShowResults"><span class="unskew">▣ RESULTS</span></button>` +
         `<button class="briefbtn" data-act="onShowHistory"><span class="unskew">▤ HISTORY</span></button></div>`;
+    } else if (mode === 'lobby' && !st.kitOpen && !st.ready) {
+      // F-4 (2026-09-13): `engine.setReady` now accepts a lobby tap once the kit is closed — for a
+      // player whose kit-out window ended (a push or re-push that landed) before they ever hit READY
+      // UP, this is the only door left. Same control, same note the kitted screen uses; a player who
+      // is already `ready` still reads STANDING BY below, unchanged.
+      foot = `${lead}<button class="ready off" data-act="onReady"><span class="unskew">READY UP</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
+      status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     } else {
       foot = `${lead}<button class="ready wait"><span class="unskew">STANDING BY</span></button><div class="note">${st.kitLocked ? 'The plates above are what you take in. Waiting for the host to start the countdown.' : 'Loadout is on the gun. Waiting for the host to start the countdown.'}</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
@@ -908,7 +915,9 @@ export class Hud {
     if (st.phase === 'connected' || st.phase === 'kitted' || st.phase === 'lobby') {
       const mode = st.phase === 'connected' ? 'connected' : st.phase === 'lobby' ? 'lobby' : (st.ended ? 'over' : 'kitted');
       if (mode !== 'over') setHtml('mcstatus', this._statusLine(st, mode));
-      if (mode === 'kitted' || mode === 'over') setHtml('readynote', this._readyNote(st, mode));   // `synced` is patched, never in the render signature — the over screen needs the same live note
+      // F-4: the lobby's own READY UP (kit closed, not yet ready) reads the same live note the kitted
+      // screen does — `synced` is patched, never in the render signature.
+      if (mode === 'kitted' || mode === 'over' || (mode === 'lobby' && !st.kitOpen && !st.ready)) setHtml('readynote', this._readyNote(st, mode));
     }
     if (st.phase === 'live') {
       set('clock', mmss(st.clockMs)); set('hp', st.hp); set('sh', st.armor); set('mag', pad2(st.ammo)); set('res', `/${st.reserve != null ? st.reserve : '—'}`);
