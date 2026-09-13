@@ -2990,8 +2990,13 @@ class Session:
             board.append(row)
         unclaimed = [s for s in self.scan_rows if s.get("basename", "").lower() not in claimed]
         greens = sum(1 for r in board if r["status"] == "green")
+        # Round-2 B: a fault about the ROSTER AS A WHOLE, not about any one gun, so it cannot live in a
+        # board row. Top-level and rendered red by the console, which must not have to recompute the
+        # rule client-side to know the push is going to be refused.
+        roster_faults = [f] if (f := self._one_team_fault()) else []
         return {"t": now, "roster_size": len(board), "greens": greens, "board": board, "unclaimed": unclaimed,
-                "go": all(r["status"] not in ("red", "waiting") for r in board) and bool(board)}
+                "roster_faults": roster_faults,
+                "go": all(r["status"] not in ("red", "waiting") for r in board) and bool(board) and not roster_faults}
 
     async def scan(self, duration_s: int = 6) -> list[ScanRow]:
         self.scan_rows = await self.armory.scan(duration_s)
@@ -3152,6 +3157,43 @@ class Session:
         if p.get("node_id"):
             self.net.push(p["node_id"], "config", {"config": self._wire_config(), "frames": bundle, "roster": self.roster()})
 
+    _ONE_TEAM_REFUSAL = ("ALL PLAYERS ON ONE TEAM — a one-team match cannot register a hit; "
+                         "move players between teams")
+
+    def _one_team_fault(self) -> str | None:
+        """Round-2 fix pass B (2026-09-12). A TEAMS game whose roster left a configured team EMPTY.
+
+        Field cause: `set_config` re-teams every player whose team the new mode does not have onto
+        `teams[0]`, so switching a four-player FFA session to TDM puts all four on BLUE. The gun
+        refuses friendly damage, so such a match registers NOTHING for its whole length and says
+        nothing about it — the worst kind of failure this console can ship.
+
+        Scoped to a config that declares TWO OR MORE teams, which is the fact that matters rather than
+        the mode name: `ffa` AND `lms` both declare the single `ffa` team, where sharing it is the
+        design. With 2+ teams "every team has someone" already subsumes "not everyone on one team".
+        Uneven is not a fault — 1 v 3 plays, and full auto-balance is a later tier.
+
+        Deliberately NOT bypassable by `force`, for `_refuse_push_in_play`'s reason: `force` overrides a
+        READINESS judgement the operator can see and accept. This is a statement about what the field
+        can physically do, and no amount of operator intent changes it.
+        """
+        teams = self.config.get("teams") or []
+        # `< 2` players: "all players on one team" is not a statement about a roster that holds one
+        # person — a solo session has nobody to shoot whatever the teams say, and single-player
+        # fixtures/bench sessions are an ordinary way to drive MC.
+        if len(teams) < 2 or self.config.get("mode") == "ffa" or len(self.players) < 2:
+            return None
+        counts = {t["team_id"]: 0 for t in teams}
+        for p in self.players.values():
+            tid = p.get("team_id")
+            if tid in counts:
+                counts[tid] += 1
+        return None if all(counts.values()) else self._ONE_TEAM_REFUSAL
+
+    def _refuse_one_team(self) -> None:
+        if fault := self._one_team_fault():
+            raise ValueError(fault)
+
     def _refuse_push_in_play(self) -> None:
         """A full config push during a running match is a SAFETY refusal, not a readiness one.
 
@@ -3197,11 +3239,16 @@ class Session:
                 raise CoverageRequired(
                     f"{self.config.get('mode')} needs FULL coverage (every player's phone on backhaul); "
                     f"{cov['on_backhaul']} of {cov['bound']} bound node(s) are", cov)
-        if not rd["go"] and not force:
+        # Round-2 B: read the BOARD, not `go` — `go` is now also false for a `roster_faults` entry,
+        # which is a different refusal with its own (unforceable) wording further down. Gating the
+        # override on `go` printed "readiness has reds — clear them before pushing" with an EMPTY list
+        # for a one-team roster, and `force` then walked straight past the safety gate's own message.
+        rows_blocked = any(r["status"] in ("red", "waiting") for r in rd["board"])
+        if rows_blocked and not force:
             reds = [f"{r['player_num']}:{'/'.join(r['blockers'])}" for r in rd["board"] if r["status"] == "red"]
             raise ValueError("readiness has reds — clear them before pushing, or push with force: "
                              + "; ".join(reds))
-        if not rd["go"]:
+        if rows_blocked:
             import logging
             logging.getLogger("brx.mc").warning(
                 "FORCED push over %d red row(s): %s", sum(1 for r in rd["board"] if r["status"] == "red"),
@@ -3210,6 +3257,10 @@ class Session:
         res = self._validate()
         if not res["ok"]:
             raise ValueError("config invalid: " + "; ".join(res["errors"]))
+        # Round-2 B, AFTER `_validate()`: a config broken in its own right (F82's neutral team, a
+        # missing objective source) has a more specific thing to say than "move somebody", and those
+        # errors name the actual repair. This is the last gate before anything is sent.
+        self._refuse_one_team()
         self.trying.clear()
         self._next_game_no()
         for p in self.players.values():
@@ -3238,6 +3289,7 @@ class Session:
     def start(self, runway_s: int | None = None, force: bool = False) -> dict:
         if not self.lobby_pushed:
             raise ValueError("push config first")
+        self._refuse_one_team()           # round-2 B: a team can empty out between the push and the whistle
         if not self.all_acked() and not force:
             raise ValueError("not every node has acked the config with a gun echo")
         return self._schedule(runway_s or DEFAULT_RUNWAY_S)

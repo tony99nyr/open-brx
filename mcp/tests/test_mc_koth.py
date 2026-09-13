@@ -24,6 +24,18 @@ def _roster(session):
     return list(session.players.values())
 
 
+def _rebalance(session):
+    """Deal the roster round-robin across the configured teams.
+
+    `set_config` re-teams anyone whose team the NEW config does not have onto `teams[0]`, so a test
+    that swaps modes or teams mid-session ends with everybody on one of them -- which the round-2
+    one-team gate (`_one_team_fault`) refuses to push, rightly. These tests are about hill rows and
+    tids, so they re-deal rather than assert on a roster the field would never be allowed to play."""
+    ids = [t["team_id"] for t in session.config["teams"]]
+    for i, p in enumerate(session.players.values()):
+        p["team_id"] = ids[i % len(ids)]
+
+
 # --------------------------------------------------------------------------- #
 # 1. the mode RUNS: selectable, valid, and the compiled head can hear a hill  #
 # --------------------------------------------------------------------------- #
@@ -46,6 +58,10 @@ def test_a_koth_game_compiles_and_its_head_can_hear_the_hill():
     # CONTROL: the same session on TDM ships no protocol-15 row, so this is the mode driving it and
     # not a row every head happens to carry.
     s.set_config({"mode": "tdm"})
+    # koth is BLUE+GREEN and tdm is BLUE+YELLOW, so the swap re-teams the green player onto blue and
+    # leaves yellow empty -- the pile-up the round-2 one-team gate refuses. Split them again: this
+    # test is about the $SIR rows in the head, not about team assignment.
+    _rebalance(s)
     s.push_config(force=True)
     for p in _roster(s):
         assert not any(f.startswith("$SIR,15,0,") for f in s.bundles[p["player_id"]]["head"])
@@ -91,6 +107,7 @@ def test_a_hill_config_cannot_even_HOLD_a_neutral_team():
     s.set_config({"mode": "koth"})
     s.set_config({"teams": [teams[0], {"team_id": "green", "name": "GREEN TEAM", "color": "#2ecc71", "tid": 3}]})
     assert [t["tid"] for t in s.config["teams"]] == [1, 3]
+    _rebalance(s)                 # every team swap above re-teamed the roster onto teams[0] (round-2 B)
     s.push_config(force=True)
 
 
@@ -151,6 +168,7 @@ def test_a_restored_session_on_tid_two_still_cannot_be_pushed_even_with_force():
     s3._persist_path = path
     s3.restore_snapshot()
     assert s3._validate()["ok"], s3.config_errors
+    _rebalance(s3)                # the snapshot puts both restored players on GREEN (round-2 B)
     s3.push_config(force=True)
 
 

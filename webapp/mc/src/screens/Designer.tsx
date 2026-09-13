@@ -10,7 +10,7 @@ import { PerkGlyph } from './Kit';
 import { AdvancedPresentation } from './AdvancedPresentation';
 import { STATION_SOURCES, TEMPLATE_RULES, admitsWeapons, computePool, emptyRequiredSlots, gameSig, objectiveLine, poolEmptyMessage, presetOf, rulesLine, withPolicy } from './gameSummary';
 import { MODE_ART } from '../modeArt';
-import { CONFIG_EDITABLE_PHASES, lockedReason } from './Games';
+import { CONFIG_EDITABLE_PHASES, MODE_PICK_PHASES, lockedReason } from './Games';
 
 const TEMPLATES: { value: LoadoutPreset; label: string; hint: string }[] = [
   { value: 'open', label: 'OPEN', hint: 'Everything, players pick all three slots' },
@@ -83,9 +83,13 @@ export function Designer() {
   const applyTemplate = (preset: LoadoutPreset) => { if (preset !== 'custom') setCfg(c => c ? { ...c, loadout_policy: clone(TEMPLATE_RULES[preset]) } : c); };
   const setBase = (m: typeof modes[number]) => { if (m.mode !== cfg.mode) setCfg(withPolicy({ ...clone(m.defaults), environment: cfg.environment, night: cfg.night })); };
   const dirty = editing ? gameSig(editing.config) !== gameSig(cfg) || editing.name !== name.trim() || (editing.desc ?? '') !== desc.trim() : true;
-  // F151 (field 2026-09-12): PLAY / APPLY both end in `PUT /api/config`, valid only in
-  // muster/build/kit — reachable here whenever CUSTOMIZE was opened before the field moved on.
+  // F151 (field 2026-09-12): PLAY / APPLY both end in `PUT /api/config`, reachable here whenever
+  // CUSTOMIZE was opened before the field moved on. Round-2 fix pass: the same SPLIT `Games.tsx` now
+  // carries, because it is the server's own (`state.py set_config`) — SAVE is a general config write
+  // and lives in muster/build/kit/lobby; PLAY THIS NOW / APPLY name a MODE, and recap takes those as
+  // the play-again roll. Only armed/live refuse both.
   const configLocked = !CONFIG_EDITABLE_PHASES.has(state.phase);
+  const modeLocked = !MODE_PICK_PHASES.has(state.phase);
   // F141 polish (field 2026-09-12, pass 1): the "THIS EXCLUDES EVERY WEAPON" warning rendered on the
   // slot itself but nothing stopped SAVE/PLAY — a zero-weapon primary reached KIT and every arsenal
   // tile there was locked with no way out. The whole screen refuses until at least one slot has
@@ -103,6 +107,8 @@ export function Designer() {
     : '';
   const blocked = configLocked || poolEmpty.any;
   const blockedReason = configLocked ? lockedReason(state.phase) : poolEmpty.any ? poolEmptyReason : undefined;
+  const playBlocked = modeLocked || poolEmpty.any;
+  const playBlockedReason = modeLocked ? lockedReason(state.phase) : poolEmpty.any ? poolEmptyReason : undefined;
 
   const save = async (asNew = false) => {
     const nm = name.trim(); if (!nm) { setSaved('NAME IT FIRST'); return null; }
@@ -248,7 +254,7 @@ export function Designer() {
             <div style={{ font: F.chk(500, 12), color: T.dim, lineHeight: 1.45, minHeight: 18 }}>{desc.trim() || (mode?.brief ?? '')}</div>
             <div style={{ height: 1, background: T.line }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <PrimaryButton onClick={play} disabled={blocked} title={blocked ? blockedReason : name.trim() ? 'Save, apply, and go to KIT' : 'Apply without saving and go to KIT'}>PLAY THIS NOW ▸</PrimaryButton>
+              <PrimaryButton onClick={play} disabled={playBlocked} title={playBlocked ? playBlockedReason : name.trim() ? 'Save, apply, and go to KIT' : 'Apply without saving and go to KIT'}>PLAY THIS NOW ▸</PrimaryButton>
               {blocked && <div role="alert" style={{ font: F.mono(600, 10.5), letterSpacing: '.1em', color: T.bad, lineHeight: 1.5 }}>▲ {blockedReason}</div>}
               {!blocked && !name.trim() && <div style={{ font: F.mono(500, 10.5), letterSpacing: '.12em', color: T.micro }}>PLAYS TONIGHT WITHOUT SAVING — NAME IT ABOVE TO KEEP IT ON THE SHELF</div>}
               <div style={{ display: 'flex', gap: 6 }}>
@@ -259,8 +265,8 @@ export function Designer() {
               {saved && !saved.startsWith('NAME') && editing && state.active_preset_id === editing.preset_id && gameSig(editing.config) !== gameSig(state.config) && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div style={{ font: F.mono(600, 10.5), letterSpacing: '.12em', color: T.warn }}>▲ TONIGHT'S GAME STILL RUNS THE OLD VERSION</div>
-                  <GhostButton size={11} pad="9px 12px" color={T.ink} border={T.warn} disabled={blocked} title={blocked ? blockedReason : undefined}
-                    onClick={async () => { if (blocked) return; const r = await run(() => api.applyPreset(editing.preset_id)); if (r) await run(() => api.putConfig({ environment: state.config.environment, night: state.config.night })); }}>APPLY TO TONIGHT'S GAME ▸</GhostButton>
+                  <GhostButton size={11} pad="9px 12px" color={T.ink} border={T.warn} disabled={playBlocked} title={playBlocked ? playBlockedReason : undefined}
+                    onClick={async () => { if (playBlocked) return; const r = await run(() => api.applyPreset(editing.preset_id)); if (r) await run(() => api.putConfig({ environment: state.config.environment, night: state.config.night })); }}>APPLY TO TONIGHT'S GAME ▸</GhostButton>
                 </div>
               )}
             </div>

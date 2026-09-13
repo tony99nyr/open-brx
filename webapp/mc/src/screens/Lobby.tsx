@@ -22,6 +22,18 @@ export function Lobby() {
   const unassigned = players.filter(p => !teamIds.includes(p.team_id ?? ''));
   const counts = cols.map(c => c.members.length);
   const balanced = Math.max(...counts) - Math.min(...counts) <= 1 && unassigned.length === 0;
+  // Round-2 fix pass B (2026-09-12): an EMPTY team in a teams game is not "unbalanced", it is
+  // unplayable — the gun refuses friendly damage, so a one-team match registers nothing for its whole
+  // length and says nothing about it. The field hit it by switching FFA -> TDM, which re-teams every
+  // player onto `teams[0]`. The server refuses the push and the start outright (`_one_team_fault`,
+  // which `force` does NOT open) and names the fault in `readiness.roster_faults`; that is what this
+  // renders, falling back to the same rule locally for a server that predates the field.
+  const teamsMode = state.config.mode !== 'ffa' && cols.length > 1;
+  const rosterFaults = readiness.roster_faults ?? [];
+  const emptyTeam = teamsMode && players.length > 1 && counts.some(n => n === 0);
+  const rosterFault = rosterFaults[0]
+    ?? (emptyTeam ? 'ALL PLAYERS ON ONE TEAM — a one-team match cannot register a hit; move players between teams' : null);
+  const balancedForTeams = !rosterFault;
   const nReady = players.filter(p => p.ready).length;
   const notReady = players.filter(p => !p.ready).map(p => p.display);
   const allReady = nReady === players.length && players.length > 0;
@@ -65,11 +77,19 @@ export function Lobby() {
     <div className="screen">
       <ScreenHeader kicker="[ A5 // LOBBY ]" title="Team Assignment" right={
         <>
-          <Tag color={balanced ? T.ok : T.warn} size={9} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{counts.join(' V ')} — {balanced ? 'BALANCED' : 'UNBALANCED'}</Tag>
+          {rosterFault
+            ? <Tag color={T.bad} size={9} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{counts.join(' V ')} — CANNOT PLAY</Tag>
+            : <Tag color={balanced ? T.ok : T.warn} size={9} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{counts.join(' V ')} — {balanced ? 'BALANCED' : 'UNBALANCED'}</Tag>}
           {cLine && <Tag color={cColor} size={9} style={{ letterSpacing: '.2em', padding: '3px 10px' }}>{cLine}</Tag>}
           <Progress n={nReady} total={players.length} label="READY" color={T.ok} />
         </>
       } />
+      {rosterFault && (
+        <div role="alert" data-testid="roster-fault" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          background: 'rgba(255,82,82,.08)', border: `1px solid ${T.bad}`, borderLeft: `3px solid ${T.bad}`, padding: '12px 16px' }}>
+          <span style={{ font: F.chk(700, 12), letterSpacing: '.06em', color: T.bad, lineHeight: 1.5 }}>▲ {rosterFault}</span>
+        </div>
+      )}
       {/* the field steps (power-cycle the grenade, place it) — see ui/SetupSteps */}
       <SetupSteps style={{ marginBottom: 12 }} />
       {/* A31: the standing "this win is settled at MC" line, naming the phones with no backhaul */}
@@ -119,8 +139,8 @@ export function Lobby() {
               </span>} />
           </div>
           <span style={{ flex: 1 }} />
-          <PrimaryButton onClick={() => pushAndArm()} disabled={blockedCount > 0 || players.length === 0 || (lobby.pushed && !allAcked)}
-            title={lobby.pushed && !allAcked ? 'Waiting for every gun to echo the config' : ''}>
+          <PrimaryButton onClick={() => pushAndArm()} disabled={blockedCount > 0 || !balancedForTeams || players.length === 0 || (lobby.pushed && !allAcked)}
+            title={!balancedForTeams ? rosterFault ?? '' : lobby.pushed && !allAcked ? 'Waiting for every gun to echo the config' : ''}>
             {lobby.pushed ? 'ARM COUNTDOWN ▸' : 'PUSH CONFIG & ARM ▸'}
           </PrimaryButton>
         </div>
@@ -150,7 +170,9 @@ export function Lobby() {
         )}
       </div>
 
-      {blockedCount > 0 && (
+      {/* `force` is the operator's override of a READINESS judgement. It does not open the one-team
+          gate (state.py `_one_team_fault`), so the tray must not be on screen claiming otherwise. */}
+      {blockedCount > 0 && balancedForTeams && (
         <div style={{ marginTop: 10, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ font: F.mono(500, 10), letterSpacing: '.16em', color: T.micro }}>HOST OVERRIDE</span>
           <button type="button" className="hov-acc-ink hit44" style={{ ...BTN_RESET, cursor: 'pointer', color: T.bad, font: F.chk(700, 13), minHeight: 36 }}

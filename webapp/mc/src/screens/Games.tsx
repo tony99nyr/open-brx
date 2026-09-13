@@ -17,15 +17,23 @@ import { MODE_ART } from '../modeArt';
  *  the operator can easily miss, and nothing on the Games screen itself said why nothing happened. That
  *  read exactly like "the loaded game config's controls are locked, with no explanation" (round-2 field
  *  report). This says which door is still open — and pass 1 (2026-09-12) made it name the RIGHT door:
- *  `lobby` has no RECALL at all (the control endpoint is armed/live only) — it is undone by a plain
- *  phase move back to kit; `armed` is undone by ABORT, not RECALL; `recap` is undone by NEW MATCH, which
- *  is already on screen (CommandBar renders it whenever phase is recap) rather than a tab to jump to. */
-export const CONFIG_EDITABLE_PHASES = new Set(['muster', 'build', 'kit']);
+ *  `armed` is undone by ABORT, not RECALL. Round 2 narrowed WHICH phases are locked at all — see
+ *  `MODE_PICK_PHASES` below. */
+export const CONFIG_EDITABLE_PHASES = new Set(['muster', 'build', 'kit', 'lobby']);
+/** Round-2 fix pass (2026-09-12): the lock is SPLIT, because the server splits it.
+ *
+ *  `state.py set_config` takes ANY config edit in muster/build/kit/lobby; in `recap` it takes exactly
+ *  ONE patch — an explicit MODE — and that pick rolls the finished session forward
+ *  (`new_session(keep_roster=True)`, landing in BUILD with the roster kept). It refuses everything in
+ *  armed/live. The console had ONE rule (`muster/build/kit`) for both kinds of edit, which produced
+ *  two visible contradictions on one screen: `GameEditPanel` edited mode/night/health inline in LOBBY
+ *  while a mode CARD three inches away was silently swallowed, and RECAP told the operator to press
+ *  NEW MATCH (which throws the roster away) when picking a mode is the documented play-again path. */
+export const MODE_PICK_PHASES = new Set(['muster', 'build', 'kit', 'lobby', 'recap']);
 export function lockedReason(phase: string): string {
-  if (phase === 'lobby') return 'GAME SETTINGS ARE LOCKED — CONFIG WAS ALREADY PUSHED TO THE LOBBY. GO BACK TO KIT TO EDIT IT.';
   if (phase === 'armed') return 'GAME SETTINGS ARE LOCKED — THE MATCH IS ARMED. ABORT ON THE MATCH TAB RETURNS IT TO THE LOBBY.';
   if (phase === 'live') return 'GAME SETTINGS ARE LOCKED — THE MATCH IS LIVE. END OR RECALL IT ON THE MATCH TAB TO EDIT THE GAME AGAIN.';
-  if (phase === 'recap') return 'GAME SETTINGS ARE LOCKED — THIS MATCH ALREADY ENDED. NEW MATCH (TOP RIGHT) STARTS A SESSION YOU CAN EDIT.';
+  if (phase === 'recap') return 'THIS MATCH ENDED — PICK A MODE TO START THE NEXT ONE, OR NEW MATCH (TOP RIGHT).';
   return `GAME SETTINGS ARE LOCKED — THE MATCH IS ALREADY IN ${phase.toUpperCase()}.`;
 }
 
@@ -38,7 +46,8 @@ export function Games() {
   useEffect(() => { reload(); }, [reload]);
   if (!state) return null;
   const cfg = state.config;
-  const locked = !CONFIG_EDITABLE_PHASES.has(state.phase);
+  const locked = !CONFIG_EDITABLE_PHASES.has(state.phase);          // VENUE / NIGHT / CONTINUE — the general config edits
+  const modeLocked = !MODE_PICK_PHASES.has(state.phase);            // playing a stock mode or a saved game — recap takes these too
   // F141 polish (field 2026-09-12, pass 1): the applied config's OWN pool, server-computed — a policy
   // that excludes every weapon in a slot can reach `state.config` from a saved game or a race even
   // without visiting DESIGNER this session, so CONTINUE has to refuse it here too, not just there.
@@ -64,7 +73,7 @@ export function Games() {
   // DIFFERENT game/mode is exactly how an operator escapes a bad one; it must never be the gate that
   // traps them.
   const guarded = (key: string, go: () => void) => {
-    if (locked) { setNotice(lockedReason(state.phase), true); return; }   // never a silent tap (F151)
+    if (modeLocked) { setNotice(lockedReason(state.phase), true); return; }   // never a silent tap (F151)
     if (custom && confirmSwitch !== key) { setConfirmSwitch(key); return; }
     setConfirmSwitch(null); go();
   };
@@ -98,14 +107,11 @@ export function Games() {
         <div role="alert" data-testid="games-locked" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
           background: 'rgba(255,82,82,.08)', border: `1px solid ${T.bad}`, borderLeft: `3px solid ${T.bad}`, padding: '12px 16px' }}>
           <span style={{ font: F.chk(700, 12), letterSpacing: '.06em', color: T.bad, lineHeight: 1.5 }}>▲ {blockedReason}</span>
-          {/* pass 1 (2026-09-12): the banner NAMED the fix (RECALL/ABORT/BACK TO KIT) but not where to
-              find it — one tap gets there instead of the operator hunting the nav for it. LOBBY has no
-              such control at all (a plain phase move undoes the push); RECAP's fix (NEW MATCH) is
-              already on screen in the header, so no jump target is offered for either. */}
-          {state.phase === 'lobby' && (
-            <GhostButton size={11} pad="8px 14px" color={T.ink} border={T.bad}
-              onClick={async () => { await run(() => api.setPhase('kit')); setView('kit'); }}>◂ BACK TO KIT</GhostButton>
-          )}
+          {/* pass 1 (2026-09-12): the banner NAMED the fix (RECALL/ABORT) but not where to find it —
+              one tap gets there instead of the operator hunting the nav for it. Round 2: LOBBY is no
+              longer a locked phase at all (the server always accepted it), so only armed/live get a
+              jump target; RECAP's own way forward is a mode card on this very screen, plus the NEW
+              MATCH already in the header. */}
           {(state.phase === 'armed' || state.phase === 'live') && (
             <GhostButton size={11} pad="8px 14px" color={T.ink} border={T.bad} onClick={() => setView(state.phase)}>JUMP TO MATCH ▸</GhostButton>
           )}

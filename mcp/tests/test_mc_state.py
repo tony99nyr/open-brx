@@ -286,3 +286,72 @@ def test_f35_team_tid_must_be_0_to_3():
             raise AssertionError(f"tid {bad_tid} was accepted")
         except ValueError as e:
             assert "F35" in str(e)
+
+
+# ---------------------------------------------------------------------------------------------
+# Round-2 fix pass B (2026-09-12) - the one-team gate
+# ---------------------------------------------------------------------------------------------
+def test_round2_b_a_one_team_roster_is_refused_by_push_and_start_and_force_does_not_open_it():
+    """The safety half of the field's mode-switch bug.
+
+    `set_config` re-teams every player whose team the NEW mode does not have onto `teams[0]`, so an
+    FFA roster switched to TDM lands entirely on BLUE. A one-team match cannot register a hit -- the
+    gun refuses friendly damage -- so the whole session plays out with nothing scoring and no error
+    anywhere. This is a statement about what the field CAN do, not a readiness judgement, so `force`
+    does not open it (the same line `_refuse_push_in_play` draws).
+
+    Full auto-balance is a later tier; 1-v-3 is merely UNEVEN and must still be allowed to play.
+    """
+    s, net, clock, ps = mk(4)
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.set_config({"mode": "ffa", "time_limit_s": 60})
+    s.set_config({"mode": "tdm", "time_limit_s": 60})
+    assert len({p["team_id"] for p in s.players.values()}) == 1, "control: the switch really did pile everyone onto one team"
+
+    rd = s.readiness()
+    assert not rd["go"], "a one-team roster cannot be a GO"
+    assert any("ONE TEAM" in f for f in rd["roster_faults"]), rd["roster_faults"]
+
+    for force in (False, True):
+        try:
+            s.push_config(force=force)
+            raise AssertionError(f"a one-team roster was pushed (force={force})")
+        except ValueError as e:
+            assert "ONE TEAM" in str(e), e
+
+    # 1 v 3: uneven, legal, and it plays.
+    s.patch_player(ps[0]["player_id"], team_id="yellow")
+    rd = s.readiness()
+    assert rd["roster_faults"] == [], rd["roster_faults"]
+    assert rd["go"], rd["board"]
+    s.push_config()
+    s.start(force=True)          # `force` here is only about the missing gun echoes, which is another test's ground
+
+    # ...and putting them back makes START itself refuse, force included.
+    s.phase = "lobby"
+    s.players[ps[0]["player_id"]]["team_id"] = "blue"
+    for force in (False, True):
+        try:
+            s.start(force=force)
+            raise AssertionError(f"a one-team roster was started (force={force})")
+        except ValueError as e:
+            assert "ONE TEAM" in str(e), e
+
+
+def test_round2_b_the_gate_never_fires_on_a_solo_game_or_an_empty_roster():
+    """CONTROL. `ffa` declares one team and so does `lms` -- every player shares it BY DESIGN, and the
+    gun's friendly-fire rule is not in play there. The gate is about a TEAMS game (2+ configured
+    teams) whose roster left one of them empty; it must not turn every solo mode into a refusal."""
+    s, net, clock, ps = mk(3)
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    for mode in ("ffa", "lms"):
+        s.set_config({"mode": mode, "time_limit_s": 60})
+        assert len({p["team_id"] for p in s.players.values()}) == 1
+        assert s.readiness()["roster_faults"] == [], mode
+        s.push_config()
+    s2 = mk(0)[0]
+    assert s2.readiness()["roster_faults"] == []
+    s3 = mk(1)[0]                # a solo session: nobody to shoot whatever the teams say, never this fault
+    assert s3.readiness()["roster_faults"] == []

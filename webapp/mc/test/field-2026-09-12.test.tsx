@@ -7,11 +7,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { Armory } from '../src/screens/Armory';
 import { Designer } from '../src/screens/Designer';
 import { Games } from '../src/screens/Games';
+import { Lobby } from '../src/screens/Lobby';
 import { Recap } from '../src/screens/Recap';
 import { Spectate } from '../src/screens/Spectate';
 import { computePool } from '../src/screens/gameSummary';
-import type { RecapView, State } from '../src/api/types';
-import { demo, mountScreen } from './harness';
+import { MockBackend } from '../src/mock/backend';
+import { StoreCtx } from '../src/store';
+import type { Api, ModeInfo, Phase, RecapView, State } from '../src/api/types';
+import { demo, fixtureApi, makeStore, mount, mountScreen } from './harness';
 
 describe('F141 — Designer class chip toggle', () => {
   it('a chip left PARTIAL by another chip\'s exclusion still toggles fully OFF on tap, and back ON on the next', async () => {
@@ -70,31 +73,90 @@ describe('F141 — Designer class chip toggle', () => {
   });
 });
 
-describe('F151 — Games settings lock past kit', () => {
-  it('says why controls do nothing once the match has moved past kit, and never calls putConfig silently', async () => {
-    const d = await demo();
-    const state: State = { ...d.state, phase: 'lobby' };
-    const putConfig = vi.fn(async () => ({ ok: true, errors: [], config: state.config }));
-    const m = await mountScreen(<Games />, { ...d, state, api: { putConfig } });
-    expect(m.find('[data-testid="games-locked"]').length, 'a visible banner explains the lock').toBe(1);
-    expect(m.text()).toContain('GAME SETTINGS ARE LOCKED');
-    expect(m.text()).toContain('LOBBY');
-    const continueBtn = m.find('button').find(b => (b.textContent ?? '').includes('CONTINUE'));
-    expect((continueBtn as HTMLButtonElement).disabled).toBe(true);
-    // tapping a stock-mode card must never reach the server silently
-    await m.click('TEAM DEATHMATCH').catch(() => {});
-    expect(putConfig).not.toHaveBeenCalled();
-    m.unmount();
+describe('F151 / round-2 — the GAMES lock is SPLIT the way the server splits it', () => {
+  /** GAMES with a live mock backend behind it and the `modes` list loaded, the way `store.tsx` loads
+   *  it — the ONLY way a mode card is a real one-tap play (with `modes` empty every card reads as a
+   *  TUNED draft and the first tap is only the "this drops your unsaved game" confirm, which is what
+   *  made the old lobby assertion pass for the wrong reason). */
+  const games = async (phase: Phase, over: Partial<Api> = {}) => {
+    const backend = new MockBackend();
+    const modes: ModeInfo[] = await backend.getModes();
+    await backend.setPhase(phase);
+    let state: State = await backend.getState();
+    const api = fixtureApi(over, backend as unknown as Api);
+    const render = () => (<StoreCtx.Provider value={makeStore({ state, view: 'build' }, { api, modes })}><Games /></StoreCtx.Provider>);
+    const m = await mount(render());
+    return { m, backend, modes,
+      settle: async () => { state = await backend.getState(); await m.update(render()); } };
+  };
+
+  it('a LOBBY mode pick goes through — the server allows it and the push is re-sent, not swallowed', async () => {
+    // Round 2: `CONFIG_EDITABLE_PHASES` stopped at `kit`, so a mode-card tap in LOBBY hit `guarded()`
+    // and RETURNED WITHOUT ACTING — while `GameEditPanel`, on the same screen, edited mode/night/health
+    // inline in exactly that phase. Two contradictory rules on one console, and the reason the koth e2e
+    // (whose shared server sits in lobby/recap) never saw the KotH tap.
+    const g = await games('lobby');
+    await g.backend.pushLobby(true);
+    await g.settle();
+    expect(g.m.find('[data-testid="games-locked"]').length, 'LOBBY is not a locked phase for config edits').toBe(0);
+    expect(g.m.text()).not.toContain('GO BACK TO KIT');
+    await g.m.click('KING OF THE HILL');
+    await g.settle();
+    const after = await g.backend.getState();
+    expect(after.config.mode, 'the tap reached the server').toBe('koth');
+    expect(after.lobby.pushed, 'and the lobby stays pushed — the edit RE-PUSHES rather than vanishing').toBe(true);
+    g.m.unmount();
   });
 
-  it('is fully interactive in kit/build/muster (unaffected by the lock)', async () => {
-    const d = await demo();
-    const state: State = { ...d.state, phase: 'build' };
-    const m = await mountScreen(<Games />, { ...d, state });
-    expect(m.find('[data-testid="games-locked"]').length).toBe(0);
-    const continueBtn = m.find('button').find(b => (b.textContent ?? '').includes('CONTINUE'));
-    expect((continueBtn as HTMLButtonElement).disabled).toBe(false);
-    m.unmount();
+  for (const phase of ['armed', 'live'] as const) {
+    it(`says why controls do nothing once the match is ${phase.toUpperCase()}, and never calls putConfig silently`, async () => {
+      const putConfig = vi.fn(async () => { throw new Error('putConfig must never be reached while the match is in play'); });
+      const g = await games(phase, { putConfig });
+      expect(g.m.find('[data-testid="games-locked"]').length, 'a visible banner explains the lock').toBe(1);
+      expect(g.m.text()).toContain('GAME SETTINGS ARE LOCKED');
+      expect(g.m.text()).toContain(phase.toUpperCase());
+      const continueBtn = g.m.find('button').find(b => (b.textContent ?? '').includes('CONTINUE'));
+      expect((continueBtn as HTMLButtonElement).disabled).toBe(true);
+      await g.m.click('TEAM DEATHMATCH');
+      expect(putConfig).not.toHaveBeenCalled();
+      g.m.unmount();
+    });
+  }
+
+  it('RECAP still takes a MODE pick — that IS the play-again path — and it rolls the session', async () => {
+    // `state.py set_config` in `recap` accepts exactly one patch: an explicit MODE. It rolls the
+    // finished session forward (`new_session(keep_roster=True)`) and lands in BUILD. The console used
+    // to swallow the tap and tell the operator to press NEW MATCH, which throws the roster away.
+    const g = await games('recap');
+    const before = await g.backend.getState();
+    expect(g.m.text()).toContain('PICK A MODE TO START THE NEXT ONE');
+    await g.m.click('KING OF THE HILL');
+    await g.settle();
+    const after = await g.backend.getState();
+    expect(after.phase, 'the recap rolls forward into a fresh, editable session').toBe('build');
+    expect(after.config.mode).toBe('koth');
+    expect(after.config.config_id).not.toBe(before.config.config_id);
+    expect(after.players.length, 'the roster is KEPT — this is play-again, not a wipe').toBe(before.players.length);
+    expect(after.recap, 'the finished match\'s recap is cleared with the roll').toBeFalsy();
+    g.m.unmount();
+  });
+
+  it('a RECAP venue edit is still refused, in the server\'s own words', async () => {
+    const backend = new MockBackend();
+    await backend.setPhase('recap');
+    await expect(backend.putConfig({ night: true })).rejects.toThrow(/match is over/i);
+  });
+
+  it('is fully interactive in muster/build/kit AND lobby (unaffected by the lock)', async () => {
+    for (const phase of ['muster', 'build', 'kit', 'lobby'] as const) {
+      const d = await demo();
+      const state: State = { ...d.state, phase };
+      const m = await mountScreen(<Games />, { ...d, state });
+      expect(m.find('[data-testid="games-locked"]').length, `${phase} is editable`).toBe(0);
+      const continueBtn = m.find('button').find(b => (b.textContent ?? '').includes('CONTINUE'));
+      expect((continueBtn as HTMLButtonElement).disabled, `${phase} CONTINUE is live`).toBe(false);
+      m.unmount();
+    }
   });
 
   it('refuses CONTINUE when the applied config\'s own pool has an empty required slot, even with no Designer visit', async () => {
@@ -154,6 +216,74 @@ describe('F151 — Games settings lock past kit', () => {
     expect(m.text()).not.toContain("PERK'S CLASS/ID FILTERS");
     expect(m.text()).not.toContain("PERK'S FIXED PICK");
     m.unmount();
+  });
+});
+
+describe('round-2 — the mock never re-pushes a config the server would have dropped', () => {
+  it('an INVALID edit in a pushed lobby UN-pushes, instead of quietly re-sending a config no gun can arm', async () => {
+    // `state.py set_config` re-pushes only `if res["ok"]`; otherwise `lobby_pushed = False` and the
+    // acks are dropped. The mock's B3 re-push block ran unconditionally, so `?mock` showed a lobby
+    // still reading "pushed" while carrying a config the real MC refuses.
+    const backend = new MockBackend();
+    await backend.setPhase('lobby');
+    await backend.pushLobby(true);
+    expect((await backend.getState()).lobby.pushed, 'control: the lobby really is pushed first').toBe(true);
+    const r = await backend.putConfig({ time_limit_s: 0 });
+    expect(r.ok, 'a zero time limit is invalid on the phone path').toBe(false);
+    const after = await backend.getState();
+    expect(after.lobby.pushed, 'an invalid config cannot arm a gun — the push is dropped, never re-sent').toBe(false);
+    expect(Object.keys(after.lobby.acks).length, 'and the acks go with it').toBe(0);
+  });
+});
+
+describe('round-2 B — an empty team is a BLOCKING red on the lobby, never an amber tag', () => {
+  /** A LOBBY with a clean board (no red/waiting rows of its own), `n` players dealt onto the named
+   *  teams. `blockedCount` is what normally disables PUSH, so the board is levelled first: this test
+   *  is about the ROSTER gate and nothing else. */
+  const lobbyOn = async (teamOf: (i: number) => string) => {
+    const d = await demo();
+    const players = d.state.players.map((p, i) => ({ ...p, team_id: teamOf(i), ready: true }));
+    const board = d.state.readiness.board.map(b => ({ ...b, status: 'green' as const, blockers: [] }));
+    const state: State = { ...d.state, phase: 'lobby', players,
+      config: { ...d.state.config, mode: 'tdm' },
+      lobby: { ...d.state.lobby, pushed: false, acks: {} },
+      readiness: { ...d.state.readiness, board, go: true, roster_faults: [] } };
+    return mountScreen(<Lobby />, { ...d, state });
+  };
+  const pushBtn = (m: Awaited<ReturnType<typeof lobbyOn>>) =>
+    m.find('button').find(b => (b.textContent ?? '').includes('PUSH CONFIG')) as HTMLButtonElement;
+
+  it('everyone on one team: a red alert says why, and PUSH/ARM is disabled', async () => {
+    // The field bug: switching FFA -> TDM re-teamed all four players onto BLUE. A one-team match
+    // cannot register a hit (the gun refuses friendly damage), and the only thing on screen about it
+    // was an amber "4 V 0 — UNBALANCED" chip beside a live PUSH button.
+    const m = await lobbyOn(() => 'blue');
+    const alert = m.find('[data-testid="roster-fault"]');
+    expect(alert.length, 'the empty team gets its own alert, not a tag').toBe(1);
+    expect(alert[0].getAttribute('role')).toBe('alert');
+    expect(m.text()).toContain('ALL PLAYERS ON ONE TEAM');
+    expect(pushBtn(m).disabled, 'MC would refuse this push anyway — never offer it').toBe(true);
+    m.unmount();
+  });
+
+  it('uneven but populated (3 v 1) stays amber and still plays', async () => {
+    const m = await lobbyOn(i => (i === 0 ? 'yellow' : 'blue'));
+    expect(m.find('[data-testid="roster-fault"]').length, 'uneven is not a fault').toBe(0);
+    expect(m.text()).toContain('UNBALANCED');
+    expect(pushBtn(m).disabled, 'full auto-balance is a later tier; 1 v 3 is legal and must play').toBe(false);
+    m.unmount();
+  });
+
+  it('the mock refuses the push and the start the same way the server does', async () => {
+    const backend = new MockBackend();
+    await backend.pushLobby(true);                 // pushed while the teams are still split
+    await backend.putConfig({ mode: 'ffa' });
+    await backend.putConfig({ mode: 'tdm' });      // the re-team that piles everyone onto teams[0]
+    const st = await backend.getState();
+    expect(new Set(st.players.map(p => p.team_id)).size, 'control: the mock reproduces the pile-up').toBe(1);
+    expect(st.readiness.roster_faults.join(' ')).toContain('ALL PLAYERS ON ONE TEAM');
+    await expect(backend.pushLobby(true)).rejects.toThrow(/ONE TEAM/);
+    await expect(backend.start(10, true)).rejects.toThrow(/ONE TEAM/);
   });
 });
 

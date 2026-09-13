@@ -577,6 +577,10 @@ export interface ReadinessSnapshot {
   greens: number;
   board: ReadinessRow[];
   unclaimed: ScanRow[];
+  /** Round-2 fix pass B (2026-09-12): faults about the ROSTER AS A WHOLE rather than any one gun —
+   *  today exactly one, "all players on one team", which `push_config` and `start` refuse outright
+   *  (`force` included). Each entry is operator-facing copy; a non-empty list forces `go` false. */
+  roster_faults: string[];
   go: boolean;
 }
 

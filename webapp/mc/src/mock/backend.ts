@@ -219,6 +219,25 @@ export class MockBackend implements Api {
     return { ...this.logs[node_id] };
   }
 
+  /** Round-2 fix pass B (2026-09-12) — `state.py _one_team_fault()`, mirrored.
+   *
+   *  A TEAMS config (2+ declared teams, not `ffa`) whose roster left one of them EMPTY cannot register
+   *  a hit: the gun refuses friendly damage, so the match plays out scoring nothing. Scoped on the
+   *  TEAM COUNT rather than the mode name because `lms` also declares the single `ffa` team, where
+   *  sharing it is the design; and on 2+ players, because "all on one team" says nothing about a solo
+   *  session. `force` does not open it, here or on the server. */
+  private rosterFault(): string | null {
+    const teams = this.config.teams ?? [];
+    if (teams.length < 2 || this.config.mode === 'ffa' || this.players.length < 2) return null;
+    const counts = new Map<string, number>(teams.map(t => [t.team_id, 0]));
+    for (const p of this.players) {
+      const n = counts.get(p.team_id ?? '');
+      if (n !== undefined) counts.set(p.team_id!, n + 1);
+    }
+    return [...counts.values()].every(n => n > 0) ? null
+      : 'ALL PLAYERS ON ONE TEAM — a one-team match cannot register a hit; move players between teams';
+  }
+
   private readiness(): ReadinessSnapshot {
     const board: ReadinessRow[] = GUNS.map(([sticker, tail, s0, batt, link]) => {
       const s = this.gunOverride[sticker] ?? s0;
@@ -270,7 +289,9 @@ export class MockBackend implements Api {
         status: red ? 'red' : a1 || a2 || ambers.length ? 'amber' : 'green', blockers,
       };
     });
-    return { t: now(), roster_size: board.length, greens: board.filter(b => b.status === 'green').length, board, unclaimed: [], go: !board.some(b => b.status === 'red') };
+    const rf = this.rosterFault();
+    return { t: now(), roster_size: board.length, greens: board.filter(b => b.status === 'green').length, board, unclaimed: [],
+             roster_faults: rf ? [rf] : [], go: !board.some(b => b.status === 'red') && !rf };
   }
 
   /** A28.1: MC's own view of the tunnel it (may have) started. */
@@ -637,6 +658,19 @@ export class MockBackend implements Api {
     // GAMES STEPPER, and that lock lives in `Games.tsx`, where it can explain itself. A mock stricter
     // than the server is the same defect in the other direction: a demo that refuses what the field
     // does every match.
+    // Round-2 fix pass (2026-09-12): RECAP is not a flat refusal on the real server. `state.py
+    // set_config` takes exactly ONE patch there — an explicit MODE — and rolls the finished session
+    // forward (`new_session(keep_roster=True)`, which lands in BUILD with the roster kept and the
+    // recap archived). That is the documented play-again path, and `?mock` has to predict it or the
+    // demo shows a console that cannot start the next match without throwing the roster away.
+    let rolled = false;
+    if (this.phase === 'recap') {
+      if (!partial.mode) {
+        throw Object.assign(new Error('match is over — pick a mode on Build (or press NEW MATCH) to roll the session; other config edits need a fresh session'), { status: 409 });
+      }
+      await this.newSession(true);
+      rolled = true;
+    }
     if (!(['muster', 'build', 'kit', 'lobby'] as Phase[]).includes(this.phase)) {
       throw Object.assign(new Error(`game settings are locked: the match is already in ${this.phase.toUpperCase()} — RECALL or END it first to edit the game again`), { status: 409 });
     }
@@ -694,7 +728,13 @@ export class MockBackend implements Api {
     // IMMEDIATELY (the console's "re-pushing" moment -- `GameEditPanel`'s status line reads this same
     // `acks` object) and repopulate the way `pushLobby` does, after a short delay standing in for the
     // real node round-trip (state.py: `ack_config` lands ~1.5s after a push).
-    if (this.pushed) {
+    // Round-2 fix pass (2026-09-12): the re-push used to run UNCONDITIONALLY. The server only
+    // re-pushes when the fresh config VALIDATES (`state.py set_config`: `if res["ok"]` … else
+    // `lobby_pushed = False; acks = {}`) — an invalid config cannot arm a gun, so the push is dropped
+    // and the errors are what the operator sees. A mock that re-pushes an invalid config demos a
+    // "pushed" lobby the real MC would never produce.
+    if (this.pushed && errors.length) { this.pushed = false; this.acks = {}; }
+    else if (this.pushed) {
       this.acks = {};
       const cfgId = this.config.config_id;
       setTimeout(() => {
@@ -707,6 +747,7 @@ export class MockBackend implements Api {
         this.emit();
       }, 220);   // long enough for a real-browser poll to see the transitional "re-pushing" state
     }
+    if (rolled) this.phase = 'build';   // `set_config` moves muster -> build once a game is picked
     this.cfgErrors = errors;
     this.emit();
     return { ok: errors.length === 0, errors, config: clone(this.config) };
@@ -831,6 +872,8 @@ export class MockBackend implements Api {
     this.emit(); return clone(p);
   }
   async pushLobby(force?: boolean) {
+    const rf = this.rosterFault();
+    if (rf) throw new Error(rf);          // round-2 B: not a readiness judgement, so `force` does not open it
     if (!this.readiness().go && !force) throw new Error('readiness has reds — clear them before pushing, or push with force');
     if (this.gameStarted) { this.gameNo = (this.gameNo % 255) + 1; this.gameStarted = false; }   // a new match to every station
     for (const n of Object.keys(this.stations)) this.armStation(n);
@@ -855,6 +898,8 @@ export class MockBackend implements Api {
   }
   async start(runway_s: number, _force?: boolean) {
     if (!this.pushed) throw new Error('push config first');
+    const rf = this.rosterFault();
+    if (rf) throw new Error(rf);          // a team can empty out between the push and the whistle
     this.gameStarted = true;
     return this.schedule(runway_s, 1, uid('match'));
   }

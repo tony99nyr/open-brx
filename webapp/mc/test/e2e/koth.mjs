@@ -188,6 +188,20 @@ async function resetTdm(base) {
   }
   const r = await fetch(`${base}/api/config`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode: 'tdm' }) });
   if (!r.ok) throw new Error(`resetTdm: PUT /api/config ${r.status} ${(await r.text()).slice(0, 160)} (phase was ${phase0})`);
+  await rebalance(base);
+}
+
+/** Deal the roster round-robin across whatever teams the config declares NOW.
+ *
+ *  `state.py set_config` re-teams anyone whose team the new config does not have onto `teams[0]`, so
+ *  picking a mode with a different team pair (tdm blue/yellow -> koth blue/green) silently empties one
+ *  side. Since the round-2 fix pass the server REFUSES to push or start such a roster
+ *  (`_one_team_fault`: a one-team match cannot register a hit, and `force` does not open it), so a
+ *  step that wants a pushed/armed match has to hand itself a playable roster first — the same
+ *  precondition `resetTdm` has always set, for the same reason. The `reteam-visible` step deliberately
+ *  does NOT call this: the silent split is what it is there to see.
+ */
+async function rebalance(base) {
   const st = await (await fetch(`${base}/api/state`)).json();
   const teams = st.config.teams.map(t => t.team_id);
   await Promise.all(st.players.map((p, i) => fetch(`${base}/api/players/${p.player_id}`, {
@@ -199,6 +213,7 @@ const errorStrip = pg => pg.locator('header button[role="alert"]');
 /** Push + arm the real server so ARMED has a schedule to render (`Armed.tsx` early-returns without
  *  one). `force` waves the readiness board — there are no phones in a browser run. */
 async function armMatch(base) {
+  await rebalance(base);          // a mode pick may have emptied a side; MC refuses to push that (round-2 B)
   const push = await fetch(`${base}/api/lobby/push`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"force":true}' });
   if (!push.ok) throw new Error(`armMatch: POST /api/lobby/push ${push.status} ${await push.text()}`);
   const start = await fetch(`${base}/api/start`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"force":true}' });
