@@ -38,7 +38,10 @@ def test_outdoor_and_friendly_fire_in_gset():
     gset = _find(frames, "$GSET,")[0]
     toks = gset.strip("$").rstrip(",*").split(",")
     assert toks[1] == "0"    # friendlyFire off
-    assert toks[2] == "1"    # outdoorMode on
+    # t2 is PINNED to 0 at both venues (field 2026-09-13: t2=1 cripples hit reception on the
+    # receiving gun — a full clip at 30 ft landed nothing). This line asserted the old venue-driven
+    # behaviour, which was the bug. See docs/HANDOFF-gset-t2-2026-09-13.md
+    assert toks[2] == "0"    # outdoorMode pinned off
     assert toks[7] == "25"   # crit modifier
 
 

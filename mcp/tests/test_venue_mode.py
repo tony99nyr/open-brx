@@ -49,8 +49,12 @@ def test_drive_io_mode_ships_off():
 
 def test_off_emits_nothing_and_leaves_gset_alone():
     """`"off"` = no venue-mode frame at all, at either venue, and the ONE `$GSET` the head has always
-    carried is untouched (t2 `outdoorMode` still tracks the venue exactly as it did before the gate)."""
-    for env, t2 in (("indoor", "0"), ("outdoor", "1")):
+    carried is untouched.
+
+    t2 `outdoorMode` USED to track the venue here. It no longer does: it is pinned to 0 at both venues
+    because t2=1 cripples hit reception on the receiving gun (field 2026-09-13 — a full clip at 30 ft
+    registered nothing). See docs/HANDOFF-gset-t2-2026-09-13.md."""
+    for env, t2 in (("indoor", "0"), ("outdoor", "0")):
         head = _head(env)
         assert mcc.venue_mode_frames(head[3], env) == []
         gsets = [f for f in head if f.startswith("$GSET")]
@@ -59,10 +63,14 @@ def test_off_emits_nothing_and_leaves_gset_alone():
 
 
 def test_head_is_byte_identical_to_the_pre_gate_head():
-    """The head the field ran on 2026-09-12, pinned frame for frame. Anything the gate adds while it
-    is `"off"` shows up here as a diff."""
+    """The shipped head, pinned frame for frame. Anything the gate adds while it is `"off"` shows up
+    here as a diff.
+
+    ⚠ This is NO LONGER the head the field ran on 2026-09-12. That head carried `$GSET` t2=1 at an
+    outdoor venue, and that 1 is the bug: it cripples hit reception on the receiving gun. t2 is now
+    pinned to 0. See docs/HANDOFF-gset-t2-2026-09-13.md."""
     head = _head("outdoor")
-    assert head[:4] == ["$VOL,90,0,*", "$CLEAR,*", "$START,*", "$GSET,0,1,1,0,1,0,50,1,*"], head[:4]
+    assert head[:4] == ["$VOL,90,0,*", "$CLEAR,*", "$START,*", "$GSET,0,0,1,0,1,0,50,1,*"], head[:4]
     # $PSET's tail is the per-player voice pack (A15) and belongs to other tests; what this one pins
     # is that NOTHING sits between $GSET and $PSET, and nothing between $PSET and the first $WEAP.
     assert head[4].startswith("$PSET,7,0,45,70,70,50,,"), head[4]
@@ -70,7 +78,7 @@ def test_head_is_byte_identical_to_the_pre_gate_head():
 
 
 # ---- the candidates, as they would land at the bench ---------------------
-_GSET = "$GSET,0,1,1,0,1,0,50,1,*"          # the outdoor head's own $GSET, t3 = 1 as shipped
+_GSET = "$GSET,0,0,1,0,1,0,50,1,*"          # the outdoor head's own $GSET, t3 = 1 as shipped
 _GSET_IN = "$GSET,0,0,1,0,1,0,50,1,*"       # the indoor one
 
 
@@ -80,7 +88,7 @@ def test_candidate_gset_t3_reissues_the_same_gset_with_only_token_3_moved():
     is a BYTE COPY of the head's own `$GSET` with exactly one token changed, so a bench run moves one
     variable. Indoor keeps the captured/shipped region (1) and emits nothing; outdoor is the venue
     that is failing, so it gets the untried region (0)."""
-    assert mcc.venue_mode_frames(_GSET, "outdoor", mode="gset_t3") == ["$GSET,0,1,0,0,1,0,50,1,*"]
+    assert mcc.venue_mode_frames(_GSET, "outdoor", mode="gset_t3") == ["$GSET,0,0,0,0,1,0,50,1,*"]
     assert mcc.venue_mode_frames(_GSET_IN, "indoor", mode="gset_t3") == []
     # an unknown venue resolves to today's value, so it can never emit a surprise
     assert mcc.venue_mode_frames(_GSET, None, mode="gset_t3") == []
@@ -132,7 +140,7 @@ def test_unknown_venue_tracks_the_indoor_value_rather_than_a_literal():
         mcc.GSET_T3_BY_ENV["indoor"] = 7
         # the head already carries t3 = 1, so an unknown venue that resolved to a literal 1 would
         # emit nothing; one that follows the table re-issues t3 = 7
-        assert mcc.venue_mode_frames(_GSET, None, mode="gset_t3") == ["$GSET,0,1,7,0,1,0,50,1,*"]
+        assert mcc.venue_mode_frames(_GSET, None, mode="gset_t3") == ["$GSET,0,0,7,0,1,0,50,1,*"]
     finally:
         mcc.GSET_T3_BY_ENV.clear()
         mcc.GSET_T3_BY_ENV.update(was)
@@ -149,13 +157,13 @@ def test_gate_reaches_the_head_when_it_is_turned_on():
     try:
         mcc.DRIVE_IO_MODE = "gset_t3"           # type: ignore[assignment]
         head = _head("outdoor")
-        assert head[3] == "$GSET,0,1,1,0,1,0,50,1,*"
-        assert head[4] == "$GSET,0,1,0,0,1,0,50,1,*"
+        assert head[3] == "$GSET,0,0,1,0,1,0,50,1,*"
+        assert head[4] == "$GSET,0,0,0,0,1,0,50,1,*"
         assert head[5].startswith("$PSET,")
 
         mcc.DRIVE_IO_MODE = "irtx"              # type: ignore[assignment]
         head = _head("outdoor")
-        assert head[3] == "$GSET,0,1,1,0,1,0,50,1,*"
+        assert head[3] == "$GSET,0,0,1,0,1,0,50,1,*"
         assert head[4] == "$IRTX,0,0,0,0,0,0,100,100,0,0,0,*"
         assert head[5].startswith("$PSET,")
     finally:

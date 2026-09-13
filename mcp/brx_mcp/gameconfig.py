@@ -436,7 +436,21 @@ class GameConfig:
     def _gset(self) -> str:
         # $GSET,friendlyFire,outdoorMode,gunLaserRegion,autoAmbientLight,gyroscope,
         #       secondaryBluetoothWeapons,criticalShotModifier,gameMods,*
-        return (f"$GSET,{int(self.friendly_fire)},{int(self.outdoor)},1,0,1,0,"
+        #
+        # ⚠️ TOKEN 2 IS PINNED TO 0. DO NOT WIRE IT BACK TO THE VENUE.
+        # Field-measured 2026-09-13: t2=1 CRIPPLES HIT RECEPTION on the gun that receives it.
+        # Same shooter, same target headset, same spot, minutes apart, one variable:
+        #   t2=1 (what an OUTDOOR venue used to send) -> a full clip at 30 ft registered ZERO hits;
+        #                                                only inches away registered at all.
+        #   t2=0                                      -> 16 hits in 27 shots, then every shot at 30 ft.
+        # This is the 2026-09-12 field failure end to end: indoor games sent 0 and worked, outdoor games
+        # sent 1 and were unplayable, and point blank still worked because at inches the IR floods every
+        # receiver. It reads as the SHOOTER having no range, because the fault is on the RECEIVER.
+        # The stock phone app never writes this field, which is why a native tagger takes hits at ~200 ft.
+        # It is NOT the on-gun ALT-hold toggle (that changes beam WIDTH and does not gate reception —
+        # measured the same day on three guns) and it does not move emitted range.
+        # Handoff with the full measurement: docs/HANDOFF-gset-t2-2026-09-13.md
+        return (f"$GSET,{int(self.friendly_fire)},0,1,0,1,0,"
                 f"{int(self.crit_modifier)},1,*")
 
     def _weap(self, slot: int, name: str) -> str:
