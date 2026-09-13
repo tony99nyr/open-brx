@@ -22,6 +22,27 @@ def _lan_ip() -> str:
         return "127.0.0.1"
 
 
+def _check_advertise(value):
+    """T3-A: `--advertise <ip>` swaps what the QR and mDNS hand out for a different address than the
+    one `_lan_ip()` found -- WITHOUT touching where the socket binds (the bind always follows `--host`
+    / `0.0.0.0`, never this value; see `build()`). It exists for exactly the WSL2 case `netinfo.py`
+    warns about: MC's own guess is a NAT address private to the Windows host, and the operator already
+    knows the real Windows LAN address (`ipconfig`) -- this hands it straight to every phone's QR
+    instead of the wrong one, with no restart-time guessing.
+
+    It is spliced into `ws://<here>:<port>/ws`, so a scheme or a path here is a mistake worth catching
+    before it reaches a QR code, not after (mDNS also needs a literal IPv4 -- `NetServer.advertise_mdns`
+    -- so a hostname here still fixes the QR but silently drops mDNS, which is not this function's job
+    to police)."""
+    if not value:
+        return None
+    v = str(value).strip()
+    if "://" in v or "/" in v:
+        raise SystemExit(f"--advertise must be a bare host/IP, e.g. 192.168.1.42 (got {v!r}); it is "
+                         "spliced into ws://<here>:<port>/ws, not a URL by itself")
+    return v
+
+
 def _check_public_url(url):
     """A28.1: `--public-url` goes straight into every QR and every `welcome`, so a typo would be
     discovered one phone at a time on the field. Refuse it here instead.
@@ -96,12 +117,28 @@ def build(args):
     demo_armory_in_use = isinstance(armory, FakeArmory)
 
     ip = args.host if args.host not in ("0.0.0.0", "") else _lan_ip()
+    # T3-A: `--advertise` only ever touches what gets HANDED OUT (this `ip`, folded into `ws_url` below
+    # and into `advertise_host=` at the real bind further down) -- never what the socket binds to, which
+    # is `bind`/`args.host`, computed separately and unconditionally on `_lan_ip()`/`0.0.0.0`.
+    advertise_override = _check_advertise(getattr(args, "advertise", None))
+    if advertise_override:
+        ip = advertise_override
     ws_url = f"ws://{ip}:{args.ws_port}/ws"
     # F143 (field 2026-09-12): `mode` used to be the literal "unknown", and the REACH panel printed it
     # as a display word — "UNKNOWN · 192.168.28.167:8765". Best-effort SSID per platform, never fatal,
     # and the no-answer case is "lan" with no ssid (`netinfo.lan_info`).
     from . import netinfo as _netinfo
-    session = Session(compiler, net, armory, lan=_netinfo.lan_info(ip, args.port, ws_url))
+    session = Session(compiler, net, armory,
+                       lan=_netinfo.lan_info(ip, args.port, ws_url,
+                                              advertise_overridden=bool(advertise_override)))
+    # T3-A / field 2026-09-12: WSL2's own NAT address advertised in the QR/mDNS looked identical to a
+    # real LAN address, so no phone could connect and MC never said why. LOUD on purpose -- this is the
+    # one line an operator glancing at a scrolling boot log must not be able to miss.
+    if session.lan.get("warning"):
+        _rule = "!" * 78
+        print(_rule, flush=True)
+        print(f"  {session.lan['warning']}", flush=True)
+        print(_rule, flush=True)
     # A28.1: the tunnel exists in every run (so `lan.public.available` is honest and the UI can show the
     # install line); it only spawns anything on --tunnel or POST /api/tunnel.
     from pathlib import Path as _PT
@@ -274,6 +311,10 @@ def main(argv=None):
     ap.add_argument("--public-url", default=None,
                     help="A28: a public wss:// node URL you already run (named tunnel, Tailscale Funnel, port "
                          "forward). provider: manual — MC hands it out but never starts or stops it")
+    ap.add_argument("--advertise", default=None,
+                    help="T3-A: put THIS address in the QR/mDNS instead of the one MC auto-detects, without "
+                         "moving where it binds (WSL2's own NAT address is what MC auto-detects, and it is "
+                         "not reachable from a phone — pass the Windows LAN address here, from ipconfig)")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s %(name)s: %(message)s")
