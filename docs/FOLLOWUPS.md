@@ -6,8 +6,9 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D6 · E8 · F197 · G11 · H8 ·
-K9 · P19 · Q20 · R4 · S42.** (2026-09-12 integration of the field branch into the fix branch: the two rows the fix branch had filed as F135 and F136 collide with the field session's own F135/F136 and are **RENUMBERED to F162** (no outdoor IR range) and **F163** (the B4 link watchdog) — the second collision renumber in this file, same cause as 2026-09-06: two sessions read "next free" at once. No upstream row moved. F146 and F157 closed → archive with the merge; the PR #4 list closed → archive (F135 F137-F145 F147 F149-F151 F153-F156, S37-S41).) (2026-09-12 pyright gate: F134 filed; F42.10 closed → archive, F42.14 filed.) (2026-09-12 field test of the backhaul, WSL host + Pixel 10 on cellular: F135-F157 + F161, K7-K8, S37-S41, D5 taken (F134 went to the pyright gate on main the same day, so the gun-picker row became F161); F136 closed the same hour.) (2026-09-12 evening: F129 closed → archive; F133 filed.) (2026-09-12 backhaul, PR #3: B30 and B31 taken.) (2026-09-12 doc-rot close: F131 F132, R3, S32-S36 taken; F42.2/F42.3 closed → archive.) (2026-09-12 M2 close: S20 S21 S22 S23 S24 S26 F127 closed → archive; F129 F130 new; S25 v1 shipped, ESPN pass open.) (2026-09-12 midday: S28 all-weapons retune, S29 shield recharge taken.) (2026-09-12 desk pass: F128, P18, S27 taken; F110 F115 F116 F117 F118 F119 F122 F124 F125 closed → archive.) (2026-09-11 night game test: F110-F127 and S20-S26 taken, see [`game-test-2026-09-11.md`](game-test-2026-09-11.md).) (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D6 · E8 · F206 · G11 · H8 ·
+K9 · P19 · Q20 · R4 · S42.** (2026-09-13 GSET field handoff: F197-F205 filed from HANDOFF-gset-t2-2026-09-13.md §3.)
+(2026-09-12 integration of the field branch into the fix branch: the two rows the fix branch had filed as F135 and F136 collide with the field session's own F135/F136 and are **RENUMBERED to F162** (no outdoor IR range) and **F163** (the B4 link watchdog) — the second collision renumber in this file, same cause as 2026-09-06: two sessions read "next free" at once. No upstream row moved. F146 and F157 closed → archive with the merge; the PR #4 list closed → archive (F135 F137-F145 F147 F149-F151 F153-F156, S37-S41).) (2026-09-12 pyright gate: F134 filed; F42.10 closed → archive, F42.14 filed.) (2026-09-12 field test of the backhaul, WSL host + Pixel 10 on cellular: F135-F157 + F161, K7-K8, S37-S41, D5 taken (F134 went to the pyright gate on main the same day, so the gun-picker row became F161); F136 closed the same hour.) (2026-09-12 evening: F129 closed → archive; F133 filed.) (2026-09-12 backhaul, PR #3: B30 and B31 taken.) (2026-09-12 doc-rot close: F131 F132, R3, S32-S36 taken; F42.2/F42.3 closed → archive.) (2026-09-12 M2 close: S20 S21 S22 S23 S24 S26 F127 closed → archive; F129 F130 new; S25 v1 shipped, ESPN pass open.) (2026-09-12 midday: S28 all-weapons retune, S29 shield recharge taken.) (2026-09-12 desk pass: F128, P18, S27 taken; F110 F115 F116 F117 F118 F119 F122 F124 F125 closed → archive.) (2026-09-11 night game test: F110-F127 and S20-S26 taken, see [`game-test-2026-09-11.md`](game-test-2026-09-11.md).) (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
 ids are retired, never reused.) (2026-09-10: F94/F95/F98 taken — the phone control point
 (`spec/utility.md` §5d), its LAN-coupled roaming variant (§5e) and Territories (§5f). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
 wider than the hill's period" generalisation, the double-`$HIR`-per-beacon dedupe finding (F85, closed same
@@ -1029,6 +1030,49 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   exclude `mcp/tests`, so those citations are silently skipped. Worse, it only checks that cited symbols EXIST, never
   that an amendment's citations name THAT amendment, so it could not have caught the 2026-09-13 A41→A42 renumbering in
   either direction. Add the shapes AND a renumbering check, each proven by a deliberately broken case. `build`.
+- **F197 🔴** `$GSET` t2 pinned to 0 (`ed707d7`, `mcp/brx_mcp/gameconfig.py:436`) shipped with **no polish-loop**:
+  one-line change plus five repinned tests, validated only by the Python test suite and a single operator field
+  measurement. No review lenses, no adversarial pass, no UX/field-safety review ran before it reached main. It
+  gates hit RECEPTION on every gun at every venue, so run the loop over it before the next session with players.
+  (filed 2026-09-13 from HANDOFF-gset-t2-2026-09-13.md §3) `build`.
+- **F198 🔴 Needs Tony at the bench** the reflection theory behind `$GSET` t2 is untested and may INVERT the
+  current fix. Reading: low sensitivity (t2=1) may be deliberate for INDOOR play, rejecting bounced/reflected
+  shots off walls and ceilings, in which case the right end state is `indoor -> t2=1, outdoor -> t2=0` — the
+  opposite of what shipped. Test: play indoors at t2=0 (today's pinned value) and look for phantom hits (no line
+  of sight, or hits on players nobody aimed at). If they appear, invert the mapping; if not, leave t2 pinned at 0
+  everywhere. (filed 2026-09-13 from HANDOFF-gset-t2-2026-09-13.md §3) `bench`.
+- **F199 🟠** the venue reminder shipped 2026-09-13 (telling the operator to set every gun to outdoor) is now
+  justified by a disproved rationale: it was written on the belief that indoor mode shortens IR range, and it
+  doesn't — the on-gun ALT toggle changes BEAM WIDTH only (roughly double the aim tolerance outdoors, measured on
+  three guns 2026-09-13), never hit reception. The reminder still has value for the beam-width reason; rewrite
+  its stated rationale to match. (filed 2026-09-13 from HANDOFF-gset-t2-2026-09-13.md §3) `build`.
+- **F200 🟡** `protocol/brx-protocol.md` §3 carries two wrong claims about `$GSET` token 2 (`outdoorMode`): it
+  calls the field "the APK's name for the on-gun ALT-hold toggle" and lists it as a candidate for the venue's
+  emitted IR range. Neither is true — it is a distinct field from the physical ALT toggle (measured separately,
+  three guns, 2026-09-13) and it gates hit RECEPTION on the receiving gun, not emitted range. Correct both claims
+  alongside the t2 fix. (filed 2026-09-13 from HANDOFF-gset-t2-2026-09-13.md §3) `build`.
+- **F201 🟠 Needs Tony at the bench** every gun echoed `$ALCD,32,100,0,96,0` against a compiled reserve of 192 —
+  exactly half — on every gun, all day, 2026-09-13. Root cause unknown: does the gun clamp reserve to some
+  ceiling, or halve it? Shipping the echo-mismatch START refusal as FORCEABLE (not force-proof) was correct given
+  this — a force-proof refusal would have blocked arming in the field on healthy guns. Decides whether that
+  refusal can become force-proof. (filed 2026-09-13 from HANDOFF-gset-t2-2026-09-13.md §3) `capture`.
+- **F202 🟡** the HUD has no way to change which tagger a phone owns. Only RELINK GUN and a reconnect pill exist,
+  and both just reconnect the gun the phone already has (`brx.engine` -> `gun` in the saved blob); nothing in the
+  UI clears it. Workaround: power the old tagger off so it stops advertising, forcing a fresh pick. (filed
+  2026-09-13 from HANDOFF-gset-t2-2026-09-13.md §3) `build`.
+- **F203 🟠** a phone keeps its Mission Control address in TWO keys (`brx.mc_url`, `brx.pub_url`), and an
+  unreachable one survives an app upgrade. Both phones in the field 2026-09-13 held a stale WSL NAT address
+  neither could reach, and had silently fallen back to sweeping whole subnets. The boot warning shipped the same
+  day tells the OPERATOR the server is advertising something unreachable, but it cannot clear a bad address a
+  PHONE has already saved. (filed 2026-09-13 from HANDOFF-gset-t2-2026-09-13.md §3) `build`.
+- **F204 🟢** nothing on the wire reports headset battery level or link quality. Checked 2026-09-13: no protocol
+  field carries it, and the phone exposes no headset health of any kind. A weak or dying headset can only be
+  observed by a player, never measured or surfaced by MC. (filed 2026-09-13 from HANDOFF-gset-t2-2026-09-13.md §3)
+  `build`.
+- **F205 🟢** `app/tools/screens.mjs` hardcodes port 4192 and `site/shots.mjs` hardcodes ports 4180/4181. The
+  latter was fixed 2026-09-13 to bind before wiping its output directory (so a failed run no longer looks like a
+  clean slate), but both ports are still fixed rather than configurable. (filed 2026-09-13 from
+  HANDOFF-gset-t2-2026-09-13.md §3) `build`.
 - **F80 🟡 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.** ➡ **Narrowed 2026-09-11 (late): the AFTER-the-match surface is built** — the recap's `warnings` count every hit and death from wire id 0 ("a grenade hill's damage word, or a gun whose $PSET never landed") and RECAP renders it, so a mis-armed gun is no longer invisible. **Still open: the ARM-TIME refusal** (`$QUERY` read-back, B19) and a muster flag, which needs a signal the node does not report today (the head echo is an `$LCD`, it carries no id).
   Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
   received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default

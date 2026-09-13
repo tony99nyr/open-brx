@@ -152,9 +152,10 @@ bench-verified against hardware except where it says so.** Read this before trus
   day.** The echo-mismatch START refusal therefore fires on healthy guns. Shipping it FORCEABLE was correct;
   force-proof would have blocked arming in the field. Root cause unknown (does the gun clamp reserve?).
 
-## 3. Follow-ups filed but NOT yet written into FOLLOWUPS.md
+## 3. Follow-ups filed and now written into FOLLOWUPS.md (2026-09-13)
 
-The session close commit (`5f76da3`) filed F165-F196. These came later, from the field, and are only here:
+The session close commit (`5f76da3`) filed F165-F196. These came later, from the field, and are now written
+into `docs/FOLLOWUPS.md` as well:
 
 - **F197** The `$GSET` t2 fix needs its polish-loop (item 1 above).
 - **F198** Test the reflection theory indoors (item 2 above).
