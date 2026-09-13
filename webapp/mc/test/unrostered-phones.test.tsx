@@ -31,6 +31,23 @@ describe('MockBackend unrostered_phones', () => {
     const st = await b.getState();
     expect(st.readiness.unrostered_phones, 'a deliberate stand-down, not a stray').toBe(0);
   });
+
+  it('a stray phone that has gone SILENT stops counting, and counts again when it is heard', async () => {
+    // T2 review S5. `unrostered_phone_count()` walked every node with no freshness test at all, and a
+    // disconnect only nulls `reach` — so a phone that said hello wearing a gun and then left kept
+    // "1 CONNECTED PHONE NOT IN THE ROSTER" on KIT and LOBBY for the ten minutes until the record was
+    // pruned, with nothing claimable on ARMORY behind it. The server skips a node the net layer has
+    // flagged `stale`; this is the mock's mirror of that rule.
+    const b = new MockBackend();
+    const target = (await b.getState()).players[0];
+    await b.deletePlayer(target.player_id);
+    expect((await b.getState()).readiness.unrostered_phones, 'control: a stray that is still here counts').toBe(1);
+    const tail = (await b.getState()).readiness.board.find(r => r.gun_id === target.gun_id)!.tail;
+    b.setNodeStale(tail);
+    expect((await b.getState()).readiness.unrostered_phones, 'the phone left — nothing to claim, no banner').toBe(0);
+    b.setNodeStale(tail, false);
+    expect((await b.getState()).readiness.unrostered_phones, 'it came back: countable again').toBe(1);
+  });
 });
 
 describe('UnrosteredPhonesBanner on KIT and LOBBY', () => {

@@ -663,7 +663,12 @@ async function sweepForMc() {
       if (!(engine.phase === 'idle' && !link.connected)) { gate.cancel(); return; }
       const now = Date.now();
       gate.down(now);
-      holdTimer = setTimeout(() => { if (gate.held(Date.now())) switchRole('utility'); }, 1500);
+      // T2 review S6: re-test the precondition AT FIRE TIME, not only on pointerdown. A BLE link that
+      // completed during the 1.5 s hold still crossed into utility mode, tearing down a HUD that had
+      // just found its gun.
+      holdTimer = setTimeout(() => {
+        if (engine.phase === 'idle' && !link.connected && gate.held(Date.now())) switchRole('utility');
+      }, 1500);
     }, { passive: true });
     stage.addEventListener('pointerup', () => { clearHoldTimer(); gate.up(); }, { passive: true });
     stage.addEventListener('pointercancel', () => { clearHoldTimer(); gate.cancel(); }, { passive: true });

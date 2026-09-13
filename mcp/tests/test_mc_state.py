@@ -92,6 +92,28 @@ def test_unrostered_phone_count_excludes_claimed_and_standby_but_counts_a_stray(
     assert s.readiness()["unrostered_phones"] == 0, "no gun set yet is not a roster mismatch"
 
 
+def test_unrostered_phone_count_ignores_a_phone_that_has_gone_silent():
+    """T2 review S5. The count walked every node with NO freshness test at all, and `_on_disconnect`
+    only nulls `reach` -- so a phone that said hello wearing a gun and then LEFT kept "1 CONNECTED PHONE
+    NOT IN THE ROSTER" up on KIT and LOBBY for the ten minutes until `_prune_unbound_nodes` dropped the
+    record, with nothing claimable on ARMORY behind it.
+
+    The gate is the `stale` flag the net layer already raises (`_attach_net`'s `on_stale`,
+    STALE_AFTER_MS = 8 s) and `_on_status` clears on the next heartbeat. Deliberately NOT a
+    `last_seen_ms` vs `OFFLINE_AFTER_MS` comparison: that constant is 600_000 ms, exactly the window
+    `_prune_unbound_nodes` already drops these records at, so gating on it would have changed nothing
+    an operator could ever see."""
+    s, net, clock, ps = mk(2)
+    online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
+    tail_c = demo_armory()[2]["ble"]["tail"]
+    net.simulate_hello("node2", f"GUN-C-{tail_c}")
+    assert s.readiness()["unrostered_phones"] == 1, "control: a connected, unclaimed gun is a stray"
+    s._touch("node2", stale=True)      # the net layer heard nothing for STALE_AFTER_MS
+    assert s.readiness()["unrostered_phones"] == 0, "a phone that left is not a stray to go and claim"
+    s._touch("node2", stale=False)     # ...and it came back
+    assert s.readiness()["unrostered_phones"] == 1, "heard again: countable again"
+
+
 def test_unsynced_and_wrong_ssid_are_red():
     s, net, clock, ps = mk(2)
     online(s, net, clock, ps[0], 0, synced=False); online(s, net, clock, ps[1], 1)

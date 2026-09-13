@@ -227,6 +227,16 @@ export class MockBackend implements Api {
    *  and the console's rendering of all four was unverifiable by eye. STICKY: the faults survive a
    *  re-push (the point is to look at them), so this is a demo switch, not a scripted failure. */
   private demoFaults = typeof location !== 'undefined' && ['1', 'stale', 'on'].includes(new URLSearchParams(location.search).get('faults') ?? '');
+  /** T2 review S5: the phones this demo treats as having GONE SILENT, keyed by gun tail. `state.py`
+   *  raises `stale` on a node nothing has been heard from in STALE_AFTER_MS (8 s) and clears it on the
+   *  next heartbeat; `unrostered_phone_count()` skips a stale node, because a phone that said hello
+   *  wearing a gun and then walked off the field must stop propping up "N CONNECTED PHONES NOT IN THE
+   *  ROSTER" with nothing claimable behind it on ARMORY. The mock had no stale node of any kind, so
+   *  `?mock` could not predict that rule at all. */
+  private staleNodes = new Set<string>();
+  /** `?mock&stalephone=1` — two phones are wearing guns nobody claims and ONE of them has gone silent,
+   *  so the banner must read 1, not 2. The rule is only legible when both cases are on screen at once. */
+  private demoStalePhone = typeof location !== 'undefined' && new URLSearchParams(location.search).get('stalephone') === '1';
   private restoredFrom: { at: number; players: number } | null = null;
 
   constructor() {
@@ -262,6 +272,12 @@ export class MockBackend implements Api {
         { player_id: 'p_ghost2', player_num: 10, display: 'BRAVO', team_id: 'yellow', node_id: null, gun_id: 'GUN-B', loadout: { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, voice: 'male', ready: false },
       );
       this.restoredFrom = { at: now() - 11 * 60 * 60 * 1000, players: 2 };   // "last night", like the field find
+    }
+    // T2 review S5: drop two players so their phones become strays, then silence one of the two. The
+    // banner counts the phone that is still here and NOT the one that left, which is the whole rule.
+    if (this.demoStalePhone) {
+      this.players = this.players.filter(p => p.gun_id !== 'GUN-G' && p.gun_id !== 'GUN-H');
+      this.staleNodes.add('C3E5');   // GUN-H's phone: it said hello earlier, and has been silent since
     }
     this.timer = window.setInterval(() => this.tick(), 1000);
   }
@@ -457,8 +473,12 @@ export class MockBackend implements Api {
     // the gun of someone currently on STANDBY (a deliberate stand-down, not a stray) — mirrors
     // `state.py unrostered_phone_count()`. Simpler here than on the server: the mock's `sticker` IS the
     // `gun_id` a player carries (`GUN-A` etc.), so no registry tail-resolution is needed.
+    // T2 review S5: ...and not a phone that has gone SILENT. `state.py unrostered_phone_count()` skips
+    // a node whose `stale` flag the net layer has raised (STALE_AFTER_MS), so a phone that said hello
+    // with a gun and then left stops raising a banner the operator cannot act on.
     const standbyGuns = new Set(this.standby.map(p => (p.gun_id || '').toUpperCase()));
-    const unrostered_phones = board.filter(b => b.node === 'linked' && !b.player_id && !standbyGuns.has(b.sticker.toUpperCase())).length;
+    const unrostered_phones = board.filter(b => b.node === 'linked' && !b.player_id && !standbyGuns.has(b.sticker.toUpperCase())
+                                                && !this.staleNodes.has(b.tail.toUpperCase())).length;
     return { t: now(), roster_size: board.length, greens: board.filter(b => b.status === 'green').length, board, unclaimed: [],
              roster_faults: rf ? [rf] : [], unrostered_phones, go: !board.some(b => b.status === 'red') && !rf };
   }
@@ -990,6 +1010,13 @@ export class MockBackend implements Api {
     this.players.push(back); this.emit(); return clone(back);
   }
   async evictNode(id: string) { this.evicted.add(id); this.emit(); }
+  /** T2 review S5 demo/test hook: mark a phone (by gun tail) silent, or heard again — the mock's
+   *  stand-in for the `stale` flag the server's net layer raises and clears on its own. */
+  setNodeStale(tail: string, stale = true) {
+    const k = tail.toUpperCase();
+    if (stale) this.staleNodes.add(k); else this.staleNodes.delete(k);
+    this.emit();
+  }
 
   // ---------- A25 ----------
   async getOptions() { return { ...this.options }; }

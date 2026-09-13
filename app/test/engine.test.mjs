@@ -4765,3 +4765,84 @@ test('R2-3: $HP is the gun speaking too, and a NEW life goes back to the model',
   assert.equal(h.eng.alive, true, 'control: a new life started');
   assert.equal(h.eng.statusBody().pool_src, 'model', 'the claim is per LIFE, not per match');
 });
+
+
+// ── T2 review (2026-09-13): the field-safety set ────────────────────────────────────────────────
+// `standby` is PERSISTED on this phone, and until now exactly one thing could clear it: an `assign`
+// whose `standby` was falsy. A welcome carried no such key, so a phone that was away when the operator
+// tapped PLAY came back still locally benched -- SITTING OUT, no frames, no ready, with the console
+// showing it rostered. The rule these pin: the server STATES the fact on every welcome, and `hydrate`
+// applies it, in both directions.
+
+test('S1: hydrate applies the welcome\'s standby fact -- true keeps the bench, false clears it', () => {
+  const h = harness().kit();
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, standby: true } });
+  assert.equal(h.eng.standby, true);
+  // a welcome that still says benched leaves it benched
+  h.eng.hydrate({ player: h.player, team: h.team, roster: h.roster, standby: true });
+  assert.equal(h.eng.standby, true, 'a welcome restating the bench must not clear it');
+  // ...and the one that says otherwise clears it
+  h.eng.hydrate({ player: h.player, team: h.team, roster: h.roster, standby: false });
+  assert.equal(h.eng.standby, false, 'the authority said playing -- the persisted flag must go');
+});
+
+test('S1 SCENARIO: bench, drop the link, PLAY while away, reconnect -> the phone is playable', () => {
+  // The whole failure, end to end, in the order the field produces it.
+  const h = harness().kit().config_();
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, standby: true } });
+  assert.equal(h.eng.standby, true);
+  h.eng.onBleDropped();                       // the phone locks / walks out of range
+  // PLAY happens at MC with nothing on the other end. The phone comes back and hears ONE thing: the welcome.
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  h.eng.hydrate({ player: h.player, team: h.team, roster: h.roster, standby: false,
+                  config: h.config, frames: h.bundle });
+  assert.equal(h.eng.standby, false, 'STRANDED: the phone is still locally benched after PLAY');
+  // ...and it is genuinely playable again, which for a laser-tag night means two things: the head
+  // actually reached the gun, and the start will actually be taken. (Not `setReady`: this phone is in
+  // LOBBY with the kit still open -- `kitOpen()` is `!policy || kit_open !== false` and the harness
+  // sends no policy -- so that door is shut for ordinary reasons that have nothing to do with standby.)
+  assert.ok(h.writes.includes('$START,*'), 'the welcome\'s head was actually written to the gun');
+  assert.equal(h.eng.phase, 'lobby');
+  const r = h.eng.startAt({ match_id: 'm1', go_live_t: h.eng.now() + 1000, config_id: h.config.config_id, seq: 1, countdown_s: 1 });
+  assert.equal(r.ok, true, 'the reinstated phone takes the start -- it will spawn at T-0');
+  assert.equal(h.eng.phase, 'armed');
+});
+
+test('S1: a welcome to a phone that is STILL benched arms nothing', () => {
+  const h = harness().kit();
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, standby: true } });
+  const before = h.writes.length;
+  h.eng.hydrate({ player: h.player, team: h.team, roster: h.roster, standby: true,
+                  config: h.config, frames: h.bundle, start: { match_id: 'm9', go_live_t: 1, config_id: h.config.config_id, seq: 1 } });
+  assert.equal(h.eng.standby, true);
+  assert.equal(h.writes.length, before, 'no frame may reach the gun of a player who is sitting out');
+  assert.equal(h.eng.phase, 'kitted', 'and it never leaves the KITTED-shaped bench');
+});
+
+test('S2: the broadcast start is refused while benched -- the gun must not spawn at T-0', () => {
+  // The benched phone still HOLDS the frames it took before the bench, so `config_id` matches and
+  // nothing else in startAt would have stopped it going armed -> live.
+  const h = harness().kit().config_();
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, standby: true } });
+  const before = h.writes.length;
+  const r = h.eng.startAt({ match_id: 'm1', go_live_t: h.eng.now() + 1000, config_id: h.config.config_id, seq: 1, countdown_s: 1 });
+  assert.equal(r.ok, false, 'a benched node must refuse the start');
+  assert.equal(h.eng.phase, 'kitted', 'it must not go ARMED');
+  assert.equal(h.eng.start, null, 'and must not hold a schedule it will spawn on');
+  assert.equal(h.writes.length, before, 'nothing reached the gun');
+});
+
+test('S7: benching clears the local READY, so the phone and the board agree after PLAY', () => {
+  // MC parks with `ready: False` and reinstates with `ready: False`, and the phone only ever reports
+  // its ready state from `setReady`. A phone that kept a stale `ready: true` showed READY on the HUD
+  // while MC counted it as WAIT and blocked the start, with no reason on either screen.
+  const h = harness().kit();
+  assert.equal(h.eng.setReady(true), true);
+  assert.equal(h.eng.state().ready, true, 'control: readied up before the bench');
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, standby: true } });
+  assert.equal(h.eng.state().ready, false, 'the bench clears READY -- MC parked them as not-ready');
+  // PLAY: still not ready, on both sides, and the player can ready up again themselves
+  h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster, standby: false } });
+  assert.equal(h.eng.state().ready, false, 'reinstated as NOT ready, exactly as MC has them');
+  assert.equal(h.eng.setReady(true), true);
+});

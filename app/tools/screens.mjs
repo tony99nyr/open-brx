@@ -1268,7 +1268,14 @@ for (const view of VIEWS) {
       await pg.close();
       must(r.standby === true, 'the stage never actually benched the engine: ' + JSON.stringify(r));
       must(r.txt === 'SITTING OUT \u2014 the host puts you back', 'copy: ' + r.txt);
-      must(/not armed/i.test(r.sub || ''), 'the sub-line must say the gun is not armed: ' + r.sub);
+      // T2 review S3: this assertion used to pin the OPPOSITE, and the copy it pinned was FALSE. STAND
+      // DOWN is legal all the way through `lobby`, by which point the push has usually written the head,
+      // and the standby branch deliberately touches nothing on the gun -- the tagger still fires, still
+      // takes hits and still registers them. A player who read "your gun is not armed" walked back onto
+      // the field believing they were inert. (The cure is NOT a $CLEAR to make the old line true: that
+      // leaves the gun with no $SIR table and it cannot be hit at all until re-armed, F11.)
+      must(!/not armed/i.test(r.sub || ''), 'the sub-line still claims the tagger is inert: ' + r.sub);
+      must(/still live/i.test(r.sub || ''), 'the sub-line must say the tagger is STILL LIVE: ' + r.sub);
       must(!/READY UP|READY \u2713|STANDING BY/.test(r.body), 'a ready control is on the SITTING OUT screen: ' + r.body.slice(0, 200));
       must(r.readyBtns === 0, 'a .ready button rendered on the SITTING OUT screen');
       must(!r.acts.includes('onReady'), 'an onReady control is tappable while benched: ' + r.acts.join(','));
