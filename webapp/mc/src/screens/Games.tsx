@@ -114,7 +114,7 @@ export function Games() {
       {/* F162: the VENUE chips above are a number MC sends AND a switch on every gun that MC cannot
           reach. This is the half the operator has to do, so it sits directly under the control that
           raises it rather than at the bottom of the summary rail — see ui/VenueModeReminder. */}
-      <VenueModeReminder style={{ marginBottom: 18 }} />
+      <VenueModeReminder screen="games" style={{ marginBottom: 18 }} />
       {blocked && (
         <div role="alert" data-testid="games-locked" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
           background: 'rgba(255,82,82,.08)', border: `1px solid ${T.bad}`, borderLeft: `3px solid ${T.bad}`, padding: '12px 16px' }}>

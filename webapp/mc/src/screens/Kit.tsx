@@ -403,7 +403,7 @@ export function Kit() {
         </span>} />
       {/* F162: the ALT-hold backstop. KIT is where the guns are handed out, so it is the last screen
           where walking the rack is still cheap — see ui/VenueModeReminder. */}
-      <VenueModeReminder style={{ marginBottom: 12 }} />
+      <VenueModeReminder screen="kit" style={{ marginBottom: 12 }} />
       {/* B3: mode/night/health/weapon-pool, editable right here — no stepper, no recall needed pre-arm */}
       <GameEditPanel style={{ marginBottom: 16 }} />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'flex-start' }}>

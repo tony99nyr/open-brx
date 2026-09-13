@@ -431,9 +431,17 @@ async function runVenue(browser, viteBase, mcBase, vp = { width: 1280, height: 8
   expect(bb && bb.height >= 36 && bb.width >= 36, `DISMISS is a real tap target (${bb && Math.round(bb.width)}x${bb && Math.round(bb.height)})`);
   await btn.click();
   await until(() => reminder(pg).count().then(n => n === 0), 4000, 'the reminder to go away on KIT');
+  // …and it stays dismissed on KIT, but NOT on GAMES (polish loop 2026-09-13). GAMES is where the
+  // venue is PICKED and KIT is where the rack is actually walked, so acknowledging the instruction
+  // on one screen is not doing it on the other: the dismissal is keyed by (screen, venue).
   await toGames(pg);
-  expect(await reminder(pg).count() === 0, 'the dismissal is one reminder, not one per screen');
-  ok(`dismissed on KIT, still dismissed on GAMES   ${await shot(pg, `42-venue-dismissed-${tag}`)}`);
+  expect(await reminder(pg).count() === 1, 'GAMES keeps its own reminder — dismissing on KIT is not walking the rack');
+  await pg.locator('[data-testid="venue-mode-dismiss"]').click();   // …and answer it here too
+  await until(() => reminder(pg).count().then(n => n === 0), 4000, 'the reminder to go away on GAMES as well');
+  await toKit(pg);
+  expect(await reminder(pg).count() === 0, 'KIT stays dismissed: an operator who walked the rack is not nagged again');
+  await toGames(pg);
+  ok(`dismissed per screen, both answered   ${await shot(pg, `42-venue-dismissed-${tag}`)}`);
 
   // ...but changing the venue is a NEW physical step on every gun, so it must come back
   await pickVenue(pg, 'indoor', mcBase);

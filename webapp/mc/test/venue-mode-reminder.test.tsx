@@ -54,23 +54,58 @@ describe('venue-mode reminder', () => {
     m.unmount();
   });
 
-  it('a dismissal is remembered across screens — and re-armed when the venue changes', async () => {
+  it('a dismissal sticks on the screen it was made on, and re-arms when the venue changes', async () => {
     const d = await demo();
-    const m = await mountScreen(<VenueModeReminder />, { state: atVenue(d.state, 'outdoor') });
+    const m = await mountScreen(<VenueModeReminder screen="games" />, { state: atVenue(d.state, 'outdoor') });
     await m.click(/DISMISS|✕/);
     m.unmount();
 
-    // same session, a different screen: still dismissed (it is one reminder, not one per screen)
-    const again = await mountScreen(<VenueModeReminder />, { state: atVenue(d.state, 'outdoor') });
+    // same session, same screen, same venue: still dismissed — nobody wants nagging all night
+    const again = await mountScreen(<VenueModeReminder screen="games" />, { state: atVenue(d.state, 'outdoor') });
     expect(again.find('[data-testid="venue-mode-reminder"]').length).toBe(0);
     again.unmount();
 
     // ...but switching venue is a NEW physical step on every gun, so it comes back
-
-    const flipped = await mountScreen(<VenueModeReminder />, { state: atVenue(d.state, 'indoor') });
+    const flipped = await mountScreen(<VenueModeReminder screen="games" />, { state: atVenue(d.state, 'indoor') });
     expect(flipped.find('[data-testid="venue-mode-reminder"]').length).toBe(1);
     expect(flipped.text()).toContain('INDOOR');
     flipped.unmount();
+  });
+
+  // LOW (polish loop, 2026-09-13) — both review lenses flagged the same component.
+  it('dismissing on GAMES does not hide it on KIT, where the guns are in hand', async () => {
+    const d = await demo();
+    const games = await mountScreen(<VenueModeReminder screen="games" />, { state: atVenue(d.state, 'outdoor') });
+    await games.click(/DISMISS|✕/);
+    games.unmount();
+    // GAMES is where the venue is PICKED; KIT is where the rack is actually walked. Acknowledging
+    // the instruction on the planning screen is not doing it on the handing-out screen.
+    const kit = await mountScreen(<VenueModeReminder screen="kit" />, { state: atVenue(d.state, 'outdoor') });
+    expect(kit.find('[data-testid="venue-mode-reminder"]').length).toBe(1);
+    await kit.click(/DISMISS|✕/);
+    expect(kit.find('[data-testid="venue-mode-reminder"]').length).toBe(0);
+    kit.unmount();
+    // …and each screen keeps its own answer
+    const back = await mountScreen(<VenueModeReminder screen="games" />, { state: atVenue(d.state, 'outdoor') });
+    expect(back.find('[data-testid="venue-mode-reminder"]').length).toBe(0);
+    back.unmount();
+  });
+
+  it('INDOOR → OUTDOOR → INDOOR does not re-show a venue already dismissed', async () => {
+    const d = await demo();
+    const first = await mountScreen(<VenueModeReminder screen="kit" />, { state: atVenue(d.state, 'indoor') });
+    await first.click(/DISMISS|✕/);
+    first.unmount();
+    // a venue change is a new step, so OUTDOOR shows...
+    const out = await mountScreen(<VenueModeReminder screen="kit" />, { state: atVenue(d.state, 'outdoor') });
+    expect(out.find('[data-testid="venue-mode-reminder"]').length).toBe(1);
+    await out.click(/DISMISS|✕/);
+    out.unmount();
+    // ...and coming BACK to a venue the operator already walked the rack for does not.
+    const backIndoor = await mountScreen(<VenueModeReminder screen="kit" />, { state: atVenue(d.state, 'indoor') });
+    expect(backIndoor.find('[data-testid="venue-mode-reminder"]').length,
+      'the guns are already on INDOOR — this reminder was answered').toBe(0);
+    backIndoor.unmount();
   });
 
   it('renders on GAMES and on KIT', async () => {
