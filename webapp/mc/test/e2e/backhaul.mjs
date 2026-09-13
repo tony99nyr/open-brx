@@ -181,12 +181,14 @@ step('lobby-coverage-and-reach-tags', async ({ browser, base }) => {
   const coverage = pg.locator('main', { hasText: /COVERAGE/ });
   await until(() => coverage.count().then(n => n > 0), 8000, 'a coverage line to render');
   const covTxt = await coverage.first().textContent();
-  expect(/(FULL COVERAGE|COVERAGE ZONES) — \d+ OF \d+ ON BACKHAUL/.test(covTxt ?? ''), `the coverage line has the expected shape (saw ${JSON.stringify(covTxt)})`);
-  const backhaulTags = pg.locator('span', { hasText: /^BACKHAUL$/ });
-  await until(() => backhaulTags.count().then(n => n > 0), 6000, 'at least one roster row tagged BACKHAUL');
+  expect(/(FULL COVERAGE|COVERAGE ZONES) — \d+ OF \d+ ON THE INTERNET PATH/.test(covTxt ?? ''), `the coverage line has the expected shape (saw ${JSON.stringify(covTxt)})`);
+  // S40 (field 2026-09-12): the tag reads INTERNET now, not BACKHAUL — the old word read as "on
+  // cellular" to an operator, when it is a fact about the PATH to MC.
+  const internetTags = pg.locator('span', { hasText: /^INTERNET$/ });
+  await until(() => internetTags.count().then(n => n > 0), 6000, 'at least one roster row tagged INTERNET');
   const lanTags = pg.locator('span', { hasText: /^LAN$/ });
   expect(await lanTags.count() > 0, 'at least one roster row still tagged LAN (the demo mixes both)');
-  ok(`LOBBY shows a coverage line and per-node LAN/BACKHAUL tags  ${await shot(pg, 'b05-lobby-coverage')}`);
+  ok(`LOBBY shows a coverage line and per-node LAN/INTERNET tags  ${await shot(pg, 'b05-lobby-coverage')}`);
   await closePage(pg);
 });
 
@@ -200,11 +202,78 @@ step('small-viewport-no-overflow', async ({ browser, base }) => {
   await until(() => pg.locator('text=trycloudflare.com').count().then(n => n > 0), 6000, 'the tunnel to come up at phone width');
   ok(`REACH panel usable with no horizontal overflow at 393px  ${await shot(pg, 'b06-narrow-armory')}`);
   await go(pg, 'lobby');
-  await until(() => pg.locator('span', { hasText: /^BACKHAUL$/ }).first().isVisible().catch(() => false), 8000, 'a BACKHAUL tag at phone width');
+  await until(() => pg.locator('span', { hasText: /^INTERNET$/ }).first().isVisible().catch(() => false), 8000, 'an INTERNET tag at phone width');
   const overflow2 = await pg.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow2 <= 1, `no horizontal page scroll on LOBBY at 393px (overflow ${overflow2}px)`);
   ok(`LOBBY reach tags/coverage line usable at 393px  ${await shot(pg, 'b07-narrow-lobby')}`);
   await closePage(pg);
+});
+
+// --- field 2026-09-12 additions: 27b (turn-off confirm), F144 (backhaul reads READY), F143 (no
+// placeholder network name), F138 (join QR size) --- one step, since all four ride on the same
+// ARMORY page and turning the tunnel on once covers them all.
+step('field-2026-09-12-armory-checks', async ({ browser, base }) => {
+  const pg = await go(await newPage(browser, base), 'muster');
+  await pg.locator('button', { hasText: 'TURN ON' }).click();
+  await until(() => pg.locator('text=trycloudflare.com').count().then(n => n > 0), 6000, 'the tunnel to come up');
+
+  // F144: a gun card reached over the internet path still reads READY, with an INTERNET tag beside
+  // it — never CHECK/amber for that alone.
+  const internetCard = pg.locator('main div', { hasText: 'INTERNET' }).filter({ hasText: 'READY' });
+  await until(() => internetCard.count().then(n => n > 0), 6000, 'a gun card showing both INTERNET and READY');
+  expect(await internetCard.count() > 0, 'at least one card is READY (not CHECK) while on the internet path');
+  ok(`a backhaul-reached gun card reads READY with an INTERNET tag  ${await shot(pg, 'b08-internet-ready')}`);
+
+  // F138: the join QR is at least 280px on this desktop viewport, with the hold-the-phone hint.
+  await pg.locator('button', { hasText: 'SHOW QR CODES' }).click();
+  const qr = pg.locator('img[alt="node join QR"]');
+  await until(() => qr.count().then(n => n > 0), 4000, 'the join QR image');
+  const box = await qr.first().boundingBox();
+  expect(!!box && box.width >= 280, `the join QR renders at least 280px wide (saw ${box && box.width})`);
+  expect(await pg.locator('text=HOLD THE PHONE 20').count() > 0, 'the "hold the phone" hint is shown beside the QR');
+  ok(`join QR is ≥280px with the distance hint  ${await shot(pg, 'b09-qr-size')}`);
+
+  // 27b: turning the tunnel OFF warns once before it does anything.
+  const turnOff = pg.locator('button', { hasText: 'TURN OFF' });
+  await turnOff.click();
+  await until(() => pg.locator('text=EVERY PHONE ON THE INTERNET PATH WILL DROP').count().then(n => n > 0), 3000, 'the drop-warning to appear on the first tap');
+  expect(await pg.locator('text=trycloudflare.com').count() > 0, 'the tunnel is still UP after only one tap — nothing happened yet');
+  ok(`turning the tunnel off warns before doing anything  ${await shot(pg, 'b10-turnoff-confirm')}`);
+  await pg.locator('button', { hasText: 'CONFIRM' }).click();
+  await until(() => pg.locator('text=trycloudflare.com').count().then(n => n === 0), 4000, 'the tunnel to actually go off after the second tap');
+  ok(`the second tap actually turns the tunnel off  ${await shot(pg, 'b11-turnoff-done')}`);
+  await closePage(pg);
+});
+
+step('field-2026-09-12-network-row-and-stale-reach', async ({ browser, base }) => {
+  // F143: no SSID known — the NETWORK row must say "LAN", never a mode word standing in for one.
+  const pg1 = await newPage(browser, base);
+  await pg1.goto(`${pg1.__base}/?mock&nossid=1#muster`, { waitUntil: 'domcontentloaded' });
+  await until(() => pg1.locator('main', { hasText: '▸ REACH' }).count().then(n => n > 0), 8000, 'the REACH panel');
+  expect(await pg1.locator('main', { hasText: 'LAN ·' }).count() > 0, 'the NETWORK row falls back to "LAN ·", not a placeholder mode word');
+  expect(await pg1.locator('main', { hasText: 'UNKNOWN ·' }).count() === 0, 'never prints "UNKNOWN ·" as a network name');
+  ok(`NETWORK row never shows a placeholder word  ${await shot(pg1, 'b12-no-ssid')}`);
+  await closePage(pg1);
+
+  // F155: a node whose last known path was the internet reads NOT REACHED FOR <age>, never WRONG WI-FI.
+  const pg2 = await newPage(browser, base);
+  await pg2.goto(`${pg2.__base}/?mock&laststale=1#muster`, { waitUntil: 'domcontentloaded' });
+  await until(() => pg2.locator('main', { hasText: 'READINESS BOARD' }).count().then(n => n > 0), 8000, 'the readiness board');
+  await until(() => pg2.locator('text=NOT REACHED FOR').count().then(n => n > 0), 6000, 'the honest stale-reach reason');
+  expect(await pg2.locator('text=WRONG WI-FI').count() === 0, 'never blames the phone\'s Wi-Fi for a dropped tunnel');
+  ok(`a node last seen on the internet path reads NOT REACHED FOR, not WRONG WI-FI  ${await shot(pg2, 'b13-last-stale')}`);
+  await closePage(pg2);
+
+  // F142: a restored session shows the banner and FRESH SESSION clears it.
+  const pg3 = await newPage(browser, base);
+  await pg3.goto(`${pg3.__base}/?mock&restored=1#muster`, { waitUntil: 'domcontentloaded' });
+  const banner = pg3.locator('[data-testid="restored-banner"]');
+  await until(() => banner.count().then(n => n > 0), 8000, 'the restored-session banner');
+  expect(await banner.textContent().then(t => (t ?? '').includes('RESTORED FROM')), 'the banner names when the session was restored');
+  await pg3.locator('button', { hasText: 'FRESH SESSION' }).click();
+  await until(() => banner.count().then(n => n === 0), 4000, 'the banner to clear after FRESH SESSION');
+  ok(`restored-session banner shows and FRESH SESSION clears it  ${await shot(pg3, 'b14-restored')}`);
+  await closePage(pg3);
 });
 
 async function main() {

@@ -86,7 +86,12 @@ export function startDemo({ engine, log }) {
       setTimeout(() => {
         engine.onMcMessage({ kind: 'loadout_ack', body: { slot: body.slot, ok, reason, ...(dropped ? { dropped } : {}), loadout: player.loadout } });
         if (ok) engine.onMcMessage({ kind: 'assign', body: { player, team, roster, catalog, policy, game } });
-        if (ok && body.try && w) setTimeout(() => engine.onMcMessage({ kind: 'tutorial', body: tutorialFor(w) }), 250);
+        // F147: the real gun answers a try-out's `$WEAP`/`$AMMO` write with its own ammo report a beat later —
+        // engine.js now waits for exactly that (`tryoutArming`) before the rack reads EQUIPPED rather than
+        // SWITCHING…. Simulate it (200 ms, comfortably under TRYOUT_ARM_MAX_MS) so the demo/stage mirrors the
+        // real timeline instead of only ever resolving through the 3 s "assumed" timeout.
+        if (ok && body.try && w) setTimeout(() => { engine.onMcMessage({ kind: 'tutorial', body: tutorialFor(w) });
+          setTimeout(() => engine.feedFrame(`$ALCD,${w.clip},100,0,${w.reserve},0,*`), 200); }, 250);
       }, ackDelayMs);
       log(`demo MC ← loadout_request ${body.slot} ${body.kind} ${body.id || ''}${body.try ? ' (try)' : ''}`, 'lr');
     } else if (kind === 'loadout_browse') log(`demo MC ← loadout_browse open=${body.open}`, 'lr');
@@ -263,6 +268,9 @@ export function startDemo({ engine, log }) {
     const STAGES = {
       'idle':              [[0, 'scan']],
       'connected':         [[0, 'linkGun'], [50, () => ev.battery(82)]],
+      // F137 (field 2026-09-12): MC binds while the player still sits on the pre-kit CONNECTED screen —
+      // the one case that used to need an UNRELATED field to also change before the screen ever caught up.
+      'connected-linked':  [[0, 'linkGun'], [400, 'mcBound']],
       'setup':             [[0, () => { policy.kit_open = false; }], ...kit],
       'briefing':          kit,
       'briefing-long':     [...kit, [250, 'longGame']],                                                       // F110: a two-line name AND a wrapped loadout line
@@ -326,6 +334,11 @@ export function startDemo({ engine, log }) {
       'panic':             [...live, [2300, 'panic']],
       'diag':              [...kitted, [400, () => ev.diag(true)]],                                            // F122: the ⓘ panel, nothing churning under it
       'diag-live':         [...live, [2300, () => ev.diag(true)]],                                             // F122: the SAME panel while the live clock rewrites its data 4×/s
+      // F156/F135 (field 2026-09-12): the join controls (SCAN QR + typed address) now also live in the ⓘ
+      // panel, reachable BEFORE a gun is linked and in every phase after. `connected-diag` proves the one
+      // case where the pre-join screen's own copy (same #mcurl id) would otherwise coexist with it.
+      'idle-diag':         [[0, 'scan'], [400, () => ev.diag(true)]],
+      'connected-diag':    [...[[0, 'linkGun']], [400, () => ev.diag(true)]],
     };
     const steps = STAGES[stageName];
     if (!steps) log(`stage "${stageName}" unknown — one of: ${Object.keys(STAGES).join(' ')}`, 'le');

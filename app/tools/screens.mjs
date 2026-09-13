@@ -1274,6 +1274,266 @@ await step('F110 briefing at 812\u00d7375 (the iPhone the report came from)', as
   notSheared(r, sels);
   must(!fit.over && fit.last <= fit.footTop - 4, JSON.stringify(fit));
 });
+// ---------- F145 (field 2026-09-12): the rack row's ⓘ needs its own real hit target ----------
+await step('F145 loadout-primary: the ⓘ has a ≥44px hit target that reads the row without equipping it', async () => {
+  const pg = await open(VIEWS[0], 'loadout-primary');
+  // A real tap 2px OUTSIDE the icon's 40px visual box (the old edge) but inside the new invisible 44px zone —
+  // a synthetic `el.click()` on the icon itself would pass even with no expanded target at all (it bypasses
+  // real hit-testing), which is exactly the false-pass shape this suite exists to avoid.
+  const before = await pg.evaluate(() => document.querySelectorAll('.lrow .linfo').length);
+  must(before > 1, 'need at least two rack rows for this check');
+  // #frame is scaled to fit the viewport (`fit()` in hud.js): a rect from getBoundingClientRect() is already
+  // in rendered px, so the "1 design px past the edge" offset — and the sanity check on the box itself —
+  // must scale with it, not assume a literal 40/44 (design 2026-09-12).
+  const at = await pg.evaluate(() => { const row = document.querySelectorAll('.lrow')[1]; const icon = row.querySelector('.linfo'); const r = icon.getBoundingClientRect();
+    const scale = parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1) || 1;
+    return { arg: row.dataset.arg, x: r.right + scale, y: r.top + r.height / 2, hitSize: r.width, scale }; });
+  must(at.hitSize <= 40 * at.scale + 1, 'the visual icon box grew past its design 40px — this check assumes it stayed the same and only the tap zone widened: ' + JSON.stringify(at));
+  await pg.mouse.click(at.x, at.y);
+  await pg.waitForTimeout(200);
+  const r = await pg.evaluate(() => ({ focus: window.brx.hud.lo.focus, pendingPick: window.brx.engine.state().pendingPick }));
+  await pg.close();
+  must(r.focus === at.arg, `a tap just past the visual icon edge did not open its detail (focus: ${r.focus}, wanted ${at.arg})`);
+  must(!r.pendingPick, 'the edge tap equipped the row instead of reading it: ' + JSON.stringify(r.pendingPick));
+});
+await step('F145 loadout-primary: a tap on the row body (clear of the icon) still equips', async () => {
+  const pg = await open(VIEWS[0], 'loadout-primary');
+  const at = await pg.evaluate(() => { const row = document.querySelectorAll('.lrow')[4]; row.scrollIntoView({ block: 'center' }); const nm = row.querySelector('.nm'); const r = nm.getBoundingClientRect();
+    return { arg: row.dataset.arg, x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+  await pg.mouse.click(at.x, at.y);
+  await pg.waitForTimeout(200);
+  const r = await pg.evaluate(() => window.brx.engine.state().pendingPick);
+  await pg.close();
+  must(r && r.id === at.arg.slice(7), `the row body no longer equips on tap: ${JSON.stringify(r)}, wanted ${at.arg}`);
+});
+
+// ---------- F137 (field 2026-09-12): MC LINKED, one line, inside its box ----------
+await step('F137 connected-linked: MC LINKED fits on one line and stays inside the box at every checked width', async () => {
+  for (const view of [VIEWS[0], VIEWS[1], { name: 'design', width: 844, height: 390 }]) {
+    const pg = await open(view, 'connected-linked');
+    const r = await pg.evaluate(() => { const e = document.querySelector('.mclinked'); if (!e) return null; const u = e.querySelector('.unskew');
+      const eb = e.getBoundingClientRect(), ub = u.getBoundingClientRect();
+      return { oneLine: u.scrollWidth <= u.clientWidth + 1, inside: ub.left >= eb.left - 0.5 && ub.right <= eb.right + 0.5 }; });
+    await pg.close();
+    must(r, `${view.name}: MC LINKED never rendered — a sig field it depends on may have regressed out of the signature`);
+    must(r.oneLine, `${view.name}: MC LINKED wrapped to a second line`);
+    must(r.inside, `${view.name}: the text ran past the box`);
+  }
+});
+
+// ---------- F156/F135/ledger#2+#31 (field 2026-09-12): SCAN QR + the typed address reachable in every phase ----------
+await step('F156 idle-diag: the ⓘ panel carries SCAN QR + the address field BEFORE a gun is linked', async () => {
+  const pg = await open(VIEWS[0], 'idle-diag');
+  const r = await pg.evaluate(() => { const d = document.getElementById('diag'), i = document.getElementById('mcurl'), q = document.querySelector('[data-act="onScanQr"]');
+    return { open: d.classList.contains('open'), input: !!i, insideDiag: !!(i && d.contains(i)), scan: !!q, scanInsideDiag: !!(q && d.contains(q)), setUrl: typeof window.brx.hud.h.onSetUrl }; });
+  await pg.close();
+  must(r.open, 'the ⓘ panel never opened');
+  must(r.input && r.insideDiag, 'no #mcurl address field in the diag panel while idle (no gun linked yet): ' + JSON.stringify(r));
+  must(r.scan && r.scanInsideDiag, 'no SCAN QR button in the diag panel while idle: ' + JSON.stringify(r));
+});
+await step('F156 kitted/live: the ⓘ panel still carries SCAN QR + the address field after a gun is linked', async () => {
+  for (const stage of ['diag', 'diag-live']) {
+    const pg = await open(VIEWS[0], stage, '', 5200);
+    const r = await pg.evaluate(() => { const d = document.getElementById('diag'); return { input: !!d.querySelector('#mcurl'), scan: !!d.querySelector('[data-act="onScanQr"]') }; });
+    await pg.close();
+    must(r.input && r.scan, `${stage}: join controls missing from the diag panel: ` + JSON.stringify(r));
+  }
+});
+await step('F156 connected-diag: only ONE #mcurl exists — the pre-join screen steps aside for the diag panel', async () => {
+  // Before this fix the pre-join screen's own copy (same id, `onSetUrl` reads it by that id — app.js is
+  // another lane) would sit in the DOM at the same time as the diag panel's, and `getElementById('mcurl')`
+  // would silently read whichever one document order favours — not necessarily the one the player is typing into.
+  const pg = await open(VIEWS[0], 'connected-diag');
+  const r = await pg.evaluate(() => { const all = document.querySelectorAll('#mcurl'); const d = document.getElementById('diag');
+    return { count: all.length, insideDiag: all.length === 1 && d.contains(all[0]), lobbyNote: (document.querySelector('.lobby .note.join') || {}).textContent || '' }; });
+  await pg.close();
+  must(r.count === 1, `expected exactly one #mcurl in the DOM, found ${r.count}`);
+  must(r.insideDiag, 'the surviving #mcurl is not the diag panel\'s own — it is the stale pre-join copy');
+  must(/ⓘ panel/.test(r.lobbyNote), 'the pre-join screen does not say where the join controls moved to: ' + r.lobbyNote);
+});
+await step('F156 connected: closing the ⓘ panel restores the pre-join screen\'s own copy', async () => {
+  const pg = await open(VIEWS[0], 'connected-diag');
+  await pg.click('[data-act="onCloseDiag"].close');   // the panel sits ABOVE #info (z-index 6 vs 5) while open, so this is the real close path
+  await pg.waitForTimeout(150);
+  const r = await pg.evaluate(() => { const d = document.getElementById('diag'); return { open: d.classList.contains('open'), count: document.querySelectorAll('#mcurl').length, outsideDiag: !!(document.getElementById('mcurl') && !d.contains(document.getElementById('mcurl'))) }; });
+  await pg.close();
+  must(!r.open, 'the panel did not close');
+  must(r.count === 1 && r.outsideDiag, 'the pre-join screen did not get its own #mcurl back: ' + JSON.stringify(r));
+});
+// ---------- Polish-loop pass 1 (2026-09-12): armed/live gate a mid-match CONNECT / SCAN QR behind a second tap ----------
+await step('polish-1 diag-live: CONNECT is a two-tap confirm mid-match, and reverts if not confirmed', async () => {
+  const pg = await open(VIEWS[0], 'diag-live', '', 5200);
+  await pg.evaluate(() => { window.__calls = 0; window.brx.hud.h.onSetUrl = () => { window.__calls++; }; });
+  const before = await pg.evaluate(() => (document.getElementById('dg-mcjoinhint') || {}).textContent || '');
+  await pg.click('[data-act="onSetUrl"]');
+  await pg.waitForTimeout(80);
+  const afterOne = await pg.evaluate(() => ({ calls: window.__calls, hint: (document.getElementById('dg-mcjoinhint') || {}).textContent || '' }));
+  await pg.click('[data-act="onSetUrl"]');
+  await pg.waitForTimeout(80);
+  const afterTwo = await pg.evaluate(() => ({ calls: window.__calls, hint: (document.getElementById('dg-mcjoinhint') || {}).textContent || '' }));
+  await pg.close();
+  must(!/TAP AGAIN/.test(before), 'the warning is showing before any tap: ' + before);
+  must(afterOne.calls === 0, 'the first tap mid-match reached onSetUrl instead of being swallowed');
+  must(/TAP AGAIN/.test(afterOne.hint) && /MISSION CONTROL LINK MID-MATCH/.test(afterOne.hint), 'no mid-match warning after the first tap: ' + afterOne.hint);
+  must(afterTwo.calls === 1, 'the second tap within the window did not reach onSetUrl: ' + JSON.stringify(afterTwo));
+  must(!/TAP AGAIN/.test(afterTwo.hint), 'the warning did not clear once confirmed: ' + afterTwo.hint);
+});
+// Polish-loop pass 3 (UX, a11y HIGH): the hint text changing in place is the ONLY signal a first tap did
+// anything while armed/live -- with no live region a screen-reader user hears nothing and it reads as dead.
+await step('polish-3 diag-live: the two-tap hint is an assertive live region', async () => {
+  const pg = await open(VIEWS[0], 'diag-live', '', 5200);
+  const r = await pg.evaluate(() => { const el = document.getElementById('dg-mcjoinhint'); return el ? { role: el.getAttribute('role'), live: el.getAttribute('aria-live') } : null; });
+  await pg.close();
+  must(r, 'no #dg-mcjoinhint in the diag panel');
+  must(r.role === 'status', 'missing role="status": ' + JSON.stringify(r));
+  must(r.live === 'assertive', 'missing/weak aria-live (must be assertive, not polite): ' + JSON.stringify(r));
+});
+await step('polish-1 idle-diag: SCAN QR stays one-tap outside a live match', async () => {
+  const pg = await open(VIEWS[0], 'idle-diag');
+  await pg.evaluate(() => { window.__calls = 0; window.brx.hud.h.onScanQr = () => { window.__calls++; }; });
+  await pg.click('[data-act="onScanQr"]');
+  await pg.waitForTimeout(80);
+  const r = await pg.evaluate(() => ({ calls: window.__calls, hint: (document.getElementById('dg-mcjoinhint') || {}).textContent || '' }));
+  await pg.close();
+  must(r.calls === 1, 'SCAN QR needed a second tap outside a match: ' + JSON.stringify(r));
+  must(!/TAP AGAIN/.test(r.hint), 'a one-tap phase still shows the mid-match warning: ' + r.hint);
+});
+
+// ---------- Polish-loop pass 1: the discovered-MC row (LAN sweep, offered rather than auto-joined) ----------
+await step('polish-1 connected: the discovered-MC row is absent by default, appears on setDiscovered, and JOINs on tap', async () => {
+  const pg = await open(VIEWS[0], 'connected');
+  must((await pg.evaluate(() => document.querySelectorAll('.discoveredrow').length)) === 0, 'a row appeared with nothing discovered');
+  await pg.evaluate(() => { window.__calls = 0; window.brx.hud.h.onJoinDiscovered = () => { window.__calls++; };
+    window.brx.hud.setDiscovered({ url: 'ws://192.168.1.42:8766/ws', at: Date.now() }); window.brx.hud.render(window.brx.engine.state()); });
+  await pg.waitForTimeout(80);
+  const row = await pg.evaluate(() => { const e = document.querySelector('.lobby .discoveredrow'); const foot = document.querySelector('.lobby .foot');
+    if (!e) return null; const r = e.getBoundingClientRect(), f = foot.getBoundingClientRect();
+    return { text: e.textContent, aboveFoot: r.bottom <= f.top + 1, oneLine: e.scrollWidth <= e.clientWidth + 1 }; });
+  must(row, 'the discovered row never rendered on the pre-join screen');
+  must(/192\.168\.1\.42:8766/.test(row.text) && /JOIN/.test(row.text), 'row text: ' + row.text);
+  must(row.aboveFoot, 'the discovered row overlaps the CONNECT/SCAN QR row instead of sitting above it');
+  must(row.oneLine, 'the discovered row wrapped');
+  await pg.click('.lobby .discoveredrow');
+  await pg.waitForTimeout(80);
+  const calls = await pg.evaluate(() => window.__calls);
+  await pg.close();
+  must(calls === 1, 'tapping the discovered row did not call onJoinDiscovered');
+});
+await step('polish-1 idle-diag: the discovered-MC row also renders inside the ⓘ panel', async () => {
+  const pg = await open(VIEWS[0], 'idle-diag');
+  await pg.evaluate(() => { window.brx.hud.setDiscovered({ url: 'ws://192.168.1.42:8766/ws', at: Date.now() }); window.brx.hud.renderDiag(); });
+  await pg.waitForTimeout(80);
+  const r = await pg.evaluate(() => { const e = document.querySelector('#diag .discoveredrow'); return e ? e.textContent : null; });
+  await pg.close();
+  must(r && /192\.168\.1\.42:8766/.test(r) && /JOIN/.test(r), 'no discovered row in the diag panel: ' + r);
+});
+
+// ---------- Polish-loop pass 1 (LOW): the diag panel's address field follows hud.mcUrl after a rescan ----------
+await step('polish-1 idle-diag: the address field updates after mcUrl changes (e.g. a QR rescan), unless focused', async () => {
+  const pg = await open(VIEWS[0], 'idle-diag');
+  await pg.evaluate(() => { window.brx.hud.mcUrl = 'ws://9.9.9.9:8766/ws'; window.brx.hud.renderDiag(); });
+  await pg.waitForTimeout(80);
+  const unfocused = await pg.evaluate(() => (document.querySelector('.mcurlfield') || {}).value);
+  must(unfocused === 'ws://9.9.9.9:8766/ws', 'the field did not pick up the new mcUrl: ' + unfocused);
+  await pg.click('.mcurlfield'); await pg.keyboard.type('typing');
+  await pg.evaluate(() => { window.brx.hud.mcUrl = 'ws://1.1.1.1:8766/ws'; window.brx.hud.renderDiag(); });
+  await pg.waitForTimeout(80);
+  const whileTyping = await pg.evaluate(() => (document.querySelector('.mcurlfield') || {}).value);
+  await pg.close();
+  must(/typing/.test(whileTyping), 'a live mcUrl push overwrote what the player was typing: ' + whileTyping);
+});
+// ---------- Polish-loop pass 2: the two-tap guard also covers onJoinDiscovered and onReconnectMc ----------
+await step('polish-2 diag-live: JOIN (a discovered address) and RELINK MC are ALSO two-tap mid-match', async () => {
+  const pg = await open(VIEWS[0], 'diag-live', '', 5200);
+  await pg.evaluate(() => { window.brx.hud.setDiscovered({ url: 'ws://1.2.3.4:8766/ws', at: Date.now(), source: 'sweep' }); window.brx.hud.renderDiag();
+    window.__calls = {}; ['onJoinDiscovered', 'onReconnectMc'].forEach(a => { window.brx.hud.h[a] = () => { window.__calls[a] = (window.__calls[a] || 0) + 1; }; }); });
+  for (const [act, sel] of [['onJoinDiscovered', '.discoveredrow'], ['onReconnectMc', '[data-act="onReconnectMc"]']]) {
+    await pg.click(sel); await pg.waitForTimeout(60);
+    const mid = await pg.evaluate(a => window.__calls[a] || 0, act);
+    await pg.click(sel); await pg.waitForTimeout(60);
+    const after = await pg.evaluate(a => window.__calls[a] || 0, act);
+    must(mid === 0, `${act}: the first tap mid-match reached the handler instead of being swallowed`);
+    must(after === 1, `${act}: the second tap within the window did not reach the handler`);
+  }
+  await pg.close();
+});
+
+// ---------- Polish-loop pass 2: the discovered-row wording names its source ----------
+await step('polish-2 connected: the discovered row words itself by source (sweep vs mdns)', async () => {
+  const pg = await open(VIEWS[0], 'connected');
+  const texts = {};
+  for (const source of ['sweep', 'mdns']) {
+    texts[source] = await pg.evaluate(src => { window.brx.hud.setDiscovered({ url: 'ws://1.2.3.4:8766/ws', at: Date.now(), source: src }); window.brx.hud.render(window.brx.engine.state());
+      return (document.querySelector('.lobby .discoveredrow') || {}).textContent || ''; }, source);
+  }
+  await pg.close();
+  must(/FOUND ON THE NETWORK/.test(texts.sweep), 'sweep wording: ' + texts.sweep);
+  must(/FOUND BY BROADCAST/.test(texts.mdns), 'mdns wording: ' + texts.mdns);
+  must(texts.sweep !== texts.mdns, 'the two sources read identically');
+});
+await step('polish-2 connected: the pre-join copy no longer claims mDNS auto-joins', async () => {
+  const pg = await open(VIEWS[0], 'connected');
+  const note = await pg.evaluate(() => (document.querySelector('.lobby .note.join') || {}).textContent || '');
+  await pg.close();
+  must(!/connects by itself/i.test(note), 'the copy still claims an address connects by itself: ' + note);
+  must(/tap JOIN/i.test(note), 'the copy does not point at the JOIN row: ' + note);
+});
+
+// ---------- Polish-loop pass 2: an honest, muted EQUIPPED · UNCONFIRMED after the arming timeout ----------
+await step('polish-2 loadout-primary: an arm that times out reads EQUIPPED · UNCONFIRMED, muted, its own glyph, and fits', async () => {
+  const pg = await open(VIEWS[0], 'loadout-primary');
+  await pg.evaluate(() => {
+    const eng = window.brx.engine;
+    eng.requestLoadout('primary', 'weapon', 'smg', true);
+    if (eng._flushPick) eng._flushPick('test');
+    eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
+    eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 72 }, frames: ['$WEAP,0,*'] } });
+    eng.now = () => Date.now() + 3200; eng.tick();   // jump past TRYOUT_ARM_MAX_MS with no confirming report
+    window.brx.hud.sig = null; window.brx.hud.render(eng.state());
+  });
+  await pg.waitForTimeout(150);
+  const r = await pg.evaluate(() => {
+    const row = document.querySelector('.lrow.unconf'), hero = document.querySelector('.eqtag.unconf'), chip = document.querySelector('.ackchip.unconf'), nm = document.querySelector('.lodetail .nm');
+    return { rowMark: row ? (row.querySelector('.st') || {}).textContent : null, hero: hero ? hero.textContent : null, chip: chip ? chip.textContent : null,
+      nmFits: nm ? nm.scrollWidth <= nm.clientWidth + 1 : null,
+      // pass 3: tryoutUnconfirmed is {tab, kind} | null, not a bare boolean
+      engineConfirmed: window.brx.engine.state().tryoutArming === false && !!window.brx.engine.state().tryoutUnconfirmed };
+  });
+  await pg.close();
+  must(r.engineConfirmed, 'the engine never settled into the unconfirmed state');
+  must(r.rowMark === '≈', 'the row does not show the distinct ≈ glyph: ' + r.rowMark);
+  must(r.hero === 'UNCONFIRMED', 'the hero pane badge: ' + r.hero);
+  must(r.chip === 'EQUIPPED · UNCONFIRMED', 'the action-bar chip: ' + r.chip);
+  must(r.nmFits, 'the hero pane name + role + badge overflows its line');
+});
+// ---------- Polish-loop pass 3 (MEDIUM): tryoutUnconfirmed must never bleed onto an unrelated tab/kind ----------
+await step('polish-3 loadout-perk: a perk picked after a timed-out weapon arm shows a plain ✓, never the stale UNCONFIRMED', async () => {
+  const pg = await open(VIEWS[0], 'loadout-perk');
+  await pg.evaluate(() => {
+    const eng = window.brx.engine;
+    // time out a PRIMARY weapon arm first (same recipe as the loadout-primary case above)
+    eng.requestLoadout('primary', 'weapon', 'smg', true);
+    if (eng._flushPick) eng._flushPick('test');
+    eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'primary', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }] } } });
+    eng.onMcMessage({ kind: 'tutorial', body: { weapon: { weapon_id: 'smg', name: 'SMG', clip: 72 }, frames: ['$WEAP,0,*'] } });
+    eng.now = () => Date.now() + 3200; eng.tick();
+    // now pick a PERK -- perks never arm a try-out at all, and must not inherit the weapon's stale flag
+    eng.requestLoadout('perk', 'perk', 'body_armor');
+    eng.onMcMessage({ kind: 'loadout_ack', body: { slot: 'perk', ok: true, loadout: { weapons: [{ weapon_id: 'smg' }], perk: 'body_armor' } } });
+    window.brx.hud.lo.tab = 'perk'; window.brx.hud.sig = null; window.brx.hud.render(eng.state());
+  });
+  await pg.waitForTimeout(150);
+  const r = await pg.evaluate(() => {
+    const eqRow = document.querySelector('.lrow.eq'), unconfRow = document.querySelector('.lrow.unconf'), hero = document.querySelector('.eqtag');
+    return { eqMark: eqRow ? (eqRow.querySelector('.st') || {}).textContent : null, unconfPresent: !!unconfRow, heroText: hero ? hero.textContent : null,
+      engineStillUnconfirmed: !!window.brx.engine.state().tryoutUnconfirmed };
+  });
+  await pg.close();
+  must(r.engineStillUnconfirmed, 'sanity: the weapon arm really did settle unconfirmed underneath');
+  must(!r.unconfPresent, 'the perk row shows the ≈/unconf treatment it never earned');
+  must(r.eqMark === '✓', 'the perk row does not read a plain confirmed ✓: ' + r.eqMark);
+  must(r.heroText === 'EQUIPPED', 'the perk hero pane: ' + r.heroText);
+});
 await b.close(); srv.close();
 console.log(`\n${pass} passed, ${fail} failed${fail ? ': ' + errs.join(', ') : ''}`);
 process.exit(fail ? 1 : 0);

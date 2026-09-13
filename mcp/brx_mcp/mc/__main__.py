@@ -88,10 +88,20 @@ def build(args):
         except Exception as e:
             log.warning("armory: FAKE (%s)", e)
             armory = FakeArmory(demo_armory())
+    # F142 round 2: `--demo` is NOT the only way a session ends up holding demo guns. A run with no
+    # bleak (WSL, a CI box, a laptop with the radio off) falls back to `FakeArmory(demo_armory())`
+    # above, and a roster built from THAT scan is GUN-A..H — which is exactly the roster that was
+    # restored into a real field day. The marker has to describe the ARMORY the roster came from, not
+    # the flag the operator typed.
+    demo_armory_in_use = isinstance(armory, FakeArmory)
 
     ip = args.host if args.host not in ("0.0.0.0", "") else _lan_ip()
     ws_url = f"ws://{ip}:{args.ws_port}/ws"
-    session = Session(compiler, net, armory, lan={"mode": "unknown", "ip": ip, "port": args.port, "ws_url": ws_url, "qr": ws_url})
+    # F143 (field 2026-09-12): `mode` used to be the literal "unknown", and the REACH panel printed it
+    # as a display word — "UNKNOWN · 192.168.28.167:8765". Best-effort SSID per platform, never fatal,
+    # and the no-answer case is "lan" with no ssid (`netinfo.lan_info`).
+    from . import netinfo as _netinfo
+    session = Session(compiler, net, armory, lan=_netinfo.lan_info(ip, args.port, ws_url))
     # A28.1: the tunnel exists in every run (so `lan.public.available` is honest and the UI can show the
     # install line); it only spawns anything on --tunnel or POST /api/tunnel.
     from pathlib import Path as _PT
@@ -117,6 +127,13 @@ def build(args):
         f"  backhaul: {pub['status']}" + (f"  {pub['ws_url']}" if pub.get("ws_url") else "")
         + (f"  ({pub['error']})" if pub.get("error") else ""), flush=True))
     session.attach_tunnel(tunnel)
+    # F142 (field 2026-09-12): mark the session BEFORE any restore or persist, so the marker is what
+    # `restore_snapshot` compares against and what the first write records.
+    session.demo_session = bool(args.demo) or demo_armory_in_use
+    if session.demo_session:
+        why = "--demo" if args.demo else "no real armory (bleak unavailable) — the guns are stand-ins"
+        print(f"  session: DEMO ({why}) — it will not be restored into, or persisted for, a real run",
+              flush=True)
     restored_from_file = 0
     if getattr(args, "session_file", None):
         # explicit session file (e2e boots from a fixture, e.g. a pre-A10 snapshot) — honoured even with --demo
@@ -134,6 +151,10 @@ def build(args):
         restored = session.restore_snapshot()
         if restored:
             print(f"  session restored: {restored} player(s) from the last run (NEW MATCH > fresh session clears it)")
+        elif session._persist_path.exists():
+            # F142: a snapshot that was there and was DECLINED (the demo/real boundary) says so out loud;
+            # `restore_snapshot` logged the detail.
+            print("  session file present but NOT restored — see the log line above", flush=True)
     extra = []
     import inspect
     if inspect.iscoroutinefunction(getattr(net, "start", None)):
@@ -145,7 +166,12 @@ def build(args):
         real_net = net
         # Real M-NET: an asyncio server — start it inside the app's event loop (lifespan task).
         async def _start_net():
-            await real_net.start(ip, args.ws_port, "/ws")
+            # Bind every interface, advertise the LAN address. Binding the resolved LAN IP alone left
+            # loopback closed, so the cloudflared origin (http://127.0.0.1:<ws-port>) answered 502 on the
+            # first real tunnel (field test 2026-09-12): the QR scanned, the phone dialled, nothing landed.
+            # `real_net`, not `net`: the narrowed name from the isinstance assert above.
+            bind = args.host if args.host not in ("0.0.0.0", "") else "0.0.0.0"
+            await real_net.start(bind, args.ws_port, "/ws", advertise_host=ip)
             # join info FIRST — it fills lan.ws_url with the REAL bound port. The mDNS advert below is
             # best-effort and once HUNG in a sandboxed netns, leaving ws_url at port 0: every phone that
             # trusted the JOIN strip then dialed ws://…:0/ws (e2e, 2026-08-26).

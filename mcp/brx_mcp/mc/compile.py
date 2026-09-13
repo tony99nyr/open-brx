@@ -20,6 +20,7 @@ from ..gameconfig import END_SEQUENCE, WEAPON_TAILS, _SIR_TABLE, GameConfig as _
 from .. import hitaudio as _ha
 from ..protocol import PANIC_SEQUENCE
 from .perks import PerkCatalog
+from .policy import SIDEARM_TAG          # F146: one vocabulary for "this is a backup weapon"
 from .types import (MAX_PLAYERS, OBJECTIVE_MODES, STATION_SOURCES, FrameBundle, GameConfig, PerkView,
                     Player, Team, Weapon)
 from . import presentation as _pres
@@ -1384,6 +1385,23 @@ class Compiler:
             "runway_10": "$PLAY,,4,6,VA85,,,,*",          # provisional
         }
 
+    def voice_preview(self, voice: str, slots: dict | None = None) -> str | None:
+        """S39 (field 2026-09-12, Tony): the ONE frame the A9.1 pick-preview plays — that character's
+        INTRO line, not their kill line. Picking a voice and hearing it announce a kill says nothing
+        about who you just picked; the intro is the character introducing themselves.
+
+        Deliberately NOT a `cues()` entry: `cues()` is compiled into every FrameBundle on the wire (and
+        into `golden_bundle.json`, which the phone app's tests read), and a bench preview is not part of
+        a match's frame set. Falls back to the kill line for a family with no intro take.
+        """
+        sid = _voices.role_id(voice, "intro", slots)
+        if sid:
+            return f"$PLAY,,4,6,{sid},,,,*"
+        try:
+            return self.cues(voice, slots).get("kill")
+        except Exception:
+            return None
+
     def validate(self, config: GameConfig, roster: list[Player],
                  opts: dict | None = None) -> dict:
         """§7 rules → {ok, errors, warnings} (A6: frag-limit-without-coverage is a WARNING).
@@ -1579,54 +1597,80 @@ class Compiler:
             if perk and not self.perks.has(perk):
                 errors.append(f"unknown perk_id {perk!r}")
 
-        # a weapon must be able to kill on one magazine: mag >= ceil(pool / dmg).
+        # A PRIMARY weapon must be able to kill on one magazine: mag >= ceil(pool / dmg).
         # `docs/weapon-design.md` §2.1 — the rail gun and energy launcher shipped at mag 1 needing 2 hits,
         # so a kill cost charge + shot + full reload + charge again. Pool is per-player: loadout overrides
         # win over config health, exactly as `_gset` reads them.
+        #
+        # F146 (field 2026-09-12) narrowed it three ways, after it blocked two pushes at a real match,
+        # and the round-1 polish review of the same day put one slot back:
+        #
+        #  * **THE PRIMARY SLOT, NOT EVERY EQUIPPED WEAPON.** It ran over the whole loadout, so it
+        #    graded a SIDEARM — a backup by definition, carried precisely for the moments the primary
+        #    is empty — by the standard of the gun you fight with. "deagle cannot kill on one
+        #    magazine: mag 7 < 8 hits" refused a perfectly ordinary sniper + deagle kit.
+        #  * **AGAINST THE BASE POOL, NO PERKS, AND THE WEAPON'S OWN MAGAZINE.** Graded against the
+        #    perk-armed pool, Body Armor (+50) took the 190-point pool past what any pistol's magazine
+        #    can do — so ONE player taking that perk banned every sidearm in the game. The weapon's
+        #    design is a fact about the weapon and the host's health setting; what a player straps on
+        #    top is not the weapon's fault.
+        #  * **WARNING, NOT ERROR — for a weapon the operator cannot fix at the whistle.** The tuning
+        #    of a primary against the host's health model is not something they can act on in the
+        #    thirty seconds before the game, and as a hard error it stood between them and the
+        #    whistle. It names the slot, the weapon and the numbers now, and the push goes through.
+        #  * **EXCEPT A SIDEARM CARRIED AS THE ONLY GUN, WHICH IS STILL AN ERROR** (round-1 polish
+        #    review 2026-09-12). The A12 exemption is about the SLOT, not the tag: `policy.PRIMARY_KINDS`
+        #    admits "sidearm" (`_R_SIDEARM_ONLY` is the copy for it), so a pistols-only round can put a
+        #    pistol in slot 1 as somebody's ONLY weapon — and then it is the gun they fight with, not a
+        #    backup. That one IS actionable at the whistle (hand the player a primary, or raise the
+        #    pistol / lower the pool), which is exactly the line F146 drew: block what the operator can
+        #    fix, warn about what they cannot.
         health = config.get("health") or {}
-        seen: set[tuple[str, int, int, bool]] = set()
+        seen: set[tuple[str, int, int, str]] = set()
         for p in roster:
             ov = ((p.get("loadout") or {}).get("overrides")) or {}
             hp, armor = ov.get("max_hp", health.get("max_hp")), ov.get("max_armor", health.get("max_armor"))
             if hp is None or armor is None:
                 continue                                     # no health model to check against
-            # `armed_pool()` — the SAME arithmetic as `_to_gc()` and `Session.health_pool()`, the
-            # perk's armour and the 255 ceiling included. This used to be a third, simpler version,
-            # so it graded a `body_armor` player at 115 while the gun was armed at 165 and the
-            # mag>=htk gate could pass a weapon that cannot actually kill on one magazine (review
-            # 2026-09-01).
-            fx = self._perk_effects(p)
-            pool = armed_pool(hp, armor, fx)
-            mods = {k: fx[k] for k in ("ammo_mult", "reload_mult", "switch_mult") if fx.get(k)}
-            for slot, w in enumerate((p.get("loadout", {}) or {}).get("weapons", [])):
-                wid = w.get("weapon_id")
-                if wid not in self.catalog._by_id:
+            # `armed_pool()` — the SAME arithmetic as `_to_gc()` and `Session.health_pool()`, the 255
+            # ceiling included — with NO perk effects: the base pool this game's health model sets. A
+            # per-player OVERRIDE still moves it (that is the host's health model for that player,
+            # not something the player strapped on).
+            pool = armed_pool(hp, armor, {})
+            ws = (p.get("loadout", {}) or {}).get("weapons", []) or []
+            for slot, w in enumerate(ws):
+                wid = (w or {}).get("weapon_id")
+                if not wid or wid not in self.catalog._by_id:
                     continue                                 # unknown ids already reported above
-                # ...and the MODDED magazine, which is what the gun is actually given
-                mag = self.catalog._ammo(wid, mods)[0]
-                # A12's exemption below is about the SLOT, not the tag. `policy.PRIMARY_KINDS` admits
-                # "sidearm" (`_R_SIDEARM_ONLY` is the copy for it), so a pistols-only round puts a pistol
-                # in slot 1 as the player's ONLY gun -- and a main gun that cannot finish a kill on one
-                # magazine is precisely the broken kit §2.1 exists to refuse (round-1 polish review
-                # 2026-09-12: the tag test shipped that as a warning the operator can walk past).
-                backup = slot > 0
-                if (wid, pool, mag, backup) in seen:
+                sidearm = SIDEARM_TAG in set(self.catalog._by_id[wid].get("tags") or ())
+                if slot > 0 and not sidearm:
+                    continue                                 # the guard is the PRIMARY slot's (F146)
+                # what the weapon is, for THIS player: "only" (the gun they fight with), "primary"
+                # (a real primary with a backup behind it) or "backup".
+                kind = "backup" if slot > 0 else ("only" if len(ws) == 1 else "primary")
+                mag = self.catalog._ammo(wid, None)[0]       # the weapon's OWN magazine, no perk
+                if (wid, pool, mag, kind) in seen:
                     continue
-                seen.add((wid, pool, mag, backup))
+                seen.add((wid, pool, mag, kind))
                 htk = self.catalog.hits_to_kill(wid, pool)
-                if htk and mag < htk:
-                    if backup and "sidearm" in (self.catalog._by_id[wid].get("tags") or []):
-                        # A sidearm RIDING AS THE SECONDARY is the BACKUP by design (A12): needing a
-                        # reload to finish a kill at a big pool is its nature, not a broken kit. Tony's
-                        # push was blocked twice by deagle + body_armor at a 190 pool (2026-09-12) -- a
-                        # warning, never an error. As somebody's only weapon it is an error, above.
-                        warnings.append(f"{wid} is a sidearm and cannot kill on one magazine at this pool - "
-                                        f"it will need a reload (mag {mag} < {htk} hits at "
-                                        f"{self.catalog.damage(wid)} dmg vs {pool} pool)")
-                    else:
-                        errors.append(f"{wid} cannot kill on one magazine: mag {mag} < {htk} hits at "
-                                      f"{self.catalog.damage(wid)} dmg vs {pool} pool "
-                                      f"(docs/weapon-design.md §2.1)")
+                if not (htk and mag < htk):
+                    continue
+                if sidearm and kind == "only":
+                    errors.append(f"{wid} cannot kill on one magazine: mag {mag} < {htk} hits at "
+                                  f"{self.catalog.damage(wid)} dmg vs {pool} pool "
+                                  f"(docs/weapon-design.md §2.1)")
+                elif sidearm:
+                    # A sidearm riding BESIDE a primary is the backup by design (A12): needing a
+                    # reload to finish a kill at a big pool is its nature, not a broken kit. Tony's
+                    # push was blocked twice by deagle + body_armor at a 190 pool (2026-09-12) — it
+                    # says so and gets out of the way.
+                    warnings.append(f"{wid} is a sidearm and cannot kill on one magazine at this pool - "
+                                    f"it will need a reload (mag {mag} < {htk} hits at "
+                                    f"{self.catalog.damage(wid)} dmg vs {pool} pool)")
+                else:
+                    warnings.append(f"PRIMARY {wid.upper().replace('_', ' ')} CANNOT KILL ON ONE MAGAZINE: "
+                                    f"mag {mag} < {htk} hits at {self.catalog.damage(wid)} dmg vs a {pool} "
+                                    f"pool — a reload mid-kill (docs/weapon-design.md §2.1)")
 
         # Does each loadout weapon's <t3,t4> key a $SIR row that actually DEALS DAMAGE?
         # The mag>=htk invariant above computes on raw t5 and cannot see this: it passed an Energy

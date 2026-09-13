@@ -3,6 +3,11 @@
 // §3.10 resync; this owns the wire: hello/welcome hydration, bind, live-only status, the persisted
 // fact ring + batch flush + ack prune, NTP-lite sync, reconnect with backoff.
 //
+// F153 (field 2026-09-12): every leg of the dial ladder has a PRE-OPEN giveup (a dial that never fires
+// any event is the normal failure on a phone, and the OS timeout is ~2 minutes), a new connect() aborts
+// whatever is in flight rather than queueing behind it, and `dialNow()` restarts the ladder the moment
+// the platform says the network came back.
+//
 // A28 backhaul (contracts §5d): when MC hands us a `pub` (its tunnel URL) alongside the LAN `url`,
 // backhaul is PREFERRED — dialled first on every fresh attempt, with a LAN fallback if it doesn't
 // welcome inside BACKHAUL_GIVEUP_MS; while riding the LAN with a pub in hand we check every
@@ -45,6 +50,19 @@ function normUrl(u) {
 
 export const BACKHAUL_GIVEUP_MS = 8000;   // A28.3: no welcome over pub within this -> fall back to the LAN url
 export const PUB_RETRY_MS = 30000;        // A28.3: while riding the LAN with a pub in hand, re-probe it this often
+/** F153a (field 2026-09-12): the LAN leg of the ladder needs the SAME pre-open giveup the backhaul leg
+ *  got. A phone that is off the field Wi-Fi dials a LAN address no route can reach; Android's connect
+ *  timeout is ~2 minutes and for those two minutes the pub we are holding is never tried again. Measured
+ *  cost in the field: mobile data came back and the node took ~3 minutes to reappear, missing the rest of
+ *  the match. With this the ladder is pub -> lan -> pub -> lan ..., with the ordinary backoff (cap 10 s)
+ *  between full passes, so a data blip costs seconds. */
+export const LAN_GIVEUP_MS = 8000;
+/** Review pass 2: an UNTRUSTED dial (a JOIN-row address, so we withheld our node_key) can be refused
+ *  `4003 in_use` for one reason that is not an attack and not a mistake: OUR OWN previous socket at that
+ *  MC has not gone stale yet. A8.2 is explicit that a stale holder is displaced WITHOUT a key, so the fix
+ *  is to wait out the stale window and try once more. Derived from the contract constant so the two
+ *  cannot drift apart. Only ever spent once per connect(), and only while untrusted. */
+export const RECLAIM_RETRY_MS = E.STALE_AFTER_MS + 1500;
 
 export class Transport {
   /**
@@ -58,10 +76,10 @@ export class Transport {
                 heartbeatMs = E.STATUS_HEARTBEAT_MS, now = () => Date.now(), timers = globalThis,
                 random = Math.random, backoff = { baseMs: 500, capMs: 10000, jitter: 0.2 }, helloTimeoutMs = 5000,
                 welcomeTimeoutMs = 10000, keyPrefix = 'brx', backhaulGiveupMs = BACKHAUL_GIVEUP_MS,
-                pubRetryMs = PUB_RETRY_MS } = {}) {
+                pubRetryMs = PUB_RETRY_MS, lanGiveupMs = LAN_GIVEUP_MS, reclaimRetryMs = RECLAIM_RETRY_MS } = {}) {
     this.storage = storage; this.wsFactory = wsFactory; this.now = now; this.timers = timers; this.random = random;
     this.backoff = backoff; this.helloTimeoutMs = helloTimeoutMs; this.heartbeatMs = heartbeatMs; this.welcomeTimeoutMs = welcomeTimeoutMs;
-    this.backhaulGiveupMs = backhaulGiveupMs; this.pubRetryMs = pubRetryMs;
+    this.backhaulGiveupMs = backhaulGiveupMs; this.pubRetryMs = pubRetryMs; this.lanGiveupMs = lanGiveupMs; this.reclaimRetryMs = reclaimRetryMs;
     this.syncIntervalMs = Math.min(5000, Math.floor(E.SYNC_FRESH_MS / 2));   // keep synced() fresh (SYNC_FRESH_MS = 10 s)
     this.nodeId = node.node_id || this._persistedNodeId(`${keyPrefix}.node_id`);
     this._keyKey = `${keyPrefix}.node_key`;
@@ -82,6 +100,11 @@ export class Transport {
     this.context = {};                       // last welcome.node / assign / config / start
     this.ring = new Ring({ storage, key: `${keyPrefix}.outbox`, now });
     this.clock = new Clock({ storage, key: `${keyPrefix}.clock`, now });
+    // Review pass 1 (security): a url the USER never provided -- one the LAN sweep found by opening a
+    // socket to it -- is an UNTRUSTED peer until it proves it is Mission Control by welcoming us. Any
+    // host on the subnet can accept a websocket upgrade on the node port, and `hello` otherwise hands it
+    // this node's takeover key (A8.2) and the join secret (A28.2). Both are stripped while untrusted.
+    this.trusted = true; this._reclaimTried = false;
     this.armedOrLive = false;                // app sets true in ARMED/LIVE → reconnect is unbounded
     this.preflight = {};                     // app merges via setPreflight()
     this.statusProvider = null;              // app: () => status body (hp, armor, ammo, alive, shots, arm_state, ...)
@@ -96,7 +119,17 @@ export class Transport {
   }
 
   // ---------- public API (net.md §6) ----------
-  connect({ url, mdns, qr, pub, secret } = {}) {
+  connect({ url, mdns, qr, pub, secret, trusted = true } = {}) {
+    // F153b (field 2026-09-12): a new connect() SUPERSEDES whatever dial is already in flight. A QR
+    // rescan after the tunnel restarted, a typed address, RECONNECT MC -- each hands us a new triple,
+    // and the socket already connecting was aimed at the old one. Left alone it holds the slot until the
+    // OS connect timeout (~2 min on Android), so the phone ignores the address the player just scanned.
+    // Kill it (handlers detached first, so its onclose cannot schedule a reconnect behind us), settle the
+    // old connect() promise, and dial the new target from the top of the ladder below.
+    this._abortInFlight('superseded by a new connect()', 'reconnect');
+    this.attempt = 0;
+    this.trusted = trusted !== false;   // stays false until this peer welcomes us (see `trusted` above)
+    this._reclaimTried = false;
     const nextUrl = url || qr || this.url;
     // A28.2 security: pub/secret are only ever valid for the MC that issued them. A different LAN
     // target (a phone told to join a different MC) means the tunnel/secret held for the OLD one must
@@ -110,10 +143,22 @@ export class Transport {
     this.closed = false; this.rejected = null;
     return new Promise((resolve, reject) => {
       this._firstWelcome = { resolve, reject };
+      // Armed BEFORE the dial: `_open()` can reach a close handler synchronously, and a handler that
+      // re-arms this timeout (the reclaim retry below) would otherwise have its timer overwritten here.
+      this._armConnectTimeout(this.welcomeTimeoutMs);
       this._open();
-      // Reject the connect() promise if no welcome ever arrives; the reconnect loop keeps running regardless.
-      this._connectTimer = this.timers.setTimeout(() => { this._connectTimer = null; if (this._firstWelcome) { const p = this._firstWelcome; this._firstWelcome = null; p.reject(new Error('connect: no welcome within ' + this.welcomeTimeoutMs + ' ms')); } }, this.welcomeTimeoutMs);
     });
+  }
+  /** Arm (or re-arm, from `ms` NOW) the deadline that rejects the pending connect() when no welcome ever
+   *  arrives. The reconnect loop keeps running either way — this only settles the promise the caller is
+   *  holding. No pending promise, no timer. */
+  _armConnectTimeout(ms) {
+    if (this._connectTimer) { this.timers.clearTimeout(this._connectTimer); this._connectTimer = null; }
+    if (!this._firstWelcome) return;
+    this._connectTimer = this.timers.setTimeout(() => {
+      this._connectTimer = null;
+      if (this._firstWelcome) { const p = this._firstWelcome; this._firstWelcome = null; p.reject(new Error('connect: no welcome within ' + ms + ' ms')); }
+    }, ms);
   }
   bind({ player_id, gun } = {}) {
     if (gun && gun.name) this.gun = gun;      // gun linked AFTER connect (MC-first join order) — without this the bind never carried the gun (rig find, 2026-08-26)
@@ -165,18 +210,53 @@ export class Transport {
   setPreflight(p) { Object.assign(this.preflight, p || {}); }
   setStatusProvider(fn) { this.statusProvider = fn; }
   close() {
-    this.closed = true; this._clearTimers(); this._clearPubRetry(); this._probeStale = false;
-    if (this._probeGiveupTimer) { this.timers.clearTimeout(this._probeGiveupTimer); this._probeGiveupTimer = null; }
-    if (this._probeWs) { const p = this._probeWs; this._probeWs = null; try { p.onopen = p.onmessage = p.onerror = p.onclose = null; p.close(); } catch (_) { /* ignore */ } }
-    if (this._firstWelcome) { const p = this._firstWelcome; this._firstWelcome = null; p.reject(new Error('connect: transport closed')); }
-    const ws = this._ws; this._ws = null;
-    if (ws) { try { ws.close(1000, 'closed'); } catch (_) { /* ignore */ } }
+    this.closed = true;
+    this._abortInFlight('transport closed', 'closed');
     this._setState('offline');
   }
+  /** F153c: "the network just came back" -- the platform told the app connectivity changed (app.js wires
+   *  Capacitor's Network plugin to this), or the player asked for it by hand. Whatever we are sitting on
+   *  is worthless now: a backoff timer counting down, or a dial hanging on an address that had no route
+   *  while the radio was down. Drop it, reset the backoff, and dial from the TOP of the ladder (pub
+   *  first) this instant. A pending connect() promise is kept -- this IS that dial, restarted.
+   *  No-op while there is a live link (open/bound), or once MC refused us / we were closed.
+   *  @returns {boolean} whether a dial was actually kicked */
+  dialNow() {
+    if (this.closed || this.state === 'bound' || this.state === 'open' || this.state === 'rejected') return false;
+    if (!this.url && !this.pub) return false;
+    this._abortInFlight();
+    this.attempt = 0;
+    this._log('dial now (network change / manual)');
+    this._open();
+    return true;
+  }
+  /** Alias: app.js's network listener reads better as `kick()`. */
+  kick() { return this.dialNow(); }
   /** Test/diagnostic hook: drop the link as if we walked out of range (reconnect loop continues). */
   dropLink() { const ws = this._ws; if (ws) { try { ws.close(4002, 'drop'); } catch (_) { /* ignore */ } } }
 
   // ---------- internals ----------
+  /** Tear down the dial/probe in flight WITHOUT touching the held {url, pub, secret}, the ring or the
+   *  clock. Handlers are detached before close so a dying socket's onclose cannot schedule a reconnect
+   *  behind the caller's back. `rejectReason` also settles a pending connect() promise (F153b: a new
+   *  connect() supersedes the old one) -- pass null when the caller is about to re-dial for that same
+   *  promise (dialNow), and the connect() timeout is then left running. */
+  _abortInFlight(rejectReason = null, wsReason = 'redial') {
+    // `_clearTimers()` CANCELS `_connectTimer`, and putting the handle back afterwards does not un-cancel
+    // it -- a kept promise would then never settle either way (review pass 1: dialNow() at 50 ms left a
+    // welcomeTimeoutMs=300 connect() still pending at 800 ms). Hide it from the clear, exactly as
+    // `_onOngoingClose` does, so the timeout the caller is keeping keeps running.
+    let keepConnectTimer = null;
+    if (!rejectReason) { keepConnectTimer = this._connectTimer; this._connectTimer = null; }
+    this._clearTimers(); this._clearPubRetry();
+    this._connectTimer = keepConnectTimer;
+    this._probeStale = false;
+    if (this._probeGiveupTimer) { this.timers.clearTimeout(this._probeGiveupTimer); this._probeGiveupTimer = null; }
+    if (this._probeWs) { const p = this._probeWs; this._probeWs = null; try { p.onopen = p.onmessage = p.onerror = p.onclose = null; p.close(); } catch (_) { /* ignore */ } }
+    const ws = this._ws; this._ws = null; this._viaCurrent = null;
+    if (ws) { try { ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null; ws.close(1000, wsReason); } catch (_) { /* ignore */ } }
+    if (rejectReason && this._firstWelcome) { const p = this._firstWelcome; this._firstWelcome = null; p.reject(new Error('connect: ' + rejectReason)); }
+  }
   _persisted(key) { try { return this.storage.getItem(key) || null; } catch (_) { return null; } }
   _store(key, v) { try { this.storage.setItem(key, v); } catch (_) { /* ignore */ } }
   _remove(key) { try { this.storage.removeItem(key); } catch (_) { /* ignore */ } }
@@ -228,9 +308,9 @@ export class Transport {
   _helloBody(via) {
     return {
       node_id: this.nodeId, node_type: this.nodeType, app_ver: this.appVer, platform: this.platformName(), via,   // A29 + A28.3
-      ...(this.secret ? { secret: this.secret } : {}),
+      ...(this.secret && this.trusted ? { secret: this.secret } : {}),
       gun: this.gun ? { name: this.gun.name, tail: this.gun.tail, ...(this.gun.fw ? { fw: this.gun.fw } : {}) } : undefined,
-      seq_next: this.ring.seqNext, ...(this.nodeKey ? { node_key: this.nodeKey } : {}),
+      seq_next: this.ring.seqNext, ...(this.nodeKey && this.trusted ? { node_key: this.nodeKey } : {}),
     };
   }
   _open() {
@@ -251,28 +331,35 @@ export class Transport {
       this._scheduleReconnect(); return;
     }
     this._ws = ws; this._viaCurrent = via;
-    if (via === 'backhaul') {
-      // Arm the giveup the INSTANT we start dialling, not just after onopen: a pub that accepts the TCP
-      // connection but never completes the websocket upgrade, or blackholes entirely (a dead tunnel
-      // hostname still in DNS, cellular dropping packets to the edge), fires neither onopen NOR onclose
-      // -- an onopen-armed timer would never even get armed, and the phone would sit offline with a
-      // working LAN one hop away. On expiry with the socket never opened we don't wait on `dropLink()`
-      // (which depends on an onclose that, for exactly this kind of dial, may never come) -- close it
-      // ourselves and dial LAN directly.
-      this._helloTimer = this.timers.setTimeout(() => {
-        if (this._ws !== ws || this.state !== 'connecting') return;
-        this._log('backhaul giveup, falling back to LAN');
-        this._helloTimer = null; this._ws = null;
-        try { ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null; ws.close(); } catch (_) { /* ignore */ }
-        this._dialVia('lan', this.url);
-      }, this.backhaulGiveupMs);
-    }
+    // Arm the giveup the INSTANT we start dialling, not just after onopen: a dial that accepts the TCP
+    // connection but never completes the websocket upgrade, or blackholes entirely (a dead tunnel
+    // hostname still in DNS, cellular dropping packets to the edge, a LAN address with no route from
+    // this phone), fires neither onopen NOR onclose -- an onopen-armed timer would never even get armed,
+    // and the phone would sit offline for the OS connect timeout (~2 min on Android) with a working path
+    // one hop away. On expiry with the socket never opened we don't wait on `dropLink()` (which depends
+    // on an onclose that, for exactly this kind of dial, may never come) -- close it ourselves.
+    // F153a: BOTH legs get this. backhaul -> fall straight to the LAN url (no backoff consumed);
+    // lan -> end the pass and let the reconnect loop start the next one, which dials pub first whenever
+    // one is held. So the ladder really is pub -> lan -> pub, bounded by LAN_GIVEUP_MS, not by Android.
+    this._helloTimer = this.timers.setTimeout(() => {
+      if (this._ws !== ws || this.state !== 'connecting') return;
+      this._helloTimer = null; this._ws = null;
+      try { ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null; ws.close(); } catch (_) { /* ignore */ }
+      if (via === 'backhaul') { this._log('backhaul giveup, falling back to LAN'); this._dialVia('lan', this.url); return; }
+      this._log(this.pub ? 'lan giveup — the next pass dials pub' : 'lan giveup');
+      this._setState('offline'); this._scheduleReconnect();
+    }, via === 'backhaul' ? this.backhaulGiveupMs : this.lanGiveupMs);
     ws.onopen = () => {
       if (ws !== this._ws) return;
       this.attempt = 0;
       this._sendRaw(E.makeEnvelope('hello', this._helloBody(via)), ws);
       // 'backhaul': the giveup timer armed above already covers "no welcome in time" -- nothing to re-arm.
-      if (via === 'lan') this._helloTimer = this.timers.setTimeout(() => { if (this._ws === ws && this.state === 'connecting') { this._log('welcome timeout'); this.dropLink(); } }, this.helloTimeoutMs);
+      // 'lan': the socket is open, so the pre-open giveup has done its job -- clear it (leaving it armed
+      // would close a perfectly good socket mid-hydration) and swap in the shorter welcome timeout.
+      if (via === 'lan') {
+        if (this._helloTimer) { this.timers.clearTimeout(this._helloTimer); this._helloTimer = null; }
+        this._helloTimer = this.timers.setTimeout(() => { if (this._ws === ws && this.state === 'connecting') { this._log('welcome timeout'); this.dropLink(); } }, this.helloTimeoutMs);
+      }
     };
     ws.onmessage = evt => { if (ws === this._ws) this._onFrame(typeof evt.data === 'string' ? evt.data : String(evt.data)); };
     ws.onerror = () => { /* onclose follows, or (a true blackhole) the giveup above fires */ };
@@ -292,6 +379,24 @@ export class Transport {
    *  ordinary drop of an already-welcomed link. Shared by every socket this Transport ever owns. */
   _onOngoingClose(evt) {
     const code = evt && evt.code;
+    // A 4003 on an UNTRUSTED dial is very often us: the hello was keyless by design, and MC still holds
+    // a live record for this node_id from the socket we just lost. That holder goes stale in
+    // STALE_AFTER_MS and is then displaced with no key at all (A8.2) — so one patient retry turns a
+    // dead end ("MC REFUSED: gun or node in use", with no way forward but clearing app data) into a
+    // join that lands ~10 s later. A trusted dial keeps the old behaviour: refusal is authoritative.
+    if (code === 4003 && !this.trusted && !this._reclaimTried && !this.closed) {
+      this._reclaimTried = true;
+      this._log(`4003 while untrusted — waiting out the stale window (${this.reclaimRetryMs} ms), then one more try`);
+      this._clearTimers();
+      // ...and the pending connect() must not reject part-way through a wait WE scheduled: the stale
+      // window (9.5 s) sits just under the default welcome timeout (10 s), so the HUD used to log "no
+      // welcome within 10000 ms" over a join that then landed a second later. Give it the wait plus a
+      // full welcome window, measured from now.
+      this._armConnectTimeout(this.reclaimRetryMs + this.welcomeTimeoutMs);
+      this._setState('offline');
+      if (!this._rcTimer) this._rcTimer = this.timers.setTimeout(() => { this._rcTimer = null; this._open(); }, this.reclaimRetryMs);
+      return;
+    }
     if (code === 4001 || code === 4003) {
       this.rejected = { code, reason: (evt && evt.reason) || (code === 4003 ? 'gun or node in use' : 'protocol version') };
       this.closed = true; this._clearTimers();
@@ -392,6 +497,9 @@ export class Transport {
     if (body.session_id && this._persistedSessionId && body.session_id !== this._persistedSessionId) {
       this._setPub(null); this._setSecret(null);
     }
+    // It welcomed us, so it speaks the M-NET protocol and is the MC we dialled: the next hello may carry
+    // the key (a keyless hello cannot take a still-live node_id back, A8.2) and the secret.
+    this.trusted = true; this._reclaimTried = false;
     if (body.session_id) { this._persistedSessionId = body.session_id; this._store(this._sessionKey, body.session_id); }
     this.sessionId = body.session_id;
     if (typeof body.node_key === 'string' && body.node_key) { this.nodeKey = body.node_key; this._store(this._keyKey, body.node_key); }

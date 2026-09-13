@@ -70,6 +70,11 @@ def _fake_child(*, delay_s: float = 0.0, url: str | None = FAKE_HOST, exit_after
 _PID_DIRS: list = []
 
 
+async def _resolves_now(_host: str) -> bool:
+    """F140 stand-in resolver: the hostname is already in DNS."""
+    return True
+
+
 def _tunnel(argv: list[str], **kw) -> Tunnel:
     seen: list[list[str]] = []
 
@@ -78,6 +83,11 @@ def _tunnel(argv: list[str], **kw) -> Tunnel:
         return await asyncio.create_subprocess_exec(
             *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
 
+    # F140: the DNS gate is ON by default in production (the hostname must answer at Cloudflare before
+    # MC says UP). Every test below that is about the CHILD gets an instant, always-true resolver so it
+    # keeps testing the child; the F140 tests pass their own.
+    kw.setdefault("resolve", _resolves_now)
+    kw.setdefault("dns_poll_s", 0.01)
     if "pid_dir" not in kw:
         # NEVER the default `~/.brx-mcp`: a test that writes a pid file into the real home can reap
         # (or be reaped by) a tunnel belonging to an actual Mission Control on this machine.
@@ -132,7 +142,10 @@ def test_tunnel_goes_starting_then_up_parses_the_url_and_stops_back_to_off():
         out = await t.stop()
         assert out["status"] == "off" and out["ws_url"] is None
     run(go())
-    assert [p["status"] for p in seen] == ["starting", "up", "off"], seen
+    # F140: two `starting` emits — the spawn, then the `resolving <host>` sub-state — before UP.
+    assert [p["status"] for p in seen] == ["starting", "starting", "up", "off"], seen
+    assert seen[1]["detail"].startswith("resolving polite-cotton-pine-nm.trycloudflare.com")
+    assert "detail" not in seen[2], "a resolved hostname needs no sub-state"
     # the argv MC would really have run
     # the ABSOLUTE resolved path, not the bare name: PATH must not be re-read at exec time
     assert t.spawned[0] == ["/usr/bin/cloudflared", "tunnel", "--url",
@@ -597,8 +610,49 @@ def test_a_backhaul_node_is_not_red_for_being_off_the_field_wifi():
     s.net.simulate_status("n1", dict(off_wifi), s.now_ms())
     row = next(r for r in s.readiness()["board"] if r["player_id"] == p["player_id"])
     assert not any("WI-FI" in b for b in row["blockers"]), row["blockers"]
-    assert any("BACKHAUL" in a for a in row["ambers"]), row["ambers"]
-    assert row["status"] != "red", row
+    # F144 (field 2026-09-12): GREEN, not amber. A phone MC is talking to right now IS ready; the path
+    # is a tag on the row, not a complaint. The first real tunnel match read as a board full of CHECKs.
+    assert not any("BACKHAUL" in a or "WI-FI" in a for a in row["ambers"]), row["ambers"]
+    assert row["status"] != "red", row       # nothing about the PATH complains any more
+    assert row["reach"] == "backhaul" and row["last_reach"] == "backhaul", row
+
+
+def test_f155_a_node_whose_last_path_was_the_internet_is_not_accused_of_the_wrong_wifi():
+    """Field 2026-09-12: the tunnel was turned off, both sockets closed, and the Armory card went red
+    with "WRONG WI-FI / MC UNREACHABLE". The phone was on the network it had always been on. The only
+    thing that changed was the tunnel, so the reason has to be the one the operator can act on."""
+    s = _sess()
+    s.set_config({"mode": "tdm", "time_limit_s": 600})
+    p = s.add_player("reaper", gun_id="GUN-A")
+    s.net.simulate_hello("n1", "GUN-A", via="backhaul")
+    # `mc_reachable: False` is the NORMAL report for a backhaul phone: it probes the LAN url, which is
+    # exactly the address it cannot reach. This is what used to flip to red the moment the socket died.
+    off_wifi = {"node_id": "n1", "arm_state": "kitted", "synced": True,
+                "preflight": {"ssid_ok": False, "mc_reachable": False, "gun_linked": True}}
+    s.net.simulate_status("n1", dict(off_wifi), s.now_ms() - 40_000)
+    s._on_disconnect("n1")                                   # the tunnel went away with the socket
+    row = next(r for r in s.readiness()["board"] if r["player_id"] == p["player_id"])
+    assert row["reach"] is None and row["last_reach"] == "backhaul", row
+    assert not any("WI-FI" in b for b in row["blockers"]), row["blockers"]
+    said = next(b for b in row["blockers"] if "NOT REACHED" in b)
+    assert said.startswith("NOT REACHED FOR "), said
+    assert "TUNNEL DOWN" not in said, "the tunnel is not in error — it was switched off"
+
+    # ...and while the tunnel is in ERROR, the line leads with the reason.
+    s.lan["public"] = {"status": "error", "ws_url": None, "provider": "cloudflared",
+                       "available": True, "error": "cloudflared exited (1)"}
+    row = next(r for r in s.readiness()["board"] if r["player_id"] == p["player_id"])
+    assert any(b.startswith("TUNNEL DOWN — NOT REACHED FOR ") for b in row["blockers"]), row["blockers"]
+
+    # a node whose last path was the LAN keeps the old, correct accusation
+    s2 = _sess()
+    s2.set_config({"mode": "tdm", "time_limit_s": 600})
+    q = s2.add_player("ghost", gun_id="GUN-B")
+    s2.net.simulate_hello("n2", "GUN-B", via="lan")
+    s2.net.simulate_status("n2", {**off_wifi, "node_id": "n2"}, s2.now_ms())
+    s2._on_disconnect("n2")
+    row2 = next(r for r in s2.readiness()["board"] if r["player_id"] == q["player_id"])
+    assert any("WRONG WI-FI" in b for b in row2["blockers"]), row2["blockers"]
 
 
 # --------------------------------------------------------------------------- review: the gate's arming
@@ -848,7 +902,8 @@ def test_the_latch_survives_the_whole_starting_window_not_just_until_start_is_ca
         return await asyncio.create_subprocess_exec(
             *_fake_child(), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
 
-    t = Tunnel(spawn=slow_spawn, which=lambda _b: "/usr/bin/cloudflared")
+    t = Tunnel(spawn=slow_spawn, which=lambda _b: "/usr/bin/cloudflared",
+               resolve=_resolves_now, dns_poll_s=0.01)
     t._alive = staticmethod(lambda _pid: True)
     t._set_orphan(4242)
 
@@ -988,7 +1043,8 @@ def test_a_stop_inside_the_spawn_window_kills_the_child_it_could_not_see():
         holder.append(proc)
         return proc
 
-    t = Tunnel(spawn=slow_spawn, which=lambda _b: "/usr/bin/cloudflared")
+    t = Tunnel(spawn=slow_spawn, which=lambda _b: "/usr/bin/cloudflared",
+               resolve=_resolves_now, dns_poll_s=0.01)
 
     async def go():
         t.start(8766)
@@ -1113,3 +1169,166 @@ def test_public_url_refuses_plaintext_to_a_public_host():
             raise AssertionError(f"accepted {bad!r}")
         except SystemExit as e:
             assert why in str(e), (bad, str(e))
+
+
+# --------------------------------------------------------------------------- F140: announce UP only
+# once the hostname RESOLVES (field 2026-09-12)
+def test_f140_the_tunnel_holds_starting_while_the_hostname_does_not_resolve_yet():
+    """The field trap: cloudflared printed the URL, MC said UP, the QR was scanned a second later, and
+    the home router negative-cached the NXDOMAIN for ~250 s. So `up` now waits for an A record."""
+    answers: list[bool] = [False, False, True]
+    asked: list[str] = []
+
+    async def resolve(host):
+        asked.append(host)
+        return answers.pop(0) if answers else True
+
+    t = _tunnel(_fake_child(), resolve=resolve, dns_poll_s=0.01)
+    seen: list[dict] = []
+    t.on_change(lambda p: seen.append(p))
+
+    async def go():
+        t.start(8766)
+        assert await _until(lambda: t.detail and t.detail.startswith("resolving")), t.public()
+        # the URL has been READ, and it is deliberately not published yet
+        assert t.status == "starting" and t.ws_url is None
+        assert t.armed is True, "the join gate is armed the moment the child is ours, resolving or not"
+        assert await _until(lambda: t.status == "up"), t.public()
+        assert t.ws_url == "wss://polite-cotton-pine-nm.trycloudflare.com/ws"
+        assert t.detail is None
+        await t.stop()
+    run(go())
+    assert asked == ["polite-cotton-pine-nm.trycloudflare.com"] * 3, asked
+    assert [p["status"] for p in seen] == ["starting", "starting", "up", "off"], seen
+
+
+def test_f140_the_qr_and_the_join_push_wait_for_the_hostname_too():
+    """A28.2: `lan.qr` carries `&pub=` only while `status == "up"`, so holding `starting` holds the QR —
+    which is the whole point. A phone must never be handed a hostname its resolver will cache as missing."""
+    gate = asyncio.Event()
+
+    async def resolve(_host):
+        return gate.is_set()
+
+    s = _sess()
+    t = _tunnel(_fake_child(), resolve=resolve, dns_poll_s=0.01)
+    s.attach_tunnel(t)
+
+    async def go():
+        t.start(8766)
+        assert await _until(lambda: (s.lan["public"].get("detail") or "").startswith("resolving")), s.lan["public"]
+        assert "pub=" not in s.lan["qr"], "the QR advertised a hostname that does not resolve yet"
+        assert s.join_body()["pub"] is None
+        gate.set()
+        assert await _until(lambda: s.lan["public"]["status"] == "up"), s.lan["public"]
+        assert "pub=" in s.lan["qr"] and s.join_body()["pub"].endswith("trycloudflare.com/ws")
+        await t.stop()
+    run(go())
+
+
+def test_f140_a_hostname_that_never_resolves_goes_up_anyway_with_a_warning():
+    async def never(_host):
+        return False
+
+    t = _tunnel(_fake_child(), resolve=never, dns_poll_s=0.01, dns_cap_s=0.05)
+
+    async def go():
+        t.start(8766)
+        assert await _until(lambda: t.status == "up"), t.public()
+        assert t.ws_url == "wss://polite-cotton-pine-nm.trycloudflare.com/ws"
+        assert "did not resolve" in (t.public().get("detail") or ""), t.public()
+        await t.stop()
+    run(go())
+
+
+def test_f140_the_start_deadline_covers_reading_the_url_not_the_dns_wait():
+    """The trap this fix could have introduced: the 20 s start cap used to key on `status == "starting"`,
+    and the DNS wait holds exactly that status. Keyed on the URL line instead, a slow resolver can never
+    kill a cloudflared that has already printed its hostname."""
+    async def slow(_host):
+        await asyncio.sleep(0.2)
+        return True
+
+    t = _tunnel(_fake_child(), resolve=slow, dns_poll_s=0.01, timeout_s=0.3)
+
+    async def go():
+        t.start(8766)
+        assert await _until(lambda: t.status == "up", timeout=5), t.public()
+        assert t.error is None and t._proc is not None and t._proc.returncode is None
+        await t.stop()
+    run(go())
+
+
+def test_f140_a_stop_during_the_dns_wait_never_announces_up_afterwards():
+    async def never(_host):
+        return False
+
+    t = _tunnel(_fake_child(), resolve=never, dns_poll_s=0.01, dns_cap_s=5.0)
+
+    async def go():
+        t.start(8766)
+        assert await _until(lambda: (t.detail or "").startswith("resolving")), t.public()
+        await t.stop()
+        assert t.status == "off" and t.detail is None
+        await asyncio.sleep(0.1)
+        assert t.status == "off", "the resolver task announced UP after the tunnel was stopped"
+    run(go())
+
+
+def test_f140_the_doh_query_reads_an_a_record_out_of_the_json_answer():
+    """The parser, over captured `application/dns-json` bodies — no network."""
+    import json as _json
+    from brx_mcp.mc import tunnel as _t
+
+    bodies = {
+        # NOERROR with an A record: resolved
+        '{"Status":0,"Answer":[{"name":"x.trycloudflare.com","type":1,"TTL":300,"data":"104.16.0.1"}]}': True,
+        # NXDOMAIN: the record does not exist yet
+        '{"Status":3}': False,
+        # NOERROR, no Answer at all (the empty-answer shape the field rig saw)
+        '{"Status":0,"Answer":[]}': False,
+        # a CNAME alone is not an address
+        '{"Status":0,"Answer":[{"name":"x","type":5,"data":"y.example."}]}': False,
+    }
+    for raw, want in bodies.items():
+        class _Resp:
+            def __enter__(self_):
+                return self_
+            def __exit__(self_, *a):
+                return False
+            def read(self_):
+                return raw.encode()
+        got = None
+        real = _t.urllib.request.urlopen
+        _t.urllib.request.urlopen = lambda *a, **k: _Resp()
+        try:
+            got = _t._doh_has_a("x.trycloudflare.com")
+        finally:
+            _t.urllib.request.urlopen = real
+        assert got is want, (raw, got)
+        _json.loads(raw)        # the fixture is real JSON
+
+
+def test_f140_the_sub_state_moves_only_through_the_one_setter():
+    """Round-2 review 2026-09-12: a second `_set_detail` path existed with no call site. One writer for
+    `status`/`ws_url`/`error`/`detail` is what keeps a no-op transition from re-rendering the QR and
+    re-broadcasting `join`."""
+    import inspect
+    from brx_mcp.mc.tunnel import Tunnel as _T
+    src = inspect.getsource(_T)
+    assert "_set_detail" not in src, "the unused sub-state setter is back"
+    assert src.count("def _set(") == 1
+
+
+def test_f140_a_doh_query_that_cannot_be_made_is_not_yet_never_an_exception():
+    from brx_mcp.mc import tunnel as _t
+
+    def boom(*_a, **_k):
+        raise OSError("no route to host")
+
+    real = _t.urllib.request.urlopen
+    _t.urllib.request.urlopen = boom
+    try:
+        assert run(_t._resolves("x.trycloudflare.com")) is False
+    finally:
+        _t.urllib.request.urlopen = real

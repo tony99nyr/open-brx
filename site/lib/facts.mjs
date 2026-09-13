@@ -17,7 +17,9 @@ const read = (repo, rel) => {
 /** Every game mode Mission Control offers, in the order it offers them. */
 export function modes(repo) {
   const src = read(repo, 'mcp/brx_mcp/mc/state.py');
-  const block = src.match(/^MODES\s*=\s*\[([\s\S]*?)^\]/m);
+  // `MODES: list[ModeRow] = [` since the pyright pass (2026-09-12); the annotation is optional here so a
+  // typed or untyped declaration both parse (the build was red on main for the typed one).
+  const block = src.match(/^MODES(?:\s*:\s*[^=\n]+?)?\s*=\s*\[([\s\S]*?)^\]/m);
   if (!block) throw new Error('facts: could not find the MODES list in mcp/brx_mcp/mc/state.py (renamed?)');
   const out = [];
   // one dict per entry; each starts with {"mode": ... and carries name/abbr/desc/brief on the wire

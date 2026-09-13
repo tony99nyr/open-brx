@@ -2003,3 +2003,14 @@ def test_a_lethal_host_write_arrives_as_a_zeroed_lcd_and_the_stage_books_the_dea
         assert not st.alive, "death booked from the zeroed $LCD"
         assert st.hp == 0
     asyncio.run(run())
+
+
+def test_tryout_frame_slot_mirrors_the_engine():
+    """engine.js `_tryoutFrameSlot`: first $WEAP/$AMMO slot token wins, non-slot frames skipped, default 0."""
+    from brx_mcp.stage.stage import GunStage
+    fn = GunStage._tryoutFrameSlot
+    assert fn(None, ["$CLEAR,*", "$WEAP,0,1,2,*", "$AMMO,1,30,*"]) == 0
+    assert fn(None, ["$TID,1,*", "$AMMO,1,30,*", "$WEAP,0,1,*"]) == 1
+    assert fn(None, ["$CLEAR,*", "$TID,1,*"]) == 0
+    assert fn(None, []) == 0 and fn(None, None) == 0
+

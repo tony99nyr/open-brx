@@ -82,6 +82,16 @@ $PB -c "Delete :UIBackgroundModes" "$PLIST" 2>/dev/null || true
 $PB -c "Add :UIBackgroundModes array" "$PLIST"
 $PB -c "Add :UIBackgroundModes:0 string bluetooth-central" "$PLIST"
 
+# --- Export compliance (TestFlight / App Store) -------------------------------
+# Without this key EVERY upload lands in "Waiting for Export Compliance" in App
+# Store Connect and testers cannot see the build until someone answers the
+# question by hand, per build. Open BRX uses no encryption of its own: BLE to the
+# tagger, plain ws:// to Mission Control on a field LAN with no internet. Any
+# TLS it ever touches is the OS's own, which is exempt.
+# ⚠ If custom crypto is ever added (signed rosters, an encrypted session store),
+# this MUST be revisited — it is a legal declaration, not a build flag.
+set_bool ITSAppUsesNonExemptEncryption false
+
 # --- Landscape, rail-mounted -------------------------------------------------
 $PB -c "Delete :UISupportedInterfaceOrientations" "$PLIST" 2>/dev/null || true
 $PB -c "Add :UISupportedInterfaceOrientations array" "$PLIST"
@@ -90,7 +100,8 @@ $PB -c "Add :UISupportedInterfaceOrientations:1 string UIInterfaceOrientationLan
 
 echo "==> Info.plist keys now set:"
 for k in NSBluetoothAlwaysUsageDescription NSCameraUsageDescription NSLocalNetworkUsageDescription \
-         NSAppTransportSecurity:NSAllowsLocalNetworking NSBonjourServices:0 UIBackgroundModes:0; do
+         NSAppTransportSecurity:NSAllowsLocalNetworking NSBonjourServices:0 UIBackgroundModes:0 \
+         ITSAppUsesNonExemptEncryption; do
   printf '   %s = ' "$k"; $PB -c "Print :$k" "$PLIST"
 done
 echo "==> done. Open with: npx cap open ios   (needs full Xcode)"

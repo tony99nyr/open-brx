@@ -4,6 +4,7 @@
 // shapes mirroring `mc/API.md`), so UI policy does not belong in it (review 2026-09-01). Nothing here
 // talks to the network; everything is a pure function of `State`.
 import type { NodeView, State } from './types';
+import { fmtAge } from '../tokens';
 /** A stable fingerprint of "which guns does MC know about right now".
  *
  *  For effects that must refetch the armory when the fleet CHANGES. Never key such an effect on
@@ -40,6 +41,15 @@ export function reachOf(n: Pick<NodeView, 'reach'> | undefined | null): 'lan' | 
   return n?.reach === 'backhaul' ? 'backhaul' : 'lan';
 }
 
+/** S40 (field 2026-09-12) — "BACKHAUL" read as "on cellular" to an operator, when what it actually
+ *  means is WHICH PATH reached Mission Control. The REACH block already says INTERNET; every other
+ *  tag now says the same thing. Render this word, never `reach.toUpperCase()` directly. */
+export const reachLabel = (reach: 'lan' | 'backhaul'): 'LAN' | 'INTERNET' => (reach === 'backhaul' ? 'INTERNET' : 'LAN');
+/** The tooltip is the PATH TO MC, never a claim about the phone's own radio (a phone on the internet
+ *  path may still have Wi-Fi on; this says nothing about that). */
+export const reachTooltip = (reach: 'lan' | 'backhaul'): string =>
+  reach === 'backhaul' ? 'Reached Mission Control through the internet tunnel.' : 'Reached Mission Control over the field Wi-Fi.';
+
 /** A28.4 — the one-line coverage readout, or null when there is nothing to say yet (no bound player
  *  node this session). `bound` is the true denominator even while the tunnel is off — the count is
  *  what should read as unearned, not the sentence. */
@@ -47,6 +57,21 @@ export function coverageLine(state: State | null): string | null {
   const c = state?.coverage;
   if (!c || c.bound === 0) return null;
   return c.level === 'full'
-    ? `FULL COVERAGE — ${c.on_backhaul} OF ${c.bound} ON BACKHAUL`
-    : `COVERAGE ZONES — ${c.on_backhaul} OF ${c.bound} ON BACKHAUL`;
+    ? `FULL COVERAGE — ${c.on_backhaul} OF ${c.bound} ON THE INTERNET PATH`
+    : `COVERAGE ZONES — ${c.on_backhaul} OF ${c.bound} ON THE INTERNET PATH`;
+}
+
+/** F155 (field 2026-09-12, ISSUE 30) — a node whose last known path was the internet tunnel reads
+ *  "WRONG WI-FI" today when that tunnel drops, which sends the operator chasing the phone's Wi-Fi
+ *  settings for a fault that is entirely MC's tunnel. `NodeView.last_reach` survives the disconnect
+ *  (`reach` itself is cleared), so the console can say the true reason instead. Returns null when the
+ *  node's last path was LAN (or unknown) — that case keeps whatever the server's own wording says. */
+export function staleReachReason(n: Pick<NodeView, 'reach' | 'last_reach' | 'last_seen_ms'> | undefined | null, tunnelStatus?: 'off' | 'starting' | 'up' | 'error'): string | null {
+  // `reach` present means the node is CURRENTLY connected — this must say nothing about a fault it
+  // does not have. Only a node that HAD `reach === 'backhaul'` and has since dropped it (this fired
+  // once for every currently-connected backhaul node too, a bug caught in the browser verification
+  // pass 2026-09-12) gets the honest "not reached" reading.
+  if (n?.reach || n?.last_reach !== 'backhaul') return null;
+  const base = `NOT REACHED FOR ${fmtAge(n.last_seen_ms ?? 0).toUpperCase()}`;
+  return tunnelStatus === 'error' ? `${base} — TUNNEL DOWN` : base;
 }

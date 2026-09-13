@@ -132,6 +132,10 @@ If the tunnel dies, a banner says so on every screen and the phones fall back to
 it back on gives a new hostname, which only matters for a phone that never comes back into Wi-Fi range: that
 one rescans the QR. You can also start with the tunnel on: `python -m brx_mcp.mc --tunnel`.
 
+Two rules from the first field run: **do not turn the tunnel off during a session** (every phone on it drops and
+must rescan), and **wait for the row to read UP before anyone scans**. A new hostname can take a few minutes to
+reach some home routers; a phone that asks too early may need to wait that long before its scan works.
+
 ## During the match
 
 Mission Control is setup, start and recap only. It is **not** Bluetooth-connected to any tagger while

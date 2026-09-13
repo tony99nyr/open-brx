@@ -6,12 +6,12 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D5 · E8 · F137 · G11 · H8 ·
-K7 · P19 · Q20 · R4 · S37.** (2026-09-12 bug dossier: F135 filed, the B6 outdoor-range bench sweep.) (2026-09-12 B4 link-watchdog lane: F136 filed.) (2026-09-12 pyright gate: F134 filed; F42.10 closed → archive, F42.14 filed.) (2026-09-12 evening: F129 closed → archive; F133 filed.) (2026-09-12 backhaul, PR #3: B30 and B31 taken.) (2026-09-12 doc-rot close: F131 F132, R3, S32-S36 taken; F42.2/F42.3 closed → archive.) (2026-09-12 M2 close: S20 S21 S22 S23 S24 S26 F127 closed → archive; F129 F130 new; S25 v1 shipped, ESPN pass open.) (2026-09-12 midday: S28 all-weapons retune, S29 shield recharge taken.) (2026-09-12 desk pass: F128, P18, S27 taken; F110 F115 F116 F117 F118 F119 F122 F124 F125 closed → archive.) (2026-09-11 night game test: F110-F127 and S20-S26 taken, see [`game-test-2026-09-11.md`](game-test-2026-09-11.md).) (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D6 · E8 · F164 · G11 · H8 ·
+K9 · P19 · Q20 · R4 · S42.** (2026-09-12 integration of the field branch into the fix branch: the two rows the fix branch had filed as F135 and F136 collide with the field session's own F135/F136 and are **RENUMBERED to F162** (no outdoor IR range) and **F163** (the B4 link watchdog) — the second collision renumber in this file, same cause as 2026-09-06: two sessions read "next free" at once. No upstream row moved. F146 and F157 closed → archive with the merge; the PR #4 list closed → archive (F135 F137-F145 F147 F149-F151 F153-F156, S37-S41).) (2026-09-12 pyright gate: F134 filed; F42.10 closed → archive, F42.14 filed.) (2026-09-12 field test of the backhaul, WSL host + Pixel 10 on cellular: F135-F157 + F161, K7-K8, S37-S41, D5 taken (F134 went to the pyright gate on main the same day, so the gun-picker row became F161); F136 closed the same hour.) (2026-09-12 evening: F129 closed → archive; F133 filed.) (2026-09-12 backhaul, PR #3: B30 and B31 taken.) (2026-09-12 doc-rot close: F131 F132, R3, S32-S36 taken; F42.2/F42.3 closed → archive.) (2026-09-12 M2 close: S20 S21 S22 S23 S24 S26 F127 closed → archive; F129 F130 new; S25 v1 shipped, ESPN pass open.) (2026-09-12 midday: S28 all-weapons retune, S29 shield recharge taken.) (2026-09-12 desk pass: F128, P18, S27 taken; F110 F115 F116 F117 F118 F119 F122 F124 F125 closed → archive.) (2026-09-11 night game test: F110-F127 and S20-S26 taken, see [`game-test-2026-09-11.md`](game-test-2026-09-11.md).) (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
 ids are retired, never reused.) (2026-09-10: F94/F95/F98 taken — the phone control point
 (`spec/utility.md` §5d), its LAN-coupled roaming variant (§5e) and Territories (§5f). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
 wider than the hill's period" generalisation, the double-`$HIR`-per-beacon dedupe finding (F85, closed same
-session), the team-change-leaves-old-LED-colour finding, and the hosted hill rate-of-fire boost.) (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered once, on 2026-09-06, to end collisions: the HUD-review items formerly
+session), the team-change-leaves-old-LED-colour finding, and the hosted hill rate-of-fire boost.) (2026-09-07: F40/F41/F42 went to the Python DRY review and the fake-tagger row; the A17 bench items were re-lettered to F44/F45/F46 the same day to clear a three-way collision -- three sessions read "next free" concurrently. F43 is the A17 method finding. The bold list above is the ONLY authoritative "next free"; do not restate a number here.) Renumbered before, on 2026-09-06, to end collisions: the HUD-review items formerly
 F15/F16 are **F26/F27**, and the 2026-09-01 field findings formerly G1–G7 (colliding with the grenade G ids) are
 **F28–F32**. Bench-sheet numbers (1.1, 2.1, 3¾, A10a …) survive as aliases in §9.
 **Blocked on:** `trigger` · `eyes` · `ears` · `space` · `grenade` · `capture` · `decision` · `build`.
@@ -52,8 +52,8 @@ right** and this index is stale. Do not cite it as evidence that something is or
 `hardware` — running order in [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md), next sheet
 [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md)):
 - 🔴 **B26** · **F49** · **K4** · **Q15** · **S10**
-- 🟠 **F13** · **F50** · **F58** · **F59** · **F71** · **F135** · **P8** · **Q16** · **S9**
-- 🟡 **B27** · **B28** · **B29** · **D1** · **F3** · **F21** · **F26** · **F27** · **F28** · **F30** · **F36** · **F62** · **F63** · **F66** · **F67** · **F74** · **F75** · **F76** · **F82** · **F88** · **F136** · **G3** · **K1** · **P3** · **P15** · **Q18** · **S1** · **S2** · **S7** · **U11′**
+- 🟠 **F13** · **F50** · **F58** · **F59** · **F71** · **F162** · **P8** · **Q16** · **S9**
+- 🟡 **B27** · **B28** · **B29** · **D1** · **F3** · **F21** · **F26** · **F27** · **F28** · **F30** · **F36** · **F62** · **F63** · **F66** · **F67** · **F74** · **F75** · **F76** · **F82** · **F88** · **F163** · **G3** · **K1** · **P3** · **P15** · **Q18** · **S1** · **S2** · **S7** · **U11′**
 - 🟢 **B20** · **F29** · **F65** · **F87** · **F99** · **P4** · **P12** · **S4** · **S8**
 
 **Keyboard only** (tagged `build` or `decision` — no gun, no rig, no dim room):
@@ -153,21 +153,12 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   node paints the dead look, station beacon arrives via the passthrough row, node checks team + delay, restores pools.
   Every link is proven separately; the assembly is not. Open: a downed gun still takes IR damage; FF must be ON for a
   same-team beacon. `build`.
-- **B30 🟠** BACKHAUL (contracts A28, 2026-09-12): a phone with a data plan reaches MC off the field Wi-Fi with no per-phone
-  setup -- MC tunnels the node socket (cloudflared quick tunnel, `POST /api/tunnel`), the QR carries LAN + public URL + secret,
-  the node prefers backhaul and falls back to the LAN, coverage is DERIVED from observed reach. Built on branch `backhaul-a28`
-  in three lanes (server · MC UI · app transport). **Bench gate:** one Pixel, Wi-Fi OFF, mobile data on, scan the QR, join,
-  take a kill and see KILL CONFIRMED; then Wi-Fi back on and watch `reach` stay `backhaul`. Left for the HUD session: the
-  preflight chips still say Wi-Fi/`cellular_off` (contracts §5c d/f are warnings on backhaul now). **Known, by design:**
-  no REAL cloudflared has run against the URL parser (every test drives a stand-in; the first real run is the gate);
-  `available` is decided once at launch; coverage drops on staleness, not the instant a backhaul socket closes; the
-  envelope-kind parity guard walks `push()` call sites only, so a broadcast-only kind (`join`) has no generative guard;
-  `serve()` sets no `origins=`; no per-peer cap on pre-hello sockets through the tunnel (the 5 s hello window is the only
-  throttle; the secret plus a random hostname make brute force moot, a cap is defence-in-depth); a LAN peer forging
-  `Cf-Connecting-Ip` is gated but counts toward coverage; **pre-existing, not this branch** -- `net.py` `_hello_gate`'s keyed
-  takeover sets `rec.ws` to the new socket before the gun claim runs, so a claim REFUSED right after leaves the record owning a
-  socket that is being closed and `_drop_socket`/`on_disconnect` never run for it. Three review passes (2026-09-12) closed
-  1 high + 13 medium. `build` · `capture`.
+- **B30 🟡** BACKHAUL (contracts A28) — **FIELD-PROVEN 2026-09-12** (WSL host, cloudflared quick tunnel, Pixel 10 on cellular with
+  Wi-Fi off, Pixel 4 on home Wi-Fi): join, kills scored, KILL CONFIRMED on the shooter's HUD, result to both HUDs, logs pulled,
+  stranger hellos refused 4004, coverage FULL 2/2 derived, store-and-forward across a real data loss (flushed exactly once).
+  Needed one fix first (F136, bind loopback). Left: the manual `--public-url` / named-tunnel path (Tony, later); the field
+  findings are their own rows (F140 F142 F144 F146 F153 F155 F156 F157, S40, D5 — all but D5 closed by PR #4 and
+  the 2026-09-12 integration, see `archive/followups-closed.md`). `capture`.
 - **B31 🟠** KILL CONFIRM OVER THE BLE ADVERT (Tony 2026-09-12): the victim's player advert (utility.md §2) already
   carries alive + seq and has three spare bytes (11 value, 14 threshold, 15 reserved); the victim's node already
   latches the shooter's player_num from its last `$HIR`. Put `killed_by` in the value byte while the alive bit is
@@ -209,6 +200,8 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 - **K6 ⬜** per-game weapon tuning (damage / fire sound / rate inside a saved game); `SavedGame.weapon_tuning` is
   reserved in `spec/loadout.md` §8. Needs its own spec. `build`.
 
+- **K7 ⬜** Shields as a game-config option (Tony, field 2026-09-12). Blocked on a GRANT mechanism: the shield pool is not BLE-writable (P16; contracts §3), only an IR fn-11 word grants it, and F60 "nothing shield-shaped has ever been on a gun" is still open (bench C1). A station/grenade word at spawn, or a self-emitted fn-11, comes first. `decision` · `trigger`.
+- **K8 ⬜** A volume control at MC (Tony, field 2026-09-12): play volume comes only from the venue (80 indoors / 90 outdoors, try-outs 69) with no operator override; add a bounded per-game knob in the config + Kit, still defaulting from the venue. `build`.
 ## 6. Field bugs, protocol gaps, questions (F, Q, D)
 
 **Game test 2026-09-11 (1v1, two taggers). Full sheet: [`game-test-2026-09-11.md`](game-test-2026-09-11.md).**
@@ -508,7 +501,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   `space` (bench 2.1).
 - **Q16 🟠** beam divergence: on-axis then 10–50° off-axis at 3 m, 10 shots each, closing control. Sharp fall-off ⇒ skip
   the snoot, cut power (t41, then an aperture attenuator). Black plastic is IR-transparent at 980 nm; test any snoot. `space` (bench 2.4).
-- **F135 🟠 Needs Tony at the bench** no outdoor IR range: 2026-09-12 field session, Tony could not register a hit at
+- **F162 🟠 Needs Tony at the bench** no outdoor IR range (filed as F135 on the fix branch; renumbered on the 2026-09-12 integration, see the header): 2026-09-12 field session, Tony could not register a hit at
   30-40 ft outside; point blank worked (`bug-dossier-2026-09-12.md` B6). MC ships `$WEAP` t41 (`gunRangeIndoor`) at
   75 for every weapon regardless of venue (weapons.json `rng:75`; `compile.py` never raised it) — the outdoor flag
   only changes `$VOL` and `$GSET` t2. **The opposite direction from Q15** (Q15 is indoor over-range/bounce; this is
@@ -533,6 +526,11 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
 - **F131 🟡 TWO `spec/modes.md` §8 QUESTIONS WITHOUT IDS** (surfaced 2026-09-12): (a) the mid-match revive drops `$HLOOP,0,0` and the headset returns via the A11.6 respawn sequence; confirm on hardware nothing else needed it; (b) `Compiler.cues()` ships runway_30/20 and the klaxon silent while start-sequence §2 names the lines; pin by ear. `bench` · `ears`.
 - **F132 🟡 HANDOFF BYTE RATCHET.** `test_docs_hygiene._HANDOFF_MAX_BYTES` is 13,400 against a one-screen intent of ~9,000; the line rule passes because the bullets are paragraph-length. Trim on each close and lower the cap. `hygiene`.
 
+- **F161 🟡** HUD gun picker does not refresh live: a gun powered on while the list is open updates the RSSI bars but never appears until "Set my gun" is tapped again (field 2026-09-12). `build`.
+- **F148 🟠** A player can be HIT during the HUD's REDEPLOYED screen, before they can shoot: A23 protected the pregame head; the respawn path still arms `$SIR` at `$SPAWN` while the countdown runs (field 2026-09-12). Bench: the frame order at respawn. `trigger`.
+- **F152 🟠** Right after a redeploy the HEADSET kept BLINKING GREEN until something reset it: a `$HLOOP` not stopped before `$SPAWN`, or the spawn's stop frame ordered wrong (field 2026-09-12). Bench, with F148. `trigger`.
+- **F158 🟠** F149's fix stops the low-health loop at death with `$PLAYX,0,*`; NOT bench-verified whether that also clips the NATIVE death scream (A15.3 keeps the scream native). One gun, one death, listen (field-fix lane 2026-09-12). `ears`.
+- **D5 ⬜** PISTOL BALANCE (Tony, field 2026-09-12): a Deagle killed in 3 hits (check the headset x2 row before touching damage) and Extended Mags takes the USP to 40. Tony: the perk SHOULD apply to a pistol carried as the primary; the numbers are the question — sidearm base mags, or a fixed count / smaller multiplier for sidearms instead of x2. `decision`.
 ## 7. September build items (S)
 
 **From the 2026-09-11 game test ([`game-test-2026-09-11.md`](game-test-2026-09-11.md)):**
@@ -684,7 +682,7 @@ the Windows venv (`/mnt/c/Users/Tony/.brx-mcp/venv/Scripts/python.exe -m brx_mcp
 receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 
 **B4 link watchdog** (one gun, a real drop; `bench`):
-- **F136 🟡 Needs Tony at the bench** B4 (2026-09-12 field session: all four guns ended `bleUp:false`)
+- **F163 🟡 Needs Tony at the bench** B4 (2026-09-12 field session: all four guns ended `bleUp:false`; filed as F136 on the fix branch, renumbered on the 2026-09-12 integration)
   shipped a link-silence watchdog blind — no BLE in WSL, so none of this ran against a real gun.
   `engine.js` (`lastGunFrameAt`/`LINK_STALE_MS=150s` in `tick()`) force-reconnects a gun the OS still calls
   "connected" but that has sent nothing — not even `$VOLTS` — for 150s; every relink also resends a bare
@@ -1156,7 +1154,7 @@ From `verification-checklist.md` (archived 2026-09-06); what is ⬜ there and st
 - **Hold-across-disperse 5 min**: config head written, gun left unspawned 5+ min, then `$SPAWN` + `$AMMO` goes live with
   config intact (2 min passed; the 5 min run was cut). Else the T-10 s head re-write becomes default.
 - **20-minute two-node soak** (Pixel + iPhone): screen-lock one at T+5, background the other at T+10, walk out of Wi-Fi;
-  BLE held, engine reconciled on unlock, outbox flushed on return, timed end fired locally on both. **F136** wants the
+  BLE held, engine reconciled on unlock, outbox flushed on return, timed end fired locally on both. **F163** wants the
   same run watched for a SILENT (not disconnected) link and the new watchdog's recovery.
 - **Phone auto-rejoin** to the no-internet SSID after 3 min out of range, mobile data on vs off, per OS.
 - **iOS locked-phone BLE**: lock mid-match, take 3 hits, unlock; did the queued `$HIR`/`$HP` reach the engine?

@@ -62,7 +62,7 @@
 </aside>
 <script>
   const STAGES = [
-    ['Before the game', [['idle', 'no gun — scanning'], ['connected', 'gun linked, no MC'], ['mc-rejected', 'MC refused the join'], ['setup', 'MC still setting up the game']]],
+    ['Before the game', [['idle', 'no gun — scanning'], ['connected', 'gun linked, no MC'], ['connected-linked', 'F137 · MC binds pre-kit'], ['mc-rejected', 'MC refused the join'], ['setup', 'MC still setting up the game']]],
     ['Kit-out', [['briefing', 'the game briefing'], ['briefing-long', 'briefing · long game name + wrapped loadout line'], ['kitted', 'loadout plates'], ['kitted-ready', 'READY tapped'], ['kitted-perk', 'a perk in its own slot'], ['kitted-full', 'AR + pistol + Quick Switch'], ['loadout-perk', 'browser · PERK tab'], ['loadout-perk-conflict', 'Easy Reload over a loaded SMG (warning)'], ['loadout-primary', 'browser · primary'], ['loadout-secondary', 'browser · slot 2'], ['loadout-picked', 'browser · picked SMG — equipped ✓ and armed'], ['loadout-arming', 'A26 · tapped a row, still arming ⟳'], ['loadout-info', 'A26 · the ⓘ opened a row\'s detail'], ['loadout-sidearms', 'browser · pistols-only slot 2'], ['tryout', 'try-out panel (host-pushed)'], ['kit-refused', 'A30 · MC refused the pick, verbatim']]],
     ['Arming', [['lobby', 'game pushed, waiting to arm'], ['lobby-kit-locked', 'A30 · pushed while this player was mid-kit'], ['armed', 'T-minus countdown'], ['armed-with-mc-verify', 'A31 · T-minus with the verify-at-MC notice'], ['aborted', 'countdown aborted → lobby']]],
     ['Live', [['live', 'just spawned'], ['live-fired', 'after 7 shots'], ['live-hit', 'taking fire'], ['live-lowhp', 'low health'], ['live-lowammo', 'mag nearly empty'], ['live-reload-overrun', 'chain reload · past the nominal time'], ['live-switch', 'weapon switch (ALT)'], ['live-switch-perk', 'switch with Quick Switch perk'], ['live-alert', 'game event banner'], ['live-medals', 'kill with medals'], ['live-kill', 'kill confirm'], ['down', 'dead, awaiting redeploy'], ['down-hold', 'scanner · at the station, delay finishing'], ['down-find', 'scanner · no station'], ['down-find-presence', 'scanner · presence gate (no trigger)'], ['down-approach', 'scanner · walking to it'], ['down-at', 'scanner · at the station'], ['down-at-cap-offline', 'A31 · one off the cap, MC out of range'], ['redeploy', 'just respawned']]],
@@ -72,7 +72,8 @@
       ['result-win-team', 'A24 · WIN \u00b7 team view'], ['result-players', 'A24 · WIN \u00b7 player leaderboard'],
       ['result-lose-ffa', 'A24 · LOSE \u00b7 FFA (no team view)'], ['result-draw', 'A24 · DRAW'], ['result-undecided', 'A24 · UNDECIDED'],
       ['history', 'A24 · match history for this MC session']]],
-    ['Diagnostics', [['diag', 'the \u24d8 panel, idle'], ['diag-live', 'the \u24d8 panel while live data churns']]],
+    ['Diagnostics', [['diag', 'the \u24d8 panel, idle'], ['diag-live', 'the \u24d8 panel while live data churns'],
+      ['idle-diag', 'F156 \u00b7 \u24d8 panel before a gun is linked'], ['connected-diag', 'F156 \u00b7 \u24d8 panel steps around the pre-join copy']]],
     // the UTILITY role: a spare phone as an item on the field (www/utility.html, its own page; no brxDemo events)
     ['Utility phone', [['util:respawn:1:1', 'respawn station · blue #1'], ['util:respawn:255:2', 'respawn station · any team #2'], ['util:powerup:2:1', 'powerup · yellow'], ['util:extraction:255:1', 'extraction zone'], ['util:bomb:0:1', 'bomb · red'], ['util:control:255:1', 'control point']]],
   ];
