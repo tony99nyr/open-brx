@@ -192,8 +192,13 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   text, so an ESP32 that speaks the envelope is a utility node today and `station_config` (A13.5, F104) reaches
   it unchanged. Work is all Stick-side: a WS client of four kinds (`hello` · `welcome` · `station_config` ·
   `status` at 2 s), `WIFI`/`MC` serial commands plus mDNS `_openbrx._tcp` (a Stick cannot scan MC's QR, so the
-  typed floor is not optional), and Wi-Fi dropped for the match so BLE keeps the shared radio (§5g.4 —
-  coexistence jitter and the battery delta are BOTH asserted, not measured). Arm it **respawn** or **control**
+  typed floor is not optional), and **two Wi-Fi association modes** (§5g.4, Tony 2026-09-14): `muster`
+  (default, drop the link for the match) and **`held`** (stay linked all game) — `held` is what makes **F95**
+  roaming hills possible on a Stick, so the client must never treat "match started" as "MC unreachable"
+  (§5g.8 lists what not to preclude: hot = advert byte 10 value **16**, accept `station_config` in any phase
+  without resetting the point, 15 s grace then degrade, never self-promote). ⚠ `held` puts the Wi-Fi/BLE
+  coexistence jitter **on the critical path** instead of avoiding it, and almost certainly needs the power
+  bank; both that jitter and the battery delta are asserted, never measured. Arm it **respawn** or **control**
   first: those are the only two kinds whose player side is built (K2/K3/K4 are not). Carries one `decision`:
   `STATION_SOURCES` has no value for a Stick (§5g.7). Blocked behind H7 — no Stick has been powered on.
   `build` · `hardware`.

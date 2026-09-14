@@ -512,26 +512,37 @@ start). The Stick caches the SSID, never the address.
 The SoftAP captive-config tier in `../../hardware/brx-station-spec.md` would remove the serial cable from this
 story entirely. It is designed and unbuilt; the serial path is what unblocks the first Stick.
 
-### 5g.4 Wi-Fi at muster, radio down for the match
+### 5g.4 The Wi-Fi association is a MODE, not a phase — and `held` must be buildable from day one
 
-**§5b's "Setup needs WiFi; play does not" is not a nicety here — it is the design.** The ESP32-S3 has 2.4 GHz
-Wi-Fi 4 and BLE 5 on **one shared radio**, time-shared by the coexistence scheduler. A station's entire job
-during play is a steady advert, and a station needs **no** MC contact once the match is live (§5c,
-self-authoritative, reports at recap). So:
+**Tony, 2026-09-14: build the capability to stay connected.** The use case is his own §5e example, restated —
+hills placed around the house, all of them still inside the house AP. So the Stick has **two association
+modes**, chosen per game, and the firmware must carry both from the first version:
 
-> The Stick joins Wi-Fi at muster, takes its `station_config`, and **drops the Wi-Fi association for the
-> match**, leaving BLE the whole radio.
+| mode | the Wi-Fi association | for |
+|---|---|---|
+| **`muster`** (default) | joins at muster, takes `station_config`, **drops the association for the match** | §5d on a field. Nothing about the match then depends on coverage — A4.8 as written |
+| **`held`** | joins at muster and **stays linked for the whole match**, reconnecting per contracts §5 backoff | §5e roaming hills, and any house game where the AP genuinely covers every point |
 
-Three things fall out of one decision: no coexistence jitter on the advert interval, materially less draw on a
-250 mAh cell (`../../hardware/m5sticks3/README.md` already guesses ~2 h with BLE + RMT + screen alone, and
-`../../hardware/inventory.md` has a power bank in "planned, not ordered"), and the island rule honoured by
-construction rather than by discipline. ⚠ **Unmeasured:** the coexistence jitter is asserted from the shared
-radio, not measured, and so is the battery delta. Neither has been on a bench — no Stick has ever been
-powered on (H7).
+`muster` is the default because §5b's rule ("Setup needs WiFi; play does not") is what makes a station robust:
+a §5d point out of range is still a fully correct point. `held` is not a tuning knob on that — it buys a
+feature that is impossible without it (§5g.8), and it is selected by the MODE, not by an operator's mood.
 
-Re-arming a placed station therefore means carrying it back into Wi-Fi range, exactly as §5b.3 already says
-for phones ("stations do NOT walk back unless their role/team changes"), and exactly what the
-BRING IT BACK TO RE-ARM attention line was written for.
+⚠ **`held` is not free, and the two costs are the same measurement.** The ESP32-S3 runs Wi-Fi 4 and BLE 5 on
+**one shared 2.4 GHz radio**, time-shared by the coexistence scheduler, and a station's entire job during play
+is a steady advert. Under `muster` that contention never happens; under `held` it happens for the whole match.
+So the advert-interval jitter with Wi-Fi associated is **no longer avoidable and is now on the critical path** —
+it is the bench number that decides whether `held` is trustworthy, and it has never been measured. The same is
+true of power: `../../hardware/m5sticks3/README.md` guesses ~2 h with BLE + RMT + screen and no Wi-Fi at all,
+so `held` almost certainly needs the power bank that `../../hardware/inventory.md` still lists as "planned, not
+ordered". Indoors that is easy — a house game is near mains — which is a real argument that `held` and
+"around the house" belong together.
+
+**Build implication, and the reason this section is worth its length:** the two modes differ only in *when the
+association is dropped*, so a firmware written for `muster` alone would still be one line from `held` — but
+only if it never assumes the socket is gone once the match starts. Nothing in the client may treat
+"match started" as "MC is unreachable forever": no tearing down the WS stack at go-live, no discarding
+`node_key`, no stopping the 2 s `status` heartbeat. **Under `muster` the association ENDS; under `held` it is
+the live channel a match rule rides on.** Write the client so dropping is a policy decision at one call site.
 
 ### 5g.5 What MC can ARM versus what will actually PLAY
 
@@ -573,6 +584,30 @@ in the operator's voice.** Nothing here asks for that to change.
   message silently — the operator pressed a button and deserves an effect — so it should drop to UNASSIGNED
   (advert off, screen says NOT ARMED BY MISSION CONTROL), which is the nearest true equivalent: stop being an
   item on the field.
+
+### 5g.8 What `held` is FOR: roaming hills, and what the firmware must not preclude
+
+`held` exists to make **§5e roaming hills** (`../utility-roadmap.md` §8, **F95**) possible on a Stick. That
+design is complete and unbuilt; nothing below asks to build it now. It is written here because these are the
+assumptions that are cheap to honour while writing the client and expensive to retrofit.
+
+**Roaming hills is the system's ONE deliberate exception to A4.8** (§5e.1): a match rule takes its orders from
+the laptop mid-match, so a control point out of Wi-Fi range is not merely invisible, it is **not in the game**.
+That exception is fenced to modes flagged `lan_coupled`; §5d stays fully offline-capable and is the default for
+any field bigger than a house. ⚠ `lan_coupled` exists **nowhere in the code today** (checked 2026-09-14): not
+in the mode catalog, not in `compile.py`, not in `types.py`. The flag is design.
+
+| what §5e needs | what the Stick must not preclude |
+|---|---|
+| **The hot bit** — MC names which point is live | advert byte 10, value **16**. §5d.3 is the authority and says 16; §8 5e's "bit 5" is the same bit named loosely, and a firmware that reads it as value 32 would be silently wrong. `CONTROL_STATE` in `app/src/control.js` is still `{held:1, contested:2, rising:4, falling:8}` — **`hot` is unimplemented on every side**, so the Stick is free to be first, and must use 16 |
+| **A mid-match push** carrying the hot flag | §5e routes it through `station_config`. ⚠ That message reaches a station today only via `_arm_station()`, and the ITEMS assignment path above it (`set_station`/`clear_station`) is refused in ARMED/LIVE by `_refuse_station_change_in_play()`. **The two are not in conflict** — that refusal exists because an *assignment* re-pushes `config` to every player and re-arms their gun heads, which a hot flag does not do — but it does mean §5e needs a mid-match sender that is NOT the assignment path. The Stick's obligation is only to accept a `station_config` at any time and apply the hot flag without resetting its point |
+| **Grace, then degrade** (§5e.4, Tony's decision) | link down > **15 s** → degraded: keep running §5d locally on the last known owner (presence, net-difference capture, possession seconds, local callouts all need no LAN), stop contributing to the points race, and **keep the degraded seconds** to hand over at recap as a separate marked column |
+| **Roaming freezes on LAN loss** | the hot point stays where it last was. **A station never promotes itself** — a hill that moved because a node lost Wi-Fi is worse than a hill that stopped moving |
+| **The screen says it** (§5e.3) | armed into a `lan_coupled` mode → `MC-ARMED · GAME N · LAN-COUPLED`; while unlinked, a blocking band `THIS GAME NEEDS WI-FI — MISSION CONTROL OFFLINE`; degraded → `OFFLINE — POSSESSION ONLY, NOT SCORING`. ⚠ These were written for a phone screen. The Stick's LCD is **1.14"**, so the band is a legibility problem, not a copy problem: the person who can fix the Wi-Fi is standing in front of this screen, and the words have to survive being read from arm's length on a propped-up box |
+
+The `VB0Q` "Hill Moved" callout (2.42 s, confirmed by ear) is already in `engine.js`'s `HILL_CUES` **with no
+caller**, and every player phone plays it off the hot bit changing by the §5d.5 rule — so the Stick emits the
+bit and nothing else. Same division of labour as the rest of §5d: the station measures, the phones announce.
 
 ## 6. Platform notes (verified where marked)
 
