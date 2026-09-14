@@ -1,7 +1,7 @@
 # Handoff — Open BRX
 
-**State as of 2026-09-13 (the 2026-09-12 field night, the fix run it drove, app 0.2.1, and the range control that
-ruled out three theories).** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners:
+**State as of 2026-09-14 (the 2026-09-12 field night, the fix run it drove, app 0.2.1, the range control that
+ruled out three theories, and one desk session on the Stick).** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners:
 `git log -p -- docs/HANDOFF.md`.
 
 ## Where the tree is
@@ -25,6 +25,15 @@ Everything below shipped on 2026-09-13 after the 2026-09-12 field night.
   all is an error.
 - Plus: benching a player who walks away, a banner for connected phones not in the roster, ready-up after a re-push,
   a confirm before a mode tile reshapes teams, and test runs no longer writing into `~/.brx-mcp`.
+
+## Desk work since (no hardware touched)
+- **The M5StickS3 takes its kind from MC over Wi-Fi** (Tony, 2026-09-14): armed at muster, then carried out and
+  placed. Specified as `spec/utility.md` §5g, filed as **H8**. The finding that sizes it: **the wire needs no
+  amendment** — MC gates a station on the one string `node_type: "utility"` and never validates its value, so an
+  ESP32 speaking the M-NET envelope is a utility node today and `station_config` reaches it unchanged. All the
+  work is Stick-side (a four-kind WS client, `WIFI`/`MC` serial commands + mDNS, Wi-Fi dropped for the match).
+  Arm it respawn or control — the other three kinds have no player side. Still blocked behind H7: **no Stick has
+  ever been powered on**, and the coexistence/battery claims in §5g.4 are reasoning, not measurements.
 
 ## Deliberately silent or staged off, and why
 - `DRIVE_IO_MODE` is **off**. MC does not drive the gun's indoor/outdoor mode. The compiled head is byte-identical to

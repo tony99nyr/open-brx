@@ -174,6 +174,9 @@ passive beacon: it needs **no** MC contact for the rest of the game (same island
 
 ## 5c. `station_config` (M-NET, MC → utility phone) — the arming message
 
+**"phone" here is the first client, not a requirement.** A non-phone utility node (the M5StickS3) takes the
+same message over the same wire with no amendment: **§5g**.
+
 `{ kind, team, id, threshold?, game?, valid_ids? }` — MC → the utility node at muster (and on any re-arm).
 The phone applies it to its advert, sets MC-ARMED, and locks the config drawer. `valid_ids` (optional) is
 the allow-list echoed for the station's own display; the authoritative allow-list players enforce is
@@ -444,6 +447,132 @@ variant and a deliberate exception to A4.8 (F95), and **5f TERRITORIES**, multi-
 station keeps its own books and needs no LAN at all (F98). Both live in
 [`../utility-roadmap.md`](../utility-roadmap.md) §8, under the same 5e / 5f numbers. Promote them back here as
 they are built.
+
+## 5g. A NON-PHONE utility node: the M5StickS3 armed over Wi-Fi (H8)
+
+**Status: designed, not built. 2026-09-14, Tony's call:** program the Stick at Mission Control during setup,
+then carry it out and place it. This section is the spec of record for a utility node that is **not** a phone.
+It changes no wire and adds no advert byte; it is written down because every sentence in §5b/§5c says "phone",
+and the next reader needs to know which of those words are load-bearing and which are just the first client we
+happened to build.
+
+### 5g.1 The wire already admits it — there is nothing to amend
+
+A station reaches MC as a `hello` with `node_type: "utility"` (contracts §5). Checked 2026-09-14:
+
+- `envelope.py` requires only the KEYS `("node_id", "node_type", "app_ver", "seq_next")` on a `hello`; it does
+  not validate `node_type` against a vocabulary.
+- `state.py set_station()` gates on exactly one string: `(self.nodes.get(nid) or {}).get("node_type") != "utility"`.
+- `NodeView.platform` is `str | None` (`types.py:613`) — free text, rendered, never matched on.
+
+So **an ESP32 that speaks the envelope is a utility node today**, with no `contracts.md` amendment, no new kind,
+and no MC change. `station_config` (A13.5, server side built 2026-09-11, F104) reaches it by the same three
+paths it reaches a phone: on its `hello` if MC has it assigned, on every `PUT /api/stations/{node_id}`, and on
+every lobby push. ⚠ **This is the reason to keep the Stick on the M-NET envelope rather than inventing a
+private Wi-Fi protocol for it**: the arming half is already written, tested and shipped, and a second protocol
+would be a second thing to keep in sync.
+
+`platform` SHOULD be `"esp32"` and `app_ver` the sketch's own `"<version>+<sha>"`, so the ITEMS panel can tell
+an operator which of their items is a phone and which is a box without a second field.
+
+### 5g.2 The minimum client (four kinds, no ring, no gun)
+
+A station is not a player node and must not be built like one. It never binds, never acks a config, never
+writes a gun head, and owns no store-and-forward ring — MC already refuses a log pull from a utility node
+(F106(d)). The whole client is:
+
+| direction | kind | the Stick's obligation |
+|---|---|---|
+| → MC | `hello` | `{node_id, node_type:"utility", app_ver, platform:"esp32", seq_next:0}`. `node_id` is stable across reboots (Preferences), or MC sees a new item every power cycle |
+| ← MC | `welcome` | keep `node_key` and present it on the next `hello` (A8.2) or a re-claim of a still-live id is refused `4003 in_use` |
+| ← MC | `station_config` | `{kind, team, id, threshold?, game?, valid_ids?}` → the advert, persisted, screen shows MC-ARMED · game N |
+| → MC | `status` | every `STATUS_HEARTBEAT_MS` (2000 ms) while connected; stale at `STALE_AFTER_MS` (8000 ms). Live-only, never queued, no `seq` |
+
+`seq_next: 0` forever is honest: a station emits no persisted facts, so there is no seq to advance and nothing
+for `welcome.seq_hi` to reconcile.
+
+The `status` body mirrors what `utility.js` already reports (`{role:"utility", kind, team, station_id,
+threshold, live, armed, ...}`) so `_station_view()`'s `report` block and its attention lines
+(BRING IT BACK TO RE-ARM · ARMED FOR AN OLDER GAME) work unchanged on a Stick.
+
+### 5g.3 Credentials and discovery: the Stick cannot scan the QR
+
+The field default for a phone is **scan MC's QR** (contracts §5). A Stick has a camera-less 1.14" screen, so
+that door is shut and the other two must both work:
+
+1. **mDNS** — MC advertises `_openbrx._tcp` with TXT `{ver, session_id, ws_path, server_name}` (`net.py
+   advertise_mdns`); the Stick browses it. This is the intended path.
+2. **The typed address, as the mandatory floor** — contracts is explicit that mDNS fails on hostile Wi-Fi and
+   locked-down routers, so a floor is required. On a Stick that floor is the **serial console**, which already
+   exists and already persists settings (`ID`, `GAME`, `TXPIN`): add `WIFI <ssid> <pass>` and `MC <ws url>`.
+
+⚠ **Do NOT cache an MC IP across sessions** (contracts §5, and A28: the public hostname is random per tunnel
+start). The Stick caches the SSID, never the address.
+
+The SoftAP captive-config tier in `../../hardware/brx-station-spec.md` would remove the serial cable from this
+story entirely. It is designed and unbuilt; the serial path is what unblocks the first Stick.
+
+### 5g.4 Wi-Fi at muster, radio down for the match
+
+**§5b's "Setup needs WiFi; play does not" is not a nicety here — it is the design.** The ESP32-S3 has 2.4 GHz
+Wi-Fi 4 and BLE 5 on **one shared radio**, time-shared by the coexistence scheduler. A station's entire job
+during play is a steady advert, and a station needs **no** MC contact once the match is live (§5c,
+self-authoritative, reports at recap). So:
+
+> The Stick joins Wi-Fi at muster, takes its `station_config`, and **drops the Wi-Fi association for the
+> match**, leaving BLE the whole radio.
+
+Three things fall out of one decision: no coexistence jitter on the advert interval, materially less draw on a
+250 mAh cell (`../../hardware/m5sticks3/README.md` already guesses ~2 h with BLE + RMT + screen alone, and
+`../../hardware/inventory.md` has a power bank in "planned, not ordered"), and the island rule honoured by
+construction rather than by discipline. ⚠ **Unmeasured:** the coexistence jitter is asserted from the shared
+radio, not measured, and so is the battery delta. Neither has been on a bench — no Stick has ever been
+powered on (H7).
+
+Re-arming a placed station therefore means carrying it back into Wi-Fi range, exactly as §5b.3 already says
+for phones ("stations do NOT walk back unless their role/team changes"), and exactly what the
+BRING IT BACK TO RE-ARM attention line was written for.
+
+### 5g.5 What MC can ARM versus what will actually PLAY
+
+`STATION_KINDS` is all five (`types.py`), so MC can arm a Stick as any of them **today**. That is not the same
+as the game working:
+
+| kind | armable by MC | player-side rule |
+|---|---|---|
+| 1 respawn | yes | **shipped** — the scanner respawn, §4, unit-tested and field-proven 2026-09-04 |
+| 5 control | yes | **shipped** — §5d, `control.js` + `engine.js _onControlAdvert()` |
+| 2 powerup | yes | **not built** — roadmap K3 |
+| 3 extraction | yes | **not built** — roadmap K2 |
+| 4 bomb | yes | **not built** — roadmap K4 |
+
+So the first Stick that takes a `station_config` should be armed **respawn** or **control**. An operator who
+arms it as a bomb site gets a box that correctly says BOMB SITE and correctly advertises kind 4, and a field on
+which nothing happens. This is a property of the kinds, not of the Stick.
+
+### 5g.6 Reprogramming is a MUSTER control, by design
+
+`state.py _refuse_station_change_in_play()` refuses `set_station` / `clear_station` once the phase is ARMED or
+LIVE, because an assignment re-pushes `config` to every player and a phone's `_applyConfig` rewrites the gun
+head and clears `spawned` — on a live gun that silences every hit and death handler for the rest of the match.
+
+That rule is about the PLAYERS, not about the station, and it does not soften for a Stick: the same re-push
+reaches the same live guns. **Per-game reprogramming is the designed flow; mid-match reprogramming is refused
+in the operator's voice.** Nothing here asks for that to change.
+
+### 5g.7 Two loose ends this section does not close
+
+- **`STATION_SOURCES` has no value for a Stick.** The vocabulary is `grenade` · `ir_station` ("a BRX station /
+  Utility Box emitting `$CAPTURE` objective events (unproven on our bench)") · `phone` (capture by presence,
+  §5d). A Stick is `ir_station` when it captures by being shot (`control_point.h`'s HILL mode) and behaves like
+  `phone` when it counts player adverts — and it can be built to do either. The value names the SOURCE's
+  mechanism, not its chassis, so the honest fix is probably a fourth value rather than overloading one; it is a
+  `decision`, filed under H8, and nothing blocks on it until a Stick can actually be armed.
+- **`control{cmd:"release_utility"}` (§5c.1) has no meaning on a Stick.** It exists to free a PHONE stuck in
+  utility mode by sending it back to its HUD; a Stick has no HUD to return to. A Stick MUST NOT ignore the
+  message silently — the operator pressed a button and deserves an effect — so it should drop to UNASSIGNED
+  (advert off, screen says NOT ARMED BY MISSION CONTROL), which is the nearest true equivalent: stop being an
+  item on the field.
 
 ## 6. Platform notes (verified where marked)
 
