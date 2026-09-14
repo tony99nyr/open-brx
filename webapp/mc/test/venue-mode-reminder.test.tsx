@@ -1,10 +1,9 @@
-// T1-C item 3 — the ALT-hold backstop.
+// F199 — the ALT-hold beam-width backstop.
 //
-// The gun's indoor/outdoor setting (hold ALT 3 s) changes IR range and hit-LED brightness and
-// PERSISTS ACROSS POWER CYCLES (docs/manual/operate.md). MC cannot drive it yet — every candidate
-// command is unverified (compile.py `DRIVE_IO_MODE`, FOLLOWUPS F162) — so the only thing standing
-// between the venue the operator picked and the guns actually being in that mode is a person walking
-// the rack. The 2026-09-12 field session ran outdoors at ~7-32% hit rate; nobody had touched ALT.
+// The gun's indoor/outdoor setting (hold ALT 3 s) changes beam width and PERSISTS ACROSS POWER
+// CYCLES. Outdoor mode gave roughly twice the aim tolerance across three guns in the 2026-09-13
+// field measurement. It does not control range: the outdoor range failure was `$GSET` token 2
+// crippling hit reception, and that separate receiver setting is now pinned to 0 at both venues.
 //
 // A physical field step belongs on screen at the moment it is actionable (the `SetupSteps`
 // precedent, ui/SetupSteps.tsx), so this renders on GAMES (where the venue is picked) and KIT (where
@@ -23,7 +22,7 @@ function atVenue(base: State, environment: 'indoor' | 'outdoor'): State {
 describe('venue-mode reminder', () => {
   beforeEach(() => { resetVenueModeDismissal(); });
 
-  it('names the venue the operator picked, and says the setting sticks', async () => {
+  it('names the venue and accurately describes the measured beam-width effect', async () => {
     const d = await demo();
     for (const env of ['outdoor', 'indoor'] as const) {
       resetVenueModeDismissal();
@@ -34,7 +33,10 @@ describe('venue-mode reminder', () => {
       expect(t).toContain(env.toUpperCase());
       expect(t).toMatch(/ALT/);
       expect(t).toMatch(/3 S/);
-      // WHY it matters at both venues: a gun left outdoor last night is still outdoor tonight.
+      expect(t).toMatch(/BEAM WIDTH/);
+      expect(t).toMatch(/NOT RANGE/);
+      expect(t).toMatch(/ROUGHLY 2× THE AIM TOLERANCE/);
+      // The physical selection must be made at both venues because it survives a restart.
       expect(t).toMatch(/POWER CYCLE/);
       m.unmount();
     }

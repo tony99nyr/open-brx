@@ -16,7 +16,7 @@ from typing import Any, Literal
 
 import random as _random
 
-from ..gameconfig import END_SEQUENCE, WEAPON_TAILS, _SIR_TABLE, GameConfig as _GC
+from ..gameconfig import END_SEQUENCE, GSET_T2_SAFE, WEAPON_TAILS, _SIR_TABLE, GameConfig as _GC
 from .. import hitaudio as _ha
 from ..protocol import PANIC_SEQUENCE
 from .perks import PerkCatalog
@@ -83,25 +83,20 @@ def gun_range_pct(base_rng: int, environment: str | None) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Venue mode: MC driving the gun's INDOOR/OUTDOOR setting over BLE (F162)
+# Experimental emitted-IR controls over BLE (F162)
 # ---------------------------------------------------------------------------
-# The gun has a native indoor/outdoor toggle -- hold ALT 3 s -- that changes IR range and hit-LED
-# brightness and PERSISTS across power cycles (docs/manual/operate.md). The 2026-09-12 field session
-# ran outdoors at ~7-32% hit rate against ~41% indoors and could not register a hit at 30-40 ft
-# (bug-dossier-2026-09-12.md B6). Tony's call: drive it over BLE if we can, with the ALT-hold
-# checklist as the backstop (the reminder MC shows on the Games/Kit rails).
+# The gun has a native indoor/outdoor toggle -- hold ALT 3 s -- that changes beam WIDTH (roughly
+# double the aim tolerance in outdoor mode) and persists across power cycles. The 2026-09-13 field
+# checks did not reproduce the t2 reception failure through this toggle; native play reached about
+# 200 ft in both toggle states. Its full behavior is not characterised.
 #
-# ⚠️ NOTHING BELOW IS BENCH-CONFIRMED. Not one of these commands has ever been flipped on a gun with
-# a receiver control, so whether ANY of them moves emitted IR range is UNKNOWN -- including whether
-# the ALT-hold state and `$GSET` t2 are even the same persisted bit. `DRIVE_IO_MODE` is therefore
-# "off" and the compiled head is byte-identical to the head the field ran on; `mcp/tests/
-# test_venue_mode.py` pins that. The candidates exist so a bench session can enable ONE of them by
-# editing this single line and get the frames it needs -- Runs C/D/E of the 2026-09-12 range entry in
-# docs/experiment-log/2026-09.md. Do NOT flip this to ship a fix; a bench result flips it.
+# `$GSET` t2 is a separate receiver control: t2=1 crippled hit reception at 30 ft, and t2=0 restored
+# it. Shipping heads pin t2 to 0 at every venue. The t3 and `$IRTX` candidates below remain
+# unconfirmed ways to control emitted IR and remain disabled. `DRIVE_IO_MODE` therefore stays "off";
+# a future bench experiment may enable exactly one candidate by editing this line.
 #
-# This is the SECOND lever staged for the same field bug. The first is `RANGE_ENV_OVERRIDE` above
-# ($WEAP t41, Runs A/B) -- deliberately separate, because t41 is per-weapon and these are per-gun,
-# and a bench run that moves both proves nothing about either.
+# These legacy candidates stay separate from `RANGE_ENV_OVERRIDE` above: t41 is per-weapon and these
+# are per-gun, so a bench run that moves both proves nothing about either.
 DRIVE_IO_MODE: Literal["off", "gset_t3", "irtx"] = "off"
 
 # Candidate (b): `$GSET` token 3, `gunLaserRegion` -- "IR transmit power, as a regional legal limit
@@ -1417,7 +1412,6 @@ class Compiler:
     def tutorial_frames(self, weapon: Weapon, environment: str) -> list[str]:
         """§4 private try-out: one weapon, identity 0 (uncredited), audible (VOL_TRYOUT). Needs $START + a $TID to
         actually fire (bench 2026-08-25); identity 0 keeps any stray hit off the scoreboard."""
-        outdoor = 1 if environment == "outdoor" else 0
         wid = weapon["weapon_id"]
         mag, reserve = self.catalog.spawn_ammo(wid)
         # $PSET,0 = "no identity" (A5.1) so a stray try-out hit reports shooter 0, never credited.
@@ -1425,7 +1419,7 @@ class Compiler:
         return [
             f"$VOL,{VOL_TRYOUT},0,*", "$CLEAR,*", "$START,*",   # $START IS required — bench 2026-08-25: without it the gun
                                                      # spawns but the trigger only reloads, it will not fire IR
-            f"$GSET,0,{outdoor},1,0,1,0,50,1,*",   # FF off, env
+            f"$GSET,0,{GSET_T2_SAFE},1,0,1,0,50,1,*",   # FF off; t2 stays safe at every venue
             pset,
             "$SIR,0,0,,1,0,0,1,,*",                # standard-weapon IR interpretation so a try-out shot registers
             "$TID,1,*",                            # a team is needed to spawn-to-live (identity stays 0 → uncredited)

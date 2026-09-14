@@ -477,7 +477,9 @@ selection, weapon respawn, voice.
   APK) contains none of them: token 7's `50` is `criticalShotModifier` (%), not score-to-win. These
   settings live in the host/app, not on the gun. `$GSET` sets on-gun things: friendlyFire, region,
   ambient light, gyro, crit modifier.
-- **Indoor/outdoor** does map to `$GSET` (token 2, `outdoorMode`).
+- The APK names `$GSET` token 2 `outdoorMode`, but that field is a separate receiver gate from the
+  physical indoor/outdoor ALT mode. Field testing 2026-09-13 found t2=1 cripples hit reception at
+  30 ft; Open BRX pins t2 to 0 in every compiled path. The physical ALT mode changes beam width.
 - **HUD** is fed by `$LCD`/`$ALCD` echoes; the app does not track health/ammo
   independently, the gun reports it.
 

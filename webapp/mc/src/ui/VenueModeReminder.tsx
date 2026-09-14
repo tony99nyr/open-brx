@@ -3,19 +3,16 @@ import { useStore } from '../store';
 import { BTN_RESET } from '../ui';
 import { F, T } from '../tokens';
 
-/** "SET EACH GUN TO <VENUE> (HOLD ALT 3 S)" — the ALT-hold backstop for the venue's IR range.
+/** "SET EACH GUN TO <VENUE> (HOLD ALT 3 S)" — the ALT-hold backstop for beam width.
  *
- *  The gun has a native indoor/outdoor setting, toggled by holding ALT for 3 s, that changes IR
- *  range and hit-LED brightness — and it **persists across power cycles**
- *  (`docs/manual/operate.md`). MC cannot drive it: `$GSET` t2 carries the APK's name for it but has
- *  never been flipped on a bench, and neither has any other candidate (`mc/compile.py`
- *  `DRIVE_IO_MODE`, FOLLOWUPS **F162**). So today the only thing that puts a rack of guns into the
- *  venue the operator just picked is a person walking it — and on 2026-09-12 nobody did: the field
- *  session played outdoors at ~7-32% hit rate against ~41% indoors and could not register a hit at
- *  30-40 ft.
+ *  The gun has a native indoor/outdoor setting, toggled by holding ALT for 3 s, that changes beam
+ *  width and **persists across power cycles**. Outdoor mode gave roughly twice the aim tolerance
+ *  across three guns in the 2026-09-13 field measurement. It does not control range: the outdoor
+ *  range failure came from `$GSET` token 2 crippling hit reception on the target, and MC pins that
+ *  separate receiver setting to 0 at both venues (F197/F199).
  *
- *  It shows at BOTH venues, because the setting sticking is the whole problem: a gun left on outdoor
- *  last night is still on outdoor in a gym tonight, where outdoor IR bounces off everything.
+ *  It shows at BOTH venues because beam width is a venue choice and the setting sticks: a gun left
+ *  on outdoor last night is still on outdoor in a gym tonight.
  *
  *  Placement follows `SetupSteps` (a physical field step has to be on screen where it is
  *  actionable): GAMES, where the venue is picked, and KIT, where the guns are handed out.
@@ -85,8 +82,8 @@ export function VenueModeReminder({ style, screen }: { style?: React.CSSProperti
     <div role="status" data-testid="venue-mode-reminder"
       style={{ display: 'flex', alignItems: 'center', gap: 10, background: T.warn, color: T.accInk, padding: '4px 4px 4px 12px', ...style }}>
       <span style={{ font: F.chk(700, 12), letterSpacing: '.1em', lineHeight: 1.45, flex: 1 }}>
-        ▲ SET EACH GUN TO {V} (HOLD ALT 3 S) — IT PERSISTS ACROSS POWER CYCLES, SO A GUN LEFT ON THE
-        OTHER SETTING IS STILL ON IT TONIGHT
+        ▲ SET EACH GUN TO {V} (HOLD ALT 3 S) — ALT SELECTS BEAM WIDTH, NOT RANGE. OUTDOOR GIVES
+        ROUGHLY 2× THE AIM TOLERANCE. THE SETTING PERSISTS ACROSS POWER CYCLES
       </span>
       <button type="button" data-testid="venue-mode-dismiss"
         aria-label={`dismiss the ${env} mode reminder for this session`}

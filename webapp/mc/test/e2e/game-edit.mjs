@@ -17,7 +17,7 @@
 // from ARMORY like kit-continue.mjs, proving the same flow against the real server this worktree
 // carries), locked (armed/live refuses an edit and says RECALL), stale (an MC with `/api/modes`
 // missing and no `loadout_policy` on the wire — the shape a pre-A10 or older server would send —
-// renders without crashing and shows the degraded state instead of a blank control), venue (F162:
+// renders without crashing and shows the degraded state instead of a blank control), venue (F199:
 // the "SET EACH GUN TO <VENUE> (HOLD ALT 3 S)" reminder on GAMES + KIT at desk and phone width, its
 // dismissal, its re-arm on a venue change, and a config with no `environment` at all), faults
 // (A36/A37: `?mock&faults=1` puts a stale ack, an echo mismatch, a pool fault and a gun that does
@@ -507,12 +507,13 @@ async function runStale(browser, viteBase, mcBase) {
   void mcBase;
 }
 
-// ------------------------------------------------------------------- venue (F162, the ALT backstop)
+// ---------------------------------------------------------- venue (F199, the ALT beam-width backstop)
 /** The indoor/outdoor reminder, driven the way the operator drives it: pick the venue on GAMES, walk
- *  to KIT, dismiss it, change the venue, watch it come back. MC cannot set the gun's own indoor/
- *  outdoor mode (compile.py `DRIVE_IO_MODE` is "off" and every candidate is unverified), so this
- *  reminder is the ONLY thing that puts a rack of guns into the venue the operator just picked —
- *  which is why it gets a real-browser step rather than only a jsdom one.
+ *  to KIT, dismiss it, change the venue, watch it come back. ALT selects beam width, not range:
+ *  outdoor gave roughly twice the aim tolerance across three guns. The outdoor range failure came
+ *  from `$GSET` token 2 crippling hit reception, a separate setting now pinned to 0 at both venues.
+ *  MC cannot make the physical ALT selection, so the reminder gets a real-browser step rather than
+ *  only a jsdom one.
  *
  *  Runs against the REAL python MC, at desk and phone width, and then against a server whose config
  *  carries no `environment` at all (the pre-venue shape) — where it must say nothing rather than
@@ -552,7 +553,9 @@ async function runVenue(browser, viteBase, mcBase, vp = { width: 1280, height: 8
   const txt = (await reminder(pg).innerText()).replace(/\s+/g, ' ');
   expect(/SET EACH GUN TO OUTDOOR/.test(txt), `it names the venue that was just picked (saw ${JSON.stringify(txt.slice(0, 120))})`);
   expect(/ALT 3 S/.test(txt), 'it says HOW (hold ALT 3 s)');
-  expect(/PERSISTS ACROSS POWER CYCLES/.test(txt), 'it says WHY it matters even at the venue you played last');
+  expect(/BEAM WIDTH, NOT RANGE/.test(txt), 'it accurately names what ALT changes');
+  expect(/ROUGHLY 2× THE AIM TOLERANCE/.test(txt), 'it gives the measured outdoor effect');
+  expect(/PERSISTS ACROSS POWER CYCLES/.test(txt), 'it says why the rack must be checked at either venue');
   // it must be readable, not a 9px footnote, and it must fit the viewport it is in
   const box = await reminder(pg).boundingBox();
   expect(box && box.width <= vp.width, `it fits the ${vp.width}px viewport (width ${box && Math.round(box.width)})`);

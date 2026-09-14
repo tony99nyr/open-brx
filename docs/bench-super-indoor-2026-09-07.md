@@ -23,8 +23,10 @@ receiver needs the laptop, not the Windows box. Read `gotchas.md` ("Before a ben
 - **`$IRTX` and `$HFIRE` are dead ends.** They carry literal `iRPower` / `rangeIndoor` fields and
   produced **zero IR** on v4.32 across five shapes each, with a receiver control passing either side.
   Do not spend the session there.
-- **t41 is only live in INDOOR mode** — `$GSET` token 2 (`outdoorMode`) selects the profile. Keep it
-  `0` for every rung. `bench_common.GSET` already does.
+- **Keep `$GSET` token 2 at `0` for every rung.** The 2026-09-13 field control found that `1`
+  cripples hit reception. The former claim that it selects the t41 profile was unsupported; see
+  [the token reference](manual/dev.md) and F198.
+  `bench_common.GSET` already uses `0`.
 
 ## 2. Bring the rig up on the Mac FIRST (do this before Tony sets anything up)
 

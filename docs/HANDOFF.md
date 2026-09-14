@@ -1,47 +1,32 @@
 # Handoff — Open BRX
 
-**State as of 2026-09-13 (the 2026-09-12 field night, the fix run it drove, app 0.2.1, and the range control that
-ruled out three theories).** One screen. Open work: `FOLLOWUPS.md`; evidence: `experiment-log/`; old banners:
-`git log -p -- docs/HANDOFF.md`.
+**State as of 2026-09-13.** The GSET token 2 field finding is integrated, reviewed and validated. Evidence is in
+`docs/experiment-log/2026-09.md`; remaining work is indexed by `docs/FOLLOWUPS.md`.
 
-## Where the tree is
-`origin/main` = `3833898`. App release **0.2.1** published (`app-v0.2.1`, debug-signed, Android only).
-Everything below shipped on 2026-09-13 after the 2026-09-12 field night.
+## What changed
 
-## What shipped, by the failure it answers
-- **Teams that could not shoot each other.** A mode switch dumped every invalid-team player onto one side, and a silent
-  un-push meant a team drag never reached the guns. Re-teamed by index, a one-team roster cannot be pushed or armed,
-  and an edit to a loaded game re-pushes automatically.
-- **No proof the guns had the config.** Four proofs on the board (ack currency, weapon echo, health pool, heartbeat
-  config id), a RE-PUSH CONFIG button that cures the three a push can cure, and a post-match diagnostic
-  (`python -m brx_mcp.mc.diag <session.sqlite>`).
-- **A tagger still in the game after the whistle.** Delivery is now proven from the heartbeat every phone already
-  sends, with a retry ladder that never delays the end, and stragglers named on the recap as a delivery fact.
-- **A phone stuck in utility mode.** A tap counter, a hold-to-exit, and a RELEASE button on ITEMS so the operator can
-  free a phone without touching it.
-- **Phones could not reach MC.** A boot banner and a console banner when the advertised address is unreachable, and
-  `--advertise <ip>` to override what the QR and mDNS carry without changing the bind.
-- **The deagle blocked arming.** A weapon that cannot kill in one magazine warns; only a weapon that cannot damage at
-  all is an error.
-- Plus: benching a player who walks away, a banner for connected phones not in the roster, ready-up after a re-push,
-  a confirm before a mode tile reshapes teams, and test runs no longer writing into `~/.brx-mcp`.
+- `$GSET` t2 is centralised as `GSET_T2_SAFE = 0` and pinned in real and fallback player, try-out and utility
+  frame generators. Venue volume remains 80 indoors, 90 outdoors; try-outs remain 69.
+- The venue reminder now describes the physical ALT mode accurately: outdoor beam width gives roughly twice the
+  aim tolerance on three measured guns. It does not claim ALT changes range or that t2 is the ALT bit.
+- Protocol, spec and manual references describe t2 as a receiving-gun hit gate. The 2026-09-13 field control found
+  t2=1 gave zero hits from a full clip at 30 ft while t2=0 restored reliable registration. The reflection theory
+  remains untested; t2 stays pinned to 0 until F198 is run at the bench.
 
-## Deliberately silent or staged off, and why
-- `DRIVE_IO_MODE` is **off**. MC does not drive the gun's indoor/outdoor mode. The compiled head is byte-identical to
-  what the field ran, pinned by a test.
-- The BLE link watchdog ships **off** (needs a bench number).
-- The echo-mismatch START refusal is **forceable**, because what a v4.32 gun emits after a `$WEAP` write is unmeasured.
-  The stale-ack refusal is force-proof.
-- Armour above the compiled ceiling is an **amber advisory**, not a fault, because whether a grant clamps is unmeasured.
+## Validation
 
-## Fair-play rule until S7.1 is fixed
-Backgrounding the HUD for more than six seconds re-arms from the spawn magazine, as does a genuine BLE drop and relink.
-Tell players not to background the app.
+MCP system Python: 1747 passed, 73 skipped for unavailable optional extras. MCP extras: 1819 passed, 1 skipped
+because the working tree makes the UI screenshot freshness guard inapplicable. Mission Control: 514 unit tests and
+24 real-browser steps passed, including stale-server and old-session checks. Site: 102 Playwright tests passed.
+Phone app: 501 tests and build passed. Focused venue tests and desktop/phone/stale-server browser checks passed.
+ProofShot captured the reminder with zero browser console errors; its mock-only run logged expected proxy refusals.
 
-## The one thing to do next
-**Do not try to fix outdoor range before running the control.** On 2026-09-13 Tony measured native, in a real game, at
-~200 ft: hits, with both weapons, in both toggle states. A stuck indoor mode is NOT the cause. The toggle turned out to
-be a beam-width control worth about double the aim tolerance outdoors, not a range control. Our range token already
-matches native. So the only surviving suspect is the difference between our compiled frames and native's, and one
-measurement decides it: **push MC's config to that same gun, same spot, same light, and fire at the far mark and at
-30-40 ft.** If it lands, our config is exonerated. If it fails, diff our frames against a native capture.
+## Next actions
+
+1. Tony runs F198 indoors at t2=0 and watches for phantom reflected hits. Keep t2=0 unless evidence supports a
+   different mapping.
+2. Tony runs F170: hosted MC config versus native at the far mark and 30–40 ft, with t2=0 and fixed controls.
+3. Continue F201–F205 and the existing bench/system-proof queue; do not revive the disproved ALT/range theory.
+
+**Machine roles:** WSL runs the Python suites and no-hardware MC; Windows Python is for BLE instruments; the MacBook
+is the field target. Never modify stock firmware.

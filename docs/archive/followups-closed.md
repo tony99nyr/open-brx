@@ -8,6 +8,15 @@ Ordered by close date. Evidence for every claim is in `docs/experiment-log/`.
 
 ---
 
+# Closed 2026-09-13 — GSET t2 handoff
+
+- 2026-09-13 **F197** t2 pin completed, reviewed and validated across real/fallback player, try-out and
+  utility frame generators; t2 remains 0 for both venues. Evidence: `docs/experiment-log/2026-09.md`.
+- 2026-09-13 **F199** venue reminder rationale corrected to describe the measured ALT beam-width effect.
+  Evidence: `docs/experiment-log/2026-09.md`.
+- 2026-09-13 **F200** protocol and spec claims corrected: `$GSET` t2 is a receiver gate distinct from
+  the physical ALT mode and is not an emitted-range control. Evidence: `docs/experiment-log/2026-09.md`.
+
 # Closed 2026-09-10 — the docs consolidation pass
 
 *One dated line each, per `CLAUDE.md`'s session-close rule. The evidence is in

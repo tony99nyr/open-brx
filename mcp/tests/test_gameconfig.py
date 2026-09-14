@@ -33,7 +33,7 @@ def test_hp_armor_shield_land_in_pset():
 
 
 def test_outdoor_and_friendly_fire_in_gset():
-    # $GSET,friendlyFire,outdoorMode,... ; ff off + outdoor on
+    # $GSET,friendlyFire,outdoorMode,... ; FF follows policy while t2 stays safe
     frames = GameConfig(outdoor=True, friendly_fire=False, crit_modifier=25).setup_frames()
     gset = _find(frames, "$GSET,")[0]
     toks = gset.strip("$").rstrip(",*").split(",")
