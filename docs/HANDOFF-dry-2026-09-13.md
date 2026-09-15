@@ -56,11 +56,10 @@ This is the core of F42.9 and it needs no generator change.
 Sizes and error counts were measured on 2026-09-13 against `origin/main`. XS is under an hour, S an afternoon,
 M a day, L several days. The order puts free and unblocking work first.
 
-### 1. F42.11: turn on `strict` for the console. XS
+### 1. F42.11: turn on `strict` for the console. Done 2026-09-15
 
-`webapp/mc/tsconfig.app.json` is not `strict`. **Measured cost: zero errors.** `tsc -p tsconfig.app.json --strict`
-compiles clean and `--showConfig` confirms `strict` was really on. Add `"strict": true`, run
-`npm run typecheck && npm test`, done. Doing it first keeps every later item's TS honest.
+`webapp/mc/tsconfig.app.json` has `"strict": true`. The measured cost was zero errors; `tsc -b`
+and 514 console tests passed. This keeps every later item's TS honest.
 
 ### 2. F134: close the `win_by` vocabulary. S
 

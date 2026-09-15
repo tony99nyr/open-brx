@@ -219,3 +219,4 @@ Evidence: `experiment-log/2026-09.md` → *2026-09-11 (bench) — F69 REFUTED: t
 - **S39** 2026-09-12 — fixed in PR #4, 2026-09-12: picking a character voice previews the KILL line, not the intro (A9.1/A15).
 - **S40** 2026-09-12 — fixed in PR #4, 2026-09-12: the reach tags read LAN / INTERNET (matching the REACH block) and are worded as the path to MC rather than the phone's radio; a phone on home Wi-Fi read BACKHAUL because the WSL host had no reachable LAN address.
 - **S41** 2026-09-12 — fixed in PR #4, 2026-09-12: the recap hides "AFTER THE WHISTLE" when it has no data.
+- **F42.11** 2026-09-15 — enabled strict TypeScript checking for the Mission Control console; zero new errors, 514 console tests passed. See `docs/experiment-log/2026-09.md` (2026-09-15 contract-DRY phase 1).

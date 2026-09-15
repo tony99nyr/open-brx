@@ -1,6 +1,6 @@
 # Followups — open work only
 
-Updated: 2026-09-14. **Everything in this file is open.** Closed items are in
+Updated: 2026-09-15. **Everything in this file is open.** Closed items are in
 [`archive/followups-closed.md`](archive/followups-closed.md), verbatim and ordered by close date; the evidence
 behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date). Session close = strike or
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
@@ -390,8 +390,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   **Remaining contract-DRY and typing work, sized, ordered and self-contained: [`HANDOFF-dry-2026-09-13.md`](HANDOFF-dry-2026-09-13.md).**
   Contract-DRY phase 1 (`types.py`/`envelope.py` → generated `contract.gen.ts`/`contract.gen.js`) is DONE, see contracts.md
   A33. **F42.10 ✅ CLOSED 2026-09-12:** pyright gates `mcp/` in CI (`standard` mode, `mcp/pyproject.toml`). None of the
-  rows below blocks a match. **F42.11** (XS) `webapp/mc` is not `strict: true`; measured 2026-09-13 the flag costs ZERO
-  errors, so it is a one-line change. **F42.16** (XS, filed 2026-09-13) residue: `policy.py` still casts around
+  rows below blocks a match. **F42.16** (XS, filed 2026-09-13) residue: `policy.py` still casts around
   `LoadoutPool.reasons` with a "not declared yet" comment although `07fe92b` declared it; five console
   `LoadoutPool & { reasons?: ... }` intersections are now redundant; three more `cast(...)` calls landed after the gate.
   **F42.15** (S, filed 2026-09-13) `Session.compiler` is unannotated, so no `Protocol` checks `Compiler` against
