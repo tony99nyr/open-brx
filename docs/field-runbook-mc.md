@@ -15,16 +15,16 @@ today** (`mcp/brx_mcp/mc/` — `__main__.py`, `api.py`, `state.py`), not the spe
 
 Assume something will misbehave and make sure it leaves a trace. Two sides, two mechanisms:
 
-**MC — tee it, or it scrolls away.** MC logs to stdout only. Start it as:
+**MC — use the launcher so the launch has one evidence directory.** From the repository root run:
 
 ```
-python3 -m brx_mcp.mc -v 2>&1 | tee ~/mc-$(date +%Y%m%d-%H%M).log
+pnpm mc
 ```
 
-**MC also persists every node event to SQLite automatically** at
-`~/.brx-mcp/mc/session-<id>.sqlite` (`store.log()`). That is the authoritative record of what each
-phone reported — you do not have to do anything to get it, but do **copy it off the Mac** after the
-session along with the tee'd log.
+The launcher opens the authenticated browser URL and prints the evidence directory. It keeps the MC
+stdout/stderr log beside the SQLite event store under `~/.brx-mcp/sessions/<launch-id>/`. After the
+session, `pnpm mc:collect` creates the diagnostic index there. Do not paste the token-bearing `mc.log`
+into a public issue; share a redacted copy of the evidence directory.
 
 **The phones — hit "Share log" on each one, before closing the app.** The HUD keeps its log and the
 **last 60 raw BLE frames** in memory only; closing the app loses them. "Share log" pushes the bundle to
@@ -34,8 +34,8 @@ also offers a local share/clipboard copy, which works even if MC is unreachable.
 > The BLE frame ring was added to that bundle on 2026-08-30. It is the only record of what the gun
 > actually said to the phone, and without it a phone-side fault is undebuggable after the fact.
 
-**If something goes wrong, do this before rebooting anything:** hit Share log on both phones, then copy
-`~/mc-*.log` and `~/.brx-mcp/mc/session-*.sqlite`. A reboot loses the phone side entirely.
+**If something goes wrong, do this before rebooting anything:** hit Share log on both phones, then preserve
+the printed `~/.brx-mcp/sessions/<launch-id>/` directory. A reboot loses the phone side entirely.
 
 ---
 

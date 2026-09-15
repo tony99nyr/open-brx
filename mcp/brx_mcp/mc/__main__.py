@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import inspect
+import json
 import logging
 import os
 import secrets
@@ -279,6 +280,9 @@ def build(args):
             # silently ignored is the shape of half the bugs in this repo's history.
             print("  backhaul: --tunnel ignored (--fake-net has no node socket to expose)", flush=True)
     try:
+        evidence_path = _PT(args.evidence_dir) if getattr(args, "evidence_dir", None) else None
+        if evidence_path:
+            evidence_path.mkdir(parents=True, exist_ok=True)
         # 2026-09-13: a demo/ephemeral boot -- every e2e boot, run_tests.py, the app's fake-game
         # runner -- must never create a session-*.sqlite under the operator's real ~/.brx-mcp, which
         # is field evidence (hundreds of test session-*.sqlite files had to be sifted from the real
@@ -292,9 +296,19 @@ def build(args):
             store_path = _PT(tempfile.mkdtemp(prefix="brx-mc-store-")) / f"session-{session.session_id}.sqlite"
             session.store = Store(session.session_id, store_path)
         else:
-            session.store = Store(session.session_id)
+            session.store = Store(session.session_id, _PT(args.evidence_dir) / "session.sqlite" if getattr(args, "evidence_dir", None) else None)
+        if getattr(args, "evidence_dir", None):
+            evidence_path = _PT(args.evidence_dir)
+            evidence_path.mkdir(parents=True, exist_ok=True)
+            (evidence_path / "mc-session.json").write_text(json.dumps({
+                "format": 1, "launch_id": os.environ.get("BRX_MC_LAUNCH_ID"), "session_id": session.session_id,
+                "sqlite": str(evidence_path / "session.sqlite"),
+            }, indent=2) + "\n", encoding="utf-8")
+            (evidence_path / "mc-session.json").chmod(0o600)
     except Exception as e:
         log.warning("store disabled: %s", e)
+        if getattr(args, "evidence_dir", None):
+            raise RuntimeError(f"requested evidence store is unavailable: {e}") from e
 
     # A10 §8 saved games: the real shelf lives next to armory.json; --demo/--ephemeral get a throwaway copy so a
     # demo "SAVE AS…" never lands in (or wipes) the host's real presets.json
@@ -352,7 +366,9 @@ def main(argv=None):
                     help="A28: expose the NODE socket (never the API) through a cloudflared quick tunnel at boot")
     ap.add_argument("--public-url", default=None,
                     help="A28: a public wss:// node URL you already run (named tunnel, Tailscale Funnel, port "
-                         "forward). provider: manual — MC hands it out but never starts or stops it")
+                     "forward). provider: manual — MC hands it out but never starts or stops it")
+    ap.add_argument("--evidence-dir", default=None,
+                    help="write this launch's SQLite session store under the supplied evidence directory")
     ap.add_argument("--advertise", default=None,
                     help="T3-A: put THIS address in the QR/mDNS instead of the one MC auto-detects, without "
                          "moving where it binds (WSL2's own NAT address is what MC auto-detects, and it is "
@@ -362,7 +378,7 @@ def main(argv=None):
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
     session, net, extra = build(args)
-    token = None if args.no_auth else (args.token or secrets.token_urlsafe(6))
+    token = None if args.no_auth else (args.token or os.environ.get("BRX_MC_TOKEN") or secrets.token_urlsafe(6))
     from .api import create_app
     app = create_app(session, extra_tasks=extra, token=token)
     import uvicorn
