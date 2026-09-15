@@ -2,7 +2,7 @@
 // with a sticky summary rail that reads like the card will and holds SAVE / SAVE AS NEW / PLAY THIS NOW.
 // Edits a DRAFT: nothing touches the live config until PLAY. Pool preview comes from the server's rule engine.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LoadoutPoolReasons, LoadoutPreset, PerkView, SavedGame, SlotChoice, SlotRule, WeaponView } from '../api/types';
+import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LoadoutPreset, PerkView, SavedGame, SlotChoice, SlotRule, WeaponView } from '../api/types';
 import { useStore } from '../store';
 import { F, PERK_COLOR, ROLE, T, TAB, roleOf } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, StripedSlot, Toggle, ValueBox } from '../ui';
@@ -54,7 +54,7 @@ export function Designer() {
   // The pool is computed HERE from the rules being edited — every chip/tile/who-picks change shows instantly and needs
   // no server. (Tony, round 8: a server-only preview with an "all allowed" fallback made HEAVY-off and tile taps do
   // nothing visible.) The server preview only re-derives the preset name (OPEN / NO HEAVIES / … / CUSTOM).
-  const pool: (LoadoutPool & { reasons?: LoadoutPoolReasons }) | null = useMemo(() => cfg?.loadout_policy ? computePool(cfg.loadout_policy, weapons, perks) : null, [cfg, weapons, perks]);
+  const pool: LoadoutPool | null = useMemo(() => cfg?.loadout_policy ? computePool(cfg.loadout_policy, weapons, perks) : null, [cfg, weapons, perks]);
   const tick = useRef(0);
   useEffect(() => {
     if (!cfg?.loadout_policy) return;
@@ -280,7 +280,7 @@ export function Designer() {
 /* ---------- pieces ---------- */
 
 function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
-  { slot: 'primary' | 'secondary' | 'perk'; rule: SlotRule; pool: (LoadoutPool & { reasons?: LoadoutPoolReasons }) | null; weapons: WeaponView[]; perks: PerkView[]; onRule: (r: Partial<SlotRule>) => void }) {
+  { slot: 'primary' | 'secondary' | 'perk'; rule: SlotRule; pool: LoadoutPool | null; weapons: WeaponView[]; perks: PerkView[]; onRule: (r: Partial<SlotRule>) => void }) {
   const sec = slot === 'secondary', isPerk = slot === 'perk';   // A14: the perk is its own slot
   const allowedW = pool ? (sec ? pool.secondary_weapons : pool.primary) : [];
   const allowedK = pool ? pool.perks : [];

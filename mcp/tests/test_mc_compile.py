@@ -11,6 +11,13 @@ from _session import match_config
 
 C = Compiler()
 
+
+def test_validate_rejects_an_untyped_win_by_typo():
+    cfg = _cfg()
+    cfg["scoring"]["win_by"] = "kils"
+    result = C.validate(cfg, [])
+    assert any("scoring.win_by" in error for error in result["errors"]), result
+
 _TEAMS = [{"team_id": "blue", "name": "Blue", "color": "blue", "tid": 1},
           {"team_id": "yellow", "name": "Yellow", "color": "yellow", "tid": 2}]
 

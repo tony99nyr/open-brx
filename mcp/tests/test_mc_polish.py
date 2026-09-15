@@ -56,6 +56,23 @@ def test_set_config_scoring_survives_a_restored_snapshot_missing_win_by():
     assert r["config"]["scoring"]["win_by"]        # backfilled from the mode default, never KeyErrors
 
 
+def test_scoring_win_by_rejects_a_typo_and_preserves_mode_default():
+    s = _sess()
+    for bad in ("kils", "OBJECTIVE", 7):
+        try:
+            s.set_config({"scoring": {"win_by": bad}})
+            assert False, bad
+        except ValueError as exc:
+            assert "scoring.win_by" in str(exc)
+    assert s.set_config({"scoring": {"win_by": ""}})["config"]["scoring"]["win_by"] == "kills"
+    assert s.set_config({"mode": "koth", "scoring": {"win_by": None}})["config"]["scoring"]["win_by"] == "objective"
+    try:
+        Scorer("m", 0, 60, "tdm", {}, [], {}, {}, win_by="kils")
+        assert False, "a direct scorer must not silently disable its frag cap either"
+    except ValueError as exc:
+        assert "scoring.win_by" in str(exc)
+
+
 def test_scorer_multikill_after_suppressed_death_does_not_crash():
     s = _sess(); s.set_config({"mode": "ffa", "time_limit_s": 120})
     a = s.add_player("A", gun_id="GUN-A"); b = s.add_player("B", gun_id="GUN-B"); c = s.add_player("C", gun_id="GUN-C")

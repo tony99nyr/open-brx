@@ -14,7 +14,7 @@ import secrets
 import time
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Literal, NotRequired, TypedDict, cast, get_args
+from typing import TYPE_CHECKING, Any, Callable, Literal, NotRequired, TypedDict, get_args
 from urllib.parse import quote
 
 from . import presentation as _pres
@@ -34,7 +34,7 @@ from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_P
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_KINDS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, Event,
                     GameConfig, Loadout, LoadoutOverrides, LoadoutPolicy, LoadoutPool, PerkView,
                     Phase, Player, ReadinessRow, ReadinessSnapshot, Respawn, ScanRow, SlotRule, StationRef,
-                    Stun, Team, Weapon, WeaponSel, app_tier, compatible, parse_app_ver)
+                    Stun, Team, Weapon, WeaponSel, app_tier, compatible, parse_app_ver, parse_win_by)
 
 if TYPE_CHECKING:                      # `presets.PresetStore` is attached by `__main__`/`create_app`
     from .presets import PresetStore
@@ -267,7 +267,7 @@ def default_config(mode: str = "tdm") -> GameConfig:
     m = next(x for x in MODES if x["mode"] == mode)
     cfg: GameConfig = {"config_id": uuid.uuid4().hex[:8], "mode": mode, "environment": "outdoor", "night": False,
                        "time_limit_s": 600, "respawn": m["respawn"].copy(),
-                       "scoring": {"frag_limit": m["frag_limit"], "win_by": m["win_by"]},
+                       "scoring": {"frag_limit": m["frag_limit"], "win_by": parse_win_by(m["win_by"], "kills")},
                        "health": {"max_hp": 45, "max_armor": 70},
                        "teams": [TEAM_DEFS[t].copy() for t in m["teams"]],
                        "loadout_policy": _policy.default_policy(mode),      # A10: ffa → no_heavies, else open
@@ -503,6 +503,64 @@ class Session:
         except Exception:
             import logging; logging.getLogger("brx.mc").exception("session snapshot failed (play continues)")
 
+    @staticmethod
+    def _snapshot_player(row: object) -> Player | None:
+        """Read a parked player from JSON without asserting that an arbitrary dict is a Player."""
+        if not isinstance(row, dict):
+            return None
+        pid, num, display = row.get("player_id"), row.get("player_num"), row.get("display")
+        voice, ready = row.get("voice"), row.get("ready")
+        if not (isinstance(pid, str) and pid and isinstance(num, int) and not isinstance(num, bool)
+                and isinstance(display, str) and isinstance(voice, str) and isinstance(ready, bool)):
+            return None
+        refs: dict[str, str | None] = {}
+        for key in ("team_id", "node_id", "gun_id"):
+            value = row.get(key)
+            if value is not None and not isinstance(value, str):
+                return None
+            refs[key] = value
+        raw_lo = row.get("loadout")
+        if not isinstance(raw_lo, dict) or not isinstance(raw_lo.get("weapons"), list):
+            return None
+        weapons: list[WeaponSel] = []
+        for weapon in raw_lo["weapons"]:
+            if not isinstance(weapon, dict) or not isinstance(weapon.get("weapon_id"), str):
+                return None
+            weapons.append({"weapon_id": weapon["weapon_id"]})
+        if not weapons or len(weapons) > 2:
+            return None
+        loadout: Loadout = {"weapons": weapons}
+        perk = raw_lo.get("perk")
+        if perk is not None:
+            if not isinstance(perk, str):
+                return None
+            loadout["perk"] = perk
+        overrides = raw_lo.get("overrides")
+        if overrides is not None:
+            if not isinstance(overrides, dict):
+                return None
+            clean: LoadoutOverrides = {}
+            for key in ("max_hp", "max_armor"):
+                value = overrides.get(key)
+                if value is not None and (not isinstance(value, int) or isinstance(value, bool)):
+                    return None
+                if key == "max_hp" and value is not None:
+                    clean["max_hp"] = value
+                if key == "max_armor" and value is not None:
+                    clean["max_armor"] = value
+            if clean:
+                loadout["overrides"] = clean
+        player: Player = {"player_id": pid, "player_num": num, "display": display,
+                          "team_id": refs["team_id"], "node_id": refs["node_id"],
+                          "gun_id": refs["gun_id"], "loadout": loadout, "voice": voice, "ready": ready}
+        slots = row.get("voice_slots")
+        if slots is not None:
+            if not isinstance(slots, dict) or not all(isinstance(k, str) and isinstance(v, str)
+                                                       for k, v in slots.items()):
+                return None
+            player["voice_slots"] = slots
+        return player
+
     def restore_snapshot(self) -> int:
         """Load a prior session.json (if any). Returns the number of players restored.
 
@@ -527,9 +585,17 @@ class Session:
             self.players = {p["player_id"]: p for p in snap.get("players", [])}
             # a snapshot from before STANDBY existed has no such list; a hand-edited one may hold junk rows
             parked: dict[str, Player] = {}
+            invalid_parked = 0
             for q in snap.get("standby") or []:
-                if isinstance(q, dict) and q.get("player_id"):
-                    parked[str(q["player_id"])] = cast(Player, q)   # the same untyped JSON row `players` takes one line up
+                player = self._snapshot_player(q)
+                if player is not None:
+                    parked[player["player_id"]] = player
+                else:
+                    invalid_parked += 1
+            if invalid_parked:
+                import logging
+                logging.getLogger("brx.mc").warning("ignored %d malformed standby player row(s) in %s",
+                                                     invalid_parked, self._persist_path)
             self.standby = parked
             if snap.get("teams"):
                 self.teams = snap["teams"]
@@ -1798,8 +1864,8 @@ class Session:
         # already holding a broken rule (a fixture, a restored file from another build) survived a PUT
         # of an unrelated key untouched. This is a write, with a fresh `config_id` below, so it is the
         # right place to repair it — `policy()` is a read and must not.
-        _pol = cfg.get("loadout_policy") or {}
-        if not _policy.admits_weapons(cast(SlotRule, _pol.get("primary") or {})):
+        _pol = cfg.get("loadout_policy") or _policy.default_policy(mode)
+        if not _policy.admits_weapons(_pol.get("primary") or _policy.default_policy(mode)["primary"]):
             cfg["loadout_policy"] = _policy.normalize(cfg.get("loadout_policy"), mode)
         cfg["config_id"] = uuid.uuid4().hex[:8]
         prev_teams = list(self.teams)
@@ -1975,7 +2041,8 @@ class Session:
                     # `frag_limit` then leaves `merged` without one too -- so this fell through to a
                     # KeyError on `PUT /api/config {"scoring": {...}}` (2026-09-12).
                     cfg["scoring"] = {"frag_limit": fl,
-                                      "win_by": merged.get("win_by") or default_config(mode)["scoring"]["win_by"]}
+                                      "win_by": parse_win_by(merged.get("win_by"),
+                                                             default_config(mode)["scoring"]["win_by"])}
                 if k == "health":
                     pools: dict[str, int] = {}
                     for hk in ("max_hp", "max_armor"):

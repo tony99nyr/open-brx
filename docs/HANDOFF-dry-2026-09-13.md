@@ -61,26 +61,17 @@ M a day, L several days. The order puts free and unblocking work first.
 `webapp/mc/tsconfig.app.json` has `"strict": true`. The measured cost was zero errors; `tsc -b`
 and 514 console tests passed. This keeps every later item's TS honest.
 
-### 2. F134: close the `win_by` vocabulary. S
+### 2. F134: close the `win_by` vocabulary. Done 2026-09-15
 
-`scoring.win_by` is an open string, so a typo such as `"kils"` silently disables the frag cap. The server writes
-and compares exactly three values, `"kills"`, `"survival"` and `"objective"`, and treats `None` and `""` as
-`"kills"`. Readers: `scoring.py` (constructor, and the comparisons near 494, 513 and 758), `compile.py` near 585,
-`state.py`'s mode defaults and the Scorer hand-offs. Do what `station_source` already does:
+`WinBy` in `types.py` is the closed scoring vocabulary. `parse_win_by` normalises missing or empty
+values to the mode default and rejects a typo at PUT, compile validation and Scorer construction.
+The generated console contract carries the union.
 
-1. `WinBy = Literal["kills", "survival", "objective"]` in `types.py`, used by `Scoring.win_by`.
-2. Refuse anything else at `PUT /api/config` and in `compile.validate()`, in the operator's voice.
-3. Regenerate. The console's scoring control then gets a checked union for free.
+### 3. F42.16: clear the residue the generated contract left behind. Done 2026-09-15
 
-### 3. F42.16: clear the residue the generated contract left behind. XS
-
-- `policy.py` near line 401 still says `LoadoutPool.reasons` is "deliberately NOT declared yet" and writes it
-  through `cast(dict, out)`. It has been declared since `07fe92b`. Delete the comment and the cast.
-- Five places in `webapp/mc/src` still spell `LoadoutPool & { reasons?: LoadoutPoolReasons }`. `LoadoutPool`
-  carries `reasons` now, so each becomes `LoadoutPool`.
-- Three more `cast(...)` calls landed after the gate (`policy.py` near 238, `state.py` near 532 and 1802). Replace
-  each with a typed default or a typed row where that is honest.
-- Optional: a ratchet test that counts `cast(` in `mcp/brx_mcp` and fails when the number grows.
+The four `cast(...)` calls and five redundant console intersections are gone. Standby JSON rows are
+decoded and malformed rows are logged rather than asserted as `Player`. `PoolEmptyCode` now lives in
+`types.py`, with the policy classifier and console importing the generated vocabulary.
 
 ### 4. F42.15: a `Protocol` for the session's compiler. S
 

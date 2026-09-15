@@ -23,9 +23,9 @@ import copy
 import functools
 import json
 import pathlib
-from typing import Any, Mapping, Sequence, cast
+from typing import Any, Mapping, Sequence, get_args
 
-from .types import (ItemKind, Loadout, LoadoutPolicy, LoadoutPool, LoadoutPreset, PerkView, SlotChoice,
+from .types import (ItemKind, Loadout, LoadoutPolicy, LoadoutPool, LoadoutPreset, PerkView, PoolEmptyCode, SlotChoice,
                     SlotRule, Weapon, WeaponSel)
 
 CHOICES = ("player", "host", "fixed", "off")
@@ -235,7 +235,7 @@ def effective(pol: LoadoutPolicy | None, mode: str = "tdm") -> LoadoutPolicy:
     weapon, which empties the pool for a reason no operator set and none of them can see."""
     if not pol:
         return default_policy(mode)
-    if not admits_weapons(pol.get("primary") or cast(SlotRule, {})):
+    if not admits_weapons(pol.get("primary") or _rule()):
         return normalize(pol, mode)
     return pol
 
@@ -305,10 +305,10 @@ def admits_weapons(rule: SlotRule) -> bool:
 # so the one classifier hands out a code and each audience writes its own line. Round-2 review
 # 2026-09-12 — the console blamed the PERK slot's filters when S37 had pruned the last perk for having
 # no second weapon to switch to, which is a fact about the SECONDARY slot.
-POOL_EMPTY_CODES = ("off", "fixed_missing", "only_ids_missing", "needs_secondary", "unplayable", "filtered")
+POOL_EMPTY_CODES = get_args(PoolEmptyCode)
 
 
-def _empty_code(rule: SlotRule, rows: Sequence[Mapping[str, Any]], key: str) -> str:
+def _empty_code(rule: SlotRule, rows: Sequence[Mapping[str, Any]], key: str) -> PoolEmptyCode:
     """Why `_filter`/the choice left this slot with nothing. See `POOL_EMPTY_CODES`.
 
     Round-3 UX-2 (2026-09-13) added `unplayable`, and it BEATS `filtered`. `rows` is the UNFILTERED
@@ -384,7 +384,7 @@ def pool(policy: LoadoutPolicy, weapons: Sequence[Weapon], perks: Sequence[PerkV
         keep = [rid for rid in sp if not swaps_weapons(_perk_row(perks, rid))]
         pruned_swap, sp = [rid for rid in sp if rid not in keep], keep
     out: LoadoutPool = {"primary": primary, "secondary_weapons": sw, "perks": sp}
-    reasons: dict[str, str] = {}
+    reasons: dict[str, PoolEmptyCode] = {}
     if not primary:
         reasons["primary"] = _empty_code(prim, weapons, "weapon_id")
     if not sw:
@@ -394,11 +394,7 @@ def pool(policy: LoadoutPolicy, weapons: Sequence[Weapon], perks: Sequence[PerkV
         # the perk filters for it sends the operator to the wrong control entirely.
         reasons["perks"] = "needs_secondary" if pruned_swap else _empty_code(pr, perks, "perk_id")
     if reasons:
-        # Additive, and deliberately NOT declared on the `LoadoutPool` TypedDict yet: that type is the
-        # source of `webapp/mc/src/api/contract.gen.ts` and `app/src/transport/contract.gen.js`, which
-        # belong to the UI lanes. Declare it there as `NotRequired[dict[str, str]]` and regenerate
-        # (`python3 mcp/tools/gen_contract.py`) in the commit that renders it.
-        cast(dict, out)["reasons"] = reasons
+        out["reasons"] = reasons
     return out
 
 

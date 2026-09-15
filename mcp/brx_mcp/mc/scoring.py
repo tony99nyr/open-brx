@@ -9,7 +9,7 @@ import io
 from typing import Any, Callable, Mapping
 
 from .types import (ACC_MIN_SHOTS, ASSIST_WINDOW_MS, FEEDBACK_MAX_AGE_MS, MULTI_KILL_MS,
-                    STALE_AFTER_MS, Event, Player, ScoreRow, Team)
+                    STALE_AFTER_MS, Event, Player, ScoreRow, Team, WinBy, parse_win_by)
 
 Feed = dict
 Feedback = Callable[[str, dict], None]     # (player_id, feedback body)
@@ -100,7 +100,7 @@ class Scorer:
                  players: dict[str, Player], teams: list[Team],
                  node_player: dict[str, str], synced_at_lobby: dict[str, bool],
                  on_feedback: Feedback | None = None, on_feed: Callable[[Feed], None] | None = None,
-                 now_ms: Callable[[], int] | None = None, win_by: str | None = None,
+                 now_ms: Callable[[], int] | None = None, win_by: WinBy | None = None,
                  on_alert: Callable[[str, str, dict], object] | None = None, frag_limit: int | None = None,
                  on_limit: Callable[[int], None] | None = None):
         self.match_id = match_id
@@ -112,7 +112,7 @@ class Scorer:
         self.node_player = node_player            # node_id -> player_id (Session keeps it current)
         self.mismatched = 0                       # facts dropped because their player_id != the node's binding
         self.synced_at_lobby = synced_at_lobby    # node_id -> bool
-        self.win_by = win_by
+        self.win_by: WinBy = parse_win_by(win_by, "kills")
         self.on_feedback = on_feedback or (lambda pid, body: None)
         # A11.4 match-state alerts: (kind, scope, extra) where scope is "all" | a team_id | a player_id
         self.on_alert = on_alert or (lambda kind, scope, extra: None)
@@ -491,7 +491,7 @@ class Scorer:
         """
         if not self.frag_limit or "frag_limit" in self._announced:
             return
-        if self.win_by not in (None, "", "kills"):
+        if self.win_by != "kills":
             return
         scores = ({pid: st.kills for pid, st in self.stats.items()} if self.mode == "ffa"
                   else self.team_scores())
@@ -510,7 +510,7 @@ class Scorer:
         alive in a survival mode (lms / infection)."""
         if self.now_ms() - t > FEEDBACK_MAX_AGE_MS:
             return
-        if self.win_by in (None, "", "kills"):
+        if self.win_by == "kills":
             if self.mode == "ffa":
                 scores = {pid: st.kills for pid, st in self.stats.items()}
             else:
@@ -755,7 +755,7 @@ class Scorer:
             tops = [r["player_id"] for r in rows
                     if (-r["kills"], -r["kd"], r["deaths"]) == key]
             return {"player_id": tops[0]} if len(tops) == 1 else {"player_id": None, "tie": sorted(tops)}
-        if self.win_by not in (None, "", "kills"):
+        if self.win_by != "kills":
             # An OBJECTIVE mode is won on possession when the field actually reported some: the top
             # team by held seconds, a tie when two are level. This is the one thing that made the koth
             # card a promise MC could not keep — it printed "WIN · POSSESSION TIME" and then handed the

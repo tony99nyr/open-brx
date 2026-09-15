@@ -60,6 +60,14 @@ def test_player_flow_and_errors():
     assert c.delete(f"/api/players/{p['player_id']}").json()["ok"]
 
 
+def test_put_config_reports_an_invalid_win_by():
+    needs(HAVE, "starlette + httpx")
+    c, s, net = _client()
+    r = c.put("/api/config", json={"scoring": {"win_by": "kils"}})
+    assert r.status_code == 400 and "scoring.win_by" in r.json()["error"]
+    assert s.config["scoring"]["win_by"] == "kills"
+
+
 def test_ui_ws_snapshot():
     needs(HAVE, "starlette + httpx")
     c, s, net = _client()
@@ -288,4 +296,3 @@ def test_standby_routes():
     c.post(f"/api/players/{pid}/standby")
     assert c.delete(f"/api/players/{pid}").json()["ok"]
     assert c.get("/api/state").json()["standby"] == []
-

@@ -375,6 +375,23 @@ def test_snapshot_before_standby_existed_restores_with_none():
     assert s.standby == {}
 
 
+def test_malformed_standby_json_is_ignored_on_restore():
+    s, _net, _clock, players = _session()
+    pid = players[1]["player_id"]
+    s.stand_down(pid)
+    tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_path = tmp
+    s._persist_last = 0.0
+    s._persist()
+    snap = json.loads(tmp.read_text())
+    snap["standby"][0]["player_num"] = "not-an-integer"
+    tmp.write_text(json.dumps(snap))
+    restored = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()), now_ms=lambda: T0)
+    restored._persist_path = tmp
+    assert restored.restore_snapshot() == len(players) - 1
+    assert restored.standby == {}
+
+
 # ============================================================ T2 review (2026-09-13): the field-safety set
 #
 # S1/S4 are one bug with two doors: `standby` is a flag the PHONE persists, and until now the only thing

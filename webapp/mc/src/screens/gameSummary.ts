@@ -62,7 +62,7 @@ export function unplayablePick(rule: SlotRule): string | null {
   return only.length && only.every(id => UNPLAYABLE_IDS.has(id)) ? only[0] : null;
 }
 
-export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: PerkView[]): LoadoutPool & { reasons?: LoadoutPoolReasons } {
+export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: PerkView[]): LoadoutPool {
   const prim = p.primary.choice === 'fixed' ? weapons.filter(w => w.weapon_id === p.primary.fixed_id && !UNPLAYABLE_IDS.has(w.weapon_id)).map(w => w.weapon_id)
     : kindRows(p.primary, weapons).filter(w => inPool(p.primary, w.weapon_id, w.tags ?? [])).map(w => w.weapon_id);
   const s = p.secondary, k = p.perk;
@@ -82,7 +82,7 @@ export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: Perk
     neededSecondary = kept.length !== sp.length;
     sp = kept;
   }
-  const out: LoadoutPool & { reasons?: LoadoutPoolReasons } = { primary: prim, secondary_weapons: sw, perks: sp };
+  const out: LoadoutPool = { primary: prim, secondary_weapons: sw, perks: sp };
   const weaponIds = new Set(weapons.map(w => w.weapon_id));
   const perkIds = new Set(visiblePerks.map(x => x.perk_id));
   const reasons: LoadoutPoolReasons = {};
@@ -104,7 +104,7 @@ export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: Perk
  *  refuses too — a policy can reach `state.config` from an older saved game or a race even if this
  *  session's Designer never produced it). Absent pool (not loaded yet) reads as nothing empty, never a
  *  false block. */
-export function emptyRequiredSlots(pool: (LoadoutPool & { reasons?: LoadoutPoolReasons }) | null): { primary: boolean; secondary: boolean; perk: boolean; any: boolean } {
+export function emptyRequiredSlots(pool: LoadoutPool | null): { primary: boolean; secondary: boolean; perk: boolean; any: boolean } {
   const r = pool?.reasons;
   // `unplayable` joins `off` as a NON-blocking code (round-3 MERGE-4): it is OUR build's limitation,
   // not a rule the operator wrote. The server drops the pick, re-fits every loadout to a legal weapon
@@ -149,9 +149,12 @@ export function presetOf(p: LoadoutPolicy): LoadoutPolicy['preset'] {
   for (const k of ['open', 'no_heavies', 'snipers'] as const) if (strip(TEMPLATE_RULES[k]) === strip(p)) return k;
   return 'custom';
 }
-export const withPolicy = (c: GameConfig): ConfigView =>
-  (c.loadout_policy?.primary && c.loadout_policy.secondary && c.loadout_policy.perk
-    ? (c as ConfigView) : { ...c, loadout_policy: DEFAULT_POLICY() });
+export const withPolicy = (c: GameConfig): ConfigView => {
+  const policy = c.loadout_policy;
+  return policy?.primary && policy.secondary && policy.perk
+    ? { ...c, loadout_policy: policy }
+    : { ...c, loadout_policy: DEFAULT_POLICY() };
+};
 
 const PRESET_LABEL: Record<string, string> = { open: 'OPEN', no_heavies: 'NO HEAVIES', snipers: 'SNIPERS ONLY', custom: 'CUSTOM RULES' };
 
@@ -270,4 +273,3 @@ export function splitLine(players: { player_num: number; team_id: string | null 
   const counts = predictedSplit(players, prevTeams, newTeams);
   return `${players.length} PLAYER${players.length === 1 ? '' : 'S'} → ${newTeams.map(t => `${t.team_id.toUpperCase()} ${counts[t.team_id] ?? 0}`).join(' / ')}`;
 }
-

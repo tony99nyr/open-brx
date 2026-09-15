@@ -196,9 +196,25 @@ class Respawn(TypedDict):
     delay_s: int
 
 
+WinBy = Literal["kills", "survival", "objective"]
+
+
+def parse_win_by(value: object, default: WinBy) -> WinBy:
+    """Normalise a missing/empty mode default and refuse any other scoring vocabulary."""
+    if value is None or value == "":
+        return default
+    if value == "kills":
+        return "kills"
+    if value == "survival":
+        return "survival"
+    if value == "objective":
+        return "objective"
+    raise ValueError("scoring.win_by must be kills, survival or objective")
+
+
 class Scoring(TypedDict):
     frag_limit: int | None
-    win_by: str
+    win_by: WinBy
 
 
 class Health(TypedDict):
@@ -247,6 +263,9 @@ class LoadoutPolicy(TypedDict):
     perk: SlotRule                        # A14: perks are their own slot (choice may be "off")
 
 
+PoolEmptyCode = Literal["off", "fixed_missing", "only_ids_missing", "needs_secondary", "unplayable", "filtered"]
+
+
 class LoadoutPool(TypedDict):
     """allowed ids per slot, catalog order, computed server-side (loadout.md §3.2); `perks` is the
     perk slot's list (A14).
@@ -254,10 +273,9 @@ class LoadoutPool(TypedDict):
     primary: list[str]
     secondary_weapons: list[str]
     perks: list[str]                      # A14: the perk slot's pool
-    reasons: NotRequired[dict[str, Literal["off", "fixed_missing", "only_ids_missing", "needs_secondary",
-                                           "unplayable", "filtered"]]]
+    reasons: NotRequired[dict[str, PoolEmptyCode]]
     # field 2026-09-12 (F146/S37): one code per EMPTY slot (keys: primary / secondary_weapons / perks), absent when every
-    # slot has something; `policy.POOL_EMPTY_CODES` is the vocabulary, `policy._empty_code` the classifier.
+    # slot has something; `PoolEmptyCode` is the vocabulary, `policy._empty_code` the classifier.
 
 
 class PerkEffects(TypedDict, total=False):

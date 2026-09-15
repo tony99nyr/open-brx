@@ -14,11 +14,11 @@ export type {
   ArmoryRecord, BleId, Envelope, Event, FrameBundle, GameConfig, Health, Loadout, LoadoutOverrides,
   LoadoutPolicy, LoadoutPool, LogView, PerkEffects, PerkView, Player, Preflight, ReadinessRow,
   ReadinessSnapshot, Respawn, RosterEntry, ScanRow, ScoreRow, Scoring, Siphon, SlotRule, StationRef,
-  Stun, Team, Weapon, WeaponSel,
+  Stun, Team, Weapon, WeaponSel, PoolEmptyCode,
 } from './contract.gen';
 export type {
   ArmState, ControlCmd, ItemKind, LoadoutPreset, McKind, NodeKind, PersistedEventType, Phase,
-  SlotChoice, StationKind, StationSourceId,
+  SlotChoice, StationKind, StationSourceId, WinBy,
 } from './contract.gen';
 // values (verbatimModuleSyntax: a value re-export may not ride in a `export type` statement)
 export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS } from './contract.gen';
@@ -217,7 +217,6 @@ export type LoadoutPoolReasons = NonNullable<LoadoutPool['reasons']>;   // gener
 /** One optional code per slot that came out empty; a slot with nothing to say here has something in
  *  its pool. Keyed by the SAME names as `LoadoutPool`'s own fields (`primary`, `secondary_weapons`,
  *  `perks`), not `secondary`/`perk` — those are the POLICY's slot names, these are the POOL's. */
-export type PoolEmptyCode = LoadoutPoolReasons[string];
 
 export interface State {
   session_id: string;

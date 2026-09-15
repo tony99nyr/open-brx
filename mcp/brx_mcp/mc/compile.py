@@ -22,7 +22,7 @@ from ..protocol import PANIC_SEQUENCE
 from .perks import PerkCatalog
 from .policy import SIDEARM_TAG          # F146: one vocabulary for "this is a backup weapon"
 from .types import (MAX_PLAYERS, OBJECTIVE_MODES, STATION_SOURCES, FrameBundle, GameConfig, PerkView,
-                    Player, Team, Weapon)
+                    Player, Team, Weapon, parse_win_by)
 from . import presentation as _pres
 from .. import poolgauge as pg
 from .. import voices as _voices
@@ -1512,6 +1512,10 @@ class Compiler:
         errors: list[str] = []
         warnings: list[str] = []
         mode = config.get("mode", "tdm")
+        try:
+            parse_win_by((config.get("scoring") or {}).get("win_by"), "kills")
+        except ValueError as exc:
+            errors.append(str(exc))
         covered = full_coverage(config, opts)      # A31: one coverage model, `opts` over the venue setting
         asserted = (opts or {}).get("venue_coverage") == "full"   # A28: the explicit venue assertion (the time-limit rule keys on it alone)
 

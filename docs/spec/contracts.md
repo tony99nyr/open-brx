@@ -134,7 +134,7 @@ GameConfig {
                                       // is told the venue is fully LAN-covered.)
   respawn:     { type: "auto"|"scanner"|"none", delay_s: number, gate?: "trigger"|"presence" },   // gate: A13.1 (scanner only)
   stations?:   [ { id: number, kind: "respawn"|"powerup"|"extraction"|"bomb"|"control" } ],          // A13.1: the utility items valid in this game
-  scoring:     { frag_limit: number|null, win_by: "kills"|"survival"|"objective"|string }, // frag_limit / survival ends are LAN-covered-only [A4.8]
+  scoring:     { frag_limit: number|null, win_by: "kills"|"survival"|"objective" }, // frag_limit / survival ends are LAN-covered-only [A4.8]
   health:      { max_hp: number, max_armor: number },   // mode defaults; Loadout may override
   // No `max_shield`, deliberately: the shield pool is NOT BLE-writable. It is granted only by an IR
   // $SIR function-11 event (P16, closed 2026-08-26). Damage drains shields -> armor -> HP.

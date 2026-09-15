@@ -65,6 +65,7 @@ export type ArmState = 'idle' | 'connected' | 'kitted' | 'lobby' | 'armed' | 'li
  *  tuple every phase guard tests against, and the console's `Phase` is generated from this alias, so a new
  *  phase cannot reach one side without the other. */
 export type Phase = 'muster' | 'build' | 'kit' | 'lobby' | 'armed' | 'live' | 'recap';
+export type WinBy = 'kills' | 'survival' | 'objective';
 /** `policy.CHOICES` -- who fills a slot. `policy._check_rule` refuses anything else (and refuses "off"
  *  for the primary: a player with no primary weapon has nothing to play with). */
 export type SlotChoice = 'player' | 'host' | 'fixed' | 'off';
@@ -73,6 +74,7 @@ export type SlotChoice = 'player' | 'host' | 'fixed' | 'off';
 export type ItemKind = 'weapon' | 'perk' | 'sidearm';
 /** `policy.PRESET_NAMES` -- the named rulesets, plus "custom" for a hand-edited one. */
 export type LoadoutPreset = 'open' | 'no_heavies' | 'snipers' | 'custom';
+export type PoolEmptyCode = 'off' | 'fixed_missing' | 'only_ids_missing' | 'needs_secondary' | 'unplayable' | 'filtered';
 /** A13 / spec/utility.md §5: what a utility phone can be. Mirrors `KIND` in `app/src/beacon.js` (the advert
  *  byte 8) and `KIND_LABEL` in `app/src/utility.js`; a `station_config` naming anything else is refused at PUT. */
 export type StationKind = 'respawn' | 'powerup' | 'extraction' | 'bomb' | 'control';
@@ -183,7 +185,7 @@ export interface Respawn {
 
 export interface Scoring {
   frag_limit: number | null;
-  win_by: string;
+  win_by: WinBy;
 }
 
 export interface Health {
@@ -229,7 +231,7 @@ export interface LoadoutPool {
   secondary_weapons: string[];
   /** A14: the perk slot's pool */
   perks: string[];
-  reasons?: Record<string, 'off' | 'fixed_missing' | 'only_ids_missing' | 'needs_secondary' | 'unplayable' | 'filtered'>;
+  reasons?: Record<string, PoolEmptyCode>;
 }
 
 /** The effect knobs the compiler acts on -- exactly `perks.EFFECT_KEYS`, which `PerkCatalog.__init__`
