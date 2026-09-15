@@ -18,10 +18,10 @@
 
 ## Validation
 
-Contract-DRY phase 2 pre-commit: MCP system 1750 passed (74 skips: optional extras and dirty UI shot
-gate), MCP extras 1823 passed (1 dirty UI shot-gate skip); console strict typecheck/build and 514 unit
-tests passed, real-server e2e 24 passed; phone 501 and build passed; site Playwright 102 passed. A
-post-commit shot recapture and freshness check remain before phase 3.
+Contract-DRY phase 2: MCP system 1750 passed (74 skips: optional extras and pre-commit dirty UI shot
+gate), MCP extras 1823 passed (1 pre-commit dirty UI shot-gate skip); console strict typecheck/build
+and 514 unit tests passed, real-server e2e 24 passed; phone 501 and build passed; site Playwright 102
+passed. Post-commit site-shot freshness gate: 4/4 passed.
 
 ## Next actions
 
