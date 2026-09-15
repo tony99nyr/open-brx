@@ -69,7 +69,8 @@ def weapon_views() -> list[dict]:
 class FakeCompiler:
     """Trivial but shape-correct: $PSET carries player_num, head has no $SPAWN, spawn has one."""
 
-    def compile(self, config: GameConfig, player: Player, teams: list[Team], roll=None) -> FrameBundle:
+    def compile(self, config: GameConfig, player: Player, teams: list[Team], roll=None,
+                plan=None) -> FrameBundle:
         tid = next((t["tid"] for t in teams if t["team_id"] == player.get("team_id")), 0)
         hp, ar = config["health"]["max_hp"], config["health"]["max_armor"]
         weapons = [w["weapon_id"] for w in player["loadout"]["weapons"]] or ["assault_rifle"]
@@ -150,11 +151,19 @@ class FakeCompiler:
 
     def weapon_catalog(self) -> list[Weapon]:
         return [{"weapon_id": w[0], "name": w[1], "cls": w[2],
-                 "stats": {"damage": w[6], "mag": w[3], "reserve": w[3] * w[4], "rof": w[7], "reload_ms": int(w[5] * 1000),
+                 "stats": {"dmg": w[6], "mag": w[3], "reserve": w[3] * w[4], "rof": w[7], "reload_ms": int(w[5] * 1000),
                            "htk": max(1, round(13 * 55 / max(w[6], 1)))},   # fake: AR bar 55 → 13 hits, scaled
                  "weap_frame": f"$WEAP,<slot>,<{w[0]}>,*", "verified": w[0] in ("assault_rifle", "charge_rifle"),
                  "tags": _tags(w[0], w[2]), "role": w[2].lower()}
                 for w in _WEAPONS]
+
+    def perk_effects(self, player: Player | None) -> dict:
+        """Return the selected perk's effects, matching the real compiler's seam."""
+        pid = ((player or {}).get("loadout") or {}).get("perk")
+        if not pid:
+            return {}
+        from .perks import default_perks
+        return default_perks().effects(pid)
 
     def perk_catalog(self) -> list[PerkView]:
         """A10: the REAL perks.json rows — static data, no hardware, safe for the fake."""

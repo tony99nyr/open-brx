@@ -390,10 +390,7 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   Contract-DRY phase 1 (`types.py`/`envelope.py` → generated `contract.gen.ts`/`contract.gen.js`) is DONE, see contracts.md
   A33. **F42.10 ✅ CLOSED 2026-09-12:** pyright gates `mcp/` in CI (`standard` mode, `mcp/pyproject.toml`). None of the
   rows below blocks a match.
-  **F42.15** (S, filed 2026-09-13) `Session.compiler` is unannotated, so no `Protocol` checks `Compiler` against
-  `FakeCompiler`, and they have drifted: the fake's `compile()` has no `plan`, its `weapon_catalog()` keys stats `damage`
-  where the real one keys `dmg` (a fallback in `views.weapon_view` exists only for it), and `_perk_effects` is reached
-  under a blanket `except Exception`. None is a live bug today. **F42.9** (M, then L for `State`) about two dozen console
+  **F42.9** (M, then L for `State`) about two dozen console
   view types are hand-written because the server builds them as untyped dicts; the pyright gate did NOT type them. The
   recipe needs no generator change (a TypedDict in `types.py` is emitted automatically; delete the `types.ts` copy and
   `test_ui_contract.py` enforces it); the handoff has the five batches, leaf shapes first. **F42.12** (M) `app/src/transport`

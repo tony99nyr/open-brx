@@ -946,7 +946,7 @@ class Compiler:
         self.catalog = catalog or WeaponCatalog()
         self.perks = perks or PerkCatalog()
 
-    def _perk_effects(self, player: Player | None) -> dict:
+    def perk_effects(self, player: Player | None) -> dict:
         """The passive knobs of the player's slot-2 perk (loadout.md §1.2/§2); {} when none."""
         pid = ((player or {}).get("loadout") or {}).get("perk")
         return self.perks.effects(pid) if pid else {}
@@ -965,7 +965,7 @@ class Compiler:
         profile so this stays a pure mapping)."""
         led = config.get("led") or {}
         ov = ((player or {}).get("loadout", {}) or {}).get("overrides") or {}   # per-player HP/armor (modes §1.1)
-        fx = self._perk_effects(player)
+        fx = self.perk_effects(player)
         return _GC(
             mode=config["mode"],
             game_time_s=config["time_limit_s"] or 0,
@@ -1165,7 +1165,7 @@ class Compiler:
                 "broadcasts, so this gun would read every uncaptured point as its own and take no hill "
                 "damage. Move the player to tid 0, 1 or 3.")
         w0, w1 = self._weapon_ids(player)
-        fx = self._perk_effects(player)                    # ammo/reload knobs act on the PRIMARY only …
+        fx = self.perk_effects(player)                    # ammo/reload knobs act on the PRIMARY only …
         mods = {k: fx[k] for k in ("ammo_mult", "reload_mult", "switch_mult") if fx.get(k)}
         swap_mods = {k: mods[k] for k in ("switch_mult",) if k in mods}   # … the swap delay must scale on EVERY slot (the gun takes the larger)
 

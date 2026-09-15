@@ -73,23 +73,13 @@ The four `cast(...)` calls and five redundant console intersections are gone. St
 decoded and malformed rows are logged rather than asserted as `Player`. `PoolEmptyCode` now lives in
 `types.py`, with the policy classifier and console importing the generated vocabulary.
 
-### 4. F42.15: a `Protocol` for the session's compiler. S
+### 4. F42.15: a `Protocol` for the session's compiler. Done 2026-09-15
 
-`Session.compiler` is unannotated, so every getter annotated against it is asserted, not checked. The real
-`Compiler` and the test double `FakeCompiler` have drifted apart. The fake backs most MC tests, and the server falls
-back to it only when `compile.py` fails to import; `--demo` runs the real compiler.
-
-| Member the session reaches | `Compiler` | `FakeCompiler` | Today |
-|---|---|---|---|
-| `compile(config, player, teams, roll=, plan=)` | has `plan` | no `plan` | safe: the fake has no `hit_plan`, so no plan is ever built for it |
-| `cues`, `tutorial_frames`, `validate`, `perk_catalog` | yes | yes | signatures agree |
-| `weapon_catalog()` | stats keyed `dmg` | stats keyed `damage` | safe only because `views.weapon_view` falls back to `damage`, a shim that exists for the fake |
-| `hit_plan`, `voice_options`, `voice_preview` | yes | absent | reached through `getattr(..., None)`, correctly optional |
-| `_perk_effects(player)` | private | absent | reached inside `except Exception`, which also hides a real error |
-
-None of these is a live bug. Write the `Protocol` in `mcp/brx_mcp/mc/interfaces.py`, annotate `Session.compiler`,
-make the fake's `weapon_catalog()` return `list[Weapon]` with `dmg`, delete the `damage` fallback, and make
-`_perk_effects` public or give the fake a no-op one so the blanket `except` can go.
+`Session.compiler` now uses `interfaces.Compiler`, which both real and fake adapters satisfy under
+pyright and the runtime conformance test. The fake accepts `plan`, publishes `dmg` stats, and has
+public `perk_effects`; the real compiler has the same public method. `Session` no longer hides a
+perk or catalog failure under a blanket exception. Real-only `hit_plan`, `voice_options` and
+`voice_preview` remain optional through guarded lookups.
 
 ### 5. F42.9: generate the console's view types. M, then L for `State`
 

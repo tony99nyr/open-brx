@@ -5,9 +5,10 @@
 
 ## What changed
 
-- Contract-DRY phases 1 and 2 are implemented: Mission Control compiles with strict TypeScript;
-  `win_by` is closed and invalid values are refused; four casts and five redundant console pool
-  intersections are gone. The remaining phases are in `HANDOFF-dry-2026-09-13.md`.
+- Contract-DRY phases 1 to 3 are implemented: Mission Control compiles with strict TypeScript;
+  `win_by` is closed; the residue casts and pool intersections are gone; `Session.compiler` is a
+  checked interface shared by real and fake compilers. The remaining phases are in
+  `HANDOFF-dry-2026-09-13.md`.
 - `$GSET` t2 is centralised as `GSET_T2_SAFE = 0` and pinned in real and fallback player, try-out and utility
   frame generators. Venue volume remains 80 indoors, 90 outdoors; try-outs remain 69.
 - The venue reminder now describes the physical ALT mode accurately: outdoor beam width gives roughly twice the
@@ -18,15 +19,15 @@
 
 ## Validation
 
-Contract-DRY phase 2: MCP system 1750 passed (74 skips: optional extras and pre-commit dirty UI shot
-gate), MCP extras 1823 passed (1 pre-commit dirty UI shot-gate skip); console strict typecheck/build
-and 514 unit tests passed, real-server e2e 24 passed; phone 501 and build passed; site Playwright 102
-passed. Post-commit site-shot freshness gate: 4/4 passed.
+Contract-DRY phase 3: MCP system 1753 passed (73 optional skips), MCP extras 1826 passed; console
+strict typecheck/build and 514 unit tests passed; real-server browser e2e 24 passed; phone 501
+tests and build passed; site Playwright 102 passed. Existing shot manifest remains current because
+no UI source changed.
 
 ## Next actions
 
-1. Continue the contract-DRY plan with compiler interface checking (F42.15), then generated console
-   view types (F42.9). Commit each phase after review and validation.
+1. Continue the contract-DRY plan with generated console view types (F42.9), then checked phone
+   transport (F42.12) and bench stage (F42.14). Commit each phase after review and validation.
 2. Tony runs F198 indoors at t2=0 and watches for phantom reflected hits. Keep t2=0 unless evidence supports a
    different mapping.
 3. Tony runs F170: hosted MC config versus native at the far mark and 30–40 ft, with t2=0 and fixed controls.

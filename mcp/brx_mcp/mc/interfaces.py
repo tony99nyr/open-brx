@@ -2,10 +2,11 @@
 consume these; never import another lane's module internals."""
 from __future__ import annotations
 
+import random
 from typing import Any, Callable, Protocol
 
 from .types import (ArmoryRecord, Envelope, Event, FrameBundle, GameConfig, Player, RosterEntry,
-                    ScanRow, Team, Weapon)
+                    ScanRow, Team, Weapon, PerkView)
 
 
 class Hello(dict):
@@ -34,11 +35,14 @@ class NetServer(Protocol):
 
 
 class Compiler(Protocol):
-    def compile(self, config: GameConfig, player: Player, teams: list[Team]) -> FrameBundle: ...
+    def compile(self, config: GameConfig, player: Player, teams: list[Team],
+                roll: random.Random | None = None, plan: object | None = None) -> FrameBundle: ...
     def tutorial_frames(self, weapon: Weapon, environment: str) -> list[str]: ...
-    def cues(self, voice: str) -> dict[str, str]: ...
+    def cues(self, voice: str, slots: dict | None = None) -> dict[str, str]: ...
     def validate(self, config: GameConfig, roster: list[Player], opts: dict | None = None) -> dict: ...
     def weapon_catalog(self) -> list[Weapon]: ...
+    def perk_catalog(self) -> list[PerkView]: ...
+    def perk_effects(self, player: Player | None) -> dict: ...
 
 
 class Armory(Protocol):

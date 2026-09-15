@@ -23,6 +23,7 @@ from .. import voices as _voices
 from . import compile as _compile      # A31: `mc_verify` / `full_coverage` — one coverage model
 from . import frames as _frames      # A36: reading a pushed head / a gun's echo back
 from . import policy as _policy
+from .interfaces import Compiler as CompilerPort
 from .scoring import Scorer
 from ..modes.hillbeacon import NEUTRAL_TEAM as _NEUTRAL_TEAM     # F82: the tid a NEUTRAL hill broadcasts
 from ..modes.registry import default_params as _default_params, params_schema_json as _params_schema_json, \
@@ -32,7 +33,7 @@ from .tunnel import TunnelError
 from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS,
                     OBJECTIVE_MODES, OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS,
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_KINDS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, Event,
-                    GameConfig, Loadout, LoadoutOverrides, LoadoutPolicy, LoadoutPool, PerkView,
+                    FrameBundle, GameConfig, Loadout, LoadoutOverrides, LoadoutPolicy, LoadoutPool, PerkView,
                     Phase, Player, ReadinessRow, ReadinessSnapshot, Respawn, ScanRow, SlotRule, StationRef,
                     Stun, Team, Weapon, WeaponSel, app_tier, compatible, parse_app_ver, parse_win_by)
 
@@ -286,7 +287,7 @@ def default_config(mode: str = "tdm") -> GameConfig:
 
 
 class Session:
-    def __init__(self, compiler, net, armory, store=None, now_ms: Callable[[], int] | None = None,
+    def __init__(self, compiler: CompilerPort, net, armory, store=None, now_ms: Callable[[], int] | None = None,
                  lan: dict | None = None, voice_rng: random.Random | None = None):
         self.compiler, self.net, self.armory, self.store = compiler, net, armory, store
         # A15.1: every push rolls the un-picked $PSET voice fields (death scream, short pain, respawn cry) so two
@@ -371,7 +372,7 @@ class Session:
         # config leg stands down and ONE edit costs exactly ONE compile + push per gun.
         self._repush_pending = False
         self.acks: dict[str, dict] = {}
-        self.bundles: dict[str, dict] = {}
+        self.bundles: dict[str, FrameBundle] = {}
         # A36: player_id -> the worded board line for a gun whose REPORTED pool disagreed with the
         # `$PSET` MC pushed it. Judged once per life in `_check_pool` (a settled frame, no hits yet)
         # and held until the next push re-arms that gun, so the operator still sees it after the
@@ -857,21 +858,7 @@ class Session:
     # ---------- A10 loadout policy / catalog ----------
     def _catalog_rows(self) -> tuple[list[Weapon], list[PerkView]]:
         """(visible weapons, visible perks) — the rows the policy engine filters by tag."""
-        wc: Callable[[], list[Weapon]] | None = getattr(self.compiler, "weapon_catalog", None)
-        weapons: list[Weapon] = []
-        if wc is not None:
-            try:
-                weapons = [w for w in wc() if isinstance(w, dict)]
-            except Exception:
-                weapons = []
-        pc: Callable[[], list[PerkView]] | None = getattr(self.compiler, "perk_catalog", None)
-        perks: list[PerkView] = []
-        if pc is not None:
-            try:
-                perks = list(pc())
-            except Exception:
-                perks = []
-        return weapons, perks
+        return self.compiler.weapon_catalog(), self.compiler.perk_catalog()
 
     def policy(self) -> LoadoutPolicy:
         """The loadout ruleset in force. **PURE** — it returns a view and never writes.
@@ -963,12 +950,7 @@ class Session:
             except (TypeError, ValueError):
                 return default
 
-        fx = {}
-        if p is not None:
-            try:
-                fx = self.compiler._perk_effects(p)
-            except Exception:      # a fake/older compiler has no perk model; the base pool still holds
-                fx = {}
+        fx = self.compiler.perk_effects(p)
         from .compile import armed_pool                  # the one shared arithmetic (see docstring)
         return max(1, armed_pool(n("max_hp", 45), n("max_armor", 70), fx))
 
@@ -1508,14 +1490,7 @@ class Session:
             raise ValueError("loadout must be {weapons: [{weapon_id}, ...]}")
         if len(lo["weapons"]) > 2:
             raise ValueError("loadout.weapons holds at most a primary and a secondary")
-        known: set[str] = set()
-        cat: Callable[[], list[dict]] | None = getattr(self.compiler, "weapon_catalog", None)
-        if cat is not None:
-            try:
-                known = {w["weapon_id"] for w in cat()
-                         if isinstance(w, dict) and isinstance(w.get("weapon_id"), str)}
-            except Exception:
-                known = set()
+        known = {w["weapon_id"] for w in self.compiler.weapon_catalog()}
         weapons: list[WeaponSel] = []
         for w in lo["weapons"]:
             if not isinstance(w, dict) or not isinstance(w.get("weapon_id"), str) or not w["weapon_id"]:
@@ -4819,8 +4794,9 @@ class Session:
         p = self.players.get(pid)
         if p and p.get("node_id"):
             cues = (self.bundles.get(pid) or {}).get("cues") or {}
-            if cues.get(body.get("kind")):
-                body = {**body, "cue": cues[body["kind"]]}   # A6.3: a full $PLAY frame
+            kind = body.get("kind")
+            if isinstance(kind, str) and (cue := cues.get(kind)):
+                body = {**body, "cue": cue}   # A6.3: a full $PLAY frame
             body.setdefault("player_id", pid)                # envelope requires it; a node silently DROPS a feedback without it
             self.net.push(p["node_id"], "feedback", body)
 

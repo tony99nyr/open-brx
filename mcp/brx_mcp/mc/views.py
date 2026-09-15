@@ -66,7 +66,7 @@ def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> dict:
     """
     st = w.get("stats", {}) or {}
     mag = st.get("mag") or 0
-    dmg = st.get("dmg", st.get("damage", 50))
+    dmg = st.get("dmg")
     dmg_num = _num(dmg)
     pool = max(1, int(_num(pool) or DEFAULT_POOL))   # a non-positive pool would publish htk 0
     # The real per-hit magnitude ($WEAP t5). Synthetic catalogs (fakes, test rows) carry no `dmg_hit`;

@@ -106,6 +106,30 @@ def test_fake_compiler_satisfies_the_compiler_protocol():
     assert_implements(I.Compiler, fakes.FakeCompiler(), "fakes.FakeCompiler")
 
 
+def test_real_and_fake_compiler_catalog_and_perk_shapes_agree():
+    """The protocol checks methods; these values caught the fake-only damage shim drift."""
+    real, fake = compile_mod.Compiler(), fakes.FakeCompiler()
+    for adapter in (real, fake):
+        rows = adapter.weapon_catalog()
+        assert rows and all("dmg" in row["stats"] and "damage" not in row["stats"] for row in rows)
+        player = {"loadout": {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor"}}
+        assert adapter.perk_effects(player)["max_armor_add"] == 50
+
+
+def test_a_broken_compiler_catalog_fails_visible_loadout_validation():
+    """An exception must not turn the known-id set empty and admit an arbitrary weapon."""
+    from brx_mcp.mc.state import Session
+    class BrokenCatalog(fakes.FakeCompiler):
+        def weapon_catalog(self):
+            raise RuntimeError("catalog unavailable")
+    session = Session(BrokenCatalog(), fakes.FakeNet(), fakes.FakeArmory(fakes.demo_armory()))
+    try:
+        session._check_loadout({"weapons": [{"weapon_id": "made_up"}]})
+        assert False, "compiler error was swallowed"
+    except RuntimeError as exc:
+        assert "catalog unavailable" in str(exc)
+
+
 def test_real_local_armory_satisfies_the_armory_protocol():
     assert_implements(I.Armory, armory.LocalArmory(), "armory.LocalArmory")
 
