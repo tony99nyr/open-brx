@@ -1095,17 +1095,30 @@ test('auto respawn writes revive and emits respawn', () => {
   assert.ok(h.facts.some(f => f.type === 'respawn'));
 });
 
-test('F206: every $SPAWN is followed at once by the head\'s $TID (spawn and revive), and a flip re-sends the NEW tid', () => {
-  const after = (w, tid) => { const i = w.indexOf('$SPAWN,,*'); return i >= 0 && w[i + 1] === `$TID,${tid},*`; };
-  const h = harness().kit().config_().echo();
-  h.writes.length = 0; h.start(0); h.adv(10); h.eng.tick();
-  assert.ok(after(h.writes, 1), `spawn: $SPAWN then $TID,1 -- got ${h.writes.join(' ')}`);
+test('F206: any write carrying a $PSET gets the gun\'s $TID right after the last $PSET (spawn, revive, lone $PSET), and a flip\'s $TID wins', () => {
+  // bench 2026-09-16: a $PSET clears the gun's team ($HIR t4 = 0) until a $TID follows; $SPAWN and $SIR do not.
+  const tidAfterPset = (w, tid) => { const p = w.map(f => f.startsWith('$PSET,')).lastIndexOf(true); return p >= 0 && w[p + 1] === `$TID,${tid},*`; };
+  assert.ok(golden.pset_pool && golden.pset_pool.length, 'the golden bundle carries a scream pool');
+  const h = harness().kit();
+  h.writes.length = 0; h.config_();
+  assert.equal(h.writes.filter(f => f === '$TID,1,*').length, 1, 'the head already ends on $TID after its $PSET: nothing added');
+  h.echo(); h.writes.length = 0; h.start(0); h.adv(10); h.eng.tick();
+  assert.ok(h.writes.includes('$SPAWN,,*') && tidAfterPset(h.writes, 1), `spawn -- got ${h.writes.join(' ')}`);
   h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');
   h.writes.length = 0; h.adv(8000); h.eng.tick();
-  assert.equal(h.eng.alive, true);
-  assert.ok(after(h.writes, 1), `revive: $SPAWN then $TID,1 -- got ${h.writes.join(' ')}`);
-  assert.equal(h.writes.filter(f => f === '$SPAWN,,*').length, h.writes.filter(f => f.startsWith('$TID,')).length, 'one $TID per $SPAWN, no more');
-  // infection: the flip moves the gun, so the $TID after the flip's $SPAWN and every later revive is the NEW team
+  assert.ok(h.writes.includes('$SPAWN,,*') && tidAfterPset(h.writes, 1), `revive -- got ${h.writes.join(' ')}`);
+  h.writes.length = 0; h.eng._write([golden.pset_pool[0], '$AMMO,0,1,1,1,*'], 'lone pset');
+  assert.deepEqual(h.writes, [golden.pset_pool[0], '$TID,1,*', '$AMMO,0,1,1,1,*'], 'a $PSET with no $SPAWN gets the team too');
+  h.writes.length = 0; h.eng._write(['$SPAWN,,*', '$AMMO,0,1,1,1,*'], 'no pset');
+  assert.deepEqual(h.writes, ['$SPAWN,,*', '$AMMO,0,1,1,1,*'], 'no $PSET, nothing added');
+  // a $TID already after the $PSET is not doubled, and becomes the team every later $PSET restores
+  h.writes.length = 0; h.eng._write([golden.pset_pool[0], '$TID,3,*'], 'flip'); h.eng._write([golden.pset_pool[0]], 'later');
+  assert.deepEqual(h.writes, [golden.pset_pool[0], '$TID,3,*', golden.pset_pool[0], '$TID,3,*']);
+  // after an app restart `_gunTid` is not persisted: the persisted head's $TID is the fallback
+  const w0 = []; const fresh = new Engine({ writer: f => w0.push(...f), emit: () => {}, report: () => {}, now: () => 1, synced: () => true, storage: mkStorage(), log: () => {} });
+  fresh.frames = golden; fresh._write([golden.pset_pool[0]], 'after restart');
+  assert.deepEqual(w0, [golden.pset_pool[0], '$TID,1,*']);
+  // infection: the flip's own $TID wins on the flip and on every later revive
   const b = { ...golden, player_id: 'p1', team_flip: { '2': ['$TID,2,*', ...golden.revive] } };
   const writes = []; let clock = 1e6;
   const eng = new Engine({ writer: f => writes.push(...f), emit: () => {}, report: () => {}, now: () => clock, synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn() });
@@ -1115,11 +1128,10 @@ test('F206: every $SPAWN is followed at once by the head\'s $TID (spawn and revi
   eng.onMcMessage({ kind: 'config', body: { config, frames: b, roster: [] } }); eng.feedFrame('$LCD,0,0,0,0,0,0,*');
   eng.onMcMessage({ kind: 'start', body: { match_id: 'm', go_live_t: clock, config_id: 'g', seq: 1, countdown_s: 0 } });
   clock += 10; eng.tick();
-  writes.length = 0; eng.feedFrame('$HIR,4,0,19,2,9,0,3,*'); eng.feedFrame('$HP,0,0,0,*');
-  assert.ok(after(writes, 2), `flip: $SPAWN then $TID,2 -- got ${writes.join(' ')}`);
-  assert.ok(!writes.includes('$TID,1,*'), 'the flip never re-sends the old team');
+  eng.feedFrame('$HIR,4,0,19,2,9,0,3,*'); eng.feedFrame('$HP,0,0,0,*');
   writes.length = 0; clock += 8000; eng.tick();
-  assert.ok(after(writes, 2), `a later revive keeps the flipped team -- got ${writes.join(' ')}`);
+  assert.ok(writes.includes('$SPAWN,,*') && tidAfterPset(writes, 2), `a revive after the flip keeps the flipped team -- got ${writes.join(' ')}`);
+  assert.ok(!writes.includes('$TID,1,*'), 'never the old team');
 });
 
 test('B5: a stale zero-HP echo right after a respawn is not a phantom death, and a fast real kill right after it still counts', () => {

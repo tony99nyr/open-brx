@@ -77,8 +77,7 @@ def test_a_respawn_repaints_the_headset_right_after_the_spawn_sequence():
     _run(d.execute([Respawn("p1")]))
     _drain(d)
     i = sent.index(RESPAWN_SEQUENCE[-1])
-    assert sent[i + 1] == "$TID,1,*", sent                            # F206: the team goes back on right after $SPAWN
-    assert sent[i + 2] == pg.headset_team_frame(1), sent
+    assert sent[i + 1] == pg.headset_team_frame(1), sent
 
 
 def test_the_game_start_paints_every_headset_after_the_spawn_burst():

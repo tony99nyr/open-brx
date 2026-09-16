@@ -292,7 +292,7 @@ export class Engine {
     // window may equally be a round the player fired. `butSinceHead` closes the window on the gun's
     // first `$BUT`, and MC then gets NO weapon claim rather than a magazine one round short.
     this.ammoEcho = null; this.butSinceHead = false;
-    this._gunTid = null;         // F206: the $TID the gun holds NOW (the head's, or an infection flip's), re-sent after every $SPAWN
+    this._gunTid = null;         // F206: the last $TID this node wrote (head, try-out or infection flip); `_write` restores it after any $PSET
     this._headTid = null;        // B1 guard: the $TID the gun's written head actually holds (its COMBAT team), parsed from the last head write — null until a head is written, so an unknown head never raises a false divergence
     this.spawned = false; this.ended = false;
     this.cuesFired = new Set();
@@ -421,8 +421,26 @@ export class Engine {
   _changed() { this._save(); try { this.onChange(this); } catch (_) { /* ignore */ } }
   _write(frames, why) {
     if (!frames || !frames.length) return;
+    frames = this._tidAfterPset(frames);
     this.log(`write ${why}: ${frames.length} frame(s)`, 'li');
     try { return this.writer(frames); } catch (e) { this.log(`write ${why} failed: ${e && e.message || e}`, 'le'); }
+  }
+  /** F206 (bench 2026-09-16): any `$PSET` clears the gun's team (its shots carry `$HIR` t4 = 0) until a `$TID`
+   *  follows; `$SPAWN` and `$SIR` do not. So every write is checked HERE, the one door to the gun: a `$PSET` with
+   *  no `$TID` after it gets the gun's team right behind it. The team is the last `$TID` in this write, else the
+   *  last one this node wrote, so an infection flip's `$TID` wins. Mirrors: stage.py `write`, driver.py `_send`. */
+  _tidAfterPset(frames) {
+    let lastPset = -1, lastTid = -1;
+    frames.forEach((f, i) => { if (typeof f !== 'string') return; if (f.startsWith('$PSET,')) lastPset = i; else if (f.startsWith('$TID,')) lastTid = i; });
+    if (lastTid >= 0) { const t = Number(frames[lastTid].split(',')[1]); if (Number.isFinite(t)) this._gunTid = t; }
+    if (lastPset < 0 || lastTid > lastPset) return frames;
+    // After an app restart `_gunTid` is gone (not persisted): fall back to the flipped roster team in infection,
+    // else the persisted head's own `$TID`.
+    let tid = this._gunTid;
+    if (tid == null && this.config && this.config.mode === 'infection' && this.team && this.team.tid != null) tid = Number(this.team.tid);
+    if (tid == null) { const h = ((this.frames && this.frames.head) || []).find(f => typeof f === 'string' && f.startsWith('$TID,')); if (h) tid = Number(h.split(',')[1]); }
+    if (tid == null || !Number.isFinite(tid)) return frames;
+    return [...frames.slice(0, lastPset + 1), `$TID,${tid},*`, ...frames.slice(lastPset + 1)];
   }
   teamOf(num) { const r = this.roster.find(x => x.player_num === num); return r ? r.team_id : null; }
   nameOf(num) { const r = this.roster.find(x => x.player_num === num); return r ? r.display : null; }
@@ -1438,14 +1456,6 @@ export class Engine {
       });
     } else if (g && g.in_play === 'health' && this._gunTaken) this.delay(t, () => { if (this._lightGen !== lg) return; const r = this._gunRest(); if (r && this.alive) { this._gunBand = r; this._write([r], `gun health after ${kind}`); } });   // A11.7: the burst ended on the full-health frame; restore the real band
   }
-  /** F206 candidate, UNVERIFIED on hardware (docs/bench-f206-tid-rung.md): the field's `$HIR` t4 read 0 while
-   *  both guns held `$TID,1`, and a TDM match registered no hits. The head's `$TID` is written long before
-   *  `$SPAWN`, so re-send it right after every `$SPAWN` (spawn, revive, infection flip). The ONE place the
-   *  phone does it; stage.py `_tid_after_spawn` and driver.py `_tid_after_spawn` are the mirrors. */
-  _tidAfterSpawn(frames) {
-    if (this._gunTid == null) return frames;
-    return frames.flatMap(f => (f === '$SPAWN,,*' ? [f, `$TID,${this._gunTid},*`] : [f]));
-  }
   _cue(key) {
     const f = this.frames && this.frames.cues && this.frames.cues[key];
     if (f && !this.cuesFired.has(key)) { this.cuesFired.add(key); this._write([f], `cue ${key}`); }
@@ -1461,7 +1471,7 @@ export class Engine {
     // (one per scream take) goes out first, in the same write (bench 2026-09-06: a $PSET re-sent in play keeps $SIR,
     // does not heal, the gun fires). No pset_pool (pre-A15.3): nothing prepended, the head's $PSET stands.
     const ps = this._pickFrame('pset_pool');
-    this._write([...(ps.frame ? [ps.frame] : []), ...this._tidAfterSpawn(this.frames.spawn), SFLASH, ...(sp.frame ? [sp.frame] : [])], 'spawn' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : ''));
+    this._write([...(ps.frame ? [ps.frame] : []), ...this.frames.spawn, SFLASH, ...(sp.frame ? [sp.frame] : [])], 'spawn' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : ''));
     this.hurtFired = false;        // the low-health alert is once per LIFE
     this._prevAmmo = {}; this._prevReserve = {}; this.activeSlot = 0; this.magBySlot = {};   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
     this._cue('klaxon');
@@ -1950,7 +1960,7 @@ export class Engine {
     // spawn write is on the critical path and the headset needs its settling gap (F13). Re-sending $SIR rows is the
     // F11 REPAIR path, so this cannot cost us the table; the rows differ only in their sound tokens.
     const sir = this._pickTable('sir_pool');
-    this._write([...(ps.frame ? [ps.frame] : []), ...sir, ...this._tidAfterSpawn(this.frames.revive), ...(sp.frame ? [sp.frame] : [])], 'revive' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : ''));
+    this._write([...(ps.frame ? [ps.frame] : []), ...sir, ...this.frames.revive, ...(sp.frame ? [sp.frame] : [])], 'revive' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : ''));
     this.hurtFired = false;
     this._prevAmmo = {}; this._prevReserve = {}; this.activeSlot = 0;   // both maps: a stun before the first shot of a NEW life must snapshot this life's reserve, not the last one's (polish review 2026-09-11)   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null;
@@ -2778,7 +2788,7 @@ export class Engine {
       const tids = Object.keys(this.frames.team_flip).filter(k => Number(k) !== this.teamTid);
       // Whether a mid-match $TID write changes the gun's own friendly-fire resolution is UNTESTED (modes §9); MC scores via team_change regardless.
       if (tids.length) {
-        const tid = Number(tids[0]); this._gunTid = tid; this._write(this._tidAfterSpawn(this.frames.team_flip[tids[0]]), 'team_flip'); this.emitFact({ type: 'team_change', match_id: this.matchId, tid });
+        const tid = Number(tids[0]); this._write(this.frames.team_flip[tids[0]], 'team_flip'); this.emitFact({ type: 'team_change', match_id: this.matchId, tid });
         this._turned = true;
         this._event('infected');   // A11.4: HUD-driven -- this gun just turned; MC's broadcast only tells the OTHERS
         // A16 §3.3/finding #4: infection is not a real death (the player "re-takes the body" immediately),
@@ -2898,7 +2908,6 @@ export class Engine {
     // can change it. Remember it so `_assign` can catch a roster re-team that the head never followed.
     const tidFrame = (this.frames.head || []).find(f => typeof f === 'string' && f.startsWith('$TID,'));
     this._headTid = tidFrame ? Number(tidFrame.split(',')[1]) : this._headTid;
-    this._gunTid = this._headTid;   // F206: a fresh head resets the gun's team to the head's
     this._write(this.frames.head, label);
   }
 

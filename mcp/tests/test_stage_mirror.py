@@ -1185,37 +1185,39 @@ KNOWN_UNMIRRORED = {
 }
 
 
-def test_f206_the_stage_re_sends_the_heads_tid_right_after_every_spawn_like_the_phone():
-    """F206 candidate: engine.js `_tidAfterSpawn` writes `$TID,<tid>` straight after `$SPAWN,,*` on spawn and
-    revive. The stage must write the same order, or a bench rung run from the stage tests a different gun."""
+def test_f206_every_stage_write_puts_the_team_back_after_a_pset_like_the_phone():
+    """F206 (bench 2026-09-16): any `$PSET` clears the gun's team until a `$TID` follows; `$SPAWN` and `$SIR` do not.
+    engine.js `_write` -> `_tidAfterPset` restores it in ONE place; the stage's `write` must do the same, or a
+    bench run from the stage tests a different gun."""
     from test_stage import mk
-    import re as _r
-    js = (_ENGINE_JS.read_text(encoding="utf-8"))
-    assert "this._tidAfterSpawn(this.frames.spawn)" in js and "this._tidAfterSpawn(this.frames.revive)" in js, \
-        "engine.js no longer routes spawn/revive through `_tidAfterSpawn` -- re-check this mirror"
-
-    def after_spawn(frames: list[str], tid: int) -> bool:
-        i = frames.index("$SPAWN,,*")
-        return frames[i + 1] == f"$TID,{tid},*"
+    js = _ENGINE_JS.read_text(encoding="utf-8")
+    assert "frames = this._tidAfterPset(frames);" in js, "engine.js `_write` no longer routes through `_tidAfterPset`"
 
     async def run():
         st, mgr = mk(tid=2)
         await st.connect("FA:KE:00:00:00:01")
         await st.arm()
-        head_tid = [f for f in st.bundle["head"] if f.startswith("$TID,")]
-        assert head_tid == ["$TID,2,*"], head_tid
+        head = tx(mgr)
+        assert head.index("$TID,2,*") > max(i for i, f in enumerate(head) if f.startswith("$PSET,")), \
+            "the head already ends on $TID after its $PSET: nothing added"
+        assert head.count("$TID,2,*") == 1
         st.bundle["cues"]["countdown"] = ""
+        for step in (st.spawn, st.revive):
+            n = len(tx(mgr))
+            await step(); await settle(st)
+            new = tx(mgr)[n:]
+            psets = [i for i, f in enumerate(new) if f.startswith("$PSET,")]
+            assert psets, f"{step.__name__}: the bundle carries a scream pool, so a $PSET rides this write"
+            assert new[psets[-1] + 1] == "$TID,2,*", new
+        # a write with a $PSET and NO $SPAWN gets the team too
         n = len(tx(mgr))
-        await st.spawn(); await settle(st)
-        spawn = tx(mgr)[n:]
-        assert after_spawn(spawn, 2), spawn
+        await st.write([st.bundle["pset_pool"][0], "$AMMO,0,1,1,1,*"], "lone pset"); await settle(st)
+        assert tx(mgr)[n:] == [st.bundle["pset_pool"][0], "$TID,2,*", "$AMMO,0,1,1,1,*"]
+        # a $TID already after the $PSET wins and is not doubled; a write with no $PSET is untouched
         n = len(tx(mgr))
-        await st.revive(); await settle(st)
-        revive = tx(mgr)[n:]
-        assert after_spawn(revive, 2), revive
-        assert revive.count("$SPAWN,,*") == len([f for f in revive if _r.match(r"\$TID,", f)])
-        # CONTROL: the compiled bundle itself is unchanged -- the re-send is the node's, not MC's
-        assert "$TID,2,*" not in st.bundle["spawn"] and "$TID,2,*" not in st.bundle["revive"]
+        await st.write([st.bundle["pset_pool"][0], "$TID,3,*"], "flip"); await st.write(["$SPAWN,,*"], "spawn only")
+        await st.write([st.bundle["pset_pool"][0]], "after flip"); await settle(st)
+        assert tx(mgr)[n:] == [st.bundle["pset_pool"][0], "$TID,3,*", "$SPAWN,,*", st.bundle["pset_pool"][0], "$TID,3,*"]
     asyncio.run(run())
 
 

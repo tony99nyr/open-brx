@@ -28,7 +28,7 @@ def mk(**profile):
 def tx(mgr, alias="stage"):
     try:
         # every event, not the fake's default first 200: a long test (12 revives) ran past that cap once F206
-        # added one $TID per $SPAWN, and "the LAST write" silently became a write from the middle of the run
+        # added a $TID after each $PSET, and "the LAST write" silently became a write from the middle of the run
         return [e["raw"] for e in mgr.get_events(alias, max_events=10**6)["events"] if e["direction"] == "tx"]
     except KeyError:          # never connected
         return []
@@ -187,9 +187,9 @@ def test_an_ir_hit_on_the_fake_gun_plays_the_victim_overlay_and_a_kill_plays_the
         pool = st.bundle.get("pset_pool") or []
         if pool:
             assert new[off] in pool
-            off += 1
-        revive = st._tid_after_spawn(st.bundle["revive"])              # F206: the node re-sends $TID right after $SPAWN
-        assert new[off:off + len(revive)] == revive and st.alive
+            assert new[off + 1] == f"$TID,{st.profile['tid']},*", "F206: the team goes back on right after the $PSET"
+            off += 2
+        assert new[off:off + len(st.bundle["revive"])] == st.bundle["revive"] and st.alive
         assert all(f in new for f in st.bundle["gun"]["take"]) and st._gun_band == st.bundle["gun"]["rest"]   # the take again after the revive
     asyncio.run(run())
 
@@ -787,8 +787,8 @@ def test_spawn_plays_one_take_of_the_spawn_pool_and_the_pset_cry_field_is_empty(
 
     # A15.3: a fresh death-scream $PSET (one of `pset_pool`) now rides FIRST in the same write, ahead of $PLAYX
     scream_pool = st.bundle.get("pset_pool") or []
-    spawn = st._tid_after_spawn(st.bundle["spawn"])                    # F206: the node re-sends $TID right after $SPAWN
-    prefix = (1 if scream_pool else 0) + len(spawn)                    # [$PSET?] $PLAYX,0 $SPAWN $TID $AMMO $AMMO $BMAP
+    spawn = st.bundle["spawn"]
+    prefix = (2 if scream_pool else 0) + len(spawn)                    # [$PSET $TID]? $PLAYX,0 $SPAWN $AMMO $AMMO $BMAP (F206: $TID after $PSET)
 
     async def run():
         seen = set()
@@ -798,7 +798,7 @@ def test_spawn_plays_one_take_of_the_spawn_pool_and_the_pset_cry_field_is_empty(
             i = len(all_) - 1 - all_[::-1].index("$SFLASH,*")          # the LAST spawn write (the fake's log is a ring)
             new = all_[i - prefix:]                                    # [$PSET?] $PLAYX,0 $SPAWN $AMMO $AMMO $BMAP $SFLASH <take> …
             if scream_pool:
-                assert new[0] in scream_pool
+                assert new[0] in scream_pool and new[1] == f"$TID,{st.profile['tid']},*", new
             assert new[prefix - len(spawn):prefix] == spawn and new[prefix] == "$SFLASH,*", new
             i = prefix
             assert new[i + 1] in pool, new
@@ -839,8 +839,7 @@ def test_revive_writes_exactly_one_spawn_line_in_the_revive_write():
             assert len(plays) == 1 and plays[0] in pool, f"one spawn line per revive, got {plays} in {new}"
             # `new` is sliced from the LAST $SPAWN, so compare against the revive frames from $SPAWN on
             # -- F121/A23 put the real $SIR table ahead of it, and those rows are before the slice.
-            revive = st._tid_after_spawn(st.bundle["revive"])          # F206: $TID rides right after $SPAWN
-            tail = revive[revive.index("$SPAWN,,*"):]
+            tail = st.bundle["revive"][st.bundle["revive"].index("$SPAWN,,*"):]
             assert new.index(plays[0]) == len(tail), "the take rides in the revive write, right after its frames"
             why = next(l["why"] for l in reversed(st.log) if l["text"] == plays[0])
             assert "spawn line (" in why, why    # A15.3: "revive + scream Vxx N/3 + spawn line (…)" -- a fresh death scream now rides ahead too

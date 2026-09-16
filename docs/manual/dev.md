@@ -702,7 +702,7 @@ Which state lives where, and what a BLE drop, a headset switch-off, or a power-c
 | Game config (`$GSET`/`$PSET`/`$WEAP`/`$SIR`/`$BMAP`) | (unknown). Re-send the full head after a reconnect | Gun sends `$DISCONNECT,*` and drops the link; config: (unknown) | **Wiped**. `$SPAWN` then echoes `$LCD,0,0,0,0,0,0` + `$ALCD,0,0,0,0,0` |
 | Alive/dead + pools | Survives (a dead gun stays dead) | n/a | Reset |
 | Ammo | Survives | n/a | Wiped |
-| `$TID` team / LED colour | Survives; colour is painted at `$SPAWN` | n/a | Reset |
+| `$TID` team / LED colour | Survives; colour is painted at `$SPAWN`. **Any `$PSET` clears the team** (shots carry team 0) until `$TID` is sent again; `$SIR` and `$SPAWN` do not (bench 2026-09-16) | n/a | Reset |
 | `$NAME` | Persists | Persists | **Persists** (only the official app rewrites it) |
 | Player id (`$PSET` t1) | Survives with config | n/a | Wiped (the USB `PlayerID` is separate and persistent) |
 | Score, clock, respawn timer | **Never on the gun** | n/a | n/a |
