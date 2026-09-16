@@ -33,8 +33,12 @@ from .tunnel import TunnelError
 from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS,
                     OBJECTIVE_MODES, OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS,
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_KINDS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, Event,
-                    Coverage, EndDeliveryRow, EndDeliveryView, FrameBundle, GameConfig, LanPublic, Loadout, LoadoutOverrides, LoadoutPolicy, LoadoutPool, McConfidence, PerkView,
-                    ModeInfo, Phase, PhaseRefusalBody, Player, ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, Respawn, ScanRow, SlotRule, StationAssignment, StationRef, StationControl, StationReport, StationView,
+                    ConfigView, Coverage, EndDeliveryRow, EndDeliveryView, FrameBundle, GameAnnouncementView, GameConfig,
+                    KitView, LanPublic, LanView, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
+                    LoadoutPool, McConfidence, NoticesView, PerkView, ModeInfo, Phase, PhaseRefusalBody, Player,
+                    ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, Respawn, ScanRow, SessionOptions,
+                    SnapshotFeedRow, SlotRule, State, StationAssignment, StationRef, StationControl, StationReport,
+                    StationView, SyncRow, SyncTotals, SyncView, VersionsView, RestoredFromView,
                     StartNodeView, StartView, Stun, Team, Weapon, WeaponSel, WinnerView, LiveView, NodeView,
                     app_tier, compatible, is_arm_state, is_station_kind, parse_app_ver, parse_win_by)
 
@@ -308,7 +312,7 @@ class Session:
         self._voice_rng = voice_rng or random.Random()
         self.now_ms = now_ms or (lambda: int(time.time() * 1000))
         self.session_id = uuid.uuid4().hex[:8]
-        self.phase = "muster"
+        self.phase: Phase = "muster"
         self.players: dict[str, Player] = {}
         # STANDBY (2026-09-12): players pulled out of the roster but not forgotten -- the record (callsign, team,
         # gun, loadout, voice) parks here so PLAY puts them straight back. Outside `players` on purpose: every
@@ -334,13 +338,13 @@ class Session:
         self._game_no_started = False
         self.synced_at_lobby: dict[str, bool] = {}
         self.scan_rows: list[ScanRow] = []
-        self.lan = lan or {"mode": "unknown", "ip": "0.0.0.0", "port": 0, "ws_url": "", "qr": ""}
+        self.lan: LanView = cast(LanView, lan or {"mode": "unknown", "ip": "0.0.0.0", "port": 0, "ws_url": "", "qr": ""})
         # A28.2: 8 url-safe chars, random per session, PERSISTED with the snapshot so an MC restart does
         # not invalidate every QR already printed and taped to a wall. It is readable by anyone on the
         # LAN via GET /api/state, deliberately (§5b: the LAN is already the trust boundary) — its one
         # job is keeping internet strangers off the node socket once the tunnel is up.
         self.join_secret = secrets.token_urlsafe(6)
-        self.lan.setdefault("public", dict(PUBLIC_OFF))
+        self.lan.setdefault("public", PUBLIC_OFF.copy())
         # T3-A: the boot-time address warning, kept so `_refresh_lan_warning` can put it back if the public
         # path it is suppressed by goes away again.
         self._lan_warning: str | None = self.lan.get("warning")
@@ -353,7 +357,7 @@ class Session:
         # were restored into a real session; the only hint was ONE banner line in a terminal nobody was
         # looking at, and the Lobby then listed four players with two ghosts. `{at, players}` rides on
         # the state so the board can say "restored from <date>" beside a FRESH SESSION control.
-        self.restored_from: dict | None = None
+        self.restored_from: RestoredFromView | None = None
         self.trying: dict[str, str] = {}          # player_id -> weapon_id
         self.browsing: dict[str, int] = {}        # A10: player_id -> t_ms the HUD opened its loadout browser
         self._policy_notice: str | None = None    # A10: "N LOADOUTS RESET BY …" — shown in config_warnings until the next config PUT
@@ -449,7 +453,7 @@ class Session:
         # each node has finished delivering -- the pair is the whole "did this node's log ever arrive?"
         # test that the `reconnect` ask is built on. Neither is cleared by NEW MATCH: a phone that was
         # out of coverage at the whistle still owes us that match's log ten minutes later.
-        self.options: dict[str, Any] = dict(OPTION_DEFAULTS)
+        self.options: SessionOptions = cast(SessionOptions, dict(OPTION_DEFAULTS))
         self._log_match: str | None = None
         self._log_done: dict[str, str | None] = {}
         # A29: the app version on the GitHub Release, read ONCE at startup (a sidecar that changes
@@ -1046,11 +1050,11 @@ class Session:
         """A31: the line every PLAYER sees on ARMED, or None. Compiled once in `compile.mc_verify`."""
         return _compile.mc_verify(self.config, None, bool(self._off_grid()))
 
-    def _notices(self) -> dict:
+    def _notices(self) -> NoticesView:
         """A31: the HOST's standing lines (API.md `State.notices`). Same decision as the player's line —
         the compiler makes it once — but the host's copy NAMES the phones, because the host is the one
         who can walk over and tell those players to come back."""
-        out: dict = {}
+        out: NoticesView = {}
         off = self._off_grid()
         if self._mc_verify_player_line():
             shown = ", ".join(off[:6]) + (f" +{len(off) - 6} MORE" if len(off) > 6 else "")
@@ -1161,7 +1165,7 @@ class Session:
             return 0                 # nothing announced: no delivery is evidence of anything yet
         return sum(1 for p in self.players.values() if self.game_sent.get(p["player_id"]) == cur)
 
-    def sync_summary(self) -> dict:
+    def sync_summary(self) -> SyncView:
         """The pre-arm answer to "is the field in sync?" -- per player, and as an HONEST total.
 
         LOAD split one event into two. Before it, "the game is loaded" and "the guns are configured"
@@ -1182,7 +1186,7 @@ class Session:
         player with no node bound) rendered as a claim about everybody.
         """
         cur = self.config.get("config_id")
-        rows = []
+        rows: list[SyncRow] = []
         for p in self.players.values():
             pid = p["player_id"]
             bundle = self.bundles.get(pid) or {}
@@ -1199,12 +1203,13 @@ class Session:
             })
         rows.sort(key=lambda r: r["player_num"])
         n = len(rows)
-        tot = {
+        tot: SyncTotals = {
             "rostered": n,
             "phone_game": sum(1 for r in rows if r["phone_game"]),
             "gun_sent": sum(1 for r in rows if r["gun_sent"]),
             "gun_acked": sum(1 for r in rows if r["gun_acked"]),
             "gun_echo_proven": sum(1 for r in rows if r["gun_echo"] == "proven"),
+            "in_sync": False,
         }
         # The ARM question, stated once: every rostered gun has taken THIS config and answered for it.
         # `gun_echo` is deliberately NOT part of it -- `not_echoed` is what our v4.32 units normally
@@ -3755,7 +3760,7 @@ class Session:
                 raise NotReadyError(
                     f"{len(not_ready)} of {len(self.players)} are not READY: {', '.join(not_ready)}",
                     not_ready, greens, len(self.players))
-        self.phase = phase
+        self.phase = cast(Phase, phase)  # validated against PHASES above
         self._changed()
         return self.phase
 
@@ -3878,7 +3883,7 @@ class Session:
                 best = v
         return best
 
-    def versions(self) -> dict:
+    def versions(self) -> VersionsView:
         """A29 muster header: `PHONES · 3 × 0.1.9 · 1 × 0.1.8`. `field` counts the PLAYER nodes by the
         version string each reported (an unparsable one included, verbatim -- the operator needs to see
         `hud-0.2` said out loud); `newest`/`release` are the two things a phone can be behind. A node MC
@@ -5256,7 +5261,36 @@ class Session:
                 "config_id": body["config_id"], "seq": body["seq"],
                 "countdown_s": body["countdown_s"], "per_node": per_node}
 
-    def snapshot(self) -> dict:
+    def _snapshot_config(self) -> ConfigView:
+        """The served config is complete even though request-side GameConfig permits omissions."""
+        if "loadout_policy" not in self.config:
+            raise RuntimeError("served config is missing its normalized loadout policy")
+        return cast(ConfigView, self.config)
+
+    def _snapshot_kit(self, kitted: int) -> KitView:
+        return {"kitted": kitted, "total": len(self.players), "trying": dict(self.trying),
+                "browsing": dict(self.browsing)}
+
+    def _snapshot_lobby(self) -> LobbyView:
+        return {"ready": sum(1 for p in self.players.values() if p["ready"]),
+                "total": len(self.players), "pushed": self.lobby_pushed,
+                "acks": cast(dict[str, LobbyAck], self.acks), "all_acked": self.all_acked()}
+
+    def _snapshot_game(self) -> GameAnnouncementView:
+        config_id = self.game_cfg
+        view: GameAnnouncementView = {"loaded": self.game_loaded, "sent": self.game_sent_n(),
+                                      "total": len(self.players)}
+        if config_id is not None:
+            view["config_id"] = config_id
+        return view
+
+    def _snapshot_options(self) -> SessionOptions:
+        return cast(SessionOptions, dict(self.options))
+
+    def _snapshot_feed(self) -> list[SnapshotFeedRow]:
+        return cast(list[SnapshotFeedRow], self.feed[:50])
+
+    def snapshot(self) -> State:
         now = self.now_ms()
         kitted = sum(1 for p in self.players.values() if p.get("node_id"))
         self._prune_browsing()
@@ -5279,24 +5313,21 @@ class Session:
             row.setdefault("synced", False)
             row["last_seen_ms"] = now - nv.get("last_seen_ms", 0)
             nodes.append(row)
-        return {"session_id": self.session_id, "phase": self.phase, "t": now, "lan": self.lan,
+        state: State = {"session_id": self.session_id, "phase": self.phase, "t": now, "lan": self.lan,
                 "coverage": self.coverage(),                    # A28.4: derived, not asserted
                 "mc_confidence": self.mc_confidence(),          # A11.5: gates MC-driven global-state events
                 "nodes": nodes,
                 "stations": self.stations_view(), "game_no": self._game_byte(),   # A13.5: the ITEMS panel
-                "readiness": self.readiness(), "config": self.config, "config_errors": self.config_errors,
-                "options": dict(self.options),      # A25: session options (log_sync)
+                "readiness": self.readiness(), "config": self._snapshot_config(), "config_errors": self.config_errors,
+                "options": self._snapshot_options(),      # A25: session options (log_sync)
                 "versions": self.versions(),        # A29: the muster version header
                 "config_warnings": self.config_warnings,
                 "players": list(self.players.values()), "teams": self.teams,
                 "standby": list(self.standby.values()),      # STANDBY: parked players, never counted above
-                "kit": {"kitted": kitted, "total": len(self.players), "trying": dict(self.trying), "browsing": dict(self.browsing)},
+                "kit": self._snapshot_kit(kitted),
                 "loadout_pool": self.loadout_pool(),
                 "active_preset_id": self.active_preset_id,
-                # F142: absent when nothing was restored, so presence is the rule for showing the notice
-                **({"restored_from": self.restored_from} if self.restored_from else {}),
-                "lobby": {"ready": sum(1 for p in self.players.values() if p["ready"]), "total": len(self.players),
-                          "pushed": self.lobby_pushed, "acks": self.acks, "all_acked": self.all_acked()},
+                "lobby": self._snapshot_lobby(),
                 # LOAD: the GAME the phones have been told about. `loaded` is what the GAMES tab keys
                 # its ACTIVE GAME CONFIG state on -- `lobby.pushed` no longer becomes true at LOAD,
                 # which is the whole point of the split. `sent` is DELIVERY (see `load_game`).
@@ -5306,11 +5337,13 @@ class Session:
                 # made this block say the phones had been told about a game that never left MC.
                 # ABSENT, not null, when nothing has been announced: the UI contract is
                 # `config_id?: string` and "no announcement" is the absence, not an id.
-                "game": {"loaded": self.game_loaded,
-                         **({"config_id": self.game_cfg} if self.game_cfg else {}),
-                         "sent": self.game_sent_n(), "total": len(self.players)},
+                "game": self._snapshot_game(),
                 "sync": self.sync_summary(),      # the pre-arm "is the field in sync" summary
                 "start": start, "live": live, "recap": self.recap() if self.phase in ("live", "recap") else None,
-                **({"end_delivery": end_delivery} if end_delivery else {}),   # A42
                 "notices": self._notices(),      # A31: standing host lines (absent keys = nothing to say)
-                "feed": self.feed[:50]}
+                "feed": self._snapshot_feed()}
+        if self.restored_from is not None:
+            state["restored_from"] = self.restored_from
+        if end_delivery is not None:
+            state["end_delivery"] = end_delivery
+        return state

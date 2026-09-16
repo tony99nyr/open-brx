@@ -237,7 +237,7 @@ function RestoredBanner() {
   const [busy, setBusy] = useState(false);
   const r = state?.restored_from;
   if (!r) return null;
-  const when = new Date(r.at);
+  const when = new Date(r.at ?? Number.NaN);
   const stamp = Number.isFinite(when.getTime())
     ? when.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
     : '—';

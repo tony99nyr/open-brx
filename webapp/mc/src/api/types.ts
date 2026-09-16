@@ -4,14 +4,13 @@
 // from one place. A field added on the Python TypedDict reaches the console by running that script;
 // forgetting to run it fails `mcp/tests/test_contract_generated.py`.
 //
-// What stays HAND-WRITTEN below is the remaining composed view surface (`State`, `LiveView`,
-// `StartView`), the `Api` surface and response bodies. Leaf and mid-level views already come
-// from the Python producers. Never
+// What stays HAND-WRITTEN below is the `Api` surface and response bodies. View shapes come from
+// the Python producers. Never
 // re-declare a generated shape here -- `mcp/tests/test_ui_contract.py` fails if this file does.
 
 // ---- generated wire shapes (contract.gen.ts) ----
 export type {
-  ArmoryRecord, BleId, Envelope, Event, FrameBundle, GameConfig, Health, Loadout, LoadoutOverrides,
+  ArmoryRecord, BleId, ConfigView, Envelope, Event, FrameBundle, GameConfig, Health, Loadout, LoadoutOverrides,
   LoadoutPolicy, LoadoutPool, LogView, PerkEffects, PerkView, Player, Preflight, ReadinessRow,
   ReadinessSnapshot, Respawn, RosterEntry, ScanRow, ScoreRow, Scoring, Siphon, SlotRule, StationRef,
   Stun, Team, Weapon, WeaponSel, PoolEmptyCode, ModeParamSpec, Honor, RecapStationRow,
@@ -20,7 +19,9 @@ export type {
   LanPublic, PresentationRow, PresentationView, PresentationSummary, HeadsetSummary, GunSummary,
   McConfidence, RecapView, WinnerView, PossessionView, AfterEndPlayer, AfterEndView,
   MatchHistoryRow, ModeInfo, NodeView, StationControl, StationReport, StationArmed, StationView,
-  LiveView, StartNodeView, StartView,
+  LiveView, StartNodeView, StartView, State, GameConfigBase, LanView, KitView, LobbyAck,
+  LobbyView, GameAnnouncementView, SyncRow, SyncTotals, SyncView, SessionOptions, VersionsView,
+  NoticesView, RestoredFromView, SnapshotFeedRow,
   TunnelStatus, TunnelProviderValue,
 } from './contract.gen';
 export type {
@@ -30,21 +31,11 @@ export type {
 // values (verbatimModuleSyntax: a value re-export may not ride in a `export type` statement)
 export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS } from './contract.gen';
 
-import type { GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, Player,
-  PerkView, ReadinessSnapshot, ScanRow, StationKind, Team,
-  EndDeliveryView, VoiceList, PhaseRefusalBody, ModeInfo,
-  WeaponView, SavedGame, Coverage, LanPublic, RecapView, MatchHistoryRow, PresentationView,
-  NodeView, StationView, LiveView, StartView } from './contract.gen';
+import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, Player,
+  PerkView, ScanRow, StationKind, StationView, VoiceList, PhaseRefusalBody, ModeInfo,
+  WeaponView, SavedGame, LanPublic, MatchHistoryRow, PresentationView, RecapView, State } from './contract.gen';
 
 export type TunnelProvider = import('./contract.gen').TunnelProviderValue | null;
-
-/** A config as the console READS one. `GameConfig.loadout_policy` is `NotRequired` on the Python side
- *  because a PUT body legitimately omits it -- but every config the server SERVES has been through
- *  `state.py`'s policy fill (`_apply_config` / `modes()`), so a config that arrived from MC always has
- *  one. Those are two types, not one type with a hole: this is what MC hands us, `Partial<GameConfig>`
- *  is what we hand back, and `withPolicy()` is the runtime guard at the one place a config from
- *  anywhere else (a session persisted before A10, an older MC) enters the store. */
-export type ConfigView = GameConfig & { loadout_policy: LoadoutPolicy };
 
 export type FeedTag = 'DOUBLE KILL' | 'TRIPLE KILL' | `STREAK ×${number}` | 'FIRST BLOOD' | 'TEAM KILL' | 'SYNC POINT'
   /** A11.4/F118: a global-state alert MC pushed to the nodes. `ALERT` reached everyone bound, `WITHHELD`
@@ -63,123 +54,6 @@ export type LoadoutPoolReasons = NonNullable<LoadoutPool['reasons']>;   // gener
 /** One optional code per slot that came out empty; a slot with nothing to say here has something in
  *  its pool. Keyed by the SAME names as `LoadoutPool`'s own fields (`primary`, `secondary_weapons`,
  *  `perks`), not `secondary`/`perk` — those are the POLICY's slot names, these are the POOL's. */
-
-export interface State {
-  session_id: string;
-  phase: Phase;
-  t: number;
-  lan: {
-    /** field 2026-09-12 (ISSUE 12/F143): no platform ever told `router` from `hotspot` apart, so the
-     *  field always read `unknown` and the console printed that WORD as if it were the network name.
-     *  The server now sends the flat `"lan"` and, separately, `ssid` — `null` (never the string
-     *  `"unknown"`) when it genuinely could not read one. `router`/`hotspot` still decode for an older
-     *  server; the console must never print a MODE as a placeholder network name either way. */
-    mode: 'router' | 'hotspot' | 'unknown' | 'lan'; ssid?: string | null; ip: string; port: number; ws_url: string;
-    /** A28.2: `ws://<ip>:<ws-port>/ws?s=<join_secret>[&pub=<url-encoded public ws_url>]` — no
-     *  longer the same as `ws_url`; carries the public URL only while `public.status == "up"`. */
-    qr: string;
-    /** T3-A (field 2026-09-12): MC advertised a WSL2 NAT address in the QR/mDNS and no phone could
-     *  reach it. Set only when the server DETECTED it is running under WSL and nothing (`--advertise`)
-     *  has told it the advertised address is already correct -- the reachability claim itself is an
-     *  INFERENCE (there is no phone on the server to ask), so render it verbatim rather than
-     *  paraphrasing it into a stronger claim. `null`/absent everywhere else, including every non-WSL
-     *  host — macOS and plain Linux never set this. */
-    warning?: string | null;
-    /** A28.2: 8 url-safe chars, per session, persisted. Absent on a server that predates A28. */
-    join_secret?: string;
-    /** A28.1. Absent on a server that predates A28 — the UI must not invent a toggle for a route
-     *  that does not exist there. */
-    public?: LanPublic;
-    auth_required?: boolean;
-  };
-  /** A28.4. Absent on a server that predates A28. */
-  coverage?: Coverage;
-  nodes: NodeView[];
-  stations?: StationView[];      // A13.5: absent on a server older than 2026-09-11
-  game_no?: number;
-  readiness: ReadinessSnapshot;
-  config: ConfigView;
-  config_errors: string[];
-  config_warnings?: string[];
-  players: Player[];
-  /** STANDBY (2026-09-12): players pulled out of the roster but kept (callsign, team, gun, loadout) so PLAY
-   *  puts them straight back. Absent on a server that predates it — the console then shows no standby
-   *  section and never invents a control for a route that is not there. */
-  standby?: Player[];
-  teams: Team[];
-  kit: { kitted: number; total: number; trying: Record<string, string>; browsing: Record<string, number> };
-  loadout_pool: LoadoutPool;   // `reasons` rides on the generated type now
-  active_preset_id?: string | null;   // the saved game that was applied (null after any real config edit)
-  /** `acks[player_id].config_id` (A36) is WHICH config that gun answered for. An ack naming a
-   *  previous one is not an ack for the game about to start — the server refuses the whistle on it
-   *  (not even with `force`) and names it in the row's `blockers`, so anything counting "acked" here
-   *  has to ask the same question. Optional: an older server sends none, and the console then falls
-   *  back to `ok` alone rather than reading every ack as stale. `all_acked` is the server's own
-   *  answer to the same question and wins wherever it is present. */
-  lobby: { ready: number; total: number; pushed: boolean; all_acked?: boolean;
-           acks: Record<string, { ok: boolean; gun_echo?: string; err?: string; config_id?: string }> };
-  /** LOAD (2026-09-13) — the GAME the phones have been told about: mode, teams, health, night,
-   *  respawn, venue, the rules. NO frames and NO head go with it (`state.py load_game` pushes
-   *  `assign`), so `lobby.pushed` stays FALSE through a LOAD and the LOBBY push remains the only
-   *  thing that ever configures a gun. `sent` is DELIVERY — how many phones' sockets accepted the
-   *  announcement — and is NOT a claim that a phone rendered it, nor anything to do with a gun ack.
-   *  Absent on a server that predates LOAD; treat that as "no game announced". */
-  game?: { loaded: boolean; config_id?: string; sent: number; total: number };
-  /** The pre-arm "is the field in sync" summary (`state.py sync_summary`). Four independent facts per
-   *  rostered player; `totals.in_sync` is FALSE for an empty roster, because a zero-of-zero must
-   *  never read as ready. Absent on an older server. */
-  sync?: {
-    rows: { player_id: string; display: string; gun_id: string; player_num: number; bound: boolean;
-            phone_game: boolean; gun_sent: boolean; gun_acked: boolean;
-            /** A37 (`state.py _echo_state`). FOUR states, and `null` is one of them: the server
-             *  returns it when there is NO check to report — nothing pushed, no ack for this config,
-             *  or no readable `$WEAP` in the head. `not_echoed` is the ordinary answer on our v4.32
-             *  units. Only `mismatch` is a fault; the other three must never render as one. */
-            gun_echo: 'proven' | 'mismatch' | 'not_echoed' | null }[];
-    totals: { rostered: number; phone_game: number; gun_sent: number; gun_acked: number;
-              gun_echo_proven: number; in_sync: boolean };
-    unconfigured: string[];
-  };
-  start?: StartView;
-  live?: LiveView;
-  recap?: RecapView;
-  /** A25 (2026-09-12) — session options. `log_sync: "auto"` lets MC ask every node for its log on its
-   *  own (at the recap, on an offer, on a reconnect); `"manual"` leaves the asking to the operator's
-   *  LOGS button, which is never gated. Optional: an older server sends none, and the console then
-   *  renders no toggle rather than one that writes to a route that is not there. */
-  options?: { log_sync?: 'auto' | 'manual' };
-  /** A29 (2026-09-12) — the field's builds, as `state.py versions()` counts them: `field` is
-   *  `{app_ver: how many PLAYER nodes report it}` with the string verbatim (an unparsable `hud-0.2`
-   *  included — the operator needs to see it said out loud), `newest` the highest version in the
-   *  field, `release` the one on the download card, `mc_major` the app major MC can play with.
-   *  Optional: not on the snapshot yet at the time of writing, so the console falls back to counting
-   *  `NodeView.app_ver` itself. Either way it is a TALLY — every version VERDICT is the server's, and
-   *  arrives as a worded string in a readiness row's `blockers`/`ambers`. */
-  versions?: { field: Record<string, number>; newest?: string | null; release?: string | null; mc_major?: number };
-  /** A31 (2026-09-12) — standing lines the COMPILER wrote once, so MC and the phones cannot disagree.
-   *  `mc_verify` is the pre-game warning for a game whose end state MC decides while some rostered
-   *  phone has no backhaul; it NAMES the phones. Optional: absent under full coverage, absent on an
-   *  older server, and the field name is whatever `mc/API.md` documents once the server lane lands —
-   *  this is built against `notices.mc_verify` and renders nothing at all when it is missing. */
-  notices?: { mc_verify?: string };
-  /** A42 (2026-09-13) — did the END actually reach every player's HUD? Present from the moment a match
-   *  ends until the next one is scheduled; absent on a server that predates it, and absent before any
-   *  match has ended, so presence is the rule for rendering anything at all.
-   *
-   *  This is a fact about DELIVERY — whether a phone acknowledged the end, read off the heartbeat it
-   *  already sends — and it must never be rendered as, or beside, a judgement about how that player
-   *  played. `confirmed` is `total - unconfirmed.length`; `retrying` says MC is still re-delivering (it
-   *  stops after `tries` reaches the end of the ladder, at which point the answer is a person walking
-   *  over to the gun). */
-  end_delivery?: EndDeliveryView;
-  /** field 2026-09-12 (ISSUE 11/F142): a `--demo` session used to persist into `~/.brx-mcp/` and get
-   *  silently RESTORED on the next real launch — two ghost players with no phone sat on a live roster
-   *  and were mistaken for real ones until match 2 was already mid-setup. Present only on the FIRST
-   *  snapshot(s) after a session was hydrated from a previous run (demo or real); absent once the
-   *  operator has acknowledged it (FRESH SESSION) or on a session that started clean. `players` is how
-   *  many roster rows came back with it, so the banner can say a number instead of "some". */
-  restored_from?: { at: number; players: number };
-}
 
 /** The surface both the real client and the in-browser mock implement. */
 export interface Api {

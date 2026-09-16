@@ -169,7 +169,7 @@ describe('A29 · what build each phone is running', () => {
     const d = await demo();
     // `state.py versions()` counts the PLAYER nodes itself. When it is on the snapshot the console
     // renders THAT, so MC and the console can never disagree about how many phones are on what.
-    const state: State = { ...d.state, versions: { field: { '0.2.0+aaa': 3, 'hud-0.2': 1 }, newest: '0.2.0', release: '0.2.0', mc_major: 0 } };
+    const state: State = { ...d.state, versions: { field: { '0.2.0+aaa': 3, 'hud-0.2': 1 }, newest: '0.2.0', release: '0.2.0', mc_major: '0' } };
     const m = await mountScreen(<Armory />, { ...d, state, view: 'muster' });
     const sum = m.find('[data-app-ver-summary]')[0].textContent?.replace(/\s+/g, ' ');
     expect(sum).toMatch(/3 × 0\.2\.0/);

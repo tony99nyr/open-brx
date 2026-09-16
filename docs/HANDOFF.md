@@ -1,6 +1,6 @@
 # Handoff — Open BRX
 
-**State as of 2026-09-16.** Contract-DRY phases 1-3 and F42.9 batches 1-4 are implemented, reviewed and validated.
+**State as of 2026-09-16.** Contract-DRY phases 1-3 and all five F42.9 batches are implemented, reviewed and validated.
 The GSET token 2 field finding is integrated and the M5StickS3 utility-node design is recorded (H8). Evidence is in
 `docs/experiment-log/2026-09.md`; remaining work is indexed by `docs/FOLLOWUPS.md`.
 
@@ -8,6 +8,8 @@ The GSET token 2 field finding is integrated and the M5StickS3 utility-node desi
 
 - Mission Control compiles under strict TypeScript and consumes generated Python contracts for the leaf, arsenal,
   saved-game, live-row, node, station, tunnel, coverage, presentation, mode, recap, match-history, live and start views.
+- The top-level `State` and its LAN, kit, lobby, announcement, sync, options, versions, notices, restore and feed
+  blocks are generated too. `Session.snapshot()` composes named checked producers rather than one untyped dictionary.
 - The Python producers now return their declared TypedDicts. Presentation and tunnel API envelopes are checked,
   scorer recap components compose into `RecapView`, and match history validates persisted JSON before serving it.
 - The browser mock implements the same presentation rows and summary fields as the real server. Mode defaults pass
@@ -36,10 +38,9 @@ passed. Post-commit site-shot recapture and its focused freshness gate remain re
 
 ## Next actions
 
-1. Finish F42.9 batch 5 by decomposing and typing `State.snapshot()`. Run the same review, validation and commit cycle.
-2. Continue with F42.12 phone transport checkJs, F42.14 stage pyright, then the remaining coverage/runtime-input audit.
-3. Tony runs F198 indoors at GSET t2=0 and watches for phantom reflected hits; keep t2=0 until evidence supports another mapping.
-4. Tony runs F170: hosted MC config versus native at the far mark and 30–40 ft, with t2=0 and fixed controls.
+1. Continue with F42.12 phone transport checkJs, F42.14 stage pyright, then the remaining coverage/runtime-input audit.
+2. Tony runs F198 indoors at GSET t2=0 and watches for phantom reflected hits; keep t2=0 until evidence supports another mapping.
+3. Tony runs F170: hosted MC config versus native at the far mark and 30–40 ft, with t2=0 and fixed controls.
 
 **Machine roles:** WSL runs Python suites and no-hardware MC; Windows Python is for BLE instruments; the MacBook
 is the field target. Never modify stock firmware.

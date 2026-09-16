@@ -359,7 +359,7 @@ class Stun(TypedDict):
     duration_s: NotRequired[int]   # F15/A20: seconds a hit EMP keeps the gun disarmed (default 10, 1..60)
 
 
-class GameConfig(TypedDict):
+class GameConfigBase(TypedDict):
     config_id: str
     mode: str
     environment: Literal["indoor", "outdoor"]
@@ -380,7 +380,6 @@ class GameConfig(TypedDict):
     #                                     ("grenade" = a BRX Smart Grenade in hill mode, "ir_station" = a
     #                                     $CAPTURE-speaking station). Present only for the modes that need one
     #                                     (domination/koth/ctf/cs/bomb); `validate()` refuses those without it.
-    loadout_policy: NotRequired[LoadoutPolicy]   # A10 (loadout.md §3); filled with the mode default when absent
     presentation: NotRequired[dict]              # A11 (mc/presentation.py): sounds + lights per event, preset or custom
     hit_audio_class: NotRequired[bool]           # A17: per-WEAPON $SIR sounds. DEFAULT OFF -- bench F38: a non-empty
     #                                              $SIR sound REPLACES the $PSET pool sound rather than layering, so
@@ -412,6 +411,20 @@ class GameConfig(TypedDict):
     #                                              MC pushes them the `vip` headset role (`alert.role`) once the match is
     #                                              live and again after each of their respawns. Never stored in a saved
     #                                              game (a preset names no person).
+
+
+class GameConfig(GameConfigBase):
+    """A complete config type whose policy may be omitted for server defaulting."""
+    loadout_policy: NotRequired[LoadoutPolicy]
+
+
+class ConfigView(GameConfigBase):
+    """A config MC serves in State or from a successful config/preset response.
+
+    PUT bodies use ``GameConfig`` with optional fields, since callers may update only selected keys.
+    Served configs have gone through the server's policy fill and always include ``loadout_policy``.
+    """
+    loadout_policy: LoadoutPolicy
 
 
 class FrameBundle(TypedDict):
@@ -1036,6 +1049,141 @@ class ReadinessSnapshot(TypedDict):
     # only 2 in lobby" confusion made visible on KIT/LOBBY (`state.py unrostered_phone_count()`).
     unrostered_phones: int
     go: bool
+
+
+# ---- M-MC snapshot (`state.py Session.snapshot`, `mc/API.md` State) ----
+class LanView(TypedDict):
+    """LAN details attached to every snapshot. Newer fields stay optional for older MC servers."""
+    mode: Literal["router", "hotspot", "lan", "unknown"]
+    ip: str
+    port: int
+    ws_url: str
+    qr: str
+    ssid: NotRequired[str | None]
+    warning: NotRequired[str | None]
+    join_secret: NotRequired[str]
+    public: NotRequired[LanPublic]
+    auth_required: NotRequired[bool]
+
+
+class KitView(TypedDict):
+    kitted: int
+    total: int
+    trying: dict[str, str]
+    browsing: dict[str, int]
+
+
+class LobbyAck(TypedDict):
+    ok: bool
+    gun_echo: NotRequired[str]
+    err: NotRequired[str]
+    config_id: NotRequired[str]
+
+
+class LobbyView(TypedDict):
+    ready: int
+    total: int
+    pushed: bool
+    acks: dict[str, LobbyAck]
+    all_acked: NotRequired[bool]
+
+
+class GameAnnouncementView(TypedDict):
+    loaded: bool
+    config_id: NotRequired[str]
+    sent: int
+    total: int
+
+
+class SyncRow(TypedDict):
+    player_id: str
+    display: str
+    gun_id: str
+    player_num: int
+    bound: bool
+    phone_game: bool
+    gun_sent: bool
+    gun_acked: bool
+    gun_echo: Literal["proven", "mismatch", "not_echoed"] | None
+
+
+class SyncTotals(TypedDict):
+    rostered: int
+    phone_game: int
+    gun_sent: int
+    gun_acked: int
+    gun_echo_proven: int
+    in_sync: bool
+
+
+class SyncView(TypedDict):
+    rows: list[SyncRow]
+    totals: SyncTotals
+    unconfigured: list[str]
+
+
+class SessionOptions(TypedDict):
+    log_sync: Literal["auto", "manual"]
+
+
+class VersionsView(TypedDict):
+    field: dict[str, int]
+    newest: str | None
+    release: str | None
+    mc_major: str
+
+
+class NoticesView(TypedDict):
+    mc_verify: NotRequired[str]
+
+
+class RestoredFromView(TypedDict):
+    at: int | None
+    players: int
+
+
+class SnapshotFeedRow(TypedDict):
+    t_match_s: int
+    text: str
+    tag: NotRequired[str]
+    kind: Literal["kill", "sync", "info", "alert"]
+
+
+class State(TypedDict):
+    """One complete Mission Control snapshot (`GET /api/state` and `/ui-ws`)."""
+    session_id: str
+    phase: Phase
+    t: int
+    lan: LanView
+    mc_confidence: McConfidence
+    nodes: list[NodeView]
+    readiness: ReadinessSnapshot
+    config: ConfigView
+    config_errors: list[str]
+    players: list[Player]
+    teams: list[Team]
+    kit: KitView
+    loadout_pool: LoadoutPool
+    lobby: LobbyView
+    feed: list[SnapshotFeedRow]
+    # Additive fields below are absent from snapshots emitted by older MC versions. Keep these
+    # optional on the client so rolling a new console back to an older server remains safe.
+    coverage: NotRequired[Coverage]
+    stations: NotRequired[list[StationView]]
+    game_no: NotRequired[int]
+    config_warnings: NotRequired[list[str]]
+    standby: NotRequired[list[Player]]
+    active_preset_id: NotRequired[str | None]
+    restored_from: NotRequired[RestoredFromView]
+    game: NotRequired[GameAnnouncementView]
+    sync: NotRequired[SyncView]
+    options: NotRequired[SessionOptions]
+    versions: NotRequired[VersionsView]
+    start: NotRequired[StartView | None]
+    live: NotRequired[LiveView | None]
+    recap: NotRequired[RecapView | None]
+    notices: NotRequired[NoticesView]
+    end_delivery: NotRequired[EndDeliveryView]
 
 
 # ---- §5 envelope ----

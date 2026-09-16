@@ -274,7 +274,7 @@ export interface Stun {
   duration_s?: number;
 }
 
-export interface GameConfig {
+export interface GameConfigBase {
   config_id: string;
   mode: string;
   environment: 'indoor' | 'outdoor';
@@ -300,8 +300,6 @@ export interface GameConfig {
    *  $CAPTURE-speaking station). Present only for the modes that need one
    *  (domination/koth/ctf/cs/bomb); `validate()` refuses those without it. */
   station_source?: string;
-  /** A10 (loadout.md §3); filled with the mode default when absent */
-  loadout_policy?: LoadoutPolicy;
   /** A11 (mc/presentation.py): sounds + lights per event, preset or custom */
   presentation?: Record<string, unknown>;
   /** A17: per-WEAPON $SIR sounds. DEFAULT OFF -- bench F38: a non-empty
@@ -339,6 +337,61 @@ export interface GameConfig {
    *  live and again after each of their respawns. Never stored in a saved
    *  game (a preset names no person). */
   vip_player_id?: string | null;
+}
+
+/** A complete config type whose policy may be omitted for server defaulting. */
+export interface GameConfig {
+  config_id: string;
+  mode: string;
+  environment: 'indoor' | 'outdoor';
+  night: boolean;
+  time_limit_s: number | null;
+  respawn: Respawn;
+  scoring: Scoring;
+  health: Health;
+  teams: Team[];
+  led?: Record<string, unknown>;
+  player_num_base?: number;
+  siphon?: Siphon;
+  stations?: StationRef[];
+  station_source?: string;
+  presentation?: Record<string, unknown>;
+  hit_audio_class?: boolean;
+  hit_audio_rekey?: boolean;
+  stun?: Stun;
+  coverage?: 'full' | 'partial';
+  mode_params?: Record<string, number | boolean | string>;
+  vip_player_id?: string | null;
+  loadout_policy?: LoadoutPolicy;
+}
+
+/** A config MC serves in State or from a successful config/preset response.
+ *
+ *  PUT bodies use ``GameConfig`` with optional fields, since callers may update only selected keys.
+ *  Served configs have gone through the server's policy fill and always include ``loadout_policy``. */
+export interface ConfigView {
+  config_id: string;
+  mode: string;
+  environment: 'indoor' | 'outdoor';
+  night: boolean;
+  time_limit_s: number | null;
+  respawn: Respawn;
+  scoring: Scoring;
+  health: Health;
+  teams: Team[];
+  led?: Record<string, unknown>;
+  player_num_base?: number;
+  siphon?: Siphon;
+  stations?: StationRef[];
+  station_source?: string;
+  presentation?: Record<string, unknown>;
+  hit_audio_class?: boolean;
+  hit_audio_rekey?: boolean;
+  stun?: Stun;
+  coverage?: 'full' | 'partial';
+  mode_params?: Record<string, number | boolean | string>;
+  vip_player_id?: string | null;
+  loadout_policy: LoadoutPolicy;
 }
 
 export interface FrameBundle {
@@ -1010,6 +1063,140 @@ export interface ReadinessSnapshot {
    *  only 2 in lobby" confusion made visible on KIT/LOBBY (`state.py unrostered_phone_count()`). */
   unrostered_phones: number;
   go: boolean;
+}
+
+/** LAN details attached to every snapshot. Newer fields stay optional for older MC servers. */
+export interface LanView {
+  mode: 'router' | 'hotspot' | 'lan' | 'unknown';
+  ip: string;
+  port: number;
+  ws_url: string;
+  qr: string;
+  ssid?: string | null;
+  warning?: string | null;
+  join_secret?: string;
+  public?: LanPublic;
+  auth_required?: boolean;
+}
+
+export interface KitView {
+  kitted: number;
+  total: number;
+  trying: Record<string, string>;
+  browsing: Record<string, number>;
+}
+
+export interface LobbyAck {
+  ok: boolean;
+  gun_echo?: string;
+  err?: string;
+  config_id?: string;
+}
+
+export interface LobbyView {
+  ready: number;
+  total: number;
+  pushed: boolean;
+  acks: Record<string, LobbyAck>;
+  all_acked?: boolean;
+}
+
+export interface GameAnnouncementView {
+  loaded: boolean;
+  config_id?: string;
+  sent: number;
+  total: number;
+}
+
+export interface SyncRow {
+  player_id: string;
+  display: string;
+  gun_id: string;
+  player_num: number;
+  bound: boolean;
+  phone_game: boolean;
+  gun_sent: boolean;
+  gun_acked: boolean;
+  gun_echo: 'proven' | 'mismatch' | 'not_echoed' | null;
+}
+
+export interface SyncTotals {
+  rostered: number;
+  phone_game: number;
+  gun_sent: number;
+  gun_acked: number;
+  gun_echo_proven: number;
+  in_sync: boolean;
+}
+
+export interface SyncView {
+  rows: SyncRow[];
+  totals: SyncTotals;
+  unconfigured: string[];
+}
+
+export interface SessionOptions {
+  log_sync: 'auto' | 'manual';
+}
+
+export interface VersionsView {
+  field: Record<string, number>;
+  newest: string | null;
+  release: string | null;
+  mc_major: string;
+}
+
+export interface NoticesView {
+  mc_verify?: string;
+}
+
+export interface RestoredFromView {
+  at: number | null;
+  players: number;
+}
+
+export interface SnapshotFeedRow {
+  t_match_s: number;
+  text: string;
+  tag?: string;
+  kind: 'kill' | 'sync' | 'info' | 'alert';
+}
+
+/** One complete Mission Control snapshot (`GET /api/state` and `/ui-ws`). */
+export interface State {
+  session_id: string;
+  phase: Phase;
+  t: number;
+  lan: LanView;
+  mc_confidence: McConfidence;
+  nodes: NodeView[];
+  readiness: ReadinessSnapshot;
+  config: ConfigView;
+  config_errors: string[];
+  players: Player[];
+  teams: Team[];
+  kit: KitView;
+  loadout_pool: LoadoutPool;
+  lobby: LobbyView;
+  feed: SnapshotFeedRow[];
+  /** Additive fields below are absent from snapshots emitted by older MC versions. Keep these
+   *  optional on the client so rolling a new console back to an older server remains safe. */
+  coverage?: Coverage;
+  stations?: StationView[];
+  game_no?: number;
+  config_warnings?: string[];
+  standby?: Player[];
+  active_preset_id?: string | null;
+  restored_from?: RestoredFromView;
+  game?: GameAnnouncementView;
+  sync?: SyncView;
+  options?: SessionOptions;
+  versions?: VersionsView;
+  start?: StartView | null;
+  live?: LiveView | null;
+  recap?: RecapView | null;
+  notices?: NoticesView;
+  end_delivery?: EndDeliveryView;
 }
 
 export interface Envelope {

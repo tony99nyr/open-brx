@@ -165,10 +165,11 @@ def build(args):
     # T3-A / field 2026-09-12: WSL2's own NAT address advertised in the QR/mDNS looked identical to a
     # real LAN address, so no phone could connect and MC never said why. LOUD on purpose -- this is the
     # one line an operator glancing at a scrolling boot log must not be able to miss.
-    if session.lan.get("warning"):
+    lan_warning = session.lan.get("warning")
+    if lan_warning:
         _rule = "!" * 78
         print(_rule, flush=True)
-        print(f"  {session.lan['warning']}", flush=True)
+        print(f"  {lan_warning}", flush=True)
         print(_rule, flush=True)
     # A28.1: the tunnel exists in every run (so `lan.public.available` is honest and the UI can show the
     # install line); it only spawns anything on --tunnel or POST /api/tunnel.
@@ -246,7 +247,6 @@ def build(args):
             # trusted the JOIN strip then dialed ws://…:0/ws (e2e, 2026-08-26).
             try:
                 ji = real_net.join_info()
-                session.lan["session_id"] = ji.get("session_id")
                 # A28.2: `qr` is DERIVED (secret, and the public URL when the tunnel is up) -- set the
                 # bare URL and let the session render it, or the join strip loses the join secret.
                 session.set_ws_url(ji.get("url") or ws_url)

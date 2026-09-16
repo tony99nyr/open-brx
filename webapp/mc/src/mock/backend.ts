@@ -572,6 +572,10 @@ export class MockBackend implements Api {
       },
       ...(this.restoredFrom ? { restored_from: this.restoredFrom } : {}),
       coverage: this.coverage(nodes),
+      // The demo keeps one off-grid node in the confidence sample so the same MC-gating view is
+      // available in ?mock as in the advanced presentation panel.
+      mc_confidence: { confident: false, missing: ['p-demo-2'], stale: [], unflushed: [] },
+      feed: [...(this.live_?.feed ?? [])],
       // The demo mirrors the server's own `SETUP: ` warning for a grenade objective (compile.py validate),
       // so the KotH rail in `?mock` shows the same field step the real MC does.
       nodes, readiness, config: clone(this.config), config_errors: [...this.cfgErrors],

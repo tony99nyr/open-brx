@@ -97,7 +97,7 @@ the remaining composed views, then decompose `State.snapshot()` rather than only
 | 2 | `WeaponView`, `SavedGame`, `LiveRow` | `views.weapon_view`; `presets.py`; `Scorer.live_rows()` | S | Done 2026-09-15 |
 | 3 | `NodeView`, `StationView`, `LanPublic`, `Coverage`, `PresentationRow`, `PresentationView`, `ModeInfo` | `state.py _node_view`, `stations_view`, `modes()`; `presentation.py`; `tunnel.py` | M | Done 2026-09-16 |
 | 4 | `RecapView`, `LiveView`, `StartView`, `MatchHistoryRow` | composed from batches 1 to 3 | M | Done 2026-09-16 |
-| 5 | `State` | `state.py snapshot()`, which inlines a dozen blocks and needs real decomposition, not an annotation | L | Open |
+| 5 | `State` | `state.py snapshot()`, decomposed into named checked view producers | L | Done 2026-09-16 |
 
 `ConfigView`, `LoadoutPoolReasons` and `PoolEmptyCode` are already aliases of generated types. `Api`, `FeedTag`
 and `FeedEntry` have no typed server producer and stay hand-written.
