@@ -1,0 +1,278 @@
+[22:42:59] log synced to MC — 33396 bytes, 347 lines, 1 chunk(s) ✓
+[22:42:59] write feedback cue victory: 1 frame(s)
+[22:42:59] advertising as player 1 team 1 (down)
+[22:43:15] new match from MC — leaving the match-complete screen
+[22:43:18] watching for utility items
+[22:43:23] app resumed
+[22:43:23] network up (wifi)
+[22:43:23] app resumed
+[22:43:32] pick sent (debounce): secondary weapon smg
+[22:43:32] write tutorial: 12 frame(s)
+[22:43:35] try-out arm timed out — resolved UNCONFIRMED (no confirming ammo report)
+[22:43:35] write tutorial end: 6 frame(s)
+[22:43:55] pick sent (debounce): primary weapon burst_rifle
+[22:43:55] write tutorial: 12 frame(s)
+[22:43:58] try-out arm timed out — resolved UNCONFIRMED (no confirming ammo report)
+[22:44:01] pick sent (debounce): secondary weapon shotgun
+[22:44:01] write tutorial: 12 frame(s)
+[22:44:05] try-out arm timed out — resolved UNCONFIRMED (no confirming ammo report)
+[22:44:06] write tutorial end: 6 frame(s)
+[22:44:21] write head: 28 frame(s)
+[22:44:21] phase kitted → lobby
+[22:44:49] watching for utility items
+[22:44:55] phase lobby → armed
+[22:44:56] write tick: 1 frame(s)
+[22:44:57] write tick: 1 frame(s)
+[22:44:58] write tick: 1 frame(s)
+[22:44:59] write tick: 1 frame(s)
+[22:45:00] write tick: 1 frame(s)
+[22:45:01] write tick: 1 frame(s)
+[22:45:02] write cue countdown: 1 frame(s)
+[22:45:05] write spawn + spawn line (VHI) + scream VH4 2/3: 18 frame(s)
+[22:45:05] write cue klaxon: 1 frame(s)
+[22:45:05] phase armed → live
+[22:45:05] advertising as player 1 team 1
+[22:45:06] write headset start: 1 frame(s)
+[22:45:06] write headset start: 1 frame(s)
+[22:45:07] write gun take: 2 frame(s)
+[22:45:10] swap to slot 1 assumed after 850ms (no shot yet)
+[22:45:15] swap to slot 1 assumed after 850ms (no shot yet)
+[22:45:17] network up (wifi)
+[22:45:30] swap to slot 0 assumed after 850ms (no shot yet)
+[22:45:38] network up (wifi)
+[22:45:47] write end (end): 6 frame(s)
+[22:45:47] write cue game_over: 1 frame(s)
+[22:45:47] phase live → kitted
+[22:45:47] match ended: end
+[22:45:47] advertising as player 1 team 1 (down)
+[22:45:47] match result (push): draw
+--- ble frames (last 60) ---
+1789339536531 rx $ALCD,31,100,0,180,0,*
+1789339536611 rx $BUT,0,0,*
+1789339536622 rx $ALCD,30,100,0,180,0,*
+1789339537011 rx $BUT,0,1,*
+1789339537028 rx $ALCD,29,100,0,180,0,*
+1789339537104 rx $ALCD,28,100,0,180,0,*
+1789339537116 rx $BUT,0,0,*
+1789339537145 rx $ALCD,27,100,0,180,0,*
+1789339537491 rx $BUT,0,1,*
+1789339537510 rx $ALCD,26,100,0,180,0,*
+1789339537581 rx $ALCD,25,100,0,180,0,*
+1789339537599 rx $BUT,0,0,*
+1789339537671 rx $ALCD,24,100,0,180,0,*
+1789339537973 rx $BUT,0,1,*
+1789339538002 rx $ALCD,23,100,0,180,0,*
+1789339538077 rx $BUT,0,0,*
+1789339538091 rx $ALCD,22,100,0,180,0,*
+1789339538166 rx $ALCD,21,100,0,180,0,*
+1789339538391 rx $BUT,0,1,*
+1789339538513 rx $ALCD,20,100,0,180,0,*
+1789339538544 rx $BUT,0,0,*
+1789339538618 rx $ALCD,19,100,0,180,0,*
+1789339538707 rx $ALCD,18,100,0,180,0,*
+1789339538917 rx $BUT,0,1,*
+1789339539036 rx $ALCD,17,100,0,180,0,*
+1789339539037 rx $BUT,0,0,*
+1789339539111 rx $ALCD,16,100,0,180,0,*
+1789339539185 rx $ALCD,15,100,0,180,0,*
+1789339539486 rx $BUT,0,1,*
+1789339539516 rx $ALCD,14,100,0,180,0,*
+1789339539594 rx $ALCD,13,100,0,180,0,*
+1789339539623 rx $BUT,0,0,*
+1789339539697 rx $ALCD,12,100,0,180,0,*
+1789339539996 rx $BUT,0,1,*
+1789339540026 rx $ALCD,11,100,0,180,0,*
+1789339540104 rx $ALCD,10,100,0,180,0,*
+1789339540176 rx $BUT,0,0,*
+1789339540192 rx $ALCD,9,100,0,180,0,*
+1789339540491 rx $BUT,0,1,*
+1789339540553 rx $ALCD,8,100,0,180,0,*
+1789339540611 rx $ALCD,7,100,0,180,0,*
+1789339540657 rx $BUT,0,0,*
+1789339540691 rx $ALCD,6,100,0,180,0,*
+1789339541035 rx $BUT,0,1,*
+1789339541047 rx $ALCD,5,100,0,180,0,*
+1789339541120 rx $ALCD,4,100,0,180,0,*
+1789339541195 rx $BUT,0,0,*
+1789339541212 rx $ALCD,3,100,0,180,0,*
+1789339541510 rx $BUT,0,1,*
+1789339541544 rx $ALCD,2,100,0,180,0,*
+1789339541677 rx $ALCD,1,100,0,180,0,*
+1789339541678 rx $BUT,0,0,*
+1789339541706 rx $ALCD,0,100,0,180,0,*
+1789339542007 rx $BUT,0,1,*
+1789339542171 rx $BUT,0,0,*
+1789339543821 rx $BUT,2,1,*
+1789339543941 rx $BUT,2,0,*
+1789339545967 rx $ALCD,36,100,0,144,0,*
+1789339547849 tx $SPAWN,,*
+1789339547874 tx $PLAYX,0,*
+--- engine state ---
+{
+ "accuracy": null,
+ "activeSlot": 0,
+ "alive": false,
+ "ammo": 36,
+ "armor": 120,
+ "assists": null,
+ "battery": 100,
+ "bleUp": true,
+ "deaths": 0,
+ "endAck": false,
+ "ended": true,
+ "game": {
+  "environment": "outdoor",
+  "health": {
+   "max_armor": 70,
+   "max_hp": 45
+  },
+  "mode": "tdm",
+  "mode_name": "TEAM DEATHMATCH",
+  "name": "TEAM DEATHMATCH",
+  "night": false,
+  "respawn": {
+   "delay_s": 15,
+   "type": "auto"
+  },
+  "time_limit_s": 600
+ },
+ "headEcho": "$ALCD,36,100,0,108,0,*",
+ "hits": null,
+ "hp": 45,
+ "killedBy": null,
+ "kills": null,
+ "kitLocked": false,
+ "kitOpen": false,
+ "loadMag": 36,
+ "loadReserve": 216,
+ "loadout": {
+  "perk": {
+   "kind": "perk",
+   "name": "Body Armor",
+   "perk_id": "body_armor"
+  },
+  "primary": {
+   "clip": 36,
+   "kind": "weapon",
+   "name": "Burst Rifle",
+   "reserve": 216,
+   "weapon_id": "burst_rifle"
+  },
+  "secondary": {
+   "clip": 6,
+   "kind": "weapon",
+   "name": "Shotgun",
+   "reserve": 24,
+   "weapon_id": "shotgun"
+  }
+ },
+ "mag": 36,
+ "matchId": "a1003b7ae7",
+ "maxArmor": 70,
+ "maxHp": 45,
+ "mode": "TDM",
+ "night": false,
+ "phase": "kitted",
+ "player": {
+  "display": "ROCCO",
+  "gun_id": "Tactix-3D4F",
+  "node_id": "node-daeed47068",
+  "player_id": "6748d5e1",
+  "player_num": 1,
+  "team_id": "blue"
+ },
+ "ready": false,
+ "reconciling": false,
+ "reloading": false,
+ "reserve": 144,
+ "respawnGate": "trigger",
+ "respawnHint": null,
+ "respawnIn": 0,
+ "respawnType": "auto",
+ "result": {
+  "mode": "tdm",
+  "outcome": "draw",
+  "rows": [
+   {
+    "acc_provisional": false,
+    "accuracy": 0,
+    "after_end_deaths": 0,
+    "after_end_kills": 0,
+    "assists": 0,
+    "best_streak": 0,
+    "deaths": 0,
+    "display": "ROCCO",
+    "first_blood": false,
+    "hits": 0,
+    "kd": 0,
+    "kills": 0,
+    "medals": [],
+    "multi_best": 0,
+    "player_id": "6748d5e1",
+    "shots": 103,
+    "shots_total": 103,
+    "streak": 0,
+    "team_id": "blue"
+   },
+   {
+    "acc_provisional": false,
+    "accuracy": 0,
+    "after_end_deaths": 0,
+    "after_end_kills": 0,
+    "assists": 0,
+    "best_streak": 0,
+    "deaths": 0,
+    "display": "TONY",
+    "first_blood": false,
+    "hits": 0,
+    "kd": 0,
+    "kills": 0,
+    "medals": [],
+    "multi_best": 0,
+    "player_id": "002803e7",
+    "shots": 13,
+    "shots_total": 13,
+    "streak": 0,
+    "team_id": "yellow"
+   }
+  ],
+  "team_scores": [
+   {
+    "name": "BLUE TEAM",
+    "score": 0,
+    "team_id": "blue"
+   },
+   {
+    "name": "YELLOW TEAM",
+    "score": 0,
+    "team_id": "yellow"
+   }
+  ],
+  "win_by": "kills",
+  "winner": {
+   "team_id": null,
+   "tie": [
+    "blue",
+    "yellow"
+   ]
+  }
+ },
+ "resync": null,
+ "shield": 0,
+ "shots": 103,
+ "standby": false,
+ "stunned": null,
+ "synced": true,
+ "team": {
+  "color": "#3a86ff",
+  "name": "BLUE TEAM",
+  "team_id": "blue",
+  "tid": 1
+ },
+ "underFire": false,
+ "weapon": "BURST RIFLE",
+ "weaponId": "burst_rifle",
+ "wsState": "bound"
+}
+
+(catalog and policy blocks dropped by extract.py)
