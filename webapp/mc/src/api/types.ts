@@ -20,6 +20,7 @@ export type {
   LanPublic, PresentationRow, PresentationView, PresentationSummary, HeadsetSummary, GunSummary,
   McConfidence, RecapView, WinnerView, PossessionView, AfterEndPlayer, AfterEndView,
   MatchHistoryRow, ModeInfo, NodeView, StationControl, StationReport, StationArmed, StationView,
+  LiveView, StartNodeView, StartView,
   TunnelStatus, TunnelProviderValue,
 } from './contract.gen';
 export type {
@@ -29,11 +30,11 @@ export type {
 // values (verbatimModuleSyntax: a value re-export may not ride in a `export type` statement)
 export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS } from './contract.gen';
 
-import type { ArmState, GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, Player,
+import type { GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, Player,
   PerkView, ReadinessSnapshot, ScanRow, StationKind, Team,
   EndDeliveryView, VoiceList, PhaseRefusalBody, ModeInfo,
-  WeaponView, SavedGame, LiveRow, Coverage, LanPublic, RecapView, MatchHistoryRow, PresentationView,
-  NodeView, StationView } from './contract.gen';
+  WeaponView, SavedGame, Coverage, LanPublic, RecapView, MatchHistoryRow, PresentationView,
+  NodeView, StationView, LiveView, StartView } from './contract.gen';
 
 export type TunnelProvider = import('./contract.gen').TunnelProviderValue | null;
 
@@ -45,23 +46,12 @@ export type TunnelProvider = import('./contract.gen').TunnelProviderValue | null
  *  anywhere else (a session persisted before A10, an older MC) enters the store. */
 export type ConfigView = GameConfig & { loadout_policy: LoadoutPolicy };
 
-export interface LiveView {
-  match_id: string; go_live_t: number; time_limit_s: number; ends_t: number;
-  score: Record<string, number>; rows: LiveRow[];
-}
-
-
 export type FeedTag = 'DOUBLE KILL' | 'TRIPLE KILL' | `STREAK ×${number}` | 'FIRST BLOOD' | 'TEAM KILL' | 'SYNC POINT'
   /** A11.4/F118: a global-state alert MC pushed to the nodes. `ALERT` reached everyone bound, `WITHHELD`
    *  reached nobody (mc_confidence refused it, or no node was in coverage), `ROLE` is a role assignment
    *  (VIP/carrier). The `text` is the OPERATOR's third-person copy — render it VERBATIM, never re-word. */
   | 'ALERT' | 'WITHHELD' | 'ROLE';
 export interface FeedEntry { t_match_s: number; text: string; tag?: FeedTag; kind: 'kill' | 'sync' | 'info' | 'alert' }
-
-export interface StartView {
-  match_id: string; go_live_t: number; seq: number; countdown_s: number;
-  per_node: Record<string, { arm_state: ArmState; t_minus_ms?: number; synced: boolean; last_seen_ms: number }>;
-}
 
 /** loadout.md §3.2 (server pass 2, 2026-09-12) — why a slot's pool came out EMPTY. A closed
  *  vocabulary of CODES, not sentences: `policy.py`'s copy of these is the HUD's (`_R_*`, shown

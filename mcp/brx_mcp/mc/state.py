@@ -35,7 +35,8 @@ from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_P
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_KINDS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, Event,
                     Coverage, EndDeliveryRow, EndDeliveryView, FrameBundle, GameConfig, LanPublic, Loadout, LoadoutOverrides, LoadoutPolicy, LoadoutPool, McConfidence, PerkView,
                     ModeInfo, Phase, PhaseRefusalBody, Player, ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, Respawn, ScanRow, SlotRule, StationAssignment, StationRef, StationControl, StationReport, StationView,
-                    Stun, Team, Weapon, WeaponSel, WinnerView, NodeView, app_tier, compatible, is_station_kind, parse_app_ver, parse_win_by)
+                    StartNodeView, StartView, Stun, Team, Weapon, WeaponSel, WinnerView, LiveView, NodeView,
+                    app_tier, compatible, is_arm_state, is_station_kind, parse_app_ver, parse_win_by)
 
 if TYPE_CHECKING:                      # `presets.PresetStore` is attached by `__main__`/`create_app`
     from .presets import PresetStore
@@ -5225,25 +5226,42 @@ class Session:
             except Exception: pass
 
     # ---------- snapshot ----------
+    def _live_view(self, now: int) -> LiveView | None:
+        if not self.scorer or self.phase not in ("armed", "live", "recap"):
+            return None
+        time_limit_s = self.config.get("time_limit_s")
+        if time_limit_s is None:
+            raise RuntimeError("active scorer has no time limit")
+        return {"match_id": self.scorer.match_id, "go_live_t": self.scorer.go_live_t,
+                "time_limit_s": time_limit_s, "ends_t": self.scorer.go_live_t + time_limit_s * 1000,
+                "score": self.scorer.team_scores(),
+                "rows": self.scorer.live_rows(now, {nid: nv.get("last_seen_ms", 0)
+                                                      for nid, nv in self.nodes.items()})}
+
+    def _start_view(self, now: int) -> StartView | None:
+        if not self.start_info:
+            return None
+        per_node: dict[str, StartNodeView] = {}
+        for nid, pid in self.node_player.items():
+            nv = self.nodes.get(nid, {})
+            raw_arm_state = nv.get("arm_state")
+            arm_state = raw_arm_state if is_arm_state(raw_arm_state) else "idle"
+            raw_t_minus = nv.get("t_minus_ms")
+            per_node[pid] = {"arm_state": arm_state,
+                             "t_minus_ms": raw_t_minus if type(raw_t_minus) is int else None,
+                             "synced": nv.get("synced") is True,
+                             "last_seen_ms": now - nv.get("last_seen_ms", 0)}
+        body = self._start_body()
+        return {"match_id": body["match_id"], "go_live_t": body["go_live_t"],
+                "config_id": body["config_id"], "seq": body["seq"],
+                "countdown_s": body["countdown_s"], "per_node": per_node}
+
     def snapshot(self) -> dict:
         now = self.now_ms()
         kitted = sum(1 for p in self.players.values() if p.get("node_id"))
         self._prune_browsing()
-        live = None
-        if self.scorer and self.phase in ("armed", "live", "recap"):
-            tl = self.config.get("time_limit_s")
-            live = {"match_id": self.scorer.match_id, "go_live_t": self.scorer.go_live_t, "time_limit_s": tl,
-                    "ends_t": (self.scorer.go_live_t + tl * 1000) if tl else None,
-                    "score": self.scorer.team_scores(),
-                    "rows": self.scorer.live_rows(now, {nid: nv.get("last_seen_ms", 0) for nid, nv in self.nodes.items()})}
-        start = None
-        if self.start_info:
-            per = {}
-            for nid, pid in self.node_player.items():
-                nv = self.nodes.get(nid, {})
-                per[pid] = {"arm_state": nv.get("arm_state", "idle"), "t_minus_ms": nv.get("t_minus_ms"),
-                            "synced": nv.get("synced", False), "last_seen_ms": now - nv.get("last_seen_ms", 0)}
-            start = {**self._start_body(), "per_node": per}
+        live = self._live_view(now)
+        start = self._start_view(now)
         end_delivery = self._end_delivery_view()        # A42: absent until a match has ended
         nodes: list[NodeView] = []
         for nv in self.nodes.values():

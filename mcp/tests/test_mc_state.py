@@ -140,6 +140,9 @@ def test_push_gate_and_empty_echo_red_and_start_rules():
     st1 = s.start(runway_s=30)
     assert s.phase == "armed" and st1["seq"] == 1 and st1["go_live_t"] == T0 + 30_000
     assert net.pushes("start")[-1][2]["match_id"] == st1["match_id"]
+    start_view = s.snapshot()["start"]
+    assert start_view["config_id"] == s.config["config_id"]
+    assert start_view["per_node"][ps[0]["player_id"]]["t_minus_ms"] is None
     st2 = s.reschedule(60)
     assert st2["seq"] == 2 and st2["match_id"] != st1["match_id"]      # reschedule = new seq + new match_id
     ab = s.abort_start()
@@ -158,7 +161,9 @@ def test_timed_end_mirror_and_recap_kitted():
     s.tick(); assert s.phase == "live"
     mid = info["match_id"]
     net.simulate_event("node1", {"type": "death", "t": clock["t"], "match_id": mid, "player_id": ps[1]["player_id"], "shooter_num": ps[0]["player_num"], "shooter_team": 1}, clock["t"], seq=1)
-    assert s.snapshot()["live"]["score"]["blue"] == 1
+    live_view = s.snapshot()["live"]
+    assert live_view["score"]["blue"] == 1
+    assert live_view["ends_t"] == info["go_live_t"] + live_view["time_limit_s"] * 1000
     clock["t"] = info["go_live_t"] + 60_000 + 6000
     s.tick(); assert s.phase == "recap" and s.recap()["winner"] == {"team_id": "blue"}
     # late flush after the end is recorded but not scored (A6.1)

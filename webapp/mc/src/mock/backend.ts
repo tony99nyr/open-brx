@@ -1250,9 +1250,9 @@ export class MockBackend implements Api {
     const per_node: StartView['per_node'] = {};
     for (const p of this.players) {
       const noAck = p.display === 'DRIFT';
-      per_node[p.player_id] = { arm_state: noAck ? 'lobby' : 'armed', t_minus_ms: noAck ? undefined : runway_s * 1000, synced: !noAck, last_seen_ms: noAck ? 40000 : 1000 };
+      per_node[p.player_id] = { arm_state: noAck ? 'lobby' : 'armed', t_minus_ms: noAck ? null : runway_s * 1000, synced: !noAck, last_seen_ms: noAck ? 40000 : 1000 };
     }
-    this.start_ = { match_id, go_live_t, seq, countdown_s: runway_s, per_node };
+    this.start_ = { match_id, go_live_t, config_id: this.config.config_id, seq, countdown_s: runway_s, per_node };
     this.phase = 'armed'; this.emit();
     return { match_id, go_live_t, seq };
   }

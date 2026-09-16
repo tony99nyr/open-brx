@@ -104,6 +104,11 @@ def compatible(app_ver: str | None) -> bool | None:
     return (v[0], v[1]) == (APP_MAJOR, APP_MINOR) if APP_MAJOR == 0 else v[0] == APP_MAJOR
 
 ArmState = Literal["idle", "connected", "kitted", "lobby", "armed", "live"]
+ARM_STATES = get_args(ArmState)
+
+
+def is_arm_state(value: object) -> TypeGuard[ArmState]:
+    return value in ARM_STATES
 # The MC session's own phase vocabulary. The SERVER owns it: `state.py PHASES = get_args(Phase)` is the
 # tuple every phase guard tests against, and the console's `Phase` is generated from this alias, so a new
 # phase cannot reach one side without the other.
@@ -642,6 +647,31 @@ class LiveRow(ScoreRow):
     status: Literal["alive", "down", "stale"]
     sync_age_ms: int
     respawn_in_s: int | None
+
+
+class LiveView(TypedDict):
+    match_id: str
+    go_live_t: int
+    time_limit_s: int
+    ends_t: int
+    score: dict[str, int]
+    rows: list[LiveRow]
+
+
+class StartNodeView(TypedDict):
+    arm_state: ArmState
+    t_minus_ms: int | None
+    synced: bool
+    last_seen_ms: int
+
+
+class StartView(TypedDict):
+    match_id: str
+    go_live_t: int
+    config_id: str
+    seq: int
+    countdown_s: int
+    per_node: dict[str, StartNodeView]
 
 
 class ModeParamSpec(TypedDict):

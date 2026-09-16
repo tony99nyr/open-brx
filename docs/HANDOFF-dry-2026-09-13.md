@@ -84,7 +84,7 @@ perk or catalog failure under a blanket exception. Real-only `hit_plan`, `voice_
 ### 5. F42.9: generate the console's view types. M, then L for `State`
 
 About two dozen types in `webapp/mc/src/api/types.ts` were hand-written because the server builds them as untyped
-dicts. Batches 1-3 and the recap/history half of batch 4 are done 2026-09-16: the leaf, arsenal, live-row,
+dicts. Batches 1-4 are done 2026-09-16: the leaf, arsenal, live-row,
 node, station, tunnel, presentation, mode, recap and match-history shapes now come from `types.py`,
 their producers are checked, and `API.md` names `RecapStationRow` and `VoiceList`. `PhaseRefusalBody` is the
 server's required 409 body; the UI's `PhaseRefusal = Partial<PhaseRefusalBody>` deliberately accepts other or
@@ -96,7 +96,7 @@ the remaining composed views, then decompose `State.snapshot()` rather than only
 | 1 | `Honor`, `RecapStationRow`, `StationAssignment`, `ModeParamSpec`, `PhaseRefusalBody`, `VoiceList`, `EndDeliveryView` | scorer, station and delivery views; `modes/params.py`; compiler voice options | S | Done 2026-09-15 |
 | 2 | `WeaponView`, `SavedGame`, `LiveRow` | `views.weapon_view`; `presets.py`; `Scorer.live_rows()` | S | Done 2026-09-15 |
 | 3 | `NodeView`, `StationView`, `LanPublic`, `Coverage`, `PresentationRow`, `PresentationView`, `ModeInfo` | `state.py _node_view`, `stations_view`, `modes()`; `presentation.py`; `tunnel.py` | M | Done 2026-09-16 |
-| 4 | `RecapView`, `LiveView`, `StartView`, `MatchHistoryRow` | composed from batches 1 to 3 | M | Recap/history done 2026-09-16; live/start open |
+| 4 | `RecapView`, `LiveView`, `StartView`, `MatchHistoryRow` | composed from batches 1 to 3 | M | Done 2026-09-16 |
 | 5 | `State` | `state.py snapshot()`, which inlines a dozen blocks and needs real decomposition, not an annotation | L | Open |
 
 `ConfigView`, `LoadoutPoolReasons` and `PoolEmptyCode` are already aliases of generated types. `Api`, `FeedTag`

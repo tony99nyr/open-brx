@@ -618,6 +618,31 @@ export interface LiveRow {
   respawn_in_s: number | null;
 }
 
+export interface LiveView {
+  match_id: string;
+  go_live_t: number;
+  time_limit_s: number;
+  ends_t: number;
+  score: Record<string, number>;
+  rows: LiveRow[];
+}
+
+export interface StartNodeView {
+  arm_state: ArmState;
+  t_minus_ms: number | null;
+  synced: boolean;
+  last_seen_ms: number;
+}
+
+export interface StartView {
+  match_id: string;
+  go_live_t: number;
+  config_id: string;
+  seq: number;
+  countdown_s: number;
+  per_node: Record<string, StartNodeView>;
+}
+
 /** One tunable schema row served by GET /api/modes. */
 export interface ModeParamSpec {
   name: string;
