@@ -102,7 +102,7 @@ the remaining composed views, then decompose `State.snapshot()` rather than only
 `ConfigView`, `LoadoutPoolReasons` and `PoolEmptyCode` are already aliases of generated types. `Api`, `FeedTag`
 and `FeedEntry` have no typed server producer and stay hand-written.
 
-### 6. F42.12: type-check the phone transport. M
+### 6. F42.12: type-check the phone transport. M — Done 2026-09-16
 
 `app/src/transport` is plain JavaScript that nothing type-checks, although it imports the generated tables.
 **Measured with `allowJs` + `checkJs` over the five transport files: 116 errors.**

@@ -1,4 +1,4 @@
-"""The generated wire-contract clients (contract.gen.ts / contract.gen.js) match their generator.
+"""The generated wire-contract clients (contract.gen.ts / contract.gen.js / contract.gen.d.ts) match their generator.
 
 Companion to `test_ui_catalog_generated.py` -- same in-memory-render-vs-disk pattern, this time for
 `mcp/tools/gen_contract.py`: the ONE machine copy of the node<->MC wire (`mcp/brx_mcp/mc/types.py` +
@@ -23,10 +23,11 @@ from brx_mcp.mc import envelope as _envelope   # dependency-free, imports cleanl
 GENERATOR = REPO / "mcp" / "tools" / "gen_contract.py"
 TS_OUT = REPO / "webapp" / "mc" / "src" / "api" / "contract.gen.ts"
 JS_OUT = REPO / "app" / "src" / "transport" / "contract.gen.js"
+DTS_OUT = REPO / "app" / "src" / "transport" / "contract.gen.d.ts"
 COMMAND = "python3 mcp/tools/gen_contract.py"
 
 # No skip path, deliberately: `brx_mcp.mc.types`/`.envelope` are dependency-free and import cleanly
-# under bare system python (verified), and the generator + both generated files are checked in. A
+# under bare system python (verified), and the generator + all generated files are checked in. A
 # missing generator, a missing/renamed source module, or a deleted contract.gen.* is a real failure
 # here, never a quiet skip -- see `test_the_generated_files_exist` below for the last of those.
 
@@ -59,9 +60,9 @@ def _diff_hint(path: pathlib.Path, want: str, got: str) -> str:
 
 
 def test_the_generated_files_exist():
-    """A deleted contract.gen.ts/js is a FAILURE, not a pass-by-vacuity and not a skip: both files are
-    checked in, and every consumer (webapp/mc, app/src/transport) imports from them directly."""
-    missing = [str(p.relative_to(REPO)) for p in (TS_OUT, JS_OUT) if not p.is_file()]
+    """A deleted generated contract file is a FAILURE, not a pass-by-vacuity and not a skip: all
+    files are checked in, and every consumer (webapp/mc, app/src/transport) imports from them directly."""
+    missing = [str(p.relative_to(REPO)) for p in (TS_OUT, JS_OUT, DTS_OUT) if not p.is_file()]
     assert not missing, f"generated contract file(s) missing -- run `{COMMAND}`: {missing}"
 
 
@@ -131,6 +132,17 @@ def test_comments_travel_same_line_and_wrapped_continuation():
 def test_a_literal_alias_renders_as_a_union_type():
     ts, _js = _ts_js()
     assert "export type ArmState = 'idle' | 'connected' | 'kitted' | 'lobby' | 'armed' | 'live';" in ts
+
+
+def test_the_phone_declaration_file_matches_the_runtime_shapes():
+    """The phone's checkJs pass resolves contract.gen.js through its sibling declaration file: the
+    declarations must expose the shared shapes and describe the JS vocabularies as Sets."""
+    dts = _render()[DTS_OUT]
+    assert "export interface Player {" in dts
+    assert "export type ArmState = 'idle' | 'connected' | 'kitted' | 'lobby' | 'armed' | 'live';" in dts
+    assert "export declare const MC_KINDS: ReadonlySet<McKind>;" in dts
+    assert "export declare const REQUIRED: Record<string, readonly string[]>;" in dts
+    assert " as const" not in dts
 
 
 def test_a_field_with_its_own_trailing_comment_keeps_an_unindented_run_below_it():

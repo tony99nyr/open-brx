@@ -25,6 +25,23 @@ import { Ring, defaultStorage } from './ring.js';
 import { Clock } from './clock.js';
 import { APP_VER, platformName } from '../build.js';
 
+/** @typedef {{getItem(key:string): string|null, setItem(key:string, value:string): void, removeItem(key:string): void}} TransportStorage */
+/** @typedef {{onopen: WebSocket['onopen'], onmessage: WebSocket['onmessage'], onerror: WebSocket['onerror'], onclose: WebSocket['onclose'], send(data:string): void, close(code?:number, reason?:string): void, bufferedAmount?: number}} TransportSocket */
+/** @typedef {{setTimeout(callback: (...args:any[]) => void, ms:number): unknown, clearTimeout(id:unknown): void}} TransportTimers */
+/** @typedef {{node_id?:string, node_type?:string, app_ver?:string, platform?:string}} TransportNode */
+/** @typedef {{name:string, tail:string, fw?:string}} TransportGun */
+/** @typedef {{baseMs:number, capMs:number, jitter:number}} BackoffOptions */
+/** @typedef {Record<string, unknown>} TransportBody */
+/** @typedef {{v:number, kind:string, id:string, t:number, body:TransportBody, seq?:number}} TransportEnvelope */
+/** @typedef {{url?:string, mdns?:string, qr?:string, pub?:string|null, secret?:string|null, trusted?:boolean}} ConnectOptions */
+/** @typedef {{storage?:TransportStorage, wsFactory?:(url:string) => TransportSocket, node?:TransportNode, gun?:TransportGun|null, heartbeatMs?:number, now?:() => number, timers?:TransportTimers, random?:() => number, backoff?:BackoffOptions, helloTimeoutMs?:number, welcomeTimeoutMs?:number, keyPrefix?:string, backhaulGiveupMs?:number, pubRetryMs?:number, lanGiveupMs?:number, reclaimRetryMs?:number}} TransportOptions */
+/** @typedef {{type?:string, t?:number, match_id?:string|null, node_id?:string, player_id?:string|null} & Record<string, unknown>} TransportFact */
+/** @typedef {Record<string, unknown> & {pending?:number, dropped?:number, preflight?:Record<string, unknown>}} StatusBody */
+/** @typedef {'offline'|'connecting'|'open'|'bound'|'rejected'} TransportState */
+/** @typedef {'lan'|'backhaul'} DialVia */
+/** @typedef {{resolve(value:TransportBody):void, reject(reason:unknown):void}} WelcomePromise */
+/** @typedef {{code?:number, reason?:string}} CloseEventLike */
+
 /** The MC kinds handed to `onMessage` subscribers (the engine, utility.js, app.js). A kind missing HERE
  *  decodes and validates perfectly and then goes nowhere — no error, no log, the feature simply never runs.
  *  That is the F105 trap (`station_config`: "MC never arms a station") and it caught `result` (A24) too.
@@ -35,6 +52,7 @@ export const DELIVERED = new Set(['assign', 'config', 'tutorial', 'start', 'feed
 
 /** A28.2: a cosmetic-only difference (scheme/host case, a trailing '/') must not look like "a
  *  different MC" and wipe a held pub/secret -- normalize before comparing a stored url to a given one. */
+/** @param {unknown} u @returns {string} */
 function normUrl(u) {
   const s = String(u || '');
   const i = s.indexOf('://');
@@ -46,6 +64,13 @@ function normUrl(u) {
   let path = slash < 0 ? '' : rest.slice(slash);
   if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
   return `${scheme}://${host}${path}`;
+}
+
+/** @param {unknown} value @returns {TransportBody|null} */
+function objectBody(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? /** @type {TransportBody} */ (value)
+    : null;
 }
 
 export const BACKHAUL_GIVEUP_MS = 8000;   // A28.3: no welcome over pub within this -> fall back to the LAN url
@@ -66,11 +91,7 @@ export const RECLAIM_RETRY_MS = E.STALE_AFTER_MS + 1500;
 
 export class Transport {
   /**
-   * @param {object} o
-   * @param {object} [o.storage]      localStorage-like; defaults to localStorage or memory
-   * @param {function} [o.wsFactory]  url => WebSocket-like ({send, close, onopen/onmessage/onclose/onerror})
-   * @param {{node_id?:string,node_type?:string,app_ver?:string,platform?:string}} [o.node]
-   * @param {{name:string,tail:string,fw?:string}} [o.gun]   the advert name/tail (never the BLE deviceId)
+   * @param {TransportOptions} [o] options
    */
   constructor({ storage = defaultStorage(), wsFactory = url => new WebSocket(url), node = {}, gun = null,
                 heartbeatMs = E.STATUS_HEARTBEAT_MS, now = () => Date.now(), timers = globalThis,
@@ -97,7 +118,7 @@ export class Transport {
     this.appVer = node.app_ver || APP_VER;
     this.platform = node.platform || null;   // null = ask Capacitor per frame (the bridge appears late)
     this.gun = gun; this.playerId = null; this.playerNum = 0; this.matchId = null; this.sessionId = null;
-    this.context = {};                       // last welcome.node / assign / config / start
+    /** @type {TransportBody} */ this.context = {}; // last welcome.node / assign / config / start
     this.ring = new Ring({ storage, key: `${keyPrefix}.outbox`, now });
     this.clock = new Clock({ storage, key: `${keyPrefix}.clock`, now });
     // Review pass 1 (security): a url the USER never provided -- one the LAN sweep found by opening a
@@ -106,19 +127,29 @@ export class Transport {
     // this node's takeover key (A8.2) and the join secret (A28.2). Both are stripped while untrusted.
     this.trusted = true; this._reclaimTried = false;
     this.armedOrLive = false;                // app sets true in ARMED/LIVE → reconnect is unbounded
-    this.preflight = {};                     // app merges via setPreflight()
-    this.statusProvider = null;              // app: () => status body (hp, armor, ammo, alive, shots, arm_state, ...)
-    this.state = 'offline'; this.url = null; this.closed = false; this.attempt = 0; this.reconnects = 0; this.rejected = null;
+    /** @type {Record<string, unknown>} */ this.preflight = {}; // app merges via setPreflight()
+    /** @type {(() => StatusBody)|null} */ this.statusProvider = null; // app: () => status body (hp, armor, ammo, alive, shots, arm_state, ...)
+    /** @type {TransportState} */ this.state = 'offline';
+    /** @type {string|null} */ this.url = null;
+    this.closed = false; this.attempt = 0; this.reconnects = 0; this.rejected = null;
     this.stats = { sent: 0, received: 0, malformed: 0, batches: 0 };
-    this._ws = null; this._hbTimer = null; this._rcTimer = null; this._helloTimer = null; this._syncTimer = null;
+    /** @type {TransportSocket|null} */ this._ws = null;
+    /** @type {unknown} */ this._hbTimer = null; /** @type {unknown} */ this._rcTimer = null;
+    /** @type {unknown} */ this._helloTimer = null; /** @type {unknown} */ this._syncTimer = null;
+    /** @type {unknown} */ this._connectTimer = null;
     this._viaCurrent = null;                 // which url `this._ws` (the live/primary socket) dialled
-    this._pubRetryTimer = null; this._probeWs = null; this._probeGiveupTimer = null;
+    /** @type {unknown} */ this._pubRetryTimer = null;
+    /** @type {TransportSocket|null} */ this._probeWs = null;
+    /** @type {unknown} */ this._probeGiveupTimer = null;
     this._pubJustLearned = false; this._probeStale = false;
-    this._onMessage = []; this._onState = []; this._onHydrate = [];
-    this._firstWelcome = null;
+    /** @type {Array<(message:TransportBody) => void>} */ this._onMessage = [];
+    /** @type {Array<(state:TransportState) => void>} */ this._onState = [];
+    /** @type {Array<(node:TransportBody|null, welcome:TransportBody) => void>} */ this._onHydrate = [];
+    /** @type {WelcomePromise|null} */ this._firstWelcome = null;
   }
 
   // ---------- public API (net.md §6) ----------
+  /** @param {ConnectOptions} [options] @returns {Promise<TransportBody>} */
   connect({ url, mdns, qr, pub, secret, trusted = true } = {}) {
     // F153b (field 2026-09-12): a new connect() SUPERSEDES whatever dial is already in flight. A QR
     // rescan after the tunnel restarted, a typed address, RECONNECT MC -- each hands us a new triple,
@@ -152,6 +183,7 @@ export class Transport {
   /** Arm (or re-arm, from `ms` NOW) the deadline that rejects the pending connect() when no welcome ever
    *  arrives. The reconnect loop keeps running either way — this only settles the promise the caller is
    *  holding. No pending promise, no timer. */
+  /** @param {number} ms */
   _armConnectTimeout(ms) {
     if (this._connectTimer) { this.timers.clearTimeout(this._connectTimer); this._connectTimer = null; }
     if (!this._firstWelcome) return;
@@ -160,6 +192,7 @@ export class Transport {
       if (this._firstWelcome) { const p = this._firstWelcome; this._firstWelcome = null; p.reject(new Error('connect: no welcome within ' + ms + ' ms')); }
     }, ms);
   }
+  /** @param {{player_id?:string|null, gun?:TransportGun|null}} [options] */
   bind({ player_id, gun } = {}) {
     if (gun && gun.name) this.gun = gun;      // gun linked AFTER connect (MC-first join order) — without this the bind never carried the gun (rig find, 2026-08-26)
     if (!this.gun) return;
@@ -167,6 +200,7 @@ export class Transport {
     this._sendKind('bind', { node_id: this.nodeId, player_id: this.playerId, gun_name: this.gun.name, gun_tail: this.gun.tail });
   }
   /** Persist + (if bound) send a node-observed fact. NEVER blocks, NEVER throws when offline. */
+  /** @param {TransportFact} fact @returns {number} */
   send(fact) {
     try {
       const ev = { ...fact };
@@ -180,12 +214,13 @@ export class Transport {
     } catch (e) { this._log('send failed', e); return -1; }
   }
   /** Live-only heartbeat: sent iff bound, else dropped (no seq, no queue). */
+  /** @param {StatusBody} [body] @returns {boolean} */
   status(body = {}) {
     body.pending = this.ring.pending().length;   // lets MC know 'nothing left to flush' (recap finality, 2026-08-26)
     if (this.state !== 'bound') return false;
     // app_ver/platform ride EVERY heartbeat, not just the hello (A29): a phone that was updated and
     // relaunched mid-session keeps the same node_id, and MC's muster rollup must see the new build.
-    const full = { node_id: this.nodeId, player_id: this.playerId, match_id: this.matchId, synced: this.synced(),
+    /** @type {StatusBody} */ const full = { node_id: this.nodeId, player_id: this.playerId, match_id: this.matchId, synced: this.synced(),
                    app_ver: this.appVer, platform: this.platformName(),
                    arm_state: 'connected', ...body, reach: this.reach,   // A28.3: the live socket's path, always ours to say
                    preflight: { ...this.preflight, ...(body.preflight || {}) } };
@@ -193,6 +228,7 @@ export class Transport {
     return this._sendKind('status', full);
   }
   /** Non-fact uplink: ready | ack_config | log_offer | log_data | loadout_request | loadout_browse. Sent iff bound. */
+  /** @param {string} kind @param {TransportBody} [body] @returns {boolean} */
   report(kind, body = {}) {
     if (this.state !== 'bound') return false;
     return this._sendKind(kind, { node_id: this.nodeId, ...body });
@@ -203,11 +239,16 @@ export class Transport {
   bufferedAmount() { const ws = this._ws; try { return ws && Number.isFinite(ws.bufferedAmount) ? ws.bufferedAmount : 0; } catch (_) { return 0; } }
   syncedNow() { return this.clock.syncedNow(this.now()); }
   synced() { return this.clock.synced(this.now()); }
+  /** @param {(message:TransportBody) => void} cb @returns {() => void} */
   onMessage(cb) { this._onMessage.push(cb); return () => { this._onMessage = this._onMessage.filter(f => f !== cb); }; }
+  /** @param {(state:TransportState) => void} cb @returns {() => void} */
   onState(cb) { this._onState.push(cb); return () => { this._onState = this._onState.filter(f => f !== cb); }; }
   /** Fires on every welcome (first connect AND reconnects) with welcome.node — the re-hydration hook. */
+  /** @param {(node:TransportBody|null, welcome:TransportBody) => void} cb @returns {() => void} */
   onHydrate(cb) { this._onHydrate.push(cb); return () => { this._onHydrate = this._onHydrate.filter(f => f !== cb); }; }
+  /** @param {Record<string, unknown>} p */
   setPreflight(p) { Object.assign(this.preflight, p || {}); }
+  /** @param {(() => StatusBody)|null} fn */
   setStatusProvider(fn) { this.statusProvider = fn; }
   close() {
     this.closed = true;
@@ -241,6 +282,7 @@ export class Transport {
    *  behind the caller's back. `rejectReason` also settles a pending connect() promise (F153b: a new
    *  connect() supersedes the old one) -- pass null when the caller is about to re-dial for that same
    *  promise (dialNow), and the connect() timeout is then left running. */
+  /** @param {string|null} [rejectReason] @param {string} [wsReason] */
   _abortInFlight(rejectReason = null, wsReason = 'redial') {
     // `_clearTimers()` CANCELS `_connectTimer`, and putting the handle back afterwards does not un-cancel
     // it -- a kept promise would then never settle either way (review pass 1: dialNow() at 50 ms left a
@@ -257,19 +299,25 @@ export class Transport {
     if (ws) { try { ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null; ws.close(1000, wsReason); } catch (_) { /* ignore */ } }
     if (rejectReason && this._firstWelcome) { const p = this._firstWelcome; this._firstWelcome = null; p.reject(new Error('connect: ' + rejectReason)); }
   }
+  /** @param {string} key @returns {string|null} */
   _persisted(key) { try { return this.storage.getItem(key) || null; } catch (_) { return null; } }
+  /** @param {string} key @param {string} v */
   _store(key, v) { try { this.storage.setItem(key, v); } catch (_) { /* ignore */ } }
+  /** @param {string} key */
   _remove(key) { try { this.storage.removeItem(key); } catch (_) { /* ignore */ } }
+  /** @param {string} key @returns {string} */
   _persistedNodeId(key) {
     try { const v = this.storage.getItem(key); if (v) return v; const id = `node-${E.uid(10)}`; this.storage.setItem(key, id); return id; }
     catch (_) { return `node-${E.uid(10)}`; }
   }
   /** @returns {boolean} whether the held pub actually changed (including null <-> a url) */
+  /** @param {string|null|undefined} pub @returns {boolean} */
   _setPub(pub) {
     const next = pub || null; const changed = next !== this.pub; this.pub = next;
     if (this.pub) this._store(this._pubKey, this.pub); else this._remove(this._pubKey);
     return changed;
   }
+  /** @param {string|null|undefined} secret */
   _setSecret(secret) { this.secret = secret || null; if (this.secret) this._store(this._secretKey, this.secret); else this._remove(this._secretKey); }
   /** A28.3: MC handed us a (possibly changed, possibly null) pub. `null` = the tunnel went down. A
    *  newly (or differently) learned pub is probed on the very next chance (`_kickPubRetry`), not left
@@ -277,6 +325,7 @@ export class Transport {
    *  A pub that changes WHILE a probe is already in flight (that probe is now checking a value we no
    *  longer want) is re-checked the moment it settles (`_probeStale`); `pub:null` aborts it outright —
    *  there is nothing left to probe for. */
+  /** @param {string|null|undefined} pub */
   _adoptPub(pub) {
     const changed = this._setPub(pub);
     if (!this.pub) {
@@ -298,13 +347,22 @@ export class Transport {
       if (this._probeWs) this._probeStale = true;   // an in-flight probe is checking the OLD value — recheck the new one once it settles
     }
   }
+  /** @param {string|undefined} secret */
   _adoptSecret(secret) { if (secret !== undefined) this._setSecret(secret); }
-  _log(...a) { if (globalThis.__BRX_TRANSPORT_DEBUG) console.log('[transport]', ...a); }
+  /** @param {...unknown} a */
+  _log(...a) {
+    const runtime = /** @type {typeof globalThis & {__BRX_TRANSPORT_DEBUG?: unknown}} */ (globalThis);
+    if (runtime.__BRX_TRANSPORT_DEBUG) console.log('[transport]', ...a);
+  }
+  /** @param {TransportState} s */
   _setState(s) { if (this.state === s) return; this.state = s; for (const cb of this._onState) { try { cb(s); } catch (e) { this._log('onState cb', e); } } }
   _clearTimers() {
-    for (const k of ['_hbTimer', '_rcTimer', '_helloTimer', '_syncTimer', '_connectTimer']) { if (this[k]) { this.timers.clearTimeout(this[k]); this[k] = null; } }
+    /** @type {Array<'_hbTimer'|'_rcTimer'|'_helloTimer'|'_syncTimer'|'_connectTimer'>} */
+    const keys = ['_hbTimer', '_rcTimer', '_helloTimer', '_syncTimer', '_connectTimer'];
+    for (const k of keys) { if (this[k]) { this.timers.clearTimeout(this[k]); this[k] = null; } }
   }
   _clearPubRetry() { if (this._pubRetryTimer) { this.timers.clearTimeout(this._pubRetryTimer); this._pubRetryTimer = null; } }
+  /** @param {DialVia} via @returns {TransportBody} */
   _helloBody(via) {
     return {
       node_id: this.nodeId, node_type: this.nodeType, app_ver: this.appVer, platform: this.platformName(), via,   // A29 + A28.3
@@ -323,7 +381,9 @@ export class Transport {
    *  attempt that fails before welcoming (giveup timeout, immediate error/close, any close code other
    *  than an outright refusal) falls straight to the LAN url with no backoff consumed; a 'lan' attempt
    *  (or a post-welcome drop of either) goes through the normal offline/reconnect loop. */
+  /** @param {DialVia} via @param {string|null} url */
   _dialVia(via, url) {
+    if (!url) { this._log('dial skipped: no url'); this._setState('offline'); this._scheduleReconnect(); return; }
     let ws;
     try { ws = this.wsFactory(url); } catch (e) {
       this._log('ws factory', e);
@@ -377,6 +437,7 @@ export class Transport {
   }
   /** The server REFUSED us (version mismatch / node or gun already in use — contracts A8), or an
    *  ordinary drop of an already-welcomed link. Shared by every socket this Transport ever owns. */
+  /** @param {CloseEventLike} evt */
   _onOngoingClose(evt) {
     const code = evt && evt.code;
     // A 4003 on an UNTRUSTED dial is very often us: the hello was keyless by design, and MC still holds
@@ -449,6 +510,7 @@ export class Transport {
     try { ws = this.wsFactory(this.pub); } catch (e) { this._log('pub probe ws factory', e); this._schedulePubRetry(); return; }
     this._probeWs = ws;
     let done = false;
+    /** @param {boolean} reachable */
     const finish = reachable => {
       if (done) return; done = true;
       if (this._probeGiveupTimer) { this.timers.clearTimeout(this._probeGiveupTimer); this._probeGiveupTimer = null; }
@@ -471,14 +533,17 @@ export class Transport {
     ws.onclose = () => finish(false);
     ws.onmessage = () => { /* no hello was ever sent — nothing meaningful can arrive here */ };
   }
+  /** @param {TransportEnvelope} env @param {TransportSocket|null} [ws] @returns {boolean} */
   _sendRaw(env, ws = this._ws) {
     if (!ws) return false;
     try { ws.send(E.encode(env)); this.stats.sent++; return true; } catch (e) { this._log('send', e); return false; }
   }
+  /** @param {string} kind @param {TransportBody} body @returns {boolean} */
   _sendKind(kind, body) { return this._sendRaw(E.makeEnvelope(kind, body, { t: this.syncedNow() })); }
+  /** @param {string} text */
   _onFrame(text) {
     let env;
-    try { env = E.decode(text, 'mc'); } catch (e) { this.stats.malformed++; this._log('bad MC frame', e.message); return; }
+    try { env = E.decode(text, 'mc'); } catch (e) { this.stats.malformed++; this._log('bad MC frame', e instanceof Error ? e.message : String(e)); return; }
     this.stats.received++;
     const { kind, body } = env;
     if (kind === 'welcome') return this._onWelcome(body);
@@ -487,27 +552,38 @@ export class Transport {
     if (kind === 'assign') { this._absorb({ player: body.player, team: body.team, roster: body.roster }); }
     if (kind === 'config') { this._absorb({ config: body.config, frames: body.frames, roster: body.roster }); }
     if (kind === 'start') { this._absorb({ start: body, match_id: body.match_id }); }
-    if (kind === 'join') { this._adoptSecret(body.secret); this._adoptPub(body.pub); this._kickPubRetry(); }
+    if (kind === 'join') {
+      this._adoptSecret(typeof body.secret === 'string' ? body.secret : undefined);
+      this._adoptPub(typeof body.pub === 'string' || body.pub === null ? body.pub : undefined);
+      this._kickPubRetry();
+    }
     if (DELIVERED.has(kind)) for (const cb of this._onMessage) { try { cb({ kind, body, t: env.t, id: env.id }); } catch (e) { this._log('onMessage cb', e); } }
   }
+  /** @param {TransportBody} body */
   _onWelcome(body) {
     if (this._helloTimer) { this.timers.clearTimeout(this._helloTimer); this._helloTimer = null; }
     if (this._connectTimer) { this.timers.clearTimeout(this._connectTimer); this._connectTimer = null; }
     // A28.2: pub/secret are session-scoped — a session change (MC restarted) invalidates whatever this node held.
-    if (body.session_id && this._persistedSessionId && body.session_id !== this._persistedSessionId) {
+    const sessionId = typeof body.session_id === 'string' && body.session_id ? body.session_id : null;
+    if (sessionId && this._persistedSessionId && sessionId !== this._persistedSessionId) {
       this._setPub(null); this._setSecret(null);
     }
     // It welcomed us, so it speaks the M-NET protocol and is the MC we dialled: the next hello may carry
     // the key (a keyless hello cannot take a still-live node_id back, A8.2) and the secret.
     this.trusted = true; this._reclaimTried = false;
-    if (body.session_id) { this._persistedSessionId = body.session_id; this._store(this._sessionKey, body.session_id); }
-    this.sessionId = body.session_id;
+    if (sessionId) { this._persistedSessionId = sessionId; this._store(this._sessionKey, sessionId); }
+    this.sessionId = sessionId;
     if (typeof body.node_key === 'string' && body.node_key) { this.nodeKey = body.node_key; this._store(this._keyKey, body.node_key); }
     this.ring.adoptSeqHi(Number(body.seq_hi));
     this.clock.newBurst(); this.clock.seed(Number(body.server_t), this.now());
     this.reach = this._viaCurrent === 'backhaul' ? 'backhaul' : 'lan';   // A28.3: the live socket's path
-    if (body.join && typeof body.join === 'object') { this._adoptSecret(body.join.secret); this._adoptPub(body.join.pub); }
-    if (body.node && typeof body.node === 'object') this._absorb(body.node);
+    const join = objectBody(body.join);
+    if (join) {
+      this._adoptSecret(typeof join.secret === 'string' ? join.secret : undefined);
+      this._adoptPub(typeof join.pub === 'string' || join.pub === null ? join.pub : undefined);
+    }
+    const node = objectBody(body.node);
+    if (node) this._absorb(node);
     this._setState('open');
     this.bind();
     this._setState('bound');
@@ -516,17 +592,20 @@ export class Transport {
     this._startHeartbeat();
     this._syncTimer = this.timers.setTimeout(() => this._periodicSync(), this.syncIntervalMs);
     this._kickPubRetry();
-    for (const cb of this._onHydrate) { try { cb(body.node || null, body); } catch (e) { this._log('onHydrate cb', e); } }
+    for (const cb of this._onHydrate) { try { cb(node, body); } catch (e) { this._log('onHydrate cb', e); } }
     if (this._firstWelcome) { const p = this._firstWelcome; this._firstWelcome = null; p.resolve(body); }
   }
+  /** @param {TransportBody} node */
   _absorb(node) {
     Object.assign(this.context, node);
-    if (node.player && typeof node.player === 'object') {
-      if (node.player.player_id) this.playerId = node.player.player_id;
-      if (Number.isInteger(node.player.player_num)) this.playerNum = node.player.player_num;
+    const player = objectBody(node.player);
+    if (player) {
+      if (typeof player.player_id === 'string' && player.player_id) this.playerId = player.player_id;
+      if (typeof player.player_num === 'number' && Number.isInteger(player.player_num)) this.playerNum = player.player_num;
     }
-    if (node.match_id) this.matchId = node.match_id;
-    if (node.start && typeof node.start === 'object' && node.start.match_id) this.matchId = node.start.match_id;
+    if (typeof node.match_id === 'string' && node.match_id) this.matchId = node.match_id;
+    const start = objectBody(node.start);
+    if (start && typeof start.match_id === 'string' && start.match_id) this.matchId = start.match_id;
   }
   _flush() {
     const pending = this.ring.pending();
@@ -540,7 +619,12 @@ export class Transport {
     const tick = () => {
       this._hbTimer = null;
       if (this.state !== 'bound') return;
-      if (this.statusProvider) { let b = {}; try { b = this.statusProvider() || {}; } catch (e) { this._log('statusProvider', e); } this.status(b); }
+      if (this.statusProvider) {
+        /** @type {StatusBody} */
+        let b = {};
+        try { b = this.statusProvider() || {}; } catch (e) { this._log('statusProvider', e); }
+        this.status(b);
+      }
       this._hbTimer = this.timers.setTimeout(tick, this.heartbeatMs);
     };
     this._hbTimer = this.timers.setTimeout(tick, 0);

@@ -2,10 +2,17 @@
 // reject rtt > 3× running median. synced() = a real round-trip sample fresher than SYNC_FRESH_MS.
 import { SYNC_FRESH_MS } from './envelope.js';
 
+/** @typedef {{getItem(key:string): string|null, setItem(key:string, value:string): void, removeItem(key:string): void}} ClockStorage */
+/** @typedef {{storage?: ClockStorage|null, key?: string, now?: () => number, burst?: number, alpha?: number, freshMs?: number}} ClockOptions */
+
 export class Clock {
+  /** @param {ClockOptions} [options] */
   constructor({ storage = null, key = 'brx.clock', now = () => Date.now(), burst = 5, alpha = 0.2, freshMs = SYNC_FRESH_MS } = {}) {
-    this.storage = storage; this.key = key; this.now = now; this.burst = burst; this.alpha = alpha; this.freshMs = freshMs;
-    this.offset = 0; this.lastSyncAt = 0; this.sampleCount = 0; this.rtts = []; this._burstBest = null; this.seededAt = 0;
+    /** @type {ClockStorage|null} */ this.storage = storage; this.key = key; this.now = now; this.burst = burst; this.alpha = alpha; this.freshMs = freshMs;
+    this.offset = 0; this.lastSyncAt = 0; this.sampleCount = 0;
+    /** @type {number[]} */
+    this.rtts = /** @type {number[]} */ ([]);
+    this._burstBest = null; this.seededAt = 0;
     this._load();
   }
   _load() {
@@ -13,11 +20,13 @@ export class Clock {
   }
   _save() { try { this.storage?.setItem(this.key, JSON.stringify({ offset: this.offset, lastSyncAt: this.lastSyncAt, sampleCount: this.sampleCount })); } catch (_) { /* ignore */ } }
   /** welcome.server_t: a zeroth estimate before any round trip (one-way latency error). Does not count as synced. */
+  /** @param {number} serverT @param {number} [now] */
   seed(serverT, now = this.now()) {
     if (!Number.isFinite(serverT)) return;
     if (this.sampleCount === 0) { this.offset = serverT - now; this.seededAt = now; this._save(); }
   }
   /** One time_req/time_res round trip. Returns the accepted offset or null if rejected as an outlier. */
+  /** @param {number} tNode @param {number} serverT @param {number} [now] */
   sample(tNode, serverT, now = this.now()) {
     const rtt = now - tNode;
     if (!Number.isFinite(rtt) || rtt < 0) return null;

@@ -410,9 +410,9 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   **F42.9 ✅ CLOSED 2026-09-16:** all five batches are done: generated leaf,
   arsenal, saved-game, live-row, node, station, tunnel, presentation, mode, recap and history shapes replace
   their console copies, and their producers are checked. `State.snapshot()` now composes named checked views
-  into the generated top-level contract. **F42.12** (M) `app/src/transport`
-  is unchecked JavaScript: measured 2026-09-13 with `checkJs`, 116 errors (74 implicit-any, 42 mismatches, none a real
-  bug on inspection); needs a `contract.gen.d.ts` generator target, `typescript` in `app/`, and a CI step.
+  into the generated top-level contract. **F42.12 ✅ CLOSED 2026-09-16:** `app/src/transport` is checked with
+  strict `allowJs`/`checkJs`; the Python contract generator emits its sibling declaration, wire bodies remain
+  unknown until narrowed, and the app CI job runs the checker before tests.
   **F42.14** (M) `brx_mcp/stage/` is excluded from the pyright gate: 59 errors on 2026-09-13; the stage must keep
   mirroring the phone engine, so type its JSON message boundary first.
 

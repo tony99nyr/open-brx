@@ -8,6 +8,7 @@
 // replaced the identifier with a string literal), run straight from source under `node --test`
 // (the identifier is undeclared, and `typeof` on an undeclared name is legal), and in a www/ bundle
 // built by an older script that never defined it.
+// @ts-expect-error `__APP_VER__` is supplied by esbuild's --define at bundle time.
 export const APP_VER = (typeof __APP_VER__ !== 'undefined' && __APP_VER__) || '0.0.0+unbuilt';
 
 /** `android` | `ios` | `web` (contracts A29 `hello.platform`). Capacitor injects the bridge into the
@@ -17,7 +18,8 @@ export const APP_VER = (typeof __APP_VER__ !== 'undefined' && __APP_VER__) || '0
  *  stays a cheap property read rather than a cached boot-time value (the bridge appears late). */
 export function platformName() {
   try {
-    const cap = globalThis.Capacitor;
+    const runtime = /** @type {typeof globalThis & {Capacitor?: {getPlatform?: () => string}}} */ (globalThis);
+    const cap = runtime.Capacitor;
     if (cap && typeof cap.getPlatform === 'function') {
       const p = cap.getPlatform();
       if (p === 'android' || p === 'ios' || p === 'web') return p;

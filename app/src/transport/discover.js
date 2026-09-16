@@ -26,6 +26,14 @@
 // the case that matters answers early. The sweep is a background fallback and its result is a
 // SUGGESTION the player taps, never an automatic join -- see app.js.
 
+/** @typedef {{onopen: ((event?: any) => void)|null, onmessage: ((event?: any) => void)|null, onerror: ((event?: any) => void)|null, onclose: ((event?: any) => void)|null, close(code?: number, reason?: string): void}} DiscoverWebSocket */
+/** @typedef {{setTimeout(callback: (...args:any[]) => void, ms: number): unknown, clearTimeout(id: unknown): void}} DiscoverTimers */
+/** @typedef {{host:string, port:number|null, path:string}} WsTarget */
+/** @typedef {{subnets:string[], ports:number[], path:string}} SweepPlan */
+/** @typedef {{localIp?: string|null, joinUrl?: string|null, extra?: string[]}} SweepPlanOptions */
+/** @typedef {{wsFactory?: (url:string) => DiscoverWebSocket, timers?: DiscoverTimers, timeoutMs?: number}} ProbeOptions */
+/** @typedef {{subnets?: string[], ports?: number[], path?: string, wsFactory?: (url:string) => DiscoverWebSocket, timers?: DiscoverTimers, timeoutMs?: number, pool?: number, pacingMs?: number, hosts?: number, shouldStop?: () => boolean, onSubnet?: ((subnet:string) => void)|null}} SweepOptions */
+
 /** The ranges a phone is actually likely to be on: home routers, Google Wifi, and the two phone-hotspot
  *  defaults (iOS 172.20.10.0/24, Android 192.168.43.0/24). */
 export const DEFAULT_SUBNETS = ['192.168.0', '192.168.1', '192.168.86', '10.0.0', '192.168.43', '172.20.10'];
@@ -42,7 +50,9 @@ export const PROBE_POOL = 8;
 export const PROBE_PACING_MS = 40;
 export const HOSTS_PER_SUBNET = 254;
 
-/** '192.168.0.149' → '192.168.0'; anything that is not a dotted-quad IPv4 → null. */
+/** '192.168.0.149' → '192.168.0'; anything that is not a dotted-quad IPv4 → null.
+ * @param {unknown} ip
+ * @returns {string|null} */
 export function subnetOf(ip) {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(String(ip == null ? '' : ip).trim());
   if (!m) return null;
@@ -51,7 +61,9 @@ export function subnetOf(ip) {
   return parts.slice(0, 3).join('.');
 }
 
-/** Split a ws url into { host, port, path }, or null if it is not one. */
+/** Split a ws url into { host, port, path }, or null if it is not one.
+ * @param {unknown} url
+ * @returns {WsTarget|null} */
 export function parseWsTarget(url) {
   const m = /^wss?:\/\/([^/:?#]+)(?::(\d+))?([^?#]*)/i.exec(String(url == null ? '' : url).trim());
   if (!m) return null;
@@ -63,10 +75,12 @@ export function parseWsTarget(url) {
  *  returns null on both phones — it is written against the shape rather than a version so a plugin (or a
  *  swap to one that does report an address) starts working with no other change. `sweepPlan` falls back
  *  to the current join's subnet, which is the only other honest source we have. */
+/** @param {unknown} status @returns {string|null} */
 export function localIpFrom(status) {
   if (!status || typeof status !== 'object') return null;
+  const values = /** @type {Record<string, unknown>} */ (status);
   for (const k of ['ipAddress', 'ip', 'ipv4', 'ipv4Address', 'address', 'localIp']) {
-    const v = status[k];
+    const v = values[k];
     if (typeof v === 'string' && subnetOf(v)) return v;
   }
   return null;
@@ -76,11 +90,12 @@ export function localIpFrom(status) {
  * What to sweep, in order: the phone's own /24, then the CURRENT join's /24, then the common ranges.
  * `joinUrl` must be this run's join target — a remembered address is what sent the field sweep after a
  * subnet the phone had not been on since the day before.
- * @returns {{subnets:string[], ports:number[], path:string}}
+ * @param {SweepPlanOptions} [options]
+ * @returns {SweepPlan}
  */
 export function sweepPlan({ localIp = null, joinUrl = null, extra = DEFAULT_SUBNETS } = {}) {
-  const subnets = [];
-  const push = sn => { if (sn && !subnets.includes(sn)) subnets.push(sn); };
+  /** @type {string[]} */ const subnets = [];
+  /** @param {string|null} sn */ const push = sn => { if (sn && !subnets.includes(sn)) subnets.push(sn); };
   push(subnetOf(localIp));
   const target = parseWsTarget(joinUrl);
   if (target) push(subnetOf(target.host));
@@ -95,12 +110,16 @@ export function sweepPlan({ localIp = null, joinUrl = null, extra = DEFAULT_SUBN
  * Is there a websocket server at `url`? Opens, and closes again on `onopen` WITHOUT sending anything.
  * Resolves false on error/close-before-open and on the timeout (a host with no route fires no event at
  * all — that is the case the timeout exists for).
+ * @param {string} url
+ * @param {ProbeOptions} [options]
  * @returns {Promise<boolean>}
  */
 export function probeWsOpen(url, { wsFactory, timers = globalThis, timeoutMs = PROBE_TIMEOUT_MS } = {}) {
   return new Promise(resolve => {
-    let ws = null, done = false, timer = null;
-    const finish = ok => {
+    /** @type {DiscoverWebSocket|null} */ let ws = null;
+    let done = false;
+    /** @type {unknown} */ let timer = null;
+    /** @param {boolean} ok */ const finish = ok => {
       if (done) return; done = true;
       if (timer != null) { try { timers.clearTimeout(timer); } catch (_) { /* ignore */ } timer = null; }
       if (ws) {
@@ -112,7 +131,8 @@ export function probeWsOpen(url, { wsFactory, timers = globalThis, timeoutMs = P
     // The clock starts when this probe DIALS, never when it was queued: an earlier version armed the
     // timer before the socket existed, so a probe waiting its turn could burn its whole window without
     // having opened anything and report a live MC as dead.
-    try { ws = wsFactory(url); } catch (_) { resolve(false); return; }
+    try { ws = wsFactory ? wsFactory(url) : null; } catch (_) { resolve(false); return; }
+    if (!ws) { resolve(false); return; }
     timer = timers.setTimeout(() => finish(false), timeoutMs);
     ws.onopen = () => finish(true);          // upgraded — a server is there. No hello, ever.
     ws.onerror = () => { /* onclose follows, or the timeout has it */ };
@@ -123,15 +143,16 @@ export function probeWsOpen(url, { wsFactory, timers = globalThis, timeoutMs = P
 
 /**
  * Sweep the planned /24s for MC's node socket. Returns the ws url that answered, or null.
- * @param {object} o  `subnets`/`ports`/`path` from `sweepPlan`, plus the injectable machinery the tests
- *                    use: `wsFactory`, `timers`, `timeoutMs`, `pool`, `hosts`, `shouldStop`, `onSubnet`.
+ * @param {SweepOptions} [o]  `subnets`/`ports`/`path` from `sweepPlan`, plus the injectable machinery the tests use.
+ * @returns {Promise<string|null>}
  */
 export async function sweepForMc({ subnets = [], ports = [MC_WS_PORT], path = '/ws', wsFactory,
                                    timers = globalThis, timeoutMs = PROBE_TIMEOUT_MS, pool = PROBE_POOL,
                                    pacingMs = PROBE_PACING_MS, hosts = HOSTS_PER_SUBNET,
                                    shouldStop = () => false, onSubnet = null } = {}) {
-  let hit = null;
-  const idle = () => new Promise(r => timers.setTimeout(r, pacingMs));
+  /** @type {string|null} */ let hit = null;
+  /** @returns {Promise<void>} */
+  const idle = () => new Promise(resolve => timers.setTimeout(() => resolve(), pacingMs));
   for (const sn of subnets) {
     if (hit || shouldStop()) break;
     if (onSubnet) { try { onSubnet(sn); } catch (_) { /* ignore */ } }

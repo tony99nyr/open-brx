@@ -1,6 +1,6 @@
 # Handoff — Open BRX
 
-**State as of 2026-09-16.** Contract-DRY phases 1-3 and all five F42.9 batches are implemented, reviewed and validated.
+**State as of 2026-09-16.** Contract-DRY phases 1-3, all five F42.9 batches and F42.12 are implemented, reviewed and validated.
 The GSET token 2 field finding is integrated and the M5StickS3 utility-node design is recorded (H8). Evidence is in
 `docs/experiment-log/2026-09.md`; remaining work is indexed by `docs/FOLLOWUPS.md`.
 
@@ -16,6 +16,8 @@ The GSET token 2 field finding is integrated and the M5StickS3 utility-node desi
   through the existing policy guard where the console needs a fully served `ConfigView`.
 - The persisted recap decoder supplies defaults for older rows and rejects malformed nested score, honor,
   possession, after-end and station data instead of advertising it as a checked view.
+- The phone transport is checked as strict JavaScript. Its generated runtime contract has a generated sibling
+  declaration, untrusted envelope bodies stay `unknown` until narrowed, and CI runs the same app typecheck.
 
 ## Desk work since (no hardware touched)
 - **The M5StickS3 takes its kind from MC over Wi-Fi** (Tony, 2026-09-14): armed at muster, then carried out and
@@ -30,15 +32,16 @@ The GSET token 2 field finding is integrated and the M5StickS3 utility-node desi
 
 ## Validation
 
-Polish loop iteration 1 fixed all Critical/High/Medium findings; the fresh second pass found no remaining
-medium-or-higher issue. MCP system: 1753 passed, 74 optional/dirty-shot skips. MCP extras: 1826 passed,
-one dirty-shot skip. Console strict typecheck/build passed; 514 unit tests passed; browser e2e passed all
-24 steps, including mock and old-session flows. Phone: 501 tests and build passed. Site build and Playwright
-passed. Post-commit site-shot recapture and its focused freshness gate remain required because console source changed.
+The F42.12 polish loop removed the declaration-check bypass, replaced broad wire-body `any` types with
+`unknown` plus explicit narrowing, and shared generator rendering used by both TypeScript targets. Its fresh
+second pass found no remaining medium-or-higher issue. MCP system passed 1754 tests with 74 optional/dirty-shot
+skips; MCP extras passed 1827 with one dirty-shot skip. The generator suite, strict phone typecheck, 501 phone
+tests and build pass. Console typecheck/build, 514 tests and 24-step browser e2e pass; site build and 102 tests pass.
+Post-commit site-shot recapture remains required because phone source changed.
 
 ## Next actions
 
-1. Continue with F42.12 phone transport checkJs, F42.14 stage pyright, then the remaining coverage/runtime-input audit.
+1. Continue with F42.14 stage pyright, then the remaining coverage/runtime-input audit.
 2. Tony runs F198 indoors at GSET t2=0 and watches for phantom reflected hits; keep t2=0 until evidence supports another mapping.
 3. Tony runs F170: hosted MC config versus native at the far mark and 30–40 ft, with t2=0 and fixed controls.
 

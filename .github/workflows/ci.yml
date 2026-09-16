@@ -46,7 +46,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"   # Capacitor 8 needs >= 22, and `node --test "test/*.test.mjs"` only expands the glob on >= 21
-      - run: cd app && npm ci && npm test
+      - run: cd app && npm ci && npm run typecheck && npm test
 
   # site:
   #   Not wired up here: `site/` needs a built `app/www` (the landing embeds the real phone HUD)

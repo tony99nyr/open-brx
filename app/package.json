@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node --test \"test/*.test.mjs\"",
+    "typecheck": "tsc --noEmit",
     "sync": "npm run build && npx cap sync",
     "ios:setup": "npm run build && ./scripts/ios-setup.sh",
     "ios:open": "npx cap open ios",
@@ -42,6 +43,7 @@
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
-    "playwright": "^1.62.1"
+    "playwright": "^1.62.1",
+    "typescript": "~6.0.2"
   }
 }
