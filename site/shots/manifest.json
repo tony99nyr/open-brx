@@ -1,6 +1,6 @@
 {
-  "taken": "2026-09-16T02:17:35.185Z",
-  "mc_src": "0975c664b76b3d49a2f2cc784e18ecfdb2cc5959",
+  "taken": "2026-09-16T12:08:01.483Z",
+  "mc_src": "2eb116af45a87dbdd0b91b0dcf2276d55b917686",
   "hud_src": "c6bd4ec90e1251336a540e0cea457311f812d70f",
   "files": {
     "mc-armory.jpg": {
@@ -36,7 +36,7 @@
     "hud-hit.jpg": {
       "w": 891,
       "h": 411,
-      "bytes": 89777
+      "bytes": 89619
     },
     "hud-down.jpg": {
       "w": 891,
