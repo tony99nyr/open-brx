@@ -49,6 +49,18 @@ def test_page_state_and_actions():
         assert any(l["kind"] == "tx" for l in log)
 
 
+def test_action_json_boundary_rejects_non_objects_and_bad_tags():
+    """The typed dispatch boundary rejects malformed JSON shapes before dynamic method lookup."""
+    needs(HAVE, "starlette + httpx")
+    with _client() as c:
+        assert c.post("/api/do", content="not json", headers={"content-type": "application/json"}).status_code == 400
+        for body in ([], {"action": 1}, {"not_action": "arm"}):
+            r = c.post("/api/do", json=body)
+            assert r.status_code == 400 and "action object" in r.json()["error"]
+        r = c.post("/api/do", json={"action": "pull_mc", "url": 42})
+        assert r.status_code == 400 and "string url" in r.json()["error"]
+
+
 def test_the_control_point_reload_and_ammo_actions_through_the_api():
     """F102 / F54: the injectors are whitelisted actions with the validator's message on a bad value."""
     needs(HAVE, "starlette + httpx")

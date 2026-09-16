@@ -8,6 +8,7 @@ import json
 import time
 import logging
 from pathlib import Path
+from typing import Literal, NotRequired, TypeGuard, TypedDict
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -19,23 +20,198 @@ from .stage import GunStage
 log = logging.getLogger("brx.stage")
 PAGE = Path(__file__).with_name("page.html")
 
+
+class EmptyAction(TypedDict):
+    action: Literal["disconnect", "reload", "reroll", "arm", "spawn", "revive", "end", "panic",
+                    "walk_start", "walk_play", "walk_stop", "voice_board_stop"]
+
+
+class ActionObject(TypedDict):
+    action: str
+
+
+class ScanAction(TypedDict):
+    action: Literal["scan"]
+    duration_s: NotRequired[float]
+
+
+class ConnectAction(TypedDict):
+    action: Literal["connect"]
+    address: str
+
+
+class ProfileAction(TypedDict):
+    action: Literal["set_profile"]
+    mode: NotRequired[str]
+    preset: NotRequired[str | None]
+    gun: NotRequired[str]
+    headset: NotRequired[str]
+    night: NotRequired[bool]
+    tid: NotRequired[int]
+    environment: NotRequired[str]
+    voice: NotRequired[str]
+    voice_slots: NotRequired[dict[str, str]]
+    station_source: NotRequired[str | None]
+    stun: NotRequired[int | None]
+
+
+class StationAdvertAction(TypedDict):
+    action: Literal["station_advert"]
+    id: NotRequired[int]
+    team: NotRequired[int | None]
+    held: NotRequired[bool]
+    contested: NotRequired[bool]
+    rising: NotRequired[bool]
+    falling: NotRequired[bool]
+    value: NotRequired[int]
+    present: NotRequired[bool]
+    flags: NotRequired[int | None]
+    uuid: NotRequired[str | None]
+    rssi: NotRequired[int]
+
+
+class StationStopAction(TypedDict):
+    action: Literal["station_stop"]
+    id: NotRequired[int | None]
+
+
+class AmmoAction(TypedDict):
+    action: Literal["alcd"]
+    mag: NotRequired[int]
+    reserve: NotRequired[int | None]
+    slot: NotRequired[int]
+
+
+class VoiceLineAction(TypedDict):
+    action: Literal["voice_line"]
+    id: str
+
+
+class VoiceSlotAction(TypedDict):
+    action: Literal["set_voice_slot"]
+    role: str
+    id: NotRequired[str | None]
+
+
+class VoiceBoardAction(TypedDict):
+    action: Literal["voice_board"]
+    voice: NotRequired[str | None]
+
+
+class VoiceBoardPlayAction(TypedDict):
+    action: Literal["voice_board_play"]
+    voice: NotRequired[str | None]
+    from_slot: NotRequired[str | None]
+
+
+class VoiceVerdictAction(TypedDict):
+    action: Literal["voice_verdict"]
+    voice: NotRequired[str | None]
+    id: str
+    ok: bool | None
+    note: NotRequired[str]
+
+
+class PresentationAction(TypedDict):
+    action: Literal["patch_presentation"]
+    patch: dict[str, object]
+
+
+class PullMcAction(TypedDict):
+    action: Literal["pull_mc"]
+    url: str
+    token: NotRequired[str | None]
+
+
+class GameEndAction(TypedDict):
+    action: Literal["game_end"]
+    outcome: NotRequired[str]
+
+
+class EventAction(TypedDict):
+    action: Literal["event"]
+    kind: str
+
+
+class KillAction(TypedDict):
+    action: Literal["kill"]
+    medals: NotRequired[list[str]]
+
+
+class HeadsetAction(TypedDict):
+    action: Literal["headset"]
+    name: str
+    tid: NotRequired[int | None]
+
+
+class IrAction(TypedDict):
+    action: Literal["ir"]
+    kind: str
+    team: NotRequired[int]
+    damage: NotRequired[int | None]
+    repeat: NotRequired[int]
+
+
+class AutoReactAction(TypedDict):
+    action: Literal["auto_react"]
+    on: NotRequired[bool]
+
+
+class EmitterAction(TypedDict):
+    action: Literal["set_emitter"]
+    port: str | None
+
+
+class RawAction(TypedDict):
+    action: Literal["raw"]
+    frames: list[str]
+    delay_s: NotRequired[float]
+    confirm: NotRequired[bool]
+
+
+class WalkVerdictAction(TypedDict):
+    action: Literal["walk_verdict"]
+    ok: bool | None
+    note: NotRequired[str]
+
+
+StageAction = (EmptyAction | ScanAction | ConnectAction | ProfileAction | StationAdvertAction |
+               StationStopAction | AmmoAction | VoiceLineAction | VoiceSlotAction | VoiceBoardAction | VoiceBoardPlayAction |
+               VoiceVerdictAction | PresentationAction | PullMcAction | GameEndAction | EventAction |
+               KillAction | HeadsetAction | IrAction | AutoReactAction | EmitterAction | RawAction |
+               WalkVerdictAction)
+
+# The TypedDicts are also the action allow-list's source, so adding a page field cannot silently update
+# the checker while the HTTP dispatcher continues dropping it (or vice versa).
+_ACTION_TYPES: dict[str, type] = {
+    **{name: EmptyAction for name in ("disconnect", "reload", "reroll", "arm", "spawn", "revive", "end",
+                                        "panic", "walk_start", "walk_play", "walk_stop", "voice_board_stop")},
+    "scan": ScanAction, "connect": ConnectAction, "set_profile": ProfileAction,
+    "station_advert": StationAdvertAction, "station_stop": StationStopAction, "alcd": AmmoAction,
+    "voice_line": VoiceLineAction, "set_voice_slot": VoiceSlotAction, "voice_board": VoiceBoardAction,
+    "voice_board_play": VoiceBoardPlayAction, "voice_verdict": VoiceVerdictAction,
+    "patch_presentation": PresentationAction, "pull_mc": PullMcAction, "game_end": GameEndAction,
+    "event": EventAction, "kill": KillAction, "headset": HeadsetAction, "ir": IrAction,
+    "auto_react": AutoReactAction, "set_emitter": EmitterAction, "raw": RawAction,
+    "walk_verdict": WalkVerdictAction,
+}
+_ASYNC_ACTIONS = {"scan", "connect", "voice_line", "pull_mc", "arm", "spawn", "revive", "end",
+                  "panic", "game_end", "ir", "raw", "walk_play"}
 # action -> (is_coroutine, allowed kwargs). Anything else is a 400, so the page cannot call into the manager.
 ACTIONS: dict[str, tuple[bool, tuple[str, ...]]] = {
-    "scan": (True, ("duration_s",)), "connect": (True, ("address",)), "disconnect": (True, ()),
-    "set_profile": (False, ("mode", "preset", "gun", "headset", "night", "tid", "environment", "voice", "voice_slots", "station_source", "stun")),
-    # F102: a phone control point's advert, injected (the stage cannot hear BLE); F54: the gun's own reload / ammo
-    # reports, injected as the rx frames a real gun sends
-    "station_advert": (False, ("id", "team", "held", "contested", "rising", "falling", "value", "present", "flags", "uuid", "rssi")),
-    "station_stop": (False, ("id",)), "reload": (False, ()), "alcd": (False, ("mag", "reserve", "slot")),
-    "voice_line": (True, ("id",)), "set_voice_slot": (False, ("role", "id")),
-    "voice_board": (False, ("voice",)), "voice_board_play": (False, ("voice", "from_slot")), "voice_board_stop": (False, ()),
-    "voice_verdict": (False, ("voice", "id", "ok", "note")), "reroll": (False, ()),
-    "patch_presentation": (False, ("patch",)), "pull_mc": (True, ("url", "token")),
-    "arm": (True, ()), "spawn": (True, ()), "revive": (True, ()), "end": (True, ()), "panic": (True, ()), "game_end": (True, ("outcome",)),
-    "event": (False, ("kind",)), "kill": (False, ("medals",)), "headset": (False, ("name", "tid")),
-    "ir": (True, ("kind", "team", "damage", "repeat")), "auto_react": (False, ("on",)),
-    "set_emitter": (False, ("port",)), "raw": (True, ("frames", "delay_s", "confirm")), "walk_start": (False, ()), "walk_play": (True, ()), "walk_verdict": (False, ("ok", "note")), "walk_stop": (False, ()),
+    name: (name in _ASYNC_ACTIONS, tuple(key for key in body_type.__annotations__ if key != "action"))
+    for name, body_type in _ACTION_TYPES.items()
 }
+
+
+def _is_action_object(value: object) -> TypeGuard[ActionObject]:
+    """Validate the common JSON envelope while preserving the existing unknown-action response."""
+    return isinstance(value, dict) and isinstance(value.get("action"), str)
+
+
+def _is_known_action_body(value: ActionObject) -> bool:
+    """Membership only; individual stage methods retain their established value validation/coercion."""
+    return value["action"] in ACTIONS
 
 
 async def pull_mc(stage: GunStage, url: str, token: str | None = None) -> dict:
@@ -43,10 +219,12 @@ async def pull_mc(stage: GunStage, url: str, token: str | None = None) -> dict:
     import urllib.request
     req = urllib.request.Request(url.rstrip("/") + "/api/state", headers={"Authorization": f"Bearer {token}"} if token else {})
 
-    def fetch():
+    def fetch() -> object:
         with urllib.request.urlopen(req, timeout=5.0) as r:      # stdlib: the Windows venv need not carry httpx
             return json.loads(r.read().decode("utf-8"))
     st = await asyncio.get_event_loop().run_in_executor(None, fetch)
+    if not isinstance(st, dict) or not isinstance(st.get("config"), dict):
+        raise ValueError("MC state must be a JSON object with config")
     return stage.load_config(st["config"], source=url)
 
 
@@ -83,15 +261,21 @@ def create_app(stage: GunStage, poll_s: float = 0.2) -> Starlette:
             body = await req.json()
         except Exception:
             return JSONResponse({"error": "body must be JSON"}, status_code=400)
-        action = body.get("action")
-        if action not in ACTIONS:
-            return JSONResponse({"error": f"unknown action {action!r}", "known": sorted(ACTIONS)}, status_code=400)
+        if not _is_action_object(body):
+            return JSONResponse({"error": "body must be an action object", "known": sorted(ACTIONS)}, status_code=400)
+        action_value = body["action"]
+        if not _is_known_action_body(body):
+            return JSONResponse({"error": f"unknown action {action_value!r}", "known": sorted(ACTIONS)}, status_code=400)
+        action = body["action"]
         is_coro, allowed = ACTIONS[action]
         kw = {k: v for k, v in body.items() if k in allowed}
         cache["at"] = 0.0          # an action changes things: the next GET /api/state must rebuild, not serve the TTL copy
         try:
             if action == "pull_mc":
-                out = await pull_mc(stage, **kw)
+                url, token = body.get("url"), body.get("token")
+                if not isinstance(url, str) or (token is not None and not isinstance(token, str)):
+                    raise ValueError("pull_mc requires string url and optional string token")
+                out = await pull_mc(stage, url, token)
             elif action == "auto_react":
                 stage.auto_react = bool(kw.get("on", True)); out = stage.state()
             else:

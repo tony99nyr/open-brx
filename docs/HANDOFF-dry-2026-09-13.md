@@ -13,7 +13,7 @@ working spec [`archive/spec-contract-dry-2026-09-12.md`](archive/spec-contract-d
 | Shared shapes: every TypedDict and every `Literal` alias in `types.py`, comments carried as JSDoc | `mcp/brx_mcp/mc/types.py` | `webapp/mc/src/api/contract.gen.ts`, re-exported by `types.ts` | the same, plus `test_ui_contract.py` (types.ts may not re-declare one) |
 | Kind vocabulary against the spec | `docs/spec/contracts.md` §5 | none, compared | `test_contract_kinds.py` |
 | Weapon and mode catalogs in the two demos | `weapons.json`, `state.py MODES` | `webapp/mc/src/mock/data.ts`, `app/src/demo-catalog.js` | `test_ui_catalog_generated.py` |
-| Python type hints | `mcp/brx_mcp/` (stage excluded) | none, checked | `test_pyright.py`, pyright 1.1.414 pinned in CI |
+| Python type hints | `mcp/brx_mcp/` | none, checked | `test_pyright.py`, pyright 1.1.414 pinned in CI |
 | Console type hints | `webapp/mc/src` | none, checked | `npm run typecheck` (`tsc -b`) runs before vitest in CI |
 
 ## The rules that keep it that way
@@ -128,7 +128,7 @@ options than it defaults. Both need a typedef, not a fix. The work:
    `src/transport`, and `npm run typecheck` in `app/package.json` and in CI's app job.
 3. JSDoc the 74, fix or type the 42, then widen the scope file by file.
 
-### 7. F42.14: bring the bench stage under the pyright gate. M
+### 7. F42.14: bring the bench stage under the pyright gate. M — Done 2026-09-16
 
 `mcp/brx_mcp/stage/` is excluded in `mcp/pyproject.toml`. **Measured: 59 errors** (33 argument type, 12 optional
 subscript, 6 attribute access, the rest small). The stage exists to predict `app/src/engine.js`, so every change

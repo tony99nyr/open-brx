@@ -413,8 +413,9 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   into the generated top-level contract. **F42.12 ✅ CLOSED 2026-09-16:** `app/src/transport` is checked with
   strict `allowJs`/`checkJs`; the Python contract generator emits its sibling declaration, wire bodies remain
   unknown until narrowed, and the app CI job runs the checker before tests.
-  **F42.14** (M) `brx_mcp/stage/` is excluded from the pyright gate: 59 errors on 2026-09-13; the stage must keep
-  mirroring the phone engine, so type its JSON message boundary first.
+  **F42.14 ✅ CLOSED 2026-09-16:** `brx_mcp/stage/` is in the pyright gate. Its page and MC JSON boundaries,
+  internal profile, advert, hill, stun and walkthrough state, and shared config/player/bundle shapes are checked;
+  the stage/phone mirror suite remains the behavioral guard.
 
 - **F40 🟠** **"absence reports as health" — three instances in one evening (2026-09-07), so treat it as a class, not
   three bugs.** (1) `mcp/run_tests.py` aborted the whole run on one file's import error, so ~30 later files silently

@@ -1,6 +1,6 @@
 # Handoff — Open BRX
 
-**State as of 2026-09-16.** Contract-DRY phases 1-3, all five F42.9 batches and F42.12 are implemented, reviewed and validated.
+**State as of 2026-09-16.** Contract-DRY phases 1-3, all five F42.9 batches, F42.12 and F42.14 are implemented, reviewed and validated.
 The GSET token 2 field finding is integrated and the M5StickS3 utility-node design is recorded (H8). Evidence is in
 `docs/experiment-log/2026-09.md`; remaining work is indexed by `docs/FOLLOWUPS.md`.
 
@@ -18,6 +18,8 @@ The GSET token 2 field finding is integrated and the M5StickS3 utility-node desi
   possession, after-end and station data instead of advertising it as a checked view.
 - The phone transport is checked as strict JavaScript. Its generated runtime contract has a generated sibling
   declaration, untrusted envelope bodies stay `unknown` until narrowed, and CI runs the same app typecheck.
+- The gun stage is inside the package-wide pyright gate. Its page/MC JSON edges, compiled config, player, bundle,
+  advert, hill, stun and walkthrough state have checked shapes while its phone-mirror behavior remains pinned.
 
 ## Desk work since (no hardware touched)
 - **The M5StickS3 takes its kind from MC over Wi-Fi** (Tony, 2026-09-14): armed at muster, then carried out and
@@ -39,9 +41,13 @@ skips; MCP extras passed 1827 with one dirty-shot skip. The generator suite, str
 tests and build pass. Console typecheck/build, 514 tests and 24-step browser e2e pass; site build and 102 tests pass.
 Post-commit site-shot recapture remains required because phone source changed.
 
+F42.14 then passed the fresh polish review, package-wide pyright over 64 files, 114 focused stage/mirror/server
+checks, MCP system 1755 with 74 optional skips, and MCP extras 1829 with no skips. It changed no app or console
+source, so the already-passing phone, console browser and site gates from F42.12 remain current.
+
 ## Next actions
 
-1. Continue with F42.14 stage pyright, then the remaining coverage/runtime-input audit.
+1. Complete the remaining coverage/runtime-input audit.
 2. Tony runs F198 indoors at GSET t2=0 and watches for phantom reflected hits; keep t2=0 until evidence supports another mapping.
 3. Tony runs F170: hosted MC config versus native at the far mark and 30–40 ft, with t2=0 and fixed controls.
 

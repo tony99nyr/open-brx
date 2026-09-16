@@ -17,7 +17,7 @@ import math
 import random
 import time
 from collections import deque
-from typing import Any, Callable, Awaitable
+from typing import Any, Awaitable, Callable, Literal, NotRequired, TypeGuard, TypedDict
 
 from .. import poolgauge as _pg
 from .. import sounds as _snd
@@ -27,7 +27,139 @@ from ..irbridge import encode_word
 from ..mc import presentation as _pres
 from ..mc.compile import Compiler
 from ..mc.state import default_config
-from ..mc.types import STATION_SOURCES
+from ..mc.types import FrameBundle, GameConfig, Player, STATION_SOURCES
+
+
+class Advert(TypedDict):
+    """One decoded phone beacon advertisement at the stage JSON boundary."""
+
+    role: str
+    id: int
+    kind: str | None
+    team: int
+    state: int
+    value: int
+    seq: int
+    game: int
+    threshold: int
+
+
+class StationEntry(Advert):
+    present: bool
+    rssi: int
+    seen_at: float
+    advertising: bool
+
+
+class HillState(TypedDict):
+    owner: int
+    at: float
+    from_neutral: bool
+    source: NotRequired[str]
+    site: NotRequired[int]
+    progress: NotRequired[int]
+    holding: NotRequired[int | None]
+    contested: NotRequired[bool]
+    rising: NotRequired[bool]
+    falling: NotRequired[bool]
+    on_point: NotRequired[bool]
+
+
+class StunnedState(TypedDict):
+    at: float
+    until: float
+    ammo: dict[int, list[int | None]]
+
+
+class Profile(TypedDict):
+    mode: str
+    preset: str | None
+    gun: str
+    headset: str
+    night: bool
+    tid: int
+    environment: Literal["indoor", "outdoor"]
+    voice: str
+    voice_slots: dict[str, str]
+    station_source: str | None
+    stun: int | None
+
+
+class WalkStep(TypedDict):
+    id: str
+    title: str
+    look: str
+    action: str
+    args: dict[str, object]
+    needs_ir: bool
+    available: bool
+
+
+class WalkState(TypedDict):
+    steps: list[WalkStep]
+    i: int
+    verdicts: dict[str, dict[str, object]]
+    started: float
+    done: bool
+    profile: Profile
+    summary: object
+
+
+def _is_game_config(value: object) -> TypeGuard[GameConfig]:
+    """Narrow the MC JSON payload before it reaches the typed compiler boundary."""
+    if not isinstance(value, dict):
+        return False
+    required = ("config_id", "mode", "environment", "night", "time_limit_s", "respawn",
+                "scoring", "health", "teams")
+    return all(key in value for key in required) and isinstance(value.get("teams"), list)
+
+
+def _int_value(value: object) -> int:
+    """Apply the same integer coercion as ``int(value)`` after narrowing an untrusted page value."""
+    if isinstance(value, (str, bytes, bytearray, int, float)):
+        return int(value)
+    raise TypeError(f"expected an integer value, got {type(value).__name__}")
+
+
+def _set_profile_field(profile: Profile, key: str, value: object) -> None:
+    """Assign a validated selector value without losing the profile's heterogeneous field types."""
+    if key in ("mode", "gun", "headset", "voice"):
+        if not isinstance(value, str):
+            raise ValueError(f"{key} must be a string")
+        if key == "mode":
+            profile["mode"] = value
+        elif key == "gun":
+            profile["gun"] = value
+        elif key == "headset":
+            profile["headset"] = value
+        else:
+            profile["voice"] = value
+    elif key == "environment":
+        if value not in ("indoor", "outdoor"):
+            raise ValueError("environment must be indoor or outdoor")
+        profile["environment"] = value
+    elif key == "preset":
+        if value is not None and not isinstance(value, str):
+            raise ValueError("preset must be a string or null")
+        profile["preset"] = value
+    elif key == "night":
+        profile["night"] = bool(value)
+    elif key == "tid":
+        profile["tid"] = _int_value(value)
+    elif key == "voice_slots":
+        if not isinstance(value, dict):
+            raise ValueError("voice_slots must be an object {role: sound id}")
+        profile["voice_slots"] = value
+    elif key == "station_source":
+        if value is not None and not isinstance(value, str):
+            raise ValueError("station_source must be a string or null")
+        profile["station_source"] = value
+    elif key == "stun":
+        if value is not None and not isinstance(value, int):
+            raise ValueError("stun must be an integer or null")
+        profile["stun"] = value
+    else:
+        raise ValueError(f"unknown profile key {key!r}")
 
 SFLASH = "$SFLASH,*"
 PLAYX = "$PLAYX,0,*"           # engine.js PLAYX: stop whatever line the gun is speaking (used only to PREEMPT our own hill callout)
@@ -103,7 +235,7 @@ def encode_advert_uuid(role: str, id: int = 0, kind: str | int = 0, team: int = 
     return f"{h[0:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}"
 
 
-def decode_advert_uuid(s: str) -> dict | None:
+def decode_advert_uuid(s: str) -> Advert | None:
     """beacon.js `decodeUuid`: the advert as the phone's scanner reads it, or None when it is not ours.
     The stage feeds an injected advert through THIS, never straight into the hill model, so the byte
     positions (team 9, flags 10, value 11) are exercised exactly as on the phone."""
@@ -234,7 +366,7 @@ def _cue_id(frame: str) -> str | None:
     return (t[4] if len(t) > 4 and t[4] else (t[1] if len(t) > 1 and t[1] else None))
 
 
-def _ro_pools(bundle: dict) -> list:
+def _ro_pools(bundle: FrameBundle) -> list:
     """The compiled `gun.readout.pools`, or [] -- used by `state()` to publish the real level table."""
     return ((bundle.get("gun") or {}).get("readout") or {}).get("pools") or []
 
@@ -256,15 +388,15 @@ class GunStage:
         self.address: str | None = None
         self.connected = False
         self.scan_results: list[dict] = []
-        self.profile: dict[str, Any] = {"mode": "tdm", "preset": None, "gun": "team", "headset": "dark",
-                                        "night": False, "tid": 1, "environment": "outdoor",
-                                        "voice": "male", "voice_slots": {},
+        self.profile: Profile = {"mode": "tdm", "preset": None, "gun": "team", "headset": "dark",
+                                 "night": False, "tid": 1, "environment": "outdoor",
+                                 "voice": "male", "voice_slots": {},
                                         # F102: None = "as the config says" (a mode row's own source, or absent);
                                         # a value overrides it so the F70 gate can be tried both ways at the bench
-                                        "station_source": None,
+                                 "station_source": None,
                                         # F15: None = no stun in this game (the config's own `stun` stands if it has one);
                                         # 0 = `{}` (the 10 s default); 1..60 = `{duration_s}`
-                                        "stun": None}
+                                 "stun": None}
         # 2026-09-07: `gun`/`headset` are DISPLAY-ONLY until the operator explicitly picks one via
         # set_profile(); an untouched selector tracks whatever the preset/config's own gun.in_play /
         # headset.in_play resolves to (recompile() syncs it there) instead of always re-patching this
@@ -318,14 +450,14 @@ class GunStage:
         self.beacon: dict | None = None            # F72: {owner_team, magnitude, sensor, at} -- the last grenade/station beacon
         self._last_beacon_key: str | None = None   # F85: `<owner_team>:<magnitude>` of the last beacon ACCEPTED (not merely seen)
         self._last_beacon_at = 0.0                 # F85: self.now() of that acceptance
-        self.hill: dict | None = None              # {owner, at, from_neutral[, source: 'station', site, progress, …]} -- state from the wire; the cadence below is ours
+        self.hill: HillState | None = None         # {owner, at, from_neutral[, source: 'station', site, progress, …]} -- state from the wire; the cadence below is ours
         self._hill_busy_until = 0.0                # a hill callout owns the announcer until here: the tick waits, it never overlaps
         self._hill_tick_at = 0.0                   # when the possession tick last played (0 = not ticking)
         self._hill_team2_warned = False            # F82 is logged once per game, not once per beacon
         # K1 / F102: the phone CONTROL POINT half (engine.js `_onControlAdvert` / `_controlStation`), field for field.
         # The stage cannot hear BLE adverts, so `stations` holds INJECTED adverts (`station_advert`), each decoded
         # through `decode_advert_uuid` exactly as the phone's scanner would decode the air.
-        self.stations: dict[str, dict] = {}        # 'station:<id>' -> the presence entry (beacon.js `Presence` shape + seen_at/advertising)
+        self.stations: dict[str, StationEntry] = {}  # 'station:<id>' -> the presence entry (beacon.js `Presence` shape + seen_at/advertising)
         self._control_site: int | None = None      # the point we are latched to, so walking between two does not read as a capture
         self._control_sig = ""                     # last published advert signature (a change is worth a log line)
         self._hill_said_at = 0.0                   # when a captured/lost line last played, for HILL_CALLOUT_MIN_S
@@ -351,7 +483,7 @@ class GunStage:
         self._prev_ammo: dict[int, int] = {}       # per weapon slot ($ALCD token 3): last mag seen
         self._prev_reserve: dict[int, int] = {}    # per weapon slot: last reserve seen -- the stun restore needs the LIVE pair (F15/F87)
         # F15: {at, until, ammo: {slot: [mag, reserve]}} while an EMP has the gun disarmed; the ammo is the LIVE count to restore
-        self.stunned: dict | None = None
+        self.stunned: StunnedState | None = None
         self._pending: list[asyncio.Task] = []
         self._loop: asyncio.AbstractEventLoop | None = None   # reactions run here; see _spawn_task (2026-09-07)
         # 2026-09-07 (bench): `state()` measured 527-658 ms on real hardware -- almost entirely
@@ -364,13 +496,13 @@ class GunStage:
         # `voice_verdicts`, `rolled`, `scream_this_life`) are never put in here -- they are merged back
         # in fresh on every call, on top of the cached base, so caching can never go stale.
         self._cache: dict = {}
-        self._voices_options_cache: list[dict] | None = None   # process-static (VOICE_PACKS + the catalog file)
-        self.config: dict = {}
-        self.bundle: dict = {}
-        self.player: dict = {}                 # engine.js `this.player` -- assigned with the bundle in recompile()
-        self.walk: dict | None = None          # the guided walkthrough (walk_start / walk_verdict)
+        self._voices_options_cache: list[_voices.VoiceCatalogOption] | None = None  # process-static (VOICE_PACKS + catalog)
+        self.config: GameConfig = default_config("tdm")
+        self.bundle: FrameBundle
+        self.player: Player
+        self.walk: WalkState | None = None     # the guided walkthrough (walk_start / walk_verdict)
         self.verdict_sink = verdict_sink or _append_verdict
-        self._external: dict | None = None     # a GameConfig pulled from MC (load_config); None = the selectors
+        self._external: GameConfig | None = None  # a GameConfig pulled from MC (load_config); None = selectors
         self._local_pres: dict | None = None   # a patched presentation for the selector-built game
         # the SOUNDBOARD (Tony 2026-09-06: "act as the character selection and let me hear and test all of these"):
         # a character chosen independently of the game voice, PLAY ALL through its lines, a verdict per line
@@ -395,7 +527,9 @@ class GunStage:
                     self.profile["voice_slots"] = {}          # the slots were picked for the OLD family
                     voice_changed = True
             if k == "voice_slots":
-                v = _voices.check_slots(v)
+                if v and not isinstance(v, dict):
+                    raise ValueError("voice_slots must be an object {role: sound id}")
+                v = _voices.check_slots(v if isinstance(v, dict) else None)
                 voice_changed = voice_changed or v != self.profile["voice_slots"]
             if k == "mode" and v not in MODES:
                 raise ValueError(f"mode must be one of {MODES}")
@@ -410,13 +544,13 @@ class GunStage:
                 if v is not None and v not in STATION_SOURCES:
                     raise ValueError(f"station_source must be null (as the config says) or one of {sorted(STATION_SOURCES)}")
             if k == "stun":
-                v = None if v in (None, "") else int(v)
+                v = None if v in (None, "") else _int_value(v)
                 if v is not None and not 0 <= v <= 60:
                     raise ValueError("stun must be null (off), 0 (the 10 s default) or a duration 1..60 s (F15/A20)")
             if k == "night":
                 v = bool(v)
             if k == "tid":
-                v = int(v)
+                v = _int_value(v)
             if k == "preset" and v == "":
                 v = None
             if k in ("mode", "preset") and self.profile.get(k) != v:
@@ -427,7 +561,7 @@ class GunStage:
                 self._gun_touched = True                          # an explicit pick: honour it over the preset from now on
             if k == "headset":
                 self._headset_touched = True
-            self.profile[k] = v
+            _set_profile_field(self.profile, k, v)
         self.recompile()
         self._log(f"profile: {self.profile}", "info")
         if voice_changed:
@@ -538,13 +672,13 @@ class GunStage:
         await self.write([_voices.play_line_frame(sid)], why, gap_ms=0)
         return self.state()
 
-    def load_config(self, config: dict, source: str = "mc") -> dict:
+    def load_config(self, config: object, source: str = "mc") -> dict:
         """Drive the stage from a FULL GameConfig (what a running MC has applied) instead of the selectors.
         Everything on the page -- event buttons, bursts, headset sequences, gun body -- is then exactly
         what that game's bundle carries. The selectors keep showing what the config says."""
-        if not isinstance(config, dict) or "mode" not in config:
+        if not _is_game_config(config):
             raise ValueError("config must be a GameConfig object with a mode")
-        self._external = dict(config)
+        self._external = config.copy()
         pres = _pres.resolve(config)
         self.profile.update(mode=config["mode"], preset=pres.get("preset") if pres.get("preset") in _pres.PRESETS else None,
                             gun=pres.get("gun", {}).get("in_play", "native"), headset=pres.get("headset", {}).get("in_play", "dark"),
@@ -580,8 +714,9 @@ class GunStage:
         # GUN_DEFAULT changed under it). An untouched selector leaves the preset's own choice alone.
         gun_patch: dict = {"in_play": p["gun"]} if self._gun_touched else {}
         hs_patch: dict = {"in_play": p["headset"]} if self._headset_touched else {}
-        if getattr(self, "_external", None):
-            cfg = dict(self._external)
+        external = self._external
+        if external is not None:
+            cfg: GameConfig = external.copy()
             cfg["night"] = p["night"]
             ext_patch = {k: v for k, v in {"gun": gun_patch, "headset": hs_patch}.items() if v}
             cfg["presentation"] = _pres.merge(cfg.get("presentation"), ext_patch)
@@ -598,17 +733,20 @@ class GunStage:
                 patch["headset"] = hs_patch
             base = getattr(self, "_local_pres", None) if not p["preset"] else None
             cfg["presentation"] = _pres.merge(base or cfg.get("presentation"), patch)
-        if p.get("station_source"):
-            cfg["station_source"] = p["station_source"]      # F102: the operator's override of the objective source
-        if p.get("stun") is not None:
-            cfg["stun"] = {} if p["stun"] == 0 else {"duration_s": p["stun"]}   # F15: the EMP cell becomes a stun; compile ships the fn-24 row
+        station_source = p["station_source"]
+        if station_source:
+            cfg["station_source"] = station_source      # F102: the operator's override of the objective source
+        stun = p["stun"]
+        if stun is not None:
+            cfg["stun"] = {} if stun == 0 else {"duration_s": stun}  # F15: the EMP cell becomes a stun; compile ships fn-24
         teams = cfg["teams"]
         team = next((t for t in teams if int(t["tid"]) == int(p["tid"])), teams[0])
         self.profile["tid"] = int(team["tid"])
         self.max_hp = int(cfg["health"]["max_hp"]); self.max_armor = int(cfg["health"]["max_armor"])
-        player = {"player_id": "stage", "player_num": 7, "display": "STAGE", "team_id": team["team_id"],
-                  "node_id": None, "gun_id": None, "voice": p["voice"], "voice_slots": dict(p["voice_slots"]), "ready": True,
-                  "loadout": {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]}}
+        player: Player = {"player_id": "stage", "player_num": 7, "display": "STAGE", "team_id": team["team_id"],
+                          "node_id": None, "gun_id": None, "voice": p["voice"],
+                          "voice_slots": dict(p["voice_slots"]), "ready": True,
+                          "loadout": {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]}}
         self.player = player        # engine.js `this.player`: the kit the reload takeover is timed from
         self.config = cfg
         if roll:
@@ -1503,7 +1641,7 @@ class GunStage:
             # reader had to test `owner` too. We simply did not see this capture; the next `mag=8` names it.
             if not prev:
                 return
-            self.hill = {"owner": prev_owner, "at": now, "from_neutral": True}
+            self.hill = {"owner": prev["owner"], "at": now, "from_neutral": True}
             return
 
         # `mag=50` is an explicit capture word: it proves a change of hands by itself, whether or not we were
@@ -1582,7 +1720,7 @@ class GunStage:
         self._hill_team2_warned = False; self._hill_source_warned = ""
 
     # ---- K1 / F102: the phone CONTROL POINT (kind 5), a faithful port of engine.js `_onControlAdvert` -----
-    def _station_allowed(self, e: dict) -> bool:
+    def _station_allowed(self, e: StationEntry) -> bool:
         """`config.stations`, when the game carries it, is the allow-list of station ids valid in this game."""
         allow = self.config.get("stations")
         if not isinstance(allow, list) or not allow:
@@ -1590,7 +1728,7 @@ class GunStage:
         ids = {(x.get("id") if isinstance(x, dict) else x) for x in allow}
         return e["id"] in ids
 
-    def _control_station(self) -> dict | None:
+    def _control_station(self) -> StationEntry | None:
         """The control point this player reads: one we are standing on first, else the strongest in range,
         LATCHED to the point already being read (engine.js `_controlStation`). Not team-filtered: an
         enemy-held point is exactly the one to hear about. An advert older than CONTROL_STALE_S is ignored."""
@@ -1632,11 +1770,11 @@ class GunStage:
         prev = self.hill
         # A: two points are two different objectives. A point we were not reading before tells us NOTHING
         # about a change of hands -- a different site (or the other source's state) is adopted SILENTLY.
-        same_site = bool(prev) and prev.get("source") == "station" and prev.get("site") == e["id"]
-        prev_owner = prev["owner"] if same_site else None
+        same_site = prev is not None and prev.get("source") == "station" and prev.get("site") == e["id"]
+        prev_owner = prev["owner"] if prev is not None and same_site else None
         if not same_site and prev and prev.get("site") != e["id"]:
             self._log(f"control point {e['id']} is a different point from "
-                      f"{prev['site'] if prev.get('source') == 'station' else 'the grenade hill'} -- adopting its owner silently", "info")
+                      f"{prev.get('site') if prev.get('source') == 'station' else 'the grenade hill'} -- adopting its owner silently", "info")
             self._hill_was_contested = False; self._hill_owner_when_silenced = _UNSET
         self._control_site = e["id"]
         self.hill = {"owner": owner, "at": now,
@@ -1706,13 +1844,15 @@ class GunStage:
             if not 0 <= st_byte <= 255:
                 raise ValueError("flags must be a byte")
             d = decode_advert_uuid(encode_advert_uuid("station", sid, "control", t, st_byte, v))
+        if d is None:  # encode_advert_uuid above should always round-trip; keep the JSON boundary total.
+            raise ValueError("could not decode the Open BRX advert")
         if d["role"] != "station" or d["kind"] != "control":
             raise ValueError(f"the stage models kind 5 (control) stations only, not {d['kind']!r}")
         now = self.now()
         key = f"station:{d['id']}"
         prev = self.stations.get(key)
-        entry = {**d, "present": bool(present), "rssi": int(rssi), "seen_at": now, "advertising": True,
-                 "seq": ((prev["seq"] + 1) & 0xFF) if prev else 0}
+        entry: StationEntry = {**d, "present": bool(present), "rssi": int(rssi), "seen_at": now,
+                               "advertising": True, "seq": ((prev["seq"] + 1) & 0xFF) if prev else 0}
         self.stations[key] = entry
         self._log(f"advert station {d['id']} (control): team {d['team']} state {d['state']:#06b} value {d['value']}"
                   f"{' · ON THE POINT' if present else ''}", "ir")
@@ -1810,12 +1950,12 @@ class GunStage:
         # biggest rise names the event: healed (health) / armour_up / shield_up.
         if self.alive and self.spawned:
             now = self.now()
-            busy = self._moment is not None and self._moment[0] in RARE_MOMENTS and now - self._moment[1] < RARE_GUARD_S
+            moment = self._moment
             gains = sorted([(p, d) for p, d in (("health", hp - prev_hp), ("armor", armor - prev_armor),
                                                 ("shield", shield - prev_shield)) if d > 0], key=lambda g: -g[1])
-            if busy:
+            if moment is not None and moment[0] in RARE_MOMENTS and now - moment[1] < RARE_GUARD_S:
                 if gains:
-                    self._log(f"pool rise ({', '.join(f'{p} +{d}' for p, d in gains)}): dropped -- inside {int(RARE_GUARD_S * 1000)} ms of the {self._moment[0]} moment (engine.js RARE_GUARD_MS)", "info")
+                    self._log(f"pool rise ({', '.join(f'{p} +{d}' for p, d in gains)}): dropped -- inside {int(RARE_GUARD_S * 1000)} ms of the {moment[0]} moment (engine.js RARE_GUARD_MS)", "info")
             elif dmg > 0 and hp > 0:
                 if gains:
                     self._log(f"pool rise ({', '.join(f'{p} +{d}' for p, d in gains)}) in the same frame as {dmg} damage: the HIT wins, no gain event (F14)", "info")
@@ -2085,7 +2225,7 @@ class GunStage:
             self._log(f"⚡ stun extended: {math.ceil(self.stunned['until'] - now)} s left", "info")
             return
         spawn = self._spawn_ammo()
-        live: dict[int, list[int]] = {}
+        live: dict[int, list[int | None]] = {}
         for slot in spawn:
             mag, res = self._prev_ammo.get(slot), self._prev_reserve.get(slot)
             live[slot] = [mag if mag is not None else spawn[slot][0], res if res is not None else spawn[slot][1]]
@@ -2511,7 +2651,7 @@ class GunStage:
         return g["bands"][-1][1]
 
     # ---- the guided walkthrough ---------------------------------------------------------------------------
-    def walk_plan(self) -> list[dict]:
+    def walk_plan(self) -> list[WalkStep]:
         """Every state this CONFIG can put the headset, gun body and sounds in, as ordered steps. Built from
         the compiled bundle, so a profile with the announcer off has no sound steps, night has no LED steps,
         and an event with nothing configured is not a step. Each step names what to look and listen for."""
@@ -2521,19 +2661,22 @@ class GunStage:
         can_ir = self.bridge is not None or hasattr(self.mgr, "inject_hit")
         return self._memo(("walk_plan", can_ir), lambda: self._build_walk_plan(can_ir))
 
-    def _build_walk_plan(self, can_ir: bool) -> list[dict]:
+    def _build_walk_plan(self, can_ir: bool) -> list[WalkStep]:
         b = self.bundle; hs = b.get("headset") or {}; cues = b.get("cues", {}); leds = b.get("leds") or {}
         prof = _pres.resolve(self.config); g = b.get("gun")
         gun_txt = {"native": "firmware breathing in the team colour", "team": "held SOLID team colour (no breathing)",
                    "dark": "DARK body", "health": "full-health GREEN body"}[self.profile["gun"]]
-        steps: list[dict] = []
-        def add(sid, title, look, action, args=None, needs_ir=False):
+        steps: list[WalkStep] = []
+        def add(sid: str, title: str, look: str, action: str,
+                args: dict[str, object] | None = None, needs_ir: bool = False) -> None:
             steps.append({"id": sid, "title": title, "look": look, "action": action, "args": args or {}, "needs_ir": needs_ir,
                           "available": (not needs_ir) or can_ir})
         add("arm", "PRE-GAME (armed, unspawned)",
             ("headset: TEAM COLOUR held" if hs.get("pregame") else "headset: dark") + (" · gun body: TEAM COLOUR held" if _pres.gun_pregame(prof, self.profile["tid"], self.profile["night"], bool(hs) or bool(g)) else " · gun body: dark") + " · no sound", "arm")
         takes = self.spawn_takes()                               # A15.2: the spawn line is ours; the first take is the family's boast
-        cry = takes[0]["id"] if takes else _voices.role_id(self.profile["voice"], "boast", self.profile["voice_slots"])
+        cry = (takes[0]["id"] if takes else _voices.role_id(
+            self.profile["voice"], "boast", self.profile["voice_slots"]
+        )) or ""
         add("voice", f"VOICE: {self.speaker().upper()}",
             f"sound: {self.speaker()} '{_snd.describe(cry)}' -- the voice the gun will use for its death scream / pains / heal",
             "voice_line", {"id": cry})
@@ -2622,12 +2765,14 @@ class GunStage:
         return steps
 
     def walk_start(self) -> dict:
-        self.walk = {"steps": self.walk_plan(), "i": 0, "verdicts": {}, "started": self.now(), "done": False,
-                     "profile": dict(self.profile), "summary": self.bundle.get("presentation")}
-        self._log(f"walkthrough: {len(self.walk['steps'])} steps for {self.profile['mode']} / {self.bundle.get('presentation', {}).get('preset')}", "ok")
+        walk: WalkState = {"steps": self.walk_plan(), "i": 0, "verdicts": {}, "started": self.now(),
+                           "done": False, "profile": self.profile.copy(),
+                           "summary": self.bundle.get("presentation")}
+        self.walk = walk
+        self._log(f"walkthrough: {len(walk['steps'])} steps for {self.profile['mode']} / {self.bundle.get('presentation', {}).get('preset')}", "ok")
         return self.state()
 
-    def walk_current(self) -> dict | None:
+    def walk_current(self) -> WalkStep | None:
         w = self.walk
         if not w or w["done"]:
             return None
@@ -2645,7 +2790,9 @@ class GunStage:
         out = fn(**step["args"])
         if asyncio.iscoroutine(out):
             await out
-        self._log(f"walkthrough {self.walk['i'] + 1}/{len(self.walk['steps'])}: {step['title']}", "info")
+        walk = self.walk
+        if walk is not None:
+            self._log(f"walkthrough {walk['i'] + 1}/{len(walk['steps'])}: {step['title']}", "info")
         return self.state()
 
     def walk_verdict(self, ok: bool | None, note: str = "") -> dict:
@@ -2678,7 +2825,7 @@ class GunStage:
     def _log(self, text: str, kind: str = "info", why: str = "") -> None:
         self.log.append({"t": round(self.now(), 2), "kind": kind, "text": text, "why": why})
 
-    def _voices_options(self) -> list[dict]:
+    def _voices_options(self) -> list[_voices.VoiceCatalogOption]:
         """`voices.options()` -- the full voice picker -- depends on nothing but `VOICE_PACKS` and the
         catalog file, never on this instance's profile/bundle, so it is cached ONCE and never
         invalidated (unlike `_memo`, which is cleared on every `recompile()`). Measured the single
