@@ -12,9 +12,11 @@ Evidence: `~/.brx-mcp/mc/session-3782dc77.sqlite` (outside the repo).
    Teams were pushed correctly. The only variable across the three compiled heads is `$GSET` **t1
    `friendlyFire`**: ON → hits, OFF → nothing. `compile.py:978` is `friendly_fire=(mode == "ffa")`, so **every
    team mode we ship sends the value that registers nothing.** This is **F49** (bench, 2026-09-07) reproduced
-   in a game. Every `hit_taken` carries `shooter_team: 0` and no gun is ever on TID 0.
-   **Next rung:** push a TDM head with `friendly_fire=True` + opposite TIDs and shoot. If hits land, ship t1=1
-   and score friendly fire in MC (per **Q13** the gun's gate buys nothing we cannot do better server-side).
+   in a game — and the store says where the mismatch is: all 38 hits read **`shooter_team: 0`** while both
+   shooters were on **`$TID,1`**, where protocol §5 says `$HIR` t4 is the shooter's effective `$TID & 3`. **The
+   emitted word is not carrying the team we set.** (⛔ not `$PSET` t2 — bench-proven inert.)
+   **First rung, two guns and five minutes:** `$TID,1` vs `$TID,2`, friendly fire ON so a hit must register,
+   read `$HIR` t4 back. If it is 0 both ways, F206, F49 and Q13 collapse into that one fault.
 2. **F207 — the START echo refusal is a false positive on every gun, and it is ours.** Mag right every time,
    reserve exactly half every time, on three weapons — and the half is **the t40 value MC itself wrote into the
    same `$WEAP` frame** (`tok17 == 2 * tok40`). The gun's `$ALCD` reserve mirrors t40; `frames.py` compares it

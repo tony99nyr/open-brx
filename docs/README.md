@@ -30,6 +30,7 @@ Around them: **[`gotchas.md`](gotchas.md)** (field lore by symptom, plus the ben
 
 | sheet | what it is |
 |---|---|
+| **[`game-test-2026-09-13.md`](game-test-2026-09-13.md)** | **the 2026-09-13 game test.** 2 players, 3 matches; eleven ids (F206-F216), four of them 🔴. Nine were root-caused from the MC store alone (it carries the compiled heads AND the phones' node logs) |
 | **[`game-test-2026-09-11.md`](game-test-2026-09-11.md)** | **the 2026-09-11 game test.** Every issue from a 1v1 on two taggers, self-contained: symptom, evidence, mechanism, fix |
 | **[`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md)** | **the NEXT sitting.** The four readings still open (three of the original six were answered 2026-09-11), deliberately self-contained — run it without reading anything else |
 | [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) | the WHOLE queue, grouped by setup block. FOLLOWUPS §9 is the register (ids); this is the running order |
