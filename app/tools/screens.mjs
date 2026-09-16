@@ -1631,6 +1631,52 @@ await step('polish-3 loadout-perk: a perk picked after a timed-out weapon arm sh
   must(r.eqMark === '✓', 'the perk row does not read a plain confirmed ✓: ' + r.eqMark);
   must(r.heroText === 'EQUIPPED', 'the perk hero pane: ' + r.heroText);
 });
+
+// ---------- Bench 2026-09-16: press feedback on EVERY tappable thing (hud.js `_tapDown`/`_tapUp`) ----------
+// A player could not tell whether a tap landed. One delegated pointerdown/up pair on #frame adds/clears
+// `.tap-press`. These steps dispatch real pointer events (not clicks) so they prove the mechanism itself,
+// not just that the act still fires.
+await step('press feedback: a native button (ⓘ) presses on pointerdown and clears on pointerup', async () => {
+  const pg = await open(VIEWS[0], 'idle');
+  const cls = async () => pg.evaluate(() => document.getElementById('info').className);
+  must(!/tap-press/.test(await cls()), 'started pressed');
+  await pg.locator('#info').dispatchEvent('pointerdown', { pointerId: 1, bubbles: true });
+  must(/tap-press/.test(await cls()), 'pointerdown did not press the ⓘ button');
+  await pg.locator('#info').dispatchEvent('pointerup', { pointerId: 1, bubbles: true });
+  must(!/tap-press/.test(await cls()), 'pointerup did not clear the ⓘ button');
+  await pg.close();
+});
+await step('press feedback: a data-act tile (SET MY GUN) presses on pointerdown and clears on pointerup', async () => {
+  const pg = await open(VIEWS[0], 'idle');
+  const sel = '.bigbtn[data-act="onSetGun"]';
+  const cls = async () => pg.evaluate(s => document.querySelector(s).className, sel);
+  await pg.locator(sel).dispatchEvent('pointerdown', { pointerId: 1, bubbles: true });
+  must(/tap-press/.test(await cls()), 'pointerdown did not press SET MY GUN: ' + await cls());
+  await pg.locator(sel).dispatchEvent('pointerup', { pointerId: 1, bubbles: true });
+  must(!/tap-press/.test(await cls()), 'pointerup did not clear SET MY GUN');
+  await pg.close();
+});
+await step('press feedback: a loadout row presses on pointerdown and clears on pointercancel', async () => {
+  const pg = await open(VIEWS[0], 'loadout-primary');
+  const sel = '.lrow[data-arg="weapon:smg"]';
+  const cls = async () => pg.evaluate(s => document.querySelector(s).className, sel);
+  await pg.locator(sel).dispatchEvent('pointerdown', { pointerId: 1, bubbles: true });
+  must(/tap-press/.test(await cls()), 'pointerdown did not press the SMG row: ' + await cls());
+  await pg.locator(sel).dispatchEvent('pointercancel', { pointerId: 1, bubbles: true });
+  must(!/tap-press/.test(await cls()), 'pointercancel did not clear the SMG row');
+  await pg.close();
+});
+await step('press feedback: a locked (disabled) loadout tab never shows pressed', async () => {
+  const pg = await open(VIEWS[0], 'loadout-primary', '&locked');
+  const sel = '.lotab[data-arg="primary"]';
+  const fixture = await pg.evaluate(s => { const el = document.querySelector(s); return { locked: el.classList.contains('locked'), disabled: el.disabled }; }, sel);
+  must(fixture.locked && fixture.disabled, 'fixture: the primary tab is not actually locked here: ' + JSON.stringify(fixture));
+  await pg.locator(sel).dispatchEvent('pointerdown', { pointerId: 1, bubbles: true });
+  const cls = await pg.evaluate(s => document.querySelector(s).className, sel);
+  await pg.close();
+  must(!/tap-press/.test(cls), 'a locked loadout tab must never show pressed feedback: ' + cls);
+});
+
 await b.close(); srv.close();
 console.log(`\n${pass} passed, ${fail} failed${fail ? ': ' + errs.join(', ') : ''}`);
 process.exit(fail ? 1 : 0);

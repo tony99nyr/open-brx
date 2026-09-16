@@ -129,7 +129,32 @@ export class Hud {
     // (removed 2026-08-26, critic #9: a resting glove/chin tripped the invisible 900 ms night toggle — NIGHT lives in the diag panel)
     this.hudEl.addEventListener('pointerup', () => { if (pressT) clearTimeout(pressT); pressT = null; });
     this.hudEl.addEventListener('pointerleave', () => { if (pressT) clearTimeout(pressT); pressT = null; });
+    // Bench 2026-09-16: a player could not tell whether a tap landed. One delegated pair on #frame (the
+    // parent of #hud, #diag and the ⓘ button) covers every tappable thing — a native button, a
+    // data-act row/pill/tile, or role="button" — so no control needs its own press handler. pointerdown
+    // fires on touch-down on both WKWebView and Android WebView (unlike CSS :active, which iOS can miss);
+    // pointerup/cancel always clears it, and a window-level fallback catches a release outside the frame
+    // (a drag that ends off-screen). Disabled/aria-disabled controls are skipped so a locked tile never
+    // flashes pressed.
+    this.frame.addEventListener('pointerdown', e => this._tapDown(e));
+    this.frame.addEventListener('pointerup', () => this._tapUp());
+    this.frame.addEventListener('pointercancel', () => this._tapUp());
+    window.addEventListener('pointerup', () => this._tapUp());
+    window.addEventListener('pointercancel', () => this._tapUp());
     window.addEventListener('resize', () => this.fit()); this.fit();
+  }
+  // See the constructor comment above for why this is one delegated pair, not per-button code.
+  _tapDown(e) {
+    const el = e.target.closest('button, [data-act], [role="button"]');
+    if (!el || el.disabled || el.getAttribute('aria-disabled') === 'true') return;
+    if (this._pressedEl && this._pressedEl !== el) this._pressedEl.classList.remove('tap-press');
+    this._pressedEl = el;
+    el.classList.add('tap-press');
+  }
+  _tapUp() {
+    if (!this._pressedEl) return;
+    this._pressedEl.classList.remove('tap-press');
+    this._pressedEl = null;
   }
   fit() {
     // On the phone the OS status bar (clock / battery / signal) is drawn OVER the web view — Android 15 forces

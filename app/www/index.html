@@ -45,7 +45,16 @@ html,body{margin:0;height:100%;background:#030407;color:var(--num);font-family:v
 .skew6{transform:skewX(-6deg)}.unskew6{display:inline-block;transform:skewX(6deg)}
 .skew10{transform:skewX(-10deg)}.unskew10{display:inline-block;transform:skewX(10deg)}
 button{font-family:var(--fd);border:0;cursor:pointer;color:inherit;background:none;padding:0}
-button:active{filter:brightness(1.15)}
+/* Bench 2026-09-16: obvious press feedback for EVERY tappable thing, so a tap always reads back.
+   `.tap-press` is set by the delegated pointerdown/up pair in hud.js (constructor comment); `:active`
+   stays too, for a mouse in a desktop browser. `scale`/filter only (the `scale` property, so a skewed button keeps its skew), no layout-shifting property,
+   and the transition (not the state change itself) backs off under prefers-reduced-motion. Disabled /
+   aria-disabled controls are excluded so a locked tile never looks pressed. */
+button:not(:disabled):not([aria-disabled="true"]):active,
+[data-act]:active,[role="button"]:active,
+.tap-press{filter:brightness(1.4) contrast(1.05);scale:.95}
+button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms ease-out}
+@media (prefers-reduced-motion:reduce){button,[data-act],[role="button"]{transition:none}}
 
 /* ============ ambient ============ */
 .scan{position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.015) 0 1px,transparent 1px 4px);pointer-events:none}
