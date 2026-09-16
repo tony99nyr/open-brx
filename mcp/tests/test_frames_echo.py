@@ -82,3 +82,12 @@ def test_a_real_captured_head_and_echo_prove_the_check_through_state_py():
     ack(net, s, 0, pid, echo=SNIPER_EXTENDED_MAGS_ECHO)
     r = row(s, pid)
     assert r["echo"] == "proven" and r["status"] == "green", r
+
+
+def test_a_melee_slot_echo_is_no_claim_about_the_primary():
+    """Playtest 2026-09-13: the one echo that landed was `$ALCD,1,100,4,...` (slot 4, melee).
+
+    MC must read it as no evidence about the primary (`not_echoed`), never as a mismatch against `$WEAP,0`.
+    """
+    assert _f.alcd_ammo("$ALCD,1,100,4,0,0,*") is None
+    assert _f.alcd_ammo("$ALCD,36,100,0,108,0,*") == (36, 108)

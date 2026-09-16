@@ -91,3 +91,55 @@ test('B4: noteStale() is a no-op when there is no live connection to cycle', () 
   assert.equal(r.drops.length, 0);
   assert.equal(r.disconnects.length, 0);
 });
+
+// Playtest 2026-09-13 (Pixel 5 scan storm): overlapping stop/start calls on a slow bridge.
+function scanRig() {
+  const native = [], gates = [];
+  const gated = name => new Promise(res => { native.push(name); gates.push(res); });
+  const ble = { initialize: async () => {}, requestLEScan: () => gated('request'), stopLEScan: () => gated('stop') };
+  const link = new BrxLink({ ble, log: () => {} });
+  const turn = () => new Promise(r => setImmediate(r));
+  const open = async () => { await turn(); while (gates.length) { gates.shift()(); await turn(); } };
+  return { link, native, open, turn };
+}
+
+test('scan flag: a slow stop that overlaps a newer scan cannot clear the flag under it', async () => {
+  const r = scanRig();
+  const first = r.link.scan(() => {}); await r.open(); await first;
+  const stopA = r.link.stopScan(); const stopB = r.link.stopScan();   // two overlapping stops, bridge not answering
+  const again = r.link.scan(() => {});                                // the restart that followed the first stop
+  await r.open(); await Promise.all([stopA, stopB, again]);
+  assert.equal(r.link.scanning, true, 'the newest scan is open, so the flag must say so');
+  assert.equal(r.native.at(-1), 'request', 'the native calls ran in call order: the scan is the last one');
+  await assert.rejects(r.link.scan(() => {}), /already open/, 'and the guard still refuses a third scan');
+});
+
+test('scan flag: a refused start leaves no phantom open scan', async () => {
+  const ble = { initialize: async () => {}, requestLEScan: async () => { throw new Error('scanning too frequently'); }, stopLEScan: async () => {} };
+  const link = new BrxLink({ ble, log: () => {} });
+  await assert.rejects(link.scan(() => {}), /too frequently/);
+  assert.equal(link.scanning, false);
+});
+
+test('RELINK GUN on a link that reads connected really cycles it and runs onUp again', async () => {
+  const r = rig();
+  await r.link.connect('A', 'GUN-A-1111');
+  assert.equal(r.ups.length, 1);
+  const before = r.attempts.A;
+  const cycled = r.link.relink();
+  r.cb.A();                                        // the native stack reports the forced disconnect too
+  assert.equal(await cycled, true);
+  await settle(100);
+  assert.deepEqual(r.disconnects, ['A'], 'the GATT link is released');
+  assert.equal(r.drops.length, 1, 'the engine hears about the drop exactly once');
+  assert.ok(r.attempts.A > before, 'a fresh connect follows');
+  assert.equal(r.link.connected, true);
+  assert.equal(r.ups.length, 2, 'onUp runs again, so the engine re-runs its relink path');
+  await r.link.disconnect();
+});
+
+test('RELINK GUN with no gun picked does nothing', async () => {
+  const r = rig();
+  assert.equal(await r.link.relink(), false);
+  assert.equal(r.disconnects.length, 0);
+});

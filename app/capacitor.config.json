@@ -2,6 +2,7 @@
   "appId": "com.openbrx.companion",
   "appName": "BRX Companion",
   "webDir": "www",
+  "loggingBehavior": "none",
   "android": {
     "allowMixedContent": true,
     "webContentsDebuggingEnabled": true

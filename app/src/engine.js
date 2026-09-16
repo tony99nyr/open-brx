@@ -82,6 +82,8 @@ const STUN_DEFAULT_S = 10;          // F15: how long an EMP (proto-8 $HIR under 
  *  value as `gameconfig.MIN_RESPAWN_S` on the CLI path. */
 const MIN_RESPAWN_S = 3;
 const MEDAL_GAP_MS = 2000;       // A11.4: medal lines are 1.5-2.5 s; play them back to back, not on top of each other   // A11: no two LED bursts inside a second (three flashes per second is the ceiling)
+const ECHO_WINDOW_MS = 1500;     // how long after the last head frame is written the node waits for the gun's echo
+const HEAD_WRITE_CAP_MS = 20000; // a head write that has not settled by now acks `no_echo` anyway
 const RELOAD_GRACE_MS = 600;     // a reload the gun never echoed still clears the takeover this long after reload_s
 // F27 (HANDOFF): handle-pull -> mag-refill on HARDWARE runs consistently LONGER than the catalog
 // `reload_ms` — AR 1701 vs 1400, burst 2160 vs 1700, charge 3220 vs 2500, i.e. ~1.22-1.29x. A flat
@@ -281,7 +283,7 @@ export class Engine {
     // means "lost" and "out of coverage" identically (game test 2026-09-11 D3).
     this.result = null;             // the `result` body for THIS match (contracts §5 `result`)
     this.resultAt = 0;
-    this.headEcho = null; this.headWrittenAt = 0; this.awaitingEcho = false;
+    this.headEcho = null; this.headWrittenAt = 0; this.awaitingEcho = false; this.headWriteDone = false;
     // A36: the SLOT-0 $ALCD the gun answers a head write with. `headEcho` is whatever frame came
     // back FIRST, and on a real tagger that is always $START's `$LCD,0,0,0,0,0,0,*` (protocol §3) --
     // proof the gun answered, and no evidence at all about which weapon it was just written. The
@@ -667,14 +669,24 @@ export class Engine {
     this.configPending = false; this._panicked = null;
     this.headEcho = null; this.ammoEcho = null; this.awaitingEcho = true; this.headWrittenAt = this.now();
     this.butSinceHead = false;         // A37/F-3: a fresh head, so the next ammo frame can be its echo again
-    this._writeHead(why === 'hydrate' ? 'head (rehydrate)' : 'head');
+    // Playtest 2026-09-13: the head is about 51 chunked BLE writes, and the window used to run from the QUEUE
+    // time, so the gun's $ALCD landed about 3 s after the node had acked `no_echo`. The window now opens when
+    // the writer says the last frame went out (`headWriteDone`). A writer that returns no promise opens it at once.
+    const gen = this._headGen = (this._headGen || 0) + 1;
+    this.headWriteDone = false;
+    const written = () => { if (gen === this._headGen && this.awaitingEcho) { this.headWriteDone = true; this.headWrittenAt = this.now(); } };
+    const w = this._writeHead(why === 'hydrate' ? 'head (rehydrate)' : 'head');
+    if (w && typeof w.then === 'function') w.then(written, written); else written();
     this.spawned = false; this.ended = false;
     if (this.phase !== 'armed' && this.phase !== 'live') this._set('lobby');
     this._changed();
   }
-  /** Called by tick(): 1.5 s after the head write, report the echo (or its absence). */
+  /** Called by tick(): 1.5 s after the LAST head frame is written, report the echo (or its absence). */
   _checkEcho() {
-    if (!this.awaitingEcho || this.now() - this.headWrittenAt < 1500) return;
+    if (!this.awaitingEcho) return;
+    // Still writing: wait, but not for ever. A write that never settles (a hung bridge) acks `no_echo`.
+    if (!this.headWriteDone) { if (this.now() - this.headWrittenAt < HEAD_WRITE_CAP_MS) return; }
+    else if (this.now() - this.headWrittenAt < ECHO_WINDOW_MS) return;
     this.awaitingEcho = false;
     const cid = this.config && this.config.config_id;
     // The MOST INFORMATIVE echo of the window, not the first one: the $ALCD carries the magazine the
@@ -2908,7 +2920,7 @@ export class Engine {
     // can change it. Remember it so `_assign` can catch a roster re-team that the head never followed.
     const tidFrame = (this.frames.head || []).find(f => typeof f === 'string' && f.startsWith('$TID,'));
     this._headTid = tidFrame ? Number(tidFrame.split(',')[1]) : this._headTid;
-    this._write(this.frames.head, label);
+    return this._write(this.frames.head, label);
   }
 
   /** B1 belt-and-braces (2026-09-12): the gun resolves combat on the `$TID` in its written head; the

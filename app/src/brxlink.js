@@ -47,6 +47,9 @@ export class BrxLink {
     this.unbounded = unbounded; this.chunkGapMs = chunkGapMs; this.frameGapMs = frameGapMs;
     this.deviceId = null; this.advert = null; this.connected = false; this.retries = 0; this.lastReason = null;
     this._init = null; this._q = Promise.resolve(); this._scanning = false; this._re = new Reassembler();
+    this._scanOp = Promise.resolve(); this._scanTok = 0;   // scan start/stop run one at a time, in call order
+    this._linkSeq = 0;     // bumps per native connect; a retired link's disconnect callback is ignored (relink)
+    this._relinking = false;
     this.frames = [];      // last frames in/out (diagnostics)
     // Every connect()/disconnect() bumps the generation. A retry loop carries the generation it
     // started in and exits the moment it goes stale, so a loop chasing an abandoned gun can never
@@ -57,21 +60,34 @@ export class BrxLink {
   ensureInit() { return (this._init ||= this.ble.initialize({ androidNeverForLocation: true })); }
 
   /** Continuous scan; calls onHit({deviceId, name, rssi, uuids}) for every advert until stop().
-   *  scanMode 2 = low latency (the gun picker), 1 = balanced (the beacon watch that stays open all match).
+   *  scanMode 2 = low latency (the gun picker and the match-time beacon watch, scanwatch.js), 1 = balanced.
    *  Nameless adverts pass only when they carry a service UUID: utility items advertise no name on Android
    *  (the device name is not settable per app), their whole identity is the UUID (beacon.js). */
   async scan(onHit, { scanMode = 2 } = {}) {
     if (this._scanning) throw new Error('a scan is already open');
-    await this.ensureInit(); this._scanning = true;
-    await this.ble.requestLEScan({ allowDuplicates: true, scanMode }, res => {   // no service filter: Android misses taggers whose UUID rides in the scan response (bench 2026-08-25); the app filters by name instead
-      const d = res.device || {}; if (!d.deviceId) return;
-      const name = d.name || res.localName || '';
-      const uuids = Array.isArray(res.uuids) ? res.uuids : [];
-      if (!name && !uuids.length) return;
-      onHit({ deviceId: d.deviceId, name, rssi: res.rssi, uuids, txPower: res.txPower });
+    this._scanning = true; const tok = ++this._scanTok;   // claim the radio before the first await
+    return this._scanSerial(async () => {
+      try {
+        await this.ensureInit();
+        await this.ble.requestLEScan({ allowDuplicates: true, scanMode }, res => {   // no service filter: Android misses taggers whose UUID rides in the scan response (bench 2026-08-25); the app filters by name instead
+          const d = res.device || {}; if (!d.deviceId) return;
+          const name = d.name || res.localName || '';
+          const uuids = Array.isArray(res.uuids) ? res.uuids : [];
+          if (!name && !uuids.length) return;
+          onHit({ deviceId: d.deviceId, name, rssi: res.rssi, uuids, txPower: res.txPower });
+        });
+      } catch (e) { if (tok === this._scanTok) this._scanning = false; throw e; }   // a refused start is not an open scan
     });
   }
-  async stopScan() { try { await this.ble.stopLEScan(); } catch (_) { /* ignore */ } this._scanning = false; }
+  /** Playtest 2026-09-13: `_scanning` was cleared when a stop RESOLVED, so a slow stop that overlapped a
+   *  newer scan cleared the flag under it and the "already open" guard let a third scan in. Now the flag
+   *  is the latest intent, set synchronously, and the native calls run strictly in call order. */
+  stopScan() {
+    this._scanning = false; this._scanTok++;
+    return this._scanSerial(async () => { try { await this.ble.stopLEScan(); } catch (_) { /* ignore */ } });
+  }
+  get scanning() { return this._scanning; }
+  _scanSerial(fn) { const p = this._scanOp.then(fn, fn); this._scanOp = p.catch(() => {}); return p; }
 
   _log(m, cls) { this.log(m, cls); }
   _note(dir, f) { this.frames.push({ t: Date.now(), dir, f }); if (this.frames.length > 60) this.frames.shift(); }
@@ -91,7 +107,8 @@ export class BrxLink {
     for (let i = 1; ; i++) {
       if (gen !== this._gen) { this._log('reconnect abandoned — a different gun was selected', 'li'); return false; }
       try {
-        await this.ble.connect(id, () => this._dropped());
+        const seq = ++this._linkSeq;
+        await this.ble.connect(id, () => { if (seq === this._linkSeq) this._dropped(); });
         if (gen !== this._gen) {                       // the gun came back AFTER we moved on: let it go,
           try { await this.ble.disconnect(id); } catch (_) { /* ignore */ }   // or two devices feed the engine
           return false;
@@ -121,6 +138,24 @@ export class BrxLink {
   retryNow() {
     if (this._wake) { this._log('reconnect: retrying now', 'li'); this._wake(); return; }
     if (this.deviceId && !this.connected) this._reconnect();
+  }
+  /** RELINK GUN (playtest 2026-09-13): on a link the app believed was up, `retryNow()` did nothing, so the
+   *  button was inert exactly when the operator needed it. Now a live link is really cycled: release the
+   *  GATT link, then take the normal drop path, so the forever-reconnect loop reconnects and `onUp` runs
+   *  the engine's relink (it re-writes the head only in the phases where that is safe, never mid-match). */
+  async relink() {
+    const id = this.deviceId; if (!id) return false;
+    if (!this.connected) { this.retryNow(); return true; }
+    if (this._relinking) return true;
+    this._relinking = true;
+    try {
+      this._log('relink: forcing a disconnect and a fresh connect', 'li');
+      this._linkSeq++;                   // this link's own disconnect callback must not run the drop path a second time
+      try { await this.ble.disconnect(id); } catch (_) { /* best-effort */ }
+      if (this.deviceId !== id || !this.connected) return false;   // a new gun was picked, or it already dropped
+      this._dropped();
+      return true;
+    } finally { this._relinking = false; }
   }
   _dropped() {
     this.connected = false; this._log(`*** gun disconnected ***`, 'le'); this.onDrop();

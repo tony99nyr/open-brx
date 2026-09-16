@@ -4758,6 +4758,44 @@ test('A37: an $ALCD BEFORE any button is still the config echo', () => {
   assert.equal(ack.b.gun_echo, '$ALCD,32,100,0,192,0,*', 'the full magazine the head wrote');
 });
 
+// Playtest 2026-09-13: the head is ~51 chunked BLE writes. The echo window ran 1.5 s from the QUEUE time, so the
+// gun's $ALCD arrived ~3 s after the node had acked `no_echo`, and the operator pressed RE-PUSH CONFIG four times.
+test('echo window: opens when the LAST head frame is written, not when the head is queued', async () => {
+  const h = harness().kit();
+  let finish; h.eng.writer = fr => { h.writes.push(...fr); return new Promise(r => { finish = r; }); };
+  h.config_();
+  h.adv(3000); h.eng.tick();                         // the chunked write is still going out
+  assert.equal(h.reports.find(r => r.k === 'ack_config'), undefined, 'no verdict while the head is still being written');
+  finish(true); await new Promise(r => setImmediate(r));
+  h.adv(500); h.frame('$ALCD,32,100,0,192,0,*');     // the gun answers half a second after the last frame
+  h.adv(1100); h.eng.tick();
+  const ack = h.reports.find(r => r.k === 'ack_config');
+  assert.equal(ack && ack.b.ok, true, 'the late echo is inside the window');
+  assert.equal(ack.b.gun_echo, '$ALCD,32,100,0,192,0,*');
+});
+
+test('echo window: a head write that never settles still acks no_echo in the end', () => {
+  const h = harness().kit();
+  h.eng.writer = fr => { h.writes.push(...fr); return new Promise(() => {}); };
+  h.config_();
+  h.adv(5000); h.eng.tick();
+  assert.equal(h.reports.find(r => r.k === 'ack_config'), undefined);
+  h.adv(20000); h.eng.tick();
+  const ack = h.reports.find(r => r.k === 'ack_config');
+  assert.equal(ack && ack.b.err, 'no_echo');
+});
+
+test('echo window: an $ALCD for slot 4 (melee) is never taken as the primary echo', () => {
+  const h = harness().kit().config_();
+  h.frame('$ALCD,1,100,4,0,0,*');                   // the playtest's only echo: slot 4
+  h.adv(1600); h.eng.tick();
+  assert.equal(h.eng.ammoEcho, null, 'only a slot-0 $ALCD is the primary echo');
+  h.config_();
+  h.frame('$ALCD,1,100,4,0,0,*'); h.frame('$ALCD,32,100,0,192,0,*');
+  h.adv(1600); h.eng.tick();
+  assert.equal(h.reports.filter(r => r.k === 'ack_config').pop().b.gun_echo, '$ALCD,32,100,0,192,0,*');
+});
+
 test('A37: a NEW head re-opens the echo window that a button had closed', () => {
   const h = harness().kit().config_();
   h.frame('$BUT,0,1,*');
