@@ -561,6 +561,35 @@ def test_driver_setup_configs_then_spawns_all_guns():
     assert spawned == {"g1", "g2"}
 
 
+def test_f206_the_driver_re_sends_each_guns_tid_right_after_every_spawn():
+    """F206 candidate: setup, respawn and a reconnect re-spawn all write `$TID,<team>` straight after `$SPAWN,,*`,
+    per gun, mirroring engine.js `_tidAfterSpawn`. An infection flip's new team is the one re-sent."""
+    sent = []
+
+    async def sender(pid, frame):
+        sent.append((pid, frame))
+
+    def pairs(pid):
+        frames = [f for p, f in sent if p == pid]
+        return [(frames[i], frames[i + 1] if i + 1 < len(frames) else None)
+                for i, f in enumerate(frames) if f == "$SPAWN,,*"]
+
+    drv = GameDriver(GameConfig(mode="tdm", game_time_s=0, respawn_s=5), {"g1": 1, "g2": 2}, sender,
+                     announce=lambda *_: None)
+    asyncio.run(drv.setup())
+    assert pairs("g1") == [("$SPAWN,,*", "$TID,1,*")] and pairs("g2") == [("$SPAWN,,*", "$TID,2,*")]
+    sent.clear()
+
+    async def scenario():
+        await drv.execute(drv.feed("g1", hir(2), now=0.0))
+        await drv.execute(drv.feed("g1", death(), now=0.0))
+        await drv.execute(drv.tick(now=5.0))
+        await drv.execute([SetTeam("g1", 3)])
+        await drv.execute([Respawn("g1")])
+    asyncio.run(scenario())
+    assert pairs("g1") == [("$SPAWN,,*", "$TID,1,*"), ("$SPAWN,,*", "$TID,3,*")], sent
+
+
 def test_a_burst_task_collected_after_the_loop_closed_does_not_print_a_traceback():
     """F55: `_play_burst`'s `finally` called `asyncio.current_task()`, which RAISES once the loop is gone
     (a still-pending burst garbage-collected after `asyncio.run()` closed the loop). The suite reported

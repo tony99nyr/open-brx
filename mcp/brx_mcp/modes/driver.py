@@ -219,13 +219,24 @@ class GameDriver:
             if critical:
                 self.arming_failures.setdefault(pid, []).append(frame)
 
+    def _tid_after_spawn(self, pid: str, frames) -> list[str]:
+        """F206 candidate, UNVERIFIED on hardware: re-send this gun's `$TID` right after every `$SPAWN`.
+        The CLI mirror of engine.js `_tidAfterSpawn` (docs/bench-f206-tid-rung.md decides it). Reads
+        `self.players`, so an infection `SetTeam` is already in it when the next respawn goes out."""
+        out: list[str] = []
+        for f in frames:
+            out.append(f)
+            if f == "$SPAWN,,*":
+                out.append(f"$TID,{self.players[pid]},*")
+        return out
+
     # -- action execution ---------------------------------------------------- #
     async def execute(self, actions: list[Action]) -> None:
         for a in actions:
             if isinstance(a, SendFrame):
                 await self._send(a.player_id, a.frame)
             elif isinstance(a, Respawn):
-                for f in RESPAWN_SEQUENCE:
+                for f in self._tid_after_spawn(a.player_id, RESPAWN_SEQUENCE):
                     await self._send(a.player_id, f)
                 await self._paint_headset(a.player_id)      # $SPAWN clears the headset (bench 09-03)
                 await self._paint_event(a.player_id, "respawned")
@@ -283,9 +294,11 @@ class GameDriver:
         for pid in self.players:
             await self._arm_one(pid)
         # ... THEN spawn all guns back-to-back so they start ~together (B10 barrier)
-        for f in spawn_frames:
-            for pid in self.players:
-                await self._send(pid, f)
+        per_gun = {pid: self._tid_after_spawn(pid, spawn_frames) for pid in self.players}
+        for i in range(max((len(f) for f in per_gun.values()), default=0)):
+            for pid, frames in per_gun.items():
+                if i < len(frames):
+                    await self._send(pid, frames[i])
         for pid in self.players:
             await self._paint_headset(pid)
         self.announce(f"game live: {self.config.summary()}")
@@ -462,7 +475,7 @@ class GameDriver:
         action brings it back on schedule), avoiding a gun-alive/engine-dead desync."""
         await self._arm_one(pid)
         if self._player_alive(pid):
-            for f in self.config.spawn_frames():
+            for f in self._tid_after_spawn(pid, self.config.spawn_frames()):
                 await self._send(pid, f)
 
     async def teardown(self) -> None:

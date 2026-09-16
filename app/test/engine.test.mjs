@@ -1095,6 +1095,33 @@ test('auto respawn writes revive and emits respawn', () => {
   assert.ok(h.facts.some(f => f.type === 'respawn'));
 });
 
+test('F206: every $SPAWN is followed at once by the head\'s $TID (spawn and revive), and a flip re-sends the NEW tid', () => {
+  const after = (w, tid) => { const i = w.indexOf('$SPAWN,,*'); return i >= 0 && w[i + 1] === `$TID,${tid},*`; };
+  const h = harness().kit().config_().echo();
+  h.writes.length = 0; h.start(0); h.adv(10); h.eng.tick();
+  assert.ok(after(h.writes, 1), `spawn: $SPAWN then $TID,1 -- got ${h.writes.join(' ')}`);
+  h.frame('$HIR,4,0,19,2,9,0,3,*'); h.frame('$HP,0,0,0,*');
+  h.writes.length = 0; h.adv(8000); h.eng.tick();
+  assert.equal(h.eng.alive, true);
+  assert.ok(after(h.writes, 1), `revive: $SPAWN then $TID,1 -- got ${h.writes.join(' ')}`);
+  assert.equal(h.writes.filter(f => f === '$SPAWN,,*').length, h.writes.filter(f => f.startsWith('$TID,')).length, 'one $TID per $SPAWN, no more');
+  // infection: the flip moves the gun, so the $TID after the flip's $SPAWN and every later revive is the NEW team
+  const b = { ...golden, player_id: 'p1', team_flip: { '2': ['$TID,2,*', ...golden.revive] } };
+  const writes = []; let clock = 1e6;
+  const eng = new Engine({ writer: f => writes.push(...f), emit: () => {}, report: () => {}, now: () => clock, synced: () => true, storage: mkStorage(), log: () => {}, delay: (ms, fn) => fn() });
+  const config = { config_id: 'g', mode: 'infection', environment: 'indoor', night: false, time_limit_s: 300, respawn: { type: 'auto', delay_s: 8 }, scoring: { frag_limit: null, win_by: 'survival' }, health: { max_hp: 45, max_armor: 70 }, teams: [{ team_id: 'human', tid: 1, name: 'HUMAN', color: 'blue' }, { team_id: 'inf', tid: 2, name: 'INFECTED', color: 'red' }] };
+  eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  eng.onMcMessage({ kind: 'assign', body: { player: { player_id: 'p1', player_num: 7, display: 'X', team_id: 'human', loadout: { weapons: [{ weapon_id: 'assault_rifle' }] }, voice: 'male' }, team: { team_id: 'human', tid: 1, name: 'HUMAN', color: 'blue' }, roster: [] } });
+  eng.onMcMessage({ kind: 'config', body: { config, frames: b, roster: [] } }); eng.feedFrame('$LCD,0,0,0,0,0,0,*');
+  eng.onMcMessage({ kind: 'start', body: { match_id: 'm', go_live_t: clock, config_id: 'g', seq: 1, countdown_s: 0 } });
+  clock += 10; eng.tick();
+  writes.length = 0; eng.feedFrame('$HIR,4,0,19,2,9,0,3,*'); eng.feedFrame('$HP,0,0,0,*');
+  assert.ok(after(writes, 2), `flip: $SPAWN then $TID,2 -- got ${writes.join(' ')}`);
+  assert.ok(!writes.includes('$TID,1,*'), 'the flip never re-sends the old team');
+  writes.length = 0; clock += 8000; eng.tick();
+  assert.ok(after(writes, 2), `a later revive keeps the flipped team -- got ${writes.join(' ')}`);
+});
+
 test('B5: a stale zero-HP echo right after a respawn is not a phantom death, and a fast real kill right after it still counts', () => {
   // Field evidence 2026-09-12: 0.55 s after an auto-respawn the engine emitted a death with shooter_num 0
   // ("by UNKNOWN"), then ~2 s of real hits from a shooter, and the real kill was swallowed (`alive` was

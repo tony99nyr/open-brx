@@ -1185,6 +1185,40 @@ KNOWN_UNMIRRORED = {
 }
 
 
+def test_f206_the_stage_re_sends_the_heads_tid_right_after_every_spawn_like_the_phone():
+    """F206 candidate: engine.js `_tidAfterSpawn` writes `$TID,<tid>` straight after `$SPAWN,,*` on spawn and
+    revive. The stage must write the same order, or a bench rung run from the stage tests a different gun."""
+    from test_stage import mk
+    import re as _r
+    js = (_ENGINE_JS.read_text(encoding="utf-8"))
+    assert "this._tidAfterSpawn(this.frames.spawn)" in js and "this._tidAfterSpawn(this.frames.revive)" in js, \
+        "engine.js no longer routes spawn/revive through `_tidAfterSpawn` -- re-check this mirror"
+
+    def after_spawn(frames: list[str], tid: int) -> bool:
+        i = frames.index("$SPAWN,,*")
+        return frames[i + 1] == f"$TID,{tid},*"
+
+    async def run():
+        st, mgr = mk(tid=2)
+        await st.connect("FA:KE:00:00:00:01")
+        await st.arm()
+        head_tid = [f for f in st.bundle["head"] if f.startswith("$TID,")]
+        assert head_tid == ["$TID,2,*"], head_tid
+        st.bundle["cues"]["countdown"] = ""
+        n = len(tx(mgr))
+        await st.spawn(); await settle(st)
+        spawn = tx(mgr)[n:]
+        assert after_spawn(spawn, 2), spawn
+        n = len(tx(mgr))
+        await st.revive(); await settle(st)
+        revive = tx(mgr)[n:]
+        assert after_spawn(revive, 2), revive
+        assert revive.count("$SPAWN,,*") == len([f for f in revive if _r.match(r"\$TID,", f)])
+        # CONTROL: the compiled bundle itself is unchanged -- the re-send is the node's, not MC's
+        assert "$TID,2,*" not in st.bundle["spawn"] and "$TID,2,*" not in st.bundle["revive"]
+    asyncio.run(run())
+
+
 def test_stage_ports_every_engine_method_it_claims():
     """Fails when a NEW `app/src/engine.js` method has no same-named `GunStage` counterpart.
 

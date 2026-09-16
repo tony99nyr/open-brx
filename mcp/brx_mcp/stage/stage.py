@@ -411,6 +411,7 @@ class GunStage:
                                      "last_hir": None, "last_rx": None}
         # the phone-side model (what engine.js keeps) so the overlay plays like the phone's
         self.spawned = False
+        self._gun_tid: int | None = None       # F206: the $TID the written head holds, re-sent after every $SPAWN
         self.alive = False
         self.hp = 45
         self.armor = 70
@@ -1019,6 +1020,8 @@ class GunStage:
         if self.rolled:
             self._log("rolled: " + self.roll_text(), "info")
         await self.write(self.bundle["head"], "arm (head)")
+        tid_frame = next((f for f in self.bundle["head"] if f.startswith("$TID,")), None)
+        self._gun_tid = int(tid_frame.split(",")[1]) if tid_frame else self._gun_tid   # engine.js `_writeHead`
         self.spawned = False; self.alive = False; self.scream_this_life = None   # a fresh head: no scream written yet
         self._reset_hill()                                       # engine.js `_resetHill` on a new match: game 2 must not inherit game 1's point or its once-per-game warnings
         self._prev_ammo = {}; self._prev_reserve = {}; self.active_slot = 0; self.reloading = None   # engine.js `_writeHead`
@@ -1058,7 +1061,7 @@ class GunStage:
         # between clipped the firmware's line). A pre-A15.2 bundle has no cues["spawn"]: nothing is appended.
         fr, tag = self._pick_cue("spawn")
         ps, ps_why = self._scream_take()
-        await self.write(([ps] if ps else []) + list(self.bundle["spawn"]) + [SFLASH] + ([fr] if fr else []),
+        await self.write(([ps] if ps else []) + self._tid_after_spawn(self.bundle["spawn"]) + [SFLASH] + ([fr] if fr else []),
                           "spawn" + ps_why + self._line_tag(fr, tag))
         self._after_spawn()
         hs = self.bundle.get("headset") or {}
@@ -1076,7 +1079,7 @@ class GunStage:
             await self.write([down["stop"]], "down stop", gap_ms=0)
         fr, tag = self._pick_cue("respawned")                  # A15.2: the spawn line rides in the revive write (one line, never two)
         ps, ps_why = self._scream_take()                       # A15.3: a fresh death scream for this life, written before $SPAWN
-        await self.write(([ps] if ps else []) + list(self.bundle["revive"]) + ([fr] if fr else []),
+        await self.write(([ps] if ps else []) + self._tid_after_spawn(self.bundle["revive"]) + ([fr] if fr else []),
                           "revive" + ps_why + self._line_tag(fr, tag))
         self._after_spawn()
         self._moment = ("redeploy", self.now())                       # engine.js `_revive`: the HUD's rarer moment (gates a pool rise for RARE_GUARD_S)
@@ -1085,6 +1088,18 @@ class GunStage:
         if hs.get("respawn"):
             self._headset(hs["respawn"], "headset respawn")
         return self.state()
+
+    def _tid_after_spawn(self, frames: list[str]) -> list[str]:
+        """F206 candidate, UNVERIFIED on hardware: re-send the gun's `$TID` right after every `$SPAWN`.
+        Mirrors engine.js `_tidAfterSpawn` (docs/bench-f206-tid-rung.md is the rung that decides it)."""
+        if self._gun_tid is None:
+            return list(frames)
+        out: list[str] = []
+        for f in frames:
+            out.append(f)
+            if f == "$SPAWN,,*":
+                out.append(f"$TID,{self._gun_tid},*")
+        return out
 
     def _after_spawn(self) -> None:
         self.spawned = True; self.alive = True
