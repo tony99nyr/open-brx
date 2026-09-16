@@ -161,6 +161,7 @@ def volume_cmd(level: int) -> str:
 GAME_CONFIG = [
     "$CLEAR,*",
     "$START,*",
+    # t2 stays 0: field 2026-09-13 showed 1 cripples hit reception on the receiving gun.
     "$GSET,1,0,1,0,1,0,50,1,*",
     # tokens 3-5 = HP,armor,shield (45,70,70); tail is the app's audio set
     "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*",
@@ -233,9 +234,8 @@ async def _deathmatch(address: str, minutes: int = 5, respawn_s: int = 15,
     The tagger enforces nothing (§7g) — no clock, no score, no respawn. FFA per
     the manual (§7h) means no teams and friendly fire on, so every hit counts.
 
-    NOTE: the $GSET token encoding is still undecoded, so we send the captured
-    value rather than guessing at a "FFA bit". That is sound precisely because
-    the gun does not enforce modes — FFA lives in this loop, not in the frame.
+    `$GSET` t1 enables friendly fire for FFA. Token 2 stays at the measured-safe
+    value 0; setting it to 1 cripples hit reception on the receiving gun.
     """
     from .ble import ConnectionManager
     if weapon not in WEAPON_TAILS:

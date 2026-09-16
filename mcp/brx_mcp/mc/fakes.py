@@ -7,6 +7,7 @@ import random
 import time
 from typing import Callable
 
+from ..gameconfig import GSET_T2_SAFE
 from .compile import HEADSET_ALERT_BRIGHTNESS, VOL_TRYOUT, play_volume   # one volume policy for the real and the fake paths
 from . import frames as _frames        # A36: a fake gun answers from the head it was actually sent
 from .types import (ArmoryRecord, FrameBundle, GameConfig, PerkView, Player, ScanRow, Team, Weapon,
@@ -73,7 +74,7 @@ class FakeCompiler:
         hp, ar = config["health"]["max_hp"], config["health"]["max_armor"]
         weapons = [w["weapon_id"] for w in player["loadout"]["weapons"]] or ["assault_rifle"]
         head = [f"$VOL,{play_volume(config.get('environment'))},0,*", "$CLEAR,*", "$START,*",
-                f"$GSET,{1 if config['mode'] == 'ffa' else 0},{1 if config['environment'] == 'outdoor' else 0},1,0,1,0,50,1,*",
+                f"$GSET,{1 if config['mode'] == 'ffa' else 0},{GSET_T2_SAFE},1,0,1,0,50,1,*",
                 f"$PSET,{player['player_num']},0,{hp},{ar},{ar},50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"]
         head += [f"$WEAP,{i},<{w}>,*" for i, w in enumerate(weapons[:2])] + ["$WEAP,4,<melee>,*"]
         # F121/A23: this class is a RUNTIME FALLBACK that can reach a real tagger, so it is spawn-protected
@@ -97,7 +98,7 @@ class FakeCompiler:
         # This class is a RUNTIME FALLBACK -- `mc/__main__.py` selects it whenever the real compiler
         # raises -- so this bundle can reach a real tagger, and without the row it would leave that
         # player unhittable for the match. `test_clear_safety` now enumerates this file.
-        return [f"$VOL,{VOL_TRYOUT},0,*", "$CLEAR,*", f"$GSET,0,{1 if environment == 'outdoor' else 0},1,0,1,0,50,1,*",
+        return [f"$VOL,{VOL_TRYOUT},0,*", "$CLEAR,*", f"$GSET,0,{GSET_T2_SAFE},1,0,1,0,50,1,*",
                 "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*",
                 "$SIR,0,0,,1,0,0,1,,*",
                 f"$WEAP,0,<{weapon['weapon_id']}>,*", "$SPAWN,,*", "$PLAYX,0,*", "$AMMO,0,36,108,1,*", "$BMAP,0,0,,,,,*"]

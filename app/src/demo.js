@@ -52,7 +52,7 @@ export function startDemo({ engine, log }) {
   // fake MC's 300 ms. `ev.slowAck(ms)` stretches the MC half so the arming state can be LOOKED at.
   let ackDelayMs = 300;
   const tutorialFor = w => ({ weapon: { ...w, stats: { mag: w.clip, reserve: w.reserve, dmg: w.dmg, rof: w.rpm, rng: w.rng } },
-    frames: ['$VOL,69,0,*', '$CLEAR,*', '$START,*', '$GSET,0,1,1,0,1,0,50,1,*',
+    frames: ['$VOL,69,0,*', '$CLEAR,*', '$START,*', '$GSET,0,0,1,0,1,0,50,1,*',
       // $CLEAR wipes the $SIR table and a gun with no rows ignores EVERY hit (F11), so the
       // real bundle (compile.tutorial_frames) restores it here. The demo omitted the row and
       // so taught a bundle that would leave a real gun unhittable.

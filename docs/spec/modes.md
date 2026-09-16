@@ -51,7 +51,7 @@ contracts §3 `FrameBundle` fields like this:
 
 | bundle field | built from | contents / rules |
 |---|---|---|
-| `head` | `setup_frames()` **minus its trailing `$PLAYX,0` + `$PLAY,VA81`**, then the presentation paints, then `$TID,<player.team.tid>` | `$VOL,<play_volume(environment)>` → `$CLEAR` → `$START` → `$GSET` → **`$PSET,<player_num>,0,<HP>,<armor>,<shield>,…`** → `$WEAP` per loaded slot (melee in slot 4; `$WEAP,1` only when a secondary exists, A10.1) → `$SIR` ×n → `$BMAP` ×n (Easy Reload → `$BMAP,1,97`) → LED / headset pregame frames (A11.6/A11.7) → `$TID`. **Silent by construction and silent on the gun** (bench 2026-08-25 §7r). **Never contains `$SPAWN`.** |
+| `head` | `setup_frames()` **minus its trailing `$PLAYX,0` + `$PLAY,VA81`**, then the presentation paints, then `$TID,<player.team.tid>` | `$VOL,<play_volume(environment)>` → `$CLEAR` → `$START` → `$GSET` (**t2 pinned to 0 at every venue**) → **`$PSET,<player_num>,0,<HP>,<armor>,<shield>,…`** → `$WEAP` per loaded slot (melee in slot 4; `$WEAP,1` only when a secondary exists, A10.1) → `$SIR` ×n → `$BMAP` ×n (Easy Reload → `$BMAP,1,97`) → LED / headset pregame frames (A11.6/A11.7) → `$TID`. **Silent by construction and silent on the gun** (bench 2026-08-25 §7r). **Never contains `$SPAWN`.** |
 | `spawn` | `["$PLAYX,0,*"] + spawn_frames()` | `$PLAYX,0` → `$SPAWN,,` → `$AMMO,<slot>,<mag>,<reserve>,1` per loaded slot (perk `ammo_mult` applied) → `$BMAP,0,0` → the headset team tail when `headset_team` (A11.2). The T-0 tail. |
 | `revive` | `["$SPAWN,,*"] + the $AMMO frames of spawn_frames()` | Respawn re-arm; explicit `$AMMO`s make the *reserve* loadout-correct after a mid-life reload. |
 | `end` | `END_SEQUENCE` | `$SPAWN,,` → `$PLAYX,0` → `$STOP` → `$CLEAR` → `$HLOOP,0,0` → `$HLED,0,0,0,0,0,0` (revives a dead gun so it isn't stuck in death-glow, silences the spawn voice, blanks the headset; `$TID` untouched). The node then plays **`cues.game_over`** (A5.10). |
@@ -79,7 +79,8 @@ contracts §3 `FrameBundle` fields like this:
 `extraction`, `koth`) — how each mode's knobs sit in `GameConfig`, which map to *frames* vs the *host engine*, and
 **which end condition actually reaches a dispersed node**. The gun keeps **no game state** (no mode/clock/
 score/respawn — protocol §7n); mode logic is host-side, and only the combat-surface knobs (weapon, team,
-player id, HP, FF, crit, indoor/outdoor, LED) become frames.
+player id, HP, FF, crit and LED) become frames. Venue still selects volume and presentation, but `$GSET` t2
+is pinned to 0 because t2=1 cripples hit reception.
 
 **End-condition reachability (A4.8).** The only end that reaches every node is the **local time-expiry** at
 `go_live_t + time_limit_s` (node.md §3.9), so **`time_limit_s` is required**. Every other end — frag limit,
@@ -190,14 +191,14 @@ When a weapon is picked at kit-out (host on KIT, or a phone `loadout_request{try
 | Game start | `$START`; `$PLAY,VA81` in the T-0 tail | **no `$START`, no start voice** (the `$SPAWN` chirp is silenced by `$PLAYX,0`) |
 | Player id | `$PSET,<player_num>,…` | `$PSET,0,…` — no identity; a stray try-out hit reports shooter 0, which MC never credits |
 | Team | `$TID,<team>` | **no `$TID` written** — the gun keeps its last colour (no "no team" colour exists) |
-| `$GSET` | full game settings | minimal (env from `environment`, FF off) so a stray shot is inert |
+| `$GSET` | full game settings, with t2 pinned to 0 | minimal, with t2 pinned to 0 and FF off so a stray shot is inert |
 | Weapon slots | primary+secondary+melee | **the single tried weapon in slot 0 only** (a try-out is the raw weapon; perks are not applied) |
 | `$SIR` / scoring | full incoming-IR table | omitted — incoming hits do nothing to *this* gun |
 
 ```
 $VOL,69,0,*                       ; audible at arm's length
 $CLEAR,*                          ; wipe any prior arm
-$GSET,0,<outdoor>,1,0,1,0,50,1,*  ; FF off, env from `environment`; NO $START
+$GSET,0,0,1,0,1,0,50,1,*          ; FF off, receiver kept sensitive; NO $START
 $PSET,0,0,45,70,70,50,,<voice tail>,*  ; identity 0
 $WEAP,0,<catalog tail for weapon> ; the one weapon, slot 0
 $SPAWN,,*                         ; make it live so the trigger works (self-plays the spawn voice)
@@ -244,7 +245,7 @@ Feedback is **best-effort and coverage-zone-only** on the phone path; MC drops a
 
 ## 6. LED / environment — the `led` object and the presentation profile
 
-Environment is two knobs — `environment` (indoor/outdoor → `$GSET` outdoorMode) and `night` — plus the
+Environment is two knobs — `environment` (indoor/outdoor presentation and volume) and `night` — plus the
 presentation profile's `gun` / `headset` blocks (contracts §3, A11.6/A11.7), which have replaced the earlier
 free-form `led` object for everything but the night blank.
 
@@ -262,9 +263,13 @@ free-form `led` object for everything but the night blank.
 
 | Environment | `environment` / `night` | Frames |
 |---|---|---|
-| **Indoor** | `indoor` / false | `$GSET,…,outdoorMode=0,…`; body + headset per `presentation` (default team) |
-| **Outdoor (day)** | `outdoor` / false | `$GSET,…,outdoorMode=1,…` (longer IR range profile) |
+| **Indoor** | `indoor` / false | `$GSET` t2 = 0; body + headset per `presentation` (default team); volume 80 |
+| **Outdoor (day)** | `outdoor` / false | `$GSET` t2 = 0; outdoor presentation; volume 90 |
 | **Night** | any / true | `$GLED,,,,5,,,*` + no `leds` bursts; the HUD blackout |
+
+`$GSET` t2 is pinned to 0 in every compiled head, tutorial and utility path. Field testing on 2026-09-13
+showed t2=1 cripples hit reception on the receiving gun; it is not the physical ALT-hold control. The theory
+that t2=1 rejects reflected indoor shots is untested, so venue must not select it.
 
 `is_night_mode()` mirrors `gameconfig.is_night_mode`; `night` also drives the node's blackout HUD.
 

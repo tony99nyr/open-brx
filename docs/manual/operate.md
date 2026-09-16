@@ -1,5 +1,5 @@
 # Operating the BRX
-Last verified: 2026-09-09
+Last verified: 2026-09-13
 
 This page covers stock BRX gear: a tagger, a headset, maybe a grenade, and the Callsign app. It
 gets you from box on the table to a game running, using no laptop, cable, or BLE protocol; that
@@ -29,8 +29,8 @@ Charge it, pair it, sight it, play.
    devices are around.
 4. Watch the headset settle. A slow rainbow blink that never stops means it is not paired: see
    Pairing the Headset below. Once paired it shows the gun's team colour.
-5. Set indoor or outdoor mode for where you will play (hold ALT 3 s). It changes IR range and
-   LED brightness, and it sticks across power cycles.
+5. Set indoor or outdoor mode for where you will play (hold ALT 3 s). Outdoor mode widens the
+   beam's aim tolerance, and the setting sticks across power cycles.
 6. Sight the laser in target mode before your first real game (hold LEFT while powering on).
 7. Pick a game on the gun with LEFT/RIGHT, pull the trigger to select, then pull the reload
    handle to start.
@@ -151,31 +151,30 @@ and abilities are in the Gameplay section.
 
 ## Indoor vs Outdoor Mode
 
-One three-second hold changes your range, your LEDs and your blast radius.
+One three-second hold changes the width of the effective beam and the gun's venue presentation.
 
 **Switching modes:**
 
 1. Hold ALT for 3 seconds at any time. The gun announces the new mode.
 2. Leave it. The setting persists across power cycles, so you set it once per venue.
-3. Host from the Callsign app instead? Its per-game Outdoor mode toggle sets the same thing.
-4. Driving a gun from your own code? The field looks like `$GSET` token 2, `outdoorMode`, with
-   token 3 `gunLaserRegion` carrying the IR power limit. Both names and mappings come from
-   decoding the app: setting either over Bluetooth and watching the gun change is untested. Both
-   are in the developer reference.
+3. At an outdoor venue, set every gun to outdoor mode for the wider aim tolerance.
+4. Driving a gun from your own code? Do not treat APK-named `$GSET` token 2, `outdoorMode`, as
+   this physical toggle. It is a separate receiver control; the developer reference has the measured details.
 
 **What changes:**
 
 | | Indoor | Outdoor |
 |---|---|---|
+| Aim tolerance | about 1.5 sight-dot widths off centre | about 3 sight-dot widths off centre |
+| Native shot reach | about 200 ft in the field test | about 200 ft in the field test |
 | Green hit LEDs | dimmed | full brightness |
 | RGB headset LEDs | enabled | bright-sun visibility is poor on any headset |
 | Explosion / melee range | shrunk | full |
-| Station / respawn-signal reach | shorter, because the forward IR projection scales with mode | ~18-20 ft to a respawn station |
 | Gun hit radius | n/a | bright sunlight cuts it roughly in half (IR noise filtering) |
 
-> **Tip.** Use indoor mode indoors, even in a big room. Full-power IR in a small space bounces
-> off walls, and a bounce can land on your own headset. A gun can drain its own armor by firing at
-> a wall a few feet away.
+The width measurements were repeated on three guns. Separately, there is an untested theory that
+`$GSET` token 2 set to 1 rejects reflected indoor shots. That theory concerns the Bluetooth field, not
+the physical ALT-hold mode.
 
 ## Sighting the Laser
 

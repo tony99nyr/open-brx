@@ -1,16 +1,10 @@
-"""T1-C: MC driving the gun's indoor/outdoor (IR range) mode over BLE — the GATE, not the fix.
+"""T1-C: disabled candidate controls for emitted IR, plus the shipped t2 reception guard.
 
-Field evidence (2026-09-12, `bug-dossier-2026-09-12.md` B6 / FOLLOWUPS **F162**): outdoor hit rates
-ran ~7-32% against ~41% indoor, and Tony could not register a hit at 30-40 ft outside. The gun has a
-native indoor/outdoor toggle (hold ALT 3 s) that changes IR range and LED brightness and PERSISTS
-across power cycles (`docs/manual/operate.md`), and `$GSET` token 2 (`outdoorMode`) is the APK name
-for the same setting — but **no candidate command has ever been flipped on a bench with a receiver
-control**, so whether ANY of them moves emitted IR range is UNKNOWN.
+Field evidence 2026-09-13 separated two controls that this file previously treated as candidates for
+the same behavior. The native ALT-hold toggle changes beam width and persists across power cycles.
+`$GSET` t2 changes hit reception and must ship 0. Neither is an emitted-range control.
 
-⚠ THE INVARIANT THIS FILE EXISTS FOR: **shipping must not change what a gun emits today.**
-`DRIVE_IO_MODE` is `"off"`, every compiled head is byte-identical to the pre-gate head, and the
-candidate frames are only reachable by editing that one constant at the bench (Runs C/D/E in
-`docs/experiment-log/2026-09.md`'s 2026-09-12 range entry).
+The separate t3 and `$IRTX` emitted-range candidates remain disabled and unconfirmed.
 
 Run: python3 run_tests.py venue_mode
 """

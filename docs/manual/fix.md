@@ -1,5 +1,5 @@
 # Fix, mod and accessorise
-Last verified: 2026-09-12
+Last verified: 2026-09-13
 
 Diagnose a tagger that won't fire, work through the fix ladders for pairing, sound and battery,
 and see what the community repairs, mods and accessories actually look like.
@@ -196,8 +196,8 @@ When the gun fires but nothing lands, nothing is heard, or nothing lasts.
    noise filtering. Range is best in shade and at night. Typical max is ~600 ft in good
    conditions.
 4. **Wrong indoor/outdoor mode?** → Hold ALT for 3 s to toggle it. The setting survives power
-   cycles. Indoor dims the green hit LEDs, turns on the RGB LEDs, and shrinks explosion and melee
-   range. Outdoor projects further.
+   cycles. Outdoor mode roughly doubled aim tolerance on three guns, while native shots reached
+   about 200 ft in both states. The field test found no emitted-range change.
 5. **Is the scope sighted?** → Boot in target mode (hold LEFT at power-on: yellow team, 0 damage,
    unlimited ammo). Direct hits flash the target green. Sight indoors at ~20 ft and outdoors at
    ~300 ft. Snipers want 300–400 ft; shotgun and SMG want 50–100 ft.

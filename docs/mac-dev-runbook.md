@@ -6,6 +6,22 @@ session in which several hours went on problems that are all listed here.
 
 The MATCH-DAY guide is [`field-runbook-mc.md`](field-runbook-mc.md). This is the DEVELOPMENT one.
 
+### Match-day shortcut
+
+After the one-time setup, from the repository root run:
+
+```bash
+pnpm mc
+```
+
+This checks the prepared Python environment and Mission Control UI, refuses occupied ports, starts the
+authenticated server, opens the exact token-bearing URL in the Mac browser, and writes a launch record
+under `~/.brx-mcp/sessions/<launch-id>/`. The directory contains `mc.log`, `session.sqlite`,
+`manifest.json`, and `mc-session.json`.
+
+After a run, create its diagnostic index with `pnpm mc:collect` (or pass a launch id). The launcher keeps
+authentication enabled and never copies the private armory file.
+
 ---
 
 ## 1. First-time setup (none of this is in git)

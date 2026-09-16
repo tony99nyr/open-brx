@@ -1,5 +1,5 @@
 # Developer reference
-Last verified: 2026-09-12
+Last verified: 2026-09-13
 
 This is the interoperability spec for the BRX tagger and headset: transport, framing, every known command and event with its field map, the `$WEAP` / `$GSET` / `$PSET` / `$SIR` tables, the optical IR word, the USB console, and the headset link. Every command, token, field name and wire value on this page is literal.
 
@@ -108,7 +108,7 @@ Every known command, with args and meaning: host to tagger, tagger to host, and 
 | `$CONNECT,*` / `$INIT,*` | >> | n/a | On the known-safe list. Sent on v4.32: **no observable reply**. |
 | `$CLEAR,*` | >> | n/a | Clear current game state. First frame of every arm sequence; half of the panic sequence. **It also wipes the `$SIR` table**, and because unmatched `$SIR` cells are silently ignored, a gun left with no rows ignores every hit while still reporting alive: no `$HIR`, no headset flash, pools untouched. Always re-send `$SIR` after `$CLEAR`. |
 | `$START,*` | >> | n/a | Begin the configuration sequence. Gun echoes `$LCD,0,0,0,0,0,0,*`. |
-| `$GSET,…,*` | >> | 8 tokens | Global game settings: friendly fire, indoor/outdoor, region, ambient light, gyro, BT secondaries, crit modifier, mods. **No respawn/time/lives token.** See the `$GSET` and `$PSET` section. |
+| `$GSET,…,*` | >> | 8 tokens | Global game settings: friendly fire, APK-named `outdoorMode`, region, ambient light, gyro, BT secondaries, crit modifier, mods. Token 2 is a measured receive gate, not the physical indoor/outdoor toggle. **No respawn/time/lives token.** See the `$GSET` and `$PSET` section. |
 | `$PSET,…,*` | >> | id, 0, HP, armor, shield, 50, , voice-pack… | Player settings: **token 1 = player id (0-63)**, tokens 3-5 = HP/armor/shield pools, then a positional voice pack. See the `$GSET` and `$PSET` section. |
 | `$WEAP,<slot>,…,*` | >> | slot 0-5 + ~43 tokens | Define a weapon in a slot: damage, fire interval, fire mode, clip/reserve, reload, sounds, IR type. See the `$WEAP` section. |
 | `$SIR,<proto>,<subtype>,<sound>,<fn>,p5,p6,p7,p8,*` | >> | 8 tokens | Incoming-IR effects matrix: what an IR word with protocol B / subtype U does to this gun. **Unmatched cells are silently ignored.** See the `$SIR` section. |
@@ -307,8 +307,8 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | 38 | overheat param B | n/a | 150 | See t37. |
 | 39 | clipStartingAmmo | 32 | 100 | Equals t16 in every captured frame. |
 | 40 | ammoReserv | 9999999 | 9999999 | Reserve; 9999999 = unlimited. `t17 == 2 × t40` in stock frames. |
-| 41 | gunRangeIndoor | 75 | 75 | **The gun's INDOOR IR range**, as a percent. The APK field order places `gunRangeIndoor` here, between `ammoReserv` (t40) and `extraHeadsetRangeIndoor` (t42), and it reads 75 on all eighteen guns and **20 on melee**, which is the direction physics demands. `$GSET` token 2 selects whether the indoor or outdoor profile is live. **Lowering this is the most promising route to a weaker indoor beam** for tight spaces where bounced IR registers hits. Untested on the bench. |
-| 42 | extraHeadsetRangeIndoor | n/a | n/a | The **headset's** indoor range, separate from the gun's (t41). 30/30/40 on the three t1=2 weapons, blank elsewhere. There are four range fields in all: gun and headset, each with an indoor and an outdoor value. |
+| 41 | gunRangeIndoor | 75 | 75 | APK name `gunRangeIndoor`. It reads 75 on all eighteen guns and 20 on melee. Whether it changes emitted range is untested; `$GSET` token 2 does not select an emitted-range profile. |
+| 42 | extraHeadsetRangeIndoor | n/a | n/a | APK name `extraHeadsetRangeIndoor`. It is 30/30/40 on the three t1=2 weapons and blank elsewhere. Its effect is untested. |
 
 > **Two positions to get right.**
 >
@@ -371,7 +371,7 @@ These two frames set the on-gun rules and the player's pools, identity and voice
 | # | Field | Captured | Meaning |
 |---|---|---|---|
 | 1 | friendlyFire | 0 / 1 | **Firmware-enforced, both directions.** 0 blocks same-team damage *and* heals from enemies; 1 opens the gate. Replicated twice with alternating values plus control (one 2026-09-07 bench run registered team hits the other way round and is still unexplained; treat the rule as documented, not proven). |
-| 2 | outdoorMode | 0 | The **indoor/outdoor** setting, the same one the gun toggles natively on a 3 second ALT hold. Outdoor raises IR range, hit-LED brightness and blast radius; indoor shrinks them. See [Operating the BRX](/manual/operate). Field name and mapping are APK-decoded; **setting it over BLE and observing the change is untested**. |
+| 2 | outdoorMode | 0 | APK field name only. **This is not the physical ALT-hold toggle and it does not change emitted range.** It gates reception on the gun receiving a shot: at 30 ft, t2=1 registered 0 hits from a full clip and worked only from inches; t2=0 registered 16 of 27 shots and then every aimed shot under the same field conditions. Open BRX pins it to 0 at both venues, including try-outs and utility paths. What t2=1 physically changes, whether it affects every sensor equally, and whether it rejects indoor reflections are untested. The physical ALT toggle separately widened aim tolerance by roughly 2x on three guns; native shots reached about 200 ft in both toggle states. See [Operating the BRX](/manual/operate). |
 | 3 | gunLaserRegion | 1 | **IR transmit power, as a regional legal limit** (USA vs International). This is the one field that looks like a direct power control, so it is the first thing to try if you want a weaker beam for indoor play. APK-decoded; **untested on the bench**, and whether it is two coarse levels or finer is unmapped. |
 | 4 | autoAmbientLight | 0 | APK field name. The user guide describes a sunlight IR-noise filter; whether this field is that control is unmapped. Not exercised on the bench. |
 | 5 | gyroscope | 1 | APK field name; not exercised on the bench. |

@@ -1,6 +1,6 @@
 # Followups — open work only
 
-Updated: 2026-09-14. **Everything in this file is open.** Closed items are in
+Updated: 2026-09-16. **Everything in this file is open.** Closed items are in
 [`archive/followups-closed.md`](archive/followups-closed.md), verbatim and ordered by close date; the evidence
 behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date). Session close = strike or
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
@@ -526,26 +526,14 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   `space` (bench 2.1).
 - **Q16 🟠** beam divergence: on-axis then 10–50° off-axis at 3 m, 10 shots each, closing control. Sharp fall-off ⇒ skip
   the snoot, cut power (t41, then an aperture attenuator). Black plastic is IR-transparent at 980 nm; test any snoot. `space` (bench 2.4).
-- **F162 🟠 Needs Tony at the bench** no outdoor IR range (filed as F135 on the fix branch; renumbered on the 2026-09-12 integration, see the header): 2026-09-12 field session, Tony could not register a hit at
-  30-40 ft outside; point blank worked (`bug-dossier-2026-09-12.md` B6). MC ships `$WEAP` t41 (`gunRangeIndoor`) at
-  75 for every weapon regardless of venue (weapons.json `rng:75`; `compile.py` never raised it) — the outdoor flag
-  only changes `$VOL` and `$GSET` t2. **The opposite direction from Q15** (Q15 is indoor over-range/bounce; this is
-  under-range outdoors). ⚠️ Whether t41 changes emitted IR range AT ALL is UNTESTED
-  (`protocol/brx-protocol.md` ~L272) — do not ship a blind value off this row. **Bench procedure: see
-  `docs/experiment-log/2026-09.md`'s 2026-09-12 entry** — sweep `$WEAP` t41 across values at fixed distances,
-  separately toggle `$GSET` t2 as a control, record hit/no-hit. Compile-side plumbing
-  (`RANGE_ENV_OVERRIDE`/`gun_range_pct` in `mc/compile.py`) is staged as a NO-OP (outdoor == indoor == 75) behind
-  this id; flip the one "outdoor" value there once the sweep lands a confirmed number.
-  **2026-09-13 — three more runs and a second gate.** The same entry now carries **Run C** (`$GSET` t3
-  `gunLaserRegion` in isolation, with a control cell at each distance), **Run D** (is the on-gun ALT-hold state the
-  same bit as `$GSET` t2? BLE capture while holding ALT, then a power-cycle read-back — **run this one first if
-  bench time is short**, it decides whether MC can own the venue at all), and **Run E** (`$IRTX` at 10/20/30/40 ft,
-  plus a "does it stick" trigger pull). The compile side for C and E is `DRIVE_IO_MODE` in `mc/compile.py`
-  (`"off"` → the head stays byte-identical; `GSET_T3_BY_ENV` / `IRTX_BY_ENV` hold the values), pinned by
-  `mcp/tests/test_venue_mode.py`. ⚠️ `$IRTX` has TWO field lists and the 4-field one is wrong (it already emitted
-  zero IR) — read the `$IRTX` row in `protocol/brx-protocol.md` before sending it. Until a run lands, the operator
-  does it by hand: MC shows "SET EACH GUN TO INDOOR/OUTDOOR (HOLD ALT 3 S)" on GAMES and KIT (`ui/VenueModeReminder`).
-  `space` (bench) + `trigger`.
+- **F162 🟠 Needs Tony at the bench** characterise the remaining venue controls after the 2026-09-13
+  receiver finding. `$GSET` t2=1 crippled reception; player and utility heads must keep t2=0 at both venues
+  (F197/F198). The native ALT toggle changed aim tolerance, with hits at ~200 ft in both states; it is not
+  the remedy for the outdoor reception failure. `$WEAP` t41 matches the stock catalogue at both venues.
+  Its emitted-power effect and `$GSET` t3's effect remain unmeasured: `RANGE_ENV_OVERRIDE` stays a no-op
+  and `DRIVE_IO_MODE` stays `off`. Do not enable either from the old range theory. Any future sweep needs
+  fixed shooter/receiver controls and a closing control; keep t2=0 throughout. ALT notification/read-back
+  is F169; indoor reflections are F198. See `HANDOFF-gset-t2-2026-09-13.md` for the field evidence. `bench`.
 - **Q18 🟡** ✅ the print half closed 2026-09-11 (late, second session): `modes/driver.py` probes `$PHONE` and waits for the gun's `$BUT`
   before it prints, counts or re-arms a reconnect (`test_reconnect_is_not_declared_until_the_gun_answers_the_probe`). Still untested: can a gun absent at START join a running match? `build` + `space`.
 
@@ -989,12 +977,12 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
 - **F106 🟢 STATION-ARMING LOWS FROM THE 2026-09-11 POLISH PASS (PR #1).** ✅ (a) (b) (c) (d) (e) (i) fixed 2026-09-11 (late, second session); **(f) (g) (h) stand.** The original list, for the record: (a) `abort_start` leaves `_game_no_started` set, so the next muster push bumps the game byte though no match ran (harmless: the point resets to neutral; the ITEMS "GAME n" counter drifts); (b) `net.py _fire_node` never forwards `app_ver`, so `station.app_ver` is always None off a real socket; (c) a node that was bound as a player and re-hellos as `utility` keeps its `node_player` entry; (d) `_finish` still sends `pull_log` to utility nodes and `abort_start` still broadcasts to them (noise); (e) `engine.js _stationAllowed` is PERMISSIVE when `config.stations` is absent, so clearing the LAST station re-opens the allow-list to everything (matches the seven-tap hand-arm fallback; the `types.py` comment should say so); (f) `control.js` credits possession from `Date.now()` unclamped, so a forward clock step is credited to the owner in full (a cap would also under-report; decide a bound); (g) ITEMS: "n/m ARMED" excludes a card whose only flag is BATTERY LOW; CLEAR has no confirm and the phone keeps advertising the old assignment with nothing on the card saying so; `TID_NAME` hardcodes colour names where LOBBY uses `teams[].name`; the PHONE/LINK rows are unpaired spans for a screen reader; the Recap `warnings` block is styled like PROVISIONAL; (h) `delay_s: 0` still means 10 s on the node with no message; (i) API.md omits `app_ver` from `StationView`; the mock's `online` is always true so OUT OF WI-FI cannot be demoed. `build`.
 - **F107 🟢 LOWS FROM THE 2026-09-11 (LATE, SECOND SESSION) POLISH LOOP.** Noted, not fixed: (a) `net.py _fire_node` never forwards `gun_fw` while `_on_node` copies a `fw` key that never arrives (the `app_ver` shape again); (b) `_role_due` is not cleared on end/recall/panic (the phase gate in `_push_role` covers it); session.json `v` stays 1 though the shape gained `stations`/`game_no`; (c) F57 suppresses the grunt even when the profile writes no `hurt` line (announcer off, pre-A15 bundle): one fully silent hit per life there; (d) a reload pull while stunned starts the HUD RELOADING takeover off the frozen pre-stun reserve; (e) the stage logs a `warn` on every EMP because no profile carries `stunned`/`stun_over` cues (the phone is silent) — **candidates surfaced 2026-09-11 (evening) from the S1 `fx:hit` pass: H20/H21, "hit then electrical pulse, could be EMP disable"** — not auditioned in context, just noted while auditing the wider `fx:hit` batch; (f) `utility.js` `?stage` persists `settings.mc = 'stage://mc'`; (g) `Recap.tsx STATION_TID_NAME` duplicates `Items.tsx TID_NAME`; `types.py Stun.duration_s` is `int` while the validator accepts a float; contracts §10 rows A18-A20 sit above A1; CLAUDE.md still says amendments A1-A14; (h) E1 leftovers: no Designer editor for `mode_params` (not even read-only) and no phone-side consumer; (i) A19 leftovers: `beacon` / `extracted` have no MC-side signal (see S10); (j) `_endReconcile` re-arms with the frame's `$AMMO` but leaves `_prevAmmo`/`_prevReserve` at the pre-drop pair, so a stun before the next `$ALCD` restores the older (lower) pair -- never a refill, same shape on the stage; (k) `restore_snapshot` resets an out-of-range stored `mode_params` value to its default with no log line; (l) the `role: utility` status from a bound player logs once per heartbeat. `build`.
 
-- **F170 🔴 Needs Tony at the bench** ⭐ THE RANGE CONTROL, in this order, like for like, same spot and same light:
-  native IN A GAME at the measured distance and again at 30-40 ft, then ours with MC's config pushed at the same two.
-  2026-09-13: a target-mode test at ~200 ft (80 natural paces, measured) hit 100% with precise aim on three guns, both
-  weapons, both toggle states, and a real native FFA game hit at that distance too. So the emitters, the receiving
-  headset and the game path all reach ~200 ft and a stuck indoor mode is NOT the cause. Native passes; ours is untested.
-  A passes and B fails means the cause is in our compiled frames. `bench`.
+- **F170 🟠 Needs Tony at the bench** repeat the hosted/native control at the far mark (~200 ft),
+  same shooter, receiver, aim and light, with the shipped t2=0 config. The 2026-09-13 handoff answered
+  the 30 ft control: t2=1 gave 0 hits from a full clip; t2=0 gave 16/27, then reliable hits, confirmed
+  again with the shipped outdoor config. Native reached ~200 ft in both ALT states, but the handoff
+  does not record a hosted t2=0 far-mark result. Do not rerun the obsolete range theories first. `bench`.
+
 - **F171 🟠 Needs Tony at the bench** quantify the indoor/outdoor AIM TOLERANCE in a real angle. Measured 2026-09-13 at
   ~200 ft on a red dot: indoor tolerates ~1.5 dot-widths off centre, outdoor ~3. Roughly DOUBLE, on three guns. The
   toggle is a BEAM-WIDTH control, not a range control. Needs F195 to convert dot-widths to degrees. `bench`.
@@ -1047,27 +1035,12 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   exclude `mcp/tests`, so those citations are silently skipped. Worse, it only checks that cited symbols EXIST, never
   that an amendment's citations name THAT amendment, so it could not have caught the 2026-09-13 A41→A42 renumbering in
   either direction. Add the shapes AND a renumbering check, each proven by a deliberately broken case. `build`.
-- **F197 🔴** `$GSET` t2 pinned to 0 (`ed707d7`, `mcp/brx_mcp/gameconfig.py:436`) shipped with **no polish-loop**:
-  one-line change plus five repinned tests, validated only by the Python test suite and a single operator field
-  measurement. No review lenses, no adversarial pass, no UX/field-safety review ran before it reached main. It
-  gates hit RECEPTION on every gun at every venue, so run the loop over it before the next session with players.
-  (filed 2026-09-13 from HANDOFF-gset-t2-2026-09-13.md §3) `build`.
 - **F198 🔴 Needs Tony at the bench** the reflection theory behind `$GSET` t2 is untested and may INVERT the
   current fix. Reading: low sensitivity (t2=1) may be deliberate for INDOOR play, rejecting bounced/reflected
   shots off walls and ceilings, in which case the right end state is `indoor -> t2=1, outdoor -> t2=0` — the
   opposite of what shipped. Test: play indoors at t2=0 (today's pinned value) and look for phantom hits (no line
   of sight, or hits on players nobody aimed at). If they appear, invert the mapping; if not, leave t2 pinned at 0
   everywhere. (filed 2026-09-13 from HANDOFF-gset-t2-2026-09-13.md §3) `bench`.
-- **F199 🟠** the venue reminder shipped 2026-09-13 (telling the operator to set every gun to outdoor) is now
-  justified by a disproved rationale: it was written on the belief that indoor mode shortens IR range, and it
-  doesn't — the on-gun ALT toggle changes BEAM WIDTH only (roughly double the aim tolerance outdoors, measured on
-  three guns 2026-09-13), never hit reception. The reminder still has value for the beam-width reason; rewrite
-  its stated rationale to match. (filed 2026-09-13 from HANDOFF-gset-t2-2026-09-13.md §3) `build`.
-- **F200 🟡** `protocol/brx-protocol.md` §3 carries two wrong claims about `$GSET` token 2 (`outdoorMode`): it
-  calls the field "the APK's name for the on-gun ALT-hold toggle" and lists it as a candidate for the venue's
-  emitted IR range. Neither is true — it is a distinct field from the physical ALT toggle (measured separately,
-  three guns, 2026-09-13) and it gates hit RECEPTION on the receiving gun, not emitted range. Correct both claims
-  alongside the t2 fix. (filed 2026-09-13 from HANDOFF-gset-t2-2026-09-13.md §3) `build`.
 - **F201 🟠 Needs Tony at the bench** every gun echoed `$ALCD,32,100,0,96,0` against a compiled reserve of 192 —
   exactly half — on every gun, all day, 2026-09-13. Root cause unknown: does the gun clamp reserve to some
   ceiling, or halve it? Shipping the echo-mismatch START refusal as FORCEABLE (not force-proof) was correct given
@@ -1314,7 +1287,8 @@ From `verification-checklist.md` (archived 2026-09-06); what is ⬜ there and st
 - **FFA on real guns** (`play ffa A B C`, one `$TID`, FF on, distinct ids) + the **attribution fuse** (an old non-fatal hit
   does not steal a later kill) + **time-limit end / respawn ramp** (only frag-limit ends have run); infection / lms live.
 - **Syphon / regen live** (`syphon=1`, `regen=1`: refill after `regen_delay_s`, re-arm on damage, no heal on respawn).
-- **Config knobs on-gun**: outdoor (`$GSET` t2), kid_mode FF-off, volume 80 = comfortable L3, `hp=`/`armor=` echo,
+- **Config knobs on-gun**: native ALT venue setting (beam width; `$GSET` t2 stays 0, F198), kid_mode FF-off,
+  volume 80 = comfortable L3, `hp=`/`armor=` echo,
   provisional weapons (`charge`, `ar`) fire.
 - **Session F, objectives**: the grenade beacon relay made repeatable for the state display; Domination/KotH CAPTURE
   events score point-time; CTF GRAB/CAP/DROP with per-team `held` (needs G9); CS plant/defuse from a station;

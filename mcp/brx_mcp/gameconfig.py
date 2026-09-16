@@ -6,7 +6,7 @@ for the per-game config and `.player_frames(team)` for a gun's team/spawn, and t
 driver sends them. Arbitrary combos work (e.g. outdoor + LEDs-off = "night mode").
 
 What maps to the GUN (over BLE) vs the HOST engine:
-  GUN   : volume, indoor/outdoor, friendly-fire, crit modifier, HP/armor/shield,
+  GUN   : volume, friendly-fire, crit modifier, HP/armor/shield,
           primary/secondary weapon, team, LEDs.
   HOST  : game time, respawn time (+ ramp), number of respawns/lives, mode, classes'
           rule side — the gun has no respawn/time/lives token (protocol §7n), so the
@@ -20,6 +20,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from typing import Optional
+
+
+# $GSET token 2. Field 2026-09-13: 1 makes the receiving gun nearly deaf to hits, while 0 restores
+# normal reception. This is deliberately independent of venue until F198 characterises the field.
+# All frame generators, including MC's try-out and runtime fallback paths, use this one safe value.
+GSET_T2_SAFE = 0
 
 # --- weapon library (frame TAIL after "$WEAP,<slot>") ----------------------- #
 # Mirrors mcp/brx_mcp/__main__.py WEAPON_TAILS (verified ones from the iOS capture).
@@ -292,7 +298,7 @@ class GameConfig:
                                       # 69 (Callsign's) measures as on-gun level 2 (field 2026-08-30).
 
     # -- environment / LEDs -------------------------------------------------- #
-    outdoor: bool = False             # $GSET outdoorMode (IR range/behaviour)
+    outdoor: bool = False             # venue metadata; MC maps it to volume/range, summary pairs it with LEDs
     leds: bool = True                 # False = blank all three gun LEDs (CONFIRMED, see _led_frames)
     kid_mode: bool = False            # gentle preset (applied in __post_init__-style)
 
@@ -450,7 +456,7 @@ class GameConfig:
         # It is NOT the on-gun ALT-hold toggle (that changes beam WIDTH and does not gate reception —
         # measured the same day on three guns) and it does not move emitted range.
         # Handoff with the full measurement: docs/HANDOFF-gset-t2-2026-09-13.md
-        return (f"$GSET,{int(self.friendly_fire)},0,1,0,1,0,"
+        return (f"$GSET,{int(self.friendly_fire)},{GSET_T2_SAFE},1,0,1,0,"
                 f"{int(self.crit_modifier)},1,*")
 
     def _weap(self, slot: int, name: str) -> str:
