@@ -3,7 +3,9 @@
 **State as of 2026-09-16.** The 2026-09-13 evening playtest is written up. It is the largest batch of
 root-caused field defects we have had, and **four of them are 🔴**. Nothing was fixed in this pass: it is a
 documentation handoff. Sheet: [`game-test-2026-09-13.md`](game-test-2026-09-13.md). Ids: **F206-F216**.
-Evidence: `~/.brx-mcp/mc/session-3782dc77.sqlite` (outside the repo).
+Evidence is committed, sanitised, at
+[`evidence/2026-09-13-session-3782dc77/`](evidence/2026-09-13-session-3782dc77/) (heads, acks, event timeline,
+status stream, node logs + the `extract.py` that rebuilds them).
 
 ## The four criticals, in the order they should be taken
 
@@ -16,7 +18,10 @@ Evidence: `~/.brx-mcp/mc/session-3782dc77.sqlite` (outside the repo).
    shooters were on **`$TID,1`**, where protocol §5 says `$HIR` t4 is the shooter's effective `$TID & 3`. **The
    emitted word is not carrying the team we set.** (⛔ not `$PSET` t2 — bench-proven inert.)
    **First rung, two guns and five minutes:** `$TID,1` vs `$TID,2`, friendly fire ON so a hit must register,
-   read `$HIR` t4 back. If it is 0 both ways, F206, F49 and Q13 collapse into that one fault.
+   read `$HIR` t4 back. If it is 0 both ways, F206, F49 and Q13 collapse into that one fault — then re-send
+   `$TID` right after `$SPAWN` and read it again. **Leading suspect:** we send `$TID` as the last head frame
+   and `$SPAWN` arrives later carrying A23's `$SIR` re-arm, with nothing re-sending `$TID`; §3 already notes
+   `$SPAWN` clears a painted LED colour. If that is it, the fix is one frame.
 2. **F207 — the START echo refusal is a false positive on every gun, and it is ours.** Mag right every time,
    reserve exactly half every time, on three weapons — and the half is **the t40 value MC itself wrote into the
    same `$WEAP` frame** (`tok17 == 2 * tok40`). The gun's `$ALCD` reserve mirrors t40; `frames.py` compares it

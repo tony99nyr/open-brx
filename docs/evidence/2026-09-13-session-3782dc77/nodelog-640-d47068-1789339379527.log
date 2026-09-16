@@ -1,0 +1,561 @@
+[22:32:03] app resumed
+[22:32:05] BLE ready — Set my gun
+[22:32:05] app resumed
+[22:32:05] network up (wifi)
+[22:32:10] sweeping for Mission Control on 192.168.0.x, 192.168.1.x, 192.168.86.x, 10.0.0.x, 192.168.43.x, 172.20.10.x :8766…
+[22:32:10] sweep: 192.168.0.0/24
+[22:32:21] app resumed
+[22:32:21] app resumed
+[22:32:21] network up (wifi)
+[22:32:21] sweeping for Mission Control on 192.168.0.x, 192.168.1.x, 192.168.86.x, 10.0.0.x, 192.168.43.x, 172.20.10.x :8766…
+[22:32:21] sweep: 192.168.0.0/24
+[22:32:21] network up (wifi)
+[22:32:32] app resumed
+[22:32:32] network up (wifi)
+[22:32:32] app resumed
+[22:32:36] connecting to Tactix-3D4F…
+[22:32:40] sweep: 192.168.1.0/24
+[22:32:42] write probe: 3 frame(s)
+[22:32:42] gun Tactix-3D4F linked
+[22:32:42] watching for utility items
+[22:32:42] watching for utility items
+[22:32:49] sweep: 192.168.1.0/24
+[22:33:04] sweep: 192.168.86.0/24
+[22:33:13] sweep: 192.168.86.0/24
+[22:33:28] sweep: 10.0.0.0/24
+[22:33:37] sweep: 10.0.0.0/24
+[22:33:40] app resumed
+[22:33:40] network up (wifi)
+[22:33:43] QR scanned — connecting: ws://192.168.0.171:8766/ws
+[22:33:43] MC link connecting
+[22:33:43] sweep found no Mission Control — QR/manual join
+[22:33:43] sweep found no Mission Control — QR/manual join
+[22:33:45] MC link open
+[22:33:45] MC link bound
+[22:33:45] phase connected → kitted
+[22:33:45] MC hydrated
+[22:33:45] app resumed
+[22:33:45] network up (wifi)
+[22:33:45] advertising as player 1 team 1 (down)
+[22:34:13] watching for utility items
+[22:34:54] write apply preview: 1 frame(s)
+[22:35:01] write apply preview: 1 frame(s)
+[22:35:35] write head: 27 frame(s)
+[22:35:35] phase kitted → lobby
+[22:35:44] watching for utility items
+[22:36:11] phase lobby → armed
+[22:36:12] write tick: 1 frame(s)
+[22:36:13] write tick: 1 frame(s)
+[22:36:14] write tick: 1 frame(s)
+[22:36:15] write tick: 1 frame(s)
+[22:36:16] write tick: 1 frame(s)
+[22:36:17] write tick: 1 frame(s)
+[22:36:17] network up (wifi)
+[22:36:18] write cue countdown: 1 frame(s)
+[22:36:20] network up (wifi)
+[22:36:21] write spawn + spawn line (VHI) + scream VH3 1/3: 17 frame(s)
+[22:36:21] write cue klaxon: 1 frame(s)
+[22:36:21] phase armed → live
+[22:36:21] advertising as player 1 team 1
+[22:36:22] write headset start: 1 frame(s)
+[22:36:22] network up (wifi)
+[22:36:22] write headset start: 1 frame(s)
+[22:36:23] network up (wifi)
+[22:36:23] network up (wifi)
+[22:36:23] write gun take: 2 frame(s)
+[22:36:23] network up (wifi)
+[22:36:23] network up (wifi)
+[22:36:26] network up (wifi)
+[22:36:38] network down (none)
+[22:36:38] MC link offline
+[22:36:38] MC link connecting
+[22:36:38] MC link offline
+[22:36:39] MC link connecting
+[22:36:39] MC link offline
+[22:36:40] write gun blank (down): 1 frame(s)
+[22:36:40] ☠ down — by TONY
+[22:36:40] advertising as player 1 team 1 (down)
+[22:36:41] MC link connecting
+[22:36:41] MC link offline
+[22:36:43] write down rearm: 1 frame(s)
+[22:36:45] MC link connecting
+[22:36:45] MC link offline
+[22:36:45] write down stop: 1 frame(s)
+[22:36:45] write revive + spawn line (VHI) + scream VH5 3/3: 14 frame(s)
+[22:36:45] respawned
+[22:36:45] advertising as player 1 team 1
+[22:36:46] write headset respawn: 1 frame(s)
+[22:36:47] write headset respawn: 1 frame(s)
+[22:36:48] write gun take: 2 frame(s)
+[22:36:53] MC link connecting
+[22:36:53] MC link offline
+[22:36:54] write gun blank (down): 1 frame(s)
+[22:36:54] ☠ down — by TONY
+[22:36:54] advertising as player 1 team 1 (down)
+[22:36:56] write down rearm: 1 frame(s)
+[22:36:59] write down stop: 1 frame(s)
+[22:36:59] write revive + spawn line (VHI) + scream VH3 1/3: 14 frame(s)
+[22:36:59] respawned
+[22:36:59] advertising as player 1 team 1
+[22:37:00] write headset respawn: 1 frame(s)
+[22:37:00] write headset respawn: 1 frame(s)
+[22:37:01] write gun take: 2 frame(s)
+[22:37:02] network down (wifi)
+[22:37:02] MC link connecting
+[22:37:02] network back (online) — dialling Mission Control now
+[22:37:04] MC link offline
+[22:37:05] MC link connecting
+[22:37:05] network down (wifi)
+[22:37:07] MC link offline
+[22:37:08] MC link connecting
+[22:37:08] write gun blank (down): 1 frame(s)
+[22:37:08] ☠ down — by TONY
+[22:37:08] network up (wifi)
+[22:37:08] network back (wifi) — dialling Mission Control now
+[22:37:08] advertising as player 1 team 1 (down)
+[22:37:09] MC link offline
+[22:37:10] MC link connecting
+[22:37:11] write down rearm: 1 frame(s)
+[22:37:12] MC link offline
+[22:37:13] MC link connecting
+[22:37:13] write down stop: 1 frame(s)
+[22:37:13] write revive + spawn line (VHI) + scream VH3 1/3: 14 frame(s)
+[22:37:13] respawned
+[22:37:13] advertising as player 1 team 1
+[22:37:14] MC link offline
+[22:37:14] write headset respawn: 1 frame(s)
+[22:37:15] watching for utility items
+[22:37:15] write headset respawn: 1 frame(s)
+[22:37:16] write gun take: 2 frame(s)
+[22:37:16] MC link connecting
+[22:37:17] sweeping for Mission Control on 192.168.0.x, 192.168.1.x, 192.168.86.x, 10.0.0.x, 192.168.43.x, 172.20.10.x :8766…
+[22:37:17] sweep: 192.168.0.0/24
+[22:37:19] MC link offline
+[22:37:23] MC link connecting
+[22:37:26] MC link offline
+[22:37:34] sweeping for Mission Control on 192.168.0.x, 192.168.1.x, 192.168.86.x, 10.0.0.x, 192.168.43.x, 172.20.10.x :8766…
+[22:37:34] sweep: 192.168.0.0/24
+[22:37:34] write gun blank (down): 1 frame(s)
+[22:37:34] ☠ down — by TONY
+[22:37:35] advertising as player 1 team 1 (down)
+[22:37:35] MC link connecting
+[22:37:37] write down rearm: 1 frame(s)
+[22:37:40] write down stop: 1 frame(s)
+[22:37:40] write revive + spawn line (VHI) + scream VH5 3/3: 14 frame(s)
+[22:37:40] respawned
+[22:37:40] advertising as player 1 team 1
+[22:37:41] write headset respawn: 1 frame(s)
+[22:37:41] sweep: 192.168.1.0/24
+[22:37:41] MC link offline
+[22:37:41] write headset respawn: 1 frame(s)
+[22:37:42] write gun take: 2 frame(s)
+[22:37:42] write gun blank (down): 1 frame(s)
+[22:37:42] ☠ down — by TONY
+[22:37:42] advertising as player 1 team 1 (down)
+[22:37:45] write down rearm: 1 frame(s)
+[22:37:47] network up (wifi)
+[22:37:47] MC link connecting
+[22:37:47] network back (wifi) — dialling Mission Control now
+[22:37:47] write down stop: 1 frame(s)
+[22:37:47] write revive + spawn line (VHI) + scream VH4 2/3: 14 frame(s)
+[22:37:47] respawned
+[22:37:47] advertising as player 1 team 1
+[22:37:48] write headset respawn: 1 frame(s)
+[22:37:49] write headset respawn: 1 frame(s)
+[22:37:50] sweeping for Mission Control on 192.168.0.x, 192.168.1.x, 192.168.86.x, 10.0.0.x, 192.168.43.x, 172.20.10.x :8766…
+[22:37:50] sweep: 192.168.0.0/24
+[22:37:50] write gun take: 2 frame(s)
+[22:37:52] MC link offline
+[22:37:53] MC link connecting
+[22:37:53] network up (wifi)
+[22:37:53] network back (wifi) — dialling Mission Control now
+[22:37:55] MC link offline
+[22:37:55] MC link connecting
+[22:37:56] network up (wifi)
+[22:37:56] network back (wifi) — dialling Mission Control now
+[22:37:58] sweep: 192.168.1.0/24
+[22:37:59] network up (wifi)
+[22:37:59] network back (wifi) — dialling Mission Control now
+[22:38:02] network up (wifi)
+[22:38:02] network back (wifi) — dialling Mission Control now
+[22:38:05] sweep: 192.168.86.0/24
+[22:38:05] network up (wifi)
+[22:38:05] network back (wifi) — dialling Mission Control now
+[22:38:07] sweeping for Mission Control on 192.168.0.x, 192.168.1.x, 192.168.86.x, 10.0.0.x, 192.168.43.x, 172.20.10.x :8766…
+[22:38:07] sweep: 192.168.0.0/24
+[22:38:11] MC link offline
+[22:38:12] MC link connecting
+[22:38:13] network up (wifi)
+[22:38:13] network back (wifi) — dialling Mission Control now
+[22:38:13] network up (wifi)
+[22:38:13] sweep: 192.168.1.0/24
+[22:38:14] network up (wifi)
+[22:38:17] MC link open
+[22:38:17] MC link bound
+[22:38:17] sweep found no Mission Control — QR/manual join
+[22:38:18] sweep found no Mission Control — QR/manual join
+[22:38:18] sweep found no Mission Control — QR/manual join
+[22:38:18] sweep found no Mission Control — QR/manual join
+[22:38:18] write feedback kill: 1 frame(s)
+[22:38:18] write event led kill: 1 frame(s)
+[22:38:18] write readout rest after kill: 1 frame(s)
+[22:38:18] write feedback cue kill: 1 frame(s)
+[22:38:20] network up (wifi)
+[22:38:26] network up (wifi)
+[22:38:29] network up (wifi)
+[22:38:30] network up (wifi)
+[22:38:30] network up (wifi)
+[22:38:32] network up (wifi)
+[22:38:35] network up (wifi)
+[22:38:38] network up (wifi)
+[22:38:46] watching for utility items
+[22:39:15] network up (wifi)
+[22:39:18] network up (wifi)
+[22:39:36] write gun blank (down): 1 frame(s)
+[22:39:36] ☠ down — by TONY
+[22:39:37] advertising as player 1 team 1 (down)
+[22:39:39] write down rearm: 1 frame(s)
+[22:39:42] write down stop: 1 frame(s)
+[22:39:42] write revive + spawn line (VHI) + scream VH4 2/3: 14 frame(s)
+[22:39:42] respawned
+[22:39:42] advertising as player 1 team 1
+[22:39:43] write headset respawn: 1 frame(s)
+[22:39:43] write headset respawn: 1 frame(s)
+[22:39:44] write gun take: 2 frame(s)
+[22:39:45] write gun blank (down): 1 frame(s)
+[22:39:45] ☠ down — by TONY
+[22:39:45] advertising as player 1 team 1 (down)
+[22:39:47] write down rearm: 1 frame(s)
+[22:39:48] network up (wifi)
+[22:39:50] write down stop: 1 frame(s)
+[22:39:50] write revive + spawn line (VHI) + scream VH5 3/3: 14 frame(s)
+[22:39:50] respawned
+[22:39:50] advertising as player 1 team 1
+[22:39:51] write headset respawn: 1 frame(s)
+[22:39:51] write headset respawn: 1 frame(s)
+[22:39:52] write gun take: 2 frame(s)
+[22:40:00] write gun blank (down): 1 frame(s)
+[22:40:00] ☠ down — by TONY
+[22:40:00] advertising as player 1 team 1 (down)
+[22:40:02] network up (wifi)
+[22:40:02] network up (wifi)
+[22:40:02] write down rearm: 1 frame(s)
+[22:40:03] network up (wifi)
+[22:40:05] write down stop: 1 frame(s)
+[22:40:05] write revive + spawn line (VHI) + scream VH5 3/3: 14 frame(s)
+[22:40:05] respawned
+[22:40:05] advertising as player 1 team 1
+[22:40:06] write headset respawn: 1 frame(s)
+[22:40:06] write headset respawn: 1 frame(s)
+[22:40:07] write gun take: 2 frame(s)
+[22:40:17] watching for utility items
+[22:40:18] network up (wifi)
+[22:40:21] network up (wifi)
+[22:40:24] network up (wifi)
+[22:40:27] network up (wifi)
+[22:40:30] network up (wifi)
+[22:40:33] network up (wifi)
+[22:40:39] network up (wifi)
+[22:40:44] write gun blank (down): 1 frame(s)
+[22:40:44] ☠ down — by TONY
+[22:40:44] advertising as player 1 team 1 (down)
+[22:40:46] write down rearm: 1 frame(s)
+[22:40:49] write down stop: 1 frame(s)
+[22:40:49] write revive + spawn line (VHI) + scream VH4 2/3: 14 frame(s)
+[22:40:49] respawned
+[22:40:49] advertising as player 1 team 1
+[22:40:50] write headset respawn: 1 frame(s)
+[22:40:50] write headset respawn: 1 frame(s)
+[22:40:51] write gun take: 2 frame(s)
+[22:40:52] write gun blank (down): 1 frame(s)
+[22:40:52] ☠ down — by TONY
+[22:40:52] advertising as player 1 team 1 (down)
+[22:40:54] write down rearm: 1 frame(s)
+[22:40:57] write down stop: 1 frame(s)
+[22:40:57] write revive + spawn line (VHI) + scream VH4 2/3: 14 frame(s)
+[22:40:57] respawned
+[22:40:57] advertising as player 1 team 1
+[22:40:58] write headset respawn: 1 frame(s)
+[22:40:58] write headset respawn: 1 frame(s)
+[22:40:59] write gun take: 2 frame(s)
+[22:41:01] write feedback kill: 1 frame(s)
+[22:41:01] write event led kill: 1 frame(s)
+[22:41:01] write readout rest after kill: 1 frame(s)
+[22:41:01] write feedback cue kill: 1 frame(s)
+[22:41:11] write gun blank (down): 1 frame(s)
+[22:41:11] ☠ down — by TONY
+[22:41:11] advertising as player 1 team 1 (down)
+[22:41:13] write down rearm: 1 frame(s)
+[22:41:16] write down stop: 1 frame(s)
+[22:41:16] write revive + spawn line (VHI) + scream VH3 1/3: 14 frame(s)
+[22:41:16] respawned
+[22:41:16] advertising as player 1 team 1
+[22:41:17] write headset respawn: 1 frame(s)
+[22:41:17] write headset respawn: 1 frame(s)
+[22:41:18] write gun take: 2 frame(s)
+[22:41:42] write feedback kill: 1 frame(s)
+[22:41:42] write event led kill: 1 frame(s)
+[22:41:42] write readout rest after kill: 1 frame(s)
+[22:41:42] write feedback cue kill: 1 frame(s)
+[22:41:48] watching for utility items
+[22:41:48] write feedback kill: 1 frame(s)
+[22:41:48] write event led kill: 1 frame(s)
+[22:41:48] write readout rest after kill: 1 frame(s)
+[22:41:48] write feedback cue kill: 1 frame(s)
+[22:41:55] write feedback kill: 1 frame(s)
+[22:41:55] write event led kill: 1 frame(s)
+[22:41:55] write readout rest after kill: 1 frame(s)
+[22:41:55] write feedback cue kill: 1 frame(s)
+[22:42:06] write feedback kill: 1 frame(s)
+[22:42:06] write event led kill: 1 frame(s)
+[22:42:06] write readout rest after kill: 1 frame(s)
+[22:42:06] write feedback cue kill: 1 frame(s)
+[22:42:13] write feedback kill: 1 frame(s)
+[22:42:13] write event led killing_spree: 1 frame(s)
+[22:42:13] write event cue lead_taken: 1 frame(s)
+[22:42:13] alert lead_taken
+[22:42:13] write readout rest after killing_spree: 1 frame(s)
+[22:42:13] write medal killing_spree: 1 frame(s)
+[22:42:20] write feedback kill: 1 frame(s)
+[22:42:20] write event led kill: 1 frame(s)
+[22:42:20] write readout rest after kill: 1 frame(s)
+[22:42:20] write feedback cue kill: 1 frame(s)
+[22:42:27] write feedback kill: 1 frame(s)
+[22:42:27] write event led kill: 1 frame(s)
+[22:42:27] write readout rest after kill: 1 frame(s)
+[22:42:27] write feedback cue kill: 1 frame(s)
+[22:42:34] write feedback kill: 1 frame(s)
+[22:42:34] write event led kill: 1 frame(s)
+[22:42:34] write readout rest after kill: 1 frame(s)
+[22:42:34] write feedback cue kill: 1 frame(s)
+[22:42:41] write feedback kill: 1 frame(s)
+[22:42:41] write event led kill: 1 frame(s)
+[22:42:41] write readout rest after kill: 1 frame(s)
+[22:42:41] write feedback cue kill: 1 frame(s)
+[22:42:49] network up (wifi)
+[22:42:49] network up (wifi)
+[22:42:49] network up (wifi)
+[22:42:50] write feedback kill: 1 frame(s)
+[22:42:50] write event led unstoppable: 1 frame(s)
+[22:42:50] write readout rest after unstoppable: 1 frame(s)
+[22:42:50] write medal unstoppable: 1 frame(s)
+[22:42:59] write end (end): 6 frame(s)
+[22:42:59] write cue game_over: 1 frame(s)
+[22:42:59] phase live → kitted
+[22:42:59] match ended: end
+[22:42:59] write feedback victory: 1 frame(s)
+[22:42:59] match result (push): win
+--- ble frames (last 60) ---
+1789339326184 tx $GLED,6,6,6,0,1,,*
+1789339326220 tx $PLAY,,4,6,VHR,,,,*
+1789339332893 rx $BUT,0,1,*
+1789339332907 rx $ALCD,6,100,0,32,0,*
+1789339333027 rx $BUT,0,0,*
+1789339333056 tx $SFLASH,*
+1789339333084 tx $LED,9,1,1,1,*
+1789339333106 tx $PLAY,,4,6,VA6D,,,,*
+1789339333182 tx $GLED,6,6,6,0,1,,*
+1789339333217 tx $PLAY,,4,6,VA7K,,,,*
+1789339340061 rx $BUT,0,1,*
+1789339340078 rx $ALCD,5,100,0,32,0,*
+1789339340201 rx $BUT,0,0,*
+1789339340308 tx $SFLASH,*
+1789339340336 tx $LED,9,1,1,1,*
+1789339340365 tx $GLED,6,6,6,0,1,,*
+1789339340427 tx $PLAY,,4,6,VHR,,,,*
+1789339347097 rx $BUT,0,1,*
+1789339347113 rx $ALCD,4,100,0,32,0,*
+1789339347233 rx $BUT,0,0,*
+1789339347393 tx $SFLASH,*
+1789339347421 tx $LED,9,1,1,1,*
+1789339347447 tx $GLED,6,6,6,0,1,,*
+1789339347511 tx $PLAY,,4,6,VHR,,,,*
+1789339350114 rx $BUT,2,1,*
+1789339350321 rx $BUT,2,0,*
+1789339352302 rx $ALCD,8,100,0,28,0,*
+1789339353038 rx $VOLTS,8428,4178,100,100,*
+1789339354192 rx $BUT,0,1,*
+1789339354212 rx $ALCD,7,100,0,28,0,*
+1789339354327 rx $BUT,0,0,*
+1789339354425 tx $SFLASH,*
+1789339354452 tx $LED,9,1,1,1,*
+1789339354478 tx $GLED,6,6,6,0,1,,*
+1789339354544 tx $PLAY,,4,6,VHR,,,,*
+1789339361437 rx $BUT,0,1,*
+1789339361452 rx $ALCD,6,100,0,28,0,*
+1789339361573 rx $BUT,0,0,*
+1789339361648 tx $SFLASH,*
+1789339361676 tx $LED,9,1,1,1,*
+1789339361709 tx $GLED,6,6,6,0,1,,*
+1789339361767 tx $PLAY,,4,6,VHR,,,,*
+1789339368594 rx $BUT,0,1,*
+1789339368606 rx $ALCD,5,100,0,28,0,*
+1789339368741 rx $BUT,0,0,*
+1789339369582 rx $BUT,0,1,*
+1789339369701 rx $BUT,0,0,*
+1789339369829 rx $BUT,0,1,*
+1789339369899 rx $BUT,0,0,*
+1789339370151 rx $BUT,0,1,*
+1789339370168 rx $ALCD,4,100,0,28,0,*
+1789339370242 rx $BUT,0,0,*
+1789339370345 tx $SFLASH,*
+1789339370372 tx $LED,9,1,1,1,*
+1789339370414 tx $GLED,6,6,6,0,1,,*
+1789339370464 tx $PLAY,,4,6,VX0U,,,,*
+1789339379004 rx $BUT,0,1,*
+1789339379018 rx $ALCD,3,100,0,28,0,*
+1789339379095 rx $BUT,0,0,*
+1789339379365 tx $SPAWN,,*
+--- engine state ---
+{
+ "accuracy": 33.3,
+ "activeSlot": 0,
+ "alive": false,
+ "ammo": 3,
+ "armor": 0,
+ "assists": 0,
+ "battery": 100,
+ "bleUp": true,
+ "deaths": 11,
+ "endAck": false,
+ "ended": true,
+ "game": {
+  "environment": "indoor",
+  "health": {
+   "max_armor": 0,
+   "max_hp": 50
+  },
+  "mode": "ffa",
+  "mode_name": "FREE-FOR-ALL",
+  "name": "FREE-FOR-ALL",
+  "night": false,
+  "respawn": {
+   "delay_s": 5,
+   "type": "auto"
+  },
+  "time_limit_s": 600
+ },
+ "headEcho": "$ALCD,8,100,0,24,0,*",
+ "hits": 17,
+ "hp": 50,
+ "killedBy": null,
+ "kills": 17,
+ "kitLocked": false,
+ "kitOpen": false,
+ "loadMag": 8,
+ "loadReserve": 48,
+ "loadout": {
+  "perk": {
+   "kind": "perk",
+   "name": "Extended Mags",
+   "perk_id": "extended_mags"
+  },
+  "primary": {
+   "clip": 4,
+   "kind": "weapon",
+   "name": "Sniper Rifle",
+   "reserve": 24,
+   "weapon_id": "sniper_rifle"
+  }
+ },
+ "mag": 8,
+ "matchId": "fba981640d",
+ "maxArmor": 0,
+ "maxHp": 50,
+ "mode": "FFA",
+ "night": false,
+ "phase": "kitted",
+ "player": {
+  "display": "ROCCO",
+  "gun_id": "Tactix-3D4F",
+  "node_id": "node-daeed47068",
+  "player_id": "6748d5e1",
+  "player_num": 1,
+  "team_id": "ffa"
+ },
+ "ready": false,
+ "reconciling": false,
+ "reloading": false,
+ "reserve": 28,
+ "respawnGate": "trigger",
+ "respawnHint": null,
+ "respawnIn": 0,
+ "respawnType": "auto",
+ "result": {
+  "mode": "ffa",
+  "outcome": "win",
+  "rows": [
+   {
+    "acc_provisional": false,
+    "accuracy": 33.3,
+    "after_end_deaths": 0,
+    "after_end_kills": 0,
+    "assists": 0,
+    "best_streak": 10,
+    "deaths": 11,
+    "display": "ROCCO",
+    "first_blood": true,
+    "hits": 17,
+    "kd": 1.55,
+    "kills": 17,
+    "medals": [
+     "FIRST BLOOD",
+     "KILLING SPREE",
+     "UNSTOPPABLE"
+    ],
+    "multi_best": 1,
+    "player_id": "6748d5e1",
+    "shots": 51,
+    "shots_total": 51,
+    "streak": 10,
+    "team_id": "ffa"
+   },
+   {
+    "acc_provisional": false,
+    "accuracy": 52.4,
+    "after_end_deaths": 0,
+    "after_end_kills": 0,
+    "assists": 0,
+    "best_streak": 5,
+    "deaths": 17,
+    "display": "TONY",
+    "first_blood": false,
+    "hits": 11,
+    "kd": 0.65,
+    "kills": 11,
+    "medals": [
+     "KILLING SPREE"
+    ],
+    "multi_best": 1,
+    "player_id": "002803e7",
+    "shots": 21,
+    "shots_total": 21,
+    "streak": 0,
+    "team_id": "ffa"
+   }
+  ],
+  "team_scores": [],
+  "win_by": "kills",
+  "winner": {
+   "player_id": "6748d5e1"
+  }
+ },
+ "resync": null,
+ "shield": 0,
+ "shots": 52,
+ "standby": false,
+ "stunned": null,
+ "synced": true,
+ "team": {
+  "color": "#e8eef5",
+  "name": "FREE-FOR-ALL",
+  "team_id": "ffa",
+  "tid": 1
+ },
+ "underFire": false,
+ "weapon": "SNIPER RIFLE",
+ "weaponId": "sniper_rifle",
+ "wsState": "bound"
+}
+
+(catalog and policy blocks dropped by extract.py)

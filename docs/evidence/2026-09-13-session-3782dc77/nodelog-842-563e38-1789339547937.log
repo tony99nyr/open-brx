@@ -1,0 +1,280 @@
+[22:43:01] log synced to MC — 32178 bytes, 320 lines, 1 chunk(s) ✓
+[22:43:01] advertising as player 2 team 1 (down)
+[22:43:05] network up (wifi)
+[22:43:17] new match from MC — leaving the match-complete screen
+[22:43:27] advertising as player 2 team 2 (down)
+[22:43:32] network up (wifi)
+[22:43:39] network up (wifi)
+[22:43:47] pick sent (debounce): primary weapon amr
+[22:43:47] write tutorial: 12 frame(s)
+[22:43:50] try-out arm timed out — resolved UNCONFIRMED (no confirming ammo report)
+[22:43:51] pick sent (debounce): primary weapon amr
+[22:43:51] write tutorial: 12 frame(s)
+[22:43:55] try-out arm timed out — resolved UNCONFIRMED (no confirming ammo report)
+[22:44:05] watching for utility items
+[22:44:07] pick sent (debounce): secondary weapon shotgun
+[22:44:07] write tutorial: 12 frame(s)
+[22:44:10] try-out arm timed out — resolved UNCONFIRMED (no confirming ammo report)
+[22:44:16] write tutorial end: 6 frame(s)
+[22:44:23] write head: 28 frame(s)
+[22:44:23] phase kitted → lobby
+[22:44:52] network up (wifi)
+[22:44:57] phase lobby → armed
+[22:44:58] write tick: 1 frame(s)
+[22:44:59] write tick: 1 frame(s)
+[22:45:00] write tick: 1 frame(s)
+[22:45:01] write tick: 1 frame(s)
+[22:45:02] write tick: 1 frame(s)
+[22:45:03] write tick: 1 frame(s)
+[22:45:04] write cue countdown: 1 frame(s)
+[22:45:07] write spawn + spawn line (V9I) + scream V94 2/3: 18 frame(s)
+[22:45:07] write cue klaxon: 1 frame(s)
+[22:45:07] phase armed → live
+[22:45:07] advertising as player 2 team 2
+[22:45:08] write headset start: 1 frame(s)
+[22:45:09] write headset start: 1 frame(s)
+[22:45:10] write gun take: 2 frame(s)
+[22:45:17] network up (wifi)
+[22:45:20] network up (wifi)
+[22:45:23] network up (wifi)
+[22:45:26] network up (wifi)
+[22:45:29] swap to slot 1 assumed after 850ms (no shot yet)
+[22:45:32] network up (wifi)
+[22:45:36] network up (wifi)
+[22:45:36] watching for utility items
+[22:45:39] network up (wifi)
+[22:45:49] write end (end): 6 frame(s)
+[22:45:49] write cue game_over: 1 frame(s)
+[22:45:49] phase live → kitted
+[22:45:49] match ended: end
+[22:45:50] match result (push): draw
+--- ble frames (last 60) ---
+1789339509271 tx $HLED,9,0,,,10,,*
+1789339509371 rx $BUT,0,0,*
+1789339509638 rx $BUT,0,1,*
+1789339509723 rx $BUT,0,0,*
+1789339510170 tx $GLED,,,,5,,,*
+1789339510211 tx $GLED,2,2,2,0,1,,*
+1789339514113 rx $BUT,0,1,*
+1789339514118 rx $ALCD,13,100,0,56,0,*
+1789339514198 rx $BUT,0,0,*
+1789339514584 rx $BUT,0,1,*
+1789339514606 rx $ALCD,12,100,0,56,0,*
+1789339514665 rx $BUT,0,0,*
+1789339514996 rx $BUT,0,1,*
+1789339515007 rx $ALCD,11,100,0,56,0,*
+1789339515101 rx $BUT,0,0,*
+1789339515411 rx $BUT,0,1,*
+1789339515441 rx $ALCD,10,100,0,56,0,*
+1789339515524 rx $BUT,0,0,*
+1789339523360 rx $BUT,0,1,*
+1789339523363 rx $ALCD,9,100,0,56,0,*
+1789339523453 rx $BUT,0,0,*
+1789339523803 rx $BUT,0,1,*
+1789339523807 rx $ALCD,8,100,0,56,0,*
+1789339523935 rx $BUT,0,0,*
+1789339524209 rx $BUT,0,1,*
+1789339524228 rx $ALCD,7,100,0,56,0,*
+1789339524349 rx $BUT,0,0,*
+1789339524651 rx $BUT,0,1,*
+1789339524660 rx $ALCD,6,100,0,56,0,*
+1789339524763 rx $BUT,0,0,*
+1789339525367 rx $BUT,0,1,*
+1789339525383 rx $ALCD,5,100,0,56,0,*
+1789339525486 rx $BUT,0,0,*
+1789339525606 rx $BUT,0,1,*
+1789339525702 rx $BUT,0,0,*
+1789339525896 rx $BUT,0,1,*
+1789339525898 rx $ALCD,4,100,0,56,0,*
+1789339526003 rx $BUT,0,0,*
+1789339526398 rx $BUT,0,1,*
+1789339526403 rx $ALCD,3,100,0,56,0,*
+1789339526525 rx $BUT,0,0,*
+1789339528809 rx $BUT,1,1,*
+1789339528993 rx $BUT,1,0,*
+1789339530791 rx $BUT,0,1,*
+1789339530797 rx $ALCD,5,100,1,24,0,*
+1789339530944 rx $BUT,0,0,*
+1789339531383 rx $BUT,0,1,*
+1789339531533 rx $BUT,0,0,*
+1789339531801 rx $BUT,0,1,*
+1789339531808 rx $ALCD,4,100,1,24,0,*
+1789339531946 rx $BUT,0,0,*
+1789339532402 rx $BUT,0,1,*
+1789339532535 rx $BUT,0,0,*
+1789339532931 rx $BUT,0,1,*
+1789339532965 rx $ALCD,3,100,1,24,0,*
+1789339533061 rx $BUT,0,0,*
+1789339549970 tx $SPAWN,,*
+1789339550045 rx $LCD,45,120,0,0,14,56,*
+1789339550047 rx $ALCD,14,100,0,56,0,*
+1789339550054 tx $PLAYX,0,*
+--- engine state ---
+{
+ "accuracy": null,
+ "activeSlot": 0,
+ "alive": false,
+ "ammo": 14,
+ "armor": 120,
+ "assists": null,
+ "battery": 100,
+ "bleUp": true,
+ "deaths": 0,
+ "endAck": false,
+ "ended": true,
+ "game": {
+  "environment": "outdoor",
+  "health": {
+   "max_armor": 70,
+   "max_hp": 45
+  },
+  "mode": "tdm",
+  "mode_name": "TEAM DEATHMATCH",
+  "name": "TEAM DEATHMATCH",
+  "night": false,
+  "respawn": {
+   "delay_s": 15,
+   "type": "auto"
+  },
+  "time_limit_s": 600
+ },
+ "headEcho": "$ALCD,14,100,0,28,0,*",
+ "hits": null,
+ "hp": 45,
+ "killedBy": null,
+ "kills": null,
+ "kitLocked": false,
+ "kitOpen": false,
+ "loadMag": 14,
+ "loadReserve": 56,
+ "loadout": {
+  "perk": {
+   "kind": "perk",
+   "name": "Body Armor",
+   "perk_id": "body_armor"
+  },
+  "primary": {
+   "clip": 14,
+   "kind": "weapon",
+   "name": "AMR",
+   "reserve": 56,
+   "weapon_id": "amr"
+  },
+  "secondary": {
+   "clip": 6,
+   "kind": "weapon",
+   "name": "Shotgun",
+   "reserve": 24,
+   "weapon_id": "shotgun"
+  }
+ },
+ "mag": 14,
+ "matchId": "a1003b7ae7",
+ "maxArmor": 70,
+ "maxHp": 45,
+ "mode": "TDM",
+ "night": false,
+ "phase": "kitted",
+ "player": {
+  "display": "TONY",
+  "gun_id": "Tactix-FE30",
+  "node_id": "node-008a563e38",
+  "player_id": "002803e7",
+  "player_num": 2,
+  "team_id": "yellow"
+ },
+ "ready": false,
+ "reconciling": false,
+ "reloading": false,
+ "reserve": 56,
+ "respawnGate": "trigger",
+ "respawnHint": null,
+ "respawnIn": 0,
+ "respawnType": "auto",
+ "result": {
+  "mode": "tdm",
+  "outcome": "draw",
+  "rows": [
+   {
+    "acc_provisional": false,
+    "accuracy": 0,
+    "after_end_deaths": 0,
+    "after_end_kills": 0,
+    "assists": 0,
+    "best_streak": 0,
+    "deaths": 0,
+    "display": "ROCCO",
+    "first_blood": false,
+    "hits": 0,
+    "kd": 0,
+    "kills": 0,
+    "medals": [],
+    "multi_best": 0,
+    "player_id": "6748d5e1",
+    "shots": 103,
+    "shots_total": 103,
+    "streak": 0,
+    "team_id": "blue"
+   },
+   {
+    "acc_provisional": false,
+    "accuracy": 0,
+    "after_end_deaths": 0,
+    "after_end_kills": 0,
+    "assists": 0,
+    "best_streak": 0,
+    "deaths": 0,
+    "display": "TONY",
+    "first_blood": false,
+    "hits": 0,
+    "kd": 0,
+    "kills": 0,
+    "medals": [],
+    "multi_best": 0,
+    "player_id": "002803e7",
+    "shots": 13,
+    "shots_total": 13,
+    "streak": 0,
+    "team_id": "yellow"
+   }
+  ],
+  "team_scores": [
+   {
+    "name": "BLUE TEAM",
+    "score": 0,
+    "team_id": "blue"
+   },
+   {
+    "name": "YELLOW TEAM",
+    "score": 0,
+    "team_id": "yellow"
+   }
+  ],
+  "win_by": "kills",
+  "winner": {
+   "team_id": null,
+   "tie": [
+    "blue",
+    "yellow"
+   ]
+  }
+ },
+ "resync": null,
+ "shield": 0,
+ "shots": 13,
+ "standby": false,
+ "stunned": null,
+ "synced": true,
+ "team": {
+  "color": "#ffd23f",
+  "name": "YELLOW TEAM",
+  "team_id": "yellow",
+  "tid": 2
+ },
+ "underFire": false,
+ "weapon": "AMR",
+ "weaponId": "amr",
+ "wsState": "bound"
+}
+
+(catalog and policy blocks dropped by extract.py)

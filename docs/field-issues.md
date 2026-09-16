@@ -15,8 +15,9 @@ Legend — ✅ fixed & tested · 🔧 fixed, needs a field check (see **Check ne
 
 **The whole session is written up, issue by issue, in [`game-test-2026-09-13.md`](game-test-2026-09-13.md) — do not duplicate it here.**
 Both phones on APK 0.2.1+e19c0c8. 11 ids were filed (F206-F216); their status lives in `FOLLOWUPS.md`.
-Evidence: `~/.brx-mcp/mc/session-3782dc77.sqlite` — it carries the compiled heads MC pushed **and** six node-log
-uploads, which is why nine of the eleven were root-caused without a gun.
+Evidence: committed at [`evidence/2026-09-13-session-3782dc77/`](evidence/2026-09-13-session-3782dc77/) — it
+carries the compiled heads MC pushed **and** six node-log uploads, which is why nine of the eleven were
+root-caused without a gun.
 
 - 🔍 **F206** team modes register nothing (116 shots, 0 hits in TDM). `$GSET` t1 `friendlyFire` is the only
   variable across the three heads; **F49** at game scale. The critical one.
