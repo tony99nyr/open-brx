@@ -11,6 +11,25 @@ Legend — ✅ fixed & tested · 🔧 fixed, needs a field check (see **Check ne
 
 ---
 
+## Session 4 — 2026-09-13 evening, MacBook host, 2 players, 3 matches
+
+**The whole session is written up, issue by issue, in [`game-test-2026-09-13.md`](game-test-2026-09-13.md) — do not duplicate it here.**
+Both phones on APK 0.2.1+e19c0c8. 11 ids were filed (F206-F216); their status lives in `FOLLOWUPS.md`.
+Evidence: `~/.brx-mcp/mc/session-3782dc77.sqlite` — it carries the compiled heads MC pushed **and** six node-log
+uploads, which is why nine of the eleven were root-caused without a gun.
+
+- 🔍 **F206** team modes register nothing (116 shots, 0 hits in TDM). `$GSET` t1 `friendlyFire` is the only
+  variable across the three heads; **F49** at game scale. The critical one.
+- 🔍 **F207** the `GUN ECHO ≠ CONFIG` START refusal is a false positive on every gun — the gun's `$ALCD` reserve
+  mirrors `$WEAP` t40 and the check compares it to t17. Answers **F201**.
+- 🔍 **F208** a gun can die with the HUD holding the player alive, for 105 s, with no operator resync.
+- 🔍 **F209** the respawn delay collapses to 0 in a burst; spawn protection does not hold post-respawn.
+- ✅ **Worked:** `$GSET` t2 stayed 0 in all three heads and **outdoor FFA registered at an indoor-comparable
+  rate** — the 2026-09-13 afternoon fix held up in a real game. Teams were pushed correctly on both guns.
+- 🔍 **F203 seen again:** a phone opened on a remembered, unreachable MC address and needed a QR rescue.
+
+---
+
 ## Session 3 — 2026-09-11 night, MacBook host, 1v1 on two taggers
 
 **The whole session is written up, issue by issue, in [`game-test-2026-09-11.md`](game-test-2026-09-11.md) — do not duplicate it here.**
