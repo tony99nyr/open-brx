@@ -38,6 +38,8 @@ import urllib.parse
 import urllib.request
 from typing import Any, Awaitable, Callable
 
+from .types import LanPublic, TunnelProviderValue, TunnelStatus
+
 log = logging.getLogger("brx.mc.tunnel")
 
 # The quick tunnel announces itself on one line of its output, e.g.
@@ -133,7 +135,7 @@ class Tunnel:
         self._pid_dir = pid_dir if pid_dir is not None else home_dir()
         self._pid_owned = False
         self._orphan_pid: int | None = None   # an orphan we could not kill; keeps `armed` True
-        self._listeners: list[Callable[[dict], None]] = []
+        self._listeners: list[Callable[[LanPublic], None]] = []
         self._proc: Any = None
         self._task: asyncio.Task | None = None
         self._stopping = False
@@ -141,16 +143,20 @@ class Tunnel:
         self._saw_url = False                 # F140: the URL line has been read; the start deadline is done
         self._dns_task: asyncio.Task | None = None
         self.detail: str | None = None        # F140: the sub-state under `starting` ("resolving <host>")
+        self.status: TunnelStatus
+        self.provider: TunnelProviderValue | None
+        self.ws_url: str | None
+        self.error: str | None
         if public_url:
             self.status, self.provider, self.ws_url, self.error = "up", "manual", str(public_url), None
         else:
             self.status, self.provider, self.ws_url, self.error = "off", None, None, None
 
     # ---------------- the public block ----------------
-    def public(self) -> dict[str, Any]:
+    def public(self) -> LanPublic:
         """`State.lan.public` (A28.1). `error` is present only when there is one."""
-        out: dict[str, Any] = {"ws_url": self.ws_url, "status": self.status,
-                               "provider": self.provider, "available": self.available}
+        out: LanPublic = {"ws_url": self.ws_url, "status": self.status,
+                          "provider": self.provider, "available": self.available}
         if self.detail:
             out["detail"] = self.detail      # F140: the sub-state under `starting`, and the DNS warning under `up`
         err = self.error
@@ -165,7 +171,7 @@ class Tunnel:
             out["error"] = err
         return out
 
-    def on_change(self, cb: Callable[[dict], None]) -> None:
+    def on_change(self, cb: Callable[[LanPublic], None]) -> None:
         self._listeners.append(cb)
 
     @property
@@ -201,11 +207,11 @@ class Tunnel:
         pub = self.public()
         for cb in list(self._listeners):
             try:
-                cb(dict(pub))
+                cb(pub.copy())
             except Exception:          # a listener must never take the tunnel (or MC) down
                 log.exception("tunnel on_change listener raised")
 
-    def _set(self, status: str, ws_url: str | None, error: str | None, provider: str | None,
+    def _set(self, status: TunnelStatus, ws_url: str | None, error: str | None, provider: TunnelProviderValue | None,
              detail: str | None = None) -> None:
         if (status, ws_url, error, provider, detail) == (self.status, self.ws_url, self.error,
                                                          self.provider, self.detail):
@@ -227,7 +233,7 @@ class Tunnel:
         self._set("error", None, why, self.provider or "cloudflared")
 
     # ---------------- lifecycle ----------------
-    def start(self, ws_port: int | None = None, loop: asyncio.AbstractEventLoop | None = None) -> dict:
+    def start(self, ws_port: int | None = None, loop: asyncio.AbstractEventLoop | None = None) -> LanPublic:
         """Spawn the child (or no-op when one is already starting/up). Returns the public block at once —
         `up` arrives later, through `on_change`. Raises `TunnelError` for the two 409 cases."""
         if not self.stoppable:
@@ -259,7 +265,7 @@ class Tunnel:
         self._task = loop.create_task(self._run(port))
         return self.public()
 
-    async def stop(self) -> dict:
+    async def stop(self) -> LanPublic:
         if not self.stoppable:
             raise TunnelError("this MC was started with --public-url (provider: manual) — the tunnel is not "
                               "MC's to start or stop")

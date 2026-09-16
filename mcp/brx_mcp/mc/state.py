@@ -14,7 +14,7 @@ import secrets
 import time
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Literal, NotRequired, TypedDict, get_args
+from typing import TYPE_CHECKING, Any, Callable, Literal, NotRequired, TypedDict, cast, get_args
 from urllib.parse import quote
 
 from . import presentation as _pres
@@ -33,9 +33,9 @@ from .tunnel import TunnelError
 from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS,
                     OBJECTIVE_MODES, OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS,
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_KINDS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, Event,
-                    EndDeliveryRow, EndDeliveryView, FrameBundle, GameConfig, Loadout, LoadoutOverrides, LoadoutPolicy, LoadoutPool, PerkView,
-                    Phase, PhaseRefusalBody, Player, ReadinessRow, ReadinessSnapshot, RecapStationRow, Respawn, ScanRow, SlotRule, StationAssignment, StationRef,
-                    Stun, Team, Weapon, WeaponSel, app_tier, compatible, is_station_kind, parse_app_ver, parse_win_by)
+                    Coverage, EndDeliveryRow, EndDeliveryView, FrameBundle, GameConfig, LanPublic, Loadout, LoadoutOverrides, LoadoutPolicy, LoadoutPool, McConfidence, PerkView,
+                    ModeInfo, Phase, PhaseRefusalBody, Player, ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, Respawn, ScanRow, SlotRule, StationAssignment, StationRef, StationControl, StationReport, StationView,
+                    Stun, Team, Weapon, WeaponSel, WinnerView, NodeView, app_tier, compatible, is_station_kind, parse_app_ver, parse_win_by)
 
 if TYPE_CHECKING:                      # `presets.PresetStore` is attached by `__main__`/`create_app`
     from .presets import PresetStore
@@ -78,14 +78,14 @@ def release_app_version() -> str | None:
 
 # A28.1: `lan.public` before anything has been started. `available` is overwritten the moment a Tunnel
 # is attached; until then MC honestly says it has not looked.
-PUBLIC_OFF = {"ws_url": None, "status": "off", "provider": None, "available": False}
+PUBLIC_OFF: LanPublic = {"ws_url": None, "status": "off", "provider": None, "available": False}
 
 
 class CoverageRequired(ValueError):
     """A28.4: this mode declares `requires_coverage` and coverage is not full. The API answers 409
     `{error, coverage}` — a ValueError so every existing `except ValueError` path still catches it."""
 
-    def __init__(self, msg: str, coverage: dict):
+    def __init__(self, msg: str, coverage: Coverage):
         super().__init__(msg)
         self.coverage = coverage
         self.status = 409
@@ -455,7 +455,7 @@ class Session:
         # mid-session means someone cut an APK while a game was running; re-reading it per snapshot
         # would put a file read on the 4 Hz broadcast path).
         self.release_version: str | None = release_app_version()
-        self.last_recap: dict | None = None
+        self.last_recap: RecapView | None = None
         self.feed: list[dict] = []
         self._listeners: list[Callable[[], None]] = []
         self._feed_listeners: list[Callable[[dict], None]] = []
@@ -752,8 +752,8 @@ class Session:
             self.lan["ws_url"] = url
         self._render_join()
 
-    def _public(self) -> dict:
-        return self.lan.get("public") or dict(PUBLIC_OFF)
+    def _public(self) -> LanPublic:
+        return self.lan.get("public") or PUBLIC_OFF.copy()
 
     def _pub_url(self) -> str | None:
         """The public ws URL when it is usable — i.e. only while `status == "up"` (A28.2)."""
@@ -815,9 +815,9 @@ class Session:
         tunnel.on_change(self._tunnel_changed)
         self._tunnel_changed(tunnel.public())
 
-    def _tunnel_changed(self, pub: dict) -> None:
+    def _tunnel_changed(self, pub: LanPublic) -> None:
         was = self._pub_url()
-        self.lan["public"] = dict(pub)
+        self.lan["public"] = pub.copy()
         self._render_join()
         self._refresh_lan_warning()      # a public path makes the LAN-address warning moot (and back again)
         now = self._pub_url()
@@ -837,7 +837,7 @@ class Session:
         m = re.search(r":(\d+)", (self.lan.get("ws_url") or "").split("//")[-1])
         return int(m.group(1)) if m else 0
 
-    async def set_tunnel(self, on: bool) -> dict:
+    async def set_tunnel(self, on: bool) -> LanPublic:
         """`POST /api/tunnel` (A28.1). Returns `lan.public`; raises `TunnelError` (409) when there is
         nothing MC may start or stop."""
         t = self.tunnel
@@ -847,9 +847,9 @@ class Session:
             t.start(self._ws_port())
         else:
             await t.stop()
-        return dict(self._public())
+        return self._public().copy()
 
-    def coverage(self) -> dict:
+    def coverage(self) -> Coverage:
         """A28.4: coverage is DERIVED, not asserted — `"full"` iff every bound player node is connected
         with `reach == "backhaul"`.
 
@@ -1710,10 +1710,18 @@ class Session:
         return p
 
     # ---------- config ----------
-    def modes(self) -> list[dict]:
+    def modes(self) -> list[ModeInfo]:
         # A18: `params` = the engine's own schema rows, so the Designer can render a mode's controls without a
         # second list of knobs living in the UI (the same rule `station_source` follows).
-        return [{**m, "defaults": default_config(m["mode"]), "params": _params_schema_json(m["mode"])} for m in MODES]
+        rows: list[ModeInfo] = []
+        for m in MODES:
+            row: ModeInfo = {"mode": m["mode"], "name": m["name"], "abbr": m["abbr"],
+                             "desc": m["desc"], "brief": m["brief"], "teams_text": m["teams_text"],
+                             "win_text": m["win_text"], "respawn_text": m["respawn_text"],
+                             "defaults": default_config(m["mode"]),
+                             "params": _params_schema_json(m["mode"])}
+            rows.append(row)
+        return rows
 
     _CONFIG_KEYS = {"mode", "environment", "night", "time_limit_s", "respawn", "scoring",
                     "health", "teams", "led", "player_num_base", "loadout_policy", "presentation",
@@ -2244,7 +2252,7 @@ class Session:
                        "back at a station; assign a utility phone as RESPAWN in ITEMS and arm it")
         return out
 
-    def set_station(self, nid: str, a: dict) -> dict:
+    def set_station(self, nid: str, a: dict) -> StationView:
         """The operator's ITEMS assignment for one utility phone: kind / team / id / threshold. Validated in
         the same voice as `set_config`, stored, and pushed as `station_config` at once (utility.md §5b.1)."""
         if not isinstance(a, dict):
@@ -2399,7 +2407,7 @@ class Session:
         pending = [nid for nid, st in self.stations.items() if st.get("assigned") and st.get("arm_pending")]
         return {"armed": len(armed), "pending": pending}
 
-    def _station_view(self, nid: str) -> dict:
+    def _station_view(self, nid: str) -> StationView:
         st = self.stations[nid]
         now = self.now_ms()
         seen = st.get("last_seen_ms")
@@ -2420,16 +2428,47 @@ class Session:
             attention.append(f"PHONE ADVERTISES ID {rep.get('station_id')}, ASSIGNED {a['id']}")
         if isinstance(rep.get("battery"), (int, float)) and rep["battery"] < 30:
             attention.append("BATTERY LOW")
-        return {"node_id": nid, "assigned": a, "armed": armed, "arm_pending": bool(st.get("arm_pending")),
-                "report": rep, "app_ver": st.get("app_ver"), "platform": st.get("platform"),   # A29
+        report: StationReport = {}
+        kind = rep.get("kind")
+        if is_station_kind(kind):
+            report["kind"] = kind
+        for key in ("team", "station_id", "threshold", "revives"):
+            value = rep.get(key)
+            if isinstance(value, int) and not isinstance(value, bool):
+                report[key] = value
+        for key in ("live", "armed"):
+            value = rep.get(key)
+            if isinstance(value, bool):
+                report[key] = value
+        battery = rep.get("battery")
+        if isinstance(battery, (int, float)) and not isinstance(battery, bool):
+            report["battery"] = battery
+        control = rep.get("control")
+        if isinstance(control, dict):
+            decoded_control: StationControl = {}
+            for key in ("owner", "progress"):
+                value = control.get(key)
+                if isinstance(value, int) and not isinstance(value, bool):
+                    decoded_control[key] = value
+            contested = control.get("contested")
+            if isinstance(contested, bool):
+                decoded_control["contested"] = contested
+            hold_ms = control.get("hold_ms")
+            if isinstance(hold_ms, dict) and all(isinstance(k, str) and isinstance(v, int) and not isinstance(v, bool)
+                                                for k, v in hold_ms.items()):
+                decoded_control["hold_ms"] = hold_ms
+            report["control"] = decoded_control
+        view: StationView = {"node_id": nid, "assigned": a, "armed": armed, "arm_pending": bool(st.get("arm_pending")),
+                "report": report, "app_ver": st.get("app_ver"), "platform": st.get("platform"),   # A29
                 "last_seen_ms": (now - seen) if seen else None,
                 "online": bool(seen) and (now - seen) <= OFFLINE_AFTER_MS,
                 "attention": attention, "game": self._game_byte()}
+        return view
 
-    def stations_view(self) -> list[dict]:
+    def stations_view(self) -> list[StationView]:
         return [self._station_view(nid) for nid in sorted(self.stations)]
 
-    def _scorer_recap(self, sc: Scorer) -> dict:
+    def _scorer_recap(self, sc: Scorer) -> RecapView:
         """THE recap: the scorer's sheet plus the stations rows (A6). Every call site goes through here -- the
         late-fact re-store (`_restore_recap`) used to call `scorer.recap()` bare, so the first fact after END
         (the outbox flush, i.e. the normal case) silently dropped `stations` from `last_recap` and the DB row
@@ -2459,9 +2498,11 @@ class Session:
                    "heard": bool(rep)}
             if a["kind"] == "respawn":
                 rec["revives"] = rep.get("revives")
-            elif a["kind"] == "control" and isinstance(rep.get("control"), dict):
-                rec["hold_ms"] = rep["control"].get("hold_ms")
-                rec["owner"] = rep["control"].get("owner")
+            elif a["kind"] == "control":
+                control = rep.get("control")
+                if control is not None:
+                    rec["hold_ms"] = control.get("hold_ms")
+                    rec["owner"] = control.get("owner")
             out.append(rec)
         return out
 
@@ -3043,7 +3084,7 @@ class Session:
     # ---------- A34: a phone that comes back still LIVE in a match MC has already retired ----------
     _ENDED_KEEP = 16
 
-    def _record_ended(self, match_id: str | None, recap: dict | None, players: dict[str, Player] | None) -> None:
+    def _record_ended(self, match_id: str | None, recap: RecapView | None, players: dict[str, Player] | None) -> None:
         """Remember a retired match so a late phone can still be told how (and that) it ended."""
         if not match_id:
             return
@@ -3388,7 +3429,7 @@ class Session:
         `result` at all -- the HUD's neutral "no result for you" state, contracts §5 `result`."""
         return self._match_players is None or pid in self._match_players
 
-    def _outcome_for(self, winner: dict, p: Player, roster: dict[str, Player] | None = None) -> str:
+    def _outcome_for(self, winner: WinnerView, p: Player, roster: dict[str, Player] | None = None) -> str:
         """"win" | "lose" | "draw" | "undecided", FOR THIS RECIPIENT (A24).
 
         The node never infers this: silence means "you lost" and "your phone dropped off the LAN"
@@ -3402,13 +3443,15 @@ class Session:
         if tie:
             mine = p["player_id"] if self.config.get("mode") == "ffa" else p.get("team_id")
             return "draw" if mine in tie else "lose"
-        if winner.get("team_id") is not None:
-            return "win" if p.get("team_id") == winner["team_id"] else "lose"
-        if winner.get("player_id") is not None:
-            return "win" if p["player_id"] == winner["player_id"] else "lose"
+        team_id = winner.get("team_id")
+        if team_id is not None:
+            return "win" if p.get("team_id") == team_id else "lose"
+        player_id = winner.get("player_id")
+        if player_id is not None:
+            return "win" if p["player_id"] == player_id else "lose"
         return "undecided"
 
-    def _result_team_scores(self, recap: dict) -> list[dict]:
+    def _result_team_scores(self, recap: RecapView) -> list[dict]:
         """`[{team_id, name, score}]` for the results screen. TEAM modes only — in FFA there are no teams
         and `rows` is already the leaderboard, so this is `[]` rather than three players wearing a team
         shape (which is what `score.board` does, for a different job: the DOWN screen's race to the cap)."""
@@ -3418,7 +3461,7 @@ class Session:
         names = {t["team_id"]: str(t.get("name") or t["team_id"]) for t in self.teams}
         return [{"team_id": tid, "name": names.get(tid, tid), "score": sc} for tid, sc in totals.items()]
 
-    def _result_body(self, recap: dict, p: Player, *, match_id: str | None = None,
+    def _result_body(self, recap: RecapView, p: Player, *, match_id: str | None = None,
                      roster: dict[str, Player] | None = None) -> dict:
         """The `result` envelope for ONE player (contracts §5 `result`).
 
@@ -3448,8 +3491,9 @@ class Session:
             "t": self.now_ms(),
         }
         for k in ("possession", "after_end"):
-            if recap.get(k) is not None:
-                body[k] = recap[k]
+            value = recap.get(k)
+            if value is not None:
+                body[k] = value
         return body
 
     def _push_result(self) -> int:
@@ -4654,7 +4698,7 @@ class Session:
         self._changed()
         return {"ok": True, "reached": reached, "unreachable": unreachable}
 
-    def mc_confidence(self) -> dict:
+    def mc_confidence(self) -> McConfidence:
         """A11.5: is MC's picture of the match complete RIGHT NOW? True only when every rostered player's
         HUD has a live socket, was heard from in the last few seconds, and reports nothing left to flush.
         MC-driven global-state events (lead, next-kill-wins, last survivor) are sent only then -- with a
@@ -4965,7 +5009,7 @@ class Session:
                        "text": f"FRAG LIMIT {cap} REACHED — MATCH OVER · END REACHED {reached} OF {bound} NODE(S)"})
         self._changed()
 
-    def _push_victory(self, recap: dict | None) -> None:
+    def _push_victory(self, recap: RecapView | None) -> None:
         """At recap, the WINNING team's (or FFA winner's) connected nodes get the `victory` cue; losers
         get nothing extra. In-coverage only — a dispersed node just played its neutral `game_over` on its
         own timer. A6-shaped: `_feedback` attaches the pre-composed `$PLAY,VSF,4,6,JAY` frame from the bundle."""
@@ -5052,7 +5096,7 @@ class Session:
             self.end_reason = "time"         # A6.1: the clock every phone ran; it is not re-derived
             self._finish()
 
-    def recap(self) -> dict | None:
+    def recap(self) -> RecapView | None:
         if self.scorer:
             self._mark_flushed_live()
             r = self._scorer_recap(self.scorer)                      # A6: live recap gets the row too, not just the final one
@@ -5201,10 +5245,26 @@ class Session:
                             "synced": nv.get("synced", False), "last_seen_ms": now - nv.get("last_seen_ms", 0)}
             start = {**self._start_body(), "per_node": per}
         end_delivery = self._end_delivery_view()        # A42: absent until a match has ended
+        nodes: list[NodeView] = []
+        for nv in self.nodes.values():
+            # The node record stores an absolute receive timestamp; the public view exposes only its
+            # age, and excludes internal bookkeeping such as `reach_claimed`.
+            row = cast(NodeView, {
+                key: nv[key] for key in (
+                    "node_id", "node_type", "arm_state", "synced", "gun_name", "gun_tail", "player_id",
+                    "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "pending", "app_ver",
+                    "platform", "log", "reach", "last_reach") if key in nv
+            })
+            row.setdefault("node_id", "")
+            row.setdefault("node_type", "phone")
+            row.setdefault("arm_state", "idle")
+            row.setdefault("synced", False)
+            row["last_seen_ms"] = now - nv.get("last_seen_ms", 0)
+            nodes.append(row)
         return {"session_id": self.session_id, "phase": self.phase, "t": now, "lan": self.lan,
                 "coverage": self.coverage(),                    # A28.4: derived, not asserted
                 "mc_confidence": self.mc_confidence(),          # A11.5: gates MC-driven global-state events
-                "nodes": [{**nv, "last_seen_ms": now - nv.get("last_seen_ms", 0)} for nv in self.nodes.values()],
+                "nodes": nodes,
                 "stations": self.stations_view(), "game_no": self._game_byte(),   # A13.5: the ITEMS panel
                 "readiness": self.readiness(), "config": self.config, "config_errors": self.config_errors,
                 "options": dict(self.options),      # A25: session options (log_sync)

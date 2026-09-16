@@ -2,11 +2,146 @@
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 import time
 from pathlib import Path
+from typing import Any, TypeGuard
 
 from ..storage import home_dir
+from .types import STATION_KINDS, RecapView
+
+
+def _is_recap(value: object) -> TypeGuard[RecapView]:
+    """Recognize the required outer shape of a persisted recap before serving it as typed JSON.
+
+    Recaps are decoded from SQLite, so their values are untrusted even though current writes come from
+    ``Scorer.recap()``.  Keep this boundary deliberately structural: additive recap fields remain
+    forward-compatible, while a scalar or half-written required field cannot leak through as a
+    ``RecapView``.
+    """
+    if not isinstance(value, dict):
+        return False
+    winner = value.get("winner")
+    score = value.get("score")
+    rows = value.get("rows")
+    honors = value.get("honors")
+    missing = value.get("missing")
+    if not isinstance(winner, dict) or not isinstance(score, dict):
+        return False
+    if any(key not in {"team_id", "player_id", "undecided", "tie"} for key in winner):
+        return False
+    if "team_id" in winner and winner["team_id"] is not None and not isinstance(winner["team_id"], str):
+        return False
+    if "player_id" in winner and winner["player_id"] is not None and not isinstance(winner["player_id"], str):
+        return False
+    if "undecided" in winner and not isinstance(winner["undecided"], str):
+        return False
+    if "tie" in winner and (not isinstance(winner["tie"], list) or not all(isinstance(t, str) for t in winner["tie"])):
+        return False
+    if not all(isinstance(k, str) and type(v) is int for k, v in score.items()):
+        return False
+    if not isinstance(rows, list) or not all(_is_score_row(row) for row in rows):
+        return False
+    if not isinstance(honors, list) or not all(
+            isinstance(honor, dict) and all(isinstance(honor.get(k), str) for k in ("award", "player_id", "stat"))
+            for honor in honors):
+        return False
+    if not isinstance(value.get("provisional"), bool):
+        return False
+    if not isinstance(missing, list) or not all(isinstance(item, str) for item in missing):
+        return False
+    warnings = value.get("warnings")
+    if warnings is not None and (not isinstance(warnings, list) or not all(isinstance(item, str) for item in warnings)):
+        return False
+    if "settling" in value and not isinstance(value["settling"], bool):
+        return False
+    if "awaiting" in value and (not isinstance(value["awaiting"], list)
+                                or not all(isinstance(item, str) for item in value["awaiting"])):
+        return False
+    if "since_end_ms" in value and value["since_end_ms"] is not None and type(value["since_end_ms"]) is not int:
+        return False
+    if any(key in value and type(value[key]) is not int for key in ("post_end", "post_end_facts", "parked")):
+        return False
+    after_end = value.get("after_end")
+    if after_end is not None:
+        if not isinstance(after_end, dict) or type(after_end.get("facts")) is not int:
+            return False
+        by_player = after_end.get("by_player")
+        if not isinstance(by_player, dict) or not all(
+                isinstance(pid, str) and isinstance(stats, dict)
+                and type(stats.get("kills")) is int and type(stats.get("deaths")) is int
+                for pid, stats in by_player.items()):
+            return False
+    possession = value.get("possession")
+    if possession is not None:
+        if not isinstance(possession, dict) or not isinstance(possession.get("by_team"), dict):
+            return False
+        if not all(isinstance(tid, str) and type(seconds) in (int, float) and math.isfinite(seconds)
+                   for tid, seconds in possession["by_team"].items()):
+            return False
+        if any(type(possession.get(key)) not in (int, float) or not math.isfinite(possession[key])
+               for key in ("neutral_s", "observed_s")):
+            return False
+        if any(type(possession.get(key)) is not int for key in ("sites", "reports")):
+            return False
+        if possession.get("of_s") is not None and type(possession["of_s"]) is not int:
+            return False
+    stations = value.get("stations")
+    if stations is not None and (not isinstance(stations, list) or not all(_is_station_row(row) for row in stations)):
+        return False
+    return True
+
+
+def _is_score_row(row: object) -> bool:
+    if not isinstance(row, dict):
+        return False
+    if not all(isinstance(row.get(key), str) for key in ("player_id", "display")):
+        return False
+    if "team_id" not in row or (row["team_id"] is not None and not isinstance(row["team_id"], str)):
+        return False
+    if not all(type(row.get(key)) is int for key in ("kills", "deaths", "assists", "shots", "hits", "streak")):
+        return False
+    if "accuracy" not in row or (row["accuracy"] is not None and
+                                 (type(row["accuracy"]) not in (int, float) or not math.isfinite(row["accuracy"]))):
+        return False
+    if type(row.get("kd")) not in (int, float) or not math.isfinite(row["kd"]):
+        return False
+    if not isinstance(row.get("medals"), list) or not all(isinstance(m, str) for m in row["medals"]):
+        return False
+    if any(key in row and type(row[key]) is not int for key in
+           ("shots_total", "best_streak", "multi_best", "after_end_kills", "after_end_deaths")):
+        return False
+    if any(key in row and not isinstance(row[key], bool) for key in ("first_blood", "acc_provisional")):
+        return False
+    return True
+
+
+def _is_station_row(row: object) -> bool:
+    if not isinstance(row, dict) or not isinstance(row.get("node_id"), str):
+        return False
+    if row.get("kind") not in STATION_KINDS:
+        return False
+    if type(row.get("id")) is not int or type(row.get("team")) is not int or not isinstance(row.get("heard"), bool):
+        return False
+    if any(key in row and row[key] is not None and type(row[key]) is not int for key in ("revives", "owner")):
+        return False
+    holds = row.get("hold_ms")
+    return holds is None or (isinstance(holds, dict) and all(isinstance(tid, str) and type(ms) is int
+                                                               for tid, ms in holds.items()))
+
+
+def _decode_recap(raw: object) -> RecapView | None:
+    """Decode a stored recap, supplying fields absent from older archived rows."""
+    if not isinstance(raw, dict) or "rows" not in raw:
+        return None
+    value = dict(raw)
+    value.setdefault("winner", {})
+    value.setdefault("score", {})
+    value.setdefault("honors", [])
+    value.setdefault("provisional", False)
+    value.setdefault("missing", [])
+    return value if _is_recap(value) else None
 
 
 def mc_dir() -> Path:
@@ -54,7 +189,7 @@ class Store:
                         (int(time.time() * 1000), json.dumps(recap, default=str), match_id))
         self.db.commit()
 
-    def matches(self) -> list[dict]:
+    def matches(self) -> list[dict[str, Any]]:
         """Every finished match in this session, newest first — the history behind MC's RECAP screen.
 
         Field 2026-08-30: "the recap doesn't show the previous game once another is started ... we have
@@ -70,9 +205,10 @@ class Store:
             # history with it. Only an unreadable recap disqualifies the row, because without one there
             # is no result to show.
             try:
-                recap = json.loads(r[4]) if r[4] else None
+                raw_recap = json.loads(r[4]) if r[4] else None
             except (ValueError, TypeError):
                 continue
+            recap = _decode_recap(raw_recap)
             if recap is None:
                 continue
             try:

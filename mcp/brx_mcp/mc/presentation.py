@@ -70,7 +70,7 @@ from typing import Any
 
 from .. import poolgauge as pg
 from .. import sounds as snd
-from .types import GameConfig
+from .types import GameConfig, GunSummary, PresentationRow, PresentationSummary
 
 PALETTE = {"red": 0, "blue": 1, "yellow": 2, "green": 3, "purple": 4, "teal": 5, "white": 6,
            "pink": 7, "orange": 8}
@@ -984,27 +984,42 @@ def gun_spawn_tail(profile: dict, tid: int | None, night: bool, leds_on: bool) -
     return []
 
 
-def summary(profile: dict) -> dict:
+def summary(profile: dict) -> PresentationSummary:
     """What the UI shows: preset + the switches + which events carry a custom sound.
 
     `headset.role` (led-language.md §3.3) is exposed under BOTH names: `role` (canonical going
     forward) and `carrier` (kept byte-identical so the existing console, which still reads
     `headset.carrier`, keeps working unchanged -- §4 "summary() keeps emitting the old switches")."""
     hs = {**HEADSET_DEFAULT, **_collapse_headset(profile.get("headset"))}
+    gun_profile = profile.get("gun") or {}
+    gun_summary: GunSummary = {"in_play": gun_profile.get("in_play", GUN_DEFAULT["in_play"]),
+                               "pregame": gun_profile.get("pregame", GUN_DEFAULT["pregame"])}
+    if isinstance(gun_profile.get("readout"), dict):
+        gun_summary["readout"] = gun_profile["readout"]
+    voice = profile.get("voice", "on")
     return {"preset": profile.get("preset", "standard"),
-            **{k: bool(profile.get(k, _BASE[k])) for k in SWITCHES},
-            "voice": profile.get("voice", _BASE["voice"]),
-            "headset": {**hs, "carrier": hs["role"]},
-            "gun": {**GUN_DEFAULT, **(profile.get("gun") or {})},
+            "announcer": bool(profile.get("announcer", _BASE["announcer"])),
+            "gun_flash": bool(profile.get("gun_flash", _BASE["gun_flash"])),
+            "headset_team": bool(profile.get("headset_team", _BASE["headset_team"])),
+            "sight_flash": bool(profile.get("sight_flash", _BASE["sight_flash"])),
+            "hud_events": bool(profile.get("hud_events", _BASE["hud_events"])),
+            "mc_events": bool(profile.get("mc_events", _BASE["mc_events"])),
+            "mc_confidence": bool(profile.get("mc_confidence", _BASE["mc_confidence"])),
+            "blackout": bool(profile.get("blackout", _BASE["blackout"])),
+            "voice": voice if voice in VOICE_VALUES else "on",
+            "headset": {"pregame": hs["pregame"], "start_flash": hs["start_flash"],
+                        "in_play": hs["in_play"], "hit": hs["hit"], "death": hs["death"],
+                        "respawn_flash": hs["respawn_flash"], "role": hs["role"], "carrier": hs["role"]},
+            "gun": gun_summary,
             "custom_events": sorted(ev for ev, spec in (profile.get("events") or {}).items()
                                     if spec.get("sound") or spec.get("gun_led") is not None or spec.get("headset") is not None or spec.get("flash") or spec.get("slot"))}
 
 
-def table(config: GameConfig) -> list[dict]:
+def table(config: GameConfig) -> list[PresentationRow]:
     """The resolved profile as rows for the MC's read-only ADVANCED view: every event with its source
     (hud / mc / both), what fires it, the sound (id + the catalog's words), and the colours."""
     prof = resolve(config)
-    rows = []
+    rows: list[PresentationRow] = []
     for ev, spec in prof["events"].items():
         s = spec.get("sound")
         words = ""
@@ -1015,11 +1030,12 @@ def table(config: GameConfig) -> list[dict]:
             words = "the player's own voice: " + ("kill line" if s == "voice:kill" else ROLE_WORDS.get(s[6:], s[6:]))
         elif s == "VSF+JAY":
             words = "Victory! + sting"
-        rows.append({"event": ev, "source": spec.get("source", "mc"), "desc": spec.get("desc", ""),
-                     "sound": s, "words": words, "gun_led": spec.get("gun_led"), "headset": spec.get("headset"), "flash": spec.get("flash"),
-                     "slot": spec.get("slot"),
-                     "text": TEXT.get(ev, ""),
-                     "enabled": not ((spec.get("source") == "hud" and not prof.get("hud_events", True))
-                                     or (spec.get("source") == "mc" and not prof.get("mc_events", True))
-                                     or (spec["group"] in ("announcer", "objective") and not prof.get("announcer", True)))})
+        row: PresentationRow = {"event": ev, "source": spec.get("source", "mc"), "desc": spec.get("desc", ""),
+                                "sound": s, "words": words, "gun_led": spec.get("gun_led"), "headset": spec.get("headset"), "flash": spec.get("flash"),
+                                "slot": spec.get("slot"),
+                                "text": TEXT.get(ev, ""),
+                                "enabled": not ((spec.get("source") == "hud" and not prof.get("hud_events", True))
+                                                or (spec.get("source") == "mc" and not prof.get("mc_events", True))
+                                                or (spec["group"] in ("announcer", "objective") and not prof.get("announcer", True)))}
+        rows.append(row)
     return rows

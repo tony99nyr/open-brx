@@ -4,9 +4,9 @@
 // from one place. A field added on the Python TypedDict reaches the console by running that script;
 // forgetting to run it fails `mcp/tests/test_contract_generated.py`.
 //
-// What stays HAND-WRITTEN below is the remaining untyped view surface (`State`, `NodeView`,
-// `StationView`, `LiveView`, `RecapView`, ...), the `Api` surface and response bodies. Leaf
-// views such as `WeaponView` and `LiveRow` already come from the Python producers. Never
+// What stays HAND-WRITTEN below is the remaining composed view surface (`State`, `LiveView`,
+// `StartView`), the `Api` surface and response bodies. Leaf and mid-level views already come
+// from the Python producers. Never
 // re-declare a generated shape here -- `mcp/tests/test_ui_contract.py` fails if this file does.
 
 // ---- generated wire shapes (contract.gen.ts) ----
@@ -16,7 +16,11 @@ export type {
   ReadinessSnapshot, Respawn, RosterEntry, ScanRow, ScoreRow, Scoring, Siphon, SlotRule, StationRef,
   Stun, Team, Weapon, WeaponSel, PoolEmptyCode, ModeParamSpec, Honor, RecapStationRow,
   StationAssignment, EndDeliveryView, VoiceList, VoiceOption, PhaseRefusalBody,
-  WeaponView, SavedGame, LiveRow, EndDeliveryRow, WeaponBars,
+  WeaponView, SavedGame, LiveRow, EndDeliveryRow, WeaponBars, Coverage,
+  LanPublic, PresentationRow, PresentationView, PresentationSummary, HeadsetSummary, GunSummary,
+  McConfidence, RecapView, WinnerView, PossessionView, AfterEndPlayer, AfterEndView,
+  MatchHistoryRow, ModeInfo, NodeView, StationControl, StationReport, StationArmed, StationView,
+  TunnelStatus, TunnelProviderValue,
 } from './contract.gen';
 export type {
   ArmState, ControlCmd, ItemKind, LoadoutPreset, McKind, NodeKind, PersistedEventType, Phase,
@@ -25,10 +29,13 @@ export type {
 // values (verbatimModuleSyntax: a value re-export may not ride in a `export type` statement)
 export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS } from './contract.gen';
 
-import type { ArmState, GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, Player, Preflight,
-  PerkView, ReadinessSnapshot, ScanRow, ScoreRow, StationKind, Team, ModeParamSpec,
-  Honor, RecapStationRow, StationAssignment, EndDeliveryView, VoiceList, PhaseRefusalBody,
-  WeaponView, SavedGame, LiveRow } from './contract.gen';
+import type { ArmState, GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, Player,
+  PerkView, ReadinessSnapshot, ScanRow, StationKind, Team,
+  EndDeliveryView, VoiceList, PhaseRefusalBody, ModeInfo,
+  WeaponView, SavedGame, LiveRow, Coverage, LanPublic, RecapView, MatchHistoryRow, PresentationView,
+  NodeView, StationView } from './contract.gen';
+
+export type TunnelProvider = import('./contract.gen').TunnelProviderValue | null;
 
 /** A config as the console READS one. `GameConfig.loadout_policy` is `NotRequired` on the Python side
  *  because a PUT body legitimately omits it -- but every config the server SERVES has been through
@@ -38,96 +45,11 @@ import type { ArmState, GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, 
  *  anywhere else (a session persisted before A10, an older MC) enters the store. */
 export type ConfigView = GameConfig & { loadout_policy: LoadoutPolicy };
 
-/** A18: one row of a mode's parameter schema (`GET /api/modes` → `ModeInfo.params`). Render `int`/`float` as a
- *  number field bounded by `min`/`max`, `bool` as a switch, `str` with `choices` as a segmented control. */
-/** A11/A11.5 — one row of the resolved presentation profile (GET /api/presentation). */
-export interface PresentationRow {
-  event: string; source: 'hud' | 'mc' | 'both'; desc: string;
-  sound: string | null; words: string; gun_led: number | null; headset: number | null; flash?: 'green' | null;
-  text: string; enabled: boolean;
-}
-export interface PresentationView {
-  summary: { preset: string; announcer: boolean; gun_flash: boolean; headset_team: boolean; sight_flash: boolean;
-    hud_events: boolean; mc_events: boolean; mc_confidence: boolean; custom_events: string[];
-    /** A11.6 headset block: pregame team|off · start_flash · in_play dark|team · hit colour|null · death native|colour · respawn_flash · carrier */
-    headset?: { pregame: string; start_flash: boolean; in_play: string; hit: number | null; death: string | number; respawn_flash: boolean; carrier: boolean };
-    /** A11.7 gun body block: in_play native (firmware breathing) | team | dark | health */
-    gun?: { in_play: string } };
-  events: PresentationRow[];
-  mc_confidence: { confident: boolean; missing: string[]; stale: string[]; unflushed: string[] };
-  presets: string[];
-}
-
-export interface NodeView {
-  node_id: string; node_type: string; gun_name?: string; gun_tail?: string; player_id?: string;
-  arm_state: ArmState; last_seen_ms: number; synced: boolean; preflight?: Preflight;
-  /** the node's own last word, copied through verbatim by `state.py _on_status` -- an explicit `null`
-   *  is what a phone that cannot read the value sends, and is NOT the same as the key being absent. */
-  battery?: number | null; fw?: string | null; hp?: number | null; armor?: number | null;
-  ammo?: number | null; alive?: boolean | null;
-  pending?: number | null;
-  /** A29 (2026-09-12): the phone's REAL build — `"<package version>+<git sha>[-dirty]"` baked in at
-   *  build time — and `android`/`ios`/`web`. Optional: the app sent a hard-coded `hud-0.2` until
-   *  A29, and an MC that predates the change never forwards either. Render what arrived, and say
-   *  "UNKNOWN" rather than guess. The RED/AMBER semver rules are the SERVER's (`state.py readiness()`
-   *  holds `APP_MAJOR`); the console renders the strings it is sent and derives no version rule. */
-  app_ver?: string | null;
-  platform?: string | null;
-  /** A25: the log sync as this phone reports it. Optional — absent before the phone says anything. */
-  log?: LogView | null;
-  /** A28.3: the live socket's path, from `hello.via` then every `status`. Absent on a server that
-   *  predates A28, or before the node's first status has landed. Cleared on disconnect (A28.3 doc
-   *  above) — `last_reach` below is what survives that. */
-  reach?: 'lan' | 'backhaul';
-  /** A28.3 (2026-09-12 field fix) — the node's LAST KNOWN `reach` before it went stale/disconnected.
-   *  `reach` itself is cleared the moment the socket drops, so a card showing a stale/offline node had
-   *  no way to say WHICH path it lost (a tunnel dying reads identically to a phone on the wrong Wi-Fi —
-   *  field 2026-09-12, ISSUE 30). Absent on a server that predates this, or a node never seen connected. */
-  last_reach?: 'lan' | 'backhaul';
-}
-
 export interface LiveView {
   match_id: string; go_live_t: number; time_limit_s: number; ends_t: number;
   score: Record<string, number>; rows: LiveRow[];
 }
 
-export interface RecapView {
-  winner: { team_id?: string | null; player_id?: string; undecided?: string; tie?: string[] };   // team / FFA player / undecided (win_by) / tie
-  score: Record<string, number>;
-  rows: ScoreRow[];
-  honors: Honor[];
-  provisional: boolean;
-  missing: string[];
-  /** F77 / F80 (2026-09-11) — after-the-fact detectors, worded for the operator: a run of identical hits at a
-   *  steady ~5 s period (a gun replaying a latched IR event, F74), or hits/deaths from wire id 0 (a hill's
-   *  damage word, or a gun whose $PSET never landed). Absent when there is nothing to say. */
-  warnings?: string[];
-  /** F70 — an OBJECTIVE mode's real result: SECONDS each team held the control point, merged from the
-   *  nodes' `possession` facts (max per point per team, never summed — four teammates on one hill all
-   *  report the same ownership). Absent unless some node reported, which is itself the answer: a hill
-   *  nobody was in range of has no tally. `observed_s` is the best single observer's coverage of
-   *  `of_s`, so a partial number can be shown AS partial instead of as the result. */
-  possession?: { by_team: Record<string, number>; neutral_s: number; sites: number; reports: number;
-                 observed_s: number; of_s: number | null };
-  /** A8 — bound nodes not heard from since the whistle. ADVISORY: it gates nothing server-side, but a
-   *  recap that is still moving must say so, or the operator reads a settling number as the result. */
-  settling?: boolean;
-  awaiting?: string[];
-  since_end_ms?: number | null;
-  /** A6.1 — what the scorer recorded AFTER the whistle: facts that are real but do NOT count. `facts`
-   *  is the total (the server's `post_end_facts`), `by_player` the kills/deaths each player picked up
-   *  once scoring was frozen. Optional — an older MC sends only the count, and nothing at all before
-   *  A6.1 — so the block renders only when the server actually sent it. */
-  after_end?: { facts: number; by_player: Record<string, { kills: number; deaths: number }> };
-  /** A6.1 — the bare count, which the server has always sent. Kept beside `after_end` because it is
-   *  what an older MC has: a count with no breakdown is still worth saying. */
-  post_end_facts?: number;
-  /** Roadmap A6 — one row per ASSIGNED utility station, from its own self-authoritative heartbeat
-   *  (utility.md §5c/§5d.6: a station answers to nobody mid-match, so this is the only place its count is
-   *  ever seen). Absent unless some station is assigned; a station never heard from still gets a row, with
-   *  its own fields null rather than a fabricated zero. */
-  stations?: RecapStationRow[];
-}
 
 export type FeedTag = 'DOUBLE KILL' | 'TRIPLE KILL' | `STREAK ×${number}` | 'FIRST BLOOD' | 'TEAM KILL' | 'SYNC POINT'
   /** A11.4/F118: a global-state alert MC pushed to the nodes. `ALERT` reached everyone bound, `WITHHELD`
@@ -140,46 +62,6 @@ export interface StartView {
   match_id: string; go_live_t: number; seq: number; countdown_s: number;
   per_node: Record<string, { arm_state: ArmState; t_minus_ms?: number; synced: boolean; last_seen_ms: number }>;
 }
-
-/** A13.5 (F104): a utility phone as MC sees it — the ITEMS panel's row. `assigned` is the operator's call,
- *  `armed` what the phone was last told, `report` the phone's own heartbeat (for a control point that carries
- *  the self-authoritative recap: owner, progress, hold_ms per team). */
-export interface StationView {
-  node_id: string;
-  assigned: StationAssignment | null;
-  armed: { game: number; at: number; kind: StationKind; team: number; id: number } | null;
-  arm_pending: boolean;
-  report: { kind?: StationKind; team?: number; station_id?: number; threshold?: number; live?: boolean; revives?: number;
-            armed?: boolean; battery?: number;
-            control?: { owner?: number; progress?: number; contested?: boolean; hold_ms?: Record<string, number> } };
-  app_ver?: string | null;
-  last_seen_ms: number | null;   // age
-  online: boolean;
-  attention: string[];
-  game: number;                  // the game byte stations are armed with THIS match
-}
-
-/** A28.1 — MC's optional public node-socket tunnel. Opt-in and additive: the LAN path is untouched,
- *  and the host needs internet only if they turn it on. */
-export type TunnelStatus = 'off' | 'starting' | 'up' | 'error';
-export type TunnelProvider = 'cloudflared' | 'manual' | null;
-export interface LanPublic {
-  ws_url: string | null; status: TunnelStatus; provider: TunnelProvider;
-  /** the `cloudflared` binary was found on PATH at launch — when false the UI shows the install
-   *  line, never hides the control (A28.1). */
-  available: boolean;
-  /** the last output line from a tunnel that failed to come up within 20s, or exited. */
-  error?: string;
-  /** field 2026-09-12 (ISSUE 7): `status:"up"` from cloudflared's own line is premature for OTHER
-   *  people's resolvers — a phone that dials the hostname before it has propagated gets
-   *  ERR_NAME_NOT_RESOLVED for minutes. `detail` carries the server's own words for what it is doing
-   *  while `status` is `"starting"` past the process-up moment (e.g. "RESOLVING HOSTNAME…"). Optional:
-   *  an older server has no second phase to report. Render verbatim, never invent a stage of our own. */
-  detail?: string;
-}
-/** A28.4 — derived, never asserted: `"full"` iff every bound player node is connected with
- *  `reach == "backhaul"`. */
-export interface Coverage { level: 'full' | 'zones'; on_backhaul: number; bound: number }
 
 /** loadout.md §3.2 (server pass 2, 2026-09-12) — why a slot's pool came out EMPTY. A closed
  *  vocabulary of CODES, not sentences: `policy.py`'s copy of these is the HUD's (`_R_*`, shown
@@ -309,19 +191,6 @@ export interface State {
   restored_from?: { at: number; players: number };
 }
 
-/** A42 — `state.py _end_delivery_view()`. One row per bound player HUD that has NOT confirmed the end of
- *  `match_id`; a HUD that confirmed simply leaves the list, which is why `confirmed` is a count and not a
- *  second list. `reached` is whether MC's last push found a socket at all (it is not proof the HUD acted —
- *  nothing but the heartbeat is), `tries` how many times that phone has been told, `since_ms` how long ago
- *  the whistle was. */
-export interface ModeInfo {
-  mode: string; name: string; abbr: string; desc: string; brief: string;
-  teams_text: string; win_text: string; respawn_text: string; defaults: ConfigView;
-  /** A18: what this mode lets the operator tune (`defaults.mode_params` carries the values). Optional — an
-   *  older server never sends it; `[]` for a mode that takes none. */
-  params?: ModeParamSpec[];
-}
-
 /** The surface both the real client and the in-browser mock implement. */
 export interface Api {
   getState(): Promise<State>;
@@ -418,18 +287,6 @@ export interface Api {
  *  rejection, and a server that refuses for another reason (or an older one that refuses differently)
  *  must degrade to "the error string alone", never to a crash or an empty list presented as a fact. */
 export type PhaseRefusal = Partial<PhaseRefusalBody>;
-
-/** One finished match from MC's session store — the RECAP screen's history picker (A8). */
-export interface MatchHistoryRow {
-  match_id: string;
-  mode: string;
-  go_live_t: number | null;
-  ended_t: number | null;
-  recap: RecapView | null;
-  /** The full GameConfig the match actually ran with, plus `_heads`: the compiled head frames pushed
-   *  to each player. The frames are the ground truth — a setting can be misread, a token cannot. */
-  config?: Record<string, unknown> & { _heads?: Record<string, string[]> };
-}
 
 /** Selectable voice personas. `$PSET`'s trailing tokens are a positional voice pack; only HEAVY is
  *  confirmed by ear, the rest are inferred from the pack layout (see gameconfig.VOICE_PACKS). */

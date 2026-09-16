@@ -12,7 +12,7 @@ import { PRESETS, apply as applyPolicy, conflict, defaultPolicy, pool as poolOf,
 const now = () => Date.now();
 // loadout.md §8 — the shipped example so the SAVED GAMES shelf is never empty on first use
 const BUILTIN_SNIPER = (): SavedGame => {
-  const ffa: ConfigView = clone(MODES.find(m => m.mode === 'ffa')!.defaults);
+  const ffa: ConfigView = withPolicy(clone(MODES.find(m => m.mode === 'ffa')!.defaults));
   ffa.health = { ...ffa.health, max_armor: 0 };
   ffa.loadout_policy = { preset: 'custom', hud_select: false,
     primary: { choice: 'fixed', kinds: ['weapon'], exclude_tags: [], exclude_ids: [], only_ids: [], fixed_id: 'sniper_rifle' },
@@ -70,7 +70,7 @@ type Sub = { snap: (s: State) => void; feed: (e: FeedEntry) => void };
 export class MockBackend implements Api {
   private subs = new Set<Sub>();
   private phase: Phase = 'muster';
-  private config: ConfigView = clone(MODES[0].defaults);
+  private config: ConfigView = withPolicy(clone(MODES[0].defaults));
   private players: Player[] = [];
   private trying: Record<string, string> = {};
   private standby: Player[] = [];   // STANDBY: parked players (never counted in kit/lobby/readiness)
@@ -894,9 +894,10 @@ export class MockBackend implements Api {
       { event: 'infected', source: 'both', desc: 'a survivor turned (infection)', sound: 'VB1M', words: 'The infection is spread.', gun_led: null, headset: null, text: 'THE INFECTION SPREADS', enabled: true },
     ] as const;
     return {
-      summary: { preset: 'standard', announcer: true, gun_flash: true, headset_team: true, sight_flash: true, hud_events: true, mc_events: true, mc_confidence: true, custom_events: [] as string[],
-        headset: { pregame: 'team', start_flash: true, in_play: 'dark', hit: 0, death: 'native', respawn_flash: true, carrier: true } },
-      events: rows.map(r => ({ ...r })),
+      summary: { preset: 'standard', announcer: true, gun_flash: true, headset_team: true, sight_flash: true, hud_events: true, mc_events: true, mc_confidence: true, blackout: false, voice: 'on' as const, custom_events: [] as string[],
+        headset: { pregame: 'team', start_flash: true, in_play: 'dark', hit: 0, death: 'native', respawn_flash: true, role: true, carrier: true },
+        gun: { in_play: 'team', pregame: 'team' } },
+      events: rows.map(r => ({ ...r, flash: null, slot: null })),
       mc_confidence: { confident: false, missing: ['p-demo-2'], stale: [] as string[], unflushed: [] as string[] },
       presets: ['counter_strike', 'extraction', 'infection', 'last_stand', 'silenced', 'standard', 'vip'],
     };
@@ -961,7 +962,7 @@ export class MockBackend implements Api {
     // carries them (`set_config`, same three keys, same "unless the patch itself names them" rule) —
     // they describe the SITE, not the game.
     const modeChanged = !!partial.mode && partial.mode !== prevMode;
-    const base: ConfigView = modeChanged ? clone(MODES.find(m => m.mode === partial.mode)!.defaults) : clone(this.config);
+    const base: ConfigView = modeChanged ? withPolicy(clone(MODES.find(m => m.mode === partial.mode)!.defaults)) : clone(this.config);
     if (modeChanged) {
       if (partial.environment === undefined) base.environment = this.config.environment;
       if (partial.night === undefined) base.night = this.config.night;

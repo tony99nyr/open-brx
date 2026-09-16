@@ -130,14 +130,14 @@ describe('ADVANCED — no stray text in cells (round 3)', () => {
 });
 
 describe('ADVANCED — gun body block (A11.7)', () => {
-  it('shows the firmware breathing by default and the opted-in mode when the profile sets one', async () => {
+  it('shows the standard team hold and the opted-in mode when the profile sets one', async () => {
     const d = await demo();
     let m = await mountScreen(<AdvancedPresentation />, { state: d.state, weapons: d.weapons, perks: d.perks });
     await m.click('ADVANCED'); await act(async () => { await new Promise(r => setTimeout(r, 5)); });
-    expect(m.find('[data-testid="gun-block"]')[0].textContent).toMatch(/FIRMWARE BREATHING/);
+    expect(m.find('[data-testid="gun-block"]')[0].textContent).toMatch(/TEAM COLOUR/);
     m.unmount();
     const base = await d.api.getPresentation();
-    const api = { getPresentation: async () => ({ ...base, summary: { ...base.summary, gun: { in_play: 'health' } } }) };
+    const api = { getPresentation: async () => ({ ...base, summary: { ...base.summary, gun: { ...base.summary.gun, in_play: 'health' } } }) };
     m = await mountScreen(<AdvancedPresentation />, { state: d.state, weapons: d.weapons, perks: d.perks, api });
     await m.click('ADVANCED'); await act(async () => { await new Promise(r => setTimeout(r, 5)); });
     expect(m.find('[data-testid="gun-block"]')[0].textContent).toMatch(/HEALTH HUE/);

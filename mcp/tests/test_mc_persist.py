@@ -87,6 +87,19 @@ def test_store_matches_survives_a_corrupt_row():
     st.close()
 
 
+def test_store_rejects_malformed_nested_recap_data():
+    """A valid outer envelope must not present malformed SQLite score rows as typed UI data."""
+    from brx_mcp.mc.store import Store
+    db = pathlib.Path(tempfile.mkdtemp()) / "s.sqlite"
+    st = Store("sess", db)
+    st.match_started("valid", {"mode": "ffa"}, 1000)
+    st.match_ended("valid", {"winner": {"player_id": "p1"}, "rows": []})
+    st.match_started("broken", {"mode": "ffa"}, 2000)
+    st.match_ended("broken", {"winner": {"player_id": "p1"}, "rows": [{"player_id": "p1"}]})
+    assert [m["match_id"] for m in st.matches()] == ["valid"]
+    st.close()
+
+
 # ── polish-loop 2026-08-26 deferred low, closed 2026-09-01 ───────────────────────────────────────
 def test_restore_repairs_duplicate_and_out_of_range_player_nums():
     """`player_num` goes on the wire as the `$PSET` player id, so a duplicate arms two guns that

@@ -191,9 +191,11 @@ def build(args):
     orphan = tunnel.reap_orphan()
     if orphan:
         print(f"  backhaul: killed an orphaned cloudflared (pid {orphan}) from a previous run", flush=True)
-    tunnel.on_change(lambda pub: print(
-        f"  backhaul: {pub['status']}" + (f"  {pub['ws_url']}" if pub.get("ws_url") else "")
-        + (f"  ({pub['error']})" if pub.get("error") else ""), flush=True))
+    def print_tunnel(pub):
+        error = pub.get("error")
+        print(f"  backhaul: {pub['status']}" + (f"  {pub['ws_url']}" if pub.get("ws_url") else "")
+              + (f"  ({error})" if error else ""), flush=True)
+    tunnel.on_change(print_tunnel)
     session.attach_tunnel(tunnel)
     # F142 (field 2026-09-12): mark the session BEFORE any restore or persist, so the marker is what
     # `restore_snapshot` compares against and what the first write records.

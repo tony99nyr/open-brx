@@ -78,6 +78,8 @@ export type PoolEmptyCode = 'off' | 'fixed_missing' | 'only_ids_missing' | 'need
 /** A13 / spec/utility.md §5: what a utility phone can be. Mirrors `KIND` in `app/src/beacon.js` (the advert
  *  byte 8) and `KIND_LABEL` in `app/src/utility.js`; a `station_config` naming anything else is refused at PUT. */
 export type StationKind = 'respawn' | 'powerup' | 'extraction' | 'bomb' | 'control';
+export type TunnelStatus = 'off' | 'starting' | 'up' | 'error';
+export type TunnelProviderValue = 'cloudflared' | 'manual';
 
 // ---- kind vocabularies ----
 export const MC_KINDS = ['ack', 'alert', 'apply', 'assign', 'config', 'control', 'feedback', 'join', 'loadout_ack', 'pull_log', 'result', 'score', 'start', 'station_config', 'time_res', 'tutorial', 'welcome'] as const;
@@ -365,7 +367,7 @@ export interface FrameBundle {
   /** A11: event -> [[frame, hold_s], ...] -- the tuned $GLED burst (+ optional $HLED) */
   leds?: Record<string, unknown[]>;
   /** A11: presentation.summary() -- preset + switches, for the UI/HUD */
-  presentation?: Record<string, unknown>;
+  presentation?: PresentationSummary;
   /** A11.7: {in_play team|dark|health, blank, rest, bands?[[frac,f]]} -- absent for native */
   gun?: Record<string, unknown>;
   /** A11.6: {in_play, rest, blank, pregame[], start[[f,s]], hit[[f,s]], death[[f,s]], respawn[[f,s]], carrier{tid:[[f,s]]}} */
@@ -466,6 +468,35 @@ export interface Preflight {
   foreground?: boolean;
   gun_linked?: boolean;
   headset_ok?: boolean;
+}
+
+/** One player or utility node in `State.snapshot()`.
+ *
+ *  `last_seen_ms` is an age in this public view. The session keeps the corresponding node record's
+ *  receive timestamp internally and projects it at snapshot time, so the UI never receives the
+ *  host's wall clock. The optional fields are forwarded only after the node has reported them. */
+export interface NodeView {
+  node_id: string;
+  node_type: string;
+  arm_state: ArmState;
+  last_seen_ms: number;
+  synced: boolean;
+  gun_name?: string;
+  gun_tail?: string;
+  player_id?: string;
+  preflight?: Preflight;
+  battery?: number | null;
+  fw?: string | null;
+  hp?: number | null;
+  armor?: number | null;
+  ammo?: number | null;
+  alive?: boolean | null;
+  pending?: number | null;
+  app_ver?: string | null;
+  platform?: string | null;
+  log?: LogView | null;
+  reach?: 'lan' | 'backhaul';
+  last_reach?: 'lan' | 'backhaul';
 }
 
 export interface Event {
@@ -598,6 +629,20 @@ export interface ModeParamSpec {
   choices?: string[];
 }
 
+/** One mode catalogue row served by ``GET /api/modes``. */
+export interface ModeInfo {
+  mode: string;
+  name: string;
+  abbr: string;
+  desc: string;
+  brief: string;
+  teams_text: string;
+  win_text: string;
+  respawn_text: string;
+  defaults: GameConfig;
+  params: ModeParamSpec[];
+}
+
 export interface Honor {
   award: string;
   player_id: string;
@@ -610,6 +655,48 @@ export interface StationAssignment {
   id: number;
   threshold: number;
   at?: number;
+}
+
+export interface StationControl {
+  owner?: number;
+  progress?: number;
+  contested?: boolean;
+  hold_ms?: Record<string, number>;
+}
+
+export interface StationReport {
+  kind?: StationKind;
+  team?: number;
+  station_id?: number;
+  threshold?: number;
+  live?: boolean;
+  revives?: number;
+  armed?: boolean;
+  battery?: number;
+  control?: StationControl;
+}
+
+export interface StationArmed {
+  game: number;
+  at: number;
+  kind: StationKind;
+  team: number;
+  id: number;
+}
+
+/** A utility phone as MC sees it in the ITEMS panel. */
+export interface StationView {
+  node_id: string;
+  assigned: StationAssignment | null;
+  armed: StationArmed | null;
+  arm_pending: boolean;
+  report: StationReport;
+  app_ver?: string | null;
+  platform?: string | null;
+  last_seen_ms: number | null;
+  online: boolean;
+  attention: string[];
+  game: number;
 }
 
 /** One assigned utility station's self-authoritative recap heartbeat. */
@@ -640,6 +727,137 @@ export interface EndDeliveryView {
   confirmed: number;
   unconfirmed: EndDeliveryRow[];
   retrying: boolean;
+}
+
+/** Derived socket coverage; full iff every bound player is on backhaul. */
+export interface Coverage {
+  level: 'full' | 'zones';
+  on_backhaul: number;
+  bound: number;
+}
+
+export interface LanPublic {
+  ws_url: string | null;
+  status: TunnelStatus;
+  provider: TunnelProviderValue | null;
+  available: boolean;
+  detail?: string;
+  error?: string;
+}
+
+export interface PresentationRow {
+  event: string;
+  source: 'hud' | 'mc' | 'both';
+  desc: string;
+  sound: string | null;
+  words: string;
+  gun_led: number | null;
+  headset: number | null;
+  flash: 'green' | null;
+  slot: 'queue' | 'interrupt' | null;
+  text: string;
+  enabled: boolean;
+}
+
+export interface HeadsetSummary {
+  pregame: string;
+  start_flash: boolean;
+  in_play: string;
+  hit: number | null;
+  death: string | number;
+  respawn_flash: boolean;
+  role: boolean;
+  carrier: boolean;
+}
+
+export interface GunSummary {
+  in_play: string;
+  pregame: string;
+  readout?: Record<string, unknown>;
+}
+
+export interface PresentationSummary {
+  preset: string;
+  announcer: boolean;
+  gun_flash: boolean;
+  headset_team: boolean;
+  sight_flash: boolean;
+  hud_events: boolean;
+  mc_events: boolean;
+  mc_confidence: boolean;
+  blackout: boolean;
+  voice: 'on' | 'hits_only' | 'off';
+  headset: HeadsetSummary;
+  gun: GunSummary;
+  custom_events: string[];
+}
+
+export interface McConfidence {
+  confident: boolean;
+  missing: string[];
+  stale: string[];
+  unflushed: string[];
+}
+
+export interface PresentationView {
+  summary: PresentationSummary;
+  events: PresentationRow[];
+  mc_confidence: McConfidence;
+  presets: string[];
+}
+
+export interface WinnerView {
+  team_id?: string | null;
+  player_id?: string | null;
+  undecided?: string;
+  tie?: string[];
+}
+
+export interface PossessionView {
+  by_team: Record<string, number>;
+  neutral_s: number;
+  sites: number;
+  reports: number;
+  observed_s: number;
+  of_s: number | null;
+}
+
+export interface AfterEndPlayer {
+  kills: number;
+  deaths: number;
+}
+
+export interface AfterEndView {
+  facts: number;
+  by_player: Record<string, AfterEndPlayer>;
+}
+
+export interface RecapView {
+  winner: WinnerView;
+  score: Record<string, number>;
+  rows: ScoreRow[];
+  honors: Honor[];
+  provisional: boolean;
+  missing: string[];
+  warnings?: string[];
+  possession?: PossessionView;
+  settling?: boolean;
+  awaiting?: string[];
+  since_end_ms?: number | null;
+  after_end?: AfterEndView;
+  post_end_facts?: number;
+  post_end?: number;
+  parked?: number;
+  stations?: RecapStationRow[];
+}
+
+export interface MatchHistoryRow {
+  match_id: string;
+  mode: string;
+  go_live_t: number | null;
+  ended_t: number | null;
+  recap: RecapView | null;
+  config?: Record<string, unknown>;
 }
 
 export interface VoiceOption {

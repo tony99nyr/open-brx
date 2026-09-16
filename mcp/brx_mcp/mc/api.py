@@ -18,7 +18,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from .state import CoverageRequired, NotReadyError, Session
-from .types import PerkView, VoiceList
+from .types import MatchHistoryRow, PerkView, PresentationView, VoiceList
 from .tunnel import TunnelError
 
 log = logging.getLogger("brx.mc.api")
@@ -170,9 +170,10 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         source (hud / mc / both), sound + the catalog's words, colours, whether it is enabled -- plus the
         switches and MC's live confidence (which gates the MC-driven global-state events)."""
         from . import presentation as _pres
-        return JSONResponse({"summary": _pres.summary(s.config.get("presentation") or _pres.default_for(s.config.get("mode"))),
-                             "events": _pres.table(s.config), "mc_confidence": s.mc_confidence(),
-                             "presets": sorted(_pres.PRESETS)})
+        view: PresentationView = {"summary": _pres.summary(s.config.get("presentation") or _pres.default_for(s.config.get("mode"))),
+                                  "events": _pres.table(s.config), "mc_confidence": s.mc_confidence(),
+                                  "presets": sorted(_pres.PRESETS)}
+        return JSONResponse(view)
 
     async def armory_scan(req):
         b = await body(req)
@@ -472,8 +473,13 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         try:
             # the FULL config (and the compiled head under `_heads`), not just the mode — debugging a
             # field report needs every setting the game actually ran with, not a summary of it
-            return JSONResponse([{k: m[k] for k in ("match_id", "go_live_t", "ended_t", "recap", "config")}
-                                 | {"mode": (m["config"] or {}).get("mode", "")} for m in s.store.matches()])
+            rows: list[MatchHistoryRow] = []
+            for m in s.store.matches():
+                config = m["config"] or {}
+                rows.append({"match_id": m["match_id"], "go_live_t": m["go_live_t"],
+                             "ended_t": m["ended_t"], "recap": m["recap"], "config": config,
+                             "mode": config.get("mode", "")})
+            return JSONResponse(rows)
         except Exception:                            # history is a convenience; never 500 the console
             # NOT a header: Starlette encodes header values as latin-1, so an error message carrying a
             # non-ASCII character (this codebase's messages are full of em-dashes) would raise INSIDE

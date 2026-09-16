@@ -9,7 +9,8 @@ import io
 from typing import Any, Callable, Literal, Mapping, Sequence
 
 from .types import (ACC_MIN_SHOTS, ASSIST_WINDOW_MS, FEEDBACK_MAX_AGE_MS, MULTI_KILL_MS,
-                    STALE_AFTER_MS, Event, Honor, LiveRow, Player, RecapStationRow, ScoreRow, Team, WinBy, parse_win_by)
+                    STALE_AFTER_MS, AfterEndPlayer, AfterEndView, Event, Honor, LiveRow, Player,
+                    PossessionView, RecapStationRow, RecapView, ScoreRow, Team, WinBy, WinnerView, parse_win_by)
 
 Feed = dict
 Feedback = Callable[[str, dict], None]     # (player_id, feedback body)
@@ -169,7 +170,7 @@ class Scorer:
             killer = None
         return victim, killer
 
-    def after_end(self) -> dict | None:
+    def after_end(self) -> AfterEndView | None:
         """The UNOFFICIAL after-the-whistle block (A6.1 + A24), or None when nothing arrived late.
 
         These are real facts — a player kept playing, or a phone flushed minutes later — and A6.1
@@ -180,8 +181,8 @@ class Scorer:
         """
         if not self.post_end:
             return None
-        by: dict[str, dict[str, int]] = {}
-        def slot(pid: str) -> dict[str, int]:
+        by: dict[str, AfterEndPlayer] = {}
+        def slot(pid: str) -> AfterEndPlayer:
             return by.setdefault(pid, {"kills": 0, "deaths": 0})
         for node_id, ev, _t_recv in self.post_end:
             if ev.get("type") != "death":
@@ -701,7 +702,7 @@ class Scorer:
             return "ignored"
         return "scored"
 
-    def possession(self) -> dict | None:
+    def possession(self) -> PossessionView | None:
         """Merged possession, or None when nobody reported any (mc/API.md RecapView.possession).
 
         Seconds per TEAM, the max reading per (site, team) — see `_possession`. A hill's NEUTRAL time
@@ -738,12 +739,12 @@ class Scorer:
                 scores[st.team_id] += st.kills
         return scores
 
-    def winner(self) -> dict:
+    def winner(self) -> WinnerView:
         # A24/M2: two sides reached the cap inside the clock-sync band — MC cannot order them, so it
         # does not pretend to. Checked first, because a dead heat outranks every other rule below.
         if self.cap_tie:
-            key = "player_id" if self.mode == "ffa" else "team_id"
-            return {key: None, "tie": list(self.cap_tie)}
+            return ({"player_id": None, "tie": list(self.cap_tie)} if self.mode == "ffa"
+                    else {"team_id": None, "tie": list(self.cap_tie)})
         if self.mode == "ffa":
             rows = self.rows()
             if not rows:
@@ -825,9 +826,9 @@ class Scorer:
         return [pid for pid, st in self.stats.items() if not st.flushed]
 
     def recap(self, provisional_override: bool | None = None,
-              stations: Sequence[RecapStationRow] | None = None) -> dict:
+              stations: Sequence[RecapStationRow] | None = None) -> RecapView:
         missing = self.missing()
-        out = {"winner": self.winner(), "score": self.team_scores(), "rows": self.rows(),
+        out: RecapView = {"winner": self.winner(), "score": self.team_scores(), "rows": self.rows(),
                "honors": self.honors(),
                "provisional": bool(missing) if provisional_override is None else provisional_override,
                "missing": missing, "post_end": len(self.post_end), "post_end_facts": len(self.post_end),
@@ -845,7 +846,7 @@ class Scorer:
         # per ASSIGNED station -- the Scorer has no idea stations exist, so the caller (`Session._finish` /
         # `Session.recap`) hands the list in; absent (not `[]`) when nothing on the field was ever assigned.
         if stations:
-            out["stations"] = stations
+            out["stations"] = list(stations)
         return out
 
     # F74's phantom loop: a gun replaying `$HIR`+`$HP` every 5.07 s with no IR in the air. A replayed hit is

@@ -5,7 +5,7 @@ fields are fine, renames are an amendment.
 """
 from __future__ import annotations
 
-from typing import Literal, NotRequired, TypeGuard, TypedDict, get_args
+from typing import Any, Literal, NotRequired, TypeGuard, TypedDict, get_args
 
 # ---- §9 constants (single source; modules reference by name) ----
 ASSIST_WINDOW_MS = 4000
@@ -429,7 +429,7 @@ class FrameBundle(TypedDict):
     #        empty): a melee word -> pain_melee; damage >= voice.pain_long_min -> pain_long; else pain_short. At most one per
     #        600 ms, none on the lethal hit (the firmware's death scream covers it).
     leds: NotRequired[dict[str, list]]   # A11: event -> [[frame, hold_s], ...] -- the tuned $GLED burst (+ optional $HLED)
-    presentation: NotRequired[dict]      # A11: presentation.summary() -- preset + switches, for the UI/HUD
+    presentation: NotRequired[PresentationSummary]  # A11: presentation.summary() -- preset + switches, for the UI/HUD
     gun: NotRequired[dict]               # A11.7: {in_play team|dark|health, blank, rest, bands?[[frac,f]]} -- absent for native
     headset: NotRequired[dict]           # A11.6: {in_play, rest, blank, pregame[], start[[f,s]], hit[[f,s]], death[[f,s]], respawn[[f,s]], carrier{tid:[[f,s]]}}
     swap_ms: NotRequired[int]            # 2026-09-04: the weapon-swap delay the gun enforces (max tok15 of slots 0/1, after perks)
@@ -518,6 +518,36 @@ class Preflight(TypedDict, total=False):
     foreground: bool
     gun_linked: bool
     headset_ok: bool
+
+
+class NodeView(TypedDict):
+    """One player or utility node in `State.snapshot()`.
+
+    `last_seen_ms` is an age in this public view. The session keeps the corresponding node record's
+    receive timestamp internally and projects it at snapshot time, so the UI never receives the
+    host's wall clock. The optional fields are forwarded only after the node has reported them.
+    """
+    node_id: str
+    node_type: str
+    arm_state: ArmState
+    last_seen_ms: int
+    synced: bool
+    gun_name: NotRequired[str]
+    gun_tail: NotRequired[str]
+    player_id: NotRequired[str]
+    preflight: NotRequired[Preflight]
+    battery: NotRequired[int | None]
+    fw: NotRequired[str | None]
+    hp: NotRequired[int | None]
+    armor: NotRequired[int | None]
+    ammo: NotRequired[int | None]
+    alive: NotRequired[bool | None]
+    pending: NotRequired[int | None]
+    app_ver: NotRequired[str | None]
+    platform: NotRequired[str | None]
+    log: NotRequired[LogView | None]
+    reach: NotRequired[Literal["lan", "backhaul"]]
+    last_reach: NotRequired[Literal["lan", "backhaul"]]
 
 
 class Event(TypedDict, total=False):
@@ -625,6 +655,20 @@ class ModeParamSpec(TypedDict):
     choices: NotRequired[list[str]]
 
 
+class ModeInfo(TypedDict):
+    """One mode catalogue row served by ``GET /api/modes``."""
+    mode: str
+    name: str
+    abbr: str
+    desc: str
+    brief: str
+    teams_text: str
+    win_text: str
+    respawn_text: str
+    defaults: GameConfig
+    params: list[ModeParamSpec]
+
+
 class Honor(TypedDict):
     award: str
     player_id: str
@@ -637,6 +681,48 @@ class StationAssignment(TypedDict):
     id: int
     threshold: int
     at: NotRequired[int]
+
+
+class StationControl(TypedDict):
+    owner: NotRequired[int]
+    progress: NotRequired[int]
+    contested: NotRequired[bool]
+    hold_ms: NotRequired[dict[str, int]]
+
+
+class StationReport(TypedDict):
+    kind: NotRequired[StationKind]
+    team: NotRequired[int]
+    station_id: NotRequired[int]
+    threshold: NotRequired[int]
+    live: NotRequired[bool]
+    revives: NotRequired[int]
+    armed: NotRequired[bool]
+    battery: NotRequired[float]
+    control: NotRequired[StationControl]
+
+
+class StationArmed(TypedDict):
+    game: int
+    at: int
+    kind: StationKind
+    team: int
+    id: int
+
+
+class StationView(TypedDict):
+    """A utility phone as MC sees it in the ITEMS panel."""
+    node_id: str
+    assigned: StationAssignment | None
+    armed: StationArmed | None
+    arm_pending: bool
+    report: StationReport
+    app_ver: NotRequired[str | None]
+    platform: NotRequired[str | None]
+    last_seen_ms: int | None
+    online: bool
+    attention: list[str]
+    game: int
 
 
 class RecapStationRow(TypedDict):
@@ -667,6 +753,141 @@ class EndDeliveryView(TypedDict):
     confirmed: int
     unconfirmed: list[EndDeliveryRow]
     retrying: bool
+
+
+class Coverage(TypedDict):
+    """Derived socket coverage; full iff every bound player is on backhaul."""
+    level: Literal["full", "zones"]
+    on_backhaul: int
+    bound: int
+
+
+TunnelStatus = Literal["off", "starting", "up", "error"]
+TunnelProviderValue = Literal["cloudflared", "manual"]
+
+
+class LanPublic(TypedDict):
+    ws_url: str | None
+    status: TunnelStatus
+    provider: TunnelProviderValue | None
+    available: bool
+    detail: NotRequired[str]
+    error: NotRequired[str]
+
+
+class PresentationRow(TypedDict):
+    event: str
+    source: Literal["hud", "mc", "both"]
+    desc: str
+    sound: str | None
+    words: str
+    gun_led: int | None
+    headset: int | None
+    flash: Literal["green"] | None
+    slot: Literal["queue", "interrupt"] | None
+    text: str
+    enabled: bool
+
+
+class HeadsetSummary(TypedDict):
+    pregame: str
+    start_flash: bool
+    in_play: str
+    hit: int | None
+    death: str | int
+    respawn_flash: bool
+    role: bool
+    carrier: bool
+
+
+class GunSummary(TypedDict):
+    in_play: str
+    pregame: str
+    readout: NotRequired[dict[str, Any]]
+
+
+class PresentationSummary(TypedDict):
+    preset: str
+    announcer: bool
+    gun_flash: bool
+    headset_team: bool
+    sight_flash: bool
+    hud_events: bool
+    mc_events: bool
+    mc_confidence: bool
+    blackout: bool
+    voice: Literal["on", "hits_only", "off"]
+    headset: HeadsetSummary
+    gun: GunSummary
+    custom_events: list[str]
+
+
+class McConfidence(TypedDict):
+    confident: bool
+    missing: list[str]
+    stale: list[str]
+    unflushed: list[str]
+
+
+class PresentationView(TypedDict):
+    summary: PresentationSummary
+    events: list[PresentationRow]
+    mc_confidence: McConfidence
+    presets: list[str]
+
+
+class WinnerView(TypedDict, total=False):
+    team_id: str | None
+    player_id: str | None
+    undecided: str
+    tie: list[str]
+
+
+class PossessionView(TypedDict):
+    by_team: dict[str, float]
+    neutral_s: float
+    sites: int
+    reports: int
+    observed_s: float
+    of_s: int | None
+
+
+class AfterEndPlayer(TypedDict):
+    kills: int
+    deaths: int
+
+
+class AfterEndView(TypedDict):
+    facts: int
+    by_player: dict[str, AfterEndPlayer]
+
+
+class RecapView(TypedDict):
+    winner: WinnerView
+    score: dict[str, int]
+    rows: list[ScoreRow]
+    honors: list[Honor]
+    provisional: bool
+    missing: list[str]
+    warnings: NotRequired[list[str]]
+    possession: NotRequired[PossessionView]
+    settling: NotRequired[bool]
+    awaiting: NotRequired[list[str]]
+    since_end_ms: NotRequired[int | None]
+    after_end: NotRequired[AfterEndView]
+    post_end_facts: NotRequired[int]
+    post_end: NotRequired[int]
+    parked: NotRequired[int]
+    stations: NotRequired[list[RecapStationRow]]
+
+
+class MatchHistoryRow(TypedDict):
+    match_id: str
+    mode: str
+    go_live_t: int | None
+    ended_t: int | None
+    recap: RecapView | None
+    config: NotRequired[dict[str, Any]]
 
 
 class VoiceOption(TypedDict):
