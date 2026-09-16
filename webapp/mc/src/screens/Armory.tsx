@@ -420,11 +420,25 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
   // who is sitting out and offers the way back instead.
   const parkedHolder = gunId ? (state?.standby ?? []).find(pl => (pl.gun_id || '').toUpperCase() === String(gunId).toUpperCase()) : undefined;
   const [claiming, setClaiming] = useState(false);
-  const claim = async (team: string) => {
-    if (!name.trim() || !gunId || claiming) return;
+  // F-armory-claim (2026-09-16): the card used to send `team_id: 'blue'|'yellow'`, which the server
+  // refuses outright in FFA (only `ffa` exists there) -- the error landed in the shared strip, the
+  // card looked unchanged, and the operator read that as "nothing happened". A gamertag claim never
+  // needs a team: the server auto-balances one when it is omitted (state.py add_player), and a team
+  // swap stays a LOBBY job. `claimErr` shows a refusal ON THIS CARD, not only in the shared strip --
+  // the inner try/catch grabs the message before `run` swallows it into the shared error state.
+  const [claimErr, setClaimErr] = useState<string | null>(null);
+  const claim = async () => {
+    const display = name.trim();
+    if (!display || !gunId || claiming) return;
     setClaiming(true);
-    try { await run(() => api.addPlayer({ display: name.trim(), team_id: team, gun_id: gunId })); setName(''); }
-    finally { setClaiming(false); }
+    setClaimErr(null);
+    try {
+      const ok = await run(async () => {
+        try { return await api.addPlayer({ display, gun_id: gunId }); }
+        catch (e) { setClaimErr((e as Error).message); throw e; }
+      });
+      if (ok) setName('');
+    } finally { setClaiming(false); }
   };
   const accent = hasGun ? T.acc : T.warn;
   const age = n.last_seen_ms ?? 0;
@@ -483,16 +497,16 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
         </div>
       )}
       {hasGun && !n.player_id && !gunClaimed && !parkedHolder && (
-        <form onSubmit={e => { e.preventDefault(); claim('blue'); }} style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${T.line2}`, paddingTop: 10 }}>
+        <form onSubmit={e => { e.preventDefault(); claim(); }} style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${T.line2}`, paddingTop: 10 }}>
           <div style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.acc }}>▸ WHO CARRIES THIS?</div>
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="GAMERTAG" maxLength={24} aria-label={`gamertag for ${n.gun_name}`}
+          <input value={name} onChange={e => { setName(e.target.value); setClaimErr(null); }} placeholder="GAMERTAG" maxLength={24} aria-label={`gamertag for ${n.gun_name}`}
             style={{ background: T.panelDeep, border: `1px solid ${T.line2}`, color: T.ink, font: F.osw(600, 15), letterSpacing: '.06em', padding: '9px 12px', outline: 'none', width: '100%', boxSizing: 'border-box' }} />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" onClick={() => claim('blue')} disabled={!name.trim() || claiming}
-              style={{ flex: 1, padding: '10px 0', background: name.trim() ? '#0f2438' : T.panelDeep, color: name.trim() ? '#7cc4ff' : T.micro, border: '1px solid #24486b', font: F.chk(700, 11), letterSpacing: '.2em', cursor: name.trim() ? 'pointer' : 'default' }}>JOIN BLUE</button>
-            <button type="button" onClick={() => claim('yellow')} disabled={!name.trim() || claiming}
-              style={{ flex: 1, padding: '10px 0', background: name.trim() ? '#2e2408' : T.panelDeep, color: name.trim() ? T.warn : T.micro, border: '1px solid #6b5824', font: F.chk(700, 11), letterSpacing: '.2em', cursor: name.trim() ? 'pointer' : 'default' }}>JOIN YELLOW</button>
-          </div>
+          <button type="submit" disabled={!name.trim() || claiming}
+            style={{ padding: '10px 0', background: T.panelDeep, color: name.trim() ? T.acc : T.micro, border: `1px solid ${name.trim() ? T.acc : T.line2}`, font: F.chk(700, 11), letterSpacing: '.2em', cursor: name.trim() ? 'pointer' : 'default' }}>
+            {claiming ? 'SETTING…' : 'SET GAMERTAG'}
+          </button>
+          {/* the operator's team stays a LOBBY decision; the server auto-balances a new claim */}
+          {claimErr && <div role="alert" data-claim-error={n.node_id ?? ''} style={{ font: F.chk(700, 11), letterSpacing: '.05em', color: T.warn, textTransform: 'none' }}>▲ {claimErr.toUpperCase()}</div>}
         </form>
       )}
     </div>

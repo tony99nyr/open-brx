@@ -1039,9 +1039,19 @@ export class MockBackend implements Api {
   async addPlayer(p: { display: string; team_id?: string; gun_id?: string; voice?: string }): Promise<Player> {
     const parked = p.gun_id && this.standby.find(x => (x.gun_id || '').toUpperCase() === p.gun_id!.toUpperCase());
     if (parked) throw new Error(`gun ${p.gun_id} is on standby with ${parked.display} - PLAY puts them back`);
+    const teams = this.config.teams ?? [];
+    if (p.team_id != null && !teams.some(t => t.team_id === p.team_id)) throw new Error(`unknown team_id '${p.team_id}'`);
+    // mirrors state.py add_player: an omitted team_id auto-balances onto the lightest declared team
+    // (a bare gamertag claim from ARMORY never asks the operator to pick a side -- F-armory-claim).
+    let teamId = p.team_id ?? null;
+    if (teamId == null && teams.length) {
+      const counts = new Map(teams.map(t => [t.team_id, 0]));
+      for (const q of this.players) if (counts.has(q.team_id ?? '')) counts.set(q.team_id!, (counts.get(q.team_id!) ?? 0) + 1);
+      teamId = teams.map(t => t.team_id).reduce((best, id) => (counts.get(id)! < counts.get(best)! ? id : best));
+    }
     const used = new Set(this.players.map(x => x.player_num));
     let n = 1; while (used.has(n)) n++;
-    const pl: Player = { player_id: uid('p'), player_num: n, display: p.display.toUpperCase(), team_id: p.team_id ?? null, node_id: null,
+    const pl: Player = { player_id: uid('p'), player_num: n, display: p.display.toUpperCase(), team_id: teamId, node_id: null,
       gun_id: p.gun_id ?? null, loadout: applyPolicy(this.config.loadout_policy, { weapons: [{ weapon_id: 'assault_rifle' }], perk: null }, this.pool(), PERKS), voice: p.voice ?? 'male', ready: false };
     this.players.push(pl); this.emit(); return clone(pl);
   }
