@@ -83,18 +83,20 @@ perk or catalog failure under a blanket exception. Real-only `hit_plan`, `voice_
 
 ### 5. F42.9: generate the console's view types. M, then L for `State`
 
-About two dozen types in `webapp/mc/src/api/types.ts` are hand-written because the server builds them as untyped
-dicts. The pyright gate did not change that: it passes with those producers still returning `dict`. Use the
-recipe above, leaf shapes first, and update `mcp/brx_mcp/mc/API.md` in the same commit where a shape is not
-documented yet (`RecapStationRow` and `VoiceList` have no mention there today).
+About two dozen types in `webapp/mc/src/api/types.ts` were hand-written because the server builds them as untyped
+dicts. Batches 1 and 2 are done 2026-09-15: the leaf, arsenal and live-row shapes now come from `types.py`,
+their producers are checked, and `API.md` names `RecapStationRow` and `VoiceList`. `PhaseRefusalBody` is the
+server's required 409 body; the UI's `PhaseRefusal = Partial<PhaseRefusalBody>` deliberately accepts other or
+older error bodies. The weapon view keeps `pool` and `ttk_ms` optional for older MC responses. Continue with
+the remaining composed views, then decompose `State.snapshot()` rather than only annotating its return.
 
-| Batch | Types | Producers | Size |
-|---|---|---|---|
-| 1 | `Honor`, `RecapStationRow`, `StationAssignment`, `ModeParamSpec`, `PhaseRefusal`, `VoiceList`, `EndDeliveryView` | `state.py _scorer_recap`, `_recap_stations`, `_station_view`, `_end_delivery_view`; `modes/params.py`; `compile.voice_options` | S |
-| 2 | `WeaponView`, `SavedGame`, `LiveRow` | `views.weapon_view`; `presets.py`; the live block of `state.py snapshot()` | S |
-| 3 | `NodeView`, `StationView`, `LanPublic`, `Coverage`, `PresentationRow`, `PresentationView`, `ModeInfo` | `state.py _node_view`, `stations_view`, `modes()`; `presentation.py`; `tunnel.py` | M |
-| 4 | `RecapView`, `LiveView`, `StartView`, `MatchHistoryRow` | composed from batches 1 to 3 | M |
-| 5 | `State` | `state.py snapshot()`, which inlines a dozen blocks and needs real decomposition, not an annotation | L |
+| Batch | Types | Producers | Size | Status |
+|---|---|---|---|---|
+| 1 | `Honor`, `RecapStationRow`, `StationAssignment`, `ModeParamSpec`, `PhaseRefusalBody`, `VoiceList`, `EndDeliveryView` | scorer, station and delivery views; `modes/params.py`; compiler voice options | S | Done 2026-09-15 |
+| 2 | `WeaponView`, `SavedGame`, `LiveRow` | `views.weapon_view`; `presets.py`; `Scorer.live_rows()` | S | Done 2026-09-15 |
+| 3 | `NodeView`, `StationView`, `LanPublic`, `Coverage`, `PresentationRow`, `PresentationView`, `ModeInfo` | `state.py _node_view`, `stations_view`, `modes()`; `presentation.py`; `tunnel.py` | M | Open |
+| 4 | `RecapView`, `LiveView`, `StartView`, `MatchHistoryRow` | composed from batches 1 to 3 | M | Open |
+| 5 | `State` | `state.py snapshot()`, which inlines a dozen blocks and needs real decomposition, not an annotation | L | Open |
 
 `ConfigView`, `LoadoutPoolReasons` and `PoolEmptyCode` are already aliases of generated types. `Api`, `FeedTag`
 and `FeedEntry` have no typed server producer and stay hand-written.

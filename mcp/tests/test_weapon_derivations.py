@@ -282,8 +282,17 @@ def test_a_synthetic_catalog_without_the_chain_still_renders():
     demo = [{"weapon_id": "z", "name": "Z", "stats": {"dmg": 55, "htk": 13}}]
     assert weapon_views(demo)[0]["htk"] == 13
     # a row with a non-numeric stat must not take node assignment down with it
-    junk = [{"weapon_id": "y", "name": "Y", "stats": {"dmg": "lots", "htk": None}}]
-    assert weapon_views(junk)[0]["dmg_per_hit"] is None
+    junk = [{"weapon_id": "y", "name": "Y", "stats": {"mag": "many", "reserve": "plenty",
+             "reload_ms": "soon", "dmg": "lots", "rof": "fast", "rng": "far", "htk": None}}]
+    bad_view = weapon_views(junk)[0]
+    assert bad_view["clip"] == 0 and bad_view["reserve"] is None
+    assert bad_view["reload_s"] is None and bad_view["reload_ms"] is None
+    assert bad_view["dmg"] is None and bad_view["rpm"] is None and bad_view["rng"] is None
+    nonfinite = [{"weapon_id": "n", "name": "N", "stats": {"mag": float("inf"),
+                  "dmg_hit": float("nan"), "rof": float("inf")}}]
+    finite_view = weapon_views(nonfinite)[0]
+    assert finite_view["clip"] == 0 and finite_view["dmg_per_hit"] is None
+    assert finite_view["rpm"] is None
 
 
 def test_the_quoted_pool_is_the_pool_the_gun_is_ACTUALLY_armed_with():

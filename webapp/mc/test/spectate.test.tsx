@@ -21,7 +21,7 @@ const JSDOM_VP = { w: 1024, h: 768 };
 const row = (over: Partial<LiveRow> = {}): LiveRow => ({
   player_id: 'p1', display: 'VIPER', team_id: 'blue',
   kills: 9, deaths: 3, assists: 2, shots: 40, hits: 14, accuracy: 35, kd: 3, streak: 1,
-  best_streak: 5, medals: [], status: 'alive', sync_age_ms: 1200, ...over,
+  best_streak: 5, medals: [], status: 'alive', sync_age_ms: 1200, respawn_in_s: null, ...over,
 });
 
 async function spectate(over: Partial<State> = {}, base: Partial<Store> = {}) {

@@ -35,6 +35,7 @@ and the frame shape (`presentation.play_frame`).
 from __future__ import annotations
 
 import re
+from typing import TypedDict
 
 from . import sounds as snd
 from .gameconfig import VOICE_PACKS, DEFAULT_VOICE, FALLBACK_VOICE, _VOICE_SLOTS
@@ -117,9 +118,18 @@ def family_name(fam: str) -> str:
     return fam
 
 
-def options() -> list[dict]:
+class VoiceCatalogOption(TypedDict):
+    id: str
+    name: str
+    family: str
+    speaker: str
+    lines: int
+    verified: bool
+
+
+def options() -> list[VoiceCatalogOption]:
     """The picker: every selectable voice with its family, catalog name and line count."""
-    out = []
+    out: list[VoiceCatalogOption] = []
     for v, fam in VOICE_PACKS.items():
         out.append({"id": v, "name": v.replace("_", " ").upper(), "family": fam, "speaker": family_name(fam),
                     "lines": len(lines(v)), "verified": v == "heavy"})

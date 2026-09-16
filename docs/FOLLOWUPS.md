@@ -390,10 +390,10 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   Contract-DRY phase 1 (`types.py`/`envelope.py` → generated `contract.gen.ts`/`contract.gen.js`) is DONE, see contracts.md
   A33. **F42.10 ✅ CLOSED 2026-09-12:** pyright gates `mcp/` in CI (`standard` mode, `mcp/pyproject.toml`). None of the
   rows below blocks a match.
-  **F42.9** (M, then L for `State`) about two dozen console
-  view types are hand-written because the server builds them as untyped dicts; the pyright gate did NOT type them. The
-  recipe needs no generator change (a TypedDict in `types.py` is emitted automatically; delete the `types.ts` copy and
-  `test_ui_contract.py` enforces it); the handoff has the five batches, leaf shapes first. **F42.12** (M) `app/src/transport`
+  **F42.9** (M, then L for `State`) batches 1-2 of five are done: generated leaf,
+  arsenal, saved-game and live-row shapes replace their console copies, and their producers are checked. The remaining
+  `NodeView`/`StationView`/presentation/coverage, composed views and `State.snapshot()` decomposition are ordered in
+  the handoff. **F42.12** (M) `app/src/transport`
   is unchecked JavaScript: measured 2026-09-13 with `checkJs`, 116 errors (74 implicit-any, 42 mismatches, none a real
   bug on inspection); needs a `contract.gen.d.ts` generator target, `typescript` in `app/`, and a CI step.
   **F42.14** (M) `brx_mcp/stage/` is excluded from the pyright gate: 59 errors on 2026-09-13; the stage must keep

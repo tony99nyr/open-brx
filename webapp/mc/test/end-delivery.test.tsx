@@ -17,7 +17,7 @@ import { demo, mountScreen } from './harness';
 const row = (player_id: string, display: string, kills: number): LiveRow => ({
   player_id, display, team_id: 'blue', kills, deaths: 1, assists: 0, shots: 20, hits: 8, shots_total: 20,
   accuracy: 40, kd: 2, streak: 1, best_streak: 1, multi_best: 0, first_blood: false, acc_provisional: false,
-  medals: [], status: 'alive', sync_age_ms: 1000,
+  medals: [], status: 'alive', sync_age_ms: 1000, respawn_in_s: null,
 });
 
 const LIVE: LiveView = {

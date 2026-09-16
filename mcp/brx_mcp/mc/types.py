@@ -5,7 +5,7 @@ fields are fine, renames are an amendment.
 """
 from __future__ import annotations
 
-from typing import Literal, NotRequired, TypedDict, get_args
+from typing import Literal, NotRequired, TypeGuard, TypedDict, get_args
 
 # ---- §9 constants (single source; modules reference by name) ----
 ASSIST_WINDOW_MS = 4000
@@ -336,6 +336,10 @@ STATION_SOURCES = {
 # byte 8) and `KIND_LABEL` in `app/src/utility.js`; a `station_config` naming anything else is refused at PUT.
 StationKind = Literal["respawn", "powerup", "extraction", "bomb", "control"]
 STATION_KINDS = get_args(StationKind)
+
+
+def is_station_kind(value: object) -> TypeGuard[StationKind]:
+    return value in STATION_KINDS
 STATION_TEAM_ANY = 255        # advert byte 9 "any team" (`TEAM_ANY` in beacon.js); a control point starts neutral
 
 
@@ -458,6 +462,50 @@ class Weapon(TypedDict):
     caution: NotRequired[str]      # A10: human copy for a known LIVE problem (weapons.json `caution`)
 
 
+class WeaponBars(TypedDict):
+    power: int | None
+    rof: int | None
+    ammo: int | None
+    ttk: int | None
+
+
+class WeaponView(TypedDict):
+    """Host-health-ranked arsenal row built by views.weapon_view(s)."""
+    weapon_id: str
+    name: str
+    cls: str
+    desc: str
+    clip: int
+    mags: int
+    reserve: int | None
+    reload_s: float | None
+    reload_ms: int | None
+    dmg: float | None
+    rpm: float | None
+    rng: float | None
+    dmg_per_hit: float | None
+    pool: NotRequired[int]   # older MC rows predate host-pool ranking; the current producer always fills it
+    verified: bool
+    tags: list[str]
+    role: str
+    htk: float | None
+    ttk_ms: NotRequired[float | None]  # older MC rows can omit this derived figure
+    caution: NotRequired[str]
+    ammo_total: NotRequired[int]
+    bars: NotRequired[WeaponBars]
+
+
+class SavedGame(TypedDict):
+    """A sanitized whole-game preset stored on the Mission Control host."""
+    preset_id: str
+    name: str
+    desc: str
+    builtin: bool
+    created_t: int
+    updated_t: int
+    config: GameConfig
+
+
 # ---- §4 events ----
 class Preflight(TypedDict, total=False):
     ssid_ok: bool
@@ -558,6 +606,90 @@ class ScoreRow(TypedDict):
     # they do not move the tally) -- read either one only with a fallback.
     after_end_kills: NotRequired[int]
     after_end_deaths: NotRequired[int]
+
+
+class LiveRow(ScoreRow):
+    status: Literal["alive", "down", "stale"]
+    sync_age_ms: int
+    respawn_in_s: int | None
+
+
+class ModeParamSpec(TypedDict):
+    """One tunable schema row served by GET /api/modes."""
+    name: str
+    type: Literal["int", "float", "bool", "str"]
+    default: int | float | bool | str
+    desc: str
+    min: NotRequired[float]
+    max: NotRequired[float]
+    choices: NotRequired[list[str]]
+
+
+class Honor(TypedDict):
+    award: str
+    player_id: str
+    stat: str
+
+
+class StationAssignment(TypedDict):
+    kind: StationKind
+    team: int
+    id: int
+    threshold: int
+    at: NotRequired[int]
+
+
+class RecapStationRow(TypedDict):
+    """One assigned utility station's self-authoritative recap heartbeat."""
+    node_id: str
+    kind: StationKind
+    id: int
+    team: int
+    heard: bool
+    revives: NotRequired[int | None]
+    hold_ms: NotRequired[dict[str, int] | None]
+    owner: NotRequired[int | None]
+
+
+class EndDeliveryRow(TypedDict):
+    player_id: str
+    display: str
+    node_id: str
+    tries: int
+    since_ms: int
+    reached: bool
+    retrying: bool
+
+
+class EndDeliveryView(TypedDict):
+    match_id: str
+    total: int
+    confirmed: int
+    unconfirmed: list[EndDeliveryRow]
+    retrying: bool
+
+
+class VoiceOption(TypedDict):
+    id: str
+    name: str
+    family: str
+    speaker: NotRequired[str]
+    lines: NotRequired[int]
+    kill_line: str
+    verified: bool
+
+
+class VoiceList(TypedDict):
+    default: str
+    voices: list[VoiceOption]
+
+
+class PhaseRefusalBody(TypedDict):
+    """The 409 response emitted by NotReadyError; older error bodies may omit these fields."""
+    error: str
+    not_ready: list[str]
+    greens: int
+    roster_size: int
 
 
 class LogView(TypedDict):

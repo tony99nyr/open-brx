@@ -6,10 +6,10 @@ from __future__ import annotations
 
 import csv
 import io
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Literal, Mapping, Sequence
 
 from .types import (ACC_MIN_SHOTS, ASSIST_WINDOW_MS, FEEDBACK_MAX_AGE_MS, MULTI_KILL_MS,
-                    STALE_AFTER_MS, Event, Player, ScoreRow, Team, WinBy, parse_win_by)
+                    STALE_AFTER_MS, Event, Honor, LiveRow, Player, RecapStationRow, ScoreRow, Team, WinBy, parse_win_by)
 
 Feed = dict
 Feedback = Callable[[str, dict], None]     # (player_id, feedback body)
@@ -629,23 +629,23 @@ class Scorer:
                                     if not _stands(m.split(" ×")[0], base)]
         return out
 
-    def live_rows(self, now: int, node_last_seen: dict[str, int]) -> list[dict]:
-        rows = []
+    def live_rows(self, now: int, node_last_seen: dict[str, int]) -> list[LiveRow]:
+        rows: list[LiveRow] = []
         pid_node = {pid: nid for nid, pid in self.node_player.items()}
         for r in self.rows():
             st = self.stats[r["player_id"]]
             nid = pid_node.get(r["player_id"])
             seen = node_last_seen.get(nid, 0) if nid else 0
             age = now - seen if seen else 10**9
+            status: Literal["alive", "down", "stale"]
             if age > STALE_AFTER_MS:
                 status = "stale"
             elif not st.alive:
                 status = "down"
             else:
                 status = "alive"
-            row = dict(r)
-            row.update({"status": status, "sync_age_ms": age,
-                        "respawn_in_s": st.deadline_s if status == "down" else None})
+            row: LiveRow = {**r, "status": status, "sync_age_ms": age,
+                            "respawn_in_s": st.deadline_s if status == "down" else None}
             rows.append(row)
         return rows
 
@@ -782,15 +782,15 @@ class Scorer:
             out.setdefault(h["player_id"], []).append(h["award"])
         return out
 
-    def honors(self) -> list[dict]:
+    def honors(self) -> list[Honor]:
         # honors need an audience (design review 2026-08-26 #3): a 1-player recap crowned itself
         # MVP · 0 K · 0.0 K/D + SURVIVOR · 1 DEATHS. Under 3 scored players there are no honors.
         if len(self.stats) < 3:
             return []
         items = list(self.stats.items())
-        def add(award, pid, stat):
+        def add(award: str, pid: str | None, stat: str) -> None:
             if pid: out.append({"award": award, "player_id": pid, "stat": stat})
-        out: list[dict] = []
+        out: list[Honor] = []
         mvp = max(items, key=lambda kv: (kv[1].kills - kv[1].deaths, kv[1].kills / max(kv[1].deaths, 1), kv[1].kills))[0]
         m = self.stats[mvp]
         if m.kills > 0:                                   # a zero-kill MVP is noise
@@ -824,7 +824,8 @@ class Scorer:
     def missing(self) -> list[str]:
         return [pid for pid, st in self.stats.items() if not st.flushed]
 
-    def recap(self, provisional_override: bool | None = None, stations: list[dict] | None = None) -> dict:
+    def recap(self, provisional_override: bool | None = None,
+              stations: Sequence[RecapStationRow] | None = None) -> dict:
         missing = self.missing()
         out = {"winner": self.winner(), "score": self.team_scores(), "rows": self.rows(),
                "honors": self.honors(),

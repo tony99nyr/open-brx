@@ -36,9 +36,6 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 DATA_TS = REPO / "webapp" / "mc" / "src" / "mock" / "data.ts"
 DEMO_JS = REPO / "app" / "src" / "demo-catalog.js"
 
-# `WeaponView` (webapp/mc/src/api/types.ts) has no `reload_ms`; a TS object literal typed as
-# WeaponView[] is rejected for an excess property, so it is dropped on the way out.
-_DROP = ("reload_ms",)
 _MODE_TEXT_KEYS = ("name", "abbr", "desc", "brief", "teams_text", "win_text", "respawn_text")
 
 
@@ -49,7 +46,7 @@ def weapon_views() -> list[dict]:
 
     out = []
     for v in views.weapon_views(Compiler().weapon_catalog()):
-        out.append({k: v[k] for k in v if k not in _DROP})
+        out.append(dict(v))
     return sorted(out, key=lambda w: w["weapon_id"])
 
 

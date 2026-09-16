@@ -27,7 +27,9 @@ Nothing here knows a mode NAME: `registry.py` maps names to engine classes, and 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
+
+from ..mc.types import ModeParamSpec
 
 PARAM_TYPES = ("int", "float", "bool", "str")
 
@@ -38,8 +40,8 @@ class Param:
 
     `lo`/`hi` are inclusive and apply to `int`/`float`; `choices` is the closed vocabulary of a `str` param
     (a `str` param without `choices` accepts any non-empty string up to 64 chars)."""
-    type: str
-    default: Any
+    type: Literal["int", "float", "bool", "str"]
+    default: int | float | bool | str
     desc: str
     lo: float | None = None
     hi: float | None = None
@@ -80,9 +82,9 @@ class Param:
             return None, f"{name} must be at most {self.hi:g}, not {value:g}"
         return value, None
 
-    def to_json(self, name: str) -> dict:
+    def to_json(self, name: str) -> ModeParamSpec:
         """The schema row `GET /api/modes` serves, so a UI can render the control without knowing the mode."""
-        row: dict = {"name": name, "type": self.type, "default": self.default, "desc": self.desc}
+        row: ModeParamSpec = {"name": name, "type": self.type, "default": self.default, "desc": self.desc}
         if self.lo is not None:
             row["min"] = self.lo
         if self.hi is not None:

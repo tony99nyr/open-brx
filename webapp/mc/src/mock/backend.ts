@@ -739,7 +739,8 @@ export class MockBackend implements Api {
         // starts TRUE for everyone — under 10 shots the number has not settled (F119), and the demo
         // is the only place the settling look can be seen without a match on the field.
         shots_total: 0, best_streak: 0, multi_best: 0, first_blood: false, acc_provisional: true,
-        accuracy: null, kd: 0, streak: 0, medals: [], status: d[6] === 'stale' ? 'stale' : 'alive', sync_age_ms: d[7] * 1000 };
+        accuracy: null, kd: 0, streak: 0, medals: [], status: d[6] === 'stale' ? 'stale' : 'alive', sync_age_ms: d[7] * 1000,
+        respawn_in_s: null };
     });
     this.live_ = { rows, feed: [], go_live_t: s.go_live_t, match_id: s.match_id }; this.endedAt = undefined;
     this.feed({ t_match_s: 0, text: `MATCH LIVE — ${rows.length} NODES SPAWNED`, kind: 'sync', tag: 'SYNC POINT' });
@@ -909,7 +910,7 @@ export class MockBackend implements Api {
   }
   async applyPreset(id: string) {
     const sg = this.presets.find(x => x.preset_id === id); if (!sg) throw new Error('no such saved game');
-    const { config_id: _cid, loadout_policy, ...rest } = clone(sg.config); void _cid;
+    const { config_id: _cid, loadout_policy, ...rest } = withPolicy(clone(sg.config)); void _cid;
     const r = await this.putConfig({ ...rest, loadout_policy: { ...loadout_policy, preset: presetOf(loadout_policy) } });   // the name is re-derived, like the server
     this.activePreset = id; this.emit();
     return r;

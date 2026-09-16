@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Callable
 
 from . import params as _params
+from ..mc.types import ModeParamSpec
 from .params import Param, Schema
 
 
@@ -70,7 +71,7 @@ def params_schema(mode: str) -> Schema:
         return {}
 
 
-def params_schema_json(mode: str) -> list[dict]:
+def params_schema_json(mode: str) -> list[ModeParamSpec]:
     """The rows `GET /api/modes` serves as `params`."""
     return [p.to_json(k) for k, p in params_schema(mode).items()]
 

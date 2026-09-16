@@ -33,9 +33,9 @@ from .tunnel import TunnelError
 from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_PLAYERS,
                     OBJECTIVE_MODES, OFFLINE_AFTER_MS, POOL_CHECK_SETTLE_MS,
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_KINDS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, Event,
-                    FrameBundle, GameConfig, Loadout, LoadoutOverrides, LoadoutPolicy, LoadoutPool, PerkView,
-                    Phase, Player, ReadinessRow, ReadinessSnapshot, Respawn, ScanRow, SlotRule, StationRef,
-                    Stun, Team, Weapon, WeaponSel, app_tier, compatible, parse_app_ver, parse_win_by)
+                    EndDeliveryRow, EndDeliveryView, FrameBundle, GameConfig, Loadout, LoadoutOverrides, LoadoutPolicy, LoadoutPool, PerkView,
+                    Phase, PhaseRefusalBody, Player, ReadinessRow, ReadinessSnapshot, RecapStationRow, Respawn, ScanRow, SlotRule, StationAssignment, StationRef,
+                    Stun, Team, Weapon, WeaponSel, app_tier, compatible, is_station_kind, parse_app_ver, parse_win_by)
 
 if TYPE_CHECKING:                      # `presets.PresetStore` is attached by `__main__`/`create_app`
     from .presets import PresetStore
@@ -106,6 +106,18 @@ TEAM_DEFS: dict[str, Team] = {  # $TID: 1=blue, 2=yellow, 0=red (protocol §7i);
 # `proven`: the mode has run a whole match on real taggers (TDM 2026-08-25 and 2026-09-01, FFA 2026-08-30,
 # KotH through the gun 2026-09-10). The public site badges the others "in development" off this flag;
 # flip it here, never on the site, when a mode has its first real match.
+class EndDeliveryRecord(TypedDict):
+    match_id: str
+    player_id: str
+    since: int
+    tries: int
+    next_t: int
+    confirmed: bool
+    confirmed_t: int | None
+    exhausted: bool
+    last_ok: bool
+
+
 class ModeRow(TypedDict):
     """One row of `MODES` below. The catalogue is data, not wire shape, so it lives here rather than in
     `types.py`; the keys are exactly what `default_config()`, `modes()` and `game_brief()` read."""
@@ -253,7 +265,7 @@ class NotReadyError(ConflictError):
         self.greens = greens
         self.roster_size = roster_size
 
-    def body(self) -> dict:
+    def body(self) -> PhaseRefusalBody:
         return {"error": str(self), "not_ready": self.not_ready,
                 "greens": self.greens, "roster_size": self.roster_size}
 
@@ -404,7 +416,7 @@ class Session:
         self._stale_told: dict[tuple[str, str | None], int] = {}   # (node_id, match_id) -> last time MC told it to end
         # A42 (field 2026-09-12, twice): who has CONFIRMED the end of the match just ended.
         # node_id -> {match_id, player_id, since, tries, next_t, confirmed, confirmed_t, exhausted, last_ok}
-        self._end_delivery: dict[str, dict[str, Any]] = {}
+        self._end_delivery: dict[str, EndDeliveryRecord] = {}
         self._end_delivery_told: str | None = None   # the match_id we have already said went unconfirmed
         # A24/M2: WHAT ended the last match -- "frag_limit" | "host" | "time" | None. Only a frag cap has
         # an end time that a LATER fact can move (an earlier cap kill flushed minutes late); a whistle and
@@ -1472,14 +1484,9 @@ class Session:
 
     def _voice_ids(self) -> set[str]:
         ids = {"male", "female"}
-        opts: Callable[[], list[dict]] | None = getattr(self.compiler, "voice_options", None)
-        if opts is not None:
-            try:
-                for o in opts():
-                    if isinstance(o, dict) and isinstance(o.get("id"), str) and o["id"]:
-                        ids.add(o["id"])
-            except Exception:
-                pass
+        for o in self.compiler.voice_options():
+            if o["id"]:
+                ids.add(o["id"])
         return ids
 
     def _check_loadout(self, lo) -> Loadout:
@@ -1712,11 +1719,11 @@ class Session:
                     "health", "teams", "led", "player_num_base", "loadout_policy", "presentation",
                     "station_source", "mode_params", "vip_player_id", "stun", "coverage"}
 
-    def apply_preset(self, preset_id: str, config: dict) -> dict:
+    def apply_preset(self, preset_id: str, config: GameConfig) -> dict:
         """A10 §8: apply a saved game — same path as PUT /api/config, but the state remembers WHICH game is playing."""
         self.active_preset_id = preset_id
         try:
-            return self.set_config(config, _from_preset=True)
+            return self.set_config(dict(config), _from_preset=True)
         except Exception:
             self.active_preset_id = None
             raise
@@ -2244,7 +2251,7 @@ class Session:
             raise ValueError("assignment must be an object")
         self._refuse_station_change_in_play()
         kind = a.get("kind")
-        if kind not in STATION_KINDS:
+        if not is_station_kind(kind):
             raise ValueError(f"kind must be one of {', '.join(STATION_KINDS)}")
         team = a.get("team", STATION_TEAM_ANY)
         if isinstance(team, str):
@@ -2282,7 +2289,8 @@ class Session:
             raise ValueError(f"{nid!r} is not a utility phone (no utility hello this session); open the app in the "
                              "UTILITY role on that phone and connect it to Mission Control first")
         st = self.stations.setdefault(nid, {"node_id": nid, "assigned": None, "report": {}, "armed": None})
-        st["assigned"] = {"kind": kind, "team": team, "id": sid, "threshold": thr, "at": self.now_ms()}
+        assignment: StationAssignment = {"kind": kind, "team": team, "id": sid, "threshold": thr, "at": self.now_ms()}
+        st["assigned"] = assignment
         self.nodes.setdefault(nid, {"node_id": nid, "node_type": "utility", "arm_state": "idle", "synced": False, "last_seen_ms": 0})
         # An assignment changes the allow-list every OTHER station echoes, so all of them are re-armed.
         self.arm_stations()
@@ -2431,7 +2439,7 @@ class Session:
         naming it here is what makes that visible (there is no recap without a scorer)."""
         return sc.recap(stations=self._recap_stations())
 
-    def _recap_stations(self) -> list[dict]:
+    def _recap_stations(self) -> list[RecapStationRow]:
         """Roadmap A6: a stations row for the recap sheet, one per ASSIGNED station, from its own
         self-authoritative heartbeat (utility.md §5c/§5d.6 -- a station answers to nobody mid-match, so
         this is the only place its count is ever seen). `heard` (True once at least one heartbeat has
@@ -2441,13 +2449,13 @@ class Session:
         looked identical to a reporting one). `revives` for a respawn point, `hold_ms`/`owner` from
         `report.control` for a control point; a station never heard from reports what it can -- `None`,
         not a fabricated zero, so the recap can tell "zero revives" from "never heard"."""
-        out: list[dict] = []
+        out: list[RecapStationRow] = []
         for row in self.stations_view():
             a = row.get("assigned")
             if not a:
                 continue
             rep = row.get("report") or {}
-            rec = {"node_id": row["node_id"], "kind": a["kind"], "id": a["id"], "team": a["team"],
+            rec: RecapStationRow = {"node_id": row["node_id"], "kind": a["kind"], "id": a["id"], "team": a["team"],
                    "heard": bool(rep)}
             if a["kind"] == "respawn":
                 rec["revives"] = rep.get("revives")
@@ -3200,12 +3208,13 @@ class Session:
         took_ours = arm in END_CONFIRM_PHASES and mid == e["match_id"]
         if not (moved_on or took_ours):
             return
-        e["confirmed"], e["confirmed_t"] = True, self.now_ms()
+        confirmed_t = self.now_ms()
+        e["confirmed"], e["confirmed_t"] = True, confirmed_t
         if e["tries"] > 1:
             # A line only when the FIRST push did NOT do it — that is the phone the operator was watching.
             # Every other confirmation is the system working, and belongs in no feed.
             p = self.players.get(e["player_id"]) or {}
-            secs = max(0, e["confirmed_t"] - e["since"]) // 1000
+            secs = max(0, confirmed_t - e["since"]) // 1000
             self._on_feed({"t_match_s": 0, "tag": "END", "kind": "alert",
                            "text": f"{(p.get('display') or e['player_id']).upper()}'S HUD CONFIRMED THE END "
                                    f"— {secs}S AFTER THE WHISTLE, ON DELIVERY {e['tries']}"})
@@ -3244,7 +3253,7 @@ class Session:
                                f"END IT ON THE GUN"})
         self._changed()
 
-    def _end_delivery_view(self) -> dict | None:
+    def _end_delivery_view(self) -> EndDeliveryView | None:
         """`API.md State.end_delivery` — what the operator reads while the match is ending and on RECAP.
 
         Both halves matter: the operator asked to know that every HUD acked, so a clean `4 of 4` is as much
@@ -3252,7 +3261,7 @@ class Session:
         if not self._end_delivery:
             return None
         now = self.now_ms()
-        rows = []
+        rows: list[EndDeliveryRow] = []
         for nid, e in self._end_delivery.items():
             if e["confirmed"]:
                 continue

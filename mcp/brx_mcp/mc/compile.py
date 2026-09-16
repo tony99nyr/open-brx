@@ -22,7 +22,7 @@ from ..protocol import PANIC_SEQUENCE
 from .perks import PerkCatalog
 from .policy import SIDEARM_TAG          # F146: one vocabulary for "this is a backup weapon"
 from .types import (MAX_PLAYERS, OBJECTIVE_MODES, STATION_SOURCES, FrameBundle, GameConfig, PerkView,
-                    Player, Team, Weapon, parse_win_by)
+                    Player, Team, VoiceOption, Weapon, parse_win_by)
 from . import presentation as _pres
 from .. import poolgauge as pg
 from .. import voices as _voices
@@ -1429,7 +1429,7 @@ class Compiler:
             "$BMAP,0,0,,,,,*",
         ]
 
-    def voice_options(self) -> list[dict]:
+    def voice_options(self) -> list[VoiceOption]:
         """The selectable personas (`Session._voice_ids` picks this up to validate a PATCH).
 
         `$PSET`'s trailing tokens are a positional voice pack and the sound bank carries one for
@@ -1437,7 +1437,9 @@ class Compiler:
         unreachable. Only HEAVY is confirmed by ear — see gameconfig.VOICE_PACKS. `speaker` is the
         catalog's label for the family, `lines` how many lines it carries (voices.options()).
         """
-        return [{**o, "kill_line": kill_line(o["id"])} for o in _voices.options()]
+        return [{"id": o["id"], "name": o["name"], "family": o["family"],
+                 "speaker": o["speaker"], "lines": o["lines"], "verified": o["verified"],
+                 "kill_line": kill_line(o["id"])} for o in _voices.options()]
 
     @staticmethod
     def _voice_map(voice: str | None, slots: dict | None = None) -> dict[str, list[str]]:

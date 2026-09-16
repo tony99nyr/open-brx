@@ -21,7 +21,7 @@ import { StoreCtx } from '../src/store';
 const row = (over: Partial<LiveRow> = {}): LiveRow => ({
   player_id: 'p1', display: 'VIPER', team_id: 'blue',
   kills: 9, deaths: 3, assists: 2, shots: 40, hits: 14, accuracy: 35, kd: 3, streak: 0, medals: [],
-  status: 'alive', sync_age_ms: 1200, ...over,
+  status: 'alive', sync_age_ms: 1200, respawn_in_s: null, ...over,
 });
 const liveView = (rows: LiveRow[]): LiveView => ({
   match_id: 'm1', go_live_t: Date.now() - 60_000, time_limit_s: 600,

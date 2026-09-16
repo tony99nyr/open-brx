@@ -336,14 +336,14 @@ def test_default_policy_matches_the_server_default():
 
 
 def test_voice_option_fields_match():
-    """`VoiceList.voices[]` (types.ts) vs the dicts `GET /api/voices` actually returns: the base
+    """Generated `VoiceOption` vs the dicts `GET /api/voices` actually returns: the base
     shape built by `voices.options()`, plus the `kill_line` key `compile.voice_options()` adds on
     top (mc/api.py `voices` route). A15 added `voice_slots` to Player around the same time this
     endpoint's shape (`speaker`, `lines`) grew -- the two are checked separately here."""
-    ts = _ts_nested_object_fields(TYPES_TS, "VoiceList", "voices")
+    ts = _ts_interface_fields(CONTRACT_TS, "VoiceOption")
     py = _py_dict_literal_keys(VOICES_PY, "options") | _py_dict_literal_keys(COMPILE_PY, "voice_options")
     _assert_fields_match("VoiceList.voices[]", ts, sorted(py),
-                          f"{TYPES_TS} (VoiceList.voices)",
+                          f"{CONTRACT_TS} (VoiceOption)",
                           f"{VOICES_PY} options() + {COMPILE_PY} voice_options()")
 
 

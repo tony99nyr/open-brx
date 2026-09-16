@@ -4,9 +4,9 @@
 // from one place. A field added on the Python TypedDict reaches the console by running that script;
 // forgetting to run it fails `mcp/tests/test_contract_generated.py`.
 //
-// What stays HAND-WRITTEN below is everything the server builds as an untyped dict and the console
-// therefore has no Python shape for: the VIEW types (`State`, `NodeView`, `LiveView`, `RecapView`,
-// `StationView`, `WeaponView`, ...), the `Api` surface itself, and the response bodies. Never
+// What stays HAND-WRITTEN below is the remaining untyped view surface (`State`, `NodeView`,
+// `StationView`, `LiveView`, `RecapView`, ...), the `Api` surface and response bodies. Leaf
+// views such as `WeaponView` and `LiveRow` already come from the Python producers. Never
 // re-declare a generated shape here -- `mcp/tests/test_ui_contract.py` fails if this file does.
 
 // ---- generated wire shapes (contract.gen.ts) ----
@@ -14,7 +14,9 @@ export type {
   ArmoryRecord, BleId, Envelope, Event, FrameBundle, GameConfig, Health, Loadout, LoadoutOverrides,
   LoadoutPolicy, LoadoutPool, LogView, PerkEffects, PerkView, Player, Preflight, ReadinessRow,
   ReadinessSnapshot, Respawn, RosterEntry, ScanRow, ScoreRow, Scoring, Siphon, SlotRule, StationRef,
-  Stun, Team, Weapon, WeaponSel, PoolEmptyCode,
+  Stun, Team, Weapon, WeaponSel, PoolEmptyCode, ModeParamSpec, Honor, RecapStationRow,
+  StationAssignment, EndDeliveryView, VoiceList, VoiceOption, PhaseRefusalBody,
+  WeaponView, SavedGame, LiveRow, EndDeliveryRow, WeaponBars,
 } from './contract.gen';
 export type {
   ArmState, ControlCmd, ItemKind, LoadoutPreset, McKind, NodeKind, PersistedEventType, Phase,
@@ -24,7 +26,9 @@ export type {
 export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, STALE_AFTER_MS, STATION_KINDS, STATION_SOURCE_IDS } from './contract.gen';
 
 import type { ArmState, GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, Player, Preflight,
-  PerkView, ReadinessSnapshot, ScanRow, ScoreRow, StationKind, Team } from './contract.gen';
+  PerkView, ReadinessSnapshot, ScanRow, ScoreRow, StationKind, Team, ModeParamSpec,
+  Honor, RecapStationRow, StationAssignment, EndDeliveryView, VoiceList, PhaseRefusalBody,
+  WeaponView, SavedGame, LiveRow } from './contract.gen';
 
 /** A config as the console READS one. `GameConfig.loadout_policy` is `NotRequired` on the Python side
  *  because a PUT body legitimately omits it -- but every config the server SERVES has been through
@@ -36,16 +40,6 @@ export type ConfigView = GameConfig & { loadout_policy: LoadoutPolicy };
 
 /** A18: one row of a mode's parameter schema (`GET /api/modes` → `ModeInfo.params`). Render `int`/`float` as a
  *  number field bounded by `min`/`max`, `bool` as a switch, `str` with `choices` as a segmented control. */
-export interface ModeParamSpec {
-  name: string;
-  type: 'int' | 'float' | 'bool' | 'str';
-  default: number | string | boolean;
-  desc: string;
-  min?: number;
-  max?: number;
-  choices?: string[];
-}
-
 /** A11/A11.5 — one row of the resolved presentation profile (GET /api/presentation). */
 export interface PresentationRow {
   event: string; source: 'hud' | 'mc' | 'both'; desc: string;
@@ -92,18 +86,10 @@ export interface NodeView {
   last_reach?: 'lan' | 'backhaul';
 }
 
-export type LiveRow = ScoreRow & {
-  status: 'alive' | 'down' | 'stale';
-  respawn_in_s?: number;
-  sync_age_ms: number;
-};
-
 export interface LiveView {
   match_id: string; go_live_t: number; time_limit_s: number; ends_t: number;
   score: Record<string, number>; rows: LiveRow[];
 }
-
-export interface Honor { award: string; player_id: string; stat: string }
 
 export interface RecapView {
   winner: { team_id?: string | null; player_id?: string; undecided?: string; tie?: string[] };   // team / FFA player / undecided (win_by) / tie
@@ -143,17 +129,6 @@ export interface RecapView {
   stations?: RecapStationRow[];
 }
 
-export interface RecapStationRow {
-  node_id: string; kind: StationKind; id: number; team: number;
-  /** A6 fix (F105, 2026-09-11): true once at least one heartbeat has landed for this station, set on
-   *  EVERY kind — extraction/powerup/bomb have no count of their own, so this is the only signal the UI
-   *  has to tell "reported" from "never heard from" for them. */
-  heard: boolean;
-  revives?: number | null;                          // respawn only
-  hold_ms?: Record<string, number> | null;           // control only
-  owner?: number | null;                             // control only
-}
-
 export type FeedTag = 'DOUBLE KILL' | 'TRIPLE KILL' | `STREAK ×${number}` | 'FIRST BLOOD' | 'TEAM KILL' | 'SYNC POINT'
   /** A11.4/F118: a global-state alert MC pushed to the nodes. `ALERT` reached everyone bound, `WITHHELD`
    *  reached nobody (mc_confidence refused it, or no node was in coverage), `ROLE` is a role assignment
@@ -169,7 +144,6 @@ export interface StartView {
 /** A13.5 (F104): a utility phone as MC sees it — the ITEMS panel's row. `assigned` is the operator's call,
  *  `armed` what the phone was last told, `report` the phone's own heartbeat (for a control point that carries
  *  the self-authoritative recap: owner, progress, hold_ms per team). */
-export interface StationAssignment { kind: StationKind; team: number; id: number; threshold: number; at?: number }
 export interface StationView {
   node_id: string;
   assigned: StationAssignment | null;
@@ -340,53 +314,12 @@ export interface State {
  *  second list. `reached` is whether MC's last push found a socket at all (it is not proof the HUD acted —
  *  nothing but the heartbeat is), `tries` how many times that phone has been told, `since_ms` how long ago
  *  the whistle was. */
-export interface EndDeliveryView {
-  match_id: string;
-  total: number;
-  confirmed: number;
-  unconfirmed: { player_id: string; display: string; node_id: string; tries: number; since_ms: number;
-                 reached: boolean; retrying: boolean }[];
-  retrying: boolean;
-}
-
 export interface ModeInfo {
   mode: string; name: string; abbr: string; desc: string; brief: string;
   teams_text: string; win_text: string; respawn_text: string; defaults: ConfigView;
   /** A18: what this mode lets the operator tune (`defaults.mode_params` carries the values). Optional — an
    *  older server never sends it; `[]` for a mode that takes none. */
   params?: ModeParamSpec[];
-}
-
-export interface WeaponView {
-  weapon_id: string; name: string; cls: string; clip: number; mags: number; reserve: number;
-  /** seconds, or **null** when the weapon has no reload time — render `—`, never `0.0` and never a
-   *  bare unit. `views.weapon_view` returns null deliberately (a confident "RELOAD 0.0S" was wrong);
-   *  the type said `number` so nothing flagged the screens that did not handle it (merge 2026-09-01). */
-  reload_s: number | null;
-  dmg: number; rpm: number; rng: number; verified: boolean;
-  desc?: string;
-  role: string;        // assault | cqb | marksman | support | power — the human class label
-  tags: string[];      // heavy | sniper | … — what loadout rules match on
-  htk?: number;        // hits to kill AT `pool` — replaces the RANGE bar (t41 is 75 on every gun)
-  ttk_ms?: number;     // time to kill in ms at `pool`; null when it cannot be derived
-  dmg_per_hit?: number;   // the REAL per-hit damage, independent of the pool (`dmg` is its share of the 115 default)
-  /** hp + armour htk/ttk_ms are quoted against — the HOST'S health config, not a constant. Show it
-   *  next to either number: at a 100/100 game the AR needs 23 hits, not the 13 it needs at 45/70. */
-  pool?: number;
-  ammo_total?: number;    // clip + reserve
-  /** 0-100 meters ranked ACROSS the arsenal (views.weapon_views). Raw stats do not make usable bars —
-   *  see the note there. `ttk` is inverted: a faster kill is a longer bar. No range bar: t41 is
-   *  identical on all 18 guns, so it measured nothing. */
-  bars?: { power: number | null; rof: number | null; ammo: number | null; ttk: number | null };
-  caution?: string;    // human copy for a weapon with a known live problem (energy_launcher: zero damage in the shipped $SIR row)
-}
-
-/** loadout.md §8 — a whole GameConfig saved under a name on the MC host ("mode creation"). */
-export interface SavedGame {
-  preset_id: string; name: string; desc: string; builtin: boolean;
-  created_t: number; updated_t: number;
-  config: ConfigView;
-  weapon_tuning?: Record<string, unknown>;   // RESERVED — future weapon-tuning spec
 }
 
 /** The surface both the real client and the in-browser mock implement. */
@@ -484,7 +417,7 @@ export interface Api {
 /** A27 — the body of the 409 `POST /api/phase` answers with. Every field optional: this is read off a
  *  rejection, and a server that refuses for another reason (or an older one that refuses differently)
  *  must degrade to "the error string alone", never to a crash or an empty list presented as a fact. */
-export interface PhaseRefusal { error?: string; not_ready?: string[]; greens?: number; roster_size?: number }
+export type PhaseRefusal = Partial<PhaseRefusalBody>;
 
 /** One finished match from MC's session store — the RECAP screen's history picker (A8). */
 export interface MatchHistoryRow {
@@ -500,7 +433,3 @@ export interface MatchHistoryRow {
 
 /** Selectable voice personas. `$PSET`'s trailing tokens are a positional voice pack; only HEAVY is
  *  confirmed by ear, the rest are inferred from the pack layout (see gameconfig.VOICE_PACKS). */
-export interface VoiceList {
-  default: string;
-  voices: { id: string; name: string; family: string; speaker?: string; lines?: number; kill_line: string; verified: boolean }[];
-}

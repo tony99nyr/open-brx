@@ -6,7 +6,7 @@ import math
 from typing import Sequence
 
 from .compile import DEFAULT_POOL
-from .types import Weapon
+from .types import Weapon, WeaponView
 
 # The pool one hit is measured against when the caller does not say: 45 HP + 70 armour (GameConfig
 # defaults). `stats.dmg` in weapons.json is the SHARE of that pool a single hit removes.
@@ -48,10 +48,12 @@ def _num(v):
     The HTTP route falls back to fakes on error, but `_catalog_views` (every hydrate/bind) has no
     such net — a non-numeric stat must not break node assignment.
     """
-    return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    return v if not isinstance(v, float) or math.isfinite(v) else None
 
 
-def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> dict:
+def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> WeaponView:
     """contracts §3 `Weapon` → API.md `WeaponView`. A10 adds `tags` + `role`.
 
     Emits the REAL numbers (damage per hit, reload seconds, mag/reserve, hits- and time-to-kill).
@@ -65,9 +67,14 @@ def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> dict:
     pool-independent magnitude is `dmg_per_hit`.
     """
     st = w.get("stats", {}) or {}
-    mag = st.get("mag") or 0
-    dmg = st.get("dmg")
-    dmg_num = _num(dmg)
+    mag = max(0, int(_num(st.get("mag")) or 0))
+    reserve_num = _num(st.get("reserve"))
+    reserve = max(0, int(reserve_num)) if reserve_num is not None else None
+    reload_num = _num(st.get("reload_ms"))
+    reload_ms = max(0, int(reload_num)) if reload_num is not None else None
+    dmg_num = _num(st.get("dmg"))
+    rpm = _num(st.get("rof", st.get("rpm", 50)))
+    rng = _num(st.get("rng", st.get("range_pct", 50)))
     pool = max(1, int(_num(pool) or DEFAULT_POOL))   # a non-positive pool would publish htk 0
     # The real per-hit magnitude ($WEAP t5). Synthetic catalogs (fakes, test rows) carry no `dmg_hit`;
     # for THEM `dmg` is read back as the 115-pool share it is defined to be — which is how the real
@@ -92,24 +99,26 @@ def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> dict:
         # no derivation chain (a synthetic row): the published figure still holds at the pool it was
         # published for, and is a lie at any other. Show nothing rather than the wrong number.
         ttk_ms = _num(st.get("ttk_ms")) if pool == DEFAULT_POOL else None
-    return {"weapon_id": w["weapon_id"], "name": w["name"], "cls": w.get("cls", ""), "desc": w.get("desc", ""),
-            "clip": mag, "mags": ((st.get("reserve") or 0) // max(mag or 1, 1)),
-            "reserve": st.get("reserve"),
+    view: WeaponView = {"weapon_id": w["weapon_id"], "name": w["name"], "cls": w.get("cls", ""), "desc": w.get("desc", ""),
+            "clip": mag, "mags": ((reserve or 0) // max(mag, 1)),
+            "reserve": reserve,
             # None, not 0.0: a missing reload time must read "—", not a confident "RELOAD 0.0S"
-            "reload_s": round(st["reload_ms"] / 1000, 1) if st.get("reload_ms") else None,
-            "reload_ms": st.get("reload_ms"),
-            "dmg": dmg, "rpm": st.get("rof", st.get("rpm", 50)),
-            "rng": st.get("rng", st.get("range_pct", 50)),
+            "reload_s": round(reload_ms / 1000, 1) if reload_ms else None,
+            "reload_ms": reload_ms,
+            "dmg": dmg_num, "rpm": rpm,
+            "rng": rng,
             # real, human-facing numbers (the bars above are only for ranking)
             "dmg_per_hit": dmg_hit,
             "pool": pool,
             "verified": bool(w.get("verified")),
             "tags": list(w.get("tags") or []), "role": w.get("role", ""),
-            "htk": htk, "ttk_ms": ttk_ms,                                       # A10, now at the host's pool
-            **({"caution": caution} if (caution := w.get("caution")) else {})}  # A10: known live problem
+            "htk": htk, "ttk_ms": ttk_ms}                                       # A10, now at the host's pool
+    if caution := w.get("caution"):
+        view["caution"] = caution                                      # A10: known live problem
+    return view
 
 
-def weapon_views(catalog: Sequence[Weapon], pool: int = DEFAULT_POOL) -> list[dict]:
+def weapon_views(catalog: Sequence[Weapon], pool: int = DEFAULT_POOL) -> list[WeaponView]:
     """Every weapon as a `WeaponView`, plus a `bars` block ranked ACROSS the arsenal.
 
     bars.power  — damage per hit, ranked (weapons.json `dmg`)
@@ -137,7 +146,7 @@ def weapon_views(catalog: Sequence[Weapon], pool: int = DEFAULT_POOL) -> list[di
         v["ammo_total"] = (v["clip"] or 0) + (v["reserve"] or 0)
     power = _rank_bars([v["dmg"] for v in views])
     rof = _rank_bars([v["rpm"] for v in views])
-    ammo = _rank_bars([v["ammo_total"] for v in views])
+    ammo = _rank_bars([v.get("ammo_total") for v in views])
     # inverted: the QUICKEST kill must get the fullest bar
     ttk = _rank_bars([kill_ms(v) for v in views], invert=True)
     for i, v in enumerate(views):

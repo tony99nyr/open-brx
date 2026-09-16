@@ -5,9 +5,10 @@
 
 ## What changed
 
-- Contract-DRY phases 1 to 3 are implemented: Mission Control compiles with strict TypeScript;
+- Contract-DRY phases 1 to 3 and F42.9 batches 1-2 are implemented: Mission Control compiles with strict TypeScript;
   `win_by` is closed; the residue casts and pool intersections are gone; `Session.compiler` is a
-  checked interface shared by real and fake compilers. The remaining phases are in
+  checked interface shared by real and fake compilers. The leaf console views, `WeaponView`, `SavedGame`
+  and `LiveRow` are generated from checked Python producers. The remaining batches and phases are in
   `HANDOFF-dry-2026-09-13.md`.
 - `$GSET` t2 is centralised as `GSET_T2_SAFE = 0` and pinned in real and fallback player, try-out and utility
   frame generators. Venue volume remains 80 indoors, 90 outdoors; try-outs remain 69.
@@ -19,14 +20,14 @@
 
 ## Validation
 
-Contract-DRY phase 3: MCP system 1753 passed (73 optional skips), MCP extras 1826 passed; console
-strict typecheck/build and 514 unit tests passed; real-server browser e2e 24 passed; phone 501
-tests and build passed; site Playwright 102 passed. Existing shot manifest remains current because
-no UI source changed.
+F42.9 batches 1-2: strict console typecheck/build and 514 tests; MCP extras 1825 passed;
+system MCP 1752 passed; phone tests/build and site Playwright 102 passed; real-browser console
+e2e passed 24 steps. Post-commit site shots are the final freshness step for this batch.
 
 ## Next actions
 
-1. Continue the contract-DRY plan with generated console view types (F42.9), then checked phone
+1. Continue F42.9 with batch 3 (`NodeView`, `StationView`, presentation, coverage), then the composed
+   views and `State.snapshot()`. After F42.9, check phone
    transport (F42.12) and bench stage (F42.14). Commit each phase after review and validation.
 2. Tony runs F198 indoors at t2=0 and watches for phantom reflected hits. Keep t2=0 unless evidence supports a
    different mapping.

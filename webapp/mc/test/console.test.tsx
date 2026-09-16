@@ -165,11 +165,11 @@ describe('the RECAP history picker', () => {
 
 describe('the ARSENAL quotes the game that is actually set up', () => {
   const arsenal = (pool: number | undefined): WeaponView[] => ([
-    { weapon_id: 'assault_rifle', name: 'Assault Rifle', cls: '0', clip: 32, mags: 6, reserve: 192,
-      reload_s: 1.4, dmg: 8, rpm: 54, rng: 75, verified: false, role: 'assault', tags: ['assault'],
+    { weapon_id: 'assault_rifle', name: 'Assault Rifle', cls: '0', desc: '', clip: 32, mags: 6, reserve: 192,
+      reload_s: 1.4, reload_ms: 1400, dmg: 8, rpm: 54, rng: 75, verified: false, role: 'assault', tags: ['assault'],
       htk: pool === 200 ? 23 : 13, ttk_ms: pool === 200 ? 3080 : 1680, dmg_per_hit: 9, pool },
-    { weapon_id: 'rocket_launcher', name: 'Rocket Launcher', cls: '4', clip: 2, mags: 1, reserve: 2,
-      reload_s: 2.6, dmg: 100, rpm: 8, rng: 75, verified: false, role: 'power', tags: ['heavy'],
+    { weapon_id: 'rocket_launcher', name: 'Rocket Launcher', cls: '4', desc: '', clip: 2, mags: 1, reserve: 2,
+      reload_s: 2.6, reload_ms: 2600, dmg: 100, rpm: 8, rng: 75, verified: false, role: 'power', tags: ['heavy'],
       htk: 1, ttk_ms: 0, dmg_per_hit: 115, pool },
   ]);
 
@@ -193,7 +193,7 @@ describe('the ARSENAL quotes the game that is actually set up', () => {
   it('sorts a missing stat LAST in both directions, never as a zero', async () => {
     const d = await demo();
     const weapons = [...arsenal(115)];
-    weapons[1] = { ...weapons[1], ttk_ms: undefined };     // a one-shot weapon has no time-to-kill
+    weapons[1] = { ...weapons[1], ttk_ms: undefined };     // old servers omitted TTK for one-shot weapons
     const m = await mountScreen(<Catalog />, { ...d, weapons, view: 'catalog' });
     const names = () => m.find('tbody tr td:first-child').map(td => (td.textContent ?? '').trim().split(' ')[0]);
     expect(names()[names().length - 1]).toBe('ROCKET');    // ascending: the blank sorts last

@@ -10,7 +10,7 @@ from typing import Callable
 from ..gameconfig import GSET_T2_SAFE
 from .compile import HEADSET_ALERT_BRIGHTNESS, VOL_TRYOUT, play_volume   # one volume policy for the real and the fake paths
 from . import frames as _frames        # A36: a fake gun answers from the head it was actually sent
-from .types import (ArmoryRecord, FrameBundle, GameConfig, PerkView, Player, ScanRow, Team, Weapon,
+from .types import (ArmoryRecord, FrameBundle, GameConfig, PerkView, Player, ScanRow, Team, VoiceOption, Weapon, WeaponView,
                     MAX_PLAYERS)
 
 _WEAPONS = [  # (weapon_id, name, cls, clip, mags, reload_s, dmg, rpm, rng)
@@ -49,7 +49,7 @@ def _tags(wid: str, cls: str) -> list[str]:
     return t
 
 
-def weapon_views() -> list[dict]:
+def weapon_views() -> list[WeaponView]:
     """The demo/fallback catalog. Ranked `bars` are added the same way the real one gets them — without
     that, whenever `/api/weapons` fell back to this list the UI reverted to reading raw `dmg` and showed
     exactly the near-empty meters the ranked bars exist to replace (review finding, 2026-08-31)."""
@@ -156,6 +156,9 @@ class FakeCompiler:
                  "weap_frame": f"$WEAP,<slot>,<{w[0]}>,*", "verified": w[0] in ("assault_rifle", "charge_rifle"),
                  "tags": _tags(w[0], w[2]), "role": w[2].lower()}
                 for w in _WEAPONS]
+
+    def voice_options(self) -> list[VoiceOption]:
+        return []
 
     def perk_effects(self, player: Player | None) -> dict:
         """Return the selected perk's effects, matching the real compiler's seam."""

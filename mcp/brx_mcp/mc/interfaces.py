@@ -6,7 +6,7 @@ import random
 from typing import Any, Callable, Protocol
 
 from .types import (ArmoryRecord, Envelope, Event, FrameBundle, GameConfig, Player, RosterEntry,
-                    ScanRow, Team, Weapon, PerkView)
+                    ScanRow, Team, Weapon, PerkView, VoiceOption)
 
 
 class Hello(dict):
@@ -43,6 +43,7 @@ class Compiler(Protocol):
     def weapon_catalog(self) -> list[Weapon]: ...
     def perk_catalog(self) -> list[PerkView]: ...
     def perk_effects(self, player: Player | None) -> dict: ...
+    def voice_options(self) -> list[VoiceOption]: ...
 
 
 class Armory(Protocol):

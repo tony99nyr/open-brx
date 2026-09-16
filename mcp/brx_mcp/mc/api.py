@@ -18,7 +18,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from .state import CoverageRequired, NotReadyError, Session
-from .types import PerkView
+from .types import PerkView, VoiceList
 from .tunnel import TunnelError
 
 log = logging.getLogger("brx.mc.api")
@@ -190,8 +190,8 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         """The selectable voice personas. `$PSET`'s trailing tokens are a positional voice pack and
         only HEAVY is confirmed by ear — see gameconfig.VOICE_PACKS for the evidence and the caveat."""
         from ..gameconfig import DEFAULT_VOICE
-        opts = getattr(s.compiler, "voice_options", None)
-        return JSONResponse({"default": DEFAULT_VOICE, "voices": opts() if callable(opts) else []})
+        body: VoiceList = {"default": DEFAULT_VOICE, "voices": s.compiler.voice_options()}
+        return JSONResponse(body)
 
     async def modes(_):
         return JSONResponse(s.modes())

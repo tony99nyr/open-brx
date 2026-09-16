@@ -409,6 +409,52 @@ export interface Weapon {
   caution?: string;
 }
 
+export interface WeaponBars {
+  power: number | null;
+  rof: number | null;
+  ammo: number | null;
+  ttk: number | null;
+}
+
+/** Host-health-ranked arsenal row built by views.weapon_view(s). */
+export interface WeaponView {
+  weapon_id: string;
+  name: string;
+  cls: string;
+  desc: string;
+  clip: number;
+  mags: number;
+  reserve: number | null;
+  reload_s: number | null;
+  reload_ms: number | null;
+  dmg: number | null;
+  rpm: number | null;
+  rng: number | null;
+  dmg_per_hit: number | null;
+  /** older MC rows predate host-pool ranking; the current producer always fills it */
+  pool?: number;
+  verified: boolean;
+  tags: string[];
+  role: string;
+  htk: number | null;
+  /** older MC rows can omit this derived figure */
+  ttk_ms?: number | null;
+  caution?: string;
+  ammo_total?: number;
+  bars?: WeaponBars;
+}
+
+/** A sanitized whole-game preset stored on the Mission Control host. */
+export interface SavedGame {
+  preset_id: string;
+  name: string;
+  desc: string;
+  builtin: boolean;
+  created_t: number;
+  updated_t: number;
+  config: GameConfig;
+}
+
 export interface Preflight {
   ssid_ok?: boolean;
   mc_reachable?: boolean;
@@ -514,6 +560,109 @@ export interface ScoreRow {
    *  they do not move the tally) -- read either one only with a fallback. */
   after_end_kills?: number;
   after_end_deaths?: number;
+}
+
+export interface LiveRow {
+  player_id: string;
+  display: string;
+  team_id: string | null;
+  kills: number;
+  deaths: number;
+  assists: number;
+  shots: number;
+  hits: number;
+  accuracy: number | null;
+  kd: number;
+  streak: number;
+  medals: string[];
+  shots_total?: number;
+  best_streak?: number;
+  multi_best?: number;
+  first_blood?: boolean;
+  acc_provisional?: boolean;
+  after_end_kills?: number;
+  after_end_deaths?: number;
+  status: 'alive' | 'down' | 'stale';
+  sync_age_ms: number;
+  respawn_in_s: number | null;
+}
+
+/** One tunable schema row served by GET /api/modes. */
+export interface ModeParamSpec {
+  name: string;
+  type: 'int' | 'float' | 'bool' | 'str';
+  default: number | boolean | string;
+  desc: string;
+  min?: number;
+  max?: number;
+  choices?: string[];
+}
+
+export interface Honor {
+  award: string;
+  player_id: string;
+  stat: string;
+}
+
+export interface StationAssignment {
+  kind: StationKind;
+  team: number;
+  id: number;
+  threshold: number;
+  at?: number;
+}
+
+/** One assigned utility station's self-authoritative recap heartbeat. */
+export interface RecapStationRow {
+  node_id: string;
+  kind: StationKind;
+  id: number;
+  team: number;
+  heard: boolean;
+  revives?: number | null;
+  hold_ms?: Record<string, number> | null;
+  owner?: number | null;
+}
+
+export interface EndDeliveryRow {
+  player_id: string;
+  display: string;
+  node_id: string;
+  tries: number;
+  since_ms: number;
+  reached: boolean;
+  retrying: boolean;
+}
+
+export interface EndDeliveryView {
+  match_id: string;
+  total: number;
+  confirmed: number;
+  unconfirmed: EndDeliveryRow[];
+  retrying: boolean;
+}
+
+export interface VoiceOption {
+  id: string;
+  name: string;
+  family: string;
+  speaker?: string;
+  lines?: number;
+  kill_line: string;
+  verified: boolean;
+}
+
+export interface VoiceList {
+  default: string;
+  voices: VoiceOption[];
+}
+
+/** The 409 response emitted by NotReadyError; older error bodies may omit these fields. */
+export interface PhaseRefusalBody {
+  error: string;
+  not_ready: string[];
+  greens: number;
+  roster_size: number;
 }
 
 /** A25: one node's log-sync state, as `state.py _set_log()` writes it. Fed ONLY by what the PHONE
