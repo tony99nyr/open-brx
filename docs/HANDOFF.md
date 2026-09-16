@@ -1,7 +1,7 @@
 # Handoff — Open BRX
 
-**State as of 2026-09-13.** The GSET token 2 field finding is integrated, reviewed and validated. Evidence is in
-`docs/experiment-log/2026-09.md`; remaining work is indexed by `docs/FOLLOWUPS.md`.
+**State as of 2026-09-14.** The GSET token 2 field finding is integrated and the M5StickS3 utility-node design
+is recorded. Evidence is in `docs/experiment-log/2026-09.md`; remaining work is indexed by `docs/FOLLOWUPS.md`.
 
 ## What changed
 
@@ -12,6 +12,17 @@
 - Protocol, spec and manual references describe t2 as a receiving-gun hit gate. The 2026-09-13 field control found
   t2=1 gave zero hits from a full clip at 30 ft while t2=0 restored reliable registration. The reflection theory
   remains untested; t2 stays pinned to 0 until F198 is run at the bench.
+
+## Desk work since (no hardware touched)
+- **The M5StickS3 takes its kind from MC over Wi-Fi** (Tony, 2026-09-14): armed at muster, then carried out and
+  placed. Specified as `spec/utility.md` §5g, filed as **H8**. The finding that sizes it: **the wire needs no
+  amendment** — MC gates a station on the one string `node_type: "utility"` and never validates its value, so an
+  ESP32 speaking the M-NET envelope is a utility node today and `station_config` reaches it unchanged. All the
+  work is Stick-side (a four-kind WS client, `WIFI`/`MC` serial commands + mDNS, and **two Wi-Fi association
+  modes** — `muster` drops the link for the match, `held` keeps it for **F95** roaming hills around a house;
+  `held` puts the Wi-Fi/BLE coexistence jitter on the critical path rather than dodging it).
+  Arm it respawn or control — the other three kinds have no player side. Still blocked behind H7: **no Stick has
+  ever been powered on**, and the coexistence/battery claims in §5g.4 are reasoning, not measurements.
 
 ## Validation
 

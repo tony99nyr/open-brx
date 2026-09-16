@@ -1,13 +1,13 @@
 # Followups — open work only
 
-Updated: 2026-09-14. **Everything in this file is open.** Closed items are in
+Updated: 2026-09-16. **Everything in this file is open.** Closed items are in
 [`archive/followups-closed.md`](archive/followups-closed.md), verbatim and ordered by close date; the evidence
 behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date). Session close = strike or
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D6 · E8 · F206 · G11 · H8 ·
-K9 · P19 · Q20 · R4 · S42.** (2026-09-13 GSET field handoff: F197-F205 filed from HANDOFF-gset-t2-2026-09-13.md §3.)
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D6 · E8 · F206 · G11 · H9 ·
+K9 · P19 · Q20 · R4 · S42.** (2026-09-14: H8 taken — the Stick as an MC-armed utility node, `spec/utility.md` §5g.) (2026-09-13 GSET field handoff: F197-F205 filed from HANDOFF-gset-t2-2026-09-13.md §3.)
 (2026-09-12 integration of the field branch into the fix branch: the two rows the fix branch had filed as F135 and F136 collide with the field session's own F135/F136 and are **RENUMBERED to F162** (no outdoor IR range) and **F163** (the B4 link watchdog) — the second collision renumber in this file, same cause as 2026-09-06: two sessions read "next free" at once. No upstream row moved. F146 and F157 closed → archive with the merge; the PR #4 list closed → archive (F135 F137-F145 F147 F149-F151 F153-F156, S37-S41).) (2026-09-12 pyright gate: F134 filed; F42.10 closed → archive, F42.14 filed.) (2026-09-12 field test of the backhaul, WSL host + Pixel 10 on cellular: F135-F157 + F161, K7-K8, S37-S41, D5 taken (F134 went to the pyright gate on main the same day, so the gun-picker row became F161); F136 closed the same hour.) (2026-09-12 evening: F129 closed → archive; F133 filed.) (2026-09-12 backhaul, PR #3: B30 and B31 taken.) (2026-09-12 doc-rot close: F131 F132, R3, S32-S36 taken; F42.2/F42.3 closed → archive.) (2026-09-12 M2 close: S20 S21 S22 S23 S24 S26 F127 closed → archive; F129 F130 new; S25 v1 shipped, ESPN pass open.) (2026-09-12 midday: S28 all-weapons retune, S29 shield recharge taken.) (2026-09-12 desk pass: F128, P18, S27 taken; F110 F115 F116 F117 F118 F119 F122 F124 F125 closed → archive.) (2026-09-11 night game test: F110-F127 and S20-S26 taken, see [`game-test-2026-09-11.md`](game-test-2026-09-11.md).) (2026-09-11 late: F105 taken and closed the same session -- the phone dropped every MC `alert`.) (Unchanged on 2026-09-11: **F35**, **F73** and **F96** closed that day and their
 ids are retired, never reused.) (2026-09-10: F94/F95/F98 taken — the phone control point
 (`spec/utility.md` §5d), its LAN-coupled roaming variant (§5e) and Territories (§5f). 2026-09-10 evening: F83/F84/F85/F86/F87 taken — rotating-hill mode idea, the "constant
@@ -185,6 +185,23 @@ needs Python across ~4 core files, and the wire schema cannot carry a new mode's
   firmware `hardware/m5sticks3/`. Gates: (1) a `proto=15 mag=8` grenade beacon decoded on G42 over RMT with the speaker
   amp off; (2) a HUD phone sees the Stick's kind-5 advert carrying that owner; (3) Grove-emitter range walk against the
   bare-LED cliff (8 to 10 ft). Ring + power bank are planned, not ordered. `hardware`.
+- **H8 🟡 THE STICK TAKES ITS KIND FROM MISSION CONTROL OVER WI-FI, THEN IS PLACED IN THE FIELD.** Tony,
+  2026-09-14: set it at MC during setup, carry it out, prop it. Specified in `spec/utility.md` **§5g**. ⭐ The
+  finding that sizes this: **the wire needs no amendment** — `envelope.py` checks only that a `hello` CARRIES
+  `node_type`, `state.py set_station()` gates on the one string `"utility"`, and `NodeView.platform` is free
+  text, so an ESP32 that speaks the envelope is a utility node today and `station_config` (A13.5, F104) reaches
+  it unchanged. Work is all Stick-side: a WS client of four kinds (`hello` · `welcome` · `station_config` ·
+  `status` at 2 s), `WIFI`/`MC` serial commands plus mDNS `_openbrx._tcp` (a Stick cannot scan MC's QR, so the
+  typed floor is not optional), and **two Wi-Fi association modes** (§5g.4, Tony 2026-09-14): `muster`
+  (default, drop the link for the match) and **`held`** (stay linked all game) — `held` is what makes **F95**
+  roaming hills possible on a Stick, so the client must never treat "match started" as "MC unreachable"
+  (§5g.8 lists what not to preclude: hot = advert byte 10 value **16**, accept `station_config` in any phase
+  without resetting the point, 15 s grace then degrade, never self-promote). ⚠ `held` puts the Wi-Fi/BLE
+  coexistence jitter **on the critical path** instead of avoiding it, and almost certainly needs the power
+  bank; both that jitter and the battery delta are asserted, never measured. Arm it **respawn** or **control**
+  first: those are the only two kinds whose player side is built (K2/K3/K4 are not). Carries one `decision`:
+  `STATION_SOURCES` has no value for a Stick (§5g.7). Blocked behind H7 — no Stick has been powered on.
+  `build` · `hardware`.
 - **R2 🟢** software `DUTY <0-255>` (and `PULSES`) command on the IR emitter, echoing its own duty; re-run the fn 1
   control at every duty before trusting a result. A nicety again since the emitter was fixed (2026-09-03). `build`.
 
