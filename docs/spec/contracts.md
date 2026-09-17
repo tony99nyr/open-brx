@@ -436,7 +436,11 @@ Event =
 - **`status` is live-only [A4.4]:** sent every `STATUS_HEARTBEAT_MS` while connected, **never queued or
   persisted** — it is a heartbeat + counters, not a fact to replay. `shots` = cumulative shots fired this
   match (from `$ALCD` decrements; reloads/pickups increase ammo and are ignored). `preflight` [A4.9] =
-  `{ ssid_ok, mc_reachable, auto_join_ok, cellular_off, dnd_on, phone_batt, screen_on, foreground, gun_linked, headset_ok }`.
+  `{ ssid_ok, mc_reachable, auto_join_ok, cellular_off, dnd_on, phone_batt, screen_on, foreground, gun_linked, headset_ok, gun_flapping }`.
+  `gun_flapping` (bench 2026-09-17): true while the gun keeps dropping and re-taking the BLE link within
+  seconds, again and again (a headset that is off does this). MC shows one steady amber line for it
+  instead of the link cycling between GUN LINK LOST and HEADSET CONFIRMING — but only while the headset
+  is unproven; a gun that already answered the config push and then goes dark still reads red.
   `headset_ok`/`screen_on`/`foreground` are **amber before the config push, never red at muster** [A5.4]. `fw` =
   `$VERSION` result from the pre-config probe set (§3). `arm_state ∈ idle|connected|kitted|lobby|armed|live`
   [A1, A3]; `t_minus_ms` only while ARMED; `synced` = clock-sync fresh (§7); `dropped` = events shed by ring

@@ -98,6 +98,11 @@ State {
                                                // (additive) — HOW it was proven. `"echo"` = the gun answered the config push; `"link"` = the
                                                // node's `status.preflight.gun_linked` has been TRUE CONTINUOUSLY for `HEADSET_LINK_PROOF_MS`
                                                // (10 s), which a gun with no headset cannot manage (it drops the link in ~6 s); `null` = not
+                                               // Bench 2026-09-17: `gun_flapping: boolean` — true while the gun keeps dropping and re-taking
+                                               // the link within seconds, again and again (a headset that is off does this). The card shows
+                                               // one steady amber HEADSET OFF line instead of GUN LINK LOST cycling with HEADSET CONFIRMING —
+                                               // but only while `headset` is unproven; a gun that already answered the config push and then
+                                               // goes dark still reads the red `GUN LINK LOST — BLOCKS START`, flapping or not.
                                                // A37: `echo: "proven"|"mismatch"|"not_echoed"|null` is the WEAPON check's own answer,
                                                // beside (not instead of) the red `GUN ECHO ≠ CONFIG` blocker a `mismatch` also produces.
                                                // THREE states because the field has three: protocol.md records the `$WEAP` echo as never

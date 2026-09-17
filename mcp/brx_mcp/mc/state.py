@@ -706,7 +706,10 @@ class Session:
             # Bench 2026-09-17: a match in play when the old process stopped. Held until the store is
             # attached, because the recap is rebuilt from the stored facts (`resume_match`).
             if isinstance(snap.get("match"), dict):
-                self._resume_pending = snap["match"]
+                # F-2026-09-17d: `resume_match` needs to know how OLD this snapshot is, to refuse
+                # resuming a match nobody is playing any more. `saved_ms` lives on the outer snapshot,
+                # not the nested match dict, so it is carried across here under its own key.
+                self._resume_pending = {**snap["match"], "_saved_ms": snap.get("saved_ms")}
             self._repair_player_nums()
             self.config["loadout_policy"] = _policy.normalize(self.config.get("loadout_policy"), self.config["mode"])
             # A18: a snapshot persisted before mode_params existed restores a koth/lms/extraction config with
@@ -3389,7 +3392,7 @@ class Session:
             return
         try:
             from .store import Store
-            old = Store("resume", old_path)
+            old = Store("resume", old_path, read_only=True)   # F-2026-09-17e: never write to it
             try:
                 rows = old.events(match_id=match_id)
             finally:
@@ -3459,14 +3462,25 @@ class Session:
         now = self.now_ms()
         tl = self.config.get("time_limit_s")
         self.phase = "armed" if now < go else "live"
+        if self.phase == "armed":
+            # F-2026-09-17e: `_schedule()` queues the VIP role announcement for go-live; a resume that
+            # lands back in ARMED (the restart beat the countdown) skipped this, so a resumed match's
+            # VIP never heard it.
+            self._queue_roles_for_live()
         self._orphans = {n: o for n, o in self._orphans.items() if o["match_id"] != mid}
+        # F-2026-09-17d: no age cap used to mean a snapshot from hours or days ago (a crash, a laptop
+        # lid) resumed straight into ARMED/LIVE -- an UNTIMED config has no clock of its own to catch
+        # this. Bound: twice the time limit, or one hour for an untimed match.
+        saved_ms = m.get("_saved_ms")
+        bound_ms = (2 * tl * 1000) if tl else 3_600_000
+        too_old = isinstance(saved_ms, int) and (now - saved_ms) > bound_ms
         if self.scorer.limit_reached_t is not None:
             self.scorer.set_end(self.scorer.limit_reached_t)
             self.end_reason = "frag_limit"
             self._finish()
             self._on_feed({"t_match_s": 0, "tag": "RESUMED", "kind": "alert",
                            "text": "MC RESTARTED. THE MATCH REACHED ITS FRAG LIMIT WHILE MC WAS DOWN: RECAP BUILT"})
-        elif tl and now >= go + tl * 1000 + 5000:
+        elif too_old or (tl and now >= go + tl * 1000 + 5000):
             self.end_reason = "time"
             self._finish()
             self._on_feed({"t_match_s": 0, "tag": "RESUMED", "kind": "alert",
@@ -3560,6 +3574,17 @@ class Session:
         self._on_feed({"t_match_s": max(0, (now - go) // 1000), "tag": "RESUMED", "kind": "alert",
                        "text": f"RESUMED A MATCH THIS MC DID NOT START ({len(nids)} PHONE"
                                f"{'S' if len(nids) != 1 else ''}). SCORING FROM HERE"})
+        # F-2026-09-17c: mirrors `resume_match`'s check for a cap the REPLAYED facts already reach — but
+        # MC holds no config for an orphan, so `frag_limit`/`time_limit_s` here are the operator's CURRENT
+        # DRAFT, not the number the phones are actually playing to. Record it for the board only; an
+        # adopted match is never ended by MC on it (see `tick()` and `_on_frag_limit`) — the phones end
+        # themselves, or the operator presses END.
+        if self.scorer.limit_reached_t is not None:
+            self._on_feed({"t_match_s": max(0, (self.scorer.limit_reached_t - go) // 1000), "tag": "NOTE",
+                           "kind": "alert",
+                           "text": f"THE REPLAYED FACTS ALREADY REACH THE DRAFT'S FRAG LIMIT "
+                                   f"({self.scorer.frag_limit}) — MC DOES NOT END AN ADOPTED MATCH ON A "
+                                   f"CAP IT CANNOT CONFIRM IS THEIRS. PRESS END IF THE PHONES HAVE STOPPED"})
         self._changed()
         self.persist_now()
         return {"ok": True, "match_id": match_id, "phase": self.phase, "phones": len(nids)}
@@ -4398,12 +4423,19 @@ class Session:
                         blockers.append(f"{lead}NOT REACHED FOR {secs} s — BLOCKS START")
                     else:
                         blockers.append("WRONG WI-FI / MC UNREACHABLE — BLOCKS START")
-                if pf.get("gun_flapping") is True:
+                # Bench 2026-09-17: the config-push ack, read early so the flapping amber below can tell
+                # an UNPROVEN headset from one that already answered THIS push. `self.acks` survives a
+                # link drop (only `_on_status`'s `nv["headset"]` gets popped), so it is the one fact this
+                # check can trust once the gun has gone dark.
+                push_ack = self.acks.get(p["player_id"])
+                echoed_this_push = bool(self.lobby_pushed and push_ack and push_ack.get("ok") and push_ack.get("gun_echo"))
+                if pf.get("gun_flapping") is True and not (echoed_this_push and pf.get("gun_linked") is False):
                     # Bench 2026-09-17: a gun whose headset is off takes the link and drops it within
                     # seconds, again and again. The row used to swap GUN LINK LOST (red) for HEADSET
                     # CONFIRMING (amber) with every cycle. The phone counts the quick drops and says so;
-                    # the board shows one steady amber line instead. Amber, not a new red: once the lobby
-                    # is pushed, the missing config echo is the red that blocks the start.
+                    # the board shows one steady amber line instead — but only while the headset/echo is
+                    # still UNPROVEN. A gun that already answered this push and then goes dark is a real
+                    # fault, not a flapping headless gun, so the red returns (F-2026-09-17b).
                     ambers.append(GUN_FLAPPING_LINE)
                 elif pf.get("gun_linked") is False:
                     blockers.append("GUN LINK LOST — BLOCKS START")
@@ -5424,6 +5456,11 @@ class Session:
             return
         if not self.scorer or self.phase not in ("armed", "live"):
             return
+        if (self.start_info or {}).get("adopted"):
+            # F-2026-09-17c: MC holds no config for an adopted match, so `frag_limit` here is the
+            # operator's CURRENT DRAFT, not the number the phones are actually playing to. Never end
+            # the phones' match on a cap MC cannot confirm is theirs.
+            return
         self.scorer.set_end(t)                           # A6.1 end freeze, at the kill that won it
         if self._batch_depth:
             self._pending_limit_t = t if self._pending_limit_t is None else min(self._pending_limit_t, t)
@@ -5542,7 +5579,12 @@ class Session:
             self._changed()
         self._push_due_roles(now)
         tl = self.config.get("time_limit_s")
-        if self.phase == "live" and tl and now >= self.start_info["go_live_t"] + tl * 1000 + 5000:
+        # F-2026-09-17c: an ADOPTED match has no config of its own at MC — `tl` is the operator's CURRENT
+        # DRAFT, which need not match what the phones are actually running. Arming a timed end on it can
+        # cut a running match short, so MC never ends an adopted match on the clock; the phones end
+        # themselves, or the operator presses END.
+        if (self.phase == "live" and tl and not (self.start_info or {}).get("adopted")
+                and now >= self.start_info["go_live_t"] + tl * 1000 + 5000):
             self.end_reason = "time"         # A6.1: the clock every phone ran; it is not re-derived
             self._finish()
 

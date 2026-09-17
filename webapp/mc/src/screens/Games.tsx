@@ -217,7 +217,7 @@ export function Games() {
       {/* Bench 2026-09-17: NIGHT OPS was tapped mid-match and the LEDs did not change, with nothing on screen to
           say why. The venue is part of the config, and a config push to a gun in play clears `spawned`, so it
           stays locked until the match ends. Kept OUTSIDE the faded fieldset so the reason is readable. */}
-      {locked && <span data-testid="venue-locked" style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: T.warn }}>▲ LOCKED WHILE THE MATCH IS {state.phase.toUpperCase()}</span>}
+      {locked && <span data-testid="venue-locked" style={{ font: F.mono(600, 11), letterSpacing: '.1em', color: T.dim }}>LOCKED WHILE THE MATCH IS {state.phase.toUpperCase()}</span>}
       {/* F162 (revised 2026-09-16): this is a NUMBER MC sends and a PHYSICAL switch on every gun
           that MC cannot reach, so a quiet link to the how-to sits right beside the control that raises
           the question, not a dismissable banner nagging every screen, see ui/VenueModeReminder.

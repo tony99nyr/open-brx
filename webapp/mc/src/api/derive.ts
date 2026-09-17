@@ -315,7 +315,7 @@ export function armoryGate(board: { status?: string; blockers?: string[] | null;
     return { label: 'NO PLAYERS YET ▸', disabled: false, ready: false, why: 'Power the guns and open the app on each phone' };
   }
   return { label: 'HARDWARE READY ▸', disabled: false, ready: true,
-    why: nCurable ? `${nCurable} gun${nCurable === 1 ? '' : 's'} answered for an older config — ${RE_PUSH_HERE}` : '' };
+    why: nCurable ? `${nCurable} gun${nCurable === 1 ? '' : 's'} answered for an older config: ${RE_PUSH_HERE}` : '' };
 }
 
 /** Where ARMORY's ENABLE BACKHAUL button stands (bench 2026-09-17).

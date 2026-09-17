@@ -259,14 +259,15 @@ function useBackhaul(): { control: ReactNode; errLine: ReactNode } {
   const linkErr = status === 'up' ? null : err ?? (pressed && status === 'error' ? (state?.lan.public?.error || 'the link did not start') : null);
   // one quiet line under the button row, so the row itself keeps its alignment
   const errLine = linkErr ? (
-    <span data-backhaul-error="1" title={linkErr}
-      style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: T.warn, maxWidth: 'min(420px, calc(100vw - 32px))', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+    <span data-backhaul-error="1"
+      style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: T.warn, maxWidth: 'min(420px, calc(100vw - 32px))',
+               minWidth: 0, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
       BACKHAUL FAILED: {linkErr}
     </span>
   ) : null;
   let control: ReactNode = null;
   if (status === 'starting' || (sending && status !== 'up')) {
-    control = <span data-backhaul="starting" style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.warn, padding: '8px 4px' }}>STARTING…</span>;
+    control = <span data-backhaul="starting" style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.dim, padding: '8px 4px' }}>STARTING…</span>;
   } else if (status === 'up') {
     control = pressed ? <span data-backhaul="on"><OutlineTag color={T.ok} border={T.ok} title="The internet link is up. REACH shows its address.">BACKHAUL ON</OutlineTag></span> : null;
   } else if (offer) {

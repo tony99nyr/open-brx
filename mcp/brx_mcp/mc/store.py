@@ -153,8 +153,16 @@ def mc_dir() -> Path:
 
 
 class Store:
-    def __init__(self, session_id: str, path: Path | None = None):
+    def __init__(self, session_id: str, path: Path | None = None, read_only: bool = False):
         self.path = path or (mc_dir() / f"session-{session_id}.sqlite")
+        if read_only:
+            # F-2026-09-17e: a resume only ever READS another process's store (`state._import_facts`),
+            # so it must never create a WAL/SHM file beside a store it does not own, nor race that
+            # process's own writer. `mode=ro` refuses even the schema PRAGMAs below -- the file must
+            # already exist and hold the table, which a real session store always does.
+            self.db = sqlite3.connect(f"file:{self.path}?mode=ro", uri=True, check_same_thread=False)
+            self.session_id = session_id
+            return
         self.db = sqlite3.connect(str(self.path), check_same_thread=False)
         # `log()` runs synchronously on the asyncio event loop (net.py's per-message dispatch), once
         # per hit/kill/status envelope during LIVE PLAY -- there is no executor hop. The default

@@ -250,6 +250,26 @@ def test_when_the_phone_stops_reporting_flapping_the_plain_link_rules_return():
     assert row(s)["gun_flapping"] is False
 
 
+def test_a_gun_that_answered_the_push_then_goes_dark_still_blocks_start():
+    """F-2026-09-17b: the flapping amber is for an UNPROVEN headset. A gun that already echoed THIS
+    push and then goes dark and flaps is a real fault (the headset was on, then died), so the red must
+    return, not the flapping amber."""
+    from brx_mcp.mc.state import GUN_FLAPPING_LINE
+    s, net, clock, ps = mk()
+    hello(net, clock, ps[0]); beat(net, clock, ps[0])
+    s.push_config(force=True)
+    net.simulate_node_message("node0", "ack_config", {"config_id": s.config["config_id"], "ok": True,
+                                                      "gun_echo": "$LCD,0,0,0,0,0,0,*"}, clock["t"])
+    assert row(s)["headset"] == "proven" and row(s)["headset_proof"] == "echo"
+
+    clock["t"] += 2_000
+    flap_beat(net, clock, ps[0], gun_linked=False, flapping=True)
+    r = row(s)
+    assert "GUN LINK LOST — BLOCKS START" in r["blockers"], "the push already proved the head; going dark now is a fault"
+    assert r["status"] == "red"
+    assert GUN_FLAPPING_LINE not in r["ambers"]
+
+
 def test_the_console_renders_the_same_headset_off_words():
     """The Armory card drops its list copy of the amber by exact match, so the two strings must agree."""
     from pathlib import Path

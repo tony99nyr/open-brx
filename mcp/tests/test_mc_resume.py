@@ -11,6 +11,7 @@ recognise nor end it. A crash, a laptop lid or a restart can do this on the fiel
 A34's safety rule is unchanged: MC never ends a match it cannot account for on its own.
 """
 import pathlib
+import sqlite3
 import tempfile
 
 from test_mc_block_b import kill, online
@@ -32,6 +33,12 @@ def _restart(s, clock):
     """A new process: a new store FILE (each process writes its own), the same session.json."""
     s._persist_last = 0.0
     s._persist()
+    return _restart_no_repersist(s, clock)
+
+
+def _restart_no_repersist(s, clock):
+    """Like `_restart`, but the caller already wrote the snapshot it wants read back -- a REAL crash
+    leaves `saved_ms` at the moment of the last write, not at the moment the new process starts."""
     net2 = FakeNet()
     store2 = Store("t2", pathlib.Path(tempfile.mkdtemp()) / "s2.sqlite")
     s2 = Session(FakeCompiler(), net2, FakeArmory(demo_armory()), store=store2, now_ms=lambda: clock["t"])
@@ -129,6 +136,111 @@ def test_a_restart_in_recap_still_ends_a_phone_that_missed_the_end():
     assert [b for n, _k, b in net2.pushes("control") if n == "node1"] == [{"cmd": "end", "match_id": info["match_id"]}]
 
 
+# ── 2b. F-2026-09-17d: a FAR TOO OLD snapshot is restored finished, never resumed ───────────────────
+def test_a_snapshot_far_too_old_is_restored_finished_not_resumed():
+    """The bound is 2x the time limit -- BELOW where the ordinary "past the time limit" check would
+    itself have caught it, so this isolates the age cap and not the existing time-limit check. A crash
+    the operator only found later must not boot straight back into a LIVE match nobody is still playing."""
+    s, net, clock, ps, info = _persisting_live(cfg={"time_limit_s": 3})
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    s._persist_last = 0.0
+    s._persist()                                    # `saved_ms` == now: the last write before the crash
+    clock["t"] += 2 * 3_000 + 500                    # past the 2x-time-limit AGE bound (6 s)...
+    assert clock["t"] < info["go_live_t"] + 3_000 + 5_000, \
+        "keep this inside the ordinary time-limit-passed window so only the age cap can be firing"
+    s2, net2 = _restart_no_repersist(s, clock)
+    assert s2.resume_match() == "recap"
+    assert s2.phase == "recap"
+    row = next(r for r in s2.last_recap["rows"] if r["player_id"] == ps[0]["player_id"])
+    assert row["kills"] == 1, "the kill logged before the crash still scores"
+
+
+def test_an_untimed_snapshot_over_an_hour_old_is_restored_finished_not_resumed():
+    """An untimed config has no clock of its own to catch a stale snapshot, so the bound is a flat hour."""
+    s, net, clock, ps, info = _persisting_live(cfg={"time_limit_s": 30})
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    s.config["time_limit_s"] = None       # the STORED match's config is untimed (no clock of its own);
+    s._persist_last = 0.0                 # set directly -- `set_config` would refuse it on this path today
+    s._persist()
+    clock["t"] += 3_600_000 + 1
+    s2, net2 = _restart_no_repersist(s, clock)
+    assert s2.resume_match() == "recap"
+    assert s2.phase == "recap"
+
+
+def test_a_snapshot_inside_the_bound_still_resumes_live():
+    """The age cap must not fire on an ordinary quick restart."""
+    s, net, clock, ps, info = _persisting_live(cfg={"time_limit_s": 30})
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    s._persist_last = 0.0
+    s._persist()
+    clock["t"] += 5_000                              # well inside the 2x-time-limit bound
+    s2, net2 = _restart_no_repersist(s, clock)
+    assert s2.resume_match() == "live"
+    assert s2.phase == "live"
+
+
+# ── 2c. F-2026-09-17e: the resume import never writes to the OLD process's store ────────────────────
+def test_the_old_store_is_opened_read_only_for_the_resume_import():
+    """A resume only ever READS another process's store (`state._import_facts`)."""
+    path = pathlib.Path(tempfile.mkdtemp()) / "old.sqlite"
+    w = Store("old", path)
+    w.log("node0", "status", 1, 0, 0, "m1", False, {"hp": 1})
+    w.close()
+    assert not pathlib.Path(str(path) + "-wal").exists(), "a clean close checkpoints the WAL away"
+
+    ro = Store("resume", path, read_only=True)
+    try:
+        assert len(ro.events(match_id="m1")) == 1, "a read-only store still reads"
+        try:
+            ro.log("node0", "status", 2, 0, 0, "m1", False, {})
+            raise AssertionError("a read-only store accepted a write")
+        except sqlite3.OperationalError:
+            pass
+        assert len(ro.events(match_id="m1")) == 1, "the rejected write left no trace"
+    finally:
+        ro.close()
+
+
+def test_resume_still_reads_the_old_store_now_that_it_is_opened_read_only():
+    s, net, clock, ps, info = _persisting_live()
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    clock["t"] += 20_000
+    s2, net2 = _restart(s, clock)
+    assert s2.resume_match() == "live"
+    assert _kills(s2, ps[0]["player_id"]) == 1, "the facts were still read back through the read-only open"
+
+
+# ── 2d. F-2026-09-17e: a resume into ARMED re-queues the VIP role for go-live ───────────────────────
+def test_a_resume_into_armed_still_queues_the_vip_role_for_go_live():
+    """`_schedule()` queues the VIP announcement itself (`_queue_roles_for_live`); a resume that lands
+    back in ARMED -- a restart that beat the countdown -- must queue it too, or the VIP never hears it."""
+    s, net, clock, ps = mk(2, "ffa")
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.set_config({"vip_player_id": ps[1]["player_id"]})
+    s.push_config(force=True)
+    for i in range(2):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
+                                                              "gun_echo": "$LCD"}, clock["t"])
+    info = s.start(runway_s=30, force=True)
+    assert s.phase == "armed"
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_last = 0.0
+    s._persist()
+    s2, net2 = _restart_no_repersist(s, clock)
+    assert s2.resume_match() == "armed"
+    tail = demo_armory()[1]["ble"]["tail"]
+    net2.simulate_hello("node1", f"GUN-B-{tail}")           # the VIP's phone re-binds after the restart
+    clock["t"] = info["go_live_t"] + Session.ROLE_SETTLE_MS
+    s2.tick()
+    alerts = [(nid, b) for nid, k, b in net2.pushed if k == "alert" and b.get("kind") == "role"]
+    assert len(alerts) == 1, "the resumed match must still hand the VIP their role at go-live"
+    nid, body = alerts[0]
+    assert nid == "node1" and body["player_id"] == ps[1]["player_id"]
+    assert body["role"] == {"name": "vip", "on": True}
+
+
 # ── 3. no snapshot: phones in an unknown match raise a notice and nothing else ─────────────────────
 def _fresh_mc_with_phones_in(n, mids):
     """A new laptop: the roster is typed in again, the phones bind, and they report `mids[i]`."""
@@ -218,6 +330,46 @@ def test_resume_match_adopts_the_phones_match_and_scores_from_the_facts_mc_holds
     s.control("end")
     assert s.phase == "recap"
     assert {"cmd": "end", "match_id": "m-old"} in [b for _n, _k, b in net.pushes("control")]
+
+
+# ── F-2026-09-17c: an adopted match arms no end of MC's own ────────────────────────────────────────
+# MC holds no config for a match it did not start — `self.config` is the operator's CURRENT DRAFT, which
+# need not match what the phones are actually playing to. A short draft used to end their match early.
+
+def test_an_adopted_match_never_ends_early_on_mcs_current_draft_time_limit():
+    s, net, clock, ps, before = _fresh_mc_with_phones_in(2, ["m-old", "m-old"])
+    s.set_config({"time_limit_s": 5})              # the draft's clock, not the real match's
+    s.adopt_orphan("m-old")
+    assert s.phase == "live"
+    clock["t"] += 60_000                           # well past the draft's 5 s + grace
+    s.tick()
+    assert s.phase == "live" and s.start_info is not None, \
+        "MC must not end an adopted match on its own draft's clock"
+    s.control("end")                               # the operator can still stop it by hand
+    assert s.phase == "recap"
+
+
+def test_an_adopted_match_never_ends_early_on_mcs_current_draft_frag_limit():
+    s, net, clock, ps, before = _fresh_mc_with_phones_in(2, ["m-old", "m-old"])
+    s.set_config({"scoring": {"frag_limit": 1}})   # the draft's cap, not the real match's
+    s.adopt_orphan("m-old")
+    assert s.phase == "live"
+    _death(net, clock, ps, 0, 1, "m-old", seq=1)   # one kill reaches the DRAFT's cap of 1
+    assert s.phase == "live" and s.start_info is not None, \
+        "MC must not end an adopted match on its own draft's frag limit"
+    assert not net.pushes("control"), "no control{end} went out on the draft's cap"
+    s.control("end")
+    assert s.phase == "recap"
+
+
+def test_adopting_notes_but_does_not_end_a_draft_cap_the_replayed_facts_already_reach():
+    s, net, clock, ps, before = _fresh_mc_with_phones_in(2, ["m-old", "m-old"])
+    _death(net, clock, ps, 0, 1, "m-old", seq=1)   # logged before MC adopts the match
+    s.set_config({"scoring": {"frag_limit": 1}})   # the draft's cap the replay already reaches
+    s.adopt_orphan("m-old")
+    assert s.phase == "live" and s.start_info is not None, \
+        "reaching the draft's cap in the replay must record, never end, an adopted match"
+    assert any("DOES NOT END AN ADOPTED MATCH" in (e.get("text") or "") for e in s.feed)
 
 
 def test_resume_is_refused_while_mc_runs_its_own_match():

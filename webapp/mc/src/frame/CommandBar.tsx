@@ -79,7 +79,7 @@ export function CommandBar() {
                 <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.22em' }}>{label}{id === 'build' && view === 'designer' ? <span style={{ color: T.acc }}> ▸ DESIGNER</span> : ''}
                   {/* Bench 2026-09-17: phones are in a match this MC did not start. Only while that is true. */}
                   {id === 'live' && state?.orphan_match && (
-                    <span data-testid="match-tab-dot" aria-label="phones in a match this MC did not start"
+                    <span data-testid="match-tab-dot" role="img" aria-label="phones in a match this MC did not start"
                       style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: T.warn, marginLeft: 8, verticalAlign: 'middle' }} />
                   )}</span>
               </button>
