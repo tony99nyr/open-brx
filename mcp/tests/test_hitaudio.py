@@ -208,13 +208,11 @@ def test_the_bundle_publishes_what_a_hit_will_sound_like():
     assert ha["rekey"] is False and ha["material"] == list(H.MATERIAL_ROLES)
     assert ha["cells"] and ha["classes"]
     # F38 (bench 2026-09-07): `$SIR` REPLACES the `$PSET` pool sound, so the class layer is OFF by
-    # default and ships no rolled tables at all -- turning it on would silence the ear-confirmed
-    # material layer on every standard hit.
-    assert b["sir_pool"] == [], "the class layer ships off; sir_pool is empty"
-    # F121/A23: the live table now rides the spawn burst, not the head. Stock rows, verbatim, is still
-    # the property under test -- it just has a new address. The head carries the same cells DISARMED.
-    assert [f for f in b["spawn"] if f.startswith("$SIR")] == list(C._SIR_TABLE), "stock rows, verbatim"
-    assert [f for f in b["revive"] if f.startswith("$SIR")] == list(C._SIR_TABLE), "and again every life"
+    # default and ships no ROLLED tables -- turning it on would silence the ear-confirmed material layer on
+    # every standard hit. F209: `sir_pool` still holds ONE take, the stock rows verbatim, because the node
+    # arms every life from it after the protected spawn/revive write. Those writes carry the cells DISARMED.
+    assert b["sir_pool"] == [list(C._SIR_TABLE)], "the class layer ships off; one take, stock rows verbatim"
+    assert not [f for f in b["spawn"] + b["revive"] if f.startswith("$SIR") and f.split(",")[4] != "28"], "F209: nothing armed at $SPAWN"
     assert all(f.split(",")[4] == "28" for f in b["head"] if f.startswith("$SIR")), "the head arms nothing"
 
 

@@ -446,12 +446,12 @@ def sir_spawn_protected(rows) -> list[str]:
     return out
 
 
-def assert_spawn_protected(head: list[str]) -> None:
+def assert_spawn_protected(head: list[str], name: str = "head") -> None:
     """F121: no `$SIR` row in a HEAD may move a pool. Raises naming the rows that would.
 
     The head is written at the lobby push and again on every relink and resync, i.e. everywhere the
     player is NOT live. A row here that damages, heals or delay-blasts is a hit the gun takes and the
-    match never books."""
+    match never books. F209: the spawn and revive writes hold the same rule (`name` says which list)."""
     bad = []
     for row, cell in zip(head, _sir_cells(head)):
         if cell == ("", ""):
@@ -461,25 +461,41 @@ def assert_spawn_protected(head: list[str]) -> None:
             bad.append((row, fn))
     if bad:
         raise ValueError(
-            "F121 GUARD: this head arms hit reception before the player is live -- a countdown hit "
-            "would take real pools off a gun while MC books nothing: "
+            f"F121 GUARD: this {name} arms hit reception before the player can fire -- a hit in that "
+            "window would take real pools off a gun that cannot shoot back: "
             + ", ".join(f"{r} (fn {f})" for r, f in bad))
 
 
-def assert_arms_at_spawn(head: list[str], spawn: list[str]) -> None:
-    """F121: every cell the head disarmed MUST be re-armed by the spawn burst. Raises if one is not.
+# F209 (field 2026-09-13, bench 2026-09-16: "you can actually get hit during respawn before you can
+# shoot"). A23 put the real table AHEAD of `$SPAWN`, so hit reception came back in the same write as the
+# respawn while the weapon came later: `$AMMO` +30-170 ms and `$BMAP,0,0` +300 ms after `$SPAWN` on the
+# wire, and the whole write starts 0.7-1.2 s before `$SPAWN` (the `$PSET`, its `$TID` and ten `$SIR`
+# rows go first). The spawn and revive writes now carry the fn-28 twin, and the node writes the real
+# table afterwards as one `sir_pool` take: on the gun's first shot, or `engine.js SPAWN_PROTECT_MAX_MS`
+# after the write, whichever is first. `sir_pool` is therefore ALWAYS the carrier: one take of the fixed
+# table when class sounds are off, the rolled takes when they are on.
+def assert_arms_after_spawn(head: list[str], bundle) -> None:
+    """F121/F209: every cell the head disarmed MUST be re-armed by every `sir_pool` take, and the spawn
+    and revive writes must not arm anything themselves. Raises if either fails.
 
-    The failure this guards is F11 wearing a different hat: a cell left on fn 28 for the whole match
-    registers every hit from that weapon and takes nothing off, so both ends report healthy while one
-    player is immortal."""
-    live = {c for c in _sir_cells([f for f in spawn if f.startswith("$SIR")]) if c != ("", "")}
-    missing = [c for c in _sir_cells([f for f in head if f.startswith("$SIR")])
-               if c != ("", "") and c not in live]
-    if missing:
-        raise ValueError(
-            "F121 GUARD: the spawn frames do not re-arm every cell the head disarmed, so these "
-            "weapons would take nothing off this player all match: "
-            + ", ".join(f"<{c[0]},{c[1]}>" for c in missing))
+    A cell left on fn 28 for a whole life is F11 wearing a different hat: the gun registers every hit
+    from that weapon and takes nothing off, so both ends report healthy while one player is immortal."""
+    for name in ("spawn", "revive"):
+        assert_spawn_protected(list(bundle.get(name) or []), name)
+    pool = [list(t) for t in (bundle.get("sir_pool") or []) if t]
+    if not pool:
+        raise ValueError("F121 GUARD: no sir_pool take re-arms the $SIR table after $SPAWN -- every "
+                         "player would register every hit and take nothing off it")
+    head_cells = [c for c in _sir_cells([f for f in head if f.startswith("$SIR")]) if c != ("", "")]
+    for take in pool:
+        live = _sir_index(take)
+        # the hill beacon row is fn 28 in BOTH tables, so it is the one cell a take may leave silent
+        missing = [c for c in head_cells if c != ("15", "0") and live.get(c) in (None, _SPAWN_PROTECT_FN)]
+        if missing:
+            raise ValueError(
+                "F121 GUARD: a sir_pool take does not re-arm every cell the head disarmed, so these "
+                "weapons would take nothing off this player all life: "
+                + ", ".join(f"<{c[0]},{c[1]}>" for c in missing))
 
 
 # Bench 2026-09-16: a gun could fire during the ARMED countdown. The lobby head carried the full
@@ -512,28 +528,16 @@ def assert_trigger_held_until_spawn(head: list[str], spawn: list[str], revive: l
 
 
 def assert_rearms_every_life(bundle) -> None:
-    """F121: a REVIVE must put the real table back too. Raises if neither carrier does.
+    """F121/F209: a REVIVE must lead to the real table too. Raises if nothing carries it.
 
-    Two paths write it and exactly one is active per bundle: `revive` carries the rows itself, or (A17
-    class sounds) `sir_pool` does -- the node writes one pool take immediately BEFORE `frames.revive`,
-    so shipping both would clobber the take's sounds with a fixed draw. The reason this cannot be left
-    to "the table is still live from spawn": `engine.js _resyncNotLive` re-writes the HEAD on a live
-    node and then revives, so a revive that does not re-arm leaves that player immortal for good."""
-    rows = [f for f in bundle.get("revive", []) if f.startswith("$SIR")]
-    pool = [t for t in (bundle.get("sir_pool") or []) if t]
-    head_cells = [c for c in _sir_cells([f for f in bundle.get("head", []) if f.startswith("$SIR")])
-                  if c != ("", "")]
-    carriers = ([rows] if rows else []) + [list(t) for t in pool]
-    if not carriers:
-        raise ValueError("F121 GUARD: no revive path re-arms the $SIR table -- a respawned player "
-                         "would register every hit and take nothing off it")
-    for take in carriers:
-        cells = {c for c in _sir_cells(take) if c != ("", "")}
-        missing = [c for c in head_cells if c not in cells and c != ("15", "0")]   # the beacon row is fn 28 in BOTH tables
-        if missing:
-            raise ValueError(
-                "F121 GUARD: a revive $SIR take does not re-arm "
-                + ", ".join(f"<{c[0]},{c[1]}>" for c in missing))
+    Since F209 the carrier is one `sir_pool` take, written by the node after the revive write (the gun's
+    first shot or the protection cap). The reason this cannot be left to "the table is still live from
+    the last life": `engine.js _resyncNotLive` re-writes the HEAD on a live node and then revives, and the
+    revive write itself now holds the fn-28 twin. An infection flip is a revive too."""
+    head = list(bundle.get("head") or [])
+    assert_arms_after_spawn(head, bundle)
+    for tid, frames in (bundle.get("team_flip") or {}).items():
+        assert_spawn_protected(list(frames), f"team_flip[{tid}]")
 # F15 / A20: the host-driven STUN (EMP). The proven chain: a proto-8 IR word -> the victim's `$SIR,8,0,,24` row
 # (fn 24 = a STATUS function: `$HIR` fires, pools do not move, the gun plays fn 24's own clip) -> the NODE writes
 # `$AMMO,<slot>,0,0,1,*` for its live slots and restores the LIVE counts when `config.stun.duration_s` runs out
@@ -1307,21 +1311,15 @@ class Compiler:
         # A11.7 (S4): the gun body is taken by the NODE `gun.after_spawn_s` after every $SPAWN (blank, then the
         # rest frame) -- a blank inside this burst does not take, the spawn animation re-enables the breathing
         # (stage ladder 2026-09-04: +1.0 s / +1.5 s breathing, +2.0 s solid). So spawn/revive carry no $GLED.
-        # F121/A23: the REAL $SIR table leads the burst, so hit reception is armed by the time `$SPAWN`
-        # makes the player live -- and never a moment before. Cells persist, so this is a swap of the
-        # head's fn-28 registrars, not an addition (the F11 repair path is the same write).
-        spawn = list(sir_live) + ["$PLAYX,0,*", "$SPAWN,,*"] + ammo + [TRIGGER_LIVE] + play_hled
-        # revive = $SPAWN + loadout $AMMOs + the trigger row (NO $HLOOP; §1.1 replaces RESPAWN_SEQUENCE)
-        # F121: the table again, because a revive is not always preceded by a spawn -- `engine.js
-        # _resyncNotLive` re-writes the HEAD on a live node and revives from there. Omitted only when
-        # A17 class sounds are on: the node writes one `sir_pool` take (a full real table) immediately
-        # BEFORE `frames.revive`, and a copy here would clobber that take's sounds with a fixed draw.
-        # `assert_rearms_every_life` holds the invariant whichever carrier is active.
-        revive_sir = [] if _cs else list(sir_live)
+        # F121/A23 + F209: the fn-28 twin leads the burst, NOT the real table. The gun can fire only after
+        # `$AMMO` and `$BMAP,0,0` land, behind `$SPAWN`, so a table armed ahead of `$SPAWN` let a player be
+        # hit before they could shoot. The node writes the real table afterwards, as one `sir_pool` take
+        # (engine.js `_armLife`). The twin is needed on a revive: the last life's live table is still on the gun.
+        spawn = list(sir_pregame) + ["$PLAYX,0,*", "$SPAWN,,*"] + ammo + [TRIGGER_LIVE] + play_hled
+        # revive = the twin + $SPAWN + loadout $AMMOs + the trigger row (NO $HLOOP; §1.1 replaces RESPAWN_SEQUENCE)
         # Bench 2026-09-16: the head holds the trigger, and a live resync re-writes the head before it
         # revives, so the revive maps the trigger again too.
-        revive = revive_sir + ["$SPAWN,,*"] + ammo + [TRIGGER_LIVE] + play_hled
-        assert_arms_at_spawn(head, spawn)    # F121: every disarmed cell comes back live at $SPAWN
+        revive = list(sir_pregame) + ["$SPAWN,,*"] + ammo + [TRIGGER_LIVE] + play_hled
         assert_trigger_held_until_spawn(head, spawn, revive)
 
         bundle: FrameBundle = {
@@ -1382,12 +1380,13 @@ class Compiler:
         # hitShield / hitCrit), so the one write that re-rolls the death scream re-rolls what a hit on
         # each pool sounds like. Variety lands BETWEEN hits; nothing is played over BLE during one.
         bundle["pset_pool"] = gc.pset_frames(pnum, player.get("voice"), picks or None, rng=hits_rng)
-        # A17: the class layer, rolled the same way -- one full $SIR table per take. The node writes one
-        # before every $SPAWN and again after a lull, so the same weapon does not land the same clip all
-        # match. Re-sending $SIR rows is the F11 REPAIR path, so this write is bench-safe by construction.
-        # `_cs` is settled at the top of compile(): it also decides whether `revive` carries the $SIR
-        # rows itself (F121) -- exactly one carrier, or the take's sounds get clobbered.
-        bundle["sir_pool"] = [self.sir_table(plan, hits_rng, _cs, stun=stun_enabled(config)) for _ in range(_SIR_TAKES)] if _cs else []
+        # A17: the class layer, rolled the same way -- one full $SIR table per take, so the same weapon does
+        # not land the same clip all match. Re-sending $SIR rows is the F11 REPAIR path, so this write is
+        # bench-safe by construction. F209: the node writes one take after every spawn and revive.
+        # F209: `sir_pool` is the ONLY carrier of the real table after a spawn or revive, so it is never empty:
+        # one take of the fixed table (the objective row included) when class sounds are off.
+        bundle["sir_pool"] = ([self.sir_table(plan, hits_rng, _cs, stun=stun_enabled(config)) for _ in range(_SIR_TAKES)]
+                              if _cs else [list(sir_live)])
         bundle["hit_audio"] = {"rekey": bool(config.get("hit_audio_rekey", False)),
                                "cells": {w: f"{c[0]},{c[1]}" for w, c in plan.cells.items()},
                                "classes": {f"{c[0]},{c[1]}": k for c, (k, _fn) in plan.groups.items()},

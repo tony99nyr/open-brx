@@ -1218,26 +1218,26 @@ def test_stun_ships_the_emp_row_only_when_the_config_asks():
     """`config.stun` present -> the `<8,0>` cell is fn 24 (status: `$HIR`, no pool change); absent -> the stock
     charge-rifle row, byte-for-byte (the golden bundle must not move).
 
-    F121/A23 moved the LIVE table out of the head and into the spawn burst, so the stun row is asserted
-    where it now lands. The head's copy of the cell is a disarmed fn-28 registrar in both cases -- a
+    F121/A23 moved the LIVE table out of the head, and F209 moved it again, into the `sir_pool` take the node
+    writes once the gun can fire, so the stun row is asserted where it now lands. The head's copy of the cell is a disarmed fn-28 registrar in both cases -- a
     countdown EMP must not stun either."""
     from brx_mcp.mc.compile import _STUN_SIR_ROW
     from brx_mcp.gameconfig import _SIR_TABLE
     # CONTROL: no stun -> the stock table, in stock order, untouched
     b = C.compile(_cfg(), _player(), _TEAMS)
-    assert _sir_fn(b["spawn"]) == 38, "stock: the charge rifle's plain damage"
-    assert [f for f in b["spawn"] if f.startswith("$SIR,")] == list(_SIR_TABLE)
+    assert _sir_fn(b["sir_pool"][0]) == 38, "stock: the charge rifle's plain damage"
+    assert [f for f in b["sir_pool"][0] if f.startswith("$SIR,")] == list(_SIR_TABLE)
     assert _sir_fn(b["head"]) == 28, "F121: the head's copy of the cell moves no pool"
     # stun on -> fn 24 on the SAME cell, in the SAME position, nothing else moved
     on = C.compile(dict(_cfg(), stun={"duration_s": 10}), _player(), _TEAMS)
-    rows_on = [f for f in on["spawn"] if f.startswith("$SIR,")]
-    assert _sir_fn(on["spawn"]) == 24
+    rows_on = [f for f in on["sir_pool"][0] if f.startswith("$SIR,")]
+    assert _sir_fn(on["sir_pool"][0]) == 24
     assert _sir_fn(on["head"]) == 28, "F121: fn 24 is a DELAYED BLAST -- it may never ship pregame"
     assert rows_on.index(_STUN_SIR_ROW) == list(_SIR_TABLE).index("$SIR,8,0,,38,0,0,1,,*"), "in place, not appended"
     assert [r for r in rows_on if not r.startswith("$SIR,8,0,")] == [r for r in _SIR_TABLE if not r.startswith("$SIR,8,0,")]
     assert "$SIR,8,0,,24,0,0,1,,*" in rows_on and _STUN_SIR_ROW.split(",")[3] == "", "the sound token stays EMPTY (F43: never invent a sound id)"
     # `{}` is the 10 s default and still ships the row
-    assert _sir_fn(C.compile(dict(_cfg(), stun={}), _player(), _TEAMS)["spawn"]) == 24
+    assert _sir_fn(C.compile(dict(_cfg(), stun={}), _player(), _TEAMS)["sir_pool"][0]) == 24
 
 
 def test_stun_row_rides_every_sir_pool_take_too():

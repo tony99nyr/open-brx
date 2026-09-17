@@ -445,6 +445,8 @@ class GunStage:
                                         # `_last_seq` (poll's own fetch cursor) so the instant on_frame
                                         # callback and a later poll() never react to the same frame twice
         self.scream_this_life: str | None = None   # A15.3: the death-scream id last written into a $PSET, or None
+        self._arm_pending: float | None = None     # F209: now() of the spawn/revive write until `_arm_life` writes the real $SIR table
+        self._last_sir_take: int | None = None     # engine.js `_lastSirTake`
         self._last_pain_at: float | None = None    # A15.3: the 600 ms pain gate (PAIN_GAP_S)
         self._last_hir_proto: int | None = None    # A15.3: the ir protocol of the last $HIR (melee = 13), read on the next $HP/$LCD
         # F72/F85 + the hill: the phone's proto-15 model, field for field (engine.js `beacon`/`_lastBeacon*`/`hill`…)
@@ -1038,12 +1040,46 @@ class GunStage:
         except RuntimeError:
             self._loop = None
 
+    # ---- F209 spawn protection (engine.js `_protectsSpawn` / `_armAfterSpawn` / `_armLife`) -------------
+    # The spawn and revive writes carry the fn-28 twin; one `sir_pool` take (the real table) follows on the
+    # gun's first shot or SPAWN_PROTECT_MAX_S after the write. Death, end, panic and a head cancel it.
+    SPAWN_PROTECT_MAX_S = 2.1   # engine.js SPAWN_PROTECT_MAX_MS
+
+    def _pick_table(self, kind: str) -> list[str]:
+        """engine.js `_pickTable`: one whole take of `bundle[kind]`, never the take written last."""
+        pool = self.bundle.get(kind)
+        if not isinstance(pool, list) or not pool:
+            return []
+        i = self.rng.randrange(len(pool)) if len(pool) > 1 else 0
+        if len(pool) > 1 and i == self._last_sir_take:
+            i = (i + 1) % len(pool)
+        self._last_sir_take = i
+        return list(pool[i]) if isinstance(pool[i], list) else []
+
+    def _protects_spawn(self) -> bool:
+        pool = self.bundle.get("sir_pool")
+        rows = [f for f in self.bundle.get("revive") or [] if f.startswith("$SIR,")]
+        return bool(pool) and bool(rows) and all(len(_toks(f)) > 4 and _toks(f)[4] == "28" for f in rows)
+
+    def _arm_after_spawn(self) -> None:
+        self._arm_pending = self.now() if self._protects_spawn() else None
+
+    def _arm_life(self, why: str) -> None:
+        pending, self._arm_pending = self._arm_pending, None
+        if pending is None:
+            return
+        if not (self.spawned and self.alive):
+            self._log(f"arm hit reception ({why}) cancelled: not live", "info")
+            return
+        self._spawn_task(self.write(self._pick_table("sir_pool"), f"arm hit reception ({why})", gap_ms=60))
+
     # ---- game -------------------------------------------------------------------------------------
     async def arm(self) -> dict:
         self.recompile(roll=True)                                # A15: a fresh draw of the $PSET takes every arm
         if self.rolled:
             self._log("rolled: " + self.roll_text(), "info")
         await self.write(self.bundle["head"], "arm (head)")
+        self._arm_pending = None                                 # F209: a head is fn 28 throughout
         self.spawned = False; self.alive = False; self.scream_this_life = None   # a fresh head: no scream written yet
         self._reset_hill()                                       # engine.js `_resetHill` on a new match: game 2 must not inherit game 1's point or its once-per-game warnings
         self._prev_ammo = {}; self._prev_reserve = {}; self.active_slot = 0; self.reloading = None   # engine.js `_writeHead`
@@ -1086,6 +1122,7 @@ class GunStage:
         await self.write(([ps] if ps else []) + list(self.bundle["spawn"]) + [SFLASH] + ([fr] if fr else []),
                           "spawn" + ps_why + self._line_tag(fr, tag))
         self._after_spawn()
+        self._arm_after_spawn()                                  # F209: hits stay silent until the gun fires or the cap
         hs = self.bundle.get("headset") or {}
         if hs.get("start"):
             self._headset(hs["start"], "headset start")
@@ -1104,6 +1141,7 @@ class GunStage:
         await self.write(([ps] if ps else []) + list(self.bundle["revive"]) + ([fr] if fr else []),
                           "revive" + ps_why + self._line_tag(fr, tag))
         self._after_spawn()
+        self._arm_after_spawn()                                  # F209
         self._moment = ("redeploy", self.now())                       # engine.js `_revive`: the HUD's rarer moment (gates a pool rise for RARE_GUARD_S)
         self._event_now("respawned", sound=False)                     # the lights; the sound went out with the revive write
         self.carrying = None; self._active_role = None
@@ -1177,6 +1215,7 @@ class GunStage:
 
     async def end(self) -> dict:
         await self.write(self.bundle["end"], "end")
+        self._arm_pending = None                   # F209: never arm an ended gun
         self.spawned = False; self.alive = False; self.stunned = None   # F15: the end frames own the gun now
         self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None   # engine.js `_endLocal`: the whole takeover goes with the match
         self._moment = ("match_over", self.now())  # engine.js `_endLocal`
@@ -1185,6 +1224,7 @@ class GunStage:
 
     async def panic(self) -> dict:
         await self.write(self.bundle["panic"], "PANIC")
+        self._arm_pending = None                   # F209
         self.spawned = False; self.alive = False; self.stunned = None
         self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None
         self._level_gen += 1                       # Node rules: cancel everything on panic
@@ -1456,6 +1496,8 @@ class GunStage:
         # The two paths above it return EARLIER than this, and neither can leave a hill unexpired: with no
         # link no beacon can have arrived, and a drop clears the state outright (`_hill_reset`).
         now = self.now()
+        if self._arm_pending is not None and now - self._arm_pending >= self.SPAWN_PROTECT_MAX_S:
+            self._arm_life("cap")                # F209 (engine.js tick()): only reached with the link up
         if self.stunned and now >= self.stunned["until"]:
             self._stun_restore("expired")        # F15: the stun timer -- restore the LIVE counts (engine.js tick())
         self._stations_tick(now)                 # K1: the scanner's callback (an advertising station is heard again)
@@ -1926,6 +1968,7 @@ class GunStage:
         hs = self.bundle.get("headset") or {}
         if hp == 0 and self.alive:
             self.alive = False
+            self._arm_pending = None               # F209 (engine.js `_death`): never arm a dead gun
             self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None   # engine.js `_death`: the gun stops the reload when you drop; so does the HUD
             self._stun_restore("died")             # F15: death cancels the stun -- no restore write; the revive's own $AMMO re-arms the next life
             self._moment = ("down", self.now())    # engine.js `_death`: the rarer moment (gates a pool rise for RARE_GUARD_S)
@@ -2112,6 +2155,9 @@ class GunStage:
             self._log(f"$ALCD ignored while stunned (slot {slot} mag {mag})", "info")
             return
         prev = self._prev_ammo.get(slot)
+        # F209 (engine.js `_onAmmo`): a round leaving slot 0 or 1 proves the gun can fire, so hit reception arms now
+        if self._arm_pending is not None and slot in (0, 1) and prev is not None and mag < prev:
+            self._arm_life("first shot")
         # F123 (engine.js `_onAmmo`): the takeover is reconciled against the REAL magazine, one $ALCD at a time.
         # A rise feeds it and pushes the deadline out (which is what lets a shell-by-shell chain run to the end
         # instead of clearing on shell #1); reaching the spawn cap finishes it; a round LEAVING the mag ends it,

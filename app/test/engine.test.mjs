@@ -3459,6 +3459,7 @@ function readoutHarness() {
   const h = goLive(harness()); h.eng.frames.leds = {};
   h.eng.frames.gun = { rest: RO_REST, blank: RO_REST, after_spawn_s: 2.5, take: [RO_REST], readout: READOUT };
   h.eng._gunTake();   // fires inline (harness delays run inline): _gunTaken=true, strip at rest
+  h.eng._armLife('harness');   // F209: end spawn protection now, so its table write does not land inside a timed readout check
   return h;
 }
 
@@ -3705,6 +3706,7 @@ function levelHarness() {
   const h = goLive(harness()); h.eng.frames.leds = {};
   h.eng.frames.gun = { rest: RO_REST, blank: RO_REST, after_spawn_s: 2.5, take: [RO_REST], readout: READOUT_LV };
   h.eng._gunTake();   // fires inline: _gunTaken=true, strip at rest, _roLevel still null (nothing painted this life)
+  h.eng._armLife('harness');   // F209: end spawn protection now, so its table write does not land inside a timed readout check
   return h;
 }
 

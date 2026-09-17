@@ -83,15 +83,18 @@ class FakeCompiler:
         head += [f"$WEAP,{i},<{w}>,*" for i, w in enumerate(weapons[:2])] + ["$WEAP,4,<melee>,*"]
         # F121/A23: this class is a RUNTIME FALLBACK that can reach a real tagger, so it is spawn-protected
         # like the real compiler -- fn 28 pregame (registers a `$HIR`, moves no pool, no player feedback),
-        # the damage row with `$SPAWN` and with every revive. It still satisfies F11 either way: rows are
-        # PRESENT after the `$CLEAR`, which is what makes a gun hittable at all.
+        # fn 28 again in spawn and revive (F209), and the damage row as the one `sir_pool` take the node
+        # writes once the gun can fire. It still satisfies F11 either way: rows are PRESENT after the
+        # `$CLEAR`, which is what makes a gun hittable at all.
         # Bench 2026-09-16: the head holds the trigger; spawn and revive map it (compile.TRIGGER_HELD).
-        head += ["$SIR,0,0,,28,0,0,1,,*", TRIGGER_HELD, f"$TID,{tid},*"]
+        sir_protected = ["$SIR,0,0,,28,0,0,1,,*"]
+        head += [*sir_protected, TRIGGER_HELD, f"$TID,{tid},*"]
         sir_live = ["$SIR,0,0,,1,0,0,1,,*"]
         ammo = [f"$AMMO,{i},36,108,1,*" for i in range(len(weapons[:2]))]
         return {"config_id": config["config_id"], "player_id": player["player_id"], "head": head,
-                "spawn": [*sir_live, "$PLAYX,0,*", "$SPAWN,,*", *ammo, "$BMAP,0,0,,,,,*"],
-                "revive": [*sir_live, "$SPAWN,,*", *ammo, TRIGGER_LIVE],
+                "spawn": [*sir_protected, "$PLAYX,0,*", "$SPAWN,,*", *ammo, TRIGGER_LIVE],
+                "revive": [*sir_protected, "$SPAWN,,*", *ammo, TRIGGER_LIVE],
+                "sir_pool": [sir_live],
                 "end": ["$SPAWN,,*", "$PLAYX,0,*", "$STOP,*", "$CLEAR,*", "$HLOOP,0,0,*", "$HLED,0,0,0,0,0,0,*"],
                 "panic": ["$CLEAR,*", "$SP,99,*"],
                 "team_flip": {str(t["tid"]): [f"$TID,{t['tid']},*"] for t in teams if t["tid"] != tid},

@@ -135,7 +135,7 @@ def test_an_ir_hit_on_the_fake_gun_plays_the_victim_overlay_and_a_kill_plays_the
         st, mgr = mk(gun="health")
         st.patch_presentation({"headset": {"hit": "red"}})       # opt-in hit colour so the headset flash is testable
         await st.connect("FA:KE:00:00:00:01")
-        await st.arm(); await st.spawn(); await settle(st)
+        await st.arm(); await st.spawn(); await settle(st); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         st.poll()                                                  # the fake's $LCD after $SPAWN
         after_spawn = tx(mgr)[tx(mgr).index("$SPAWN,,*"):]
         assert all(f in after_spawn for f in st.bundle["gun"]["take"]), "the take (blank + full-health paint) followed the spawn"
@@ -176,7 +176,7 @@ def test_an_ir_hit_on_the_fake_gun_plays_the_victim_overlay_and_a_kill_plays_the
         # exactly what engine.js does; the sound (if any) and the headset blink still play
         assert any("event died" in l["text"] or ("died" in l["text"] and "dropped" in l["text"]) for l in st.log)
         n = len(tx(mgr))
-        await st.revive(); await settle(st)
+        await st.revive(); await settle(st); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         new = tx(mgr)[n:]
         # §3.2: `down.stop` ($HLOOP,0,0,*) is its own write, first, ahead of everything else in revive()
         off = 0
@@ -214,7 +214,7 @@ def test_ir_words_are_the_bench_derived_ones():
 def test_dry_run_without_a_gun_logs_the_frames_instead_of_failing():
     async def run():
         st, mgr = mk()
-        await st.arm(); await st.spawn(); await settle(st)
+        await st.arm(); await st.spawn(); await settle(st); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         st.event("lead_taken"); await settle(st)
         kinds = [l["kind"] for l in st.log]
         assert "tx" in kinds and not tx(mgr)
@@ -276,7 +276,7 @@ def test_poll_never_replays_frames_it_already_handled():
         st, mgr = mk(gun="native")
         st.patch_presentation({"headset": {"hit": "red"}})   # hit_taken carries no default reaction any more (A16 §6 finding #5): give it one to prove the dedup
         await st.connect("FA:KE:00:00:00:01")
-        await st.arm(); await st.spawn(); await settle(st); st.poll()
+        await st.arm(); await st.spawn(); await settle(st); st.poll(); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         await st.ir("shot"); st.poll(); await settle(st)   # priming hit: past the first-life shield-sync blip, see test_an_ir_hit_on_the_fake_gun_...
         hits = lambda: sum(1 for l in st.log if l["why"] == "headset hit")
         n = hits()
@@ -314,7 +314,7 @@ def test_a_hit_reacts_the_instant_its_frame_decodes_not_on_the_next_poll_tick():
         await st.connect("FA:KE:00:00:00:01")
         await st.arm()
         st.bundle["cues"]["countdown"] = ""    # this test is about the HIT path, not the spawn countdown wait
-        await st.spawn(); await settle(st)
+        await st.spawn(); await settle(st); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         s = mgr.sessions["stage"]
         t0 = time.monotonic()
         n0 = _hit_via_on_frame(st, mgr)
@@ -338,7 +338,7 @@ def test_latency_does_not_grow_under_rapid_fire_and_an_in_flight_burst_never_del
         await st.connect("FA:KE:00:00:00:01")
         await st.arm()
         st.bundle["cues"]["countdown"] = ""
-        await st.spawn(); await settle(st)
+        await st.spawn(); await settle(st); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         s = mgr.sessions["stage"]
         deltas = []
         for _ in range(4):
@@ -361,7 +361,7 @@ def test_poll_does_not_re_react_to_a_frame_the_instant_callback_already_handled(
         st, mgr = mk(gun="native")
         st.patch_presentation({"headset": {"hit": "red"}})   # hit_taken carries no default reaction any more (A16 §6 finding #5): give it one to prove the dedup
         await st.connect("FA:KE:00:00:00:01")
-        await st.arm(); await st.spawn(); await settle(st); st.poll()
+        await st.arm(); await st.spawn(); await settle(st); st.poll(); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         _hit_via_on_frame(st, mgr); await settle(st)   # priming hit: past the first-life shield-sync blip, see test_an_ir_hit_on_the_fake_gun_...
         hits = lambda: sum(1 for l in st.log if l["why"] == "headset hit")
         n = hits()
@@ -391,7 +391,7 @@ def test_spawn_waits_the_countdown_lead_before_the_burst_and_skips_the_wait_with
         assert calls[0] == GunStage.COUNTDOWN_LEAD_S, "the lead wait must happen, and before anything else awaited in spawn()"
         frames = tx(mgr)
         i_cd = frames.index(st.bundle["cues"]["countdown"])
-        i_spawn0 = frames.index(st.bundle["spawn"][0])
+        i_spawn0 = frames.index("$SPAWN,,*")   # F209: spawn[0] is the fn-28 twin, which the head also carries
         assert i_cd < i_spawn0, "the countdown cue must be written before the spawn burst, not after"
         await settle(st)
         calls.clear()
@@ -485,7 +485,7 @@ def test_kill_button_plays_the_top_medals_lights_too():
     async def run():
         st, mgr = mk()
         await st.connect("FA:KE:00:00:00:01")
-        await st.arm(); await st.spawn(); await settle(st)
+        await st.arm(); await st.spawn(); await settle(st); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         n = len(tx(mgr))
         st.kill(["first_blood"]); await settle(st)
         new = tx(mgr)[n:]
@@ -501,7 +501,7 @@ def test_down_writes_nothing_at_death_one_rearm_insurance_then_stops_before_revi
     async def run():
         st, mgr = mk()
         await st.connect("FA:KE:00:00:00:01")
-        await st.arm(); await st.spawn(); await settle(st); st.poll()
+        await st.arm(); await st.spawn(); await settle(st); st.poll(); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         down = st.bundle["headset"]["down"]
         assert down == {"rearm": "$HLOOP,2,750,*", "stop": "$HLOOP,0,0,*", "rearm_after_ms": 2500}
         n = len(tx(mgr))
@@ -511,7 +511,7 @@ def test_down_writes_nothing_at_death_one_rearm_insurance_then_stops_before_revi
         assert new.count(down["rearm"]) == 1, "exactly one rearm write, no repeating pulse"
         n = len(tx(mgr)); await settle(st)
         assert len(tx(mgr)) == n, "the rearm does not repeat while still down"
-        await st.revive(); await settle(st)
+        await st.revive(); await settle(st); st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes the hits below
         assert down["stop"] in tx(mgr)[n:], "down stop written before the revive frames"
         n = len(tx(mgr)); await settle(st)
         assert len(tx(mgr)) == n, "alive again: nothing keeps firing"

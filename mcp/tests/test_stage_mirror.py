@@ -394,6 +394,7 @@ async def live(st):
     await st.spawn()
     await settle(st)
     st.poll()
+    st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the fake gun takes hits
     await settle(st)
 
 
@@ -612,6 +613,7 @@ def test_a_real_reload_is_but_2_1_the_release_and_a_two_slot_alt_are_not_and_dea
     async def go():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st._arm_life("test"); await settle(st)   # F209: past spawn protection, so the kill below lands
         st._on_rx("$ALCD,10,100,0,20,0,*")
         st._on_rx("$BUT,2,0,*")
         assert st.reloading is None, "the release is not a pull"
@@ -698,9 +700,9 @@ def test_an_emp_under_config_stun_disarms_every_slot_extends_on_a_second_word_an
         st, mgr, clock = mk_stun(stun=10)
         assert st.stun_enabled and st.stun_s == 10.0
         await live(st)
-        # F121/A23: the live table rides the SPAWN burst now -- the head ships the cell disarmed (fn 28),
-        # because fn 24 is the delayed-blast family and must never reach a gun before go-live.
-        live_rows = [f for f in st.bundle["spawn"] if f.startswith("$SIR,8,0,")]
+        # F121/A23 + F209: the live table is the `sir_pool` take the node writes once the gun can fire -- the
+        # head ships the cell disarmed (fn 28), because fn 24 is the delayed-blast family.
+        live_rows = [f for f in st.bundle["sir_pool"][0] if f.startswith("$SIR,8,0,")]
         assert live_rows and live_rows[0].split(",")[4] == "24", f"the <8,0> cell is fn 24 (a status row) when stun is on: {live_rows}"
         head = [f for f in st.bundle["head"] if f.startswith("$SIR,8,0,")]
         assert head and head[0].split(",")[4] == "28", f"the head must not arm the EMP cell: {head}"
@@ -780,6 +782,7 @@ def test_a_stun_before_the_first_shot_of_a_new_life_restores_this_lifes_reserve_
         await st.ir("kill"); st.poll(); await settle(st)
         assert not st.alive
         await st.spawn(); await settle(st); st.poll(); await settle(st)   # life 2: the frame's pair is back on the gun
+        st._arm_life("test"); await settle(st)   # F209: past spawn protection
         assert st.alive
         assert st._prev_ammo == {} and st._prev_reserve == {}, "both $ALCD maps reset on spawn"
         n = mark(mgr)
@@ -1149,7 +1152,7 @@ KNOWN_UNMIRRORED = {
     "_beginResync", "_resyncButton", "_resyncDone", "_resyncEvidence", "_resyncNotLive", "_resyncTick",
     # persistence + config application (the stage is configured directly, not by a pushed bundle)
     "_save", "_load", "_set", "_changed", "clearPersisted", "_applyConfig", "_assign", "_write",
-    "_writeHead", "_writeTeardown", "feedFrame", "reset", "_pickTable",
+    "_writeHead", "_writeTeardown", "feedFrame", "reset",
     # B1 (2026-09-12): catches an MC `assign` that re-teams the roster without a config re-push rewriting
     # the gun's $TID. It reads the head `_writeHead` wrote and fires only off `_assign` — both of which
     # are transport/MC-only and already pinned here. The stage is configured directly (no `assign`, no
