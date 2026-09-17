@@ -786,6 +786,16 @@ for (const view of VIEWS) {
     const pg = await open(view, 'live-kill', '', 3000); const r = await pg.evaluate(() => { const k = document.querySelector('.mo.kill'); if (!k) return null; const c = k.querySelector('.c').getBoundingClientRect(), f = k.getBoundingClientRect(); return { mid: (c.top + c.height / 2 - f.top) / f.height, big: parseFloat(getComputedStyle(k.querySelector('.k')).fontSize), bg: getComputedStyle(k).backgroundImage }; }); await pg.close();
     must(r, 'no kill overlay'); must(r.mid > .3 && r.mid < .6, 'not centred: ' + r.mid); must(r.big >= 90, 'KILL ' + r.big + 'px'); must(/0\.9/.test(r.bg), 'HUD not dimmed behind it');
   });
+  await step(`${view.name} kill-name KILL CONFIRMED names the victim by gamertag, never by player_id (field 2026-09-17)`, async () => {
+    // MC's wire: `victim` is a player_id. The banner resolves it; a bare id on screen is the bug.
+    const pg = await open(view, 'live', '', 3000);
+    const r = await pg.evaluate(async () => { const e = window.brx.engine; const foe = e.roster.find(x => x.player_id !== (e.player && e.player.player_id));
+      e.onMcMessage({ kind: 'feedback', body: { player_id: e.player.player_id, kind: 'kill', t: Date.now(), victim: foe.player_id, victim_team: foe.team_id } });
+      for (let i = 0; i < 30 && !document.querySelector('.mo.kill .vt'); i++) await new Promise(res => setTimeout(res, 50));
+      const vt = document.querySelector('.mo.kill .vt'); return { txt: vt ? vt.textContent.trim() : null, id: foe.player_id, display: foe.display }; });
+    await pg.close();
+    must(r.txt, 'no kill banner'); must(r.txt.includes(r.display.toUpperCase()), `banner says ${JSON.stringify(r.txt)}, not ${r.display}`); must(!r.txt.includes(r.id), `banner shows the player_id: ${r.txt}`);
+  });
   await step(`${view.name} #25/#26 DOWN: recap instead of ghost numbers`, async () => {
     const read = () => pg.evaluate(() => ({ ghost: !!document.querySelector('.down .ghost'), recap: (document.querySelector('.down .recap') || {}).textContent || '', bottoms: Array.from(document.querySelectorAll('.down .recap > .rc')).map(s => Math.round(s.getBoundingClientRect().bottom / 3)), tiles: document.querySelectorAll('.down .recap > .rc').length, chips: document.querySelectorAll('.down .recap .tm').length }));
     const pg = await open(view, 'down'); let r = await read();

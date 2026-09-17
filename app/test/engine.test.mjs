@@ -1187,6 +1187,19 @@ test('feedback freshness: fresh flashes, stale ignored', () => {
   assert.equal(h.writes.length, 0, 'stale feedback ignored');
 });
 
+test('kill confirm names the victim by gamertag, never by player_id (field 2026-09-17)', () => {
+  const h = harness({ mode: 'ffa' }).kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  // MC's wire: `victim` is a player_id. The banner must not print it.
+  h.eng.onMcMessage({ kind: 'feedback', body: { player_id: 'p1', kind: 'kill', t: h.eng.now(), victim: 'p2', victim_team: 'ffa' } });
+  assert.equal(h.eng.moment.data.victim, 'VIPER', 'resolved through the roster');
+  h.adv(3000);
+  h.eng.onMcMessage({ kind: 'feedback', body: { player_id: 'p1', kind: 'kill', t: h.eng.now(), victim: 'p2', victim_display: 'VIPER-PIXEL5', victim_team: 'ffa' } });
+  assert.equal(h.eng.moment.data.victim, 'VIPER-PIXEL5', "MC's victim_display wins over a roster that may be stale");
+  h.adv(3000);
+  h.eng.onMcMessage({ kind: 'feedback', body: { player_id: 'p1', kind: 'kill', t: h.eng.now(), victim: 'db2f4aa5', victim_team: 'ffa' } });
+  assert.equal(h.eng.moment.data.victim, null, 'an unknown id is not a name: the HUD falls back to the team label');
+});
+
 test('timed end → writes end + game_over → KITTED', () => {
   const h = harness({ timeLimit: 60 }).kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.adv(60_000); h.eng.tick();
