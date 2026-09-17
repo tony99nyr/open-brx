@@ -142,7 +142,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
    throughout: it must never block a tap. `#frame *{animation:none!important}` under prefers-reduced-motion
    (line ~346) already gives this a static glow for free — nothing extra to write here for that. */
 .heatvig{position:absolute;inset:0;box-shadow:inset 0 0 170px -20px rgba(255,120,20,.55);animation:heatpulse 1.1s infinite;pointer-events:none}
-.heatword{position:absolute;left:50%;top:26%;transform:translate(-50%,-50%);font-family:var(--fd);font-style:italic;font-weight:700;font-size:40px;letter-spacing:.3em;color:var(--warn);text-shadow:0 0 30px rgba(255,140,20,.7);pointer-events:none;animation:heatpulse 1.1s infinite;white-space:nowrap}
+.heatword{position:absolute;left:50%;top:63%;transform:translate(-50%,-50%);font-family:var(--fd);font-style:italic;font-weight:700;font-size:40px;letter-spacing:.3em;color:var(--warn);text-shadow:0 0 30px rgba(255,140,20,.7);pointer-events:none;animation:heatpulse 1.1s infinite;white-space:nowrap}
 @keyframes heatpulse{0%,100%{opacity:.78}50%{opacity:1}}
 .reload.hot{background:var(--bad);color:#fff}
 /* Field 2026-08-30: at 11px muted this was unreadable at a glance and Tony could not tell which
@@ -192,6 +192,8 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
    the dim night palette — no bright flash, and (matching the "light discipline" rule already applied to
    `.swapping .big` above) no pulse either: a pulsing glow would locate the player from a distance. */
 [data-env="night"] .heatvig{box-shadow:inset 0 0 70px -10px var(--num);animation:none}
+/* Bench 2026-09-17: the word sat at top 26%, right across the chip bar (top 100 px), so WEAPONS HOT covered its
+   centre. At 63% it sits under the reticle and TAKING FIRE, above the vitals and between them and the ammo column. */
 [data-env="night"] .heatword{color:var(--num);text-shadow:none;font-size:22px;animation:none}
 /* night ops strips the chrome, but which gun you are holding is not chrome — keep it, unlit */
 [data-env="night"] .ammo .wn{font-size:17px;color:var(--num);text-shadow:none}
@@ -393,7 +395,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 @media (prefers-reduced-motion:reduce){#frame *,.mo,.mo *{animation:none!important;transition:none!important}.whiteout{display:none}}   /* without its fade the whiteout is a harder pop, not a gentler one (UX review 2026-09-03) */
 /* Night: the shooter-team chip is set INLINE (a team colour), and inline styles win over CSS.
    Class-driven at night instead, so it stops being the brightest object on a black HUD. */
-[data-env="night"] .hit .src,[data-env="night"] .down .recap .tm,[data-env="night"] .down .kb b{background:#2a0d0d!important;color:#ff8a8a!important;box-shadow:none}   /* inline day colours would be the brightest thing on a night screen */
+[data-env="night"] .hit .src,[data-env="night"] .down .recap .tm,[data-env="night"] .down .kb b,[data-env="night"] .bdteam .tm{background:#2a0d0d!important;color:#ff8a8a!important;box-shadow:none}   /* inline day colours would be the brightest thing on a night screen */
 [data-env="night"] .gain.armor .amt{color:#7a5aa8}
 [data-env="night"] .gain.shield .amt{color:#3a8f96}
 [data-env="night"] .mo{animation:none!important}
@@ -536,6 +538,55 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
    row and wraps its own text across several narrow lines. Same fix as `.kitlock` right above it: lift it
    out of the flex flow into its own row directly above `.foot`. */
 .lobby .foot .discoveredrow{position:absolute;left:0;right:0;bottom:100%;margin-bottom:10px;font-family:var(--fl);letter-spacing:.14em;white-space:nowrap}
+
+/* ============ shot-ready cue (bench 2026-09-17) ============
+   hud.js `_shotCue`: after a shot from a weapon with >= 400 ms between rounds the frame carries data-cool="on"
+   (the gauge dims) until the round is due, then "ready" for 250 ms (one green shine across the gauge). Opacity,
+   filter and transform only. Reduced motion and night get a brief brightness step instead of the moving shine. */
+.ammo .pips{position:relative;transition:opacity 90ms linear,filter 90ms linear}
+#frame[data-cool="on"] .ammo .pips{opacity:.5;filter:saturate(.35)}
+.ammo .pips::after{content:'';position:absolute;top:-4px;bottom:-4px;left:0;width:34%;pointer-events:none;opacity:0;
+  background:linear-gradient(100deg,transparent,rgba(90,255,150,.85) 50%,transparent);transform:translateX(-100%)}
+#frame[data-cool="ready"] .ammo .pips::after{animation:readyshine 250ms ease-out both}
+@keyframes readyshine{0%{opacity:0;transform:translateX(-100%)}20%{opacity:1}80%{opacity:1}100%{opacity:0;transform:translateX(300%)}}
+[data-env="night"] .ammo .pips::after{display:none}
+/* night hides the pips of a small magazine, so the round digits carry the cue there too */
+#frame[data-env="night"] .ammo .mag{transition:opacity 90ms linear,filter 90ms linear}
+#frame[data-env="night"][data-cool="on"] .ammo .mag{opacity:.5}
+#frame[data-env="night"][data-cool="ready"] .ammo .pips,#frame[data-env="night"][data-cool="ready"] .ammo .mag{filter:brightness(1.3)}
+@media (prefers-reduced-motion:reduce){.ammo .pips::after{display:none}#frame[data-cool="ready"] .ammo .pips{filter:brightness(1.5)}}
+
+/* ============ live scores overlay (bench 2026-09-17) ============
+   hud.js `_board`: opened from the player name (PLAYERS) or the match clock (TEAMS). The panel sits between the
+   HP digits and the ammo column; a tap outside it or on the ✕ closes it. The chip bar hides while it is open. */
+.bdscrim{position:absolute;inset:0;z-index:5;background:rgba(0,0,0,.28)}
+.bdpanel{position:absolute;z-index:6;left:50%;top:62px;transform:translateX(-50%);width:420px;max-height:276px;display:flex;flex-direction:column;background:var(--plate2);border:1px solid var(--edge);box-shadow:0 8px 30px rgba(0,0,0,.5)}
+.bdhead{display:flex;align-items:center;gap:10px;padding:6px 6px 6px 10px;border-bottom:1px solid var(--edge)}
+.bdseg{display:flex}
+.bdseg .sg{min-height:38px;padding:0 12px;border:1px solid var(--edge);background:var(--plate);color:var(--mut);font-weight:700;font-size:12px;letter-spacing:.16em;transform:skewX(-8deg)}
+.bdseg .sg+.sg{border-left:0}.bdseg .sg .unskew{transform:skewX(8deg)}
+.bdseg .sg.on{background:var(--team);color:var(--team-ink);border-color:var(--team)}
+.bdage{flex:1;text-align:right;font-size:11px;letter-spacing:.14em;color:var(--mut);font-weight:700;white-space:nowrap}
+.bdage.stale{color:var(--warn)}
+.bdx{flex:0 0 40px;height:40px;font-size:20px;color:var(--num);border:1px solid var(--edge);background:var(--plate)}
+.bdbody{overflow:hidden auto;min-height:0;padding:6px 10px 8px}
+.bdr{display:grid;grid-template-columns:22px minmax(0,1fr) 30px 30px 30px 44px;column-gap:8px;align-items:center;font-size:14px;padding:3px 4px;border-bottom:1px solid rgba(42,78,110,.35)}
+.bdr.rank{grid-template-columns:22px minmax(0,1fr) 60px}
+.bdr.bdh{font-size:11px;letter-spacing:.14em;color:var(--mut);font-weight:700}
+.bdr > span:not(.pn){text-align:right}
+.bdr .pn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700;letter-spacing:.06em}
+.bdr.me{color:var(--glow);background:rgba(95,214,255,.12);box-shadow:inset 3px 0 0 var(--glow)}
+.bdteams{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.bdteam{display:flex;flex-direction:column;gap:3px;border:1px solid var(--edge);padding:6px;min-width:0}
+.bdteam.mine{border-color:var(--team)}
+.bdteam .tm{align-self:flex-start;padding:2px 11px;font-family:var(--fd);font-weight:700;font-size:15px;letter-spacing:.14em;transform:skewX(-12deg);max-width:100%;overflow:hidden}
+.bdr.tp{grid-template-columns:minmax(0,1fr) auto;font-size:13px}
+.bdcap,.bdnone{font-size:11px;letter-spacing:.14em;color:var(--mut);font-weight:700;padding-top:6px}
+#frame[data-board] #chips{opacity:0}
+[data-env="night"] .bdscrim{background:rgba(0,0,0,.5)}
+[data-env="night"] .bdpanel{background:#000;box-shadow:none}
+[data-env="night"] .bdr.me{color:var(--num);background:#1a0606;box-shadow:inset 3px 0 0 var(--num)}
+[data-env="night"] .bdseg .sg.on{background:#2a0c0c;color:var(--num)}
 
 /* ============ keyframes ============ */
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}

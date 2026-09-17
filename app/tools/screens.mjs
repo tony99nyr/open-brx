@@ -55,7 +55,7 @@ const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });  
 const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 667, height: 375 }];
 const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
   'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
-  'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
+  'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked', 'live-scores', 'live-scores-ffa']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
 let stepIdx = 0;   // counts every step this run selects; identical control flow in every shard, so `% count` partitions them
 const step = async (name, fn) => { if (ONLY && !name.includes(ONLY)) return; if (SHARD && stepIdx++ % SHARD[1] !== SHARD[0]) return; try { await fn(); console.log(`  ok   ${name}`); pass++; } catch (e) { console.log(`  FAIL ${name}: ${String(e.message || e).slice(0, 300)}`); fail++; errs.push(name); } };
 const open = async (view, stage, extra = '', ms) => {
@@ -2193,6 +2193,165 @@ await step('heat bar se: heat falls back under the lockout and the OVERHEAT stat
   await pg.screenshot({ path: `${OUT}/se-heat-cleared.png` });
   await pg.close();
 });
+
+// ---------- shot-ready cue (bench 2026-09-17): a weapon with >= 400 ms between rounds dims the gauge after each
+// shot and shines once when the next round is due. Timed from the gun's own `$ALCD`, so never early. ----------
+/** Put a full 44-field `$WEAP,<slot>` with token 14 = `ms` into the head the engine holds (the demo's head is a stub). */
+const setWeap = (pg, slot, ms) => pg.evaluate(({ slot, ms }) => {
+  const e = window.brx.engine; const f = `$WEAP,${slot},` + Array(41).fill('0').map((x, i) => i === 13 ? String(ms) : x).join(',') + ',*';
+  e.frames.head = [...e.frames.head.filter(x => !x.startsWith(`$WEAP,${slot},`)), f];
+}, { slot, ms });
+/** Fire one round (mag -> mag-1) and record every `data-cool` change on #frame with its time since the shot. */
+const shotTrace = (pg, weaponId, ms, waitMs) => pg.evaluate(async ({ weaponId, ms, waitMs }) => {
+  const e = window.brx.engine, fr = document.getElementById('frame'); const trace = [];
+  e.player.loadout.weapons[0] = { weapon_id: weaponId };
+  e.frames.spawn = e.frames.spawn.map(f => f.startsWith('$AMMO,0,') ? '$AMMO,0,4,24,1,*' : f);
+  e.feedFrame('$ALCD,4,100,0,24,0,*'); await new Promise(r => setTimeout(r, 300));
+  let t0 = 0; let dimOpacity = null, dimMag = null, shine = null;
+  const mo = new MutationObserver(() => {
+    const v = fr.dataset.cool || ''; trace.push({ v, t: Math.round(performance.now() - t0) });
+    if (v === 'on' && dimOpacity == null) setTimeout(() => { dimOpacity = +getComputedStyle(document.querySelector('.ammo .pips')).opacity; dimMag = +getComputedStyle(document.getElementById('mag')).opacity; }, 150);
+    if (v === 'ready' && shine == null) { const pips = document.querySelector('.ammo .pips'); const af = getComputedStyle(pips, '::after');
+      shine = { anim: af.animationName, display: af.display, filter: getComputedStyle(pips).filter, magFilter: getComputedStyle(document.getElementById('mag')).filter }; }
+  });
+  mo.observe(fr, { attributes: true, attributeFilter: ['data-cool'] });
+  t0 = performance.now(); e.feedFrame('$ALCD,3,100,0,24,0,*');
+  await new Promise(r => setTimeout(r, waitMs)); mo.disconnect();
+  return { trace, dimOpacity, dimMag, shine, after: fr.dataset.cool || '', opacityAfter: +getComputedStyle(document.querySelector('.ammo .pips')).opacity };
+}, { weaponId, ms, waitMs });
+for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
+  for (const night of [false, true]) {
+    await step(`${tag} shot cue ${night ? 'night' : 'day'}: a sniper (1500 ms a round) dims after the shot and shines once when the round is due, never early`, async () => {
+      const pg = await open(view, 'live', night ? '&night' : '');
+      await setWeap(pg, 0, 1500);
+      const shoot = shotTrace(pg, 'sniper_rifle', 1500, 2100);
+      await pg.waitForTimeout(300 + 700); await pg.screenshot({ path: `${OUT}/${tag}-shotcue-dim-${night ? 'night' : 'day'}.png` });
+      await pg.waitForTimeout(540); await pg.screenshot({ path: `${OUT}/${tag}-shotcue-ready-${night ? 'night' : 'day'}.png` });
+      const r = await shoot; await pg.close();
+      const on = r.trace.find(x => x.v === 'on'), ready = r.trace.find(x => x.v === 'ready');
+      must(on && on.t < 150, `the gauge must dim at the shot: ${JSON.stringify(r)}`);
+      must(r.dimOpacity != null && r.dimOpacity < 0.8, `the dim must be visible (pips opacity under 0.8): ${JSON.stringify(r)}`);
+      must(ready && ready.t >= 1500 && ready.t < 1800, `the ready cue must come at or after 1500 ms, never early: ${JSON.stringify(r.trace)}`);
+      if (night) must(r.dimMag != null && r.dimMag < 0.8, `night hides the pips, so the round digits must dim too: ${JSON.stringify(r)}`);
+      if (night) must(r.shine && r.shine.display === 'none' && /brightness/.test(r.shine.magFilter), `night: no moving shine, a dim brightness step on the digits instead: ${JSON.stringify(r.shine)}`);
+      else must(r.shine && r.shine.anim === 'readyshine', `day: the green shine must run on ready: ${JSON.stringify(r.shine)}`);
+      must(r.after === '' && r.opacityAfter === 1, `the cue must clear after the shine: ${JSON.stringify(r)}`);
+    });
+  }
+}
+await step('se shot cue reduced motion: a brightness step, no moving shine', async () => {
+  const pg = await b.newPage({ viewport: { width: VIEWS[1].width, height: VIEWS[1].height }, reducedMotion: 'reduce' });
+  await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=live`); await pg.waitForTimeout(4200);
+  await setWeap(pg, 0, 600);
+  const r = await shotTrace(pg, 'sniper_rifle', 600, 1100); await pg.close();
+  must(r.trace.some(x => x.v === 'ready'), `pre-condition: the ready cue must fire: ${JSON.stringify(r.trace)}`);
+  must(r.shine && r.shine.display === 'none' && /brightness/.test(r.shine.filter), `reduced motion must swap the shine for a brightness step: ${JSON.stringify(r.shine)}`);
+});
+await step('se shot cue CONTROL: an automatic weapon (assault rifle, 140 ms a round) gets no dim and no shine', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setWeap(pg, 0, 140);
+  const r = await shotTrace(pg, 'assault_rifle', 140, 900); await pg.close();
+  must(r.trace.length === 0, `an automatic weapon must never dim or shine: ${JSON.stringify(r.trace)}`);
+});
+
+// ---------- live scores overlay (bench 2026-09-17): the player name opens PLAYERS, the clock opens TEAMS ----------
+const boardState = pg => pg.evaluate(() => {
+  const p = document.querySelector('.bdpanel'); const rect = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
+  return { open: !!p, tab: (document.querySelector('.bdseg .sg[aria-pressed="true"] .unskew') || {}).textContent || null,
+    rows: document.querySelectorAll('.bdlist .bdr:not(.bdh)').length, me: Array.from(document.querySelectorAll('.bdr.me')).map(x => x.textContent.replace(/\s+/g, ' ').trim()),
+    teams: Array.from(document.querySelectorAll('.bdteam .tm')).map(x => x.textContent.trim()), age: (document.getElementById('bdage') || {}).textContent || null,
+    stale: !!document.querySelector('#bdage.stale'), panel: rect(p), hp: rect(document.getElementById('hp')), mag: rect(document.getElementById('mag')),
+    chipsOpacity: getComputedStyle(document.getElementById('chips')).opacity };
+});
+const apart = (a, c) => !(a.l < c.r && a.r > c.l && a.t < c.b && a.b > c.t);
+for (const view of VIEWS) {
+  await step(`${view.name} scores overlay: the player name opens PLAYERS, every player row, my row highlighted, ✕ closes`, async () => {
+    const pg = await open(view, 'live-scores');
+    must(!(await boardState(pg)).open, 'the overlay must start closed');
+    await pg.click('.ident'); await pg.waitForTimeout(200);
+    const r = await boardState(pg);
+    await pg.screenshot({ path: `${OUT}/${view.name}-scores-player.png` });
+    must(r.open && r.tab === 'PLAYERS', `the name must open the PLAYERS tab: ${JSON.stringify(r)}`);
+    must(r.rows === 4, `all four of MC's rows must show: ${JSON.stringify(r)}`);
+    must(r.me.length === 1 && /REAPER/.test(r.me[0]) && /34%/.test(r.me[0]), `my row (REAPER, with accuracy) must be the one highlighted: ${JSON.stringify(r.me)}`);
+    must(r.age === 'LIVE' && !r.stale, `a bound link reads LIVE: ${JSON.stringify(r)}`);
+    must(apart(r.panel, r.hp) && apart(r.panel, r.mag), `the panel must leave the HP and ammo digits clear: ${JSON.stringify(r)}`);
+    const bad = await invariants(pg); must(bad.length === 0, bad.join(' ; '));
+    await pg.dispatchEvent('.bdx', 'pointerdown'); const pressed = await pg.evaluate(() => document.querySelector('.bdx').classList.contains('tap-press'));
+    await pg.dispatchEvent('.bdx', 'pointerup');
+    must(pressed, 'the ✕ must show the tap-press feedback');
+    await pg.click('.bdx'); await pg.waitForTimeout(200);
+    const c = await boardState(pg); await pg.close();
+    must(!c.open, `✕ must close the overlay: ${JSON.stringify(c)}`);
+  });
+  await step(`${view.name} scores overlay: the clock opens TEAMS with MC's totals, a tap outside the panel closes it`, async () => {
+    const pg = await open(view, 'live-scores');
+    await pg.click('.clockplate'); await pg.waitForTimeout(200);
+    const r = await boardState(pg);
+    await pg.screenshot({ path: `${OUT}/${view.name}-scores-team.png` });
+    must(r.open && r.tab === 'TEAMS', `the clock must open the TEAMS tab: ${JSON.stringify(r)}`);
+    must(r.teams.length === 2 && /18/.test(r.teams[0]) && /21/.test(r.teams[1]), `both team totals from MC's board: ${JSON.stringify(r.teams)}`);
+    must(r.me.length === 1 && /REAPER/.test(r.me[0]), `my row is highlighted under my team: ${JSON.stringify(r.me)}`);
+    must(r.chipsOpacity === '0', `the chip bar must not draw over the open panel: ${r.chipsOpacity}`);
+    await pg.click('.bdseg .sg[data-arg="player"]'); await pg.waitForTimeout(200);
+    must((await boardState(pg)).tab === 'PLAYERS', 'the PLAYERS tab button must switch tabs');
+    const box = r.panel; const scale = await pg.evaluate(() => document.getElementById('frame').getBoundingClientRect().width / 844);
+    await pg.mouse.click(box.l - 40 * scale, box.t + 60 * scale); await pg.waitForTimeout(200);
+    const c = await boardState(pg); await pg.close();
+    must(!c.open, `a tap outside the panel must close it: ${JSON.stringify(c)}`);
+  });
+  await step(`${view.name} scores overlay: off the MC link the label gives the age of the last push`, async () => {
+    const pg = await open(view, 'live-scores');
+    await pg.evaluate(() => { window.brxDemo.mcLost(); window.brx.engine.scoreAt = Date.now() - 12000; });
+    await pg.click('.ident'); await pg.waitForTimeout(300);
+    const r = await boardState(pg);
+    await pg.screenshot({ path: `${OUT}/${view.name}-scores-stale.png` });
+    await pg.close();
+    must(r.open && /^AS OF 1[23] S AGO$/.test(r.age || '') && r.stale, `a stale board must say how old it is: ${JSON.stringify(r)}`);
+  });
+}
+await step('se scores overlay FFA: the clock opens STANDINGS, a kills ranking with my row highlighted', async () => {
+  const pg = await open(VIEWS[1], 'live-scores-ffa');
+  await pg.click('.clockplate'); await pg.waitForTimeout(200);
+  const r = await boardState(pg);
+  await pg.screenshot({ path: `${OUT}/se-scores-ffa.png` });
+  await pg.close();
+  must(r.open && r.tab === 'STANDINGS' && r.rows === 4 && r.teams.length === 0, `FFA has no teams: the TEAM tab is the standings: ${JSON.stringify(r)}`);
+  must(r.me.length === 1 && /REAPER/.test(r.me[0]), `my row is highlighted: ${JSON.stringify(r.me)}`);
+});
+for (const view of VIEWS) {
+  await step(`${view.name} scores overlay night: dim panel, and the day/night switch still works with it open`, async () => {
+    const pg = await open(view, 'live-scores', '&night');
+    await pg.click('.clockplate'); await pg.waitForTimeout(200);
+    const r = await boardState(pg);
+    await pg.screenshot({ path: `${OUT}/${view.name}-scores-night.png` });
+    must(r.open && r.tab === 'TEAMS', `night: the clock must open the overlay: ${JSON.stringify(r)}`);
+    await pg.click('#skin'); await pg.waitForTimeout(300);
+    const s2 = await pg.evaluate(() => document.getElementById('frame').dataset.env || '');
+    const c = await boardState(pg); await pg.close();
+    must(s2 === '', `the day/night switch must still switch with the overlay open: env ${s2}`);
+    must(c.open, 'the skin switch must not close the overlay');
+  });
+}
+
+// ---------- OVERHEAT vs WEAPONS HOT (bench 2026-09-17): the pill covered the centre of the word ----------
+for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
+  for (const night of [false, true]) {
+    await step(`${tag} OVERHEAT ${night ? 'night' : 'day'}: the word and the WEAPONS HOT pill do not overlap`, async () => {
+      const pg = await open(view, 'live', night ? '&night' : '');
+      await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108); await pg.waitForTimeout(300);
+      const r = await pg.evaluate(() => {
+        const rect = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
+        const pill = Array.from(document.querySelectorAll('.chipbar .pill')).find(p => /WEAPONS HOT/.test(p.textContent));
+        return { word: rect(document.querySelector('.heatword')), pill: rect(pill) };
+      });
+      await pg.screenshot({ path: `${OUT}/${tag}-overheat-weapons-hot-${night ? 'night' : 'day'}.png` });
+      await pg.close();
+      must(r.word && r.pill, `both must be on screen for the check to mean anything: ${JSON.stringify(r)}`);
+      must(apart(r.word, r.pill), `OVERHEAT and WEAPONS HOT overlap: ${JSON.stringify(r)}`);
+    });
+  }
+}
 
 await b.close(); srv.close();
 console.log(`\n${pass} passed, ${fail} failed${fail ? ': ' + errs.join(', ') : ''}`);

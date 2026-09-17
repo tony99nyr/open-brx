@@ -5089,3 +5089,42 @@ test('A42: a re-delivered END is idempotent — no second teardown, no second hi
   assert.equal(h.writes.length, writes, 'the gun is not torn down a second time');
   assert.equal(h.facts.length, facts, 'and no second end-of-match fact goes out');
 });
+
+// ---------- shot-ready cue (bench 2026-09-17): `$WEAP` token 14 from the head, timed from the gun's own `$ALCD` ----------
+test('shot cue: a slow weapon (golden slot 1 shotgun, t14 800) reports a cooldown from the shot, then 0 left', () => {
+  const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  assert.equal(h.eng.phase, 'live');
+  h.frame('$ALCD,8,100,1,40,0,*');
+  assert.equal(h.eng.state().shotCooldown, null, 'no shot yet: the first report is a baseline, not a round');
+  const at = h.adv(10); h.frame('$ALCD,7,100,1,40,0,*');
+  let c = h.eng.state().shotCooldown;
+  assert.deepEqual(c, { at, ms: 800, leftMs: 800 }, 'the cooldown starts at the frame that reported the round');
+  h.adv(500); c = h.eng.state().shotCooldown;
+  assert.equal(c.leftMs, 300);
+  h.adv(400); c = h.eng.state().shotCooldown;
+  assert.equal(c.leftMs, 0, 'past the interval the trigger is hot again');
+});
+
+test('shot cue CONTROL: an automatic weapon (golden slot 0 AR, t14 140) gets no cue at all', () => {
+  const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  h.frame('$ALCD,32,100,0,384,0,*'); h.adv(10); h.frame('$ALCD,31,100,0,384,0,*');
+  assert.equal(h.eng.lastShot.ms, 140, 'the interval is read from the head');
+  assert.equal(h.eng.state().shotCooldown, null);
+});
+
+test('shot cue: a stub $WEAP with no tokens, another slot, or death gives no cue', () => {
+  const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  h.frame('$ALCD,8,100,1,40,0,*'); h.adv(10); h.frame('$ALCD,7,100,1,40,0,*');
+  assert.ok(h.eng.state().shotCooldown, 'pre-condition: the shotgun cue is up');
+  h.frame('$ALCD,32,100,0,384,0,*');   // the gun reports slot 0 active: the shotgun cue is not this gauge's
+  assert.equal(h.eng.state().shotCooldown, null, 'a cue for a slot that is not active must not show');
+  h.eng.frames.head = h.eng.frames.head.map(f => f.startsWith('$WEAP,1,') ? '$WEAP,1,shotgun,*' : f);
+  assert.equal(h.eng._fireIntervalMs(1), null, 'a stub frame has no interval');
+  h.frame('$ALCD,7,100,1,40,0,*'); h.adv(10); h.frame('$ALCD,6,100,1,40,0,*');
+  assert.equal(h.eng.state().shotCooldown, null, 'a round from a slot with no known interval gives no cue');
+  h.eng.frames.head = h.eng.frames.head.map(f => f.startsWith('$WEAP,1,') ? '$WEAP,1,' + Array(41).fill('0').map((x, i) => i === 13 ? '800' : x).join(',') + ',*' : f);
+  h.adv(10); h.frame('$ALCD,5,100,1,40,0,*');
+  assert.ok(h.eng.state().shotCooldown, 'pre-condition: a full frame brings the cue back');
+  h.eng.alive = false;
+  assert.equal(h.eng.state().shotCooldown, null, 'a dead player has no trigger to wait for');
+});

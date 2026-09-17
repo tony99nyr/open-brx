@@ -1156,6 +1156,8 @@ KNOWN_UNMIRRORED = {
     "victimName",
     # bench 2026-09-17: the phone's day/night HUD skin and its per-MC-session pick; HUD chrome, no LED or game rule
     "setNight", "ownNightChoice", "_autoNight", "_loadNight", "_storeNight",
+    # bench 2026-09-17: the ammo gauge's shot-ready cue ($WEAP token 14 timed from $ALCD); HUD display only, no game rule
+    "_fireIntervalMs", "shotCooldown",
     # B5: guards a BLE frame-race (a stale zero-HP echo the gun queued before it processed $SPAWN landing
     # just after a `_spawn`/`_revive` write) against a shooter `latch` the stage has no equivalent of --
     # the bench drives spawn/revive and pool frames deterministically by hand and never races a real echo.

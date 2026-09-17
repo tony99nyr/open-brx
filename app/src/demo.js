@@ -191,7 +191,11 @@ export function startDemo({ engine, log }) {
       panic: () => engine.onMcMessage({ kind: 'control', body: { cmd: 'panic' } }),
       endOk: () => engine.ackEnd(),
       score: (kills = 3, deaths = 1, assists = 1) => engine.onMcMessage({ kind: 'score', body: { kills, deaths, assists, accuracy: 41, hits: 11, shots: 28, shots_total: 28,
-        board: { teams: [{ team_id: teamKey, name: team.name, score: 18 }, { team_id: foeKey, name: foe.name, score: 21 }], cap: 25 } } }),
+        board: { teams: [{ team_id: teamKey, name: team.name, score: 18 }, { team_id: foeKey, name: foe.name, score: 21 }], cap: 25 }, rows: RESULT_ROWS } }),   // `rows`: every player's ScoreRow, as MC's live push carries (state.py `_push_scores`)
+      // Bench 2026-09-17: the FFA shape of the same push -- no team on any row, and the board is the top three players.
+      scoreFfa: () => { config.mode = 'ffa'; const rows = RESULT_ROWS.map(r => ({ ...r, team_id: null }));
+        engine.onMcMessage({ kind: 'score', body: { ...rows[0], shots_total: rows[0].shots, rows,
+          board: { teams: rows.slice().sort((a, b) => b.kills - a.kills).slice(0, 3).map(r => ({ team_id: 'ffa', name: r.display, score: r.kills })), cap: 25 } } }); },
       // A24: the board one kill off the cap. Paired with `mcLost` this is the DOWN screen the A31 line exists for.
       capBoard: () => engine.onMcMessage({ kind: 'score', body: { kills: 9, deaths: 3, assists: 2, accuracy: 38, hits: 40, shots: 105, shots_total: 105,
         board: { teams: [{ team_id: teamKey, name: team.name, score: 24 }, { team_id: foeKey, name: foe.name, score: 21 }], cap: 25 } } }),
@@ -339,6 +343,9 @@ export function startDemo({ engine, log }) {
       'resync':            [...live, [2300, 'dropGun'], [3300, 'relinkGun']],   // a live rejoin → the 3 s RECONCILING takeover (S7.1)
       'resync-prompt':     [...live, [2300, 'resyncProbe']],                     // the trigger-first resync prompt itself
       'live-mclost':       [...live, [2300, 'mcLost']],
+      // Bench 2026-09-17: MC's live score push has landed -- what the scores overlay (tap the name or the clock) reads.
+      'live-scores':       [...live, [2300, () => ev.score(3, 1, 1)]],
+      'live-scores-ffa':   [[0, () => { config.mode = 'ffa'; }], ...live, [2300, () => ev.scoreFfa()]],
       'mc-rejected':       [...kitted, [400, 'mcRejected']],
       'result':            [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end']],
       'over':              [...live, [2200, () => ev.fire(12)], [2300, () => ev.score(3, 1, 1)], [2400, 'end'], [2600, 'endOk']],

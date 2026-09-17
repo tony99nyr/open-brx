@@ -150,6 +150,9 @@ export class Hud {
     // A24 FINAL RESULTS: which screen the player has reopened after OK (null | 'result' | 'history') and which
     // half of the segmented toggle they are on (null = pick from the mode: teams for a team game, players for FFA).
     this.view = null; this.rtab = null; this._lastSt = null;
+    // Bench 2026-09-17: the live scores overlay (null | 'team' | 'player'). A VIEW like `view` above: opening it
+    // sends nothing and touches no engine state. `_cueAt` / `_cueT` drive the ammo gauge's shot-ready cue.
+    this.board = null; this._cueAt = null; this._cueT = null;
     this.info.addEventListener('click', () => this.toggleDiag());
     this.hudEl.addEventListener('click', e => this._click(e));
     this.diag.addEventListener('click', e => this._click(e));
@@ -210,6 +213,12 @@ export class Hud {
     this.frame.style.transform = `scale(${s})`;
   }
   _click(e) {
+    // The scores overlay closes on a tap anywhere outside its panel. The ⓘ, the day/night switch, the diag
+    // panel and the chip bar keep their own taps (they are not part of the live screen under the overlay).
+    if (this.board && !e.target.closest('.bdpanel, [data-act="onBoard"], #skin, #info, #diag, #chips')) {
+      this.board = null; this.sig = null; if (this._lastSt) this.render(this._lastSt);
+      return;
+    }
     const el = e.target.closest('[data-act]'); if (!el) return;
     const act = el.dataset.act, arg = el.dataset.arg;
     // The results / history screens are a VIEW of what the engine already holds — reopening them changes nothing
@@ -245,6 +254,11 @@ export class Hud {
         else { this._gunConfirm = { at: Date.now() }; this.renderDiag(); return; }
       }
     } else if (this._gunConfirm) { this._gunConfirm = null; if (this.diag.classList.contains('open')) this.renderDiag(); }
+    if (act === 'onBoard' || act === 'onBoardTab' || act === 'onBoardClose') {
+      this.board = act === 'onBoardClose' ? null : (arg === 'player' ? 'player' : 'team');
+      this.sig = null; if (this._lastSt) this.render(this._lastSt);
+      return;
+    }
     if (act === 'onEndOk') this.view = null;                                     // OK still acks the end (app handler below)
     else if (act === 'onShowResults' || act === 'onShowHistory' || act === 'onCloseView' || act === 'onResultTab') {
       if (act === 'onShowResults') this.view = 'result';
@@ -279,8 +293,10 @@ export class Hud {
   render(st) {
     this._lastSt = st;
     if (!st.ended) this.view = null;   // a new match retires a reopened results/history screen
+    if (this.board && !(st.phase === 'live' && st.alive)) this.board = null;   // the scores overlay belongs to the live screen only
     this.frame.dataset.team = st.teamKey || 'blue';
     this.frame.dataset.env = st.night ? 'night' : '';
+    if (this.board) this.frame.dataset.board = this.board; else delete this.frame.dataset.board;
     const sig = [st.phase, st.alive, !!st.killedBy, st.night, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
       st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.reserve === 0, (st.mag || 0) > AMMO_PIP_MAX, st.battery != null && st.battery <= 15,
       st.overheating, st.heatEverSeen,   // bench 2026-09-17: OVERHEAT prompt/overlay and the heat bar's existence are structural, not patched in place
@@ -309,7 +325,8 @@ export class Hud {
       // A24 FINAL RESULTS: the headline changes when the result lands and again when the settle window expires,
       // and the toggle/history are structure. `resultWait` is in here because "MC NOT REACHED" appears with NO
       // message arriving — nothing else in the signature moves at that moment.
-      this.view, this.rtab, st.resultWait, st.result && st.result.match_id, st.result && st.result.outcome,
+      this.view, this.rtab, st.resultWait,
+      this.board, this.board && st.scoreAt, this.board && st.fragLimit,   // bench 2026-09-17: the scores overlay rebuilds on a new MC push while it is open st.result && st.result.match_id, st.result && st.result.outcome,
       st.result && st.result.provisional, st.result && st.result.rows && st.result.rows.length,
       this.history && this.history.length, this.sessionId, st.game && st.game.mc_verify].join('|');   // synced / headEcho stay patched in place (F137: wsState moved INTO the signature above — see the note there)
     const panel = st.phase === 'kitted' && ((st.ended && (!st.endAck || !!this.view)) || (!st.ended && st.kitOpen && !st.briefSeen && !this._tryoutShown(st)) || (!st.ended && st.browsing && !this._tryoutShown(st)));
@@ -326,6 +343,7 @@ export class Hud {
       }
     }
     this._patch(st);
+    this._shotCue(st);
     this._skinSwitch(st);
     this._chips(st);
     this._moments(st);
@@ -941,8 +959,8 @@ export class Hud {
     return `<div class="alive"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
       ${low ? '<div class="firevig"></div>' : ''}
       ${overheating ? '<div class="heatvig"></div><div class="heatword">OVERHEAT</div>' : ''}
-      <div class="clockplate"><div class="in"><span class="t tab" id="clock">${mmss(st.clockMs)}</span><span class="m">${esc(st.mode)}</span></div></div>
-      <div class="ident"><span class="arrow"></span><span class="cs">${esc(st.callsign || nm)}</span><span class="sq">${esc(st.teamName)} SQUAD</span></div>
+      <div class="clockplate" data-act="onBoard" data-arg="team" role="button" aria-label="Team scores"><div class="in"><span class="t tab" id="clock">${mmss(st.clockMs)}</span><span class="m">${esc(st.mode)}</span></div></div>
+      <div class="ident" data-act="onBoard" data-arg="player" role="button" aria-label="Player scores"><span class="arrow"></span><span class="cs">${esc(st.callsign || nm)}</span><span class="sq">${esc(st.teamName)} SQUAD</span></div>
       <div class="topright"><span class="link"><span id="linkdot" class="dot ${st.bleUp ? '' : 'off'}"></span><span id="linklab">${st.bleUp ? 'GUN' : 'NO GUN'}</span></span><button class="link mclink" data-act="onToggleMcPill" aria-label="Mission Control link"><span id="mcdot" class="dot ${st.wsState === 'bound' ? '' : 'ws'}"></span>MC</button>
         <span class="batt tab"><span class="shell"><span class="fill" id="battfill" style="right:${100 - (st.battery || 0)}%"></span></span><span id="batt">${st.battery != null ? st.battery + '%' : '—'}</span></span></div>
       ${st.battery != null && st.battery <= 15 ? `<div class="battwarn">GUN BATT ${st.battery}% — CHARGE SOON</div>` : ''}
@@ -958,7 +976,72 @@ export class Hud {
         <div class="pips" id="pips">${this._pips(st)}</div>
         ${this._heatBar(st)}
         <span class="wn"><span class="slot">${st.activeSlot ? 'SECONDARY' : 'PRIMARY'}</span>${esc(st.weapon)}</span></div>
-      <div class="nightlab">NIGHT OPS</div>${kb}</div>`;
+      <div class="nightlab">NIGHT OPS</div>${kb}${this.board ? this._board(st) : ''}</div>`;
+  }
+  /** Bench 2026-09-17: how old the scores on the overlay are. MC pushes every change to a bound phone, so the
+   *  numbers are current while the link is up; off the link they are the last push, and the label gives its age. */
+  _boardAge(st) {
+    if (!st.scoreAt) return 'NO SCORES FROM MISSION CONTROL YET';
+    if (st.wsState === 'bound') return 'LIVE';
+    const s = Math.max(0, Math.round((Date.now() - st.scoreAt) / 1000));
+    return `AS OF ${s < 60 ? s + ' S' : Math.floor(s / 60) + ' MIN'} AGO`;
+  }
+  /** Bench 2026-09-17: the live scores overlay, opened from the player name (PLAYERS tab) or the match clock
+   *  (TEAMS tab). Everything on it is what the phone already holds: MC's last `score` push (`rows` = every
+   *  player's ScoreRow, `board` = team totals, or the top three in FFA) and, before any push, this phone's own
+   *  line. It sits between the vitals and the ammo digits, and a tap outside it or on ✕ closes it. */
+  _board(st) {
+    const ffa = st.mode === 'FFA';
+    const tab = this.board === 'player' ? 'player' : 'team';
+    const rows = this._resultRows({ rows: st.scoreRows || [] });
+    const myId = st.player && st.player.player_id;
+    const v = x => num(x) == null ? '—' : x;
+    const acc = r => num(r.accuracy) == null ? '—' : Math.round(r.accuracy) + '%';
+    const name = r => esc(String(r.display || r.player_id || '—').toUpperCase());
+    const stale = !!st.scoreAt && st.wsState !== 'bound';
+    let body;
+    if (tab === 'player' || ffa) {
+      const list = rows.length ? rows : [{ player_id: myId, display: st.callsign, kills: st.kills, deaths: st.deaths, assists: st.assists, accuracy: accShown(st) }];
+      const cols = tab === 'player';
+      body = `<div class="bdlist"><div class="bdr bdh ${cols ? '' : 'rank'}"><span>#</span><span class="pn">PLAYER</span>${cols ? '<span>K</span><span>D</span><span>A</span><span>ACC</span>' : '<span>KILLS</span>'}</div>
+        ${list.map((r, i) => `<div class="bdr ${cols ? '' : 'rank'} ${myId && r.player_id === myId ? 'me' : ''}"><span class="tab">${i + 1}</span><span class="pn">${name(r)}</span>${cols
+          ? `<span class="tab">${v(r.kills)}</span><span class="tab">${v(r.deaths)}</span><span class="tab">${v(r.assists)}</span><span class="tab">${acc(r)}</span>`
+          : `<span class="tab">${v(r.kills)}</span>`}</div>`).join('')}
+        ${rows.length ? '' : '<div class="bdnone">YOUR OWN LINE · MISSION CONTROL HAS SENT NO SCORES</div>'}</div>`;
+    } else {
+      const teams = st.board && Array.isArray(st.board.teams) ? st.board.teams.filter(t => t && typeof t === 'object') : [];
+      body = teams.length ? `<div class="bdteams">${teams.map(t => {
+        const k = String(t.team_id == null ? '' : t.team_id).toLowerCase(); const mine = !!(st.teamKey && k === st.teamKey);
+        const ps = rows.filter(r => String(r.team_id == null ? '' : r.team_id).toLowerCase() === k);
+        return `<div class="bdteam ${mine ? 'mine' : ''}">${this._teamChip(t, mine)}
+          ${ps.map(r => `<div class="bdr tp ${myId && r.player_id === myId ? 'me' : ''}"><span class="pn">${name(r)}</span><span class="tab">${v(r.kills)} · ${v(r.deaths)} · ${v(r.assists)}</span></div>`).join('')}</div>`; }).join('')}</div>
+        ${st.board && num(st.board.cap) != null ? `<div class="bdcap">FIRST TO ${st.board.cap} · K · D · A</div>` : ''}`
+        : '<div class="bdnone">NO TEAM TOTALS FROM MISSION CONTROL YET</div>';
+    }
+    return `<div class="bdscrim"></div><div class="bdpanel" role="dialog" aria-label="Match scores">
+      <div class="bdhead"><div class="bdseg" role="group">
+        <button class="sg ${tab === 'team' ? 'on' : ''}" aria-pressed="${tab === 'team'}" data-act="onBoardTab" data-arg="team"><span class="unskew">${ffa ? 'STANDINGS' : 'TEAMS'}</span></button>
+        <button class="sg ${tab === 'player' ? 'on' : ''}" aria-pressed="${tab === 'player'}" data-act="onBoardTab" data-arg="player"><span class="unskew">PLAYERS</span></button></div>
+        <span class="bdage ${stale ? 'stale' : ''}" id="bdage">${this._boardAge(st)}</span>
+        <button class="bdx" data-act="onBoardClose" aria-label="Close scores">✕</button></div>
+      <div class="bdbody">${body}</div></div>`;
+  }
+  /** Bench 2026-09-17: the ammo gauge's shot-ready cue. After a shot from a weapon with at least 400 ms between
+   *  rounds the engine reports {at, ms, leftMs}; the gauge dims (`data-cool="on"` on the frame, which survives a
+   *  structural rebuild) until `leftMs` has passed, then shines once (`ready`, 250 ms). The timer starts at this
+   *  render, after the engine read `leftMs`, so the shine can only be late, never early. Timers only: no per-frame work. */
+  _shotCue(st) {
+    const c = st.phase === 'live' ? st.shotCooldown : null;
+    const at = c ? c.at : null;
+    if (at === this._cueAt) return;
+    this._cueAt = at;
+    if (this._cueT) { clearTimeout(this._cueT); this._cueT = null; }
+    if (!c || !(c.leftMs > 0)) { delete this.frame.dataset.cool; return; }   // no cue, or the render came after the round was due
+    this.frame.dataset.cool = 'on';
+    this._cueT = setTimeout(() => {
+      this.frame.dataset.cool = 'ready';
+      this._cueT = setTimeout(() => { this._cueT = null; delete this.frame.dataset.cool; }, 250);
+    }, c.leftMs);
   }
   /** The DOWN screen's middle block: the countdown in auto mode, or in scanner mode the respawn LESSON (utility.md
    *  §4.3, live bench 2026-09-04: "the very first time someone dies… the HUD should make it obvious"):
@@ -1105,6 +1188,7 @@ export class Hud {
       set('st-K', st.kills == null ? '—' : st.kills); set('st-D', st.deaths); set('st-A', st.assists == null ? '—' : st.assists); if (accShown(st) != null) set('st-ACC', accShown(st) + '%');
       const dot = q('linkdot'); if (dot) { const cls = 'dot ' + (st.bleUp ? '' : 'off'); if (dot.className !== cls) dot.className = cls; }
       set('linklab', st.bleUp ? 'GUN' : 'NO GUN');
+      if (this.board) { set('bdage', this._boardAge(st)); const ag = q('bdage'); if (ag) ag.classList.toggle('stale', !!st.scoreAt && st.wsState !== 'bound'); }
       const md = q('mcdot'); if (md) { const cls = 'dot ' + (st.wsState === 'bound' ? '' : 'ws'); if (md.className !== cls) md.className = cls; }
     }
   }

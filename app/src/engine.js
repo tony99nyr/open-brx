@@ -112,6 +112,10 @@ const RELOAD_OVERRUN = 0.5;      // ...and half the nominal reload on top, which
 // weapon and passes 100 into lockout -- the gun will not fire past this. Below it, heat is build-up,
 // not a fault; the HUD shows the level either way, but only calls it OVERHEAT past this line.
 const HEAT_LOCKOUT = 100;
+// Bench 2026-09-17 (Tony): the shot-ready cue. `$WEAP` token 14 is the time between rounds (ms per round,
+// calibrated 2026-09-10); for a charge weapon it is the hold time. At or above this line the HUD dims the ammo
+// gauge after each shot and shines it once when the next round is due. Automatic weapons sit under it and get neither.
+const SHOT_CUE_MIN_MS = 400;
 // $BUT ids (protocol §$BUT — `$BUT,<id>,<state>`; state 1 press / 0 release).
 const BTN_TRIGGER = 0, BTN_ALT = 1, BTN_RELOAD = 2;
 const TEAM_KEY = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green' };
@@ -394,6 +398,9 @@ export class Engine {
     // not "unknown"; reading `heatBySlot[slot] != null` alone would show the bar on every weapon after its
     // first shot).
     this._everHeated = {};
+    // Bench 2026-09-17: the last round that left a weapon slot, {slot, at, ms}, where `ms` is that slot's
+    // `$WEAP` token 14 from the head (null when the head carries no full frame). Display only: the HUD cue.
+    this.lastShot = null;
     this.endedMatches = [];         // match_ids already ended locally — a re-hydrated `start` for them is a no-op
     this.endAck = false;            // result screen shown until the player taps OK (then the 'over' screen)
     this.onEnd = null;              // app hook: called once per ended match with a stats summary (history)
@@ -1638,7 +1645,7 @@ export class Engine {
     const ps = this._pickFrame('pset_pool');
     this._write([...(ps.frame ? [ps.frame] : []), ...this.frames.spawn, SFLASH, ...(sp.frame ? [sp.frame] : [])], 'spawn' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : ''));
     this.hurtFired = false;        // the low-health alert is once per LIFE
-    this._prevAmmo = {}; this._prevReserve = {}; this.activeSlot = 0; this.magBySlot = {}; this.heatBySlot = {}; this._everHeated = {};   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
+    this._prevAmmo = {}; this._prevReserve = {}; this.activeSlot = 0; this.magBySlot = {}; this.heatBySlot = {}; this._everHeated = {}; this.lastShot = null;   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
     this._cue('klaxon');
     // Spawn shield is ALWAYS 0 on hardware -- $PSET t5 is a capacity filled by an fn-11
     // grant, never a starting pool (bench 2026-08-27).
@@ -2240,6 +2247,21 @@ export class Engine {
     this.log(`stun over (${why})`, 'li');
     this._changed();
   }
+  /** Bench 2026-09-17: a slot's time between rounds, `$WEAP` token 14 (split index 15) from the head the gun
+   *  was given. Null for a stub frame with no tokens, or no frame for that slot. PURE. */
+  _fireIntervalMs(slot) {
+    const f = ((this.frames && this.frames.head) || []).find(x => typeof x === 'string' && x.startsWith(`$WEAP,${slot},`));
+    const p = f ? f.split(',') : null;
+    const ms = p && p.length > 16 ? Number(p[15]) : NaN;
+    return Number.isFinite(ms) && ms > 0 ? ms : null;
+  }
+  /** The HUD's shot-ready cue for the ACTIVE slot: {at, ms, leftMs} after a shot from a weapon with at least
+   *  SHOT_CUE_MIN_MS between rounds, else null (automatic weapon, unknown interval, dead, another slot). PURE. */
+  shotCooldown(now = this.now()) {
+    const s = this.lastShot;
+    if (!s || s.ms == null || s.ms < SHOT_CUE_MIN_MS || !this.alive || this.phase !== 'live' || s.slot !== this.activeSlot) return null;
+    return { at: s.at, ms: s.ms, leftMs: Math.max(0, s.at + s.ms - now) };
+  }
   /** {slot: [mag, reserve]} straight from the bundle's spawn $AMMO frames -- the counts a slot that has never fired holds. */
   _spawnAmmo() {
     const out = {};
@@ -2783,6 +2805,9 @@ export class Engine {
     // that echo cannot arm hit reception early; `_endReconcile` re-arms explicitly once it is done.
     if (this._armPending && (slot === 0 || slot === 1) && prev != null && mag < prev && !this.reconciling) this._armLife('first shot');
     if (prev != null && mag < prev && this.phase === 'live') this.shots += (prev - mag);
+    // Bench 2026-09-17: the shot-ready cue times from THIS frame, the gun's own report of the round, so the
+    // cue can only be late, never early. Slots 0/1 only: slot 4 is melee and has no gauge.
+    if (prev != null && mag < prev && this.phase === 'live' && (slot === 0 || slot === 1)) this.lastShot = { slot, at: this.now(), ms: this._fireIntervalMs(slot) };
     if (this.resync && prev != null && mag < prev) this._resyncEvidence('alcd-dec');
     if (this.resync && prev != null && mag > prev) this._resyncEvidence('alcd-inc');
     // F123: the takeover is reconciled against the REAL magazine, one $ALCD at a time. A rise feeds it
@@ -3216,6 +3241,8 @@ export class Engine {
       heat: this.heatBySlot[this.activeSlot] != null ? this.heatBySlot[this.activeSlot] : null,
       overheating: this._overheating(),
       heatEverSeen: !!this._everHeated[this.activeSlot],
+      shotCooldown: this.shotCooldown(now),   // bench 2026-09-17: the ammo gauge's dim + ready shine
+      scoreRows: this.score && Array.isArray(this.score.rows) ? this.score.rows : null,   // MC's mid-match leaderboard, for the HUD's results overlay
       loadMag: this._loadAmmo()[0], loadReserve: this._loadAmmo()[1],
       alive: this.alive, deaths: this.deaths, shots: this.shots, battery: this.battery,
       kills: this.score ? this.score.kills : null, assists: this.score ? this.score.assists : null, accuracy: this.score ? this.score.accuracy : null, scoreAt: this.scoreAt,
