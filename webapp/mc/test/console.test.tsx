@@ -33,14 +33,16 @@ describe('the command bar labels every view', () => {
     m.unmount();
   });
 
-  it('the RECAP-only NEW SESSION control renders as a plain button, with no sub-label', async () => {
-    // Bench 2026-09-17 (Tony): the sub-labels "same game" / "back to setup, roster kept" explained
-    // nothing and broke the button alignment. The buttons stand on their own.
+  it('carries no RECAP-only NEW SESSION control any more', async () => {
+    // Bench 2026-09-17 (Tony): picking a game and pressing LOAD after a match already starts the next
+    // one (A43), and RECAP's own NEXT MATCH ▸ covers the one-tap case, so the command bar's separate
+    // NEW SESSION control was redundant. It is gone; only Armory's restored-roster banner still offers
+    // a NEW SESSION control, and that is a different button on a different screen.
     const d = await demo();
     const state = { ...d.state, phase: 'recap' as State['phase'] };
     const m = await mountScreen(<CommandBar />, { ...d, state, view: 'recap' });
     const btn = m.find('button').find(b => (b.textContent ?? '').includes('NEW SESSION'));
-    expect(btn, 'the NEW SESSION control must render in recap').toBeTruthy();
+    expect(btn, 'the command bar must not offer NEW SESSION any more').toBeFalsy();
     expect(m.text().toUpperCase()).not.toContain('ROSTER KEPT');
     m.unmount();
   });

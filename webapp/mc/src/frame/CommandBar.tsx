@@ -3,7 +3,7 @@ import type { Phase } from '../api/types';
 import { useStore, type View } from '../store';
 import { clearNotice, useNotice } from '../notice';
 import { F, T } from '../tokens';
-import { HazardButton, GhostButton, PrimaryButton } from '../ui';
+import { HazardButton, GhostButton } from '../ui';
 
 // LIVE and RECAP are one tab. Tony, 2026-09-02: "one or the other is useful at a time, there is a lot
 // of overlap" — a match is either running or finished, never both, and the two screens shared their
@@ -82,10 +82,11 @@ export function CommandBar() {
           })}
         </nav>
         {/* THE TOASTS, in a row of their own. They used to share the nowrap row below with the phase
-            tag, NEW SESSION and the menu, so at 393px a notice took the width and squeezed
-            "NEW SESSION ▸" onto three lines — a 72px button, measured (round-2 review 2026-09-12).
-            `.cb-notices` keeps them inline on a desk and gives them a full-width row under the bar on
-            a phone; the controls beside them wrap rather than compress. */}
+            tag and the menu, so at 393px a notice took the width and squeezed a primary button onto
+            three lines — measured (round-2 review 2026-09-12; the squeezed control at the time was
+            the command bar's own NEW SESSION, cut 2026-09-17). `.cb-notices` keeps them inline on a
+            desk and gives them a full-width row under the bar on a phone; the controls beside them
+            wrap rather than compress. */}
         <div className="cb-notices">
           {/* an action that failed must still say so somewhere immediate */}
           {error && (
@@ -128,10 +129,6 @@ export function CommandBar() {
               style={{ font: F.chk(700, 12), letterSpacing: '.16em', color: T.warn, border: `1px solid ${T.warn}`, padding: '5px 10px' }}>
               BENCH VOL {state.bench_volume}
             </span>
-          )}
-          {state?.phase === 'recap' && (
-            <PrimaryButton size={12}
-              onClick={async () => { const ok = await run(() => api.newSession(true)); if (ok !== undefined) setView('muster'); }}>NEW SESSION ▸</PrimaryButton>
           )}
 
           {/* One button instead of a red hazard control and a wall of telemetry (Tony, 2026-09-02):

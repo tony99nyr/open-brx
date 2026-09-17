@@ -808,7 +808,10 @@ await step('MC recap: rows + yellow wins + CSV exports', async () => {
   await shot(mc, 'recap'); await tapAudit(mc, 'recap');
 });
 await step('NEW SESSION → muster; the HUD LEAVES MATCH COMPLETE and shows SETTING UP THE GAME (kit closed until the host reaches KIT — screen truth)', async () => {
-  await mc.click('text=NEW SESSION ▸');
+  // Bench 2026-09-17: the RECAP-only NEW SESSION control left the command bar (A43 — LOAD after a
+  // match already starts the next one, and RECAP's NEXT MATCH ▸ covers the one-tap case). This step
+  // needs the same server transition (a fresh muster, roster kept), so it calls the route directly.
+  await api('POST', '/api/session/new', { keep_roster: true });
   await until(async () => (await st()).phase === 'muster', 8000, 'muster');
   expect((await st()).players.length === 2, 'roster not kept');
   await until(async () => (await hudA.locator('text=MATCH COMPLETE').count()) === 0, 10000, 'over screen must clear on new match');

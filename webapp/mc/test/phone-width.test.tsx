@@ -8,8 +8,8 @@
 //     you drag) and nothing saying there was more. Now a hint says which way to go and the cut edge
 //     fades — `<ScrollX>` in `ui/index.tsx`.
 //   · a notice in the command bar took the width of the one nowrap row it shared with the phase tag
-//     and NEW SESSION, squeezing "NEW SESSION ▸" onto three lines: a 72 px button. The toasts take a row
-//     of their own on a phone now (`.cb-notices`).
+//     and the primary button beside it, squeezing that button onto three lines: 72 px tall. The toasts
+//     take a row of their own on a phone now (`.cb-notices`).
 //   · the KIT roster becomes a horizontal strip of 210 px rows, and `min-width:auto` let a row grow
 //     to its content — so the first row's READY tag sat at x=407 on a 393 px screen, off the edge.
 //
@@ -99,16 +99,16 @@ describe('F129 · the command bar toast does not squeeze the primary button', ()
     return mount(<StoreCtx.Provider value={store}><CommandBar /></StoreCtx.Provider>);
   }
 
-  it('the toasts sit in their own group, not in the row with NEW SESSION', async () => {
+  it('the toasts sit in their own group, not in the row with the menu button', async () => {
     setNotice('ASKED FOR THE LOG — THE PHONE ANSWERS WHEN IT IS SAFE TO');
     try {
       const m = await bar();
       const toasts = m.find('.cb-notices');
       expect(toasts.length, 'the toast group exists').toBe(1);
       expect(toasts[0].textContent).toContain('ASKED FOR THE LOG');
-      const newSession = m.find('button').find(b => (b.textContent ?? '').includes('NEW SESSION'));
-      expect(newSession, 'the recap phase offers NEW SESSION').toBeTruthy();
-      expect(toasts[0].contains(newSession!), 'a notice must not share a row with the primary button').toBe(false);
+      const menuBtn = m.find('button[aria-haspopup="menu"]')[0];
+      expect(menuBtn, 'the command bar always offers the ☰ menu').toBeTruthy();
+      expect(toasts[0].contains(menuBtn), 'a notice must not share a row with the menu button').toBe(false);
       m.unmount();
     } finally { clearNotice(); }
   });
@@ -124,9 +124,9 @@ describe('F129 · the command bar toast does not squeeze the primary button', ()
 
   it('the controls beside them wrap instead of compressing', async () => {
     const m = await bar();
-    const newSession = m.find('button').find(b => (b.textContent ?? '').includes('NEW SESSION'))!;
-    const rowEl = newSession.parentElement as HTMLElement;
-    expect(rowEl.style.flexWrap, 'the row holding NEW SESSION may wrap').toBe('wrap');
+    const menuBtn = m.find('button[aria-haspopup="menu"]')[0] as HTMLElement;
+    const rowEl = menuBtn.parentElement!.parentElement as HTMLElement;
+    expect(rowEl.style.flexWrap, 'the row holding the menu button may wrap').toBe('wrap');
     m.unmount();
   });
 });

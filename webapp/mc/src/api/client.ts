@@ -146,9 +146,11 @@ export function createHttpApi(): Api {
     recapCsvUrl: () => '/api/recap.csv',
     matchCsvUrl: (match_id: string) => `/api/matches/${encodeURIComponent(match_id)}.csv`,
     newSession: keep_roster => post('/api/session/new', { keep_roster }),
-    // An MC started before 2026-09-16 has no such route: say so, and name the control that still works.
+    // An MC started before 2026-09-16 has no such route: say so. (The command bar's own NEW SESSION
+    // control left on 2026-09-17 — LOAD after a match, or RECAP's NEXT MATCH ▸, already cover it — so
+    // a restart is the only fallback worth naming here.)
     nextMatch: () => post<State>('/api/match/next', {}).catch((e: Error & { status?: number }) => {
-      if (e?.status === 404) throw new Error('THIS MC PREDATES NEXT MATCH: RESTART IT, OR USE NEW SESSION (TOP RIGHT)');
+      if (e?.status === 404) throw new Error('THIS MC PREDATES NEXT MATCH: RESTART IT (python -m brx_mcp.mc)');
       throw e;
     }),
   };

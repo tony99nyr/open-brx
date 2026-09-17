@@ -235,8 +235,10 @@ export function Recap() {
           {/* 2026-09-16 (Tony: "why? just make a new one"): the primary action starts the next match with
               the roster AND the game kept (`POST /api/match/next`: roll forward, then LOAD the same
               game) and lands on GAMES, which is where LOAD always leaves the operator: the loaded game
-              on screen, EDIT beside it, CONTINUE TO KIT one tap away. NEW SESSION (top right) is still
-              there for a clean muster. Disabled in flight: a double-tap on a slow LAN fired twice. */}
+              on screen, EDIT beside it, CONTINUE TO KIT one tap away. Bench 2026-09-17: the command
+              bar's separate NEW SESSION control was cut — picking a game and pressing LOAD already
+              starts the next one (A43), and this button covers the one-tap case. Disabled in flight: a
+              double-tap on a slow LAN fired twice. */}
           {!past && (
             <span data-testid="recap-next-match">
               <PrimaryButton size={13} disabled={starting} onClick={async () => {
