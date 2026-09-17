@@ -1121,6 +1121,9 @@ class GunStage:
         self._arm_pending = self.now() if self._protects_spawn() else None
 
     def _arm_life(self, why: str) -> None:
+        # Deliberate partial parity with engine.js: the stage has no reconcile-on-drop re-arm, no infection
+        # "flip" exemption, and no retry when a write's own result reads as a failure. It exists to predict
+        # the phone's SIR-table timing, not to reproduce every hardware-recovery path.
         pending, self._arm_pending = self._arm_pending, None
         if pending is None:
             return
@@ -1179,6 +1182,13 @@ class GunStage:
         # it resolves. The phone queues the write and stamps immediately; stamping after `await self.write`
         # let the SPAWN_PROTECT_MAX_S cap start late by the write's own gap time, drifting the stage from the
         # phone it exists to predict.
+        # Same mirror for the life state itself: engine.js sets `alive`/`spawned` right after QUEUEING the
+        # write, not after it resolves, because JS never awaits the BLE call before moving on. A stage write
+        # of 2.1 s or more (the fn-28 twin's own gap time, or a reconnect-and-retry inside `write`) used to
+        # leave `alive` False for the whole await, so the poller's cap saw "not live" and cancelled the arm
+        # with nothing left to re-arm it -- the gun stayed on fn 28 (no live $SIR table) for the rest of the
+        # life. `_after_spawn` still runs its other resets once the write returns.
+        self.spawned = True; self.alive = True
         self._arm_after_spawn()                                  # hits stay silent until the gun fires or the cap
         await self.write(([ps] if ps else []) + list(self.bundle["spawn"]) + [SFLASH] + ([fr] if fr else []),
                           "spawn" + ps_why + self._line_tag(fr, tag))
@@ -1198,7 +1208,8 @@ class GunStage:
             await self.write([down["stop"]], "down stop", gap_ms=0)
         fr, tag = self._pick_cue("respawned")                  # A15.2: the spawn line rides in the revive write (one line, never two)
         ps, ps_why = self._scream_take()                       # A15.3: a fresh death scream for this life, written before $SPAWN
-        self._arm_after_spawn()                                  # F209: stamp before the write, mirrors engine.js `_revive`
+        self.spawned = True; self.alive = True                   # mirrors engine.js: the life is live before the
+        self._arm_after_spawn()                                  # await, same reasoning as `spawn()` above (F209)
         await self.write(([ps] if ps else []) + list(self.bundle["revive"]) + ([fr] if fr else []),
                           "revive" + ps_why + self._line_tag(fr, tag))
         self._after_spawn()

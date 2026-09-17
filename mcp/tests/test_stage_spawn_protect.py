@@ -136,6 +136,34 @@ def test_arm_pending_is_stamped_before_the_write_not_after_it_resolves():
     asyncio.run(run())
 
 
+def test_a_write_slower_than_the_cap_still_ends_with_the_life_armed():
+    """F209 follow-up (playtest review 2026-09-13): `_arm_life`'s gate reads `spawned`/`alive`, which
+    `_after_spawn` only sets once the awaited write RETURNS. A revive write of SPAWN_PROTECT_MAX_S or more
+    (the fn-28 twin's own gap time, or a reconnect-and-retry inside `write`) let the poller's cap fire
+    mid-write, find the PREVIOUS life's state (spawned True, alive False) and cancel the arm as "not
+    live" -- nothing re-arms it afterwards, so the gun stayed on fn 28 (no live `$SIR` table) for the
+    rest of that life."""
+    async def run():
+        st, mgr, clock = _mk()
+        await _live(st, clock)
+        clock.advance(3); st.poll(); await settle(st)
+        await st.ir("kill"); st.poll(); await settle(st)
+        assert not st.alive
+        n = len(tx(mgr))
+        orig_write = st.write
+
+        async def slow_write(frames, why, gap_ms=60, exact=False):
+            if why.startswith("revive"):
+                clock.advance(st.SPAWN_PROTECT_MAX_S + 0.1)   # the write itself outlasts the cap
+                st.poll()                                     # the poller's tick runs while the write is in flight
+            return await orig_write(frames, why, gap_ms=gap_ms, exact=exact)
+
+        st.write = slow_write
+        await st.revive(); await settle(st)
+        assert _real(tx(mgr)[n:]) == _real(st.bundle["sir_pool"][0]), "the cap still arms the real table"
+    asyncio.run(run())
+
+
 def test_a_hit_inside_the_window_does_no_damage_and_the_same_hit_lands_after_the_cap():
     """The bench check, on the fake gun (which honours `$SIR` functions): protected, then armed."""
     async def run():
