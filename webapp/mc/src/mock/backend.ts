@@ -476,6 +476,7 @@ export class MockBackend implements Api {
         battery_pct: waiting ? null : batt ?? null, battery_age_ms: waiting || batt == null ? null : 4000,
         last_seen_age_ms: waiting ? null : red ? (droppedBackhaul ? 130_000 : null) : link * 1000,
         gun_linked: waiting || red ? null : true,
+        pool_stale: null, pool_stale_ms: null,
         fw: 'v4.32', phone_batt: 80, ssid_ok: true, mc_reachable: !red && !waiting, synced: !red && !waiting,
         screen_on: true, foreground: true,
         // A28.3 / F155: the server stamps `reach` from the socket path and clears it on disconnect; `last_reach` outlives it.
@@ -690,6 +691,7 @@ export class MockBackend implements Api {
       for (const r of this.live_.rows) {
         if (r.status === 'down') { r.respawn_in_s = Math.max(0, (r.respawn_in_s ?? 0) - 1); if (r.respawn_in_s === 0) r.status = 'alive'; }
         r.sync_age_ms = r.status === 'stale' ? r.sync_age_ms + 1000 : Math.floor(Math.random() * 4000);
+        if (r.pool_stale_ms != null) r.pool_stale_ms += 1000;
       }
       if (Math.random() < 0.12) this.simKill();
       this.emit();
@@ -701,7 +703,7 @@ export class MockBackend implements Api {
     const k = alive[Math.floor(Math.random() * alive.length)];
     let v = alive[Math.floor(Math.random() * alive.length)];
     if (v === k) v = alive[(alive.indexOf(k) + 1) % alive.length];
-    k.kills++; k.streak++; k.hits += 3; k.shots += 6; v.deaths++; v.streak = 0; v.status = 'down'; v.respawn_in_s = this.config.respawn.delay_s;
+    for (const x of [k, v]) { delete x.pool_stale; delete x.pool_stale_ms; } k.kills++; k.streak++; k.hits += 3; k.shots += 6; v.deaths++; v.streak = 0; v.status = 'down'; v.respawn_in_s = this.config.respawn.delay_s;
     // F116: `best_streak` is the longest of the match and NEVER resets — `streak` is 0 for whoever
     // died last, which is what made a 9-kill row read "streak 0" on the field.
     k.best_streak = Math.max(k.best_streak ?? 0, k.streak);
@@ -746,6 +748,10 @@ export class MockBackend implements Api {
         accuracy: null, kd: 0, streak: 0, medals: [], status: d[6] === 'stale' ? 'stale' : 'alive', sync_age_ms: d[7] * 1000,
         respawn_in_s: null };
     });
+    // F208: one player's gun has gone quiet, so ?mock shows the grey GUN SILENT cue. Its age counts up
+    // each tick and the claim clears the moment that player kills or dies (their gun spoke).
+    const quiet = rows.find(r => r.status === 'alive');
+    if (quiet) { quiet.pool_stale = 'silent'; quiet.pool_stale_ms = 190_000; }
     this.live_ = { rows, feed: [], go_live_t: s.go_live_t, match_id: s.match_id }; this.endedAt = undefined;
     this.feed({ t_match_s: 0, text: `MATCH LIVE — ${rows.length} NODES SPAWNED`, kind: 'sync', tag: 'SYNC POINT' });
   }

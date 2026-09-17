@@ -151,6 +151,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const urlView = useRef<boolean>(viewFromHash() != null);
   const offset = useRef(0);
 
+  // follow the server phase when it advances (armed → live → recap), but let the host browse freely
+  const followPhase = useCallback((s: State) => {
+    if (followed.current === s.phase) return;
+    const seeding = followed.current === null && urlView.current;
+    followed.current = s.phase;
+    urlView.current = false;
+    // S25: a tab left on #spectate is pointed at a ROOM. The phase-follow that is right for the
+    // operator's console would swap it to KIT the moment the host moved on, so the spectator
+    // view opts out and keeps showing the board (which handles live / recap / neither itself).
+    if (!seeding && !spectatorTab.current && viewFromHash() !== 'spectate') { writeHash(s.phase); setViewRaw(s.phase); }
+  }, []);
+
   useEffect(() => {
     api.getModes().then(setModes).catch(() => {});
     api.getWeapons().then(setWeapons).catch(() => {});
@@ -161,23 +173,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const mid = s.live?.match_id ?? null;
         if (mid !== feedMatch.current) { feedMatch.current = mid; if (mid) setFeed([]); }   // a new match starts a new feed
         setState(s);
-        // follow the server phase when it advances (armed → live → recap), but let the host browse freely
-        if (followed.current !== s.phase) {
-          const seeding = followed.current === null && urlView.current;
-          followed.current = s.phase;
-          urlView.current = false;
-          // S25: a tab left on #spectate is pointed at a ROOM. The phase-follow that is right for the
-          // operator's console would swap it to KIT the moment the host moved on, so the spectator
-          // view opts out and keeps showing the board (which handles live / recap / neither itself).
-          if (!seeding && !spectatorTab.current && viewFromHash() !== 'spectate') { writeHash(s.phase); setViewRaw(s.phase); }
-        }
+        followPhase(s);
       },
       e => setFeed(f => [e, ...f].slice(0, 60)),
       ok => setConnected(ok),
     );
     const unAuth = mock ? () => {} : onAuthRequired(setAuthRequired);
     return () => { un(); unAuth(); };
-  }, [api, mock, tokenVersion]);
+  }, [api, mock, tokenVersion, followPhase]);
 
   // A test hook, and ONLY in `?mock`: the in-browser demo has no server to poke from outside, so a
   // browser walk had no way to reach a LIVE match without sitting through the 60 s runway the UI
@@ -197,10 +200,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // While the operator token is missing/wrong, seed the board read-only from the open GET so the host
   // sees the console (not a blank CONNECTING page) behind the token prompt.
+  //
+  // The GET REPLACES what the tab holds. An MC restart mints a new token, so the open tab is refused
+  // exactly when its last snapshot describes a process that no longer exists. Keeping that snapshot
+  // showed a dead LOBBY with the game loaded, while the new process had delivered nothing
+  // (bench 2026-09-16). The GET is always the newer answer, from whichever process is up now.
   useEffect(() => {
     if (!authRequired || mock) return;
-    api.getState().then(s => setState(prev => prev ?? s)).catch(() => {});
-  }, [authRequired, api, mock]);
+    api.getState().then(s => { setState(s); followPhase(s); }).catch(() => {});
+  }, [authRequired, api, mock, followPhase]);
 
   const store = useMemo<Store>(() => ({
     api, state, feed, modes, weapons, perks, view, setView, selPlayer, setSelPlayer, error, mock,

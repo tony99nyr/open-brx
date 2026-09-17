@@ -36,7 +36,7 @@ from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_P
                     ConfigView, Coverage, EndDeliveryRow, EndDeliveryView, FrameBundle, GameAnnouncementView, GameConfig,
                     KitView, LanPublic, LanView, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
                     LoadoutPool, McConfidence, NoticesView, PerkView, ModeInfo, Phase, PhaseRefusalBody, Player,
-                    ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, Respawn, ScanRow, SessionOptions,
+                    LiveRow, ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, Respawn, ScanRow, SessionOptions,
                     SnapshotFeedRow, SlotRule, State, StationAssignment, StationRef, StationControl, StationReport,
                     StationView, SyncAckState, SyncRow, SyncTotals, SyncView, VersionsView, RestoredFromView,
                     StartNodeView, StartView, Stun, Team, Weapon, WeaponSel, WinnerView, LiveView, NodeView,
@@ -2888,6 +2888,15 @@ class Session:
         nv = self._node_view(nid)
         was_alive = nv.get("alive")          # A36: read BEFORE the update -- a life starts on the edge
         nv.update({k: body.get(k) for k in ("arm_state", "synced", "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "t_minus_ms", "shots", "dropped", "pending", "config_id") if k in body})
+        # F208: the pool-staleness claim is re-stated on EVERY heartbeat, so absent means "not stale" and
+        # must clear the last one. Only a known reason is kept, and only a whole non-negative age.
+        reason, stale_ms = body.get("pool_stale"), body.get("pool_stale_ms")
+        nv.pop("pool_stale", None)
+        nv.pop("pool_stale_ms", None)
+        if reason in ("silent", "no_fire"):
+            nv["pool_stale"] = reason
+            if isinstance(stale_ms, int) and not isinstance(stale_ms, bool) and stale_ms >= 0:
+                nv["pool_stale_ms"] = stale_ms
         # A28.3: `reach` is NOT taken from the status body. It feeds `coverage()` (which can gate a whole
         # mode) and the readiness amber (which un-blocks a start), so a client-asserted value would let a
         # phone claim its way past both. MC stamps it from the socket in `net._hello_gate`; the node's
@@ -4094,6 +4103,9 @@ class Session:
                 "battery_pct": nv.get("battery"), "battery_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,
                 "last_seen_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,   # the UI showed "0s AGO" reading a field that didn't exist (2026-08-26)
                 "gun_linked": pf.get("gun_linked"),
+                # F208: passed through, never judged here. Stale-link cards hide it (the link age says more).
+                "pool_stale": nv.get("pool_stale") if nid else None,
+                "pool_stale_ms": nv.get("pool_stale_ms") if nid else None,
                 # A28.3/F144: the path MC is reaching this phone over right now, and the last one it was
                 # heard on. The Armory card renders the first as a tag and the second is what makes an
                 # unreachable row's reason honest (F155). `ReadinessRow` requires both.
@@ -5361,8 +5373,19 @@ class Session:
         return {"match_id": self.scorer.match_id, "go_live_t": self.scorer.go_live_t,
                 "time_limit_s": time_limit_s, "ends_t": self.scorer.go_live_t + time_limit_s * 1000,
                 "score": self.scorer.team_scores(),
-                "rows": self.scorer.live_rows(now, {nid: nv.get("last_seen_ms", 0)
-                                                      for nid, nv in self.nodes.items()})}
+                "rows": self._with_pool_stale(self.scorer.live_rows(now, {nid: nv.get("last_seen_ms", 0)
+                                                                         for nid, nv in self.nodes.items()}))}
+
+    def _with_pool_stale(self, rows: list[LiveRow]) -> list[LiveRow]:
+        """F208: stamp each LIVE row with its node's `pool_stale` claim, only while the node makes one."""
+        pid_node = {pid: nid for nid, pid in self.node_player.items()}
+        for row in rows:
+            nv = self.nodes.get(pid_node.get(row["player_id"], ""), {})
+            if nv.get("pool_stale"):                     # `_on_status` keeps only a valid claim
+                row["pool_stale"] = nv["pool_stale"]
+                if "pool_stale_ms" in nv:
+                    row["pool_stale_ms"] = nv["pool_stale_ms"]
+        return rows
 
     def _start_view(self, now: int) -> StartView | None:
         if not self.start_info:
@@ -5426,7 +5449,7 @@ class Session:
                 key: nv[key] for key in (
                     "node_id", "node_type", "arm_state", "synced", "gun_name", "gun_tail", "player_id",
                     "preflight", "battery", "fw", "hp", "armor", "ammo", "alive", "pending", "app_ver",
-                    "platform", "log", "reach", "last_reach") if key in nv
+                    "platform", "log", "reach", "last_reach", "pool_stale", "pool_stale_ms") if key in nv
             })
             row.setdefault("node_id", "")
             row.setdefault("node_type", "phone")

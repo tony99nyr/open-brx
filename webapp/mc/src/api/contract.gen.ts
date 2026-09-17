@@ -553,6 +553,9 @@ export interface NodeView {
   log?: LogView | null;
   reach?: 'lan' | 'backhaul';
   last_reach?: 'lan' | 'backhaul';
+  /** F208: the node's last `status.pool_stale` / `pool_stale_ms`. Absent = not stale, or an older app. */
+  pool_stale?: 'silent' | 'no_fire';
+  pool_stale_ms?: number;
 }
 
 export interface Event {
@@ -612,6 +615,12 @@ export interface Event {
    *  still on, every ~2 s, for the rest of the game -- the difference that made a whole field night
    *  of stale pushes invisible. Optional: an older app omits it and MC then makes no claim. */
   config_id?: string;
+  /** F208: the pool this status reports is STALE, and why. A gun that died kept a byte-identical status
+   *  for 105 s and looked like a healthy idle player. `"silent"` = no gun frame for 185 s; `"no_fire"` =
+   *  three trigger presses in a row got no shot back. `pool_stale_ms` = ms since the gun last reported a
+   *  pool. Absent = not stale, or an older app: MC then shows no cue at all. */
+  pool_stale?: 'silent' | 'no_fire';
+  pool_stale_ms?: number;
 }
 
 export interface ScoreRow {
@@ -672,6 +681,9 @@ export interface LiveRow {
   status: 'alive' | 'down' | 'stale';
   sync_age_ms: number;
   respawn_in_s: number | null;
+  /** F208: the bound node's `pool_stale` / `pool_stale_ms`, as NodeView. Absent = not stale. */
+  pool_stale?: 'silent' | 'no_fire';
+  pool_stale_ms?: number;
 }
 
 export interface LiveView {
@@ -1025,6 +1037,10 @@ export interface ReadinessRow {
   last_seen_age_ms: number | null;
   /** `status.preflight.gun_linked` as last reported */
   gun_linked: boolean | null;
+  /** F208: `status.pool_stale`; None = not stale or not reported */
+  pool_stale: 'silent' | 'no_fire' | null;
+  /** F208: `status.pool_stale_ms`; None = not reported */
+  pool_stale_ms: number | null;
   fw: string | null;
   phone_batt: number | null;
   ssid_ok: boolean | null;

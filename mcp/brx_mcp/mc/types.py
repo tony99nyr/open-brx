@@ -566,6 +566,9 @@ class NodeView(TypedDict):
     log: NotRequired[LogView | None]
     reach: NotRequired[Literal["lan", "backhaul"]]
     last_reach: NotRequired[Literal["lan", "backhaul"]]
+    # F208: the node's last `status.pool_stale` / `pool_stale_ms`. Absent = not stale, or an older app.
+    pool_stale: NotRequired[Literal["silent", "no_fire"]]
+    pool_stale_ms: NotRequired[int]
 
 
 class Event(TypedDict, total=False):
@@ -625,6 +628,12 @@ class Event(TypedDict, total=False):
     # still on, every ~2 s, for the rest of the game -- the difference that made a whole field night
     # of stale pushes invisible. Optional: an older app omits it and MC then makes no claim.
     config_id: str
+    # F208: the pool this status reports is STALE, and why. A gun that died kept a byte-identical status
+    # for 105 s and looked like a healthy idle player. `"silent"` = no gun frame for 185 s; `"no_fire"` =
+    # three trigger presses in a row got no shot back. `pool_stale_ms` = ms since the gun last reported a
+    # pool. Absent = not stale, or an older app: MC then shows no cue at all.
+    pool_stale: Literal["silent", "no_fire"]
+    pool_stale_ms: int
 
 
 class ScoreRow(TypedDict):
@@ -660,6 +669,9 @@ class LiveRow(ScoreRow):
     status: Literal["alive", "down", "stale"]
     sync_age_ms: int
     respawn_in_s: int | None
+    # F208: the bound node's `pool_stale` / `pool_stale_ms`, as NodeView. Absent = not stale.
+    pool_stale: NotRequired[Literal["silent", "no_fire"]]
+    pool_stale_ms: NotRequired[int]
 
 
 class LiveView(TypedDict):
@@ -1012,6 +1024,8 @@ class ReadinessRow(TypedDict):
     battery_age_ms: int | None
     last_seen_age_ms: int | None    # ms since this node's last packet; None when no node is bound
     gun_linked: bool | None         # `status.preflight.gun_linked` as last reported
+    pool_stale: Literal["silent", "no_fire"] | None   # F208: `status.pool_stale`; None = not stale or not reported
+    pool_stale_ms: int | None                        # F208: `status.pool_stale_ms`; None = not reported
     fw: str | None
     phone_batt: int | None
     ssid_ok: bool | None

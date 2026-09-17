@@ -33,7 +33,12 @@ State {
                                                // A snapshot is restored only into a run of the SAME kind — a `--demo`
                                                // session is never restored into a real launch, or the other way round:
                                                // two demo players sat on a real field roster all night and the only
-                                               // hint was one banner line in a terminal
+                                               // hint was one banner line in a terminal.
+                                               // Restore brings back ONLY the durable work: roster, config, teams,
+                                               // stations, game numbers. Phase, LOAD (`game.loaded`), the lobby push,
+                                               // acks and the start are deliveries the OLD process made, so a restarted
+                                               // MC boots in `muster` with none of them and a re-hello gets no config,
+                                               // frames or start (bench 2026-09-16; `tests/test_mc_persist.py`)
   session_id, phase, t,                      // server time (Unix ms)
   mc_confidence: { confident: boolean, missing: string[], stale: string[], unflushed: string[] },   // A11.5: player_ids; gates the MC-driven global-state events
   lan: { mode: "router"|"hotspot"|"lan", ssid: string|null, ip: string, port: number, ws_url: string,
@@ -66,7 +71,8 @@ State {
   coverage: { level: "full"|"zones", on_backhaul: number, bound: number },   // A28.4: full iff every bound player node is connected with reach == "backhaul"
   nodes: NodeView[],                          // every node that ever said hello this session
   stations: StationView[], game_no: number,   // A13.5: the ITEMS panel (see GET /api/stations); game_no = the advert `game` byte stations are armed with THIS match (bumps on the first push after a match started)
-  readiness: ReadinessSnapshot,               // Each ReadinessRow also carries `reach` and `last_reach` (same values as NodeView).
+  readiness: ReadinessSnapshot,               // Each ReadinessRow also carries `reach` and `last_reach` (same values as NodeView),
+                                               // and `pool_stale: "silent"|"no_fire"|null`, `pool_stale_ms: number|null` (F208/A46; null = not stale or not reported).
                                                // F144 (field 2026-09-12): `reach == "backhaul"` is GREEN — a phone MC is
                                                // talking to right now is ready. Render the path as a TAG on the card, never
                                                // as a CHECK; the amber "NOT ON THE FIELD WI-FI — ON BACKHAUL" is gone, and
@@ -195,9 +201,10 @@ NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last
        // `complete` = a whole `last`-terminated stream landed. It STAYS complete when the phone idles back to `none`, until the
        // next ask — otherwise the one state the operator was waiting for is erased two seconds after it appears.
 NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last_seen_ms, synced, preflight?, battery?, fw?, hp?, armor?, ammo?, alive?, reach?: "lan"|"backhaul" /* A28.3: stamped by MC from the socket's arrival path (loopback / Cf-Connecting-Ip / public peer = backhaul), never from the phone's claim; cleared on disconnect */,
-           last_reach?: "lan"|"backhaul" /* F155 (field 2026-09-12): the path this node was last HEARD over. `reach` goes away with the socket; this outlives it, and it is what makes an unreachable row's reason honest */ }
+           last_reach?: "lan"|"backhaul" /* F155 (field 2026-09-12): the path this node was last HEARD over. `reach` goes away with the socket; this outlives it, and it is what makes an unreachable row's reason honest */,
+           pool_stale?: "silent"|"no_fire", pool_stale_ms?: number /* F208/A46: the node's current `status.pool_stale` claim (no gun frame for 185 s / three trigger presses with no shot) and ms since the gun last reported a pool. Absent = not stale, or an older app; each heartbeat restates it */ }
 LiveView { match_id, go_live_t, time_limit_s, ends_t, score: { [team_id]: number }, rows: LiveRow[] }
-LiveRow  = ScoreRow + { status: "alive"|"down"|"stale", respawn_in_s: number|null, sync_age_ms: number }
+LiveRow  = ScoreRow + { status: "alive"|"down"|"stale", respawn_in_s: number|null, sync_age_ms: number, pool_stale?: "silent"|"no_fire", pool_stale_ms?: number /* F208/A46, as NodeView */ }
 ScoreRow { player_id, display, team_id: string|null, kills, deaths, assists, shots, shots_total, hits,
            accuracy: number|null, kd, streak,
            medals: string[],        // F116 (2026-09-11): the `honors()` awards (MVP · MOST KILLS · … —

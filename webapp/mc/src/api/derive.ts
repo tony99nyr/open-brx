@@ -274,3 +274,14 @@ export function sentenceCase(t: string): string {
   const s = t.trim().toLowerCase();
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+
+/** F208: the quiet cue for a gun whose pool the phone calls stale, or null.
+ *
+ *  The phone decides (`status.pool_stale`): `silent` = no gun frame for a long time, `no_fire` = trigger
+ *  presses with no shot back. No claim means no cue: an older app is not evidence of a dead gun. The cue
+ *  is grey information, never a warning (Tony wants fewer warnings). */
+export function poolStaleLabel(reason: 'silent' | 'no_fire' | null | undefined, ms?: number | null): string | null {
+  if (reason === 'no_fire') return 'GUN NOT FIRING';
+  if (reason !== 'silent') return null;
+  return typeof ms === 'number' && Number.isFinite(ms) && ms >= 0 ? `GUN SILENT ${fmtAge(ms)}` : 'GUN SILENT';
+}
