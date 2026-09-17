@@ -699,10 +699,12 @@ export class MockBackend implements Api {
       this.emit();
     }
   }
-  private simKill() {
+  // `killerId` is a test hook. The e2e walk names a killer to put one row at exactly 6 shots, which
+  // is a number that is still settling. The tick never passes it, so the demo still picks at random.
+  private simKill(killerId?: string) {
     const l = this.live_!; const alive = l.rows.filter(r => r.status === 'alive');
     if (alive.length < 2) return;
-    const k = alive[Math.floor(Math.random() * alive.length)];
+    const k = alive.find(r => r.player_id === killerId) ?? alive[Math.floor(Math.random() * alive.length)];
     let v = alive[Math.floor(Math.random() * alive.length)];
     if (v === k) v = alive[(alive.indexOf(k) + 1) % alive.length];
     k.kills++; k.streak++; k.hits += 3; k.shots += 6; v.deaths++; v.streak = 0; v.status = 'down'; v.respawn_in_s = this.config.respawn.delay_s;
