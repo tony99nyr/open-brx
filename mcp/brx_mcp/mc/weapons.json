@@ -16,6 +16,9 @@
    "rng": 75,
    "htk": 13,
    "ttk_ms": 1200,
+   "range_band": "mid",
+   "range_target_m": "18-20 indoor / 40-45 outdoor (Q15)",
+   "recoil": {"ceiling": 100, "floor": 70, "per_shot": 10, "recover_ms": 150},
    "capture": {
     "src": "2026-08-26-weapons-ar-plus-burstrifle.btsnoop",
     "frame": "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,384,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,192,75,*"
@@ -44,6 +47,9 @@
    "rng": 75,
    "htk": 11,
    "ttk_ms": 1417,
+   "range_band": "mid",
+   "range_target_m": "18-20 indoor / 40-45 outdoor (Q15)",
+   "recoil": {"ceiling": 100, "floor": 85, "per_shot": 5, "recover_ms": 150},
    "capture": {
     "src": "2026-08-23-gset-respawn05.btsnoop",
     "frame": "$WEAP,0,,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*"
@@ -133,6 +139,9 @@
    "rng": 75,
    "htk": 15,
    "ttk_ms": 1330,
+   "range_band": "close-mid",
+   "range_target_m": "12 indoor / 25-30 outdoor (Q15)",
+   "recoil": {"ceiling": 100, "floor": 55, "per_shot": 15, "recover_ms": 150},
    "capture": {
     "src": "2026-08-26-weapons-smg-plus-amr.btsnoop",
     "frame": "$WEAP,0,,100,0,0,8,0,,,,,,,,90,850,72,288,2500,0,0,100,100,,5,,,G03,,,,D26,D25,D24,D18,D11,,,,72,144,75,*"
@@ -162,6 +171,9 @@
    "rng": 75,
    "htk": 3,
    "ttk_ms": 1600,
+   "range_band": "close",
+   "range_target_m": "8-10 indoor / 15-18 outdoor (Q15)",
+   "recoil": {"ceiling": 100, "floor": 100, "per_shot": 0, "recover_ms": 0},
    "capture": {
     "src": "2026-08-23-gset-respawn15.btsnoop",
     "frame": "$WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*"
@@ -219,6 +231,9 @@
    "rng": 75,
    "htk": 2,
    "ttk_ms": 1500,
+   "range_band": "long",
+   "range_target_m": "full reach indoor / 60m+ outdoor (Q15)",
+   "recoil": {"ceiling": 100, "floor": 100, "per_shot": 0, "recover_ms": 0},
    "capture": {
     "src": "2026-08-26-weapons-sniper.btsnoop",
     "frame": "$WEAP,0,,100,0,1,80,0,,,,,,,,300,850,4,24,1700,0,7,100,100,,0,,,S16,D20,D19,,D04,D03,D21,D18,,,,,4,12,75,*"
@@ -286,6 +301,9 @@
    "rng": 75,
    "htk": 5,
    "ttk_ms": 1600,
+   "range_band": "long",
+   "range_target_m": "full reach indoor / 60m+ outdoor (Q15, tagged sniper)",
+   "recoil": {"ceiling": 100, "floor": 100, "per_shot": 0, "recover_ms": 0},
    "capture": {
     "src": "2026-08-26-weapons-smg-plus-amr.btsnoop",
     "frame": "$WEAP,1,,100,0,3,18,0,,,,,,,,360,850,14,56,1400,0,7,100,100,,0,,,S07,D20,D19,,D04,D03,D21,D18,,,,,14,28,75,*"
@@ -310,11 +328,11 @@
   {
    "weapon_id": "suppressor",
    "name": "Suppressor",
-   "desc": "Quiet, not silent, and no muzzle flash. It is the only weapon here that hides where you are. 8 a hit every 140ms with 384 in reserve: 28 kills, the deepest sustained pool, the slowest kill.",
+   "desc": "Quiet, not silent, and no muzzle flash. It is the only weapon here that hides where you are. 8 a hit every 140ms with 75 up and 384 in reserve: 30 kills, the deepest magazine AND the deepest sustained pool, the slowest kill. 2026-09-17: mag 48→75 -- the family-scoped dominance test (§2.3) paired it against the SMG (same fire mode, same weapon_class), which beat it on every other axis; the deeper magazine gives the Suppressor an outright lead on kills-per-clip (5 vs the SMG's 4), which is the smallest change that stops the SMG strictly dominating it.",
    "cls": 1,
    "role": "support",
    "class": "ballistic",
-   "mag": 48,
+   "mag": 75,
    "reserve": 384,
    "reload_ms": 2000,
    "dmg": 7,
@@ -322,6 +340,9 @@
    "rng": 75,
    "htk": 15,
    "ttk_ms": 1960,
+   "range_band": "mid",
+   "range_target_m": "15 indoor / 30 outdoor (Q15, as the LMG-role deep-mag automatic)",
+   "recoil": {"ceiling": 100, "floor": 55, "per_shot": 15, "recover_ms": 150},
    "capture": {
     "src": "2026-08-26-weapons-energyrifle-suppressor.btsnoop",
     "frame": "$WEAP,1,,100,0,0,8,0,,,,,,,,75,850,48,288,2000,0,0,100,100,,0,2,50,Q06,,,,D26,D25,D24,D18,,,,,48,144,75,*"
@@ -350,6 +371,9 @@
    "rng": 75,
    "htk": 13,
    "ttk_ms": 1800,
+   "range_band": "mid",
+   "range_target_m": "15 indoor / 30 outdoor (Q15, as the LMG-role deep-mag automatic)",
+   "recoil": {"ceiling": 100, "floor": 70, "per_shot": 10, "recover_ms": 150},
    "capture": {
     "src": "2026-08-26-weapons-energyrifle-suppressor.btsnoop",
     "frame": "$WEAP,0,,100,0,0,9,0,,,,,,,,90,850,300,600,2400,0,0,100,100,,6,,,E12,,,,D17,D16,D15,A73,D122,,,,300,300,75,*"
@@ -376,7 +400,7 @@
   {
    "weapon_id": "charge_rifle",
    "name": "Charge Rifle",
-   "desc": "Hold, release, hit hard. An 85-damage charge held indefinitely, plus a 20-damage tap for the follow-up: one charge and two taps drops a 115 pool, 12 of the 40 rounds up and 84 of the roughly-103 heat budget that locks the gun out if you rush it (S43). Forty up, eighty back -- six charge-equivalent kills across the kit.",
+   "desc": "Pre-charge it behind cover, then the kill is one release and two taps: an 85-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus two 20-damage taps drops a 115 pool in about 1s from release -- 3 trigger actions, 12 of the 40 rounds up, 84 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, ten across the kit.",
    "cls": 5,
    "role": "support",
    "class": "energy",
@@ -387,8 +411,11 @@
    "dmg": 74,
    "rof": 6,
    "rng": 75,
-   "htk": 2,
-   "ttk_ms": 2500,
+   "htk": 3,
+   "ttk_ms": 1000,
+   "range_band": "mid",
+   "range_target_m": "18-20 indoor / 40-45 outdoor (Q15, an ambush weapon needs the target closed, not far)",
+   "recoil": {"ceiling": 100, "floor": 100, "per_shot": 0, "recover_ms": 0},
    "capture": {
     "src": "2026-08-26-weapons-chargerifle-boltrifle.btsnoop",
     "frame": "$WEAP,0,,100,8,0,100,0,,,,,,,,1250,850,100,200,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,C19,C04,20,150,100,100,75,*"
@@ -459,11 +486,11 @@
   {
    "weapon_id": "usp",
    "name": "USP-S",
-   "desc": "The quiet one. Suppressed and flashless: 9 a hit, as fast as you can pull the trigger, 13 hits to drop, 20 in the mag with 120 behind it: 10 kills across the kit. Low damage, but nobody hears where it came from.",
+   "desc": "The quiet one. Suppressed and flashless: 9 a hit, as fast as you can pull the trigger, 13 hits to drop, 19 in the mag with 120 behind it: 10 kills across the kit. Low damage, but nobody hears where it came from. 2026-09-17: mag 20→19 -- Tony's ask was 20→14, but 14 leaves the Deagle strictly dominating the USP (its sustained DPS and one-magazine kill chance both fall too far once the mag is that shallow); 19 is the smallest cut off 20 that actually leaves neither pistol beating the other on every axis (a thin margin: sustained DPS differs by about 0.1 dmg/s, kill chance by 2 points).",
    "cls": 10,
    "role": "sidearm",
    "class": "ballistic",
-   "mag": 20,
+   "mag": 19,
    "reserve": 120,
    "reload_ms": 2200,
    "dmg": 8,
@@ -471,6 +498,9 @@
    "rng": 75,
    "htk": 13,
    "ttk_ms": 1920,
+   "range_band": "close",
+   "range_target_m": "8-10 indoor / 15-18 outdoor (Q15, backup weapon)",
+   "recoil": {"ceiling": 100, "floor": 100, "per_shot": 0, "recover_ms": 0},
    "capture": {
     "src": "2026-08-26-weapons-chargerifle-boltrifle.btsnoop",
     "frame": "$WEAP,1,,100,0,3,13,0,,,,,,,,225,850,18,180,2000,0,7,100,100,,0,,,R12,,,,D04,D03,D02,D18,,,,,18,90,75,*"
@@ -532,6 +562,9 @@
    "rng": 75,
    "htk": 5,
    "ttk_ms": 1920,
+   "range_band": "close",
+   "range_target_m": "8-10 indoor / 15-18 outdoor (Q15, backup weapon)",
+   "recoil": {"ceiling": 100, "floor": 100, "per_shot": 0, "recover_ms": 0},
    "capture": {
     "src": "2026-08-26-weapons-chargerifle-boltrifle.btsnoop",
     "frame": "$WEAP,1,,100,0,3,13,0,,,,,,,,225,850,18,180,2000,0,7,100,100,,0,,,R12,,,,D04,D03,D02,D18,,,,,18,90,75,*"
@@ -585,6 +618,9 @@
    "rng": 75,
    "htk": 1,
    "ttk_ms": 0,
+   "range_band": "mid",
+   "range_target_m": "18-20 indoor / 40-45 outdoor (Q15, not bench-set: a power weapon, not a marksman one)",
+   "recoil": {"ceiling": 100, "floor": 100, "per_shot": 0, "recover_ms": 0},
    "capture": {
     "src": "2026-08-26-weapons-rocket-lasercannon.btsnoop",
     "frame": "$WEAP,0,2,100,10,0,115,0,,,,,,115,80,1000,850,2,8,1200,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,4,75,30,*"
@@ -612,6 +648,9 @@
    "rng": 75,
    "htk": 1,
    "ttk_ms": 1200,
+   "range_band": "mid",
+   "range_target_m": "18-20 indoor / 40-45 outdoor (Q15, not bench-set: a power weapon, not a marksman one)",
+   "recoil": {"ceiling": 100, "floor": 100, "per_shot": 0, "recover_ms": 0},
    "capture": {
     "src": "2026-08-26-weapons-energylauncher-railgun.btsnoop",
     "frame": "$WEAP,1,0,100,6,0,115,0,,,,,,,,1200,850,1,6,2400,0,2,100,100,,0,,,C03,C08,,,D36,D35,D34,A73,,,,,1,3,75,*"

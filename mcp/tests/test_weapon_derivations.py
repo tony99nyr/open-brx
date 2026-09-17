@@ -200,7 +200,13 @@ def test_weapon_design_balance_table_matches_the_wire():
             "dps": f"{round(dmg / (cycle / 1000), 1)}",
             "sust": f"{round(dmg * mag_charges / (mag_charges * cycle / 1000 + reload_ms / 1000), 1)}",
             "mag": str(mag), "reserve": str(reserve), "reload": str(reload_ms),
-            "one-mag kill % (p=0.7)": f"{round(100 * _one_mag_kill_p(mag_charges, htk))}%" if htk else None,
+            # The probabilistic axis models a CELL weapon as repeated full charges (a charge is
+            # near-certain once released; no per-action-type accuracy model exists to mix that with a
+            # tap's p=0.7 trigger pull), so it uses the SIMPLE ceil(pool/charge_dmg) htk, not the real
+            # charge+tap combo `htk` publishes -- same split as `test_mc_compile.py`'s dominance test.
+            "one-mag kill % (p=0.7)": (
+                f"{round(100 * _one_mag_kill_p(mag_charges, math.ceil(DEFAULT_POOL / dmg)))}%"
+                if dmg else None),
             "heat": str(heat) if heat else "—",
         }
         for col, expect in want.items():
@@ -266,8 +272,12 @@ def test_weapon_views_follow_the_hosts_health_config():
             assert v["pool"] == p, (v["weapon_id"], v["pool"])
             # damage per hit is a property of the WEAPON, not of the pool it is fired at
             assert v["dmg_per_hit"] == at[115][v["weapon_id"]]["dmg_per_hit"]
-            if v["htk"]:
+            # F225/F226/S43 (2026-09-17): a CELL weapon (the Charge Rifle) counts trigger ACTIONS, not
+            # equal-sized hits -- 1 charge plus however many taps close the rest of the pool, never the
+            # plain ceil(pool/dmg) every other weapon uses. See views.weapon_view()'s tap_dmg branch.
+            if v["htk"] and v["weapon_id"] != "charge_rifle":
                 assert v["htk"] == math.ceil(p / v["dmg_per_hit"])
+    assert [at[p]["charge_rifle"]["htk"] for p in (100, 115, 150, 200)] == [2, 3, 5, 7]
     # and TTK moves with it, or the ARSENAL's TIME TO KILL column is decoration
     assert at[200]["assault_rifle"]["ttk_ms"] > at[115]["assault_rifle"]["ttk_ms"]
 

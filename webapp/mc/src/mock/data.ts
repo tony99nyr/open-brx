@@ -41,7 +41,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 50,
       "rof": 56,
       "ammo": 49,
-      "ttk": 60
+      "ttk": 50
     }
   },
   {
@@ -72,7 +72,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 30,
       "rof": 85,
       "ammo": 71,
-      "ttk": 100
+      "ttk": 90
     }
   },
   {
@@ -103,7 +103,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 40,
       "rof": 100,
       "ammo": 78,
-      "ttk": 80
+      "ttk": 70
     }
   },
   {
@@ -111,7 +111,7 @@ export const WEAPONS: WeaponView[] = [
     "name": "Charge Rifle",
     "cls": "5",
     "weapon_class": "energy",
-    "desc": "Hold, release, hit hard. An 85-damage charge held indefinitely, plus a 20-damage tap for the follow-up: one charge and two taps drops a 115 pool, 12 of the 40 rounds up and 84 of the roughly-103 heat budget that locks the gun out if you rush it (S43). Forty up, eighty back -- six charge-equivalent kills across the kit.",
+    "desc": "Pre-charge it behind cover, then the kill is one release and two taps: an 85-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus two 20-damage taps drops a 115 pool in about 1s from release -- 3 trigger actions, 12 of the 40 rounds up, 84 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, ten across the kit.",
     "clip": 40,
     "mags": 2,
     "reserve": 80,
@@ -127,14 +127,14 @@ export const WEAPONS: WeaponView[] = [
       "support"
     ],
     "role": "support",
-    "htk": 2,
-    "ttk_ms": 2500,
+    "htk": 3,
+    "ttk_ms": 1000,
     "ammo_total": 120,
     "bars": {
       "power": 90,
       "rof": 27,
       "ammo": 56,
-      "ttk": 20
+      "ttk": 100
     }
   },
   {
@@ -166,7 +166,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 60,
       "rof": 49,
       "ammo": 42,
-      "ttk": 40
+      "ttk": 30
     }
   },
   {
@@ -197,7 +197,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 30,
       "rof": 71,
       "ammo": 100,
-      "ttk": 50
+      "ttk": 40
     }
   },
   {
@@ -230,7 +230,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 100,
       "rof": 27,
       "ammo": 20,
-      "ttk": 100
+      "ttk": 90
     }
   },
   {
@@ -294,7 +294,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 70,
       "rof": 42,
       "ammo": 35,
-      "ttk": 60
+      "ttk": 50
     }
   },
   {
@@ -325,7 +325,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 20,
       "rof": 93,
       "ammo": 85,
-      "ttk": 90
+      "ttk": 80
     }
   },
   {
@@ -357,7 +357,7 @@ export const WEAPONS: WeaponView[] = [
       "power": 80,
       "rof": 20,
       "ammo": 27,
-      "ttk": 70
+      "ttk": 60
     }
   },
   {
@@ -365,9 +365,9 @@ export const WEAPONS: WeaponView[] = [
     "name": "Suppressor",
     "cls": "1",
     "weapon_class": "ballistic",
-    "desc": "Quiet, not silent, and no muzzle flash. It is the only weapon here that hides where you are. 8 a hit every 140ms with 384 in reserve: 28 kills, the deepest sustained pool, the slowest kill.",
-    "clip": 48,
-    "mags": 8,
+    "desc": "Quiet, not silent, and no muzzle flash. It is the only weapon here that hides where you are. 8 a hit every 140ms with 75 up and 384 in reserve: 30 kills, the deepest magazine AND the deepest sustained pool, the slowest kill. 2026-09-17: mag 48→75 -- the family-scoped dominance test (§2.3) paired it against the SMG (same fire mode, same weapon_class), which beat it on every other axis; the deeper magazine gives the Suppressor an outright lead on kills-per-clip (5 vs the SMG's 4), which is the smallest change that stops the SMG strictly dominating it.",
+    "clip": 75,
+    "mags": 5,
     "reserve": 384,
     "reload_s": 2.0,
     "reload_ms": 2000,
@@ -383,12 +383,12 @@ export const WEAPONS: WeaponView[] = [
     "role": "support",
     "htk": 15,
     "ttk_ms": 1960,
-    "ammo_total": 432,
+    "ammo_total": 459,
     "bars": {
       "power": 20,
       "rof": 78,
       "ammo": 93,
-      "ttk": 30
+      "ttk": 20
     }
   },
   {
@@ -396,8 +396,8 @@ export const WEAPONS: WeaponView[] = [
     "name": "USP-S",
     "cls": "10",
     "weapon_class": "ballistic",
-    "desc": "The quiet one. Suppressed and flashless: 9 a hit, as fast as you can pull the trigger, 13 hits to drop, 20 in the mag with 120 behind it: 10 kills across the kit. Low damage, but nobody hears where it came from.",
-    "clip": 20,
+    "desc": "The quiet one. Suppressed and flashless: 9 a hit, as fast as you can pull the trigger, 13 hits to drop, 19 in the mag with 120 behind it: 10 kills across the kit. Low damage, but nobody hears where it came from. 2026-09-17: mag 20→19 -- Tony's ask was 20→14, but 14 leaves the Deagle strictly dominating the USP (its sustained DPS and one-magazine kill chance both fall too far once the mag is that shallow); 19 is the smallest cut off 20 that actually leaves neither pistol beating the other on every axis (a thin margin: sustained DPS differs by about 0.1 dmg/s, kill chance by 2 points).",
+    "clip": 19,
     "mags": 6,
     "reserve": 120,
     "reload_s": 2.2,
@@ -415,12 +415,12 @@ export const WEAPONS: WeaponView[] = [
     "role": "sidearm",
     "htk": 13,
     "ttk_ms": 1920,
-    "ammo_total": 140,
+    "ammo_total": 139,
     "bars": {
       "power": 30,
       "rof": 64,
       "ammo": 64,
-      "ttk": 40
+      "ttk": 30
     }
   }
 ];

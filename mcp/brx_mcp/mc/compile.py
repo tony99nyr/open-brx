@@ -658,6 +658,17 @@ def _load_weapons() -> list[dict]:
     return data["weapons"]
 
 
+# 2026-09-17 (Tony, following F225/F226/S43): the ambush identity of a cell weapon (Charge Rifle) is a
+# pre-built charge held behind cover -- the charge time (`t14`, and by feel longer still, see
+# weapon-design.md §2.2) is SETUP, not combat time, so it does not belong in `ttk_ms`. What a target
+# actually experiences is RELEASE (the charge lands the instant the trigger releases, zero delay, same
+# "first shot free" convention as every other weapon) plus however many taps close the rest of the
+# pool. No bench measurement of tap-to-tap cadence exists yet; 500 ms is a documented placeholder
+# (Tony: "about 1 s" for two taps) pending a bench gate. Module-level so `views.py` can redo the same
+# release-to-kill maths `WeaponCatalog.time_to_kill()` does, at whatever pool the host has set.
+CHARGE_TAP_CADENCE_MS = 500
+
+
 class WeaponCatalog:
     """§3 roster. `resolve(id, slot)` → "$WEAP,<slot>,<tail>"; `spawn_ammo(id)` → (mag, reserve)."""
 
@@ -683,7 +694,12 @@ class WeaponCatalog:
                       # of the 115 default and cannot be rescaled; `dmg_hit` is the real magnitude.
                       "dmg_hit": self.damage(w["weapon_id"]),
                       "cycle_ms": self.cycle_ms(w["weapon_id"]),
-                      "charged": self._frame_int(w["weapon_id"], "mode") in self._CHARGE_MODES},
+                      "charged": self._frame_int(w["weapon_id"], "mode") in self._CHARGE_MODES,
+                      # 2026-09-17 (F225/F226/S43): a CELL weapon (rounds_per_charge > 1) with a tap
+                      # magnitude counts trigger ACTIONS, not equal-sized hits -- `views.weapon_view()`
+                      # needs both numbers to redo the same htk/ttk_ms maths at a host-chosen pool the
+                      # way it already redoes the plain ceil(pool/dmg) maths for every other weapon.
+                      "tap_dmg": self.tap_damage(w["weapon_id"]) or None},
             "weap_frame": self.resolve(w["weapon_id"], 0),
             "verified": bool(w.get("verified", False)),
         }
@@ -711,9 +727,9 @@ class WeaponCatalog:
     # The gun applies the LARGER of the two loaded slots' values whichever direction you swap, so a swap
     # perk must scale every slot (docs/archive/bench-weap-tokens-2026-09-04.md).
     _T = {"proto": 3, "subtype": 4, "dmg": 5, "fire": 14, "swap": 15, "mag": 16, "reserve": 17, "reload": 18,
-          "mode": 20, "burst": 23, "heat": 24, "snd_fire": 27, "snd_up": 28, "snd_down": 29,
-          "rel1": 31, "rel2": 32, "rel3": 33, "noammo": 34, "clipstart": 39, "reserve_half": 40,
-          "range": 41}
+          "mode": 20, "acc_ceiling": 21, "acc_floor": 22, "burst": 23, "heat": 24, "snd_fire": 27,
+          "snd_up": 28, "snd_down": 29, "rel1": 31, "rel2": 32, "rel3": 33, "noammo": 34, "tap": 37,
+          "clipstart": 39, "reserve_half": 40, "range": 41}
     # The ammo trio + its two mirrors. `resolve()` owns these — they carry the invariants — so an
     # `overrides` entry may not name one (see `_override_index`).
     _AMMO_TOKENS = frozenset({16, 17, 18, 39, 40})
@@ -886,7 +902,23 @@ class WeaponCatalog:
         superseding the earlier flat x1.25/x2 reading) — so an all-headset kill on the five weapons on
         fn 36/37 needs FEWER hits than this method publishes; `validate()` warns on those rows with the
         actual multiplier. Second, the SHIELD pool, which sits above armor and is granted only by an IR
-        function-11 event. 0 = damage unknown, caller skips."""
+        function-11 event. 0 = damage unknown, caller skips.
+
+        **A cell weapon (`rounds_per_charge` > 1) with a tap magnitude (`t37`) counts TRIGGER ACTIONS,
+        not equal-sized hits** (2026-09-17, Tony, following F225/F226/S43): the Charge Rifle's real kill
+        is one charge (t5, 85) plus as many taps (t37, 20) as it takes to close the remainder, e.g. 1 +
+        2 = 3 actions at the 115 pool -- not `ceil(115/85) = 2`, which silently assumes every hit is a
+        full charge. See `rounds_to_kill()` for the ROUNDS this costs (10 per charge, 1 per tap) and
+        `tap_damage()`."""
+        rpc = self.rounds_per_charge(weapon_id)
+        tap = self.tap_damage(weapon_id)
+        if rpc > 1 and tap > 0:
+            charge_dmg = self.damage(weapon_id)
+            if charge_dmg <= 0 or pool <= 0:
+                return 0
+            if pool <= charge_dmg:
+                return 1
+            return 1 + math.ceil((pool - charge_dmg) / tap)
         dmg = self.damage(weapon_id)
         return math.ceil(pool / dmg) if dmg > 0 and pool > 0 else 0
 
@@ -934,18 +966,50 @@ class WeaponCatalog:
         """weapons.json `stats.dmg` — the SHARE of `pool` one hit removes, 0-100 (weapons.json `_note`)."""
         return round(100 * self.damage(weapon_id) / pool) if pool > 0 else 0
 
+    CHARGE_TAP_CADENCE_MS = CHARGE_TAP_CADENCE_MS   # class-level alias; see the module constant above
+
+    def tap_damage(self, weapon_id: str) -> int:
+        """The `$WEAP` t37 tap magnitude for a cell weapon (F229/S43): independent of the charge
+        magnitude (`damage()`/t5). 0 for every weapon without a tap (t37 blank on the captured frame)."""
+        return self._frame_int(weapon_id, "tap")
+
+    def rounds_to_kill(self, weapon_id: str, pool: int) -> int:
+        """ROUNDS of the `mag`/`reserve` cell the minimal kill combo costs -- identical to
+        `hits_to_kill()` for every weapon that fires one round per hit, but NOT for a cell weapon
+        (`rounds_per_charge` > 1 with a tap magnitude): a charge costs `rounds_per_charge` rounds and a
+        tap costs 1, so "3 trigger actions" (`hits_to_kill()`) and "12 rounds" are different numbers.
+        This is the one to compare against a raw `mag`/`reserve` count (the one-magazine guard, kills
+        per clip); `hits_to_kill()`/`time_to_kill()` are the ones to show a player."""
+        rpc = self.rounds_per_charge(weapon_id)
+        tap = self.tap_damage(weapon_id)
+        if rpc > 1 and tap > 0:
+            htk = self.hits_to_kill(weapon_id, pool)
+            if not htk:
+                return 0
+            taps = htk - 1                       # hits_to_kill() already counted the one charge
+            return rpc + taps
+        return self.hits_to_kill(weapon_id, pool)
+
     def time_to_kill(self, weapon_id: str, pool: int) -> int:
         """ms from the first shot to the killing hit at `pool`, on the GUN BODY; 0 when the weapon
         one-shots. Built on `hits_to_kill()`, so the same gun-body caveat applies: an all-headset kill
         on an fn 36/37 weapon lands sooner than this.
 
-        (htk - 1) cycles, because the first hit costs no wait — EXCEPT on a charge weapon, where the
-        first shot has to be charged too, so it is htk cycles. That is the whole reason the Rail Gun
-        and the Laser Cannon publish a TTK (1.20 s / 1.50 s) while the Rocket Launcher, equally a
-        one-shot kill, publishes 0.00."""
+        (htk - 1) cycles, because the first hit costs no wait — EXCEPT on a charge/hold weapon with NO
+        tap (Rail Gun, Laser Cannon: `mode` in `_CHARGE_MODES`), where the first shot has to be charged
+        too, so it is htk cycles. That is the whole reason the Rail Gun and the Laser Cannon publish a
+        TTK (1.20 s / 1.50 s) while the Rocket Launcher, equally a one-shot kill, publishes 0.00.
+
+        A CELL weapon with a tap (the Charge Rifle) is neither: it is RELEASE-to-kill, not
+        charge-to-kill (see `CHARGE_TAP_CADENCE_MS`) -- the pre-built charge lands at zero delay and
+        only the taps that follow cost time."""
         htk = self.hits_to_kill(weapon_id, pool)
         if not htk:
             return 0
+        rpc = self.rounds_per_charge(weapon_id)
+        if rpc > 1 and self.tap_damage(weapon_id) > 0:
+            taps = htk - 1
+            return taps * self.CHARGE_TAP_CADENCE_MS
         charged = self._frame_int(weapon_id, "mode") in self._CHARGE_MODES
         return int(round(self.cycle_ms(weapon_id) * (htk if charged else htk - 1)))
 
@@ -1778,14 +1842,14 @@ class Compiler:
                 # what the weapon is, for THIS player: "only" (the gun they fight with), "primary"
                 # (a real primary with a backup behind it) or "backup".
                 kind = "backup" if slot > 0 else ("only" if len(ws) == 1 else "primary")
-                raw_mag = self.catalog._ammo(wid, None)[0]    # the weapon's OWN magazine, no perk
-                mag = self.catalog.charges(wid, raw_mag)      # F226/S43: a charge weapon's mag is ROUNDS,
-                                                                # not hits -- grade on full charges instead
+                mag = self.catalog._ammo(wid, None)[0]        # the weapon's OWN magazine, no perk, ROUNDS
                 if (wid, pool, mag, kind) in seen:
                     continue
                 seen.add((wid, pool, mag, kind))
                 htk = self.catalog.hits_to_kill(wid, pool)
-                if not (htk and mag < htk):
+                rtk = self.catalog.rounds_to_kill(wid, pool)  # F226/S43: a cell weapon's kill combo costs
+                                                                # ROUNDS, not hits -- grade against those
+                if not (rtk and mag < rtk):
                     continue
                 if sidearm:
                     # Round-2 fix pass C (2026-09-12): a WARNING in EVERY slot, worded for the shape
@@ -1805,12 +1869,12 @@ class Compiler:
                             else "is your backup" if kind == "backup"
                             else "is the gun you fight with (a sidearm in the PRIMARY slot)")
                     warnings.append(f"{wid} {what} and cannot kill on one magazine at this pool - "
-                                    f"it will need a reload (mag {mag} < {htk} hits at "
+                                    f"it will need a reload (mag {mag} < {rtk} rounds for {htk} hits at "
                                     f"{self.catalog.damage(wid)} dmg vs {pool} pool)")
                 else:
                     warnings.append(f"PRIMARY {wid.upper().replace('_', ' ')} CANNOT KILL ON ONE MAGAZINE: "
-                                    f"mag {mag} < {htk} hits at {self.catalog.damage(wid)} dmg vs a {pool} "
-                                    f"pool — a reload mid-kill (docs/weapon-design.md §2.1)")
+                                    f"mag {mag} < {rtk} rounds for {htk} hits at {self.catalog.damage(wid)} dmg "
+                                    f"vs a {pool} pool — a reload mid-kill (docs/weapon-design.md §2.1)")
 
         # Does each loadout weapon's <t3,t4> key a $SIR row that actually DEALS DAMAGE?
         # The mag>=htk invariant above computes on raw t5 and cannot see this: it passed an Energy
