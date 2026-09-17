@@ -49,14 +49,24 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
 - WSL Python dev venv: `.venv/` (`.venv/bin/python`; has websockets/starlette/uvicorn/zeroconf/pytest;
   system python3 has no pip — bootstrap via get-pip if recreating). `cd mcp && python3 run_tests.py`
   must stay green under system python (tests needing extras skip cleanly).
-- **Run every suite at once:** `npm run test:all` (about 30 s) from the repo root, and `npm run test:all -- --ui` to add
-  the browser gates (about 2 min, was about 30 min run one by one; at most 8 GB of memory, `MEM_BUDGET_MB=` changes it). `-- mcp app` runs only the jobs whose names match.
-  The script prints one table and the log path of each job (`scripts/test-all.mjs`).
-- **The four test suites** (the per-suite detail and flags are `CONTRIBUTING.md` → *Running things*): `cd mcp &&
-  python3 run_tests.py` (Python server + Mission Control; includes the pyright static-type gate in
-  `standard` mode, config in `mcp/pyproject.toml`, including `brx_mcp/stage`) · `cd webapp/mc && npm test` (+ `npm run e2e`
-  for a UI change; Mission Control web UI) · `cd app && npm test` (phone app) · `cd site && npm test`
-  (public site, needs `cd app && npm run build` first).
+- **Which tests to run.** Run all of them from the repo root with `npm run test:all`. Do not run the suites one by one
+  as the final check. The script prints one table and a log path per job; open the log of a failed job.
+  - While you iterate: run only the suite you touch (`npm run test:all -- mcp`, `-- mc-vitest`, `-- site`; `-- --list`
+    names the jobs), or one file (`cd mcp && python3 run_tests.py <substring>`).
+  - Before you commit any code change: `npm run test:all` (about 30 s; mcp, webapp/mc tsc + vitest, app tsc + tests, site).
+  - Before you commit a change to `app/src`, `webapp/mc/src`, a UI gate or an e2e script: `npm run test:all -- --ui`
+    (about 2 min; adds the phone and Mission Control browser gates).
+  - It runs inside a memory budget (at most 8 GB, `MEM_BUDGET_MB=`). A second run in the same checkout waits for the first.
+  - The per-suite detail and flags are in `CONTRIBUTING.md` → *Running things*. The pyright gate runs inside the mcp suite.
+- **When you add or change a test**, keep the suite parallel-safe. `test:all` runs every job at once, under load:
+  - Bind a free port (listen on 0), or read the port from an env var. Never a literal port.
+  - Write output to the test's own folder, never a folder another test writes.
+  - Wait for a condition, or use a mocked clock (`mock.timers`, `vi.useFakeTimers`). A fixed sleep races under load.
+  - Clean up in `after`/`finally`, so a failed assertion cannot leave a server or a timer that hangs the run.
+  - Break the behaviour once and watch the test fail.
+  - A new browser gate under `app/tools/` or `webapp/mc/test/e2e/` goes into JOBS in `scripts/test-all.mjs`, with its
+    measured `mb` and `secs`. `mcp/tests/test_suite_registry.py` fails until it is there.
+  - A new Python test file slower than about 5 s goes into `SPLIT` in `mcp/run_tests.py`.
 - Development happens in **WSL2, which has no Bluetooth**; the `brx-mcp` instrument (anything that
   touches a gun) runs on **Windows Python** via WSL interop instead. Match-day target is a
   **MacBook**: everything in `mcp/` must stay cross-platform (bleak: WinRT/CoreBluetooth/BlueZ) —

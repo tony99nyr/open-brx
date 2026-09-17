@@ -133,3 +133,5 @@ condition was untested and why, then add the test that would have caught it — 
 - Does the served bundle contain my change?
 - Would my new e2e step fail on yesterday's build?
 - Did a reviewer other than me try to break it?
+- Did the whole browser tier pass, not only my suite? (Open BRX: `npm run test:all -- --ui`.)
+- Is a new e2e gate registered in the parallel runner, on a free port, with its own output folder and no fixed sleeps?
