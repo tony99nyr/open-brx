@@ -109,6 +109,16 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .pips{display:flex;gap:4px}
 .pips i{width:8px;height:20px;background:var(--num);transform:skewX(-14deg)}
 .pips i.spent{opacity:.25}.pips i.warn{background:var(--warn)}
+/* Bench 2026-09-17: past AMMO_PIP_MAX (hud.js) rounds no longer read as individual bullets, so the
+   gauge becomes one continuous bar instead — the exact count is still the digits beside it. */
+.pips .bar.ammo{height:20px;width:180px;transform:skewX(-14deg)}
+.pips .bar.ammo>i{background:var(--num);box-shadow:none}
+.pips .bar.ammo.warn>i{background:var(--warn)}
+/* Bench 2026-09-17: an energy weapon's magazine is a charge, not rounds (isEnergyWeapon in hud.js) — a
+   segmented "cell" fill instead of the ammo bar's solid one, so the two gauges never look the same. */
+.pips .bar.energy{height:20px;width:180px;transform:skewX(-14deg);border-color:var(--glow)}
+.pips .bar.energy>i{background:repeating-linear-gradient(90deg,var(--glow) 0 18px,transparent 18px 22px);box-shadow:0 0 10px color-mix(in srgb,var(--glow) 55%,transparent)}
+.pips .bar.energy.warn>i{background:repeating-linear-gradient(90deg,var(--warn) 0 18px,transparent 18px 22px);box-shadow:0 0 10px rgba(255,176,32,.6)}
 /* Field 2026-08-30: at 11px muted this was unreadable at a glance and Tony could not tell which
    weapon was equipped. It is primary information, so it is sized like primary information. */
 .ammo .wn{font-family:var(--fd);font-weight:700;font-size:24px;letter-spacing:.14em;color:var(--ink);display:flex;align-items:baseline;gap:8px;text-shadow:0 0 16px color-mix(in srgb,var(--glow) 35%,transparent)}
@@ -122,6 +132,9 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 @keyframes swapPulse{from{opacity:.55}to{opacity:1}}
 .reload{transform:skewX(-12deg);background:var(--warn);color:#1a1200;font-family:var(--fd);font-weight:700;font-size:16px;letter-spacing:.26em;padding:3px 18px;animation:blink .7s infinite}
 .reload.solid{animation:none}
+/* Bench 2026-09-17: a reload gives nothing back once the reserve is also empty, so this reads OUT OF
+   AMMO instead of RELOAD (never both) — see hud.js `_live()`'s `outOfAmmo`. */
+.reload.out{background:var(--bad);color:#fff}
 .firevig{position:absolute;inset:0;box-shadow:inset 0 0 140px -20px rgba(255,40,40,.55);animation:hudglow 1s infinite;pointer-events:none}
 .takingfire{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:10px}
 .takingfire .r{width:6px;height:6px;border:1px solid var(--bad);border-radius:50%}
