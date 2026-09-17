@@ -223,3 +223,33 @@ Evidence: `experiment-log/2026-09.md` → *2026-09-11 (bench) — F69 REFUTED: t
 - **F134** 2026-09-15 — closed `scoring.win_by` to kills/survival/objective, with a shared parser and visible refusals at config PUT, compile validation and scorer construction. See `docs/experiment-log/2026-09.md` (2026-09-15 contract-DRY phase 2).
 - **F42.16** 2026-09-15 — removed four Python casts and five redundant console pool intersections; malformed standby JSON rows are decoded and logged. See `docs/experiment-log/2026-09.md` (2026-09-15 contract-DRY phase 2).
 - **F42.15** 2026-09-15 — `Session.compiler` now has a checked Protocol; real and fake compile signatures, catalog stats and public perk effects agree, and catalog failures no longer silently admit unknown weapons. See `docs/experiment-log/2026-09.md` (2026-09-15 contract-DRY phase 3).
+
+# Closed 2026-09-16: the F206-F216 bench pass, evening into 2026-09-17
+
+Two-gun bench (F206) plus a Pixel 4 + Pixel 5 game through Mission Control. Full findings:
+`docs/experiment-log/2026-09.md` (2026-09-16 entry). Validated by the polish loop (commits fbeb9b62,
+0cd811fd, a0ee6e19, 149981be, c913e26b, 313ae7ff).
+
+- 2026-09-16 **F206** a `$PSET` write clears the gun's team, and nothing re-sent `$TID` after it, so the
+  phone's spawn write ($PSET + $SIR table + $SPAWN) gave `$HIR` t4 = 0 both ways. Fixed: `$TID` now
+  follows the last `$PSET` of any write (engine, stage, driver). Bench-proven on two guns: head then
+  `$SPAWN` gave the correct t4; the phone write reproduced t4 = 0; a live `$TID` after it restored the
+  team; a split test showed a lone `$PSET` clears the team and a lone `$SIR` table does not. Commits
+  5458b252, fd76b58d.
+- 2026-09-16 **F207** the START echo check compared the gun's `$ALCD` reserve, which mirrors `$WEAP`
+  t40, against t17 instead of t17 halved, so it could never pass on any weapon. Fixed to compare against
+  t40; confirmed through Mission Control 2026-09-16, the first push acked on both guns after the fix.
+  This answers **F201**. Commit 9c6bb1f1.
+- 2026-09-16 **F201** ANSWERED by F207: the 96-vs-192 echo mismatch was the head's own t40 value, not a
+  clamp and not a halving; four weapons agreed.
+- 2026-09-16 **F212** the respawn gate label and the trigger hold were fixed together: the HUD no longer
+  shows `respawnGate: "trigger"` under an `auto` config, and the trigger now stays dead until T-0,
+  confirmed by Tony (dead in the countdown, live in the match, live after respawn). Commits 3318df64,
+  eb95e4e5.
+- 2026-09-16 **F213** the armour ceiling now follows the real perk-adjusted maximum, so the HUD no
+  longer shows armour above its own `maxArmor` for a `body_armor` carrier. Commit 3318df64.
+- 2026-09-16 **F210** a gun link that connects and disconnects repeatedly now backs off instead of
+  looping; built at the desk (commit bb624b0a, polish fix fbeb9b62). Not reproduced on hardware: the
+  original loop was never captured, so this closes on the built fix, not a confirmed repro-then-fix.
+- 2026-09-16 **F211** the HUD now reports whether Bluetooth is off (`bluetooth_on`, beside the other
+  preflight fields) and shows a message instead of a silently empty picker. Commit bb624b0a.
