@@ -10,6 +10,11 @@
 //
 // Everything here runs on a fake socket with millisecond giveups (`lanGiveupMs`/`backhaulGiveupMs` are
 // constructor overrides for exactly this), so there is no network and no real waiting.
+//
+// Time is the mocked clock of node:test, not the wall clock. The Transport reads `setTimeout` from
+// `globalThis` when it arms a timer, so `advance(ms)` fires exactly the timers that are due. A loaded
+// machine cannot fire a timer early or late against the assertions. Each test closes its Transport in
+// `ctx.after`, so a failed assertion cannot leave a reconnect loop alive and hold the process open.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as E from '../src/transport/envelope.js';
@@ -17,7 +22,17 @@ import { memoryStorage } from '../src/transport/ring.js';
 import { Transport, LAN_GIVEUP_MS, BACKHAUL_GIVEUP_MS, RECLAIM_RETRY_MS } from '../src/transport/transport.js';
 import { STALE_AFTER_MS } from '../src/transport/envelope.js';
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+/** Let the promise callbacks that fired timers queued run. `setImmediate` is not mocked. */
+const flush = () => new Promise(r => setImmediate(r));
+/** 'pending' when `p` has not settled after the queued callbacks ran, else what `p` settled to. */
+const settledOr = p => Promise.race([p, flush().then(() => 'pending')]);
+/** Mock the clock for this test and return `advance(ms)`. The mock is reset when the test ends.
+ *  `advance` steps 1 ms at a time. One large `tick(ms)` gives a timer that a callback arms during the
+ *  tick a start time at the END of the tick, so a giveup followed by a 1 ms backoff would not chain. */
+function useClock(ctx) {
+  ctx.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 1_700_000_000_000 });
+  return async ms => { for (let i = 0; i < ms; i++) { ctx.mock.timers.tick(1); await flush(); } };
+}
 
 /** Records closure, unlike the backhaul suite's fake — "the hanging socket was actually closed" is the
  *  whole point of F153b, and a fake that cannot be asked would make that assertion unfalsifiable. */
@@ -39,60 +54,68 @@ test('F153: LAN_GIVEUP_MS is exported and matches the backhaul giveup — one bo
   assert.equal(LAN_GIVEUP_MS, BACKHAUL_GIVEUP_MS);
 });
 
-test('F153a: a LAN dial that never fires any event gives up at LAN_GIVEUP_MS and the next dial is pub, not the OS timeout', async () => {
+test('F153a: a LAN dial that never fires any event gives up at LAN_GIVEUP_MS and the next dial is pub, not the OS timeout', async ctx => {
+  const advance = useClock(ctx);
   const { sockets, wsFactory } = factory();
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 1, capMs: 2, jitter: 0 }, backhaulGiveupMs: 500, lanGiveupMs: 20, welcomeTimeoutMs: 5000 });
+  ctx.after(() => t.close());
   const p = t.connect({ url: 'ws://192.168.28.167:8766/ws', pub: 'wss://pub/ws' });
   p.catch(() => { /* never welcomes in this test */ });
   assert.equal(sockets[0].url, 'wss://pub/ws', 'pub first');
   sockets[0].close(1006, 'no data');                 // data is off: pub fails at once
   assert.equal(sockets.length, 2); assert.equal(sockets[1].url, 'ws://192.168.28.167:8766/ws', 'falls to LAN');
   // ...and that LAN address has no route from this phone: no onopen, no onerror, no onclose. Ever.
-  await sleep(10);
+  await advance(19);
   assert.equal(sockets.length, 2, 'still waiting on the LAN dial before the giveup');
-  await sleep(25);                                    // LAN giveup + the 1 ms backoff
+  assert.equal(sockets[1].closed, null, 'and not closed before its bound');
+  await advance(1);                                   // the LAN giveup
   assert.ok(sockets[1].closed, 'the hung LAN socket was closed by us, not left to the OS');
+  await advance(1);                                   // the 1 ms backoff
   assert.equal(sockets.length, 3, 'a new pass started');
   assert.equal(sockets[2].url, 'wss://pub/ws', 'and it dials pub again — pub -> lan -> pub');
   sockets[2].open(); sockets[2].recv(welcome());
   await p;
   assert.equal(t.reach, 'backhaul');
-  t.close();
 });
 
-test('F153a: the LAN giveup does not consume a live LAN link — a socket that opens gets the ordinary welcome timeout', async () => {
+test('F153a: the LAN giveup does not consume a live LAN link — a socket that opens gets the ordinary welcome timeout', async ctx => {
+  const advance = useClock(ctx);
   const { sockets, wsFactory } = factory();
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 1, capMs: 2, jitter: 0 }, lanGiveupMs: 15, helloTimeoutMs: 5000 });
+  ctx.after(() => t.close());
   const p = t.connect({ url: 'ws://lan/ws' });        // no pub at all
   sockets[0].open();
-  await sleep(30);                                    // past the pre-open giveup, but the socket IS open
+  await advance(30);                                    // past the pre-open giveup, but the socket IS open
   assert.equal(sockets.length, 1, 'an opened socket is never closed by the pre-open giveup');
   assert.equal(sockets[0].closed, null);
   sockets[0].recv(welcome());
   await p;
   assert.equal(t.state, 'bound'); assert.equal(t.reach, 'lan');
-  t.close();
 });
 
-test('F153a: with no pub held, a dead LAN address still ends its pass and retries on the ordinary backoff', async () => {
+test('F153a: with no pub held, a dead LAN address still ends its pass and retries on the ordinary backoff', async ctx => {
+  const advance = useClock(ctx);
   const { sockets, wsFactory } = factory();
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 1, capMs: 2, jitter: 0 }, lanGiveupMs: 15, welcomeTimeoutMs: 5000 });
+  ctx.after(() => t.close());
   const p = t.connect({ url: 'ws://192.168.28.167:8766/ws' });
   p.catch(() => { /* never welcomes */ });
-  await sleep(30);
+  await advance(30);
   assert.equal(sockets.length, 2, 'the silent dial was given up on and retried');
   assert.equal(sockets[1].url, 'ws://192.168.28.167:8766/ws');
   assert.ok(t.reconnects >= 1, 'a LAN failure IS a backoff-consuming reconnect (unlike the backhaul fallback)');
   t.close();
 });
 
-test('F153b: a new connect() closes the dial already in flight and dials the NEW pub at once', async () => {
+test('F153b: a new connect() closes the dial already in flight and dials the NEW pub at once', async ctx => {
+  const advance = useClock(ctx);
   const { sockets, wsFactory } = factory();
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 1, capMs: 2, jitter: 0 }, backhaulGiveupMs: 5000, lanGiveupMs: 5000, welcomeTimeoutMs: 5000 });
+  ctx.after(() => t.close());
   const first = t.connect({ url: 'ws://192.168.28.167:8766/ws', pub: 'wss://old-tunnel/ws' });
   const firstErr = first.then(() => null, e => e);
   sockets[0].close(1006, 'tunnel restarted — the old hostname is gone');
@@ -113,10 +136,12 @@ test('F153b: a new connect() closes the dial already in flight and dials the NEW
   t.close();
 });
 
-test('F153b: the superseded dial cannot resurrect itself — a late event on the abandoned socket does nothing', async () => {
+test('F153b: the superseded dial cannot resurrect itself — a late event on the abandoned socket does nothing', async ctx => {
+  const advance = useClock(ctx);
   const { sockets, wsFactory } = factory();
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 1, capMs: 2, jitter: 0 }, lanGiveupMs: 5000, welcomeTimeoutMs: 5000 });
+  ctx.after(() => t.close());
   const first = t.connect({ url: 'ws://lan-a/ws' });
   first.catch(() => { /* superseded */ });
   const abandoned = sockets[0];
@@ -129,10 +154,12 @@ test('F153b: the superseded dial cannot resurrect itself — a late event on the
   t.close();
 });
 
-test('F153c: dialNow() resets the backoff and restarts the ladder from pub, keeping the pending connect()', async () => {
+test('F153c: dialNow() resets the backoff and restarts the ladder from pub, keeping the pending connect()', async ctx => {
+  const advance = useClock(ctx);
   const { sockets, wsFactory } = factory();
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 10000, capMs: 10000, jitter: 0 }, backhaulGiveupMs: 5000, lanGiveupMs: 5000, welcomeTimeoutMs: 5000 });
+  ctx.after(() => t.close());
   const p = t.connect({ url: 'ws://lan/ws', pub: 'wss://pub/ws' });
   sockets[0].close(1006, 'no data');                  // pub fails
   const lanDial = sockets[1];                         // LAN hangs (no route while the radio was down)
@@ -148,10 +175,12 @@ test('F153c: dialNow() resets the backoff and restarts the ladder from pub, keep
   t.close();
 });
 
-test('F153c: dialNow() is a no-op while bound, once rejected, and after close() — it never disturbs a live link', async () => {
+test('F153c: dialNow() is a no-op while bound, once rejected, and after close() — it never disturbs a live link', async ctx => {
+  const advance = useClock(ctx);
   const { sockets, wsFactory } = factory();
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t.close());
   const p = t.connect({ url: 'ws://lan/ws' });
   sockets[0].open(); sockets[0].recv(welcome());
   await p;
@@ -164,6 +193,7 @@ test('F153c: dialNow() is a no-op while bound, once rejected, and after close() 
   const { sockets: s2, wsFactory: f2 } = factory();
   const t2 = new Transport({ storage: memoryStorage(), wsFactory: f2, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t2.close());
   const p2 = t2.connect({ url: 'ws://lan/ws' });
   s2[0].open(); s2[0].close(4003, 'gun in use');
   await assert.rejects(p2, /refused/);
@@ -172,22 +202,25 @@ test('F153c: dialNow() is a no-op while bound, once rejected, and after close() 
   t2.close();
 });
 
-test('F153c: kick() is dialNow(), and neither dials with no target at all', () => {
+test('F153c: kick() is dialNow(), and neither dials with no target at all', ctx => {
   const { sockets, wsFactory } = factory();
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' } });
+  ctx.after(() => t.close());
   assert.equal(t.kick(), false, 'never scanned a QR, nothing remembered — nothing to dial');
   assert.equal(sockets.length, 0);
   t.close();
 });
 
-test('F153b/c: an in-flight pub REACHABILITY PROBE is torn down by a new connect() too (it belongs to the old target)', async () => {
+test('F153b/c: an in-flight pub REACHABILITY PROBE is torn down by a new connect() too (it belongs to the old target)', async ctx => {
+  const advance = useClock(ctx);
   const { sockets, wsFactory } = factory();
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 1, capMs: 2, jitter: 0 }, backhaulGiveupMs: 5000, pubRetryMs: 5 });
+  ctx.after(() => t.close());
   const p = t.connect({ url: 'ws://lan/ws' });
   sockets[0].open(); sockets[0].recv(welcome({ join: { pub: 'wss://pub/ws', secret: 'sek' } }));
   await p;
-  await sleep(5);
+  await advance(5);
   assert.equal(sockets[1].url, 'wss://pub/ws', 'a probe is in flight');
   const probe = sockets[1];
   const p2 = t.connect({ url: 'ws://other-mc/ws' });   // told to join a different MC entirely
@@ -199,25 +232,32 @@ test('F153b/c: an in-flight pub REACHABILITY PROBE is torn down by a new connect
 
 // ---------------- review pass 1 ----------------
 
-test('F153c: dialNow() keeps the connect() timeout RUNNING — a kept promise must still settle', async () => {
+test('F153c: dialNow() keeps the connect() timeout RUNNING — a kept promise must still settle', async ctx => {
+  const advance = useClock(ctx);
   const { sockets, wsFactory } = factory();
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 10000, capMs: 10000, jitter: 0 }, lanGiveupMs: 5000, welcomeTimeoutMs: 300 });
+  ctx.after(() => t.close());
   const p = t.connect({ url: 'ws://lan/ws' });
   const settled = p.then(() => 'resolved', e => e.message);
-  await sleep(50);
+  await advance(50);
   assert.equal(t.dialNow(), true);
   // _clearTimers() CANCELS the connect timer; restoring the saved handle afterwards does not un-cancel
   // it, so this promise used to hang forever instead of telling the app the join failed.
-  assert.match(await settled, /no welcome within 300 ms/);
+  await advance(249);
+  assert.equal(await settledOr(settled), 'pending', 'the deadline is still the original 300 ms, not reset by dialNow()');
+  await advance(1);
+  assert.match(await settledOr(settled), /no welcome within 300 ms/);
   t.close();
 });
 
-test('security: a hello to an address nobody typed or scanned carries no node_key and no join secret', async () => {
+test('security: a hello to an address nobody typed or scanned carries no node_key and no join secret', async ctx => {
+  const advance = useClock(ctx);
   const { sockets, wsFactory } = factory();
   const store = memoryStorage();
   const t = new Transport({ storage: store, wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t.close());
   const p = t.connect({ url: 'ws://lan/ws', secret: 'sek' });
   sockets[0].open();
   sockets[0].recv(welcome({ node_key: 'KEY-1' }));
@@ -236,10 +276,12 @@ test('security: a hello to an address nobody typed or scanned carries no node_ke
   t.close();
 });
 
-test('security: an untrusted peer that WELCOMES us has proved itself — the next hello carries the key again', async () => {
+test('security: an untrusted peer that WELCOMES us has proved itself — the next hello carries the key again', async ctx => {
+  const advance = useClock(ctx);
   const { sockets, wsFactory } = factory();
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t.close());
   const p = t.connect({ url: 'ws://192.168.0.77:8766/ws', trusted: false, secret: 'sek' });
   assert.equal(t.trusted, false);
   sockets[0].open();
@@ -248,19 +290,21 @@ test('security: an untrusted peer that WELCOMES us has proved itself — the nex
   await p;
   assert.equal(t.trusted, true, 'a welcome is the proof');
   sockets[0].close(4002, 'drop');
-  await sleep(10);
+  await advance(10);
   sockets[1].open();
   assert.equal(sockets[1].sent[0].body.node_key, 'KEY-2', 'without the key a reconnect cannot take its own node_id back (A8.2)');
   assert.equal(sockets[1].sent[0].body.secret, 'sek2');
   t.close();
 });
 
-test('security: a plain connect() is trusted — the ordinary QR/typed/remembered join is unchanged', async () => {
+test('security: a plain connect() is trusted — the ordinary QR/typed/remembered join is unchanged', async ctx => {
+  const advance = useClock(ctx);
   const { sockets, wsFactory } = factory();
   const store = memoryStorage();
   store.setItem('brx.node_key', 'KEY-0');
   const t = new Transport({ storage: store, wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t.close());
   const p = t.connect({ url: 'ws://lan/ws', secret: 'sek' });
   p.catch(() => { /* closed below */ });
   sockets[0].open();
@@ -269,10 +313,12 @@ test('security: a plain connect() is trusted — the ordinary QR/typed/remembere
   t.close();
 });
 
-test('security: a 4003 on an UNTRUSTED dial waits out the stale window and tries once more (A8.2)', async () => {
+test('security: a 4003 on an UNTRUSTED dial waits out the stale window and tries once more (A8.2)', async ctx => {
+  const advance = useClock(ctx);
   const { sockets, wsFactory } = factory();
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 1, capMs: 2, jitter: 0 }, reclaimRetryMs: 30, welcomeTimeoutMs: 5000 });
+  ctx.after(() => t.close());
   const p = t.connect({ url: 'ws://192.168.0.77:8766/ws', trusted: false });
   sockets[0].open();
   sockets[0].close(4003, 'gun or node in use');
@@ -280,7 +326,9 @@ test('security: a 4003 on an UNTRUSTED dial waits out the stale window and tries
   // displaced with no key at all. A dead end here means clearing app data in the middle of a match.
   assert.equal(t.state, 'offline'); assert.equal(t.rejected, null);
   assert.equal(sockets.length, 1, 'it waits — an instant retry would be refused for the same reason');
-  await sleep(45);
+  await advance(29);
+  assert.equal(sockets.length, 1, 'still inside the stale window');
+  await advance(1);
   assert.equal(sockets.length, 2, 'one more try after the stale window');
   sockets[1].open();
   assert.equal('node_key' in sockets[1].sent[0].body, false, 'still untrusted, still keyless — that is what makes the displacement legal');
@@ -290,31 +338,35 @@ test('security: a 4003 on an UNTRUSTED dial waits out the stale window and tries
   t.close();
 });
 
-test('security: the untrusted reclaim is spent ONCE — a second 4003 is authoritative', async () => {
+test('security: the untrusted reclaim is spent ONCE — a second 4003 is authoritative', async ctx => {
+  const advance = useClock(ctx);
   const { sockets, wsFactory } = factory();
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 1, capMs: 2, jitter: 0 }, reclaimRetryMs: 20, welcomeTimeoutMs: 5000 });
+  ctx.after(() => t.close());
   const p = t.connect({ url: 'ws://192.168.0.77:8766/ws', trusted: false });
   sockets[0].open(); sockets[0].close(4003, 'in use');
-  await sleep(35);
+  await advance(35);
   sockets[1].open(); sockets[1].close(4003, 'in use');
   await assert.rejects(p, /refused.*4003/);
   assert.equal(t.state, 'rejected');
-  await sleep(35);
+  await advance(35);
   assert.equal(sockets.length, 2, 'no third dial — someone else really does hold this gun');
   t.close();
 });
 
-test('security: a TRUSTED dial keeps the old contract — 4003 and 4001 are terminal at once', async () => {
+test('security: a TRUSTED dial keeps the old contract — 4003 and 4001 are terminal at once', async ctx => {
+  const advance = useClock(ctx);
   for (const code of [4003, 4001]) {
     const { sockets, wsFactory } = factory();
     const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
       backoff: { baseMs: 1, capMs: 2, jitter: 0 }, reclaimRetryMs: 20 });
+    ctx.after(() => t.close());
     const p = t.connect({ url: 'ws://lan/ws' });
     sockets[0].open(); sockets[0].close(code, 'refused');
     await assert.rejects(p, /refused/);
     assert.equal(t.state, 'rejected');
-    await sleep(35);
+    await advance(35);
     assert.equal(sockets.length, 1, `no retry after ${code} on a trusted dial`);
     t.close();
   }
@@ -325,20 +377,22 @@ test('security: RECLAIM_RETRY_MS clears the contract stale window it is derived 
   assert.ok(RECLAIM_RETRY_MS < STALE_AFTER_MS + 5000, 'and the player is standing there waiting');
 });
 
-test('review final: the reclaim wait does not reject the connect() the player is waiting on', async () => {
+test('review final: the reclaim wait does not reject the connect() the player is waiting on', async ctx => {
+  const advance = useClock(ctx);
   const { sockets, wsFactory } = factory();
   // The real numbers are RECLAIM_RETRY_MS 9500 under welcomeTimeoutMs 10000, so the promise rejected
   // ~500 ms into a retry that then succeeded and the HUD logged "no welcome within 10000 ms" over a join
   // that had landed. Same shape here, scaled down: the wait is LONGER than the welcome timeout.
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 1, capMs: 2, jitter: 0 }, reclaimRetryMs: 60, welcomeTimeoutMs: 30 });
+  ctx.after(() => t.close());
   const p = t.connect({ url: 'ws://192.168.0.77:8766/ws', trusted: false });
   let rejected = null;
   p.catch(e => { rejected = e.message; });
   sockets[0].open(); sockets[0].close(4003, 'in use');
-  await sleep(45);
+  await advance(45);
   assert.equal(rejected, null, 'the old timeout would have fired by now, mid-wait');
-  await sleep(30);
+  await advance(30);
   assert.equal(sockets.length, 2, 'the retry went out');
   sockets[1].open(); sockets[1].recv(welcome({ node_key: 'KEY-4' }));
   await p;                                  // resolves — no spurious rejection to log
@@ -347,29 +401,39 @@ test('review final: the reclaim wait does not reject the connect() the player is
   t.close();
 });
 
-test('review final: and if the reclaim retry itself never welcomes, the promise still settles — on the EXTENDED deadline', async () => {
+test('review final: and if the reclaim retry itself never welcomes, the promise still settles — on the EXTENDED deadline', async ctx => {
+  const advance = useClock(ctx);
   // The deadline is re-armed, not discarded: cancelling it (what `_clearTimers()` does on its own) would
   // leave the app waiting on a promise that can never settle either way, which is the same class of bug
   // as the dialNow() one. The new deadline is the wait plus a full welcome window.
   const { sockets, wsFactory } = factory();
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 1, capMs: 2, jitter: 0 }, lanGiveupMs: 5000, reclaimRetryMs: 40, welcomeTimeoutMs: 30 });
+  ctx.after(() => t.close());
   const p = t.connect({ url: 'ws://192.168.0.77:8766/ws', trusted: false });
   const settled = p.then(() => 'resolved', e => e.message);
   sockets[0].open(); sockets[0].close(4003, 'in use');
-  await sleep(50);
+  await advance(40);
   assert.equal(sockets.length, 2, 'the retry went out');
-  assert.equal(await Promise.race([settled, sleep(10).then(() => 'pending')]), 'pending', 'not settled while the retry is still in its window');
+  assert.equal(await settledOr(settled), 'pending', 'not settled while the retry is still in its window');
   sockets[1].open();                          // dials, says hello, and is never answered
-  assert.equal(await settled, 'connect: no welcome within 70 ms', 'the wait (40) plus the welcome window (30)');
+  await advance(29);
+  assert.equal(await settledOr(settled), 'pending', 'not settled 1 ms before the extended deadline');
+  await advance(1);
+  assert.equal(await settledOr(settled), 'connect: no welcome within 70 ms', 'the wait (40) plus the welcome window (30)');
   t.close();
 });
 
-test('review final: an ordinary connect() still rejects on its own welcomeTimeoutMs, message unchanged', async () => {
+test('review final: an ordinary connect() still rejects on its own welcomeTimeoutMs, message unchanged', async ctx => {
+  const advance = useClock(ctx);
   const { sockets, wsFactory } = factory();
   const t = new Transport({ storage: memoryStorage(), wsFactory, gun: { name: 'Tactix-XXXX', tail: '3D4F' },
     backoff: { baseMs: 1, capMs: 2, jitter: 0 }, lanGiveupMs: 5000, welcomeTimeoutMs: 40 });
-  const p = t.connect({ url: 'ws://lan/ws' });
-  await assert.rejects(p, /connect: no welcome within 40 ms/);
+  ctx.after(() => t.close());
+  const settled = t.connect({ url: 'ws://lan/ws' }).then(() => 'resolved', e => e.message);
+  await advance(39);
+  assert.equal(await settledOr(settled), 'pending');
+  await advance(1);
+  assert.match(await settledOr(settled), /^connect: no welcome within 40 ms$/);
   t.close();
 });

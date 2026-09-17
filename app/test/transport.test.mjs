@@ -15,6 +15,24 @@ const PY = path.resolve(HERE, '../../.venv/bin/python');
 const BUNDLE = path.resolve(HERE, '../www/app.js');
 const BUILDER = path.resolve(HERE, '../scripts/build.mjs');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+/** Let the promise callbacks that fired timers queued run. `setImmediate` is not mocked. */
+const flush = () => new Promise(r => setImmediate(r));
+/** The unit tests below use the mocked clock of node:test, so a loaded machine cannot fire a Transport
+ *  timer early or late against the assertions. `advance` steps 1 ms at a time: one large `tick(ms)`
+ *  gives a timer that a callback arms during the tick a start time at the END of the tick. */
+function useClock(ctx) {
+  ctx.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 1_700_000_000_000 });
+  return async ms => { for (let i = 0; i < ms; i++) { ctx.mock.timers.tick(1); await flush(); } };
+}
+/** Real time, for the integration test only: poll `pred` until it is true or `ms` elapses. A fixed sleep
+ *  there raced the server under CPU load; a condition waits exactly as long as the server needs. */
+async function waitFor(pred, what, ms = 8000) {
+  const t0 = Date.now();
+  while (!pred()) {
+    if (Date.now() - t0 > ms) throw new Error('timeout waiting for ' + what);
+    await sleep(10);
+  }
+}
 
 // ---------------- unit: envelope ----------------
 test('envelope: hello/status/event validate like the Python rules', () => {
@@ -78,11 +96,13 @@ class FakeWS {
   open() { this.onopen && this.onopen(); }
   recv(obj) { this.onmessage && this.onmessage({ data: JSON.stringify(obj) }); }
 }
-test('transport: hello→welcome→bind, queue offline, flush on reconnect, prune on ack', async () => {
+test('transport: hello→welcome→bind, queue offline, flush on reconnect, prune on ack', async ctx => {
+  const advance = useClock(ctx);
   const sockets = [];
   const store = memoryStorage();
   const t = new Transport({ storage: store, wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; },
     gun: { name: 'GUN-A', tail: '3D4F', fw: 'v4.32' }, node: { app_ver: 't' }, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t.close());
   const states = []; t.onState(s => states.push(s));
   const p = t.connect({ url: 'ws://x/ws' });
   const ws = sockets[0]; ws.open();
@@ -100,7 +120,7 @@ test('transport: hello→welcome→bind, queue offline, flush on reconnect, prun
   assert.equal(t.status({ arm_state: 'live' }), false);       // status dropped offline
   t.send({ type: 'hit_taken', shooter_num: 19, shooter_team: 2, dmg: 9 }); t.send({ type: 'death', shooter_num: 19, shooter_team: 2 });
   assert.equal(t.ring.size, 2);
-  await sleep(10);                                            // backoff fires → new socket
+  await advance(10);                                          // backoff fires → new socket
   const ws2 = sockets[1]; assert.ok(ws2); ws2.open(); assert.equal(ws2.sent[0].body.seq_next, 14);
   ws2.recv(E.makeEnvelope('welcome', { session_id: 's', server_t: Date.now(), seq_hi: 11 }));
   const batch = ws2.sent.find(e => e.kind === 'event_batch'); assert.deepEqual(batch.body.events.map(e => e.seq), [12, 13]); E.validate(batch, 'node');
@@ -114,31 +134,42 @@ test('transport: hello→welcome→bind, queue offline, flush on reconnect, prun
   t.close(); assert.deepEqual(states.slice(0, 3), ['connecting', 'open', 'bound']);
 });
 
-test('transport: node_key from welcome is persisted and re-sent on every hello (A8)', async () => {
+test('transport: node_key from welcome is persisted and re-sent on every hello (A8)', async ctx => {
+  const advance = useClock(ctx);
   const sockets = []; const store = memoryStorage();
   const t = new Transport({ storage: store, wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; }, gun: { name: 'GUN-A', tail: '3D4F' }, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t.close());
   const p = t.connect({ url: 'ws://x/ws' }); sockets[0].open();
   assert.equal('node_key' in sockets[0].sent[0].body, false, 'first hello has no key yet');
   sockets[0].recv(E.makeEnvelope('welcome', { session_id: 's', server_t: Date.now(), seq_hi: 0, node_key: 'k-123' })); await p;
-  sockets[0].close(); await sleep(10); sockets[1].open();
+  sockets[0].close(); await advance(10); sockets[1].open();
   assert.equal(sockets[1].sent[0].body.node_key, 'k-123', 're-hello carries the key');
   const t2 = new Transport({ storage: store, wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; }, gun: { name: 'GUN-A', tail: '3D4F' } });
+  ctx.after(() => t2.close());
   assert.equal(t2.nodeKey, 'k-123', 'persisted across app restarts'); t.close(); t2.close();
   assert.equal(t.syncIntervalMs <= E.SYNC_FRESH_MS / 2, true, 'periodic sync keeps synced() fresh');
 });
 
-test('transport: connect() rejects when no welcome arrives (loop keeps reconnecting)', async () => {
+test('transport: connect() rejects when no welcome arrives (loop keeps reconnecting)', async ctx => {
+  const advance = useClock(ctx);
   const sockets = []; const store = memoryStorage();
   const t = new Transport({ storage: store, wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; }, gun: { name: 'GUN-A', tail: '3D4F' }, welcomeTimeoutMs: 30, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t.close());
   const p = t.connect({ url: 'ws://x/ws' }); sockets[0].open();
-  await assert.rejects(p, /no welcome/);
+  const rejected = assert.rejects(p, /no welcome within 30 ms/);
+  await advance(30);
+  await rejected;
   assert.equal(t.closed, false, 'still trying'); t.close();
 });
 
 // ---------------- integration: the real Python NetServer ----------------
 const haveServer = existsSync(PY) && spawnSync(PY, ['-c', 'import websockets, brx_mcp.mc.net'], { stdio: 'ignore' }).status === 0;
-test('integration: Transport ⇄ real NetServer (hydrate, seq adoption, status, offline flush + ack, sync, pushes)', { skip: !haveServer && 'needs .venv python with websockets' }, async () => {
+test('integration: Transport ⇄ real NetServer (hydrate, seq adoption, status, offline flush + ack, sync, pushes)', { skip: !haveServer && 'needs .venv python with websockets' }, async ctx => {
   const srv = spawn(PY, [path.join(HERE, 'mc_server.py')], { stdio: ['pipe', 'pipe', 'inherit'] });
+  // Registered first, so it runs even when an assertion or a wait below throws: a live Transport keeps
+  // its reconnect loop running, and a live server keeps the test process from exiting.
+  let t = null, t2 = null;
+  ctx.after(() => { if (t) t.close(); if (t2) t2.close(); srv.kill(); });
   const lines = []; const waiters = [];
   let buf = '';
   srv.stdout.on('data', d => { buf += d; let i; while ((i = buf.indexOf('\n')) >= 0) { const l = buf.slice(0, i); buf = buf.slice(i + 1); if (!l.trim()) continue; const o = JSON.parse(l); lines.push(o); waiters.splice(0).forEach(w => w()); } });
@@ -147,21 +178,21 @@ test('integration: Transport ⇄ real NetServer (hydrate, seq adoption, status, 
   try {
     const { url } = await until(o => o.port);
     const store = memoryStorage();
-    const t = new Transport({ storage: store, gun: { name: 'GUN-A', tail: '3D4F', fw: 'v4.32' }, node: { app_ver: 'test' }, backoff: { baseMs: 50, capMs: 200, jitter: 0.2 } });
+    t = new Transport({ storage: store, gun: { name: 'GUN-A', tail: '3D4F', fw: 'v4.32' }, node: { app_ver: 'test' }, backoff: { baseMs: 50, capMs: 200, jitter: 0.2 } });
     t.setStatusProvider(() => ({ hp: 45, armor: 70, ammo: 36, alive: true, shots: 0, arm_state: 'kitted' }));
     const msgs = []; t.onMessage(m => msgs.push(m));
     const welcome = await t.connect({ url });
     assert.equal(welcome.node.player.player_num, 7); assert.equal(welcome.node.hello_seq_next, 1); assert.equal(t.playerId, 'p1');
     await until(o => o.ev === 'node' && o.gun_tail === '3D4F');
     await until(o => o.ev === 'status' && o.arm_state === 'kitted' && o.hp === 45);
-    await sleep(300); assert.equal(t.synced(), true); assert.ok(Math.abs(t.clock.offset) < 1000, 'offset ' + t.clock.offset); assert.ok(t.clock.sampleCount >= 3);
+    await waitFor(() => t.clock.sampleCount >= 3, 'three clock samples'); assert.equal(t.synced(), true); assert.ok(Math.abs(t.clock.offset) < 1000, 'offset ' + t.clock.offset); assert.ok(t.clock.sampleCount >= 3);
     // live fact → ingested + acked
     const s1 = t.send({ type: 'hit_taken', shooter_num: 19, shooter_team: 2, dmg: 9 });
     await until(o => o.ev === 'event' && o.seq === s1 && o.type === 'hit_taken');
-    await sleep(100); assert.equal(t.ring.size, 0);
+    await waitFor(() => t.ring.size === 0, 'the ack of the live fact'); assert.equal(t.ring.size, 0);
     // walk out of range: die offline, come back → batch flush in order, acked, pruned
     t.close();
-    const t2 = new Transport({ storage: store, gun: { name: 'GUN-A', tail: '3D4F' }, node: { app_ver: 'test' }, backoff: { baseMs: 50, capMs: 200, jitter: 0 } });
+    t2 = new Transport({ storage: store, gun: { name: 'GUN-A', tail: '3D4F' }, node: { app_ver: 'test' }, backoff: { baseMs: 50, capMs: 200, jitter: 0 } });
     const s2 = t2.send({ type: 'hit_taken', shooter_num: 19, shooter_team: 2, dmg: 9 });
     const s3 = t2.send({ type: 'death', shooter_num: 19, shooter_team: 2 });
     assert.equal(t2.ring.size, 2); assert.equal(t2.nodeId, t.nodeId, 'node_id persisted');
@@ -169,13 +200,13 @@ test('integration: Transport ⇄ real NetServer (hydrate, seq adoption, status, 
     assert.equal(w2.seq_hi, s1);
     const e2 = await until(o => o.ev === 'event' && o.seq === s2); const e3 = await until(o => o.ev === 'event' && o.seq === s3 && o.type === 'death');
     assert.ok(lines.indexOf(e2) < lines.indexOf(e3), 'oldest first');
-    await sleep(150); assert.equal(t2.ring.size, 0, 'pruned on ack');
+    await waitFor(() => t2.ring.size === 0, 'the ack of the flushed batch'); assert.equal(t2.ring.size, 0, 'pruned on ack');
     // pushes from MC reach onMessage
     const m2 = []; t2.onMessage(m => m2.push(m));
     tell({ push: { node_id: t2.nodeId, kind: 'assign', body: { player: { player_id: 'p1', player_num: 7 }, team: { tid: 1 }, roster: [] } } });
     tell({ push: { node_id: t2.nodeId, kind: 'config', body: { config: { config_id: 'c1', time_limit_s: 600 }, frames: { head: ['$CLEAR,*'], spawn: [], revive: [], end: [], panic: [], cues: {} }, roster: [] } } });
     tell({ broadcast: { kind: 'start', body: { match_id: 'm9', go_live_t: Date.now() + 60000, config_id: 'c1', seq: 1, countdown_s: 60 } } });
-    await sleep(400);
+    await waitFor(() => m2.length >= 3, 'three MC pushes');
     assert.deepEqual(m2.map(m => m.kind), ['assign', 'config', 'start']); assert.equal(t2.matchId, 'm9');
     assert.equal(t2.report('ack_config', { config_id: 'c1', ok: true, gun_echo: '$LCD,0,0,0,0,0,0,*' }), true);
     await until(o => o.ev === 'msg' && o.kind === 'ack_config' && o.body.gun_echo);
@@ -183,16 +214,18 @@ test('integration: Transport ⇄ real NetServer (hydrate, seq adoption, status, 
   } finally { tell({ quit: 1 }); srv.kill(); }
 });
 
-test('transport: a server refusal (4003 in use / 4001 version) stops the reconnect loop and reports the reason', async () => {
+test('transport: a server refusal (4003 in use / 4001 version) stops the reconnect loop and reports the reason', async ctx => {
+  const advance = useClock(ctx);
   const sockets = [];
   const store = memoryStorage();
   const t = new Transport({ storage: store, wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; }, gun: { name: 'GUN-A', tail: '3D4F' }, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t.close());
   const states = []; t.onState(s => states.push(s));
   const p = t.connect({ url: 'ws://x/ws' });
   sockets[0].open();
   sockets[0].onclose({ code: 4003, reason: 'gun in use' });
   await assert.rejects(p, /refused.*gun in use.*4003/);
-  await new Promise(r => setTimeout(r, 15));
+  await advance(15);
   assert.equal(sockets.length, 1, 'no reconnect after a refusal');
   assert.equal(t.state, 'rejected'); assert.equal(t.rejected.code, 4003); assert.ok(t.closed);
   assert.ok(states.includes('rejected'));
@@ -227,10 +260,12 @@ test('envelope: MC -> node kinds include alert and station_config (F104 / F105 -
 });
 
 // ---------------- A29: the phone reports its REAL build, on hello AND on every heartbeat ----------------
-test('transport: hello and every status carry the baked app_ver + platform (A29)', async () => {
+test('transport: hello and every status carry the baked app_ver + platform (A29)', async ctx => {
+  useClock(ctx);
   const sockets = [];
   const t = new Transport({ storage: memoryStorage(), wsFactory: () => { const w = new FakeWS(); sockets.push(w); return w; },
     gun: { name: 'GUN-A', tail: '3D4F' }, backoff: { baseMs: 1, capMs: 2, jitter: 0 } });
+  ctx.after(() => t.close());
   assert.equal(t.appVer, APP_VER, 'the default IS the baked constant — never a hand-written literal');
   assert.match(APP_VER, /^\d+\.\d+\.\d+\+\S+$/, 'shape is "<package version>+<sha|unknown>[-dirty]"');
   const p = t.connect({ url: 'ws://x/ws' }); sockets[0].open();

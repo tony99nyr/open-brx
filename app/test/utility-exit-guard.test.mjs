@@ -59,7 +59,11 @@ await import('../src/utility.js');
 // same as any page that doesn't poke a script until it has finished loading. Uses the REAL (ref'd)
 // setTimeout -- the patched one above is unref'd on purpose and must not be what this process waits on,
 // or there is nothing left keeping the event loop open for it to ever fire.
-await new Promise(r => realSetTimeout(r, 50));
+// Poll for the published API, not a fixed 50 ms: under CPU load the bootstrap can take longer than any
+// fixed wait. The 5 s bound keeps a real load failure fast and clear.
+for (const t0 = Date.now(); !global.window?.brxUtility && Date.now() - t0 < 5000;) {
+  await new Promise(r => realSetTimeout(r, 5));
+}
 const api = global.window.brxUtility;
 assert.ok(api, 'utility.js did not publish window.brxUtility -- module load itself failed');
 

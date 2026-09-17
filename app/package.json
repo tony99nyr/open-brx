@@ -5,7 +5,7 @@
   "description": "BRX native BLE app (Capacitor) \u2014 Android + iOS from one codebase",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test": "node --test \"test/*.test.mjs\"",
+    "test": "node --test --test-timeout=120000 \"test/*.test.mjs\"",
     "typecheck": "tsc --noEmit",
     "sync": "npm run build && npx cap sync",
     "ios:setup": "npm run build && ./scripts/ios-setup.sh",
