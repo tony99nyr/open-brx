@@ -1983,6 +1983,10 @@ const gaugeState = pg => pg.evaluate(() => ({
   energyBar: !!document.querySelector('#pips > .bar.energy'),
   mag: (document.getElementById('mag') || {}).textContent,
   prompt: (document.querySelector('.ammo .reload .unskew') || {}).textContent || null,
+  // item 6 revision (bench 2026-09-17): NOT ENOUGH ENERGY moved from a second big prompt to a small
+  // note under the digits, so a state check needs both: the ONE big prompt, and this note's presence.
+  note: (document.querySelector('.ammo .enote') || {}).textContent || null,
+  bigPrompts: document.querySelectorAll('.ammo .reload').length,
 }));
 await step('ammo gauge se: a 4-round sniper mag gets exactly 4 pips, one per round, and firing one clears exactly one', async () => {
   const pg = await open(VIEWS[1], 'live');
@@ -2087,44 +2091,76 @@ await step('ammo prompt se: an energy weapon with reserve left reads RECHARGE, n
   await pg.screenshot({ path: `${OUT}/se-ammo-energy-recharge.png` });
   await pg.close();
 });
-// ---------- NOT ENOUGH ENERGY (bench 2026-09-17, item 6): a charge rifle cell under one full charge
-// (10, `CHARGE_RIFLE_FULL_CHARGE_COST` in hud.js) fires nothing, so a cell of 1-9 must say so, distinct
-// from the ordinary low-ammo warning; at exactly 10 the state must not show. ----------
-const allPrompts = pg => pg.evaluate(() => Array.from(document.querySelectorAll('.ammo .reload .unskew')).map(x => x.textContent));
-await step('ammo prompt se: a charge rifle cell of 9 (under the 10-cost full charge) reads NOT ENOUGH ENERGY', async () => {
+// ---------- energy severity revision (bench 2026-09-17, item 6 reworked): a charge rifle cell under one
+// full charge (10, `CHARGE_RIFLE_FULL_CHARGE_COST` in hud.js) fires nothing, but the ORIGINAL fix made
+// this a second big prompt (NOT ENOUGH ENERGY, red) sitting beside RECHARGE, and dropped it alone with
+// no big prompt at all once the reserve ran out too -- a player with nothing left saw the mildest-looking
+// screen of the three. New rule: severity comes from the RESERVE, not the cell. Below one full charge (or
+// empty) with a reserve to draw on reads one calm RECHARGE, exactly like the empty-cell case already did.
+// Below one full charge with NO reserve reads OUT OF ENERGY, same big red prompt as mag 0 / reserve 0.
+// NOT ENOUGH ENERGY survives only as a small note under the digits, never a second big prompt. ----------
+await step('ammo prompt se: a charge rifle cell of 9 (under the 10-cost full charge) with reserve reads one calm RECHARGE, plus the small note', async () => {
   const pg = await open(VIEWS[1], 'live');
   await setAmmo(pg, 'charge_rifle', 0, 40, 80, 9); await pg.waitForTimeout(400);
-  const r = await gaugeState(pg); const all = await allPrompts(pg);
-  must(r.prompt === 'NOT ENOUGH ENERGY', `9 of 40 (cost 10) must read NOT ENOUGH ENERGY, got ${JSON.stringify(r.prompt)}`);
-  must(all.some(t => /^RECHARGE/.test(t)), `with reserve left it must also offer RECHARGE: ${JSON.stringify(all)}`);
+  const r = await gaugeState(pg);
+  must(r.bigPrompts === 1 && /^RECHARGE/.test(r.prompt || ''), `9 of 40 with reserve must read one RECHARGE prompt, got ${JSON.stringify(r)}`);
+  must(r.note === 'NOT ENOUGH ENERGY', `the small note must still say why: ${JSON.stringify(r)}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-energy-not-enough.png` });
   await pg.close();
 });
-await step('ammo prompt se: a charge rifle cell of 9 with NO reserve reads NOT ENOUGH ENERGY alone, no RECHARGE promise', async () => {
+await step('ammo prompt se: a charge rifle cell of 9 with NO reserve reads OUT OF ENERGY, plus the small note, never NOT ENOUGH ENERGY as the big prompt', async () => {
   const pg = await open(VIEWS[1], 'live');
   await setAmmo(pg, 'charge_rifle', 0, 40, 0, 9); await pg.waitForTimeout(400);
-  const all = await allPrompts(pg);
-  must(all.length === 1 && all[0] === 'NOT ENOUGH ENERGY', `no reserve must drop the RECHARGE hint: ${JSON.stringify(all)}`);
+  const r = await gaugeState(pg);
+  must(r.bigPrompts === 1 && r.prompt === 'OUT OF ENERGY', `9 of 40 with no reserve must read OUT OF ENERGY (the player can neither fire nor recharge): ${JSON.stringify(r)}`);
+  must(r.note === 'NOT ENOUGH ENERGY', `the small note must still say why: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-energy-out-of-energy-no-reserve.png` });
   await pg.close();
 });
-await step('ammo prompt se: a charge rifle cell of exactly 10 (the full-charge cost) does not read NOT ENOUGH ENERGY', async () => {
+await step('ammo prompt se: 0/40 and 5/40 with reserve read the identical RECHARGE prompt -- one consistent style regardless of the cell', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 0); await pg.waitForTimeout(400);
+  const empty = await pg.evaluate(() => { const el = document.querySelector('.ammo .reload'); return { cls: el.className, text: el.textContent.trim() }; });
+  await pg.screenshot({ path: `${OUT}/se-ammo-energy-recharge-empty.png` });
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 5); await pg.waitForTimeout(400);
+  const partial = await pg.evaluate(() => { const el = document.querySelector('.ammo .reload'); return { cls: el.className, text: el.textContent.trim() }; });
+  must(empty.cls === partial.cls, `0/40 and 5/40 with reserve must render the same prompt style, got ${JSON.stringify({ empty, partial })}`);
+  must(/^RECHARGE/.test(empty.text) && /^RECHARGE/.test(partial.text), `both must read RECHARGE: ${JSON.stringify({ empty, partial })}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-energy-recharge-partial.png` });
+  await pg.close();
+});
+await step('ammo prompt se: a charge rifle cell of exactly 10 (the full-charge cost) shows neither the NOT ENOUGH ENERGY note nor a RECHARGE/OUT OF ENERGY prompt', async () => {
   const pg = await open(VIEWS[1], 'live');
   await setAmmo(pg, 'charge_rifle', 0, 40, 80, 10); await pg.waitForTimeout(400);
   const r = await gaugeState(pg);
-  must(r.prompt !== 'NOT ENOUGH ENERGY', `10 of 40 is a full charge and must not read NOT ENOUGH ENERGY: ${JSON.stringify(r.prompt)}`);
+  must(r.note === null, `10 of 40 is a full charge and must show no NOT ENOUGH ENERGY note: ${JSON.stringify(r)}`);
+  must(r.prompt === null, `10 of 40 needs no reload/recharge prompt at all: ${JSON.stringify(r)}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-energy-enough.png` });
   await pg.close();
 });
-await step('ammo prompt se: NOT ENOUGH ENERGY never shows for a bullet weapon or a tap-only energy weapon', async () => {
+await step('ammo prompt se: the NOT ENOUGH ENERGY note never shows for a bullet weapon or a tap-only energy weapon', async () => {
   const pg = await open(VIEWS[1], 'live');
   await setAmmo(pg, 'burst_rifle', 0, 36, 216, 9); await pg.waitForTimeout(400);
   let r = await gaugeState(pg);
-  must(r.prompt !== 'NOT ENOUGH ENERGY', `a bullet weapon must never show NOT ENOUGH ENERGY: ${JSON.stringify(r.prompt)}`);
+  must(r.note === null, `a bullet weapon must never show the NOT ENOUGH ENERGY note: ${JSON.stringify(r)}`);
   await setAmmo(pg, 'energy_rifle', 0, 40, 80, 9); await pg.waitForTimeout(400);
   r = await gaugeState(pg);
-  must(r.prompt !== 'NOT ENOUGH ENERGY', `only charge_rifle has a known full-charge cost -- energy_rifle must not show it: ${JSON.stringify(r.prompt)}`);
+  must(r.note === null, `only charge_rifle has a known full-charge cost -- energy_rifle must not show the note: ${JSON.stringify(r)}`);
   await pg.close();
 });
+for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
+  for (const night of [false, true]) {
+    await step(`${tag} energy severity ${night ? 'night' : 'day'}: OUT OF ENERGY + the small note lays out cleanly at both sizes`, async () => {
+      const pg = await open(view, 'live', night ? '&night' : '');
+      await setAmmo(pg, 'charge_rifle', 0, 40, 0, 9); await pg.waitForTimeout(400);
+      const r = await gaugeState(pg);
+      must(r.bigPrompts === 1 && r.prompt === 'OUT OF ENERGY' && r.note === 'NOT ENOUGH ENERGY', `9 of 40, no reserve, at ${tag}/${night ? 'night' : 'day'}: ${JSON.stringify(r)}`);
+      const bad = await invariants(pg); must(bad.length === 0, bad.join(' ; '));
+      await pg.screenshot({ path: `${OUT}/${tag}-energy-out-note-${night ? 'night' : 'day'}.png` });
+      await pg.close();
+    });
+  }
+}
 
 // ---------- energy gauge layout + reserve pills (bench 2026-09-17, Tony -- real charge rifle, 40-round
 // energy cell, 80 in reserve). The cell overflowed its own frame, and "25% /80" mixed a percentage with a
@@ -2264,6 +2300,29 @@ await step('heat bar se: heat falls back under the lockout and the OVERHEAT stat
   await pg.screenshot({ path: `${OUT}/se-heat-cleared.png` });
   await pg.close();
 });
+// ---------- item 3 (bench 2026-09-17, playtest pl3): the OVERHEAT overlay/prompt used to key off
+// `st.overheating` directly, which the node can echo back for up to 25 s after a stale reading (see
+// engine.js `HEAT_STALE_MS`). `overheatShown` is the engine's narrower field (true only while the reading
+// is live, about 6 s); this lane switches the HUD to read it, falling back to `overheating` while the
+// engine field is still undefined (pl3-engine has not merged yet -- `window.__hud`/`window.brx.engine`
+// drive this directly since the demo engine cannot set the new field itself). ----------
+await step('heat bar se: st.overheatShown, once set, overrides the stale st.overheating field', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108); await pg.waitForTimeout(400);
+  let r = await heatState(pg);
+  must(r.overlay && r.prompt === 'OVERHEAT', `pre-condition: must start overheating: ${JSON.stringify(r)}`);
+  // a stale-but-true st.overheating with overheatShown explicitly false must hide the takeover
+  await pg.evaluate(() => { const h = window.__hud; h.sig = null; h.render({ ...window.brx.engine.state(), overheatShown: false }); });
+  r = await heatState(pg);
+  must(!r.overlay && r.prompt !== 'OVERHEAT', `overheatShown:false must hide OVERHEAT even though the stale st.overheating is still true: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-overheatshown-false-hides.png` });
+  // the reverse: overheatShown explicitly true must show it even with the old field false
+  await pg.evaluate(() => { const h = window.__hud; h.sig = null; h.render({ ...window.brx.engine.state(), overheating: false, overheatShown: true }); });
+  r = await heatState(pg);
+  must(r.overlay && r.prompt === 'OVERHEAT', `overheatShown:true must show OVERHEAT even with the old field false: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-overheatshown-true-shows.png` });
+  await pg.close();
+});
 // ---------- item 5 (bench 2026-09-17): `.reload.hot`/`.reload.out` stayed a solid bright block with white
 // text at night -- the one light-discipline miss in this file. Dark fill, `var(--num)` text, no glow. ----------
 await step('night se: the OVERHEAT (.reload.hot) prompt drops the solid bright fill and white text', async () => {
@@ -2282,6 +2341,25 @@ await step('night se: the OUT OF ENERGY (.reload.out) prompt drops the solid bri
   must(r.color !== 'rgb(255, 255, 255)', `night must not show white text on OUT OF ENERGY: ${JSON.stringify(r)}`);
   must(r.bg === 'rgb(42, 12, 12)', `night must use the dark night fill on OUT OF ENERGY, not the bright day block: ${JSON.stringify(r)}`);
   await pg.screenshot({ path: `${OUT}/se-reload-out-night.png` });
+  await pg.close();
+});
+// ---------- item 2 (bench 2026-09-17): the plain RELOAD/RECHARGE prompt (no `.hot`/`.out`) was missed by
+// the fixes above and still blinked bright amber at night. ----------
+await step('night se: the plain RELOAD/RECHARGE prompt stops blinking and drops the bright amber fill', async () => {
+  const pg = await open(VIEWS[1], 'live', '&night');
+  await setAmmo(pg, 'sniper_rifle', 0, 4, 24, 0); await pg.waitForTimeout(400);
+  const r = await pg.evaluate(() => { const el = document.querySelector('.reload'); const cs = getComputedStyle(el); return { bg: cs.backgroundColor, color: cs.color, anim: cs.animationName }; });
+  must(r.anim === 'none', `night must stop the RELOAD blink, got animation ${JSON.stringify(r.anim)}`);
+  must(r.bg === 'rgb(42, 12, 12)', `night must use the dark night fill, not the bright amber block: ${JSON.stringify(r)}`);
+  must(r.color !== 'rgb(26, 18, 0)', `night must not keep the day's dark-on-amber text colour: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-reload-plain-night.png` });
+  await pg.close();
+});
+await step('night se: OVERHEAT/OUT OF ENERGY (.reload.hot/.reload.out) still win over the plain .reload night rule', async () => {
+  const pg = await open(VIEWS[1], 'live', '&night');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 0, 0); await pg.waitForTimeout(400);
+  const r = await pg.evaluate(() => { const el = document.querySelector('.reload.out'); const cs = getComputedStyle(el); return { bg: cs.backgroundColor, color: cs.color }; });
+  must(r.bg === 'rgb(42, 12, 12)' && r.color !== 'rgb(255, 255, 255)', `the plain .reload night rule must not have knocked .reload.out off its own colours: ${JSON.stringify(r)}`);
   await pg.close();
 });
 

@@ -304,8 +304,8 @@ export class Hud {
     if (this.board) this.frame.dataset.board = this.board; else delete this.frame.dataset.board;
     const sig = [st.phase, st.alive, !!st.killedBy, st.night, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
       st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.reserve === 0, (st.mag || 0) > AMMO_PIP_MAX, st.battery != null && st.battery <= 15,
-      st.overheating, st.heatEverSeen,   // bench 2026-09-17: OVERHEAT prompt/overlay and the heat bar's existence are structural, not patched in place
-      st.weaponId === 'charge_rifle' && st.ammo > 0 && st.ammo < CHARGE_RIFLE_FULL_CHARGE_COST, st.reserve > 0,   // NOT ENOUGH ENERGY / RECHARGE prompt is structural too
+      st.overheating, st.heatEverSeen, st.overheatShown,   // bench 2026-09-17: OVERHEAT prompt/overlay and the heat bar's existence are structural, not patched in place
+      st.weaponId === 'charge_rifle' && st.ammo != null && st.ammo < CHARGE_RIFLE_FULL_CHARGE_COST, st.reserve > 0,   // OUT OF ENERGY / RECHARGE prompt + the NOT ENOUGH ENERGY note are structural too
       st.kills > 0, st.deaths > 0, st.assists > 0, accShown(st) != null, st.reserve != null, this.scan.length, st.bleUp, st.ended, this.bluetoothOn,
       this.discovered && this.discovered.url,   // Polish-loop pass 1: the discovered-MC row on the pre-join screen (`_joinConfirm` only touches the diag panel, patched directly, not here)
       st.rejoin, !!st.pendingTeardown, this.sync && this.sync.bound, this.sync && this.sync.pending,
@@ -959,9 +959,21 @@ export class Hud {
     const outOfAmmo = !!(st.alive && st.ammo === 0 && st.reserve === 0);
     const energy = isEnergyWeapon(st.weaponId);
     // Bench 2026-09-17: charge_rifle only (not a tap-only or bullet weapon, and not the other energy
-    // weapons, which have no catalogue cost yet either) -- a live cell too small for one full charge.
-    const notEnoughEnergy = !!(st.alive && st.weaponId === 'charge_rifle' && st.ammo > 0 && st.ammo < CHARGE_RIFLE_FULL_CHARGE_COST);
-    const overheating = !!(st.alive && st.overheating);
+    // weapons, which have no catalogue cost yet either) -- a live cell too small for one full charge
+    // fires nothing, whether that cell is empty or holds a few rounds. `belowCharge` drives both which
+    // big prompt shows (severity depends on the reserve, not the cell) and the small note below.
+    const belowCharge = !!(st.alive && st.weaponId === 'charge_rifle' && st.ammo != null && st.ammo < CHARGE_RIFLE_FULL_CHARGE_COST);
+    // reserve empty too: this is a dead end, same severity as OUT OF AMMO (that case is already
+    // handled by `outOfAmmo` above, so this only adds the 1-9-with-no-reserve state it missed).
+    const energyOut = belowCharge && !(st.reserve > 0);
+    // reserve has something to draw on: one calm prompt, whether the cell reads 0 or a partial charge.
+    const energyLow = belowCharge && st.reserve > 0;
+    // Bench 2026-09-17: the full-screen OVERHEAT takeover was keyed to the raw heat reading, which the
+    // node echoes back for up to 25 s after it goes stale -- `overheatShown` (once the engine sets it)
+    // is true only while that reading is live. Undefined (this lane ahead of the engine merge) falls
+    // back to the old field so nothing regresses before that lands.
+    const overheatActive = st.overheatShown !== undefined ? st.overheatShown : st.overheating;
+    const overheating = !!(st.alive && overheatActive);
     const [nm] = splitGun(st.gun);
     const stat = (k, v) => `<span>${k}<b class="${v == null ? 'mut' : ''}" id="st-${k}">${v == null ? '—' : v}</b></span>`;
     const kb = st.killedBy ? `` : '';
@@ -980,9 +992,11 @@ export class Hud {
         <div class="bar armor"><i id="shbar" style="width:${Math.round(100 * st.armor / st.maxArmor)}%"></i></div></div>
       <div class="ammo">${outOfAmmo ? `<span class="reload out solid"><span class="unskew">${energy ? 'OUT OF ENERGY' : 'OUT OF AMMO'}</span></span>`
           : overheating ? `<span class="reload hot solid"><span class="unskew">OVERHEAT</span></span>`
-          : notEnoughEnergy ? `<span class="reload out solid"><span class="unskew">NOT ENOUGH ENERGY</span></span>${st.reserve > 0 ? '<span class="reload"><span class="unskew">RECHARGE ▸▸</span></span>' : ''}`
+          : energyOut ? `<span class="reload out solid"><span class="unskew">OUT OF ENERGY</span></span>`
+          : energyLow ? `<span class="reload"><span class="unskew">RECHARGE ▸▸</span></span>`
           : lowMag ? `<span class="reload ${st.ammo === 0 ? 'solid' : ''}"><span class="unskew">${energy ? 'RECHARGE ▸▸' : 'RELOAD ▸▸'}</span></span>` : ''}
         <div class="nums"><span class="mag tab ${lowMag ? 'warn' : ''}" id="mag">${magText(st)}</span><span class="res tab" id="res">${this._resText(st)}</span></div>
+        ${belowCharge ? '<div class="enote">NOT ENOUGH ENERGY</div>' : ''}
         <div class="pips" id="pips">${this._pips(st)}</div>
         ${this._heatBar(st)}
         <span class="wn"><span class="slot">${st.activeSlot ? 'SECONDARY' : 'PRIMARY'}</span>${esc(st.weapon)}</span></div>

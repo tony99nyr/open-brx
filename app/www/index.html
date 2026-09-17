@@ -106,6 +106,9 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .ammo .mag{font-family:var(--fd);font-style:italic;font-weight:700;font-size:84px;line-height:.8;text-shadow:0 0 24px color-mix(in srgb,var(--glow) 50%,transparent)}
 .ammo .mag.warn{color:var(--warn);text-shadow:0 0 24px rgba(255,176,32,.6)}
 .ammo .res{font-family:var(--fd);font-weight:600;font-size:26px;color:var(--mut);display:flex;align-items:center}
+/* Bench 2026-09-17: NOT ENOUGH ENERGY is now a secondary note, never a second big prompt beside
+   OUT OF ENERGY/RECHARGE -- one small line under the digits, right-aligned like the rest of the column. */
+.ammo .enote{font-family:var(--fd);font-weight:700;font-size:11px;letter-spacing:.16em;color:var(--warn)}
 .pips{display:flex;gap:4px}
 /* `> i`, not `i`: this styles the discrete bullet pips only (direct children of #pips). A descendant
    `.pips i` also matched the ammo/energy bar's OWN fill `<i>` two levels down (`.pips > .bar > i`) at equal
@@ -195,6 +198,10 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 /* Bench 2026-09-17: `.reload.hot`/`.reload.out` were still solid bright red with white text at night --
    the one light-discipline miss in this block. Dark fill, `var(--num)` text, no glow, same as everywhere else here. */
 [data-env="night"] .reload.hot,[data-env="night"] .reload.out{background:#2a0c0c;color:var(--num)}
+/* Bench 2026-09-17: the plain RELOAD/RECHARGE prompt (no `.hot`/`.out`) still blinked bright amber at
+   0.7 s -- the same light-discipline miss as the line above, for the one case it missed. This selector
+   is less specific than `.reload.hot`/`.reload.out` (one class vs two), so it never overrides them. */
+[data-env="night"] .reload{background:#2a0c0c;color:var(--num);animation:none}
 /* Bench 2026-09-17: the word sat at top 26%, right across the chip bar (top 100 px), so WEAPONS HOT covered its
    centre. At 63% it sits under the reticle and TAKING FIRE, above the vitals and between them and the ammo column. */
 [data-env="night"] .heatword{color:var(--num);text-shadow:none;font-size:22px;animation:none}
