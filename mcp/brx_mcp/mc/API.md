@@ -25,6 +25,7 @@ Server sends `{ "kind": "snapshot", "state": <State> }` on connect and on every 
 ```jsonc
 State {
   active_preset_id?: string | null,             // A10 §8: the saved game that was APPLIED (null once the config is edited) — GAMES marks it PLAYING
+  bench_volume?: number,                        // `--bench-volume N` (bench 2026-09-16): every $VOL MC compiles plays at N. ABSENT on a normal run
   restored_from?: { at: number, players: number },   // F142 (field 2026-09-12): this roster came back off disk.
                                                // ABSENT when nothing was restored, so presence is the rule for showing
                                                // "restored from <date>" on the board beside a FRESH SESSION control

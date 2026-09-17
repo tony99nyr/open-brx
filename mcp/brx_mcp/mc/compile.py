@@ -58,6 +58,16 @@ VOL_PLAY = VOL_BY_ENV["indoor"]    # unknown venue -> the QUIETER of the two (se
 VOL_TRYOUT = 69                    # a try-out is fired at ARM'S LENGTH from the player's own head,
                                    # so it keeps the quieter Callsign value (review 2026-08-31).
                                    # The field complaint was about hearing a game across a field.
+# `--bench-volume [N]` (bench 2026-09-16): a bench run plays every $VOL MC compiles at N. 30 is barely
+# audible and the venue value is too loud at a bench. Not for a real game.
+BENCH_VOLUME_DEFAULT = 55
+
+
+def check_volume(value) -> int:
+    """A $VOL level: an integer 0-100. Raises ValueError otherwise."""
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 100:
+        raise ValueError(f"volume must be an integer 0-100, got {value!r}")
+    return value
 
 # venue -> $WEAP t41 (gunRange%, APK `gunRangeIndoor`). B6 (2026-09-12 field session): Tony could
 # not register a hit at 30-40 ft outside; point blank worked. MC ships t41 at the weapon's own
@@ -470,6 +480,35 @@ def assert_arms_at_spawn(head: list[str], spawn: list[str]) -> None:
             "F121 GUARD: the spawn frames do not re-arm every cell the head disarmed, so these "
             "weapons would take nothing off this player all match: "
             + ", ".join(f"<{c[0]},{c[1]}>" for c in missing))
+
+
+# Bench 2026-09-16: a gun could fire during the ARMED countdown. The lobby head carried the full
+# seven-row button map, and its trigger row `$BMAP,0,0` maps the trigger to fire. The head now holds
+# the trigger on function 98, the no-op function the captured table gives select/left/right. The T-0
+# spawn write and every revive map it back to fire AFTER `$SPAWN`, as Callsign does.
+# UNVERIFIED on hardware: no capture shows 98 on the trigger. The evidence is only that buttons 3-5 on
+# 98 fire nothing, and that a gun with no trigger row "chirps disabled". A row that holds the trigger
+# (not an absent one) also overrides a map left by a try-out, whatever `$CLEAR` resets.
+TRIGGER_HELD = "$BMAP,0,98,,,,,*"
+TRIGGER_LIVE = "$BMAP,0,0,,,,,*"
+
+
+def hold_trigger(bmap) -> list[str]:
+    """The head's button map with the trigger row swapped for the held row."""
+    return [TRIGGER_HELD if row.startswith("$BMAP,0,") else row for row in bmap]
+
+
+def assert_trigger_held_until_spawn(head: list[str], spawn: list[str], revive: list[str]) -> None:
+    """Bench 2026-09-16: no head may map the trigger to fire, and spawn and revive must map it after
+    `$SPAWN`. A revive needs it too: `engine.js _resyncNotLive` re-writes the head on a live node and
+    then revives. Raises ValueError naming the frame list that is wrong."""
+    if any(f.startswith("$BMAP,0,") and f != TRIGGER_HELD for f in head):
+        raise ValueError("TRIGGER GUARD: the head maps the trigger, so a player can fire during the "
+                         f"countdown. The head's trigger row must be {TRIGGER_HELD}")
+    for name, frames in (("spawn", spawn), ("revive", revive)):
+        if "$SPAWN,,*" not in frames or TRIGGER_LIVE not in frames[frames.index("$SPAWN,,*") + 1:]:
+            raise ValueError(f"TRIGGER GUARD: {name} does not map the trigger ({TRIGGER_LIVE}) after "
+                             "$SPAWN, so the player goes live and cannot fire")
 
 
 def assert_rearms_every_life(bundle) -> None:
@@ -943,9 +982,20 @@ class WeaponCatalog:
 class Compiler:
     """Implements interfaces.Compiler."""
 
-    def __init__(self, catalog: WeaponCatalog | None = None, perks: PerkCatalog | None = None) -> None:
+    def __init__(self, catalog: WeaponCatalog | None = None, perks: PerkCatalog | None = None,
+                 bench_volume: int | None = None) -> None:
         self.catalog = catalog or WeaponCatalog()
         self.perks = perks or PerkCatalog()
+        # None = the venue volume. A number = `--bench-volume`: every $VOL this compiler writes.
+        self.bench_volume = None if bench_volume is None else check_volume(bench_volume)
+
+    def play_volume(self, environment: str | None) -> int:
+        """The $VOL for a match head: the bench volume when set, else the venue volume."""
+        return play_volume(environment) if self.bench_volume is None else self.bench_volume
+
+    def tryout_volume(self) -> int:
+        """The $VOL for a try-out: the bench volume when set, else VOL_TRYOUT."""
+        return VOL_TRYOUT if self.bench_volume is None else self.bench_volume
 
     def perk_effects(self, player: Player | None) -> dict:
         """The passive knobs of the player's slot-2 perk (loadout.md §1.2/§2); {} when none."""
@@ -973,7 +1023,7 @@ class Compiler:
             respawn_s=config["respawn"]["delay_s"],
             respawns=0 if config["respawn"]["type"] == "none" else None,
             frag_limit=config["scoring"].get("frag_limit") or 0,
-            volume=play_volume(config["environment"]),
+            volume=self.play_volume(config["environment"]),
             outdoor=config["environment"] == "outdoor",
             leds=(led.get("mode", "team") != "off") and not blackout,
             friendly_fire=(config["mode"] == "ffa"),  # FFA needs the gun to register same-$TID hits
@@ -1188,7 +1238,7 @@ class Compiler:
         # head — config, per player, SILENT (no $SPAWN, no $PLAY,VA81); ends with $TID (§1.1)
         env = config.get("environment")
         _gset = gc._gset()
-        head = [f"$VOL,{play_volume(env)},0,*", "$CLEAR,*", "$START,*",
+        head = [f"$VOL,{self.play_volume(env)},0,*", "$CLEAR,*", "$START,*",
                 _gset,
                 # F162: EMPTY today (`DRIVE_IO_MODE` is "off") -- the staged venue-mode candidates,
                 # right after $GSET so a bench rung changes one thing next to the frame it copies.
@@ -1236,7 +1286,7 @@ class Compiler:
         # F121/A23: the HEAD carries the same cells DISARMED -- hits register, nothing moves. The real
         # table below rides the spawn and revive bursts, where the player actually goes live.
         sir_pregame = sir_spawn_protected(sir_live)
-        head += sir_pregame + bmap + gc._led_frames() + hled + gun_pre + [f"$TID,{tid},*"]   # §1.1: head ends with $TID
+        head += sir_pregame + hold_trigger(bmap) + gc._led_frames() + hled + gun_pre + [f"$TID,{tid},*"]   # §1.1: head ends with $TID
         assert_sir_covers_weapons(head)      # A17: no armed weapon may key a cell this head has no row for
         assert_sir_covers_objective(head, config["mode"])   # F79: no objective mode may ship with no way to hear its own beacon
         assert_spawn_protected(head)         # F121: and none of those rows may move a pool before go-live
@@ -1260,16 +1310,19 @@ class Compiler:
         # F121/A23: the REAL $SIR table leads the burst, so hit reception is armed by the time `$SPAWN`
         # makes the player live -- and never a moment before. Cells persist, so this is a swap of the
         # head's fn-28 registrars, not an addition (the F11 repair path is the same write).
-        spawn = list(sir_live) + ["$PLAYX,0,*", "$SPAWN,,*"] + ammo + ["$BMAP,0,0,,,,,*"] + play_hled
-        # revive = $SPAWN + loadout $AMMOs (NO $HLOOP, NO $BMAP — §1.1 replaces RESPAWN_SEQUENCE)
+        spawn = list(sir_live) + ["$PLAYX,0,*", "$SPAWN,,*"] + ammo + [TRIGGER_LIVE] + play_hled
+        # revive = $SPAWN + loadout $AMMOs + the trigger row (NO $HLOOP; §1.1 replaces RESPAWN_SEQUENCE)
         # F121: the table again, because a revive is not always preceded by a spawn -- `engine.js
         # _resyncNotLive` re-writes the HEAD on a live node and revives from there. Omitted only when
         # A17 class sounds are on: the node writes one `sir_pool` take (a full real table) immediately
         # BEFORE `frames.revive`, and a copy here would clobber that take's sounds with a fixed draw.
         # `assert_rearms_every_life` holds the invariant whichever carrier is active.
         revive_sir = [] if _cs else list(sir_live)
-        revive = revive_sir + ["$SPAWN,,*"] + ammo + play_hled
+        # Bench 2026-09-16: the head holds the trigger, and a live resync re-writes the head before it
+        # revives, so the revive maps the trigger again too.
+        revive = revive_sir + ["$SPAWN,,*"] + ammo + [TRIGGER_LIVE] + play_hled
         assert_arms_at_spawn(head, spawn)    # F121: every disarmed cell comes back live at $SPAWN
+        assert_trigger_held_until_spawn(head, spawn, revive)
 
         bundle: FrameBundle = {
             "config_id": config["config_id"],
@@ -1418,7 +1471,7 @@ class Compiler:
         # $PSET,0 = "no identity" (A5.1) so a stray try-out hit reports shooter 0, never credited.
         pset = "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"
         return [
-            f"$VOL,{VOL_TRYOUT},0,*", "$CLEAR,*", "$START,*",   # $START IS required — bench 2026-08-25: without it the gun
+            f"$VOL,{self.tryout_volume()},0,*", "$CLEAR,*", "$START,*",   # $START IS required — bench 2026-08-25: without it the gun
                                                      # spawns but the trigger only reloads, it will not fire IR
             f"$GSET,0,{GSET_T2_SAFE},1,0,1,0,50,1,*",   # FF off; t2 stays safe at every venue
             pset,

@@ -122,6 +122,13 @@ export function CommandBar() {
                          color: state?.phase === 'live' ? T.bad : state?.phase === 'armed' ? T.warn : state?.phase === 'recap' ? T.ok : T.dim }}>
             {state?.phase === 'live' ? '● LIVE' : state?.phase === 'armed' ? '▲ ARMED' : state?.phase === 'recap' ? '■ MATCH OVER' : '◇ SETUP'}
           </span>
+          {/* `--bench-volume N`: every gun plays at N, not the venue level. Say it where nobody can miss it. */}
+          {state?.bench_volume != null && (
+            <span data-testid="bench-volume" title={`MC was started with --bench-volume ${state.bench_volume}: every gun plays at ${state.bench_volume}, not the venue level. Not for a real game.`}
+              style={{ font: F.chk(700, 12), letterSpacing: '.16em', color: T.warn, border: `1px solid ${T.warn}`, padding: '5px 10px' }}>
+              BENCH VOL {state.bench_volume}
+            </span>
+          )}
           {state?.phase === 'recap' && (
             <PrimaryButton size={12} onClick={async () => { const ok = await run(() => api.newSession(true)); if (ok !== undefined) setView('muster'); }}>NEW MATCH ▸</PrimaryButton>
           )}

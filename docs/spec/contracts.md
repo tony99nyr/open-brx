@@ -228,11 +228,11 @@ or invent frames [A4.2].** The one frame authority is `compile.py` (over `gameco
 ```jsonc
 FrameBundle {                       // per (config_id, player_id); pushed in `config`, re-pushed on assign change
   config_id, player_id,
-  head:    string[],   // config head: $VOL → $CLEAR → $START → $GSET → $PSET,<player_num>,… → $WEAP×n → $SIR×n → $BMAP×n → LED frames → $TID,<tid> (last).
+  head:    string[],   // config head: $VOL → $CLEAR → $START → $GSET → $PSET,<player_num>,… → $WEAP×n → $SIR×n → $BMAP×n (trigger row HELD as $BMAP,0,98 until T-0, bench 2026-09-16) → LED frames → $TID,<tid> (last).
                        //   NO $SPAWN, NO countdown/start sound — written at lobby, the gun then sits unspawned (M-START).
                        //   The head write is SILENT on the gun (bench 2026-08-25, protocol §7r): the voice + cock belong to $SPAWN.
   spawn:   string[],   // go-live tail at T-0: LIVE $SIR×n → $PLAYX,0 → $SPAWN,, → $AMMO per slot → $BMAP,0,0   [A23: the head's $SIR rows are the same cells on fn 28 — DISARMED; the live table lands here]
-  revive:  string[],   // respawn re-arm: LIVE $SIR×n (or the sir_pool take under hit_audio_class) → $SPAWN,, (+ loadout-correct $AMMO)   [A23]
+  revive:  string[],   // respawn re-arm: LIVE $SIR×n (or the sir_pool take under hit_audio_class) → $SPAWN,, (+ loadout-correct $AMMO) → $BMAP,0,0 (a live resync re-writes the held head first)   [A23]
   end:     string[],   // game-over teardown (END_SEQUENCE)
   panic:   string[],   // ["$CLEAR,*", "$SP,99,*"]
   team_flip?: { [tid: string]: string[] }, // infection: frames to move THIS gun to another team mid-match

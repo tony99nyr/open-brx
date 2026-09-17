@@ -8,7 +8,7 @@ import time
 from typing import Callable
 
 from ..gameconfig import GSET_T2_SAFE
-from .compile import HEADSET_ALERT_BRIGHTNESS, VOL_TRYOUT, play_volume   # one volume policy for the real and the fake paths
+from .compile import HEADSET_ALERT_BRIGHTNESS, TRIGGER_HELD, TRIGGER_LIVE, VOL_TRYOUT, check_volume, play_volume   # one volume policy for the real and the fake paths
 from . import frames as _frames        # A36: a fake gun answers from the head it was actually sent
 from .types import (ArmoryRecord, FrameBundle, GameConfig, PerkView, Player, ScanRow, Team, VoiceOption, Weapon, WeaponView,
                     MAX_PLAYERS)
@@ -69,12 +69,15 @@ def weapon_views() -> list[WeaponView]:
 class FakeCompiler:
     """Trivial but shape-correct: $PSET carries player_num, head has no $SPAWN, spawn has one."""
 
+    def __init__(self, bench_volume: int | None = None) -> None:
+        self.bench_volume = None if bench_volume is None else check_volume(bench_volume)   # `--bench-volume`, as Compiler
+
     def compile(self, config: GameConfig, player: Player, teams: list[Team], roll=None,
                 plan=None) -> FrameBundle:
         tid = next((t["tid"] for t in teams if t["team_id"] == player.get("team_id")), 0)
         hp, ar = config["health"]["max_hp"], config["health"]["max_armor"]
         weapons = [w["weapon_id"] for w in player["loadout"]["weapons"]] or ["assault_rifle"]
-        head = [f"$VOL,{play_volume(config.get('environment'))},0,*", "$CLEAR,*", "$START,*",
+        head = [f"$VOL,{play_volume(config.get('environment')) if self.bench_volume is None else self.bench_volume},0,*", "$CLEAR,*", "$START,*",
                 f"$GSET,{1 if config['mode'] == 'ffa' else 0},{GSET_T2_SAFE},1,0,1,0,50,1,*",
                 f"$PSET,{player['player_num']},0,{hp},{ar},{ar},50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"]
         head += [f"$WEAP,{i},<{w}>,*" for i, w in enumerate(weapons[:2])] + ["$WEAP,4,<melee>,*"]
@@ -82,12 +85,13 @@ class FakeCompiler:
         # like the real compiler -- fn 28 pregame (registers a `$HIR`, moves no pool, no player feedback),
         # the damage row with `$SPAWN` and with every revive. It still satisfies F11 either way: rows are
         # PRESENT after the `$CLEAR`, which is what makes a gun hittable at all.
-        head += ["$SIR,0,0,,28,0,0,1,,*", "$BMAP,0,0,,,,,*", f"$TID,{tid},*"]
+        # Bench 2026-09-16: the head holds the trigger; spawn and revive map it (compile.TRIGGER_HELD).
+        head += ["$SIR,0,0,,28,0,0,1,,*", TRIGGER_HELD, f"$TID,{tid},*"]
         sir_live = ["$SIR,0,0,,1,0,0,1,,*"]
         ammo = [f"$AMMO,{i},36,108,1,*" for i in range(len(weapons[:2]))]
         return {"config_id": config["config_id"], "player_id": player["player_id"], "head": head,
                 "spawn": [*sir_live, "$PLAYX,0,*", "$SPAWN,,*", *ammo, "$BMAP,0,0,,,,,*"],
-                "revive": [*sir_live, "$SPAWN,,*", *ammo],
+                "revive": [*sir_live, "$SPAWN,,*", *ammo, TRIGGER_LIVE],
                 "end": ["$SPAWN,,*", "$PLAYX,0,*", "$STOP,*", "$CLEAR,*", "$HLOOP,0,0,*", "$HLED,0,0,0,0,0,0,*"],
                 "panic": ["$CLEAR,*", "$SP,99,*"],
                 "team_flip": {str(t["tid"]): [f"$TID,{t['tid']},*"] for t in teams if t["tid"] != tid},
@@ -99,7 +103,7 @@ class FakeCompiler:
         # This class is a RUNTIME FALLBACK -- `mc/__main__.py` selects it whenever the real compiler
         # raises -- so this bundle can reach a real tagger, and without the row it would leave that
         # player unhittable for the match. `test_clear_safety` now enumerates this file.
-        return [f"$VOL,{VOL_TRYOUT},0,*", "$CLEAR,*", f"$GSET,0,{GSET_T2_SAFE},1,0,1,0,50,1,*",
+        return [f"$VOL,{VOL_TRYOUT if self.bench_volume is None else self.bench_volume},0,*", "$CLEAR,*", f"$GSET,0,{GSET_T2_SAFE},1,0,1,0,50,1,*",
                 "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*",
                 "$SIR,0,0,,1,0,0,1,,*",
                 f"$WEAP,0,<{weapon['weapon_id']}>,*", "$SPAWN,,*", "$PLAYX,0,*", "$AMMO,0,36,108,1,*", "$BMAP,0,0,,,,,*"]

@@ -105,10 +105,11 @@ def build(args):
     from .state import Session
     from .store import Store
 
-    compiler = FakeCompiler()
+    bench_volume = getattr(args, "bench_volume", None)
+    compiler = FakeCompiler(bench_volume=bench_volume)
     try:
         from .compile import Compiler as RealCompiler  # M-MODES lane
-        compiler = RealCompiler()
+        compiler = RealCompiler(bench_volume=bench_volume)
         log.info("compiler: real M-MODES compiler")
     except Exception as e:
         log.warning("compiler: FAKE (M-MODES compile.py not available: %s)", e)
@@ -352,7 +353,18 @@ def build(args):
     return session, net, extra
 
 
-def main(argv=None):
+def _bench_volume(value: str) -> int:
+    """argparse type for `--bench-volume`: an integer 0-100."""
+    try:
+        n = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"must be an integer 0-100, got {value!r}")
+    if not 0 <= n <= 100:
+        raise argparse.ArgumentTypeError(f"must be 0-100, got {n}")
+    return n
+
+
+def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="brx_mcp.mc")
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=8765)
@@ -375,8 +387,16 @@ def main(argv=None):
                     help="T3-A: put THIS address in the QR/mDNS instead of the one MC auto-detects, without "
                          "moving where it binds (WSL2's own NAT address is what MC auto-detects, and it is "
                          "not reachable from a phone — pass the Windows LAN address here, from ipconfig)")
+    ap.add_argument("--bench-volume", nargs="?", type=_bench_volume, default=None, metavar="N",
+                    const=55,
+                    help="bench run: every $VOL MC compiles (match heads, try-outs) plays at N "
+                         "(default 55) instead of the venue volume. Not for a real game")
     ap.add_argument("-v", "--verbose", action="store_true")
-    args = ap.parse_args(argv)
+    return ap
+
+
+def main(argv=None):
+    args = parser().parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
     session, net, extra = build(args)
@@ -387,6 +407,11 @@ def main(argv=None):
     ip = session.lan["ip"]
     url = f"http://{ip}:{args.port}/" + (f"#tok={token}" if token else "")
     print(f"Mission Control  {url}", flush=True)
+    if args.bench_volume is not None:
+        _rule = "!" * 78
+        print(_rule, flush=True)
+        print(f"  BENCH VOLUME {args.bench_volume}: not for a real game (every $VOL MC writes, try-outs too)", flush=True)
+        print(_rule, flush=True)
     if not inspect.iscoroutinefunction(getattr(net, "start", None)):
         # sync/fake net is already bound → its ws_url is real now. The async NetServer prints the nodes
         # line from _start_net once it binds (avoids the stale ws://<ip>:0 placeholder before the bind).

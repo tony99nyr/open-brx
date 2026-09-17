@@ -1184,6 +1184,7 @@ class State(TypedDict):
     recap: NotRequired[RecapView | None]
     notices: NotRequired[NoticesView]
     end_delivery: NotRequired[EndDeliveryView]
+    bench_volume: NotRequired[int]     # `--bench-volume N`: every $VOL MC compiles plays at N. Absent on a normal run
 
 
 # ---- §5 envelope ----

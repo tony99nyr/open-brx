@@ -5344,6 +5344,9 @@ class Session:
                 "feed": self._snapshot_feed()}
         if self.restored_from is not None:
             state["restored_from"] = self.restored_from
+        bench_volume = getattr(self.compiler, "bench_volume", None)   # `--bench-volume`: the compiler owns it
+        if bench_volume is not None:
+            state["bench_volume"] = bench_volume
         if end_delivery is not None:
             state["end_delivery"] = end_delivery
         return state

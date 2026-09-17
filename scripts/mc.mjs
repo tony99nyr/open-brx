@@ -91,7 +91,7 @@ writeFileSync(manifestPath, JSON.stringify({
 }, null, 2) + '\n');
 chmodSync(manifestPath, 0o600);
 const log = createWriteStream(logPath, { flags: 'a', mode: 0o600 });
-child = spawn(join(root, '.venv', 'bin', 'python'), ['-m', 'brx_mcp.mc', '--evidence-dir', evidence, '-v'], {
+child = spawn(join(root, '.venv', 'bin', 'python'), ['-m', 'brx_mcp.mc', '--evidence-dir', evidence, '-v', ...process.argv.slice(2)], {
   cwd: root, env: { ...process.env, PYTHONPATH: join(root, 'mcp'), BRX_MC_LAUNCH_ID: launchId }, stdio: ['inherit', 'pipe', 'pipe']
 });
 let output = '';

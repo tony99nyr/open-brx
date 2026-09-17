@@ -1197,6 +1197,8 @@ export interface State {
   recap?: RecapView | null;
   notices?: NoticesView;
   end_delivery?: EndDeliveryView;
+  /** `--bench-volume N`: every $VOL MC compiles plays at N. Absent on a normal run */
+  bench_volume?: number;
 }
 
 export interface Envelope {
