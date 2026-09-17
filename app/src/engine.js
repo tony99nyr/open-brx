@@ -1459,7 +1459,18 @@ export class Engine {
     if (!p) return;
     if (this.phase !== 'live' || this.ended || !(this.alive || p.flip)) { this.log(`arm hit reception (${why}) cancelled: not live`, 'li'); return; }
     const take = this._pickTable('sir_pool');
-    this._write(take, `arm hit reception (${why})`);
+    // F11 fix (playtest review 2026-09-13): `link.write` resolves `false` on a GATT error instead of
+    // rejecting, so a failed write here used to leave the gun on fn 28 (no real $SIR table) for the
+    // whole life -- immortal. Re-arm the pending take on a `false` resolve so the next tick's cap
+    // (or the next shot) retries. Gated the same way the write itself was gated, so a life that ended
+    // or moved on while the write was in flight is never re-armed; the retry itself only fires once the
+    // link is back up (`tick()` gates the cap path on `bleUp`), so this cannot spin on a dead link.
+    Promise.resolve(this._write(take, `arm hit reception (${why})`)).then(ok => {
+      if (ok !== false) return;
+      if (this._armPending || this.phase !== 'live' || this.ended || !(this.alive || p.flip)) return;
+      this.log(`arm hit reception (${why}) write failed -- re-arming to retry`, 'li');
+      this._armPending = { at: this.now(), flip: false };
+    });
   }
   /** A15.3 (Tony 2026-09-06: "The long vs short pain should be used depending on the amount of damage. A big sniper
    *  shot -> long pain. A normal round -> short pain."): the $PSET pain fields ship EMPTY and WE play the grunt on
@@ -2677,7 +2688,10 @@ export class Engine {
     }
     const prev = this._prevAmmo[slot];
     // F209: a round leaving slot 0 or 1 is the gun's own proof it can fire, so hit reception arms now.
-    if (this._armPending && (slot === 0 || slot === 1) && prev != null && mag < prev) this._armLife('first shot');
+    // F209/S7.1: a reconcile disarms with its own `$AMMO` write (`_beginReconcile`), and the gun's echo
+    // of that looks exactly like "a round left the mag" -- skip the first-shot arm while reconciling so
+    // that echo cannot arm hit reception early; `_endReconcile` re-arms explicitly once it is done.
+    if (this._armPending && (slot === 0 || slot === 1) && prev != null && mag < prev && !this.reconciling) this._armLife('first shot');
     if (prev != null && mag < prev && this.phase === 'live') this.shots += (prev - mag);
     if (this.resync && prev != null && mag < prev) this._resyncEvidence('alcd-dec');
     if (this.resync && prev != null && mag > prev) this._resyncEvidence('alcd-inc');

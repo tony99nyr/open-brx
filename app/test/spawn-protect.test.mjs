@@ -173,6 +173,53 @@ test('F209 control: an older bundle (the live table inside the revive) keeps its
   assert.deepEqual(sirRows(h.since(m)), [], 'no second table for a bundle that already armed');
 });
 
+test('F11 fix: a failed live-table write (link.write resolves false) re-arms for retry, not immortal for the life', async () => {
+  const h = harness();
+  h.adv(10);   // spawned, still inside the window
+  let fail = true;
+  const realWriter = h.eng.writer;
+  h.eng.writer = fr => (fail ? Promise.resolve(false) : realWriter(fr));   // `link.write` on a GATT error: resolves false, never rejects
+  h.adv(CAP);                          // the cap fires `_armLife('cap')`; the write "fails"
+  await new Promise(r => setImmediate(r));   // let the write's `.then()` run
+  assert.ok(h.eng._armPending, 'a failed write must re-arm the pending take, not leave the gun on fn 28 for the life');
+  fail = false;
+  const n = h.mark();
+  h.adv(CAP);                          // the re-armed pending's own cap elapses, now against a working writer
+  assert.deepEqual(realRows(h.since(n)), realRows(TAKE), 'the retry succeeds once the write goes through');
+});
+
+test('F11 fix: the retry never fires while the link is down (the tick already gates the cap on bleUp)', async () => {
+  const h = harness();
+  h.adv(10);
+  h.eng.writer = () => Promise.resolve(false);   // every write fails
+  h.adv(CAP);
+  await new Promise(r => setImmediate(r));
+  assert.ok(h.eng._armPending, 'setup: re-armed after the failed write');
+  h.eng.onBleDropped();
+  const n = h.mark();
+  h.adv(CAP * 5);
+  assert.deepEqual(realRows(h.since(n)), [], 'no retry write is attempted while the link is down');
+});
+
+test('F209/S7.1 reconcile guard: the reconcile disarm echo cannot arm hit reception early', () => {
+  const h = liveArmed();
+  revived(h);
+  assert.ok(h.eng._armPending, 'setup: the revive re-armed a pending take');
+  h.frame('$ALCD,30,0,0,,*');          // baseline mag on slot 0, so the next echo reads as a decrease
+  h.eng.onBleDropped();
+  h.eng.onBleConnected();
+  assert.ok(h.eng.reconciling, 'setup: reconciling');
+  const n = h.mark();
+  // the reconcile's own `$AMMO,0,0,0,1,*` disarm write (`_beginReconcile`) echoes back looking exactly
+  // like "a round left the mag" -- it must not arm hit reception early.
+  h.frame('$ALCD,0,0,0,,*');
+  assert.deepEqual(realRows(h.since(n)), [], 'the reconcile echo must not arm hit reception early');
+  assert.ok(h.eng._armPending, 'the pending arm survives, unconsumed, for `_endReconcile` to use');
+  h.adv(3000);   // RECONCILE_MS
+  assert.equal(h.eng.reconciling, null, 'reconcile over');
+  assert.deepEqual(realRows(h.since(n)), realRows(TAKE), 'and it still arms normally once the reconcile ends');
+});
+
 test('F209 guard: a release that finds the player down or the match over writes nothing (defence behind each cancel)', () => {
   const h = liveArmed();
   revived(h);

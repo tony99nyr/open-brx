@@ -111,6 +111,31 @@ def test_a_dropped_link_defers_the_arm_until_it_is_back():
     asyncio.run(run())
 
 
+def test_arm_pending_is_stamped_before_the_write_not_after_it_resolves():
+    """Playtest review 2026-09-13: engine.js stamps `_armAfterSpawn` right after QUEUEING the spawn/revive
+    write, not after it resolves. A stage that waits for `await self.write(...)` to finish first starts the
+    SPAWN_PROTECT_MAX_S cap late by the write's own gap time -- exactly the divergence the stage exists to
+    avoid (the stage must mirror the phone)."""
+    async def run():
+        st, mgr, clock = _mk()
+        await st.connect(GUN); await st.arm()
+        orig_write = st.write
+        async def slow_write(frames, why, gap_ms=60, exact=False):
+            if why.startswith(("spawn", "revive")):
+                clock.advance(0.5)               # simulate 0.5s of real BLE write time
+            return await orig_write(frames, why, gap_ms=gap_ms, exact=exact)
+        st.write = slow_write
+        t0 = clock()
+        await st.spawn()
+        assert st._arm_pending == t0, "spawn: the pending-arm time must be stamped BEFORE the write"
+        st._inject_rx("$HP,0,0,0,*"); await settle(st)   # a pool-only death: the fn-28 twin still protects IR
+        assert not st.alive
+        t1 = clock()
+        await st.revive()
+        assert st._arm_pending == t1, "revive: the pending-arm time must be stamped BEFORE the write"
+    asyncio.run(run())
+
+
 def test_a_hit_inside_the_window_does_no_damage_and_the_same_hit_lands_after_the_cap():
     """The bench check, on the fake gun (which honours `$SIR` functions): protected, then armed."""
     async def run():

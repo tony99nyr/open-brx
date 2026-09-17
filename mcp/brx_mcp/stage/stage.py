@@ -1175,10 +1175,14 @@ class GunStage:
         # between clipped the firmware's line). A pre-A15.2 bundle has no cues["spawn"]: nothing is appended.
         fr, tag = self._pick_cue("spawn")
         ps, ps_why = self._scream_take()
+        # F209 mirror (engine.js `_spawn`): stamp the pending-arm time BEFORE the awaited write, not after
+        # it resolves. The phone queues the write and stamps immediately; stamping after `await self.write`
+        # let the SPAWN_PROTECT_MAX_S cap start late by the write's own gap time, drifting the stage from the
+        # phone it exists to predict.
+        self._arm_after_spawn()                                  # hits stay silent until the gun fires or the cap
         await self.write(([ps] if ps else []) + list(self.bundle["spawn"]) + [SFLASH] + ([fr] if fr else []),
                           "spawn" + ps_why + self._line_tag(fr, tag))
         self._after_spawn()
-        self._arm_after_spawn()                                  # F209: hits stay silent until the gun fires or the cap
         hs = self.bundle.get("headset") or {}
         if hs.get("start"):
             self._headset(hs["start"], "headset start")
@@ -1194,10 +1198,10 @@ class GunStage:
             await self.write([down["stop"]], "down stop", gap_ms=0)
         fr, tag = self._pick_cue("respawned")                  # A15.2: the spawn line rides in the revive write (one line, never two)
         ps, ps_why = self._scream_take()                       # A15.3: a fresh death scream for this life, written before $SPAWN
+        self._arm_after_spawn()                                  # F209: stamp before the write, mirrors engine.js `_revive`
         await self.write(([ps] if ps else []) + list(self.bundle["revive"]) + ([fr] if fr else []),
                           "revive" + ps_why + self._line_tag(fr, tag))
         self._after_spawn()
-        self._arm_after_spawn()                                  # F209
         self._moment = ("redeploy", self.now())                       # engine.js `_revive`: the HUD's rarer moment (gates a pool rise for RARE_GUARD_S)
         self._event_now("respawned", sound=False)                     # the lights; the sound went out with the revive write
         self.carrying = None; self._active_role = None

@@ -91,6 +91,9 @@ const link = new BrxLink({
   log, onFrame: f => engine.feedFrame(f),
   onDrop: () => { engine.onBleDropped(); haptic('down'); },
   onUp: advert => {
+    // F211 fix: a link that just came up (fresh connect, or the forever-reconnect loop's own success)
+    // must close the picker if it is somehow still open, so the beacon scan (scanwatch.js) is free again.
+    if (scanning) { scanning = false; hud.setScan([]); link.stopScan().catch(() => {}); }
     engine.onBleConnected(advert);
     if (transport) {
       transport.gun = { name: advert.name, tail: advert.tail, fw: engine.fw || undefined };
@@ -697,7 +700,11 @@ async function sweepForMc() {
     link.watchEnabled(on => {
       log(`bluetooth ${on ? 'back on' : 'turned off'}`, on ? 'lk' : 'le');
       setBluetoothOn(on); scheduleRender();
-      if (on) { if (!link.connected && !scanning) hud.h.onSetGun().catch(() => {}); }
+      // F211 fix (playtest review 2026-09-13): a remembered gun (`link.deviceId` set) already runs its
+      // own forever-reconnect loop. Opening the picker on top of it steals the radio, and `scanning`
+      // then stays true after the loop reconnects (nothing here clears it), which keeps the beacon
+      // scan closed for the rest of the match. Only open the picker when there is NO remembered gun.
+      if (on) { if (!link.connected && !link.deviceId && !scanning) hud.h.onSetGun().catch(() => {}); }
       else if (scanning) { scanning = false; hud.setScan([]); link.stopScan().catch(() => {}); }
     }).catch(e => log('bluetooth watch: ' + (e && e.message || e), 'li'));
     // IDLE screen says SCANNING FOR TAGGERS — so scan (the button toggles it off/on). Bench 2026-08-25.
