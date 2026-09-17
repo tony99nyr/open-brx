@@ -1172,9 +1172,12 @@ KNOWN_UNMIRRORED = {
     "_carrier", "_setRole", "_respawnStation", "_stationRevivable", "setStations",
     # ---- accessors (2026-09-12: newly VISIBLE to the scan, not newly unmirrored) ----
     # config values the stage resolves into plain attributes rather than same-named accessors:
-    # `_apply_config` sets `self.max_hp` / `self.max_armor` from the same `health` block, and `stun_s`
-    # is the stage's `stunMs` under the unit it works in (seconds). Mirrored in substance, not in name.
-    "maxHp", "maxArmor", "stunMs",
+    # `stun_s` is the stage's `stunMs` under the unit it works in (seconds). `self.max_hp`/
+    # `self.max_armor` (F213, 2026-09-16) are set in `recompile()` from `mc.frames.head_pool()` on the
+    # freshly compiled bundle -- the same pool-off-the-`$PSET` reading engine.js's `_headPool` does --
+    # so both sides carry per-player overrides and the body_armor perk the same way. Mirrored in
+    # substance, not in name; `_headPool` itself is inline in `recompile()`, not a separate method.
+    "maxHp", "maxArmor", "stunMs", "_headPool",
     # match CLOCK: the stage has none. The operator drives spawn, revive and end by hand from the
     # bench script, which is why `startAt`/`tick`/`_endLocal` are pinned above; these are the config
     # readers that only a self-running clock would need.

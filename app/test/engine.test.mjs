@@ -2261,16 +2261,21 @@ test('A17.2 the low-health alert fires on an HP THRESHOLD, not when armour runs 
 test('F47: an explicit max_armor of 0 is a NO-ARMOUR loadout, not 70 -- and it still gets its low-health warning', () => {
   // A17.2 dropped the old `maxArmor > 0` guard; this is the test it could not write while `get maxArmor()` was
   // `(config.health.max_armor) || 70` (an explicit 0 became 70, so the guard had been dead code all along).
-  const h = harness(); h.config.health.max_armor = 0;
+  // F213: `maxArmor` now reads the head's own `$PSET` first (compile.py always derives it FROM
+  // `config.health`/overrides, so the two never disagree in production) -- the bundle is updated
+  // alongside `config.health` here to keep matching what a real compile would produce.
+  const h = harness(); h.config.health.max_armor = 0; h.bundle.head = withPool(h.bundle.head, 45, 0);
   h.kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   assert.equal(h.eng.maxArmor, 0); assert.equal(h.eng.armor, 0, 'spawned with no armour');
   h.writes.length = 0;
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,12,0,0,*');
   assert.equal(h.writes.filter(f => f === golden.cues.hurt).length, 1, 'under 15 HP with no armour ever: the alert fires');
-  // CONTROL: absent still means the 70 default, and a positive value is itself.
-  const d = harness(); delete d.config.health.max_armor; d.kit().config_().echo().start(0);
+  // CONTROL: no $PSET on the head at all falls back to config.health (absent -> 70 default, positive -> itself).
+  const d = harness(); delete d.config.health.max_armor; d.bundle.head = d.bundle.head.filter(f => !f.startsWith('$PSET,'));
+  d.kit().config_().echo().start(0);
   assert.equal(d.eng.maxArmor, 70);
-  const p = harness(); p.config.health.max_armor = 30; p.kit().config_().echo().start(0);
+  const p = harness(); p.config.health.max_armor = 30; p.bundle.head = p.bundle.head.filter(f => !f.startsWith('$PSET,'));
+  p.kit().config_().echo().start(0);
   assert.equal(p.eng.maxArmor, 30);
 });
 
@@ -4805,6 +4810,66 @@ test('A37: a NEW head re-opens the echo window that a button had closed', () => 
   h.adv(1600); h.eng.tick();
   const ack = h.reports.filter(r => r.k === 'ack_config').pop();
   assert.equal(ack.b.gun_echo, '$ALCD,32,100,0,192,0,*');
+});
+
+// F212: `respawn.gate` is a SCANNER-ONLY knob (contracts.md §3, "gate: A13.1 (scanner only)"). The
+// getter used to default to 'trigger' for EVERY respawn type, so a live field session ended two
+// matches with `respawnType:"auto"` reporting `respawnGate:"trigger"` against a config that never
+// asked for one -- a mislabel, not a real gate (the `auto` respawn branch only ever checks the
+// timer). Fixed: the field is only meaningful, and only present, under `respawn.type === 'scanner'`.
+test('F212: an auto respawn never claims a trigger gate', () => {
+  const h = harness({ respawn: 'auto' }).kit().config_();
+  assert.equal(h.eng.respawnGate, null, 'auto respawn reports no gate at all');
+  assert.equal(h.eng.state().respawnGate, null);
+});
+
+test('F212: a "none" respawn (LMS) never claims a trigger gate either', () => {
+  const h = harness({ respawn: 'none' }).kit().config_();
+  assert.equal(h.eng.state().respawnGate, null);
+});
+
+test('F212: scanner respawn still reports its real gate (trigger default, or presence when set)', () => {
+  const h = harness({ respawn: 'scanner' }).kit();
+  h.config_();
+  assert.equal(h.eng.state().respawnGate, 'trigger', 'scanner defaults to trigger, unchanged');
+  const h2 = harness({ respawn: 'scanner' });
+  h2.config.respawn.gate = 'presence';
+  h2.kit().config_();
+  assert.equal(h2.eng.state().respawnGate, 'presence');
+});
+
+// F213: `compile.py` bakes per-player `loadout.overrides.max_hp/max_armor` and the `body_armor`
+// perk's `max_armor_add` into the pushed `$PSET` -- the field 2026-09-13 session ended two matches
+// with `armor:120, maxArmor:70` because the node modelled its ceiling from `config.health` alone,
+// never from the head it was actually running. Fixed: `maxHp`/`maxArmor` read the compiled `$PSET`
+// back off `frames.head`, the one number that cannot drift from a second copy of the rules.
+function withPool(head, hp, armor) {
+  return head.map(f => {
+    if (typeof f !== 'string' || !f.startsWith('$PSET,')) return f;
+    const p = f.split(','); p[3] = String(hp); p[4] = String(armor); return p.join(',');
+  });
+}
+test('F213: a plain player keeps maxArmor at the config ceiling', () => {
+  const h = harness().kit().config_();
+  assert.equal(h.eng.maxHp, 45);
+  assert.equal(h.eng.maxArmor, 70);
+  assert.equal(h.eng.state().maxArmor, 70);
+});
+test('F213: a body_armor carrier\'s maxArmor follows the perk baked into the head\'s own $PSET', () => {
+  const h = harness();
+  h.bundle.head = withPool(h.bundle.head, 45, 120);   // body_armor: max_armor_add 50 on a 70 base
+  h.kit().config_();
+  assert.equal(h.eng.maxArmor, 120, 'the pool the head actually arms, not config.health.max_armor (70)');
+  assert.equal(h.eng.state().maxArmor, 120);
+  h.echo().start(0); h.adv(10); h.eng.tick();          // T-0 spawn: fills the pool from maxHp/maxArmor
+  assert.equal(h.eng.armor, 120, 'spawn fills the pool from the same ceiling');
+});
+test('F213: a per-player max_hp/max_armor override baked into the head still wins', () => {
+  const h = harness();
+  h.bundle.head = withPool(h.bundle.head, 30, 40);
+  h.kit().config_();
+  assert.equal(h.eng.maxHp, 30);
+  assert.equal(h.eng.maxArmor, 40);
 });
 
 test('A36: every status heartbeat names the config this phone is holding', () => {

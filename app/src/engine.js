@@ -448,11 +448,23 @@ export class Engine {
   nameOf(num) { const r = this.roster.find(x => x.player_num === num); return r ? r.display : null; }
   get teamTid() { return this.team ? this.team.tid : null; }
   get teamKey() { return this.team ? (TEAM_KEY[this.team.tid] || String(this.team.color || 'blue')) : 'blue'; }
-  get maxHp() { return (this.config && this.config.health && this.config.health.max_hp) || 45; }
+  /** F213: the pool ceiling THE HEAD ACTUALLY ARMS. `compile.py` bakes per-player `overrides.max_hp/max_armor`
+   *  and the `body_armor` perk's `max_armor_add` into the pushed `$PSET` (`_to_gc`/`armed_armor`), so reading
+   *  that frame back is the one source that cannot drift from a second copy of the rules -- the same reading
+   *  `mc/frames.py head_pool()` and `mock_node.py` already use. Falls back to `config.health` when the head
+   *  carries no readable `$PSET` yet (a stub bundle, or before the first config lands). */
+  _headPool() {
+    const head = (this.frames && this.frames.head) || [];
+    const f = head.find(x => typeof x === 'string' && x.startsWith('$PSET,'));
+    if (!f) return null;
+    const p = f.split(',');
+    const hp = Number(p[3]), armor = Number(p[4]);
+    return (Number.isFinite(hp) && Number.isFinite(armor)) ? { hp, armor } : null;
+  }
+  get maxHp() { const p = this._headPool(); if (p) return p.hp; return (this.config && this.config.health && this.config.health.max_hp) || 45; }
   /** F47: `??`, not `||` -- MC may ship `max_armor: 0` ("one-shot with a sniper"); `||` turned that explicit 0
-   *  into 70, so a no-armour class silently had armour. (A per-player `overrides.max_armor` lands in `$PSET`
-   *  only; the node never sees it and still models the game value -- a known gap, not covered here.) */
-  get maxArmor() { const v = this.config && this.config.health && this.config.health.max_armor; return (v === 0 || v > 0) ? v : 70; }
+   *  into 70. Only the config-fallback path needs this: a `$PSET`-sourced 0 already survives `Number.isFinite`. */
+  get maxArmor() { const p = this._headPool(); if (p) return p.armor; const v = this.config && this.config.health && this.config.health.max_armor; return (v === 0 || v > 0) ? v : 70; }
   /** F34/F13: floored at MIN_RESPAWN_S on the node too. MC refuses 1-2 s at PUT, but a config that arrives another
    *  way (a stored preset, the demo, the stage) spawned at exactly that, inside the headset relay's out-blink wedge. */
   get respawnDelayMs() { const s = this.config && this.config.respawn && this.config.respawn.delay_s; return Math.max(MIN_RESPAWN_S, s > 0 ? s : 10) * 1000; }
@@ -461,8 +473,13 @@ export class Engine {
    *  otherwise an ordinary hit (the stock `<8,0>` row is the charge rifle's plain damage) and must disarm nothing. */
   get stunEnabled() { return !!(this.config && this.config.stun && typeof this.config.stun === 'object'); }
   get stunMs() { const s = this.config && this.config.stun && +this.config.stun.duration_s; return (s > 0 ? s : STUN_DEFAULT_S) * 1000; }
-  /** scanner respawn: 'trigger' = at the station AND pull the trigger (default); 'presence' = being at the station is enough */
-  get respawnGate() { return (this.config && this.config.respawn && this.config.respawn.gate) || 'trigger'; }
+  /** scanner respawn: 'trigger' = at the station AND pull the trigger (default); 'presence' = being at the station is enough.
+   *  F212: `gate` is a SCANNER-ONLY knob (contracts.md §3 `respawn.gate`, "scanner only") -- the getter used to
+   *  default to 'trigger' for every respawn type, so an `auto` config's status reported `respawnGate:"trigger"`
+   *  even though nothing ever gates an auto respawn on the trigger (the `auto` branch below only checks the
+   *  timer). That label then read as a real trigger-gated respawn reachable outside scanner mode -- it never
+   *  was. `null` for anything but scanner, so a consumer cannot mistake "not applicable" for "gated". */
+  get respawnGate() { return this.respawnType === 'scanner' ? ((this.config && this.config.respawn && this.config.respawn.gate) || 'trigger') : null; }
   get timeLimitMs() { const s = this.config && this.config.time_limit_s; return s ? s * 1000 : null; }
   get goLiveT() { return this.start ? this.start.go_live_t : null; }
   get endT() { return (this.goLiveT && this.timeLimitMs) ? this.goLiveT + this.timeLimitMs : null; }
