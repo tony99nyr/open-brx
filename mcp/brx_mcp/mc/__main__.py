@@ -313,6 +313,12 @@ def build(args):
         if getattr(args, "evidence_dir", None):
             raise RuntimeError(f"requested evidence store is unavailable: {e}") from e
 
+    # Bench 2026-09-17: a match that was in play when the last process stopped resumes now, with the store
+    # attached, so its recap is rebuilt from the facts the phones already sent.
+    resumed = session.resume_match()
+    if resumed:
+        print(f"  match resumed: {resumed.upper()} (the snapshot named a match in play)", flush=True)
+
     # A10 §8 saved games: the real shelf lives next to armory.json; --demo/--ephemeral get a throwaway copy so a
     # demo "SAVE AS…" never lands in (or wipes) the host's real presets.json
     from pathlib import Path as _PP

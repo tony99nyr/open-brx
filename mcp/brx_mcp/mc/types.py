@@ -1163,6 +1163,18 @@ class NoticesView(TypedDict):
     mc_verify: NotRequired[str]
 
 
+class OrphanMatchView(TypedDict):
+    """Bench 2026-09-17: bound phones report ARMED/LIVE in a match this MC did not start.
+
+    Absent from `State` unless at least one such phone is heard now. `players` are display names.
+    `can_resume` is false while MC runs or recaps a match of its own (END THEIR MATCH still works)."""
+    match_id: str
+    phones: int
+    players: list[str]
+    arm_state: Literal["armed", "live"]
+    can_resume: bool
+
+
 class RestoredFromView(TypedDict):
     at: int | None
     players: int
@@ -1210,6 +1222,7 @@ class State(TypedDict):
     recap: NotRequired[RecapView | None]
     notices: NotRequired[NoticesView]
     end_delivery: NotRequired[EndDeliveryView]
+    orphan_match: NotRequired[OrphanMatchView]   # bench 2026-09-17: absent unless phones are in a match MC did not start
     bench_volume: NotRequired[int]     # `--bench-volume N`: every $VOL MC compiles plays at N. Absent on a normal run
 
 

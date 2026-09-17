@@ -6,6 +6,7 @@ import { useStore } from '../store';
 import { F, T, fmtAge, fmtClock, teamColor } from '../tokens';
 import { columnEdges, type Column } from './columns';
 import { Blink, GhostButton, Num, ScrollX, Tag } from '../ui';
+import { OrphanMatch } from '../ui/OrphanMatch';
 
 // S24 (game test 2026-09-11, D4): the board was `minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px …`
 // at `gap:'0 10px'` with 9 px headers over 14-16 px values, and K/D/A were three identical right-aligned
@@ -68,7 +69,12 @@ export function Live() {
   if (!state) return null;
   const lv = state.live;
   if (!lv) {
-    return <div className="screen" style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.micro }}>NO MATCH LIVE — THE BOARD FILLS WHEN NODES GO LIVE AT T-0.</div>;
+    return (
+      <div className="screen" style={{ font: F.mono(500, 10), letterSpacing: '.14em', color: T.micro }}>
+        <OrphanMatch />
+        NO MATCH LIVE — THE BOARD FILLS WHEN NODES GO LIVE AT T-0.
+      </div>
+    );
   }
   // POST /api/control answers 200 with `ok:false` when it REFUSES — an END with no scorer, or a
   // second END after the recap is written (state.py `control`). The old handler read `reached`/`nodes`
@@ -103,6 +109,7 @@ export function Live() {
 
   return (
     <div className="screen">
+      <OrphanMatch />
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center', gap: 10, marginBottom: 8 }}>
         {/* 11px, not 9: it names how much of the park is covered, which is content, not decoration
             (the console's floor, audit 2026-09-12 — this tag was the one the sweep still caught).

@@ -265,6 +265,12 @@ export class MockBackend implements Api {
    *  so the banner must read 1, not 2. The rule is only legible when both cases are on screen at once. */
   private demoStalePhone = typeof location !== 'undefined' && new URLSearchParams(location.search).get('stalephone') === '1';
   private restoredFrom: { at: number; players: number } | null = null;
+  /** `?mock&orphan=1` — bench 2026-09-17: two bound phones report a LIVE match this MC did not start (MC
+   *  restarted with no snapshot). Mirrors `state.py orphan_match_view()`: present only while unresolved,
+   *  RESUME MATCH adopts it (MUSTER/BUILD/KIT/LOBBY only), END THEIR MATCH clears it. */
+  private orphan_: { match_id: string; player_ids: string[] } | null =
+    typeof location !== 'undefined' && new URLSearchParams(location.search).get('orphan') === '1'
+      ? { match_id: 'm-lost', player_ids: ['p1', 'p2'] } : null;
 
   constructor() {
     this.players = PLAYERS.map(([display, team_id, gi], i) => ({
@@ -630,6 +636,7 @@ export class MockBackend implements Api {
       live: this.live_ ? this.liveView() : undefined,
       recap: this.recap_ ? clone(this.recap_) : undefined,
       end_delivery: this.endDelivery(),      // A42
+      orphan_match: this.orphanView(),
     };
   }
   /** A42 — did the END reach every player's HUD? Plain `?mock` shows the ordinary answer (all of them
@@ -644,6 +651,18 @@ export class MockBackend implements Api {
    *  them rather than frozen at the spent end of the ladder. */
   private endedAt?: number;
 
+  private orphanView() {
+    const o = this.orphan_;
+    if (!o) return undefined;
+    const players = o.player_ids.map(id => this.players.find(p => p.player_id === id)?.display ?? id).sort();
+    return { match_id: o.match_id, phones: players.length, players, arm_state: 'live' as const,
+             can_resume: ['muster', 'build', 'kit', 'lobby'].includes(this.phase) && !this.start_ };
+  }
+  /** Test hook, the same shape as `?mock&orphan=1`. */
+  setOrphan(match_id: string | null, player_ids: string[] = ['p1', 'p2']) {
+    this.orphan_ = match_id ? { match_id, player_ids } : null;
+    this.emit();
+  }
   private endDelivery() {
     if (this.endedAt === undefined) return undefined;
     const total = this.players.length;
@@ -1356,6 +1375,27 @@ export class MockBackend implements Api {
     this.start_ = undefined; this.live_ = undefined; this.phase = 'kit'; this.pushed = false; this.acks = {}; this.endedAt = undefined;
     this.emit();
     return { ok: true, ended: true, reached: nodes, pushed: nodes, nodes, phase: this.phase };
+  }
+  async resumeOrphan(match_id: string) {
+    if (!this.orphan_ || this.orphan_.match_id !== match_id) {
+      throw Object.assign(new Error('no phone reports that match any more'), { status: 409 });
+    }
+    if (!['muster', 'build', 'kit', 'lobby'].includes(this.phase) || this.start_) {
+      throw Object.assign(new Error(`MC is in ${this.phase.toUpperCase()}: end or leave that first, then resume their match`), { status: 409 });
+    }
+    this.orphan_ = null;
+    this.schedule(0, 1, match_id);
+    this.goLive();
+    this.emit();
+    return this.state();
+  }
+  async endOrphan(match_id: string) {
+    if (!this.orphan_ || this.orphan_.match_id !== match_id) {
+      throw Object.assign(new Error('no phone reports that match any more'), { status: 409 });
+    }
+    this.orphan_ = null;
+    this.emit();
+    return this.state();
   }
   async matchHistory() { return clone(this.history_); }
   async getRecap() { if (!this.recap_) throw new Error('no recap yet'); return clone(this.recap_); }

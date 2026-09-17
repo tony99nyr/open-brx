@@ -1176,6 +1176,18 @@ export interface NoticesView {
   mc_verify?: string;
 }
 
+/** Bench 2026-09-17: bound phones report ARMED/LIVE in a match this MC did not start.
+ *
+ *  Absent from `State` unless at least one such phone is heard now. `players` are display names.
+ *  `can_resume` is false while MC runs or recaps a match of its own (END THEIR MATCH still works). */
+export interface OrphanMatchView {
+  match_id: string;
+  phones: number;
+  players: string[];
+  arm_state: 'armed' | 'live';
+  can_resume: boolean;
+}
+
 export interface RestoredFromView {
   at: number | null;
   players: number;
@@ -1223,6 +1235,8 @@ export interface State {
   recap?: RecapView | null;
   notices?: NoticesView;
   end_delivery?: EndDeliveryView;
+  /** bench 2026-09-17: absent unless phones are in a match MC did not start */
+  orphan_match?: OrphanMatchView;
   /** `--bench-volume N`: every $VOL MC compiles plays at N. Absent on a normal run */
   bench_volume?: number;
 }

@@ -4,6 +4,7 @@ import { endDeliveryLine } from '../api/derive';
 import { useStore } from '../store';
 import { CHAMFER, F, T, fmtClock, teamColor } from '../tokens';
 import { BTN_RESET, Brackets, Num, SectionRule, PrimaryButton } from '../ui';
+import { OrphanMatch } from '../ui/OrphanMatch';
 import { bestStreak } from './Live';
 import { columnEdges, type Column } from './columns';
 
@@ -77,6 +78,7 @@ export function Recap() {
   ) : null;
   if (!rc) return (
     <div className="screen">
+      <OrphanMatch />
       {picker}
       <div style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro }}>
         {archive.length ? 'PICK A MATCH ABOVE TO SEE ITS RESULT.' : 'NO RECAP YET — THE MATCH ENDS AT THE TIME LIMIT ON EVERY NODE.'}
@@ -119,6 +121,7 @@ export function Recap() {
 
   return (
     <div className="screen">
+      <OrphanMatch />
       {picker}
       {(past ?? history.find(h => h.match_id === liveId))?.config && <MatchConfig row={(past ?? history.find(h => h.match_id === liveId))!} />}
       {past && (

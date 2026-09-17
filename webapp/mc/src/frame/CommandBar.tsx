@@ -76,7 +76,12 @@ export function CommandBar() {
                 style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, fontFamily: "'Chakra Petch'", background: active ? '#0c1420' : 'transparent',
                   border: 'none', borderBottom: `2px solid ${active ? T.acc : 'transparent'}`, padding: '8px 16px 7px', cursor: 'pointer', color: active ? T.ink : T.dim, minHeight: 44 }}>
                 <span style={{ font: F.mono(600, 9), letterSpacing: '.2em', color: active ? T.acc : 'rgba(92,113,134,.7)' }}>0{i + 1}</span>
-                <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.22em' }}>{label}{id === 'build' && view === 'designer' ? <span style={{ color: T.acc }}> ▸ DESIGNER</span> : ''}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.22em' }}>{label}{id === 'build' && view === 'designer' ? <span style={{ color: T.acc }}> ▸ DESIGNER</span> : ''}
+                  {/* Bench 2026-09-17: phones are in a match this MC did not start. Only while that is true. */}
+                  {id === 'live' && state?.orphan_match && (
+                    <span data-testid="match-tab-dot" aria-label="phones in a match this MC did not start"
+                      style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: T.warn, marginLeft: 8, verticalAlign: 'middle' }} />
+                  )}</span>
               </button>
             );
           })}

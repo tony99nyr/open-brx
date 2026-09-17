@@ -578,6 +578,25 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
             return _err(str(e), getattr(e, "status", 400))
         return JSONResponse(s.snapshot())
 
+    async def orphan_resume(req):
+        """RESUME MATCH (bench 2026-09-17): adopt the match bound phones report and this MC did not start.
+        `state.py adopt_orphan()`. Answers the full State."""
+        b = await body(req)
+        try:
+            s.adopt_orphan(str(b.get("match_id") or ""))
+        except ValueError as e:
+            return _err(str(e), getattr(e, "status", 400))
+        return JSONResponse(s.snapshot())
+
+    async def orphan_end(req):
+        """END THEIR MATCH (bench 2026-09-17): `control{end, match_id}` to the phones reporting it only."""
+        b = await body(req)
+        try:
+            s.end_orphan(str(b.get("match_id") or ""))
+        except ValueError as e:
+            return _err(str(e), getattr(e, "status", 400))
+        return JSONResponse(s.snapshot())
+
     async def new_session(req):
         b = await body(req)
         s.new_session(keep_roster=bool(b.get("keep_roster", True)))
@@ -764,6 +783,8 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/matches/{mid}.csv", match_csv),
         Route("/api/session/new", new_session, methods=["POST"]),
         Route("/api/match/next", match_next, methods=["POST"]),
+        Route("/api/match/orphan/resume", orphan_resume, methods=["POST"]),
+        Route("/api/match/orphan/end", orphan_end, methods=["POST"]),
         WebSocketRoute("/ui-ws", ui_ws),
     ]
     if UI_DIST.exists():

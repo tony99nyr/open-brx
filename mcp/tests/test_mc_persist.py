@@ -467,15 +467,25 @@ def test_after_a_restart_load_reaches_every_phone_that_said_hello_again():
     assert s2.snapshot()["game"]["loaded"] is True
 
 
-def test_restart_from_an_armed_or_live_match_never_sends_a_config_or_a_start():
-    """A config push to a gun in play clears `spawned`. A restart mid-match comes back with no start and
-    no frames on the re-hello, so a phone keeps the match it already holds."""
+def test_restart_from_an_armed_or_live_match_resumes_it_and_never_sends_a_config():
+    """A config push to a gun in play clears `spawned`. Bench 2026-09-17: a restart mid-match now RESUMES
+    the match (test_mc_resume), but the re-hello still carries no config and no frames, and its `start`
+    is the same match and seq, which a phone in play takes as a no-op."""
+    from brx_mcp.mc.fakes import demo_armory
     for go_live in (False, True):
         s, net, clock, ps = _loaded_pushed_lobby()
-        s.start(force=True)
+        info = s.start(force=True)
         if go_live:
             clock["t"] = s.start_info["go_live_t"] + 10
             s.tick()
         assert s.phase == ("live" if go_live else "armed"), "control"
         s2, net2 = _restart_from(s, clock)
-        _assert_pre_delivery(s2, net2, clock, ps, s.config["config_id"])
+        assert s2.resume_match() == ("live" if go_live else "armed")
+        assert s2.snapshot()["lobby"]["pushed"] is False
+        for i, p in enumerate(ps):
+            tail = demo_armory()[i]["ble"]["tail"]
+            node = net2.simulate_hello(f"node{i}", f"GUN-{chr(65 + i)}-{tail}")
+            assert node is not None and node["player"]["player_id"] == p["player_id"]
+            assert "config" not in node and "frames" not in node
+            assert (node["start"]["match_id"], node["start"]["seq"]) == (info["match_id"], info["seq"])
+        assert not [k for (_n, k, _b) in net2.pushed if k in ("config", "start")]
