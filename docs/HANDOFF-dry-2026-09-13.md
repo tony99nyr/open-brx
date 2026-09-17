@@ -1,7 +1,10 @@
-# Handoff: the remaining contract-DRY and typing work
+# Handoff: contract-DRY and typing execution — complete
 
-**Filed 2026-09-13 by the session that built the generated contract and the pyright gate. Nothing here blocks a
-match.** Self-contained: pick up any item below without reading the 2026-09-12 session. The ids live in
+**Execution completed 2026-09-16.** This document is now the completed execution record for the generated contract,
+static typing, phone transport checking, and bench-stage pyright work. Nothing here blocks a match. The broader F42
+cleanup backlog remains in [`FOLLOWUPS.md`](FOLLOWUPS.md): runtime coverage (F42.4), module seams (F42.5), repeated
+logic (F42.6), and the two small interface/input items (F42.7). Self-contained: the implementation history can be
+checked without reading the 2026-09-12 session. The ids live in
 [`FOLLOWUPS.md`](FOLLOWUPS.md); the design record is [`spec/contracts.md`](spec/contracts.md) A33 and the archived
 working spec [`archive/spec-contract-dry-2026-09-12.md`](archive/spec-contract-dry-2026-09-12.md).
 
@@ -9,7 +12,7 @@ working spec [`archive/spec-contract-dry-2026-09-12.md`](archive/spec-contract-d
 
 | Contract | One source | Generated into | Gate that fails on drift |
 |---|---|---|---|
-| Node↔MC wire tables: kinds, required fields, event types, size caps, timing constants, `ACCEPT_MIN` | `mcp/brx_mcp/mc/envelope.py` + `types.py` | `app/src/transport/contract.gen.js`, `webapp/mc/src/api/contract.gen.ts` | `mcp/tests/test_contract_generated.py` |
+| Node↔MC wire tables: kinds, required fields, event types, size caps, timing constants, `ACCEPT_MIN` | `mcp/brx_mcp/mc/envelope.py` + `types.py` | `app/src/transport/contract.gen.js`, `app/src/transport/contract.gen.d.ts`, `webapp/mc/src/api/contract.gen.ts` | `mcp/tests/test_contract_generated.py` |
 | Shared shapes: every TypedDict and every `Literal` alias in `types.py`, comments carried as JSDoc | `mcp/brx_mcp/mc/types.py` | `webapp/mc/src/api/contract.gen.ts`, re-exported by `types.ts` | the same, plus `test_ui_contract.py` (types.ts may not re-declare one) |
 | Kind vocabulary against the spec | `docs/spec/contracts.md` §5 | none, compared | `test_contract_kinds.py` |
 | Weapon and mode catalogs in the two demos | `weapons.json`, `state.py MODES` | `webapp/mc/src/mock/data.ts`, `app/src/demo-catalog.js` | `test_ui_catalog_generated.py` |
@@ -81,15 +84,15 @@ public `perk_effects`; the real compiler has the same public method. `Session` n
 perk or catalog failure under a blanket exception. Real-only `hit_plan`, `voice_options` and
 `voice_preview` remain optional through guarded lookups.
 
-### 5. F42.9: generate the console's view types. M, then L for `State`
+### 5. F42.9: generate the console's view types. Complete 2026-09-16
 
 About two dozen types in `webapp/mc/src/api/types.ts` were hand-written because the server builds them as untyped
-dicts. Batches 1-4 are done 2026-09-16: the leaf, arsenal, live-row,
-node, station, tunnel, presentation, mode, recap and match-history shapes now come from `types.py`,
+dicts. All five batches are done: the leaf, arsenal, live-row, node, station, tunnel, presentation, mode, recap,
+match-history and top-level state shapes now come from `types.py`,
 their producers are checked, and `API.md` names `RecapStationRow` and `VoiceList`. `PhaseRefusalBody` is the
 server's required 409 body; the UI's `PhaseRefusal = Partial<PhaseRefusalBody>` deliberately accepts other or
-older error bodies. The weapon view keeps `pool` and `ttk_ms` optional for older MC responses. Continue with
-the remaining composed views, then decompose `State.snapshot()` rather than only annotating its return.
+older error bodies. The weapon view keeps `pool` and `ttk_ms` optional for older MC responses. `State.snapshot()`
+now composes named checked view producers rather than returning an unchecked aggregate.
 
 | Batch | Types | Producers | Size | Status |
 |---|---|---|---|---|
@@ -102,10 +105,12 @@ the remaining composed views, then decompose `State.snapshot()` rather than only
 `ConfigView`, `LoadoutPoolReasons` and `PoolEmptyCode` are already aliases of generated types. `Api`, `FeedTag`
 and `FeedEntry` have no typed server producer and stay hand-written.
 
-### 6. F42.12: type-check the phone transport. M — Done 2026-09-16
+### 6. F42.12: type-check the phone transport. Complete 2026-09-16
 
-`app/src/transport` is plain JavaScript that nothing type-checks, although it imports the generated tables.
-**Measured with `allowJs` + `checkJs` over the five transport files: 116 errors.**
+`app/src/transport` is now checked with strict `allowJs` + `checkJs`, using the generated runtime tables and
+`contract.gen.d.ts`. The app CI job runs the checker before tests; the final typecheck is clean.
+
+The baseline was 116 errors over the five transport files:
 
 | File | Errors |
 |---|---|
@@ -116,25 +121,14 @@ and `FeedEntry` have no typed server producer and stay hand-written.
 | `contract.gen.js` | 0 |
 | `../build.js`, pulled in by an import | 3 |
 
-74 are implicit-any (a JSDoc `@param` or `@typedef` fixes each) and 42 are property or assignment mismatches.
-Adding `strict` on top adds none. The two mismatch clusters that look like bugs are not: `envelope.js`'s
-`env.seq` is an intentional optional field set after the literal, and `Transport`'s constructor JSDoc lists fewer
-options than it defaults. Both need a typedef, not a fix. The work:
+The intentional optional `env.seq` assignment and the constructor's defaulted options were captured in the
+boundary types rather than treated as runtime bugs.
 
-1. Teach `gen_contract.py` one more target, a `contract.gen.d.ts` beside `contract.gen.js` (the render
-   functions already produce the TS interfaces), or `@typedef {import('../../../webapp/...')}` the shapes. The
-   `.d.ts` keeps the app self-contained.
-2. Add `typescript` to `app/`'s devDependencies, a `tsconfig.json` with `allowJs` and `checkJs` scoped to
-   `src/transport`, and `npm run typecheck` in `app/package.json` and in CI's app job.
-3. JSDoc the 74, fix or type the 42, then widen the scope file by file.
+### 7. F42.14: bring the bench stage under the pyright gate. Complete 2026-09-16
 
-### 7. F42.14: bring the bench stage under the pyright gate. M — Done 2026-09-16
-
-`mcp/brx_mcp/stage/` is excluded in `mcp/pyproject.toml`. **Measured: 59 errors** (33 argument type, 12 optional
-subscript, 6 attribute access, the rest small). The stage exists to predict `app/src/engine.js`, so every change
-must keep it mirroring the phone. It already imports `STATION_SOURCES`, `Compiler` and `default_config` from the
-typed side. Type its JSON message boundary once, as a TypedDict per message the page sends, then remove the
-exclude and let `test_pyright.py` hold it.
+`mcp/brx_mcp/stage/` is now included in `mcp/pyproject.toml` and passes the pyright gate. Its JSON message
+boundary, internal profile/advert/station/hill/stun/walkthrough state, and shared config/player/bundle shapes are
+typed once, while the stage/phone mirror suite remains the behavioral guard.
 
 ## Deliberately hand-kept, and pinned instead
 
@@ -162,5 +156,7 @@ Not gaps. Each mirrors server data by hand because it is logic or a byte map, an
 
 ## Where the history is
 
-`docs/experiment-log/2026-09.md`, the 2026-09-12 contract-DRY entry, has the drifts found, the decisions and both
-polish loops. Commits: `86a8c3a`, `85bab68`, `1dfb99e` (the generated contract), `41ed9ee` (the pyright gate).
+`docs/experiment-log/2026-09.md` has the 2026-09-12 design record and the 2026-09-15/16 execution entries,
+including the decisions, validation, and polish loops. The implementation commits are `1dfb99e` (generated
+contract), `41ed9ee` (pyright gate), `5a08789`/`e650e0fe`/`35a9cea` (typed contract views and stage), and
+`841bdc4` (phone transport checking).

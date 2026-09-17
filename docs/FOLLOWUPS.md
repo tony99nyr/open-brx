@@ -432,7 +432,9 @@ nine of these eleven were root-caused without touching a gun.
   is a real behavioural default, not a flag awaiting cleanup: F38 proved `$SIR` REPLACES the `$PSET` pool
   sound rather than layering, so enabling it silences the material layer. The stock `$SIR` rows' empty sound
   tokens are what make the pool sounds audible, not a gap to fill. `build`.
-  **Remaining contract-DRY and typing work, sized, ordered and self-contained: [`HANDOFF-dry-2026-09-13.md`](HANDOFF-dry-2026-09-13.md).**
+  **Contract-DRY execution record (complete 2026-09-16): [`HANDOFF-dry-2026-09-13.md`](HANDOFF-dry-2026-09-13.md).**
+  The remaining F42 work is the separate cleanup backlog below: coverage (F42.4), module seams (F42.5), repeated
+  logic (F42.6), and the small interface/input items (F42.7).
   Contract-DRY phase 1 (`types.py`/`envelope.py` → generated `contract.gen.ts`/`contract.gen.js`) is DONE, see contracts.md
   A33. **F42.10 ✅ CLOSED 2026-09-12:** pyright gates `mcp/` in CI (`standard` mode, `mcp/pyproject.toml`). None of the
   rows below blocks a match.
