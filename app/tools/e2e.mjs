@@ -720,7 +720,9 @@ await step('RELOAD warns only when actually low; pips track the real mag (loadou
     expect(lit === st1.ammo, `pips ${lit} should equal the rounds left ${st1.ammo}/${st1.mag}`);
   } else {
     expect((await hudA.locator('.alive .pips > i').count()) === 0, `a ${st1.mag}-round mag shows a bar, not pips`);
-    expect((await hudA.locator('.alive .bar.ammo').count()) > 0, `a ${st1.mag}-round mag shows the ammo bar`);
+    // "ammobar", not "ammo" -- item 1 (bench 2026-09-17): the bar's class must never collide with the
+    // ammo COLUMN's own `.ammo` (position:absolute), which floated the bar over the mag digits.
+    expect((await hudA.locator('.alive .bar.ammobar').count()) > 0, `a ${st1.mag}-round mag shows the ammo bar`);
   }
   const low = Math.max(0, st1.ammo - Math.max(1, Math.floor(M * 0.1)));
   await hudA.evaluate(n => window.fakeGun.fire(n), low);             // down to ~10%

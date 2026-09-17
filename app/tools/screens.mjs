@@ -1977,7 +1977,9 @@ const gaugeState = pg => pg.evaluate(() => ({
   pips: document.querySelectorAll('#pips > i').length,
   lit: document.querySelectorAll('#pips > i:not(.spent)').length,
   bar: !!document.querySelector('#pips > .bar'),
-  ammoBar: !!document.querySelector('#pips > .bar.ammo'),
+  // "ammobar", not "ammo" -- item 1 (bench 2026-09-17): the bar's own class must never collide with the
+  // ammo COLUMN's `.ammo` (position:absolute;right:36px;bottom:32px), which floated the bar over the digits.
+  ammoBar: !!document.querySelector('#pips > .bar.ammobar'),
   energyBar: !!document.querySelector('#pips > .bar.energy'),
   mag: (document.getElementById('mag') || {}).textContent,
   prompt: (document.querySelector('.ammo .reload .unskew') || {}).textContent || null,
@@ -2000,6 +2002,37 @@ await step('ammo gauge se: a 36-round mag (burst rifle) uses the continuous bar,
   const r = await gaugeState(pg);
   must(r.bar && r.ammoBar && r.pips === 0, `a 36-round mag must render as the ammo bar, never 36 pips: ${JSON.stringify(r)}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-burst-bar.png` });
+  await pg.close();
+});
+// ---------- item 1 (bench 2026-09-17): the big-mag bar shared the class name `ammo` with the ammo
+// COLUMN's own `position:absolute;right:36px;bottom:32px` rule. Since `.pips` is `position:relative`
+// (63278ea4), that pulled the bar out of flow, over the mag digits, and collapsed `.pips` to 0x0. ----------
+await step('ammo gauge se: the big-mag bar sits clear of the mag digits and the pips box does not collapse', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'assault_rifle', 0, 32, 192, 32); await pg.waitForTimeout(400);
+  const r = await pg.evaluate(() => {
+    const rect = el => { if (!el) return null; const b = el.getBoundingClientRect(); return { t: b.top, b: b.bottom, w: b.width, h: b.height }; };
+    const bar = document.querySelector('#pips > .bar');
+    return { pips: rect(document.getElementById('pips')), bar: rect(bar), mag: rect(document.getElementById('mag')), barClass: bar ? bar.className : null };
+  });
+  must(r.pips && r.pips.w > 0 && r.pips.h > 0, `the pips box must not collapse to 0px on a big mag: ${JSON.stringify(r.pips)}`);
+  must(r.bar && r.bar.w > 0 && r.bar.h > 0, `the ammo bar must actually render: ${JSON.stringify(r)}`);
+  must(!/(^| )ammo( |$)/.test(r.barClass || ''), `the bar's class must not be "ammo" -- it collides with the .ammo column: ${r.barClass}`);
+  must(r.bar.t >= r.mag.b, `the bar must sit below the mag digits, not float over them: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-bigmag-bar.png` });
+  await pg.close();
+});
+await step('ammo gauge se: the ready shine still shows on a big (>30) mag now the pips box no longer collapses', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'assault_rifle', 0, 32, 192, 32); await pg.waitForTimeout(400);
+  const r = await pg.evaluate(() => {
+    document.getElementById('frame').dataset.cool = 'ready';
+    const pips = document.querySelector('.ammo .pips'); const af = getComputedStyle(pips, '::after'); const b = pips.getBoundingClientRect();
+    return { anim: af.animationName, w: b.width, h: b.height };
+  });
+  must(r.w > 0 && r.h > 0, `the pips box needs real size for the shine to be visible: ${JSON.stringify(r)}`);
+  must(r.anim === 'readyshine', `the ready shine must be armed on a big mag too: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-bigmag-readyshine.png` });
   await pg.close();
 });
 await step('ammo gauge se: swapping from the sniper to a 36-round mag re-renders the gauge from pips to the bar', async () => {
@@ -2052,6 +2085,44 @@ await step('ammo prompt se: an energy weapon with reserve left reads RECHARGE, n
   const r = await gaugeState(pg);
   must(/^RECHARGE/.test(r.prompt || ''), `an energy weapon at 0 with reserve must read RECHARGE, got ${JSON.stringify(r.prompt)}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-energy-recharge.png` });
+  await pg.close();
+});
+// ---------- NOT ENOUGH ENERGY (bench 2026-09-17, item 6): a charge rifle cell under one full charge
+// (10, `CHARGE_RIFLE_FULL_CHARGE_COST` in hud.js) fires nothing, so a cell of 1-9 must say so, distinct
+// from the ordinary low-ammo warning; at exactly 10 the state must not show. ----------
+const allPrompts = pg => pg.evaluate(() => Array.from(document.querySelectorAll('.ammo .reload .unskew')).map(x => x.textContent));
+await step('ammo prompt se: a charge rifle cell of 9 (under the 10-cost full charge) reads NOT ENOUGH ENERGY', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 9); await pg.waitForTimeout(400);
+  const r = await gaugeState(pg); const all = await allPrompts(pg);
+  must(r.prompt === 'NOT ENOUGH ENERGY', `9 of 40 (cost 10) must read NOT ENOUGH ENERGY, got ${JSON.stringify(r.prompt)}`);
+  must(all.some(t => /^RECHARGE/.test(t)), `with reserve left it must also offer RECHARGE: ${JSON.stringify(all)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-energy-not-enough.png` });
+  await pg.close();
+});
+await step('ammo prompt se: a charge rifle cell of 9 with NO reserve reads NOT ENOUGH ENERGY alone, no RECHARGE promise', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 0, 9); await pg.waitForTimeout(400);
+  const all = await allPrompts(pg);
+  must(all.length === 1 && all[0] === 'NOT ENOUGH ENERGY', `no reserve must drop the RECHARGE hint: ${JSON.stringify(all)}`);
+  await pg.close();
+});
+await step('ammo prompt se: a charge rifle cell of exactly 10 (the full-charge cost) does not read NOT ENOUGH ENERGY', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 10); await pg.waitForTimeout(400);
+  const r = await gaugeState(pg);
+  must(r.prompt !== 'NOT ENOUGH ENERGY', `10 of 40 is a full charge and must not read NOT ENOUGH ENERGY: ${JSON.stringify(r.prompt)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-energy-enough.png` });
+  await pg.close();
+});
+await step('ammo prompt se: NOT ENOUGH ENERGY never shows for a bullet weapon or a tap-only energy weapon', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'burst_rifle', 0, 36, 216, 9); await pg.waitForTimeout(400);
+  let r = await gaugeState(pg);
+  must(r.prompt !== 'NOT ENOUGH ENERGY', `a bullet weapon must never show NOT ENOUGH ENERGY: ${JSON.stringify(r.prompt)}`);
+  await setAmmo(pg, 'energy_rifle', 0, 40, 80, 9); await pg.waitForTimeout(400);
+  r = await gaugeState(pg);
+  must(r.prompt !== 'NOT ENOUGH ENERGY', `only charge_rifle has a known full-charge cost -- energy_rifle must not show it: ${JSON.stringify(r.prompt)}`);
   await pg.close();
 });
 
@@ -2193,6 +2264,26 @@ await step('heat bar se: heat falls back under the lockout and the OVERHEAT stat
   await pg.screenshot({ path: `${OUT}/se-heat-cleared.png` });
   await pg.close();
 });
+// ---------- item 5 (bench 2026-09-17): `.reload.hot`/`.reload.out` stayed a solid bright block with white
+// text at night -- the one light-discipline miss in this file. Dark fill, `var(--num)` text, no glow. ----------
+await step('night se: the OVERHEAT (.reload.hot) prompt drops the solid bright fill and white text', async () => {
+  const pg = await open(VIEWS[1], 'live', '&night');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108); await pg.waitForTimeout(400);
+  const r = await pg.evaluate(() => { const el = document.querySelector('.reload.hot'); const cs = getComputedStyle(el); return { bg: cs.backgroundColor, color: cs.color }; });
+  must(r.color !== 'rgb(255, 255, 255)', `night must not show white text on OVERHEAT: ${JSON.stringify(r)}`);
+  must(r.bg === 'rgb(42, 12, 12)', `night must use the dark night fill on OVERHEAT, not the bright day block: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-reload-hot-night.png` });
+  await pg.close();
+});
+await step('night se: the OUT OF ENERGY (.reload.out) prompt drops the solid bright fill and white text', async () => {
+  const pg = await open(VIEWS[1], 'live', '&night');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 0, 0); await pg.waitForTimeout(400);
+  const r = await pg.evaluate(() => { const el = document.querySelector('.reload.out'); const cs = getComputedStyle(el); return { bg: cs.backgroundColor, color: cs.color }; });
+  must(r.color !== 'rgb(255, 255, 255)', `night must not show white text on OUT OF ENERGY: ${JSON.stringify(r)}`);
+  must(r.bg === 'rgb(42, 12, 12)', `night must use the dark night fill on OUT OF ENERGY, not the bright day block: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-reload-out-night.png` });
+  await pg.close();
+});
 
 // ---------- shot-ready cue (bench 2026-09-17): a weapon with >= 400 ms between rounds dims the gauge after each
 // shot and shines once when the next round is due. Timed from the gun's own `$ALCD`, so never early. ----------
@@ -2310,6 +2401,62 @@ for (const view of VIEWS) {
     must(r.open && /^AS OF 1[23] S AGO$/.test(r.age || '') && r.stale, `a stale board must say how old it is: ${JSON.stringify(r)}`);
   });
 }
+// ---------- item 2 (bench 2026-09-17): `#frame[data-board] #chips{opacity:0}` hid the link-status pills
+// but `button.pill` opts back into pointer-events, so a hidden RECONNECT/GUN LINK LOST button still sat
+// over the panel's own tab row and could swallow a tap meant for TEAMS/PLAYERS. ----------
+await step('scores overlay: a hidden pill under the tab row cannot intercept the tap meant for the tab', async () => {
+  const pg = await open(VIEWS[1], 'live-scores');
+  await pg.evaluate(() => window.brx.engine.onBleDropped());   // renders the GUN LINK LOST button into #chips
+  await pg.click('.clockplate'); await pg.waitForTimeout(200);
+  const r = await pg.evaluate(() => {
+    // check the point where the hidden pill and the panel HEAD actually overlap on screen, not the tab's
+    // own centre (the two boxes only partly overlap, and the tab's centre can sit just outside the pill).
+    const btn = document.querySelector('[data-act="onReconnectGun"]'); const head = document.querySelector('.bdhead');
+    const b = btn.getBoundingClientRect(), h = head.getBoundingClientRect();
+    const overlaps = b.left < h.right && b.right > h.left && b.top < h.bottom && b.bottom > h.top;
+    const x = (Math.max(b.left, h.left) + Math.min(b.right, h.right)) / 2, y = (Math.max(b.top, h.top) + Math.min(b.bottom, h.bottom)) / 2;
+    const el = document.elementFromPoint(x, y);
+    return { overlaps, hitsHead: !!(el && (el === head || head.contains(el))), btnPE: getComputedStyle(btn).pointerEvents,
+      chipsPE: getComputedStyle(document.getElementById('chips')).pointerEvents };
+  });
+  must(r.overlaps, 'pre-condition: the hidden pill and the panel head must actually overlap for this check to mean anything');
+  must(r.btnPE === 'none', `the hidden pill button must not stay tappable while the board is open: ${JSON.stringify(r)}`);
+  must(r.hitsHead, `a tap where the pill overlaps the panel head must reach the panel, not the hidden pill underneath: ${JSON.stringify(r)}`);
+  await pg.click('.bdseg .sg[data-arg="player"]'); await pg.waitForTimeout(200);
+  const s = await boardState(pg); await pg.close();
+  must(s.tab === 'PLAYERS', `the tap must actually switch the tab: ${JSON.stringify(s)}`);
+});
+// ---------- item 3 (bench 2026-09-17): the empty-board badge was long enough to push the ✕ off the panel ----------
+await step('scores overlay: the empty-board badge is short and stays clear of the ✕', async () => {
+  const pg = await open(VIEWS[1], 'live-scores');
+  await pg.evaluate(() => { window.brx.engine.scoreAt = null; });
+  await pg.click('.ident'); await pg.waitForTimeout(200);
+  const r = await pg.evaluate(() => {
+    const rect = el => { const b = el.getBoundingClientRect(); return { l: b.left, r: b.right }; };
+    const age = document.getElementById('bdage'), x = document.querySelector('.bdx');
+    return { text: age.textContent, age: rect(age), x: rect(x), overflow: getComputedStyle(age).textOverflow };
+  });
+  must(r.text === 'NO SCORES YET', `the badge copy must be short, got ${JSON.stringify(r.text)}`);
+  must(r.overflow === 'ellipsis', `the badge must ellipsize rather than push its neighbour: ${r.overflow}`);
+  must(r.age.r <= r.x.l, `the badge must stay left of the ✕, not overlap it: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-scores-empty-badge.png` });
+  await pg.close();
+});
+// ---------- item 4 (bench 2026-09-17): the overlay tabs and ✕ were under the 44px tap-target floor ----------
+await step('scores overlay: the tabs and the ✕ meet the 44px tap-target floor', async () => {
+  const pg = await open(VIEWS[1], 'live-scores');
+  await pg.click('.clockplate'); await pg.waitForTimeout(200);
+  // #frame is the 844x390 design scaled to fit the viewport (top-of-file comment), so a raw getBoundingClientRect
+  // reads SCALED px -- divide back to design px, same trick the "tap outside the panel" step above uses.
+  const r = await pg.evaluate(() => {
+    const scale = document.getElementById('frame').getBoundingClientRect().width / 844;
+    const h = el => el.getBoundingClientRect().height / scale;
+    return { tabs: Array.from(document.querySelectorAll('.bdseg .sg')).map(h), x: h(document.querySelector('.bdx')) };
+  });
+  must(r.tabs.length > 0 && r.tabs.every(v => v >= 44), `every overlay tab must be at least 44px tall (design px): ${JSON.stringify(r.tabs)}`);
+  must(r.x >= 44, `the ✕ must be at least 44px tall (design px): ${r.x}`);
+  await pg.close();
+});
 await step('se scores overlay FFA: the clock opens STANDINGS, a kills ranking with my row highlighted', async () => {
   const pg = await open(VIEWS[1], 'live-scores-ffa');
   await pg.click('.clockplate'); await pg.waitForTimeout(200);
