@@ -125,9 +125,7 @@ describe('F129 · the command bar toast does not squeeze the primary button', ()
   it('the controls beside them wrap instead of compressing', async () => {
     const m = await bar();
     const newSession = m.find('button').find(b => (b.textContent ?? '').includes('NEW SESSION'))!;
-    // F210 (2026-09-17): NEW SESSION now sits in its own column with visible sub-copy underneath it
-    // ("back to setup, roster kept"), so the flex ROW that may wrap is one level further up.
-    const rowEl = newSession.parentElement!.parentElement as HTMLElement;
+    const rowEl = newSession.parentElement as HTMLElement;
     expect(rowEl.style.flexWrap, 'the row holding NEW SESSION may wrap').toBe('wrap');
     m.unmount();
   });
