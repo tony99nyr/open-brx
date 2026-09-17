@@ -12,7 +12,7 @@ import { Hud } from './hud/hud.js';
 import { parseMcJoin } from './mcurl.js';
 import { sweepPlan, localIpFrom, sweepForMc as sweepSubnetsForMc } from './transport/discover.js';   // F139
 import { Presence, encodeUuid, stationView } from './beacon.js';   // utility items (docs/spec/utility.md)
-import { BeaconWatch } from './scanwatch.js';                        // playtest 2026-09-13: one scan operation at a time, open only in a match
+import { BeaconWatch, stationsInPlay } from './scanwatch.js';                        // playtest 2026-09-13: one scan operation at a time, open only in a match
 import { LogSync, chunkByBytes, DEFAULT_CHUNK_BYTES } from './logsync.js';   // background log sync (contracts A25)
 import { APP_VER, platformName } from './build.js';                  // the REAL build id (contracts A29)
 import { applyResult, HISTORY_MAX } from './history.js';             // per-match history + the A24 result patch
@@ -146,6 +146,8 @@ function logSnapshot(from = 0) {
     tail.join('\n'),
     '--- ble frames (last ' + frames.length + ') ---',
     frames.join('\n'),
+    '--- ble beacon scan ---',
+    (() => { try { return JSON.stringify(beaconWatch.stats()); } catch (_) { return '{}'; } })(),
     '--- engine state ---',
     (() => { try { return JSON.stringify(engine.state()); } catch (_) { return '{}'; } })(),
   ].filter(x => x !== null).join('\n');
@@ -176,7 +178,7 @@ const beaconWatch = new BeaconWatch({ link, log, native: isNative, onHit: hit =>
 setInterval(() => {
   const st = engine.state();
   presence.game = st.config ? gameByte(st.config.config_id) : 0;   // scope presence to this game (best-effort; §utility)
-  beaconWatch.tick(st, { pickerOpen: scanning });
+  beaconWatch.tick(st, { pickerOpen: scanning, config: engine.config });   // no stations in this game: no scan (bench 2026-09-17 flood)
 }, 1000);
 async function stopAnyScan() {   // the picker owns the radio from here: `scanning` is already set, so the watch will not reopen
   await beaconWatch.release();
@@ -197,7 +199,9 @@ async function syncPlayerAdvert() {
   if (!plugins.beacon || !isNative()) return;
   const st = engine.state();
   const num = st.playerNum, tid = engine.teamTid;
-  const want = (num != null && tid != null && st.phase !== 'idle')
+  // Only a utility station reads a player advert, so a game with no stations advertises nothing: every
+  // other phone's scan would carry it over its own bridge for no reader (bench 2026-09-17 flood).
+  const want = (num != null && tid != null && st.phase !== 'idle' && stationsInPlay(engine.config))
     ? encodeUuid({ role: 'player', id: num, team: tid, state: st.alive ? 1 : 0, game: st.config ? gameByte(st.config.config_id) : 0 }) : null;
   if (want === playerAdvert) return;
   playerAdvert = want;

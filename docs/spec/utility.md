@@ -22,8 +22,9 @@ One install, one role at a time, chosen on the phone or assigned by Mission Cont
 | **hud** (default) | the player's node: one gun, the HUD, the M-NET wire | its tagger (BLE central), MC (LAN) |
 | **utility** | an item on the field: respawn station · powerup · extraction point · bomb site · control point | nothing; it **advertises** and **scans** |
 
-Both roles run the same BLE stack. A HUD phone keeps the scan open for the whole match (balanced duty
-cycle) and **also advertises itself as a player**; a utility phone advertises itself as a station and scans
+Both roles run the same BLE stack. In a game with stations on the field, a HUD phone keeps the scan open for
+the whole match and **also advertises itself as a player**; in a game without stations it does neither
+(see *Scan budget* below). A utility phone advertises itself as a station and scans
 for players. No connections between phones, ever: adverts are broadcast state, so any number of phones read
 them and the Android 7-connection cap is irrelevant.
 
@@ -84,6 +85,22 @@ the advertised threshold overriding the default, neutral admitting every team, o
 **Bench-tuned defaults 2026-09-04:** threshold **-74 dBm** at **high** TX, dwell **0.8 s** — get in range, a brief pause, green; about a 10 ft radius. -74 + 0.8 s is the shipped default in `app/src/app.js` (player presence) and `utility.js` (station). Phone-to-phone RSSI falls off fast up close, so at 3 in it reads ~-53: the bubble is genuinely small, which is what a respawn point wants.
 
 **Scan reliability (Android):** a BLE scan left running goes silently deaf — `scanning` stays true but callbacks stop (hardware 2026-09-04: a down player at the station saw "find a respawn station" until a fresh scan was forced). `app.js` fights this: scan at low-latency, kick a fresh scan the instant the player goes DOWN, and restart every **7 s** while hunting a station (slower otherwise). 7 s keeps the death-kick + steady restarts under Android's ~5-starts-per-30 s throttle; a scan that dies mid-match is restarted on the next tick (the intent flag `beaconWanted`), so a single failed start can't freeze presence for the game.
+
+**Scan budget (bench 2026-09-16/17):** the Capacitor BLE plugin sends every scan result to JS over the channel that
+also carries gun notifications and call replies. A Pixel 5 took ~57 results/s in a plain TDM, skipped frames and
+answered gun writes seconds late. The rules now, all in `app/src/scanwatch.js`:
+- **No stations, no scan, no player advert.** `stationsInPlay(config)` is true only for `respawn.type: "scanner"`,
+  `station_source: "phone"`, or a non-empty `config.stations`.
+- **No native filter exists for our adverts.** The identity UUID changes with the station's state, the plugin
+  matches service UUIDs exactly, and the advert has no name or manufacturer data. The bridge still carries every
+  advert in range while the scan is open.
+- **JS samples each device at most every 250 ms** (4/s), the rate `presenceTick` reads it at: 3 samples inside the
+  0.8 s dwell, 16 inside the 4 s expiry.
+- **A flood guard** counts raw results over a 2 s window. Above **25/s** (two stations at low latency plus a few
+  players) the HUD scan closes for 5 s and reopens one mode lower (low latency, balanced, low power), and steps back
+  up after a quiet minute. A DOWN scanner-respawn player never drops below balanced and is never paused. A utility
+  station drops only to balanced. The rate, peak and back-off count ride in the diagnostic bundle
+  (`--- ble beacon scan ---`).
 
 **What radio cannot give:** a shape. The bubble is a fuzzy sphere: it leaks through drywall, shrinks behind a
 body, and is not directional. That is why the respawn gate below requires an act, not just proximity. For
@@ -335,8 +352,8 @@ The screen builds on what `utility.js` already renders.
 
 ### 5d.5 The guns say the right thing per team — and this needs NO LAN
 
-⭐ **This is the difference between the mode working on a field and not.** Every HUD phone already keeps a scan
-open for the whole match and already feeds every OBRX advert into the presence tracker (`app/src/app.js:121`),
+⭐ **This is the difference between the mode working on a field and not.** In a game with phone control points, every HUD phone
+keeps a scan open for the whole match and feeds every OBRX advert into the presence tracker (`app/src/app.js:121`),
 and stations are already surfaced to the engine (`app.js`'s `presenceTick()`, `presence.stations()` → `engine.setStations`).
 So a player phone **reads the control point's own advert** — `team`, `value`, `seq`, the contested bit — and plays
 its own callout on its own gun, locally, over its own BLE link. **No LAN, no MC, no peer connection, no server in

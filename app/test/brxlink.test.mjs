@@ -141,6 +141,21 @@ test('scan flag: a refused start leaves no phantom open scan', async () => {
   assert.equal(link.scanning, false);
 });
 
+test('scan: onRaw counts every result the bridge carried; the picker call is unchanged', async () => {
+  let opts, cb;
+  const ble = { initialize: async () => {}, requestLEScan: async (o, f) => { opts = o; cb = f; }, stopLEScan: async () => {} };
+  const link = new BrxLink({ ble, log: () => {} });
+  const hits = []; await link.scan(h => hits.push(h));   // the gun picker's call, exactly as app.js makes it
+  assert.deepEqual(opts, { allowDuplicates: true, scanMode: 2 }, 'the picker still scans at low latency, with no filter');
+  cb({ device: { deviceId: 'X1', name: 'Tactix-FE30' }, rssi: -50 }); cb({ device: { deviceId: 'X2' }, rssi: -80 });
+  assert.equal(hits.length, 1, 'the name/UUID filter is unchanged');
+  await link.stopScan();
+  let raw = 0; await link.scan(() => {}, { scanMode: 1, onRaw: () => raw++ });
+  assert.equal(opts.scanMode, 1);
+  cb({ device: { deviceId: 'X1', name: 'Tactix-FE30' } }); cb({ device: { deviceId: 'X2' } }); cb({ device: {} });
+  assert.equal(raw, 3, 'counted before any filter: each one crossed the bridge');
+});
+
 test('RELINK GUN on a link that reads connected really cycles it and runs onUp again', async ctx => {
   const settle = useClock(ctx);
   const r = rig();
