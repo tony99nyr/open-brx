@@ -99,6 +99,16 @@ export function Armory() {
   const board = readiness.board;
   // A13.5: a utility phone is a station, not a companion; it has its own card in ITEMS below.
   const phones = (state.nodes ?? []).filter(n => n.node_type !== 'utility');
+  // F-armory-dedup (operator, bench 2026-09-17): "a linked phone for a rostered player appears twice —
+  // once as the gun card, once under PHONES ON THE NET. Confusing." A board row IS that phone once it
+  // reads `node: 'linked'` (`state.py`'s `nid` is the same node this loop is walking), so PHONES ON THE
+  // NET now lists only what the gun cards do NOT already say: a phone with no bound player, or one
+  // bound to a player who is not on this board at all (removed from the roster, say). Everything a
+  // hidden card carried that the gun card did not — the LOGS button, the build chip — moved onto
+  // GunCard itself (below) rather than being dropped.
+  const boardLinkedPlayerIds = new Set(board.filter(g => g.node === 'linked').map(g => g.player_id));
+  const visiblePhones = phones.filter(n => !(n.player_id && boardLinkedPlayerIds.has(n.player_id)));
+  const hiddenPhoneCount = phones.length - visiblePhones.length;
   const nGreen = board.filter(g => g.status === 'green').length;
   const nAmber = board.filter(g => g.status === 'amber').length;
   const nRed = board.filter(g => g.status === 'red').length;
@@ -189,14 +199,26 @@ export function Armory() {
       </div>
       <Items />
       {phones.length > 0 && (
-        /* `data-nodes` is the count this section BELIEVES it is rendering; each card carries
+        /* `data-nodes` is the count this section BELIEVES it is RENDERING AS CARDS; each card carries
            `data-node-card`. A test can then wait for "every phone card is on screen" instead of
-           sleeping through the first snapshots — the sleep is what hid the arm_state crash below. */
-        <div style={{ marginTop: 20 }} data-nodes={phones.length}>
-          <SectionRule label={`PHONES ON THE NET // ${phones.length}`} hint="WITH OR WITHOUT A GUN" />
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 12 }}>
-            {phones.map(n => <NodeCard key={n.node_id} n={n} registry={registry} />)}
-          </div>
+           sleeping through the first snapshots — the sleep is what hid the arm_state crash below.
+           F-armory-dedup: that count is now `visiblePhones`, not every connected phone — a phone
+           already shown on a gun card above is not rendered again here. `data-phones-total` keeps the
+           full connected count on the page for anything that needs to know a phone exists at all. */
+        <div style={{ marginTop: 20 }} data-nodes={visiblePhones.length} data-phones-total={phones.length}>
+          {visiblePhones.length > 0 && (<>
+            <SectionRule label={`PHONES ON THE NET // ${visiblePhones.length}`} hint="WITH OR WITHOUT A GUN" />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(290px,1fr))', gap: 12 }}>
+              {visiblePhones.map(n => <NodeCard key={n.node_id} n={n} registry={registry} />)}
+            </div>
+          </>)}
+          {/* every remaining connected phone already has a gun card above — say so once, quietly,
+              instead of a section that either repeats them or simply vanishes with no explanation. */}
+          {hiddenPhoneCount > 0 && (
+            <div data-hidden-phones={hiddenPhoneCount} style={{ marginTop: visiblePhones.length > 0 ? 10 : 0, font: F.mono(500, 11), letterSpacing: '.1em', color: T.micro }}>
+              {hiddenPhoneCount} PHONE{hiddenPhoneCount === 1 ? ' IS' : 'S ARE'} ON PLAYER CARDS ABOVE
+            </div>
+          )}
         </div>
       )}
       {registry.filter(r => !readiness.unclaimed.some(u => u.gun_id === r.gun_id) && !readiness.board.some(b => b.gun_id === r.gun_id) && !(state?.nodes ?? []).some(n => (n.gun_tail || '').toUpperCase() === (r.ble?.tail || '—').toUpperCase())).length > 0 && (
@@ -271,6 +293,14 @@ function GunCard({ g }: { g: ReadinessRow }) {
   // S38 (field 2026-09-12, ISSUE 13): the gamertag lived only in the connected-nodes strip at the top —
   // the card that carries everything ELSE about this player's gear said nothing about who was holding it.
   const player = g.player_id ? (state?.players ?? []).find(p => p.player_id === g.player_id) : undefined;
+  // F-armory-dedup (2026-09-17): a rostered player's phone used to carry the LOGS button and its app
+  // build ONLY on the separate node card under PHONES ON THE NET — which Armory() now hides for a
+  // linked, rostered phone (it is right here already). `player.node_id` is the same id `state.py`
+  // resolves into `nid` for this row; the tail match is the fallback for the demo's own "gun claimed,
+  // no roster player" preview rows, which carry no `player` object to read a node_id off.
+  const nodeId = player?.node_id
+    || (state?.nodes ?? []).find(n => (n.gun_tail || '—').toUpperCase() === (g.tail || '—').toUpperCase())?.node_id
+    || null;
   // F144/F155 (field 2026-09-12, ISSUE 14/30): the row's own view of its path to MC — `reach`/`last_reach`
   // now ride directly on the ReadinessRow (state.py stamps them the same way it stamps everything else
   // here), so this reads the ROW, never a separate `state.nodes` lookup that could name a different node
@@ -355,12 +385,23 @@ function GunCard({ g }: { g: ReadinessRow }) {
           {stale && <span style={{ font: F.mono(500, 8), color: T.micro }}>*OLD</span>}
         </span>
         <Micro>LINK</Micro><Val color={stale ? T.warn : T.dim}>{linkText}</Val>   {/* this branch only runs when a node IS linked */}
+        {/* F-armory-dedup: phone battery and firmware, carried by the row (`state.py readiness()` puts
+            both on `ReadinessRow` already) but never SHOWN here before today — they lived only on the
+            node card this fix now hides for a bound phone, so a rostered player's card said nothing
+            about either. */}
+        {g.phone_batt != null && (<><Micro>PH BATT</Micro><Val color={g.phone_batt < 20 ? T.bad : T.dim}>{g.phone_batt}%</Val></>)}
+        {g.fw && (<><Micro>FIRMWARE</Micro><Val color={T.dim}>{g.fw}</Val></>)}
+        <AppVerRow app_ver={g.app_ver} platform={g.platform} />
         {/* A25: the same log view as the node card, on the per-player board — this is the one the
             operator is reading before a match, and "whose log is still owed" is a per-PLAYER question. */}
         {g.log && (<><Micro>LOG</Micro><LogCell log={g.log} /></>)}
         {/* COMPANION row returns when the ESP32 rider exists — an always-empty row reads as broken (critic #25) */}
       </div>
       )}
+      {/* F-armory-dedup: the LOGS button used to exist only on the node card, which is now hidden for
+          this exact phone (a linked, rostered player). `PullLogButton` is never gated by LOG SYNC — see
+          its own docstring — so it belongs wherever the operator is actually looking. */}
+      {g.node === 'linked' && nodeId && <PullLogButton node_id={nodeId} />}
       {(() => {
         const raw = [...(g.blockers ?? []).map(b => [b, true] as const), ...(g.ambers ?? []).map(b => [b, false] as const)];
         // F155 (field 2026-09-12, ISSUE 30): a node whose last known path was the internet tunnel used
@@ -398,6 +439,33 @@ function GunCard({ g }: { g: ReadinessRow }) {
 
 function Val({ children, color }: { children: React.ReactNode; color: string }) {
   return <span style={{ font: F.chk(600, 12), letterSpacing: '.08em', color }}>{children}</span>;
+}
+
+/** A29's build chip — shared verbatim by GunCard (S38: the readiness row already carries `app_ver`/
+ *  `platform`) and NodeCard, so a rostered phone's card and an unclaimed phone's card can never drift
+ *  apart on how they read the same fact. `None` renders UNKNOWN rather than hiding the row — an app
+ *  that predates A29 reports nothing at all, and a row that vanishes reads as "fine" (see NodeCard's
+ *  own note on optional fields). */
+function AppVerRow({ app_ver, platform }: { app_ver?: string | null; platform?: string | null }) {
+  return (
+    <>
+      <Micro>APP</Micro>
+      <span data-app-ver={app_ver ?? ''} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+        <Val color={app_ver ? T.ink : T.micro}>{verShort(app_ver) || 'UNKNOWN'}</Val>
+        {app_ver?.includes('+') && (() => {
+          const meta = app_ver.split('+').slice(1).join('+');
+          const flag = meta.indexOf('-');
+          const [sha, rest] = flag < 0 ? [meta, ''] : [meta.slice(0, flag), meta.slice(flag)];
+          return (
+            <span title={app_ver} style={{ font: F.mono(500, 11), color: T.faint, minWidth: 0, wordBreak: 'break-all' }}>
+              +{sha}{rest && <span style={{ color: T.warn }}>{rest}</span>}
+            </span>
+          );
+        })()}
+        {platform && <span style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>{platform.toUpperCase()}</span>}
+      </span>
+    </>
+  );
 }
 
 
@@ -459,33 +527,9 @@ function NodeCard({ n, registry = [] }: { registry?: { gun_id: string; ble?: { t
         {n.fw && (<><Micro>FIRMWARE</Micro><Val color={T.dim}>{n.fw}</Val></>)}
         {/* A29: always rendered, even when the phone has not said — "UNKNOWN" is the answer the
             operator needs (an app that predates A29 reports nothing at all), and a row that simply
-            vanishes reads as "fine". */}
-        <Micro>APP</Micro>
-        <span data-app-ver={n.app_ver ?? ''} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-          <Val color={n.app_ver ? T.ink : T.micro}>{verShort(n.app_ver) || 'UNKNOWN'}</Val>
-          {/* the git sha is what tells "0.1.9 from the release" from "0.1.9 from your tree" apart. It used
-              to be cut to 7 characters with the WHOLE string parked in a `title` — which on the match-day
-              touch console is nowhere, because there is no hover. The build metadata the app stamps is a
-              short sha plus an optional `-dirty` (app/scripts/build.mjs), so it is 13 characters at worst:
-              there was never anything to truncate. `-dirty` says this phone is running somebody's working
-              tree rather than a build anyone can reproduce, which is the single most important thing this
-              row can tell an operator, so it is shown and it is shown in the warning colour. */}
-          {n.app_ver?.includes('+') && (() => {
-            const meta = n.app_ver.split('+').slice(1).join('+');
-            const flag = meta.indexOf('-');                      // the sha, then whatever the build stamped after it
-            const [sha, rest] = flag < 0 ? [meta, ''] : [meta.slice(0, flag), meta.slice(flag)];
-            return (
-              // 11 px, not 10: every part of this chip carries meaning (version, sha, `-dirty`,
-              // platform) and the tiny-text sweep fails anything meaning-bearing under 11 px — it
-              // caught this one at both viewports (review 2026-09-12). It WRAPS rather than shrinking:
-              // the row has a whole line to spend and the metadata is 13 characters at worst.
-              <span title={n.app_ver} style={{ font: F.mono(500, 11), color: T.faint, minWidth: 0, wordBreak: 'break-all' }}>
-                +{sha}{rest && <span style={{ color: T.warn }}>{rest}</span>}
-              </span>
-            );
-          })()}
-          {n.platform && <span style={{ font: F.mono(500, 11), letterSpacing: '.12em', color: T.micro }}>{n.platform.toUpperCase()}</span>}
-        </span>
+            vanishes reads as "fine". The chip itself, sha/`-dirty`/platform and all, is `AppVerRow` —
+            shared with GunCard so a bound phone's card cannot say something different. */}
+        <AppVerRow app_ver={n.app_ver} platform={n.platform} />
         <Micro>LOG</Micro><LogCell log={n.log ?? undefined} />
       </div>
       {/* A25: always asks, whatever `log_sync` is set to — `reason: "manual"` is never gated. */}

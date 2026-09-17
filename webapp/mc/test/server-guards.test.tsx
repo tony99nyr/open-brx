@@ -144,11 +144,14 @@ describe('A29 · what build each phone is running', () => {
     nodes: s.nodes.map((n, i) => ({ ...n, ...(vers[i] ?? {}) })),
   });
 
-  it('the node card carries the version and the platform', async () => {
+  it('the phone card carries the version and the platform', async () => {
     const d = await demo();
     const m = await mountScreen(<Armory />, { ...d, view: 'muster' });
+    // F-armory-dedup: every demo phone is already bound to a rostered player, so this chip now
+    // renders on that player's GUN CARD rather than a separate node card — `AppVerRow` is shared by
+    // both, so the assertion holds regardless of which one `[data-app-ver]` finds first.
     const chip = m.find('[data-app-ver]')[0];
-    expect(chip, 'a version chip on the node card').toBeTruthy();
+    expect(chip, 'a version chip on the phone\'s card').toBeTruthy();
     expect(chip.textContent).toMatch(/0\.1\.\d/);
     expect(chip.textContent?.toUpperCase()).toMatch(/ANDROID|IOS/);
     m.unmount();
@@ -179,9 +182,14 @@ describe('A29 · what build each phone is running', () => {
 
   it('says UNKNOWN rather than guessing when a phone reports no build', async () => {
     const d = await demo();
-    const state = withVers(d.state, d.state.nodes.map(() => ({ app_ver: undefined, platform: undefined })));
+    // `player_id: undefined` too: an unmodified demo node is bound to a rostered player, whose GUN
+    // CARD would otherwise carry the real (unmodified) version from the readiness row instead of this
+    // override — F-armory-dedup hides that phone's OWN card whenever a gun card already shows it.
+    const state = withVers(d.state, d.state.nodes.map(() => ({ app_ver: undefined, platform: undefined, player_id: undefined })));
     const m = await mountScreen(<Armory />, { ...d, state, view: 'muster' });
-    expect(m.find('[data-app-ver]')[0].textContent).toMatch(/UNKNOWN/);
+    // scoped to the node card: the readiness board is untouched by `withVers`, so every GUN CARD still
+    // carries its own (real) build chip and would otherwise be what `[0]` finds first in the DOM.
+    expect(m.find('[data-node-card] [data-app-ver]')[0].textContent).toMatch(/UNKNOWN/);
     expect(m.find('[data-app-ver-summary]')[0].textContent).toMatch(/UNKNOWN/);
     m.unmount();
   });
