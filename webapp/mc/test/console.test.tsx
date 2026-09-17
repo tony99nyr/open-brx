@@ -3,12 +3,15 @@
 // Every one of them was found by a person looking at a screen. None of them needed hardware, a
 // server, or a browser to catch (W5, handoff-post-first-match).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Armed } from '../src/screens/Armed';
 import { Armory } from '../src/screens/Armory';
 import { Catalog } from '../src/screens/Catalog';
 import { Designer } from '../src/screens/Designer';
 import { Kit } from '../src/screens/Kit';
+import { Lobby } from '../src/screens/Lobby';
 import { Recap } from '../src/screens/Recap';
 import { CommandBar } from '../src/frame/CommandBar';
+import { MockBackend } from '../src/mock/backend';
 import { counted, demo, makeStore, mount, mountScreen, starved } from './harness';
 import { StoreCtx } from '../src/store';
 import { isRoutableLanIp } from '../src/api/derive';
@@ -77,6 +80,33 @@ describe('the runway outlives a tab switch', () => {
       const mod = await import('../src/runway');
       expect(mod.getRunway()).toBe(want ?? mod.DEFAULT_RUNWAY);
     }
+  });
+});
+
+describe('the countdown length picker shows only before arming (F160, bench 2026-09-17)', () => {
+  it('LOBBY shows the ARM COUNTDOWN picker', async () => {
+    const d = await demo();
+    const m = await mountScreen(<Lobby />, { ...d, view: 'lobby' });
+    expect(m.find('select[aria-label="countdown length"]').length).toBe(1);
+    m.unmount();
+  });
+
+  it('ARMED renders no countdown picker — only the read-only value the server armed', async () => {
+    // Real path, not a hand-built fixture: push, then start, the way the operator does.
+    const api = new MockBackend();
+    await api.pushLobby(true);
+    await api.start(90, true);
+    const state = await api.getState();
+    expect(state.start).toBeTruthy();   // the screen's real branch, not "NO SCHEDULE"
+    const store = makeStore({ state, view: 'armed' }, { api });
+    const m = await mount(<StoreCtx.Provider value={store}><Armed /></StoreCtx.Provider>);
+    // Before the fix, this was a live-looking Seg control that did nothing once armed — picking a
+    // different option never changed what RESCHEDULE actually sent (`shownRunway` always wins over
+    // the local pick). A picker that cannot act is worse than none: replace it with plain text.
+    expect(m.find('select[aria-label="countdown length"]').length).toBe(0);
+    expect(m.find('[role="group"]').length).toBe(0);
+    expect(m.find('[data-testid="armed-countdown-length"]')[0]?.textContent).toMatch(/01:30/);
+    m.unmount();
   });
 });
 

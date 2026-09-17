@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { STALE_AFTER_MS } from '../api/types';
-import { RUNWAYS, useRunway } from '../runway';
+import { useRunway } from '../runway';
 import { coverageLine } from '../api/derive';
 import { useStore } from '../store';
 import { EvictButton } from '../ui/EvictButton';
 import { F, T, fmtAge, fmtClock } from '../tokens';
-import { Brackets, GhostButton, HazardButton, Num, ScreenHeader, Seg, Tag } from '../ui';
+import { Brackets, GhostButton, HazardButton, Num, ScreenHeader, Tag } from '../ui';
 import { SetupSteps } from '../ui/SetupSteps';
 import { McVerify } from '../ui/McVerify';
 
@@ -13,10 +13,13 @@ import { McVerify } from '../ui/McVerify';
 export function Armed() {
   const { state, run, api, setView, serverNow, connected } = useStore();
   const [, tick] = useState(0);
-  const [runway, setRunway] = useRunway();   // survives a tab switch (field 2026-08-30)
+  const [runway] = useRunway();   // survives a tab switch (field 2026-08-30)
   // ...but once a countdown IS armed, show what the SERVER armed. Otherwise a reload (or a second
   // operator's console) offers this browser's stored pick, and CONFIRM restarts everyone at that
-  // value instead of the armed one (review 2026-08-31).
+  // value instead of the armed one (review 2026-08-31). The picker itself belongs to the LOBBY's
+  // ARM COUNTDOWN control (F160, bench 2026-09-17): once armed, changing this Seg had NO effect
+  // (shownRunway always wins over the local pick), so it read as a live control that quietly did
+  // nothing. Read-only text is the honest version of the same information.
   const armedRunway = state?.start?.countdown_s ?? null;
   const shownRunway = armedRunway ?? runway;
   const [confirmAbort, setConfirmAbort] = useState(false);
@@ -75,9 +78,9 @@ export function Armed() {
               it from re-laying-out on every tick (the HUD hit exactly this, game test A5) */}
           <div aria-live="off" style={{ font: F.osw(700, 56), letterSpacing: '.04em', lineHeight: 1 }}>T-<Num value={fmtClock(tMinus / 1000)} /></div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ font: F.mono(500, 9), letterSpacing: '.22em', color: T.micro }}>RESCHEDULE TO</span>
-          <Seg value={String(shownRunway) as '60'} options={RUNWAYS.map(r => ({ value: String(r) as '60', label: fmtClock(r) }))} onChange={v => setRunway(Number(v))} pad="5px 12px" />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }} data-testid="armed-countdown-length">
+          <span style={{ font: F.mono(500, 9), letterSpacing: '.22em', color: T.micro }}>ARMED AT</span>
+          <span style={{ font: F.osw(700, 16) }}>{fmtClock(shownRunway)}</span>
         </div>
         <div style={{ flex: 1, minWidth: 220 }}>
           <div style={{ font: F.chk(600, 12), letterSpacing: '.08em', color: T.body }}>{armed}/{nodes.length} NODES ARMED · {nodes.length - armed} AWAITING ACK · {outOfRange} OUT OF RANGE</div>
