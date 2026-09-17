@@ -252,7 +252,6 @@ nine of these eleven were root-caused without touching a gun.
 - **F219 🟠 Needs Tony at the bench** in scanner respawn mode, does a trigger held on `$BMAP` fn 98 still report `$BUT`? The revive gate needs this reading. `trigger`.
 - **F220 🟡 Decision for Tony.** Publish app 0.3.0 as a GitHub Release. Mission Control marks any 0.2.x build red, and the download page still offers 0.2.1. `decision`.
 - **F221 🟡 Decision for Tony.** Mark each item in `docs/mc-warning-audit-2026-09-16.md` keep, quieter or remove. `decision`.
-- **F222 🟡** site shots must be recaptured after this branch merges to main. Both the app and the console source changed. `build`.
 - **F223 🟡** the evidence extract and the Mission Control timeline order facts by `t_recv`, the arrival time. Order them by the fact's own `t`, the time it happened, instead. `build`.
 - **F224 🟢** low items left by the polish loop: add a retry cap for a live-table write that keeps failing; the Bluetooth-picker test greps source text, the same pattern as F179; the green STANDING BY label has low contrast in night mode; iOS has no hint that Bluetooth is off. `build`.
 

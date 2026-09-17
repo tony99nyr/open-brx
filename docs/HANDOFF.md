@@ -41,10 +41,9 @@ MC is **stopped**. Start it from the worktree's `mcp/` with:
    behaviour built tonight.
 2. Tony decides: **F220** publish app 0.3.0 as a GitHub Release, and **F221** the warning-audit page
    (`docs/mc-warning-audit-2026-09-16.md`, keep/quieter/remove per item).
-3. Branch `test-suite-speed` (session battlecompany-ff) merges to main FIRST. Then merge main into this
-   branch. After that merge, `app/src/fakegun.js` must echo the head's `$WEAP,0` t40 reserve (F207), not
-   t17; git will not flag it. Run `npm run test:all -- --ui app-e2e`, then **F222** recapture the site
-   shots, merge this branch to main and push.
+3. Done 2026-09-17: main 89dd1c3d (`test-suite-speed`) is merged into this branch, `fakegun.js` echoes t40,
+   and the site shots are refreshed (F222). `npm run test:all -- --ui` passes 15 of 16 jobs; the one failure
+   is `test_published_build` until F220 is decided. After the bench, merge this branch to main and push.
 4. Later: the contract-DRY coverage/runtime-input audit is the one item still open from that work.
 
 **Machine roles:** WSL runs the Python suites and no-hardware MC; Windows Python is for BLE instruments; the
