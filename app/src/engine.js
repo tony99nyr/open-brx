@@ -468,6 +468,14 @@ export class Engine {
   }
   teamOf(num) { const r = this.roster.find(x => x.player_num === num); return r ? r.team_id : null; }
   nameOf(num) { const r = this.roster.find(x => x.player_num === num); return r ? r.display : null; }
+  /** The kill banner's name for MC's `feedback{kill}`: `victim` is a player_id on the wire, never a name (field
+   *  2026-09-17: the banner showed the raw id). MC's `victim_display` first, then this phone's roster, else null so
+   *  the HUD says "<TEAM> OPERATIVE" rather than print an id. */
+  victimName(body) {
+    if (body && typeof body.victim_display === 'string' && body.victim_display) return body.victim_display;
+    const r = body && body.victim != null ? this.roster.find(x => x.player_id === body.victim) : null;
+    return r && r.display ? r.display : null;
+  }
   get teamTid() { return this.team ? this.team.tid : null; }
   get teamKey() { return this.team ? (TEAM_KEY[this.team.tid] || String(this.team.color || 'blue')) : 'blue'; }
   /** F213: the pool ceiling THE HEAD ACTUALLY ARMS. `compile.py` bakes per-player `overrides.max_hp/max_armor`
@@ -2259,7 +2267,7 @@ export class Engine {
       if (this.score) this.score = { ...this.score, kills: (this.score.kills || 0) + 1 };
       else this.score = { kills: 1 };
       this.scoreAt = this.now();
-      this.moment = { kind: 'kill', at: this.now(), data: { victim_team: body.victim_team, victim: body.victim, medals: Array.isArray(body.medals) ? body.medals.slice() : [] } };
+      this.moment = { kind: 'kill', at: this.now(), data: { victim_team: body.victim_team, victim: this.victimName(body), medals: Array.isArray(body.medals) ? body.medals.slice() : [] } };
     }
     this._changed();
   }

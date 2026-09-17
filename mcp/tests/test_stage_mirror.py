@@ -1146,6 +1146,8 @@ KNOWN_UNMIRRORED = {
     "setGunFlapping",
     # app lifecycle + the A26 pick debounce: the stage has no foreground/background and no MC to pick from
     "_awake", "commitPick",
+    # field 2026-09-17: the kill banner's victim name, resolved from MC's `feedback`; the stage has no MC and no banner
+    "victimName",
     # B5: guards a BLE frame-race (a stale zero-HP echo the gun queued before it processed $SPAWN landing
     # just after a `_spawn`/`_revive` write) against a shooter `latch` the stage has no equivalent of --
     # the bench drives spawn/revive and pool frames deterministically by hand and never races a real echo.

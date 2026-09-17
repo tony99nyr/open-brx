@@ -49,6 +49,14 @@ def test_exact_kill_credit():
     assert fb and fb[0][0] == "p0" and fb[0][1]["kind"] == "kill"
 
 
+def test_kill_feedback_carries_the_victims_gamertag():
+    """Field 2026-09-17: the kill banner showed the victim's player_id. `victim` stays the id; the
+    name the phone shows rides beside it."""
+    sc, fb, _ = mk("ffa")
+    death(sc, "n1", "p1", 1, T0 + 1000)
+    body = fb[-1][1]
+    assert body["victim"] == "p1" and body["victim_display"] == "VIPER", body
+
 def test_shooter_zero_is_no_killer():
     sc, fb, feed = mk()
     death(sc, "n1", "p1", 0, T0 + 1000)
