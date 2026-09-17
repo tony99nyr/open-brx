@@ -453,7 +453,7 @@ class GameConfig:
         # sent 1 and were unplayable, and point blank still worked because at inches the IR floods every
         # receiver. It reads as the SHOOTER having no range, because the fault is on the RECEIVER.
         # The stock phone app never writes this field, which is why a native tagger takes hits at ~200 ft.
-        # It is NOT the on-gun ALT-hold toggle (that changes beam WIDTH and does not gate reception —
+        # It is NOT the gun's native ALT mode (that changes beam WIDTH and does not gate reception ,
         # measured the same day on three guns) and it does not move emitted range.
         # Handoff with the full measurement: docs/HANDOFF-gset-t2-2026-09-13.md
         return (f"$GSET,{int(self.friendly_fire)},{GSET_T2_SAFE},1,0,1,0,"

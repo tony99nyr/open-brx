@@ -268,7 +268,7 @@ free-form `led` object for everything but the night blank.
 | **Night** | any / true | `$GLED,,,,5,,,*` + no `leds` bursts; the HUD blackout |
 
 `$GSET` t2 is pinned to 0 in every compiled head, tutorial and utility path. Field testing on 2026-09-13
-showed t2=1 cripples hit reception on the receiving gun; it is not the physical ALT-hold control. The theory
+showed t2=1 cripples hit reception on the receiving gun; it is not the gun's native ALT mode. The theory
 that t2=1 rejects reflected indoor shots is untested, so venue must not select it.
 
 `is_night_mode()` mirrors `gameconfig.is_night_mode`; `night` also drives the node's blackout HUD.

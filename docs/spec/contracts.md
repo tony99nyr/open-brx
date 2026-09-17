@@ -364,9 +364,9 @@ FrameBundle {                       // per (config_id, player_id); pushed in `co
   2 and was inaudible outdoors); **try-outs stay at 69** (`VOL_TRYOUT`, fired at arm's length from the player's own
   head); the diagnostic default `30` is inaudible for game audio and stays a bench value only.
 - **`$GSET` token 2 is always `0`**, independent of `environment`, in game heads, try-outs and utility paths.
-  Field testing on 2026-09-13 showed that `1` cripples hit reception on the receiving gun. The physical ALT-hold
+  Field testing on 2026-09-13 showed that `1` cripples hit reception on the receiving gun. The gun's native ALT
   mode is a different control, and the theory that t2=1 rejects indoor reflections is untested. Venue still drives
-  volume, presentation and the operator's physical-mode reminder.
+  volume, presentation and the operator's physical-mode step.
 - The node owns exactly **two literal templates** and nothing else: `$SFLASH,*` and `$PLAYX,0,*`
   (`app/src/engine.js`'s exported `SFLASH` / `PLAYX`; [A6.3] — `cues` are pre-composed frames, so there is no `$PLAY` template on the node).
   Everything else is written verbatim from the bundle. **Plus one pre-config probe set** [A5.4], allowed **only in

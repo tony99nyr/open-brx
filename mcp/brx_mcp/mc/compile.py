@@ -85,10 +85,11 @@ def gun_range_pct(base_rng: int, environment: str | None) -> int:
 # ---------------------------------------------------------------------------
 # Experimental emitted-IR controls over BLE (F162)
 # ---------------------------------------------------------------------------
-# The gun has a native indoor/outdoor toggle -- hold ALT 3 s -- that changes beam WIDTH (roughly
-# double the aim tolerance in outdoor mode) and persists across power cycles. The 2026-09-13 field
-# checks did not reproduce the t2 reception failure through this toggle; native play reached about
-# 200 ft in both toggle states. Its full behavior is not characterised.
+# The gun has a native indoor/outdoor toggle -- ALT pressed quickly in succession at power-on --
+# that changes beam WIDTH (roughly double the aim tolerance in outdoor mode) and persists across
+# power cycles. The 2026-09-13 field checks did not reproduce the t2 reception failure through
+# this toggle; native play reached about 200 ft in both toggle states. Its full behavior is not
+# characterised.
 #
 # `$GSET` t2 is a separate receiver control: t2=1 crippled hit reception at 30 ft, and t2=0 restored
 # it. Shipping heads pin t2 to 0 at every venue. The t3 and `$IRTX` candidates below remain

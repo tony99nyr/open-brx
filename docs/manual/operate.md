@@ -29,8 +29,9 @@ Charge it, pair it, sight it, play.
    devices are around.
 4. Watch the headset settle. A slow rainbow blink that never stops means it is not paired: see
    Pairing the Headset below. Once paired it shows the gun's team colour.
-5. Set indoor or outdoor mode for where you will play (hold ALT 3 s). Outdoor mode widens the
-   beam's aim tolerance, and the setting sticks across power cycles.
+5. Set indoor or outdoor mode for where you will play. During the gun's native configuration
+   step, right after power-on, press ALT quickly in succession to change it. Outdoor mode widens
+   the beam's aim tolerance, and the setting sticks across power cycles.
 6. Sight the laser in target mode before your first real game (hold LEFT while powering on).
 7. Pick a game on the gun with LEFT/RIGHT, pull the trigger to select, then pull the reload
    handle to start.
@@ -39,7 +40,8 @@ Charge it, pair it, sight it, play.
 
 - **Trigger**: fire. In menus it selects, and it cycles weapons or characters.
 - **ALT (orange)**: cycles perks and abilities in the modes that have them, in the menu and in
-  play. No stock weapon has an alt-fire. Hold 3 s to toggle indoor/outdoor.
+  play. No stock weapon has an alt-fire. Press it quickly in succession during the gun's native
+  configuration step, right after power-on, to toggle indoor/outdoor.
 - **SELECT**: steps through settings. Hold it at power-on for USB disk mode (firmware and
   sounds).
 - **LEFT / RIGHT (D-pad)**: cycle modes and teams. Hold LEFT at power-on for target mode. Hold
@@ -122,7 +124,7 @@ Everything you can set without a phone, and what the gun remembers.
 
 **Button holds worth memorising:**
 
-- **ALT, hold 3 s**: toggle indoor / outdoor (it sticks).
+- **ALT, pressed quickly in succession at power-on**: toggle indoor / outdoor (it sticks).
 - **LEFT at power-on**: target mode, for sighting.
 - **RIGHT at power-on**: "install accessory" pairing mode (headset, grenade, sidearm and
   friends).
@@ -151,11 +153,13 @@ and abilities are in the Gameplay section.
 
 ## Indoor vs Outdoor Mode
 
-One three-second hold changes the width of the effective beam and the gun's venue presentation.
+A quick sequence of ALT presses, made during the gun's native configuration step at power-on,
+changes the width of the effective beam and the gun's venue presentation.
 
 **Switching modes:**
 
-1. Hold ALT for 3 seconds at any time. The gun announces the new mode.
+1. During the gun's native configuration step, right after power-on, press ALT quickly in
+   succession.
 2. Leave it. The setting persists across power cycles, so you set it once per venue.
 3. At an outdoor venue, set every gun to outdoor mode for the wider aim tolerance.
 4. Driving a gun from your own code? Do not treat APK-named `$GSET` token 2, `outdoorMode`, as
@@ -174,7 +178,7 @@ One three-second hold changes the width of the effective beam and the gun's venu
 
 The width measurements were repeated on three guns. Separately, there is an untested theory that
 `$GSET` token 2 set to 1 rejects reflected indoor shots. That theory concerns the Bluetooth field, not
-the physical ALT-hold mode.
+the gun's native ALT mode (set at power-on).
 
 ## Sighting the Laser
 

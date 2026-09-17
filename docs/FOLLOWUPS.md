@@ -1018,8 +1018,9 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   whether armour above the compiled ceiling is provable again (red) instead of an amber advisory. `trigger`.
 - **F168 🟡 Needs Tony at the bench** measure the pool settle window. 2 s is reasoned; the real store shows a
   body-armour pool landing at exactly +2.0 s, i.e. on the boundary. `trigger`.
-- **F169 🟡 Needs Tony at the bench** Run D: does a gun emit anything on an ALT hold? If yes the venue reminder becomes
-  a real per-gun readiness check instead of a prompt. Demoted 2026-09-13: the toggle is no longer a range suspect. `capture`.
+- **F169 🟡 Needs Tony at the bench** Run D: does a gun emit anything when ALT is pressed during the native
+  configuration step at power-on? If yes the venue reminder becomes a real per-gun readiness check instead of a
+  prompt. Demoted 2026-09-13: the toggle is no longer a range suspect. `capture`.
 - **F183 🟠 Needs Tony at the bench** confirm the START fan-out change: arm a match with phones connected and confirm
   every gun spawns at T-0. Delivery moved from a broadcast to addressed sends over the node registry (A40). `trigger`.
 - **F165 🟡 Needs Tony at the bench** re-key the Energy Launcher's IR word. Zero damage on every shipped game's hit row,

@@ -237,7 +237,7 @@ The mode LED colour shows what you picked. Modes marked with a star are Callsign
 | Game time | Off, 5, 10, 15, 20, 30 min |
 | Respawn | Off, 15, 30, 60 s, Ramp 45, Ramp 90 |
 | Volume | 1-5 |
-| Indoor / outdoor | hold ALT 3 s (it sticks across power-cycles; indoor dims the green hit LEDs, turns on the RGB LEDs, and shrinks explosion/melee range; bright sun cuts hit radius about 50%) |
+| Indoor / outdoor | press ALT quickly in succession at power-on (it sticks across power-cycles; indoor dims the green hit LEDs, turns on the RGB LEDs, and shrinks explosion/melee range; bright sun cuts hit radius about 50%) |
 | Region | USA / International (the app's `GunLaserRegion` setting). This is a factory setting, so leave it alone |
 
 The Callsign app's modes are the complete list found in the app, with what each one is built from. The app screens group them under categories (Team Arena, Battle Royale, Battle Lines, Faction Wars, Infection) and mode tiles (Arena, Team Arena, Team Snipers, Capture the Flag).

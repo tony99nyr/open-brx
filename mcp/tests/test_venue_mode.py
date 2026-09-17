@@ -1,7 +1,7 @@
 """T1-C: disabled candidate controls for emitted IR, plus the shipped t2 reception guard.
 
 Field evidence 2026-09-13 separated two controls that this file previously treated as candidates for
-the same behavior. The native ALT-hold toggle changes beam width and persists across power cycles.
+the same behavior. The gun's native ALT mode (set at power-on) changes beam width and persists across power cycles.
 `$GSET` t2 changes hit reception and must ship 0. Neither is an emitted-range control.
 
 The separate t3 and `$IRTX` emitted-range candidates remain disabled and unconfirmed.

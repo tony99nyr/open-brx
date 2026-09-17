@@ -36,7 +36,7 @@ import { F, PERK_COLOR, T } from '../tokens';
 import { BTN_RESET, GhostButton, PrimaryButton, SectionRule, Seg, Shelf, StripedSlot, SwitchConfirm, Tag, Toggle, onKey } from '../ui';
 import { emptyRequiredSlots, gameSig, poolEmptyMessage, rulesLine, splitLine } from './gameSummary';
 import { MODE_ART } from '../modeArt';
-import { VenueModeReminder } from '../ui/VenueModeReminder';
+import { VenueModeManualLink } from '../ui/VenueModeReminder';
 import { GameEditPanel } from '../ui/GameEditPanel';
 import { GameSentStatus, GameSettings, LoadStatus, gameSettingRows } from '../ui/LoadedGame';
 
@@ -189,11 +189,15 @@ export function Games() {
   const venueInert = locked || editing;
   const venueChips = (
     <fieldset disabled={venueInert} style={{ border: 'none', margin: 0, padding: 0 }}>
-      <div role="group" aria-label="venue" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 12px', border: `1px solid ${T.line}`, background: T.panelDeep, opacity: venueInert ? 0.5 : 1 }}>
+      <div role="group" aria-label="venue" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, padding: '6px 12px', border: `1px solid ${T.line}`, background: T.panelDeep, opacity: venueInert ? 0.5 : 1 }}>
         <span style={{ font: F.mono(600, 10), letterSpacing: '.24em', color: T.dim }}>VENUE</span>
         <Seg value={cfg.environment} options={[{ value: 'indoor', label: 'INDOOR' }, { value: 'outdoor', label: 'OUTDOOR' }]} onChange={v => { if (!venueInert) run(() => api.putConfig({ environment: v })); }} pad="9px 14px" />
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: F.chk(600, 11), letterSpacing: '.14em', color: cfg.night ? T.ink : T.dim }}>NIGHT OPS <Toggle on={cfg.night} onChange={v => { if (!venueInert) run(() => api.putConfig({ night: v })); }} label="night ops" /></span>
         {editing && <span data-testid="venue-in-draft" style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.warn }}>IN THE DRAFT BELOW</span>}
+        {/* F162 (revised 2026-09-16): this is a NUMBER MC sends and a PHYSICAL switch on every gun
+            that MC cannot reach, so a quiet link to the how-to sits right on the control that raises
+            the question, not a dismissable banner nagging every screen, see ui/VenueModeReminder. */}
+        <VenueModeManualLink />
       </div>
     </fieldset>
   );
@@ -328,10 +332,6 @@ export function Games() {
           )}
         </div>
       </div>
-      {/* F162: the VENUE chips above are a number MC sends AND a switch on every gun that MC cannot
-          reach. This is the half the operator has to do, so it sits directly under the control that
-          raises it rather than at the bottom of the summary rail — see ui/VenueModeReminder. */}
-      <VenueModeReminder screen="games" style={{ marginBottom: 18 }} />
       {blocked && (
         <div role="alert" data-testid="games-locked" style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
           background: 'rgba(255,82,82,.08)', border: `1px solid ${T.bad}`, borderLeft: `3px solid ${T.bad}`, padding: '12px 16px' }}>
