@@ -136,6 +136,9 @@ export function startDemo({ engine, log }) {
       mcBound: () => engine.setWsState('bound'), mcLost: () => engine.setWsState('closed'),
       mcRejected: () => engine.setWsState('rejected', { reason: 'roster_full', code: 4003 }),
       scan: () => { const h = hud(); if (h) { h.setScan([{ deviceId: 'a', basename: 'GUN-A', tail: '3D4F', rssi: -52 }, { deviceId: 'b', basename: 'GUN-B', tail: '7C21', rssi: -71, inUse: true }, { deviceId: 'c', basename: 'GUN-C', tail: 'B0E9', rssi: -83 }]); h.render(engine.state()); } },
+      // F211: the picker with Bluetooth off (game-test-2026-09-13.md C2). `platform` defaults to 'web'
+      // (no enable/settings buttons — iOS has neither); pass 'android' for the button variant.
+      bluetoothOff: (platform) => { const h = hud(); if (h) { h.bluetoothOn = false; if (platform) h.platform = platform; h.setScan([]); h.render(engine.state()); } },
       // kit-out
       assign: () => engine.onMcMessage({ kind: 'assign', body: { player, team, roster, catalog, policy, game } }),
       kitOpen: open => { policy.kit_open = open; ev.assign(); },
@@ -274,6 +277,8 @@ export function startDemo({ engine, log }) {
     const live = [...lobby, [900, () => ev.start(0.4)], [1800, 'spawnEcho']];
     const STAGES = {
       'idle':              [[0, 'scan']],
+      'idle-bt-off':         [[0, () => ev.bluetoothOff()]],           // F211: no enable/settings buttons (iOS-like)
+      'idle-bt-off-android': [[0, () => ev.bluetoothOff('android')]],  // F211: TURN ON BLUETOOTH + BLUETOOTH SETTINGS
       'connected':         [[0, 'linkGun'], [50, () => ev.battery(82)]],
       // F137 (field 2026-09-12): MC binds while the player still sits on the pre-kit CONNECTED screen —
       // the one case that used to need an UNRELATED field to also change before the screen ever caught up.
