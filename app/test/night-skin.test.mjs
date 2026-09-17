@@ -90,6 +90,26 @@ test('the pick is remembered on the phone across an app restart, and a fresh MC 
   assert.equal(c.eng.night, true, 'a fresh session goes night at ARMED');
 });
 
+test('a restart before MC re-welcomes (transport session still unknown) does not let NIGHT OPS override an already-chosen day skin', () => {
+  const storage = mkStorage();
+  const a = harness({ storage }).join().config(true).start().live();
+  a.eng.setNight(false);   // day pick, tied to session 's1'
+  // The app restarts. The gun relinks over BLE (fast, local) before MC's welcome (a network round trip)
+  // has told the node its session id back -- `sessionOf()` reads null in that window.
+  storage.removeItem('brx.engine');
+  const b = harness({ storage, session: null });
+  assert.equal(b.eng.night, false, 'the skin is restored from storage');
+  b.join().config(true).start();   // ARMED while the session is still unknown -- this is what used to fire _autoNight
+  assert.equal(b.eng.phase, 'armed');
+  assert.equal(b.eng.night, false, 'NIGHT OPS must not override the pick while the session is unknown');
+  // The welcome finally arrives: same session as before the restart.
+  b.session = 's1';
+  assert.equal(b.eng.ownNightChoice(), true, 'once the session resolves to the same one, the pick still holds');
+  b.adv(3010);
+  assert.equal(b.eng.phase, 'live');
+  assert.equal(b.eng.night, false, 'and stays day into LIVE');
+});
+
 test('a blocked store never throws: the engine starts on day with no pick', () => {
   const bad = { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); }, removeItem: () => { throw new Error('blocked'); } };
   const h = harness({ storage: bad });

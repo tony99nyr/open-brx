@@ -107,6 +107,7 @@ export class BrxLink {
     this.now = now; this.flapMs = flapMs;
     this.deviceId = null; this.advert = null; this.connected = false; this.retries = 0; this.lastReason = null;
     this._init = null; this._q = Promise.resolve(); this._scanning = false; this._re = new Reassembler();
+    this._poisoned = false;   // review 2026-09-17: a late write error (past ackCapMs) poisons the batch in flight
     this._scanOp = Promise.resolve(); this._scanTok = 0;   // scan start/stop run one at a time, in call order
     this._linkSeq = 0;     // bumps per native connect; a retired link's disconnect callback is ignored (relink)
     this._relinking = false;
@@ -376,12 +377,15 @@ export class BrxLink {
     const id = this.deviceId; if (!id) return Promise.resolve(false);
     const list = Array.isArray(frames) ? frames : [frames];
     this._q = this._q.then(async () => {
+      this._poisoned = false;   // review 2026-09-17: a fresh batch starts clean, whatever the last one's fate
       let late = 0, chunks = 0;
       for (const frame of list) {
         this._note('tx', frame);
         for (let o = 0; o < frame.length; o += 20) {
+          if (this._poisoned) return false;   // a chunk lost after the cap must not let the rest send as if it landed
           chunks++;
           if (!await this._sendChunk(id, textToDataView(frame.substr(o, 20)))) late++;
+          if (this._poisoned) return false;   // the loss may have landed while this very chunk was in flight
           if (frame.length > 20) await sleep(this.chunkGapMs);
         }
         await sleep(this.frameGapMs);
@@ -392,7 +396,10 @@ export class BrxLink {
     return this._q;
   }
   /** Sends one chunk. Resolves true when the plugin answered within `ackCapMs`, false when the cap ran out
-   *  first. An error inside the cap rejects (the batch stops, as before); a later error is only logged. */
+   *  first. An error inside the cap rejects (the batch stops, as before). A LATER error (review 2026-09-17)
+   *  used to be only logged, so a lost chunk could join half of one frame to the next while `write()` still
+   *  resolved true -- it now poisons the batch in flight (checked before each remaining chunk), so `write()`
+   *  resolves false instead and the engine's existing retry paths run. The flag resets at the next `write()`. */
   _sendChunk(id, dv) {
     let sent;
     try { sent = Promise.resolve(this.writeChunk(id, dv)); } catch (e) { return Promise.reject(e); }
@@ -402,6 +409,7 @@ export class BrxLink {
       sent.then(() => { if (done) return; done = true; clearTimeout(t); resolve(true); },
         e => {
           if (!done) { done = true; clearTimeout(t); reject(e); return; }
+          this._poisoned = true;
           this._log('write err (after the answer cap): ' + (e && e.message || e), 'le');
         });
     });

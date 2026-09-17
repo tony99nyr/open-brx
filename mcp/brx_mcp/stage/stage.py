@@ -491,6 +491,8 @@ class GunStage:
         self.active_slot = 0
         self._prev_ammo: dict[int, int] = {}       # per weapon slot ($ALCD token 3): last mag seen
         self._prev_reserve: dict[int, int] = {}    # per weapon slot: last reserve seen -- the stun restore needs the LIVE pair (F15/F87)
+        self.heat_by_slot: dict[int, int] = {}     # per weapon slot ($ALCD token 5): last heat seen (engine.js `heatBySlot`)
+        self._heat_at: dict[int, float] = {}       # per slot, `self.now()` of the last heat token (engine.js `_heatAt`)
         # F15: {at, until, ammo: {slot: [mag, reserve]}} while an EMP has the gun disarmed; the ammo is the LIVE count to restore
         self.stunned: StunnedState | None = None
         self._pending: list[asyncio.Task] = []
@@ -1065,11 +1067,27 @@ class GunStage:
     TRIGGER_NO_FIRE_S = 1.5     # engine.js TRIGGER_NO_FIRE_MS
     NO_FIRE_PULLS = 3           # engine.js NO_FIRE_PULLS
 
+    # ---- overheat (engine.js `HEAT_LOCKOUT` / `HEAT_STALE_MS` / `_overheating`), review 2026-09-17 ------
+    # Review found `_await_shot`/`_no_fire_tick` never excluded a real OVERHEAT lockout, unlike engine.js:
+    # the exclusion needs the same heat tracking engine.js keeps, which the stage did not have at all.
+    HEAT_LOCKOUT = 100          # engine.js HEAT_LOCKOUT
+    HEAT_STALE_S = 25.0         # engine.js HEAT_STALE_MS -- see its comment for the lockout/decay/field-window reasoning
+
+    def _overheating(self) -> bool:
+        """engine.js `_overheating`: true once the active slot's last heat token has passed HEAT_LOCKOUT --
+        UNLESS that reading is stale (no new $ALCD for HEAT_STALE_S), since a locked-out weapon sends none
+        while it cools and a stuck reading must not gate the trigger forever."""
+        slot = self.active_slot
+        if (self.heat_by_slot.get(slot) or 0) <= self.HEAT_LOCKOUT:
+            return False
+        at = self._heat_at.get(slot)
+        return at is None or (self.now() - at) < self.HEAT_STALE_S
+
     def _await_shot(self) -> None:
         """engine.js `_awaitShot`: a trigger press the gun should answer with a shot. A press while one is due keeps the first."""
         if not (self.connected and self.spawned and self.alive):
             return
-        if self.switching or self.reloading or self.stunned:
+        if self.switching or self.reloading or self.stunned or self._overheating():
             return
         seen = self._prev_ammo.get(self.active_slot)
         mag = seen if seen is not None else self._ammo_by_slot().get(self.active_slot)
@@ -1083,7 +1101,7 @@ class GunStage:
         if self._shot_due_at is None or now - self._shot_due_at < self.TRIGGER_NO_FIRE_S:
             return
         self._shot_due_at = None
-        if not self.alive or self.switching or self.reloading or self.stunned:
+        if not self.alive or self.switching or self.reloading or self.stunned or self._overheating():
             return
         self._no_fire_pulls += 1
         if self._no_fire_pulls == self.NO_FIRE_PULLS:
@@ -1226,6 +1244,7 @@ class GunStage:
         self._hurt_fired = False
         self._shot_due_at = None; self._no_fire_pulls = 0                       # F208: a fresh life owes no shots
         self._prev_ammo = {}; self._prev_reserve = {}; self.active_slot = 0    # engine.js: a spawn/revive puts the gun back on slot 0; both ammo maps reset (stun snapshot, polish 2026-09-11)
+        self.heat_by_slot = {}; self._heat_at = {}                            # engine.js `_afterSpawn`/`_revive`: a fresh life starts cool
         # engine.js `_afterSpawn`/`_revive` clear all THREE: a takeover from the last life, the verdict it
         # left behind, and any button still down. Clearing only `reloading` left the previous life's
         # `reload_outcome` on the page to be read as this life's (polish review 2026-09-12).
@@ -1623,8 +1642,9 @@ class GunStage:
                     self._stun()             # F15: an EMP word (proto 8) -- a no-op unless config.stun is on; a status row, so no $HP follows
             elif cmd == "ALCD" and len(t) > 4:
                 self.tele["mag"], self.tele["reserve"] = int(t[1] or 0), int(t[4] or 0)
-                # engine.js `feedFrame` ALCD: `_onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null, t[3] || 0)`
-                self._on_ammo(int(t[1] or 0), int(t[4]) if t[4] != "" else None, int(t[3]) if len(t) > 3 and t[3] != "" else 0)
+                # engine.js `feedFrame` ALCD: `_onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null, t[3] || 0, heat)`
+                heat = int(t[5]) if len(t) > 5 and t[5] != "" else None
+                self._on_ammo(int(t[1] or 0), int(t[4]) if t[4] != "" else None, int(t[3]) if len(t) > 3 and t[3] != "" else 0, heat)
             elif cmd == "BUT" and len(t) > 2:
                 # engine.js `feedFrame` BUT -> `_onButton`: id 1 = ALT (a swap; a one-slot loadout falls back to
                 # reload), id 2 = the reload handle. F123: BOTH edges are read now (state 1 press / 0 release), so a
@@ -2223,9 +2243,15 @@ class GunStage:
     def _slot_count(self) -> int:
         return len(self._ammo_by_slot()) or 2      # the stage's player carries two weapons (recompile)
 
-    def _on_ammo(self, mag: int, reserve: int | None, slot: int = 0) -> None:
-        """`$ALCD,<mag>,100,<slot>,<reserve>,0` -- counts are per weapon SLOT (engine.js `_onAmmo`): the mag
-        coming BACK UP on the reloading slot ends the reload; the slot the gun names is the live one."""
+    def _on_ammo(self, mag: int, reserve: int | None, slot: int = 0, heat: int | None = None) -> None:
+        """`$ALCD,<mag>,100,<slot>,<reserve>,<heat>` -- counts are per weapon SLOT (engine.js `_onAmmo`): the
+        mag coming BACK UP on the reloading slot ends the reload; the slot the gun names is the live one."""
+        # Review 2026-09-17: heat is recorded BEFORE the stunned return below, mirroring engine.js -- a stun
+        # window can land mid-cooldown, and skipping the token here would only add to how long a stale-but-
+        # locked reading can sit unrefreshed (see HEAT_STALE_S / `_overheating`).
+        if heat is not None:
+            self.heat_by_slot[slot] = heat
+            self._heat_at[slot] = self.now()
         # F15: a stunned gun cannot fire, so any $ALCD in the window is the gun echoing OUR `$AMMO,<slot>,0,0`
         # (hardware-UNVERIFIED either way). Recording it would make the restore re-send 0 -- disarmed for life.
         if self.stunned:
@@ -2291,8 +2317,9 @@ class GunStage:
             self.reloading["released_at"] = now
 
     def _alt_pressed(self) -> None:
-        """ALT: a weapon swap -- except with ONE slot, where the gun's ALT falls back to reload (loadout.md §2)
-        and takes the same glance as the handle (engine.js `_altPressed`).
+        """ALT: a weapon swap -- except with ONE slot, where ALT only reloads for a player running easy_reload
+        (loadout.md §2 `alt_reload`; the gun's ALT is otherwise fn 98, inert) and takes the same glance as the
+        handle (engine.js `_altPressed`).
 
         A swap ABANDONS a running reload: the gun is putting a different weapon in your hands, so the old
         slot's magazine stops moving and no further $ALCD can reconcile the takeover. Left running it would
@@ -2307,7 +2334,13 @@ class GunStage:
             self._log("ALT ignored -- the gun is stunned", "info")
             return
         if self._slot_count() < 2:
-            self._reload_pulled()
+            # Bench 2026-09-17 (match 592e444eff): with an empty slot 1, compile.py maps ALT to fn 98
+            # (inert) UNLESS the player runs easy_reload, which keeps ALT -> fn 97 (RELOAD) on purpose
+            # (loadout.md §2 `alt_reload`). Pulling reload for anyone else opened a takeover the gun
+            # could never complete (engine.js `_altPressed`).
+            pk = self._catalog_row("perk_catalog", "perk_id", ((self.player or {}).get("loadout") or {}).get("perk"))
+            if (pk or {}).get("effects", {}).get("alt_reload"):
+                self._reload_pulled()
             return
         if self.reloading:
             self._end_reload("swapped")

@@ -473,9 +473,30 @@ test('a write error inside the answer cap still stops the batch; a late one is l
   await slow.link.connect('A', 'GUN-A-1111');
   const q = slow.link.write(['$PLAYX,0,*', '$SPAWN,,*']);
   await settle(700);
-  assert.equal(await q, true);
+  assert.equal(await q, true, 'this tiny batch finished sending long before the late answer landed');
   assert.equal(slow.calls.length, 2);
   assert.match(slow.logs.join('\n'), /write err \(after the answer cap\): Writing characteristic failed/);
+});
+
+test('review 2026-09-17: a late write error poisons the rest of a batch still in flight, so write() resolves false', async ctx => {
+  // Before this fix a late error (past ackCapMs) was only logged: the batch sailed on as if every chunk
+  // had landed, so a chunk actually lost on the wire could join half of one frame to the next while
+  // write() still reported success. It must now stop the batch and the caller's existing retry paths run.
+  const settle = useClock(ctx);
+  const r = slowBridgeRig({ answerMs: 200, failAt: 0 });   // chunk 0's real answer is a REJECTION, well past the 50ms cap
+  await r.link.connect('A', 'GUN-A-1111');
+  const done = r.link.write(SPAWN);                        // 8 frames / 12 chunks: plenty still queued when the poison lands
+  await settle(1500);
+  const writes = r.calls.filter(c => c.kind === 'write');
+  const chunks = SPAWN.flatMap(f => f.match(/.{1,20}/g)).map(hexOf);
+  assert.ok(writes.length > 0 && writes.length < chunks.length,
+    `the batch stopped once the late error landed instead of sending all ${chunks.length} (sent ${writes.length})`);
+  assert.equal(await done, false, 'a lost chunk must not let write() report success');
+  assert.match(r.logs.join('\n'), /write err \(after the answer cap\): Writing characteristic failed/);
+  // the flag resets for the NEXT batch: it must not leak into an unrelated write() call
+  const again = r.link.write('$PING,*');
+  await settle(300);
+  assert.equal(await again, true, 'the poison does not leak into the next write()');
 });
 
 test('the real plugin gets the direct writer; the web build is sent the DataView', () => {

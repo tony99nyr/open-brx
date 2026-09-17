@@ -49,6 +49,8 @@ def test_the_thresholds_match_the_phone():
     assert f"GUN_QUIET_STALE_MS = {int(GunStage.GUN_QUIET_STALE_S * 1000)};" in js
     assert f"TRIGGER_NO_FIRE_MS = {int(GunStage.TRIGGER_NO_FIRE_S * 1000)};" in js
     assert f"NO_FIRE_PULLS = {GunStage.NO_FIRE_PULLS};" in js
+    assert f"HEAT_LOCKOUT = {GunStage.HEAT_LOCKOUT};" in js
+    assert f"HEAT_STALE_MS = {int(GunStage.HEAT_STALE_S * 1000)};" in js
 
 
 def test_a_healthy_idle_gun_is_never_stale():
@@ -107,4 +109,34 @@ def test_a_silent_gun_is_stale_until_any_frame():
         assert s and s["why"] == "silent", s
         st._inject_rx(VOLTS)
         assert st.pool_stale() is None
+    asyncio.run(run())
+
+
+def test_review_2026_09_17_overheat_is_excluded_from_no_fire_until_the_reading_goes_stale():
+    """Review 2026-09-17: `_await_shot`/`_no_fire_tick` did not exclude a real OVERHEAT lockout -- the
+    stage had no heat tracking at all, so a locked-out gun's unanswered pulls would wrongly book NO_FIRE.
+    Mirrors engine.js's own exclusion, and its staleness: the gun sends no $ALCD while cooling, so a
+    reading past HEAT_LOCKOUT is trusted for only HEAT_STALE_S before ordinary no_fire tracking resumes."""
+    async def run():
+        st, mgr, clock = _mk()
+        await _live(st, clock)
+        st._inject_rx("$ALCD,10,100,0,192,108,*")     # match 592e444eff: a real bench overheat capture
+        assert st._overheating()
+        for _ in range(5):
+            _dry_pull(st, clock)
+        assert st.pool_stale() is None, "overheat-locked pulls must never book NO_FIRE"
+        # the second guard: overheat starting AFTER a press is already pending must also cancel the count
+        st._inject_rx("$ALCD,10,100,0,192,10,*")       # cooled: not overheating any more
+        st._inject_rx("$BUT,0,1,*")                    # a press goes pending
+        st._inject_rx("$ALCD,10,100,0,192,108,*")      # overheat starts before the deadline
+        _adv(st, clock, GunStage.TRIGGER_NO_FIRE_S + 0.1, step=0.1)
+        st._inject_rx("$BUT,0,0,*")
+        assert st.pool_stale() is None, "overheat that started after the press was already pending still excludes it"
+        # once the reading goes stale, it can no longer suppress a REAL no_fire condition
+        _adv(st, clock, GunStage.HEAT_STALE_S + 1, step=1)
+        assert not st._overheating(), "no new $ALCD for HEAT_STALE_S: the reading is no longer trusted"
+        for _ in range(3):
+            _dry_pull(st, clock)
+        s = st.pool_stale()
+        assert s and s["why"] == "no_fire", "a stale reading no longer excludes it: no_fire tracks again"
     asyncio.run(run())

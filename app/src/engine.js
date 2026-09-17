@@ -112,6 +112,16 @@ const RELOAD_OVERRUN = 0.5;      // ...and half the nominal reload on top, which
 // weapon and passes 100 into lockout -- the gun will not fire past this. Below it, heat is build-up,
 // not a fault; the HUD shows the level either way, but only calls it OVERHEAT past this line.
 const HEAT_LOCKOUT = 100;
+// Review 2026-09-17: a locked-out weapon sends NO $ALCD while it cools (bench match 592e444eff: "10 pulls,
+// no $ALCD"), so a heat reading above HEAT_LOCKOUT can sit unrefreshed forever once the player stops
+// pulling the trigger -- OVERHEAT would stick and `no_fire` would never take over from it. The bench-measured
+// lockout hold is ~4.8 s and heat decays ~30/unit-per-s once it starts cooling, so the mechanic itself clears
+// in a few seconds -- but the field capture pinned in pool-stale.test.mjs (the 02dd94 log) shows a player
+// dry-firing a LOCKED weapon for ten pulls (~2 s cadence, ~20 s) before giving up, and the exemption must
+// hold for every one of those pulls or the old false-positive "gun not firing" report comes straight back.
+// HEAT_STALE_MS sits above that real window with margin, so a genuine lockout (or a player still trying it)
+// is never cleared early, and only a reading old enough to be certainly abandoned counts as untrustworthy.
+const HEAT_STALE_MS = 25000;
 // Bench 2026-09-17 (Tony): the shot-ready cue. `$WEAP` token 14 is the time between rounds (ms per round,
 // calibrated 2026-09-10); for a charge weapon it is the hold time. At or above this line the HUD dims the ammo
 // gauge after each shot and shines it once when the next round is due. Automatic weapons sit under it and get neither.
@@ -393,6 +403,9 @@ export class Engine {
     // mcp/brx_mcp/protocol.py's own `overheating: bool(heat)` is untested between 1-99 and would light
     // up on the very first rising frame of ordinary fire, which is not what "OVERHEAT" means on the bench).
     this.heatBySlot = {};
+    // Per slot, the `now()` of the last heat token recorded -- lets `_overheating()` treat a reading as
+    // stale once nothing has refreshed it for HEAT_STALE_MS (review 2026-09-17: see the constant's comment).
+    this._heatAt = {};
     // Per slot, true once that slot has reported heat > 0 this life -- the HUD's heat bar exists only for a
     // weapon that actually heats (a bullet weapon's $ALCD always carries heat 0, which is a real "no heat",
     // not "unknown"; reading `heatBySlot[slot] != null` alone would show the bar on every weapon after its
@@ -486,10 +499,16 @@ export class Engine {
     this.log(`skin: ${this.night ? 'night' : 'day'} (player's choice)`, 'li');
     this._changed();
   }
-  /** True when the player picked a skin in the current MC session. A pick made before joining any MC joins the next one. */
+  /** True when the player picked a skin in the current MC session. A pick made before joining any MC joins the next one.
+   *  Bench/review 2026-09-17: on an app restart mid-match the gun can relink over BLE (fast, local) before MC's
+   *  welcome (a network round trip) has told the node its session id back, so `sessionOf()` reads null for a
+   *  window in which `_autoNight` can still fire (ARMED/LIVE). Falling back to the PERSISTED session here (the
+   *  one this pick is already tied to) treats "session not known yet" as "not proven different", so NIGHT OPS
+   *  cannot override a real pick just because the welcome is late. Once the welcome arrives with a genuinely
+   *  different session id, the fallback stops applying and a fresh MC session leads NIGHT OPS again as designed. */
   ownNightChoice() {
     const c = this.nightChoice; if (!c) return false;
-    const cur = this.sessionOf() || null;
+    const cur = this.sessionOf() || c.session || null;
     if (c.session == null && cur != null) { c.session = cur; this._storeNight(); }
     return (c.session || null) === cur;
   }
@@ -1645,7 +1664,7 @@ export class Engine {
     const ps = this._pickFrame('pset_pool');
     this._write([...(ps.frame ? [ps.frame] : []), ...this.frames.spawn, SFLASH, ...(sp.frame ? [sp.frame] : [])], 'spawn' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : ''));
     this.hurtFired = false;        // the low-health alert is once per LIFE
-    this._prevAmmo = {}; this._prevReserve = {}; this.activeSlot = 0; this.magBySlot = {}; this.heatBySlot = {}; this._everHeated = {}; this.lastShot = null;   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
+    this._prevAmmo = {}; this._prevReserve = {}; this.activeSlot = 0; this.magBySlot = {}; this.heatBySlot = {}; this._heatAt = {}; this._everHeated = {}; this.lastShot = null;   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
     this._cue('klaxon');
     // Spawn shield is ALWAYS 0 on hardware -- $PSET t5 is a capacity filled by an fn-11
     // grant, never a starting pool (bench 2026-08-27).
@@ -2533,8 +2552,16 @@ export class Engine {
   }
   /** Bench 2026-09-17 (match 592e444eff): a charge rifle in OVERHEAT lockout will not fire no matter how
    *  many times the trigger is pulled -- that is the mechanic working, not a stale pool. True once the
-   *  active slot's last-reported heat ($ALCD token 5) has passed HEAT_LOCKOUT. */
-  _overheating() { return (this.heatBySlot[this.activeSlot] || 0) > HEAT_LOCKOUT; }
+   *  active slot's last-reported heat ($ALCD token 5) has passed HEAT_LOCKOUT -- UNLESS that reading is
+   *  itself stale (review 2026-09-17): the gun sends no $ALCD while locked out or cooling, so a reading
+   *  taken while OVERHEAT would otherwise sit above the line forever. Past HEAT_STALE_MS with nothing new
+   *  for this slot, treat it as no longer trustworthy and let `poolStale`'s 'no_fire'/'silent' path take over. */
+  _overheating() {
+    const slot = this.activeSlot;
+    if ((this.heatBySlot[slot] || 0) <= HEAT_LOCKOUT) return false;
+    const at = this._heatAt[slot];
+    return at == null || (this.now() - at) < HEAT_STALE_MS;
+  }
   /** F208: a trigger press the gun should answer with a shot. Only counted where a shot must follow: live, alive,
    *  loaded, and not swapping, reloading, stunned, resyncing, reconciling or overheat-locked. A press while
    *  one is due keeps the first. */
@@ -2675,7 +2702,15 @@ export class Engine {
     // that can confirm it — it runs to `switchWindowMs()` and then books an ASSUMED swap, leaving
     // `activeSlot` on a weapon the player is not holding for the rest of the life (review 2026-09-12).
     if (this.stunned) { this.log('ALT ignored — the gun is stunned', 'li'); return; }
-    if (this._slotCount() < 2) { this._reloadPulled(); return; }   // empty slot 1: ALT falls back to reload (loadout.md §2) — same takeover as the handle
+    if (this._slotCount() < 2) {
+      // Bench 2026-09-17 (match 592e444eff): with an empty slot 1, compile.py maps ALT to fn 98 (inert)
+      // UNLESS the player is running easy_reload, which keeps ALT -> fn 97 (RELOAD) on purpose
+      // (loadout.md §2 `alt_reload`). Calling `_reloadPulled()` for anyone else opened a RELOADING
+      // takeover the gun could never complete, since no $ALCD ever answers a no-op button.
+      const pk = this.player && this.player.loadout && this.player.loadout.perk ? this.perkRow(this.player.loadout.perk) : null;
+      if (pk && pk.effects && pk.effects.alt_reload) this._reloadPulled();
+      return;
+    }
     // A swap ABANDONS a running reload: the gun is putting a different weapon in your hands, so the old
     // slot's magazine stops moving and no further $ALCD can reconcile the takeover. Left running it would
     // sit on the chip bar to its deadline (`reloadUp` outranks `switchUp` in hud.js) and hide SWITCHING.
@@ -2778,6 +2813,10 @@ export class Engine {
    *  `heat` is null on a frame with no heat token ($LCD's ammo echo) -- leaves the slot's last-known heat alone. */
   _onAmmo(mag, reserve, slot = 0, heat = null) {
     slot = Number.isFinite(slot) ? slot : 0;
+    // Review 2026-09-17: heat is recorded BEFORE the stunned return below. A stun window can land while a
+    // heat weapon is mid-cooldown, and skipping the token here (as the ammo/reserve fields correctly do)
+    // would only add to how long a stale-but-locked reading can sit unrefreshed -- see HEAT_STALE_MS.
+    if (heat != null && !Number.isNaN(heat)) { this.heatBySlot[slot] = heat; this._heatAt[slot] = this.now(); if (heat > 0) this._everHeated[slot] = true; }
     // F15: a stunned gun cannot fire, so any $ALCD in the window is the gun echoing OUR `$AMMO,<slot>,0,0` (whether
     // it does is hardware-UNVERIFIED; this guard makes it safe either way). Counting it would book a magazine of
     // phantom shots, and recording it would make the restore re-send 0 -- a gun disarmed for the rest of the life.
@@ -2839,7 +2878,7 @@ export class Engine {
     this.magBySlot[slot] = Math.max(this.magBySlot[slot] || 0, mag);
     this.ammo = mag; this.mag = this.magBySlot[slot];
     if (reserve != null && !Number.isNaN(reserve)) this.reserve = reserve;
-    if (heat != null && !Number.isNaN(heat)) { this.heatBySlot[slot] = heat; if (heat > 0) this._everHeated[slot] = true; }
+    // heat itself is recorded at the top of this function, before the stunned return.
   }
 
   _onHp(hp, armor, shield) {

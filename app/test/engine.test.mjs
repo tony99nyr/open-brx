@@ -1194,6 +1194,35 @@ test('weapon heat (bench 2026-09-17): $ALCD token 5 drives heat/overheating/heat
   assert.equal(h.eng.state().heatEverSeen, true, 'the bar itself stays available for the rest of this life');
 });
 
+test('review 2026-09-17: heat is recorded even while the gun is STUNNED', () => {
+  // Ammo/reserve are correctly frozen while stunned (F15) -- but the heat token is a separate signal, and
+  // skipping it too only made a stuck-above-lockout reading sit unrefreshed for even longer.
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$ALCD,32,100,0,384,55,*');
+  assert.equal(h.eng.state().heat, 55);
+  h.eng.stunned = { at: h.eng.now(), until: h.eng.now() + 5000, ammo: {} };
+  h.frame('$ALCD,32,0,0,0,108,*');   // the gun's own disarm echo, still carrying the real heat token
+  assert.equal(h.eng.heatBySlot[0], 108, 'heat updates even though this is a stunned-window $ALCD');
+  assert.equal(h.eng.ammo, 32, 'ammo is untouched while stunned (F15) -- only heat is recorded early');
+});
+
+test('review 2026-09-17: a stuck OVERHEAT reading goes stale after HEAT_STALE_MS with no new $ALCD', () => {
+  // Bench 2026-09-17 (match 592e444eff): a locked-out weapon sends NO $ALCD while it cools ("10 pulls, no
+  // $ALCD"), so the last reading above HEAT_LOCKOUT could otherwise sit there for the rest of the life,
+  // sticking OVERHEAT on and keeping `no_fire` from ever taking over.
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$ALCD,31,100,0,384,108,*');   // match 592e444eff: a real bench capture
+  assert.equal(h.eng.state().overheating, true);
+  h.adv(24000);
+  assert.equal(h.eng.state().overheating, true, 'still inside the stale window (pool-stale.test.mjs pins ~20s of dry pulls exempt): must not clear early');
+  h.adv(1500);   // 25500ms since the last $ALCD, past HEAT_STALE_MS
+  assert.equal(h.eng.state().overheating, false, 'no $ALCD for HEAT_STALE_MS: the reading can no longer be trusted');
+  // a fresh $ALCD below the lockout still reads normally afterwards
+  h.frame('$ALCD,31,100,0,384,10,*');
+  assert.equal(h.eng.state().overheating, false);
+  assert.equal(h.eng.state().heat, 10);
+});
+
 test('weapon heat: a weapon that never heats (token 5 always 0) never sets heatEverSeen', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.frame('$ALCD,32,100,0,384,0,*'); h.frame('$ALCD,31,100,0,384,0,*'); h.frame('$ALCD,30,100,0,384,0,*');
@@ -2233,7 +2262,7 @@ function twoWeapons(h) {
 test('ALT raises the swap indicator only with a real second weapon', () => {
   const h = goLive(harness());
   h.frame('$BUT,1,1,*');
-  assert.equal(h.eng.state().switching, false, 'single-weapon loadout: ALT is a reload, not a swap');
+  assert.equal(h.eng.state().switching, false, 'single-weapon loadout, no easy_reload: ALT is not a swap');
   twoWeapons(h).frame('$BUT,1,1,*');
   assert.equal(h.eng.state().switching, true);
 });
@@ -2585,7 +2614,8 @@ test('F123: the reload the GUN NEVER DID does not animate as a success (the easy
   // emits one reload event and the mag never comes back. The old `reloadingMs()` was a pure timer, so this
   // looked identical to a completed reload. It must not.
   const h = shellHarness();
-  h.eng.player = { ...h.eng.player, loadout: { weapons: [{ weapon_id: 'shotgun' }] } };   // one slot: ALT falls back to reload
+  h.eng.catalog = { ...h.eng.catalog, perks: [{ perk_id: 'easy_reload', name: 'Easy Reload', effects: { alt_reload: true } }] };
+  h.eng.player = { ...h.eng.player, loadout: { weapons: [{ weapon_id: 'shotgun' }], perk: 'easy_reload' } };   // one slot + easy_reload: ALT falls back to reload
   h.frame('$BUT,1,1,*'); h.frame('$BUT,1,0,*');
   assert.equal(h.eng.state().reloading, true, 'the takeover starts');
   h.adv(2000); h.eng.tick();                     // nothing arrives from the gun
@@ -2660,10 +2690,22 @@ test('a new match_id drops the previous match\'s score row; a dry reserve never 
   h.frame('$ALCD,0,100,0,0,0,*'); h.frame('$BUT,2,1,*');
   assert.equal(h.eng.state().reloading, false, 'nothing to reload from an empty reserve');
 });
-test('with one weapon loaded, ALT falls back to reload and opens the same takeover', () => {
+test('with one weapon loaded and no easy_reload, ALT does nothing (compile.py maps it to fn 98, inert)', () => {
+  // Bench 2026-09-17 (match 592e444eff): "the alt button is reloading the charge rifle" -- with an empty
+  // slot 1 and no easy_reload, the gun's ALT is now fn 98 (inert), so a RELOADING takeover here would
+  // never be answered by any $ALCD. Falling back to reload for every one-weapon loadout was the bug.
   const h = harness().kit().config_().echo().start(0); h.eng.tick();
   h.frame('$ALCD,10,100,0,384,0,*'); h.frame('$BUT,1,1,*');
-  assert.equal(h.eng.state().reloading, true, 'ALT with an empty slot 1 is a reload');
+  assert.equal(h.eng.state().reloading, false, 'ALT with an empty slot 1 and no easy_reload opens nothing');
+  assert.equal(h.eng.state().switching, false, 'and not a weapon swap either');
+});
+test('with one weapon loaded AND easy_reload, ALT falls back to reload and opens the same takeover', () => {
+  // easy_reload keeps ALT -> fn 97 (RELOAD) on purpose (loadout.md §2 `alt_reload`; compile.py).
+  const h = harness().kit().config_().echo().start(0); h.eng.tick();
+  h.eng.catalog = { weapons: [], perks: [{ perk_id: 'easy_reload', name: 'Easy Reload', effects: { alt_reload: true } }] };
+  h.eng.player = { ...h.eng.player, loadout: { weapons: [{ weapon_id: 'assault_rifle' }], perk: 'easy_reload' } };
+  h.frame('$ALCD,10,100,0,384,0,*'); h.frame('$BUT,1,1,*');
+  assert.equal(h.eng.state().reloading, true, 'ALT with an empty slot 1 and easy_reload is a reload');
   assert.equal(h.eng.state().switching, false, 'and not a weapon swap');
 });
 test('no reload opens during a rejoin reconcile; a match end clears one in flight', () => {

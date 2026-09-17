@@ -55,6 +55,8 @@ JUDGED = {
     "TERM_GRACE_S": "A28.1: terminate-then-kill grace for the cloudflared child; a process wait, not a game timer",
     "DNS_CAP_S": "F140: how long MC holds `starting` while the tunnel hostname does not resolve at Cloudflare; driven by DNS-over-HTTPS answers on the host, and nothing on the IR wire reaches it",
     "DOH_TIMEOUT_S": "F140: the socket timeout on one DNS-over-HTTPS query; an HTTP wait on the host, not a game timer",
+    "HEAT_STALE_S": "review 2026-09-17: the stage's mirror of engine.js HEAT_STALE_MS -- reset only by a real $ALCD "
+                    "heat token from a shot/report; a hill beacon is proto 15, never an $ALCD, so it cannot extend it",
 }
 
 _CONST = re.compile(r"^\s*([A-Z_][A-Z0-9_]*_(S|MS))\s*(?::\s*[\w\[\], ]+)?\s*=\s*\(?\s*(-?\d[\d_.]*)", re.M)
