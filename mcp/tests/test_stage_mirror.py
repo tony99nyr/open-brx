@@ -1144,6 +1144,12 @@ KNOWN_UNMIRRORED = {
     "resumeSchedule", "_event", "_probe", "_checkEcho", "ackEnd", "onResultPush", "resultWait",
     # bench 2026-09-17: BrxLink's flap count, passed through to the HUD and MC; no game rule reads it
     "setGunFlapping",
+    # bench 2026-09-17 (match 592e444eff): weapon heat/OVERHEAT lockout, read straight off `$ALCD` token 5.
+    # This IS a game rule (a locked-out gun will not fire) and belongs on the stage too, so a bench run can
+    # reproduce the false "gun not firing" no-fire report this fixed -- ported in a follow-up, not this
+    # change (scoped to engine.js's `$ALCD` parse and HUD display only). Pinned here rather than silently
+    # left unmirrored so that follow-up has a name to find.
+    "_overheating",
     # app lifecycle + the A26 pick debounce: the stage has no foreground/background and no MC to pick from
     "_awake", "commitPick",
     # field 2026-09-17: the kill banner's victim name, resolved from MC's `feedback`; the stage has no MC and no banner

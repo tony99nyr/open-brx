@@ -108,6 +108,10 @@ const RELOAD_GRACE_MS = 600;     // a reload the gun never echoed still clears t
 // on the frame BEFORE the gun's own echo and book a real reload as failed. The ceiling is therefore
 // proportional as well as flat, and `_reloadDeadline` takes the larger of the two.
 const RELOAD_OVERRUN = 0.5;      // ...and half the nominal reload on top, which clears every measured overrun
+// Bench 2026-09-17 (Tony): weapon heat ($ALCD token 5) rises about 8 per frame while firing a heat
+// weapon and passes 100 into lockout -- the gun will not fire past this. Below it, heat is build-up,
+// not a fault; the HUD shows the level either way, but only calls it OVERHEAT past this line.
+const HEAT_LOCKOUT = 100;
 // $BUT ids (protocol §$BUT — `$BUT,<id>,<state>`; state 1 press / 0 release).
 const BTN_TRIGGER = 0, BTN_ALT = 1, BTN_RELOAD = 2;
 const TEAM_KEY = { 0: 'red', 1: 'blue', 2: 'yellow', 3: 'green' };
@@ -372,6 +376,18 @@ export class Engine {
     this._prevReserve = {};         // per weapon slot: last reserve seen ($ALCD token 4) -- the stun restore needs the LIVE pair, not the frame's (F15/F87)
     this.activeSlot = 0;
     this.magBySlot = {};
+    // Bench 2026-09-17: $ALCD token 5 is weapon heat (protocol.py `parse_alcd`), non-zero only on an
+    // overheat weapon (§7j). Read straight off the wire, per slot -- no synthetic decay or reload-clear
+    // here, because the gun's own next $ALCD already reports the true post-reload/post-cooldown value.
+    // OVERHEATING is heat > HEAT_LOCKOUT (the one confirmed bench capture read 106 mid-lockout, 0 cool;
+    // mcp/brx_mcp/protocol.py's own `overheating: bool(heat)` is untested between 1-99 and would light
+    // up on the very first rising frame of ordinary fire, which is not what "OVERHEAT" means on the bench).
+    this.heatBySlot = {};
+    // Per slot, true once that slot has reported heat > 0 this life -- the HUD's heat bar exists only for a
+    // weapon that actually heats (a bullet weapon's $ALCD always carries heat 0, which is a real "no heat",
+    // not "unknown"; reading `heatBySlot[slot] != null` alone would show the bar on every weapon after its
+    // first shot).
+    this._everHeated = {};
     this.endedMatches = [];         // match_ids already ended locally — a re-hydrated `start` for them is a no-op
     this.endAck = false;            // result screen shown until the player taps OK (then the 'over' screen)
     this.onEnd = null;              // app hook: called once per ended match with a stats summary (history)
@@ -1576,7 +1592,7 @@ export class Engine {
     const ps = this._pickFrame('pset_pool');
     this._write([...(ps.frame ? [ps.frame] : []), ...this.frames.spawn, SFLASH, ...(sp.frame ? [sp.frame] : [])], 'spawn' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : ''));
     this.hurtFired = false;        // the low-health alert is once per LIFE
-    this._prevAmmo = {}; this._prevReserve = {}; this.activeSlot = 0; this.magBySlot = {};   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
+    this._prevAmmo = {}; this._prevReserve = {}; this.activeSlot = 0; this.magBySlot = {}; this.heatBySlot = {}; this._everHeated = {};   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
     this._cue('klaxon');
     // Spawn shield is ALWAYS 0 on hardware -- $PSET t5 is a capacity filled by an fn-11
     // grant, never a starting pool (bench 2026-08-27).
@@ -2324,7 +2340,7 @@ export class Engine {
         // read 0 in every observed frame -- so writing it can only ZERO a live shield, never set one,
         // which silently recreates the Q12 bug this file just fixed. Re-add only once t3 is
         // bench-confirmed as the shield.
-        if (t[5] !== undefined) this._onAmmo(+t[5] || 0, t[6] !== undefined ? +t[6] : null, this.activeSlot);
+        if (t[5] !== undefined) this._onAmmo(+t[5] || 0, t[6] !== undefined ? +t[6] : null, this.activeSlot);   // $LCD carries no heat token — leave it untouched this frame
         if (this.awaitingEcho && !this.headEcho) this.headEcho = f;
         const wasResync = !!this.resync;
         if (this.resync) this._resyncEvidence('lcd');
@@ -2348,7 +2364,7 @@ export class Engine {
         // reads as NOT ECHOED -- no claim, rather than a wrong one.
         if (this.awaitingEcho && !this.ammoEcho && !this.butSinceHead
             && (t[3] === undefined || t[3] === '' || +t[3] === 0)) this.ammoEcho = f;
-        this._onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null, t[3] !== undefined && t[3] !== '' ? +t[3] : 0);
+        this._onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null, t[3] !== undefined && t[3] !== '' ? +t[3] : 0, t[5] !== undefined && t[5] !== '' ? +t[5] : null);
         break;
       }
       case 'HIR': {
@@ -2447,11 +2463,16 @@ export class Engine {
     if (latched && (latched.present || !present)) return latched;
     return present || live[0] || null;
   }
+  /** Bench 2026-09-17 (match 592e444eff): a charge rifle in OVERHEAT lockout will not fire no matter how
+   *  many times the trigger is pulled -- that is the mechanic working, not a stale pool. True once the
+   *  active slot's last-reported heat ($ALCD token 5) has passed HEAT_LOCKOUT. */
+  _overheating() { return (this.heatBySlot[this.activeSlot] || 0) > HEAT_LOCKOUT; }
   /** F208: a trigger press the gun should answer with a shot. Only counted where a shot must follow: live, alive,
-   *  loaded, and not swapping, reloading, stunned, resyncing or reconciling. A press while one is due keeps the first. */
+   *  loaded, and not swapping, reloading, stunned, resyncing, reconciling or overheat-locked. A press while
+   *  one is due keeps the first. */
   _awaitShot() {
     if (this.phase !== 'live' || !this.alive || !this.spawned || !this.bleUp || this.tutorial) return;
-    if (this.resync || this.reconciling || this.switching || this.reloading || this.stunned) return;
+    if (this.resync || this.reconciling || this.switching || this.reloading || this.stunned || this._overheating()) return;
     // The slot's live count once the gun has reported it this life, else the spawn magazine. An empty mag dry-fires.
     const seen = this._prevAmmo[this.activeSlot];
     const mag = seen != null ? seen : this._ammoBySlot()[this.activeSlot];
@@ -2462,7 +2483,7 @@ export class Engine {
   _noFireTick(now) {
     if (this._shotDueAt == null || now - this._shotDueAt < TRIGGER_NO_FIRE_MS) return;
     this._shotDueAt = null;
-    if (!this.alive || this.switching || this.reloading || this.stunned) return;   // the reason changed while it was due
+    if (!this.alive || this.switching || this.reloading || this.stunned || this._overheating()) return;   // the reason changed while it was due -- overheat is a real cause too (592e444eff: heat 99->108, 10 pulls, no $ALCD)
     this._noFirePulls++;
     if (this._noFirePulls === NO_FIRE_PULLS) this.log(`gun not firing: ${NO_FIRE_PULLS} trigger pulls with no shot, the pool is stale`, 'le');
   }
@@ -2685,8 +2706,9 @@ export class Engine {
     return Math.round(SWITCH_MAX_MS * (sm > 0 ? sm : 1));
   }
 
-  /** $ALCD,<mag>,100,<slot>,<reserve>,0 — counts are per weapon SLOT; a weapon swap is never a shot. */
-  _onAmmo(mag, reserve, slot = 0) {
+  /** $ALCD,<mag>,100,<slot>,<reserve>,<heat> — counts are per weapon SLOT; a weapon swap is never a shot.
+   *  `heat` is null on a frame with no heat token ($LCD's ammo echo) -- leaves the slot's last-known heat alone. */
+  _onAmmo(mag, reserve, slot = 0, heat = null) {
     slot = Number.isFinite(slot) ? slot : 0;
     // F15: a stunned gun cannot fire, so any $ALCD in the window is the gun echoing OUR `$AMMO,<slot>,0,0` (whether
     // it does is hardware-UNVERIFIED; this guard makes it safe either way). Counting it would book a magazine of
@@ -2746,6 +2768,7 @@ export class Engine {
     this.magBySlot[slot] = Math.max(this.magBySlot[slot] || 0, mag);
     this.ammo = mag; this.mag = this.magBySlot[slot];
     if (reserve != null && !Number.isNaN(reserve)) this.reserve = reserve;
+    if (heat != null && !Number.isNaN(heat)) { this.heatBySlot[slot] = heat; if (heat > 0) this._everHeated[slot] = true; }
   }
 
   _onHp(hp, armor, shield) {
@@ -3141,6 +3164,11 @@ export class Engine {
       callsign: this.player ? this.player.display : '', playerNum: this.player ? this.player.player_num : null,
       mode: this.config ? String(this.config.mode || '').toUpperCase() : '', weapon: this.weaponName,
       hp: this.hp, armor: this.armor, shield: this.shield, maxHp: this.maxHp, maxArmor: this.maxArmor, ammo: this.ammo, reserve: this.reserve, mag: (this._ammoBySlot()[this.activeSlot] ?? this.mag),
+      // Bench 2026-09-17: `heat` is the active slot's last $ALCD heat token, null until one has been seen
+      // this life (a non-heat weapon never sends a non-zero one). `overheating` is the HUD's OVERHEAT gate.
+      heat: this.heatBySlot[this.activeSlot] != null ? this.heatBySlot[this.activeSlot] : null,
+      overheating: this._overheating(),
+      heatEverSeen: !!this._everHeated[this.activeSlot],
       loadMag: this._loadAmmo()[0], loadReserve: this._loadAmmo()[1],
       alive: this.alive, deaths: this.deaths, shots: this.shots, battery: this.battery,
       kills: this.score ? this.score.kills : null, assists: this.score ? this.score.assists : null, accuracy: this.score ? this.score.accuracy : null, scoreAt: this.scoreAt,

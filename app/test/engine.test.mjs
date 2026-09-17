@@ -1176,6 +1176,41 @@ test('shots counter: $ALCD decrements count, increases (reload) ignored', () => 
   assert.equal(h.eng.shots, 3);
 });
 
+test('weapon heat (bench 2026-09-17): $ALCD token 5 drives heat/overheating/heatEverSeen for the active slot', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  assert.equal(h.eng.state().heat, null, 'no $ALCD seen yet: heat is unknown, not zero');
+  assert.equal(h.eng.state().heatEverSeen, false);
+  assert.equal(h.eng.state().overheating, false);
+  h.frame('$ALCD,32,100,0,384,55,*');   // heat rising, under the lockout
+  assert.equal(h.eng.state().heat, 55);
+  assert.equal(h.eng.state().heatEverSeen, true, 'a non-zero heat token proves this weapon heats');
+  assert.equal(h.eng.state().overheating, false, 'below HEAT_LOCKOUT: building up, not locked out');
+  h.frame('$ALCD,31,100,0,384,108,*');   // match 592e444eff: heat 99 -> 108, a real bench capture
+  assert.equal(h.eng.state().heat, 108);
+  assert.equal(h.eng.state().overheating, true, 'past HEAT_LOCKOUT: the gun will not fire');
+  h.frame('$ALCD,31,100,0,384,0,*');   // the gun's own next report after cooldown/reload: heat 0
+  assert.equal(h.eng.state().heat, 0);
+  assert.equal(h.eng.state().overheating, false, 'heat 0 clears the lockout');
+  assert.equal(h.eng.state().heatEverSeen, true, 'the bar itself stays available for the rest of this life');
+});
+
+test('weapon heat: a weapon that never heats (token 5 always 0) never sets heatEverSeen', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$ALCD,32,100,0,384,0,*'); h.frame('$ALCD,31,100,0,384,0,*'); h.frame('$ALCD,30,100,0,384,0,*');
+  assert.equal(h.eng.state().heat, 0);
+  assert.equal(h.eng.state().heatEverSeen, false, 'heat 0 every time: this weapon never heats, so the HUD must never draw a heat bar for it');
+});
+
+test('weapon heat: a fresh spawn clears heatEverSeen (a new life does not inherit the last life\'s heat)', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$ALCD,32,100,0,384,108,*');
+  assert.equal(h.eng.state().heatEverSeen, true);
+  h.frame('$HP,0,0,0,*');   // dead
+  h.eng._spawn(false);      // a new life
+  assert.equal(h.eng.state().heatEverSeen, false, 'a fresh life owes no heat until the gun reports some');
+  assert.equal(h.eng.state().heat, null);
+});
+
 test('feedback freshness: fresh flashes, stale ignored', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   h.writes.length = 0;
