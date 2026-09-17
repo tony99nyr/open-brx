@@ -388,9 +388,9 @@ def parser() -> argparse.ArgumentParser:
                          "moving where it binds (WSL2's own NAT address is what MC auto-detects, and it is "
                          "not reachable from a phone — pass the Windows LAN address here, from ipconfig)")
     ap.add_argument("--bench-volume", nargs="?", type=_bench_volume, default=None, metavar="N",
-                    const=55,
+                    const=65,
                     help="bench run: every $VOL MC compiles (match heads, try-outs) plays at N "
-                         "(default 55) instead of the venue volume. Not for a real game")
+                         "(default 65) instead of the venue volume. Not for a real game")
     ap.add_argument("-v", "--verbose", action="store_true")
     return ap
 
