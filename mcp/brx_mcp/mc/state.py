@@ -453,7 +453,7 @@ class Session:
         # (node_id, seq) of every `operator_result` already written to the feed: a replayed outbox is not news.
         self._operator_seen: set[tuple[str, object]] = set()
         # node_id -> (arm_state, match_id): the last claim each phone's heartbeat made (`phones_ended`).
-        self._hb_claim: dict[str, tuple[object, object]] = {}
+        self._hb_claim: dict[str, tuple[object, object, int]] = {}
         # A42 (field 2026-09-12, twice): who has CONFIRMED the end of the match just ended.
         # node_id -> {match_id, player_id, since, tries, next_t, confirmed, confirmed_t, exhausted, last_ok}
         self._end_delivery: dict[str, EndDeliveryRecord] = {}
@@ -3035,7 +3035,7 @@ class Session:
         reason, stale_ms = body.get("pool_stale"), body.get("pool_stale_ms")
         nv.pop("pool_stale", None)
         nv.pop("pool_stale_ms", None)
-        if reason in ("silent", "no_fire"):
+        if reason in ("silent", "no_fire", "write_lost"):
             nv["pool_stale"] = reason
             if isinstance(stale_ms, int) and not isinstance(stale_ms, bool) and stale_ms >= 0:
                 nv["pool_stale_ms"] = stale_ms
@@ -3095,7 +3095,7 @@ class Session:
             self._check_stale_live(nid, body.get("match_id"), t_recv)   # A34
         if nv.get("node_type") != "utility":
             self._note_orphan(nid, body, t_recv)       # bench 2026-09-17: a match this MC did not start
-            self._hb_claim[nid] = (body.get("arm_state"), body.get("match_id"))   # A47: `phones_ended`
+            self._hb_claim[nid] = (body.get("arm_state"), body.get("match_id"), t_recv)   # A47: `phones_ended`
         if nv.get("node_type") != "utility":
             self._note_end_confirm(nid, body)          # A42: this heartbeat IS the ack for the last end
         if nv.get("node_type") != "utility":
@@ -3622,6 +3622,9 @@ class Session:
     # The phone refuses `resync`/`respawn` unless LIVE (`engine.js _operator`); `relink` also runs in ARMED.
     OPERATOR_LIVE_ONLY = ("resync", "respawn")
     OPERATOR_REPEAT_MS = 2000   # the same action for the same player inside this window is a double tap
+    # pl4: a "sent" with no `operator_result` this long after the send reads "no_answer" (an older app that
+    # ignores the command, a dropped socket). A late answer still replaces it.
+    OPERATOR_NO_ANSWER_MS = 15_000
 
     def operator_action(self, player_id: str, cmd: str, match_id: str) -> OperatorActionResult:
         """A47 (bench 2026-09-17): the LIVE board's operator menu for ONE player in a bad state.
@@ -3706,17 +3709,31 @@ class Session:
         who = (p.get("display") or pid).upper()
         word = self.OPERATOR_WORD[cmd]
         if ok:
-            text = f"RESPAWNED {who} (OPERATOR)" if cmd == "respawn" else f"{word} DONE: {who}"
+            # pl4: a relink's `ok` means the phone STARTED it; whether the gun came back is its own heartbeat
+            text = (f"RESPAWNED {who} (OPERATOR)" if cmd == "respawn"
+                    else f"RELINK STARTED: {who}" if cmd == "relink" else f"{word} DONE: {who}")
         else:
             text = f"{word} REFUSED BY {who}: {why or 'NO REASON GIVEN'}"
         prev = self._operator.get(pid) or {}
-        self._operator[pid] = {"match_id": current, "cmd": cmd, "state": "done" if ok else "refused",
-                               "why": None if ok else (why or "NO REASON GIVEN"),
-                               "sent_t": prev.get("sent_t") if prev.get("cmd") == cmd else t_recv,
-                               "result_t": t_recv}
+        # pl4: the row is the LAST action sent. A result for an earlier, different action (RESYNC answered after
+        # FORCE RESPAWN was sent) is only a feed line: it must not turn the newer "sent" into a stale "done".
+        if prev.get("cmd") == cmd and prev.get("match_id") == current:
+            self._operator[pid] = {"match_id": current, "cmd": cmd, "state": "done" if ok else "refused",
+                                   "why": None if ok else (why or "NO REASON GIVEN"),
+                                   "sent_t": prev.get("sent_t") or t_recv, "result_t": t_recv}
         self._on_feed({"t_match_s": self._operator_t_match(t_recv), "tag": "OPERATOR",
                        "kind": "alert", "text": text})
         self._changed()
+
+    def _operator_no_answer(self, now: int) -> None:
+        """pl4: a "sent" the phone never answered reads "no_answer" after OPERATOR_NO_ANSWER_MS. Called from `tick`."""
+        changed = False
+        for o in self._operator.values():
+            if o["state"] == "sent" and o.get("sent_t") is not None and now - o["sent_t"] >= self.OPERATOR_NO_ANSWER_MS:
+                o["state"] = "no_answer"
+                changed = True
+        if changed:
+            self._changed()
 
     def _with_operator(self, rows: list[LiveRow], match_id: str) -> list[LiveRow]:
         """A47: stamp each LIVE row with the last operator action for that player in THIS match."""
@@ -3730,13 +3747,22 @@ class Session:
     def _phones_ended(self, match_id: str) -> bool:
         """A47 review: every bound player phone that has made a claim says `match_id` is over for it
         (`kitted` for this match, or another match), and at least one does. `idle`/`connected` and a
-        missing `arm_state` are NO claim (A42's rule), so they neither count nor block."""
+        missing `arm_state` are NO claim (A42's rule), so they neither count nor block.
+
+        pl4: nothing is claimed until EVERY bound player phone has heartbeated since this MC started (a
+        phone not heard yet may still be playing), and a heartbeat older than STALE_AFTER_MS neither counts
+        nor blocks: an old "another match" from before a restart is not news about this one."""
         ended = 0
+        now = self.now_ms()
         for p in self.players.values():
             nid = p.get("node_id")
-            if not nid or (self.nodes.get(nid) or {}).get("node_type") == "utility" or nid not in self._hb_claim:
+            if not nid or (self.nodes.get(nid) or {}).get("node_type") == "utility":
                 continue
-            arm, mid = self._hb_claim[nid]
+            if nid not in self._hb_claim:
+                return False
+            arm, mid, t = self._hb_claim[nid]
+            if now - t > STALE_AFTER_MS:
+                continue
             if isinstance(mid, str) and mid and mid != match_id:
                 ended += 1
             elif mid == match_id and arm in END_CONFIRM_PHASES:
@@ -3923,14 +3949,15 @@ class Session:
         # It used to be read from `_seq` first; NOTHING has ever written that key, so that half was dead.
         seq = ev.get("seq")
         self._node_view(nid)["last_seen_ms"] = t_recv
-        self._note_pool_life(nid, [ev])            # A36
-        self._ingest_retired(nid, [ev], t_recv)    # a late fact for the match the operator rolled past
         parked = bool(self.scorer and ev.get("match_id") != self.scorer.match_id) or not self.scorer
         if ev.get("type") == "operator_result":
-            # A47: stored like every fact, told to the operator, and kept away from every scorer.
+            # A47: stored like every fact, told to the operator, and kept away from every scorer -- the retired
+            # match's scorer too (pl4: it used to reach `_ingest_retired` first).
             self._log(nid, "operator_result", ev, t_recv, seq=seq, parked=parked)
             self._on_operator_result(nid, ev, t_recv)
             return
+        self._note_pool_life(nid, [ev])            # A36
+        self._ingest_retired(nid, [ev], t_recv)    # a late fact for the match the operator rolled past
         self._log(nid, ev.get("type", "event"), ev, t_recv, seq=seq, parked=parked)
         if not parked and ev.get("type") == "respawn":
             # A19: a respawn clears every held role on the node (engine.js) -- the VIP is still the VIP.
@@ -5750,6 +5777,7 @@ class Session:
             self.phase = "live"
             self._changed()
         self._push_due_roles(now)
+        self._operator_no_answer(now)
         tl = self.config.get("time_limit_s")
         # F-2026-09-17c: an ADOPTED match has no config of its own at MC — `tl` is the operator's CURRENT
         # DRAFT, which need not match what the phones are actually running. Arming a timed end on it can

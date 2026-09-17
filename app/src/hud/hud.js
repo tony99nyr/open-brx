@@ -54,6 +54,11 @@ const isEnergyWeapon = id => /energy|charge/i.test(String(id || ''));
  *  There is no catalogue field for this cost yet -- brx-weapons is adding one. Replace this constant with
  *  that field once it lands; until then it is named and commented so the swap is a one-line change. */
 const CHARGE_RIFLE_FULL_CHARGE_COST = 10;
+/** pl4 (bench 2026-09-17, Energy Rifle): an energy weapon's reload is a HOLD of the lever. Taps of 0.15-0.23 s
+ *  refilled nothing; a hold of 0.7 s or more refilled the whole cell in one step. So the prompt says how, and it
+ *  is always steady (never blinking), whether the cell is empty or only below a charge: one calm rule. The
+ *  empty-cell digit already warns, and NOT ENOUGH ENERGY shows only while the cell still reads above 0. */
+const HOLD_TO_RECHARGE = 'HOLD TO RECHARGE';
 /** The digit beside the gauge: a round count for a bullet weapon, a percentage of the magazine for an
  *  energy weapon (there is no "round" to count — see isEnergyWeapon just above). */
 const magText = st => isEnergyWeapon(st.weaponId)
@@ -993,10 +998,11 @@ export class Hud {
       <div class="ammo">${outOfAmmo ? `<span class="reload out solid"><span class="unskew">${energy ? 'OUT OF ENERGY' : 'OUT OF AMMO'}</span></span>`
           : overheating ? `<span class="reload hot solid"><span class="unskew">OVERHEAT</span></span>`
           : energyOut ? `<span class="reload out solid"><span class="unskew">OUT OF ENERGY</span></span>`
-          : energyLow ? `<span class="reload"><span class="unskew">RECHARGE ▸▸</span></span>`
-          : lowMag ? `<span class="reload ${st.ammo === 0 ? 'solid' : ''}"><span class="unskew">${energy ? 'RECHARGE ▸▸' : 'RELOAD ▸▸'}</span></span>` : ''}
+          : energyLow ? `<span class="reload solid"><span class="unskew">${HOLD_TO_RECHARGE}</span></span>`
+          : lowMag ? (energy ? `<span class="reload solid"><span class="unskew">${HOLD_TO_RECHARGE}</span></span>`
+            : `<span class="reload ${st.ammo === 0 ? 'solid' : ''}"><span class="unskew">RELOAD ▸▸</span></span>`) : ''}
         <div class="nums"><span class="mag tab ${lowMag ? 'warn' : ''}" id="mag">${magText(st)}</span><span class="res tab" id="res">${this._resText(st)}</span></div>
-        ${belowCharge ? '<div class="enote">NOT ENOUGH ENERGY</div>' : ''}
+        ${belowCharge && st.ammo > 0 ? '<div class="enote">NOT ENOUGH ENERGY</div>' : ''}
         <div class="pips" id="pips">${this._pips(st)}</div>
         ${this._heatBar(st)}
         <span class="wn"><span class="slot">${st.activeSlot ? 'SECONDARY' : 'PRIMARY'}</span>${esc(st.weapon)}</span></div>

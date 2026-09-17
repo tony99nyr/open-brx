@@ -192,8 +192,8 @@ test('pl3: a revive clears the last life\'s swap and heat -- no stale OVERHEAT a
 test('pl3: overheatShown holds for OVERHEAT_SHOWN_MS after a lockout reading; overheating keeps the 25 s no_fire window', () => {
   assert.equal(E.OVERHEAT_SHOWN_MS, 6000);
   const h = live();
-  h.frame('$ALCD,31,100,0,384,99,*');
-  assert.equal(h.eng.state().overheatShown, false, 'below the lockout');
+  h.frame('$ALCD,31,100,0,384,98,*');
+  assert.equal(h.eng.state().overheatShown, false, 'below the lockout (pl4: the line is 99)');
   h.frame('$ALCD,31,100,0,384,108,*');
   assert.equal(h.eng.state().overheatShown, true);
   h.adv(5900);
@@ -204,29 +204,107 @@ test('pl3: overheatShown holds for OVERHEAT_SHOWN_MS after a lockout reading; ov
   assert.equal(st.overheating, true, 'the no_fire exemption still holds (HEAT_STALE_MS)');
 });
 
+// pl4 (brx-weapons bench 2026-09-17): the lockout line is heat >= 99, and OVERHEAT stays while the lockout has
+// evidence (a reading at the line, or a press with no shot), ends on a shot or a cool reading, and is capped.
+const press = h => h.frame('$BUT,0,1,*').frame('$BUT,0,0,*');
+test('pl4: Energy Rifle -- about +3 a shot, firing stops AT 99, locked 10-23 s: OVERHEAT holds while presses get no shot', () => {
+  const h = live();
+  let mag = 300;
+  for (const heat of [90, 93, 96]) h.frame(`$ALCD,${--mag},100,0,600,${heat},*`);
+  assert.equal(h.eng.state().overheatShown, false, '96 is still build-up');
+  assert.equal(h.eng.state().overheating, false);
+  h.frame(`$ALCD,${--mag},100,0,600,99,*`);
+  assert.equal(h.eng.state().overheatShown, true, '99 is the lockout: the Energy Rifle never reads above 100');
+  assert.equal(h.eng.state().overheating, true, 'and no_fire stays exempt');
+  for (let t = 0; t < 23000; t += 2000) { h.adv(2000); press(h); assert.equal(h.eng.state().overheatShown, true, `still locked at ${t + 2000} ms: each press got no shot`); }
+  h.frame(`$ALCD,${--mag},100,0,600,40,*`);   // the lockout ends: the first shot after it, cooled
+  assert.equal(h.eng.state().overheatShown, false, 'the first shot clears it');
+});
+
+test('pl4: Charge Rifle -- stopped at about 103 for 4.8 s: shown through the lockout, cleared by the first shot even with no heat token', () => {
+  const h = live();
+  h.frame('$ALCD,31,100,0,384,95,*');
+  h.frame('$ALCD,30,100,0,384,103,*');
+  assert.equal(h.eng.state().overheatShown, true);
+  h.adv(4800);
+  assert.equal(h.eng.state().overheatShown, true, 'the whole 4.8 s lockout');
+  h.frame('$ALCD,29,100,0,384,*');   // a shot with no heat token still proves the gun fires
+  assert.equal(h.eng.state().overheatShown, false);
+});
+
+test('pl4: OVERHEAT goes 6 s after the last evidence, and never outlasts OVERHEAT_CAP_MS however long presses go unanswered', () => {
+  assert.equal(E.OVERHEAT_CAP_MS, 30000);
+  const h = live();
+  h.frame('$ALCD,31,100,0,384,99,*');
+  h.adv(6100);
+  assert.equal(h.eng.state().overheatShown, false, 'no reading and no press for 6 s');
+  press(h);
+  assert.equal(h.eng.state().overheatShown, true, 'a press with no shot shows the lockout is still on');
+  for (let t = 0; t < 24000; t += 2000) { h.adv(2000); press(h); }
+  assert.equal(h.eng.state().overheatShown, false, 'capped 30 s after the lockout began');
+});
+
 const hasSpawn = fr => fr.includes('$SPAWN,,*');
 const hasBmap = fr => fr.some(f => f.startsWith('$BMAP,0,0'));
 
-test('pl3: a spawn-critical write that resolves false is retried once, with the same frames', async () => {
+// pl4 (2026-09-17): a spawn or revive write is never sent twice. A repeat refilled a life in play and, on a
+// protected bundle, re-sent the fn-28 twin after the live take, leaving the gun unhittable (F11).
+const sirRows = w => w.filter(f => f.startsWith('$SIR,'));
+const isTwin = f => f.split(',')[4] === '28';
+
+test('pl4: a false revive write never re-sends $SPAWN, and the live take is written last', async () => {
   const h = live();
   h.frame('$HP,0,0,0,*');
-  const n = h.batches.length;
+  const n = h.batches.length, w0 = h.mark();
   h.failNext(1, hasSpawn).op('respawn');
+  h.frame('$ALCD,32,100,0,192,0,*').frame('$ALCD,31,100,0,192,0,*');   // first shot arms the take BEFORE the write resolves
+  const w1 = h.mark();
   await flush(); await flush();
-  const revives = h.batches.slice(n).filter(hasSpawn);
-  assert.equal(revives.length, 2, 'the revive write went twice');
-  assert.deepEqual(revives[1], revives[0], 'the same frames, whole and in order');
-  assert.ok(h.logs.some(([l]) => /write revive.* failed -- retrying once/.test(l)));
+  assert.deepEqual(sirRows(h.since(w1)), TAKE.filter(f => f.startsWith('$SIR,')), 'the live table is armed again once the loss is known');
+  assert.equal(h.batches.slice(n).filter(hasSpawn).length, 1, 'the revive went once');
+  const rows = sirRows(h.since(w0));
+  assert.ok(rows.length && !isTwin(rows[rows.length - 1]), 'the last $SIR row on the gun is the live table, not the fn-28 twin');
+  assert.deepEqual(rows.slice(-TAKE.length), TAKE.filter(f => f.startsWith('$SIR,')), 'the live take went after the lost write');
+  assert.ok(h.logs.some(([l, c]) => /\*\*\* write revive.* failed -- not re-sent/.test(l) && c === 'le'));
+  assert.equal(h.eng.state().poolStale && h.eng.state().poolStale.why, 'write_lost', 'MC is told');
+  h.op('resync');
+  assert.equal(h.eng.state().poolStale, null, 'RESYNC GUN clears it');
 });
 
-test('pl3: a second failure is logged loudly and not retried again', async () => {
+test('pl4: a false revive write inside spawn protection keeps the take pending, and never re-sends $SPAWN', async () => {
   const h = live();
   h.frame('$HP,0,0,0,*');
   const n = h.batches.length;
   h.failNext(5, hasSpawn).op('respawn');
   for (let i = 0; i < 5; i++) await flush();
-  assert.equal(h.batches.slice(n).filter(hasSpawn).length, 2, 'exactly one retry');
-  assert.ok(h.logs.some(([l]) => /\*\*\* write revive.* failed twice/.test(l)));
+  assert.equal(h.batches.slice(n).filter(hasSpawn).length, 1, 'no retry');
+  assert.ok(h.eng._armPending, 'a live take is still pending');
+  const w0 = h.mark(); h.adv(CAP);
+  assert.ok(sirRows(h.since(w0)).length && sirRows(h.since(w0)).every(f => !isTwin(f)), 'the cap writes the live table');
+});
+
+test('pl4: a false write for a life that already ended flags nothing', async () => {
+  const h = live();
+  h.frame('$HP,0,0,0,*');
+  h.failNext(1, hasSpawn).op('respawn');
+  h.frame('$HP,40,70,0,*').frame('$HP,0,0,0,*');   // down again before the write resolved
+  assert.equal(h.eng.alive, false, 'setup: the new life ended');
+  await flush(); await flush();
+  assert.equal(h.eng._writeLost, null);
+});
+
+test('pl4: a stun restore or resync is not repeated once the player fired or took a hit', async () => {
+  const h = live();
+  let n = h.batches.length;
+  h.failNext(1, hasBmap).op('resync');
+  h.frame('$ALCD,31,100,0,192,0,*').frame('$ALCD,30,100,0,192,0,*');   // fired before the write resolved
+  await flush(); await flush();
+  assert.equal(h.batches.slice(n).filter(hasBmap).length, 1, 'a repeat would refill the rounds just fired');
+  n = h.batches.length;
+  h.failNext(1, hasBmap).op('resync');
+  h.frame('$HP,40,70,0,*');   // took a hit
+  await flush(); await flush();
+  assert.equal(h.batches.slice(n).filter(hasBmap).length, 1, 'nor after a hit');
 });
 
 test('pl3: a failed operator resync write is retried, but not once the game moved on (the player died)', async () => {

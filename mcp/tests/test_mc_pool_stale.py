@@ -55,6 +55,13 @@ def test_a_heartbeat_without_the_claim_clears_it():
     assert _ready_row(s, ps[0])["pool_stale"] is None
 
 
+def test_pl4_a_lost_spawn_write_is_a_known_reason():
+    """pl4: the phone flags `write_lost` when a spawn or revive write resolved false and it did not repeat it."""
+    s, net, clock, ps = _session()
+    _status(net, clock, 0, ps[0], pool_stale="write_lost", pool_stale_ms=900)
+    assert _node(s, 0)["pool_stale"] == "write_lost"
+    assert _ready_row(s, ps[0])["pool_stale"] == "write_lost"
+
 def test_junk_is_dropped_not_rendered():
     s, net, clock, ps = _session(1)
     for junk in ("stale", True, 1, None):

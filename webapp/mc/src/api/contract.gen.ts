@@ -560,7 +560,7 @@ export interface NodeView {
   reach?: 'lan' | 'backhaul';
   last_reach?: 'lan' | 'backhaul';
   /** F208: the node's last `status.pool_stale` / `pool_stale_ms`. Absent = not stale, or an older app. */
-  pool_stale?: 'silent' | 'no_fire';
+  pool_stale?: 'silent' | 'no_fire' | 'write_lost';
   pool_stale_ms?: number;
 }
 
@@ -631,9 +631,10 @@ export interface Event {
   config_id?: string;
   /** F208: the pool this status reports is STALE, and why. A gun that died kept a byte-identical status
    *  for 105 s and looked like a healthy idle player. `"silent"` = no gun frame for 185 s; `"no_fire"` =
-   *  three trigger presses in a row got no shot back. `pool_stale_ms` = ms since the gun last reported a
+   *  three trigger presses in a row got no shot back; `"write_lost"` = this life's spawn or revive write was
+   *  lost and the phone did not repeat it (pl4: RESYNC GUN clears it). `pool_stale_ms` = ms since the gun last reported a
    *  pool. Absent = not stale, or an older app: MC then shows no cue at all. */
-  pool_stale?: 'silent' | 'no_fire';
+  pool_stale?: 'silent' | 'no_fire' | 'write_lost';
   pool_stale_ms?: number;
 }
 
@@ -673,10 +674,12 @@ export interface ScoreRow {
 }
 
 /** A47: the last operator action MC sent to one player, and what the phone said about it.
- *  `state` is "sent" until the phone's `operator_result` fact arrives, then "done" or "refused". */
+ *  `state` is "sent" until the phone's `operator_result` fact arrives, then "done" or "refused". With no
+ *  answer OPERATOR_NO_ANSWER_MS after the send it reads "no_answer" (an older app, a dropped socket); a late
+ *  answer still replaces it. For relink, "done" means the phone STARTED the relink, not that the gun is back. */
 export interface OperatorStatus {
   cmd: OperatorCmd;
-  state: 'sent' | 'done' | 'refused';
+  state: 'sent' | 'done' | 'refused' | 'no_answer';
   why: string | null;
   sent_t: number;
   result_t: number | null;
@@ -706,7 +709,7 @@ export interface LiveRow {
   sync_age_ms: number;
   respawn_in_s: number | null;
   /** F208: the bound node's `pool_stale` / `pool_stale_ms`, as NodeView. Absent = not stale. */
-  pool_stale?: 'silent' | 'no_fire';
+  pool_stale?: 'silent' | 'no_fire' | 'write_lost';
   pool_stale_ms?: number;
   /** A47: the latest operator action for this player in THIS match. Absent = none sent. */
   operator?: OperatorStatus;
@@ -1071,7 +1074,7 @@ export interface ReadinessRow {
    *  it is true. An older server omits it, so a reader treats a missing key as false. */
   gun_flapping?: boolean;
   /** F208: `status.pool_stale`; None = not stale or not reported */
-  pool_stale: 'silent' | 'no_fire' | null;
+  pool_stale: 'silent' | 'no_fire' | 'write_lost' | null;
   /** F208: `status.pool_stale_ms`; None = not reported */
   pool_stale_ms: number | null;
   fw: string | null;

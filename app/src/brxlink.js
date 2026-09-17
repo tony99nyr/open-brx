@@ -110,6 +110,7 @@ export class BrxLink {
     this.deviceId = null; this.advert = null; this.connected = false; this.retries = 0; this.lastReason = null;
     this._init = null; this._q = Promise.resolve(); this._scanning = false; this._re = new Reassembler();
     this.lateLost = 0;     // late chunk errors that landed after their batch had resolved (diagnostics)
+    this.lastLateLost = null;   // pl4: {label, frame, of, text} of the last one
     this._scanOp = Promise.resolve(); this._scanTok = 0;   // scan start/stop run one at a time, in call order
     this._linkSeq = 0;     // bumps per native connect; a retired link's disconnect callback is ignored (relink)
     this._relinking = false;
@@ -384,12 +385,14 @@ export class BrxLink {
    *    whole and in order. The frames between that one and the boundary go twice.
    *  - After LATE_RESENDS re-sends the batch finishes its frames anyway and resolves false, so the caller's
    *    retry runs. It never stops partway.
-   *  - A late error that lands after its batch resolved is only logged and counted (`lateLost`). It cannot
-   *    touch any other batch. */
-  write(frames) {
+   *  - A late error that lands after its batch resolved is logged at `le` with the batch label and the frame
+   *    (pl4: a lost trigger row must be visible in the phone log), counted (`lateLost`) and kept as
+   *    `lastLateLost`. It cannot touch any other batch.
+   *  `label`: what the batch is, for that log line (the engine passes its `why`). */
+  write(frames, label = '') {
     const id = this.deviceId; if (!id) return Promise.resolve(false);
     const list = Array.isArray(frames) ? frames : [frames];
-    const batch = { failed: null, open: true };   // `failed`: the earliest frame index a late error hit
+    const batch = { failed: null, open: true, label, list };   // `failed`: the earliest frame index a late error hit
     this._q = this._q.then(async () => {
       let late = 0, chunks = 0, resends = 0, lost = false;
       try {
@@ -436,7 +439,11 @@ export class BrxLink {
             this._log('write err (after the answer cap): ' + msg, 'le');
           } else {
             this.lateLost++;
-            this._log('write err (after the answer cap): ' + msg + ' -- its batch had already been sent', 'le');
+            const b = batch || { label: '', list: [] };
+            const frame = String(b.list[frameIdx] || '');
+            this.lastLateLost = { label: b.label, frame: frameIdx, of: b.list.length, text: frame };
+            this._log('write err (after the answer cap): ' + msg + ' -- its batch had already been sent'
+              + ` (batch ${b.label ? `"${b.label}"` : 'unlabelled'}, frame ${frameIdx + 1} of ${b.list.length}: ${frame.slice(0, 32)}), LOST`, 'le');
           }
         });
     });

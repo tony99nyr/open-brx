@@ -2083,11 +2083,11 @@ await step('ammo prompt se: an energy weapon at 0/0 reads OUT OF ENERGY, never O
   await pg.screenshot({ path: `${OUT}/se-ammo-energy-out.png` });
   await pg.close();
 });
-await step('ammo prompt se: an energy weapon with reserve left reads RECHARGE, never RELOAD', async () => {
+await step('ammo prompt se: an energy weapon with reserve left reads HOLD TO RECHARGE, never RELOAD', async () => {
   const pg = await open(VIEWS[1], 'live');
   await setAmmo(pg, 'charge_rifle', 0, 12, 12, 0); await pg.waitForTimeout(400);
   const r = await gaugeState(pg);
-  must(/^RECHARGE/.test(r.prompt || ''), `an energy weapon at 0 with reserve must read RECHARGE, got ${JSON.stringify(r.prompt)}`);
+  must(r.prompt === 'HOLD TO RECHARGE', `an energy weapon at 0 with reserve must read HOLD TO RECHARGE, got ${JSON.stringify(r.prompt)}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-energy-recharge.png` });
   await pg.close();
 });
@@ -2103,7 +2103,7 @@ await step('ammo prompt se: a charge rifle cell of 9 (under the 10-cost full cha
   const pg = await open(VIEWS[1], 'live');
   await setAmmo(pg, 'charge_rifle', 0, 40, 80, 9); await pg.waitForTimeout(400);
   const r = await gaugeState(pg);
-  must(r.bigPrompts === 1 && /^RECHARGE/.test(r.prompt || ''), `9 of 40 with reserve must read one RECHARGE prompt, got ${JSON.stringify(r)}`);
+  must(r.bigPrompts === 1 && r.prompt === 'HOLD TO RECHARGE', `9 of 40 with reserve must read one HOLD TO RECHARGE prompt, got ${JSON.stringify(r)}`);
   must(r.note === 'NOT ENOUGH ENERGY', `the small note must still say why: ${JSON.stringify(r)}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-energy-not-enough.png` });
   await pg.close();
@@ -2125,10 +2125,31 @@ await step('ammo prompt se: 0/40 and 5/40 with reserve read the identical RECHAR
   await setAmmo(pg, 'charge_rifle', 0, 40, 80, 5); await pg.waitForTimeout(400);
   const partial = await pg.evaluate(() => { const el = document.querySelector('.ammo .reload'); return { cls: el.className, text: el.textContent.trim() }; });
   must(empty.cls === partial.cls, `0/40 and 5/40 with reserve must render the same prompt style, got ${JSON.stringify({ empty, partial })}`);
-  must(/^RECHARGE/.test(empty.text) && /^RECHARGE/.test(partial.text), `both must read RECHARGE: ${JSON.stringify({ empty, partial })}`);
+  must(empty.text === 'HOLD TO RECHARGE' && partial.text === 'HOLD TO RECHARGE', `both must read HOLD TO RECHARGE: ${JSON.stringify({ empty, partial })}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-energy-recharge-partial.png` });
   await pg.close();
 });
+// ---------- pl4 (2026-09-17): an empty energy cell with reserve showed three amber items at once (a blinking
+// RECHARGE, the amber 0%, and NOT ENOUGH ENERGY). The note is only for a cell that still reads above 0, and the
+// prompt is steady whether the cell is empty or below a charge. The Energy Rifle bench found taps refill
+// nothing and a hold refills the whole cell, so the prompt says HOLD TO RECHARGE. ----------
+for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
+  await step(`ammo prompt ${tag}: an empty energy cell with reserve reads one steady HOLD TO RECHARGE and no NOT ENOUGH ENERGY note`, async () => {
+    const pg = await open(view, 'live');
+    for (const [w, mag, ammo] of [['charge_rifle', 40, 0], ['charge_rifle', 40, 5], ['energy_rifle', 40, 0], ['energy_rifle', 40, 4]]) {
+      await setAmmo(pg, w, 0, mag, 80, ammo); await pg.waitForTimeout(400);
+      const r = await gaugeState(pg);
+      const box = await pg.evaluate(() => { const el = document.querySelector('.ammo .reload'); const b = el.getBoundingClientRect(); return { anim: getComputedStyle(el).animationName, right: b.right, left: b.left, vw: innerWidth, sw: el.scrollWidth, cw: el.clientWidth }; });
+      must(r.bigPrompts === 1 && r.prompt === 'HOLD TO RECHARGE', `${w} ${ammo}/${mag} with reserve: ${JSON.stringify(r)}`);
+      must(box.anim === 'none', `${w} ${ammo}/${mag}: HOLD TO RECHARGE must not blink: ${JSON.stringify(box)}`);
+      must(box.left >= 0 && box.right <= box.vw && box.sw <= box.cw + 1, `${w} ${ammo}/${mag}: the prompt must fit at ${tag}: ${JSON.stringify(box)}`);
+      must(r.note === (w === 'charge_rifle' && ammo > 0 ? 'NOT ENOUGH ENERGY' : null), `${w} ${ammo}/${mag}: the note shows only for a cell above 0 that is below a charge: ${JSON.stringify(r)}`);
+      const bad = await invariants(pg); must(bad.length === 0, bad.join(' ; '));
+      if (ammo === 0 && w === 'charge_rifle') await pg.screenshot({ path: `${OUT}/${tag}-ammo-energy-hold-to-recharge.png` });
+    }
+    await pg.close();
+  });
+}
 await step('ammo prompt se: a charge rifle cell of exactly 10 (the full-charge cost) shows neither the NOT ENOUGH ENERGY note nor a RECHARGE/OUT OF ENERGY prompt', async () => {
   const pg = await open(VIEWS[1], 'live');
   await setAmmo(pg, 'charge_rifle', 0, 40, 80, 10); await pg.waitForTimeout(400);

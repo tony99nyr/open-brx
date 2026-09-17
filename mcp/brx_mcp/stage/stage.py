@@ -1075,15 +1075,15 @@ class GunStage:
     # ---- overheat (engine.js `HEAT_LOCKOUT` / `HEAT_STALE_MS` / `_overheating`), review 2026-09-17 ------
     # Review found `_await_shot`/`_no_fire_tick` never excluded a real OVERHEAT lockout, unlike engine.js:
     # the exclusion needs the same heat tracking engine.js keeps, which the stage did not have at all.
-    HEAT_LOCKOUT = 100          # engine.js HEAT_LOCKOUT
+    HEAT_LOCKOUT = 99           # engine.js HEAT_LOCKOUT (pl4: heat >= 99; the Energy Rifle stops AT 99)
     HEAT_STALE_S = 25.0         # engine.js HEAT_STALE_MS -- see its comment for the lockout/decay/field-window reasoning
 
     def _overheating(self) -> bool:
-        """engine.js `_overheating`: true once the active slot's last heat token has passed HEAT_LOCKOUT --
+        """engine.js `_overheating`: true once the active slot's last heat token has reached HEAT_LOCKOUT --
         UNLESS that reading is stale (no new $ALCD for HEAT_STALE_S), since a locked-out weapon sends none
         while it cools and a stuck reading must not gate the trigger forever."""
         slot = self.active_slot
-        if (self.heat_by_slot.get(slot) or 0) <= self.HEAT_LOCKOUT:
+        if (self.heat_by_slot.get(slot) or 0) < self.HEAT_LOCKOUT:
             return False
         at = self._heat_at.get(slot)
         return at is None or (self.now() - at) < self.HEAT_STALE_S
@@ -2500,11 +2500,18 @@ class GunStage:
         # engine.js `_reloadPulled`: the catalog reload_s, 1.5 s when unknown. `from`/`cap`/`mag` are what make
         # this a RECONCILIATION and not an animation -- `s` is only the nominal length (F123).
         self.reloading = {"at": now, "s": self._reload_s(), "slot": self.active_slot, "from": self.ammo or 0,
-                          "cap": cap or None, "mag": self.ammo or 0, "last_gain_at": now, "released_at": None}
+                          "cap": cap or None, "mag": self.ammo or 0, "last_gain_at": now, "released_at": None,
+                          "energy": self._active_weapon_is_energy()}
         self.reload_outcome = None
         self._log(f"reload: handle pulled on slot {self.active_slot}", "info")
         self._gun_readout_reload_glance()
         self._spawn_task(self._reload_watchdog(dict(self.reloading)))
+
+    def _active_weapon_is_energy(self) -> bool:
+        """engine.js `isEnergyWeaponId` on the active slot's weapon (the same rule as hud.js `isEnergyWeapon`)."""
+        ws = ((self.player or {}).get("loadout") or {}).get("weapons") or []
+        w = (ws[self.active_slot] if self.active_slot < len(ws) else (ws[0] if ws else None)) or {}
+        return bool(re.search(r"energy|charge", str(w.get("weapon_id") or ""), re.I))
 
     def _reload_s(self) -> float:
         """How long this weapon's reload is NOMINALLY, in seconds (engine.js `_reloadPulled`).
@@ -2552,6 +2559,7 @@ class GunStage:
     SWITCH_MAX_S = 0.85     # engine.js SWITCH_MAX_MS: the stock $WEAP tok15 (bench 2026-09-04), a fallback
     RELOAD_GRACE_S = 0.6
     RELOAD_OVERRUN = 0.5
+    ENERGY_REFILL_MAX_S = 3.9   # engine.js ENERGY_REFILL_MAX_MS (pl4: a held recharge landed 3.5-3.9 s after the pull)
 
     def _reload_deadline(self) -> float:
         """When a running takeover gives up waiting for the gun (engine.js `_reloadDeadline`). Measured from the
@@ -2559,7 +2567,8 @@ class GunStage:
         r = self.reloading
         if not r:
             return 0.0
-        return max(r["at"], r.get("last_gain_at") or 0.0) + r["s"] + max(self.RELOAD_GRACE_S, r["s"] * self.RELOAD_OVERRUN)
+        d = max(r["at"], r.get("last_gain_at") or 0.0) + r["s"] + max(self.RELOAD_GRACE_S, r["s"] * self.RELOAD_OVERRUN)
+        return max(d, r["at"] + self.ENERGY_REFILL_MAX_S + self.RELOAD_GRACE_S) if r.get("energy") else d
 
     def _reloading_view(self) -> dict | None:
         """The takeover as `state()` publishes it, or None -- engine.js gates every reload field on one

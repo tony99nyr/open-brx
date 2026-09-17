@@ -57,6 +57,8 @@ JUDGED = {
     "DOH_TIMEOUT_S": "F140: the socket timeout on one DNS-over-HTTPS query; an HTTP wait on the host, not a game timer",
     "HEAT_STALE_S": "review 2026-09-17: the stage's mirror of engine.js HEAT_STALE_MS -- reset only by a real $ALCD "
                     "heat token from a shot/report; a hill beacon is proto 15, never an $ALCD, so it cannot extend it",
+    "OPERATOR_NO_ANSWER_MS": "pl4: how long MC waits for a phone's `operator_result` before it shows NO ANSWER; ended "
+                             "only by that fact over the MC socket, and nothing on the IR wire reaches it",
 }
 
 _CONST = re.compile(r"^\s*([A-Z_][A-Z0-9_]*_(S|MS))\s*(?::\s*[\w\[\], ]+)?\s*=\s*\(?\s*(-?\d[\d_.]*)", re.M)

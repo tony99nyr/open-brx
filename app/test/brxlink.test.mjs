@@ -406,9 +406,9 @@ function slowBridgeRig({ answerMs = 10_000, failAt = -1, fails = null } = {}) {
     stopLEScan: () => queued(() => plugin.stopLEScan()),
     writeWithoutResponse: (id, s, c, dv) => queued(() => plugin.writeWithoutResponse({ deviceId: id, value: dv })),
   };
-  const logs = [];
-  const link = new BrxLink({ ble, log: m => logs.push(m), writeChunk: directWriter(plugin, () => 'android') });
-  return { link, calls, logs };
+  const logs = [], sev = [];
+  const link = new BrxLink({ ble, log: (m, c) => { logs.push(m); sev.push([m, c]); }, writeChunk: directWriter(plugin, () => 'android') });
+  return { link, calls, logs, sev };
 }
 const SPAWN = ['$SIR,6,0,,28,0,0,1,,*', '$SIR,13,1,,28,0,0,1,,*', '$SIR,13,0,,28,0,0,1,,*', '$SIR,13,3,,28,0,0,1,,*',
   '$PLAYX,0,*', '$SPAWN,,*', '$AMMO,0,40,80,1,*', '$BMAP,0,0,,,,,*'];
@@ -501,6 +501,21 @@ test('pl3 2026-09-17: a late error from batch N never cuts batch N+1 -- every fr
   assert.equal(await second, true, 'the late error was not batch N+1\'s');
   assert.equal(r.link.lateLost, 1, 'counted against the batch that owned it');
   assert.match(r.logs.join('\n'), /write err \(after the answer cap\): Writing characteristic failed. -- its batch had already been sent/);
+});
+
+test('pl4 2026-09-17: a late error on the last frame, after its batch resolved, is logged at le with the batch label and frame', async ctx => {
+  const settle = useClock(ctx);
+  const r = slowBridgeRig({ answerMs: 200, failAt: chunksOf(SPAWN).length - 1 });   // the $BMAP chunk is lost, and we learn it after the batch resolved
+  await r.link.connect('A', 'GUN-A-1111');
+  const done = r.link.write(SPAWN, 'revive');
+  await settle(3000);
+  assert.equal(await done, true, 'setup: the batch had already resolved true');
+  assert.equal(r.link.lateLost, 1);
+  const line = r.sev.find(([m]) => /its batch had already been sent/.test(m));
+  assert.ok(line, 'the loss is logged');
+  assert.equal(line[1], 'le');
+  assert.match(line[0], /batch "revive", frame 8 of 8: \$BMAP,0,0/);
+  assert.deepEqual(r.link.lastLateLost, { label: 'revive', frame: 7, of: 8, text: '$BMAP,0,0,,,,,*' });
 });
 
 test('pl3 2026-09-17: a late error inside its own batch sends again from the start of the failed frame, whole and in order', async ctx => {

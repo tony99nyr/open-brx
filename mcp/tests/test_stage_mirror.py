@@ -13,6 +13,8 @@ import time
 
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage import stage as S
+import pathlib
+
 from brx_mcp.stage.stage import GunStage, decode_advert_uuid, encode_advert_uuid
 from test_stage import (CAPTURED, LOST, TICK, PLAYX, NEUTRAL_TO_BLUE, BLUE_TO_RED, _Clock, _nosleep, feed, hill_audio,
                         in_play, install_levels_readout, mark, mk_hill, run_clock, settle, since, tx)
@@ -1172,6 +1174,12 @@ KNOWN_UNMIRRORED = {
     # pl3 (2026-09-17): retries a BrxLink batch that resolved false. The stage's `write` has its own retry (it
     # reconnects and sends again on an exception), and its fake and real managers never resolve a batch false.
     "_writeMust",
+    # pl4 (2026-09-17): what a spawn/revive batch that resolved false leaves behind (no repeat, re-arm, pool
+    # `write_lost`). The stage's batches never resolve false, for the same reason as `_writeMust`.
+    "_writeLife",
+    # pl4 (2026-09-17): the HUD's OVERHEAT word (`overheatShown`): display only. The stage has no OVERHEAT word;
+    # the game rule, the lockout line that exempts no_fire, is mirrored in `_overheating` (HEAT_LOCKOUT = 99).
+    "_heatLockFrame", "_heatLockPress", "_overheatShown",
     # app lifecycle + the A26 pick debounce: the stage has no foreground/background and no MC to pick from
     "_awake", "commitPick",
     # field 2026-09-17: the kill banner's victim name, resolved from MC's `feedback`; the stage has no MC and no banner
@@ -1304,3 +1312,23 @@ def test_the_mirror_scan_sees_both_classes():
     assert len(mirrored) > 25, f"only {len(mirrored)} engine methods resolve to a stage method"
     for known in ("_hillTick", "_reloadTick", "_stun"):
         assert known in mirrored, f"{known} should pair engine.js with GunStage but does not"
+
+
+def test_pl4_an_energy_weapon_watchdog_covers_a_held_recharge_that_lands_3_9_s_after_the_pull():
+    """engine.js `_reloadDeadline` (pl4, Energy Rifle bench 2026-09-17): a hold refills the whole cell 3.5-3.9 s
+    after the pull. An energy weapon waits at least ENERGY_REFILL_MAX_S + RELOAD_GRACE_S from the pull."""
+    js = (pathlib.Path(__file__).resolve().parents[2] / "app" / "src" / "engine.js").read_text(encoding="utf-8")
+    assert f"ENERGY_REFILL_MAX_MS = {int(GunStage.ENERGY_REFILL_MAX_S * 1000)};" in js
+
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.player["loadout"]["weapons"][0] = {"weapon_id": "energy_rifle"}
+        st.alcd(mag=10, reserve=600); await settle(st)
+        st.reload(); await settle(st)
+        assert st._reload_deadline() >= st.reloading["at"] + 3.9 + 0.6, st.reloading
+        st._end_reload("fired")
+        st.player["loadout"]["weapons"][0] = {"weapon_id": "assault_rifle"}
+        st.reload(); await settle(st)
+        assert st._reload_deadline() == st.reloading["at"] + st.reloading["s"] + max(0.6, st.reloading["s"] * 0.5), "control: a bullet weapon keeps its ceiling"
+    asyncio.run(go())

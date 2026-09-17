@@ -8,7 +8,7 @@ import { F, T, fmtAge } from '../tokens';
  *  Each goes to that player's phone only (`POST /api/players/{pid}/operator`), and the phone does the work.
  *  A second tap on the same action confirms it: there is no modal. An armed CONFIRM clears after
  *  `ARM_TIMEOUT_MS`, and when the row's status changes under it. The phone's answer (`row.operator`) is
- *  shown here: "sent, waiting for the phone" until it arrives. */
+ *  shown here: "sent, waiting for the phone" until it arrives, or "no answer" once MC stops waiting. */
 export const ARM_TIMEOUT_MS = 4000;
 const ACTIONS: { cmd: OperatorCmd; label: string; what: string; sent: string }[] = [
   { cmd: 'resync', label: 'RESYNC GUN', what: 'Sends team, ammo, trigger and hit table again. Health does not change.', sent: 'RESYNC' },
@@ -24,7 +24,10 @@ export function operatorOutcome(r: LiveRow): { text: string; color: 'dim' | 'ok'
   if (!o) return null;
   const word = WORD[o.cmd];
   if (o.state === 'sent') return { text: `${word} SENT, WAITING FOR THE PHONE.`, color: 'dim' };
-  if (o.state === 'done') return { text: o.cmd === 'respawn' ? 'THE PHONE RESPAWNED THE PLAYER.' : `${word} DONE ON THE PHONE.`, color: 'ok' };
+  // pl4: MC stops waiting after 15 s (an older app, a dropped socket). A late answer still replaces this.
+  if (o.state === 'no_answer') return { text: 'NO ANSWER FROM THE PHONE.', color: 'dim' };
+  // pl4: a relink's `ok` means the phone started it, not that the gun is back
+  if (o.state === 'done') return { text: o.cmd === 'respawn' ? 'THE PHONE RESPAWNED THE PLAYER.' : o.cmd === 'relink' ? 'RELINK STARTED ON THE PHONE.' : `${word} DONE ON THE PHONE.`, color: 'ok' };
   return { text: `THE PHONE REFUSED ${word}: ${o.why ?? 'NO REASON GIVEN'}.`, color: 'warn' };
 }
 

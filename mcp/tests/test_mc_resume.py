@@ -20,7 +20,7 @@ from test_mc_result import go_live, mk
 from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
 from brx_mcp.mc.state import Session
 from brx_mcp.mc.store import Store
-from brx_mcp.mc.types import STALE_LIVE_RETELL_MS
+from brx_mcp.mc.types import STALE_AFTER_MS, STALE_LIVE_RETELL_MS
 
 
 def _persisting_live(n=2, cfg=None):
@@ -454,3 +454,30 @@ def test_phones_ended_is_never_set_on_mcs_own_match():
     for i in range(2):
         _status(net, clock, i, "kitted", info["match_id"])
     assert "phones_ended" not in s.snapshot()["live"]
+
+
+def test_pl4_phones_ended_needs_a_heartbeat_from_every_bound_phone_since_mc_started():
+    s, net, clock, ps = mk(3, "ffa")
+    for i, p in enumerate(ps[:2]):
+        online(s, net, clock, p, i)
+    _status(net, clock, 0, "live", "m-old")
+    _status(net, clock, 1, "live", "m-old")
+    s.adopt_orphan("m-old")
+    net.simulate_hello("node2", f"GUN-C-{demo_armory()[2]['ble']['tail']}")   # bound, but no heartbeat since this MC started
+    assert s.players[ps[2]["player_id"]].get("node_id") == "node2", "setup: bound"
+    _status(net, clock, 0, "kitted", "m-old")
+    _status(net, clock, 1, "kitted", "m-old")
+    assert "phones_ended" not in s.snapshot()["live"], "a phone not heard yet may still be playing"
+    _status(net, clock, 2, "kitted", "m-old")
+    assert s.snapshot()["live"]["phones_ended"] is True, "control"
+
+
+def test_pl4_phones_ended_counts_only_fresh_heartbeats():
+    s, net, clock, ps, _ = _fresh_mc_with_phones_in(2, ["m-old", "m-old"])
+    s.adopt_orphan("m-old")
+    _status(net, clock, 0, "live", "m-other")        # an old claim of another match
+    clock["t"] += STALE_AFTER_MS + 1
+    _status(net, clock, 1, "idle", None)             # the other phone: no claim
+    assert "phones_ended" not in s.snapshot()["live"], "a stale claim is not news"
+    _status(net, clock, 0, "live", "m-other")
+    assert s.snapshot()["live"]["phones_ended"] is True, "control: the same claim, fresh"

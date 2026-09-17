@@ -252,3 +252,51 @@ def test_the_same_action_twice_inside_two_seconds_is_a_double_tap():
     clock["t"] += 1
     heartbeat(s, net, clock, ps)
     assert s.operator_action(pid, "respawn", info["match_id"])["ok"]
+
+
+# ── pl4 (2026-09-17) ─────────────────────────────────────────────────────────────────────────────────
+def test_pl4_a_relink_result_says_started_not_done():
+    """The phone's `ok` for relink means it STARTED the relink; the gun coming back is a later heartbeat."""
+    s, net, clock, ps, info = go_live(2)
+    pid = ps[1]["player_id"]
+    s.operator_action(pid, "relink", info["match_id"])
+    _result(net, clock, 1, info, "relink", True, seq=21, pid=pid)
+    assert s.feed[0]["text"] == "RELINK STARTED: OP1"
+
+
+def test_pl4_sent_with_no_answer_reads_no_answer_after_15_s_and_a_late_answer_still_lands():
+    s, net, clock, ps, info = go_live(2)
+    pid = ps[0]["player_id"]
+    s.operator_action(pid, "resync", info["match_id"])
+    clock["t"] += s.OPERATOR_NO_ANSWER_MS - 1
+    s.tick()
+    assert _row(s, pid)["operator"]["state"] == "sent", "control: not yet"
+    clock["t"] += 1
+    s.tick()
+    assert _row(s, pid)["operator"]["state"] == "no_answer"
+    _result(net, clock, 0, info, "resync", True, seq=31, pid=pid)
+    assert _row(s, pid)["operator"]["state"] == "done"
+
+
+def test_pl4_a_result_for_an_earlier_action_writes_the_feed_but_not_the_newer_row():
+    s, net, clock, ps, info = go_live(2)
+    pid = ps[1]["player_id"]
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    s.operator_action(pid, "relink", info["match_id"])
+    clock["t"] += 2500
+    s.operator_action(pid, "respawn", info["match_id"])
+    _result(net, clock, 1, info, "relink", True, seq=41, pid=pid)
+    assert s.feed[0]["text"] == "RELINK STARTED: OP1", "the feed line is always written"
+    op = _row(s, pid)["operator"]
+    assert op["cmd"] == "respawn" and op["state"] == "sent", op
+
+
+def test_pl4_a_single_operator_result_never_reaches_the_retired_scorer():
+    s, net, clock, ps, info = go_live(2)
+    seen = []
+    orig = s._ingest_retired
+    s._ingest_retired = lambda nid, evs, t: (seen.extend(e.get("type") for e in evs), orig(nid, evs, t))
+    _result(net, clock, 0, info, "resync", True, seq=51, pid=ps[0]["player_id"])
+    assert "operator_result" not in seen, seen
+    kill(s, net, clock, ps, 0, 1, info, seq=52)
+    assert "death" in seen, "control: other facts still go there"

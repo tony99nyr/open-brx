@@ -32,6 +32,7 @@ describe('F208 · the stale-pool cue', () => {
     expect(poolStaleLabel('silent', 185_000)).toBe('GUN SILENT 3m05s');
     expect(poolStaleLabel('silent')).toBe('GUN SILENT');
     expect(poolStaleLabel('no_fire', 4_000)).toBe('GUN NOT FIRING');
+    expect(poolStaleLabel('write_lost', 1_000), 'pl4: a lost spawn or revive write').toBe('GUN WRITE LOST');
   });
 
   it('LIVE: a quiet grey cue on the stale rows only', async () => {

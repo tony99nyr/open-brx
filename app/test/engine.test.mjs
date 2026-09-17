@@ -2642,6 +2642,32 @@ test('F27: hardware takes ~1.25x the catalog reload time and the takeover still 
   }
 });
 
+test('pl4: an Energy Rifle recharge that lands 3.5-3.9 s after the pull is a success, not "reload did NOT take"', () => {
+  // Bench 2026-09-17 (brx-weapons): a hold of 0.7 s or more refilled the whole cell in one step, 3.5-3.9 s after
+  // the pull started. The catalogue says 2400 ms, so the old ceiling (2400 + 1200) ran out at 3600 ms.
+  for (const real of [3500, 3900]) {
+    const logs = [];
+    const h = goLive(harness());
+    h.eng.log = (l, c) => logs.push([l, c]);
+    h.eng.player.loadout.weapons[0] = { weapon_id: 'energy_rifle' };
+    h.eng.catalog = { weapons: [{ weapon_id: 'energy_rifle', name: 'Energy Rifle', reload_s: 2.4 }], perks: [] };
+    h.frame('$ALCD,10,100,0,600,0,*');
+    h.frame('$BUT,2,1,*');
+    h.adv(real - 1); h.eng.tick();
+    assert.equal(h.eng.state().reloading, true, `still waiting at ${real - 1} ms`);
+    h.adv(1); h.frame('$BUT,2,0,*');
+    h.frame('$ALCD,300,100,0,310,0,*');
+    assert.equal(h.eng.state().reloadOutcome.ok, true, `a refill at ${real} ms is a success`);
+    assert.ok(!logs.some(([l]) => /did NOT take/.test(l)), JSON.stringify(logs));
+  }
+  const h = goLive(harness());   // control: a tap that refills nothing still times out, just later
+  h.eng.player.loadout.weapons[0] = { weapon_id: 'energy_rifle' };
+  h.eng.catalog = { weapons: [{ weapon_id: 'energy_rifle', name: 'Energy Rifle', reload_s: 2.4 }], perks: [] };
+  h.frame('$ALCD,10,100,0,600,0,*'); h.frame('$BUT,2,1,*'); h.frame('$BUT,2,0,*');
+  h.adv(3900 + 600 + 1); h.eng.tick();
+  assert.equal(h.eng.state().reloadOutcome && h.eng.state().reloadOutcome.why, 'timeout');
+});
+
 test('F123: firing during a reload ends the takeover, and reloadingMs() stays pure', () => {
   const h = shellHarness();
   h.frame('$BUT,2,1,*');

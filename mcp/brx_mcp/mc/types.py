@@ -570,7 +570,7 @@ class NodeView(TypedDict):
     reach: NotRequired[Literal["lan", "backhaul"]]
     last_reach: NotRequired[Literal["lan", "backhaul"]]
     # F208: the node's last `status.pool_stale` / `pool_stale_ms`. Absent = not stale, or an older app.
-    pool_stale: NotRequired[Literal["silent", "no_fire"]]
+    pool_stale: NotRequired[Literal["silent", "no_fire", "write_lost"]]
     pool_stale_ms: NotRequired[int]
 
 
@@ -639,9 +639,10 @@ class Event(TypedDict, total=False):
     config_id: str
     # F208: the pool this status reports is STALE, and why. A gun that died kept a byte-identical status
     # for 105 s and looked like a healthy idle player. `"silent"` = no gun frame for 185 s; `"no_fire"` =
-    # three trigger presses in a row got no shot back. `pool_stale_ms` = ms since the gun last reported a
+    # three trigger presses in a row got no shot back; `"write_lost"` = this life's spawn or revive write was
+    # lost and the phone did not repeat it (pl4: RESYNC GUN clears it). `pool_stale_ms` = ms since the gun last reported a
     # pool. Absent = not stale, or an older app: MC then shows no cue at all.
-    pool_stale: Literal["silent", "no_fire"]
+    pool_stale: Literal["silent", "no_fire", "write_lost"]
     pool_stale_ms: int
 
 
@@ -676,9 +677,11 @@ class ScoreRow(TypedDict):
 
 class OperatorStatus(TypedDict):
     """A47: the last operator action MC sent to one player, and what the phone said about it.
-    `state` is "sent" until the phone's `operator_result` fact arrives, then "done" or "refused"."""
+    `state` is "sent" until the phone's `operator_result` fact arrives, then "done" or "refused". With no
+    answer OPERATOR_NO_ANSWER_MS after the send it reads "no_answer" (an older app, a dropped socket); a late
+    answer still replaces it. For relink, "done" means the phone STARTED the relink, not that the gun is back."""
     cmd: Literal["resync", "respawn", "relink"]
-    state: Literal["sent", "done", "refused"]
+    state: Literal["sent", "done", "refused", "no_answer"]
     why: str | None
     sent_t: int
     result_t: int | None
@@ -689,7 +692,7 @@ class LiveRow(ScoreRow):
     sync_age_ms: int
     respawn_in_s: int | None
     # F208: the bound node's `pool_stale` / `pool_stale_ms`, as NodeView. Absent = not stale.
-    pool_stale: NotRequired[Literal["silent", "no_fire"]]
+    pool_stale: NotRequired[Literal["silent", "no_fire", "write_lost"]]
     pool_stale_ms: NotRequired[int]
     # A47: the latest operator action for this player in THIS match. Absent = none sent.
     operator: NotRequired[OperatorStatus]
@@ -1052,7 +1055,7 @@ class ReadinessRow(TypedDict):
     # `status.preflight.gun_flapping` (bench 2026-09-17). The card shows one steady HEADSET OFF line while
     # it is true. An older server omits it, so a reader treats a missing key as false.
     gun_flapping: NotRequired[bool]
-    pool_stale: Literal["silent", "no_fire"] | None   # F208: `status.pool_stale`; None = not stale or not reported
+    pool_stale: Literal["silent", "no_fire", "write_lost"] | None   # F208: `status.pool_stale`; None = not stale or not reported
     pool_stale_ms: int | None                        # F208: `status.pool_stale_ms`; None = not reported
     fw: str | None
     phone_batt: int | None

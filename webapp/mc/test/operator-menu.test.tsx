@@ -135,6 +135,21 @@ describe('A47 · LIVE operator menu', () => {
     m.unmount();
   });
 
+  it('pl4: says NO ANSWER in dim text once MC stops waiting, and RELINK STARTED for a relink', async () => {
+    const withOp = (op: LiveRow['operator']): LiveView => ({ ...LIVE, rows: LIVE.rows.map(r => (r.player_id === 'p1' ? { ...r, operator: op } : r)) });
+    const m = await board(undefined, { live: withOp({ cmd: 'resync', state: 'no_answer', why: null, sent_t: 1, result_t: null }) });
+    await tap(rowEl(m, 'p1'));
+    const el = () => menu(m, 'p1').querySelector<HTMLElement>('[data-op-outcome]');
+    expect(el()?.textContent).toBe('NO ANSWER FROM THE PHONE.');
+    expect(el()?.getAttribute('data-op-outcome')).toBe('no_answer');
+    const sentColor = el()?.style.color;
+    await m.rerender(withOp({ cmd: 'relink', state: 'done', why: null, sent_t: 1, result_t: 2 }));
+    expect(el()?.textContent).toBe('RELINK STARTED ON THE PHONE.');
+    await m.rerender(withOp({ cmd: 'resync', state: 'sent', why: null, sent_t: 1, result_t: null }));
+    expect(el()?.style.color, 'the same dim as "sent"').toBe(sentColor);
+    m.unmount();
+  });
+
   it('an armed CONFIRM clears after 4 s, and when the row status changes', async () => {
     const m = await board();
     await tap(rowEl(m, 'p1'));

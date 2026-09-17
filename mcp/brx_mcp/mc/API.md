@@ -78,7 +78,7 @@ State {
   nodes: NodeView[],                          // every node that ever said hello this session
   stations: StationView[], game_no: number,   // A13.5: the ITEMS panel (see GET /api/stations); game_no = the advert `game` byte stations are armed with THIS match (bumps on the first push after a match started)
   readiness: ReadinessSnapshot,               // Each ReadinessRow also carries `reach` and `last_reach` (same values as NodeView),
-                                               // and `pool_stale: "silent"|"no_fire"|null`, `pool_stale_ms: number|null` (F208/A46; null = not stale or not reported).
+                                               // and `pool_stale: "silent"|"no_fire"|"write_lost"|null`, `pool_stale_ms: number|null` (F208/A46; null = not stale or not reported).
                                                // F144 (field 2026-09-12): `reach == "backhaul"` is GREEN — a phone MC is
                                                // talking to right now is ready. Render the path as a TAG on the card, never
                                                // as a CHECK; the amber "NOT ON THE FIELD WI-FI — ON BACKHAUL" is gone, and
@@ -219,12 +219,12 @@ NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last
        // next ask — otherwise the one state the operator was waiting for is erased two seconds after it appears.
 NodeView { node_id, node_type, gun_name?, gun_tail?, player_id?, arm_state, last_seen_ms, synced, preflight?, battery?, fw?, hp?, armor?, ammo?, alive?, reach?: "lan"|"backhaul" /* A28.3: stamped by MC from the socket's arrival path (loopback / Cf-Connecting-Ip / public peer = backhaul), never from the phone's claim; cleared on disconnect */,
            last_reach?: "lan"|"backhaul" /* F155 (field 2026-09-12): the path this node was last HEARD over. `reach` goes away with the socket; this outlives it, and it is what makes an unreachable row's reason honest */,
-           pool_stale?: "silent"|"no_fire", pool_stale_ms?: number /* F208/A46: the node's current `status.pool_stale` claim (no gun frame for 185 s / three trigger presses with no shot) and ms since the gun last reported a pool. Absent = not stale, or an older app; each heartbeat restates it */ }
+           pool_stale?: "silent"|"no_fire"|"write_lost", pool_stale_ms?: number /* F208/A46: the node's current `status.pool_stale` claim (no gun frame for 185 s / three trigger presses with no shot / this life's spawn or revive write lost, pl4) and ms since the gun last reported a pool. Absent = not stale, or an older app; each heartbeat restates it */ }
 LiveView { match_id, go_live_t, time_limit_s, ends_t, score: { [team_id]: number }, rows: LiveRow[],
             phones_ended?: true /* A47: an ADOPTED match every claiming phone has ended; the console asks for END */ }
-LiveRow  = ScoreRow + { status: "alive"|"down"|"stale", respawn_in_s: number|null, sync_age_ms: number, pool_stale?: "silent"|"no_fire", pool_stale_ms?: number /* F208/A46, as NodeView */,
+LiveRow  = ScoreRow + { status: "alive"|"down"|"stale", respawn_in_s: number|null, sync_age_ms: number, pool_stale?: "silent"|"no_fire"|"write_lost", pool_stale_ms?: number /* F208/A46, as NodeView */,
             operator?: OperatorStatus /* A47: the last operator action for this player in THIS match */ }
-OperatorStatus { cmd: "resync"|"respawn"|"relink", state: "sent"|"done"|"refused", why: string|null, sent_t: number, result_t: number|null }
+OperatorStatus { cmd: "resync"|"respawn"|"relink", state: "sent"|"done"|"refused"|"no_answer" /* pl4: no answer 15 s after the send; relink "done" = started */, why: string|null, sent_t: number, result_t: number|null }
 ScoreRow { player_id, display, team_id: string|null, kills, deaths, assists, shots, shots_total, hits,
            accuracy: number|null, kd, streak,
            medals: string[],        // F116 (2026-09-11): the `honors()` awards (MVP · MOST KILLS · … —

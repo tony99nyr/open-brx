@@ -140,3 +140,18 @@ def test_review_2026_09_17_overheat_is_excluded_from_no_fire_until_the_reading_g
         s = st.pool_stale()
         assert s and s["why"] == "no_fire", "a stale reading no longer excludes it: no_fire tracks again"
     asyncio.run(run())
+
+
+def test_pl4_the_lockout_line_is_99_for_both_measured_weapons():
+    """pl4 (brx-weapons bench 2026-09-17): the Energy Rifle stops firing AT 99 (never above 100); the Charge
+    Rifle stops at about 103. engine.js `heat >= HEAT_LOCKOUT`; 98 is still build-up."""
+    async def run():
+        st, mgr, clock = _mk()
+        await _live(st, clock)
+        st._inject_rx("$ALCD,10,100,0,192,98,*")
+        assert not st._overheating(), "98 is build-up"
+        st._inject_rx("$ALCD,9,100,0,192,99,*")
+        assert st._overheating(), "the Energy Rifle's lockout reading"
+        st._inject_rx("$ALCD,9,100,0,192,103,*")
+        assert st._overheating(), "the Charge Rifle's"
+    asyncio.run(run())
