@@ -2559,6 +2559,37 @@ class Session:
             out.append(rec)
         return out
 
+    def _late_station_report(self, nid: str) -> None:
+        """utility.md §5c/§5d.6: a station is self-authoritative and "reports ... to MC when it is next
+        in Wi-Fi range" -- so a station out of coverage at the whistle must still be able to land its
+        tally once it re-joins, while still in RECAP and before any roll (F206 addendum, 2026-09-17).
+
+        `_finish` freezes `self._match_stations` at the whistle so a NEXT match's stations cannot leak
+        into THIS match's debrief (F206). That freeze must not also block a report from the SAME
+        station the row was frozen for -- only an ASSIGNMENT that moved on (node_id + kind + id) is the
+        next match's setup, not a late report for this one. A changed assignment is refused; a match
+        heartbeat updates the frozen row in place and re-derives the recap through the existing
+        late-fact path (`_restore_recap`), same as a late scoring fact would."""
+        if self.phase != "recap" or self._match_stations is None:
+            return
+        frozen = next((r for r in self._match_stations if r["node_id"] == nid), None)
+        if frozen is None:
+            return
+        live = self.stations.get(nid) or {}
+        a = live.get("assigned")
+        if not a or a.get("kind") != frozen["kind"] or a.get("id") != frozen["id"]:
+            return   # the assignment moved on -- this heartbeat belongs to the NEXT match's setup
+        rep = live.get("report") or {}
+        frozen["heard"] = bool(rep)
+        if frozen["kind"] == "respawn":
+            frozen["revives"] = rep.get("revives")
+        elif frozen["kind"] == "control":
+            control = rep.get("control")
+            if control is not None:
+                frozen["hold_ms"] = control.get("hold_ms")
+                frozen["owner"] = control.get("owner")
+        self._restore_recap()
+
     # ---------- nodes ----------
     def _on_disconnect(self, nid: str):
         """A28.3: the socket is gone, so its PATH is gone with it -- `coverage()` must not keep counting
@@ -2952,6 +2983,7 @@ class Session:
             if body.get("platform"):
                 st["platform"] = body["platform"]
             nv["node_type"] = "utility"
+            self._late_station_report(nid)   # F206 addendum: a station back in range during RECAP
         # A8: the server's binding is authoritative — a status body's player_id never rebinds a node.
         if self.phase in ("kit", "lobby", "armed") and body.get("synced"):
             self.synced_at_lobby[nid] = True   # any node synced before it goes live keeps its own t (A5.7)

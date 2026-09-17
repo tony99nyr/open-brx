@@ -237,12 +237,20 @@ export function Recap() {
               game) and lands on GAMES, which is where LOAD always leaves the operator: the loaded game
               on screen, EDIT beside it, CONTINUE TO KIT one tap away. NEW SESSION (top right) is still
               there for a clean muster. Disabled in flight: a double-tap on a slow LAN fired twice. */}
-          {!past && <span data-testid="recap-next-match"><PrimaryButton size={13} disabled={starting} onClick={async () => {
-            if (starting) return;
-            setStarting(true);
-            try { const s = await run(() => api.nextMatch()); if (s) setView('build'); }
-            finally { setStarting(false); }
-          }}>{starting ? 'STARTING…' : 'NEXT MATCH ▸'}</PrimaryButton></span>}
+          {/* F210 (review 2026-09-17): both NEXT MATCH ▸ here and NEW SESSION ▸ (CommandBar, top right)
+              keep the roster in RECAP, with nothing visible telling them apart. The sub-copy names what
+              each one does, in three words. */}
+          {!past && (
+            <span data-testid="recap-next-match" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+              <PrimaryButton size={13} disabled={starting} onClick={async () => {
+                if (starting) return;
+                setStarting(true);
+                try { const s = await run(() => api.nextMatch()); if (s) setView('build'); }
+                finally { setStarting(false); }
+              }}>{starting ? 'STARTING…' : 'NEXT MATCH ▸'}</PrimaryButton>
+              <span style={{ font: F.chk(500, 9), letterSpacing: '.08em', color: T.micro }}>same game</span>
+            </span>
+          )}
         </div>
       </Brackets>
       <AfterWhistle rc={rc} name={name} />

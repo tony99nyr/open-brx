@@ -32,9 +32,9 @@ Charge it, pair it, sight it, play.
 5. Set indoor or outdoor mode for where you will play. During the gun's native configuration
    step, right after power-on, press ALT quickly in succession to change it. Outdoor mode widens
    the beam's aim tolerance, and the setting sticks across power cycles.
-6. Check which mode is active any time by watching the green hit LED on a hit: it is dimmer
-   indoors, full brightness outdoors. Compare it against a gun whose mode you already know (see
-   Indoor vs Outdoor Mode below).
+6. Check which mode is active on a hit from another gun by watching the green hit LED: it is
+   dimmer indoors, full brightness outdoors. Compare it against a gun whose mode you already know
+   (see Indoor vs Outdoor Mode below).
 7. Sight the laser in target mode before your first real game (hold LEFT while powering on).
 8. Pick a game on the gun with LEFT/RIGHT, pull the trigger to select, then pull the reload
    handle to start.

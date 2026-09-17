@@ -129,9 +129,17 @@ export function CommandBar() {
               BENCH VOL {state.bench_volume}
             </span>
           )}
+          {/* F210 (review 2026-09-17): RECAP's NEXT MATCH ▸ (Recap.tsx) and this NEW SESSION ▸ both keep
+              the roster, and only a `title` (never shown on touch) said so -- an operator on a phone had
+              no visible way to tell them apart. The sub-copy is now on the button itself, and the old
+              pointer at Armory's NEW SESSION, CLEAR ROSTER is dropped: that control only ever renders
+              inside the restored-snapshot banner (`state.restored_from`), so it is not a general way out. */}
           {state?.phase === 'recap' && (
-            <PrimaryButton size={12} title="Keeps the roster. To drop it, use Armory's NEW SESSION, CLEAR ROSTER."
-              onClick={async () => { const ok = await run(() => api.newSession(true)); if (ok !== undefined) setView('muster'); }}>NEW SESSION ▸</PrimaryButton>
+            <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+              <PrimaryButton size={12}
+                onClick={async () => { const ok = await run(() => api.newSession(true)); if (ok !== undefined) setView('muster'); }}>NEW SESSION ▸</PrimaryButton>
+              <span style={{ font: F.chk(500, 9), letterSpacing: '.08em', color: T.micro }}>back to setup, roster kept</span>
+            </span>
           )}
 
           {/* One button instead of a red hazard control and a wall of telemetry (Tony, 2026-09-02):
