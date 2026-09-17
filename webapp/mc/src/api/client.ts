@@ -154,5 +154,7 @@ export function createHttpApi(): Api {
       if (e?.status === 404) throw new Error('THIS MC PREDATES NEXT MATCH: RESTART IT (python -m brx_mcp.mc)');
       throw e;
     }),
+    resumeOrphan: match_id => post<State>('/api/match/orphan/resume', { match_id }),
+    endOrphan: match_id => post<State>('/api/match/orphan/end', { match_id }),
   };
 }

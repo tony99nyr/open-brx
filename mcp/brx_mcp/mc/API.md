@@ -38,7 +38,13 @@ State {
                                                // stations, game numbers. Phase, LOAD (`game.loaded`), the lobby push,
                                                // acks and the start are deliveries the OLD process made, so a restarted
                                                // MC boots in `muster` with none of them and a re-hello gets no config,
-                                               // frames or start (bench 2026-09-16; `tests/test_mc_persist.py`)
+                                               // frames or start (bench 2026-09-16; `tests/test_mc_persist.py`).
+                                               // ONE exception (bench 2026-09-17): a match that was ARMED/LIVE when
+                                               // the old process stopped RESUMES (`resume_match`): the scorer is
+                                               // rebuilt from the stored facts, and a re-hello gets the SAME start
+                                               // (same match and seq, a no-op on a phone in play), never a config.
+                                               // Past its end time it is restored finished (recap written, A34/A42
+                                               // end the phones still live). `tests/test_mc_resume.py`
   session_id, phase, t,                      // server time (Unix ms)
   mc_confidence: { confident: boolean, missing: string[], stale: string[], unflushed: string[] },   // A11.5: player_ids; gates the MC-driven global-state events
   lan: { mode: "router"|"hotspot"|"lan", ssid: string|null, ip: string, port: number, ws_url: string,
@@ -171,6 +177,12 @@ State {
                                               // a player who walks out of range at the whistle must not be able to hang
                                               // it. Render it as a DELIVERY fact (LIVE notice + STATUS cell, RECAP line),
                                               // never as, or beside, a judgement about how that player played
+  orphan_match?: { match_id, phones: number, players: string[], arm_state: "armed"|"live", can_resume: boolean },
+                                              // Bench 2026-09-17: ABSENT unless at least one BOUND phone heard in the last
+                                              // STALE_AFTER_MS reports armed/live in a match this MC did not schedule,
+                                              // resume or adopt, and never retired. The match most phones report wins.
+                                              // The MATCH tab shows it with RESUME MATCH (only when `can_resume`) and END
+                                              // THEIR MATCH. Nothing happens until one is pressed
   notices: { mc_verify?: string }             // A31 (2026-09-12): standing HOST lines the compiler wrote once, so MC
                                               // and the phones cannot disagree. `mc_verify` is present ONLY when this
                                               // game's end state is MC's call (a frag cap, an objective `win_by`, a
@@ -322,6 +334,8 @@ FeedEntry { t_match_s: number, text: string, tag?: "DOUBLE KILL"|"TRIPLE KILL"|"
 | `GET /api/matches/{id}.csv` | → text/csv for one **finished** match from the session store, same columns and same writer as `/api/recap.csv` (`scoring.rows_csv`, so the two cannot drift). `404` unknown id; a match that scored nobody is a header-only file, not a 404. Read-only, no token | any |
 | `POST /api/phase` | `{phase: "muster"|"build"|"kit"|"lobby", force?: boolean}` → `State`; host navigation between the setup phases (`armed`/`live`/`recap` are driven by start/end and are rejected here, 400). **The SOURCE phase is guarded too: any move while the session is `armed` or `live` is 409** — `{phase:"kit"}` from LIVE used to succeed and left `tick()` with no phase to end, so the match ran on with no whistle coming. End it with `control{end}` first; `force` does not apply. **A27 (F127): CONTINUE out of `kit` is guarded.** `kit` → `lobby` while any rostered player has not pressed READY is **409** `{error, not_ready: string[] /* displays */, greens /* how many ARE ready */, roster_size}` and the phase does not move; `force: true` does it anyway (the UI's second tap, which names who is not ready — `CONTINUE · greens / roster_size READY`). Everything the player carries is compiled at the lobby push, so advancing early takes a half-made kit into the match; the NODE says the same thing in its own words (`moment {kind:"kit_locked_by_host"}`, loadout.md §4.4). Those two are the only guards: between the setup phases nothing else is refused | ≤ lobby |
 | `POST /api/session/new` | `{keep_roster?: boolean}` → `State` (back to muster). **A43:** from `recap` with `keep_roster` (NEW SESSION) the finished match keeps its late facts and its A42 end watch; `keep_roster: false` (NEW SESSION, CLEAR ROSTER) drops both | recap |
+| `POST /api/match/orphan/resume` | `{match_id}` → `State` — **bench 2026-09-17, RESUME MATCH.** Adopts the match `orphan_match` names: MC goes ARMED/LIVE on it with the current config, the go-live time from the phones' countdown, else the earliest stored fact, else now, and scores the stored facts plus everything after. Pushes nothing (no config, frames or `start`). `409` when no phone reports it any more, or MC is armed/live/recap | muster, build, kit, lobby |
+| `POST /api/match/orphan/end` | `{match_id}` → `State` — **bench 2026-09-17, END THEIR MATCH.** `control{end, match_id}` to the bound phones reporting that match only, and the match joins the A34 ledger so a phone that missed it is told again on its next heartbeat. `409` when no phone reports it any more | any |
 | `POST /api/match/next` | `{}` → `State` — **A43 (2026-09-16), RECAP's NEXT MATCH.** Rolls the finished session forward (roster kept, config kept: same mode and settings) and then LOADs that game, so the State comes back in `build` with `game.loaded: true`. Outside `recap` it is a LOAD. `409` in `armed`/`live` | recap |
 
 Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.

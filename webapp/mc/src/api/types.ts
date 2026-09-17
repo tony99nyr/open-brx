@@ -21,7 +21,7 @@ export type {
   MatchHistoryRow, ModeInfo, NodeView, StationControl, StationReport, StationArmed, StationView,
   LiveView, StartNodeView, StartView, State, GameConfigBase, LanView, KitView, LobbyAck,
   LobbyView, GameAnnouncementView, SyncAckState, SyncRow, SyncTotals, SyncView, SessionOptions, VersionsView,
-  NoticesView, RestoredFromView, SnapshotFeedRow,
+  NoticesView, RestoredFromView, SnapshotFeedRow, OrphanMatchView,
   TunnelStatus, TunnelProviderValue,
 } from './contract.gen';
 export type {
@@ -151,6 +151,10 @@ export interface Api {
   /** RECAP's NEXT MATCH (2026-09-16): roll forward with the roster and the game kept, then LOAD that
    *  game. Answers the full State. A server that predates it answers 404. */
   nextMatch(): Promise<State>;
+  /** Bench 2026-09-17: `POST /api/match/orphan/resume` — RESUME MATCH on the match `state.orphan_match` names. */
+  resumeOrphan(match_id: string): Promise<State>;
+  /** Bench 2026-09-17: `POST /api/match/orphan/end` — END THEIR MATCH, to the phones reporting it only. */
+  endOrphan(match_id: string): Promise<State>;
 }
 
 /** A27 — the body of the 409 `POST /api/phase` answers with. Every field optional: this is read off a
