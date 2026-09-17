@@ -4091,8 +4091,8 @@ class Session:
                     ambers.append("PHONE BATTERY LOW — DOES NOT BLOCK")
                 if pf.get("screen_on") is False or pf.get("foreground") is False:
                     ambers.append("SCREEN OFF / BACKGROUNDED — DOES NOT BLOCK YET")
-                if not nv.get("fw"):
-                    ambers.append("FIRMWARE UNREAD — DOES NOT BLOCK")
+                # Bench 2026-09-17 (Tony): firmware is often unreadable over BLE and says nothing about health, so an
+                # unread version is not an amber. The card still shows the version when the phone reports one.
                 vb, va = self._version_flags(nv)          # A29: the app build this phone is actually running
                 blockers.extend(vb)
                 ambers.extend(va)

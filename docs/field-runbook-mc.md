@@ -245,7 +245,7 @@ starts the next game (keep or clear the roster).
 | **GUN LINK LOST — BLOCKS START** | the phone's BLE to its tagger dropped | power-cycle the tagger with its headset on; re-tap Set Gun |
 | **IDENTITY REVERTED — RE-STAMP $NAME** | the gun's stored name reverted (opened in Callsign) | re-enroll the gun's name; **never open the Callsign app on an enrolled gun** |
 | **GUN DID NOT ANSWER CONFIG — HEADSET OFF?** | empty `gun_echo` after the push | connect/replace the headset, power-cycle, re-push |
-| (amber) BATTERY / SCREEN OFF / FIRMWARE UNREAD | non-blocking notices | fine to start; charge / wake / ignore |
+| (amber) BATTERY / SCREEN OFF | non-blocking notices | fine to start; charge / wake / ignore |
 
 Other field issues:
 - **A phone won't rejoin the SSID** after a drop → confirm **auto-join** is on for that SSID and mobile

@@ -1,5 +1,5 @@
 // Bench 2026-09-17 (Pixel 5, app 0.3.0): Bluetooth off, TURN ON BLUETOOTH, then a tap on a gun row.
-// The phone's own log showed two "connecting to R0BAT-3D4F…" lines four seconds apart, then
+// The phone's own log showed two "connecting to Tactix-3D4F…" lines four seconds apart, then
 // "*** gun disconnected ***", a relink write, "connect 1/5 failed", and "write err: Not connected to
 // device". The first tap gave no feedback while the connect waited in the plugin queue, so the second
 // tap started a second connect beside it. Sixteen minutes later the gun picker's scan was still open
@@ -41,9 +41,9 @@ test('two taps on one gun row: the connect that lost never claims the link', asy
   const ups = [], drops = [];
   const link = new BrxLink({ ble, log: () => {}, onUp: () => ups.push(gun.up), onDrop: () => drops.push(1) });
   ctx.after(() => link.disconnect());
-  const first = link.connect('A', 'R0BAT-3D4F');
+  const first = link.connect('A', 'Tactix-3D4F');
   await settle(100);
-  const second = link.connect('A', 'R0BAT-3D4F');   // the player taps the row again
+  const second = link.connect('A', 'Tactix-3D4F');   // the player taps the row again
   await settle(3000);
   await Promise.allSettled([first, second]);
   assert.deepEqual(ups, [true], 'onUp must run once, and only with the gun actually connected');
