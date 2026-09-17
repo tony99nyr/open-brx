@@ -1767,6 +1767,35 @@ class Session:
         self._changed()
         return p
 
+    def ready_all(self) -> dict:
+        """Bench 2026-09-17: the operator's cure for a re-push that clears every READY on the way
+        through LOBBY. `push_config`/`_repush_lobby_config` mint a fresh head and reset `ready` on
+        the whole roster -- correct (a re-ack is owed on the new head), but a roster that had already
+        readied up found itself back at 0/N with no faster fix than tapping each `HOST OVERRIDE`
+        (`set_ready(..., host_override=True)`) one player at a time. This is the SAME cure, for every
+        rostered, non-standby player at once (`self.players` never holds a benched record -- those
+        live in `self.standby`).
+
+        LOBBY only: readying up before a config exists, or after the match has gone live, is not
+        this control's job. It never re-compiles, never touches `self.acks` and never opens the gun
+        config proofs -- `set_ready` only ever flips `p["ready"]`, so arming still refuses on a stale
+        ack, an echo mismatch or a missing config exactly as it does today.
+
+        Each newly-readied player gets a fresh `assign` (`_send_assign`, no config leg) -- the same
+        wire field `PATCH .../ready` already documents (API.md) and the phone already receives on
+        every ordinary roster edit -- so the HUD picks up the green READY state MC just gave it, not
+        only the console's own count."""
+        if self.phase != "lobby":
+            raise ValueError("mark all ready only runs on LOBBY")
+        readied: list[str] = []
+        for pid, p in self.players.items():
+            if not p.get("ready"):
+                self._on_ready(pid, True)
+                readied.append(pid)
+                self._send_assign(p)
+        self._changed()
+        return {"ok": True, "readied": readied}
+
     # ---------- config ----------
     def modes(self) -> list[ModeInfo]:
         # A18: `params` = the engine's own schema rows, so the Designer can render a mode's controls without a

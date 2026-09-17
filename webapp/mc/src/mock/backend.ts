@@ -1182,6 +1182,18 @@ export class MockBackend implements Api {
     if (this.phase === 'kit' && this.players.length && this.players.every(x => x.ready)) this.phase = 'lobby';
     this.emit(); return clone(p);
   }
+  /** Bench 2026-09-17: MARK ALL READY -- the roster-wide `host_override`, mirroring `state.py
+   *  ready_all()`. LOBBY only, `this.players` alone (STANDBY lives in `this.standby`, untouched),
+   *  and never touches acks or the config head. */
+  async readyAll() {
+    if (this.phase !== 'lobby') throw new Error('mark all ready only runs on LOBBY');
+    const readied: string[] = [];
+    for (const p of this.players) {
+      if (!p.ready) { p.ready = true; delete this.trying[p.player_id]; delete this.browsing[p.player_id]; readied.push(p.player_id); }
+    }
+    this.emit();
+    return { ok: true, readied };
+  }
   /** LOAD: announce the game, write no gun (`state.py load_game`). `pushed` stays FALSE. */
   async loadGame() {
     if (this.phase === 'armed' || this.phase === 'live') {
