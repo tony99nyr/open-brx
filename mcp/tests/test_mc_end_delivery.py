@@ -229,10 +229,14 @@ def test_a_new_match_clears_the_previous_match_watch():
     assert _view(s) is None, "the last match's delivery is not a fact about this one"
 
 
-def test_a_new_session_clears_the_watch():
+def test_a_fresh_session_clears_the_watch_and_new_match_keeps_it():
+    """2026-09-16: NEW MATCH (roster kept) is the next match, and the ladder is often still running
+    when the operator presses it. `_schedule` ends the watch at the next START. A FRESH SESSION ends it."""
     s, net, clock, ps, info = go_live(2)
     s.control("end")
     s.new_session()
+    assert _view(s) is not None and _view(s)["match_id"] == info["match_id"]
+    s.new_session(keep_roster=False)
     assert _view(s) is None
 
 

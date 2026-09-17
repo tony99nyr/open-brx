@@ -146,22 +146,43 @@ export function armOverrideCopy(sync: State['sync']): ArmOverrideCopy {
   return { label, title, warn };
 }
 
-/** ✓ / ✕ / — with the colour doing the same job the glyph does (never colour alone). */
-function Cell({ ok, na, title }: { ok: boolean; na?: boolean; title: string }) {
-  const glyph = na ? '—' : ok ? '✓' : '✕';
-  const color = na ? T.micro : ok ? T.ok : T.bad;
-  return <span title={title} style={{ font: F.chk(700, 13), color, minWidth: 18, textAlign: 'center' }}>{glyph}</span>;
+/** One cell's state (2026-09-16). `wait` is the ordinary "not yet" (nothing loaded or pushed yet, or a
+ *  push still in flight) and is NEUTRAL. `fail` is red, and only for a real failure: a phone that is
+ *  not bound or was not reachable, a gun that refused or never answered, a wrong weapon echoed. */
+type Mark = 'ok' | 'wait' | 'fail' | 'na';
+type SyncRow = NonNullable<State['sync']>['rows'][number];
+
+/** ✓ / … / ✕ / — with the colour doing the same job the glyph does (never colour alone). */
+function Cell({ mark, title }: { mark: Mark; title: string }) {
+  const glyph = mark === 'ok' ? '✓' : mark === 'fail' ? '✕' : mark === 'wait' ? '…' : '—';
+  const color = mark === 'ok' ? T.ok : mark === 'fail' ? T.bad : T.micro;
+  return <span data-mark={mark} title={title} style={{ font: F.chk(700, 13), color, minWidth: 18, textAlign: 'center' }}>{glyph}</span>;
 }
 
-function Count({ label, n, of, good }: { label: string; n: number; of: number; good: boolean }) {
+function Count({ label, n, of, good, bad }: { label: string; n: number; of: number; good: boolean; bad: boolean }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, font: F.chk(700, 12), letterSpacing: '.1em',
-                   color: of === 0 ? T.micro : good ? T.ok : T.warn }}>
+    <span data-count={label} style={{ display: 'inline-flex', alignItems: 'baseline', gap: 6, font: F.chk(700, 12), letterSpacing: '.1em',
+                   color: of > 0 && good ? T.ok : bad ? T.warn : T.micro }}>
       <span style={{ font: F.mono(500, 11), letterSpacing: '.18em', color: T.dim }}>{label}</span>
       {/* the denominator is never dropped: "4" alone cannot be checked by eye, "4/8" can */}
       {n}/{of}
     </span>
   );
+}
+
+/** The four marks for one row, from the server's own facts. Every column is about THIS load and THIS
+ *  push: the server stops reporting gun facts once a match has ended (`state.py sync_summary`), so a
+ *  previous match cannot leave a tick behind. */
+function marksOf(r: SyncRow, pushed: boolean): { phone: Mark; push: Mark; ack: Mark; echo: Mark } {
+  const phone: Mark = r.phone_game ? 'ok' : 'fail';
+  const push: Mark = r.gun_sent ? 'ok' : pushed ? 'fail' : 'wait';
+  // `ack_state` is the server's own word for the ACKED cell. An older MC does not send it: then a pushed
+  // gun with no ack is red, as it always was, and anything before the push waits.
+  const ack: Mark = r.gun_acked ? 'ok'
+    : r.ack_state ? (r.ack_state === 'failed' ? 'fail' : r.ack_state === 'acked' ? 'ok' : 'wait')
+    : r.gun_sent ? 'fail' : 'wait';
+  const echo: Mark = r.gun_echo === 'proven' ? 'ok' : r.gun_echo === 'mismatch' ? 'fail' : 'na';
+  return { phone, push, ack, echo };
 }
 
 export function PreArmSummary({ style }: { style?: React.CSSProperties }) {
@@ -178,57 +199,62 @@ export function PreArmSummary({ style }: { style?: React.CSSProperties }) {
   // pre-arm check that invents its own answer is worse than no pre-arm check at all.
   if (!sync || !Array.isArray(sync.rows)) return null;
 
-  const { rows, totals } = sync;
   const pushed = state.lobby.pushed;
-  const problems = rows.filter(r => !r.gun_sent || !r.gun_acked || !r.phone_game);
-  const shown = showAll ? rows : problems;
-  // THE GREEN IS DERIVED FROM WHAT IS ON SCREEN, not from one server field. `totals.in_sync` answers
-  // the GUN question ONLY (`state.py sync_summary`: gun_sent and gun_acked), so this panel could —
-  // and did — render "IN SYNC — EVERY GUN HAS THIS CONFIG" in green, with a green border, directly
-  // above a row whose PHONE cell was a red ✕. Both halves are the whole reason the panel exists;
-  // LOAD is what split them. A verdict reading all-clear over a row the panel is itself listing as
-  // broken is the `(0/8)` false reassurance wearing a different hat.
-  //
-  // So green needs all three: the server's gun verdict, the phone column, and NO rendered row
-  // failing. `problems.length` is the load-bearing term — whatever the totals say, this panel cannot
-  // call itself clear while it is naming somebody. (`in_sync` itself is left alone on the server: it
-  // is an honest answer to the GUN question, which is what its other callers ask it.)
-  const phonesTold = totals.rostered > 0 && totals.phone_game === totals.rostered;
-  const allClear = totals.in_sync && phonesTold && problems.length === 0;
-  const verdict = allClear
-    ? 'IN SYNC — EVERY GUN HAS THIS CONFIG, EVERY PHONE HAS THIS GAME'
-    : totals.rostered === 0
-      ? 'NOBODY IS ROSTERED — NOTHING TO CHECK'
-      : !totals.in_sync
-        ? (!pushed
-            ? 'GUNS NOT CONFIGURED YET — PUSH CONFIG BELOW'
-            : `${totals.rostered - totals.gun_acked} OF ${totals.rostered} GUNS HAVE NOT CONFIRMED THIS CONFIG`)
-        : !phonesTold
-          ? `GUNS READY — BUT THIS GAME REACHED ONLY ${totals.phone_game} OF ${totals.rostered} PHONES`
-          // Totals agreeing while a row disagrees is not a state today's server can produce; it is
-          // what an older or a newer one might send. Say what is on screen rather than pick the
-          // cheerier of the two answers.
-          : `${problems.length} OF ${rows.length} PLAYERS STILL NEED WORK — SEE BELOW`;
+  // 2026-09-16 (bench): with no game loaded (a debrief, or a muster before LOAD) there is nothing to
+  // check, and a board of red crosses and yellow instructions read as broken. One neutral line.
+  const loaded = !!state.game?.loaded || pushed;
+  if (!loaded) {
+    return (
+      <div data-testid="pre-arm-summary" data-state="idle" style={{ border: `1px solid ${T.line}`, background: T.panelSoft,
+        marginBottom: 12, padding: '10px 14px', display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap', ...style }}>
+        <span style={{ font: F.chk(700, 12), letterSpacing: '.2em', color: T.acc }}>PRE-ARM CHECK</span>
+        <span role="status" data-testid="pre-arm-verdict" style={{ font: F.chk(700, 12), letterSpacing: '.08em', color: T.micro }}>NO GAME LOADED</span>
+      </div>
+    );
+  }
+
+  const { rows, totals } = sync;
+  const marked = rows.map(r => ({ r, m: marksOf(r, pushed) }));
+  const failing = (m: ReturnType<typeof marksOf>) => [m.phone, m.push, m.ack, m.echo].includes('fail');
+  const fails = marked.filter(x => failing(x.m));
+  // after the push, a gun still answering is worth listing (neutrally); before it, every gun waits
+  const acking = marked.filter(x => !failing(x.m) && pushed && x.m.ack === 'wait');
+  const shown = showAll ? marked : [...fails, ...acking];
+  const col = (k: keyof ReturnType<typeof marksOf>) => marked.some(x => x.m[k] === 'fail');
+  // ONE headline, read off the same marks the columns show, so the two can never disagree. That is
+  // the rule the old verdict broke: "GUNS NOT CONFIGURED YET" sat beside GUNS PUSHED 2/2.
+  const allClear = rows.length > 0 && pushed && fails.length === 0 && acking.length === 0;
+  const verdict = rows.length === 0
+    ? 'NOBODY IS ROSTERED — NOTHING TO CHECK'
+    : fails.length > 0
+      ? `${fails.length} OF ${rows.length} PLAYER${rows.length === 1 ? '' : 'S'} NEED${fails.length === 1 ? 'S' : ''} ACTION — SEE BELOW`
+      : !pushed
+        ? 'EVERY PHONE HAS THE GAME — GUNS ARE CONFIGURED AT THE PUSH'
+        : acking.length > 0
+          ? `WAITING FOR ${acking.length} OF ${rows.length} GUN${rows.length === 1 ? '' : 'S'} TO CONFIRM`
+          : 'IN SYNC — EVERY GUN HAS THIS CONFIG, EVERY PHONE HAS THIS GAME';
+  const tone = allClear ? T.ok : fails.length > 0 ? T.warn : T.micro;
 
   return (
-    <div data-testid="pre-arm-summary" style={{ border: `1px solid ${allClear ? T.line : T.warn}`,
-      borderLeft: `3px solid ${allClear ? T.ok : T.warn}`, background: T.panelSoft, marginBottom: 12, ...style }}>
+    <div data-testid="pre-arm-summary" data-state={allClear ? 'clear' : fails.length ? 'action' : 'waiting'}
+      style={{ border: `1px solid ${fails.length ? T.warn : T.line}`,
+      borderLeft: `3px solid ${allClear ? T.ok : fails.length ? T.warn : T.line2}`, background: T.panelSoft, marginBottom: 12, ...style }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px 18px', flexWrap: 'wrap', padding: '10px 14px' }}>
         <span style={{ font: F.chk(700, 12), letterSpacing: '.2em', color: T.acc }}>PRE-ARM CHECK</span>
         <span role="status" data-testid="pre-arm-verdict"
-          style={{ font: F.chk(700, 12), letterSpacing: '.08em', color: allClear ? T.ok : T.warn }}>
+          style={{ font: F.chk(700, 12), letterSpacing: '.08em', color: tone }}>
           {verdict}
         </span>
         <span style={{ flex: 1 }} />
         <span data-testid="pre-arm-counts" style={{ display: 'inline-flex', alignItems: 'baseline', gap: 16, flexWrap: 'wrap' }}>
-          <Count label="PHONES TOLD" n={totals.phone_game} of={totals.rostered} good={totals.rostered > 0 && totals.phone_game === totals.rostered} />
+          <Count label="PHONES TOLD" n={totals.phone_game} of={totals.rostered} good={totals.phone_game === totals.rostered} bad={col('phone')} />
           {/* PUSHED, not "SENT" (see the glossary at the top): SENT is the phone axis's word, and this
               count is true even for a player with no phone bound at all. */}
-          <Count label="GUNS PUSHED" n={totals.gun_sent} of={totals.rostered} good={totals.rostered > 0 && totals.gun_sent === totals.rostered} />
-          <Count label="ACKED" n={totals.gun_acked} of={totals.rostered} good={totals.rostered > 0 && totals.gun_acked === totals.rostered} />
+          <Count label="GUNS PUSHED" n={totals.gun_sent} of={totals.rostered} good={totals.gun_sent === totals.rostered} bad={col('push')} />
+          <Count label="ACKED" n={totals.gun_acked} of={totals.rostered} good={totals.gun_acked === totals.rostered} bad={col('ack')} />
           {/* ECHO is reported, never required: `not_echoed` is the ordinary answer on our v4.32
-              firmware (A37), so a red here would refuse every whistle in the field. */}
-          <Count label="ECHO" n={totals.gun_echo_proven} of={totals.rostered} good={totals.rostered > 0 && totals.gun_echo_proven === totals.rostered} />
+              firmware (A37), so it is never coloured as a fault. */}
+          <Count label="ECHO" n={totals.gun_echo_proven} of={totals.rostered} good={totals.gun_echo_proven === totals.rostered} bad={col('echo')} />
         </span>
         {rows.length > 0 && (
           <button type="button" data-testid="pre-arm-toggle" className="hov-acc hit44" onClick={() => setShowAll(v => !v)}
@@ -249,15 +275,16 @@ export function PreArmSummary({ style }: { style?: React.CSSProperties }) {
             {/* at phone width the instruction is a row of its own, so this header would label nothing */}
             {!narrow && <span style={{ flex: '1 1 190px', minWidth: 0 }}>WHAT TO DO</span>}
           </div>
-          {shown.map(r => {
+          {shown.map(({ r, m }) => {
             // ONE instruction per row, the first thing that is actually wrong — an operator reading
-            // four cures at once does none of them.
-            const todo = !r.bound ? 'No phone bound — switch it on and bind it, or STAND DOWN'
-              : !r.phone_game ? 'Phone was not reachable at LOAD — LOAD again from GAMES'
-              : !r.gun_sent ? 'Gun has no head yet — PUSH CONFIG below'
-              : !r.gun_acked ? 'Gun has not confirmed this config — RE-PUSH CONFIG below'
-              : r.gun_echo === 'mismatch' ? 'Gun answered with another weapon — RE-PUSH CONFIG below'
+            // four cures at once does none of them. A row that is only WAITING says so, neutrally.
+            const todo = m.phone === 'fail' && !r.bound ? 'No phone bound — switch it on and bind it, or STAND DOWN'
+              : m.phone === 'fail' ? 'Phone was not reachable at LOAD — LOAD again from GAMES'
+              : m.push === 'fail' ? 'Gun has no head yet — PUSH CONFIG below'
+              : m.ack === 'fail' ? 'Gun has not confirmed this config — RE-PUSH CONFIG below'
+              : m.echo === 'fail' ? 'Gun answered with another weapon — RE-PUSH CONFIG below'
               : '';
+            const note = todo ? '' : !pushed ? 'Guns are configured at the push' : m.ack === 'wait' ? 'Waiting for the gun to confirm' : 'Ready';
             return (
               <div key={r.player_id} data-testid="pre-arm-row" data-player={r.player_id} data-compact={narrow ? '1' : '0'}
                 style={{ display: 'flex', gap: narrow ? '2px 12px' : 12, alignItems: 'center',
@@ -266,20 +293,19 @@ export function PreArmSummary({ style }: { style?: React.CSSProperties }) {
                   <span style={{ color: T.micro, font: F.mono(500, 11) }}>#{r.player_num} </span>{r.display}
                   <span style={{ color: T.micro, font: F.mono(500, 11) }}> {r.gun_id}</span>
                 </span>
-                <span style={{ width: 92, textAlign: 'center' }}><Cell ok={r.phone_game} title="An `assign` for this config reached this phone's socket" /></span>
+                <span data-col="phone" style={{ width: 92, textAlign: 'center' }}><Cell mark={m.phone} title="An `assign` for this game reached this phone's socket" /></span>
                 {/* PUSHED is a fact about what MC WROTE, never about what the gun took — ACKED is the
-                    only proof of that, so a green here beside a red there is a real and common state,
-                    not a contradiction. */}
-                <span style={{ width: 92, textAlign: 'center' }}><Cell ok={r.gun_sent} title="MC compiled this config's head and pushed it for this player — not a claim the gun took it (see ACKED)" /></span>
-                <span style={{ width: 92, textAlign: 'center' }}><Cell ok={r.gun_acked} title="The gun answered for THIS config_id" /></span>
-                <span style={{ width: 92, textAlign: 'center' }}>
+                    only proof of that, so a green here beside a waiting mark there is a real and
+                    common state, not a contradiction. */}
+                <span data-col="push" style={{ width: 92, textAlign: 'center' }}><Cell mark={m.push} title={m.push === 'wait' ? 'Not pushed yet: guns are configured at the push' : "MC compiled this config's head and pushed it for this player — not a claim the gun took it (see ACKED)"} /></span>
+                <span data-col="ack" style={{ width: 92, textAlign: 'center' }}><Cell mark={m.ack} title={m.ack === 'wait' ? 'No answer yet — not a fault' : m.ack === 'fail' ? 'The gun refused this config, its phone is offline, or it never answered' : 'The gun answered for THIS config_id'} /></span>
+                <span data-col="echo" style={{ width: 92, textAlign: 'center' }}>
                   {/* A37: only a MISMATCH is a fault here. `not_echoed` is the ordinary answer on our
                       v4.32 units, and `null` is the server saying the check DID NOT RUN at all
                       (nothing pushed, no ack for this config, no readable $WEAP in the head —
                       `state.py _echo_state`). Painting either of those red would state a failure
-                      nobody established, which is the precise thing this panel exists to prevent —
-                      and is what it did on its first run (caught on the koth screenshot, 2026-09-13). */}
-                  <Cell ok={r.gun_echo === 'proven'} na={r.gun_echo !== 'proven' && r.gun_echo !== 'mismatch'}
+                      nobody established, which is the precise thing this panel exists to prevent. */}
+                  <Cell mark={m.echo}
                     title={r.gun_echo === 'proven' ? 'The gun echoed the pushed weapon'
                       : r.gun_echo === 'mismatch' ? 'The gun echoed a different weapon than the one pushed'
                       : r.gun_echo === 'not_echoed' ? 'No echo — the ordinary answer on v4.32 firmware, and never a fault'
@@ -288,7 +314,7 @@ export function PreArmSummary({ style }: { style?: React.CSSProperties }) {
                 <span data-testid="pre-arm-todo" data-narrow={narrow ? '1' : '0'}
                   style={{ flex: narrow ? '1 1 100%' : '1 1 190px', minWidth: 0, font: F.chk(500, 11.5),
                            color: todo ? T.warn : T.micro, textTransform: 'none', paddingLeft: narrow ? 2 : 0 }}>
-                  {todo || 'Ready'}
+                  {todo || note}
                 </span>
               </div>
             );

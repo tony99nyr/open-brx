@@ -1095,6 +1095,11 @@ class GameAnnouncementView(TypedDict):
     total: int
 
 
+# 2026-09-16: the PRE-ARM CHECK's ACKED cell. `none` = no head pushed for this lobby; `waiting` = pushed,
+# no answer yet (never a fault); `failed` = refused ack, offline or unbound phone, or no answer in time.
+SyncAckState = Literal["acked", "waiting", "failed", "none"]
+
+
 class SyncRow(TypedDict):
     player_id: str
     display: str
@@ -1105,6 +1110,7 @@ class SyncRow(TypedDict):
     gun_sent: bool
     gun_acked: bool
     gun_echo: Literal["proven", "mismatch", "not_echoed"] | None
+    ack_state: SyncAckState
 
 
 class SyncTotals(TypedDict):

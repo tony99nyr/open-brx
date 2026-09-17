@@ -20,7 +20,7 @@ export type {
   McConfidence, RecapView, WinnerView, PossessionView, AfterEndPlayer, AfterEndView,
   MatchHistoryRow, ModeInfo, NodeView, StationControl, StationReport, StationArmed, StationView,
   LiveView, StartNodeView, StartView, State, GameConfigBase, LanView, KitView, LobbyAck,
-  LobbyView, GameAnnouncementView, SyncRow, SyncTotals, SyncView, SessionOptions, VersionsView,
+  LobbyView, GameAnnouncementView, SyncAckState, SyncRow, SyncTotals, SyncView, SessionOptions, VersionsView,
   NoticesView, RestoredFromView, SnapshotFeedRow,
   TunnelStatus, TunnelProviderValue,
 } from './contract.gen';
@@ -145,6 +145,9 @@ export interface Api {
   /** an ARCHIVED match's stats table — `recapCsvUrl` only ever serves the LIVE scorer (W1/F6) */
   matchCsvUrl(match_id: string): string;
   newSession(keep_roster: boolean): Promise<State>;
+  /** RECAP's NEXT MATCH (2026-09-16): roll forward with the roster and the game kept, then LOAD that
+   *  game. Answers the full State. A server that predates it answers 404. */
+  nextMatch(): Promise<State>;
 }
 
 /** A27 — the body of the 409 `POST /api/phase` answers with. Every field optional: this is read off a

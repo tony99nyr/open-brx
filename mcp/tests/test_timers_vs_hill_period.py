@@ -30,6 +30,8 @@ JUDGED = {
     "RESYNC_PROBE_S": "the node's resync prompt cadence, driven by the operator's trigger pull",
     "STALE_LIVE_RETELL_MS": "A34: how long MC waits before re-telling the SAME phone that the SAME retired match "
                             "ended; keyed off that phone's status heartbeat (`arm_state`/`match_id`), never an IR frame",
+    "SYNC_ACK_TIMEOUT_MS": "2026-09-16: how long the PRE-ARM CHECK shows a pushed gun as waiting for its config ack; "
+                           "read off the push time and the ack message, never an IR frame, and it gates nothing",
     "DEFAULT_RUNWAY_S": "the countdown length, not a fuse",
     "PRUNE_AFTER_MS": "unbound-node record lifetime on the socket's silence",
     "HELLO_TIMEOUT_S": "grace for a hello after connect; a frame cannot reset it",

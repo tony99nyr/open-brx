@@ -80,6 +80,9 @@ export type PoolEmptyCode = 'off' | 'fixed_missing' | 'only_ids_missing' | 'need
 export type StationKind = 'respawn' | 'powerup' | 'extraction' | 'bomb' | 'control';
 export type TunnelStatus = 'off' | 'starting' | 'up' | 'error';
 export type TunnelProviderValue = 'cloudflared' | 'manual';
+/** 2026-09-16: the PRE-ARM CHECK's ACKED cell. `none` = no head pushed for this lobby; `waiting` = pushed,
+ *  no answer yet (never a fault); `failed` = refused ack, offline or unbound phone, or no answer in time. */
+export type SyncAckState = 'acked' | 'waiting' | 'failed' | 'none';
 
 // ---- kind vocabularies ----
 export declare const MC_KINDS: ReadonlySet<McKind>;
@@ -1118,6 +1121,7 @@ export interface SyncRow {
   gun_sent: boolean;
   gun_acked: boolean;
   gun_echo: 'proven' | 'mismatch' | 'not_echoed' | null;
+  ack_state: SyncAckState;
 }
 
 export interface SyncTotals {

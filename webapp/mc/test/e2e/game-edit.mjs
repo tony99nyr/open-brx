@@ -453,9 +453,12 @@ async function runLocked(browser, viteBase) {
   await until(() => pg.locator('header nav button:has-text("KIT")').count().then(n => n > 0), 5000, 'the KIT nav tab');
   await pg.locator('header nav button:has-text("KIT")').first().click();
   await until(() => onKit(pg), 5000, 'KIT to open from the nav while the match is live');
-  await until(async () => (await panel(pg).locator('[data-testid="game-edit-toggle"]').innerText()).includes('LOCKED — LIVE'),
-    5000, 'the collapsed header to name the lock');
-  ok(`header: LOCKED — LIVE, without even opening the panel   ${await shot(pg, '20-locked-header')}`);
+  // 2026-09-16 (Tony): the collapsed row carries no yellow LOCKED badge any more; it reads VIEW LOADED
+  // GAME, and the open panel below is what explains the lock.
+  await until(async () => (await panel(pg).locator('[data-testid="game-edit-toggle"]').innerText()).includes('VIEW LOADED GAME'),
+    5000, 'the collapsed header');
+  expect(!(await panel(pg).locator('[data-testid="game-edit-toggle"]').innerText()).includes('LOCKED'), 'no LOCKED badge on the row');
+  ok(`header: VIEW LOADED GAME, no LOCKED badge   ${await shot(pg, '20-locked-header')}`);
   await openPanel(pg);
   const txt = await panel(pg).innerText();
   expect(/RECALL/.test(txt), `opening it explains RECALL is the way out (saw ${JSON.stringify(txt.slice(0, 160))})`);

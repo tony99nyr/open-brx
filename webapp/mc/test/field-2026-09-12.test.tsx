@@ -148,15 +148,16 @@ describe('F151 / round-2 — the GAMES lock is SPLIT the way the server splits i
     });
   }
 
-  it('RECAP still takes a MODE pick — that IS the play-again path — and it rolls the session', async () => {
-    // `state.py set_config` in `recap` accepts exactly one patch: an explicit MODE. It rolls the
-    // finished session forward (`new_session(keep_roster=True)`) and lands in BUILD. The console used
-    // to swallow the tap and tell the operator to press NEW MATCH, which throws the roster away.
+  it('RECAP is not locked: no banner, LOAD is live, and a mode pick rolls the session', async () => {
+    // 2026-09-16 (Tony: "why? just make a new one"): the banner "THIS MATCH ENDED — PICK A MODE TO
+    // START THE NEXT ONE, OR NEW MATCH (TOP RIGHT)" is gone. Any GAMES action after the whistle rolls
+    // the finished session forward (`state.py _roll_forward_from_recap`) and works on the next match.
     const g = await games('recap');
     const before = await g.backend.getState();
-    expect(g.m.text()).toContain('PICK A MODE TO START THE NEXT ONE');
-    // F-6 (2026-09-13): the roster carries over into the rolled session, so this switch reshapes teams
-    // too — first tap confirms, second tap rolls forward.
+    expect(g.m.find('[data-testid="games-locked"]').length, 'no lock banner in RECAP').toBe(0);
+    expect(g.m.text()).not.toMatch(/THIS MATCH ENDED|PICK A MODE/);
+    const load = g.m.find('[data-testid="game-load"] button')[0] as HTMLButtonElement;
+    expect(load.disabled, 'LOAD works after the whistle').toBe(false);
     await g.m.click('KING OF THE HILL');
     expect((await g.backend.getState()).phase, 'the first tap only confirms — the session has not rolled yet').toBe('recap');
     await g.m.click('KING OF THE HILL');
@@ -164,16 +165,33 @@ describe('F151 / round-2 — the GAMES lock is SPLIT the way the server splits i
     const after = await g.backend.getState();
     expect(after.phase, 'the recap rolls forward into a fresh, editable session').toBe('build');
     expect(after.config.mode).toBe('koth');
-    expect(after.config.config_id).not.toBe(before.config.config_id);
     expect(after.players.length, 'the roster is KEPT — this is play-again, not a wipe').toBe(before.players.length);
     expect(after.recap, 'the finished match\'s recap is cleared with the roll').toBeFalsy();
     g.m.unmount();
   });
 
-  it('a RECAP venue edit is still refused, in the server\'s own words', async () => {
+  it('RECAP LOAD loads the SAME game on the next match, with no mode pick', async () => {
+    const g = await games('recap');
+    const before = await g.backend.getState();
+    await act(async () => { (g.m.find('[data-testid="game-load"] button')[0] as HTMLButtonElement).click(); });
+    await g.settle();
+    const after = await g.backend.getState();
+    expect(after.phase).toBe('build');
+    expect(after.game?.loaded).toBe(true);
+    expect(after.config.mode, 'same mode').toBe(before.config.mode);
+    expect(after.players.length).toBe(before.players.length);
+    g.m.unmount();
+  });
+
+  it('a RECAP venue edit rolls forward instead of being refused', async () => {
     const backend = new MockBackend();
     await backend.setPhase('recap');
-    await expect(backend.putConfig({ night: true })).rejects.toThrow(/match is over/i);
+    // `setPhase` itself now rolls a recap forward, so put the mock straight into recap for this one.
+    (backend as unknown as { phase: string }).phase = 'recap';
+    const r = await backend.putConfig({ night: true });
+    expect(r.ok).toBe(true);
+    expect((await backend.getState()).phase).toBe('build');
+    expect((await backend.getState()).config.night).toBe(true);
   });
 
   it('is fully interactive in muster/build/kit AND lobby (unaffected by the lock)', async () => {

@@ -44,7 +44,7 @@ export function Recap() {
   const liveId = state?.live?.match_id ?? null;
   useEffect(() => { api.matchHistory().then(setHistory).catch(() => setHistory([])); }, [api, liveId, state?.phase]);
   // The match still on screen is in the store too — showing it again as an "archived" chip hid its own
-  // NEW MATCH and EXPORT CSV buttons when clicked. THIS MATCH is the only chip for it.
+  // NEXT MATCH and EXPORT CSV buttons when clicked. THIS MATCH is the only chip for it.
   const archive = history.filter(h => h.match_id !== liveId);
   // A selection that no longer exists (new session, or it became the live match) must not silently
   // fall back to the live recap with nothing highlighted — drop it so the UI matches what is shown.
@@ -231,27 +231,18 @@ export function Recap() {
               setCsvErr(null);
             } : undefined}
             style={{ font: F.chk(700, 12), letterSpacing: '.18em', padding: '11px 22px', background: 'transparent', border: `1px solid ${T.line2}`, color: T.dim, textDecoration: 'none', minHeight: 44, display: 'inline-flex', alignItems: 'center' }}>⬇ EXPORT CSV{rc.provisional ? ' (PROVISIONAL)' : ''}</a>
-          {/* NEW MATCH stays live-only: an archived match is a record, not a place to start from */}
-          {/* disabled in-flight: newSession() rebuilds the whole session, and a double-tap on a slow
-              LAN fired it twice — the second landing on a session the first had already replaced */}
-          {/* UX-1 (round-3 fix pass, 2026-09-13): NEW MATCH was the ONLY way forward on this screen,
-              and it throws the roster away. The server's documented play-again path — pick a mode,
-              which rolls the session forward with the roster KEPT (`state.py set_config` in recap) —
-              lived only on GAMES, a tab away, where nothing on the recap pointed. One line, beside
-              the button it qualifies. Absent with nobody rostered: "keep this roster" would be a lie. */}
-          {!past && state.players.length > 0 && (
-            <button type="button" data-testid="recap-play-again" className="hov-acc" onClick={() => setView('build')}
-              style={{ ...BTN_RESET, font: F.chk(700, 12), letterSpacing: '.14em', padding: '11px 18px', minHeight: 44,
-                       background: 'transparent', border: `1px solid ${T.line2}`, color: T.acc, cursor: 'pointer' }}>
-              KEEP THIS ROSTER? PICK A MODE ON GAMES ▸
-            </button>
-          )}
-          {!past && <PrimaryButton size={13} disabled={starting} onClick={async () => {
+          {/* NEXT MATCH stays live-only: an archived match is a record, not a place to start from. */}
+          {/* 2026-09-16 (Tony: "why? just make a new one"): the primary action starts the next match with
+              the roster AND the game kept (`POST /api/match/next`: roll forward, then LOAD the same
+              game) and lands on GAMES, which is where LOAD always leaves the operator: the loaded game
+              on screen, EDIT beside it, CONTINUE TO KIT one tap away. NEW MATCH (top right) is still
+              there for a clean muster. Disabled in flight: a double-tap on a slow LAN fired twice. */}
+          {!past && <span data-testid="recap-next-match"><PrimaryButton size={13} disabled={starting} onClick={async () => {
             if (starting) return;
             setStarting(true);
-            try { const s = await run(() => api.newSession(true)); if (s) setView('muster'); }
+            try { const s = await run(() => api.nextMatch()); if (s) setView('build'); }
             finally { setStarting(false); }
-          }}>{starting ? 'STARTING…' : 'NEW MATCH ▸'}</PrimaryButton>}
+          }}>{starting ? 'STARTING…' : 'NEXT MATCH ▸'}</PrimaryButton></span>}
         </div>
       </Brackets>
       <AfterWhistle rc={rc} name={name} />

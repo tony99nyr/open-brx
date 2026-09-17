@@ -84,10 +84,8 @@ export function Designer() {
   const setBase = (m: typeof modes[number]) => { if (m.mode !== cfg.mode) setCfg(withPolicy({ ...clone(m.defaults), environment: cfg.environment, night: cfg.night })); };
   const dirty = editing ? gameSig(editing.config) !== gameSig(cfg) || editing.name !== name.trim() || (editing.desc ?? '') !== desc.trim() : true;
   // F151 (field 2026-09-12): PLAY / APPLY both end in `PUT /api/config`, reachable here whenever
-  // CUSTOMIZE was opened before the field moved on. Round-2 fix pass: the same SPLIT `Games.tsx` now
-  // carries, because it is the server's own (`state.py set_config`) — SAVE is a general config write
-  // and lives in muster/build/kit/lobby; PLAY THIS NOW / APPLY name a MODE, and recap takes those as
-  // the play-again roll. Only armed/live refuse both.
+  // CUSTOMIZE was opened before the field moved on. Since 2026-09-16 recap takes every config write
+  // (it rolls the finished session forward first), so only armed/live refuse.
   const configLocked = !CONFIG_EDITABLE_PHASES.has(state.phase);
   const modeLocked = !MODE_PICK_PHASES.has(state.phase);
   // F141 polish (field 2026-09-12, pass 1): the "THIS EXCLUDES EVERY WEAPON" warning rendered on the

@@ -146,5 +146,10 @@ export function createHttpApi(): Api {
     recapCsvUrl: () => '/api/recap.csv',
     matchCsvUrl: (match_id: string) => `/api/matches/${encodeURIComponent(match_id)}.csv`,
     newSession: keep_roster => post('/api/session/new', { keep_roster }),
+    // An MC started before 2026-09-16 has no such route: say so, and name the control that still works.
+    nextMatch: () => post<State>('/api/match/next', {}).catch((e: Error & { status?: number }) => {
+      if (e?.status === 404) throw new Error('THIS MC PREDATES NEXT MATCH — RESTART IT, OR USE NEW MATCH (TOP RIGHT)');
+      throw e;
+    }),
   };
 }

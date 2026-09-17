@@ -325,10 +325,10 @@ describe('exporting an archived match', () => {
 });
 
 describe('controls that must not fire twice', () => {
-  it('NEW MATCH disables itself in flight', async () => {
-    // `newSession()` rebuilds the whole session; a double-tap on a slow field LAN fired it twice and
+  it('NEXT MATCH disables itself in flight', async () => {
+    // The recap's primary rebuilds the whole session; a double-tap on a slow field LAN fired it twice and
     // the second landed on a session the first had already replaced. The ledger claimed this fix
-    // with no test behind it (review 2026-09-01).
+    // with no test behind it (review 2026-09-01). Since 2026-09-16 the primary is NEXT MATCH.
     const d = await demo();
     let release: (() => void) | null = null;
     const inFlight = new Promise<void>(r => { release = r; });
@@ -337,10 +337,10 @@ describe('controls that must not fire twice', () => {
       ...d, state: withLive(d.state), view: 'recap',
       api: {
         matchHistory: async () => [],
-        newSession: async () => { calls++; await inFlight; return d.state; },
+        nextMatch: async () => { calls++; await inFlight; return d.state; },
       },
     });
-    await m.click('NEW MATCH');
+    await m.click('NEXT MATCH');
     expect(calls).toBe(1);
     expect(m.text()).toContain('STARTING');
     const btn = m.find('button').find(b => /STARTING/.test(b.textContent ?? ''));
@@ -419,7 +419,7 @@ describe('the RECAP selection and its export error', () => {
     rows = [archived('m8', 'tdm')];        // m7 is gone; m8 remains so the picker still shows
     await m.update(render('muster'));
     expect(m.text(), 'a vanished selection must not still render as archived').not.toContain('ARCHIVED MATCH');
-    expect(m.text(), 'the live match must be fully in charge again').toContain('NEW MATCH');
+    expect(m.text(), 'the live match must be fully in charge again').toContain('NEXT MATCH');
 
     // The real symptom: the screen shows the LIVE recap while the picker highlights NOTHING, so the
     // operator cannot tell which match they are reading. THIS MATCH must be selected again.

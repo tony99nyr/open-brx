@@ -167,8 +167,12 @@ entries. Per-player rows: number, name, team, K / D / A, K/D, accuracy, streak, 
 N/M nodes; the rest end at 12:00". **TV mode** for a spectator display (read-only, no token).
 
 ### A8 · RECAP (the payoff)
-**Winner** up top (team, or top player in FFA), celebratory but tactical; **NEW MATCH** is the primary action
-(round 4 #19). **Provisional state** until every phone has flushed: "N players still out — kills provisional"
+**Winner** up top (team, or top player in FFA), celebratory but tactical; **NEXT MATCH ▸** is the primary action
+(A43, 2026-09-16, replacing round 4 #19's NEW MATCH): it keeps the roster and the game (same mode and settings),
+LOADs that game and lands on GAMES, one tap from KIT. There is no "pick a mode" step and no banner telling the
+operator the match ended: any GAMES or KIT action after the whistle (an edit, LOAD, a push) starts the next
+match the same way. MC rolls on that first action, not at the whistle, so the recap stays on screen until the
+operator moves on and stays in the history picker after. NEW MATCH (top right) remains for a fresh muster. **Provisional state** until every phone has flushed: "N players still out — kills provisional"
 + a provisional export, finalized vs provisional designed distinctly. **Honors** as award cards — none under 3
 scored players; MVP / MOST KILLS require kills > 0; SURVIVOR reads "FEWEST DEATHS · N". **Full stats table**
 (all players, all columns, MEDALS) + **EXPORT CSV**; a history picker over this session's finished matches.

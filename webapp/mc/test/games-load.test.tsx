@@ -334,11 +334,14 @@ describe('GAMES · once the match has started', () => {
     });
   }
 
-  it('RECAP is back to picking the next game — the mode cards are the play-again path', async () => {
+  it('RECAP is back to picking the next game, with LOAD live and no banner', async () => {
     // `_finish()` drops BOTH `lobby_pushed` and the announced game, so the debrief is an un-loaded tab.
+    // 2026-09-16: and nothing on it is locked. LOAD (or any edit) rolls the session to the next match.
     const g = await games({ patch: s => ({ ...s, phase: 'recap', game: { loaded: false, sent: 0, total: s.players.length } }) });
     expect(g.q('[data-testid="active-game-config"]')).toBeFalsy();
-    expect(g.m.text()).toContain('PICK A MODE TO START THE NEXT ONE');
+    expect(g.q('[data-testid="games-locked"]'), 'no RECAP banner').toBeFalsy();
+    expect(g.m.text()).not.toMatch(/PICK A MODE|THIS MATCH ENDED/);
+    expect(g.btn('[data-testid="game-load"]')!.disabled).toBe(false);
     g.m.unmount();
   });
 });

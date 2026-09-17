@@ -274,7 +274,8 @@ describe('GameEditPanel — locked once the match has started (armed/live)', () 
     const modes = await d.api.getModes();
     const store = makeStore({ ...d, state, view: 'kit' }, { modes });
     const m = await mount(<StoreCtx.Provider value={store}><Kit /></StoreCtx.Provider>);
-    expect(m.find('[data-testid="game-edit-toggle"]')[0].textContent).toContain('LOCKED — LIVE');
+    // 2026-09-16 (Tony): no yellow LOCKED badge on the collapsed row. The open panel still says why.
+    expect(m.find('[data-testid="game-edit-toggle"]')[0].textContent).not.toMatch(/LOCKED/);
     await click(m.find('[data-testid="game-edit-toggle"]')[0]);
     expect(m.find('[data-testid="game-edit-locked"]').length, 'the panel explains WHY, not just that it is locked').toBe(1);
     expect(m.text()).toMatch(/RECALL/);
@@ -456,6 +457,44 @@ describe('GameEditPanel — a mode this console has no defaults for (F.5)', () =
     // is the correct, WYSIWYG-safe choice: what the draft shows is what gets sent.
     expect(calls[0].health, 'health rides along explicitly -- there is no known default to diff against').toEqual(state.config.health);
     expect(calls[0].loadout_policy, 'same for the weapon policy').toEqual(state.config.loadout_policy);
+    m.unmount();
+  });
+});
+
+describe('GameEditPanel — VIEW LOADED GAME, and nothing locked after the whistle (2026-09-16)', () => {
+  it('the collapsed control reads VIEW LOADED GAME, never EDIT LOADED GAME', async () => {
+    const { m } = await gameScreen('kit');
+    const toggle = m.find('[data-testid="game-edit-toggle"]')[0];
+    expect(toggle.textContent).toContain('VIEW LOADED GAME');
+    expect(m.text()).not.toContain('EDIT LOADED GAME');
+    m.unmount();
+  });
+
+  for (const phase of ['recap', 'live'] as const) {
+    it(`no LOCKED label on the control in ${phase.toUpperCase()}`, async () => {
+      const d = await demo();
+      const state: State = { ...d.state, phase };
+      const modes = await d.api.getModes();
+      const store = makeStore({ ...d, state, view: 'kit' }, { modes });
+      const m = await mount(<StoreCtx.Provider value={store}><Kit /></StoreCtx.Provider>);
+      const toggle = m.find('[data-testid="game-edit-toggle"]')[0];
+      expect(toggle.textContent).not.toMatch(/LOCKED/);
+      expect(toggle.querySelector('[role="status"]'), 'no badge element at all').toBeNull();
+      m.unmount();
+    });
+  }
+
+  it('in RECAP the opened panel is editable: no lock warning, a live fieldset', async () => {
+    const d = await demo();
+    const state: State = { ...d.state, phase: 'recap' };
+    const modes = await d.api.getModes();
+    const store = makeStore({ ...d, state, view: 'kit' }, { modes });
+    const m = await mount(<StoreCtx.Provider value={store}><Kit /></StoreCtx.Provider>);
+    await click(m.find('[data-testid="game-edit-toggle"]')[0]);
+    expect(m.find('[data-testid="game-edit-locked"]').length).toBe(0);
+    const fieldset = m.el.querySelector('[data-testid="game-edit-panel"] fieldset') as HTMLFieldSetElement;
+    expect(fieldset.disabled).toBe(false);
+    expect(m.text()).not.toMatch(/THIS MATCH ENDED/);
     m.unmount();
   });
 });

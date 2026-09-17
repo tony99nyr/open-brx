@@ -561,6 +561,15 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         # download is a truthful answer, and a 404 here reads as "that match is gone".
         return _csv(rows_csv(rows if isinstance(rows, list) else []), f"recap-{mid}.csv")
 
+    async def match_next(_req):
+        """RECAP's NEXT MATCH (2026-09-16): roll forward with the roster and the game kept, then LOAD
+        that game. `state.py next_match()`. Answers the full State, like `session/new`."""
+        try:
+            s.next_match()
+        except ValueError as e:
+            return _err(str(e), getattr(e, "status", 400))
+        return JSONResponse(s.snapshot())
+
     async def new_session(req):
         b = await body(req)
         s.new_session(keep_roster=bool(b.get("keep_roster", True)))
@@ -745,6 +754,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/recap.csv", recap_csv),
         Route("/api/matches/{mid}.csv", match_csv),
         Route("/api/session/new", new_session, methods=["POST"]),
+        Route("/api/match/next", match_next, methods=["POST"]),
         WebSocketRoute("/ui-ws", ui_ws),
     ]
     if UI_DIST.exists():

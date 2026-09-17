@@ -38,7 +38,7 @@ from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_P
                     LoadoutPool, McConfidence, NoticesView, PerkView, ModeInfo, Phase, PhaseRefusalBody, Player,
                     ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, Respawn, ScanRow, SessionOptions,
                     SnapshotFeedRow, SlotRule, State, StationAssignment, StationRef, StationControl, StationReport,
-                    StationView, SyncRow, SyncTotals, SyncView, VersionsView, RestoredFromView,
+                    StationView, SyncAckState, SyncRow, SyncTotals, SyncView, VersionsView, RestoredFromView,
                     StartNodeView, StartView, Stun, Team, Weapon, WeaponSel, WinnerView, LiveView, NodeView,
                     app_tier, compatible, is_arm_state, is_station_kind, parse_app_ver, parse_win_by)
 
@@ -54,6 +54,9 @@ OPTION_DEFAULTS: dict[str, Any] = {"log_sync": "auto"}
 OPTION_VALUES: dict[str, tuple[str, ...]] = {"log_sync": ("auto", "manual")}
 LOG_STATES = ("none", "offered", "pulling", "held", "complete")
 PULL_REASONS = ("recap", "offer", "manual", "reconnect")
+# 2026-09-16: how long the PRE-ARM CHECK shows a pushed gun as WAITING before it calls the silence a
+# failure. A gun echoes a head inside ~1.5 s and the phone heartbeats every ~2 s, so 10 s is generous.
+SYNC_ACK_TIMEOUT_MS = 10_000
 
 # A42: the END re-delivery ladder — the gap before the 1st, 2nd, … re-push to a HUD that has not confirmed
 # the end. Short at first (the ordinary cause is one lost frame to a phone that is standing right there),
@@ -390,6 +393,9 @@ class Session:
         self._repush_pending = False
         self.acks: dict[str, dict] = {}
         self.bundles: dict[str, FrameBundle] = {}
+        # 2026-09-16: player_id -> when MC last sent this player's head (a push or a hello hydrate). The
+        # PRE-ARM CHECK uses it to tell a gun that is still answering from one that never will.
+        self._head_sent_t: dict[str, int] = {}
         # A36: player_id -> the worded board line for a gun whose REPORTED pool disagreed with the
         # `$PSET` MC pushed it. Judged once per life in `_check_pool` (a settled frame, no hits yet)
         # and held until the next push re-arms that gun, so the operator still sees it after the
@@ -406,6 +412,10 @@ class Session:
         self._role_due: list[tuple[int, str, str, bool, int | None]] = []
         self.start_seq = 0
         self.scorer: Scorer | None = None
+        # 2026-09-16 (auto next match): the scorer of the match the operator ROLLED past. A phone that
+        # flushes late still owes that match its facts, and they must reach its recap and archive row,
+        # never the new match. Replaced by the next roll, dropped by a FRESH SESSION.
+        self._retired_scorer: Scorer | None = None
         # F124: a frag cap reached while a BATCH is being scored waits for the batch (`ingest_batch`), so
         # the recap is snapshotted from every fact in it and not from the half the cap interrupted.
         self._batch_depth = 0
@@ -1135,6 +1145,7 @@ class Session:
         """
         if self.phase in ("armed", "live"):
             raise ValueError("cannot load a game once the match has started - ABORT or RECALL first")
+        self._roll_forward_from_recap()        # a LOAD after the whistle loads the NEXT match
         cfg_id = self.config["config_id"]
         self.game_loaded = True
         self.game_cfg = cfg_id
@@ -1186,10 +1197,16 @@ class Session:
         player with no node bound) rendered as a claim about everybody.
         """
         cur = self.config.get("config_id")
+        now = self.now_ms()
         rows: list[SyncRow] = []
         for p in self.players.values():
             pid = p["player_id"]
             bundle = self.bundles.get(pid) or {}
+            # 2026-09-16: the gun columns describe THIS lobby's push and nothing older. `bundles` outlives
+            # `_finish()` (the victory cue reads it) and the config_id survives a finished match, so a
+            # debrief used to show PUSHED for a head from the match before. No push, no gun facts.
+            sent = self.lobby_pushed and bool(bundle) and bundle.get("config_id") == cur
+            acked = self.lobby_pushed and self._ack_is_current(pid)
             rows.append({
                 "player_id": pid, "display": p.get("display") or pid,
                 "gun_id": p.get("gun_id") or "", "player_num": p.get("player_num") or 0,
@@ -1197,9 +1214,10 @@ class Session:
                 # the ANNOUNCED game (`game_cfg`), not the head: see `game_sent_n`. Guarded against
                 # `game_cfg` being None, or "told nobody" would compare equal to "told everybody".
                 "phone_game": bool(self.game_cfg) and self.game_sent.get(pid) == self.game_cfg,
-                "gun_sent": bool(bundle) and bundle.get("config_id") == cur,
-                "gun_acked": self._ack_is_current(pid),
+                "gun_sent": sent,
+                "gun_acked": acked,
                 "gun_echo": self._echo_state(pid),
+                "ack_state": self._sync_ack_state(p, sent, acked, now),
             })
         rows.sort(key=lambda r: r["player_num"])
         n = len(rows)
@@ -1217,6 +1235,29 @@ class Session:
         tot["in_sync"] = n > 0 and tot["gun_sent"] == n and tot["gun_acked"] == n
         return {"rows": rows, "totals": tot,
                 "unconfigured": [r["display"] for r in rows if not r["gun_acked"]]}
+
+    def _sync_ack_state(self, p: Player, sent: bool, acked: bool, now: int) -> SyncAckState:
+        """The PRE-ARM CHECK's ACKED cell as one word (2026-09-16). Presentation only: no gate reads it.
+
+        `waiting` is the ordinary seconds after a push and must never look like a fault. `failed` is kept
+        for the three things that will not cure themselves: the gun answered THIS head and refused it (or
+        sent no echo), the phone is not bound or has gone quiet, or nothing came back inside
+        `SYNC_ACK_TIMEOUT_MS`."""
+        if acked:
+            return "acked"
+        if not sent:
+            return "none"
+        pid = p["player_id"]
+        ack = self.acks.get(pid)
+        if ack is not None and ack.get("config_id") == self.config.get("config_id"):
+            return "failed"
+        nid = p.get("node_id")
+        if not nid or now - (self.nodes.get(nid) or {}).get("last_seen_ms", 0) > STALE_AFTER_MS:
+            return "failed"
+        t = self._head_sent_t.get(pid)
+        if t is None or now - t > SYNC_ACK_TIMEOUT_MS:
+            return "failed"
+        return "waiting"
 
     def _refuse_unconfigured_gun(self, force: bool = False) -> None:
         """No whistle while a rostered player's gun has never taken THIS config AT ALL.
@@ -1562,6 +1603,7 @@ class Session:
             if nv is not None:
                 nv.pop("player_id", None)
         self.acks.pop(pid, None); self.bundles.pop(pid, None); self.trying.pop(pid, None); self.browsing.pop(pid, None)
+        self._head_sent_t.pop(pid, None)
         # ...and what their phone was TOLD. The last thing it heard from us is `stand_down`'s benched
         # `assign`, which is the opposite of holding the game -- so a STAND DOWN + PLAY that left the
         # tick standing handed the player back a green phone column for a phone last told to sit out.
@@ -1820,15 +1862,10 @@ class Session:
             raise ValueError("config must be an object")
         if not _from_preset and (set(patch) - {"environment", "night", "config_id"}):
             self.active_preset_id = None                     # any real edit means the draft is no longer that saved game
-        if self.phase == "recap" and not (isinstance(patch, dict) and patch.get("mode")):
-            # only an explicit MODE pick on Build (same mode = "run it back", or a new one) rolls the
-            # finished session forward; other config edits from stale tabs get a clear error instead
-            raise ValueError("match is over — pick a mode on Build (or press NEW MATCH) to roll the session; other config edits need a fresh session")
-        if self.phase == "recap":
-            # the match is OVER — a config change is the operator starting the next one (Tony,
-            # 2026-08-26: "i get an error bc match in progress, but MC knows its over"). Roll the
-            # session forward (roster kept, recap archived) instead of erroring.
-            self.new_session(keep_roster=True)
+        # The match is OVER: any config edit is the operator starting the next one. Tony, 2026-08-26:
+        # "i get an error bc match in progress, but MC knows its over". Tony, 2026-09-16, on the
+        # mode-only rule that followed: "why? just make a new one". Every edit rolls forward now.
+        self._roll_forward_from_recap()
         if self.phase not in ("muster", "build", "kit", "lobby"):
             raise ValueError("cannot change config after the match has started")
         mode = patch.get("mode", self.config["mode"])
@@ -2828,6 +2865,7 @@ class Session:
         if self.lobby_pushed:
             if p["player_id"] not in self.bundles:          # A5.6 late joiner hydrated on first hello
                 self.bundles[p["player_id"]] = self._compile_rolled(p)
+                self._head_sent_t[p["player_id"]] = self.now_ms()
                 self.acks.pop(p["player_id"], None)
             node["config"] = self._wire_config()
             node["frames"] = self.bundles[p["player_id"]]
@@ -3328,6 +3366,7 @@ class Session:
         seq = ev.get("seq")
         self._node_view(nid)["last_seen_ms"] = t_recv
         self._note_pool_life(nid, [ev])            # A36
+        self._ingest_retired(nid, [ev], t_recv)    # a late fact for the match the operator rolled past
         parked = bool(self.scorer and ev.get("match_id") != self.scorer.match_id) or not self.scorer
         self._log(nid, ev.get("type", "event"), ev, t_recv, seq=seq, parked=parked)
         if not parked and ev.get("type") == "respawn":
@@ -3346,6 +3385,7 @@ class Session:
     def ingest_batch(self, nid: str, events: list[Event], t_recv: int):
         self._node_view(nid)["last_seen_ms"] = t_recv
         self._note_pool_life(nid, events)          # A36
+        self._ingest_retired(nid, events, t_recv)  # a late fact for the match the operator rolled past
         for ev in events:
             self._log(nid, ev.get("type", "event"), ev, t_recv, seq=ev.get("seq"),
                       parked=not self.scorer or ev.get("match_id") != self.scorer.match_id)
@@ -3760,6 +3800,7 @@ class Session:
                 raise NotReadyError(
                     f"{len(not_ready)} of {len(self.players)} are not READY: {', '.join(not_ready)}",
                     not_ready, greens, len(self.players))
+        self._roll_forward_from_recap()        # leaving RECAP by the nav is starting the next match too
         self.phase = cast(Phase, phase)  # validated against PHASES above
         self._changed()
         return self.phase
@@ -4239,6 +4280,7 @@ class Session:
             raise ConflictError(_KIT_LOCKED_HOST.format(phase=self.phase.upper(), what="the frames"))
         bundle = self._compile_rolled(p)
         self.bundles[p["player_id"]] = bundle
+        self._head_sent_t[p["player_id"]] = self.now_ms()
         self.acks.pop(p["player_id"], None)
         # A36: a fresh head retires every judgement made about the old one. The ack above, the echo
         # that rode with it (derived from the ack, so it goes too) and the pool fault this gun earned
@@ -4404,6 +4446,9 @@ class Session:
         ⚠ NOT in ARMED or LIVE, and `force` does not open that door (`_refuse_push_in_play`).
         """
         self._refuse_push_in_play()       # before any side effect: a refused push must change nothing
+        # A push after the whistle is for the NEXT match. The roll is the one side effect that may come
+        # before a refusal below: the operator has already moved on, and the roll is what they asked for.
+        self._roll_forward_from_recap()
         self._pinned_hit_plan = None      # A17: a full re-push is the ONE place the hit-audio plan re-derives
         rd = self.readiness()
         if not self.players:
@@ -5068,8 +5113,8 @@ class Session:
         self.lobby_pushed = False
         # ...and the ANNOUNCED game goes with the pushed one. A finished match is not a loaded game:
         # the GAMES tab keys its ACTIVE GAME CONFIG state on `game_loaded`, so leaving it true would
-        # strand the operator on the last match's settings instead of the card picker, which is the
-        # documented play-again path (a MODE tap in `recap` rolls the session forward). RECALL is
+        # strand the operator on the last match's settings instead of the card picker. The next match
+        # starts from RECAP's NEXT MATCH, or from any GAMES action (`_roll_forward_from_recap`). RECALL is
         # deliberately NOT this: it returns the field to KIT with the same game still loaded.
         self.game_loaded = False
         self.game_cfg = None
@@ -5163,9 +5208,78 @@ class Session:
                     and self.nodes.get(p["node_id"] or "", {}).get("last_seen_ms", 0) < end_t]
         return {"settling": bool(awaiting), "awaiting": awaiting, "since_end_ms": now - end_t}
 
+    def _roll_forward_from_recap(self) -> bool:
+        """In RECAP, start the next match: roster kept, config kept (same mode and settings).
+
+        Tony, 2026-09-16: "why? just make a new one". MC rolls on the operator's FIRST action for the next
+        match (NEXT MATCH, a config edit, LOAD, a push, a phase move), never at the whistle itself. The
+        debrief keeps everything it reads while nobody has moved on, and a roll hides nothing that must
+        outlive it: `new_session` keeps the finished scorer for late facts and the A42 end watch."""
+        if self.phase != "recap":
+            return False
+        self.new_session(keep_roster=True)
+        return True
+
+    def next_match(self) -> dict:
+        """`POST /api/match/next`: RECAP's NEXT MATCH. Roll forward, then LOAD the same game, so the operator
+        lands on GAMES with the game loaded and one tap from KIT. LOAD's own rule (it never writes a gun,
+        and it keeps the operator on GAMES) is unchanged."""
+        if self.phase in ("armed", "live"):
+            raise ConflictError(f"the match is {self.phase.upper()} — END it before starting the next one")
+        self._roll_forward_from_recap()
+        return self.load_game()
+
+    def _retire_scorer(self) -> None:
+        """Keep the finished scorer for late facts, with every callback muted: a fact for an old match
+        must never cue a gun, write the new match's feed, raise an alert or end anything."""
+        sc = self.scorer
+        if sc is None:
+            return
+        sc.on_feed = lambda e: None
+        sc.on_alert = lambda kind, scope, extra: None
+        sc.on_feedback = lambda pid, body: None
+        sc.on_limit = lambda t: None
+        self._retired_scorer = sc
+
+    def _ingest_retired(self, nid: str, events: list[Event], t_recv: int) -> None:
+        """A late fact for the match the operator rolled past goes to THAT match's recap (2026-09-16).
+
+        The fact is already in the store under its own match_id (`_log`). This re-takes the finished
+        recap, rewrites its archive row (the RECAP history picker) and the A34 ledger (what a late phone
+        is told). The field is not re-told: every phone was sent the new match's `assign` at the roll.
+        A frag-cap END cannot move any more (A24/M2 `_reconcile_end` runs in RECAP only)."""
+        sc = self._retired_scorer
+        if sc is None or sc is self.scorer:
+            return
+        mid = sc.match_id
+        moved = False
+        for ev in events:
+            if isinstance(ev, dict) and ev.get("match_id") == mid:
+                moved = sc.ingest(nid, cast(Event, dict(ev)), t_recv, seq=ev.get("seq")) not in ("dup", "ignored", "parked") or moved
+        if not moved:
+            return
+        try:
+            recap = self._scorer_recap(sc)
+            if mid in self._ended:
+                self._ended[mid]["recap"] = recap
+            if self.store:
+                self.store.match_ended(mid, recap)
+        except Exception:
+            import logging
+            logging.getLogger("brx.mc").exception("late-fact re-store for a retired match failed (play continues)")
+        self._changed()
+
     def new_session(self, keep_roster: bool = True) -> None:
         if self.start_info and self.phase in ("armed", "live"):
             self._record_ended(self.start_info.get("match_id"), None, self._match_players)   # A34
+        # 2026-09-16: leaving a finished match with the roster kept is the NEXT MATCH, and the finished
+        # match is still being delivered: late facts (`_ingest_retired`), the A42 end watch and the A34
+        # re-tell ledger all carry across. A FRESH SESSION drops them, as before.
+        rolling = keep_roster and self.phase == "recap"
+        if rolling:
+            self._retire_scorer()
+        else:
+            self._retired_scorer = None
         self.session_id = uuid.uuid4().hex[:8]
         self.phase = "muster"
         self.start_info = None
@@ -5181,6 +5295,7 @@ class Session:
         self.game_sent = {}
         self.acks = {}
         self.bundles = {}
+        self._head_sent_t = {}
         # A36 — RECAP → NEXT MATCH is a DETERMINISTIC RESET. Nothing about the last game may be
         # carried into this one, and with `lobby_pushed` false above, `start()` refuses until a FULL
         # fresh head has been pushed to every gun (`_resend`'s config leg is gated on the same flag,
@@ -5202,8 +5317,14 @@ class Session:
         # A34: who we have already told to END. Never pruned and never cleared, an entry from the last
         # session could suppress a legitimate reconcile in this one -- and a phone still out on the field
         # holding the old match is exactly the case a NEW session is most likely to meet.
-        self._stale_told = {}
-        self._end_delivery, self._end_delivery_told = {}, None     # A42: a new session ends the last watch
+        #
+        # 2026-09-16: except on a roll. A roll can come seconds after the whistle, and clearing the ledger
+        # there would make the heartbeat re-tell and the A42 retry push in the same breath.
+        if not rolling:
+            self._stale_told = {}
+            # A42: a new session ends the last watch. A ROLL does not: `_schedule` ends it at the next
+            # START, the same as a match that never left RECAP, and the ~137 s ladder is often still going.
+            self._end_delivery, self._end_delivery_told = {}, None
         if keep_roster:
             for p in self.players.values():
                 p["ready"] = False

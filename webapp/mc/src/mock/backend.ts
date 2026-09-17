@@ -837,6 +837,7 @@ export class MockBackend implements Api {
    *  refusal is a 409 carrying WHO is not ready, so the console shows the server's list rather than
    *  its own guess — and the mock has to refuse the same way, or `?mock` proves nothing about it. */
   async setPhase(phase: string, force?: boolean) {
+    await this.rollFromRecap();          // leaving RECAP by the nav starts the next match (`state.py set_phase`)
     if (phase === 'lobby' && this.phase === 'kit' && !force) {
       const notReady = this.players.filter(p => !p.ready);
       if (notReady.length) {
@@ -930,19 +931,10 @@ export class MockBackend implements Api {
     // GAMES STEPPER, and that lock lives in `Games.tsx`, where it can explain itself. A mock stricter
     // than the server is the same defect in the other direction: a demo that refuses what the field
     // does every match.
-    // Round-2 fix pass (2026-09-12): RECAP is not a flat refusal on the real server. `state.py
-    // set_config` takes exactly ONE patch there — an explicit MODE — and rolls the finished session
-    // forward (`new_session(keep_roster=True)`, which lands in BUILD with the roster kept and the
-    // recap archived). That is the documented play-again path, and `?mock` has to predict it or the
-    // demo shows a console that cannot start the next match without throwing the roster away.
-    let rolled = false;
-    if (this.phase === 'recap') {
-      if (!partial.mode) {
-        throw Object.assign(new Error('match is over — pick a mode on Build (or press NEW MATCH) to roll the session; other config edits need a fresh session'), { status: 409 });
-      }
-      await this.newSession(true);
-      rolled = true;
-    }
+    // 2026-09-16: in RECAP, ANY config edit rolls the finished session forward (`state.py
+    // _roll_forward_from_recap`: roster kept, game kept, recap archived) and then applies. The old
+    // server took a MODE pick only; Tony: "why? just make a new one".
+    const rolled = await this.rollFromRecap();
     if (!(['muster', 'build', 'kit', 'lobby'] as Phase[]).includes(this.phase)) {
       throw Object.assign(new Error(`game settings are locked: the match is already in ${this.phase.toUpperCase()} — RECALL or END it first to edit the game again`), { status: 409 });
     }
@@ -1177,6 +1169,7 @@ export class MockBackend implements Api {
     if (this.phase === 'armed' || this.phase === 'live') {
       throw new Error('cannot load a game once the match has started — ABORT or RECALL first');
     }
+    await this.rollFromRecap();          // a LOAD after the whistle loads the NEXT match
     const cfg = this.config.config_id;
     this.gameLoaded = true;
     // DELIVERY: only a player whose phone is actually connected is counted. The demo ships one
@@ -1185,6 +1178,22 @@ export class MockBackend implements Api {
     if (this.phase === 'muster') this.phase = 'build';
     this.emit();
     return { ok: true, config_id: cfg, sent: Object.keys(this.gameSent).length, total: this.players.length };
+  }
+
+  /** `state.py _roll_forward_from_recap` — in RECAP only: roster and game kept, back to muster. */
+  private async rollFromRecap() {
+    if (this.phase !== 'recap') return false;
+    await this.newSession(true);
+    return true;
+  }
+  /** `state.py next_match` — RECAP's NEXT MATCH ▸: roll, then LOAD the same game (lands on GAMES). */
+  async nextMatch() {
+    if (this.phase === 'armed' || this.phase === 'live') {
+      throw Object.assign(new Error(`the match is ${this.phase.toUpperCase()} — END it before starting the next one`), { status: 409 });
+    }
+    await this.rollFromRecap();
+    await this.loadGame();
+    return this.state();
   }
 
   /** `state.py sync_summary()` — the four pre-arm facts per player, with honest denominators. */
@@ -1197,7 +1206,13 @@ export class MockBackend implements Api {
       // the mock has no compiled bundles; a real push is what configures a gun, and its ack is the
       // proof of it, so both halves are read off the same push the demo models.
       gun_sent: this.pushed,
-      gun_acked: !!(this.acks[p.player_id]?.ok) && this.acks[p.player_id]?.config_id === cur,
+      gun_acked: this.pushed && !!(this.acks[p.player_id]?.ok) && this.acks[p.player_id]?.config_id === cur,
+      // `state.py _sync_ack_state`. The mock acks at the push itself, so `waiting` only shows for a
+      // bound phone with no ack yet; there is no timeout to model.
+      ack_state: (!this.pushed ? 'none'
+        : this.acks[p.player_id]?.ok && this.acks[p.player_id]?.config_id === cur ? 'acked'
+        : !p.node_id || this.acks[p.player_id]?.config_id === cur ? 'failed'
+        : 'waiting') as 'acked' | 'waiting' | 'failed' | 'none',
       // mirrors `state.py _echo_state`: NULL when there is no check to report at all (nothing pushed,
       // or no ack for THIS config). A demo that reported `not_echoed` there would be inventing a
       // check that never ran, which is what the console must never render.
@@ -1219,6 +1234,7 @@ export class MockBackend implements Api {
   }
 
   async pushLobby(force?: boolean) {
+    await this.rollFromRecap();          // a push after the whistle is for the NEXT match
     const rf = this.rosterFault();
     if (rf) throw new Error(rf);          // round-2 B: not a readiness judgement, so `force` does not open it
     // A37: the three A36 proofs all SAY "RE-PUSH" and are cured by this very call, so they do not
