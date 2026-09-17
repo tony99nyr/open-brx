@@ -533,25 +533,25 @@ async function runMock(browser, viteBase, vp, tag) {
   await audit(pg, 'main', `${tag} ARMORY`);
 
   // F129, and only on a phone: the LOGS tap above left a toast in the command bar, and the match is
-  // over, so NEW MATCH is beside it. They used to share one nowrap row and the toast took the width:
-  // "NEW MATCH ▸" wrapped onto three lines, a 72px button (measured 2026-09-12). The toast has its
+  // over, so NEW SESSION is beside it. They used to share one nowrap row and the toast took the width:
+  // "NEW SESSION ▸" wrapped onto three lines, a 72px button (measured 2026-09-12). The toast has its
   // own row under the bar now. Measured with a toast ON SCREEN — that is the whole condition.
   if (vp.width < 500) {
     const cb = await pg.evaluate(() => {
       const group = document.querySelector('header .cb-notices');
       const toast = group && (group.textContent || '').trim() ? group : null;   // the group is always there; a TOAST is not
-      const btn = [...document.querySelectorAll('header button')].find(b => /NEW MATCH/.test(b.textContent || ''));
+      const btn = [...document.querySelectorAll('header button')].find(b => /NEW SESSION/.test(b.textContent || ''));
       if (!toast || !btn) return { toast: !!toast, btn: !!btn };
       const t = toast.getBoundingClientRect(), b = btn.getBoundingClientRect();
       return { toast: true, btn: true, h: Math.round(b.height), w: Math.round(b.width),
                ownRow: Math.round(t.bottom) <= Math.round(b.top) + 2 || Math.round(b.bottom) <= Math.round(t.top) + 2,
                text: (toast.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40) };
     });
-    expect(cb.toast && cb.btn, `the walk has both a toast and NEW MATCH on screen (toast ${cb.toast}, button ${cb.btn})`);
+    expect(cb.toast && cb.btn, `the walk has both a toast and NEW SESSION on screen (toast ${cb.toast}, button ${cb.btn})`);
     if (cb.toast && cb.btn) {
-      expect(cb.h <= 56, `NEW MATCH stays one line beside a toast (${cb.h}px tall, ${cb.w}px wide)`);
+      expect(cb.h <= 56, `NEW SESSION stays one line beside a toast (${cb.h}px tall, ${cb.w}px wide)`);
       expect(cb.ownRow, 'and the toast is on a row of its own, not squeezing it');
-      ok(`F129 toast row: NEW MATCH ${cb.h}px with "${cb.text}…" above it   ${await shot(pg, `07-${tag}-toast-row`)}`);
+      ok(`F129 toast row: NEW SESSION ${cb.h}px with "${cb.text}…" above it   ${await shot(pg, `07-${tag}-toast-row`)}`);
     }
 
     // the KIT roster becomes a horizontal strip on a phone, and its status tag used to be pushed

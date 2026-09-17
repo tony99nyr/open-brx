@@ -416,6 +416,10 @@ class Session:
         # flushes late still owes that match its facts, and they must reach its recap and archive row,
         # never the new match. Replaced by the next roll, dropped by a FRESH SESSION.
         self._retired_scorer: Scorer | None = None
+        # F206 (2026-09-16): the station rows the retired match ended with, frozen at `_finish`.
+        # `_ingest_retired` must recap the OLD match with these, not the CURRENT (next match's)
+        # stations -- `_recap_stations()` reads `self.stations`, which has moved on by then.
+        self._retired_stations: list[RecapStationRow] | None = None
         # F124: a frag cap reached while a BATCH is being scored waits for the batch (`ingest_batch`), so
         # the recap is snapshotted from every fact in it and not from the half the cap interrupted.
         self._batch_depth = 0
@@ -458,6 +462,8 @@ class Session:
         # the operator can re-team a player during recap, and a late flush would then replay the
         # finished match on the new teams. Frozen at `_schedule` and again at the whistle.
         self._match_players: dict[str, Player] | None = None
+        # F206: the station rows frozen at `_finish` for the match that just ended (see `_scorer_recap`).
+        self._match_stations: list[RecapStationRow] | None = None
         # A25 background log sync. `options` is the session option table (`PUT /api/options`);
         # `_log_match` is the match_id of the LAST match that ended, and `_log_done` the match whose log
         # each node has finished delivering -- the pair is the whole "did this node's log ever arrive?"
@@ -2511,15 +2517,19 @@ class Session:
     def stations_view(self) -> list[StationView]:
         return [self._station_view(nid) for nid in sorted(self.stations)]
 
-    def _scorer_recap(self, sc: Scorer) -> RecapView:
+    def _scorer_recap(self, sc: Scorer, stations: list[RecapStationRow] | None = None) -> RecapView:
         """THE recap: the scorer's sheet plus the stations rows (A6). Every call site goes through here -- the
         late-fact re-store (`_restore_recap`) used to call `scorer.recap()` bare, so the first fact after END
         (the outbox flush, i.e. the normal case) silently dropped `stations` from `last_recap` and the DB row
         (polish review 2026-09-11).
 
         The scorer is PASSED, not read off `self`: all three callers already hold a non-None one, and
-        naming it here is what makes that visible (there is no recap without a scorer)."""
-        return sc.recap(stations=self._recap_stations())
+        naming it here is what makes that visible (there is no recap without a scorer).
+
+        `stations` lets a caller pass FROZEN rows for a match that is no longer current (F206) --
+        `self._recap_stations()` always reads the CURRENT stations, which is wrong once a later
+        match has started."""
+        return sc.recap(stations=stations if stations is not None else self._recap_stations())
 
     def _recap_stations(self) -> list[RecapStationRow]:
         """Roadmap A6: a stations row for the recap sheet, one per ASSIGNED station, from its own
@@ -5103,7 +5113,11 @@ class Session:
         # A24/M2: the roster as the field WORE it at the whistle -- mid-match re-teams included, recap
         # edits excluded. Everything `_replay` re-derives is measured against this copy.
         self._match_players = {pid: p.copy() for pid, p in self.players.items()}
-        self.last_recap = self._scorer_recap(self.scorer) if self.scorer else None
+        # F206: freeze the station rows HERE, at the whistle -- a late fact for THIS match must recap
+        # against what the stations reported at end of match, not whatever the NEXT match's stations
+        # say by the time that late fact lands (`_ingest_retired`).
+        self._match_stations = self._recap_stations() if self.scorer else None
+        self.last_recap = self._scorer_recap(self.scorer, self._match_stations) if self.scorer else None
         self._record_ended(self._log_match, self.last_recap, self._match_players)   # A34: what a late phone is told
         # A42: watch for every bound HUD to confirm this end. Here rather than only in `_broadcast_control`
         # because the TIMED end pushes no `control` at all — every phone ends on its own clock — and that
@@ -5252,6 +5266,7 @@ class Session:
         sc.on_feedback = lambda pid, body: None
         sc.on_limit = lambda t: None
         self._retired_scorer = sc
+        self._retired_stations = self._match_stations   # F206: this match's frozen rows, not the next one's
 
     def _ingest_retired(self, nid: str, events: list[Event], t_recv: int) -> None:
         """A late fact for the match the operator rolled past goes to THAT match's recap (2026-09-16).
@@ -5271,7 +5286,7 @@ class Session:
         if not moved:
             return
         try:
-            recap = self._scorer_recap(sc)
+            recap = self._scorer_recap(sc, self._retired_stations)
             if mid in self._ended:
                 self._ended[mid]["recap"] = recap
             if self.store:
@@ -5292,6 +5307,7 @@ class Session:
             self._retire_scorer()
         else:
             self._retired_scorer = None
+            self._retired_stations = None
         self.session_id = uuid.uuid4().hex[:8]
         self.phase = "muster"
         self.start_info = None

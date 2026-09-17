@@ -157,13 +157,13 @@ describe('PRE-ARM CHECK — the verdict can never be greener than the rows benea
   it('a phone that never took this game is not "IN SYNC", however happy the gun columns are', async () => {
     // `totals.in_sync` is computed server-side from the GUN columns ALONE (`state.py sync_summary`:
     // gun_sent and gun_acked), so this fixture — every gun pushed and acked, one phone that never
-    // took the game — made the panel print "IN SYNC — EVERY GUN HAS THIS CONFIG" in green directly
+    // took the game — made the panel print "IN SYNC: EVERY GUN HAS THIS CONFIG" in green directly
     // above a row rendering PHONE ✕. LOAD split those two halves; a verdict that only reads one of
     // them is the `(0/8)` false reassurance in a new place.
     const v = await lobby(syncOf([row(), row({ player_id: 'p2', display: 'DRIFT', phone_game: false })]));
     const verdict = v.q('[data-testid="pre-arm-verdict"]')!;
     expect(verdict.textContent, `saw ${JSON.stringify(verdict.textContent)}`).not.toMatch(/IN SYNC/);
-    expect(verdict.textContent).toBe('1 OF 2 PLAYERS NEEDS ACTION — SEE BELOW');
+    expect(verdict.textContent).toBe('1 OF 2 PLAYERS NEEDS ACTION: SEE BELOW');
     expect(v.all('[data-testid="pre-arm-row"]').length, 'and the row it is about is listed').toBe(1);
     v.m.unmount();
   });
@@ -354,7 +354,7 @@ describe('PRE-ARM CHECK — nothing loaded is not broken, and waiting is not fai
     const bad = v.q('[data-testid="pre-arm-summary"] [data-col="ack"] [data-mark="fail"]');
     expect(bad, 'the failed ack is a red cross').toBeTruthy();
     expect(bad!.style.color).toBe(rgb(T.bad));
-    expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).toBe('1 OF 2 PLAYERS NEEDS ACTION — SEE BELOW');
+    expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).toBe('1 OF 2 PLAYERS NEEDS ACTION: SEE BELOW');
     v.m.unmount();
   });
 
@@ -364,7 +364,7 @@ describe('PRE-ARM CHECK — nothing loaded is not broken, and waiting is not fai
     const v = await lobby(syncOf(rows), { lobby: { ready: 0, total: 2, pushed: false, acks: {} } } as unknown as Partial<State>);
     const panel = v.q('[data-testid="pre-arm-summary"]')!;
     expect(v.q('[data-testid="pre-arm-counts"]')!.textContent).toContain('GUNS PUSHED0/2');
-    expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).toBe('EVERY PHONE HAS THE GAME — GUNS ARE CONFIGURED AT THE PUSH');
+    expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).toBe('EVERY PHONE HAS THE GAME: GUNS ARE CONFIGURED AT THE PUSH');
     expect(panel.querySelectorAll('[data-mark="fail"]').length).toBe(0);
     await act(async () => { v.q('[data-testid="pre-arm-toggle"]')!.click(); });
     expect(panel.querySelectorAll('[data-col="push"] [data-mark="wait"]').length).toBe(2);
@@ -374,7 +374,7 @@ describe('PRE-ARM CHECK — nothing loaded is not broken, and waiting is not fai
   it('the headline never says "not configured" beside a count that says pushed', async () => {
     const v = await lobby(syncOf(benchRows()), { lobby: { ready: 0, total: 2, pushed: false, acks: {} } } as unknown as Partial<State>);
     expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).not.toMatch(/NOT CONFIGURED/);
-    expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).toBe('2 OF 2 PLAYERS NEED ACTION — SEE BELOW');
+    expect(v.q('[data-testid="pre-arm-verdict"]')!.textContent).toBe('2 OF 2 PLAYERS NEED ACTION: SEE BELOW');
     v.m.unmount();
   });
 });

@@ -189,7 +189,7 @@ export function PreArmSummary({ style }: { style?: React.CSSProperties }) {
   const { state } = useStore();
   const [showAll, setShowAll] = useState(false);
   // F-7's watched viewport. Four fixed 92 px columns leave almost nothing for the instruction at
-  // 393 px, and "Phone was not reachable at LOAD — LOAD again from GAMES" wrapped to seven lines of
+  // 393 px, and "Phone was not reachable at LOAD: LOAD again from GAMES" wrapped to seven lines of
   // one or two words (int-n1, from the phone-width screenshots): the single line the operator needs
   // fastest, rendered slowest to read. Under 480 px it gets a full-width row of its own.
   const narrow = useNarrow();
@@ -225,14 +225,14 @@ export function PreArmSummary({ style }: { style?: React.CSSProperties }) {
   // the rule the old verdict broke: "GUNS NOT CONFIGURED YET" sat beside GUNS PUSHED 2/2.
   const allClear = rows.length > 0 && pushed && fails.length === 0 && acking.length === 0;
   const verdict = rows.length === 0
-    ? 'NOBODY IS ROSTERED — NOTHING TO CHECK'
+    ? 'NOBODY IS ROSTERED: NOTHING TO CHECK'
     : fails.length > 0
-      ? `${fails.length} OF ${rows.length} PLAYER${rows.length === 1 ? '' : 'S'} NEED${fails.length === 1 ? 'S' : ''} ACTION — SEE BELOW`
+      ? `${fails.length} OF ${rows.length} PLAYER${rows.length === 1 ? '' : 'S'} NEED${fails.length === 1 ? 'S' : ''} ACTION: SEE BELOW`
       : !pushed
-        ? 'EVERY PHONE HAS THE GAME — GUNS ARE CONFIGURED AT THE PUSH'
+        ? 'EVERY PHONE HAS THE GAME: GUNS ARE CONFIGURED AT THE PUSH'
         : acking.length > 0
           ? `WAITING FOR ${acking.length} OF ${rows.length} GUN${rows.length === 1 ? '' : 'S'} TO CONFIRM`
-          : 'IN SYNC — EVERY GUN HAS THIS CONFIG, EVERY PHONE HAS THIS GAME';
+          : 'IN SYNC: EVERY GUN HAS THIS CONFIG, EVERY PHONE HAS THIS GAME';
   const tone = allClear ? T.ok : fails.length > 0 ? T.warn : T.micro;
 
   return (
@@ -278,11 +278,11 @@ export function PreArmSummary({ style }: { style?: React.CSSProperties }) {
           {shown.map(({ r, m }) => {
             // ONE instruction per row, the first thing that is actually wrong — an operator reading
             // four cures at once does none of them. A row that is only WAITING says so, neutrally.
-            const todo = m.phone === 'fail' && !r.bound ? 'No phone bound — switch it on and bind it, or STAND DOWN'
-              : m.phone === 'fail' ? 'Phone was not reachable at LOAD — LOAD again from GAMES'
-              : m.push === 'fail' ? 'Gun has no head yet — PUSH CONFIG below'
-              : m.ack === 'fail' ? 'Gun has not confirmed this config — RE-PUSH CONFIG below'
-              : m.echo === 'fail' ? 'Gun answered with another weapon — RE-PUSH CONFIG below'
+            const todo = m.phone === 'fail' && !r.bound ? 'No phone bound: switch it on and bind it, or STAND DOWN'
+              : m.phone === 'fail' ? 'Phone was not reachable at LOAD: LOAD again from GAMES'
+              : m.push === 'fail' ? 'Gun has no head yet: PUSH CONFIG below'
+              : m.ack === 'fail' ? 'Gun has not confirmed this config: RE-PUSH CONFIG below'
+              : m.echo === 'fail' ? 'Gun answered with another weapon: RE-PUSH CONFIG below'
               : '';
             const note = todo ? '' : !pushed ? 'Guns are configured at the push' : m.ack === 'wait' ? 'Waiting for the gun to confirm' : 'Ready';
             return (
@@ -297,8 +297,8 @@ export function PreArmSummary({ style }: { style?: React.CSSProperties }) {
                 {/* PUSHED is a fact about what MC WROTE, never about what the gun took — ACKED is the
                     only proof of that, so a green here beside a waiting mark there is a real and
                     common state, not a contradiction. */}
-                <span data-col="push" style={{ width: 92, textAlign: 'center' }}><Cell mark={m.push} title={m.push === 'wait' ? 'Not pushed yet: guns are configured at the push' : "MC compiled this config's head and pushed it for this player — not a claim the gun took it (see ACKED)"} /></span>
-                <span data-col="ack" style={{ width: 92, textAlign: 'center' }}><Cell mark={m.ack} title={m.ack === 'wait' ? 'No answer yet — not a fault' : m.ack === 'fail' ? 'The gun refused this config, its phone is offline, or it never answered' : 'The gun answered for THIS config_id'} /></span>
+                <span data-col="push" style={{ width: 92, textAlign: 'center' }}><Cell mark={m.push} title={m.push === 'wait' ? 'Not pushed yet: guns are configured at the push' : "MC compiled this config's head and pushed it for this player, not a claim the gun took it (see ACKED)"} /></span>
+                <span data-col="ack" style={{ width: 92, textAlign: 'center' }}><Cell mark={m.ack} title={m.ack === 'wait' ? 'No answer yet, not a fault' : m.ack === 'fail' ? 'The gun refused this config, its phone is offline, or it never answered' : 'The gun answered for THIS config_id'} /></span>
                 <span data-col="echo" style={{ width: 92, textAlign: 'center' }}>
                   {/* A37: only a MISMATCH is a fault here. `not_echoed` is the ordinary answer on our
                       v4.32 units, and `null` is the server saying the check DID NOT RUN at all

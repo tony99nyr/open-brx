@@ -150,7 +150,7 @@ describe('F151 / round-2 — the GAMES lock is SPLIT the way the server splits i
 
   it('RECAP is not locked: no banner, LOAD is live, and a mode pick rolls the session', async () => {
     // 2026-09-16 (Tony: "why? just make a new one"): the banner "THIS MATCH ENDED — PICK A MODE TO
-    // START THE NEXT ONE, OR NEW MATCH (TOP RIGHT)" is gone. Any GAMES action after the whistle rolls
+    // START THE NEXT ONE, OR NEW SESSION (TOP RIGHT)" is gone. Any GAMES action after the whistle rolls
     // the finished session forward (`state.py _roll_forward_from_recap`) and works on the next match.
     const g = await games('recap');
     const before = await g.backend.getState();

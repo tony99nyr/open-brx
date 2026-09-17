@@ -184,7 +184,7 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone }:
           {locked && (
             <div role="alert" data-testid="game-edit-locked" style={{ font: F.chk(700, 12), letterSpacing: '.08em', lineHeight: 1.5,
                                                                        color: T.warn, background: 'rgba(255,176,32,.08)', border: `1px solid ${T.warn}`, padding: '9px 12px' }}>
-              {`▲ THE MATCH IS ${state.phase.toUpperCase()} — MC REFUSES CONFIG EDITS ONCE IT HAS STARTED. RECALL FIRST, THEN EDIT.`}
+              {`▲ THE MATCH IS ${state.phase.toUpperCase()}. MC REFUSES CONFIG EDITS ONCE IT HAS STARTED. RECALL FIRST, THEN EDIT.`}
             </div>
           )}
           {/* A real `disabled`, not a tap that quietly does nothing (ui-build-verify): every control

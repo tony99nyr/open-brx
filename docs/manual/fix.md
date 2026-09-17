@@ -198,7 +198,9 @@ When the gun fires but nothing lands, nothing is heard, or nothing lasts.
 4. **Wrong indoor/outdoor mode?** → During the gun's native configuration step, at power-on,
    press ALT quickly in succession to toggle it. The setting survives power cycles. Outdoor mode
    roughly doubled aim tolerance on three guns, while native shots reached
-   about 200 ft in both states. The field test found no emitted-range change.
+   about 200 ft in both states. The field test found no emitted-range change. Check which mode
+   is currently set by watching the headset LEDs on a hit: dim green hit LEDs and lit RGB LEDs
+   mean indoor, full-brightness green hit LEDs mean outdoor.
 5. **Is the scope sighted?** → Boot in target mode (hold LEFT at power-on: yellow team, 0 damage,
    unlimited ammo). Direct hits flash the target green. Sight indoors at ~20 ft and outdoors at
    ~300 ft. Snipers want 300–400 ft; shotgun and SMG want 50–100 ft.

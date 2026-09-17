@@ -414,7 +414,7 @@ describe('the RECAP selection and its export error', () => {
     await m.click('· FFA');
     expect(m.text()).toContain('ARCHIVED MATCH');
 
-    // NEW MATCH: the session is rebuilt, the history is empty, and the phase moves — which is what
+    // NEW SESSION: the session is rebuilt, the history is empty, and the phase moves — which is what
     // re-runs the fetch. The selection now points at a match the server no longer lists.
     rows = [archived('m8', 'tdm')];        // m7 is gone; m8 remains so the picker still shows
     await m.update(render('muster'));

@@ -82,8 +82,8 @@ export function CommandBar() {
           })}
         </nav>
         {/* THE TOASTS, in a row of their own. They used to share the nowrap row below with the phase
-            tag, NEW MATCH and the menu, so at 393px a notice took the width and squeezed
-            "NEW MATCH ▸" onto three lines — a 72px button, measured (round-2 review 2026-09-12).
+            tag, NEW SESSION and the menu, so at 393px a notice took the width and squeezed
+            "NEW SESSION ▸" onto three lines — a 72px button, measured (round-2 review 2026-09-12).
             `.cb-notices` keeps them inline on a desk and gives them a full-width row under the bar on
             a phone; the controls beside them wrap rather than compress. */}
         <div className="cb-notices">
@@ -130,7 +130,7 @@ export function CommandBar() {
             </span>
           )}
           {state?.phase === 'recap' && (
-            <PrimaryButton size={12} onClick={async () => { const ok = await run(() => api.newSession(true)); if (ok !== undefined) setView('muster'); }}>NEW MATCH ▸</PrimaryButton>
+            <PrimaryButton size={12} onClick={async () => { const ok = await run(() => api.newSession(true)); if (ok !== undefined) setView('muster'); }}>NEW SESSION ▸</PrimaryButton>
           )}
 
           {/* One button instead of a red hazard control and a wall of telemetry (Tony, 2026-09-02):

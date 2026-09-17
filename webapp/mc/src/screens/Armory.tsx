@@ -327,7 +327,7 @@ function GunCard({ g }: { g: ReadinessRow }) {
         </div>
       ) : (
       <div style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: '6px 10px', alignItems: 'center' }}>
-        <Micro>GUN</Micro><span><Val color={stale ? T.warn : g.gun_linked ? T.ink : g.gun_linked === false ? T.bad : T.micro}>{stale ? `UNKNOWN — LAST DATA ${fmtAge(age ?? 0)} AGO` : g.gun_linked ? 'LINKED' : g.gun_linked === false ? 'LINK LOST' : '—'}</Val>
+        <Micro>GUN</Micro><span><Val color={stale ? T.warn : g.gun_linked ? T.ink : g.gun_linked === false ? T.bad : T.micro}>{stale ? `UNKNOWN: LAST DATA ${fmtAge(age ?? 0)} AGO` : g.gun_linked ? 'LINKED' : g.gun_linked === false ? 'LINK LOST' : '—'}</Val>
           {/* F208: grey information beside the link state, never a warning and never on a stale card */}
           {!stale && poolStaleLabel(g.pool_stale, g.pool_stale_ms) && <span data-gun-silent={g.player_id} title="The phone says this gun's health and ammo readout may be out of date."
             style={{ marginLeft: 8, font: F.mono(500, 10), letterSpacing: '.08em', color: T.micro }}>{poolStaleLabel(g.pool_stale, g.pool_stale_ms)}</span>}</span>

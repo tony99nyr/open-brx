@@ -188,18 +188,22 @@ export function Games() {
   // where the control went (a real `fieldset disabled`, plus a guard, never a tap that does nothing).
   const venueInert = locked || editing;
   const venueChips = (
-    <fieldset disabled={venueInert} style={{ border: 'none', margin: 0, padding: 0 }}>
-      <div role="group" aria-label="venue" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, padding: '6px 12px', border: `1px solid ${T.line}`, background: T.panelDeep, opacity: venueInert ? 0.5 : 1 }}>
-        <span style={{ font: F.mono(600, 10), letterSpacing: '.24em', color: T.dim }}>VENUE</span>
-        <Seg value={cfg.environment} options={[{ value: 'indoor', label: 'INDOOR' }, { value: 'outdoor', label: 'OUTDOOR' }]} onChange={v => { if (!venueInert) run(() => api.putConfig({ environment: v })); }} pad="9px 14px" />
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: F.chk(600, 11), letterSpacing: '.14em', color: cfg.night ? T.ink : T.dim }}>NIGHT OPS <Toggle on={cfg.night} onChange={v => { if (!venueInert) run(() => api.putConfig({ night: v })); }} label="night ops" /></span>
-        {editing && <span data-testid="venue-in-draft" style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.warn }}>IN THE DRAFT BELOW</span>}
-        {/* F162 (revised 2026-09-16): this is a NUMBER MC sends and a PHYSICAL switch on every gun
-            that MC cannot reach, so a quiet link to the how-to sits right on the control that raises
-            the question, not a dismissable banner nagging every screen, see ui/VenueModeReminder. */}
-        <VenueModeManualLink />
-      </div>
-    </fieldset>
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+      <fieldset disabled={venueInert} style={{ border: 'none', margin: 0, padding: 0 }}>
+        <div role="group" aria-label="venue" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, padding: '6px 12px', border: `1px solid ${T.line}`, background: T.panelDeep, opacity: venueInert ? 0.5 : 1 }}>
+          <span style={{ font: F.mono(600, 10), letterSpacing: '.24em', color: T.dim }}>VENUE</span>
+          <Seg value={cfg.environment} options={[{ value: 'indoor', label: 'INDOOR' }, { value: 'outdoor', label: 'OUTDOOR' }]} onChange={v => { if (!venueInert) run(() => api.putConfig({ environment: v })); }} pad="9px 14px" />
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: F.chk(600, 11), letterSpacing: '.14em', color: cfg.night ? T.ink : T.dim }}>NIGHT OPS <Toggle on={cfg.night} onChange={v => { if (!venueInert) run(() => api.putConfig({ night: v })); }} label="night ops" /></span>
+          {editing && <span data-testid="venue-in-draft" style={{ font: F.mono(500, 11), letterSpacing: '.1em', color: T.warn }}>IN THE DRAFT BELOW</span>}
+        </div>
+      </fieldset>
+      {/* F162 (revised 2026-09-16): this is a NUMBER MC sends and a PHYSICAL switch on every gun
+          that MC cannot reach, so a quiet link to the how-to sits right beside the control that raises
+          the question, not a dismissable banner nagging every screen, see ui/VenueModeReminder.
+          Kept OUTSIDE the fieldset above: the link works whether or not venue itself is editable right
+          now (F-review 2026-09-16), so it must not fade into the disabled group. */}
+      <VenueModeManualLink />
+    </div>
   );
 
   const errorsAndWarnings = (

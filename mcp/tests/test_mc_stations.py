@@ -545,6 +545,36 @@ def test_a_late_fact_after_end_keeps_the_stations_rows_in_the_recap():
     assert s.last_recap.get("stations") == [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1, "heard": True, "revives": 2}], s.last_recap.get("stations")
 
 
+def test_a_late_fact_after_a_roll_keeps_match_1s_stations_not_match_2s():
+    """F206 (review 2026-09-16): `_ingest_retired` re-took match 1's recap with `_scorer_recap`, which
+    reads `self.stations` LIVE. Once the operator rolled to match 2 and the station heartbeat moved on,
+    a late match-1 fact rewrote match 1's archive row with match 2's station report. The rows must be
+    frozen at `_finish` and reused for a retired scorer."""
+    s = _joined(_sess(respawn={"type": "scanner", "delay_s": 15}))
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 1})
+    s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False,
+                                     "role": "utility", "kind": "respawn", "station_id": 1, "armed": True,
+                                     "revives": 2}, s.now_ms())
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    mid1 = s.scorer.match_id
+    p = next(pl for pl in s.players.values() if pl.get("node_id"))
+    t_kill = s.now_ms()
+    s.control("end")
+    assert s.last_recap["stations"][0]["revives"] == 2, "CONTROL: match 1 ended on 2 revives"
+    s.next_match()   # roll forward, roster + game kept, match 1 retired
+    # match 2's station heartbeat moves on to a different count
+    s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False,
+                                     "role": "utility", "kind": "respawn", "station_id": 1, "armed": True,
+                                     "revives": 9}, s.now_ms())
+    # a fact for match 1, flushed late from the phone's outbox
+    s.net.simulate_event(p["node_id"], {"type": "hit_taken", "shooter_num": 0, "shooter_team": 0, "dmg": 9,
+                                        "t": t_kill, "match_id": mid1}, s.now_ms())
+    rows = s._ended[mid1]["recap"]["stations"]
+    assert rows == [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1, "heard": True, "revives": 2}], rows
+
+
 def test_a_player_phone_that_rehellos_as_utility_is_unbound_like_an_evict():
     """F106(c) + polish review: the re-hello unbound `node_player` but left `ready` and the ack, so kit->lobby
     could advance on a phone that had become a station."""

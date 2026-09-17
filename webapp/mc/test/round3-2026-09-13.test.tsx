@@ -52,7 +52,7 @@ describe('UX-1 — the recap advertises the play-again path (NEXT MATCH since 20
   it('a refused NEXT MATCH stays on the recap and does not navigate', async () => {
     const d = await demo();
     const state: State = { ...d.state, phase: 'recap', recap: RECAP };
-    const nextMatch = vi.fn(async () => { throw new Error('THIS MC PREDATES NEXT MATCH — RESTART IT, OR USE NEW MATCH (TOP RIGHT)'); });
+    const nextMatch = vi.fn(async () => { throw new Error('THIS MC PREDATES NEXT MATCH: RESTART IT, OR USE NEW SESSION (TOP RIGHT)'); });
     const m = await mountWithView(<Recap />, { ...d, state, view: 'recap', api: { nextMatch } });
     await act(async () => { (m.find('[data-testid="recap-next-match"] button')[0] as HTMLButtonElement).click(); });
     expect(m.views).not.toContain('build');

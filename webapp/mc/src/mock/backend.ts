@@ -1195,7 +1195,7 @@ export class MockBackend implements Api {
   /** `state.py next_match` — RECAP's NEXT MATCH ▸: roll, then LOAD the same game (lands on GAMES). */
   async nextMatch() {
     if (this.phase === 'armed' || this.phase === 'live') {
-      throw Object.assign(new Error(`the match is ${this.phase.toUpperCase()} — END it before starting the next one`), { status: 409 });
+      throw Object.assign(new Error(`the match is ${this.phase.toUpperCase()}: END it before starting the next one`), { status: 409 });
     }
     await this.rollFromRecap();
     await this.loadGame();

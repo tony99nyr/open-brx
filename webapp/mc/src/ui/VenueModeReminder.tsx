@@ -21,8 +21,9 @@ export function VenueModeManualLink({ style }: { style?: React.CSSProperties }) 
     <a data-testid="venue-mode-manual-link" href={MANUAL_ALT_MODE_URL} target="_blank" rel="noopener"
       className="hov-acc"
       title="How to set the gun's own indoor/outdoor mode, opens the manual in a new tab"
-      style={{ font: F.chk(600, 10.5), letterSpacing: '.08em', color: T.dim, textDecoration: 'none',
-               whiteSpace: 'nowrap', ...style }}>
+      aria-label="How to set the gun's mode (opens in a new tab)"
+      style={{ font: F.chk(600, 11), letterSpacing: '.08em', color: T.dim, textDecoration: 'none',
+               whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', minHeight: 44, ...style }}>
       HOW TO SET THE GUN'S MODE ↗
     </a>
   );

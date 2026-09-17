@@ -235,7 +235,7 @@ export function Recap() {
           {/* 2026-09-16 (Tony: "why? just make a new one"): the primary action starts the next match with
               the roster AND the game kept (`POST /api/match/next`: roll forward, then LOAD the same
               game) and lands on GAMES, which is where LOAD always leaves the operator: the loaded game
-              on screen, EDIT beside it, CONTINUE TO KIT one tap away. NEW MATCH (top right) is still
+              on screen, EDIT beside it, CONTINUE TO KIT one tap away. NEW SESSION (top right) is still
               there for a clean muster. Disabled in flight: a double-tap on a slow LAN fired twice. */}
           {!past && <span data-testid="recap-next-match"><PrimaryButton size={13} disabled={starting} onClick={async () => {
             if (starting) return;

@@ -169,7 +169,7 @@ describe('S25 · the spectator board', () => {
     // a stranger will touch it, and the operator will not be standing there.
     const clickable = m.find('button, a[href], input, [role="button"]');
     expect(clickable.map(c => (c.textContent ?? '').trim()).join(' | ')).toBe('');
-    expect(m.text()).not.toMatch(/END MATCH|RECALL|PANIC|ABORT|NEW MATCH/);
+    expect(m.text()).not.toMatch(/END MATCH|RECALL|PANIC|ABORT|NEW SESSION/);
     m.unmount();
   });
 
