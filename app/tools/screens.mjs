@@ -1677,6 +1677,78 @@ await step('press feedback: a locked (disabled) loadout tab never shows pressed'
   must(!/tap-press/.test(cls), 'a locked loadout tab must never show pressed feedback: ' + cls);
 });
 
+// ---------- Bench 2026-09-16: READY UP must turn clearly green, and only on the CONFIRMED state ----------
+// Tony's bench report: pressing READY only changed the label. `st.ready` (hud.js) is already set by
+// `engine.setReady`, which refuses a tap while the clock is unsynced or the player is benched/wrong
+// phase — so it is the CONFIRMED state, not the raw tap. These steps prove the green treatment tracks
+// that flag, an `aria-pressed` mirror exists for it, and a refused tap never shows green.
+await step('ready control: READY UP is not green before the player readies', async () => {
+  const pg = await open(VIEWS[0], 'kitted');
+  const r = await pg.evaluate(() => {
+    const btn = document.querySelector('.lobby .ready[data-act="onReady"]');
+    return { text: btn.textContent.trim(), off: btn.classList.contains('off'), pressed: btn.getAttribute('aria-pressed') };
+  });
+  await pg.close();
+  must(r.text === 'READY UP', 'label: ' + r.text);
+  must(r.off, 'READY UP must wear the not-ready (grey) treatment before the tap');
+  must(r.pressed === 'false', 'aria-pressed must read false before the player readies: ' + r.pressed);
+});
+await step('ready control: READY turns solid --ok green once the engine confirms it', async () => {
+  const pg = await open(VIEWS[0], 'kitted-ready');
+  const r = await pg.evaluate(() => {
+    const btn = document.querySelector('.lobby .ready[data-act="onReady"]');
+    const probe = document.createElement('div'); probe.style.background = 'var(--ok)'; document.body.appendChild(probe);
+    const ok = getComputedStyle(probe).backgroundColor; probe.remove();
+    return { text: btn.textContent.trim(), off: btn.classList.contains('off'), pressed: btn.getAttribute('aria-pressed'), bg: getComputedStyle(btn).backgroundColor, ok };
+  });
+  await pg.close();
+  must(r.text === 'READY ✓', 'label: ' + r.text);
+  must(!r.off, 'a confirmed ready must drop the grey .off treatment');
+  must(r.bg === r.ok, `confirmed READY must paint the --ok token, got ${r.bg} vs token ${r.ok}`);
+  must(r.pressed === 'true', 'aria-pressed must read true once the engine confirms ready: ' + r.pressed);
+});
+await step('ready control: a tap the engine refuses (clock not synced) never turns the button green', async () => {
+  const pg = await open(VIEWS[0], 'kitted');
+  await pg.evaluate(() => { window.brx.engine.isSynced = () => false; });   // A38-style guard: setReady must refuse this tap
+  await pg.click('.lobby .ready[data-act="onReady"]');
+  await pg.waitForTimeout(300);
+  const r = await pg.evaluate(() => {
+    const btn = document.querySelector('.lobby .ready[data-act="onReady"]');
+    return { text: btn.textContent.trim(), off: btn.classList.contains('off'), pressed: btn.getAttribute('aria-pressed'), confirmed: window.brx.engine.state().ready };
+  });
+  await pg.close();
+  must(!r.confirmed, 'engine.ready flipped true despite the sync guard refusing the tap');
+  must(r.off, 'a refused ready must stay in the not-ready (grey) treatment: ' + JSON.stringify(r));
+  must(r.text === 'READY UP', 'label must not claim ready after a refused tap: ' + r.text);
+  must(r.pressed === 'false', 'aria-pressed must stay false after a refused tap: ' + r.pressed);
+});
+await step('ready control: a READY player in the pushed LOBBY sees a green READY, not a grey STANDING BY', async () => {
+  const pg = await open(VIEWS[0], 'lobby-ready');
+  const r = await pg.evaluate(() => {
+    const btn = document.querySelector('.lobby .ready.wait');
+    const probe = document.createElement('div'); probe.style.background = 'var(--ok)'; document.body.appendChild(probe);
+    const ok = getComputedStyle(probe).backgroundColor; probe.remove();
+    return { ready: window.brx.engine.state().ready, has: !!btn, text: btn && btn.textContent.trim(), on: btn && btn.classList.contains('on'),
+             bg: btn && getComputedStyle(btn).backgroundColor, ok, over: btn && btn.scrollWidth > btn.clientWidth + 1 };
+  });
+  await pg.close();
+  must(r.ready, 'fixture: the lobby stage state is not a ready player: ' + JSON.stringify(r));
+  must(r.has, 'no STANDING BY control in the pushed lobby');
+  must(/READY \u2713/.test(r.text), 'a ready player in the lobby must read READY: ' + r.text);
+  must(r.on && r.bg === r.ok, `a ready player in the lobby must paint --ok, got ${r.bg} vs ${r.ok}`);
+  must(!r.over, 'the READY label overflows its button');
+});
+await step('ready control: pressed feedback (.tap-press) still works on READY UP', async () => {
+  const pg = await open(VIEWS[0], 'kitted');
+  const sel = '.lobby .ready[data-act="onReady"]';
+  const cls = async () => pg.evaluate(s => document.querySelector(s).className, sel);
+  await pg.locator(sel).dispatchEvent('pointerdown', { pointerId: 1, bubbles: true });
+  must(/tap-press/.test(await cls()), 'pointerdown did not press READY UP: ' + await cls());
+  await pg.locator(sel).dispatchEvent('pointerup', { pointerId: 1, bubbles: true });
+  must(!/tap-press/.test(await cls()), 'pointerup did not clear READY UP');
+  await pg.close();
+});
+
 await b.close(); srv.close();
 console.log(`\n${pass} passed, ${fail} failed${fail ? ': ' + errs.join(', ') : ''}`);
 process.exit(fail ? 1 : 0);

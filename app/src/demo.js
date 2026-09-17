@@ -296,6 +296,8 @@ export function startDemo({ engine, log }) {
       'loadout-perk-conflict': [[0, 'twoWeapons'], ...kitted, [400, () => ev.openLoadout('perk')], [700, () => ev.tap('.lrow[data-arg="perk:easy_reload"]')]],   // first tap = the warning
       'tryout':            [...kitted, [400, () => ev.tryout('smg')]],
       'lobby':             lobby,
+      // Bench 2026-09-16: readied up in the kit, then the host pushed the lobby (the state Tony saw grey).
+      'lobby-ready':       [...kitted, [400, () => ev.ready(true)], [700, 'config']],
       // A27/A30 (loadout.md §4.4): the host pushed the lobby while this player was still in the rack.
       'lobby-kit-locked':  [...kitted, [400, () => ev.openLoadout('primary')], [700, 'config']],
       // A38 x A39 (T2 integration): benched from the kit screen, and benched out of a pushed LOBBY —

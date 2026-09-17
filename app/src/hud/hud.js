@@ -448,7 +448,11 @@ export class Hud {
       foot = `<div class="setup"><div class="pulse"><i></i><i></i><i></i></div><div class="in"><div class="t">SITTING OUT — the host puts you back</div><div class="s">Nothing to do for now. Your tagger is STILL LIVE — it can fire, and it can be tagged. The host puts you back in.</div></div></div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, 'kitted')}</div>`;
     } else if (mode === 'kitted') {
-      foot = `${lead}<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓' : 'READY UP'}</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
+      // Bench 2026-09-16: "only the label changes" — `st.ready` already IS the confirmed state (a tap
+      // only sets it once `setReady` clears the standby/phase/clock-sync guards, engine.js), so the
+      // green treatment below tracks the same flag; `aria-pressed` says so explicitly, for a11y and so
+      // a test can read the confirmed state without parsing a colour.
+      foot = `${lead}<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady" aria-pressed="${!!st.ready}"><span class="unskew">${st.ready ? 'READY ✓' : 'READY UP'}</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>${st.game ? '<button class="briefbtn" data-act="onBriefing"><span class="unskew">▤ BRIEFING</span></button>' : ''}`;
     } else if (mode === 'over') {
       // F117: this is the one control gating the next match and it read as a status line — declarative label,
@@ -457,7 +461,7 @@ export class Hud {
       // The note is `_readyNote`, the same one the kitted screen renders and patches: `setReady` REFUSES while
       // the clock is unsynced, and the hard-coded note said nothing about it — the one control gating the next
       // match went dead with no explanation on screen.
-      foot = `<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady"><span class="unskew">${st.ready ? 'READY ✓' : 'READY FOR NEXT MATCH ▸'}</span></button><div class="note" id="readynote">${this._readyNote(st, 'over')}</div>`;
+      foot = `<button class="ready ${st.ready ? '' : 'off'}" data-act="onReady" aria-pressed="${!!st.ready}"><span class="unskew">${st.ready ? 'READY ✓' : 'READY FOR NEXT MATCH ▸'}</span></button><div class="note" id="readynote">${this._readyNote(st, 'over')}</div>`;
       // A24 (game test D3: "let players get back to results after OK · maybe a match history"). The outcome word
       // is printed here ONLY out of `st.result` — with no result the line simply does not carry one.
       const rw = st.result ? (OUTCOME_WORD[st.result.outcome] || null) : null;
@@ -469,10 +473,12 @@ export class Hud {
       // player whose kit-out window ended (a push or re-push that landed) before they ever hit READY
       // UP, this is the only door left. Same control, same note the kitted screen uses; a player who
       // is already `ready` still reads STANDING BY below, unchanged.
-      foot = `${lead}<button class="ready off" data-act="onReady"><span class="unskew">READY UP</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
+      foot = `${lead}<button class="ready off" data-act="onReady" aria-pressed="false"><span class="unskew">READY UP</span></button><div class="note" id="readynote">${this._readyNote(st)}</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     } else {
-      foot = `${lead}<button class="ready wait"><span class="unskew">STANDING BY</span></button><div class="note">${st.kitLocked ? 'The plates above are what you take in. Waiting for the host to start the countdown.' : 'Loadout is on the gun. Waiting for the host to start the countdown.'}</div>`;
+      // Bench 2026-09-16: a READY player in the lobby fell through to this grey STANDING BY button, so readying
+      // up only changed the label. A confirmed `st.ready` now wears the green `.ready.wait.on` and says READY.
+      foot = `${lead}<button class="ready wait${st.ready ? ' on' : ''}" aria-pressed="${!!st.ready}"><span class="unskew">${st.ready ? 'READY ✓ · STANDING BY' : 'STANDING BY'}</span></button><div class="note">${st.kitLocked ? 'The plates above are what you take in. Waiting for the host to start the countdown.' : 'Loadout is on the gun. Waiting for the host to start the countdown.'}</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     }
     return `<div class="lobby"><div class="scan"></div><div class="edgeglow"></div>
