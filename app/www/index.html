@@ -105,10 +105,17 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .ammo .nums{display:flex;align-items:baseline;gap:8px}
 .ammo .mag{font-family:var(--fd);font-style:italic;font-weight:700;font-size:84px;line-height:.8;text-shadow:0 0 24px color-mix(in srgb,var(--glow) 50%,transparent)}
 .ammo .mag.warn{color:var(--warn);text-shadow:0 0 24px rgba(255,176,32,.6)}
-.ammo .res{font-family:var(--fd);font-weight:600;font-size:26px;color:var(--mut)}
+.ammo .res{font-family:var(--fd);font-weight:600;font-size:26px;color:var(--mut);display:flex;align-items:center}
 .pips{display:flex;gap:4px}
-.pips i{width:8px;height:20px;background:var(--num);transform:skewX(-14deg)}
-.pips i.spent{opacity:.25}.pips i.warn{background:var(--warn)}
+/* `> i`, not `i`: this styles the discrete bullet pips only (direct children of #pips). A descendant
+   `.pips i` also matched the ammo/energy bar's OWN fill `<i>` two levels down (`.pips > .bar > i`) at equal
+   specificity, and — being later in the stylesheet — won, forcing that fill to a fixed 20px box-border-box
+   height instead of the `height:100%` `.bar > i` gives it. Since its container's content-box (after the
+   frame's own border+padding) is only 14px tall, the fill overflowed the frame by ~3px at the bottom
+   (bench 2026-09-17, Tony: "the segment pips do not fit inside the energy bar"). Scoping to a direct child
+   fixes both the energy bar AND the big-mag ammo bar the same bug quietly broke. */
+.pips > i{width:8px;height:20px;background:var(--num);transform:skewX(-14deg)}
+.pips > i.spent{opacity:.25}.pips > i.warn{background:var(--warn)}
 /* Bench 2026-09-17: past AMMO_PIP_MAX (hud.js) rounds no longer read as individual bullets, so the
    gauge becomes one continuous bar instead — the exact count is still the digits beside it. */
 .pips .bar.ammo{height:20px;width:180px;transform:skewX(-14deg)}
@@ -119,6 +126,25 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .pips .bar.energy{height:20px;width:180px;transform:skewX(-14deg);border-color:var(--glow)}
 .pips .bar.energy>i{background:repeating-linear-gradient(90deg,var(--glow) 0 18px,transparent 18px 22px);box-shadow:0 0 10px color-mix(in srgb,var(--glow) 55%,transparent)}
 .pips .bar.energy.warn>i{background:repeating-linear-gradient(90deg,var(--warn) 0 18px,transparent 18px 22px);box-shadow:0 0 10px rgba(255,176,32,.6)}
+/* Bench 2026-09-17: "25% /80" read as a percentage beside a round count on a weapon with no rounds. An
+   energy weapon's `#res` now holds one pill per FULL spare cell, plus a dimmer half-filled pill for a part
+   cell (hud.js `_resText`) — never digits. A bullet weapon is untouched: `#res` stays plain `/reserve` text. */
+.res .cells{display:flex;gap:3px}
+.res .cells .cell{width:10px;height:16px;background:var(--glow);border:1px solid color-mix(in srgb,var(--glow) 60%,transparent);box-shadow:0 0 6px color-mix(in srgb,var(--glow) 45%,transparent)}
+.res .cells .cell.partial{background:linear-gradient(90deg,var(--glow) 0 50%,transparent 50% 100%);box-shadow:none;opacity:.7}
+/* Bench 2026-09-17 (match 592e444eff): the build-up bar for a weapon that heats, shown only once heat > 0
+   has been seen this life (hud.js `_heatBar`/`heatEverSeen`) — a weapon that never heats never draws one. */
+.heat{height:5px;width:140px;background:var(--plate2);border:1px solid var(--edge);margin-top:2px}
+.heat>i{display:block;height:100%;background:var(--num);width:0;transition:width .1s}
+.heat.hot>i{background:var(--bad);box-shadow:0 0 8px rgba(255,60,60,.6)}
+/* The full-frame OVERHEAT takeover (Tony: large and unmissable, but never over the vitals/ammo readout —
+   both live in the bottom corners, this sits high, and is translucent besides). `pointer-events:none`
+   throughout: it must never block a tap. `#frame *{animation:none!important}` under prefers-reduced-motion
+   (line ~346) already gives this a static glow for free — nothing extra to write here for that. */
+.heatvig{position:absolute;inset:0;box-shadow:inset 0 0 170px -20px rgba(255,120,20,.55);animation:heatpulse 1.1s infinite;pointer-events:none}
+.heatword{position:absolute;left:50%;top:26%;transform:translate(-50%,-50%);font-family:var(--fd);font-style:italic;font-weight:700;font-size:40px;letter-spacing:.3em;color:var(--warn);text-shadow:0 0 30px rgba(255,140,20,.7);pointer-events:none;animation:heatpulse 1.1s infinite;white-space:nowrap}
+@keyframes heatpulse{0%,100%{opacity:.78}50%{opacity:1}}
+.reload.hot{background:var(--bad);color:#fff}
 /* Field 2026-08-30: at 11px muted this was unreadable at a glance and Tony could not tell which
    weapon was equipped. It is primary information, so it is sized like primary information. */
 .ammo .wn{font-family:var(--fd);font-weight:700;font-size:24px;letter-spacing:.14em;color:var(--ink);display:flex;align-items:baseline;gap:8px;text-shadow:0 0 16px color-mix(in srgb,var(--glow) 35%,transparent)}
@@ -145,7 +171,28 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 /* ============ night ============ */
 [data-env="night"] .clockplate{border:0;background:none;top:28px}
 [data-env="night"] .clockplate .t{font-size:22px;font-weight:600;color:var(--mut);text-shadow:none}
-[data-env="night"] .clockplate .m,[data-env="night"] .ident,[data-env="night"] .topright,[data-env="night"] .reticle,[data-env="night"] .pips,[data-env="night"] .firevig,[data-env="night"] .takingfire{display:none}
+[data-env="night"] .clockplate .m,[data-env="night"] .ident,[data-env="night"] .topright,[data-env="night"] .reticle,[data-env="night"] .firevig,[data-env="night"] .takingfire{display:none}
+/* Bench 2026-09-17: `.pips` itself must NOT go with the list above — it is also the ammo/energy bar's
+   container, and the bar has to keep reading at night (Tony). Only the discrete bullet-pip `<i>` children
+   declutter; a `.bar` (ammo or energy) inside `.pips` is a direct child `<div>`, never matched by `> i`. */
+[data-env="night"] .pips > i{display:none}
+/* The bar's own night look: flat like the HP/armor strips (no skew, no border-box frame), but it keeps its
+   own colour coding (glow/num, not health) so it never reads as a vitals bar. Selectors here out-specify
+   the day rules (`[data-env="night"]` + 3 classes) so nothing is left to an accidental cascade order. */
+[data-env="night"] .pips .bar.ammo,[data-env="night"] .pips .bar.energy{height:6px;width:140px;transform:none;border:0;padding:0;background:#120505}
+[data-env="night"] .pips .bar.ammo>i,[data-env="night"] .pips .bar.energy>i{background:var(--num);box-shadow:none}
+[data-env="night"] .pips .bar.ammo.warn>i,[data-env="night"] .pips .bar.energy.warn>i{background:var(--warn)}
+/* The reserve pills and the heat bar read the same dim palette as everything else at night — no glow bloom. */
+[data-env="night"] .res .cells .cell{background:var(--num);border-color:var(--num);box-shadow:none}
+[data-env="night"] .res .cells .cell.partial{background:linear-gradient(90deg,var(--num) 0 50%,transparent 50% 100%)}
+[data-env="night"] .heat{border-color:var(--edge)}
+[data-env="night"] .heat>i{background:var(--num);box-shadow:none}
+[data-env="night"] .heat.hot>i{background:var(--num);box-shadow:none}
+/* The OVERHEAT takeover stays VISIBLE at night (unlike `.firevig`, which night just turns off) but drops to
+   the dim night palette — no bright flash, and (matching the "light discipline" rule already applied to
+   `.swapping .big` above) no pulse either: a pulsing glow would locate the player from a distance. */
+[data-env="night"] .heatvig{box-shadow:inset 0 0 70px -10px var(--num);animation:none}
+[data-env="night"] .heatword{color:var(--num);text-shadow:none;font-size:22px;animation:none}
 /* night ops strips the chrome, but which gun you are holding is not chrome — keep it, unlit */
 [data-env="night"] .ammo .wn{font-size:17px;color:var(--num);text-shadow:none}
 [data-env="night"] .ammo .wn .slot{display:none}

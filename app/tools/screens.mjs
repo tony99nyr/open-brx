@@ -1928,12 +1928,12 @@ await step('ready control: the inert STANDING BY button is marked aria-disabled,
 // ENERGY replace a reload prompt that would lie once the reserve is also empty. Drives the live engine
 // directly (`window.brx.engine`, the same handle `demo.js`'s own stage harness uses) so a real weapon's
 // real magazine size is on screen — the `live` stage's golden bundle only ever spawns an assault rifle. ----------
-const setAmmo = (pg, weaponId, slot, mag, reserve, ammo) => pg.evaluate(({ weaponId, slot, mag, reserve, ammo }) => {
+const setAmmo = (pg, weaponId, slot, mag, reserve, ammo, heat = 0) => pg.evaluate(({ weaponId, slot, mag, reserve, ammo, heat }) => {
   const e = window.brx.engine;
   e.player.loadout.weapons[slot] = { weapon_id: weaponId };
   e.frames.spawn = e.frames.spawn.map(f => f.startsWith(`$AMMO,${slot},`) ? `$AMMO,${slot},${mag},${reserve},1,*` : f);
-  e.feedFrame(`$ALCD,${ammo},100,${slot},${reserve},0,*`);
-}, { weaponId, slot, mag, reserve, ammo });
+  e.feedFrame(`$ALCD,${ammo},100,${slot},${reserve},${heat},*`);
+}, { weaponId, slot, mag, reserve, ammo, heat });
 const gaugeState = pg => pg.evaluate(() => ({
   pips: document.querySelectorAll('#pips > i').length,
   lit: document.querySelectorAll('#pips > i:not(.spent)').length,
@@ -2013,6 +2013,145 @@ await step('ammo prompt se: an energy weapon with reserve left reads RECHARGE, n
   const r = await gaugeState(pg);
   must(/^RECHARGE/.test(r.prompt || ''), `an energy weapon at 0 with reserve must read RECHARGE, got ${JSON.stringify(r.prompt)}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-energy-recharge.png` });
+  await pg.close();
+});
+
+// ---------- energy gauge layout + reserve pills (bench 2026-09-17, Tony -- real charge rifle, 40-round
+// energy cell, 80 in reserve). The cell overflowed its own frame, and "25% /80" mixed a percentage with a
+// round count on a weapon that has no rounds. ----------
+const energyBox = pg => pg.evaluate(() => {
+  const frame = document.querySelector('.pips .bar.energy'); const fill = frame ? frame.querySelector('i') : null;
+  const r = el => el ? el.getBoundingClientRect() : null;
+  return { frame: r(frame), fill: r(fill), resHtml: (document.getElementById('res') || {}).innerHTML || '',
+    resText: (document.getElementById('res') || {}).textContent || '', cells: document.querySelectorAll('#res .cell').length,
+    fullCells: document.querySelectorAll('#res .cell:not(.partial)').length, partialCells: document.querySelectorAll('#res .cell.partial').length };
+});
+for (const view of VIEWS) {
+  await step(`${view.name} energy gauge: the segmented cell sits inside its own frame`, async () => {
+    const pg = await open(view, 'live');
+    await setAmmo(pg, 'charge_rifle', 0, 40, 80, 25); await pg.waitForTimeout(400);
+    const r = await energyBox(pg);
+    must(r.frame && r.fill, `no energy bar rendered: ${JSON.stringify(r)}`);
+    const pad = 0.5;   // sub-pixel rounding only — a real overflow measured ~2.4-3px at se (bench 2026-09-17)
+    must(r.fill.top >= r.frame.top - pad && r.fill.bottom <= r.frame.bottom + pad,
+      `the segment fill must sit inside the frame's own box, not overflow it: frame ${JSON.stringify(r.frame)} fill ${JSON.stringify(r.fill)}`);
+    await pg.screenshot({ path: `${OUT}/${view.name}-energy-frame-fit.png` });
+    await pg.close();
+  });
+}
+await step('energy reserve se: 40/80 (a 40-round cell, 2 spares) shows exactly 2 full pills and no "/80" text', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 40); await pg.waitForTimeout(400);
+  const r = await energyBox(pg);
+  must(r.cells === 2 && r.fullCells === 2 && r.partialCells === 0, `40/80 must show 2 full pills, none partial: ${JSON.stringify(r)}`);
+  must(!/\/\s*80/.test(r.resText) && !/\d/.test(r.resText), `#res must carry no digits at all for an energy weapon, got text ${JSON.stringify(r.resText)} (html ${r.resHtml})`);
+  await pg.screenshot({ path: `${OUT}/se-energy-reserve-2full.png` });
+  await pg.close();
+});
+await step('energy reserve se: 40/60 shows 1 full pill plus 1 partial pill', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 60, 40); await pg.waitForTimeout(400);
+  const r = await energyBox(pg);
+  must(r.cells === 2 && r.fullCells === 1 && r.partialCells === 1, `40/60 must show 1 full pill + 1 partial: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-energy-reserve-1full1partial.png` });
+  await pg.close();
+});
+await step('energy reserve se: reserve 0 shows no pills at all (OUT OF ENERGY already says it)', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 0, 0); await pg.waitForTimeout(400);
+  const r = await energyBox(pg);
+  must(r.cells === 0, `reserve 0 must show zero pills: ${JSON.stringify(r)}`);
+  const prompt = await pg.evaluate(() => (document.querySelector('.ammo .reload .unskew') || {}).textContent || null);
+  must(prompt === 'OUT OF ENERGY', `reserve 0 / mag 0 must still read OUT OF ENERGY: ${prompt}`);
+  await pg.screenshot({ path: `${OUT}/se-energy-reserve-zero.png` });
+  await pg.close();
+});
+await step('ammo reserve se: a bullet weapon still shows plain "/reserve" text, never pills', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'burst_rifle', 0, 36, 216, 30); await pg.waitForTimeout(400);
+  const r = await energyBox(pg);
+  must(r.cells === 0, `a bullet weapon must never show cell pills: ${JSON.stringify(r)}`);
+  must(r.resText === '/216', `a bullet weapon's #res must read plain "/reserve", got ${JSON.stringify(r.resText)}`);
+  await pg.close();
+});
+for (const view of VIEWS) {
+  await step(`${view.name} energy gauge night: the bar and reserve pills still read at night, no overflow with a long weapon name`, async () => {
+    const pg = await open(view, 'live', '&night');
+    await setAmmo(pg, 'energy_rifle', 0, 300, 600, 150); await pg.waitForTimeout(400);
+    const r = await pg.evaluate(() => {
+      const frame = document.querySelector('.pips .bar.energy');
+      const cs = frame ? getComputedStyle(frame) : null;
+      return { visible: !!frame && cs.display !== 'none' && cs.visibility !== 'hidden', cells: document.querySelectorAll('#res .cell').length, wn: (document.querySelector('.ammo .wn') || {}).textContent };
+    });
+    must(r.visible, `the energy bar must still render at night: ${JSON.stringify(r)}`);
+    must(r.cells === 2, `night must not change the pill count (600/300 = 2 full): ${JSON.stringify(r)}`);
+    const bad = await invariants(pg); must(bad.length === 0, bad.join(' ; '));
+    await pg.screenshot({ path: `${OUT}/${view.name}-energy-night.png` });
+    await pg.close();
+  });
+}
+
+// ---------- weapon heat + OVERHEAT (bench 2026-09-17, match 592e444eff: a charge rifle locked out past
+// heat 100 and the HUD said nothing at all). ----------
+const heatState = pg => pg.evaluate(() => {
+  const bar = document.getElementById('heat'); const vig = document.querySelector('.heatvig'); const word = document.querySelector('.heatword');
+  return { barPresent: !!bar, barHot: !!(bar && bar.classList.contains('hot')), barWidth: bar ? bar.querySelector('i').style.width : null,
+    overlay: !!vig, word: word ? word.textContent : null, prompt: (document.querySelector('.ammo .reload .unskew') || {}).textContent || null,
+    pointerEvents: vig ? getComputedStyle(vig).pointerEvents : null };
+});
+await step('heat bar se: a weapon that has never heated draws no heat bar', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'assault_rifle', 0, 32, 192, 32, 0); await pg.waitForTimeout(400);
+  const r = await heatState(pg);
+  must(!r.barPresent, `a weapon at heat 0 that has never heated must show no heat bar: ${JSON.stringify(r)}`);
+  await pg.close();
+});
+await step('heat bar se: heat rising shows the bar tracking the level, below the lockout it is not OVERHEAT yet', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 30, 55); await pg.waitForTimeout(400);
+  const r = await heatState(pg);
+  must(r.barPresent && !r.barHot && r.barWidth === '55%', `heat 55 must show the bar at 55%, not hot: ${JSON.stringify(r)}`);
+  must(r.prompt !== 'OVERHEAT', `heat 55 (under the lockout) must not say OVERHEAT: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-heat-rising.png` });
+  await pg.close();
+});
+for (const [view, tag] of [[VIEWS[1], 'se'], [VIEWS[0], 'pixel']]) {
+  for (const night of [false, true]) {
+    await step(`${tag} OVERHEAT ${night ? 'night' : 'day'}: heat past the lockout shows the prompt and the full-frame overlay, vitals stay visible, no taps blocked`, async () => {
+      const pg = await open(view, 'live', night ? '&night' : '');
+      await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108); await pg.waitForTimeout(400);
+      const r = await heatState(pg);
+      must(r.barPresent && r.barHot, `heat 108 must show the heat bar, hot: ${JSON.stringify(r)}`);
+      must(r.overlay && r.word === 'OVERHEAT', `heat 108 must show the full-frame OVERHEAT overlay: ${JSON.stringify(r)}`);
+      must(r.prompt === 'OVERHEAT', `heat 108 must show the OVERHEAT prompt in place of RECHARGE: ${JSON.stringify(r)}`);
+      must(r.pointerEvents === 'none', `the overlay must never block a tap: pointer-events ${r.pointerEvents}`);
+      const boxes = await pg.evaluate(() => {
+        const rect = el => el ? el.getBoundingClientRect() : null;
+        return { hp: rect(document.getElementById('hp')), sh: rect(document.getElementById('sh')), mag: rect(document.getElementById('mag')),
+          hpVisible: document.getElementById('hp') ? getComputedStyle(document.getElementById('hp')).visibility !== 'hidden' : false,
+          // a tap over HP must still hit something in the vitals column, not the pointer-events:none overlay
+          hitsVitals: (() => { const hp = document.getElementById('hp'); if (!hp) return null; const b = hp.getBoundingClientRect();
+            const el = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return !!(el && (el === hp || hp.contains(el) || el.closest('.vitals'))); })() };
+      });
+      must(boxes.hp && boxes.sh && boxes.hpVisible, `HP/armor must stay visible under the overlay: ${JSON.stringify(boxes)}`);
+      must(boxes.hitsVitals, `a tap over the vitals must still land on the vitals, not be intercepted by the overlay: ${JSON.stringify(boxes)}`);
+      const bad = await invariants(pg); must(bad.length === 0, bad.join(' ; '));
+      await pg.screenshot({ path: `${OUT}/${tag}-overheat-${night ? 'night' : 'day'}.png` });
+      await pg.close();
+    });
+  }
+}
+await step('heat bar se: heat falls back under the lockout and the OVERHEAT state clears', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 108); await pg.waitForTimeout(400);
+  let r = await heatState(pg);
+  must(r.overlay && r.prompt === 'OVERHEAT', `pre-condition: must start overheating: ${JSON.stringify(r)}`);
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 3, 0); await pg.waitForTimeout(400);   // the gun's own next $ALCD after a reload/cooldown reports heat 0
+  r = await heatState(pg);
+  must(!r.overlay, `heat back to 0 must clear the full-frame overlay: ${JSON.stringify(r)}`);
+  must(r.prompt !== 'OVERHEAT', `heat back to 0 must clear the OVERHEAT prompt: ${JSON.stringify(r)}`);
+  must(r.barPresent && !r.barHot && r.barWidth === '0%', `the heat bar itself stays (this weapon has heated before) but reads empty and not hot: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-heat-cleared.png` });
   await pg.close();
 });
 

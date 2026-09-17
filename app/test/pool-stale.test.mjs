@@ -82,6 +82,25 @@ test('F208 not stale: a dead player pulling the trigger owes no shot', () => {
   assert.equal(h.stale(), null);
 });
 
+test('F208 not stale (match 592e444eff, bench 2026-09-17): OVERHEAT-locked pulls owe no shot', () => {
+  // The 02dd94 log: heat rose 55 -> 108 across five shots, then ten $BUT pulls with no $ALCD at all --
+  // and the engine still logged "gun not firing... the pool is stale" at pull 3, a false positive. The
+  // gun refusing to fire past HEAT_LOCKOUT is the mechanic working, not a stale pool.
+  const h = harness();
+  h.f('$ALCD,3,100,0,192,108,*');
+  assert.equal(h.eng.state().overheating, true, 'setup: overheating');
+  for (let i = 0; i < 5; i++) h.dryPull();
+  assert.equal(h.stale(), null, 'overheat-locked pulls must never book a stale pool');
+  assert.equal(h.eng._noFirePulls, 0, 'and must never even be counted towards it');
+  h.f('$ALCD,3,100,0,192,0,*');                          // the gun cools (or a reload clears heat)
+  assert.equal(h.eng.state().overheating, false, 'setup: cooled');
+  h.dryPull(); h.dryPull();
+  assert.equal(h.stale(), null, 'two unanswered pulls, cooled, are not yet a claim');
+  h.dryPull();
+  const s = h.stale();
+  assert.equal(s && s.why, 'no_fire', 'once cooled, three REAL unanswered pulls still book stale -- the exemption must not leak past the lockout');
+});
+
 test('F208 stale (no_fire): the 2026-09-13 replay, pulls and a $VOLTS but no shot', () => {
   const h = harness();
   h.adv(30000);

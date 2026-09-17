@@ -277,6 +277,7 @@ export class Hud {
     this.frame.dataset.env = st.night ? 'night' : '';
     const sig = [st.phase, st.alive, !!st.killedBy, st.night, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
       st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.reserve === 0, (st.mag || 0) > AMMO_PIP_MAX, st.battery != null && st.battery <= 15,
+      st.overheating, st.heatEverSeen,   // bench 2026-09-17: OVERHEAT prompt/overlay and the heat bar's existence are structural, not patched in place
       st.kills > 0, st.deaths > 0, st.assists > 0, accShown(st) != null, st.reserve != null, this.scan.length, st.bleUp, st.ended, this.bluetoothOn,
       this.discovered && this.discovered.url,   // Polish-loop pass 1: the discovered-MC row on the pre-join screen (`_joinConfirm` only touches the diag panel, patched directly, not here)
       st.rejoin, !!st.pendingTeardown, this.sync && this.sync.bound, this.sync && this.sync.pending,
@@ -914,11 +915,13 @@ export class Hud {
     // would need that count added to the node's state before it could say so honestly.
     const outOfAmmo = !!(st.alive && st.ammo === 0 && st.reserve === 0);
     const energy = isEnergyWeapon(st.weaponId);
+    const overheating = !!(st.alive && st.overheating);
     const [nm] = splitGun(st.gun);
     const stat = (k, v) => `<span>${k}<b class="${v == null ? 'mut' : ''}" id="st-${k}">${v == null ? '—' : v}</b></span>`;
     const kb = st.killedBy ? `` : '';
     return `<div class="alive"><div class="scan"></div><div class="edgeglow"></div><div class="strip l"></div><div class="strip r"></div>
       ${low ? '<div class="firevig"></div>' : ''}
+      ${overheating ? '<div class="heatvig"></div><div class="heatword">OVERHEAT</div>' : ''}
       <div class="clockplate"><div class="in"><span class="t tab" id="clock">${mmss(st.clockMs)}</span><span class="m">${esc(st.mode)}</span></div></div>
       <div class="ident"><span class="arrow"></span><span class="cs">${esc(st.callsign || nm)}</span><span class="sq">${esc(st.teamName)} SQUAD</span></div>
       <div class="topright"><span class="link"><span id="linkdot" class="dot ${st.bleUp ? '' : 'off'}"></span><span id="linklab">${st.bleUp ? 'GUN' : 'NO GUN'}</span></span><button class="link mclink" data-act="onToggleMcPill" aria-label="Mission Control link"><span id="mcdot" class="dot ${st.wsState === 'bound' ? '' : 'ws'}"></span>MC</button>
@@ -930,9 +933,11 @@ export class Hud {
         <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${Math.round(100 * st.hp / st.maxHp)}%"></i></div>
         <div class="bar armor"><i id="shbar" style="width:${Math.round(100 * st.armor / st.maxArmor)}%"></i></div></div>
       <div class="ammo">${outOfAmmo ? `<span class="reload out solid"><span class="unskew">${energy ? 'OUT OF ENERGY' : 'OUT OF AMMO'}</span></span>`
+          : overheating ? `<span class="reload hot solid"><span class="unskew">OVERHEAT</span></span>`
           : lowMag ? `<span class="reload ${st.ammo === 0 ? 'solid' : ''}"><span class="unskew">${energy ? 'RECHARGE ▸▸' : 'RELOAD ▸▸'}</span></span>` : ''}
-        <div class="nums"><span class="mag tab ${lowMag ? 'warn' : ''}" id="mag">${magText(st)}</span><span class="res tab" id="res">/${st.reserve != null ? st.reserve : '—'}</span></div>
+        <div class="nums"><span class="mag tab ${lowMag ? 'warn' : ''}" id="mag">${magText(st)}</span><span class="res tab" id="res">${this._resText(st)}</span></div>
         <div class="pips" id="pips">${this._pips(st)}</div>
+        ${this._heatBar(st)}
         <span class="wn"><span class="slot">${st.activeSlot ? 'SECONDARY' : 'PRIMARY'}</span>${esc(st.weapon)}</span></div>
       <div class="nightlab">NIGHT OPS</div>${kb}</div>`;
   }
@@ -987,6 +992,29 @@ export class Hud {
     if (cap == null || cap < 2) return false;
     const mine = (bd && Array.isArray(bd.teams)) ? bd.teams.find(t => t && String(t.team_id == null ? '' : t.team_id).toLowerCase() === st.teamKey) : null;
     return [num(mine && mine.score), num(st.kills)].some(v => v != null && v >= cap - 1 && v < cap);
+  }
+  /** Bench 2026-09-17 (Tony): "25% /80" made no sense -- a percentage beside a reserve in ROUNDS, on a
+   *  weapon with no rounds. A bullet weapon keeps `/reserve`; an energy weapon gets one pill per FULL spare
+   *  cell (floor(reserve / clip)) plus a dimmer half-filled pill for a part cell (reserve % clip > 0), and
+   *  nothing at all once the reserve is empty (the OUT OF ENERGY prompt already says that). */
+  _resText(st) {
+    if (!isEnergyWeapon(st.weaponId)) return `/${st.reserve != null ? st.reserve : '—'}`;
+    const clip = st.mag || Math.max(st.ammo, 1);
+    const reserve = st.reserve || 0;
+    if (!(reserve > 0)) return '';
+    const full = Math.floor(reserve / clip);
+    const partial = reserve % clip > 0;
+    let s = ''; for (let i = 0; i < full; i++) s += '<i class="cell"></i>';
+    if (partial) s += '<i class="cell partial"></i>';
+    return `<span class="cells">${s}</span>`;
+  }
+  /** Bench 2026-09-17: the thin build-up bar for a weapon that heats ($ALCD token 5), shown only once the
+   *  active slot has reported heat>0 this life (`heatEverSeen`) -- a weapon that never heats never draws
+   *  this at all. `hot` past HEAT_LOCKOUT matches the OVERHEAT prompt/overlay in `_live()`. */
+  _heatBar(st) {
+    if (!st.heatEverSeen) return '';
+    const pct = Math.max(0, Math.min(100, Math.round(st.heat || 0)));
+    return `<div class="heat ${st.overheating ? 'hot' : ''}" id="heat"><i style="width:${pct}%"></i></div>`;
   }
   /** An energy weapon always gets the percentage bar (no round to pip). A bullet weapon gets one pip per
    *  round up to AMMO_PIP_MAX; above it, a continuous bar (the exact count is already the digits beside
@@ -1044,12 +1072,17 @@ export class Hud {
       if (mode === 'kitted' || mode === 'over' || (mode === 'lobby' && !st.kitOpen && !st.ready)) setHtml('readynote', this._readyNote(st, mode));
     }
     if (st.phase === 'live') {
-      set('clock', mmss(st.clockMs)); set('hp', st.hp); set('sh', st.armor); set('mag', magText(st)); set('res', `/${st.reserve != null ? st.reserve : '—'}`);
+      set('clock', mmss(st.clockMs)); set('hp', st.hp); set('sh', st.armor); set('mag', magText(st)); setHtml('res', this._resText(st));
       set('batt', st.battery != null ? st.battery + '%' : '—');
       const hb = q('hpbar'); if (hb) hb.style.width = `${Math.round(100 * st.hp / st.maxHp)}%`;
       const sb = q('shbar'); if (sb) sb.style.width = `${Math.round(100 * st.armor / st.maxArmor)}%`;
       const bf = q('battfill'); if (bf) bf.style.right = `${100 - (st.battery || 0)}%`;
       const pips = q('pips'); if (pips) { const html = this._pips(st); if (pips.innerHTML !== html) pips.innerHTML = html; }
+      const heat = q('heat'); if (heat) {
+        const pct = Math.max(0, Math.min(100, Math.round(st.heat || 0)));
+        const i = heat.querySelector('i'); if (i && i.style.width !== `${pct}%`) i.style.width = `${pct}%`;
+        const cls = 'heat' + (st.overheating ? ' hot' : ''); if (heat.className !== cls) heat.className = cls;
+      }
       set('st-K', st.kills == null ? '—' : st.kills); set('st-D', st.deaths); set('st-A', st.assists == null ? '—' : st.assists); if (accShown(st) != null) set('st-ACC', accShown(st) + '%');
       const dot = q('linkdot'); if (dot) { const cls = 'dot ' + (st.bleUp ? '' : 'off'); if (dot.className !== cls) dot.className = cls; }
       set('linklab', st.bleUp ? 'GUN' : 'NO GUN');
