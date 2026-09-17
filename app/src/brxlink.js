@@ -155,14 +155,17 @@ export class BrxLink {
   /** Continuous scan; calls onHit({deviceId, name, rssi, uuids}) for every advert until stop().
    *  scanMode 2 = low latency (the gun picker and the match-time beacon watch, scanwatch.js), 1 = balanced.
    *  Nameless adverts pass only when they carry a service UUID: utility items advertise no name on Android
-   *  (the device name is not settable per app), their whole identity is the UUID (beacon.js). */
-  async scan(onHit, { scanMode = 2 } = {}) {
+   *  (the device name is not settable per app), their whole identity is the UUID (beacon.js).
+   *  `onRaw()` runs for EVERY result the plugin delivers, before any filter: each one crossed the
+   *  native-to-JS bridge that gun notifications share, so a flood guard must count them all (scanwatch.js). */
+  async scan(onHit, { scanMode = 2, onRaw = null } = {}) {
     if (this._scanning) throw new Error('a scan is already open');
     this._scanning = true; const tok = ++this._scanTok;   // claim the radio before the first await
     return this._scanSerial(async () => {
       try {
         await this.ensureInit();
         await this.ble.requestLEScan({ allowDuplicates: true, scanMode }, res => {   // no service filter: Android misses taggers whose UUID rides in the scan response (bench 2026-08-25); the app filters by name instead
+          if (onRaw) onRaw();
           const d = res.device || {}; if (!d.deviceId) return;
           const name = d.name || res.localName || '';
           const uuids = Array.isArray(res.uuids) ? res.uuids : [];
