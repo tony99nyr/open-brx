@@ -3,7 +3,7 @@
 // entirely and the TAP TO RECONNECT pill was inert. Found by review, and pinned here.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BrxLink, flapDelay } from '../src/brxlink.js';
+import { BrxLink, flapDelay, directWriter, NUS, RX } from '../src/brxlink.js';
 
 function rig() {
   const attempts = { A: 0, B: 0 }, subs = [], cb = {}, ups = [], drops = [], disconnects = [];
@@ -370,4 +370,106 @@ test('RELINK: a gun that never answers ends the relink visibly, and the normal r
   assert.ok(r.calls.length > n, 'the forever-reconnect loop must keep trying after a failed relink');
   r.availableAt = 0;
   assert.ok(await settleUntil(settle, () => r.link.connected, 30000) >= 0);
+});
+
+// Bench 2026-09-17 (match 592e444eff, Pixel 5): the spawn write took 62 s. Each native write finished in
+// 1-2 ms, but the plugin's answer reached JS 6-11 s late (a backlog behind the beacon scan's results), and
+// BleClient's queue plus the write loop waited for every answer. The rig models that bridge: the plugin
+// records each call the moment JS makes it, and answers `answerMs` later. `ble` is BleClient's shape, one
+// queue that waits for each answer, so the old write path is exactly what ran on the phone.
+function slowBridgeRig({ answerMs = 10_000, failAt = -1 } = {}) {
+  const calls = [];
+  const answer = (v, fail) => new Promise((res, rej) => setTimeout(() => (fail ? rej(new Error('Writing characteristic failed.')) : res(v)), answerMs));
+  const plugin = {
+    writeWithoutResponse: o => { calls.push({ t: Date.now(), kind: 'write', value: o.value }); return answer(undefined, calls.length - 1 === failAt); },
+    stopLEScan: () => { calls.push({ t: Date.now(), kind: 'stop' }); return answer(); },
+  };
+  let queue = Promise.resolve();
+  const queued = fn => { const p = queue.then(fn); queue = p.catch(() => {}); return p; };
+  const ble = {
+    initialize: async () => {}, disconnect: async () => {}, startNotifications: async () => {}, connect: async () => {},
+    stopLEScan: () => queued(() => plugin.stopLEScan()),
+    writeWithoutResponse: (id, s, c, dv) => queued(() => plugin.writeWithoutResponse({ deviceId: id, value: dv })),
+  };
+  const logs = [];
+  const link = new BrxLink({ ble, log: m => logs.push(m), writeChunk: directWriter(plugin, () => 'android') });
+  return { link, calls, logs };
+}
+const SPAWN = ['$SIR,6,0,,28,0,0,1,,*', '$SIR,13,1,,28,0,0,1,,*', '$SIR,13,0,,28,0,0,1,,*', '$SIR,13,3,,28,0,0,1,,*',
+  '$PLAYX,0,*', '$SPAWN,,*', '$AMMO,0,40,80,1,*', '$BMAP,0,0,,,,,*'];
+const hexOf = t => [...t].map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+
+test('a spawn write reaches the gun in about a second when the plugin answers 10 s late', async ctx => {
+  const settle = useClock(ctx);
+  const r = slowBridgeRig();
+  await r.link.connect('A', 'GUN-A-1111');
+  const t0 = Date.now();
+  const done = r.link.write(SPAWN);
+  await settle(1500);
+  const writes = r.calls.filter(c => c.kind === 'write');
+  const chunks = SPAWN.flatMap(f => f.match(/.{1,20}/g)).map(hexOf);
+  assert.equal(writes.length, chunks.length, `every chunk left within 1.5 s (got ${writes.length} of ${chunks.length})`);
+  assert.deepEqual(writes.map(w => w.value), chunks, 'in frame order, chunk order, as hex');
+  assert.ok(writes.at(-1).t - t0 < 1500);
+  assert.equal(await done, true);
+  assert.match(r.logs.join('\n'), /write answers slow: 12 of 12 chunk\(s\)/);
+  assert.equal(r.link.lateAcks, 12);
+});
+
+test('a gun write does not wait behind a scan stop whose answer is slow, and two writes keep their order', async ctx => {
+  const settle = useClock(ctx);
+  const r = slowBridgeRig();
+  await r.link.connect('A', 'GUN-A-1111');
+  r.link.stopScan();                               // the beacon watch's 90 s restart, just before T-0
+  const a = r.link.write('$PLAYX,0,*'); const b = r.link.write('$SPAWN,,*');
+  await settle(300);
+  assert.deepEqual(r.calls.map(c => c.kind).sort(), ['stop', 'write', 'write'], 'both writes left while the stop was still unanswered');
+  const stopAt = r.calls.find(c => c.kind === 'stop').t, lastWrite = r.calls.filter(c => c.kind === 'write').at(-1).t;
+  assert.ok(lastWrite < stopAt + 10_000, 'no write waited for the stop answer');
+  assert.deepEqual(r.calls.filter(c => c.kind === 'write').map(c => c.value), [hexOf('$PLAYX,0,*'), hexOf('$SPAWN,,*')]);
+  await settle(20);
+  assert.deepEqual(await Promise.all([a, b]), [true, true]);
+});
+
+test('a healthy answer still holds the next chunk until it arrives', async ctx => {
+  const settle = useClock(ctx);
+  const r = slowBridgeRig({ answerMs: 30 });      // under the cap: the GATT permit protection is unchanged
+  await r.link.connect('A', 'GUN-A-1111');
+  const done = r.link.write('$SIR,13,1,,28,0,0,1,,*');
+  await settle(29);
+  assert.equal(r.calls.length, 1, 'the second chunk waits for the first answer');
+  await settle(200);
+  assert.equal(r.calls.length, 2);
+  assert.ok(r.calls[1].t - r.calls[0].t >= 30);
+  assert.equal(await done, true);
+  assert.equal(r.link.lateAcks, 0);
+});
+
+test('a write error inside the answer cap still stops the batch; a late one is logged', async ctx => {
+  const settle = useClock(ctx);
+  const fast = slowBridgeRig({ answerMs: 5, failAt: 0 });
+  await fast.link.connect('A', 'GUN-A-1111');
+  const p = fast.link.write(['$PLAYX,0,*', '$SPAWN,,*']);
+  await settle(200);
+  assert.equal(await p, false);
+  assert.equal(fast.calls.length, 1, 'the batch stopped at the failed chunk');
+  assert.match(fast.logs.join('\n'), /write err: Writing characteristic failed/);
+  const slow = slowBridgeRig({ answerMs: 500, failAt: 0 });
+  await slow.link.connect('A', 'GUN-A-1111');
+  const q = slow.link.write(['$PLAYX,0,*', '$SPAWN,,*']);
+  await settle(700);
+  assert.equal(await q, true);
+  assert.equal(slow.calls.length, 2);
+  assert.match(slow.logs.join('\n'), /write err \(after the answer cap\): Writing characteristic failed/);
+});
+
+test('the real plugin gets the direct writer; the web build is sent the DataView', () => {
+  const seen = [];
+  const plugin = { writeWithoutResponse: o => { seen.push(o); return Promise.resolve(); } };
+  const dv = new DataView(new TextEncoder().encode('$PING,*').buffer);
+  directWriter(plugin, () => 'android')('A', dv);
+  directWriter(plugin, () => 'web')('A', dv);
+  assert.deepEqual(seen[0], { deviceId: 'A', service: NUS, characteristic: RX, value: hexOf('$PING,*') });
+  assert.equal(seen[1].value, dv);
+  assert.equal(typeof new BrxLink({}).writeChunk, 'function');
 });

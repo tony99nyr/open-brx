@@ -3,13 +3,35 @@
 // every phase, retired by a generation token); continuous
 // low-latency scan picker; hardened reassembler; 20-byte chunked writes with pacing; per-device
 // write queue; auto-reconnect that hands the engine a resync opportunity.
-import { BleClient, textToDataView, dataViewToText } from '@capacitor-community/bluetooth-le';
+import { BleClient, BluetoothLe, textToDataView, dataViewToText, dataViewToHexString } from '@capacitor-community/bluetooth-le';
+import { Capacitor } from '@capacitor/core';
 
 export const NUS = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 export const RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 export const TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Bench 2026-09-17 (match 592e444eff, Pixel 5): the spawn write left the phone over 62 s, one chunk every
+// 6-11 s, and the player could not shoot for a minute. Android logcat showed each native write done in
+// 1-2 ms, and the JS ring stamped each chunk within 40 ms of its native call. The delay was the ANSWER:
+// the plugin's reply reached JS 1 s late at T-10 and 11 s late by T+100 s, on the same native-to-JS
+// channel as the low-latency beacon scan (57 results/s, the busiest scan of the day). The app skipped
+// about 600 frames every 10 s until the scan restart dropped the backlog.
+//  - BleClient's own queue made every call wait for the previous call's answer, so a slow answer to a
+//    scan stop or an isEnabled() also held the gun write. Gun writes now call the plugin directly: the
+//    bridge delivers calls in call order, and the native side runs them in that order.
+//  - The write loop waits for an answer for at most WRITE_ACK_CAP_MS, then goes on at the normal pacing.
+//    A healthy answer still holds the next chunk, so the GATT write permit is kept as before.
+export const WRITE_ACK_CAP_MS = 50;
+
+/** Writes one chunk to the gun's NUS RX characteristic through the plugin itself, not BleClient's queue.
+ *  Native builds take a hex string (what BleClient sends); the web build takes the DataView. */
+export function directWriter(plugin = BluetoothLe, platform = () => Capacitor.getPlatform()) {
+  return (deviceId, dv) => plugin.writeWithoutResponse({
+    deviceId, service: NUS, characteristic: RX, value: platform() === 'web' ? dv : dataViewToHexString(dv),
+  });
+}
 
 // F210: docs/manual/dev.md's headset note — "the headset must be linked or the gun will connect,
 // answer a quick $PING, then drop within seconds and echo nothing to config. After a gun-initiated
@@ -72,7 +94,12 @@ export class BrxLink {
   constructor({ ble = BleClient, log = () => {}, onFrame = () => {}, onDrop = () => {}, onUp = () => {},
                 unbounded = () => false, chunkGapMs = 8, frameGapMs = 18, now = () => Date.now(), flapMs = FLAP_MS,
                 onFlap = () => {}, onRelink = () => {}, relinkConnectMs = RELINK_CONNECT_MS, relinkAttempts = RELINK_ATTEMPTS,
-                relinkGapMs = RELINK_GAP_MS, relinkDisconnectCapMs = RELINK_DISCONNECT_CAP_MS } = {}) {
+                relinkGapMs = RELINK_GAP_MS, relinkDisconnectCapMs = RELINK_DISCONNECT_CAP_MS,
+                writeChunk = null, ackCapMs = WRITE_ACK_CAP_MS } = {}) {
+    // The real plugin gets the direct path; an injected test double keeps its own writeWithoutResponse.
+    this.writeChunk = writeChunk || (ble === BleClient ? directWriter() : (id, dv) => ble.writeWithoutResponse(id, NUS, RX, dv));
+    this.ackCapMs = ackCapMs;
+    this.lateAcks = 0;     // chunks whose answer took longer than ackCapMs (diagnostics)
     this.onRelink = onRelink;
     this.relinkConnectMs = relinkConnectMs; this.relinkAttempts = relinkAttempts; this.relinkGapMs = relinkGapMs; this.relinkDisconnectCapMs = relinkDisconnectCapMs;
     this.ble = ble; this.log = log; this.onFrame = onFrame; this.onDrop = onDrop; this.onUp = onUp; this.onFlap = onFlap;
@@ -340,21 +367,40 @@ export class BrxLink {
   }
   _notify(value) { for (const f of this._re.pump(dataViewToText(value))) { this._note('rx', f); this.onFrame(f); } }
 
-  /** Write frames verbatim, in order, chunked at 20 bytes with pacing; serialized per device. */
+  /** Write frames verbatim, in order, chunked at 20 bytes with pacing; serialized per device. Each chunk
+   *  waits for the plugin's answer for at most `ackCapMs` (see WRITE_ACK_CAP_MS). */
   write(frames) {
     const id = this.deviceId; if (!id) return Promise.resolve(false);
     const list = Array.isArray(frames) ? frames : [frames];
     this._q = this._q.then(async () => {
+      let late = 0, chunks = 0;
       for (const frame of list) {
         this._note('tx', frame);
         for (let o = 0; o < frame.length; o += 20) {
-          await this.ble.writeWithoutResponse(id, NUS, RX, textToDataView(frame.substr(o, 20)));
+          chunks++;
+          if (!await this._sendChunk(id, textToDataView(frame.substr(o, 20)))) late++;
           if (frame.length > 20) await sleep(this.chunkGapMs);
         }
         await sleep(this.frameGapMs);
       }
+      if (late) { this.lateAcks += late; this._log(`write answers slow: ${late} of ${chunks} chunk(s) past ${this.ackCapMs} ms, sent on without them`, 'le'); }
       return true;
     }).catch(e => { this._log('write err: ' + (e && e.message || e), 'le'); return false; });
     return this._q;
+  }
+  /** Sends one chunk. Resolves true when the plugin answered within `ackCapMs`, false when the cap ran out
+   *  first. An error inside the cap rejects (the batch stops, as before); a later error is only logged. */
+  _sendChunk(id, dv) {
+    let sent;
+    try { sent = Promise.resolve(this.writeChunk(id, dv)); } catch (e) { return Promise.reject(e); }
+    return new Promise((resolve, reject) => {
+      let done = false;
+      const t = setTimeout(() => { done = true; resolve(false); }, this.ackCapMs);
+      sent.then(() => { if (done) return; done = true; clearTimeout(t); resolve(true); },
+        e => {
+          if (!done) { done = true; clearTimeout(t); reject(e); return; }
+          this._log('write err (after the answer cap): ' + (e && e.message || e), 'le');
+        });
+    });
   }
 }
