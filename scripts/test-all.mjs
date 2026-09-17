@@ -103,9 +103,18 @@ if (!JOBS.length) { console.error(`no job matches ${filters.join(' ')} (try --li
 
 // A job that dies leaves its children behind unless the group goes with it; so does a Ctrl-C of this script.
 const groups = new Set();
+/** SIGTERM first, SIGKILL 2 s later. The TERM matters: mcp/run_tests.py puts each test file in its own session, out of
+ *  reach of a signal to the job's group, and only its SIGTERM handler can take those children down. */
+const killGroup = pid => {
+  try { process.kill(-pid, 'SIGTERM'); } catch { return; }
+  setTimeout(() => { try { process.kill(-pid, 'SIGKILL'); } catch { /* gone */ } }, 2000).unref();
+};
 // SIGTERM and SIGHUP too: an agent's command timeout or a closed terminal must not leave browsers holding gigabytes.
 for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) {
-  process.on(sig, () => { for (const g of groups) { try { process.kill(-g, 'SIGKILL'); } catch { /* gone */ } } process.exit(code); });
+  process.on(sig, () => {
+    for (const g of groups) { try { process.kill(-g, 'SIGTERM'); } catch { /* gone */ } }
+    setTimeout(() => { for (const g of groups) { try { process.kill(-g, 'SIGKILL'); } catch { /* gone */ } } process.exit(code); }, 2000);
+  });
 }
 function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S) {
   const log = path.join(LOGS, `${name}.log`);
@@ -119,7 +128,7 @@ function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S) {
     const timer = setTimeout(() => {
       timedOut = true;
       fs.writeSync(out, `\ntest-all: killed after ${timeoutS}s (JOB_TIMEOUT_S, or three times the job's typical time)\n`);
-      try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ }
+      killGroup(child.pid);
     }, timeoutS * 1000);
     child.on('error', e => { fs.writeSync(out, `\nspawn failed: ${e.message}\n`); });
     child.on('close', code => {
@@ -130,20 +139,31 @@ function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S) {
 }
 
 // One run per checkout. A second run in the SAME checkout would rebuild app/www and webapp/mc/dist while the first
-// run's jobs read them. So a second run waits for the first; a lock whose process is gone is taken over.
+// run's jobs read them, so a second run waits. The lock is a directory (mkdir is atomic, so two runs cannot both get
+// it) that its holder touches every 10 s. A lock not touched for 60 s is stale: its run was killed with SIGKILL, or the
+// machine restarted. A pid is not used for this, because a pid can be reused. A stale lock is renamed away before it
+// is deleted, so two waiters cannot delete each other's new lock.
 const LOCK = path.join(ROOT, '.test-all.lock');
-const alive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
 for (let waited = 0; ; waited++) {
-  try { fs.writeFileSync(LOCK, String(process.pid), { flag: 'wx' }); break; }
-  catch (e) {
+  try {
+    fs.mkdirSync(LOCK);
+    const beat = setInterval(() => { try { const t = new Date(); fs.utimesSync(LOCK, t, t); } catch { /* gone */ } }, 10_000);
+    beat.unref();
+    process.on('exit', () => { clearInterval(beat); try { fs.rmSync(LOCK, { recursive: true }); } catch { /* gone */ } });
+    break;
+  } catch (e) {
     if (e.code !== 'EEXIST') throw e;
-    const holder = Number(fs.readFileSync(LOCK, 'utf8')) || 0;
-    if (!holder || !alive(holder)) { fs.rmSync(LOCK, { force: true }); continue; }
-    if (waited === 0) console.log(`test-all: another run (pid ${holder}) is using this checkout; waiting for it to finish`);
+    let age;
+    try { age = Date.now() - fs.statSync(LOCK).mtimeMs; } catch { continue; }   // released between mkdir and stat
+    if (age > 60_000) {
+      const aside = `${LOCK}.stale-${process.pid}-${Date.now()}`;
+      try { fs.renameSync(LOCK, aside); fs.rmSync(aside, { recursive: true, force: true }); } catch { /* another waiter took it */ }
+      continue;
+    }
+    if (waited === 0) console.log('test-all: another run is using this checkout; waiting for it to finish');
     await new Promise(r => setTimeout(r, 2000));
   }
 }
-process.on('exit', () => { try { if (fs.readFileSync(LOCK, 'utf8') === String(process.pid)) fs.rmSync(LOCK); } catch { /* gone */ } });
 
 const t0 = Date.now();
 console.log(`test-all: ${JOBS.length} job(s), ${CPUS} cores, memory budget ${BUDGET_MB} MB, logs in ${LOGS}`);
@@ -152,7 +172,7 @@ const builds = [];
 if (JOBS.some(j => j.www)) builds.push(run('app-build', 'app', ['npm', 'run', 'build']));
 if (JOBS.some(j => j.dist)) builds.push(run('mc-build', 'webapp/mc', ['npx', 'vite', 'build']));
 for (const b of await Promise.all(builds)) {
-  if (b.code !== 0) { console.error(`${b.name} failed, see ${b.log}`); process.exit(1); }
+  if (b.code !== 0) { console.error(`${b.name} failed, see ${b.log}`); for (const g of groups) killGroup(g); process.exit(1); }
 }
 // The scheduler: longest first; start a job when its cost fits beside the running ones (or when nothing runs, so a
 // job bigger than the whole budget still runs, alone).
@@ -184,7 +204,7 @@ console.log(`\n${pad('job', 18)}${pad('result', 8)}secs`);
 for (const r of results.sort((a, b) => b.secs - a.secs)) console.log(`${pad(r.name, 18)}${pad(r.code === 0 ? 'ok' : r.code === 'TIMEOUT' ? 'TIMEOUT' : 'FAIL', 8)}${r.secs.toFixed(0)}`);
 const failed = results.filter(r => r.code !== 0);
 for (const r of failed) {
-  const lines = fs.readFileSync(r.log, 'utf8').trimEnd().split('\n');
+  const lines = fs.existsSync(r.log) ? fs.readFileSync(r.log, 'utf8').trimEnd().split('\n') : [String(r.code)];
   console.log(`\n---- ${r.name} (exit ${r.code}), last 30 lines of ${r.log}`);
   console.log(lines.slice(-30).join('\n'));
 }

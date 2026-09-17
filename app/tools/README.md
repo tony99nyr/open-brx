@@ -20,7 +20,7 @@ One-time: `cd app && npm i --no-save playwright && npx playwright install chromi
   Every reported item is an assertion about what a person sees (rects, wraps, overlaps, visible text), run over the stage
   states at the design width AND a 667px phone, with desktop scrollbars ON — both reproduced the report and headless
   defaults hide them. Shots in `app/shots/screens/`. `ONLY=<substring>` runs matching steps. The steps run in
-  `SCREENS_SHARDS` child processes (default half the cores, at most 16; `1` is serial), each with its own browser
+  `SCREENS_SHARDS` child processes (default half the cores, at most 16, and at most a quarter of the free memory at ~240 MB a shard; `1` is serial), each with its own browser
   and a free port: about 100 s instead of 22 min. Every step opens its own browser context, so no step may depend
   on an earlier one.
 - **`logsync-gate.mjs`** — `npm run ui:logsync`: the gate for background log sync (A25) and the baked build

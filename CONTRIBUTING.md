@@ -31,7 +31,7 @@ The repo has several independently-testable pieces. Run the one you touched befo
 
 **Everything at once:** `npm run test:all` from the repo root runs the unit gates of all four pieces in parallel
 (about 30 s). `npm run test:all -- --ui` adds the browser gates: `app` screens, logsync and e2e, and the seven
-`webapp/mc` e2e scripts (about 2 min on a 32-core box, was about 30 min run one by one). Jobs start inside a memory budget: half the free memory, at most 8 GB (`MEM_BUDGET_MB=` overrides), and a job that runs past 10 min is killed (`JOB_TIMEOUT_S=`). `npm run test:all -- site mcp` runs only the jobs whose
+`webapp/mc` e2e scripts (about 2 min on a 32-core box, was about 30 min run one by one). Jobs start inside a memory budget: half the free memory, at most 8 GB (`MEM_BUDGET_MB=` overrides), and a job that runs past 10 min, or three times its typical time if that is longer, is killed (`JOB_TIMEOUT_S=` raises the 10 min). A second run in the same checkout waits for the first. `npm run test:all -- site mcp` runs only the jobs whose
 names match, and `-- --list` prints the names. It builds `app/www` once first, gives every e2e script its own free
 ports, and writes one log per job (`scripts/test-all.mjs` states the parallel-safety rules it depends on).
 
