@@ -114,6 +114,9 @@ export interface Api {
   rangeVerdict(weapon_id: string, verdict: 'pass' | 'issue', note?: string): Promise<unknown>;
   endTryout(id: string): Promise<void>;
   setReady(id: string, ready: boolean): Promise<Player>;
+  /** Bench 2026-09-17: MARK ALL READY -- the roster-wide `host_override`, LOBBY only. Marks every
+   *  rostered, non-standby player ready (never touches acks/config); refused outside LOBBY. */
+  readyAll(): Promise<{ ok: boolean; readied: string[] }>;
   /** `repushed` (R2-1): this call landed on an ALREADY-PUSHED lobby, so it was a RE-PUSH — same game
    *  number, fresh heads, every judgement about the old head dropped. `config_id` is the head that
    *  was just pushed; a RE-push MINTS A FRESH ONE (F6), which is what makes it provable — an ack

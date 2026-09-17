@@ -403,6 +403,14 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         except ValueError as e:
             return _err(str(e))
 
+    async def ready_all(_req):
+        """Bench 2026-09-17: MARK ALL READY, the roster-wide sibling of `ready` above. Same
+        `host_override` cure, every rostered (non-standby) player at once."""
+        try:
+            return JSONResponse(s.ready_all())
+        except ValueError as e:
+            return _err(str(e))
+
     async def games_load(_req):
         """LOAD: announce the game to every bound phone. No frames, no head, no gun write --
         `state.py load_game()`. The LOBBY push is still the only thing that configures a gun."""
@@ -741,6 +749,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/stations/{nid}", delete_station, methods=["DELETE"]),
         Route("/api/stations/{nid}/release", release_station, methods=["POST"]),
         Route("/api/players/{pid}/ready", ready, methods=["POST"]),
+        Route("/api/lobby/ready_all", ready_all, methods=["POST"]),
         Route("/api/games/load", games_load, methods=["POST"]),
         Route("/api/lobby/push", lobby_push, methods=["POST"]),
         Route("/api/tunnel", tunnel, methods=["POST"]),

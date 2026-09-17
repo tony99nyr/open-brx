@@ -691,6 +691,13 @@ export class Engine {
     // read "THE HOST LOCKED KITS" for ever (review 2026-09-12). A new match retires it too.
     if (this.ended) { this.ended = false; this.endAck = false; this.matchId = null; this.start = null; this.result = null; this.resultAt = 0; this.endedAt = 0; this.kitLocked = false; this.log('new match from MC — leaving the match-complete screen', 'lk'); }
     this.player = player || this.player; this.team = team || this.team; if (roster) this.roster = roster;
+    // Bench 2026-09-17: MARK ALL READY (MC's roster-wide `host_override`) marks a player ready who
+    // never tapped READY UP themselves, and `setReady` is the phone's ONLY other writer of `this.ready`
+    // -- so without this, MC's own count went green while the gun that never tapped stayed on WAIT.
+    // One-directional on purpose: this only ever turns READY on, never off. `setReady`/standby/S7 are
+    // still the sole way to CLEAR it, so F-4's "a push never un-readies" and S7's "the bench clears
+    // READY" both hold exactly as pinned.
+    if (player && player.ready && !this.ready) this.ready = true;
     if (team) this._checkTeamVsHead();   // B1: a mid-match re-team the head never followed must not be silent
     if (this.phase === 'connected' || this.phase === 'idle') { if (this.bleUp) this._set('kitted'); }
     this._changed();

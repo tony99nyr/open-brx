@@ -133,6 +133,7 @@ export function createHttpApi(): Api {
     rangeVerdict: (weapon_id, verdict, note) => post('/api/range/verdict', { weapon_id, verdict, note }),
     endTryout: async id => { await j(`/api/players/${id}/tryout`, { method: 'DELETE' }); },
     setReady: (id, ready) => post(`/api/players/${id}/ready`, { ready }),
+    readyAll: () => post('/api/lobby/ready_all'),
     // LOAD: tell the phones which game is loaded. NO frames, NO head, no gun write (state.py
     // `load_game`). Deliberately a different route from the push below — that one configures guns.
     loadGame: () => post('/api/games/load', {}),
