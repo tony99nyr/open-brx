@@ -445,6 +445,15 @@ class Session:
         # this MC did not start and never retired. Shown to the operator (`orphan_match`); nothing acts on
         # it until the operator presses RESUME MATCH or END THEIR MATCH.
         self._orphans: dict[str, dict] = {}
+        # A47 operator outcome: player_id -> {match_id, cmd, state, why, sent_t, result_t}, the LAST operator
+        # action sent to that player and the phone's answer (`operator_result`). Read by the LIVE row only.
+        self._operator: dict[str, dict] = {}
+        # (player_id, cmd) -> ms of the last accepted send: the double-tap guard (`OPERATOR_REPEAT_MS`).
+        self._operator_sent_t: dict[tuple[str, str], int] = {}
+        # (node_id, seq) of every `operator_result` already written to the feed: a replayed outbox is not news.
+        self._operator_seen: set[tuple[str, object]] = set()
+        # node_id -> (arm_state, match_id): the last claim each phone's heartbeat made (`phones_ended`).
+        self._hb_claim: dict[str, tuple[object, object]] = {}
         # A42 (field 2026-09-12, twice): who has CONFIRMED the end of the match just ended.
         # node_id -> {match_id, player_id, since, tries, next_t, confirmed, confirmed_t, exhausted, last_ok}
         self._end_delivery: dict[str, EndDeliveryRecord] = {}
@@ -3086,6 +3095,7 @@ class Session:
             self._check_stale_live(nid, body.get("match_id"), t_recv)   # A34
         if nv.get("node_type") != "utility":
             self._note_orphan(nid, body, t_recv)       # bench 2026-09-17: a match this MC did not start
+            self._hb_claim[nid] = (body.get("arm_state"), body.get("match_id"))   # A47: `phones_ended`
         if nv.get("node_type") != "utility":
             self._note_end_confirm(nid, body)          # A42: this heartbeat IS the ack for the last end
         if nv.get("node_type") != "utility":
@@ -3467,6 +3477,10 @@ class Session:
             # lands back in ARMED (the restart beat the countdown) skipped this, so a resumed match's
             # VIP never heard it.
             self._queue_roles_for_live()
+        # A47 review: a phone that still heartbeats this match is proof it is in play (read before the
+        # orphan list forgets it). `tick()` can run this after phones have said hello.
+        still_played = bool(self._fresh_orphans(mid))
+        adopted = bool(m.get("adopted"))
         self._orphans = {n: o for n, o in self._orphans.items() if o["match_id"] != mid}
         # F-2026-09-17d: no age cap used to mean a snapshot from hours or days ago (a crash, a laptop
         # lid) resumed straight into ARMED/LIVE -- an UNTIMED config has no clock of its own to catch
@@ -3474,13 +3488,27 @@ class Session:
         saved_ms = m.get("_saved_ms")
         bound_ms = (2 * tl * 1000) if tl else 3_600_000
         too_old = isinstance(saved_ms, int) and (now - saved_ms) > bound_ms
-        if self.scorer.limit_reached_t is not None:
+        past_clock = bool(tl and now >= go + tl * 1000 + 5000)
+        if adopted and (self.scorer.limit_reached_t is not None or too_old or past_clock):
+            # A47 review: an ADOPTED match was never scored on a config MC holds (`adopt_orphan`), so its
+            # limits and its age are the operator's draft, not the phones' rules. Finishing it here armed
+            # the end delivery at phones still playing it. The phones end themselves, or the operator does.
+            self._on_feed({"t_match_s": max(0, (now - go) // 1000), "tag": "NOTE", "kind": "alert",
+                           "text": "MC RESTARTED. RESUMED A MATCH THIS MC DID NOT START. MC DOES NOT END IT "
+                                   "ON A LIMIT IT CANNOT CONFIRM: PRESS END IF THE PHONES HAVE STOPPED"})
+        elif too_old and not tl and not past_clock and still_played and self.scorer.limit_reached_t is None:
+            # A47 review: the one-hour bound for an UNTIMED match is a guess about a crash long ago. A phone
+            # that heartbeats this match right now says the guess is wrong, so do not end it under them.
+            self._on_feed({"t_match_s": max(0, (now - go) // 1000), "tag": "NOTE", "kind": "alert",
+                           "text": "MC RESTARTED. THE SAVED MATCH IS OVER AN HOUR OLD BUT A PHONE STILL PLAYS IT: "
+                                   "RESUMED. PRESS END WHEN IT IS OVER"})
+        elif self.scorer.limit_reached_t is not None:
             self.scorer.set_end(self.scorer.limit_reached_t)
             self.end_reason = "frag_limit"
             self._finish()
             self._on_feed({"t_match_s": 0, "tag": "RESUMED", "kind": "alert",
                            "text": "MC RESTARTED. THE MATCH REACHED ITS FRAG LIMIT WHILE MC WAS DOWN: RECAP BUILT"})
-        elif too_old or (tl and now >= go + tl * 1000 + 5000):
+        elif too_old or past_clock:
             self.end_reason = "time"
             self._finish()
             self._on_feed({"t_match_s": 0, "tag": "RESUMED", "kind": "alert",
@@ -3590,7 +3618,10 @@ class Session:
         return {"ok": True, "match_id": match_id, "phase": self.phase, "phones": len(nids)}
 
     OPERATOR_CMDS = ("resync", "respawn", "relink")
-    OPERATOR_VERB = {"resync": "RESYNCED {who}'S GUN", "respawn": "RESPAWNED {who}", "relink": "RELINKED {who}'S GUN"}
+    OPERATOR_WORD = {"resync": "RESYNC", "respawn": "RESPAWN", "relink": "RELINK"}
+    # The phone refuses `resync`/`respawn` unless LIVE (`engine.js _operator`); `relink` also runs in ARMED.
+    OPERATOR_LIVE_ONLY = ("resync", "respawn")
+    OPERATOR_REPEAT_MS = 2000   # the same action for the same player inside this window is a double tap
 
     def operator_action(self, player_id: str, cmd: str, match_id: str) -> OperatorActionResult:
         """A47 (bench 2026-09-17): the LIVE board's operator menu for ONE player in a bad state.
@@ -3600,10 +3631,13 @@ class Session:
         - `respawn`: the phone runs a normal revive (full pools, A44 spawn protection), no death, no kill.
         - `relink`: the phone drops and reconnects its gun, as the HUD's RELINK GUN.
 
-        Refused (409) outside ARMED/LIVE, for a match that is not the current one (a stale board), and for a
-        phone that is not bound or has not heartbeated within STALE_AFTER_MS. None of these is a config or
-        head push, so none can clear `spawned` on a gun in play. Best-effort like every `control`: no ack
-        kind exists, so `pushed` means a socket took it, and the phone logs what it did."""
+        Refused (409) outside ARMED/LIVE (and outside LIVE for resync/respawn, which the phone refuses
+        until T-0), for a match that is not the current one (a stale board), for a phone that is not
+        bound or has not heartbeated within STALE_AFTER_MS, for FORCE RESPAWN of a down player in a mode
+        with no respawn (it would change who survives), and for the same action on the same player
+        inside OPERATOR_REPEAT_MS (a double tap). None of these is a config or head push, so none can
+        clear `spawned` on a gun in play. `pushed` means a socket took it; the phone's `operator_result`
+        fact is the receipt (`_on_operator_result`)."""
         if cmd not in self.OPERATOR_CMDS:
             raise ValueError(f"unknown operator action {cmd!r}")
         current = (self.start_info or {}).get("match_id")
@@ -3611,24 +3645,105 @@ class Session:
             raise ConflictError(f"no match is ARMED or LIVE (phase {self.phase.upper()})")
         if not match_id or match_id != current:
             raise ConflictError("that match is over: the board was stale. Look at the player again")
+        word = self.OPERATOR_WORD[cmd]
+        if cmd in self.OPERATOR_LIVE_ONLY and self.phase != "live":
+            raise ConflictError(f"{word} NEEDS A LIVE MATCH: the phone refuses it before T-0")
         p = self.players.get(player_id)
         if p is None:
             raise ValueError("unknown player")
         who = (p.get("display") or player_id).upper()
+        if cmd == "respawn" and (self.config.get("respawn") or {}).get("type") == "none":
+            st = self.scorer.stats.get(player_id) if self.scorer else None
+            if st is not None and not st.alive:
+                raise ConflictError(f"{who} IS OUT: THIS MODE HAS NO RESPAWN, SO FORCE RESPAWN WOULD CHANGE WHO SURVIVES")
         nid = p.get("node_id")
         seen = (self.nodes.get(nid) or {}).get("last_seen_ms") if nid else None
-        if not nid or seen is None or self.now_ms() - seen > STALE_AFTER_MS:
+        now = self.now_ms()
+        if not nid or seen is None or now - seen > STALE_AFTER_MS:
             raise ConflictError(f"{who}'S PHONE IS OUT OF REACH: nothing was sent")
+        last = self._operator_sent_t.get((player_id, cmd))
+        if last is not None and now - last < self.OPERATOR_REPEAT_MS:
+            raise ConflictError(f"{word} WAS JUST SENT TO {who}: wait for the phone")
         pushed = self.net.push(nid, "control", {"cmd": cmd, "player_id": player_id,
                                                 "match_id": match_id}) is not False
         if not pushed:
             raise ConflictError(f"{who}'S PHONE HAS NO CONNECTION: nothing was sent")
-        go = self.scorer.go_live_t if self.scorer else None
-        self._on_feed({"t_match_s": max(0, (self.now_ms() - go) // 1000) if go and self.phase == "live" else 0,
-                       "tag": "OPERATOR", "kind": "alert",
-                       "text": "OPERATOR " + self.OPERATOR_VERB[cmd].format(who=who)})
+        self._operator_sent_t[(player_id, cmd)] = now
+        self._operator[player_id] = {"match_id": match_id, "cmd": cmd, "state": "sent", "why": None,
+                                     "sent_t": now, "result_t": None}
+        self._on_feed({"t_match_s": self._operator_t_match(now), "tag": "OPERATOR", "kind": "alert",
+                       "text": f"SENT {word} TO {who}"})
         self._changed()
         return {"ok": True, "cmd": cast(OperatorCmd, cmd), "player_id": player_id, "match_id": match_id, "pushed": pushed}
+
+    def _operator_t_match(self, now: int) -> int:
+        go = self.scorer.go_live_t if self.scorer else None
+        return max(0, (now - go) // 1000) if go and self.phase == "live" else 0
+
+    def _on_operator_result(self, nid: str, ev: Event, t_recv: int) -> None:
+        """A47: the phone's `operator_result{cmd, ok, why?}` fact. It writes the feed line from the RESULT
+        (the send only says SENT) and updates the player's LIVE row. It never reaches the scorer.
+
+        Ignored for another match, for a node bound to nobody, and for a replay of a fact already told."""
+        current = (self.start_info or {}).get("match_id")
+        cmd = ev.get("cmd")
+        if cmd not in self.OPERATOR_CMDS or not current or ev.get("match_id") != current:
+            return
+        pid = self.node_player.get(nid) or ev.get("player_id")
+        if not pid or (ev.get("player_id") and ev.get("player_id") != pid):
+            return
+        p = self.players.get(pid)
+        if p is None:
+            return
+        seq = ev.get("seq")
+        key = (nid, seq if seq is not None else (cmd, ev.get("t")))
+        if key in self._operator_seen:
+            return
+        self._operator_seen.add(key)
+        ok = ev.get("ok") is True
+        raw_why = ev.get("why")
+        why = str(raw_why).strip().upper()[:80] if raw_why else None
+        who = (p.get("display") or pid).upper()
+        word = self.OPERATOR_WORD[cmd]
+        if ok:
+            text = f"RESPAWNED {who} (OPERATOR)" if cmd == "respawn" else f"{word} DONE: {who}"
+        else:
+            text = f"{word} REFUSED BY {who}: {why or 'NO REASON GIVEN'}"
+        prev = self._operator.get(pid) or {}
+        self._operator[pid] = {"match_id": current, "cmd": cmd, "state": "done" if ok else "refused",
+                               "why": None if ok else (why or "NO REASON GIVEN"),
+                               "sent_t": prev.get("sent_t") if prev.get("cmd") == cmd else t_recv,
+                               "result_t": t_recv}
+        self._on_feed({"t_match_s": self._operator_t_match(t_recv), "tag": "OPERATOR",
+                       "kind": "alert", "text": text})
+        self._changed()
+
+    def _with_operator(self, rows: list[LiveRow], match_id: str) -> list[LiveRow]:
+        """A47: stamp each LIVE row with the last operator action for that player in THIS match."""
+        for row in rows:
+            o = self._operator.get(row["player_id"])
+            if o and o["match_id"] == match_id:
+                row["operator"] = {"cmd": o["cmd"], "state": o["state"], "why": o["why"],
+                                   "sent_t": o["sent_t"] or 0, "result_t": o["result_t"]}
+        return rows
+
+    def _phones_ended(self, match_id: str) -> bool:
+        """A47 review: every bound player phone that has made a claim says `match_id` is over for it
+        (`kitted` for this match, or another match), and at least one does. `idle`/`connected` and a
+        missing `arm_state` are NO claim (A42's rule), so they neither count nor block."""
+        ended = 0
+        for p in self.players.values():
+            nid = p.get("node_id")
+            if not nid or (self.nodes.get(nid) or {}).get("node_type") == "utility" or nid not in self._hb_claim:
+                continue
+            arm, mid = self._hb_claim[nid]
+            if isinstance(mid, str) and mid and mid != match_id:
+                ended += 1
+            elif mid == match_id and arm in END_CONFIRM_PHASES:
+                ended += 1
+            elif arm in ("armed", "live"):
+                return False
+        return ended > 0
 
     def end_orphan(self, match_id: str) -> dict:
         """END THEIR MATCH (operator only): `control{end, match_id}` to the phones reporting that match.
@@ -3811,6 +3926,11 @@ class Session:
         self._note_pool_life(nid, [ev])            # A36
         self._ingest_retired(nid, [ev], t_recv)    # a late fact for the match the operator rolled past
         parked = bool(self.scorer and ev.get("match_id") != self.scorer.match_id) or not self.scorer
+        if ev.get("type") == "operator_result":
+            # A47: stored like every fact, told to the operator, and kept away from every scorer.
+            self._log(nid, "operator_result", ev, t_recv, seq=seq, parked=parked)
+            self._on_operator_result(nid, ev, t_recv)
+            return
         self._log(nid, ev.get("type", "event"), ev, t_recv, seq=seq, parked=parked)
         if not parked and ev.get("type") == "respawn":
             # A19: a respawn clears every held role on the node (engine.js) -- the VIP is still the VIP.
@@ -3827,6 +3947,17 @@ class Session:
 
     def ingest_batch(self, nid: str, events: list[Event], t_recv: int):
         self._node_view(nid)["last_seen_ms"] = t_recv
+        # A47: an `operator_result` is stored and told to the operator, never scored (and it must not
+        # count toward a batch's re-base or SYNC POINT either).
+        results = [ev for ev in events if ev.get("type") == "operator_result"]
+        if results:
+            for ev in results:
+                self._log(nid, "operator_result", ev, t_recv, seq=ev.get("seq"),
+                          parked=not self.scorer or ev.get("match_id") != self.scorer.match_id)
+                self._on_operator_result(nid, ev, t_recv)
+            events = [ev for ev in events if ev.get("type") != "operator_result"]
+            if not events:
+                return
         self._note_pool_life(nid, events)          # A36
         self._ingest_retired(nid, events, t_recv)  # a late fact for the match the operator rolled past
         for ev in events:
@@ -5845,11 +5976,15 @@ class Session:
         time_limit_s = self.config.get("time_limit_s")
         if time_limit_s is None:
             raise RuntimeError("active scorer has no time limit")
-        return {"match_id": self.scorer.match_id, "go_live_t": self.scorer.go_live_t,
-                "time_limit_s": time_limit_s, "ends_t": self.scorer.go_live_t + time_limit_s * 1000,
-                "score": self.scorer.team_scores(),
-                "rows": self._with_pool_stale(self.scorer.live_rows(now, {nid: nv.get("last_seen_ms", 0)
-                                                                         for nid, nv in self.nodes.items()}))}
+        view: LiveView = {"match_id": self.scorer.match_id, "go_live_t": self.scorer.go_live_t,
+                          "time_limit_s": time_limit_s, "ends_t": self.scorer.go_live_t + time_limit_s * 1000,
+                          "score": self.scorer.team_scores(),
+                          "rows": self._with_operator(self._with_pool_stale(self.scorer.live_rows(
+                              now, {nid: nv.get("last_seen_ms", 0) for nid, nv in self.nodes.items()})),
+                              self.scorer.match_id)}
+        if self.phase == "live" and (self.start_info or {}).get("adopted") and self._phones_ended(self.scorer.match_id):
+            view["phones_ended"] = True
+        return view
 
     def _with_pool_stale(self, rows: list[LiveRow]) -> list[LiveRow]:
         """F208: stamp each LIVE row with its node's `pool_stale` claim, only while the node makes one."""

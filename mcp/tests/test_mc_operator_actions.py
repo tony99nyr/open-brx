@@ -11,7 +11,7 @@ from _skip import needs
 
 from brx_mcp.mc import envelope as E
 from brx_mcp.mc.state import STALE_AFTER_MS, ConflictError
-from test_mc_block_b import DeafNet, go_live, kill, mk, online
+from test_mc_block_b import DeafNet, go_live, heartbeat, kill, mk, online
 
 try:
     from starlette.testclient import TestClient
@@ -45,14 +45,16 @@ def test_each_action_pushes_one_control_to_that_player_phone_only():
     assert not any(k in ("config", "start") for _n, k, _b in net.pushed[-3:])
 
 
-def test_the_match_feed_names_the_operator_and_the_player():
+def test_the_send_says_sent_and_claims_nothing_about_the_phone():
     s, net, clock, ps, info = go_live(2)
     s.operator_action(ps[0]["player_id"], "respawn", info["match_id"])
     s.operator_action(ps[0]["player_id"], "resync", info["match_id"])
     s.operator_action(ps[0]["player_id"], "relink", info["match_id"])
     texts = [f["text"] for f in s.feed[:3]]
-    assert texts == ["OPERATOR RELINKED OP0'S GUN", "OPERATOR RESYNCED OP0'S GUN", "OPERATOR RESPAWNED OP0"], texts
+    assert texts == ["SENT RELINK TO OP0", "SENT RESYNC TO OP0", "SENT RESPAWN TO OP0"], texts
     assert all(f["tag"] == "OPERATOR" and f["kind"] == "alert" for f in s.feed[:3])
+    row = next(r for r in s.snapshot()["live"]["rows"] if r["player_id"] == ps[0]["player_id"])
+    assert row["operator"]["cmd"] == "relink" and row["operator"]["state"] == "sent", row
 
 
 def test_refused_outside_armed_and_live():
@@ -130,3 +132,123 @@ def test_the_route_needs_the_operator_token_and_answers_409_for_a_refusal():
     assert r.status_code == 409 and "match is over" in r.json()["error"], r.text
     r = c.post(url, json={**body, "cmd": "nope"}, headers=auth)
     assert r.status_code == 400, r.text
+
+
+# ── A47 operator outcome: the phone's `operator_result` fact ───────────────────────────────────────
+def _result(net, clock, i, info, cmd, ok, seq, why=None, pid=None, match_id=None):
+    body = {"type": "operator_result", "t": clock["t"], "match_id": match_id or info["match_id"],
+            "player_id": pid, "cmd": cmd, "ok": ok, **({"why": why} if why else {})}
+    net.simulate_event(f"node{i}", body, clock["t"], seq=seq)
+    return body
+
+
+def _row(s, pid):
+    return next(r for r in s.snapshot()["live"]["rows"] if r["player_id"] == pid)
+
+
+def test_the_feed_line_comes_from_the_phone_result_not_the_send():
+    s, net, clock, ps, info = go_live(2)
+    pid = ps[1]["player_id"]
+    s.operator_action(pid, "resync", info["match_id"])
+    assert _row(s, pid)["operator"]["state"] == "sent"
+    clock["t"] += 500
+    _result(net, clock, 1, info, "resync", True, seq=11, pid=pid)
+    assert s.feed[0]["text"] == "RESYNC DONE: OP1" and s.feed[0]["tag"] == "OPERATOR"
+    op = _row(s, pid)["operator"]
+    assert op["state"] == "done" and op["why"] is None and op["result_t"] == clock["t"], op
+    clock["t"] += 2500
+    s.operator_action(pid, "respawn", info["match_id"])
+    _result(net, clock, 1, info, "respawn", True, seq=12, pid=pid)
+    assert s.feed[0]["text"] == "RESPAWNED OP1 (OPERATOR)"
+    clock["t"] += 2500
+    s.operator_action(pid, "resync", info["match_id"])
+    _result(net, clock, 1, info, "resync", False, seq=13, pid=pid, why="stunned")
+    assert s.feed[0]["text"] == "RESYNC REFUSED BY OP1: STUNNED"
+    op = _row(s, pid)["operator"]
+    assert op["state"] == "refused" and op["why"] == "STUNNED", op
+
+
+def test_an_operator_result_is_stored_but_never_scored():
+    s, net, clock, ps, info = go_live(2)
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    before_rows = s.scorer.rows()
+    s.scorer.stats[ps[0]["player_id"]].flushed = False
+    _result(net, clock, 0, info, "respawn", True, seq=2, pid=ps[0]["player_id"])
+    s.ingest_batch("node0", [{"type": "operator_result", "t": clock["t"], "match_id": info["match_id"],
+                              "cmd": "resync", "ok": False, "why": "down", "seq": 3}], clock["t"])
+    assert s.scorer.rows() == before_rows, "the scorer did not move"
+    assert s.scorer.stats[ps[0]["player_id"]].flushed is False, "a result is not a scoring fact"
+    assert [f["text"] for f in s.feed[:2]] == ["RESYNC REFUSED BY OP0: DOWN", "RESPAWNED OP0 (OPERATOR)"]
+
+
+def test_a_replayed_or_foreign_result_writes_nothing():
+    s, net, clock, ps, info = go_live(2)
+    pid = ps[0]["player_id"]
+    _result(net, clock, 0, info, "resync", True, seq=5, pid=pid)
+    n = len(s.feed)
+    _result(net, clock, 0, info, "resync", True, seq=5, pid=pid)       # the outbox replays it
+    _result(net, clock, 0, info, "resync", True, seq=6, match_id="another-match")
+    _result(net, clock, 0, info, "resync", True, seq=7, pid=ps[1]["player_id"])   # names another player
+    assert len(s.feed) == n, s.feed[:3]
+
+
+def test_the_wire_accepts_an_operator_result_event():
+    body = {"type": "operator_result", "t": 1_800_000_000_000, "match_id": "m", "player_id": "p", "node_id": "n",
+            "cmd": "resync", "ok": False, "why": "stunned"}
+    E.validate(E.make_envelope("event", body, seq=1), direction="node")
+    try:
+        E.validate(E.make_envelope("event", {k: v for k, v in body.items() if k != "ok"}, seq=2), direction="node")
+    except E.EnvelopeError:
+        pass
+    else:
+        raise AssertionError("`ok` is the fact itself: an operator_result without it is malformed")
+
+
+def test_resync_and_respawn_need_live_while_relink_works_in_armed():
+    from test_mc_block_b import mk as mk_b
+    s, net, clock, ps = mk_b(2)
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.push_config()
+    for i in range(2):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
+                                                             "gun_echo": "$LCD"}, clock["t"])
+    info = s.start(runway_s=10)
+    assert s.phase == "armed"
+    before = len(net.pushed)
+    for cmd in ("resync", "respawn"):
+        msg = _refused(s.operator_action, ps[0]["player_id"], cmd, info["match_id"])
+        assert "NEEDS A LIVE MATCH" in msg, msg
+    assert len(net.pushed) == before
+    assert s.operator_action(ps[0]["player_id"], "relink", info["match_id"])["ok"] is True
+
+
+def test_force_respawn_is_refused_for_a_down_player_when_the_mode_has_no_respawn():
+    s, net, clock, ps, info = go_live(2, mode="ffa", cfg={"respawn": {"type": "none", "delay_s": 0}})
+    assert s.config["respawn"]["type"] == "none"
+    kill(s, net, clock, ps, 0, 1, info, seq=1)
+    for i, p in enumerate(ps):                          # both phones in reach; OP1's heartbeat says down
+        net.simulate_status(f"node{i}", {"player_id": p["player_id"], "alive": i == 0, "synced": True,
+                                         "pending": 0}, clock["t"])
+    before = len(net.pushed)
+    msg = _refused(s.operator_action, ps[1]["player_id"], "respawn", info["match_id"])
+    assert "NO RESPAWN" in msg and "OP1 IS OUT" in msg, msg
+    assert len(net.pushed) == before
+    assert s.operator_action(ps[0]["player_id"], "respawn", info["match_id"])["ok"] is True, \
+        "a living player can still be respawned (full pools), which changes no survival outcome"
+    assert s.operator_action(ps[1]["player_id"], "relink", info["match_id"])["ok"] is True
+
+
+def test_the_same_action_twice_inside_two_seconds_is_a_double_tap():
+    s, net, clock, ps, info = go_live(2)
+    pid = ps[0]["player_id"]
+    s.operator_action(pid, "respawn", info["match_id"])
+    before = len(net.pushed)
+    clock["t"] += 1999
+    assert "JUST SENT" in _refused(s.operator_action, pid, "respawn", info["match_id"])
+    assert len(net.pushed) == before
+    assert s.operator_action(pid, "relink", info["match_id"])["ok"], "another action is not a double tap"
+    assert s.operator_action(ps[1]["player_id"], "respawn", info["match_id"])["ok"], "nor is another player"
+    clock["t"] += 1
+    heartbeat(s, net, clock, ps)
+    assert s.operator_action(pid, "respawn", info["match_id"])["ok"]

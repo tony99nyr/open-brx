@@ -399,3 +399,58 @@ def test_end_their_match_tells_only_the_phones_in_that_match():
     assert len([1 for n, k, b in net.pushed if n == "node0" and k == "control"]) == 2, \
         "a phone that missed the end is told again, as for a match MC retired itself"
     assert not [1 for n, k, b in net.pushed if n == "node2" and k == "control"]
+
+
+# ── A47 review: an ADOPTED match survives a restart unfinished ─────────────────────────────────────
+def test_a_restart_never_finishes_an_adopted_match_on_the_draft_clock():
+    """MC holds no config for an adopted match, so the draft's clock and the age bound are guesses. A
+    finish here armed the end delivery at phones still playing it."""
+    s, net, clock, ps, _ = _fresh_mc_with_phones_in(2, ["m-old", "m-old"])
+    s.set_config({"time_limit_s": 5})
+    s.adopt_orphan("m-old")
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    s._persist_last = 0.0
+    s._persist()
+    assert s.snapshot()["phase"] == "live"
+    clock["t"] += 60_000                                   # past the draft's clock AND the 2x age bound
+    s2, net2 = _restart_no_repersist(s, clock)
+    assert s2.resume_match() == "live", "an adopted match is never finished by a restart"
+    assert s2.last_recap is None and not s2._end_delivery, "no recap, and no end delivery at the phones"
+    tags = [(e["tag"], e["text"]) for e in s2.feed]
+    assert len(tags) == 1 and tags[0][0] == "NOTE" and "PRESS END" in tags[0][1], tags
+    assert not net2.pushes("control")
+
+
+def test_an_untimed_old_snapshot_resumes_when_a_phone_still_plays_the_match():
+    s, net, clock, ps, info = _persisting_live(cfg={"time_limit_s": 30})
+    s.config["time_limit_s"] = None
+    s._persist_last = 0.0
+    s._persist()
+    clock["t"] += 3_600_000 + 1
+    s2, net2 = _restart_no_repersist(s, clock)
+    tail = demo_armory()[0]["ble"]["tail"]
+    net2.simulate_hello("node0", f"GUN-A-{tail}")
+    _status(net2, clock, 0, "live", info["match_id"])      # a fresh heartbeat still names the match
+    assert s2.resume_match() == "live"
+    assert not s2._end_delivery and s2.last_recap is None
+    assert s2.feed[0]["tag"] == "NOTE" and "STILL PLAYS" in s2.feed[0]["text"]
+
+
+# ── A47 review: an adopted match the phones have ended says so on the MATCH screen ─────────────────
+def test_phones_ended_shows_only_when_every_claiming_phone_has_ended_the_adopted_match():
+    s, net, clock, ps, _ = _fresh_mc_with_phones_in(3, ["m-old", "m-old", "m-old"])
+    s.adopt_orphan("m-old")
+    assert "phones_ended" not in s.snapshot()["live"]
+    _status(net, clock, 0, "kitted", "m-old")
+    _status(net, clock, 1, "kitted", "m-old")
+    assert "phones_ended" not in s.snapshot()["live"], "one phone still reports LIVE"
+    _status(net, clock, 2, "idle", None)                   # a relaunched phone: no claim either way
+    assert s.snapshot()["live"]["phones_ended"] is True
+    assert s.phase == "live" and not net.pushes("control"), "MC shows it and ends nothing itself"
+
+
+def test_phones_ended_is_never_set_on_mcs_own_match():
+    s, net, clock, ps, info = go_live(2, "ffa")
+    for i in range(2):
+        _status(net, clock, i, "kitted", info["match_id"])
+    assert "phones_ended" not in s.snapshot()["live"]

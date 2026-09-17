@@ -391,6 +391,11 @@ refusal below is logged too, so the phone's log answers "the operator pressed it
 | `respawn` | `_revive(false, null, true)` | the normal revive: `frames.revive` (fn-28 twin, `$SPAWN`, `$AMMO`, `$BMAP,0,0`), full pools, A44 protection, `respawn{operator:true}`. A down player is up at once (`deadAt` cleared). A stun is cancelled with no write | not `live`, not spawned, no bundle, link down, reconciling, try-out |
 | `relink` | `onRelink` → `link.relink()` (app.js) | none itself: the relink then runs §3.10 (LIVE reconcile, or the LOBBY/ARMED head re-write) | not `lobby`/`armed`/`live`, no hook |
 
+**The answer.** Each command that passes the match and player check is answered with the persisted fact
+`operator_result{cmd, ok, why?}` (contracts §4): `ok:true` when the node did it, `ok:false` with the refusal
+reason in `why`. MC writes the operator's feed line and menu line from this fact, never from the send, and no
+scorer reads it.
+
 **Why resync is not the rejoin reconcile.** `_beginReconcile` disarms both slots for `RECONCILE_MS` and
 `_endReconcile` re-arms with the SPAWN counts and writes no `$TID` or `$BMAP`. A resync must keep the ammo the player
 has and put back the team and trigger mapping, with no disarmed window. **Never a config or head write**: a

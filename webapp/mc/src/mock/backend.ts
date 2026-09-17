@@ -1376,23 +1376,42 @@ export class MockBackend implements Api {
     this.emit();
     return { ok: true, ended: true, reached: nodes, pushed: nodes, nodes, phase: this.phase };
   }
-  /** A47: `state.py operator_action`, with the same refusals, so `?mock` is never more permissive than MC. */
+  /** (player_id, cmd) -> ms of the last accepted send: `state.py OPERATOR_REPEAT_MS`, the double-tap guard. */
+  private opSent: Record<string, number> = {};
+  /** A47: `state.py operator_action`, with the same refusals, so `?mock` is never more permissive than MC.
+   *  The demo phone answers with an `operator_result` a moment later (`_on_operator_result`). */
   async operatorAction(player_id: string, cmd: OperatorCmd, match_id: string): Promise<OperatorActionResult> {
     const refuse = (msg: string, status = 409) => { throw Object.assign(new Error(msg), { status, body: { error: msg } }); };
     if (!['resync', 'respawn', 'relink'].includes(cmd)) refuse(`unknown operator action '${cmd}'`, 400);
     const current = this.live_?.match_id ?? this.start_?.match_id;
     if (!['armed', 'live'].includes(this.phase) || !current) refuse(`no match is ARMED or LIVE (phase ${this.phase.toUpperCase()})`);
     if (!match_id || match_id !== current) refuse('that match is over: the board was stale. Look at the player again');
+    const word = cmd.toUpperCase();
+    if (cmd !== 'relink' && this.phase !== 'live') refuse(`${word} NEEDS A LIVE MATCH: the phone refuses it before T-0`);
     const p = this.players.find(x => x.player_id === player_id);
     if (!p) return refuse('unknown player', 400);
     const who = p.display.toUpperCase();
     const row = this.live_?.rows.find(r => r.player_id === player_id);
+    if (cmd === 'respawn' && this.config.respawn.type === 'none' && row?.status === 'down') {
+      refuse(`${who} IS OUT: THIS MODE HAS NO RESPAWN, SO FORCE RESPAWN WOULD CHANGE WHO SURVIVES`);
+    }
     if (!p.node_id || (row && row.status === 'stale')) refuse(`${who}'S PHONE IS OUT OF REACH: nothing was sent`);
-    if (cmd === 'respawn' && row) { row.status = 'alive'; row.respawn_in_s = null; }
-    const verb = cmd === 'respawn' ? `RESPAWNED ${who}` : cmd === 'resync' ? `RESYNCED ${who}'S GUN` : `RELINKED ${who}'S GUN`;
-    const tm = this.live_ ? Math.max(0, Math.floor((now() - this.live_.go_live_t) / 1000)) : 0;
-    this.feed({ t_match_s: tm, kind: 'alert', tag: 'OPERATOR', text: `OPERATOR ${verb}` });
+    const key = `${player_id}|${cmd}`, t = now();
+    if (this.opSent[key] != null && t - this.opSent[key] < 2000) refuse(`${word} WAS JUST SENT TO ${who}: wait for the phone`);
+    this.opSent[key] = t;
+    const tm = () => (this.live_ ? Math.max(0, Math.floor((now() - this.live_.go_live_t) / 1000)) : 0);
+    if (row) row.operator = { cmd, state: 'sent', why: null, sent_t: t, result_t: null };
+    this.feed({ t_match_s: tm(), kind: 'alert', tag: 'OPERATOR', text: `SENT ${word} TO ${who}` });
     this.emit();
+    setTimeout(() => {
+      const r = this.live_?.rows.find(x => x.player_id === player_id);
+      if (!r || this.live_?.match_id !== match_id || r.operator?.sent_t !== t) return;
+      if (cmd === 'respawn') { r.status = 'alive'; r.respawn_in_s = null; }
+      r.operator = { cmd, state: 'done', why: null, sent_t: t, result_t: now() };
+      this.feed({ t_match_s: tm(), kind: 'alert', tag: 'OPERATOR',
+                  text: cmd === 'respawn' ? `RESPAWNED ${who} (OPERATOR)` : `${word} DONE: ${who}` });
+      this.emit();
+    }, 1200);
     return { ok: true, cmd, player_id, match_id, pushed: true };
   }
   async resumeOrphan(match_id: string) {

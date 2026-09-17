@@ -175,10 +175,17 @@ try {
     await pg.waitForTimeout(800);
     const text = (await pg.locator('body').innerText()).toUpperCase();
     expect(text.includes(`RESPAWN SENT TO ${who}'S PHONE`), 'the second tap sends and the notice says so');
-    expect(await menu.count() === 0, 'the menu closes after a send');
+    expect(await menu.count() === 1, 'the menu stays open to show what the phone says');
+    // the demo phone (mock_node.py) answers with an `operator_result`; the feed line comes from THAT
+    const outcome = menu.locator('[data-op-outcome="done"]');
+    await outcome.waitFor({ timeout: 5000 }).catch(() => {});
+    expect((await outcome.innerText().catch(() => '')).trim() === 'THE PHONE RESPAWNED THE PLAYER.', "the menu shows the phone's result");
     const feed = (await (await fetch(`${mc.base}/api/state`)).json()).feed.map(f => f.text);
-    expect(feed.includes(`OPERATOR RESPAWNED ${who}`), 'the server wrote the feed line');
-    expect(text.includes(`OPERATOR RESPAWNED ${who}`), 'and the console shows it in the event feed');
+    expect(feed.includes(`SENT RESPAWN TO ${who}`), 'the server wrote the send line');
+    expect(feed.includes(`RESPAWNED ${who} (OPERATOR)`), "and the result line, from the phone's fact");
+    const after = (await pg.locator('body').innerText()).toUpperCase();
+    expect(after.includes(`RESPAWNED ${who} (OPERATOR)`), 'and the console shows it in the event feed');
+    await pg.waitForTimeout(2100);   // the next viewport's FORCE RESPAWN must not be a double tap (OPERATOR_REPEAT_MS)
     const overflow = await pg.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
     expect(!overflow, 'no sideways page scroll at this width');
     await shot(pg, `a47-sent-${vp.tag}`);

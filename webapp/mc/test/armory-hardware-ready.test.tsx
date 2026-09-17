@@ -152,6 +152,8 @@ describe('ARMORY · ENABLE BACKHAUL', () => {
     const line = m.find('[data-backhaul-error]');
     expect(line.length).toBe(1);
     expect(line[0].textContent).toContain('cloudflared was not found on PATH');
+    // the line is clamped to two lines, so the whole reason must stay reachable on hover
+    expect(line[0].getAttribute('title')).toBe('cloudflared was not found on PATH');
     expect(gateBtn(m).disabled).toBe(false);
     expect(gateBtn(m).textContent).toBe('HARDWARE READY ▸');
     await act(async () => { gateBtn(m).click(); });

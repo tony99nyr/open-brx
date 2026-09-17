@@ -7,7 +7,7 @@ import { F, T, fmtAge, fmtClock, teamColor } from '../tokens';
 import { columnEdges, type Column } from './columns';
 import { Blink, GhostButton, Num, ScrollX, Tag } from '../ui';
 import { OrphanMatch } from '../ui/OrphanMatch';
-import { OperatorMenu } from './OperatorMenu';
+import { OperatorMenu, operatorMenuId } from './OperatorMenu';
 
 // S24 (game test 2026-09-11, D4): the board was `minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px …`
 // at `gap:'0 10px'` with 9 px headers over 14-16 px values, and K/D/A were three identical right-aligned
@@ -151,6 +151,15 @@ export function Live() {
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
         <div style={{ flex: '2 1 560px', minWidth: 0 }}>
+          {lv.phones_ended && (
+            // A47 review: an ADOPTED match that every phone has already ended. MC never ends an adopted match
+            // on its own guess (it holds no config for it), so the operator is told once, in one line.
+            <div data-testid="phones-ended" role="status"
+              style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${T.line2}`, borderLeft: `3px solid ${T.warn}`,
+                font: F.mono(500, 11), letterSpacing: '.1em', color: T.warn, lineHeight: 1.5 }}>
+              PHONES HAVE ENDED THIS MATCH: PRESS END
+            </div>
+          )}
           {edLine && (
             <div data-testid="end-delivery" role={edLine.ok ? undefined : 'alert'}
               style={{ marginBottom: 12, padding: '8px 14px', border: `1px solid ${edLine.ok ? T.line2 : T.bad}`,
@@ -278,10 +287,14 @@ function Row({ r, endUnconfirmed, open, onToggle }: { r: LiveRow; endUnconfirmed
   const rim = `1px solid ${endUnconfirmed ? T.bad : open ? T.acc : T.row}`;
   return (
     <div data-end-unconfirmed={endUnconfirmed ? r.player_id : undefined} data-live-row={r.player_id}
-      role="button" tabIndex={0} aria-expanded={!!open} title="Operator actions: resync, respawn or relink this player's gun"
+      role="button" tabIndex={0} aria-expanded={!!open} aria-controls={operatorMenuId(r.player_id)}
+      aria-label={`${r.display} operator actions`} title="Operator actions: resync, respawn or relink this player's gun"
       onClick={onToggle} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle?.(); } }}
       style={{ cursor: 'pointer', display: 'grid', gridTemplateColumns: COLS, gap: GAP, alignItems: 'center', padding: '10px 14px', background: dead ? 'rgba(255,82,82,.05)' : T.panel, borderTop: rim, borderRight: rim, borderBottom: rim, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>
-      <span style={{ font: F.chk(700, 14), letterSpacing: '.1em', minWidth: 0 }}>{r.display}
+      <span style={{ font: F.chk(700, 14), letterSpacing: '.1em', minWidth: 0 }}>
+        {/* A47 review: the row is a control, so it has to look like one */}
+        <span data-row-affordance="1" aria-hidden="true" style={{ color: open ? T.acc : T.dim, marginRight: 6, display: 'inline-block',
+          transform: open ? 'rotate(90deg)' : undefined }}>▸</span>{r.display}
         {silent && <span data-gun-silent={r.player_id} title="The phone says this gun's health and ammo readout may be out of date."
           style={{ display: 'block', font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>{silent}</span>}
       </span>

@@ -575,7 +575,7 @@ class NodeView(TypedDict):
 
 
 class Event(TypedDict, total=False):
-    type: Literal["hit_taken", "death", "respawn", "team_change", "status", "possession"]
+    type: Literal["hit_taken", "death", "respawn", "team_change", "status", "possession", "operator_result"]
     t: int
     match_id: str | None
     node_id: str
@@ -594,6 +594,11 @@ class Event(TypedDict, total=False):
     # respawn
     resync: bool
     operator: bool   # A47: the operator's FORCE RESPAWN, not a respawn after a death (scoring keeps the streak)
+    # operator_result (A47): what the phone DID with an operator action MC sent (`control{resync|respawn|relink}`).
+    # Persisted like every fact, and read for the operator's feed and menu only: it never reaches the scorer.
+    cmd: Literal["resync", "respawn", "relink"]
+    ok: bool
+    why: str   # present on a refusal: the phone's own reason ("stunned", "not live", ...)
     # team_change
     tid: int
     # possession (F70, objective modes) — a CUMULATIVE tally for ONE control point, resent as it grows.
@@ -669,6 +674,16 @@ class ScoreRow(TypedDict):
     after_end_deaths: NotRequired[int]
 
 
+class OperatorStatus(TypedDict):
+    """A47: the last operator action MC sent to one player, and what the phone said about it.
+    `state` is "sent" until the phone's `operator_result` fact arrives, then "done" or "refused"."""
+    cmd: Literal["resync", "respawn", "relink"]
+    state: Literal["sent", "done", "refused"]
+    why: str | None
+    sent_t: int
+    result_t: int | None
+
+
 class LiveRow(ScoreRow):
     status: Literal["alive", "down", "stale"]
     sync_age_ms: int
@@ -676,6 +691,8 @@ class LiveRow(ScoreRow):
     # F208: the bound node's `pool_stale` / `pool_stale_ms`, as NodeView. Absent = not stale.
     pool_stale: NotRequired[Literal["silent", "no_fire"]]
     pool_stale_ms: NotRequired[int]
+    # A47: the latest operator action for this player in THIS match. Absent = none sent.
+    operator: NotRequired[OperatorStatus]
 
 
 class LiveView(TypedDict):
@@ -685,6 +702,10 @@ class LiveView(TypedDict):
     ends_t: int
     score: dict[str, int]
     rows: list[LiveRow]
+    # A47: an ADOPTED match only. True when every bound phone that has reported a claim says it has ended
+    # (`kitted` for this match, or another match), and at least one does. MC never ends an adopted match
+    # itself; the console asks the operator to press END. Absent = no such claim.
+    phones_ended: NotRequired[bool]
 
 
 class StartNodeView(TypedDict):
