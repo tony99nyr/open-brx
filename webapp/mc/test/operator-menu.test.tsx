@@ -2,10 +2,11 @@
 // with RESYNC GUN, FORCE RESPAWN and RELINK GUN. A second tap on the same action confirms it (no modal). A phone
 // out of reach gets a sentence instead of buttons. These assert what the operator SEES and what is sent.
 import { useState, type ReactNode } from 'react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Api, LiveRow, LiveView, OperatorCmd, State } from '../src/api/types';
 import { CommandBar } from '../src/frame/CommandBar';
 import { Live } from '../src/screens/Live';
+import { ARM_TIMEOUT_MS } from '../src/screens/OperatorMenu';
 import { clearNotice } from '../src/notice';
 import { MockBackend } from '../src/mock/backend';
 import { StoreCtx } from '../src/store';
@@ -32,7 +33,7 @@ function Wrap({ state, api, children }: { state: State; api: Partial<Api>; child
 }
 
 type Call = [string, OperatorCmd, string];
-async function board(answer?: Error) {
+async function board(answer?: Error, opts: { phase?: State['phase']; live?: LiveView; respawnType?: 'auto' | 'none' } = {}) {
   const d = await demo();
   const calls: Call[] = [];
   const api = fixtureApi({
@@ -42,9 +43,13 @@ async function board(answer?: Error) {
       return { ok: true, cmd, player_id: pid, match_id: mid, pushed: true };
     },
   } as Partial<Api>);
-  const state: State = { ...d.state, phase: 'live', live: LIVE };
-  const m = await mount(<Wrap state={state} api={api}><CommandBar /><Live /></Wrap>);
-  return Object.assign(m, { calls });
+  const mkState = (live: LiveView): State => ({
+    ...d.state, phase: opts.phase ?? 'live', live,
+    config: { ...d.state.config, respawn: { type: opts.respawnType ?? 'auto', delay_s: opts.respawnType === 'none' ? 0 : 15 } },
+  });
+  const m = await mount(<Wrap state={mkState(opts.live ?? LIVE)} api={api}><CommandBar /><Live /></Wrap>);
+  const rerender = (live: LiveView) => m.update(<Wrap state={mkState(live)} api={api}><CommandBar /><Live /></Wrap>);
+  return Object.assign(m, { calls, rerender });
 }
 const rowEl = (m: Mounted, pid: string) => m.find(`[data-live-row="${pid}"]`)[0];
 const menu = (m: Mounted, pid: string) => m.find(`[data-operator-menu="${pid}"]`)[0];
@@ -52,8 +57,12 @@ const op = (m: Mounted, cmd: OperatorCmd) => m.find(`[data-op="${cmd}"]`)[0] as 
 const errStrip = (m: Mounted) => (m.find('header [role="alert"]')[0]?.textContent ?? '').replace(/\s+/g, ' ').trim();
 const tap = async (el: HTMLElement) => { const { act } = await import('react'); await act(async () => { el.click(); }); };
 
+/** what jsdom writes back for a token colour set as an inline style */
+function styleColor(c: string) { const d = document.createElement('div'); d.style.color = c; return d.style.color.replace(/\s/g, ''); }
+
 describe('A47 · LIVE operator menu', () => {
   beforeEach(() => clearNotice());
+  afterEach(() => vi.useRealTimers());
 
   it('tapping a row opens its menu with the three actions, and tapping it again closes it', async () => {
     const m = await board();
@@ -81,7 +90,7 @@ describe('A47 · LIVE operator menu', () => {
     await tap(op(m, 'resync')!);
     expect(m.calls).toEqual([['p1', 'resync', 'm-op']]);
     expect(m.text()).toContain("RESYNC SENT TO VIPER'S PHONE");
-    expect(menu(m, 'p1'), 'the menu closes after a send').toBeUndefined();
+    expect(menu(m, 'p1'), 'the menu stays open to show what the phone says').toBeTruthy();
     m.unmount();
   });
 
@@ -101,6 +110,91 @@ describe('A47 · LIVE operator menu', () => {
     expect(menu(m, 'p3').textContent).toContain('ROOK IS DOWN. USE FORCE RESPAWN.');
     expect(op(m, 'respawn')!.disabled).toBe(false);
     m.unmount();
+  });
+
+  it('the row reads as a control: a mark in the name cell, and a label and target for assistive tech', async () => {
+    const m = await board();
+    const el = rowEl(m, 'p1');
+    expect(el.querySelector('[data-row-affordance]')?.textContent).toBe('▸');
+    expect(el.getAttribute('aria-label')).toBe('VIPER operator actions');
+    await tap(el);
+    expect(el.getAttribute('aria-controls')).toBe(menu(m, 'p1').id);
+    m.unmount();
+  });
+
+  it('shows "sent, waiting for the phone" until the result arrives, then the result', async () => {
+    const withOp = (op: LiveRow['operator']): LiveView => ({ ...LIVE, rows: LIVE.rows.map(r => (r.player_id === 'p1' ? { ...r, operator: op } : r)) });
+    const m = await board(undefined, { live: withOp({ cmd: 'resync', state: 'sent', why: null, sent_t: 1, result_t: null }) });
+    await tap(rowEl(m, 'p1'));
+    const out = () => menu(m, 'p1').querySelector('[data-op-outcome]')?.textContent ?? '';
+    expect(out()).toBe('RESYNC SENT, WAITING FOR THE PHONE.');
+    await m.rerender(withOp({ cmd: 'resync', state: 'done', why: null, sent_t: 1, result_t: 2 }));
+    expect(out()).toBe('RESYNC DONE ON THE PHONE.');
+    await m.rerender(withOp({ cmd: 'resync', state: 'refused', why: 'STUNNED', sent_t: 1, result_t: 3 }));
+    expect(out()).toBe('THE PHONE REFUSED RESYNC: STUNNED.');
+    m.unmount();
+  });
+
+  it('an armed CONFIRM clears after 4 s, and when the row status changes', async () => {
+    const m = await board();
+    await tap(rowEl(m, 'p1'));
+    vi.useFakeTimers();
+    try {
+      await tap(op(m, 'respawn')!);
+      expect(op(m, 'respawn')!.textContent).toBe('CONFIRM FORCE RESPAWN');
+      const { act } = await import('react');
+      await act(async () => { vi.advanceTimersByTime(ARM_TIMEOUT_MS - 100); });
+      expect(op(m, 'respawn')!.textContent, 'still armed just before the timeout').toBe('CONFIRM FORCE RESPAWN');
+      await act(async () => { vi.advanceTimersByTime(200); });
+      expect(op(m, 'respawn')!.textContent).toBe('FORCE RESPAWN');
+      await tap(op(m, 'respawn')!);
+      expect(op(m, 'respawn')!.textContent).toBe('CONFIRM FORCE RESPAWN');
+      await m.rerender({ ...LIVE, rows: LIVE.rows.map(r => (r.player_id === 'p1' ? { ...r, status: 'down', respawn_in_s: 9 } : r)) });
+      expect(op(m, 'respawn')!.textContent, 'a status change disarms it').toBe('FORCE RESPAWN');
+      expect(m.calls).toEqual([]);
+    } finally { vi.useRealTimers(); }
+    m.unmount();
+  });
+
+  it('in ARMED only RELINK is offered, with one line saying why', async () => {
+    const m = await board(undefined, { phase: 'armed' });
+    await tap(rowEl(m, 'p1'));
+    expect(op(m, 'resync')).toBeUndefined();
+    expect(op(m, 'respawn')).toBeUndefined();
+    expect(op(m, 'relink')).toBeTruthy();
+    expect(menu(m, 'p1').querySelector('[data-op-unavailable="armed"]')?.textContent).toContain('WAIT FOR T-0');
+    m.unmount();
+  });
+
+  it('FORCE RESPAWN is disabled for a down player when the mode has no respawn, and says why', async () => {
+    const m = await board(undefined, { respawnType: 'none' });
+    await tap(rowEl(m, 'p3'));
+    expect(op(m, 'respawn')!.disabled).toBe(true);
+    expect(menu(m, 'p3').textContent).toContain('ROOK IS OUT. THIS MODE HAS NO RESPAWN.');
+    m.unmount();
+    const m2 = await board(undefined, { respawnType: 'none' });
+    await tap(rowEl(m2, 'p1'));
+    expect(op(m2, 'respawn')!.disabled, 'a living player can still be respawned').toBe(false);
+    m2.unmount();
+  });
+
+  it('the out-of-reach sentence is dim, not a warning', async () => {
+    const m = await board();
+    await tap(rowEl(m, 'p2'));
+    const el = menu(m, 'p2').querySelector('[data-op-unavailable="reach"]') as HTMLElement;
+    const { T } = await import('../src/tokens');
+    expect(el.style.color.replace(/\s/g, '')).toBe(styleColor(T.dim));
+    m.unmount();
+  });
+
+  it('an adopted match every phone has ended shows one line on the MATCH screen', async () => {
+    const m = await board(undefined, { live: { ...LIVE, phones_ended: true } });
+    expect(m.find('[data-testid="phones-ended"]')[0]?.textContent).toBe('PHONES HAVE ENDED THIS MATCH: PRESS END');
+    expect(m.find('[role="dialog"]').length, 'not a popup').toBe(0);
+    m.unmount();
+    const m2 = await board();
+    expect(m2.find('[data-testid="phones-ended"]').length).toBe(0);
+    m2.unmount();
   });
 
   it("a refusal shows the server's reason in the error strip and keeps the menu open", async () => {
@@ -124,10 +218,18 @@ describe('A47 · the ?mock backend refuses what MC refuses', () => {
     await expect(b.operatorAction(pid, 'respawn', 'old')).rejects.toThrow(/match is over/);
     const feed: string[] = [];
     const off = b.subscribe(() => {}, e => feed.push(`${e.tag}:${e.text}`));
-    const r = await b.operatorAction(pid, 'respawn', match_id);
-    off();
-    expect(r).toMatchObject({ ok: true, cmd: 'respawn', match_id });
+    const phase = (await b.getState()).phase;
     const who = (await b.getState()).players[0].display.toUpperCase();
-    expect(feed).toContain(`OPERATOR:OPERATOR RESPAWNED ${who}`);
+    if (phase === 'armed') {
+      await expect(b.operatorAction(pid, 'respawn', match_id)).rejects.toThrow(/NEEDS A LIVE MATCH/);
+      expect((await b.operatorAction(pid, 'relink', match_id)).ok).toBe(true);
+      expect(feed).toContain(`OPERATOR:SENT RELINK TO ${who}`);
+    } else {
+      const r = await b.operatorAction(pid, 'respawn', match_id);
+      expect(r).toMatchObject({ ok: true, cmd: 'respawn', match_id });
+      expect(feed).toContain(`OPERATOR:SENT RESPAWN TO ${who}`);
+      await expect(b.operatorAction(pid, 'respawn', match_id)).rejects.toThrow(/JUST SENT/);
+    }
+    off();
   });
 });

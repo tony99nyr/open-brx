@@ -408,9 +408,17 @@ class MockNode:
             if cmd in ("end", "recall", "panic"):
                 self.arm_state = "kitted"
                 self.alive = False
-            elif cmd == "respawn" and self.arm_state == "live" and body.get("match_id") == self.match_id:
-                self.alive = True                   # A47: the demo's FORCE RESPAWN (engine.js `_operator`)
-                self.emit({"type": "respawn", "operator": True})
+            elif (cmd in ("resync", "respawn", "relink") and body.get("match_id") == self.match_id
+                  and body.get("player_id") == self.player_id):
+                # A47: the demo phone's operator actions (engine.js `_operator`), answered with the
+                # `operator_result` fact MC writes the feed line from.
+                if cmd != "relink" and self.arm_state != "live":
+                    self.emit({"type": "operator_result", "cmd": cmd, "ok": False, "why": "not live"})
+                else:
+                    if cmd == "respawn":
+                        self.alive = True
+                        self.emit({"type": "respawn", "operator": True})
+                    self.emit({"type": "operator_result", "cmd": cmd, "ok": True})
             elif cmd == "abort_start" and self.arm_state == "armed":
                 self.arm_state = "lobby"
                 self.go_live_t = None

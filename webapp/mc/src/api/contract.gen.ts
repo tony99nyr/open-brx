@@ -95,8 +95,9 @@ export const CONTROL_CMDS = ['abort_start', 'end', 'panic', 'recall', 'release_u
 export type ControlCmd = typeof CONTROL_CMDS[number];
 /** ⚠ This is a WHITELIST and an unlisted type is REJECTED at the socket, not ignored downstream --
  *  so a fact the phone learns to send reaches nothing until it is named here (the F40/F60 shape:
- *  both ends report healthy). `possession` is the objective-mode tally (mc/API.md, F70). */
-export const PERSISTED_EVENT_TYPES = ['death', 'hit_taken', 'possession', 'respawn', 'team_change'] as const;
+ *  both ends report healthy). `possession` is the objective-mode tally (mc/API.md, F70).
+ *  A47: the phone's answer to an operator action (never scored) */
+export const PERSISTED_EVENT_TYPES = ['death', 'hit_taken', 'operator_result', 'possession', 'respawn', 'team_change'] as const;
 export type PersistedEventType = typeof PERSISTED_EVENT_TYPES[number];
 export const STATION_KINDS = ['respawn', 'powerup', 'extraction', 'bomb', 'control'] as const;
 export const STATION_SOURCE_IDS = ['grenade', 'ir_station', 'phone'] as const;
@@ -564,7 +565,7 @@ export interface NodeView {
 }
 
 export interface Event {
-  type?: 'hit_taken' | 'death' | 'respawn' | 'team_change' | 'status' | 'possession';
+  type?: 'hit_taken' | 'death' | 'respawn' | 'team_change' | 'status' | 'possession' | 'operator_result';
   t?: number;
   match_id?: string | null;
   node_id?: string;
@@ -584,6 +585,12 @@ export interface Event {
   resync?: boolean;
   /** A47: the operator's FORCE RESPAWN, not a respawn after a death (scoring keeps the streak) */
   operator?: boolean;
+  /** operator_result (A47): what the phone DID with an operator action MC sent (`control{resync|respawn|relink}`).
+   *  Persisted like every fact, and read for the operator's feed and menu only: it never reaches the scorer. */
+  cmd?: OperatorCmd;
+  ok?: boolean;
+  /** present on a refusal: the phone's own reason ("stunned", "not live", ...) */
+  why?: string;
   /** team_change */
   tid?: number;
   /** possession (F70, objective modes) — a CUMULATIVE tally for ONE control point, resent as it grows.
@@ -665,6 +672,16 @@ export interface ScoreRow {
   after_end_deaths?: number;
 }
 
+/** A47: the last operator action MC sent to one player, and what the phone said about it.
+ *  `state` is "sent" until the phone's `operator_result` fact arrives, then "done" or "refused". */
+export interface OperatorStatus {
+  cmd: OperatorCmd;
+  state: 'sent' | 'done' | 'refused';
+  why: string | null;
+  sent_t: number;
+  result_t: number | null;
+}
+
 export interface LiveRow {
   player_id: string;
   display: string;
@@ -691,6 +708,8 @@ export interface LiveRow {
   /** F208: the bound node's `pool_stale` / `pool_stale_ms`, as NodeView. Absent = not stale. */
   pool_stale?: 'silent' | 'no_fire';
   pool_stale_ms?: number;
+  /** A47: the latest operator action for this player in THIS match. Absent = none sent. */
+  operator?: OperatorStatus;
 }
 
 export interface LiveView {
@@ -700,6 +719,10 @@ export interface LiveView {
   ends_t: number;
   score: Record<string, number>;
   rows: LiveRow[];
+  /** A47: an ADOPTED match only. True when every bound phone that has reported a claim says it has ended
+   *  (`kitted` for this match, or another match), and at least one does. MC never ends an adopted match
+   *  itself; the console asks the operator to press END. Absent = no such claim. */
+  phones_ended?: boolean;
 }
 
 export interface StartNodeView {
@@ -1302,6 +1325,7 @@ export const EVENT_REQUIRED: Record<string, readonly string[]> = {
   respawn: [],
   team_change: ['tid'],
   possession: ['hold_ms'],
+  operator_result: ['cmd', 'ok'],
 };
 export const ACCEPT_MIN: Record<string, readonly string[]> = {
   result: ['match_id'],

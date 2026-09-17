@@ -24,7 +24,8 @@ MAX_LOG_CHUNK_BYTES = 48 * 1024       # log_data chunk cap (fits under the envel
 # ⚠ This is a WHITELIST and an unlisted type is REJECTED at the socket, not ignored downstream --
 # so a fact the phone learns to send reaches nothing until it is named here (the F40/F60 shape:
 # both ends report healthy). `possession` is the objective-mode tally (mc/API.md, F70).
-PERSISTED_EVENT_TYPES = {"hit_taken", "death", "respawn", "team_change", "possession"}
+PERSISTED_EVENT_TYPES = {"hit_taken", "death", "respawn", "team_change", "possession",
+                         "operator_result"}   # A47: the phone's answer to an operator action (never scored)
 
 # Plausibility window for `t` (Unix ms): reject obvious garbage (seconds instead of ms, negative,
 # far future). A node with a wrong clock still lands inside this window; MC keeps t_recv anyway.
@@ -96,6 +97,8 @@ EVENT_REQUIRED: dict[str, tuple[str, ...]] = {
     # (a single grenade has one point, and a node that cannot say how long it watched still reports
     # what it saw); `hold_ms` is the fact itself, so it is required.
     "possession": ("hold_ms",),
+    # A47: `why` is optional (present on a refusal). `cmd` and `ok` are the fact itself.
+    "operator_result": ("cmd", "ok"),
 }
 
 

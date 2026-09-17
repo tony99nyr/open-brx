@@ -353,6 +353,34 @@ class DemoDriver:
             await asyncio.sleep(2.0 / self.speed)
             self.tick()
 
+    def _answer_operator(self, now: int, phase: str) -> None:
+        """A47: the demo phone answers an operator action with its `operator_result` fact, as
+        `engine.js _operator` does: resync/respawn only while LIVE, resync never while down."""
+        for (nid, kind, body) in list(self.net.pushed):
+            if (nid is None or kind != "control" or body.get("cmd") not in ("resync", "respawn", "relink")
+                    or body.get("_answered")):
+                continue
+            body["_answered"] = True
+            nd = next((n for n in self.nodes if n["node_id"] == nid and n["player_id"] == body.get("player_id")), None)
+            mid = (self.s.start_info or {}).get("match_id")
+            if nd is None or not mid or body.get("match_id") != mid:
+                continue
+            cmd, why = body["cmd"], None
+            if cmd != "relink" and phase != "live":
+                why = "not live"
+            elif cmd == "resync" and not nd["alive"]:
+                why = "down"
+            elif cmd == "respawn":
+                nd["alive"] = True
+                nd["dead_until"] = 0
+                self.net.simulate_event(nid, {"type": "respawn", "t": now, "match_id": mid, "node_id": nid,
+                                              "player_id": nd["player_id"], "operator": True}, now, seq=nd["seq"])
+                nd["seq"] += 1
+            self.net.simulate_event(nid, {"type": "operator_result", "t": now, "match_id": mid, "node_id": nid,
+                                          "player_id": nd["player_id"], "cmd": cmd, "ok": why is None,
+                                          **({"why": why} if why else {})}, now, seq=nd["seq"])
+            nd["seq"] += 1
+
     def tick(self):
         now = self._now()
         phase = self.s.phase
@@ -394,6 +422,7 @@ class DemoDriver:
                     echo = f"$ALCD,{ammo[0]},100,0,{ammo[1]},0,*" if ammo else "$LCD,0,0,0,0,0,0,*"
                     self.net.simulate_node_message(n["node_id"], "ack_config",
                         {"config_id": body["config"]["config_id"], "ok": True, "gun_echo": echo}, now)
+        self._answer_operator(now, phase)
         if phase != "live" or not self.s.start_info:
             return
         mid = self.s.start_info["match_id"]

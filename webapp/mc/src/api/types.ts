@@ -21,7 +21,7 @@ export type {
   MatchHistoryRow, ModeInfo, NodeView, StationControl, StationReport, StationArmed, StationView,
   LiveView, StartNodeView, StartView, State, GameConfigBase, LanView, KitView, LobbyAck,
   LobbyView, GameAnnouncementView, SyncAckState, SyncRow, SyncTotals, SyncView, SessionOptions, VersionsView,
-  NoticesView, RestoredFromView, SnapshotFeedRow, OrphanMatchView, OperatorActionResult,
+  NoticesView, RestoredFromView, SnapshotFeedRow, OrphanMatchView, OperatorActionResult, OperatorStatus,
   TunnelStatus, TunnelProviderValue,
 } from './contract.gen';
 export type {
@@ -43,8 +43,15 @@ export type FeedTag = 'DOUBLE KILL' | 'TRIPLE KILL' | `STREAK ×${number}` | 'FI
    *  reached nobody (mc_confidence refused it, or no node was in coverage), `ROLE` is a role assignment
    *  (VIP/carrier). The `text` is the OPERATOR's third-person copy — render it VERBATIM, never re-word. */
   | 'ALERT' | 'WITHHELD' | 'ROLE'
-  /** A47: the operator's menu on the LIVE board sent RESYNC / RESPAWN / RELINK to one player's phone. */
-  | 'OPERATOR';
+  /** A47: the operator's menu on the LIVE board sent RESYNC / RESPAWN / RELINK to one player's phone, or
+   *  that phone answered (`operator_result`). */
+  | 'OPERATOR'
+  /** A34: a phone came back live in a match MC retired, or the operator ended a match MC did not start. */
+  | 'RECONCILED'
+  /** Bench 2026-09-17: MC restarted and resumed (or adopted) the match in play. */
+  | 'RESUMED'
+  /** A note about a match MC did not start (an adopted match): MC records it and ends nothing. */
+  | 'NOTE';
 export interface FeedEntry { t_match_s: number; text: string; tag?: FeedTag; kind: 'kill' | 'sync' | 'info' | 'alert' }
 
 /** loadout.md §3.2 (server pass 2, 2026-09-12) — why a slot's pool came out EMPTY. A closed
