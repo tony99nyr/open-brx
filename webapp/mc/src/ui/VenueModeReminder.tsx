@@ -22,9 +22,10 @@ export function VenueModeManualLink({ style }: { style?: React.CSSProperties }) 
       className="hov-acc"
       title="How to set the gun's own indoor/outdoor mode, opens the manual in a new tab"
       aria-label="How to set the gun's mode (opens in a new tab)"
-      style={{ font: F.chk(600, 11), letterSpacing: '.08em', color: T.dim, textDecoration: 'none',
-               whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', minHeight: 44, ...style }}>
-      HOW TO SET THE GUN'S MODE ↗
+      style={{ font: F.mono(600, 16), color: T.dim, textDecoration: 'none', lineHeight: 1,
+               display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 44, minWidth: 44, ...style }}>
+      {/* Bench 2026-09-17 (Tony): a small clickable icon, no label. The accessible name and the tooltip carry the words. */}
+      <span aria-hidden="true">ⓘ</span>
     </a>
   );
 }
