@@ -779,7 +779,7 @@ def led_table(profile: dict, team: int | None, night: bool, leds_on: bool, ffa: 
     """event -> [[frame, hold_s], ...]: the tuned 3-flash gun burst ending on the gun's rest frame, then
     an optional static `$HLED` for the headset that HOLDS for `STATIC_EVENT_HLED_HOLD_S` and reverts to
     the headset's own rest frame (finding #6 above -- a hold of 0.0 used to mean "and never revert").
-    Empty when LEDs are off for the game (night / blackout) or the profile turned gun flashes off."""
+    Empty when LEDs are off for the game (blackout) or the profile turned gun flashes off. Night only dims."""
     if not leds_on:
         return {}
     out: dict[str, list] = {}
@@ -819,7 +819,7 @@ def led_table(profile: dict, team: int | None, night: bool, leds_on: bool, ffa: 
         h = spec.get("headset")
         if h is not None and ev != "low_health":          # low_health keeps Callsign's blink (cues.hurt_led)
             rest = hf["rest"] if hf else HEADSET_DARK
-            seq.append([f"$HLED,{h},0,,,10,,*", STATIC_EVENT_HLED_HOLD_S])
+            seq.append([_hled(int(h), night), STATIC_EVENT_HLED_HOLD_S])   # dim at night (bench 2026-09-17: this paint was still 10)
             seq.append([rest, 0.0])
         if seq:
             out[ev] = seq

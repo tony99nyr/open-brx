@@ -1154,6 +1154,8 @@ KNOWN_UNMIRRORED = {
     "_awake", "commitPick",
     # field 2026-09-17: the kill banner's victim name, resolved from MC's `feedback`; the stage has no MC and no banner
     "victimName",
+    # bench 2026-09-17: the phone's day/night HUD skin and its per-MC-session pick; HUD chrome, no LED or game rule
+    "setNight", "ownNightChoice", "_autoNight", "_loadNight", "_storeNight",
     # B5: guards a BLE frame-race (a stale zero-HP echo the gun queued before it processed $SPAWN landing
     # just after a `_spawn`/`_revive` write) against a shooter `latch` the stage has no equivalent of --
     # the bench drives spawn/revive and pool frames deterministically by hand and never races a real echo.

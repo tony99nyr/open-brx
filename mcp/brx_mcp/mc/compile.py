@@ -203,7 +203,7 @@ def _headset_colour(tid: int, leds: bool, ffa: bool = False, night: bool = False
     """The pre-game headset team colour, or nothing (WHITE for every player in FFA -- Q19, no team
     identity to protect there).
 
-    Skipped when the game has LEDs off: `gc._led_frames()` blanks the GUN for night/blackout play, and
+    Skipped when the game has LEDs off: `gc._led_frames()` blanks the GUN for blackout play (night only dims), and
     lighting the headset in the same head would mark every player in the lobby — exactly what that
     setting exists to prevent (review 2026-09-01).
 
@@ -1331,7 +1331,7 @@ class Compiler:
             "revive": revive,
             "end": list(END_SEQUENCE),
             "panic": list(PANIC_SEQUENCE),
-            "cues": self.cues(voice, voice_slots),
+            "cues": self.cues(voice, voice_slots, night=night),
             # the swap delay the gun will actually enforce between slots 0 and 1: the larger tok15 of the two
             # (bench 2026-09-04). The HUD's SWITCHING takeover runs for exactly this long.
             "swap_ms": max([int(f.split(",")[16]) for f in head if f.startswith("$WEAP,0,") or f.startswith("$WEAP,1,")] or [850]),
@@ -1506,10 +1506,11 @@ class Compiler:
                 out[role] = ids
         return out
 
-    def cues(self, voice: str, slots: dict | None = None) -> dict[str, str]:
+    def cues(self, voice: str, slots: dict | None = None, night: bool = False) -> dict[str, str]:
         """A6: pre-composed `$PLAY` frames (node writes verbatim; only $SFLASH/$PLAYX,0 are its own
         templates). Two-slot `$PLAY,<fx>,4,6,<voice>,,,,*`: token1 = SFX, token4 = voice line.
-        `slots["kill"]` (A15) replaces the family's kill line."""
+        `slots["kill"]` (A15) replaces the family's kill line. `night` dims the one light here, `hurt_led`
+        (led-language.md §3.4: low health is dim at night, token 5 = 1; bench 2026-09-17 found it still at 10)."""
         kill = _voices.role_id(voice, "kill", slots) or kill_line(voice)
         return {
             "countdown": "$PLAY,VA81,4,6,,,,,*",         # confirmed 3-2-1-GO (VA81, slot 1)
@@ -1521,7 +1522,7 @@ class Compiler:
             # in 2026-08-23-two-tagger-combat (@340.5s, @361.5s). This, not a per-hit flash, is almost
             # certainly the "headset blinks green" Tony remembered (he flagged his own uncertainty).
             "hurt":      "$PLAY,VA8B,3,6,,,,,*",
-            "hurt_led":  f"$HLED,7,4,90,90,{HEADSET_ALERT_BRIGHTNESS},15,*",
+            "hurt_led":  f"$HLED,7,4,90,90,{pg.BRIGHT_DIM if night else HEADSET_ALERT_BRIGHTNESS},15,*",
             "tick":      "$PLAY,U16,4,6,,,,,*",             # provisional id; 4,6 required — the empty-token form is SILENT (bench 2026-08-25) SFX tick (real bank id)
             "klaxon":    "$PLAY,U16,4,6,,,,,*",             # provisional id; 4,6 required — the empty-token form is SILENT (bench 2026-08-25)
             "multi":     "$PLAY,,4,6,VA46,,,,*",          # provisional (nRF-native is silent over BLE)

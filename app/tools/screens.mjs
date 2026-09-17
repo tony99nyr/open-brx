@@ -70,12 +70,14 @@ const open = async (view, stage, extra = '', ms) => {
 // what every screen must satisfy (#1/#2/#3/#5/#7/#8/#10/#12/#14/#22): no sideways overflow, nothing under the ⓘ box, no wrapped plate row
 const invariants = pg => pg.evaluate(() => {
   const out = []; const info = document.getElementById('info').getBoundingClientRect();
+  const skinEl = document.getElementById('skin'), skin = skinEl ? skinEl.getBoundingClientRect() : null;   // the day/night switch under the ⓘ (bench 2026-09-17)
   const hit = (a, b) => a.left < b.right - 2 && a.right > b.left + 2 && a.top < b.bottom - 2 && a.bottom > b.top + 2;
   for (const e of document.querySelectorAll('#hud *, #overlay *, #chips *')) {
     const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden') continue;
     if (cs.overflowX !== 'visible' && e.scrollWidth > e.clientWidth + 1) out.push(`sideways overflow: .${e.className} ${e.scrollWidth}>${e.clientWidth}`);
     const txt = e.childElementCount === 0 && (e.textContent || '').trim(); if (!txt) continue;
     const r = e.getBoundingClientRect(); if (r.width && hit(r, info)) out.push(`under the ⓘ button: "${txt.slice(0, 30)}"`);
+    if (r.width && skin && hit(r, skin)) out.push(`under the day/night switch: "${txt.slice(0, 30)}"`);
   }
   const plates = Array.from(document.querySelectorAll('.lobby .plates > .plate')).map(p => Math.round(p.getBoundingClientRect().top));
   if (plates.length > 1 && new Set(plates).size > 1) out.push('plates row wrapped: tops ' + plates.join(','));
@@ -257,6 +259,43 @@ for (const view of VIEWS) {
     const pg = await open(view, 'kitted', '&team=red'); const r = await pg.evaluate(() => ({ team: document.getElementById('frame').dataset.team, chip: document.querySelector('.lobby .chip').textContent })); await pg.close(); must(r.team === 'red' && /RED/.test(r.chip), JSON.stringify(r));
   });
   await step(`${view.name} ux-1 plate subtitles never wrap (NO ALT-FIRE / SET AT ARM TIME)`, async () => { const pg = await open(view, 'kitted'); const r = await oneLine(pg, '.plate.slot .s'); await pg.close(); must(r.length === 3 && r.every(x => x[2]), JSON.stringify(r)); });   // A14: three plates
+  // Bench 2026-09-17: the HUD skin is the player's own. One visible switch on every screen, tappable at both widths,
+  // and a tap flips the screen both ways mid-match with no diag panel involved.
+  for (const st of ['kitted', 'lobby', 'armed', 'live', 'down', 'result']) await step(`${view.name} skin-1 ${st}: the day/night switch is visible, on top and as big as the ⓘ`, async () => {
+    const pg = await open(view, st);
+    const r = await pg.evaluate(() => { const e = document.getElementById('skin'); if (!e) return null; const b = e.getBoundingClientRect(), cs = getComputedStyle(e);
+      const top = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+      const i = document.getElementById('info').getBoundingClientRect();
+      return { w: b.width, h: b.height, cssW: e.offsetWidth, cssH: e.offsetHeight, iw: i.width, ih: i.height, right: b.right, bottom: b.bottom, vis: cs.display !== 'none' && cs.visibility !== 'hidden' && Number(cs.opacity) > 0.3, onTop: !!top && (top === e || e.contains(top)), label: e.getAttribute('aria-label'), checked: e.getAttribute('aria-checked') }; });
+    await pg.close();
+    must(r, 'no #skin switch on the page');
+    must(r.vis && r.onTop, `switch hidden or covered: ${JSON.stringify(r)}`);
+    must(r.cssW >= 36 && r.cssH >= 36 && r.w >= r.iw - 0.5 && r.h >= r.ih - 0.5 && r.right <= view.width && r.bottom <= view.height, `switch too small or off screen: ${JSON.stringify(r)}`);
+    must(r.label === 'night' && r.checked === 'false', `a day screen reads night=false: ${JSON.stringify(r)}`);
+  });
+  await step(`${view.name} skin-2 live: a tap goes night, a second tap goes day, with no diag panel`, async () => {
+    const pg = await open(view, 'live');
+    const env = () => pg.evaluate(() => ({ env: document.getElementById('frame').dataset.env || '', checked: document.getElementById('skin').getAttribute('aria-checked') }));
+    const a = await env();
+    await pg.click('#skin'); await pg.waitForTimeout(400); const b1 = await env();
+    await pg.screenshot({ path: `${OUT}/${view.name}-skin-live-tapped-night.png` });
+    await pg.click('#skin'); await pg.waitForTimeout(400); const c = await env();
+    const diagOpen = await pg.evaluate(() => document.getElementById('diag').classList.contains('open'));
+    await pg.close();
+    must(a.env === '' && a.checked === 'false', 'setup: starts on day ' + JSON.stringify(a));
+    must(b1.env === 'night' && b1.checked === 'true', 'first tap did not go night: ' + JSON.stringify(b1));
+    must(c.env === '' && c.checked === 'false', 'second tap did not go day: ' + JSON.stringify(c));
+    must(!diagOpen, 'the switch opened the diagnostics panel');
+  });
+  await step(`${view.name} skin-3 night: the live label reads NIGHT OPS only with NIGHT OPS set`, async () => {
+    const pg = await open(view, 'live', '&night');
+    const r = await pg.evaluate(() => { const l = document.querySelector('.nightlab'); return { env: document.getElementById('frame').dataset.env, lab: l && l.textContent, vis: !!l && getComputedStyle(l).display !== 'none', checked: document.getElementById('skin').getAttribute('aria-checked') }; });
+    await pg.evaluate(() => { window.brx.engine.config = { ...window.brx.engine.config, night: false }; window.brx.engine._changed(); }); await pg.waitForTimeout(400);
+    const r2 = await pg.evaluate(() => ({ env: document.getElementById('frame').dataset.env, lab: document.querySelector('.nightlab') && document.querySelector('.nightlab').textContent }));
+    await pg.close();
+    must(r.env === 'night' && r.vis && r.lab === 'NIGHT OPS' && r.checked === 'true', 'NIGHT OPS night: ' + JSON.stringify(r));
+    must(r2.env === 'night' && r2.lab === 'NIGHT', 'a player-chosen night without NIGHT OPS: ' + JSON.stringify(r2));
+  });
   await step(`${view.name} ux-2 night DOWN: team chips and KILLED BY are dim, not daylight`, async () => {
     const pg = await open(view, 'down', '&night'); const r = await pg.evaluate(() => Array.from(document.querySelectorAll('.down .recap .tm, .down .kb b')).map(e => getComputedStyle(e).backgroundColor)); await pg.close();
     must(r.length === 3 && r.every(c => c === 'rgb(42, 13, 13)'), 'chips ' + r.join(' '));

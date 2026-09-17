@@ -126,12 +126,18 @@ function statBlock(r, opts = {}) {
     (facts ? `<div class="facts">${facts}</div>` : '');
 }
 
+// The skin switch draws its own icons: a text ☀ fell back to a different glyph in the phone's font.
+const SKIN_MOON = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M15 3a9 9 0 1 0 6.5 15.2A7.5 7.5 0 0 1 15 3z"/></svg>';
+const SKIN_SUN = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></g></svg>';
+
 export class Hud {
   constructor(root, handlers = {}) {
     this.root = root; this.h = handlers;
     this.frame = root.querySelector('#frame'); this.hudEl = root.querySelector('#hud');
     this.overlay = root.querySelector('#overlay'); this.chips = root.querySelector('#chips');
     this.diag = root.querySelector('#diag'); this.info = root.querySelector('#info');
+    this.skin = root.querySelector('#skin');   // the day/night skin switch (a sibling of #hud, so it needs its own listener)
+    if (this.skin) this.skin.addEventListener('click', e => this._click(e));
     this.sig = null; this.scan = []; this.link = {}; this.diagData = {}; this.mcUrl = '';
     // F211: adapter-off state, app.js-owned (like `mcUrl`/`discovered` below) — the picker's own concern,
     // never round-tripped through the engine. `platform` gates the Android-only enable/settings buttons.
@@ -320,11 +326,24 @@ export class Hud {
       }
     }
     this._patch(st);
+    this._skinSwitch(st);
     this._chips(st);
     this._moments(st);
     this._fitBriefing();
     this._fitMcLinked();
     this._fitLoDetailName();
+  }
+
+  /** Bench 2026-09-17: the skin is each player's own choice. The switch shows the skin a tap gives (☾ on day, ☀ on
+   *  night). The live night label names NIGHT OPS only when the venue is set to it; otherwise it is just "NIGHT". */
+  _skinSwitch(st) {
+    const on = !!st.night;
+    if (this.skin) {
+      if (this.skin.dataset.on !== String(on)) { this.skin.dataset.on = String(on); this.skin.innerHTML = on ? SKIN_SUN : SKIN_MOON; }
+      if (this.skin.getAttribute('aria-checked') !== String(on)) this.skin.setAttribute('aria-checked', String(on));
+    }
+    const lab = this.hudEl.querySelector('.nightlab'), txt = st.nightOps ? 'NIGHT OPS' : 'NIGHT';
+    if (lab && lab.textContent !== txt) lab.textContent = txt;
   }
 
   /** F137 (field 2026-09-12): "MC LINKED ✓ — WAITING FOR KIT-OUT" at the design 28px wrapped to two

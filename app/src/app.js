@@ -75,8 +75,6 @@ async function haptic(kind) {
 const settings = {
   get mcUrl() { try { return localStorage.getItem('brx.mc_url') || ''; } catch (_) { return ''; } },
   set mcUrl(v) { try { localStorage.setItem('brx.mc_url', v); } catch (_) { /* ignore */ } },
-  get night() { try { return localStorage.getItem('brx.night') === '1'; } catch (_) { return false; } },
-  set night(v) { try { localStorage.setItem('brx.night', v ? '1' : '0'); } catch (_) { /* ignore */ } },
   // 'hud' (default) or 'utility': the same install is either a player's HUD or a utility item on the field
   get role() { try { return localStorage.getItem('brx.role') || 'hud'; } catch (_) { return 'hud'; } },
   set role(v) { try { localStorage.setItem('brx.role', v); } catch (_) { /* ignore */ } },
@@ -116,7 +114,7 @@ const engine = new Engine({
   log, onChange: () => scheduleRender(),
 });
 engine.onGunStale = () => link.noteStale();   // B4: the engine's silence watchdog forces BrxLink to actually cycle the radio
-engine.night = settings.night;
+engine.sessionOf = () => (transport ? transport.sessionId : null);   // the HUD skin pick lasts one MC session (engine.setNight)
 hud.mcUrl = settings.mcUrl;
 // per-match history (bench request 2026-08-25): node-local, survives restarts, capped
 try { hud.history = JSON.parse(localStorage.getItem('brx.history') || '[]'); } catch (_) { hud.history = []; }
@@ -403,7 +401,7 @@ Object.assign(hud.h, {
     if (j) connectMc(j.url, true, { pub: j.pub, secret: j.secret });
     else connectMc(v);   // not a recognised join code — let it through as a bare address (the mandatory floor, §5)
   },
-  onToggleNight: () => { engine.night = !engine.night; settings.night = engine.night; hud.sig = null; scheduleRender(); },
+  onToggleNight: () => { engine.setNight(!engine.night); hud.sig = null; scheduleRender(); },   // the header ☾/☀ and the diag NIGHT button
   onToggleMcPill: () => { hud.mcPill = !hud.mcPill; scheduleRender(); },   // live: show/hide the out-of-range detail (review #32)
   onCloseDiag: () => hud.toggleDiag(),
   // A link that is down: cut the backoff short. A link the app believes is up: really cycle it (playtest

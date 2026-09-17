@@ -406,6 +406,7 @@ describe('GAMES · EDIT is a draft, SAVE AND LOAD is the only thing that sends',
     await tap(g.btn('[data-testid="game-edit-open"]'));
     expect(venue().disabled, 'while a draft is open it is a real HTML disabled').toBe(true);
     expect(g.q('[data-testid="venue-in-draft"]'), 'and it says where the control went').toBeTruthy();
+    expect(g.q('[data-testid="venue-locked"]'), 'a draft is not a match lock').toBeFalsy();
     g.m.unmount();
   });
 });
@@ -418,6 +419,18 @@ describe('GAMES · once the match has started', () => {
       expect(g.btn('[data-testid="game-edit-open"]')!.disabled, 'the server refuses a config edit in play').toBe(true);
       expect(g.q('[data-testid="games-locked"]')!.textContent).toContain(phase === 'armed' ? 'ABORT' : 'RECALL');
       expect(g.calls.putConfig).toEqual([]);
+      g.m.unmount();
+    });
+    it(`${phase.toUpperCase()}: NIGHT OPS is visibly locked beside the toggle, and a tap sends nothing`, async () => {
+      // Bench 2026-09-17: a mid-match tap on NIGHT OPS changed no LED and the strip did not say why.
+      const g = await games({ load: true, push: true, patch: s => ({ ...s, phase }) });
+      const toggle = g.q('button[aria-label="night ops"]') as HTMLButtonElement;
+      expect(toggle.closest('fieldset')!.disabled, 'a real HTML disabled').toBe(true);
+      const note = g.q('[data-testid="venue-locked"]');
+      expect(note, 'the venue strip says it is locked').toBeTruthy();
+      expect(note!.textContent).toContain(`LOCKED WHILE THE MATCH IS ${phase.toUpperCase()}`);
+      await tap(toggle);
+      expect(g.calls.putConfig, 'no config reaches the server mid-match').toEqual([]);
       g.m.unmount();
     });
   }

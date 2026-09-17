@@ -871,6 +871,9 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 [data-env="night"] .lobby .setup .pulse i{background:var(--num)}
 [data-env="night"] .briefbtn{border-color:var(--mut);color:var(--num)}
 #info{min-width:36px;min-height:36px;font-size:15px}   /* the 44px ::after is the tap target; the visual sits in the corner gutter */
+/* the player's day/night skin (bench 2026-09-17): its own box under the ⓘ, on every screen, so it is never behind the diag panel */
+#skin{top:42px}#skin svg{display:block;pointer-events:none}
+.result .rbody{padding-right:40px;box-sizing:border-box}   /* the results and history tables clear the day/night switch in the right gutter */
 </style>
 </head>
 <body>
@@ -880,6 +883,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
       <div id="overlay"></div>
       <div id="chips"></div>
       <button id="info" class="infobtn" aria-label="diagnostics">ⓘ</button>
+      <button id="skin" class="infobtn" data-act="onToggleNight" role="switch" aria-checked="false" aria-label="night"></button>
       <div id="diag"></div>
     </div>
   </div>

@@ -211,6 +211,9 @@ export function toks(f) {
 
 /** Persisted context keys (localStorage-like `storage`). */
 const KEY = 'brx.engine';
+/** The HUD skin lives outside `KEY`: it is the phone's, not the match's, so no TTL expires it. `brx.night` is '1'/'0'
+ *  (the key the app used before); `brx.night_choice` is `{session}`, the MC session a player's own tap belongs to. */
+const NIGHT_KEY = 'brx.night', NIGHT_CHOICE_KEY = 'brx.night_choice';
 
 export class Engine {
   /**
@@ -229,6 +232,7 @@ export class Engine {
     this.storage = storage; this.log = log; this.onChange = onChange; this.delay = delay; this.rng = rng;   // rng: the A15 cue-pool pick (tests seed it)
     this.reset();
     this._load();
+    this._loadNight();
   }
 
   reset() {
@@ -345,7 +349,9 @@ export class Engine {
     this._headRewritten = false;
     this.moment = null;             // transient HUD moment: {kind, at, data}
     this.probeSent = false;
-    this.night = false;
+    this.night = false;             // the HUD skin on screen (true = night). The player's, not the venue's: see setNight
+    this.nightChoice = null;        // {session}: the player chose a skin in that MC session, so NIGHT OPS does not switch it
+    this.sessionOf = () => null;    // the current MC session id (app.js wires the transport's)
     this.lastVoltsAt = 0;
     // B4 (2026-09-12 field session): the native BLE disconnect callback is the ONLY thing `bleUp` ever
     // relied on — a link that goes silent without the OS ever noticing (marginal RF, a supervision
@@ -456,7 +462,49 @@ export class Engine {
   _set(phase) {
     if (this.phase === phase) return;
     this.log(`phase ${this.phase} → ${phase}`, 'lk');
-    this.phase = phase; this._changed();
+    this.phase = phase;
+    if (phase === 'armed' || phase === 'live') this._autoNight();
+    this._changed();
+  }
+
+  // ---------- HUD skin (Tony, bench 2026-09-17) ----------
+  // NIGHT OPS (`config.night`) dims the gun and headset LEDs. It does not own the phone screen: each player picks
+  // day or night on their own HUD, at any time. NIGHT OPS only sets the default, at ARMED/LIVE, for a player who
+  // has not picked in this MC session. A pick lasts for the MC session, across matches and app restarts; a fresh
+  // MC session lets NIGHT OPS lead again. The skin itself is remembered on the phone either way.
+  setNight(on) {
+    this.night = !!on;
+    this.nightChoice = { session: this.sessionOf() || null };
+    this._storeNight();
+    this.log(`skin: ${this.night ? 'night' : 'day'} (player's choice)`, 'li');
+    this._changed();
+  }
+  /** True when the player picked a skin in the current MC session. A pick made before joining any MC joins the next one. */
+  ownNightChoice() {
+    const c = this.nightChoice; if (!c) return false;
+    const cur = this.sessionOf() || null;
+    if (c.session == null && cur != null) { c.session = cur; this._storeNight(); }
+    return (c.session || null) === cur;
+  }
+  _autoNight() {
+    if (!this.config || !this.config.night || this.night || this.ownNightChoice()) return;
+    this.night = true; this._storeNight();
+    this.log('skin: night (NIGHT OPS)', 'li');
+  }
+  _loadNight() {
+    if (!this.storage) return;
+    try {
+      this.night = this.storage.getItem(NIGHT_KEY) === '1';
+      const c = JSON.parse(this.storage.getItem(NIGHT_CHOICE_KEY) || 'null');
+      this.nightChoice = c && typeof c === 'object' ? { session: typeof c.session === 'string' ? c.session : null } : null;
+    } catch (_) { /* a blocked or corrupt store starts on day with no pick */ }
+  }
+  _storeNight() {
+    if (!this.storage) return;
+    try {
+      this.storage.setItem(NIGHT_KEY, this.night ? '1' : '0');
+      if (this.nightChoice) this.storage.setItem(NIGHT_CHOICE_KEY, JSON.stringify(this.nightChoice)); else this.storage.removeItem(NIGHT_CHOICE_KEY);
+    } catch (_) { /* best-effort */ }
   }
   _changed() { this._save(); try { this.onChange(this); } catch (_) { /* ignore */ } }
   _write(frames, why) {
@@ -614,7 +662,6 @@ export class Engine {
     if (node.score) { this.score = node.score; this.scoreAt = this.now(); }
     if (node.match_id) this.matchId = node.match_id;
     if (node.result) this.onResultPush(node.result, 'welcome');   // A24: MC carries the final result in `welcome.node.result` through recap
-    if (node.config && node.config.night != null) this.night = !!node.config.night;
     if (this.player && this.phase === 'connected') this._set('kitted');
     if (node.frames && node.config && (this.phase === 'kitted')) {
       // A rejoining node that missed the push: apply the head like a fresh `config`.
@@ -737,7 +784,6 @@ export class Engine {
     this.config = config || this.config;
     this.browse(false);   // the LOADOUT browser is a KITTED-phase screen; a config push ends kit-out
     this.frames = frames || this.frames; if (roster) this.roster = roster;
-    if (config && config.night != null) this.night = !!config.night;
     this.tutorial = false; this.tutorialWeapon = null; this.tryoutArming = null; this.tryoutUnconfirmed = null;
     this._gunRestFrame = null;   // F86: a new bundle's rest is `gun.rest` until this match's first take says otherwise
     if (!this.frames || !this.frames.head) { this.log('config without frames — ignored', 'le'); return; }
@@ -3160,6 +3206,7 @@ export class Engine {
     const r = this.respawnDelayMs;
     return {
       phase: this.phase, bleUp: this.bleUp, gunFlapping: this.gunFlapping, wsState: this.wsState, gun: this.gun, night: this.night,
+      nightOps: !!(this.config && this.config.night),
       player: this.player, team: this.team, teamKey: this.teamKey, teamName: this.team ? (this.team.name || TEAM_NAME[this.team.tid] || '').toUpperCase() : '',
       callsign: this.player ? this.player.display : '', playerNum: this.player ? this.player.player_num : null,
       mode: this.config ? String(this.config.mode || '').toUpperCase() : '', weapon: this.weaponName,
