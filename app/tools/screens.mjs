@@ -1585,6 +1585,63 @@ await step('polish-3 diag-live: the two-tap hint is an assertive live region', a
   must(r.role === 'status', 'missing role="status": ' + JSON.stringify(r));
   must(r.live === 'assertive', 'missing/weak aria-live (must be assertive, not polite): ' + JSON.stringify(r));
 });
+// ---------- Bench 2026-09-17 (match e6cbe0ae09): RELINK GUN mid-match ----------
+// A press took the phone off the gun with no warning, and a second press during the relink did nothing
+// visible. The REAL BrxLink runs here, over a fake plugin whose connect the step releases by hand, so the
+// button state comes from `link.relinking` through app.js's diag push, exactly as on the phone.
+const fakeGunPlugin = pg => pg.evaluate(() => {
+  const l = window.brx.link, w = window.__ble = { disconnects: 0, connects: 0, release: null };
+  l.ble = { initialize: async () => {}, disconnect: async () => { w.disconnects++; }, startNotifications: async () => {}, writeWithoutResponse: async () => {},
+    connect: () => { w.connects++; return new Promise(res => { w.release = res; }); } };
+  l.deviceId = 'A'; l.connected = true; l.advert = { name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' };
+});
+const relinkView = pg => pg.evaluate(() => { const b = document.querySelector('#diag [data-act="onReconnectGun"]'), h = document.getElementById('dg-gunhint'), d = document.getElementById('diag');
+  return { label: b.textContent, disabled: b.disabled, hint: h ? h.textContent : '', hintFits: !h || h.scrollWidth <= h.clientWidth + 1, hintInPanel: !h || !h.textContent || h.getBoundingClientRect().right <= d.getBoundingClientRect().right + 1,
+    live: h ? h.getAttribute('aria-live') : null, ...window.__ble }; });
+for (const view of VIEWS) {
+  await step(`${view.name} relink diag-live: RELINK GUN mid-match needs a confirm tap, then reads RELINKING… and ignores presses`, async () => {
+    const pg = await open(view, 'diag-live', '', 5200);
+    await fakeGunPlugin(pg);
+    const before = await relinkView(pg);
+    await pg.click('#diag [data-act="onReconnectGun"]'); await pg.waitForTimeout(120);
+    const one = await relinkView(pg);
+    await pg.click('#diag [data-act="onReconnectGun"]'); await pg.waitForTimeout(400);
+    const two = await relinkView(pg);
+    await pg.click('#diag [data-act="onReconnectGun"]', { force: true }); await pg.waitForTimeout(400);
+    const three = await relinkView(pg);
+    await pg.evaluate(() => window.__ble.release()); await pg.waitForTimeout(600);
+    const up = await relinkView(pg);
+    await pg.screenshot({ path: `${OUT}/${view.name}-relink-live-done.png` });
+    await pg.close();
+    must(before.label === 'RELINK GUN' && !before.hint, 'before any tap: ' + JSON.stringify(before));
+    must(one.disconnects === 0, 'the first tap mid-match took the phone off the gun: ' + JSON.stringify(one));
+    must(one.hint === 'RELINK TAKES THE PHONE OFF THE GUN FOR A FEW SECONDS. TAP AGAIN TO RELINK.' && one.live === 'assertive', 'no confirm line after the first tap: ' + JSON.stringify(one));
+    must(one.hintFits && one.hintInPanel, 'the confirm line does not fit the panel: ' + JSON.stringify(one));
+    must(two.disconnects === 1 && two.connects === 1, 'the confirm tap did not relink at once: ' + JSON.stringify(two));
+    must(two.label === 'RELINKING…' && two.disabled && !two.hint, 'the button does not show the running relink: ' + JSON.stringify(two));
+    must(three.disconnects === 1 && three.connects === 1 && three.label === 'RELINKING…', 'a press during the relink did something: ' + JSON.stringify(three));
+    must(up.label === 'RELINK GUN' && !up.disabled, 'the button did not come back once the link was up: ' + JSON.stringify(up));
+  });
+}
+await step('relink diag-live: an unconfirmed RELINK GUN reverts after a few seconds', async () => {
+  const pg = await open(VIEWS[0], 'diag-live', '', 5200);
+  await fakeGunPlugin(pg);
+  await pg.click('#diag [data-act="onReconnectGun"]'); await pg.waitForTimeout(4600);
+  const later = await relinkView(pg);
+  await pg.click('#diag [data-act="onReconnectGun"]'); await pg.waitForTimeout(120);
+  const again = await relinkView(pg);
+  await pg.close();
+  must(!later.hint && later.disconnects === 0, 'the confirm line did not clear: ' + JSON.stringify(later));
+  must(again.disconnects === 0 && /TAP AGAIN/.test(again.hint), 'a tap after the window relinked without a fresh confirm: ' + JSON.stringify(again));
+});
+await step('relink idle-diag: RELINK GUN stays one tap outside a live match', async () => {
+  const pg = await open(VIEWS[0], 'idle-diag');
+  await fakeGunPlugin(pg);
+  await pg.click('#diag [data-act="onReconnectGun"]'); await pg.waitForTimeout(400);
+  const r = await relinkView(pg);
+  await pg.evaluate(() => window.__ble.release()); await pg.close();
+  must(r.disconnects === 1 && !r.hint, 'RELINK GUN needed a second tap outside a match: ' + JSON.stringify(r));
+});
 await step('polish-1 idle-diag: SCAN QR stays one-tap outside a live match', async () => {
   const pg = await open(VIEWS[0], 'idle-diag');
   await pg.evaluate(() => { window.__calls = 0; window.brx.hud.h.onScanQr = () => { window.__calls++; }; });

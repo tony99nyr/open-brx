@@ -28,6 +28,17 @@ export function flapDelay(streak, flapMs = FLAP_MS) {
   return flapMs * FLAP_STEPS[Math.min(Math.max(streak - 2, 0), FLAP_STEPS.length - 1)];
 }
 
+// Bench 2026-09-17 (match e6cbe0ae09): RELINK GUN in a LIVE match took the phone off the gun for 34 s. The
+// phone log: the forced disconnect at once, then three plugin connects that each ran out the plugin's
+// default 10 s timeout, with a growing retry backoff (443, 857, 1939 ms) between them, then a connect that
+// took under a second. A relink now waits at most RELINK_DISCONNECT_CAP_MS for the disconnect, gives each
+// connect RELINK_CONNECT_MS (a connect to a gun that is there took about 1 s on the bench), and waits only
+// RELINK_GAP_MS between attempts. After RELINK_ATTEMPTS it ends, and the normal reconnect loop takes over.
+const RELINK_DISCONNECT_CAP_MS = 2000;
+const RELINK_CONNECT_MS = 5000;
+const RELINK_GAP_MS = 250;
+const RELINK_ATTEMPTS = 9;
+
 /** Split an advert name "<sticker>-<tail>" → {name, basename, tail}. Never uses the BLE deviceId. */
 export function splitAdvert(name, deviceId) {
   const m = /^(.*)-([0-9A-Fa-f]{4})$/.exec(name || '');
@@ -60,7 +71,10 @@ export class Reassembler {
 export class BrxLink {
   constructor({ ble = BleClient, log = () => {}, onFrame = () => {}, onDrop = () => {}, onUp = () => {},
                 unbounded = () => false, chunkGapMs = 8, frameGapMs = 18, now = () => Date.now(), flapMs = FLAP_MS,
-                onFlap = () => {} } = {}) {
+                onFlap = () => {}, onRelink = () => {}, relinkConnectMs = RELINK_CONNECT_MS, relinkAttempts = RELINK_ATTEMPTS,
+                relinkGapMs = RELINK_GAP_MS, relinkDisconnectCapMs = RELINK_DISCONNECT_CAP_MS } = {}) {
+    this.onRelink = onRelink;
+    this.relinkConnectMs = relinkConnectMs; this.relinkAttempts = relinkAttempts; this.relinkGapMs = relinkGapMs; this.relinkDisconnectCapMs = relinkDisconnectCapMs;
     this.ble = ble; this.log = log; this.onFrame = onFrame; this.onDrop = onDrop; this.onUp = onUp; this.onFlap = onFlap;
     this.unbounded = unbounded; this.chunkGapMs = chunkGapMs; this.frameGapMs = frameGapMs;
     this.now = now; this.flapMs = flapMs;
@@ -93,6 +107,13 @@ export class BrxLink {
   }
   /** A user action (RECONNECT NOW, RELINK, picking a gun) starts the backoff again from the start. */
   resetFlap() { this._setFlap(0); }
+  /** True from a RELINK press until the link is back up or the relink gives up. The HUD disables RELINK GUN meanwhile. */
+  get relinking() { return this._relinking; }
+  _setRelinking(v) {
+    if (this._relinking === v) return;
+    this._relinking = v;
+    try { this.onRelink(v); } catch (_) { /* a listener must not break the link */ }
+  }
   _armStable() {
     clearTimeout(this._stableTimer);
     const seq = this._linkSeq;
@@ -173,13 +194,16 @@ export class BrxLink {
     this._armStable();
     this.onUp(this.advert);
   }
-  async _connectWithRetry(id, attempts, forever = false, gen = this._gen) {
+  /** `relink` (a user RELINK): a bounded plugin connect timeout, a short fixed gap instead of the growing
+   *  backoff, and `attempts` is a hard limit even when `unbounded()` (armed/live) would retry forever. */
+  async _connectWithRetry(id, attempts, forever = false, gen = this._gen, relink = false) {
     let last;
     for (let i = 1; ; i++) {
       if (gen !== this._gen) { this._log('reconnect abandoned — a different gun was selected', 'li'); return false; }
+      const t0 = this.now();
       try {
         const seq = ++this._linkSeq;
-        await this.ble.connect(id, () => { if (seq === this._linkSeq) this._dropped(); });
+        await this.ble.connect(id, () => { if (seq === this._linkSeq) this._dropped(); }, relink ? { timeout: this.relinkConnectMs } : undefined);
         if (gen !== this._gen) {                       // the gun came back AFTER we moved on: let it go,
           try { await this.ble.disconnect(id); } catch (_) { /* ignore */ }   // or two devices feed the engine
           return false;
@@ -188,10 +212,11 @@ export class BrxLink {
         return true;
       } catch (e) {
         last = e; this.retries = i;
-        const keep = forever || this.unbounded() || i < attempts;
+        const keep = relink ? i < attempts : forever || this.unbounded() || i < attempts;
         if (!keep) throw last;
-        const delay = Math.min(10000, 500 * 2 ** Math.min(i - 1, 5)) * (0.8 + 0.4 * Math.random());
-        this._log(`connect ${i}${forever || this.unbounded() ? '' : '/' + attempts} failed — retrying in ${Math.round(delay)} ms`, 'le');
+        const delay = relink ? this.relinkGapMs : Math.min(10000, 500 * 2 ** Math.min(i - 1, 5)) * (0.8 + 0.4 * Math.random());
+        // the time the attempt took and the plugin's reason: a 10 s "Connection timeout." and a fast GATT error need different fixes
+        this._log(`connect ${i}${!relink && (forever || this.unbounded()) ? '' : '/' + attempts} failed after ${this.now() - t0} ms (${e && e.message || e}) — retrying in ${Math.round(delay)} ms`, 'le');
         await this._waitOrWake(delay);
       }
     }
@@ -215,30 +240,53 @@ export class BrxLink {
    *  button was inert exactly when the operator needed it. Now a live link is really cycled: release the
    *  GATT link, then take the normal drop path, so the forever-reconnect loop reconnects and `onUp` runs
    *  the engine's relink (it re-writes the head only in the phases where that is safe, never mid-match). */
+  /*  Bench 2026-09-17: the relink now runs its OWN reconnect, at once and bounded (see RELINK_CONNECT_MS), not
+   *  the drop path's retry and flap backoff. It resolves true when the link is back, false when it gave up. A
+   *  press while a relink runs is ignored (`relinking`), and a press on a link that is already down stays
+   *  `retryNow()`. */
   async relink() {
     const id = this.deviceId; if (!id) return false;
+    if (this._relinking) { this._log('relink: already relinking, press ignored', 'li'); return false; }
     this.resetFlap();
     if (!this.connected) { this.retryNow(); return true; }
-    if (this._relinking) return true;
-    this._relinking = true;
+    const gen = this._gen;
+    this._setRelinking(true);
     try {
       this._log('relink: forcing a disconnect and a fresh connect', 'li');
       this._linkSeq++;                   // this link's own disconnect callback must not run the drop path a second time
-      try { await this.ble.disconnect(id); } catch (_) { /* best-effort */ }
-      if (this.deviceId !== id || !this.connected) return false;   // a new gun was picked, or it already dropped
-      this._dropped();
-      return true;
-    } finally { this._relinking = false; }
+      const t0 = this.now();
+      let cap = null;
+      const released = await Promise.race([
+        this.ble.disconnect(id).then(() => true, () => true),   // best-effort
+        new Promise(res => { cap = setTimeout(() => res(false), this.relinkDisconnectCapMs); }),
+      ]);
+      clearTimeout(cap);
+      this._log(released ? `relink: gun released in ${this.now() - t0} ms` : `relink: no disconnect confirm in ${this.relinkDisconnectCapMs} ms, connecting anyway`, 'li');
+      if (this.deviceId !== id || gen !== this._gen || !this.connected) return false;   // a new gun was picked, or it already dropped
+      this._markDown();
+      this._reconnecting = true; this._reconnectGen = gen;   // one loop per gun: a RECONNECT tap now cannot start a second one
+      let ok = false;
+      try { ok = await this._connectWithRetry(id, this.relinkAttempts, false, gen, true); }
+      catch (e) { this._log(`relink: no link after ${this.relinkAttempts} attempts (${e && e.message || e}), back to the normal reconnect loop`, 'le'); }
+      finally { if (this._reconnectGen === gen) this._reconnecting = false; }
+      if (gen !== this._gen || this.deviceId !== id) return false;
+      if (ok) { this.connected = true; this._upAt = this.now(); this._armStable(); this._log(`reconnected (relink, ${this.now() - t0} ms)`, 'lk'); this.onUp(this.advert); return true; }
+      this._reconnect();
+      return false;
+    } finally { this._setRelinking(false); }
+  }
+  _markDown() {
+    this.connected = false; this._log(`*** gun disconnected ***`, 'le'); this.onDrop();
+    clearTimeout(this._stableTimer); this._stableTimer = null;
   }
   _dropped() {
-    this.connected = false; this._log(`*** gun disconnected ***`, 'le'); this.onDrop();
+    this._markDown();
     if (!this.deviceId) return;
     // F210: a quick drop right after connecting is normal ONCE (a manual relink, a genuine radio blip)
     // and retries at once, same as always. A REPEATING quick drop (headset not linked: the gun connects,
     // answers a $PING, then drops itself within seconds — forever) now backs off instead of reconnecting
     // as fast as the hardware allows, which used to spin the radio and re-run onUp()'s relink side effects
     // every cycle with no way out short of linking the headset.
-    clearTimeout(this._stableTimer); this._stableTimer = null;
     const flapped = this._upAt && (this.now() - this._upAt) < this.flapMs;
     const streak = flapped ? this._flapStreak + 1 : 0;
     if (streak >= 2) {
