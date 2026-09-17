@@ -712,9 +712,14 @@ await step('RELOAD warns only when actually low; pips track the real mag (loadou
   await hudA.waitForTimeout(400);
   expect((await hudA.locator('.reload').count()) === 0, `RELOAD must not nag at ~60% of ${M}`);
   const st1 = await hudA.evaluate(() => window.brx.engine.state());
-  const lit = await hudA.locator('.alive .pips i:not(.spent)').count();
-  const want = Math.round(12 * st1.ammo / st1.mag);
-  expect(Math.abs(lit - want) <= 1, `pips ${lit}/12 should track ${st1.ammo}/${st1.mag} (want ~${want})`);
+  // Bench 2026-09-17: one pip per round up to 30 rounds, a continuous bar above that.
+  if (st1.mag <= 30) {
+    const lit = await hudA.locator('.alive .pips i:not(.spent)').count();
+    expect(lit === st1.ammo, `pips ${lit} should equal the rounds left ${st1.ammo}/${st1.mag}`);
+  } else {
+    expect((await hudA.locator('.alive .pips > i').count()) === 0, `a ${st1.mag}-round mag shows a bar, not pips`);
+    expect((await hudA.locator('.alive .bar.ammo').count()) > 0, `a ${st1.mag}-round mag shows the ammo bar`);
+  }
   const low = Math.max(0, st1.ammo - Math.max(1, Math.floor(M * 0.1)));
   await hudA.evaluate(n => window.fakeGun.fire(n), low);             // down to ~10%
   await until(async () => (await hudA.locator('.reload').count()) > 0, 3000, `RELOAD must warn at ~10% of ${M}`);
