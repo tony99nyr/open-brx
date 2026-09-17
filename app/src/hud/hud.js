@@ -36,6 +36,24 @@ const ALERT_FAMILY = { objective_taken: 'objective', objective_scored: 'objectiv
 const OUTCOME_WORD = { win: 'WIN', lose: 'LOSE', draw: 'DRAW', undecided: 'UNDECIDED' };
 const MEDAL_LABEL = { first_blood: 'FIRST BLOOD', double_kill: 'DOUBLE KILL', triple_kill: 'TRIPLE KILL', killtacular: 'KILLTACULAR', killing_spree: 'KILLING SPREE', unstoppable: 'UNSTOPPABLE' };
 const splitGun = g => { if (!g) return ['—', '']; return [esc(g.basename || g.name || ''), esc(g.tail || '')]; };
+/** Bench 2026-09-17: bullet-shaped pips read as one pip per round, so a 12-pip gauge on a 4-round sniper mag
+ *  lied by 3 pips a shot. Pips now count exactly the magazine size — one pip per round — up to this many; past
+ *  it they stop reading as bullets and the gauge switches to a continuous bar (exact count stays in the digits
+ *  beside it). 30 is the largest count the pip row fits at 667×375 (the SE stage viewport) without reaching the
+ *  vitals plate on the other corner, and it sits in the gap the weapon catalogue leaves between a doubled
+ *  (Extended Mags) marksman mag — sniper 4→8, AMR 14→28 — and a doubled sidearm or assault mag — glock 16→32,
+ *  bolt rifle 18→36, stinger 18→36 — so the perk never straddles the threshold either way. */
+const AMMO_PIP_MAX = 30;
+/** Bench 2026-09-17: an energy weapon's magazine is a charge, not rounds — a bullet pip or a round count
+ *  is a fiction for it either way, so it always gets the percentage bar below, never pips. Identified the
+ *  same way the catalogue names them, since there is no formal class flag for it yet: an "energy" or
+ *  "charge" token in the weapon id (energy_rifle, charge_rifle, energy_launcher). */
+const isEnergyWeapon = id => /energy|charge/i.test(String(id || ''));
+/** The digit beside the gauge: a round count for a bullet weapon, a percentage of the magazine for an
+ *  energy weapon (there is no "round" to count — see isEnergyWeapon just above). */
+const magText = st => isEnergyWeapon(st.weaponId)
+  ? `${Math.max(0, Math.min(100, Math.round(100 * st.ammo / (st.mag || Math.max(st.ammo, 1)))))}%`
+  : pad2(st.ammo);
 // Polish-loop pass 1 (2026-09-12): the discovered-MC row shows the HOST, never the raw ws://…/ws join URL.
 const mcHost = url => { try { return new URL(url).host; } catch (_) { return String(url || ''); } };
 // Polish-loop pass 2: `d.source` (app.js, landed) is 'sweep' (a port sweep on the joined Wi-Fi) or 'mdns'
@@ -258,7 +276,7 @@ export class Hud {
     this.frame.dataset.team = st.teamKey || 'blue';
     this.frame.dataset.env = st.night ? 'night' : '';
     const sig = [st.phase, st.alive, !!st.killedBy, st.night, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
-      st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.battery != null && st.battery <= 15,
+      st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.reserve === 0, (st.mag || 0) > AMMO_PIP_MAX, st.battery != null && st.battery <= 15,
       st.kills > 0, st.deaths > 0, st.assists > 0, accShown(st) != null, st.reserve != null, this.scan.length, st.bleUp, st.ended, this.bluetoothOn,
       this.discovered && this.discovered.url,   // Polish-loop pass 1: the discovered-MC row on the pre-join screen (`_joinConfirm` only touches the diag panel, patched directly, not here)
       st.rejoin, !!st.pendingTeardown, this.sync && this.sync.bound, this.sync && this.sync.pending,
@@ -890,6 +908,12 @@ export class Hud {
     const low = st.hp <= st.maxHp * .25 && st.alive;
     // only nag when genuinely low: live+alive, mag known, not a fresh mag (it blinked constantly on the bench)
     const lowMag = !!(st.alive && st.mag && st.ammo < st.mag && st.ammo / st.mag <= .15);
+    // bench 2026-09-17: a reload gives nothing back once the reserve is also empty, so RELOAD is a false
+    // promise at that point — say OUT OF AMMO instead. The state the HUD gets from the node has no LIVE
+    // round count for the other slot (only its catalogue max), so this never guesses a "swap" hint; it
+    // would need that count added to the node's state before it could say so honestly.
+    const outOfAmmo = !!(st.alive && st.ammo === 0 && st.reserve === 0);
+    const energy = isEnergyWeapon(st.weaponId);
     const [nm] = splitGun(st.gun);
     const stat = (k, v) => `<span>${k}<b class="${v == null ? 'mut' : ''}" id="st-${k}">${v == null ? '—' : v}</b></span>`;
     const kb = st.killedBy ? `` : '';
@@ -905,8 +929,9 @@ export class Hud {
       <div class="vitals"><div class="nums"><span class="hp tab ${low ? 'low' : ''}" id="hp">${st.hp}</span><span class="hplab">HP</span><span class="sh tab ${st.armor === 0 ? 'zero' : ''}" id="sh">${st.armor}</span></div>
         <div class="bar ${low ? 'low' : ''}"><i id="hpbar" style="width:${Math.round(100 * st.hp / st.maxHp)}%"></i></div>
         <div class="bar armor"><i id="shbar" style="width:${Math.round(100 * st.armor / st.maxArmor)}%"></i></div></div>
-      <div class="ammo">${lowMag ? `<span class="reload ${st.ammo === 0 ? 'solid' : ''}"><span class="unskew">RELOAD ▸▸</span></span>` : ''}
-        <div class="nums"><span class="mag tab ${lowMag ? 'warn' : ''}" id="mag">${pad2(st.ammo)}</span><span class="res tab" id="res">/${st.reserve != null ? st.reserve : '—'}</span></div>
+      <div class="ammo">${outOfAmmo ? `<span class="reload out solid"><span class="unskew">${energy ? 'OUT OF ENERGY' : 'OUT OF AMMO'}</span></span>`
+          : lowMag ? `<span class="reload ${st.ammo === 0 ? 'solid' : ''}"><span class="unskew">${energy ? 'RECHARGE ▸▸' : 'RELOAD ▸▸'}</span></span>` : ''}
+        <div class="nums"><span class="mag tab ${lowMag ? 'warn' : ''}" id="mag">${magText(st)}</span><span class="res tab" id="res">/${st.reserve != null ? st.reserve : '—'}</span></div>
         <div class="pips" id="pips">${this._pips(st)}</div>
         <span class="wn"><span class="slot">${st.activeSlot ? 'SECONDARY' : 'PRIMARY'}</span>${esc(st.weapon)}</span></div>
       <div class="nightlab">NIGHT OPS</div>${kb}</div>`;
@@ -963,11 +988,22 @@ export class Hud {
     const mine = (bd && Array.isArray(bd.teams)) ? bd.teams.find(t => t && String(t.team_id == null ? '' : t.team_id).toLowerCase() === st.teamKey) : null;
     return [num(mine && mine.score), num(st.kills)].some(v => v != null && v >= cap - 1 && v < cap);
   }
+  /** An energy weapon always gets the percentage bar (no round to pip). A bullet weapon gets one pip per
+   *  round up to AMMO_PIP_MAX; above it, a continuous bar (the exact count is already the digits beside
+   *  this gauge, in `#mag`/`#res`). Same warn rule throughout: alive, a known mag, at or under 15% left. */
   _pips(st) {
-    const n = 12, mag = st.mag || Math.max(st.ammo, 1);
-    const lit = Math.round(n * Math.min(1, st.ammo / mag));
+    const mag = st.mag || Math.max(st.ammo, 1);
     const warn = !!(st.alive && st.mag && st.ammo < st.mag && st.ammo / st.mag <= .15);
-    let s = ''; for (let i = 0; i < n; i++) s += `<i class="${i < lit ? (warn ? 'warn' : '') : 'spent'}"></i>`;
+    if (isEnergyWeapon(st.weaponId)) {
+      const pct = Math.max(0, Math.min(100, Math.round(100 * st.ammo / mag)));
+      return `<div class="bar energy ${warn ? 'warn' : ''}"><i style="width:${pct}%"></i></div>`;
+    }
+    if (mag > AMMO_PIP_MAX) {
+      const pct = Math.max(0, Math.min(100, Math.round(100 * st.ammo / mag)));
+      return `<div class="bar ammo ${warn ? 'warn' : ''}"><i style="width:${pct}%"></i></div>`;
+    }
+    const lit = Math.max(0, Math.min(mag, Math.round(st.ammo)));
+    let s = ''; for (let i = 0; i < mag; i++) s += `<i class="${i < lit ? (warn ? 'warn' : '') : 'spent'}"></i>`;
     return s;
   }
 
@@ -1008,7 +1044,7 @@ export class Hud {
       if (mode === 'kitted' || mode === 'over' || (mode === 'lobby' && !st.kitOpen && !st.ready)) setHtml('readynote', this._readyNote(st, mode));
     }
     if (st.phase === 'live') {
-      set('clock', mmss(st.clockMs)); set('hp', st.hp); set('sh', st.armor); set('mag', pad2(st.ammo)); set('res', `/${st.reserve != null ? st.reserve : '—'}`);
+      set('clock', mmss(st.clockMs)); set('hp', st.hp); set('sh', st.armor); set('mag', magText(st)); set('res', `/${st.reserve != null ? st.reserve : '—'}`);
       set('batt', st.battery != null ? st.battery + '%' : '—');
       const hb = q('hpbar'); if (hb) hb.style.width = `${Math.round(100 * st.hp / st.maxHp)}%`;
       const sb = q('shbar'); if (sb) sb.style.width = `${Math.round(100 * st.armor / st.maxArmor)}%`;

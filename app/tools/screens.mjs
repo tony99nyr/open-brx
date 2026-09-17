@@ -1923,6 +1923,99 @@ await step('ready control: the inert STANDING BY button is marked aria-disabled,
   must(!/tap-press/.test(cls), 'a pointerdown on the inert STANDING BY button must never show pressed feedback: ' + cls);
 });
 
+// ---------- ammo gauge (bench 2026-09-17): one pip per round up to AMMO_PIP_MAX, a continuous bar past
+// it, an energy weapon (charge/energy in its id) always gets the percentage bar, and OUT OF AMMO/OUT OF
+// ENERGY replace a reload prompt that would lie once the reserve is also empty. Drives the live engine
+// directly (`window.brx.engine`, the same handle `demo.js`'s own stage harness uses) so a real weapon's
+// real magazine size is on screen — the `live` stage's golden bundle only ever spawns an assault rifle. ----------
+const setAmmo = (pg, weaponId, slot, mag, reserve, ammo) => pg.evaluate(({ weaponId, slot, mag, reserve, ammo }) => {
+  const e = window.brx.engine;
+  e.player.loadout.weapons[slot] = { weapon_id: weaponId };
+  e.frames.spawn = e.frames.spawn.map(f => f.startsWith(`$AMMO,${slot},`) ? `$AMMO,${slot},${mag},${reserve},1,*` : f);
+  e.feedFrame(`$ALCD,${ammo},100,${slot},${reserve},0,*`);
+}, { weaponId, slot, mag, reserve, ammo });
+const gaugeState = pg => pg.evaluate(() => ({
+  pips: document.querySelectorAll('#pips > i').length,
+  lit: document.querySelectorAll('#pips > i:not(.spent)').length,
+  bar: !!document.querySelector('#pips > .bar'),
+  ammoBar: !!document.querySelector('#pips > .bar.ammo'),
+  energyBar: !!document.querySelector('#pips > .bar.energy'),
+  mag: (document.getElementById('mag') || {}).textContent,
+  prompt: (document.querySelector('.ammo .reload .unskew') || {}).textContent || null,
+}));
+await step('ammo gauge se: a 4-round sniper mag gets exactly 4 pips, one per round, and firing one clears exactly one', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'sniper_rifle', 0, 4, 24, 4); await pg.waitForTimeout(400);
+  let r = await gaugeState(pg);
+  must(r.pips === 4 && r.lit === 4 && !r.bar, `a 4-round mag must show 4 discrete pips, all lit, not a bar: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-sniper-full.png` });
+  await setAmmo(pg, 'sniper_rifle', 0, 4, 24, 3); await pg.waitForTimeout(400);
+  r = await gaugeState(pg);
+  must(r.pips === 4 && r.lit === 3, `firing one round of a 4-round mag must clear exactly one pip (3 of 4 lit), got ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-sniper-fired1.png` });
+  await pg.close();
+});
+await step('ammo gauge se: a 36-round mag (burst rifle) uses the continuous bar, not 36 pips', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'burst_rifle', 0, 36, 216, 36); await pg.waitForTimeout(400);
+  const r = await gaugeState(pg);
+  must(r.bar && r.ammoBar && r.pips === 0, `a 36-round mag must render as the ammo bar, never 36 pips: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-burst-bar.png` });
+  await pg.close();
+});
+await step('ammo gauge se: swapping from the sniper to a 36-round mag re-renders the gauge from pips to the bar', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'sniper_rifle', 0, 4, 24, 4); await pg.waitForTimeout(400);
+  let r = await gaugeState(pg);
+  must(r.pips === 4 && !r.bar, `pre-swap: expected 4 pips: ${JSON.stringify(r)}`);
+  await setAmmo(pg, 'burst_rifle', 0, 36, 216, 36); await pg.waitForTimeout(400);
+  r = await gaugeState(pg);
+  must(r.bar && r.ammoBar && r.pips === 0, `post-swap to a 36-round mag: expected the bar, not pips: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-swap-to-bar.png` });
+  await pg.close();
+});
+await step('ammo prompt se: mag 0 / reserve 0 reads OUT OF AMMO, never RELOAD', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'sniper_rifle', 0, 4, 0, 0); await pg.waitForTimeout(400);
+  const r = await gaugeState(pg);
+  must(r.prompt === 'OUT OF AMMO', `mag 0 / reserve 0 must read OUT OF AMMO (a reload would give nothing back), got ${JSON.stringify(r.prompt)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-out-of-ammo.png` });
+  await pg.close();
+});
+await step('ammo prompt se: mag 0 / reserve > 0 keeps RELOAD (a reload still gives rounds back)', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'sniper_rifle', 0, 4, 24, 0); await pg.waitForTimeout(400);
+  const r = await gaugeState(pg);
+  must(/^RELOAD/.test(r.prompt || ''), `mag 0 / reserve 24 must keep the RELOAD prompt, got ${JSON.stringify(r.prompt)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-reload.png` });
+  await pg.close();
+});
+await step('ammo gauge se: an energy weapon (charge rifle) shows the percentage bar, never pips or a round count', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 12, 12, 6); await pg.waitForTimeout(400);
+  const r = await gaugeState(pg);
+  must(r.bar && r.energyBar && !r.ammoBar && r.pips === 0, `an energy weapon must render the energy bar, never pips: ${JSON.stringify(r)}`);
+  must(r.mag === '50%', `an energy weapon's digit must read a percentage, not a round count: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-energy-half.png` });
+  await pg.close();
+});
+await step('ammo prompt se: an energy weapon at 0/0 reads OUT OF ENERGY, never OUT OF AMMO', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 12, 0, 0); await pg.waitForTimeout(400);
+  const r = await gaugeState(pg);
+  must(r.prompt === 'OUT OF ENERGY', `an energy weapon at 0/0 must read OUT OF ENERGY, got ${JSON.stringify(r.prompt)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-energy-out.png` });
+  await pg.close();
+});
+await step('ammo prompt se: an energy weapon with reserve left reads RECHARGE, never RELOAD', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  await setAmmo(pg, 'charge_rifle', 0, 12, 12, 0); await pg.waitForTimeout(400);
+  const r = await gaugeState(pg);
+  must(/^RECHARGE/.test(r.prompt || ''), `an energy weapon at 0 with reserve must read RECHARGE, got ${JSON.stringify(r.prompt)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-energy-recharge.png` });
+  await pg.close();
+});
+
 await b.close(); srv.close();
 console.log(`\n${pass} passed, ${fail} failed${fail ? ': ' + errs.join(', ') : ''}`);
 process.exit(fail ? 1 : 0);
