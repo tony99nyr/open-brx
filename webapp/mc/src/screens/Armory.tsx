@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import QRCode from 'qrcode';
-import { blocksPush, GUN_FLAPPING_LINE, poolStaleLabel, isRoutableLanIp, reachLabel, reachTooltip, registrySig, sentenceCase, splitBlocker, staleReachReason } from '../api/derive';
+import { armoryGate, backhaulOffer, GUN_FLAPPING_LINE, poolStaleLabel, isRoutableLanIp, reachLabel, reachTooltip, registrySig, sentenceCase, splitBlocker, staleReachReason } from '../api/derive';
 import { STALE_AFTER_MS, type LogView, type ReadinessRow, type TunnelStatus } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
@@ -92,6 +92,7 @@ export function Armory() {
   // Keyed on WHICH GUNS MC knows about, so a SCAN that enrols a new gun shows up in KNOWN GUNS —
   // NOT SEEN without a reload. NOT on `readiness.t`: that is a clock, and at 4 snapshots a second it
   // refetches the armory ~4x/s for as long as this screen is open (review 2026-09-01).
+  const backhaul = useBackhaul();   // ENABLE BACKHAUL beside the gate (bench 2026-09-17)
   const sig = registrySig(state);
   useEffect(() => { api.armory().then(setRegistry).catch(() => { /* keep the last good list — a transient failure must not empty KNOWN GUNS */ }); }, [api, sig]);
   if (!state) return null;
@@ -115,25 +116,13 @@ export function Armory() {
   const nWaiting = board.filter(g => g.status === 'waiting').length;
   // "waiting" is not a fault and must not be reported as one: it just means the phone has not
   // arrived yet (Tony, 2026-09-01 — a board full of disconnected guns "looked like critical errors").
-  // No separate status line under CONTINUE. Tony, 2026-09-02: "we dont need this extra status. maybe
-  // a disabled status on the button and thats it" — so the button IS the status: it says what it is
-  // waiting for, and is disabled while it waits.
-  // R2-2 (polish loop iteration 2, 2026-09-13): CONTINUE is navigation towards the LOBBY, and the
-  // LOBBY is where A36's three proofs are CURED — so a row whose only reds are the three must not
-  // stand between the operator and the button that fixes it. `nRed` stays the honest count on the
-  // RED tile (those rows ARE red); `nRedGating` is what the gate asks.
-  // F1 (iteration 3): the gate asks the SERVER's question (`derive.blocksPush`, mirroring
-  // `push_config._blocks_push`) instead of "is every blocker on this row push-cured". The two differ
-  // on a row carrying a curable blocker AND an uncurable one — that row still has to block CONTINUE,
-  // and it still has to be counted as one a re-push will partly help.
-  const gatingReds = board.filter(g => g.status === 'red' && blocksPush(g));
-  const nRedGating = gatingReds.length;
-  const nRedCurable = nRed - nRedGating;
-  const gateLabel = nRedGating ? `${nRedGating} GUN${nRedGating === 1 ? '' : 'S'} BLOCKED` : 'CONTINUE ▸';
-  const gateWhy = nRedGating ? (gatingReds[0]?.blockers?.[0] ?? 'Clear the fault to continue')
-    : nRedCurable ? `${nRedCurable} gun${nRedCurable === 1 ? '' : 's'} answered for an older config — RE-PUSH CONFIG on LOBBY`
-    : nWaiting ? 'Open the BRX app on each phone and set its gun'
-    : nGreen ? '' : 'Power the guns and open the app on each phone';
+  // No separate status line under the gate button. Tony, 2026-09-02: "we dont need this extra status.
+  // maybe a disabled status on the button and thats it". The history of the gate (R2-2: a red a
+  // RE-PUSH cures does not block; F1: the gate asks the server's `blocksPush`) lives on
+  // `derive.armoryGate`.
+  // Bench 2026-09-17 (Tony): CONTINUE ▸ became HARDWARE READY ▸, and the label is the status: it names
+  // what it waits for. The gate did not move (`derive.armoryGate`).
+  const gate = armoryGate(board);
 
   return (
     <div className="screen" style={{ maxWidth: 1380, margin: '0 auto' }}>
@@ -173,14 +162,19 @@ export function Armory() {
             {nWaiting > 0 && <CountBlock value={nWaiting} label="NO PHONE" color={T.micro} />}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-            {/* Disabled on REDS only. Amber never blocked continuing and must not start now — this
-                is navigation to GAMES; the real gate is the lobby push. */}
-            <button type="button" className={!nRedGating ? 'hov-accbg' : ''} disabled={!!nRedGating} title={gateWhy}
-              onClick={async () => { await run(() => api.setPhase('build')); setView('build'); }}
-              style={{ font: F.osw(700, 20), letterSpacing: '.22em', padding: '10px 26px 10px 32px', whiteSpace: 'nowrap',
-                background: nRedGating ? 'transparent' : nGreen ? T.ok : T.panelAlt, color: nRedGating ? T.micro : nGreen ? T.accInk : T.dim,
-                border: `1px solid ${nRedGating ? T.line2 : nGreen ? T.ok : T.line}`, clipPath: CHAMFER.tl14,
-                cursor: nRedGating ? 'not-allowed' : 'pointer', minHeight: 48 }}>{gateLabel}</button>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {backhaul.control}
+              {/* Disabled on REDS a push cannot cure, only. Amber and a waiting phone never blocked
+                  going on: this is navigation to GAMES; the real gate is the lobby push. */}
+              <button type="button" data-testid="armory-gate" data-gate-ready={gate.ready ? '1' : '0'}
+                className={!gate.disabled ? 'hov-accbg' : ''} disabled={gate.disabled} title={gate.why}
+                onClick={async () => { await run(() => api.setPhase('build')); setView('build'); }}
+                style={{ font: F.osw(700, 20), letterSpacing: '.22em', padding: '10px 26px 10px 32px', whiteSpace: 'nowrap',
+                  background: gate.disabled ? 'transparent' : gate.ready && nGreen ? T.ok : T.panelAlt, color: gate.disabled ? T.micro : gate.ready && nGreen ? T.accInk : T.dim,
+                  border: `1px solid ${gate.disabled ? T.line2 : gate.ready && nGreen ? T.ok : T.line}`, clipPath: CHAMFER.tl14,
+                  cursor: gate.disabled ? 'not-allowed' : 'pointer', minHeight: 48 }}>{gate.label}</button>
+            </div>
+            {backhaul.errLine}
           </div>
         </>
       } />
@@ -240,6 +234,52 @@ export function Armory() {
       )}
     </div>
   );
+}
+
+/** ENABLE BACKHAUL (bench 2026-09-17): a one-tap start for the internet link, beside HARDWARE READY,
+ *  offered only once every rostered phone is on the board and green (`derive.backhaulOffer`). It calls
+ *  the same route as REACH's TURN ON and never waits on the link: the operator can go on to GAMES while
+ *  the link starts. After a press it stays as a quiet BACKHAUL ON tag, so the press visibly landed; a
+ *  link that was already up before this screen pressed anything shows nothing here (REACH says so). An
+ *  error is one quiet line under the row and never touches HARDWARE READY. */
+function useBackhaul(): { control: ReactNode; errLine: ReactNode } {
+  const { state, api } = useStore();
+  const [pressed, setPressed] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const { offer, status } = backhaulOffer(state);
+  // `sending` holds STARTING… from the press until the next snapshot moves `lan.public.status`, so the
+  // button does not flash back between the route's reply and the snapshot that follows it.
+  useEffect(() => { setSending(false); }, [status]);
+  const start = () => {
+    setPressed(true); setSending(true); setErr(null);
+    // not awaited by the caller: navigation must never wait on the link
+    api.setTunnel(true).catch(e => { setErr((e as Error).message || 'the link did not start'); setSending(false); });
+  };
+  const linkErr = status === 'up' ? null : err ?? (pressed && status === 'error' ? (state?.lan.public?.error || 'the link did not start') : null);
+  // one quiet line under the button row, so the row itself keeps its alignment
+  const errLine = linkErr ? (
+    <span data-backhaul-error="1" title={linkErr}
+      style={{ font: F.mono(500, 11), letterSpacing: '.06em', color: T.warn, maxWidth: 'min(420px, calc(100vw - 32px))', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      BACKHAUL FAILED: {linkErr}
+    </span>
+  ) : null;
+  let control: ReactNode = null;
+  if (status === 'starting' || (sending && status !== 'up')) {
+    control = <span data-backhaul="starting" style={{ font: F.chk(700, 11), letterSpacing: '.2em', color: T.warn, padding: '8px 4px' }}>STARTING…</span>;
+  } else if (status === 'up') {
+    control = pressed ? <span data-backhaul="on"><OutlineTag color={T.ok} border={T.ok} title="The internet link is up. REACH shows its address.">BACKHAUL ON</OutlineTag></span> : null;
+  } else if (offer) {
+    control = (
+      <button type="button" data-backhaul="offer" onClick={start} className="hov-acc"
+        title="Start the internet link so phones can reach MC off the field Wi-Fi"
+        style={{ minHeight: 44, background: 'transparent', border: `1px solid ${T.line2}`, color: T.dim,
+                 font: F.chk(700, 12), letterSpacing: '.18em', padding: '10px 16px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+        ENABLE BACKHAUL
+      </button>
+    );
+  }
+  return { control, errLine };
 }
 
 /** F142 (field 2026-09-12, ISSUE 11/11b) — a `--demo` session persisted into `~/.brx-mcp/` and was

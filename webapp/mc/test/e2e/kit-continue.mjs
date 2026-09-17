@@ -11,7 +11,7 @@
 //   MC_PORT=… VITE_PORT=… MC_PY=…    # move the ports / pick the interpreter
 //
 // Runs: mock (in-browser backend, a short roster), real (a real python MC on :8792, walked from
-// ARMORY with the CONTINUE buttons), stale (snapshots stripped over REST *and* the WebSocket),
+// ARMORY with the HARDWARE READY button), stale (snapshots stripped over REST *and* the WebSocket),
 // fail400 (POST /api/phase forced to 400), phone (393x830) and desk (1280x800).
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
@@ -149,7 +149,7 @@ async function walkToKit(pg, url, fromArmory = true) {
   else {
     // A `--demo --fake-net` server boots straight into LOBBY (every fake phone readies itself), so the
     // console opens there. Step back to ARMORY with the nav — that is view-only, it moves no phase —
-    // and then walk FORWARD on the real CONTINUE buttons, which is what sets the server phase.
+    // and then walk FORWARD on the real gate buttons, which is what sets the server phase.
     await pg.locator('header nav button:has-text("ARMORY")').first().click();
     if (!await until(() => pg.locator('main', { hasText: 'Readiness Board' }).count().then(n => n > 0), 10000, 'ARMORY')) {
       console.log('      FORENSICS url=', pg.url(), '\n      main:', (await pg.locator('main').innerText()).slice(0, 200).replace(/\n/g, ' | '));
@@ -173,7 +173,8 @@ async function walkToKit(pg, url, fromArmory = true) {
     }, 15000, 'every phone card on ARMORY to render');
     expect(await pg.locator('text=CONSOLE ERROR').count() === 0, 'ARMORY rendered the phone cards without crashing the console');
     ok(`ARMORY: ${await pg.locator('[data-node-card]').count()} phone cards, no crash boundary`);
-    await pg.locator('main button:has-text("CONTINUE ▸")').first().click();
+    // ARMORY's gate reads HARDWARE READY ▸ or what it waits for (bench 2026-09-17): click it by id.
+    await pg.locator('[data-testid="armory-gate"]').first().click();
   }
   await until(() => pg.locator('main', { hasText: '[ A2 // GAMES ]' }).count().then(n => n > 0), 10000, 'GAMES to open');
   // GAMES has TWO states since 2026-09-13 (Tony: "instead of continue it should be Load"). Unloaded,

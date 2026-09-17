@@ -201,8 +201,8 @@ await step('scan armory from the UI → rows appear', async () => {
   await until(async () => (await mc.locator(`text=${guns[0].gun_id}`).count()) > 0, 8000, 'armory row rendered');
   await shot(mc, 'armory-scanned'); await tapAudit(mc, 'armory'); await textAudit(mc, 'armory');
 });
-await step('CONTINUE ▸ on Armory advances to GAMES — the GAMES screen renders (dead GO chip regression)', async () => {
-  await mc.click('button:has-text("CONTINUE ▸")');
+await step('the ARMORY gate (HARDWARE READY ▸, or what it waits for) advances to GAMES — the GAMES screen renders (dead GO chip regression)', async () => {
+  await mc.click('[data-testid="armory-gate"]');
   await until(async () => (await st()).phase === 'build', 6000, 'server phase build');
   await until(async () => (await mc.locator('button[aria-label="create a game"]').count()) > 0, 6000, 'GAMES screen rendered (CREATE A GAME card)');
   expect((await mc.locator('text=PICK THE GAME').count()) > 0, 'GAMES header missing');
@@ -247,7 +247,7 @@ await step('config: fast respawn + short match for the run', async () => {
 });
 await step('LOAD ▸ on GAMES shows the LOADED GAME state; CONTINUE TO KIT ▸ advances to KIT — the KIT screen renders', async () => {
   // GAMES has two states since 47a87830 / f7b29c9f (Games.tsx header): LOAD ▸ announces the game to the phones and
-  // stays on GAMES, then CONTINUE TO KIT ▸ is the way on. ARMORY keeps a bare CONTINUE ▸.
+  // stays on GAMES, then CONTINUE TO KIT ▸ is the way on. ARMORY's gate is HARDWARE READY ▸.
   await mc.click('[data-testid="game-load"] button:has-text("LOAD ▸")');
   await until(async () => (await st()).game?.loaded === true, 6000, 'server game.loaded');
   await until(async () => (await mc.locator('[data-testid="active-game-config"]').count()) > 0, 6000, 'GAMES shows the LOADED GAME state');

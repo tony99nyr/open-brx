@@ -218,6 +218,9 @@ export class MockBackend implements Api {
   // Mock-only debug hook, read once at construction: `?mock&tunnelfail=1` makes the NEXT TURN ON fail
   // instead of coming up, so the e2e suite (and a human) can drive the persistent "TUNNEL DOWN" banner
   // without a real cloudflared process to kill. One-shot, like a real flaky start.
+  // Mock-only debug hook: `?mock&allgreen=1` turns every linked row green, so ARMORY's HARDWARE READY ▸
+  // and ENABLE BACKHAUL (bench 2026-09-17) can be seen in a browser. The default demo keeps a red gun.
+  private demoAllGreen = typeof location !== 'undefined' && new URLSearchParams(location.search).get('allgreen') === '1';
   private tunnelFailNext = typeof location !== 'undefined' && new URLSearchParams(location.search).get('tunnelfail') === '1';
   // the server's validate() errors ride on every snapshot (config_errors); the demo used to hardcode []
   // so a refusal shown in the PUT response vanished from the rail on the very next tick
@@ -496,6 +499,7 @@ export class MockBackend implements Api {
         blockers: waiting ? [] : blockers,
       };
     });
+    if (this.demoAllGreen) board.forEach((r, i) => { if (r.status !== 'waiting') board[i] = { ...r, status: 'green', blockers: [], ambers: [] }; });
     const rf = this.rosterFault();
     // F-3/A39 (2026-09-13): a connected phone (`node: 'linked'`) with no player claiming it, and not
     // the gun of someone currently on STANDBY (a deliberate stand-down, not a stray) — mirrors
