@@ -218,8 +218,11 @@ Bolt Rifle and Melee — their stock numbers already sat in the band.
   three-axis check; at native 100/192 it strictly dominates several other picker weapons under BOTH
   the old axes and the new one-magazine-kill-chance axis (§2.3) — the accuracy/stance/flinch system
   (S42, node-driven, not the native spray decay F230 showed is not usable) is the intended real-world
-  equaliser, not this static check. `test_ttk_band_and_no_strictly_dominant_weapon` is RED on this
-  weapon as shipped; see §2.3 for the open list.
+  equaliser, not this static check. Under the family-scoped rule that shipped the same day (§2.3) the
+  test is GREEN: the AR leads its family on time to kill and sustained DPS, and the SMG and Suppressor
+  lead on kills per clip. ⚠️ **That is a paper lead, not a felt one.** Until stance and recoil ship,
+  a player who picks on feel has no reason to take anything else in this family, so the AR's cost is
+  owed and unpaid.
 - **Burst Rifle** — **2026-09-17: damage 9 → 11** (`wire.dmg`), 13 hits → 11, so the real three-round
   burst separates further from the SMG-class assault weapons on hits-to-kill, not only on cadence
   (75 ms intra-burst + 275 ms gap, unchanged). No longer ships byte-for-byte (`verified: false`).

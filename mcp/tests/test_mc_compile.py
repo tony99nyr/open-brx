@@ -766,6 +766,28 @@ def test_shipped_roster_satisfies_the_mag_invariant_at_the_default_pool():
     assert not bad, f"weapons that cannot kill on one magazine at the 115 pool: {bad}"
 
 
+def test_validate_grades_a_cell_weapon_in_ROUNDS_not_trigger_actions():
+    """Polish round 2 (2026-09-17): the round-versus-actions guard was only asserted as arithmetic, so
+    reverting `validate()` to `rtk = htk` left the whole suite green. This drives `validate()` itself.
+
+    The synthetic cell weapon kills in 2 trigger actions (a charge plus one tap) but spends 11 ROUNDS
+    doing it, and its magazine holds 6: a guard that counts actions sees 6 >= 2 and says nothing, and a
+    guard that counts rounds sees 6 < 11 and warns. Break `compile.py`'s `rtk` back to `htk` and this
+    test goes red, which is the point of it."""
+    real = WeaponCatalog()._row("charge_rifle")       # its captured frame carries the t37 tap (20)
+    cell = dict(real, weapon_id="cellgun", name="Cell Gun", mag=6, reserve=12,
+                rounds_per_charge=10, wire={"dmg": 100}, hidden=False)
+    cat = WeaponCatalog(rows=[cell])
+    assert cat.hits_to_kill("cellgun", 115) == 2, "one charge plus one tap kills at the 115 pool"
+    assert cat.rounds_to_kill("cellgun", 115) == 11, "and that combo costs 11 of the 6 rounds it has"
+
+    r = Compiler(cat).validate(_cfg(), [_player(weapons=("cellgun",))])
+    assert r["ok"], r["errors"]                      # a guideline never blocks (F146)
+    said = [w for w in r["warnings"] if "one magazine" in w.lower()]
+    assert len(said) == 1, r["warnings"]
+    assert "CELLGUN" in said[0] and "mag 6 < 11 rounds" in said[0], said
+
+
 def test_the_mag_invariant_guard_grades_rounds_not_trigger_actions():
     """Break it once: a cell weapon whose charge costs more rounds than the magazine holds must fail.
 
@@ -894,17 +916,15 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
         if len(members) == 1:
             continue                                   # a family of one trivially leads (nothing to compare)
         best_by_axis = {axis: (min if BETTER[axis] == "lower" else max)(m[axis] for m in members) for axis in AXES}
-        floors = [m["recoil_floor"] for m in members if m["recoil_floor"] is not None]
-        best_floor = max(floors) if floors else None
-        bands = [m["range_band"] for m in members]
         for m in members:
-            leads = any(m[axis] == best_by_axis[axis] for axis in AXES)
-            leads = leads or (m["recoil_floor"] is not None and m["recoil_floor"] == best_floor)
-            leads = leads or (m["range_band"] is not None and bands.count(m["range_band"]) == 1)
-            if not leads:
+            # ⚠ The lead must come from an axis that REACHES A PLAYER. `recoil` and `range_band` are
+            # declared-only targets (F231 range, S42 recoil) that no code writes to the wire, so a lead
+            # claimed on either would be satisfied by inert data -- a guard that cannot fail. Add them
+            # here in the same commit that wires them, and not before (polish round 2, 2026-09-17).
+            if not any(m[axis] == best_by_axis[axis] for axis in AXES):
                 starved.append(m["id"])
-    assert not starved, (f"{starved} cannot lead their family on any axis (ttk/kpc/pk/sust, mildest "
-                          f"recoil floor, or a unique range_band) -- docs/weapon-design.md §2.3")
+    assert not starved, (f"{starved} cannot lead their family on any felt axis (ttk/kpc/pk/sust) -- "
+                          f"docs/weapon-design.md §2.3")
 
 
 def test_range_and_recoil_are_declared_not_wired():
@@ -924,6 +944,16 @@ def test_range_and_recoil_are_declared_not_wired():
         frame = cat.resolve(w["weapon_id"], 0).split(",")
         assert frame[WeaponCatalog._T["acc_ceiling"] + 1] == "100", w["weapon_id"]
         assert frame[WeaponCatalog._T["acc_floor"] + 1] == "100", w["weapon_id"]
+        # ...and the RANGE half of the same claim, which this test used to assert in prose only
+        # (polish round 2, 2026-09-17): the compiled range token must still be the captured value,
+        # so wiring `range_band` into it fails here and not only in a distant derivations test.
+        captured = row["capture"]["frame"].split(",")
+        for tok in ("range", "range_outdoor"):
+            i = WeaponCatalog._T.get(tok)
+            if i is None:
+                continue
+            assert frame[i + 1] == captured[i + 1], (
+                f"{w['weapon_id']}: {tok} must stay the captured value until F231 calibrates it")
 
 
 import json

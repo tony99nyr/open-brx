@@ -642,13 +642,18 @@ def test_weapon_view_htk_ttk_caution():
     # row reaches the picker.
     launcher_view = weapon_view(C.catalog._to_weapon(C.catalog._row("energy_launcher")))
     assert launcher_view["caution"].startswith("Known issue") and "caution" not in views["assault_rifle"]
-    # the phone gets the same rows in assign.catalog (all of them now caution-free: the only
-    # `caution` row in the catalog is hidden, so nothing carries one on the wire today)
+    # A `caution` also carries a MECHANIC warning, not only a known bug: the Energy Rifle earned one on
+    # 2026-09-17 (F229) because it overheats after about 30 rounds and only a HELD reload lever clears
+    # the lockout, which reads as a broken gun to a player who does not know it.
+    assert "overheat" in views["energy_rifle"]["caution"].lower(), views["energy_rifle"]
+    # the phone gets the same rows in assign.catalog, cautions included
     s, net, clock, ps = mk(1, compiler=C)
     online(s, net, clock, ps[0], 0)
     s.patch_player(ps[0]["player_id"], display="X")
     cat = net.pushes("assign", "node0")[-1][2]["catalog"]["weapons"]
-    assert all("htk" in w for w in cat) and not any("caution" in w for w in cat)
+    assert all("htk" in w for w in cat)
+    cautioned = {w["weapon_id"]: w["caution"] for w in cat if w.get("caution")}
+    assert set(cautioned) == {"energy_rifle"}, cautioned
 
 
 # ------------------------------------------------------------------ A10 §8 saved games (presets)

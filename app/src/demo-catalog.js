@@ -183,6 +183,7 @@ export const DEMO_WEAPONS = [
     "role": "support",
     "htk": 13,
     "ttk_ms": 1800,
+    "caution": "Overheats after about 30 rounds of full auto, and it does not cool on its own: HOLD the reload lever to vent the heat, then keep holding to recharge the cell.",
     "ammo_total": 900,
     "bars": {
       "power": 30,
