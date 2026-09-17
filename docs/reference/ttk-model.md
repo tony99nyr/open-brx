@@ -246,10 +246,11 @@ with it gone, **USP strictly dominated Deagle**.
    sustained DPS and the probabilistic one-magazine kill chance — Tony's call was BOTH the
    deterministic and the probabilistic framing, not one instead of the other.
 3. **The lead rule**: every visible weapon must achieve its family's best value (ties count) on at
-   least one of the four numeric axes, or lead via the MILDEST declared `recoil.floor` in its family,
-   or a `range_band` no family member shares — both fields are new, declared catalogue DATA for levers
-   that do not reach the wire yet (`test_range_and_recoil_are_declared_not_wired` is the guard). This
-   is what actually caught the two remaining gaps below; strict dominance alone would have missed them.
+   least one of the four numeric axes. `recoil.floor` and `range_band` were part of this rule for one
+   day and were removed in polish round 2 (2026-09-17): both are declared catalogue DATA for levers
+   that do not reach the wire yet (`test_range_and_recoil_are_declared_not_wired` is the guard), so a
+   lead claimed on either could be satisfied by inert data. The four numeric axes caught the two
+   remaining gaps below on their own; strict dominance alone would have missed them.
 4. **Two number changes, each the smallest found**: **Suppressor mag 48 → 75** (same family as the AR
    and SMG; the SMG beat it on ideal TTK and sustained DPS, and 75 is the smallest integer mag that
    gives Suppressor a strict kills-per-clip lead, 5 vs the SMG's 4 — 60 only ties it). **USP mag 20 →

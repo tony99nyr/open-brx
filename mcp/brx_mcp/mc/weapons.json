@@ -358,7 +358,7 @@
   },
   {
    "weapon_id": "energy_rifle",
-   "caution": "Overheats after about 30 rounds of full auto, and it does not cool on its own: HOLD the reload lever to vent the heat, then keep holding to recharge the cell.",
+   "caution": "Overheats after about 30 rounds of full auto, and it does not cool on its own: work the reload lever to vent the heat (about three pulls, or one held pull), then keep holding to recharge the cell.",
    "name": "Energy Rifle",
    "desc": "A 300-cell battery that barely stops. 9 a hit every 150ms, 23 kills on one magazine and 69 across the kit. The largest ammo pool in the game, on the smallest per-hit number. 2026-09-17 bench (F229): now genuinely overheats — full auto locks it out around heat 99 after about 30 shots, and unlike the Charge Rifle it does not cool on its own; only the reload lever (a hold, not a tap) vents it.",
    "cls": 5,

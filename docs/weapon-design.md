@@ -68,7 +68,7 @@ Hardware-true, from `session-findings-2026-08.md` §7r and the 2026-08-26 damage
 |---|---|
 | **htk** | `ceil(pool / dmg)`, where `pool` is the host's `max_hp + max_armor` (115 at the defaults, and the column used throughout this document) — it MOVES with the health config, see §2.5. Also see §6.2: this is the raw-`t5` reading and is wrong for five shipped weapons |
 | **cycle** | `t14`, ms between shots (for charge weapons, the charge time) |
-| **TTK** | `(htk-1) × cycle`; charge weapons `htk × cycle`; burst weapons use the burst-average cycle |
+| **TTK** | `(htk-1) × cycle`; burst weapons use the burst-average cycle. ⚠️ **Charge weapons are the exception since 2026-09-17**: their kill is one held charge plus the taps that finish it, so TTK is measured from the RELEASE and the charge time is setup, not combat (§2.2, S43). |
 | **burst average** | `(2 × t14 + t23) / 3` — three rounds at `t14` spacing, `t23` between bursts |
 | **sustained DPS** | `mag × dmg / (mag × cycle + reload_ms)` |
 | **total kills** | `(mag + reserve) // htk` |
@@ -165,9 +165,13 @@ sounds — and moves the numbers.
    model in the thirty seconds before the whistle, a reload still kills, and a guideline never blocks.
    The wording names the shape — the gun you fight with, a sidearm in the primary slot, or a backup.
    What DOES block is a weapon that cannot damage anyone at all (§6.2).
-5. **TTK band 1.5–3.5 s** at the 115 pool for everything that is not a one-shot weapon.
-6. **No strict dominance.** No weapon may be ≥ another on TTK, sustained DPS **and** total kills at
-   once. Checked in a test, not by eye.
+5. **TTK band 1.20–3.50 s** at the 115 pool for everything that is not a one-shot weapon or a charge
+   weapon (the band moved from 1.5 s on 2026-09-17 to admit the AR's native 100 ms cycle; a charge
+   weapon is exempt because its setup is not combat time).
+6. **No strict dominance WITHIN A FAMILY, and every weapon leads somewhere.** Since 2026-09-17 the
+   check runs per family (fire mode plus `weapon_class`) on four axes: ideal TTK, kills per clip,
+   one-magazine kill chance at p = 0.7, and sustained DPS. "Total kills from a full kit" is retired,
+   because a respawn refills the kit. Checked in a test, not by eye (§2.3).
 7. **One-shot weapons are a pickup tier**: 2-round magazine, 4 total kills, and each differentiated
    by charge behaviour rather than by numbers.
 8. **`htk` is the design unit, not DPS** — IR hits are discrete and misses are normal.
@@ -375,8 +379,10 @@ and using the 2026-09-17 numbers, the roster is CLEAN — zero violations.
 feel — the strict-dominance check alone allows a family where every OTHER member ties or loses to one
 weapon on every axis without that one weapon quite crossing into "dominates" (no single strict edge on
 any one axis). "Leads" means: achieves the family-best value (ties count) on one of the four numeric
-axes above, OR carries the MILDEST `recoil.floor` in its family, OR a `range_band` no other family
-member shares. A family of one (Burst Rifle, Energy Rifle, Charge Rifle: each alone in its
+axes above. ⚠️ **It does NOT mean a declared `recoil.floor` or a unique `range_band`** — polish round
+2 (2026-09-17) removed those two paths, because neither reaches a gun, so a lead claimed on either
+would be satisfied by inert data and the rule could never fail. Add them back in the same commit that
+wires the levers. A family of one (Burst Rifle, Energy Rifle, Charge Rifle: each alone in its
 mode/class bucket) trivially leads — there is nothing to be out-led by. Two qualifiers used only for
 this rule, both **declared catalogue data for a lever that does not reach the wire yet**
 (`test_range_and_recoil_are_declared_not_wired` is the guard):

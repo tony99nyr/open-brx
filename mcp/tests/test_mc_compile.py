@@ -788,10 +788,11 @@ def test_validate_grades_a_cell_weapon_in_ROUNDS_not_trigger_actions():
     assert "CELLGUN" in said[0] and "mag 6 < 11 rounds" in said[0], said
 
 
-def test_the_mag_invariant_guard_grades_rounds_not_trigger_actions():
-    """Break it once: a cell weapon whose charge costs more rounds than the magazine holds must fail.
-
-    Without this, the guard passes on `hits_to_kill` (3 actions) while the weapon needs 12 rounds."""
+def test_a_charge_costs_more_rounds_than_trigger_actions():
+    """The arithmetic the one-magazine guard rests on: a cell weapon's kill costs more ROUNDS than
+    trigger actions. The guard itself is driven end to end by
+    `test_validate_grades_a_cell_weapon_in_ROUNDS_not_trigger_actions` (polish round 2); this one only
+    pins the numbers the shipped Charge Rifle carries."""
     cat = WeaponCatalog()
     row = dict(cat._row("charge_rifle"))
     assert cat.rounds_to_kill("charge_rifle", 115) > cat.hits_to_kill("charge_rifle", 115), (
@@ -925,6 +926,18 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
                 starved.append(m["id"])
     assert not starved, (f"{starved} cannot lead their family on any felt axis (ttk/kpc/pk/sust) -- "
                           f"docs/weapon-design.md §2.3")
+
+
+def test_the_energy_rifle_ships_its_overheat_tokens_on_the_wire():
+    """F229 (bench 2026-09-17): `t38` = 150 is what switches the Energy Rifle's overheat ON, and `t35`
+    = D11 is the ear-confirmed overheat sound. Both ride as `overrides`, so deleting that block would
+    silently ship a weapon whose `caution` promises an overheat it no longer has. This asserts the
+    COMPILED frame, not the catalogue row (polish round 3, 2026-09-17)."""
+    cat, T = WeaponCatalog(), WeaponCatalog._T
+    p = cat.resolve("energy_rifle", 0).split(",")
+    assert p[T["heat"] + 1] == "6", "captured heat-per-shot is untouched"
+    assert p[38 + 1] == "150", "t38 = 150 switches the overheat on (F229)"
+    assert p[35 + 1] == "D11", "t35 = D11 is the ear-confirmed overheat sound (F229)"
 
 
 def test_range_and_recoil_are_declared_not_wired():

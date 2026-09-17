@@ -1,7 +1,7 @@
 {
-  "taken": "2026-09-17T23:25:40.719Z",
-  "mc_src": "e4fe4cc79b632fc698f99734f2a48a6bb37cb65c",
-  "hud_src": "b461cb0c40ac7dba137d0ed93f3f28c68e586cf9",
+  "taken": "2026-09-17T23:38:49.205Z",
+  "mc_src": "9953d2ceb7b2d1ce5f38c095e5c58c7d5a8da961",
+  "hud_src": "78ee44b0a6c9a30839b66f28e1c6dfd7bedb3786",
   "files": {
     "mc-armory.jpg": {
       "w": 1280,
@@ -16,7 +16,7 @@
     "mc-kit.jpg": {
       "w": 1280,
       "h": 800,
-      "bytes": 276830
+      "bytes": 276835
     },
     "mc-lobby.jpg": {
       "w": 1280,
@@ -36,7 +36,7 @@
     "hud-hit.jpg": {
       "w": 891,
       "h": 411,
-      "bytes": 89777
+      "bytes": 89619
     },
     "hud-down.jpg": {
       "w": 891,
