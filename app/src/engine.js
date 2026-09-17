@@ -83,6 +83,17 @@ const LOW_HEALTH_HP = 15;
  *  ~1.5 s after the write started, so the cap never arms before the trigger is mapped; the real table's ~10
  *  frames then land over ~0.6 s more. */
 export const SPAWN_PROTECT_MAX_MS = 2100;
+/** F208: how long a live gun may say nothing at all before its pool is called stale. An idle gun in app mode
+ *  sends only `$VOLTS`, and the captures put that at ~60 s, not 30 s (2026-08-23 two-tagger combat: 60.1, 60.2,
+ *  60.2 s apart, one gap of 120.3 s where a sample went missing at close range; 2026-09-13 field ring: 60.2 s).
+ *  185 s lets two samples in a row go missing before it says so. Display only: nothing is written to the gun. */
+export const GUN_QUIET_STALE_MS = 185000;
+/** F208: a trigger press on a live, loaded gun gets its `$ALCD` inside ~5 ms (2026-08-26 burst rifle capture).
+ *  With no pool report 1500 ms after the press, the pull went unanswered (the same window resync uses). */
+export const TRIGGER_NO_FIRE_MS = 1500;
+/** F208: unanswered pulls in a row, with no `$HP`/`$LCD`/`$ALCD` between them, before the pool is stale. One is a
+ *  charge hold or a fire-rate gap; three is a gun that does not fire (2026-09-13: ROCCO pulled for 105 s). */
+export const NO_FIRE_PULLS = 3;
 const STUN_DEFAULT_S = 10;          // F15: how long an EMP (proto-8 $HIR under config.stun) disarms the gun when the config names no duration
 /** F13: a `$SPAWN` within ~2 s of death wedges the headset in its green out-blink (threshold 2.0-2.5 s; use >= 3). Same
  *  value as `gameconfig.MIN_RESPAWN_S` on the CLI path. */
@@ -343,6 +354,9 @@ export class Engine {
     // Per-instance so the bench harness / a future remote flag can turn it on without editing the
     // module, and so the B4 tests exercise the mechanism while the field ships with it off (F163).
     this.linkWatchdog = LINK_WATCHDOG_ENABLED;
+    // F208: the pool watchdog. `lastPoolAt` is the last `$HP`/`$LCD`/`$ALCD`; `_shotDueAt` is a trigger press still
+    // waiting for its `$ALCD`; `_noFirePulls` counts presses that never got one. See `poolStale()`.
+    this.lastPoolAt = 0; this._shotDueAt = null; this._noFirePulls = 0;
     this.hurtFired = false;         // low-health alert already sent this life
     this.stunned = null;            // F15: {at, until, ammo:{slot:[mag,reserve]}} while an EMP has the gun disarmed; the ammo is the LIVE count to restore
     this.switching = null;          // {at, from} while an ALT weapon swap is in flight (field 2026-08-30)
@@ -1537,6 +1551,7 @@ export class Engine {
     this.poolSrc = 'model';        // R2-3: those two numbers are config.health, not the gun's answer
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
     this._spawnAt = this.now(); this._armedThisLife = false;   // B5: a settle window starts here — see `_deathPending`
+    this._shotDueAt = null; this._noFirePulls = 0;   // F208: a fresh life owes no shots
     this._armAfterSpawn();   // F209: hits stay silent until the gun fires or the cap runs out
     this._gunTake();   // A11.7
     if (this.frames.headset) this._headsetDelayed(this.frames.headset.start, 'start');   // led-language.md §3.1/§5: scheduled +1.0 s after $SPAWN, not inline (A11.6: white flash marks the start, then dark/team)
@@ -1958,6 +1973,7 @@ export class Engine {
       // (bench 2026-09-04: "it isn't sensing the respawn station"). Stamp it: they are down as of now.
       if (this.reconciling && now - this.reconciling.since >= RECONCILE_MS) this._endReconcile();
       if (this._armPending && this.bleUp && !this.reconciling && now - this._armPending.at >= SPAWN_PROTECT_MAX_MS) this._armLife('cap');   // F209
+      this._noFireTick(now);   // F208
       // B5's settle window HOLDS an unattributed zero-HP frame rather than manufacturing a phantom death
       // out of a stale echo. A REAL death inside that window with no latch — grenade or station damage
       // (neither carries an $HIR to latch onto), or an $HIR simply lost — was then dropped forever:
@@ -2026,6 +2042,7 @@ export class Engine {
     this.poolSrc = 'model';        // R2-3: a fresh life, and again from config.health until the gun speaks
     this._prevHp = this.hp; this._prevArmor = this.armor; this._prevShield = this.shield;
     this._spawnAt = this.now(); this._armedThisLife = false;   // B5: a settle window starts here — see `_deathPending`
+    this._shotDueAt = null; this._noFirePulls = 0;   // F208: a fresh life owes no shots
     this._armAfterSpawn();   // F209
     this._gunTake();   // A11.7
     this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}), ...(stationId != null ? { station: stationId } : {}) });
@@ -2262,6 +2279,7 @@ export class Engine {
     this._awake();                   // §3.11: a frame off the gun is proof too — the JS ran to parse it
     this.lastGunFrameAt = this.now(); // B4: ANY frame is proof the link is alive — feeds the staleness watchdog in tick()
     const t = toks(f), cmd = t[0];
+    if (cmd === 'HP' || cmd === 'LCD' || cmd === 'ALCD') { this.lastPoolAt = this.now(); this._shotDueAt = null; this._noFirePulls = 0; }   // F208: the gun answered
     switch (cmd) {
       case 'HP': this._onHp(+t[1] || 0, +t[2] || 0, t[3] !== undefined && t[3] !== '' ? (+t[3] || 0) : this.shield); break;
       case 'LCD': {
@@ -2396,6 +2414,35 @@ export class Engine {
     if (latched && (latched.present || !present)) return latched;
     return present || live[0] || null;
   }
+  /** F208: a trigger press the gun should answer with a shot. Only counted where a shot must follow: live, alive,
+   *  loaded, and not swapping, reloading, stunned, resyncing or reconciling. A press while one is due keeps the first. */
+  _awaitShot() {
+    if (this.phase !== 'live' || !this.alive || !this.spawned || !this.bleUp || this.tutorial) return;
+    if (this.resync || this.reconciling || this.switching || this.reloading || this.stunned) return;
+    // The slot's live count once the gun has reported it this life, else the spawn magazine. An empty mag dry-fires.
+    const seen = this._prevAmmo[this.activeSlot];
+    const mag = seen != null ? seen : this._ammoBySlot()[this.activeSlot];
+    if (!(mag > 0)) return;
+    if (this._shotDueAt == null) this._shotDueAt = this.now();
+  }
+  /** F208: called from tick(). A press with no pool report TRIGGER_NO_FIRE_MS later counts as unanswered. */
+  _noFireTick(now) {
+    if (this._shotDueAt == null || now - this._shotDueAt < TRIGGER_NO_FIRE_MS) return;
+    this._shotDueAt = null;
+    if (!this.alive || this.switching || this.reloading || this.stunned) return;   // the reason changed while it was due
+    this._noFirePulls++;
+    if (this._noFirePulls === NO_FIRE_PULLS) this.log(`gun not firing: ${NO_FIRE_PULLS} trigger pulls with no shot, the pool is stale`, 'le');
+  }
+  /** F208: is the pool on the HUD still the gun's word? null when fresh, else `{why, ms}`. `why`: 'silent' (no frame
+   *  of any kind for GUN_QUIET_STALE_MS) or 'no_fire' (NO_FIRE_PULLS unanswered pulls in a row). `ms`: time since the
+   *  gun last reported a pool (`$HP`/`$LCD`/`$ALCD`), null if it never has. Only in a live match with the link up. PURE. */
+  poolStale(now = this.now()) {
+    if (this.phase !== 'live' || !this.bleUp) return null;
+    const ms = this.lastPoolAt ? now - this.lastPoolAt : null;
+    if (this.lastGunFrameAt && now - this.lastGunFrameAt >= GUN_QUIET_STALE_MS) return { why: 'silent', ms };
+    if (this.alive && this._noFirePulls >= NO_FIRE_PULLS) return { why: 'no_fire', ms };
+    return null;
+  }
   /** The station a scanner revive may use RIGHT NOW, or null: dead, past the delay, link up, not resyncing, present. */
   _stationRevivable(now) {
     if (this.alive || !this.deadAt || this.respawnType !== 'scanner' || !this.bleUp || this.resync || this.reconciling || this.phase !== 'live') return null;
@@ -2478,7 +2525,7 @@ export class Engine {
       // button event is the earliest evidence a swap started; $ALCD's slot still gets the last word.
       if (id === BTN_ALT) this._altPressed();
       else if (id === BTN_RELOAD) this._reloadPulled();
-      else if (id === BTN_TRIGGER) this._triggerPulled();   // a DEAD gun still reports the pull (bench 2026-09-04): the station-revive gate
+      else if (id === BTN_TRIGGER) { this._triggerPulled(); this._awaitShot(); }   // a DEAD gun still reports the pull (bench 2026-09-04): the station-revive gate
       return;                                                // `feedFrame` fires the one `_changed()` for this frame
     }
     if (state !== 0) return;
@@ -2814,6 +2861,9 @@ export class Engine {
   }
 
   _death(desync) {
+    // F209: one death per life. Every caller checks `alive` too; this makes it hold for any future caller, so a
+    // burst of lethal frames can never book a second death fact, a second deaths++ or a new respawn clock.
+    if (!this.alive) return;
     this._armPending = null;   // F209: never arm a dead gun; the revive protects and arms again
     this.reloading = null; this.switching = null; this._reloadOutcome = null; this.held = {};   // the gun stops the reload/swap when you drop; so does the HUD
     const fresh = this.latch && this.now() - this.latch.at <= C.DEATH_LATCH_MS;
@@ -3022,10 +3072,13 @@ export class Engine {
   // ---------- status body (contracts §4) ----------
   statusBody(preflight = {}) {
     const now = this.now();
+    const stale = this.poolStale(now);
     return {
       hp: this.hp, armor: this.armor, shield: this.shield, ammo: this.ammo, alive: this.alive, shots: this.shots,
       // A37/R2-3: which of the two the hp/armor above are. MC's pool proof judges `"gun"` ONLY.
       pool_src: this.poolSrc,
+      // F208: present only while the pool is stale ('silent' | 'no_fire'), with the ms since the gun last reported it.
+      ...(stale ? { pool_stale: stale.why, ...(stale.ms != null ? { pool_stale_ms: stale.ms } : {}) } : {}),
       ...(this.phase === 'live' && !this.alive && this.deadAt ? { deadline_s: Math.max(0, Math.ceil((this.respawnDelayMs - (now - this.deadAt)) / 1000)) } : {}),
       ...(this.battery != null ? { battery: this.battery } : {}), ...(this.fw ? { fw: this.fw } : {}),
       arm_state: this.phase, ...(this.phase === 'armed' && this.goLiveT ? { t_minus_ms: Math.max(0, this.goLiveT - now) } : {}),
@@ -3051,6 +3104,7 @@ export class Engine {
       loadMag: this._loadAmmo()[0], loadReserve: this._loadAmmo()[1],
       alive: this.alive, deaths: this.deaths, shots: this.shots, battery: this.battery,
       kills: this.score ? this.score.kills : null, assists: this.score ? this.score.assists : null, accuracy: this.score ? this.score.accuracy : null, scoreAt: this.scoreAt,
+      poolStale: this.poolStale(now),   // F208: null, or {why: 'silent'|'no_fire', ms}; the HUD lane renders it
       respawnType: this.respawnType, killedBy: this.killedBy, underFire: this.alive && this.lastHitAt > 0 && (now - this.lastHitAt) < 2000, respawnIn: (!this.alive && this.deadAt && this.respawnType === 'auto') ? Math.max(0, Math.ceil((r - (now - this.deadAt)) / 1000)) : 0,   // scanner/none modes have no countdown
       // utility.md: the respawn station this player would use, how close it reads, and what the DOWN screen should say
       station: stationView(this._respawnStation()), respawnGate: this.respawnGate, respawnHint: this.respawnHint(now),

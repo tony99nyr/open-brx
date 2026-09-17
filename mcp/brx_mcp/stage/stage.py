@@ -447,6 +447,11 @@ class GunStage:
                                         # callback and a later poll() never react to the same frame twice
         self.scream_this_life: str | None = None   # A15.3: the death-scream id last written into a $PSET, or None
         self._arm_pending: float | None = None     # F209: now() of the spawn/revive write until `_arm_life` writes the real $SIR table
+        # F208 (engine.js `lastGunFrameAt` / `lastPoolAt` / `_shotDueAt` / `_noFirePulls`): the pool watchdog, see `pool_stale`
+        self._last_gun_frame_at: float | None = None
+        self._last_pool_at: float | None = None
+        self._shot_due_at: float | None = None
+        self._no_fire_pulls = 0
         self._last_sir_take: int | None = None     # engine.js `_lastSirTake`
         self._last_pain_at: float | None = None    # A15.3: the 600 ms pain gate (PAIN_GAP_S)
         self._last_hir_proto: int | None = None    # A15.3: the ir protocol of the last $HIR (melee = 13), read on the next $HP/$LCD
@@ -901,6 +906,7 @@ class GunStage:
         await self.mgr.connect(address, self.alias, on_frame=self._on_frame)
         self.address = address
         self.connected = True
+        self._last_gun_frame_at = self.now()     # F208 (engine.js `onBleConnected`): the quiet clock restarts at the link
         self._last_seq = 0
         self._reacted_seq = 0
         self._log(f"connected {address}", "ok")
@@ -975,6 +981,7 @@ class GunStage:
             pass
         await self.mgr.connect(self.address, self.alias, on_frame=self._on_frame)
         self.connected = True
+        self._last_gun_frame_at = self.now()     # F208 (engine.js `onBleConnected`): the quiet clock restarts at the link
         self._last_seq = 0
         self._reacted_seq = 0
         self._log(f"reconnected {self.address}", "ok")
@@ -1050,6 +1057,49 @@ class GunStage:
     # The spawn and revive writes carry the fn-28 twin; one `sir_pool` take (the real table) follows on the
     # gun's first shot or SPAWN_PROTECT_MAX_S after the write. Death, end, panic and a head cancel it.
     SPAWN_PROTECT_MAX_S = 2.1   # engine.js SPAWN_PROTECT_MAX_MS
+
+    # ---- F208 pool staleness (engine.js `_awaitShot` / `_noFireTick` / `poolStale`) ---------------------
+    # 'silent': no frame of any kind for GUN_QUIET_STALE_S (an idle gun sends a $VOLTS every ~60 s, one can go
+    # missing). 'no_fire': NO_FIRE_PULLS trigger presses in a row, on a live loaded gun, with no pool report.
+    GUN_QUIET_STALE_S = 185.0   # engine.js GUN_QUIET_STALE_MS
+    TRIGGER_NO_FIRE_S = 1.5     # engine.js TRIGGER_NO_FIRE_MS
+    NO_FIRE_PULLS = 3           # engine.js NO_FIRE_PULLS
+
+    def _await_shot(self) -> None:
+        """engine.js `_awaitShot`: a trigger press the gun should answer with a shot. A press while one is due keeps the first."""
+        if not (self.connected and self.spawned and self.alive):
+            return
+        if self.switching or self.reloading or self.stunned:
+            return
+        seen = self._prev_ammo.get(self.active_slot)
+        mag = seen if seen is not None else self._ammo_by_slot().get(self.active_slot)
+        if not (mag and mag > 0):
+            return                               # an empty magazine dry-fires: no shot is owed
+        if self._shot_due_at is None:
+            self._shot_due_at = self.now()
+
+    def _no_fire_tick(self, now: float) -> None:
+        """engine.js `_noFireTick`: a press with no pool report TRIGGER_NO_FIRE_S later counts as unanswered."""
+        if self._shot_due_at is None or now - self._shot_due_at < self.TRIGGER_NO_FIRE_S:
+            return
+        self._shot_due_at = None
+        if not self.alive or self.switching or self.reloading or self.stunned:
+            return
+        self._no_fire_pulls += 1
+        if self._no_fire_pulls == self.NO_FIRE_PULLS:
+            self._log(f"gun not firing: {self.NO_FIRE_PULLS} trigger pulls with no shot -- the pool is stale (F208)", "warn")
+
+    def pool_stale(self, now: float | None = None) -> dict | None:
+        """engine.js `poolStale`: None when fresh, else {why: 'silent'|'no_fire', s: seconds since the last pool report or None}."""
+        if not (self.connected and self.spawned):
+            return None
+        now = self.now() if now is None else now
+        age = None if self._last_pool_at is None else now - self._last_pool_at
+        if self._last_gun_frame_at is not None and now - self._last_gun_frame_at >= self.GUN_QUIET_STALE_S:
+            return {"why": "silent", "s": age}
+        if self.alive and self._no_fire_pulls >= self.NO_FIRE_PULLS:
+            return {"why": "no_fire", "s": age}
+        return None
 
     def _pick_table(self, kind: str) -> list[str]:
         """engine.js `_pickTable`: one whole take of `bundle[kind]`, never the take written last."""
@@ -1159,6 +1209,7 @@ class GunStage:
         self.spawned = True; self.alive = True
         self.hp = self.max_hp; self.armor = self.max_armor; self.shield = 0   # engine.js `_afterSpawn`/`_revive`: shield always starts at 0, not a max
         self._hurt_fired = False
+        self._shot_due_at = None; self._no_fire_pulls = 0                       # F208: a fresh life owes no shots
         self._prev_ammo = {}; self._prev_reserve = {}; self.active_slot = 0    # engine.js: a spawn/revive puts the gun back on slot 0; both ammo maps reset (stun snapshot, polish 2026-09-11)
         # engine.js `_afterSpawn`/`_revive` clear all THREE: a takeover from the last life, the verdict it
         # left behind, and any button still down. Clearing only `reloading` left the previous life's
@@ -1504,6 +1555,7 @@ class GunStage:
         now = self.now()
         if self._arm_pending is not None and now - self._arm_pending >= self.SPAWN_PROTECT_MAX_S:
             self._arm_life("cap")                # F209 (engine.js tick()): only reached with the link up
+        self._no_fire_tick(now)                  # F208 (engine.js tick())
         if self.stunned and now >= self.stunned["until"]:
             self._stun_restore("expired")        # F15: the stun timer -- restore the LIVE counts (engine.js tick())
         self._stations_tick(now)                 # K1: the scanner's callback (an advertising station is heard again)
@@ -1515,6 +1567,10 @@ class GunStage:
         if not t:
             return
         cmd = t[0]
+        now = self.now()
+        self._last_gun_frame_at = now                  # F208 (engine.js `feedFrame`): any frame proves the link
+        if cmd in ("HP", "LCD", "ALCD"):
+            self._last_pool_at = now; self._shot_due_at = None; self._no_fire_pulls = 0   # F208: the gun answered
         try:
             if cmd == "HIR":
                 self.tele["last_hir"] = raw
@@ -2208,6 +2264,8 @@ class GunStage:
                 self._alt_pressed()
             elif bid == 2:
                 self._reload_pulled()
+            elif bid == 0:
+                self._await_shot()                 # F208 (engine.js `_onButton`)
             return
         if state != 0:
             return
@@ -3028,6 +3086,7 @@ class GunStage:
                       # `hill` is the control point as the hill logic reads it ({owner (2 = neutral), at,
                       # from_neutral}, null once presence has expired). Derived from `beacon`, not a second source.
                       "beacon": dict(self.beacon) if self.beacon else None,
+                      "pool_stale": self.pool_stale(),   # F208 (engine.js `state().poolStale`)
                       "hill": dict(self.hill) if self.hill else None,
                       # F54: the reload in flight ({at, s, slot}, null when none) and what the gun last REPORTED.
                       # Read ONCE through `_reloading_view()`, which is null past the deadline exactly like
