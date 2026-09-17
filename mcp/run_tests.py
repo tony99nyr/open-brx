@@ -120,6 +120,18 @@ def worker(stem: str, chunk: tuple[int, int] | None) -> None:
     os._exit(0)
 
 
+# Every live child, so an interrupted run (Ctrl-C, or test-all killing this process) takes its children with it.
+# Each child leads its own session (see spawn), so a signal to this process's group does not reach them on its own.
+LIVE: set[subprocess.Popen] = set()
+
+
+def _kill_children_and_exit(signum, _frame):
+    for proc in list(LIVE):
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(proc.pid, signal.SIGKILL)
+    os._exit(128 + signum)
+
+
 def spawn(stem: str, chunk: tuple[int, int] | None = None) -> tuple[dict, str, float]:
     """Parent side: run one file (or chunk) in a child process with its own BRX_MCP_HOME subdirectory."""
     env = dict(os.environ)
@@ -133,6 +145,7 @@ def spawn(stem: str, chunk: tuple[int, int] | None = None) -> tuple[dict, str, f
     # start_new_session: a timeout kills the file's whole process group, including any server it spawned
     proc = subprocess.Popen(argv, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                             start_new_session=True)
+    LIVE.add(proc)
     try:
         stdout, _ = proc.communicate(timeout=FILE_TIMEOUT_S)
     except subprocess.TimeoutExpired:
@@ -140,6 +153,8 @@ def spawn(stem: str, chunk: tuple[int, int] | None = None) -> tuple[dict, str, f
             os.killpg(proc.pid, signal.SIGKILL)
         stdout, _ = proc.communicate()
         stdout += f"\nFAIL {label}: killed after {FILE_TIMEOUT_S:.0f}s (RUN_TESTS_TIMEOUT_S)"
+    finally:
+        LIVE.discard(proc)
     took = time.monotonic() - t0
     out, res = [], None
     for line in stdout.splitlines():
@@ -186,6 +201,8 @@ def main(argv: list[str]) -> int:
     if inline:
         results = [run_file(s) for s in stems]
     else:
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            signal.signal(sig, _kill_children_and_exit)
         with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
             # SPLIT files first: they are the long poles, so they must not queue behind short files.
             jobs_list = [(s, (i, SPLIT[s])) for s in stems if s in SPLIT for i in range(SPLIT[s])]

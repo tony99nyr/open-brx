@@ -1,6 +1,6 @@
 # Followups — open work only
 
-Updated: 2026-09-16. **Everything in this file is open.** Closed items are in
+Updated: 2026-09-17. **Everything in this file is open.** Closed items are in
 [`archive/followups-closed.md`](archive/followups-closed.md), verbatim and ordered by close date; the evidence
 behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the date). Session close = strike or
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
@@ -1084,10 +1084,6 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   field carries it, and the phone exposes no headset health of any kind. A weak or dying headset can only be
   observed by a player, never measured or surfaced by MC. (filed 2026-09-13 from HANDOFF-gset-t2-2026-09-13.md §3)
   `build`.
-- **F205 🟢** `app/tools/screens.mjs` hardcodes port 4192 and `site/shots.mjs` hardcodes ports 4180/4181. The
-  latter was fixed 2026-09-13 to bind before wiping its output directory (so a failed run no longer looks like a
-  clean slate), but both ports are still fixed rather than configurable. (filed 2026-09-13 from
-  HANDOFF-gset-t2-2026-09-13.md §3) `build`.
 - **F80 🟡 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.** ➡ **Narrowed 2026-09-11 (late): the AFTER-the-match surface is built** — the recap's `warnings` count every hit and death from wire id 0 ("a grenade hill's damage word, or a gun whose $PSET never landed") and RECAP renders it, so a mis-armed gun is no longer invisible. **Still open: the ARM-TIME refusal** (`$QUERY` read-back, B19) and a muster flag, which needs a signal the node does not report today (the head echo is an `$LCD`, it carries no id).
   Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
   received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default

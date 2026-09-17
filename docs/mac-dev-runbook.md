@@ -116,9 +116,9 @@ runs through the Mac venv's own interpreter, not the WSL one:
 cd mcp && ../.venv/bin/python run_tests.py
 ```
 
-- **Stale e2e ports** (`cd app && npm run ui:e2e`, the phone e2e; not in the four-suite list). A killed run leaves a server on 8865–8875 and the next run fails with
-  *"something already listens on 8865"* or a mid-suite timeout that looks like a real bug.
-  `lsof -nP -iTCP:8860-8875 -sTCP:LISTEN | awk 'NR>1{print $2}' | sort -u | xargs -r kill`
+- **Stale e2e servers** (`cd app && npm run ui:e2e`, the phone e2e). The suite now binds free ports, so a killed
+  run no longer blocks the next one, but its demo MC can stay alive and hold memory. Find and stop it by process:
+  `pkill -f "brx_mcp.mc --demo"`. `npm run test:all` kills its jobs' process groups on a timeout or Ctrl-C.
 - **The e2e refuses a stale bundle** (*"FATAL: STALE BUNDLE"*). `cd app && npm run build` first.
 
 ## 4. Reading a session store — the thing that settles arguments

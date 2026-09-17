@@ -18,7 +18,7 @@
 //   - no job writes a shared file: every e2e script has its own shots folder, and app/www is built once, up front, so
 //     app/test/transport.test.mjs never rebuilds it while site/ reads it;
 //   - mcp/run_tests.py gives every test file its own process and its own BRX_MCP_HOME.
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
@@ -33,13 +33,18 @@ const filters = argv.filter(a => !a.startsWith('--'));
 const LOGS = path.join(os.tmpdir(), `brx-test-all-${process.pid}`);
 fs.mkdirSync(LOGS, { recursive: true });
 
-/** The dev venv: this checkout's, else the main checkout's (a worktree has no .venv of its own), else system python. */
+/** The dev venv: this checkout's, else the main checkout's (a worktree, wherever it lives, has no .venv of its own:
+ *  git's common dir names the main checkout), else system python, which skips the tests that need the extras. */
 function findPython() {
   if (process.env.MC_PY) return process.env.MC_PY;
   const candidates = [path.join(ROOT, '.venv/bin/python')];
-  const marker = `${path.sep}.claude${path.sep}worktrees${path.sep}`;
-  if (ROOT.includes(marker)) candidates.push(path.join(ROOT.slice(0, ROOT.indexOf(marker)), '.venv/bin/python'));
-  return candidates.find(p => fs.existsSync(p)) || 'python3';
+  try {
+    const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: ROOT, encoding: 'utf8' }).trim();
+    candidates.push(path.join(path.dirname(common), '.venv/bin/python'));
+  } catch { /* not a git checkout */ }
+  const found = candidates.find(p => fs.existsSync(p));
+  if (!found) console.error('test-all: no .venv found; using system python3, so the tests that need the MC extras will skip');
+  return found || 'python3';
 }
 const PY = findPython();
 
@@ -98,8 +103,11 @@ if (!JOBS.length) { console.error(`no job matches ${filters.join(' ')} (try --li
 
 // A job that dies leaves its children behind unless the group goes with it; so does a Ctrl-C of this script.
 const groups = new Set();
-process.on('SIGINT', () => { for (const g of groups) { try { process.kill(-g, 'SIGKILL'); } catch { /* gone */ } } process.exit(130); });
-function run(name, cwd, cmd, env = {}) {
+// SIGTERM and SIGHUP too: an agent's command timeout or a closed terminal must not leave browsers holding gigabytes.
+for (const [sig, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) {
+  process.on(sig, () => { for (const g of groups) { try { process.kill(-g, 'SIGKILL'); } catch { /* gone */ } } process.exit(code); });
+}
+function run(name, cwd, cmd, env = {}, timeoutS = JOB_TIMEOUT_S) {
   const log = path.join(LOGS, `${name}.log`);
   const out = fs.openSync(log, 'w');
   const t0 = Date.now();
@@ -110,9 +118,9 @@ function run(name, cwd, cmd, env = {}) {
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      fs.writeSync(out, `\ntest-all: killed after ${JOB_TIMEOUT_S}s (JOB_TIMEOUT_S)\n`);
+      fs.writeSync(out, `\ntest-all: killed after ${timeoutS}s (JOB_TIMEOUT_S, or three times the job's typical time)\n`);
       try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ }
-    }, JOB_TIMEOUT_S * 1000);
+    }, timeoutS * 1000);
     child.on('error', e => { fs.writeSync(out, `\nspawn failed: ${e.message}\n`); });
     child.on('close', code => {
       clearTimeout(timer); groups.delete(child.pid); fs.closeSync(out);
@@ -120,6 +128,22 @@ function run(name, cwd, cmd, env = {}) {
     });
   });
 }
+
+// One run per checkout. A second run in the SAME checkout would rebuild app/www and webapp/mc/dist while the first
+// run's jobs read them. So a second run waits for the first; a lock whose process is gone is taken over.
+const LOCK = path.join(ROOT, '.test-all.lock');
+const alive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+for (let waited = 0; ; waited++) {
+  try { fs.writeFileSync(LOCK, String(process.pid), { flag: 'wx' }); break; }
+  catch (e) {
+    if (e.code !== 'EEXIST') throw e;
+    const holder = Number(fs.readFileSync(LOCK, 'utf8')) || 0;
+    if (!holder || !alive(holder)) { fs.rmSync(LOCK, { force: true }); continue; }
+    if (waited === 0) console.log(`test-all: another run (pid ${holder}) is using this checkout; waiting for it to finish`);
+    await new Promise(r => setTimeout(r, 2000));
+  }
+}
+process.on('exit', () => { try { if (fs.readFileSync(LOCK, 'utf8') === String(process.pid)) fs.rmSync(LOCK); } catch { /* gone */ } });
 
 const t0 = Date.now();
 console.log(`test-all: ${JOBS.length} job(s), ${CPUS} cores, memory budget ${BUDGET_MB} MB, logs in ${LOGS}`);
@@ -142,7 +166,11 @@ await new Promise(done => {
       if (running > 0 && usedMb + j.mb > BUDGET_MB) { i++; continue; }
       queue.splice(i, 1); usedMb += j.mb; running++; peakMb = Math.max(peakMb, usedMb);
       (async () => {
-        const r = await run(j.name, j.cwd, j.cmd, typeof j.env === 'function' ? await j.env() : j.env);
+        // A slow machine gets fewer shards, so a job may legitimately take longer than JOB_TIMEOUT_S: allow 3x its estimate.
+        const timeoutS = Math.max(JOB_TIMEOUT_S, Math.ceil(3 * j.secs));
+        let r;
+        try { r = await run(j.name, j.cwd, j.cmd, typeof j.env === 'function' ? await j.env() : j.env, timeoutS); }
+        catch (e) { r = { name: j.name, code: `ERROR ${e.message}`, secs: 0, log: '(no log: the job did not start)' }; }
         results.push(r); usedMb -= j.mb; running--;
         if (!queue.length && !running) done(); else pump();
       })();

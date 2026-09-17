@@ -84,7 +84,8 @@ const hudBundle = path.join(ROOT, 'www', 'app.js');
   console.log('serving MC bundle', mcBundle ? path.basename(mcBundle) : '(none)', '· HUD bundle', path.basename(hudBundle));
 }
 const mcLog = fs.openSync(path.join(OUT, 'mc-server.log'), 'w');
-const mcProc = spawn(path.join(REPO, '.venv/bin/python'), ['-m', 'brx_mcp.mc', '--demo', '--no-auth', '--port', String(MC_PORT), '--ws-port', String(MC_WS_PORT), '-v'], { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', mcLog, mcLog] });
+const PY = process.env.MC_PY || path.join(REPO, '.venv/bin/python');   // test-all passes MC_PY; a worktree may have no .venv
+const mcProc = spawn(PY, ['-m', 'brx_mcp.mc', '--demo', '--no-auth', '--port', String(MC_PORT), '--ws-port', String(MC_WS_PORT), '-v'], { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', mcLog, mcLog] });
 process.on('exit', () => { try { mcProc.kill(); } catch {} });   // the watchdog/timeout path must not leak the server
 await until(async () => mcProc.exitCode === null && (await fetch(MC + '/api/state')).ok, 30000, 'MC server');
 // a spawned MC that died (port taken between the pick and the bind) must not let another process answer for it
@@ -1067,7 +1068,7 @@ await step('compat-old-session: MC booted from a pre-A10 session.json → GAMES 
   // NOT --demo: its seeding re-adds GUN-A..H and crashes on the restored players' guns ("gun GUN-A is already assigned",
   // __main__.py build()) — a server finding, recorded in the report; --ephemeral keeps presets off the host's shelf
   findings.push({ kind: 'server', where: 'brx_mcp.mc --demo --session-file', what: '--demo seeding collides with restored players (ValueError: gun GUN-A is already assigned) — the demo seed should skip guns a restored player holds' });
-  const proc2 = spawn(path.join(REPO, '.venv/bin/python'), ['-m', 'brx_mcp.mc', '--ephemeral', '--no-auth', '--port', String(OLD_MC_PORT), '--ws-port', String(OLD_MC_WS_PORT), '--session-file', sf], { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', log2, log2] });
+  const proc2 = spawn(PY, ['-m', 'brx_mcp.mc', '--ephemeral', '--no-auth', '--port', String(OLD_MC_PORT), '--ws-port', String(OLD_MC_WS_PORT), '--session-file', sf], { cwd: path.join(REPO, 'mcp'), stdio: ['ignore', log2, log2] });
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const pg = await ctx.newPage(); pg.setDefaultTimeout(6000);
   const errs = []; pg.on('pageerror', e => errs.push('pageerror: ' + String(e.message).slice(0, 160)));
