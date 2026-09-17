@@ -255,6 +255,10 @@ describe('GAMES · EDIT is a draft, SAVE AND LOAD is the only thing that sends',
     const g = await games({ load: true, push: true });
     const acked = Object.values(g.state().lobby.acks).filter(a => a.ok).length;
     expect(acked, 'control: guns acked the push').toBeGreaterThan(0);
+    // The mock re-acks a re-push after a short timer (220ms). On a loaded machine the SAVE and the
+    // settle below can take longer than that, and then the read sees the acks back again. Hold the
+    // acks for a minute, so the read always lands inside the transitional state it asserts.
+    g.backend.repushAckMs = 60_000;
     await openEdit(g);
     await tap(nightToggle(g));
     await tap(save(g));

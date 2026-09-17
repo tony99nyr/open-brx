@@ -11,7 +11,14 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
     writes.push(...frames);
     const batch = frames.join(' ');
     setTimeout(() => {
-      if (batch.includes('$PSET')) { feed('$ALCD,32,100,0,9999999,0,*'); feed('$ALCD,24,100,1,12,0,*'); feed('$ALCD,1,100,4,0,0,*'); }
+      // A36 (adfb1767): a real gun answers the head with a slot-0 $ALCD that carries the magazine and reserve
+      // of the $WEAP,0 frame it just got (split index 17 = t16 maxClip, 18 = t17 reserve, as mcp/brx_mcp/mc/frames.py reads them).
+      // MC compares the two, so a fixed echo here makes every fake gun read GUN ECHO ≠ CONFIG.
+      if (batch.includes('$PSET')) {
+        const w = (frames.find(f => f.startsWith('$WEAP,0,')) || '').split(',');
+        const echo = w.length > 18 && /^\d+$/.test(w[17]) && /^\d+$/.test(w[18]) ? `$ALCD,${w[17]},100,0,${w[18]},0,*` : '$ALCD,32,100,0,9999999,0,*';
+        feed(echo); feed('$ALCD,24,100,1,12,0,*'); feed('$ALCD,1,100,4,0,0,*');
+      }
       // honor the $AMMO the head/spawn writes — the mag is whatever the LOADOUT says, not a hardcoded 32
       const am = frames.find(f => f.startsWith('$AMMO,0,'));
       if (am) { const t = am.split(','); magCap = +t[2] || magCap; reserve = +t[3] || reserve; }

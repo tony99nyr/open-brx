@@ -253,3 +253,5 @@ Two-gun bench (F206) plus a Pixel 4 + Pixel 5 game through Mission Control. Full
   original loop was never captured, so this closes on the built fix, not a confirmed repro-then-fix.
 - 2026-09-16 **F211** the HUD now reports whether Bluetooth is off (`bluetooth_on`, beside the other
   preflight fields) and shows a message instead of a silently empty picker. Commit bb624b0a.
+
+- **F205** 2026-09-17 — `app/tools/screens.mjs` binds a free port per shard (`SCREENS_PORT` pins it), and `site/shots.mjs` already reads `SHOTS_MC_PORT`/`SHOTS_HUD_PORT`. See `docs/experiment-log/2026-09.md` (2026-09-17 parallel test suite).

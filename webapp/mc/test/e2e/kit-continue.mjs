@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));      // webapp/mc/test/e2e
 const MC_DIR = path.resolve(HERE, '../..');                     // webapp/mc
 const REPO = path.resolve(MC_DIR, '../..');
-const SHOTS = path.join(HERE, 'shots');
+const SHOTS = path.join(HERE, 'shots', 'kit-continue');   // one folder per script: a parallel run must not wipe another script's shots
 // Its OWN ports, and a vite config that proxies to them: `npm run e2e` (koth) owns :8765 via
 // vite.config.ts, and a second suite must never drive a server it did not start.
 const MC_PORT = Number(process.env.MC_PORT || 8792);
@@ -91,7 +91,7 @@ async function startMC() {
   return { base, stop: () => killGroup(proc) };
 }
 async function startVite() {
-  const proc = spawn('npx', ['vite', '--config', path.join(HERE, 'vite.proxy.config.mjs'), '--port', String(VITE_PORT), '--strictPort'],
+  const proc = spawn(process.execPath, [path.join(MC_DIR, 'node_modules/vite/bin/vite.js'), '--config', path.join(HERE, 'vite.proxy.config.mjs'), '--port', String(VITE_PORT), '--strictPort'],
     { cwd: MC_DIR, stdio: ['ignore', 'pipe', 'pipe'], detached: true, env: { ...process.env, MC_PROXY_PORT: String(MC_PORT) } });
   let log = ''; proc.stdout.on('data', d => { log += d; }); proc.stderr.on('data', d => { log += d; });
   const base = `http://localhost:${VITE_PORT}`;

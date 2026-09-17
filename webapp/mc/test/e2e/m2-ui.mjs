@@ -78,7 +78,7 @@ async function startMC() {
   return { base, stop: () => killGroup(proc) };
 }
 async function startVite() {
-  const proc = spawn('npx', ['vite', '--config', path.join(HERE, 'vite.m2.config.mjs'), '--port', String(VITE_PORT), '--strictPort'],
+  const proc = spawn(process.execPath, [path.join(MC_DIR, 'node_modules/vite/bin/vite.js'), '--config', path.join(HERE, 'vite.m2.config.mjs'), '--port', String(VITE_PORT), '--strictPort'],
     { cwd: MC_DIR, stdio: ['ignore', 'pipe', 'pipe'], detached: true, env: { ...process.env, MC_PROXY_PORT: String(MC_PORT) } });
   let log = ''; proc.stdout.on('data', d => { log += d; }); proc.stderr.on('data', d => { log += d; });
   const base = `http://localhost:${VITE_PORT}`;
@@ -307,13 +307,29 @@ async function runMock(browser, viteBase, vp, tag) {
     `every row with a kill shows a streak of at least 1 (${scored.map(r => `${r.k}K/stk ${r.stk}`).join(' · ') || 'no scoring row'})`);
   ok(`STK on ${scored.length} scoring row(s): ${scored.map(r => `${r.k}K→${r.stk}`).join(', ')}${drive.forced ? ' (kills driven)' : ''}`);
 
-  // S24 (d) ACC settling — and at least one row must actually BE settling, or the mark is unasserted
-  expect(rows.every(r => r.prov === '0' || r.prov === '1'), 'every ACC cell declares whether it has settled');
-  const numericProv = rows.filter(r => r.prov === '1' && /\d/.test(r.acc));
-  expect(numericProv.length > 0, `at least one ACC number is still settling, so the mark is on screen (${rows.map(r => `${r.acc}/${r.prov}`).join(' ')})`);
+  // S24 (d) ACC settling: at least one row must actually BE settling, or the mark is unasserted.
+  // A kill adds 6 shots, and ACC settles at 10. So a row with exactly one kill is a settling number.
+  // Random kills can give every kill to one row (seen under CPU load: "50%/0 —/1 —/1 ..."). The walk
+  // does not wait for luck. It names a killer with no shots, then reads the board. A random tick can
+  // still land a second kill on that row first, so it tries a bounded number of times.
+  let accRows = rows;
+  for (let i = 0; i < 6; i++) {
+    accRows = await boardRows(pg);
+    if (accRows.some(r => r.prov === '1' && /\d/.test(r.acc))) break;
+    await pg.evaluate(async () => {
+      const a = window.__MC_MOCK__;
+      const s = await a.getState();
+      const fresh = (s.live?.rows || []).find(r => r.status === 'alive' && !(r.shots_total ?? r.shots));
+      a.simKill(fresh?.player_id); a.emit();
+    });
+    await pg.waitForTimeout(300);
+  }
+  expect(accRows.every(r => r.prov === '0' || r.prov === '1'), 'every ACC cell declares whether it has settled');
+  const numericProv = accRows.filter(r => r.prov === '1' && /\d/.test(r.acc));
+  expect(numericProv.length > 0, `at least one ACC number is still settling, so the mark is on screen (${accRows.map(r => `${r.acc}/${r.prov}`).join(' ')})`);
   expect(numericProv.every(r => /^~\d/.test(r.acc)), `a provisional ACC NUMBER leads with the settling mark (${numericProv.map(r => r.acc).join(',') || 'none on screen'})`);
-  expect(rows.filter(r => r.prov === '0' && /\d/.test(r.acc)).every(r => !r.acc.includes('~')), 'a settled ACC carries no mark');
-  ok(`ACC cells: ${rows.map(r => `${r.acc}${r.prov === '1' ? '(settling)' : ''}`).join(', ')}   ${await shot(pg, `01-${tag}-live-board`)}`);
+  expect(accRows.filter(r => r.prov === '0' && /\d/.test(r.acc)).every(r => !r.acc.includes('~')), 'a settled ACC carries no mark');
+  ok(`ACC cells: ${accRows.map(r => `${r.acc}${r.prov === '1' ? '(settling)' : ''}`).join(', ')}   ${await shot(pg, `01-${tag}-live-board`)}`);
 
   await audit(pg, 'main', `${tag} LIVE`);
   // the page itself must never scroll sideways; only the table's own container may (skill §3.6)

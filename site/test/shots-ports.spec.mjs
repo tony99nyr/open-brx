@@ -77,11 +77,12 @@ test('shots.mjs never deletes site/shots/ before both static servers are confirm
   expect(wipeCall).toBeGreaterThan(bindCall);
 });
 
-test('screens.mjs (app/tools) has no hardcoded port left outside its one env-var default', () => {
+test('screens.mjs (app/tools) has no hardcoded port: SCREENS_PORT or an ephemeral one', () => {
+  // screens.mjs shards its steps across child processes (2026-09-16), each with its own static server,
+  // so a fixed default port would make the shards collide. The default is now 0 (the OS picks), and the
+  // URLs read the bound port back from the server.
   const src = fs.readFileSync(path.resolve(HERE, '../../app/tools/screens.mjs'), 'utf8');
-  expect(src).toContain('process.env.SCREENS_PORT || 4192');
-  expect(src).toContain('.listen(PORT)');
-  // every OTHER mention of the literal port number must be gone -- only the one default lives on
-  const bareLiterals = (src.match(/4192/g) || []).length;
-  expect(bareLiterals, 'a hardcoded 4192 survives outside the SCREENS_PORT default').toBe(1);
+  expect(src).toContain('process.env.SCREENS_PORT || 0');
+  expect(src).toContain('const PORT = srv.address().port');
+  expect(src.match(/\b4192\b/g), 'a hardcoded 4192 survives in screens.mjs').toBeNull();
 });

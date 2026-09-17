@@ -443,7 +443,9 @@ nine of these eleven were root-caused without touching a gun.
   is a real behavioural default, not a flag awaiting cleanup: F38 proved `$SIR` REPLACES the `$PSET` pool
   sound rather than layering, so enabling it silences the material layer. The stock `$SIR` rows' empty sound
   tokens are what make the pool sounds audible, not a gap to fill. `build`.
-  **Remaining contract-DRY and typing work, sized, ordered and self-contained: [`HANDOFF-dry-2026-09-13.md`](HANDOFF-dry-2026-09-13.md).**
+  **Contract-DRY execution record (complete 2026-09-16): [`HANDOFF-dry-2026-09-13.md`](HANDOFF-dry-2026-09-13.md).**
+  The remaining F42 work is the separate cleanup backlog below: coverage (F42.4), module seams (F42.5), repeated
+  logic (F42.6), and the small interface/input items (F42.7).
   Contract-DRY phase 1 (`types.py`/`envelope.py` → generated `contract.gen.ts`/`contract.gen.js`) is DONE, see contracts.md
   A33. **F42.10 ✅ CLOSED 2026-09-12:** pyright gates `mcp/` in CI (`standard` mode, `mcp/pyproject.toml`). None of the
   rows below blocks a match.
@@ -1089,10 +1091,6 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   field carries it, and the phone exposes no headset health of any kind. A weak or dying headset can only be
   observed by a player, never measured or surfaced by MC. (filed 2026-09-13 from HANDOFF-gset-t2-2026-09-13.md §3)
   `build`.
-- **F205 🟢** `app/tools/screens.mjs` hardcodes port 4192 and `site/shots.mjs` hardcodes ports 4180/4181. The
-  latter was fixed 2026-09-13 to bind before wiping its output directory (so a failed run no longer looks like a
-  clean slate), but both ports are still fixed rather than configurable. (filed 2026-09-13 from
-  HANDOFF-gset-t2-2026-09-13.md §3) `build`.
 - **F80 🟡 A GUN WHOSE `$PSET` NEVER LANDED PLAYS THE WHOLE MATCH WITH NO IDENTITY, AND NOW SCORES NOTHING.** ➡ **Narrowed 2026-09-11 (late): the AFTER-the-match surface is built** — the recap's `warnings` count every hit and death from wire id 0 ("a grenade hill's damage word, or a gun whose $PSET never landed") and RECAP renders it, so a mis-armed gun is no longer invisible. **Still open: the ARM-TIME refusal** (`$QUERY` read-back, B19) and a muster flag, which needs a signal the node does not report today (the head echo is an `$LCD`, it carries no id).
   Opened 2026-09-10 as the honest other half of F69's fix. Wire 0 is not only environmental: a gun that never
   received `$PSET` fires with player id **0** (`manual/dev.md`: *"every gun on that capture sat on the default

@@ -277,8 +277,12 @@ export function Designer() {
 
 /* ---------- pieces ---------- */
 
-function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
+function SlotEditor({ slot, rule, pool, weapons: catalogue, perks, onRule }:
   { slot: 'primary' | 'secondary' | 'perk'; rule: SlotRule; pool: LoadoutPool | null; weapons: WeaponView[]; perks: PerkView[]; onRule: (r: Partial<SlotRule>) => void }) {
+  // 1c83b745: the DESIGNER does not offer a weapon in `UNPLAYABLE_IDS`. The pool already drops it, but the
+  // table still listed it as a row that can never be on, and the HEAVY chip counted it, so under OPEN
+  // the chip read 4/5 (mixed) and not ON. Filter the catalogue once, here, for every use below.
+  const weapons = catalogue.filter(w => !UNPLAYABLE_IDS.has(w.weapon_id));
   const sec = slot === 'secondary', isPerk = slot === 'perk';   // A14: the perk is its own slot
   const allowedW = pool ? (sec ? pool.secondary_weapons : pool.primary) : [];
   const allowedK = pool ? pool.perks : [];
@@ -293,7 +297,7 @@ function SlotEditor({ slot, rule, pool, weapons, perks, onRule }:
     // F-9 (2026-09-13): the denominator is what a player could actually be issued — the launcher in
     // `UNPLAYABLE_IDS` never leaves the catalogue (Catalog/Kit both filter it the same way) and was
     // inflating "N OF {weapons.length}" by one everywhere this slot is open.
-    : `${allowedW.length} OF ${weapons.filter(w => !UNPLAYABLE_IDS.has(w.weapon_id)).length} WEAPONS`;   // review #22
+    : `${allowedW.length} OF ${weapons.length} WEAPONS`;   // review #22
   // F141 (field 2026-09-12, ISSUE 19): a PLAYER/HOST slot whose filters exclude every candidate used to
   // say only "0 OF 18 WEAPONS" — nothing on screen said the slot would DEGRADE at kit-out (primary
   // falls back to pistols only, which then failed its own one-magazine guard and blocked the push).

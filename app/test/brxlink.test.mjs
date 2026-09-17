@@ -16,10 +16,26 @@ function rig() {
   const link = new BrxLink({ ble, log: () => {}, onUp: a => ups.push(a && a.basename), onDrop: () => drops.push(Date.now()) });
   return { link, attempts, subs, cb, ups, up, drops, disconnects };
 }
-const settle = (ms = 1300) => new Promise(r => setTimeout(r, ms));
-
-test('picking a second gun does not strand it without auto-reconnect', async () => {
+/** The backoff runs on the mocked clock of node:test, so a loaded machine cannot stretch or shrink it
+ *  against the assertions. `settle(ms)` steps 1 ms at a time and lets the retry loop's promise callbacks
+ *  run after each step. `setImmediate` is not mocked. */
+function useClock(ctx) {
+  ctx.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 1_700_000_000_000 });
+  return async (ms = 1300) => {
+    for (let i = 0; i < ms; i++) { ctx.mock.timers.tick(1); await new Promise(r => setImmediate(r)); }
+  };
+}
+/** A rig whose link is released when the test ends, pass or fail: a forever-loop left running keeps
+ *  retrying on the mocked clock after the test, and on a real clock it would hold the process open. */
+function cleanRig(ctx) {
   const r = rig();
+  ctx.after(() => r.link.disconnect());
+  return r;
+}
+
+test('picking a second gun does not strand it without auto-reconnect', async ctx => {
+  const settle = useClock(ctx);
+  const r = cleanRig(ctx);
   await r.link.connect('A', 'GUN-A-1111');
   r.up.A = false; r.cb.A();                       // gun A dies → forever-loop starts
   await settle();
@@ -32,8 +48,9 @@ test('picking a second gun does not strand it without auto-reconnect', async () 
   await r.link.disconnect();
 });
 
-test('an abandoned gun is never re-adopted when it powers back on', async () => {
-  const r = rig();
+test('an abandoned gun is never re-adopted when it powers back on', async ctx => {
+  const settle = useClock(ctx);
+  const r = cleanRig(ctx);
   await r.link.connect('A', 'GUN-A-1111');
   r.up.A = false; r.cb.A();
   await settle();
@@ -45,8 +62,9 @@ test('an abandoned gun is never re-adopted when it powers back on', async () => 
   await r.link.disconnect();
 });
 
-test('TAP TO RECONNECT cuts the backoff short instead of waiting it out', async () => {
-  const r = rig();
+test('TAP TO RECONNECT cuts the backoff short instead of waiting it out', async ctx => {
+  const settle = useClock(ctx);
+  const r = cleanRig(ctx);
   await r.link.connect('A', 'GUN-A-1111');
   r.up.A = false; r.cb.A();
   await settle(900);                               // now sleeping in a backoff
@@ -57,8 +75,9 @@ test('TAP TO RECONNECT cuts the backoff short instead of waiting it out', async 
   await r.link.disconnect();
 });
 
-test('disconnect() stops the forever-loop', async () => {
-  const r = rig();
+test('disconnect() stops the forever-loop', async ctx => {
+  const settle = useClock(ctx);
+  const r = cleanRig(ctx);
   await r.link.connect('A', 'GUN-A-1111');
   r.up.A = false; r.cb.A();
   await settle(900);
@@ -71,8 +90,9 @@ test('disconnect() stops the forever-loop', async () => {
 // B4 (field session 2026-09-12): the engine's link-silence watchdog calls `noteStale()` when the gun has
 // gone quiet for too long while the native BLE stack still reports "connected" — a bad-but-not-dead
 // link the disconnect callback this whole file otherwise depends on may never fire for.
-test('B4: noteStale() forces the OS to release the stale GATT link and runs the exact drop path', async () => {
-  const r = rig();
+test('B4: noteStale() forces the OS to release the stale GATT link and runs the exact drop path', async ctx => {
+  const settle = useClock(ctx);
+  const r = cleanRig(ctx);
   await r.link.connect('A', 'GUN-A-1111');
   assert.equal(r.link.connected, true);
   const before = r.attempts.A;   // captured BEFORE noteStale(): the fake `ble.connect` bumps this synchronously, inside noteStale()'s own call stack, once per retry attempt
@@ -85,8 +105,8 @@ test('B4: noteStale() forces the OS to release the stale GATT link and runs the 
   await r.link.disconnect();
 });
 
-test('B4: noteStale() is a no-op when there is no live connection to cycle', () => {
-  const r = rig();
+test('B4: noteStale() is a no-op when there is no live connection to cycle', ctx => {
+  const r = cleanRig(ctx);
   r.link.noteStale();                 // never connected: no deviceId
   assert.equal(r.drops.length, 0);
   assert.equal(r.disconnects.length, 0);

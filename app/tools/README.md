@@ -19,7 +19,10 @@ One-time: `cd app && npm i --no-save playwright && npx playwright install chromi
 - **`screens.mjs`** — `npm run ui:screens`: the screen-truth suite from the 2026-09-03 HUD review (docs/hud-review-2026-09-03.md).
   Every reported item is an assertion about what a person sees (rects, wraps, overlaps, visible text), run over the stage
   states at the design width AND a 667px phone, with desktop scrollbars ON — both reproduced the report and headless
-  defaults hide them. Shots in `app/shots/screens/`. `ONLY=<substring>` runs matching steps.
+  defaults hide them. Shots in `app/shots/screens/`. `ONLY=<substring>` runs matching steps. The steps run in
+  `SCREENS_SHARDS` child processes (default half the cores, at most 16, and at most a quarter of the free memory at ~240 MB a shard; `1` is serial), each with its own browser
+  and a free port: about 100 s instead of 22 min. Every step opens its own browser context, so no step may depend
+  on an earlier one.
 - **`logsync-gate.mjs`** — `npm run ui:logsync`: the gate for background log sync (A25) and the baked build
   version (A29), 17 PASS/FAIL checks, exit 1 on any failure. It starts everything itself — its own real
   NetServer on an ephemeral port (`test/mc_server.py`, WSL `.venv` python) and a static server for `www/` on
@@ -40,11 +43,12 @@ incident, FOLLOWUPS 2026-08-26).
 Pre-steps (the suite REFUSES to run on stale bundles — a stale dist once "passed" a whole run on old UI code):
 1. `cd webapp/mc && npm run build` — the MC bundle the suite serves (`webapp/mc/dist`).
 2. `cd app && npm run build` — the HUD bundle (`app/www/app.js`, generated).
-3. Nothing may listen on 8865 (the suite's MC) or 8867 (the old-session MC). `pkill -f "brx_mcp.m[c]"` — note the
-   `[c]` trick: a plain pattern self-matches the invoking shell.
+3. Nothing to free: the suite's MC, the old-session MC and the HUD static server take free ports, so two runs can go
+   side by side. To pin a port, set `E2E_MC_PORT`, `E2E_MC_WS_PORT`, `E2E_OLD_MC_PORT`, `E2E_OLD_MC_WS_PORT` or
+   `E2E_HUD_PORT`; the suite then refuses to start if an MC already answers on the pinned port.
 Then `npm run ui:e2e`. `ONLY=<step-substring> npm run ui:e2e` runs matching steps only (stand-alone steps such as
 `designer-controls`, `compat-older-server`, `compat-old-session` self-navigate); the F9 rollup + report always run.
-`ALLOW_STALE=1` skips the bundle-freshness gate (mid-edit only). Shots + `report.md` land in `app/shots/e2e/`.
+`ALLOW_STALE=1` skips the bundle-freshness gate (mid-edit only). Shots + `report.md` land in `app/shots/e2e/` (`E2E_OUT=<dir>` to write elsewhere).
 
 What the suite guards beyond the happy path: the same UI against a server that predates it (`compat-older-server`:
 snapshots stripped over the WebSocket via `routeWebSocket`, A10 routes 404), a session persisted before A10

@@ -559,10 +559,13 @@ def test_post_api_tunnel_on_then_off_over_a_fake_child():
     with TestClient(create_app(s)) as c:
         r = c.post("/api/tunnel", json={"on": True})
         assert r.status_code == 200 and r.json()["status"] == "starting"
-        assert t.spawned[0][-2:] == ["http://127.0.0.1:8766", "--no-autoupdate"], t.spawned
-        for _ in range(400):                      # the reader runs on the app's loop
-            if s.lan["public"]["status"] == "up":
-                break
+        # Poll to a deadline, not a fixed count: the spawn and the reader both run on the app's loop, and a
+        # loaded machine (the whole repo's suites at once) once took longer than the old 4 s cap to record the spawn.
+        deadline = time.monotonic() + 30
+        while not t.spawned and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert t.spawned and t.spawned[0][-2:] == ["http://127.0.0.1:8766", "--no-autoupdate"], t.spawned
+        while s.lan["public"]["status"] != "up" and time.monotonic() < deadline:
             time.sleep(0.01)
         pub = c.get("/api/state").json()["lan"]
         assert pub["public"]["status"] == "up", pub["public"]
@@ -721,6 +724,15 @@ def test_the_gate_fails_closed_when_the_arming_callback_raises():
 
 
 # --------------------------------------------------------------------------- review: orphan reaping
+def _wait_until_execed(proc, marker, timeout_s=10.0):
+    """Wait until a just-started child's command line shows `marker`. Until its exec finishes, the command
+    line reads empty (or as the parent's), and `reap_orphan` correctly latches or skips a pid it cannot
+    identify. On a loaded machine (every suite at once) that window was long enough to fail these tests."""
+    deadline = time.monotonic() + timeout_s
+    while marker not in Tunnel._cmdline(proc.pid) and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+
 def test_an_orphaned_cloudflared_is_killed_at_the_next_launch():
     with tempfile.TemporaryDirectory() as d:
         pid_file = pathlib.Path(d) / "tunnel.pid"
@@ -735,6 +747,7 @@ def test_an_orphaned_cloudflared_is_killed_at_the_next_launch():
             # linger as a zombie that `os.kill(pid, 0)` still reports as alive, and the poll below would
             # correctly refuse to declare it dead.
             threading.Thread(target=lambda: proc.wait(), daemon=True).start()
+            _wait_until_execed(proc, "cloudflared --url")
             assert t.reap_orphan() == proc.pid
             assert proc.poll() is not None
             assert not t.pid_path.exists(), "the pid file goes with the process"
@@ -753,6 +766,7 @@ def test_reaping_never_kills_a_pid_that_is_no_longer_cloudflared():
         try:
             t = Tunnel(which=lambda _b: None, pid_dir=pid_file.parent, ws_port=8766)
             t.pid_path.write_text(str(proc.pid))            # the bare-integer form still reads
+            _wait_until_execed(proc, "time.sleep")
             assert t.reap_orphan() is None
             assert proc.poll() is None, "an innocent process was killed"
             assert not t.pid_path.exists(), "...but the stale file is cleared"

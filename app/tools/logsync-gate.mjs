@@ -15,7 +15,7 @@
 //
 // HOW TO RUN:  cd app && npm run build && npm run ui:logsync
 // It starts EVERYTHING it needs and cleans up: its own NetServer on an EPHEMERAL port (via the
-// harness at app/test/mc_server.py, WSL .venv python) and a static server for app/www on :4181.
+// harness at app/test/mc_server.py, WSL .venv python) and a static server for app/www on an ephemeral port.
 // No Mission Control instance, no gun, no BLE — the HUD runs with the fake gun (`?gun=`).
 // The one thing it does NOT cover is a real device: platform reads `web` in Chromium, and only an
 // APK/IPA can prove `android`/`ios`.
@@ -25,13 +25,16 @@ import http from 'node:http'; import fs from 'node:fs'; import path from 'node:p
 
 import { fileURLToPath } from 'node:url';
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PY = path.resolve(APP, '../.venv/bin/python');   // WSL dev venv: websockets + brx_mcp on the path
+const PY = process.env.MC_PY || path.resolve(APP, '../.venv/bin/python');   // WSL dev venv: websockets + brx_mcp on the path
 const root = path.join(APP, 'www');
 const srv = http.createServer((req, res) => {
   const rel = req.url.split('?')[0] === '/' ? 'index.html' : req.url.split('?')[0];
   try { res.setHeader('content-type', rel.endsWith('.js') ? 'text/javascript' : 'text/html'); res.end(fs.readFileSync(path.join(root, rel))); }
   catch { res.statusCode = 404; res.end(); }
-}).listen(4181);
+});
+// An ephemeral port (2026-09-16): a fixed :4181 stopped two worktrees, or `npm run test:all` beside a shots run, from both running this gate.
+await new Promise(r => srv.listen(0, '127.0.0.1', r));
+const HUD_PORT = srv.address().port;
 
 const mc = spawn(PY, [path.join(APP, 'test/mc_server.py')], { stdio: ['pipe', 'pipe', 'inherit'] });
 const lines = []; let buf = '';
@@ -52,7 +55,7 @@ await page.addInitScript(() => {
   const send = WebSocket.prototype.send;
   WebSocket.prototype.send = function (d) { try { window.__wire.push(JSON.parse(d)); } catch (_) {} return send.call(this, d); };
 });
-await page.goto(`http://127.0.0.1:4181/?gun=RIGG-1234&mc=${encodeURIComponent(`ws://127.0.0.1:${port}/ws`)}`);
+await page.goto(`http://127.0.0.1:${HUD_PORT}/?gun=RIGG-1234&mc=${encodeURIComponent(`ws://127.0.0.1:${port}/ws`)}`);
 await until(o => o.ev === 'node', 20000, 'node hello');
 await page.waitForFunction(() => window.brx && window.brx.transport && window.brx.transport.state === 'bound', null, { timeout: 20000 });
 
