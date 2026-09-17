@@ -66,12 +66,20 @@ export function Games() {
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
   const [confirmSwitch, setConfirmSwitch] = useState<string | null>(null);   // tapping a card while the draft is TUNED — NOT SAVED (review #16)
   const [editing, setEditing] = useState(false);        // the ACTIVE state's EDIT draft is open
+  const [draftDirty, setDraftDirty] = useState(false);  // ...and whether it actually holds a change (`GameEditPanel`'s own `dirty`, mirrored up)
   const [picking, setPicking] = useState(false);        // ...and the card shelves are showing under it
   const [busy, setBusy] = useState(false);              // a LOAD / RE-PUSH is in flight
   const [recentLoad, setRecentLoad] = useState(false);  // the few seconds after one, so the count reads as moving
   const reload = useCallback(() => api.getPresets().then(setGames).catch(() => {}), [api]);
   useEffect(() => { reload(); }, [reload]);
   useEffect(() => { if (!recentLoad) return; const h = setTimeout(() => setRecentLoad(false), 4_000); return () => clearTimeout(h); }, [recentLoad]);
+  // Bench 2026-09-17: `editing` must never outlive its own draft UI. The EDIT panel only renders
+  // while `loaded` (below) is true, so if a game were ever to become un-loaded with `editing` still
+  // true (an older server's snapshot, a finished match rolling forward under this tab), the operator
+  // would be left with `guarded()` refusing a pick over a draft they can no longer see, let alone
+  // cancel. Reset both the moment there is nothing loaded to edit.
+  const loaded = !!state?.game?.loaded || !!state?.lobby?.pushed;
+  useEffect(() => { if (!loaded) { setEditing(false); setDraftDirty(false); } }, [loaded]);
   if (!state) return null;
   const cfg = state.config;
   const locked = !CONFIG_EDITABLE_PHASES.has(state.phase);          // VENUE / LOAD / EDIT / playing a card
@@ -103,9 +111,9 @@ export function Games() {
   // whole point. A lobby push still implies a loaded game (and is what an older server without a
   // `game` block reports), so it counts too. Both survive armed/live and both are dropped by
   // `_finish()`, so a debrief shows the card picker with the last game still selected: LOAD (or
-  // RECAP's NEXT MATCH) starts the next match on it.
+  // RECAP's NEXT MATCH) starts the next match on it. (`loaded` itself is computed above, before the
+  // early return, so the editing-reset effect can see it too.)
   const gate = pushGate(state);
-  const loaded = !!state.game?.loaded || state.lobby.pushed;
   const gameSent = state.game?.sent ?? 0;
   const gameTotal = state.game?.total ?? state.players.length;
 
@@ -125,10 +133,19 @@ export function Games() {
     // together, and a card tap here used to call `putConfig`/`applyPreset` IMMEDIATELY. The draft
     // stayed open, but its patch is diffed against `cfg` (`GameEditPanel`'s `patchOf`), and this tap
     // had just moved `cfg` out from under it -- so SAVE would then send a patch against a game nobody
-    // drafted. Editing and switching games are two different intents; block the second until the
-    // first is finished (SAVE AND LOAD) or discarded (CANCEL), the same way a dirty draft already
-    // asks before letting CANCEL itself discard it.
-    if (editing) { setNotice('FINISH EDITING FIRST — SAVE AND LOAD, OR CANCEL THE OPEN DRAFT, BEFORE PICKING ANOTHER GAME', true); return; }
+    // drafted.
+    //
+    // REVISED (bench 2026-09-17): the fix above was a REFUSAL — "FINISH EDITING FIRST... BEFORE
+    // PICKING ANOTHER GAME" — and Tony hit it stone cold: he had opened EDIT, left it, forgotten it
+    // was open, and got a sticky error with no visible draft on screen to finish or cancel. Tony's
+    // call: picking another game while a draft is open DISCARDS the draft and proceeds, same as any
+    // other "this drops your unsaved game" case on this screen (`custom` below). No error either way
+    // -- only a one-line, auto-clearing notice, and only when the draft actually held a change.
+    if (editing) {
+      setEditing(false);
+      if (draftDirty) setNotice('UNSAVED EDITS DISCARDED', false, 4_000);
+      setDraftDirty(false);
+    }
     if (modeLocked) { setNotice(lockedReason(state.phase), true); return; }   // never a silent tap (F151)
     if ((custom || splitFor(targetTeams)) && confirmSwitch !== key) { setConfirmSwitch(key); return; }
     setConfirmSwitch(null); go();
@@ -383,7 +400,7 @@ export function Games() {
                 <span data-testid="game-edit-open">
                   <GhostButton size={12} pad="10px 16px" color={T.ink} border={T.line2} disabled={locked}
                     title={locked ? lockedReason(state.phase) : 'Open this game for editing. Nothing is sent until SAVE AND LOAD.'}
-                    onClick={() => { if (!locked) setEditing(true); }}>EDIT ▸</GhostButton>
+                    onClick={() => { if (!locked) { setDraftDirty(false); setEditing(true); } }}>EDIT ▸</GhostButton>
                 </span>
               )}
             </div>
@@ -432,7 +449,7 @@ export function Games() {
           </div>
 
           {editing
-            ? <GameEditPanel alwaysOpen onDone={() => setEditing(false)} />
+            ? <GameEditPanel alwaysOpen onDone={() => { setEditing(false); setDraftDirty(false); }} onDirtyChange={setDraftDirty} />
             : <GameSettings testid="game-settings" rows={gameSettingRows(cfg, mode, weapons, perks, { full: true, players: state.players })} />}
           {errorsAndWarnings}
 

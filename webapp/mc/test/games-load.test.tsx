@@ -14,8 +14,10 @@
 import { act } from 'react';
 import { describe, expect, it } from 'vitest';
 import type { Api, GameConfig, ModeInfo, Phase, State } from '../src/api/types';
+import { CommandBar } from '../src/frame/CommandBar';
 import { Games } from '../src/screens/Games';
 import { MockBackend } from '../src/mock/backend';
+import { clearNotice } from '../src/notice';
 import { StoreCtx } from '../src/store';
 import { fixtureApi, makeStore, mount } from './harness';
 
@@ -299,19 +301,101 @@ describe('GAMES · EDIT is a draft, SAVE AND LOAD is the only thing that sends',
     g.m.unmount();
   });
 
-  it('F.2: a mode/game card tap while EDIT is open is blocked, not raced against the open draft', async () => {
+  it('F.2, REVISED bench 2026-09-17: a mode/game card tap while EDIT is open discards the draft and proceeds — no refusal', async () => {
+    // Tony hit the OLD "F.2" refusal ("FINISH EDITING FIRST...") cold: he had opened EDIT, left it,
+    // forgotten it was open, and got a sticky error with nothing on screen to finish or cancel. The
+    // call now: a pick while a draft is open just drops the draft, silently, and plays the pick —
+    // same as any other "this drops your unsaved game" case already on this screen.
     const g = await games({ load: true });
     await openEdit(g);
     await tap(g.q('[data-testid="pick-another"]'));   // shows the shelves next to the open draft
-    const other = g.modes.find(mm => mm.mode !== g.state().config.mode)!;
+    // INFECTION shares TDM's own default teams (mock/data.ts), so this pick needs no reshape confirm
+    // either — the one tap proves the draft's discard, not a second, unrelated confirm mechanic.
+    const other = g.modes.find(mm => mm.mode === 'infection')!;
     const card = g.q(`[aria-label="play ${other.name}"]`);
     expect(card, 'control: the shelf offers a different mode to tap').toBeTruthy();
     await tap(card);
-    // F.2 (2026-09-13): this used to call `putConfig`/`applyPreset` IMMEDIATELY -- the draft stayed
-    // open but its patch is diffed against `cfg` (`GameEditPanel.patchOf`), and this tap had just
-    // moved `cfg` out from under it, so SAVE would then send a patch against a game nobody drafted.
-    expect(g.calls.putConfig, 'the card tap must not reach the server while a draft is open').toEqual([]);
-    expect(g.q('[data-testid="game-edit-panel"]'), 'the draft stays open, untouched').toBeTruthy();
+    expect(g.q('[data-testid="game-edit-panel"]'), 'the draft is gone — discarded, not left open').toBeFalsy();
+    expect(g.calls.putConfig.length, 'the pick itself goes straight through').toBe(1);
+    expect(g.calls.putConfig[0].mode).toBe('infection');
+    g.m.unmount();
+  });
+
+  it('an UNCHANGED draft is dropped with no notice at all', async () => {
+    const g = await games({ load: true });
+    await openEdit(g);   // seeded, untouched — `dirty` is false
+    await tap(g.q('[data-testid="pick-another"]'));
+    const other = g.modes.find(mm => mm.mode === 'infection')!;
+    await tap(g.q(`[aria-label="play ${other.name}"]`));
+    expect(g.m.text(), 'nothing changed, so nothing is worth announcing').not.toContain('DISCARDED');
+    g.m.unmount();
+  });
+
+  it('a CHANGED draft is dropped with one short, auto-clearing notice — never an error', async () => {
+    const backend = new MockBackend();
+    const modes: ModeInfo[] = await backend.getModes();
+    await backend.setPhase('build', true);
+    await backend.loadGame();
+    const calls: Partial<GameConfig>[] = [];
+    const api = fixtureApi({ putConfig: async (p: Partial<GameConfig>) => { calls.push(p); return backend.putConfig(p); } }, backend as unknown as Api);
+    let state = await backend.getState();
+    const render = () => (
+      <StoreCtx.Provider value={makeStore({ state, view: 'build' }, { api, modes })}>
+        <><CommandBar /><Games /></>
+      </StoreCtx.Provider>
+    );
+    clearNotice();
+    const m = await mount(render());
+    const q = (sel: string) => m.el.querySelector(sel) as HTMLElement | null;
+    await tap(q('[data-testid="game-edit-open"] button'));
+    const nightSwitch = m.el.querySelector('[data-testid="game-edit-panel"] [role="switch"]') as HTMLElement;
+    await tap(nightSwitch);
+    expect(m.el.querySelector('[data-testid="game-edit-dirty"]')!.textContent, 'control: the draft really changed').toContain('UNSAVED');
+    await tap(q('[data-testid="pick-another"]'));
+    const other = modes.find(mm => mm.mode === 'infection')!;
+    await tap(q(`[aria-label="play ${other.name}"]`));
+    expect(q('[data-testid="game-edit-panel"]'), 'the draft is gone').toBeFalsy();
+    // the draft's own NIGHT toggle never reaches the server — only the pick itself does
+    expect(calls.length, 'one request: the pick, not the discarded edit').toBe(1);
+    expect(calls[0].mode).toBe('infection');
+    expect(m.text(), 'a plain notice, never the old refusal').toContain('UNSAVED EDITS DISCARDED');
+    expect(m.text()).not.toContain('FINISH EDITING FIRST');
+    // it is not an error strip: the bar renders a notice styled `bad`, and this one is not
+    const toast = Array.from(m.el.querySelectorAll('.cb-notices button')).find(b => (b.textContent ?? '').includes('UNSAVED EDITS DISCARDED')) as HTMLButtonElement | undefined;
+    expect(toast, 'the notice actually rendered in the bar').toBeTruthy();
+    expect(toast!.textContent, 'no ▲ — that glyph marks the bad/error notices only').not.toContain('▲');
+    m.unmount();
+    clearNotice();
+  });
+
+  it('editing never survives once the loaded game itself goes away, even with no navigation at all', async () => {
+    // Bench 2026-09-17: `editing` used to be an island — nothing reset it once the operator stopped
+    // looking at the draft any other way than SAVE/CANCEL. If the loaded game itself goes away (an
+    // older snapshot, a finished match rolling forward under this SAME tab, no phase change, no
+    // remount) while EDIT was open, `editing` stayed true with no draft left on screen to finish or
+    // cancel — and the next card tap hit the exact same stale refusal Tony hit at the bench.
+    const g = await games({ load: true });
+    await openEdit(g);
+    expect(g.q('[data-testid="game-edit-panel"]')).toBeTruthy();
+    await g.settle();   // no-op read from the same backend; establishes the baseline before the patch
+    await act(async () => {
+      await g.m.update(
+        <StoreCtx.Provider value={makeStore({
+          state: { ...g.state(), game: { loaded: false, sent: 0, total: g.state().players.length }, lobby: { ...g.state().lobby, pushed: false } },
+          view: 'build',
+        }, { api: g.api, modes: g.modes })}>
+          <Games />
+        </StoreCtx.Provider>,
+      );
+    });
+    expect(g.q('[data-testid="game-edit-panel"]'), 'no draft UI left to finish or cancel').toBeFalsy();
+    expect(g.q('[data-testid="active-game-config"]'), 'back to picking a game, not the active state').toBeFalsy();
+    const other = g.modes.find(mm => mm.mode === 'infection')!;
+    const card = g.q(`[aria-label="play ${other.name}"]`);
+    expect(card, 'control: a pick is on screen').toBeTruthy();
+    await tap(card);
+    expect(g.m.text(), 'never the stale refusal over an invisible draft').not.toContain('FINISH EDITING FIRST');
+    expect(g.calls.putConfig.length, 'the pick actually reaches the server').toBe(1);
     g.m.unmount();
   });
 
