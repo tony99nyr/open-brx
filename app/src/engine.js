@@ -418,6 +418,7 @@ export class Engine {
     this.endAck = false;            // result screen shown until the player taps OK (then the 'over' screen)
     this.onEnd = null;              // app hook: called once per ended match with a stats summary (history)
     this.onResult = null;           // A24 app hook: the result landed — PATCH the history entry for that match_id
+    this.onRelink = null;           // A47 app hook: MC's operator RELINK GUN -- app.js wires it to `link.relink()` (the HUD's RELINK GUN)
     this.onGunStale = null;         // B4 app hook: the gun link watchdog fired — BrxLink should force-cycle the radio (falls back to onBleDropped() if unset, e.g. demo/tests)
     this.endedAt = 0;               // when this node saw the match end (the results screen's 30 s settle window)
     this.configPending = false;     // config arrived while the gun was unlinked → write head on relink
@@ -548,13 +549,17 @@ export class Engine {
     frames.forEach((f, i) => { if (typeof f !== 'string') return; if (f.startsWith('$PSET,')) lastPset = i; else if (f.startsWith('$TID,')) lastTid = i; });
     if (lastTid >= 0) { const t = Number(frames[lastTid].split(',')[1]); if (Number.isFinite(t)) this._gunTid = t; }
     if (lastPset < 0 || lastTid > lastPset) return frames;
-    // After an app restart `_gunTid` is gone (not persisted): fall back to the flipped roster team in infection,
-    // else the persisted head's own `$TID`.
+    const tid = this._liveTid();
+    if (tid == null) return frames;
+    return [...frames.slice(0, lastPset + 1), `$TID,${tid},*`, ...frames.slice(lastPset + 1)];
+  }
+  /** F206: the team the gun should carry now -- the last `$TID` this node wrote; after an app restart `_gunTid` is
+   *  gone (not persisted), so the flipped roster team in infection, else the persisted head's own `$TID`. Null if none. */
+  _liveTid() {
     let tid = this._gunTid;
     if (tid == null && this.config && this.config.mode === 'infection' && this.team && this.team.tid != null) tid = Number(this.team.tid);
     if (tid == null) { const h = ((this.frames && this.frames.head) || []).find(f => typeof f === 'string' && f.startsWith('$TID,')); if (h) tid = Number(h.split(',')[1]); }
-    if (tid == null || !Number.isFinite(tid)) return frames;
-    return [...frames.slice(0, lastPset + 1), `$TID,${tid},*`, ...frames.slice(lastPset + 1)];
+    return tid == null || !Number.isFinite(tid) ? null : tid;
   }
   teamOf(num) { const r = this.roster.find(x => x.player_num === num); return r ? r.team_id : null; }
   nameOf(num) { const r = this.roster.find(x => x.player_num === num); return r ? r.display : null; }
@@ -2142,7 +2147,7 @@ export class Engine {
     if (this.resync) this._resyncTick();
   }
 
-  _revive(resync, stationId = null) {
+  _revive(resync, stationId = null, operator = false) {
     this.reloading = null; this._reloadOutcome = null; this.held = {};   // a reload that started in the last life does not follow you into this one, and no button is held across a death
     if (!this.frames) return;
     const down = this.frames.headset && this.frames.headset.down;
@@ -2166,9 +2171,9 @@ export class Engine {
     this._shotDueAt = null; this._noFirePulls = 0;   // F208: a fresh life owes no shots
     this._armAfterSpawn();   // F209
     this._gunTake();   // A11.7
-    this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}), ...(stationId != null ? { station: stationId } : {}) });
+    this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}), ...(stationId != null ? { station: stationId } : {}), ...(operator ? { operator: true } : {}) });   // A47: `operator` = MC's FORCE RESPAWN (scoring keeps the streak)
     this.moment = { kind: 'redeploy', at: this.now() };
-    this.log(resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');
+    this.log(operator ? 'respawned by the operator' : resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');
     this._eventLeds('respawned');   // A11 lights only (after the revive frames, so the burst ends on the fresh team colour); the sound went out with the revive write above
     if (this.frames.headset) { this.carrying = null; this._activeRole = null; this._headsetDelayed(this.frames.headset.respawn, 'respawn'); }   // led-language.md §3.1/§5: +1.0 s after $SPAWN; A11.6: white flash then dark/team
     this._changed();
@@ -2241,11 +2246,7 @@ export class Engine {
       this.log(`⚡ stun extended: ${Math.ceil((this.stunned.until - now) / 1000)} s left`, 'li');
       this._changed(); return;
     }
-    const spawn = this._spawnAmmo(), live = {};
-    for (const slot of Object.keys(spawn)) {
-      const mag = this._prevAmmo[slot], res = this._prevReserve[slot];
-      live[slot] = [mag != null ? mag : spawn[slot][0], res != null ? res : spawn[slot][1]];
-    }
+    const live = this._liveAmmo();
     this.stunned = { at: now, until: now + ms, ammo: live };
     this._write(Object.keys(live).map(slot => `$AMMO,${slot},0,0,1,*`), `stun: disarm ${ms} ms`);
     this.moment = { kind: 'stunned', at: now, data: { ms } };
@@ -2280,6 +2281,15 @@ export class Engine {
     const s = this.lastShot;
     if (!s || s.ms == null || s.ms < SHOT_CUE_MIN_MS || !this.alive || this.phase !== 'live' || s.slot !== this.activeSlot) return null;
     return { at: s.at, ms: s.ms, leftMs: Math.max(0, s.at + s.ms - now) };
+  }
+  /** {slot: [mag, reserve]} the gun holds NOW: the last `$ALCD` per slot, else the frame's spawn values (F87: never a refill). */
+  _liveAmmo() {
+    const spawn = this._spawnAmmo(), live = {};
+    for (const slot of Object.keys(spawn)) {
+      const mag = this._prevAmmo[slot], res = this._prevReserve[slot];
+      live[slot] = [mag != null ? mag : spawn[slot][0], res != null ? res : spawn[slot][1]];
+    }
+    return live;
   }
   /** {slot: [mag, reserve]} straight from the bundle's spawn $AMMO frames -- the counts a slot that has never fired holds. */
   _spawnAmmo() {
@@ -2325,7 +2335,7 @@ export class Engine {
   }
 
   // ---------- control ----------
-  control({ cmd, seq, match_id }) {
+  control({ cmd, seq, match_id, player_id }) {
     switch (cmd) {
       case 'end': case 'recall':
         // A34: MC ends a phone it finds still LIVE in a RETIRED match from that phone's own heartbeat, and names
@@ -2341,6 +2351,13 @@ export class Engine {
         if (this.phase === 'armed' && (seq == null || (this.start && this.start.seq === seq))) { this.start = null; this.cuesFired = new Set(); this._write([PLAYX], 'abort'); this._set('lobby'); }
         else if (this.phase === 'live' && this.start && this.start.seq === seq) this._endLocal('abort_start(live)=recall');
         return;
+      case 'resync': case 'respawn': case 'relink':
+        // A47 (bench 2026-09-17): the operator's menu on MC's LIVE board, aimed at ONE player. It must name THIS
+        // match and, when it names a player, this player: a late push from an older match or a mis-bound phone
+        // must never respawn anyone. The LIVE confirm on MC is the operator's confirm, so there is no tap here.
+        if (!match_id || match_id !== this.matchId) { this.log(`operator ${cmd} for ${match_id || 'no match'} — not this match (${this.matchId || 'none'}) — ignored`, 'li'); return; }
+        if (player_id && this.player && this.player.player_id && player_id !== this.player.player_id) { this.log(`operator ${cmd} for player ${player_id} — not this player — ignored`, 'li'); return; }
+        return this._operator(cmd);
       case 'panic':
         this._lightGen = (this._lightGen || 0) + 1;   // same as _endLocal: cut off any pending delayed light/cue step immediately, not just once delivered
         if (this.bleUp) this._writeTeardown('panic', 'control'); else { this.pendingTeardown = 'panic'; this.log('panic owed to the gun — link down', 'le'); }
@@ -2353,6 +2370,54 @@ export class Engine {
         return;
       default: return;
     }
+  }
+
+  /** A47: one operator action from MC. Every refusal is logged, so "the operator pressed it and nothing
+   *  happened" is readable from the phone's log.
+   *  - `resync`: `_operatorResync` -- the live gun's state again, with no death and no pool change.
+   *  - `respawn`: `_revive` -- the normal revive (full pools, A44 spawn protection, trigger mapped), no death, no kill.
+   *  - `relink`: `onRelink` -- the HUD's RELINK GUN (app.js wires it to `link.relink()`). */
+  _operator(cmd) {
+    if (cmd === 'relink') {
+      if (!(this.phase === 'lobby' || this.phase === 'armed' || this.phase === 'live')) { this.log(`operator relink ignored — phase is ${this.phase}`, 'li'); return; }
+      if (typeof this.onRelink !== 'function') { this.log('operator relink ignored — this build has no relink hook', 'le'); return; }
+      this.log('operator relink: dropping and reconnecting the gun', 'lk');
+      try { Promise.resolve(this.onRelink()).catch(e => this.log(`operator relink failed: ${e && e.message || e}`, 'le')); } catch (e) { this.log(`operator relink failed: ${e && e.message || e}`, 'le'); }
+      return;
+    }
+    const why = this.phase !== 'live' ? `phase is ${this.phase}` : !this.spawned ? 'the T-0 spawn has not run' : !this.frames ? 'no bundle'
+      : !this.bleUp ? 'gun link down (RELINK first)' : this.reconciling ? 'a relink reconcile is running' : this.tutorial ? 'a try-out is running' : null;
+    if (why) { this.log(`operator ${cmd} ignored — ${why}`, 'le'); return; }
+    if (cmd === 'respawn') {
+      this.log(`operator respawn (${this.alive ? 'alive' : 'down'} at hp ${this.hp})`, 'lk');
+      this._stunRestore('operator respawn');   // no write: the revive's own $AMMO re-arms
+      this._resyncRevive = false;
+      this._revive(false, null, true);
+      return;
+    }
+    this._operatorResync();
+  }
+  /** A47 RESYNC GUN: re-send what a live gun needs to play, and nothing that heals, kills or re-heads it:
+   *  `$TID`, the current `$AMMO` per slot (the stun snapshot's counts, never a refill), the trigger mapping
+   *  `$BMAP,0,0`, then one `sir_pool` take through `_armLife` (retried on a failed write). The rejoin reconcile
+   *  is not reused: it disarms for RECONCILE_MS, re-arms with the SPAWN counts and writes no `$TID`/`$BMAP`.
+   *  Never `$SPAWN`, `$PSET` or a head: a config to a gun in play clears `spawned`. A take already pending
+   *  (spawn protection, A44) is left to its own trigger. A down player is refused: FORCE RESPAWN is the cure. */
+  _operatorResync() {
+    if (!this.alive) { this.log('operator resync ignored — the player is down (FORCE RESPAWN revives)', 'le'); return; }
+    if (this.stunned) { this.log('operator resync ignored — stunned (the stun restore re-arms)', 'le'); return; }
+    const tid = this._liveTid();
+    const ammo = Object.entries(this._liveAmmo()).map(([slot, [mag, res]]) => `$AMMO,${slot},${mag},${res},1,*`);
+    const bmap = ((this.frames && this.frames.revive) || []).find(f => typeof f === 'string' && f.startsWith('$BMAP,0,0')) || '$BMAP,0,0,,,,,*';
+    this._write([...(tid != null ? [`$TID,${tid},*`] : []), ...ammo, bmap], 'operator resync');
+    if (this._protectsSpawn()) {
+      if (this._armPending) this.log('operator resync: hit reception is still spawn-protected — the take follows the first shot or the cap', 'li');
+      else { this._armPending = { at: this.now(), flip: false }; this._armLife('operator resync'); }
+    } else {
+      this._write(this._pickTable('sir_pool'), 'operator resync: hit audio');   // a pre-A44 bundle: the take, when it has one
+    }
+    this.log(`operator resync done — hp ${this.hp}, tid ${tid != null ? tid : '?'}`, 'lk');
+    this._changed();
   }
 
   // ---------- feedback (§3.6) ----------

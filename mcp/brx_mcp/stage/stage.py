@@ -938,13 +938,18 @@ class GunStage:
                 pass
         if last_pset < 0 or last_tid > last_pset:
             return frames
+        tid = self._live_tid()
+        if tid is None:
+            return frames
+        return frames[:last_pset + 1] + [f"$TID,{tid},*"] + frames[last_pset + 1:]
+
+    def _live_tid(self) -> int | None:
+        """engine.js `_liveTid`: the last `$TID` written, else the bundle head's. None when there is neither."""
         tid = self._gun_tid
         if tid is None:
             head = next((f for f in (getattr(self, "bundle", None) or {}).get("head", []) if f.startswith("$TID,")), None)
             tid = int(head.split(",")[1]) if head else None
-        if tid is None:
-            return frames
-        return frames[:last_pset + 1] + [f"$TID,{tid},*"] + frames[last_pset + 1:]
+        return tid
 
     async def write(self, frames: list[str], why: str, gap_ms: int = 60, exact: bool = False) -> None:
         # `exact` (the `raw` bench hatch only) writes the operator's frames untouched, so a rung can still send a
@@ -1237,6 +1242,30 @@ class GunStage:
         if hs.get("respawn"):
             self._headset(hs["respawn"], "headset respawn")
         return self.state()
+
+    async def resync(self) -> dict:
+        """A47: the page's RESYNC GUN button."""
+        await self._operator_resync()
+        return self.state()
+
+    async def _operator_resync(self) -> None:
+        """A47 RESYNC GUN, mirroring engine.js `_operatorResync`: `$TID`, the CURRENT `$AMMO` per slot (never a
+        refill), `$BMAP,0,0`, then one `sir_pool` take -- unless spawn protection still holds it (A44). Never
+        `$SPAWN`, `$PSET` or a head, so pools and `spawned` stay as they are. A down or stunned gun gets nothing.
+        FORCE RESPAWN is `revive()`: the stage books no facts, so it is the same write the phone makes."""
+        if not (self.spawned and self.alive) or self.stunned:
+            self._log("resync ignored -- " + ("stunned" if self.stunned else "not live"), "warn")
+            return
+        tid = self._live_tid()
+        ammo = [f"$AMMO,{slot},{mag},{res},1,*" for slot, (mag, res) in self._live_ammo().items()]
+        bmap = next((f for f in self.bundle.get("revive") or [] if f.startswith("$BMAP,0,0")), "$BMAP,0,0,,,,,*")
+        await self.write(([f"$TID,{tid},*"] if tid is not None else []) + ammo + [bmap], "operator resync")
+        if self._protects_spawn():
+            if self._arm_pending is None:
+                self._arm_pending = self.now()
+                self._arm_life("operator resync")
+        else:
+            await self.write(self._pick_table("sir_pool"), "operator resync: hit audio")
 
     def _after_spawn(self) -> None:
         self.spawned = True; self.alive = True
@@ -2393,6 +2422,15 @@ class GunStage:
                 out[_tok_int(t, 1) or 0] = [_tok_int(t, 2) or 0, _tok_int(t, 3) or 0]
         return out
 
+    def _live_ammo(self) -> dict[int, list[int | None]]:
+        """engine.js `_liveAmmo`: {slot: [mag, reserve]} the gun holds now -- the last `$ALCD`, else the spawn frame's."""
+        spawn = self._spawn_ammo()
+        live: dict[int, list[int | None]] = {}
+        for slot in spawn:
+            mag, res = self._prev_ammo.get(slot), self._prev_reserve.get(slot)
+            live[slot] = [mag if mag is not None else spawn[slot][0], res if res is not None else spawn[slot][1]]
+        return live
+
     def _stun(self) -> None:
         """A proto-8 `$HIR` under `config.stun`, on a live gun: write `$AMMO,<slot>,0,0,1,*` for every live slot
         and snapshot the LIVE mag/reserve per slot (the last `$ALCD`, else the spawn frame's) to restore. A second
@@ -2407,11 +2445,7 @@ class GunStage:
             self.stunned["until"] = max(self.stunned["until"], now + s)
             self._log(f"⚡ stun extended: {math.ceil(self.stunned['until'] - now)} s left", "info")
             return
-        spawn = self._spawn_ammo()
-        live: dict[int, list[int | None]] = {}
-        for slot in spawn:
-            mag, res = self._prev_ammo.get(slot), self._prev_reserve.get(slot)
-            live[slot] = [mag if mag is not None else spawn[slot][0], res if res is not None else spawn[slot][1]]
+        live = self._live_ammo()
         self.stunned = {"at": now, "until": now + s, "ammo": live}
         self._spawn_task(self.write([f"$AMMO,{slot},0,0,1,*" for slot in live], f"stun: disarm {s:g} s", gap_ms=60))
         self._moment = ("stunned", now)

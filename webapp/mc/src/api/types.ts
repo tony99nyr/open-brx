@@ -21,11 +21,11 @@ export type {
   MatchHistoryRow, ModeInfo, NodeView, StationControl, StationReport, StationArmed, StationView,
   LiveView, StartNodeView, StartView, State, GameConfigBase, LanView, KitView, LobbyAck,
   LobbyView, GameAnnouncementView, SyncAckState, SyncRow, SyncTotals, SyncView, SessionOptions, VersionsView,
-  NoticesView, RestoredFromView, SnapshotFeedRow, OrphanMatchView,
+  NoticesView, RestoredFromView, SnapshotFeedRow, OrphanMatchView, OperatorActionResult,
   TunnelStatus, TunnelProviderValue,
 } from './contract.gen';
 export type {
-  ArmState, ControlCmd, ItemKind, LoadoutPreset, McKind, NodeKind, PersistedEventType, Phase,
+  ArmState, ControlCmd, ItemKind, LoadoutPreset, McKind, NodeKind, OperatorCmd, PersistedEventType, Phase,
   SlotChoice, StationKind, StationSourceId, WinBy,
 } from './contract.gen';
 // values (verbatimModuleSyntax: a value re-export may not ride in a `export type` statement)
@@ -33,7 +33,8 @@ export { CONTROL_CMDS, MC_KINDS, NODE_KINDS, STALE_AFTER_MS, STATION_KINDS, STAT
 
 import type { ConfigView, GameConfig, LoadoutPolicy, LoadoutPool, LogView, Phase, Player,
   PerkView, ScanRow, StationKind, StationView, VoiceList, PhaseRefusalBody, ModeInfo,
-  WeaponView, SavedGame, LanPublic, MatchHistoryRow, PresentationView, RecapView, State } from './contract.gen';
+  WeaponView, SavedGame, LanPublic, MatchHistoryRow, PresentationView, RecapView, State,
+  OperatorActionResult, OperatorCmd } from './contract.gen';
 
 export type TunnelProvider = import('./contract.gen').TunnelProviderValue | null;
 
@@ -41,7 +42,9 @@ export type FeedTag = 'DOUBLE KILL' | 'TRIPLE KILL' | `STREAK ×${number}` | 'FI
   /** A11.4/F118: a global-state alert MC pushed to the nodes. `ALERT` reached everyone bound, `WITHHELD`
    *  reached nobody (mc_confidence refused it, or no node was in coverage), `ROLE` is a role assignment
    *  (VIP/carrier). The `text` is the OPERATOR's third-person copy — render it VERBATIM, never re-word. */
-  | 'ALERT' | 'WITHHELD' | 'ROLE';
+  | 'ALERT' | 'WITHHELD' | 'ROLE'
+  /** A47: the operator's menu on the LIVE board sent RESYNC / RESPAWN / RELINK to one player's phone. */
+  | 'OPERATOR';
 export interface FeedEntry { t_match_s: number; text: string; tag?: FeedTag; kind: 'kill' | 'sync' | 'info' | 'alert' }
 
 /** loadout.md §3.2 (server pass 2, 2026-09-12) — why a slot's pool came out EMPTY. A closed
@@ -142,6 +145,10 @@ export interface Api {
   control(cmd: 'end' | 'recall' | 'panic', confirm?: boolean): Promise<{
     ok: boolean; ended?: boolean; reached?: number; pushed?: number; nodes?: number; phase?: Phase; error?: string;
   }>;
+  /** A47: `POST /api/players/{pid}/operator {cmd, match_id}` -- the LIVE board's operator menu, to ONE bound
+   *  player's phone. 409 outside ARMED/LIVE, for a stale match, or a phone out of reach, with the reason in
+   *  `error`. `pushed` means a socket took it (no ack kind exists for `control`). A server that predates it 404s. */
+  operatorAction(player_id: string, cmd: OperatorCmd, match_id: string): Promise<OperatorActionResult>;
   getRecap(): Promise<RecapView>;
   matchHistory(): Promise<MatchHistoryRow[]>;
   recapCsvUrl(): string;

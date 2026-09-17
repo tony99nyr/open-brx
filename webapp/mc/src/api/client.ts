@@ -1,4 +1,4 @@
-import type { Api, FeedEntry, GameConfig, Player, State } from './types';
+import type { Api, FeedEntry, GameConfig, OperatorActionResult, Player, State } from './types';
 
 // ---- operator token (server requires it on mutating /api/* and on /ui-ws) ----
 const TOK_KEY = 'brx_mc_tok';
@@ -142,6 +142,14 @@ export function createHttpApi(): Api {
     reschedule: runway_s => post('/api/start/reschedule', { runway_s }),
     abort: () => post('/api/start/abort'),
     control: (cmd, confirm) => post('/api/control', { cmd, confirm }),
+    operatorAction: (id, cmd, match_id) => post<OperatorActionResult>(`/api/players/${encodeURIComponent(id)}/operator`, { cmd, match_id })
+      .catch((e: Error & { status?: number; body?: unknown }) => {
+        // a route-less 404 is an OLD server; a 404 carrying the server's own `error` is its words (as `skewOr404`)
+        if (e?.status === 404 && typeof (e.body as { error?: unknown } | undefined)?.error !== 'string') {
+          throw Object.assign(new Error('THE MC SERVER PREDATES THIS UI (no operator route). RESTART IT: python -m brx_mcp.mc'), { status: 404 });
+        }
+        throw e;
+      }),
     getRecap: () => j('/api/recap'),
     matchHistory: () => j('/api/matches'),
     recapCsvUrl: () => '/api/recap.csv',

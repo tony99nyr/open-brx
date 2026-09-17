@@ -113,6 +113,7 @@ const engine = new Engine({
   storage: (() => { try { return new URLSearchParams(location.search).has('demo') ? null : localStorage; } catch (_) { return null; } })(),
   log, onChange: () => scheduleRender(),
 });
+engine.onRelink = () => (link.deviceId ? link.relink() : Promise.reject(new Error('no gun picked')));   // A47: MC's operator RELINK GUN, the HUD's own RELINK path
 engine.onGunStale = () => link.noteStale();   // B4: the engine's silence watchdog forces BrxLink to actually cycle the radio
 engine.sessionOf = () => (transport ? transport.sessionId : null);   // the HUD skin pick lasts one MC session (engine.setNight)
 hud.mcUrl = settings.mcUrl;

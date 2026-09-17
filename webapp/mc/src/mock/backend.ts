@@ -1,6 +1,6 @@
 // In-browser mock of the MC server (mcp/brx_mcp/mc/API.md). Stateful enough for every UI interaction.
 import type {
-  Api, ConfigView, Coverage, FeedEntry, GameConfig, LanPublic, LiveRow, Loadout, LoadoutPolicy, LogView, MatchHistoryRow, ModeInfo, NodeView, PerkView, Phase, Player,
+  Api, ConfigView, Coverage, FeedEntry, GameConfig, LanPublic, LiveRow, Loadout, LoadoutPolicy, LogView, MatchHistoryRow, ModeInfo, NodeView, OperatorActionResult, OperatorCmd, PerkView, Phase, Player,
   ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, SavedGame, ScanRow, ScoreRow, StartView, State, StationAssignment, StationKind, StationSourceId,
   StationView, TunnelProvider, TunnelStatus, WeaponView,
 } from '../api/types';
@@ -1375,6 +1375,25 @@ export class MockBackend implements Api {
     this.start_ = undefined; this.live_ = undefined; this.phase = 'kit'; this.pushed = false; this.acks = {}; this.endedAt = undefined;
     this.emit();
     return { ok: true, ended: true, reached: nodes, pushed: nodes, nodes, phase: this.phase };
+  }
+  /** A47: `state.py operator_action`, with the same refusals, so `?mock` is never more permissive than MC. */
+  async operatorAction(player_id: string, cmd: OperatorCmd, match_id: string): Promise<OperatorActionResult> {
+    const refuse = (msg: string, status = 409) => { throw Object.assign(new Error(msg), { status, body: { error: msg } }); };
+    if (!['resync', 'respawn', 'relink'].includes(cmd)) refuse(`unknown operator action '${cmd}'`, 400);
+    const current = this.live_?.match_id ?? this.start_?.match_id;
+    if (!['armed', 'live'].includes(this.phase) || !current) refuse(`no match is ARMED or LIVE (phase ${this.phase.toUpperCase()})`);
+    if (!match_id || match_id !== current) refuse('that match is over: the board was stale. Look at the player again');
+    const p = this.players.find(x => x.player_id === player_id);
+    if (!p) return refuse('unknown player', 400);
+    const who = p.display.toUpperCase();
+    const row = this.live_?.rows.find(r => r.player_id === player_id);
+    if (!p.node_id || (row && row.status === 'stale')) refuse(`${who}'S PHONE IS OUT OF REACH: nothing was sent`);
+    if (cmd === 'respawn' && row) { row.status = 'alive'; row.respawn_in_s = null; }
+    const verb = cmd === 'respawn' ? `RESPAWNED ${who}` : cmd === 'resync' ? `RESYNCED ${who}'S GUN` : `RELINKED ${who}'S GUN`;
+    const tm = this.live_ ? Math.max(0, Math.floor((now() - this.live_.go_live_t) / 1000)) : 0;
+    this.feed({ t_match_s: tm, kind: 'alert', tag: 'OPERATOR', text: `OPERATOR ${verb}` });
+    this.emit();
+    return { ok: true, cmd, player_id, match_id, pushed: true };
   }
   async resumeOrphan(match_id: string) {
     if (!this.orphan_ || this.orphan_.match_id !== match_id) {

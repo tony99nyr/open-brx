@@ -378,6 +378,25 @@ The **source** is a catalog matter, not a node one: any `$WEAP` with t3 = 8 fire
 today, so under `config.stun` it stuns and deals no damage — `validate()` says so), or a proto-8 station. The native
 firmware stun is not relied on (2/5 singles, lasts until death).
 
+### 3.15 Operator actions from MC: resync, respawn, relink (contracts A47)
+
+MC's LIVE board can send `control{cmd, player_id, match_id}` to ONE player's phone. The operator's second tap on MC
+is the confirm, so the phone asks nothing. `engine.js control()` checks the command first: a `match_id` that is
+missing or is not this node's `matchId`, or a `player_id` that is not this player, is ignored and logged. Every
+refusal below is logged too, so the phone's log answers "the operator pressed it and nothing happened".
+
+| cmd | engine path | writes | refused (logged, no write) |
+|---|---|---|---|
+| `resync` | `_operatorResync` | `$TID` (`_liveTid`: last written, else the infection team, else the head's), `$AMMO,<slot>,<mag>,<reserve>,1,*` per slot from `_liveAmmo` (the last `$ALCD`, else the spawn counts, never a refill), `$BMAP,0,0` from `frames.revive`, then one `sir_pool` take through `_armLife` (retried on a failed write). While A44 protection is pending the take is left to its own trigger | not `live`, not spawned, no bundle, link down, reconciling, try-out, down, stunned |
+| `respawn` | `_revive(false, null, true)` | the normal revive: `frames.revive` (fn-28 twin, `$SPAWN`, `$AMMO`, `$BMAP,0,0`), full pools, A44 protection, `respawn{operator:true}`. A down player is up at once (`deadAt` cleared). A stun is cancelled with no write | not `live`, not spawned, no bundle, link down, reconciling, try-out |
+| `relink` | `onRelink` → `link.relink()` (app.js) | none itself: the relink then runs §3.10 (LIVE reconcile, or the LOBBY/ARMED head re-write) | not `lobby`/`armed`/`live`, no hook |
+
+**Why resync is not the rejoin reconcile.** `_beginReconcile` disarms both slots for `RECONCILE_MS` and
+`_endReconcile` re-arms with the SPAWN counts and writes no `$TID` or `$BMAP`. A resync must keep the ammo the player
+has and put back the team and trigger mapping, with no disarmed window. **Never a config or head write**: a
+config to a gun in play clears `spawned` and silences every hit and death handler (F11). No death and no kill is
+booked by any of the three. `stage.py resync()` mirrors `_operatorResync`; the stage's `revive()` is FORCE RESPAWN.
+
 ---
 
 ## 4. The HUD — requirements and state mapping

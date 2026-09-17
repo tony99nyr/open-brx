@@ -7,6 +7,7 @@ import { F, T, fmtAge, fmtClock, teamColor } from '../tokens';
 import { columnEdges, type Column } from './columns';
 import { Blink, GhostButton, Num, ScrollX, Tag } from '../ui';
 import { OrphanMatch } from '../ui/OrphanMatch';
+import { OperatorMenu } from './OperatorMenu';
 
 // S24 (game test 2026-09-11, D4): the board was `minmax(130px,1.5fr) 40px 40px 40px 52px 56px 48px …`
 // at `gap:'0 10px'` with 9 px headers over 14-16 px values, and K/D/A were three identical right-aligned
@@ -64,6 +65,7 @@ export function Live() {
   const { state, feed, run, api, serverNow, connected } = useStore();
   const [endConfirm, setEndConfirm] = useState(false);
   const [recallConfirm, setRecallConfirm] = useState(false);
+  const [menuFor, setMenuFor] = useState<string | null>(null);   // A47: the row whose operator menu is open
   const [, tick] = useState(0);
   useEffect(() => { const id = setInterval(() => tick(x => x + 1), 500); return () => clearInterval(id); }, []);
   if (!state) return null;
@@ -170,9 +172,15 @@ export function Live() {
               ))}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
-              {rows.map(r => <Row key={r.player_id} r={r} endUnconfirmed={edUnconfirmed.has(r.player_id)} />)}
+              {rows.map(r => (
+                <div key={r.player_id} style={{ display: 'contents' }}>
+                  <Row r={r} endUnconfirmed={edUnconfirmed.has(r.player_id)} open={menuFor === r.player_id}
+                    onToggle={() => setMenuFor(m => (m === r.player_id ? null : r.player_id))} />
+                  {menuFor === r.player_id && <OperatorMenu r={r} matchId={lv.match_id} onClose={() => setMenuFor(null)} />}
+                </div>
+              ))}
             </div>
-            <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.dim, marginTop: 8, lineHeight: 1.5 }}>K / A / ACC ARE MC-DERIVED — RECONCILED AT SYNC POINTS. OUT-OF-RANGE NODES SHOW LAST KNOWN + AGE, NEVER "GONE". STK IS THE LONGEST STREAK OF THE MATCH; A <span style={{ color: T.micro }}>~</span> BEFORE ACC MEANS IT HAS NOT SETTLED.</div>
+            <div style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.dim, marginTop: 8, lineHeight: 1.5 }}>TAP A PLAYER FOR RESYNC, RESPAWN OR RELINK. K / A / ACC ARE MC-DERIVED — RECONCILED AT SYNC POINTS. OUT-OF-RANGE NODES SHOW LAST KNOWN + AGE, NEVER "GONE". STK IS THE LONGEST STREAK OF THE MATCH; A <span style={{ color: T.micro }}>~</span> BEFORE ACC MEANS IT HAS NOT SETTLED.</div>
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
               {endConfirm ? (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -261,14 +269,18 @@ function TimeCell({ remaining, sub, dim }: { remaining: number; sub: string; dim
   );
 }
 
-function Row({ r, endUnconfirmed }: { r: LiveRow; endUnconfirmed?: boolean }) {
+function Row({ r, endUnconfirmed, open, onToggle }: { r: LiveRow; endUnconfirmed?: boolean; open?: boolean; onToggle?: () => void }) {
   const dead = r.status === 'down', stale = r.status === 'stale';
   const syncWarn = stale || r.sync_age_ms > STALE_AFTER_MS;   // contracts §9, generated from types.py
   const stk = bestStreak(r);
   const silent = poolStaleLabel(r.pool_stale, r.pool_stale_ms);      // F208: grey, beside the name, never a status
+  // longhand sides, not `border` + `borderLeft`: React warns when the shorthand changes on a rerender (A47 opens the row)
+  const rim = `1px solid ${endUnconfirmed ? T.bad : open ? T.acc : T.row}`;
   return (
-    <div data-end-unconfirmed={endUnconfirmed ? r.player_id : undefined}
-      style={{ display: 'grid', gridTemplateColumns: COLS, gap: GAP, alignItems: 'center', padding: '10px 14px', background: dead ? 'rgba(255,82,82,.05)' : T.panel, border: `1px solid ${endUnconfirmed ? T.bad : T.row}`, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>
+    <div data-end-unconfirmed={endUnconfirmed ? r.player_id : undefined} data-live-row={r.player_id}
+      role="button" tabIndex={0} aria-expanded={!!open} title="Operator actions: resync, respawn or relink this player's gun"
+      onClick={onToggle} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle?.(); } }}
+      style={{ cursor: 'pointer', display: 'grid', gridTemplateColumns: COLS, gap: GAP, alignItems: 'center', padding: '10px 14px', background: dead ? 'rgba(255,82,82,.05)' : T.panel, borderTop: rim, borderRight: rim, borderBottom: rim, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>
       <span style={{ font: F.chk(700, 14), letterSpacing: '.1em', minWidth: 0 }}>{r.display}
         {silent && <span data-gun-silent={r.player_id} title="The phone says this gun's health and ammo readout may be out of date."
           style={{ display: 'block', font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>{silent}</span>}

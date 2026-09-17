@@ -35,7 +35,7 @@ from .types import (CLOCK_TIE_MS, DEFAULT_RUNWAY_S, HEADSET_LINK_PROOF_MS, MAX_P
                     STALE_AFTER_MS, STALE_LIVE_RETELL_MS, STATION_KINDS, STATION_SOURCES, STATION_TEAM_ANY, SYNC_FRESH_MS, Event,
                     ConfigView, Coverage, EndDeliveryRow, EndDeliveryView, FrameBundle, GameAnnouncementView, GameConfig,
                     KitView, LanPublic, LanView, LobbyAck, LobbyView, Loadout, LoadoutOverrides, LoadoutPolicy,
-                    LoadoutPool, McConfidence, NoticesView, PerkView, ModeInfo, Phase, PhaseRefusalBody, Player,
+                    LoadoutPool, McConfidence, NoticesView, OperatorActionResult, OperatorCmd, PerkView, ModeInfo, Phase, PhaseRefusalBody, Player,
                     LiveRow, ReadinessRow, ReadinessSnapshot, RecapStationRow, RecapView, Respawn, ScanRow, SessionOptions,
                     SnapshotFeedRow, SlotRule, State, StationAssignment, StationRef, StationControl, StationReport,
                     StationView, SyncAckState, SyncRow, SyncTotals, SyncView, VersionsView, RestoredFromView,
@@ -3588,6 +3588,47 @@ class Session:
         self._changed()
         self.persist_now()
         return {"ok": True, "match_id": match_id, "phase": self.phase, "phones": len(nids)}
+
+    OPERATOR_CMDS = ("resync", "respawn", "relink")
+    OPERATOR_VERB = {"resync": "RESYNCED {who}'S GUN", "respawn": "RESPAWNED {who}", "relink": "RELINKED {who}'S GUN"}
+
+    def operator_action(self, player_id: str, cmd: str, match_id: str) -> OperatorActionResult:
+        """A47 (bench 2026-09-17): the LIVE board's operator menu for ONE player in a bad state.
+
+        `control{cmd, player_id, match_id}` to that player's bound phone, and nowhere else:
+        - `resync`: the phone re-sends the live `$SIR` take, `$TID`, `$BMAP,0,0` and its current `$AMMO`.
+        - `respawn`: the phone runs a normal revive (full pools, A44 spawn protection), no death, no kill.
+        - `relink`: the phone drops and reconnects its gun, as the HUD's RELINK GUN.
+
+        Refused (409) outside ARMED/LIVE, for a match that is not the current one (a stale board), and for a
+        phone that is not bound or has not heartbeated within STALE_AFTER_MS. None of these is a config or
+        head push, so none can clear `spawned` on a gun in play. Best-effort like every `control`: no ack
+        kind exists, so `pushed` means a socket took it, and the phone logs what it did."""
+        if cmd not in self.OPERATOR_CMDS:
+            raise ValueError(f"unknown operator action {cmd!r}")
+        current = (self.start_info or {}).get("match_id")
+        if self.phase not in ("armed", "live") or not current:
+            raise ConflictError(f"no match is ARMED or LIVE (phase {self.phase.upper()})")
+        if not match_id or match_id != current:
+            raise ConflictError("that match is over: the board was stale. Look at the player again")
+        p = self.players.get(player_id)
+        if p is None:
+            raise ValueError("unknown player")
+        who = (p.get("display") or player_id).upper()
+        nid = p.get("node_id")
+        seen = (self.nodes.get(nid) or {}).get("last_seen_ms") if nid else None
+        if not nid or seen is None or self.now_ms() - seen > STALE_AFTER_MS:
+            raise ConflictError(f"{who}'S PHONE IS OUT OF REACH: nothing was sent")
+        pushed = self.net.push(nid, "control", {"cmd": cmd, "player_id": player_id,
+                                                "match_id": match_id}) is not False
+        if not pushed:
+            raise ConflictError(f"{who}'S PHONE HAS NO CONNECTION: nothing was sent")
+        go = self.scorer.go_live_t if self.scorer else None
+        self._on_feed({"t_match_s": max(0, (self.now_ms() - go) // 1000) if go and self.phase == "live" else 0,
+                       "tag": "OPERATOR", "kind": "alert",
+                       "text": "OPERATOR " + self.OPERATOR_VERB[cmd].format(who=who)})
+        self._changed()
+        return {"ok": True, "cmd": cast(OperatorCmd, cmd), "player_id": player_id, "match_id": match_id, "pushed": pushed}
 
     def end_orphan(self, match_id: str) -> dict:
         """END THEIR MATCH (operator only): `control{end, match_id}` to the phones reporting that match.

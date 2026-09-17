@@ -593,6 +593,7 @@ class Event(TypedDict, total=False):
     desync: bool
     # respawn
     resync: bool
+    operator: bool   # A47: the operator's FORCE RESPAWN, not a respawn after a death (scoring keeps the streak)
     # team_change
     tid: int
     # possession (F70, objective modes) — a CUMULATIVE tally for ONE control point, resent as it grows.
@@ -1252,8 +1253,24 @@ MC_KINDS = {"welcome", "assign", "tutorial", "config", "start", "feedback", "con
                                 # the phone's `MC_KINDS` (app/src/transport/envelope.js) must list it too, or
                                 # the arming message is dropped as malformed before `onMessage` ever sees it.
 CONTROL_CMDS = {"end", "panic", "abort_start", "recall",
+                "resync", "respawn", "relink",   # A47 (bench 2026-09-17): the LIVE board's operator menu for ONE
+                                                 # player phone. Each names `player_id` and `match_id`; the phone
+                                                 # ignores one for another match or player (`engine.js control`).
                 "release_utility"}   # A41 (2026-09-13): MC -> ONE utility node, an operator-driven cure for a
                                       # phone stuck in utility mode (field 2026-09-12: the phone's own exit is
                                       # the same undiscoverable seven-tap gesture its settings drawer uses, and
                                       # no MC message could reach it at all). `utility.js` takes it exactly the
                                       # way its own BACK TO HUD button does -- `state.py release_station`.
+
+# A47: the three operator actions MC may send to ONE bound player phone (`state.py operator_action`).
+OperatorCmd = Literal["resync", "respawn", "relink"]
+
+
+class OperatorActionResult(TypedDict):
+    """A47: `POST /api/players/{pid}/operator`. `pushed` means only that a socket took the push: no ack
+    kind exists for `control`, so the phone's own log and the next heartbeat are the receipt."""
+    ok: bool
+    cmd: OperatorCmd
+    player_id: str
+    match_id: str
+    pushed: bool

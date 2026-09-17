@@ -469,6 +469,16 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         except ValueError as e:
             return _err(str(e))
 
+    async def operator_action(req):
+        """A47: the LIVE board's operator menu -- `control{resync|respawn|relink}` to ONE player's phone.
+        `state.py operator_action()`. Token-gated like every non-GET route."""
+        b = await body(req)
+        try:
+            return JSONResponse(s.operator_action(req.path_params["pid"], str(b.get("cmd") or ""),
+                                                  str(b.get("match_id") or "")))
+        except ValueError as e:
+            return _err(str(e), getattr(e, "status", 400))
+
     async def recap(_):
         r = s.recap()
         return JSONResponse(r) if r else _err("no match", 404)
@@ -768,6 +778,7 @@ def create_app(session: Session, extra_tasks: list | None = None, token: str | N
         Route("/api/stations/{nid}", delete_station, methods=["DELETE"]),
         Route("/api/stations/{nid}/release", release_station, methods=["POST"]),
         Route("/api/players/{pid}/ready", ready, methods=["POST"]),
+        Route("/api/players/{pid}/operator", operator_action, methods=["POST"]),
         Route("/api/lobby/ready_all", ready_all, methods=["POST"]),
         Route("/api/games/load", games_load, methods=["POST"]),
         Route("/api/lobby/push", lobby_push, methods=["POST"]),

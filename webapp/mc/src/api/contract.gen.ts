@@ -83,13 +83,15 @@ export type TunnelProviderValue = 'cloudflared' | 'manual';
 /** 2026-09-16: the PRE-ARM CHECK's ACKED cell. `none` = no head pushed for this lobby; `waiting` = pushed,
  *  no answer yet (never a fault); `failed` = refused ack, offline or unbound phone, or no answer in time. */
 export type SyncAckState = 'acked' | 'waiting' | 'failed' | 'none';
+/** A47: the three operator actions MC may send to ONE bound player phone (`state.py operator_action`). */
+export type OperatorCmd = 'resync' | 'respawn' | 'relink';
 
 // ---- kind vocabularies ----
 export const MC_KINDS = ['ack', 'alert', 'apply', 'assign', 'config', 'control', 'feedback', 'join', 'loadout_ack', 'pull_log', 'result', 'score', 'start', 'station_config', 'time_res', 'tutorial', 'welcome'] as const;
 export type McKind = typeof MC_KINDS[number];
 export const NODE_KINDS = ['ack_config', 'bind', 'event', 'event_batch', 'hello', 'loadout_browse', 'loadout_request', 'log_data', 'log_offer', 'ready', 'status', 'time_req'] as const;
 export type NodeKind = typeof NODE_KINDS[number];
-export const CONTROL_CMDS = ['abort_start', 'end', 'panic', 'recall', 'release_utility'] as const;
+export const CONTROL_CMDS = ['abort_start', 'end', 'panic', 'recall', 'release_utility', 'relink', 'respawn', 'resync'] as const;
 export type ControlCmd = typeof CONTROL_CMDS[number];
 /** ⚠ This is a WHITELIST and an unlisted type is REJECTED at the socket, not ignored downstream --
  *  so a fact the phone learns to send reaches nothing until it is named here (the F40/F60 shape:
@@ -580,6 +582,8 @@ export interface Event {
   desync?: boolean;
   /** respawn */
   resync?: boolean;
+  /** A47: the operator's FORCE RESPAWN, not a respawn after a death (scoring keeps the streak) */
+  operator?: boolean;
   /** team_change */
   tid?: number;
   /** possession (F70, objective modes) — a CUMULATIVE tally for ONE control point, resent as it grows.
@@ -1248,6 +1252,16 @@ export interface Envelope {
   seq?: number;
   t: number;
   body: Record<string, unknown>;
+}
+
+/** A47: `POST /api/players/{pid}/operator`. `pushed` means only that a socket took the push: no ack
+ *  kind exists for `control`, so the phone's own log and the next heartbeat are the receipt. */
+export interface OperatorActionResult {
+  ok: boolean;
+  cmd: OperatorCmd;
+  player_id: string;
+  match_id: string;
+  pushed: boolean;
 }
 
 // ---- required-field tables (mcp/brx_mcp/mc/envelope.py) ----

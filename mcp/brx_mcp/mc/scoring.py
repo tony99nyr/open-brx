@@ -362,8 +362,9 @@ class Scorer:
         if kind == "death":
             return self._death(pid, ev, t, suppress_awards)
         if kind == "respawn":
+            if not ev.get("operator"):   # A47: the operator's FORCE RESPAWN is not a new life after a death
+                st.streak = 0
             st.alive = True
-            st.streak = 0
             return "scored"
         if kind == "team_change":
             tid = int(ev.get("tid", -1))

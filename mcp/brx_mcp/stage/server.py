@@ -22,7 +22,7 @@ PAGE = Path(__file__).with_name("page.html")
 
 
 class EmptyAction(TypedDict):
-    action: Literal["disconnect", "reload", "reroll", "arm", "spawn", "revive", "end", "panic",
+    action: Literal["disconnect", "reload", "reroll", "arm", "spawn", "revive", "resync", "end", "panic",
                     "walk_start", "walk_play", "walk_stop", "voice_board_stop"]
 
 
@@ -184,7 +184,7 @@ StageAction = (EmptyAction | ScanAction | ConnectAction | ProfileAction | Statio
 # The TypedDicts are also the action allow-list's source, so adding a page field cannot silently update
 # the checker while the HTTP dispatcher continues dropping it (or vice versa).
 _ACTION_TYPES: dict[str, type] = {
-    **{name: EmptyAction for name in ("disconnect", "reload", "reroll", "arm", "spawn", "revive", "end",
+    **{name: EmptyAction for name in ("disconnect", "reload", "reroll", "arm", "spawn", "revive", "resync", "end",
                                         "panic", "walk_start", "walk_play", "walk_stop", "voice_board_stop")},
     "scan": ScanAction, "connect": ConnectAction, "set_profile": ProfileAction,
     "station_advert": StationAdvertAction, "station_stop": StationStopAction, "alcd": AmmoAction,
@@ -195,7 +195,7 @@ _ACTION_TYPES: dict[str, type] = {
     "auto_react": AutoReactAction, "set_emitter": EmitterAction, "raw": RawAction,
     "walk_verdict": WalkVerdictAction,
 }
-_ASYNC_ACTIONS = {"scan", "connect", "voice_line", "pull_mc", "arm", "spawn", "revive", "end",
+_ASYNC_ACTIONS = {"scan", "connect", "voice_line", "pull_mc", "arm", "spawn", "revive", "resync", "end",
                   "panic", "game_end", "ir", "raw", "walk_play"}
 # action -> (is_coroutine, allowed kwargs). Anything else is a 400, so the page cannot call into the manager.
 ACTIONS: dict[str, tuple[bool, tuple[str, ...]]] = {
