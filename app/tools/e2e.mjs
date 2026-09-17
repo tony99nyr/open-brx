@@ -807,8 +807,8 @@ await step('MC recap: rows + yellow wins + CSV exports', async () => {
   expect(csv.includes('ALPHA') && csv.includes('BRAVO'), 'CSV missing players');
   await shot(mc, 'recap'); await tapAudit(mc, 'recap');
 });
-await step('NEW MATCH → muster; the HUD LEAVES MATCH COMPLETE and shows SETTING UP THE GAME (kit closed until the host reaches KIT — screen truth)', async () => {
-  await mc.click('text=NEW MATCH');
+await step('NEW SESSION → muster; the HUD LEAVES MATCH COMPLETE and shows SETTING UP THE GAME (kit closed until the host reaches KIT — screen truth)', async () => {
+  await mc.click('text=NEW SESSION ▸');
   await until(async () => (await st()).phase === 'muster', 8000, 'muster');
   expect((await st()).players.length === 2, 'roster not kept');
   await until(async () => (await hudA.locator('text=MATCH COMPLETE').count()) === 0, 10000, 'over screen must clear on new match');

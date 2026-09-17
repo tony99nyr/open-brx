@@ -138,7 +138,7 @@ export function CommandBar() {
             <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
               <PrimaryButton size={12}
                 onClick={async () => { const ok = await run(() => api.newSession(true)); if (ok !== undefined) setView('muster'); }}>NEW SESSION ▸</PrimaryButton>
-              <span style={{ font: F.chk(500, 9), letterSpacing: '.08em', color: T.micro }}>back to setup, roster kept</span>
+              <span style={{ font: F.chk(500, 11), letterSpacing: '.06em', color: T.micro }}>back to setup, roster kept</span>
             </span>
           )}
 

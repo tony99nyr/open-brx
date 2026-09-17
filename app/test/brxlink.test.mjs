@@ -141,7 +141,8 @@ test('scan flag: a refused start leaves no phantom open scan', async () => {
   assert.equal(link.scanning, false);
 });
 
-test('RELINK GUN on a link that reads connected really cycles it and runs onUp again', async () => {
+test('RELINK GUN on a link that reads connected really cycles it and runs onUp again', async ctx => {
+  const settle = useClock(ctx);
   const r = rig();
   await r.link.connect('A', 'GUN-A-1111');
   assert.equal(r.ups.length, 1);

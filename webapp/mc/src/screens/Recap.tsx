@@ -248,7 +248,7 @@ export function Recap() {
                 try { const s = await run(() => api.nextMatch()); if (s) setView('build'); }
                 finally { setStarting(false); }
               }}>{starting ? 'STARTING…' : 'NEXT MATCH ▸'}</PrimaryButton>
-              <span style={{ font: F.chk(500, 9), letterSpacing: '.08em', color: T.micro }}>same game</span>
+              <span style={{ font: F.chk(500, 11), letterSpacing: '.06em', color: T.micro }}>same game</span>
             </span>
           )}
         </div>

@@ -264,7 +264,7 @@ function Row({ r, endUnconfirmed }: { r: LiveRow; endUnconfirmed?: boolean }) {
       style={{ display: 'grid', gridTemplateColumns: COLS, gap: GAP, alignItems: 'center', padding: '10px 14px', background: dead ? 'rgba(255,82,82,.05)' : T.panel, border: `1px solid ${endUnconfirmed ? T.bad : T.row}`, borderLeft: `3px solid ${teamColor(r.team_id)}` }}>
       <span style={{ font: F.chk(700, 14), letterSpacing: '.1em', minWidth: 0 }}>{r.display}
         {silent && <span data-gun-silent={r.player_id} title="The phone says this gun's health and ammo readout may be out of date."
-          style={{ display: 'block', font: F.mono(500, 10), letterSpacing: '.08em', color: T.micro }}>{silent}</span>}
+          style={{ display: 'block', font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>{silent}</span>}
       </span>
       <span data-cell="k" style={{ textAlign: 'right', font: F.osw(700, 17), ...edge('k') }}><Num value={r.kills} /></span>
       <span data-cell="d" style={{ textAlign: 'right', font: F.osw(600, 16), color: T.dim }}><Num value={r.deaths} /></span>
