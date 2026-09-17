@@ -278,3 +278,96 @@ for (const [name, act] of [
     assert.equal(r.link.flapping, null);
   });
 }
+
+// Bench 2026-09-17 (match e6cbe0ae09, Pixel on 0.3.0): RELINK GUN during a LIVE match. The phone log shows
+// the press at 13:23:57, three plugin connects that each ran out the plugin's default 10 s timeout
+// (13:24:07, 13:24:17, 13:24:28) with a growing retry backoff between them (443, 857, 1939 ms), and the
+// link back at 13:24:31: 34 s off the gun. A second press did nothing, because a connect was in flight.
+/** A fake plugin with a real sense of time: the gun is connectable from `r.availableAt` on. A connect
+ *  catches the gun mid-attempt (a direct connect scans for it), or runs out its `timeout` option (the
+ *  plugin default is 10 s) and rejects with the plugin's own message. */
+function timedRig(opts = {}) {
+  const r = { availableAt: 0, calls: [], ups: 0, drops: 0, relinks: [], disconnects: 0, hangDisconnect: false };
+  const ble = {
+    initialize: async () => {},
+    disconnect: () => { r.disconnects++; return r.hangDisconnect ? new Promise(() => {}) : Promise.resolve(); },
+    connect: (id, cb, o) => new Promise((res, rej) => {
+      const call = { start: Date.now(), timeout: (o && o.timeout) || 10000 }; r.calls.push(call);
+      const readyIn = Math.max(0, r.availableAt - call.start) + 50;
+      if (readyIn <= call.timeout) setTimeout(() => { call.end = Date.now(); r.cb = cb; res(); }, readyIn);
+      else setTimeout(() => { call.end = Date.now(); rej(new Error('Connection timeout.')); }, call.timeout);
+    }),
+    startNotifications: async () => {},
+  };
+  r.link = new BrxLink({ ble, log: () => {}, unbounded: () => true, onUp: () => r.ups++, onDrop: () => r.drops++, onRelink: v => r.relinks.push(v), ...opts });
+  return r;
+}
+async function settleUntil(settle, cond, cap) { for (let ms = 0; ms < cap; ms += 10) { if (cond()) return ms; await settle(10); } return -1; }
+
+test('RELINK reconnects at once: bounded plugin connects, no growing backoff, no flap wait', async ctx => {
+  const settle = useClock(ctx);
+  const r = timedRig();
+  ctx.after(() => r.link.disconnect());
+  const up = r.link.connect('A', 'GUN-A-1111'); await settle(60); await up;
+  const pressAt = Date.now();
+  r.availableAt = pressAt + 16000;                 // the gun is not connectable for a while after the forced disconnect
+  const n0 = r.calls.length;
+  r.link.relink();
+  assert.ok(await settleUntil(settle, () => r.link.connected && r.ups === 2, 30000) >= 0, 'the relink never came back');
+  const calls = r.calls.slice(n0);
+  assert.ok(calls[0].start - pressAt <= 50, `the first connect waited ${calls[0].start - pressAt} ms after the press`);
+  for (const c of calls) assert.ok(c.timeout <= 5000, `a relink connect ran the plugin's ${c.timeout} ms timeout`);
+  for (let i = 1; i < calls.length; i++) assert.ok(calls[i].start - calls[i - 1].end <= 300, `attempt ${i + 1} waited ${calls[i].start - calls[i - 1].end} ms after attempt ${i} failed`);
+  assert.equal(r.link.flapping, null, 'a user RELINK is never a flap');
+  assert.equal(r.drops, 1, 'the engine hears the drop once');
+});
+
+test('RELINK: a second press while one is running is ignored, and relinking reads true until the link is up', async ctx => {
+  const settle = useClock(ctx);
+  const r = timedRig();
+  ctx.after(() => r.link.disconnect());
+  const up = r.link.connect('A', 'GUN-A-1111'); await settle(60); await up;
+  r.availableAt = Date.now() + 7000;
+  r.link.relink();
+  await settle(100);
+  assert.equal(r.link.relinking, true, 'the HUD needs to know a relink is running');
+  const calls = r.calls.length, disc = r.disconnects;
+  await r.link.relink();                            // Tony's second press, while a connect is in flight
+  await settle(100);
+  assert.equal(r.disconnects, disc, 'the second press must not cycle the link again');
+  assert.equal(r.calls.length, calls, 'the second press must not start a parallel connect');
+  assert.ok(await settleUntil(settle, () => r.link.connected, 15000) >= 0);
+  await settle(10);
+  assert.equal(r.link.relinking, false, 'RELINKING clears once the link is up');
+  assert.deepEqual(r.relinks, [true, false], 'the app hears the start and the end, once each');
+  assert.equal(r.ups, 2);
+});
+
+test('RELINK: a disconnect that never confirms does not hold the reconnect back', async ctx => {
+  const settle = useClock(ctx);
+  const r = timedRig();
+  ctx.after(() => { r.hangDisconnect = false; return r.link.disconnect(); });
+  const up = r.link.connect('A', 'GUN-A-1111'); await settle(60); await up;
+  r.hangDisconnect = true;
+  const pressAt = Date.now(), n0 = r.calls.length;
+  r.link.relink();
+  assert.ok(await settleUntil(settle, () => r.calls.length > n0, 10000) >= 0, 'a hung disconnect held the relink forever');
+  assert.ok(r.calls[n0].start - pressAt <= 2100, `the connect waited ${r.calls[n0].start - pressAt} ms for the disconnect`);
+  assert.ok(await settleUntil(settle, () => r.link.connected, 5000) >= 0);
+});
+
+test('RELINK: a gun that never answers ends the relink visibly, and the normal reconnect loop takes over', async ctx => {
+  const settle = useClock(ctx);
+  const r = timedRig({ relinkConnectMs: 400, relinkAttempts: 3 });
+  ctx.after(() => r.link.disconnect());
+  const up = r.link.connect('A', 'GUN-A-1111'); await settle(60); await up;
+  r.availableAt = Infinity;
+  const done = r.link.relink();
+  assert.ok(await settleUntil(settle, () => !r.link.relinking, 5000) >= 0, 'RELINKING never cleared');
+  assert.equal(await done, false);
+  const n = r.calls.length;
+  await settle(12000);
+  assert.ok(r.calls.length > n, 'the forever-reconnect loop must keep trying after a failed relink');
+  r.availableAt = 0;
+  assert.ok(await settleUntil(settle, () => r.link.connected, 30000) >= 0);
+});

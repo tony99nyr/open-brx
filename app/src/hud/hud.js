@@ -120,6 +120,7 @@ export class Hud {
     this.bluetoothOn = true; this.platform = 'web';
     this.discovered = null;   // {url, at} a LAN-sweep hit MC never auto-joined — null once bound or nothing found
     this._joinConfirm = null; // {act, at} the armed/live two-tap guard on CONNECT / SCAN QR (below)
+    this._gunConfirm = null;  // {at} the LIVE two-tap guard on RELINK GUN (bench 2026-09-17, below)
     this.lo = { tab: 'primary', filter: 'weapons', focus: null, confirm: null };   // LOADOUT browser UI state (tab / filter / focused row / A14 two-tap confirm {key, drop})
     this._moment = null; this._momentTimer = null; this._lastTminus = null; this.mcPill = false;   // live: the MC-range pill is opt-in (tap the MC label)
     // A24 FINAL RESULTS: which screen the player has reopened after OK (null | 'result' | 'history') and which
@@ -211,6 +212,15 @@ export class Hud {
       if (this._joinConfirm && this._joinConfirm.act === act && now - this._joinConfirm.at < 4000) { this._joinConfirm = null; this.renderDiag(); }   // second tap: revert the warning now, then let it through below
       else { this._joinConfirm = { act, at: now }; this.renderDiag(); return; }
     } else if (this._joinConfirm) this._joinConfirm = null;   // any other tap (or a phase change) drops a stale confirm
+    // Bench 2026-09-17: RELINK GUN takes the phone off the gun, so on a LIVE link it asks for a second tap within 4 s.
+    // The GUN LINK LOST pill shares the act, but only shows with the link down, where a tap takes nothing away.
+    if (act === 'onReconnectGun' && el.closest('#diag')) {
+      if (this.diagData && this.diagData.link && this.diagData.link.relinking) return;   // a relink is running: the button reads RELINKING…
+      if (this._lastSt && this._lastSt.phase === 'live' && this._lastSt.bleUp) {
+        if (this._gunConfirm && Date.now() - this._gunConfirm.at < 4000) { this._gunConfirm = null; this.renderDiag(); }
+        else { this._gunConfirm = { at: Date.now() }; this.renderDiag(); return; }
+      }
+    } else if (this._gunConfirm) { this._gunConfirm = null; if (this.diag.classList.contains('open')) this.renderDiag(); }
     if (act === 'onEndOk') this.view = null;                                     // OK still acks the end (app handler below)
     else if (act === 'onShowResults' || act === 'onShowHistory' || act === 'onCloseView' || act === 'onResultTab') {
       if (act === 'onShowResults') this.view = 'result';
@@ -1317,7 +1327,8 @@ export class Hud {
         ${sec('PREFLIGHT', 'dg-pf')}${sec('LINK', 'dg-link')}${sec('ENGINE', 'dg-eng')}${sec('TIMINGS', 'dg-tim')}
         ${sec('LAST FRAMES', 'dg-frames', true)}${sec('HISTORY', 'dg-hist')}${sec('LOG', 'dg-log', true)}
       </div>
-      <div class="btns"><button data-act="onCloseDiag" class="closex">CLOSE</button><button data-act="onReconnectGun">RELINK GUN</button><button data-act="onReconnectMc">RELINK MC</button><button data-act="onShareLog">SHARE LOG</button><button data-act="onToggleNight">NIGHT</button></div>`;
+      <div class="gunhint" id="dg-gunhint" role="status" aria-live="assertive"></div>
+      <div class="btns"><button data-act="onCloseDiag" class="closex">CLOSE</button><button data-act="onReconnectGun" id="dg-relinkgun">RELINK GUN</button><button data-act="onReconnectMc">RELINK MC</button><button data-act="onShareLog">SHARE LOG</button><button data-act="onToggleNight">NIGHT</button></div>`;
   }
   renderDiag() {
     this._diagShell();
@@ -1349,6 +1360,13 @@ export class Hud {
     // F147-adjacent (pass 1 LOW): this input was built once from `this.mcUrl` and never rebuilt, so a QR
     // rescan (which sets `hud.mcUrl` — app.js, another lane) left the panel showing the address it replaced.
     // Only while the field is not focused — the same rule `render()`'s own `typing` guard already applies.
+    // Bench 2026-09-17: RELINK GUN's LIVE confirm line, and RELINKING… (disabled) while `link.relinking`.
+    const relinking = !!(d.link && d.link.relinking);
+    const gunConfirm = !relinking && !!(this._gunConfirm && Date.now() - this._gunConfirm.at < 4000);
+    if (this._gunConfirm && !gunConfirm) this._gunConfirm = null;
+    put('dg-gunhint', gunConfirm ? '<span class="warn">RELINK TAKES THE PHONE OFF THE GUN FOR A FEW SECONDS. TAP AGAIN TO RELINK.</span>' : '');
+    const rb = this.diag.querySelector('#dg-relinkgun');
+    if (rb) { const label = relinking ? 'RELINKING…' : 'RELINK GUN'; if (rb.textContent !== label) rb.textContent = label; if (rb.disabled !== relinking) rb.disabled = relinking; }
     const mcInp = this.diag.querySelector('.mcurlfield');
     if (mcInp && document.activeElement !== mcInp && mcInp.value !== (this.mcUrl || '')) mcInp.value = this.mcUrl || '';
     put('dg-pf', kv(pf));
