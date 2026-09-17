@@ -147,23 +147,17 @@ export function Armory() {
           {/* A25: the session switch. Rendered ONLY when the server sends an option table — an older MC
               has no `/api/options` to PUT to, and a switch that writes to a 404 is worse than none. */}
           {state.options?.log_sync && (
-            // What AUTO means, and that the LOGS button ignores this switch, lived ONLY in a `title`
-            // — which nobody hovers and a touch console cannot show at all, so the one rule the
-            // operator needs was invisible (round-2 review 2026-09-12). One legend line under the
-            // switch, at the console's 11 px floor for text that carries meaning.
-            <span data-logsync={state.options.log_sync} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-start', gap: 5, maxWidth: 380 }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ font: F.mono(600, 11), letterSpacing: '.16em', color: T.micro }}>LOG SYNC</span>
-                <Seg label="log sync" value={state.options.log_sync}
-                  options={[{ value: 'auto' as const, label: 'AUTO' }, { value: 'manual' as const, label: 'MANUAL' }]}
-                  onChange={v => run(() => api.setOptions({ log_sync: v }))} pad="5px 12px" />
-              </span>
-              <span data-logsync-legend="1" style={{ font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro, lineHeight: 1.5, textAlign: 'left' }}>
-                {state.options.log_sync === 'auto'
-                  ? 'AUTO: MC ASKS EACH PHONE ON ITS OWN — AT THE RECAP, ON AN OFFER, AND WHEN ONE COMES BACK IN RANGE.'
-                  : 'MANUAL: MC NEVER ASKS ON ITS OWN — ONLY THE LOGS BUTTON DOES.'}
-                {' · '}THE LOGS BUTTON IS NEVER GATED BY IT.
-              </span>
+            // Bench 2026-09-17 (Tony): the always-visible legend under this switch was noise. What each mode does
+            // is a short tooltip on the LOG SYNC label; the LOGS button works in both modes.
+            <span data-logsync={state.options.log_sync} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <span data-logsync-label="1"
+                title={state.options.log_sync === 'auto'
+                  ? 'Auto: MC collects each phone log after the match. The LOGS button always works.'
+                  : 'Manual: MC collects a log only when you press LOGS.'}
+                style={{ font: F.mono(600, 11), letterSpacing: '.16em', color: T.micro, cursor: 'help' }}>LOG SYNC</span>
+              <Seg label="log sync" value={state.options.log_sync}
+                options={[{ value: 'auto' as const, label: 'AUTO' }, { value: 'manual' as const, label: 'MANUAL' }]}
+                onChange={v => run(() => api.setOptions({ log_sync: v }))} pad="5px 12px" />
             </span>
           )}
           {phones.length > 0 && (

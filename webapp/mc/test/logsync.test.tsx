@@ -70,42 +70,18 @@ describe('A25 · the LOG SYNC switch', () => {
     m.unmount();
   });
 
-  // What AUTO does, and the fact that LOGS ignores the switch, used to live ONLY in a `title`
-  // attribute — which nobody hovers and a touch console cannot show at all, so the rule the operator
-  // most needs was invisible on screen (round-2 review 2026-09-12). It is a LEGEND now: visible text,
-  // at the console's 11 px floor, under the switch it explains.
-  it('says what AUTO means on screen, at a size that can be read', async () => {
-    const d = await demo();
-    const state: State = { ...d.state, options: { log_sync: 'auto' } };
-    const m = await mountScreen(<Armory />, { ...d, state, view: 'muster' });
-    const legend = m.find('[data-logsync] [data-logsync-legend]')[0];
-    expect(legend, 'a visible legend under the switch, not a tooltip').toBeTruthy();
-    const t = (legend.textContent ?? '').toLowerCase();
-    expect(t).toMatch(/recap/);
-    expect(t).toMatch(/on its own/);
-    expect(parseFloat(getComputedStyle(legend).fontSize)).toBeGreaterThanOrEqual(11);
-    m.unmount();
-  });
-
-  it('the legend says the LOGS button is never gated by the switch', async () => {
-    // The one rule that decides whether the operator has to flip the switch before asking for a log.
+  // Bench 2026-09-17 (Tony): no legend under the switch. Each mode is explained by a short tooltip on
+  // the LOG SYNC label, and the tooltip says the LOGS button works in AUTO.
+  it('shows no legend under the switch, and explains each mode in the label tooltip', async () => {
     for (const mode of ['auto', 'manual'] as const) {
       const d = await demo();
       const state: State = { ...d.state, options: { log_sync: mode } };
       const m = await mountScreen(<Armory />, { ...d, state, view: 'muster' });
-      const t = (m.find('[data-logsync] [data-logsync-legend]')[0].textContent ?? '').toUpperCase();
-      expect(t, `the ${mode} legend`).toMatch(/LOGS BUTTON IS NEVER GATED/);
+      expect(m.find('[data-logsync] [data-logsync-legend]').length, `no ${mode} legend`).toBe(0);
+      const title = m.find('[data-logsync] [data-logsync-label]')[0].getAttribute('title') ?? '';
+      expect(title, `the ${mode} tooltip`).toMatch(mode === 'auto' ? /after the match.*LOGS button always works/ : /only when you press LOGS/);
       m.unmount();
     }
-  });
-
-  it('says what MANUAL means too — the legend follows the switch', async () => {
-    const d = await demo();
-    const state: State = { ...d.state, options: { log_sync: 'manual' } };
-    const m = await mountScreen(<Armory />, { ...d, state, view: 'muster' });
-    const t = (m.find('[data-logsync] [data-logsync-legend]')[0].textContent ?? '').toUpperCase();
-    expect(t).toMatch(/MC NEVER ASKS ON ITS OWN/);
-    m.unmount();
   });
 });
 
