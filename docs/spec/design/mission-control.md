@@ -69,7 +69,8 @@ screen off) · **red** blocks the push (no phone on the gun, identity unknown/re
 unreachable, never synced); after the push a gun that didn't **echo** turns red and blocks start. An operator
 checklist strip: mobile data off, auto-join field SSID, auto-lock off, Do-Not-Disturb on. Summary + gate:
 **"6/8 green, 2 amber, 0 red — GO"**; gate is **no reds**, not all-green; STANDBY while the roster is empty;
-show *why* a gun is red. Device-first muster: claim a phone + gun in one gesture.
+show *why* a gun is red. Device-first muster: claim a phone + gun in one gesture. A claim never moves the console off ARMORY
+(2026-09-17): CONTINUE TO KIT is the operator's own tap, however many gamertags they set first.
 
 ### A2 · GAMES — "pick the game", and the GAME DESIGNER — "define a game"
 Tony: picking tonight's game and defining a game are different jobs; BUILD had both and buried the defining

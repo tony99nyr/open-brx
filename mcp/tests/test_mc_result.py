@@ -35,6 +35,9 @@ def mk(n_players=2, mode="tdm", cfg=None, store=True):
     s = Session(FakeCompiler(), net, FakeArmory(demo_armory()), store=st, now_ms=lambda: clock["t"])
     s.set_config({"mode": mode, "time_limit_s": 600, **(cfg or {})})
     ps = [s.add_player(f"OP{i}", gun_id=f"GUN-{chr(65 + i)}") for i in range(n_players)]
+    # Adding a player never moves the phase (2026-09-17): reach KIT the way the operator does, with an
+    # explicit CONTINUE TO KIT, BEFORE `online()` reports `synced` -- see test_mc_block_b.mk for why.
+    s.set_phase("kit")
     return s, net, clock, ps
 
 

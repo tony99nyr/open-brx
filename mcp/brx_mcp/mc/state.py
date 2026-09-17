@@ -1422,7 +1422,7 @@ class Session:
             self.scorer.register_player(pid, p)
         if gun_id:
             self._adopt_node_for_gun(p)
-        self._after_player_change(p, new=True)
+        self._after_player_change(p)
         return p
 
     def patch_player(self, pid: str, **fields) -> Player:
@@ -1683,7 +1683,7 @@ class Session:
         # exists only from START, so that branch could never run -- review 2026-09-12)
         if gun_id:
             self._adopt_node_for_gun(p)
-        self._after_player_change(p, new=True)
+        self._after_player_change(p)
         return p
 
     def _resend(self, p: Player, with_start: bool = False) -> None:
@@ -1738,11 +1738,13 @@ class Session:
         if nid and with_start and self.start_info:
             self.net.push(nid, "start", self._start_body())
 
-    def _after_player_change(self, p: Player, new: bool = False):
+    def _after_player_change(self, p: Player):
+        """Never moves the phase (bench 2026-09-17): a claim on ARMORY used to jump the whole console
+        to KIT, so a first gamertag moved the screen out from under the operator while a second claim
+        (already on KIT) looked, by contrast, "stuck". Adding or editing a player is a roster edit, not
+        a navigation event: the operator's own way to KIT is `POST /api/phase` (CONTINUE TO KIT)."""
         self._resend(p, with_start=True)
         self._validate()
-        if self.phase in ("muster", "build") and new:
-            self.phase = "kit"
         self._changed()
 
     def team(self, team_id: str | None) -> Team | None:

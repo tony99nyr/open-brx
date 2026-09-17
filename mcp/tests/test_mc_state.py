@@ -41,6 +41,22 @@ def test_player_num_assignment_unique_zero_reserved():
     assert s.add_player("NEW")["player_num"] == 1     # lowest free slot reused
 
 
+def test_claiming_a_gun_on_armory_never_moves_the_phase():
+    """Bench 2026-09-17: Tony set the first gamertag on ARMORY and the console jumped to KIT; the
+    second gamertag, set from KIT, correctly stayed put. Adding a player must never move the phase:
+    the operator presses CONTINUE TO KIT (`POST /api/phase`) when they are ready."""
+    s2 = Session(FakeCompiler(), FakeNet(), FakeArmory(demo_armory()))
+    assert s2.phase == "muster"
+    s2.add_player("OP0")
+    assert s2.phase == "muster", "claiming a gun before any config must not advance the phase"
+    s, net, clock, ps = mk(0)
+    assert s.phase == "build"
+    s.add_player("OP0", gun_id="GUN-A")
+    assert s.phase == "build", "the FIRST claim on ARMORY must not advance the phase"
+    s.add_player("OP1", gun_id="GUN-B")
+    assert s.phase == "build", "a SECOND claim must not advance the phase either"
+
+
 def test_readiness_no_node_is_waiting_and_headset_unknown_is_amber_pre_push():
     """A phone that has not connected yet BLOCKS the start but is not a FAULT.
 
