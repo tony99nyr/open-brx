@@ -18,7 +18,7 @@ Results are in `experiment-log/2026-09.md` (2026-09-17 entry); open work is F225
 |---|---|---|
 | 1 Hit check | Done | Pass. A victim accepts 999 HP |
 | 2 Mid-life `$WEAP` | Done | Pass with guards (S42). A write mid-reload is not measured |
-| 3 `t41` range | Open | Use damage 21 on the stock slot (below) |
+| 3 `t41` range | Done | **NULL: t41 does nothing in outdoor mode** (27/27 at t41=5 vs 55/57 at 75, 3 m to 200 ft). The live control is **t2 `gunRangeOutdoor`** (F231). Closes F170; Q15 lever 1 answered |
 | 4 Charge Rifle | Done | 10 rounds per charge, lockout at heat 103 for 4.8 s, fn 38 halves damage (F225), under-filled cell locks (F226), `t37` = tap damage |
 | 4c Energy Rifle heat | Done | `t38` = 150 alone turns overheat on: locks at heat 99 after about 30 shots, no passive cooling once locked: each lever pull vents about 35 heat (F229). 4d: `t38` = 75 |
 | 5 Headset multiplier at t7 = 0 | Done | Pass. Control at t7 50 landed 18 (x2); t7 0 landed 9 (x1) |
