@@ -223,9 +223,10 @@ Bolt Rifle and Melee — their stock numbers already sat in the band.
 - **Burst Rifle** — **2026-09-17: damage 9 → 11** (`wire.dmg`), 13 hits → 11, so the real three-round
   burst separates further from the SMG-class assault weapons on hits-to-kill, not only on cadence
   (75 ms intra-burst + 275 ms gap, unchanged). No longer ships byte-for-byte (`verified: false`).
-- **Force Rifle** — the burst rifle's heavier twin: 10 damage instead of 11 (was 9 before the
-  2026-09-17 burst rifle change), so 12 hits and a faster kill, paid for in half the reserve and a
-  slower five-part reload.
+- **Force Rifle** — hidden since the 2026-09-17 cuts, and its old "heavier twin" identity is gone:
+  the Burst Rifle went to 11 damage that day while the Force Rifle stayed at 10, so it is now the
+  lighter AND slower of the burst pair (12 hits and 1.65 s against 11 hits and 1.42 s), with half the
+  reserve and a slower five-part reload. It is kept for custom games, not retuned.
 - **Bolt Rifle** — stock. Single shot, 9 hits, 22 kills.
 - **SMG** — **2026-09-17: cycle 140 → 95 ms** (`wire.fire_ms`), four kills a magazine, 24 across the
   kit, and a heat value (`t24 = 5`) — **inert as shipped: overheat requires t37/t38, which only the

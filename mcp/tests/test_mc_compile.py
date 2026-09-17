@@ -753,11 +753,29 @@ def test_fire_interval_is_written_at_tok14_and_850_is_never_touched():
 
 
 def test_shipped_roster_satisfies_the_mag_invariant_at_the_default_pool():
-    """Regression guard for the whole roster, not just the two weapons that used to break."""
+    """Regression guard for the whole roster, not just the two weapons that used to break.
+
+    Grades against ROUNDS, not trigger actions: a charge weapon spends `rounds_per_charge` rounds on
+    one charge (10 on the Charge Rifle, bench 2026-09-17), so `hits_to_kill` (which counts the charge
+    and the taps that finish the kill) understates what the magazine has to hold. `compile.py`'s own
+    loadout warning grades the same way (F226/S43); a cell weapon with a costlier charge must break
+    this guard rather than ship unable to kill on one magazine."""
     cat = WeaponCatalog()
     bad = [w["weapon_id"] for w in cat.all()
-           if int(cat._row(w["weapon_id"])["mag"]) < cat.hits_to_kill(w["weapon_id"], 115)]
+           if int(cat._row(w["weapon_id"])["mag"]) < cat.rounds_to_kill(w["weapon_id"], 115)]
     assert not bad, f"weapons that cannot kill on one magazine at the 115 pool: {bad}"
+
+
+def test_the_mag_invariant_guard_grades_rounds_not_trigger_actions():
+    """Break it once: a cell weapon whose charge costs more rounds than the magazine holds must fail.
+
+    Without this, the guard passes on `hits_to_kill` (3 actions) while the weapon needs 12 rounds."""
+    cat = WeaponCatalog()
+    row = dict(cat._row("charge_rifle"))
+    assert cat.rounds_to_kill("charge_rifle", 115) > cat.hits_to_kill("charge_rifle", 115), (
+        "the Charge Rifle must cost more ROUNDS than trigger actions, or this guard proves nothing")
+    assert int(row["mag"]) >= cat.rounds_to_kill("charge_rifle", 115), (
+        "shipped Charge Rifle cell must cover one kill in rounds")
 
 
 def _one_mag_kill_p(shots: int, htk: int, p: float = 0.7) -> float:
