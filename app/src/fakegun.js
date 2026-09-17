@@ -12,11 +12,14 @@ export function installFakeGun({ engine, log, name = 'GUN-A-3D4F' }) {
     const batch = frames.join(' ');
     setTimeout(() => {
       // A36 (adfb1767): a real gun answers the head with a slot-0 $ALCD that carries the magazine and reserve
-      // of the $WEAP,0 frame it just got (split index 17 = t16 maxClip, 18 = t17 reserve, as mcp/brx_mcp/mc/frames.py reads them).
-      // MC compares the two, so a fixed echo here makes every fake gun read GUN ECHO ≠ CONFIG.
+      // of the $WEAP,0 frame it just got (split index 17 = t16 maxClip). F207 (bench 2026-09-16): the reserve a real
+      // gun echoes is t40 (split index 41), half of t17, not t17 itself; mcp/brx_mcp/mc/frames.py reads it the same way,
+      // with t17 // 2 as the fallback. MC compares the two, so a wrong echo makes every fake gun read GUN ECHO ≠ CONFIG.
       if (batch.includes('$PSET')) {
         const w = (frames.find(f => f.startsWith('$WEAP,0,')) || '').split(',');
-        const echo = w.length > 18 && /^\d+$/.test(w[17]) && /^\d+$/.test(w[18]) ? `$ALCD,${w[17]},100,0,${w[18]},0,*` : '$ALCD,32,100,0,9999999,0,*';
+        const num = i => (/^\d+$/.test(w[i] || '') ? +w[i] : null);
+        const res = num(41) != null ? num(41) : (num(18) != null ? Math.floor(num(18) / 2) : null);
+        const echo = num(17) != null && res != null ? `$ALCD,${w[17]},100,0,${res},0,*` : '$ALCD,32,100,0,9999999,0,*';
         feed(echo); feed('$ALCD,24,100,1,12,0,*'); feed('$ALCD,1,100,4,0,0,*');
       }
       // honor the $AMMO the head/spawn writes — the mag is whatever the LOADOUT says, not a hardcoded 32
