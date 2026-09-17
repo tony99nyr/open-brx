@@ -640,10 +640,12 @@ await step('PUSH CONFIG & ARM from the Lobby UI → 2/2 acked', async () => {
   if ((await st()).phase !== 'lobby') { await mc.click('button:has-text("CONTINUE ▸")'); }
   await until(async () => (await st()).phase === 'lobby', 6000, 'server phase lobby');
   await until(async () => (await mc.locator('button:has-text("PUSH CONFIG & ARM")').count()) > 0, 6000, 'lobby rail visible');
-  expect((await mc.locator('text=00:10').count()) > 0, 'quick 10s runway preset missing');
+  // Bench 2026-09-17: the countdown picker appears only once the push is in sync, beside ARM COUNTDOWN.
+  expect((await mc.locator('select[aria-label="countdown length"]').count()) === 0, 'no countdown picker before the push');
   await mc.click('button:has-text("PUSH CONFIG & ARM")');
   await until(async () => { const s = await st(); const a = s.lobby.acks || {}; return Object.values(a).filter(x => x.ok).length === 2; }, 20000, '2 acks');
   await until(async () => (await mc.locator('button:has-text("ARM COUNTDOWN")').count()) > 0, 8000, 'arm button');
+  await until(async () => (await mc.locator('select[aria-label="countdown length"] option', { hasText: '00:10' }).count()) > 0, 8000, 'quick 10s runway preset in the picker once in sync');
   await shot(mc, 'lobby-acked');
 });
 await step('HUDs show ARMED-PENDING then echo OK (head landed)', async () => {

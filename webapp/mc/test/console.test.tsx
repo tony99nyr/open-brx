@@ -86,11 +86,16 @@ describe('the runway outlives a tab switch', () => {
 });
 
 describe('the countdown length picker shows only before arming (F160, bench 2026-09-17)', () => {
-  it('LOBBY shows the ARM COUNTDOWN picker', async () => {
-    const d = await demo();
-    const m = await mountScreen(<Lobby />, { ...d, view: 'lobby' });
-    expect(m.find('select[aria-label="countdown length"]').length).toBe(1);
-    m.unmount();
+  it('LOBBY shows the countdown picker only once every gun has acked the push', async () => {
+    // Bench 2026-09-17 (Tony): during the PUSH CONFIG step the picker was noise. It appears when
+    // ARM COUNTDOWN is the next action.
+    const api = new MockBackend();
+    const before = await api.getState();
+    const m1 = await mount(<StoreCtx.Provider value={makeStore({ state: { ...before, lobby: { ...before.lobby, pushed: false, acks: {}, all_acked: false } }, view: 'lobby' }, { api })}><Lobby /></StoreCtx.Provider>);
+    expect(m1.find('select[aria-label="countdown length"]').length, 'no picker before the push').toBe(0);
+    m1.unmount();
+    // The positive case (pushed, every gun acked, ARM COUNTDOWN enabled, picker shown) runs in a real
+    // browser in app/tools/e2e.mjs, which picks 01:00 from this select right after the two acks land.
   });
 
   it('ARMED renders no countdown picker — only the read-only value the server armed', async () => {

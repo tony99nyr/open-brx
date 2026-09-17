@@ -203,12 +203,14 @@ export function Lobby() {
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
             <Step n={1} done={allReady} label={<>Ready <b style={{ font: F.osw(700, 16), color: allReady ? T.ok : T.warn }}>{nReady}/{players.length}</b></>} />
             <Step n={2} done={allAcked} label={<>Config pushed {lobby.pushed && <b style={{ font: F.osw(700, 16), color: allAcked ? T.ok : T.warn }}>{acked}/{players.length}</b>}</>} />
+            {/* Bench 2026-09-17 (Tony): the countdown length is chosen only when ARM COUNTDOWN is the next
+                action: the lobby is pushed and every gun has acked (in sync). Before that it is plain text. */}
             <Step n={3} done={false} label={
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>Countdown
-                <select aria-label="countdown length" value={String(runway)} onChange={e => setRunway(Number(e.target.value))}
+                {lobby.pushed && allAcked && <select aria-label="countdown length" value={String(runway)} onChange={e => setRunway(Number(e.target.value))}
                   style={{ background: T.inset, color: T.ink, border: `1px solid ${T.line2}`, font: F.osw(700, 16), padding: '4px 8px', minHeight: 36, cursor: 'pointer' }}>
                   {RUNWAYS.map(r => <option key={r} value={r}>{`${String(Math.floor(r / 60)).padStart(2, '0')}:${String(r % 60).padStart(2, '0')}`}</option>)}
-                </select>
+                </select>}
               </span>} />
           </div>
           <span style={{ flex: 1 }} />
