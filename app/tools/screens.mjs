@@ -112,7 +112,7 @@ const notSheared = (r, sels) => {
 
 for (const view of VIEWS) {
   console.log(`\n== ${view.name} ${view.width}×${view.height} ==`);
-  for (const st of ['idle', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'loadout-arming', 'loadout-info', 'kitted-perk', 'kitted-full', 'loadout-perk', 'tryout', 'lobby', 'lobby-kit-locked', 'kit-refused', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'down', 'redeploy', 'result', 'over',
+  for (const st of ['idle', 'connected', 'mc-rejected', 'setup', 'briefing', 'kitted', 'kitted-ready', 'kitted-headset-off', 'connected-headset-off', 'loadout-primary', 'loadout-secondary', 'loadout-picked', 'loadout-arming', 'loadout-info', 'kitted-perk', 'kitted-full', 'loadout-perk', 'tryout', 'lobby', 'lobby-kit-locked', 'kit-refused', 'armed', 'live', 'live-nogun', 'resync', 'live-kill', 'live-reload', 'down', 'redeploy', 'result', 'over',
     'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
     'down-at-cap-offline', 'armed-with-mc-verify']) {
     await step(`${view.name} ${st}: invariants`, async () => { const pg = await open(view, st); const bad = await invariants(pg); await pg.close(); must(bad.length === 0, bad.join(' ; ')); });
@@ -201,6 +201,32 @@ for (const view of VIEWS) {
     must(before === '', 'stats shown at zero: "' + before + '"'); must(/^K2$/.test(after), 'after a score push: "' + after + '"');
   });
   await step(`${view.name} #16 gun-link-lost pill and NO GUN label`, async () => { const pg = await open(view, 'live-nogun'); const t = await text(pg); const bad = await invariants(pg); await pg.close(); must(t.includes('NO GUN') && t.includes('GUN LINK LOST'), 'text'); must(bad.length === 0, bad.join(';')); });
+  // Bench 2026-09-17: a headset that is off makes the gun drop the link every few seconds. One steady line
+  // and a RECONNECT NOW button, never the GUN LINK LOST pill blinking with each cycle.
+  await step(`${view.name} flap-1 headset off: one steady line, RECONNECT NOW, and the tap answers`, async () => {
+    const pg = await open(view, 'kitted-headset-off');
+    const read = () => pg.evaluate(() => { const ps = Array.from(document.querySelectorAll('.chipbar .pill')); const b = document.querySelector('.chipbar [data-act="onReconnectNow"]'); const br = b && b.getBoundingClientRect();
+      const pl = document.querySelector('.lobby .plates'); return { pills: ps.map(p => p.textContent.trim()), btn: br ? { h: br.height, hit: Math.max(br.height, parseFloat(getComputedStyle(b, '::after').height) || 0), w: br.width, bottom: br.bottom, vis: getComputedStyle(b).visibility, op: getComputedStyle(document.querySelector('.chipbar')).opacity } : null, platesTop: pl ? pl.getBoundingClientRect().top : null }; });
+    const r = await read();
+    must(r.pills.includes('HEADSET OFF? TURN THE HEADSET ON.') && r.pills.includes('RECONNECT NOW'), 'line or button missing: ' + JSON.stringify(r.pills));
+    must(!r.pills.some(t => /GUN LINK LOST/.test(t)), 'the link-lost pill shows beside the headset line: ' + JSON.stringify(r.pills));
+    must(r.btn && r.btn.hit >= 36 && r.btn.w >= 80, 'RECONNECT NOW tap target too small: ' + JSON.stringify(r.btn));
+    must(r.platesTop == null || r.btn.bottom <= r.platesTop + 1, 'the button covers the plates: ' + JSON.stringify(r));
+    const bad = await invariants(pg); must(bad.length === 0, bad.join(';'));
+    await pg.evaluate(() => window.brxDemo.relinkGun()); await pg.waitForTimeout(400);   // the gun takes the link again for a second
+    const up = await read(); must(up.pills.includes('HEADSET OFF? TURN THE HEADSET ON.'), 'the line blinks off on a momentary link: ' + JSON.stringify(up.pills));
+    await pg.evaluate(() => window.brxDemo.dropGun()); await pg.waitForTimeout(300);
+    await pg.screenshot({ path: `${OUT}/${view.name}-headset-off.png` });
+    await pg.click('.chipbar [data-act="onReconnectNow"]'); await pg.waitForTimeout(400);
+    const after = await read(); await pg.close();
+    must(!after.pills.includes('HEADSET OFF? TURN THE HEADSET ON.'), 'RECONNECT NOW left the line up: ' + JSON.stringify(after.pills));
+    must(after.pills.some(t => /GUN LINK LOST/.test(t)), 'after the tap the plain link state is back: ' + JSON.stringify(after.pills));
+  });
+  await step(`${view.name} flap-2 headset off before MC binds: the line and the button show on the CONNECTED screen`, async () => {
+    const pg = await open(view, 'connected-headset-off'); const pills = await pg.evaluate(() => Array.from(document.querySelectorAll('.chipbar .pill')).map(p => p.textContent.trim()));
+    await pg.screenshot({ path: `${OUT}/${view.name}-headset-off-connected.png` }); await pg.close();
+    must(pills.includes('HEADSET OFF? TURN THE HEADSET ON.') && pills.includes('RECONNECT NOW') && !pills.some(t => /GUN LINK LOST/.test(t)), JSON.stringify(pills));
+  });
   await step(`${view.name} #32 live off MC range: amber dot, no pill; tapping MC shows the detail`, async () => {
     const pg = await open(view, 'live-mclost'); const read = () => pg.evaluate(() => ({ dot: document.querySelector('#mcdot').className, pills: Array.from(document.querySelectorAll('.chipbar .pill')).map(p => p.textContent.trim()) }));
     let r = await read(); must(/\bws\b/.test(r.dot), 'MC dot not amber: ' + r.dot); must(!r.pills.some(t => /MISSION CONTROL/.test(t)), 'pill shown unasked: ' + r.pills);

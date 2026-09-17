@@ -536,6 +536,9 @@ class Preflight(TypedDict, total=False):
     foreground: bool
     gun_linked: bool
     headset_ok: bool
+    # Bench 2026-09-17: true while the gun keeps dropping the link seconds after each connect (2+ quick
+    # drops in a row, BrxLink.flapping), which is what a headset that is off looks like. Optional.
+    gun_flapping: NotRequired[bool]
 
 
 class NodeView(TypedDict):
@@ -1024,6 +1027,9 @@ class ReadinessRow(TypedDict):
     battery_age_ms: int | None
     last_seen_age_ms: int | None    # ms since this node's last packet; None when no node is bound
     gun_linked: bool | None         # `status.preflight.gun_linked` as last reported
+    # `status.preflight.gun_flapping` (bench 2026-09-17). The card shows one steady HEADSET OFF line while
+    # it is true. An older server omits it, so a reader treats a missing key as false.
+    gun_flapping: NotRequired[bool]
     pool_stale: Literal["silent", "no_fire"] | None   # F208: `status.pool_stale`; None = not stale or not reported
     pool_stale_ms: int | None                        # F208: `status.pool_stale_ms`; None = not reported
     fw: str | None

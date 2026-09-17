@@ -524,6 +524,9 @@ export interface Preflight {
   foreground?: boolean;
   gun_linked?: boolean;
   headset_ok?: boolean;
+  /** Bench 2026-09-17: true while the gun keeps dropping the link seconds after each connect (2+ quick
+   *  drops in a row, BrxLink.flapping), which is what a headset that is off looks like. Optional. */
+  gun_flapping?: boolean;
 }
 
 /** One player or utility node in `State.snapshot()`.
@@ -1037,6 +1040,9 @@ export interface ReadinessRow {
   last_seen_age_ms: number | null;
   /** `status.preflight.gun_linked` as last reported */
   gun_linked: boolean | null;
+  /** `status.preflight.gun_flapping` (bench 2026-09-17). The card shows one steady HEADSET OFF line while
+   *  it is true. An older server omits it, so a reader treats a missing key as false. */
+  gun_flapping?: boolean;
   /** F208: `status.pool_stale`; None = not stale or not reported */
   pool_stale: 'silent' | 'no_fire' | null;
   /** F208: `status.pool_stale_ms`; None = not reported */

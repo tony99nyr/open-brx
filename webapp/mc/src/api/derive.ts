@@ -106,6 +106,9 @@ export function endDeliveryLine(ed: EndDeliveryView | null | undefined): { ok: b
   return { ok: false, text: `${head} — TOLD ${tries} TIMES, STILL NOTHING. THAT TAGGER MAY STILL BE IN THE MATCH: END IT ON THE GUN` };
 }
 
+/** The readiness amber `state.py readiness()` writes while the phone reports `preflight.gun_flapping`
+ *  (`GUN_FLAPPING_LINE` there). The Armory card shows it in the GUN row, so it drops the list copy. */
+export const GUN_FLAPPING_LINE = 'HEADSET OFF (GUN KEEPS DROPPING THE LINK)';
 export const PUSH_CURES = ['ACKED AN OLDER CONFIG', 'GUN ECHO ≠ CONFIG', 'GUN POOL ≠ CONFIG'] as const;
 
 /** The stale ack alone — the one blocker the rail's own sentence already accounts for by name. */

@@ -6,6 +6,7 @@ import type {
 } from '../api/types';
 import { STATION_KINDS, STATION_SOURCE_IDS } from '../api/types';
 import { withPolicy } from '../screens/gameSummary';
+import { GUN_FLAPPING_LINE } from '../api/derive';
 import { GUNS, LIVE, MODES, PERKS, PLAYERS, READY, RECAP, TEAMS, WEAPONS } from './data';
 import { PRESETS, apply as applyPolicy, conflict, defaultPolicy, pool as poolOf, presetOf, reject } from './policy';
 
@@ -226,6 +227,8 @@ export class MockBackend implements Api {
   /** `?mock&laststale=1` — one node goes dark with a known internet-tunnel history, so the console can
    *  show "NOT REACHED FOR Ns" (and "TUNNEL DOWN" once the tunnel is also off) without a real dropped
    *  socket to arrange. */
+  // Bench 2026-09-17: `?mock&flap=1` shows GUN-C with its headset off, so its phone reports `gun_flapping`.
+  private demoFlap = typeof location !== 'undefined' && new URLSearchParams(location.search).get('flap') === '1';
   private demoLastStale = typeof location !== 'undefined' && new URLSearchParams(location.search).get('laststale') === '1';
   /** `?mock&nossid=1` — MC could not read the phone's Wi-Fi network name (any platform without a
    *  detector), so the REACH block must print "LAN · ip:port", never a mode word standing in for one. */
@@ -443,9 +446,11 @@ export class MockBackend implements Api {
       // recognise each. GUN-F's link is still counting up (it is already an amber row for its unread
       // battery, so the extra advisory perturbs no other card's status); every other linked phone has
       // held its link past the 10 s a headless gun cannot survive. After the push the echo takes over.
+      const flapping = !red && this.demoFlap && sticker === 'GUN-C';
+      if (flapping) ambers.push(GUN_FLAPPING_LINE);   // one steady amber, as `state.py readiness()` writes it
       const confirming = !red && !this.pushed && sticker === 'GUN-F';
       if (confirming) ambers.push('HEADSET · CONFIRMING (LINK 4 s)');
-      const proof = red || confirming ? null : this.pushed ? 'echo' as const : 'link' as const;
+      const proof = red || confirming || flapping ? null : this.pushed ? 'echo' as const : 'link' as const;
       // F155 pass 1 (2026-09-12): `?mock&laststale=1` puts GUN-F through a node that WAS bound (it
       // reported over the internet path earlier this session — `lastReach` seeded in the constructor)
       // and has since gone dark, as distinct from a gun that was NEVER powered at all. `present` (and
@@ -480,6 +485,7 @@ export class MockBackend implements Api {
         battery_pct: waiting ? null : batt ?? null, battery_age_ms: waiting || batt == null ? null : 4000,
         last_seen_age_ms: waiting ? null : red ? (droppedBackhaul ? 130_000 : null) : link * 1000,
         gun_linked: waiting || red ? null : true,
+        gun_flapping: flapping,
         pool_stale: null, pool_stale_ms: null,
         fw: 'v4.32', phone_batt: 80, ssid_ok: true, mc_reachable: !red && !waiting, synced: !red && !waiting,
         screen_on: true, foreground: true,

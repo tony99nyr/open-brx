@@ -239,6 +239,8 @@ KIT_LOCKED = "THE MATCH HAS STARTED — YOUR KIT IS LOCKED UNTIL THE NEXT ONE"
 # else. The pool fault is the third, and it is deliberately not a START gate: it can only be earned
 # in LIVE, by which time this game's whistle has already gone.
 _STALE_ACK_FAULT = "ACKED AN OLDER CONFIG"
+# Bench 2026-09-17: the readiness amber while the phone reports `preflight.gun_flapping` (headset off).
+GUN_FLAPPING_LINE = "HEADSET OFF (GUN KEEPS DROPPING THE LINK)"
 _ECHO_FAULT = "GUN ECHO ≠ CONFIG"
 _POOL_FAULT = "GUN POOL ≠ CONFIG"
 PUSH_CURES = (_STALE_ACK_FAULT, _ECHO_FAULT, _POOL_FAULT)
@@ -4072,7 +4074,14 @@ class Session:
                         blockers.append(f"{lead}NOT REACHED FOR {secs} s — BLOCKS START")
                     else:
                         blockers.append("WRONG WI-FI / MC UNREACHABLE — BLOCKS START")
-                if pf.get("gun_linked") is False:
+                if pf.get("gun_flapping") is True:
+                    # Bench 2026-09-17: a gun whose headset is off takes the link and drops it within
+                    # seconds, again and again. The row used to swap GUN LINK LOST (red) for HEADSET
+                    # CONFIRMING (amber) with every cycle. The phone counts the quick drops and says so;
+                    # the board shows one steady amber line instead. Amber, not a new red: once the lobby
+                    # is pushed, the missing config echo is the red that blocks the start.
+                    ambers.append(GUN_FLAPPING_LINE)
+                elif pf.get("gun_linked") is False:
                     blockers.append("GUN LINK LOST — BLOCKS START")
                 if nv.get("battery") is None:
                     ambers.append("BATTERY UNREAD — DOES NOT BLOCK")
@@ -4107,7 +4116,7 @@ class Session:
                     headset, headset_proof = "proven", "link"
                 else:
                     headset, headset_proof = "unknown", None
-                    if since is not None:
+                    if since is not None and pf.get("gun_flapping") is not True:
                         ambers.append(f"HEADSET · CONFIRMING (LINK {(now - since) // 1000} s)")
             # A36 — THE THREE PROOFS THAT THE GUN IS RUNNING THE CONFIG WE PUSHED. Kept apart from
             # the headset chain above: that chain answers "did the gun answer AT ALL", these answer
@@ -4145,6 +4154,7 @@ class Session:
                 "battery_pct": nv.get("battery"), "battery_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,
                 "last_seen_age_ms": (now - nv.get("last_seen_ms", now)) if nid else None,   # the UI showed "0s AGO" reading a field that didn't exist (2026-08-26)
                 "gun_linked": pf.get("gun_linked"),
+                "gun_flapping": pf.get("gun_flapping") is True,   # the Armory card shows one steady HEADSET OFF
                 # F208: passed through, never judged here. Stale-link cards hide it (the link age says more).
                 "pool_stale": nv.get("pool_stale") if nid else None,
                 "pool_stale_ms": nv.get("pool_stale_ms") if nid else None,
