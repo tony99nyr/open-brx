@@ -10,6 +10,7 @@ from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage import stage as S           # the hill parity tests read its constants by name
 from brx_mcp.stage.stage import GunStage, ir_words
 from brx_mcp.mc import presentation as P
+from brx_mcp.mc.compile import Compiler
 from brx_mcp import poolgauge as PG
 
 
@@ -2017,4 +2018,32 @@ def test_tryout_frame_slot_mirrors_the_engine():
     assert fn(None, ["$TID,1,*", "$AMMO,1,30,*", "$WEAP,0,1,*"]) == 1
     assert fn(None, ["$CLEAR,*", "$TID,1,*"]) == 0
     assert fn(None, []) == 0 and fn(None, None) == 0
+
+
+class _ArmourBumpCompiler(Compiler):
+    """A real Compiler whose bundle's `$PSET` armour is bumped +50, standing in for the body_armor
+    perk's `max_armor_add` compile.py bakes into the head -- the stage's fixed profile player has no
+    perk slot of its own to trigger this for real, so this is the one way to prove the stage reads
+    the pool BACK OFF the compiled head, not off `config.health`."""
+    def compile(self, cfg, player, teams, **kw):
+        bundle = super().compile(cfg, player, teams, **kw)
+        head = list(bundle["head"])
+        for i, f in enumerate(head):
+            if f.startswith("$PSET,"):
+                p = f.split(","); p[4] = str(int(p[4]) + 50); head[i] = ",".join(p)
+        bundle["head"] = head
+        return bundle
+
+
+def test_f213_max_armor_comes_from_the_compiled_pset_not_config_health():
+    """F213: `compile.py` bakes per-player overrides and the body_armor perk's `max_armor_add` into
+    the pushed `$PSET`; `config.health.max_armor` alone never carries either. The stage's `recompile()`
+    must read `max_hp`/`max_armor` back off the compiled head (`mc.frames.head_pool`), like
+    engine.js's `_headPool()`, or a body-armor bench run understates its own armour ceiling."""
+    mgr = FakeConnectionManager([FakeTagger("FA:KE:00:00:00:01", "FAKE-STAGE", team=1)])
+    st = GunStage(mgr, None, compiler=_ArmourBumpCompiler(), sleep=_nosleep, voice_verdict_sink=lambda _r: None)
+    st.set_profile(mode="tdm")
+    assert st.config["health"]["max_armor"] == 70, "the config itself is untouched -- only the head is bumped"
+    assert st.max_armor == 120, "the stage's ceiling follows the compiled $PSET, not config.health"
+    assert st.max_hp == 45, "hp is unaffected by the armour-only bump"
 

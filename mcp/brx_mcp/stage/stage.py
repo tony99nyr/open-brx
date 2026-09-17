@@ -24,6 +24,7 @@ from .. import sounds as _snd
 from .. import voices as _voices
 from ..gameconfig import VOICE_PACKS
 from ..irbridge import encode_word
+from ..mc import frames as _mc_frames
 from ..mc import presentation as _pres
 from ..mc.compile import Compiler
 from ..mc.state import default_config
@@ -745,7 +746,6 @@ class GunStage:
         teams = cfg["teams"]
         team = next((t for t in teams if int(t["tid"]) == int(p["tid"])), teams[0])
         self.profile["tid"] = int(team["tid"])
-        self.max_hp = int(cfg["health"]["max_hp"]); self.max_armor = int(cfg["health"]["max_armor"])
         player: Player = {"player_id": "stage", "player_num": 7, "display": "STAGE", "team_id": team["team_id"],
                           "node_id": None, "gun_id": None, "voice": p["voice"],
                           "voice_slots": dict(p["voice_slots"]), "ready": True,
@@ -761,6 +761,12 @@ class GunStage:
             self.rolled = dict((self.bundle.get("voice") or {}).get("rolled") or {})
         else:
             self.bundle = self.compiler.compile(cfg, player, teams)
+        # F213: mirror of engine.js `_headPool()` -- the pool ceiling the compiled `$PSET` actually
+        # arms (per-player overrides + the body_armor perk's `max_armor_add` baked in by `_to_gc`),
+        # not the bare `cfg["health"]` this stage's fixed player has no overrides to move away from
+        # today. Reading it back keeps the stage honest if a perk/override ever reaches this harness.
+        pool = _mc_frames.head_pool(self.bundle.get("head"))
+        self.max_hp, self.max_armor = pool if pool is not None else (int(cfg["health"]["max_hp"]), int(cfg["health"]["max_armor"]))
         # an UNTOUCHED selector shows the truth: whatever the preset/config actually resolved to, not
         # a stale literal from before GUN_DEFAULT/HEADSET_DEFAULT last changed underneath it.
         eff = (cfg.get("presentation") or {})
