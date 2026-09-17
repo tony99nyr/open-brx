@@ -37,6 +37,9 @@ def mk(n=2, mode="tdm", compiler=None):
     s = Session(compiler or FakeCompiler(), net, FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
     s.set_config({"mode": mode, "time_limit_s": 60})
     ps = [s.add_player(f"OP{i}", gun_id=f"GUN-{chr(65 + i)}") for i in range(n)]
+    # Adding a player never moves the phase (2026-09-17) -- reach KIT the way the operator does,
+    # with an explicit CONTINUE TO KIT, so the loadout picks below land in the open window.
+    s.set_phase("kit")
     return s, net, clock, ps
 
 

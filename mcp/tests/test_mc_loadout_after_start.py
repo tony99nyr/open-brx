@@ -151,15 +151,16 @@ def test_the_lobby_is_where_a_pick_still_re_pushes_and_the_ack_self_heals():
 def test_a_pick_in_the_KIT_phase_applies_without_any_lobby_push():
     """The other end of the window, for contrast, and it is an ACCEPT rather than a refusal.
 
-    Choosing a loadout before the game is pushed is the whole point of the KIT phase, and the phase
-    begins as soon as a node says hello. The refusal in `_on_loadout_request` ("Mission Control is
-    still setting up the game") is reserved for the narrower case of a pick arriving while the
-    session is neither in KIT nor pushed."""
+    Choosing a loadout before the game is pushed is the whole point of the KIT phase. Adding a player
+    never moves the phase (2026-09-17) -- the operator's own way there is CONTINUE TO KIT. The refusal
+    in `_on_loadout_request` ("Mission Control is still setting up the game") is reserved for the
+    narrower case of a pick arriving while the session is neither in KIT nor pushed."""
     clock = {"t": T0}
     net = FakeNet()
     s = Session(FakeCompiler(), net, FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
     s.set_config({"mode": "tdm", "time_limit_s": 60})
     p = s.add_player("OP0", gun_id="GUN-A")
+    s.set_phase("kit")
     tail = demo_armory()[0]["ble"]["tail"]
     net.simulate_hello("node0", f"GUN-A-{tail}")
     assert s.phase == "kit" and not s.lobby_pushed, f"expected an un-pushed KIT session, got {s.phase}"
