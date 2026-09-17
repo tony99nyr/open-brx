@@ -46,6 +46,13 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
 
 ## Environment (important)
 
+- **Package manager: `pnpm` at the repo root** (`packageManager: pnpm@9.15.0`) — `pnpm mc`, `pnpm run test:all`.
+  ⚠️ **`app/` and `site/` are the exception: they are npm-locked** (each has its own `package-lock.json`, and
+  `build`/`build:ci` run `npm ci` there, which is what Cloudflare executes). So: pnpm for anything at the root,
+  `npm` inside `app/` and `site/`. Do not `pnpm install` in those two — it would strand the lockfile CI depends on.
+  If `app/` ever fails with *"This is not the tsc command you are looking for"*, its `node_modules` is incomplete
+  (`typescript` is a declared devDependency): `cd app && npm install`. Note npm versions shuffle `peer` markers in
+  `package-lock.json` on install — that churn is noise, do not commit it.
 - WSL Python dev venv: `.venv/` (`.venv/bin/python`; has websockets/starlette/uvicorn/zeroconf/pytest;
   system python3 has no pip — bootstrap via get-pip if recreating). `cd mcp && python3 run_tests.py`
   must stay green under system python (tests needing extras skip cleanly).
