@@ -49,6 +49,11 @@ const AMMO_PIP_MAX = 30;
  *  same way the catalogue names them, since there is no formal class flag for it yet: an "energy" or
  *  "charge" token in the weapon id (energy_rifle, charge_rifle, energy_launcher). */
 const isEnergyWeapon = id => /energy|charge/i.test(String(id || ''));
+/** Bench 2026-09-17 (brx-weapons): a full charge on the charge rifle spends 10 of its 40-charge cell
+ *  (demo-catalog.js `charge_rifle`), so a cell under 10 fires nothing even though it reads as "ammo left".
+ *  There is no catalogue field for this cost yet -- brx-weapons is adding one. Replace this constant with
+ *  that field once it lands; until then it is named and commented so the swap is a one-line change. */
+const CHARGE_RIFLE_FULL_CHARGE_COST = 10;
 /** The digit beside the gauge: a round count for a bullet weapon, a percentage of the magazine for an
  *  energy weapon (there is no "round" to count — see isEnergyWeapon just above). */
 const magText = st => isEnergyWeapon(st.weaponId)
@@ -300,6 +305,7 @@ export class Hud {
     const sig = [st.phase, st.alive, !!st.killedBy, st.night, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
       st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.reserve === 0, (st.mag || 0) > AMMO_PIP_MAX, st.battery != null && st.battery <= 15,
       st.overheating, st.heatEverSeen,   // bench 2026-09-17: OVERHEAT prompt/overlay and the heat bar's existence are structural, not patched in place
+      st.weaponId === 'charge_rifle' && st.ammo > 0 && st.ammo < CHARGE_RIFLE_FULL_CHARGE_COST, st.reserve > 0,   // NOT ENOUGH ENERGY / RECHARGE prompt is structural too
       st.kills > 0, st.deaths > 0, st.assists > 0, accShown(st) != null, st.reserve != null, this.scan.length, st.bleUp, st.ended, this.bluetoothOn,
       this.discovered && this.discovered.url,   // Polish-loop pass 1: the discovered-MC row on the pre-join screen (`_joinConfirm` only touches the diag panel, patched directly, not here)
       st.rejoin, !!st.pendingTeardown, this.sync && this.sync.bound, this.sync && this.sync.pending,
@@ -952,6 +958,9 @@ export class Hud {
     // would need that count added to the node's state before it could say so honestly.
     const outOfAmmo = !!(st.alive && st.ammo === 0 && st.reserve === 0);
     const energy = isEnergyWeapon(st.weaponId);
+    // Bench 2026-09-17: charge_rifle only (not a tap-only or bullet weapon, and not the other energy
+    // weapons, which have no catalogue cost yet either) -- a live cell too small for one full charge.
+    const notEnoughEnergy = !!(st.alive && st.weaponId === 'charge_rifle' && st.ammo > 0 && st.ammo < CHARGE_RIFLE_FULL_CHARGE_COST);
     const overheating = !!(st.alive && st.overheating);
     const [nm] = splitGun(st.gun);
     const stat = (k, v) => `<span>${k}<b class="${v == null ? 'mut' : ''}" id="st-${k}">${v == null ? '—' : v}</b></span>`;
@@ -971,6 +980,7 @@ export class Hud {
         <div class="bar armor"><i id="shbar" style="width:${Math.round(100 * st.armor / st.maxArmor)}%"></i></div></div>
       <div class="ammo">${outOfAmmo ? `<span class="reload out solid"><span class="unskew">${energy ? 'OUT OF ENERGY' : 'OUT OF AMMO'}</span></span>`
           : overheating ? `<span class="reload hot solid"><span class="unskew">OVERHEAT</span></span>`
+          : notEnoughEnergy ? `<span class="reload out solid"><span class="unskew">NOT ENOUGH ENERGY</span></span>${st.reserve > 0 ? '<span class="reload"><span class="unskew">RECHARGE ▸▸</span></span>' : ''}`
           : lowMag ? `<span class="reload ${st.ammo === 0 ? 'solid' : ''}"><span class="unskew">${energy ? 'RECHARGE ▸▸' : 'RELOAD ▸▸'}</span></span>` : ''}
         <div class="nums"><span class="mag tab ${lowMag ? 'warn' : ''}" id="mag">${magText(st)}</span><span class="res tab" id="res">${this._resText(st)}</span></div>
         <div class="pips" id="pips">${this._pips(st)}</div>
@@ -981,7 +991,7 @@ export class Hud {
   /** Bench 2026-09-17: how old the scores on the overlay are. MC pushes every change to a bound phone, so the
    *  numbers are current while the link is up; off the link they are the last push, and the label gives its age. */
   _boardAge(st) {
-    if (!st.scoreAt) return 'NO SCORES FROM MISSION CONTROL YET';
+    if (!st.scoreAt) return 'NO SCORES YET';
     if (st.wsState === 'bound') return 'LIVE';
     const s = Math.max(0, Math.round((Date.now() - st.scoreAt) / 1000));
     return `AS OF ${s < 60 ? s + ' S' : Math.floor(s / 60) + ' MIN'} AGO`;
@@ -1130,7 +1140,10 @@ export class Hud {
     }
     if (mag > AMMO_PIP_MAX) {
       const pct = Math.max(0, Math.min(100, Math.round(100 * st.ammo / mag)));
-      return `<div class="bar ammo ${warn ? 'warn' : ''}"><i style="width:${pct}%"></i></div>`;
+      // "ammobar" (not "ammo"): the ammo COLUMN also uses `.ammo` (position:absolute;right:36px;bottom:32px),
+      // and this bar sits inside `.pips`, which is `position:relative` -- a shared class name here pulled
+      // the bar out of flow and made it float over the mag digits (bench 2026-09-17).
+      return `<div class="bar ammobar ${warn ? 'warn' : ''}"><i style="width:${pct}%"></i></div>`;
     }
     const lit = Math.max(0, Math.min(mag, Math.round(st.ammo)));
     let s = ''; for (let i = 0; i < mag; i++) s += `<i class="${i < lit ? (warn ? 'warn' : '') : 'spent'}"></i>`;

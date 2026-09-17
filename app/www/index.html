@@ -118,9 +118,9 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .pips > i.spent{opacity:.25}.pips > i.warn{background:var(--warn)}
 /* Bench 2026-09-17: past AMMO_PIP_MAX (hud.js) rounds no longer read as individual bullets, so the
    gauge becomes one continuous bar instead — the exact count is still the digits beside it. */
-.pips .bar.ammo{height:20px;width:180px;transform:skewX(-14deg)}
-.pips .bar.ammo>i{background:var(--num);box-shadow:none}
-.pips .bar.ammo.warn>i{background:var(--warn)}
+.pips .bar.ammobar{height:20px;width:180px;transform:skewX(-14deg)}
+.pips .bar.ammobar>i{background:var(--num);box-shadow:none}
+.pips .bar.ammobar.warn>i{background:var(--warn)}
 /* Bench 2026-09-17: an energy weapon's magazine is a charge, not rounds (isEnergyWeapon in hud.js) — a
    segmented "cell" fill instead of the ammo bar's solid one, so the two gauges never look the same. */
 .pips .bar.energy{height:20px;width:180px;transform:skewX(-14deg);border-color:var(--glow)}
@@ -179,9 +179,9 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 /* The bar's own night look: flat like the HP/armor strips (no skew, no border-box frame), but it keeps its
    own colour coding (glow/num, not health) so it never reads as a vitals bar. Selectors here out-specify
    the day rules (`[data-env="night"]` + 3 classes) so nothing is left to an accidental cascade order. */
-[data-env="night"] .pips .bar.ammo,[data-env="night"] .pips .bar.energy{height:6px;width:140px;transform:none;border:0;padding:0;background:#120505}
-[data-env="night"] .pips .bar.ammo>i,[data-env="night"] .pips .bar.energy>i{background:var(--num);box-shadow:none}
-[data-env="night"] .pips .bar.ammo.warn>i,[data-env="night"] .pips .bar.energy.warn>i{background:var(--warn)}
+[data-env="night"] .pips .bar.ammobar,[data-env="night"] .pips .bar.energy{height:6px;width:140px;transform:none;border:0;padding:0;background:#120505}
+[data-env="night"] .pips .bar.ammobar>i,[data-env="night"] .pips .bar.energy>i{background:var(--num);box-shadow:none}
+[data-env="night"] .pips .bar.ammobar.warn>i,[data-env="night"] .pips .bar.energy.warn>i{background:var(--warn)}
 /* The reserve pills and the heat bar read the same dim palette as everything else at night — no glow bloom. */
 [data-env="night"] .res .cells .cell{background:var(--num);border-color:var(--num);box-shadow:none}
 [data-env="night"] .res .cells .cell.partial{background:linear-gradient(90deg,var(--num) 0 50%,transparent 50% 100%)}
@@ -192,6 +192,9 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
    the dim night palette — no bright flash, and (matching the "light discipline" rule already applied to
    `.swapping .big` above) no pulse either: a pulsing glow would locate the player from a distance. */
 [data-env="night"] .heatvig{box-shadow:inset 0 0 70px -10px var(--num);animation:none}
+/* Bench 2026-09-17: `.reload.hot`/`.reload.out` were still solid bright red with white text at night --
+   the one light-discipline miss in this block. Dark fill, `var(--num)` text, no glow, same as everywhere else here. */
+[data-env="night"] .reload.hot,[data-env="night"] .reload.out{background:#2a0c0c;color:var(--num)}
 /* Bench 2026-09-17: the word sat at top 26%, right across the chip bar (top 100 px), so WEAPONS HOT covered its
    centre. At 63% it sits under the reticle and TAKING FIRE, above the vitals and between them and the ammo column. */
 [data-env="night"] .heatword{color:var(--num);text-shadow:none;font-size:22px;animation:none}
@@ -563,12 +566,12 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .bdpanel{position:absolute;z-index:6;left:50%;top:62px;transform:translateX(-50%);width:420px;max-height:276px;display:flex;flex-direction:column;background:var(--plate2);border:1px solid var(--edge);box-shadow:0 8px 30px rgba(0,0,0,.5)}
 .bdhead{display:flex;align-items:center;gap:10px;padding:6px 6px 6px 10px;border-bottom:1px solid var(--edge)}
 .bdseg{display:flex}
-.bdseg .sg{min-height:38px;padding:0 12px;border:1px solid var(--edge);background:var(--plate);color:var(--mut);font-weight:700;font-size:12px;letter-spacing:.16em;transform:skewX(-8deg)}
+.bdseg .sg{min-height:44px;padding:0 12px;border:1px solid var(--edge);background:var(--plate);color:var(--mut);font-weight:700;font-size:12px;letter-spacing:.16em;transform:skewX(-8deg)}
 .bdseg .sg+.sg{border-left:0}.bdseg .sg .unskew{transform:skewX(8deg)}
 .bdseg .sg.on{background:var(--team);color:var(--team-ink);border-color:var(--team)}
-.bdage{flex:1;text-align:right;font-size:11px;letter-spacing:.14em;color:var(--mut);font-weight:700;white-space:nowrap}
+.bdage{flex:1;text-align:right;font-size:11px;letter-spacing:.14em;color:var(--mut);font-weight:700;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .bdage.stale{color:var(--warn)}
-.bdx{flex:0 0 40px;height:40px;font-size:20px;color:var(--num);border:1px solid var(--edge);background:var(--plate)}
+.bdx{flex:0 0 44px;height:44px;font-size:20px;color:var(--num);border:1px solid var(--edge);background:var(--plate)}
 .bdbody{overflow:hidden auto;min-height:0;padding:6px 10px 8px}
 .bdr{display:grid;grid-template-columns:22px minmax(0,1fr) 30px 30px 30px 44px;column-gap:8px;align-items:center;font-size:14px;padding:3px 4px;border-bottom:1px solid rgba(42,78,110,.35)}
 .bdr.rank{grid-template-columns:22px minmax(0,1fr) 60px}
@@ -582,7 +585,14 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .bdteam .tm{align-self:flex-start;padding:2px 11px;font-family:var(--fd);font-weight:700;font-size:15px;letter-spacing:.14em;transform:skewX(-12deg);max-width:100%;overflow:hidden}
 .bdr.tp{grid-template-columns:minmax(0,1fr) auto;font-size:13px}
 .bdcap,.bdnone{font-size:11px;letter-spacing:.14em;color:var(--mut);font-weight:700;padding-top:6px}
-#frame[data-board] #chips{opacity:0}
+/* Bench 2026-09-17: `button.pill{pointer-events:auto}` (above) opts back in REGARDLESS of its ancestor,
+   so hiding #chips with opacity alone still left a hidden RECONNECT/GUN LINK LOST button tappable over
+   the panel's own tab row (`#chips` itself is z-index 4, a SIBLING of `#hud`, so it sits above the whole
+   #hud subtree -- including the panel's own locally-higher z-index -- everywhere the two overlap). The
+   button selector below has to out-specify that opt-in, not just repeat `pointer-events:none` on the
+   ancestor: (2 ids + 1 attr + 1 tag + 1 class) beats `button.pill`'s (1 tag + 1 class). */
+#frame[data-board] #chips{opacity:0;pointer-events:none}
+#frame[data-board] #chips button.pill{pointer-events:none}
 [data-env="night"] .bdscrim{background:rgba(0,0,0,.5)}
 [data-env="night"] .bdpanel{background:#000;box-shadow:none}
 [data-env="night"] .bdr.me{color:var(--num);background:#1a0606;box-shadow:inset 3px 0 0 var(--num)}
