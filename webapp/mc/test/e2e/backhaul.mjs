@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MC = path.resolve(HERE, '../..');   // webapp/mc
-const SHOTS = path.join(HERE, 'shots');
+const SHOTS = path.join(HERE, 'shots', 'backhaul');   // one folder per script: a parallel run must not wipe another script's shots
 const ONLY = process.env.ONLY || '';
 
 let failures = [];

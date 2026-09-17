@@ -28,7 +28,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MC = path.resolve(HERE, '../..');                 // webapp/mc
 const REPO = path.resolve(MC, '../..');
-const SHOTS = path.join(HERE, 'shots');
+const SHOTS = path.join(HERE, 'shots', 'koth');   // one folder per script: a parallel run must not wipe another script's shots
 const ONLY = process.env.ONLY || '';
 // Defaults unchanged: :8765 for MC (what `vite.config.ts` proxies to out of the box) and a free port
 // for vite and for the node socket. `0` here means "pick a free one", exactly as before.

@@ -734,6 +734,13 @@ it('12j · the live HUD demo on the landing is the real app: pick a weapon, read
   // before the tap: a poster and a button, no iframe, so the page stays light
   expect(await page.locator('.huddemo iframe').count()).toBe(0);
   await box.locator('.huddemo-go').click();
+  // The box fades in with a 0.8 s reveal transition, so under load the click above retries on
+  // "not stable", and each Playwright retry scrolls with a different alignment (block: end, then
+  // centre, then start). A retry can park the box at the bottom of the viewport. A click inside the
+  // iframe does not scroll the parent page, so REVIEW KIT (the bottom row of the HUD) then stays
+  // below the fold. Centre the whole demo and require all of it on screen before driving it.
+  await box.evaluate(el => el.scrollIntoView({ block: 'center' }));
+  await expect(box).toBeInViewport({ ratio: 1 });
   const hud = page.frameLocator('.huddemo iframe');
   // the real HUD boots into KITTED: the primary plate is there to tap
   const primary = hud.locator('[data-act="onOpenLoadout"][data-arg="primary"]');

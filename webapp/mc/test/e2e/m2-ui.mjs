@@ -78,7 +78,7 @@ async function startMC() {
   return { base, stop: () => killGroup(proc) };
 }
 async function startVite() {
-  const proc = spawn('npx', ['vite', '--config', path.join(HERE, 'vite.m2.config.mjs'), '--port', String(VITE_PORT), '--strictPort'],
+  const proc = spawn(process.execPath, [path.join(MC_DIR, 'node_modules/vite/bin/vite.js'), '--config', path.join(HERE, 'vite.m2.config.mjs'), '--port', String(VITE_PORT), '--strictPort'],
     { cwd: MC_DIR, stdio: ['ignore', 'pipe', 'pipe'], detached: true, env: { ...process.env, MC_PROXY_PORT: String(MC_PORT) } });
   let log = ''; proc.stdout.on('data', d => { log += d; }); proc.stderr.on('data', d => { log += d; });
   const base = `http://localhost:${VITE_PORT}`;

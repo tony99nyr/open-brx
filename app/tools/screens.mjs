@@ -2,18 +2,53 @@
 // reported bug turned into an assertion about what a PERSON SEES: rects, wraps, overlaps, visible text —
 // never engine state. Runs the `?demo&stage=` states at the design width AND a narrow phone, with
 // classic (desktop) scrollbars ON, because both of those reproduced the report and headless defaults hide them.
-// Run: node tools/screens.mjs      ONLY=<substring> runs matching steps.      SCREENS_PORT=<port> moves the static server
+// Run: node tools/screens.mjs      ONLY=<substring> runs matching steps.      SCREENS_PORT=<port> pins the static server (default: ephemeral)
+//      SCREENS_SHARDS=<n> splits the steps across n child processes (default: half the cores, at most 16, capped by free memory; 1 = serial)
 import { chromium } from 'playwright';
-import http from 'http'; import fs from 'fs'; import path from 'path';
+import http from 'http'; import fs from 'fs'; import path from 'path'; import os from 'os';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url)), ROOT = path.resolve(HERE, '..'), WWW = path.join(ROOT, 'www');
-const OUT = path.join(ROOT, 'shots', 'screens'); fs.rmSync(OUT, { recursive: true, force: true }); fs.mkdirSync(OUT, { recursive: true });
+const OUT = path.join(ROOT, 'shots', 'screens');
 const ONLY = process.env.ONLY;
-const PORT = Number(process.env.SCREENS_PORT || 4192);   // default unchanged; two of these can now run side by side
-const srcNewest = fs.readdirSync(path.join(ROOT, 'src'), { recursive: true }).map(f => path.join(ROOT, 'src', f)).filter(f => { try { return fs.statSync(f).isFile(); } catch { return false; } }).reduce((a, f) => Math.max(a, fs.statSync(f).mtimeMs), 0);
-if (srcNewest > fs.statSync(path.join(WWW, 'app.js')).mtimeMs) { console.error('STALE BUNDLE: run `npm run build` first.'); process.exit(2); }
+// Sharding (2026-09-16). Serial, this suite took ~22 min: ~330 steps, each opening its own page and waiting out the
+// stage timeline (1.6-4.2 s). Every step already runs in its own browser context (`b.newPage()` = a fresh context,
+// so no localStorage or cookie crosses steps), so the steps are independent and a shard is just "every n-th step".
+// The coordinator (no SCREENS_SHARD) checks the bundle, clears OUT once, and runs n children of this file; each child
+// launches its own browser on its own ephemeral port and runs only its share. The wait per step is unchanged.
+const SHARD = process.env.SCREENS_SHARD ? process.env.SCREENS_SHARD.split('/').map(Number) : null;   // [index, count]
+// Default shard count: half the cores, at most 16, and never more than a quarter of the free memory (a shard is its own
+// browser, ~240 MB: 16 shards are ~3.8 GB). SCREENS_SHARDS overrides.
+const availableMb = () => { try { return Number(/MemAvailable:\s+(\d+)/.exec(fs.readFileSync('/proc/meminfo', 'utf8'))[1]) / 1024; } catch { return os.totalmem() / 1048576 / 2; } };
+const SHARDS = SHARD ? SHARD[1] : Math.max(1, Number(process.env.SCREENS_SHARDS || Math.min(16, Math.floor(os.cpus().length / 2), Math.floor(availableMb() * 0.25 / 240))));
+if (!SHARD) {
+  const srcNewest = fs.readdirSync(path.join(ROOT, 'src'), { recursive: true }).map(f => path.join(ROOT, 'src', f)).filter(f => { try { return fs.statSync(f).isFile(); } catch { return false; } }).reduce((a, f) => Math.max(a, fs.statSync(f).mtimeMs), 0);
+  if (srcNewest > fs.statSync(path.join(WWW, 'app.js')).mtimeMs) { console.error('STALE BUNDLE: run `npm run build` first.'); process.exit(2); }
+  fs.rmSync(OUT, { recursive: true, force: true }); fs.mkdirSync(OUT, { recursive: true });
+}
+if (!SHARD && SHARDS > 1) {
+  const t0 = Date.now();
+  const runs = Array.from({ length: SHARDS }, (_, i) => new Promise(resolve => {
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url)], { env: { ...process.env, SCREENS_SHARD: `${i}/${SHARDS}`, SCREENS_PORT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    let out = ''; child.stdout.on('data', d => { out += d; }); child.stderr.on('data', d => { out += d; });
+    child.on('close', code => resolve({ i, code, out }));
+  }));
+  let pass = 0, fail = 0; const errs = [];
+  for (const { i, code, out } of await Promise.all(runs)) {
+    console.log(`\n#### shard ${i + 1}/${SHARDS} (exit ${code})`); console.log(out.trimEnd());
+    const m = out.match(/^(\d+) passed, (\d+) failed(?:: (.*))?$/m);
+    // a shard that crashed before its summary line is a failure, never a silent zero
+    if (!m) { fail++; errs.push(`shard ${i + 1} crashed (exit ${code})`); continue; }
+    pass += +m[1]; fail += +m[2]; if (m[3]) errs.push(m[3]);
+    if (code !== 0 && +m[2] === 0) { fail++; errs.push(`shard ${i + 1} exited ${code}`); }
+  }
+  console.log(`\n${pass} passed, ${fail} failed${fail ? ': ' + errs.join(', ') : ''}  (${SHARDS} shards, ${Math.round((Date.now() - t0) / 1000)}s)`);
+  process.exit(fail ? 1 : 0);
+}
 const srv = http.createServer((req, res) => { const rel = req.url.split('?')[0] === '/' ? 'index.html' : req.url.split('?')[0];
-  try { res.setHeader('content-type', rel.endsWith('.js') ? 'text/javascript' : rel.endsWith('.html') ? 'text/html' : 'application/octet-stream'); res.end(fs.readFileSync(path.join(WWW, rel))); } catch { res.statusCode = 404; res.end(); } }).listen(PORT);
+  try { res.setHeader('content-type', rel.endsWith('.js') ? 'text/javascript' : rel.endsWith('.html') ? 'text/html' : 'application/octet-stream'); res.end(fs.readFileSync(path.join(WWW, rel))); } catch { res.statusCode = 404; res.end(); } });
+await new Promise(r => srv.listen(Number(process.env.SCREENS_PORT || 0), '127.0.0.1', r));
+const PORT = srv.address().port;
 let pass = 0, fail = 0; const errs = [];
 const must = (c, m) => { if (!c) throw new Error(m); };
 const b = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });   // scrollbars ON: what a desktop reviewer sees
@@ -21,7 +56,8 @@ const VIEWS = [{ name: 'pixel', width: 891, height: 411 }, { name: 'se', width: 
 const LONG = new Set(['live-reload-overrun', 'resync-prompt', 'down-find-presence', 'down-wait', 'down-find', 'down-approach', 'down-at', 'live-switch-perk', 'live-alert', 'live-medals', 'live-switch', 'live', 'live-kill', 'live-reload', 'down', 'redeploy', 'resync', 'live-nogun', 'live-mclost', 'result', 'over', 'panic', 'live-hit', 'live-lowhp', 'live-lowammo', 'live-fired', 'aborted',
   'result-pending', 'result-unreached', 'result-win-team', 'result-players', 'result-lose-ffa', 'result-draw', 'result-undecided', 'history',
   'down-at-cap-offline', 'armed-with-mc-verify', 'loadout-picked']);   // A26: a pick now waits out the node's 400 ms debounce AND the host round-trip before the row reads ✓
-const step = async (name, fn) => { if (ONLY && !name.includes(ONLY)) return; try { await fn(); console.log(`  ok   ${name}`); pass++; } catch (e) { console.log(`  FAIL ${name}: ${String(e.message || e).slice(0, 300)}`); fail++; errs.push(name); } };
+let stepIdx = 0;   // counts every step this run selects; identical control flow in every shard, so `% count` partitions them
+const step = async (name, fn) => { if (ONLY && !name.includes(ONLY)) return; if (SHARD && stepIdx++ % SHARD[1] !== SHARD[0]) return; try { await fn(); console.log(`  ok   ${name}`); pass++; } catch (e) { console.log(`  FAIL ${name}: ${String(e.message || e).slice(0, 300)}`); fail++; errs.push(name); } };
 const open = async (view, stage, extra = '', ms) => {
   const pg = await b.newPage({ viewport: { width: view.width, height: view.height } }); const perr = []; pg.on('pageerror', e => perr.push(e.message));
   await pg.goto(`http://127.0.0.1:${PORT}/?demo&stage=${stage}${extra}`); await pg.waitForTimeout(ms || (LONG.has(stage) ? 4200 : 1600));

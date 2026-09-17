@@ -49,6 +49,9 @@ token positions, the app's 2166-id sound list, game modes, grenade); the 2477 so
 - WSL Python dev venv: `.venv/` (`.venv/bin/python`; has websockets/starlette/uvicorn/zeroconf/pytest;
   system python3 has no pip — bootstrap via get-pip if recreating). `cd mcp && python3 run_tests.py`
   must stay green under system python (tests needing extras skip cleanly).
+- **Run every suite at once:** `npm run test:all` (about 30 s) from the repo root, and `npm run test:all -- --ui` to add
+  the browser gates (about 2 min, was about 30 min run one by one; at most 8 GB of memory, `MEM_BUDGET_MB=` changes it). `-- mcp app` runs only the jobs whose names match.
+  The script prints one table and the log path of each job (`scripts/test-all.mjs`).
 - **The four test suites** (the per-suite detail and flags are `CONTRIBUTING.md` → *Running things*): `cd mcp &&
   python3 run_tests.py` (Python server + Mission Control; includes the pyright static-type gate in
   `standard` mode, config in `mcp/pyproject.toml`, including `brx_mcp/stage`) · `cd webapp/mc && npm test` (+ `npm run e2e`

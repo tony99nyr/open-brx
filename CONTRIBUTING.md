@@ -29,11 +29,18 @@ it can't be hit, it needs to be justified explicitly in the PR, not just tested.
 
 The repo has several independently-testable pieces. Run the one you touched before opening a PR.
 
+**Everything at once:** `npm run test:all` from the repo root runs the unit gates of all four pieces in parallel
+(about 30 s). `npm run test:all -- --ui` adds the browser gates: `app` screens, logsync and e2e, and the seven
+`webapp/mc` e2e scripts (about 2 min on a 32-core box, was about 30 min run one by one). Jobs start inside a memory budget: half the free memory, at most 8 GB (`MEM_BUDGET_MB=` overrides), and a job that runs past 10 min is killed (`JOB_TIMEOUT_S=`). `npm run test:all -- site mcp` runs only the jobs whose
+names match, and `-- --list` prints the names. It builds `app/www` once first, gives every e2e script its own free
+ports, and writes one log per job (`scripts/test-all.mjs` states the parallel-safety rules it depends on).
+
 **Python server + Mission Control (`mcp/`)** — zero external test runner, works under plain system
 Python:
 ```bash
 cd mcp && python3 run_tests.py            # everything
 cd mcp && python3 run_tests.py modes cs   # only files matching these substrings
+cd mcp && python3 run_tests.py -j 1       # one file at a time; --inline runs every file in one process, streamed
 ```
 No hardware needed; tests that require optional extras (websockets etc.) skip cleanly if they're
 missing rather than failing the run. The suite includes a static-type gate: `pip install pyright`
@@ -45,9 +52,9 @@ installed (the bench box's system python), and CI installs pyright for its secon
 ```bash
 cd app && npm test
 ```
-This runs `node --test` over `test/*.test.mjs`. Two of those files spin up their own server for an
-integration test, so run them as separate files rather than as one `node --test test/` sweep if you
-hit a resource clash. See `app/README.md` for build/signing/APK details; that file is the authority on
+This runs `node --test` over `test/*.test.mjs`, several files at once. `test/transport.test.mjs` starts
+its own MC on a free port, and rebuilds `app/www/app.js` if the bundle is stale: build first when another
+suite reads `app/www` at the same time. See `app/README.md` for build/signing/APK details; that file is the authority on
 anything platform-specific.
 
 **Mission Control web UI (`webapp/mc/`)**, Vite/React/TS:
