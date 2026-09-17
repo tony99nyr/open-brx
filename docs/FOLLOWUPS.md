@@ -549,7 +549,7 @@ nine of these eleven were root-caused without touching a gun.
 - **F32 🟢** (was G7) the perks menu on the phone is too small and hard to find. `build` (check `hud-review-2026-09-03.md` first).
 - **Q13 🟡 decision** friendly fire is invisible on the wire (a team-blocked shot emits no `$HIR`). Either run FF on and
   score teamkills as policy, or accept no teamkill feedback. Decide before any mode advertises it. `decision`.
-- **Q15 🔴** sub-indoor IR power (Tony: indoor bounces register hits from everywhere). Lever 1 = `$WEAP` t41
+- **Q15 🔴 → RANGE IS REAL (field 2026-09-17, first positive under control).** Two guns in the garden, the MacBook holding the victim, the shooter carrying two slots that differ only in `$WEAP` t41 (5 vs 75, damage 1 vs 21 so the victim's `$HIR` magnitude names the slot). Tony: "we definitely found a token that sets indoor and outdoor range"; the low slot shows **a steep drop-off in registering hits at about 10 m**, while **small increases in t41 grant range out past 40 m**. So t41 is the range lever the arsenal was missing, and the close-range identities (Shotgun, SMG) can be built on it. Next: the calibration ladder (below) to map t41 to a drop-off distance per value, then a per-weapon range table. Original row: sub-indoor IR power (Tony: indoor bounces register hits from everywhere). Lever 1 = `$WEAP` t41
   `gunRangeIndoor` (75 on all guns, 20 on melee) — **one prior positive, see `weapon-design.md` §5 U2**; lever 2 =
   `$GSET` t3 `gunLaserRegion`. `$IRTX`/`$HFIRE` emit nothing on v4.32. **Run sheet:
   [`bench-super-indoor-2026-09-07.md`](bench-super-indoor-2026-09-07.md)** (MacBook — the rig has never run on
