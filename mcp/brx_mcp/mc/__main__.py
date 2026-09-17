@@ -335,8 +335,8 @@ def build(args):
             {"weapons": [{"weapon_id": "smg"}], "perk": "body_armor"},
             {"weapons": [{"weapon_id": "burst_rifle"}]},
             {"weapons": [{"weapon_id": "sniper_rifle"}], "perk": "extended_mags"},
-            {"weapons": [{"weapon_id": "force_rifle"}, {"weapon_id": "stinger"}]},
-            {"weapons": [{"weapon_id": "bolt_rifle"}], "perk": "easy_reload"},
+            {"weapons": [{"weapon_id": "amr"}, {"weapon_id": "energy_rifle"}]},
+            {"weapons": [{"weapon_id": "suppressor"}], "perk": "easy_reload"},
             {"weapons": [{"weapon_id": "charge_rifle"}]},
             {"weapons": [{"weapon_id": "suppressor"}, {"weapon_id": "deagle"}], "perk": "quick_switch"},   # A14: all three slots
         ]

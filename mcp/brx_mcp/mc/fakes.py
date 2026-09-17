@@ -38,6 +38,12 @@ _WEAPONS = [  # (weapon_id, name, cls, clip, mags, reload_s, dmg, rpm, rng)
 # A10 policy tags for the fake catalog (mirrors weapons.json: heavy = the power guns, sniper = the long guns)
 _HEAVY = {"energy_launcher", "rail_gun", "rocket_launcher", "laser_cannon", "ion_sniper"}
 _SNIPER = {"sniper_rifle", "plasma_sniper", "ion_sniper", "amr"}
+# `weapon_class` (2026-09-17, mirrors weapons.json `class`): ballistic reloads, energy overheats/charges.
+_ENERGY = {"charge_rifle", "energy_rifle", "rail_gun", "laser_cannon", "plasma_sniper", "ion_sniper", "energy_launcher"}
+
+
+def _weapon_class(wid: str) -> str:
+    return "energy" if wid in _ENERGY else "ballistic"
 
 
 def _tags(wid: str, cls: str) -> list[str]:
@@ -54,7 +60,7 @@ def weapon_views() -> list[WeaponView]:
     that, whenever `/api/weapons` fell back to this list the UI reverted to reading raw `dmg` and showed
     exactly the near-empty meters the ranked bars exist to replace (review finding, 2026-08-31)."""
     from .views import weapon_views as rank
-    rows: list[Weapon] = [{"weapon_id": w[0], "name": w[1], "cls": w[2], "weap_frame": "",
+    rows: list[Weapon] = [{"weapon_id": w[0], "name": w[1], "cls": w[2], "weapon_class": _weapon_class(w[0]), "weap_frame": "",
              "stats": {"mag": w[3], "reserve": w[3] * w[4], "reload_ms": int(w[5] * 1000),
                        "dmg": w[6], "rof": w[7], "rng": w[8],
                        "htk": max(1, round(13 * 55 / max(w[6], 1)))},
@@ -75,7 +81,7 @@ class FakeCompiler:
         hp, ar = config["health"]["max_hp"], config["health"]["max_armor"]
         weapons = [w["weapon_id"] for w in player["loadout"]["weapons"]] or ["assault_rifle"]
         head = [f"$VOL,{play_volume(config.get('environment'))},0,*", "$CLEAR,*", "$START,*",
-                f"$GSET,{1 if config['mode'] == 'ffa' else 0},{GSET_T2_SAFE},1,0,1,0,50,1,*",
+                f"$GSET,{1 if config['mode'] == 'ffa' else 0},{GSET_T2_SAFE},1,0,1,0,0,1,*",  # t7 (crit_modifier) 0: the GameConfig default (2026-09-17)
                 f"$PSET,{player['player_num']},0,{hp},{ar},{ar},50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"]
         head += [f"$WEAP,{i},<{w}>,*" for i, w in enumerate(weapons[:2])] + ["$WEAP,4,<melee>,*"]
         # F121/A23: this class is a RUNTIME FALLBACK that can reach a real tagger, so it is spawn-protected
@@ -99,7 +105,7 @@ class FakeCompiler:
         # This class is a RUNTIME FALLBACK -- `mc/__main__.py` selects it whenever the real compiler
         # raises -- so this bundle can reach a real tagger, and without the row it would leave that
         # player unhittable for the match. `test_clear_safety` now enumerates this file.
-        return [f"$VOL,{VOL_TRYOUT},0,*", "$CLEAR,*", f"$GSET,0,{GSET_T2_SAFE},1,0,1,0,50,1,*",
+        return [f"$VOL,{VOL_TRYOUT},0,*", "$CLEAR,*", f"$GSET,0,{GSET_T2_SAFE},1,0,1,0,0,1,*",   # t7 (crit_modifier) 0: the GameConfig default (2026-09-17)
                 "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*",
                 "$SIR,0,0,,1,0,0,1,,*",
                 f"$WEAP,0,<{weapon['weapon_id']}>,*", "$SPAWN,,*", "$PLAYX,0,*", "$AMMO,0,36,108,1,*", "$BMAP,0,0,,,,,*"]
@@ -150,7 +156,7 @@ class FakeCompiler:
         return {"ok": not errors, "errors": errors, "warnings": warnings}
 
     def weapon_catalog(self) -> list[Weapon]:
-        return [{"weapon_id": w[0], "name": w[1], "cls": w[2],
+        return [{"weapon_id": w[0], "name": w[1], "cls": w[2], "weapon_class": _weapon_class(w[0]),
                  "stats": {"dmg": w[6], "mag": w[3], "reserve": w[3] * w[4], "rof": w[7], "reload_ms": int(w[5] * 1000),
                            "htk": max(1, round(13 * 55 / max(w[6], 1)))},   # fake: AR bar 55 → 13 hits, scaled
                  "weap_frame": f"$WEAP,<slot>,<{w[0]}>,*", "verified": w[0] in ("assault_rifle", "charge_rifle"),

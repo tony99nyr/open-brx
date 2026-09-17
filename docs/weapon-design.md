@@ -566,6 +566,14 @@ with identical `t5` can do entirely different things.
 
 ### 6.2 ⚠ What this supersedes in this document
 
+> **2026-09-17 (arsenal review): the default `crit_modifier` (compiled `$GSET criticalShotModifier`,
+> t7) is now 0, not 50.** BRX has 4 hit sensors on the headset and 1 on the tagger, and play aims at
+> the head, so the headset is already the primary target and needs no bonus multiplier — a headset
+> hit and a gun-body hit now land the same number. The ×1.25/×2 readings below are still a correct,
+> bench-confirmed record of the FORMULA at `t7=50`; they no longer describe the MC-compiled default.
+> `headset_multiplier(36, 0)` and `headset_multiplier(37, 0)` both return 1.0 (`compile.py`,
+> `mcp/tests/test_headset_multiplier.py`, `mcp/tests/test_gameconfig.py`).
+
 Four corrections, in descending order of how much they matter.
 
 **1. §2's balance table is computed on raw `t5`, and five weapons do not deal `t5` — on a HEADSET

@@ -285,9 +285,10 @@ for (const view of VIEWS) {
     must(r.win === 425 && r.up, JSON.stringify(r)); must(!r2.up && r2.lab === 'READY' && r2.slot === 1, JSON.stringify(r2));
   });
   await step(`${view.name} #44 sidearm-only slot 2: SIDEARMS chip, pistol rows, SIDEARM role`, async () => {
+    // 2026-09-17 (arsenal review): glock is `hidden` now, so only usp/deagle remain pickable sidearms.
     const pg = await open(view, 'loadout-sidearms'); const r = await pg.evaluate(() => ({ chips: Array.from(document.querySelectorAll('.fch')).map(c => c.textContent.trim()), rows: Array.from(document.querySelectorAll('.lrow .nm')).map(e => e.textContent.trim()), roles: Array.from(new Set(Array.from(document.querySelectorAll('.lrow .role')).map(e => e.textContent.trim()))), detail: (document.querySelector('.lodetail .rolechip') || {}).textContent }));
     await pg.close();
-    must(r.chips[0] === 'SIDEARMS · 3' && /^NONE/.test(r.chips[1]) && r.chips.length === 2, 'chips ' + r.chips); must(r.rows.length === 3 && r.rows.includes('GLOCK-18'), 'rows ' + r.rows); must(r.roles.length === 1 && r.roles[0] === 'SIDEARM' && r.detail === 'SIDEARM', 'role ' + r.roles + ' / ' + r.detail);
+    must(r.chips[0] === 'SIDEARMS · 2' && /^NONE/.test(r.chips[1]) && r.chips.length === 2, 'chips ' + r.chips); must(r.rows.length === 2 && r.rows.includes('USP-S') && r.rows.includes('DESERT EAGLE'), 'rows ' + r.rows); must(r.roles.length === 1 && r.roles[0] === 'SIDEARM' && r.detail === 'SIDEARM', 'role ' + r.roles + ' / ' + r.detail);
   });
   // A14: the perk is its own slot (Tony 2026-09-04: "you should be able to have AR and pistol and quick switch perk")
   await step(`${view.name} #52 three plates on ONE row (PRIMARY / SECONDARY / PERK), HP·ARMOR in the header, nothing clipped`, async () => {
@@ -296,7 +297,8 @@ for (const view of VIEWS) {
     await pg.close();
     must(r.ps.length === 3 && r.ps.map(p => p.k.replace(/[▸\s]+$/, '')).join('|') === 'PRIMARY|SECONDARY|PERK', 'plates: ' + JSON.stringify(r.ps));
     must(new Set(r.ps.map(p => p.top)).size === 1, 'plates wrapped onto two rows: ' + JSON.stringify(r.ps)); must(r.ps.every(p => p.right <= r.fright), 'a plate leaves the frame');
-    must(r.ps[1].h === 'GLOCK-18' && r.ps[2].h === 'QUICK SWITCH', 'AR + pistol + Quick Switch expected: ' + JSON.stringify(r.ps)); must(/HP 45 · ARMOR 70/.test(r.hpar), 'HP·ARMOR moved to the header: ' + r.hpar);
+    // 2026-09-17 (arsenal review): glock is `hidden` now — `fullKit` (app/src/demo.js) picks usp instead.
+    must(r.ps[1].h === 'USP-S' && r.ps[2].h === 'QUICK SWITCH', 'AR + pistol + Quick Switch expected: ' + JSON.stringify(r.ps)); must(/HP 45 · ARMOR 70/.test(r.hpar), 'HP·ARMOR moved to the header: ' + r.hpar);
     must(r.ps.every(p => !p.clipped), 'plate title clipped: ' + JSON.stringify(r.ps));
   });
   await step(`${view.name} #53 PERK tab: three tabs on one line, 5 perk rows + NONE, tapping a perk keeps the second weapon`, async () => {
@@ -305,7 +307,8 @@ for (const view of VIEWS) {
     const after = await pg.evaluate(() => { const lo = window.brx.engine.state().loadout; return { perk: lo.perk && lo.perk.perk_id, sec: lo.secondary && lo.secondary.weapon_id, chip: (document.querySelector('.ackchip') || {}).textContent || '' }; }); await pg.close();
     must(r.tabs.map(t => t.k).join('|') === 'PRIMARY|SECONDARY|PERK' && new Set(r.tabs.map(t => t.top)).size === 1, 'tabs: ' + JSON.stringify(r.tabs));
     must(r.chips[0] === 'PERKS · 5' && /^NONE/.test(r.chips[1]), 'chips ' + r.chips); must(r.rows === 5 && r.eq === 'QUICK SWITCH', 'rows/equipped: ' + r.rows + ' ' + r.eq);
-    must(after.perk === 'body_armor' && after.sec === 'glock', 'a perk pick must not displace the pistol: ' + JSON.stringify(after)); must(/EQUIPPED/.test(after.chip) && !/DROPPED/.test(after.chip), 'ack chip: ' + after.chip);
+    // 2026-09-17 (arsenal review): glock is `hidden` now — `fullKit` (app/src/demo.js) picks usp instead.
+    must(after.perk === 'body_armor' && after.sec === 'usp', 'a perk pick must not displace the pistol: ' + JSON.stringify(after)); must(/EQUIPPED/.test(after.chip) && !/DROPPED/.test(after.chip), 'ack chip: ' + after.chip);
   });
   await step(`${view.name} #54 Easy Reload over a loaded SMG: first tap warns (nothing sent), second tap equips and reports the SMG dropped`, async () => {
     const pg = await open(view, 'loadout-perk-conflict', '', 2400);

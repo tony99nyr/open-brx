@@ -1,5 +1,5 @@
 {
- "_note": "M-MODES WeaponCatalog (docs/spec/modes.md \u00a73). EVERY weapon is now based on ITS OWN captured Callsign $WEAP frame (`capture.frame`, traced to `capture.src` in protocol/captures/raw/; regenerate the decode with `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop`; named table in docs/reference/weapons.md). That inherits every native behaviour we cannot synthesise: 3-round burst (t23), bolt/single-shot, charge, overheat (t24/t35), per-weapon reload chains, damage type (t3), reload type (t19), muzzle flash (t25/t26). `reload_type` (F123, 2026-09-11) is an EXPLICIT per-weapon attribute and is deliberately NOT read off `capture.frame` t19: t19 is unconfirmed as reloadType (the Plasma Sniper shell-reloads at t19=0 — protocol/callsign-extract/protocol-classes.md), so the only value set here is the one the wire actually proved. 'chain' = the reload is a HELD per-shell chain, `reload_ms` is the PER-SHELL interval, and a momentary button cannot drive it (the Shotgun: after $BUT,2,1 the $ALCD mag walks 1→6 at 417/423/390/420/420 ms, one reserve decrement per shell). Absent = a normal magazine reload. `wire` lists ONLY the tokens we deliberately overwrite for balance; mag/reserve/reload_ms are written too (t16/t39, t17/t40, t18) keeping the captured invariants t39==t16 and t17==2*t40. Everything else is emitted byte-for-byte as Battle Company sent it. stats: dmg/rof/rng are 0-100 UI bars derived from the real numbers. dmg = share of a 115 pool one hit removes, rof = cycle relative to the fastest weapon, rng = the wire's t41 gunRange (identical on all 18 guns: range is NOT differentiated on the wire today; see weapon-design.md \u00a74.2). 'verified' now means SHIPPED EXACTLY AS CAPTURED (no balance edit); 'captured' is true for all 19. 'melee' is hidden (slot 4). tags: policy vocabulary (docs/spec/loadout.md \u00a71.1). 'heavy' = role power (rocket/rail/laser cannon/energy launcher/ion sniper), 'sniper' = the four long guns incl. AMR, plus the role name; presets exclude by tag so a new weapon only needs the right tags. caution: optional human copy for a weapon with a known LIVE problem. The UIs show it on the tile and hero. based_on (2026-09-04, sidearms): a weapon with NO capture of its own names the captured weapon whose frame it is built on and why; its capture block is a COPY of that frame (same src), `captured: false`, and every deviation is a wire/override token. 'sidearm' = the three pistols (usp/glock/deagle, role sidearm, cls 10): slot-2 backups by design, deliberately dominated by primaries (test_ttk_band exempts them from BEING dominated, never from dominating). Fire sounds P16/Q04/X14 (glock/usp/deagle, ear-confirmed 2026-09-11) are ids no other weapon uses, so a custom .LTP over the data port (community-notes.md) replaces only that pistol.",
+ "_note": "M-MODES WeaponCatalog (docs/spec/modes.md \u00a73). EVERY weapon is now based on ITS OWN captured Callsign $WEAP frame (`capture.frame`, traced to `capture.src` in protocol/captures/raw/; regenerate the decode with `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop`; named table in docs/reference/weapons.md). That inherits every native behaviour we cannot synthesise: 3-round burst (t23), bolt/single-shot, charge, overheat (t24/t35), per-weapon reload chains, damage type (t3), reload type (t19), muzzle flash (t25/t26). `reload_type` (F123, 2026-09-11) is an EXPLICIT per-weapon attribute and is deliberately NOT read off `capture.frame` t19: t19 is unconfirmed as reloadType (the Plasma Sniper shell-reloads at t19=0 — protocol/callsign-extract/protocol-classes.md), so the only value set here is the one the wire actually proved. 'chain' = the reload is a HELD per-shell chain, `reload_ms` is the PER-SHELL interval, and a momentary button cannot drive it (the Shotgun: after $BUT,2,1 the $ALCD mag walks 1→6 at 417/423/390/420/420 ms, one reserve decrement per shell). Absent = a normal magazine reload. `wire` lists ONLY the tokens we deliberately overwrite for balance; mag/reserve/reload_ms are written too (t16/t39, t17/t40, t18) keeping the captured invariants t39==t16 and t17==2*t40. Everything else is emitted byte-for-byte as Battle Company sent it. stats: dmg/rof/rng are 0-100 UI bars derived from the real numbers. dmg = share of a 115 pool one hit removes, rof = cycle relative to the fastest weapon, rng = the wire's t41 gunRange (identical on all 18 guns: range is NOT differentiated on the wire today; see weapon-design.md \u00a74.2). 'verified' now means SHIPPED EXACTLY AS CAPTURED (no balance edit); 'captured' is true for all 19. 'melee' is hidden (slot 4). tags: policy vocabulary (docs/spec/loadout.md \u00a71.1). 'heavy' = role power (rocket/rail/laser cannon/energy launcher/ion sniper), 'sniper' = the four long guns incl. AMR, plus the role name; presets exclude by tag so a new weapon only needs the right tags. `class` (2026-09-17, arsenal review): 'ballistic' | 'energy' | 'melee', on every row; ballistic weapons reload, energy weapons overheat or charge. `hidden` (2026-09-17 arsenal cut): force_rifle, bolt_rifle, stinger, plasma_sniper, laser_cannon, ion_sniper, energy_launcher and glock are hidden from the picker alongside melee, cutting overlap in a 22-weapon catalogue; the row and its capture frame stay (custom games, and the pistols' based_on copy of bolt_rifle's frame, still use them). `pickup_only` (2026-09-17): rocket_launcher, rail_gun, laser_cannon, ion_sniper and energy_launcher (the 'heavy' tag) are never in a player's starting loadout pool, whatever the preset; they stay in the catalogue for a future pickup/station mechanism (docs/spec/loadout.md). caution: optional human copy for a weapon with a known LIVE problem. The UIs show it on the tile and hero. based_on (2026-09-04, sidearms): a weapon with NO capture of its own names the captured weapon whose frame it is built on and why; its capture block is a COPY of that frame (same src), `captured: false`, and every deviation is a wire/override token. 'sidearm' = the three pistols (usp/glock/deagle, role sidearm, cls 10): slot-2 backups by design, deliberately dominated by primaries (test_ttk_band exempts them from BEING dominated, never from dominating). Fire sounds P16/Q04/X14 (glock/usp/deagle, ear-confirmed 2026-09-11) are ids no other weapon uses, so a custom .LTP over the data port (community-notes.md) replaces only that pistol.",
  "weapons": [
   {
    "weapon_id": "assault_rifle",
@@ -7,6 +7,7 @@
    "desc": "The anchor, and the closest thing to the stock M4. 13 hits at 140ms with 32 up and 192 in reserve: 17 kills without resupply and a 1.68s kill. Battle Company cycles it at 100ms; at that speed with this magazine it out-classes ten other weapons outright, so it gives up some depth and a little rate to leave the rest of the arsenal a reason to exist.",
    "cls": 0,
    "role": "assault",
+   "class": "ballistic",
    "mag": 32,
    "reserve": 192,
    "reload_ms": 1400,
@@ -34,6 +35,7 @@
    "desc": "A real three-round burst: one pull, three rounds, and the gun enforces the gap. 13 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two.",
    "cls": 0,
    "role": "assault",
+   "class": "ballistic",
    "mag": 36,
    "reserve": 216,
    "reload_ms": 1700,
@@ -58,6 +60,7 @@
    "desc": "The burst rifle's heavier twin: same three-round pull, more per round. 12 hits instead of 13 and a faster kill, paid for with two-thirds the reserve and a slower five-part reload.",
    "cls": 0,
    "role": "assault",
+   "class": "ballistic",
    "mag": 36,
    "reserve": 144,
    "reload_ms": 1700,
@@ -81,6 +84,7 @@
    },
    "verified": false,
    "captured": true,
+   "hidden": true,
    "tags": [
     "assault"
    ]
@@ -91,6 +95,7 @@
    "desc": "Single shot, deliberate cadence. 13 a hit every 225ms with 18 up and 180 back. That is 22 kills from a full kit, for operators who would rather aim than hold.",
    "cls": 0,
    "role": "assault",
+   "class": "ballistic",
    "mag": 18,
    "reserve": 180,
    "reload_ms": 2000,
@@ -105,6 +110,7 @@
    },
    "verified": true,
    "captured": true,
+   "hidden": true,
    "tags": [
     "assault"
    ]
@@ -115,6 +121,7 @@
    "desc": "A hose that runs hot. 8 a hit every 140ms from a 72-round mag: four kills before you reload, 24 across the kit, and an overheat budget that punishes holding the trigger down forever.",
    "cls": 1,
    "role": "cqb",
+   "class": "ballistic",
    "mag": 72,
    "reserve": 288,
    "reload_ms": 2500,
@@ -142,6 +149,7 @@
    "desc": "Shell by shell, and the fastest recovery on the board. 45 a hit at 800ms, three hits to drop, six in the tube and a 400ms shell reload. Sustained pressure from the shallowest ammo pool outside the power tier.",
    "cls": 3,
    "role": "cqb",
+   "class": "ballistic",
    "mag": 6,
    "reserve": 24,
    "reload_ms": 400,
@@ -170,6 +178,7 @@
    "desc": "Fast, light, relentless. 15 a hit every 250ms with 18 up and 144 in reserve: eight hits to drop, twenty kills to spend, and nothing held back for range.",
    "cls": 6,
    "role": "cqb",
+   "class": "ballistic",
    "mag": 18,
    "reserve": 144,
    "reload_ms": 1700,
@@ -187,6 +196,7 @@
    },
    "verified": false,
    "captured": true,
+   "hidden": true,
    "tags": [
     "cqb"
    ]
@@ -197,6 +207,7 @@
    "desc": "Two hits, one lane, a bolt between them. 60 a hit on a 1.5s cycle with four in the mag and 24 behind it. The fewest hits to a kill outside the power tier, and no margin for a miss.",
    "cls": 2,
    "role": "marksman",
+   "class": "ballistic",
    "mag": 4,
    "reserve": 24,
    "reload_ms": 1700,
@@ -232,6 +243,7 @@
    "desc": "A marksman rifle that fires like a carbine and pays for it in heat. 25 a hit every 400ms, five to drop, ten up and 80 back. Lean on it and it overheats.",
    "cls": 2,
    "role": "marksman",
+   "class": "energy",
    "mag": 10,
    "reserve": 80,
    "reload_ms": 2000,
@@ -250,6 +262,7 @@
    },
    "verified": false,
    "captured": true,
+   "hidden": true,
    "tags": [
     "marksman",
     "sniper"
@@ -261,6 +274,7 @@
    "desc": "Anti-materiel weight at a rifle's cadence. 24 a hit every 400ms, five hits to a kill, 14 up and only 56 behind. The hardest-hitting automatic, and the shallowest.",
    "cls": 4,
    "role": "support",
+   "class": "ballistic",
    "mag": 14,
    "reserve": 56,
    "reload_ms": 1400,
@@ -296,6 +310,7 @@
    "desc": "Quiet, not silent, and no muzzle flash. It is the only weapon here that hides where you are. 8 a hit every 160ms with 384 in reserve: 28 kills, the deepest sustained pool, the slowest kill.",
    "cls": 1,
    "role": "support",
+   "class": "ballistic",
    "mag": 48,
    "reserve": 384,
    "reload_ms": 2000,
@@ -323,6 +338,7 @@
    "desc": "A 300-cell battery that barely stops. 9 a hit every 200ms, 23 kills on one magazine and 69 across the kit. The largest ammo pool in the game, on the smallest per-hit number.",
    "cls": 5,
    "role": "support",
+   "class": "energy",
    "mag": 300,
    "reserve": 600,
    "reload_ms": 2400,
@@ -350,6 +366,7 @@
    "desc": "Hold, release, hit hard. A 1.25s charge into 100 damage: two hits to a kill and a heat budget that ends the party if you rush it. Twelve up, twelve back.",
    "cls": 5,
    "role": "support",
+   "class": "energy",
    "mag": 12,
    "reserve": 12,
    "reload_ms": 2500,
@@ -374,6 +391,7 @@
    "desc": "The middle ground. 13 a hit at a measured cadence, 9 hits to drop, 16 in the mag with 64 behind it: 8 kills across the kit. Not the fastest trigger and not the biggest punch, but the safest bet not to be caught reloading.",
    "cls": 10,
    "role": "sidearm",
+   "class": "ballistic",
    "mag": 16,
    "reserve": 64,
    "reload_ms": 2200,
@@ -415,6 +433,7 @@
    },
    "verified": false,
    "captured": false,
+   "hidden": true,
    "tags": [
     "sidearm",
     "pistol"
@@ -426,6 +445,7 @@
    "desc": "The quiet one. Suppressed and flashless: 9 a hit, as fast as you can pull the trigger, 13 hits to drop, 20 in the mag with 120 behind it: 10 kills across the kit. Low damage, but nobody hears where it came from.",
    "cls": 10,
    "role": "sidearm",
+   "class": "ballistic",
    "mag": 20,
    "reserve": 120,
    "reload_ms": 2200,
@@ -486,6 +506,7 @@
    "desc": "The hand cannon. 26 a hit, five hits to drop \u2014 the most damage of any sidearm, if you land them. Seven in the mag, 48 behind it: 11 kills across the kit. A slow cycle that punishes every miss.",
    "cls": 10,
    "role": "sidearm",
+   "class": "ballistic",
    "mag": 7,
    "reserve": 48,
    "reload_ms": 2200,
@@ -538,6 +559,7 @@
    "desc": "Point, pull, erase. 115 a hit (a full-health operator in one) on the fastest power-tier cycle, with the slowest reload behind it. Four rounds, four kills, no second chances.",
    "cls": 9,
    "role": "power",
+   "class": "ballistic",
    "mag": 2,
    "reserve": 2,
    "reload_ms": 2600,
@@ -552,6 +574,7 @@
    },
    "verified": false,
    "captured": true,
+   "pickup_only": true,
    "tags": [
     "power",
     "heavy"
@@ -563,6 +586,7 @@
    "desc": "Charges and fires itself. A 1.2s wind-up that goes whether you are ready or not, 115 on impact, four rounds total. Everyone within earshot hears the spool.",
    "cls": 7,
    "role": "power",
+   "class": "energy",
    "mag": 2,
    "reserve": 2,
    "reload_ms": 2400,
@@ -577,6 +601,7 @@
    },
    "verified": false,
    "captured": true,
+   "pickup_only": true,
    "tags": [
     "power",
     "heavy"
@@ -588,6 +613,7 @@
    "desc": "Must be held to charge; a tap fires nothing at all. 1.5s of commitment for a guaranteed kill, and the fastest reload in the power tier for the trouble.",
    "cls": 4,
    "role": "power",
+   "class": "energy",
    "mag": 2,
    "reserve": 2,
    "reload_ms": 1600,
@@ -602,6 +628,8 @@
    },
    "verified": false,
    "captured": true,
+   "hidden": true,
+   "pickup_only": true,
    "tags": [
     "power",
     "heavy"
@@ -613,6 +641,7 @@
    "desc": "No charge, no tell, no warning. 115 a hit with the fastest reload on the board and the slowest cycle in its tier. Four kills, spent quietly.",
    "cls": 9,
    "role": "power",
+   "class": "energy",
    "mag": 2,
    "reserve": 2,
    "reload_ms": 1400,
@@ -636,6 +665,8 @@
    },
    "verified": false,
    "captured": true,
+   "hidden": true,
+   "pickup_only": true,
    "tags": [
     "power",
     "heavy"
@@ -648,6 +679,7 @@
    "desc": "A one-shot kill in a rifle's body. 115 a hit on a 1.4s cycle with two up and two back. The power tier's only weapon that looks and sounds like a marksman rifle.",
    "cls": 2,
    "role": "power",
+   "class": "energy",
    "mag": 2,
    "reserve": 2,
    "reload_ms": 2000,
@@ -665,6 +697,8 @@
    },
    "verified": false,
    "captured": true,
+   "hidden": true,
+   "pickup_only": true,
    "tags": [
     "power",
     "heavy",
@@ -677,6 +711,7 @@
    "desc": "Last resort: no ammo, no reload, a gyro swing with the butt of the gun. 90 on contact. Hidden from the picker, always bound to slot 4.",
    "cls": 8,
    "role": "melee",
+   "class": "melee",
    "mag": 1,
    "reserve": 0,
    "reload_ms": 0,

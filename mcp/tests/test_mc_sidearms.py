@@ -4,6 +4,12 @@ docs/spec/loadout.md §1.1 / §3 (A12). A pistol is a WEAPON on the wire (Weapon
 `loadout_request`); "sidearm" is a POLICY kind — a slot rule that admits only the `sidearm`-tagged rows,
 the way `kinds: ["perk"]` admits only perks. This file pins: the three rows and their frames, the pool
 under every kinds combination, the phone-path rejection copy, auto-apply, and the node view.
+
+2026-09-17 (arsenal review): glock is now `hidden` (cut from the picker), so it no longer appears in
+`W = CAT.all()` or in any pool. Its row, frame and `based_on: bolt_rifle` linkage stay in
+weapons.json — custom games and the bench can still name it directly via `CAT.resolve`/`CAT.damage`/
+etc, which is why the catalog/frame-level tests below still use all three pistols (`ALL_PISTOLS`) while
+the pool/view tests use only the two now-visible sidearms (`PISTOLS`).
 """
 from brx_mcp.mc import policy as P
 from brx_mcp.mc.compile import DEFAULT_POOL, WeaponCatalog
@@ -12,7 +18,8 @@ from brx_mcp.mc.perks import default_perks
 CAT = WeaponCatalog()
 W = CAT.all()
 PK = default_perks().all()
-PISTOLS = ("glock", "usp", "deagle")
+ALL_PISTOLS = ("glock", "usp", "deagle")     # every pistol row, hidden or not — for catalog/frame-level checks
+PISTOLS = ("usp", "deagle")                  # the pistols still visible in a loadout pool
 
 
 def _T(frame: str, key: str) -> str:
@@ -21,18 +28,23 @@ def _T(frame: str, key: str) -> str:
 
 # ---------------------------------------------------------------- the rows
 def test_the_three_pistols_are_visible_sidearms():
+    """usp/deagle are pickable; glock's row/tags/desc are intact but it is `hidden` (2026-09-17)."""
     by = {w["weapon_id"]: w for w in W}
     for wid in PISTOLS:
         assert wid in by, wid
         assert by[wid]["role"] == "sidearm" and "sidearm" in by[wid]["tags"] and "pistol" in by[wid]["tags"]
         assert by[wid]["verified"] is False                 # never benched yet
         assert by[wid]["desc"].strip().endswith(".")
+    assert "glock" not in by, "glock is hidden from the picker (2026-09-17 arsenal cut)"
+    glock = CAT._row("glock")
+    assert glock["role"] == "sidearm" and "sidearm" in glock["tags"] and "pistol" in glock["tags"]
+    assert glock.get("hidden") is True
 
 
 def test_pistol_frames_ride_the_bolt_rifle_and_only_named_tokens_move():
     """Same semi-auto trigger (t20 = 7), same $SIR row (t3/t4), own damage / cycle / ammo / sounds."""
     bolt = CAT.resolve("bolt_rifle", 1).split(",")
-    for wid in PISTOLS:
+    for wid in ALL_PISTOLS:
         p = CAT.resolve(wid, 1).split(",")
         assert len(p) == len(bolt)
         moved = {i for i, (a, b) in enumerate(zip(p, bolt)) if a != b}
@@ -52,16 +64,16 @@ def test_pistol_identities_keep_tonys_ordering():
     used to assert `dmg["glock"] < dmg["usp"] < dmg["deagle"]` and the matching fire ordering. Tony's
     brief swaps glock and usp on both axes, so USP is now the fastest/weakest and Glock sits in the
     middle; the Deagle keeps its role as the slowest, hardest-hitting sidearm."""
-    dmg = {w: CAT.damage(w) for w in PISTOLS}
-    fire = {w: CAT.fire_ms(w) for w in PISTOLS}
+    dmg = {w: CAT.damage(w) for w in ALL_PISTOLS}
+    fire = {w: CAT.fire_ms(w) for w in ALL_PISTOLS}
     assert dmg["usp"] < dmg["glock"] < dmg["deagle"]
     assert fire["usp"] < fire["glock"] < fire["deagle"]
-    mags = {w: CAT.spawn_ammo(w)[0] for w in PISTOLS}
+    mags = {w: CAT.spawn_ammo(w)[0] for w in ALL_PISTOLS}
     assert mags["deagle"] < mags["glock"] < mags["usp"]
     # every pistol lands in the 1.5-3.5 s band the arsenal is balanced to, and (D2) strictly slower
     # than every rifle (force/assault/burst/bolt span 1650-1800 ms) — all three sidearms ship at the
     # same 1920 ms ideal TTK and differentiate only in how they degrade under real aim
-    for w in PISTOLS:
+    for w in ALL_PISTOLS:
         ttk = CAT.time_to_kill(w, DEFAULT_POOL)
         assert 1500 <= ttk <= 3500, w
         assert ttk > 1800, f"{w} must kill strictly slower than the slowest rifle (1800 ms)"
@@ -69,15 +81,17 @@ def test_pistol_identities_keep_tonys_ordering():
 
 
 def test_pistol_sounds_are_unique_on_gun_ids():
-    """Each pistol's fire sound is used by no other weapon, so a custom .LTP swapped over the data
-    port changes one pistol and nothing else (community-notes.md, custom sounds)."""
-    fire = {w["weapon_id"]: _T(w["weap_frame"], "snd_fire") for w in W}
-    for wid in PISTOLS:
+    """Each pistol's fire sound is used by no other weapon on the WHOLE gun (hidden rows included), so
+    a custom .LTP swapped over the data port changes one pistol and nothing else, whether or not that
+    pistol is currently offered by the picker (community-notes.md, custom sounds)."""
+    all_ids = [w["weapon_id"] for w in CAT._rows]
+    fire = {wid: _T(CAT.resolve(wid, 0), "snd_fire") for wid in all_ids}
+    for wid in ALL_PISTOLS:
         assert list(fire.values()).count(fire[wid]) == 1, (wid, fire[wid])
     assert fire["usp"].startswith("Q"), "the USP-S is suppressed — a Q-family (silenced) shot"
     usp = CAT.resolve("usp", 1).split(",")
     assert usp[25 + 1] == "2" and usp[26 + 1] == "50"        # no flash, half loudness — as on the Suppressor
-    for wid in PISTOLS:
+    for wid in ALL_PISTOLS:
         p = CAT.resolve(wid, 1).split(",")
         assert (_T(",".join(p), "rel1"), _T(",".join(p), "rel2"), _T(",".join(p), "rel3")) == ("D08", "D07", "D06")
 
@@ -85,7 +99,7 @@ def test_pistol_sounds_are_unique_on_gun_ids():
 def test_pistols_draw_in_500ms_but_the_gun_takes_the_slower_slot():
     """Bench 2026-09-04 (docs/archive/bench-weap-tokens-2026-09-04.md): tok15 IS the swap delay and the gun applies the
     LARGER of the two loaded slots, so a 500 ms pistol only draws fast beside another quick weapon or a perk."""
-    for w in PISTOLS:
+    for w in ALL_PISTOLS:
         assert CAT.swap_ms(w) == 500, w
         assert _T(CAT.resolve(w, 1), "swap") == "500", w
     assert CAT.swap_ms("assault_rifle") == 850          # primaries keep the captured value
@@ -112,7 +126,7 @@ def test_sidearm_kind_narrows_the_secondary_pool_to_the_pistols():
     assert a == b and "usp" in a["secondary_weapons"] and "smg" in a["secondary_weapons"]
     # exclude_* still applies on top of the kind
     lp = P.pool(_pol(secondary={"kinds": ["sidearm"], "exclude_ids": ["deagle"]}), W, PK)
-    assert lp["secondary_weapons"] == ["glock", "usp"]
+    assert lp["secondary_weapons"] == ["usp"]
 
 
 def test_pistol_round_on_the_primary_slot():
@@ -120,7 +134,7 @@ def test_pistol_round_on_the_primary_slot():
     lp = P.pool(pol, W, PK)
     assert lp["primary"] == list(PISTOLS)
     fixed = P.apply(pol, lp, {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "smg"}]}, W, PK)
-    assert fixed == {"weapons": [{"weapon_id": "glock"}]}    # first allowed pistol; secondary cleared
+    assert fixed == {"weapons": [{"weapon_id": "usp"}]}      # first allowed pistol; secondary cleared
     for bad in ({"primary": {"kinds": ["perk"]}},           # a perk never goes in slot 1
                 {"secondary": {"kinds": ["rifle"]}}):
         try:

@@ -45,6 +45,20 @@ def test_outdoor_and_friendly_fire_in_gset():
     assert toks[7] == "25"   # crit modifier
 
 
+def test_crit_modifier_defaults_to_zero_and_headset_multiplier_is_1x():
+    """2026-09-17 (arsenal review): BRX has 4 hit sensors on the headset and 1 on the tagger, and play
+    aims at the head, so the headset gets no bonus multiplier by default. The compiled `$GSET`
+    criticalShotModifier (t7) is 0 by default, and `headset_multiplier()` (compile.py) returns 1.0 for
+    fn 36 and fn 37 at that compiled value -- a headset hit lands the same as a gun-body hit."""
+    frames = GameConfig().setup_frames()
+    gset = _find(frames, "$GSET,")[0]
+    toks = gset.strip("$").rstrip(",*").split(",")
+    assert toks[7] == "0", f"$GSET t7 (crit_modifier) should default to 0, got {toks[7]}"
+    from brx_mcp.mc.compile import headset_multiplier
+    assert headset_multiplier(36, 0) == 1.0
+    assert headset_multiplier(37, 0) == 1.0
+
+
 def test_weapon_selection():
     frames = GameConfig(primary="charge", secondary="melee").setup_frames()
     w0 = _find(frames, "$WEAP,0")[0]
