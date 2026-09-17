@@ -1469,7 +1469,7 @@ export class Engine {
       if (ok !== false) return;
       if (this._armPending || this.phase !== 'live' || this.ended || !(this.alive || p.flip)) return;
       this.log(`arm hit reception (${why}) write failed -- re-arming to retry`, 'li');
-      this._armPending = { at: this.now(), flip: false };
+      this._armPending = { at: this.now(), flip: p.flip };   // keep the original flip: an infection flip's retry must not read as "not live"
     });
   }
   /** A15.3 (Tony 2026-09-06: "The long vs short pain should be used depending on the amount of damage. A big sniper
@@ -2961,8 +2961,10 @@ export class Engine {
       const ammo = ((this.frames && this.frames.spawn) || []).filter(f => f.startsWith('$AMMO,'));
       if (ammo.length) this._write(ammo, 'reconcile: re-arm');
       // F209: the drop may have landed inside spawn protection, or an app restart lost `_armPending`. Re-sending
-      // the real table is the F11 repair path, so a rejoin always ends with hit reception armed.
-      if (this._protectsSpawn()) { this._armPending = null; this._write(this._pickTable('sir_pool'), 'reconcile: arm hit reception'); }
+      // the real table is the F11 repair path, so a rejoin always ends with hit reception armed. Routed through
+      // `_armLife` (not a bare `_write`) so a `false` resolve on a link that stays up re-arms for retry instead
+      // of silently leaving the gun on fn 28 for the life.
+      if (this._protectsSpawn()) { this._armPending = { at: this.now(), flip: false }; this._armLife('reconcile'); }
     }
     this.log(`reconcile done — ${this.alive ? 'live' : 'down'} at hp ${this.hp}`, 'lk');
     this._changed();

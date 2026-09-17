@@ -495,7 +495,11 @@ export class Hud {
     } else {
       // Bench 2026-09-16: a READY player in the lobby fell through to this grey STANDING BY button, so readying
       // up only changed the label. A confirmed `st.ready` now wears the green `.ready.wait.on` and says READY.
-      foot = `${lead}<button class="ready wait${st.ready ? ' on' : ''}" aria-pressed="${!!st.ready}"><span class="unskew">${st.ready ? 'READY ✓ · STANDING BY' : 'STANDING BY'}</span></button><div class="note">${st.kitLocked ? 'The plates above are what you take in. Waiting for the host to start the countdown.' : 'Loadout is on the gun. Waiting for the host to start the countdown.'}</div>`;
+      // Playtest review 2026-09-13: this button has no `data-act` -- it does nothing on tap -- but it still got
+      // `.tap-press` feedback (the delegated handler matches any `<button>`) and `aria-pressed`, so it looked and
+      // was announced as a toggle. `aria-disabled="true"` makes the press handler skip it (it already checks
+      // this attribute); drop `aria-pressed` since it is not a control. The green `.on` ready state stays.
+      foot = `${lead}<button class="ready wait${st.ready ? ' on' : ''}" aria-disabled="true"><span class="unskew">${st.ready ? 'READY ✓ · STANDING BY' : 'STANDING BY'}</span></button><div class="note">${st.kitLocked ? 'The plates above are what you take in. Waiting for the host to start the countdown.' : 'Loadout is on the gun. Waiting for the host to start the countdown.'}</div>`;
       status = `<div class="status" id="mcstatus">${this._statusLine(st, mode)}</div>`;
     }
     return `<div class="lobby"><div class="scan"></div><div class="edgeglow"></div>

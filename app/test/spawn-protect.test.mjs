@@ -232,3 +232,39 @@ test('F209 guard: a release that finds the player down or the match over writes 
   n = g.mark(); g.eng._armLife('test');
   assert.deepEqual(realRows(g.since(n)), [], 'a gun that is no longer live is never armed');
 });
+
+test('F11 fix: a failed reconcile-end write (link stays up, write resolves false) re-arms for retry, not immortal for the life', async () => {
+  const h = liveArmed();
+  revived(h);
+  h.eng.onBleDropped();
+  h.eng.onBleConnected();
+  assert.ok(h.eng.reconciling, 'setup: relink reconciles');
+  const realWriter = h.eng.writer;
+  h.eng.writer = fr => Promise.resolve(false);   // the link stays up, but this write "fails"
+  h.adv(3000);   // RECONCILE_MS elapses -- `_endReconcile` fires the sir_pool take, which "fails"
+  await new Promise(r => setImmediate(r));   // let the write's `.then()` run
+  assert.equal(h.eng.reconciling, null, 'reconcile ended');
+  assert.ok(h.eng._armPending, 'a failed reconcile-end write must re-arm the pending take, not leave the gun on fn 28 for the life');
+  h.eng.writer = realWriter;
+  const n = h.mark();
+  h.adv(CAP);                          // the re-armed pending's own cap elapses, now against a working writer
+  assert.deepEqual(realRows(h.since(n)), realRows(TAKE), 'the retry succeeds once the write goes through');
+});
+
+test('F11 fix: an infection flip retains its flip flag through a failed-write retry (not read as "not live")', async () => {
+  const flip = { '2': ['$TID,2,*', ...golden.revive] };
+  const h = harness({ mode: 'infection', teamFlip: flip });
+  h.adv(10); h.adv(CAP);
+  let fail = true;
+  h.eng.writer = fr => (fail ? Promise.resolve(false) : (h.writes.push(...fr), Promise.resolve(true)));
+  h.die();   // flips team; `alive` is false throughout the flip window -- only `p.flip` keeps the pending arm valid
+  assert.equal(h.eng.teamTid, 2, 'flipped');
+  h.adv(CAP);
+  await new Promise(r => setImmediate(r));
+  assert.ok(h.eng._armPending, 'the failed flip-arm write re-arms for retry');
+  assert.equal(h.eng._armPending.flip, true, 'the retry must keep flip: true, or the next attempt reads the flipped (not-yet-alive) gun as not live');
+  fail = false;
+  const n = h.mark();
+  h.adv(CAP);
+  assert.deepEqual(realRows(h.since(n)), realRows(TAKE), 'the retry succeeds and is not cancelled as "not live"');
+});

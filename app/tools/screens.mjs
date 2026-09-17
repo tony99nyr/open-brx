@@ -1776,6 +1776,23 @@ await step('ready control: pressed feedback (.tap-press) still works on READY UP
   must(!/tap-press/.test(await cls()), 'pointerup did not clear READY UP');
   await pg.close();
 });
+// Playtest review 2026-09-13: STANDING BY has no `data-act` -- a tap does nothing -- so it must read
+// `aria-disabled` (the press handler already skips that), carry no `aria-pressed` (it is not a toggle),
+// and never show `.tap-press` on a real pointerdown.
+await step('ready control: the inert STANDING BY button is marked aria-disabled, has no aria-pressed, and never shows .tap-press', async () => {
+  const pg = await open(VIEWS[0], 'lobby');
+  const sel = '.lobby .ready.wait';
+  const before = await pg.evaluate(s => { const e = document.querySelector(s);
+    return { text: e.textContent.trim(), act: e.dataset.act || null, ariaDisabled: e.getAttribute('aria-disabled'), ariaPressed: e.getAttribute('aria-pressed') }; }, sel);
+  await pg.locator(sel).dispatchEvent('pointerdown', { pointerId: 1, bubbles: true });
+  const cls = await pg.evaluate(s => document.querySelector(s).className, sel);
+  await pg.locator(sel).dispatchEvent('pointerup', { pointerId: 1, bubbles: true });
+  await pg.close();
+  must(before.act === null, 'fixture: STANDING BY must stay inert (no data-act): ' + JSON.stringify(before));
+  must(before.ariaDisabled === 'true', 'STANDING BY must announce aria-disabled: ' + JSON.stringify(before));
+  must(before.ariaPressed === null, 'STANDING BY must carry no aria-pressed -- it is not a toggle: ' + JSON.stringify(before));
+  must(!/tap-press/.test(cls), 'a pointerdown on the inert STANDING BY button must never show pressed feedback: ' + cls);
+});
 
 await b.close(); srv.close();
 console.log(`\n${pass} passed, ${fail} failed${fail ? ': ' + errs.join(', ') : ''}`);
