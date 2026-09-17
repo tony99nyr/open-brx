@@ -288,3 +288,50 @@ export function poolStaleLabel(reason: 'silent' | 'no_fire' | null | undefined, 
   if (reason !== 'silent') return null;
   return typeof ms === 'number' && Number.isFinite(ms) && ms >= 0 ? `GUN SILENT ${fmtAge(ms)}` : 'GUN SILENT';
 }
+
+/** ARMORY's primary button (bench 2026-09-17, Tony): the button IS the status. It names what it waits
+ *  for, and reads HARDWARE READY ▸ when the board allows.
+ *
+ *  The gate is unchanged: only a red that a push cannot cure (`blocksPush`) disables it. A waiting
+ *  phone, an amber, a red a RE-PUSH on LOBBY cures, and an empty board all leave it pressable, because
+ *  the button only moves to GAMES; the real gate is the LOBBY push. So the waiting label names the
+ *  wait and still navigates. */
+export interface ArmoryGate { label: string; disabled: boolean; ready: boolean; why: string }
+export function armoryGate(board: { status?: string; blockers?: string[] | null; sticker?: string }[]): ArmoryGate {
+  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 'S'}`;
+  const gating = board.filter(g => g.status === 'red' && blocksPush(g));
+  const nRed = board.filter(g => g.status === 'red').length;
+  const nCurable = nRed - gating.length;
+  const nWaiting = board.filter(g => g.status === 'waiting').length;
+  if (gating.length) {
+    return { label: `${plural(gating.length, 'GUN')} BLOCKED`, disabled: true, ready: false,
+      why: gating[0]?.blockers?.[0] ?? 'Clear the fault to continue' };
+  }
+  if (nWaiting) {
+    return { label: `WAITING FOR ${plural(nWaiting, 'PHONE')}`, disabled: false, ready: false,
+      why: 'Open the BRX app on each phone and set its gun. You can still go on to GAMES.' };
+  }
+  if (board.length === 0) {
+    return { label: 'NO PLAYERS YET ▸', disabled: false, ready: false, why: 'Power the guns and open the app on each phone' };
+  }
+  return { label: 'HARDWARE READY ▸', disabled: false, ready: true,
+    why: nCurable ? `${nCurable} gun${nCurable === 1 ? '' : 's'} answered for an older config — ${RE_PUSH_HERE}` : '' };
+}
+
+/** Where ARMORY's ENABLE BACKHAUL button stands (bench 2026-09-17).
+ *
+ *  `offer` is true only when all three hold:
+ *  - the internet link can start from here: `lan.public` exists, `available` (cloudflared is on the
+ *    PATH), and the provider is not `manual` (a `--public-url` link is not MC's to start);
+ *  - the link is not up and not starting (`status` is `off` or `error`);
+ *  - the board is not empty and EVERY row is `green` (every rostered phone is connected and clean).
+ *  The button starts the link with `POST /api/tunnel {on:true}`, the same route REACH's TURN ON uses. */
+export function backhaulOffer(state: Pick<State, 'lan' | 'readiness'> | null): { offer: boolean; status: 'off' | 'starting' | 'up' | 'error' | null } {
+  const pub = state?.lan?.public;
+  if (!state || !pub) return { offer: false, status: null };
+  const board = state.readiness?.board ?? [];
+  const allGreen = board.length > 0 && board.every(g => g.status === 'green');
+  const canStart = pub.available && pub.provider !== 'manual';
+  const down = pub.status === 'off' || pub.status === 'error';
+  return { offer: canStart && down && allGreen, status: pub.status };
+}

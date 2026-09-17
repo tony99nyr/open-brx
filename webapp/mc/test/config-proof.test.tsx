@@ -23,7 +23,7 @@ const POOL = 'GUN POOL ≠ CONFIG (REPORTS 45/115, THIS CONFIG GRANTS 45/70, hp/
 const HOLDING = 'HOLDING OLDER CONFIG (9f2a1c04) — RE-PUSH TO BE SURE';
 
 /** The demo board with EVERY row forced green, then row 0 replaced — for the gate tests, where any
- *  other red would be the thing blocking CONTINUE. */
+ *  other red would be the thing blocking HARDWARE READY. */
 async function cleanBoardWith(row: Partial<ReadinessRow>) {
   const d = await demo();
   const [first, ...rest] = d.state.readiness.board.map(r => ({ ...r, status: 'green', blockers: [], ambers: [] }) as ReadinessRow);
@@ -343,20 +343,20 @@ describe('R2-2 · the console refuses only what the server refuses', () => {
     m.unmount();
   });
 
-  it('ARMORY · CONTINUE is not blocked by a row a re-push clears, and says where to clear it', async () => {
+  it('ARMORY · HARDWARE READY is not blocked by a row a re-push clears, and says where to clear it', async () => {
     const { d, state } = await cleanBoardWith({ status: 'red', blockers: [STALE], ambers: [] });
     const m = await mountScreen(<Armory />, { state, view: 'muster', weapons: d.weapons, perks: d.perks });
-    const go = btn(m, 'CONTINUE');
-    expect(go, 'the gate reads CONTINUE, not "1 GUN BLOCKED"').toBeTruthy();
+    const go = btn(m, 'HARDWARE READY');
+    expect(go, 'the gate reads HARDWARE READY, not "1 GUN BLOCKED"').toBeTruthy();
     expect(go!.disabled).toBe(false);
     expect(go!.title).toContain('RE-PUSH CONFIG on LOBBY');
     m.unmount();
   });
 
-  it('ARMORY · …and a red no push can cure still blocks CONTINUE', async () => {
+  it('ARMORY · …and a red no push can cure still blocks HARDWARE READY', async () => {
     const { d, state } = await cleanBoardWith({ status: 'red', blockers: [LINK_LOST], ambers: [] });
     const m = await mountScreen(<Armory />, { state, view: 'muster', weapons: d.weapons, perks: d.perks });
-    expect(btn(m, 'CONTINUE'), 'a real fault still reads as blocked').toBeFalsy();
+    expect(btn(m, 'HARDWARE READY'), 'a real fault still reads as blocked').toBeFalsy();
     const blocked = btn(m, 'BLOCKED');
     expect(blocked!.disabled).toBe(true);
     m.unmount();
