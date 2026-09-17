@@ -101,6 +101,7 @@ const link = new BrxLink({
     }
   },
   unbounded: () => engine.phase === 'armed' || engine.phase === 'live',
+  onFlap: f => engine.setGunFlapping(f),
 });
 const engine = new Engine({
   writer: frames => link.write(frames),
@@ -402,6 +403,8 @@ Object.assign(hud.h, {
   onCloseDiag: () => hud.toggleDiag(),
   // A link that is down: cut the backoff short. A link the app believes is up: really cycle it (playtest
   // 2026-09-13, RELINK GUN did nothing there). The relink path re-writes the head only where that is safe.
+  // HEADSET OFF? RECONNECT NOW: start the flap backoff again and dial at once (a link that is up is left alone).
+  onReconnectNow: () => { link.resetFlap(); engine.setGunFlapping(null); if (link.deviceId && !link.connected) link.retryNow(); },
   onReconnectGun: () => { if (link.deviceId) link.relink().catch(e => log('relink: ' + (e && e.message || e), 'le')); },
   onReconnectMc: () => {
     const url = settings.mcUrl || lastMcUrl;

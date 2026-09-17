@@ -1142,6 +1142,8 @@ KNOWN_UNMIRRORED = {
     # transport / MC session: the stage talks to a gun, never to Mission Control
     "onMcMessage", "onBleConnected", "onBleDropped", "setWsState", "hydrate", "statusBody", "resume",
     "resumeSchedule", "_event", "_probe", "_checkEcho", "ackEnd", "onResultPush", "resultWait",
+    # bench 2026-09-17: BrxLink's flap count, passed through to the HUD and MC; no game rule reads it
+    "setGunFlapping",
     # app lifecycle + the A26 pick debounce: the stage has no foreground/background and no MC to pick from
     "_awake", "commitPick",
     # B5: guards a BLE frame-race (a stale zero-HP echo the gun queued before it processed $SPAWN landing

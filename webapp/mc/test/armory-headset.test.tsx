@@ -10,6 +10,7 @@ import { Armory } from '../src/screens/Armory';
 import type { ReadinessRow, State } from '../src/api/types';
 import { demo, mountScreen } from './harness';
 import { T } from '../src/tokens';
+import { GUN_FLAPPING_LINE } from '../src/api/derive';
 
 /** Mount ARMORY with the demo session's board, with row 0 replaced by `row`. */
 async function boardWith(row: Partial<ReadinessRow>) {
@@ -149,5 +150,43 @@ describe('ARMORY · the build chip shows the whole stamp (A29)', () => {
     const m = await mountScreen(<Armory />, { state, view: 'muster', weapons: d.weapons, perks: d.perks });
     expect(m.find('[data-app-ver]')[0].textContent).toBe('UNKNOWN');
     m.unmount();
+  });
+
+  // Bench 2026-09-17: a headset that is off makes the gun drop the link every 5-6 s. The card used to
+  // alternate LINK LOST with HEADSET · CONFIRMING; the phone's `gun_flapping` now holds one steady line.
+  it('a flapping gun shows HEADSET OFF once, in amber, whether the link is up this second or not', async () => {
+    for (const gun_linked of [true, false]) {
+      const { m } = await boardWith({ gun_linked, gun_flapping: true, headset: 'unknown', headset_proof: null,
+        blockers: [], ambers: [GUN_FLAPPING_LINE], status: 'amber' });
+      const row = m.find('[data-gun-flapping]');
+      expect(row.length, `gun_linked=${gun_linked}`).toBe(1);
+      expect(row[0].textContent).toBe(GUN_FLAPPING_LINE);
+      const hex = (h: string) => `rgb(${[1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)).join(', ')})`;
+      expect((row[0].firstElementChild as HTMLElement | null)?.style.color, 'amber, never the red of LINK LOST').toBe(hex(T.warn));
+      const text = row[0].parentElement!.parentElement!.textContent ?? '';   // this gun's card only
+      expect(text.split(GUN_FLAPPING_LINE).length - 1, 'said once on the card, not again in the list').toBe(1);
+      expect(text).not.toContain('LINK LOST');
+      expect(text).not.toContain('CONFIRMING');
+      expect(text).not.toContain('BLOCKED');
+      m.unmount();
+    }
+  });
+
+  it('an older server that sends no gun_flapping keeps the plain LINK LOST', async () => {
+    const { m } = await boardWith({ gun_linked: false, gun_flapping: undefined, status: 'red', blockers: ['GUN LINK LOST — BLOCKS START'] });
+    expect(m.find('[data-gun-flapping]').length).toBe(0);
+    expect(m.text()).toContain('LINK LOST');
+    m.unmount();
+  });
+
+  it('the ?mock&flap=1 demo board carries a flapping gun', async () => {
+    const prev = window.location.href;
+    window.history.replaceState(null, '', '/?mock&flap=1');
+    try {
+      const d = await demo();
+      const m = await mountScreen(<Armory />, { state: d.state, view: 'muster', weapons: d.weapons, perks: d.perks });
+      expect(m.find('[data-gun-flapping]').length).toBe(1);
+      m.unmount();
+    } finally { window.history.replaceState(null, '', prev); }
   });
 });

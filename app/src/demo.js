@@ -131,6 +131,8 @@ export function startDemo({ engine, log }) {
     const ev = {
       // link + MC
       linkGun: () => engine.onBleConnected(gunObj), dropGun: () => engine.onBleDropped(), relinkGun: () => engine.onBleConnected(),
+      // bench 2026-09-17: the headset is off, so the gun keeps dropping the link (BrxLink.flapping)
+      flapGun: (count = 3) => { engine.onBleDropped(); engine.setGunFlapping({ count, next_retry_at: Date.now() + 30000 }); },
       resyncProbe: () => engine._beginResync('demo'),   // the trigger-first resync prompt (a lobby/armed reconnect, or a resume) — a live rejoin RECONCILES instead (S7.1)
       battery: pct => engine.feedFrame(`$VOLTS,8101,3789,${pct},48,*`),
       mcBound: () => engine.setWsState('bound'), mcLost: () => engine.setWsState('closed'),
@@ -282,6 +284,8 @@ export function startDemo({ engine, log }) {
       'connected':         [[0, 'linkGun'], [50, () => ev.battery(82)]],
       // F137 (field 2026-09-12): MC binds while the player still sits on the pre-kit CONNECTED screen —
       // the one case that used to need an UNRELATED field to also change before the screen ever caught up.
+      'kitted-headset-off': [...kitted, [400, () => ev.flapGun(3)]],   // bench 2026-09-17: HEADSET OFF? + RECONNECT NOW
+      'connected-headset-off': [[0, 'linkGun'], [50, () => ev.battery(82)], [400, () => ev.flapGun(2)]],   // the same, before MC binds
       'connected-linked':  [[0, 'linkGun'], [400, 'mcBound']],
       'setup':             [[0, () => { policy.kit_open = false; }], ...kit],
       'briefing':          kit,

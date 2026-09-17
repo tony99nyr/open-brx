@@ -231,6 +231,7 @@ export class Engine {
     this.phase = 'idle';            // idle|connected|kitted|lobby|armed|live
     this.gun = null;                // {name, tail, fw?}
     this.bleUp = false; this.wsState = 'offline';
+    this.gunFlapping = null;        // bench 2026-09-17: {count, next_retry_at} while the gun keeps dropping the link (BrxLink.flapping)
     this.player = null; this.team = null; this.roster = []; this.config = null; this.frames = null;
     this.start = null;              // {match_id, go_live_t, seq, countdown_s}
     this.matchId = null;
@@ -548,6 +549,12 @@ export class Engine {
     // MC-first late joiner: the running `start` arrived while idle and the relink landed in LOBBY — reconcile from there too.
     if (this.start && (this.phase === 'lobby' || this.phase === 'armed')) this.resumeSchedule();
     this._changed();
+  }
+  /** BrxLink's flap state: the gun connects, then drops within seconds, again and again (headset off). */
+  setGunFlapping(f) {
+    const next = f && f.count >= 2 ? { count: f.count, next_retry_at: f.next_retry_at ?? null } : null;
+    if (JSON.stringify(next) === JSON.stringify(this.gunFlapping)) return;
+    this.gunFlapping = next; this._changed();
   }
   onBleDropped() { this.bleUp = false; this.lastGunFrameAt = 0; this._endReload('dropped'); this.switching = null; this.held = {}; this.lastButton = null; this._lightGen = (this._lightGen || 0) + 1; this.log('gun link lost', 'le'); this._changed(); }   // no link, no reload echo: the takeover would be fiction (pass-2 UX review 2026-09-03); the gen bump means a stray delayed write can't reach a gun that relinks mid-flight either. `held` goes with it: `_onButton` keeps the FIRST edge, so a press whose release never arrived before the drop would read as held forever — and `lastButton` with it, for the same reason: the last thing the gun said would otherwise sit on the diag panel as a live edge the link can no longer complete (review 2026-09-12). `lastGunFrameAt` resets too (B4): a dead watchdog clock must not immediately re-fire the instant the next relink's first frame is still pending
   setWsState(s, info) { this.wsState = s; this.wsReason = s === 'rejected' && info ? `${info.reason || 'refused'} (${info.code})` : null; this._changed(); }
@@ -3103,7 +3110,9 @@ export class Engine {
       // gun took at the moment it took it; this says which one it is still on for the rest of the
       // game, which is the difference that made a whole field night of stale pushes invisible.
       ...(this.config && this.config.config_id ? { config_id: this.config.config_id } : {}),
-      preflight: { gun_linked: this.bleUp, headset_ok: !!this.headEcho, ...preflight },
+      // Bench 2026-09-17: the gun keeps dropping the link, so MC can show one steady HEADSET OFF line
+      // instead of GUN LINK LOST and HEADSET CONFIRMING in turn. Always sent, so false clears it.
+      preflight: { gun_linked: this.bleUp, headset_ok: !!this.headEcho, gun_flapping: !!this.gunFlapping, ...preflight },
     };
   }
 
@@ -3112,7 +3121,7 @@ export class Engine {
     const now = this.now();
     const r = this.respawnDelayMs;
     return {
-      phase: this.phase, bleUp: this.bleUp, wsState: this.wsState, gun: this.gun, night: this.night,
+      phase: this.phase, bleUp: this.bleUp, gunFlapping: this.gunFlapping, wsState: this.wsState, gun: this.gun, night: this.night,
       player: this.player, team: this.team, teamKey: this.teamKey, teamName: this.team ? (this.team.name || TEAM_NAME[this.team.tid] || '').toUpperCase() : '',
       callsign: this.player ? this.player.display : '', playerNum: this.player ? this.player.player_num : null,
       mode: this.config ? String(this.config.mode || '').toUpperCase() : '', weapon: this.weaponName,

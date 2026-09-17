@@ -128,6 +128,9 @@ export class Hud {
     this.info.addEventListener('click', () => this.toggleDiag());
     this.hudEl.addEventListener('click', e => this._click(e));
     this.diag.addEventListener('click', e => this._click(e));
+    // The chip bar is a sibling of #hud, so its pill buttons (GUN LINK LOST, RECONNECT NOW) need their own listener:
+    // without it a tap on them reached no handler at all (bench 2026-09-17).
+    this.chips.addEventListener('click', e => this._click(e));
     let pressT = null;
     // (removed 2026-08-26, critic #9: a resting glove/chin tripped the invisible 900 ms night toggle — NIGHT lives in the diag panel)
     this.hudEl.addEventListener('pointerup', () => { if (pressT) clearTimeout(pressT); pressT = null; });
@@ -1020,7 +1023,11 @@ export class Hud {
     // A tappable pill, not just a status: the retry now runs forever, but a player who has just
     // switched the gun on should not have to wait out a backoff — or go hunting in the debug panel,
     // which is where the only reconnect control used to live (Tony, field 2026-09-01).
-    if (st.phase !== 'idle' && !st.bleUp) pills.push(`<button class="pill bad" data-act="onReconnectGun"><span class="unskew">GUN LINK LOST — TAP TO RECONNECT</span></button>`);
+    // Bench 2026-09-17: a gun with its headset off accepts the link and drops it within seconds, over and
+    // over. The GUN LINK LOST pill then blinked on and off with every cycle. While the phone counts 2+
+    // quick drops in a row, one steady line says the likely cause, whether the link is up this second or not.
+    if (st.phase !== 'idle' && st.gunFlapping) pills.push(`<span class="pill warn" data-flap="${st.gunFlapping.count}"><span class="unskew">HEADSET OFF? TURN THE HEADSET ON.</span></span><button class="pill warn" data-act="onReconnectNow"><span class="unskew">RECONNECT NOW</span></button>`);
+    else if (st.phase !== 'idle' && !st.bleUp) pills.push(`<button class="pill bad" data-act="onReconnectGun"><span class="unskew">GUN LINK LOST — TAP TO RECONNECT</span></button>`);
     if (st.moment && st.moment.kind === 'go' && st.phase === 'live' && st.bleUp) pills.push(`<span class="pill ok"><span class="unskew">WEAPONS HOT</span></span>`);   // never 'hot' while the gun link is down
     const prompt = st.resync ? `<div class="prompt"><span class="unskew"><span class="pl">GUN RELINKED</span><span class="pi">${esc(st.resync.prompt).toUpperCase()}</span></span></div>` : '';
     const html = `<div class="chipbar">${pills.join('')}</div>${prompt}`;

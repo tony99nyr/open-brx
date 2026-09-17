@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { blocksPush, poolStaleLabel, isRoutableLanIp, reachLabel, reachTooltip, registrySig, sentenceCase, splitBlocker, staleReachReason } from '../api/derive';
+import { blocksPush, GUN_FLAPPING_LINE, poolStaleLabel, isRoutableLanIp, reachLabel, reachTooltip, registrySig, sentenceCase, splitBlocker, staleReachReason } from '../api/derive';
 import { STALE_AFTER_MS, type LogView, type ReadinessRow, type TunnelStatus } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
@@ -327,7 +327,11 @@ function GunCard({ g }: { g: ReadinessRow }) {
         </div>
       ) : (
       <div style={{ display: 'grid', gridTemplateColumns: '82px 1fr', gap: '6px 10px', alignItems: 'center' }}>
-        <Micro>GUN</Micro><span><Val color={stale ? T.warn : g.gun_linked ? T.ink : g.gun_linked === false ? T.bad : T.micro}>{stale ? `UNKNOWN: LAST DATA ${fmtAge(age ?? 0)} AGO` : g.gun_linked ? 'LINKED' : g.gun_linked === false ? 'LINK LOST' : '—'}</Val>
+        {/* Bench 2026-09-17: a headset that is off makes the gun drop the link every few seconds. The phone
+            reports `gun_flapping`, and this row holds one steady amber line instead of LINKED / LINK LOST in turn. */}
+        <Micro>GUN</Micro><span data-gun-flapping={!stale && g.gun_flapping ? 'true' : undefined}>{!stale && g.gun_flapping
+          ? <Val color={T.warn}>{GUN_FLAPPING_LINE}</Val>
+          : <Val color={stale ? T.warn : g.gun_linked ? T.ink : g.gun_linked === false ? T.bad : T.micro}>{stale ? `UNKNOWN: LAST DATA ${fmtAge(age ?? 0)} AGO` : g.gun_linked ? 'LINKED' : g.gun_linked === false ? 'LINK LOST' : '—'}</Val>}
           {/* F208: grey information beside the link state, never a warning and never on a stale card */}
           {!stale && poolStaleLabel(g.pool_stale, g.pool_stale_ms) && <span data-gun-silent={g.player_id} title="The phone says this gun's health and ammo readout may be out of date."
             style={{ marginLeft: 8, font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>{poolStaleLabel(g.pool_stale, g.pool_stale_ms)}</span>}</span>
@@ -362,7 +366,8 @@ function GunCard({ g }: { g: ReadinessRow }) {
       </div>
       )}
       {(() => {
-        const raw = [...(g.blockers ?? []).map(b => [b, true] as const), ...(g.ambers ?? []).map(b => [b, false] as const)];
+        // The HEADSET OFF amber already sits in the GUN row above: once is enough on the card.
+        const raw = [...(g.blockers ?? []).map(b => [b, true] as const), ...(g.ambers ?? []).filter(b => b !== GUN_FLAPPING_LINE).map(b => [b, false] as const)];
         // F155 (field 2026-09-12, ISSUE 30): a node whose last known path was the internet tunnel used
         // to read "WRONG WI-FI" the moment that tunnel dropped — sending the operator to the phone's
         // Wi-Fi settings for a fault that is entirely MC's tunnel. When we know the real reason, it

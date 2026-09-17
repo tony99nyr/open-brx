@@ -425,7 +425,7 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 .pill{font-size:11px;letter-spacing:.2em;font-weight:700;padding:4px 14px;transform:skewX(-10deg);background:var(--plate);border:1px solid var(--edge);color:var(--mut)}
 .pill .unskew{display:inline-block;transform:skewX(10deg)}
 /* a pill that is also a control: same look, real tap target (min 44px per the tap audit) */
-button.pill{font-family:inherit;cursor:pointer;min-height:44px}
+button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:auto}   /* #chips is pointer-events:none, so a pill button has to opt back in or its tap never lands */
 .pill.warn{border-color:var(--warn);color:var(--warn)}
 .pill.bad{border-color:var(--bad);color:var(--bad);animation:blink 1.4s infinite}
 .pill.ok{border-color:var(--ok);color:var(--ok)}

@@ -4485,6 +4485,22 @@ test('B4: the drop is reflected in the status body MC sees (preflight.gun_linked
   assert.equal(h.eng.statusBody().preflight.gun_linked, false, 'MC must see the link down, not just the phone HUD');
 });
 
+// Bench 2026-09-17: a gun with its headset off keeps dropping the link. The phone tells MC once, steadily.
+test('flapping: BrxLink\'s flap state reaches the HUD state and the status body (preflight.gun_flapping)', () => {
+  const h = harness().kit();
+  assert.equal(h.eng.state().gunFlapping, null);
+  assert.equal(h.eng.statusBody().preflight.gun_flapping, false, 'always sent, so a false clears it on MC');
+  h.eng.setGunFlapping({ count: 1, next_retry_at: null });
+  assert.equal(h.eng.state().gunFlapping, null, 'one quick drop is not flapping');
+  h.eng.onBleDropped(); h.eng.setGunFlapping({ count: 3, next_retry_at: 12345 });
+  assert.deepEqual(h.eng.state().gunFlapping, { count: 3, next_retry_at: 12345 });
+  assert.equal(h.eng.statusBody().preflight.gun_flapping, true);
+  h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
+  assert.equal(h.eng.statusBody().preflight.gun_flapping, true, 'a momentary link does not clear it: only BrxLink does');
+  h.eng.setGunFlapping(null);
+  assert.equal(h.eng.statusBody().preflight.gun_flapping, false);
+});
+
 test('B4: a relink after the first probe re-opens the event tap with a bare $PHONE, never $STOP mid-match', () => {
   const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
   assert.ok(h.eng.probeSent, 'the very first connect already ran the full probe ritual');
