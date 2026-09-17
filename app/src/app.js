@@ -311,16 +311,24 @@ function connectMc(url, remember = true, join = {}) {
 }
 
 // ---------- HUD handlers ----------
-let scanning = false; const found = new Map();
+// Bench 2026-09-17 (Pixel 5): `picking` is true from a row tap until its connect settles. The plugin runs
+// every native call in one queue, so a connect holds the radio for up to 10 s per attempt, and the rows
+// used to stay on screen for all of it. A second row tap then ran a second connect beside the first (a
+// false drop, then onUp from the connect that lost), and SET MY GUN opened a scan AFTER onUp had already
+// closed the picker, so it stayed open in the lobby. Both taps are now ignored while a pick connects.
+let scanning = false, picking = false; const found = new Map();
 Object.assign(hud.h, {
   onSetGun: async () => {
+    if (picking) return;
     // F211: check the adapter BEFORE opening the radio — starting a scan with Bluetooth off just sits
     // there silently (game-test-2026-09-13.md C2). `watchEnabled` (boot, below) re-runs this the moment
     // Bluetooth comes back on, so the operator never has to tap SET MY GUN a second time.
     if (!setBluetoothOn(await link.isEnabled())) { hud.setScan([]); scheduleRender(); return; }
+    if (picking || link.connected) return;   // re-check: isEnabled() waited in the plugin queue behind a connect
     scanning = true;       // claim the radio first, so no beacon tick reopens its scan while this one stops it
     try {
       await stopAnyScan();   // tap = (re)start a fresh scan, never leave the picker idle (bench 2026-08-25); the beacon watch yields to the picker
+      if (picking || link.connected) { scanning = false; return; }
       found.clear();
       // Stable rows: first-seen order (Map insertion), RSSI updated in place, re-render at most 2×/s —
       // sorting by RSSI on every advert made the rows jump under the finger (bench 2026-08-25).
@@ -341,11 +349,12 @@ Object.assign(hud.h, {
   onEnableBluetooth: async () => { const ok = await link.requestEnable(); if (!ok) log('this phone/build has no Bluetooth enable prompt — use BLUETOOTH SETTINGS', 'li'); },
   onOpenBluetoothSettings: async () => { const ok = await link.openBluetoothSettings(); if (!ok) log('this phone/build has no Bluetooth settings shortcut', 'li'); },
   onPick: async deviceId => {
-    const d = found.get(deviceId); if (!d) return;
-    await link.stopScan(); scanning = false; hud.setScan([]);
+    const d = found.get(deviceId); if (!d || picking) return;
+    picking = true; hud.setScan([]); scheduleRender();   // the rows go now, not after the connect
     log(`connecting to ${d.name}…`);
-    try { await link.connect(deviceId, d.name); if (settings.mcUrl && !transport) connectMc(settings.mcUrl); }
+    try { await link.stopScan(); scanning = false; await link.connect(deviceId, d.name); if (settings.mcUrl && !transport) connectMc(settings.mcUrl); }
     catch (e) { log('connect failed: ' + (e && e.message || e), 'le'); }
+    finally { picking = false; }
     scheduleRender();
   },
   onUtility: () => switchRole('utility'),   // the HUD's way into utility mode (brx-hud adds the control; 7 taps on the stage also work)
