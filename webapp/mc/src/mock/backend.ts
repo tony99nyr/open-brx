@@ -238,6 +238,10 @@ export class MockBackend implements Api {
   /** `?mock&restored=1` — a `--demo` (or any prior) session persisted and was silently restored: two
    *  ghost players with no phone ever bound sit on the roster from the first snapshot. */
   private demoRestored = typeof location !== 'undefined' && new URLSearchParams(location.search).get('restored') === '1';
+  // The delay before the mock re-acks a re-pushed config (see `putConfig`). A test can make it longer,
+  // so that a slow machine still reads the transitional "re-pushing" state before the acks return.
+  // `?repushack=<ms>` sets it in the browser; a unit test sets the field directly.
+  repushAckMs = (typeof location !== 'undefined' && Number(new URLSearchParams(location.search).get('repushack'))) || 220;
   /** `?mock&faults=1` — A36/A37's four config-proof states, on four otherwise-green guns, so every
    *  one of them can be looked at without a field and a stale gun. Until this existed the mock always
    *  acked with the config it had just pushed, which meant `?mock` could demo exactly none of them
@@ -1029,7 +1033,7 @@ export class MockBackend implements Api {
         if (!this.pushed || this.config.config_id !== cfgId) return;   // recalled, or superseded by a newer edit
         for (const p of this.players) this.acks[p.player_id] = this.ackFor(p, cfgId);
         this.emit();
-      }, 220);   // long enough for a real-browser poll to see the transitional "re-pushing" state
+      }, this.repushAckMs);   // long enough for a real-browser poll to see the transitional "re-pushing" state
     }
     if (rolled) this.phase = 'build';   // `set_config` moves muster -> build once a game is picked
     this.cfgErrors = errors;

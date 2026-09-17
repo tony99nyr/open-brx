@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));      // webapp/mc/test/e2e
 const MC_DIR = path.resolve(HERE, '../..');                     // webapp/mc
 const REPO = path.resolve(MC_DIR, '../..');                     // THIS WORKTREE's root
-const SHOTS = path.join(HERE, 'shots');
+const SHOTS = path.join(HERE, 'shots', 'game-edit');   // one folder per script: a parallel run must not wipe another script's shots
 // Its own ports — never 8765/8766 (koth.mjs / the dev server own those), never 8792 (kit-continue.mjs).
 const MC_PORT = Number(process.env.MC_PORT || 8795);
 const VITE_PORT = Number(process.env.VITE_PORT || 5186);
@@ -108,7 +108,7 @@ async function startMC() {
 async function startVite() {
   // Reuses kit-continue.mjs's proxy config (it just points `MC_PROXY_PORT` at whichever MC this run
   // started) rather than a third copy of the same three lines.
-  const proc = spawn('npx', ['vite', '--config', path.join(HERE, 'vite.proxy.config.mjs'), '--port', String(VITE_PORT), '--strictPort'],
+  const proc = spawn(process.execPath, [path.join(MC_DIR, 'node_modules/vite/bin/vite.js'), '--config', path.join(HERE, 'vite.proxy.config.mjs'), '--port', String(VITE_PORT), '--strictPort'],
     { cwd: MC_DIR, stdio: ['ignore', 'pipe', 'pipe'], detached: true, env: { ...process.env, MC_PROXY_PORT: String(MC_PORT) } });
   let log = ''; proc.stdout.on('data', d => { log += d; }); proc.stderr.on('data', d => { log += d; });
   const base = `http://localhost:${VITE_PORT}`;
@@ -177,7 +177,9 @@ async function runMock(browser, viteBase) {
   step = 'mock'; stepFailedAt = failures.length;
   console.log(`\n[${step}] the in-browser demo backend`);
   const pg = await newPage(browser, viteBase);
-  await pg.goto(`${viteBase}/?mock#kit`, { waitUntil: 'domcontentloaded' });
+  // `repushack=3000`: the mock holds the acks for 3s after a re-push (220ms by default). The re-push
+  // step below reads that transitional state, and 220ms is too short a window on a loaded machine.
+  await pg.goto(`${viteBase}/?mock&repushack=3000#kit`, { waitUntil: 'domcontentloaded' });
   await until(() => onKit(pg), 15000, 'KIT to open (?mock)');
   await noCrash(pg);
   // The mock backend BOOTS at 'muster' regardless of which screen the hash opens (view and phase are
@@ -331,9 +333,23 @@ async function runMock(browser, viteBase) {
   // SAME `lobby.acks` off the SAME snapshot, so they are checked in the one instant just confirmed to
   // be inside the transitional window — a second, separately-timed poll for the step text could miss
   // it (the mock's re-ack delay is short by design; a real gun's is ~1.5s).
-  await until(async () => (await repushText(pg)) !== repushBefore, 4000, 'the repush line to change right after the edit');
-  const stepTextDuring = (await pg.locator('main').innerText()).replace(/\s+/g, ' ').match(/Config pushed[^A-Z]*\d+\/\d+/)?.[0] ?? '';
-  expect(stepTextDuring !== stepTextBefore, `LOBBY's own config-pushed step moves WITH the repush line (before "${stepTextBefore}", during "${stepTextDuring}")`);
+  // Read both indicators in ONE page evaluation, so they come from the same DOM snapshot. Two separate
+  // reads let the step text come from a different moment than the repush line (before the new state
+  // renders, or after the acks return). Poll until both have moved; the held acks keep the window open.
+  const snapshot = () => pg.evaluate(() => ({
+    repush: (document.querySelector('[data-testid="game-edit-panel"] [data-testid="game-edit-repush"]')?.innerText ?? '').replace(/\s+/g, ' ').trim(),
+    step: (document.querySelector('main')?.innerText ?? '').replace(/\s+/g, ' ').match(/Config pushed[^A-Z]*\d+\/\d+/)?.[0] ?? '',
+  }));
+  let during = { repush: repushBefore, step: stepTextBefore };
+  await until(async () => { during = await snapshot(); return during.repush !== repushBefore; }, 4000, 'the repush line to change right after the edit');
+  const deadline = Date.now() + 2500;
+  while (during.repush !== repushBefore && during.step === stepTextBefore && Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 80));
+    during = await snapshot();
+  }
+  const stepTextDuring = during.step;
+  expect(during.repush !== repushBefore && stepTextDuring !== stepTextBefore,
+    `LOBBY's own config-pushed step moves WITH the repush line (before "${stepTextBefore}", during "${stepTextDuring}", repush line "${during.repush}")`);
   ok(`edit fired: repush line "${await repushText(pg)}", LOBBY step "${stepTextDuring}"   ${await shot(pg, '05-mock-repushing')}`);
 
   await until(async () => !/RE-PUSHING/.test(await repushText(pg)), 6000, 'the acks to recover');
