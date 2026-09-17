@@ -35,8 +35,8 @@ const EDITABLE = new Set(['muster', 'build', 'kit', 'lobby', 'recap']);
  *  nothing), and still carries a fallback: if the request lands in the race between the phase
  *  advancing and this panel's next render, the server's refusal is rewritten with the one instruction
  *  that unblocks it (RECALL) and surfaces in the normal error strip -- never swallowed. */
-export function GameEditPanel({ style, alwaysOpen = false, onDone }:
-  { style?: React.CSSProperties; alwaysOpen?: boolean; onDone?: () => void }) {
+export function GameEditPanel({ style, alwaysOpen = false, onDone, onDirtyChange }:
+  { style?: React.CSSProperties; alwaysOpen?: boolean; onDone?: () => void; onDirtyChange?: (dirty: boolean) => void }) {
   const { state, modes, weapons, perks, run, api, openDesigner } = useStore();
   /** the config being edited, or null for "not editing". NOTHING here is sent until SAVE AND LOAD. */
   const [draft, setDraft] = useState<GameConfig | null>(() => (alwaysOpen && state ? clone(state.config) : null));
@@ -102,6 +102,10 @@ export function GameEditPanel({ style, alwaysOpen = false, onDone }:
   };
   const patch = draft ? patchOf(draft) : {};
   const dirty = Object.keys(patch).length > 0;
+  // GAMES's `editing` flag (Games.tsx `guarded`) needs to tell an UNTOUCHED draft (silently dropped)
+  // from a CHANGED one (worth one word: UNSAVED EDITS DISCARDED) when the operator picks a different
+  // game while this panel is still open. That question belongs here, next to `dirty` itself.
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   /** The reshape this SAVE would produce -- the SAME predicate GAMES's mode tiles show, never a second
    *  one. Asked of the DRAFT, which is why the per-tap confirm this panel used to carry is gone: the
    *  question belongs to the tap that actually moves people, and that tap is SAVE AND LOAD. */

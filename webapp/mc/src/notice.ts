@@ -4,12 +4,22 @@
 // change existed to show, never appeared (review 2026-09-01). Module scope survives the unmount.
 let current: { text: string; bad: boolean } | null = null;
 const subs = new Set<(n: typeof current) => void>();
+let autoClearTimer: ReturnType<typeof setTimeout> | null = null;
 
-export function setNotice(text: string, bad = false) {
+/** `autoClearMs`, when given, clears the notice on its own after that many milliseconds — for a
+ *  notice that only confirms something happened (never a `bad` one: a refusal stays until the
+ *  operator dismisses it, the same as before). Games.tsx's "UNSAVED EDITS DISCARDED" is the first
+ *  caller (2026-09-17): a picked game must not leave a stale toast sitting in the bar forever. */
+export function setNotice(text: string, bad = false, autoClearMs?: number) {
+  if (autoClearTimer) { clearTimeout(autoClearTimer); autoClearTimer = null; }
   current = { text, bad };
   subs.forEach(fn => fn(current));
+  if (autoClearMs) autoClearTimer = setTimeout(clearNotice, autoClearMs);
 }
-export function clearNotice() { current = null; subs.forEach(fn => fn(current)); }
+export function clearNotice() {
+  if (autoClearTimer) { clearTimeout(autoClearTimer); autoClearTimer = null; }
+  current = null; subs.forEach(fn => fn(current));
+}
 
 import { useEffect, useState } from 'react';
 /** The current cross-screen notice, or null. */
