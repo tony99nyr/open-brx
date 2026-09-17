@@ -148,9 +148,14 @@ def voice_tail(voice: str | None, slots: dict | None = None) -> list[str]:
 # $SIR incoming-IR effect table — ALL 10 rows, verbatim from __main__.py GAME_CONFIG
 # (weapons + railgun + rocket + the 3 melee rows). Missing rows leave incoming
 # melee/railgun/rocket IR with no effect mapping.
+# ⚠ F225 (bench 2026-09-17): the `<8,0>` cell (the Charge Rifle's key) used to point at function 38,
+# which HALVES every hit -- a full charge of magnitude 100 landed 50, a tap of 20 landed 10. Function
+# 38 is not plain damage; the cell is repointed at function 1 (plain damage, the same function the
+# gun-body sensor already gave every other hit) so charge/tap damage lands at its full published
+# value. See `compile._SIR_PLAIN_DAMAGE` for the guard that keeps 38 off the allow-list.
 _SIR_TABLE = (
     "$SIR,0,0,,1,0,0,1,,*", "$SIR,0,1,,36,0,0,1,,*", "$SIR,0,3,,37,0,0,1,,*",
-    "$SIR,8,0,,38,0,0,1,,*", "$SIR,9,3,,24,10,0,,,*",
+    "$SIR,8,0,,1,0,0,1,,*", "$SIR,9,3,,24,10,0,,,*",
     "$SIR,10,0,X13,1,0,100,2,60,*", "$SIR,6,0,H02,1,0,90,1,40,*",
     "$SIR,13,1,H57,1,0,0,1,,*", "$SIR,13,0,H50,1,0,0,1,,*",
     "$SIR,13,3,H49,1,0,100,0,60,*",

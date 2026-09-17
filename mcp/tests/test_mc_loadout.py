@@ -634,7 +634,7 @@ def test_apply_policy_cancels_tryouts_and_warns_the_host():
 def test_weapon_view_htk_ttk_caution():
     from brx_mcp.mc.views import weapon_view
     views = {v["weapon_id"]: v for v in (weapon_view(w) for w in C.weapon_catalog())}
-    assert views["assault_rifle"]["htk"] == 13 and views["assault_rifle"]["ttk_ms"] == 1680
+    assert views["assault_rifle"]["htk"] == 13 and views["assault_rifle"]["ttk_ms"] == 1200
     assert all(isinstance(v["htk"], int) and v["htk"] >= 1 for v in views.values())
     # energy_launcher is `hidden` now (2026-09-17 arsenal cut), so it is no longer in the visible
     # `views` map above — build its view straight off the raw row (`WeaponCatalog._to_weapon`) to

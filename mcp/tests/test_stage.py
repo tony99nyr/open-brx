@@ -474,7 +474,7 @@ def test_ir_registers_reflects_the_games_sir_table():
     st, _ = mk()
     r = st.ir_registers()
     assert r["shot"]["registers"] and r["kill"]["registers"]              # proto 0 rows are in every head
-    assert r["emp"]["registers"], r                                          # $SIR,8,0,,38: an EMP word lands as PLAIN damage today (F15 = make it a stun)
+    assert r["emp"]["registers"], r                                          # $SIR,8,0,,1: an EMP word lands as PLAIN damage today (F15 = make it a stun; F225 2026-09-17: fn 1, not fn 38)
     assert not r["medic"]["registers"] and not r["beacon"]["registers"], r  # no proto 1 / 15 rows: ignored until F15 / B23
 
 

@@ -38,10 +38,10 @@ export const WEAPONS: WeaponView[] = [
     "ttk_ms": 1600,
     "ammo_total": 70,
     "bars": {
-      "power": 43,
-      "rof": 64,
-      "ammo": 56,
-      "ttk": 82
+      "power": 50,
+      "rof": 56,
+      "ammo": 49,
+      "ttk": 60
     }
   },
   {
@@ -49,14 +49,14 @@ export const WEAPONS: WeaponView[] = [
     "name": "Assault Rifle",
     "cls": "0",
     "weapon_class": "ballistic",
-    "desc": "The anchor, and the closest thing to the stock M4. 13 hits at 140ms with 32 up and 192 in reserve: 17 kills without resupply and a 1.68s kill. Battle Company cycles it at 100ms; at that speed with this magazine it out-classes ten other weapons outright, so it gives up some depth and a little rate to leave the rest of the arsenal a reason to exist.",
+    "desc": "The anchor, and the real stock M4 cadence. 13 hits at 100ms with 32 up and 192 in reserve: 17 kills without resupply and a 1.20s kill. 2026-09-17 arsenal review: cycle is back to Battle Company's native 100ms (it was throttled to 140ms so a deep reserve could not also out-cycle the field); the dominance test now grades on one-magazine kill chance rather than total kills, so the reserve alone no longer has to carry the whole weight of keeping the AR in check.",
     "clip": 32,
     "mags": 6,
     "reserve": 192,
     "reload_s": 1.4,
     "reload_ms": 1400,
     "dmg": 8,
-    "rpm": 54,
+    "rpm": 75,
     "rng": 75,
     "dmg_per_hit": 9,
     "pool": 115,
@@ -66,13 +66,13 @@ export const WEAPONS: WeaponView[] = [
     ],
     "role": "assault",
     "htk": 13,
-    "ttk_ms": 1680,
+    "ttk_ms": 1200,
     "ammo_total": 224,
     "bars": {
-      "power": 31,
-      "rof": 91,
+      "power": 30,
+      "rof": 85,
       "ammo": 71,
-      "ttk": 73
+      "ttk": 100
     }
   },
   {
@@ -80,30 +80,30 @@ export const WEAPONS: WeaponView[] = [
     "name": "Burst Rifle",
     "cls": "0",
     "weapon_class": "ballistic",
-    "desc": "A real three-round burst: one pull, three rounds, and the gun enforces the gap. 13 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two.",
+    "desc": "A real three-round burst: one pull, three rounds, and the gun enforces the gap. 11 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two. 2026-09-17 arsenal review: damage raised 9 to 11 so the burst pair separates further from the SMG-class assault weapons on hits-to-kill, not only on cadence.",
     "clip": 36,
     "mags": 6,
     "reserve": 216,
     "reload_s": 1.7,
     "reload_ms": 1700,
-    "dmg": 8,
+    "dmg": 10,
     "rpm": 100,
     "rng": 75,
-    "dmg_per_hit": 9,
+    "dmg_per_hit": 11,
     "pool": 115,
-    "verified": true,
+    "verified": false,
     "tags": [
       "assault"
     ],
     "role": "assault",
-    "htk": 13,
-    "ttk_ms": 1700,
+    "htk": 11,
+    "ttk_ms": 1417,
     "ammo_total": 252,
     "bars": {
-      "power": 31,
+      "power": 40,
       "rof": 100,
       "ammo": 78,
-      "ttk": 64
+      "ttk": 80
     }
   },
   {
@@ -111,16 +111,16 @@ export const WEAPONS: WeaponView[] = [
     "name": "Charge Rifle",
     "cls": "5",
     "weapon_class": "energy",
-    "desc": "Hold, release, hit hard. A 1.25s charge into 100 damage: two hits to a kill and a heat budget that ends the party if you rush it. Twelve up, twelve back.",
-    "clip": 12,
-    "mags": 1,
-    "reserve": 12,
+    "desc": "Hold, release, hit hard. An 85-damage charge held indefinitely, plus a 20-damage tap for the follow-up: one charge and two taps drops a 115 pool, 12 of the 40 rounds up and 84 of the roughly-103 heat budget that locks the gun out if you rush it (S43). Forty up, eighty back -- six charge-equivalent kills across the kit.",
+    "clip": 40,
+    "mags": 2,
+    "reserve": 80,
     "reload_s": 2.5,
     "reload_ms": 2500,
-    "dmg": 87,
+    "dmg": 74,
     "rpm": 6,
     "rng": 75,
-    "dmg_per_hit": 100,
+    "dmg_per_hit": 85,
     "pool": 115,
     "verified": false,
     "tags": [
@@ -129,11 +129,11 @@ export const WEAPONS: WeaponView[] = [
     "role": "support",
     "htk": 2,
     "ttk_ms": 2500,
-    "ammo_total": 24,
+    "ammo_total": 120,
     "bars": {
-      "power": 89,
-      "rof": 29,
-      "ammo": 27,
+      "power": 90,
+      "rof": 27,
+      "ammo": 56,
       "ttk": 20
     }
   },
@@ -163,10 +163,10 @@ export const WEAPONS: WeaponView[] = [
     "ttk_ms": 1920,
     "ammo_total": 55,
     "bars": {
-      "power": 54,
-      "rof": 56,
-      "ammo": 49,
-      "ttk": 56
+      "power": 60,
+      "rof": 49,
+      "ammo": 42,
+      "ttk": 40
     }
   },
   {
@@ -174,14 +174,14 @@ export const WEAPONS: WeaponView[] = [
     "name": "Energy Rifle",
     "cls": "5",
     "weapon_class": "energy",
-    "desc": "A 300-cell battery that barely stops. 9 a hit every 200ms, 23 kills on one magazine and 69 across the kit. The largest ammo pool in the game, on the smallest per-hit number.",
+    "desc": "A 300-cell battery that barely stops. 9 a hit every 150ms, 23 kills on one magazine and 69 across the kit. The largest ammo pool in the game, on the smallest per-hit number. 2026-09-17 bench (F229): now genuinely overheats — full auto locks it out around heat 99 after about 30 shots, and unlike the Charge Rifle it does not cool on its own; only the reload lever (a hold, not a tap) vents it.",
     "clip": 300,
     "mags": 2,
     "reserve": 600,
     "reload_s": 2.4,
     "reload_ms": 2400,
     "dmg": 8,
-    "rpm": 38,
+    "rpm": 50,
     "rng": 75,
     "dmg_per_hit": 9,
     "pool": 115,
@@ -191,13 +191,13 @@ export const WEAPONS: WeaponView[] = [
     ],
     "role": "support",
     "htk": 13,
-    "ttk_ms": 2400,
+    "ttk_ms": 1800,
     "ammo_total": 900,
     "bars": {
-      "power": 31,
-      "rof": 73,
+      "power": 30,
+      "rof": 71,
       "ammo": 100,
-      "ttk": 29
+      "ttk": 50
     }
   },
   {
@@ -228,7 +228,7 @@ export const WEAPONS: WeaponView[] = [
     "ammo_total": 4,
     "bars": {
       "power": 100,
-      "rof": 29,
+      "rof": 27,
       "ammo": 20,
       "ttk": 100
     }
@@ -261,7 +261,7 @@ export const WEAPONS: WeaponView[] = [
     "ammo_total": 4,
     "bars": {
       "power": 100,
-      "rof": 38,
+      "rof": 35,
       "ammo": 20,
       "ttk": null
     }
@@ -291,10 +291,10 @@ export const WEAPONS: WeaponView[] = [
     "ttk_ms": 1600,
     "ammo_total": 30,
     "bars": {
-      "power": 66,
-      "rof": 47,
-      "ammo": 42,
-      "ttk": 82
+      "power": 70,
+      "rof": 42,
+      "ammo": 35,
+      "ttk": 60
     }
   },
   {
@@ -302,14 +302,14 @@ export const WEAPONS: WeaponView[] = [
     "name": "SMG",
     "cls": "1",
     "weapon_class": "ballistic",
-    "desc": "A hose that runs hot. 8 a hit every 140ms from a 72-round mag: four kills before you reload, 24 across the kit, and an overheat budget that punishes holding the trigger down forever.",
+    "desc": "A hose that runs hot. 8 a hit every 95ms from a 72-round mag: four kills before you reload, 24 across the kit, and an overheat budget that punishes holding the trigger down forever.",
     "clip": 72,
     "mags": 4,
     "reserve": 288,
     "reload_s": 2.5,
     "reload_ms": 2500,
     "dmg": 7,
-    "rpm": 54,
+    "rpm": 79,
     "rng": 75,
     "dmg_per_hit": 8,
     "pool": 115,
@@ -319,13 +319,13 @@ export const WEAPONS: WeaponView[] = [
     ],
     "role": "cqb",
     "htk": 15,
-    "ttk_ms": 1960,
+    "ttk_ms": 1330,
     "ammo_total": 360,
     "bars": {
       "power": 20,
-      "rof": 91,
+      "rof": 93,
       "ammo": 85,
-      "ttk": 47
+      "ttk": 90
     }
   },
   {
@@ -354,10 +354,10 @@ export const WEAPONS: WeaponView[] = [
     "ttk_ms": 1500,
     "ammo_total": 28,
     "bars": {
-      "power": 77,
+      "power": 80,
       "rof": 20,
-      "ammo": 35,
-      "ttk": 91
+      "ammo": 27,
+      "ttk": 70
     }
   },
   {
@@ -365,14 +365,14 @@ export const WEAPONS: WeaponView[] = [
     "name": "Suppressor",
     "cls": "1",
     "weapon_class": "ballistic",
-    "desc": "Quiet, not silent, and no muzzle flash. It is the only weapon here that hides where you are. 8 a hit every 160ms with 384 in reserve: 28 kills, the deepest sustained pool, the slowest kill.",
+    "desc": "Quiet, not silent, and no muzzle flash. It is the only weapon here that hides where you are. 8 a hit every 140ms with 384 in reserve: 28 kills, the deepest sustained pool, the slowest kill.",
     "clip": 48,
     "mags": 8,
     "reserve": 384,
     "reload_s": 2.0,
     "reload_ms": 2000,
     "dmg": 7,
-    "rpm": 47,
+    "rpm": 54,
     "rng": 75,
     "dmg_per_hit": 8,
     "pool": 115,
@@ -382,13 +382,13 @@ export const WEAPONS: WeaponView[] = [
     ],
     "role": "support",
     "htk": 15,
-    "ttk_ms": 2240,
+    "ttk_ms": 1960,
     "ammo_total": 432,
     "bars": {
       "power": 20,
-      "rof": 82,
+      "rof": 78,
       "ammo": 93,
-      "ttk": 38
+      "ttk": 30
     }
   },
   {
@@ -417,10 +417,10 @@ export const WEAPONS: WeaponView[] = [
     "ttk_ms": 1920,
     "ammo_total": 140,
     "bars": {
-      "power": 31,
-      "rof": 82,
+      "power": 30,
+      "rof": 64,
       "ammo": 64,
-      "ttk": 56
+      "ttk": 40
     }
   }
 ];

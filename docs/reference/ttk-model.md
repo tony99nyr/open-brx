@@ -17,7 +17,7 @@ The first shot is assumed to land the instant the trigger is pulled, so it contr
 only the *gaps between* shots count. This is the convention used across Modern Combat Wiki's and
 the Game Balance Project's TTK writeups and every TTK calculator surveyed (xbitlabs, GameDevCalculators,
 CalculatorsUniverse). BRX's own `ttk_ms` field already follows it exactly: `assault_rifle` htk 13 at
-140 ms/round gives `(13-1)*140 = 1680`, matching the catalog.
+100 ms/round gives `(13-1)*100 = 1200`, matching the catalog (2026-09-17: native cycle, was 140 ms).
 
 **Ideal vs practical/effective TTK.** Every source that goes beyond the raw formula makes the same
 point: the number above assumes every shot lands. Destiny 2's community explicitly separates
@@ -177,6 +177,12 @@ that carries the most rounds has the worst sustained output while it fires.
 `test_ttk_band_and_no_strictly_dominant_weapon` passes across the full 22-weapon roster with this
 table, not only among the three pistols.
 
+> ⚠ **2026-09-17: this claim no longer holds.** The dominance test's third axis moved from "kills/kit"
+> to "one-magazine kill chance at p=0.7" (§Shipped 2026-09-17 below), which retires the exact lever
+> this section describes — with reserve out of the picture, **USP now strictly dominates Deagle**.
+> The numbers in this table are historical; the current axis set and the open dominance list are in
+> §Shipped 2026-09-17.
+
 **Wire tokens changed** (`mcp/brx_mcp/mc/weapons.json`, `wire` block + top-level `mag`/`reserve`):
 
 | weapon | dmg (t5) | fire_ms (t14) | mag (t16/t39) | reserve (t17/t40) |
@@ -193,6 +199,65 @@ invariants (`tok39 == tok16`, `tok17 == 2*tok40`) hold at every new value shown.
 pick? The numbers say no (equal ideal TTK, inverted sustain/ammo trade-off), but this is exactly the
 kind of claim the arsenal has been burned by before (§3's headset-multiplier and t21/t22 accuracy
 notes) — it needs a body on the bench, not just a spreadsheet, before it ships as verified.
+
+## Shipped 2026-09-17: the dominance test's third axis, and the primaries retune
+
+**Axis change (Tony's decision).** `test_ttk_band_and_no_strictly_dominant_weapon` used to check
+{ideal TTK, sustained DPS, total kills from a full kit (`(mag+reserve)//htk`)}. Reserve ammo is
+retired as an axis: a respawn refills the whole kit, so how many kills a full kit could theoretically
+produce is not a fact about any single life a player actually fights. The replacement is the same
+**one-magazine kill chance at a stated field accuracy** this document already used for the sidearms
+(§5): `P(at least htk hits in mag shots)` at `p = 0.7`, binomial exact. The TTK band and the
+no-strict-dominance rule are otherwise unchanged mechanically — same test, same "no weapon may be ≥
+another on every axis at once" rule, just a different third axis. The band floor also moved, from
+1.50 s to **1.20 s**, to admit the Assault Rifle's native cycle (below).
+
+A charge weapon's `mag`/`reserve` count ROUNDS of its cell, not hits (F226/S43, the Charge Rifle
+bench below), so the one-magazine-kill and sustained-DPS axes both read `mag // rounds_per_charge`
+"full charges" for it, not raw rounds — see `WeaponCatalog.charges()`.
+
+**The retune.** Eight primaries were pulled toward new ideal-TTK targets (dmg/cycle `wire` overrides
+only, mag/reserve/reload untouched except the Charge Rifle's cell):
+
+| weapon | dmg (t5) | cycle ms | hits | ideal TTK | one-mag kill % @ p=0.7 |
+|---|---|---|---|---|---|
+| Assault Rifle | 9 | 100 | 13 | 1.20 s | 100% |
+| SMG | 8 | 95 | 15 | 1.33 s | 100% |
+| Burst Rifle | 11 | 75 +275 | 11 | 1.42 s | 100% |
+| Shotgun | 45 | 800 | 3 | 1.60 s | 93% |
+| AMR | 24 | 400 | 5 | 1.60 s | 100% |
+| Sniper Rifle | 60 | 1500 | 2 | 1.50 s | 92% |
+| Energy Rifle | 9 | 150 | 13 | 1.80 s | 100% |
+| Suppressor | 8 | 140 | 15 | 1.96 s | 100% |
+| Charge Rifle | 85 charge / 20 tap | 1250 | 2 (model) | 2.50 s | 92% |
+
+Full table, every weapon, `docs/weapon-design.md` §2.2. The Charge Rifle's `htk`/ideal-TTK are the
+same crude "N charges" model every weapon uses (no per-shot-type hit count exists); the real design
+intent (S43) is one charge plus two taps, 12 rounds and 84 heat, documented in prose in §2.2/§2.3
+because the model cannot express it numerically.
+
+**⚠ The test is RED as shipped, and it is an open call for Tony, not a bug fixed in this pass.**
+Two independent effects surfaced immediately:
+
+1. The Assault Rifle's native 100 ms cycle was already documented (before this pass) as failing this
+   test "by design" — the 2026-08-30 retune to 140 ms existed specifically to avoid it. Reverting it
+   (Tony's explicit instruction for this pass) reintroduces the dominance: a fast, deep-magazine
+   automatic's one-magazine kill chance saturates near 100% almost regardless of `htk`, so once ideal
+   TTK and sustained DPS also favour it, nothing is left to block a strict win over a slower,
+   heavier-hitting specialist. The Assault Rifle, Burst Rifle and SMG each pick up several such wins
+   (full list: `docs/weapon-design.md` §2.3).
+2. Retiring "total kills" also retires the lever §"Shipped 2026-09-12" used to keep the sidearm trio
+   non-dominant: that section's reserve numbers were chosen *specifically* so total-kills would rank
+   opposite to sustained DPS. With that axis gone, **USP now strictly dominates Deagle** (equal ideal
+   TTK, higher sustained DPS, higher one-magazine kill chance). This pass's brief kept sidearm numbers
+   unchanged, so there is no lever inside it to fix that regression either.
+
+Resolving either needs a decision this document cannot make alone: accept the paper dominance because
+the accuracy/stance/flinch system (S42) is the intended real-world equaliser and this is a
+perfect-aim, no-magazine-limit model; retune mag/reserve/reload on some of the listed weapons (outside
+this pass's "wire overrides only" scope); or scope the no-dominance rule itself (e.g. by role/tier,
+the way the sidearm exemption already scopes it). `docs/weapon-design.md` §2.3 has the full violation
+list.
 
 ## Sources
 

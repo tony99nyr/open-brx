@@ -153,6 +153,17 @@ def _cell(v: str) -> str:
     return v.replace("**", "").replace("*", "").strip()
 
 
+def _one_mag_kill_p(shots: int, htk: int, p: float = 0.7) -> float:
+    """P(at least `htk` hits in `shots` trials at hit chance `p`) -- binomial, exact. 2026-09-17
+    arsenal review: the dominance axis that replaced "total kills from a full kit"
+    (`test_mc_compile.py::_one_mag_kill_p`, kept the same formula here to avoid a cross-file import)."""
+    if htk <= 0:
+        return 1.0
+    if shots < htk:
+        return 0.0
+    return sum(math.comb(shots, k) * p ** k * (1 - p) ** (shots - k) for k in range(htk, shots + 1))
+
+
 def test_weapon_design_balance_table_matches_the_wire():
     """§2.2 is the balance table a human reads. Every numeric column is recomputed here.
 
@@ -163,7 +174,7 @@ def test_weapon_design_balance_table_matches_the_wire():
     header = [_cell(c).lower() for c in rows[0]]
     ix = {name: header.index(name) for name in
           ("weapon", "dmg", "cycle ms", "htk", "ttk s", "dps", "sust", "mag", "reserve", "reload",
-           "mag/total kills", "heat")}
+           "one-mag kill % (p=0.7)", "heat")}
     by_name, seen, bad = _by_name(), set(), []
     for r in rows[1:]:
         name = _cell(r[ix["weapon"]]).lower()
@@ -173,6 +184,10 @@ def test_weapon_design_balance_table_matches_the_wire():
         row = next(w for w in ROWS if w["weapon_id"] == wid)
         dmg, cycle, htk = CAT.damage(wid), CAT.cycle_ms(wid), CAT.hits_to_kill(wid, DEFAULT_POOL)
         mag, reserve, reload_ms = row["mag"], row["reserve"], row["reload_ms"]
+        # F226/S43 (2026-09-17): a charge weapon's mag counts ROUNDS of the cell, not hits -- sust and
+        # the one-magazine kill chance both need full CHARGES, or the Charge Rifle's 40-round cell
+        # reads as 40 hits instead of the 4 it actually is.
+        mag_charges = CAT.charges(wid, mag)
         # "100 +250" on a burst weapon: the intra-burst interval and the gap after the burst
         gap = int(_tok(wid, "burst") or 0)
         cycle_txt = f"{CAT.fire_ms(wid)} +{gap}" if wid in ("burst_rifle", "force_rifle") else str(CAT.fire_ms(wid))
@@ -183,9 +198,9 @@ def test_weapon_design_balance_table_matches_the_wire():
             "htk": str(htk),
             "ttk s": f"{CAT.time_to_kill(wid, DEFAULT_POOL) / 1000:.2f}",
             "dps": f"{round(dmg / (cycle / 1000), 1)}",
-            "sust": f"{round(dmg * mag / (mag * cycle / 1000 + reload_ms / 1000), 1)}",
+            "sust": f"{round(dmg * mag_charges / (mag_charges * cycle / 1000 + reload_ms / 1000), 1)}",
             "mag": str(mag), "reserve": str(reserve), "reload": str(reload_ms),
-            "mag/total kills": f"{mag // htk} / {(mag + reserve) // htk}" if htk else None,
+            "one-mag kill % (p=0.7)": f"{round(100 * _one_mag_kill_p(mag_charges, htk))}%" if htk else None,
             "heat": str(heat) if heat else "—",
         }
         for col, expect in want.items():

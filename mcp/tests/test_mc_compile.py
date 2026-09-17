@@ -4,6 +4,8 @@ Run: python3 run_tests.py mc_compile
 Asserts the bundle STRUCTURE (head silent + ends $TID + carries $PSET,<1..63>; spawn/revive/end/panic
 shapes), the catalog, validate() {ok,errors,warnings}, tutorial, cues-as-frames, and medals.
 """
+import math
+
 from brx_mcp import poolgauge as pg
 from brx_mcp.mc.compile import Compiler, WeaponCatalog, golden_bundle
 from brx_mcp.mc.types import MAX_PLAYERS
@@ -265,14 +267,15 @@ def test_catalog_excludes_hidden_melee_and_flags_verified():
     # sidearms (usp/deagle) + 2 catalogue-visible-but-pickup_only heavies (rocket_launcher/rail_gun) = 13.
     assert len(ids) == 13, f"the §3 roster is 9 primaries + 2 sidearms + 2 pickup-only heavies, got {len(ids)}"
     by = {w["weapon_id"]: w for w in cat.all()}
-    # `verified` now means SHIPPED EXACTLY AS CAPTURED — the AR is rebalanced (140ms, not the
-    # captured 100ms), the burst rifle ships stock. Every weapon has its own captured base frame.
+    # `verified` now means SHIPPED EXACTLY AS CAPTURED. 2026-09-17: the AR is rebalanced (still, though
+    # now at the captured 100ms rather than the earlier 140ms throttle) and the burst rifle is now ALSO
+    # rebalanced (dmg 9 -> 11, F225/S28) so it no longer ships byte-for-byte either.
     assert by["assault_rifle"]["verified"] is False
-    assert by["burst_rifle"]["verified"] is True
+    assert by["burst_rifle"]["verified"] is False
     # every visible weapon carries an armory blurb (weapons.json `desc` -> Weapon.desc)
     blank = [w["weapon_id"] for w in cat.all() if not (w.get("desc") or "").strip()]
     assert not blank, f"weapons missing desc: {blank}"
-    assert "140ms" in by["assault_rifle"]["desc"], by["assault_rifle"]["desc"]
+    assert "100ms" in by["assault_rifle"]["desc"], by["assault_rifle"]["desc"]
     assert by["rail_gun"]["desc"].strip().endswith("."), by["rail_gun"]["desc"]
 
 
@@ -745,7 +748,7 @@ def test_captured_native_behaviour_survives_resolve():
 def test_fire_interval_is_written_at_tok14_and_850_is_never_touched():
     cat, T = WeaponCatalog(), WeaponCatalog._T
     p = cat.resolve("assault_rifle", 0).split(",")
-    assert p[T["fire"] + 1] == "140", "rebalanced fire interval lands at tok14 (raw idx15)"
+    assert p[T["fire"] + 1] == "100", "rebalanced fire interval lands at tok14 (raw idx15)"
     assert p[T["fire"] + 2] == "850", "the unidentified constant at tok15 is never written"
 
 
@@ -757,9 +760,26 @@ def test_shipped_roster_satisfies_the_mag_invariant_at_the_default_pool():
     assert not bad, f"weapons that cannot kill on one magazine at the 115 pool: {bad}"
 
 
+def _one_mag_kill_p(shots: int, htk: int, p: float = 0.7) -> float:
+    """P(at least `htk` hits in `shots` independent trials at hit chance `p`) -- binomial, exact.
+
+    2026-09-17 arsenal review, Tony's decision: replaces "total kills from a full kit" as the third
+    dominance axis (see `docs/reference/ttk-model.md` §Sidearm proposal for the same formula on the
+    three pistols). Reserve is no longer an axis at all -- a respawn refills the kit, so how many
+    kills a whole KIT could theoretically produce says nothing about a single life."""
+    if htk <= 0:
+        return 1.0
+    if shots < htk:
+        return 0.0
+    return sum(math.comb(shots, k) * p ** k * (1 - p) ** (shots - k) for k in range(htk, shots + 1))
+
+
 def test_ttk_band_and_no_strictly_dominant_weapon():
-    """docs/weapon-design.md §2: every picker weapon lands in the 1.5-3.5s band (one-shot power
-    weapons excepted), and no weapon beats another on TTK, sustained DPS and total kills at once."""
+    """docs/weapon-design.md §2: every picker weapon lands in the 1.2-3.5s band (one-shot power
+    weapons excepted), and no weapon beats another on {ideal TTK, sustained DPS, one-magazine kill
+    chance at p=0.7} at once (2026-09-17 balance pass, Tony: the Assault Rifle's native 100ms cycle
+    sets the new floor at 1.20s, down from 1.50s; the third dominance axis used to be total kills
+    from a full kit -- Tony's call was to drop reserve ammo as an axis since a respawn refills it)."""
     cat = WeaponCatalog()
     rows = []
     for w in cat.all():
@@ -771,12 +791,16 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
         per = (2 * fire + int(burst)) / 3 if burst else fire
         ttk = htk * fire if w["weapon_id"] in ("charge_rifle", "laser_cannon", "rail_gun") \
             else (htk - 1) * per
+        # F226/S43: a charge weapon's `mag` counts ROUNDS of the cell, not hits -- both the sustained
+        # DPS and one-magazine-kill axes need full CHARGES, or the Charge Rifle's 40-round cell reads
+        # as 40 hits instead of the 4 it actually is.
+        mag_charges = cat.charges(w["weapon_id"], r["mag"])
         rows.append({"id": w["weapon_id"], "htk": htk, "ttk": ttk,
-                     "sust": r["mag"] * cat.damage(w["weapon_id"]) / (r["mag"] * per + r["reload_ms"]),
-                     "tk": (r["mag"] + r["reserve"]) // htk})
+                     "sust": mag_charges * cat.damage(w["weapon_id"]) / (mag_charges * per + r["reload_ms"]),
+                     "p_kill": _one_mag_kill_p(mag_charges, htk)})
     for r in rows:
         if r["htk"] > 1:
-            assert 1500 <= r["ttk"] <= 3500, f"{r['id']} TTK {r['ttk']}ms is outside the 1.5-3.5s band"
+            assert 1200 <= r["ttk"] <= 3500, f"{r['id']} TTK {r['ttk']}ms is outside the 1.2-3.5s band"
     pick = [r for r in rows if r["htk"] > 1]
     sidearm = {w["weapon_id"] for w in cat.all() if w.get("role") == "sidearm"}
     for a in pick:
@@ -788,8 +812,8 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
             # another — only "a primary beats a sidearm" is exempt.
             if b["id"] in sidearm and a["id"] not in sidearm:
                 continue
-            dominates = (a["ttk"] <= b["ttk"] and a["sust"] >= b["sust"] and a["tk"] >= b["tk"]
-                         and (a["ttk"] < b["ttk"] or a["sust"] > b["sust"] or a["tk"] > b["tk"]))
+            dominates = (a["ttk"] <= b["ttk"] and a["sust"] >= b["sust"] and a["p_kill"] >= b["p_kill"]
+                         and (a["ttk"] < b["ttk"] or a["sust"] > b["sust"] or a["p_kill"] > b["p_kill"]))
             assert not dominates, f"{a['id']} strictly dominates {b['id']}"
 
 
@@ -1234,7 +1258,7 @@ def test_stun_ships_the_emp_row_only_when_the_config_asks():
     from brx_mcp.gameconfig import _SIR_TABLE
     # CONTROL: no stun -> the stock table, in stock order, untouched
     b = C.compile(_cfg(), _player(), _TEAMS)
-    assert _sir_fn(b["spawn"]) == 38, "stock: the charge rifle's plain damage"
+    assert _sir_fn(b["spawn"]) == 1, "stock: the charge rifle's plain damage (fn 1 since F225, 2026-09-17)"
     assert [f for f in b["spawn"] if f.startswith("$SIR,")] == list(_SIR_TABLE)
     assert _sir_fn(b["head"]) == 28, "F121: the head's copy of the cell moves no pool"
     # stun on -> fn 24 on the SAME cell, in the SAME position, nothing else moved
@@ -1242,7 +1266,7 @@ def test_stun_ships_the_emp_row_only_when_the_config_asks():
     rows_on = [f for f in on["spawn"] if f.startswith("$SIR,")]
     assert _sir_fn(on["spawn"]) == 24
     assert _sir_fn(on["head"]) == 28, "F121: fn 24 is a DELAYED BLAST -- it may never ship pregame"
-    assert rows_on.index(_STUN_SIR_ROW) == list(_SIR_TABLE).index("$SIR,8,0,,38,0,0,1,,*"), "in place, not appended"
+    assert rows_on.index(_STUN_SIR_ROW) == list(_SIR_TABLE).index("$SIR,8,0,,1,0,0,1,,*"), "in place, not appended"
     assert [r for r in rows_on if not r.startswith("$SIR,8,0,")] == [r for r in _SIR_TABLE if not r.startswith("$SIR,8,0,")]
     assert "$SIR,8,0,,24,0,0,1,,*" in rows_on and _STUN_SIR_ROW.split(",")[3] == "", "the sound token stays EMPTY (F43: never invent a sound id)"
     # `{}` is the 10 s default and still ships the row
@@ -1256,9 +1280,9 @@ def test_stun_row_rides_every_sir_pool_take_too():
     assert b["sir_pool"], "class sounds on: the pool exists"
     for take in b["sir_pool"]:
         assert _sir_fn(take) == 24, take
-    # CONTROL: the same pool without stun keeps fn 38 in every take
+    # CONTROL: the same pool without stun keeps fn 1 in every take (F225, 2026-09-17)
     b0 = C.compile(dict(_cfg(), hit_audio_class=True), _player(), _TEAMS)
-    assert all(_sir_fn(take) == 38 for take in b0["sir_pool"])
+    assert all(_sir_fn(take) == 1 for take in b0["sir_pool"])
 
 
 def test_validate_stun_shape_and_names_the_source():

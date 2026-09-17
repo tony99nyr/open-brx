@@ -277,7 +277,12 @@ _SIR_GRANT = frozenset(range(9, 23))              # heals/armor/shields: a "dama
 # ALLOW-LIST, deliberately: only these are bench-confirmed plain 1x damage. Anything not listed is
 # warned about, because the failure we are guarding against (a weapon that cannot hurt anyone, or
 # worse, heals what it shoots) lives precisely in the functions we have NOT characterised.
-_SIR_PLAIN_DAMAGE = frozenset({1, 3, 4, 5, 7, 29, 30, 33, 38})   # 3 added 2026-08-29, see above
+# ⚠ fn 38 was REMOVED from this set 2026-09-17 (F225): bench-proven to HALVE every hit (a charge of
+# 100 landed 50, a tap of 20 landed 10), not plain damage. It is not added to any other set either --
+# its true effect is still uncharacterised beyond "halves" -- so a weapon that keys to it now falls
+# through to the final `elif` and is WARNED about, which is the guard this whole allow-list exists
+# to provide: nothing may key to fn 38 by accident and ship silently halved.
+_SIR_PLAIN_DAMAGE = frozenset({1, 3, 4, 5, 7, 29, 30, 33})   # 3 added 2026-08-29, see above; 38 removed 2026-09-17
 
 
 def _sir_index(table) -> dict[tuple[str, str], int]:
@@ -501,7 +506,8 @@ def assert_rearms_every_life(bundle) -> None:
 # (fn 24 = a STATUS function: `$HIR` fires, pools do not move, the gun plays fn 24's own clip) -> the NODE writes
 # `$AMMO,<slot>,0,0,1,*` for its live slots and restores the LIVE counts when `config.stun.duration_s` runs out
 # (`engine.js _stun`). The native stun is not relied on (2/5 singles, lasts until death). The cell is the stock
-# `<8,0>` row -- the CHARGE RIFLE's plain damage (fn 38) -- so with stun ON, a charge rifle IS the EMP source: it
+# `<8,0>` row -- the CHARGE RIFLE's plain damage (fn 1 since F225, 2026-09-17; fn 38 before that
+# HALVED every hit, the bug F225 fixed) -- so with stun ON, a charge rifle IS the EMP source: it
 # stuns and deals no damage (the row's function is the only thing that changes; the sound token is carried over,
 # never rewritten -- F43). The other source is a proto-8 station. Shipped ONLY when `config.stun` is present;
 # a game without it keeps the stock row byte-for-byte.
@@ -947,6 +953,22 @@ class WeaponCatalog:
         """What the phone's HUD is told the player is carrying — the SAME numbers `resolve()` writes."""
         mag, reserve, _ = self._ammo(weapon_id, mods)
         return mag, reserve
+
+    def rounds_per_charge(self, weapon_id: str) -> int:
+        """weapons.json `rounds_per_charge` (2026-09-17, F226/S43): rounds of the `mag`/`reserve` cell
+        one hit costs. 1 for every weapon except the Charge Rifle (10, bench-measured): its `mag`/
+        `reserve` count ROUNDS of the cell, not hits, so a caller that wants "how many hits can this
+        magazine land" must divide by this first (`charges()`)."""
+        return int(self._row(weapon_id).get("rounds_per_charge") or 1)
+
+    def charges(self, weapon_id: str, rounds: int) -> int:
+        """`rounds` (a mag or reserve count) expressed as full charges/hits for this weapon.
+
+        Identity for every weapon but the Charge Rifle. Floor division: a charge weapon with fewer
+        than `rounds_per_charge` rounds left cannot fire one at all (F226, bench-confirmed: a
+        part-filled cell jams rather than firing a partial charge)."""
+        rpc = self.rounds_per_charge(weapon_id)
+        return rounds // rpc if rpc > 1 else rounds
 
 
 class Compiler:
@@ -1756,7 +1778,9 @@ class Compiler:
                 # what the weapon is, for THIS player: "only" (the gun they fight with), "primary"
                 # (a real primary with a backup behind it) or "backup".
                 kind = "backup" if slot > 0 else ("only" if len(ws) == 1 else "primary")
-                mag = self.catalog._ammo(wid, None)[0]       # the weapon's OWN magazine, no perk
+                raw_mag = self.catalog._ammo(wid, None)[0]    # the weapon's OWN magazine, no perk
+                mag = self.catalog.charges(wid, raw_mag)      # F226/S43: a charge weapon's mag is ROUNDS,
+                                                                # not hits -- grade on full charges instead
                 if (wid, pool, mag, kind) in seen:
                     continue
                 seen.add((wid, pool, mag, kind))

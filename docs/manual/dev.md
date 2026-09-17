@@ -445,7 +445,7 @@ $SIR,1,0,H29,10,0,0,1,,*    respawn + add HP
 $SIR,2,1,VA8C,11,0,0,1,,*   add shields
 $SIR,3,0,VA16,13,0,0,1,,*   add armor
 $SIR,6,0,H02,1,0,90,1,40,*  Rail Gun
-$SIR,8,0,,38,0,0,1,,*       Charge Rifle
+$SIR,8,0,,38,0,0,1,,*       Charge Rifle (fn 38 HALVES the magnitude, F225 -- MC re-keys this cell to fn 1)
 $SIR,9,3,,24,10,0,,,*       Energy Launcher (fn 24, under investigation: see the function map)
 $SIR,10,0,X13,1,0,100,2,60,* Rocket Launcher
 $SIR,11,0,VA2,28,0,0,1,,*   Tear gas
@@ -458,10 +458,11 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 
 | Class | Function ids | Measured behaviour | Polarity |
 |---|---|---|---|
-| Standard damage | 1, **3**, 4, 5, 7, 29, 30, 33, 38 | −20 per hit, drains shields, then armor, then HP | enemy only |
+| Standard damage | 1, **3**, 4, 5, 7, 29, 30, 33 | −20 per hit, drains shields, then armor, then HP | enemy only |
 | **Armor-piercing** | 2, 6 (+17, 21 enemy-side) | HP 45 to 25 to 5 with armor **and shields** untouched | enemy only |
 | **×1.25 damage on the headset, ×1 on the gun body** | 36 | Gun body: always ×1 (magnitude 20 lands as 20). Headset at the shipped t7=50: magnitude 20 lands as **25**, 40 as **50**, 9 as **11**, 7 as **8**. The result is the **floor**: 7 × 1.25 = 8.75 lands as 8, not 9 | enemy only |
 | **×2 damage on the headset, ×1 on the gun body** | 37 | Gun body: always ×1 (magnitude 20 lands as 20). Headset at the shipped t7=50: magnitude 20 lands as **40**, 40 as **80**, 9 as **18**, 7 as **14** | enemy only |
+| **×0.5 damage** | 38 | Bench 2026-09-17 (F225), headset front dome, gun sensor covered: a Charge Rifle charge of magnitude 100 landed **50**, a tap of magnitude 20 landed **10**, at `$GSET` t7 0 and 50 alike. Not one of the 10 protocol-independence-tested functions and not re-checked on the gun-body sensor, so its earlier place in the Standard damage row above was an assumption, not a measurement; MC no longer keys any weapon to it (`_SIR_TABLE`'s `<8,0>` cell moved to fn 1) | enemy only, headset-measured |
 | Add HP, overflow to armor | 9, 12, 16, 19 | 15 to 35 to 45, then +armor | ally only (16/19 also damage enemies) |
 | Add HP, clamp | 10, 17 | 15 to 35 to 45, no overflow | ally only (17 also AP-damages enemies) |
 | Add HP, overflow to shield | 14, 21 | 15 to 35 to 45, then +shield | ally only |
