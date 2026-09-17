@@ -256,3 +256,18 @@ Two-gun bench (F206) plus a Pixel 4 + Pixel 5 game through Mission Control. Full
 
 - **F205** 2026-09-17 — `app/tools/screens.mjs` binds a free port per shard (`SCREENS_PORT` pins it), and `site/shots.mjs` already reads `SHOTS_MC_PORT`/`SHOTS_HUD_PORT`. See `docs/experiment-log/2026-09.md` (2026-09-17 parallel test suite).
 - 2026-09-17 **F222** site shots recaptured on fix/playtest-2026-09-13 after merging main 89dd1c3d (commit 32286e1a); `test_site_shots` passes.
+
+# Closed 2026-09-17: the verification bench (two guns, Pixel 4 + Pixel 5)
+
+Two-gun bench (Tactix-3D4F, Tactix-E20D) plus a Pixel 4 + Pixel 5 game through Mission Control, run with
+`--bench-volume`. Full findings: `docs/experiment-log/2026-09.md` (2026-09-17 entry). Validated by the
+polish loop (commits b7c095c4, 0003df1a, 16a8f72f, 3a02e263, 476d5b17, faa64843, f8f7006a).
+
+- 2026-09-17 **F215** the sniper's HUD magazine and reserve numbers tracked the gun on the bench.
+- 2026-09-17 **F217** A44 spawn protection confirmed on hardware: no damage in the first ~2.4 s after
+  respawn, the protection cap released every time (9 of 9 phone-log lines read `cap`), and the
+  first-shot release never fired. Tony decided the respawned player must not get an advantage; a
+  survivor keeping about 0.3 s of the window is fine.
+- 2026-09-17 **F218** the charge-rifle match gave no false GUN NOT FIRING report, except during
+  overheat lockout, which is now fixed. The swap-to-empty-slot half of the original check did not run
+  today; it continues as **F242**.

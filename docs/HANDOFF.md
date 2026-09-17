@@ -1,50 +1,55 @@
 # Handoff: Open BRX
 
-**State as of 2026-09-17.** Branch `fix/playtest-2026-09-13`, in the worktree
-`.claude/worktrees/playtest-2026-09-13`, holds tonight's bench work. It is **NOT merged to main and NOT
-pushed**. Both Pixels run app 0.3.0 built from this branch.
+**State as of 2026-09-17, evening.** Branch `fix/playtest-2026-09-13`, in the worktree
+`.claude/worktrees/playtest-2026-09-13`, holds the 2026-09-16 and 2026-09-17 work. It is **NOT merged to
+main and NOT pushed**. It last merged with main at commit 7d179b97.
 
-## What tonight's bench pass proved
+The `brx-weapons` session has **uncommitted work on main**: arsenal cuts, plus followup ids F225-F229
+and S42-S47. That work will need merging alongside this branch.
 
-Two-gun bench for F206, then a Pixel 4 + Pixel 5 game through Mission Control. Full write-up:
-`docs/experiment-log/2026-09.md` (2026-09-16 entry). Closed: **F206** (a `$PSET` write clears the gun's
-team; `$TID` now follows the last `$PSET` of any write), **F207** (the START echo check now reads the
-gun's reserve against `$WEAP` t40, not t17), **F201** (answered by F207), **F212** (the respawn gate
-label), **F213** (the armour ceiling), **F210** (link flap backoff, built but not reproduced on hardware),
-**F211** (the HUD now says when Bluetooth is off). A Pixel 5 scan storm (about 8 stop/start cycles per
-second) explained the countdown gap, the white flash, missed taps and the late kill sound; fixed.
+## What today's bench pass proved
 
-Built and desk-verified, **bench gate still open**: A44 spawn protection (2.1 s cap), A45/A46 stale-pool
-reporting, F209 one death per life, app 0.3.0 (`APP_MINOR` 3), A43 next match without a mode pick, a
-pre-arm check, the ALT procedure correction, HUD press feedback, lobby READY green. New bench ids:
-**F217** (A44 on hardware), **F218** (A45 must not fire on a charge-rifle hold or an empty-slot swap),
-**F219** (does a trigger held on `$BMAP` fn 98 report `$BUT` in scanner respawn mode).
+Two guns (Tactix-3D4F, Tactix-E20D) plus a Pixel 4 and a Pixel 5 through Mission Control, with
+`--bench-volume`. Full write-up: `docs/experiment-log/2026-09.md` (2026-09-17 entry). Closed on the
+bench: **F215** (sniper HUD numbers matched the gun), **F217** (A44 spawn protection confirmed, and
+Tony's decision that a respawned player must not get an advantage), **F218** (the charge-rifle false
+GUN NOT FIRING was an overheat-lockout bug, now fixed; the swap-to-empty-slot half continues as F242).
+Found and fixed today: a Pixel 5 double-tap connect hang, a headset-off reconnect loop (now backs off),
+a bounded RELINK mid-match, a 62 s spawn write caused by a flooded plugin reply channel (writes no
+longer wait; the beacon scan and player advert now run only when stations are in play), a charge-rifle
+cell that spent the wrong amount per charge (now 40/80), an ALT that reloaded a one-weapon loadout, a
+HUD kill banner that showed a player id, and an amber warning for an unread firmware version. Open:
+**F240** the charge rifle has no overheat sound (`$PLAY,C19` sounds like the charge-cancel cue).
 
-Polish loop: 3 iterations, no Critical. Validation: app 548 pass, MCP 1886 pass (2 expected failures: stale
-site shots, published build still 0.2.1), console 539 pass, HUD screen-truth 346 pass.
+Built at the desk, not yet benched: MC match resume/adopt, the operator menu (RESYNC GUN, FORCE
+RESPAWN, RELINK GUN, A47), HARDWARE READY + ENABLE BACKHAUL, MARK ALL READY, the energy gauge (cell
+pills, NOT ENOUGH ENERGY, HOLD TO RECHARGE), the heat bar and full-screen OVERHEAT, a shot-ready cue, a
+results overlay, a night skin per player, NIGHT OPS dimming LEDs, and a bench volume of 65. New
+verification-bench ids: **F230-F242** (see `docs/FOLLOWUPS.md`).
 
-Separately, contract-DRY phases 1-3, all five F42.9 batches, F42.12 and F42.14 are implemented, reviewed and
-validated (log entries 2026-09-15/16); only the coverage/runtime-input audit remains (see below).
+Polish loop: 3 rounds, no Critical finding. Fixes in commits b7c095c4, 0003df1a, 16a8f72f, 3a02e263,
+476d5b17, faa64843, f8f7006a. Validation: `npm run test:all -- --ui` gives 17 jobs passing; the mcp
+suite gives only the two expected failures (published build still reads 0.2.1; site shots refreshed in
+commit 272e009b).
 
 ## Machine state right now
 
-MC is **stopped**. Start it from the worktree's `mcp/` with:
+MC is **stopped**. Phones need the next build from this branch before the verification bench. Start MC
+from the worktree's `mcp/`:
 ```
-../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-volume
+setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-volume
 ```
-(the Windows portproxy forwards 8765/8766). **Rebuild `webapp/mc/dist` first.**
+(detached; the Windows portproxy forwards 8765/8766). **Rebuild `webapp/mc/dist` first.** Restart Mission
+Control only between matches, never mid-match.
 
 ## Next actions, in order
 
-1. Run the bench checklist against the new ids: **F217** (A44), **F218** (A45 no_fire), **F219** (fn 98
-   `$BUT` in scanner mode), plus the green READY, pre-arm check, NEXT MATCH, Bluetooth-off and RELINK
-   behaviour built tonight.
-2. Tony decides: **F220** publish app 0.3.0 as a GitHub Release, and **F221** the warning-audit page
-   (`docs/mc-warning-audit-2026-09-16.md`, keep/quieter/remove per item).
-3. Done 2026-09-17: main 89dd1c3d (`test-suite-speed`) is merged into this branch, `fakegun.js` echoes t40,
-   and the site shots are refreshed (F222). `npm run test:all -- --ui` passes 15 of 16 jobs; the one failure
-   is `test_published_build` until F220 is decided. After the bench, merge this branch to main and push.
-4. Later: the contract-DRY coverage/runtime-input audit is the one item still open from that work.
+1. Run the verification bench against the new rows: **F230-F242** (operator menu, match resume, the
+   Pixel 5 BLE fix, the energy gauge, OVERHEAT, NIGHT OPS, the shot-ready cue, the results overlay,
+   HARDWARE READY/backhaul, MARK ALL READY, the charge-rifle overheat sound, the energy-weapon reload
+   timeout, and the swap-to-empty-slot no_fire check).
+2. Tony decides: **F220** (publish app 0.3.0 as a GitHub Release) and **F221** (the warning-audit page).
+3. Merge main (the `brx-weapons` work, F225-F229, S42-S47) and this branch, then push.
 
-**Machine roles:** WSL runs the Python suites and no-hardware MC; Windows Python is for BLE instruments; the
-MacBook is the field target. Never modify stock firmware.
+**Machine roles:** WSL runs the Python suites and no-hardware MC; Windows Python is for BLE instruments;
+the MacBook is the field target. Never modify stock firmware.
