@@ -189,7 +189,7 @@ sounds — and moves the numbers.
 | Suppressor | support | 8 | 160 | 15 | **2.24** | 50.0 | 39.7 | 48 | 384 | 2000 | 3 / 28 | — | cycle 75→160, res 288→384 |
 | Assault Rifle | assault | 9 | 140 | 13 | **1.68** | 64.3 | 49.0 | 32 | 192 | 1400 | 2 / 17 | — | cycle 100→140, res 384→192 |
 | Energy Rifle | support | 9 | 200 | 13 | **2.40** | 45.0 | 43.3 | 300 | 600 | 2400 | 23 / 69 | 6 | cycle 90→200 |
-| Charge Rifle | support | 100 | 1250 | 2 | **2.50** | 80.0 | 68.6 | 12 | 12 | 2500 | 6 / 12 | 14 | mag 100→12, res 200→12 |
+| Charge Rifle | support | 100 | 1250 | 2 | **2.50** | 80.0 | 76.2 | 40 | 80 | 2500 | 20 / 60 | 14 | mag 100→40, res 200→80 (bench 2026-09-17: a full charge spends about 10, so the kill counts here are per round, not per charge) |
 | Rocket Launcher | power | 115 | 1000 | 1 | **0.00** | 115.0 | 50.0 | 2 | 2 | 2600 | 2 / 4 | — | res 8→2, reload 1200→2600 |
 | Energy Launcher | power | 115 | 1600 | 1 | **0.00** | 71.9 | 50.0 | 2 | 2 | 1400 | 2 / 4 | — | cycle 360→1600, mag 1→2, res 6→2 |
 | Ion Sniper | power | 115 | 1400 | 1 | **0.00** | 82.1 | 47.9 | 2 | 2 | 2000 | 2 / 4 | — | cycle 1000→1400, res 12→2 |

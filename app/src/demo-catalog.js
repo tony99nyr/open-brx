@@ -30,7 +30,7 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 56,
       "rof": 51,
-      "ammo": 45,
+      "ammo": 40,
       "ttk": 87
     }
   },
@@ -128,10 +128,10 @@ export const DEMO_WEAPONS = [
     "weapon_id": "charge_rifle",
     "name": "Charge Rifle",
     "cls": "5",
-    "desc": "Hold, release, hit hard. A 1.25s charge into 100 damage: two hits to a kill and a heat budget that ends the party if you rush it. Twelve up, twelve back.",
-    "clip": 12,
-    "mags": 1,
-    "reserve": 12,
+    "desc": "Hold, release, hit hard. A 1.25s charge into 100 damage: two hits to a kill and a heat budget that ends the party if you rush it. An energy cell of 40: a full charge spends about ten.",
+    "clip": 40,
+    "mags": 2,
+    "reserve": 80,
     "reload_s": 2.5,
     "reload_ms": 2500,
     "dmg": 87,
@@ -146,11 +146,11 @@ export const DEMO_WEAPONS = [
     "role": "support",
     "htk": 2,
     "ttk_ms": 2500,
-    "ammo_total": 24,
+    "ammo_total": 120,
     "bars": {
       "power": 93,
       "rof": 26,
-      "ammo": 25,
+      "ammo": 55,
       "ttk": 20
     }
   },
@@ -181,7 +181,7 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 71,
       "rof": 45,
-      "ammo": 40,
+      "ammo": 35,
       "ttk": 47
     }
   },
@@ -304,7 +304,7 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 42,
       "rof": 63,
-      "ammo": 50,
+      "ammo": 45,
       "ttk": 47
     }
   },
@@ -398,7 +398,7 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 64,
       "rof": 51,
-      "ammo": 55,
+      "ammo": 50,
       "ttk": 87
     }
   },
@@ -490,7 +490,7 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 78,
       "rof": 38,
-      "ammo": 35,
+      "ammo": 30,
       "ttk": 87
     }
   },
@@ -551,7 +551,7 @@ export const DEMO_WEAPONS = [
     "bars": {
       "power": 85,
       "rof": 20,
-      "ammo": 30,
+      "ammo": 25,
       "ttk": 93
     }
   },
