@@ -394,3 +394,88 @@ def test_f142_restored_from_at_is_a_number_or_absent_never_whatever_the_file_sai
         got = s2.restored_from["at"]
         assert got == want and (got is None or type(got) is int), (junk, got)
         assert s2.restored_from["players"] == 3
+
+
+
+# ── bench 2026-09-16: a restart must not claim deliveries the old process made ─────────────────────
+# The snapshot keeps the human work (roster, config, match numbers). "Loaded", "pushed", the acks, the
+# phase and the start are facts about sockets the OLD process wrote to. A new process has made none of
+# those deliveries, so it boots before the first one and a re-hello carries nothing that arms a gun.
+def _restart_from(s, clock):
+    from brx_mcp.mc.fakes import FakeArmory, FakeCompiler, FakeNet, demo_armory
+    from brx_mcp.mc.state import Session
+    s._persist_last = 0.0
+    s._persist()
+    net2 = FakeNet()
+    s2 = Session(FakeCompiler(), net2, FakeArmory(demo_armory()), now_ms=lambda: clock["t"])
+    s2._persist_path = s._persist_path
+    assert s2.restore_snapshot() == len(s.players)
+    return s2, net2
+
+
+def _loaded_pushed_lobby():
+    from test_mc_state import online
+    s, net, clock, ps = mk(2)
+    s._persist_path = pathlib.Path(tempfile.mkdtemp()) / "session.json"
+    for i, p in enumerate(ps):
+        online(s, net, clock, p, i)
+    s.set_phase("kit")
+    s.load_game()
+    for p in ps:
+        s.set_ready(p["player_id"], True)
+    s.push_config(force=True)
+    for i in range(len(ps)):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
+                                                           "gun_echo": "x"}, clock["t"])
+    assert s.phase == "lobby" and s.game_loaded and s.lobby_pushed, "control: the old process delivered"
+    return s, net, clock, ps
+
+
+def _assert_pre_delivery(s2, net2, clock, ps, old_cfg):
+    from brx_mcp.mc.fakes import demo_armory
+    snap = s2.snapshot()
+    assert snap["phase"] == "muster", "a restart must not resume a phase the new process never reached"
+    assert snap["game"] == {"loaded": False, "sent": 0, "total": 2}, "no LOAD has happened in this process"
+    assert snap["lobby"]["pushed"] is False and snap["lobby"]["acks"] == {}
+    assert s2.start_info is None
+    assert s2.config["config_id"] == old_cfg, "the config itself is durable and comes back"
+    for i, p in enumerate(ps):
+        tail = demo_armory()[i]["ble"]["tail"]
+        node = net2.simulate_hello(f"node{i}", f"GUN-{chr(65 + i)}-{tail}")
+        assert node is not None and node["player"]["player_id"] == p["player_id"]
+        for key in ("config", "frames", "start", "match_id"):
+            assert key not in node, f"a re-hello after a restart must not carry `{key}` nobody sent"
+        assert node["policy"]["kit_open"] is False
+    assert s2.snapshot()["game"]["sent"] == 0
+    assert not [k for (_n, k, _b) in net2.pushed if k in ("config", "start")]
+
+
+def test_restart_from_a_loaded_pushed_lobby_boots_before_the_first_delivery():
+    s, net, clock, ps = _loaded_pushed_lobby()
+    s2, net2 = _restart_from(s, clock)
+    _assert_pre_delivery(s2, net2, clock, ps, s.config["config_id"])
+
+
+def test_after_a_restart_load_reaches_every_phone_that_said_hello_again():
+    """The way out is the ordinary one: LOAD tells every re-connected phone which game it is."""
+    from test_mc_state import online
+    s, net, clock, ps = _loaded_pushed_lobby()
+    s2, net2 = _restart_from(s, clock)
+    for i, p in enumerate(ps):
+        online(s2, net2, clock, p, i)
+    assert s2.load_game()["sent"] == 2
+    assert s2.snapshot()["game"]["loaded"] is True
+
+
+def test_restart_from_an_armed_or_live_match_never_sends_a_config_or_a_start():
+    """A config push to a gun in play clears `spawned`. A restart mid-match comes back with no start and
+    no frames on the re-hello, so a phone keeps the match it already holds."""
+    for go_live in (False, True):
+        s, net, clock, ps = _loaded_pushed_lobby()
+        s.start(force=True)
+        if go_live:
+            clock["t"] = s.start_info["go_live_t"] + 10
+            s.tick()
+        assert s.phase == ("live" if go_live else "armed"), "control"
+        s2, net2 = _restart_from(s, clock)
+        _assert_pre_delivery(s2, net2, clock, ps, s.config["config_id"])

@@ -251,7 +251,12 @@ export function Lobby() {
             || (faults.length
               ? `${faults.length} gun${faults.length === 1 ? '' : 's'} cannot start`
               : waitWhy
-                || (notReady.length ? `Not ready yet: ${notReady.join(', ')}` : '')
+                // Bench 2026-09-16: LOBBY reached from GAMES without KIT. Nothing had opened the kit and
+                // nothing was pushed, so the phones said HOST IS SETTING UP and could not ready up. The line
+                // named the players and not the step that frees them.
+                || (notReady.length
+                  ? `Not ready yet: ${notReady.join(', ')}${lobby.pushed ? '' : '. Their phones say HOST IS SETTING UP until you open KIT or push the config.'}`
+                  : '')
                 // A36: "no echo" and "echoed the LAST game" are different problems with different
                 // answers, and this line used to be able to name NEITHER — a stale ack is `ok:true`,
                 // so it fell out of the filter and the sentence rendered as "No config echo from  —
