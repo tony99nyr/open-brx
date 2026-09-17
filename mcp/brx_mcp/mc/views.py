@@ -99,7 +99,8 @@ def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> WeaponView:
         # no derivation chain (a synthetic row): the published figure still holds at the pool it was
         # published for, and is a lie at any other. Show nothing rather than the wrong number.
         ttk_ms = _num(st.get("ttk_ms")) if pool == DEFAULT_POOL else None
-    view: WeaponView = {"weapon_id": w["weapon_id"], "name": w["name"], "cls": w.get("cls", ""), "desc": w.get("desc", ""),
+    view: WeaponView = {"weapon_id": w["weapon_id"], "name": w["name"], "cls": w.get("cls", ""),
+            "weapon_class": w.get("weapon_class", "ballistic"), "desc": w.get("desc", ""),
             "clip": mag, "mags": ((reserve or 0) // max(mag, 1)),
             "reserve": reserve,
             # None, not 0.0: a missing reload time must read "—", not a confident "RELOAD 0.0S"
@@ -115,6 +116,8 @@ def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> WeaponView:
             "htk": htk, "ttk_ms": ttk_ms}                                       # A10, now at the host's pool
     if caution := w.get("caution"):
         view["caution"] = caution                                      # A10: known live problem
+    if w.get("pickup_only"):
+        view["pickup_only"] = True                    # 2026-09-17: catalogue-visible, never in a loadout pool
     return view
 
 

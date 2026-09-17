@@ -21,7 +21,9 @@ const inPool = (r: SlotRule, id: string, tags: string[]) =>
 export const kindRows = (r: SlotRule, weapons: WeaponView[]): WeaponView[] => {
   // `UNPLAYABLE_IDS` is filtered HERE too, not only in `inPool`: these rows feed the DESIGNER's
   // per-weapon chips, and a chip that can never be switched on is worse than no chip at all.
-  const ws = weapons.filter(w => !UNPLAYABLE_IDS.has(w.weapon_id));
+  // `pickup_only` (2026-09-17, mirrors policy.py `_filter`): heavies reserved for a future
+  // pickup/station mechanism (docs/spec/loadout.md) are never in a starting-loadout pool.
+  const ws = weapons.filter(w => !UNPLAYABLE_IDS.has(w.weapon_id) && !w.pickup_only);
   return r.kinds.includes('weapon') ? ws : r.kinds.includes('sidearm') ? ws.filter(w => (w.tags ?? []).includes('sidearm')) : [];
 };
 export const admitsWeapons = (r: SlotRule) => r.kinds.includes('weapon') || r.kinds.includes('sidearm');
@@ -63,11 +65,11 @@ export function unplayablePick(rule: SlotRule): string | null {
 }
 
 export function computePool(p: LoadoutPolicy, weapons: WeaponView[], perks: PerkView[]): LoadoutPool {
-  const prim = p.primary.choice === 'fixed' ? weapons.filter(w => w.weapon_id === p.primary.fixed_id && !UNPLAYABLE_IDS.has(w.weapon_id)).map(w => w.weapon_id)
+  const prim = p.primary.choice === 'fixed' ? weapons.filter(w => w.weapon_id === p.primary.fixed_id && !UNPLAYABLE_IDS.has(w.weapon_id) && !w.pickup_only).map(w => w.weapon_id)
     : kindRows(p.primary, weapons).filter(w => inPool(p.primary, w.weapon_id, w.tags ?? [])).map(w => w.weapon_id);
   const s = p.secondary, k = p.perk;
   let sw: string[] = [], sp: string[] = [];
-  if (s.choice === 'fixed') sw = weapons.filter(w => w.weapon_id === s.fixed_id && !UNPLAYABLE_IDS.has(w.weapon_id)).map(w => w.weapon_id);
+  if (s.choice === 'fixed') sw = weapons.filter(w => w.weapon_id === s.fixed_id && !UNPLAYABLE_IDS.has(w.weapon_id) && !w.pickup_only).map(w => w.weapon_id);
   else if (s.choice !== 'off') sw = kindRows(s, weapons).filter(w => inPool(s, w.weapon_id, w.tags ?? [])).map(w => w.weapon_id);   // 'sidearm' = pistols only (policy.py weapon_kind_rows)
   const visiblePerks = perks.filter(x => !x.hidden);   // pool() is handed only the visible catalog server-side
   if (k.choice === 'fixed') sp = visiblePerks.filter(x => x.perk_id === k.fixed_id).map(x => x.perk_id);                           // A14: the perk rule is its own slot

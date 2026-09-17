@@ -64,7 +64,7 @@ def test_three_rules_and_the_pool_has_a_perks_list():
 
 def test_ar_plus_pistol_plus_quick_switch_is_legal_everywhere():
     op = P.preset_rules("open"); lp = P.pool(op, W, PK)
-    lo = {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "glock"}], "perk": "quick_switch"}
+    lo = {"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "usp"}], "perk": "quick_switch"}
     assert P.validate_loadout(op, lp, lo, W, PK) == (True, None)
     assert P.apply(op, lp, lo, W, PK) == lo
     s, net, clock, p = _mk()                                 # the fake compiler's catalog has no pistols: the SMG stands in

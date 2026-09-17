@@ -451,6 +451,8 @@ export interface Weapon {
   weapon_id: string;
   name: string;
   cls: string;
+  /** ballistic|energy|melee (weapons.json `class`, A10, 2026-09-17): ballistic reloads, energy overheats/charges; not the same as `cls` above (raw protocol class byte) */
+  weapon_class: string;
   /** house-written armory blurb (weapons.json `desc`); "" if a row lacks one */
   desc?: string;
   stats: Record<string, unknown>;
@@ -462,6 +464,8 @@ export interface Weapon {
   role?: string;
   /** A10: human copy for a known LIVE problem (weapons.json `caution`) */
   caution?: string;
+  /** 2026-09-17: catalogue-visible but never in a player loadout pool (policy.py) */
+  pickup_only?: boolean;
 }
 
 export interface WeaponBars {
@@ -476,6 +480,8 @@ export interface WeaponView {
   weapon_id: string;
   name: string;
   cls: string;
+  /** ballistic|energy|melee (weapons.json `class`, A10, 2026-09-17): ballistic reloads, energy overheats/charges; not the same as `cls` above (raw protocol class byte) */
+  weapon_class: string;
   desc: string;
   clip: number;
   mags: number;
@@ -497,6 +503,8 @@ export interface WeaponView {
   caution?: string;
   ammo_total?: number;
   bars?: WeaponBars;
+  /** 2026-09-17: catalogue-visible but never in a player loadout pool (policy.py) */
+  pickup_only?: boolean;
 }
 
 /** A sanitized whole-game preset stored on the Mission Control host. */

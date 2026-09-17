@@ -260,7 +260,10 @@ def test_catalog_excludes_hidden_melee_and_flags_verified():
     cat = WeaponCatalog()
     ids = [w["weapon_id"] for w in cat.all()]
     assert "melee" not in ids, "hidden melee is not in the visible picker"
-    assert len(ids) == 21, f"the §3 roster is 18 weapons + 3 sidearms, got {len(ids)}"
+    # 2026-09-17 (arsenal review): force_rifle/bolt_rifle/stinger/plasma_sniper/laser_cannon/
+    # ion_sniper/energy_launcher/glock joined melee as `hidden` — 9 pickable primaries + 2 pickable
+    # sidearms (usp/deagle) + 2 catalogue-visible-but-pickup_only heavies (rocket_launcher/rail_gun) = 13.
+    assert len(ids) == 13, f"the §3 roster is 9 primaries + 2 sidearms + 2 pickup-only heavies, got {len(ids)}"
     by = {w["weapon_id"]: w for w in cat.all()}
     # `verified` now means SHIPPED EXACTLY AS CAPTURED — the AR is rebalanced (140ms, not the
     # captured 100ms), the burst rifle ships stock. Every weapon has its own captured base frame.
@@ -573,10 +576,18 @@ def test_sir_effect_guard_is_an_ERROR_for_a_weapon_that_deals_no_damage():
 
 
 def test_sir_guard_flags_multiplier_rows_because_published_htk_is_computed_on_raw_t5():
+    """`_to_gc()` never maps `crit_modifier` off the compiled `config` dict at all -- it is not a
+    per-game configurable field on the wire, only the `gameconfig.py` GameConfig dataclass default
+    (compile.py `_to_gc`), so `C.validate()` always sees THAT default, currently 0 (2026-09-17,
+    arsenal review). At 0 a headset hit on a $SIR 36/37 row lands the SAME as a gun-body hit, and the
+    warning must say so rather than claim a kill needs fewer hits than published (only true above 1x).
+    The bench-confirmed 1.25x/2.0x formula itself (crit_modifier=50) is tested directly against
+    `headset_multiplier()` in test_headset_multiplier.py."""
     r = C.validate(_cfg(), [_player(weapons=("burst_rifle", "sniper_rifle"))])
     warns = " ".join(r["warnings"])
-    assert "burst_rifle" in warns and "2.0x" in warns, r["warnings"]      # $SIR <0,3> -> fn 37
-    assert "sniper_rifle" in warns and "1.25x" in warns, r["warnings"]    # $SIR <0,1> -> fn 36
+    assert "burst_rifle" in warns and "1.0x" in warns and "same as a gun-body hit" in warns, r["warnings"]
+    assert "sniper_rifle" in warns and "1.0x" in warns, r["warnings"]
+    assert "needs fewer hits than published" not in warns, r["warnings"]
 
 
 def test_sir_guard_stays_quiet_for_plain_damage_weapons():

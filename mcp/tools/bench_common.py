@@ -25,8 +25,10 @@ AR = "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,384,1400,0,0,100,100,,0,,,R01,,,,D0
 # Its three-round-burst sibling, for weapon-swap / pickup probes.
 BURST = "$WEAP,0,,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*"
 
-# 45 HP / 70 armour / 70 shield, crit 50 — the GameConfig defaults, so a bench number is comparable
-# with a match number. `{pid}` is the player id; call `PSET.format(pid=…)`.
+# 45 HP / 70 armour / 70 shield — the GameConfig defaults, so a bench number is comparable with a
+# match number. The trailing 50 is $PSET's criticalDamageBonus, a SEPARATE and confirmed-inert
+# field (protocol-classes.md), not the $GSET crit_modifier below — do not read it as t7.
+# `{pid}` is the player id; call `PSET.format(pid=…)`.
 PSET = "$PSET,{pid},0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*"
 
 # The two-sided $SIR function map as bench-measured 2026-08-26 (experiment-log: "the COMPLETE

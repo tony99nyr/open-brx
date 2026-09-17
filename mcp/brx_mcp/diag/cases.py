@@ -26,7 +26,7 @@ from .model import (
 # --- shared frame blocks (imported from gameconfig, never copied) ----------- #
 VOL = "$VOL,75,0,*"
 CONFIG = (
-    "$CLEAR,*", "$START,*", "$GSET,1,0,1,0,1,0,50,1,*",
+    "$CLEAR,*", "$START,*", "$GSET,1,0,1,0,1,0,0,1,*",  # t7 (crit_modifier) 0: the GameConfig default (2026-09-17)
     "$PSET,0,0,45,70,70,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*",
     "$WEAP,0,,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*",
     # IMPORTED, never copied. These used to be inline and had drifted to FIVE of the ten $SIR rows

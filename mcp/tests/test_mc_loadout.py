@@ -67,11 +67,18 @@ def _last_ack(net, i):
 # ------------------------------------------------------------------ catalog
 def test_weapons_carry_tags_and_perks_catalog_is_visible_only():
     ids = {w["weapon_id"]: set(w["tags"]) for w in W}
-    for wid in ("rocket_launcher", "rail_gun", "laser_cannon", "energy_launcher", "ion_sniper"):
+    # rocket_launcher/rail_gun stay catalogue-visible (though `pickup_only`, 2026-09-17); the other
+    # three heavies are also `hidden` now, so their tags are read off the raw catalog instead.
+    for wid in ("rocket_launcher", "rail_gun"):
         assert "heavy" in ids[wid], wid
+    raw = {wid: set(row.get("tags") or []) for wid, row in C.catalog._by_id.items()}
+    for wid in ("laser_cannon", "energy_launcher", "ion_sniper"):
+        assert "heavy" in raw[wid], wid
     assert "heavy" not in ids["amr"] and "sniper" in ids["amr"]
-    for wid in ("sniper_rifle", "plasma_sniper", "ion_sniper"):
+    for wid in ("sniper_rifle",):
         assert "sniper" in ids[wid]
+    for wid in ("plasma_sniper", "ion_sniper"):
+        assert "sniper" in raw[wid], wid          # both hidden now; tags checked on the raw row
     assert "melee" not in ids
     assert [p["perk_id"] for p in PK] == ["body_armor", "extended_mags", "quick_hands", "easy_reload", "quick_switch"]
     assert all(not p["hidden"] for p in PK)
@@ -97,19 +104,25 @@ def test_perk_view_forwards_every_effect_key():
 # ------------------------------------------------------------------ policy engine
 # Round-2 fix pass K (2026-09-12): a weapon whose `$SIR` row cannot move the pool is never OFFERED
 # (`P.UNPLAYABLE_IDS` — `energy_launcher` today), because `Compiler.validate()` now REFUSES a loadout
-# carrying one and a stock pick must never be blocked at the whistle. Counted rather than hard-coded so
-# the day that row is fixed on the bench, deleting the id is the only edit.
-_OPEN = len(W) - len(P.UNPLAYABLE_IDS)
+# carrying one and a stock pick must never be blocked at the whistle. `energy_launcher` is ALSO `hidden`
+# now (2026-09-17 arsenal cut), so it is not even in `W` — `UNPLAYABLE_IDS` stays defined (untouched
+# per the arsenal-review brief) but is a no-op for it today; the check below still holds it generally.
+# `pickup_only` (2026-09-17): rocket_launcher/rail_gun stay catalogue-visible (in `W`) but are never in
+# a starting-loadout pool. Counted rather than hard-coded so a catalog change is the only edit needed.
+_OPEN = len([w for w in W if w["weapon_id"] not in P.UNPLAYABLE_IDS and not w.get("pickup_only")])
 
 
 def test_presets_and_pools():
-    assert _OPEN == 20, f"the visible arsenal moved ({len(W)} weapons, {len(P.UNPLAYABLE_IDS)} unplayable)"
+    assert _OPEN == 11, f"the visible, pickable arsenal moved ({len(W)} weapons in the catalog)"
     assert "energy_launcher" not in P.pool(P.preset_rules("open"), W, PK)["primary"], "a zero-damage weapon is never offered"
     lp = P.pool(P.preset_rules("open"), W, PK)
+    assert "rocket_launcher" not in lp["primary"] and "rail_gun" not in lp["primary"], "heavies are pickup_only, never a starting pick"
     assert len(lp["primary"]) == _OPEN and len(lp["secondary_weapons"]) == _OPEN and len(lp["perks"]) == 5
     lp = P.pool(P.preset_rules("no_heavies"), W, PK)
-    # unchanged by UNPLAYABLE_IDS: `energy_launcher` is tagged `heavy`, so this preset already dropped it
-    assert len(lp["primary"]) == 16 and "rail_gun" not in lp["primary"] and "amr" in lp["primary"]   # 13 + the three sidearms
+    # unchanged by UNPLAYABLE_IDS/pickup_only: the visible `heavy`-tagged rows (rocket_launcher/rail_gun)
+    # were already excluded from `open` by `pickup_only`, so `no_heavies` (which ALSO excludes `heavy`)
+    # lands on the same count as `open`.
+    assert len(lp["primary"]) == _OPEN and "rail_gun" not in lp["primary"] and "amr" in lp["primary"]
     assert "rocket_launcher" not in lp["secondary_weapons"] and len(lp["perks"]) == 5
     lp = P.pool(P.preset_rules("snipers"), W, PK)
     # `reasons` is additive and present only where a slot came out empty (round-2 review 2026-09-12)
@@ -155,7 +168,7 @@ def test_validate_and_apply_matrix():
     ok, why = P.validate_loadout(sn, lps, {"weapons": [{"weapon_id": "sniper_rifle"}, {"weapon_id": "smg"}]}, W, PK)
     assert not ok and why == "No secondary this game"
     # A14: a perk rides beside a secondary weapon
-    assert P.validate_loadout(nh, lp, {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "glock"}], "perk": "quick_switch"}, W, PK) == (True, None)
+    assert P.validate_loadout(nh, lp, {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "usp"}], "perk": "quick_switch"}, W, PK) == (True, None)
     # apply: fixed → set, off → cleared, out-of-pool → replaced
     assert P.apply(sn, lps, {"weapons": [{"weapon_id": "smg"}, {"weapon_id": "shotgun"}], "perk": "body_armor"}, W, PK) == {"weapons": [{"weapon_id": "sniper_rifle"}]}
     out = P.apply(nh, lp, {"weapons": [{"weapon_id": "rail_gun"}, {"weapon_id": "rocket_launcher"}], "overrides": {"max_hp": 60}}, W, PK)
@@ -242,7 +255,7 @@ def test_host_patch_is_policy_checked_and_apply_policy_on_config_change():
     assert s.config["loadout_policy"]["preset"] == "open"
     s.set_config({"mode": "ffa"})
     assert s.config["loadout_policy"]["preset"] == "no_heavies"
-    p3 = s.add_player("OP3", loadout={"weapons": [{"weapon_id": "laser_cannon"}], "perk": "body_armor"})
+    p3 = s.add_player("OP3", loadout={"weapons": [{"weapon_id": "rocket_launcher"}], "perk": "body_armor"})
     assert p3["loadout"] == {"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor"}
     # PUT /api/config partial: a rule edit → custom
     s.set_config({"loadout_policy": {"secondary": {"choice": "off"}}})
@@ -356,7 +369,7 @@ def test_easy_reload_is_refused_beside_a_chain_reload_weapon():
     # every other perk is fine on the shotgun, and easy_reload is fine on every magazine weapon
     for pid in ("body_armor", "extended_mags", "quick_hands", "quick_switch"):
         assert P.validate_loadout(op, lp, {"weapons": [{"weapon_id": "shotgun"}], "perk": pid}, W, PK)[0], pid
-    for wid in ("assault_rifle", "smg", "sniper_rifle", "plasma_sniper", "charge_rifle"):
+    for wid in ("assault_rifle", "smg", "sniper_rifle", "amr", "charge_rifle"):
         assert P.validate_loadout(op, lp, {"weapons": [{"weapon_id": wid}], "perk": "easy_reload"}, W, PK)[0], wid
     assert P.chain_conflict({"weapons": [{"weapon_id": "shotgun"}], "perk": "quick_hands"}, W, PK) is None
 
@@ -598,7 +611,11 @@ def test_demo_fake_net_populates_varied_loadouts():
 def test_apply_policy_cancels_tryouts_and_warns_the_host():
     s, net, clock, ps = mk(2, compiler=C)
     online(s, net, clock, ps[0], 0); online(s, net, clock, ps[1], 1)
-    s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "rail_gun"}]})
+    # rail_gun is `pickup_only` now (2026-09-17): `patch_player` refuses it under EVERY preset, so a
+    # player can no longer legally pick it up before the ruleset changes. Seed the state directly —
+    # this is what a stale save, an old client, or a catalog change under a live session looks like —
+    # to still exercise "the ruleset changes under an already-illegal hold".
+    s.players[ps[0]["player_id"]]["loadout"] = {"weapons": [{"weapon_id": "rail_gun"}]}
     s.tryout(ps[0]["player_id"], "rail_gun")
     s.tryout(ps[1]["player_id"], "assault_rifle")          # still allowed under NO HEAVIES → untouched
     s.set_config({"loadout_policy": {"preset": "no_heavies"}})
@@ -619,13 +636,19 @@ def test_weapon_view_htk_ttk_caution():
     views = {v["weapon_id"]: v for v in (weapon_view(w) for w in C.weapon_catalog())}
     assert views["assault_rifle"]["htk"] == 13 and views["assault_rifle"]["ttk_ms"] == 1680
     assert all(isinstance(v["htk"], int) and v["htk"] >= 1 for v in views.values())
-    assert views["energy_launcher"]["caution"].startswith("Known issue") and "caution" not in views["assault_rifle"]
-    # the phone gets the same rows in assign.catalog
+    # energy_launcher is `hidden` now (2026-09-17 arsenal cut), so it is no longer in the visible
+    # `views` map above — build its view straight off the raw row (`WeaponCatalog._to_weapon`) to
+    # prove `weapon_view()` still forwards `caution` when a row carries one, whether or not that
+    # row reaches the picker.
+    launcher_view = weapon_view(C.catalog._to_weapon(C.catalog._row("energy_launcher")))
+    assert launcher_view["caution"].startswith("Known issue") and "caution" not in views["assault_rifle"]
+    # the phone gets the same rows in assign.catalog (all of them now caution-free: the only
+    # `caution` row in the catalog is hidden, so nothing carries one on the wire today)
     s, net, clock, ps = mk(1, compiler=C)
     online(s, net, clock, ps[0], 0)
     s.patch_player(ps[0]["player_id"], display="X")
     cat = net.pushes("assign", "node0")[-1][2]["catalog"]["weapons"]
-    assert next(w for w in cat if w["weapon_id"] == "energy_launcher")["caution"] and all("htk" in w for w in cat)
+    assert all("htk" in w for w in cat) and not any("caution" in w for w in cat)
 
 
 # ------------------------------------------------------------------ A10 §8 saved games (presets)
@@ -1057,7 +1080,10 @@ def test_f146_a_players_own_illegal_pick_still_gets_the_reset_warning():
     """The half that is KEPT: a ruleset with a legal pool that simply does not admit what somebody was
     already holding is a reset, not a refusal, and the notice is how the host learns it happened."""
     s, net, clock, ps = mk(2, compiler=Compiler())
-    s.patch_player(ps[0]["player_id"], loadout={"weapons": [{"weapon_id": "rocket_launcher"}]})
+    # rocket_launcher is `pickup_only` now (2026-09-17): `patch_player` refuses it under every preset.
+    # Seed the state directly (see test_apply_policy_cancels_tryouts_and_warns_the_host for why) so the
+    # ruleset switch below still finds a player already holding something no longer offered.
+    s.players[ps[0]["player_id"]]["loadout"] = {"weapons": [{"weapon_id": "rocket_launcher"}]}
     s.set_config({"loadout_policy": {"preset": "no_heavies"}})
     s.apply_policy()
     s._validate()
@@ -1240,16 +1266,30 @@ def test_the_console_copy_is_driven_by_the_pool_code():
     assert "FIXED TO 'plasma_bazooka'" in s._primary_pool_refusal()
 
 
+# A synthetic row naming `energy_launcher` — present and UNPLAYABLE_IDS-blocked, but NOT `hidden`
+# — for testing the `unplayable` pool-empty code as a MECHANISM. 2026-09-17 (arsenal review): the
+# real `energy_launcher` row is now ALSO `hidden` (one of the 8 arsenal cuts), so it no longer
+# demonstrates "present in the catalog but excluded by UNPLAYABLE_IDS" with the LIVE catalog — see
+# `test_round3_ux2_...`/`test_round3_merge4_...` below for what a fixed_id naming it does today.
+W_WITH_UNPLAYABLE_VISIBLE = list(W) + [{
+    "weapon_id": "energy_launcher", "name": "Energy Launcher", "cls": "9", "weapon_class": "energy",
+    "desc": "", "tags": ["power", "heavy"], "role": "power", "stats": {}, "weap_frame": "", "verified": False,
+}]
+
+
 def test_round3_ux2_a_slot_fixed_to_an_unplayable_weapon_gets_its_own_code():
     """UX-2 (round-3 fix pass, 2026-09-13). `_empty_code` classified against the UNFILTERED catalog,
-    so a slot FIXED to `energy_launcher` — a real row, present in the catalog, and excluded from every
-    pool by `UNPLAYABLE_IDS` — came out `filtered`. The console then told the operator their CLASS/ID
-    FILTERS excluded everything and offered "set who picks to FIXED", which is what they already did.
-    `unplayable` is its own fact and beats `filtered`."""
+    so a slot FIXED to a row present in the catalog and excluded from every pool by `UNPLAYABLE_IDS`
+    came out `filtered`. The console then told the operator their CLASS/ID FILTERS excluded everything
+    and offered "set who picks to FIXED", which is what they already did. `unplayable` is its own fact
+    and beats `filtered`. Uses `W_WITH_UNPLAYABLE_VISIBLE` (see above) — the real `energy_launcher` row
+    is `hidden` now too, so a fixed_id naming it against the LIVE catalog is `fixed_missing`, not
+    `unplayable`; that case is `test_round3_merge4_...` below."""
     assert "unplayable" in P.POOL_EMPTY_CODES
+    Wu = W_WITH_UNPLAYABLE_VISIBLE
 
     def pl(patch):
-        return P.pool(P.normalize({**P.preset_rules("open"), **patch}, "tdm"), W, PK)
+        return P.pool(P.normalize({**P.preset_rules("open"), **patch}, "tdm"), Wu, PK)
 
     fixed = pl({"primary": P._rule("fixed", ("weapon",), fixed_id="energy_launcher")})
     assert fixed["primary"] == [], fixed
@@ -1269,24 +1309,38 @@ def test_round3_ux2_a_slot_fixed_to_an_unplayable_weapon_gets_its_own_code():
 
 def test_round3_merge4_a_policy_fixed_to_an_unplayable_weapon_self_corrects_and_still_pushes():
     """MERGE-4. `apply()`'s last fallback (`prim or "assault_rifle"`) kept the STORED id whenever the
-    pool came out empty, so a policy fixing `energy_launcher` left the launcher in every loadout and
+    pool came out empty, so a policy fixing an UNPLAYABLE_IDS weapon left it in every loadout and
     `compile.validate()` then refused the push naming a weapon the Designer no longer offers — with no
     control on screen able to change it. `UNPLAYABLE_IDS` is OUR build's limitation, not the
     operator's mistake: the pick is dropped, the slot falls to a legal weapon, and the `unplayable`
-    reason says what happened."""
+    reason says what happened. Uses `W_WITH_UNPLAYABLE_VISIBLE` for the low-level self-correction
+    check, same reason as `test_round3_ux2_...` above."""
+    Wu = W_WITH_UNPLAYABLE_VISIBLE
     pol = P.normalize({**P.preset_rules("open"),
                        "primary": P._rule("fixed", ("weapon",), fixed_id="energy_launcher")}, "tdm")
-    lp = P.pool(pol, W, PK)
-    out = P.apply(pol, lp, {"weapons": [{"weapon_id": "energy_launcher"}]}, W, PK)
+    lp = P.pool(pol, Wu, PK)
+    out = P.apply(pol, lp, {"weapons": [{"weapon_id": "energy_launcher"}]}, Wu, PK)
     assert out["weapons"][0]["weapon_id"] == "assault_rifle", out
 
+    # 2026-09-17: the LIVE catalog now also hides `energy_launcher` (one of the 8 arsenal cuts), so a
+    # config fixed to it is `fixed_missing` (the weapon is not offered at all), not `unplayable` (the
+    # weapon is offered but blocked) — a REFUSAL (`config_errors`), not MERGE-4's silent self-heal.
+    # That silent-self-heal path is still live for any future UNPLAYABLE_IDS entry that stays visible;
+    # `test_round3_ux2_...` above and the `P.apply` call directly above cover it.
     s, _net, _clock, _ps = mk(2, compiler=Compiler())
     res = s.set_config({"loadout_policy": {"preset": "custom",
                                            "primary": {"choice": "fixed", "fixed_id": "energy_launcher"}}})
-    assert s.loadout_pool()["reasons"]["primary"] == "unplayable"
+    assert s.loadout_pool()["reasons"]["primary"] == "fixed_missing"
     for p in s.players.values():
         assert p["loadout"]["weapons"][0]["weapon_id"] != "energy_launcher", p["loadout"]
-    assert res["ok"], res["errors"]
-    assert s._primary_pool_refusal() is None, s._primary_pool_refusal()
+    assert not res["ok"] and any("energy_launcher" in e for e in res["errors"])
+    assert s._primary_pool_refusal() is not None, "fixed to a weapon the game no longer offers at all — a real refusal"
     assert any("ENERGY LAUNCHER" in w.upper() for w in s.config_warnings), s.config_warnings
-    s.push_config(force=True)     # `force` is only about the missing phones, not the ruleset
+    # `force` is only about the missing phones, never a bad ruleset — MERGE-4's silent self-heal made
+    # the push safe for a merely-`unplayable` weapon; a `fixed_missing` one (hidden now) is an actual
+    # invalid config, and `force` does not open that door either.
+    try:
+        s.push_config(force=True)
+        raise AssertionError("pushed a config fixed to a weapon this game does not offer at all")
+    except ValueError as e:
+        assert "energy_launcher" in str(e), e

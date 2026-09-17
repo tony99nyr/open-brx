@@ -202,13 +202,16 @@ def test_class_loadout_reaches_pset_and_weap():
 # --------------------------------------------------------------------------- #
 # kid_mode — floors health AND forces friendly_fire off; class-first then      #
 # kid-mode floors (a low-HP class can't drop below the kid minimum).           #
+# crit_modifier had a kid_mode cap (min(crit_modifier, 25)) too; removed       #
+# 2026-09-17 because the default is now 0, so the cap did nothing (see        #
+# GameConfig.crit_modifier's field comment and apply_presets()'s docstring).  #
 # --------------------------------------------------------------------------- #
 def test_kid_mode_floors_and_disables_ff():
     s = GameConfig(kid_mode=True, hp=45, armor=70, friendly_fire=True,
                    crit_modifier=90).apply_presets()
     assert s.hp >= 75 and s.armor >= 100
     assert s.friendly_fire is False        # protective override
-    assert s.crit_modifier <= 25           # soft crits
+    assert s.crit_modifier == 90           # 2026-09-17: no longer capped by kid_mode (cap removed)
 
 
 def test_presets_class_first_then_kid_floor():

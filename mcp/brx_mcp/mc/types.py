@@ -470,6 +470,7 @@ class Weapon(TypedDict):
     weapon_id: str
     name: str
     cls: str
+    weapon_class: str           # ballistic|energy|melee (weapons.json `class`, A10, 2026-09-17): ballistic reloads, energy overheats/charges; not the same as `cls` above (raw protocol class byte)
     desc: NotRequired[str]     # house-written armory blurb (weapons.json `desc`); "" if a row lacks one
     stats: dict
     weap_frame: str
@@ -478,6 +479,7 @@ class Weapon(TypedDict):
     tags: NotRequired[list[str]]   # A10 policy vocabulary (loadout.md §1.1)
     role: NotRequired[str]
     caution: NotRequired[str]      # A10: human copy for a known LIVE problem (weapons.json `caution`)
+    pickup_only: NotRequired[bool]  # 2026-09-17: catalogue-visible but never in a player loadout pool (policy.py)
 
 
 class WeaponBars(TypedDict):
@@ -492,6 +494,7 @@ class WeaponView(TypedDict):
     weapon_id: str
     name: str
     cls: str
+    weapon_class: str           # ballistic|energy|melee (weapons.json `class`, A10, 2026-09-17): ballistic reloads, energy overheats/charges; not the same as `cls` above (raw protocol class byte)
     desc: str
     clip: int
     mags: int
@@ -511,6 +514,7 @@ class WeaponView(TypedDict):
     caution: NotRequired[str]
     ammo_total: NotRequired[int]
     bars: NotRequired[WeaponBars]
+    pickup_only: NotRequired[bool]  # 2026-09-17: catalogue-visible but never in a player loadout pool (policy.py)
 
 
 class SavedGame(TypedDict):

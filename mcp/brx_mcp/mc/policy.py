@@ -277,12 +277,21 @@ def _filter(rule: SlotRule, rows: Sequence[Mapping[str, Any]], id_key: str) -> l
         rid = r[id_key]
         if id_key == "weapon_id" and rid in UNPLAYABLE_IDS:
             continue                      # never offerable, whatever the policy says (round-2 K)
+        if id_key == "weapon_id" and r.get("pickup_only"):
+            continue                      # 2026-09-17: heavies reserved for a future pickup/station
+            #                                mechanism (docs/spec/loadout.md), never in a starting pool
         if only and rid not in only:
             continue
         if rid in ex_ids or (ex_tags & set(r.get("tags") or ())):
             continue
         out.append(rid)
     return out
+
+
+def _pickup_only_ids(weapons: Sequence[Weapon]) -> frozenset[str]:
+    """The `weapon_id`s this game's catalog marks `pickup_only` (2026-09-17) — never a legal loadout
+    pick, whatever a `fixed_id`/`only_ids` rule asks for, mirroring `UNPLAYABLE_IDS` for that one check."""
+    return frozenset(w["weapon_id"] for w in weapons if w.get("pickup_only"))
 
 
 def weapon_kind_rows(rule: SlotRule, weapons: Sequence[Weapon]) -> list[Weapon]:
@@ -355,9 +364,11 @@ def pool(policy: LoadoutPolicy, weapons: Sequence[Weapon], perks: Sequence[PerkV
     An empty slot also gets an entry in `reasons` (absent when every slot has something), so a UI can
     say WHICH control emptied it instead of guessing at the nearest one."""
     prim, sec, pr = policy["primary"], policy["secondary"], policy["perk"]
+    pickup_only_ids = _pickup_only_ids(weapons)
     if prim["choice"] == "fixed":
         prim_fid = prim["fixed_id"]     # `_check_rule` refuses choice "fixed" with no fixed_id
         primary = [prim_fid] if prim_fid and prim_fid not in UNPLAYABLE_IDS \
+            and prim_fid not in pickup_only_ids \
             and any(w["weapon_id"] == prim_fid for w in weapons) else []
     else:
         primary = _filter(prim, weapon_kind_rows(prim, weapons), "weapon_id")
@@ -366,6 +377,7 @@ def pool(policy: LoadoutPolicy, weapons: Sequence[Weapon], perks: Sequence[PerkV
     elif sec["choice"] == "fixed":
         sec_fid = sec["fixed_id"]
         sw = [sec_fid] if sec_fid and sec_fid not in UNPLAYABLE_IDS \
+            and sec_fid not in pickup_only_ids \
             and any(w["weapon_id"] == sec_fid for w in weapons) else []
     else:
         sw = _filter(sec, weapon_kind_rows(sec, weapons), "weapon_id")

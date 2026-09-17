@@ -257,7 +257,10 @@ _SIR_NO_POOL = frozenset({8, 23, 24, 25, 26, 27, 28, 35, 31, 32, 34})     # regi
 def headset_multiplier(fn: int, crit_modifier: int) -> float:
     """HEADSET-sensor damage multiplier for a $SIR row's function, at the compiled `$GSET`
     criticalShotModifier (t7, 0-100). Bench-confirmed 2026-09-11: fn 36 -> 1 + t7/200 (x1.25 at the
-    MC default t7=50), fn 37 -> 1 + 2*t7/100 (x2.0 at t7=50); every other function is unscaled (1.0).
+    then-MC default t7=50), fn 37 -> 1 + 2*t7/100 (x2.0 at t7=50); every other function is unscaled (1.0).
+    2026-09-17 (arsenal review): the MC default is now t7=0, so both fn 36 and fn 37 return 1.0 at the
+    compiled default -- BRX has 4 headset sensors and 1 tagger sensor and play aims at the head, so the
+    headset needs no bonus multiplier. The formula above is unchanged; only the compiled default moved.
     ⚠ HEADSET ONLY -- the gun-body sensor applies the raw magnitude (x1) for fn 1/36/37 alike, which is
     why `WeaponCatalog.damage()`/`hits_to_kill()`/`time_to_kill()` do NOT call this: they compute the
     body number, the guaranteed kill. `applied = floor(magnitude * headset_multiplier(fn, t7))` on a
@@ -656,32 +659,39 @@ class WeaponCatalog:
         self._rows = rows if rows is not None else _load_weapons()
         self._by_id = {w["weapon_id"]: w for w in self._rows}
 
+    def _to_weapon(self, w: dict) -> Weapon:
+        """One raw `weapons.json` row -> contracts §3 `Weapon` shape, hidden or not. `all()` is this
+        applied to every VISIBLE row; a caller that needs a hidden row's `Weapon` shape too (e.g. a
+        test proving `weapon_view()` still forwards `caution` off a row the picker no longer offers)
+        calls this directly via `catalog._row(weapon_id)`."""
+        row: Weapon = {
+            "weapon_id": w["weapon_id"], "name": w["name"], "cls": str(w["cls"]),
+            "weapon_class": w.get("class", "ballistic"),   # weapons.json `class`: ballistic|energy|melee (A10, 2026-09-17)
+            "desc": w.get("desc", ""),
+            "tags": list(w.get("tags") or []), "role": w.get("role", ""),   # A10 policy vocabulary
+            "stats": {"mag": w["mag"], "reserve": w["reserve"], "reload_ms": w["reload_ms"],
+                      "dmg": w["dmg"], "rof": w["rof"], "rng": w["rng"],
+                      "htk": w.get("htk"), "ttk_ms": w.get("ttk_ms"),   # A10: HITS TO KILL replaces the flat RANGE bar in the UIs
+                      # the pool-INDEPENDENT chain the views re-derive htk/ttk from when the host
+                      # changes `health` (W2, docs/weapon-design.md §2.5). `dmg` above is a share
+                      # of the 115 default and cannot be rescaled; `dmg_hit` is the real magnitude.
+                      "dmg_hit": self.damage(w["weapon_id"]),
+                      "cycle_ms": self.cycle_ms(w["weapon_id"]),
+                      "charged": self._frame_int(w["weapon_id"], "mode") in self._CHARGE_MODES},
+            "weap_frame": self.resolve(w["weapon_id"], 0),
+            "verified": bool(w.get("verified", False)),
+        }
+        if w.get("caution"):    # A10: known live problem, human copy
+            row["caution"] = w["caution"]
+        if w.get("pickup_only"):   # 2026-09-17: catalogue-visible, never in a loadout pool (policy.py)
+            row["pickup_only"] = True
+        return row
+
     def all(self) -> list[Weapon]:
-        """Visible catalog (hidden melee excluded), as contracts §3 Weapon shape."""
-        out: list[Weapon] = []
-        for w in self._rows:
-            if w.get("hidden"):
-                continue
-            row: Weapon = {
-                "weapon_id": w["weapon_id"], "name": w["name"], "cls": str(w["cls"]),
-                "desc": w.get("desc", ""),
-                "tags": list(w.get("tags") or []), "role": w.get("role", ""),   # A10 policy vocabulary
-                "stats": {"mag": w["mag"], "reserve": w["reserve"], "reload_ms": w["reload_ms"],
-                          "dmg": w["dmg"], "rof": w["rof"], "rng": w["rng"],
-                          "htk": w.get("htk"), "ttk_ms": w.get("ttk_ms"),   # A10: HITS TO KILL replaces the flat RANGE bar in the UIs
-                          # the pool-INDEPENDENT chain the views re-derive htk/ttk from when the host
-                          # changes `health` (W2, docs/weapon-design.md §2.5). `dmg` above is a share
-                          # of the 115 default and cannot be rescaled; `dmg_hit` is the real magnitude.
-                          "dmg_hit": self.damage(w["weapon_id"]),
-                          "cycle_ms": self.cycle_ms(w["weapon_id"]),
-                          "charged": self._frame_int(w["weapon_id"], "mode") in self._CHARGE_MODES},
-                "weap_frame": self.resolve(w["weapon_id"], 0),
-                "verified": bool(w.get("verified", False)),
-            }
-            if w.get("caution"):    # A10: known live problem, human copy
-                row["caution"] = w["caution"]
-            out.append(row)
-        return out
+        """Visible catalog (hidden weapons excluded: melee always, plus the 2026-09-17 arsenal cuts --
+        force_rifle/bolt_rifle/stinger/plasma_sniper/laser_cannon/ion_sniper/energy_launcher/glock),
+        as contracts §3 Weapon shape."""
+        return [self._to_weapon(w) for w in self._rows if not w.get("hidden")]
 
     def _row(self, weapon_id: str) -> dict:
         if weapon_id not in self._by_id:
@@ -1419,7 +1429,7 @@ class Compiler:
         return [
             f"$VOL,{VOL_TRYOUT},0,*", "$CLEAR,*", "$START,*",   # $START IS required — bench 2026-08-25: without it the gun
                                                      # spawns but the trigger only reloads, it will not fire IR
-            f"$GSET,0,{GSET_T2_SAFE},1,0,1,0,50,1,*",   # FF off; t2 stays safe at every venue
+            f"$GSET,0,{GSET_T2_SAFE},1,0,1,0,0,1,*",    # FF off; t2 stays safe at every venue; t7 (crit_modifier) matches the GameConfig default of 0 (2026-09-17)
             pset,
             "$SIR,0,0,,1,0,0,1,,*",                # standard-weapon IR interpretation so a try-out shot registers
             "$TID,1,*",                            # a team is needed to spawn-to-live (identity stays 0 → uncredited)
@@ -1849,13 +1859,23 @@ class Compiler:
                     flagged.add(wid)
                     cm = self._to_gc(config, p).crit_modifier
                     mult = headset_multiplier(fn, cm)
-                    warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, a CONFIRMED "
-                                    f"HEADSET-ONLY multiplier row: at this game's compiled crit_modifier "
-                                    f"({cm}) a headset hit lands floor({mult}x its $WEAP t5); a gun-body "
-                                    f"hit lands the raw t5 (x1) (bench 2026-09-11). The published "
-                                    f"htk/ttk_ms are the GUN-BODY (guaranteed-kill) number, so an "
-                                    f"all-headset kill needs fewer hits than published "
-                                    f"(weapon-design.md §6.2)")
+                    # 2026-09-17: the default crit_modifier is now 0, so mult is 1.0 for most games —
+                    # a headset hit and a gun-body hit are equal, and the old "needs fewer hits than
+                    # published" framing would be a wrong claim at that default. Only make it when the
+                    # compiled crit_modifier actually scales the headset (mult != 1.0).
+                    if mult != 1.0:
+                        warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, a CONFIRMED "
+                                        f"HEADSET-ONLY multiplier row: at this game's compiled crit_modifier "
+                                        f"({cm}) a headset hit lands floor({mult}x its $WEAP t5); a gun-body "
+                                        f"hit lands the raw t5 (x1) (bench 2026-09-11). The published "
+                                        f"htk/ttk_ms are the GUN-BODY (guaranteed-kill) number, so an "
+                                        f"all-headset kill needs fewer hits than published "
+                                        f"(weapon-design.md §6.2)")
+                    else:
+                        warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, a "
+                                        f"HEADSET-ONLY multiplier row: at this game's compiled crit_modifier "
+                                        f"({cm}) the multiplier is 1.0x, so a headset hit lands the same as "
+                                        f"a gun-body hit (bench 2026-09-11, weapon-design.md §6.2)")
                 elif fn in _SIR_ARMOR_PIERCING:
                     flagged.add(wid)
                     warnings.append(f"{wid} keys $SIR {key[0]},{key[1]} → function {fn}, ARMOR-PIERCING: it "

@@ -165,10 +165,10 @@ describe('the RECAP history picker', () => {
 
 describe('the ARSENAL quotes the game that is actually set up', () => {
   const arsenal = (pool: number | undefined): WeaponView[] => ([
-    { weapon_id: 'assault_rifle', name: 'Assault Rifle', cls: '0', desc: '', clip: 32, mags: 6, reserve: 192,
+    { weapon_id: 'assault_rifle', name: 'Assault Rifle', cls: '0', weapon_class: 'ballistic', desc: '', clip: 32, mags: 6, reserve: 192,
       reload_s: 1.4, reload_ms: 1400, dmg: 8, rpm: 54, rng: 75, verified: false, role: 'assault', tags: ['assault'],
       htk: pool === 200 ? 23 : 13, ttk_ms: pool === 200 ? 3080 : 1680, dmg_per_hit: 9, pool },
-    { weapon_id: 'rocket_launcher', name: 'Rocket Launcher', cls: '4', desc: '', clip: 2, mags: 1, reserve: 2,
+    { weapon_id: 'rocket_launcher', name: 'Rocket Launcher', cls: '4', weapon_class: 'ballistic', desc: '', clip: 2, mags: 1, reserve: 2,
       reload_s: 2.6, reload_ms: 2600, dmg: 100, rpm: 8, rng: 75, verified: false, role: 'power', tags: ['heavy'],
       htk: 1, ttk_ms: 0, dmg_per_hit: 115, pool },
   ]);
@@ -382,15 +382,20 @@ describe('the designer seeds a late snapshot without stomping edits', () => {
     );
     const m = await mount(render(null));
     await m.update(render({ ...d.state }));           // the first snapshot arrives
-    expect(m.text(), 'the draft must be seeded, not left blank forever').toContain('OF 21');
+    // 2026-09-17 (arsenal review): 8 weapons joined melee as `hidden` and rocket_launcher/rail_gun
+    // became `pickup_only` (never in a starting pool), so OPEN's playable count is 13 total, 11
+    // pickable, not the pre-cut 21/16.
+    expect(m.text(), 'the draft must be seeded, not left blank forever').toContain('OF 13');
 
     // Now make a REAL edit and prove it survives five more snapshots. Asserting that the text is
     // merely UNCHANGED would pass against a broken guard: re-seeding restores the same defaults, so
     // it looks identical unless something has actually been changed away from them.
+    // NO HEAVIES now lands on the SAME count as OPEN: the only visible `heavy`-tagged weapons
+    // (rocket_launcher/rail_gun) were already excluded from OPEN by `pickup_only`.
     await m.click('NO HEAVIES');
-    expect(m.text()).toContain('16 OF 21');
+    expect(m.text()).toContain('11 OF 13');
     for (let i = 0; i < 5; i++) await m.update(render({ ...d.state, t: Date.now() + i }));
-    expect(m.text(), 'a snapshot must not reset the draft being edited').toContain('16 OF 21');
+    expect(m.text(), 'a snapshot must not reset the draft being edited').toContain('11 OF 13');
     m.unmount();
   });
 });
