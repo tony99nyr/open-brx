@@ -158,11 +158,18 @@ async function walkToKit(pg, url, fromArmory = true) {
     // This used to be `waitForTimeout(900)`, which is how the arm_state crash stayed hidden: a sleep
     // passes whether or not the screen rendered. Wait for the SCREEN instead — every phone card the
     // section says it has. A card that threw would never arrive and this hard-fails.
+    //
+    // F-armory-dedup (2026-09-17): `data-nodes` now counts only the VISIBLE phone cards (a phone
+    // already shown on a gun card above is not rendered again), so it can be legitimately 0 — every
+    // fake phone in a `--demo --fake-net` session is bound to a rostered player. `data-phones-total`
+    // is the total connected count regardless of where each one renders, and it is what proves a
+    // snapshot has actually arrived.
     await until(async () => {
       const sec = pg.locator('[data-nodes]');
       if (!await sec.count()) return false;
+      const total = Number(await sec.first().getAttribute('data-phones-total'));
       const want = Number(await sec.first().getAttribute('data-nodes'));
-      return want > 0 && await pg.locator('[data-node-card]').count() === want;
+      return total > 0 && await pg.locator('[data-node-card]').count() === want;
     }, 15000, 'every phone card on ARMORY to render');
     expect(await pg.locator('text=CONSOLE ERROR').count() === 0, 'ARMORY rendered the phone cards without crashing the console');
     ok(`ARMORY: ${await pg.locator('[data-node-card]').count()} phone cards, no crash boundary`);

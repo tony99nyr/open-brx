@@ -92,7 +92,11 @@ describe('ARMORY · the build chip shows the whole stamp (A29)', () => {
     const d = await demo();
     const state = { ...d.state, nodes: [node(app_ver)] } as unknown as State;
     const m = await mountScreen(<Armory />, { state, view: 'muster', weapons: d.weapons, perks: d.perks });
-    return { m, el: m.find('[data-app-ver]')[0] };
+    // scoped to the node card: `node()` carries no `player_id`, so this phone stays under PHONES ON
+    // THE NET (F-armory-dedup hides a card only for a phone a gun card already shows), but the
+    // demo's OWN rostered players still render their gun cards, each with a real build chip of its
+    // own — `[data-app-ver]` alone would find one of THOSE first.
+    return { m, el: m.find('[data-node-card] [data-app-ver]')[0] };
   }
 
   it('a -dirty build says so in the text, not only in a tooltip', async () => {
@@ -148,7 +152,7 @@ describe('ARMORY · the build chip shows the whole stamp (A29)', () => {
     const bare = { node_id: 'node-y', node_type: 'phone', arm_state: 'kitted', last_seen_ms: 100 };
     const state = { ...d.state, nodes: [bare] } as unknown as State;
     const m = await mountScreen(<Armory />, { state, view: 'muster', weapons: d.weapons, perks: d.perks });
-    expect(m.find('[data-app-ver]')[0].textContent).toBe('UNKNOWN');
+    expect(m.find('[data-node-card] [data-app-ver]')[0].textContent).toBe('UNKNOWN');
     m.unmount();
   });
 

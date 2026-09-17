@@ -533,9 +533,11 @@ async function runMock(browser, viteBase, vp, tag) {
   expect(new RegExp(`^${await modeNow()}`, 'i').test(legend.t), `and it describes the mode the switch is in (${legend.t.slice(0, 24)}…)`);
   expect(legend.fs >= 11, `at ${legend.fs}px`);
   ok(`A25 legend: "${legend.t}"`);
-  const states = await pg.locator('[data-node-card] [data-log-state]').evaluateAll(els =>
+  // F-armory-dedup (2026-09-17): not scoped to `[data-node-card]` any more — a bound phone's log row now
+  // lives on its GUN CARD instead, once that phone's own node card is hidden as a duplicate.
+  const states = await pg.locator('[data-log-state]').evaluateAll(els =>
     els.map(e => `${e.dataset.logState}:${e.textContent.replace(/\s+/g, ' ').trim()}`));
-  expect(states.length > 0, 'every node card carries a log row');
+  expect(states.length > 0, 'every phone card carries a log row');
   expect(new Set(states.map(x => x.split(':')[0])).size > 1,
     `the demo field shows MORE THAN ONE log state, so the states can be told apart (${states.join(' | ')})`);
   ok(`A25 log states: ${states.slice(0, 4).join('  ')}`);
@@ -728,7 +730,11 @@ const stale = s => ({
   options: undefined,           // A25: no option table — the LOG SYNC switch must not render at all
   versions: undefined,          // A29: the server's own tally — an older MC has none and the console counts nodes
   readiness: s.readiness ? { ...s.readiness, app_vers: undefined, board: (s.readiness.board || []).map(b => { const { app_ver, platform, ...r } = b; void app_ver; void platform; return r; }) } : s.readiness,
-  nodes: (s.nodes || []).map(n => { const { app_ver, platform, log, ...r } = n; void app_ver; void platform; void log; return r; }),
+  // F-armory-dedup (2026-09-17): `player_id` stripped too, purely so this walk's phones stay under
+  // PHONES ON THE NET (a bound phone's own card is now hidden behind its gun card) — the assertions
+  // below are about the NODE's fallback when `app_ver`/`platform`/`log` are absent, which needs an
+  // actual node card on screen to read.
+  nodes: (s.nodes || []).map(n => { const { app_ver, platform, log, player_id, ...r } = n; void app_ver; void platform; void log; void player_id; return r; }),
   live: s.live ? { ...s.live, rows: (s.live.rows || []).map(r => { const { best_streak, multi_best, first_blood, acc_provisional, shots_total, ...rest } = r; void best_streak; void multi_best; void first_blood; void acc_provisional; void shots_total; return rest; }) } : s.live,
   recap: s.recap ? { ...s.recap, after_end: undefined, rows: (s.recap.rows || []).map(r => { const { best_streak, multi_best, first_blood, acc_provisional, shots_total, ...rest } = r; void best_streak; void multi_best; void first_blood; void acc_provisional; void shots_total; return rest; }) } : s.recap,
 });

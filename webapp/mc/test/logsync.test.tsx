@@ -21,14 +21,19 @@ import { demo, fixtureApi, makeStore, mount, mountScreen } from './harness';
 import { StoreCtx } from '../src/store';
 
 /** Set every node's log to `log`, or REMOVE the field entirely when it is undefined — "the server sent
- *  no `log` at all" is its own case and must not fall through to whatever the demo seeded. */
+ *  no `log` at all" is its own case and must not fall through to whatever the demo seeded.
+ *
+ *  `player_id` is cleared too: these tests read the LOG CELL off a node card (`[data-node-card]`), and
+ *  the demo's own phones are all bound to a rostered player, whose gun card is what F-armory-dedup now
+ *  shows instead. Clearing it keeps the phone under PHONES ON THE NET without changing what's under
+ *  test — the log cell renders the same way on either card. */
 const withLogs = (s: State, log: LogView | undefined): State => ({
   ...s,
   nodes: s.nodes.map(n => {
-    if (log) return { ...n, log } as NodeView;
+    if (log) return { ...n, log, player_id: undefined } as NodeView;
     const { log: _drop, ...rest } = n;
     void _drop;
-    return rest as NodeView;
+    return { ...rest, player_id: undefined } as NodeView;
   }),
 });
 
