@@ -633,6 +633,25 @@ def test_a_real_reload_is_but_2_1_the_release_and_a_two_slot_alt_are_not_and_dea
     asyncio.run(go())
 
 
+def test_alt_on_an_empty_slot_1_only_reloads_with_easy_reload():
+    """Bench 2026-09-17 (match 592e444eff): "the alt button is reloading the charge rifle" -- with an
+    empty slot 1, compile.py now maps ALT to fn 98 (inert) unless the player wears easy_reload, which
+    keeps ALT -> fn 97 (RELOAD) on purpose (loadout.md §2 `alt_reload`). Mirrors engine.js `_altPressed`.
+    The stage's fixed player normally carries two weapons (`recompile`), so `_slot_count` is patched here
+    to simulate the empty slot the real one-weapon loadout leaves."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st._slot_count = lambda: 1
+        st._on_rx("$ALCD,10,100,0,20,0,*")
+        st._on_rx("$BUT,1,1,*")
+        assert st.reloading is None, "no easy_reload: ALT (fn 98) does nothing"
+        st.player["loadout"]["perk"] = "easy_reload"
+        st._on_rx("$BUT,1,1,*")
+        assert st.reloading and st.reloading["slot"] == 0, "easy_reload: ALT (fn 97) reloads"
+    asyncio.run(go())
+
+
 # ======================================================================================================
 # F57 -- the hit that ARMS low_health plays the alert only, and stamps the pain gate (engine.js `_onHp`)
 # ======================================================================================================
@@ -1144,12 +1163,6 @@ KNOWN_UNMIRRORED = {
     "resumeSchedule", "_event", "_probe", "_checkEcho", "ackEnd", "onResultPush", "resultWait",
     # bench 2026-09-17: BrxLink's flap count, passed through to the HUD and MC; no game rule reads it
     "setGunFlapping",
-    # bench 2026-09-17 (match 592e444eff): weapon heat/OVERHEAT lockout, read straight off `$ALCD` token 5.
-    # This IS a game rule (a locked-out gun will not fire) and belongs on the stage too, so a bench run can
-    # reproduce the false "gun not firing" no-fire report this fixed -- ported in a follow-up, not this
-    # change (scoped to engine.js's `$ALCD` parse and HUD display only). Pinned here rather than silently
-    # left unmirrored so that follow-up has a name to find.
-    "_overheating",
     # app lifecycle + the A26 pick debounce: the stage has no foreground/background and no MC to pick from
     "_awake", "commitPick",
     # field 2026-09-17: the kill banner's victim name, resolved from MC's `feedback`; the stage has no MC and no banner

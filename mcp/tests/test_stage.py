@@ -1514,7 +1514,10 @@ def test_the_control_point_constants_the_advert_layout_and_the_source_gate_are_t
     assert S.STUN_DEFAULT_S == float(num("STUN_DEFAULT_S")) == 10.0
     assert re.search(r"`\$AMMO,\$\{slot\},0,0,1,\*`", src), "engine.js `_stun` no longer disarms with $AMMO,<slot>,0,0,1"
     assert re.search(r"`\$AMMO,\$\{slot\},\$\{mag\},\$\{res\},1,\*`", src), "engine.js `_stunRestore` no longer restores the live pair"
-    assert re.search(r"_onAmmo\(mag, reserve, slot = 0(?:, heat = null)?\) \{[^}]*?if \(this\.stunned\) return;", src, re.S), "engine.js `_onAmmo` no longer ignores $ALCD while stunned"
+    # review 2026-09-17: a heat-recording one-liner (its own braces) now sits ABOVE the stunned guard on
+    # purpose (a stun window can land mid-cooldown), so this no longer requires zero `}` before the guard --
+    # only that the guard still comes before the F147 try-out confirmation logic further down.
+    assert re.search(r"_onAmmo\(mag, reserve, slot = 0(?:, heat = null)?\) \{.*?if \(this\.stunned\) return;.*?F147", src, re.S), "engine.js `_onAmmo` no longer ignores $ALCD while stunned before its other logic"
     assert re.search(r"this\.stunned\.until = Math\.max\(this\.stunned\.until, now \+ ms\)", src), "a second EMP must EXTEND the stun"
     assert re.search(r"_stunRestore\('died'\)", src), "death must cancel the stun"
     # F57: the low-health crossing plays no grunt and stamps the pain gate
