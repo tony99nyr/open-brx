@@ -122,6 +122,12 @@ const HEAT_LOCKOUT = 100;
 // HEAT_STALE_MS sits above that real window with margin, so a genuine lockout (or a player still trying it)
 // is never cleared early, and only a reading old enough to be certainly abandoned counts as untrustworthy.
 const HEAT_STALE_MS = 25000;
+// pl3 (2026-09-17): HEAT_STALE_MS above is for `no_fire` only. It must outlast a player who dry-fires a locked
+// weapon for ~20 s. The HUD's OVERHEAT word must not: the lockout itself ends long before that. The reading that
+// tips a weapon over the line arrives with the shot that caused it. The bench-measured lockout holds ~4.8 s,
+// and at ~30/s of decay a reading near 106 falls back under the line in well under a second after that. So a
+// lockout is over about 5 s after its last reading, and 6 s keeps the word up for the whole lockout with ~1 s of margin.
+export const OVERHEAT_SHOWN_MS = 6000;
 // Bench 2026-09-17 (Tony): the shot-ready cue. `$WEAP` token 14 is the time between rounds (ms per round,
 // calibrated 2026-09-10); for a charge weapon it is the hold time. At or above this line the HUD dims the ammo
 // gauge after each shot and shines it once when the next round is due. Automatic weapons sit under it and get neither.
@@ -366,6 +372,7 @@ export class Engine {
     this.night = false;             // the HUD skin on screen (true = night). The player's, not the venue's: see setNight
     this.nightChoice = null;        // {session}: the player chose a skin in that MC session, so NIGHT OPS does not switch it
     this.sessionOf = () => null;    // the current MC session id (app.js wires the transport's)
+    this.persistedSessionOf = () => null;   // pl3: the last MC session id the transport stored (survives an app restart)
     this.lastVoltsAt = 0;
     // B4 (2026-09-12 field session): the native BLE disconnect callback is the ONLY thing `bleUp` ever
     // relied on — a link that goes silent without the OS ever noticing (marginal RF, a supervision
@@ -509,7 +516,9 @@ export class Engine {
    *  different session id, the fallback stops applying and a fresh MC session leads NIGHT OPS again as designed. */
   ownNightChoice() {
     const c = this.nightChoice; if (!c) return false;
-    const cur = this.sessionOf() || c.session || null;
+    // pl3 (2026-09-17): the transport's last PERSISTED MC session comes before the pick's own. A pick from session
+    // s1, then a welcome from s2, then a restart: the pick's session would still read "same" and block NIGHT OPS.
+    const cur = this.sessionOf() || this.persistedSessionOf() || c.session || null;
     if (c.session == null && cur != null) { c.session = cur; this._storeNight(); }
     return (c.session || null) === cur;
   }
@@ -539,6 +548,23 @@ export class Engine {
     frames = this._tidAfterPset(frames);
     this.log(`write ${why}: ${frames.length} frame(s)`, 'li');
     try { return this.writer(frames); } catch (e) { this.log(`write ${why} failed: ${e && e.message || e}`, 'le'); }
+  }
+  /** pl3 (2026-09-17): a write the gun must not miss -- spawn, revive, the stun restore, the operator resync.
+   *  BrxLink's `write()` resolves false when a chunk was lost and its own re-sends did not land. Without a retry
+   *  the gun stayed disarmed, unspawned or unmapped for the whole life. `still()` is asked before the one retry:
+   *  a write the game has moved past (a death, a new life, a dropped link) is not sent again. A second failure
+   *  is logged loudly and left to the operator's RESYNC GUN, as `_armLife` leaves its own to the next trigger. */
+  _writeMust(frames, why, still) {
+    const r = this._write(frames, why);
+    Promise.resolve(r).then(ok => {
+      if (ok !== false) return;
+      if (!still()) { this.log(`write ${why} failed -- the game moved on, not retried`, 'li'); return; }
+      this.log(`write ${why} failed -- retrying once`, 'le');
+      return Promise.resolve(this._write(frames, `${why} (retry)`)).then(again => {
+        if (again === false) this.log(`*** write ${why} failed twice -- the gun may be out of step (RESYNC GUN) ***`, 'le');
+      });
+    }).catch(e => this.log(`write ${why} retry failed: ${e && e.message || e}`, 'le'));
+    return r;
   }
   /** F206 (bench 2026-09-16): any `$PSET` clears the gun's team (its shots carry `$HIR` t4 = 0) until a `$TID`
    *  follows; `$SPAWN` and `$SIR` do not. So every write is checked HERE, the one door to the gun: a `$PSET` with
@@ -1667,7 +1693,9 @@ export class Engine {
     // (one per scream take) goes out first, in the same write (bench 2026-09-06: a $PSET re-sent in play keeps $SIR,
     // does not heal, the gun fires). No pset_pool (pre-A15.3): nothing prepended, the head's $PSET stands.
     const ps = this._pickFrame('pset_pool');
-    this._write([...(ps.frame ? [ps.frame] : []), ...this.frames.spawn, SFLASH, ...(sp.frame ? [sp.frame] : [])], 'spawn' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : ''));
+    const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a retry of this write is only for this life
+    this._writeMust([...(ps.frame ? [ps.frame] : []), ...this.frames.spawn, SFLASH, ...(sp.frame ? [sp.frame] : [])], 'spawn' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : ''),
+      () => this._lifeSeq === life && this.alive && this.bleUp && this.phase === 'live' && !this.ended && !this.reconciling);
     this.hurtFired = false;        // the low-health alert is once per LIFE
     this._prevAmmo = {}; this._prevReserve = {}; this.activeSlot = 0; this.magBySlot = {}; this.heatBySlot = {}; this._heatAt = {}; this._everHeated = {}; this.lastShot = null;   // config echoes carry WEAP clip caps, not spawn mags — never let them set the denominator   // assumption (hardware-UNVERIFIED): a fresh spawn puts the gun on slot 0
     this._cue('klaxon');
@@ -2161,8 +2189,14 @@ export class Engine {
     // F11 REPAIR path, so this cannot cost us the table; the rows differ only in their sound tokens.
     // F209: a protected bundle does NOT write the take here; `_armLife` writes it once the gun can fire.
     const sir = this._protectsSpawn() ? [] : this._pickTable('sir_pool');
-    this._write([...(ps.frame ? [ps.frame] : []), ...sir, ...this.frames.revive, ...(sp.frame ? [sp.frame] : [])], 'revive' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : ''));
+    const life = this._lifeSeq = (this._lifeSeq || 0) + 1;   // pl3: a retry of this write is only for this life
+    this._writeMust([...(ps.frame ? [ps.frame] : []), ...sir, ...this.frames.revive, ...(sp.frame ? [sp.frame] : [])], 'revive' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : ''),
+      () => this._lifeSeq === life && this.alive && this.bleUp && this.phase === 'live' && !this.ended && !this.reconciling);
     this.hurtFired = false;
+    // pl3 (2026-09-17): a swap or a heat reading from the last life must not follow the player into this one. An
+    // operator respawn of a LIVE player skips `_death`, which is the only other place `switching` was cleared, so a
+    // stale swap could flip the slot a second later, and a stale lockout reading kept OVERHEAT up. stage.py `_after_spawn` clears the same.
+    this.switching = null; this.heatBySlot = {}; this._heatAt = {}; this._everHeated = {};
     this._prevAmmo = {}; this._prevReserve = {}; this.activeSlot = 0;   // both maps: a stun before the first shot of a NEW life must snapshot this life's reserve, not the last one's (polish review 2026-09-11)   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this.alive = true; this.hp = this.maxHp; this.armor = this.maxArmor; this.shield = 0; this.deadAt = 0; this.killedBy = null;
     this.poolSrc = 'model';        // R2-3: a fresh life, and again from config.health until the gun speaks
@@ -2260,7 +2294,9 @@ export class Engine {
     const st = this.stunned; if (!st) return;
     this.stunned = null;
     if (why === 'expired' && this.alive && this.bleUp) {
-      this._write(Object.entries(st.ammo).map(([slot, [mag, res]]) => `$AMMO,${slot},${mag},${res},1,*`), 'stun over: restore live ammo');
+      const life = this._lifeSeq;
+      this._writeMust(Object.entries(st.ammo).map(([slot, [mag, res]]) => `$AMMO,${slot},${mag},${res},1,*`), 'stun over: restore live ammo',
+        () => this._lifeSeq === life && !this.stunned && this.alive && this.bleUp && this.phase === 'live' && !this.reconciling);
       this.moment = { kind: 'stun_over', at: this.now() };
       this._event('stun_over');
     }
@@ -2378,24 +2414,35 @@ export class Engine {
    *  - `respawn`: `_revive` -- the normal revive (full pools, A44 spawn protection, trigger mapped), no death, no kill.
    *  - `relink`: `onRelink` -- the HUD's RELINK GUN (app.js wires it to `link.relink()`). */
   _operator(cmd) {
+    const why = this._operatorAct(cmd);
+    // pl3 (2026-09-17): MC learns the outcome through the persisted fact path, so an operator press that did
+    // nothing is visible on the board and not only in the phone's log. `why` is the refusal the log shows.
+    this.emitFact({ type: 'operator_result', cmd, ok: !why, ...(why ? { why } : {}), match_id: this.matchId,
+      player_id: this.player && this.player.player_id != null ? this.player.player_id : null });
+  }
+  /** Runs one operator command. Returns null when it acted (for relink: when the relink started), else the short
+   *  refusal reason it logged. */
+  _operatorAct(cmd) {
     if (cmd === 'relink') {
-      if (!(this.phase === 'lobby' || this.phase === 'armed' || this.phase === 'live')) { this.log(`operator relink ignored — phase is ${this.phase}`, 'li'); return; }
-      if (typeof this.onRelink !== 'function') { this.log('operator relink ignored — this build has no relink hook', 'le'); return; }
+      if (!(this.phase === 'lobby' || this.phase === 'armed' || this.phase === 'live')) { const why = `phase is ${this.phase}`; this.log(`operator relink ignored — ${why}`, 'li'); return why; }
+      if (typeof this.onRelink !== 'function') { const why = 'this build has no relink hook'; this.log(`operator relink ignored — ${why}`, 'le'); return why; }
       this.log('operator relink: dropping and reconnecting the gun', 'lk');
-      try { Promise.resolve(this.onRelink()).catch(e => this.log(`operator relink failed: ${e && e.message || e}`, 'le')); } catch (e) { this.log(`operator relink failed: ${e && e.message || e}`, 'le'); }
-      return;
+      try { Promise.resolve(this.onRelink()).catch(e => this.log(`operator relink failed: ${e && e.message || e}`, 'le')); } catch (e) { this.log(`operator relink failed: ${e && e.message || e}`, 'le'); return `relink failed: ${e && e.message || e}`; }
+      return null;
     }
+    // pl3: `resync` is the restart evidence protocol (§3.10). It owns the gun's state until it concludes, and an
+    // operator write in the middle would feed it evidence the gun never produced on its own.
     const why = this.phase !== 'live' ? `phase is ${this.phase}` : !this.spawned ? 'the T-0 spawn has not run' : !this.frames ? 'no bundle'
-      : !this.bleUp ? 'gun link down (RELINK first)' : this.reconciling ? 'a relink reconcile is running' : this.tutorial ? 'a try-out is running' : null;
-    if (why) { this.log(`operator ${cmd} ignored — ${why}`, 'le'); return; }
+      : !this.bleUp ? 'gun link down (RELINK first)' : this.reconciling ? 'a relink reconcile is running' : this.resync ? 'a restart resync is running' : this.tutorial ? 'a try-out is running' : null;
+    if (why) { this.log(`operator ${cmd} ignored — ${why}`, 'le'); return why; }
     if (cmd === 'respawn') {
       this.log(`operator respawn (${this.alive ? 'alive' : 'down'} at hp ${this.hp})`, 'lk');
       this._stunRestore('operator respawn');   // no write: the revive's own $AMMO re-arms
       this._resyncRevive = false;
       this._revive(false, null, true);
-      return;
+      return null;
     }
-    this._operatorResync();
+    return this._operatorResync();
   }
   /** A47 RESYNC GUN: re-send what a live gun needs to play, and nothing that heals, kills or re-heads it:
    *  `$TID`, the current `$AMMO` per slot (the stun snapshot's counts, never a refill), the trigger mapping
@@ -2404,12 +2451,14 @@ export class Engine {
    *  Never `$SPAWN`, `$PSET` or a head: a config to a gun in play clears `spawned`. A take already pending
    *  (spawn protection, A44) is left to its own trigger. A down player is refused: FORCE RESPAWN is the cure. */
   _operatorResync() {
-    if (!this.alive) { this.log('operator resync ignored — the player is down (FORCE RESPAWN revives)', 'le'); return; }
-    if (this.stunned) { this.log('operator resync ignored — stunned (the stun restore re-arms)', 'le'); return; }
+    if (!this.alive) { this.log('operator resync ignored — the player is down (FORCE RESPAWN revives)', 'le'); return 'the player is down'; }
+    if (this.stunned) { this.log('operator resync ignored — stunned (the stun restore re-arms)', 'le'); return 'stunned'; }
+    const life = this._lifeSeq;
     const tid = this._liveTid();
     const ammo = Object.entries(this._liveAmmo()).map(([slot, [mag, res]]) => `$AMMO,${slot},${mag},${res},1,*`);
     const bmap = ((this.frames && this.frames.revive) || []).find(f => typeof f === 'string' && f.startsWith('$BMAP,0,0')) || '$BMAP,0,0,,,,,*';
-    this._write([...(tid != null ? [`$TID,${tid},*`] : []), ...ammo, bmap], 'operator resync');
+    this._writeMust([...(tid != null ? [`$TID,${tid},*`] : []), ...ammo, bmap], 'operator resync',
+      () => this._lifeSeq === life && this.alive && !this.stunned && this.bleUp && this.phase === 'live' && !this.reconciling && !this.resync);
     if (this._protectsSpawn()) {
       if (this._armPending) this.log('operator resync: hit reception is still spawn-protected — the take follows the first shot or the cap', 'li');
       else { this._armPending = { at: this.now(), flip: false }; this._armLife('operator resync'); }
@@ -2418,6 +2467,7 @@ export class Engine {
     }
     this.log(`operator resync done — hp ${this.hp}, tid ${tid != null ? tid : '?'}`, 'lk');
     this._changed();
+    return null;
   }
 
   // ---------- feedback (§3.6) ----------
@@ -3344,6 +3394,9 @@ export class Engine {
       // this life (a non-heat weapon never sends a non-zero one). `overheating` is the HUD's OVERHEAT gate.
       heat: this.heatBySlot[this.activeSlot] != null ? this.heatBySlot[this.activeSlot] : null,
       overheating: this._overheating(),
+      // pl3: the HUD's OVERHEAT word and overlay. Same line as `overheating`, but only for OVERHEAT_SHOWN_MS after
+      // the reading: the gun sends no $ALCD while it cools, so a lockout reading is never replaced by a cool one.
+      overheatShown: (this.heatBySlot[this.activeSlot] || 0) > HEAT_LOCKOUT && this._heatAt[this.activeSlot] != null && (now - this._heatAt[this.activeSlot]) < OVERHEAT_SHOWN_MS,
       heatEverSeen: !!this._everHeated[this.activeSlot],
       shotCooldown: this.shotCooldown(now),   // bench 2026-09-17: the ammo gauge's dim + ready shine
       scoreRows: this.score && Array.isArray(this.score.rows) ? this.score.rows : null,   // MC's mid-match leaderboard, for the HUD's results overlay

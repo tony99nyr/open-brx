@@ -24,6 +24,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 //  - The write loop waits for an answer for at most WRITE_ACK_CAP_MS, then goes on at the normal pacing.
 //    A healthy answer still holds the next chunk, so the GATT write permit is kept as before.
 export const WRITE_ACK_CAP_MS = 50;
+/** How many times one batch sends again from a frame a late chunk error hit, before it reports failure. */
+export const LATE_RESENDS = 2;
 
 /** Writes one chunk to the gun's NUS RX characteristic through the plugin itself, not BleClient's queue.
  *  Native builds take a hex string (what BleClient sends); the web build takes the DataView. */
@@ -107,7 +109,7 @@ export class BrxLink {
     this.now = now; this.flapMs = flapMs;
     this.deviceId = null; this.advert = null; this.connected = false; this.retries = 0; this.lastReason = null;
     this._init = null; this._q = Promise.resolve(); this._scanning = false; this._re = new Reassembler();
-    this._poisoned = false;   // review 2026-09-17: a late write error (past ackCapMs) poisons the batch in flight
+    this.lateLost = 0;     // late chunk errors that landed after their batch had resolved (diagnostics)
     this._scanOp = Promise.resolve(); this._scanTok = 0;   // scan start/stop run one at a time, in call order
     this._linkSeq = 0;     // bumps per native connect; a retired link's disconnect callback is ignored (relink)
     this._relinking = false;
@@ -372,35 +374,54 @@ export class BrxLink {
   _notify(value) { for (const f of this._re.pump(dataViewToText(value))) { this._note('rx', f); this.onFrame(f); } }
 
   /** Write frames verbatim, in order, chunked at 20 bytes with pacing; serialized per device. Each chunk
-   *  waits for the plugin's answer for at most `ackCapMs` (see WRITE_ACK_CAP_MS). */
+   *  waits for the plugin's answer for at most `ackCapMs` (see WRITE_ACK_CAP_MS).
+   *
+   *  A LATE chunk error (past the cap) belongs to the batch that sent the chunk, never to the link (pl3
+   *  review 2026-09-17). The old link-wide flag let a late error from batch N cut batch N+1 partway, which
+   *  dropped `$SPAWN`/`$AMMO`/`$BMAP` with no retry while batch N still reported true. Now:
+   *  - A late error that lands while its own batch is still sending marks that batch. At the next frame
+   *    boundary the batch sends again from the start of the earliest failed frame, so every frame stays
+   *    whole and in order. The frames between that one and the boundary go twice.
+   *  - After LATE_RESENDS re-sends the batch finishes its frames anyway and resolves false, so the caller's
+   *    retry runs. It never stops partway.
+   *  - A late error that lands after its batch resolved is only logged and counted (`lateLost`). It cannot
+   *    touch any other batch. */
   write(frames) {
     const id = this.deviceId; if (!id) return Promise.resolve(false);
     const list = Array.isArray(frames) ? frames : [frames];
+    const batch = { failed: null, open: true };   // `failed`: the earliest frame index a late error hit
     this._q = this._q.then(async () => {
-      this._poisoned = false;   // review 2026-09-17: a fresh batch starts clean, whatever the last one's fate
-      let late = 0, chunks = 0;
-      for (const frame of list) {
-        this._note('tx', frame);
-        for (let o = 0; o < frame.length; o += 20) {
-          if (this._poisoned) return false;   // a chunk lost after the cap must not let the rest send as if it landed
-          chunks++;
-          if (!await this._sendChunk(id, textToDataView(frame.substr(o, 20)))) late++;
-          if (this._poisoned) return false;   // the loss may have landed while this very chunk was in flight
-          if (frame.length > 20) await sleep(this.chunkGapMs);
+      let late = 0, chunks = 0, resends = 0, lost = false;
+      try {
+        for (let i = 0; i < list.length;) {
+          const frame = list[i];
+          this._note('tx', frame);
+          for (let o = 0; o < frame.length; o += 20) {
+            chunks++;
+            if (!await this._sendChunk(id, textToDataView(frame.substr(o, 20)), batch, i)) late++;
+            if (frame.length > 20) await sleep(this.chunkGapMs);
+          }
+          await sleep(this.frameGapMs);
+          i++;
+          if (batch.failed != null) {
+            const from = batch.failed; batch.failed = null;
+            if (resends < LATE_RESENDS) {
+              resends++; i = from;
+              this._log(`write: a chunk of frame ${from + 1} of ${list.length} was lost -- sending again from that frame`, 'le');
+            } else lost = true;   // finish the batch, then report the loss
+          }
         }
-        await sleep(this.frameGapMs);
-      }
+      } finally { batch.open = false; }
       if (late) { this.lateAcks += late; this._log(`write answers slow: ${late} of ${chunks} chunk(s) past ${this.ackCapMs} ms, sent on without them`, 'le'); }
+      if (lost) { this._log(`write: chunks still lost after ${LATE_RESENDS} re-send(s) -- the batch is sent but reports failure`, 'le'); return false; }
       return true;
-    }).catch(e => { this._log('write err: ' + (e && e.message || e), 'le'); return false; });
+    }).catch(e => { batch.open = false; this._log('write err: ' + (e && e.message || e), 'le'); return false; });
     return this._q;
   }
-  /** Sends one chunk. Resolves true when the plugin answered within `ackCapMs`, false when the cap ran out
-   *  first. An error inside the cap rejects (the batch stops, as before). A LATER error (review 2026-09-17)
-   *  used to be only logged, so a lost chunk could join half of one frame to the next while `write()` still
-   *  resolved true -- it now poisons the batch in flight (checked before each remaining chunk), so `write()`
-   *  resolves false instead and the engine's existing retry paths run. The flag resets at the next `write()`. */
-  _sendChunk(id, dv) {
+  /** Sends one chunk of frame `frameIdx` in `batch`. Resolves true when the plugin answered within `ackCapMs`,
+   *  false when the cap ran out first. An error inside the cap rejects (the batch stops, as before). A LATER
+   *  error marks only `batch` (see `write`). */
+  _sendChunk(id, dv, batch = null, frameIdx = 0) {
     let sent;
     try { sent = Promise.resolve(this.writeChunk(id, dv)); } catch (e) { return Promise.reject(e); }
     return new Promise((resolve, reject) => {
@@ -409,8 +430,14 @@ export class BrxLink {
       sent.then(() => { if (done) return; done = true; clearTimeout(t); resolve(true); },
         e => {
           if (!done) { done = true; clearTimeout(t); reject(e); return; }
-          this._poisoned = true;
-          this._log('write err (after the answer cap): ' + (e && e.message || e), 'le');
+          const msg = e && e.message || e;
+          if (batch && batch.open) {
+            batch.failed = batch.failed == null ? frameIdx : Math.min(batch.failed, frameIdx);
+            this._log('write err (after the answer cap): ' + msg, 'le');
+          } else {
+            this.lateLost++;
+            this._log('write err (after the answer cap): ' + msg + ' -- its batch had already been sent', 'le');
+          }
         });
     });
   }

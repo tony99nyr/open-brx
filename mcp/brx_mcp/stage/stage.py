@@ -1253,8 +1253,16 @@ class GunStage:
         refill), `$BMAP,0,0`, then one `sir_pool` take -- unless spawn protection still holds it (A44). Never
         `$SPAWN`, `$PSET` or a head, so pools and `spawned` stay as they are. A down or stunned gun gets nothing.
         FORCE RESPAWN is `revive()`: the stage books no facts, so it is the same write the phone makes."""
-        if not (self.spawned and self.alive) or self.stunned:
-            self._log("resync ignored -- " + ("stunned" if self.stunned else "not live"), "warn")
+        # pl3 (2026-09-17): the same refusals as engine.js `_operatorAct`/`_operatorResync`, in the same order, where
+        # the stage has the concept. The stage's phase is `spawned` (arm and end clear it) and its link is
+        # `connected`. It has no rejoin reconcile, no restart evidence protocol and no try-out lock, so those are absent.
+        why = ("the T-0 spawn has not run" if not self.spawned
+               else "gun link down (RELINK first)" if not self.connected
+               else "the player is down" if not self.alive
+               else "stunned" if self.stunned
+               else None)
+        if why:
+            self._log(f"operator resync ignored -- {why}", "warn")
             return
         tid = self._live_tid()
         ammo = [f"$AMMO,{slot},{mag},{res},1,*" for slot, (mag, res) in self._live_ammo().items()]

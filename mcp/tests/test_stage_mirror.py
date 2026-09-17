@@ -1166,6 +1166,12 @@ KNOWN_UNMIRRORED = {
     # A47 (bench 2026-09-17): dispatches MC's operator `control` (match/player checks, relink hook). The stage has no
     # MC and no BrxLink; its RESYNC GUN and RESPAWN buttons call `_operator_resync` and `revive` directly
     "_operator",
+    # pl3 (2026-09-17): `_operatorAct` is `_operator`'s body split out so every outcome reaches MC as an `operator_result`
+    # fact. The stage has no MC and no facts; its refusals are mirrored inline in `_operator_resync`.
+    "_operatorAct",
+    # pl3 (2026-09-17): retries a BrxLink batch that resolved false. The stage's `write` has its own retry (it
+    # reconnects and sends again on an exception), and its fake and real managers never resolve a batch false.
+    "_writeMust",
     # app lifecycle + the A26 pick debounce: the stage has no foreground/background and no MC to pick from
     "_awake", "commitPick",
     # field 2026-09-17: the kill banner's victim name, resolved from MC's `feedback`; the stage has no MC and no banner

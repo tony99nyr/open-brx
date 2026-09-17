@@ -115,7 +115,8 @@ const engine = new Engine({
 });
 engine.onRelink = () => (link.deviceId ? link.relink() : Promise.reject(new Error('no gun picked')));   // A47: MC's operator RELINK GUN, the HUD's own RELINK path
 engine.onGunStale = () => link.noteStale();   // B4: the engine's silence watchdog forces BrxLink to actually cycle the radio
-engine.sessionOf = () => (transport ? transport.sessionId : null);   // the HUD skin pick lasts one MC session (engine.setNight)
+engine.sessionOf = () => (transport ? transport.sessionId : null);
+engine.persistedSessionOf = () => (transport ? transport._persistedSessionId || null : null);   // pl3: before a restart's welcome lands, the last session MC gave us   // the HUD skin pick lasts one MC session (engine.setNight)
 hud.mcUrl = settings.mcUrl;
 // per-match history (bench request 2026-08-25): node-local, survives restarts, capped
 try { hud.history = JSON.parse(localStorage.getItem('brx.history') || '[]'); } catch (_) { hud.history = []; }

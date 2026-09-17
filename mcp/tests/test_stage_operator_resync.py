@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 
 from test_stage import settle, tx
-from test_stage_spawn_protect import _live, _mk
+from test_stage_spawn_protect import GUN, _live, _mk
 
 
 def test_resync_writes_tid_live_ammo_bmap_then_the_take_and_keeps_the_pools():
@@ -40,4 +40,26 @@ def test_resync_of_a_down_gun_writes_nothing():
         n = len(tx(mgr))
         await st.resync(); await settle(st)
         assert tx(mgr)[n:] == []
+    asyncio.run(run())
+
+
+def test_resync_refuses_like_the_phone_when_unlinked_or_before_the_spawn():
+    """pl3 (2026-09-17): engine.js refuses an operator resync on a down link and before T-0. The stage must too,
+    or a bench run shows a resync the phone would never have written."""
+    async def run():
+        st, mgr, clock = _mk()
+        await st.connect(GUN)
+        await st.arm(); await settle(st)
+        n = len(st.log)
+        await st.resync(); await settle(st)
+        new = list(st.log)[n:]
+        assert not [e for e in new if e["kind"] == "tx"], new
+        assert any(e["text"] == "operator resync ignored -- the T-0 spawn has not run" for e in new), new
+        await st.spawn(); await settle(st)
+        st.connected = False                                # the link dropped under the stage
+        n = len(st.log)
+        await st.resync(); await settle(st)
+        new = list(st.log)[n:]
+        assert not [e for e in new if e["kind"] == "tx"], "no frames queued for an unlinked gun"
+        assert any(e["text"] == "operator resync ignored -- gun link down (RELINK first)" for e in new), new
     asyncio.run(run())

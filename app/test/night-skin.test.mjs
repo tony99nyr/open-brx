@@ -19,6 +19,8 @@ function harness({ storage = mkStorage(), session = 's1' } = {}) {
     storage, log: () => {}, delay: (ms, fn) => fn(), rng: () => 0 });
   const h = { eng, storage, session };
   eng.sessionOf = () => h.session;
+  h.persisted = null;
+  eng.persistedSessionOf = () => h.persisted;
   h.adv = ms => { clock += ms; eng.tick(); return h; };
   h.join = () => {
     eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
@@ -108,6 +110,29 @@ test('a restart before MC re-welcomes (transport session still unknown) does not
   b.adv(3010);
   assert.equal(b.eng.phase, 'live');
   assert.equal(b.eng.night, false, 'and stays day into LIVE');
+});
+
+test('pl3: before the welcome, the transport\'s last persisted MC session wins over the session stored with the pick', () => {
+  const storage = mkStorage();
+  const a = harness({ storage }).join().config(true).start().live();
+  a.eng.setNight(false);   // day pick, tied to session 's1'
+  // Later MC restarted as 's2' and welcomed this phone (the transport stored 's2'); no new pick was made.
+  // Then the app restarts, and the gun relinks before the welcome arrives.
+  storage.removeItem('brx.engine');
+  const b = harness({ storage, session: null });
+  b.persisted = 's2';
+  assert.equal(b.eng.ownNightChoice(), false, 'the pick belongs to s1, and the last session MC gave us is s2');
+  b.join().config(true).start();
+  assert.equal(b.eng.night, true, 'NIGHT OPS leads, as it does for any fresh MC session');
+  // the same restart with the pick's own session persisted keeps the pick
+  const storage2 = mkStorage();
+  const c = harness({ storage: storage2 }).join().config(true).start().live();
+  c.eng.setNight(false);
+  storage2.removeItem('brx.engine');
+  const d = harness({ storage: storage2, session: null });
+  d.persisted = 's1';
+  d.join().config(true).start();
+  assert.equal(d.eng.night, false, 'same session: the pick holds');
 });
 
 test('a blocked store never throws: the engine starts on day with no pick', () => {

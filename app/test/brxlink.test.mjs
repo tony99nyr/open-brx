@@ -392,11 +392,11 @@ test('RELINK: a gun that never answers ends the relink visibly, and the normal r
 // BleClient's queue plus the write loop waited for every answer. The rig models that bridge: the plugin
 // records each call the moment JS makes it, and answers `answerMs` later. `ble` is BleClient's shape, one
 // queue that waits for each answer, so the old write path is exactly what ran on the phone.
-function slowBridgeRig({ answerMs = 10_000, failAt = -1 } = {}) {
+function slowBridgeRig({ answerMs = 10_000, failAt = -1, fails = null } = {}) {
   const calls = [];
   const answer = (v, fail) => new Promise((res, rej) => setTimeout(() => (fail ? rej(new Error('Writing characteristic failed.')) : res(v)), answerMs));
   const plugin = {
-    writeWithoutResponse: o => { calls.push({ t: Date.now(), kind: 'write', value: o.value }); return answer(undefined, calls.length - 1 === failAt); },
+    writeWithoutResponse: o => { calls.push({ t: Date.now(), kind: 'write', value: o.value }); return answer(undefined, fails ? fails(calls.length - 1) : calls.length - 1 === failAt); },
     stopLEScan: () => { calls.push({ t: Date.now(), kind: 'stop' }); return answer(); },
   };
   let queue = Promise.resolve();
@@ -478,25 +478,59 @@ test('a write error inside the answer cap still stops the batch; a late one is l
   assert.match(slow.logs.join('\n'), /write err \(after the answer cap\): Writing characteristic failed/);
 });
 
-test('review 2026-09-17: a late write error poisons the rest of a batch still in flight, so write() resolves false', async ctx => {
-  // Before this fix a late error (past ackCapMs) was only logged: the batch sailed on as if every chunk
-  // had landed, so a chunk actually lost on the wire could join half of one frame to the next while
-  // write() still reported success. It must now stop the batch and the caller's existing retry paths run.
+const chunksOf = frames => frames.flatMap(f => f.match(/.{1,20}/g)).map(hexOf);
+/** Splits the rig's write calls back into whole frames: true when every frame in `got` is whole and `expected`
+ *  is the concatenation of `got`'s frames in the same order (a re-send repeats a run, it never reorders one). */
+const framesSent = writes => {
+  const text = writes.map(w => w.value.match(/../g).map(h => String.fromCharCode(parseInt(h, 16))).join('')).join('');
+  return text.match(/\$[^*]*\*/g) || [];
+};
+
+test('pl3 2026-09-17: a late error from batch N never cuts batch N+1 -- every frame of N+1 goes, once, and it reports true', async ctx => {
+  // Before: `_poisoned` was link-wide and cleared at each write() start. Batch N (one chunk) resolved true, its
+  // late rejection landed while batch N+1 was sending, and N+1 stopped partway: `$SPAWN`/`$AMMO`/`$BMAP` never left.
   const settle = useClock(ctx);
-  const r = slowBridgeRig({ answerMs: 200, failAt: 0 });   // chunk 0's real answer is a REJECTION, well past the 50ms cap
+  const r = slowBridgeRig({ answerMs: 200, failAt: 0 });
   await r.link.connect('A', 'GUN-A-1111');
-  const done = r.link.write(SPAWN);                        // 8 frames / 12 chunks: plenty still queued when the poison lands
-  await settle(1500);
+  const first = r.link.write('$PLAYX,0,*');     // one chunk; its real answer is a rejection 200 ms later
+  const second = r.link.write(SPAWN);           // still sending when that rejection lands
+  await settle(2500);
+  assert.equal(await first, true, 'batch N already resolved before its late error');
   const writes = r.calls.filter(c => c.kind === 'write');
-  const chunks = SPAWN.flatMap(f => f.match(/.{1,20}/g)).map(hexOf);
-  assert.ok(writes.length > 0 && writes.length < chunks.length,
-    `the batch stopped once the late error landed instead of sending all ${chunks.length} (sent ${writes.length})`);
-  assert.equal(await done, false, 'a lost chunk must not let write() report success');
-  assert.match(r.logs.join('\n'), /write err \(after the answer cap\): Writing characteristic failed/);
-  // the flag resets for the NEXT batch: it must not leak into an unrelated write() call
+  assert.deepEqual(writes.map(w => w.value), [hexOf('$PLAYX,0,*'), ...chunksOf(SPAWN)], 'batch N+1 went whole, once, in order');
+  assert.equal(await second, true, 'the late error was not batch N+1\'s');
+  assert.equal(r.link.lateLost, 1, 'counted against the batch that owned it');
+  assert.match(r.logs.join('\n'), /write err \(after the answer cap\): Writing characteristic failed. -- its batch had already been sent/);
+});
+
+test('pl3 2026-09-17: a late error inside its own batch sends again from the start of the failed frame, whole and in order', async ctx => {
+  const settle = useClock(ctx);
+  const r = slowBridgeRig({ answerMs: 200, failAt: 0 });   // chunk 0 (frame 0) is lost, and we learn it ~4 frames later
+  await r.link.connect('A', 'GUN-A-1111');
+  const done = r.link.write(SPAWN);
+  await settle(3000);
+  assert.equal(await done, true, 'the re-send landed');
+  const sent = framesSent(r.calls.filter(c => c.kind === 'write'));
+  const k = sent.length - SPAWN.length;
+  assert.ok(k > 0 && k < SPAWN.length, `some frames went before the loss was known (${k})`);
+  assert.deepEqual(sent.slice(0, k), SPAWN.slice(0, k), 'the first pass, in order, up to the boundary');
+  assert.deepEqual(sent.slice(k), SPAWN, 'then the whole batch again from frame 0: nothing dropped, nothing reordered');
+  assert.match(r.logs.join('\n'), /a chunk of frame 1 of 8 was lost -- sending again from that frame/);
+});
+
+test('pl3 2026-09-17: a batch whose re-sends keep failing still sends every frame, then resolves false', async ctx => {
+  const settle = useClock(ctx);
+  const r = slowBridgeRig({ answerMs: 200, fails: () => true });   // every chunk's late answer is a rejection
+  await r.link.connect('A', 'GUN-A-1111');
+  const done = r.link.write(SPAWN);
+  await settle(8000);
+  assert.equal(await done, false, 'a batch that never landed cleanly reports failure');
+  const sent = framesSent(r.calls.filter(c => c.kind === 'write'));
+  assert.deepEqual(sent.slice(-SPAWN.length), SPAWN, 'the last pass still sent every frame through to the end');
+  assert.match(r.logs.join('\n'), /still lost after 2 re-send\(s\)/);
   const again = r.link.write('$PING,*');
   await settle(300);
-  assert.equal(await again, true, 'the poison does not leak into the next write()');
+  assert.equal(await again, true, 'the next batch is not tainted by the old one');
 });
 
 test('the real plugin gets the direct writer; the web build is sent the DataView', () => {
