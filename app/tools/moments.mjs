@@ -29,7 +29,10 @@ const srv = http.createServer((req, res) => {
   const rel = req.url.split('?')[0] === '/' ? 'index.html' : req.url.split('?')[0];
   try { res.setHeader('content-type', rel.endsWith('.js') ? 'text/javascript' : 'text/html');
         res.end(fs.readFileSync(path.join(WWW, rel))); } catch { res.statusCode = 404; res.end(); }
-}).listen(4187);
+});
+// A free port (2026-09-17): a fixed :4187 stopped two checkouts, or `npm run test:all` beside another run, from both running this gate.
+await new Promise(r => srv.listen(0, '127.0.0.1', r));
+const PORT = srv.address().port;
 
 let pass = 0, fail = 0; const errs = [];
 const step = async (name, fn) => {
@@ -74,7 +77,7 @@ const b = await chromium.launch();
 const page = await b.newPage({ viewport: { width: 891, height: 411 } });
 const pageErrors = [];
 page.on('pageerror', e => pageErrors.push(String(e.message)));
-await page.goto('http://127.0.0.1:4187/?demo');
+await page.goto(`http://127.0.0.1:${PORT}/?demo`);
 
 // wait for the demo to reach LIVE and spawned -- the only state where moments fire
 await page.waitForFunction(() => window.brx && window.brx.engine
@@ -178,7 +181,7 @@ await step('NIGHT mode keeps the hit information but drops the glare', async () 
   // `#frame[data-env]` and overwrites anything set behind its back, so poking it tested nothing.
   const pn = await b.newPage({ viewport: { width: 891, height: 411 } });
   pn.on('pageerror', e => pageErrors.push('night:' + e.message));
-  await pn.goto('http://127.0.0.1:4187/?demo&night');
+  await pn.goto(`http://127.0.0.1:${PORT}/?demo&night`);
   await pn.waitForFunction(() => window.brx && window.brx.engine
     && window.brx.engine.phase === 'live' && window.brx.engine.spawned && window.brx.engine.alive,
     null, { timeout: 45000 });
@@ -213,7 +216,7 @@ await step('NO repeating animation on the hit overlay (strobe guard)', async () 
 await step('reduced-motion users still SEE the hit, without the animation', async () => {
   const p2 = await b.newPage({ viewport: { width: 891, height: 411 }, reducedMotion: 'reduce' });
   p2.on('pageerror', e => pageErrors.push('reduced:' + e.message));
-  await p2.goto('http://127.0.0.1:4187/?demo');
+  await p2.goto(`http://127.0.0.1:${PORT}/?demo`);
   await p2.waitForFunction(() => window.brx && window.brx.engine
     && window.brx.engine.phase === 'live' && window.brx.engine.spawned && window.brx.engine.alive,
     null, { timeout: 45000 });
@@ -251,7 +254,7 @@ await step('reduced motion stops the HUD blinkers, not just the overlays', async
   // strobe step could not see it: it only queries `.mo, .mo *`.
   const p3 = await b.newPage({ viewport: { width: 891, height: 411 }, reducedMotion: 'reduce' });
   p3.on('pageerror', e => pageErrors.push('rm2:' + e.message));
-  await p3.goto('http://127.0.0.1:4187/?demo');
+  await p3.goto(`http://127.0.0.1:${PORT}/?demo`);
   await p3.waitForFunction(() => window.brx && window.brx.engine
     && window.brx.engine.phase === 'live' && window.brx.engine.spawned, null, { timeout: 45000 });
   await hitOnce(p3, 1);

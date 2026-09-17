@@ -30,10 +30,14 @@ it can't be hit, it needs to be justified explicitly in the PR, not just tested.
 The repo has several independently-testable pieces. Run the one you touched before opening a PR.
 
 **Everything at once:** `npm run test:all` from the repo root runs the unit gates of all four pieces in parallel
-(about 30 s). `npm run test:all -- --ui` adds the browser gates: `app` screens, logsync and e2e, and the seven
+(about 30 s). `npm run test:all -- --ui` adds the browser gates: `app` screens, moments, logsync and e2e, and the seven
 `webapp/mc` e2e scripts (about 2 min on a 32-core box, was about 30 min run one by one). Jobs start inside a memory budget: half the free memory, at most 8 GB (`MEM_BUDGET_MB=` overrides), and a job that runs past 10 min, or three times its typical time if that is longer, is killed (`JOB_TIMEOUT_S=` sets the 10 min). A second run in the same checkout waits for the first. `npm run test:all -- site mcp` runs only the jobs whose
 names match, and `-- --list` prints the names. It builds `app/www` once first, gives every e2e script its own free
 ports, and writes one log per job (`scripts/test-all.mjs` states the parallel-safety rules it depends on).
+
+When you add or change a test, follow the parallel-safety rules in `CLAUDE.md` → *When you add or change a test*: free
+ports, an output folder of its own, no fixed sleeps, cleanup that survives a failed assertion. A new browser gate goes into
+JOBS in `scripts/test-all.mjs`; `mcp/tests/test_suite_registry.py` fails until it does.
 
 **Python server + Mission Control (`mcp/`)** — zero external test runner, works under plain system
 Python:

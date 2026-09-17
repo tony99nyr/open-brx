@@ -2,7 +2,10 @@
 // test-all.mjs: `npm run test:all` runs every test suite in the repo AT THE SAME TIME, and prints one table.
 //
 //   npm run test:all                 # the unit gates: mcp, webapp/mc (tsc + vitest), app (tsc + node --test), site
-//   npm run test:all -- --ui         # also the browser gates: app screens, logsync and e2e, and the seven webapp/mc e2e scripts
+//   npm run test:all -- --ui         # also the browser gates: app screens, moments, logsync and e2e, and the seven webapp/mc e2e scripts
+//
+// A new browser gate MUST be added to JOBS below (mcp/tests/test_suite_registry.py fails until it is, or until it is
+// listed there as not a gate). Measure its peak memory and its time, and put them in `mb` and `secs`.
 //   npm run test:all -- mcp app      # only the jobs whose name contains one of these words
 //   npm run test:all -- --list       # print the job names and stop
 //
@@ -93,6 +96,7 @@ const JOBS = [
   // the long pole, and mostly idle: it waits out page timelines, so it gets more shards than the CPU share
   { name: 'app-screens', cwd: 'app', cmd: ['node', 'tools/screens.mjs'], env: { SCREENS_SHARDS: String(SCREENS_S) }, www: true, ui: true, mb: 100 + 240 * SCREENS_S, secs: 1500 / SCREENS_S },
   { name: 'app-logsync', cwd: 'app', cmd: ['node', 'tools/logsync-gate.mjs'], www: true, ui: true, mb: 300, secs: 11 },
+  { name: 'app-moments', cwd: 'app', cmd: ['node', 'tools/moments.mjs'], www: true, ui: true, mb: 500, secs: 60 },
   // two real MCs and two phone HUDs against the built console, so it needs webapp/mc/dist as well as app/www
   { name: 'app-e2e', cwd: 'app', cmd: ['node', 'tools/e2e.mjs'], www: true, dist: true, ui: true, mb: 1000, secs: 65 },
   ...[['koth', 45], ['backhaul', 20], ['kit-continue', 22], ['end-delivery', 13], ['standby', 87], ['m2-ui', 46], ['game-edit', 32]].map(([s, t]) => e2e(s, t)),
