@@ -607,7 +607,7 @@
     }).join('');
     if (roleButtons) roleButtons += `<button data-act="headset" data-name="carrier_off">ROLE ENDED</button>`;
     const flatButtons = (s.headset_seqs || []).map(k => `<button data-act="headset" data-name="${k}">${k.toUpperCase()}</button>`).join('');
-    $('#headsets').innerHTML = roleButtons + flatButtons + (roleButtons || flatButtons ? '' : '<span class="hint">LEDs are off in this profile (night / blackout): no headset sequences</span>');
+    $('#headsets').innerHTML = roleButtons + flatButtons + (roleButtons || flatButtons ? '' : '<span class="hint">LEDs are off in this profile (blackout): no headset sequences</span>');
     // walkthrough
     const w = s.walk;
     if (!w) { $('#walk').innerHTML = 'No walkthrough running. Verdicts are saved to <code>~/.brx-mcp/stage-verdicts.jsonl</code> on the stage machine.'; $('#walksteps').innerHTML = ''; }

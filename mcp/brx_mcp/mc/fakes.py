@@ -98,7 +98,7 @@ class FakeCompiler:
                 "end": ["$SPAWN,,*", "$PLAYX,0,*", "$STOP,*", "$CLEAR,*", "$HLOOP,0,0,*", "$HLED,0,0,0,0,0,0,*"],
                 "panic": ["$CLEAR,*", "$SP,99,*"],
                 "team_flip": {str(t["tid"]): [f"$TID,{t['tid']},*"] for t in teams if t["tid"] != tid},
-                "cues": self.cues(player.get("voice", "male"))}
+                "cues": self.cues(player.get("voice", "male"), night=bool(config.get("night")))}
 
     def tutorial_frames(self, weapon: Weapon, environment: str) -> list[str]:
         # ⚠️ The `$SIR` row is NOT decoration. `$CLEAR` wipes the `$SIR` table and a gun with no rows
@@ -111,7 +111,7 @@ class FakeCompiler:
                 "$SIR,0,0,,1,0,0,1,,*",
                 f"$WEAP,0,<{weapon['weapon_id']}>,*", "$SPAWN,,*", "$PLAYX,0,*", "$AMMO,0,36,108,1,*", "$BMAP,0,0,,,,,*"]
 
-    def cues(self, voice: str, slots: dict | None = None) -> dict[str, str]:   # A15: slots as the real compiler
+    def cues(self, voice: str, slots: dict | None = None, night: bool = False) -> dict[str, str]:   # A15: slots, night as the real compiler
         # A6.3: cues are pre-composed $PLAY frames the node writes verbatim
         # `hurt`/`hurt_led` are here so the demo and every fake-backed test exercise the same key set
         # the real compiler emits — without them the low-health alert path is unreachable in the
@@ -124,7 +124,7 @@ class FakeCompiler:
         return {"countdown": "$PLAY,VA81,4,6,,,,,*", "kill": "$PLAY,,4,6,VAA,,,,*",
                 "game_over": "$PLAY,,4,6,VA33,,,,*",   # neutral "game over" -- what the real compiler ships
                 "victory": "$PLAY,VSF,4,6,JAY,,,,*",   # winners only, and only when MC sends it at recap
-                "hurt": "$PLAY,VA8B,3,6,,,,,*", "hurt_led": f"$HLED,7,4,90,90,{HEADSET_ALERT_BRIGHTNESS},15,*"}
+                "hurt": "$PLAY,VA8B,3,6,,,,,*", "hurt_led": f"$HLED,7,4,90,90,{1 if night else HEADSET_ALERT_BRIGHTNESS},15,*"}
 
     def validate(self, config: GameConfig, roster: list[Player], opts: dict | None = None) -> dict:
         errors, warnings = [], []

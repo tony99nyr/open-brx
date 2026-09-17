@@ -1388,7 +1388,7 @@ class GunStage:
     def headset(self, name: str, tid: int | None = None) -> dict:
         hs = self.bundle.get("headset") or {}
         if not hs:
-            self._log("headset: LEDs are off in this profile (night / blackout) -- nothing to paint", "warn")
+            self._log("headset: LEDs are off in this profile (blackout) -- nothing to paint", "warn")
             return self.state()
         if name in _pres.ROLE_STATES:
             t = int(tid) if tid is not None else (self.enemy_tid() if name in ("carrier", "infected") else None)
