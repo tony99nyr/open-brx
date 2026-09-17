@@ -143,3 +143,41 @@ test('RELINK GUN with no gun picked does nothing', async () => {
   assert.equal(await r.link.relink(), false);
   assert.equal(r.disconnects.length, 0);
 });
+
+// F210 (game-test-2026-09-13.md C1): docs/manual/dev.md — a gun with no headset linked connects,
+// answers a $PING, then drops itself within seconds, forever. `_connectWithRetry`'s own backoff only
+// grows on a FAILED connect; a connect that SUCCEEDS and then drops seconds later never fails, so the
+// old code reconnected the instant it dropped and spun as fast as the hardware allowed.
+function flapRig(flapMs = 150) {
+  const attempts = { A: 0 }; const cb = {};
+  const ble = {
+    initialize: async () => {}, disconnect: async () => {},
+    connect: async (id, c) => { attempts.A++; cb.A = c; },   // always "succeeds" — the gun always accepts the BLE connection
+    startNotifications: async () => {},
+  };
+  const link = new BrxLink({ ble, log: () => {}, flapMs });
+  return { link, attempts, cb };
+}
+
+test('F210: a single quick drop right after connecting still retries at once', async () => {
+  const r = flapRig();
+  await r.link.connect('A', 'GUN-A-1111');
+  r.cb.A();                                       // one quick drop (a manual relink, a genuine blip)
+  await new Promise(res => setTimeout(res, 20));
+  assert.equal(r.attempts.A, 2, 'the very first flap must not be held back');
+  await r.link.disconnect();
+});
+
+test('F210: a REPEATING quick drop (headset not linked) backs off instead of spinning forever', async () => {
+  const r = flapRig();
+  await r.link.connect('A', 'GUN-A-1111');
+  r.cb.A();                                       // 1st quick drop — retries at once
+  await new Promise(res => setTimeout(res, 20));
+  assert.equal(r.attempts.A, 2);
+  r.cb.A();                                       // 2nd consecutive quick drop: now the pattern repeats
+  await new Promise(res => setTimeout(res, 20));
+  assert.equal(r.attempts.A, 2, 'a repeating flap must not reconnect instantly a second time');
+  await new Promise(res => setTimeout(res, 200));
+  assert.ok(r.attempts.A >= 3, 'but it does retry once the backoff has elapsed');
+  await r.link.disconnect();
+});

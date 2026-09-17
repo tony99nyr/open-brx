@@ -11,6 +11,15 @@ export const TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// F210: docs/manual/dev.md's headset note — "the headset must be linked or the gun will connect,
+// answer a quick $PING, then drop within seconds and echo nothing to config. After a gun-initiated
+// $DISCONNECT,*, back off at least 5 s before reconnecting." A gun with no headset linked repeats
+// this forever, and `_connectWithRetry`'s own backoff only grows on a FAILED `ble.connect()` call —
+// a connect that SUCCEEDS and then drops seconds later never fails, so a single flap reconnects at
+// once (as any ordinary drop should), but a REPEATING flap now backs off instead of spinning as fast
+// as the hardware allows.
+const FLAP_MS = 5000;
+
 /** Split an advert name "<sticker>-<tail>" → {name, basename, tail}. Never uses the BLE deviceId. */
 export function splitAdvert(name, deviceId) {
   const m = /^(.*)-([0-9A-Fa-f]{4})$/.exec(name || '');
@@ -42,9 +51,10 @@ export class Reassembler {
 
 export class BrxLink {
   constructor({ ble = BleClient, log = () => {}, onFrame = () => {}, onDrop = () => {}, onUp = () => {},
-                unbounded = () => false, chunkGapMs = 8, frameGapMs = 18 } = {}) {
+                unbounded = () => false, chunkGapMs = 8, frameGapMs = 18, now = () => Date.now(), flapMs = FLAP_MS } = {}) {
     this.ble = ble; this.log = log; this.onFrame = onFrame; this.onDrop = onDrop; this.onUp = onUp;
     this.unbounded = unbounded; this.chunkGapMs = chunkGapMs; this.frameGapMs = frameGapMs;
+    this.now = now; this.flapMs = flapMs;
     this.deviceId = null; this.advert = null; this.connected = false; this.retries = 0; this.lastReason = null;
     this._init = null; this._q = Promise.resolve(); this._scanning = false; this._re = new Reassembler();
     this._scanOp = Promise.resolve(); this._scanTok = 0;   // scan start/stop run one at a time, in call order
@@ -56,6 +66,8 @@ export class BrxLink {
     // outlive its device — nor hold `_reconnecting` and block the next gun's reconnect.
     this._gen = 0;
     this._wake = null;     // resolves the pending backoff early (the TAP TO RECONNECT pill)
+    this._upAt = 0;        // F210: when this device last connected successfully
+    this._flapStreak = 0;  // F210: consecutive connect-then-quick-drop cycles for THIS device
   }
   ensureInit() { return (this._init ||= this.ble.initialize({ androidNeverForLocation: true })); }
 
@@ -89,6 +101,30 @@ export class BrxLink {
   get scanning() { return this._scanning; }
   _scanSerial(fn) { const p = this._scanOp.then(fn, fn); this._scanOp = p.catch(() => {}); return p; }
 
+  // F211: adapter-off detection. `@capacitor-community/bluetooth-le` reports `true` on web, so the demo
+  // and the desktop rig see an always-on adapter and behave exactly as before.
+  /** Reports whether Bluetooth is on right now. */
+  async isEnabled() { try { return !!(await this.ble.isEnabled()); } catch (_) { return true; } }
+  /** Calls `cb(on)` whenever the adapter turns on or off; returns a stop function. A plugin build too
+   *  old to carry the notification (or the web shim) yields a no-op stop, so a call site never has to
+   *  branch on plugin version. */
+  async watchEnabled(cb) {
+    if (typeof this.ble.startEnabledNotifications !== 'function') return () => {};
+    await this.ble.startEnabledNotifications(v => cb(!!v));
+    return () => { try { this.ble.stopEnabledNotifications(); } catch (_) { /* ignore */ } };
+  }
+  /** Android only: show the system "turn on Bluetooth?" prompt. Resolves false where the plugin has no
+   *  such call (iOS, web) so the HUD can decide whether to show the button at all. */
+  async requestEnable() {
+    if (typeof this.ble.requestEnable !== 'function') return false;
+    try { await this.ble.requestEnable(); return true; } catch (e) { this._log('bluetooth enable request: ' + (e && e.message || e), 'le'); return false; }
+  }
+  /** Android only: open the OS Bluetooth settings page. */
+  async openBluetoothSettings() {
+    if (typeof this.ble.openBluetoothSettings !== 'function') return false;
+    try { await this.ble.openBluetoothSettings(); return true; } catch (e) { this._log('open bluetooth settings: ' + (e && e.message || e), 'le'); return false; }
+  }
+
   _log(m, cls) { this.log(m, cls); }
   _note(dir, f) { this.frames.push({ t: Date.now(), dir, f }); if (this.frames.length > 60) this.frames.shift(); }
 
@@ -100,6 +136,7 @@ export class BrxLink {
     this.advert = splitAdvert(advertName, deviceId);
     await this._connectWithRetry(deviceId, 5, false, this._gen);
     this.deviceId = deviceId; this.connected = true; this.retries = 0;
+    this._upAt = this.now(); this._flapStreak = 0;   // F210: a freshly picked gun starts with a clean flap count
     this.onUp(this.advert);
   }
   async _connectWithRetry(id, attempts, forever = false, gen = this._gen) {
@@ -159,7 +196,19 @@ export class BrxLink {
   }
   _dropped() {
     this.connected = false; this._log(`*** gun disconnected ***`, 'le'); this.onDrop();
-    if (this.deviceId) this._reconnect();
+    if (!this.deviceId) return;
+    // F210: a quick drop right after connecting is normal ONCE (a manual relink, a genuine radio blip)
+    // and retries at once, same as always. A REPEATING quick drop (headset not linked: the gun connects,
+    // answers a $PING, then drops itself within seconds — forever) now backs off instead of reconnecting
+    // as fast as the hardware allows, which used to spin the radio and re-run onUp()'s relink side effects
+    // every cycle with no way out short of linking the headset.
+    const flapped = this._upAt && (this.now() - this._upAt) < this.flapMs;
+    this._flapStreak = flapped ? this._flapStreak + 1 : 0;
+    if (this._flapStreak >= 2) {
+      const gen = this._gen;
+      this._log(`gun keeps dropping seconds after connecting — is the headset linked? backing off ${this.flapMs} ms`, 'li');
+      this._waitOrWake(this.flapMs).then(() => { if (this.deviceId && gen === this._gen) this._reconnect(); });
+    } else this._reconnect();
   }
   /** B4: the engine's link watchdog calls this when the gun has gone silent for too long while we still
    *  read as `connected` — the native disconnect callback this whole file otherwise depends on may never
@@ -187,7 +236,7 @@ export class BrxLink {
     const gen = this._gen;
     try {
       if (await this._connectWithRetry(this.deviceId, 0, true, gen) && gen === this._gen) {
-        this.connected = true; this._log('reconnected', 'lk'); this.onUp(this.advert);
+        this.connected = true; this._upAt = this.now(); this._log('reconnected', 'lk'); this.onUp(this.advert);
       }
     }
     catch (e) { this._log('reconnect stopped: ' + (e && e.message || e), 'le'); }

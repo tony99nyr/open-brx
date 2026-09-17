@@ -115,6 +115,9 @@ export class Hud {
     this.overlay = root.querySelector('#overlay'); this.chips = root.querySelector('#chips');
     this.diag = root.querySelector('#diag'); this.info = root.querySelector('#info');
     this.sig = null; this.scan = []; this.link = {}; this.diagData = {}; this.mcUrl = '';
+    // F211: adapter-off state, app.js-owned (like `mcUrl`/`discovered` below) — the picker's own concern,
+    // never round-tripped through the engine. `platform` gates the Android-only enable/settings buttons.
+    this.bluetoothOn = true; this.platform = 'web';
     this.discovered = null;   // {url, at} a LAN-sweep hit MC never auto-joined — null once bound or nothing found
     this._joinConfirm = null; // {act, at} the armed/live two-tap guard on CONNECT / SCAN QR (below)
     this.lo = { tab: 'primary', filter: 'weapons', focus: null, confirm: null };   // LOADOUT browser UI state (tab / filter / focused row / A14 two-tap confirm {key, drop})
@@ -243,7 +246,7 @@ export class Hud {
     this.frame.dataset.env = st.night ? 'night' : '';
     const sig = [st.phase, st.alive, !!st.killedBy, st.night, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
       st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.battery != null && st.battery <= 15,
-      st.kills > 0, st.deaths > 0, st.assists > 0, accShown(st) != null, st.reserve != null, this.scan.length, st.bleUp, st.ended,
+      st.kills > 0, st.deaths > 0, st.assists > 0, accShown(st) != null, st.reserve != null, this.scan.length, st.bleUp, st.ended, this.bluetoothOn,
       this.discovered && this.discovered.url,   // Polish-loop pass 1: the discovered-MC row on the pre-join screen (`_joinConfirm` only touches the diag panel, patched directly, not here)
       st.rejoin, !!st.pendingTeardown, this.sync && this.sync.bound, this.sync && this.sync.pending,
       // F137 (field 2026-09-12, found verifying the fix below): the pre-kit CONNECTED screen swaps a whole
@@ -376,6 +379,19 @@ export class Hud {
     }
   }
 
+  // F211: with Bluetooth off the picker used to just sit empty, with no line telling the player why
+  // (game-test-2026-09-13.md C2). `bluetoothOn` is app.js-owned (constructor note above) and re-checked
+  // on every SET MY GUN tap and on the OS adapter-state notification, so this only ever shows what the
+  // phone reports right now. The buttons only appear where the plugin actually offers them (Android).
+  _idleBtOff() {
+    const android = this.platform === 'android';
+    return `<div class="sc bad"><i></i>BLUETOOTH IS OFF</div>
+      <div class="small bad" style="letter-spacing:normal;font-weight:400;line-height:1.5">Turn on Bluetooth to see nearby taggers.</div>
+      ${android ? `<button class="bigbtn ghost" data-act="onEnableBluetooth"><span class="unskew">TURN ON BLUETOOTH</span></button>
+      <button class="bigbtn ghost" data-act="onOpenBluetoothSettings"><span class="unskew">BLUETOOTH SETTINGS</span></button>` : ''}
+      <div class="help">The list fills in on its own once Bluetooth is back on.</div>`;
+  }
+
   _idle(st = {}) {
     const rows = this.scan.map(d => {
       const [nm, tail] = splitGun(d);
@@ -389,8 +405,9 @@ export class Hud {
         <button class="bigbtn" data-act="onSetGun"><span class="unskew">SET MY GUN ▸</span></button>
         <button class="bigbtn ghost" data-act="onDemo"><span class="unskew">DESKTOP DEMO</span></button>
         <button class="bigbtn ghost util" data-act="onUtility"><span class="unskew">▣ UTILITY MODE</span></button></div>
-      <div class="r"><div class="sc"><i></i>SCANNING FOR TAGGERS</div><div class="list">${rows || '<div class="small">no taggers yet…</div>'}</div>
-        <div class="help">Tagger not listed? Power-cycle it — it'll appear within a couple seconds.</div></div></div>`;
+      <div class="r">${this.bluetoothOn === false ? this._idleBtOff() :
+        `<div class="sc"><i></i>SCANNING FOR TAGGERS</div><div class="list">${rows || '<div class="small">no taggers yet…</div>'}</div>
+        <div class="help">Tagger not listed? Power-cycle it — it'll appear within a couple seconds.</div>`}</div></div>`;
   }
 
   _lobby(st, mode) {

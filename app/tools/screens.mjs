@@ -96,6 +96,34 @@ for (const view of VIEWS) {
     const pg = await open(view, 'idle'); const r = await pg.evaluate(() => { const l = document.querySelector('.idle .list'); return { ox: getComputedStyle(l).overflowX, sw: l.scrollWidth, cw: l.clientWidth, rows: document.querySelectorAll('.tagrow').length }; }); await pg.close();
     must(r.rows === 3, 'rows ' + r.rows); must(r.ox === 'hidden' && r.sw <= r.cw + 1, JSON.stringify(r));
   });
+  // F211 (game-test-2026-09-13.md C2): the picker used to sit empty with no message when Bluetooth was off.
+  await step(`${view.name} F211 idle-bt-off: the Bluetooth-off message replaces the list, no Android-only buttons`, async () => {
+    const pg = await open(view, 'idle-bt-off');
+    const r = await pg.evaluate(() => ({
+      rows: document.querySelectorAll('.tagrow').length,
+      msg: (document.querySelector('.idle .sc.bad') || {}).textContent || '',
+      enable: !!document.querySelector('[data-act="onEnableBluetooth"]'),
+      settings: !!document.querySelector('[data-act="onOpenBluetoothSettings"]'),
+    }));
+    await pg.close();
+    must(r.rows === 0, 'still shows tagger rows with Bluetooth off: ' + JSON.stringify(r));
+    must(/BLUETOOTH IS OFF/.test(r.msg), 'no Bluetooth-off message on screen: ' + JSON.stringify(r));
+    must(!r.enable && !r.settings, 'a plugin button appeared off Android: ' + JSON.stringify(r));
+  });
+  await step(`${view.name} F211 idle-bt-off-android: TURN ON BLUETOOTH + BLUETOOTH SETTINGS are tappable and each does something`, async () => {
+    const pg = await open(view, 'idle-bt-off-android');
+    const before = await pg.evaluate(() => {
+      const sc = parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1) || 1;   // the #frame is scaled: tap targets are judged in DESIGN px, as step #23 does
+      const rc = sel => { const e = document.querySelector(sel); if (!e) return null; const r = e.getBoundingClientRect(); return { w: r.width / sc, h: r.height / sc }; };
+      return { enable: rc('[data-act="onEnableBluetooth"]'), settings: rc('[data-act="onOpenBluetoothSettings"]'), logLen: (window.brx.log || []).length };
+    });
+    must(before.enable && before.enable.h >= 36, 'TURN ON BLUETOOTH missing or too small a tap target: ' + JSON.stringify(before));
+    must(before.settings && before.settings.h >= 36, 'BLUETOOTH SETTINGS missing or too small a tap target: ' + JSON.stringify(before));
+    await pg.click('[data-act="onEnableBluetooth"]'); await pg.waitForTimeout(200);
+    const after = await pg.evaluate(() => (window.brx.log || []).length);
+    await pg.close();
+    must(after > before.logLen, 'tapping TURN ON BLUETOOTH left no trace — the control looks dead');
+  });
   await step(`${view.name} #4 connected: URL field, SCAN QR and the hint sit on one centre line`, async () => {
     const pg = await open(view, 'connected'); const ys = await pg.evaluate(() => ['.mcin', '.qrbtn', '.note.join'].map(s => { const r = document.querySelector(s).getBoundingClientRect(); return r.top + r.height / 2; })); await pg.close();
     must(Math.max(...ys) - Math.min(...ys) < 6, 'centres ' + ys.map(Math.round).join(','));

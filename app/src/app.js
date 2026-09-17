@@ -209,8 +209,9 @@ async function syncPlayerAdvert() {
   }
 }
 
-// preflight (contracts A4.9)
-const preflight = { ssid_ok: true, mc_reachable: false, auto_join_ok: true, cellular_off: true, dnd_on: false, phone_batt: null, screen_on: true, foreground: true, gun_linked: false, headset_ok: false };
+// preflight (contracts A4.9). `bluetooth_on` (F211) is optional on the wire — an older MC that has never
+// heard of it simply ignores an extra field, so this never needs a contract bump to ship.
+const preflight = { ssid_ok: true, mc_reachable: false, auto_join_ok: true, cellular_off: true, dnd_on: false, phone_batt: null, screen_on: true, foreground: true, gun_linked: false, headset_ok: false, bluetooth_on: true };
 async function refreshPreflight() {
   try { if (plugins.device) { const b = await plugins.device.getBatteryInfo(); if (b && b.batteryLevel != null) preflight.phone_batt = Math.round(b.batteryLevel * 100); } } catch (_) { /* ignore */ }
   // Report ssid_ok truthfully (contracts A28.3: MC itself downgrades this to a warning, not a red, for
@@ -220,7 +221,14 @@ async function refreshPreflight() {
   preflight.mc_reachable = !!(transport && transport.state === 'bound');
   preflight.gun_linked = engine.bleUp; preflight.headset_ok = !!engine.headEcho;
   preflight.foreground = document.visibilityState !== 'hidden'; preflight.screen_on = preflight.foreground;
+  await setBluetoothOn(await link.isEnabled());
   if (transport) transport.setPreflight(preflight);
+}
+// F211: one place both the poll (refreshPreflight, every 5 s) and the OS notification (watchEnabled,
+// below) go through, so the picker screen, the diag panel and MC's ITEMS board never disagree.
+function setBluetoothOn(on) {
+  preflight.bluetooth_on = on; hud.bluetoothOn = on; hud.platform = platformName();
+  return on;
 }
 
 /** Pending "we have been unbound for 15s" timer; see the onState handler in connectMc. It starts a
@@ -303,6 +311,10 @@ function connectMc(url, remember = true, join = {}) {
 let scanning = false; const found = new Map();
 Object.assign(hud.h, {
   onSetGun: async () => {
+    // F211: check the adapter BEFORE opening the radio — starting a scan with Bluetooth off just sits
+    // there silently (game-test-2026-09-13.md C2). `watchEnabled` (boot, below) re-runs this the moment
+    // Bluetooth comes back on, so the operator never has to tap SET MY GUN a second time.
+    if (!setBluetoothOn(await link.isEnabled())) { hud.setScan([]); scheduleRender(); return; }
     scanning = true;       // claim the radio first, so no beacon tick reopens its scan while this one stops it
     try {
       await stopAnyScan();   // tap = (re)start a fresh scan, never leave the picker idle (bench 2026-08-25); the beacon watch yields to the picker
@@ -321,6 +333,10 @@ Object.assign(hud.h, {
       });
     } catch (e) { scanning = false; log('scan: ' + (e && e.message || e), 'le'); }
   },
+  // F211: Android only (the plugin has no iOS equivalent — Apple gives apps no Bluetooth toggle).
+  // `watchEnabled` (boot, below) notices the change and re-opens the picker; no need to poll here.
+  onEnableBluetooth: async () => { const ok = await link.requestEnable(); if (!ok) log('this phone/build has no Bluetooth enable prompt — use BLUETOOTH SETTINGS', 'li'); },
+  onOpenBluetoothSettings: async () => { const ok = await link.openBluetoothSettings(); if (!ok) log('this phone/build has no Bluetooth settings shortcut', 'li'); },
   onPick: async deviceId => {
     const d = found.get(deviceId); if (!d) return;
     await link.stopScan(); scanning = false; hud.setScan([]);
@@ -676,6 +692,14 @@ async function sweepForMc() {
     if (params.get('mc')) connectMc(params.get('mc'));
   } else {
     try { await link.ensureInit(); log('BLE ready — Set my gun', 'lk'); } catch (e) { log('BLE init: ' + (e && e.message || e), 'le'); }
+    // F211: the OS-level notification — flips the picker's message the moment Bluetooth is toggled, and
+    // re-opens the picker on its own once it is back on, so the operator never has to tap SET MY GUN twice.
+    link.watchEnabled(on => {
+      log(`bluetooth ${on ? 'back on' : 'turned off'}`, on ? 'lk' : 'le');
+      setBluetoothOn(on); scheduleRender();
+      if (on) { if (!link.connected && !scanning) hud.h.onSetGun().catch(() => {}); }
+      else if (scanning) { scanning = false; hud.setScan([]); link.stopScan().catch(() => {}); }
+    }).catch(e => log('bluetooth watch: ' + (e && e.message || e), 'li'));
     // IDLE screen says SCANNING FOR TAGGERS — so scan (the button toggles it off/on). Bench 2026-08-25.
     // Fresh boot with no gun → open the picker. REJOIN (a match in progress, gun remembered by name but the
     // deviceId is not persisted) → scan and auto-connect to that gun when it appears, so a recovered player
