@@ -306,7 +306,7 @@ def test_compile_perk_effects():
     assert "$BMAP,1,97,,,,,*" in b["head"] and "$BMAP,1,100,0,1,99,99,*" not in b["head"]
     # empty slot 2 without the perk: ALT cycles to slot 0 only (never to the unloaded slot 1 — brx-opus review);
     # a real secondary keeps the stock 0↔1 cycle
-    assert "$BMAP,1,100,0,0,99,99,*" in base["head"] and "$BMAP,1,100,0,1,99,99,*" not in base["head"]
+    assert "$BMAP,1,98,,,,,*" in base["head"] and not any(f.startswith("$BMAP,1,100") for f in base["head"])   # bench 2026-09-17: fn 100 on one slot reloads
     two = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}, {"weapon_id": "shotgun"}]}), _TEAMS)
     assert "$BMAP,1,100,0,1,99,99,*" in two["head"]
     # a perk never touches a secondary weapon (perk ⇒ no slot 1 anyway) and never the tutorial

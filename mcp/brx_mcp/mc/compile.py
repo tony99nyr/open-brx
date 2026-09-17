@@ -1254,10 +1254,11 @@ class Compiler:
         head.append(self._rekey(self.catalog.resolve("melee", 4, swap_mods, environment=env), plan.cell_for("melee")))
         bmap = list(gc._bmap())
         if not w1 and not gc.alt_reload:
-            # Empty slot 2 (A10 §2): the stock ALT row cycles to slot 1, which we no longer load — an UNVERIFIED
-            # button-map state on real guns (brx-opus review 2026-08-27). Cycle only to slot 0 instead, so ALT is a
-            # no-op by construction ("alt-fire does nothing"). easy_reload keeps ALT→97. Bench item: FOLLOWUPS "Needs Tony at the bench" (A10a).
-            bmap = [("$BMAP,1,100,0,0,99,99,*" if row.startswith("$BMAP,1,") else row) for row in bmap]
+            # Empty slot 2 (A10 §2): with one $WEAP slot loaded, weapon-cycle (fn 100) has nothing to cycle to and
+            # falls back to RELOADING (protocol §BMAP; bench 2026-09-17, Tony: "the alt button is reloading the charge
+            # rifle"). So ALT gets fn 98, the inert function select/left/right use: alt-fire does nothing.
+            # easy_reload keeps ALT→97 on purpose.
+            bmap = [("$BMAP,1,98,,,,,*" if row.startswith("$BMAP,1,") else row) for row in bmap]
         # Headset colour. We never sent ANY lit-state $HLED, which is why our headsets sat dark for a
         # whole match (field 2026-08-30) — that part is solid, and this frame is the fix.
         #
