@@ -3446,7 +3446,7 @@ class Session:
         if self.phase != "recap" or not self.scorer:
             return
         try:
-            self.last_recap = self._scorer_recap(self.scorer)
+            self.last_recap = self._scorer_recap(self.scorer, self._match_stations)
             if self.store:               # the ARCHIVE row; the live recap above is re-taken either way
                 self.store.match_ended(self.scorer.match_id, self.last_recap)
             self._push_result()          # A24: the field is re-told whenever the recap moves
@@ -5176,7 +5176,10 @@ class Session:
     def recap(self) -> RecapView | None:
         if self.scorer:
             self._mark_flushed_live()
-            r = self._scorer_recap(self.scorer)                      # A6: live recap gets the row too, not just the final one
+            # F206: in RECAP the stations must be the rows frozen at the whistle, not whatever the
+            # (possibly re-armed) stations report right now (`_restore_recap` has the same fix).
+            stations = self._match_stations if self.phase == "recap" else None
+            r = self._scorer_recap(self.scorer, stations)             # A6: live recap gets the row too, not just the final one
             if self.phase != "recap":
                 r["provisional"] = True
             r.update(self.settling())     # advisory only — never gates, see settling()

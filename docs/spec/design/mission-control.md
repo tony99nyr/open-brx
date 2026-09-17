@@ -172,7 +172,8 @@ N/M nodes; the rest end at 12:00". **TV mode** for a spectator display (read-onl
 LOADs that game and lands on GAMES, one tap from KIT. There is no "pick a mode" step and no banner telling the
 operator the match ended: any GAMES or KIT action after the whistle (an edit, LOAD, a push) starts the next
 match the same way. MC rolls on that first action, not at the whistle, so the recap stays on screen until the
-operator moves on and stays in the history picker after. NEW SESSION (top right) remains for a fresh muster. **Provisional state** until every phone has flushed: "N players still out — kills provisional"
+operator moves on and stays in the history picker after. NEW SESSION (top right) remains for a fresh muster
+and keeps the roster; Armory's NEW SESSION, CLEAR ROSTER (shown after a restore) drops it instead. **Provisional state** until every phone has flushed: "N players still out — kills provisional"
 + a provisional export, finalized vs provisional designed distinctly. **Honors** as award cards — none under 3
 scored players; MVP / MOST KILLS require kills > 0; SURVIVOR reads "FEWEST DEATHS · N". **Full stats table**
 (all players, all columns, MEDALS) + **EXPORT CSV**; a history picker over this session's finished matches.

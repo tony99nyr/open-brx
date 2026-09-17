@@ -383,8 +383,8 @@ Errors: `4xx` with `{error: string}`. All times Unix ms. IDs opaque strings.
     not red: the ack is the authority and this is a ~2 s sample that can be one beat behind a push.
 - **RECAP → NEXT MATCH is a deterministic reset (A36).** The roll (`POST /api/match/next`, `POST /api/session/new`,
   or since A43 any config edit, LOAD, push or phase move in `recap`) clears the acks, the
-  bundles, the pinned hit-audio plan, the pool bookkeeping, every node's held `config_id` and the
-  A34 `_stale_told` ledger, and leaves `lobby.pushed` false — so `POST /api/start` answers *"push
+  bundles, the pinned hit-audio plan, the pool bookkeeping and every node's held `config_id`,
+  and leaves `lobby.pushed` false — so `POST /api/start` answers *"push
   config first"* until a FULL fresh head has gone to every gun. There is no incremental path back in:
   the per-player `config` leg of a roster edit is gated on the same `lobby_pushed` flag. What it does
   NOT clear is the retired-match ledger A34 reconciles against: a phone still out on the field

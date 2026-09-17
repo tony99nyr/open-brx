@@ -30,6 +30,18 @@ describe('the command bar labels every view', () => {
     m.unmount();
   });
 
+  it('the RECAP-only NEW SESSION control says it keeps the roster', async () => {
+    // Review 2026-09-16: this button and Armory's roster-dropping one read almost the same and do
+    // opposite things -- one keeps the roster, the other clears it. The hint is what tells them apart.
+    const d = await demo();
+    const state = { ...d.state, phase: 'recap' as State['phase'] };
+    const m = await mountScreen(<CommandBar />, { ...d, state, view: 'recap' });
+    const btn = m.find('button').find(b => (b.textContent ?? '').includes('NEW SESSION'));
+    expect(btn, 'the NEW SESSION control must render in recap').toBeTruthy();
+    expect(btn!.title.toUpperCase()).toContain('KEEPS THE ROSTER');
+    m.unmount();
+  });
+
   it('survives a phase it has never heard of', async () => {
     // an older/newer server, or a hand-edited hash: an unknown phase must not blank the console
     const d = await demo();

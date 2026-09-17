@@ -264,15 +264,15 @@ step('field-2026-09-12-network-row-and-stale-reach', async ({ browser, base }) =
   ok(`a node last seen on the internet path reads NOT REACHED FOR, not WRONG WI-FI  ${await shot(pg2, 'b13-last-stale')}`);
   await closePage(pg2);
 
-  // F142: a restored session shows the banner and FRESH SESSION clears it.
+  // F142: a restored session shows the banner and NEW SESSION, CLEAR ROSTER clears it.
   const pg3 = await newPage(browser, base);
   await pg3.goto(`${pg3.__base}/?mock&restored=1#muster`, { waitUntil: 'domcontentloaded' });
   const banner = pg3.locator('[data-testid="restored-banner"]');
   await until(() => banner.count().then(n => n > 0), 8000, 'the restored-session banner');
   expect(await banner.textContent().then(t => (t ?? '').includes('RESTORED FROM')), 'the banner names when the session was restored');
-  await pg3.locator('button', { hasText: 'FRESH SESSION' }).click();
-  await until(() => banner.count().then(n => n === 0), 4000, 'the banner to clear after FRESH SESSION');
-  ok(`restored-session banner shows and FRESH SESSION clears it  ${await shot(pg3, 'b14-restored')}`);
+  await pg3.locator('button', { hasText: 'NEW SESSION, CLEAR ROSTER' }).click();
+  await until(() => banner.count().then(n => n === 0), 4000, 'the banner to clear after NEW SESSION, CLEAR ROSTER');
+  ok(`restored-session banner shows and NEW SESSION, CLEAR ROSTER clears it  ${await shot(pg3, 'b14-restored')}`);
   await closePage(pg3);
 });
 

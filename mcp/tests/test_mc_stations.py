@@ -575,6 +575,38 @@ def test_a_late_fact_after_a_roll_keeps_match_1s_stations_not_match_2s():
     assert rows == [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1, "heard": True, "revives": 2}], rows
 
 
+def test_a_late_fact_in_recap_before_any_roll_keeps_the_frozen_stations():
+    """Review 2026-09-16: `_restore_recap` and `recap()` called `_scorer_recap(self.scorer)` with no frozen
+    rows while still in RECAP, before any roll -- so they read the CURRENT stations, not the ones frozen at
+    the whistle. The operator can set/clear/release stations in RECAP, and a station heartbeat keeps moving
+    `report` on its own, so either one lets a fact land after END and write the wrong stations into the
+    still-open match 1, no roll required."""
+    s = _joined(_sess(respawn={"type": "scanner", "delay_s": 15}))
+    s.net.simulate_utility_hello("util-1")
+    s.set_station("util-1", {"kind": "respawn", "team": "blue", "id": 1})
+    s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False,
+                                     "role": "utility", "kind": "respawn", "station_id": 1, "armed": True,
+                                     "revives": 2}, s.now_ms())
+    s.push_config(force=True)
+    s.start(runway_s=3, force=True)
+    p = next(pl for pl in s.players.values() if pl.get("node_id"))
+    t_kill = s.now_ms()
+    s.control("end")
+    assert s.phase == "recap"
+    assert s.last_recap["stations"][0]["revives"] == 2, "CONTROL: match ended on 2 revives"
+    # still in RECAP -- no roll -- the station's own heartbeat moves on regardless
+    s.net.simulate_status("util-1", {"node_id": "util-1", "arm_state": "connected", "synced": False,
+                                     "role": "utility", "kind": "respawn", "station_id": 1, "armed": True,
+                                     "revives": 9}, s.now_ms())
+    frozen = [{"node_id": "util-1", "kind": "respawn", "id": 1, "team": 1, "heard": True, "revives": 2}]
+    # the `recap()` accessor must not pick up the moved heartbeat either, with no late fact at all
+    assert s.recap()["stations"] == frozen, s.recap()["stations"]
+    # a fact for the finished match, flushed late from the phone's outbox, while still in RECAP
+    s.net.simulate_event(p["node_id"], {"type": "hit_taken", "shooter_num": 0, "shooter_team": 0, "dmg": 9,
+                                        "t": t_kill, "match_id": s.scorer.match_id}, s.now_ms())
+    assert s.last_recap["stations"] == frozen, s.last_recap["stations"]
+
+
 def test_a_player_phone_that_rehellos_as_utility_is_unbound_like_an_evict():
     """F106(c) + polish review: the re-hello unbound `node_player` but left `ready` and the ack, so kit->lobby
     could advance on a phone that had become a station."""

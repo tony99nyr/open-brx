@@ -130,7 +130,8 @@ export function CommandBar() {
             </span>
           )}
           {state?.phase === 'recap' && (
-            <PrimaryButton size={12} onClick={async () => { const ok = await run(() => api.newSession(true)); if (ok !== undefined) setView('muster'); }}>NEW SESSION ▸</PrimaryButton>
+            <PrimaryButton size={12} title="Keeps the roster. To drop it, use Armory's NEW SESSION, CLEAR ROSTER."
+              onClick={async () => { const ok = await run(() => api.newSession(true)); if (ok !== undefined) setView('muster'); }}>NEW SESSION ▸</PrimaryButton>
           )}
 
           {/* One button instead of a red hazard control and a wall of telemetry (Tony, 2026-09-02):

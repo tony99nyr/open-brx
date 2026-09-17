@@ -1343,7 +1343,7 @@ export class MockBackend implements Api {
     this.phase = 'muster'; this.pushed = false; this.acks = {}; this.start_ = undefined; this.live_ = undefined; this.recap_ = undefined; this.endedAt = undefined;
     this.gameLoaded = false; this.gameSent = {};
     this.session_id = uid('sess');
-    this.restoredFrom = null;   // F142: FRESH SESSION is the acknowledgment — a restored banner never lingers
+    this.restoredFrom = null;   // F142: NEW SESSION, CLEAR ROSTER is the acknowledgment — a restored banner never lingers
     if (!keep_roster) this.players = []; else for (const p of this.players) p.ready = false;
     this.emit(); return this.state();
   }

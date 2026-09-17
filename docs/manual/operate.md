@@ -31,11 +31,12 @@ Charge it, pair it, sight it, play.
    Pairing the Headset below. Once paired it shows the gun's team colour.
 5. Set indoor or outdoor mode for where you will play. During the gun's native configuration
    step, right after power-on, press ALT quickly in succession to change it. Outdoor mode widens
-   the beam's aim tolerance, and the setting sticks across power cycles. Check which mode is
-   active any time by watching the headset LEDs on a hit: dim green hit LEDs and lit RGB LEDs
-   mean indoor, full-brightness green hit LEDs mean outdoor (see Indoor vs Outdoor Mode below).
-6. Sight the laser in target mode before your first real game (hold LEFT while powering on).
-7. Pick a game on the gun with LEFT/RIGHT, pull the trigger to select, then pull the reload
+   the beam's aim tolerance, and the setting sticks across power cycles.
+6. Check which mode is active any time by watching the green hit LED on a hit: it is dimmer
+   indoors, full brightness outdoors. Compare it against a gun whose mode you already know (see
+   Indoor vs Outdoor Mode below).
+7. Sight the laser in target mode before your first real game (hold LEFT while powering on).
+8. Pick a game on the gun with LEFT/RIGHT, pull the trigger to select, then pull the reload
    handle to start.
 
 **The controls, in one glance:**
@@ -169,9 +170,9 @@ changes the width of the effective beam and the gun's venue presentation.
 
 **Checking the mode without changing it:**
 
-Watch the headset LEDs on a hit. Indoor mode dims the green hit LEDs and lights the RGB LEDs;
-outdoor mode brings the green hit LEDs to full brightness. This is the only confirmed way to
-read back which mode is active; the gun does not announce it on its own.
+Watch the green hit LED on a hit. It runs dimmer indoors and at full brightness outdoors. There
+is no fixed reference for "dim" on its own, so compare it against a gun whose mode you already
+know.
 
 **What changes:**
 
@@ -180,7 +181,6 @@ read back which mode is active; the gun does not announce it on its own.
 | Aim tolerance | about 1.5 sight-dot widths off centre | about 3 sight-dot widths off centre |
 | Native shot reach | about 200 ft in the field test | about 200 ft in the field test |
 | Green hit LEDs | dimmed | full brightness |
-| RGB headset LEDs | enabled | bright-sun visibility is poor on any headset |
 | Explosion / melee range | shrunk | full |
 | Gun hit radius | n/a | bright sunlight cuts it roughly in half (IR noise filtering) |
 

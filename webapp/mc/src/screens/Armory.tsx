@@ -252,7 +252,7 @@ function RestoredBanner() {
         onClick={async () => { setBusy(true); try { await run(() => api.newSession(false)); } finally { setBusy(false); } }}
         style={{ marginLeft: 'auto', font: F.chk(700, 11), letterSpacing: '.2em', padding: '8px 16px', minHeight: 36,
                  background: 'transparent', border: `1px solid ${T.warn}`, color: busy ? T.micro : T.warn, cursor: busy ? 'default' : 'pointer', whiteSpace: 'nowrap' }}>
-        {busy ? 'STARTING…' : 'FRESH SESSION ▸'}
+        {busy ? 'STARTING…' : 'NEW SESSION, CLEAR ROSTER ▸'}
       </button>
     </div>
   );

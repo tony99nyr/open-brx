@@ -388,7 +388,7 @@ describe('round-2 B — an empty team is a BLOCKING red on the lobby, never an a
 });
 
 describe('F142 — restored-session banner', () => {
-  it('shows RESTORED FROM with a FRESH SESSION control, and the roster keeps the ghost rows dimmed', async () => {
+  it('shows RESTORED FROM with a NEW SESSION, CLEAR ROSTER control, and the roster keeps the ghost rows dimmed', async () => {
     const d = await demo();
     const restoredAt = Date.now() - 60 * 60 * 1000;
     const ghost = { player_id: 'p_ghost', player_num: 9, display: 'ALPHA', team_id: 'blue', node_id: null, gun_id: null,
@@ -399,7 +399,7 @@ describe('F142 — restored-session banner', () => {
     expect(m.find('[data-testid="restored-banner"]').length).toBe(1);
     expect(m.text()).toContain('RESTORED FROM');
     expect(m.text()).toContain('1 PLAYER');
-    await m.click('FRESH SESSION');
+    await m.click('NEW SESSION, CLEAR ROSTER');
     expect(newSession).toHaveBeenCalledWith(false);
     m.unmount();
   });
