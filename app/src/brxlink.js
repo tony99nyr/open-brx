@@ -134,7 +134,7 @@ export class BrxLink {
     if (this._wake) this._wake();      // ...and WAKE it, or it sleeps out its backoff still holding
                                        // `_reconnecting`, which blocks the new gun's reconnect entirely
     this.advert = splitAdvert(advertName, deviceId);
-    await this._connectWithRetry(deviceId, 5, false, this._gen);
+    if (!await this._connectWithRetry(deviceId, 5, false, this._gen)) return false;   // a newer connect won (bench 2026-09-17): claiming the link here ran onUp with the gun down
     this.deviceId = deviceId; this.connected = true; this.retries = 0;
     this._upAt = this.now(); this._flapStreak = 0;   // F210: a freshly picked gun starts with a clean flap count
     this.onUp(this.advert);
