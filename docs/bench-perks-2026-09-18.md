@@ -25,7 +25,12 @@ $TID,2,*
 
 then the shooter's `$WEAP`, the seven `$BMAP` rows, `$SPAWN,,*`, `$AMMO,0,32,384,1,*`, `$BMAP,0,0,,,,,*`.
 
-## 1. Can a gun roll its own crits? (F62, 10 min)
+## 1. Can a gun roll its own crits? ✅ ANSWERED 2026-09-18 (F62, closed and archived)
+
+**YES, and t6 is a straight percentage the GUN rolls.** t6 = 20 gave 9 crits in 64 hits (14.1%); t6 = 50 gave 54
+in 119 (45.4%). A crit is the magnitude **x1.5 truncated** and **`$HIR` token 6 reads 1** on it, so a proc is
+visible to the victim's node. Shipped the same day on three weapons (Burst Rifle 40%, AMR 30%, Toxin Rifle 15%,
+the last as the poison proc). Do not re-run. Original steps below, kept for method.
 
 The crit bit in the IR word is proven: our own emitter sets it and the victim takes **x1.5** (magnitude 20 landed 30).
 What is unknown is whether `$WEAP` **t6** (`primaryCritChance`, the app's name) makes a TAGGER roll it. It reads 0 on
@@ -67,7 +72,11 @@ controls. Point the shooter's damage key at each in turn by changing the VICTIM'
 anti-armour primitive. A function that takes exactly 9 from whichever layer is outermost is plain damage. Nothing
 moving means the row is inert on this protocol, which is also an answer worth writing down.
 
-## 3. Does ONE fn-24 shot tick? (10 min, gates a poison weapon)
+## 3. Does ONE fn-24 shot tick? ✅ ANSWERED 2026-09-18 (P18, closed) — THE NATIVE ROUTE IS DEAD
+
+**NO.** A single fn-24 shot does no damage at all; it only manufactures a phantom hit every 5.07 s. So the node
+tick clock (`spec/node.md` §3.17) is the ONLY way to build poison, exactly as designed, and the proc it wanted
+arrived the same day from §1's crit result. Do not re-run. Original steps below, kept for method.
 
 Tony 2026-09-17: the catalogue has no damage-over-time weapon. `$SIR` **fn 24** may already be one.
 Bench 2026-09-11 saw a victim take 1 to 3 damage ticks, about 420 ms apart, about 4 s after the word,
@@ -157,7 +166,15 @@ match, which is a balance decision, not a bug fix.
    then four, and record which holds refill. The 2026-09-17 bench measured a refill 3.5 to 3.9 s after the pull starts,
    with taps of 0.2 s refilling nothing, so the boundary between "too short" and "works" is the thing to pin.
 
-## 8. Does one pull fire TWO words? (3 min, no victim, no BLE)
+## 8. Does one pull fire TWO words? ✅ ANSWERED 2026-09-18 (F71 closed, F263) — SUPERSEDED BY **F276**
+
+**YES, and each word carries its own magnitude.** Measured twice: Callsign capture cap30 (45 then 70, 88 ms
+apart, one kill) and a bench with the victim at 250 armour (Shotgun 250 → 205 → 135; Plasma Sniper 126 → 101 →
+21). Three negatives from the same run: no token separates the two words, the sensor is geometry not a signal,
+and the gap VARIES (57, 88 and 119 ms), which straddles the AR's 100 ms cycle and kills any fixed-window
+collapse. ⚠️ **What is NOT answered, and now matters more: F276.** Identical words may be deduped by the
+receiving gun inside 159 ms, and our Shotgun shipped 20 + 20. Run F276's four steps instead of this section.
+Original steps below, kept for method.
 
 `$WEAP` **t1 is `WeaponIRSource`**: 0 = the gun emitter, 1 = the shooter's headset high-power LED,
 2 = BOTH. When t1 is 2, **t12 is the second word's damage** and t13/t42 are its reach. Three shipped
