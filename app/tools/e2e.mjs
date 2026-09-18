@@ -212,6 +212,14 @@ const backToGames = async (pg = mc) => {
 };
 /** The MC error strip (CommandBar `button[role=alert]` — a dismissable ▲ line). */
 const errStrip = async () => (await mc.locator('button[role="alert"]').allTextContents()).join(' | ');
+// End BRAVO's KIT try-out the way a host does. The caller has already seen the server start the try-out. The
+// END TRY-OUT button appears only after the next state push reaches the console, so wait for it, never peek once.
+const endTryout = async () => {
+  const btn = mc.locator('text=END TRY-OUT').first();
+  await until(async () => btn.isVisible().catch(() => false), 6000, 'END TRY-OUT on the KIT hero');
+  await btn.click();
+  await until(async () => !(await st()).kit.trying[pB.player_id], 6000, 'BRAVO try-out ended');
+};
 
 let guns = [], pA, pB;
 const watchdog = setTimeout(() => { console.log('WATCHDOG: 7 min — aborting'); try { fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify({ aborted: true, results, findings, jsErrors }, null, 1)); } catch {} process.exit(2); }, 420000);
@@ -376,7 +384,12 @@ await step('hudA shows the try-out hero panel (art + stats)', async () => {
   await shot(hudA, 'hudA-tryout'); await shot(mc, 'kit-trying');
 });
 await step('weapon description renders in the hero panel', async () => {
-  await until(async () => (await mc.locator('text=/a hit every/i').count()) > 0, 6000, 'desc text visible');
+  // Read the copy from the server, not from this file: 1f2a2dc3 rewrote every `desc` as player copy and
+  // moved the balance notes to `notes`, and a hardcoded phrase from the old copy failed on every run.
+  const smg = (await api('GET', '/api/weapons')).find(w => w.weapon_id === 'smg');
+  expect(smg && smg.desc, 'the server has no SMG desc');
+  expect(!('notes' in smg), 'the balance notes reached /api/weapons');
+  await until(async () => (await mc.getByText(smg.desc, { exact: true }).count()) > 0, 6000, 'desc text visible on the KIT hero');
 });
 await step('voice change makes the TAGGER speak (apply.preview reaches the gun)', async () => {
   const before = await hudA.evaluate(() => window.fakeGun.writes.filter(f => f.startsWith('$PLAY')).length);
@@ -633,6 +646,9 @@ await step('(i) KIT host-side slot 2: pick a secondary weapon → card + roster 
   await until(async () => (await mc.locator('div[role="button"][aria-label*="Suppressor"]').count()) > 0, 6000, 'weapon tiles for slot 2');
   await mc.locator('div[role="button"][aria-label*="Suppressor"]').first().click();
   await until(async () => { const p = (await st()).players.find(p => p.player_id === pB.player_id); return p.loadout.weapons[1]?.weapon_id === 'suppressor'; }, 6000, 'server slot 2 = suppressor');
+  // The KIT sends the try-out AFTER the PATCH resolves, so "slot 2 = suppressor" can be true before the try-out
+  // starts. Wait for the try-out itself, or the END TRY-OUT below races it (flaky since the A14 perk slot).
+  await until(async () => (await st()).kit.trying[pB.player_id] === 'suppressor', 6000, 'server try-out = suppressor');
   await until(async () => (await mc.locator('div[role="button"]:has-text("SECONDARY")').first().textContent()).includes('SUPPRESSOR'), 6000, 'SECONDARY card shows SUPPRESSOR');
   await until(async () => /SUPPRESSOR/.test(await mc.locator('div[role="button"]:has-text("BRAVO")').first().textContent()), 6000, 'roster line shows the secondary');
   await mc.locator('div[role="button"][aria-pressed]:has-text("PERK")').first().click();     // A14: the PERK card opens the perk arsenal
@@ -645,8 +661,7 @@ await step('(i) KIT host-side slot 2: pick a secondary weapon → card + roster 
   // recorded as a UI finding; the host has to re-focus a weapon card to end it.
   if ((await st()).kit.trying[pB.player_id]) findings.push({ kind: 'ux', where: 'kit', what: 'equipping a perk over a tried-out secondary weapon leaves that try-out armed; the perk hero offers no END TRY-OUT' });
   await mc.locator('div[role="button"]:has-text("PRIMARY")').first().click();
-  if ((await mc.locator('text=END TRY-OUT').count()) > 0) { await mc.click('text=END TRY-OUT'); }
-  await until(async () => !(await st()).kit.trying[pB.player_id], 6000, 'BRAVO try-out ended');
+  await endTryout();
   await shot(mc, 'kit-secondary-host');
 });
 await step('(i2) A12: sidearm-only slot 2 → KIT arsenal header reads "SIDEARMS · 2", only pistol tiles, hint says SIDEARM; a pistol equips; rules restored', async () => {
@@ -661,12 +676,12 @@ await step('(i2) A12: sidearm-only slot 2 → KIT arsenal header reads "SIDEARMS
   expect((await mc.locator('text=SLOT 2 IS A SIDEARM').count()) > 0, 'the hint should read SLOT 2 IS A SIDEARM');
   await mc.locator('div[role="button"][aria-label*="Desert Eagle"]').first().click();
   await until(async () => { const p = (await st()).players.find(p => p.player_id === pB.player_id); return p.loadout.weapons[1]?.weapon_id === 'deagle'; }, 6000, 'server slot 2 = deagle');
+  await until(async () => (await st()).kit.trying[pB.player_id] === 'deagle', 6000, 'server try-out = deagle');   // sent after the PATCH: see (i)
   await until(async () => (await mc.locator('div[role="button"]:has-text("SECONDARY")').first().textContent()).includes('DESERT EAGLE'), 6000, 'SECONDARY card shows DESERT EAGLE');
   await shot(mc, 'kit-sidearms-only');
-  if ((await mc.locator('text=END TRY-OUT').count()) > 0) { await mc.click('text=END TRY-OUT'); }
+  await endTryout();
   await api('PUT', '/api/config', { loadout_policy: { preset: 'no_heavies' } });
   await until(async () => (await st()).config.loadout_policy.preset === 'no_heavies', 6000, 'rules restored to NO HEAVIES');
-  await until(async () => !(await st()).kit.trying[pB.player_id], 6000, 'BRAVO try-out ended');
 });
 await step('(j) a REJECTED host pick shows the server\'s error — no "CHANGED FROM THEIR PHONE", no try-out of the refused weapon', async () => {
   await mc.locator('div[role="button"]:has-text("BRAVO")').first().click();
