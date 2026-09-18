@@ -33,7 +33,14 @@ export function modes(repo) {
 
 /** Weapon classes with counts, labelled the way Mission Control labels them. */
 export function roles(repo) {
-  const cat = JSON.parse(read(repo, 'mcp/brx_mcp/mc/weapons.json')).weapons;
+  // VISIBLE weapons only, the same predicate the server publishes its catalogue with
+  // (`WeaponCatalog.all()`, mc/compile.py: "hidden weapons excluded"). Counting every ROW instead
+  // advertised 25 weapons on the home page when 15 are in the game, and gave the class pills a MELEE
+  // entry for a weapon nobody can pick (every player carries it, no loadout names it) and a HEAVY
+  // entry of 5 when 3 of those are cut. Fixed 2026-09-18 after Tony spotted the pills on the live
+  // site; the same "count the file, not the game" bug had already been fixed once in Designer.tsx.
+  const cat = JSON.parse(read(repo, 'mcp/brx_mcp/mc/weapons.json')).weapons.filter(w => !w.hidden);
+  if (!cat.length) throw new Error('facts: weapons.json has no visible weapons; the landing renders from them');
   const tok = read(repo, 'webapp/mc/src/tokens.ts');
   const block = tok.match(/export const ROLE[\s\S]*?=\s*\{([\s\S]*?)\n\};/);
   if (!block) throw new Error('facts: could not find ROLE in webapp/mc/src/tokens.ts (renamed?)');
