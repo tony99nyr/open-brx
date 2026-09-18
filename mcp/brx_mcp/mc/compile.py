@@ -838,8 +838,6 @@ class WeaponCatalog:
             row["caution"] = w["caution"]
         if w.get("pickup_only"):   # 2026-09-17: catalogue-visible, never in a loadout pool (policy.py)
             row["pickup_only"] = True
-        if w.get("recoil"):     # S42 (2026-09-17): the declared target profile -- weapons.json `_note`
-            row["recoil"] = w["recoil"]
         if w.get("lethal") is False:   # 2026-09-18, weapon-design.md §7.4: cannot kill (stripper, smoke).
             # `policy.pool()`'s `_support_ids` reads this off the SAME `Weapon` view it is handed, so
             # dropping it here would leave the primary-slot exclusion dead: `loadout_pool()` calls
@@ -866,8 +864,7 @@ class WeaponCatalog:
     # perk must scale every slot (docs/archive/bench-weap-tokens-2026-09-04.md).
     # acc_ceiling/acc_floor (t21/t22, docs/weapon-design.md §4.4): named here so a test can locate them,
     # but `resolve()` never writes either -- every weapon ships t21==t22==100 (native walk off, F230),
-    # and S42's `recoil` catalogue field only ever reaches the wire through `app/src/engine.js`, which
-    # pins both to the live accuracy value on every write. See `weapons.json` `_note` (S42).
+    # and nothing writes them during a life (S42 live accuracy cut 2026-09-18). See `weapons.json` `_note`.
     # "range_outdoor" (t2, `gunRangeOutdoor`) is the confirmed emitted-power/venue lever (F231/F234,
     # 2026-09-17 garden test). "range_indoor" (t41, `gunRangeIndoor`) is kept only so a test can pin
     # it untouched -- do NOT write it from `gun_range_outdoor_pct` or any venue map; see the F234

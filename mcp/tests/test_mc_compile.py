@@ -884,7 +884,7 @@ def _weapon_family(cat: WeaponCatalog, w: dict) -> tuple:
     """2026-09-17, Tony's decision: the dominance check used to run globally (43 dominated pairs on
     the stock roster before the first retune); it now runs WITHIN a family, because cross-family
     dominance (an SMG beating a Sniper Rifle on every 2026-09-17 axis) is expected and correct until
-    range and recoil actually reach the wire (F231, S42) -- a Sniper Rifle's whole identity is range,
+    range actually reaches the wire (F231) -- a Sniper Rifle's whole identity is range,
     which the model cannot see yet. Family = fire mode (`t20`) + `weapon_class`, EXCEPT a sidearm,
     which is its own family regardless of mode/class (a slot-2 backup was never meant to compete with
     a primary at all -- the old bespoke "primary beats sidearm" exemption falls out of this for free,
@@ -898,26 +898,24 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
     """docs/weapon-design.md §2.3: every picker weapon lands in the 1.2-3.5s band (one-shot power
     weapons AND cell weapons excepted -- see below), no weapon strictly beats another weapon IN THE
     SAME FAMILY on {ideal TTK, kills per clip, one-magazine kill chance at p=0.7, sustained DPS} at
-    once, and every visible weapon LEADS its family on at least one of those four axes or on one of
-    the two declared-but-not-yet-wired qualifiers (`range_band`, `recoil`) (2026-09-17 balance pass).
+    once, and every visible weapon LEADS its family on at least one of those four axes (2026-09-17
+    balance pass).
 
     **Why four axes, and why per-family.** Tony's call, following the Assault Rifle's native 100ms
     cycle reintroducing the exact cross-weapon dominance the 2026-08-30 retune existed to avoid:
     dominance now runs within a FAMILY (`_weapon_family()`) instead of globally, because a fast
     automatic beating a Sniper Rifle on every axis here is not a bug -- it is the model's blind spot
-    (the MODEL sees no range or recoil: range ships on `t2` and the node writes `t21`/`t22`, so neither
-    reaches the derived columns here, F231/S42), not a balance failure. Reserve/"total
+    (the MODEL sees no range: range ships on `t2`, so it does not reach the derived columns here,
+    F231), not a balance failure. Reserve/"total
     kills from a kit" is retired (a respawn refills it); "kills per clip" (`mag // rounds_to_kill`,
     deterministic -- felt every reload) and sustained DPS (a full-magazine dump plus one reload) take
     its place alongside ideal TTK and the probabilistic one-magazine kill chance.
 
     **The lead rule.** A weapon that cannot win, or at least tie, ANY of the four axes against its own
-    family has no felt identity in this model -- ties count as leading (the family's best value), and
-    a weapon may also lead via the mildest `recoil.floor` in its family (S42's planned node-driven
-    profile, not yet on the wire) or a `range_band` no other family member shares (Q15's planned
-    per-venue metres, not yet on the wire -- `t41`/`t2` stay whatever the capture carries). Both are
-    declared DATA for a lever that does not exist yet; `test_range_and_recoil_are_declared_not_wired`
-    below is the guard that keeps them that way until F231/S42 ship for real.
+    family has no felt identity in this model -- ties count as leading (the family's best value).
+    `range_band` is declared DATA for a lever that does not exist yet (Q15's planned per-venue metres;
+    `t41`/`t2` stay whatever the capture carries), so it cannot count as a lead;
+    `test_range_is_declared_not_wired_and_accuracy_stays_native_off` below is the guard.
 
     **Cell weapons and the band.** A cell weapon (`rounds_per_charge` > 1 with a tap magnitude --
     today, the Charge Rifle) is release-to-kill, not first-shot-to-kill (`time_to_kill()`): the charge
@@ -963,8 +961,7 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
             sust = dmg * mag / (mag * per / 1000 + r["reload_ms"] / 1000)
             pk = _one_mag_kill_p(mag, htk)
         rows.append({"id": wid, "fam": _weapon_family(cat, w), "htk": htk, "ttk": ttk, "sust": sust,
-                     "pk": pk, "kpc": kpc, "recoil_floor": (r.get("recoil") or {}).get("floor"),
-                     "range_band": r.get("range_band"), "is_cell": rpc > 1 and cat.tap_damage(wid) > 0})
+                     "pk": pk, "kpc": kpc, "range_band": r.get("range_band"), "is_cell": rpc > 1 and cat.tap_damage(wid) > 0})
     for r in rows:
         if r["htk"] > 1 and not r["is_cell"]:
             assert 1200 <= r["ttk"] <= 3500, f"{r['id']} TTK {r['ttk']}ms is outside the 1.2-3.5s band"
@@ -1021,10 +1018,10 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
             continue                                   # a family of one trivially leads (nothing to compare)
         best_by_axis = {axis: (min if BETTER[axis] == "lower" else max)(m[axis] for m in members) for axis in AXES}
         for m in members:
-            # ⚠ The lead must come from an axis that REACHES A PLAYER. `recoil` and `range_band` are
-            # declared-only targets (F231 range, S42 recoil) that no code writes to the wire, so a lead
-            # claimed on either would be satisfied by inert data -- a guard that cannot fail. Add them
-            # here in the same commit that wires them, and not before (polish round 2, 2026-09-17).
+            # ⚠ The lead must come from an axis that REACHES A PLAYER. `range_band` is a declared-only
+            # target (F231) that no code writes to the wire, so a lead claimed on it would be satisfied
+            # by inert data -- a guard that cannot fail. Add it here in the same commit that wires it,
+            # and not before (polish round 2, 2026-09-17).
             if not any(m[axis] == best_by_axis[axis] for axis in AXES):
                 starved.append(m["id"])
     assert not starved, (f"{starved} cannot lead their family on any felt axis (ttk/kpc/pk/sust) -- "
@@ -1043,20 +1040,18 @@ def test_the_energy_rifle_ships_its_overheat_tokens_on_the_wire():
     assert p[35 + 1] == "D11", "t35 = D11 is the ear-confirmed overheat sound (F229)"
 
 
-def test_range_and_recoil_are_declared_not_wired():
-    """S48/S42/Q15 (2026-09-17): `range_band` and `recoil` are catalogue TARGETS for levers that do not
-    exist yet (F231 range calibration, S42 node-driven recoil). Every visible weapon carries both, but
-    neither may reach a `$WEAP` token: `t41`/`t2` stay whatever the capture carries (F135, F231 -- no
-    code path writes them from `range_band`), and `t21`/`t22` (the accuracy ceiling/floor) still ship
-    100/100 (native walk off, F230) regardless of a weapon's declared `recoil` profile."""
+def test_range_is_declared_not_wired_and_accuracy_stays_native_off():
+    """S48/Q15 (2026-09-17): `range_band` is a catalogue TARGET for a lever that does not exist yet
+    (F231 range calibration). Every visible weapon carries it, but it may not reach a `$WEAP` token:
+    `t41`/`t2` stay whatever the capture carries (F135, F231). `t21`/`t22` (the accuracy ceiling/floor)
+    ship 100/100 (native walk off, F230). S42 node-driven recoil was cut on 2026-09-18, so no weapon
+    may carry a `recoil` block any more: a leftover one would be inert data that suggests a feature."""
     cat = WeaponCatalog()
     for w in cat.all():
         row = cat._row(w["weapon_id"])
         assert row.get("range_band") in ("close", "close-mid", "mid", "long"), w["weapon_id"]
         assert isinstance(row.get("range_target_m"), str) and row["range_target_m"], w["weapon_id"]
-        recoil = row.get("recoil")
-        assert isinstance(recoil, dict) and {"ceiling", "floor", "per_shot", "recover_ms"} <= set(recoil), \
-            w["weapon_id"]
+        assert "recoil" not in row, f"{w['weapon_id']}: live accuracy was cut 2026-09-18, drop its `recoil` block"
         frame = cat.resolve(w["weapon_id"], 0).split(",")
         assert frame[WeaponCatalog._T["acc_ceiling"] + 1] == "100", w["weapon_id"]
         assert frame[WeaponCatalog._T["acc_floor"] + 1] == "100", w["weapon_id"]

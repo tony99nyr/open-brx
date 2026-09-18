@@ -55,5 +55,5 @@ The 2026-09-13 playtest criticals (F206 to F209) are untouched. The playtest bra
 renumbered its own rows and has filed every F id below **F253**, so main resumes there. That branch
 replaced `overheated()` with a per-slot `_overheating()` carrying a staleness window, which is the
 better design: a locked gun stops sending `$ALCD`, so a single gun-wide 99 would sit above the line for
-ever. When it lands, heat becomes a game rule and belongs on the stage, and `node.md` §3.15's throttle
-row should name `_overheating()`.
+ever. When it lands, heat becomes a game rule and belongs on the stage. Main no longer has
+`overheated()`: its only reader was the S42 accuracy writer, which Tony cut on 2026-09-18.

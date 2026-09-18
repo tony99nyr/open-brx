@@ -203,6 +203,8 @@ Target mode makes the gun harmless, tireless, and honest about where it points.
 > **Why bursts hit and mag-dumps miss.** The BRX simulates recoil. Rapid fire drags your
 > accuracy down toward each weapon's floor. A "miss" still flashes the target's headset and
 > plays a zip sound, but it does 0 damage. Fire in bursts and let your accuracy recover.
+> Open BRX turns this off: every weapon ships with its ceiling and floor both at 100, so a
+> mag-dump in an Open BRX game does not lose accuracy.
 
 ## Pairing the Headset
 

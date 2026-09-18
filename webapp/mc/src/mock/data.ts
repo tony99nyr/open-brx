@@ -36,12 +36,6 @@ export const WEAPONS: WeaponView[] = [
     "role": "support",
     "htk": 5,
     "ttk_ms": 1600,
-    "recoil": {
-      "ceiling": 100,
-      "floor": 100,
-      "per_shot": 0,
-      "recover_ms": 0
-    },
     "ammo_total": 70,
     "bars": {
       "power": 56,
@@ -73,12 +67,6 @@ export const WEAPONS: WeaponView[] = [
     "role": "assault",
     "htk": 13,
     "ttk_ms": 1200,
-    "recoil": {
-      "ceiling": 100,
-      "floor": 70,
-      "per_shot": 10,
-      "recover_ms": 150
-    },
     "ammo_total": 224,
     "bars": {
       "power": 38,
@@ -110,12 +98,6 @@ export const WEAPONS: WeaponView[] = [
     "role": "assault",
     "htk": 11,
     "ttk_ms": 1417,
-    "recoil": {
-      "ceiling": 100,
-      "floor": 85,
-      "per_shot": 5,
-      "recover_ms": 150
-    },
     "ammo_total": 252,
     "bars": {
       "power": 47,
@@ -147,12 +129,6 @@ export const WEAPONS: WeaponView[] = [
     "role": "support",
     "htk": 3,
     "ttk_ms": 570,
-    "recoil": {
-      "ceiling": 100,
-      "floor": 100,
-      "per_shot": 0,
-      "recover_ms": 0
-    },
     "ammo_total": 120,
     "bars": {
       "power": 91,
@@ -185,12 +161,6 @@ export const WEAPONS: WeaponView[] = [
     "role": "sidearm",
     "htk": 5,
     "ttk_ms": 1920,
-    "recoil": {
-      "ceiling": 100,
-      "floor": 100,
-      "per_shot": 0,
-      "recover_ms": 0
-    },
     "ammo_total": 55,
     "bars": {
       "power": 64,
@@ -223,12 +193,6 @@ export const WEAPONS: WeaponView[] = [
     "htk": 13,
     "ttk_ms": 1800,
     "caution": "Overheats after about 30 rounds of full auto, and it does not cool on its own: work the reload lever to vent the heat (about three pulls, or one held pull), then keep holding to recharge the cell.",
-    "recoil": {
-      "ceiling": 100,
-      "floor": 70,
-      "per_shot": 10,
-      "recover_ms": 150
-    },
     "ammo_total": 900,
     "bars": {
       "power": 38,
@@ -262,12 +226,6 @@ export const WEAPONS: WeaponView[] = [
     "htk": 1,
     "ttk_ms": 1200,
     "pickup_only": true,
-    "recoil": {
-      "ceiling": 100,
-      "floor": 100,
-      "per_shot": 0,
-      "recover_ms": 0
-    },
     "ammo_total": 4,
     "bars": {
       "power": 100,
@@ -301,12 +259,6 @@ export const WEAPONS: WeaponView[] = [
     "htk": 1,
     "ttk_ms": 0,
     "pickup_only": true,
-    "recoil": {
-      "ceiling": 100,
-      "floor": 100,
-      "per_shot": 0,
-      "recover_ms": 0
-    },
     "ammo_total": 4,
     "bars": {
       "power": 100,
@@ -338,12 +290,6 @@ export const WEAPONS: WeaponView[] = [
     "role": "cqb",
     "htk": 3,
     "ttk_ms": 1600,
-    "recoil": {
-      "ceiling": 100,
-      "floor": 100,
-      "per_shot": 0,
-      "recover_ms": 0
-    },
     "ammo_total": 30,
     "bars": {
       "power": 73,
@@ -375,12 +321,6 @@ export const WEAPONS: WeaponView[] = [
     "role": "cqb",
     "htk": 15,
     "ttk_ms": 1330,
-    "recoil": {
-      "ceiling": 100,
-      "floor": 55,
-      "per_shot": 15,
-      "recover_ms": 150
-    },
     "ammo_total": 360,
     "bars": {
       "power": 29,
@@ -414,12 +354,6 @@ export const WEAPONS: WeaponView[] = [
     "ttk_ms": 13300,
     "caution": "The Haze needs the HUD that tells a flashed player why nothing is landing (S53) before players meet it.",
     "lethal": false,
-    "recoil": {
-      "ceiling": 100,
-      "floor": 100,
-      "per_shot": 0,
-      "recover_ms": 0
-    },
     "ammo_total": 32,
     "bars": {
       "power": 20,
@@ -452,12 +386,6 @@ export const WEAPONS: WeaponView[] = [
     "role": "marksman",
     "htk": 2,
     "ttk_ms": 1500,
-    "recoil": {
-      "ceiling": 100,
-      "floor": 100,
-      "per_shot": 0,
-      "recover_ms": 0
-    },
     "ammo_total": 28,
     "bars": {
       "power": 82,
@@ -490,12 +418,6 @@ export const WEAPONS: WeaponView[] = [
     "htk": 13,
     "ttk_ms": 1320,
     "lethal": false,
-    "recoil": {
-      "ceiling": 100,
-      "floor": 100,
-      "per_shot": 0,
-      "recover_ms": 0
-    },
     "ammo_total": 160,
     "bars": {
       "power": 20,
@@ -527,12 +449,6 @@ export const WEAPONS: WeaponView[] = [
     "role": "support",
     "htk": 15,
     "ttk_ms": 1960,
-    "recoil": {
-      "ceiling": 100,
-      "floor": 55,
-      "per_shot": 15,
-      "recover_ms": 150
-    },
     "ammo_total": 459,
     "bars": {
       "power": 29,
@@ -565,12 +481,6 @@ export const WEAPONS: WeaponView[] = [
     "role": "sidearm",
     "htk": 13,
     "ttk_ms": 1920,
-    "recoil": {
-      "ceiling": 100,
-      "floor": 100,
-      "per_shot": 0,
-      "recover_ms": 0
-    },
     "ammo_total": 139,
     "bars": {
       "power": 38,
