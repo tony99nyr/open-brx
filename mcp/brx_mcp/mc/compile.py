@@ -952,7 +952,13 @@ class WeaponCatalog:
         dmg_mult = float((mods or {}).get("dmg_mult") or 1)
         if wire.get("dmg") is not None or dmg_mult != 1:
             base_dmg = int(wire["dmg"]) if wire.get("dmg") is not None else self.damage(weapon_id)
-            put("dmg", max(1, int(round(base_dmg * dmg_mult))))
+            # `max(1, ...)` only guards the MULTIPLIER path (Armour Piercing must never round a live
+            # weapon's damage down to 0): an explicit `wire.dmg` literal is written verbatim, 0
+            # included -- that is FIELD-4's own fixture (a weapon whose catalog `dmg: 0` must compile
+            # to a gun that deals no damage, not a floored 1, or the "0 DAMAGE" validate() guard this
+            # exact case exists to catch can never trip again).
+            resolved = int(round(base_dmg * dmg_mult))
+            put("dmg", max(1, resolved) if dmg_mult != 1 else resolved)
         if wire.get("fire_ms") is not None:
             put("fire", int(wire["fire_ms"]))
         mag, reserve, reload_ms = self._ammo(weapon_id, mods)

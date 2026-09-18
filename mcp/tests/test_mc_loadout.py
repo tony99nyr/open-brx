@@ -317,21 +317,22 @@ def test_compile_perk_effects():
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     assert int(_tok(f, 18)) == int(_tok(w0, 18)) // 2
     assert int(_tok(f, 16)) == max(1, round(int(_tok(w0, 16)) * 0.8)) == int(_tok(f, 39))
-    # body_armor: S50's PROPORTIONAL grant on $PSET armor (token 4) -- 20% of hp+armor, +23 at the
-    # 45+70 default (was a flat +50) -- hp untouched, PLUS its S50 cost -- ×1.25 reload (t18).
+    # body_armor: S50's flat grant on $PSET armor (token 4) -- +25 (docs/perk-design.md §2, Tony
+    # 2026-09-17: "maybe 50 is too much armor and it should be 25", down from a flat +50) -- hp
+    # untouched, PLUS its S50 cost -- ×1.25 reload (t18).
     b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor"}), _TEAMS)
     pset = [x for x in b["head"] if x.startswith("$PSET")][0].split(",")
-    assert pset[3] == "45" and pset[4] == "93"                           # 70 + round(0.20*115) = 93
+    assert pset[3] == "45" and pset[4] == "95"                           # 70 + 25
     assert [x for x in base["head"] if x.startswith("$PSET")][0].split(",")[4] == "70"
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     assert int(_tok(f, 18)) == round(int(_tok(w0, 18)) * 1.25)
     # quick_switch: half the swap delay (t15) on every slot, PLUS its S50 cost -- a small NEGATIVE
-    # armour grant, -8% of hp+armor (-9 at the default).
+    # armour grant, -20 flat (docs/perk-design.md §2).
     b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "quick_switch"}), _TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     assert int(_tok(f, 15)) == int(_tok(w0, 15)) // 2
     pset = [x for x in b["head"] if x.startswith("$PSET")][0].split(",")
-    assert pset[4] == "61"                                              # 70 + round(-0.08*115) = 61
+    assert pset[4] == "50"                                              # 70 - 20
     # armor_piercing (S50, new): the PRIMARY's $SIR key (t3/t4) is re-keyed onto the permanent AP
     # cell and its damage (t5) cut to ~40%. Secondary/melee untouched (primary only).
     b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "armor_piercing"}), _TEAMS)
