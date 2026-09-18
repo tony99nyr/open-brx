@@ -1,5 +1,5 @@
 # Developer reference
-Last verified: 2026-09-13
+Last verified: 2026-09-18
 
 This is the interoperability spec for the BRX tagger and headset: transport, framing, every known command and event with its field map, the `$WEAP` / `$GSET` / `$PSET` / `$SIR` tables, the optical IR word, the USB console, and the headset link. Every command, token, field name and wire value on this page is literal.
 
@@ -19,7 +19,7 @@ One text protocol, three ways in. The BRX speaks a plain ASCII, comma-delimited 
 |---|---|---|---|
 | Gen1 | Bluetooth Classic (SPP) | 57600 baud | Pair an HC-05 module (PIN `0001`, master role). The headset must be connected for Bluetooth to function. |
 | Gen2/3 | BLE (Nordic UART Service, NUS) | UART bridge at 115200 behind the radio | Connect from any BLE central: laptop (bleak), ESP32, phone. No pairing/PIN. |
-| Any | Hardware UART inside the gun | 115200 | What JEDGE drives directly (`Serial1`). No external accessory port exists on the BRX. A wired tap means opening the gun. Untested by us. |
+| Any | Hardware UART inside the gun | 115200 | Not what JEDGE drives day to day. Jay's JEDGE 6.0 ESP32 source links to the gun over BLE, as a Nordic UART central, for Gen2/3, or over Bluetooth Classic SPP as master with PIN `0001` for Gen1; an HC-05 module on a UART at 9600 baud is a third option. Only his serial test sketch uses `Serial1` directly. No external accessory port exists on the BRX. A wired tap means opening the gun. Untested by us. |
 | Any | Micro-USB "Programing Port" | USB CDC (baud ignored) | **Not** the `$` protocol. It is a separate `QUERY`/`SETUP` console. See the USB serial console section. |
 
 **BLE: Nordic UART Service UUIDs**
@@ -64,17 +64,13 @@ $ + COMMAND + (, + token)* + ,*
 >
 > The panic sequence leaves the gun with **no `$SIR` table, so it cannot be hit** until it is re-armed or power cycled. That is intended for a panic stop and must not be mistaken for a playable state. Battle Company's official USB updater is the factory-restore path.
 
+`mcp/brx_mcp/protocol.py` (2026-09-18) enforces three tiers, not one flat known-safe list:
+
+1. **`KNOWN_COMMANDS`.** A table of name to (the tokens the V4_30 firmware handler reads, whether it is bench-proven on v4.32, a note). The instrument sends every row here with no confirm, and adds a note to the reply when a command is understood from the firmware image but not yet bench-proven. Examples: `$STUN,<ms>`, `$BUMP` in its 5-field shape, `$PRES`, `$TMP`, `$INVU`, `$BHIT`, `$FIREX`, `$DIE`, `$TEAM`, `$PID`, `$IRTX`, `$RADSK`.
+2. **`DENIED_COMMANDS`.** Refused even with `confirm=true`, each with a reason: factory restore (`$FACTORY`); DFU (`$CDFU`, `$HEADDFU`, `$DDFU`); pairing (`$PAIR`, `$PIN`, `$CLEARDEVICE`, `$INQ`, `$GPAIR`, `$GPAIRX`); the gun's own radio-module control frames (`$!…`, `$^…`, `$&…`); the IR word-format switch (`$IRT`); factory and hardware tests (`$FTST`, `$BURN`, `$DUTY` the laser duty cycle, `$SOL`, `$MUZ`); provisioning writes (`$DTYPE`, `$DEV`, `$SITE`, `$TSTRNAME`); `$VIBTOGGLE`; `$ASKSN` (prints the headset PIN); `$RESET`; the zombie headset family (`$ZOM`, `$ZTOG`, `$ZON`, `$ZOFF`, `$BOOM`, `$ZombieKeyActive`); the USB console word `SETUP`; and `$DPLAY`, which plays a sound and then blocks the gun's main loop until the channel finishes, with the serial port unread (V4_30/V4_31 firmware: the likely mechanism behind the "screamer" lock-up). The same list reaches the phone app as `NODE_DENIED_COMMANDS`, and the phone refuses to write any of them. `$DPLAY` alone has a bench door (`HANG_PRONE_COMMANDS`): the `send` tool passes it with `confirm=true` and `allow_hang=true` together, one frame at a time, so a supervised run can make a lock-up on demand.
+3. **Anything else** needs `confirm=true`.
+
 ```python
-# The known-safe list enforced by brx-mcp (mcp/brx_mcp/protocol.py).
-# Everything else needs confirm=True. That is the host's safety rail, not a tagger limit.
-KNOWN_SAFE_COMMANDS = {
-    "PING", "CLEAR", "START", "SPAWN", "CONNECT", "INIT", "PHONE",
-    "GSET", "PSET", "WEAP", "SIR", "BMAP", "GLED", "PLAY", "AS", "SP",
-    "PBWEAP", "PBTEAM", "PBPERK", "TID",
-    # sent by the official iOS app during a normal captured game:
-    "AMMO", "STOP", "PLAYX", "VOL", "HLED", "NAME", "VERSION", "HLOOP",
-    "SFLASH",
-}
 PANIC_SEQUENCE = ["$CLEAR,*", "$SP,99,*"]
 ```
 
@@ -103,26 +99,26 @@ Every known command, with args and meaning: host to tagger, tagger to host, and 
 | Command | Dir | Args | Meaning |
 |---|---|---|---|
 | `$PING,*` | >> | n/a | Connectivity check. Reply `$PONG,*`. |
-| `$STOP,*` | >> | n/a | Stop. First frame the official app sends on every (re)connect; also part of the end-of-game tail. |
+| `$STOP,*` | >> | n/a | Stop. First frame the official app sends on every (re)connect; also part of the end-of-game tail. In the V4_30 firmware image `$STOP` also **disarms IR reception** (see `$START`). Unverified on v4.32 (firmware-levers bench sheet §12). |
 | `$PHONE,*` | >> | n/a | App-controlled mode: opens the live event tap (buttons, `$VOLTS`), locks the on-gun menu. Reply `$BUT,3,0,*`. |
 | `$CONNECT,*` / `$INIT,*` | >> | n/a | On the known-safe list. Sent on v4.32: **no observable reply**. |
 | `$CLEAR,*` | >> | n/a | Clear current game state. First frame of every arm sequence; half of the panic sequence. **It also wipes the `$SIR` table**, and because unmatched `$SIR` cells are silently ignored, a gun left with no rows ignores every hit while still reporting alive: no `$HIR`, no headset flash, pools untouched. Always re-send `$SIR` after `$CLEAR`. |
-| `$START,*` | >> | n/a | Begin the configuration sequence. Gun echoes `$LCD,0,0,0,0,0,0,*`. |
+| `$START,*` | >> | n/a | Begin the configuration sequence. Gun echoes `$LCD,0,0,0,0,0,0,*`. In the V4_30 firmware image `$START` also **arms IR reception**: the receive routine drops every word while the started flag is clear, with the debug text "not start". Unverified on v4.32 (firmware-levers bench sheet §12). |
 | `$GSET,…,*` | >> | 8 tokens | Global game settings: friendly fire, APK-named `outdoorMode`, region, ambient light, gyro, BT secondaries, crit modifier, mods. Token 2 is a measured receive gate, not the physical indoor/outdoor toggle. **No respawn/time/lives token.** See the `$GSET` and `$PSET` section. |
-| `$PSET,…,*` | >> | id, 0, HP, armor, shield, 50, , voice-pack… | Player settings: **token 1 = player id (0-63)**, tokens 3-5 = HP/armor/shield pools, then a positional voice pack. See the `$GSET` and `$PSET` section. |
+| `$PSET,…,*` | >> | id, team, HP, armor, shield, crit bonus, deathAlarm, voice-pack… | Player settings: **token 1 = player id (0-63)**, token 2 = team (V4_31 firmware image, bench confirmation pending), tokens 3-5 = HP/armor/shield pools, token 6 = crit damage bonus, then a 17-sound voice pack at t7-t23. See the `$GSET` and `$PSET` section. |
 | `$WEAP,<slot>,…,*` | >> | slot 0-5 + ~43 tokens | Define a weapon in a slot: damage, fire interval, fire mode, clip/reserve, reload, sounds, IR type. See the `$WEAP` section. |
 | `$SIR,<proto>,<subtype>,<sound>,<fn>,p5,p6,p7,p8,*` | >> | 8 tokens | Incoming-IR effects matrix: what an IR word with protocol B / subtype U does to this gun. **Unmatched cells are silently ignored.** See the `$SIR` section. |
 | `$BMAP,<button>,<function>,<swap0..3>,*` | >> | button id, function, 4 swap slots | Remap physical controls. Buttons: 0 trigger, 1 alt-fire, 2 reload handle, 3 select, 4 left, 5 right, 8 gyro. Functions seen: 0 fire, 97 reload, 98 (select/left/right), 100 weapon-cycle, 4 melee (gyro). **Mandatory**: without it the trigger only chirps "disabled". |
-| `$TID,<team>,*` | >> | team | Team id. **Use only 0-3.** The gun masks the team into the 2 bits the IR word carries (`team & 3`), but **the victim compares the full `$TID` value**, so 4-7 are not harmless aliases: two teammates on tid 4 each transmit team 0 and each reads 0 against its own 4 as an enemy, so they damage each other and friendly fire cannot be turned off for them; their shots read as friendly to a real tid-0 player and take nothing off; and a gun can kill itself off a nearby reflective surface (bench 2026-09-07: a gun on tid 5 shot its own headset down through armor and HP, with `$HIR` naming the shooter's own player id). Values 4-7 are accepted and breathe the matching palette colour, which is why they look like extra teams. Drives the gun LED colour at `$SPAWN` (1 = blue, 2 = yellow observed) and is echoed as `$HIR` token 4 on the victim. A live write changes hit resolution immediately but does not repaint LEDs. |
-| `$SPAWN,,*` | >> | **one empty token** | **Go-live** and **respawn**. Restores HP/armor and (on respawn) ammo; echoes `$LCD,<hp>,<armor>,0,0,<mag>,<reserve>,*`. Also clears the `$SIR` fn-23 state (`$ALCD` token 2 back to 100). `$SPAWN,*` (no empty token) is not the same command. **Leave at least 3 seconds after a death before respawning**, or the headset stays stuck in the green out-blink. |
+| `$TID,<team>,*` | >> | team | Team id. **Use only 0-3.** The gun masks the team into the 2 bits the IR word carries (`team & 3`), but **the victim compares the full `$TID` value**, so 4-7 are not harmless aliases: two teammates on tid 4 each transmit team 0 and each reads 0 against its own 4 as an enemy, so they damage each other and friendly fire cannot be turned off for them; their shots read as friendly to a real tid-0 player and take nothing off; and a gun can kill itself off a nearby reflective surface (bench 2026-09-07: a gun on tid 5 shot its own headset down through armor and HP, with `$HIR` naming the shooter's own player id). Values 4-7 are accepted and breathe the matching palette colour, which is why they look like extra teams. Drives the gun LED colour at `$SPAWN` (1 = blue, 2 = yellow observed) and is echoed as `$HIR` token 4 on the victim. A live write changes hit resolution immediately but does not repaint LEDs. **The gun keeps one team byte** (V4_31 firmware image): `$TID`, `$TEAM` and `$PSET` token 2 all write it, and `$TEAM,<t>,*` writes the same byte with no debug print. `$SITE` and `$INVU` set a flag that makes a later reset force team 2, so neither is sent in a team game. Unverified, from the firmware image. |
+| `$SPAWN,,*` | >> | **one empty token** | **Go-live** and **respawn**. Restores HP/armor and (on respawn) ammo; echoes `$LCD,<hp>,<armor>,0,0,<mag>,<reserve>,*`. Also clears the `$SIR` fn-23 state (`$ALCD` token 2 back to 100). `$SPAWN,*` (no empty token) is not the same command. **Leave at least 3 seconds after a death before respawning**, or the headset stays stuck in the green out-blink. The V4_30 firmware image reads token 1 as the starting **shield** (`$SPAWN,<n>,*` spawns with shield n; HP and armour reset to their maxima), and on V4_30 `$SPAWN,*` and `$SPAWN,,*` parse to the same value, so the difference we observed on v4.32 is unexplained by that handler. Unverified (firmware-levers bench sheet §6). |
 | `$AMMO,<slot>,<mag>,<reserve>,<flag>,*` | >> | slot, magazine, reserve, 1 | Load magazines. Must follow `$SPAWN` at initial go-live or the gun is live with no ammunition. e.g. `$AMMO,0,36,108,1,*`. A bare `$WEAP` re-push resets ammo to the frame's baked values. Re-send `$AMMO` after any weapon swap. |
 | `$PLAYX,0,*` | >> | 0 | Stop/clear sound playback. Sent right after `$STOP` on connect and just before the go-live cue. |
 | `$PLAY,<sound>,<vol>,<prio>,<announcer>,,,,*` | >> | 8 tokens | Play a sound id (2,477 on the gun; see [the sound catalog](../reference/sound-catalog.md) for what each one is). An id the gun does not have plays a fallback sound, not silence. **Two slots that behave differently, and the behaviour belongs to the slot, not to the kind of id** (bench 2026-09-11, six trials): **token 1 INTERRUPTS**, cutting whatever is playing in either slot, mid-word if it has to, and **token 4 QUEUES**, waiting its turn behind whatever is ahead of it (depth 3 or more observed). An effect id dropped into token 4 queues exactly like a voice line. `$PLAY,,4,6,V3A,,,,*` speaks "kill" with token 1 empty; `$PLAY,VSF,4,6,JAY,,,,*` uses both in one frame, with no layering. A sound that must not step on an announcer line goes in token 4; a hit-path or urgent sound goes in token 1 and accepts that it can cut a line off. **Tokens 2-3 are required**: `$PLAY,VA33,,,,,,,*` is silent, `$PLAY,VA33,4,6,,,,,*` speaks. Numeric values vary by client (`3,9` Android app, `3,6` iOS, `4,6` JEDGE). APK field names: soundName, addToQue1, addToQue2, loopingTime, stun, isNeedQueue. |
 | `$VOL,<0-100>,<n2>,*` | >> | volume, 0 | Master volume. Android app sends `$VOL,100,0,*`; iOS `$VOL,69,0,*`. 30 is inaudible for game audio. Open BRX plays at 80 indoors / 90 outdoors; try-outs at 69. |
 | `$NAME,<name>,*` | >> | name | Sets the gun's **persistent** name (the USB `Gun Name` field; survives power-cycle). Opening the official app rewrites it to `Tactix2`. |
-| `$VERSION,*` | >> | n/a | Query firmware. Reply `$VERSION,v4.32,?,4,,devhost.03,*`. Token 2 is the **headset** firmware (`hds.59`) when a headset is linked. |
+| `$VERSION,*` | >> | n/a | Query firmware. Reply `$VERSION,v4.32,?,4,,devhost.03,*`. Token 2 is the **headset** firmware (`hds.59`) when a headset is linked. The V4_30 firmware image builds the reply as `$VERSION,<gun fw>,<headset fw>,4,<BT peripheral version>,<BT central version>,*`: the `4` is a constant, `devhost.03` is the central radio's version, and the empty token 4 is the peripheral radio's. Firmware image, fits every capture. |
 | `$SP,<n>,*` | >> | n | End-of-game / stop. `$SP,99,*` is the second half of the panic sequence. Do not probe it mid-game hoping for a score. The gun keeps none. (LaserTagMods / community.) |
-| `$QUERY,*` | >> | n/a | Over BLE returns a `$`-framed status array (`$QUERY,0,0,0,0,0,,1,0,,0,…`) plus a `$LCD`. **Not** the USB device record (that is USB-only; see the USB serial console section). |
+| `$QUERY,*` | >> | n/a | Over BLE returns a `$`-framed status array (`$QUERY,0,0,0,0,0,,1,0,,0,…`) plus a `$LCD`. **Not** the USB device record (that is USB-only; see the USB serial console section). The V4_30 firmware image builds the reply as playerId, team, hpMax, armourMax, shieldMax, one `$PSET` sound id, gyro ok (0/1), then a per-weapon-slot loop that is not decoded here. This fits the captured `$QUERY,0,0,0,0,0,,1,0,,0,…` from an unconfigured gun. Unverified beyond the shape. |
 
 **Host to tagger: in-game effects, feedback and pools**
 
@@ -130,12 +126,12 @@ Every known command, with args and meaning: host to tagger, tagger to host, and 
 |---|---|---|---|
 | `$SFLASH,*` | >> | n/a | **The shooter's green-sight kill-confirm flash.** The host sends exactly one per kill the holder scores, ~0.4 s after the trigger burst ends. (The APK lists it under notifications; on the wire the phone sends it.) |
 | `$LIFE,<hp>,<armor>,<shields>,*` | >> | addedHP, addedArmor, addedShields | Grant **or drain** a pool. Additive, clamped at the pool max, never an absolute set, and it **does self-emit `$HP`** (bench 2026-09-09). It **accepts negative values and drains**: `$LIFE,0,-5,0,*` took armour 66 to 61. A negative is per pool and floors at 0 with no spill into the next pool. A negative that empties health really kills the gun, but announces it with `$LCD,0,0,0,0,<mag>,<reserve>,*` and never `$HP,0,0,0`. |
-| `$BUMP,<hp>,<armor>,<shields>,*` | >> | hP, armor, shields | **Inert on v4.32.** Bench 2026-09-09: it does nothing in either direction, with a validated read either side. Use `$LIFE`. |
-| `$BHIT,<bulletType>,<playerId>,<team>,<damage>,<isCrit>,<powerLevel>,<direction>,*` | >> | 7 fields, the `$HIR` field set | A host-injected hit that runs the firmware's own hit path. The 7-field layout was read out of the app's metadata on 2026-09-04. **The real shape has never been sent.** The four shapes tried on v4.32 all used a 3-token guess, and each was echoed and applied no damage. |
+| `$BUMP,<amount>,<hp>,<armor>,<shield>,<sound>,*` | >> | amount, hp 0/1, armor 0/1, shield 0/1, sound | Our 3-token probe (`$BUMP,<hp>,<armor>,<shields>`) was inert on the bench 2026-09-09. The firmware's real shape is `$BUMP,<amount>,<hp 0/1>,<armor 0/1>,<shield 0/1>,<sound>,*` (the V4_30 firmware, Battle Company's own sheet and the 2018 BC app all agree): tokens 2-4 pick which pools take part. A negative amount drains shield, then armour, then HP, and kills at HP 0. A positive amount heals HP, then spills into armour, then shield. The 2018 app used `$BUMP,<n>,1,,,N94,*` for out-of-bounds damage. Not yet verified on v4.32 (firmware-levers bench sheet §5). |
+| `$BHIT,<bulletType>,<playerId>,<team>,<damage>,<isCrit>,<powerLevel>,<irDirection>,*` | >> | 7 fields | A host-injected hit that runs the firmware's own hit path. Battle Company's own sheet and the V4_30 firmware agree on the 7 fields: BulletType 0-15, PlayerID 0-63, TeamType 0-3, Damage 0-255, IsCriticalShot, PowerLevel 0-3 (the IR word's subtype), IRDirection (the sensor). In the firmware it runs the same hit handler as a received IR word, and a dead gun drops it. **Never sent in this shape on v4.32** (firmware-levers bench sheet §3). The four shapes tried earlier all used a 3-token guess, and each was echoed and applied no damage. |
 | `$HFIRE,…,*` | >> | **11 fields** (names not recorded) | Heavy or burst fire. The metadata read on 2026-09-04 gives 11 fields including a `FlashLED` flag; the four names this row used to list came from an earlier partial read. **The real shape is untested.** The five shapes tried on v4.32 were 4-field guesses and emitted zero IR, with a receiver control passing before and after. |
-| `$IRTX,…,*` | >> | **11 fields** (names not recorded) | Raw IR transmit. Same story as `$HFIRE`: 11 fields per the metadata, real shape untested, and the 4-field guesses emitted zero IR against a passing receiver control. |
-| `$MELEE,<intensity>,*` | >> | intensity | `$MELEE,255,*` returns `$BUT,4,0,*` and fires no IR. |
-| `$STUN,*` | >> | n/a | Listed in the APK. **Proven no-op over BLE.** |
+| `$IRTX,<Direction>,<BulletType>,<PlayerId>,<ImmuneTeamColor>,<Damage>,<IsCriticalShot>,<PowerLevel>,<IrRange>,<ToggleIRLoop>,<TimeFireLoop>,<FlashLED>,*` | >> | 11 fields | Raw IR transmit, named in Battle Company's own sheet. Direction 0 = front, 100 = all. Field 4 is **not** the shooter's team; BC's own note says the gun treats team 2 as the broadcast team. ToggleIRLoop: 0 = no loop, 1-99 = fire that many times, 100 = loop; TimeFireLoop = ms between pulses. The gun relays the frame to the **headset**, which emits it (the V4_30 firmware builds the string for the headset; Jay's headset code accepts it). The 2018 BC app sent `$IRTX,0,14,<pid>,<team>,1,0,0,<range>,1,,1,*` once a second as a revive beam. A sample from BC's sheet: `$IRTX,100,15,63,0,6,1,0,100,100,5000,1,*`. Untested on v4.32; the earlier 4-field guesses emitted zero IR against a passing receiver control. |
+| `$MELEE,<intensity>,*` | >> | intensity | `$MELEE,255,*` returns `$BUT,4,0,*` and fires no IR. The V4_30 firmware image has **no `$MELEE` handler at all**, so this reply may be a coincidence; the firmware-levers bench sheet §2 runs a control (`$XYZZY,255,*`) to check. |
+| `$STUN,<ms>,*` | >> | duration in ms | `$STUN,<ms>,*` is a timed stun in the V4_30 firmware: a millisecond timer that sets a "stunned" flag. The 2018 BC app sent `$STUN,2000,*`. Our bare `$STUN,*` was a 0 ms stun, which is why it read as a no-op. Not yet verified on v4.32 (firmware-levers bench sheet §4). |
 | `$GLED,<led1>,<led2>,<led3>,<apply-gate>,<brightness>,,*` | >> | three LED colours | **Gun LED colour, per LED.** Tokens 1 to 3 are the three body LEDs, each a direct palette index. The palette is nine colours: **0 red, 1 blue, 2 yellow, 3 green, 4 purple, 5 teal, 6 white, 7 pink, 8 orange**; 9 and 10 are dark. **Token 4 is an apply gate**, not an effect enum and not an off switch: it decides whether the colour tokens in the same frame take effect at all. Values **0, 6, 7, 8, 9 and 10 apply** the colours at full brightness. Value **5 turns the LEDs OFF**, whatever the colour tokens say. Values **1, 2, 3 and 4 are no-ops**: the colour tokens are ignored and the gun keeps whatever it was already showing, which is why a sweep of this token reads differently depending on whether it blanks between rows. No token-4 value animates. `$GLED,,,,5,,,*`, the frame Callsign itself sends on death, blanks the gun because **token 4 = 5 is the off value**. Token 4 = 5 is therefore the one gate value never to send with real colour tokens: it discards them. Sending the blank once takes the strip out of the firmware's breathing loop for the rest of the life, and it is **mandatory before any paint holds**: a dark paint sent without a prior blank is simply overwritten by the breathing. It is idempotent, and after it every revert should be a dark PAINT (`$GLED,9,9,9,0,10,,*`) rather than another blank. **An EMPTY colour token is RED, not "leave this LED alone".** A blank field parses as 0, and 0 is red. Measured on the gun 2026-09-09 by a controlled test: with the strip held at three solid purple, `$GLED,,9,,0,10,,*` produced red, dark, red. **Always write all three colour tokens**, or the ones you leave empty turn red. There is no way to move one segment without restating the others. Token 5 is brightness and is the ONLY brightness control: 0 off, 1 dim, 2 and above full, saturating at 2 so that 2 through 255 are indistinguishable. It is **global**, applying to all three LEDs at once, so a bar of two bright segments and one dim one is not possible; a partial step has to be a blinking segment instead. Token 5 = 1 is what night mode uses. A held paint survives ordinary game traffic (`$AMMO`, `$PLAY`, `$HLED`, `$LED`) untouched, and keeps its hue at the dim setting. On a spawned gun the set colour alternates with the team colour, because a spawned gun is also using these LEDs as its own health gauge. Verified on the bench 2026-08-30: a gun held on team 1 took six different colours on command, and `$GLED,3,2,1,0,10` was predicted and confirmed as green, yellow, blue. Palette completed on 2026-09-02 with a camera rig, and token 4 re-measured the same day from a known lit start, three trials per value; normalised R/G/B signatures, all three LEDs agreeing on every row: 0 = 1.00/0.16/0.26, 1 = 0.19/0.59/1.00, 2 = 0.88/1.00/0.59, 3 = 0.18/1.00/0.54, 4 = 0.59/0.49/1.00, 5 = 0.23/1.00/0.85, 6 = 0.73/0.79/1.00, 7 = 1.00/0.30/0.66, 8 = 1.00/0.38/0.30. The camera separates the indices from each other; it does not name absolute hues, so the reading rests on relative separation measured back to back under identical conditions, on three LEDs agreeing, and on a match with an independent community source. Token 4 = 5 is OFF, not dim: measured on a blanked, host-owned strip, alternating `$GLED,3,3,3,0,10` against `$GLED,3,3,3,5,10` four times, it is bright then off with no step in between. Token 5, A/B tested the same way, is the only control that dims. **Do NOT repaint this at speed to hold a colour against the gun's own animation**: it takes roughly 30 writes a second to win, and the result strobes. Flicker in the 10 to 25 Hz band is the photosensitive epilepsy trigger range. Signal an event with a short burst of three flashes instead. |
 | `$GREN,…,*` | >> | iRType, crit, modifier, indoorMode, operationMode, channel, GrenadeType, MaxCount | Smart Grenade configuration frame, addressed to the **gun**. GrenadeMode enum: FlashBang / Gas / Confusion / Molotov. Sent on the bench: the gun emitted IR, but the emitted bits did not track the arguments. |
 | `$PBGAME,$PBTEAM,$PBWEAP,$PBPERK,$PBLIVES,$PBTIME,$PBSPAWN,$PBINDOOR,$PBLOCK,$PBSTART` | >> | enum index | The **"playbook"** pre-battle family mirroring the on-gun menu. A second remote-start path captured on fw **v4.30** (`$PBGAME,0` = FFA, `$PBWEAP,0` = M4 AUTO, `$PBPERK,2` = Body Armor, `$PBLIVES,2` = 5 lives, `$PBTIME,5` = infinite). `$PBWEAP,0,*` produced a "game starting" reload sound on our v4.32. (Community.) |
@@ -153,15 +149,15 @@ Every known command, with args and meaning: host to tagger, tagger to host, and 
 | Message | Fields | Meaning |
 |---|---|---|
 | `$PONG,*` | n/a | Reply to `$PING`. |
-| `$VERSION,<gun fw>,<headset fw>,<n>,,<host image>,*` | e.g. `v4.32,?,4,,devhost.03` | Version reply; token 2 reads `hds.59` with a headset linked, `?` otherwise. `devhost.*` = developer/host image. |
+| `$VERSION,<gun fw>,<headset fw>,<n>,,<host image>,*` | e.g. `v4.32,?,4,,devhost.03` | Version reply; token 2 reads `hds.59` with a headset linked, `?` otherwise. `devhost.*` = developer/host image. The V4_30 firmware image names token 3 a constant `4`, the empty token 4 the BT peripheral radio's version, and token 5 the BT central radio's version. Firmware image, fits every capture. |
 | `$DISCONNECT,*` | n/a | Gun-initiated disconnect notice (e.g. the moment its headset is switched off). |
 | `$VOLTS,<pack_mV>,<cell_mV>,<t3>,<t4>,*` | e.g. `7662,3921,55,70` | Battery telemetry, about every 30 s in app mode. Token 1 = pack millivolts (7.662 V), token 2 = cell millivolts (3.921 V). Tokens 3-4: (unknown). |
-| `$LCD,<hp>,<armor>,<t3>,<t4>,<mag>,<reserve>,*` | e.g. `45,70,0,0,36,216` | **Health/armor HUD echo.** `$START` gives all zeros; `$SPAWN` gives pools plus the current weapon's ammo; death gives `$LCD,0,0,0,1,1,1,*`. Tokens 3-4: (unknown). A zeroed `$LCD` after `$SPAWN` means "no config loaded" (post power-cycle tell). |
+| `$LCD,<hp>,<armor>,<shield>,<weaponSlot?>,<mag>,<reserve>,*` | e.g. `45,70,0,0,36,216` | **Health/armor HUD echo.** `$START` gives all zeros; `$SPAWN` gives pools plus the current weapon's ammo; death gives `$LCD,0,0,0,1,1,1,*`. Token 3 is the current **shield** (the variable `$SPAWN` t1, `$LIFE` t3 and the shield functions write) and token 4 is a slot-like byte that `$FIREX` writes and `$SPAWN` zeroes, probably the active weapon slot: the 2018 BC app's parser names them `shield` and `weaponSlot`. Firmware image plus the 2018 app; not measured by us. A zeroed `$LCD` after `$SPAWN` means "no config loaded" (post power-cycle tell). |
 | `$ALCD,<mag>,<t2>,<slot>,<reserve>,<heat>,*` | e.g. `36,100,0,108,0` | **Ammo/weapon HUD stream.** Per-round during fire *and* reload (mag 0, 1, 2 and up as reserve drains). **Token 2 is live accuracy**, one value per round fired: it starts each life at the weapon's `$WEAP` t21 ceiling, walks down toward the t22 floor under sustained fire, and resets to the ceiling on reload. ⚠️ **The walk is not the same on every gun (2026-09-17, three guns, one frame):** one gun walked to the floor in 9 to 16 rounds, repeatedly, and it is the gun the 2026-09-09 model was measured on; the other two took one or two steps and then held, through a re-arm, a power cycle, both indoor and outdoor modes, still and moving. The hit roll itself works on all three. Treat the walk as gun-dependent until F230 explains it. See the `$WEAP` t21/t22 rows above. It also drops to 0 after a `$SIR` fn 23 hit and recovers over about 6-8 s (see the `$SIR` function map). Token 3 = weapon slot. Token 5 = **weapon heat** (0-100+, only on overheat weapons). Only streams on ammo events. Silence is not "no change". |
 | `$HIR,<sensor>,<irProto>,<shooterId>,<shooterTeam>,<magnitude>,<crit>,<subtype>,*` | e.g. `4,0,19,2,9,0,3` | **Hit received.** See the events section for the full decode. |
 | `$HP,<hp>,<armor>,<shield>,*` | e.g. `43,0,0` | Pools after a hit; arrives in the same millisecond as its `$HIR`. `$HP,0,0,0` = death. |
 | `$BUT,<id>,<state>,*` | id 0-5, state 1 press / 0 release | Physical button event (ids match `$BMAP`). Streams only in app mode. `$BUT,4,0` is also returned by `$MELEE`. |
-| `$QUERY,…` | ~11 `value,,` pairs | Status array in reply to BLE `$QUERY,*`. |
+| `$QUERY,…` | ~11 `value,,` pairs | Status array in reply to BLE `$QUERY,*`. The V4_30 firmware image builds this as playerId, team, hpMax, armourMax, shieldMax, one `$PSET` sound id, gyro ok (0/1), then a per-weapon-slot loop that is not decoded here. Unverified beyond the shape. |
 | `$WEAP` / `$PERK` / `$HS` | n/a | Selection echoes from the on-gun menus (LaserTagMods). |
 
 **Seen in the app's vocabulary, not exercised by us.** These are facts about the Callsign app's request namespace only. On-tagger behaviour has not been observed.
@@ -176,7 +172,7 @@ Every known command, with args and meaning: host to tagger, tagger to host, and 
 | `$BLINK` · `$CHASE` · `$LED` | >> (headset) | n/a | Listed with the headset commands. Untested. |
 | `$TIME` | << | n/a | Listed as a notification. Never observed on the wire. |
 
-> **Complete vocabulary from the app's own request namespace.** AMMO ASKDLC ASSIST BHIT BMAP BUMP CLEAR DLC FSET GLED GREN GSET HFIRE IRTX LIFE MELEE NAME PLAY PLAYX PSET SIR SPAWN START STOP STUN VERSION VIB VOL WEAP ZOOM · headset BLINK CHASE HLED HLOOP LED · notifications ALCD BUT GOTDLC HIR HP LCD SFLASH TIME VERSION VOLTS. `$PING`, `$TID`, `$SP`, and the `$RV`/`$RP`/`$UR`/`$KK`/`$DD` family are **not** in it. They come from LaserTagMods and our bench. Absence from the app does not mean non-existent.
+> **Complete vocabulary from the app's own request namespace.** AMMO ASKDLC ASSIST BHIT BMAP BUMP CLEAR DLC FSET GLED GREN GSET HFIRE IRTX LIFE MELEE NAME PLAY PLAYX PSET SIR SPAWN START STOP STUN VERSION VIB VOL WEAP ZOOM · headset BLINK CHASE HLED HLOOP LED · notifications ALCD BUT GOTDLC HIR HP LCD SFLASH TIME VERSION VOLTS. `$PING`, `$TID`, `$SP`, and the `$RV`/`$RP`/`$UR`/`$KK`/`$DD` family are **not** in it. They come from LaserTagMods and our bench. Absence from the app does not mean non-existent. The V4_30 firmware image holds **145** `$` commands, 85 of them absent from the Callsign app; the full table with evidence levels is `protocol/brx-protocol.md` §3.3.
 
 ## The arm sequence: from `$CLEAR` to a live gun
 
@@ -227,7 +223,7 @@ $BMAP,0,0,,,,,*            <-- trigger re-mapped AFTER spawn
 2. The app sends `$HLOOP,0,0,*` about 1.7 s after death.
 3. After the game's respawn delay (the app's own timer, about 10 s in the capture; community reports a per-death ramp capping at 45/90 s) the host sends `$SPAWN,,*`.
 4. Gun echoes `$LCD,45,70,0,0,36,216,*`: HP, armor **and ammo** restored with no `$AMMO` needed.
-5. **A dead gun ignores all incoming IR**: 448 distinct words, including every grenade-beacon shape, failed to revive one. Only the host can.
+5. **A dead gun ignores all incoming IR**: 448 distinct words, including every grenade-beacon shape, failed to revive one. Only the host can. The V4_30 firmware image lets exactly two `$SIR` functions through the dead-player guard: fn 34 (ally) and fn 35 (enemy), which register a `$HIR` and move no pool. The 2018 BC app's revive beam is fn 34 on protocol 14, counted by the phone. Our 448-word test had no such row in the table. Unverified on v4.32 (firmware-levers bench sheet §10).
 
 > **After a BLE drop, re-send the whole head.** Re-sending the full sequence (`$CLEAR`, `$START`, …, `$SPAWN,,*`, `$AMMO`) on a fresh link brought a gun back in every bench case.
 
@@ -256,7 +252,7 @@ Yes. Omit it and the trigger is dead.
 
 Forty-odd comma-separated tokens make a weapon out of data: damage, cadence, fire mode, ammo, sounds, IR type. This section maps every token.
 
-> **A weapon is data, not firmware.** The gun has no weapons baked in; the host sends a full `$WEAP` frame into one of **six slots (0-5)**. The field *names* come from the Callsign app's metadata (declaration order = wire order); the *positions and meanings* below were then pinned by capturing the 19 stock weapons (20 frames) with the operator naming each one, and by flipping single tokens on a live gun.
+> **A weapon is data, not firmware.** The gun has no weapons baked in; the host sends a full `$WEAP` frame into one of **six slots (0-5)** by Callsign convention, not a firmware limit: the 2018 BC app loaded weapons into slots 0-7, with melee in slot 7 (`$BMAP,8,7`). The field *names* come from the Callsign app's metadata (declaration order = wire order); the *positions and meanings* below were then pinned by capturing the 19 stock weapons (20 frames) with the operator naming each one, and by flipping single tokens on a live gun.
 
 ```text
 # Two known-good frames (slot 0 Assault Rifle, slot 1 Charge Rifle):
@@ -271,11 +267,11 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | tok | Field | AR | Charge Rifle | Meaning |
 |---|---|---|---|---|
 | 0 | slot | 0 | 1 | Weapon slot 0-5. Slot 4 = melee by convention (gyro swing, `$BMAP,8,4`). |
-| 1 | slotType / mode flag | n/a | n/a | `2` on exactly the three weapons carrying an extra-headset payload (t12/t13/t42 populated); `1` on melee; `0` rail gun; empty otherwise. Not fire mode. |
-| 2 | **gunRangeOutdoor** | 100 | 100 | **The emitted-power/range control (bench-proven 2026-09-17).** Every captured gun reads 100 here (melee 90). A garden ladder test found a floor below which nothing lands at any distance (5 landed 0 of 38 shots, including muzzle on the dome), a transition roughly 13-26, and a flat shelf from about 31 to 100 where every value behaved alike at any distance the test could pace. Whether it can fence a weapon to a chosen distance above the shelf is unresolved; the ladder was shot into a dome in direct sun and needs a shaded re-run. This corrects the earlier reading that named t41 as the range lever: t41 was tested the same day and found inert outdoors. Open BRX ships a per-weapon starting value outdoors from this token (docs/weapon-design.md §4.2) and never compiles a value under 13. |
+| 1 | slotType / mode flag (BC sheet: `WeaponIRSource`) | n/a | n/a | `2` on exactly the three weapons carrying an extra-headset payload (t12/t13/t42 populated); `1` on melee; `0` rail gun; empty otherwise. Not fire mode. Battle Company's own sheet names this field `WeaponIRSource`, an enum of 0 GunLaser, 1 HeadSetOnly, 2 GunAndHead, 3 DoubleGun, 4 DoubleGunAndHead, 5 DRY_FIRE. Every stock melee row ships 1: the swing is emitted by the headset. The V4_31 firmware image (not yet verified on v4.32) branches on it: 0 = the barrel only at range t2/t41; 1 = the headset only, as an `$IRTX` frame at range t2/t41 (t13/t42 are not read, so an empty t13/t42 on a melee row changes nothing); 2 = the barrel plus a headset word with the same `$SIR` key, damage t12 and range t13/t42, direction t37, repeated max(1, t38) times at t23 ms; 3 = the barrel twice, the second shot with damage t12 and range t13/t42. |
+| 2 | **gunRangeOutdoor** | 100 | 100 | **The range control (bench-proven 2026-09-17).** The V4_31 firmware image says the mechanism is the IR carrier frequency, not power: the gun emits at 38000 minus 125 times (100 minus t2) Hz (100 or more = 38 kHz; 75 = 34.9 kHz; 31 = 29.4 kHz; 5 = 26.1 kHz), and a receiver band-passed around 38 kHz loses sensitivity as the carrier detunes, which is the floor, the transition and the shelf below. Emitter power changes only with the indoor/outdoor level (duty about 20 % indoor, 38 % outdoor). t41 replaces t2 only indoors and when non-zero. Not yet verified on v4.32 by frequency; the range result itself is measured. Every captured gun reads 100 here (melee 90). A garden ladder test found a floor below which nothing lands at any distance (5 landed 0 of 38 shots, including muzzle on the dome), a transition roughly 13-26, and a flat shelf from about 31 to 100 where every value behaved alike at any distance the test could pace. Whether it can fence a weapon to a chosen distance above the shelf is unresolved; the ladder was shot into a dome in direct sun and needs a shaded re-run. This corrects the earlier reading that named t41 as the range lever: t41 was tested the same day and found inert outdoors. Open BRX ships a per-weapon starting value outdoors from this token (docs/weapon-design.md §4.2) and never compiles a value under 13. |
 | 3 | primaryDamageType | 0 | 8 | **The IR word's B field / `$SIR` protocol key.** Writing a type here is echoed by the victim in `$HIR` token 2 and selects its `$SIR` row. DamageType enum: 0 Standard, 1 MedicHeal, 2 ActivateShield, 3 RallyPulse, 4 Radiation, 5 Cryogenic, 6 ArmorPiercing, 7 EMP, 8 Shrapnel, 9 StickyBomb, 10 StandardLethalExplosive, 11 NonLethalExplosive, 12 ShottyPellets, 13 MeleeDamage, 14 Plasma. Stock: 8 charge, 10 rocket, 11 gas, 13 melee. The wire position is bench-proven; the enum names come from the APK. |
 | 4 | primaryPowerType | 0 | 0 | IRSource enum: DeviceCommand, IRSource, GunLaser, HeadSetOnly, GunAndHead, DoubleGun, DoubleGunAndHead, DRY_FIRE, MuzzleFlash, MuzOnly, VibOnly, MuzAndVib. Order relative to t3 was settled by t3 behaving as damageType. |
-| 5 | primaryDamage | 24 | 150 | **The raw magnitude put in the IR word** (= `$HIR` token 5). Applied damage depends on the victim's `$SIR` row. The stock AR emits 9. The 24 in the sample frame is the figure printed in Battle Company's manual. |
+| 5 | primaryDamage | 24 | 150 | **The raw magnitude put in the IR word** (= `$HIR` token 5). Applied damage depends on the victim's `$SIR` row. The stock AR emits 9. The 24 in the sample frame comes from Battle Company's own "Boss WEAP Modified" sheet, which boosts enemy stats; it is not a stale manual figure or an error. |
 | 6 | primaryCriticalChance | 0 | 0 | Crit chance. 0 on every stock weapon; the `$HIR` crit bit (tok6) read 0 on every measured headset hit, so its damage effect is unconfirmed (F62). The `$GSET` t7 scaling rides fn 36/37 by SENSOR, not this bit. |
 | 7-11 | secondaryFireChance, secondaryDamageType, secondaryPowerType, secondaryDamage, secondaryCriticalChance | n/a | n/a | **Dormant**: empty on all 20 captured stock frames. No stock BRX weapon has a secondary fire mode. |
 | 12 | extraHeadsetDamage | n/a | n/a | Populated with t1=2: Shotgun 70, Rocket 115, Plasma Sniper 80. |
@@ -285,14 +281,14 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | 16 | maxClip | 32 | 100 | Magazine size. |
 | 17 | maxAmmo | 32768 | 32768 | Always `2 × t40` in captured frames (or 32768 as an unlimited flag). Not an independent knob. |
 | 18 | reloadSpeed (ms) | 1400 | 2500 | Reload time. |
-| 19 | n/a | 0 | 0 | (unknown) |
-| 20 | **fire mode** | 0 | 14 | **Proven by one-field flip**: `0` full-auto, `7` single-shot/bolt, `9` burst (cycle in t23), `2` charge, auto-release (tap = weak shot), `3` hold-to-charge, auto-fire (tap = sound only), `14` tap-fire OR charge-release, `13` melee. |
+| 19 | ReloadType | 0 | 0 | Battle Company's own sheet names this field `ReloadType`, an enum of 0 Magazine, 1 Quiver, 2 Shells, 3 SingleBolt, 4 BoltWithMagazine, 5 AutoReload, 6 NoReloadRequired, 10 bottomless magazine (melee ships 10). Untested on our bench, both stock frames read 0. |
+| 20 | **fire mode** (BC sheet: `GunWeaponType`) | 0 | 14 | **Proven by one-field flip**: `0` full-auto, `7` single-shot/bolt, `9` burst (cycle in t23), `2` charge, auto-release (tap = weak shot), `3` hold-to-charge, auto-fire (tap = sound only), `14` tap-fire OR charge-release, `13` melee. Battle Company's own sheet names this field `GunWeaponType`, a fuller enum: 0 FullAutoFire, 1 Bow, 2 ChargeAndAutoRelease, 3 ChargeAndRelease, 4 TapChargeAndRelease, 5 ChargeAndLooping, 6 Passive, 7-12 Burst1-Burst6, 13 MeleeWeaponSlot, 14 PlasmaPistol. This agrees with our bench: 7 = one round per pull, 9 = three rounds per pull. |
 | 21 | maxAccuracy | 100 | 100 | **The accuracy ceiling.** `$ALCD` token 2 (live accuracy) starts each life here and never rises above it. Proven by one-field flip: t21=0 read 0 on `$ALCD` token 2 at arm time, before a shot was fired. The ceiling applies on every gun tested (2026-09-17: a gun armed at 50/50 landed 12 of 32 shots, about 38%). |
 | 22 | singleShotAccuracy | 100 | 100 | **The accuracy floor.** Under sustained fire `$ALCD` token 2 walks down from the t21 ceiling toward this value and holds there; it does not go lower. Proven by one-field flip: t22=50 walked down and held at exactly 50, t22=0 walked to 0. ⚠️ **Measured on one gun.** Two other guns on the same firmware and frame took one or two steps and then held (2026-09-17, F230), so a floor below the ceiling does much less on them. Stock ships t21 = t22 = 100 on every weapon, which makes the ceiling equal the floor and disables the model. |
 | 23 | burstWeaponTime (ms) | n/a | n/a | Burst cycle: 275 Burst Rifle, 250 Force Rifle, empty on everything else. |
 | 24 | overheat (heat per shot) | 0 | 14 | SMG 5, Energy Rifle 6, Charge Rifle 14, Plasma Sniper 30. **Inert unless t37/t38 are set.** |
-| 25 | n/a | n/a | n/a | (unknown) |
-| 26 | n/a | n/a | n/a | (unknown) |
+| 25 | MuzzleFlash | n/a | n/a | Battle Company's own sheet names this field `MuzzleFlash`. Untested on our bench. |
+| 26 | Volume | n/a | n/a | Battle Company's own sheet names this field `Volume`; it is the Suppressor's second populated field, alongside t25. Untested on our bench. |
 | 27 | primaryFire_SoundName | R01 | E03 | Fire sound id. **A sound, not an identity**. Rocket Launcher and Rail Gun both fire `C03` with different stat lines. |
 | 28 | extra action sound A | n/a | C15 | Engage sound. `C…` ids = charge (rail gun C08, laser cannon C11, charge rifle C15); `D…` ids = extra reload parts on five-part reloads (sniper/AMR/force rifle D20, ion sniper D32). |
 | 29 | extra action sound B | n/a | C17 | Release sound. Present exactly when the weapon has a distinct release event (charge rifle C17, bolt weapons D19/D31); absent on auto-firing chargers. |
@@ -301,10 +297,10 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | 32 | reloadPart2_SoundName | D03 | D29 | |
 | 33 | reloadPart3_SoundName | D02 | D37 | |
 | 34 | noAmmo_SoundName | D18 | A73 | |
-| 35 | weaponFeatureA | n/a | C19 | **Overheat sound** (SMG D11, CR C19, Plasma Sniper/Energy Rifle D122). |
+| 35 | weaponFeatureA | n/a | C19 | **Overheat sound** (SMG D11, CR C19, Plasma Sniper/Energy Rifle D122). Battle Company's own sheet lists `weaponFeatureA`/`B` as sound ids; our bench found t35 inert on its own (it needs t37/t38, below). |
 | 36 | weaponFeatureB | n/a | C04 | Second feature sound. |
-| 37 | overheat param A | n/a | 20 | **Gate for the overheat system** (with t38): transplanting `20,150` onto the SMG brought its dead heat gauge alive (28 to 52 through a mag dump) and the trigger gated at the top like an empty clip. At these values the 72-round magazine empties before a hard lockout. |
-| 38 | overheat param B | n/a | 150 | See t37. |
+| 37 | overheat param A (BC sheet: `HeadsetDirection`) | n/a | 20 | **Gate for the overheat system** (with t38): transplanting `20,150` onto the SMG brought its dead heat gauge alive (28 to 52 through a mag dump) and the trigger gated at the top like an empty clip. At these values the 72-round magazine empties before a hard lockout. Battle Company's own sheet names t37/t38 `HeadsetDirection`/`HeadsetRepeat`, but our bench measured them as the overheat enable pair: transplanting the Charge Rifle's `20,150` onto the SMG brought its heat gauge alive. The bench result stands and the disagreement with BC's naming is open. |
+| 38 | overheat param B (BC sheet: `HeadsetRepeat`) | n/a | 150 | See t37. |
 | 39 | clipStartingAmmo | 32 | 100 | Equals t16 in every captured frame. |
 | 40 | ammoReserv | 9999999 | 9999999 | Reserve; 9999999 = unlimited. `t17 == 2 × t40` in stock frames. |
 | 41 | gunRangeIndoor | 75 | 75 | APK name `gunRangeIndoor`. It reads 75 on all eighteen guns and 20 on melee. **Corrected 2026-09-17: it does nothing outdoors** (two slots differing only here, 5 vs 75, scored 27/27 vs 55/57 at every paced distance from 3 m to about 200 ft). The real range control is token 2, `gunRangeOutdoor`, above. Indoor behaviour of this token is still untested; `$GSET` token 2 does not select an emitted-range profile either, and is a different command (see the `$GSET` table). |
@@ -372,7 +368,7 @@ These two frames set the on-gun rules and the player's pools, identity and voice
 |---|---|---|---|
 | 1 | friendlyFire | 0 / 1 | **Firmware-enforced, both directions.** 0 blocks same-team damage *and* heals from enemies; 1 opens the gate. Replicated twice with alternating values plus control (one 2026-09-07 bench run registered team hits the other way round and is still unexplained; treat the rule as documented, not proven). |
 | 2 | outdoorMode | 0 | APK field name only. **This is not the physical ALT-hold toggle and it does not change emitted range.** It gates reception on the gun receiving a shot: at 30 ft, t2=1 registered 0 hits from a full clip and worked only from inches; t2=0 registered 16 of 27 shots and then every aimed shot under the same field conditions. Open BRX pins it to 0 at both venues, including try-outs and utility paths. What t2=1 physically changes, whether it affects every sensor equally, and whether it rejects indoor reflections are untested. The physical ALT toggle separately widened aim tolerance by roughly 2x on three guns; native shots reached about 200 ft in both toggle states. See [Operating the BRX](/manual/operate). |
-| 3 | gunLaserRegion | 1 | **IR transmit power, as a regional legal limit** (USA vs International). This is the one field that looks like a direct power control, so it is the first thing to try if you want a weaker beam for indoor play. APK-decoded; **untested on the bench**, and whether it is two coarse levels or finer is unmapped. |
+| 3 | gunLaserRegion | 1 | APK name only. **The V4_31 firmware image stores this token and never reads it** (not yet verified on v4.32), so it is not a power control. Emitter power follows the indoor/outdoor level (t2), and range follows the `$WEAP` range tokens. |
 | 4 | autoAmbientLight | 0 | APK field name. The user guide describes a sunlight IR-noise filter; whether this field is that control is unmapped. Not exercised on the bench. |
 | 5 | gyroscope | 1 | APK field name; not exercised on the bench. |
 | 6 | secondaryBluetoothWeapons | 0 | APK field name; not exercised on the bench. |
@@ -386,34 +382,37 @@ These two frames set the on-gun rules and the player's pools, identity and voice
 | tok | Field | Sample | Meaning |
 |---|---|---|---|
 | 1 | **player id** | 6 | **0-based, 0-63 (6 bits)**. The app's UI shows 1-64 and writes id−1 (app 7 gives wire 6, app 64 gives 63, an out-of-range 69 clamps to 63). Ends up in every IR shot's P field and comes back as `$HIR` token 3 on whoever you hit. |
-| 2 | n/a | 0 | 0 in every capture; 0/1/7 gave byte-identical behaviour. Inert. |
+| 2 | **team** | 0 | **The gun keeps one team byte** (V4_31 firmware image): `$TID`, `$TEAM` and `$PSET` token 2 all write the same variable, and the last one sent wins. Bench confirmation pending, see the firmware-levers bench sheet §1. Our earlier reading, "0/1/7 gave byte-identical behaviour, inert", was measured with `$TID` sent *after* the `$PSET`, so it could not see this: `$TID` was the last writer in every trial. |
 | 3 | HP | 45 | Starting/max HP. Echoed as `$LCD` token 1 after `$SPAWN`. |
 | 4 | armor | 70 | Armor pool (`$LCD` token 2, `$HP` token 2). |
 | 5 | shield | 70 | Shield **maximum**, not a starting value: the pool starts at 0. It fills from an IR `$SIR` grant function (or armor overflow), and over BLE from `$LIFE,0,0,<n>,*`, which adds to the pool and takes negatives (bench 2026-09-11, measured with no shield row in the `$SIR` table). Both saturate at this token. |
-| 6 | n/a | 50 | (unknown) |
-| 7 | (empty) | n/a | |
-| 8+ | **positional voice pack** | H44 JAD V33 V3I V3C V3G V3E V37 H06 H55 H13 H21 H02 U15 W71 A10 | Sixteen sound ids on the wire, in the order the app's metadata lists them. See the table below. |
+| 6 | **CriticalDamageBonus** | 50 | Field name from Battle Company's own sheet. Shipped as 50. The V4_31 firmware image (not yet verified on v4.32) has the SHOOTER multiply the outgoing damage by (100 + t6)/100 on a crit roll, which matches the x1.5 the bench measured with `$GSET` t7 at 0; the victim's t7 is a second layer on top. The 2026-09-07 sweep of this token had no crits in it, so it could not see this. |
+| 7 | **deathAlarm** | (empty) | Empty in every Callsign capture; the 2018 BC app sends `NA0` here. This is the first slot of a **seventeen**-sound voice pack that runs t7-t23, not sixteen from t8: the V4_30 firmware reads 17 strings at t7-t23, and Battle Company's own sheet names 17 fields to match. |
+| 8-23 | **positional voice pack** | H44 JAD V33 V3I V3C V3G V3E V37 H06 H55 H13 H21 H02 U15 W71 A10 | The remaining sixteen ids of the voice pack. See the table below for the full seventeen-slot map. |
 
-**The voice pack, slot by slot.** The alignment was confirmed on the bench on 2026-09-07: a voice line placed in the `hitShield` position was heard on a shield hit, and an intermediate "the slots are swapped" reading was retracted after a control showed the sound had not moved. The metadata names **seventeen** fields for **sixteen** wire slots, and `emptyUnboundButtonSound` is the one with no slot of its own.
+**The voice pack, slot by slot.** The alignment was confirmed on the bench on 2026-09-07: a voice line placed in the `hitShield` position was heard on a shield hit, and an intermediate "the slots are swapped" reading was retracted after a control showed the sound had not moved. That bench result was measured on the token positions below, which is why the table still holds: the ids on the wire are unchanged, only the field name bound to each token is corrected here, from the V4_30 firmware image and Battle Company's own sheet, both naming **seventeen** fields for **seventeen** wire slots (t7-t23), not sixteen from t8.
 
-| Slot (token) | Field name | Captured id |
+| Token | Field name | Captured id |
 |---:|---|---|
-| 1 (8) | deathAlarm | `H44` |
-| 2 (9) | stealthDeathScream | `JAD` |
-| 3 (10) | musicMixOnDeath | `V33` |
-| 4 (11) | deathScream | `V3I` |
-| 5 (12) | battleRespawnCry | `V3C` |
-| 6 (13) | meleeGrunt | `V3G` |
-| 7 (14) | shortPain | `V3E` |
-| 8 (15) | longPain | `V37` |
-| 9 (16) | painRelief | `H06` |
-| 10 (17) | missShothit | `H55` |
-| 11 (18) | hitHp | `H13` |
-| 12 (19) | hitArrmor | `H21` |
-| 13 (20) | hitShield | `H02` |
-| 14 (21) | hitCrit | `U15` |
-| 15 (22) | ammoOrGearPickUp | `W71` |
-| 16 (23) | energyShieldLoop | `A10` |
+| 7 | deathAlarm | (empty) |
+| 8 | stealthDeathScream | `H44` |
+| 9 | musicMixOnDeath | `JAD` |
+| 10 | deathScream | `V33` |
+| 11 | battleRespawnCry | `V3I` |
+| 12 | meleeGrunt | `V3C` |
+| 13 | shortPain | `V3G` |
+| 14 | longPain | `V3E` |
+| 15 | painRelief | `V37` |
+| 16 | missShotHit | `H06` |
+| 17 | hitHp | `H55` |
+| 18 | hitArmor | `H13` |
+| 19 | hitShield | `H21` |
+| 20 | hitCrit | `H02` |
+| 21 | emptyUnboundButtonSound | `U15` |
+| 22 | ammoOrGearPickUp | `W71` |
+| 23 | energyShieldLoop | `A10` |
+
+Our own frame builder (`gameconfig._PSET_HEAD`) has always sent ids in these positions, and two of them are ear-confirmed against this corrected map: `H06` at t16 is the near-miss (bench 2026-09-09), and the hitCrit slot at t20 (bench 2026-09-11).
 
 Three more things about this tail, all measured the same day:
 
@@ -435,6 +434,10 @@ What an IR hit does to a gun is decided by the victim's table, not by the shoote
 | `<soundID>` | Plays **on the victim** when the row fires (`VA16` "armor suit", `VA8C` "shields online", `H29` stim-pack). |
 | `<p5>` to `<p8>` | Do **not** scale damage (`0,0,1`, `0,50,1`, `0,100,2,60`, `0,200,2,60`, `50,100,2,60` all landed exactly the magnitude). |
 | Max distinct IR recognitions per game | 14 (community figure). |
+
+Battle Company's own sheet names p5-p8: p5 `Modifier` (a stun duration in ms when 64 or more; on fn 24-27 the cell key of the delayed hit), p6 `RangeOutdoor` (the splash re-emit power, 0 = none, 100 = full), p7 `Random` (sound-effect variation), p8 `RangeIndoor`. Our own five-shape probe found p5-p8 do not scale damage, which is consistent with this.
+
+The V4_30 firmware image dispatches fn 0-52, not 45. Fn 39-49 are no-ops. Fn 50-52 repaint the team colour only, with no `$HIR`. Fn 24-27 are fuses of 5.0, 4.0, 3.0 and 2.0 s. Fn 34 and 35 act on a dead gun. Fn 23 writes an accuracy modifier of -100. Fn 38 halves the damage that reaches HP after armour. All unverified on v4.32. The full function map with evidence levels is in `protocol/brx-protocol.md` §5, and the firmware-levers bench sheet §8 and §10 test it.
 
 ```text
 # The stock 10-row table the official app sends (Team Arena):
@@ -479,12 +482,12 @@ $SIR,13,0,H50,… / 13,1,H57 / 13,3,H49   Energy Blade / Rifle Bash / War Hammer
 - **Drain order: shields, then armor, then HP.** Armor absorbs 1:1 with no per-hit cap; overflow spills into HP (a sniper's 80 split exactly 70/10).
 - **Heals clamp** at the pool max. Magnitude 200 is a fill, not a stack.
 - **No function is a damage-over-time.** 18 s watched after each status hit: no ticks.
-- **Dead guns accept no IR at all.**
+- **Dead guns accept no IR at all**, with one firmware exception: the V4_30 image lets fn 34 (ally) and fn 35 (enemy) through the dead-player guard, registering a `$HIR` and moving no pool. Unverified on v4.32 (firmware-levers bench sheet §10).
 - **A magnitude-0 word is a miss, and it is invisible over Bluetooth.** The victim's gun vibrates and plays its `$PSET` miss sound, but emits **no `$HIR` and no `$HP` at all** (bench 2026-09-09, against a same-aim magnitude-9 control that produced both). A miss reaches the player and reaches the software not at all, so nothing on either phone can react to one.
 
 ### Is there a stun?
 
-Not over the documented BLE protocol. `$STUN` is a no-op there, and fn 23 (the only `$SIR` function that visibly changes anything without touching a pool) leaves the gun firing. The Callsign app's own abilities are a separate matter: it ships stun content of its own, such as the Sentinel's EMP blast and the Concussion Grenade, driven by app-side logic this page does not cover.
+The native `$STUN,<ms>,*` (a timed stun in the V4_30 firmware image) is unverified on v4.32; see the `$STUN` row above. What works today is a host-driven EMP: a `$SIR` fn-23 row plus the node writing `$AMMO,<slot>,0,0,1,*` and then restoring the counts. `$SIR` fn 23 itself is the only function that visibly changes anything without touching a pool, and it leaves the gun firing. The Callsign app's own abilities are a separate matter: it ships stun content of its own, such as the Sentinel's EMP blast and the Concussion Grenade, driven by app-side logic this page does not cover.
 
 ### Can I read a native game's `$SIR` table?
 
@@ -492,7 +495,7 @@ No. The gun never reports it. Capturing an ability's IR word tells you its proto
 
 ### Which protocols are free?
 
-Stock uses 0, 8, 10, 11, 13 and 15 (grenade beacon); the app's table also ships rows on 1, 2, 3, 6, 9. Truly unused: 4, 5, 7, 12, 14. Every cell is still re-definable per game, since you push the table.
+Stock uses 0, 8, 10, 11, 13 and 15 (grenade beacon); the app's table also ships rows on 1, 2, 3, 6, 9. Jay's sample arm sequence uses protocol 4 too (`$SIR,4,0,,1,0,0,1,,*`, a "captured flag pole" row), so protocol 4 is not free either. Truly unused: 5, 7, 12, 14. Every cell is still re-definable per game, since you push the table.
 
 ## Events: what the gun tells you
 
@@ -508,7 +511,7 @@ Hits, health, HUD echoes, buttons and telemetry, plus the proof that the gun kee
 | 4 | **shooter team** | 0-3 | = the shooter's effective `$TID & 3`. |
 | 5 | raw magnitude | e.g. 9, 45, 80, 115 | The IR word's D field (= shooter's t5). **Not the applied damage** where a multiplier row or crit is in play. Derive damage from the `$HP` delta. On a killing blow it can report the victim's remaining pool instead (overkill clamp). |
 | 6 | crit flag | 0/1 | Echoes the IR word's C bit. 0 on every stock weapon. |
-| 7 | subtype | 0-3 | Echoes the IR word's U field (sniper = 1). |
+| 7 | subtype (alias: `power` / `PowerLevel`) | 0-3 | Echoes the IR word's U field (sniper = 1). The 2018 app and Battle Company's own sheet name this field `power`/`PowerLevel`; either name, it is the same U field. |
 
 > **Not every `$HIR` is damage.** Pickups, heals and status effects arrive on the same message type. The protocol/subtype tells you which row fired.
 
@@ -517,7 +520,7 @@ Hits, health, HUD echoes, buttons and telemetry, plus the proof that the gun kee
 | Message | Decode |
 |---|---|
 | `$HP,<hp>,<armor>,<shield>,*` | Pools after the hit; same millisecond as its `$HIR`. `$HP,0,0,0` = death. Example run at 9/hit: armor 70 to 61 down to 0, then HP 45 to 43 to 34 down to 0. A `$LIFE` write does self-emit `$HP`, but only while it is non lethal: a `$LIFE` that empties a pool sends `$LCD,0,0,0,0,<mag>,<reserve>,*` instead, and no `$HP` at all. |
-| `$LCD,<hp>,<armor>,<t3>,<t4>,<mag>,<reserve>,*` | Health/armor HUD echo on `$START`/`$SPAWN`/death. Tokens 3-4: (unknown). |
+| `$LCD,<hp>,<armor>,<shield>,<weaponSlot?>,<mag>,<reserve>,*` | Health/armor HUD echo on `$START`/`$SPAWN`/death. Token 3 is the current shield and token 4 a slot-like byte, per the 2018 BC app's parser; see the command table row above. Not measured by us. |
 | `$ALCD,<mag>,<t2>,<slot>,<reserve>,<heat>,*` | Ammo/weapon HUD: one frame per round fired *and* per round reloaded; slot changes on alt-fire cycle (0 to 1 and back); melee (slot 4) appears as an isolated frame. Token 2 is live accuracy (see the `$WEAP` t21/t22 section). Heat is a raw level that exceeds 100. |
 | `$BUT,<id>,<state>,*` | 0 trigger · 1 alt-fire · 2 reload handle · 3 select · 4 left · 5 right; 1 press / 0 release. In phone mode pre-game the trigger reports but does not fire. |
 | `$VOLTS,<pack_mV>,<cell_mV>,<n3>,<n4>,*` | Battery every ~30 s in app mode. **Only reliably returned at good RSSI**. Weak-signal guns in a fleet sweep returned none. |
@@ -626,7 +629,7 @@ No. A VS1838B on an ESP32 decodes the word, and the sync/mark timings above are 
 
 ### Can a station revive a dead player by IR?
 
-No. A dead gun ignores all IR; stations *arm* a living tagger's respawn path.
+No, over the documented rows. A dead gun ignores all IR; stations *arm* a living tagger's respawn path. The one firmware exception: the V4_30 image lets `$SIR` fn 34 (ally) and fn 35 (enemy) through the dead-player guard, and the 2018 BC app's revive beam uses fn 34 on protocol 14. Unverified on v4.32 (firmware-levers bench sheet §10).
 
 ### Why do my captured frames come out as prefixes (16/17/20/21 bits)?
 
@@ -683,6 +686,13 @@ BT central V: devhost.03
 5. For per-game identity you do not need this: `$PSET` token 1 over BLE sets the player id each game.
 
 > **Firmware backup is impossible; do not reflash.** Teensy's HalfKay bootloader is write-only by design, so no image can be read back. Rollback depends entirely on Battle Company supplying the original image. The official app's version gate (supports "until v2.01e") is an *upper* bound; it warns and still runs a game.
+
+**Community fixes, from Jay's JEDGE install document (untested by us):**
+
+- For a Bluetooth fault: send `QUERY`, then `BLUETOOTH`, then `4`, then `Disconnect`.
+- For a PCB fault: send `QUERY`, then `PCB`, then `4`.
+
+The V4_30 firmware image's `SETUP` menu also has options for: device type (gun / gun with gyro); reload device (bolt / button / magazine and bolt); recoil device (linear / vibration); owner type (commercial / retail / demo); Bluetooth type (HC-05 variants / nRF52 variants); PCB revision; gun model (standard / metal); DLC toggles; and a debug serial output level (0 off to 4 IR noise detector, 6 USB BT emulator). We do not record any code, PIN or unlock value here.
 
 ### Is `$QUERY,*` over BLE the same thing?
 

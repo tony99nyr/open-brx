@@ -110,7 +110,10 @@ and it is enforced in three places:
    the burst, logs `REFUSED n frame(s)` and counts it in `engine.refused`. The stage's `write` mirrors it.
 2. `compile.assert_no_denied_frames(bundle)` refuses to compile a bundle that carries one, so an operator sees
    it at push time rather than the phone dropping it silently mid-match.
-3. The instrument (`server.send`, `send_batch`) refuses it, and `confirm=true` does not override.
+3. The instrument (`server.send`, `send_batch`) refuses it, and `confirm=true` does not override. The one
+   exception is the hang-prone class (`protocol.HANG_PRONE_COMMANDS`, today `$DPLAY` alone): `send` lets it
+   through with `confirm=true` AND `allow_hang=true`, so bench §14.4 can make a screamer on demand; `send_batch`
+   and the node never send it.
 
 What is on it, and why: `$DPLAY` (§1.4, the only blocking wait reachable over BLE); factory and provisioning
 writes (`$FACTORY`, `$DTYPE`, `$DEV`, `$SITE`, `$TSTRNAME`); pairing and radio (`$PAIR`, `$PIN`, `$CLEARDEVICE`,
@@ -135,7 +138,7 @@ about 2.5 s. Worth it only if §14.1 shows frames going missing at the current p
 one line in `brxlink.write` (and `ble._write`), and it applies to head and spawn only; a revive is on the critical
 path of a waiting player.
 
-## 6. Read-back after arming: what `$QUERY` can prove (design, needs bench-firmware-levers claim 18)
+## 6. Read-back after arming: what `$QUERY` can prove (design, needs bench-firmware-levers claim 19, §18)
 
 Today MC proves a push by the gun's `$ALCD` echo (slot 0 magazine and reserve) and the status heartbeat's
 HP/armour against the pushed `$WEAP,0` and `$PSET` (`state._echo_state`, `frames.head_spawn_ammo`, `head_pool`).
@@ -151,7 +154,7 @@ path resends it on every life.
 Design: after the head is written and echoed, the node sends `$QUERY,*`, parses tokens 1 to 5, and reports them in
 `ack_config` beside `gun_echo`. MC compares the team against the pushed `$TID` and refuses `start` on a mismatch
 the same way it refuses an ammo mismatch today. Cost: one 8-byte frame per arm and one reply. Needs the
-`$QUERY` token map confirmed on v4.32 first (bench-firmware-levers claim 18); the reply captured on 2026-08 was
+`$QUERY` token map confirmed on v4.32 first (bench-firmware-levers claim 19, §18); the reply captured on 2026-08 was
 `$QUERY,0,0,0,0,0,,1,0,,0,…` on an unconfigured gun, which fits the map but proves only the shape.
 
 ## 7. The lock-up detector on the node (design; F208, F163)
@@ -193,7 +196,7 @@ detector is simply the existing drop path plus a "power-cycle" hint when the rec
 | §3 trim the runt `$SIR` rows | design | bench §14.1 (one gun trimmed, one full) |
 | §4 deny list | built | none needed; §14.4 may ADD `$PB*` |
 | §5 write with response on multi-packet frames | design | bench §14.1 |
-| §6 `$QUERY` read-back of id, team, pools | design | bench-firmware-levers claim 18 |
+| §6 `$QUERY` read-back of id, team, pools | design | bench-firmware-levers claim 19 (§18) |
 | §7 lock-up detector | design | bench §14.3, §14.4 (does the link stay up?), plus the idle `$VOLTS` cadence |
 | §2 the budget rule | design | bench §14.3 (20 minutes at the old S42 rate: how long to a lock-up?) |
 
