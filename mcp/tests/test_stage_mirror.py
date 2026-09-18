@@ -557,7 +557,7 @@ def test_the_account_takes_the_guns_number_whenever_nothing_is_in_flight():
         st, mgr, clock = mk_reload()
         await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
         st.alcd(mag=20, reserve=200); await settle(st)
-        st._shot_acct[0] = {"mag": 3, "fired": 2, "at": 0.0, "echo_until": 0.0, "echo_expect": None}
+        st._shot_acct[0] = {"mag": 3, "fired": 2, "at": 0.0, "res": None, "echo_until": 0.0, "echo_expect": None}
         st.alcd(mag=18, reserve=200); await settle(st)
         assert st._acct_live(0) == 18, "the account must take the gun's number, never argue with it"
         assert st._acct_echoing(0) is False
@@ -587,6 +587,29 @@ def test_the_echo_window_covers_both_answers_to_a_write_and_neither_reads_as_fir
         assert st._acct_echoing(0) is False, "the gun reporting the written number must close the window early"
         st.alcd(mag=5, reserve=200); await settle(st)      # CONTROL: a real round
         assert st._acct_live(0) == 5 and st._last_spent == 1
+    asyncio.run(go())
+
+
+def test_the_echo_never_reaches_the_screen_the_displayed_ammo_does_not_rise():
+    """F259 (bench 2026-09-18), display half. Tony, with the account already correct: "it shoots up to 32
+    while shooting and it shoots up again once, it syncs on trigger release." While a write is in flight the
+    gun briefly reports the magazine its own `$WEAP` reset gave it, and the screen rendered that raw number.
+    The node knew the true count throughout.
+
+    CONTROL: outside the window the gun's number goes straight to the screen, exactly as before."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.alcd(mag=6, reserve=200); await settle(st)
+        assert st.ammo == 6 and st.reserve == 200
+        st._acct_wrote(0, 6, 200)                       # the node writes $WEAP + $AMMO,0,6,200
+        st.alcd(mag=32, reserve=384); await settle(st)   # the $WEAP reset, reported by the gun
+        assert st.ammo == 6, "the reset magazine reached the screen -- that is the flash to 32 Tony saw"
+        assert st.reserve == 200, "and the reset reserve reached it too"
+        st.alcd(mag=6, reserve=200); await settle(st)    # our own restore landing, which closes the window
+        assert st.ammo == 6
+        st.alcd(mag=5, reserve=200); await settle(st)    # CONTROL: a real round, outside the window
+        assert st.ammo == 5, "outside the window nothing changes: the gun's number goes straight to the screen"
     asyncio.run(go())
 
 
@@ -637,7 +660,7 @@ def test_a_press_the_stage_says_cannot_fire_is_never_booked():
         st.switching = None
         st._inject_rx("$BUT,0,1,*"); await settle(st)
         assert st._shot_acct[0]["fired"] == 1, "CONTROL: the same press with nothing in the way IS booked"
-        st._shot_acct[0] = {"mag": 0, "fired": 0, "at": 0.0, "echo_until": 0.0, "echo_expect": None}
+        st._shot_acct[0] = {"mag": 0, "fired": 0, "at": 0.0, "res": None, "echo_until": 0.0, "echo_expect": None}
         st._inject_rx("$BUT,0,1,*"); await settle(st)
         assert st._shot_acct[0]["fired"] == 0, "a dry trigger on an empty magazine must not book a round"
     asyncio.run(go())
