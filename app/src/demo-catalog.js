@@ -641,7 +641,7 @@ export const DEMO_PERKS = [
   {
     "perk_id": "armor_piercing",
     "name": "Armor Piercing",
-    "desc": "Your primary ignores armor and shields, straight to health -- but it hits for about 60% less, so it is only the better choice against an armored or shielded target.",
+    "desc": "Your primary ignores armor and shields and goes straight to health, and it hits for far less to pay for it. Against a bare target a normal weapon still kills faster; against an armored or shielded one this wins. It needs a low-damage, high-rate primary: the Assault Rifle and the Energy Rifle can carry it, and the host is told if the chosen weapon cannot.",
     "tags": [
       "passive",
       "offense"

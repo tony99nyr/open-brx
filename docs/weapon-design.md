@@ -1318,6 +1318,40 @@ poison shooters must not double the clock, or a pair becomes an execution.
 ⚠️ It stays `hidden` until `spec/node.md` §3.17 is built. Enabled early it is simply a worse SMG, and
 `caution` on the row says so.
 
+### 7.7 Armour Piercing cannot be priced with a multiplier
+
+The perk shipped at `_AP_DAMAGE_MULT = 0.4`, described as a 60% cut. Worked across the catalogue on
+2026-09-18, **that left Armour Piercing strictly better on 11 of 13 weapons**: same time to kill or
+faster, and it ignores every protective layer. It was not a counter-pick, it was the correct pick.
+
+**The cause is arithmetic, not a typo.** Bypassing armour takes a standard target from a 115 pool down
+to 45 health, and **45/115 is 0.39**. Any multiplier near 0.4 therefore leaves hits-to-kill unchanged,
+which is a perk that costs nothing. The number chosen to look like a heavy penalty was almost exactly
+the number that makes the penalty vanish.
+
+**Integer damage is the other half.** The fair value is the largest integer where the perk is slower
+than the plain weapon against a bare 45+70 target and faster against a 45+95 armoured one. For most
+weapons no such integer exists. The SMG deals 8: three damage gives 15 hits, exactly what its plain
+rounds need, so the perk is free; two gives 23, so it is useless. There is nothing in between.
+
+So Armour Piercing carries a **per-weapon `ap_dmg`**, and a weapon without one is refused
+(`_refuse_if_ap_ineligible`). Two guards hold it:
+`test_armour_piercing_is_priced_fairly_on_every_weapon_that_carries_it` walks every priced weapon and
+checks both ends of the trade, and `test_armour_piercing_is_refused_on_a_weapon_with_no_fair_price`
+proves the refusal. ⚠️ The test they replace **asserted the bug**: it required the perk to beat a plain
+rifle against a BARE target, which is the definition of a strict upgrade.
+
+**Consequence worth a decision: it is a two-weapon perk.** In the shipped arsenal only the **Assault
+Rifle** (`ap_dmg` 3) and the **Energy Rifle** (3) can carry it, plus the hidden Stinger (5). Everything
+else is refused, mostly by the older rule that a weapon whose cell is already a headset-multiplier row
+(fn 36/37) must not be re-keyed, and the rest for having no fair price.
+
+That is narrow, and it is a consequence of the health split rather than of the perk. **With only 45
+health under the armour there is very little room for the perk's damage to live in.** If Armour
+Piercing should be broadly available, the standard pool has to carry more health and less armour, for
+example 60 + 55 rather than 45 + 70, which widens the gap the perk has to price itself into. That is a
+game-feel decision, not a balance bug, and it is Tony's.
+
 ### 7.6 The support weapons, and why they publish zeros
 
 Two weapons deliberately cannot kill. They are the only rows carrying `lethal: false`, they are refused

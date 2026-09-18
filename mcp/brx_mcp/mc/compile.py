@@ -363,12 +363,14 @@ _SIR_PLAIN_DAMAGE = frozenset({1, 3, 4, 5, 7, 29, 30, 33})   # 3 added 2026-08-2
 # armour AND shields, straight to HP.
 _AP_CELL: tuple[str, str] = ("4", "0")
 _AP_FN = 2
-# ~40% of normal (a 60% cut). The number is the point (docs/perk-design.md §2): against the standard
-# 45+70 pool, bypassing armour takes the effective pool from 115 to 45, a 61% reduction on its own --
-# so a SMALLER damage cut (the S50 draft's 20%) would leave Armour Piercing simply the best weapon in
-# the game. ~60% roughly cancels the bypass, so the perk reads as "about the same time to kill,
-# whatever they are wearing" rather than "faster than everyone".
-_AP_DAMAGE_MULT = 0.4
+# ⚠️ 2026-09-18: Armour Piercing's damage is a PER-WEAPON number (`ap_dmg` in weapons.json), not a
+# multiplier, and this constant is gone. A multiplier cannot price the perk at all. Bypassing armour
+# takes a standard target from a 115 pool to 45 HP, and 45/115 is 0.39, so a multiplier near the old
+# 0.4 leaves hits-to-kill UNCHANGED: the perk skips every layer and costs nothing. Worked across the
+# catalogue, 0.4 left Armour Piercing STRICTLY BETTER on 11 of 13 weapons, the Assault Rifle killing in
+# 1.10 s against anything versus its plain 1.20 s. Integer damage is the other half of the problem: at
+# 8 damage the only choices are 3, which is free, and 2, which is useless, with nothing in between, so
+# most weapons have no fair price and simply cannot carry the perk. See weapon-design.md §7.7.
 
 
 def assert_armor_piercing_armed(head: list[str]) -> None:
@@ -967,16 +969,18 @@ class WeaponCatalog:
         # most weapons carry no `wire.dmg` at all, so the base to scale falls back to `damage()`
         # (the number this catalogue already publishes as `dmg_hit`, wire.dmg if set else the
         # captured frame's own t5 -- never the raw hardware capture ignoring an existing rebalance).
-        dmg_mult = float((mods or {}).get("dmg_mult") or 1)
-        if wire.get("dmg") is not None or dmg_mult != 1:
-            base_dmg = int(wire["dmg"]) if wire.get("dmg") is not None else self.damage(weapon_id)
-            # `max(1, ...)` only guards the MULTIPLIER path (Armour Piercing must never round a live
-            # weapon's damage down to 0): an explicit `wire.dmg` literal is written verbatim, 0
-            # included -- that is FIELD-4's own fixture (a weapon whose catalog `dmg: 0` must compile
-            # to a gun that deals no damage, not a floored 1, or the "0 DAMAGE" validate() guard this
-            # exact case exists to catch can never trip again).
-            resolved = int(round(base_dmg * dmg_mult))
-            put("dmg", max(1, resolved) if dmg_mult != 1 else resolved)
+        # 2026-09-18: Armour Piercing now passes an ABSOLUTE damage (`dmg_abs`, the weapon's own
+        # `ap_dmg`) rather than a multiplier, because no multiplier prices the perk fairly: 45/115 is
+        # 0.39, so anything near the old 0.4 left hits-to-kill unchanged and the perk free. §7.7.
+        dmg_abs = (mods or {}).get("dmg_abs")
+        if dmg_abs is not None:
+            put("dmg", max(1, int(dmg_abs)))
+        elif wire.get("dmg") is not None:
+            # An explicit `wire.dmg` literal is written verbatim, 0 included: that is FIELD-4's own
+            # fixture (a weapon whose catalog `dmg: 0` must compile to a gun that deals no damage, not a
+            # floored 1, or the "0 DAMAGE" validate() guard this exact case exists to catch can never
+            # trip again).
+            put("dmg", int(wire["dmg"]))
         if wire.get("fire_ms") is not None:
             put("fire", int(wire["fire_ms"]))
         mag, reserve, reload_ms = self._ammo(weapon_id, mods)
@@ -1484,6 +1488,19 @@ class Compiler:
           also guards a future primary built the same way.
         """
         name = player.get("display") or player.get("player_id") or "this player"
+        if self.catalog._row(weapon_id).get("ap_dmg") is None:
+            # 2026-09-18 (§7.7): most weapons have NO fair Armour Piercing damage, and that is
+            # arithmetic rather than an oversight. Bypassing armour takes a standard target from a 115
+            # pool to 45 HP, so the perk only costs something if its damage is well under 45/115 of the
+            # weapon's own, and damage is an integer: at 8 the choices are 3 (which leaves hits-to-kill
+            # unchanged, so the perk is free) and 2 (which is useless), with nothing between. A weapon
+            # that cannot be priced must not carry the perk, or Armour Piercing is strictly better than
+            # not taking it, which is what shipped until this was measured.
+            raise ValueError(
+                f"S50 ARMOUR-PIERCING GUARD: refusing to compile {name}'s Armour Piercing primary "
+                f"{weapon_id!r} — the catalogue gives it no `ap_dmg`, so there is no damage value that "
+                f"makes the perk a trade rather than a free upgrade on this weapon (weapon-design.md "
+                f"§7.7). Armour Piercing needs a low-damage, high-rate primary")
         if self.catalog.rounds_per_charge(weapon_id) > 1:
             raise ValueError(
                 f"S50 ARMOUR-PIERCING GUARD: refusing to compile {name}'s Armour Piercing primary "
@@ -1542,7 +1559,7 @@ class Compiler:
         armor_piercing = bool(fx.get("armor_piercing"))
         if armor_piercing:
             self._refuse_if_ap_ineligible(w0, player)
-            mods = {**mods, "dmg_mult": _AP_DAMAGE_MULT}
+            mods = {**mods, "dmg_abs": int(self.catalog._row(w0)["ap_dmg"])}
 
         # A15.1: roll the un-picked $PSET voice fields for THIS push; explicit picks always win
         voice, picks = player.get("voice", "male"), (player.get("voice_slots") or {})
