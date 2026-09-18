@@ -1168,18 +1168,23 @@ class GunStage:
     TRIGGER_NO_FIRE_S = 1.5     # engine.js TRIGGER_NO_FIRE_MS
     NO_FIRE_PULLS = 3           # engine.js NO_FIRE_PULLS
 
-    # ---- F264 v2 the cure (engine.js `_cureTick`/`_pollTick`/`_cureAnswer`/`_solicited`) -----------------
+    # ---- F264 v3 the cure (engine.js `_cureTick`/`_pollTick`/`_cureAnswer`/`_solicited`) -----------------
     # `no_fire` above has two proven causes and only one wants a revive: the gun died and the killing
     # `$HP`/`$LCD` never reached the node, or the node's own magazine account is ahead of the gun's after a
     # timed-out reload. A probe asks the gun which one it is, rather than guessing (see `_cure_tick`).
-    # THE NODE NEVER ACTS ON NO EVIDENCE: an unanswered probe gets NOTHING written, not a blind revive --
-    # Tony's call, 2026-09-18, after the first draft's blind fallback would have handed a free life to a
-    # gun that was merely empty with a stale belief behind it.
+    # THE NODE NEVER ACTS ON NO EVIDENCE: an unanswered dead-gun probe gets NOTHING written, not a blind
+    # revive -- Tony's call, 2026-09-18, after the first draft's blind fallback would have handed a free
+    # life to a gun that was merely empty with a stale belief behind it.
     QUERY_REPLY_S = 1.5         # engine.js QUERY_REPLY_MS -- the same wire and the same measurement as TRIGGER_NO_FIRE_S
     CURE_ASKS = 2               # engine.js CURE_ASKS -- probes before the node gives up and does nothing
     CURE_COOLDOWN_S = 30.0      # engine.js CURE_COOLDOWN_MS -- the floor between cures, ACROSS lives
     QUERY_POLL_S = 20.0         # engine.js QUERY_POLL_MS -- the divergence poll's own cadence, live match only
     SPAWN_PROBE_S = 2.5         # engine.js SPAWN_PROBE_MS -- the once-per-life spawn/revive read-back's delay
+    # F264 v3 (bench 2026-09-19, two taggers v4.32): a DEAD gun holds its `$QUERY` status-array print loop
+    # for about 2 s before a late, UNTERMINATED body finally arrives (a live gun's own body lands ~30 ms
+    # behind its `$LCD`). Gated on the probe clock alone, not on an active cure -- the body outlives
+    # QUERY_REPLY_S, so the cure's own window may already have closed by the time it shows up.
+    QUERY_BODY_S = 2.6          # engine.js QUERY_BODY_MS
 
     # ---- overheat (engine.js `HEAT_LOCKOUT` / `HEAT_STALE_MS` / `_heatBlocksFire`), review 2026-09-17 ---
     # Review found `_await_shot`/`_no_fire_tick` never excluded a real OVERHEAT lockout, unlike engine.js:
@@ -1455,7 +1460,7 @@ class GunStage:
         if self._no_fire_pulls == self.NO_FIRE_PULLS:
             self._log(f"gun not firing: {self.NO_FIRE_PULLS} trigger pulls with no shot -- the pool is stale (F208)", "warn")
 
-    # ---- F264 v2 the cure (engine.js `_askGun`/`_solicited`/`_cureAnswer`/`_cureTick`/`_pollTick`) -------
+    # ---- F264 v3 the cure (engine.js `_askGun`/`_askMagazine`/`_solicited`/`_cureAnswer`/`_cureTick`) ----
     # Deliberate partial parity, like `_arm_life` above: the stage carries only the stand-down names it
     # HAS (`spawned`, `ble`, `alive`, `switching`, `reloading`, `stunned`, `heat` -- see `_STAND_DOWN`).
     # engine.js's cure/poll also stand down on `phase`, `bundle`, `reconciling`, `resync` and `tutorial`,
@@ -1463,13 +1468,22 @@ class GunStage:
     # rejoin reconcile, no reconnect resync state machine, no try-out lock.
     #
     # THE NODE NEVER ACTS ON NO EVIDENCE (Tony, 2026-09-18, after four course corrections on this feature).
-    # If both probes go unanswered the cure does NOTHING, records `no_answer`, and logs the values -- no
-    # blind revive. A free life for a gun that was merely empty is worse than a wait.
+    # If the dead-gun probe goes unanswered the cure does NOTHING, records `no_answer`, and logs the
+    # values -- no blind revive. A free life for a gun that was merely empty is worse than a wait.
+    #
+    # v3 (bench 2026-09-19, two taggers v4.32): the cure is now a TWO-STEP machine, `step` 'life' then
+    # 'mag'. `$QUERY` is written from EXACTLY ONE place -- the 'mag' step below -- because the bench
+    # showed a DEAD gun holds its `$QUERY` status-array print loop for ~2 s (`QUERY_BODY_S`) before a
+    # LATE, UNTERMINATED body finally arrives; asking a gun that might be dead with `$QUERY` risks
+    # exactly the kind of stuck print loop `$DPLAY` already causes elsewhere. `$LIFE,0,0,0,*` is safe to
+    # ask ANY gun: the bench measured it answered immediately, dead or alive, with `$HP`.
 
-    async def _ask_gun(self, why: str, full: bool = False) -> None:
-        """engine.js `_askGun`: ASK the gun where it stands. `full` sends BOTH probes -- `PROBE_LIFE` (the
-        dead-gun `$LIFE,0,0,0,*`) and `QUERY` (the pools and the magazine); the 20 s heartbeat and the
-        spawn read-back send `QUERY` alone, which carries strictly more on its own.
+    async def _ask_gun(self, why: str) -> None:
+        """engine.js `_askGun`: send the dead-gun probe alone -- `PROBE_LIFE`, `$LIFE,0,0,0,*`. Safe to
+        send whether the gun is alive or dead: the bench (2026-09-19) measured BOTH answer immediately
+        with `$HP` (dead: `$HP,0,0,0`; alive: its unchanged pools). Every routine probe site (the 20 s
+        heartbeat, the spawn read-back, `_operator_resync`) uses this and only this -- `$QUERY` is never
+        sent except from the cure's own 'mag' step, once `$LIFE` has already proven the gun alive.
 
         `async`, and awaited directly by `_operator_resync` (READ BEFORE WRITING: the probe must reach the
         wire before that method's own writes, not race them). The tick methods call from a SYNC context
@@ -1477,13 +1491,23 @@ class GunStage:
         never `self._ask_gun(...)` bare, or the probe is never actually awaited and nothing is scheduled."""
         self._query_at = self.now()
         self._probe_seen = {}
-        await self.write([PROBE_LIFE, QUERY] if full else [QUERY], why, gap_ms=0)
+        await self.write([PROBE_LIFE], why, gap_ms=0)
+
+    async def _ask_magazine(self, why: str) -> None:
+        """engine.js `_askMagazine`: send `$QUERY` alone. THE ONLY CALLER is the cure's 'mag' step, once
+        `$LIFE` has already answered `$HP` with health above 0 -- never on a timer, never at a gun that
+        might be dead. See `_on_rx`'s `QUERY` frame handler for why: a dead gun's status-array body
+        arrives ~2 s late and unterminated, the `$DPLAY`-shaped failure this avoids asking into."""
+        self._query_at = self.now()
+        self._probe_seen = {}
+        await self.write([QUERY], why, gap_ms=0)
 
     def _solicited(self, kind: str) -> bool:
         """engine.js `_solicited`: is this pool frame the answer to a probe we sent? True at most ONCE per
         probe PER FRAME KIND, inside QUERY_REPLY_S, and then consumed -- `$LIFE` answers with one `$HP`,
-        `$QUERY` answers with a status array and one `$LCD`. A second frame of the same kind in the same
-        window is the gun talking on its own and resets the no-fire count as it always did.
+        `$QUERY` answers with one `$LCD` (its status-array body is handled separately -- see `_on_rx`'s
+        `QUERY` case). A second frame of the same kind in the same window is the gun talking on its own
+        and resets the no-fire count as it always did.
 
         `$ALCD` is never solicited: no probe answers with one, and if it could, a shot landing inside the
         poll's window would read as OUR reply and its pull would never clear. NOT pure: it consumes the token."""
@@ -1506,38 +1530,59 @@ class GunStage:
 
     def _cure_answer(self, kind: str, t: list[str]) -> None:
         """engine.js `_cureAnswer`: what a cure probe came back with. `_on_pools` (called before this, from
-        `_on_rx`) has already landed the gun's real pools and booked the death -- marked desync -- when the
-        gun said 0, so this writes no pool state of its own and books no death: there is ONE death path.
-        This only records the verdict, logs it with the values, and re-asserts the arming when the gun
-        says it is alive.
+        `_on_rx`) has already landed the gun's real pools and booked the death -- marked desync -- when
+        `$HP` said 0, so this writes no pool state of its own and books no death: there is ONE death path.
+
+        v3, keyed on `kind`, not on `c["step"]`: an `$HP` reply resolves the 'life' step (dead, or step to
+        'mag'); an `$LCD` reply resolves the 'mag' step (the magazine). A shape-bad `$LCD` leaves the
+        ALIVE evidence `$LIFE` already produced standing -- it does not fall back to `no_answer`; only a
+        `$LIFE` timeout can ever produce that verdict (see `_cure_tick`).
 
         The re-assert sends the GUN'S OWN just-reported counts, never the node's -- the node's belief is
         the thing under suspicion, and an `$AMMO` built from it would hand a free magazine to a player
         whose reload timed out. It is deliberately NOT `_operator_resync` (which re-sends the node's own
-        counts and an 11-row `$SIR` take): two frames, both from the gun's own words, nothing that heals."""
+        counts and an 11-row `$SIR` take): at most two frames, both from the gun's own words, nothing
+        that heals."""
         c = self._cure
         if c is None:
             return
         if kind == "LCD" and not self._probe_shape_ok(t):
             self._log(f"cure: a $QUERY reply the token map does not fit ({','.join(t)}) -- treating it as "
                       "no reply (levers claim 19)", "error")
-            return                                            # c stays in flight: the window may still bring a good one
-        self._cure = None
-        # The question this probe asked IS the no-fire claim, so the claim is spent. Leave the count
-        # standing and `pool_stale()` says `no_fire` for the rest of the life whatever the gun does next,
-        # and the console holds GUN NOT FIRING up over a gun that has just told us where it stands. A new
-        # stall builds from fresh pulls.
+            return                                            # 'mag' stays in flight: the ALIVE evidence stands
+        # The question a probe asks IS the no-fire claim, so the claim is spent the moment ANY probe
+        # answers -- even the 'life' step alone, before the magazine is known. Leave the count standing
+        # and `pool_stale()` says `no_fire` for the rest of the life whatever the gun does next, and the
+        # console holds GUN NOT FIRING up over a gun that has just told us where it stands. A new stall
+        # builds from fresh pulls.
         self._shot_due_at = None
         self._no_fire_pulls = 0
-        mag = _tok_int(t, 5) if kind == "LCD" else None
-        reserve = _tok_int(t, 6) if kind == "LCD" else None
+        if kind == "HP":
+            if self.hp == 0:
+                self._cure = None
+                self.cure = {"verdict": "dead", "at": self.now()}
+                self._log("cure: the gun says it is DEAD ($LIFE,0,0,0 answered $HP,0) and the node had "
+                          "missed it -- the death is booked, the respawn revives it (F264)", "warn")
+                return
+            # ALIVE, via the dead-gun probe alone: the magazine is still unknown. Step to 'mag' and ask.
+            c["step"] = "mag"; c["asks"] = 1; c["asked_at"] = self.now()
+            believed = self._acct_live(self.active_slot)
+            self._log(f"cure: the gun is ALIVE at hp {self.hp} (answered $LIFE with $HP) -- asking for the "
+                      f"magazine (the node believed {believed}) (F264)", "warn")
+            self._spawn_task(self._ask_magazine("cure: the gun is alive -- asking for the magazine"))
+            return
+        # kind == "LCD", shape ok: the 'mag' step's answer. The gun was ALIVE when asked, but a hit can
+        # land between the two probes -- `_on_pools` (called before this, from `_on_rx`) has already
+        # booked that death, marked desync, if `hp` is now 0. This only avoids re-asserting arming onto a
+        # gun the very same reply just proved is dead.
+        self._cure = None
         if self.hp == 0:
             self.cure = {"verdict": "dead", "at": self.now()}
-            answered = "$LIFE,0,0,0 answered $HP,0" if kind == "HP" else "$QUERY answered $LCD health 0"
-            self._log(f"cure: the gun says it is DEAD ({answered}) and the node had missed it -- the death "
-                      "is booked, the respawn revives it (F264)", "warn")
+            self._log("cure: the gun died between the two probes -- $QUERY's own $LCD said health 0, the "
+                      "death is booked (F264)", "warn")
             return
         self.cure = {"verdict": "alive", "at": self.now()}
+        mag, reserve = _tok_int(t, 5), _tok_int(t, 6)
         # THE FALSE POSITIVE THIS EXISTS FOR (Tony, 2026-09-18). `_await_shot` only owes a shot when the
         # node's OWN account says the magazine has rounds, so an ordinary empty gun never reaches `no_fire`
         # at all. It gets here when that BELIEF is wrong: the account says loaded, the gun is empty and
@@ -1551,9 +1596,11 @@ class GunStage:
 
     def _cure_reassert(self, mag: int | None, reserve: int | None) -> None:
         """engine.js `_cureReassert`: put the gun's own just-reported counts back on it, and the trigger
-        mapping with them. Two frames, and every number in them came off the gun in the frame being
-        answered, so this can never be a refill. No `$SPAWN`, no `$PSET`, no `$SIR` take: F264 proved a
-        `$SIR` resync does not restart a gun in this state, and nothing reads the table back anyway."""
+        mapping with them. At most two frames, and every number in them came off the gun in the frame
+        being answered, so this can never be a refill. `mag`/`reserve` are `None` when the gun never
+        answered `$QUERY` at all (the 'mag' step timed out) -- then only the `$BMAP` goes out. No
+        `$SPAWN`, no `$PSET`, no `$SIR` take: F264 proved a `$SIR` resync does not restart a gun in this
+        state, and nothing reads the table back anyway."""
         frames = []
         if mag is not None and reserve is not None:
             frames.append(f"$AMMO,{self.active_slot},{mag},{reserve},1,*")
@@ -1563,13 +1610,17 @@ class GunStage:
 
     def _cure_tick(self, now: float) -> None:
         """engine.js `_cureTick`: THE CURE. `pool_stale` has already concluded `no_fire`; ask the gun where
-        it stands rather than guess.
+        it stands rather than guess -- 'life' first (safe on any gun), then 'mag' once `$LIFE` has
+        answered ALIVE.
 
-        THE NODE NEVER ACTS ON NO EVIDENCE. If both probes go unanswered it does NOTHING, records
-        `no_answer`, and logs the values -- no blind revive (see the section comment above).
+        THE NODE NEVER ACTS ON NO EVIDENCE. If the 'life' step never answers, the node does NOTHING,
+        records `no_answer`, and logs the values -- no blind revive. If the 'mag' step never answers, the
+        gun ALREADY proved it is alive (via `$LIFE`), so the verdict is `alive`, not `no_answer`, and the
+        re-assert runs with `(None, None)` -- the `$BMAP` alone.
 
         Bounded: once per life (`_cure_life`) and a CURE_COOLDOWN_S floor between cures across lives.
-        Write cost: 2 frames per probe, at most CURE_ASKS probes, then at most 2 more for the re-assert."""
+        Write cost: 1 frame per probe, at most CURE_ASKS probes per step, then at most 2 more for the
+        re-assert."""
         c = self._cure
         if c is not None:
             if now - c["asked_at"] < self.QUERY_REPLY_S:
@@ -1582,14 +1633,24 @@ class GunStage:
             if c["asks"] < self.CURE_ASKS:
                 c["asks"] += 1
                 c["asked_at"] = now
-                self._spawn_task(self._ask_gun(f"cure: probe {c['asks']} of {self.CURE_ASKS}", True))
+                if c["step"] == "life":
+                    self._spawn_task(self._ask_gun(f"cure: probe {c['asks']} of {self.CURE_ASKS}"))
+                else:
+                    self._spawn_task(self._ask_magazine(f"cure: probe {c['asks']} of {self.CURE_ASKS}"))
                 return
             self._cure = None
-            self.cure = {"verdict": "no_answer", "at": now}
-            self._log(f"*** cure: {self.CURE_ASKS} probes ($LIFE,0,0,0 + $QUERY) went unanswered on a gun "
-                      f"the node believes is alive at hp {self.hp} with {self._acct_live(self.active_slot)} "
-                      "in the magazine. The node cannot tell a dead gun from a stuck one, so it is doing "
-                      "NOTHING and asking for a human: FORCE RESPAWN, or RELINK (F264) ***", "error")
+            if c["step"] == "life":
+                self.cure = {"verdict": "no_answer", "at": now}
+                self._log(f"*** cure: {self.CURE_ASKS} probes ($LIFE,0,0,0) went unanswered on a gun the "
+                          f"node believes is alive at hp {self.hp} with {self._acct_live(self.active_slot)} "
+                          "in the magazine. The node cannot tell a dead gun from a stuck one, so it is doing "
+                          "NOTHING and asking for a human: FORCE RESPAWN, or RELINK (F264) ***", "error")
+                return
+            # step == 'mag': the gun already proved it is alive over $LIFE; only the magazine is unknown.
+            self.cure = {"verdict": "alive", "at": now}
+            self._log(f"cure: the gun answered $LIFE alive at hp {self.hp} but never answered $QUERY -- "
+                      "re-asserting the trigger mapping alone; the magazine stays unknown (F264)", "warn")
+            self._cure_reassert(None, None)
             return
         stale = self.pool_stale(now)
         if not stale or stale["why"] != "no_fire":
@@ -1603,14 +1664,15 @@ class GunStage:
             return                                             # ...and a floor between them, across lives
         self._cure_life = life
         self._cure_at = now
-        self._cure = {"asked_at": now, "asks": 1}
+        self._cure = {"asked_at": now, "asks": 1, "step": "life"}
         self.cure = {"verdict": "asking", "at": now}
-        self._spawn_task(self._ask_gun(f"cure: {self.NO_FIRE_PULLS} trigger pulls with no answer -- asking the gun where it stands", True))
+        self._spawn_task(self._ask_gun(f"cure: {self.NO_FIRE_PULLS} trigger pulls with no answer -- asking the gun where it stands"))
 
     def _poll_tick(self, now: float) -> None:
         """engine.js `_pollTick`: the divergence poll, so the node catches a diverged gun without a player
         pulling a dead trigger three times. Live gun only: spawned, link up, alive. A cure already in
-        flight IS the poll for now. `$QUERY` alone: 3 frames a minute."""
+        flight IS the poll for now. `$LIFE` alone (v3: never `$QUERY` -- see the section comment): 3
+        frames a minute."""
         if self._cure is not None:
             return
         if self._stand_down(("spawned", "ble", "alive")):
@@ -1624,8 +1686,8 @@ class GunStage:
         """engine.js `_spawnProbeTick` (Tony, 2026-09-18): READ BACK THE BIGGEST WRITE OF A LIFE. The spawn
         burst is many frames, and the first proven F264 stall began seconds after one. A probe once the
         burst has had time to land and echo proves the gun actually took it, instead of the node assuming
-        so for the rest of the life. Once per life, 1 frame -- and it stamps `_poll_at` too, so the
-        heartbeat does not also fire in the same breath."""
+        so for the rest of the life. Once per life, 1 frame (`$LIFE`, v3 -- never `$QUERY`) -- and it
+        stamps `_poll_at` too, so the heartbeat does not also fire in the same breath."""
         if self._cure is not None or not self._spawn_at or self._probed_life == self._life:
             return
         if now - self._spawn_at < self.SPAWN_PROBE_S:
@@ -1795,7 +1857,7 @@ class GunStage:
         # that had left the state those frames assume. The probe costs 2 frames and its reply lands
         # through the ordinary handler, so a gun that had died while the stage thought it alive books its
         # death here instead of staying invisible.
-        await self._ask_gun("operator resync: read the gun first", True)
+        await self._ask_gun("operator resync: read the gun first")
         tid = self._live_tid()
         ammo = [f"$AMMO,{slot},{mag},{res},1,*" for slot, (mag, res) in self._live_ammo().items()]
         bmap = next((f for f in self.bundle.get("revive") or [] if f.startswith("$BMAP,0,0")), "$BMAP,0,0,,,,,*")
@@ -2300,11 +2362,22 @@ class GunStage:
                 self.cure = None
         try:
             if cmd == "QUERY":
-                # F264 v2: the status array that leads a `$QUERY` reply. Its fields are the pool MAXIMA and
-                # the team, none of which this cure reads -- the `$LCD` behind it carries the live pools and
+                if not raw.rstrip().endswith("*"):
+                    # F264 v3 (bench 2026-09-19, two taggers v4.32): the late, UNTERMINATED status-array
+                    # body is the DEAD-GUN SIGNATURE -- a dead gun holds its print loop for QUERY_BODY_S
+                    # while a live gun's own body lands ~30 ms behind its $LCD. It carries no health
+                    # number, so it books NOTHING; only the log line is evidence of anything, and even
+                    # that is descriptive, not acted on (the cure decides dead/alive from $LIFE's $HP,
+                    # never from this). Gated on the probe clock alone, not on an active cure: the body
+                    # arrives past QUERY_REPLY_S, so the cure's own window (or the cure itself) may
+                    # already have closed by the time this lands.
+                    if self._query_at and now - self._query_at <= self.QUERY_BODY_S:
+                        self._log(f"$QUERY body arrived late and unterminated ({raw!r}) -- the dead-gun "
+                                  "signature (bench 2026-09-19); nothing booked", "warn")
+                # else: a normal, terminated $QUERY reply. Its fields are the pool MAXIMA and the team,
+                # none of which this cure reads -- the $LCD (handled elsewhere) carries the live pools and
                 # the magazine. A read-back of the team belongs to a separate piece of work (transport-
                 # hardening.md §6) and is not this cure's job.
-                pass
             elif cmd == "HIR":
                 self.tele["last_hir"] = raw
                 if len(t) > 2 and t[2] == "15":

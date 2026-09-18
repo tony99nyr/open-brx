@@ -98,9 +98,13 @@ class FakeTagger:
         self.listening = True
         # F264 (bench 2026-09-18, docs/FOLLOWUPS.md F264): DEAD-BUT-CHATTY -- the fault a player was dead
         # on the gun and alive on the HUD for 94 s. See `go_dead_chatty()`.
-        # F264 v2: which reading of the dead-gun $LIFE,0,0,0,* probe this fake gives -- see the `LIFE`
-        # command's own comment in `write()`. False (the default) is the documented reading (silence).
-        self.dead_gun_answers_life = False
+        # F264 v3 (bench 2026-09-19, two taggers v4.32): which reading of the dead-gun $LIFE,0,0,0,* probe
+        # this fake gives -- see the `LIFE` command's own comment in `write()`. True (the default) is the
+        # MEASURED reading: a dead gun answers $LIFE,0,0,0,* IMMEDIATELY with $HP,0,0,0, same as a live
+        # gun answers immediately with its unchanged pools. protocol/brx-protocol.md's $LIFE row and
+        # docs/bench-firmware-levers-2026-09-19.md §22 both still say the OPPOSITE (silence) and want
+        # correcting; `dead_gun_answers_life = False` keeps that reading selectable for a test.
+        self.dead_gun_answers_life = True
 
     def go_dead_chatty(self) -> None:
         """F264 (bench 2026-09-18, docs/FOLLOWUPS.md F264): simulate the fault -- the gun dies on its own
@@ -178,18 +182,18 @@ class FakeTagger:
             self.hp, self.armor, self.shield = self.cfg_hp, self.cfg_armor, 0
             self._out.append(f"$LCD,{self.hp},{self.armor},0,0,0,0,*")
         elif cmd == "LIFE":
-            # F264 v2: the dead-gun PROBE is `$LIFE,0,0,0,*` (`PROBE_LIFE` in stage.py/engine.js) -- a
+            # F264 v3: the dead-gun PROBE is `$LIFE,0,0,0,*` (`PROBE_LIFE` in stage.py/engine.js) -- a
             # zero add to an ALREADY-DEAD gun, asking it to speak without healing or harming anything.
-            # THE REPO DISAGREES WITH ITSELF and this is not silently resolved either way:
-            #   - protocol/brx-protocol.md's $LIFE row (disasm): "a dead gun ignores $LIFE when token 1 is
-            #     0" -- SILENCE. This is the documented default here (`dead_gun_answers_life = False`).
-            #   - docs/bench-firmware-levers-2026-09-19.md §22: "V4_31 shows that the $LIFE handler also
-            #     sends $HP on the dead path when t1 = 0. So a dead gun should answer $HP,0,0,0, not
-            #     silence" -- the ALTERNATE reading, unsettled until the bench runs §22's claim 19.
-            # `dead_gun_answers_life = True` switches to the alternate reading, so a test can exercise it
-            # too without waiting on the bench. Only a genuine zero-effect probe on an ALREADY-dead gun
-            # takes this branch: a live gun's own `$LIFE,0,0,0,*` (nobody sends one) falls through to the
-            # ordinary clamp-and-emit below, unchanged.
+            # BENCH-MEASURED 2026-09-19 (two taggers, v4.32): a dead gun answers IMMEDIATELY with
+            # `$HP,0,0,0`; a live gun answers immediately with its unchanged pools. Positive evidence
+            # either way, and the default here (`dead_gun_answers_life = True`). The repo's OWN docs still
+            # say the opposite and want correcting: protocol/brx-protocol.md's $LIFE row (disasm) reads "a
+            # dead gun ignores $LIFE when token 1 is 0" (silence), and
+            # docs/bench-firmware-levers-2026-09-19.md §22 read the same V4_31 trace the same way before
+            # this bench session settled it. `dead_gun_answers_life = False` keeps that superseded reading
+            # selectable, so a test can still exercise it. Only a genuine zero-effect probe on an
+            # ALREADY-dead gun takes this branch: a live gun's own `$LIFE,0,0,0,*` (nobody sends one) falls
+            # through to the ordinary clamp-and-emit below, unchanged.
             if not self.alive:
                 hp_d = _int(t[1] if len(t) > 1 else None) or 0
                 arm_d = _int(t[2] if len(t) > 2 else None) or 0
@@ -197,7 +201,7 @@ class FakeTagger:
                 if hp_d == 0 and arm_d == 0 and sh_d == 0:
                     if self.dead_gun_answers_life:
                         self._out.append("$HP,0,0,0,*")
-                    return   # documented default: silence -- nothing queued, matching the disasm row
+                    return   # the superseded reading: silence -- nothing queued
             # Bench-measured 2026-09-09 (protocol/brx-protocol.md $LIFE). Three behaviours the old
             # three-liner did not model, all of which a damage-over-time feature (S16) would be built
             # on -- and a fake that models a command wrongly lets the real bug pass the suite:

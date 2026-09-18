@@ -147,10 +147,15 @@ export const NO_FIRE_PULLS = 3;
  *   - `$LIFE,0,0,0,*` adds nothing to any pool. It answers **immediately** with `$HP`, from a LIVE gun (its
  *     unchanged pools) AND from a DEAD one (`$HP,0,0,0`). Positive evidence in both states, short reply, no side
  *     effect. It is THE detector, and it needs no new code at all: `_onHp` already books the death from a zero.
- *     ⚠ This settles a contradiction the repo still carries: `protocol/brx-protocol.md`'s `$LIFE` row and
- *     `docs/bench-firmware-levers-2026-09-19.md` §22 both read the V4_30 disassembly as "a dead gun IGNORES
- *     `$LIFE` when token 1 is 0", i.e. reports by silence. The bench says it answers. The bench wins; those two
- *     documents want correcting.
+ *     ⚠ The same command word is also a REVIVE: `$LIFE,<hp>,0,0,1,*` brought a cleanly killed gun all the way
+ *     back on the bench (2026-09-19) with no `$SPAWN` at all, keeping its magazine and its `$TMP`, in two frames
+ *     against the revive head's seventeen. It is NOT built and must not be: it was measured on a cleanly killed
+ *     gun, not on one in the F264 stall, and those may not be the same condition (F264 carries the gate). What it
+ *     does mean is that the revive head is the only PROVEN cure here, which is a smaller claim than the only
+ *     possible one -- do not let any comment in this file grow into the larger one.
+ *     Measured against a live gun as the control, both the bare `$LIFE,*` and this all-zero form. An earlier
+ *     disassembly reading had a dead gun reporting by SILENCE; the bench retired it and `protocol/brx-protocol.md`
+ *     now carries the measurement. Nothing here rests on the disassembly any more.
  *   - `$QUERY,*` answers its `$LCD` at once, and that `$LCD` is the ONLY frame carrying the MAGAZINE, which is
  *     the one thing that tells an empty gun from a stuck one. But its status-array BODY arrives about 2 s later
  *     with NO trailing `*`, and **a dead gun holds its print loop for those 2 s** (a live gun: about 30 ms). That
@@ -185,6 +190,30 @@ const QUERY = '$QUERY,*';
  *  measured that only on a DEAD gun, while this heartbeat runs mostly on LIVE ones. One constant, explicitly
  *  zero, is worth 6 bytes a frame. */
 export const PROBE_LIFE = '$LIFE,0,0,0,*';
+/** F264 ⚠ A HAZARD WITH A NAME, AND THIS IS THE ONLY READING OF IT. `PROBE_LIFE` and every shield-regen grant are
+ *  BOTH `$LIFE` frames, so the command WORD cannot tell a question from a pool change. On the wire they are still
+ *  distinguishable, but only by VALUE: a `$LIFE` whose pool tokens are all zero or absent moves nothing, by
+ *  definition, so it can never be a grant. Nothing makes a reader look, which is how five S29 tests went red the
+ *  hour the probe shipped (2026-09-19): they counted `$LIFE` writes and counted probes as grants.
+ *
+ *  So every counter of `$LIFE` frames goes through this one predicate -- here, in the stage, in the tests, and in
+ *  anything that reads a frame ring later. `engine.test.mjs` scans the source and fails on a `$LIFE` filter that
+ *  does not. `protocol.is_pool_probe` is the Python twin.
+ *
+ *  ⚠ IT CANNOT BE FIXED ON THE WIRE. We never modify firmware, the command set is fixed, and `$LIFE` is the only
+ *  command that answers with the POOLS and changes nothing: `$PING` answers `$PONG` with no pools, `$VERSION`
+ *  carries none. So the ambiguity is permanent, and it reaches the diag tool and any future log scan, which no
+ *  test of ours can guard. It wants a FOLLOWUPS hazard row, not only this comment.
+ *
+ *  ⚠ And it cuts the other way too: `$LIFE,<hp>,0,0,1,*` is a REVIVE (bench 2026-09-19). The same command word is
+ *  the safest question we have and one of the most destructive writes we have, separated by one token. PURE. */
+export function isPoolProbe(frame) {
+  if (typeof frame !== 'string') return false;
+  const f = frame.trim();
+  if (!f.startsWith('$LIFE,')) return false;   // `$LIFE,*`, the 2018 app's bare poll, matches this prefix too
+  const t = f.replace(/,?\*$/, '').split(',');
+  return [1, 2, 3].every(i => t[i] === undefined || t[i] === '' || Number(t[i]) === 0);
+}
 /** F264: how long after a spawn/revive the read-back probe waits. The burst is 17 frames and the bench measured
  *  30-90 ms a frame, so ~1.5 s to land; 2500 ms leaves the echo room to come back before we ask again. */
 const SPAWN_PROBE_MS = 2500;
@@ -3591,7 +3620,9 @@ export class Engine {
       // not positive evidence, and the node books deaths only from positive evidence (§3.3). The `$LCD` that
       // arrived first already carried the number and has already decided.
       case 'QUERY': {
-        if (!this._cure || !this._queryAt || this.now() - this._queryAt > QUERY_BODY_MS) break;
+        // ⚠ NOT gated on `this._cure`. The body arrives about 2 s late, which is AFTER QUERY_REPLY_MS has already
+        // closed the cure's own window, so gating it on a live cure would make this hint permanently unreachable.
+        if (!this._queryAt || this.now() - this._queryAt > QUERY_BODY_MS) break;
         if (!String(f).trim().endsWith('*')) this.log('cure: the $QUERY body came back late and unterminated — the dead-gun signature (bench 2026-09-19). Not parsed, and not evidence on its own', 'le');
         break;
       }
@@ -3734,9 +3765,8 @@ export class Engine {
     this._noFirePulls++;
     if (this._noFirePulls === NO_FIRE_PULLS) this.log(`gun not firing: ${NO_FIRE_PULLS} trigger pulls with no shot, the pool is stale`, 'le');
   }
-  /** F264: ASK the gun where it stands. `full` sends BOTH probes -- the dead-gun `$LIFE,0,0,0,*` and `$QUERY,*`
-   *  for the pools and the magazine (2 frames, 21 bytes); the 20 s heartbeat sends `$QUERY` alone, which carries
-   *  strictly more on its own (1 frame, 8 bytes).
+  /** F264: ASK the gun where it stands. ONE `$LIFE,0,0,0,*`, 13 bytes, answered immediately with `$HP` whether
+   *  the gun is alive or dead (bench 2026-09-19). This is every probe site except the cure's second step.
    *
    *  ⚠ READING IS NOT INFERRING. Every other write in this file stands down inside `reconciling` and `resync`
    *  because the node must not GUESS there (§3.10). A probe is the opposite of a guess: it is how the node stops
@@ -3889,7 +3919,7 @@ export class Engine {
   /** F264: the divergence poll, so the node catches a diverged gun without a player pulling a dead trigger three
    *  times. LIVE MATCH ONLY, link up, spawned, alive, and never inside a reconcile, a resync or a try-out -- those
    *  three have their own one-off probes, which is a better use of the frames than a heartbeat on top of them.
-   *  A cure already in flight IS the poll for now. `$QUERY` alone: 3 frames a minute. */
+   *  A cure already in flight IS the poll for now. `$LIFE` alone: 3 frames a minute, 39 bytes. */
   _pollTick(now) {
     if (this._cure) return;
     if (this._standDown(['phase', 'spawned', 'bundle', 'ble', 'alive', 'reconciling', 'resync', 'tutorial'], now)) return;

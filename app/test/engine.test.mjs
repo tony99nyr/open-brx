@@ -3,9 +3,9 @@
 // feedback freshness, timed end→KITTED, the §3.10 resync table, resumeSchedule across T-0.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand } from '../src/engine.js';
+import { Engine, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES, frameCommand, deniedCommand, isPoolProbe, PROBE_LIFE } from '../src/engine.js';
 import * as W from '../src/transport/envelope.js';
 import { CONTROL_STATE } from '../src/control.js';   // the phone control point's advert bits (K1)
 import { Presence, encodeUuid } from '../src/beacon.js';   // the REAL advert path, for the clock-mismatch guard
@@ -6282,6 +6282,35 @@ test('every `_standDown` call site names a guard the table declares', () => {
     `_standDown names \`${name}\`, which the STAND_DOWN table does not declare: ${STAND_DOWN_NAMES.join(', ')}`);
   // CONTROL: the table is not a superset nobody reads -- every name it declares is used somewhere.
   for (const name of STAND_DOWN_NAMES) assert.ok(used.has(name), `STAND_DOWN declares \`${name}\` and no call site asks for it`);
+});
+
+test('F264: nothing counts `$LIFE` frames without asking whether it is a probe', () => {
+  // THE HAZARD. `PROBE_LIFE` and every shield-regen grant are both `$LIFE`, so a reader that filters on the
+  // command word alone counts questions as pool changes. Five S29 tests went red exactly that way the hour the
+  // probe shipped, and the next reader will not have five red tests pointing at it. A filter in one helper is
+  // not the fix; this scan is, because it fails on a NEW `$LIFE` filter that does not go through `isPoolProbe`.
+  const dirs = [new URL('../src/', import.meta.url), new URL('./', import.meta.url)];
+  const files = dirs.flatMap(d => readdirSync(d).filter(f => f.endsWith('.js') || f.endsWith('.mjs')).map(f => [f, new URL(f, d)]));
+  assert.ok(files.length >= 10, `only ${files.length} files scanned -- the scan is wrong, not the tree`);
+  const offenders = [];
+  for (const [name, url] of files) {
+    const src = readFileSync(url, 'utf8');
+    src.split('\n').forEach((line, i) => {
+      if (!/(startsWith|startswith)\(\s*['"`]\$LIFE/.test(line)) return;
+      if (/isPoolProbe|PROBE_LIFE/.test(line)) return;
+      if (name === 'engine.js' && /export function isPoolProbe/.test(src)) {   // the predicate's own body must test the word: that is its job
+        const body = src.slice(src.indexOf('export function isPoolProbe'));
+        if (body.split('\n').slice(0, 8).some(l => l.trim() === line.trim())) return;
+      }
+      offenders.push(`${name}:${i + 1}: ${line.trim()}`);
+    });
+  }
+  assert.deepEqual(offenders, [], 'these count `$LIFE` frames without excluding the probe: ' + offenders.join(' | '));
+  // CONTROL: the predicate itself says what it claims, so the guard is not pointing at a no-op.
+  assert.equal(isPoolProbe(PROBE_LIFE), true, 'the probe is a probe');
+  assert.equal(isPoolProbe('$LIFE,*'), true, 'and so is the bare poll form the 2018 app used');
+  assert.equal(isPoolProbe('$LIFE,0,0,10,*'), false, 'a shield grant is not');
+  assert.equal(isPoolProbe('$LIFE,30,0,0,1,*'), false, 'and neither is the revive form, which is the same word again');
 });
 
 test('S42 x A44/A47/F15: `state().accHold` says the writer is standing down, and which write took the gun', () => {

@@ -16,7 +16,7 @@ from brx_mcp.fake import FakeConnectionManager, FakeTagger
 from brx_mcp.stage import stage as S
 import pathlib
 
-from brx_mcp.stage.stage import GunStage, decode_advert_uuid, encode_advert_uuid
+from brx_mcp.stage.stage import PROBE_LIFE, GunStage, decode_advert_uuid, encode_advert_uuid
 from test_stage import (CAPTURED, LOST, TICK, PLAYX, NEUTRAL_TO_BLUE, BLUE_TO_RED, _Clock, _nosleep, feed, hill_audio,
                         in_play, install_levels_readout, mark, mk_hill, run_clock, settle, since, tx)
 
@@ -1860,7 +1860,10 @@ def shield_cues(st) -> dict[str, str]:
 
 
 def grants(mgr, n) -> int:
-    return len([f for f in since(mgr, n) if f.startswith("$LIFE,")])
+    # F264 v3: `PROBE_LIFE` (`$LIFE,0,0,0,*`) is ALSO a `$LIFE` frame -- the cure's own dead-gun probe,
+    # not a shield grant. Filtered out here (app/test/cues.test.mjs's own `grants()` filters the same
+    # frame on the node side), or every heartbeat/spawn probe during a shield test would count as one.
+    return len([f for f in since(mgr, n) if f.startswith("$LIFE,") and f != PROBE_LIFE])
 
 
 async def shield_run(st, mgr, clock, seconds: float) -> None:

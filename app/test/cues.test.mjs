@@ -15,7 +15,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine } from '../src/engine.js';
+import { Engine, PROBE_LIFE, isPoolProbe } from '../src/engine.js';
 
 const golden = JSON.parse(readFileSync(fileURLToPath(new URL('../../mcp/brx_mcp/mc/golden_bundle.json', import.meta.url))));
 const NAG = golden.cues.reload_nag;             // $PLAY,,4,6,VX73,* -- "Reload"
@@ -52,7 +52,9 @@ function harness({ shields = false } = {}) {
     f(fr) { eng.feedFrame(fr); return h; },
     pull() { return h.f('$BUT,0,1,*').adv(200).f('$BUT,0,0,*').adv(200); },
     count(frame) { return writes.filter(w => w === frame).length; },
-    grants() { return writes.filter(w => w.startsWith('$LIFE,')).length; },
+    // F264: the dead-gun probe is a `$LIFE` frame too, so counting the command word alone counts questions as
+    // pool changes. `isPoolProbe` is the one reading of that distinction; see its comment in engine.js.
+    grants() { return writes.filter(w => w.startsWith('$LIFE,') && !isPoolProbe(w)).length; },
     /** Advance time the way a real gun would answer: every `$LIFE` the node writes comes back as the `$HP`
      *  echo it earned, clamped at the ceiling. Without this the node is granting into a void and the cap
      *  (rightly) stops it, so a test of the refill must play the gun's side. */

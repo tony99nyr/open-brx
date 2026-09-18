@@ -12,6 +12,33 @@ from dataclasses import dataclass, field
 from typing import Any
 
 # Nordic UART Service (Gen2/3 BLE transport)
+def is_pool_probe(frame: str) -> bool:
+    """F264: is this `$LIFE` frame a PROBE rather than a pool change?
+
+    THE HAZARD. The F264 dead-gun probe and every shield-regen grant are BOTH `$LIFE` frames, so the
+    command WORD cannot tell a question from a pool change. On the wire they are still distinguishable,
+    but only by VALUE: a `$LIFE` whose pool tokens are all zero or absent moves nothing, by definition,
+    so it can never be a grant. Nothing makes a reader look, which is how five shield tests went red the
+    hour the probe shipped (2026-09-19): they counted `$LIFE` writes and counted probes as grants.
+
+    This is the Python twin of `engine.js`'s `isPoolProbe`, and it lives HERE rather than in the stage
+    because the readers that need it most are the ones no test of ours guards: `mc.diag`, a frame-ring
+    scan, anything reading a session file months from now.
+
+    It cannot be fixed on the wire. We never modify firmware, the command set is fixed, and `$LIFE` is
+    the only command that answers with the POOLS and changes nothing (`$PING` answers `$PONG` with no
+    pools, `$VERSION` carries none). And it cuts both ways: `$LIFE,<hp>,0,0,1,*` is a REVIVE, so one
+    token separates the safest question we have from one of the most destructive writes we have.
+    """
+    if not isinstance(frame, str):
+        return False
+    f = frame.strip()
+    if not f.startswith("$LIFE,"):
+        return False
+    t = f.rstrip("*").rstrip(",").split(",")
+    return all(i >= len(t) or t[i] == "" or t[i] == "0" for i in (1, 2, 3))
+
+
 NUS_SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
 NUS_RX_CHAR_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"  # write to tagger
 NUS_TX_CHAR_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"  # notify from tagger

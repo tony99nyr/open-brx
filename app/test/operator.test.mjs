@@ -56,8 +56,10 @@ test('A47 resync: $TID, the CURRENT ammo, $BMAP,0,0, then the live $SIR take -- 
   // F264 (Tony, 2026-09-18): RESYNC now READS BEFORE IT WRITES, and the two probe frames come FIRST. The
   // operator pressing RESYNC is telling us something is wrong, and 2026-09-18's resync wrote 14 frames at a gun
   // that had left the state those frames assume. A gun that died unnoticed books its death off this probe.
-  assert.deepEqual(w.slice(0, 2), [PROBE_LIFE, '$QUERY,*'], 'the probe leads, before anything is written');
-  assert.deepEqual(w.slice(2), ['$TID,1,*', '$AMMO,0,20,150,1,*', '$AMMO,1,6,24,1,*', '$BMAP,0,0,,,,,*', ...TAKE]);
+  // ...and it is `$LIFE` alone. Bench 2026-09-19: a DEAD gun holds its print loop about 2 s on a `$QUERY`, and
+  // the gun an operator is resyncing is exactly the one that might be dead.
+  assert.deepEqual(w.slice(0, 1), [PROBE_LIFE], 'the probe leads, before anything is written');
+  assert.deepEqual(w.slice(1), ['$TID,1,*', '$AMMO,0,20,150,1,*', '$AMMO,1,6,24,1,*', '$BMAP,0,0,,,,,*', ...TAKE]);
   assert.deepEqual(heads(w), [], 'no $SPAWN, $PSET or head frame');
   assert.equal(h.eng.hp, hp); assert.equal(h.eng.armor, armor); assert.equal(h.eng.deaths, deaths);
   assert.deepEqual(h.facts.slice(nFacts), [{ type: 'operator_result', cmd: 'resync', ok: true, match_id: 'm1', player_id: 'p1' }], 'no death, kill or respawn fact: only the outcome for MC');
