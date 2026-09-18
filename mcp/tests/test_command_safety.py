@@ -30,19 +30,40 @@ GEN_TS = REPO / "webapp" / "mc" / "src" / "api" / "contract.gen.ts"
 
 # ---- the tables themselves ------------------------------------------------------------------------
 def test_the_tiers_do_not_overlap_and_every_denied_entry_says_why():
-    assert not set(protocol.DENIED_COMMANDS) & set(protocol.KNOWN_COMMANDS), "a command cannot be both"
-    for name, reason in protocol.DENIED_COMMANDS.items():
+    denied = set(protocol.DENIED_COMMANDS) | set(protocol.HANG_PRONE_COMMANDS)
+    assert not denied & set(protocol.KNOWN_COMMANDS), "a command cannot be both"
+    assert not set(protocol.DENIED_COMMANDS) & set(protocol.HANG_PRONE_COMMANDS)
+    for name, reason in {**protocol.DENIED_COMMANDS, **protocol.HANG_PRONE_COMMANDS}.items():
         assert name == name.upper() and reason.strip(), name
     assert protocol.KNOWN_SAFE_COMMANDS == frozenset(protocol.KNOWN_COMMANDS)
+    assert protocol.ALL_DENIED_COMMANDS == frozenset(denied)
 
 
 def test_the_brick_and_hang_classes_are_all_denied():
     """One name per class the brief lists: factory reset, pairing/PIN, DFU, clear paired devices, the IR
     word-format switch, zombie toggles, the laser CW (duty) test, the SETUP console word, and $DPLAY."""
     for name in ("FACTORY", "PAIR", "PIN", "CDFU", "HEADDFU", "DDFU", "CLEARDEVICE", "IRT",
-                 "ZOM", "ZTOG", "ZON", "ZOFF", "BOOM", "ZOMBIEKEYACTIVE", "DUTY", "SETUP", "DPLAY",
+                 "ZOM", "ZTOG", "ZON", "ZOFF", "BOOM", "ZOMBIEKEYACTIVE", "DUTY", "SETUP",
                  "RESET", "SITE", "DTYPE", "DEV", "FTST", "BURN", "SOL", "GPAIR", "GPAIRX"):
         assert name in protocol.DENIED_COMMANDS, name
+    assert "DPLAY" in protocol.HANG_PRONE_COMMANDS and protocol.is_denied("$DPLAY,A10,4,*")
+
+
+def test_a_hang_prone_frame_needs_both_flags_on_send_and_never_goes_in_a_batch():
+    """The bench makes a screamer on demand with $DPLAY (levers sheet §14.4); nothing else may send it."""
+    with _fake_manager([FakeTagger("AA:1")]) as mgr:
+        run(mgr.connect("AA:1", "t1"))
+        for kw in ({}, {"confirm": True}, {"allow_hang": True}):
+            result = run(server.send("t1", "$DPLAY,A10,4,*", **kw))
+            assert result["error"].startswith("refused, confirm or not:") and "allow_hang" in result["error"], (kw, result)
+        assert len(mgr.sessions["t1"].buffer) == 0
+        result = run(server.send("t1", "$DPLAY,A10,4,*", confirm=True, allow_hang=True))
+        assert result["sent"] == "$DPLAY,A10,4,*" and "HANG-PRONE" in result["note"], result
+        # the persistent class has no override at all
+        result = run(server.send("t1", "$FACTORY,*", confirm=True, allow_hang=True))
+        assert result["error"].startswith("refused, confirm or not:"), result
+        result = run(server.send_batch("t1", ["$PING,*", "$DPLAY,A10,4,*"], confirm=True))
+        assert result["error"].startswith("refused, confirm or not:") and result["command"] == "$DPLAY,A10,4,*"
 
 
 def test_the_newly_understood_commands_are_known_with_arity_and_marked_unproven():
@@ -116,7 +137,7 @@ def test_send_lets_an_unproven_known_command_through_and_says_so():
 def test_the_deny_gate_runs_before_the_confirm_gate_and_is_load_bearing():
     """Break deny_reason and the same denied command, with confirm=True, goes straight through."""
     old = protocol.deny_reason
-    protocol.deny_reason = lambda _c: None
+    protocol.deny_reason = lambda _c, **_kw: None
     try:
         with _fake_manager([FakeTagger("AA:1")]) as mgr:
             run(mgr.connect("AA:1", "t1"))
@@ -134,11 +155,11 @@ def _js_upper_set(name: str) -> set[str]:
 
 
 def test_the_node_deny_list_is_the_instrument_deny_list_and_reaches_both_generated_copies():
-    assert E.NODE_DENIED_COMMANDS == frozenset(protocol.DENIED_COMMANDS)
-    assert _js_upper_set("NODE_DENIED_COMMANDS") == set(protocol.DENIED_COMMANDS)
+    assert E.NODE_DENIED_COMMANDS == protocol.ALL_DENIED_COMMANDS and "DPLAY" in E.NODE_DENIED_COMMANDS
+    assert _js_upper_set("NODE_DENIED_COMMANDS") == set(protocol.ALL_DENIED_COMMANDS)
     ts = GEN_TS.read_text(encoding="utf-8")
     m = re.search(r"export const NODE_DENIED_COMMANDS = \[(.*?)\] as const;", ts)
-    assert m and set(re.findall(r"'([A-Z_]+)'", m.group(1))) == set(protocol.DENIED_COMMANDS)
+    assert m and set(re.findall(r"'([A-Z_]+)'", m.group(1))) == set(protocol.ALL_DENIED_COMMANDS)
 
 
 def test_no_compiled_bundle_carries_a_denied_frame_and_the_guard_is_load_bearing():

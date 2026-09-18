@@ -151,9 +151,18 @@ DENIED_COMMANDS: dict[str, str] = {
     "ZOFF": "zombie mode off [disasm: headset vocabulary]",
     "BOOM": "zombie 'boomer' headset command [sheet]",
     "ZOMBIEKEYACTIVE": "zombie unlock key [sheet]",
-    "DPLAY": "plays a sound then BLOCKS the main loop until the channel finishes, serial unread: the likely screamer mechanism [disasm]",
     "SETUP": "the USB console's factory provisioning menu is not a $ command; never send its word over BLE",
 }
+
+# Refused like DENIED_COMMANDS, with one exception: the bench may send one ON PURPOSE to make a
+# lock-up on demand (levers sheet §14.4), with BOTH `confirm=True` and `allow_hang=True` on `send`.
+# The node never sends one; `send_batch` never sends one.
+HANG_PRONE_COMMANDS: dict[str, str] = {
+    "DPLAY": "plays a sound then BLOCKS the main loop until the channel finishes, serial unread: the likely screamer mechanism [disasm]",
+}
+
+# Every command word the NODE refuses: both tables. Mirrored to the phone by mc/envelope.py.
+ALL_DENIED_COMMANDS = frozenset(DENIED_COMMANDS) | frozenset(HANG_PRONE_COMMANDS)
 
 # Frames whose command word starts with one of these go between the gun MCU and its own radio
 # modules (`$!DFP`, `$^RESET`, `$&FWRNAME`, ...). Never ours to send.
@@ -167,17 +176,23 @@ def _raw_word(command: str) -> str:
     return command.lstrip("$").split(",", 1)[0]
 
 
-def deny_reason(command: str) -> str | None:
+def deny_reason(command: str, allow_hang: bool = False) -> str | None:
     """Why the instrument and the node refuse this frame outright, or None if it is not denied.
 
     A denied frame is refused even with confirm=true: it re-pairs, re-flashes, re-formats or
     factory-writes the gun, or it blocks the gun's main loop (`$DPLAY`). Power-cycling does not
-    undo the persistent ones, which is what makes them different from every other command."""
+    undo the persistent ones, which is what makes them different from every other command.
+    `allow_hang=True` lets a HANG_PRONE_COMMANDS frame through (a supervised bench run only)."""
     word = _raw_word(command)
     if word.startswith(_DENIED_PREFIXES):
         return f"'{word}' is a gun<->radio module control frame, never a host command"
     reason = DENIED_COMMANDS.get(word.upper())
-    return f"'{word}' is refused: {reason}" if reason else None
+    if reason:
+        return f"'{word}' is refused: {reason}"
+    hang = HANG_PRONE_COMMANDS.get(word.upper())
+    if hang and not allow_hang:
+        return f"'{word}' is refused: {hang}. A supervised bench run may pass confirm=true AND allow_hang=true"
+    return None
 
 
 def is_denied(command: str) -> bool:

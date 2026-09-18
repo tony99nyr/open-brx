@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .types import MAX_PLAYERS, MC_KINDS, NODE_KINDS, PROTOCOL_V
-from ..protocol import DENIED_COMMANDS as _DENIED_COMMANDS
+from ..protocol import ALL_DENIED_COMMANDS as _DENIED_COMMANDS
 
 MAX_ENVELOPE_BYTES = 64 * 1024        # net.md §8 size cap
 # The command words a NODE must never write to its gun, whatever a bundle or a debug panel says:
