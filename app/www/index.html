@@ -275,7 +275,7 @@ button:active{filter:brightness(1.15)}
 #frame[data-takeover="switch"] #chips{opacity:0}
 #frame[data-takeover="reconcile"] #chips{opacity:0}
 [data-env="night"] .switching,[data-env="night"] .switched{background:#000}[data-env="night"] .switching .t{color:var(--num);text-shadow:none}
-[data-env="night"] .wt .th{background-image:none!important;background:#000}[data-env="night"] .wt.to,[data-env="night"] .wt.on{box-shadow:none;border-color:var(--num)}
+[data-env="night"] .wt .th{background-image:none!important;background:#000}[data-env="night"] .wt .th .wpic,[data-env="night"] .wt .th .wpicfb{display:none!important}[data-env="night"] .wt.to,[data-env="night"] .wt.on{box-shadow:none;border-color:var(--num)}
 [data-env="night"] .switching .track i{background:var(--num)}
 /* A11.4 ALERT banner: full width, one fade in / one fade out, colour by family */
 .alert{pointer-events:none;animation:hitin .14s ease-out}
@@ -743,6 +743,11 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .lolock .cur{font-family:var(--fd);font-weight:700;font-size:18px;color:var(--glow);letter-spacing:.06em}
 /* night: no artwork (the phone must not become a flashlight), same tokens otherwise */
 [data-env="night"] .plate.slot .thumb,[data-env="night"] .lrow .thumb,[data-env="night"] .lo .lodetail .art{background-image:none!important;background:#000;border-color:var(--edge)}
+/* Weapon art is an <img>, not a background, since the missing-art fallback landed 2026-09-18 -- so
+   `background-image:none` above stopped hiding it and a bright weapon photo lit the screen up during
+   night play. Night mode exists so a phone does not give away where its owner is standing, so the
+   element itself has to go, not its background. Audited by the `night` step in app/tools/e2e.mjs. */
+[data-env="night"] .wpic,[data-env="night"] .wpicfb{display:none!important}
 [data-env="night"] .lotab.on{background:var(--team);color:#000}
 [data-env="night"] .lrow.eq,[data-env="night"] .eqtag{border-color:var(--num)}
 [data-env="night"] .lrow .st,[data-env="night"] .ackchip.ok,[data-env="night"] .eqtag,[data-env="night"] .fch.none.on{color:var(--num)}

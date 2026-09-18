@@ -998,8 +998,10 @@ class WeaponCatalog:
         # same victim sensor, 115 in one pull, a kill (900 ms cycle, so it cannot have been two pulls).
         # LaserTagMods (Jay, 2026-09-18) independently confirms the mechanism -- "it actually is both ...
         # so there is a dual emitter fire, one from tagger, weaker damage, and one from headset, greater
-        # damage" -- which also settles that the tagger sent the smaller word, the headset the larger
-        # one. `resolve()` therefore no longer MIRRORS t5 onto t12: it writes a DECLARED
+        # damage" -- which READS AS the tagger sending the smaller word and the headset the larger one,
+        # though that stays SOURCED and not settled: a capture cannot show which emitter fired, and no
+        # bench has yet covered one emitter at a time (F254's run does it in passing).
+        # `resolve()` therefore no longer MIRRORS t5 onto t12: it writes a DECLARED
         # `wire.headset_dmg`, priced independently of t5 (see `WeaponCatalog.damage_per_pull()`). A
         # weapon whose capture carries a t12 but declares no `wire.headset_dmg` is REFUSED, not silently
         # left at its raw captured word -- an unpriced captured t12 is the exact three-weapon balance

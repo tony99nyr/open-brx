@@ -1396,6 +1396,29 @@ for (const view of VIEWS) {
     const pg = await open(view, 'kitted', '&night'); const r = await pg.evaluate(() => Array.from(document.querySelectorAll('.plate')).map(p => getComputedStyle(p).backgroundColor)); await pg.close();
     must(r.length >= 3 && r.every(c => c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent'), 'transparent plates: ' + r.join(' '));
   });
+  await step(`${view.name} #24b night: NO weapon photo is lit anywhere (it is a position giveaway)`, async () => {
+    // Night mode exists so a phone does not tell an opponent where its owner is standing. The night rules
+    // used to say `background-image:none`, which silently stopped working the moment the missing-art
+    // fallback (2026-09-18) made weapon art a real <img>: bright weapon photos then lit the kit plate, the
+    // lobby row, the detail pane and the switching takeover, and nothing failed.
+    // ⚠ An earlier version of this check ran on the LIVE hud, which renders no weapon art at all, so it
+    // passed with the rule deleted -- a guard that could not fail. It runs on the screens that HAVE art,
+    // and it audits the ELEMENT rather than the rule, so the next way someone paints a picture here trips
+    // it too. Break it by deleting the `[data-env="night"] .wpic` rule in app/www/index.html.
+    const lit = [];
+    for (const stage of ['kitted', 'loadout-primary', 'loadout-secondary']) {   // NOT loadout-perk: perks render a glyph, never weapon art
+      const pg = await open(view, stage, '&night', 2000);
+      const seen = await pg.evaluate(() => Array.from(document.querySelectorAll('.wpic, .wpicfb'))
+        .filter(e => { const st = getComputedStyle(e), r = e.getBoundingClientRect();
+                       return st.display !== 'none' && st.visibility !== 'hidden' && +st.opacity > 0.05 && r.width > 2 && r.height > 2; })
+        .map(e => e.className + ' ' + Math.round(e.getBoundingClientRect().width) + 'x' + Math.round(e.getBoundingClientRect().height)));
+      const any = await pg.evaluate(() => document.querySelectorAll('.wpic, .wpicfb').length);
+      await pg.close();
+      if (!any) { lit.push(stage + ': NO art elements at all, this stage cannot prove anything'); continue; }
+      for (const x of seen) lit.push(stage + ' ' + x);
+    }
+    must(lit.length === 0, 'weapon art lit at night: ' + lit.join('; '));
+  });
 }
 await step('F110 briefing with a LONG name at 812\u00d7375 (the iPhone the report came from)', async () => {
   const v = { name: 'iphone', width: 812, height: 375 };
