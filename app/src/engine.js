@@ -314,13 +314,15 @@ const STAND_DOWN = [
   ['switching',   e => !!e.switching],
   ['reloading',   e => !!e.reloading],
   ['stunned',     e => !!e.stunned],
-  ['heat',        e => e._heatBlocksFire()],
+  ['heat',        (e, now) => e._heatBlocksFire(now)],
   ['accHold',     (e, now) => now < e._accHoldUntil],
 ];
 /** The names `_standDown` answers to. engine.test.mjs reads every `_standDown([...])` call site out of this
  *  file and asserts each name is in here, so a typo cannot silently drop a guard. */
 export const STAND_DOWN_NAMES = STAND_DOWN.map(([name]) => name);
-/** A47: the refusal each `_operatorAct` stand-down name puts in front of the operator. */
+/** A47: the refusal each `_operatorAct` stand-down name puts in front of the operator. `_operatorAct` names
+ *  its own subset, so only those seven need a line here; `operatorRefusal()` below covers the rest rather
+ *  than throwing at an operator mid-match if that subset ever grows. */
 const OPERATOR_REFUSAL = {
   phase: e => `phase is ${e.phase}`,
   spawned: () => 'the T-0 spawn has not run',
@@ -330,6 +332,10 @@ const OPERATOR_REFUSAL = {
   resync: () => 'a restart resync is running',
   tutorial: () => 'a try-out is running',
 };
+/** The refusal line for a stand-down name, or the bare name when nothing has written one yet. A missing
+ *  line is a message worth improving, never a reason to throw: `_standDown` is deliberately forgiving and
+ *  this must be too (polish 2026-09-17). `app/test/operator.test.mjs` asserts every name resolves. */
+export const operatorRefusalFor = (name, engine) => (OPERATOR_REFUSAL[name] || (() => name))(engine);
 
 export class Engine {
   /**
@@ -2757,7 +2763,7 @@ export class Engine {
     // The first blocking name in `STAND_DOWN` order, turned into the line the operator reads. The table's
     // order IS this message's order, so the refusals come out exactly as they did before the 2026-09-17 pass.
     const blocked = this._standDown(['phase', 'spawned', 'bundle', 'ble', 'reconciling', 'resync', 'tutorial']);
-    const why = blocked ? OPERATOR_REFUSAL[blocked](this) : null;
+    const why = blocked ? operatorRefusalFor(blocked, this) : null;
     if (why) { this.log(`operator ${cmd} ignored — ${why}`, 'le'); return why; }
     if (cmd === 'respawn') {
       this.log(`operator respawn (${this.alive ? 'alive' : 'down'} at hp ${this.hp})`, 'lk');
@@ -3009,11 +3015,11 @@ export class Engine {
    *  ⚠ Named apart from `_overheatOnHud` by the 2026-09-17 maint review, which found the two used as if they
    *  were one truth. THIS one decides whether the gun can shoot: it gates the accuracy writer and exempts a
    *  dry pull from `no_fire`, on the 25 s HEAT_STALE_MS trust window. It is NOT what the HUD draws. */
-  _heatBlocksFire() {
+  _heatBlocksFire(now = this.now()) {
     const slot = this.activeSlot;
     if ((this.heatBySlot[slot] || 0) < HEAT_LOCKOUT) return false;
     const at = this._heatAt[slot];
-    return at == null || (this.now() - at) < HEAT_STALE_MS;
+    return at == null || (now - at) < HEAT_STALE_MS;
   }
   /** pl4: one `$ALCD` for `slot`. A reading at or past the line starts or refreshes the lockout; a reading below
    *  it, or a round leaving the slot without such a reading, ends it. `prev` is the slot's last mag (null = none). */
@@ -3776,7 +3782,7 @@ export class Engine {
       // this life (a non-heat weapon never sends a non-zero one).
       heat: this.heatBySlot[this.activeSlot] != null ? this.heatBySlot[this.activeSlot] : null,
       // THE MECHANIC (`_heatBlocksFire`): can this gun shoot right now? Trusted for HEAT_STALE_MS. Nothing on
-      // the HUD reads it -- it is published for MC and the bench, and pinned by engine.test.mjs.
+      // the HUD reads it -- it is published for the bench (MC only ever sees `statusBody`), and pinned by engine.test.mjs.
       overheating: this._heatBlocksFire(),
       // THE DISPLAY (`_overheatOnHud`): the OVERHEAT word, the overlay AND the hot heat bar, all from this one
       // field, for OVERHEAT_SHOWN_MS after the last evidence of the lockout.

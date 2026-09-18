@@ -335,7 +335,9 @@ def _closed_ids_cited_as_open() -> list[str]:
             elif mg:
                 found = [mg.group(1)]
             elif line.startswith("#") and any(g in line for g in _OPEN_GLYPHS):
-                found = re.findall(r"\b([A-Z]\d{1,3})\b", line)
+                # Not a lookbehind on `\b` alone: `BC-A1` would yield `A1`, and a rung label is not a
+                # followup id. Require the id to start a word that no letter, digit or hyphen precedes.
+                found = re.findall(r"(?<![A-Za-z0-9-])([A-Z]\d{1,3})\b", line)
             for i in found:
                 if i in closed and (f.name, i) not in _CLOSED_AS_OPEN_ALLOW:
                     hits.append(f"{f.relative_to(REPO)}:{n} {i}")

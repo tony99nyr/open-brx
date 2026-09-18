@@ -5564,7 +5564,7 @@ test('every `_standDown` call site names a guard the table declares', () => {
   const src = readFileSync(fileURLToPath(new URL('../src/engine.js', import.meta.url)), 'utf8');
   const calls = [...src.matchAll(/_standDown\(\[([^\]]*)\]/gs)].map(m => m[1]);
   assert.ok(calls.length >= 7, `only ${calls.length} _standDown call sites found -- the scan is wrong, not the file`);
-  const used = new Set(calls.flatMap(c => [...c.matchAll(/'(\w+)'/g)].map(m => m[1])));
+  const used = new Set(calls.flatMap(c => [...c.matchAll(/['"](\w+)['"]/g)].map(m => m[1])));   // both quote styles: a double-quoted site must not be invisible here
   assert.ok(used.size >= 10, `only ${used.size} distinct guard names used across the call sites`);
   for (const name of used) assert.ok(STAND_DOWN_NAMES.includes(name),
     `_standDown names \`${name}\`, which the STAND_DOWN table does not declare: ${STAND_DOWN_NAMES.join(', ')}`);

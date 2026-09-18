@@ -372,6 +372,35 @@ for (const [name, set, why] of REFUSALS) {
   }
 }
 
+// Polish 2026-09-17: `_operatorAct` used to index the refusal table directly, so a stand-down name with no
+// line there threw a TypeError at the operator instead of refusing. The lookup now falls back to the bare
+// name. This pins BOTH halves: every name `_operatorAct` asks for has a real sentence, and a name from
+// elsewhere in the table still comes back as a string rather than an exception.
+test('A47: every stand-down name resolves to something an operator can read, and none of them throws', () => {
+  const src = readFileSync(fileURLToPath(new URL('../src/engine.js', import.meta.url)), 'utf8');
+  // Find the site by its own contents, not by counting characters back to the method name: `bundle` is
+  // asked for at exactly one call site, `_operatorAct`'s (`_awaitShot` asks for `tutorial` too, but never
+  // for `bundle`). REFUSALS above lists the same seven, so a drift between the two fails here.
+  const asked = [...src.matchAll(/_standDown\(\[([^\]]*)\]/gs)]
+    .map(m => [...m[1].matchAll(/['"](\w+)['"]/g)].map(x => x[1]))
+    .filter(names => names.includes('bundle'))
+    .flat();
+  assert.deepEqual(asked, REFUSALS.map(([n]) => n),
+    `_operatorAct's subset and this file's REFUSALS table disagree: ${asked.join(', ')}`);
+  for (const name of asked) {
+    const h = live();
+    const why = E.operatorRefusalFor(name, h.eng);
+    assert.equal(typeof why, 'string', `${name} must resolve to a string`);
+    assert.ok(why.length > 3 && why !== name, `${name} has no written refusal: the operator would read "${why}"`);
+  }
+  // CONTROL: a name the operator subset does not carry must still answer, not throw.
+  const h = live();
+  for (const name of E.STAND_DOWN_NAMES) {
+    assert.equal(typeof E.operatorRefusalFor(name, h.eng), 'string', `${name} must not throw`);
+  }
+  assert.equal(E.operatorRefusalFor('switching', h.eng), 'switching', 'a name with no line falls back to itself');
+});
+
 test('A47/pl3: the refusals keep their order: the first thing wrong is the one the operator is told about', () => {
   // Every condition true at once, then cleared one at a time: the reasons must come out in table order.
   // CONTROL for the table refactor: reorder `STAND_DOWN` and this walks out in the new order and fails.
