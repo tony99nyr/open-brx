@@ -83,6 +83,14 @@ a push to `main` deploys the site, and Cloudflare rebuilds it itself (`wrangler.
 (`docs/platform/`, `docs/manual/`, `site/`); never hand-commit `webapp/` output. `webapp/mc/` and
 `webapp/download/build.json` are the exception — they're hand-kept, not generated, and stay tracked.
 
+`site/shots/` holds the marketing screenshots, generated from the real UIs by `cd site && npm run shots`.
+**A UI change no longer needs a local shots run.** The `site-shots` job in `.github/workflows/ci.yml`
+regenerates them on every push to `main` that leaves them stale, and commits the result back as
+`github-actions[bot]`. Run the script locally only when you want to see the new shots before you push.
+If that job fails, read its log: it refuses to force-push, so the usual cause is a conflict in
+`site/shots/`. Fix it by running `cd app && npm run build && cd ../webapp/mc && npm run build`, then
+`cd site && npm run shots`, and commit `site/shots/` yourself.
+
 ## The evidence culture
 
 The heart of this repo is that **a claim about the hardware needs provenance**, not just plausibility.
