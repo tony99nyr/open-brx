@@ -392,13 +392,30 @@ the per-weapon target; `resolve()` never reads it (`test_range_and_recoil_are_de
 | step down | every shot (`_onAmmo`'s mag decrement on the active slot) drops `value` by `per_shot`, floored at `floor` |
 | step up | once `recover_ms` has passed with **no shot and no pending step**, `value` rises by `per_shot`, ceilinged at `ceiling` — never a "released" flag, so a burst weapon's own gap between rounds is not mistaken for a release |
 | write | pins **both** `t21` and `t22` to `value` on the active slot's compiled `$WEAP` frame (never `ceiling`/`floor` separately) — a fixed accuracy is honoured on a non-walking gun too (bench 2026-09-17), so this sidesteps F230 rather than depending on it. Immediately followed by an `$AMMO` restore of the LIVE mag/reserve (a `$WEAP` re-push resets both to the frame's baked-in values, bench 2026-09-17) |
-| throttle | one writer, latest `value` wins; a minimum gap between writes; never between a reload-lever pull (`this.reloading`) and the refill; never mid weapon-swap (`this.switching`); never during an overheat lockout (`this.overheatLocked` — a seam, not node-tracked today) |
+| throttle | one writer, latest `value` wins; a minimum gap between writes; never between a reload-lever pull (`this.reloading`) and the refill; never mid weapon-swap (`this.switching`); never during an overheat lockout: `overheated()` reads the heat the gun reports in `$ALCD` token 5 against 99 (F229; the guard read a flag nothing set until 2026-09-17, so it was dead code) |
 | verify | the next `$ALCD` naming the active slot (`_recoilObserve`, tok 2) is compared to what was written once the write's grace window closes; a mismatch retries ONCE; a second mismatch writes the ceiling back (both tokens) with the live ammo and disables further writes for the rest of the life, logged |
 | reset | a respawn/revive re-arms at the weapon's ceiling; a confirmed weapon swap re-arms to the NEW weapon's profile at its ceiling (multi-slot native drift while off-slot is not modelled — a bench gap, not a design one) |
 
 **Seams for stance and flinch (also S42, not built here):** a future stance module can widen/narrow `per_shot` from
 the motion sensor before `_recoilStep` applies it; a future flinch module reads `this._recoil.value` (today's live
 accuracy) to decide how hard to jolt. Neither needs to touch the writer, the verify/retry loop, or `config.recoil`.
+
+### 3.15 Damage over time — the node holds the tick clock (S16, not built)
+
+The gun has no damage-over-time function we can rely on (`weapon-design.md` §6.3b: fn 24's delayed ticks were
+measured only against a REPEATING source). The node builds it instead, because `$LIFE` takes negatives and a node
+may write its own gun freely mid-match.
+
+| rule | what the node does |
+|---|---|
+| recognise | a `$HIR` whose protocol key (token 2) is the poison damage type starts or REFRESHES a stack. The shooter's weapon carries that key in `$WEAP` t3; the stock enum already has 11 = gas |
+| tick | one `$LIFE` write per tick interval, taking the tick amount from the OUTERMOST non-empty pool. A negative is per-pool with NO spill and floors at 0 (bench 2026-09-09), so the node walks shield, then armour, then health itself |
+| refresh, never stack | a second poison hit restarts the timer at full duration; two shooters do not stack two clocks. Refresh rewards staying on target and keeps the worst case bounded |
+| end | the stack ends on expiry, on death, and on respawn. A stack never survives a life |
+| death | a LETHAL tick emits `$LCD` and no `$HP` (F64), so the node books the death through the `$LCD` path. There is no `hit_taken` fact and **no attribution**: who is credited with the kill is an open decision, not an implementation detail |
+| show it | the HUD shows the stack and counts it down, and the node plays the cue, because the gun plays nothing at all for a `$LIFE` write. The HUD half belongs to the `brx-hud` session |
+
+Out of Mission Control coverage this behaves identically: everything after the first hit is local to one phone.
 
 ### 3.14 F68: a miss the node cannot see still wipes the headset's team colour
 

@@ -1039,6 +1039,79 @@ spend a session on:
   > deal damage on protocol 7**, having moved no pool on protocol 5. The DoT negative is unaffected —
   > none of them ticked — but do not read membership here as "inert".
 
+### 6.3b Damage over time — the axis the catalogue does not have (S16)
+
+Tony, 2026-09-17: "we don't have any damage over time weapons, like a poison gun". Correct, and the
+mechanism for one has been unblocked since 2026-09-09. Nothing in the 22-weapon catalogue ticks.
+
+**The certain route is the node.** `$LIFE,<hp>,<armour>,<shield>,*` takes negatives, so the victim's
+own phone can drain the victim's own pools on a timer, with no firmware change and no IR frame per
+tick. The chain is: the shooter's weapon carries a distinctive `$WEAP` **t3** damage type (the stock
+enum already has **11 = gas**), the word lands, the victim's gun raises `$HIR` with that protocol key
+echoed in token 2, and the victim's node starts its own tick clock. Everything after the first hit is
+local to one phone. It therefore keeps working with no Mission Control coverage, which is the test
+every mid-match mechanic has to pass.
+
+Three bench facts the design must respect, all from the 2026-09-09 `$LIFE` session:
+
+- A negative is **per-pool with no spill**, so the node walks shield, then armour, then health itself.
+- A pool **floors at 0**, so overkill is silent and a tick cannot carry into the next pool by itself.
+- A **lethal** tick emits no `$HP`, only `$LCD` (F64). The node books the death through the `$LCD`
+  path, and there is **no `hit_taken` fact and no attribution**, so S16 must decide who is credited
+  with a kill that a tick finishes.
+
+**The native route is a maybe, not a fact.** `$SIR` function **24** is the delayed blast: the hit
+registers with no immediate pool change, then about 4 s later the victim takes 1 to 3 ticks equal to
+the original magnitude, about 420 ms apart (bench 2026-09-11). That looks exactly like a poison round.
+⚠️ It was measured against a **repeating** grenade beacon, and the same bench recorded **no self-replay**
+once the source stopped; a separate 2026-08-26 sweep fired each status function **once** and watched
+for 18 s with no ticks at all. So "one hand-aimed fn-24 shot produces several ticks" is **unproven**,
+and the two results may simply mean one delayed tick per word. Do not build a weapon on it until a
+bench fires single fn-24 shots and counts the ticks. There is a live reason to run that test anyway:
+the stock table ships `$SIR,9,3,,24` on the **Energy Launcher**, so a weapon we already list may be
+ticking victims a few seconds after every hit, and nobody has ever watched for it.
+
+**The weapon it buys: a Toxin Rifle.** Low direct damage, a poison stack on hit, and a real weakness.
+The shape that fits the ladder:
+
+| lever | value | why |
+|---|---|---|
+| direct damage (`t5`) | about half its family | the poison is the payload, not the bullet |
+| poison per tick | small, for example 2 | a tick must never feel like a second gun |
+| duration | a few seconds, refreshed by a new hit, never stacked twice | refresh rewards staying on target |
+| counter | anyone who kills the carrier fast, and any pool big enough to outlast it | it loses every short fight |
+
+It is the first weapon in the catalogue that punishes **turtling** rather than out-damaging it, which
+is the hole the perk analysis (S50) found: a large armour pool has no natural enemy. A tick does not
+care how many plates are in front of it, it just keeps arriving.
+
+**What the HUD owes the player.** A DoT that a player cannot see is a bug report. The node shows the
+stack, counts it down, and gives it a sound of its own, because the gun plays nothing for a `$LIFE`
+write. The phone HUD belongs to the `brx-hud` session, so the cue set is agreed there, not here.
+
+Open questions before code, all filed under **S16**: kill credit for a lethal tick, whether a stack
+survives a respawn (it should not), whether two poison shooters stack or refresh (refresh), and what
+the shooter sees, given the shooter's gun never learns that it hit anyone.
+
+### 6.3c Archetypes the catalogue does not have
+
+§6.3 proves five levers. The 22-weapon catalogue uses one of them (armour piercing, on the AMR and the
+Rail Gun). These are the weapons the other levers already allow. None needs firmware, and each names
+the one thing it waits on.
+
+| archetype | what the player does | mechanism | waits on |
+|---|---|---|---|
+| **Toxin Rifle** | tag someone and they keep losing health after you break contact | node tick clock on `$LIFE` negatives, keyed to the `$WEAP` t3 damage type echoed in `$HIR` token 2 (the enum already has 11 = gas) | §6.3b, S16: kill credit for a lethal tick, and a spec section |
+| **Medic gun** | heal a teammate by tagging them | `$SIR` fn 10, 9 or 14, by overflow flavour. The firmware enforces "allies only" by itself: a heal fired at an enemy is silently dropped | per-player `$SIR` keys, and a decision about whether a healer belongs in a team of eight |
+| **Flux beam** | one weapon that heals a friend and hurts an enemy, decided by who you point it at | ONE `$SIR` row: fn 16, 17, 20, 21 or 22 are dual-polarity. No host logic at all | the same per-player key work, plus a damage number that is fair in both directions |
+| **Jammer** | win a fight without taking any health | `$SIR` fn 23 silences the victim's gun and forces its live accuracy to zero for 6 to 8 s, while it keeps firing and emitting | F66: the silence was heard by ear and the number cited as proof was the accuracy field, so the mechanism is unconfirmed |
+| **Crit weapon** | a shot that sometimes hits much harder | the IR crit bit is proven at x1.5 and echoes on `$HIR` token 6. `$WEAP` t6 (`primaryCritChance`) reads 0 on every stock weapon | F62, measured in `bench-perks-2026-09-18.md` §1: can a tagger roll its own crit, or is the bit emitter-only? |
+
+Two cautions carry over from §6.2. A `$SIR` table is **game-wide**, so any archetype that needs its own
+function needs per-player keys before it can ship beside the others. And a victim-side multiplier is
+invisible at the weapon, so a weapon built on one reads as balanced in `weapons.json` and plays as
+something else entirely.
+
 ### 6.4 What a weapon is now
 
 The design space widened from one number to five independent choices:

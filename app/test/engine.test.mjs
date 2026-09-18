@@ -2472,6 +2472,23 @@ test('S42: never mid weapon-swap', () => {
   assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 1, 'the write must go out once the swap is over');
 });
 
+test('S42/F229: never during an overheat lockout -- the guard reads the gun\'s own heat from $ALCD token 5, not a flag of ours', () => {
+  // The guard used to read `this.overheatLocked`, which NOTHING in the engine ever set, so it was dead
+  // code and the writer was free to write through a lockout. This test drives a real heat frame instead
+  // of setting a flag, which is the only shape that can catch that mistake. Bench 2026-09-17 (F229): the
+  // Energy Rifle stops firing at heat 99, does not cool on its own, and vents about 35 per lever pull.
+  const h = armRecoil(RECOIL_PROFILE);
+  h.writes.length = 0;
+  h.frame('$ALCD,35,100,0,215,99,*');                        // one shot, and the gun reports itself locked out
+  assert.equal(h.eng.overheated(), true, 'heat 99 must read as an overheat lockout');
+  h.adv(ACC_WRITE_MIN_GAP_MS + 10); h.eng.tick();
+  assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 0, 'a write landed WHILE OVERHEATED -- the guard did not hold');
+  h.frame('$ALCD,35,100,0,215,64,*');                        // one lever pull vents about 35: 99 -> 64
+  assert.equal(h.eng.overheated(), false);
+  h.eng.tick();
+  assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 1, 'the write must go out once the gun has vented -- the dirty value was held, not lost');
+});
+
 test('S42: verify and retry -- a first mismatch retries once; a second gives up, restores the ceiling with live ammo, and stops driving this life', () => {
   // recover_ms is large here too: this test waits out TWO full verify-grace windows, which a short
   // recover_ms would otherwise fill with its own recovery steps, confusing "the retry re-sent the same
