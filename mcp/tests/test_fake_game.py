@@ -67,6 +67,46 @@ def test_faketagger_spawn_revives_and_config_sets_health():
     assert any(o.startswith("$LCD,60,80") for o in t.drain())
 
 
+def test_faketagger_models_a_magazine_weap_resets_ammo_sets_fire_decrements():
+    """F259/S42 (bench 2026-09-17): a real gun RESETS its magazine on every `$WEAP` write and
+    ANSWERS with `$ALCD` -- 30-90 ms later, never instantly. The old fake accepted `$WEAP`/`$AMMO`
+    and answered nothing at all, which is the exact fiction that let three defects reach a
+    hardware bench on 2026-09-18 (engine.js's `_acctAmmo`/`_acctWrote` echo-window accounting
+    exists to cope with this and was never exercised here). A fake clock stands in for wall-clock
+    time, so the test needs no real sleep and cannot race under load."""
+    now = [0.0]
+    t = FakeTagger("AA:1", clock=lambda: now[0])
+
+    # a stock AR frame (docs/archive/bench-weapons-2026-09-17.md): t16/t39 maxClip = 32,
+    # t40 (index 41) the reserve the gun's own $ALCD echoes = 192 (F207).
+    weap = ("$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,384,1400,0,0,100,100,,0,,,R01,,,,"
+            "D04,D03,D02,D18,,,,,32,192,75,*")
+    t.write(weap)
+    assert t.drain() == [], "a $WEAP write must not answer instantly -- bench measured 30-90 ms"
+
+    now[0] += 0.04
+    out = t.drain()
+    assert out == ["$ALCD,32,100,0,192,0,*"], out    # the RESET clip, not the (empty) old magazine
+
+    # a mid-life $AMMO write (the accuracy writer's own restore, S42) SETS the magazine.
+    t.write("$AMMO,0,30,380,1,*")
+    assert t.drain() == [], "the $AMMO answer is not instant either"
+    now[0] += 0.04
+    assert t.drain() == ["$ALCD,30,100,0,380,0,*"]
+
+    # a $WEAP + $AMMO pair (S42's own write shape) produces TWO $ALCD frames: the reset clip,
+    # then the written number -- the exact shape engine.js's echo-window accounting exists for.
+    t.write(weap)
+    t.write("$AMMO,0,29,380,1,*")
+    now[0] += 0.04
+    assert t.drain() == ["$ALCD,32,100,0,192,0,*", "$ALCD,29,100,0,380,0,*"]
+
+    # firing decrements the magazine and answers at once -- the gun's own action, not a BLE
+    # round trip, so it is not held behind the write-latency delay.
+    t.fire(0)
+    assert t.drain() == ["$ALCD,28,100,0,380,0,*"]
+
+
 # ---- F96: more guns than the wire has teams --------------------------------- #
 def test_run_live_refuses_a_fifth_ffa_gun_with_a_readable_error():
     """The exposed caller. FFA needs one `$TID` per gun and the wire only has four teams, so a

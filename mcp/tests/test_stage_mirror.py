@@ -541,10 +541,14 @@ def test_the_stun_restore_carries_the_nodes_own_magazine_account_not_the_last_al
         assert "$AMMO,0,19,200,1,*" in since(mgr, n), \
             f"the restore handed back a round the player had already spent: {since(mgr, n)}"
         # CONTROL: a press the gun never answers expires, so a mis-modelled press cannot hold the count down
-        # for the rest of the life. Two presses are outstanding here (the one above and this one), because no
-        # `$ALCD` has answered either -- the gun's last word is still 20.
+        # for the rest of the life. ONE press is outstanding here, not two: the stun above ran the clock past
+        # TRIGGER_NO_FIRE_S, so the earlier press is gone. It used to STACK -- `_acct_live` merely ignored an
+        # expired press and left the count on the account, so the next pull added to it -- and on a 2-round
+        # magazine (five shipping weapons carry one) two unanswered pulls took the account to zero while the
+        # gun was loaded, which `_live_ammo` then wrote to the gun as `$AMMO,<slot>,0` (polish review
+        # 2026-09-18). An expired press is now CLEARED.
         st._inject_rx("$BUT,0,1,*"); await settle(st)
-        assert st._acct_live(0) == 18
+        assert st._acct_live(0) == 19, "one outstanding press, not a stale one stacked under it"
         clock.advance(st.TRIGGER_NO_FIRE_S + 0.1)
         assert st._acct_live(0) == 20, "unanswered presses must expire; the gun's number wins"
     asyncio.run(go())
@@ -1884,6 +1888,71 @@ def test_damage_restarts_the_clock_and_abandons_a_refill_already_running():
         await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S + 3.0)
         assert since(mgr, n2).count(c["shield_charging"]) == 1, "the next refill is its own piece of news"
         assert st.shield == st.max_shield
+    asyncio.run(go())
+
+
+def test_a_stand_down_mid_refill_re_earns_the_delay_and_never_announces_twice():
+    """Polish review 2026-09-18. The stand-down abandons a running refill, and the comment beside it says the
+    refill "re-earns its delay once the player is back". It did not: `_shield_quiet_at` was left where it was,
+    so the next tick found the delay long since served, started again, and said `shield_charging` a SECOND
+    time for one refill. A stun, a resync, a reconcile and a BLE blip are all ordinary mid-match events."""
+    async def go():
+        st, mgr, clock = mk_shields()
+        await shielded(st, mgr, clock)
+        c = shield_cues(st)
+        n = mark(mgr)
+        clock.advance(1.0)
+        st._on_rx("$HP,30,0,0,*"); await settle(st)
+        await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S + 0.6)
+        assert since(mgr, n).count(c["shield_charging"]) == 1, "setup: a refill is running"
+        assert 0 < st.shield < st.max_shield, f"setup: part way up ({st.shield})"
+        n2 = mark(mgr)
+        st.config["stun"] = {"duration_s": 1}   # the EMP cell, so `_stun` is a stun and not a no-op. Short, so the
+        #                                       window below is the RESTAMPED one and not the original serving out.
+        st._stun(); await settle(st)
+        assert st.stunned is not None, "setup: stunned"
+        await shield_run(st, mgr, clock, 0.5)
+        assert grants(mgr, n2) == 0, "setup: a disarmed gun is not granted to"
+        clock.advance(st.stun_s + 0.1); st.poll(); await settle(st)
+        assert st.stunned is None, "setup: the stun has expired"
+        n3 = mark(mgr)
+        await shield_run(st, mgr, clock, 1.5)
+        assert grants(mgr, n3) == 0, "the refill must serve a fresh quiet window, not resume on the next tick"
+        assert c["shield_charging"] not in since(mgr, n3), "one refill is one piece of news"
+        await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S + 3.0)
+        assert since(mgr, n3).count(c["shield_charging"]) == 1, "and the refill after the new quiet is its own news"
+    asyncio.run(go())
+
+
+def test_the_heartbeat_follows_the_pool_and_stops_when_the_refill_gives_up():
+    """Two latches, both wrong in the same place. `_shield_down` means "it BROKE this life", which is right for
+    the break cue and wrong for the heartbeat: a hit that abandons a refill half way up leaves 40 of 70 on the
+    pool and the gun went on saying the shield was gone. And a refill that GAVE UP is one nothing can fix, so
+    replaying the clip every 1.94 s for the rest of the life is noise (polish review 2026-09-18)."""
+    async def go():
+        st, mgr, clock = mk_shields()
+        await shielded(st, mgr, clock)
+        c = shield_cues(st)
+        clock.advance(1.0)
+        st._on_rx("$HP,30,0,0,*"); await settle(st)
+        await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S + 0.9)
+        assert 0 < st.shield < st.max_shield, f"setup: part way up ({st.shield})"
+        n = mark(mgr)
+        st._on_rx(f"$HP,20,0,{st.shield},*"); await settle(st)     # a hit on HEALTH: the shield stays up
+        await shield_run(st, mgr, clock, 6.0)
+        assert c["shield_loop"] not in since(mgr, n), "the shield is not GONE, so nothing may say it is"
+        # ...and once the cap gives up on a gun that never reports full, the heartbeat stops with it.
+        st2, mgr2, clock2 = mk_shields()
+        await shielded(st2, mgr2, clock2)
+        c2 = shield_cues(st2)
+        clock2.advance(1.0)
+        st2._shield_quiet_at = clock2.t - S.SHIELD_REGEN_DELAY_S
+        st2._prev_shield = st2.shield
+        st2.shield = 0; st2._shield_down = True; st2._shield_gave_up = True
+        n2 = mark(mgr2)
+        await shield_run(st2, mgr2, clock2, 20.0)
+        assert c2["shield_loop"] not in since(mgr2, n2), \
+            "a refill nothing can fix must not replay the clip for the rest of the life"
     asyncio.run(go())
 
 

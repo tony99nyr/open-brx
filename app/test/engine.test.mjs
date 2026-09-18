@@ -2788,6 +2788,104 @@ test('F259: the echo is not evidence of anything else either -- no phantom shots
   assert.equal(gun.mag, 36 - gun.fired, 'and the gun holds what it should');
 });
 
+// ---------- F259 (polish review 2026-09-18): the account must never charge for a round that never left ----------
+// `_acctPress` books a round the instant the trigger comes down, and only a CONFIRMED magazine drop ever
+// gives it back (`_acctAmmo`). Nothing else in a life clears it. That matters because `_liveAmmo` -- the
+// stun snapshot and the operator's RESYNC GUN -- restores `mag - fired` straight to the gun, and neither
+// consults the `shotInFlight` guard that protects the accuracy writer. So a press the gun cannot answer is
+// a round the player loses the next time they are stunned, and enough of them write `$AMMO,<slot>,0` at a
+// gun that is holding rounds. Five shipping weapons carry a 2-round magazine, so "enough" is two.
+
+test('F259: a pull inside the weapon own fire interval books nothing -- the gun is still cycling', () => {
+  const h = armRecoil(RECOIL_PROFILE);
+  const iv = h.eng._fireIntervalMs(0);
+  assert.ok(iv > 0, `setup: the golden $WEAP,0 declares a fire interval (got ${iv})`);
+  h.frame('$ALCD,32,100,0,192,0,*');                  // the account re-seats on the gun's own number
+  assert.equal(h.eng._acctLive(0), 32, 'setup: a full magazine with nothing outstanding');
+  h.frame('$BUT,0,1,*');
+  assert.equal(h.eng._acctLive(0), 31, 'the first pull books the round it is about to fire');
+  h.adv(Math.floor(iv / 2)); h.frame('$BUT,0,1,*');   // the player mashes, inside the same cycle
+  assert.equal(h.eng._acctLive(0), 31,
+    'a pull the gun cannot answer yet must not spend a round the player still has');
+  h.adv(iv + 10); h.frame('$BUT,0,1,*');
+  assert.equal(h.eng._acctLive(0), 30, 'a pull a full cycle later is a real round again');
+});
+
+test('F259: an expired press is CLEARED, not merely ignored, so a stun cannot disarm a loaded gun', () => {
+  // `_acctLive` only IGNORES a press past TRIGGER_NO_FIRE_MS; `a.fired` keeps the count. So the next pull
+  // that gets through adds to it, and on a 2-round magazine (rocket launcher, rail gun, ion sniper, laser
+  // cannon, energy launcher) two unanswered pulls take the account to zero while the gun is full.
+  const h = armRecoil(RECOIL_PROFILE);
+  h.frame('$ALCD,2,100,0,2,0,*');
+  assert.equal(h.eng._acctLive(0), 2, 'setup: two rounds, both still in the gun');
+  h.frame('$BUT,0,1,*');                              // a pull the gun never answers: no $ALCD ever follows
+  h.adv(TRIGGER_NO_FIRE_MS + 100);
+  assert.equal(h.eng._acctLive(0), 2, 'the unanswered press expires and the account reads the gun again');
+  h.frame('$BUT,0,1,*');
+  assert.equal(h.eng._acctLive(0), 1,
+    'the new pull must cost ONE round: an expired press must be cleared, never re-armed beside it');
+  // ...and the consequence the player feels, on the wire.
+  h.eng.config.stun = { duration_s: 10 };
+  h.eng._stun();
+  const n = h.writes.length;
+  h.eng._stunRestore('expired');
+  const restored = h.writes.slice(n).filter(f => f.startsWith('$AMMO,0,'));
+  assert.equal(restored.length, 1, `the stun restore writes one $AMMO for slot 0: ${h.writes.slice(n).join(' | ')}`);
+  assert.equal(restored[0].split(',')[2], '1',
+    `the stun must hand back the round the gun is holding, never disarm it: ${restored[0]}`);
+});
+
+test('F259: the echo window closes on the VALUE, not the clock -- a slow reset is still not a reload', () => {
+  // ACC_ECHO_MS is a deadline. On a link slower than it, the `$WEAP` reset frame arrives AFTER the window
+  // has lapsed and lands on the ordinary path as a magazine RISE: the HUD jumps to the clip, the reload
+  // takeover is fed, and the restore frame behind it books the whole synthetic drop as a burst. That is the
+  // entire 2026-09-18 oscillation, back again, on the one link condition nobody can bench.
+  const h = armRecoil(RECOIL_PROFILE);
+  h.frame('$ALCD,11,100,0,192,0,*');
+  h.writes.length = 0;
+  h.eng._acctWrote(0, 11, 192);                       // the node writes $WEAP + $AMMO,0,11 and waits
+  h.adv(600);                                         // ...and the gun is slower than one round trip (the F266 regime)
+  const shots = h.eng.shots, burst = h.eng._recoil.burst;
+  h.frame('$ALCD,32,100,0,192,0,*');                  // the $WEAP reset, late
+  assert.equal(h.eng.state().ammo, 11,
+    'the reset is the node own write coming back: the screen must keep the account, never jump to the clip');
+  assert.equal(h.eng.reloading, null, 'and it is not a reload the player performed');
+  h.frame('$ALCD,11,100,0,192,0,*');                  // the $AMMO restore, behind it
+  assert.equal(h.eng.shots, shots, 'the pair must book no shots at all');
+  assert.equal(h.eng._recoil.burst, burst, 'and must not feed the burst counter that writes again');
+});
+
+test('F259: a melee swing does not buy the player a free round of recoil', () => {
+  // `_acctSpent` asks `slot === this.activeSlot`, and `this.activeSlot` is whatever slot spoke LAST: melee
+  // is slot 4 and arrives on its own `$ALCD`, so after a swing `activeSlot` is 4 while `_recoil` is still
+  // the primary's model. The next real round on slot 0 is then judged against the wrong slot and dropped
+  // from the burst. The model is armed for a SLOT, so that is what the guard has to name.
+  const h = armRecoil(RECOIL_PROFILE);
+  h.frame('$ALCD,36,100,0,216,0,*');                  // the baseline `armRecoil` left, restated as an $ALCD
+  assert.equal(h.eng._recoil.burst, 0, 'setup: no rounds behind us');
+  h.frame('$ALCD,35,100,0,216,0,*');
+  assert.equal(h.eng._recoil.burst, 1, 'setup: an ordinary round counts');
+  h.frame('$ALCD,1,100,4,0,0,*');                     // a melee swing reports on slot 4
+  assert.equal(h.eng._recoil.burst, 1, 'the swing itself is not a round out of the primary');
+  h.frame('$ALCD,34,100,0,216,0,*');                  // the next round out of the primary
+  assert.equal(h.eng._recoil.burst, 2,
+    'a round out of the weapon the model is armed for must count, whatever spoke last');
+});
+
+test('F259: a confirmed swap arms the NEW slot, and the new weapon rounds count against it', () => {
+  // `_recoilArm` reads `this.activeSlot` for the weapon it looks up AND for the slot it files the model
+  // under, and the assignment used to sit BELOW the block that calls it -- so the swap armed the old
+  // weapon's profile under the old slot, which is the opposite of what its own comment claims.
+  const h = armRecoil(RECOIL_PROFILE);
+  h.frame('$ALCD,36,100,0,216,0,*');
+  h.eng.switching = { from: 0, at: h.eng.now(), to: 1 };
+  h.frame('$ALCD,6,100,1,24,0,*');                    // the swap lands on slot 1
+  assert.equal(h.eng.switching, null, 'setup: the swap is confirmed');
+  assert.equal(h.eng._recoil.slot, 1, 'the model must be armed for the slot the player is now holding');
+  h.frame('$ALCD,5,100,1,24,0,*');                    // its first round
+  assert.equal(h.eng._recoil.burst, 1, 'and that slot rounds must reach it');
+});
+
 // ---------- F259: one step, not a walk ----------
 
 test('F259: a sustained burst costs THREE $WEAP writes -- two down, one back -- not one per round', () => {
@@ -3130,6 +3228,10 @@ test('F259: the echo window covers BOTH answers to a write -- the $WEAP reset AN
   h.frame('$ALCD,6,100,0,215,0,*');           // the gun is down to 6; the account agrees
   assert.equal(h.eng._acctLive(0), 6);
   const burstBefore = h.eng._recoil.burst;
+  // The 30-round drop above already degraded the weapon and wrote for it, so a window is open with that
+  // write's own reset and restore still in the air. This test is about ONE write, so start its count from
+  // one: the window now counts unanswered writes, not just the clock (polish review 2026-09-18).
+  h.eng._shotAcct[0].echoPending = 0;
   h.eng._acctWrote(0, 6);                     // the node writes $WEAP + $AMMO,0,6
   h.frame('$ALCD,32,100,0,215,0,*');          // answer 1: the $WEAP reset, back up to the compiled clip
   assert.equal(h.eng._acctLive(0), 6, 'the reset echo must not move the account');

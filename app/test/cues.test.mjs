@@ -109,6 +109,17 @@ test('a dry reserve is never nagged -- there is nothing to reload to', () => {
   assert.equal(h.count(NAG), 0, 'no reserve, no nag');
 });
 
+test('a slot the gun has never reported a reserve for is never nagged', () => {
+  // The fallback read the LAST reserve reported on any slot, so a slot with nothing behind it borrowed the
+  // primary's. Melee is the live case: it is slot 4, it arrives on its own `$ALCD`, and `_onAmmo` makes
+  // whatever spoke last the active slot -- so every pull after a swing was nagged against slot 0's reserve.
+  const h = harness();
+  h.f('$ALCD,30,100,0,192,0,*');                // slot 0 has a reserve, and it is not empty
+  h.eng.activeSlot = 3;                          // a slot the gun has said nothing at all about
+  for (let i = 0; i < 9; i++) h.pull();
+  assert.equal(h.count(NAG), 0, 'RELOAD against another slot reserve is a guess, and the player can hear it');
+});
+
 test('an overheated gun is silent -- the magazine is not what stopped the round', () => {
   const h = harness();
   h.f('$ALCD,30,100,0,192,0,*').f('$ALCD,0,100,0,192,99,*');   // empty AND heat-locked (HEAT_LOCKOUT)
@@ -282,6 +293,61 @@ test('S29: a gun that never reports full is granted at a capped number of times,
   assert.equal(h.grants(), Math.ceil(MAX_SHIELD / 10) + 3, 'a full pool of grants plus the slack, then it gives up');
   h.run(30000, { echo: false });
   assert.equal(h.grants(), Math.ceil(MAX_SHIELD / 10) + 3, 'and it does not start again on its own');
+});
+
+test('S29: a stand-down mid-refill re-earns the delay, and never announces the refill twice', () => {
+  // The stand-down abandons a running refill, and the comment beside it says it "re-earns its delay once the
+  // player is back". It did not: `_shieldQuietAt` was left where it was, so the very next tick found the
+  // delay long since served, started again, and said `shield_charging` a second time for one refill. A stun,
+  // a resync, a reconcile or a BLE blip are all ordinary mid-match events, so this is reachable every game.
+  const h = shielded();
+  h.f('$HP,30,0,0,*');
+  h.run(DELAY + 600);
+  assert.equal(h.count(CHARGING), 1, 'setup: a refill is running');
+  const mid = h.grants();
+  assert.ok(mid > 0 && h.eng.shield < MAX_SHIELD, 'setup: part way up');
+  h.eng.config.stun = { duration_s: 1 };
+  h.eng._stun();
+  h.run(500, { echo: false });
+  assert.equal(h.grants(), mid, 'setup: a disarmed gun is not granted to');
+  h.eng._stunRestore('expired');
+  h.run(1500, { echo: false });
+  assert.equal(h.grants(), mid, 'the refill must serve a fresh quiet window, not resume on the next tick');
+  assert.equal(h.count(CHARGING), 1, 'one refill is one piece of news, however many stand-downs interrupt it');
+  h.run(DELAY + 3000);
+  assert.equal(h.count(CHARGING), 2, 'and the refill after the new quiet window is its own news');
+});
+
+test('S29: a gun that never answers stops the heartbeat too, not just the grants', () => {
+  const h = shielded();
+  h.f('$HP,30,0,0,*');
+  h.run(DELAY + 30000, { echo: false });
+  assert.equal(h.eng._shieldGaveUp, true, 'setup: the cap gave up on a gun that never reports full');
+  const loops = h.count(LOOP);
+  h.run(20000, { echo: false });
+  assert.equal(h.count(LOOP), loops,
+    'N74 must not replay every 1.94 s for the rest of the life on a gun nothing can fix');
+});
+
+test('S29: the heartbeat follows the POOL, not the break -- a shield part way back is not a shield gone', () => {
+  // `_shieldDown` means "it broke this life", which is the right latch for the BREAK cue and the wrong one
+  // for the heartbeat. A hit that abandons a refill half way up leaves 40 of 70 on the pool, and the gun
+  // went on saying the shield was gone.
+  const h = shielded();
+  h.f('$HP,30,0,0,*');
+  h.run(DELAY + 900);
+  assert.ok(h.eng.shield > 0 && h.eng.shield < MAX_SHIELD, `setup: part way up (${h.eng.shield})`);
+  h.f(`$HP,20,0,${h.eng.shield},*`);            // a hit on health: the refill is abandoned, the shield stays up
+  const loops = h.count(LOOP);
+  h.run(6000, { echo: false, hp: 20 });
+  assert.equal(h.count(LOOP), loops, 'the shield is not GONE, so nothing may say it is');
+});
+
+test('S29: a relink does not announce a break that happened while the node was away', () => {
+  const h = shielded();
+  h.eng.reconciling = { at: h.eng.now() };      // §3.10: the node infers nothing in this window
+  h.f('$HP,30,0,0,*');                          // the gun's first word back, reporting a shield long gone
+  assert.equal(h.count(DOWN), 0, 'a reconcile frame is the gun catching us up, not a break happening now');
 });
 
 test('S29: no heartbeat is written in the same tick the recharge starts', () => {

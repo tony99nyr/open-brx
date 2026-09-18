@@ -1,21 +1,28 @@
 """FakeTagger — an in-memory BRX emulator for hardware-free testing.
 
 Models a gun's state and its wire behaviour (config frames, `$SPAWN`/`$LIFE`,
-`$VERSION`/`$VOLTS`, and — the point — producing `$HIR`+`$HP` when it's "shot").
-`FakeConnectionManager` presents the same surface `run_live`/the game loop uses
-(scan/connect/send/sessions/get_events/disconnect) plus `inject_hit`/`inject_kill`
-to simulate shooting. Together they let the ENTIRE live path (`run_live`, the
-driver, scoring, respawn, teardown) run in CI with no Bluetooth and no bench.
+`$WEAP`/`$AMMO` magazine accounting, `$VERSION`/`$VOLTS`, and — the point — producing
+`$HIR`+`$HP` when it's "shot"). `FakeConnectionManager` presents the same surface
+`run_live`/the game loop uses (scan/connect/send/sessions/get_events/disconnect) plus
+`inject_hit`/`inject_kill` to simulate shooting. Together they let the ENTIRE live path
+(`run_live`, the driver, scoring, respawn, teardown) run in CI with no Bluetooth and no bench.
 
 No bleak import — built on `protocol.BufferedEvent`/`parse_event`, so it loads
 anywhere (WSL/CI included).
 """
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Callable, Optional
 
 from .protocol import BufferedEvent, parse_event
+
+# F259/S42 (bench 2026-09-17): a $WEAP/$AMMO write does not land on the gun instantly -- the
+# bench measured 30-90 ms. Modelled at the midpoint the node's own tests use for the same
+# number (app/test/engine.test.mjs WRITE_MS). The old fake answered on the spot and silently,
+# which is the fiction that let three magazine defects reach a hardware bench on 2026-09-18.
+_ALCD_WRITE_DELAY_S = 0.04
 
 # F78: the `$SIR` FUNCTION classes the fake applies, all bench-measured (protocol/brx-protocol.md §5,
 # magnitude 20 / baseline 45/70/0, 2026-08-27 + 2026-09-02). A word whose <proto, subtype> cell has NO row
@@ -56,7 +63,7 @@ class FakeTagger:
 
     def __init__(self, address: str, name: str | None = None, hp: int = 45,
                  armor: int = 70, team: int = 0, damage: int = 25,
-                 friendly_fire: bool = False):
+                 friendly_fire: bool = False, clock: Callable[[], float] | None = None):
         self.address = address
         self.name = name or f"FAKE-{address[-4:]}"
         self.cfg_hp, self.cfg_armor, self.cfg_shield = hp, armor, 0
@@ -66,7 +73,16 @@ class FakeTagger:
         self.damage = damage
         self.friendly_fire = friendly_fire  # set from $GSET token1 when a game configs it
         self._tap = False                   # $PHONE opens the event tap (models the ritual)
-        self._out: list[str] = []          # queued rx frames (tagger→host)
+        self._out: list[str] = []          # queued rx frames (tagger→host), delivered at once
+        # F259/S42: one magazine + reserve per weapon slot, keyed by the `$WEAP`/`$AMMO` slot
+        # token. Unknown until a `$WEAP` or `$AMMO` write seeds it -- `.get(slot, 0)` reads a
+        # slot nobody has armed yet as empty, which is the honest answer, not a guess.
+        self.mag: dict[int, int] = {}
+        self.reserve: dict[int, int] = {}
+        # `clock` lets a test drive time deterministically (no real sleep, so nothing races
+        # under load); a live caller (the stage, `run_live`) takes the real wall clock.
+        self._clock: Callable[[], float] = clock or time.monotonic
+        self._pending: list[tuple[float, str]] = []   # (ready_at, frame) -- delayed $ALCD replies
         # F78: the `$SIR` table, keyed <proto, subtype> -> function. Boots with the stock table (see
         # `_boot_sir_table`), `$CLEAR` WIPES it (F11), each `$SIR` row written re-arms one cell. `$SPAWN`
         # does not touch it -- only a `$SIR` write or a "power cycle" (a new FakeTagger) brings it back.
@@ -155,10 +171,40 @@ class FakeTagger:
                 self._out.append(f"$HP,{self.hp},{self.armor},{self.shield},*")
             else:
                 self.alive = False
-                # ammo is untouched by a lethal write; the fake does not model a magazine, and the
-                # real frame carries whatever was loaded, so 0,0 is the honest stand-in here.
+                # $LIFE's own frame shape carries no ammo tokens at all (protocol §5), so there is
+                # nothing to read here; the magazine is untouched by a lethal write.
                 self._out.append("$LCD,0,0,0,0,0,0,*")
-        # all other config frames (START/GSET/WEAP/BMAP/VOL/AMMO/PLAY…) accepted
+        elif cmd == "WEAP":
+            # F259/S42 (bench 2026-09-17): a $WEAP write RESETS the slot's magazine to the frame's
+            # baked-in clip -- t16/t39, index 17 (`frames.py._WEAP_MAG`; t39 == t16 on every stock
+            # frame, protocol §6) -- and its reserve to t40, index 41 (`_WEAP_RESERVE_ECHO`; F207:
+            # the gun's own $ALCD mirrors t40, not t17). A short/stub frame carries neither and the
+            # fake leaves whatever the slot already holds, same as a real gun would.
+            slot = _int(t[1]) if len(t) > 1 else None
+            if slot is not None:
+                clip = _int(t[17]) if len(t) > 17 else None
+                if clip is not None:
+                    self.mag[slot] = clip
+                rsv = _int(t[41]) if len(t) > 41 else None
+                if rsv is None:
+                    full = _int(t[18]) if len(t) > 18 else None   # t17 ammoReserv, the fallback ceiling
+                    rsv = None if full is None else full // 2
+                if rsv is not None:
+                    self.reserve[slot] = rsv
+                self._queue_alcd(slot)
+        elif cmd == "AMMO":
+            # `$AMMO,<slot>,<mag>,<reserve>,…` SETS the magazine and reserve outright -- the
+            # accuracy writer's own restore (S42) and the loadout spawn ammo both use this shape.
+            slot = _int(t[1]) if len(t) > 1 else None
+            if slot is not None:
+                mag = _int(t[2]) if len(t) > 2 else None
+                rsv = _int(t[3]) if len(t) > 3 else None
+                if mag is not None:
+                    self.mag[slot] = mag
+                if rsv is not None:
+                    self.reserve[slot] = rsv
+                self._queue_alcd(slot)
+        # all other config frames (START/GSET/BMAP/VOL/PLAY…) accepted
 
     # -- IR hit → events ----------------------------------------------------- #
     def receive_ir(self, shooter_team: int, shooter_id: int = 1,
@@ -242,6 +288,31 @@ class FakeTagger:
         else:
             self._out.append(f"$HP,{self.hp},{self.armor},{self.shield},*")
 
+    def _alcd_frame(self, slot: int) -> str:
+        """`$ALCD,<mag>,<accuracy>,<slot>,<reserve>,<heat>,*` for `slot`'s CURRENT counts.
+
+        Accuracy and heat are not modelled here (nothing downstream of `frames.alcd_ammo` reads
+        them), so they are pinned at 100/0 -- a stand-in, not a measurement.
+        """
+        return f"$ALCD,{self.mag.get(slot, 0)},100,{slot},{self.reserve.get(slot, 0)},0,*"
+
+    def _queue_alcd(self, slot: int) -> None:
+        """Queue `slot`'s `$ALCD` echo `_ALCD_WRITE_DELAY_S` from now -- a `$WEAP`/`$AMMO` write is
+        a BLE round trip, not an instant local call, so `drain()` must not hand it back early."""
+        self._pending.append((self._clock() + _ALCD_WRITE_DELAY_S, self._alcd_frame(slot)))
+
+    def fire(self, slot: int = 0) -> None:
+        """One round leaves `slot`: decrements the magazine and reports it AT ONCE -- this is the
+        gun's own action, not a BLE write, so it is not held behind `_ALCD_WRITE_DELAY_S`.
+
+        An empty magazine has no round to report and is left alone; dry-fire is not modelled.
+        """
+        mag = self.mag.get(slot, 0)
+        if mag <= 0:
+            return
+        self.mag[slot] = mag - 1
+        self._out.append(self._alcd_frame(slot))
+
     def _drain_pools(self, d: int) -> None:
         """Damage drains shield -> armour -> HP, 1:1, overflow spilling inward (protocol §5)."""
         if self.shield >= d:
@@ -276,7 +347,13 @@ class FakeTagger:
         self._out.append(f"$HIR,0,{proto},0,{owner_team},{mag},0,0,*")
 
     def drain(self) -> list[str]:
-        out, self._out = self._out, []
+        """Everything ready to hand the host: every instant frame, plus any delayed `$ALCD` whose
+        `_ALCD_WRITE_DELAY_S` has elapsed on `self._clock()`. A write made moments ago stays queued
+        -- draining right after `write()` must see nothing, exactly like the real BLE round trip."""
+        now = self._clock()
+        ready = [frame for (ready_at, frame) in self._pending if ready_at <= now]
+        self._pending = [(ready_at, frame) for (ready_at, frame) in self._pending if ready_at > now]
+        out, self._out = self._out + ready, []
         return out
 
 

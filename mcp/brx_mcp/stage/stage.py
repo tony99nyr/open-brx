@@ -526,6 +526,10 @@ class GunStage:
         self._prev_ammo: dict[int, int] = {}       # per weapon slot ($ALCD token 3): last mag seen
         self._shot_acct: dict[int, dict] = {}   # F259: per slot, the node's OWN magazine account -- see `_acct_live`
         self._last_spent: int = 0       # F259: rounds the LAST $ALCD actually cost, off the account (`_acct_spent`)
+        # The slot engine.js `_recoil` is ARMED for (`_recoil.slot`). The stage drives no recoil model, but it
+        # must agree about WHICH slot a round is booked against, because that is what the phone reads as fire.
+        # Moved exactly where the phone calls `_recoilArm`: a head, a spawn, a revive and a confirmed swap.
+        self._recoil_slot: int = 0
         self._prev_reserve: dict[int, int] = {}    # per weapon slot: last reserve seen -- the stun restore needs the LIVE pair (F15/F87)
         self.heat_by_slot: dict[int, int] = {}     # per weapon slot ($ALCD token 5): last heat seen (engine.js `heatBySlot`)
         self._heat_at: dict[int, float] = {}       # per slot, `self.now()` of the last heat token (engine.js `_heatAt`)
@@ -1180,7 +1184,29 @@ class GunStage:
     # seconds after he stopped shooting. So from the instant the node writes a magazine until the gun
     # confirms it (or ACC_ECHO_S passes), the NODE owns that slot and every `$ALCD` is bookkeeping. Outside
     # that window the gun always wins.
-    ACC_ECHO_S = 0.4        # engine.js ACC_ECHO_MS
+    #
+    # Polish review 2026-09-18: it was 0.4 s, and the window closed on the CLOCK. On a link slower than that
+    # the `$WEAP` reset frame arrives after the window has lapsed, lands on the ordinary path as a magazine
+    # RISE, and the restore behind it books the whole synthetic drop as fire -- the 2026-09-18 oscillation,
+    # back again. The window now closes on the VALUE (`_acct_ammo` shuts it the moment the gun reports the
+    # number the node wrote) and this is only the horizon past which the node stops waiting. It also COUNTS
+    # unanswered writes: a verify retry can put a second `$WEAP`/`$AMMO` pair in the air behind the first.
+    #
+    # ⚠ A DIAL, and the only number here with no measurement behind it. 0.7 s covers a link seven times
+    # slower than anything the bench has seen (30-90 ms). Shorter beats tidier: a gun can stop talking
+    # ENTIRELY (one went silent for 100 s mid-match with its ammo frozen at 32), so when the node is blind it
+    # should admit it sooner. Every millisecond of horizon shows an account instead of the gun.
+    ACC_ECHO_S = 0.7        # engine.js ACC_ECHO_MS
+
+    def _fire_interval_s(self, slot: int) -> float | None:
+        """engine.js `_fireIntervalMs`: a slot's time between rounds, `$WEAP` token 14 (split index 15) off
+        the head the gun was given. None for a stub frame with no tokens, or no frame for that slot. PURE."""
+        for f in self.bundle.get("head") or []:
+            if str(f).startswith(f"$WEAP,{slot},"):
+                t = str(f).split(",")
+                ms = _tok_int(t, 15)
+                return ms / 1000.0 if ms and ms > 0 else None
+        return None
 
     def _acct_live(self, slot: int, now: float | None = None) -> int | None:
         """engine.js `_acctLive`: the magazine a write should restore for `slot`, or None before the gun's
@@ -1206,7 +1232,7 @@ class GunStage:
         """engine.js `_acctEchoing`: is the node still waiting for the gun to echo a magazine IT wrote?
         See the echo-window note above. PURE."""
         a = self._shot_acct.get(slot)
-        if a is None or not a["echo_until"]:
+        if a is None or not a.get("echo_pending"):
             return False
         now = self.now() if now is None else now
         return now < a["echo_until"]
@@ -1216,13 +1242,20 @@ class GunStage:
         hold. Take the account there and open the echo window, so the gun's answers cannot read as fire."""
         a = self._shot_acct.get(slot)
         if a is None:
-            a = self._shot_acct[slot] = {"mag": mag, "fired": 0, "at": 0.0, "res": None, "echo_until": 0.0, "echo_expect": None}
+            a = self._shot_acct[slot] = {"mag": mag, "fired": 0, "at": 0.0, "res": None, "echo_until": 0.0, "echo_expect": None, "echo_pending": 0}
+        now = self.now()
         a["mag"] = mag
         a["fired"] = 0
         a["at"] = 0.0
         if res is not None:
             a["res"] = res          # the `$WEAP` resets the RESERVE too, so the screen needs the node's number for that as well
-        a["echo_until"] = self.now() + self.ACC_ECHO_S
+        # ⚠ Writes are COUNTED, not just timed (polish review 2026-09-18). The verify can retry while the
+        # first write's frames are still in the air, and then two `$WEAP` resets are coming back for one
+        # window. Closing on the first restore left the second reset to land as a magazine rise.
+        if not now < a["echo_until"]:
+            a["echo_pending"] = 0   # the last window lapsed unanswered: do not carry its count
+        a["echo_pending"] = a.get("echo_pending", 0) + 1
+        a["echo_until"] = now + self.ACC_ECHO_S
         a["echo_expect"] = mag
 
     def _publish_ammo(self, slot: int, mag: int | None, reserve: int | None) -> None:
@@ -1239,9 +1272,15 @@ class GunStage:
         """engine.js `_acctSpent`: rounds that LEFT the gun -- the drop in the ACCOUNT's magazine across one
         `$ALCD`, never the raw frame delta. The stage drives no recoil model (see KNOWN_UNMIRRORED), so this
         has nothing to feed yet; it exists, and is tested, because the NUMBER is the thing the phone reads as
-        fire and a stage that computed it differently would predict a different gun."""
+        fire and a stage that computed it differently would predict a different gun.
+
+        ⚠ The phone asks `slot == this._recoil.slot`, the slot the accuracy model is ARMED for, not the
+        active slot (polish review 2026-09-18). `active_slot` is whatever spoke last, and melee is slot 4 and
+        arrives on its own `$ALCD` without the model re-arming, so after a swing the next real round out of
+        the primary was judged against the wrong slot and dropped. The stage drives no recoil model, so it
+        mirrors the ANCHOR instead: `_recoil_slot`, moved exactly where the phone re-arms."""
         a = self._shot_acct.get(slot)
-        if a is None or before is None or slot != self.active_slot:
+        if a is None or before is None or slot != self._recoil_slot:
             return
         self._last_spent = max(0, before - int(a["mag"]))
 
@@ -1251,12 +1290,27 @@ class GunStage:
 
         ⚠ Deliberately books the round for the RESTORE only. On the phone this does NOT step recoil: a write
         put on the wire before the gun had fired would take the round off a magazine the gun was about to
-        decrement itself, and charge the player twice (bench 2026-09-18)."""
+        decrement itself, and charge the player twice (bench 2026-09-18).
+
+        ⚠ Polish review 2026-09-18, and the reason this is not just `fired += 1`. `fired` is given back by ONE
+        thing -- a confirmed magazine drop in `_acct_ammo` -- and `_acct_live` merely IGNORED a press past
+        TRIGGER_NO_FIRE_S rather than dropping it, so the next pull that got through added to a count that was
+        still there. Five shipping weapons carry a 2-round magazine, so two unanswered pulls took the account
+        to zero while the gun was loaded, and `_live_ammo` then handed the gun `$AMMO,<slot>,0` on the next
+        stun. A pull the gun is still CYCLING through fires nothing at all, so it must not spend a round
+        either: `$WEAP` token 14 is the only signal for whether this pull can be answered."""
         a = self._shot_acct.get(self.active_slot)
         if a is None:
             return
+        now = self.now()
+        if a["at"] and now - a["at"] >= self.TRIGGER_NO_FIRE_S:
+            a["fired"] = 0
+            a["at"] = 0.0
+        iv = self._fire_interval_s(self.active_slot)
+        if iv and a["at"] and now - a["at"] < iv:
+            return
         a["fired"] = min(a["mag"], a["fired"] + 1)
-        a["at"] = self.now()
+        a["at"] = now
 
     def _acct_ammo(self, slot: int, mag: int, prev: int | None) -> int | None | _Ignore:
         """engine.js `_acctAmmo`: every `$ALCD` that reached `_on_ammo` feeds the account FIRST, before
@@ -1268,14 +1322,17 @@ class GunStage:
         A round that leaves INSIDE the window is not booked; see the engine.js note."""
         a = self._shot_acct.get(slot)
         if a is None:
-            self._shot_acct[slot] = {"mag": mag, "fired": 0, "at": 0.0, "res": None, "echo_until": 0.0, "echo_expect": None}
+            self._shot_acct[slot] = {"mag": mag, "fired": 0, "at": 0.0, "res": None, "echo_until": 0.0, "echo_expect": None, "echo_pending": 0}
             return prev                             # the first frame of a life seeds it
         if self._acct_echoing(slot):
             if mag > a["echo_expect"]:
                 return IGNORE
             prev = int(a["mag"])                    # the restore has landed: measure from the number the node wrote
-        a["echo_until"] = 0.0
-        a["echo_expect"] = None
+            a["echo_pending"] -= 1                  # ...and it answered one write. Another may be in the air behind it.
+        if not a.get("echo_pending", 0) > 0:
+            a["echo_pending"] = 0
+            a["echo_until"] = 0.0
+            a["echo_expect"] = None
         before = int(a["mag"])
         d = prev - mag if prev is not None and mag < prev else 0
         if d:
@@ -1283,6 +1340,7 @@ class GunStage:
             if not a["fired"]:
                 a["at"] = 0.0
         a["mag"] = mag                              # the gun wins, always
+        a["res"] = None                             # this frame IS the gun, so it owns the reserve again
         self._acct_spent(slot, before)
         return prev
 
@@ -1309,7 +1367,7 @@ class GunStage:
         the 5th pull of one dry spell, then every 3rd after it. A dry reserve stays SILENT -- "Reload" said to
         a player with nothing to reload to is a lie -- and a reserve the gun has never reported counts as
         none, the same rule `reload()` uses to refuse a reload it cannot prove is possible."""
-        reserve = self._prev_reserve.get(self.active_slot, self.reserve)
+        reserve = self._prev_reserve.get(self.active_slot)
         if not (reserve and reserve > 0):
             return
         self._dry_pulls += 1
@@ -1381,7 +1439,7 @@ class GunStage:
         self._arm_pending = None                                 # F209: a head is fn 28 throughout
         self.spawned = False; self.alive = False; self.scream_this_life = None   # a fresh head: no scream written yet
         self._reset_hill()                                       # engine.js `_resetHill` on a new match: game 2 must not inherit game 1's point or its once-per-game warnings
-        self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = {}; self.active_slot = 0; self.reloading = None   # engine.js `_writeHead`
+        self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = {}; self.active_slot = 0; self._recoil_slot = 0; self.reloading = None   # engine.js `_writeHead`
         hs = self.bundle.get("headset") or {}
         if hs.get("pregame"):
             await self.write(hs["pregame"], "headset pregame")
@@ -1502,7 +1560,7 @@ class GunStage:
         # in and never inside the spawn write.
         self._shield_regen = None; self._shield_down = False; self._shield_loop_at = 0.0
         self._shield_gave_up = False; self._shield_quiet_at = self.now()
-        self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = {}; self.active_slot = 0    # engine.js: a spawn/revive puts the gun back on slot 0; both ammo maps reset (stun snapshot, polish 2026-09-11)
+        self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = {}; self.active_slot = 0; self._recoil_slot = 0    # engine.js: a spawn/revive puts the gun back on slot 0; both ammo maps reset (stun snapshot, polish 2026-09-11)
         self.heat_by_slot = {}; self._heat_at = {}                            # engine.js `_afterSpawn`/`_revive`: a fresh life starts cool
         # engine.js `_afterSpawn`/`_revive` clear all THREE: a takeover from the last life, the verdict it
         # left behind, and any button still down. Clearing only `reloading` left the previous life's
@@ -1872,6 +1930,13 @@ class GunStage:
         if not self.shield_regen_on:
             return
         if self._stand_down(("spawned", "ble", "alive", "stunned")):
+            # ⚠ Restamping the quiet clock is what makes "abandoned, not paused" TRUE (polish review
+            # 2026-09-18). Clearing `_shield_regen` alone put the next tick straight back at the top with
+            # the delay long since served, so the refill resumed at once and said `shield_charging` a
+            # SECOND time for one refill. Only an abandoned refill restamps: a stand-down that interrupts
+            # the WAIT must not keep pushing the clock out.
+            if self._shield_regen:
+                self._shield_quiet_at = now
             self._shield_regen = None
             return
         if self.shield >= self.max_shield:
@@ -1881,7 +1946,12 @@ class GunStage:
         # starts and answered here rather than at the top, because a heartbeat written in the same tick as
         # `shield_charging` is exactly "it stops when the recharge starts", broken.
         if self._shield_gave_up or now - self._shield_quiet_at < SHIELD_REGEN_DELAY_S:
-            if self._shield_down and not self._shield_regen:
+            # ⚠ `_shield_down` says the shield BROKE this life, which is the right latch for the break cue
+            # and the wrong one for the heartbeat: a hit that abandons a refill half way up leaves 40 of 70
+            # on the pool, and the gun went on saying the shield was gone. The heartbeat follows the POOL.
+            # And a refill that GAVE UP is one nothing can fix, so replaying N74 for the rest of the life
+            # is noise (polish review 2026-09-18).
+            if self._shield_down and self.shield == 0 and not self._shield_gave_up and not self._shield_regen:
                 self._shield_loop_tick(now)
             return
         if not self._shield_regen:
@@ -2411,7 +2481,10 @@ class GunStage:
             self._shield_gave_up = False
         # S29 (Tony, by ear 2026-09-18): the shield BREAKING is its own cue. The edge is `>0 -> 0`, so a spawn
         # (which starts at 0 and never crosses) cannot fire it, nor can a second frame repeating the 0.
-        if self.alive and self.spawned and self.max_shield > 0 and prev_shield > 0 and shield == 0:
+        # ⚠ `ble` is in the stand-down too (polish review 2026-09-18): the node infers nothing while it is
+        # re-establishing the gun state, and the first word back after a relink is the gun catching us up
+        # on a break that happened while we were away. Announcing it then names a hit taken minutes ago.
+        if not self._stand_down(("spawned", "ble", "alive")) and self.max_shield > 0 and prev_shield > 0 and shield == 0:
             self._shield_down = True
             self._shield_loop_at = self.now()   # the heartbeat starts one period LATER, not under the break cue
             self._log(f"shield depleted ({self.max_shield} gone) -- health is all that is left", "info")
@@ -2665,6 +2738,9 @@ class GunStage:
             # slot 4 is MELEE and arrives on its own $ALCD -- it is not the swap we were waiting for.
             self.last_switch_s = round(self.now() - self.switching["at"], 2)
             self.switching = None
+            # engine.js `_onAmmo`: the slot moves BEFORE the re-arm, so the new weapon gets its own profile
+            # filed under the new slot (polish review 2026-09-18).
+            self.active_slot = slot; self._recoil_slot = slot
             self._log(f"slot {slot} confirmed the swap {self.last_switch_s:g}s after ALT (incl. reaction)", "info")
         self._prev_ammo[slot] = mag
         self.active_slot = slot
@@ -2761,7 +2837,7 @@ class GunStage:
             return
         to = 1 if sw["from"] == 0 else 0
         self.switching = None
-        self.active_slot = to
+        self.active_slot = to; self._recoil_slot = to
         self._log(f"swap to slot {to} assumed after {self._switch_window_s():g}s (no shot yet)", "info")
 
     # ---- F15 / A20: the host-driven STUN (EMP), a faithful port of engine.js `_stun` / `_stunRestore` ------------
