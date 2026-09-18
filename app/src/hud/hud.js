@@ -44,13 +44,10 @@ const splitGun = g => { if (!g) return ['—', '']; return [esc(g.basename || g.
  *  (Extended Mags) marksman mag — sniper 4→8, AMR 14→28 — and a doubled sidearm or assault mag — glock 16→32,
  *  bolt rifle 18→36, stinger 18→36 — so the perk never straddles the threshold either way. */
 const AMMO_PIP_MAX = 30;
-/** Bench 2026-09-17: an energy weapon's magazine is a charge, not rounds — a bullet pip or a round count
- *  is a fiction for it either way, so it always gets the percentage bar below, never pips. A48 (merge
- *  2026-09-17) gave the catalogue the formal class flag this asked for: `weapon_class` ("ballistic" |
- *  "energy" | "melee"), which the node passes through as `st.weaponClass`. The old id regex stays as the
- *  named fallback for a pre-A48 bundle only. ⚠ The class is WIDER than the old regex: plasma_sniper,
- *  rail_gun, ion_sniper and laser_cannon are energy too, so they now read as a percentage rather than pips.
- *  All but rail_gun are hidden, and rail_gun is pickup-only. */
+/** Bench 2026-09-17: `weapon_class` ("ballistic" | "energy" | "melee", `st.weaponClass`) decides the
+ *  reload-versus-overheat WORDING (RECHARGE/HOLD TO RECHARGE for energy, RELOAD for ballistic) -- that is
+ *  its only job. The old id regex is the named fallback for a pre-A48 bundle that carries no class at
+ *  all. */
 const isEnergyWeapon = st => {
   const cls = st && st.weaponClass;
   if (cls) return cls === 'energy';
@@ -66,14 +63,32 @@ const CHARGE_RIFLE_FULL_CHARGE_COST = 10;
 /** What one full charge costs this weapon's cell, or null when it does not charge. */
 const chargeCost = st => (st && st.roundsPerCharge != null && st.roundsPerCharge > 0) ? st.roundsPerCharge
   : (st && st.weaponId === 'charge_rifle' ? CHARGE_RIFLE_FULL_CHARGE_COST : null);
+/** F248 (2026-09-17, brx-weapons): `weapon_class` decides WORDING (isEnergyWeapon above), never which
+ *  ammo gauge to draw -- the arsenal merge picked the gauge from `weapon_class === "energy"`, which is
+ *  WIDER than the old id match, so the Rail Gun (class "energy", `mag` 2, one round per shot) drew a
+ *  percentage instead of its two pips. The rule agreed with brx-weapons: draw the CELL gauge (percentage
+ *  bar / cell-count pills) exactly when a full charge costs MORE than one round (`rounds_per_charge > 1`);
+ *  otherwise draw the ordinary per-round pips or big-magazine bar, whatever the class says. A post-A48
+ *  bundle always carries `weaponClass`, so a weapon with no explicit `rounds_per_charge` -- the catalogue
+ *  default of 1, e.g. the Rail Gun -- reads as "not a cell gauge" via that branch alone. Only a bundle with
+ *  NEITHER field (pre-A48, before either concept existed) falls back to the named charge-rifle constant,
+ *  then the old id regex -- which never matched "rail_gun" in the first place, so this bug could not have
+ *  existed before A48 widened the class match. */
+const usesCellGauge = st => {
+  if (st && st.roundsPerCharge != null) return st.roundsPerCharge > 1;
+  if (st && st.weaponClass) return false;
+  return (st && st.weaponId === 'charge_rifle') ? CHARGE_RIFLE_FULL_CHARGE_COST > 1
+    : /energy|charge/i.test(String((st && st.weaponId) || ''));
+};
 /** pl4 (bench 2026-09-17, Energy Rifle): an energy weapon's reload is a HOLD of the lever. Taps of 0.15-0.23 s
  *  refilled nothing; a hold of 0.7 s or more refilled the whole cell in one step. So the prompt says how, and it
  *  is always steady (never blinking), whether the cell is empty or only below a charge: one calm rule. The
  *  empty-cell digit already warns, and NOT ENOUGH ENERGY shows only while the cell still reads above 0. */
 const HOLD_TO_RECHARGE = 'HOLD TO RECHARGE';
-/** The digit beside the gauge: a round count for a bullet weapon, a percentage of the magazine for an
- *  energy weapon (there is no "round" to count — see isEnergyWeapon just above). */
-const magText = st => isEnergyWeapon(st)
+/** The digit beside the gauge: a round count for a bullet weapon or a low-cost energy weapon (the Rail
+ *  Gun), a percentage of the cell for a weapon whose full charge costs more than one round (F248, see
+ *  usesCellGauge above). */
+const magText = st => usesCellGauge(st)
   ? `${Math.max(0, Math.min(100, Math.round(100 * st.ammo / (st.mag || Math.max(st.ammo, 1)))))}%`
   : pad2(st.ammo);
 // Polish-loop pass 1 (2026-09-12): the discovered-MC row shows the HOST, never the raw ws://…/ws join URL.
@@ -1139,11 +1154,12 @@ export class Hud {
     return [num(mine && mine.score), num(st.kills)].some(v => v != null && v >= cap - 1 && v < cap);
   }
   /** Bench 2026-09-17 (Tony): "25% /80" made no sense -- a percentage beside a reserve in ROUNDS, on a
-   *  weapon with no rounds. A bullet weapon keeps `/reserve`; an energy weapon gets one pill per FULL spare
-   *  cell (floor(reserve / clip)) plus a dimmer half-filled pill for a part cell (reserve % clip > 0), and
-   *  nothing at all once the reserve is empty (the OUT OF ENERGY prompt already says that). */
+   *  weapon with no rounds. A bullet weapon (and, per F248, a low-cost energy weapon like the Rail Gun)
+   *  keeps `/reserve`; a cell-gauge weapon gets one pill per FULL spare cell (floor(reserve / clip)) plus a
+   *  dimmer half-filled pill for a part cell (reserve % clip > 0), and nothing at all once the reserve is
+   *  empty (the OUT OF ENERGY prompt already says that). */
   _resText(st) {
-    if (!isEnergyWeapon(st)) return `/${st.reserve != null ? st.reserve : '—'}`;
+    if (!usesCellGauge(st)) return `/${st.reserve != null ? st.reserve : '—'}`;
     const clip = st.mag || Math.max(st.ammo, 1);
     const reserve = st.reserve || 0;
     if (!(reserve > 0)) return '';
@@ -1161,13 +1177,15 @@ export class Hud {
     const pct = Math.max(0, Math.min(100, Math.round(st.heat || 0)));
     return `<div class="heat ${st.overheating ? 'hot' : ''}" id="heat"><i style="width:${pct}%"></i></div>`;
   }
-  /** An energy weapon always gets the percentage bar (no round to pip). A bullet weapon gets one pip per
-   *  round up to AMMO_PIP_MAX; above it, a continuous bar (the exact count is already the digits beside
-   *  this gauge, in `#mag`/`#res`). Same warn rule throughout: alive, a known mag, at or under 15% left. */
+  /** A cell-gauge weapon (F248: `rounds_per_charge > 1`, see usesCellGauge above) gets the percentage bar
+   *  (no round to pip). Everything else -- a bullet weapon, or a low-cost energy weapon like the Rail Gun
+   *  -- gets one pip per round up to AMMO_PIP_MAX; above it, a continuous bar (the exact count is already
+   *  the digits beside this gauge, in `#mag`/`#res`). Same warn rule throughout: alive, a known mag, at or
+   *  under 15% left. */
   _pips(st) {
     const mag = st.mag || Math.max(st.ammo, 1);
     const warn = !!(st.alive && st.mag && st.ammo < st.mag && st.ammo / st.mag <= .15);
-    if (isEnergyWeapon(st)) {
+    if (usesCellGauge(st)) {
       const pct = Math.max(0, Math.min(100, Math.round(100 * st.ammo / mag)));
       return `<div class="bar energy ${warn ? 'warn' : ''}"><i style="width:${pct}%"></i></div>`;
     }

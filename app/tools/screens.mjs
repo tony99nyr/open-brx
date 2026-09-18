@@ -2104,19 +2104,56 @@ await step('ammo prompt se: an energy weapon with reserve left reads HOLD TO REC
 // NOT ENOUGH ENERGY survives only as a small note under the digits, never a second big prompt. ----------
 // ---------- A48 (merge 2026-09-17): the HUD reads the CLASS and the CHARGE COST off the catalogue ----------
 // `weapon_class` ("ballistic" | "energy" | "melee") replaced the old "energy or charge in the weapon id"
-// guess, and `rounds_per_charge` replaced the hard-coded 10. Both are proved with a weapon the OLD rule
-// would have got wrong: the Rail Gun is energy by class and has neither token in its id.
-await step('ammo gauge se: the Rail Gun gets the energy bar from weapon_class, not from its id', async () => {
+// guess, and `rounds_per_charge` replaced the hard-coded 10.
+// ---------- F248 (2026-09-17, brx-weapons): `weapon_class === "energy"` is WIDER than the old id match, so
+// this test originally asserted the Rail Gun (2-round mag, one round per shot) drew the percentage/cell
+// gauge -- that assertion WAS the bug. The agreed rule: the gauge is a CELL gauge exactly when
+// `rounds_per_charge > 1`; `weapon_class` still, and only, picks the RELOAD/RECHARGE wording. ----------
+await step('ammo gauge se: the Rail Gun (2-round mag, one round per shot) shows pips, not the cell gauge, though its class is energy', async () => {
   const pg = await open(VIEWS[1], 'live');
   const cls = await pg.evaluate(() => {
     const w = window.brx.engine.catalog.weapons.find(x => x.weapon_id === 'rail_gun');
     return w && w.weapon_class;
   });
-  must(cls === 'energy', `pre-condition: the catalogue must call the rail gun energy, got ${JSON.stringify(cls)}`);
+  must(cls === 'energy', `pre-condition: the catalogue must still call the rail gun energy, got ${JSON.stringify(cls)}`);
   await setAmmo(pg, 'rail_gun', 0, 2, 2, 1); await pg.waitForTimeout(400);
-  const r = await gaugeState(pg);
-  must(r.energyBar && r.pips === 0, `an energy-CLASS weapon must render the energy bar even with no "energy" in its id: ${JSON.stringify(r)}`);
+  let r = await gaugeState(pg);
+  must(r.pips === 2 && r.lit === 1 && !r.bar, `a 2-round Rail Gun must show 2 pips, one round per shot, never the cell gauge: ${JSON.stringify(r)}`);
+  must(r.mag === '01', `the digit beside the pips must read a round count, not a percentage: ${JSON.stringify(r)}`);
   await pg.screenshot({ path: `${OUT}/se-ammo-class-railgun.png` });
+  // weapon_class still picks the WORDING: an empty Rail Gun with reserve reads HOLD TO RECHARGE, not RELOAD,
+  // and 0/0 reads OUT OF ENERGY, not OUT OF AMMO -- the class keeps that job even though the gauge above it
+  // is now pips.
+  await setAmmo(pg, 'rail_gun', 0, 2, 2, 0); await pg.waitForTimeout(400);
+  r = await gaugeState(pg);
+  must(r.prompt === 'HOLD TO RECHARGE', `an empty Rail Gun with reserve must still read HOLD TO RECHARGE (class energy): ${JSON.stringify(r)}`);
+  await setAmmo(pg, 'rail_gun', 0, 2, 0, 0); await pg.waitForTimeout(400);
+  r = await gaugeState(pg);
+  must(r.prompt === 'OUT OF ENERGY', `0/0 on an energy-class weapon must still read OUT OF ENERGY, not OUT OF AMMO: ${JSON.stringify(r)}`);
+  await pg.close();
+});
+// ---------- F248: a bundle from before A48 carries neither `weapon_class` nor `rounds_per_charge` at all
+// (simulated here with a catalogue row removed, or an id the catalogue never had) -- the HUD must fall back
+// to the named charge-rifle constant, then the old id regex, exactly as it did before A48 existed. ----------
+await step('ammo gauge se: an old (pre-A48) bundle with no catalogue row falls back to the charge-rifle constant, then the id match', async () => {
+  const pg = await open(VIEWS[1], 'live');
+  // The charge rifle's OWN id, but with its row missing from the catalogue -- as if this were a pre-A48
+  // bundle that had never heard of `rounds_per_charge`. The named CHARGE_RIFLE_FULL_CHARGE_COST constant
+  // must still put it on the cell gauge.
+  await pg.evaluate(() => { window.brx.engine.catalog.weapons = window.brx.engine.catalog.weapons.filter(w => w.weapon_id !== 'charge_rifle' && w.weapon_id !== 'rail_gun'); });
+  await setAmmo(pg, 'charge_rifle', 0, 40, 80, 25); await pg.waitForTimeout(400);
+  let r = await gaugeState(pg);
+  must(r.energyBar && r.pips === 0, `an unrecognised charge_rifle id must still fall back to the named constant and draw the cell gauge: ${JSON.stringify(r)}`);
+  // An unrecognised id that merely CONTAINS "energy" falls back to the old id regex.
+  await setAmmo(pg, 'legacy_energy_cannon', 0, 40, 80, 25); await pg.waitForTimeout(400);
+  r = await gaugeState(pg);
+  must(r.energyBar && r.pips === 0, `an unrecognised id matching the old energy/charge regex must still draw the cell gauge: ${JSON.stringify(r)}`);
+  // The Rail Gun's id never matched that regex (no "energy"/"charge" in "rail_gun"), so with no catalogue
+  // row at all it must fall all the way through to pips -- exactly as it did before weapon_class existed.
+  await setAmmo(pg, 'rail_gun', 0, 2, 2, 1); await pg.waitForTimeout(400);
+  r = await gaugeState(pg);
+  must(r.pips === 2 && !r.bar, `an unrecognised rail_gun id must fall back to pips, not the id regex: ${JSON.stringify(r)}`);
+  await pg.screenshot({ path: `${OUT}/se-ammo-pre-a48-fallback.png` });
   await pg.close();
 });
 await step('ammo note se: NOT ENOUGH ENERGY follows rounds_per_charge from the catalogue, not a constant', async () => {
@@ -2276,17 +2313,20 @@ await step('ammo reserve se: a bullet weapon still shows plain "/reserve" text, 
   must(r.resText === '/216', `a bullet weapon's #res must read plain "/reserve", got ${JSON.stringify(r.resText)}`);
   await pg.close();
 });
+// F248: the Energy Rifle has no `rounds_per_charge` (one round per shot, like the Rail Gun), so per the
+// agreed rule it now renders the ordinary big-magazine bar (mag 300 > AMMO_PIP_MAX) and a plain "/reserve"
+// count, never the cell gauge -- this test used to expect the (buggy) percentage bar and reserve pills.
 for (const view of VIEWS) {
-  await step(`${view.name} energy gauge night: the bar and reserve pills still read at night, no overflow with a long weapon name`, async () => {
+  await step(`${view.name} energy-class gauge night: the big-magazine bar and plain reserve still read at night, no overflow with a long weapon name`, async () => {
     const pg = await open(view, 'live', '&night');
     await setAmmo(pg, 'energy_rifle', 0, 300, 600, 150); await pg.waitForTimeout(400);
     const r = await pg.evaluate(() => {
-      const frame = document.querySelector('.pips .bar.energy');
+      const frame = document.querySelector('.pips .bar.ammobar');
       const cs = frame ? getComputedStyle(frame) : null;
-      return { visible: !!frame && cs.display !== 'none' && cs.visibility !== 'hidden', cells: document.querySelectorAll('#res .cell').length, wn: (document.querySelector('.ammo .wn') || {}).textContent };
+      return { visible: !!frame && cs.display !== 'none' && cs.visibility !== 'hidden', cells: document.querySelectorAll('#res .cell').length, resText: (document.getElementById('res') || {}).textContent || '', wn: (document.querySelector('.ammo .wn') || {}).textContent };
     });
-    must(r.visible, `the energy bar must still render at night: ${JSON.stringify(r)}`);
-    must(r.cells === 2, `night must not change the pill count (600/300 = 2 full): ${JSON.stringify(r)}`);
+    must(r.visible, `a low-cost energy weapon's big magazine must still render the ordinary bar at night: ${JSON.stringify(r)}`);
+    must(r.cells === 0 && r.resText === '/600', `it keeps the plain round-count reserve, never cell pills: ${JSON.stringify(r)}`);
     const bad = await invariants(pg); must(bad.length === 0, bad.join(' ; '));
     await pg.screenshot({ path: `${OUT}/${view.name}-energy-night.png` });
     await pg.close();
