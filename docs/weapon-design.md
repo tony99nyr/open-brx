@@ -442,18 +442,63 @@ was never a missing field; we were overwriting the right one with the AR's value
 
 *Status: **PROVEN 2026-08-26** — one-field bench flip (sniper t20 7→0 single→auto; captured Burst Rifle = true 3-round bursts). See §5 U1.*
 
-### 4.2 `t41` — range is not differentiated, and that is a real gap
+### 4.2 `t2` is the range lever, not `t41` (corrected 2026-09-17)
 
-`t41` reads **75 on all eighteen guns** (20 on melee). Battle Company does not vary it, we do not
-write it, and the semantics are unverified. So **range does not currently distinguish any two
-weapons**, which is why a shotgun and a sniper trade only on hits, cadence and ammo.
+**This section used to argue range was an unrecovered gap sitting at `t41`. That was wrong, and the
+correction is recorded here rather than deleted.** The garden range test (2026-09-17,
+`docs/experiment-log/2026-09.md`, evidence in `docs/evidence/2026-09-17-range-t41/`) ran two `$WEAP`
+slots differing only in `t41` (5 vs 75) outdoors: the low slot scored **27 of 27** hits against the
+stock slot's **55 of 57**, at 3 m, 10 m, 20 m, 40 m and about 200 ft. **`t41` is a null outdoors.**
+The same session found the real emitted-power control at **`t2` (APK name `gunRangeOutdoor`)**:
+`t2 = 5` landed **0 hits from 38 shots** at any distance, including muzzle on the dome; `t2 = 100`
+(the value every captured gun ships) reaches about 200 ft. Between them the ladder showed a floor,
+a real transition roughly **13 to 26**, and a flat shelf from about **31 to 100** where every value
+behaved alike at any distance the garden could pace out.
 
-The earlier draft claimed the captured rocket carried `t41 = 30`. **That was wrong** — the 30 sits at
-`t42` (extra-headset range), present on the Rocket, Shotgun and Plasma Sniper. Corrected here.
+**`t41` reads 75 on all eighteen guns (20 on melee) and is deliberately never written any more.**
+`WeaponCatalog.resolve()` leaves it exactly as the capture carries it, because indoor behaviour is
+still unmeasured (F231 open) and a guessed indoor value would be a false promise. `RANGE_ENV_OVERRIDE`
+(`mcp/brx_mcp/mc/compile.py`) was the venue map that used to scale `t41`; it has moved to `t2`
+(F234) and is now `gun_range_outdoor_pct`, fed by each weapon's `wire.range_outdoor_pct`.
 
-Recovering range would be the largest single gain available to weapon design, and it is cheap to
-test (§5, U2). It is deliberately left alone for now: writing an unverified field across the whole
-arsenal on a guess is exactly the mistake the first pass made with `t14`.
+The earlier draft also claimed the captured rocket carried `t41 = 30`. **That was wrong**: the 30
+sits at `t42` (extra-headset range), present on the Rocket, Shotgun and Plasma Sniper. Corrected here.
+
+**Shipped starting values, outdoor, from `weapons.json` `wire.range_outdoor_pct`:**
+
+| Weapon | `t2` outdoor | `range_band` | Note |
+|---|---|---|---|
+| Sniper Rifle | 100 | full | On the shelf; matches the captured value |
+| Marksman (AMR) | 85 | full | On the shelf |
+| Charge Rifle | 85 | full | On the shelf |
+| Assault Rifle | 70 | mid | On the shelf |
+| Burst Rifle | 70 | mid | On the shelf |
+| Suppressor | 55 | mid | On the shelf |
+| Energy Rifle | 55 | mid | On the shelf |
+| SMG | 30 | close | **Real guess**, sits at the shelf edge |
+| Shotgun | 22 | close | **Real guess**, inside the measured 13-26 transition band |
+| Rocket Launcher | 22 | close | **Real guess.** A pickup-only one-shot heavy is meant to be earned at close range, not to out-reach the arsenal it out-damages (Tony, 2026-09-17). Same transition-band caveat as the Shotgun |
+| Rail Gun | 22 | close | Same reasoning and caveat as the Rocket Launcher |
+
+Every value from 55 up sits on the flat shelf the garden test found (roughly 31 to 100): they are
+expected to behave alike until the shelf itself is mapped, so the ranking above the shelf is a design
+intent, not yet a measured difference. **Only the SMG, Shotgun, Rocket Launcher and Rail Gun values
+are real guesses.** They sit at or inside the 13-26 transition band, where the method could not
+separate values cleanly (F232's first-two-shots effect and the 8-shot groups). All four are pending
+**S49**, the portable IR receiver, which lets one person map the transition band properly (several
+fixed receivers at once, full mags, first two shots discarded, dome shaded).
+
+A weapon with no `wire.range_outdoor_pct` (every hidden/cut weapon, the sidearms, melee) keeps its
+captured `t2` unchanged at every venue. **Indoor stays honest**: no venue has an indoor range value.
+Indoor and an unset venue both keep the weapon's captured `t2`, because nobody has run this ladder
+indoors (F231 open). A floor guard refuses to compile any `t2` under **13**: F231 measured `t2 = 5`
+landing on nobody at any distance, and a weapon compiled under the floor is a weapon that silently
+cannot hit anyone.
+
+`range_band` ('close'/'mid'/'full') and `range_target_m` are catalogue-only, human-facing copy for
+the armoury screens (metres, outdoor). They are declared data, never wired: the frame builder never
+reads them, only `wire.range_outdoor_pct` reaches `$WEAP` t2 (see `test_weapon_derivations.py`'s
+declared-not-wired guard).
 
 ### 4.3 Resolved by the re-base
 
@@ -494,7 +539,7 @@ first.
 
 | # | unknown | blocks | how to settle |
 |---|---|---|---|
-| **U2** | **`t41` range — OPEN with one solid positive**: t41=100 killed at max indoor distance; t41=5 zeros CONTAMINATED by rig degradation (2026-08-26). | the range axis | **IR-instrument A/B** (bench-plan Session 1½a): VS1838B at a fixed distance, `ir-range` detect%/decode% at t41 100 vs 5 + a closing 100 control — no victim gun, ~10 min. Supersedes the two-gun A/B. |
+| **U2** | ~~`t41` range~~ **CORRECTED 2026-09-17: `t41` is a null outdoors** (garden test, 27/27 hits at t41=5 vs 55/57 at t41=75, every paced distance). **The real range lever is `t2` (`gunRangeOutdoor`, F231/F234), now §4.2's shipped table.** Still open: whether `t2` can fence a weapon to a chosen distance above its shelf (~31-100), and every indoor value (F231). | the range axis (outdoor, closed; indoor, open) | Indoor: run the same ladder indoors, dome shaded. Above the shelf: **S49**'s portable IR receiver, several fixed receivers at once, full mags, first two shots discarded. |
 | **U1** | ~~`t20` confirmation~~ ✅ **CLOSED 2026-08-26: PROVEN by one-field flip** — sniper t20 7→0 went single-shot→full-auto on the bench; captured Burst Rifle fired true 3-round bursts (exp-log). | — | done |
 | **U4** | **How the 3-part reload chain relates to `reload_ms`.** Six stock frames "overrun" a sequential model, so the model is wrong. | any future reload-sound work | One weapon, one long chain, one stopwatch. Also answers whether `t19` changes it. |
 | **U5** | **Does a held trigger retrigger the fire sample from zero, or ring under the next shot?** Decides whether sample duration constrains anything at all. | custom weapon sound design | Fire the AR (1.76 s sample, 190 ms cycle) and listen. |

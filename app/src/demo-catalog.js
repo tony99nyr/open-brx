@@ -82,7 +82,7 @@ export const DEMO_WEAPONS = [
     "rng": 75,
     "dmg_per_hit": 9,
     "pool": 115,
-    "verified": true,
+    "verified": false,
     "tags": [
       "assault"
     ],

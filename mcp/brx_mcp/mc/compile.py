@@ -59,27 +59,48 @@ VOL_TRYOUT = 69                    # a try-out is fired at ARM'S LENGTH from the
                                    # so it keeps the quieter Callsign value (review 2026-08-31).
                                    # The field complaint was about hearing a game across a field.
 
-# venue -> $WEAP t41 (gunRange%, APK `gunRangeIndoor`). B6 (2026-09-12 field session): Tony could
-# not register a hit at 30-40 ft outside; point blank worked. MC ships t41 at the weapon's own
-# captured/catalog value (75 stock, 20 melee) for EVERY venue -- outdoor never raises it.
-# ⚠️ Whether t41 changes emitted IR range AT ALL IS UNTESTED (protocol/brx-protocol.md ~L272).
-# This mapping is the STAGED, NO-OP plumbing for that fix, not the fix: until the bench sweep in
-# FOLLOWUPS F135 lands a confirmed value, "outdoor" maps to `None`, meaning "use the weapon's own
-# range, unchanged" -- identical to "indoor". When F135 closes, change ONLY the "outdoor" value
-# below (and update `test_gun_range_pct_is_a_noop_pending_bench_confirmation` in
-# `mcp/tests/test_weapon_derivations.py` alongside it).
-RANGE_ENV_OVERRIDE: dict[str, int | None] = {"indoor": None, "outdoor": None}
+# ---------------------------------------------------------------------------
+# Venue range (F234, correcting F135/B6) -- see docs/weapon-design.md §4.2 and
+# docs/experiment-log/2026-09.md (2026-09-17 garden range test).
+# ---------------------------------------------------------------------------
+# CORRECTED READING, do not revert: this plumbing used to scale `$WEAP` t41 (`gunRangeIndoor`) by
+# venue. The 2026-09-17 garden test (Q15/F231) proved t41 is a NULL outdoors -- two slots
+# differing only in t41 (5 vs 75) scored 27/27 vs 55/57 at every paced distance, 3 m to ~200 ft --
+# while the SAME session found the real emitted-power control at `$WEAP` t2 (APK name
+# `gunRangeOutdoor`): t2=5 landed 0 hits from 38 shots at any distance, t2=100 (the shipped value
+# on every gun) reaches ~200 ft, with a floor, a transition around 13-26, and a flat shelf from
+# ~31 up. F234 filed the fix: move this plumbing from t41 to t2. t41 stays written EXACTLY as the
+# capture carries it from here on (see `resolve()` -- there is no longer a `put("range_indoor", ...)`
+# call at all) because indoor behaviour is still unmeasured (F231 open) and a guessed indoor value
+# would be a false promise.
+#
+# RANGE_OUTDOOR_FLOOR is not a design choice, it is a hard measured fact: t2=5 landed on nobody at
+# any distance the garden could pace, including muzzle-on-dome. A weapon compiled under the floor
+# is a weapon that silently cannot hit anyone, so `gun_range_outdoor_pct` refuses to compile one.
+RANGE_OUTDOOR_FLOOR = 13
 
 
-def gun_range_pct(base_rng: int, environment: str | None) -> int:
-    """$WEAP t41 (gunRange%) for one weapon at one venue.
+def gun_range_outdoor_pct(base_captured: int, wire_value: int | None, environment: str | None) -> int:
+    """$WEAP t2 (gunRangeOutdoor) for one weapon at one venue (F234).
 
-    NO-OP today (FOLLOWUPS F135): every venue resolves to `base_rng` -- the weapon's own
-    captured/catalog range (weapons.json `rng`) -- so outdoor ships the exact same token 41 as
-    indoor. `RANGE_ENV_OVERRIDE` is the single point to change once the bench confirms both that
-    t41 moves emitted range and what value reaches 30-40 ft outdoors."""
-    override = RANGE_ENV_OVERRIDE.get((environment or "").strip().lower())
-    return base_rng if override is None else override
+    Outdoor ships the weapon's own catalogue starting value (`weapons.json` `wire.range_outdoor_pct`,
+    docs/weapon-design.md §4.2's shipped table) when the weapon has one. A weapon with no catalogue
+    value -- every hidden/cut weapon, the sidearms, melee -- keeps its captured t2 unchanged (100 on
+    every captured gun so far, 90 on melee).
+
+    Indoor is deliberately UNTOUCHED: nobody has run this ladder indoors (F231 open), so an unknown
+    or indoor venue always keeps `base_captured` -- never invent an indoor number.
+    """
+    if (environment or "").strip().lower() == "outdoor" and wire_value is not None:
+        value = int(wire_value)
+    else:
+        value = base_captured
+    if value < RANGE_OUTDOOR_FLOOR:
+        raise ValueError(
+            f"$WEAP t2 (gunRangeOutdoor) {value} is below the measured floor ({RANGE_OUTDOOR_FLOOR}): "
+            "F231 measured t2=5 landing 0 hits from 38 shots at any distance, including muzzle on the "
+            "dome -- a weapon compiled below the floor cannot hit anyone")
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -90,13 +111,15 @@ def gun_range_pct(base_rng: int, environment: str | None) -> int:
 # checks did not reproduce the t2 reception failure through this toggle; native play reached about
 # 200 ft in both toggle states. Its full behavior is not characterised.
 #
-# `$GSET` t2 is a separate receiver control: t2=1 crippled hit reception at 30 ft, and t2=0 restored
-# it. Shipping heads pin t2 to 0 at every venue. The t3 and `$IRTX` candidates below remain
-# unconfirmed ways to control emitted IR and remain disabled. `DRIVE_IO_MODE` therefore stays "off";
-# a future bench experiment may enable exactly one candidate by editing this line.
+# `$GSET` t2 is a SEPARATE receiver control (not `$WEAP` t2 / `gunRangeOutdoor` above, a different
+# command's token 2): t2=1 crippled hit reception at 30 ft, and t2=0 restored it. Shipping heads
+# pin t2 to 0 at every venue. The t3 and `$IRTX` candidates below remain unconfirmed ways to
+# control emitted IR and remain disabled. `DRIVE_IO_MODE` therefore stays "off"; a future bench
+# experiment may enable exactly one candidate by editing this line.
 #
-# These legacy candidates stay separate from `RANGE_ENV_OVERRIDE` above: t41 is per-weapon and these
-# are per-gun, so a bench run that moves both proves nothing about either.
+# These legacy candidates stay separate from `gun_range_outdoor_pct` above: `$WEAP` t2 is
+# per-weapon and these `$GSET`/`$IRTX` candidates are per-gun, so a bench run that moves both
+# proves nothing about either.
 DRIVE_IO_MODE: Literal["off", "gset_t3", "irtx"] = "off"
 
 # Candidate (b): `$GSET` token 3, `gunLaserRegion` -- "IR transmit power, as a regional legal limit
@@ -704,10 +727,14 @@ class WeaponCatalog:
     # bench-proven 2026-09-04 (850 → 1700 doubled the swap, 425 halved it, 100 ran at 100; linear, no floor).
     # The gun applies the LARGER of the two loaded slots' values whichever direction you swap, so a swap
     # perk must scale every slot (docs/archive/bench-weap-tokens-2026-09-04.md).
+    # "range_outdoor" (t2, `gunRangeOutdoor`) is the confirmed emitted-power/venue lever (F231/F234,
+    # 2026-09-17 garden test). "range_indoor" (t41, `gunRangeIndoor`) is kept only so a test can pin
+    # it untouched -- do NOT write it from `gun_range_outdoor_pct` or any venue map; see the F234
+    # comment block above `RANGE_OUTDOOR_FLOOR`.
     _T = {"proto": 3, "subtype": 4, "dmg": 5, "fire": 14, "swap": 15, "mag": 16, "reserve": 17, "reload": 18,
           "mode": 20, "burst": 23, "heat": 24, "snd_fire": 27, "snd_up": 28, "snd_down": 29,
           "rel1": 31, "rel2": 32, "rel3": 33, "noammo": 34, "clipstart": 39, "reserve_half": 40,
-          "range": 41}
+          "range_indoor": 41, "range_outdoor": 2}
     # The ammo trio + its two mirrors. `resolve()` owns these — they carry the invariants — so an
     # `overrides` entry may not name one (see `_override_index`).
     _AMMO_TOKENS = frozenset({16, 17, 18, 39, 40})
@@ -773,13 +800,15 @@ class WeaponCatalog:
         native behaviour we cannot synthesise from a template: the 3-round burst (tok23), bolt/single
         shot, charge, overheat (tok24/35), the per-weapon reload chain, damage type (tok3), reload type
         (tok19) and muzzle flash (tok25/26). On top of that we write ONLY the balance tokens — damage,
-        fire interval, the ammo/reload trio, and t41 (range, via `gun_range_pct` — a NO-OP today,
-        F135) — preserving the two invariants every captured frame obeys: `tok39 == tok16` (clip
-        start == max clip) and `tok17 == 2 * tok40`.
+        fire interval, the ammo/reload trio, and t2 (range, via `gun_range_outdoor_pct` — F234) —
+        preserving the two invariants every captured frame obeys: `tok39 == tok16` (clip start == max
+        clip) and `tok17 == 2 * tok40`. **t41 is never written here** — it is left exactly as the
+        capture carries it, because indoor range is unmeasured (F231 open) and t41 itself was proven
+        inert outdoors (Q15, 2026-09-17); see the F234 comment above `RANGE_OUTDOOR_FLOOR`.
 
-        `environment` ("indoor"/"outdoor"/None) only reaches `gun_range_pct`; omitting it (every
-        caller that just wants a weapon's stats, not a shipped frame) is identical to "indoor" —
-        both are a no-op today.
+        `environment` ("indoor"/"outdoor"/None) only reaches `gun_range_outdoor_pct`: outdoor scales
+        t2 by the weapon's catalogue starting value, indoor and unset both keep the captured t2
+        unchanged (indoor is untested, F231 open — never invent an indoor number).
 
         A weapon may additionally declare `overrides` — an explicit, per-token escape hatch for bench
         findings that contradict a stock value (see `_override_index`). Each entry must name a
@@ -813,7 +842,11 @@ class WeaponCatalog:
         put("reserve", reserve); put("reserve_half", reserve // 2)   # tok17 == 2 * tok40 (`_ammo` keeps it even)
         put("reload", reload_ms)
         put("swap", self.swap_ms(weapon_id, mods))
-        put("range", gun_range_pct(int(p[T["range"] + 1] or 0), environment))   # F135: no-op today
+        # t2 (F234): the venue-scaled range lever. t41 is deliberately NOT written here (see the
+        # `_T` comment and the F234 block above `RANGE_OUTDOOR_FLOOR`) -- it stays exactly as the
+        # capture carries it, byte for byte.
+        put("range_outdoor", gun_range_outdoor_pct(
+            int(p[T["range_outdoor"] + 1] or 0), wire.get("range_outdoor_pct"), environment))
         for key, ov in (w.get("overrides") or {}).items():
             idx = self._override_index(weapon_id, key, ov)   # validates before we touch the frame
             p[idx + 1] = str(ov["value"])

@@ -266,9 +266,11 @@ def test_catalog_excludes_hidden_melee_and_flags_verified():
     assert len(ids) == 13, f"the §3 roster is 9 primaries + 2 sidearms + 2 pickup-only heavies, got {len(ids)}"
     by = {w["weapon_id"]: w for w in cat.all()}
     # `verified` now means SHIPPED EXACTLY AS CAPTURED — the AR is rebalanced (140ms, not the
-    # captured 100ms), the burst rifle ships stock. Every weapon has its own captured base frame.
+    # captured 100ms). Every weapon has its own captured base frame. The burst rifle used to ship
+    # stock, but F234's outdoor range table (2026-09-17, docs/weapon-design.md §4.2) gives it its
+    # own t2, which is a balance edit like any other, so it moved to `verified: false` too.
     assert by["assault_rifle"]["verified"] is False
-    assert by["burst_rifle"]["verified"] is True
+    assert by["burst_rifle"]["verified"] is False
     # every visible weapon carries an armory blurb (weapons.json `desc` -> Weapon.desc)
     blank = [w["weapon_id"] for w in cat.all() if not (w.get("desc") or "").strip()]
     assert not blank, f"weapons missing desc: {blank}"
