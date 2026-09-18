@@ -77,22 +77,22 @@ stacking, and `easy_reload` left the slot entirely (§2) — it is accessibility
 
 ```jsonc
 PerkView {
-  perk_id: string,                 // "body_armor" | "extended_mags" | "quick_hands" | "quick_switch" | "armor_piercing" | "med_kit" | "concussion"
+  perk_id: string,                 // "body_armor" | "extended_mags" | "quick_hands" | "quick_switch" | "armor_piercing" | "motion_tracker" | "second_wind" | "med_kit" | "concussion"
   name: string, desc: string,      // house-written, human (no protocol jargon)
   tags: string[],                  // "passive" | "utility"
   mechanism: "passive" | "slot_frame",
   effects: {                       // passive knobs the compiler understands (all optional)
-    max_armor_add?: number,        // the perk's ARMOUR GRANT AT THE DEFAULT 45+70 POOL only — a plain
-                                    // integer because app/src/hud/hud.js and webapp/mc/src/screens/Kit.tsx
-                                    // render it literally as "+N ARMOR". The COMPILED number is a
-                                    // PERCENTAGE of the player's own hp+armor pool (mc/compile.py
-                                    // `_POOL_GRANT_PCT`, keyed by perk_id, not read out of this field):
-                                    // body_armor +20% (+23 at the default; was a flat +50), quick_switch
-                                    // -8% (-9 at the default). Capped at 255, floored at 0. In a game
-                                    // whose BASE health.max_armor is 0 (the coming Shields preset,
-                                    // `mc/compile.py` `is_shields_preset`), the grant compiles into the
-                                    // SHIELD ceiling instead of armour — adding an armour layer to a
-                                    // preset built with none would defeat its design.
+    max_armor_add?: number,        // a FLAT armour grant/cost (docs/perk-design.md §2, decided
+                                    // 2026-09-17): `mc/compile.py` `_MAX_ARMOR_ADD`, keyed by perk_id,
+                                    // is the one table the compiled arithmetic reads; this field is its
+                                    // wire-visible documentation, kept a plain integer because
+                                    // app/src/hud/hud.js and webapp/mc/src/screens/Kit.tsx render it
+                                    // literally as "+N ARMOR". body_armor +25 (was a flat +50), quick_switch
+                                    // -20. Capped at 255, floored at 0. In a game whose BASE
+                                    // health.max_armor is 0 (the Shields preset, `mc/compile.py`
+                                    // `is_shields_preset`), the grant compiles into the SHIELD ceiling
+                                    // instead of armour — adding an armour layer to a preset built with
+                                    // none would defeat its design.
     ammo_mult?: number,            // extended_mags: ×2 mag + reserve on the PRIMARY ($AMMO,0 + t16/t39/t17/t40); quick_hands: ×0.8 (the cost of a faster reload)
     reload_mult?: number,          // quick_hands: ×0.5 reload_ms on the PRIMARY (t18); body_armor: ×1.25 (armour is heavier in the hands)
     alt_reload?: boolean,          // unused by any current row (S50: moved to `overrides.easy_reload`, §2) — kept for a future ALT-button perk
@@ -118,8 +118,9 @@ PerkView {
 }
 ```
 v1 rows: `body_armor` (verified), `extended_mags` (verified), `quick_hands` (unverified, listed),
-`quick_switch` (verified — A14, 2026-09-04), `armor_piercing` (unverified, new — S50), `med_kit` +
-`concussion` (`hidden: true`, `mechanism: "slot_frame"`).
+`quick_switch` (verified — A14, 2026-09-04), `armor_piercing` (unverified, new — S50), `motion_tracker`
++ `second_wind` (unverified, new — S50, node-local: `effects: {}`, no compile-time lever, docs/perk-design.md
+§2), `med_kit` + `concussion` (`hidden: true`, `mechanism: "slot_frame"`).
 
 ## 2. Loadout (contracts §2, A10 + A14) — `weapons[]` stays canonical on the wire
 ```jsonc

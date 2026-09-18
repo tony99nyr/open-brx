@@ -20,7 +20,7 @@ _HERE = pathlib.Path(__file__).resolve().parent
 # perk that claims the ALT button the same way (`policy.py`'s docstring: "a new perk that claims a
 # button in future joins the rule by setting alt_reload").
 # `armor_piercing` (S50, new): the primary's $SIR key is swapped to the armour-piercing cell and its
-# damage is cut -- see `compile.py` `_POOL_GRANT_PCT`, `_AP_CELL`, `_AP_DAMAGE_MULT`.
+# damage is cut -- see `compile.py` `_MAX_ARMOR_ADD`, `_AP_CELL`, `_AP_DAMAGE_MULT`.
 EFFECT_KEYS = frozenset({"max_armor_add", "ammo_mult", "reload_mult", "alt_reload", "switch_mult",
                         "armor_piercing"})   # switch_mult: scales $WEAP tok15, the gun's swap delay (bench 2026-09-04)
 
