@@ -27,6 +27,12 @@ export const DEMO_WEAPONS = [
     "role": "support",
     "htk": 5,
     "ttk_ms": 1600,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 100,
+      "per_shot": 0,
+      "recover_ms": 150
+    },
     "ammo_total": 70,
     "bars": {
       "power": 43,
@@ -58,6 +64,12 @@ export const DEMO_WEAPONS = [
     "role": "assault",
     "htk": 13,
     "ttk_ms": 1680,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 55,
+      "per_shot": 9,
+      "recover_ms": 150
+    },
     "ammo_total": 224,
     "bars": {
       "power": 31,
@@ -89,6 +101,12 @@ export const DEMO_WEAPONS = [
     "role": "assault",
     "htk": 13,
     "ttk_ms": 1700,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 60,
+      "per_shot": 10,
+      "recover_ms": 150
+    },
     "ammo_total": 252,
     "bars": {
       "power": 31,
@@ -120,6 +138,12 @@ export const DEMO_WEAPONS = [
     "role": "support",
     "htk": 2,
     "ttk_ms": 2500,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 100,
+      "per_shot": 0,
+      "recover_ms": 150
+    },
     "ammo_total": 24,
     "bars": {
       "power": 89,
@@ -152,6 +176,12 @@ export const DEMO_WEAPONS = [
     "role": "sidearm",
     "htk": 5,
     "ttk_ms": 1920,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 100,
+      "per_shot": 0,
+      "recover_ms": 150
+    },
     "ammo_total": 55,
     "bars": {
       "power": 54,
@@ -183,6 +213,12 @@ export const DEMO_WEAPONS = [
     "role": "support",
     "htk": 13,
     "ttk_ms": 2400,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 55,
+      "per_shot": 9,
+      "recover_ms": 150
+    },
     "ammo_total": 900,
     "bars": {
       "power": 31,
@@ -216,6 +252,12 @@ export const DEMO_WEAPONS = [
     "htk": 1,
     "ttk_ms": 1200,
     "pickup_only": true,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 100,
+      "per_shot": 0,
+      "recover_ms": 150
+    },
     "ammo_total": 4,
     "bars": {
       "power": 100,
@@ -249,6 +291,12 @@ export const DEMO_WEAPONS = [
     "htk": 1,
     "ttk_ms": 0,
     "pickup_only": true,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 100,
+      "per_shot": 0,
+      "recover_ms": 150
+    },
     "ammo_total": 4,
     "bars": {
       "power": 100,
@@ -280,6 +328,12 @@ export const DEMO_WEAPONS = [
     "role": "cqb",
     "htk": 3,
     "ttk_ms": 1600,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 100,
+      "per_shot": 0,
+      "recover_ms": 150
+    },
     "ammo_total": 30,
     "bars": {
       "power": 66,
@@ -311,6 +365,12 @@ export const DEMO_WEAPONS = [
     "role": "cqb",
     "htk": 15,
     "ttk_ms": 1960,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 45,
+      "per_shot": 8,
+      "recover_ms": 120
+    },
     "ammo_total": 360,
     "bars": {
       "power": 20,
@@ -343,6 +403,12 @@ export const DEMO_WEAPONS = [
     "role": "marksman",
     "htk": 2,
     "ttk_ms": 1500,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 100,
+      "per_shot": 0,
+      "recover_ms": 150
+    },
     "ammo_total": 28,
     "bars": {
       "power": 77,
@@ -374,6 +440,12 @@ export const DEMO_WEAPONS = [
     "role": "support",
     "htk": 15,
     "ttk_ms": 2240,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 55,
+      "per_shot": 9,
+      "recover_ms": 150
+    },
     "ammo_total": 432,
     "bars": {
       "power": 20,
@@ -406,6 +478,12 @@ export const DEMO_WEAPONS = [
     "role": "sidearm",
     "htk": 13,
     "ttk_ms": 1920,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 70,
+      "per_shot": 10,
+      "recover_ms": 150
+    },
     "ammo_total": 140,
     "bars": {
       "power": 31,

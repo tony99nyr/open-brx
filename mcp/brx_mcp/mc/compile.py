@@ -66,7 +66,7 @@ VOL_TRYOUT = 69                    # a try-out is fired at ARM'S LENGTH from the
 # This mapping is the STAGED, NO-OP plumbing for that fix, not the fix: until the bench sweep in
 # FOLLOWUPS F135 lands a confirmed value, "outdoor" maps to `None`, meaning "use the weapon's own
 # range, unchanged" -- identical to "indoor". When F135 closes, change ONLY the "outdoor" value
-# below (and update `test_gun_range_pct_is_a_noop_pending_bench_confirmation` in
+# below (and update `test_range_and_recoil_are_declared_not_wired` in
 # `mcp/tests/test_weapon_derivations.py` alongside it).
 RANGE_ENV_OVERRIDE: dict[str, int | None] = {"indoor": None, "outdoor": None}
 
@@ -685,6 +685,8 @@ class WeaponCatalog:
             row["caution"] = w["caution"]
         if w.get("pickup_only"):   # 2026-09-17: catalogue-visible, never in a loadout pool (policy.py)
             row["pickup_only"] = True
+        if w.get("recoil"):     # S42 (2026-09-17): the declared target profile -- weapons.json `_note`
+            row["recoil"] = w["recoil"]
         return row
 
     def all(self) -> list[Weapon]:
@@ -704,10 +706,14 @@ class WeaponCatalog:
     # bench-proven 2026-09-04 (850 → 1700 doubled the swap, 425 halved it, 100 ran at 100; linear, no floor).
     # The gun applies the LARGER of the two loaded slots' values whichever direction you swap, so a swap
     # perk must scale every slot (docs/archive/bench-weap-tokens-2026-09-04.md).
+    # acc_ceiling/acc_floor (t21/t22, docs/weapon-design.md §4.4): named here so a test can locate them,
+    # but `resolve()` never writes either -- every weapon ships t21==t22==100 (native walk off, F230),
+    # and S42's `recoil` catalogue field only ever reaches the wire through `app/src/engine.js`, which
+    # pins both to the live accuracy value on every write. See `weapons.json` `_note` (S42).
     _T = {"proto": 3, "subtype": 4, "dmg": 5, "fire": 14, "swap": 15, "mag": 16, "reserve": 17, "reload": 18,
           "mode": 20, "burst": 23, "heat": 24, "snd_fire": 27, "snd_up": 28, "snd_down": 29,
           "rel1": 31, "rel2": 32, "rel3": 33, "noammo": 34, "clipstart": 39, "reserve_half": 40,
-          "range": 41}
+          "range": 41, "acc_ceiling": 21, "acc_floor": 22}
     # The ammo trio + its two mirrors. `resolve()` owns these — they carry the invariants — so an
     # `overrides` entry may not name one (see `_override_index`).
     _AMMO_TOKENS = frozenset({16, 17, 18, 39, 40})

@@ -68,15 +68,25 @@ def test_the_frame_builder_does_not_lose_an_ammo_value():
     assert not bad, "\n  ".join(bad)
 
 
-def test_gun_range_pct_is_a_noop_pending_bench_confirmation():
-    """B6/F135 (2026-09-12 field session, `docs/experiment-log/2026-09.md`): Tony could not hit at
-    30-40 ft outside, point blank worked. `resolve()` writes t41 (range) through `gun_range_pct`, a
-    venue mapping staged for that fix — but whether t41 moves emitted IR range at all is UNTESTED
-    (protocol/brx-protocol.md ~L272), so today it MUST be a no-op: every venue ships the weapon's
-    own captured/catalog range, indoor == outdoor == the `weapons.json` `rng` value (75 stock, 20
-    melee). This pins that invariant and the fact that `RANGE_ENV_OVERRIDE` is the single line to
-    change once F135's bench sweep lands a confirmed value — do not hand-edit `resolve()` or
-    `weapons.json` `rng` to "fix" range before then."""
+def test_range_and_recoil_are_declared_not_wired():
+    """B6/F135 (range) + S42 (recoil), 2026-09-12/2026-09-17: two catalogue fields that describe a
+    lever the compiler does not pull yet, so both must stay INERT on the wire today.
+
+    **Range** (B6/F135, `docs/experiment-log/2026-09.md` 2026-09-12): Tony could not hit at 30-40 ft
+    outside, point blank worked. `resolve()` writes t41 (range) through `gun_range_pct`, a venue
+    mapping staged for that fix — but whether t41 moves emitted IR range at all is UNTESTED
+    (protocol/brx-protocol.md ~L272), so today it MUST be a no-op: every venue ships the weapon's own
+    captured/catalog range, indoor == outdoor == the `weapons.json` `rng` value (75 stock, 20 melee).
+    `RANGE_ENV_OVERRIDE` is the single line to change once F135's bench sweep lands a confirmed value
+    — do not hand-edit `resolve()` or `weapons.json` `rng` to "fix" range before then.
+
+    **Recoil** (S42, `docs/weapon-design.md` §4.4, F230): every weapon declares a `recoil`
+    `{ceiling, floor, per_shot, recover_ms}` target profile, but `resolve()` never writes t21/t22 from
+    it — the native accuracy walk is unreliable (F230: only one gun of three decayed under sustained
+    fire), so every weapon ships t21==t22==100 regardless of its declared profile. The ONLY place
+    `recoil` reaches the wire is `app/src/engine.js`'s accuracy writer, at runtime, pinning both tokens
+    to the live value on every write — never through this compiler. Do not wire `recoil` into
+    `resolve()` to "make it real"; that is exactly the mistake this test exists to catch."""
     from brx_mcp.mc.compile import RANGE_ENV_OVERRIDE, gun_range_pct
 
     assert RANGE_ENV_OVERRIDE == {"indoor": None, "outdoor": None}, (
@@ -90,6 +100,13 @@ def test_gun_range_pct_is_a_noop_pending_bench_confirmation():
         assert no_venue == indoor == outdoor == str(w["rng"]), (
             f"{wid}: t41 differs by venue ({no_venue!r}/{indoor!r}/{outdoor!r}) — B6's fix is not "
             "supposed to land until F135 closes on the bench")
+        recoil = w.get("recoil")
+        assert isinstance(recoil, dict) and {"ceiling", "floor", "per_shot", "recover_ms"} <= set(recoil), (
+            f"{wid}: weapons.json must declare a recoil {{ceiling, floor, per_shot, recover_ms}} profile (S42)")
+        ceiling = _tok(wid, "acc_ceiling"); floor = _tok(wid, "acc_floor")
+        assert ceiling == floor == "100", (
+            f"{wid}: t21/t22 must stay 100/100 on the compiled frame ({ceiling!r}/{floor!r}) — S42's "
+            "recoil reaches the wire only through app/src/engine.js, never through resolve()")
     # The mapping function itself, independent of any weapon: every venue is `base_rng` unchanged.
     for base in (20, 75, 100):
         assert gun_range_pct(base, None) == base
