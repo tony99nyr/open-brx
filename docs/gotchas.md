@@ -593,8 +593,14 @@ came from a human's senses.
 proxy was never tested against the behaviour it stood in for.
 
 **Damage is a property of the (weapon, victim's `$SIR` table) PAIR — never of the weapon alone.**
-`$HIR` tok5 is the **raw magnitude**; applied damage depends on the **SENSOR** (bench 2026-09-11, F23): the gun body is always ×1, and only a **headset** hit on fn 36/37 scales, by `$GSET` t7 — **fn 36 = floor(magnitude × (1 + t7/200)), fn 37 = floor(magnitude × (1 + 2·t7/100))**. At the shipped t7=50 that reads ×1.25 / ×2 (the ×1.25 truncates, so 7 lands as 8). The `$HIR` crit bit (tok6) read 0 on every measured hit and is a separate, unconfirmed axis.
+`$HIR` tok5 is the **raw magnitude**; applied damage depends on the **SENSOR** (bench 2026-09-11, F23): the gun body is always ×1, and only a **headset** hit on fn 36/37 scales, by `$GSET` t7 — **fn 36 = floor(magnitude × (1 + t7/200)), fn 37 = floor(magnitude × (1 + 2·t7/100))**. At the Callsign capture's t7=50 that reads ×1.25 / ×2 (the ×1.25 truncates, so 7 lands as 8), but Open BRX compiles **t7 = 0**, so no sensor scales and every hit lands at its raw magnitude: BRX players aim at the headset, which holds four of the five sensors, so a headset multiplier would only make the aim everybody already uses pay twice. The `$HIR` crit bit (tok6) read 0 on every measured hit and is a separate, unconfirmed axis.
 Anything that validates a weapon in isolation is blind to a whole class of bug.
+
+**Break a guard in the file the code actually reads.** A screen-truth step for the perk picker went on
+passing after `mcp/brx_mcp/mc/perks.json` was edited, because the phone reads the GENERATED
+`app/src/demo-catalog.js`. A guard you "proved" by breaking the source of a generated file was never
+broken at all. Break the generated artefact, watch the test fail, then regenerate. Same shape as a
+guard that reads `HEAD` while the tree is dirty (2026-09-17, brx-weapons).
 
 **Close a question in EVERY file in the same commit, or it is not closed.** Two independent cold-read
 handoff tests both scored this repo down for the same thing, and it was never a wrong fact — it was a
