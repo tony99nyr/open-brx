@@ -399,7 +399,13 @@ Weapon {
   // status row lands nothing, a missing row drops the hit. Damage is a property of the (weapon, $SIR
   // table) PAIR — see docs/weapon-design.md §6. `Compiler.validate()` warns on all three cases.
   // `dmg_hit`/`cycle_ms`/`charged` are what `weapon_view(w, pool)` re-derives htk and ttk_ms from
-  // when the host changes `health` (weapon-design.md §2.5). dmg_hit is the real t5 magnitude; cycle_ms is the mean ms
+  // when the host changes `health` (weapon-design.md §2.5). dmg_hit is what one TRIGGER PULL delivers
+  // (`WeaponCatalog.damage_per_pull()`): the t5 magnitude, plus a declared `wire.headset_dmg` on the
+  // three weapons whose t1 (`WeaponIRSource`) is 2 and which therefore fire a SECOND word out of the
+  // shooter's own headset ~88 ms behind the first (Shotgun, Plasma Sniper, Rocket Launcher; measured
+  // 2026-09-18, weapon-design.md §7). It was t5 alone until then, which made a client re-deriving htk
+  // from it disagree with the server. Armour Piercing zeroes the second word, so under that perk a pull
+  // is worth its priced `ap_dmg` and no more; cycle_ms is the mean ms
   // between landed hits (burst-aware: (2*t14 + t23)/3 on a 3-round burst); `charged` weapons pay for
   // their FIRST shot, so their ttk is htk cycles, not htk-1. A row WITHOUT them (a synthetic/demo
   // catalog) scales its published `htk` by the pool ratio and withholds `ttk_ms` at any non-default pool.

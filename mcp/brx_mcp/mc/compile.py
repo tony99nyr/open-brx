@@ -1027,7 +1027,14 @@ class WeaponCatalog:
                     f"{weapon_id}: capture carries a t12 (ExtraHeadsetDamage) but weapons.json declares "
                     f"no wire.headset_dmg: shipping the raw captured second word unpriced would reopen "
                     f"the balance hole this change exists to close; add a wire.headset_dmg")
-            put("headset_dmg", int(headset_dmg))
+            # ⚠ ARMOUR PIERCING OWNS THE WHOLE PULL, BOTH WORDS (2026-09-18, polish review). `dmg_abs` is
+            # the perk's ABSOLUTE priced damage per trigger pull, and `_rekey` points the WHOLE frame at
+            # the AP cell -- so both words land on fn 2, straight past armour AND shields. Writing the
+            # weapon's normal `headset_dmg` beside a priced t5 delivered `ap_dmg + headset_dmg` to bare
+            # health while the perk was priced at `ap_dmg` alone (an AP Shotgun shipped 15 + 20 = 35 for
+            # the price of 15). That is the identical unpriced-second-word hole this whole change exists
+            # to close, so AP zeroes the second word and the pull is worth exactly what it costs.
+            put("headset_dmg", 0 if dmg_abs is not None else int(headset_dmg))
         # t13 (`HeadsetRangeOutdoor`) / t42 (`HeadsetRangeIndoor`): the second word's OWN reach. Unlike
         # t12, an unwritten reach is not a safety hole -- reach is not a damage number, so a weapon with
         # a captured cell but no declared override just keeps whatever the capture carries, and this
@@ -2272,10 +2279,10 @@ class Compiler:
                             else "is the gun you fight with (a sidearm in the PRIMARY slot)")
                     warnings.append(f"{wid} {what} and cannot kill on one magazine at this pool - "
                                     f"it will need a reload (mag {mag} < {rtk} rounds for {htk} hits at "
-                                    f"{self.catalog.damage(wid)} dmg vs {pool} pool)")
+                                    f"{self.catalog.damage_per_pull(wid)} dmg vs {pool} pool)")
                 else:
                     warnings.append(f"PRIMARY {wid.upper().replace('_', ' ')} CANNOT KILL ON ONE MAGAZINE: "
-                                    f"mag {mag} < {rtk} rounds for {htk} hits at {self.catalog.damage(wid)} dmg "
+                                    f"mag {mag} < {rtk} rounds for {htk} hits at {self.catalog.damage_per_pull(wid)} dmg "
                                     f"vs a {pool} pool — a reload mid-kill (docs/weapon-design.md §2.1)")
 
         # Does each loadout weapon's <t3,t4> key a $SIR row that actually DEALS DAMAGE?
