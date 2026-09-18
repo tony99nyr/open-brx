@@ -16,13 +16,22 @@ receiver needs the laptop, not the Windows box. Read `gotchas.md` ("Before a ben
 > moved the lever. This section used to open with t41 and with U2's "one prior positive"; both are
 > retracted below. Lever 1 is now `$WEAP` **t2**.
 
-- **Lever 1 is `$WEAP` token 2 `gunRangeOutdoor`**, the proven emitted-power control (bench 2026-09-17,
-  F231/F234, `manual/dev.md` t2 row). Every captured gun reads **100** and melee reads 90. Outdoors:
+- **Lever 1 is `$WEAP` token 2 `gunRangeOutdoor`** (bench 2026-09-17, F231/F234, `manual/dev.md` t2
+  row). Every captured gun reads **100** and melee reads 90. Outdoors:
   **t2 = 5 landed 0 hits from 38 shots**, muzzle on the dome included; **13 to 26** is a real
-  attenuation band; **about 31 to 100 is a flat shelf** at every distance a garden can pace. The whole
+  transition band; **about 31 to 100 is a flat shelf** at every distance a garden can pace. The whole
   ladder was shot into a dome in direct sun with the light moving, so treat every low number as a
   lower bound. **What this sheet must add is the INDOOR half**: whether a t2 in the 13-26 band gives a
   usable short-range beam in a bouncy room. MC refuses to compile a value under 13.
+  ⚠️ **Read the question again before you run it (2026-09-18).** t2 is NOT an emitted-power control.
+  The V4_31 disassembly shows it sets the emitter's carrier frequency,
+  `38000 - 125 * (100 - range)` Hz, and that emitter power never moves with it: the PWM duty is about
+  20% indoors and 38% outdoors, set by the indoor/outdoor level alone
+  (`protocol/brx-protocol.md`). A low t2 therefore detunes the word out of the receiver's band-pass
+  near 38 kHz; it does not make the beam weaker. So this sheet's headline question, "can we emit
+  below factory indoor power", has the answer **no, not through t2**. A detuned carrier may still cut
+  bounces in a bouncy room, because a reflected word is already weaker at the receiver, but that is a
+  NEW hypothesis and nobody has measured it. Say which one you are testing before the first rung.
 - **`$WEAP` token 41 `gunRangeIndoor` is a measured null. Do not sweep it.** Two slots differing only
   in t41, 5 against 75, scored 27 of 27 and 55 of 57 from 3 m to about 200 ft in outdoor mode
   (2026-09-17, F231). The **U2 "prior positive"** (`weapon-design.md` §5, 2026-08-26, t41 = 100 killed

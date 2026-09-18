@@ -612,18 +612,25 @@ was never a missing field; we were overwriting the right one with the AR's value
 
 *Status: **PROVEN 2026-08-26** — one-field bench flip (sniper t20 7→0 single→auto; captured Burst Rifle = true 3-round bursts). See §5 U1.*
 
-### 4.2 `t2` is the range lever, not `t41` (corrected 2026-09-17)
+### 4.2 `t2` is the range lever, not `t41` (corrected 2026-09-17; its mechanism corrected 2026-09-18)
 
 **This section used to argue range was an unrecovered gap sitting at `t41`. That was wrong, and the
 correction is recorded here rather than deleted.** The garden range test (2026-09-17,
 `docs/experiment-log/2026-09.md`, evidence in `docs/evidence/2026-09-17-range-t41/`) ran two `$WEAP`
 slots differing only in `t41` (5 vs 75) outdoors: the low slot scored **27 of 27** hits against the
 stock slot's **55 of 57**, at 3 m, 10 m, 20 m, 40 m and about 200 ft. **`t41` is a null outdoors.**
-The same session found the real emitted-power control at **`t2` (APK name `gunRangeOutdoor`)**:
+The same session found the token that does move hits at **`t2` (APK name `gunRangeOutdoor`)**:
 `t2 = 5` landed **0 hits from 38 shots** at any distance, including muzzle on the dome; `t2 = 100`
 (the value every captured gun ships) reaches about 200 ft. Between them the ladder showed a floor,
 a real transition roughly **13 to 26**, and a flat shelf from about **31 to 100** where every value
 behaved alike at any distance the garden could pace out.
+
+⚠️ **`t2` is a CARRIER FREQUENCY, not a power (V4_31 disassembly, 2026-09-18).** The measurements
+above all stand. What they prove does not. A low `t2` does not shorten the beam: it detunes the word
+out of the receiver's band-pass near 38 kHz. **Read the flat shelf as the pass-band and the 13-to-26
+band as its edge**, and calibrate in kHz, not as a percentage ladder. The formula, the kHz
+conversion of every shipped value and what it does to this section are in §6.5; the source of record
+is `protocol/brx-protocol.md`, the `$WEAP` row headed "range is a CARRIER FREQUENCY".
 
 **`t41` reads 75 on all eighteen guns (20 on melee) and is deliberately never written any more.**
 `WeaponCatalog.resolve()` leaves it exactly as the capture carries it, because indoor behaviour is
@@ -657,6 +664,13 @@ are real guesses.** They sit at or inside the 13-26 transition band, where the m
 separate values cleanly (F232's first-two-shots effect and the 8-shot groups). All four are pending
 **S49**, the portable IR receiver, which lets one person map the transition band properly (several
 fixed receivers at once, full mags, first two shots discarded, dome shaded).
+
+⚠️ **The 2026-09-18 carrier-frequency reading puts the whole table in question, and the call is
+Tony's: §6.5 converts every row above into kHz and works through it.** In short, the seven weapons
+at 55 and up all sit inside the receiver's pass-band and probably play alike, and the six at 30 and
+22 sit on the knee, where the effect is not "shorter range" but "the receiver drops words". Keep the
+numbers until S49 measures the receiver's response curve; do not read this table as a calibrated
+metre ladder.
 
 A weapon with no `wire.range_outdoor_pct` (every hidden/cut weapon, the sidearms, melee) keeps its
 captured `t2` unchanged at every venue. **Indoor stays honest**: no venue has an indoor range value.
@@ -709,7 +723,7 @@ first.
 
 | # | unknown | blocks | how to settle |
 |---|---|---|---|
-| **U2** | ~~`t41` range~~ **CORRECTED 2026-09-17: `t41` is a null outdoors** (garden test, 27/27 hits at t41=5 vs 55/57 at t41=75, every paced distance). **The real range lever is `t2` (`gunRangeOutdoor`, F231/F234), now §4.2's shipped table.** Still open: whether `t2` can fence a weapon to a chosen distance above its shelf (~31-100), and every indoor value (F231). | the range axis (outdoor, closed; indoor, open) | Indoor: run the same ladder indoors, dome shaded. Above the shelf: **S49**'s portable IR receiver, several fixed receivers at once, full mags, first two shots discarded. |
+| **U2** | ~~`t41` range~~ **CORRECTED 2026-09-17: `t41` is a null outdoors** (garden test, 27/27 hits at t41=5 vs 55/57 at t41=75, every paced distance). **The token that does move hits is `t2` (`gunRangeOutdoor`, F231/F234), now §4.2's shipped table.** ⚠️ **2026-09-18: `t2` sets the emitter's CARRIER FREQUENCY, not its power** (V4_31 disassembly; `protocol/brx-protocol.md`). A low value detunes the word out of the receiver's band-pass instead of shortening the beam, so the shelf is the pass-band. Still open, and now harder: whether `t2` can fence a weapon to a chosen distance above its shelf (~31-100), and every indoor value (F231). | the range axis (outdoor, closed; indoor, open) | Indoor: run the same ladder indoors, dome shaded. Above the shelf: **S49**'s portable IR receiver, several fixed receivers at once, full mags, first two shots discarded. |
 | **U1** | ~~`t20` confirmation~~ ✅ **CLOSED 2026-08-26: PROVEN by one-field flip** — sniper t20 7→0 went single-shot→full-auto on the bench; captured Burst Rifle fired true 3-round bursts (exp-log). | — | done |
 | **U4** | **How the 3-part reload chain relates to `reload_ms`.** Six stock frames "overrun" a sequential model, so the model is wrong. | any future reload-sound work | One weapon, one long chain, one stopwatch. Also answers whether `t19` changes it. |
 | **U5** | **Does a held trigger retrigger the fire sample from zero, or ring under the next shot?** Decides whether sample duration constrains anything at all. | custom weapon sound design | Fire the AR (1.76 s sample, 190 ms cycle) and listen. |

@@ -491,7 +491,9 @@ class GameConfig:
         # receiver. It reads as the SHOOTER having no range, because the fault is on the RECEIVER.
         # The stock phone app never writes this field, which is why a native tagger takes hits at ~200 ft.
         # It is NOT the gun's native ALT mode (that changes beam WIDTH and does not gate reception ,
-        # measured the same day on three guns) and it does not move emitted range.
+        # measured the same day on three guns) and it does not move emitted range. The ALT mode DOES
+        # move emitted power -- the V4_31 trace (2026-09-18) puts the PWM duty at about 20% indoors
+        # and 38% outdoors -- but we do not drive it over BLE, so it is not a `$GSET` field.
         # Handoff with the full measurement: docs/archive/HANDOFF-gset-t2-2026-09-13.md
         return (f"$GSET,{int(self.friendly_fire)},{GSET_T2_SAFE},1,0,1,0,"
                 f"{int(self.crit_modifier)},1,*")

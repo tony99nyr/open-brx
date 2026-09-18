@@ -2,7 +2,12 @@
 
 Field evidence 2026-09-13 separated two controls that this file previously treated as candidates for
 the same behavior. The gun's native ALT mode (set at power-on) changes beam width and persists across power cycles.
-`$GSET` t2 changes hit reception and must ship 0. Neither is an emitted-range control.
+`$GSET` t2 changes hit reception and must ship 0.
+
+`$GSET` t2 is a receiver control, never an emitter one. The ALT mode IS an emitter control: the
+V4_31 trace (2026-09-18, protocol/brx-protocol.md) shows the indoor/outdoor level alone sets the
+emitter's PWM duty, about 20% indoors and 38% outdoors, and selects whether t41/t42 are read. We do
+not drive it over BLE, so it stays out of the compiled head.
 
 The separate t3 and `$IRTX` emitted-range candidates remain disabled and unconfirmed.
 

@@ -308,7 +308,7 @@ presentation.resolve(config)     -> rows for GET /api/presentation (A11.5)
 
 ## 8. Open questions
 
-- **Range** — `t41` reads 75 on every gun and was PROVEN INERT outdoors (F231, 2026-09-17). The real lever is `t2` `gunRangeOutdoor`, fed by `wire.range_outdoor_pct` and written outdoors only, with a floor of 13. See `../weapon-design.md` §4.2.
+- **Range** — `t41` reads 75 on every gun and was PROVEN INERT outdoors (F231, 2026-09-17): the firmware reads it only indoors, and only when it is itself non-zero. The lever we write is `t2` `gunRangeOutdoor`, fed by `wire.range_outdoor_pct` and written outdoors only, with a floor of 13. ⚠️ `t2` sets the emitter's CARRIER FREQUENCY, not its power (2026-09-18, `../../protocol/brx-protocol.md`), so the shipped values are uncalibrated. See `../weapon-design.md` §4.2.
 - **`$SIR` table: flatten to fn 1 or retune the five multiplied weapons** — `../weapon-design.md` §6.2, Tony's
   call; the Energy Launcher bug is fixed either way in the same commit.
 - **Voice per-slot map** beyond HEAVY — by ear or the `voice-profiles` endpoint (apk-harvest).

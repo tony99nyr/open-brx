@@ -96,7 +96,9 @@ def test_t41_is_pinned_byte_for_byte_at_every_venue():
 
 
 def test_gun_range_outdoor_pct_ships_the_catalogue_value_outdoors_only():
-    """F234: t2 (`gunRangeOutdoor`) is the confirmed venue lever. Outdoor ships each weapon's
+    """F234: t2 (`gunRangeOutdoor`) is the confirmed venue lever. It sets the emitter's carrier
+    frequency, not its power (2026-09-18, protocol/brx-protocol.md), so these values are a shipped
+    table, not a calibrated metre ladder. Outdoor ships each weapon's
     catalogue starting value (`weapons.json` `wire.range_outdoor_pct`, docs/weapon-design.md §4.2);
     indoor and an unset venue both keep the weapon's captured t2, because indoor is unmeasured
     (F231 open) and must never be invented. A weapon with no catalogue value (every hidden/cut

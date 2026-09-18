@@ -76,10 +76,13 @@ def check_volume(value) -> int:
 # CORRECTED READING, do not revert: this plumbing used to scale `$WEAP` t41 (`gunRangeIndoor`) by
 # venue. The 2026-09-17 garden test (Q15/F231) proved t41 is a NULL outdoors -- two slots
 # differing only in t41 (5 vs 75) scored 27/27 vs 55/57 at every paced distance, 3 m to ~200 ft --
-# while the SAME session found the carrier-frequency control (a low value detunes the beam out of the receiver band-pass, it does not shorten it) at `$WEAP` t2 (APK name
+# while the SAME session found the token that does move hits at `$WEAP` t2 (APK name
 # `gunRangeOutdoor`): t2=5 landed 0 hits from 38 shots at any distance, t2=100 (the shipped value
 # on every gun) reaches ~200 ft, with a floor, a transition around 13-26, and a flat shelf from
-# ~31 up. F234 filed the fix: move this plumbing from t41 to t2. t41 stays written EXACTLY as the
+# ~31 up. t2 sets the emitter's CARRIER FREQUENCY, not its power (V4_31 disassembly, 2026-09-18,
+# `protocol/brx-protocol.md`): a low value detunes the word out of the receiver's band-pass near
+# 38 kHz, it does not shorten the beam. So read the shelf as the pass-band, not as a power plateau.
+# F234 filed the fix: move this plumbing from t41 to t2. t41 stays written EXACTLY as the
 # capture carries it from here on (see `resolve()` -- there is no longer a `put("range_indoor", ...)`
 # call at all) because indoor behaviour is still unmeasured (F231 open) and a guessed indoor value
 # would be a false promise.
@@ -87,6 +90,8 @@ def check_volume(value) -> int:
 # RANGE_OUTDOOR_FLOOR is not a design choice, it is a hard measured fact: t2=5 landed on nobody at
 # any distance the garden could pace, including muzzle-on-dome. A weapon compiled under the floor
 # is a weapon that silently cannot hit anyone, so `gun_range_outdoor_pct` refuses to compile one.
+# The floor is a property of the RECEIVER, not of the firmware: 13 sits at 27.1 kHz, far enough
+# below the ~38 kHz band-pass that the receiver drops the word. The firmware clamps nothing.
 RANGE_OUTDOOR_FLOOR = 13
 
 
@@ -916,8 +921,10 @@ class WeaponCatalog:
     # but `resolve()` never writes either -- every weapon ships t21==t22==100 (native walk off, F230),
     # and S42's `recoil` catalogue field only ever reaches the wire through `app/src/engine.js`, which
     # pins both to the live accuracy value on every write. See `weapons.json` `_note` (S42).
-    # "range_outdoor" (t2, `gunRangeOutdoor`) is the confirmed emitted-power/venue lever (F231/F234,
-    # 2026-09-17 garden test). "range_indoor" (t41, `gunRangeIndoor`) is kept only so a test can pin
+    # "range_outdoor" (t2, `gunRangeOutdoor`) is the confirmed venue lever (F231/F234, 2026-09-17
+    # garden test). It sets the emitter's carrier frequency, not its power (2026-09-18 V4_31
+    # disassembly): a low value detunes the word out of the receiver's band-pass near 38 kHz, it does
+    # not shorten the beam. "range_indoor" (t41, `gunRangeIndoor`) is kept only so a test can pin
     # it untouched -- do NOT write it from `gun_range_outdoor_pct` or any venue map; see the F234
     # comment block above `RANGE_OUTDOOR_FLOOR`.
     _T = {"proto": 3, "subtype": 4, "dmg": 5, "fire": 14, "swap": 15, "mag": 16, "reserve": 17, "reload": 18,
