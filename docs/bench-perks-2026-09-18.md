@@ -91,7 +91,10 @@ answer we want: record how many, how large, and the gap between them. Repeat thr
 **Also worth 2 minutes:** `$SIR,9,3,,24,10,0,,,*` is the **Energy Launcher** row, and **MC ships it in every game**
 (`gameconfig._SIR_TABLE`), not just the stock app. Arm
 that weapon as it ships, take one hit, and watch the victim's pools for 10 s. If they move late, a
-weapon in our own catalogue has been ticking victims all along and nobody watched for it (P18).
+weapon in our own catalogue has been ticking victims all along and nobody watched for it (P18). Then ask the second
+question straight away: **can a tick land during spawn protection?** Take the hit, die, respawn, and watch the
+pools through the protected window. A tick that arrives after a respawn is a different bug from a tick that
+arrives in a fight, and the playtest session owns that window.
 
 ## 4. The Charge Rifle's tap cadence (5 min)
 
