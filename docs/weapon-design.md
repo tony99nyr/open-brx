@@ -198,8 +198,8 @@ sounds — and moves the numbers.
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | *Melee* | melee | 90 | 1000 | 2 | **1.00** | 90.0 | 90.0 | 1 | 0 | 0 | 0% | — | **stock** |
 | Sniper Rifle | marksman | 60 | 1500 | 2 | **1.50** | 40.0 | 31.2 | 4 | 24 | 1700 | 92% | — | dmg 80→60, cycle 300→1500 |
-| Shotgun | cqb | 20 | 800 | 3 | **1.60** | 25.0 | 23.1 | 6 | 24 | 400 | 12% | — | **2026-09-18**: dmg 45→20 (`wire.dmg`, the gun word); a measured 20-damage headset word (`wire.headset_dmg`, t12) stacks unconditionally on top, 40 real per pull (htk/TTK unchanged, 2 pulls short, 3 kills either way), but `dmg`/`dps`/`sust`/one-mag % here are the GUN WORD ALONE, not the real per-pull total. Magazine deliberately left at 6/24: `test_ttk_band_and_no_strictly_dominant_weapon` fails (the AMR now dominates it), and that is left RED on purpose pending F254 rather than bought with an unexamined number; §7 |
-| Plasma Sniper | marksman | 25 | 400 | 4 | **1.20** | 62.5 | 41.7 | 10 | 80 | 2000 | 95% | 30 | dmg 80→25, cycle 225→400; **2026-09-18**: htk 5→4, TTK 1.60→1.20s (a measured 10-damage headset word, `wire.headset_dmg`/t12, stacks unconditionally, 35 real per pull); `dmg`/`dps`/`sust`/one-mag % here are the gun word alone, same caveat as the Shotgun; §7 |
+| Shotgun | cqb | 20 | 800 | 3 | **1.60** | 25.0 | 23.1 | 6 | 24 | 400 | 12% | — | **2026-09-18**: dmg 45→20 (`wire.dmg`, the gun word); OUR chosen 20-damage headset word (`wire.headset_dmg`, t12) stacks unconditionally on top, 40 real per pull; the second word itself is measured (Callsign's own 70, cap30), the 20 is a balance number we picked (htk/TTK unchanged, 2 pulls short, 3 kills either way), but `dmg`/`dps`/`sust`/one-mag % here are the GUN WORD ALONE, not the real per-pull total. Magazine deliberately left at 6/24: `test_ttk_band_and_no_strictly_dominant_weapon` fails (the AMR now dominates it), and that is left RED on purpose pending F254 rather than bought with an unexamined number; §7 |
+| Plasma Sniper | marksman | 25 | 400 | 4 | **1.20** | 62.5 | 41.7 | 10 | 80 | 2000 | 95% | 30 | dmg 80→25, cycle 225→400; **2026-09-18**: htk 5→4, TTK 1.60→1.20s (our chosen 10-damage headset word, `wire.headset_dmg`/t12, stacks unconditionally, 35 real per pull; ⚠️ this weapon has NEVER been captured -- cap30 fired only a Shotgun -- so its second word rests on a sourced t12=80 and nothing else); `dmg`/`dps`/`sust`/one-mag % here are the gun word alone, same caveat as the Shotgun; §7 |
 | AMR | support | 24 | 400 | 5 | **1.60** | 60.0 | 48.0 | 14 | 56 | 1400 | 100% | — | dmg 18→24, cycle 360→400 |
 | Force Rifle | assault | 10 | 100 +250 | 12 | **1.65** | 66.7 | 50.7 | 36 | 144 | 1700 | 100% | — | dmg 9→10 |
 | Burst Rifle | assault | 11 | 75 +275 | 11 | **1.42** | 77.6 | 58.2 | 36 | 216 | 1700 | 100% | — | **2026-09-17**: dmg 9→11 (`wire.dmg`) |
@@ -1307,10 +1307,12 @@ single shooter landed `$HIR,4,0,1,0,45,0,0` and then `$HIR,4,0,1,0,70,0,0` **88 
 sensor, killing a player with 79 left. The cycle is 900 ms, so it was one pull. What the capture does not
 say: the distance, and which emitter sent which word, so the §8 bench still decides the design.
 
-✅ **Which emitter sent which word: settled, 2026-09-18 (LaserTagMods, Jay).** Independent confirmation
-of the mechanism, credited per this repo's hard rule on protocol discovery: "it actually is both ... so
-there is a dual emitter fire. one from tagger, weaker damage and one from headset, greater damage." That
-settles the cap30 capture: the gun sent the 45, the headset sent the 70. Our compiled Shotgun does NOT
+⚠️ **Which emitter sent which word: SOURCED, not settled, 2026-09-18 (LaserTagMods, Jay).** One expert
+statement, credited per this repo's hard rule on protocol discovery: "it actually is both ... so
+there is a dual emitter fire. one from tagger, weaker damage and one from headset, greater damage." Read onto the cap30
+capture that means the gun sent the 45 and the headset the 70. The capture ITSELF cannot show which
+emitter fired which word, so this stays sourced until a bench covers one emitter at a time (F254's own
+run does it for free). Our compiled Shotgun does NOT
 mirror Callsign's own 45/70 split: it ships `wire.dmg` 20 and `wire.headset_dmg` 20 (40 together, a
 3-pull kill at the weapon's existing 800 ms cycle, so no other weapon on the ladder moves), and locks
 `t13`/`t42` (the headset word's own reach) at 100, the flat measured shelf of the range curve below, so
@@ -1320,7 +1322,8 @@ See `docs/FOLLOWUPS.md` F71.
 
 **What this means for range.** Callsign never shortens the Shotgun: its frame carries `t2` = 100, the
 same as every Callsign gun. What varies with distance is only the 70-damage headset word, through
-`t13` 80 outdoors and `t42` 30 indoors (35.5 and 29.25 kHz by §6.5's formula). So Callsign's Shotgun is
+`t13` 80 outdoors and `t42` 30 indoors (35.5 and 29.25 kHz IF §6.5's formula extends to them -- ⚠️ it was
+derived for `t2`/`t41`, the GUN word, and has never been checked against the headset word). So Callsign's Shotgun is
 "45 at any range, 115 up close", not "short range". That is a better shape than our `t2` = 22, which
 puts the Shotgun's only word on the unstable knee of the receiver curve.
 

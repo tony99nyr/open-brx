@@ -214,6 +214,7 @@ button:active{filter:brightness(1.15)}
 .redeploy .kit .ki{display:flex;align-items:center;gap:8px;border:1px solid var(--edge);background:var(--plate);padding:4px 10px 4px 4px;min-width:0}
 .redeploy .kit .ki .th{width:60px;height:34px;background-color:#0a1626;background-size:contain;background-repeat:no-repeat;background-position:center;border:1px solid var(--edge);flex:0 0 auto;display:flex;align-items:center;justify-content:center;color:var(--glow)}
 .redeploy .kit .ki .th svg{width:24px;height:24px}
+.redeploy .kit .ki .th .wpicfb svg{width:24px;height:24px}
 .redeploy .kit .ki .kk{font-size:10px;letter-spacing:.24em;color:var(--mut);font-weight:700}
 .redeploy .kit .ki .kn{font-family:var(--fd);font-weight:700;font-size:15px;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
 .redeploy .beam{position:absolute;top:0;bottom:0;width:120px;left:-20%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);transform:skewX(-14deg);animation:beam .55s .1s ease-out both;pointer-events:none}
@@ -258,6 +259,7 @@ button:active{filter:brightness(1.15)}
 .wt > *{transform:skewX(8deg)}
 .wt .th{width:190px;height:96px;background-color:#0a1626;background-size:contain;background-repeat:no-repeat;background-position:center;border:1px solid var(--edge);display:flex;align-items:center;justify-content:center;color:var(--glow)}
 .wt .th.none{color:var(--mut);font-size:28px}.wt .th.perk svg{width:40px;height:40px}
+.wt .th .wpicfb svg{width:40px;height:40px}
 .wt .wl{font-size:10px;letter-spacing:.3em;color:var(--mut);font-weight:700;margin-top:4px}
 .wt .wn{font-family:var(--fd);font-weight:700;font-size:20px;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
 .wt.from{opacity:.45;filter:grayscale(.6)}
@@ -273,7 +275,7 @@ button:active{filter:brightness(1.15)}
 #frame[data-takeover="switch"] #chips{opacity:0}
 #frame[data-takeover="reconcile"] #chips{opacity:0}
 [data-env="night"] .switching,[data-env="night"] .switched{background:#000}[data-env="night"] .switching .t{color:var(--num);text-shadow:none}
-[data-env="night"] .wt .th{background-image:none!important;background:#000}[data-env="night"] .wt.to,[data-env="night"] .wt.on{box-shadow:none;border-color:var(--num)}
+[data-env="night"] .wt .th{background-image:none!important;background:#000}[data-env="night"] .wt .th .wpic,[data-env="night"] .wt .th .wpicfb{display:none!important}[data-env="night"] .wt.to,[data-env="night"] .wt.on{box-shadow:none;border-color:var(--num)}
 [data-env="night"] .switching .track i{background:var(--num)}
 /* A11.4 ALERT banner: full width, one fade in / one fade out, colour by family */
 .alert{pointer-events:none;animation:hitin .14s ease-out}
@@ -593,6 +595,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .tryout > *{transform:skewX(8deg)}
 .tryout .facts{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}   /* F111 made real 2026-09-12: MC's WeaponView facts (dmg · htk · kill · reload) wrapped to two lines and the panel grew into READY UP; one clamped line here, the full detail lives in the rack's ⓘ pane */
 .tryout .art{flex:0 0 220px;height:120px;background-color:#0a1626;background-size:contain;background-repeat:no-repeat;background-position:center;border:1px solid var(--edge)}
+.tryout .art .wpicfb svg{width:56px;height:56px}
 .tryout .meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;justify-content:center}
 .tryout .facts{margin-top:2px;line-height:1.4}
 .tryout .lbl{font-size:11px;letter-spacing:.24em;color:var(--warn);font-weight:700}
@@ -609,10 +612,17 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .plate.slot{display:flex;gap:10px;align-items:center;flex:0 0 250px;min-height:78px;padding:8px 10px;position:relative;pointer-events:auto}   /* A14: three plates in the 772px row */
 .lobby .plates > .plate:not(.slot){flex:1 1 120px;min-width:0}
 .lobby .plates > .plate:not(.slot) .h,.lobby .plates > .plate:not(.slot) .s{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Weapon art: an <img>, not a CSS background, because a background-image has no onerror hook — a
+   missing jpg (`weaponArt` in hud.js) swaps to a generic glyph instead of showing an empty box. Both
+   are sized to fill whatever box they sit in, so every weapon-art spot below only sets the glyph's
+   own svg size, the same way it already sizes the equivalent perk glyph. */
+.wpic{display:block;width:100%;height:100%;object-fit:contain}
+.wpicfb{display:none;width:100%;height:100%;align-items:center;justify-content:center;color:var(--glow)}
 .plate.slot .thumb{flex:0 0 72px;height:54px;border:1px solid var(--edge);background-color:#0a1626;background-size:contain;background-repeat:no-repeat;background-position:center;transform:skewX(8deg)}
 .plate.slot .thumb.perk,.plate.slot .thumb.none{display:flex;align-items:center;justify-content:center;color:var(--glow);background:var(--plate2)}
 .plate.slot .thumb.perk svg{width:36px;height:36px}
 .plate.slot .thumb.none span{font-size:24px;color:var(--mut)}
+.plate.slot .thumb .wpicfb svg{width:36px;height:36px}
 .plate.slot .in{min-width:0;flex:1}
 .plate.slot .k{font-size:11px;letter-spacing:.26em;color:var(--mut);font-weight:700;display:flex;align-items:center;gap:8px;white-space:nowrap}
 .plate.slot .k .lock{display:inline-flex}.lockg{width:14px;height:14px;vertical-align:-2px}.lolock .big .lockg{width:20px;height:20px;vertical-align:-3px}
@@ -659,6 +669,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .lrow .thumb{flex:0 0 66px;height:36px;background-color:#0a1626;background-size:contain;background-repeat:no-repeat;background-position:center;border:1px solid var(--edge)}
 .lrow .thumb.perk{display:flex;align-items:center;justify-content:center;color:var(--glow);background:var(--plate2)}
 .lrow .thumb.perk svg{width:30px;height:30px}
+.lrow .thumb .wpicfb svg{width:30px;height:30px}
 .lrow .nm{font-family:var(--fd);font-weight:700;font-size:18px;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
 .lrow .nm2{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.05}
 .lrow .nm2 b{font-family:var(--fd);font-weight:700;font-size:18px;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -701,6 +712,7 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .lo .lodetail .art{height:132px;border:1px solid var(--edge);background-color:#0a1626;background-size:contain;background-repeat:no-repeat;background-position:center;flex:0 0 auto}   /* the renders are 640×350: contain, never crop the gun (review 2026-09-04) */
 .lo .lodetail .art.perk{display:flex;align-items:center;justify-content:center;color:var(--glow);background:var(--plate2)}
 .lo .lodetail .art.perk svg{width:64px;height:64px}
+.lo .lodetail .art .wpicfb svg{width:64px;height:64px}
 .lo .lodetail .rolechip{font-family:var(--fl);font-style:normal;font-size:11px;letter-spacing:.18em;color:var(--mut);vertical-align:middle;margin-left:6px}
 .lo .lodetail .nm{font-family:var(--fd);font-style:italic;font-weight:700;font-size:24px;letter-spacing:.06em;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:4px}
 .lo .lodetail .ln{font-size:11px;letter-spacing:.14em;color:var(--mut);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -731,6 +743,11 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px}
 .lolock .cur{font-family:var(--fd);font-weight:700;font-size:18px;color:var(--glow);letter-spacing:.06em}
 /* night: no artwork (the phone must not become a flashlight), same tokens otherwise */
 [data-env="night"] .plate.slot .thumb,[data-env="night"] .lrow .thumb,[data-env="night"] .lo .lodetail .art{background-image:none!important;background:#000;border-color:var(--edge)}
+/* Weapon art is an <img>, not a background, since the missing-art fallback landed 2026-09-18 -- so
+   `background-image:none` above stopped hiding it and a bright weapon photo lit the screen up during
+   night play. Night mode exists so a phone does not give away where its owner is standing, so the
+   element itself has to go, not its background. Audited by the `night` step in app/tools/e2e.mjs. */
+[data-env="night"] .wpic,[data-env="night"] .wpicfb{display:none!important}
 [data-env="night"] .lotab.on{background:var(--team);color:#000}
 [data-env="night"] .lrow.eq,[data-env="night"] .eqtag{border-color:var(--num)}
 [data-env="night"] .lrow .st,[data-env="night"] .ackchip.ok,[data-env="night"] .eqtag,[data-env="night"] .fch.none.on{color:var(--num)}

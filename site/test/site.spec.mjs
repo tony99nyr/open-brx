@@ -433,7 +433,11 @@ it('11 · every old URL really resolves over HTTP, in one hop, with no loop', as
 // motion that reveals rather than hides.
 const facts = () => {
   const modes = (fs.readFileSync(path.join(DOCS, '../mcp/brx_mcp/mc/state.py'), 'utf8').match(/\{"mode":\s*"[a-z_]+",\s*"name"/g) || []).length;
-  const weapons = JSON.parse(fs.readFileSync(path.join(DOCS, '../mcp/brx_mcp/mc/weapons.json'), 'utf8')).weapons.length;
+  // VISIBLE weapons, the same predicate the server publishes its catalogue with (`WeaponCatalog.all()`).
+  // Counting every ROW advertised 25 weapons on the home page when 15 are in the game, and gave the class
+  // pills a MELEE entry nobody can pick and a HEAVY entry of 5 when 3 of those are cut (2026-09-18).
+  const weapons = JSON.parse(fs.readFileSync(path.join(DOCS, '../mcp/brx_mcp/mc/weapons.json'), 'utf8'))
+    .weapons.filter(w => !w.hidden).length;
   const release = JSON.parse(fs.readFileSync(path.join(DOCS, '../webapp/download/build.json'), 'utf8'));
   return { modes, weapons, release };
 };
