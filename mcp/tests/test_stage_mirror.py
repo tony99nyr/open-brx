@@ -1178,8 +1178,10 @@ KNOWN_UNMIRRORED = {
     # `write_lost`). The stage's batches never resolve false, for the same reason as `_writeMust`.
     "_writeLife",
     # pl4 (2026-09-17): the HUD's OVERHEAT word (`overheatShown`): display only. The stage has no OVERHEAT word;
-    # the game rule, the lockout line that exempts no_fire, is mirrored in `_overheating` (HEAT_LOCKOUT = 99).
-    "_heatLockFrame", "_heatLockPress", "_overheatShown",
+    # the game rule, the lockout line that exempts no_fire, is mirrored in `_heat_blocks_fire` (HEAT_LOCKOUT = 99).
+    # Maint review 2026-09-17 renamed the pair so the names say which is which: `_heatBlocksFire` is the
+    # mechanic (mirrored), `_overheatOnHud` is the display (pinned here).
+    "_heatLockFrame", "_heatLockPress", "_overheatOnHud",
     # app lifecycle + the A26 pick debounce: the stage has no foreground/background and no MC to pick from
     "_awake", "commitPick",
     # field 2026-09-17: the kill banner's victim name, resolved from MC's `feedback`; the stage has no MC and no banner
@@ -1352,3 +1354,91 @@ def test_pl4_an_energy_weapon_watchdog_covers_a_held_recharge_that_lands_3_9_s_a
         st.reload(); await settle(st)
         assert st._reload_deadline() == st.reloading["at"] + st.reloading["s"] + max(0.6, st.reloading["s"] * 0.5), "control: a bullet weapon keeps its ceiling"
     asyncio.run(go())
+
+
+# ======================================================================================================
+# Maint review 2026-09-17 -- what the method scan above CANNOT see
+# ======================================================================================================
+
+#: Fields published by engine.js `state()` INLINE (not through a method) that the stage deliberately does
+#: not mirror. `_engine_methods()` reads method declarations, so an inline `state()` field is invisible to
+#: it: a game rule that ships as one of these would slip past the whole file. Each entry needs a reason.
+KNOWN_UNMIRRORED_STATE = {
+    # MC's mid-match leaderboard, pushed to the node as `feedback`/`score` and read back out for the HUD's
+    # results overlay. It is MC's own arithmetic arriving over the wire, not a rule the node computes, and
+    # the stage has no MC session to receive it (`onMcMessage` is already pinned in KNOWN_UNMIRRORED). A
+    # stage-side copy would be a hand-typed fiction of MC's board, which is worse than not having one.
+    "scoreRows",
+}
+
+
+def _state_fields() -> set[str]:
+    """The top-level keys engine.js `state()` returns, read from the source text.
+
+    Slices from `  state() {` to the first line that is exactly the method's closing brace, then takes every
+    `name:` at the object-literal indent. `^      (\\w+):` is that indent: a deeper one is a nested object
+    (`preflight`, `station`), and a shallower one is not inside the literal at all.
+    """
+    text = _ENGINE_JS.read_text(encoding="utf-8")
+    i = text.index("\n  state() {")
+    body = text[i:]
+    body = body[:body.index("\n  }\n")]
+    return {m.group(1) for m in _re.finditer(r"^      (\w+):", body, _re.M)}
+
+
+def test_a_state_field_the_method_scan_cannot_see_is_still_pinned():
+    """Every name in KNOWN_UNMIRRORED_STATE must still be an engine.js `state()` field AND still absent from
+    the stage. Both halves fail loudly: a renamed or deleted field leaves a lying pin, and a field somebody
+    HAS mirrored should be dropped from the set so it keeps shrinking."""
+    fields, stage = _state_fields(), _stage_methods()
+    stage_text = _STAGE_PY.read_text(encoding="utf-8")
+    for name in sorted(KNOWN_UNMIRRORED_STATE):
+        assert name in fields, (
+            f"`{name}` is pinned as an unmirrored engine.js `state()` field but `state()` no longer publishes "
+            f"it -- find the new name and re-pin it, or drop the entry")
+        snake = _snake(name)
+        assert snake not in stage and f'"{snake}"' not in stage_text, (
+            f"`{name}` is mirrored on the stage now (`{snake}`) -- delete it from KNOWN_UNMIRRORED_STATE")
+    assert "scoreRows" in fields, "the results overlay's only input vanished from `state()`"
+
+
+# ---- the stand-down table (engine.js `STAND_DOWN` / GunStage `_STAND_DOWN`) ---------------------------
+
+_STAND_DOWN_CALL = _re.compile(r"_standDown\(\[([^\]]*)\]", _re.S)
+_STAND_DOWN_CALL_PY = _re.compile(r"_stand_down\(\(([^)]*)\)", _re.S)
+
+
+def _table_names(text: str, marker: str, end: str) -> list[str]:
+    """The ordered names declared in a stand-down table, read from the source text. `marker` is the table's
+    declaration line and `end` the line that closes it; only the first quoted word of each row is a name."""
+    body = text[text.index(marker) + len(marker):]
+    body = body[:body.index(end)]
+    return [m.group(1) for m in _re.finditer(r"""^\s*[\[(]['"](\w+)['"]""", body, _re.M)]
+
+
+def test_every_stand_down_name_used_is_a_name_the_table_declares():
+    """The table only removes the copies if a call site cannot invent a name. `_standDown` ignores an unknown
+    name on purpose -- throwing at a player mid-match would be worse than the missing guard -- so the typo has
+    to be caught HERE instead, on both sides.
+
+    CONTROL: the tables are non-empty and the scan finds real call sites, so an empty set cannot pass."""
+    js = _ENGINE_JS.read_text(encoding="utf-8")
+    py = _STAGE_PY.read_text(encoding="utf-8")
+    js_names = _table_names(js, "const STAND_DOWN = [", "\n];")
+    py_names = _table_names(py, "_STAND_DOWN: tuple[tuple[str, Callable[[GunStage], bool]], ...] = (", "\n    )")
+    assert len(js_names) >= 10 and len(py_names) >= 5, (js_names, py_names)
+    assert set(py_names) <= set(js_names), (
+        "the stage declares a stand-down name engine.js does not: " + ", ".join(sorted(set(py_names) - set(js_names))))
+    # the stage's subset keeps the engine's ORDER, so `_operator_resync`'s refusals come out in the phone's order
+    assert py_names == [n for n in js_names if n in set(py_names)], (py_names, js_names)
+
+    js_calls = _STAND_DOWN_CALL.findall(js)
+    py_calls = _STAND_DOWN_CALL_PY.findall(py)
+    assert len(js_calls) >= 7, f"only {len(js_calls)} `_standDown([...])` call sites found in engine.js"
+    assert len(py_calls) >= 3, f"only {len(py_calls)} `_stand_down((...))` call sites found in stage.py"
+    for call in js_calls:
+        for name in _re.findall(r"""['"](\w+)['"]""", call):
+            assert name in js_names, f"engine.js `_standDown([{call.strip()}])` names `{name}`, which the STAND_DOWN table does not declare"
+    for call in py_calls:
+        for name in _re.findall(r"""['"](\w+)['"]""", call):
+            assert name in py_names, f"stage.py `_stand_down(({call.strip()}))` names `{name}`, which `_STAND_DOWN` does not declare"

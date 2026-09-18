@@ -340,3 +340,71 @@ test('pl3: a failed stun restore is retried once; a stun restore the next stun o
   await flush(); await flush();
   assert.equal(h.batches.slice(n).filter(isRestore).length, 1, 'no restore that re-arms a stunned gun');
 });
+
+// ---------- maint review 2026-09-17: the refusal STRINGS themselves ----------
+// Four of the six (`no bundle`, `a relink reconcile is running`, `a try-out is running`, `the T-0 spawn has
+// not run`) appeared in no test at all, so deleting any of them left the suite green. They are what the
+// operator reads on the board when a button does nothing, and they are now the `_standDown` table's output,
+// so this pins both the strings and the table's ORDER.
+const REFUSALS = [
+  ['phase', h => { h.eng.phase = 'armed'; }, 'phase is armed'],
+  ['spawned', h => { h.eng.spawned = false; }, 'the T-0 spawn has not run'],
+  ['bundle', h => { h.eng.frames = null; }, 'no bundle'],
+  ['ble', h => { h.eng.bleUp = false; }, 'gun link down (RELINK first)'],
+  ['reconciling', h => { h.eng.reconciling = { at: h.eng.now() }; }, 'a relink reconcile is running'],
+  ['resync', h => { h.eng.resync = { at: h.eng.now() }; }, 'a restart resync is running'],
+  ['tutorial', h => { h.eng.tutorial = { weapon_id: 'assault_rifle' }; }, 'a try-out is running'],
+];
+
+for (const [name, set, why] of REFUSALS) {
+  for (const cmd of ['resync', 'respawn']) {
+    test(`A47/pl3: ${cmd} refused while ${name} says "${why}": to MC, to the log, and with no write`, () => {
+      const h = live();
+      set(h);
+      const n = h.mark(), nFacts = h.facts.length;
+      h.op(cmd);
+      assert.deepEqual(h.since(n), [], 'a refused operator command must write nothing to the gun');
+      assert.deepEqual(h.facts.slice(nFacts),
+        [{ type: 'operator_result', cmd, ok: false, why, match_id: 'm1', player_id: 'p1' }]);
+      assert.ok(h.logs.some(([l]) => l === `operator ${cmd} ignored — ${why}`),
+        `the phone log must carry the reason too: ${JSON.stringify(h.logs.slice(-3))}`);
+    });
+  }
+}
+
+test('A47/pl3: the refusals keep their order: the first thing wrong is the one the operator is told about', () => {
+  // Every condition true at once, then cleared one at a time: the reasons must come out in table order.
+  // CONTROL for the table refactor: reorder `STAND_DOWN` and this walks out in the new order and fails.
+  const h = live();
+  for (const [, set] of REFUSALS) set(h);
+  const seen = [];
+  for (const [, , why] of REFUSALS) {
+    const nFacts = h.facts.length;
+    h.op('resync');
+    seen.push(h.facts[nFacts].why);
+    const i = REFUSALS.findIndex(([, , w]) => w === seen[seen.length - 1]);
+    [() => { h.eng.phase = 'live'; }, () => { h.eng.spawned = true; }, () => { h.eng.frames = {}; },
+      () => { h.eng.bleUp = true; }, () => { h.eng.reconciling = null; }, () => { h.eng.resync = null; },
+      () => { h.eng.tutorial = null; }][i]();
+  }
+  assert.deepEqual(seen, REFUSALS.map(([, , why]) => why));
+});
+
+test('A47: RESYNC GUN keeps its own two refusals, each with its own cure', () => {
+  // These are NOT in `_operatorAct`'s subset: a down player wants FORCE RESPAWN, a stunned one wants to wait.
+  const h = live();
+  h.frame('$HP,0,0,0,*');
+  assert.equal(h.eng.alive, false, 'setup: down');
+  let n = h.facts.length;
+  h.op('resync');
+  assert.equal(h.facts[n].why, 'the player is down');
+  h.adv(8010);
+  assert.equal(h.eng.alive, true, 'setup: revived');
+  h.eng.config.stun = { duration_s: 10 };
+  h.eng._stun();
+  n = h.facts.length;
+  const w = h.mark();
+  h.op('resync');
+  assert.equal(h.facts[n].why, 'stunned');
+  assert.deepEqual(h.since(w), [], 'and still no write');
+});

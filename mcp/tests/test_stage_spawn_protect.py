@@ -38,6 +38,21 @@ async def _live(st, clock):
     return st
 
 
+ENGINE_JS = __import__("pathlib").Path(__file__).resolve().parents[2] / "app" / "src" / "engine.js"
+
+
+def test_the_spawn_protection_cap_is_the_same_number_on_both_sides():
+    """Maint review 2026-09-17: SPAWN_PROTECT_MAX_S was the one mirrored constant with NO parity assertion
+    (GUN_QUIET_STALE_S, TRIGGER_NO_FIRE_S, NO_FIRE_PULLS, HEAT_LOCKOUT and HEAT_STALE_S are all pinned in
+    test_stage_pool_stale.py, ENERGY_REFILL_MAX_S in test_stage_mirror.py). A stage that arms hit reception
+    at a different moment from the phone predicts a different gun, which is the one thing these files exist
+    to stop. Same shape as the others: read the number straight out of the engine.js source text."""
+    js = ENGINE_JS.read_text(encoding="utf-8")
+    assert f"SPAWN_PROTECT_MAX_MS = {int(GunStage.SPAWN_PROTECT_MAX_S * 1000)};" in js, (
+        "engine.js SPAWN_PROTECT_MAX_MS and GunStage.SPAWN_PROTECT_MAX_S disagree -- the bench would arm the "
+        "real $SIR table at a different moment from the phone")
+
+
 def test_the_stage_bundle_is_protected_at_spawn_and_revive():
     st, mgr, clock = _mk()
     b = st.bundle

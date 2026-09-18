@@ -120,6 +120,16 @@ const isEnergyWeaponId = id => /energy|charge/i.test(String(id || ''));   // the
 // Rifle (about +3 a shot) stopped firing AT 99, never above 100, and locked for 10-23 s. `heat >= 99` holds
 // both; the old `> 100` never saw the Energy Rifle's lockout at all.
 const HEAT_LOCKOUT = 99;
+// ---- the three heat windows move together (maint review 2026-09-17) --------------------------------
+// OVERHEAT_SHOWN_MS < HEAT_STALE_MS < OVERHEAT_CAP_MS, and engine.test.mjs asserts that order.
+//   OVERHEAT_SHOWN_MS  the DISPLAY window: how long the HUD keeps the word and the bar hot after the last
+//                      evidence of the lockout (`_overheatOnHud`).
+//   HEAT_STALE_MS      the MECHANIC's window: how long a heat reading is still trusted to mean "this gun
+//                      cannot fire" (`_heatBlocksFire`), which exempts a dry pull from `no_fire`.
+//   OVERHEAT_CAP_MS    the hard ceiling on the display window, so the word can never sit for a whole life.
+// The display must clear BEFORE the mechanic's trust lapses (the lockout itself ends long before a player
+// stops trying), and the cap must sit above both or it would cut the other two short.
+// ----------------------------------------------------------------------------------------------------
 // pl4: the longest OVERHEAT can stay up after the lockout's first reading, whatever else is seen. Above the
 // longest measured lockout (Energy Rifle, 23 s) with margin, so the word can never stick for a whole life.
 export const OVERHEAT_CAP_MS = 30000;
@@ -132,7 +142,7 @@ export const OVERHEAT_CAP_MS = 30000;
 // hold for every one of those pulls or the old false-positive "gun not firing" report comes straight back.
 // HEAT_STALE_MS sits above that real window with margin, so a genuine lockout (or a player still trying it)
 // is never cleared early, and only a reading old enough to be certainly abandoned counts as untrustworthy.
-const HEAT_STALE_MS = 25000;
+export const HEAT_STALE_MS = 25000;
 // pl3 (2026-09-17): HEAT_STALE_MS above is for `no_fire` only. It must outlast a player who dry-fires a locked
 // weapon for ~20 s. The HUD's OVERHEAT word must not: the lockout itself ends long before that. The reading that
 // tips a weapon over the line arrives with the shot that caused it. The bench-measured lockout holds ~4.8 s,
@@ -150,6 +160,11 @@ const SHOT_CUE_MIN_MS = 400;
 // gun armed and firing — 250 ms is comfortably inside "stays armed" with headroom for BLE jitter, and it is
 // the only throttle standing between a full-auto burst and a $WEAP flood.
 export const ACC_WRITE_MIN_GAP_MS = 250;
+// ---- the accuracy writer's two windows move together (maint review 2026-09-17) ---------------------
+// ACC_HOLD_MS > ACC_VERIFY_GRACE_MS, and engine.test.mjs asserts that order. A hold shorter than the
+// verify grace would let the writer judge (and retry) a write while the OTHER write's `$AMMO` is still
+// in flight, which is the exact race the hold exists to stop. The reasoning is on ACC_HOLD_MS below.
+// ----------------------------------------------------------------------------------------------------
 // How long to wait for the $ALCD that answers an accuracy write before judging it. Bench measured the write
 // landing in 30-90 ms; this leaves plenty of headroom for a slower link without stalling the model for long.
 export const ACC_VERIFY_GRACE_MS = 450;
@@ -274,6 +289,47 @@ const KEY = 'brx.engine';
 /** The HUD skin lives outside `KEY`: it is the phone's, not the match's, so no TTL expires it. `brx.night` is '1'/'0'
  *  (the key the app used before); `brx.night_choice` is `{session}`, the MC session a player's own tap belongs to. */
 const NIGHT_KEY = 'brx.night', NIGHT_CHOICE_KEY = 'brx.night_choice';
+
+/** Maint review 2026-09-17: "the writer stands down" was re-typed at seven call sites and no two agreed --
+ *  `_recoilFlush` alone read `_accHoldUntil`, `_awaitShot` alone read `tutorial`, `_noFireTick` dropped
+ *  `resync`/`reconciling`, and two `_writeMust` `still` lambdas spelled a third variant inline. Each site
+ *  WANTS a different subset, so the sets stay different on purpose; only the PREDICATES live here now.
+ *
+ *  Ordered, and the order is the precedence `_standDown` reports: `_operatorAct` turns the first blocking
+ *  name into the refusal the operator reads, so this order is that message's order. Everywhere else the
+ *  answer is a boolean and the order does not matter.
+ *
+ *  Each test is `(engine, now) => true when this blocks`. `now` is passed so a caller inside `tick` can
+ *  hand over the tick's own clock reading rather than taking a second, fractionally later one.
+ *  ⚠ Mirrored in `mcp/brx_mcp/stage/stage.py` (`_STAND_DOWN`), which carries the subset the bench has. */
+const STAND_DOWN = [
+  ['phase',       e => e.phase !== 'live'],
+  ['spawned',     e => !e.spawned],
+  ['bundle',      e => !e.frames],
+  ['ble',         e => !e.bleUp],
+  ['alive',       e => !e.alive],
+  ['reconciling', e => !!e.reconciling],
+  ['resync',      e => !!e.resync],
+  ['tutorial',    e => !!e.tutorial],
+  ['switching',   e => !!e.switching],
+  ['reloading',   e => !!e.reloading],
+  ['stunned',     e => !!e.stunned],
+  ['heat',        e => e._heatBlocksFire()],
+  ['accHold',     (e, now) => now < e._accHoldUntil],
+];
+/** The names `_standDown` answers to. engine.test.mjs reads every `_standDown([...])` call site out of this
+ *  file and asserts each name is in here, so a typo cannot silently drop a guard. */
+export const STAND_DOWN_NAMES = STAND_DOWN.map(([name]) => name);
+/** A47: the refusal each `_operatorAct` stand-down name puts in front of the operator. */
+const OPERATOR_REFUSAL = {
+  phase: e => `phase is ${e.phase}`,
+  spawned: () => 'the T-0 spawn has not run',
+  bundle: () => 'no bundle',
+  ble: () => 'gun link down (RELINK first)',
+  reconciling: () => 'a relink reconcile is running',
+  resync: () => 'a restart resync is running',
+  tutorial: () => 'a try-out is running',
+};
 
 export class Engine {
   /**
@@ -436,6 +492,7 @@ export class Engine {
     this._recoil = null;            // S42: {weaponId, ceiling, floor, perShot, recoverMs, value, ...} for the ACTIVE weapon's live accuracy model, or null (no profile / recoil off)
     this._lastTeamRepaintAt = null; // F68: last periodic team-colour repaint (tick(), TEAM_REPAINT_MS)
     this._accHoldUntil = 0;         // S42 × A44/A47/F15: the accuracy writer stands down until this time (`_holdAccuracyWrites`)
+    this._accHoldWhy = null;        // ...and which write asked it to, published as `state().accHold` so a reader can see why
     this.switching = null;          // {at, from} while an ALT weapon swap is in flight (field 2026-08-30)
     // {at, ms, slot, from, cap, mag, lastGainAt} from the reload-handle pull ($BUT,2) until the gun's OWN
     // $ALCD says the mag came back (review 2026-09-03 #15; reconciled against real ammo for F123).
@@ -455,8 +512,8 @@ export class Engine {
     // mcp/brx_mcp/protocol.py's own `overheating: bool(heat)` is untested between 1-99 and would light
     // up on the very first rising frame of ordinary fire, which is not what "OVERHEAT" means on the bench).
     this.heatBySlot = {};
-    this._heatLock = null;   // pl4: {slot, at, lastAt} from the first reading at or past HEAT_LOCKOUT; see `_overheatShown`
-    // Per slot, the `now()` of the last heat token recorded -- lets `_overheating()` treat a reading as
+    this._heatLock = null;   // pl4: {slot, at, lastAt} from the first reading at or past HEAT_LOCKOUT; see `_overheatOnHud`
+    // Per slot, the `now()` of the last heat token recorded -- lets `_heatBlocksFire()` treat a reading as
     // stale once nothing has refreshed it for HEAT_STALE_MS (review 2026-09-17: see the constant's comment).
     this._heatAt = {};
     // Per slot, true once that slot has reported heat > 0 this life -- the HUD's heat bar exists only for a
@@ -589,6 +646,17 @@ export class Engine {
     } catch (_) { /* best-effort */ }
   }
   _changed() { this._save(); try { this.onChange(this); } catch (_) { /* ignore */ } }
+  /** Maint review 2026-09-17: the one reading of the `STAND_DOWN` table. `names` is THIS call site's subset --
+   *  every site names its own, because the sets genuinely differ -- and the answer is the first name in table
+   *  order that blocks, else null. Truthy means "stand down". PURE.
+   *
+   *  `now` defaults to a fresh clock reading; a caller already inside `tick` passes the tick's own `now`, which
+   *  is what `_recoilFlush` and `_noFireTick` do. A name that is not in the table is ignored here and caught by
+   *  engine.test.mjs instead, so a typo can never throw at a player mid-match. */
+  _standDown(names, now = this.now()) {
+    for (const [name, test] of STAND_DOWN) if (names.includes(name) && test(this, now)) return name;
+    return null;
+  }
   _write(frames, why) {
     if (!frames || !frames.length) return;
     frames = this._tidAfterPset(frames);
@@ -2400,7 +2468,7 @@ export class Engine {
     if (why === 'expired' && this.alive && this.bleUp) {
       const life = this._lifeSeq;
       this._writeMust(Object.entries(st.ammo).map(([slot, [mag, res]]) => `$AMMO,${slot},${mag},${res},1,*`), 'stun over: restore live ammo',
-        () => this._lifeSeq === life && !this.stunned && this.alive && this.bleUp && this.phase === 'live' && !this.reconciling);
+        () => this._lifeSeq === life && !this._standDown(['phase', 'ble', 'alive', 'reconciling', 'stunned']));
       this._holdAccuracyWrites('stun restore');
       this.moment = { kind: 'stun_over', at: this.now() };
       this._event('stun_over');
@@ -2482,6 +2550,7 @@ export class Engine {
    *  moved the gun's ammo (and, after a `$WEAP` re-push, its accuracy) out from under us. */
   _holdAccuracyWrites(why) {
     this._accHoldUntil = this.now() + ACC_HOLD_MS;
+    this._accHoldWhy = why;   // published as `state().accHold`: a reader should never have to guess which write took the gun
     const r = this._recoil; if (!r) return;
     r.pendingWriteAt = 0; r.retried = false;
     if (!r.disabled) r.dirty = true;
@@ -2539,14 +2608,14 @@ export class Engine {
     }
     if (r.disabled || !r.dirty) return;
     if (now - r.lastWriteAt < ACC_WRITE_MIN_GAP_MS) return;
-    if (this.reloading || this.switching) return;
-    // Merge 2026-09-17: `overheatLocked` was a seam nothing set. The node DOES track the lockout -- pl4's
-    // `_overheating()`, heat >= HEAT_LOCKOUT on the active slot -- and a locked gun cannot fire, so an
-    // accuracy write is both pointless and a `$WEAP` re-push at the worst moment. Use the real reading.
-    if (this._overheating()) return;
-    // A44/A47/F15: a spawn, revive, operator resync or stun write owns `$AMMO` while it is in flight.
-    if (this.stunned || now < this._accHoldUntil) return;
-    if (this.resync || this.reconciling) return;   // §3.10: the node infers nothing in these windows, and both re-arm the gun themselves
+    // The writer's stand-down set (`STAND_DOWN`), unchanged by the 2026-09-17 maint pass:
+    //   reconciling / resync  §3.10: the node infers nothing in these windows, and both re-arm the gun themselves.
+    //   switching / reloading the gun is mid-takeover; a `$WEAP` re-push lands in the middle of it.
+    //   heat                  merge 2026-09-17: `overheatLocked` was a seam nothing set. The node DOES track the
+    //                         lockout (`_heatBlocksFire`, heat >= HEAT_LOCKOUT on the active slot), and a locked
+    //                         gun cannot fire, so the write is both pointless and badly timed.
+    //   stunned / accHold     A44/A47/F15: a spawn, revive, operator resync or stun write owns `$AMMO` in flight.
+    if (this._standDown(['reconciling', 'resync', 'switching', 'reloading', 'stunned', 'heat', 'accHold'], now)) return;
     this._recoilWrite(now);
     if (r.giveUp) { r.disabled = true; r.giveUp = false; }
   }
@@ -2685,8 +2754,10 @@ export class Engine {
     }
     // pl3: `resync` is the restart evidence protocol (§3.10). It owns the gun's state until it concludes, and an
     // operator write in the middle would feed it evidence the gun never produced on its own.
-    const why = this.phase !== 'live' ? `phase is ${this.phase}` : !this.spawned ? 'the T-0 spawn has not run' : !this.frames ? 'no bundle'
-      : !this.bleUp ? 'gun link down (RELINK first)' : this.reconciling ? 'a relink reconcile is running' : this.resync ? 'a restart resync is running' : this.tutorial ? 'a try-out is running' : null;
+    // The first blocking name in `STAND_DOWN` order, turned into the line the operator reads. The table's
+    // order IS this message's order, so the refusals come out exactly as they did before the 2026-09-17 pass.
+    const blocked = this._standDown(['phase', 'spawned', 'bundle', 'ble', 'reconciling', 'resync', 'tutorial']);
+    const why = blocked ? OPERATOR_REFUSAL[blocked](this) : null;
     if (why) { this.log(`operator ${cmd} ignored — ${why}`, 'le'); return why; }
     if (cmd === 'respawn') {
       this.log(`operator respawn (${this.alive ? 'alive' : 'down'} at hp ${this.hp})`, 'lk');
@@ -2704,15 +2775,17 @@ export class Engine {
    *  Never `$SPAWN`, `$PSET` or a head: a config to a gun in play clears `spawned`. A take already pending
    *  (spawn protection, A44) is left to its own trigger. A down player is refused: FORCE RESPAWN is the cure. */
   _operatorResync() {
-    if (!this.alive) { this.log('operator resync ignored — the player is down (FORCE RESPAWN revives)', 'le'); return 'the player is down'; }
-    if (this.stunned) { this.log('operator resync ignored — stunned (the stun restore re-arms)', 'le'); return 'stunned'; }
+    // Two refusals of RESYNC GUN's own, kept out of `_operatorAct`'s subset because each names its own cure.
+    // The predicate comes from `STAND_DOWN` like every other; only the message is local.
+    if (this._standDown(['alive'])) { this.log('operator resync ignored — the player is down (FORCE RESPAWN revives)', 'le'); return 'the player is down'; }
+    if (this._standDown(['stunned'])) { this.log('operator resync ignored — stunned (the stun restore re-arms)', 'le'); return 'stunned'; }
     const life = this._lifeSeq;
     this._writeLost = null;   // pl4: the operator's cure for a lost spawn/revive write
     const tid = this._liveTid();
     const ammo = Object.entries(this._liveAmmo()).map(([slot, [mag, res]]) => `$AMMO,${slot},${mag},${res},1,*`);
     const bmap = ((this.frames && this.frames.revive) || []).find(f => typeof f === 'string' && f.startsWith('$BMAP,0,0')) || '$BMAP,0,0,,,,,*';
     this._writeMust([...(tid != null ? [`$TID,${tid},*`] : []), ...ammo, bmap], 'operator resync',
-      () => this._lifeSeq === life && this.alive && !this.stunned && this.bleUp && this.phase === 'live' && !this.reconciling && !this.resync);
+      () => this._lifeSeq === life && !this._standDown(['phase', 'ble', 'alive', 'reconciling', 'resync', 'stunned']));
     this._holdAccuracyWrites('operator resync');   // A47: the resync's own `$AMMO` (and its one retry) owns the counts
     if (this._protectsSpawn()) {
       if (this._armPending) this.log('operator resync: hit reception is still spawn-protected — the take follows the first shot or the cap', 'li');
@@ -2825,7 +2898,7 @@ export class Engine {
         // bench 2026-09-17) — the ONLY answer the accuracy writer's verify step ever gets.
         // F229 (bench 2026-09-17): token 5 is HEAT. Firing stops at 99, the gun does not cool on its
         // own, and only the reload lever vents it (about 35 a pull). `_onAmmo` below records it per slot,
-        // and `_overheating()` is the one reading of it (the accuracy writer's guard included).
+        // and `_heatBlocksFire()` is the one reading of it (the accuracy writer's guard included).
         this._recoilObserve(t[2] !== undefined && t[2] !== '' ? +t[2] : NaN, t[3] !== undefined && t[3] !== '' ? +t[3] : 0);
         this._onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null, t[3] !== undefined && t[3] !== '' ? +t[3] : 0, t[5] !== undefined && t[5] !== '' ? +t[5] : null);
         break;
@@ -2926,13 +2999,17 @@ export class Engine {
     if (latched && (latched.present || !present)) return latched;
     return present || live[0] || null;
   }
-  /** Bench 2026-09-17 (match 592e444eff): a charge rifle in OVERHEAT lockout will not fire no matter how
-   *  many times the trigger is pulled -- that is the mechanic working, not a stale pool. True once the
-   *  active slot's last-reported heat ($ALCD token 5) has passed HEAT_LOCKOUT -- UNLESS that reading is
+  /** THE MECHANIC. Bench 2026-09-17 (match 592e444eff): a charge rifle in OVERHEAT lockout will not fire no
+   *  matter how many times the trigger is pulled -- that is the mechanic working, not a stale pool. True once
+   *  the active slot's last-reported heat ($ALCD token 5) has passed HEAT_LOCKOUT -- UNLESS that reading is
    *  itself stale (review 2026-09-17): the gun sends no $ALCD while locked out or cooling, so a reading
    *  taken while OVERHEAT would otherwise sit above the line forever. Past HEAT_STALE_MS with nothing new
-   *  for this slot, treat it as no longer trustworthy and let `poolStale`'s 'no_fire'/'silent' path take over. */
-  _overheating() {
+   *  for this slot, treat it as no longer trustworthy and let `poolStale`'s 'no_fire'/'silent' path take over.
+   *
+   *  ⚠ Named apart from `_overheatOnHud` by the 2026-09-17 maint review, which found the two used as if they
+   *  were one truth. THIS one decides whether the gun can shoot: it gates the accuracy writer and exempts a
+   *  dry pull from `no_fire`, on the 25 s HEAT_STALE_MS trust window. It is NOT what the HUD draws. */
+  _heatBlocksFire() {
     const slot = this.activeSlot;
     if ((this.heatBySlot[slot] || 0) < HEAT_LOCKOUT) return false;
     const at = this._heatAt[slot];
@@ -2952,9 +3029,11 @@ export class Engine {
     const L = this._heatLock;
     if (L && L.slot === this.activeSlot && this.phase === 'live' && this.alive) L.lastAt = this.now();
   }
-  /** pl4: the HUD's OVERHEAT. True while the active slot's lockout has evidence inside OVERHEAT_SHOWN_MS and began
-   *  less than OVERHEAT_CAP_MS ago. PURE. */
-  _overheatShown(now = this.now()) {
+  /** THE DISPLAY. pl4: the HUD's OVERHEAT word, overlay and hot heat bar -- all three read this one field, so
+   *  they cannot disagree (maint review 2026-09-17: the bar read the mechanic and could stay hot for up to 19 s
+   *  after the word cleared). True while the active slot's lockout has evidence inside OVERHEAT_SHOWN_MS and
+   *  began less than OVERHEAT_CAP_MS ago. Display only: no game rule reads it. PURE. */
+  _overheatOnHud(now = this.now()) {
     const L = this._heatLock;
     return !!(L && L.slot === this.activeSlot && now - L.lastAt < OVERHEAT_SHOWN_MS && now - L.at < OVERHEAT_CAP_MS);
   }
@@ -2962,8 +3041,7 @@ export class Engine {
    *  loaded, and not swapping, reloading, stunned, resyncing, reconciling or overheat-locked. A press while
    *  one is due keeps the first. */
   _awaitShot() {
-    if (this.phase !== 'live' || !this.alive || !this.spawned || !this.bleUp || this.tutorial) return;
-    if (this.resync || this.reconciling || this.switching || this.reloading || this.stunned || this._overheating()) return;
+    if (this._standDown(['phase', 'spawned', 'ble', 'alive', 'reconciling', 'resync', 'tutorial', 'switching', 'reloading', 'stunned', 'heat'])) return;
     // The slot's live count once the gun has reported it this life, else the spawn magazine. An empty mag dry-fires.
     const seen = this._prevAmmo[this.activeSlot];
     const mag = seen != null ? seen : this._ammoBySlot()[this.activeSlot];
@@ -2974,7 +3052,7 @@ export class Engine {
   _noFireTick(now) {
     if (this._shotDueAt == null || now - this._shotDueAt < TRIGGER_NO_FIRE_MS) return;
     this._shotDueAt = null;
-    if (!this.alive || this.switching || this.reloading || this.stunned || this._overheating()) return;   // the reason changed while it was due -- overheat is a real cause too (592e444eff: heat 99->108, 10 pulls, no $ALCD)
+    if (this._standDown(['alive', 'switching', 'reloading', 'stunned', 'heat'], now)) return;   // the reason changed while it was due -- overheat is a real cause too (592e444eff: heat 99->108, 10 pulls, no $ALCD)
     this._noFirePulls++;
     if (this._noFirePulls === NO_FIRE_PULLS) this.log(`gun not firing: ${NO_FIRE_PULLS} trigger pulls with no shot, the pool is stale`, 'le');
   }
@@ -3695,13 +3773,19 @@ export class Engine {
       mode: this.config ? String(this.config.mode || '').toUpperCase() : '', weapon: this.weaponName,
       hp: this.hp, armor: this.armor, shield: this.shield, maxHp: this.maxHp, maxArmor: this.maxArmor, ammo: this.ammo, reserve: this.reserve, mag: (this._ammoBySlot()[this.activeSlot] ?? this.mag),
       // Bench 2026-09-17: `heat` is the active slot's last $ALCD heat token, null until one has been seen
-      // this life (a non-heat weapon never sends a non-zero one). `overheating` is the HUD's OVERHEAT gate.
+      // this life (a non-heat weapon never sends a non-zero one).
       heat: this.heatBySlot[this.activeSlot] != null ? this.heatBySlot[this.activeSlot] : null,
-      overheating: this._overheating(),
-      // pl3/pl4: the HUD's OVERHEAT word and overlay. Same line as `overheating`, but only for OVERHEAT_SHOWN_MS after
-      // the last evidence of the lockout (see `_overheatShown`).
-      overheatShown: this._overheatShown(now),
+      // THE MECHANIC (`_heatBlocksFire`): can this gun shoot right now? Trusted for HEAT_STALE_MS. Nothing on
+      // the HUD reads it -- it is published for MC and the bench, and pinned by engine.test.mjs.
+      overheating: this._heatBlocksFire(),
+      // THE DISPLAY (`_overheatOnHud`): the OVERHEAT word, the overlay AND the hot heat bar, all from this one
+      // field, for OVERHEAT_SHOWN_MS after the last evidence of the lockout.
+      overheatShown: this._overheatOnHud(now),
       heatEverSeen: !!this._everHeated[this.activeSlot],
+      // S42 × A44/A47/F15 (maint review 2026-09-17): the accuracy writer's own stand-down, made visible.
+      // `{until, why}` while a spawn, revive, operator resync or stun write owns `$AMMO`; null once it lifts.
+      // Nothing acts on it -- it exists so a bench or a log reader can see the writer standing down AND the cause.
+      accHold: now < this._accHoldUntil ? { until: this._accHoldUntil, why: this._accHoldWhy } : null,
       shotCooldown: this.shotCooldown(now),   // bench 2026-09-17: the ammo gauge's dim + ready shine
       scoreRows: this.score && Array.isArray(this.score.rows) ? this.score.rows : null,   // MC's mid-match leaderboard, for the HUD's results overlay
       loadMag: this._loadAmmo()[0], loadReserve: this._loadAmmo()[1],

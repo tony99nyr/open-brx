@@ -1072,27 +1072,56 @@ class GunStage:
     TRIGGER_NO_FIRE_S = 1.5     # engine.js TRIGGER_NO_FIRE_MS
     NO_FIRE_PULLS = 3           # engine.js NO_FIRE_PULLS
 
-    # ---- overheat (engine.js `HEAT_LOCKOUT` / `HEAT_STALE_MS` / `_overheating`), review 2026-09-17 ------
+    # ---- overheat (engine.js `HEAT_LOCKOUT` / `HEAT_STALE_MS` / `_heatBlocksFire`), review 2026-09-17 ---
     # Review found `_await_shot`/`_no_fire_tick` never excluded a real OVERHEAT lockout, unlike engine.js:
     # the exclusion needs the same heat tracking engine.js keeps, which the stage did not have at all.
     HEAT_LOCKOUT = 99           # engine.js HEAT_LOCKOUT (pl4: heat >= 99; the Energy Rifle stops AT 99)
     HEAT_STALE_S = 25.0         # engine.js HEAT_STALE_MS -- see its comment for the lockout/decay/field-window reasoning
 
-    def _overheating(self) -> bool:
-        """engine.js `_overheating`: true once the active slot's last heat token has reached HEAT_LOCKOUT --
-        UNLESS that reading is stale (no new $ALCD for HEAT_STALE_S), since a locked-out weapon sends none
-        while it cools and a stuck reading must not gate the trigger forever."""
+    def _heat_blocks_fire(self) -> bool:
+        """engine.js `_heatBlocksFire` (THE MECHANIC: can this gun shoot?): true once the active slot's last
+        heat token has reached HEAT_LOCKOUT -- UNLESS that reading is stale (no new $ALCD for HEAT_STALE_S),
+        since a locked-out weapon sends none while it cools and a stuck reading must not gate the trigger
+        forever. engine.js also has `_overheatOnHud`, the 6 s DISPLAY window; the stage draws no HUD."""
         slot = self.active_slot
         if (self.heat_by_slot.get(slot) or 0) < self.HEAT_LOCKOUT:
             return False
         at = self._heat_at.get(slot)
         return at is None or (self.now() - at) < self.HEAT_STALE_S
 
+    # ---- the stand-down table (engine.js `STAND_DOWN` / `_standDown`), maint review 2026-09-17 ----------
+    # "The writer stands down" was re-typed at every call site on both sides and no two agreed. Each site
+    # still names its OWN subset -- the sets differ on purpose -- but the predicates live here once.
+    # ORDERED, and the order is the precedence `_stand_down` reports, so `_operator_resync` turns the first
+    # blocking name into the same refusal, in the same order, as engine.js `_operatorAct`.
+    # The stage carries the subset it HAS: no `phase` (its phase is `spawned`), no pushed `bundle`, no
+    # rejoin reconcile, no restart evidence protocol, no try-out lock and no accuracy writer to hold.
+    # Its link is `connected`, which is engine.js's `bleUp`, so the shared name `ble` means the same thing.
+    _STAND_DOWN: tuple[tuple[str, Callable[[GunStage], bool]], ...] = (
+        ("spawned", lambda s: not s.spawned),
+        ("ble", lambda s: not s.connected),
+        ("alive", lambda s: not s.alive),
+        ("switching", lambda s: bool(s.switching)),
+        ("reloading", lambda s: bool(s.reloading)),
+        ("stunned", lambda s: bool(s.stunned)),
+        ("heat", lambda s: s._heat_blocks_fire()),
+    )
+    #: The names `_stand_down` answers to. test_stage_mirror.py reads every `_stand_down((...))` call site
+    #: out of stage.py and asserts each name is in here, so a typo cannot silently drop a guard.
+    STAND_DOWN_NAMES = tuple(n for n, _ in _STAND_DOWN)
+
+    def _stand_down(self, names) -> str | None:
+        """engine.js `_standDown`: the first name in table order that blocks, else None. Truthy means
+        "stand down". `names` is THIS call site's subset. An unknown name is ignored here and caught by
+        test_stage_mirror.py instead, so a typo can never raise at the bench mid-run. PURE."""
+        for name, test in self._STAND_DOWN:
+            if name in names and test(self):
+                return name
+        return None
+
     def _await_shot(self) -> None:
         """engine.js `_awaitShot`: a trigger press the gun should answer with a shot. A press while one is due keeps the first."""
-        if not (self.connected and self.spawned and self.alive):
-            return
-        if self.switching or self.reloading or self.stunned or self._overheating():
+        if self._stand_down(("spawned", "ble", "alive", "switching", "reloading", "stunned", "heat")):
             return
         seen = self._prev_ammo.get(self.active_slot)
         mag = seen if seen is not None else self._ammo_by_slot().get(self.active_slot)
@@ -1106,8 +1135,8 @@ class GunStage:
         if self._shot_due_at is None or now - self._shot_due_at < self.TRIGGER_NO_FIRE_S:
             return
         self._shot_due_at = None
-        if not self.alive or self.switching or self.reloading or self.stunned or self._overheating():
-            return
+        if self._stand_down(("alive", "switching", "reloading", "stunned", "heat")):
+            return   # the reason changed while it was due -- overheat is a real cause too
         self._no_fire_pulls += 1
         if self._no_fire_pulls == self.NO_FIRE_PULLS:
             self._log(f"gun not firing: {self.NO_FIRE_PULLS} trigger pulls with no shot -- the pool is stale (F208)", "warn")
@@ -1256,11 +1285,11 @@ class GunStage:
         # pl3 (2026-09-17): the same refusals as engine.js `_operatorAct`/`_operatorResync`, in the same order, where
         # the stage has the concept. The stage's phase is `spawned` (arm and end clear it) and its link is
         # `connected`. It has no rejoin reconcile, no restart evidence protocol and no try-out lock, so those are absent.
-        why = ("the T-0 spawn has not run" if not self.spawned
-               else "gun link down (RELINK first)" if not self.connected
-               else "the player is down" if not self.alive
-               else "stunned" if self.stunned
-               else None)
+        # Maint review 2026-09-17: the predicates now come from `_STAND_DOWN`, whose order IS this order; only the
+        # messages are local, exactly as in engine.js.
+        blocked = self._stand_down(("spawned", "ble", "alive", "stunned"))
+        why = {"spawned": "the T-0 spawn has not run", "ble": "gun link down (RELINK first)",
+               "alive": "the player is down", "stunned": "stunned"}.get(blocked or "")
         if why:
             self._log(f"operator resync ignored -- {why}", "warn")
             return
@@ -2285,7 +2314,7 @@ class GunStage:
         mag coming BACK UP on the reloading slot ends the reload; the slot the gun names is the live one."""
         # Review 2026-09-17: heat is recorded BEFORE the stunned return below, mirroring engine.js -- a stun
         # window can land mid-cooldown, and skipping the token here would only add to how long a stale-but-
-        # locked reading can sit unrefreshed (see HEAT_STALE_S / `_overheating`).
+        # locked reading can sit unrefreshed (see HEAT_STALE_S / `_heat_blocks_fire`).
         if heat is not None:
             self.heat_by_slot[slot] = heat
             self._heat_at[slot] = self.now()

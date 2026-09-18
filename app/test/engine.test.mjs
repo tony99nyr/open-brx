@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, OVERHEAT_SHOWN_MS } from '../src/engine.js';
+import { Engine, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES } from '../src/engine.js';
 import { CONTROL_STATE } from '../src/control.js';   // the phone control point's advert bits (K1)
 import { Presence, encodeUuid } from '../src/beacon.js';   // the REAL advert path, for the clock-mismatch guard
 
@@ -2610,11 +2610,11 @@ test('S42/F229: never during an overheat lockout -- the guard reads the gun\'s o
   const h = armRecoil(RECOIL_PROFILE);
   h.writes.length = 0;
   h.frame('$ALCD,35,100,0,215,99,*');                        // one shot, and the gun reports itself locked out
-  assert.equal(h.eng._overheating(), true, 'heat 99 must read as an overheat lockout');
+  assert.equal(h.eng._heatBlocksFire(), true, 'heat 99 must read as an overheat lockout');
   h.adv(ACC_WRITE_MIN_GAP_MS + 10); h.eng.tick();
   assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 0, 'a write landed WHILE OVERHEATED -- the guard did not hold');
   h.frame('$ALCD,35,100,0,215,64,*');                        // one lever pull vents about 35: 99 -> 64
-  assert.equal(h.eng._overheating(), false);
+  assert.equal(h.eng._heatBlocksFire(), false);
   h.eng.tick();
   assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 1, 'the write must go out once the gun has vented -- the dirty value was held, not lost');
 });
@@ -2746,12 +2746,12 @@ test('S42 x pl4: no accuracy write during an overheat lockout, and the writer re
   const h = armRecoil(RECOIL_PROFILE);
   h.writes.length = 0;
   h.frame('$ALCD,35,100,0,215,120,*');                     // one shot AND a heat reading past the lockout line
-  assert.equal(h.eng._overheating(), true, 'pre-condition: the node must read the lockout');
+  assert.equal(h.eng._heatBlocksFire(), true, 'pre-condition: the node must read the lockout');
   h.adv(ACC_HOLD_MS + ACC_WRITE_MIN_GAP_MS + 10); h.eng.tick();
   assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 0,
     'an accuracy write landed during an overheat lockout -- a locked gun cannot fire, so the write is a $WEAP re-push for nothing');
   h.frame('$ALCD,35,100,0,215,4,*');                       // vented/cooled: heat back under the line
-  assert.equal(h.eng._overheating(), false);
+  assert.equal(h.eng._heatBlocksFire(), false);
   h.adv(ACC_WRITE_MIN_GAP_MS + 10); h.eng.tick();
   assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 1, 'the held value must go out once the lockout clears');
 });
@@ -2828,7 +2828,7 @@ test('F229: a trigger press keeps OVERHEAT up while the player is still trying, 
   // The lever vents about 35 heat: the gun answers with a reading under the line, and OVERHEAT goes at once.
   h.frame('$ALCD,269,100,0,600,64,*');
   assert.equal(h.eng.state().overheatShown, false, 'a vent must clear OVERHEAT immediately, not OVERHEAT_SHOWN_MS later');
-  assert.equal(h.eng._overheating(), false, 'and the lockout itself is over: 64 is under the line');
+  assert.equal(h.eng._heatBlocksFire(), false, 'and the lockout itself is over: 64 is under the line');
   assert.equal(h.eng.state().heat, 64, 'the bar follows the vent down');
 });
 
@@ -5531,4 +5531,57 @@ test('shot cue: a stub $WEAP with no tokens, another slot, or death gives no cue
   assert.ok(h.eng.state().shotCooldown, 'pre-condition: a full frame brings the cue back');
   h.eng.alive = false;
   assert.equal(h.eng.state().shotCooldown, null, 'a dead player has no trigger to wait for');
+});
+
+// ======================================================================================================
+// Maint review 2026-09-17: constants that must move together, and the one stand-down table
+// ======================================================================================================
+
+test('the two accuracy windows keep their order: the hold outlasts the verify grace', () => {
+  // Each rule lived only in a comment. A hold SHORTER than the verify grace would let the writer judge
+  // (and retry) its own write while a spawn/revive/resync/stun `$AMMO` is still in flight -- the exact
+  // race the hold exists to stop. Nobody changing ACC_VERIFY_GRACE_MS would think to check ACC_HOLD_MS.
+  assert.ok(ACC_HOLD_MS > ACC_VERIFY_GRACE_MS,
+    `ACC_HOLD_MS (${ACC_HOLD_MS}) must outlast ACC_VERIFY_GRACE_MS (${ACC_VERIFY_GRACE_MS})`);
+});
+
+test('the three heat windows keep their order: display < mechanic trust < cap', () => {
+  // OVERHEAT_SHOWN_MS is what the HUD draws; HEAT_STALE_MS is how long the reading is trusted to mean
+  // "this gun cannot fire"; OVERHEAT_CAP_MS is the hard ceiling on the display. The word must clear
+  // before the mechanic's trust lapses (the lockout ends long before a player stops pulling), and the
+  // cap must sit above both or it would cut the display short of the lockout it is there to cover.
+  assert.ok(OVERHEAT_SHOWN_MS < HEAT_STALE_MS,
+    `OVERHEAT_SHOWN_MS (${OVERHEAT_SHOWN_MS}) must clear before HEAT_STALE_MS (${HEAT_STALE_MS})`);
+  assert.ok(HEAT_STALE_MS < OVERHEAT_CAP_MS,
+    `HEAT_STALE_MS (${HEAT_STALE_MS}) must sit under OVERHEAT_CAP_MS (${OVERHEAT_CAP_MS})`);
+});
+
+test('every `_standDown` call site names a guard the table declares', () => {
+  // `_standDown` IGNORES a name it does not know -- throwing at a player mid-match would be worse than
+  // the missing guard -- so a typo would silently drop that guard and no runtime test would notice.
+  // It is caught here instead, by reading this file's own call sites. (The stage side of the same guard
+  // is mcp/tests/test_stage_mirror.py.)
+  const src = readFileSync(fileURLToPath(new URL('../src/engine.js', import.meta.url)), 'utf8');
+  const calls = [...src.matchAll(/_standDown\(\[([^\]]*)\]/gs)].map(m => m[1]);
+  assert.ok(calls.length >= 7, `only ${calls.length} _standDown call sites found -- the scan is wrong, not the file`);
+  const used = new Set(calls.flatMap(c => [...c.matchAll(/'(\w+)'/g)].map(m => m[1])));
+  assert.ok(used.size >= 10, `only ${used.size} distinct guard names used across the call sites`);
+  for (const name of used) assert.ok(STAND_DOWN_NAMES.includes(name),
+    `_standDown names \`${name}\`, which the STAND_DOWN table does not declare: ${STAND_DOWN_NAMES.join(', ')}`);
+  // CONTROL: the table is not a superset nobody reads -- every name it declares is used somewhere.
+  for (const name of STAND_DOWN_NAMES) assert.ok(used.has(name), `STAND_DOWN declares \`${name}\` and no call site asks for it`);
+});
+
+test('S42 x A44/A47/F15: `state().accHold` says the writer is standing down, and which write took the gun', () => {
+  // The hold was invisible: a bench operator watching the accuracy writer go quiet had no way to tell a
+  // hold from a broken model. `{until, why}` while it holds, null once it lifts.
+  const h = armRecoil(RECOIL_PROFILE);
+  assert.equal(h.eng.state().accHold, null, 'the spawn hold is long over by the time armRecoil returns');
+  h.eng._holdAccuracyWrites('operator resync');
+  const hold = h.eng.state().accHold;
+  assert.deepEqual(hold, { until: h.eng.now() + ACC_HOLD_MS, why: 'operator resync' });
+  h.adv(ACC_HOLD_MS - 10);
+  assert.ok(h.eng.state().accHold, 'still held just before it lifts');
+  h.adv(20);
+  assert.equal(h.eng.state().accHold, null, 'and null once the hold has lapsed');
 });

@@ -336,7 +336,7 @@ export class Hud {
     if (this.board) this.frame.dataset.board = this.board; else delete this.frame.dataset.board;
     const sig = [st.phase, st.alive, !!st.killedBy, st.night, st.ready, st.tutorial, !!st.resync, st.callsign, st.teamKey, st.weapon, st.endAck, st.ended, st.kills, st.underFire, st.tutorialWeapon && st.tutorialWeapon.weapon_id,
       st.mode, st.gun && st.gun.name, st.switching, st.activeSlot, st.hp <= st.maxHp * .25, (st.mag ? st.ammo / st.mag : 1) <= .15, st.ammo === 0, st.reserve === 0, (st.mag || 0) > AMMO_PIP_MAX, st.battery != null && st.battery <= 15,
-      st.overheating, st.heatEverSeen, st.overheatShown,   // bench 2026-09-17: OVERHEAT prompt/overlay and the heat bar's existence are structural, not patched in place
+      st.heatEverSeen, st.overheatShown,   // bench 2026-09-17: OVERHEAT prompt/overlay and the heat bar's existence are structural, not patched in place. `st.overheating` (the mechanic) is not read here at all: the HUD draws the display window only
       chargeCost(st) != null && st.ammo != null && st.ammo < chargeCost(st), st.reserve > 0,   // OUT OF ENERGY / RECHARGE prompt + the NOT ENOUGH ENERGY note are structural too
       st.kills > 0, st.deaths > 0, st.assists > 0, accShown(st) != null, st.reserve != null, this.scan.length, st.bleUp, st.ended, this.bluetoothOn,
       this.discovered && this.discovered.url,   // Polish-loop pass 1: the discovered-MC row on the pre-join screen (`_joinConfirm` only touches the diag panel, patched directly, not here)
@@ -1001,12 +1001,12 @@ export class Hud {
     const energyOut = belowCharge && !(st.reserve > 0);
     // reserve has something to draw on: one calm prompt, whether the cell reads 0 or a partial charge.
     const energyLow = belowCharge && st.reserve > 0;
-    // Bench 2026-09-17: the full-screen OVERHEAT takeover was keyed to the raw heat reading, which the
-    // node echoes back for up to 25 s after it goes stale -- `overheatShown` (once the engine sets it)
-    // is true only while that reading is live. Undefined (this lane ahead of the engine merge) falls
-    // back to the old field so nothing regresses before that lands.
-    const overheatActive = st.overheatShown !== undefined ? st.overheatShown : st.overheating;
-    const overheating = !!(st.alive && overheatActive);
+    // Bench 2026-09-17: the full-screen OVERHEAT takeover was keyed to `st.overheating`, the MECHANIC's
+    // reading, which the node echoes back for up to 25 s after the lockout is over (engine.js
+    // `HEAT_STALE_MS`). `st.overheatShown` is the DISPLAY window, about 6 s, and the word, the overlay and
+    // the heat bar all read it -- maint review 2026-09-17: the bar still read the mechanic, so it could sit
+    // hot for up to 19 s after the word had gone. The engine always sets the field, so there is no fallback.
+    const overheating = !!(st.alive && st.overheatShown);
     const [nm] = splitGun(st.gun);
     const stat = (k, v) => `<span>${k}<b class="${v == null ? 'mut' : ''}" id="st-${k}">${v == null ? '—' : v}</b></span>`;
     const kb = st.killedBy ? `` : '';
@@ -1171,11 +1171,13 @@ export class Hud {
   }
   /** Bench 2026-09-17: the thin build-up bar for a weapon that heats ($ALCD token 5), shown only once the
    *  active slot has reported heat>0 this life (`heatEverSeen`) -- a weapon that never heats never draws
-   *  this at all. `hot` past HEAT_LOCKOUT matches the OVERHEAT prompt/overlay in `_live()`. */
+   *  this at all. `hot` reads `overheatShown`, the SAME field as the OVERHEAT prompt and overlay in `_live()`,
+   *  so the bar and the word can never disagree (maint review 2026-09-17: it read `st.overheating`, the
+   *  mechanic's 25 s window, and stayed hot for up to 19 s after the word cleared). */
   _heatBar(st) {
     if (!st.heatEverSeen) return '';
     const pct = Math.max(0, Math.min(100, Math.round(st.heat || 0)));
-    return `<div class="heat ${st.overheating ? 'hot' : ''}" id="heat"><i style="width:${pct}%"></i></div>`;
+    return `<div class="heat ${st.overheatShown ? 'hot' : ''}" id="heat"><i style="width:${pct}%"></i></div>`;
   }
   /** A cell-gauge weapon (F248: `rounds_per_charge > 1`, see usesCellGauge above) gets the percentage bar
    *  (no round to pip). Everything else -- a bullet weapon, or a low-cost energy weapon like the Rail Gun
@@ -1247,7 +1249,7 @@ export class Hud {
       const heat = q('heat'); if (heat) {
         const pct = Math.max(0, Math.min(100, Math.round(st.heat || 0)));
         const i = heat.querySelector('i'); if (i && i.style.width !== `${pct}%`) i.style.width = `${pct}%`;
-        const cls = 'heat' + (st.overheating ? ' hot' : ''); if (heat.className !== cls) heat.className = cls;
+        const cls = 'heat' + (st.overheatShown ? ' hot' : ''); if (heat.className !== cls) heat.className = cls;   // the DISPLAY window, same as `_heatBar`/`_live`
       }
       set('st-K', st.kills == null ? '—' : st.kills); set('st-D', st.deaths); set('st-A', st.assists == null ? '—' : st.assists); if (accShown(st) != null) set('st-ACC', accShown(st) + '%');
       const dot = q('linkdot'); if (dot) { const cls = 'dot ' + (st.bleUp ? '' : 'off'); if (dot.className !== cls) dot.className = cls; }

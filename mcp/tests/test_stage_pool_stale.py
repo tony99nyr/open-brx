@@ -121,7 +121,7 @@ def test_review_2026_09_17_overheat_is_excluded_from_no_fire_until_the_reading_g
         st, mgr, clock = _mk()
         await _live(st, clock)
         st._inject_rx("$ALCD,10,100,0,192,108,*")     # match 592e444eff: a real bench overheat capture
-        assert st._overheating()
+        assert st._heat_blocks_fire()
         for _ in range(5):
             _dry_pull(st, clock)
         assert st.pool_stale() is None, "overheat-locked pulls must never book NO_FIRE"
@@ -134,7 +134,7 @@ def test_review_2026_09_17_overheat_is_excluded_from_no_fire_until_the_reading_g
         assert st.pool_stale() is None, "overheat that started after the press was already pending still excludes it"
         # once the reading goes stale, it can no longer suppress a REAL no_fire condition
         _adv(st, clock, GunStage.HEAT_STALE_S + 1, step=1)
-        assert not st._overheating(), "no new $ALCD for HEAT_STALE_S: the reading is no longer trusted"
+        assert not st._heat_blocks_fire(), "no new $ALCD for HEAT_STALE_S: the reading is no longer trusted"
         for _ in range(3):
             _dry_pull(st, clock)
         s = st.pool_stale()
@@ -149,9 +149,9 @@ def test_pl4_the_lockout_line_is_99_for_both_measured_weapons():
         st, mgr, clock = _mk()
         await _live(st, clock)
         st._inject_rx("$ALCD,10,100,0,192,98,*")
-        assert not st._overheating(), "98 is build-up"
+        assert not st._heat_blocks_fire(), "98 is build-up"
         st._inject_rx("$ALCD,9,100,0,192,99,*")
-        assert st._overheating(), "the Energy Rifle's lockout reading"
+        assert st._heat_blocks_fire(), "the Energy Rifle's lockout reading"
         st._inject_rx("$ALCD,9,100,0,192,103,*")
-        assert st._overheating(), "the Charge Rifle's"
+        assert st._heat_blocks_fire(), "the Charge Rifle's"
     asyncio.run(run())
