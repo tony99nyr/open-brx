@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, readdirSync, readFileSync, mkdirSync, copyFileSync, writeFileSync, realpathSync, lstatSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const home = process.env.BRX_MCP_HOME || join(homedir(), '.brx-mcp');
@@ -14,11 +14,11 @@ if (!id || !ids.includes(id)) { console.error(`Usage: pnpm mc:collect [session-i
 const dir = resolve(sessionsDir, id);
 const rootReal = realpathSync(sessionsDir);
 const dirReal = realpathSync(dir);
-if (!dirReal.startsWith(`${rootReal}/`) || !lstatSync(dir).isDirectory()) { console.error('Selected session is not a regular directory inside the sessions root.'); process.exit(1); }
+if (!dirReal.startsWith(rootReal + sep) || !lstatSync(dir).isDirectory()) { console.error('Selected session is not a regular directory inside the sessions root.'); process.exit(1); }
 const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'));
 const sqlite = join(dir, 'session.sqlite');
 if (!existsSync(sqlite)) { console.error(`Evidence store is missing: ${sqlite}`); process.exit(1); }
-if (!lstatSync(sqlite).isFile() || !realpathSync(sqlite).startsWith(`${dirReal}/`)) { console.error('Evidence store is not a regular file inside the selected session.'); process.exit(1); }
+if (!lstatSync(sqlite).isFile() || !realpathSync(sqlite).startsWith(dirReal + sep)) { console.error('Evidence store is not a regular file inside the selected session.'); process.exit(1); }
 const rawLog = join(dir, 'mc.log');
 if (existsSync(rawLog)) {
   mkdirSync(join(dir, 'diagnostics'), { recursive: true });

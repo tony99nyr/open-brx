@@ -45,10 +45,33 @@ the manual, the spec of record (`docs/spec/`), the ADRs and the open-work list.
 | `site/` | The static-site generator (two doors, one source: `docs/site/FORMAT.md`) and its Playwright verification suite |
 | `hardware/` | `esp32-ir-bridge/` and `m5sticks3/` (built ESP32 rigs), the Companion and Station specs, print-file notes |
 
-## brx-mcp quickstart
+## Quickstart: run Mission Control
+
+Clone the repository, then run one command from its root:
+
+```bash
+./start.sh      # macOS, Linux
+start.cmd       # Windows: double-click it, or run it from a terminal
+```
+
+The script checks for Node.js and Python, offers to install either one (Homebrew on macOS, winget on
+Windows, or it tells you the command on Linux) if missing, builds the Mission Control console, and asks
+a few yes/no questions along the way (update the clone, install the optional `cloudflared` tool for
+phones on mobile data). It then starts Mission Control and opens it in your browser. Run it again later
+and it starts straight away, since setup only repeats when something changed.
+
+No taggers on hand? `./start.sh --demo` runs a full demo match with 8 simulated players, no hardware
+needed. Run `./start.sh --help` for the rest of the options.
+
+Developers: after `./start.sh` has set the machine up, `pnpm mc` (or `node scripts/mc.mjs`) starts
+Mission Control directly, with no setup checks. `mcp/brx_mcp/mc/README.md` covers every flag and the
+manual setup path.
+
+## brx-mcp CLI quickstart
 
 The MCP server runs on **whichever machine owns the Bluetooth radio**: it is pure Python (`bleak` + `mcp`)
-and works identically on Windows, macOS and Linux.
+and works identically on Windows, macOS and Linux. This is the direct tagger-control tool, separate from
+Mission Control above.
 
 ```bash
 # FIRST: switch each tagger's HEADSET on. A gun with no headset accepts a BLE connection,

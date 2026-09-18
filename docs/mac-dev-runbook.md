@@ -8,6 +8,11 @@ The MATCH-DAY guide is [`field-runbook-mc.md`](field-runbook-mc.md). This is the
 
 ### Match-day shortcut
 
+A fresh Mac with nothing set up yet: run `./start.sh` from the repository root. It installs Node.js and
+Python if needed, builds the console, and starts Mission Control. `docs/field-runbook-mc.md` is still the
+match-day procedure to follow once it is open; §1 below covers the extra developer tools (`gh`, Android)
+that `./start.sh` does not install.
+
 After the one-time setup, from the repository root run:
 
 ```bash
@@ -17,7 +22,9 @@ pnpm mc
 This checks the prepared Python environment and Mission Control UI, refuses occupied ports, starts the
 authenticated server, opens the exact token-bearing URL in the Mac browser, and writes a launch record
 under `~/.brx-mcp/sessions/<launch-id>/`. The directory contains `mc.log`, `session.sqlite`,
-`manifest.json`, and `mc-session.json`.
+`manifest.json`, and `mc-session.json`. (`./start.sh` runs the same check-then-start step after it has
+made sure Node, Python and the console are in place; `pnpm mc` skips straight to starting when they
+already are.)
 
 After a run, create its diagnostic index with `pnpm mc:collect` (or pass a launch id). The launcher keeps
 authentication enabled and never copies the private armory file.
@@ -25,6 +32,10 @@ authentication enabled and never copies the private armory file.
 ---
 
 ## 1. First-time setup (none of this is in git)
+
+`./start.sh` (repo root) does the Python `.venv` and the `webapp/mc` console install for you; run it
+first (`--setup-only` to stop before it starts Mission Control). What is left is developer tooling it
+does not touch: `gh`, the test extras (`httpx`), and the `app`/`site` pieces.
 
 CLI tools this repo needs, via Homebrew (Android's `adb` + JDK are their own brew line in §2b; node
 comes from nvm, `nvm install 24` to match the WSL machine):
@@ -35,11 +46,10 @@ gh auth login   # browser-based GitHub auth for the release/PR workflow, no toke
 ```
 
 ```bash
-# python — the venv exists but ships without the MC server's deps
-.venv/bin/pip install -e ./mcp websockets starlette uvicorn zeroconf httpx
-#                                                                    ^^^^^ or 19 API tests skip silently
+# python — start.sh installs the MC server's own deps; this adds the test extras it doesn't need
+.venv/bin/pip install httpx
+#                      ^^^^^ or 19 API tests skip silently
 
-cd webapp/mc && npm install     # the MC console — no node_modules in git
 cd app        && npm install    # the phone HUD + the browser e2e
 npx playwright install chromium # the e2e needs the browser, separately
 cd site       && npm install    # only if you touch the public website

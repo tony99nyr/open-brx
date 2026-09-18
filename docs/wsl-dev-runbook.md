@@ -20,8 +20,8 @@ different interpreters:
   - First contact from a Windows shell: `python.exe -m brx_mcp scan|identify|listen`.
 - **Mission Control (`python -m brx_mcp.mc`) is the exception.** Its one radio route — the match-day
   armory scan — is the MacBook's job, so on this box it runs from the plain **WSL `.venv`**
-  (`.venv/bin/python`), same as any other Linux/macOS checkout: `pip install -e ./mcp` plus
-  `starlette uvicorn websockets`.
+  (`.venv/bin/python`), same as any other Linux/macOS checkout: `pip install -e './mcp[mc]'` (or
+  `./start.sh --setup-only` from the repo root, which does the same install plus the console build).
 
 ## Captures and the device registry
 
