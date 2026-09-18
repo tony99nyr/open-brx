@@ -7,7 +7,7 @@ to make our system never create the conditions that lock a gun, and to recover f
 
 **Tony, 2026-09-18: this is P0.**
 
-Phase A also carries the transport steps of the levers sheet (`bench-firmware-levers-2026-09-19.md` §14 maps them).
+Phase A also carries the transport steps of the levers sheet (`bench-firmware-levers-2026-09-19.md` §14 maps them; A4 runs as levers §25).
 
 ## What we think causes it
 
@@ -18,13 +18,16 @@ These are leads from the V4_30/V4_31 firmware disassembly. None is proven on v4.
   the gun stops reading commands. `$DPLAY` is one of these waits, and a phone can send it.
 - **A slow reader.** The gun reads one serial byte per pass of its main loop, through a 1 KB buffer. A burst can
   overflow the buffer while the loop is busy.
-- **A fragile parser.** A frame that loses its closing `*` leaves stale tokens behind, and they corrupt the next frame.
-  A token has no length limit.
+- **A fragile parser.** A frame that loses its closing `*` leaves stale tokens behind, and they corrupt the next frame:
+  `$` resets only token 0 and the token index, so even a resend of the same frame lands on the stale tokens. A token
+  has no length limit.
 - **Load grows with players.** Callsign's host relays game traffic to every gun, so each gun's traffic grows with the
   player count. That fits Jay's report that screamers get worse with more players, not only with time.
 
 Our own traffic, measured 2026-09-18: 43 frames and 75 BLE packets to arm one gun, sent in about 1.2 s with no
-confirmation. The biggest writer during a match is the S42 recoil (live accuracy) writer: a `$WEAP` plus an `$AMMO`
+confirmation. A later reading of `compile.py` (the current F209 flow, counted by hand, not run) gives about
+**58 frames / 1,357 B / 104 packets**. That is larger than the gun's 1 KB receive buffer, so the A7/A8 block-pacing
+results matter: they decide where the arm must pause. The biggest writer during a match is the S42 recoil (live accuracy) writer: a `$WEAP` plus an `$AMMO`
 for each accuracy change, up to about 1,700 packets a minute on today's 250 ms throttle. Tony decided on 2026-09-18
 to keep it, so it must fit the per-gun write budget (F274): Phase C soaks it.
 
@@ -50,7 +53,7 @@ Each step tries one suspected trigger. Arm the gun with the bench victim head (`
 | A1 | hang loop | `$DPLAY,A10,4,*` (the shield loop, a looping sound; token 3 is untraced). Send it with `confirm=true` AND `allow_hang=true` on the `send` tool, one frame, never in a batch | LOCK-UP with the loop still playing |
 | A2 | control for A1 | `$DPLAY` with a short one-shot sound, sent as A1 is: `confirm=true` AND `allow_hang=true` on the `send` tool, one frame, never in a batch | the gun answers again after the sound ends |
 | A3 | hang loop, other channel | repeat A1 with token 2 = 1, 2 and 3 | shows which channels hang |
-| A4 | lost `*` | send `$PLAY,U37,3,10,,,,,` (no `*`), then a normal `$QUERY,*` | BAD FRAME: the query is corrupted |
+| A4 | lost `*` (stale tokens) | send `$AMMO,0,17,50,1` (no `*`), then `$AMMO,0,23,50,1,*`, then read the `$ALCD` magazine. Run it with and without a `$*` sent before the second frame. The steps and the control are in levers §25 | without `$*`: BAD FRAME, the magazine is not 23; with `$*`: 23. (The old `$QUERY` form could not show this: `$QUERY` ignores its tokens) |
 | A5 | long token | send a `$PLAY` frame with one 400-character token. Use `$PLAY` only: never a frame that writes stored settings (`$NAME`, `$PIN`, `$PAIR`) | LOCK-UP or BAD FRAME |
 | A6 | many tokens | send a `$PLAY` frame with 70 tokens. The A5 rule applies: no `$NAME`, `$PIN` or `$PAIR` frame | the token index wraps; BAD FRAME |
 | A7 | burst | 100 short frames with no gap; then the same in blocks of 10 with a 300 ms pause between blocks. Nine of every 10 frames are `$PLAY,U37,3,10,,,,,*`; every 10th frame is `$QUERY,*`, so each run carries 10 queries | count the `$QUERY` replies at each pacing (10 expected; each missing reply is a lost frame); any LOCK-UP |
@@ -75,17 +78,37 @@ For every trigger that Phase A reproduces, write one rule and enforce it in code
 |---|---|---|
 | a hang-loop frame | the frame is on the node's never-send list | the node's one write path, `_write` in `app/src/engine.js`, drops any `NODE_DENIED_COMMANDS` frame; `protocol.py` refuses a `DENIED_COMMANDS` frame even with confirm, and passes `$DPLAY` (`HANG_PRONE_COMMANDS`) only with confirm plus `allow_hang` |
 | lost `*` / parser corruption | every frame is complete and ends with `*`; nothing is sent mid-frame by a second writer | the link's single writer |
+| stale tokens after a lost `*` (A4) | the link sends the 2-byte `$*` parser reset before each burst and before every resend | `brxlink.write` |
 | burst overflow | the node paces writes: a gap between frames and a pause between blocks, at the values Phase A shows are safe | `brxlink.js` pacing constants |
 | long frames lost | multi-packet frames are sent with write-with-response, or split into shorter frames where the firmware allows | the link, after an A/B run |
 | any BAD FRAME | after arming, MC reads the config back and refuses START on a mismatch | MC config proof |
 
 Record each rule in the transport-hardening design note with its evidence.
 
+**Frames to never send.** The write-traffic review of the V4_30 disassembly adds these to the never-send list, beside
+the `$DPLAY` hang-loop row above. `$SITE` is already in `DENIED_COMMANDS`; the others are not yet enforced in code,
+and each needs a Phase A result or a code reading before it goes into the node's never-send list:
+- `$PB*` and `$AS`: they start the gun's own game paths, which hold 4 of the 6 blocking audio waits.
+- `$SITE` and `$INVU`: both can force team 2 on a later reset. Protect a spawn with `$TMP` t8 (levers §23), not `$INVU`.
+- `$SPAWN,*`: the gun never goes live on v4.32. Send `$SPAWN,,*`.
+- A `$TMP` frame whose `*` lands on a live token (t1-t11): the gun stores that token as 0. Send the full 12-comma
+  vector (levers §21).
+- A second `$TMP` t9 write: each t9 write tops up every slot's magazine again.
+- Any frame with more than 59 tokens.
+
 ## Phase C: soak one gun with our real traffic (instrument, can run unattended)
 
 **The tool is built:** `python -m brx_mcp soak <address> <pattern> <minutes>`. It replays a traffic pattern, runs the
 `$PING` liveness probe, and logs every event in the definitions above. It is a CLI subcommand, not an ad-hoc script,
-so every bench run uses the same code. Patterns:
+so every bench run uses the same code.
+
+⚠️ **The soak does not pace like the phone.** The MCP instrument (`ble.py`) sleeps 20 ms after every 20-byte chunk and
+adds no frame gap. For a 101-byte frame that is about 0.84 B/ms, against the phone's peak of about 1.5 B/ms, so the
+soak under-stresses long frames by about 1.8 times. **Tool change needed:** add a `soak --phone-pacing` mode (in
+`mcp/brx_mcp/soak/runner.py`) that copies the phone's `brxlink.js` pacing. A Phase C run counts as a pass only when it
+ran with `--phone-pacing`.
+
+Patterns:
 
 - `match`: our real per-gun match traffic after the fixes: the arm sequence, then per-hit `$PLAY` cues, LED readouts,
   a revive every 3 minutes that re-sends the `$SIR` table, and the recoil writer. The recoil writer is the biggest

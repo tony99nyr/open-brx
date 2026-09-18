@@ -6,10 +6,10 @@ v4.32 has drifted from V4_30, and the later sessions shrink.
 
 | session | time | needs | sections |
 |---|---|---|---|
-| 1. Core | 105 min | two guns | §1 (F206, confirms the shipped fix), §21 (`$TMP`, the native modifier system), §18 then §22 (the dead-gun probe), §2 (melee), §4 step 1, §5 (all of it, one session: each step starts from the one before), §13 step 1 |
-| 2. Levers | 75 min | two guns, the IR rig for §9 step 5 | §3, §4 step 2, §6, §7, §8, §9, §10, §12, §15 |
-| 3. Transport | see the screamers sheet | one gun, a laptop | §14 (now `bench-screamers-2026-09-19.md` Phase A) |
-| 4. IR rig | 90 min | two guns, the ESP32 IR rig | §11, §13 steps 2-3, §16, §17, §20 |
+| 1. Core | 145 min | two guns, the IR rig for §16 step 6 | §1 (F206, confirms the shipped fix), §21 (`$TMP`, the native modifier system), §18 then §22 (the dead-gun probe), §2 (melee), §4 steps 1-2, §5 (all of it, one session: each step starts from the one before), §12 (`$STOP`/`$START`), §13 step 1, §16 step 6 (the looped headset `$IRTX`; with no rig, it moves to the top of session 4) |
+| 2. Levers | 80 min | two guns, the IR rig for §9 step 5 | §3, §6, §7, §8, §9, §10, §15, §23 (spawn protection, after §12 and §21) |
+| 3. Transport | see the screamers sheet | one gun, a laptop | §14 (now `bench-screamers-2026-09-19.md` Phase A), §25 (the `$*` parser reset, Phase A step A4) |
+| 4. IR rig | 100 min | two guns, the ESP32 IR rig | §16 step 6 first if session 1 had no rig, then §11, §13 steps 2-3, §16, §17, §20, §24 |
 | 5. Gap sweep | 90 min | two guns, the IR rig for two steps | §19 |
 
 **Claim checklist.** Tick each claim in the experiment log as CONFIRMED, REFUTED or DIFFERENT (and how). A claim
@@ -29,7 +29,7 @@ reaches `docs/manual/` only when it is CONFIRMED here.
 | 10 | The crit bonus is `$PSET` t6 (we ship 50), scaled by `$GSET` t7 (V4_31, sheets) | 9 |
 | 11 | fn 34/35 register on a dead gun; fn 38 halves HP damage; fn 30 back x2; fn 33 silent kill; fn 50-52 colour only (V4_30) | 10 |
 | 12 | `$SIR` p6/p8 make the victim re-emit the hit (splash) (V4_30, sheets) | 11 |
-| 13 | `$STOP` closes and `$START` opens IR reception (V4_30) | 12 |
+| 13 | `$STOP` closes and `$START` opens IR reception; the same flag gates the trigger (inferred); both clear `$GSET`'s app-mode flags (V4_30, V4_31) | 12 |
 | 14 | The gun sends `$DD,<killer>,<team>` when it dies (Jay's code); a kill confirmation is a protocol-15 subtype-0 IR word (BC's UART sheet) | 13 |
 | 15 | Split frames get lost; bursts overflow; `$DPLAY` on a loop sound hangs the gun (V4_31) | 14 (screamers sheet Phase A) |
 | 16 | `$RADSK` every 4 s keeps a headless gun linked (Jay's code, V4_31) | 15 |
@@ -38,8 +38,12 @@ reaches `docs/manual/` only when it is CONFIRMED here.
 | 19 | `$LCD` t3 = shield, t4 = slot; `$QUERY` t2 = team; `$VERSION` t3/t5 meanings (V4_30, BC app) | 18 |
 | 20 | Every other open item the triage of FOLLOWUPS against the new sources found untested | 19 |
 | 21 | Range tokens set the IR carrier frequency: 38000 - 125 x (100 - range) Hz on the gun, 140 Hz steps on the headset; indoor/outdoor sets power (V4_31) | 20 |
-| 22 | `$TMP` works over BLE: t4 accuracy, t9 magazine, t1-t3 pool maxima, t8 damage taken, each without a magazine reset (V4_30; fn 23 writes t4) | 21 |
-| 23 | A dead gun answers `$QUERY` with `$LCD` health 0 and ignores `$LIFE,0,0,0` (bench 2026-09-09; V4_30; the 2018 BC app) | 22 |
+| 22 | `$TMP` works over BLE: t4 accuracy, t9 magazine, t1-t3 pool maxima, t8 damage taken, t5 fire interval, t6 reload time, t7 outgoing damage, t10 crit chance, each without a magazine reset; `$SPAWN` and `$CLEAR` zero it (V4_30, V4_31; fn 23 writes t4) | 21 |
+| 23 | A dead gun answers `$QUERY` with `$LCD` health 0, and answers a bare or all-zero `$LIFE` with `$HP,0,0,0` (bench 2026-09-09; V4_31; the 2018 BC app) | 22 |
+| 24 | Only `$CLEAR` zeroes the `$SIR` table; `$STOP` until spawn, then `$SPAWN,,*` and `$TMP` t8 = -100, protect a spawn with no fn-28 table (V4_30, V4_31) | 23 |
+| 25 | `$WEAP` t7-t11 is a secondary-fire proc: t7 chance %, t8/t9 the `<proto,sub>` key, t10 damage, t11 crit % (V4_31) | 24 |
+| 26 | `$` resets only token 0 and the token index, so a frame sent after a lost `*` lands on stale tokens; a `$*` first clears them (V4_30) | 25 |
+| 27 | The headset loops a host `$IRTX` word by itself: field 9 = 100 loops for ever, 0 stops, field 10 = the period in ms (V4_31, headset V1_35) | 16 |
 
 Jay (LaserTagMods) shared his "Everything BRX" Drive on 2026-09-18. It holds the stock gun firmware image
 **V4_30**, the closest image we have to our v4.32. A disassembly of that image shows several commands we
@@ -57,7 +61,7 @@ Rules:
 - Allow about 3 s between a tool call and the gun.
 - Do not end on a bare `$CLEAR` (F11).
 - **Power-cycle both guns at the end.** Some of these commands set state that `$CLEAR` may not reset
-  (`$INVU`, `$TMP`).
+  (the team flag that `$INVU` sets, a headset `$IRTX` loop).
 
 ## Roles and arming
 
@@ -166,8 +170,9 @@ We called `$STUN` a no-op because we sent `$STUN,*`, and V4_30 reads that as 0 m
 
 1. Send `$STUN,3000,*` to A. Pull the trigger once a second for 5 s. Record which pulls fire (`$ALCD`), and anything
    you hear, see or feel.
-2. Set `$SIR,0,0,,1,3000,0,1,,*` on B (plain damage, with p5 = 3000). Hit B once, then have B pull its trigger for
-   5 s at once.
+2. **Session 1.** Set `$SIR,0,0,,1,3000,0,1,,*` on B (plain damage, with p5 = 3000). Hit B once, then have B pull
+   its trigger for 5 s at once. If B stops firing for about 3 s, the native stun can replace the node stun (`_stun` and
+   `_stunRestore` in `app/src/engine.js`), and it works with no BLE at all.
 
 **Reading.** A gun that stops firing for about 3 s is a native stun. This gives a real stun grenade and the
 "busy while unpacking" state the 2018 app used. It is a different thing from the fn-23 flashbang.
@@ -280,11 +285,18 @@ A `$SIR` row with p6 above 0 makes the **victim** send the hit on to everyone ar
 p6 = 100. On B, send `$SIR,0,0,,1,0,100,1,,*` and put the receiver rig beside B. Hit B once. Does the rig decode a
 second word, 0 to 250 ms after the hit, with A's id and crit = 1?
 
-## 12. Reception gate (F121, 5 min)
+## 12. Reception gate (F121, 10 min, session 1)
 
-V4_30 drops every IR word while the gun is not `$START`ed ("not start"). Send `$STOP,*` to armed B and fire. Then
-send `$START,*` and fire. If the first shot registers nothing and the second registers, MC can close F121 by
-sending `$STOP` until spawn.
+V4_30 drops every IR word while the gun is not `$START`ed ("not start"). `$START` and `$STOP` set and clear one
+"started" flag. About 30 reads of that flag in the button and trigger paths suggest that `$STOP` also gates the
+trigger (inferred). V4_31 also shows that `$START` and `$STOP` clear the app-mode flags that `$GSET` sets.
+
+1. Send `$STOP,*` to armed B and fire at B. Expect no `$HIR`.
+2. With B still stopped, pull B's trigger 3 times. Does `$ALCD` move? Does IR leave the barrel?
+3. Send `$START,*` to B, then re-send B's `$GSET`. Fire at B. Expect a normal hit.
+
+If step 1 registers nothing and step 3 registers, MC can close F121 by sending `$STOP` until spawn (§23 builds on
+this). **Re-send `$GSET` after any mid-match `$START`**, because the `$START` cleared its app-mode flags.
 
 ## 13. Kill confirmation: a discovery phase (30 min, needs the IR rig)
 
@@ -355,9 +367,18 @@ type-14 reports and revives after 8 s with `$LIFE,30,0,0,1,*`.
    equals B's team, so it may make B immune to the word. Kill B again, give B the row again, and repeat steps 2
    and 3 with field 4 = 1 (`$IRTX,0,14,1,1,1,0,0,100,1,,1,*`).
 5. Send `$TID,1,*` to A to put it back on team 1 before the next section.
+6. **The looped headset word (session 1; with no IR rig there, run it at the top of session 4).** V4_31 shows that
+   the gun passes a host `$IRTX` to its headset, and the headset repeats the word by itself: field 9 = 100 loops for
+   ever, field 9 = 0 stops, and field 10 is the period in ms (200 or more). Respawn B, and put the IR rig at B's headset domes.
+   1. Send B `$IRTX,100,15,63,1,8,0,0,100,100,1000,0,*`. Expect one protocol-15 word per second on the rig (player
+      63, team 1, magnitude 8). Player 63 is there so the wearer cannot hit themself. Count the words for 10 s.
+   2. Send B the same frame with field 9 = 0: `$IRTX,100,15,63,1,8,0,0,100,0,1000,0,*`. Does the loop stop?
+   3. Start the loop again, then send `$CLEAR,*`. Does the loop stop? Then re-arm B (F11). A loop that nobody stops
+      jams the field, so the answer decides whether the stop frame must join the death, end and panic sequences.
 
 **Reading.** Type-14 `$HIR` frames on a dead B mean a teammate revive runs through the taggers themselves. Also note
-whether A's `$IRTX` leaves the gun or the headset.
+whether A's `$IRTX` leaves the gun or the headset. If step 6 loops, one frame starts a player-worn beacon and one
+frame stops it, and the revive beam needs no host write every second.
 
 ## 17. Station words (15 min, needs the IR rig)
 
@@ -413,10 +434,8 @@ result, including nulls, against the row id.
 10. **Voice slot alignment (B29).** V4_30 reads 17 sound ids in `$PSET` t7-t23. Put a distinct voice id at t19 only,
     take a shield hit and listen. Then move it to t20.
 11. **The `$SIR` row ceiling (F39).** V4_30 stores all 64 cells. Push a 20-row table and hit each row once.
-12. **`$TMP` untraced tokens (S50, F87).** `$TMP` t4 = -100, then t5 = 50, t6 = 50 and t7 = 50, one at a time. Time the
-    fire interval, the reload and the damage dealt after each. Reset with a power cycle.
-13. **A bare `$LIFE,*` (F208, F163).** The 2018 BC app polls with it after 5 s of gun silence. Does an armed gun answer
-    with `$HP`? If so, the node has a side-effect-free health probe.
+12. **`$TMP` t5, t6, t7 and t10 (S50, F87).** Moved to §21 steps 16-19 (session 1), which now trace each token.
+13. **A bare `$LIFE,*` (F208, F163).** Moved to §22 step 4 (session 1), the dead-gun probe.
 14. **fn 23 by ear (B27, F66).** V4_30 says fn 23 only changes accuracy. Take one hit and listen: is any audio cut?
 15. **Two-emitter weapons (F71).** Fire the Shotgun (t1 = 2, gun and headset) at the IR rig. Count words per pull.
 16. **Melee extras (K4).** Log every frame A sends during a swing. Confirm B's `<13,1>` row is a damage function.
@@ -444,19 +463,26 @@ t41 and t42 replace t2 and t13 only in indoor mode, and only when they are not 0
 **Reading.** If step 1 holds, range tuning becomes a frequency table calibrated against the receiver's band-pass, and
 values above the knee are not worth tuning.
 
-## 21. `$TMP`: the native modifier system (40 min, run it before any recoil soak)
+## 21. `$TMP`: the native modifier system (55 min, run it before any recoil soak)
 
-The V4_30 disassembly reads `$TMP,<t1>,...,<t11>,*` as a set of per-player modifiers. Every token is optional, and an
-empty token leaves its field alone:
+The V4_30 and V4_31 disassemblies read `$TMP,<t1>,...,<t11>,*` as a set of per-player modifiers. Every token is
+optional, and an empty token leaves its field alone. The token that holds the `*` is stored as 0 (see "Frame shape"
+below). The stock King of the Hill buff writes t4, t5, t6 and t10, which is how the V4_31 trace found them:
 
-| token | V4_30 reading | the feature it could carry |
+| token | V4_30/V4_31 reading | the feature it could carry |
 |---|---|---|
 | t1 / t2 / t3 | HP / armour / shield maximum bonus, added to `$PSET` t3-t5 in the clamps (a change that leaves HP at 0 or below kills) | Body Armor, Overshield |
-| t4 | accuracy modifier (fn 23 writes -100 here and stamps a recovery timer) | recoil, flinch, stance |
-| t8 | incoming damage %, damage x (100 + t8)/100 (`$INVU` writes -100) | a damage-reduction perk |
-| t9 | magazine % bonus: every slot's magazine += clip x t9/100 | Extended Mags |
+| t4 | accuracy modifier: live accuracy = clamp(`$WEAP` t22 + t4) to 0-100, on the active slot (fn 23 writes it and stamps a recovery timer) | recoil, flinch, stance |
+| t5 | fire interval %: `$WEAP` t14 x (100 + t5)/100, with a 65 ms floor | Overclock, Adrenaline Rush, F87's hill fire-rate boost |
+| t6 | reload time %: `$WEAP` t18 x (100 + t6)/100, with a floor of 0 | Quick Hands, the `reload_mult` of Body Armor |
+| t7 | outgoing damage % on the barrel word, clamped to 0-255; the headset word (`$WEAP` t12) does not get it | Heavy Barrel, a damage handicap |
+| t8 | incoming damage %, damage x (100 + t8)/100 (`$INVU` writes -100) | a damage-reduction perk, spawn protection (§23) |
+| t9 | magazine bonus: the write tops up every slot by clip x t9/100, and a reload fills to t16 + t9, one flat round count for every slot | Extended Mags, but not "x2 on the primary" |
+| t10 | crit chance points, added to `$WEAP` t6 and to the secondary crit chance `$WEAP` t11 | Critical Strike chance |
 | t11 | the default hit sound when a row has none | |
-| t5, t6, t7, t10 | stored, use not traced | |
+
+The two traces disagree on the base of the t4 sum: one reads `$WEAP` t22, the other t21. The bench AR ships
+t21 = t22 = 100, so both give the same number on this sheet.
 
 Why it matters: today recoil changes accuracy with a full `$WEAP` (about 101 bytes, 6 packets) that also resets the
 magazine, so an `$AMMO` must follow it, which is the root of the F259 family. Body Armor and Extended Mags are built by
@@ -465,47 +491,91 @@ built yet) and fn 23's smoke are accuracy modifiers too, so if t4 is the lever, 
 decides the design: if the effects stack, each can write its own value; if the last writer wins, one owner on the node
 must compute a single value and be the only thing that writes t4.
 
+Each step below carries a "V4_31 predicts" line, so the bench confirms a static reading instead of discovering one.
 Record every value you read (`$ALCD` token 2 for accuracy, the magazine, the pools from `$HP`/`$LCD`), not only pass
 or fail. If effects add, the wire shows only the sum. Keep B's HP healthy for the pool steps: a bonus change that
 leaves HP at 0 or below kills.
 
+**Frame shape.** Always send the full 12-comma vector: `$TMP`, eleven token places, and the `*` in the twelfth.
+Wherever the `*` lands, the gun stores that token as 0. So a short form such as `$TMP,,,,-30,*` also zeroes t5, and
+a `*` on t11 makes the default hit sound "*". Every `$TMP` frame on this sheet has 12 commas.
+
 **t4, accuracy.** Arm A with the bench AR. Fire a few rounds so the magazine is not full.
 1. Send `$TMP,,,,-30,,,,,,,,*` (only token 4 set). Did `$ALCD` token 2 move? Did the magazine stay the same?
+   V4_31 predicts: the gun answers with an `$ALCD` at once when t4 or t9 is set, with no shot. Token 2 reads 70
+   and the magazine is unchanged.
 2. **Does a `$WEAP` clear it?** With t4 at -30, push the bench AR `$WEAP` again and read token 2.
+   V4_31 predicts: the `$WEAP` does not clear t4. It recomputes accuracy as clamp(t22 + t4), so token 2 reads 70
+   again.
 3. **Smoke collision.** With t4 at -30, take one fn 23 hit (put `$SIR,0,0,,23,0,0,1,,*` on A; fire at A from B or the
    IR rig). Read the accuracy. Then send `$TMP,,,,-30,,,,,,,,*` again, as the recoil writer's next write would, and read
    it again, then again after 3 s. They stack, the last writer wins (a recoil write cancels the smoke early, a bug we
    would introduce), or the gun clamps. fn 23 stamps a recovery timer, so also note whether the smoke recovery still
    runs after our write.
+   V4_31 predicts: the last writer wins. The smoke writes t4 = -150 and ramps it back up to 0 (token 2 reads 0,
+   then climbs). Our write replaces it at once (token 2 reads 70), which ends the smoke early. A 6000 ms timer then
+   writes t4 = 0; that this timer is fn 23's recovery is inferred. **So the recoil writer must stand down while smoke
+   is active.**
 4. Send `$TMP,,,,-60,,,,,,,,*`. Absolute (reads 40) or additive (reads 10)?
-5. Wait 5 s without firing. Does accuracy stay, or walk back by itself?
+   V4_31 predicts: absolute. t4 replaces the old value, so token 2 reads 40.
+5. Wait 8 s without firing. Does accuracy stay, or walk back by itself?
+   V4_31 predicts: it stays, unless the 6000 ms timer of step 3 also runs after a host write. Then accuracy returns
+   to 100 at about 6 s. Record the time of any change.
 6. Fire 10 rounds. Does the modifier change the hit rate the way a lower t21/t22 does (2026-09-17: 38/40 hits at 90,
    7/18 at 50-60)?
+   V4_31 predicts: yes, because t4 moves the same live accuracy, and the walk floor moves by t4 too.
 7. Send `$TMP,,,,0,,,,,,,,*`. Does accuracy return to its ceiling?
+   V4_31 predicts: yes, token 2 reads 100.
 8. Kill A and respawn it. Does the modifier survive a death?
+   V4_31 predicts: no. `$SPAWN` and `$CLEAR` zero every `$TMP` token, so every modifier must ride the spawn and
+   revive writes.
 
-**t9, magazine.**
+**t9, magazine.** The bench AR's clip (t16) is 32.
 9. On A, send `$TMP,,,,,,,,,50,,,*` (magazine +50 %). Read `$ALCD`: did the magazine grow by half a clip?
+   V4_31 predicts: yes, +16 at once, on every slot, and the gun answers with an `$ALCD` with no shot.
 10. Reload. Does the bigger magazine survive the reload?
+    V4_31 predicts: the reload fills to t16 + t9 = 82, not 48. t9 is one flat round count for every slot, so
+    Extended Mags "x2 on the primary" cannot live in t9.
 11. Push the bench AR `$WEAP` again. Does the bonus survive, or does the `$WEAP` clear it? This decides whether
     Extended Mags can live here.
+    V4_31 predicts: no static reading. Do not re-send t9 to restore it: each t9 write tops up every slot again.
 
 **t1 / t2 / t3, pool maxima.** Re-arm B (45, 70, 0).
 12. On B, send `$TMP,50,,,,,,,,,,,*` (HP maximum +50), then `$BUMP,999,1,0,0,,*`. Does HP heal above 45?
+    V4_31 predicts: HP reaches 95.
 13. Send `$TMP,,25,,,,,,,,,,*` (armour maximum +25), then `$BUMP,999,0,1,0,,*`. Does armour reach 95?
-14. Re-send B's `$PSET`, then `$SPAWN,,*` and `$TID,2,*`. Do the bonuses survive a `$PSET`?
+    V4_31 predicts: yes.
+14. Re-send B's `$PSET`, then `$TID,2,*`, with no `$SPAWN`. Do the bonuses survive a `$PSET`? Then send `$SPAWN,,*`,
+    `$TID,2,*` and `$BUMP,999,1,1,0,,*`.
+    V4_31 predicts: the bonuses survive the `$PSET` (no static reading says otherwise), and the `$SPAWN` zeroes them,
+    so the heal stops at HP 45 and armour 70.
 
 **t8, incoming damage.** Re-arm B (999, 0, 0).
 15. On B, send `$TMP,,,,,,,,-50,,,,*`. Fire 3 hits. Expect 4 or 5 each (9 x 0.5). Then send `$TMP,,,,,,,,0,,,,*`.
+    V4_31 predicts: 4 each (truncated).
 
-**Frame size.**
-16. Send the short form `$TMP,,,,-30,*` (13 bytes, the trailing empty tokens dropped). Does it act like step 1? If it
-    does, every `$TMP` write fits one packet.
+**t5, t6, t7 and t10, the traced tokens.** Arm A with the bench AR and re-arm B (999, 0, 0). After each step, send
+the same frame with that token at 0, before the next step.
+16. **t5, fire interval.** Hold full auto on A (bench AR, t14 = 100 ms per round). Send `$TMP,,,,,100,,,,,,,*` and time
+    the `$ALCD` magazine decrements. Then send `$TMP,,,,,-50,,,,,,,*` and time them again.
+    V4_31 predicts: about 200 ms per round at t5 = 100. At t5 = -50 the formula gives 50 ms, but the 65 ms floor holds.
+17. **t6, reload time.** Fire A's magazine dry and time the reload, from the lever pull to the last `$ALCD` of the
+    reload burst. Send `$TMP,,,,,,50,,,,,,*` and time it again.
+    V4_31 predicts: x1.5, so the bench AR's t18 of 1400 ms becomes about 2100 ms.
+18. **t7, outgoing damage.** On A, send `$TMP,,,,,,,50,,,,,*` and hit B 3 times.
+    V4_31 predicts: `$HIR` damage (token 5) 13 each, not 9 (9 x 150/100, truncated). t7 scales the barrel word only,
+    so a two-emitter weapon's headset word keeps its t12 damage.
+19. **t10, crit chance.** The bench AR has `$WEAP` t6 empty, so it never crits. On A, send `$TMP,,,,,,,,,,50,,*` and
+    fire 20 single shots at B, about one a second.
+    V4_31 predicts: about half the hits carry `$HIR` token 6 = 1 and read 13 (A's `$PSET` t6 = 50); the rest read 9.
+    The bench measured 45 % crits at `$WEAP` t6 = 50 (2026-09-18).
 
 **Reading.** If t4, t9 and t1-t3 work and a `$WEAP` or `$PSET` does not clear them, recoil, Extended Mags and Body
 Armor move to one short frame each, with no magazine reset, and the screamers sheet's recoil soak must measure the
-`$TMP` form instead. Anything that a `$WEAP` or `$PSET` clears needs a re-send after it. If `$TMP` does nothing, the
-current writers stay and F274's soak runs as written.
+`$TMP` form instead. Anything that a `$WEAP` or `$PSET` clears needs a re-send after it. If t5, t6, t7 and t10 work,
+Overclock, Adrenaline Rush, Heavy Barrel, Quick Hands and a crit-chance perk are each one packet on and one off. If
+`$SPAWN` zeroes `$TMP`, every modifier rides the spawn and revive writes. If `$TMP` does nothing, the current writers
+stay and F274's soak runs as written.
 
 ## 22. Dead-gun probe (F264, 10 min, session 1)
 
@@ -514,36 +584,117 @@ it acts, so it never revives a healthy player whose magazine is simply empty. Tw
 the same minute:
 - `$QUERY,*`: it answers with a `$LCD` that carries the current pools (bench 2026-09-09), so it is positive evidence
   either way.
-- `$LIFE,0,0,0,*`: a zero add that changes nothing. A live gun answers `$HP` (bench 2026-09-09). The V4_30 disassembly
-  shows a dead gun ignores `$LIFE` when token 1 is 0, so this probe reports by silence. The 2018 BC app polled with a
-  bare `$LIFE,*` after 5 s of gun silence.
+- `$LIFE,0,0,0,*` and the bare `$LIFE,*`: a zero add that changes nothing. A live gun answers `$HP` (bench
+  2026-09-09). V4_31 shows that the `$LIFE` handler also sends `$HP` on the dead path when t1 = 0. So a dead gun
+  should answer `$HP,0,0,0`, not silence, and this probe is positive evidence too. The 2018 BC app polled with a bare
+  `$LIFE,*` after 5 s of gun silence.
+
+⚠️ **Keep the `$LIFE` probe bare or all-zero.** A dead gun applies a `$LIFE` whose t1 is not 0: that is the §6 revive.
+A probe that carries HP brings a dead player back.
 
 Run §18 (reply decodes, claim 19) in the same session first: the `$QUERY` token map is confirmed by shape only.
 
 1. Kill B (the recipe above). Log `$VOLTS` continuously from here to the end of the section.
 2. Send `$QUERY,*` to B. Record the full reply, or silence within 2 s.
-3. Send `$LIFE,0,0,0,*` to B. Record `$HP`, anything else, or silence within 2 s.
-4. Respawn B and repeat steps 2 and 3 on the live gun as the control.
-5. Listen for `$DD` from B at the moment of death (the §13 step 1 reading).
+3. Send `$LIFE,0,0,0,*` to B. Expect `$HP,0,0,0`. Record the reply, anything else, or silence within 2 s.
+4. Send the bare `$LIFE,*` to B (moved here from §19 step 13). Expect `$HP,0,0,0` again, with no pool change.
+5. Respawn B and repeat steps 2-4 on the live gun as the control. Expect `$HP` with B's pools, unchanged.
+6. Listen for `$DD` from B at the moment of death (the §13 step 1 reading).
 
 Read the result against this table:
 
-| `$VOLTS` ticking | `$QUERY` reply | `$LIFE,0,0,0` reply | reading |
+| `$VOLTS` ticking | `$QUERY` reply | `$LIFE,0,0,0` / `$LIFE,*` reply | reading |
 |---|---|---|---|
-| yes | `$LCD` health 0 | silent | dead gun: the node can book the death |
-| yes | `$LCD` health above 0 | `$HP` | alive, stuck another way: do not revive |
+| yes | `$LCD` health 0 | `$HP,0,0,0` | dead gun: the node can book the death |
+| yes | `$LCD` health above 0 | `$HP` with HP above 0 | alive, stuck another way: do not revive |
 | yes | silent | silent | on the radio but answering nothing |
 | no | silent | silent | a link problem, not a gun problem |
 
-**Reading.** The most important single result is whether a dead gun answers `$QUERY` at all. If it does, the F264 cure
-acts on data. If it does not, the node falls back to inference, and the agreed rule is that it does nothing on its
-own and escalates to the operator. Do not build on `$DD` unless it comes from the gun itself.
+A dead gun that answers `$QUERY` but stays silent to `$LIFE` means v4.32 differs from V4_31 here. Record it: the node
+then uses `$QUERY` alone.
+
+**Reading.** If a dead gun answers `$LIFE,*` with `$HP,0,0,0`, the node has a 7-byte probe that returns state. On
+`pool_stale: no_fire`, or after silence while LIVE, it sends `$LIFE,*`, and an `$HP,0,...` reply runs the existing
+death and respawn path. If neither probe answers, the node falls back to inference, and the agreed rule is that it
+does nothing on its own and escalates to the operator. Do not build on `$DD` unless it comes from the gun itself.
+
+## 23. Spawn protection without the fn-28 twin table (F121, F209, F269, 15 min, session 2)
+
+Today every life writes a fn-28 twin `$SIR` table (registers, no pool change) for spawn protection, then the live
+table: **28 frames / 629 B / 49 packets per life**. The V4_30 disassembly shows that only `$CLEAR` zeroes the `$SIR`
+table. `$SPAWN` and death do not. `$SPAWN` does zero every `$TMP` token, so t8 must follow the `$SPAWN` in the same
+write. The protected life then costs `$SPAWN,,*`, `$TMP,,,,,,,,-100,,,,*`, `$TID`, `$AMMO` and `$BMAP,0,0`, and later
+`$TMP,,,,,,,,0,,,,*`: **7 frames / 108 B / 8 packets**. `$STOP` covers the dead window, from the end of the head until
+the spawn write. Run §12 and §21 first: this section builds on both.
+
+Do not use `$INVU` for this: it sets the flag that forces team 2 later (§7).
+
+1. **The table survives a death.** Kill B. Respawn B with `$SPAWN,,*` and `$TID,2,*` only, and re-send no `$SIR` rows.
+   A hits B once. Expect `$HIR` and HP 9 to 0: the table outlived the death and the spawn.
+2. **`$STOP` covers the dead window.** Re-arm B (999, 0, 0), then send `$STOP,*` to B. Hit B. Expect no `$HIR`.
+3. **The spawn write.** Send B `$SPAWN,,*`, then at once `$TMP,,,,,,,,-100,,,,*`, then `$TID,2,*`. Hit B 3 times.
+   Expect `$HIR` for each hit and no pool change. If no `$HIR` arrives, the `$SPAWN` did not reopen reception: send
+   `$START,*`, re-send B's `$GSET` (§12), and repeat. Record which case you saw, because the second case adds two
+   frames to every life.
+4. Send `$TMP,,,,,,,,0,,,,*`. Hit B once. Expect 9 damage.
+5. **Order control.** Send `$TMP,,,,,,,,-100,,,,*` first, then `$SPAWN,,*` and `$TID,2,*`. Hit B once. Expect 9
+   damage: the spawn zeroed t8.
+
+Notes for the design, from the disassembly:
+- There is a window of 1 to 2 frames after `$SPAWN`, because t8 cannot go first.
+- Protected hits still flash and sound. A splash row (p6) on a protected player still re-emits the hit.
+- t8 does not block a p5 stun, the fn 23 smoke or a fuse.
+- The S50 damage-resist perk also wants t8, so one owner on the node must compute t8.
+- The A17 per-life sound re-roll is lost. Keep a `sir_pool` take only when `hit_audio_class` is on.
+
+**Reading.** If steps 1, 3 and 4 hold, the live table goes out once per arm. `sir_spawn_protected()` in `compile.py`
+and the per-life `sir_pool` take in `engine.js` can go, and the per-life write falls from 49 packets to 8.
+
+## 24. The secondary-fire proc block, `$WEAP` t7-t11 (10 min, needs the IR rig)
+
+V4_31 shows live code for a secondary fire on every shot: t7 is the chance in %, t8/t9 the `<proto,sub>` key, t10 the
+damage and t11 the crit %. When the roll hits, that shot goes out on the secondary key instead. The bench AR ships
+t7-t11 empty. A proc of this kind (a taser, poison or burn round) costs no node writes and works with MC off line. The
+trace notes "+60 damage in one fire mode", so use a plain full-auto weapon: the bench AR.
+
+1. Push A's bench AR with t7 = 100, t8 = 12, t9 = 0, t10 = 5 (t11 empty). Fire 10 single shots at the IR rig. Expect
+   every word to read protocol 12, damage 5.
+2. Push it again with t7 = 50. Fire 20 single shots. Expect about half on protocol 12 (damage 5) and the rest on
+   protocol 0 (damage 9).
+3. Push it again with t7 = 0. Fire 5 shots. Expect protocol 0 only: the control.
+
+Record the crit bit on every secondary word.
+
+**Reading.** If step 1 holds, a random proc per shot is a compile-time `$WEAP` field, and Jay's JEDGE ideas ("chance
+to poison", "chance to TASE") need no node logic.
+
+## 25. The `$*` parser reset (screamers A4, 10 min, session 3)
+
+The V4_30 parser resets only token 0 and the token index when it reads `$`. `*` replaces the current token with "*"
+and dispatches. So a frame that loses its `*` leaves its tokens behind, and the next frame, even a resend of the same
+frame, lands on stale tokens. A `$*` sends a frame whose token 0 is "*", which matches no handler; that the
+unknown-command path then clears all 60 tokens comes from the earlier firmware analysis and is not traced. The old
+screamers A4 used `$QUERY`, which ignores its tokens, so it could not see this. This section replaces it, on one gun
+armed with the bench AR.
+
+1. **Control.** Send `$AMMO,0,10,50,1,*`, then `$AMMO,0,23,50,1,*`. Read the magazine from the next `$ALCD` (fire one
+   round if the gun sends none, and add one back). Expect 23.
+2. **No reset.** Send `$AMMO,0,10,50,1,*`. Then send `$AMMO,0,17,50,1` with no `*`, then `$AMMO,0,23,50,1,*`. Read
+   the magazine. V4_30 predicts a BAD FRAME: not 23.
+3. **With the reset.** Repeat step 2, but send `$*` between the two frames. Expect 23. The instrument may refuse `$*`
+   as an unknown command; send it with `confirm=true`.
+
+Run steps 2 and 3 three times each (the screamers sheet's rule for a result that counts).
+
+**Reading.** If step 2 fails and step 3 passes, the link sends `$*` (2 B) before each burst and before every resend in
+`brxlink.write`, and a lost packet costs one frame, not two. This becomes a Phase B rule in the screamers sheet.
 
 ## Close
 
 1. Power-cycle both guns. Then re-arm with `$SIR,0,0,,1,0,0,1,,*` if they stay on the desk.
 2. Write one experiment-log entry with every table, including the null results and the control runs.
 3. Mark every row of the claim checklist in the log entry.
-4. Update the FOLLOWUPS rows: F206, K4, F65, K7, F121, P18/S16, F62, S50 and the transport-hardening rows. Correct
+4. Update the FOLLOWUPS rows: F206, K4, F65, K7, F121, P18/S16, F62, S50, F264, F209, F269 and the
+   transport-hardening rows. Correct
    `protocol/brx-protocol.md` for each confirmed claim, and move it into `docs/manual/` only when it is CONFIRMED.
    Credit LaserTagMods (Jay).
