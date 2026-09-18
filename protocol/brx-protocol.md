@@ -153,7 +153,7 @@ that's missing `$START`, any `$AMMO`, any `$BMAP`, the correct `$SPAWN,,*` form,
 | 3 | shooter player id | 0–63 | = the shooter's `$PSET` token 1 (32/32 hits both directions on two guns) |
 | 4 | shooter team | 0–3 | = the shooter's effective `$TID & 3` |
 | 5 | raw magnitude | e.g. 9, 45, 80, 115 | The IR word's D field (= shooter's t5). **Not the applied damage** where a multiplier row or crit is in play: derive damage from the `$HP` delta. On a killing blow it can report the victim's remaining pool instead (overkill clamp) |
-| 6 | crit flag | 0/1 | Echoes the IR word's C bit. It reads 0 on every stock weapon only because every stock weapon ships `$WEAP` t6 = 0. ⭐ **2026-09-18: set t6 non-zero and the TAGGER rolls its own crits and sets this bit.** At t6 = 50 a bench AR landed 44 crits in 87 hits with token 6 = 1 on every one of them, and token 6 = 0 on the other 43. So a victim's node can tell a crit from a normal hit on the wire |
+| 6 | crit flag | 0/1 | Echoes the IR word's C bit. It reads 0 on every stock weapon only because every stock weapon ships `$WEAP` t6 = 0. ⭐ **2026-09-18: set t6 non-zero and the TAGGER rolls its own crits and sets this bit.** Token 6 read 1 on every crit of the t6 bench below and 0 on every normal hit, so a victim's node can tell a crit from a normal hit on the wire. Rates and crit damage: the `t6` table in §6 |
 | 7 | subtype | 0–3 | Echoes the IR word's U field (sniper = 1) |
 
 Not every `$HIR` is damage: pickups, heals and status effects arrive on the same message, keyed by protocol

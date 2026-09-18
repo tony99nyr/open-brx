@@ -209,7 +209,7 @@ sounds — and moves the numbers.
 | Suppressor | support | 8 | 140 | 15 | **1.96** | 57.1 | 48.0 | 75 | 384 | 2000 | 100% | — | **2026-09-17**: cycle 160→140 (`wire.fire_ms`); mag 48→75 (§2.3, family-scoped dominance) |
 | Assault Rifle | assault | 9 | 100 | 13 | **1.20** | 90.0 | 62.6 | 32 | 192 | 1400 | 100% | — | **2026-09-17**: cycle 140→100 (`wire.fire_ms`, native Battle Company speed) |
 | Energy Rifle | support | 9 | 150 | 13 | **1.80** | 60.0 | 57.0 | 300 | 600 | 2400 | 100% | 6 | **2026-09-17**: cycle 200→150 (`wire.fire_ms`); overheat switched ON (F229: `t38`=150 override, `t35`=D11) |
-| Charge Rifle | support | 85 | 1250 | 3 | **0.57** | 68.0 | 45.3 | 40 | 80 | 2500 | 92% | 14 | **2026-09-17**: dmg 87→85 (`wire.dmg`, the CHARGE damage; tap damage `t37`=20 unchanged), mag/res 12/12→40/80, `rounds_per_charge`=10 (F225/F226/S43); `htk`/`ttk s` now count 1 charge + 2 taps (release-to-kill), not `ceil(pool/85)`. **2026-09-18 bench**: the tap cadence is **285 ms**, measured, not the 500 ms placeholder, so release-to-kill falls 1.00 s → **0.57 s**. The charge costing exactly 10 rounds, the 85 charge and the 20 tap were all confirmed on the wire in the same run |
+| Charge Rifle | support | 85 | 1250 | 3 | **0.57** | 68.0 (charge only) | 45.3 (charge only) | 40 | 80 | 2500 | 92% | 14 | **2026-09-17**: dmg 87→85 (`wire.dmg`, the CHARGE damage; tap damage `t37`=20 unchanged), mag/res 12/12→40/80, `rounds_per_charge`=10 (F225/F226/S43); `htk`/`ttk s` now count 1 charge + 2 taps (release-to-kill), not `ceil(pool/85)`. **2026-09-18 bench**: the tap cadence is **285 ms**, measured, not the 500 ms placeholder, so release-to-kill falls 1.00 s → **0.57 s**. The charge costing exactly 10 rounds, the 85 charge and the 20 tap were all confirmed on the wire in the same run. `DPS` and `sust` count CHARGES only (85 / 1.25 s, and 4 charges a magazine against `4 × 1.25 + reload`); the tap is a second cadence and no single figure covers both, so `ttk s` is the column that reads the mixed kill |
 | Rocket Launcher | power | 115 | 1000 | 1 | **0.00** | 115.0 | 50.0 | 2 | 2 | 2600 | 91% | — | res 8→2, reload 1200→2600 |
 | Energy Launcher | power | 115 | 1600 | 1 | **0.00** | 71.9 | 50.0 | 2 | 2 | 1400 | 91% | — | cycle 360→1600, mag 1→2, res 6→2 |
 | Ion Sniper | power | 115 | 1400 | 1 | **0.00** | 82.1 | 47.9 | 2 | 2 | 2000 | 91% | — | cycle 1000→1400, res 12→2 |
@@ -1040,8 +1040,9 @@ by 8.0 s, 3/3 reps); `$AMMO`/`$WEAP` re-pushes do not move it, `$SPAWN` clears i
 frame is `$ALCD,32,0,0,192,0` (ammo and health preserved). A **sensory-disruption** weapon: no fire sound, no
 reload chain, no overheat cue, but it forces your accuracy to zero without a shot fired, below whatever
 the weapon's own `t22` floor is. It works under protocols 0/5/7/10 alike, so it belongs to the function.
-**Category 10 "Stun" remains UNBUILT**: no `$SIR` function has produced a stun, `$STUN`-over-BLE is a no-op, and
-the live lead is to capture the native Sentinel EMP ability (U11′). The 2026-08-26 "fn 23 is an EMP / weapon
+**Category 10 ships as fn 23** (U11′, closed 2026-09-18): no pool moves and the victim's live accuracy goes to 0,
+which is the effect §6.3e describes. `$STUN`-over-BLE is still a no-op, and the native Sentinel EMP capture is no
+longer needed. The 2026-08-26 "fn 23 is an EMP / weapon
 disable" reading and its retraction are in `docs/experiment-log.md` 2026-08-26/27.
 
 **Three clean negatives worth carrying** — each one closes a design direction someone would otherwise

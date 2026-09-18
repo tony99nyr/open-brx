@@ -8,7 +8,7 @@ same commit, or it gets a row here saying "promote X".
 
 **Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D6 · E8 · F267 · G11 · H9 ·
 K9 · P19 · Q20 · R4 · S54.** (2026-09-17 merge of the brx-weapons arsenal rework: this branch's thirteen
-verification rows moved from F230-F242 to **F235-F247**, because main had already taken F230-F234. **F248** taken for the merge's one visible consequence, and **F249** for the `connect()` alias bug that F234 had carried as a second item. **F248 closed** the same night; **F250** taken for the night skin's missing pip gauge, and **F251-F252** from the DRY review. **F253** taken and **B25 closed** by the polish review; **F254** by the 2026-09-18 merge review; **F256-F259**, **F261** and **F262** from the 2026-09-18 bench, and F260 left to main, which took it for the accuracy over-report. ⚠ **F253 collided**: main filed and closed its own F253 (the stun cell shipping fn 24) on 2026-09-18 while this branch was carrying F253 for the reserve question. Main's is the one that keeps the id, because it is closed and archived; **this branch's reserve row is renumbered F255** and closed the same day, because the bench answered it. **S53** is main's (the smoke tell on the HUD), and this branch owns it.)
+verification rows moved from F230-F242 to **F235-F247**, because main had already taken F230-F234. **F248** taken for the merge's one visible consequence, and **F249** for the `connect()` alias bug that F234 had carried as a second item. **F248 closed** the same night; **F250** taken for the night skin's missing pip gauge, and **F251-F252** from the DRY review. **F253** taken and **B25 closed** by the polish review; **F254** by the 2026-09-18 merge review; **F256-F259**, **F261** and **F262** from the 2026-09-18 bench, and F260 left to main, which took it for the accuracy over-report. **F263-F266** from the same bench: the two-word weapon measurement, the dead-gun desync, the frozen scoreboard, and the slow-link echo. ⚠ **F253 collided**: main filed and closed its own F253 (the stun cell shipping fn 24) on 2026-09-18 while this branch was carrying F253 for the reserve question. Main's is the one that keeps the id, because it is closed and archived; **this branch's reserve row is renumbered F255** and closed the same day, because the bench answered it. **S53** is main's (the smoke tell on the HUD), and this branch owns it.)
 (2026-09-17 verification bench: F215, F217 and F218 closed; F235-F247 taken for the
 verification bench and one folded-in residue row.) (2026-09-17 bench pass on
 the same playtest: **F206, F207, F212, F213, F210, F211**
@@ -70,14 +70,14 @@ right** and this index is stale. Do not cite it as evidence that something is or
 [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md)):
 - 🔴 **B26** · **F49** · **K4** · **Q15** · **S10**
 - 🟠 **F13** · **F50** · **F58** · **F59** · **F71** · **F162** · **P8** · **Q16** · **S9**
-- 🟡 **B27** · **B28** · **B29** · **D1** · **F3** · **F21** · **F26** · **F27** · **F28** · **F30** · **F36** · **F62** · **F63** · **F66** · **F67** · **F74** · **F75** · **F76** · **F82** · **F88** · **F163** · **G3** · **K1** · **P3** · **P15** · **Q18** · **S1** · **S2** · **S7** · **U11′**
+- 🟡 **B27** · **B28** · **B29** · **D1** · **F3** · **F21** · **F26** · **F27** · **F28** · **F30** · **F36** · **F63** · **F66** · **F67** · **F74** · **F75** · **F76** · **F82** · **F88** · **F163** · **G3** · **K1** · **P3** · **P15** · **Q18** · **S1** · **S2** · **S7** · **U11′**
 - 🟢 **B20** · **F29** · **F65** · **F87** · **F99** · **P4** · **P12** · **S4** · **S8**
 
 **Keyboard only** (tagged `build` or `decision` — no gun, no rig, no dim room):
 - 🔴 **B18b** · **B23** · **E5** · **F43** · **F68** · **S10**
 - 🟠 **B4** · **B19** · **B21** · **E2** · **F12** · **F13** · **F40** · **F56** · **F58** · **F70** · **F80** · **S3** · **S14**
 - 🟡 **F109** · **B1** · **B8** · **B14** · **B17** · **D1** · **E3** · **E4** · **E6** · **F5** · **F16** · **F20** · **F24** · **F25** · **F39** · **F42** · **F60** · **F88** · **F95** · **H1** · **K2** · **Q12′** · **Q13** · **Q18** · **S1** · **S2** · **S6** · **S7** · **S13**
-- 🟢 **B11** · **B16** · **B22** · **B25** · **E7** · **F14** · **F17** · **F18** · **F19** · **F32** · **F52** · **F83** · **F87** · **F89** · **F93** · **F98** · **F99** · **F100** · **P14** · **R2** · ⬜ **K6** · **S16** · **S17** · **S19**
+- 🟢 **B11** · **B16** · **B22** · **E7** · **F14** · **F17** · **F18** · **F19** · **F32** · **F52** · **F83** · **F87** · **F89** · **F93** · **F98** · **F99** · **F100** · **P14** · **R2** · ⬜ **K6** · **S16** · **S17** · **S19**
 
 ## 1. Before going public
 
