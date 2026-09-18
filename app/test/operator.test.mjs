@@ -378,12 +378,14 @@ for (const [name, set, why] of REFUSALS) {
 // elsewhere in the table still comes back as a string rather than an exception.
 test('A47: every stand-down name resolves to something an operator can read, and none of them throws', () => {
   const src = readFileSync(fileURLToPath(new URL('../src/engine.js', import.meta.url)), 'utf8');
-  // Find the site by its own contents, not by counting characters back to the method name: `bundle` is
-  // asked for at exactly one call site, `_operatorAct`'s (`_awaitShot` asks for `tutorial` too, but never
-  // for `bundle`). REFUSALS above lists the same seven, so a drift between the two fails here.
+  // Find the site by its own contents, not by counting characters back to the method name. `_operatorAct`'s
+  // subset is the only one that asks for `bundle` and NOT for `alive`: an operator command is refused on a
+  // DEAD player by `_operatorResync`'s own line, with its own message, so `alive` is deliberately absent here.
+  // (F264's `_cureTick`/`_pollTick` ask for `bundle` too -- they can write a revive head -- and both name
+  // `alive`.) REFUSALS above lists the same seven, so a drift between the two fails here.
   const asked = [...src.matchAll(/_standDown\(\[([^\]]*)\]/gs)]
     .map(m => [...m[1].matchAll(/['"](\w+)['"]/g)].map(x => x[1]))
-    .filter(names => names.includes('bundle'))
+    .filter(names => names.includes('bundle') && !names.includes('alive'))
     .flat();
   assert.deepEqual(asked, REFUSALS.map(([n]) => n),
     `_operatorAct's subset and this file's REFUSALS table disagree: ${asked.join(', ')}`);
