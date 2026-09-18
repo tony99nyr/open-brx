@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { setNotice } from '../notice';
-import { coverageLine, endDeliveryLine, poolStaleLabel } from '../api/derive';
+import { coverageLine, cureLabel, endDeliveryLine, poolStaleLabel } from '../api/derive';
 import { STALE_AFTER_MS, type LiveRow } from '../api/types';
 import { useStore } from '../store';
 import { F, T, fmtAge, fmtClock, fmtDuration, teamColor } from '../tokens';
@@ -283,6 +283,7 @@ function Row({ r, endUnconfirmed, open, onToggle }: { r: LiveRow; endUnconfirmed
   const syncWarn = stale || r.sync_age_ms > STALE_AFTER_MS;   // contracts §9, generated from types.py
   const stk = bestStreak(r);
   const silent = poolStaleLabel(r.pool_stale, r.pool_stale_ms);      // F208: grey, beside the name, never a status
+  const cure = cureLabel(r.cure);                                    // F264: the node's own outcome; no_answer needs a human
   // longhand sides, not `border` + `borderLeft`: React warns when the shorthand changes on a rerender (A47 opens the row)
   const rim = `1px solid ${endUnconfirmed ? T.bad : open ? T.acc : T.row}`;
   return (
@@ -297,6 +298,8 @@ function Row({ r, endUnconfirmed, open, onToggle }: { r: LiveRow; endUnconfirmed
           transform: open ? 'rotate(90deg)' : undefined }}>▸</span>{r.display}
         {silent && <span data-gun-silent={r.player_id} title="The phone says this gun's health and ammo readout may be out of date."
           style={{ display: 'block', font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>{silent}</span>}
+        {cure && <span data-gun-cure={r.player_id} title="The node's own outcome after it probed the gun."
+          style={{ display: 'block', font: F.mono(500, 11), letterSpacing: '.08em', color: r.cure === 'no_answer' ? T.warn : T.micro }}>{cure}</span>}
       </span>
       <span data-cell="k" style={{ textAlign: 'right', font: F.osw(700, 17), ...edge('k') }}><Num value={r.kills} /></span>
       <span data-cell="d" style={{ textAlign: 'right', font: F.osw(600, 16), color: T.dim }}><Num value={r.deaths} /></span>

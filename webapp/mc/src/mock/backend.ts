@@ -497,7 +497,7 @@ export class MockBackend implements Api {
         last_seen_age_ms: waiting ? null : red ? (droppedBackhaul ? 130_000 : null) : link * 1000,
         gun_linked: waiting || red ? null : true,
         gun_flapping: flapping,
-        pool_stale: null, pool_stale_ms: null,
+        pool_stale: null, pool_stale_ms: null, cure: null,   // F264: the node's own verdict; null = it has not acted
         fw: 'v4.32', phone_batt: 80, ssid_ok: true, mc_reachable: !red && !waiting, synced: !red && !waiting,
         screen_on: true, foreground: true,
         // A28.3 / F155: the server stamps `reach` from the socket path and clears it on disconnect; `last_reach` outlives it.

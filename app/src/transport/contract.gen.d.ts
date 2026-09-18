@@ -664,6 +664,11 @@ export interface NodeView {
   /** F208: the node's last `status.pool_stale` / `pool_stale_ms`. Absent = not stale, or an older app. */
   pool_stale?: 'silent' | 'no_fire' | 'write_lost';
   pool_stale_ms?: number;
+  /** F264: what the node ITSELF did about a `pool_stale` claim, so the board reads more than "stale".
+   *  `asking` = a $QUERY/$LIFE probe is out; `dead` = the gun answered health 0 and the death is booked;
+   *  `alive` = it answered above 0 and the node re-asserted the arming, never a revive; `no_answer` =
+   *  nothing came back and the node deliberately did NOTHING. `no_answer` is the one that needs a human. */
+  cure?: 'asking' | 'dead' | 'alive' | 'no_answer';
 }
 
 export interface Event {
@@ -687,10 +692,6 @@ export interface Event {
   resync?: boolean;
   /** A47: the operator's FORCE RESPAWN, not a respawn after a death (scoring keeps the streak) */
   operator?: boolean;
-  /** F264: the node's OWN cure revived this player, blind, after `poolStale` said `no_fire` and the gun answered
-   *  no `$QUERY`. There is no death in front of it and nobody asked for it, so the board must be able to tell it
-   *  apart from a real respawn -- and a run of them is the signal that one gun needs a human. */
-  auto?: boolean;
   /** operator_result (A47): what the phone DID with an operator action MC sent (`control{resync|respawn|relink}`).
    *  Persisted like every fact, and read for the operator's feed and menu only: it never reaches the scorer. */
   cmd?: OperatorCmd;
@@ -742,6 +743,11 @@ export interface Event {
    *  pool. Absent = not stale, or an older app: MC then shows no cue at all. */
   pool_stale?: 'silent' | 'no_fire' | 'write_lost';
   pool_stale_ms?: number;
+  /** F264: what the node ITSELF did about a `pool_stale` claim, so the board reads more than "stale".
+   *  `asking` = a $QUERY/$LIFE probe is out; `dead` = the gun answered health 0 and the death is booked;
+   *  `alive` = it answered above 0 and the node re-asserted the arming, never a revive; `no_answer` =
+   *  nothing came back and the node deliberately did NOTHING. `no_answer` is the one that needs a human. */
+  cure?: 'asking' | 'dead' | 'alive' | 'no_answer';
 }
 
 export interface ScoreRow {
@@ -817,6 +823,11 @@ export interface LiveRow {
   /** F208: the bound node's `pool_stale` / `pool_stale_ms`, as NodeView. Absent = not stale. */
   pool_stale?: 'silent' | 'no_fire' | 'write_lost';
   pool_stale_ms?: number;
+  /** F264: what the node ITSELF did about a `pool_stale` claim, so the board reads more than "stale".
+   *  `asking` = a $QUERY/$LIFE probe is out; `dead` = the gun answered health 0 and the death is booked;
+   *  `alive` = it answered above 0 and the node re-asserted the arming, never a revive; `no_answer` =
+   *  nothing came back and the node deliberately did NOTHING. `no_answer` is the one that needs a human. */
+  cure?: 'asking' | 'dead' | 'alive' | 'no_answer';
   /** A47: the latest operator action for this player in THIS match. Absent = none sent. */
   operator?: OperatorStatus;
 }
@@ -1183,6 +1194,8 @@ export interface ReadinessRow {
   pool_stale: 'silent' | 'no_fire' | 'write_lost' | null;
   /** F208: `status.pool_stale_ms`; None = not reported */
   pool_stale_ms: number | null;
+  /** F264: the node's own outcome; None = it has not acted */
+  cure: 'asking' | 'dead' | 'alive' | 'no_answer' | null;
   fw: string | null;
   phone_batt: number | null;
   ssid_ok: boolean | null;

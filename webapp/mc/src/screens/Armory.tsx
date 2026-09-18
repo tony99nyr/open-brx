@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import QRCode from 'qrcode';
-import { armoryGate, backhaulOffer, GUN_FLAPPING_LINE, poolStaleLabel, isRoutableLanIp, reachLabel, reachTooltip, registrySig, sentenceCase, splitBlocker, staleReachReason } from '../api/derive';
+import { armoryGate, backhaulOffer, cureLabel, GUN_FLAPPING_LINE, poolStaleLabel, isRoutableLanIp, reachLabel, reachTooltip, registrySig, sentenceCase, splitBlocker, staleReachReason } from '../api/derive';
 import { STALE_AFTER_MS, type LogView, type ReadinessRow, type TunnelStatus } from '../api/types';
 import { setNotice } from '../notice';
 import { useStore } from '../store';
@@ -399,7 +399,10 @@ function GunCard({ g }: { g: ReadinessRow }) {
           : <Val color={stale ? T.warn : g.gun_linked ? T.ink : g.gun_linked === false ? T.bad : T.micro}>{stale ? `UNKNOWN: LAST DATA ${fmtAge(age ?? 0)} AGO` : g.gun_linked ? 'LINKED' : g.gun_linked === false ? 'LINK LOST' : '—'}</Val>}
           {/* F208: grey information beside the link state, never a warning and never on a stale card */}
           {!stale && poolStaleLabel(g.pool_stale, g.pool_stale_ms) && <span data-gun-silent={g.player_id} title="The phone says this gun's health and ammo readout may be out of date."
-            style={{ marginLeft: 8, font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>{poolStaleLabel(g.pool_stale, g.pool_stale_ms)}</span>}</span>
+            style={{ marginLeft: 8, font: F.mono(500, 11), letterSpacing: '.08em', color: T.micro }}>{poolStaleLabel(g.pool_stale, g.pool_stale_ms)}</span>}
+          {/* F264: the node's own outcome. `no_answer` needs a human, so it alone gets the warning colour. */}
+          {!stale && cureLabel(g.cure) && <span data-gun-cure={g.player_id} title="The node's own outcome after it probed the gun."
+            style={{ marginLeft: 8, font: F.mono(500, 11), letterSpacing: '.08em', color: g.cure === 'no_answer' ? T.warn : T.micro }}>{cureLabel(g.cure)}</span>}</span>
         <Micro>HEADSET</Micro><span data-headset={stale ? 'stale' : g.headset_proof ?? g.headset}><Val color={stale ? T.micro : g.headset === 'proven' ? T.ink : g.headset === 'absent' ? T.micro : T.warn}>{hs}</Val></span>
         {/* A37 — the WEAPON check, said out loud in THREE states. The headset row above answers "did
             the gun answer at all"; this one answers "did it answer with the weapon we compiled". It

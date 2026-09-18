@@ -4666,12 +4666,14 @@ test('A16 readout: the hold expires to rest after hold_s with no further pool ch
   h.frame('$HIR,4,0,19,2,9,0,0,*'); h.frame('$HP,25,0,0,*');   // -> RO_H2
   h.writes.length = 0;
   h.adv(3999); h.eng.tick();
-  assert.equal(h.writes.length, 0, 'still held just before hold_s');
+  // F264: filtered to the strip, like the neighbouring A16 tests. The divergence poll writes `$QUERY,*` on its
+  // own 20 s cadence now, and it is not the readout's business.
+  assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'still held just before hold_s');
   h.adv(2); h.eng.tick();
   assert.deepEqual(h.writes.filter(f => f.startsWith('$GLED')), [RO_REST], 'reverts to rest once the hold elapses');
   h.writes.length = 0;
   h.adv(5000); h.eng.tick();
-  assert.equal(h.writes.length, 0, 'one rest write, never a repeating pulse');
+  assert.equal(h.writes.filter(f => f.startsWith('$GLED')).length, 0, 'one rest write, never a repeating pulse');
 });
 
 test('F86 (polish 2026-09-11): after an infection flip the readout reverts to the NEW team\'s rest, on hold expiry and after an event burst', () => {
@@ -5004,7 +5006,7 @@ test('A16.3 levels: settling on a PARTIAL level blinks its top segment at blink_
   w.frame('$HIR,4,0,19,2,9,0,0,*'); w.frame('$HP,30,0,0,*');   // level 4 -- EVEN, whole
   w.writes.length = 0;
   for (let i = 0; i < 8; i++) { w.adv(400); w.eng.tick(); }    // 3.2 s of blink_ms ticks, still inside hold_s
-  assert.equal(w.writes.length, 0, 'a whole level is rock solid -- no blink writes at all before the hold expires');
+  assert.equal(w.writes.filter(f => f.startsWith('$GLED')).length, 0, 'a whole level is rock solid -- no blink writes at all before the hold expires');   // F264: filtered to the strip; the divergence poll has its own cadence
 });
 
 test('A16.3 levels: death cancels an in-flight animation outright; a stale queued step writes nothing to the gun', () => {

@@ -1,17 +1,22 @@
-"""F264: the stage MIRRORS engine.js's cure (app/test/cure.test.mjs is the phone side).
+"""F264 v2: the stage MIRRORS engine.js's cure (app/test/cure.test.mjs is the phone side).
 
 A player was dead on the gun and alive on the HUD for 94 s. `pool_stale()` said `no_fire` and nothing
 acted on it. The cure now acts -- but it ASKS FIRST, because `no_fire` has two proven causes and only
-one of them wants a revive: the gun died and the killing `$HP`/`$LCD` never arrived (cure: the revive
-head, which carries `$SPAWN`), or the node's own magazine count is ahead of the gun's after a timed-out
-reload (cure: nothing, the player reloads). Every test here breaks one of those rules; the CONTROLs pin
-the neighbouring path that must not move.
+one of them wants a revive: the gun died and the killing `$HP`/`$LCD` never arrived, or the node's own
+magazine count is ahead of the gun's after a timed-out reload. Every test here breaks one of those
+rules; the CONTROLs pin the neighbouring path that must not move.
+
+THE NODE NEVER ACTS ON NO EVIDENCE (Tony, 2026-09-18, after four course corrections on this feature).
+The first draft's blind fallback revive is GONE: on no reply the node does NOTHING, records a verdict of
+`no_answer`, and logs loudly. A free life for a gun that was merely empty is worse than a wait.
 
 Mirrors: app/test/cure.test.mjs. Deliberate partial parity, same as the rest of the stage's F208/F209
 work: engine.js's stand-down list also names `phase`, `bundle`, `reconciling`, `resync` and `tutorial`,
-none of which the stage has a concept of (see `GunStage._cure_tick`'s own comment) -- so the stand-down
+none of which the stage has a concept of (see `GunStage._STAND_DOWN`'s own comment) -- so the stand-down
 tests below cover only the subset the stage actually carries: overheat, stun, reload, switching and a
-dropped link. `resync` and `reconcile` have no stage equivalent and are not tested here.
+dropped link. `resync` and `reconcile` have no stage equivalent and are not tested here; neither does
+engine.js's own reconcile-site probe (`_askGun('reconcile: read the gun rather than infer it', True)`),
+since the stage has no rejoin-reconcile state machine to hang it off.
 
 Run: python3 run_tests.py stage_cure
 """
@@ -20,7 +25,7 @@ from __future__ import annotations
 import asyncio
 
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
-from brx_mcp.stage.stage import GunStage
+from brx_mcp.stage.stage import GunStage, PROBE_LIFE
 from test_stage import _Clock, _nosleep, settle, tx
 
 GUN = "FA:KE:00:00:00:01"
@@ -29,11 +34,11 @@ QUERY = "$QUERY,*"
 
 def _mk():
     tagger = FakeTagger(GUN, "FAKE-STAGE", team=1)
-    # F264: every test here drives the gun's answer BY HAND (`_reply()`), the same separation
-    # cure.test.mjs's harness keeps (its `writer` only records). Q18 `listening = False` makes the fake
-    # drop every write silently instead of auto-answering it -- a live-answering fake would cure its own
-    # `no_fire` claim before the test gets a chance to assert the intermediate state. The one test that
-    # DOES want a real answering gun (the end-to-end one) turns `listening` back on itself.
+    # F264: every test here drives the gun's answer BY HAND (`_reply()`/`_reply_life()`), the same
+    # separation cure.test.mjs's harness keeps (its `writer` only records). Q18 `listening = False` makes
+    # the fake drop every write silently instead of auto-answering it -- a live-answering fake would cure
+    # its own `no_fire` claim before the test gets a chance to assert the intermediate state. The
+    # end-to-end tests turn `listening` back on themselves.
     tagger.listening = False
     mgr = FakeConnectionManager([tagger])
     clock = _Clock()
@@ -62,16 +67,13 @@ async def _adv_hold(st, clock, s: float, apply, step: float = 0.25):
 
 
 async def _live(st, clock):
-    """A live, spawned, alive stage whose gun has reported a full magazine -- and whose divergence poll
-    has already asked once (mirrors cure.test.mjs's `harness()`, whose own `h.adv(10)` does the same job
-    before the initial `$LCD` and shot)."""
+    """A live, spawned, alive stage whose gun has reported a full magazine. The window below is long
+    enough for F209's own spawn-protection cap (2.1 s) AND the once-per-life spawn read-back
+    (SPAWN_PROBE_S = 2.5 s) to have already run and settled, so neither shows up as a surprise write or a
+    surprise probe inside a later test's own "writes nothing but X" assertion."""
     await st.connect(GUN)
     await st.arm(); await st.spawn(); await settle(st)
-    # F209's own spawn-protection cap (SPAWN_PROTECT_MAX_S = 2.1 s) writes an unrelated $SIR arm burst if
-    # it is still pending when a cure test's own asserts run. Clearing it here, well past the cap, keeps
-    # every later "the cure writes nothing but X" assertion honest (mirrors cure.test.mjs's own harness,
-    # whose `.adv(3000)` before the first shot does the same job).
-    await _adv(st, clock, 3.0)                     # also: the divergence poll's own first ask happens in here
+    await _adv(st, clock, 3.0)
     st._inject_rx("$LCD,45,70,0,0,30,90,*")
     st._inject_rx("$BUT,0,1,*"); st._inject_rx("$ALCD,29,100,0,192,0,*"); st._inject_rx("$BUT,0,0,*")
     await settle(st)
@@ -91,10 +93,17 @@ async def _stall(st, clock, n: int | None = None):
 
 
 async def _reply(st, hp: int, armor: int = 70, mag: int = 30, reserve: int = 90):
-    """Answer the ask the stage just sent, as a real gun does: the status array (pool MAXIMA, deliberately
+    """Answer the QUERY half of a probe, as a real gun does: the status array (pool MAXIMA, deliberately
     useless here) and then the `$LCD` carrying the live pools and magazine."""
     st._inject_rx("$QUERY,7,1,45,70,0,0,1,*")
     st._inject_rx(f"$LCD,{hp},{armor},0,0,{mag},{reserve},*")
+    await settle(st)
+
+
+async def _reply_life(st, hp: int, armor: int = 70, shield: int = 0):
+    """Answer the PROBE_LIFE half of a probe, as a real gun does under the ALTERNATE reading (levers §22):
+    one `$HP`, with no ammo tokens at all (`$LIFE`'s own frame shape carries none)."""
+    st._inject_rx(f"$HP,{hp},{armor},{shield},*")
     await settle(st)
 
 
@@ -109,6 +118,35 @@ def _deaths(st) -> list[dict]:
 
 def _has(st, needle: str) -> bool:
     return any(needle in l["text"] for l in st.log)
+
+
+# ---------------------------------------------------------------- the probe itself
+
+def test_probe_life_is_byte_exactly_life_0_0_0_never_a_helper_with_arguments():
+    """THE HAZARD: a non-zero token 1 is the REVIVE path, so a probe carrying one silently revives the
+    player. This is why `PROBE_LIFE` is a bare constant and `_probe`/`_probe_reassert` never build a
+    `$LIFE` frame from arguments."""
+    assert PROBE_LIFE == "$LIFE,0,0,0,*"
+
+    async def run():
+        st, mgr, clock = _mk()
+        await _live(st, clock)
+        n = len(tx(mgr))
+        await _stall(st, clock)
+        w = tx(mgr)[n:]
+        assert "$LIFE,0,0,0,*" in w, f"the cure's probe carries the exact byte-for-byte frame: {w}"
+    asyncio.run(run())
+
+
+def test_the_cures_probe_sends_both_frames_together_the_heartbeat_sends_query_alone():
+    async def run():
+        st, mgr, clock = _mk()
+        await _live(st, clock)
+        n = len(tx(mgr))
+        await _stall(st, clock)
+        w = tx(mgr)[n:]
+        assert w.count("$LIFE,0,0,0,*") == 1 and w.count(QUERY) == 1, f"one of each, on a cure probe: {w}"
+    asyncio.run(run())
 
 
 # ---------------------------------------------------------------- the trigger
@@ -126,26 +164,27 @@ def test_the_cure_asks_at_no_fire_pulls_and_not_at_one_fewer():
         s = st.pool_stale()
         assert s and s["why"] == "no_fire"
         assert len(_query_times(st)) == polls + 1, f"the third pull asks the gun exactly once: {tx(mgr)[n:]}"
-        assert any(l["kind"] == "tx" and l["text"] == QUERY and "asking the gun what it thinks" in l["why"]
+        assert any(l["kind"] == "tx" and l["text"] == QUERY and "asking the gun where it stands" in l["why"]
                    for l in st.log), "and says why"
+        assert st.cure == {"verdict": "asking", "at": st.cure["at"]}
     asyncio.run(run())
 
 
-def test_the_ask_is_one_frame_and_it_is_query_which_the_deny_list_passes():
+def test_the_ask_is_known_frames_which_the_deny_list_passes():
     async def run():
         st, mgr, clock = _mk()
         await _live(st, clock)
         n = len(tx(mgr))
         await _stall(st, clock)
-        w = [f for f in tx(mgr)[n:] if f != QUERY]
-        assert w == [], f"the cure writes nothing but the ask: {tx(mgr)[n:]}"
-        assert st.refused == 0, "$QUERY is a known command, never refused by `write`"
+        w = [f for f in tx(mgr)[n:] if f not in (QUERY, "$LIFE,0,0,0,*")]
+        assert w == [], f"the cure writes nothing but the two probes: {tx(mgr)[n:]}"
+        assert st.refused == 0, "$QUERY and $LIFE are known commands, never refused by `write`"
     asyncio.run(run())
 
 
 # ---------------------------------------------------------------- the dead gun
 
-def test_a_dead_reply_books_exactly_one_death_marked_desync_and_the_ordinary_respawn_cures_the_gun():
+def test_a_dead_reply_via_query_books_exactly_one_death_marked_desync_and_sets_verdict_dead():
     async def run():
         st, mgr, clock = _mk()
         await _live(st, clock)
@@ -157,10 +196,28 @@ def test_a_dead_reply_books_exactly_one_death_marked_desync_and_the_ordinary_res
         assert "desync" in deaths[0]["text"], "the node learned it out of band, from its own question (F264)"
         assert st.alive is False
         assert st.pool_stale() is None, "the stale claim is answered"
+        assert st.cure["verdict"] == "dead"
         n = len(tx(mgr))
         await st.revive(); await settle(st)
         assert st.alive is True
         assert any(f.startswith("$SPAWN") for f in tx(mgr)[n:]), f"the respawn writes the revive head: {tx(mgr)[n:]}"
+    asyncio.run(run())
+
+
+def test_a_dead_reply_via_the_life_probes_hp_also_books_the_death_marked_desync():
+    """The ALTERNATE reading (levers §22): a dead gun answers `$LIFE,0,0,0,*` with `$HP,0,0,0`. Whichever
+    reading the bench settles on, this reply must resolve the cure exactly like the $QUERY one does."""
+    async def run():
+        st, mgr, clock = _mk()
+        await _live(st, clock)
+        await _stall(st, clock)
+        await _reply_life(st, 0, 0, 0)
+        deaths = _deaths(st)
+        assert len(deaths) == 1, f"exactly one death: {deaths}"
+        assert "desync" in deaths[0]["text"]
+        assert st.alive is False
+        assert st.cure["verdict"] == "dead"
+        assert st._cure is None, "the $HP reply alone resolves the cure -- it need not wait for the $LCD too"
     asyncio.run(run())
 
 
@@ -177,28 +234,45 @@ def test_a_dead_reply_cures_nothing_by_itself_the_cure_books_no_death_of_its_own
     asyncio.run(run())
 
 
-# ---------------------------------------------------------------- the live gun
+def test_a_malformed_lcd_reply_is_treated_as_no_reply_and_the_cure_stays_in_flight():
+    """levers claim 19: the `$QUERY` token map is confirmed by SHAPE only. A reply that does not fit it is
+    treated as no reply, not trusted -- here, too few tokens (`$LCD,45,70,*`, no magazine/reserve)."""
+    async def run():
+        st, mgr, clock = _mk()
+        await _live(st, clock)
+        await _stall(st, clock)
+        assert st._cure is not None, "setup: an ask is outstanding"
+        st._inject_rx("$QUERY,7,1,45,70,0,0,1,*")
+        st._inject_rx("$LCD,45,70,*")
+        await settle(st)
+        assert st._cure is not None, "the cure stays in flight -- a bad shape is no reply, not a verdict"
+        assert st.cure is None or st.cure["verdict"] == "asking"
+        assert _has(st, "does not fit"), "and says why"
+    asyncio.run(run())
 
-def test_a_reply_with_health_above_0_and_an_empty_magazine_never_revives_and_never_writes_ammo():
+
+# ---------------------------------------------------------------- the live gun (re-assert, never revive)
+
+def test_stale_belief_false_positive_the_gun_says_empty_the_node_believed_it_loaded_reassert_never_revive():
+    """THE FALSE POSITIVE THIS EXISTS FOR: the node's OWN account said the magazine was loaded (it is, in
+    `_live()`'s setup: 29 rounds), the gun answers alive and EMPTY, and the cure must re-assert the GUN'S
+    OWN (empty) counts -- never revive, and never trust the node's stale belief."""
     async def run():
         st, mgr, clock = _mk()
         await _live(st, clock)
         await _stall(st, clock)
         n = len(tx(mgr))
-        await _reply(st, 45, 70, 0, 90)                # alive, magazine empty: the timed-out reload, not a death
+        await _reply(st, 45, 70, 0, 90)
         assert st.alive is True, "no revive"
         w = tx(mgr)[n:]
-        assert w == [], f"no write at all -- an $AMMO here would hand out a free magazine: {w}"
-        assert _has(st, "EMPTY magazine"), "and says which case it chose"
-        # CONTROL: the no-fire claim is spent by the reply -- a single further unanswered pull cannot
-        # retrip it on its own (mirrors cure.test.mjs; the stage does not feed $LCD's own magazine token
-        # into its ammo account the way engine.js's `feedFrame` LCD case does -- see the report)
-        await _pull(st, clock)
-        assert st.pool_stale() is None
+        assert f"$AMMO,{st.active_slot},0,90,1,*" in w, f"the gun's own (empty) counts go back, not the node's stale belief: {w}"
+        assert any(f.startswith("$BMAP,0,0") for f in w), "and the trigger mapping"
+        assert not any(f.startswith("$SPAWN") or f.startswith("$PSET") or f.startswith("$SIR,") for f in w), f"nothing that heals or re-heads: {w}"
+        assert st.cure["verdict"] == "alive"
     asyncio.run(run())
 
 
-def test_a_reply_with_health_above_0_and_a_loaded_magazine_reasserts_the_arming_and_does_not_revive():
+def test_alive_reply_with_a_loaded_magazine_also_reasserts_the_guns_own_counts_never_revives():
     async def run():
         st, mgr, clock = _mk()
         await _live(st, clock)
@@ -207,38 +281,71 @@ def test_a_reply_with_health_above_0_and_a_loaded_magazine_reasserts_the_arming_
         await _reply(st, 45, 70, 25, 90)               # alive, loaded, and still not answering the trigger
         assert st.alive is True, "no revive"
         w = tx(mgr)[n:]
-        assert not any(f.startswith("$SPAWN") or f.startswith("$PSET") for f in w), f"nothing that heals or re-heads: {w}"
-        assert any(f.startswith("$AMMO,") for f in w), f"the live counts go back: {w}"
-        assert any(f.startswith("$BMAP,0,0") for f in w), "and the trigger mapping"
+        assert f"$AMMO,{st.active_slot},25,90,1,*" in w, f"the gun's own counts go back: {w}"
+        assert any(f.startswith("$BMAP,0,0") for f in w)
+        assert not any(f.startswith("$SPAWN") or f.startswith("$PSET") for f in w)
     asyncio.run(run())
 
 
-# ---------------------------------------------------------------- no reply at all
+def test_alive_reply_with_no_magazine_reported_reasserts_the_trigger_mapping_only():
+    """If mag or reserve is not reported, write the `$BMAP` only -- never guess a magazine into an `$AMMO`."""
+    async def run():
+        st, mgr, clock = _mk()
+        await _live(st, clock)
+        await _stall(st, clock)
+        n = len(tx(mgr))
+        st._inject_rx("$QUERY,7,1,45,70,0,0,1,*")
+        st._inject_rx("$LCD,45,70,0,0,,,*")            # tokens present but empty: "not reported"
+        await settle(st)
+        w = tx(mgr)[n:]
+        assert not any(f.startswith("$AMMO,") for f in w), f"no magazine reported -- no $AMMO write: {w}"
+        assert any(f.startswith("$BMAP,0,0") for f in w)
+    asyncio.run(run())
 
-def test_no_reply_falls_back_to_the_revive_head_once_after_cure_asks_asks():
+
+def test_companion_when_the_belief_is_correct_and_the_magazine_is_empty_the_cure_never_even_runs():
+    """The companion to the false positive above: when the node's account agrees the magazine is empty,
+    `_await_shot` dry-fires and never awaits a shot at all, so no pull is ever counted and the cure never
+    starts -- there is nothing here for it to correct."""
+    async def run():
+        st, mgr, clock = _mk()
+        await _live(st, clock)
+        st._inject_rx("$ALCD,0,100,0,192,0,*")         # the gun (and the node's account) agree: empty
+        for _ in range(5):
+            await _pull(st, clock)
+        assert st._no_fire_pulls == 0, "an empty magazine dry-fires: no shot is ever awaited"
+        assert st.pool_stale() is None
+        assert st._cure is None, "the cure never even starts"
+    asyncio.run(run())
+
+
+# ---------------------------------------------------------------- no reply at all: do nothing
+
+def test_no_reply_to_either_probe_does_nothing_writes_nothing_and_sets_verdict_no_answer():
     async def run():
         st, mgr, clock = _mk()
         await _live(st, clock)
         polls = len(_query_times(st))
         await _stall(st, clock)
-        assert len(_query_times(st)) - polls == 1, "setup: the cure has asked once"
+        assert len(_query_times(st)) - polls == 1, "setup: the cure has probed once"
         await _adv(st, clock, GunStage.QUERY_REPLY_S + 0.3)
         assert len(_query_times(st)) - polls == GunStage.CURE_ASKS, \
-            f"a lost notification is ordinary: it asks {GunStage.CURE_ASKS} times"
-        assert st.alive is True, "and still nothing written blind"
+            f"a lost notification is ordinary: it probes {GunStage.CURE_ASKS} times"
         n = len(tx(mgr))
         await _adv(st, clock, GunStage.QUERY_REPLY_S + 0.3)
         w = tx(mgr)[n:]
-        assert sum(1 for f in w if f.startswith("$SPAWN")) == 1, f"exactly one revive head: {w}"
-        assert st.alive is True
-        assert _has(st, "taken blind"), "and the log says it was taken blind"
+        assert w == [], f"the node writes NOTHING on no evidence: {w}"
+        assert st.alive is True, "no revive, no death: the node did nothing"
+        assert st.cure["verdict"] == "no_answer"
+        assert _has(st, "doing") and _has(st, "NOTHING"), "and says it is doing nothing"
+        assert _has(st, f"hp {st.hp}") and _has(st, "in the magazine"), "and logs the values it went in with"
         n2 = len(tx(mgr))
-        await _stall(st, clock)                        # the fresh life goes straight back to not firing
+        await _stall(st, clock)                        # the fresh stall goes straight back to not firing
         assert sum(1 for f in tx(mgr)[n2:] if f == QUERY) == 0, "the cooldown refuses a second cure in the same breath"
     asyncio.run(run())
 
 
-def test_a_gun_that_answers_query_but_sends_no_lcd_is_never_revived_blind():
+def test_a_gun_that_answers_query_but_sends_no_lcd_never_gets_a_second_probe_in_the_same_window():
     async def run():
         st, mgr, clock = _mk()
         await _live(st, clock)
@@ -246,26 +353,54 @@ def test_a_gun_that_answers_query_but_sends_no_lcd_is_never_revived_blind():
         st._inject_rx("$QUERY,7,1,45,70,0,0,1,*")       # the array, and nothing behind it
         await settle(st)
         await _adv(st, clock, (GunStage.QUERY_REPLY_S + 0.3) * 2)
-        assert st.alive is True, "a gun that is still talking is not guessed at"
+        assert st.alive is True, "a gun that only half-answered is not guessed at"
         assert len(_deaths(st)) == 0
-        assert _has(st, "still talking")
+        assert st.cure["verdict"] == "no_answer"
     asyncio.run(run())
 
 
-def test_blind_fallbacks_stop_at_cure_max_blind_and_hand_the_gun_to_the_operator():
+# ---------------------------------------------------------------- verdict lifecycle
+
+def test_verdict_is_none_until_a_cure_runs_then_tracks_the_outcome():
     async def run():
         st, mgr, clock = _mk()
         await _live(st, clock)
-        blind = 0
-        for _ in range(GunStage.CURE_MAX_BLIND + 2):
-            await _adv(st, clock, GunStage.CURE_COOLDOWN_S + 1.0)
-            st._inject_rx("$ALCD,29,100,0,192,0,*")     # the gun reports a pool, so `no_fire` can build again
-            await settle(st)
-            await _stall(st, clock)
-            await _adv(st, clock, (GunStage.QUERY_REPLY_S + 0.3) * GunStage.CURE_ASKS)
-            blind = sum(1 for l in st.log if "taken blind" in l["text"])
-        assert blind == GunStage.CURE_MAX_BLIND, f"it gives up after {GunStage.CURE_MAX_BLIND}, rather than reviving a dead gun forever"
-        assert _has(st, "REVIVE or RELINK"), "and names the human cure"
+        assert st.cure is None
+        await _stall(st, clock)
+        assert st.cure["verdict"] == "asking"
+        await _reply(st, 0, 0, 0, 0)
+        assert st.cure["verdict"] == "dead"
+        assert st.state()["model"]["cure"] == {"verdict": "dead", "at": st.cure["at"]}
+    asyncio.run(run())
+
+
+def test_a_new_match_clears_the_cure_and_its_verdict():
+    async def run():
+        st, mgr, clock = _mk()
+        await _live(st, clock)
+        await _stall(st, clock)
+        assert st._cure is not None and st.cure is not None
+        await st.arm()
+        assert st._cure is None and st.cure is None
+    asyncio.run(run())
+
+
+def test_a_stale_verdict_holds_through_a_volts_and_retires_on_an_unsolicited_alcd():
+    """Crying wolf is its own failure: a `no_answer` verdict must not sit on the operator's board for the
+    rest of the match over a gun that has come back on its own, or the next REAL `no_answer` reads as the
+    same stale chip. But it must retire on POOL FRAMES ONLY -- `$VOLTS` kept arriving right through both
+    proven F264 stalls, so treating it as proof would make a dead-but-chatty gun look cured."""
+    async def run():
+        st, mgr, clock = _mk()
+        await _live(st, clock)
+        await _stall(st, clock)
+        await _adv(st, clock, (GunStage.QUERY_REPLY_S + 0.3) * GunStage.CURE_ASKS)
+        assert st.cure["verdict"] == "no_answer", "setup: a stale verdict is sitting on the board"
+        st._inject_rx("$VOLTS,8428,4164,100,100,*")
+        assert st.cure is not None and st.cure["verdict"] == "no_answer", "a $VOLTS must NOT retire it"
+        st._inject_rx("$ALCD,29,100,0,192,0,*")           # the gun reporting on its own, unsolicited
+        assert st.cure is None, "an unsolicited pool frame retires the stale verdict"
+        assert _has(st, "cure verdict 'no_answer' cleared"), "and says so"
     asyncio.run(run())
 
 
@@ -284,12 +419,13 @@ def _make_stand_down_test(name: str, apply):
         await _stall(st, clock)
         s = st.pool_stale()
         assert s and s["why"] == "no_fire", "setup: the detector has concluded"
-        st._cure = None; st._cure_life = None; st._cure_at = 0.0   # ...and the cure has not run yet
+        st._cure = None; st._cure_life = None; st._cure_at = 0.0; st.cure = None   # ...and the cure has not run yet
         n = len(tx(mgr))
         await _adv_hold(st, clock, (GunStage.QUERY_REPLY_S + 0.3) * (GunStage.CURE_ASKS + 1), apply)
         w = tx(mgr)[n:]
         assert st._cure_life is None, f"{name} must never start a cure"
         assert st._cure is None, f"{name} must leave no ask in flight"
+        assert st.cure is None, f"{name} must never set a verdict"
         assert not any(f.startswith("$SPAWN") for f in w), f"{name} must never reach a revive: {w}"
         assert not any(f.startswith("$AMMO,") or f.startswith("$BMAP,") for f in w), f"{name} must never re-assert the arming: {w}"
 
@@ -311,7 +447,7 @@ def test_f264_a_dropped_link_suppresses_the_cure_entirely():
         await _stall(st, clock)
         s = st.pool_stale()
         assert s and s["why"] == "no_fire", "setup: the detector has concluded"
-        st._cure = None; st._cure_life = None; st._cure_at = 0.0
+        st._cure = None; st._cure_life = None; st._cure_at = 0.0; st.cure = None
         n = len(tx(mgr))
         mgr.drop("stage")
         st.poll()                                       # discovers the drop on the very next poll
@@ -324,7 +460,7 @@ def test_f264_a_dropped_link_suppresses_the_cure_entirely():
     asyncio.run(run())
 
 
-def test_an_ask_in_flight_when_the_link_drops_is_abandoned_not_timed_out_into_a_blind_revive():
+def test_an_ask_in_flight_when_the_link_drops_is_abandoned_not_timed_out_into_anything():
     async def run():
         st, mgr, clock = _mk()
         await _live(st, clock)
@@ -337,7 +473,7 @@ def test_an_ask_in_flight_when_the_link_drops_is_abandoned_not_timed_out_into_a_
         n = len(tx(mgr))
         await _adv(st, clock, (GunStage.QUERY_REPLY_S + 0.3) * (GunStage.CURE_ASKS + 1))
         w = tx(mgr)[n:]
-        assert not any(f.startswith("$SPAWN") for f in w), f"the relink owes the old ask nothing: {w}"
+        assert not any(f.startswith("$SPAWN") or f.startswith("$AMMO,") for f in w), f"the relink owes the old ask nothing: {w}"
     asyncio.run(run())
 
 
@@ -347,7 +483,6 @@ def test_the_divergence_poll_runs_only_in_a_live_match_at_query_poll_s():
     async def run():
         st, mgr, clock = _mk()
         await _live(st, clock)
-        assert len(_query_times(st)) == 1, "the first live tick asks once"
         n = len(_query_times(st))
         await _adv(st, clock, GunStage.QUERY_POLL_S * 3 + 0.5)
         times = _query_times(st)
@@ -409,7 +544,7 @@ def test_a_poll_that_finds_the_gun_dead_books_the_death_with_no_trigger_pulled()
     asyncio.run(run())
 
 
-def test_the_write_cost_of_the_poll_is_3_frames_a_minute_and_nothing_else():
+def test_the_write_cost_of_the_heartbeat_poll_is_3_frames_a_minute_and_nothing_else():
     async def run():
         st, mgr, clock = _mk()
         await _live(st, clock)
@@ -421,7 +556,65 @@ def test_the_write_cost_of_the_poll_is_3_frames_a_minute_and_nothing_else():
     asyncio.run(run())
 
 
-# ---------------------------------------------------------------- end to end, against the fake gun
+# ---------------------------------------------------------------- the spawn read-back
+
+def test_the_spawn_probe_runs_once_per_life_query_alone_after_spawn_probe_s_and_stamps_the_polls_clock():
+    async def run():
+        st, mgr, clock = _mk()
+        await st.connect(GUN)
+        await st.arm(); await st.spawn(); await settle(st)
+        await _adv(st, clock, 0.5)                      # settle the immediate heartbeat's first tick out of the way
+        assert st._probed_life is None, "setup: the spawn probe has not run yet"
+        poll_before = st._poll_at
+        n = len(tx(mgr))
+        await _adv(st, clock, GunStage.SPAWN_PROBE_S + 0.5)
+        w = tx(mgr)[n:]
+        assert w.count("$LIFE,0,0,0,*") == 0, f"the spawn read-back is QUERY alone, 1 frame, unlike the cure's probe: {w}"
+        assert w.count(QUERY) == 1, f"and it does ask, once: {w}"
+        assert st._probed_life == st._life
+        assert st._poll_at > poll_before, "the spawn probe stamps the heartbeat's own clock, so it does not also fire in the same breath"
+        n2 = len(tx(mgr))
+        await _adv(st, clock, 1.0)
+        assert tx(mgr)[n2:].count(QUERY) == 0, "and no second ask right behind it"
+        await st.revive(); await settle(st)
+        assert st._probed_life != st._life, "a fresh life is due its own read-back"
+    asyncio.run(run())
+
+
+def test_operator_resync_probes_the_gun_before_its_own_writes():
+    async def run():
+        st, mgr, clock = _mk()
+        await _live(st, clock)
+        n = len(tx(mgr))
+        await st.resync(); await settle(st)
+        w = tx(mgr)[n:]
+        assert "$LIFE,0,0,0,*" in w and QUERY in w, f"RESYNC GUN reads before it writes: {w}"
+        life_i, query_i = w.index("$LIFE,0,0,0,*"), w.index(QUERY)
+        ammo_i = next(i for i, f in enumerate(w) if f.startswith("$AMMO,") or f.startswith("$TID,") or f.startswith("$BMAP,"))
+        assert life_i < ammo_i and query_i < ammo_i, f"the probe goes out before the resync's own writes: {w}"
+    asyncio.run(run())
+
+
+# ---------------------------------------------------------------- fake.py: the dead-gun $LIFE ambiguity
+
+def test_fake_dead_gun_life_probe_reading_is_switchable_and_a_real_revive_still_works():
+    """The repo disagrees with itself: protocol/brx-protocol.md's $LIFE row reads a dead gun as SILENT on
+    `$LIFE,0,0,0,*`; docs/bench-firmware-levers-2026-09-19.md §22 reads V4_31 as answering `$HP,0,0,0`.
+    Neither is silently picked: the fake models the documented (silent) reading by default and the
+    alternate one behind a flag, so a test can exercise either without waiting on the bench."""
+    tagger = FakeTagger(GUN, "FAKE-STAGE", team=1)
+    tagger.go_dead_chatty()
+    assert tagger.dead_gun_answers_life is False, "the documented reading is the default"
+    tagger.write("$LIFE,0,0,0,*")
+    assert tagger.drain() == [], "documented default: silence"
+    tagger.dead_gun_answers_life = True
+    tagger.write("$LIFE,0,0,0,*")
+    assert tagger.drain() == ["$HP,0,0,0,*"], "the alternate reading, switched on"
+    # THE HAZARD, re-proven at the fake: a non-zero token is the REVIVE path under EITHER reading.
+    tagger.dead_gun_answers_life = False
+    tagger.write("$LIFE,30,0,0,*")
+    assert tagger.alive is True and tagger.hp == 30, "a real revive (non-zero token) still works regardless of the probe flag"
+
 
 def test_fake_dead_chatty_refuses_to_fire_but_still_answers_query_with_health_zero():
     """fake.py alone, no stage: the F264 fault (docs/FOLLOWUPS.md F264) and its one cure."""
@@ -441,25 +634,41 @@ def test_fake_dead_chatty_refuses_to_fire_but_still_answers_query_with_health_ze
     assert tagger.drain(), "the trigger works again post-SPAWN"
 
 
-def test_end_to_end_a_dead_chatty_fake_gun_is_cured_by_the_stages_own_query_and_the_respawn():
+# ---------------------------------------------------------------- end to end, against the fake gun
+
+def test_end_to_end_documented_reading_dead_chatty_gun_is_cured_via_the_query_reply():
     async def run():
         st, mgr, clock = _mk()
         tagger = mgr.taggers[GUN]
-        tagger.listening = True                          # this test wants the REAL fake gun answering, not a hand-fed reply
+        tagger.listening = True                          # this test wants the REAL fake gun answering
         await _live(st, clock)
-        tagger.go_dead_chatty()                          # the gun goes dead silently -- no $HP/$LCD reaches the stage
-        # The player pulls three times, into silence; the fake gun answers the cure's own $QUERY,* almost
-        # at once (a real link is ~30-90 ms, F259), so by the time `_stall()` returns the whole no_fire ->
-        # ask -> $LCD(health 0) -> death sequence has already run, over the SAME manager a bench gun would.
+        tagger.go_dead_chatty()                          # the gun goes dead silently
+        assert tagger.dead_gun_answers_life is False, "the documented reading -- $LIFE stays silent"
         assert not _has(st, "gun not firing"), "setup: no claim yet"
-        await _stall(st, clock)
+        await _stall(st, clock)                          # the player pulls three times, into silence
         assert _has(st, "gun not firing"), "the unanswered pulls built the claim"
         deaths = _deaths(st)
-        assert len(deaths) == 1, f"the fake's own $QUERY reply books the death: {deaths}"
+        assert len(deaths) == 1, f"the fake's own $QUERY reply books the death even though $LIFE stayed silent: {deaths}"
         assert "desync" in deaths[0]["text"]
         assert st.alive is False
         n = len(tx(mgr))
         await st.revive(); await settle(st)
         assert st.alive is True
         assert any(f.startswith("$SPAWN") for f in tx(mgr)[n:]), "the respawn's own $SPAWN clears the fake's dead-chatty state too"
+    asyncio.run(run())
+
+
+def test_end_to_end_alternate_reading_dead_chatty_gun_is_also_cured():
+    async def run():
+        st, mgr, clock = _mk()
+        tagger = mgr.taggers[GUN]
+        tagger.listening = True
+        await _live(st, clock)
+        tagger.go_dead_chatty()
+        tagger.dead_gun_answers_life = True               # the alternate reading, switched on for this test
+        await _stall(st, clock)
+        deaths = _deaths(st)
+        assert len(deaths) == 1, f"the death is booked under the alternate reading too: {deaths}"
+        assert "desync" in deaths[0]["text"]
+        assert st.alive is False
     asyncio.run(run())

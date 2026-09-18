@@ -2,8 +2,12 @@
 // showed a healthy player. The phone now says when the pool it reports is stale (`pool_stale`: `silent`
 // or `no_fire`, with `pool_stale_ms`). The console shows a quiet grey cue on the LIVE row and the ARMORY
 // readiness card. Grey, not amber: Tony wants fewer warnings. No claim, no cue.
+//
+// F264 (field 2026-09-18): the node now probes a `pool_stale` gun itself and reports its own outcome
+// (`cure`: `asking` / `dead` / `alive` / `no_answer`), beside the same cue. `no_answer` is the one case
+// that needs a human, so it alone renders in the warning colour.
 import { describe, expect, it } from 'vitest';
-import { poolStaleLabel } from '../src/api/derive';
+import { cureLabel, poolStaleLabel } from '../src/api/derive';
 import type { LiveRow, LiveView, ReadinessRow, State } from '../src/api/types';
 import { Armory } from '../src/screens/Armory';
 import { Live } from '../src/screens/Live';
@@ -63,6 +67,49 @@ describe('F208 · the stale-pool cue', () => {
     expect(cues.map(c => c.getAttribute('data-gun-silent'))).toEqual([first.player_id]);
     expect(cues[0].textContent).toBe('GUN SILENT 3m10s');
     expect(cues[0].style.color).toBe(rgb(T.micro));
+    m.unmount();
+  });
+});
+
+describe('F264 · the node cure cue', () => {
+  it('words the cue by verdict, says nothing while asking or without a claim, and warns on no_answer', () => {
+    expect(cureLabel(undefined), 'no claim, no cue').toBeNull();
+    expect(cureLabel(null)).toBeNull();
+    expect(cureLabel('asking'), 'a probe in flight is not yet news').toBeNull();
+    expect(cureLabel('dead')).toBe('NODE FOUND IT DEAD');
+    expect(cureLabel('alive')).toBe('NODE RE-ARMED IT');
+    expect(cureLabel('no_answer')).toBe('GUN NOT ANSWERING - FORCE RESPAWN');
+  });
+
+  it('LIVE: the cure cue sits beside the stale cue, and no_answer alone is a warning', async () => {
+    const d = await demo();
+    const rows = [row({ player_id: 'p1', display: 'VIPER', pool_stale: 'silent', pool_stale_ms: 185_000, cure: 'no_answer' }),
+                  row({ player_id: 'p2', display: 'REAPER', pool_stale: 'silent', pool_stale_ms: 6_000, cure: 'dead' }),
+                  row({ player_id: 'p3', display: 'GHOST', cure: 'asking' }),
+                  row({ player_id: 'p4', display: 'WRAITH' })];
+    const state: State = { ...d.state, phase: 'live', live: liveView(rows) };
+    const m = await mount(<StoreCtx.Provider value={makeStore({ ...d, state, view: 'live' })}><Live /></StoreCtx.Provider>);
+    const cues = m.find('[data-gun-cure]');
+    expect(cues.map(c => c.getAttribute('data-gun-cure')), 'GHOST is asking, WRAITH has not claimed either').toEqual(['p1', 'p2']);
+    expect(cues.map(c => c.textContent)).toEqual(['GUN NOT ANSWERING - FORCE RESPAWN', 'NODE FOUND IT DEAD']);
+    expect(cues[0].style.color, 'no_answer is the one case that needs a human').toBe(rgb(T.warn));
+    expect(cues[1].style.color, 'a resolved verdict stays quiet').toBe(rgb(T.micro));
+    m.unmount();
+  });
+
+  it('ARMORY: the readiness card shows it beside the gun link, no_answer in the warning colour', async () => {
+    const d = await demo();
+    const [first, second, ...rest] = d.state.readiness.board;
+    const live = { node: 'linked', present: true, status: 'green', gun_linked: true, last_seen_age_ms: 2000 } as const;
+    const board = [{ ...first, ...live, cure: 'no_answer' } as ReadinessRow,
+                   { ...second, ...live, cure: null } as ReadinessRow,
+                   ...rest];
+    const state: State = { ...d.state, readiness: { ...d.state.readiness, board } };
+    const m = await mountScreen(<Armory />, { state, view: 'muster', weapons: d.weapons, perks: d.perks });
+    const cues = m.find('[data-gun-cure]');
+    expect(cues.map(c => c.getAttribute('data-gun-cure'))).toEqual([first.player_id]);
+    expect(cues[0].textContent).toBe('GUN NOT ANSWERING - FORCE RESPAWN');
+    expect(cues[0].style.color).toBe(rgb(T.warn));
     m.unmount();
   });
 });

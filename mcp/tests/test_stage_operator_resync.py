@@ -3,6 +3,12 @@
 RESYNC GUN writes `$TID`, the CURRENT `$AMMO` per slot, `$BMAP,0,0`, then one `sir_pool` take, and nothing
 that heals or re-heads the gun. FORCE RESPAWN is the stage's existing `revive()`.
 
+F264 v2 (Tony, 2026-09-18): READ BEFORE WRITING. RESYNC GUN now probes the gun first (`_ask_gun`, both
+`$LIFE,0,0,0,*` and `$QUERY,*`) before its own writes, so a gun that had died while the stage thought it
+alive books its death through the ordinary handler instead of getting fourteen frames of `$SIR` rows at
+a state it no longer has. See `test_stage_cure.py` for the probe/cure mechanics; this file only asserts
+the ORDER (probe first) and that the probe does not change what RESYNC GUN itself writes.
+
 Run: python3 run_tests.py stage_operator_resync
 """
 from __future__ import annotations
@@ -24,7 +30,10 @@ def test_resync_writes_tid_live_ammo_bmap_then_the_take_and_keeps_the_pools():
         n = len(tx(mgr))
         await st.resync(); await settle(st)
         w = tx(mgr)[n:]
-        assert w == ["$TID,1,*", "$AMMO,0,20,150,1,*", "$AMMO,1,6,24,1,*", "$BMAP,0,0,,,,,*",
+        # F264 v2: the probe leads the write list -- read before write, not raced against it (`_ask_gun`
+        # is `await`ed directly by `_operator_resync`, never handed to `_spawn_task`, for exactly this
+        # ordering). The probe's own reply, if any, is a SEPARATE rx event this test never injects.
+        assert w == ["$LIFE,0,0,0,*", "$QUERY,*", "$TID,1,*", "$AMMO,0,20,150,1,*", "$AMMO,1,6,24,1,*", "$BMAP,0,0,,,,,*",
                      *st.bundle["sir_pool"][0]], w
         assert not [f for f in w if f.startswith(("$SPAWN", "$PSET", "$WEAP", "$CLEAR"))]
         assert (st.hp, st.armor, st.spawned, st.alive) == (hp, armor, True, True)

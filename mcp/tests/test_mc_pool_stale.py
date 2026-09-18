@@ -1,7 +1,11 @@
 """F208 (field 2026-09-13): a gun died while its status stayed byte-identical for 105 s, and the MC board
 showed a healthy player. The phone now says when its pool is stale (`status.pool_stale`: "silent" or
 "no_fire", with `pool_stale_ms`). MC passes the claim through to the node view, the readiness row and the
-LIVE row. Every heartbeat restates it, so a status without it clears it; an older app never sends it."""
+LIVE row. Every heartbeat restates it, so a status without it clears it; an older app never sends it.
+
+F264 (field 2026-09-18): the node now probes a `pool_stale` gun itself and reports its OWN outcome
+(`status.cure`: "asking" / "dead" / "alive" / "no_answer"). MC passes it through the same three ways,
+below."""
 import pathlib, sys
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from test_mc_state import mk, online
@@ -86,3 +90,47 @@ def test_the_live_row_carries_it_only_for_the_node_that_claims_it():
     rows = {r["player_id"]: r for r in s.snapshot()["live"]["rows"]}
     assert (rows[ps[0]["player_id"]]["pool_stale"], rows[ps[0]["player_id"]]["pool_stale_ms"]) == ("silent", 190_000)
     assert "pool_stale" not in rows[ps[1]["player_id"]]
+
+
+# F264 (field 2026-09-18): the node's own outcome after it probes a `pool_stale` gun (`status.cure`:
+# "asking" / "dead" / "alive" / "no_answer"), so the board reads more than "stale". Flows exactly like
+# `pool_stale`: every heartbeat restates it, so a status without it clears it; an older app never sends it.
+
+def test_the_cure_reaches_the_node_view_the_readiness_row_and_the_live_row():
+    s, net, clock, ps = _session()
+    s.push_config(force=True)
+    for i in range(2):
+        net.simulate_node_message(f"node{i}", "ack_config", {"config_id": s.config["config_id"], "ok": True,
+                                                           "gun_echo": "x"}, clock["t"])
+    s.start(force=True)
+    clock["t"] = s.start_info["go_live_t"] + 10
+    s.tick()
+    _status(net, clock, 0, ps[0], cure="no_answer", arm_state="live")
+    _status(net, clock, 1, ps[1], arm_state="live")
+    assert _node(s, 0)["cure"] == "no_answer"
+    assert _ready_row(s, ps[0])["cure"] == "no_answer"
+    rows = {r["player_id"]: r for r in s.snapshot()["live"]["rows"]}
+    assert rows[ps[0]["player_id"]]["cure"] == "no_answer"
+    assert "cure" not in rows[ps[1]["player_id"]]
+
+
+def test_an_app_that_does_not_report_cure_gets_no_field():
+    s, net, clock, ps = _session()
+    assert "cure" not in _node(s, 1)
+    assert _ready_row(s, ps[1])["cure"] is None
+
+
+def test_a_heartbeat_without_cure_clears_it():
+    s, net, clock, ps = _session()
+    _status(net, clock, 0, ps[0], cure="dead")
+    assert _node(s, 0)["cure"] == "dead", "control"
+    _status(net, clock, 0, ps[0])
+    assert "cure" not in _node(s, 0)
+    assert _ready_row(s, ps[0])["cure"] is None
+
+
+def test_junk_cure_is_dropped_not_rendered():
+    s, net, clock, ps = _session(1)
+    for junk in ("cured", True, 1, None):
+        _status(net, clock, 0, ps[0], cure=junk)
+        assert "cure" not in _node(s, 0), junk

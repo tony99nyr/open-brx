@@ -98,6 +98,9 @@ class FakeTagger:
         self.listening = True
         # F264 (bench 2026-09-18, docs/FOLLOWUPS.md F264): DEAD-BUT-CHATTY -- the fault a player was dead
         # on the gun and alive on the HUD for 94 s. See `go_dead_chatty()`.
+        # F264 v2: which reading of the dead-gun $LIFE,0,0,0,* probe this fake gives -- see the `LIFE`
+        # command's own comment in `write()`. False (the default) is the documented reading (silence).
+        self.dead_gun_answers_life = False
 
     def go_dead_chatty(self) -> None:
         """F264 (bench 2026-09-18, docs/FOLLOWUPS.md F264): simulate the fault -- the gun dies on its own
@@ -113,9 +116,11 @@ class FakeTagger:
 
         A trigger pull still gets no `$ALCD` (`fire()` below, gated on `self.alive` like `receive_ir`
         already was), and a `$QUERY` still answers -- with health 0, because it reads `self.hp` -- which
-        is the one door the F264 cure walks through. ASSUMED, not measured: that a real dead-chatty gun's
-        `$QUERY` behaves this way; the bench never tried `$QUERY` against the live fault, only against the
-        eventual fix. `$SPAWN` is the cure (see `write`'s SPAWN branch)."""
+        is one of the two doors the F264 v2 cure walks through. ASSUMED, not measured: that a real
+        dead-chatty gun's `$QUERY` behaves this way; the bench never tried `$QUERY` against the live
+        fault, only against the eventual fix. The OTHER door, `$LIFE,0,0,0,*`, has its own documented-vs-
+        alternate split -- see `dead_gun_answers_life` and the `LIFE` command's comment in `write()`.
+        `$SPAWN` is the cure (see `write`'s SPAWN branch)."""
         self.alive = False
         self.hp = 0
 
@@ -173,6 +178,26 @@ class FakeTagger:
             self.hp, self.armor, self.shield = self.cfg_hp, self.cfg_armor, 0
             self._out.append(f"$LCD,{self.hp},{self.armor},0,0,0,0,*")
         elif cmd == "LIFE":
+            # F264 v2: the dead-gun PROBE is `$LIFE,0,0,0,*` (`PROBE_LIFE` in stage.py/engine.js) -- a
+            # zero add to an ALREADY-DEAD gun, asking it to speak without healing or harming anything.
+            # THE REPO DISAGREES WITH ITSELF and this is not silently resolved either way:
+            #   - protocol/brx-protocol.md's $LIFE row (disasm): "a dead gun ignores $LIFE when token 1 is
+            #     0" -- SILENCE. This is the documented default here (`dead_gun_answers_life = False`).
+            #   - docs/bench-firmware-levers-2026-09-19.md §22: "V4_31 shows that the $LIFE handler also
+            #     sends $HP on the dead path when t1 = 0. So a dead gun should answer $HP,0,0,0, not
+            #     silence" -- the ALTERNATE reading, unsettled until the bench runs §22's claim 19.
+            # `dead_gun_answers_life = True` switches to the alternate reading, so a test can exercise it
+            # too without waiting on the bench. Only a genuine zero-effect probe on an ALREADY-dead gun
+            # takes this branch: a live gun's own `$LIFE,0,0,0,*` (nobody sends one) falls through to the
+            # ordinary clamp-and-emit below, unchanged.
+            if not self.alive:
+                hp_d = _int(t[1] if len(t) > 1 else None) or 0
+                arm_d = _int(t[2] if len(t) > 2 else None) or 0
+                sh_d = _int(t[3] if len(t) > 3 else None) or 0
+                if hp_d == 0 and arm_d == 0 and sh_d == 0:
+                    if self.dead_gun_answers_life:
+                        self._out.append("$HP,0,0,0,*")
+                    return   # documented default: silence -- nothing queued, matching the disasm row
             # Bench-measured 2026-09-09 (protocol/brx-protocol.md $LIFE). Three behaviours the old
             # three-liner did not model, all of which a damage-over-time feature (S16) would be built
             # on -- and a fake that models a command wrongly lets the real bug pass the suite:

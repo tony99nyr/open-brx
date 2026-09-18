@@ -291,6 +291,20 @@ export function poolStaleLabel(reason: 'silent' | 'no_fire' | 'write_lost' | nul
   return typeof ms === 'number' && Number.isFinite(ms) && ms >= 0 ? `GUN SILENT ${fmtAge(ms)}` : 'GUN SILENT';
 }
 
+/** F264: the node's own outcome after it probes a `pool_stale` gun, or null.
+ *
+ *  `asking` says nothing: the probe takes about three seconds and a cue for it would just flicker.
+ *  `dead` and `alive` are the node's own resolution, read as fact. `no_answer` is different: the node
+ *  deliberately did nothing, so the operator is now the only path to a fix, and FORCE RESPAWN is the
+ *  fix. Callers must render `no_answer` in a warning colour; the other three stay the quiet grey the
+ *  `pool_stale` cue uses. */
+export function cureLabel(cure: 'asking' | 'dead' | 'alive' | 'no_answer' | null | undefined): string | null {
+  if (cure === 'dead') return 'NODE FOUND IT DEAD';
+  if (cure === 'alive') return 'NODE RE-ARMED IT';
+  if (cure === 'no_answer') return 'GUN NOT ANSWERING - FORCE RESPAWN';
+  return null;
+}
+
 /** ARMORY's primary button (bench 2026-09-17, Tony): the button IS the status. It names what it waits
  *  for, and reads HARDWARE READY ▸ when the board allows.
  *

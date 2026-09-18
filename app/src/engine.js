@@ -136,46 +136,58 @@ export const NO_FIRE_PULLS = 3;
  *    2. The node's magazine account is AHEAD of the gun's (the other stall that night: a reload that timed out
  *       at `0 -> 12 of 32`, so the node believed 12 rounds the gun did not have). The player is alive.
  *
- *  A blind revive is right for (1) and wrong for (2): it hands a live player a free life and loses the death.
- *  `$QUERY,*` separates them in one 8-byte frame. Its reply is a status array PLUS a `$LCD` carrying the gun's
- *  CURRENT pools and magazine (the array itself is the pool MAXIMA and is useless here -- protocol/brx-protocol.md,
- *  the `$QUERY` row). `$QUERY` is a KNOWN command (`mcp/brx_mcp/protocol.py`) and is not on the node's deny list.
+ *  A revive is right for (1) and wrong for (2): it would hand a live player a free life and lose the death. So
+ *  the node asks, and acts only on the answer.
+ *
  *  THE NODE NEVER REVIVES ON NO EVIDENCE. If nothing answers, the cure does NOTHING, says so in the status
  *  heartbeat so the operator's board can tell them to press FORCE RESPAWN, and logs the values. A blind revive
  *  would hand a free life to a player whose gun was merely empty with a stale belief behind it (Tony, 2026-09-18).
  *
- *  ⚠ TWO PROBES, and the repo disagrees with itself about the second one, so the node reads BOTH:
- *   - `$LIFE,0,0,0,*` adds nothing to any pool. A LIVE gun answers `$HP` with its unchanged pools (bench
- *     2026-09-09). Whether a DEAD gun answers is the open question: `protocol/brx-protocol.md`'s `$LIFE` row and
+ *  ⚠ TWO PROBES, AND THEY ARE NOT INTERCHANGEABLE. Measured on hardware, R0BQT and R0BAT, v4.32, 2026-09-19:
+ *   - `$LIFE,0,0,0,*` adds nothing to any pool. It answers **immediately** with `$HP`, from a LIVE gun (its
+ *     unchanged pools) AND from a DEAD one (`$HP,0,0,0`). Positive evidence in both states, short reply, no side
+ *     effect. It is THE detector, and it needs no new code at all: `_onHp` already books the death from a zero.
+ *     ⚠ This settles a contradiction the repo still carries: `protocol/brx-protocol.md`'s `$LIFE` row and
  *     `docs/bench-firmware-levers-2026-09-19.md` §22 both read the V4_30 disassembly as "a dead gun IGNORES
- *     `$LIFE` when token 1 is 0", i.e. it reports by SILENCE; a later reading of the same trace says the handler
- *     calls the `$HP` builder on both paths, so a dead gun answers `$HP,0,0,0`. Levers §22 settles it at the
- *     bench. Either way this probe costs nothing to send, and IF a dead gun does answer, `$HP,0,0,0` needs no new
- *     code at all: `_onHp` already books the death from it.
- *   - `$QUERY,*` answers with a status array and an `$LCD` carrying the gun's CURRENT pools AND magazine
- *     (protocol row; bench 2026-09-09). It is positive evidence in both states, and it is the ONLY probe that
- *     carries the magazine, which is what tells an empty gun from a stuck one. So it cannot be dropped.
+ *     `$LIFE` when token 1 is 0", i.e. reports by silence. The bench says it answers. The bench wins; those two
+ *     documents want correcting.
+ *   - `$QUERY,*` answers its `$LCD` at once, and that `$LCD` is the ONLY frame carrying the MAGAZINE, which is
+ *     the one thing that tells an empty gun from a stuck one. But its status-array BODY arrives about 2 s later
+ *     with NO trailing `*`, and **a dead gun holds its print loop for those 2 s** (a live gun: about 30 ms). That
+ *     is the `$DPLAY` failure shape in miniature, which is why `$DPLAY` is on the deny list at all. So `$QUERY`
+ *     NEVER goes on a timer and never goes to a gun that might be dead. It is sent in exactly ONE place: after
+ *     `$LIFE` has already proved the gun ALIVE and the node still needs the magazine.
  *  ⚠ `$QUERY` CANNOT prove the `$SIR` table: nothing reads that back (transport-hardening.md §6). Nothing here
  *  implies the hit table is verified. The `$QUERY` token map is confirmed by SHAPE only, on an unconfigured gun
- *  (levers claim 19), so `_probeReply` checks the shape and treats a reply that does not fit as no reply at all. */
-export const QUERY_REPLY_MS = 1500;      // how long a probe has to answer before it counts as lost -- TRIGGER_NO_FIRE_MS, the same wire and the same measurement
+ *  (levers claim 19), so `_probeShapeOk` checks the shape and refuses a reply that does not fit. */
+export const QUERY_REPLY_MS = 1500;      // how long a probe has to answer before it counts as lost. Measured: `$LIFE`'s `$HP` and `$QUERY`'s `$LCD` are both IMMEDIATE, so this is slack, not a deadline
+/** The `$QUERY` status-array BODY, measured at about 2 s behind on a dead gun. It is deliberately NOT inside
+ *  `QUERY_REPLY_MS`: the `$LCD` has already decided by then, and the body is only ever a corroborating HINT. */
+const QUERY_BODY_MS = 2600;
 export const CURE_ASKS = 2;              // probes before the cure gives up: one lost notification is ordinary, two in a row is not
 export const CURE_COOLDOWN_MS = 30000;   // the floor between cures, ACROSS lives
-export const CURE_MAX_BLIND = 2;         // blind revives (no probe answered at all) before the node stops and leaves it to the operator
 /** F264: the divergence poll. The gun's outbound stream does NOT stop in this fault (`$VOLTS` kept arriving
  *  through both proven stalls), so a "gun has gone quiet" watchdog can never catch it and `no_fire` needs the
  *  player to pull a dead trigger three times. Polling catches the same divergence with nobody pulling anything.
- *  Tony approved 20 s (2026-09-18). The heartbeat sends `$QUERY` ALONE: it carries strictly more than `$LIFE`
- *  (pools and magazine, positive in both states), so the second frame would buy nothing here. The cure sends
- *  both, because there the answer decides an action. LIVE MATCH ONLY. */
+ *  Tony approved 20 s (2026-09-18). The heartbeat sends `$LIFE` and NEVER `$QUERY` (bench 2026-09-19: a dead
+ *  gun holds its print loop 2 s on a `$QUERY`, and a heartbeat is exactly the thing that would hit a dead gun
+ *  over and over). LIVE MATCH ONLY. */
 export const QUERY_POLL_MS = 20000;
 const QUERY = '$QUERY,*';
 /** F264 ⚠ THE DEAD-GUN PROBE, and it is a CONSTANT on purpose. `$LIFE` with a NON-ZERO token 1 is the revive
  *  path: a dead gun APPLIES it and comes back to life (protocol row, `[apk2018]`: the 2018 app revived a downed
  *  player with `$LIFE,30,0,0,1,*`). So a probe that ever carries a non-zero token silently revives the player it
  *  was asking about. Never turn this into a helper that takes arguments: the first argument anyone passes will be
- *  a heal. `app/test/cure.test.mjs` asserts the node writes this byte-exactly. */
+ *  a heal. `app/test/cure.test.mjs` asserts the node writes this byte-exactly.
+ *
+ *  ⚠ ...and it is the ALL-ZERO form, not the bare `$LIFE,*` the 2018 app polled with, even though the bench
+ *  proved both answer a dead gun. The bare form's safety rests on ABSENT tokens defaulting to zero, and we have
+ *  measured that only on a DEAD gun, while this heartbeat runs mostly on LIVE ones. One constant, explicitly
+ *  zero, is worth 6 bytes a frame. */
 export const PROBE_LIFE = '$LIFE,0,0,0,*';
+/** F264: how long after a spawn/revive the read-back probe waits. The burst is 17 frames and the bench measured
+ *  30-90 ms a frame, so ~1.5 s to land; 2500 ms leaves the echo room to come back before we ask again. */
+const SPAWN_PROBE_MS = 2500;
 const STUN_DEFAULT_S = 10;          // F15: how long an EMP (proto-8 $HIR under config.stun) disarms the gun when the config names no duration
 /** F13: a `$SPAWN` within ~2 s of death wedges the headset in its green out-blink (threshold 2.0-2.5 s; use >= 3). Same
  *  value as `gameconfig.MIN_RESPAWN_S` on the CLI path. */
@@ -456,7 +468,12 @@ const STAND_DOWN = [
   // the CLOCK-driven writes (a verify retry, a hold release), which have no reason to pick that instant.
   ['shotInFlight', (e, now) => e._acctOutstanding(e.activeSlot, now)],
 ];
-/** The names `_standDown` answers to. engine.test.mjs reads every `_standDown([...])` call site out of this
+/** ⚠ F264: THIS TABLE GATES ACTING, NOT READING. `reconciling` and `resync` are in it because the node must not
+ *  INFER inside those windows (spec/node.md §3.10). A `$QUERY,*` / `$LIFE,0,0,0,*` probe is the opposite of an
+ *  inference, so the probe sites (`_askGun`) deliberately run inside them and only the writes that follow stand
+ *  down. Do not "fix" a probe that fires during a reconcile: reading is how §3.10's rule stops costing us a life.
+ *
+ *  The names `_standDown` answers to. engine.test.mjs reads every `_standDown([...])` call site out of this
  *  file and asserts each name is in here, so a typo cannot silently drop a guard. */
 export const STAND_DOWN_NAMES = STAND_DOWN.map(([name]) => name);
 /** A47: the refusal each `_operatorAct` stand-down name puts in front of the operator. `_operatorAct` names
@@ -631,12 +648,14 @@ export class Engine {
     // waiting for its `$ALCD`; `_noFirePulls` counts presses that never got one. See `poolStale()`.
     this.lastPoolAt = 0; this._shotDueAt = null; this._noFirePulls = 0;
     this._dryPulls = 0;             // the RELOAD nag: trigger pulls into an empty magazine this dry spell (the RELOAD nag's counter)
-    // F264: the cure. `_queryAt` is when the last `$QUERY,*` went out and `_querySeen` says its one pool frame has
-    // been taken, so a SOLICITED reply can be told from the gun answering a trigger. `_cure` is {askedAt, asks,
-    // array} while an ask is outstanding; `_cureLife`/`_cureAt`/`_cureBlind` are the three bounds. `_pollAt` is
-    // the divergence poll's own clock. See `_cureTick`.
-    this._queryAt = 0; this._querySeen = false;
-    this._cure = null; this._cureLife = null; this._cureAt = 0; this._cureBlind = 0; this._pollAt = 0;
+    // F264: the cure. `_queryAt` is when the last probe went out and `_probeSeen` says which reply kinds it has
+    // already taken, so a SOLICITED reply can be told from the gun answering a trigger. `_cure` is
+    // {askedAt, asks} while a probe is outstanding; `_cureLife` and `_cureAt` are the two bounds, one per life
+    // and a floor between them. `_pollAt` and `_probedLife` are the heartbeat poll's and the spawn read-back's
+    // own clocks. See `_cureTick`.
+    this._queryAt = 0; this._probeSeen = {};
+    this._cure = null; this._cureLife = null; this._cureAt = 0; this._pollAt = 0; this._probedLife = null;
+    this.cure = null;               // the cure's own VERDICT, {verdict: 'asking'|'dead'|'alive'|'no_answer', at}. Rides `statusBody` so the operator's board can tell 'the node tried and got nothing' from a bare stale claim -- a phone log reached nobody on 2026-09-18
     // S29: the shield recharge. `_shieldQuietAt` is the clock the delay runs from (a spawn, or the last
     // damage); `_shieldRegen` is {startedAt, nextAt, grants} while the node is granting; `_shieldDown` says
     // the shield BROKE this life (a spawn starts at 0 without having broken, and must not heartbeat).
@@ -1408,7 +1427,7 @@ export class Engine {
     const newMatch = body.match_id !== this.matchId;
     if (newMatch) { this.score = null; this.scoreAt = null; this.result = null; this.resultAt = 0; this.endedAt = 0; }   // a new match: last match's K/A/board — and last match's RESULT — must not show on the first DOWN
     this.matchId = body.match_id; this.cuesFired = new Set(); this.shots = 0; this.deaths = 0; this.ended = false; this._resyncRevive = false;
-    this._cure = null; this._queryAt = 0; this._cureLife = null; this._cureAt = 0; this._cureBlind = 0; this._pollAt = 0;   // F264: a new match owes the last one's gun nothing
+    this._cure = null; this._queryAt = 0; this._cureLife = null; this._cureAt = 0; this._pollAt = 0; this._probedLife = null; this.cure = null;   // F264: a new match owes the last one's gun nothing
     this.kitLocked = false;             // A27: the lock notice is spent the moment the countdown starts — it must never lead the NEXT lobby
     // A NEW match supersedes any in-flight reconnect resync of the OLD one. Without this the resync
     // stays set, the T-0 spawn (guarded on `!this.resync`) never runs, and the gun sits alive-with-0-hp
@@ -2572,6 +2591,7 @@ export class Engine {
       this._noFireTick(now);   // F208
       this._cureTick(now);     // F264: and once `no_fire` is concluded, ASK the gun, then act on the answer
       this._pollTick(now);     // F264: ...and ask it every QUERY_POLL_MS anyway, so nobody has to pull a dead trigger first
+      this._spawnProbeTick(now);   // F264: ...and once a life, read back the biggest write of that life
       // B5's settle window HOLDS an unattributed zero-HP frame rather than manufacturing a phantom death
       // out of a stale echo. A REAL death inside that window with no latch — grenade or station damage
       // (neither carries an $HIR to latch onto), or an $HIR simply lost — was then dropped forever:
@@ -2623,7 +2643,7 @@ export class Engine {
     if (this.resync) this._resyncTick();
   }
 
-  _revive(resync, stationId = null, operator = false, auto = false) {
+  _revive(resync, stationId = null, operator = false) {
     this.reloading = null; this._reloadOutcome = null; this.held = {};   // a reload that started in the last life does not follow you into this one, and no button is held across a death
     if (!this.frames) return;
     const down = this.frames.headset && this.frames.headset.down;
@@ -2664,9 +2684,9 @@ export class Engine {
     this._shieldRegen = null; this._shieldDown = false; this._shieldLoopAt = 0; this._shieldGaveUp = false; this._shieldQuietAt = this.now();
     this._armAfterSpawn();   // F209
     this._gunTake();   // A11.7
-    this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}), ...(stationId != null ? { station: stationId } : {}), ...(operator ? { operator: true } : {}), ...(auto ? { auto: true } : {}) });   // A47: `operator` = MC's FORCE RESPAWN (scoring keeps the streak). F264: `auto` = the node's own blind cure -- a life nobody asked for and no death in front of it, which the board must be able to tell apart
+    this.emitFact({ type: 'respawn', match_id: this.matchId, ...(resync ? { resync: true } : {}), ...(stationId != null ? { station: stationId } : {}), ...(operator ? { operator: true } : {}) });   // A47: `operator` = MC's FORCE RESPAWN (scoring keeps the streak)
     this.moment = { kind: 'redeploy', at: this.now() };
-    this.log(auto ? 'respawned by the node\'s own cure (F264)' : operator ? 'respawned by the operator' : resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');
+    this.log(operator ? 'respawned by the operator' : resync ? 'resync respawn' : stationId != null ? `respawned at station ${stationId}` : 'respawned', 'lk');
     this._eventLeds('respawned');   // A11 lights only (after the revive frames, so the burst ends on the fresh team colour); the sound went out with the revive write above
     if (this.frames.headset) { this.carrying = null; this._activeRole = null; this._headsetDelayed(this.frames.headset.respawn, 'respawn'); }   // led-language.md §3.1/§5: +1.0 s after $SPAWN; A11.6: white flash then dark/team
     this._changed();
@@ -3367,6 +3387,11 @@ export class Engine {
     // The predicate comes from `STAND_DOWN` like every other; only the message is local.
     if (this._standDown(['alive'])) { this.log('operator resync ignored — the player is down (FORCE RESPAWN revives)', 'le'); return 'the player is down'; }
     if (this._standDown(['stunned'])) { this.log('operator resync ignored — stunned (the stun restore re-arms)', 'le'); return 'stunned'; }
+    // F264 (Tony, 2026-09-18): READ BEFORE WRITING. The operator pressing RESYNC is telling us something is
+    // wrong, and writing blind is exactly what failed on 2026-09-18: 14 frames at a gun that had left the state
+    // those frames assume. The probe costs 2 frames and its reply lands through the ordinary handler, so a gun
+    // that had died while we thought it alive books its death here instead of staying invisible.
+    this._askGun('operator resync: read the gun first');
     const life = this._lifeSeq;
     this._writeLost = null;   // pl4: the operator's cure for a lost spawn/revive write
     const tid = this._liveTid();
@@ -3454,11 +3479,17 @@ export class Engine {
     // $LCD,45,70,0,0,32,192`), never an `$ALCD` or an `$HP`. Widen this to `$ALCD` and a shot that lands inside a
     // poll's 1.5 s window reads as OUR reply, its pull is never cleared, and three such coincidences would
     // manufacture the very `no_fire` the poll exists to resolve.
-    const solicited = cmd === 'LCD' && this._solicited();
+    const solicited = this._solicited(cmd);
     if (solicited) this.lastPoolAt = this.now();
-    else if (cmd === 'HP' || cmd === 'LCD' || cmd === 'ALCD') { this.lastPoolAt = this.now(); this._shotDueAt = null; this._noFirePulls = 0; }   // F208: the gun answered the trigger
+    else if (cmd === 'HP' || cmd === 'LCD' || cmd === 'ALCD') {
+      this.lastPoolAt = this.now(); this._shotDueAt = null; this._noFirePulls = 0;   // F208: the gun answered the trigger
+      // F264: ...and an UNSOLICITED pool frame is the gun working again, unasked. That retires the verdict, so
+      // `GUN NOT ANSWERING - FORCE RESPAWN` cannot sit on the operator's board for the rest of a match over a gun
+      // that came back. Crying wolf is its own failure: the next real one would be read as the same stale chip.
+      if (this.cure) { this.log(`cure verdict '${this.cure.verdict}' cleared — the gun is reporting again`, 'li'); this.cure = null; }
+    }
     switch (cmd) {
-      case 'HP': this._onHp(+t[1] || 0, +t[2] || 0, t[3] !== undefined && t[3] !== '' ? (+t[3] || 0) : this.shield); break;
+      case 'HP': this._onHp(+t[1] || 0, +t[2] || 0, t[3] !== undefined && t[3] !== '' ? (+t[3] || 0) : this.shield, solicited); if (solicited) this._cureAnswer('HP', t); break;
       case 'LCD': {
         this.hp = +t[1] || 0; this.armor = +t[2] || 0;
         this.poolSrc = 'gun';            // R2-3: the pool in the next heartbeat is the GUN's, not our model's
@@ -3477,7 +3508,7 @@ export class Engine {
         // it: the cure books nothing itself. (§3.3's wording names the reconcile and the resync; the poll is the
         // third way in and wants folding into the spec.)
         if (this.phase === 'live' && this.hp === 0 && this.alive && !this._deathPending()) this._death(wasResync || solicited);
-        if (solicited) this._cureAnswer(t);
+        if (solicited) this._cureAnswer('LCD', t);
         break;
       }
       case 'ALCD': {
@@ -3549,10 +3580,21 @@ export class Engine {
       }
       case 'VOLTS': { const b = parseInt(t[3], 10); if (!Number.isNaN(b)) this.battery = b; this.lastVoltsAt = this.now(); break; }
       case 'VERSION': { if (t[1]) this.fw = t[1]; break; }
-      // F264: the status array that leads a `$QUERY` reply. Its own fields are the pool MAXIMA, so nothing here
-      // reads them -- the `$LCD` behind it carries the live pools. What it IS good for: proof that this gun still
-      // answers a question. A cure that sees this never falls back to a blind revive.
-      case 'QUERY': { if (this._cure && this._queryAt && this.now() - this._queryAt <= QUERY_REPLY_MS) this._cure.array = true; break; }
+      // F264: the status array that leads a `$QUERY` reply. Its fields are the pool MAXIMA and the TEAM, none of
+      // which this cure reads -- the `$LCD` behind it carries the live pools and the magazine. Reading the team back
+      // here is transport-hardening.md §6's arming read-back, which is a separate piece of work and touches MC.
+      // F264 (bench 2026-09-19): the status array that trails a `$QUERY` reply. Its own fields are the pool MAXIMA
+      // and the TEAM, none of which this cure reads, and reading the team back here is transport-hardening.md §6's
+      // arming read-back, which is separate work. What it IS good for is a signature: a DEAD gun sends this body
+      // about 2 s late and WITHOUT a trailing `*`, while a live gun's is about 30 ms behind and well formed. So a
+      // malformed body is a dead-gun HINT. It is logged and nothing else: a frame with no health number in it is
+      // not positive evidence, and the node books deaths only from positive evidence (§3.3). The `$LCD` that
+      // arrived first already carried the number and has already decided.
+      case 'QUERY': {
+        if (!this._cure || !this._queryAt || this.now() - this._queryAt > QUERY_BODY_MS) break;
+        if (!String(f).trim().endsWith('*')) this.log('cure: the $QUERY body came back late and unterminated — the dead-gun signature (bench 2026-09-19). Not parsed, and not evidence on its own', 'le');
+        break;
+      }
       case 'BUT': {
         this.butSinceHead = true;      // A37/F-3: the ammo stream from here on is the player's, not the head's
         if (this.resync) this._resyncButton(+t[1], +t[2]);
@@ -3692,67 +3734,145 @@ export class Engine {
     this._noFirePulls++;
     if (this._noFirePulls === NO_FIRE_PULLS) this.log(`gun not firing: ${NO_FIRE_PULLS} trigger pulls with no shot, the pool is stale`, 'le');
   }
-  /** F264: send one `$QUERY,*` and start its reply window. ONE frame, 8 bytes. */
-  _query(why) { this._queryAt = this.now(); this._querySeen = false; this._write([QUERY], why); }
-  /** F264: is this pool frame the answer to our own `$QUERY,*`? True at most ONCE per ask, inside QUERY_REPLY_MS,
-   *  and then consumed -- the gun sends the status array and then one `$LCD`, so only the first pool frame in the
-   *  window is ours. A second frame in the same window is the gun talking on its own and resets the no-fire count
-   *  as it always did. NOT pure: it consumes the token. */
-  _solicited() {
-    if (this._querySeen || !this._queryAt || this.now() - this._queryAt > QUERY_REPLY_MS) return false;
-    this._querySeen = true;
+  /** F264: ASK the gun where it stands. `full` sends BOTH probes -- the dead-gun `$LIFE,0,0,0,*` and `$QUERY,*`
+   *  for the pools and the magazine (2 frames, 21 bytes); the 20 s heartbeat sends `$QUERY` alone, which carries
+   *  strictly more on its own (1 frame, 8 bytes).
+   *
+   *  ⚠ READING IS NOT INFERRING. Every other write in this file stands down inside `reconciling` and `resync`
+   *  because the node must not GUESS there (§3.10). A probe is the opposite of a guess: it is how the node stops
+   *  guessing. So the probe sites deliberately run inside those windows, and only the ACTING stands down. If you
+   *  are about to "fix" a probe that fires during a reconcile, read this first. */
+  _askGun(why) {   // NOT `_probe`: that name is taken by the first-connect BLE ritual above (line ~1023), and a second `_probe` on this class silently overrode it
+    this._queryAt = this.now(); this._probeSeen = {};
+    this._write([PROBE_LIFE], why);
+  }
+  /** F264: ask for the MAGAZINE, which only a `$QUERY` reply's `$LCD` carries. ⚠ Sent from exactly one place, the
+   *  cure's alive branch, and only after `$LIFE` has already answered `$HP` with health above 0. Bench 2026-09-19:
+   *  a DEAD gun holds its print loop about 2 s on a `$QUERY`, so this must never reach a gun that might be dead,
+   *  and it must never go on a timer. */
+  _askMagazine(why) {
+    this._queryAt = this.now(); this._probeSeen = {};
+    this._write([QUERY], why);
+  }
+  /** F264: is this pool frame the answer to a probe we sent? True at most ONCE per probe PER FRAME KIND, inside
+   *  QUERY_REPLY_MS, and then consumed. `$LIFE` answers with one `$HP`; `$QUERY` answers with a status array and
+   *  one `$LCD`. A second frame of the same kind in the same window is the gun talking on its own and resets the
+   *  no-fire count as it always did.
+   *
+   *  ⚠ `$ALCD` is NEVER solicited: no probe answers with one, and if it could, a shot landing inside a poll's
+   *  1.5 s window would read as OUR reply, its pull would never clear, and three such coincidences would
+   *  manufacture the very fault the poll exists to resolve. NOT pure: it consumes the token. */
+  _solicited(kind) {
+    if (kind !== 'HP' && kind !== 'LCD') return false;
+    if (this._probeSeen[kind] || !this._queryAt || this.now() - this._queryAt > QUERY_REPLY_MS) return false;
+    this._probeSeen[kind] = true;
     return true;
   }
-  /** F264: what the cure's own `$QUERY,*` came back with. The `$LCD` handler above has ALREADY landed the gun's
-   *  real pools and its real magazine, and has booked the death when the gun said 0 -- so this method writes no
-   *  state of its own and never books a death. It decides which of the two known causes this was, says so in the
-   *  log, and re-asserts the arming in the one case where the gun is alive, loaded, and still not answering.
+  /** F264: does a `$QUERY` reply's `$LCD` fit the token map we have? The map is confirmed by SHAPE only, on an
+   *  unconfigured gun (transport-hardening.md §6, levers claim 19), so a reply that does not fit is treated as NO
+   *  REPLY rather than trusted. `$LCD,<hp>,<armor>,<t3>,<t4>,<mag>,<reserve>` -- six tokens, health and armour
+   *  present and non-negative. Tokens 3 and 4 are undocumented and are not read. PURE. */
+  _probeShapeOk(t) {
+    if (t.length < 7) return false;                       // cmd + 6 tokens
+    const hp = +t[1], armor = +t[2];
+    return Number.isFinite(hp) && hp >= 0 && Number.isFinite(armor) && armor >= 0;
+  }
+  /** F264: what a cure probe came back with. The frame handler above has ALREADY landed the gun's real pools and
+   *  magazine, and has booked the death when the gun said 0 -- there is ONE death path and this is not a second
+   *  one. This only records the verdict, says it in the log with the values, and re-asserts the arming when the
+   *  gun says it is alive.
    *
-   *  ⚠ The empty-magazine case gets NO WRITE on purpose. The gun is behaving correctly there; it is the node's
-   *  count that was wrong, and the `$LCD` just fixed it. Writing `$AMMO` to "cure" it would hand the player a
-   *  free magazine every time a reload times out. */
-  _cureAnswer(t) {
+   *  ⚠ The re-assert sends the GUN'S OWN just-reported counts, not the node's. That is the whole point: the node's
+   *  belief is the thing under suspicion, and a `$AMMO` built from it would hand a free magazine to a player whose
+   *  reload timed out. It is deliberately NOT `_operatorResync` (which re-sends the node's counts and an 11-row
+   *  `$SIR` take): two frames, both from the gun's own words, nothing that heals. */
+  _cureAnswer(kind, t) {
     const c = this._cure;
     if (!c) return;
-    this._cure = null;
-    this._cureBlind = 0;   // the gun answers a question: nothing from here on is blind
-    // The question this reply answers IS the no-fire claim, so the claim is spent. Leave the count standing and
+    if (kind === 'LCD' && !this._probeShapeOk(t)) {
+      this.log(`cure: a $QUERY reply the token map does not fit (${t.join(',')}) — treating it as no reply (levers claim 19)`, 'le');
+      return;                                             // c stays in flight: the window may still bring a good one
+    }
+    // The question this probe asked IS the no-fire claim, so the claim is spent. Leave the count standing and
     // `poolStale()` says `no_fire` for the rest of the life whatever the gun does next, and MC holds GUN NOT
     // FIRING up over a gun that has just told us exactly where it stands. A new stall builds from fresh pulls.
     this._shotDueAt = null; this._noFirePulls = 0;
-    const mag = t[5] !== undefined && t[5] !== '' ? (+t[5] || 0) : null;
-    if (this.hp === 0) { this.log('cure: the gun says it is DEAD and the node had missed it — the death is booked and the respawn revives it (F264)', 'lk'); return; }
-    if (mag === 0) { this.log(`cure: the gun is ALIVE at hp ${this.hp} with an EMPTY magazine — the node's count was ahead of it, and this reply corrected it. No write: the player reloads`, 'lk'); return; }
-    this.log(`cure: the gun is ALIVE at hp ${this.hp} with ${mag == null ? 'an unreported' : mag} magazine and still will not fire — re-asserting the arming (the RESYNC GUN write, nothing that heals)`, 'lk');
-    this._operatorResync();
+    const mag = kind === 'LCD' && t[5] !== undefined && t[5] !== '' ? (+t[5] || 0) : null;
+    const reserve = kind === 'LCD' && t[6] !== undefined && t[6] !== '' ? (+t[6] || 0) : null;
+    if (this.hp === 0) {
+      this._cure = null;
+      this.cure = { verdict: 'dead', at: this.now() };
+      this.log(`cure: the gun says it is DEAD (${kind === 'HP' ? '$LIFE,0,0,0 answered $HP,0' : '$QUERY answered $LCD health 0'}) and the node had missed it — the death is booked, the respawn revives it (F264)`, 'lk');
+      this._changed();
+      return;
+    }
+    // STEP 2, and only now. `$LIFE` has proved the gun ALIVE, so the 2 s print-loop hold a `$QUERY` costs a DEAD
+    // gun cannot apply (bench 2026-09-19: a live gun's body is about 30 ms behind). The magazine is the one thing
+    // `$HP` cannot carry and the one thing that tells an empty gun from a stuck one, so ask for it now, once.
+    if (kind === 'HP' && c.step === 'life') {
+      c.step = 'mag'; c.asks = 1; c.askedAt = this.now();
+      this.log(`cure: the gun is ALIVE at hp ${this.hp} — asking for the magazine, the one thing $HP cannot carry`, 'lk');
+      this._askMagazine('cure: the gun is alive, read the magazine');
+      return;
+    }
+    this._cure = null;
+    this.cure = { verdict: 'alive', at: this.now() };
+    // THE FALSE POSITIVE THIS EXISTS FOR (Tony, 2026-09-18). `_awaitShot` only owes a shot when the node's OWN
+    // account says the magazine has rounds, so an ordinary empty gun never reaches `no_fire` at all. It gets here
+    // when that BELIEF is wrong: the account says loaded, the gun is empty and perfectly healthy, and the player
+    // pulls three times. Reviving there would hand a live player a free respawn and wipe a gun that was never
+    // broken. So: re-assert, never revive.
+    this.log(`cure: the gun is ALIVE at hp ${this.hp}, magazine ${mag == null ? 'not reported' : mag}${reserve == null ? '' : `/${reserve}`} (the node believed ${this._acctLive(this.activeSlot)}) — re-asserting the gun's own counts, never a revive (F264)`, 'lk');
+    this._cureReassert(mag, reserve);
+    this._changed();
   }
-  /** F264: THE CURE. `poolStale()` has already concluded `no_fire`; ask the gun what it thinks rather than guess.
+  /** F264: put the gun's own just-reported counts back on it, and the trigger mapping with them. Two frames, and
+   *  every number in them came off the gun in the frame being answered, so this can never be a refill. No
+   *  `$SPAWN`, no `$PSET`, no `$SIR` (F264 proved a `$SIR` resync does not restart a gun in this state, and
+   *  nothing reads the table back anyway -- transport-hardening.md §6). */
+  _cureReassert(mag, reserve) {
+    const frames = [];
+    if (mag != null && reserve != null) frames.push(`$AMMO,${this.activeSlot},${mag},${reserve},1,*`);
+    const bmap = ((this.frames && this.frames.revive) || []).find(f => typeof f === 'string' && f.startsWith('$BMAP,0,0')) || '$BMAP,0,0,,,,,*';
+    frames.push(bmap);
+    this._write(frames, 'cure: re-assert the arming from the gun\'s own reply');
+    this._holdAccuracyWrites('cure re-assert');   // the re-assert's `$AMMO` owns the counts until the gun answers it
+  }
+  /** F264: THE CURE. `poolStale()` has already concluded `no_fire`; ask the gun where it stands rather than guess.
    *
-   *  Never during a stand-down. `_noFireTick` stands down on alive/switching/reloading/stunned/heat; this adds
-   *  `reconciling` and `resync` (§3.10: the node infers nothing in those windows) and the link, the phase, the
-   *  spawn and the bundle. OVERHEAT is a real cause of unanswered pulls and must never reach a revive.
+   *  ⚠ THE NODE NEVER REVIVES ON NO EVIDENCE. If both probes go unanswered it does NOTHING, records `no_answer`
+   *  so the operator's board says so, and logs the values. The old draft of this sent the revive head blind;
+   *  Tony's call (2026-09-18) is that a free life for a gun that was merely empty is worse than a wait.
    *
-   *  Bounded three ways: once per life (`_cureLife`), a CURE_COOLDOWN_MS floor between cures across lives, and
-   *  CURE_MAX_BLIND blind fallbacks before the node stops and leaves it to the operator. Write cost: one frame
-   *  per ask, at most CURE_ASKS asks, then at most one revive head. */
+   *  Never acts during a stand-down. `_noFireTick` stands down on alive/switching/reloading/stunned/heat; this
+   *  adds `reconciling` and `resync` (§3.10) and the link, the phase, the spawn and the bundle. OVERHEAT is a real
+   *  cause of unanswered pulls and must never reach a write.
+   *
+   *  Bounded: once per life (`_cureLife`) and a CURE_COOLDOWN_MS floor between cures across lives. Write cost: 2
+   *  frames per probe, at most CURE_ASKS probes, then at most 2 more for the re-assert. */
   _cureTick(now) {
     const c = this._cure;
     if (c) {
-      if (now - c.askedAt < QUERY_REPLY_MS) return;                      // the ask is still in its window
+      if (now - c.askedAt < QUERY_REPLY_MS) return;                      // the probe is still in its window
       const blocked = this._standDown(['phase', 'spawned', 'bundle', 'ble', 'alive', 'reconciling', 'resync', 'tutorial', 'switching', 'reloading', 'stunned', 'heat'], now);
       if (blocked) { this._cure = null; this.log(`cure abandoned — ${blocked}`, 'li'); return; }
-      if (c.asks < CURE_ASKS) { c.asks++; c.askedAt = now; this._query(`cure: ask ${c.asks} of ${CURE_ASKS}`); return; }
+      if (c.step === 'mag') {
+        // The gun has ALREADY proved it is alive; only the magazine went unanswered. That is evidence, not
+        // silence, so it never becomes `no_answer`: re-assert what we can and say the magazine is unknown.
+        this._cure = null;
+        this.cure = { verdict: 'alive', at: now };
+        this.log(`cure: the gun answered $LIFE alive at hp ${this.hp} but never answered $QUERY — re-asserting the trigger map only, magazine unknown (F264)`, 'le');
+        this._cureReassert(null, null);
+        this._changed();
+        return;
+      }
+      if (c.asks < CURE_ASKS) { c.asks++; c.askedAt = now; this._askGun(`cure: probe ${c.asks} of ${CURE_ASKS}`); return; }
       this._cure = null;
-      if (c.array) { this.log('cure: the gun answered $QUERY but sent no $LCD — it is still talking, so nothing is written blind', 'le'); return; }
-      if (this._cureBlind >= CURE_MAX_BLIND) { this.log(`*** cure: ${CURE_MAX_BLIND} blind respawns have not brought this gun back — stopping. The operator's FORCE RESPAWN or RELINK is the cure now ***`, 'le'); return; }
-      this._cureBlind++;
-      // The fallback, and it is taken BLIND: with no reply the node cannot tell a dead gun from a stuck one. The
-      // revive head is the only write proven to restart a gun in this state (F264: a `$SIR` resync did not, the
-      // `$SPAWN` in the revive head did, in the next breath). It heals this player and books NO death, which is
-      // the price of not knowing.
-      this.log(`*** cure FALLBACK, taken blind: ${CURE_ASKS} $QUERY asks went unanswered, so the node cannot tell a dead gun from a stuck one. Sending the revive head — it restarts the gun, heals this player and books no death (F264) ***`, 'le');
-      this._resyncRevive = false;
-      this._revive(false, null, false, true);
+      this.cure = { verdict: 'no_answer', at: now };
+      this.log(`*** cure: ${CURE_ASKS} $LIFE,0,0,0 probes went unanswered on a gun the node believes is alive `
+        + `at hp ${this.hp} with ${this._acctLive(this.activeSlot)} in the magazine. The node cannot tell a dead gun `
+        + `from a stuck one, so it is doing NOTHING and asking for a human: FORCE RESPAWN, or RELINK (F264) ***`, 'le');
+      this._changed();
       return;
     }
     const stale = this.poolStale(now);
@@ -3761,18 +3881,32 @@ export class Engine {
     if (this._cureLife === (this._lifeSeq || 0)) return;                 // one cure per life
     if (this._cureAt && now - this._cureAt < CURE_COOLDOWN_MS) return;   // ...and a floor between them, across lives
     this._cureLife = this._lifeSeq || 0; this._cureAt = now;
-    this._cure = { askedAt: now, asks: 1, array: false };
-    this._query(`cure: ${NO_FIRE_PULLS} trigger pulls with no answer — asking the gun what it thinks`);
+    this._cure = { askedAt: now, asks: 1, step: 'life' };
+    this.cure = { verdict: 'asking', at: now };
+    this._askGun(`cure: ${NO_FIRE_PULLS} trigger pulls with no answer — asking the gun where it stands`);
+    this._changed();
   }
   /** F264: the divergence poll, so the node catches a diverged gun without a player pulling a dead trigger three
-   *  times. LIVE MATCH ONLY, link up, spawned, alive, and never inside a reconcile, a resync or a try-out. A cure
-   *  already in flight IS the poll for now. 3 frames a minute. */
+   *  times. LIVE MATCH ONLY, link up, spawned, alive, and never inside a reconcile, a resync or a try-out -- those
+   *  three have their own one-off probes, which is a better use of the frames than a heartbeat on top of them.
+   *  A cure already in flight IS the poll for now. `$QUERY` alone: 3 frames a minute. */
   _pollTick(now) {
     if (this._cure) return;
     if (this._standDown(['phase', 'spawned', 'bundle', 'ble', 'alive', 'reconciling', 'resync', 'tutorial'], now)) return;
     if (this._pollAt && now - this._pollAt < QUERY_POLL_MS) return;
     this._pollAt = now;
-    this._query('divergence poll');
+    this._askGun('divergence poll');
+  }
+  /** F264 (Tony, 2026-09-18): READ BACK THE BIGGEST WRITE OF A LIFE. The spawn/revive burst is 17 frames, and the
+   *  first proven stall began 4.6 s after one. A probe once the burst has had time to land and echo proves the gun
+   *  actually took it, instead of the node assuming so for the rest of the life. Once per life, 1 frame. */
+  _spawnProbeTick(now) {
+    if (this._cure || !this._spawnAt || this._probedLife === (this._lifeSeq || 0)) return;
+    if (now - this._spawnAt < SPAWN_PROBE_MS) return;
+    if (this._standDown(['phase', 'spawned', 'bundle', 'ble', 'alive', 'tutorial'], now)) return;   // reading is allowed inside a reconcile/resync; see `_askGun`
+    this._probedLife = this._lifeSeq || 0;
+    this._pollAt = now;                          // the read-back IS this cadence's poll: do not send two in a breath
+    this._askGun('spawn read-back: did the gun take the burst?');
   }
   /** F208: is the pool on the HUD still the gun's word? null when fresh, else `{why, ms}`. `why`: 'silent' (no frame
    *  of any kind for GUN_QUIET_STALE_MS) or 'no_fire' (NO_FIRE_PULLS unanswered pulls in a row) or 'write_lost' (pl4: this life's spawn/revive write
@@ -4116,7 +4250,7 @@ export class Engine {
     // heat itself is recorded at the top of this function, before the stunned return.
   }
 
-  _onHp(hp, armor, shield) {
+  _onHp(hp, armor, shield, solicited = false) {
     this.poolSrc = 'gun';                     // R2-3: same as $LCD -- this pool is the gun's own word
     if (hp > 0) this._armedThisLife = true;   // B5: the gun has now confirmed a life on the wire -- the settle window is over
     // Damage drains shield -> armor -> HP (bench 2026-08-27). Omitting shield from the
@@ -4274,7 +4408,9 @@ export class Engine {
     if (hp > 0) this._gunPoolPaint(movedPool);   // A16 §3.1 (readout) / A11.7 legacy (a hit does not clear a held paint, bench 2026-09-04; only the band change is written)
     const wasResync = !!this.resync || !!this.reconciling;
     if (this.resync) this._resyncEvidence('hp');
-    if (hp === 0 && this.alive && this.phase === 'live' && !this._deathPending()) this._death(wasResync);   // a death learned during resync/reconcile is a desync death
+    // F264: `solicited` means this `$HP` answers our own `$LIFE,0,0,0,*` probe, so the node learned the zero out
+    // of band rather than from a live hit sequence -- a desync death by §3.3's definition, same as a reconcile's.
+    if (hp === 0 && this.alive && this.phase === 'live' && !this._deathPending()) this._death(wasResync || solicited);   // a death learned during resync/reconcile is a desync death
   }
 
   /** B5 (phantom death on spawn race): a zero-HP frame the instant after a `_spawn`/`_revive` write can be a
@@ -4375,6 +4511,11 @@ export class Engine {
     this.resync = null;                                   // never run the infer-death machine on a rejoin
     this._stunRestore('reconcile');                       // F15: the reconcile owns the disarm/re-arm from here (coarse: it re-arms with the frame's counts)
     this._write(['$AMMO,0,0,0,1,*', '$AMMO,1,0,0,1,*'], 'reconcile: disarm');   // no shots count while we reconcile
+    // F264 (Tony, 2026-09-18): ...and ASK. §3.10's rule is that the node must never INFER inside this window, and
+    // the gun may well have died while the app was away (the S7 gap-death limitation, which inference cannot see).
+    // A probe is not an inference: it is how the node stops needing one. The reply lands through the ordinary
+    // handler, which §3.10 already says to trust verbatim here. Acting still stands down; reading does not.
+    this._askGun('reconcile: read the gun rather than infer it');
     this.log('reconnect — reconciling (gun held ' + RECONCILE_MS + ' ms)', 'li');
     this._changed();
   }
@@ -4531,6 +4672,12 @@ export class Engine {
       pool_src: this.poolSrc,
       // F208: present only while the pool is stale ('silent' | 'no_fire'), with the ms since the gun last reported it.
       ...(stale ? { pool_stale: stale.why, ...(stale.ms != null ? { pool_stale_ms: stale.ms } : {}) } : {}),
+      // F264: what the NODE ITSELF then did about it, so the operator's board reads more than "stale". A phone log
+      // is not loud: the node logged `no_fire` twice on 2026-09-18 and the player still stood there 94 s. `asking`
+      // = a probe is out; `dead` = the gun answered health 0 and the death is booked; `alive` = the gun answered
+      // above 0 and the arming was re-asserted, no revive; `no_answer` = nothing came back and the node has
+      // deliberately done NOTHING. `no_answer` is the one that needs a human: FORCE RESPAWN.
+      ...(this.cure ? { cure: this.cure.verdict } : {}),
       ...(this.phase === 'live' && !this.alive && this.deadAt ? { deadline_s: Math.max(0, Math.ceil((this.respawnDelayMs - (now - this.deadAt)) / 1000)) } : {}),
       ...(this.battery != null ? { battery: this.battery } : {}), ...(this.fw ? { fw: this.fw } : {}),
       arm_state: this.phase, ...(this.phase === 'armed' && this.goLiveT ? { t_minus_ms: Math.max(0, this.goLiveT - now) } : {}),
@@ -4576,6 +4723,7 @@ export class Engine {
       alive: this.alive, deaths: this.deaths, shots: this.shots, battery: this.battery,
       kills: this.score ? this.score.kills : null, assists: this.score ? this.score.assists : null, accuracy: this.score ? this.score.accuracy : null, scoreAt: this.scoreAt,
       poolStale: this.poolStale(now),   // F208: null, or {why: 'silent'|'no_fire', ms}; the HUD lane renders it
+      cure: this.cure,                  // F264: null, or {verdict: 'asking'|'dead'|'alive'|'no_answer', at} -- the node's own outcome
       respawnType: this.respawnType, killedBy: this.killedBy, underFire: this.alive && this.lastHitAt > 0 && (now - this.lastHitAt) < 2000, respawnIn: (!this.alive && this.deadAt && this.respawnType === 'auto') ? Math.max(0, Math.ceil((r - (now - this.deadAt)) / 1000)) : 0,   // scanner/none modes have no countdown
       // utility.md: the respawn station this player would use, how close it reads, and what the DOWN screen should say
       station: stationView(this._respawnStation()), respawnGate: this.respawnGate, respawnHint: this.respawnHint(now),

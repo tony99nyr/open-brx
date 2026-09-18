@@ -167,7 +167,12 @@ def _set_profile_field(profile: Profile, key: str, value: object) -> None:
 
 SFLASH = "$SFLASH,*"
 PLAYX = "$PLAYX,0,*"           # engine.js PLAYX: stop whatever line the gun is speaking (used only to PREEMPT our own hill callout)
-QUERY = "$QUERY,*"             # F264 (engine.js QUERY): one 8-byte ask -- see `_query`
+QUERY = "$QUERY,*"             # F264 (engine.js QUERY): one 8-byte ask -- see `_ask_gun`
+# F264 (engine.js PROBE_LIFE): a dead gun ignores $LIFE unless token 1 is 0, so a bare $LIFE,0,0,0,* asks
+# a SILENT dead gun to speak without healing or harming anything. THE HAZARD: a non-zero token 1 is the
+# REVIVE path. Mirror this constant, never a helper that takes arguments -- the first argument anyone
+# passes will be a heal. `test_stage_cure.py` asserts the frame the stage writes is byte-exactly this.
+PROBE_LIFE = "$LIFE,0,0,0,*"
 EVENT_MIN_GAP_S = 1.0          # engine.js EVENT_MIN_GAP_MS: never two LED bursts inside a second
 PAIN_GAP_S = 0.6               # engine.js PAIN_GAP_MS (A15.3): at most one pain grunt per 600 ms -- dropped, never queued
 LOW_HEALTH_HP = 15             # engine.js LOW_HEALTH_HP (A17.2): HP below which the once-per-life low-health alert fires
@@ -479,19 +484,26 @@ class GunStage:
         self._shot_due_at: float | None = None
         self._no_fire_pulls = 0
         self._dry_pulls = 0                        # the RELOAD nag (engine.js `_dryPulls`): pulls into an empty magazine this dry spell
-        # F264 (engine.js `_queryAt`/`_querySeen`/`_cure`/`_cureLife`/`_cureAt`/`_cureBlind`/`_pollAt`): the
-        # cure. `_query_at` is when the last `$QUERY,*` went out and `_query_seen` says its one pool frame
-        # has been taken, so a SOLICITED reply can be told from the gun answering a trigger. `_cure` is
-        # {asked_at, asks, array} while an ask is outstanding; `_cure_life`/`_cure_at`/`_cure_blind` are the
-        # three bounds. `_poll_at` is the divergence poll's own clock. See `_cure_tick`.
+        # F264 v2 (engine.js `_queryAt`/`_probeSeen`/`_cure`/`_cureLife`/`_cureAt`/`_pollAt`/`_probedLife`):
+        # the cure. `_query_at` is when the last probe went out and `_probe_seen` says, PER FRAME KIND
+        # (`$LIFE` answers with `$HP`, `$QUERY` answers with `$LCD`), whether that kind's one reply has
+        # been taken -- so a SOLICITED reply can be told from the gun answering a trigger. `_cure` is
+        # {asked_at, asks} while a cure's probe is outstanding; `_cure_life`/`_cure_at` are its two bounds
+        # (once per life, a cooldown across lives). `_poll_at` is the divergence poll's own clock and
+        # `_probed_life` is the once-per-life spawn read-back's. See `_cure_tick`.
         self._query_at: float = 0.0
-        self._query_seen = False
+        self._probe_seen: dict[str, bool] = {}
         self._life = 0                             # engine.js `_lifeSeq`: bumped by `_after_spawn`, read by the once-per-life cure bound
         self._cure: dict | None = None
         self._cure_life: int | None = None
         self._cure_at: float = 0.0
-        self._cure_blind = 0
         self._poll_at: float = 0.0
+        self._probed_life: int | None = None
+        self._spawn_at: float | None = None   # F264 (engine.js `_spawnAt`): now() of the last spawn/revive, for `_spawn_probe_tick`
+        # F264: the cure's own VERDICT -- None, or {verdict: 'asking'|'dead'|'alive'|'no_answer', at}. Read
+        # by `state()` so the console can tell "the node tried and got nothing" from a bare stale claim (a
+        # phone log reached nobody on 2026-09-18).
+        self.cure: dict | None = None
         # S29 the shield recharge (engine.js `_shieldRegen` / `_shieldQuietAt` / `_shieldLoopAt` / `_shieldDown`):
         # the refill in flight, the clock the delay runs from (a spawn, or the last damage), the last heartbeat,
         # and whether the shield BROKE this life (a spawn starts at 0 without breaking and must not heartbeat).
@@ -1156,15 +1168,18 @@ class GunStage:
     TRIGGER_NO_FIRE_S = 1.5     # engine.js TRIGGER_NO_FIRE_MS
     NO_FIRE_PULLS = 3           # engine.js NO_FIRE_PULLS
 
-    # ---- F264 the cure (engine.js `_cureTick`/`_pollTick`/`_cureAnswer`/`_solicited`) --------------------
+    # ---- F264 v2 the cure (engine.js `_cureTick`/`_pollTick`/`_cureAnswer`/`_solicited`) -----------------
     # `no_fire` above has two proven causes and only one wants a revive: the gun died and the killing
     # `$HP`/`$LCD` never reached the node, or the node's own magazine account is ahead of the gun's after a
-    # timed-out reload. `$QUERY,*` asks the gun which one it is, rather than guessing (see `_cure_tick`).
+    # timed-out reload. A probe asks the gun which one it is, rather than guessing (see `_cure_tick`).
+    # THE NODE NEVER ACTS ON NO EVIDENCE: an unanswered probe gets NOTHING written, not a blind revive --
+    # Tony's call, 2026-09-18, after the first draft's blind fallback would have handed a free life to a
+    # gun that was merely empty with a stale belief behind it.
     QUERY_REPLY_S = 1.5         # engine.js QUERY_REPLY_MS -- the same wire and the same measurement as TRIGGER_NO_FIRE_S
-    CURE_ASKS = 2               # engine.js CURE_ASKS -- asks before the blind fallback
+    CURE_ASKS = 2               # engine.js CURE_ASKS -- probes before the node gives up and does nothing
     CURE_COOLDOWN_S = 30.0      # engine.js CURE_COOLDOWN_MS -- the floor between cures, ACROSS lives
-    CURE_MAX_BLIND = 2          # engine.js CURE_MAX_BLIND -- blind fallbacks before the node stops and says so
     QUERY_POLL_S = 20.0         # engine.js QUERY_POLL_MS -- the divergence poll's own cadence, live match only
+    SPAWN_PROBE_S = 2.5         # engine.js SPAWN_PROBE_MS -- the once-per-life spawn/revive read-back's delay
 
     # ---- overheat (engine.js `HEAT_LOCKOUT` / `HEAT_STALE_MS` / `_heatBlocksFire`), review 2026-09-17 ---
     # Review found `_await_shot`/`_no_fire_tick` never excluded a real OVERHEAT lockout, unlike engine.js:
@@ -1191,6 +1206,14 @@ class GunStage:
     # The stage carries the subset it HAS: no `phase` (its phase is `spawned`), no pushed `bundle`, no
     # rejoin reconcile, no restart evidence protocol, no try-out lock and no accuracy writer to hold.
     # Its link is `connected`, which is engine.js's `bleUp`, so the shared name `ble` means the same thing.
+    #
+    # ⚠ F264: THIS TABLE GATES ACTING, NOT READING. engine.js's own copy adds `reconciling` and `resync`
+    # because the node must not INFER inside those windows (spec/node.md §3.10); the stage has neither
+    # concept, so it has nothing to add here for them. A `PROBE_LIFE`/`QUERY` probe is the OPPOSITE of an
+    # inference, so `_ask_gun` sites (`_cure_tick`, `_poll_tick`, `_spawn_probe_tick`, `_operator_resync`)
+    # deliberately run wherever the stage would otherwise be reading rather than acting, and only the
+    # WRITES that follow a probe's answer stand down. Do not "fix" a probe site to also skip a stand-down
+    # name it does not act on: reading is how the rule stops costing a life.
     _STAND_DOWN: tuple[tuple[str, Callable[[GunStage], bool]], ...] = (
         ("spawned", lambda s: not s.spawned),
         ("ble", lambda s: not s.connected),
@@ -1432,67 +1455,125 @@ class GunStage:
         if self._no_fire_pulls == self.NO_FIRE_PULLS:
             self._log(f"gun not firing: {self.NO_FIRE_PULLS} trigger pulls with no shot -- the pool is stale (F208)", "warn")
 
-    # ---- F264 the cure (engine.js `_query`/`_solicited`/`_cureAnswer`/`_cureTick`/`_pollTick`) -----------
+    # ---- F264 v2 the cure (engine.js `_askGun`/`_solicited`/`_cureAnswer`/`_cureTick`/`_pollTick`) -------
     # Deliberate partial parity, like `_arm_life` above: the stage carries only the stand-down names it
     # HAS (`spawned`, `ble`, `alive`, `switching`, `reloading`, `stunned`, `heat` -- see `_STAND_DOWN`).
     # engine.js's cure/poll also stand down on `phase`, `bundle`, `reconciling`, `resync` and `tutorial`,
     # none of which the stage has a concept of: no phase beyond `spawned`, no pushed bundle to go stale, no
     # rejoin reconcile, no reconnect resync state machine, no try-out lock.
+    #
+    # THE NODE NEVER ACTS ON NO EVIDENCE (Tony, 2026-09-18, after four course corrections on this feature).
+    # If both probes go unanswered the cure does NOTHING, records `no_answer`, and logs the values -- no
+    # blind revive. A free life for a gun that was merely empty is worse than a wait.
 
-    def _query(self, why: str) -> None:
-        """engine.js `_query`: send one `$QUERY,*` and start its reply window. ONE frame, 8 bytes."""
+    async def _ask_gun(self, why: str, full: bool = False) -> None:
+        """engine.js `_askGun`: ASK the gun where it stands. `full` sends BOTH probes -- `PROBE_LIFE` (the
+        dead-gun `$LIFE,0,0,0,*`) and `QUERY` (the pools and the magazine); the 20 s heartbeat and the
+        spawn read-back send `QUERY` alone, which carries strictly more on its own.
+
+        `async`, and awaited directly by `_operator_resync` (READ BEFORE WRITING: the probe must reach the
+        wire before that method's own writes, not race them). The tick methods call from a SYNC context
+        and cannot await, so they hand the coroutine to `_spawn_task` instead -- `self._spawn_task(self._ask_gun(...))`,
+        never `self._ask_gun(...)` bare, or the probe is never actually awaited and nothing is scheduled."""
         self._query_at = self.now()
-        self._query_seen = False
-        self._spawn_task(self.write([QUERY], why, gap_ms=0))
+        self._probe_seen = {}
+        await self.write([PROBE_LIFE, QUERY] if full else [QUERY], why, gap_ms=0)
 
-    def _solicited(self) -> bool:
-        """engine.js `_solicited`: is this pool frame the answer to our own `$QUERY,*`? True at most ONCE
-        per ask, inside QUERY_REPLY_S, and then consumed -- the gun sends the status array and then one
-        `$LCD`, so only the first pool frame in the window is ours. NOT pure: it consumes the token."""
-        if self._query_seen or not self._query_at or self.now() - self._query_at > self.QUERY_REPLY_S:
+    def _solicited(self, kind: str) -> bool:
+        """engine.js `_solicited`: is this pool frame the answer to a probe we sent? True at most ONCE per
+        probe PER FRAME KIND, inside QUERY_REPLY_S, and then consumed -- `$LIFE` answers with one `$HP`,
+        `$QUERY` answers with a status array and one `$LCD`. A second frame of the same kind in the same
+        window is the gun talking on its own and resets the no-fire count as it always did.
+
+        `$ALCD` is never solicited: no probe answers with one, and if it could, a shot landing inside the
+        poll's window would read as OUR reply and its pull would never clear. NOT pure: it consumes the token."""
+        if kind not in ("HP", "LCD"):
             return False
-        self._query_seen = True
+        if self._probe_seen.get(kind) or not self._query_at or self.now() - self._query_at > self.QUERY_REPLY_S:
+            return False
+        self._probe_seen[kind] = True
         return True
 
-    def _cure_answer(self, t: list[str]) -> None:
-        """engine.js `_cureAnswer`: what the cure's own `$QUERY,*` came back with. `_on_pools` (called
-        before this, from `_on_rx`) has already landed the gun's real pools and booked the death -- marked
-        desync -- when the gun said 0, so this writes no pool state of its own and books no death. It just
-        decides which of the two known causes this was, logs it, and re-asserts the arming in the one case
-        where the gun is alive, loaded, and still not answering.
+    def _probe_shape_ok(self, t: list[str]) -> bool:
+        """engine.js `_probeShapeOk`: does a `$QUERY` reply's `$LCD` fit the token map we have? The map is
+        confirmed by SHAPE only, on an unconfigured gun (transport-hardening.md §6, levers claim 19), so a
+        reply that does not fit is treated as NO REPLY rather than trusted. Six tokens (cmd + 6), health
+        and armour present and non-negative; tokens 3/4 are undocumented and not read. PURE."""
+        if len(t) < 7:
+            return False
+        hp, armor = _tok_int(t, 1), _tok_int(t, 2)
+        return hp is not None and hp >= 0 and armor is not None and armor >= 0
 
-        The empty-magazine case gets NO WRITE on purpose: the gun is behaving correctly there, and it is
-        the node's own count that was wrong -- an `$AMMO` here would hand the player a free magazine."""
+    def _cure_answer(self, kind: str, t: list[str]) -> None:
+        """engine.js `_cureAnswer`: what a cure probe came back with. `_on_pools` (called before this, from
+        `_on_rx`) has already landed the gun's real pools and booked the death -- marked desync -- when the
+        gun said 0, so this writes no pool state of its own and books no death: there is ONE death path.
+        This only records the verdict, logs it with the values, and re-asserts the arming when the gun
+        says it is alive.
+
+        The re-assert sends the GUN'S OWN just-reported counts, never the node's -- the node's belief is
+        the thing under suspicion, and an `$AMMO` built from it would hand a free magazine to a player
+        whose reload timed out. It is deliberately NOT `_operator_resync` (which re-sends the node's own
+        counts and an 11-row `$SIR` take): two frames, both from the gun's own words, nothing that heals."""
         c = self._cure
         if c is None:
             return
+        if kind == "LCD" and not self._probe_shape_ok(t):
+            self._log(f"cure: a $QUERY reply the token map does not fit ({','.join(t)}) -- treating it as "
+                      "no reply (levers claim 19)", "error")
+            return                                            # c stays in flight: the window may still bring a good one
         self._cure = None
-        self._cure_blind = 0   # the gun answers a question: nothing from here on is blind
-        # The question this reply answers IS the no-fire claim, so the claim is spent, same as engine.js.
+        # The question this probe asked IS the no-fire claim, so the claim is spent. Leave the count
+        # standing and `pool_stale()` says `no_fire` for the rest of the life whatever the gun does next,
+        # and the console holds GUN NOT FIRING up over a gun that has just told us where it stands. A new
+        # stall builds from fresh pulls.
         self._shot_due_at = None
         self._no_fire_pulls = 0
-        mag = _tok_int(t, 5)
+        mag = _tok_int(t, 5) if kind == "LCD" else None
+        reserve = _tok_int(t, 6) if kind == "LCD" else None
         if self.hp == 0:
-            self._log("cure: the gun says it is DEAD and the node had missed it -- the death is booked (F264)", "warn")
+            self.cure = {"verdict": "dead", "at": self.now()}
+            answered = "$LIFE,0,0,0 answered $HP,0" if kind == "HP" else "$QUERY answered $LCD health 0"
+            self._log(f"cure: the gun says it is DEAD ({answered}) and the node had missed it -- the death "
+                      "is booked, the respawn revives it (F264)", "warn")
             return
-        if mag == 0:
-            self._log(f"cure: the gun is ALIVE at hp {self.hp} with an EMPTY magazine -- the node's count "
-                      "was ahead of it, and this reply corrected it. No write: the player reloads", "info")
-            return
-        self._log(f"cure: the gun is ALIVE at hp {self.hp} with {'an unreported' if mag is None else mag} "
-                  "magazine and still will not fire -- re-asserting the arming (RESYNC GUN, nothing that heals)", "warn")
-        self._spawn_task(self._operator_resync())
+        self.cure = {"verdict": "alive", "at": self.now()}
+        # THE FALSE POSITIVE THIS EXISTS FOR (Tony, 2026-09-18). `_await_shot` only owes a shot when the
+        # node's OWN account says the magazine has rounds, so an ordinary empty gun never reaches `no_fire`
+        # at all. It gets here when that BELIEF is wrong: the account says loaded, the gun is empty and
+        # perfectly healthy, and the player pulls three times. Reviving there would hand a live player a
+        # free respawn and wipe a gun that was never broken. So: re-assert, never revive.
+        believed = self._acct_live(self.active_slot)
+        self._log(f"cure: the gun is ALIVE at hp {self.hp}, magazine {'not reported' if mag is None else mag}"
+                  f"{'' if reserve is None else f'/{reserve}'} (the node believed {believed}) -- "
+                  "re-asserting the gun's own counts, never a revive (F264)", "warn")
+        self._cure_reassert(mag, reserve)
+
+    def _cure_reassert(self, mag: int | None, reserve: int | None) -> None:
+        """engine.js `_cureReassert`: put the gun's own just-reported counts back on it, and the trigger
+        mapping with them. Two frames, and every number in them came off the gun in the frame being
+        answered, so this can never be a refill. No `$SPAWN`, no `$PSET`, no `$SIR` take: F264 proved a
+        `$SIR` resync does not restart a gun in this state, and nothing reads the table back anyway."""
+        frames = []
+        if mag is not None and reserve is not None:
+            frames.append(f"$AMMO,{self.active_slot},{mag},{reserve},1,*")
+        bmap = next((f for f in self.bundle.get("revive") or [] if f.startswith("$BMAP,0,0")), "$BMAP,0,0,,,,,*")
+        frames.append(bmap)
+        self._spawn_task(self.write(frames, "cure: re-assert the arming from the gun's own reply", gap_ms=0))
 
     def _cure_tick(self, now: float) -> None:
-        """engine.js `_cureTick`: THE CURE. `pool_stale` has already concluded `no_fire`; ask the gun what
-        it thinks rather than guess.
+        """engine.js `_cureTick`: THE CURE. `pool_stale` has already concluded `no_fire`; ask the gun where
+        it stands rather than guess.
 
-        Bounded three ways: once per life (`_cure_life`), a CURE_COOLDOWN_S floor between cures across
-        lives, and CURE_MAX_BLIND blind fallbacks before the node stops and leaves it to the operator."""
+        THE NODE NEVER ACTS ON NO EVIDENCE. If both probes go unanswered it does NOTHING, records
+        `no_answer`, and logs the values -- no blind revive (see the section comment above).
+
+        Bounded: once per life (`_cure_life`) and a CURE_COOLDOWN_S floor between cures across lives.
+        Write cost: 2 frames per probe, at most CURE_ASKS probes, then at most 2 more for the re-assert."""
         c = self._cure
         if c is not None:
             if now - c["asked_at"] < self.QUERY_REPLY_S:
-                return                                      # the ask is still in its window
+                return                                      # the probe is still in its window
             blocked = self._stand_down(("spawned", "ble", "alive", "switching", "reloading", "stunned", "heat"))
             if blocked:
                 self._cure = None
@@ -1501,25 +1582,14 @@ class GunStage:
             if c["asks"] < self.CURE_ASKS:
                 c["asks"] += 1
                 c["asked_at"] = now
-                self._query(f"cure: ask {c['asks']} of {self.CURE_ASKS}")
+                self._spawn_task(self._ask_gun(f"cure: probe {c['asks']} of {self.CURE_ASKS}", True))
                 return
             self._cure = None
-            if c["array"]:
-                self._log("cure: the gun answered $QUERY but sent no $LCD -- it is still talking, so nothing is written blind", "warn")
-                return
-            if self._cure_blind >= self.CURE_MAX_BLIND:
-                self._log(f"*** cure: {self.CURE_MAX_BLIND} blind revives have not brought this gun back -- "
-                          "stopping. The operator's REVIVE or RELINK is the cure now ***", "error")
-                return
-            self._cure_blind += 1
-            # The fallback, taken BLIND: with no reply the node cannot tell a dead gun from a stuck one.
-            # `revive()` is the only write proven to restart a gun in this state (F264: a `$SIR` resync did
-            # not, the `$SPAWN` in the revive head did, in the next breath). It heals this player and books
-            # no death, which is the price of not knowing.
-            self._log(f"*** cure FALLBACK, taken blind: {self.CURE_ASKS} $QUERY asks went unanswered, so "
-                      "the node cannot tell a dead gun from a stuck one. Reviving blind -- it restarts the "
-                      "gun, heals this player and books no death (F264) ***", "error")
-            self._spawn_task(self.revive())
+            self.cure = {"verdict": "no_answer", "at": now}
+            self._log(f"*** cure: {self.CURE_ASKS} probes ($LIFE,0,0,0 + $QUERY) went unanswered on a gun "
+                      f"the node believes is alive at hp {self.hp} with {self._acct_live(self.active_slot)} "
+                      "in the magazine. The node cannot tell a dead gun from a stuck one, so it is doing "
+                      "NOTHING and asking for a human: FORCE RESPAWN, or RELINK (F264) ***", "error")
             return
         stale = self.pool_stale(now)
         if not stale or stale["why"] != "no_fire":
@@ -1533,13 +1603,14 @@ class GunStage:
             return                                             # ...and a floor between them, across lives
         self._cure_life = life
         self._cure_at = now
-        self._cure = {"asked_at": now, "asks": 1, "array": False}
-        self._query(f"cure: {self.NO_FIRE_PULLS} trigger pulls with no answer -- asking the gun what it thinks")
+        self._cure = {"asked_at": now, "asks": 1}
+        self.cure = {"verdict": "asking", "at": now}
+        self._spawn_task(self._ask_gun(f"cure: {self.NO_FIRE_PULLS} trigger pulls with no answer -- asking the gun where it stands", True))
 
     def _poll_tick(self, now: float) -> None:
         """engine.js `_pollTick`: the divergence poll, so the node catches a diverged gun without a player
         pulling a dead trigger three times. Live gun only: spawned, link up, alive. A cure already in
-        flight IS the poll for now. 3 frames a minute."""
+        flight IS the poll for now. `$QUERY` alone: 3 frames a minute."""
         if self._cure is not None:
             return
         if self._stand_down(("spawned", "ble", "alive")):
@@ -1547,7 +1618,23 @@ class GunStage:
         if self._poll_at and now - self._poll_at < self.QUERY_POLL_S:
             return
         self._poll_at = now
-        self._query("divergence poll")
+        self._spawn_task(self._ask_gun("divergence poll"))
+
+    def _spawn_probe_tick(self, now: float) -> None:
+        """engine.js `_spawnProbeTick` (Tony, 2026-09-18): READ BACK THE BIGGEST WRITE OF A LIFE. The spawn
+        burst is many frames, and the first proven F264 stall began seconds after one. A probe once the
+        burst has had time to land and echo proves the gun actually took it, instead of the node assuming
+        so for the rest of the life. Once per life, 1 frame -- and it stamps `_poll_at` too, so the
+        heartbeat does not also fire in the same breath."""
+        if self._cure is not None or not self._spawn_at or self._probed_life == self._life:
+            return
+        if now - self._spawn_at < self.SPAWN_PROBE_S:
+            return
+        if self._stand_down(("spawned", "ble", "alive")):
+            return
+        self._probed_life = self._life
+        self._poll_at = now
+        self._spawn_task(self._ask_gun("spawn read-back: did the gun take the burst?"))
 
     def pool_stale(self, now: float | None = None) -> dict | None:
         """engine.js `poolStale`: None when fresh, else {why: 'silent'|'no_fire', s: seconds since the last pool report or None}."""
@@ -1601,7 +1688,8 @@ class GunStage:
         self._arm_pending = None                                 # F209: a head is fn 28 throughout
         self.spawned = False; self.alive = False; self.scream_this_life = None   # a fresh head: no scream written yet
         self._reset_hill()                                       # engine.js `_resetHill` on a new match: game 2 must not inherit game 1's point or its once-per-game warnings
-        self._cure = None; self._query_at = 0.0; self._cure_life = None; self._cure_at = 0.0; self._cure_blind = 0; self._poll_at = 0.0   # F264: a new match owes the last one's gun nothing
+        self._cure = None; self._query_at = 0.0; self._cure_life = None; self._cure_at = 0.0; self._poll_at = 0.0   # F264: a new match owes the last one's gun nothing
+        self._probed_life = None; self.cure = None
         self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = {}; self.active_slot = 0; self._recoil_slot = 0; self.reloading = None   # engine.js `_writeHead`
         hs = self.bundle.get("headset") or {}
         if hs.get("pregame"):
@@ -1702,6 +1790,12 @@ class GunStage:
         if why:
             self._log(f"operator resync ignored -- {why}", "warn")
             return
+        # F264 (Tony, 2026-09-18): READ BEFORE WRITING. The operator pressing RESYNC is telling us
+        # something is wrong, and writing blind is exactly what failed on 2026-09-18: many frames at a gun
+        # that had left the state those frames assume. The probe costs 2 frames and its reply lands
+        # through the ordinary handler, so a gun that had died while the stage thought it alive books its
+        # death here instead of staying invisible.
+        await self._ask_gun("operator resync: read the gun first", True)
         tid = self._live_tid()
         ammo = [f"$AMMO,{slot},{mag},{res},1,*" for slot, (mag, res) in self._live_ammo().items()]
         bmap = next((f for f in self.bundle.get("revive") or [] if f.startswith("$BMAP,0,0")), "$BMAP,0,0,,,,,*")
@@ -1715,10 +1809,14 @@ class GunStage:
 
     def _after_spawn(self) -> None:
         self.spawned = True; self.alive = True
-        self._life += 1        # F264 (engine.js `_lifeSeq`, bumped in `_spawn`/`_revive`): what "once per life" counts
+        # F264 (engine.js `_lifeSeq`): "once per life" reads `self._life` below, which the gun-take
+        # generation counter already bumps once per `_after_spawn()` call -- the same "which life is this"
+        # concept that field already existed for. Do not ALSO bump it here: `_gun_take` bumps it again a
+        # few lines down, and a second increment here would count two per life instead of one.
         self.hp = self.max_hp; self.armor = self.max_armor; self.shield = 0   # engine.js `_afterSpawn`/`_revive`: shield always starts at 0, not a max
         self._hurt_fired = False
         self._shot_due_at = None; self._no_fire_pulls = 0; self._dry_pulls = 0   # F208: a fresh life owes no shots; the RELOAD nag: and it starts loaded, so no dry spell is running
+        self._spawn_at = self.now()   # F264 (engine.js `_spawnAt`, set in `_spawn`/`_revive`): starts `_spawn_probe_tick`'s clock
         # S29 (engine.js): a fresh life starts at shield 0 without the shield having BROKEN, so no heartbeat
         # and no refill in flight; the delay runs from here, so a life's first fill lands SHIELD_REGEN_DELAY_S
         # in and never inside the spawn write.
@@ -2075,6 +2173,7 @@ class GunStage:
         self._no_fire_tick(now)                  # F208 (engine.js tick())
         self._cure_tick(now)                     # F264: and once no_fire is concluded, ASK the gun, then act on the answer
         self._poll_tick(now)                     # F264: ...and ask it every QUERY_POLL_S anyway, so nobody has to pull a dead trigger first
+        self._spawn_probe_tick(now)              # F264: ...and once a life, read back the biggest write of that life
         if self.stunned and now >= self.stunned["until"]:
             self._stun_restore("expired")        # F15: the stun timer -- restore the LIVE counts (engine.js tick())
         self._shield_tick(now)                   # S29 (engine.js tick()): the recharge, and the heartbeat while the shield is gone
@@ -2180,24 +2279,32 @@ class GunStage:
         cmd = t[0]
         now = self.now()
         self._last_gun_frame_at = now                  # F208 (engine.js `feedFrame`): any frame proves the link
-        # F264: the gun answered -- answered WHAT, though. A pool frame the node ASKED FOR (`$QUERY,*`, the
-        # cure or the divergence poll) proves the gun is reporting its pools, so `_last_pool_at` is honest --
-        # and it proves nothing about the trigger pull that is still unanswered, so the no-fire count must
-        # survive it. `$LCD` ONLY (engine.js `feedFrame`): a `$QUERY` reply's pool frame is always an
-        # `$LCD`, never an `$ALCD` or an `$HP` -- widen this and a shot landing inside a poll's window would
-        # read as OUR reply, and the pull behind it would never be cleared.
-        solicited = cmd == "LCD" and self._solicited()
+        # F264 v2: the gun answered -- answered WHAT, though. A pool frame the node ASKED FOR (a `PROBE_LIFE`
+        # or a `QUERY`) proves the gun is reporting its pools, so `_last_pool_at` is honest -- and it proves
+        # nothing about the trigger pull that is still unanswered, so the no-fire count must survive it.
+        # `$LIFE` answers with `$HP`, `$QUERY` answers with `$LCD` -- never an `$ALCD`, on either. Widen
+        # `_solicited` to `$ALCD` and a shot landing inside the poll's window would read as OUR reply, and
+        # the pull behind it would never be cleared.
+        solicited = self._solicited(cmd)
         if solicited:
             self._last_pool_at = now
         elif cmd in ("HP", "LCD", "ALCD"):
             self._last_pool_at = now; self._shot_due_at = None; self._no_fire_pulls = 0   # F208: the gun answered
+            # F264 v2: an UNSOLICITED pool frame is the gun reporting on its own, so a stale `no_answer`
+            # (or `dead`/`alive`) verdict is retired here -- otherwise `no_answer` sits on the operator's
+            # board for the rest of the match over a gun that came back, and the next real one reads as
+            # the same stale chip. ⚠ POOL FRAMES ONLY: `$VOLTS` kept arriving right through both proven
+            # F264 stalls, so treating it as proof would make a dead-but-chatty gun look cured.
+            if self.cure is not None:
+                self._log(f"cure verdict '{self.cure['verdict']}' cleared -- the gun is reporting again", "info")
+                self.cure = None
         try:
             if cmd == "QUERY":
-                # F264: the status array that leads a `$QUERY` reply. Its own fields are the pool MAXIMA, so
-                # nothing here reads them -- proof enough that this gun still answers a question, so the
-                # cure never falls back to a blind revive over it.
-                if self._cure is not None and self._query_at and now - self._query_at <= self.QUERY_REPLY_S:
-                    self._cure["array"] = True
+                # F264 v2: the status array that leads a `$QUERY` reply. Its fields are the pool MAXIMA and
+                # the team, none of which this cure reads -- the `$LCD` behind it carries the live pools and
+                # the magazine. A read-back of the team belongs to a separate piece of work (transport-
+                # hardening.md §6) and is not this cure's job.
+                pass
             elif cmd == "HIR":
                 self.tele["last_hir"] = raw
                 if len(t) > 2 and t[2] == "15":
@@ -2253,7 +2360,7 @@ class GunStage:
                 self.tele.update(hp=hp, armor=armor, **({"shield": shield} if shield is not None else {}))
                 self._on_pools(hp, armor, shield, desync=solicited)
                 if solicited:
-                    self._cure_answer(t)
+                    self._cure_answer(cmd, t)
         except ValueError:
             pass
 
@@ -3823,6 +3930,7 @@ class GunStage:
                       # from_neutral}, null once presence has expired). Derived from `beacon`, not a second source.
                       "beacon": dict(self.beacon) if self.beacon else None,
                       "pool_stale": self.pool_stale(),   # F208 (engine.js `state().poolStale`)
+                      "cure": dict(self.cure) if self.cure else None,   # F264 (engine.js `state().cure`): null, or {verdict, at}
                       "hill": dict(self.hill) if self.hill else None,
                       # F54: the reload in flight ({at, s, slot}, null when none) and what the gun last REPORTED.
                       # Read ONCE through `_reloading_view()`, which is null past the deadline exactly like
