@@ -457,6 +457,11 @@ bench watched fn 23 take live accuracy from 100 to 0 with no pool change. So the
 driving it over BLE. If it works, one recoil state change becomes one short frame, with no magazine reset and no
 `$AMMO` behind it.
 
+This section gates more than recoil. Flinch and stance (Tony's request, not built yet) are accuracy modifiers too, and
+so is fn 23's smoke. If `$TMP` t4 is the lever, four effects want one field. Step 3 decides the design: if the effects
+stack, each can write its own value; if the last writer wins, one owner on the node must compute a single combined
+value and be the only thing that writes t4.
+
 Arm A with the bench AR. Fire a few rounds so the magazine is not full, and note the magazine count.
 1. Send `$TMP,,,,-30,,,,,,,,*` (only token 4 set). Read `$ALCD`: did token 2 (accuracy) move? Did the magazine stay
    the same?
