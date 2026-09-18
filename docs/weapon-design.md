@@ -1093,6 +1093,25 @@ Open questions before code, all filed under **S16**: kill credit for a lethal ti
 survives a respawn (it should not), whether two poison shooters stack or refresh (refresh), and what
 the shooter sees, given the shooter's gun never learns that it hit anyone.
 
+### 6.3c Archetypes the catalogue does not have
+
+§6.3 proves five levers. The 22-weapon catalogue uses one of them (armour piercing, on the AMR and the
+Rail Gun). These are the weapons the other levers already allow. None needs firmware, and each names
+the one thing it waits on.
+
+| archetype | what the player does | mechanism | waits on |
+|---|---|---|---|
+| **Toxin Rifle** | tag someone and they keep losing health after you break contact | node tick clock on `$LIFE` negatives, keyed to the `$WEAP` t3 damage type echoed in `$HIR` token 2 (the enum already has 11 = gas) | §6.3b, S16: kill credit for a lethal tick, and a spec section |
+| **Medic gun** | heal a teammate by tagging them | `$SIR` fn 10, 9 or 14, by overflow flavour. The firmware enforces "allies only" by itself: a heal fired at an enemy is silently dropped | per-player `$SIR` keys, and a decision about whether a healer belongs in a team of eight |
+| **Flux beam** | one weapon that heals a friend and hurts an enemy, decided by who you point it at | ONE `$SIR` row: fn 16, 17, 20, 21 or 22 are dual-polarity. No host logic at all | the same per-player key work, plus a damage number that is fair in both directions |
+| **Jammer** | win a fight without taking any health | `$SIR` fn 23 silences the victim's gun and forces its live accuracy to zero for 6 to 8 s, while it keeps firing and emitting | F66: the silence was heard by ear and the number cited as proof was the accuracy field, so the mechanism is unconfirmed |
+| **Crit weapon** | a shot that sometimes hits much harder | the IR crit bit is proven at x1.5 and echoes on `$HIR` token 6. `$WEAP` t6 (`primaryCritChance`) reads 0 on every stock weapon | F62, measured in `bench-perks-2026-09-18.md` §1: can a tagger roll its own crit, or is the bit emitter-only? |
+
+Two cautions carry over from §6.2. A `$SIR` table is **game-wide**, so any archetype that needs its own
+function needs per-player keys before it can ship beside the others. And a victim-side multiplier is
+invisible at the weapon, so a weapon built on one reads as balanced in `weapons.json` and plays as
+something else entirely.
+
 ### 6.4 What a weapon is now
 
 The design space widened from one number to five independent choices:
