@@ -33,7 +33,7 @@ export const WEAPONS: WeaponView[] = [
       "support",
       "sniper"
     ],
-    "role": "support",
+    "role": "marksman",
     "htk": 5,
     "ttk_ms": 1600,
     "recoil": {
@@ -144,7 +144,7 @@ export const WEAPONS: WeaponView[] = [
     "tags": [
       "support"
     ],
-    "role": "support",
+    "role": "marksman",
     "htk": 3,
     "ttk_ms": 570,
     "recoil": {
@@ -219,7 +219,7 @@ export const WEAPONS: WeaponView[] = [
     "tags": [
       "support"
     ],
-    "role": "support",
+    "role": "assault",
     "htk": 13,
     "ttk_ms": 1800,
     "caution": "Overheats after about 30 rounds of full auto, and it does not cool on its own: work the reload lever to vent the heat (about three pulls, or one held pull), then keep holding to recharge the cell.",
@@ -524,7 +524,7 @@ export const WEAPONS: WeaponView[] = [
     "tags": [
       "support"
     ],
-    "role": "support",
+    "role": "assault",
     "htk": 15,
     "ttk_ms": 1960,
     "recoil": {
