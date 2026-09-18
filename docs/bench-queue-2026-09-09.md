@@ -1,5 +1,7 @@
 # Bench run sheet — the whole queue, ordered for the operator's time
 
+> **Superseded 2026-09-18 as the running order by [`bench-plan.md`](bench-plan.md).** This sheet keeps the method of its unrun rungs.
+
 Updated: 2026-09-11 (2026-09-09, re-checked). **This sheet replaces reading `FOLLOWUPS.md` §9 at the bench.**
 §9 stays the register (ids are permanent and live there); this is the running order. Every command below exists
 in the repo and was checked against its source. Nothing here is a new script.

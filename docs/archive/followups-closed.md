@@ -9,6 +9,11 @@ Ordered by close date. Evidence for every claim is in `docs/experiment-log/`.
 ---
 
 
+# Closed 2026-09-18: the FOLLOWUPS accuracy audit
+
+- 2026-09-18 **F194** `--advertise` is in the CLI flags table of `mcp/brx_mcp/mc/README.md` (commit 2d0abd5b, 2026-09-17).
+- 2026-09-18 **F246** The energy-weapon "reload timeout" was a lever TAP: a tap refills nothing on an energy weapon, and a HELD lever vents the heat and refills the cell 1.95 s after release (`experiment-log/2026-09.md`, the 2026-09-18 perks bench entry item 8; F229).
+
 # Closed 2026-09-18: the desk pass on FOLLOWUPS after the playtest merge
 
 A keyboard pass over the open rows against merged `main` (38bf662c). Each line names the evidence on `main`.
@@ -347,3 +352,23 @@ polish loop (commits b7c095c4, 0003df1a, 16a8f72f, 3a02e263, 476d5b17, faa64843,
 - 2026-09-17 **F218** the charge-rifle match gave no false GUN NOT FIRING report, except during
   overheat lockout, which is now fixed. The swap-to-empty-slot half of the original check did not run
   today; it continues as **F247**.
+
+# Closed 2026-09-18: firmware levers bench, session 1
+
+Two guns, Tactix-E20D and Tactix-3D4F, then Tactix-E20D alone with the ESP32 IR rig as emitter. Full findings:
+`docs/experiment-log/2026-09.md` (2026-09-18 entries, "firmware levers session 1"). Claim checklist:
+`docs/bench-firmware-levers-2026-09-19.md`.
+
+- 2026-09-18 **F276** not a defect: five single pulls from a flat 20/20 Shotgun gave TWO `$HIR` of 20
+  every time, 60 to 75 ms apart, including one pull where both landed on sensor 0 as distinct frames.
+  The 159 ms beacon block does not merge identical words, so the published 3-pull kill stands.
+- 2026-09-18 **F65** answered in full: `$BUMP,<amount>,<hp 0/1>,<armour 0/1>,<shield 0/1>,<sound>,*`
+  is confirmed (negative cascades armour then HP, positive heals HP then spills into armour, each
+  pool flag gates independently), and the original "inert" reading was two flags of 0, which the gun
+  correctly ignores with no `$HP` reply at all. The shield flag and the sound token are still
+  untested.
+- 2026-09-18 **F230** closed as explained enough. The native accuracy walk appears only when a `$WEAP`
+  frame sets the floor below the ceiling (`t22` < `t21`). The catalogue ships `t21` = `t22` (S42), and the
+  walking gun holds a flat frame (100/100 for 32 rounds, 50/50 from the first shot), so no shipped game
+  sees the walk. Recoil is node-written with `$TMP` t4. The per-gun cause is still unknown; the USB
+  device records of both guns match apart from factory QC fields.

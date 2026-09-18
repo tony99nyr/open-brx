@@ -32,11 +32,15 @@ Around them: **[`gotchas.md`](gotchas.md)** (field lore by symptom, plus the ben
 |---|---|
 | **[`game-test-2026-09-13.md`](game-test-2026-09-13.md)** | **the 2026-09-13 game test.** 2 players, 3 matches; eleven ids (F206-F216), four of them 🔴. Nine were root-caused from the MC store alone (it carries the compiled heads AND the phones' node logs) |
 | **[`evidence/2026-09-13-session-3782dc77/`](evidence/2026-09-13-session-3782dc77/)** | the sanitised MC store behind that sheet — compiled heads, gun echoes, event timeline, node logs, and the `extract.py` that rebuilds them |
-| **[`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md)** | **the NEXT sitting.** The four readings still open (three of the original six were answered 2026-09-11), deliberately self-contained — run it without reading anything else |
-| [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) | the WHOLE queue, grouped by setup block. FOLLOWUPS §9 is the register (ids); this is the running order |
+| **[`bench-plan.md`](bench-plan.md)** | **open this first.** Every bench test in one order, as sittings of 60 min or less, with the equipment, the preconditions, and which sheet owns what |
+| [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md) | live: verifies the firmware findings on v4.32 (claims 1-27) |
+| [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md) | live, P0: reproduce and prevent the screamer lock-up (Phases A-E) |
+| [`bench-perks-2026-09-18.md`](bench-perks-2026-09-18.md) | live: §2, §4, §5 and §7 are still open |
+| [`bench-critical-2026-09-11.md`](bench-critical-2026-09-11.md) | superseded by the plan; history |
+| [`bench-queue-2026-09-09.md`](bench-queue-2026-09-09.md) | superseded as the running order; keeps the method of its unrun rungs. FOLLOWUPS §9 is the register (ids) |
 | [`bench-grenade.md`](bench-grenade.md) | the grenade/hill rungs. Read its *What is answered* table first, then *Still to run* |
-| [`bench-super-indoor-2026-09-07.md`](bench-super-indoor-2026-09-07.md) | Q15, MacBook-only, entirely outstanding and needing its own plumbing pass |
-| [`bench-flash-control-2026-09-05.md`](bench-flash-control-2026-09-05.md) | the flash ladder, written up once; the queue CITES it rather than re-deriving it. The t6/t21/t22/F23 designs are in [`archive/bench-weap-tokens-discovery-2026-09-04.md`](archive/bench-weap-tokens-discovery-2026-09-04.md), cited from the queue's BQ-D1 row |
+| [`bench-super-indoor-2026-09-07.md`](bench-super-indoor-2026-09-07.md) | Q15, parked until Tony decides what S48 "super indoor" means |
+| [`bench-flash-control-2026-09-05.md`](bench-flash-control-2026-09-05.md) | history: the flash ladder, answered; the queue CITES it rather than re-deriving it. The t6/t21/t22/F23 designs are in [`archive/bench-weap-tokens-discovery-2026-09-04.md`](archive/bench-weap-tokens-discovery-2026-09-04.md), cited from the queue's BQ-D1 row |
 
 ### Session close is three writes
 1. One entry in the current month's experiment log (the evidence).

@@ -15,35 +15,35 @@ v4.32 has drifted from V4_30, and the later sessions shrink.
 **Claim checklist.** Tick each claim in the experiment log as CONFIRMED, REFUTED or DIFFERENT (and how). A claim
 reaches `docs/manual/` only when it is CONFIRMED here.
 
-| # | claim (source) | § |
-|---|---|---|
-| 1 | One team byte; `$PSET` t2 overwrites `$TID`; our re-sent `$PSET` caused F206 (V4_31) | 1 |
-| 2 | Melee (t1 = 1) is emitted by the headset through `$IRTX`, at range t2; `$FIREX` fires a slot (sheets, V4_31) | 2 |
-| 3 | `$BHIT` injects a hit through the full `$SIR` path (V4_30, sheets) | 3 |
-| 4 | `$STUN,<ms>` stuns; `$SIR` p5 of 64 or more stuns on hit (V4_30) | 4 |
-| 5 | `$BUMP,<amount>,<hp>,<armour>,<shield>,<sound>` cascades across pools (V4_30, sheets) | 5 |
-| 6 | `$LIFE` token 4: 0 add, 1 set, 2 set past max; set revives a dead gun (V4_30, sheets, BC app) | 6 |
-| 7 | `$SPAWN,<n>` spawns with shield n (V4_30) | 6 |
-| 8 | `$PRES` scales damage per cell; `$INVU` blocks damage (V4_30) | 7 |
-| 9 | fn 24-27 are 5/4/3/2 s fuses; p5 is the cell the fuse fires (V4_30, sheets) | 8 |
-| 10 | The crit bonus is `$PSET` t6 (we ship 50), scaled by `$GSET` t7 (V4_31, sheets) | 9 |
-| 11 | fn 34/35 register on a dead gun; fn 38 halves HP damage; fn 30 back x2; fn 33 silent kill; fn 50-52 colour only (V4_30) | 10 |
-| 12 | `$SIR` p6/p8 make the victim re-emit the hit (splash) (V4_30, sheets) | 11 |
-| 13 | `$STOP` closes and `$START` opens IR reception; the same flag gates the trigger (inferred); both clear `$GSET`'s app-mode flags (V4_30, V4_31) | 12 |
-| 14 | The gun sends `$DD,<killer>,<team>` when it dies (Jay's code); a kill confirmation is a protocol-15 subtype-0 IR word (BC's UART sheet) | 13 |
-| 15 | Split frames get lost; bursts overflow; `$DPLAY` on a loop sound hangs the gun (V4_31) | 14 (screamers sheet Phase A) |
-| 16 | `$RADSK` every 4 s keeps a headless gun linked (Jay's code, V4_31) | 15 |
-| 17 | `$IRTX` type 14 to a downed ally is a revive beam, read via fn 34 (BC app) | 16 |
-| 18 | Protocol-15 station words: magnitude 6 respawn, 8 perk, 10 proximity, 50 capture (Jay's code) | 17 |
-| 19 | `$LCD` t3 = shield, t4 = slot; `$QUERY` t2 = team; `$VERSION` t3/t5 meanings (V4_30, BC app) | 18 |
-| 20 | Every other open item the triage of FOLLOWUPS against the new sources found untested | 19 |
-| 21 | Range tokens set the IR carrier frequency: 38000 - 125 x (100 - range) Hz on the gun, 140 Hz steps on the headset; indoor/outdoor sets power (V4_31) | 20 |
-| 22 | `$TMP` works over BLE: t4 accuracy, t9 magazine, t1-t3 pool maxima, t8 damage taken, t5 fire interval, t6 reload time, t7 outgoing damage, t10 crit chance, each without a magazine reset; `$SPAWN` and `$CLEAR` zero it (V4_30, V4_31; fn 23 writes t4) | 21 |
-| 23 | A dead gun answers `$QUERY` with `$LCD` health 0, and answers a bare or all-zero `$LIFE` with `$HP,0,0,0` (bench 2026-09-09; V4_31; the 2018 BC app) | 22 |
-| 24 | Only `$CLEAR` zeroes the `$SIR` table; `$STOP` until spawn, then `$SPAWN,,*` and `$TMP` t8 = -100, protect a spawn with no fn-28 table (V4_30, V4_31) | 23 |
-| 25 | `$WEAP` t7-t11 is a secondary-fire proc: t7 chance %, t8/t9 the `<proto,sub>` key, t10 damage, t11 crit % (V4_31) | 24 |
-| 26 | `$` resets only token 0 and the token index, so a frame sent after a lost `*` lands on stale tokens; a `$*` first clears them (V4_30) | 25 |
-| 27 | The headset loops a host `$IRTX` word by itself: field 9 = 100 loops for ever, 0 stops, field 10 = the period in ms (V4_31, headset V1_35) | 16 |
+| # | claim (source) | § | status (2026-09-18 session 1) |
+|---|---|---|---|
+| 1 | One team byte; `$PSET` t2 overwrites `$TID`; our re-sent `$PSET` caused F206 (V4_31) | 1 | **CONFIRMED at the wire level** (runs a-e: run a reproduces F206 with 0 hits, run b fixes it with 6 hits and `$HIR` token 4 = 2). Run f, a real TDM through Mission Control, is still open. |
+| 2 | Melee (t1 = 1) is emitted by the headset through `$IRTX`, at range t2; `$FIREX` fires a slot (sheets, V4_31) | 2 | |
+| 3 | `$BHIT` injects a hit through the full `$SIR` path (V4_30, sheets) | 3 | |
+| 4 | `$STUN,<ms>` stuns; `$SIR` p5 of 64 or more stuns on hit (V4_30) | 4 | **CONFIRMED.** A controlled redo (control 5/5 fired; `$STUN,6000,*` blocked the next two pulls, fired again at +6.08 s) shows a native timed stun of about 6 s. It is SILENT on the gun; the node must play the cue itself (`X17`, Tony's pick, matches BC's concussion-grenade entry). |
+| 5 | `$BUMP,<amount>,<hp>,<armour>,<shield>,<sound>` cascades across pools (V4_30, sheets) | 5 | **CONFIRMED.** A negative amount takes armour first and overflows into HP; a positive amount heals HP first and overflows into armour; each of the hp/armour flags gates its own pool independently, and with both flags 0 the gun does nothing and sends no `$HP` reply at all (explains F65). The shield flag and the sound token are still untested. |
+| 6 | `$LIFE` token 4: 0 add, 1 set, 2 set past max; set revives a dead gun (V4_30, sheets, BC app) | 6 | **CONFIRMED for the revive half (2026-09-18, §16).** `$LIFE,30,0,0,1,*` (set mode) on a dead gun gave `$HP,30,0,0` twice, and a follow-up `$LIFE,*` read back 30: the gun is alive again, takes hits normally, AND fires (`$ALCD` moved on a trigger pull). The magazine survives the death (unchanged across it) and `$TMP` survives death plus this revive (unlike `$SPAWN`, which clears `$TMP`). The headset death flash does NOT stop on its own: send `$HLED,,6,*` after the revive. Tested only on a gun killed over BLE, not on a gun in the F264 stall state (dead on the gun, alive on the HUD); do not assume this recipe cures F264 without a separate bench run. |
+| 7 | `$SPAWN,<n>` spawns with shield n (V4_30) | 6 | |
+| 8 | `$PRES` scales damage per cell; `$INVU` blocks damage (V4_30) | 7 | |
+| 9 | fn 24-27 are 5/4/3/2 s fuses; p5 is the cell the fuse fires (V4_30, sheets) | 8 | |
+| 10 | The crit bonus is `$PSET` t6 (we ship 50), scaled by `$GSET` t7 (V4_31, sheets) | 9 | |
+| 11 | fn 34/35 register on a dead gun; fn 38 halves HP damage; fn 30 back x2; fn 33 silent kill; fn 50-52 colour only (V4_30) | 10 | **CONFIRMED for fn 34 (2026-09-18, §16).** A `$SIR,14,0,NULL,34,,,,,*` row on a gun killed over BLE (`$HP,0,0,0`) still registered `$HIR` from an `$IRTX` type-14 revive beam. fn 35, 38, 30 and 33 untested this session. |
+| 12 | `$SIR` p6/p8 make the victim re-emit the hit (splash) (V4_30, sheets) | 11 | |
+| 13 | `$STOP` closes and `$START` opens IR reception; the same flag gates the trigger (inferred); both clear `$GSET`'s app-mode flags (V4_30, V4_31) | 12 | |
+| 14 | The gun sends `$DD,<killer>,<team>` when it dies (Jay's code); a kill confirmation is a protocol-15 subtype-0 IR word (BC's UART sheet) | 13 | **REFUTED, both halves, for this gun.** A gun killed by one hit gave `$HP,0,0,0` then `$LCD,0,0,0,0,6,24`, with NO `$DD`. §13 step 3's sweep of protocol-15 magnitudes 1-39 found no native audible callout on any of them, though every one registered silently (fn 28 on `<15,0>`, team-gated). So the gun does not announce a kill on its own in app mode; Callsign's kill voice is an app-side `$PLAY`. The node must not build on `$DD`. **A DEAD gun still forwards a host `$IRTX` frame out through its headset and emits the exact word**, confirmed with a control (a dying gun itself emits no IR on death). So a protocol-15 word sent via `$IRTX` through the dead gun's headset IS a usable, silent, firmware-free carrier for a host-defined kill-confirm signal. |
+| 15 | Split frames get lost; bursts overflow; `$DPLAY` on a loop sound hangs the gun (V4_31) | 14 (screamers sheet Phase A) | **PARTLY CONFIRMED.** A1: `$DPLAY,A10,4,*` got no `$PONG`, no reply and no audio, and the link dropped about 15 s later; it recovered on reconnect with no power cycle needed, so this is a partial screamer rather than a proven full lock. A2 control (`$DPLAY,U37,4,*`, one-shot) answered `$PING` at once. `$DPLAY` stays on the never-send list either way. |
+| 16 | `$RADSK` every 4 s keeps a headless gun linked (Jay's code, V4_31) | 15 | |
+| 17 | `$IRTX` type 14 to a downed ally is a revive beam, read via fn 34 (BC app) | 16 | **Mechanism partly confirmed (2026-09-18, §13 step 3 addendum):** a live gun forwards a host `$IRTX` frame out through its headset and the headset emits the exact word, and this still works when the gun is DEAD (killed over BLE first, the `$IRTX` still reached the headset). The revive beam itself (type 14, read via fn 34) is untested; only the general "host `$IRTX` reaches the headset" mechanism it depends on is confirmed. |
+| 18 | Protocol-15 station words: magnitude 6 respawn, 8 perk, 10 proximity, 50 capture (Jay's code) | 17 | |
+| 19 | `$LCD` t3 = shield, t4 = slot; `$QUERY` t2 = team; `$VERSION` t3/t5 meanings (V4_30, BC app) | 18 | **CONFIRMED**, with a timing note: `$QUERY` on a dead gun returns `$LCD` at once, then the rest of the body about 2 s later with no trailing `*`, so `$QUERY` holds the gun's print loop busy for that long. |
+| 20 | Every other open item the triage of FOLLOWUPS against the new sources found untested | 19 | |
+| 21 | Range tokens set the IR carrier frequency: 38000 - 125 x (100 - range) Hz on the gun, 140 Hz steps on the headset; indoor/outdoor sets power (V4_31) | 20 | |
+| 22 | `$TMP` works over BLE: t4 accuracy, t9 magazine, t1-t3 pool maxima, t8 damage taken, t5 fire interval, t6 reload time, t7 outgoing damage, t10 crit chance, each without a magazine reset; `$SPAWN` and `$CLEAR` zero it (V4_30, V4_31; fn 23 writes t4) | 21 | **CONFIRMED for t4, t8 and t9.** t9 (magazine) tops the clip up by clip x t9 / 100 RAW ROUNDS at once, and sets the reload cap to clip + t9; a re-send of the same t9 write adds again rather than replacing, so it wants one write per life. Whether t9 applies per slot or as one flat count across every slot is untested. ⚠️ **The `$AMMO` set mode ignores a t9 bonus**: `$AMMO,0,9,24,1,*` on a gun already carrying a t9 that raises the cap to 9 read back magazine 6, the base clip, not 9. So a t9-raised cap survives a reload but not an `$AMMO` set write; re-assert t9 after any `$AMMO` set. t4 drops `$ALCD` accuracy at once (absolute, not cumulative), holds with no walk-back, and leaves the magazine alone; a `$WEAP` push does not clear it either. t8 (incoming damage) at -50 and -100 both held: -100 took a `$HIR` and no damage at all. `$SPAWN,,*` zeroes t8, confirmed (two full-damage hits right after). **Last-writer-wins on t4 is CONFIRMED, with a second effect**: a controlled redo (fn 23 smoke, control run: accuracy 0 for about 6 s then 100 in one step; test run: `$TMP,,,,-30,...,*` 1.8 s into the smoke read 70 at +1.8 s and +4.5 s) shows the `$TMP` write cancels the active smoke AND the smoke's own ~6 s timer later resets t4 to 0 regardless, erasing the write. Rule for a single accuracy owner (S55): never write t4 while a smoke is active (about 6 s from a fn 23 `$HIR`); once it ends, re-send the owner's current value. **t5 (fire interval): CONFIRMED on a full-auto weapon.** On the bench AR (t14 = 100 ms), `$TMP,,,,,100,,,,,,,*` slowed a held-trigger burst from a round every 105 ms to a round every about 205 ms, matching `t14 × (100 + t5) / 100` exactly. On the Shotgun (shell-fed reload, t14 = 800 ms) a `$TMP` t5 = -50 write produced no `$ALCD` echo and no measurable change in fire spacing (800-840 ms both before and after). So t5 governs the automatic cycle but shows no effect on a shell-reload weapon's cycle. **t7 (outgoing damage): CONFIRMED.** `$TMP,,,,,,,50,,,,,*` on the shooter raised a 9-damage AR hit to 13 per `$HIR` (9 × 1.5, truncated); a control of 3 taps at 9 damage each preceded it. The word the victim receives already carries the scaled number, so t7 is applied by the shooter before the word leaves the gun. **t4 and the REAL hit rate: CONFIRMED.** At accuracy 100 (`$TMP` unset) a 20-round burst gave 20 `$HIR` of 9 (full connect); after `$TMP,,,,-50,,,,,,,,*` (`$ALCD` accuracy 50) a similar burst gave 7 `$HIR` of 9 from 17 rounds, 41%, matching the 2026-09-17 `$WEAP`-based reading (7/18 at 50-60). So `$TMP` t4 changes the real hit rate, not just the displayed number, and the recoil writer can move fully onto one 20-byte `$TMP` frame with no magazine reset and no `$AMMO` restore needed. |
+| 23 | A dead gun answers `$QUERY` with `$LCD` health 0, and answers a bare or all-zero `$LIFE` with `$HP,0,0,0` (bench 2026-09-09; V4_31; the 2018 BC app) | 22 | **CONFIRMED**, with the same `$QUERY` timing note as claim 19. Poll a gun's state with `$LIFE,*`; reserve `$QUERY` for a one-off correction. |
+| 24 | Only `$CLEAR` zeroes the `$SIR` table; `$STOP` until spawn, then `$SPAWN,,*` and `$TMP` t8 = -100, protect a spawn with no fn-28 table (V4_30, V4_31) | 23 | **CONFIRMED.** The `$SIR` `<0,0>` fn 1 row sent once at arm survived a `$SPAWN` with no re-send, and post-spawn hits (t8 back at 0) still landed for full damage. `$TMP` t8 = -100 after `$SPAWN` registered every hit as `$HIR` with no pool movement: spawn protection with no fn-28 twin table. |
+| 25 | `$WEAP` t7-t11 is a secondary-fire proc: t7 chance %, t8/t9 the `<proto,sub>` key, t10 damage, t11 crit % (V4_31) | 24 | |
+| 26 | `$` resets only token 0 and the token index, so a frame sent after a lost `*` lands on stale tokens; a `$*` first clears them (V4_30) | 25 | |
+| 27 | The headset loops a host `$IRTX` word by itself: field 9 = 100 loops for ever, 0 stops, field 10 = the period in ms (V4_31, headset V1_35) | 16 | **CONFIRMED (2026-09-18).** `$IRTX,100,15,1,1,5,0,0,100,100,1000,0,*` (field 9 = 100, field 10 = 1000 ms) to a live gun made the OTHER gun register the same `$HIR` once a second by itself, 8 times, with no further host frame; `$IRTX,...,0,0,100,0,1000,0,*` (field 9 = 0) stopped it at once, with nothing arriving in the next 5 s. The headset does emit a forwarded `$IRTX` on a live OR a dead gun (§13 step 3 addendum). |
 
 Jay (LaserTagMods) shared his "Everything BRX" Drive on 2026-09-18. It holds the stock gun firmware image
 **V4_30**, the closest image we have to our v4.32. A disassembly of that image shows several commands we
@@ -441,7 +441,7 @@ result, including nulls, against the row id.
 16. **Melee extras (K4).** Log every frame A sends during a swing. Confirm B's `<13,1>` row is a damage function.
 17. **`$AS` lock (P4), with care.** Send `$AS,4,0,0,0,0,0,75,*` only (Jay's "lock between games"). Does the menu lock?
     **Do not send `$AS,1`**, which starts a native game.
-18. **The factory menu (F230), read only.** On the gun whose accuracy walks and one steady gun, open the USB `SETUP`
+18. **The factory menu (F230), read only.** ⛔ Dropped 2026-09-18: `SETUP` is only the headset pairing prompt, and F230 is closed (shipped frames keep `t21` = `t22`). On the gun whose accuracy walks and one steady gun, open the USB `SETUP`
     menu, photograph every option, and power-cycle out. **Change nothing.** V4_30 lists recoil-device, gyro and
     DLC options there that could explain why one gun differs.
 
@@ -600,6 +600,10 @@ Run §18 (reply decodes, claim 19) in the same session first: the `$QUERY` token
 4. Send the bare `$LIFE,*` to B (moved here from §19 step 13). Expect `$HP,0,0,0` again, with no pool change.
 5. Respawn B and repeat steps 2-4 on the live gun as the control. Expect `$HP` with B's pools, unchanged.
 6. Listen for `$DD` from B at the moment of death (the §13 step 1 reading).
+7. **The second F264 stall: an empty magazine after a timed-out partial reload** (found 2026-09-18 on the playtest
+   branch; no detector yet). Arm B with the Energy Rifle. Fire it dry, then pull the reload lever for 1 s only, so the
+   reload times out (`bench-perks-2026-09-18.md` §7 item 2). If the magazine stays at 0, repeat steps 2-4 on this
+   live, empty gun. Expect the "alive, stuck another way" row: the node must not revive it.
 
 Read the result against this table:
 

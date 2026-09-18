@@ -1,82 +1,90 @@
 # Handoff: Open BRX
 
-**State as of 2026-09-18 (night).** Branch `fix/playtest-2026-09-13`, in the worktree
-`.claude/worktrees/playtest-2026-09-13`, has just merged `origin/main`. Main carried the LaserTagMods
-drive integration (stock firmware images, Jay's ESP32 sources, BC's command sheets, BC's 2018 app), a
-Callsign capture (cap30), the `soak` tool and the community audio labels. This branch carried the
-2026-09-16 and 2026-09-17 desk work, three polish rounds and the 2026-09-18 verification bench.
-**Every firmware fact from the drive is a disassembly reading, not a measurement on v4.32.** The bench
-that settles them is [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md)
-(five sessions, a 21-claim checklist).
+**State as of 2026-09-18 (night).** `main` carries the LaserTagMods drive integration (stock firmware
+images, Jay's ESP32 sources, BC's command sheets, BC's 2018 app, a Callsign capture, the `soak` tool),
+the fix/playtest-2026-09-13 desk work (F264-F268, S54-S55, the recoil writer rebuild, the cure test
+suite), and tonight's firmware levers bench, session 1 (both halves). **Every firmware fact from the
+drive is a disassembly reading until this bench proves it on v4.32.** The full plan, all five sessions
+in one running order: [`bench-plan.md`](bench-plan.md). **Open that file first at the bench.** The
+claim-by-claim checklist is [`bench-firmware-levers-2026-09-19.md`](bench-firmware-levers-2026-09-19.md).
 
-⚠️ **Top priority (Tony): screamers.** A gun locks up in play, a sound loops, and only a power cycle
-recovers it. The plan is [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md). Its Phase C
-tool is built: `python -m brx_mcp soak <address> <pattern> <minutes>`.
+## Tonight's bench: what session 1 settled
 
-## What is wrong right now
+Two guns (Tactix-E20D, Tactix-3D4F), then Tactix-E20D alone with the ESP32 IR rig. Full findings:
+`docs/experiment-log/2026-09.md` (2026-09-18, "firmware levers session 1").
 
-1. **F264** a player can be dead on the gun and alive on the HUD. `pool_stale: no_fire` is detected
-   correctly and **nothing acts on it**, so the player waits for an operator. Any perk asking "is this
-   player alive" must read the gun, not the node's belief.
-2. **F265** a bound phone's scoreboard froze for 161 s while the overlay labelled it LIVE.
-3. **F261** a fresh Mission Control never offers to adopt a running match, because the orphan check
-   needs a binding a fresh MC cannot have. That is the field case of MC on a different laptop.
+- **F206 CONFIRMED at the wire level** (runs a-e). Run f, a real TDM through Mission Control, is the
+  only part still open.
+- **`$STUN,<ms>` is a real, native, SILENT stun**, about 6 s. The node must play its own cue (`X17`,
+  matching Battle Company's concussion-grenade sheet entry) since the gun plays nothing.
+- **`$BUMP` is fully confirmed**: `<amount>,<hp 0/1>,<armour 0/1>,<shield 0/1>,<sound>`. Closes F65.
+- **`$TMP` t4 (accuracy), t8 (incoming damage) and t9 (magazine) are all confirmed over BLE**, none of
+  them reset the magazine or reserve on their own, and this unblocks three things at once: the recoil
+  writer can move off `$WEAP`+`$AMMO` onto one 20-byte `$TMP` frame (F274), spawn protection can drop
+  from a 28-frame fn-28 twin table to `$SPAWN,,*` + one `$TMP` t8 write (levers §23, F121/F269), and
+  Extended Mags gets a wire-only alternative to today's compile-time x2 (S50). ⚠️ **`$TMP` t4 is
+  last-writer-wins against the gun's own fn 23 smoke, and the smoke's own ~6 s timer resets t4 to 0
+  regardless of the last write.** Any accuracy writer needs the single-owner design S55 already
+  proposes, plus one more rule: never write t4 while a smoke is active, and re-send the owner's value
+  once it ends.
+- **A dead gun answers the bare `$LIFE,*` with `$HP,0,0,0` at once; poll with that, not `$QUERY`**
+  (`$QUERY`'s reply holds a dead gun's print loop busy for about 2 s). Confirms F264/F272's probe.
+- **`$DD` REFUTED for this gun**: a one-hit kill gave no `$DD` at all. Do not build any cure on it.
+- **No native kill-confirm callout either** (levers §13 step 3): every protocol-15 magnitude 1-39 registered
+  silently on the killer's gun, but none produced an audible line. Callsign's own kill voice is an app-side
+  `$PLAY`. That leaves a protocol-15 word as a cheap IR-only carrier for a host-defined kill confirm (B31).
+- **Screamers A1/A2**: `$DPLAY` on a looping sound blocked the gun (no `$PONG`, no reply, no audio) and
+  dropped the BLE link about 15 s in, but it recovered on reconnect with no power cycle needed this
+  run: a partial screamer, not yet a proven full lock. `$DPLAY` stays on the never-send list either way.
+- **A dead gun still forwards a host `$IRTX` out through its headset** (a dying gun emits no IR of its
+  own), the headset loop fields on `$IRTX` work as read, and fn 34 registers on a dead gun. `$LIFE` set
+  mode fully revives a dead gun (fires, takes hits, keeps its magazine and any `$TMP` write), though the
+  headset death flash needs a separate `$HLED,,6,*` clear. **Untested against the F264 stall state
+  specifically**: reproduce that stall before trusting this as the cure.
+- **`$TMP` t5 (fire interval) CONFIRMED on a full-auto weapon** (scales the cycle by `(100+t5)/100`, exact
+  match to V4_31), but showed no effect on the Shotgun's shell-fed reload. **t7 (outgoing damage) and t4's
+  effect on the REAL hit rate are both CONFIRMED**: t4 at 50 landed 41% of rounds, matching the earlier
+  `$WEAP`-based reading, so the recoil writer can move fully onto one `$TMP` frame with no `$AMMO` restore.
+  This was the last test of tonight's sitting.
+
+## Still open, unchanged by tonight
+
+1. **F264** a player can be dead on the gun and alive on the HUD; `pool_stale: no_fire` is detected and
+   nothing acts on it. Tonight's `$LIFE,*` poll result is the ingredient the cure needs.
+2. **F265** a bound phone's scoreboard can freeze while the overlay says LIVE.
+3. **F261** a fresh Mission Control never offers to adopt a running match.
 4. **F257** the HUD says OUT OF ENERGY on a charge weapon that can still fire taps.
-5. **F256** the coverage line claims an internet path that WiFi-only phones do not have.
+5. **F256** the coverage line claims an internet path WiFi-only phones do not have.
 6. **F262** the gun's native shield-hit sound tracks something other than the pool.
-7. **F207** (the START echo false positive) and **F209** (the respawn burst) from the 2026-09-13
-   playtest are still open on main's side of the merge; this branch closed F207 on 2026-09-16.
-
-## What the merge brought
-
-1. **F206 has a second, deeper fix** (`d0f4c729`). This branch closed F206 on the 2026-09-16 bench by
-   re-sending `$TID` after every `$PSET`. Main's disassembly then found the cause: the gun keeps ONE
-   team byte, and `$TID`, `$TEAM` and `$PSET` t2 all write it, last writer wins. Now every `$PSET`
-   carries the `$TID` team and `assert_team_byte_consistent` refuses a bundle where the two disagree.
-   **One bench run confirms that second fix** (levers sheet §1, runs a-f).
-2. **Range is a CARRIER FREQUENCY, not a power.** `38000 - 125 * (100 - range)` Hz on the barrel, a
-   steeper slope on the headset word; power comes from the indoor/outdoor level alone. The F231 ladder
-   stands, but a low value detunes the word out of the receiver's 38 kHz band-pass rather than
-   shortening the beam. Calibrate in kHz. `$GSET` t2 = 1 means INDOOR, and the indoor range token is
-   read only indoors and only when non-zero.
-3. **The stun cell is fn 23, not fn 24.** fn 23 drops live accuracy to 0, moves no pool and recovers in
-   about 3 s (Tony calls it SMOKE). fn 24 to 27 are the phantom-hit family: no damage, but the victim's
-   gun manufactures a fake `$HIR` every 5.07 s until the next `$SPAWN`. P18 is retracted and closed.
-4. **The command rail has three tiers** (`cbd05419`): `KNOWN_COMMANDS`, `DENIED_COMMANDS` (refused even
-   with confirm) and unknown = confirm. The phone gets the deny list as `NODE_DENIED_COMMANDS`.
-5. **Transport hardening is designed, two parts built** (`spec/transport-hardening.md`). Built: the deny
-   list, and `brxlink.WRITE_PACING` with the block pause OFF. Filed: F269 to F274.
-6. **The second emitter is priced** (`9b7d2ae0`, `afe064c4`). One Shotgun pull lands two words, and the
-   second word comes from the SHOOTER's headset, not the victim's. t12 is a declared `wire.headset_dmg`.
-7. **The protocol reference is tagged by evidence** (`[disasm]` `[sheet]` `[apk2018]` `[jay]`; no tag =
-   bench). The bench result was kept over the disassembly in three places: `$WEAP` t37/t38, the `$LIFE`
-   token order, and the x1.5 crit at t7 = 0.
+7. **F209** the respawn burst read as an outbox-flush artefact, not the engine; ordering facts by their
+   own `t` (F223) is what is left.
+8. **Screamers is still Tony's top priority.** Tonight's A1/A2 is one run of Phase A; the rest of
+   `bench-screamers-2026-09-19.md` (Phase A remainder, B, C, D) is unrun.
 
 ## Next actions, in order
 
-1. **Finish this merge**, then `npm run test:all -- --ui` (known red on main: app-screens #53 and some
-   app-e2e steps), push and open the PR.
-2. **Screamers first** (top priority). Phase C runs unattended on one gun with `soak`. Do not turn the
-   block pause on before Phase A gives F269/F270/F272 their numbers.
-3. **Fix F264**, which is the one that costs a player their match.
-4. **Fix F265 and F261**, both small and both about telling the truth: never print LIVE over a stale
-   board, and record an orphan match whether or not a node is bound.
-5. **Levers bench, session 1** (45 min, two guns): §1 F206, §2 melee, §4 step 1, §5 step 1, §13 `$DD`.
-6. **Bench the shield recharge and its cues**, which has never run on hardware: `N101` on depletion,
-   `N102` on the first grant, `VA6Y` at full, `N74` looping while down.
-7. Tony decides **F220** (publish app 0.3.0 as a GitHub Release).
+1. **Screamers Phase A, the rest of it**, then Phase C (`python -m brx_mcp soak <address> <pattern>
+   <minutes>`) once A gives F269/F270/F272 their numbers. Do not turn the block pause on before that.
+2. **Levers session 1, the rest of it**: §21 steps 4-19 (sitting 3), §2/§4/§5/§12/§16 (sitting 4), per
+   `bench-plan.md`.
+3. **Levers session 2** (§3, §6-§10, §15, §23 in full) and the IR-rig session (§11, §13, §16, §17, §20,
+   §24), both in `bench-plan.md`.
+4. **Fix F264** using the `$LIFE,*` poll now confirmed; it is the one that costs a player their match.
+5. **Fix F265 and F261**, both small: never print LIVE over a stale board, and record an orphan match
+   whether or not a node is bound.
+6. Tony decides **F220** (publish app 0.3.0 as a GitHub Release).
 
 ## Machine state
 
-MC runs from the worktree's `mcp/` on 8765/8766 and serves this branch's `webapp/mc/dist`; rebuild that
-before starting it, and restart MC **between matches only**. Check with `ss -ltn | grep 876`.
+MC runs from `mcp/` on 8765/8766 and serves `webapp/mc/dist`; rebuild that before starting it, and
+restart MC **between matches only**. Check with `ss -ltn | grep 876`.
 
 ```
 setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-volume
 ```
 
-Both Pixels hold 0.3.0 built from this branch. The shield recharge only runs on the **Shields preset**
-(armour 0), because every compiled head carries a shield ceiling regardless.
+Both Pixels hold 0.3.0. The shield recharge only runs on the **Shields preset** (armour 0), because
+every compiled head carries a shield ceiling regardless.
 
-**Machine roles:** WSL runs the Python suites and no-hardware MC; Windows Python is for BLE instruments;
-the MacBook is the field target. Never modify stock firmware.
+**Machine roles:** WSL runs the Python suites and no-hardware MC; Windows Python is for BLE
+instruments; the MacBook is the field target. Never modify stock firmware.

@@ -774,39 +774,30 @@ def test_every_weapon_is_tagged_with_the_class_it_is_actually_in():
     assert not mislabelled, ("'support' means the weapon cannot kill; it is not a bucket for weapons "
                              "nobody has classified:\n  " + "\n  ".join(mislabelled))
 
-def test_a_two_word_weapon_never_prices_both_words_the_same():
-    """Identical IR words may be DEDUPED by the receiving gun, so a second word priced equal to the
-    first can silently never land.
+def test_a_two_word_weapon_never_also_carries_a_crit_chance():
+    """The crit flag rides on BOTH IR words but the multiplier applies only to the barrel word, so a
+    two-word weapon with a crit chance deals a damage split nothing in the catalogue models.
 
-    The V4_30/V4_31 receive path drops a word identical to one received within 159 ms (the "beacon
-    block"). cap30 puts a Shotgun's two words about 88 ms apart, well inside that, and the headset
-    word carries the SAME `$SIR` key as the barrel word. So the ONLY things distinguishing the two are
-    the damage and the crit flag.
+    ⚠️ THIS GUARD USED TO CARRY A SECOND RULE, THAT THE TWO WORDS MUST NEVER BE PRICED EQUALLY, AND
+    THAT RULE IS NOW DISPROVEN. The fear was the V4_30/V4_31 "beacon block": the receiving gun drops
+    an IR word identical to one it took within 159 ms, and our Shotgun shipped t5 20 / t12 20 about
+    88 ms apart with the same `$SIR` key, which would have made it a 6-pull weapon against a
+    catalogue publishing 3. F276 benched it on 2026-09-18: five single pulls, TWO `$HIR` of 20 every
+    time, 60 to 75 ms apart, and on one pull both words landed on sensor 0 as byte-identical frames
+    and BOTH still registered. The block does not apply to this pair. The Shotgun is back at 20/20
+    and the equal-pricing assertion is deleted rather than left standing on a disproven reason.
 
-    On 2026-09-18 the Shotgun was priced t5 20 / t12 20 to hold its average while the crit pass moved
-    the ladder. That made the two words bit-identical. If the block applies, it deals 20 a pull and
-    kills in six while the catalogue publishes 40 and three: a 2x error, live, on a public page.
-
-    Nothing caught it because every measurement we hold is of UNEQUAL words (45/70, 25/80), so the
-    block never had the chance to fire. F276 benches it. Until then the catalogue keeps the two words
-    apart, which costs nothing: 21 + 19 is the same 40 a pull as 20 + 20.
-
-    Also guarded here, for the same reason: a second-word weapon may not carry a crit chance. The crit
-    flag rides on BOTH words but the multiplier applies only to the barrel word, so a crit would make
-    them differ in a way we do not model. None does today."""
-    same, critting = [], []
+    The crit half survives on its own footing: it never depended on the words being distinguishable,
+    only on the multiplier reaching one of them. It is also still UNMEASURED, because F276 ran with
+    t6 = 0, so the guard is a refusal to ship the untested combination rather than a known result."""
+    critting = []
     for w in ROWS:
         wire = w.get("wire") or {}
         headset = wire.get("headset_dmg")
         if headset is None or int(headset) == 0:
             continue                       # one word, or a second word deliberately silenced
-        if wire.get("dmg") is not None and int(wire["dmg"]) == int(headset):
-            same.append(f"{w['weapon_id']}: t5 and t12 are both {headset}")
         if w.get("crit_pct"):
-            critting.append(f"{w['weapon_id']}: carries a second word AND crit_pct {w['crit_pct']}")
-    assert not same, ("identical words may be deduped by the receiving gun, so the second one can "
-                      "silently never land (F276). Keep them apart; the sum is what the ladder "
-                      "publishes:\n  " + "\n  ".join(same))
+            critting.append(f"{w['weapon_id']}: second word {headset} AND crit_pct {w['crit_pct']}")
     assert not critting, ("the crit flag rides on both words but the multiplier applies only to the "
-                          "barrel word, so a crit makes them differ in a way nothing models "
-                          "(F276):\n  " + "\n  ".join(critting))
+                          "barrel word, and the combination has never been measured:\n  "
+                          + "\n  ".join(critting))
