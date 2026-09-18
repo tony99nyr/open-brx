@@ -3,12 +3,6 @@
  "weapons": [
   {
    "weapon_id": "assault_rifle",
-   "recoil": {
-    "ceiling": 100,
-    "floor": 55,
-    "per_shot": 9,
-    "recover_ms": 150
-   },
    "name": "Assault Rifle",
    "desc": "The anchor, and the real stock M4 cadence. 13 hits at 100ms with 32 up and 192 in reserve: 17 kills without resupply and a 1.20s kill. 2026-09-17 arsenal review: cycle is back to Battle Company's native 100ms (it was throttled to 140ms so a deep reserve could not also out-cycle the field); the dominance test now grades on one-magazine kill chance rather than total kills, so the reserve alone no longer has to carry the whole weight of keeping the AR in check.",
    "cls": 0,
@@ -46,12 +40,6 @@
   },
   {
    "weapon_id": "burst_rifle",
-   "recoil": {
-    "ceiling": 100,
-    "floor": 60,
-    "per_shot": 10,
-    "recover_ms": 150
-   },
    "name": "Burst Rifle",
    "desc": "A real three-round burst: one pull, three rounds, and the gun enforces the gap. 11 hits from a 36-round mag with 216 behind it; the most total ammo of the burst pair, and the tighter of the two. 2026-09-17 arsenal review: damage raised 9 to 11 so the burst pair separates further from the SMG-class assault weapons on hits-to-kill, not only on cadence.",
    "cls": 0,
@@ -162,12 +150,6 @@
   },
   {
    "weapon_id": "smg",
-   "recoil": {
-    "ceiling": 100,
-    "floor": 45,
-    "per_shot": 8,
-    "recover_ms": 120
-   },
    "name": "SMG",
    "desc": "A hose that runs hot. 8 a hit every 95ms from a 72-round mag: four kills before you reload, 24 across the kit, and an overheat budget that punishes holding the trigger down forever.",
    "cls": 1,
@@ -205,12 +187,6 @@
   },
   {
    "weapon_id": "shotgun",
-   "recoil": {
-    "ceiling": 100,
-    "floor": 100,
-    "per_shot": 0,
-    "recover_ms": 150
-   },
    "name": "Shotgun",
    "desc": "Shell by shell, and the fastest recovery on the board. 45 a hit at 800ms, three hits to drop, six in the tube and a 400ms shell reload. Sustained pressure from the shallowest ammo pool outside the power tier.",
    "cls": 3,
@@ -284,12 +260,6 @@
   },
   {
    "weapon_id": "sniper_rifle",
-   "recoil": {
-    "ceiling": 100,
-    "floor": 100,
-    "per_shot": 0,
-    "recover_ms": 150
-   },
    "name": "Sniper Rifle",
    "desc": "Two hits, one lane, a bolt between them. 60 a hit on a 1.5s cycle with four in the mag and 24 behind it. The fewest hits to a kill outside the power tier, and no margin for a miss.",
    "cls": 2,
@@ -372,12 +342,6 @@
   },
   {
    "weapon_id": "amr",
-   "recoil": {
-    "ceiling": 100,
-    "floor": 100,
-    "per_shot": 0,
-    "recover_ms": 150
-   },
    "name": "AMR",
    "desc": "Anti-materiel weight at a rifle's cadence. 24 a hit every 400ms, five hits to a kill, 14 up and only 56 behind. The hardest-hitting automatic, and the shallowest.",
    "cls": 4,
@@ -423,12 +387,6 @@
   },
   {
    "weapon_id": "suppressor",
-   "recoil": {
-    "ceiling": 100,
-    "floor": 55,
-    "per_shot": 9,
-    "recover_ms": 150
-   },
    "name": "Suppressor",
    "desc": "Quiet, not silent, and no muzzle flash. It is the only weapon here that hides where you are. 8 a hit every 140ms with 75 up and 384 in reserve: 30 kills, the deepest magazine AND the deepest sustained pool, the slowest kill. 2026-09-17: mag 48→75 -- the family-scoped dominance test (§2.3) paired it against the SMG (same fire mode, same weapon_class), which beat it on every other axis; the deeper magazine gives the Suppressor an outright lead on kills-per-clip (5 vs the SMG's 4), which is the smallest change that stops the SMG strictly dominating it.",
    "cls": 1,
@@ -467,12 +425,6 @@
   {
    "weapon_id": "energy_rifle",
    "caution": "Overheats after about 30 rounds of full auto, and it does not cool on its own: work the reload lever to vent the heat (about three pulls, or one held pull), then keep holding to recharge the cell.",
-   "recoil": {
-    "ceiling": 100,
-    "floor": 55,
-    "per_shot": 9,
-    "recover_ms": 150
-   },
    "name": "Energy Rifle",
    "desc": "A 300-cell battery that barely stops. 9 a hit every 150ms, 23 kills on one magazine and 69 across the kit. The largest ammo pool in the game, on the smallest per-hit number. 2026-09-17 bench (F229): now genuinely overheats — full auto locks it out around heat 99 after about 30 shots, and unlike the Charge Rifle it does not cool on its own; only the reload lever (a hold, not a tap) vents it.",
    "cls": 5,
@@ -520,12 +472,6 @@
   },
   {
    "weapon_id": "charge_rifle",
-   "recoil": {
-    "ceiling": 100,
-    "floor": 100,
-    "per_shot": 0,
-    "recover_ms": 150
-   },
    "name": "Charge Rifle",
    "desc": "Pre-charge it behind cover, then the kill is one release and two taps: an 85-damage charge (held indefinitely, 3.5s by feel to build although the wire's t14 reads 1250ms) plus two 20-damage taps drops a 115 pool in about 1s from release -- 3 trigger actions, 12 of the 40 rounds up, 84 of the roughly-103 heat budget (S43). The charge time is setup, not combat time: that is the weapon's identity. Forty up, eighty back -- three combo kills a magazine, ten across the kit.",
    "cls": 5,
@@ -624,12 +570,6 @@
   },
   {
    "weapon_id": "usp",
-   "recoil": {
-    "ceiling": 100,
-    "floor": 70,
-    "per_shot": 10,
-    "recover_ms": 150
-   },
    "name": "USP-S",
    "desc": "The quiet one. Suppressed and flashless: 9 a hit, as fast as you can pull the trigger, 13 hits to drop, 19 in the mag with 120 behind it: 10 kills across the kit. Low damage, but nobody hears where it came from. 2026-09-17: mag 20→19 -- Tony's ask was 20→14, but 14 leaves the Deagle strictly dominating the USP (its sustained DPS and one-magazine kill chance both fall too far once the mag is that shallow); 19 is the smallest cut off 20 that actually leaves neither pistol beating the other on every axis (a thin margin: sustained DPS differs by about 0.1 dmg/s, kill chance by 2 points).",
    "cls": 10,
@@ -699,12 +639,6 @@
   },
   {
    "weapon_id": "deagle",
-   "recoil": {
-    "ceiling": 100,
-    "floor": 100,
-    "per_shot": 0,
-    "recover_ms": 150
-   },
    "name": "Desert Eagle",
    "desc": "The hand cannon. 26 a hit, five hits to drop — the most damage of any sidearm, if you land them. Seven in the mag, 48 behind it: 11 kills across the kit. A slow cycle that punishes every miss.",
    "cls": 10,
@@ -766,12 +700,6 @@
   },
   {
    "weapon_id": "rocket_launcher",
-   "recoil": {
-    "ceiling": 100,
-    "floor": 100,
-    "per_shot": 0,
-    "recover_ms": 150
-   },
    "name": "Rocket Launcher",
    "desc": "Point, pull, erase. 115 a hit (a full-health operator in one) on the fastest power-tier cycle, with the slowest reload behind it. Four rounds, four kills, no second chances.",
    "cls": 9,
@@ -810,12 +738,6 @@
   },
   {
    "weapon_id": "rail_gun",
-   "recoil": {
-    "ceiling": 100,
-    "floor": 100,
-    "per_shot": 0,
-    "recover_ms": 150
-   },
    "name": "Rail Gun",
    "desc": "Charges and fires itself. A 1.2s wind-up that goes whether you are ready or not, 115 on impact, four rounds total. Everyone within earshot hears the spool.",
    "cls": 7,

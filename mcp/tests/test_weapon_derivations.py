@@ -480,3 +480,27 @@ def test_recoil_is_declared_not_wired_by_the_compiler():
                  else CAT.resolve(wid, 0, environment=env).split(","))
             assert p[WeaponCatalog._T["acc_ceiling"] + 1] == "100", f"{wid} @ {env!r}: t21 moved"
             assert p[WeaponCatalog._T["acc_floor"] + 1] == "100", f"{wid} @ {env!r}: t22 moved"
+
+
+def test_no_mc_data_file_ships_a_duplicate_json_key():
+    """A repeated key inside one JSON object is legal JSON and silently DISCARDS every value but the
+    last, so a hand-merged file can carry a whole block of tuning that never reaches the compiler.
+
+    That is not hypothetical: the 2026-09-17 arsenal merge left `weapons.json` with TWO `recoil`
+    blocks in 13 of 22 weapons (35 occurrences of the key), one from each lane. `json.loads` kept the
+    second and threw the first away, the parsed catalogue looked correct, and every test here passed.
+    The playtest session found it by reading the raw file. This test reads the pairs BEFORE the parser
+    collapses them, so the next merge conflict of that shape fails instead of shipping."""
+    for path in sorted((ROOT / "mcp" / "brx_mcp" / "mc").glob("*.json")):
+        dupes: list[str] = []
+
+        def keep_the_first_sighting(pairs, _seen=dupes, _path=path):
+            seen: dict = {}
+            for key, value in pairs:
+                if key in seen:
+                    _seen.append(f"{_path.name}: {key!r} appears twice in one object")
+                seen[key] = value
+            return seen
+
+        json.loads(path.read_text(), object_pairs_hook=keep_the_first_sighting)
+        assert not dupes, "\n".join(dupes)

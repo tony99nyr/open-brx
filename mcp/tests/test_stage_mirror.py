@@ -1180,6 +1180,13 @@ KNOWN_UNMIRRORED = {
     # guessed at here.
     "recoilEnabled", "_activeWeaponId", "_recoilArm", "_recoilStep", "_recoilTick", "_recoilFlush",
     "_recoilVerify", "_recoilWrite", "_recoilObserve",
+    # F229 (2026-09-17): `overheated()` reads the heat the gun reports in `$ALCD` token 5, and the ONLY
+    # thing that asks is the accuracy writer above (it must not write into a lockout). The stage drives
+    # `$ALCD` by hand from the bench script and has no accuracy writer to gate, so there is nothing for a
+    # stage-side copy to change. ⚠ When the HUD models heat for real (F229: the Energy Rifle must say
+    # HOLD TO RECHARGE, and it does not cool on its own), that IS a game rule and it belongs on the
+    # stage. Port it then and delete this line.
+    "overheated",
     # F68 (2026-09-17): the periodic team-colour repaint rides the SAME headset-paint machinery already
     # pinned above ("LED readout internals: the stage models the READOUT, not each paint step" --
     # `_headsetFlash`/`_headsetRest`) plus the role lookup (`_activeRole`/`_roleSeq`, behind the already-
