@@ -28,6 +28,10 @@ a glance, in sun or dark, while the player is moving and getting shot at.
 | any + gun link lost | red "GUN LINK LOST" strip; values freeze |
 | gun relinked (LIVE) | the **RECONCILING takeover**: GUN RELINKED · SYNCING WITH YOUR GUN · WEAPON DISARMED FOR A MOMENT (3 s fill); real pools kept, never a heal, no trigger pull asked (S7.1, 2026-09-04; node.md §3.10) |
 | gun relinked (LOBBY/ARMED) | amber **"GUN RELINKED"** prompt while the head is re-written (~10 s) |
+| respawned / revived (LIVE) | the **REDEPLOYED moment** (A44): REDEPLOYED · WEAPONS HOT · `<max HP> HP · <max ARMOR> ARMOR · MAG FULL`, about 1.7 s. It marks the end of spawn protection, not the spawn itself: the node arms hit reception on the gun's first proof it can fire, or 2100 ms after the write. The DOWN countdown label is **REDEPLOY IN**, and **AWAITING REDEPLOY** while no clock is running (`hud.js _redeploy`) |
+| stunned (LIVE) | **A20 host-driven stun (F15).** A proto-8 hit empties every live slot for `config.stun.duration_s` (10 s by default) and the node puts the live counts back when the timer runs out. The HUD has **no stun state today**: the ammo readout simply reads empty, so the player cannot tell a stun from a real reload. Design an explicit takeover (a named EMP cue and the remaining seconds) before the stun ships in a game |
+| operator action (ARMED/LIVE) | **A47.** The operator can push RESYNC GUN, FORCE RESPAWN or RELINK to this phone from the Mission Control LIVE board. RESYNC runs the ordinary resync prompt ladder (pull the trigger, then the reload handle); FORCE RESPAWN redeploys the player; RELINK re-applies the config. The phone answers with an `operator_result` fact, so MC reports the outcome. Nothing here is a new screen yet: the player sees the resync or redeploy state the phone already has |
+| pool stale (LIVE) | **A45/A47.** The phone claims `pool_stale` on `status` when the gun has gone quiet for 185 s (`silent`), when three trigger presses in a row got no shot back (`no_fire`), or when this life's spawn or revive write was lost (`write_lost`). **The claim is for MC, not for the screen**: the console shows a grey `GUN SILENT` cue and the HUD shows nothing. Deliberate, so a suspect reading never becomes an alarm mid-firefight. Decide whether the player deserves a quiet cue of their own |
 | any + preflight fail | small red preflight chip (Wi-Fi / MC / phone battery / screen / gun / headset) → diagnostics |
 
 ### B1 · Set my gun (connect)
@@ -41,6 +45,12 @@ A clean FPS HUD. Suggested zones (iterate freely, keep the hierarchy):
 - **Health + armor** — biggest, most glanceable. HP and armor distinct (armor absorbs first); bar +
   number. **Max HP 45, armor 70** (values vary by mode — read live, don't hardcode).
 - **Ammo** — large, bottom-corner FPS-style **mag / reserve** (`36 / 216`), clear low/empty + reload cue.
+- **Energy weapons read differently (A48, F248).** `weapon_class` decides the wording: a ballistic weapon says
+  RELOAD, an energy weapon says RECHARGE and HOLD TO RECHARGE, and runs out of ENERGY, not AMMO. The reload is a
+  **hold** of the lever on an energy weapon, so the cue must say hold. The **gauge** is a separate choice, made
+  by the catalogue's `rounds_per_charge`: a weapon that spends more than one round per charge draws a percentage
+  bar with cell pills, and every other weapon (including a low-cost energy weapon such as the Rail Gun) keeps the
+  round count. Never pick the gauge from the weapon id.
 - **Match time remaining** — top, secondary.
 - **Personal stats cluster** — K / D / A / accuracy. **Deaths is the only one the phone knows locally**;
   **kills / assists / accuracy show "— MC"** (a small "synced" tick when MC supplies them). Make "— MC"
@@ -53,9 +63,10 @@ just re-themed via tokens. Motion minimal (glare + battery); the hit/damage flas
 animated moments.
 
 ### B3 · Death & respawn (DOWN)
-- Clear **DOWN** state — desaturate/dim the HUD, big central **respawn countdown**, "☠ by <NAME> · <TEAM>".
-- On respawn: a crisp **"RESPAWNED"** moment, HUD back to full ALIVE. (The gun re-arms itself; the screen
-  reflects it.)
+- Clear **DOWN** state — desaturate/dim the HUD, big central redeploy countdown labelled **REDEPLOY IN**
+  (**AWAITING REDEPLOY** while no clock is running), "☠ by <NAME> · <TEAM>".
+- On respawn: the crisp **REDEPLOYED** moment (B0, A44), HUD back to full ALIVE. The gun does not re-arm itself:
+  the node writes the live `$SIR` table once the gun can fire, and the moment is what the player sees of it.
 
 ### B4 · Blackout / night mode
 A **distinct visual mode** (auto when the game's `night` flag is set; also a manual toggle). Near-black,

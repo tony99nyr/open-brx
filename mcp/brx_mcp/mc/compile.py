@@ -796,7 +796,7 @@ class WeaponCatalog:
     # idx15 (tok14) is the FIRE INTERVAL — bench-proven 2026-08-26. tok15 is the WEAPON-SWAP DELAY (ms) —
     # bench-proven 2026-09-04 (850 → 1700 doubled the swap, 425 halved it, 100 ran at 100; linear, no floor).
     # The gun applies the LARGER of the two loaded slots' values whichever direction you swap, so a swap
-    # perk must scale every slot (docs/archive/bench-weap-tokens-2026-09-04.md).
+    # perk must scale every slot (docs/spec/loadout.md §1.2, `switch_mult`).
     # acc_ceiling/acc_floor (t21/t22, docs/weapon-design.md §4.4): named here so a test can locate them,
     # but `resolve()` never writes either -- every weapon ships t21==t22==100 (native walk off, F230),
     # and S42's `recoil` catalogue field only ever reaches the wire through `app/src/engine.js`, which

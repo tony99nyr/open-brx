@@ -2,7 +2,7 @@
 
 `driver.build_engine`, MC's `GET /api/modes` param schema, `PUT /api/config` validation and
 `Compiler.validate()` all resolve a mode name here. Registration used to be hardcoded in four places
-(`docs/archive/mode-extensibility.md` G3); this table is the first of them to become data. A later
+(`docs/spec/modes.md` §2.1 and its E2 row); this table is the first of them to become data. A later
 `register_mode(name, engine_cls, meta, preset, scorer)` grows THIS dict — nothing else should learn a
 mode name by string comparison.
 

@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-// test-all.mjs: `npm run test:all` runs every test suite in the repo AT THE SAME TIME, and prints one table.
+// test-all.mjs: `pnpm run test:all` runs every test suite in the repo AT THE SAME TIME, and prints one table.
 //
-//   npm run test:all                 # the unit gates: mcp, webapp/mc (tsc + vitest), app (tsc + node --test), site
-//   npm run test:all -- --ui         # also the browser gates: app screens, moments, logsync and e2e, and the eight webapp/mc e2e scripts
+//   pnpm run test:all                 # the unit gates: mcp, webapp/mc (tsc + vitest), app (tsc + node --test), site
+//   pnpm run test:all -- --ui         # also the browser gates: app screens, moments, logsync and e2e, and the eight webapp/mc e2e scripts
 //
 // A new browser gate MUST be added to JOBS below (mcp/tests/test_suite_registry.py fails until it is, or until it is
 // listed there as not a gate). Measure its peak memory and its time, and put them in `mb` and `secs`.
-//   npm run test:all -- mcp app      # only the jobs whose name contains one of these words
-//   npm run test:all -- --list       # print the job names and stop
+//   pnpm run test:all -- mcp app      # only the jobs whose name contains one of these words
+//   pnpm run test:all -- --list       # print the job names and stop
 //
 // Why (2026-09-16). An agent ran the suites one after another, and the browser gates ran serially inside themselves,
 // so a full run took about 30 minutes, 22 of them in `ui:screens`. Every suite is independent of the others once the

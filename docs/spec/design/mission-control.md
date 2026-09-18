@@ -193,5 +193,6 @@ MISSION CONTROL" until the push lands, "MC-ARMED · game N" after.
 
 ## Deliverables to iterate
 The screens A1–A8 + the designer, each with a **desktop** and a **tablet** variant for KIT and LIVE. Keep it
-one product with the Phone HUD. Every control gets a screen-truth assertion in `tools/e2e.mjs` before the
+one product with the Phone HUD. Every control gets a screen-truth assertion in the e2e suite
+(`webapp/mc/test/e2e/*.mjs`, run by the `e2e:*` scripts in `webapp/mc/package.json`) before the
 screen is called done, and a compat step against a server without its new routes (round 7).

@@ -22,13 +22,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import subprocess
 import sys
 import time
 import urllib.request
 
-ADB = "/home/tony/Android/Sdk/platform-tools/adb"
+ADB = os.environ.get("BRX_ADB", "adb")   # BRX_ADB overrides; default is adb on PATH
 DEFAULT_FRAMES = ['$LED,9,1,1,1,*', '$LED,0,1,1,1,*', '$HLED,3,4,90,90,10,15,*', '$HLED,3,2,100,100,10,2,*', '$HLED,3,0,,,10,,*']
 
 

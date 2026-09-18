@@ -13,12 +13,20 @@ npm run typecheck          # tsc -b — CI runs this before `npm test`; vitest a
 npm test                   # jsdom tests, ~2s — mounts every screen, no server, no browser
 npm run e2e                # starts `npm run dev` + a real MC and clicks the KotH setup flow in Chromium
                            #   ONLY=<step> npm run e2e   runs one step; HEADED=1 to watch
+npm run e2e:backhaul       # A28: the Armory REACH panel and Lobby coverage/reach readout, against `?mock`
 npm run e2e:kit            # F127/A27: the KIT -> LOBBY gate, on a real MC and a stale one
+npm run e2e:end            # A42: the END delivery readout, on a real MC over its own REST API
+npm run e2e:operator       # A47: the LIVE board's operator menu (curing a stuck node), on a real MC
+npm run e2e:standby        # pulling a player out of the lobby and back in, clicked against a real MC
 npm run e2e:m2             # S24/S25/A25/A27/A29/A31: the live board, the spectator route, version
                            #   chips and log sync. ONLY=measure|mock|phone|real|refusal|stale;
                            #   shots land in ~/brx-scratch/m2ui
+npm run e2e:game-edit      # B3: editing the loaded game inline on KIT/LOBBY, against a mock AND a real MC
 npm run lint               # oxlint
 ```
+
+`package.json` is the authoritative script list: check it before trusting this table, since a new
+e2e script can land without a matching line here.
 
 ## `?mock` demo switches
 

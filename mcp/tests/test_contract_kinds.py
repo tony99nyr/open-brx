@@ -23,7 +23,7 @@ import re
 REPO = pathlib.Path(__file__).resolve().parents[2]
 CONTRACTS = REPO / "docs" / "spec" / "contracts.md"
 TYPES_PY = REPO / "mcp" / "brx_mcp" / "mc" / "types.py"
-# GENERATED from types.py by mcp/tools/gen_contract.py (docs/archive/spec-contract-dry-2026-09-12.md §4); envelope.js
+# GENERATED from types.py by mcp/tools/gen_contract.py; envelope.js
 # re-exports these kind sets from here rather than defining them literally.
 ENVELOPE_JS = REPO / "app" / "src" / "transport" / "contract.gen.js"
 

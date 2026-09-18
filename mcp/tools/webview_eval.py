@@ -15,6 +15,7 @@ Usage: python webview_eval.py <js expression> [--serial 192.168.0.48:42183] [--p
 """
 import asyncio
 import json
+import os
 import subprocess
 import sys
 import urllib.request
@@ -24,7 +25,7 @@ try:
 except Exception:
     pass
 
-ADB = r"C:\Users\Tony\platform-tools\adb.exe"
+ADB = os.environ.get("BRX_ADB", "adb.exe")   # BRX_ADB overrides; default is adb.exe on PATH (Windows side)
 PORT = 9222
 
 

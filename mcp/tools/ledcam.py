@@ -50,13 +50,14 @@ Do the same for the gun with $GLED lit vs `$GLED,,,,3,,,*` (blank).
 Runs under the WSL venv (needs pillow + numpy): .venv/bin/python mcp/tools/ledcam.py ...
 """
 import json
+import os
 import subprocess
 import sys
 
 import numpy as np
 from PIL import Image
 
-ADB = "/home/tony/Android/Sdk/platform-tools/adb"
+ADB = os.environ.get("BRX_ADB", "adb")   # BRX_ADB overrides; default is adb on PATH
 
 
 def _adb(args: list[str], **kw) -> subprocess.CompletedProcess:
