@@ -23,6 +23,8 @@ const HUD_WWW = path.join(REPO_ROOT, 'app', 'www');
 export const MC_PORT = Number(process.env.SHOTS_MC_PORT || 4180);     // defaults unchanged
 export const HUD_PORT = Number(process.env.SHOTS_HUD_PORT || 4181);
 const WARN_BYTES = 420 * 1024;
+// The hard cap `mcp/tests/test_site_shots.py` enforces (MAX_BYTES). Keep the two in step.
+const FAIL_BYTES = 450 * 1024;
 
 const CONTENT_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -126,6 +128,12 @@ async function main() {
     const bytes = fs.statSync(outPath).size;
     manifestFiles[name] = { w: vp.width, h: vp.height, bytes };
     console.log(`${name}: ${bytes} bytes`);
+    if (bytes >= FAIL_BYTES) {
+      // `mcp/tests/test_site_shots.py` fails at this same number. Warning here and failing there put the
+      // red on whoever ran the suite next, and the bot's own push carries the skip keyword, so nothing
+      // would have caught it in between (polish review 2026-09-18).
+      throw new Error(`${name} is ${bytes} bytes, at or over the ${FAIL_BYTES} byte cap the suite enforces -- lower the quality or the viewport`);
+    }
     if (bytes > WARN_BYTES) {
       console.warn(`WARNING: ${name} is ${bytes} bytes, over the ${WARN_BYTES} byte target`);
     }
@@ -157,10 +165,10 @@ async function main() {
     const hudPage = await browser.newPage({ viewport: { width: 891, height: 411 }, deviceScaleFactor: 2 });
     await hudPage.goto(`http://127.0.0.1:${HUD_PORT}/?demo`);
     const captures = [
-      { t: 5.6, name: 'hud-armed.jpg' },
-      { t: 14.6, name: 'hud-live.jpg' },
-      { t: 22.6, name: 'hud-hit.jpg' },
-      { t: 29.6, name: 'hud-down.jpg' },   // the demo player dies at ~29.2 s; 28.6 caught them alive at 36 hp
+      { t: 5.6, name: 'hud-armed.jpg', want: s => s.phase === 'armed' },
+      { t: 14.6, name: 'hud-live.jpg', want: s => s.phase === 'live' && s.alive },
+      { t: 22.6, name: 'hud-hit.jpg', want: s => s.phase === 'live' && s.alive && s.hp < 100 },
+      { t: 29.6, name: 'hud-down.jpg', want: s => !s.alive },   // the demo player dies at ~29.2 s; 28.6 caught them alive at 36 hp
     ];
     let elapsed = 0;
     for (const c of captures) {
@@ -172,6 +180,13 @@ async function main() {
         return { phase: s.phase, hp: s.hp, alive: s.alive };
       });
       console.log('STATE', c.name, JSON.stringify(st));
+      // These fire at fixed offsets into the demo, with about 400 ms of margin (the player dies at
+      // ~29.2 s and `hud-down.jpg` is taken at 29.6 s). A slow runner eats that margin, and the shot
+      // then shows a LIVE player under the name "down" -- published to the marketing site, with the
+      // job still green. So the state a shot claims is asserted, not logged (polish review 2026-09-18).
+      if (c.want && !c.want(st)) {
+        throw new Error(`${c.name} was captured in the wrong state: ${JSON.stringify(st)} -- the demo timing moved, so this shot would show something its name does not describe`);
+      }
     }
     await hudPage.close();
 
@@ -189,6 +204,11 @@ async function main() {
       taken: new Date().toISOString(),
       mc_src: gitTree('webapp/mc/src'),
       hud_src: gitTree('app/src'),
+      // The shots also render the two hand-kept HTML shells, and all the HUD's CSS lives in one of them.
+      // Without these the guard reported "fresh" forever after a stylesheet change (polish review
+      // 2026-09-18).
+      mc_shell: gitTree('webapp/mc/index.html'),
+      hud_shell: gitTree('app/www/index.html'),
       files: manifestFiles,
     };
     fs.writeFileSync(path.join(SHOTS_DIR, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
