@@ -1159,6 +1159,35 @@ player carries** in every match, which is a balance decision. Halving what the H
 told leaves the balance exactly as it is and makes the reported number honest. Do not take either
 before the count.
 
+### 6.3e Smoke: the one status effect that is real, and measured (fn 23)
+
+Bench 2026-09-18. A single fn-23 word does this to the victim, and nothing else:
+
+| what | measured |
+|---|---|
+| damage | **none**, at any pool. Health did not move on any hit |
+| live accuracy | **100 → 0 in the same millisecond** as the `$HIR` |
+| the victim's gun | still fires, still spends rounds, and **every shot misses** |
+| what the shooter hears | near-miss whizz-bys, because the misses are real IR going past them |
+| recovery | automatic and gradual: 0 → 2 → 4 → 7 → 12 over about 3 s |
+| after it | nothing. No phantom, no residue, 12 s later the gun was silent |
+
+**Call it smoke, not a flashbang** (Tony, on seeing it): a flashbang should sting, and this deals zero
+damage. A weapon carries ONE `<t3,t4>` key and therefore lands on ONE function, so "blind them and take
+a little health" cannot come from a single word. A real flashbang needs two words, which means two
+shots or a station firing twice, and that is a design with a cost rather than a swap.
+
+What it buys us, all with no firmware change:
+
+- **A weapon that wins a fight without damage.** The jammer of §6.3c, now measured rather than assumed.
+- **The stun we already ship, fixed.** `config.stun` used fn 24 and inherited its phantom bug; it ships
+  fn 23 since F253, so the wire now does half the work and the node's disarm rides on a real effect.
+- **Area denial**, if a station can emit it: walk through the cloud and you cannot shoot for 3 s.
+
+⚠️ The player must be TOLD. Pulling the trigger, hearing your own gun, and watching nothing land reads
+as a broken tagger. The node can detect it with no new wire support, because the accuracy token is
+already parsed for recoil: a `$HIR` that moves no pool plus live accuracy at 0. That is **S53**.
+
 ### 6.4 What a weapon is now
 
 The design space widened from one number to five independent choices:
