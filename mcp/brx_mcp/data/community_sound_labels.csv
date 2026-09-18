@@ -1,0 +1,1005 @@
+id,label,status
+A103,(Halo) buble shield,new_label
+A31,Medical Tape,new_label
+CC01,DEATH,new_label
+CC02,SPAWN,new_label
+CC03,AR,new_label
+CC04,SPRAY GUN,new_label
+CC05,TAKE HIT,new_label
+CC06,BEEP,new_label
+CC07,sELECT GAME MODE,new_label
+CC08,GAME MUSIC,new_label
+CC09,gAME OVER,new_label
+CC10,EXPLODE HIT,new_label
+CC11,LIVES DEPLETED,new_label
+F08,Chainsaw,new_label
+G12,possible m4?,new_label
+G18,possible m4 or smg x3?,new_label
+G19,possible smg x3?,new_label
+H01,Acid,new_label
+H02,Armor Piercing,new_label
+H03,Armor Piercing,new_label
+H04,Male Gassed,new_label
+H05,"Miss, Ricochet",new_label
+H06,"Miss, Ricochet",new_label
+H07,"Miss, Ricochet",new_label
+H08,broom brushing,new_label
+H09,broom brushing,new_label
+H10,poison,new_label
+H11,Arrow,new_label
+H12,Bubble Acid,new_label
+H13,Pistol hit,new_label
+H14,bullet hit,new_label
+H15,Armor Hit,new_label
+H16,squishy cut noise,new_label
+H17,Energy long hit,new_label
+H18,futuristic fly by with heart beat maybe regen,new_label
+H19,many smal burning hits,new_label
+H20,Electric shock,new_label
+H21,Hit on Shield,new_label
+H22,Hit on Shield,new_label
+H23,poison blaster hit... infected,new_label
+H24,metal and glass shatter hit,new_label
+H25,metal and glass shatter hit,new_label
+H26,knife swipe,new_label
+H27,bloody knife swipe,new_label
+H28,blades klinging,new_label
+H29,Medic capsule healing,new_label
+H30,small blast impact,new_label
+H31,squishy bubbles,new_label
+H32,squishy bubbles,new_label
+H33,Ray Gun short,new_label
+H34,Stab with blood,new_label
+H35,hitting armor,new_label
+H36,hitting armor,new_label
+H37,hitting armor,new_label
+H39,Metal hit with blood,new_label
+H40,Sword against shield with squishy,new_label
+H41,shocking or acid frying,new_label
+H42,small hit with frying sound,new_label
+H43,stab with whiping sound,new_label
+H44,several thuds,new_label
+H45,???,new_label
+H46,Electric Burning long,new_label
+H47,Gory Squish splatter,new_label
+H49,Gory Squish splatter,new_label
+H50,Electric shock,new_label
+H51,Electric shock,new_label
+H52,melee hit with a gong,new_label
+H53,melee hit with a gong,new_label
+H54,loud hit,new_label
+H55,thud-punch,new_label
+H56,thud-punch,new_label
+H57,Melee hit with gun stock,new_label
+H58,Melee hit with gun stock,new_label
+J02,offline grenade launcher?,new_label
+JA5,Captured flag song,new_label
+JA9,Battle company start musig,new_label
+JAB,Starting callsign,new_label
+JAD,Death music,new_label
+JAN,Halo music,new_label
+JAO,Halo music,new_label
+JAP,Halo music,new_label
+JAQ,Time running out,new_label
+M05,Shokahn laugh,new_label
+M06,Flawless victory,new_label
+M07,Flawless victory2,new_label
+M08,Fatality,new_label
+M09,Fatality,new_label
+M10,Fatality,new_label
+M11,Choose ur destiny,new_label
+M12,Swipe,new_label
+M13,Hard hit,new_label
+M14,Swing,new_label
+M15,Hit and smash,new_label
+M16,Another hit,new_label
+M17,Another hit,new_label
+M18,Knife slice,new_label
+M19,Knife hit,new_label
+M20,Another hit,new_label
+M21,Another hit,new_label
+N100,(Halo) Respawn,new_label
+N101,(Halo) Shields Down,new_label
+N102,(Halo) Shields Recharge,new_label
+N25,Heart beat,new_label
+N78,Zelda Secret Passage,new_label
+R02,Definitely the m4,new_label
+R102,Halo 4 sniper,new_label
+R103,Halo 4 shotgun,new_label
+R108,Halo 4 Beam Rifle,new_label
+R110,Halo 4 Plasma Pistol standard shot,new_label
+R111,Halo 4 plasma Pistol charge ramp up,new_label
+R112,Halo 4 plasma Pistol charge max,new_label
+R113,Halo 4 plasma Pistol charge shot,new_label
+R120,Halo Spartan Lazer Charge,new_label
+R121,Halo Spartan Lazer Shot,new_label
+S07,Offline Deathmatch Tar 33 ?,new_label
+SW00,Trumpets star wars,new_label
+SW01,Light Saber start up,new_label
+SW02,Light saber on,new_label
+SW03,Star Wars intro theme song,new_label
+SW04,Star Wars theme song,new_label
+SW05,Retracting light sabre,new_label
+SW06,Saber hit,new_label
+SW07,Sabers clash,new_label
+SW08,Saber clash,new_label
+SW10,Saber swing,new_label
+SW11,Saber swing,new_label
+SW13,Swinging saber,new_label
+SW14,Swinging saber,new_label
+SW15,Short saber swing,new_label
+SW16,Humming,new_label
+SW17,Swing saber,new_label
+SW18,Dual saber,new_label
+SW19,Multiple saber swings,new_label
+SW20,Saber swing,new_label
+SW21,Saber swing,new_label
+SW23,Blaster saber,new_label
+SW24,Saber hit,new_label
+SW25,Blaster blocked w saber,new_label
+SW26,Weird blaster with follow up bang,new_label
+SW28,Swish,new_label
+SW29,Explosion,new_label
+SW30,Big blaster cannon?,new_label
+SW31,Hall choir star wars song,new_label
+SW32,Saber burning or slicing something,new_label
+SW33,Saber burning or slicing something,new_label
+SW34,Blaster shot rifle style,new_label
+SW35,Blaster,new_label
+SW36,Blaster,new_label
+SW37,Blaster turret,new_label
+SW38,Standard blaster,new_label
+SW39,Rifle blaster,new_label
+SW40,Blaster,new_label
+T14,grenade launcher?,new_label
+V02,Vanguard gassed,differs
+V06,Man recovering,differs
+V100,Yell,differs
+V108,(Halo) King of the hill - Control the hill to earn points,agrees
+V109,(Halo) Capture the flag,agrees
+V11,Power surge,agrees
+V110,"(Halo) Slayer Pro, Eliminate the enemy team",agrees
+V111,(Halo) Game Over,agrees
+V112,(Halo) 30 Seconds left,agrees
+V113,(Halo) 1 minute left,agrees
+V114,(Halo) 10 Seconds,agrees
+V115,(Halo) Next kill wins,agrees
+V116,(Halo) Gained the lead,agrees
+V117,(Halo) Lost the lead,agrees
+V118,(Halo) Victory,agrees
+V119,(Halo) Closing in on victory,agrees
+V12,Nexus gassed; Vanguard pain?,differs
+V120,(Halo) 5 minutes remain,agrees
+V121,Ordinance ready,agrees
+V122,(Halo) Double kill,agrees
+V123,(Halo) Triple kill,agrees
+V124,(Halo) Kill-tacular,agrees
+V125,(Halo) Killing spree,agrees
+V13,more,differs
+V130,(Halo) Overshield,agrees
+V131,(Halo) Flag Defense,agrees
+V132,(Halo) Flag Champion,agrees
+V133,(Halo) Flag Captured,differs
+V134,(Halo) Enemy team scored,agrees
+V135,(Halo) Carrying flag,agrees
+V136,(Halo) Carrier Kill,agrees
+V137,(Halo) Your flag taken,agrees
+V138,(Halo) Protect your flag,agrees
+V139,(Halo)Killed their carrier,agrees
+V14,again,differs
+V140,(Halo) Flag-sasination,differs
+V141,(Halo) Flag Runner,differs
+V142,(Halo) Flag reset,agrees
+V143,(Halo) Flag kill,agrees
+V144,(Halo) Flag joust,differs
+V15,still pain,differs
+V16,"infected grunting and breathing; again, maybe recovery",differs
+V17,Systems repaired,agrees
+V19,Terminated,agrees
+V1A,Terminated,differs
+V1B,This can not be,agrees
+V1C,Hurt,differs
+V1D,hurt again,differs
+V1E,more hurt,differs
+V1F,Again,differs
+V1G,still hurt,differs
+V1H,more,differs
+V1I,Obliteration Awaits,agrees
+V1J,vanguard electruction?,differs
+V1K,You will break,agrees
+V1L,Their will is broken,agrees
+V1M,Grenadier,agrees
+V21,Shields Overwhelming,differs
+V22,vanguard coughing,differs
+V26,more infected breathing,differs
+V2K,Nexus Shield never fails,agrees
+V2M,Guardian,agrees
+V31,Charge,agrees
+V36,Recovery,differs
+V3M,Heavy,agrees
+V41,Blood,agrees
+V46,animal recovering,differs
+V4M,Hive Queen,agrees
+V51,RWAR? So much audio bad,differs
+V52,infected struggling; Zombie/Beast noises,differs
+V53,Zombie/Beast noises,differs
+V54,Zombie/Beast noises,differs
+V55,Zombie/Beast noises,differs
+V56,infected russling around and grunting; Zombie/Beast noises,differs
+V57,Zombie/Beast noises,differs
+V58,Zombie/Beast noises,differs
+V59,Zombie/Beast noises,differs
+V61,Surge,differs
+V6J,infected getting electricuted,differs
+V71,Ultra Charged?,agrees
+V72,Nexus being gassed; Cough,differs
+V73,pain,differs
+V74,yell,differs
+V75,more yell,differs
+V76,Infected struggling; recovery,differs
+V77,Amped up,differs
+V78,Roared?,agrees
+V79,Forward,differs
+V7J,ticked of infected,differs
+V7M,Maurader,differs
+V81,Meds Here,differs
+V82,cough,differs
+V83,pain,differs
+V84,yell,differs
+V85,more yell,differs
+V86,Female catching breath; Recovery?,differs
+V87,Bleeding Stopped,agrees
+V88,Steralized,differs
+V89,Steralized,differs
+V8J,being electricuted,differs
+V8M,Medic,agrees
+V91,Turn up the heat,agrees
+V92,male coughing; cough,agrees
+V93,pain,differs
+V94,Pain,differs
+V95,Pain,differs
+V96,Animal recovering; Recovery?,differs
+V97,Refueled,agrees
+V98,Toasted,agrees
+V99,Toasted,differs
+VA01,1.0,differs
+VA02,2.0,agrees
+VA03,3.0,agrees
+VA04,4.0,differs
+VA05,5.0,differs
+VA06,6.0,differs
+VA07,7.0,differs
+VA08,8.0,agrees
+VA09,9.0,differs
+VA0A,10.0,agrees
+VA0B,11.0,agrees
+VA0C,12.0,agrees
+VA0D,13.0,agrees
+VA0E,14.0,agrees
+VA0F,15.0,agrees
+VA0G,16.0,agrees
+VA0H,17.0,differs
+VA0I,18.0,agrees
+VA0J,19.0,agrees
+VA0K,20.0,agrees
+VA0L,21.0,agrees
+VA0M,22.0,agrees
+VA0N,23.0,agrees
+VA0O,24.0,agrees
+VA0P,25.0,agrees
+VA0Q,30 Minutes; 30 min; 7 MINUTES,differs
+VA0R,30 Seconds,agrees
+VA0S,Ramp 45; 45 SECONDS RAMP UP,agrees
+VA0T,45 Seconds,agrees
+VA0U,Ramp 60,agrees
+VA0V,60 Seconds,agrees
+VA0W,Ramp 90; 90 SECONDS RAMP UP,agrees
+VA0X,90 Seconds,agrees
+VA0Y,Advanced Communications,agrees
+VA0Z,Advanced UAV Detected,agrees
+VA1,Watch This,agrees
+VA10,Advanced UAV,agrees
+VA11,Air Raid,agrees
+VA12,Air Strike Detected,differs
+VA13,Alpha Team; Alpha,agrees
+VA14,Ammo Pouch,agrees
+VA15,Armor Piercing Rounds,agrees
+VA16,Armor Suit,agrees
+VA17,Awareness,agrees
+VA18,Batton,differs
+VA19,Battle Axe,agrees
+VA1A,Let the Battle Begin,agrees
+VA1B,Welcome to Battle Reality,agrees
+VA1C,Blackhawk Inbound,differs
+VA1D,Blackhawk,agrees
+VA1E,BlindEye,differs
+VA1F,Blockade,agrees
+VA1G,Body Armor,agrees
+VA1H,The Bomb has been diffused; BOMB DIFUSED,differs
+VA1I,Bomb has been planted; BOMB PLANTED,agrees
+VA1J,Bo Staff,differs
+VA1K,Bow,differs
+VA1L,Bravo Team; Bravo,agrees
+VA1M,Burst Glock,agrees
+VA1N,Enemy care package detected,agrees
+VA1O,Enemy care package underway,agrees
+VA1P,Incoming care package,agrees
+VA1Q,Care Package,agrees
+VA1R,Charlie Team; Charlie,agrees
+VA1S,Enemy chopper detected,agrees
+VA1T,Enemy chopper in your vacinity,agrees
+VA1U,Incoming chopper,agrees
+VA1V,Claymore,agrees
+VA1W,Cluster grenade,agrees
+VA1X,Combat Axe,agrees
+VA1Y,Commanders,agrees
+VA1Z,Concussion Grenades,agrees
+VA2,Coughing,differs
+VA20,Connection Established,agrees
+VA21,Control Point Contested,agrees
+VA22,Control point lost,agrees
+VA23,Control point captured,agrees
+VA24,Critical Strike,agrees
+VA25,Deadeye,differs
+VA26,DeathMatch; DEATH MATCH,differs
+VA27,Delta Team; Delta,agrees
+VA28,Deployment,agrees
+VA29,Desert Eagle,agrees
+VA2A,Device Paired,agrees
+VA2B,Device Removed,agrees
+VA2C,Double Mags,agrees
+VA2D,Double Trigger,agrees
+VA2E,This games a draw; DRAW GAME,differs
+VA2F,Dual Wield,differs
+VA2G,Echo Team,agrees
+VA2H,EMP,agrees
+VA2I,Enemy flag has been lost,agrees
+VA2J,Enemy team has our flag,agrees
+VA2K,Ememy flag has been captured,agrees
+VA2L,Enemy sentry detected,agrees
+VA2M,Explosive rounds,agrees
+VA2N,Extended Mags,agrees
+VA2O,Fast track,agrees
+VA2P,15 Minutes; 15 min,agrees
+VA2Q,15 Seconds,agrees
+VA2R,First aid,agrees
+VA2S,5 minutes; 5 min; FIVE MINUTES,differs
+VA2T,Flak Jacket,agrees
+VA2U,Flash Bang,differs
+VA2V,FMJ,agrees
+VA2W,Focus; LASER SIGHT,differs
+VA2X,Fore grip; ACCURACY,differs
+VA2Y,Foxtrot Team,agrees
+VA2Z,Frag,agrees
+VA3,Scream,differs
+VA30,Free for All,agrees
+VA31,Friendly Fire Off,agrees
+VA32,Friendly Fire On,agrees
+VA33,Game Over (deep/slow); GAME OVER,agrees
+VA34,Game Time,agrees
+VA35,General; GENERALS,agrees
+VA36,Generals,agrees
+VA37,Ghost,agrees
+VA38,Grenade Launcher,agrees
+VA39,Grenade Type,agrees
+VA3A,Guided Missile detected,agrees
+VA3B,Guided Missile inbound,agrees
+VA3C,Guided Missile,agrees
+VA3D,Gun battery low,agrees
+VA3E,Headset Connected,agrees
+VA3F,Headset Removed; HEADSET DISCONNECTED,differs
+VA3G,Healing Kit,agrees
+VA3H,HellStorm Missile,agrees
+VA3I,High,agrees
+VA3J,HiJack Complete,agrees
+VA3K,HiJack Enabled,agrees
+VA3L,The enemy has hijacked your equipment,agrees
+VA3M,HiJack,agrees
+VA3N,Hollow Point,differs
+VA3O,WHUUHOOO,differs
+VA3P,WHUU,differs
+VA3Q,YEEAAAHH,differs
+VA3R,Hostage Died; HOSTAGE DOWN,differs
+VA3S,Hostage Rescued,agrees
+VA3T,Human,agrees
+VA3U,"Incoming air raid, find cover",agrees
+VA3V,Incoming air raid,agrees
+VA3W,Indoor Mode,agrees
+VA3X,Indoor,agrees
+VA3Y,Infected,agrees
+VA3Z,Install Accessory; PAIRING MODE,differs
+VA4,Pain sound,differs
+VA40,Join a faction,agrees
+VA41,Join the ranks,agrees
+VA42,Knife,agrees
+VA43,Last Stand,agrees
+VA44,Lethal,agrees
+VA45,Lights out,agrees
+VA46,Lives depleted,differs
+VA47,Lives,agrees
+VA48,Long barrel,agrees
+VA49,Long,agrees
+VA4A,Low,agrees
+VA4B,M4,agrees
+VA4C,Maul,differs
+VA4D,Medkit; Med kit,differs
+VA4E,Medium,agrees
+VA4F,MG7,agrees
+VA4G,MGR,agrees
+VA4H,Incoming Missile Strike,agrees
+VA4I,Enemy Missile Strike Detected,agrees
+VA4J,Missile Strike,agrees
+VA4K,Missile Swarm Detected,agrees
+VA4L,Incoming Mortar,agrees
+VA4M,Mortar Round,agrees
+VA4N,Nexus,agrees
+VA4O,9MM,agrees
+VA4P,Nuclear launch detected,agrees
+VA4Q,Enemy nuclear launch detected,agrees
+VA4R,Incoming nuclear missile,agrees
+VA4S,Nuke,agrees
+VA4T,Off,agrees
+VA4U,Offhand equipped,agrees
+VA4V,On,agrees
+VA4W,Outdoor Mode,agrees
+VA4X,Outdoor,agrees
+VA4Y,Pepper Spray,agrees
+VA4Z,Phoenix,agrees
+VA5,another yell,differs
+VA50,Pistol,agrees
+VA51,Quick hands,agrees
+VA52,Recon,agrees
+VA53,Regen,differs
+VA54,Respawn Time,agrees
+VA55,Respawn Type,agrees
+VA56,Rocket Launcher,agrees
+VA57,Saber,agrees
+VA58,Scavenger,agrees
+VA59,Second Life,agrees
+VA5A,Choose a Class,agrees
+VA5B,Select Fire,agrees
+VA5C,Select a Game,agrees
+VA5D,Select a Perk,agrees
+VA5E,Select a Team,agrees
+VA5F,Select a Weapon,agrees
+VA5G,Self destruct initiated,agrees
+VA5H,Sensor battery low,agrees
+VA5I,Sentry deployed,differs
+VA5J,Sentry,differs
+VA5K,Shield equiped,differs
+VA5L,Shield,agrees
+VA5M,Short,agrees
+VA5N,Seige,differs
+VA5O,Silencer,agrees
+VA5P,6 Minutes,differs
+VA5Q,Slug Round,agrees
+VA5R,SMG X3,agrees
+VA5S,Sniper R50,agrees
+VA5T,Speed Boost,agrees
+VA5U,Spy,agrees
+VA5V,Squad Leader Off,agrees
+VA5W,Squad Leader On,agrees
+VA5X,Squad Leader,agrees
+VA5Y,SR100; Sr-100,differs
+VA5Z,Standard; ADMIN UNLOCKED,differs
+VA6,ouch heavy breathing; Breathing,differs
+VA60,Stealth; Stealth outdoor; NIGHT MODE,differs
+VA61,Sudden Death,agrees
+VA62,Supremecy; Supremacy,differs
+VA63,Supressor,differs
+VA64,Survival,agrees
+VA65,Survivor,agrees
+VA66,Swap lift,agrees
+VA67,Sword,agrees
+VA68,System Hack Initiated,agrees
+VA69,System Hack,agrees
+VA6A,Tac87; Tac-87,differs
+VA6B,Tar33,differs
+VA6C,Taser,agrees
+VA6D,Your team takes the lead,agrees
+VA6E,Your team has lost the lead,agrees
+VA6F,Team Tactical; TACTICAL,agrees
+VA6G,Tear Gas,differs
+VA6H,10 Minutes; 10 min,agrees
+VA6I,The Hive,agrees
+VA6J,The Swarm,agrees
+VA6K,Thick Skin,agrees
+VA6L,"Three, Two, One; 36952.0",differs
+VA6M,Toughness,agrees
+VA6N,Tracker Rounds,agrees
+VA6O,Trip mine,agrees
+VA6P,25 Minutes,agrees
+VA6Q,20 Minutes; 20 min,agrees
+VA6R,Enemy UAV detected,agrees
+VA6S,Incoming UAV,agrees
+VA6T,UAV,differs
+VA6U,Under Cover,differs
+VA6V,Unlimited,agrees
+VA6W,Upgrade Complete,agrees
+VA6X,Shields Depleted,agrees
+VA6Y,Shields Online,agrees
+VA6Z,Kill,agrees
+VA7,ugh thats better,agrees
+VA70,Target Mode,agrees
+VA71,Vanguard,agrees
+VA72,The VIP has been killed,agrees
+VA73,Water Cooling,agrees
+VA74,Weapons box delivered,agrees
+VA75,Weapons box detected,agrees
+VA76,Incoming weapon box,agrees
+VA77,Weapons box,agrees
+VA78,Welcome to Lasertag Pro,differs
+VA79,Our flag has been returned,agrees
+VA7A,Our flag has been captured,agrees
+VA7B,Our team has the flag,agrees
+VA7C,Welcome to Battle 360,agrees
+VA7D,Choose your destiny,agrees
+VA7E,Double Kill,agrees
+VA7F,Fatality,agrees
+VA7G,Finish Him,agrees
+VA7H,First Blood,agrees
+VA7I,Flawless Victory,agrees
+VA7J,Killamanjaro; KILLAMENJARO,differs
+VA7K,Killing Spree,agrees
+VA7L,Killionaire,differs
+VA7M,Killtacular; KILL TACULAR,differs
+VA7N,Killtastrophy; KILL TASTRIFY,differs
+VA7O,Killtrosity; KILL TROSITY,differs
+VA7P,Test your might,agrees
+VA7Q,Triple Kill; TRIPPLE KILL,differs
+VA8,Kill,agrees
+VA80,"Three, Two, One",agrees
+VA81,"Three, Two, One; 3, 2, 1, WITH MUSIC",differs
+VA82,"Three, Two, One",agrees
+VA83,"Countdown from 10; 10, 9, ..., 0",differs
+VA84,"Countdown from 10; 10, 9, ... 0 W MUSIC",differs
+VA85,"Countdown from 10; 10, 9, ..., 0",differs
+VA86,Health Critical,agrees
+VA87,Health Low,agrees
+VA88,Armor Depleated,differs
+VA89,Armor Critical,agrees
+VA8A,Armor Low,agrees
+VA8B,Shields Depleted,agrees
+VA8C,Shields Online,differs
+VA8D,Overtime,agrees
+VA8E,Kill Confirmed,agrees
+VA8F,"""Assault""; SHARED LIVES",differs
+VA8G,"""Auto detection""",agrees
+VA8H,"""Battle company systems online""",agrees
+VA8I,"""Battle lines""",agrees
+VA8J,"""Battle Royale""; BATTLE ROYALE",agrees
+VA8K,"""Battle Strike""",agrees
+VA8L,"""Battle Watch""",agrees
+VA8M,"""Battle World""",agrees
+VA8N,"""Borderlands""",agrees
+VA8O,"""Brawl""; GUN GAME",differs
+VA8P,"""Capture the Flag""; CAPTURE THE FLAG",agrees
+VA8Q,"""Connection Accepted""",agrees
+VA8R,"""Connection Lost""",agrees
+VA8S,"""Connection rejected""",agrees
+VA8T,"""Debug mode""; DEBUG MODE",agrees
+VA8U,"""Demo mode""",agrees
+VA8V,"""Devices cleared""; PAIRING CLEARED",differs
+VA8W,"""Enemy detected""",agrees
+VA8X,"""Fail""",agrees
+VA8Y,"""Game Found""",agrees
+VA8Z,"""Hud connected""",agrees
+VA9,Kill,agrees
+VA90,"""HUD Disconnected""",differs
+VA91,"""Incoming HUD Connectino Request""",agrees
+VA92,"""Incoming Phone Connection Request""",agrees
+VA93,"""King of the Hill""; KING OF THE HILL",agrees
+VA94,"""Laser Calibration""",agrees
+VA95,"""Loading""",agrees
+VA96,"""Motion Detected""",agrees
+VA97,"""Motion Sensor""; MOTION SENSOR",agrees
+VA98,"""Pass""",agrees
+VA99,"""Phone Connected""; PHONE CONNECTED",agrees
+VA9A,"""Phone disconnected""; PHONE DISCONNECTED",agrees
+VA9B,"""Please confirm with the select key""",agrees
+VA9C,"""Primary boot loader""; PRIMARY BOOT LOADER",differs
+VA9D,"""Primary Device""",agrees
+VA9E,"""Primary""; ADMIN LOCKED",differs
+VA9F,"""Proximity mine""",differs
+VA9G,"""Replicant""",agrees
+VA9H,"""Respawn Station""; Respawn Station",differs
+VA9I,"""Scanning for Device""",agrees
+VA9J,"""Searching""",agrees
+VA9K,"""Secondary Boot Loader""; SECONDARY BOOT LOADER",differs
+VA9L,"""Secondary Device""",agrees
+VA9M,"""Secondary""; ADMIN FULL LOCKED",differs
+VA9N,"""Sensors Offline""",agrees
+VA9O,"""Silenced AR""; Silenced AR",differs
+VA9P,"""Survival Games""",agrees
+VA9Q,"""Testing Complete""; TESTING COMPLETE",agrees
+VA9R,"""Testing initiated""; TEST MODE",differs
+VA9S,"""Volume""; VOLUME",agrees
+VA9T,"""One more weapon ready for duty""",agrees
+VA9U,"""Welcome to Battle Company""; WELCOME TO BATTLE COMPANY",agrees
+VAA,Kill,agrees
+VAB,Everybody Dies,agrees
+VAC,Another yell,differs
+VAD,HOOO,agrees
+VAE,Cough pain,differs
+VAF,more pain,differs
+VAG,more hurt,differs
+VAH,another hurt,differs
+VAI,Theres nowhere for you to hide,agrees
+VAJ,Ummmmm electruction?,differs
+VAK,Take That,agrees
+VAL,No Mercy,agrees
+VAM,Reaper,agrees
+VAN,HuRah,differs
+VAO,Good to Go,agrees
+VAP,Lets head back to base,agrees
+VAQ,Lets move out,agrees
+VAR,Good job team,agrees
+VB01,Base Captured,agrees
+VB02,Base Destroyed,agrees
+VB03,Blue team is closing in on victory,agrees
+VB04,Blue flag has been captured; BLUE FLAG CAPTURED,agrees
+VB05,Blue flag has been returned; BLUE FLAG RETURNED,agrees
+VB06,Blue flag has been taken; BLUE FLAG TAKEN,agrees
+VB07,Blue team gained the lead; BLUE TEAM TAKES THE LEAD,agrees
+VB08,Blue team has one player remaining,agrees
+VB09,Codes Captured,differs
+VB0A,Codes compromised,differs
+VB0B,Codes returned,agrees
+VB0C,Flag has been captured,agrees
+VB0D,The flag has been returned,agrees
+VB0E,The flag has been taken,agrees
+VB0F,Fortress Captured,agrees
+VB0G,Fortress Lost,agrees
+VB0H,Green team is closing in on victory,agrees
+VB0I,Green flag has been captured; GREEN FLAG CAPTURED,agrees
+VB0J,Green flag has been returned; GREEN FLAG RETURNED,agrees
+VB0K,Green flag has been taken; GREEN FLAG TAKEN,agrees
+VB0L,Green team gained the lead; GREEN TEAM TAKES THE LEAD,agrees
+VB0M,Green team has one player remaining,agrees
+VB0N,Hill Captured,agrees
+VB0O,Hill Contested,agrees
+VB0P,Hill Controlled; HILL LOST,differs
+VB0Q,Hill Moved,agrees
+VB0R,Pink Team is closing in on victory,agrees
+VB0S,Pink flag has been captured; PINK FLAG CAPTURED,agrees
+VB0T,Pink flag has been returned; PINK FLAG RETURNED,agrees
+VB0U,Pink flag has been taken; PINK FLAG TAKEN,agrees
+VB0V,Pink team gained the lead; PINK TEAM TAKES THE LEAD,agrees
+VB0W,Pink team has one player remaining,agrees
+VB0X,Purple team is closing in on victory,agrees
+VB0Y,Purple flag has been captured; PURPLE FLAG CAPTURED,agrees
+VB0Z,Purple flag has been returned; PRPLE FLAG RETURNED,differs
+VB1,go go go,agrees
+VB10,Purple flag has been taken; PURPLE FLAG TAKEN,agrees
+VB11,Purple team gained the lead; PURPLE TEAM TAKES THE LEAD,agrees
+VB12,Purple team has one player remaining; PURMPLE TEAM HAS ONE PLAYER REMAINING,agrees
+VB13,Red team is closing in on victory,agrees
+VB14,Red flag has been captured; RED FLAG CAPTURED,agrees
+VB15,Red flag has been returned; RED FLAG RETURNED,agrees
+VB16,Red flag has been taken; RED FLAG TAKEN,agrees
+VB17,Red team gained the lead; RED TEAM TAKES THE LEAD,agrees
+VB18,Red team has one player remaining; RED TEAM HAS ONE LAYER REMAINING,agrees
+VB19,White team is closing in on victory; CYAN TEAM IS CLOSING IN ON VICTORY,agrees
+VB1A,White flag has been captured; CYAN FLAG CAPTURED,agrees
+VB1B,White flag has been returned; CYAN FLAG RETURNED,agrees
+VB1C,White flag has been taken; CYAN FLAG TAKEN,differs
+VB1D,White team gained the lead; CYAN TEAM TAKES THE LEAD,agrees
+VB1E,White team has one player remaining; CYAN TEAM HAS ONE PLAYER REMAINING,agrees
+VB1F,Yellow team is closing in on victory,agrees
+VB1G,Yellow flag has been captured; YELLOW FLAG CAPTURED,agrees
+VB1H,Yellow flag has been returned; YELLOW FLAG RETURNED,agrees
+VB1I,Yellow flag has been taken; YELLOW FLAG TAKEN,agrees
+VB1J,Yellow team gained the lead; YELLOW TEAM TAKES THE LEAD,agrees
+VB1K,Yellow team has one player remaining,agrees
+VB1L,You control the battlefield,agrees
+VB1M,The infection has spread,agrees
+VB1N,Green team wins,agrees
+VB1O,Bravo team wins,agrees
+VB1P,Blue team wins,agrees
+VB1Q,Alpha team wins,agrees
+VB1R,Yellow team wins,agrees
+VB1S,White team wins; CYAN TEAM WINS,differs
+VB1T,Survivors have held their ground,agrees
+VB1U,Red team wins,agrees
+VB1V,Purple team wins,agrees
+VB1W,Pink team wins,agrees
+VB2,coughing; Female gassed,differs
+VB3,hurt,differs
+VB4,yell,differs
+VB5,more hurt,differs
+VB6,heavy breathing; female recovering,differs
+VB7,All Set,agrees
+VB8,Target Down,agrees
+VB9,Target Down,agrees
+VBA,Target Down,agrees
+VBB,Gotta lose sometime,agrees
+VBC,yell,differs
+VBD,yell,differs
+VBE,hurt,differs
+VBF,more hurt,differs
+VBG,hurt agin,differs
+VBH,ouch,differs
+VBI,Lets Move,differs
+VBJ,uh electrocution?,differs
+VBK,Dead man walking,agrees
+VBL,Hmf to easy,differs
+VBM,Stout,differs
+VCM,Sentinel,differs
+VD2,female coughing,differs
+VD6,technician catching breath,differs
+VDM,Sniper,agrees
+VE2,guy being gassed,differs
+VEM,Soldier,agrees
+VFJ,nexus suffering or gassed,differs
+VGJ,sniper or technician being electricuted,differs
+VGK,I can fix everything - technician,agrees
+VGL,Good thing the medigel capsules didnt explode in the allies this time,differs
+VGM,Technician,agrees
+VH2,Male gassed,differs
+VHJ,guy veing electricuted,differs
+VHM,Valkyrie,agrees
+VIP,VIP,agrees
+VJ6,man recovering from injury,differs
+VJM,Viper,agrees
+VKM,Wraith,differs
+VM2,female coughing,differs
+VM6,guy catching breath,differs
+VN1,Target Locked,agrees
+VN2,Ouch and lots of coughing; man gassed,differs
+VN3,argh,differs
+VN4,Scream,differs
+VN5,hurt,differs
+VN6,deep breaths; Man recovering,differs
+VN7,Restocked,agrees
+VN8,Kill Confirmed,differs
+VN9,Kill Confirmed,agrees
+VNA,Kill Confirmed,agrees
+VNB,The target is lost,agrees
+VNC,HA,agrees
+VND,HU,differs
+VNE,AHH,differs
+VNF,another hurt,differs
+VNG,more hurt,differs
+VNH,hurt again,differs
+VNI,The Battle Begins,agrees
+VNJ,UMMM long hurt; guy pushing out a poop,differs
+VNK,Bullseye,agrees
+VNL,No one will stand in my way,agrees
+VNM,Mercenary,agrees
+VPJ,man being electricuted,differs
+VQ1,Nexus Commander,agrees
+VQ7,NEXUS,agrees
+VQB,infected 10 second count down,differs
+VR1,Vanguard Commander,agrees
+VRA,vanguard ten second countdown,differs
+VRE,VANGUARD,agrees
+VS1,Resistance Commander; Commander,agrees
+VS2,Defeat,agrees
+VS3,Enemy Codes have been lost,agrees
+VS4,Enemy Code have been captured,agrees
+VS5,Enemy team has our codes,agrees
+VS6,Game Over,agrees
+VS7,Objective Complete,agrees
+VS8,Random,agrees
+VS9,Resistance; The Resistance,agrees
+VSA,60 seconds remaining; 60 SECONDS REMAIN,agrees
+VSB,ten second count down; Countdown from 10; 10-0 COUNT DOWN W MUSIC,differs
+VSC,30 seconds remaining; 30 SECONDS REMAIN,agrees
+VSD,2 minutes remaining; 2 MINUTES REMAIN,differs
+VSE,Upgrade available,agrees
+VSF,Victory,agrees
+VSG,Our code have been captured,agrees
+VSH,OUr team has the codes,agrees
+VSI,Our code have been returned,agrees
+VT00,4 LIVES REMAINING,agrees
+VT01,3 LIVES REMAINING,agrees
+VT02,2 LIVES REMAINING,agrees
+VT03,ONE LIFE REMAINING,agrees
+VT0U,BATTERY LOW,agrees
+VT1Q,DEATHS,agrees
+VT1T,KILLS,agrees
+VT1U,NO,agrees
+VX01,1.0,differs
+VX02,2.0,differs
+VX03,3.0,agrees
+VX04,4.0,differs
+VX05,5.0,agrees
+VX06,6.0,agrees
+VX07,7.0,agrees
+VX08,8.0,agrees
+VX09,9.0,agrees
+VX0A,DUAL WIELD,differs
+VX0B,FIELD ID,agrees
+VX0C,GAME FOUND,agrees
+VX0D,GAME HOST,agrees
+VX0E,GAME JOINED,agrees
+VX0F,INITIATING GAME,agrees
+VX0G,NO UPDATE FOUND,agrees
+VX0H,SELECT GAME RULES,agrees
+VX0I,UPDATE COMPLETE,agrees
+VX0J,UPDATE FOUND,agrees
+VX0K,UPDATE MODE,agrees
+VX0L,UPDATE STARTED,agrees
+VX0M,VERSION,agrees
+VX0N,LIVES REMAINING,agrees
+VX0O,BRAWL,differs
+VX0P,BLUE TEAM,agrees
+VX0Q,AIR STRIKE,differs
+VX0R,10 SECONDS REMAIN,agrees
+VX0S,WEAPON SWAP,agrees
+VX0T,DEPLETED,agrees
+VX0U,DOMINATION,agrees
+VX0V,EMP PULES,differs
+VX0W,ERROR,agrees
+VX0X,FIRST BLOOD,agrees
+VX0Y,FLAG CODES,agrees
+VX0Z,FOCUS,agrees
+VX10,10.0,agrees
+VX11,11.0,agrees
+VX12,12.0,differs
+VX13,13.0,agrees
+VX14,14.0,agrees
+VX15,15.0,agrees
+VX16,16.0,agrees
+VX17,17.0,agrees
+VX18,18.0,agrees
+VX19,19.0,agrees
+VX1A,FOREGRIP,differs
+VX1B,BUTTON,agrees
+VX1C,CARE PACKAGE,differs
+VX1D,CHECKPOINT,agrees
+VX1E,DEATHMATCH LIVES POOL,agrees
+VX1F,DEATHMATCH TIMED,agrees
+VX1G,DEFENSE,agrees
+VX1H,KILL STREAK READY,differs
+VX20,20.0,agrees
+VX21,21.0,agrees
+VX22,22.0,agrees
+VX23,23.0,agrees
+VX24,24.0,agrees
+VX25,25.0,agrees
+VX26,26.0,agrees
+VX27,27.0,agrees
+VX28,28.0,agrees
+VX29,29.0,agrees
+VX30,30.0,agrees
+VX31,31.0,agrees
+VX32,32.0,agrees
+VX33,33.0,agrees
+VX34,34.0,agrees
+VX35,35.0,agrees
+VX36,36.0,agrees
+VX37,37.0,agrees
+VX38,38.0,agrees
+VX39,39.0,agrees
+VX40,40.0,agrees
+VX41,41.0,agrees
+VX42,42.0,agrees
+VX43,43.0,agrees
+VX44,44.0,agrees
+VX45,45.0,agrees
+VX46,46.0,agrees
+VX47,47.0,agrees
+VX48,48.0,agrees
+VX49,49.0,agrees
+VX50,50.0,agrees
+VX51,STANDARD HEADSET,agrees
+VX52,SCORING HEADSET,agrees
+VX53,SCANNING,agrees
+VX54,RESPAWN POINT ENABLED,agrees
+VX55,RESPAWN POINT DISABLED,agrees
+VX56,RESPAWN STATION,agrees
+VX57,ASSAULT,agrees
+VX58,FRAG,agrees
+VX59,STORM ENABLED,agrees
+VX60,TICKET MODE,agrees
+VX61,THE SURVIVORS HAVE HELD THEIR GROUND,agrees
+VX62,THE INFECTION HAS SPREAD,agrees
+VX63,TANK,agrees
+VX64,SUPPORT,agrees
+VX65,STRESS TEST MODE,agrees
+VX66,STORM DISABLED,agrees
+VX67,STEM PACK,differs
+VX68,STICKY GRENADE LAUNCHER,agrees
+VX69,SHIELD PULSE,agrees
+VX70,SAFE,agrees
+VX71,REVIVE AT SQUAD,agrees
+VX72,REVIVE AT RESPAWN,agrees
+VX73,RELOAD,agrees
+VX74,REGENERATION ROUNDS,differs
+VX75,RED TEAM,agrees
+VX76,RANDOM,agrees
+VX77,RALLY,agrees
+VX78,PROXIMITY MINE,agrees
+VX79,POISON GRENADES,agrees
+VX80,OFFENSE,agrees
+VX81,MOTION DETECTED,agrees
+VX82,MORTAR STRIKE,agrees
+VX83,MINI ROCKETS,differs
+VX84,MELEE ATTACK,agrees
+VX85,MEDIGEL,agrees
+VX86,LUCKY SHOT,agrees
+VX87,LOADING,agrees
+VX88,LIFE STEAL,differs
+VX89,KILL STRIKE READY,differs
+VX90,KIDS MODE,agrees
+VX91,HOLD TRIGGER TO CHARGE,agrees
+VX92,HOLD RELOAD TO FULLY RELOAD,agrees
+VX93,HELLO KITTY,agrees
+VX94,HEALING TRACKER DART,agrees
+VX95,GRENADE DISCONNECTED,agrees
+VX96,GRENADE CONNECTED,agrees
+VX97,GREEN TEAM,agrees
+VX98,GESTURE,agrees
+VX99,FROST GRENADES,agrees
+VZ01,TWO SHOT SNIPER RIFLE,agrees
+VZ02,TWO SHOT STEAM RIFLE,agrees
+VZ03,8 BIT RIFLE,agrees
+VZ04,ARMOR PIERCING SNIPER RIFLE,agrees
+VZ05,AUTOMATIC ASSAULT RIFLE,agrees
+VZ06,AUTOMATIC SHOTGUN,agrees
+VZ07,BFG 9000 CHARGE RIFLE,agrees
+VZ08,BURST ASSAULT RIFLE,agrees
+VZ09,BURST SUB MACHINE GUN,agrees
+VZ0A,BURST STICKY GRENADE LAUNCHER,agrees
+VZ0B,CHARGE PULSE RIFLE,agrees
+VZ0C,CHOOSE AN UPGRADE,agrees
+VZ0D,CROSS BOW,differs
+VZ0E,DAMAGE,agrees
+VZ0F,DOUBLE BARREL SHOT GUN,agrees
+VZ0G,DROID AUTO BLASTER,differs
+VZ0H,ENERGY ASSAULT RIFLE,agrees
+VZ0I,ENERGY AUTOMATIC RIFLE,agrees
+VZ0J,ENERGY BURST RIFLE,agrees
+VZ0K,ENERGY CHARGED SNIPER RIFLE,agrees
+VZ0L,ENERGY GATLING GUN,agrees
+VZ0M,ENERGY LASER,agrees
+VZ0N,ENERGY SHOT GUN,differs
+VZ0O,ENERGY SNIPER RIFLE,agrees
+VZ0P,FINESS,agrees
+VZ0Q,FLAME THROWER,differs
+VZ0R,FROST BURST RIFLE,agrees
+VZ0S,FROST LASER,agrees
+VZ0T,FROST SEMI-AUTOMATIC RIFLE,agrees
+VZ0U,GATTLING GUN,differs
+VZ0V,HEAVY MACHINE GUN,agrees
+VZ0W,INCINDIARY RIFLE,differs
+VZ0X,INFECTED SPRAY ATTACK,agrees
+VZ0Y,M4 AUTOMATIC RIFLE,agrees
+VZ0Z,MAGNET SEMI-AUTO RIFLE,agrees
+VZ10,MINI ROCKET LAUNCHER,agrees
+VZ11,NEWBIE CANNON,agrees
+VZ12,OFF,agrees
+VZ13,ON,agrees
+VZ14,POISON BURST RIFLE,agrees
+VZ15,POISON GAS LAUNCHER,agrees
+VZ16,POISON SUB MACHINE GUN,agrees
+VZ17,RANDOMIZE INFECTION,agrees
+VZ18,RANK 1,agrees
+VZ19,RANK 2,agrees
+VZ1A,RANK 3,agrees
+VZ1B,RAPID FIRE SNIPER RIFLE,agrees
+VZ1C,RECOVERY,agrees
+VZ1D,SEMI-AUTO ASSAULT RIFLE,agrees
+VZ1E,SEMI-AUTO SNIPER RIFLE,agrees
+VZ1F,SHOTGUN,agrees
+VZ1G,SILENCED SUB MACHINE GUN,agrees
+VZ1H,SILENCED SNIPER RIFLE,agrees
+VZ1I,SUB MACHINE GUN,differs
+VZ1J,SNIPER RIFLE,agrees
+VZ1K,SPECIALIST,agrees
+VZ1L,SPEED,agrees
+VZ1M,STEALTH,agrees
+VZ1N,STEAM BOLT SUB MACHINE GUN,differs
+VZ1O,STORM TROOPER RIFLE,differs
+VZ1P,SUSTAINED FIRE SUB MACHINE GUN,differs
+VZ1Q,TAISER RIFLE,differs
+VZ1R,THUMPER SUB MACHINE GUN,agrees
+VZ1S,TOUGHNESS,agrees
+VZ1T,UPGRADE AVAILABLE,agrees
+VZ1U,UPGRADE MODE,agrees
+X13,small explode,new_label
+X17,concussion grenade,new_label
+X28,explode with echo,new_label
+X30,bomb,new_label
+Z11,infected blaster,new_label

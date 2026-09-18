@@ -1,5 +1,5 @@
 # Sound, voice and updates
-Last verified: 2026-09-11
+Last verified: 2026-09-18
 
 How BRX plays sound: what the gun does on its own, what a host has to trigger, the full sound bank, and how to change what you hear over USB or through a firmware update.
 
@@ -137,6 +137,8 @@ The pattern repeats across every `V<n>`/`V<letter>` family.
 ## The sound bank
 
 2,477 sounds on the gun. One list. We read every file off a v4.32 tagger's `AUDIO` folder on 2026-09-03 and ran the voice lines through machine transcription. About 146 of those have since been confirmed by ear. The rest are machine guesses: an unconfirmed transcript is a machine guess and can be wrong. Treat any transcript below as a label to check, not a quote. The official app's own configuration file, `Sounds.json`, names 2,166 ids: 157 of those are not on the gun (they play the fallback sound), and 468 files on the gun are unknown to the app. The catalog is the authoritative set of `$PLAY` arguments, and of the file names you would replace over USB.
+
+The full catalog also carries community labels from the BRX Audio sheet, an open Google Sheet run by the community and shared by Jay of LaserTagMods. These labels are a listener's guess, not a transcript or a bench finding, and stay marked as unconfirmed next to our own description (see [the sound catalog](../reference/sound-catalog.md)).
 
 - **2,477** sound files on the gun (2,166 in the app's list; 157 app ids missing from the gun; 468 gun files the app does not know)
 - **~4,800 s** (80 min) of audio across the app's 2,166-id list

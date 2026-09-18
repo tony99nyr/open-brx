@@ -1,9 +1,11 @@
 # Credits and sources
-Last verified: 2026-09-09
+Last verified: 2026-09-18
 
 ## Credits
 
 - LaserTagMods (JEDGE / JBOX): the original BLE protocol discovery and the tagger-rider concept.
+  LaserTagMods also runs the community BRX Audio sheet, shared by Jay of LaserTagMods, which we fold
+  into the sound catalog as unconfirmed community labels.
 - Battle Company: the BRX hardware, the [BRX Manual V7](https://battlecompany.com/wp-content/uploads/2021/01/BRX_Manual_V7_FINAL.pdf) and the 2018 Extended User
   Guide. The Extended Guide circulates in the owner community and has no official public address,
   so we can credit it but not link it.
