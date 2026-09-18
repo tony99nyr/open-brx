@@ -267,9 +267,10 @@ def test_catalog_excludes_hidden_melee_and_flags_verified():
     # sidearms (usp/deagle) + 2 catalogue-visible-but-pickup_only heavies (rocket_launcher/rail_gun) = 13.
     assert len(ids) == 13, f"the §3 roster is 9 primaries + 2 sidearms + 2 pickup-only heavies, got {len(ids)}"
     by = {w["weapon_id"]: w for w in cat.all()}
-    # `verified` now means SHIPPED EXACTLY AS CAPTURED. 2026-09-17: the AR is rebalanced (still, though
-    # now at the captured 100ms rather than the earlier 140ms throttle) and the burst rifle is now ALSO
-    # rebalanced (dmg 9 -> 11, F225/S28) so it no longer ships byte-for-byte either.
+    # `verified` now means SHIPPED EXACTLY AS CAPTURED. 2026-09-17 moved two more weapons off it: the
+    # AR is rebalanced (now at the captured 100 ms rather than the earlier 140 ms throttle), and the
+    # Burst Rifle is rebalanced twice over (dmg 9 -> 11 in the balance pass, and its own outdoor
+    # range value t2 in F234's table), so neither ships byte-for-byte any more.
     assert by["assault_rifle"]["verified"] is False
     assert by["burst_rifle"]["verified"] is False
     # every visible weapon carries an armory blurb (weapons.json `desc` -> Weapon.desc)

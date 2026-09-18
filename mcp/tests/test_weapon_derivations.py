@@ -43,7 +43,7 @@ def test_shipped_stats_are_derived_from_the_shipped_frame():
     for w in ROWS:
         wid = w["weapon_id"]
         want = {"dmg": CAT.damage_bar(wid), "rof": CAT.rate_of_fire(wid),
-                "rng": int(_tok(wid, "range") or 0),
+                "rng": int(_tok(wid, "range_indoor") or 0),
                 "htk": CAT.hits_to_kill(wid, DEFAULT_POOL),
                 "ttk_ms": CAT.time_to_kill(wid, DEFAULT_POOL)}
         for k, v in want.items():
@@ -68,33 +68,112 @@ def test_the_frame_builder_does_not_lose_an_ammo_value():
     assert not bad, "\n  ".join(bad)
 
 
-def test_gun_range_pct_is_a_noop_pending_bench_confirmation():
-    """B6/F135 (2026-09-12 field session, `docs/experiment-log/2026-09.md`): Tony could not hit at
-    30-40 ft outside, point blank worked. `resolve()` writes t41 (range) through `gun_range_pct`, a
-    venue mapping staged for that fix — but whether t41 moves emitted IR range at all is UNTESTED
-    (protocol/brx-protocol.md ~L272), so today it MUST be a no-op: every venue ships the weapon's
-    own captured/catalog range, indoor == outdoor == the `weapons.json` `rng` value (75 stock, 20
-    melee). This pins that invariant and the fact that `RANGE_ENV_OVERRIDE` is the single line to
-    change once F135's bench sweep lands a confirmed value — do not hand-edit `resolve()` or
-    `weapons.json` `rng` to "fix" range before then."""
-    from brx_mcp.mc.compile import RANGE_ENV_OVERRIDE, gun_range_pct
+def test_t41_is_pinned_byte_for_byte_at_every_venue():
+    """F234 (2026-09-17 garden test corrected B6/F135, `docs/experiment-log/2026-09.md`): t41
+    (`gunRangeIndoor`) was proven a null outdoors, so `resolve()` must never write it. This pins
+    the invariant every venue must keep: t41 always reads back exactly what the capture carries,
+    same as `weapons.json` `rng` (which is still a t41 mirror, unchanged by this fix).
 
-    assert RANGE_ENV_OVERRIDE == {"indoor": None, "outdoor": None}, (
-        "RANGE_ENV_OVERRIDE moved off its no-op default — this must only happen once F135 has a "
-        "bench-confirmed value, and the test above should be updated in the same commit")
+    A future lane that "fixes" range by hand-editing t41 again, or by having `resolve()` write it,
+    should watch this go red."""
     for w in ROWS:
         wid = w["weapon_id"]
-        no_venue = _tok(wid, "range")
-        indoor = CAT.resolve(wid, 0, environment="indoor").split(",")[WeaponCatalog._T["range"] + 1]
-        outdoor = CAT.resolve(wid, 0, environment="outdoor").split(",")[WeaponCatalog._T["range"] + 1]
-        assert no_venue == indoor == outdoor == str(w["rng"]), (
-            f"{wid}: t41 differs by venue ({no_venue!r}/{indoor!r}/{outdoor!r}) — B6's fix is not "
-            "supposed to land until F135 closes on the bench")
-    # The mapping function itself, independent of any weapon: every venue is `base_rng` unchanged.
-    for base in (20, 75, 100):
-        assert gun_range_pct(base, None) == base
-        assert gun_range_pct(base, "indoor") == base
-        assert gun_range_pct(base, "outdoor") == base
+        captured = _tok(wid, "range_indoor")
+        no_venue = CAT.resolve(wid, 0).split(",")[WeaponCatalog._T["range_indoor"] + 1]
+        indoor = CAT.resolve(wid, 0, environment="indoor").split(",")[WeaponCatalog._T["range_indoor"] + 1]
+        outdoor = CAT.resolve(wid, 0, environment="outdoor").split(",")[WeaponCatalog._T["range_indoor"] + 1]
+        assert captured == no_venue == indoor == outdoor == str(w["rng"]), (
+            f"{wid}: t41 moved ({captured!r}/{no_venue!r}/{indoor!r}/{outdoor!r}) — t41 must stay "
+            "exactly as captured, indoor is unmeasured (F231 open) and must never be guessed")
+
+
+def test_gun_range_outdoor_pct_ships_the_catalogue_value_outdoors_only():
+    """F234: t2 (`gunRangeOutdoor`) is the confirmed venue lever. Outdoor ships each weapon's
+    catalogue starting value (`weapons.json` `wire.range_outdoor_pct`, docs/weapon-design.md §4.2);
+    indoor and an unset venue both keep the weapon's captured t2, because indoor is unmeasured
+    (F231 open) and must never be invented. A weapon with no catalogue value (every hidden/cut
+    weapon, the sidearms, melee) keeps its captured t2 at every venue, same as before this fix."""
+    shipped = {"sniper_rifle": 100, "amr": 85, "charge_rifle": 85, "assault_rifle": 70,
+               "burst_rifle": 70, "suppressor": 55, "energy_rifle": 55, "smg": 30,
+               "shotgun": 22, "rocket_launcher": 22, "rail_gun": 22}
+    by_id = {w["weapon_id"]: w for w in ROWS}
+    assert set(shipped) <= set(by_id), sorted(set(shipped) - set(by_id))
+    for wid, want in shipped.items():
+        assert (by_id[wid].get("wire") or {}).get("range_outdoor_pct") == want, (
+            f"{wid}: weapons.json wire.range_outdoor_pct does not match the shipped table")
+        outdoor = CAT.resolve(wid, 0, environment="outdoor").split(",")[WeaponCatalog._T["range_outdoor"] + 1]
+        assert outdoor == str(want), f"{wid}: t2 outdoor should be {want}, frame has {outdoor}"
+        captured = _tok(wid, "range_outdoor")
+        for env in (None, "indoor"):
+            got = (CAT.resolve(wid, 0).split(",") if env is None
+                   else CAT.resolve(wid, 0, environment=env).split(","))[WeaponCatalog._T["range_outdoor"] + 1]
+            assert got == captured, f"{wid} @ {env!r}: t2 moved off the captured value ({captured!r} -> {got!r})"
+    # a weapon with no catalogue value keeps its captured t2 at every venue, outdoor included
+    for wid in ("usp", "deagle", "melee"):
+        captured = _tok(wid, "range_outdoor")
+        for env in (None, "indoor", "outdoor"):
+            got = (CAT.resolve(wid, 0).split(",") if env is None
+                   else CAT.resolve(wid, 0, environment=env).split(","))[WeaponCatalog._T["range_outdoor"] + 1]
+            assert got == captured, f"{wid} @ {env!r}: has no catalogue range value, t2 must stay captured"
+
+
+def test_gun_range_outdoor_floor_refuses_a_value_below_13():
+    """F231: t2=5 landed 0 hits from 38 shots at any distance, including muzzle on the dome, so a
+    compiled t2 under the floor is a weapon that cannot hit anyone. Break it and watch it fail:
+    both the raw function and a real weapon compiled with a below-floor catalogue value must raise."""
+    from brx_mcp.mc.compile import RANGE_OUTDOOR_FLOOR, gun_range_outdoor_pct
+
+    assert RANGE_OUTDOOR_FLOOR == 13
+    for bad in (0, 1, 12):
+        try:
+            gun_range_outdoor_pct(100, bad, "outdoor")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"gun_range_outdoor_pct must refuse an outdoor override of {bad}")
+    # the floor also applies to a captured base with no override at all — belt and braces
+    try:
+        gun_range_outdoor_pct(5, None, "indoor")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("gun_range_outdoor_pct must refuse a below-floor CAPTURED value too")
+    # the values actually shipped are all comfortably clear of the floor
+    for value in (13, 22, 30, 55, 70, 85, 100):
+        assert gun_range_outdoor_pct(100, value, "outdoor") == value
+    # and a full weapon compile with a synthetic below-floor catalogue entry must refuse the same way
+    rows = json.loads((ROOT / "mcp" / "brx_mcp" / "mc" / "weapons.json").read_text())["weapons"]
+    hot = next(w for w in rows if w["weapon_id"] == "assault_rifle")
+    hot["wire"] = dict(hot.get("wire") or {}, range_outdoor_pct=5)
+    bad_cat = WeaponCatalog(rows)
+    try:
+        bad_cat.resolve("assault_rifle", 0, environment="outdoor")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("resolve() must refuse to compile a below-floor t2, not just the bare function")
+
+
+def test_range_band_and_range_target_m_are_declared_only_never_wired():
+    """docs/weapon-design.md §4.2: `range_band` and `range_target_m` are human-facing catalogue
+    copy in metres, for the armoury screens. `t2` (via `wire.range_outdoor_pct`) is the only range
+    field the frame builder reads. Deleting the declared fields from a row must not move a single
+    byte of the compiled frame — if it does, something started reading them as wire data."""
+    rows = json.loads((ROOT / "mcp" / "brx_mcp" / "mc" / "weapons.json").read_text())["weapons"]
+    declared = [w for w in rows if "range_band" in w or "range_target_m" in w]
+    assert declared, "no weapon carries range_band/range_target_m — the guard has nothing to check"
+    before = WeaponCatalog(rows)
+    stripped = json.loads(json.dumps(rows))   # deep copy
+    for w in stripped:
+        w.pop("range_band", None)
+        w.pop("range_target_m", None)
+    after = WeaponCatalog(stripped)
+    for w in declared:
+        wid = w["weapon_id"]
+        for env in (None, "indoor", "outdoor"):
+            a = before.resolve(wid, 0) if env is None else before.resolve(wid, 0, environment=env)
+            b = after.resolve(wid, 0) if env is None else after.resolve(wid, 0, environment=env)
+            assert a == b, f"{wid} @ {env!r}: removing range_band/range_target_m changed the wire frame"
 
 
 def test_every_weapon_has_a_derivable_damage_and_cycle():

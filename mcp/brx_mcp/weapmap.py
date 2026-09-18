@@ -30,7 +30,7 @@ from .btsnoop import extract_att, parse_btsnoop, reconstruct_frames
 
 # From protocol-classes.md — index -> field name, for the positions we have names for.
 FIELDS = {
-    0: "slot", 2: "(scale/const)", 3: "primaryPowerType", 4: "primaryDamageType",
+    0: "slot", 2: "gunRangeOutdoor", 3: "primaryPowerType", 4: "primaryDamageType",
     5: "primaryDamage", 6: "primaryCritChance",
     7: "secondaryFireChance", 8: "secondaryDamageType", 9: "secondaryPowerType",
     10: "secondaryDamage", 11: "secondaryCritChance", 12: "extraHeadsetDamage",
@@ -45,7 +45,9 @@ FIELDS = {
     40: "ammoReserv", 41: "gunRangeIndoor", 42: "extraHeadsetRangeIn",
 }
 # Positions the 2-frame derivation could not validate — the ones worth watching.
-UNVALIDATED = set(range(7, 14)) | {17, 40, 21, 22, 2, 19, 30, 37, 38}
+# Position 2 (gunRangeOutdoor) left this set 2026-09-17: bench-proven as the emitted-power/range
+# lever by the garden ladder test (F231, docs/experiment-log/2026-09.md).
+UNVALIDATED = set(range(7, 14)) | {17, 40, 21, 22, 19, 30, 37, 38}
 
 
 def toks(frame: str) -> list[str]:

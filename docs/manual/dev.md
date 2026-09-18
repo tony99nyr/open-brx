@@ -272,7 +272,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 |---|---|---|---|---|
 | 0 | slot | 0 | 1 | Weapon slot 0-5. Slot 4 = melee by convention (gyro swing, `$BMAP,8,4`). |
 | 1 | slotType / mode flag | n/a | n/a | `2` on exactly the three weapons carrying an extra-headset payload (t12/t13/t42 populated); `1` on melee; `0` rail gun; empty otherwise. Not fire mode. |
-| 2 | n/a | 100 | 100 | (unknown) |
+| 2 | **gunRangeOutdoor** | 100 | 100 | **The emitted-power/range control (bench-proven 2026-09-17).** Every captured gun reads 100 here (melee 90). A garden ladder test found a floor below which nothing lands at any distance (5 landed 0 of 38 shots, including muzzle on the dome), a transition roughly 13-26, and a flat shelf from about 31 to 100 where every value behaved alike at any distance the test could pace. Whether it can fence a weapon to a chosen distance above the shelf is unresolved; the ladder was shot into a dome in direct sun and needs a shaded re-run. This corrects the earlier reading that named t41 as the range lever: t41 was tested the same day and found inert outdoors. Open BRX ships a per-weapon starting value outdoors from this token (docs/weapon-design.md §4.2) and never compiles a value under 13. |
 | 3 | primaryDamageType | 0 | 8 | **The IR word's B field / `$SIR` protocol key.** Writing a type here is echoed by the victim in `$HIR` token 2 and selects its `$SIR` row. DamageType enum: 0 Standard, 1 MedicHeal, 2 ActivateShield, 3 RallyPulse, 4 Radiation, 5 Cryogenic, 6 ArmorPiercing, 7 EMP, 8 Shrapnel, 9 StickyBomb, 10 StandardLethalExplosive, 11 NonLethalExplosive, 12 ShottyPellets, 13 MeleeDamage, 14 Plasma. Stock: 8 charge, 10 rocket, 11 gas, 13 melee. The wire position is bench-proven; the enum names come from the APK. |
 | 4 | primaryPowerType | 0 | 0 | IRSource enum: DeviceCommand, IRSource, GunLaser, HeadSetOnly, GunAndHead, DoubleGun, DoubleGunAndHead, DRY_FIRE, MuzzleFlash, MuzOnly, VibOnly, MuzAndVib. Order relative to t3 was settled by t3 behaving as damageType. |
 | 5 | primaryDamage | 24 | 150 | **The raw magnitude put in the IR word** (= `$HIR` token 5). Applied damage depends on the victim's `$SIR` row. The stock AR emits 9. The 24 in the sample frame is the figure printed in Battle Company's manual. |
@@ -307,7 +307,7 @@ $WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D
 | 38 | overheat param B | n/a | 150 | See t37. |
 | 39 | clipStartingAmmo | 32 | 100 | Equals t16 in every captured frame. |
 | 40 | ammoReserv | 9999999 | 9999999 | Reserve; 9999999 = unlimited. `t17 == 2 × t40` in stock frames. |
-| 41 | gunRangeIndoor | 75 | 75 | APK name `gunRangeIndoor`. It reads 75 on all eighteen guns and 20 on melee. Whether it changes emitted range is untested; `$GSET` token 2 does not select an emitted-range profile. |
+| 41 | gunRangeIndoor | 75 | 75 | APK name `gunRangeIndoor`. It reads 75 on all eighteen guns and 20 on melee. **Corrected 2026-09-17: it does nothing outdoors** (two slots differing only here, 5 vs 75, scored 27/27 vs 55/57 at every paced distance from 3 m to about 200 ft). The real range control is token 2, `gunRangeOutdoor`, above. Indoor behaviour of this token is still untested; `$GSET` token 2 does not select an emitted-range profile either, and is a different command (see the `$GSET` table). |
 | 42 | extraHeadsetRangeIndoor | n/a | n/a | APK name `extraHeadsetRangeIndoor`. It is 30/30/40 on the three t1=2 weapons and blank elsewhere. Its effect is untested. |
 
 > **Two positions to get right.**
