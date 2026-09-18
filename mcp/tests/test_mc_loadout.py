@@ -81,8 +81,9 @@ def test_weapons_carry_tags_and_perks_catalog_is_visible_only():
         assert "sniper" in raw[wid], wid          # both hidden now; tags checked on the raw row
     assert "melee" not in ids
     # S50 (2026-09-17): easy_reload left the perk slot (-> loadout.overrides.easy_reload); armor_piercing,
-    # motion_tracker and second_wind joined (docs/perk-design.md §2 -- the last two are node-local, no compile-time effect).
-    assert [p["perk_id"] for p in PK] == ["body_armor", "extended_mags", "quick_hands", "quick_switch", "armor_piercing", "motion_tracker", "second_wind"]
+    # armor_piercing joined. motion_tracker and second_wind are in the catalogue but HIDDEN (2026-09-18): they are
+    # node-local, the phone half is not built, and a visible perk that does nothing is worse than a missing one.
+    assert [p["perk_id"] for p in PK] == ["body_armor", "extended_mags", "quick_hands", "quick_switch", "armor_piercing"]
     assert all(not p["hidden"] for p in PK)
     full = PerkCatalog()
     assert full.has("med_kit") and full.row("med_kit")["hidden"] and full.row("med_kit")["mechanism"] == "slot_frame"
@@ -119,13 +120,13 @@ def test_presets_and_pools():
     assert "energy_launcher" not in P.pool(P.preset_rules("open"), W, PK)["primary"], "a zero-damage weapon is never offered"
     lp = P.pool(P.preset_rules("open"), W, PK)
     assert "rocket_launcher" not in lp["primary"] and "rail_gun" not in lp["primary"], "heavies are pickup_only, never a starting pick"
-    assert len(lp["primary"]) == _OPEN and len(lp["secondary_weapons"]) == _OPEN and len(lp["perks"]) == 7
+    assert len(lp["primary"]) == _OPEN and len(lp["secondary_weapons"]) == _OPEN and len(lp["perks"]) == 5   # 5 VISIBLE perks: the two node-local ones are hidden until the phone half is built
     lp = P.pool(P.preset_rules("no_heavies"), W, PK)
     # unchanged by UNPLAYABLE_IDS/pickup_only: the visible `heavy`-tagged rows (rocket_launcher/rail_gun)
     # were already excluded from `open` by `pickup_only`, so `no_heavies` (which ALSO excludes `heavy`)
     # lands on the same count as `open`.
     assert len(lp["primary"]) == _OPEN and "rail_gun" not in lp["primary"] and "amr" in lp["primary"]
-    assert "rocket_launcher" not in lp["secondary_weapons"] and len(lp["perks"]) == 7
+    assert "rocket_launcher" not in lp["secondary_weapons"] and len(lp["perks"]) == 5
     lp = P.pool(P.preset_rules("snipers"), W, PK)
     # `reasons` is additive and present only where a slot came out empty (round-2 review 2026-09-12)
     assert lp == {"primary": ["sniper_rifle"], "secondary_weapons": [], "perks": [],
@@ -578,8 +579,9 @@ def test_assign_and_welcome_carry_catalog_and_policy():
     s.patch_player(ps[0]["player_id"], display="REAPER")            # any player change → assign
     a = net.pushes("assign", "nodeX")[-1][2]
     assert {w["weapon_id"] for w in a["catalog"]["weapons"]} >= {"smg", "rail_gun"} and all("tags" in w for w in a["catalog"]["weapons"])
-    # S50: easy_reload left the perk slot; armor_piercing, motion_tracker, second_wind joined.
-    assert [p["perk_id"] for p in a["catalog"]["perks"]] == ["body_armor", "extended_mags", "quick_hands", "quick_switch", "armor_piercing", "motion_tracker", "second_wind"]
+    # S50: easy_reload left the perk slot and armor_piercing joined. The two node-local perks stay hidden until
+    # the phone half is built, so a pushed catalogue never offers a perk that does nothing.
+    assert [p["perk_id"] for p in a["catalog"]["perks"]] == ["body_armor", "extended_mags", "quick_hands", "quick_switch", "armor_piercing"]
     pol = a["policy"]
     assert pol["hud_select"] is True and pol["primary"]["choice"] == "player"
     assert "rail_gun" not in pol["primary"]["allowed_ids"] and "smg" in pol["primary"]["allowed_ids"]

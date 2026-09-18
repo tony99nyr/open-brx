@@ -78,8 +78,10 @@ compensating knobs available here are magazine size and fire cadence, not aim as
   going lower without a bench check.
 - **Accuracy model.** BRX has a real one: t21/t22 (`maxAccuracy`/`singleShotAccuracy`) set a
   per-shot hit-probability ceiling/floor, bench-proven 2026-09-09, and a miss shows up on the wire as
-  `$ALCD` magnitude 0. **It ships OFF** (t21=t22=100, ceiling=floor, model disabled), so every weapon
-  currently fires as if `p=1.0` regardless of a player's real aim. §2's accuracy-adjusted math is
+  `$ALCD` magnitude 0. **The COMPILER ships it off** (t21=t22=100, ceiling=floor), because F230 found only one gun of
+  three decays accuracy natively. The phone drives the same two tokens itself instead (S42, node-driven
+  recoil), so a weapon fires at `p=1.0` until the player holds the trigger down, and the model's live
+  value falls from there. §2's accuracy-adjusted math is
   therefore about **human aim**, not the gun's own model, until/unless t21/t22 get tuned deliberately.
 - **Headset multiplier (footnote case).** A hit on the headset sensor multiplies the applied
   magnitude: `floor(magnitude * headset_multiplier(fn, crit_modifier))`, bench-confirmed

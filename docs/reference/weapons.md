@@ -1,5 +1,11 @@
 # BRX weapon reference: the complete Callsign arsenal
 
+> **This page is Battle Company's arsenal, not ours.** Every number here is measured off the wire from
+> the official Callsign app, and none of it is what a player on an Open BRX field meets: our Mission
+> Control starts from these frames and overwrites the balance tokens. For the weapons we ship, read
+> `../weapon-design.md` §2 and `mcp/brx_mcp/mc/weapons.json`. The three arsenals, and why the same
+> weapon carries two sets of numbers, are set out at the top of `../weapon-design.md`.
+
 Every weapon selectable in the official Callsign app, captured over BLE while arming a game and
 **named by the operator at capture time** (the wire carries no weapon name; token 27 is only a
 *sound* id, and two different weapons share `C03`).
@@ -14,7 +20,7 @@ for every function including the fn 36/37 multiplier pair. **Applied** damage on
 more: magnitude × the victim's `$SIR`-function multiplier, where fn 36/37 scale with the compiled
 `$GSET criticalShotModifier` (t7) — not a flat "1.5 if crit"; see `protocol/brx-protocol.md` §5 and
 `session-findings-2026-08.md` §7r). `cycle` = `t14`, the per-shot cycle time in ms, which for charge weapons is the
-charge time. `clip`/`reserve` = `t16`/`t40`. `heat` = `t24`, non-zero only on weapons that overheat.
+charge time. `clip`/`reserve` = `t16`/**`t40`**. ⚠ The token matters: a captured frame carries `t17` at exactly twice `t40`, and which one a gun really spends is open (F253). This table reads `t40`, so the Assault Rifle's 192 is the stock gun's spare rounds under that reading. `heat` = `t24`, non-zero only on weapons that overheat.
 
 | weapon | sound | behaviour | dmg | cycle ms | clip | reserve | heat |
 |---|---|---|---|---|---|---|---|

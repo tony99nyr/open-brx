@@ -588,32 +588,6 @@ export const PERKS: PerkView[] = [
     },
     "verified": false,
     "hidden": false
-  },
-  {
-    "perk_id": "motion_tracker",
-    "name": "Motion Tracker",
-    "desc": "Nearby enemies show on your HUD, no direction, refreshed every few seconds. You carry information instead of firepower -- anyone who accepts being seen can still shoot first.",
-    "tags": [
-      "passive",
-      "utility"
-    ],
-    "mechanism": "passive",
-    "effects": {},
-    "verified": false,
-    "hidden": false
-  },
-  {
-    "perk_id": "second_wind",
-    "name": "Second Wind",
-    "desc": "Once a life, the hit that would finish you leaves you standing instead. It costs nothing up front, because it only pays when you are already losing -- and a weapon that kills in one hit goes through it anyway.",
-    "tags": [
-      "passive",
-      "defense"
-    ],
-    "mechanism": "passive",
-    "effects": {},
-    "verified": false,
-    "hidden": false
   }
 ];
 // GENERATED-END perks

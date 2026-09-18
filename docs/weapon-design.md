@@ -1,5 +1,23 @@
 # Weapon design & balance
 
+## ⚠️ Three arsenals, and only one of them is ours
+
+A weapon number in this repo means nothing until you know which arsenal it came from. Two sessions
+argued past each other for two rounds on 2026-09-17 because one quoted a reserve figure from the
+second list while diagnosing a bug in the third.
+
+| name | what it is | where its numbers live |
+|---|---|---|
+| **gun-menu weapons** | the 5 to 7 presets the tagger's own firmware carries, for play with no phone at all (M-4, SMG-X3, MG-7, SR-100, TAC-87) | Battle Company's printed manual, quoted in `manual/gameplay.md` |
+| **Callsign weapons** | the 19 weapons Battle Company's own app sends. We hold 20 captured `$WEAP` frames. These are MEASURED FACTS about someone else's product and we never change them | `reference/weapons.md`, `manual/gameplay.md`, and §1.2 below |
+| **Open BRX weapons** | what OUR Mission Control compiles and pushes. Every row is BASED ON a captured Callsign frame, then a balance pass overwrites specific tokens. This is what a player on our field actually meets | `mcp/brx_mcp/mc/weapons.json`, and §2 onwards below |
+
+So the same weapon carries two sets of numbers on purpose. The Assault Rifle is 9 damage at 100 ms in
+both, because the rebalance kept those, but its spare ammunition, its range and its accuracy tokens
+differ. **Every table in this document says which arsenal it is**, and every reserve figure names the
+token it came from, because "reserve" alone is ambiguous even inside one arsenal (F253).
+
+
 > ## 🔴 LIVE BUG IN SHIPPED CONFIG — the Energy Launcher deals **zero damage**
 > Its `$WEAP` key `<t3,t4> = <9,3>` lands on `$SIR,9,3,,24` in `gameconfig._SIR_TABLE`, which MC pushes
 > into **every** game head. Fired through the real shipped table on that key, it landed **0 damage per
@@ -18,8 +36,10 @@
 >
 > ✅ **SETTLED (2026-09-11, bench): the ×1.25 / ×2 multipliers are REAL, and HEADSET-ONLY.** **fn 36
 > lands floor(magnitude × (1 + t7/200)), fn 37 lands floor(magnitude × (1 + 2·t7/100))** on the
-> HEADSET sensor (t7 = the compiled `$GSET criticalShotModifier`; ×1.25 / ×2 at t7=50, the MC
-> default) — the GUN BODY lands the raw magnitude (×1) on all three functions, fn 1/36/37 alike. So
+> HEADSET sensor (t7 = the compiled `$GSET criticalShotModifier`; ×1.25 / ×2 at t7=50, which WAS the
+> MC default until the 2026-09-17 arsenal review set it to **0**, because BRX players aim at the
+> headset: 4 of the 5 sensors are on it. At t7=0 every function lands the raw magnitude on both
+> sensors, so the five weapons below no longer gain anything from a headset hit) — the GUN BODY lands the raw magnitude (×1) on all three functions, fn 1/36/37 alike. So
 > five weapons — Burst Rifle, Bolt Rifle, AMR (fn 37), Force Rifle, Sniper Rifle (fn 36) — deal more
 > than their `t5` on a HEADSET hit only; a body hit is exactly `t5`. This reconciles rather than
 > overturns the two earlier readings: 2026-08-27's ×1.0 matrix was rig-pinned to the gun body
@@ -105,7 +125,7 @@ synthesise:
 The old system wrote `t20 = 0` into everything built on the `ar` sample. That single token is why
 the sniper and the shotgun full-autoed on the bench.
 
-### 1.2 The stock arsenal, as captured
+### 1.2 The CALLSIGN arsenal, as captured (not what we ship)
 
 What Battle Company actually ships. `htk`/`TTK` computed against the default 115 pool (they move with
 the host's health config — §2.5).
@@ -176,7 +196,7 @@ sounds — and moves the numbers.
    by charge behaviour rather than by numbers.
 8. **`htk` is the design unit, not DPS** — IR hits are discrete and misses are normal.
 
-### 2.2 The table
+### 2.2 The table: the OPEN BRX arsenal (what Mission Control pushes)
 
 | weapon | role | dmg | cycle ms | htk | **TTK s** | DPS | sust | mag | reserve | reload | one-mag kill % (p=0.7) | heat | changed |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|

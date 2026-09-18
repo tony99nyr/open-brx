@@ -63,10 +63,16 @@ Every player carries three slots.
 | Secondary | Any weapon, including the three pistols | Optional. |
 | Perk | One perk | Optional, and it rides beside the secondary. An assault rifle, a pistol and a perk is a legal kit. |
 
-Five perks are offered: Body Armor (50 extra armor), Extended Mags (double the primary's magazine
-and reserve), Quick Hands (half the reload time), Quick Switch (half the weapon-swap delay, 0.85 s
-down to 0.43 s) and Easy Reload (the orange ALT button reloads, for anyone who finds the pump hard
-to work).
+Five perks are offered, and every one of them costs something. Body Armor gives 25 extra armour and
+slows your reload by a quarter. Extended Mags doubles the primary's magazine and reserve and slows
+your weapon swap. Quick Hands halves the reload time and cuts your magazine by a fifth. Quick Switch
+halves the swap delay, 0.85 s down to 0.43 s, and takes 20 armour off you. Armour Piercing sends your
+primary straight through armour and shields to health, at about 40 percent of its normal damage.
+
+The point is that no perk is a free upgrade. Body Armor buys survival with reload speed, Quick Hands
+buys reload speed with ammunition, and Armour Piercing is the answer to Body Armor: against a bare
+target it kills no faster than a normal rifle, and against a heavily armoured one it ignores the
+armour entirely.
 
 Who picks is set per slot, per game:
 
@@ -82,25 +88,33 @@ Free-for-all defaults to No heavies. Every other mode defaults to Open. A slot c
 you tighten the policy after players have already kitted, every loadout is re-fixed to the new rules
 and the affected players are told.
 
-**The one exception.** Easy Reload maps the ALT button to reload, and ALT is also the button that
-switches weapons. So Easy Reload cannot ride with a second weapon. Picking one drops the other, and
-both the operator console and the phone warn you with a two-tap confirm before it happens. Any
-future perk that claims a button joins the same rule.
+**Easy Reload is not a perk.** It maps the orange ALT button to reload, for a player who cannot work
+the pump: a child, or anyone for whom the lever is awkward. That is an accessibility setting the host
+switches on per player, beside the health handicap, and it never competes with a balance pick. It does
+still cost a second weapon, because ALT is also the button that switches weapons, so a player who has
+it carries one gun. Any future perk that claims a button joins the same rule.
 
 ## Weapons
 
 Open BRX defines weapons on the wire. Each one is a frame the tagger is sent at arming time, so a
 weapon is data, not firmware, and a game can hand out numbers Battle Company never shipped.
 
-The roster is 22 entries: the 19 captured Callsign weapons, melee among them, and three pistols we
-added (Glock-18, USP-S, Desert Eagle). Melee is always loaded and never shown in the picker.
-Every captured weapon starts from the real frame Battle Company sent. Only the balance numbers are
-overwritten: damage, fire interval, magazine, reserve, reload time and swap delay. Sounds, fire
-mode, burst behaviour and overheat come through from the capture untouched.
+The catalogue holds 22 entries: the 19 weapons captured from the Callsign app, melee among them, and
+three pistols we added (Glock-18, USP-S, Desert Eagle). A player picking a loadout sees 11 of them.
+Nine rows are hidden, because a 22-weapon list is mostly duplicates and a player should not have to
+tell four grenade launchers apart. Two more, the Rocket Launcher and the Rail Gun, are in the
+catalogue but never in a starting kit: they are meant to be picked up on the field, and that is not
+built yet. Melee is always loaded and never shown.
 
-The full stat table for the Callsign 19 is on the [gameplay page](/manual/gameplay), with the
-numbers the app itself sends. Open BRX ships its own tuning on top of those rows, so treat the
-gameplay page as the arsenal and this page as what the platform does with it.
+Every weapon starts from the real frame Battle Company sent. Only the balance numbers are
+overwritten: damage, fire interval, magazine, reserve, reload time, swap delay and outdoor range.
+Sounds, fire mode, burst behaviour and overheat come through from the capture untouched, which is why
+an Open BRX weapon still feels like the gun it came from.
+
+**So the same weapon has two sets of numbers, and both are correct.** The
+[gameplay page](/manual/gameplay) publishes what the Callsign app sends, measured off the wire: that
+is a description of Battle Company's product. This page describes what Open BRX pushes instead. Where
+they differ, the difference is a balance decision we made and can explain.
 
 A player can also try a weapon before the game starts. The tagger is armed with that one weapon,
 privately, at a lower volume, with no team and no identity, so they can pull the trigger and feel

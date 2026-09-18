@@ -83,7 +83,7 @@ describe('DESIGNER · perk rule (A14)', () => {
     const d = await demo();
     const m = await mountScreen(<Designer />, { ...d, view: 'designer' });
     expect(m.find('[aria-label="perk slot rules"]').length).toBe(1);
-    expect(m.find('[data-testid="perk-summary"]')[0]?.textContent).toBe('7 OF 7 PERKS');
+    expect(m.find('[data-testid="perk-summary"]')[0]?.textContent).toBe('5 OF 5 PERKS');
     expect(m.find('[data-testid="secondary-summary"]')[0]?.textContent).not.toContain('PERK');
     m.unmount();
   });
