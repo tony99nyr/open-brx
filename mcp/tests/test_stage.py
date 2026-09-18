@@ -465,8 +465,13 @@ def test_raw_writes_only_known_safe_frames():
             assert "known-safe" in str(e)
         else:
             raise AssertionError("an unknown command went to the gun")
-        await st.raw(["$CHASE,3,*"], confirm=True)                # explicit confirm: sent and logged as UNKNOWN ($BLINK/$LED are safe-listed since 2026-09-04)
-        assert tx(mgr)[-1] == "$CHASE,3,*" and any(l["text"].startswith("UNKNOWN command") for l in st.log)
+        await st.raw(["$XYZZY,3,*"], confirm=True)                # explicit confirm: sent and logged as UNKNOWN ($BLINK/$LED are safe-listed since 2026-09-04, $CHASE since 2026-09-18)
+        assert tx(mgr)[-1] == "$XYZZY,3,*" and any(l["text"].startswith("UNKNOWN command") for l in st.log)
+        # a denied frame never goes out, confirm or not (transport-hardening.md §4); the stage mirrors engine._write
+        before = len(tx(mgr))
+        await st.raw(["$DPLAY,A10,4,*", "$PING,*"], confirm=True)
+        assert tx(mgr)[-1] == "$PING,*" and len(tx(mgr)) == before + 1 and st.refused == 1
+        assert any(l["text"].startswith("REFUSED 1 frame") for l in st.log)
     asyncio.run(run())
 
 
