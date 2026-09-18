@@ -102,8 +102,7 @@ SOUND_ROLES = ("kill", "spawn", "intro", "gas_death", "death_scream", "hurt_loop
 # a row here changes the id everywhere: the compiled bundle, the stage, the pickers.
 #
 #   reload_nag       VX73  "Reload" (voice:menu, 1.0 s). The bank's only imperative. EAR-CONFIRMED on a gun
-#                          2026-09-18, Tony: "yes that is the right sound". Tony named no id for the
-#                          nag; this is the descriptor read, NOT ear-confirmed on a gun yet.
+#                          2026-09-18, Tony: "yes that is the right sound".
 #   shield_down      N101  Tony 2026-09-18, by ear through a gun: the shield-DEPLETED cue. It overturns the
 #                          2026-09-17 decision to have no cue at the break at all. Catalogued as a 2.6 s
 #                          falling one-shot, which is the right shape for a pool failing.

@@ -402,8 +402,12 @@ class Stun(TypedDict):
 class Recoil(TypedDict):
     """S42 (2026-09-17): a weapon's TARGET accuracy profile -- `weapons.json` `recoil`, declared-only
     on the wire (compile.py `resolve()` never writes t21/t22 from it). `app/src/engine.js` is the sole
-    reader: it pins both tokens to `value` on every accuracy write, stepping `value` down by `per_shot`
-    toward `floor` per shot and back up toward `ceiling` at `recover_ms` per step once the player stops."""
+    reader. **F259 (2026-09-18): a STATE MACHINE, not a per-shot walk** -- `_recoilProfile` derives
+    `crisp`/`degraded`/`heavy` states from this shape (`ceiling`/`floor` become `crisp`/`degraded`,
+    `per_shot` sizes `after_shots`, `recover_ms` floors `settle_ms`): CRISP until the burst reaches
+    `after_shots` rounds (DEGRADED), HEAVY after `heavy_after_shots`, and back to CRISP in one step
+    once the trigger is quiet for `settle_ms`. `weapons.json` still ships this old ladder shape,
+    field for field; `docs/spec/node.md` §3.15 has the state machine's full rule table."""
     ceiling: int
     floor: int
     per_shot: int

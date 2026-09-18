@@ -1430,8 +1430,8 @@ def test_stun_ships_the_emp_row_only_when_the_config_asks():
     manufacturing a fake `$HIR` every 5.07 s until the next `$SPAWN`, so a stunned player was told they
     were being shot by nobody for the rest of the life. fn 23 is the real primitive, measured the same
     session: live accuracy 100 -> 0 in the same millisecond as the `$HIR`, no pool moves, the gun still
-    fires but every shot misses, and it recovers on its own. Tony calls it a flashbang rather than a
-    stun, which is the better name for it.
+    fires but every shot misses, and it recovers on its own. Tony calls it smoke rather than a stun,
+    which is the better name for it.
 
     F121/A23 moved the LIVE table out of the head, and F209 moved it again, into the `sir_pool` take the node
     writes once the gun can fire, so the stun row is asserted where it now lands. The head's copy of the cell is a disarmed fn-28 registrar in both cases -- a
@@ -1447,10 +1447,10 @@ def test_stun_ships_the_emp_row_only_when_the_config_asks():
     # stun on -> fn 23 on the SAME cell, in the SAME position, nothing else moved
     on = C.compile(dict(_cfg(), stun={"duration_s": 10}), _player(), _TEAMS)
     # The carrier is A44's `sir_pool` take, not the spawn write: a player inside spawn protection cannot
-    # be flashbanged before their gun can answer, so the spawn write carries the disarmed fn-28 twin.
+    # be smoked before their gun can answer, so the spawn write carries the disarmed fn-28 twin.
     rows_on = [f for f in on["sir_pool"][0] if f.startswith("$SIR,")]
     assert _sir_fn(on["sir_pool"][0]) == 23
-    assert _sir_fn(on["head"]) == 28, "F121: a countdown EMP must not flashbang anyone pregame either"
+    assert _sir_fn(on["head"]) == 28, "F121: a countdown EMP must not smoke anyone pregame either"
     assert _sir_fn(on["spawn"]) == 28, "A44: the spawn write is the twin, so protection covers the EMP too"
     assert rows_on.index(_STUN_SIR_ROW) == list(_SIR_TABLE).index("$SIR,8,0,,1,0,0,1,,*"), "in place, not appended"
     assert [r for r in rows_on if not r.startswith("$SIR,8,0,")] == [r for r in _SIR_TABLE if not r.startswith("$SIR,8,0,")]

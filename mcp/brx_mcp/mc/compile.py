@@ -531,10 +531,13 @@ _OBJECTIVE_SIR_ROW = "$SIR,15,0,,28,0,0,1,,*"
 #   fn 8      silent, but still FLASHES the headset -- and every registered hit wipes the headset
 #             colour (bench 2026-09-03), so a shot in the lobby would strip the pregame team colour
 #             that is the operator's only way to read teams, and nothing repaints it until go-live.
-#   fn 23     audio suppression: registers, moves no pool, and silences the gun for 6-8 s.
-#   fn 24-27  the DELAYED BLAST family: fn 24 applies the word's magnitude as real damage ~4 s AFTER
-#             it arrives (bench 2026-09-11). A countdown hit would land in the first seconds of the
-#             match. These must never reach a spawn-protection table -- `assert_spawn_protected`.
+#   fn 23     accuracy suppression: registers, moves no pool, drops live accuracy to 0 and recovers
+#             on its own (P18/A20).
+#   fn 24-27  the PHANTOM HIT family: apply no damage, but the victim's gun then manufactures a fake
+#             `$HIR` every 5.07 s, with sound, vibration and a headset flash, until the next `$SPAWN`
+#             (P18, closed 2026-09-18 -- retracts the earlier "delayed real damage" reading). A
+#             countdown hit would haunt the player into the match proper. These must never reach a
+#             spawn-protection table -- `assert_spawn_protected`.
 #   fn 35, 31/32/34  unswept: no idea what the player feels.
 # The sound token is blanked with the function: fn 28's "no sound" was measured on a row with an empty
 # `<soundID>`, and a row's own sound plays whenever the row fires (§5). A pregame hit is therefore
@@ -681,7 +684,7 @@ def stun_enabled(config) -> bool:
 
 
 def _with_stun_row(rows: list[str]) -> list[str]:
-    """The table with the `<8,0>` cell's function swapped to fn 24, in place (stock order kept, sound token
+    """The table with the `<8,0>` cell's function swapped to fn 23 (P18/F253), in place (stock order kept, sound token
     carried over so a class-layer draw survives); appended if the table had no such cell."""
     out: list[str] = []
     done = False
