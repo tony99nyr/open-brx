@@ -6,7 +6,7 @@ v4.32 has drifted from V4_30, and the later sessions shrink.
 
 | session | time | needs | sections |
 |---|---|---|---|
-| 1. Core | 55 min | two guns | §1 (F206, confirms the shipped fix), §21 (recoil through `$TMP`), §2 (melee), §4 step 1, §5 (all of it, one session: each step starts from the one before), §13 step 1 |
+| 1. Core | 85 min | two guns | §1 (F206, confirms the shipped fix), §21 (`$TMP`, the native modifier system), §2 (melee), §4 step 1, §5 (all of it, one session: each step starts from the one before), §13 step 1 |
 | 2. Levers | 75 min | two guns, the IR rig for §9 step 5 | §3, §4 step 2, §6, §7, §8, §9, §10, §12, §15, §18 |
 | 3. Transport | see the screamers sheet | one gun, a laptop | §14 (now `bench-screamers-2026-09-19.md` Phase A) |
 | 4. IR rig | 90 min | two guns, the ESP32 IR rig | §11, §13 steps 2-3, §16, §17, §20 |
@@ -24,7 +24,7 @@ reaches `docs/manual/` only when it is CONFIRMED here.
 | 5 | `$BUMP,<amount>,<hp>,<armour>,<shield>,<sound>` cascades across pools (V4_30, sheets) | 5 |
 | 6 | `$LIFE` token 4: 0 add, 1 set, 2 set past max; set revives a dead gun (V4_30, sheets, BC app) | 6 |
 | 7 | `$SPAWN,<n>` spawns with shield n (V4_30) | 6 |
-| 8 | `$PRES` scales damage per cell; `$INVU` blocks damage; `$TMP` bonuses (V4_30) | 7 |
+| 8 | `$PRES` scales damage per cell; `$INVU` blocks damage (V4_30) | 7 |
 | 9 | fn 24-27 are 5/4/3/2 s fuses; p5 is the cell the fuse fires (V4_30, sheets) | 8 |
 | 10 | The crit bonus is `$PSET` t6 (we ship 50), scaled by `$GSET` t7 (V4_31, sheets) | 9 |
 | 11 | fn 34/35 register on a dead gun; fn 38 halves HP damage; fn 30 back x2; fn 33 silent kill; fn 50-52 colour only (V4_30) | 10 |
@@ -38,7 +38,7 @@ reaches `docs/manual/` only when it is CONFIRMED here.
 | 19 | `$LCD` t3 = shield, t4 = slot; `$QUERY` t2 = team; `$VERSION` t3/t5 meanings (V4_30, BC app) | 18 |
 | 20 | Every other open item the triage of FOLLOWUPS against the new sources found untested | 19 |
 | 21 | Range tokens set the IR carrier frequency: 38000 - 125 x (100 - range) Hz on the gun, 140 Hz steps on the headset; indoor/outdoor sets power (V4_31) | 20 |
-| 22 | `$TMP` token 4 changes live accuracy over BLE with no magazine reset, so recoil can drop `$WEAP` (V4_30; fn 23 writes the same variable) | 21 |
+| 22 | `$TMP` works over BLE: t4 accuracy, t9 magazine, t1-t3 pool maxima, t8 damage taken, each without a magazine reset (V4_30; fn 23 writes t4) | 21 |
 
 Jay (LaserTagMods) shared his "Everything BRX" Drive on 2026-09-18. It holds the stock gun firmware image
 **V4_30**, the closest image we have to our v4.32. A disassembly of that image shows several commands we
@@ -207,12 +207,10 @@ maximum of 50 or more.
 **Reading.** If step 3 works, K7 (shields as a game option) is unblocked. If step 4 works, a revive can happen with
 no respawn.
 
-## 7. `$PRES`, `$INVU` and `$TMP`: the native perk system (S50, 15 min)
+## 7. `$PRES` and `$INVU` (S50, 10 min)
 
 - `$PRES,<proto>,<sub>,<pct>,*` multiplies damage for one cell by (100 + pct)/100.
-- `$INVU,*` sets incoming damage to x0.
-- `$TMP` holds maximum-pool bonuses (t1 HP, t2 armour, t3 shield), incoming damage % (t8) and a magazine % bonus
-  (t9).
+- `$INVU,*` sets incoming damage to x0 (it writes `$TMP` token 8 to -100; §21 covers `$TMP`).
 
 B arrives from §6 step 4 with a 9 HP maximum. Before step 1, re-arm B (999, 0, 0), so the hits below
 cannot kill it.
@@ -220,12 +218,10 @@ cannot kill it.
 1. On B: `$PRES,0,0,-50,*`. Fire 3 hits. Expect 4 each (9 x 0.5, truncated).
 2. On B: `$PRES,0,0,100,*`. Expect 18 each. Then send `$PRES,0,0,0,*` to reset it.
 3. On B: `$INVU,*`. Fire 3 hits. Do they register (`$HIR`) with no damage? Then send `$TMP,,,,,,,,0,,,,*` (t8 = 0).
-   Does damage return? If it does not, note it and power-cycle B.
-4. On B: `$TMP,50,,,,,,,,,,,*` (HP maximum +50). Then `$BUMP,999,1,0,0,,*`. Does HP heal above the old maximum?
-5. On A: `$TMP,,,,,,,,,50,,,*` (magazine +50%). Read `$ALCD`: did the magazine grow by half a clip?
+   Does damage return? If it does not, note it and power-cycle B. ⚠️ V4_31 shows `$INVU` also sets a flag that forces
+   team 2 on a later reset: power-cycle B after this step, and never send `$INVU` in a team game.
 
-**Reading.** Each command that works replaces a perk that we now fake with extra `$WEAP` or `$LIFE` traffic.
-`$PRES` is the Body Armor and Armour Piercing lever for each weapon family.
+**Reading.** `$PRES` is the Body Armor and Armour Piercing lever for each weapon family.
 
 ## 8. The fn 24-27 fuse, timed (P18, S16, 10 min)
 
@@ -447,44 +443,68 @@ t41 and t42 replace t2 and t13 only in indoor mode, and only when they are not 0
 **Reading.** If step 1 holds, range tuning becomes a frequency table calibrated against the receiver's band-pass, and
 values above the knee are not worth tuning.
 
-## 21. Recoil through `$TMP` token 4 (15 min, run it before any recoil soak)
+## 21. `$TMP`: the native modifier system (40 min, run it before any recoil soak)
 
-Today the recoil writer changes accuracy with a full `$WEAP` (about 101 bytes, 6 BLE packets). A `$WEAP` also resets
-the magazine, so an `$AMMO` restore must follow it, and that reset is the root of the F259 family (erased rounds,
-phantom shots, the echo window). The V4_30 disassembly shows `$TMP` token 4 is an accuracy modifier: every `$TMP` token
-is optional, and an empty token leaves its field alone. fn 23 writes -100 to the same variable, and the 2026-09-18
-bench watched fn 23 take live accuracy from 100 to 0 with no pool change. So the lever works; what is untested is
-driving it over BLE. If it works, one recoil state change becomes one short frame, with no magazine reset and no
-`$AMMO` behind it.
+The V4_30 disassembly reads `$TMP,<t1>,...,<t11>,*` as a set of per-player modifiers. Every token is optional, and an
+empty token leaves its field alone:
 
-This section gates more than recoil. Flinch and stance (Tony's request, not built yet) are accuracy modifiers too, and
-so is fn 23's smoke. If `$TMP` t4 is the lever, four effects want one field. Step 3 decides the design: if the effects
-stack, each can write its own value; if the last writer wins, one owner on the node must compute a single combined
-value and be the only thing that writes t4.
+| token | V4_30 reading | the feature it could carry |
+|---|---|---|
+| t1 / t2 / t3 | HP / armour / shield maximum bonus, added to `$PSET` t3-t5 in the clamps (a change that leaves HP at 0 or below kills) | Body Armor, Overshield |
+| t4 | accuracy modifier (fn 23 writes -100 here and stamps a recovery timer) | recoil, flinch, stance |
+| t8 | incoming damage %, damage x (100 + t8)/100 (`$INVU` writes -100) | a damage-reduction perk |
+| t9 | magazine % bonus: every slot's magazine += clip x t9/100 | Extended Mags |
+| t11 | the default hit sound when a row has none | |
+| t5, t6, t7, t10 | stored, use not traced | |
 
-Arm A with the bench AR. Fire a few rounds so the magazine is not full, and note the magazine count.
-1. Send `$TMP,,,,-30,,,,,,,,*` (only token 4 set). Read `$ALCD`: did token 2 (accuracy) move? Did the magazine stay
-   the same?
-2. **Does a `$WEAP` clear it?** With t4 at -30, push the bench AR `$WEAP` frame again, then read `$ALCD` token 2. If
-   accuracy returns to the ceiling, every weapon swap, arming write and re-push clears the modifier, and the writer
-   must re-send t4 after each one.
-3. **Smoke collision.** With t4 at -30, take one fn 23 hit (the smoke row, `$SIR,0,0,,23,0,0,1,,*` on A, fired by B)
-   and read the accuracy. Then send `$TMP,,,,-30,,,,,,,,*` again, as the recoil writer's next write would, and read it
-   again. They stack, the last writer wins (a recoil write cancels the smoke early, a bug we would introduce), or the
-   gun clamps. If the last writer wins, recoil on t4 must know about smoke, or use another token.
-4. Send `$TMP,,,,-60,,,,,,,,*`. Is the value absolute (accuracy reads 40) or additive (reads 10)?
+Why it matters: today recoil changes accuracy with a full `$WEAP` (about 101 bytes, 6 packets) that also resets the
+magazine, so an `$AMMO` must follow it, which is the root of the F259 family. Body Armor and Extended Mags are built by
+rewriting `$PSET` and `$WEAP`. `$TMP,,,,-30,,,,,,,,*` is 20 bytes, one packet. Flinch and stance (Tony's request, not
+built yet) and fn 23's smoke are accuracy modifiers too, so if t4 is the lever, four effects share one field. Step 3
+decides the design: if the effects stack, each can write its own value; if the last writer wins, one owner on the node
+must compute a single value and be the only thing that writes t4.
+
+Record every value you read (`$ALCD` token 2 for accuracy, the magazine, the pools from `$HP`/`$LCD`), not only pass
+or fail. If effects add, the wire shows only the sum. Keep B's HP healthy for the pool steps: a bonus change that
+leaves HP at 0 or below kills.
+
+**t4, accuracy.** Arm A with the bench AR. Fire a few rounds so the magazine is not full.
+1. Send `$TMP,,,,-30,,,,,,,,*` (only token 4 set). Did `$ALCD` token 2 move? Did the magazine stay the same?
+2. **Does a `$WEAP` clear it?** With t4 at -30, push the bench AR `$WEAP` again and read token 2.
+3. **Smoke collision.** With t4 at -30, take one fn 23 hit (put `$SIR,0,0,,23,0,0,1,,*` on A; fire at A from B or the
+   IR rig). Read the accuracy. Then send `$TMP,,,,-30,,,,,,,,*` again, as the recoil writer's next write would, and read
+   it again, then again after 3 s. They stack, the last writer wins (a recoil write cancels the smoke early, a bug we
+   would introduce), or the gun clamps. fn 23 stamps a recovery timer, so also note whether the smoke recovery still
+   runs after our write.
+4. Send `$TMP,,,,-60,,,,,,,,*`. Absolute (reads 40) or additive (reads 10)?
 5. Wait 5 s without firing. Does accuracy stay, or walk back by itself?
-6. Fire 10 rounds. Does the modifier change the hit rate the way a lower t21/t22 does (the 2026-09-17 bench: 38/40
-   hits at 90, 7/18 at 50-60)?
+6. Fire 10 rounds. Does the modifier change the hit rate the way a lower t21/t22 does (2026-09-17: 38/40 hits at 90,
+   7/18 at 50-60)?
 7. Send `$TMP,,,,0,,,,,,,,*`. Does accuracy return to its ceiling?
 8. Kill A and respawn it. Does the modifier survive a death?
 
-Record the `$ALCD` token 2 VALUE at every step, not only pass or fail: it reads the gun's live accuracy, so if t4 adds
-to other effects the wire shows only the sum.
+**t9, magazine.**
+9. On A, send `$TMP,,,,,,,,,50,,,*` (magazine +50 %). Read `$ALCD`: did the magazine grow by half a clip?
+10. Reload. Does the bigger magazine survive the reload?
+11. Push the bench AR `$WEAP` again. Does the bonus survive, or does the `$WEAP` clear it? This decides whether
+    Extended Mags can live here.
 
-**Reading.** If steps 1 and 7 work and the magazine never moves, recoil moves from `$WEAP` to `$TMP` token 4, and the
-screamers sheet's `recoil-oscillate` soak must measure the `$TMP` form instead. If `$TMP` does nothing, the `$WEAP`
-writer stays and F274's soak runs as written.
+**t1 / t2 / t3, pool maxima.** Re-arm B (45, 70, 0).
+12. On B, send `$TMP,50,,,,,,,,,,,*` (HP maximum +50), then `$BUMP,999,1,0,0,,*`. Does HP heal above 45?
+13. Send `$TMP,,25,,,,,,,,,,*` (armour maximum +25), then `$BUMP,999,0,1,0,,*`. Does armour reach 95?
+14. Re-send B's `$PSET`, then `$SPAWN,,*` and `$TID,2,*`. Do the bonuses survive a `$PSET`?
+
+**t8, incoming damage.** Re-arm B (999, 0, 0).
+15. On B, send `$TMP,,,,,,,,-50,,,,*`. Fire 3 hits. Expect 4 or 5 each (9 x 0.5). Then send `$TMP,,,,,,,,0,,,,*`.
+
+**Frame size.**
+16. Send the short form `$TMP,,,,-30,*` (13 bytes, the trailing empty tokens dropped). Does it act like step 1? If it
+    does, every `$TMP` write fits one packet.
+
+**Reading.** If t4, t9 and t1-t3 work and a `$WEAP` or `$PSET` does not clear them, recoil, Extended Mags and Body
+Armor move to one short frame each, with no magazine reset, and the screamers sheet's recoil soak must measure the
+`$TMP` form instead. Anything that a `$WEAP` or `$PSET` clears needs a re-send after it. If `$TMP` does nothing, the
+current writers stay and F274's soak runs as written.
 
 ## Close
 
