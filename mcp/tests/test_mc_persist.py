@@ -394,38 +394,3 @@ def test_f142_restored_from_at_is_a_number_or_absent_never_whatever_the_file_sai
         got = s2.restored_from["at"]
         assert got == want and (got is None or type(got) is int), (junk, got)
         assert s2.restored_from["players"] == 3
-
-
-# --------------------------------------------------------------------------- S42 cut (2026-09-18)
-def test_a_legacy_recoil_key_loads_everywhere_and_is_dropped():
-    """Tony cut S42 live accuracy on 2026-09-18. A config stored before then can carry
-    `recoil: true/false`. Each of the three load paths must accept it without error and drop it:
-    the session snapshot, a saved game in presets.json, and a PUT /api/config patch."""
-    from brx_mcp.mc.presets import PresetStore
-    from brx_mcp.mc.state import default_config
-    from brx_mcp.mc import policy as P
-    for legacy in (True, False):
-        # 1. session.json
-        r = mk(); s = r[0] if isinstance(r, tuple) else r
-        tmp = pathlib.Path(tempfile.mkdtemp()) / "session.json"
-        s._persist_path = tmp
-        s._persist_last = 0.0
-        s._persist()
-        snap = json.loads(tmp.read_text())
-        snap["config"]["recoil"] = legacy
-        tmp.write_text(json.dumps(snap))
-        r2 = mk(); s2 = r2[0] if isinstance(r2, tuple) else r2
-        s2._persist_path = tmp
-        assert s2.restore_snapshot() >= 2
-        assert "recoil" not in s2.config, "a restored snapshot must not carry the cut key onto the wire"
-        # 2. presets.json
-        cfg = dict(default_config("tdm")); cfg["recoil"] = legacy
-        ppath = tmp.with_name("presets.json")
-        ppath.write_text(json.dumps({"presets": [{"preset_id": "old1", "name": "Old game", "desc": "",
-                                                  "config": cfg}]}))
-        st = PresetStore(ppath, s2.sanitize_config, default_config, P.merge, now_ms=s2.now_ms)
-        row = next(x for x in st.list() if x["name"] == "Old game")
-        assert "recoil" not in row["config"]
-        # 3. PUT /api/config
-        s2.set_config({"mode": s2.config["mode"], "recoil": legacy})
-        assert "recoil" not in s2.config

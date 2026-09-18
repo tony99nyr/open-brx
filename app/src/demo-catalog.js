@@ -14,10 +14,10 @@ export const DEMO_WEAPONS = [
     "reserve": 56,
     "reload_s": 1.4,
     "reload_ms": 1400,
-    "dmg": 21,
+    "dmg": 18,
     "rpm": 19,
     "rng": 75,
-    "dmg_per_hit": 24,
+    "dmg_per_hit": 21,
     "pool": 115,
     "verified": false,
     "tags": [
@@ -25,14 +25,21 @@ export const DEMO_WEAPONS = [
       "sniper"
     ],
     "role": "marksman",
-    "htk": 5,
-    "ttk_ms": 1600,
+    "htk": 6,
+    "ttk_ms": 2000,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 100,
+      "per_shot": 0,
+      "recover_ms": 0
+    },
+    "crit_pct": 30,
     "ammo_total": 70,
     "bars": {
       "power": 56,
       "rof": 53,
       "ammo": 51,
-      "ttk": 52
+      "ttk": 27
     }
   },
   {
@@ -58,12 +65,18 @@ export const DEMO_WEAPONS = [
     "role": "assault",
     "htk": 13,
     "ttk_ms": 1200,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 70,
+      "per_shot": 10,
+      "recover_ms": 150
+    },
     "ammo_total": 224,
     "bars": {
       "power": 38,
       "rof": 87,
       "ammo": 75,
-      "ttk": 92
+      "ttk": 93
     }
   },
   {
@@ -77,24 +90,31 @@ export const DEMO_WEAPONS = [
     "reserve": 216,
     "reload_s": 1.7,
     "reload_ms": 1700,
-    "dmg": 10,
+    "dmg": 9,
     "rpm": 100,
     "rng": 75,
-    "dmg_per_hit": 11,
+    "dmg_per_hit": 10,
     "pool": 115,
     "verified": false,
     "tags": [
       "assault"
     ],
     "role": "assault",
-    "htk": 11,
-    "ttk_ms": 1417,
+    "htk": 12,
+    "ttk_ms": 1558,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 85,
+      "per_shot": 5,
+      "recover_ms": 150
+    },
+    "crit_pct": 40,
     "ammo_total": 252,
     "bars": {
       "power": 47,
       "rof": 100,
       "ammo": 82,
-      "ttk": 68
+      "ttk": 64
     }
   },
   {
@@ -121,6 +141,12 @@ export const DEMO_WEAPONS = [
     "role": "marksman",
     "htk": 3,
     "ttk_ms": 570,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 100,
+      "per_shot": 0,
+      "recover_ms": 0
+    },
     "ammo_total": 120,
     "bars": {
       "power": 91,
@@ -153,12 +179,18 @@ export const DEMO_WEAPONS = [
     "role": "sidearm",
     "htk": 5,
     "ttk_ms": 1920,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 100,
+      "per_shot": 0,
+      "recover_ms": 0
+    },
     "ammo_total": 55,
     "bars": {
       "power": 64,
       "rof": 47,
       "ammo": 45,
-      "ttk": 36
+      "ttk": 42
     }
   },
   {
@@ -185,12 +217,18 @@ export const DEMO_WEAPONS = [
     "htk": 13,
     "ttk_ms": 1800,
     "caution": "Overheats after about 30 rounds of full auto, and it does not cool on its own: work the reload lever to vent the heat (about three pulls, or one held pull), then keep holding to recharge the cell.",
+    "recoil": {
+      "ceiling": 100,
+      "floor": 70,
+      "per_shot": 10,
+      "recover_ms": 150
+    },
     "ammo_total": 900,
     "bars": {
       "power": 38,
       "rof": 67,
       "ammo": 100,
-      "ttk": 44
+      "ttk": 49
     }
   },
   {
@@ -218,12 +256,18 @@ export const DEMO_WEAPONS = [
     "htk": 1,
     "ttk_ms": 1200,
     "pickup_only": true,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 100,
+      "per_shot": 0,
+      "recover_ms": 0
+    },
     "ammo_total": 4,
     "bars": {
       "power": 100,
       "rof": 27,
       "ammo": 20,
-      "ttk": 92
+      "ttk": 93
     }
   },
   {
@@ -251,6 +295,12 @@ export const DEMO_WEAPONS = [
     "htk": 1,
     "ttk_ms": 0,
     "pickup_only": true,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 100,
+      "per_shot": 0,
+      "recover_ms": 0
+    },
     "ammo_total": 4,
     "bars": {
       "power": 100,
@@ -282,12 +332,18 @@ export const DEMO_WEAPONS = [
     "role": "cqb",
     "htk": 3,
     "ttk_ms": 1600,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 100,
+      "per_shot": 0,
+      "recover_ms": 0
+    },
     "ammo_total": 30,
     "bars": {
       "power": 73,
       "rof": 40,
       "ammo": 32,
-      "ttk": 52
+      "ttk": 56
     }
   },
   {
@@ -313,12 +369,18 @@ export const DEMO_WEAPONS = [
     "role": "cqb",
     "htk": 15,
     "ttk_ms": 1330,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 55,
+      "per_shot": 15,
+      "recover_ms": 150
+    },
     "ammo_total": 360,
     "bars": {
       "power": 29,
       "rof": 93,
       "ammo": 88,
-      "ttk": 76
+      "ttk": 78
     }
   },
   {
@@ -346,6 +408,12 @@ export const DEMO_WEAPONS = [
     "ttk_ms": 13300,
     "caution": "The Haze needs the HUD that tells a flashed player why nothing is landing (S53) before players meet it.",
     "lethal": false,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 100,
+      "per_shot": 0,
+      "recover_ms": 0
+    },
     "ammo_total": 32,
     "bars": {
       "power": 20,
@@ -378,12 +446,18 @@ export const DEMO_WEAPONS = [
     "role": "marksman",
     "htk": 2,
     "ttk_ms": 1500,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 100,
+      "per_shot": 0,
+      "recover_ms": 0
+    },
     "ammo_total": 28,
     "bars": {
       "power": 82,
       "rof": 20,
       "ammo": 26,
-      "ttk": 60
+      "ttk": 71
     }
   },
   {
@@ -410,12 +484,18 @@ export const DEMO_WEAPONS = [
     "htk": 13,
     "ttk_ms": 1320,
     "lethal": false,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 100,
+      "per_shot": 0,
+      "recover_ms": 0
+    },
     "ammo_total": 160,
     "bars": {
       "power": 20,
       "rof": 80,
       "ammo": 69,
-      "ttk": 84
+      "ttk": 85
     }
   },
   {
@@ -441,12 +521,18 @@ export const DEMO_WEAPONS = [
     "role": "assault",
     "htk": 15,
     "ttk_ms": 1960,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 55,
+      "per_shot": 15,
+      "recover_ms": 150
+    },
     "ammo_total": 459,
     "bars": {
       "power": 29,
       "rof": 73,
       "ammo": 94,
-      "ttk": 28
+      "ttk": 35
     }
   },
   {
@@ -473,12 +559,18 @@ export const DEMO_WEAPONS = [
     "role": "sidearm",
     "htk": 13,
     "ttk_ms": 1920,
+    "recoil": {
+      "ceiling": 100,
+      "floor": 100,
+      "per_shot": 0,
+      "recover_ms": 0
+    },
     "ammo_total": 139,
     "bars": {
       "power": 38,
       "rof": 60,
       "ammo": 63,
-      "ttk": 36
+      "ttk": 42
     }
   }
 ];

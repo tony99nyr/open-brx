@@ -13,7 +13,7 @@ export type {
   ArmoryRecord, BleId, ConfigView, Envelope, Event, FrameBundle, GameConfig, Health, Loadout, LoadoutOverrides,
   LoadoutPolicy, LoadoutPool, LogView, PerkEffects, PerkEffectsResolved, PerkView, Player, Preflight, ReadinessRow,
   ReadinessSnapshot, Respawn, RosterEntry, ScanRow, ScoreRow, Scoring, Siphon, SlotRule, StationRef,
-  Stun, Team, Weapon, WeaponSel, PoolEmptyCode, ModeParamSpec, Honor, RecapStationRow,
+  Stun, Recoil, Team, Weapon, WeaponSel, PoolEmptyCode, ModeParamSpec, Honor, RecapStationRow,
   StationAssignment, EndDeliveryView, VoiceList, VoiceOption, PhaseRefusalBody,
   WeaponView, SavedGame, LiveRow, EndDeliveryRow, WeaponBars, Coverage,
   LanPublic, PresentationRow, PresentationView, PresentationSummary, HeadsetSummary, GunSummary,

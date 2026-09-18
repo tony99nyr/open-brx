@@ -43,7 +43,7 @@
       P0 screamers soak (docs/bench-screamers-2026-09-19.md Phase C): connects to one gun, probes
       liveness ($PING every 2s) throughout, replays a traffic pattern, and logs + classifies every
       LOCK-UP / LINK DROP / BAD FRAME. Patterns (brx_mcp/soak/patterns.py): match, match-x10,
-      callsign, burst-short, burst-weap. Ctrl-C ends cleanly with the summary.
+      callsign, recoil-oscillate, burst-short, burst-weap. Ctrl-C ends cleanly with the summary.
 """
 
 from __future__ import annotations

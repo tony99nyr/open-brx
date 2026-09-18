@@ -200,9 +200,9 @@ sounds — and moves the numbers.
 | Sniper Rifle | marksman | 60 | 1500 | 2 | **1.50** | 40.0 | 31.2 | 4 | 24 | 1700 | 92% | — | dmg 80→60, cycle 300→1500 |
 | Shotgun | cqb | 20 | 800 | 3 | **1.60** | 25.0 | 23.1 | 6 | 24 | 400 | 12% | — | **2026-09-18**: dmg 45→20 (`wire.dmg`, the gun word); OUR chosen 20-damage headset word (`wire.headset_dmg`, t12) stacks unconditionally on top, 40 real per pull; the second word itself is measured (Callsign's own 70, cap30), the 20 is a balance number we picked (htk/TTK unchanged, 2 pulls short, 3 kills either way), but `dmg`/`dps`/`sust`/one-mag % here are the GUN WORD ALONE, not the real per-pull total. Magazine deliberately left at 6/24: the AMR now covers it on every axis, and rather than buy a lead with an unexamined number, `test_ttk_band_and_no_strictly_dominant_weapon` names the `(amr, shotgun)` pair in `KNOWN_DOMINANCE`. The suite is GREEN, not red, and the exemption fails the moment the pair stops dominating, so it cannot outlive F254; §7 |
 | Plasma Sniper | marksman | 25 | 400 | 4 | **1.20** | 62.5 | 41.7 | 10 | 80 | 2000 | 95% | 30 | dmg 80→25, cycle 225→400; **2026-09-18**: htk 5→4, TTK 1.60→1.20s (our chosen 10-damage headset word, `wire.headset_dmg`/t12, stacks unconditionally, 35 real per pull; ⚠️ this weapon has NEVER been captured -- cap30 fired only a Shotgun -- so its second word rests on a sourced t12=80 and nothing else); `dmg`/`dps`/`sust`/one-mag % here are the gun word alone, same caveat as the Shotgun; §7 |
-| AMR | support | 24 | 400 | 5 | **1.60** | 60.0 | 48.0 | 14 | 56 | 1400 | 100% | — | dmg 18→24, cycle 360→400 |
+| AMR | support | 21 | 400 | 6 | **2.00** | 52.5 | 42.0 | 14 | 56 | 1400 | 99% | — | dmg 18→24, cycle 360→400; **2026-09-18** (F62): dmg 24→21, htk 5→6, TTK 1.60→2.00s — 30% `crit_pct` (a crit is x1.5 truncated, so 21→31) pays for itself: average damage per hit holds at 24.15, but the published number is now the GUARANTEED five-hit-plus kill, six hits when unlucky. Mag/reserve untouched |
 | Force Rifle | assault | 10 | 100 +250 | 12 | **1.65** | 66.7 | 50.7 | 36 | 144 | 1700 | 100% | — | dmg 9→10 |
-| Burst Rifle | assault | 11 | 75 +275 | 11 | **1.42** | 77.6 | 58.2 | 36 | 216 | 1700 | 100% | — | **2026-09-17**: dmg 9→11 (`wire.dmg`) |
+| Burst Rifle | assault | 10 | 75 +275 | 12 | **1.56** | 70.6 | 52.9 | 36 | 216 | 1700 | 100% | — | **2026-09-17**: dmg 9→11 (`wire.dmg`); **2026-09-18** (F62): dmg 11→10, htk 11→12, TTK 1.42→1.56s — 40% `crit_pct` (a crit is x1.5 truncated, so 10→15) pays for itself: average damage per hit holds at 11.25, but the published number is now the guaranteed 4-pull kill; a 3-pull kill lands about 27% of the time. Mag/reserve untouched |
 | Stinger | cqb | 15 | 250 | 8 | **1.75** | 60.0 | 43.5 | 18 | 144 | 1700 | 99% | — | cycle 120→250, res 72→144 |
 | Bolt Rifle | assault | 13 | 225 | 9 | **1.80** | 57.8 | 38.7 | 18 | 180 | 2000 | 98% | — | **stock** |
 | SMG | cqb | 8 | 95 | 15 | **1.33** | 84.2 | 61.7 | 72 | 288 | 2500 | 100% | 5 | **2026-09-17**: cycle 140→95 (`wire.fire_ms`) |
@@ -237,12 +237,13 @@ Bolt Rifle and Melee — their stock numbers already sat in the band.
   2026-08-30 retune to 140 ms; damage untouched at the captured 9. Tony's call, made with the
   historical dominance finding on the table (below): at 140/192 the AR dominated nothing under the old
   three-axis check; at native 100/192 it strictly dominates several other picker weapons under BOTH
-  the old axes and the new one-magazine-kill-chance axis (§2.3). The planned equaliser was a
-  node-driven accuracy/stance/flinch system (S42); Tony cut it on 2026-09-18 for BLE load
-  (`spec/node.md` §3.15), so no equaliser is planned now. Under the family-scoped rule that shipped the same day (§2.3) the
+  the old axes and the new one-magazine-kill-chance axis (§2.3) — the accuracy/stance/flinch system
+  (S42, node-driven, not the native spray decay F230 showed is not usable) is the intended real-world
+  equaliser, not this static check. Under the family-scoped rule that shipped the same day (§2.3) the
   test is GREEN: the AR leads its family on time to kill and sustained DPS, and the SMG and Suppressor
-  lead on kills per clip. ⚠️ **That is a paper lead, not a felt one.** A player who picks on feel has
-  no reason to take anything else in this family, so the AR's cost is owed and unpaid.
+  lead on kills per clip. ⚠️ **That is a paper lead, not a felt one.** Until stance and recoil ship,
+  a player who picks on feel has no reason to take anything else in this family, so the AR's cost is
+  owed and unpaid.
 - **Burst Rifle** — **2026-09-17: damage 9 → 11** (`wire.dmg`), 13 hits → 11, so the real three-round
   burst separates further from the SMG-class assault weapons on hits-to-kill, not only on cadence
   (75 ms intra-burst + 275 ms gap, unchanged). No longer ships byte-for-byte (`verified: false`).
@@ -384,8 +385,8 @@ life); kills-per-clip takes its place as the deterministic axis, alongside the p
 magazine figure — Tony's call was to keep both, not pick one.
 
 **Why per-family, not global.** An SMG beating a Sniper Rifle on every one of these four axes is
-expected, not a balance failure: the MODEL does not see range (range ships on `t2`, so it does not
-reach `weapons.json`'s derived columns), and a
+expected, not a balance failure: the MODEL sees neither range nor recoil (range now ships on `t2`, and
+recoil is written by the node at runtime, so neither reaches `weapons.json`'s derived columns), and a
 Sniper Rifle's whole real identity IS range — the model simply cannot see the axis that would stop the
 SMG winning. Checking dominance only within a family (weapons that already share a fire mode and a
 damage type) keeps the check meaningful without pretending to referee a fight the model has no data
@@ -396,29 +397,36 @@ and using the 2026-09-17 numbers, the roster is CLEAN — zero violations.
 feel — the strict-dominance check alone allows a family where every OTHER member ties or loses to one
 weapon on every axis without that one weapon quite crossing into "dominates" (no single strict edge on
 any one axis). "Leads" means: achieves the family-best value (ties count) on one of the four numeric
-axes above. ⚠️ **It does NOT mean a unique `range_band`.** Polish round 2 (2026-09-17) removed that
-path (and a `recoil.floor` path, since cut with S42), because it does not reach a gun, so a lead
-claimed on it would be satisfied by inert data and the rule could never fail. Add it back in the same
-commit that wires the lever. A family of one (Burst Rifle, Energy Rifle, Charge Rifle: each alone in its
-mode/class bucket) trivially leads: there is nothing to be out-led by. `range_band` is **declared
-catalogue data that the COMPILER never writes**
-(`test_range_is_declared_not_wired_and_accuracy_stays_native_off` is the guard). It is human-facing
-intent, not the wire value. The wire value exists and does reach a gun: `wire.range_outdoor_pct` writes
-`t2` outdoors:
+axes above. ⚠️ **It does NOT mean a declared `recoil.floor` or a unique `range_band`** — polish round
+2 (2026-09-17) removed those two paths, because neither reaches a gun, so a lead claimed on either
+would be satisfied by inert data and the rule could never fail. Add them back in the same commit that
+wires the levers. A family of one (Burst Rifle, Energy Rifle, Charge Rifle: each alone in its
+mode/class bucket) trivially leads — there is nothing to be out-led by. Two qualifiers used only for
+this rule, both **declared catalogue data that the COMPILER never writes**
+(`test_range_and_recoil_are_declared_not_wired` is the guard). Read that precisely: `range_band` and
+`recoil` are human-facing intent, and neither is the wire value. The wire values exist and do reach a
+gun: `wire.range_outdoor_pct` writes `t2` outdoors, and the node writes `t21`/`t22` at runtime:
 
 - **`range_band`** (`"close" | "close-mid" | "mid" | "long"`, plus a `range_target_m` human string) —
   the per-venue metres Q15 will calibrate once `t2` is (F231): Shotgun/sidearms close (8-10 m indoor /
   15-18 m outdoor), SMG close-mid (12 / 25-30), Assault Rifle/Burst/Charge Rifle mid (18-20 / 40-45),
   Suppressor/Energy Rifle mid (15 / 30, the deep-mag "LMG" role), Sniper Rifle/AMR long (full reach /
   60 m+). The power tier is provisionally mid (a power weapon, not a marksman one) pending a real call.
-- **`recoil`** was a second qualifier, the per-weapon S42 node-driven accuracy profile. Tony cut live
-  accuracy on 2026-09-18 for BLE load, and the field is gone from `weapons.json`.
+- **`recoil: {ceiling, floor, per_shot, recover_ms}`** — the planned S42 node-driven profile (a harsh
+  floor is a felt COST that offsets a fast TTK): SMG and Suppressor harshest (100/55, the sustained
+  hoses), Assault Rifle and Energy Rifle medium (100/70), Burst Rifle mild and resetting between bursts
+  (100/85), everything semi-automatic or one-shot none (100/100, no recoil model needed — two HIDDEN rows are
+the exception and were never part of the ladder: `force_rifle` (100/60) and `stinger` (100/45), left as the
+arsenal cut found them — a Sniper
+  Rifle's future cost is a stance penalty, not recoil, and does not exist yet either). `per_shot` and
+  `recover_ms` reuse the S42 accuracy-walk bench numbers (2026-09-17: ~10 points per 0.15 s) as a
+  starting assumption, not a recoil-specific measurement.
 
-`resolve()` does not read `range_band`: `t41`/`t2` (range) still ship whatever the capture carries (F135,
-F231; this is the single biggest missing design axis, §5, U2), and `t21`/`t22` (accuracy ceiling/
-floor) ship 100/100 on every weapon (native walk off, F230). The field is declared now so that the NEXT
-retune tunes it alongside the numbers above, and does not re-derive this whole argument once the lever
-exists.
+Neither field is read by `resolve()`: `t41`/`t2` (range) still ship whatever the capture carries (F135,
+F231 — this is the single biggest missing design axis, §5, U2), and `t21`/`t22` (accuracy ceiling/
+floor) still ship 100/100 on every weapon (native walk off, F230). Both are declared now specifically
+so the NEXT retune tunes them alongside the numbers above instead of re-deriving this whole argument
+from scratch once the levers exist.
 
 **Two number changes were needed to close the roster clean, both the smallest found:**
 
@@ -462,8 +470,8 @@ Fastest cycle has the slowest reload and vice versa; nothing leads on both.
 | Sniper Rifle | 2 | **2** | 3 | 4 |
 | Shotgun | 3 | **3** | 4 | 5 |
 | Plasma Sniper | 3 | **4** | 5 | 6 |
-| AMR | 5 | **5** | 7 | 9 |
-| Burst Rifle | 10 | **11** | 14 | 19 |
+| AMR | 5 | **6** | 8 | 10 |
+| Burst Rifle | 10 | **12** | 15 | 20 |
 | Stinger | 7 | **8** | 10 | 14 |
 | Bolt Rifle | 8 | **9** | 12 | 16 |
 | Force Rifle | 10 | **12** | 15 | 20 |
@@ -694,10 +702,7 @@ cycle retune reached for by hand (§2, "Role identities").
 through unchanged by `resolve()` (Appendix). The model is present on the wire and unused: turning it on
 for any weapon is a deliberate balance decision, not something the current roster does today. No
 per-weapon values are proposed here — that is future work, and it wants the recovery rate measured
-first. F230 later found that the native walk decays on only one gun of three. S42 then drove both tokens
-from the node during a life, with a `$WEAP` rewrite up to every 250 ms. Tony cut that on 2026-09-18
-because it was the largest BLE load on a gun (`spec/node.md` §3.15). Nothing writes `t21`/`t22` during
-a life now.
+first.
 
 ---
 
@@ -1182,8 +1187,8 @@ What it buys us, all with no firmware change:
 - **Area denial**, if a station can emit it: walk through the cloud and you cannot shoot for 3 s.
 
 ⚠️ The player must be TOLD. Pulling the trigger, hearing your own gun, and watching nothing land reads
-as a broken tagger. The node can detect it with no new wire support, because `$ALCD` already carries
-the accuracy token: a `$HIR` that moves no pool plus live accuracy at 0. That is **S53**.
+as a broken tagger. The node can detect it with no new wire support, because the accuracy token is
+already parsed for recoil: a `$HIR` that moves no pool plus live accuracy at 0. That is **S53**.
 
 ### 6.3f Two axes the firmware has and we have never used
 

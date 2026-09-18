@@ -57,6 +57,7 @@ JUDGED = {
     "RECONNECT_ANSWER_WINDOW_S": "the soak tool's post-reconnect $PONG wait; same as LOCKUP_AFTER_S, no hill/mode in play",
     "_HIT_INTERVAL_S": "the soak tool's simulated per-hit cue cadence (an assumption, not a fuse); no hill/mode in play",
     "_REVIVE_INTERVAL_S": "the soak tool's simulated revive cadence (the plan doc's own '3 minutes'); no hill/mode in play",
+    "_BURST_INTERVAL_S": "the soak tool's simulated recoil-burst cadence (an assumption, not a fuse); no hill/mode in play",
 }
 
 _CONST = re.compile(r"^\s*([A-Z_][A-Z0-9_]*_(S|MS))\s*(?::\s*[\w\[\], ]+)?\s*=\s*\(?\s*(-?\d[\d_.]*)", re.M)

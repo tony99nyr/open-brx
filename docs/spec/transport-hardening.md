@@ -69,9 +69,13 @@ sleeps plus radio time. The instrument paces at 20 ms per chunk and 100 ms per f
 tool, not the live path).
 
 **Budget rule (design).** Off the arm bursts, a node writes at most one frame per event it witnesses (a hit, a
-reload, a pool change coalesced at 300 ms, a headset repaint at most every 5 s). With the S42 live-accuracy writer
-removed (`cut-live-accuracy`), the busiest minute of play is a revive (279 B) plus a few dozen frames under 20 B.
-Nothing on the node may write on a timer during play. **A periodic keepalive, if §7 adds one, is the one exception,
+reload, a pool change coalesced at 300 ms, a headset repaint at most every 5 s). The exception is the S42 recoil
+writer, which stays (Tony, 2026-09-18). Each change of live accuracy costs a `$WEAP` (about 101 B, 6 packets) plus an
+`$AMMO` restore, and today's writer can send that pair every 250 ms under sustained fire. It is the biggest load in a
+match. **Requirement:** the recoil writer's mid-life `$WEAP` + `$AMMO` writes must fit the per-gun write budget, and
+the writer must pass screamers Phase C (`match` and `recoil-oscillate`, about 150 pairs a minute) before it ships
+(F274). Apart from the recoil writer, the busiest minute of play is a revive (279 B) plus a few dozen frames under
+20 B. Nothing on the node may write on a timer during play. **A periodic keepalive, if §7 adds one, is the one exception,
 and it is one 7-byte frame.**
 
 ## 3. Pacing: arm in blocks, with a pause
@@ -201,7 +205,8 @@ detector is simply the existing drop path plus a "power-cycle" hint when the rec
 | §5 write with response on multi-packet frames | design | bench A8 |
 | §6 `$QUERY` read-back of id, team, pools | design | bench-firmware-levers claim 19 (§18) |
 | §7 lock-up detector | design | bench A13, A1 (does the link stay up?), plus the idle `$VOLTS` cadence |
-| §2 the budget rule | design | bench A13 (20 minutes at the old S42 rate: how long to a lock-up?) |
+| §2 the budget rule | design | bench A13 (20 minutes at today's recoil writer rate: how long to a lock-up?) |
+| §2 the recoil writer inside the budget | design | screamers Phase C runs 1 to 3 (`match`, `match-x10`, `recoil-oscillate`) |
 
-FOLLOWUPS rows: F261 (pacing + runt rows), F262 (write with response), F263 (`$QUERY` read-back), F264 (lock-up
-detector), F265 (the `$PB*` question). F208 and F163 point here.
+FOLLOWUPS rows: F269 (pacing + runt rows), F270 (write with response), F271 (`$QUERY` read-back), F272 (lock-up
+detector), F273 (the `$PB*` question), F274 (the recoil writer inside the budget). F208 and F163 point here.

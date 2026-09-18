@@ -283,6 +283,81 @@ def test_burst_and_charge_classification_matches_the_frame():
         assert CAT.time_to_kill(wid, DEFAULT_POOL) > 0, wid
 
 
+def test_crit_pct_writes_t6_only_on_the_three_weapons_that_declare_it():
+    """F62 (closed 2026-09-18): t6 (`primaryCritChance`) is a straight percentage the GUN rolls
+    itself. `crit_pct` names three weapons only (burst_rifle, amr, toxin_rifle); every other row
+    must keep whatever t6 its capture carries — which is 0 on every stock frame captured so far.
+
+    Unlike `headset_dmg`, an ABSENT `crit_pct` is not a refusal: a weapon that never crits is not a
+    balance hole, so `resolve()` must leave the token exactly as the capture carries it rather than
+    writing a 0. Break the `crit_pct` write in `resolve()` and watch this go red."""
+    declared = {"burst_rifle": 40, "amr": 30, "toxin_rifle": 15}
+    by_id = {w["weapon_id"]: w for w in ROWS}
+    assert {wid: by_id[wid]["crit_pct"] for wid in declared} == declared, \
+        "fixture drift: the three crit weapons no longer declare the expected crit_pct"
+    for wid, want in declared.items():
+        compiled_t6 = CAT.resolve(wid, 0).split(",")[WeaponCatalog._T["crit"] + 1]
+        assert compiled_t6 == str(want), f"{wid}: t6 compiled to {compiled_t6!r}, crit_pct declares {want!r}"
+    checked = 0
+    for w in ROWS:
+        wid = w["weapon_id"]
+        if wid in declared:
+            continue
+        assert w.get("crit_pct") is None, f"{wid}: unexpectedly declares crit_pct — extend `declared` above"
+        captured_t6 = _tok(wid, "crit")
+        compiled_t6 = CAT.resolve(wid, 0).split(",")[WeaponCatalog._T["crit"] + 1]
+        assert compiled_t6 == captured_t6, \
+            f"{wid}: t6 compiled to {compiled_t6!r} but the capture carries {captured_t6!r} — an " \
+            f"undeclared crit_pct must be left untouched, not written"
+        checked += 1
+    assert checked > 10, "too few undeclared weapons checked: the capture fixtures moved"
+
+
+def test_crit_pct_outside_0_to_100_raises_with_the_weapon_named():
+    """A `crit_pct` the gun cannot represent must refuse to compile, and the error must name the
+    offending weapon so a bad catalogue edit is easy to place."""
+    rows = json.loads((ROOT / "mcp" / "brx_mcp" / "mc" / "weapons.json").read_text())["weapons"]
+    hot = next(w for w in rows if w["weapon_id"] == "amr")
+    for bad in (-1, 101, 1000):
+        hot["crit_pct"] = bad
+        bad_cat = WeaponCatalog(rows)
+        try:
+            bad_cat.resolve("amr", 0)
+            raise AssertionError(f"resolve() must refuse a crit_pct of {bad}")
+        except ValueError as e:
+            assert "amr" in str(e), str(e)
+
+
+def test_htk_and_ttk_derive_from_base_damage_alone_with_no_crit_term():
+    """The design decision the whole crit-chance feature turns on (docs/weapon-design.md, F62): a
+    published hits-to-kill is the GUARANTEED number, and a crit only ever beats it. The BASE damage
+    was cut on the three crit weapons to pay for the chance (burst_rifle 11→10, amr 24→21, both
+    average-preserving at their `crit_pct`), and `htk`/`ttk_ms` were republished from that cut base —
+    they must never be a discount FROM the old number, only a plain re-derivation.
+
+    The guard: `hits_to_kill()` is exactly `ceil(pool / damage_per_pull())` for every ordinary
+    weapon (a cell weapon like the Charge Rifle counts trigger actions, not equal hits, and is
+    already covered by `hits_to_kill()`'s own charge+tap branch — see its docstring), whatever
+    `crit_pct` the row declares. There must be no crit term anywhere in the chain. Break it by
+    folding an expected-value discount into `damage()`, `damage_per_pull()` or `hits_to_kill()` and
+    watch this go red."""
+    for w in LETHAL_ROWS:
+        wid = w["weapon_id"]
+        if CAT.rounds_per_charge(wid) > 1 and CAT.tap_damage(wid) > 0:
+            continue   # cell weapon (Charge Rifle): trigger actions, not equal hits -- hits_to_kill()'s own branch
+        dpp = CAT.damage_per_pull(wid)
+        want_htk = math.ceil(DEFAULT_POOL / dpp) if dpp > 0 else 0
+        assert CAT.hits_to_kill(wid, DEFAULT_POOL) == want_htk, \
+            f"{wid}: hits_to_kill() disagrees with ceil(pool / damage_per_pull()) -- a crit term crept into the chain"
+        assert w["htk"] == want_htk, f"{wid}: catalogue htk is stale against the guaranteed derivation"
+    # the three crit weapons specifically, pinned to the numbers this change shipped (F62, 2026-09-18)
+    for wid, want_htk, want_ttk in (("burst_rifle", 12, 1558), ("amr", 6, 2000), ("toxin_rifle", 15, 1540)):
+        assert CAT.hits_to_kill(wid, DEFAULT_POOL) == want_htk, wid
+        assert CAT.time_to_kill(wid, DEFAULT_POOL) == want_ttk, wid
+        assert CAT.damage_per_pull(wid) == CAT.damage(wid), \
+            f"{wid}: damage_per_pull() must equal the base t5 magnitude, with no crit discount folded in"
+
+
 # ---------------------------------------------------------------- 2. weapon-design.md §2.2
 
 
@@ -548,15 +623,18 @@ def test_the_perk_that_moves_the_pool_changes_the_quoted_numbers():
     assert htk(armoured) > htk(base), "body_armor must move HITS TO KILL"
 
 
-def test_every_weapon_ships_accuracy_100_100_and_no_recoil():
-    """Every weapon ships t21 == t22 == 100 (native accuracy walk off). The native walk is unreliable
-    (F230: one gun of three decayed under sustained fire). S42 node-driven recoil used to move both
-    tokens during a life with mid-life `$WEAP` writes; Tony cut it on 2026-09-18 because those writes
-    were the largest BLE load on a gun. So no row may carry a `recoil` block, and the compiled frame
-    must hold 100/100 in every venue."""
+def test_recoil_is_declared_not_wired_by_the_compiler():
+    """S42 (2026-09-17): every weapon declares a `recoil` target profile
+    `{ceiling, floor, per_shot, recover_ms}`, and `resolve()` must never write t21/t22 from it. The
+    native accuracy walk is unreliable (F230: one gun of three decayed under sustained fire), so every
+    weapon ships t21 == t22 == 100 whatever its declared profile says. The ONLY thing that drives
+    recoil is `app/src/engine.js`'s accuracy writer at runtime, which pins both tokens to the live
+    value on every write. Wiring `recoil` into `resolve()` to "make it real" is the mistake this test
+    exists to catch: break it and it goes red."""
     for w in ROWS:
         wid = w["weapon_id"]
-        assert "recoil" not in w, f"{wid}: live accuracy was cut 2026-09-18, drop its `recoil` block"
+        recoil = w.get("recoil")
+        assert isinstance(recoil, dict) and {"ceiling", "floor", "per_shot", "recover_ms"} <= set(recoil), wid
         for env in (None, "indoor", "outdoor"):
             p = (CAT.resolve(wid, 0).split(",") if env is None
                  else CAT.resolve(wid, 0, environment=env).split(","))
@@ -619,7 +697,7 @@ def test_the_poison_block_is_declared_and_never_reaches_the_wire():
 
     So the frame a poison weapon pushes must be an ORDINARY weapon frame: the damage type says gas, and
     no token anywhere encodes the tick. Wiring `dot` into `resolve()` to "make it real" is the mistake
-    this guard exists to catch, and it is the same shape as the range guards above."""
+    this guard exists to catch, and it is the same shape as the recoil and range guards above."""
     dot_rows = [w for w in ROWS if w.get("dot")]
     assert dot_rows, "no weapon declares a `dot` block: delete this guard or the field"
     for w in dot_rows:

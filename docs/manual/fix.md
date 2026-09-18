@@ -202,8 +202,7 @@ When the gun fires but nothing lands, nothing is heard, or nothing lasts.
    unlimited ammo). Direct hits flash the target green. Sight indoors at ~20 ft and outdoors at
    ~300 ft. Snipers want 300–400 ft; shotgun and SMG want 50–100 ft.
 6. **Mag-dumping?** → The simulated-recoil model pulls your accuracy off under rapid fire. A miss
-   makes the enemy hear a zip and lights their headset with 0 damage. Fire in bursts. (Open BRX
-   games turn the model off, so this applies to other game software.)
+   makes the enemy hear a zip and lights their headset with 0 damage. Fire in bursts.
 7. **Hits register from the front but not the back, or the other way round?** → The headset has
    separate front and back sensor domes, plus a gun-body sensor. A dead dome is a replaceable
    part, and sensor boards for front, left and right are sold.

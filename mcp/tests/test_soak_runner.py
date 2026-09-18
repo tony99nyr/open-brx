@@ -239,3 +239,24 @@ def test_every_bundled_pattern_runs_clean_for_a_short_soak():
         assert summary.pattern == name
         assert summary.frames_sent > 0
         assert summary.lockups == summary.link_drops == summary.bad_frames == []
+
+
+def test_a_group_offset_delays_its_first_fire():
+    # `ScheduledFrames.offset_s` is how `match` keeps the recoil writer's three writes in order
+    # inside one burst: the first fire waits for the offset, then the cadence takes over.
+    clock = FakeClock()
+    mgr = FakeMgr(clock)
+    fired_at: list[float] = []
+    inner = mgr.send
+
+    async def send(alias, command, reply_window_ms=0):
+        if command == "$HLOOP,0,0,*":
+            fired_at.append(clock.now())
+        return await inner(alias, command, reply_window_ms)
+
+    mgr.send = send
+    pattern = SoakPattern(name="offset", description="", once=_TINY.once,
+                          repeating=(ScheduledFrames("late", 4.0, ("$HLOOP,0,0,*",), offset_s=3.0),))
+    run(run_soak(mgr, "AA:BB", pattern, minutes=9 / 60, clock=clock, status=None))
+    in_run = [t for t in fired_at if t < 9.0]   # the teardown sends $HLOOP too, at the deadline
+    assert in_run == [3.0, 7.0], fired_at

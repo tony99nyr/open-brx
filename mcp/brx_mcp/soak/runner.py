@@ -220,7 +220,7 @@ async def run_soak(mgr: Any, address: str, pattern: str | SoakPattern, minutes: 
     for cmd in p.once:
         await send(cmd)
 
-    next_due = {g.name: t0 for g in p.repeating}
+    next_due = {g.name: t0 + g.offset_s for g in p.repeating}   # offset_s: a group's first fire, after the arm
     next_ping = t0
     last_pong_at = t0
     lockup_open = False

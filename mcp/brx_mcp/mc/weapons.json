@@ -1,5 +1,5 @@
 {
- "_note": "M-MODES WeaponCatalog (docs/spec/modes.md \u00a73). EVERY weapon is now based on ITS OWN captured Callsign $WEAP frame (`capture.frame`, traced to `capture.src` in protocol/captures/raw/; regenerate the decode with `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop`; named table in docs/reference/weapons.md). That inherits every native behaviour we cannot synthesise: 3-round burst (t23), bolt/single-shot, charge, overheat (t24/t35), per-weapon reload chains, damage type (t3), reload type (t19), muzzle flash (t25/t26). `reload_type` (F123, 2026-09-11) is an EXPLICIT per-weapon attribute and is deliberately NOT read off `capture.frame` t19: t19 is unconfirmed as reloadType (the Plasma Sniper shell-reloads at t19=0 \u2014 protocol/callsign-extract/protocol-classes.md), so the only value set here is the one the wire actually proved. 'chain' = the reload is a HELD per-shell chain, `reload_ms` is the PER-SHELL interval, and a momentary button cannot drive it (the Shotgun: after $BUT,2,1 the $ALCD mag walks 1\u21926 at 417/423/390/420/420 ms, one reserve decrement per shell). Absent = a normal magazine reload. `wire` lists ONLY the tokens we deliberately overwrite for balance; mag/reserve/reload_ms are written too (t16/t39, t17/t40, t18) keeping the captured invariants t39==t16 and t17==2*t40. Everything else is emitted byte-for-byte as Battle Company sent it. stats: dmg/rof/rng are 0-100 UI bars derived from the real numbers. dmg = share of a 115 pool one hit removes, rof = cycle relative to the fastest weapon, rng = the wire's t41 gunRange (identical on all guns: t41 `gunRangeIndoor` was PROVEN INERT outdoors 2026-09-17, F231/Q15, and stays byte-identical to the capture -- it is deliberately never written by `resolve()`, so `rng` stays a flat 75/20 on purpose; see weapon-design.md \u00a74.2). The venue-scaled range lever is `$WEAP` t2 `gunRangeOutdoor`, fed by `wire.range_outdoor_pct` (F234, 2026-09-17 garden test) and written ONLY when the venue is 'outdoor' and the row has one -- a row with none, or any indoor/unset venue, keeps its captured t2 (100 on every gun captured so far, 90 on melee); `compile.gun_range_outdoor_pct` refuses a value under 13 (F231's measured floor: t2=5 landed 0 hits from 38 shots at any distance). `range_band` ('close'/'mid'/'full') and `range_target_m` are human-facing catalogue copy for the armoury screens, in metres, and are NEVER read by the frame builder -- they describe the same intent as `wire.range_outdoor_pct` without being the wire value, and only the SMG (30) and Shotgun/Rocket Launcher/Rail Gun (22) sit at or inside the measured 13-26 transition band, so those four are real guesses pending S49's portable receiver; everything at 55 and up is expected to behave alike until the shelf (~31-100) is mapped. 'verified' now means SHIPPED EXACTLY AS CAPTURED (no balance edit, `range_outdoor_pct` included); 'captured' is true for all 19. 'melee' is hidden (slot 4). tags: policy vocabulary (docs/spec/loadout.md \u00a71.1). 'heavy' = role power (rocket/rail/laser cannon/energy launcher/ion sniper), 'sniper' = the four long guns incl. AMR, plus the role name; presets exclude by tag so a new weapon only needs the right tags. `class` (2026-09-17, arsenal review): 'ballistic' | 'energy' | 'melee', on every row; ballistic weapons reload, energy weapons overheat or charge. `hidden` (2026-09-17 arsenal cut): force_rifle, bolt_rifle, stinger, plasma_sniper, laser_cannon, ion_sniper, energy_launcher and glock are hidden from the picker alongside melee, cutting overlap in a 22-weapon catalogue; the row and its capture frame stay (custom games, and the pistols' based_on copy of bolt_rifle's frame, still use them). `pickup_only` (2026-09-17): rocket_launcher, rail_gun, laser_cannon, ion_sniper and energy_launcher (the 'heavy' tag) are never in a player's starting loadout pool, whatever the preset; they stay in the catalogue for a future pickup/station mechanism (docs/spec/loadout.md). `rounds_per_charge` (2026-09-17, F226/S43 bench): on the Charge Rifle only, one full charge costs this many rounds of the `mag`/`reserve` cell (10, bench-measured); every place that turns `mag`/`reserve` into a hits-or-kills count for this weapon must divide by it first (`mag // rounds_per_charge` full charges), never read the raw round count as a hit count. Absent = 1 (every other weapon fires one round per hit). Accuracy: every weapon ships t21==t22==100 (native walk off, F230), and nothing writes t21/t22 during a life. Tony cut node-driven live accuracy (S42) on 2026-09-18 because its mid-life $WEAP writes were the largest BLE load on a gun. `lethal` (2026-09-18, \u00a77.4): set FALSE on a weapon that deliberately cannot kill, which today means the fn-20 stripper (it removes every protective layer, carries overflow between them and never touches health) and the fn-23 smoke (the target's accuracy falls to 0 for about three seconds). The flag is how a row says the zero damage is a DESIGN, not the Energy Launcher accident: `validate()`'s three unkillable-weapon errors skip a row that carries it, and in exchange it enforces the placement rule, that a support weapon may never be a PRIMARY. Carrying one costs the player their backup gun, and that cost is what makes it fair. Absent = an ordinary lethal weapon. `ap_dmg` + `ap_fire_ms` (2026-09-18, weapon-design.md \u00a77.7): what this weapon becomes while the Armour Piercing perk is on it. BOTH levers are needed and that is the whole finding. Bypassing armour takes a standard target from a 115 pool to 45 HP, and 45/115 is 0.39, so the shipped 0.4 multiplier left hits-to-kill UNCHANGED and the perk free: it was strictly better on 11 of 13 weapons. Damage alone cannot fix it either, because damage is an integer and the steps are too coarse (on an 8-damage weapon, 3 is free and 2 is useless, with nothing between). Dropping the CYCLE as well makes the trade continuous, so every plain-damage weapon can carry the perk: heavier rounds, fewer of them, slower. The pair is chosen to land the time to kill in the MIDDLE of the window between plain-against-bare and plain-against-armoured, so the cost is felt rather than technical, and `ap_fire_ms` is never faster than the weapon's own cycle. A weapon with no pair cannot carry the perk and `_refuse_if_ap_ineligible` says so. caution: optional human copy for a weapon with a known LIVE problem. The UIs show it on the tile and hero. based_on (2026-09-04, sidearms): a weapon with NO capture of its own names the captured weapon whose frame it is built on and why; its capture block is a COPY of that frame (same src), `captured: false`, and every deviation is a wire/override token. 'sidearm' = the three pistols (usp/glock/deagle, role sidearm, cls 10): slot-2 backups by design, deliberately dominated by primaries (test_ttk_band exempts them from BEING dominated, never from dominating). Fire sounds P16/Q04/X14 (glock/usp/deagle, ear-confirmed 2026-09-11) are ids no other weapon uses, so a custom .LTP over the data port (community-notes.md) replaces only that pistol.",
+ "_note": "M-MODES WeaponCatalog (docs/spec/modes.md \u00a73). EVERY weapon is now based on ITS OWN captured Callsign $WEAP frame (`capture.frame`, traced to `capture.src` in protocol/captures/raw/; regenerate the decode with `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop`; named table in docs/reference/weapons.md). That inherits every native behaviour we cannot synthesise: 3-round burst (t23), bolt/single-shot, charge, overheat (t24/t35), per-weapon reload chains, damage type (t3), reload type (t19), muzzle flash (t25/t26). `reload_type` (F123, 2026-09-11) is an EXPLICIT per-weapon attribute and is deliberately NOT read off `capture.frame` t19: t19 is unconfirmed as reloadType (the Plasma Sniper shell-reloads at t19=0 \u2014 protocol/callsign-extract/protocol-classes.md), so the only value set here is the one the wire actually proved. 'chain' = the reload is a HELD per-shell chain, `reload_ms` is the PER-SHELL interval, and a momentary button cannot drive it (the Shotgun: after $BUT,2,1 the $ALCD mag walks 1\u21926 at 417/423/390/420/420 ms, one reserve decrement per shell). Absent = a normal magazine reload. `wire` lists ONLY the tokens we deliberately overwrite for balance; mag/reserve/reload_ms are written too (t16/t39, t17/t40, t18) keeping the captured invariants t39==t16 and t17==2*t40. Everything else is emitted byte-for-byte as Battle Company sent it. stats: dmg/rof/rng are 0-100 UI bars derived from the real numbers. dmg = share of a 115 pool one hit removes, rof = cycle relative to the fastest weapon, rng = the wire's t41 gunRange (identical on all guns: t41 `gunRangeIndoor` was PROVEN INERT outdoors 2026-09-17, F231/Q15, and stays byte-identical to the capture -- it is deliberately never written by `resolve()`, so `rng` stays a flat 75/20 on purpose; see weapon-design.md \u00a74.2). The venue-scaled range lever is `$WEAP` t2 `gunRangeOutdoor`, fed by `wire.range_outdoor_pct` (F234, 2026-09-17 garden test) and written ONLY when the venue is 'outdoor' and the row has one -- a row with none, or any indoor/unset venue, keeps its captured t2 (100 on every gun captured so far, 90 on melee); `compile.gun_range_outdoor_pct` refuses a value under 13 (F231's measured floor: t2=5 landed 0 hits from 38 shots at any distance). `range_band` ('close'/'mid'/'full') and `range_target_m` are human-facing catalogue copy for the armoury screens, in metres, and are NEVER read by the frame builder -- they describe the same intent as `wire.range_outdoor_pct` without being the wire value, and only the SMG (30) and Shotgun/Rocket Launcher/Rail Gun (22) sit at or inside the measured 13-26 transition band, so those four are real guesses pending S49's portable receiver; everything at 55 and up is expected to behave alike until the shelf (~31-100) is mapped. 'verified' now means SHIPPED EXACTLY AS CAPTURED (no balance edit, `range_outdoor_pct` included); 'captured' is true for all 19. 'melee' is hidden (slot 4). tags: policy vocabulary (docs/spec/loadout.md \u00a71.1). 'heavy' = role power (rocket/rail/laser cannon/energy launcher/ion sniper), 'sniper' = the four long guns incl. AMR, plus the role name; presets exclude by tag so a new weapon only needs the right tags. `class` (2026-09-17, arsenal review): 'ballistic' | 'energy' | 'melee', on every row; ballistic weapons reload, energy weapons overheat or charge. `hidden` (2026-09-17 arsenal cut): force_rifle, bolt_rifle, stinger, plasma_sniper, laser_cannon, ion_sniper, energy_launcher and glock are hidden from the picker alongside melee, cutting overlap in a 22-weapon catalogue; the row and its capture frame stay (custom games, and the pistols' based_on copy of bolt_rifle's frame, still use them). `pickup_only` (2026-09-17): rocket_launcher, rail_gun, laser_cannon, ion_sniper and energy_launcher (the 'heavy' tag) are never in a player's starting loadout pool, whatever the preset; they stay in the catalogue for a future pickup/station mechanism (docs/spec/loadout.md). `rounds_per_charge` (2026-09-17, F226/S43 bench): on the Charge Rifle only, one full charge costs this many rounds of the `mag`/`reserve` cell (10, bench-measured); every place that turns `mag`/`reserve` into a hits-or-kills count for this weapon must divide by it first (`mag // rounds_per_charge` full charges), never read the raw round count as a hit count. Absent = 1 (every other weapon fires one round per hit). recoil (S42, 2026-09-17): a TARGET accuracy profile {ceiling, floor, per_shot, recover_ms} -- declared here, wired nowhere in resolve() (t21==t22==100 stays the shipped baseline, native walk off, F230); app/src/engine.js is the only thing that drives it, pinning both wire tokens to the live value on every write so nothing depends on the native walk. A weapon with no real recoil (the power tier, the bolt guns, the shotgun, melee) ships ceiling==floor and per_shot 0. `lethal` (2026-09-18, \u00a77.4): set FALSE on a weapon that deliberately cannot kill, which today means the fn-20 stripper (it removes every protective layer, carries overflow between them and never touches health) and the fn-23 smoke (the target's accuracy falls to 0 for about three seconds). The flag is how a row says the zero damage is a DESIGN, not the Energy Launcher accident: `validate()`'s three unkillable-weapon errors skip a row that carries it, and in exchange it enforces the placement rule, that a support weapon may never be a PRIMARY. Carrying one costs the player their backup gun, and that cost is what makes it fair. Absent = an ordinary lethal weapon. `ap_dmg` + `ap_fire_ms` (2026-09-18, weapon-design.md \u00a77.7): what this weapon becomes while the Armour Piercing perk is on it. BOTH levers are needed and that is the whole finding. Bypassing armour takes a standard target from a 115 pool to 45 HP, and 45/115 is 0.39, so the shipped 0.4 multiplier left hits-to-kill UNCHANGED and the perk free: it was strictly better on 11 of 13 weapons. Damage alone cannot fix it either, because damage is an integer and the steps are too coarse (on an 8-damage weapon, 3 is free and 2 is useless, with nothing between). Dropping the CYCLE as well makes the trade continuous, so every plain-damage weapon can carry the perk: heavier rounds, fewer of them, slower. The pair is chosen to land the time to kill in the MIDDLE of the window between plain-against-bare and plain-against-armoured, so the cost is felt rather than technical, and `ap_fire_ms` is never faster than the weapon's own cycle. A weapon with no pair cannot carry the perk and `_refuse_if_ap_ineligible` says so. caution: optional human copy for a weapon with a known LIVE problem. The UIs show it on the tile and hero. based_on (2026-09-04, sidearms): a weapon with NO capture of its own names the captured weapon whose frame it is built on and why; its capture block is a COPY of that frame (same src), `captured: false`, and every deviation is a wire/override token. 'sidearm' = the three pistols (usp/glock/deagle, role sidearm, cls 10): slot-2 backups by design, deliberately dominated by primaries (test_ttk_band exempts them from BEING dominated, never from dominating). Fire sounds P16/Q04/X14 (glock/usp/deagle, ear-confirmed 2026-09-11) are ids no other weapon uses, so a custom .LTP over the data port (community-notes.md) replaces only that pistol.",
  "weapons": [
   {
    "weapon_id": "assault_rifle",
@@ -18,6 +18,12 @@
    "range_target_m": "18-20 indoor / 40-45 outdoor (Q15)",
    "htk": 13,
    "ttk_ms": 1200,
+   "recoil": {
+    "ceiling": 100,
+    "floor": 70,
+    "per_shot": 10,
+    "recover_ms": 150
+   },
    "capture": {
     "src": "2026-08-26-weapons-ar-plus-burstrifle.btsnoop",
     "frame": "$WEAP,0,,100,0,0,9,0,,,,,,,,100,850,32,384,1400,0,0,100,100,,0,,,R01,,,,D04,D03,D02,D18,,,,,32,192,75,*"
@@ -45,21 +51,28 @@
    "mag": 36,
    "reserve": 216,
    "reload_ms": 1700,
-   "dmg": 10,
+   "dmg": 9,
    "rof": 100,
    "rng": 75,
-   "htk": 11,
-   "ttk_ms": 1417,
+   "htk": 12,
+   "ttk_ms": 1558,
    "range_band": "mid",
    "range_target_m": "18-20 indoor / 40-45 outdoor (Q15)",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 85,
+    "per_shot": 5,
+    "recover_ms": 150
+   },
    "capture": {
     "src": "2026-08-23-gset-respawn05.btsnoop",
     "frame": "$WEAP,0,,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*"
    },
    "wire": {
-    "dmg": 11,
+    "dmg": 10,
     "range_outdoor_pct": 70
    },
+   "crit_pct": 40,
    "verified": false,
    "captured": true,
    "tags": [
@@ -69,6 +82,12 @@
   },
   {
    "weapon_id": "force_rifle",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 60,
+    "per_shot": 10,
+    "recover_ms": 150
+   },
    "name": "Force Rifle",
    "desc": "A heavier round on the same frame. Fewer hits to land, and you feel every one of them in the recovery.",
    "cls": 0,
@@ -105,6 +124,12 @@
   },
   {
    "weapon_id": "bolt_rifle",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 150
+   },
    "name": "Bolt Rifle",
    "desc": "One round at a time, deliberately. It asks you to aim and pays you back in hits that count.",
    "cls": 0,
@@ -147,6 +172,12 @@
    "range_target_m": "12 indoor / 25-30 outdoor (Q15)",
    "htk": 15,
    "ttk_ms": 1330,
+   "recoil": {
+    "ceiling": 100,
+    "floor": 55,
+    "per_shot": 15,
+    "recover_ms": 150
+   },
    "capture": {
     "src": "2026-08-26-weapons-smg-plus-amr.btsnoop",
     "frame": "$WEAP,0,,100,0,0,8,0,,,,,,,,90,850,72,288,2500,0,0,100,100,,5,,,G03,,,,D26,D25,D24,D18,D11,,,,72,144,75,*"
@@ -182,6 +213,12 @@
    "range_target_m": "8-10 indoor / 15-18 outdoor (Q15)",
    "htk": 3,
    "ttk_ms": 1600,
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 0
+   },
    "capture": {
     "src": "2026-08-23-gset-respawn15.btsnoop",
     "frame": "$WEAP,1,2,100,0,0,45,0,,,,,,70,80,900,850,6,24,400,2,7,100,100,,0,,,T01,,,,D01,D28,D27,D18,,,,,6,12,75,30,*"
@@ -205,6 +242,12 @@
   },
   {
    "weapon_id": "stinger",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 45,
+    "per_shot": 8,
+    "recover_ms": 120
+   },
    "name": "Stinger",
    "desc": "Heavy rounds on a slow cadence. It rewards a steady hand and punishes a panicked one.",
    "cls": 6,
@@ -252,6 +295,12 @@
    "range_target_m": "full reach indoor / 60m+ outdoor (Q15)",
    "htk": 2,
    "ttk_ms": 1500,
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 0
+   },
    "capture": {
     "src": "2026-08-26-weapons-sniper.btsnoop",
     "frame": "$WEAP,0,,100,0,1,80,0,,,,,,,,300,850,4,24,1700,0,7,100,100,,0,,,S16,D20,D19,,D04,D03,D21,D18,,,,,4,12,75,*"
@@ -277,6 +326,12 @@
   },
   {
    "weapon_id": "plasma_sniper",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 150
+   },
    "name": "Plasma Sniper",
    "desc": "A marksman's weapon that refuses to wait. Closer to a rifle's cadence than a scope's.",
    "cls": 2,
@@ -320,22 +375,29 @@
    "mag": 14,
    "reserve": 56,
    "reload_ms": 1400,
-   "dmg": 21,
+   "dmg": 18,
    "rof": 19,
    "rng": 75,
    "range_band": "long",
    "range_target_m": "full reach indoor / 60m+ outdoor (Q15, tagged sniper)",
-   "htk": 5,
-   "ttk_ms": 1600,
+   "htk": 6,
+   "ttk_ms": 2000,
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 0
+   },
    "capture": {
     "src": "2026-08-26-weapons-smg-plus-amr.btsnoop",
     "frame": "$WEAP,1,,100,0,3,18,0,,,,,,,,360,850,14,56,1400,0,7,100,100,,0,,,S07,D20,D19,,D04,D03,D21,D18,,,,,14,28,75,*"
    },
    "wire": {
-    "dmg": 24,
+    "dmg": 21,
     "fire_ms": 400,
     "range_outdoor_pct": 85
    },
+   "crit_pct": 30,
    "overrides": {
     "t33": {
      "value": "D02",
@@ -367,6 +429,12 @@
    "range_target_m": "15 indoor / 30 outdoor (Q15, as the LMG-role deep-mag automatic)",
    "htk": 15,
    "ttk_ms": 1960,
+   "recoil": {
+    "ceiling": 100,
+    "floor": 55,
+    "per_shot": 15,
+    "recover_ms": 150
+   },
    "capture": {
     "src": "2026-08-26-weapons-energyrifle-suppressor.btsnoop",
     "frame": "$WEAP,1,,100,0,0,8,0,,,,,,,,75,850,48,288,2000,0,0,100,100,,0,2,50,Q06,,,,D26,D25,D24,D18,,,,,48,144,75,*"
@@ -402,6 +470,12 @@
    "range_target_m": "15 indoor / 30 outdoor (Q15, as the LMG-role deep-mag automatic)",
    "htk": 13,
    "ttk_ms": 1800,
+   "recoil": {
+    "ceiling": 100,
+    "floor": 70,
+    "per_shot": 10,
+    "recover_ms": 150
+   },
    "capture": {
     "src": "2026-08-26-weapons-energyrifle-suppressor.btsnoop",
     "frame": "$WEAP,0,,100,0,0,9,0,,,,,,,,90,850,300,600,2400,0,0,100,100,,6,,,E12,,,,D17,D16,D15,A73,D122,,,,300,300,75,*"
@@ -447,6 +521,12 @@
    "ttk_ms": 570,
    "range_band": "long",
    "range_target_m": "full reach indoor / 60m+ outdoor (Q15; it charges behind cover, then reaches)",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 0
+   },
    "capture": {
     "src": "2026-08-26-weapons-chargerifle-boltrifle.btsnoop",
     "frame": "$WEAP,0,,100,8,0,100,0,,,,,,,,1250,850,100,200,2500,0,14,100,100,,14,,,E03,C15,C17,,D30,D29,D37,A73,C19,C04,20,150,100,100,75,*"
@@ -471,6 +551,12 @@
   },
   {
    "weapon_id": "glock",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 150
+   },
    "name": "Glock-18",
    "desc": "A machine pistol wearing a sidearm's badge. Empties in a blink and asks no questions.",
    "cls": 10,
@@ -541,6 +627,12 @@
    "ttk_ms": 1920,
    "range_band": "close",
    "range_target_m": "not set yet: sidearms keep the captured reach until the curve is mapped (S49)",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 0
+   },
    "capture": {
     "src": "2026-08-26-weapons-chargerifle-boltrifle.btsnoop",
     "frame": "$WEAP,1,,100,0,3,13,0,,,,,,,,225,850,18,180,2000,0,7,100,100,,0,,,R12,,,,D04,D03,D02,D18,,,,,18,90,75,*"
@@ -605,6 +697,12 @@
    "ttk_ms": 1920,
    "range_band": "close",
    "range_target_m": "not set yet: sidearms keep the captured reach until the curve is mapped (S49)",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 0
+   },
    "capture": {
     "src": "2026-08-26-weapons-chargerifle-boltrifle.btsnoop",
     "frame": "$WEAP,1,,100,0,3,13,0,,,,,,,,225,850,18,180,2000,0,7,100,100,,0,,,R12,,,,D04,D03,D02,D18,,,,,18,90,75,*"
@@ -661,6 +759,12 @@
    "range_target_m": "8-10 indoor / 15-18 outdoor (Tony 2026-09-17: a one-shot kill is earned close, and these are pickup-only)",
    "htk": 1,
    "ttk_ms": 0,
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 0
+   },
    "capture": {
     "src": "2026-08-26-weapons-rocket-lasercannon.btsnoop",
     "frame": "$WEAP,0,2,100,10,0,115,0,,,,,,115,80,1000,850,2,8,1200,0,7,100,100,,0,,,C03,,,,D14,D13,D12,D18,,,,,2,4,75,30,*"
@@ -697,6 +801,12 @@
    "range_target_m": "8-10 indoor / 15-18 outdoor (Tony 2026-09-17: a one-shot kill is earned close, and these are pickup-only)",
    "htk": 1,
    "ttk_ms": 1200,
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 0
+   },
    "capture": {
     "src": "2026-08-26-weapons-energylauncher-railgun.btsnoop",
     "frame": "$WEAP,1,0,100,6,0,115,0,,,,,,,,1200,850,1,6,2400,0,2,100,100,,0,,,C03,C08,,,D36,D35,D34,A73,,,,,1,3,75,*"
@@ -715,6 +825,12 @@
   },
   {
    "weapon_id": "laser_cannon",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 150
+   },
    "name": "Laser Cannon",
    "desc": "A beam that does not ask about armour. Two shots and it is spent.",
    "cls": 4,
@@ -744,6 +860,12 @@
   },
   {
    "weapon_id": "energy_launcher",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 150
+   },
    "name": "Energy Launcher",
    "desc": "Lobbed plasma. Whatever it lands near stops being your problem.",
    "cls": 9,
@@ -783,6 +905,12 @@
   },
   {
    "weapon_id": "ion_sniper",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 150
+   },
    "name": "Ion Sniper",
    "desc": "One shot, any distance, nobody left standing. There are two of them and then there are none.",
    "cls": 2,
@@ -816,6 +944,12 @@
   },
   {
    "weapon_id": "melee",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 150
+   },
    "name": "Melee",
    "desc": "Everyone carries it and nobody chooses it. For the range where nothing else helps.",
    "cls": 8,
@@ -858,6 +992,12 @@
    "ttk_ms": 0,
    "range_band": "close-mid",
    "range_target_m": "12 indoor / 25-30 outdoor (the SMG band: a support weapon has to be used from cover, not across the field)",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 0
+   },
    "desc": "It cannot kill. It takes every layer of armour and shield off whoever you hit, and leaves the finishing to someone else.",
    "capture": {
     "src": "2026-08-26-weapons-energyrifle-suppressor.btsnoop",
@@ -903,6 +1043,12 @@
    "ttk_ms": 0,
    "range_band": "close-mid",
    "range_target_m": "12 indoor / 25-30 outdoor (the SMG band: a support weapon has to be used from cover, not across the field)",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 100,
+    "per_shot": 0,
+    "recover_ms": 0
+   },
    "desc": "It cannot kill either. What it takes is a player's aim, for a few seconds, which is often worse.",
    "capture": {
     "src": "2026-08-26-weapons-energyrifle-suppressor.btsnoop",
@@ -949,6 +1095,12 @@
    "ttk_ms": 1540,
    "range_band": "mid",
    "range_target_m": "18-20 indoor / 40-45 outdoor (the assault band: it has to hold a target, not snipe one)",
+   "recoil": {
+    "ceiling": 100,
+    "floor": 65,
+    "per_shot": 10,
+    "recover_ms": 150
+   },
    "desc": "Hits lightly and keeps hitting. The damage arrives after you have stopped shooting, which is the whole point.",
    "caution": "NOT FINISHED. The gun applies the direct damage today; the poison is a tick clock on the player's own phone (S16, spec/node.md \u00a73.17) and that is not built, so this row is hidden. Enabled early it is simply a worse SMG.",
    "capture": {
@@ -977,6 +1129,7 @@
     "fire_ms": 110,
     "range_outdoor_pct": 70
    },
+   "crit_pct": 15,
    "verified": false,
    "captured": false,
    "tags": [

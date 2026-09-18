@@ -39,7 +39,7 @@ def test_hang_list_and_known_safe_never_overlap():
 
 
 def test_catalog_has_the_patterns_the_bench_plan_asks_for():
-    for name in ("match", "match-x10", "callsign", "burst-short", "burst-weap"):
+    for name in ("match", "match-x10", "callsign", "recoil-oscillate", "burst-short", "burst-weap"):
         assert name in PATTERNS
 
 
@@ -60,6 +60,9 @@ def test_match_x10_is_match_at_ten_times_the_rate():
     assert by_name.keys() == by_name_x10.keys()
     for name, every_s in by_name.items():
         assert by_name_x10[name] == every_s / 10
+    offsets = {g.name: g.offset_s for g in match.repeating}
+    for g in x10.repeating:
+        assert g.offset_s == offsets[g.name] / 10
 
 
 def test_callsign_hit_cue_scales_with_player_count():
@@ -111,3 +114,38 @@ def test_assert_pattern_is_safe_rejects_an_unknown_command():
     except ValueError:
         raised = True
     assert raised, "an unlisted command needs explicit confirm, not a soak"
+
+
+def _recoil_groups(p: SoakPattern) -> list[ScheduledFrames]:
+    return [g for g in p.repeating if g.name.startswith("recoil-")]
+
+
+def test_every_recoil_write_is_the_writers_weap_plus_ammo_pair():
+    # engine.js `_recoilWrite`: the active slot's compiled $WEAP with ONLY t21/t22 changed, then an
+    # $AMMO restore. Anything else would soak a frame the node never sends.
+    from brx_mcp.soak.patterns import _WEAP_FRAME
+    base = _WEAP_FRAME.split(",")
+    for name in ("match", "recoil-oscillate"):
+        groups = _recoil_groups(PATTERNS[name])
+        assert groups, f"{name}: no recoil writes"
+        for g in groups:
+            weap, ammo = g.frames
+            p = weap.split(",")
+            assert len(p) == len(base)
+            assert [i for i, (a, b) in enumerate(zip(base, p)) if a != b] in ([], [22, 23], [22], [23])
+            assert p[22] == p[23]
+            assert ammo.startswith("$AMMO,0,")
+
+
+def test_match_carries_three_recoil_writes_per_burst():
+    groups = _recoil_groups(PATTERNS["match"])
+    assert len(groups) == 3
+    assert len({g.every_s for g in groups}) == 1           # one burst cadence
+    offsets = [g.offset_s for g in groups]
+    assert offsets == sorted(offsets) and offsets[-1] < groups[0].every_s   # in order, inside one cycle
+
+
+def test_recoil_oscillate_is_about_150_writes_a_minute():
+    groups = _recoil_groups(PATTERNS["recoil-oscillate"])
+    per_minute = sum(60 / g.every_s for g in groups)
+    assert 140 <= per_minute <= 160, per_minute

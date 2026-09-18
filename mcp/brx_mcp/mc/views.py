@@ -134,6 +134,10 @@ def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> WeaponView:
         # PRIMARY. Both UIs mirror that rule client-side, so the field has to travel with the row or the
         # console happily offers an operator a pick the server refuses at arming.
         view["lethal"] = False
+    if recoil := w.get("recoil"):
+        view["recoil"] = recoil                         # S42: the declared target profile -- the node's only source of it
+    if (crit_pct := w.get("crit_pct")) is not None:
+        view["crit_pct"] = crit_pct                      # F62 (2026-09-18): the declared t6 crit chance
     return view
 
 

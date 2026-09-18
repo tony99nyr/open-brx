@@ -24,8 +24,9 @@ These are leads from the V4_30/V4_31 firmware disassembly. None is proven on v4.
   player count. That fits Jay's report that screamers get worse with more players, not only with time.
 
 Our own traffic, measured 2026-09-18: 43 frames and 75 BLE packets to arm one gun, sent in about 1.2 s with no
-confirmation. The biggest writer during a match (live accuracy, up to about 1,700 packets a minute) was cut the same
-day.
+confirmation. The biggest writer during a match is the S42 recoil (live accuracy) writer: a `$WEAP` plus an `$AMMO`
+for each accuracy change, up to about 1,700 packets a minute on today's 250 ms throttle. Tony decided on 2026-09-18
+to keep it, so it must fit the per-gun write budget (F274): Phase C soaks it.
 
 ## Rules for every session
 
@@ -59,7 +60,7 @@ Each step tries one suspected trigger. Arm the gun with the bench victim head (`
 | A10 | IR plus BLE | A9 and A7 together | the player-count case: many hits and much traffic at once |
 | A11 | headset drop | switch the headset off during A7 | the gun resets its radio link; does it lock |
 | A12 | low battery | repeat A7 on a pack below 20 % | any difference |
-| A13 | our old peak writer | replay the removed S42 live-accuracy writer's pattern (a `$WEAP` plus an `$AMMO` every 250 ms) for up to 20 min | the time and frame count at any LOCK-UP: the per-gun traffic budget |
+| A13 | our peak writer | replay the live S42 recoil writer at today's throttle (a `$WEAP` plus an `$AMMO` every 250 ms) for up to 20 min | the time and frame count at any LOCK-UP: the per-gun traffic budget |
 
 **Reading.** A1 locking and A2 not locking proves the hang-loop mechanism. From then on, "screamer" means a known
 code path, and prevention is a rule. If nothing in Phase A locks a gun, the lock-up needs time or conditions we have
@@ -87,14 +88,20 @@ Record each rule in the transport-hardening design note with its evidence.
 so every bench run uses the same code. Patterns:
 
 - `match`: our real per-gun match traffic after the fixes: the arm sequence, then per-hit `$PLAY` cues, LED readouts,
-  and a revive every 3 minutes that re-sends the `$SIR` table.
+  a revive every 3 minutes that re-sends the `$SIR` table, and the recoil writer. The recoil writer is the biggest
+  load in a match, so `match` carries its three `$WEAP` + `$AMMO` writes per burst (degraded, heavy, then crisp
+  600 ms after the trigger is released), one burst every 10 s.
 - `match-x10`: the same pattern at ten times the rate. This is the margin test.
+- `recoil-oscillate`: the recoil writer's worst case. The player fires three rounds, releases for 600 ms, and repeats:
+  two `$WEAP` + `$AMMO` writes per 0.8 s cycle, about 150 a minute.
 - `callsign`: a Callsign-like load, where the gun hears relayed traffic for every player (use the rate for 20 players).
 
 Runs:
 1. `match` for 2 hours. Pass: zero LOCK-UP, zero BAD FRAME.
 2. `match-x10` for 2 hours. Pass: zero LOCK-UP. This shows margin, not just survival.
-3. `callsign` for 2 hours, as the comparison. If Callsign-like load locks the gun and our pattern does not, we have
+3. `recoil-oscillate` for 2 hours. Pass: zero LOCK-UP, zero BAD FRAME. This is the F274 gate: the recoil writer ships
+   only inside the budget that this run proves.
+4. `callsign` for 2 hours, as the comparison. If Callsign-like load locks the gun and our pattern does not, we have
    shown the cause and the cure on one gun.
 
 ## Phase D: multi-gun match soak (all guns, 3 hours)

@@ -79,9 +79,9 @@ compensating knobs available here are magazine size and fire cadence, not aim as
 - **Accuracy model.** BRX has a real one: t21/t22 (`maxAccuracy`/`singleShotAccuracy`) set a
   per-shot hit-probability ceiling/floor, bench-proven 2026-09-09, and a miss shows up on the wire as
   `$ALCD` magnitude 0. **The COMPILER ships it off** (t21=t22=100, ceiling=floor), because F230 found only one gun of
-  three decays accuracy natively. The phone drove the same two tokens itself for one day (S42,
-  node-driven recoil); Tony cut that on 2026-09-18 for BLE load. So a weapon fires at `p=1.0` for the
-  whole life, and only an fn-23 flashbang hit takes live accuracy down. §2's accuracy-adjusted math is
+  three decays accuracy natively. The phone drives the same two tokens itself instead (S42, node-driven
+  recoil), so a weapon fires at `p=1.0` until the player holds the trigger down, and the model's live
+  value falls from there. §2's accuracy-adjusted math is
   therefore about **human aim**, not the gun's own model, until/unless t21/t22 get tuned deliberately.
 - **Headset multiplier (footnote case).** A hit on the headset sensor multiplies the applied
   magnitude: `floor(magnitude * headset_multiplier(fn, crit_modifier))`, bench-confirmed
@@ -240,8 +240,8 @@ with it gone, **USP strictly dominated Deagle**.
 
 1. **The dominance check now runs WITHIN A FAMILY**, not globally (`_weapon_family()`:
    fire mode `t20` + `weapon_class`, sidearms their own family regardless). An SMG beating a Sniper
-   Rifle on every axis here is not a balance failure: range does not exist on the wire yet (F231), and
-   a Sniper Rifle's whole identity IS range, which this model cannot see. Scoping to
+   Rifle on every axis here is not a balance failure — neither range nor recoil exists on the wire yet
+   (F231, S42), and a Sniper Rifle's whole identity IS range, which this model cannot see. Scoping to
    family removes cross-family "violations" that were never meaningful comparisons to begin with; full
    reasoning and the family list are in `docs/weapon-design.md` §2.3.
 2. **Kills per clip** (`mag // rounds_to_kill`, deterministic) joins the axis set alongside ideal TTK,
@@ -250,9 +250,8 @@ with it gone, **USP strictly dominated Deagle**.
 3. **The lead rule**: every visible weapon must achieve its family's best value (ties count) on at
    least one of the four numeric axes. `recoil.floor` and `range_band` were part of this rule for one
    day and were removed in polish round 2 (2026-09-17): both are declared catalogue DATA for levers
-   that did not reach the wire (`test_range_is_declared_not_wired_and_accuracy_stays_native_off` is the
-   guard; `recoil` was then cut with S42 on 2026-09-18), so a lead claimed on either could be satisfied
-   by inert data. The four numeric axes caught the two
+   that do not reach the wire yet (`test_range_and_recoil_are_declared_not_wired` is the guard), so a
+   lead claimed on either could be satisfied by inert data. The four numeric axes caught the two
    remaining gaps below on their own; strict dominance alone would have missed them.
 4. **Two number changes, each the smallest found**: **Suppressor mag 48 → 75** (same family as the AR
    and SMG; the SMG beat it on ideal TTK and sustained DPS, and 75 is the smallest integer mag that

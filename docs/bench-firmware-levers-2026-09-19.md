@@ -326,11 +326,11 @@ killer's gun can hear its own kill confirmed with no phone or MC in the loop.
 
 The transport steps now run as Phase A of [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md), so the
 two sheets do not overlap. The old step numbers map like this: §14.1 lost frames = A8, §14.2 bursts = A7, §14.3
-lock-up under the old S42 writer = A13, §14.4 `$DPLAY` = A1-A3, §14.5 recovery = the recovery rule in that sheet's
+lock-up under the S42 recoil writer = A13, §14.4 `$DPLAY` = A1-A3, §14.5 recovery = the recovery rule in that sheet's
 rules.
 
 **Reading.** A13 gives the per-gun traffic budget that the hardening work designs to. If it locks up in minutes,
-the removed S42 writer's rate was a screamer cause, and no future writer may come near that rate.
+the recoil writer's current rate is a screamer cause, and the writer must drop below that rate before it ships (F274).
 
 ## 15. A headless gun and `$RADSK` (10 min)
 

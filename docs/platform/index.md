@@ -62,6 +62,8 @@ Every player carries a primary, a secondary and a perk. Fifteen weapons are in t
 
 Five perks fill the third slot, and every one costs something. Body Armor gives you more armour, but it slows your reload. Armour Piercing sends your primary straight through armour and shields, but it hits for less. No perk is a free upgrade.
 
+- [See every weapon](/arsenal)
+
 ```data
 roles
 ```

@@ -378,27 +378,27 @@ backoff until it can be served; a reconnect re-sends `log_offer` so MC asks agai
 drains, so a log never delays a fact. The phone keeps `uploadedThrough` (the log line count MC has) and a
 later pull sends only the tail. The debug panel's SHARE LOG stays as the manual route.
 
-### 3.15 No live accuracy writer: the node never rewrites `$WEAP` during a life (S42 cut 2026-09-18)
+### 3.15 Node-driven recoil (the accuracy ceiling/floor is ours) — S42, F230
 
-Every weapon ships `t21 == t22 == 100` (the native accuracy walk off, F230), and nothing changes those two tokens
-during a life. S42 built a node-driven recoil model that re-sent the active slot's whole `$WEAP` frame, plus an
-`$AMMO` restore, up to every 250 ms under sustained fire. Tony cut it on 2026-09-18. It was the largest source of
-BLE writes to a gun, and long split BLE frames are a suspected cause of gun lock-ups. `GameConfig.recoil` and
-`weapons.json` `recoil` are gone; MC drops a stored `recoil` key when it loads an old config.
+F230 (bench 2026-09-17) found the native `t21`→`t22` accuracy walk works on only one of three guns, so it is not a
+usable balance lever. Every weapon ships `t21 == t22 == 100` (walk off) and the node drives the SAME two tokens
+itself, from the shot stream it already watches — a mag decrement on the active slot in `_onAmmo` — never from a
+timer that guesses whether the trigger is down. `weapons.json` `recoil` `{ceiling, floor, per_shot, recover_ms}` is
+the per-weapon target; `resolve()` never reads it (`test_range_and_recoil_are_declared_not_wired`).
 
-The node still READS the gun's live accuracy in `$ALCD` token 2. The fn-23 flashbang drops it to 0 and the gun
-recovers it by itself (S53 shows that on the HUD).
+| rule | engine (`app/src/engine.js` `_recoilArm`/`_recoilStep`/`_recoilTick`/`_recoilFlush`/`_recoilWrite`/`_recoilVerify`) |
+|---|---|
+| arm | on spawn, revive and a confirmed weapon swap, to the ACTIVE weapon's declared `recoil`; `value` starts at `ceiling`. Absent `config.recoil` (default) or an explicit `true` arms it; `config.recoil === false` never arms |
+| step down | every shot (`_onAmmo`'s mag decrement on the active slot) drops `value` by `per_shot`, floored at `floor` |
+| step up | once `recover_ms` has passed with **no shot and no pending step**, `value` rises by `per_shot`, ceilinged at `ceiling` — never a "released" flag, so a burst weapon's own gap between rounds is not mistaken for a release |
+| write | pins **both** `t21` and `t22` to `value` on the active slot's compiled `$WEAP` frame (never `ceiling`/`floor` separately) — a fixed accuracy is honoured on a non-walking gun too (bench 2026-09-17), so this sidesteps F230 rather than depending on it. Immediately followed by an `$AMMO` restore of the LIVE mag/reserve (a `$WEAP` re-push resets both to the frame's baked-in values, bench 2026-09-17) |
+| throttle | one writer, latest `value` wins; a minimum gap between writes; never between a reload-lever pull (`this.reloading`) and the refill; never mid weapon-swap (`this.switching`); never during an overheat lockout: `overheated()` reads the heat the gun reports in `$ALCD` token 5 against 99 (F229; the guard read a flag nothing set until 2026-09-17, so it was dead code) |
+| verify | the next `$ALCD` naming the active slot (`_recoilObserve`, tok 2) is compared to what was written once the write's grace window closes; a mismatch retries ONCE; a second mismatch writes the ceiling back (both tokens) with the live ammo and disables further writes for the rest of the life, logged |
+| reset | a respawn/revive re-arms at the weapon's ceiling; a confirmed weapon swap re-arms to the NEW weapon's profile at its ceiling (multi-slot native drift while off-slot is not modelled — a bench gap, not a design one) |
 
-**Bench facts for any future mid-life `$WEAP` write** (2026-09-17; a pickup weapon, S46, or a timed perk would need
-them):
-
-- A bare mid-life `$WEAP` keeps the gun firing and taking hits, and applies in 30-90 ms.
-- The write does not revive a dead gun.
-- The write resets the magazine to `t39`, the reserve to `t40` and live accuracy to `t21`. Send an `$AMMO` of the
-  live counts straight after it.
-- A write between a reload-lever pull and the refill was not measured. Do not write there.
-- Each write is a long frame (about 100 bytes, six BLE packets). Keep such writes rare: one per event, never a
-  stream.
+**Seams for stance and flinch (also S42, not built here):** a future stance module can widen/narrow `per_shot` from
+the motion sensor before `_recoilStep` applies it; a future flinch module reads `this._recoil.value` (today's live
+accuracy) to decide how hard to jolt. Neither needs to touch the writer, the verify/retry loop, or `config.recoil`.
 
 ### 3.16 F68: a miss the node cannot see still wipes the headset's team colour
 
