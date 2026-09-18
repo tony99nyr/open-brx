@@ -513,6 +513,40 @@ class Session:
         self._render_join()
         self._gun_index()
 
+    # ---------- the match in play ----------
+    # ARMED and LIVE are the two phases with a match ON THE FIELD: a gun holds this match's head, a
+    # phone counts to T-0 or scores, and MC may rewrite neither. Every guard that refuses a kit edit,
+    # a head push, a station change or a phase move asks that one question, so it asks it here.
+    # RECAP is deliberately NOT in play: the whistle has gone and the head is spent, so the recap
+    # routes (`_live_view`, `recap()`, `snapshot()`) keep their own wider tests.
+
+    def in_play(self) -> bool:
+        """Is a match ARMED or LIVE right now?"""
+        return self.phase in ("armed", "live")
+
+    def current_match_id(self) -> str | None:
+        """The match_id of the match in play, else None. None outside ARMED/LIVE even while `start_info`
+        still names a match: a caller asking "is this the current match?" asks about the field, not
+        about the last match MC scheduled."""
+        return (self.start_info or {}).get("match_id") if self.in_play() else None
+
+    def is_adopted(self) -> bool:
+        """Is the match in play one MC ADOPTED (`adopt_orphan`, or a resume of one) rather than started?
+
+        MC holds no config for an adopted match, so its `frag_limit`, its `time_limit_s` and its `seq`
+        are the operator's CURRENT DRAFT, not the numbers the phones play to. What each caller does
+        about that differs and stays at the caller; only the question is shared."""
+        return bool((self.start_info or {}).get("adopted"))
+
+    def _promote_phase(self, go: int, now: int) -> Phase:
+        """Set the phase from the countdown -- ARMED before `go`, LIVE at or after it -- and return it.
+
+        One rule for the three places that cross T-0: `tick()` at the countdown's end, and both
+        pick-up paths (`resume_match`, `adopt_orphan`), which land either side of it depending on
+        when MC came back."""
+        self.phase = "armed" if now < go else "live"
+        return self.phase
+
     # ---------- plumbing ----------
     def on_change(self, cb): self._listeners.append(cb)
     def on_feed(self, cb): self._feed_listeners.append(cb)
@@ -573,12 +607,12 @@ class Session:
 
     def _match_snapshot(self) -> dict | None:
         """The running match, as `resume_match` needs it. Only while ARMED or LIVE with a scorer."""
-        if self.phase not in ("armed", "live") or not self.start_info or not self.scorer:
+        if not self.in_play() or not self.start_info or not self.scorer:
             return None
         si = self.start_info
         players = self._match_players if self._match_players is not None else self.players
         return {"match_id": si["match_id"], "go_live_t": si["go_live_t"], "seq": si["seq"],
-                "countdown_s": si.get("countdown_s", 0), "adopted": bool(si.get("adopted")),
+                "countdown_s": si.get("countdown_s", 0), "adopted": self.is_adopted(),
                 "config": self.config, "players": {pid: dict(p) for pid, p in players.items()},
                 # node_id -> player_id as armed: the stored facts are keyed by node, and a resumed replay
                 # must attribute them before any phone has said hello to the new process.
@@ -1223,7 +1257,7 @@ class Session:
         `lobby_pushed` is NOT set. The LOBBY push remains the first and only write to a gun and keeps
         every gate that hangs off it; `start()` still refuses with "push config first".
         """
-        if self.phase in ("armed", "live"):
+        if self.in_play():
             raise ValueError("cannot load a game once the match has started - ABORT or RECALL first")
         self._roll_forward_from_recap()        # a LOAD after the whistle loads the NEXT match
         cfg_id = self.config["config_id"]
@@ -1501,7 +1535,7 @@ class Session:
 
     def patch_player(self, pid: str, **fields) -> Player:
         p = self.players[pid]
-        if self.phase in ("armed", "live"):
+        if self.in_play():
             # Only the fields that would be COMPILED to the gun are refused. A ready flag and a gamertag
             # ride in `assign` (roster/display) and never touch the head, so they stay.
             locked = [k for k in _KIT_FIELDS if k in fields and fields[k] is not None]
@@ -1791,7 +1825,7 @@ class Session:
         # `_repush_pending`: a `set_config` edit is about to re-push the WHOLE roster from
         # `_repush_lobby_config()`, so taking the config leg here too pushes every re-kitted gun twice.
         if self.lobby_pushed and not self._repush_pending:
-            if self.phase not in ("armed", "live"):
+            if not self.in_play():
                 # Round-2 fix pass H (2026-09-12) is covered by this too, and for free: an UNBOUND
                 # player has no socket to push to, but `self.bundles[pid]` is what a RECONNECTING phone
                 # is handed (`_hydrate` ships the stored frames beside the current `config_id`), so
@@ -2518,7 +2552,7 @@ class Session:
         that silences every hit and death handler for the rest of the match (polish review 2026-09-11).
         So the ITEMS panel is a muster/lobby control: once a start is scheduled it is refused in the
         operator's voice rather than quietly re-arming the field."""
-        if self.phase in ("armed", "live"):
+        if self.in_play():
             raise ValueError(f"the match is {self.phase.upper()}: a station cannot be assigned or cleared now "
                              "(every player would be re-armed mid-game). RECALL or END first, or wait for the recap")
 
@@ -3019,7 +3053,7 @@ class Session:
                 self.acks.pop(p["player_id"], None)
             node["config"] = self._wire_config()
             node["frames"] = self.bundles[p["player_id"]]
-        if self.start_info and not self.start_info.get("adopted"):
+        if self.start_info and not self.is_adopted():
             # A RESUMED match re-sends the same match and seq, which a phone in play takes as a no-op. An
             # ADOPTED one has a seq and config this MC made up, and must never reach a phone as a start.
             node["start"] = self._start_body()
@@ -3309,7 +3343,7 @@ class Session:
         out from here: `control{end, match_id}` (+ that match's `result` if we hold one, + the current
         `start` if a new match is already scheduled, so it hot-joins per E5). Never for a node reporting
         the CURRENT match while MC is armed/live -- that is a phone doing its job."""
-        current = (self.start_info or {}).get("match_id") if self.phase in ("armed", "live") else None
+        current = self.current_match_id()
         if mid:
             if mid == current:
                 return
@@ -3367,7 +3401,7 @@ class Session:
         # `start` anyway. Gated on `p` for a second reason: an UNBOUND node has no roster row and no
         # scorer entry, so handing it a start would spawn it into the match under a stale `player_num`
         # that `_next_num` may since have given to somebody else (round-1 polish review 2026-09-12).
-        if p and not told_result and self.start_info and not self.start_info.get("adopted") and self.phase in ("armed", "live"):
+        if p and not told_result and self.start_info and not self.is_adopted() and self.in_play():
             self.net.push(nid, "start", self._start_body())
         who = (p or {}).get("display") or nid
         self._on_feed({"t_match_s": 0, "tag": "RECONCILED", "kind": "alert",
@@ -3481,8 +3515,7 @@ class Session:
                 pass
         now = self.now_ms()
         tl = self.config.get("time_limit_s")
-        self.phase = "armed" if now < go else "live"
-        if self.phase == "armed":
+        if self._promote_phase(go, now) == "armed":
             # F-2026-09-17e: `_schedule()` queues the VIP role announcement for go-live; a resume that
             # lands back in ARMED (the restart beat the countdown) skipped this, so a resumed match's
             # VIP never heard it.
@@ -3607,7 +3640,7 @@ class Session:
                 self.store.match_started(match_id, {**self.config, "_adopted": True}, go)
             except Exception:
                 pass
-        self.phase = "armed" if now < go else "live"
+        self._promote_phase(go, now)
         self._orphans = {n: o for n, o in self._orphans.items() if o["match_id"] != match_id}
         self._on_feed({"t_match_s": max(0, (now - go) // 1000), "tag": "RESUMED", "kind": "alert",
                        "text": f"RESUMED A MATCH THIS MC DID NOT START ({len(nids)} PHONE"
@@ -3653,8 +3686,8 @@ class Session:
         fact is the receipt (`_on_operator_result`)."""
         if cmd not in self.OPERATOR_CMDS:
             raise ValueError(f"unknown operator action {cmd!r}")
-        current = (self.start_info or {}).get("match_id")
-        if self.phase not in ("armed", "live") or not current:
+        current = self.current_match_id()
+        if not current:
             raise ConflictError(f"no match is ARMED or LIVE (phase {self.phase.upper()})")
         if not match_id or match_id != current:
             raise ConflictError("that match is over: the board was stale. Look at the player again")
@@ -4400,7 +4433,7 @@ class Session:
         in its own words). The host may still do it deliberately; `force` is that deliberate second tap."""
         if phase not in PHASES or phase in ("armed", "live", "recap"):
             raise ValueError("phase must be one of muster|build|kit|lobby (armed/live/recap are driven by start/end)")
-        if self.phase in ("armed", "live"):
+        if self.in_play():
             raise ConflictError(
                 f"the match is {self.phase.upper()} — end it (control END) before moving the session back to "
                 f"{str(phase).upper()}; `force` does not apply")
@@ -4775,7 +4808,7 @@ class Session:
         # (PATCH /api/players) already refused it; this is the phone path catching up.
         ok, reason = _policy.check_request(self.policy(), self.loadout_pool(), slot, kind, rid, weapons, perks,
                                            p.get("loadout"))
-        if ok and self.phase in ("armed", "live"):
+        if ok and self.in_play():
             ok, reason = False, KIT_LOCKED          # the kit locks at START: nothing is stored, nothing is pushed
         if ok and not self.lobby_pushed and self.phase != "kit":
             # before KIT the phones are on "setting up" (§4.6); after the push the existing path below still applies
@@ -4823,7 +4856,7 @@ class Session:
                                                           "frames": list(TRYOUT_TEARDOWN)})
             self._changed()
             return
-        if self.lobby_pushed or self.phase in ("armed", "live"):
+        if self.lobby_pushed or self.in_play():
             raise ValueError("Try-outs are closed — the game has been pushed to the guns")   # A10 §4.4 (was: any node in LOBBY)
         w = next((w for w in self.compiler.weapon_catalog() if w["weapon_id"] == weapon_id), None)
         if not w:
@@ -4905,7 +4938,7 @@ class Session:
         # The guard `push_config` carries, narrowed to ONE player: a `config` is a head write, and in
         # armed/live that head is the F121 disarmed table with nothing to re-spawn a gun already in play.
         # A node that never took this match's config is the exception — that write is its hot join.
-        if self.phase in ("armed", "live") and self._took_this_config(p):
+        if self.in_play() and self._took_this_config(p):
             raise ConflictError(_KIT_LOCKED_HOST.format(phase=self.phase.upper(), what="the frames"))
         bundle = self._compile_rolled(p)
         self.bundles[p["player_id"]] = bundle
@@ -5058,7 +5091,7 @@ class Session:
         judgement (a red row they can see and accept). This is a statement about what the push does to
         a gun that is in play, and no amount of operator intent changes it. RECALL or END first.
         """
-        if self.phase in ("armed", "live"):
+        if self.in_play():
             raise ValueError(f"the match is {self.phase.upper()}: pushing the config now would re-arm every "
                              "gun with the DISARMED head and leave it unable to take damage until its next "
                              "life. RECALL to return the field to KIT, or END the match first")
@@ -5515,7 +5548,7 @@ class Session:
         profile's `mc_events` switch: a role is a rule of the match, not a flourish, and a silenced game must
         still tell its VIP who they are. Returns 1 if a socket took it, else 0."""
         p = self.players.get(pid)
-        if not p or not p.get("node_id") or self.phase not in ("armed", "live"):
+        if not p or not p.get("node_id") or not self.in_play():
             return 0
         body = {**_pres.role_alert_body(name, on, tid), "player_id": pid, "t": self.now_ms()}
         ok = self.net.push(p["node_id"], "alert", body) is not False
@@ -5663,9 +5696,9 @@ class Session:
         """
         if scorer is not None and scorer is not self.scorer:
             return
-        if not self.scorer or self.phase not in ("armed", "live"):
+        if not self.scorer or not self.in_play():
             return
-        if (self.start_info or {}).get("adopted"):
+        if self.is_adopted():
             # F-2026-09-17c: MC holds no config for an adopted match, so `frag_limit` here is the
             # operator's CURRENT DRAFT, not the number the phones are actually playing to. Never end
             # the phones' match on a cap MC cannot confirm is theirs.
@@ -5683,7 +5716,7 @@ class Session:
             self._end_on_frag_limit(t)
 
     def _end_on_frag_limit(self, t: int) -> None:
-        if not self.scorer or self.phase not in ("armed", "live"):
+        if not self.scorer or not self.in_play():
             return
         cap, t_match_s = self.scorer.frag_limit, max(0, (t - self.scorer.go_live_t) // 1000)
         reached = self._broadcast_control("end")
@@ -5783,8 +5816,7 @@ class Session:
         if not self.start_info:
             return
         now = self.now_ms()
-        if self.phase == "armed" and now >= self.start_info["go_live_t"]:
-            self.phase = "live"
+        if self.phase == "armed" and self._promote_phase(self.start_info["go_live_t"], now) == "live":
             self._changed()
         self._push_due_roles(now)
         self._operator_no_answer(now)
@@ -5793,7 +5825,7 @@ class Session:
         # DRAFT, which need not match what the phones are actually running. Arming a timed end on it can
         # cut a running match short, so MC never ends an adopted match on the clock; the phones end
         # themselves, or the operator presses END.
-        if (self.phase == "live" and tl and not (self.start_info or {}).get("adopted")
+        if (self.phase == "live" and tl and not self.is_adopted()
                 and now >= self.start_info["go_live_t"] + tl * 1000 + 5000):
             self.end_reason = "time"         # A6.1: the clock every phone ran; it is not re-derived
             self._finish()
@@ -5878,7 +5910,7 @@ class Session:
         """`POST /api/match/next`: RECAP's NEXT MATCH. Roll forward, then LOAD the same game, so the operator
         lands on GAMES with the game loaded and one tap from KIT. LOAD's own rule (it never writes a gun,
         and it keeps the operator on GAMES) is unchanged."""
-        if self.phase in ("armed", "live"):
+        if self.in_play():
             raise ConflictError(f"the match is {self.phase.upper()} — END it before starting the next one")
         self._roll_forward_from_recap()
         return self.load_game()
@@ -5925,7 +5957,7 @@ class Session:
         self._changed()
 
     def new_session(self, keep_roster: bool = True) -> None:
-        if self.start_info and self.phase in ("armed", "live"):
+        if self.start_info and self.in_play():
             self._record_ended(self.start_info.get("match_id"), None, self._match_players)   # A34
         # 2026-09-16: leaving a finished match with the roster kept is the NEXT MATCH, and the finished
         # match is still being delivered: late facts (`_ingest_retired`), the A42 end watch and the A34
@@ -6020,7 +6052,7 @@ class Session:
                           "rows": self._with_operator(self._with_pool_stale(self.scorer.live_rows(
                               now, {nid: nv.get("last_seen_ms", 0) for nid, nv in self.nodes.items()})),
                               self.scorer.match_id)}
-        if self.phase == "live" and (self.start_info or {}).get("adopted") and self._phones_ended(self.scorer.match_id):
+        if self.phase == "live" and self.is_adopted() and self._phones_ended(self.scorer.match_id):
             view["phones_ended"] = True
         return view
 
