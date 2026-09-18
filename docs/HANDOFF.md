@@ -26,6 +26,13 @@ the correction; the per-venue targets in them still stand.
    Extended Mags, Quick Switch, Motion Tracker, Second Wind. The next wave and every rejected idea are
    in the same document, with reasons. §6.3c lists the four other archetypes the levers already allow
    and the catalogue does not have: a medic gun, a flux beam, a jammer and a crit weapon.
+4. **The compile half of S50 is built and merged** (`5f9e2620`, `181fc506`, `test:all --ui` 17/17).
+   `armed_armor()` redirects the grant to SHIELD under the Shields preset and floors at 0; Armour
+   Piercing re-keys the primary to a new permanent fn-2 `$SIR` row and refuses to arm if the compiled
+   head lacks it; `perk_effects` rides the FrameBundle and State from one resolver, pinned equal by a
+   test; Easy Reload now lives in `loadout.overrides`. The HUD's perk line printed every COST as a buff
+   (`reload_mult: 1.25` read as "RELOADS 0.8x FASTER"), which is fixed, and the kit plate takes the gain
+   alone so it stops overflowing.
 
 ## Tomorrow
 
@@ -34,15 +41,19 @@ the correction; the per-venue targets in them still stand.
    fn-24 shot tick** (this gates the poison weapon, and checks whether the stock Energy Launcher row has
    been ticking victims all along); the Charge Rifle's real tap cadence; whether a stim-style write
    survives a reload; and two sound items handed back by the playtest session.
-2. **The perk build.** A compile-time lane is running now (perk costs, the preset-aware `armed_armor()`,
-   Armour Piercing, `perk_effects`, and Easy Reload moved to the accessibility block). The node-local
-   pair, Motion Tracker and Second Wind, is not started; the HUD half belongs to the `brx-hud` session.
+2. **The perk build, what is left.** The node-local pair, Motion Tracker and Second Wind, is not
+   started, and neither is the Motion Tracker range measurement (`perk-design.md` §5 item 5: the RSSI
+   bubble was tuned for walking up to a station, not for a fight). **S52** is the one that matters for a
+   real player: the HUD never tells someone their host switched Easy Reload on, and the conflict with a
+   second weapon is enforced only on the server, so out of coverage there is no warning at all.
 3. **Range calibration** when the M5Sticks arrive (S49): the close-band guesses (SMG 30, Shotgun and
    heavies 22) become measurements.
 
 ## Open, not moved
 
-The 2026-09-13 playtest criticals (F206 to F209) are untouched. The playtest session is merging main
-into `fix/playtest-2026-09-13` and has renumbered its own rows to F235-F247; **file no new F ids until
-it reports that merge green**. Heat on the HUD belongs to that session, and when it lands, `overheated()`
-becomes a game rule and should move to the stage (the pin in `test_stage_mirror.py` says so).
+The 2026-09-13 playtest criticals (F206 to F209) are untouched. The playtest branch merged main, has
+renumbered its own rows and has filed every F id below **F253**, so main resumes there. That branch
+replaced `overheated()` with a per-slot `_overheating()` carrying a staleness window, which is the
+better design: a locked gun stops sending `$ALCD`, so a single gun-wide 99 would sit above the line for
+ever. When it lands, heat becomes a game rule and belongs on the stage, and `node.md` §3.15's throttle
+row should name `_overheating()`.
