@@ -386,7 +386,7 @@ def test_kid_mode_health_floor_applied():
     assert tg.hp == 75 and tg.armor == 100             # spawned at the floored pool
     # The id comes from the driver, not written inline: this scenario is about the health FLOOR,
     # and the fleet is numbered from 1 (A5.1 reserves wire 0 for "no identity").
-    assert any(f.startswith(f"$PSET,{g.drv.player_ids['G1']},0,75,100,") for f in g.frames_to("G1"))
+    assert any(f.startswith(f"$PSET,{g.drv.player_ids['G1']},{g.drv.players['G1']},75,100,") for f in g.frames_to("G1"))   # F206: t2 = the $TID team
 
 
 def test_kid_mode_forces_friendly_fire_off():

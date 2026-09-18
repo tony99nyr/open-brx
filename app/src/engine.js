@@ -1984,7 +1984,12 @@ export class Engine {
     // spawn write is on the critical path and the headset needs its settling gap (F13). Re-sending $SIR rows is the
     // F11 REPAIR path, so this cannot cost us the table; the rows differ only in their sound tokens.
     const sir = this._pickTable('sir_pool');
-    this._write([...(ps.frame ? [ps.frame] : []), ...sir, ...this.frames.revive, ...(sp.frame ? [sp.frame] : [])], 'revive' + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : ''));
+    // F206: the gun keeps ONE team byte, and the `pset_pool` $PSET above carries the ARMING team. A player
+    // an infection flip has TURNED revives with the flip's own burst, which ends on the team they joined;
+    // `frames.revive` would put them back on the arming team.
+    const flipped = this._turned && this.frames.team_flip && this.frames.team_flip[String(this.teamTid)];
+    const revive = flipped || this.frames.revive;
+    this._write([...(ps.frame ? [ps.frame] : []), ...sir, ...revive, ...(sp.frame ? [sp.frame] : [])], 'revive' + (flipped ? ' (turned)' : '') + this._lineTag(sp) + (ps.frame ? ` + scream ${ps.id}${ps.tag}` : '') + (sir.length ? ` + hit audio ${sir.length}r` : ''));
     this.hurtFired = false;
     this._prevAmmo = {}; this._prevReserve = {}; this.activeSlot = 0;   // both maps: a stun before the first shot of a NEW life must snapshot this life's reserve, not the last one's (polish review 2026-09-11)   // assumption (hardware-UNVERIFIED): a revive puts the gun back on slot 0
     this._recoilArm('revive');   // S42: a respawn resets to the weapon's ceiling

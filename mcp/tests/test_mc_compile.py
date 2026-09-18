@@ -63,7 +63,7 @@ def test_play_volume_follows_the_venue():
 def test_head_carries_player_num_in_pset():
     b = C.compile(_cfg(), _player(num=42), _TEAMS)
     pset = [f for f in b["head"] if f.startswith("$PSET,")][0]
-    assert pset.startswith("$PSET,42,0,45,70,70,"), pset
+    assert pset.startswith("$PSET,42,1,45,70,70,"), pset   # F206: token 2 = the $TID team (blue = 1), not 0
 
 
 def test_tid_resolves_from_team_id():
@@ -99,7 +99,8 @@ def test_revive_is_spawn_plus_ammo_no_bmap_no_hloop():
     assert rv[:len(sir)] == sir and sir, "the $SIR rows lead the revive write"
     rv = rv[len(sir):]
     assert rv[0] == "$SPAWN,,*"
-    assert all(f.startswith("$AMMO,") for f in rv[1:])          # A11.6: dark headset in play -> no $HLED tail; A11.7: no $GLED here
+    assert rv[1] == "$TID,1,*", "F206: the team is re-asserted right after every $SPAWN"
+    assert all(f.startswith("$AMMO,") for f in rv[2:])          # A11.6: dark headset in play -> no $HLED tail; A11.7: no $GLED here
     assert not any(f.startswith("$BMAP") for f in rv), "revive must not re-map buttons"
     assert not any("HLOOP" in f for f in rv), "revive drops $HLOOP,0,0 (belongs in end)"
 
