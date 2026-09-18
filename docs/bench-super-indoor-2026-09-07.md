@@ -1,5 +1,7 @@
 # Bench (MacBook) — "Super Indoor": can we emit BELOW factory indoor power?
 
+> **Parked 2026-09-18.** The range lever is a carrier frequency, not a power, so this sheet waits for the S48 decision. The order of open bench work is [`bench-plan.md`](bench-plan.md).
+
 **For the MacBook session.** One question: **is there a software lever that makes the gun's IR beam
 weaker than factory indoor mode?** Tony's rooms bounce full-power IR off the walls and players take
 hits from everywhere. If a lever exists, it becomes a venue preset; if it does not, we go physical

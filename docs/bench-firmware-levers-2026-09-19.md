@@ -600,6 +600,10 @@ Run §18 (reply decodes, claim 19) in the same session first: the `$QUERY` token
 4. Send the bare `$LIFE,*` to B (moved here from §19 step 13). Expect `$HP,0,0,0` again, with no pool change.
 5. Respawn B and repeat steps 2-4 on the live gun as the control. Expect `$HP` with B's pools, unchanged.
 6. Listen for `$DD` from B at the moment of death (the §13 step 1 reading).
+7. **The second F264 stall: an empty magazine after a timed-out partial reload** (found 2026-09-18 on the playtest
+   branch; no detector yet). Arm B with the Energy Rifle. Fire it dry, then pull the reload lever for 1 s only, so the
+   reload times out (`bench-perks-2026-09-18.md` §7 item 2). If the magazine stays at 0, repeat steps 2-4 on this
+   live, empty gun. Expect the "alive, stuck another way" row: the node must not revive it.
 
 Read the result against this table:
 

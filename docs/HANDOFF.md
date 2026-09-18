@@ -13,6 +13,8 @@ that settles them is [`bench-firmware-levers-2026-09-19.md`](bench-firmware-leve
 recovers it. The plan is [`bench-screamers-2026-09-19.md`](bench-screamers-2026-09-19.md). Its Phase C
 tool is built: `python -m brx_mcp soak <address> <pattern> <minutes>`.
 
+**Bench order:** [`bench-plan.md`](bench-plan.md) puts every bench test into one list of sittings. Open it first.
+
 ## What is wrong right now
 
 1. **F264** a player can be dead on the gun and alive on the HUD. `pool_stale: no_fire` is detected

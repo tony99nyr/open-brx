@@ -1,5 +1,7 @@
 # Bench 2026-09-05 -- can BLE reach the headset's native camera flash?
 
+> **History (2026-09-18).** L1-L9 are answered. The order of open bench work is [`bench-plan.md`](bench-plan.md).
+
 One question: can any BLE frame drive the small green flash LED as hard, or as long, as the firmware does on
 an IR hit in a native game? If not, prove where the drive lives. Gun Tactix-E20D, stage `raw` action, emitter on
 COM8 (PING it first), phone camera on a dark wall.
