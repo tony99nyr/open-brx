@@ -135,13 +135,19 @@ export interface WeaponSel {
   weapon_id: string;
 }
 
-/** Per-player HP/armour handicap (modes §1.1). Both keys are optional and BOTH may be absent:
- *  `state.py _check_loadout` drops the whole `overrides` key when neither survives validation. */
+/** Per-player accessibility + HP/armour handicap (modes §1.1). All keys are optional and
+ *  independent -- `state.py _check_loadout` drops the whole `overrides` key when none survive
+ *  validation. S50 (2026-09-17): `easy_reload` moved HERE from the perk slot, because it is
+ *  accessibility (a player who cannot work the reload lever), not balance, so a left-handed player
+ *  can take it with NO extra health, and a younger player can take it WITH one (Tony, 2026-09-17:
+ *  "keep the two accessibility switches independent"). */
 export interface LoadoutOverrides {
   /** 1..999 (`state.py _check_loadout`); 0 is a corpse, not a pool */
   max_hp?: number;
   /** 0..999 -- 0 is legal and means "one shot with a sniper" */
   max_armor?: number;
+  /** ALT button = RELOAD ($BMAP,1,97); still can't ride with a second weapon or */
+  easy_reload?: boolean;
 }
 
 /** weapons[] is canonical: [primary] or [primary, secondary]; `perk` is its OWN slot and rides
@@ -243,18 +249,27 @@ export interface LoadoutPool {
 }
 
 /** The effect knobs the compiler acts on -- exactly `perks.EFFECT_KEYS`, which `PerkCatalog.__init__`
- *  refuses a perks.json row for exceeding. Every key is optional: a row carries only what it changes. */
+ *  refuses a perks.json row for exceeding. Every key is optional: a row carries only what it changes.
+ *
+ *  S50 (2026-09-17, docs/perk-design.md §2): `max_armor_add` is a FLAT armour grant/cost (body_armor
+ *  +25, quick_switch -20) -- `compile._MAX_ARMOR_ADD` is the one table the compiled arithmetic reads,
+ *  keyed by perk_id; this field is its wire-visible documentation, kept an integer because
+ *  `app/src/hud/hud.js` / `webapp/mc/src/screens/Kit.tsx` render it literally. */
 export interface PerkEffects {
-  /** added to $PSET armour, capped at 255 (`compile.armed_armor`) */
+  /** added to $PSET armour (or, base armour 0: $PSET shield) -- capped at 255, */
   max_armor_add?: number;
-  /** scales the clip/reserve the head writes */
+  /** floored at 0 (`compile.armed_armor`/`armed_shield`)
+   *  scales the clip/reserve the head writes */
   ammo_mult?: number;
   /** scales the weapon's reload time */
   reload_mult?: number;
-  /** A14: claims the ALT button ($BMAP,1,97) -- cannot ride with a second weapon */
+  /** unused by any current row (S50: easy_reload moved to */
   alt_reload?: boolean;
-  /** scales $WEAP tok15, the gun's swap delay (bench 2026-09-04) */
+  /** `loadout.overrides.easy_reload`) -- kept for a future ALT-button perk
+   *  scales $WEAP tok15, the gun's swap delay (bench 2026-09-04) */
   switch_mult?: number;
+  /** S50 (new, armor_piercing perk): primary's $SIR key -> the armour-piercing */
+  armor_piercing?: boolean;
 }
 
 export interface PerkView {
@@ -266,6 +281,30 @@ export interface PerkView {
   effects: PerkEffects;
   verified: boolean;
   hidden: boolean;
+}
+
+/** S50 build 4: a wire number before and after a perk touched it. Integers, always both present
+ *  together (never just one). */
+export interface ValuePair {
+  base: number;
+  resolved: number;
+}
+
+/** S50 build 4 (`docs/spec/loadout.md` §1.2/§2): the RESOLVED, per-player perk effect, exactly as
+ *  it was compiled into this bundle -- not the catalogue's `PerkEffects` (which is unresolved and
+ *  pool-independent). A field is present only when the perk actually changed it; `perk_id` is present
+ *  whenever the player carries a perk, even one with no other field here, so a phone/console can show
+ *  an icon. Lives on `FrameBundle.perk_effects` (the persisted per-player config, survives an app
+ *  restart) and, per player, on `State`'s roster/player view for Mission Control's console. */
+export interface PerkEffectsResolved {
+  perk_id?: string;
+  mag?: ValuePair;
+  reserve?: ValuePair;
+  reload_ms?: ValuePair;
+  swap_ms?: ValuePair;
+  max_hp?: ValuePair;
+  max_armor?: ValuePair;
+  max_shield?: ValuePair;
 }
 
 /** One armed utility item on `GameConfig.stations` -- exactly what `state.py _station_ids()` builds
@@ -471,6 +510,10 @@ export interface FrameBundle {
   /** A17: {rekey: bool, cells{weapon_id: "p,s"}, classes{"p,s": family}, shared[families sharing a cell],
    *  material[roles]} -- what the UI/console shows for "what does a hit sound like", and what a bench probe reads. */
   hit_audio?: Record<string, unknown>;
+  /** S50 build 4: this player's compiled perk effect,
+   *  absent when they carry no perk. Persisted here (not a
+   *  one-shot message) so it survives an app restart. */
+  perk_effects?: PerkEffectsResolved;
 }
 
 export interface Weapon {
@@ -1305,6 +1348,13 @@ export interface State {
   orphan_match?: OrphanMatchView;
   /** `--bench-volume N`: every $VOL MC compiles plays at N. Absent on a normal run */
   bench_volume?: number;
+  /** S50 build 4: {player_id: resolved effect},
+   *  one entry per player carrying a perk (absent players carry none;
+   *  the whole key absent when nobody on the roster has a perk). The
+   *  SAME numbers `FrameBundle.perk_effects` carries for that player --
+   *  `Compiler.perk_effects_resolved()` is the one arithmetic both read,
+   *  so the console and the node can never disagree. */
+  perk_effects?: Record<string, PerkEffectsResolved>;
 }
 
 export interface Envelope {

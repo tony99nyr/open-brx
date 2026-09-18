@@ -159,6 +159,14 @@ _SIR_TABLE = (
     "$SIR,10,0,X13,1,0,100,2,60,*", "$SIR,6,0,H02,1,0,90,1,40,*",
     "$SIR,13,1,H57,1,0,0,1,,*", "$SIR,13,0,H50,1,0,0,1,,*",
     "$SIR,13,3,H49,1,0,100,0,60,*",
+    # S50 (2026-09-17, Armour Piercing perk): a PERMANENT row on cell <4,0> (unused stock, free in
+    # `hitaudio.FREE_CELLS`), fn 2 (bench-proven armour+shield bypass, `mc/compile.py`
+    # `_SIR_ARMOR_PIERCING`). Ships in EVERY head, whether or not anyone carries the perk, because
+    # `mc/compile.py`'s `_AP_CELL`/`_AP_FN` must always find a matching row here -- see
+    # `assert_armor_piercing_armed`. Keep this row's cell and function byte-identical to those two
+    # constants; nothing imports across the two files to enforce it, so a change to either without
+    # the other silently reopens the F11 failure the guard exists to prevent.
+    "$SIR,4,0,,2,0,0,1,,*",
 )
 # $BMAP button map — mandatory or the trigger gives the "disabled" chirp.
 _BMAP = (

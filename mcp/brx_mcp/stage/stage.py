@@ -2382,6 +2382,15 @@ class GunStage:
         if bid == 2 and self.reloading:
             self.reloading["released_at"] = now
 
+    def _easy_reload(self) -> bool:
+        """engine.js `_easyReload()`: `loadout.overrides.easy_reload` is the live shape; the `alt_reload`
+        perk effect is the pre-move shape, kept readable for a bundle compiled before S50."""
+        lo = (self.player or {}).get("loadout") or {}
+        if (lo.get("overrides") or {}).get("easy_reload"):
+            return True
+        pk = self._catalog_row("perk_catalog", "perk_id", lo.get("perk"))
+        return bool((pk or {}).get("effects", {}).get("alt_reload"))
+
     def _alt_pressed(self) -> None:
         """ALT: a weapon swap -- except with ONE slot, where ALT only reloads for a player running easy_reload
         (loadout.md §2 `alt_reload`; the gun's ALT is otherwise fn 98, inert) and takes the same glance as the
@@ -2404,8 +2413,11 @@ class GunStage:
             # (inert) UNLESS the player runs easy_reload, which keeps ALT -> fn 97 (RELOAD) on purpose
             # (loadout.md §2 `alt_reload`). Pulling reload for anyone else opened a takeover the gun
             # could never complete (engine.js `_altPressed`).
-            pk = self._catalog_row("perk_catalog", "perk_id", ((self.player or {}).get("loadout") or {}).get("perk"))
-            if (pk or {}).get("effects", {}).get("alt_reload"):
+            # S50 (merge 2026-09-18): Easy Reload moved from the perk slot to `loadout.overrides`, where
+            # the per-player accessibility block lives, and `compile.py` reads it there. engine.js
+            # `_easyReload()` asks both shapes; so does this, or the stage would predict a phone that
+            # ignores the override.
+            if self._easy_reload():
                 self._reload_pulled()
             return
         if self.reloading:

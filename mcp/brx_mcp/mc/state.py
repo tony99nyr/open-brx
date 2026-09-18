@@ -1074,13 +1074,15 @@ class Session:
         AR takes 13 hits however the host had set health (docs/weapon-design.md §2.5).
 
         ⚠ This must mirror `Compiler._to_gc()`'s armour arithmetic EXACTLY — including the
-        `body_armor` perk's `max_armor_add` and the 255 policy ceiling — because that is what
-        actually goes out on `$PSET`. Review 2026-09-01 caught it missing the perk: a player holding
-        `body_armor` is armed at a 165 pool while KIT quoted the AR at 13 hits / 1.68 s when the
-        truth is 19 / 2.52 s. A stat block that is wrong for the one perk that moves the pool is
-        worse than one that never claimed to be per-player. The arithmetic itself lives in
-        `compile.armed_pool()` (shared with `_to_gc()` and `Compiler.validate()`); this method's
-        own job is just resolving which hp/armor/perk win for THIS player."""
+        `body_armor` perk's pool-percentage grant (S50) and the 255 policy ceiling — because that is
+        what actually goes out on `$PSET`. Review 2026-09-01 caught it missing the perk: a player
+        holding `body_armor` is armed at a bigger pool than KIT quoted. A stat block that is wrong
+        for the one perk that moves the pool is worse than one that never claimed to be per-player.
+        The arithmetic itself lives in `compile.armed_pool()` (shared with `_to_gc()` and
+        `Compiler.validate()`); this method's own job is just resolving which hp/armor/perk win for
+        THIS player. Deliberately excludes shield (S50, `compile.armed_pool()`'s own docstring): a
+        base-armour-0 game routes the grant into shield instead, and this number does not move for
+        it, same as `Compiler.validate()`'s pool check."""
         h = self.config.get("health") or {}
         ov = ((p or {}).get("loadout") or {}).get("overrides") or {}
 
@@ -1091,9 +1093,9 @@ class Session:
             except (TypeError, ValueError):
                 return default
 
-        fx = self.compiler.perk_effects(p)
-        from .compile import armed_pool                  # the one shared arithmetic (see docstring)
-        return max(1, armed_pool(n("max_hp", 45), n("max_armor", 70), fx))
+        from .compile import armed_pool, is_shields_preset   # the one shared arithmetic (see docstring)
+        pid = ((p or {}).get("loadout") or {}).get("perk")
+        return max(1, armed_pool(n("max_hp", 45), n("max_armor", 70), pid, is_shields_preset(self.config)))
 
     def _catalog_views(self, p: Player | None = None) -> dict:
         """`assign.catalog` — what the phone browses (visible weapons as WeaponView + visible perks)."""
@@ -1651,9 +1653,12 @@ class Session:
         return ids
 
     def _check_loadout(self, lo) -> Loadout:
-        """Loadout must be {weapons: [{weapon_id}] | [{primary}, {secondary}], perk?: perk_id, overrides?: {max_hp?, max_armor?}};
-        ids from the catalog when known. A14: `perk` is its own slot beside the weapons (loadout.md §2); the one
-        pairing the hardware forbids (an ALT-button perk + a second weapon) is a POLICY reject, not a shape error."""
+        """Loadout must be {weapons: [{weapon_id}] | [{primary}, {secondary}], perk?: perk_id,
+        overrides?: {max_hp?, max_armor?, easy_reload?}}; ids from the catalog when known. A14: `perk`
+        is its own slot beside the weapons (loadout.md §2). S50 (2026-09-17): Easy Reload moved OUT of
+        the perk slot to `overrides.easy_reload` (accessibility, not balance) — the one pairing the
+        hardware forbids (the ALT button + a second weapon, or a chain-reload primary) is still a
+        POLICY reject, not a shape error: `policy.conflict`/`chain_conflict` read it from here."""
         if not isinstance(lo, dict) or not isinstance(lo.get("weapons"), list) or not lo["weapons"]:
             raise ValueError("loadout must be {weapons: [{weapon_id}, ...]}")
         if len(lo["weapons"]) > 2:
@@ -1692,6 +1697,18 @@ class Session:
                         clean["max_hp"] = v
                     else:
                         clean["max_armor"] = v
+            # S50: Easy Reload's ALT-button remap, now a per-player accessibility flag instead of a
+            # perk pick (docs/spec/loadout.md §2) — "the host sets once" (FOLLOWUPS S50), independent
+            # of `max_hp`/`max_armor` (a left-handed player takes it with no extra health; a younger
+            # player takes it WITH one). Shape only here; the hardware pairing it can't ride with (a
+            # second weapon, or a chain-reload primary) is `policy.conflict`/`chain_conflict`'s job,
+            # read off `loadout.overrides.easy_reload` — same POLICY-reject split as before S50.
+            if "easy_reload" in ov and ov["easy_reload"] is not None:
+                v = ov["easy_reload"]
+                if not isinstance(v, bool):
+                    raise ValueError("overrides.easy_reload must be a boolean")
+                if v:
+                    clean["easy_reload"] = v
             if clean:
                 out["overrides"] = clean
         return out
@@ -6176,4 +6193,14 @@ class Session:
         orphan = self.orphan_match_view()
         if orphan is not None:
             state["orphan_match"] = orphan
+        # S50 build 4: the SAME resolved perk numbers `FrameBundle.perk_effects` carries, per player,
+        # for the console — `Compiler.perk_effects_resolved()` is the one arithmetic both read, so the
+        # two can never disagree. Absent players carry no perk; the whole key absent when nobody does.
+        # `getattr` (not a straight call): a test double need not carry the whole compiler, same as
+        # `_hit_plan()`'s own guard above.
+        pe_fn = getattr(self.compiler, "perk_effects_resolved", None)
+        if pe_fn is not None:
+            pe_map = {pid: pe for pid, p in self.players.items() if (pe := pe_fn(self.config, p)) is not None}
+            if pe_map:
+                state["perk_effects"] = pe_map
         return state

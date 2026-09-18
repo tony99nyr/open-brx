@@ -3177,6 +3177,15 @@ export class Engine {
   }
 
   /** ALT pressed: a weapon swap has begun. Shooting is disabled until the gun finishes it. */
+  /** S50: is ALT a reload for THIS player? `loadout.overrides.easy_reload` is the live shape (the
+   *  per-player accessibility block, `docs/spec/loadout.md` §2); the `alt_reload` perk effect is the
+   *  pre-move shape and stays readable so an older bundle still works. */
+  _easyReload() {
+    const lo = (this.player && this.player.loadout) || {};
+    if (lo.overrides && lo.overrides.easy_reload) return true;
+    const pk = lo.perk ? this.perkRow(lo.perk) : null;
+    return !!(pk && pk.effects && pk.effects.alt_reload);
+  }
   _altPressed() {
     if (this.phase !== 'live' || !this.alive || this.tutorial) return;
     // A20/F15, the same reason `_reloadPulled` refuses: a STUNNED gun is disarmed ($AMMO,<slot>,0,0) and
@@ -3189,8 +3198,12 @@ export class Engine {
       // UNLESS the player is running easy_reload, which keeps ALT -> fn 97 (RELOAD) on purpose
       // (loadout.md §2 `alt_reload`). Calling `_reloadPulled()` for anyone else opened a RELOADING
       // takeover the gun could never complete, since no $ALCD ever answers a no-op button.
-      const pk = this.player && this.player.loadout && this.player.loadout.perk ? this.perkRow(this.player.loadout.perk) : null;
-      if (pk && pk.effects && pk.effects.alt_reload) this._reloadPulled();
+      // S50 (merge 2026-09-18): Easy Reload left the perk slot for `loadout.overrides`, where the rest of
+      // the per-player accessibility block lives. `compile.py` reads `overrides.easy_reload` and keeps
+      // ALT on fn 97 for that player, so the node must ask the same question: reading the retired perk
+      // slot left the feature dead on the phone for anyone whose host switched it on. The old perk row
+      // is still honoured for a bundle compiled before the move.
+      if (this._easyReload()) this._reloadPulled();
       return;
     }
     // A swap ABANDONS a running reload: the gun is putting a different weapon in your hands, so the old

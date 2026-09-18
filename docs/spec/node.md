@@ -261,31 +261,6 @@ reach nodes in coverage. `time_limit_s == null` (full-coverage venues only) mean
 node also fires its own `time_60/30/10` callouts and, in extraction, `raid_ending`/`raid_over` from this clock
 (A11.4). ⚠ The composed time-expiry flow has not been run on hardware (FOLLOWUPS).
 
-### 3.13 The match result (contracts A24) — pushed, never inferred
-
-The end of a match is two facts on the node. **"It ended"** is local (§3.9) or an `end`/`recall`. **"How it
-ended"** only ever comes from MC as a **`result`** envelope: `outcome` is already computed for THIS recipient
-(`win`/`lose`/`draw`/`undecided`), with the winner, every player's `ScoreRow`, team totals, honors and
-possession. The engine stores it as `state().result` (null until it arrives), folds `outcome`, `team_scores`,
-`best_streak`, `medals` and its own hill hold (`this.hold`) into the `onEnd` history entry, and accepts a
-`result` for the CURRENT `match_id` only (a stale one is logged and dropped). `welcome.node.result` hydrates it
-on a rejoin during recap. **Rule:** no code path on the node may write WIN or LOSE from the absence of a
-message — a `victory` cue that never came means "lost" and "out of coverage" identically. The FINAL RESULTS
-screen (§4.4) shows "RESULT PENDING" until the push, and "MC NOT REACHED — see Mission Control" once the
-settle window (30 s) passes with no MC link; it is mode-aware from `result.mode`/`win_by`, with a TEAM view
-(totals + each team's players) and a PLAYER view (the leaderboard), medals and best streak from the rows, and
-never hard-codes a cell set. `OK` leaves it (`ackEnd`); a `RESULTS` button on the MATCH COMPLETE screen and a
-`HISTORY` list (per session, from `localStorage['brx.history']`) reopen it.
-
-### 3.14 Background log sync (contracts A25) — game sync has priority
-
-`pull_log` is answered by the node only when **not ARMED and not LIVE** and **`ring.pending() === 0`** (no
-unacked fact in the store-and-forward ring, §5a). Otherwise the request is parked and retried on a 5 s → 60 s
-backoff until it can be served; a reconnect re-sends `log_offer` so MC asks again. The upload is the existing
-`log_offer` + `log_data` chunk stream (≤ 48 KB), one chunk in flight, the next only after the socket buffer
-drains, so a log never delays a fact. The phone keeps `uploadedThrough` (the log line count MC has) and a
-later pull sends only the tail. The debug panel's SHARE LOG stays as the manual route.
-
 ### 3.10 BLE reconnect — reconcile from persisted state, never guess (S7.1, contracts A6.8)
 
 **The node persists and restores combat state.** `_save`/`_load` carry `alive/hp/armor/shield/deadAt/killedBy`
@@ -378,30 +353,32 @@ The **source** is a catalog matter, not a node one: any `$WEAP` with t3 = 8 fire
 today, so under `config.stun` it stuns and deals no damage — `validate()` says so), or a proto-8 station. The native
 firmware stun is not relied on (2/5 singles, lasts until death).
 
-### 3.15 Operator actions from MC: resync, respawn, relink (contracts A47)
+### 3.13 The match result (contracts A24) — pushed, never inferred
 
-MC's LIVE board can send `control{cmd, player_id, match_id}` to ONE player's phone. The operator's second tap on MC
-is the confirm, so the phone asks nothing. `engine.js control()` checks the command first: a `match_id` that is
-missing or is not this node's `matchId`, or a `player_id` that is not this player, is ignored and logged. Every
-refusal below is logged too, so the phone's log answers "the operator pressed it and nothing happened".
+The end of a match is two facts on the node. **"It ended"** is local (§3.9) or an `end`/`recall`. **"How it
+ended"** only ever comes from MC as a **`result`** envelope: `outcome` is already computed for THIS recipient
+(`win`/`lose`/`draw`/`undecided`), with the winner, every player's `ScoreRow`, team totals, honors and
+possession. The engine stores it as `state().result` (null until it arrives), folds `outcome`, `team_scores`,
+`best_streak`, `medals` and its own hill hold (`this.hold`) into the `onEnd` history entry, and accepts a
+`result` for the CURRENT `match_id` only (a stale one is logged and dropped). `welcome.node.result` hydrates it
+on a rejoin during recap. **Rule:** no code path on the node may write WIN or LOSE from the absence of a
+message — a `victory` cue that never came means "lost" and "out of coverage" identically. The FINAL RESULTS
+screen (§4.4) shows "RESULT PENDING" until the push, and "MC NOT REACHED — see Mission Control" once the
+settle window (30 s) passes with no MC link; it is mode-aware from `result.mode`/`win_by`, with a TEAM view
+(totals + each team's players) and a PLAYER view (the leaderboard), medals and best streak from the rows, and
+never hard-codes a cell set. `OK` leaves it (`ackEnd`); a `RESULTS` button on the MATCH COMPLETE screen and a
+`HISTORY` list (per session, from `localStorage['brx.history']`) reopen it.
 
-| cmd | engine path | writes | refused (logged, no write) |
-|---|---|---|---|
-| `resync` | `_operatorResync` | `$TID` (`_liveTid`: last written, else the infection team, else the head's), `$AMMO,<slot>,<mag>,<reserve>,1,*` per slot from `_liveAmmo` (the last `$ALCD`, else the spawn counts, never a refill), `$BMAP,0,0` from `frames.revive`, then one `sir_pool` take through `_armLife` (retried on a failed write). While A44 protection is pending the take is left to its own trigger | not `live`, not spawned, no bundle, link down, reconciling, try-out, down, stunned |
-| `respawn` | `_revive(false, null, true)` | the normal revive: `frames.revive` (fn-28 twin, `$SPAWN`, `$AMMO`, `$BMAP,0,0`), full pools, A44 protection, `respawn{operator:true}`. A down player is up at once (`deadAt` cleared). A stun is cancelled with no write | not `live`, not spawned, no bundle, link down, reconciling, try-out |
-| `relink` | `onRelink` → `link.relink()` (app.js) | none itself: the relink then runs §3.10 (LIVE reconcile, or the LOBBY/ARMED head re-write) | not `lobby`/`armed`/`live`, no hook |
+### 3.14 Background log sync (contracts A25) — game sync has priority
 
-**The answer.** Each command that passes the match and player check is answered with the persisted fact
-`operator_result{cmd, ok, why?}` (contracts §4): `ok:true` when the node did it, `ok:false` with the refusal
-reason in `why`. MC writes the operator's feed line and menu line from this fact, never from the send, and no
-scorer reads it.
+`pull_log` is answered by the node only when **not ARMED and not LIVE** and **`ring.pending() === 0`** (no
+unacked fact in the store-and-forward ring, §5a). Otherwise the request is parked and retried on a 5 s → 60 s
+backoff until it can be served; a reconnect re-sends `log_offer` so MC asks again. The upload is the existing
+`log_offer` + `log_data` chunk stream (≤ 48 KB), one chunk in flight, the next only after the socket buffer
+drains, so a log never delays a fact. The phone keeps `uploadedThrough` (the log line count MC has) and a
+later pull sends only the tail. The debug panel's SHARE LOG stays as the manual route.
 
-**Why resync is not the rejoin reconcile.** `_beginReconcile` disarms both slots for `RECONCILE_MS` and
-`_endReconcile` re-arms with the SPAWN counts and writes no `$TID` or `$BMAP`. A resync must keep the ammo the player
-has and put back the team and trigger mapping, with no disarmed window. **Never a config or head write**: a
-config to a gun in play clears `spawned` and silences every hit and death handler (F11). No death and no kill is
-booked by any of the three. `stage.py resync()` mirrors `_operatorResync`; the stage's `revive()` is FORCE RESPAWN.
-### 3.16 Node-driven recoil (the accuracy ceiling/floor is ours) — S42, F230
+### 3.15 Node-driven recoil (the accuracy ceiling/floor is ours) — S42, F230
 
 F230 (bench 2026-09-17) found the native `t21`→`t22` accuracy walk works on only one of three guns, so it is not a
 usable balance lever. Every weapon ships `t21 == t22 == 100` (walk off) and the node drives the SAME two tokens
@@ -415,8 +392,7 @@ the per-weapon target; `resolve()` never reads it (`test_range_and_recoil_are_de
 | step down | every shot (`_onAmmo`'s mag decrement on the active slot) drops `value` by `per_shot`, floored at `floor` |
 | step up | once `recover_ms` has passed with **no shot and no pending step**, `value` rises by `per_shot`, ceilinged at `ceiling` — never a "released" flag, so a burst weapon's own gap between rounds is not mistaken for a release |
 | write | pins **both** `t21` and `t22` to `value` on the active slot's compiled `$WEAP` frame (never `ceiling`/`floor` separately) — a fixed accuracy is honoured on a non-walking gun too (bench 2026-09-17), so this sidesteps F230 rather than depending on it. Immediately followed by an `$AMMO` restore of the LIVE mag/reserve (a `$WEAP` re-push resets both to the frame's baked-in values, bench 2026-09-17) |
-| throttle | one writer, latest `value` wins; a minimum gap between writes (`ACC_WRITE_MIN_GAP_MS`, 250 ms); never between a reload-lever pull (`this.reloading`) and the refill; never mid weapon-swap (`this.switching`); never during an overheat lockout — the node DOES track that, `_overheating()` (heat ≥ 99 on the active slot, §3.2), so the old `overheatLocked` seam is gone; never during a resync or a rejoin reconcile |
-| stand down | **merge 2026-09-17.** The accuracy write carries an `$AMMO` restore, and so do a spawn (§3.1), a revive (§3.4), an operator RESYNC GUN (§3.15) and a stun disarm/restore (§3.12). Two `$AMMO` writers in flight at once would fight: the accuracy write would re-arm a stunned gun, or put the previous life's counts back over a spawn. Each of those writes calls `_holdAccuracyWrites(why)`, which stands the writer down for `ACC_HOLD_MS` (800 ms), drops any verify still open (an `$ALCD` answering THAT write proves nothing about ours) and marks the model dirty so the live value is re-asserted once the hold lifts. The hold delays the WRITE only; `_recoilStep` keeps tracking the shots. The rejoin reconcile (§3.10) additionally RE-ARMS the model, because it re-arms the gun with the frame's spawn counts and an accuracy write would put the pre-drop magazine back |
+| throttle | one writer, latest `value` wins; a minimum gap between writes; never between a reload-lever pull (`this.reloading`) and the refill; never mid weapon-swap (`this.switching`); never during an overheat lockout: `overheated()` reads the heat the gun reports in `$ALCD` token 5 against 99 (F229; the guard read a flag nothing set until 2026-09-17, so it was dead code) |
 | verify | the next `$ALCD` naming the active slot (`_recoilObserve`, tok 2) is compared to what was written once the write's grace window closes; a mismatch retries ONCE; a second mismatch writes the ceiling back (both tokens) with the live ammo and disables further writes for the rest of the life, logged |
 | reset | a respawn/revive re-arms at the weapon's ceiling; a confirmed weapon swap re-arms to the NEW weapon's profile at its ceiling (multi-slot native drift while off-slot is not modelled — a bench gap, not a design one) |
 
@@ -424,22 +400,33 @@ the per-weapon target; `resolve()` never reads it (`test_range_and_recoil_are_de
 the motion sensor before `_recoilStep` applies it; a future flinch module reads `this._recoil.value` (today's live
 accuracy) to decide how hard to jolt. Neither needs to touch the writer, the verify/retry loop, or `config.recoil`.
 
-### 3.17 F68: a miss the node cannot see still wipes the headset's team colour
+### 3.16 F68: a miss the node cannot see still wipes the headset's team colour
 
-An accuracy-model miss (§3.16) sends **no `$HIR` and no `$HP`** (bench 2026-09-17) — the gun still plays its native
+An accuracy-model miss (§3.13) sends **no `$HIR` and no `$HP`** (bench 2026-09-17) — the gun still plays its native
 near-miss flash on the headset and the flash still goes dark afterwards (F68, bench 2026-09-09), and the node has no
 frame to react to. The existing hit-driven repaint (`_onHp`, `dmg > 0`) cannot see this at all, so `tick()` now
 repaints the team colour (or the active role's colour) on a plain interval, `TEAM_REPAINT_MS` (5 s), whenever the
 player is alive and spawned — cheap on purpose: one `$HLED` write per interval, never a stream, and no different in
 kind from the `hit`/`role` repaints already on this path.
 
-**One owner at a time (merge 2026-09-17).** The strip belongs to whoever painted it deliberately last: a spawn or
-respawn flash, a hit flash, an event burst, a role change, the operator's FORCE RESPAWN. Every one of those goes
-through `_headset`, which now stamps the repaint clock, and a spawn/revive re-stamps it too. So the interval is a
-BACKSTOP, not a second painter: it fires only when nothing else has painted the headset for a whole
-`TEAM_REPAINT_MS`, and the two can never fight on a 5 s beat.
-
 ---
+
+### 3.17 Damage over time: the node holds the tick clock (S16, not built)
+
+The gun has no damage-over-time function we can rely on (`weapon-design.md` §6.3b: fn 24's delayed ticks were
+measured only against a REPEATING source). The node builds it instead, because `$LIFE` takes negatives and a node
+may write its own gun freely mid-match.
+
+| rule | what the node does |
+|---|---|
+| recognise | a `$HIR` whose protocol key (token 2) is the poison damage type starts or REFRESHES a stack. The shooter's weapon carries that key in `$WEAP` t3; the stock enum already has 11 = gas |
+| tick | one `$LIFE` write per tick interval, taking the tick amount from the OUTERMOST non-empty pool. A negative is per-pool with NO spill and floors at 0 (bench 2026-09-09), so the node walks shield, then armour, then health itself |
+| refresh, never stack | a second poison hit restarts the timer at full duration; two shooters do not stack two clocks. Refresh rewards staying on target and keeps the worst case bounded |
+| end | the stack ends on expiry, on death, and on respawn. A stack never survives a life |
+| death | a LETHAL tick emits `$LCD` and no `$HP` (F64), so the node books the death through the `$LCD` path. There is no `hit_taken` fact and **no attribution**: who is credited with the kill is an open decision, not an implementation detail |
+| show it | the HUD shows the stack and counts it down, and the node plays the cue, because the gun plays nothing at all for a `$LIFE` write. The HUD half belongs to the `brx-hud` session |
+
+Out of Mission Control coverage this behaves identically: everything after the first hit is local to one phone.
 
 ## 4. The HUD — requirements and state mapping
 
@@ -587,7 +574,14 @@ doesn't regress it.
 
 ---
 
-## 10. Open questions (still open on 2026-09-06; closed ones are in git history)
+## 10. Open questions
+
+**There is no §9, on purpose.** The old §9, "Task breakdown", was retired in the 2026-09-06 docs
+consolidation (`f2051f55`). The numbering stays as it is because `contracts.md` and `weapon-design.md` both
+cite this section as `node.md §10-Q12`.
+
+These questions carry no ids. Anything that needs tracking gets a row in [`../FOLLOWUPS.md`](../FOLLOWUPS.md),
+which is where open work lives; closed questions are in git history.
 
 - **Q2 — the third pool on the wire (`$HIR` from a station).** With scanner respawn built over BLE adverts
   (utility.md §4), the remaining question is whether a grenade/IR station beacon (`$HIR` tok2 = 15) should also

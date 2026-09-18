@@ -310,7 +310,11 @@ export function startDemo({ engine, log }) {
       // A26 (S20): tapping a row equips AND arms it. ⟳ while it is arming, ✓ once MC has acked.
       'loadout-arming':    [...kitted, [400, () => ev.slowAck(9000)], [500, () => ev.openLoadout('primary')], [700, () => ev.tap('.lrow[data-arg="weapon:smg"]')]],
       'loadout-info':      [...kitted, [400, () => ev.openLoadout('primary')], [700, () => ev.tap('.lrow[data-arg="weapon:shotgun"] .linfo')]],   // the ⓘ READS a row without equipping it
-      'loadout-perk-conflict': [[0, 'twoWeapons'], ...kitted, [400, () => ev.openLoadout('perk')], [700, () => ev.tap('.lrow[data-arg="perk:easy_reload"]')]],   // first tap = the warning
+      // S50 (2026-09-17): Easy Reload LEFT the perk slot for the per-player accessibility block, so the two-tap
+      // ALT-button conflict it used to raise here cannot happen from the picker any more. The fixture keeps the
+      // two-weapon kit, because that is the state the conflict needed, and the screen-truth step now proves the
+      // retirement instead of the warning.
+      'loadout-perk-conflict': [[0, 'twoWeapons'], ...kitted, [400, () => ev.openLoadout('perk')]],
       'tryout':            [...kitted, [400, () => ev.tryout('smg')]],
       'lobby':             lobby,
       // Bench 2026-09-16: readied up in the kit, then the host pushed the lobby (the state Tony saw grey).

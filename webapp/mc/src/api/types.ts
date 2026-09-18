@@ -11,7 +11,7 @@
 // ---- generated wire shapes (contract.gen.ts) ----
 export type {
   ArmoryRecord, BleId, ConfigView, Envelope, Event, FrameBundle, GameConfig, Health, Loadout, LoadoutOverrides,
-  LoadoutPolicy, LoadoutPool, LogView, PerkEffects, PerkView, Player, Preflight, ReadinessRow,
+  LoadoutPolicy, LoadoutPool, LogView, PerkEffects, PerkEffectsResolved, PerkView, Player, Preflight, ReadinessRow,
   ReadinessSnapshot, Respawn, RosterEntry, ScanRow, ScoreRow, Scoring, Siphon, SlotRule, StationRef,
   Stun, Recoil, Team, Weapon, WeaponSel, PoolEmptyCode, ModeParamSpec, Honor, RecapStationRow,
   StationAssignment, EndDeliveryView, VoiceList, VoiceOption, PhaseRefusalBody,
@@ -22,7 +22,7 @@ export type {
   LiveView, StartNodeView, StartView, State, GameConfigBase, LanView, KitView, LobbyAck,
   LobbyView, GameAnnouncementView, SyncAckState, SyncRow, SyncTotals, SyncView, SessionOptions, VersionsView,
   NoticesView, RestoredFromView, SnapshotFeedRow, OrphanMatchView, OperatorActionResult, OperatorStatus,
-  TunnelStatus, TunnelProviderValue,
+  TunnelStatus, TunnelProviderValue, ValuePair
 } from './contract.gen';
 export type {
   ArmState, ControlCmd, ItemKind, LoadoutPreset, McKind, NodeKind, OperatorCmd, PersistedEventType, Phase,

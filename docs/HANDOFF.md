@@ -38,12 +38,31 @@ verification-bench ids: **F235-F247** (see `docs/FOLLOWUPS.md`).
 The arsenal rework (A48): `weapon_class` and `rounds_per_charge` on the wire, the Charge Rifle at fn 1 /
 85 charge / 20 tap / cell 40/80, the Energy Rifle's overheat switched on (t38 150, sound D11) with a
 `caution` string, weapons cut from the pickers, `$GSET` t7 = 0, and **node-driven recoil** (`node.md`
-§3.16, S42) with the F68 team repaint (§3.17). The venue range lever moved from `$WEAP` t41 to **t2**
+§3.15, S42) with the F68 team repaint (§3.16). The venue range lever moved from `$WEAP` t41 to **t2**
 (`gunRangeOutdoor`); t41 is inert outdoors. Main's own open ids stay as they are: **F230-F234, S48-S51**. Main also shipped the 13-pick
 catalogue (Rocket and Rail `pickup_only`, S46), the new time-to-kill ladder, and the poison weapon design;
 its next bench is crit emission (F62) and the hunt for an anti-armour `$SIR` function
 (`docs/bench-perks-2026-09-18.md`).
 Main's ids came first, so this branch's thirteen verification rows moved from F230-F242 to **F235-F247**.
+
+## What the second merge brought from main (2026-09-18)
+
+The perk work: the **compile half of S50** (`armed_armor()` redirects the grant to shield under the
+Shields preset and floors at 0; Armour Piercing re-keys the primary onto a new permanent fn-2 `$SIR` row
+and refuses to arm without it; `perk_effects` rides the FrameBundle and the State from one resolver), the
+**perk catalogue** (`docs/perk-design.md`, seven picks, each buying on the lever its neighbour sells), and
+**Easy Reload out of the perk slot** into `loadout.overrides`. The HUD's perk line printed every cost as a
+buff and is fixed. **Damage over time is designed** (`weapon-design.md` §6.3b, S16): the Toxin Rifle, with
+the native fn-24 route written up as unproven. **S52** is open: the HUD has no notion of `overrides`, so a
+player whose host switched Easy Reload on is never told that ALT reloads their gun.
+
+⚠ **The fn-2 armour-piercing row is now in every compiled head.** A protected player can take an
+armour-piercing word that goes straight to health, so it meets this branch's spawn protection: check that
+at the bench alongside **F253**.
+
+Amendment ids collided again, the same shape as the F ids: main numbered node-driven recoil **A43**, which
+this branch had already used for NEXT MATCH. The recoil amendment keeps this branch's **A48**, and
+`node.md`'s sections are main's numbering (recoil §3.15, the F68 repaint §3.16).
 
 ## What tonight's desk pass changed
 

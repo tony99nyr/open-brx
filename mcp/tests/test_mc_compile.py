@@ -843,7 +843,8 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
     cycle reintroducing the exact cross-weapon dominance the 2026-08-30 retune existed to avoid:
     dominance now runs within a FAMILY (`_weapon_family()`) instead of globally, because a fast
     automatic beating a Sniper Rifle on every axis here is not a bug -- it is the model's blind spot
-    (no range or recoil lever exists on the wire yet, F231/S42), not a balance failure. Reserve/"total
+    (the MODEL sees no range or recoil: range ships on `t2` and the node writes `t21`/`t22`, so neither
+    reaches the derived columns here, F231/S42), not a balance failure. Reserve/"total
     kills from a kit" is retired (a respawn refills it); "kills per clip" (`mag // rounds_to_kill`,
     deterministic -- felt every reload) and sustained DPS (a full-magazine dump plus one reload) take
     its place alongside ideal TTK and the probabilistic one-magazine kill chance.
@@ -1047,7 +1048,8 @@ def test_validate_grades_against_the_pool_the_gun_is_ARMED_with():
         t = next(f for f in head if f.startswith("$PSET")).split(",")
         return int(t[3]) + int(t[4])
 
-    assert armed_pool(None) == 115 and armed_pool("body_armor") == 165
+    # S50 (2026-09-17, docs/perk-design.md §2): body_armor's grant is now a flat +25, not a flat +50.
+    assert armed_pool(None) == 115 and armed_pool("body_armor") == 140
 
     # F146 (field 2026-09-12): the one-magazine GUARD no longer reads the armed pool — see
     # `test_f146_the_guard_grades_the_BASE_pool_so_one_players_perk_cannot_ban_a_weapon` for why one

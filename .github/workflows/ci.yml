@@ -53,3 +53,160 @@ jobs:
   #   plus Playwright's browser binaries, and its gate is a ~90-step Playwright suite meant to be
   #   run and read locally (`cd site && npm test`), not as a fast CI signal. Revisit if it needs
   #   to gate merges.
+
+  site-shots:
+    name: Refresh the site screenshots
+    # `site/shots.mjs` generates the marketing screenshots from the real UIs, and its manifest records
+    # the git tree hash of `webapp/mc/src` and `app/src` at capture time. Any commit that moves a UI
+    # therefore leaves the shots stale, and NOBODY can fix that inside a normal CI job: the script
+    # needs a built `webapp/mc/dist`, a built `app/www` and a real browser. So this job regenerates the
+    # shots and pushes them back to main itself. `mcp/tests/test_site_shots.py` hands the staleness
+    # check to this job on CI and keeps it locally, where it stops a stale shot reaching a PR.
+    #
+    # Push events only. A `pull_request` run from a fork gets a read-only token and cannot push.
+    if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # the repo's default workflow token is read-only, and this job commits site/shots
+    concurrency:
+      # One refresh at a time. Two runs would race to push the same file, and the loser would do its
+      # whole browser pass for nothing. Never cancel in progress: a cancelled run can die mid-push.
+      group: site-shots
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # shots.mjs reads `git rev-parse HEAD:<dir>`, and the push step rebases onto origin/main
+
+      - name: Are the shots stale?
+        id: check
+        # Ask the manifest the same question the test asks, rather than diffing this push's paths. A
+        # path diff only sees ONE push, so a refresh that failed (or a revert of a UI change) would
+        # leave the guard red until the UI happened to move again. Comparing hashes self-heals.
+        run: |
+          set -euo pipefail
+          if [ ! -f site/shots/manifest.json ]; then
+            echo "site/shots/manifest.json is missing: refresh everything."
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          stale=false
+          for pair in mc_src:webapp/mc/src hud_src:app/src mc_shell:webapp/mc/index.html hud_shell:app/www/index.html; do
+            key=${pair%%:*}
+            dir=${pair#*:}
+            want=$(git rev-parse "HEAD:$dir")
+            have=$(python3 -c "import json,sys; print(json.load(open('site/shots/manifest.json')).get(sys.argv[1], ''))" "$key")
+            if [ "$want" != "$have" ]; then
+              echo "$dir moved: the manifest has '$have', HEAD has '$want'."
+              stale=true
+            fi
+          done
+          if [ "$stale" = false ]; then
+            echo "The shots already match the UI source. Nothing to do."
+          fi
+          echo "stale=$stale" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.stale == 'true'
+        with:
+          node-version: "24"   # Capacitor 8 needs >= 22, and `node --test "test/*.test.mjs"` only expands the glob on >= 21
+      # shots.mjs serves the two BUILT UIs over throwaway static servers, so both must exist first.
+      - run: cd app && npm ci && npm run build
+        if: steps.check.outputs.stale == 'true'
+      - run: cd webapp/mc && npm ci && npm run build
+        if: steps.check.outputs.stale == 'true'
+      - run: cd site && npm ci
+        if: steps.check.outputs.stale == 'true'
+      # Chromium alone: shots.mjs launches `chromium` from the `playwright` package and nothing else.
+      #
+      # Run the LOCAL binary, never `npx playwright`. `npm ci` above installs the version
+      # site/package-lock.json pins (1.62.1 today), and THAT version decides which chromium build
+      # downloads here. The pin is what makes CI a stable producer: a screenshot is rarely
+      # byte-identical across browser builds, fonts or renderers, so an unpinned install would rewrite
+      # every jpg on an unrelated Playwright bump and the diff would say nothing. `npx` would fetch a
+      # different version from the network if the local one were missing, which is exactly the drift
+      # we are avoiding. If the bytes ever drift anyway, pin harder — the runner image, the Node
+      # version, the font packages. Never loosen the manifest comparison: it is the only thing that
+      # ties a shot to the UI it shows.
+      - run: cd site && ./node_modules/.bin/playwright --version && ./node_modules/.bin/playwright install --with-deps chromium
+        if: steps.check.outputs.stale == 'true'
+      - run: cd site && npm run shots
+        if: steps.check.outputs.stale == 'true'
+
+      - name: Commit and push the refreshed shots
+        if: steps.check.outputs.stale == 'true'
+        # Every exit from here is either a push that landed or a red run. This job is the only thing
+        # left watching staleness on CI (test_site_shots.py hands it over inside Actions), so a
+        # warning that passes would hide the very problem the job exists to catch.
+        run: |
+          set -euo pipefail
+
+          HOWTO='Run "cd app && npm run build && cd ../webapp/mc && npm run build", then "cd site && npm run shots", and commit site/shots yourself.'
+
+          # Ignore `taken`, which changes on every capture: comparing the whole file would make this
+          # branch unreachable and the "capture wrote nothing" case invisible (polish review 2026-09-18).
+          changed=$(git status --porcelain -- site/shots | grep -v 'site/shots/manifest.json' || true)
+          git show HEAD:site/shots/manifest.json > /tmp/manifest-head.json 2>/dev/null || echo '{}' > /tmp/manifest-head.json
+          if [ -z "$changed" ] && python3 -c "import json,sys; a=json.load(open('/tmp/manifest-head.json')); b=json.load(open('site/shots/manifest.json')); a.pop('taken',None); b.pop('taken',None); sys.exit(0 if a==b else 1)"; then
+            echo "::error::The check said the shots were stale, yet site/shots did not change. The capture wrote nothing, so the guard stays red. $HOWTO"
+            exit 1
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add site/shots
+          # `[skip ci]` stops this push starting another CI run. Two other mechanisms back it up: the
+          # job's `if` ignores the bot as the actor, and GitHub does not start a workflow from a push
+          # made with GITHUB_TOKEN. One of the three failing must not spin a loop.
+          git commit -m "Refresh the site screenshots for ${GITHUB_SHA:0:7} [skip ci]"
+
+          # Several people push to main minutes apart, and the browser pass takes a while, so main can
+          # move under this job. Two different moves, two different answers:
+          #
+          #  - main moved but the UI did not: replay our commit on the new tip and push.
+          #  - a UI source dir moved: these shots show the OLDER UI. Abandon them. A bot commit that
+          #    quietly reverts someone's fresh screenshots would look authoritative and would be worse
+          #    than a red run. The push that moved the UI runs this job itself and captures the truth.
+          #
+          # FETCH_HEAD, not origin/main: the checkout action configures a narrow refspec, so the
+          # remote-tracking ref is not guaranteed to be the branch tip we just fetched.
+          sync_onto_main() {
+            git fetch --quiet origin main
+            for pair in mc_src:webapp/mc/src hud_src:app/src mc_shell:webapp/mc/index.html hud_shell:app/www/index.html; do
+              key=${pair%%:*}
+              dir=${pair#*:}
+              captured=$(python3 -c "import json,sys; print(json.load(open('site/shots/manifest.json')).get(sys.argv[1], ''))" "$key")
+              tip=$(git rev-parse "FETCH_HEAD:$dir")
+              if [ "$captured" != "$tip" ]; then
+                echo "::error::$dir moved on main while this job ran (captured '$captured', main now has '$tip'). These screenshots show the older UI, so this job refuses to commit them. The push that changed $dir refreshes them itself, in the run queued behind this one. If it did not: $HOWTO"
+                return 1
+              fi
+            done
+            # `--onto FETCH_HEAD HEAD~1` replays ONLY this job's own commit. A bare `git rebase FETCH_HEAD`
+            # would replay everything in FETCH_HEAD..HEAD, so if main were force-pushed or reset while the
+            # browser ran, this job would quietly re-land the dropped commits under the bot's name, and its
+            # own skip keyword would stop anything re-testing them (polish review 2026-09-17).
+            #
+            # HEAD~1, not "$GITHUB_SHA": this function runs twice, and after the first rebase GITHUB_SHA is
+            # no longer an ancestor of HEAD, so `GITHUB_SHA..HEAD` would span main's own commits and reopen
+            # exactly the hazard above (polish review 2026-09-18). HEAD~1 is the right base on both passes,
+            # because this job commits exactly once and never amends.
+            if ! git rebase --onto FETCH_HEAD HEAD~1; then
+              git rebase --abort || true
+              echo "::error::The refreshed site/shots would not replay onto the tip of main, so something else changed site/shots. This job never force-pushes. $HOWTO"
+              return 1
+            fi
+          }
+
+          sync_onto_main || exit 1
+          if git push origin HEAD:main; then
+            exit 0
+          fi
+          # Usually an overlapping commit. It can also be branch protection or a token without write, and
+          # the retry below then fails the same way, which is the right outcome: the job goes red.
+          echo "The push was rejected. Syncing once more and retrying; if this is not an overlapping commit, the retry fails too."
+          sync_onto_main || exit 1
+          if ! git push origin HEAD:main; then
+            echo "::error::The refreshed site/shots would not push after one retry. This job never force-pushes. $HOWTO"
+            exit 1
+          fi

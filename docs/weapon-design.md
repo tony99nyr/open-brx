@@ -368,7 +368,8 @@ life); kills-per-clip takes its place as the deterministic axis, alongside the p
 magazine figure — Tony's call was to keep both, not pick one.
 
 **Why per-family, not global.** An SMG beating a Sniper Rifle on every one of these four axes is
-expected, not a balance failure: neither range nor recoil exists on the wire yet (F231, S42), and a
+expected, not a balance failure: the MODEL sees neither range nor recoil (range now ships on `t2`, and
+recoil is written by the node at runtime, so neither reaches `weapons.json`'s derived columns), and a
 Sniper Rifle's whole real identity IS range — the model simply cannot see the axis that would stop the
 SMG winning. Checking dominance only within a family (weapons that already share a fire mode and a
 damage type) keeps the check meaningful without pretending to referee a fight the model has no data
@@ -384,8 +385,10 @@ axes above. ⚠️ **It does NOT mean a declared `recoil.floor` or a unique `ran
 would be satisfied by inert data and the rule could never fail. Add them back in the same commit that
 wires the levers. A family of one (Burst Rifle, Energy Rifle, Charge Rifle: each alone in its
 mode/class bucket) trivially leads — there is nothing to be out-led by. Two qualifiers used only for
-this rule, both **declared catalogue data for a lever that does not reach the wire yet**
-(`test_range_and_recoil_are_declared_not_wired` is the guard):
+this rule, both **declared catalogue data that the COMPILER never writes**
+(`test_range_and_recoil_are_declared_not_wired` is the guard). Read that precisely: `range_band` and
+`recoil` are human-facing intent, and neither is the wire value. The wire values exist and do reach a
+gun: `wire.range_outdoor_pct` writes `t2` outdoors, and the node writes `t21`/`t22` at runtime:
 
 - **`range_band`** (`"close" | "close-mid" | "mid" | "long"`, plus a `range_target_m` human string) —
   the per-venue metres Q15 will calibrate once `t2` is (F231): Shotgun/sidearms close (8-10 m indoor /
@@ -395,7 +398,9 @@ this rule, both **declared catalogue data for a lever that does not reach the wi
 - **`recoil: {ceiling, floor, per_shot, recover_ms}`** — the planned S42 node-driven profile (a harsh
   floor is a felt COST that offsets a fast TTK): SMG and Suppressor harshest (100/55, the sustained
   hoses), Assault Rifle and Energy Rifle medium (100/70), Burst Rifle mild and resetting between bursts
-  (100/85), everything semi-automatic or one-shot none (100/100, no recoil model needed — a Sniper
+  (100/85), everything semi-automatic or one-shot none (100/100, no recoil model needed — two HIDDEN rows are
+the exception and were never part of the ladder: `force_rifle` (100/60) and `stinger` (100/45), left as the
+arsenal cut found them — a Sniper
   Rifle's future cost is a stance penalty, not recoil, and does not exist yet either). `per_shot` and
   `recover_ms` reuse the S42 accuracy-walk bench numbers (2026-09-17: ~10 points per 0.15 s) as a
   starting assumption, not a recoil-specific measurement.
@@ -946,7 +951,7 @@ be half the `$SIR` key. Reverting it would have collapsed three distinct effect 
 Five levers that did not exist in the model above.
 
 **Armor-piercing — a real defensive-layer bypass.** Functions **2, 6** (and **17, 21** on their enemy
-side) hit HP directly: measured **HP 45 → 25 → 5 with armor untouched at 70** **[two-sided map]**. That turns armor from a flat +70 into
+side) hit HP directly: measured **HP 45 → 25 → 5 with armour untouched at 70** **[two-sided map]**. That turns armour from a flat +70 into
 something a weapon class can be built to ignore, and it makes the effective pool weapon-dependent:
 115 for a standard weapon, **45** for an AP one. An AP weapon wants a *lower* `t5` than its TTK
 suggests. Natural fits: the AMR (already `armor-piercing` in its `t3` semantics), the Rail Gun
@@ -999,9 +1004,9 @@ than a number tweak:
 | **Armorer** | 9 / 12 / 16 / 19 | plate: healthy allies gain armor |
 | **Overshielder** | 14 / 21 | overshield: healthy allies gain a shield buffer that drains first |
 
-Plus **fn 13/15/20/22** (armor only), **fn 11** (shields only — the sole way shields enter the game),
+Plus **fn 13/15/20/22** (armour only), **fn 11** (shields only — the sole way shields enter the game),
 and **fn 18**, a further shields-only grant. (⚠️ An earlier draft called fn 18 a conversion costing
-4 HP; re-measured on a clean baseline it leaves **HP and armor untouched** — the apparent cost was a
+4 HP; re-measured on a clean baseline it leaves **HP and armour untouched** — the apparent cost was a
 shifted baseline.)
 
 **Status effects — one has an observable effect, and it is not a stun.** A whole family registers a `$HIR`
@@ -1039,6 +1044,105 @@ spend a session on:
   > deal damage on protocol 7**, having moved no pool on protocol 5. The DoT negative is unaffected —
   > none of them ticked — but do not read membership here as "inert".
 
+### 6.3b Damage over time: the axis the catalogue does not have (S16)
+
+Tony, 2026-09-17: "we don't have any damage over time weapons, like a poison gun". Correct, and the
+mechanism for one has been unblocked since 2026-09-09. Nothing in the 22-weapon catalogue ticks.
+
+**The certain route is the node.** `$LIFE,<hp>,<armour>,<shield>,*` takes negatives, so the victim's
+own phone can drain the victim's own pools on a timer, with no firmware change and no IR frame per
+tick. The chain is: the shooter's weapon carries a distinctive `$WEAP` **t3** damage type (the stock
+enum already has **11 = gas**), the word lands, the victim's gun raises `$HIR` with that protocol key
+echoed in token 2, and the victim's node starts its own tick clock. Everything after the first hit is
+local to one phone. It therefore keeps working with no Mission Control coverage, which is the test
+every mid-match mechanic has to pass.
+
+Three bench facts the design must respect, all from the 2026-09-09 `$LIFE` session:
+
+- A negative is **per-pool with no spill**, so the node walks shield, then armour, then health itself.
+- A pool **floors at 0**, so overkill is silent and a tick cannot carry into the next pool by itself.
+- A **lethal** tick emits no `$HP`, only `$LCD` (F64). The node books the death through the `$LCD`
+  path, and there is **no `hit_taken` fact and no attribution**, so S16 must decide who is credited
+  with a kill that a tick finishes.
+
+**The native route is a maybe, not a fact.** `$SIR` function **24** is the delayed blast: the hit
+registers with no immediate pool change, then about 4 s later the victim takes 1 to 3 ticks equal to
+the original magnitude, about 420 ms apart (bench 2026-09-11). That looks exactly like a poison round.
+⚠️ It was measured against a **repeating** grenade beacon, and the same bench recorded **no self-replay**
+once the source stopped; a separate 2026-08-26 sweep fired each status function **once** and watched
+for 18 s with no ticks at all. So "one hand-aimed fn-24 shot produces several ticks" is **unproven**,
+and the two results may simply mean one delayed tick per word. Do not build a weapon on it until a
+bench fires single fn-24 shots and counts the ticks. There is a live reason to run that test anyway:
+`$SIR,9,3,,24` is the **Energy Launcher** row, and MC ships it in every game
+(`gameconfig._SIR_TABLE`), so a weapon we already list may be ticking victims a few seconds after every
+hit, and nobody has ever watched for it.
+
+**The weapon it buys: a Toxin Rifle.** Low direct damage, a poison stack on hit, and a real weakness.
+The shape that fits the ladder:
+
+| lever | value | why |
+|---|---|---|
+| direct damage (`t5`) | about half its family | the poison is the payload, not the bullet |
+| poison per tick | small, for example 2 | a tick must never feel like a second gun |
+| duration | a few seconds, refreshed by a new hit, never stacked twice | refresh rewards staying on target |
+| counter | anyone who kills the carrier fast, and any pool big enough to outlast it | it loses every short fight |
+
+It is the first weapon in the catalogue that punishes **turtling** rather than out-damaging it, which
+is the hole the perk analysis (S50) found: a large armour pool has no natural enemy. A tick does not
+care how many plates are in front of it, it just keeps arriving.
+
+**What the HUD owes the player.** A DoT that a player cannot see is a bug report. The node shows the
+stack, counts it down, and gives it a sound of its own, because the gun plays nothing for a `$LIFE`
+write. The phone HUD belongs to the `brx-hud` session, so the cue set is agreed there, not here.
+
+Open questions before code, all filed under **S16**: kill credit for a lethal tick, whether a stack
+survives a respawn (it should not), whether two poison shooters stack or refresh (refresh), and what
+the shooter sees, given the shooter's gun never learns that it hit anyone.
+
+### 6.3c Archetypes the catalogue does not have
+
+§6.3 proves five levers. The 22-weapon catalogue uses one of them (armour piercing, on the AMR and the
+Rail Gun). These are the weapons the other levers already allow. None needs firmware, and each names
+the one thing it waits on.
+
+| archetype | what the player does | mechanism | waits on |
+|---|---|---|---|
+| **Toxin Rifle** | tag someone and they keep losing health after you break contact | node tick clock on `$LIFE` negatives, keyed to the `$WEAP` t3 damage type echoed in `$HIR` token 2 (the enum already has 11 = gas) | S16: the node behaviour is specified (`spec/node.md` §3.17); what is left is kill credit for a lethal tick, then the code |
+| **Medic gun** | heal a teammate by tagging them | `$SIR` fn 10, 9 or 14, by overflow flavour. The firmware enforces "allies only" by itself: a heal fired at an enemy is silently dropped | per-player `$SIR` keys, and a decision about whether a healer belongs in a team of eight |
+| **Flux beam** | one weapon that heals a friend and hurts an enemy, decided by who you point it at | ONE `$SIR` row: fn 16, 17, 20, 21 or 22 are dual-polarity. No host logic at all | the same per-player key work, plus a damage number that is fair in both directions |
+| **Jammer** | win a fight without taking any health | `$SIR` fn 23 silences the victim's gun and forces its live accuracy to zero for 6 to 8 s, while it keeps firing and emitting | F66: the silence was heard by ear and the number cited as proof was the accuracy field, so the mechanism is unconfirmed |
+| **Crit weapon** | a shot that sometimes hits much harder | the IR crit bit is proven at x1.5 and echoes on `$HIR` token 6. `$WEAP` t6 (`primaryCritChance`) reads 0 on every stock weapon | F62, measured in `bench-perks-2026-09-18.md` §1: can a tagger roll its own crit, or is the bit emitter-only? |
+
+Two cautions carry over from §6.2. A `$SIR` table is **game-wide**, so any archetype that needs its own
+function needs per-player keys before it can ship beside the others. And a victim-side multiplier is
+invisible at the weapon, so a weapon built on one reads as balanced in `weapons.json` and plays as
+something else entirely.
+
+### 6.3d ⚠️ This document's reserve columns are unproven (F253)
+
+`resolve()` writes the catalogue's `reserve` to **t17** and `reserve // 2` to **t40**, which keeps
+Battle Company's own captured invariant `t17 == 2 * t40`. F207 (field, 2026-09-13) proved the gun's
+reported reserve mirrors **t40**, on three weapons and six acknowledgements. So the Assault Rifle's
+catalogue `reserve: 192` reaches a gun as **t17 192 / t40 96**, and `spawn_ammo()` tells the phone
+**192** at spawn. Those two disagree by construction, whatever the gun turns out to spend, and one of
+them is wrong. That part is a display bug in MC, not a balance question.
+
+**Scope.** The columns in doubt are the ones in THIS document: reserve, sustained fire, and anything
+per-kit, because they describe the weapon MC ships and they assume the catalogue number reaches the
+player intact. `docs/manual/` and the public site are NOT in doubt: they publish each weapon's own
+CAPTURED Callsign frame, which is a measured description of the stock gun (the Assault Rifle's capture
+is `t16 32 / t17 384 / t39 32 / t40 192`, so a Callsign player carries 192).
+
+**One piece of evidence for intent, not a conclusion.** The catalogue's `reserve: 192` is exactly the
+capture's **t40**, the stock carry, not half of it. That reads as an author writing down what a player
+should carry, which the compile step then halved a second time. The count in
+`bench-perks-2026-09-18.md` §6 settles it, and nothing else should.
+
+Two fixes, and they are not the same game. Writing the catalogue number to t40 **doubles what every
+player carries** in every match, which is a balance decision. Halving what the HUD and the host are
+told leaves the balance exactly as it is and makes the reported number honest. Do not take either
+before the count.
+
 ### 6.4 What a weapon is now
 
 The design space widened from one number to five independent choices:
@@ -1046,7 +1150,7 @@ The design space widened from one number to five independent choices:
 | choice | token / field | what it decides |
 |---|---|---|
 | magnitude | `$WEAP` `t5` | how much |
-| effect class | `$SIR` row function for `<t3,t4>` | damage / AP / multiplied / heal / armor / shield / status |
+| effect class | `$SIR` row function for `<t3,t4>` | damage / AP / multiplied / heal / armour / shield / status |
 | polarity | function (dual-polarity set) | whether allies and enemies get different outcomes |
 | crit | IR word **C** bit | ×1.5, per shot, ours to set |
 | fire behaviour | `$WEAP` `t20`, `t23`, `t24`, `t37`/`t38` | full-auto / single / burst / charge / overheat |

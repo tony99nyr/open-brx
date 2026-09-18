@@ -513,14 +513,15 @@ export const DEMO_PERKS = [
   {
     "perk_id": "body_armor",
     "name": "Body Armor",
-    "desc": "Start every life with 50 extra armor. Armor soaks hits before your health does — you survive one or two more shots in every fight.",
+    "desc": "Start every life with 25 extra armor, about a fifth more health pool. Armor soaks hits before your health does. The rig is heavier though: your reload takes a quarter longer.",
     "tags": [
       "passive",
       "defense"
     ],
     "mechanism": "passive",
     "effects": {
-      "max_armor_add": 50
+      "max_armor_add": 25,
+      "reload_mult": 1.25
     },
     "verified": true,
     "hidden": false
@@ -528,14 +529,15 @@ export const DEMO_PERKS = [
   {
     "perk_id": "extended_mags",
     "name": "Extended Mags",
-    "desc": "Double the magazine and double the reserve on your primary. Fewer reloads, longer fights, more rounds to burn.",
+    "desc": "Double the magazine and double the reserve on your primary. Fewer reloads, longer fights, more rounds to burn -- but the bulkier magazine slows your draw: switching to your other weapon takes 30% longer.",
     "tags": [
       "passive",
       "ammo"
     ],
     "mechanism": "passive",
     "effects": {
-      "ammo_mult": 2
+      "ammo_mult": 2,
+      "switch_mult": 1.3
     },
     "verified": true,
     "hidden": false
@@ -543,47 +545,74 @@ export const DEMO_PERKS = [
   {
     "perk_id": "quick_hands",
     "name": "Quick Hands",
-    "desc": "Reload in half the time. Your primary is back in the fight before theirs is.",
+    "desc": "Reload in half the time. Your primary is back in the fight before theirs is -- the trade is a lighter magazine, 20% fewer rounds carried.",
     "tags": [
       "passive",
       "handling"
     ],
     "mechanism": "passive",
     "effects": {
+      "ammo_mult": 0.8,
       "reload_mult": 0.5
     },
     "verified": false,
     "hidden": false
   },
   {
-    "perk_id": "easy_reload",
-    "name": "Easy Reload",
-    "desc": "Press the orange ALT button to reload — no pump needed. For anyone who finds the pull-back reload hard to work.",
-    "tags": [
-      "passive",
-      "handling",
-      "assist"
-    ],
-    "mechanism": "passive",
-    "effects": {
-      "alt_reload": true
-    },
-    "verified": true,
-    "hidden": false
-  },
-  {
     "perk_id": "quick_switch",
     "name": "Quick Switch",
-    "desc": "Draw your second weapon in half the time: the gun's swap delay drops from 0.85 s to 0.43 s.",
+    "desc": "Draw your second weapon in half the time: the gun's swap delay drops from 0.85 s to 0.43 s. A lighter rig means less padding though -- 20 less armor.",
     "tags": [
       "passive",
       "handling"
     ],
     "mechanism": "passive",
     "effects": {
+      "max_armor_add": -20,
       "switch_mult": 0.5
     },
     "verified": true,
+    "hidden": false
+  },
+  {
+    "perk_id": "armor_piercing",
+    "name": "Armor Piercing",
+    "desc": "Your primary ignores armor and shields, straight to health -- but it hits for about 60% less, so it is only the better choice against an armored or shielded target.",
+    "tags": [
+      "passive",
+      "offense"
+    ],
+    "mechanism": "passive",
+    "effects": {
+      "armor_piercing": true
+    },
+    "verified": false,
+    "hidden": false
+  },
+  {
+    "perk_id": "motion_tracker",
+    "name": "Motion Tracker",
+    "desc": "Nearby enemies show on your HUD, no direction, refreshed every few seconds. You carry information instead of firepower -- anyone who accepts being seen can still shoot first.",
+    "tags": [
+      "passive",
+      "utility"
+    ],
+    "mechanism": "passive",
+    "effects": {},
+    "verified": false,
+    "hidden": false
+  },
+  {
+    "perk_id": "second_wind",
+    "name": "Second Wind",
+    "desc": "Once a life, the hit that would finish you leaves you standing instead. It costs nothing up front, because it only pays when you are already losing -- and a weapon that kills in one hit goes through it anyway.",
+    "tags": [
+      "passive",
+      "defense"
+    ],
+    "mechanism": "passive",
+    "effects": {},
+    "verified": false,
     "hidden": false
   }
 ];

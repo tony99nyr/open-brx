@@ -474,7 +474,9 @@ def test_the_perk_that_moves_the_pool_changes_the_quoted_numbers():
     base = s.health_pool(s.players[p["player_id"]])
     s.patch_player(p["player_id"], loadout={"weapons": [{"weapon_id": "assault_rifle"}], "perk": "body_armor"})
     armoured = s.health_pool(s.players[p["player_id"]])
-    assert armoured == base + 50, (base, armoured)          # perks.json body_armor max_armor_add
+    # S50 (2026-09-17, docs/perk-design.md §2): body_armor's grant is now +25 flat (Tony: "maybe 50
+    # is too much armor and it should be 25"), not the old flat +50.
+    assert armoured == base + 25, (base, armoured)
     htk = lambda pool: next(v for v in weapon_views(CAT.all(), pool) if v["weapon_id"] == "assault_rifle")["htk"]
     assert htk(armoured) > htk(base), "body_armor must move HITS TO KILL"
 
@@ -510,13 +512,13 @@ def test_no_mc_data_file_ships_a_duplicate_json_key():
     for path in sorted((ROOT / "mcp" / "brx_mcp" / "mc").glob("*.json")):
         dupes: list[str] = []
 
-        def keep_the_first_sighting(pairs, _seen=dupes, _path=path):
+        def flag_repeated_keys(pairs, _seen=dupes, _path=path):
             seen: dict = {}
             for key, value in pairs:
                 if key in seen:
                     _seen.append(f"{_path.name}: {key!r} appears twice in one object")
-                seen[key] = value
+                seen[key] = value          # last wins, exactly as a plain json.loads would
             return seen
 
-        json.loads(path.read_text(), object_pairs_hook=keep_the_first_sighting)
+        json.loads(path.read_text(), object_pairs_hook=flag_repeated_keys)
         assert not dupes, "\n".join(dupes)

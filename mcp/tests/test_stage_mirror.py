@@ -648,9 +648,10 @@ def test_alt_on_an_empty_slot_1_only_reloads_with_easy_reload():
         st._on_rx("$ALCD,10,100,0,20,0,*")
         st._on_rx("$BUT,1,1,*")
         assert st.reloading is None, "no easy_reload: ALT (fn 98) does nothing"
-        st.player["loadout"]["perk"] = "easy_reload"
+        # S50: the live shape is the per-player override, not the retired perk pick.
+        st.player["loadout"]["overrides"] = {"easy_reload": True}
         st._on_rx("$BUT,1,1,*")
-        assert st.reloading and st.reloading["slot"] == 0, "easy_reload: ALT (fn 97) reloads"
+        assert st.reloading and st.reloading["slot"] == 0, "easy_reload override: ALT (fn 97) reloads"
     asyncio.run(go())
 
 

@@ -81,6 +81,8 @@ only warns it. `mcp/tests/test_docs_hygiene.py` enforces the stamp, id, length a
 - **[edge-brp.md](edge-brp.md)** — the competitive study of Battle Company's EDGE + Battle Rifle Pro, and the
   parity targets it sets. It is strategy context, not manual evidence.
 - **[weapon-design.md](weapon-design.md)** — the balance rationale and the open flatten-vs-retune decision.
+- **[perk-design.md](perk-design.md)** — the third kit slot: the rules a perk has to obey here, the core set and
+  its costs, the next wave and what gates each one, and every rejected idea with its reason.
 - **[utility-roadmap.md](utility-roadmap.md)** — the objective-station work in order, the grenade-as-control-point
   evidence, and two designs (roaming hills, Territories) that are specified but not built. What it costs an
   outsider to add a mode is FOLLOWUPS §2 (E1-E7).
