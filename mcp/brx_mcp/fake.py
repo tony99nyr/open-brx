@@ -96,6 +96,28 @@ class FakeTagger:
         # Q18: a gun that has connected but is not yet LISTENING -- every write is dropped on the floor,
         # no reply, no state change. The reconnect probe exists to tell this apart from a live gun.
         self.listening = True
+        # F264 (bench 2026-09-18, docs/FOLLOWUPS.md F264): DEAD-BUT-CHATTY -- the fault a player was dead
+        # on the gun and alive on the HUD for 94 s. See `go_dead_chatty()`.
+
+    def go_dead_chatty(self) -> None:
+        """F264 (bench 2026-09-18, docs/FOLLOWUPS.md F264): simulate the fault -- the gun dies on its own
+        and the killing `$HP`/`$LCD` never reaches the host. Unlike `receive_ir`'s ordinary death (which
+        DOES emit `$HP,0,...`), this only flips the internal state: `self.alive` and `self.hp` read as
+        dead from here on, but nothing is queued for `drain()` -- the host never sees it die.
+
+        MEASURED (the bench log): `$VOLTS` kept arriving on its ~60 s cadence right through both proven
+        stalls; `$BUT,0,1` kept arriving on every pull; `$ALCD`/`$LCD`/`$HP` stopped entirely; a `$SIR`
+        resync did NOT restart the gun and a `$SPAWN` did, in the next breath. Neither `$VOLTS` nor `$BUT`
+        is something this fake generates on its own (both are always test-injected), so there is nothing
+        to gate for them here -- the fault leaves them alone by construction, matching the bench.
+
+        A trigger pull still gets no `$ALCD` (`fire()` below, gated on `self.alive` like `receive_ir`
+        already was), and a `$QUERY` still answers -- with health 0, because it reads `self.hp` -- which
+        is the one door the F264 cure walks through. ASSUMED, not measured: that a real dead-chatty gun's
+        `$QUERY` behaves this way; the bench never tried `$QUERY` against the live fault, only against the
+        eventual fix. `$SPAWN` is the cure (see `write`'s SPAWN branch)."""
+        self.alive = False
+        self.hp = 0
 
     # -- host → tagger ------------------------------------------------------- #
     def _sir_row(self, frame: str) -> None:
@@ -139,6 +161,9 @@ class FakeTagger:
                 if v is not None:
                     setattr(self, attr, v)
         elif cmd == "SPAWN":
+            # F264: this is what clears `go_dead_chatty()` -- bench-proven the ONE write that restarts a
+            # dead-chatty gun (a $SIR resync did not): it sets `alive` back to True and the pools off 0,
+            # same as an ordinary spawn.
             self.alive = True
             # F41 / P16: a REAL gun reports shield 0 on every `$HP` after a spawn no matter what `$PSET`
             # token 5 said -- the shield pool is IR-only (fn 11) and not BLE-writable. The fake used to
@@ -204,6 +229,18 @@ class FakeTagger:
                 if rsv is not None:
                     self.reserve[slot] = rsv
                 self._queue_alcd(slot)
+        elif cmd == "QUERY":
+            # F264: `$QUERY,*` -- protocol/brx-protocol.md's `$QUERY` row: "First seven fields: <playerId>,
+            # <team>,<hpMax>,<armourMax>,<shieldMax>,<one $PSET sound id (t11)>,<gyro ok 0/1>", THEN one
+            # `$LCD` carrying the gun's CURRENT pools and slot-0 magazine (the array is the pool MAXIMA and
+            # is useless for the cure -- the $LCD behind it is the whole point). `player_id` is not modelled
+            # on the fake (no per-gun identity token elsewhere either -- `$HIR`'s shooter id is pinned at 0
+            # for the same reason), so it is pinned at 0 too; nothing downstream reads it.
+            # This answers exactly the same whether or not `go_dead_chatty()` has run: it just reads
+            # `self.hp`/`self.armor`/the slot-0 magazine, which dead-chatty already reads as dead -- so a
+            # dead-chatty gun's $LCD reply carries health 0, which is the one door the F264 cure walks through.
+            self._out.append(f"$QUERY,0,{self.team},{self.cfg_hp},{self.cfg_armor},{self.cfg_shield},,1,*")
+            self._out.append(f"$LCD,{self.hp},{self.armor},0,0,{self.mag.get(0, 0)},{self.reserve.get(0, 0)},*")
         # all other config frames (START/GSET/BMAP/VOL/PLAY…) accepted
 
     # -- IR hit → events ----------------------------------------------------- #
@@ -306,7 +343,14 @@ class FakeTagger:
         gun's own action, not a BLE write, so it is not held behind `_ALCD_WRITE_DELAY_S`.
 
         An empty magazine has no round to report and is left alone; dry-fire is not modelled.
+
+        F264: gated on `self.alive`, the same rule `receive_ir` already applies to incoming IR -- a dead
+        gun's trigger produces no `$ALCD` (bench: "a dead gun's trigger gives $BUT with no $ALCD decrement",
+        protocol/brx-protocol.md's `$BUT` row). `$BUT` itself is not modelled here (always test-injected),
+        so this is the one place a dead-but-chatty gun (`go_dead_chatty`) visibly refuses to fire.
         """
+        if not self.alive:
+            return
         mag = self.mag.get(slot, 0)
         if mag <= 0:
             return

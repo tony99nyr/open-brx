@@ -673,6 +673,10 @@ class Event(TypedDict, total=False):
     # respawn
     resync: bool
     operator: bool   # A47: the operator's FORCE RESPAWN, not a respawn after a death (scoring keeps the streak)
+    # F264: the node's OWN cure revived this player, blind, after `poolStale` said `no_fire` and the gun answered
+    # no `$QUERY`. There is no death in front of it and nobody asked for it, so the board must be able to tell it
+    # apart from a real respawn -- and a run of them is the signal that one gun needs a human.
+    auto: bool
     # operator_result (A47): what the phone DID with an operator action MC sent (`control{resync|respawn|relink}`).
     # Persisted like every fact, and read for the operator's feed and menu only: it never reaches the scorer.
     cmd: Literal["resync", "respawn", "relink"]
