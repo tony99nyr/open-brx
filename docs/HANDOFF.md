@@ -24,8 +24,8 @@ tool is built: `python -m brx_mcp soak <address> <pattern> <minutes>` (`soak-too
 3. **Transport hardening is designed, two parts built** (`spec/transport-hardening.md`). The gun reads one serial
    byte per loop pass, a lost `*` corrupts the next frame, and six audio waits block the loop with no watchdog:
    a screamer mechanism. Built: the deny list, and `brxlink.WRITE_PACING` with the block pause OFF. Filed:
-   F255 pacing and the runt `$SIR` rows, F256 write with response, F257 `$QUERY` read-back, F258 the lock-up
-   detector, F259 whether `$PB*` joins the deny list. (Renumbered at the merge from F254-F258; main owns F254.)
+   F261 pacing and the runt `$SIR` rows, F262 write with response, F263 `$QUERY` read-back, F264 the lock-up
+   detector, F265 whether `$PB*` joins the deny list. (Filed as F254-F258 on the branch and moved at the merge: main owns F254 and F260, and F255-F259 are reserved for the playtest branch.)
 4. **`$BUMP` is live, and the shapes agree.** The firmware shape is
    `$BUMP,<amount>,<hp 0/1>,<armour 0/1>,<shield 0/1>,<sound>,*`. Callsign's shield recharge (cap30) sends
    `$BUMP,12,,1,,,*`, which confirms the armour flag on the wire. The hp and shield flags, negatives and the
@@ -43,10 +43,10 @@ tool is built: `python -m brx_mcp soak <address> <pattern> <minutes>` (`soak-too
 1. **Push and merge this branch** after `npm run test:all -- --ui` (known red on main: app-screens #53 and some
    app-e2e steps).
 2. **Screamers first** (top priority): the screamers sheet, Phase C can run unattended on one gun with `soak`. Do not turn
-   the block pause on before screamers sheet Phase A gives F255/F256/F258 their numbers.
+   the block pause on before screamers sheet Phase A gives F261/F262/F264 their numbers.
 3. **Levers bench, session 1** (45 min, two guns): §1 F206, §2 melee, §4 step 1, §5 step 1, §13 `$DD`. If
    `$STUN,3000` and `$BUMP,-20,1,1,1` behave as V4_30 says, run the rest; if not, v4.32 has drifted.
-4. **After §1 passes:** close F206 (one dated line in the archive) and start F257 (the `$QUERY` team read-back).
+4. **After §1 passes:** close F206 (one dated line in the archive) and start F263 (the `$QUERY` team read-back).
 5. **F254** (outdoor space): the headset word's reach. It unlocks the close-range weapon class.
 
 ## Open, not moved

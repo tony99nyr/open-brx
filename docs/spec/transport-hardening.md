@@ -203,5 +203,5 @@ detector is simply the existing drop path plus a "power-cycle" hint when the rec
 | §7 lock-up detector | design | bench A13, A1 (does the link stay up?), plus the idle `$VOLTS` cadence |
 | §2 the budget rule | design | bench A13 (20 minutes at the old S42 rate: how long to a lock-up?) |
 
-FOLLOWUPS rows: F255 (pacing + runt rows), F256 (write with response), F257 (`$QUERY` read-back), F258 (lock-up
-detector), F259 (the `$PB*` question). F208 and F163 point here.
+FOLLOWUPS rows: F261 (pacing + runt rows), F262 (write with response), F263 (`$QUERY` read-back), F264 (lock-up
+detector), F265 (the `$PB*` question). F208 and F163 point here.

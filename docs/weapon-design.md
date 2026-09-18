@@ -198,7 +198,7 @@ sounds — and moves the numbers.
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | *Melee* | melee | 90 | 1000 | 2 | **1.00** | 90.0 | 90.0 | 1 | 0 | 0 | 0% | — | **stock** |
 | Sniper Rifle | marksman | 60 | 1500 | 2 | **1.50** | 40.0 | 31.2 | 4 | 24 | 1700 | 92% | — | dmg 80→60, cycle 300→1500 |
-| Shotgun | cqb | 20 | 800 | 3 | **1.60** | 25.0 | 23.1 | 6 | 24 | 400 | 12% | — | **2026-09-18**: dmg 45→20 (`wire.dmg`, the gun word); OUR chosen 20-damage headset word (`wire.headset_dmg`, t12) stacks unconditionally on top, 40 real per pull; the second word itself is measured (Callsign's own 70, cap30), the 20 is a balance number we picked (htk/TTK unchanged, 2 pulls short, 3 kills either way), but `dmg`/`dps`/`sust`/one-mag % here are the GUN WORD ALONE, not the real per-pull total. Magazine deliberately left at 6/24: `test_ttk_band_and_no_strictly_dominant_weapon` fails (the AMR now dominates it), and that is left RED on purpose pending F254 rather than bought with an unexamined number; §7 |
+| Shotgun | cqb | 20 | 800 | 3 | **1.60** | 25.0 | 23.1 | 6 | 24 | 400 | 12% | — | **2026-09-18**: dmg 45→20 (`wire.dmg`, the gun word); OUR chosen 20-damage headset word (`wire.headset_dmg`, t12) stacks unconditionally on top, 40 real per pull; the second word itself is measured (Callsign's own 70, cap30), the 20 is a balance number we picked (htk/TTK unchanged, 2 pulls short, 3 kills either way), but `dmg`/`dps`/`sust`/one-mag % here are the GUN WORD ALONE, not the real per-pull total. Magazine deliberately left at 6/24: the AMR now covers it on every axis, and rather than buy a lead with an unexamined number, `test_ttk_band_and_no_strictly_dominant_weapon` names the `(amr, shotgun)` pair in `KNOWN_DOMINANCE`. The suite is GREEN, not red, and the exemption fails the moment the pair stops dominating, so it cannot outlive F254; §7 |
 | Plasma Sniper | marksman | 25 | 400 | 4 | **1.20** | 62.5 | 41.7 | 10 | 80 | 2000 | 95% | 30 | dmg 80→25, cycle 225→400; **2026-09-18**: htk 5→4, TTK 1.60→1.20s (our chosen 10-damage headset word, `wire.headset_dmg`/t12, stacks unconditionally, 35 real per pull; ⚠️ this weapon has NEVER been captured -- cap30 fired only a Shotgun -- so its second word rests on a sourced t12=80 and nothing else); `dmg`/`dps`/`sust`/one-mag % here are the gun word alone, same caveat as the Shotgun; §7 |
 | AMR | support | 24 | 400 | 5 | **1.60** | 60.0 | 48.0 | 14 | 56 | 1400 | 100% | — | dmg 18→24, cycle 360→400 |
 | Force Rifle | assault | 10 | 100 +250 | 12 | **1.65** | 66.7 | 50.7 | 36 | 144 | 1700 | 100% | — | dmg 9→10 |
@@ -1306,6 +1306,35 @@ numbers here as the GUN-LASER case, which is the only one any bench has tested.
 single shooter landed `$HIR,4,0,1,0,45,0,0` and then `$HIR,4,0,1,0,70,0,0` **88 ms later**, on the same
 sensor, killing a player with 79 left. The cycle is 900 ms, so it was one pull. What the capture does not
 say: the distance, and which emitter sent which word, so the §8 bench still decides the design.
+
+✅✅ **The second word deals `t12`'s OWN magnitude, and the two STACK. Measured on two weapons,
+2026-09-18 (playtest lane, F263, victim at 250 armour so nothing could die).** This is the assumption the
+whole pricing model rests on, and until this run it was an inference from one capture. The victim's pool
+was read between the two words:
+
+| weapon | frame as fired | pool | first word | second word | one pull |
+|---|---|---|---|---|---|
+| Shotgun (stock) | t5 45 / t12 70 | 250 → 205 → 135 | 45 | 70 | **115** |
+| Plasma Sniper (stock) | t5 25 / t12 80 | 126 → 101 → 21 | 25 | 80 | **105** |
+
+⚠️ Those are CALLSIGN's captured values, not ours. We ship the Shotgun at 20 + 20 (40 a pull, three
+pulls) and the Plasma Sniper at 25 + 10. Callsign's own Shotgun is a one-pull kill at exactly the 115
+pool; ours is deliberately not.
+
+Three negatives from the same run, each worth a line so nobody re-tries them:
+
+* **No token separates the two words.** Protocol, shooter id, team and both trailing tokens are
+  identical. `$HIR,0,0,8,2,45,0,0` then `$HIR,4,0,8,2,70,0,0`.
+* **The sensor is geometry, not a signal.** The Shotgun's pair landed on sensors 0 then 4, the Plasma
+  Sniper's on 4 and 4, and cap30's on 4 and 4. It is where the player was standing.
+* **The gap VARIES: 57 ms, 88 ms and 119 ms across three pulls.** So there is no fixed window that
+  separates a second word from a second trigger pull, and the AR's 100 ms cycle sits inside that range.
+  Any collapse keyed on time would delete real hits (F260).
+
+Magnitude differs only because the catalogue prices the two words differently, and ours prices the
+Shotgun's at 20 and 20, which erases even that. We are NOT making "never price two words equally" a rule
+to prop up a statistic: a reporting concern must not dictate balance. The collapse belongs on the node,
+which knows the live slot after a mid-life weapon swap, where Mission Control only knows the kit.
 
 ⚠️ **Which emitter sent which word: SOURCED, not settled, 2026-09-18 (LaserTagMods, Jay).** One expert
 statement, credited per this repo's hard rule on protocol discovery: "it actually is both ... so

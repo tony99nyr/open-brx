@@ -58,7 +58,7 @@ modes
 
 ### The whole arsenal. Three slots.
 
-Every player carries a primary, a secondary and a perk. The catalogue holds 22 weapons. Eleven of them are pickable into a loadout; two more, the rocket launcher and the rail gun, are held back for a future field pickup. Each weapon is written to the tagger as its own data, not firmware: fire mode, rate of fire, damage, magazine, reload and swap delay. That is why a shotgun, a bolt rifle and a charge rifle feel like different weapons on the same tagger.
+Every player carries a primary, a secondary and a perk. Fifteen weapons are in the game, in six classes. Eleven of them can take the primary slot and thirteen can take the secondary, because a weapon that cannot kill makes a fine backup and a poor primary. Two more, the rocket launcher and the rail gun, are held back for a future field pickup. Each weapon is written to the tagger as its own data, not firmware: fire mode, rate of fire, damage, magazine, reload and swap delay. That is why a shotgun, a bolt rifle and a charge rifle feel like different weapons on the same tagger.
 
 Five perks fill the third slot, and every one costs something. Body Armor gives you more armour, but it slows your reload. Armour Piercing sends your primary straight through armour and shields, but it hits for less. No perk is a free upgrade.
 

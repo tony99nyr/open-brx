@@ -281,8 +281,27 @@ def test_catalog_excludes_hidden_melee_and_flags_verified():
     # every visible weapon carries an armory blurb (weapons.json `desc` -> Weapon.desc)
     blank = [w["weapon_id"] for w in cat.all() if not (w.get("desc") or "").strip()]
     assert not blank, f"weapons missing desc: {blank}"
-    assert "100ms" in by["assault_rifle"]["desc"], by["assault_rifle"]["desc"]
-    assert by["rail_gun"]["desc"].strip().endswith("."), by["rail_gun"]["desc"]
+    # `desc` IS PLAYER COPY AND NOTHING ELSE (2026-09-18). It used to do two jobs: the sentence a
+    # player reads in the picker, and a running balance changelog. Every rebalance appended its
+    # reasoning to the same string, so the Suppressor's armoury card ended up quoting a dated
+    # magazine change and a dominance argument at somebody choosing a gun, and the public arsenal
+    # page rendered it. The rationale now lives in `notes`, which `_to_weapon()` never forwards.
+    # This assertion used to require "100ms" in the AR's desc, which pinned the OLD convention.
+    import re as _re
+    BANNED = {
+        "a date stamp": _re.compile(r"\b20\d\d-\d\d-\d\d\b"),
+        "a raw timing": _re.compile(r"\d+\s?ms\b"),
+        "a section reference": _re.compile(r"§"),
+        "a wire identifier": _re.compile(r"\bt\d{1,2}\b|wire\.\w+|\$[A-Z]{3,}"),
+        "a test name": _re.compile(r"\btest_\w+"),
+        "an arrow rebalance": _re.compile(r"\d\s*(->|→)\s*\d"),
+    }
+    dirty = [f"{w['weapon_id']}: {why} -- {w['desc']}"
+             for w in cat.all() for why, rx in BANNED.items() if rx.search(w.get("desc") or "")]
+    assert not dirty, ("`desc` is what a player reads in the picker and on the public arsenal page; "
+                       "balance reasoning belongs in `notes`:\n  " + "\n  ".join(dirty))
+    for w in cat.all():
+        assert (w["desc"] or "").strip().endswith("."), f"{w['weapon_id']} desc is not a sentence: {w['desc']}"
 
 
 def test_every_weapon_is_based_on_its_own_captured_frame():
