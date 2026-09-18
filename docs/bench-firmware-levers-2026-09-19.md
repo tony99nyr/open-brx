@@ -441,7 +441,7 @@ result, including nulls, against the row id.
 16. **Melee extras (K4).** Log every frame A sends during a swing. Confirm B's `<13,1>` row is a damage function.
 17. **`$AS` lock (P4), with care.** Send `$AS,4,0,0,0,0,0,75,*` only (Jay's "lock between games"). Does the menu lock?
     **Do not send `$AS,1`**, which starts a native game.
-18. **The factory menu (F230), read only.** On the gun whose accuracy walks and one steady gun, open the USB `SETUP`
+18. **The factory menu (F230), read only.** ⛔ Dropped 2026-09-18: `SETUP` is only the headset pairing prompt, and F230 is closed (shipped frames keep `t21` = `t22`). On the gun whose accuracy walks and one steady gun, open the USB `SETUP`
     menu, photograph every option, and power-cycle out. **Change nothing.** V4_30 lists recoil-device, gyro and
     DLC options there that could explain why one gun differs.
 

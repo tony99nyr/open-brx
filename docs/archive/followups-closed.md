@@ -367,3 +367,8 @@ Two guns, Tactix-E20D and Tactix-3D4F, then Tactix-E20D alone with the ESP32 IR 
   pool flag gates independently), and the original "inert" reading was two flags of 0, which the gun
   correctly ignores with no `$HP` reply at all. The shield flag and the sound token are still
   untested.
+- 2026-09-18 **F230** closed as explained enough. The native accuracy walk appears only when a `$WEAP`
+  frame sets the floor below the ceiling (`t22` < `t21`). The catalogue ships `t21` = `t22` (S42), and the
+  walking gun holds a flat frame (100/100 for 32 rounds, 50/50 from the first shot), so no shipped game
+  sees the walk. Recoil is node-written with `$TMP` t4. The per-gun cause is still unknown; the USB
+  device records of both guns match apart from factory QC fields.
