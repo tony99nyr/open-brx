@@ -47,15 +47,15 @@ Each step tries one suspected trigger. Arm the gun with the bench victim head (`
 | step | trigger | how | expect if the lead is right |
 |---|---|---|---|
 | A1 | hang loop | `$DPLAY,A10,4,*` (the shield loop, a looping sound; token 3 is untraced). Send it with `confirm=true` AND `allow_hang=true` on the `send` tool, one frame, never in a batch | LOCK-UP with the loop still playing |
-| A2 | control for A1 | `$DPLAY` with a short one-shot sound | the gun answers again after the sound ends |
+| A2 | control for A1 | `$DPLAY` with a short one-shot sound, sent as A1 is: `confirm=true` AND `allow_hang=true` on the `send` tool, one frame, never in a batch | the gun answers again after the sound ends |
 | A3 | hang loop, other channel | repeat A1 with token 2 = 1, 2 and 3 | shows which channels hang |
 | A4 | lost `*` | send `$PLAY,U37,3,10,,,,,` (no `*`), then a normal `$QUERY,*` | BAD FRAME: the query is corrupted |
-| A5 | long token | send a frame with one 400-character token | LOCK-UP or BAD FRAME |
-| A6 | many tokens | send a frame with 70 tokens | the token index wraps; BAD FRAME |
-| A7 | burst | 100 short frames (`$PLAY,U37,3,10,,,,,*`) with no gap; then the same in blocks of 10 with a 300 ms pause between blocks | count how many apply at each pacing; any LOCK-UP |
-| A8 | burst of long frames | 50 × the bench AR `$WEAP` (101 bytes, 6 packets) with no gap; then 200 × `$WEAP` frames with the phone's pacing (8 ms per packet, 18 ms per frame), reading `$ALCD` after each | count lost frames at each pacing; any LOCK-UP |
-| A8b | trimmed runt `$SIR` rows | arm B twice: once with the compiled `$SIR` rows as shipped, once with their trailing empty tokens dropped so each row fits one 20-byte packet; send each arm 50 times | count BAD FRAME per variant; the gun must still register a hit on each row afterwards, so fire one control shot per variant |
-| A9 | IR load | the IR rig fires valid hit words at the gun at 10 per second for 5 min, while `$PING` runs | does IR load alone slow or hang the gun |
+| A5 | long token | send a `$PLAY` frame with one 400-character token. Use `$PLAY` only: never a frame that writes stored settings (`$NAME`, `$PIN`, `$PAIR`) | LOCK-UP or BAD FRAME |
+| A6 | many tokens | send a `$PLAY` frame with 70 tokens. The A5 rule applies: no `$NAME`, `$PIN` or `$PAIR` frame | the token index wraps; BAD FRAME |
+| A7 | burst | 100 short frames with no gap; then the same in blocks of 10 with a 300 ms pause between blocks. Nine of every 10 frames are `$PLAY,U37,3,10,,,,,*`; every 10th frame is `$QUERY,*`, so each run carries 10 queries | count the `$QUERY` replies at each pacing (10 expected; each missing reply is a lost frame); any LOCK-UP |
+| A8 | burst of long frames | 50 × the bench AR `$WEAP` (102 bytes with t6 empty, 6 packets) with no gap; then 200 × `$WEAP` frames with the phone's pacing (8 ms per packet, 18 ms per frame). In both runs, alternate the magazine size (t16 and t39) between 32 and 30 on each frame (a `$WEAP` push resets the magazine to the frame's value). In the paced run, read `$ALCD` after each frame; after the no-gap run, read it once | a paced frame counts as lost when the `$ALCD` magazine does not change to that frame's value; the no-gap run must end on the last frame's value; count lost frames; any LOCK-UP |
+| A8b | trimmed runt `$SIR` rows | one gun, armed alternately with two variants, 50 arms each: the compiled `$SIR` rows as shipped, and the same rows with their trailing empty tokens dropped so each row fits one 20-byte packet | count BAD FRAME per variant. After the last arm of each variant, the IR rig (`ir-emit`) fires one control shot per `$SIR` row; every row must register a hit |
+| A9 | IR load | set the gun's `<0,0>` row to fn 28 (`$SIR,0,0,,28,0,0,1,,*`: registers, no pool change), then the IR rig fires enemy-team `<0,0>` words at the gun at 10 per second for 5 min, while `$PING` runs. The fn 28 row means 3,000 words cannot kill the gun | does IR load alone slow or hang the gun |
 | A10 | IR plus BLE | A9 and A7 together | the player-count case: many hits and much traffic at once |
 | A11 | headset drop | switch the headset off during A7 | the gun resets its radio link; does it lock |
 | A12 | low battery | repeat A7 on a pack below 20 % | any difference |
@@ -82,7 +82,7 @@ Record each rule in the transport-hardening design note with its evidence.
 
 ## Phase C: soak one gun with our real traffic (instrument, can run unattended)
 
-**Tool needed first:** `python -m brx_mcp soak <address> <pattern> <minutes>`. It replays a traffic pattern, runs the
+**The tool is built:** `python -m brx_mcp soak <address> <pattern> <minutes>`. It replays a traffic pattern, runs the
 `$PING` liveness probe, and logs every event in the definitions above. It is a CLI subcommand, not an ad-hoc script,
 so every bench run uses the same code. Patterns:
 

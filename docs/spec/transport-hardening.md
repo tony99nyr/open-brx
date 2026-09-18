@@ -84,7 +84,7 @@ change in `WRITE_PACING`, so a bench session can try a value without touching th
 **Why a pause at all (design, needs bench A8 and A7).** §1.1 says the gun drains one byte per loop pass.
 The loop pass time is not known; if it is near 1 ms, an arm burst of 1012 bytes at the phone's pacing arrives in
 about 1.2 s and the gun drains it in about 1 s, so the buffer never nears 1 KB. If the pass is slower under audio
-or IR load, the buffer fills and §1.3 happens. Bench A8 (200 `$WEAP` frames at the phone's pacing, count the frames that did not apply) and
+or IR load, the buffer fills and §1.3 happens. Bench A8 (200 `$WEAP` frames at the phone's pacing that alternate the magazine size, count the frames that did not apply) and
 A7 (short frames with and without a 300 ms pause every 10) give the number. Until then the pacing stays
 where it is: a slower arm costs real seconds at the line, and the evidence for it is a reading of code.
 
@@ -94,7 +94,8 @@ frames most exposed to a lost trailing packet (§1.3: the lost byte is the `*`).
 - Trim the trailing empty tokens of the fn-28 registrar rows (`$SIR,0,0,,28,0,0,1,,*` is 21 B; without the last
   empty token it is 20 B). The firmware reads `$SIR` tokens positionally, and an absent token reads as empty, so
   this should be safe. **It is not measured.** A `$SIR` row is the arming of hit reception (F11), so this is not
-  changed on a reading: bench A8b first, with the trimmed row on one gun and the full row on the other.
+  changed on a reading: bench A8b first, on one gun armed alternately with the trimmed rows and the full rows, 50
+  arms each.
 - Request a larger ATT MTU. The gun's radio negotiated 23 on every bench so far (`protocol` §1), and the 2018 app
   asked for 512 and still wrote 20-byte batches. Not a lever we control.
 
@@ -195,7 +196,7 @@ detector is simply the existing drop path plus a "power-cycle" hint when the rec
 | Measure | Status | Settled by |
 |---|---|---|
 | §3 block pause on, a value | design | bench A8, A7 |
-| §3 trim the runt `$SIR` rows | design | bench A8b (one gun trimmed, one full) |
+| §3 trim the runt `$SIR` rows | design | bench A8b (one gun, trimmed and full arms alternated) |
 | §4 deny list | built | none needed; a future `$PB*`/`$AS` step may ADD `$PB*` |
 | §5 write with response on multi-packet frames | design | bench A8 |
 | §6 `$QUERY` read-back of id, team, pools | design | bench-firmware-levers claim 19 (§18) |

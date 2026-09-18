@@ -43,7 +43,7 @@ export class Reassembler {
 /** Write pacing (docs/spec/transport-hardening.md §3). The gun reads ONE serial byte per main-loop pass out of a
  *  1 KB UART buffer (V4_30/V4_31 disassembly, 2026-09-18), so a long burst can outrun it and a lost `*` corrupts
  *  the next frame. `chunkGapMs`/`frameGapMs` are the pacing the field has run on since 2026-08; the BLOCK pause
- *  is a lever for bench §14: after every `blockFrames` frames of one write, sleep `blockPauseMs`. It ships OFF
+ *  is a lever for the screamers sheet A7/A8: after every `blockFrames` frames of one write, sleep `blockPauseMs`. It ships OFF
  *  (blockFrames = 0): the evidence for a value is not measured yet, and a slower arm is a real cost at the line. */
 export const WRITE_PACING = Object.freeze({ chunkGapMs: 8, frameGapMs: 18, blockFrames: 0, blockPauseMs: 0 });
 

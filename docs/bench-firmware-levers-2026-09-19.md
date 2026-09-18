@@ -6,8 +6,8 @@ v4.32 has drifted from V4_30, and the later sessions shrink.
 
 | session | time | needs | sections |
 |---|---|---|---|
-| 1. Core | 45 min | two guns | §1 (F206, confirms the shipped fix), §2 (melee), §4 step 1, §5 step 1, §13 |
-| 2. Levers | 75 min | two guns | §3, §4 step 2, §5 rest, §6, §7, §8, §9, §10, §12, §15, §18 |
+| 1. Core | 45 min | two guns | §1 (F206, confirms the shipped fix), §2 (melee), §4 step 1, §5 (all of it, one session: each step starts from the one before), §13 |
+| 2. Levers | 75 min | two guns, the IR rig for §9 step 5 | §3, §4 step 2, §6, §7, §8, §9, §10, §12, §15, §18 |
 | 3. Transport | see the screamers sheet | one gun, a laptop | §14 (now `bench-screamers-2026-09-19.md` Phase A) |
 | 4. IR rig | 60 min | two guns, the ESP32 IR rig | §11, §16, §17, §20 |
 | 5. Gap sweep | 90 min | two guns, the IR rig for two steps | §19 |
@@ -62,8 +62,20 @@ Rules:
 **A = shooter**, player 1, team 1. **B = victim**, player 2, team 2.
 
 Arm B with the victim head from `bench-perks-2026-09-18.md` ("Roles and arming"). Arm A with that doc's bench
-AR frame, with t6 left empty. The damage key is `<0,0>` and the magnitude is 9, unless a step says otherwise. When a
-step says **re-arm B**, send the victim head again.
+AR frame, with t6 left empty. The damage key is `<0,0>` and the magnitude is 9, unless a step says otherwise.
+
+The victim head sets HP 999, armour maximum 0 and shield maximum 0. `$PSET` t3, t4 and t5 set the pool **maxima**
+only. The pools fill at `$SPAWN,,*`. A `$PSET` re-send also rewrites the team byte (claim 1), so `$TID` must follow
+it. A `$LIFE` shield grant stops at `$PSET` t5. The sections below use three recipes:
+
+- **Re-arm B (h, a, s)** gives B HP maximum h, armour maximum a and shield maximum s. Send these frames to B:
+  1. `$PSET,2,0,<h>,<a>,<s>,50,,H44,JAD,V33,V3I,V3C,V3G,V3E,V37,H06,H55,H13,H21,H02,U15,W71,A10,*` (the victim
+     head's row with new maxima).
+  2. `$SPAWN,,*`. B now has HP h, armour a and shield 0.
+  3. `$TID,2,*`.
+  4. The `$SIR` row that the section needs. If the section names none, send `$SIR,0,0,,1,0,0,1,,*`.
+- **Kill B**: re-arm B (9, 0, 0), then A hits B once (9 damage).
+- **Respawn B**: send `$SPAWN,,*`, then `$TID,2,*`. B keeps the maxima of its last re-arm.
 
 ## 1. F206: the team is overwritten at spawn (15 min, red blocker, confirms the shipped fix)
 
@@ -113,7 +125,7 @@ Steps:
 1. **Control.** Send `$MELEE,255,*`, then `$XYZZY,255,*`. Does each one give `$BUT,4,0`? If the unknown command
    also answers, `$MELEE` proves nothing.
 2. Re-arm A with our melee `$WEAP` as MC ships it, but in slot 7. Send `$BMAP,8,7`. Swing at B's headset from
-   30 cm. Watch A for `$BUT,8` and B for `$HIR,…,13`.
+   30 cm. Watch A for `$BUT,8` and B for a `$HIR` with token 2 = 13.
 3. Repeat with slot 4 and `$BMAP,8,4` (today's frames), so the two runs compare directly.
 4. Watch the headset during a swing. Does it flash or emit? Point the IR rig at the headset domes, not the barrel,
    and count words per swing. No word from the headset means the `$IRTX` hand-off to the headset fails.
@@ -139,7 +151,8 @@ Send each frame to B only:
    word leaves the gun. So expect 9, not 13. A 13 means v4.32 applies a crit bonus on the victim side at t7 = 0,
    and the V4_31 reading of the crit does not hold for v4.32.
 3. `$BHIT,0,1,2,9,0,0,0,*`. B is team 2 and t1 = 0, so expect a block. This also tests §1 from the host side.
-4. Set B's `<0,0>` row to fn 20 (`$SIR,0,0,,20,0,0,1,,*`), then repeat step 1. Expect armour only.
+4. Re-arm B (45, 70, 0) with the fn 20 row `$SIR,0,0,,20,0,0,1,,*`, then repeat step 1. Expect armour 61 and HP 45
+   (armour only).
 
 **Reading.** A `$HIR` that looks like a real hit means the host can deal damage. Record whether the gun plays the
 hit sound and vibrates.
@@ -163,12 +176,9 @@ V4_30 reads `$BUMP,<amount>,<hp>,<armour>,<shield>,<sound>,*`. Tokens 2-4 are on
 negative amount drains the shield, then the armour, then the HP, and kills at 0. A positive amount heals the HP, then
 spills into the armour, then the shield. F65 sent all three flags as 0.
 
-Re-arm B: resend the victim head's `$PSET` row with t3 = 45 (HP maximum) and t4 = 70 (armour maximum), shield
-maximum left at 0, then send `$TID,2,*` (the `$PSET` resend also rewrites the team byte, claim 1). The shipped
-victim head (`bench-perks-2026-09-18.md`) ships `$PSET,2,0,999,0,0,…`, so its armour maximum is 0 and every step
-below needs the wider maxima. Read the current pools from `$HP` (or `$LCD`) after each step. Do not use `$QUERY`:
-V4_30 builds its pool fields from the maxima, not the current pools. Each step starts from the result of the step
-before it.
+Re-arm B (45, 70, 0), so B starts at HP 45 and armour 70. Each step starts from the result of the step before it,
+so run all five steps in one session, in order. Read the current pools from `$HP` (or `$LCD`) after each step. Do
+not use `$QUERY`: V4_30 builds its pool fields from the maxima, not the current pools.
 1. `$BUMP,-20,1,1,1,,*`. Expect armour 50, HP 45.
 2. `$BUMP,-80,1,1,1,,*`. Armour is 50, so expect armour 0 and HP 15 (the cascade).
 3. `$BUMP,-10,1,0,0,,*`. Expect HP 5 and nothing else.
@@ -183,14 +193,15 @@ before it.
   clamp.
 - `$SPAWN,<n>,*` spawns with **shield n**. K7 is blocked because no BLE command grants a shield (P16, F60).
 
-Before this section, re-arm B with the same explicit re-arm as §5: resend `$PSET` with t3 = 45, t4 = 70 (shield
-maximum stays 0), then `$TID,2,*`. The shipped victim head sets armour maximum to 0, so without this step set
-mode clamps every armour value at 0.
+Before this section, re-arm B (45, 70, 60). Set mode needs an armour maximum above 0, and step 3 needs a shield
+maximum of 50 or more.
 
 1. On B, send `$LIFE,30,10,0,1,*`. Expect HP 30 and armour 10 exactly, whatever the start values.
 2. Send `$LIFE,500,0,0,2,*`. Does HP go above the maximum?
-3. Send `$SPAWN,50,*`. Read `$LCD`: is token 3 (shield) 50? Then fire three hits. Does the shield absorb them first?
-4. On a **dead** B, send `$LIFE,30,0,0,1,*`, which is the 2018 app's revive. Does B come back to life?
+3. Send `$SPAWN,50,*`, then `$TID,2,*`. Read `$LCD`: is token 3 (shield) 50, with HP 45 and armour 70? Then fire
+   three hits. Does the shield absorb them first (shield 23)?
+4. Kill B. Then, on the **dead** B, send `$LIFE,30,0,0,1,*`, which is the 2018 app's revive. Does B come back to life?
+   The kill left an HP maximum of 9, and set mode clamps, so a revive shows HP 9.
 
 **Reading.** If step 3 works, K7 (shields as a game option) is unblocked. If step 4 works, a revive can happen with
 no respawn.
@@ -201,6 +212,9 @@ no respawn.
 - `$INVU,*` sets incoming damage to x0.
 - `$TMP` holds maximum-pool bonuses (t1 HP, t2 armour, t3 shield), incoming damage % (t8) and a magazine % bonus
   (t9).
+
+B arrives from §6 step 4 with a 9 HP maximum. Before step 1, re-arm B (999, 0, 0), so the hits below
+cannot kill it.
 
 1. On B: `$PRES,0,0,-50,*`. Fire 3 hits. Expect 4 each (9 x 0.5, truncated).
 2. On B: `$PRES,0,0,100,*`. Expect 18 each. Then send `$PRES,0,0,0,*` to reset it.
@@ -238,7 +252,7 @@ not a fixed firmware value. The 2026-09-07 sweep of t6 had no crits in it, so it
 
 Arm A with the bench AR at `$WEAP` t6 = 100 (every shot a crit). Fire 3 shots per run and read the damage:
 1. A's `$PSET` t6 = 50 (as shipped). Expect 13.
-2. A's `$PSET` t6 = 0. Then repeat on B's `$PSET` instead of A's, in case the victim applies it.
+2. A's `$PSET` t6 = 0. Expect 9. Then repeat on B's `$PSET` instead of A's, in case the victim applies it.
 3. A's `$PSET` t6 = 100. Expect 18.
 4. With t6 = 50, set B's `$GSET` t7 = 100. Does the crit grow again?
 5. **Rig control (needs the IR rig).** Set B's `$GSET` t7 = 0. Emit one rig word with C = 1 and magnitude 20 at B.
@@ -250,15 +264,16 @@ Strike" perk a single token.
 
 ## 10. The small `$SIR` functions (15 min)
 
-Change B's `<0,0>` row for each function. Fire 3 shots per state.
+Change B's `<0,0>` row for each function. Fire 3 shots per state. Before each row, re-arm B (999, 0, 0) with that
+row's `$SIR`, unless the row says otherwise.
 
 | fn | V4_30 says | how to test |
 |---|---|---|
-| 34 | Registers (`$HIR` only) **on a dead gun**, and never causes a death. **Ally-only** (V4_30) | Put A on B's team first (`$TID,2,*` on A, as §16 does), or set `$GSET` t1 = 1. Kill B, then hit it. Does `$HIR` arrive? This would be the base for a revive beam. |
-| 35 | Same, but **enemy-only** (V4_30) | Keep A on team 1 (the default roles). Kill B, then hit it. Does `$HIR` arrive? |
-| 38 | Shield, then armour, then **half** of the rest goes to HP | Start B at 0 armour. 9 should take 4 HP. The 09-17 bench saw plain damage only because armour was 70. |
+| 34 | Registers (`$HIR` only) **on a dead gun**, and never causes a death. **Ally-only** (V4_30) | Kill B first (A is still on team 1). Then put A on B's team (`$TID,2,*` on A, as §16 does), set the fn 34 row, and hit B. Does `$HIR` arrive? This would be the base for a revive beam. After this run, send `$TID,1,*` to A before fn 35. |
+| 35 | Same, but **enemy-only** (V4_30) | A is back on team 1 (`$TID,1,*` after the fn 34 run). Kill B, set the fn 35 row, then hit B. Does `$HIR` arrive? |
+| 38 | Shield, then armour, then **half** of the rest goes to HP | B has 0 armour after the re-arm. 9 should take 4 HP. The 09-17 bench saw plain damage only because armour was 70. |
 | 30 | Double damage from sensor 1 (the back of the headset). A kill from there is silent. | Hit the front, then the back, and compare. |
-| 33 | Normal damage, but a kill is silent (no death alarm) | Start B at 9 HP. Listen for the death alarm. |
+| 33 | Normal damage, but a kill is silent (no death alarm) | Re-arm B (9, 0, 0) with the fn 33 row. Listen for the death alarm. |
 | 50 / 51 / 52 | Repaints the team colour only, with no `$HIR` | Watch B's LEDs. |
 
 ## 11. Splash re-emit (optional, needs the IR rig, 10 min)
@@ -276,7 +291,7 @@ sending `$STOP` until spawn.
 ## 13. Listen for a kill report (5 min)
 
 Jay's ESP32 code reads a `$DD,<killer>,<team>` frame **from the gun** when its player dies, and builds kill
-confirmation on it. Our docs say the gun never sends `$DD`. With A arming and B at 9 HP, kill B with one shot. Log
+confirmation on it. Our docs say the gun never sends `$DD`. Kill B (re-arm B (9, 0, 0), then one shot from A). Log
 every frame B sends for 5 s after the death. If `$DD` arrives, the node gets kill attribution from the gun itself.
 
 ## 14. How the transport fails (moved to the screamers sheet)
@@ -307,10 +322,13 @@ BC's 2018 app revives a downed teammate like this: the reviver's gun sends `$IRT
 once a second while it is stunned, and the downed gun carries `$SIR,14,0,NULL,34,,,,,*`. The app counts the `$HIR`
 type-14 reports and revives after 8 s with `$LIFE,30,0,0,1,*`.
 
-1. Give B the row `$SIR,14,0,NULL,34,,,,,*`. Kill B.
+1. Kill B. Then give B the row `$SIR,14,0,NULL,34,,,,,*`.
 2. Put A and B on one team for this run: send `$TID,2,*` to A. Then, from A, send `$IRTX,0,14,1,2,1,0,0,100,1,,1,*` once a second for 10 s, pointed at B.
 3. Log B's `$HIR` frames. Then send B `$LIFE,30,0,0,1,*`.
-4. Send `$TID,1,*` to A to put it back on team 1 before the next section.
+4. `$IRTX` field 4 is `ImmuneTeamColor` (`protocol/brx-protocol.md`), not the shooter's team. The value 2 in step 2
+   equals B's team, so it may make B immune to the word. Kill B again, give B the row again, and repeat steps 2
+   and 3 with field 4 = 1 (`$IRTX,0,14,1,1,1,0,0,100,1,,1,*`).
+5. Send `$TID,1,*` to A to put it back on team 1 before the next section.
 
 **Reading.** Type-14 `$HIR` frames on a dead B mean a teammate revive runs through the taggers themselves. Also note
 whether A's `$IRTX` leaves the gun or the headset.
@@ -336,7 +354,8 @@ pulse, wait 10 s, send one more; then send two pulses 3 s apart.
 
 Read these on an armed gun, change one thing, and read again:
 
-1. `$LCD` token 3: grant a shield (`$LIFE,0,0,40,*`). Does t3 read 40? Token 4: swap the weapon. Does t4 follow the slot?
+1. `$LCD` token 3: re-arm B (45, 0, 40), then grant a shield (`$LIFE,0,0,40,*`). Does t3 read 40?
+   Token 4: swap the weapon. Does t4 follow the slot?
 2. `$QUERY` tokens 1 to 7: change `$PSET` player id, team (t2) and pools. Do tokens 1 to 5 follow? Is token 7 the
    gyro flag?
 3. `$VERSION`: record all tokens with and without the headset. Is token 3 always `4`?
@@ -346,11 +365,12 @@ Read these on an armed gun, change one thing, and read again:
 A triage of every open FOLLOWUPS row against the new sources found these untested leads. One step each. Record every
 result, including nulls, against the row id.
 
-1. **fn 38 at real armour (F225).** Re-arm B with `$PSET` t3 = 45, t4 = 70 (shield maximum 0), then `$TID,2,*` (as
-   §5). Magnitude 100 on a fn 38 row. V4_30 predicts 70 from armour plus 15 from HP (the HP remainder halved),
+1. **fn 38 at real armour (F225).** Re-arm B (45, 70, 0) with the row `$SIR,0,0,,38,0,0,1,,*`. Hit B once at
+   magnitude 100. V4_30 predicts 70 from armour plus 15 from HP (the HP remainder halved),
    which is the playtest's unexplained 85.
-2. **fn 3, 4, 5 and 7 (pool order).** Our 70-armour baseline (the same re-arm as step 1) could not tell these apart. B at shield 20 (grant with
-   `$LIFE,0,0,20,*`), armour 5, HP 45. One hit of 40 per function. Record each pool.
+2. **fn 3, 4, 5 and 7 (pool order).** Our 70-armour baseline could not tell these apart. For each function,
+   re-arm B (45, 5, 20) with that function's row. The `$SPAWN` gives HP 45 and armour 5. Then grant the shield with
+   `$LIFE,0,0,20,*`. One hit of 40 per function. Record each pool.
 3. **fn 31 and 32 (U11).** With `$GSET` t1 = 1, hit a live B once on each. Watch the LEDs and `$HIR`.
 4. **`$GSET` t2 on one side only (F162, F198).** Shooter t2 = 1 and victim t2 = 0, then swap. Count hits at 10 m.
 5. **t41 in indoor mode (Q15).** With `$GSET` t2 = 1 on the SHOOTER only (as §20 step 2 does; t2 = 1 on the
@@ -405,5 +425,4 @@ values above the knee are not worth tuning.
 3. Mark every row of the claim checklist in the log entry.
 4. Update the FOLLOWUPS rows: F206, K4, F65, K7, F121, P18/S16, F62, S50 and the transport-hardening rows. Correct
    `protocol/brx-protocol.md` for each confirmed claim, and move it into `docs/manual/` only when it is CONFIRMED.
-   Credit LaserTagMods (Jay). Then correct `protocol/brx-protocol.md`
-   for each confirmed command. Credit LaserTagMods (Jay) for the source.
+   Credit LaserTagMods (Jay).
