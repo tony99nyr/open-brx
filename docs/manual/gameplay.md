@@ -21,7 +21,7 @@ The BRX runs games three ways. You can play from the gun's own menu, with no pho
 - Classes, factions, perks and killstreaks: Nexus/Resistance/Vanguard, the 9+ characters, the perk row, the streak rewards.
 - The grenade's game modes: Frag, Assault, Hill, Respawn, CTF, and how each one really behaves.
 
-> **Two arsenals, one gun.** The gun-menu weapons (M-4, SMG-X3, MG-7, SR-100, TAC-87 and others) are presets the firmware carries for play without a phone. The Callsign app's 19 weapons get sent to the gun over Bluetooth when the game starts. They fill the same 6 weapon slots with different numbers. This section covers the Callsign 19 in full, because we captured every one of them on the wire (20 frames). The five gun-menu weapons are listed from Battle Company's manual.
+> **Three arsenals, one gun.** The gun-menu weapons (M-4, SMG-X3, MG-7, SR-100, TAC-87 and others) are presets the firmware carries for play without a phone. The Callsign app's 19 weapons get sent to the gun over Bluetooth when the game starts. Open BRX sends a third set, its own catalogue, the same way. All three fill the same 6 weapon slots with different numbers, so a gun is only ever running one of them. This page covers the Callsign 19 in full, because we captured every one of them on the wire (20 frames). The five gun-menu weapons are listed from Battle Company's manual. Open BRX's own numbers are balance choices rather than captures, and they live in `docs/reference/weapons.md` and the platform pages, not here.
 
 ## The complete Callsign arsenal
 
@@ -102,7 +102,7 @@ Support, full auto, 9 dmg, 90 ms, 300-round clip, 300 reserve, 2.4 s, heat 6/sho
 
 ### Charge Rifle
 
-Support, hold to charge and fire when you let go, 100 dmg, 1.25 s charge, 100/100, 2.5 s, heat 14/shot. Two hits to kill. It is the one weapon with both a charge-up sound and a release sound, and the one weapon whose overheat gate is actually set, so its heat gauge is the only stock gauge that climbs and locks out.
+Support, hold to charge and fire when you let go, 100 dmg, 1.25 s charge, 100/100, 2.5 s, heat 14/shot. Two charges kill. Open BRX's own charge rifle is a different weapon: one full charge costs ten rounds of the cell, a tap fires for less, and the kill is one charge plus two taps. It is the one weapon with both a charge-up sound and a release sound, and the one weapon whose overheat gate is actually set, so its heat gauge is the only stock gauge that climbs and locks out.
 
 ### Rocket Launcher
 
