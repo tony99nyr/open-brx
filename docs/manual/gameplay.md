@@ -38,7 +38,7 @@ The BRX runs games three ways. You can play from the gun's own menu, with no pho
 > Two caveats apply to hits to kill and to Reserve.
 >
 > - Hits to kill assumes damage does not depend on which sensor is struck. The Head shots row further down answers why it does: `$GSET` t7 scales a headset hit, and Callsign ships t7 at 50. One Callsign capture showed 18 damage per hit on the headset (sensor 0). The same capture showed 9 damage per hit on the gun body (sensor 4), on the same victim in the same life.
-> - Reserve is the frame's `t40` token: the rounds a Callsign gun gives you. The frame also holds `t17`, which is always exactly twice `t40`. The gun counts `t40`, and its own ammo readout mirrors that count. This was proven on four weapons on 2026-09-16.
+> - Reserve is the frame's `t17` token: the rounds a Callsign gun gives you. The frame also holds `t40`, which is always exactly half `t17`. A bare weapon push leaves the gun holding `t40`, and its ammo readout mirrors that for about a fifth of a second; the spawn that follows raises it to `t17`, and that is the count you play with. Measured on the real Assault Rifle frame on 2026-09-18: 96 after the weapon push, 192 after the spawn.
 
 The table below lists every weapon the Callsign app can hand you, with the numbers it actually sends. The search box does a plain text match across all nine columns, so type part of a weapon name, a role or a sound name to narrow the list.
 
