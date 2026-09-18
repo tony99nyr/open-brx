@@ -297,7 +297,7 @@ Bolt Rifle and Melee — their stock numbers already sat in the band.
   kill slower than rifles"; "rate of fire on the pistol usp should be quicker to match counter strike.
   less damage but faster rof." The original pass (2026-09-04) copied the Counter-Strike identity
   literally — Glock fastest+weakest, USP in the middle — but that left the Deagle and USP both
-  killing faster than every rifle (docs/game-test-2026-09-11.md D2). The 2026-09-12 pass instead gives
+  killing faster than every rifle (docs/archive/game-test-2026-09-11.md D2). The 2026-09-12 pass instead gives
   all three the SAME **1.92 s** ideal TTK, strictly slower than the slowest rifle (Bolt Rifle, 1.80 s),
   and reverses the Glock/USP identities to match Tony's brief directly: the **USP-S is now the
   fastest trigger and the weakest hit** (9 dmg / 160 ms / 13 hits), suppressed and flashless

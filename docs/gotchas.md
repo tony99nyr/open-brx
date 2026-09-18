@@ -600,7 +600,7 @@ Anything that validates a weapon in isolation is blind to a whole class of bug.
 passing after `mcp/brx_mcp/mc/perks.json` was edited, because the phone reads the GENERATED
 `app/src/demo-catalog.js`. A guard you "proved" by breaking the source of a generated file was never
 broken at all. Break the generated artefact, watch the test fail, then regenerate. Same shape as a
-guard that reads `HEAD` while the tree is dirty (2026-09-17, brx-weapons).
+guard that reads `HEAD` while the tree is dirty (2026-09-17).
 
 **Close a question in EVERY file in the same commit, or it is not closed.** Two independent cold-read
 handoff tests both scored this repo down for the same thing, and it was never a wrong fact — it was a

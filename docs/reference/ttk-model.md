@@ -1,6 +1,6 @@
 # Time-to-kill: the model shooters use, and how it applies to BRX
 
-Reference for weapon balance work (docs/game-test-2026-09-11.md Block D item D2). Ground rules
+Reference for weapon balance work (docs/archive/game-test-2026-09-11.md Block D item D2). Ground rules
 below come from shipped-shooter community analysis and one probability-theory paper; BRX facts
 come from `mcp/brx_mcp/mc/weapons.json`, `protocol/brx-protocol.md`, and `mcp/brx_mcp/mc/compile.py`.
 
@@ -148,7 +148,7 @@ should scale with mag the same way the current rows do, roughly 5-6x mag size.
 
 ## Shipped 2026-09-12
 
-D2 (`docs/game-test-2026-09-11.md`) landed with one change from §5's proposal: the **USP's mag went
+D2 (`docs/archive/game-test-2026-09-11.md`) landed with one change from §5's proposal: the **USP's mag went
 16 → 20**. At `p=0.7` a 13-hit USP with a 16-round mag empties the magazine before landing the kill
 roughly three fights in four (a 25% one-mag-kill rate); 20 rounds brings that to a more usable 77%
 without moving its ideal TTK (the mag size never enters the ideal-TTK formula). Reserve for all three

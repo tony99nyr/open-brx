@@ -467,7 +467,7 @@ class GameConfig:
         # The stock phone app never writes this field, which is why a native tagger takes hits at ~200 ft.
         # It is NOT the gun's native ALT mode (that changes beam WIDTH and does not gate reception ,
         # measured the same day on three guns) and it does not move emitted range.
-        # Handoff with the full measurement: docs/HANDOFF-gset-t2-2026-09-13.md
+        # Handoff with the full measurement: docs/archive/HANDOFF-gset-t2-2026-09-13.md
         return (f"$GSET,{int(self.friendly_fire)},{GSET_T2_SAFE},1,0,1,0,"
                 f"{int(self.crit_modifier)},1,*")
 

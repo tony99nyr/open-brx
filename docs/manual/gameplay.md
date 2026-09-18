@@ -25,7 +25,20 @@ The BRX runs games three ways. You can play from the gun's own menu, with no pho
 
 ## The complete Callsign arsenal
 
-> **How to read the numbers.** The table's columns are Weapon, Role, Damage, Cycle ms, Mag, Reserve, Reload ms, Heat/shot and Fire sound. Damage is the raw number the weapon puts in every shot. It is what your target's gun takes off before any class multiplier. Cycle ms is milliseconds between shots; for charge weapons it is the charge time. Mag is the magazine size, and Reserve is your total spare rounds (the app shows reserve as magazines: mags x clip = reserve). Heat/shot is the value the frame's heat token carries. Four weapons set it: SMG 5, Energy Rifle 6, Charge Rifle 14, Plasma Sniper 30. A heat number on its own does nothing: one more token, t38, switches the overheat system on, and Callsign sets it only on the Charge Rifle, so that is the only stock weapon whose gauge climbs. Open BRX switches it on for the Energy Rifle too. Hits to kill is against the default 115-point pool (45 HP + 70 armor), given only for weapons whose shots land as standard damage on the target's effect table. It is in the per-weapon notes below, not in the table. Two caveats on those numbers: hits to kill assumes damage does not depend on which sensor is struck (a Callsign capture shows 18 per hit on headset sensor 0 against 9 per hit on gun body sensor 4, same victim, same life), and Reserve is the frame's `t40` token, the rounds you actually carry. The frame also holds `t17`, which is exactly twice t40 on every weapon; the gun counts t40, and its own ammo readout mirrors it, proven on four weapons on 2026-09-16.
+> **How to read the numbers.** The table has nine columns: Weapon, Role, Damage, Cycle ms, Mag, Reserve, Reload ms, Heat/shot and Fire sound.
+>
+> - **Damage** is the raw number the weapon puts in every shot. The target's gun takes this off before any class multiplier applies.
+> - **Cycle ms** is the time between shots, in milliseconds. For a charge weapon, it is the charge time instead.
+> - **Mag** is the magazine size.
+> - **Reserve** is your total spare rounds. The app shows reserve as magazines: mags x clip = reserve.
+> - **Heat/shot** is the value the frame's heat token carries. Four weapons set it: SMG 5, Energy Rifle 6, Charge Rifle 14, Plasma Sniper 30. A heat number alone does nothing. A separate token, t38, switches the overheat system on. Callsign sets t38 only on the Charge Rifle, so that is the only stock weapon whose gauge climbs. Open BRX switches it on for the Energy Rifle too.
+>
+> **Hits to kill** is not a table column. Find it in the per-weapon notes below. It counts hits against the default 115-point pool (45 HP + 70 armor). It applies only to weapons whose shots land as standard damage on the target's effect table.
+>
+> Two caveats apply to hits to kill and to Reserve.
+>
+> - Hits to kill assumes damage does not depend on which sensor is struck. One Callsign capture showed 18 damage per hit on the headset (sensor 0). The same capture showed 9 damage per hit on the gun body (sensor 4), on the same victim in the same life.
+> - Reserve is the frame's `t40` token: the rounds you actually carry. The frame also holds `t17`, which is always exactly twice `t40`. The gun counts `t40`, and its own ammo readout mirrors that count. This was proven on four weapons on 2026-09-16.
 
 The table below lists every weapon the Callsign app can hand you, with the numbers it actually sends. The search box does a plain text match across all nine columns, so type part of a weapon name, a role or a sound name to narrow the list.
 

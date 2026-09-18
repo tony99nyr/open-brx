@@ -855,7 +855,7 @@ for (const view of VIEWS) {
   });
   await step(`${view.name} #22 the post-match button is one line, plates intact`, async () => { const pg = await open(view, 'over'); const r = await oneLine(pg, '.foot .ready'); must(r.length === 1, 'no post-match button'); const btn = await pg.evaluate(() => document.querySelector('.foot .ready').textContent.trim()); await pg.close(); must(btn === 'READY FOR NEXT MATCH \u25b8', 'button copy: ' + btn); must(r.every(x => x[2]), JSON.stringify(r)); });   // F117 2026-09-11: was "MATCH COMPLETE", which read as a status line
 
-  // ---------- 2026-09-11 field session, Block A (docs/game-test-2026-09-11.md) ----------
+  // ---------- 2026-09-11 field session, Block A (docs/archive/game-test-2026-09-11.md) ----------
   await step(`${view.name} F110 briefing: the title and the description are not sheared by their box`, async () => {
     const sels = ['.bfname', '.bfdesc', '.bfk', '.bfrules', '.bfload'];
     const pg = await open(view, 'briefing'); const r = await sheared(pg, sels); await pg.close();
@@ -2105,7 +2105,7 @@ await step('ammo prompt se: an energy weapon with reserve left reads HOLD TO REC
 // ---------- A48 (merge 2026-09-17): the HUD reads the CLASS and the CHARGE COST off the catalogue ----------
 // `weapon_class` ("ballistic" | "energy" | "melee") replaced the old "energy or charge in the weapon id"
 // guess, and `rounds_per_charge` replaced the hard-coded 10.
-// ---------- F248 (2026-09-17, brx-weapons): `weapon_class === "energy"` is WIDER than the old id match, so
+// ---------- F248 (2026-09-17): `weapon_class === "energy"` is WIDER than the old id match, so
 // this test originally asserted the Rail Gun (2-round mag, one round per shot) drew the percentage/cell
 // gauge -- that assertion WAS the bug. The agreed rule: the gauge is a CELL gauge exactly when
 // `rounds_per_charge > 1`; `weapon_class` still, and only, picks the RELOAD/RECHARGE wording. ----------

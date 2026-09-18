@@ -4553,7 +4553,7 @@ test('F15: config.stun.duration_s sizes the window; an absent duration is the 10
   assert.ok(d.eng.reconciling, 'and holds the gun disarmed itself');
 });
 
-// ── 2026-09-12 review of the F123/A20 diff (docs/game-test-2026-09-11.md, Blocks A/C2) ───────────
+// ── 2026-09-12 review of the F123/A20 diff (docs/archive/game-test-2026-09-11.md, Blocks A/C2) ───────────
 
 test('A20: a handle pull while the gun is STUNNED starts no takeover — it could never be reconciled', () => {
   // `_onAmmo` drops every $ALCD for the whole stun window (F15), so a takeover opened here has nothing that
