@@ -153,6 +153,9 @@ export const ACC_WRITE_MIN_GAP_MS = 250;
 // How long to wait for the $ALCD that answers an accuracy write before judging it. Bench measured the write
 // landing in 30-90 ms; this leaves plenty of headroom for a slower link without stalling the model for long.
 export const ACC_VERIFY_GRACE_MS = 450;
+// The heat at which the gun stops firing, from `$ALCD` token 5. Bench 2026-09-17: a full-auto Energy
+// Rifle locked out at 99, the heat did NOT fall on its own, and only the reload lever vented it (about
+// 35 a pull). The accuracy writer must not write into that window, so the guard reads this.
 // t21 (accuracy ceiling) / t22 (accuracy floor), doc-token convention (frame.split(',')[tokN + 1]).
 const ACC_CEILING_IDX = 22, ACC_FLOOR_IDX = 23;
 // F68: an accuracy-model miss sends no $HIR and no $HP at all (S42 bench 2026-09-17), so the existing
@@ -2520,8 +2523,14 @@ export class Engine {
   }
   /** The single writer. Verifies a write already in flight before considering a new one (so a value
    *  that changes again before the verify window closes is simply picked up here, never queued behind
-   *  it), then the guards: never mid-reload, never mid-swap, never during an overheat lockout
-   *  (`this.overheatLocked` -- a seam, nothing sets it today), and never inside the minimum write gap. */
+   *  it), then the guards: never mid-reload, never mid-swap, never while the gun is OVERHEATED
+   *  (`$ALCD` token 5 at or above `HEAT_LOCKOUT`, bench 2026-09-17: firing stops at 99 and only the
+   *  reload lever vents it), and never inside the minimum write gap.
+   *
+   *  ⚠ The overheat guard read `this.overheatLocked` until 2026-09-17, and NOTHING set that flag, so
+   *  the guard was dead code and the writer was free to write through a lockout. Found by the HUD
+   *  session reading this file, not by a test: the test asserted the flag, which is the mistake. It
+   *  now reads the gun's own heat, and its test drives a real `$ALCD` heat frame. */
   _recoilFlush(now) {
     const r = this._recoil; if (!r) return;
     if (r.pendingWriteAt) {
@@ -2814,6 +2823,9 @@ export class Engine {
             && (t[3] === undefined || t[3] === '' || +t[3] === 0)) this.ammoEcho = f;
         // S42: token 2 is the live per-shot accuracy `$ALCD` reports (docs/weapon-design.md §4.4,
         // bench 2026-09-17) — the ONLY answer the accuracy writer's verify step ever gets.
+        // F229 (bench 2026-09-17): token 5 is HEAT. Firing stops at 99, the gun does not cool on its
+        // own, and only the reload lever vents it (about 35 a pull). `_onAmmo` below records it per slot,
+        // and `_overheating()` is the one reading of it (the accuracy writer's guard included).
         this._recoilObserve(t[2] !== undefined && t[2] !== '' ? +t[2] : NaN, t[3] !== undefined && t[3] !== '' ? +t[3] : 0);
         this._onAmmo(+t[1] || 0, t[4] !== undefined ? +t[4] : null, t[3] !== undefined && t[3] !== '' ? +t[3] : 0, t[5] !== undefined && t[5] !== '' ? +t[5] : null);
         break;

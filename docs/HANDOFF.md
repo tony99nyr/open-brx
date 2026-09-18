@@ -2,7 +2,7 @@
 
 **State as of 2026-09-17, evening.** Branch `fix/playtest-2026-09-13`, in the worktree
 `.claude/worktrees/playtest-2026-09-13`, holds the 2026-09-16 and 2026-09-17 work **and now the merge of
-`origin/main` at 08aec5b7** (the `brx-weapons` arsenal rework). It is **NOT pushed**.
+`origin/main` at f4e7e263** (the `brx-weapons` arsenal rework). It is **NOT pushed**.
 
 ## What today's bench pass proved
 
@@ -30,7 +30,10 @@ The arsenal rework (A48): `weapon_class` and `rounds_per_charge` on the wire, th
 85 charge / 20 tap / cell 40/80, the Energy Rifle's overheat switched on (t38 150, sound D11) with a
 `caution` string, weapons cut from the pickers, `$GSET` t7 = 0, and **node-driven recoil** (`node.md`
 §3.16, S42) with the F68 team repaint (§3.17). The venue range lever moved from `$WEAP` t41 to **t2**
-(`gunRangeOutdoor`); t41 is inert outdoors. Main's own open ids stay as they are: **F230-F234, S48-S50**.
+(`gunRangeOutdoor`); t41 is inert outdoors. Main's own open ids stay as they are: **F230-F234, S48-S51**. Main also shipped the 13-pick
+catalogue (Rocket and Rail `pickup_only`, S46), the new time-to-kill ladder, and the poison weapon design;
+its next bench is crit emission (F62) and the hunt for an anti-armour `$SIR` function
+(`docs/bench-perks-2026-09-18.md`).
 Main's ids came first, so this branch's thirteen verification rows moved from F230-F242 to **F235-F247**.
 
 ## Machine state right now
@@ -42,6 +45,9 @@ setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-
 ```
 (detached; the Windows portproxy forwards 8765/8766). **Rebuild `webapp/mc/dist` first.** Restart Mission
 Control only between matches, never mid-match.
+
+⚠ **Two commits from main's morning (`61b1074e`, `e20c7136`) recorded the range finding against `t41`.** That was
+the `t2` result written against the wrong token; Q15 carries the correction, and the per-venue targets still stand.
 
 ⚠ **Gun state from main's garden session:** shooter `Tactix-E20D` went out of BLE range before its
 teardown landed and still carries the t2 18/22 test slots. Its `$SIR` table was never cleared, so it is
