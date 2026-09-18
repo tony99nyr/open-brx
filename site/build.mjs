@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 import { marked } from 'marked';
 import { buildWeapons, buildSounds } from './lib/data.mjs';
 import { ledFacts, ledPalette, drainDirection } from './lib/led-facts.mjs';
-import { modes as readModes, roles as readRoles, release as readRelease } from './lib/facts.mjs';
+import { modes as readModes, roles as readRoles, release as readRelease, arsenal as readArsenal } from './lib/facts.mjs';
 import { renderLanding } from './lib/landing.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -33,6 +33,7 @@ const REPO_PUBLIC = true;
 const PAGES = [
   { file: 'platform/index.md', slug: '/', section: 'root', nav: null, layout: 'landing' },
   { file: 'platform/platform.md', slug: '/platform', section: 'platform', nav: null, layout: 'landing' },
+  { file: 'platform/arsenal.md', slug: '/arsenal', section: 'platform', nav: null, layout: 'landing' },
   { file: 'platform/docs.md', slug: '/docs', section: 'docs', nav: 'Overview', layout: 'doc' },
   { file: 'platform/install.md', slug: '/docs/install', section: 'docs', nav: 'Install', layout: 'doc' },
   { file: 'platform/run.md', slug: '/docs/run-a-game', section: 'docs', nav: 'Run a match', layout: 'doc' },
@@ -477,7 +478,7 @@ let facts;
 try {
   const manual = pages.filter(p => p.section === 'manual' && p.nav).map(p => ({ slug: p.slug, nav: p.nav, blurb: p.blurb }));
   // on-gun sounds only: the catalog also lists ids the app names that the gun does not carry
-  facts = { modes: readModes(REPO), roles: readRoles(REPO), release: readRelease(REPO), sounds: sounds.filter(s => s.on_gun).length, manual };
+  facts = { modes: readModes(REPO), roles: readRoles(REPO), release: readRelease(REPO), arsenal: readArsenal(REPO), sounds: sounds.filter(s => s.on_gun).length, manual };
 } catch (e) { problems.push(e.message); }
 if (problems.length) {
   // Nothing has been written yet, and that is the point: the build used to emit the assets, the

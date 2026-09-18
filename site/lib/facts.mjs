@@ -31,6 +31,16 @@ export function modes(repo) {
   return out;
 }
 
+// Both roles() and arsenal() label a weapon the way Mission Control does, off the one ROLE const.
+const roleLabels = repo => {
+  const tok = read(repo, 'webapp/mc/src/tokens.ts');
+  const block = tok.match(/export const ROLE[\s\S]*?=\s*\{([\s\S]*?)\n\};/);
+  if (!block) throw new Error('facts: could not find ROLE in webapp/mc/src/tokens.ts (renamed?)');
+  const label = {};
+  for (const m of block[1].matchAll(/(\w+):\s*\{\s*label:\s*'([^']+)',\s*color:\s*'(#[0-9a-fA-F]{6})'/g)) label[m[1]] = { label: m[2], color: m[3] };
+  return label;
+};
+
 /** Weapon classes with counts, labelled the way Mission Control labels them. */
 export function roles(repo) {
   // VISIBLE weapons only, the same predicate the server publishes its catalogue with
@@ -41,11 +51,7 @@ export function roles(repo) {
   // site; the same "count the file, not the game" bug had already been fixed once in Designer.tsx.
   const cat = JSON.parse(read(repo, 'mcp/brx_mcp/mc/weapons.json')).weapons.filter(w => !w.hidden);
   if (!cat.length) throw new Error('facts: weapons.json has no visible weapons; the landing renders from them');
-  const tok = read(repo, 'webapp/mc/src/tokens.ts');
-  const block = tok.match(/export const ROLE[\s\S]*?=\s*\{([\s\S]*?)\n\};/);
-  if (!block) throw new Error('facts: could not find ROLE in webapp/mc/src/tokens.ts (renamed?)');
-  const label = {};
-  for (const m of block[1].matchAll(/(\w+):\s*\{\s*label:\s*'([^']+)',\s*color:\s*'(#[0-9a-fA-F]{6})'/g)) label[m[1]] = { label: m[2], color: m[3] };
+  const label = roleLabels(repo);
   const counts = {};
   for (const w of cat) counts[w.role] = (counts[w.role] || 0) + 1;
   const out = Object.entries(counts).map(([role, n]) => {
@@ -56,6 +62,43 @@ export function roles(repo) {
   const order = Object.keys(label);
   out.sort((a, b) => order.indexOf(a.role) - order.indexOf(b.role));
   return { roles: out, total: cat.length };
+}
+
+// SIMPLIFIED 2026-09-18: this used to hunt for a weapon's first sentence because `desc` carried
+// dated balance notes ("2026-09-17 arsenal review: ..."), which a landing page may not show
+// (docs/site/FORMAT.md). That symptom is gone: weapons.json now refuses a `desc` that carries a
+// date stamp, a raw timing, a section reference or a wire identifier, so every `desc` is already
+// short player copy. What is left is a plain soft cap, for a future weapon whose copy runs long,
+// plus the em-dash guard the site build never tolerates on a rendered page.
+const shortDesc = text => {
+  const flat = text.replace(/\s*—\s*/g, ', ').replace(/\s+--\s+/g, ', ').replace(/\s*\n\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
+  if (flat.length <= 170) return flat;
+  const cut = flat.slice(0, 170);
+  const clause = Math.max(cut.lastIndexOf(','), cut.lastIndexOf('.'), cut.lastIndexOf(';'), cut.lastIndexOf(':'));
+  return (clause > 60 ? cut.slice(0, clause) : cut.replace(/\s+\S*$/, '')) + '.';
+};
+
+/** Every pickable weapon (visible, non-melee), grouped and labelled the way Mission Control does. */
+export function arsenal(repo) {
+  const cat = JSON.parse(read(repo, 'mcp/brx_mcp/mc/weapons.json')).weapons.filter(w => !w.hidden);
+  if (!cat.length) throw new Error('facts: weapons.json has no visible weapons; the landing renders from them');
+  const label = roleLabels(repo);
+  const order = Object.keys(label);
+  const out = cat.map(w => {
+    if (!label[w.role]) throw new Error(`facts: weapons.json role "${w.role}" has no label in tokens.ts ROLE`);
+    for (const k of ['name', 'desc', 'htk', 'mag']) {
+      if (w[k] === undefined || w[k] === null) throw new Error(`facts: ${w.weapon_id} has no ${k}`);
+    }
+    return {
+      id: w.weapon_id, name: w.name, desc: shortDesc(w.desc), htk: w.htk, mag: w.mag,
+      // driven off `lethal`, never off `htk === 0`: a weapon that reaches 0 hits through a future
+      // bug must still look wrong, not deliberate.
+      lethal: w.lethal !== false,
+      role: w.role, pickupOnly: !!w.pickup_only, ...label[w.role],
+    };
+  });
+  out.sort((a, b) => order.indexOf(a.role) - order.indexOf(b.role));
+  return out;
 }
 
 /** The published Android build. */

@@ -798,6 +798,53 @@ it('12g · the site is honest when a photo has not been shot yet', async ({ page
   }
 });
 
+it('12k · the arsenal landing shows every pickable weapon once, with art and the pickup-only badge', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('/arsenal/', { waitUntil: 'networkidle' });
+  await expect(page.locator('h1')).toHaveCount(1);
+  await expect(page.locator('.hero .lede')).toContainText(/hits it takes to kill/i);
+
+  // VISIBLE weapons, the same predicate the server publishes its catalogue with (`WeaponCatalog.all()`);
+  // count derived from the source file, never hardcoded (three separate hardcoded counts drifted here already).
+  const weapons = JSON.parse(fs.readFileSync(path.join(DOCS, '../mcp/brx_mcp/mc/weapons.json'), 'utf8'))
+    .weapons.filter(w => !w.hidden);
+  const pickupIds = weapons.filter(w => w.pickup_only).map(w => w.weapon_id);
+  expect(pickupIds.length, 'no pickup-only weapon to check the badge against').toBeGreaterThan(0);
+
+  const cards = page.locator('.card.weapon');
+  expect(await cards.count(), 'card count does not match the visible weapons in weapons.json').toBe(weapons.length);
+
+  // every card image actually loaded, with real alt text, before checking the badge
+  await page.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += 600) { scrollTo(0, y); await new Promise(r => setTimeout(r, 60)); } scrollTo(0, 0); });
+  await page.waitForLoadState('networkidle');
+  const imgs = await cards.locator('img').evaluateAll(is => is.map(i => ({ src: i.getAttribute('src'), alt: i.alt, ok: i.complete && i.naturalWidth > 0 })));
+  expect(imgs.length).toBe(weapons.length);
+  for (const i of imgs) {
+    expect(i.ok, `${i.src} did not load`).toBe(true);
+    expect(i.alt.trim().length, `${i.src} has no real alt text`).toBeGreaterThan(8);
+    expect(i.alt.trim(), `${i.src}'s alt text is only the weapon name`).not.toMatch(/^[A-Za-z0-9' -]+$/);
+  }
+
+  // exactly the pickup-only weapons carry the badge, no more and no fewer
+  const badged = await page.locator('.card.weapon.pickup .badge').allTextContents();
+  expect(badged.length).toBe(pickupIds.length);
+  for (const b of badged) expect(b.trim().length).toBeGreaterThan(0);
+
+  // a weapon that cannot kill (lethal: false) never shows a bare 0 in the hits-to-kill slot: a
+  // visible dash (its own desc already says "It cannot kill") plus a visually-hidden word for
+  // assistive tech, which does not read the desc paragraph as part of the stat block.
+  const nonLethal = weapons.filter(w => w.lethal === false);
+  expect(nonLethal.length, 'no non-lethal weapon to check the stat slot against').toBeGreaterThan(0);
+  for (const w of nonLethal) {
+    const card = page.locator('.card.weapon', { has: page.locator('.name', { hasText: new RegExp(`^${w.name}$`) }) });
+    const stat = card.locator('dd').first();
+    await expect(stat, `${w.name} is lethal:false and must not show a numeric hits-to-kill`).not.toContainText(/^\d+$/);
+    await expect(stat.locator('.wcant'), `${w.name}'s hits-to-kill slot has no visible mark`).toBeVisible();
+    await expect(stat.locator('.vh'), `${w.name}'s hits-to-kill slot has no accessible label`).toHaveText(/cannot kill/i);
+  }
+  expect(errors).toEqual([]);
+});
+
 // A typo in ONLY= skipped all 30 steps and exited 0, which reads exactly like a green run.
 // Registered with bare `test` so it cannot be filtered out by the very thing it is checking.
 if (only) test('ONLY= matched at least one step', () => {
