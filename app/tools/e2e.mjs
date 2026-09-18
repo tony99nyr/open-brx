@@ -384,17 +384,20 @@ await step('A10 §4.1: host back on GAMES (phase build) → phones show SETTING 
   await hudB.click('[data-act="onBriefDone"]');
   await until(async () => (await hudB.locator('.plate.slot').count()) === 3, 5000, 'hudB plates back');
 });
-await step('(a) GAMES: play FREE-FOR-ALL (its default ruleset is NO HEAVIES) → Kit arsenal "11 OF 13", Rocket tile disabled', async () => {
-  // 2026-09-17 (arsenal review): 8 weapons joined melee as `hidden` (13 visible now, not 21) and
-  // rocket_launcher/rail_gun are `pickup_only` (never in a pool, so NO HEAVIES and OPEN both land
-  // on 11 OF 13 — the only visible `heavy`-tagged rows were already excluded).
+await step('(a) GAMES: play FREE-FOR-ALL (its default ruleset is NO HEAVIES) → Kit arsenal "11 OF 15", Rocket tile disabled', async () => {
+  // 2026-09-17 (arsenal review): 8 weapons joined melee as `hidden` and rocket_launcher/rail_gun are
+  // `pickup_only` (never in a pool, so NO HEAVIES and OPEN both land on the same primary pool — the only
+  // visible `heavy`-tagged rows were already excluded).
+  // 2026-09-18 (merge): Breacher and Haze took the visible catalogue to 15, which is the DENOMINATOR here.
+  // Neither joins the primary pool: both are `lethal: false`, and a weapon that cannot kill may never be a
+  // primary (weapon-design.md §7.4, policy.py `_support_ids`). So 15 - 2 pickup_only - 2 non-lethal = 11.
   cfgBeforeRules = (await st()).config;
   await nav(1);
   await playCard('FREE-FOR-ALL');            // the run config is TUNED (fast respawn) → the card asks TAP AGAIN
   await until(async () => (await st()).config.loadout_policy.preset === 'no_heavies', 6000, 'preset no_heavies');
   await nav(2);
   await mc.locator('div[role="button"]:has-text("ALPHA")').first().click();
-  await until(async () => (await mc.locator('text=11 OF 13').count()) > 0, 6000, 'arsenal header 11 OF 13');
+  await until(async () => (await mc.locator('text=11 OF 15').count()) > 0, 6000, 'arsenal header 11 OF 15');
   const dis = await mc.locator('div[role="button"][aria-label*="Rocket"]').first().getAttribute('aria-disabled');
   expect(dis === 'true', 'Rocket Launcher tile is not aria-disabled under NO HEAVIES');
   await shot(mc, 'kit-no-heavies');
@@ -407,8 +410,9 @@ await step('(b) hudA: PRIMARY plate → browser → SMG row → EQUIPPED ✓ →
   const ack = await hudA.evaluate(() => window.brx.engine.loadoutAck);
   expect(ack && ack.ok && ack.key === 'weapon:smg', 'loadout_ack was not delivered for weapon:smg: ' + JSON.stringify(ack));
   const cat = await hudA.evaluate(() => (window.brx.engine.catalog || {}).weapons?.length || 0);
-  // 2026-09-17 (arsenal review): 8 weapons joined melee as `hidden`, so the visible catalog is 13
-  // rows now, not 21+.
+  // 2026-09-17 (arsenal review): 8 weapons joined melee as `hidden`, so the visible catalog is 15
+  // rows now (13 until Breacher and Haze landed on 2026-09-18), not 21+. A floor, not an equality: the
+  // step is asking whether the catalog travelled with the assign at all.
   expect(cat >= 13, 'assign did not carry the catalog (weapons=' + cat + ')');
   await until(async () => (await mc.locator('div[role="button"]:has-text("ALPHA")').first().textContent()).includes('SMG'), 6000, 'MC roster line shows SMG');
   await shot(hudA, 'hudA-loadout-equipped'); await shot(mc, 'kit-phone-pick');
@@ -873,15 +877,17 @@ const D = {
 };
 const dimmed = a => a === 'false';
 const lit = a => a === 'true';
-await step('designer-controls 0: CUSTOMIZE FREE-FOR-ALL opens the designer at NO HEAVIES (11 OF 13), heavies dimmed, HEAVY chip unfilled', async () => {
-  // 2026-09-17 (arsenal review): 13 weapons are visible now, not 21 — 8 joined melee as `hidden`.
-  // rocket_launcher/rail_gun are the only visible `heavy`-tagged rows left (laser_cannon/ion_sniper/
-  // energy_launcher are hidden too), and both are `pickup_only`: NO HEAVIES and OPEN land on the
-  // SAME 11 OF 13 pool, since pickup_only already excludes them before the chip's own rule applies.
+await step('designer-controls 0: CUSTOMIZE FREE-FOR-ALL opens the designer at NO HEAVIES (11 OF 15), heavies dimmed, HEAVY chip unfilled', async () => {
+  // 2026-09-17 (arsenal review): 8 weapons joined melee as `hidden`, and 2026-09-18's merge added Breacher
+  // and Haze, so 15 rows are visible now, not 21. rocket_launcher/rail_gun are the only visible
+  // `heavy`-tagged rows left (laser_cannon/ion_sniper/energy_launcher are hidden too), and both are
+  // `pickup_only`: NO HEAVIES and OPEN land on the SAME 11 OF 15 pool, since pickup_only already excludes
+  // them before the chip's own rule applies. Breacher and Haze are `lethal: false` and so are out of the
+  // PRIMARY pool as well (never out of slot 2) — the numerator stayed at 11 while the catalogue grew.
   await ensureMc();
   await mc.locator('nav button').nth(1).click();
   await shelves(); await mc.click('button[aria-label="customize FREE-FOR-ALL"]');
-  await until(async () => /11 OF 13/.test(await D.pSum()), 6000, 'FFA base starts at NO HEAVIES (11 of 13)');
+  await until(async () => /11 OF 15/.test(await D.pSum()), 6000, 'FFA base starts at NO HEAVIES (11 of 15)');
   expect(dimmed(await D.art('Rocket Launcher')) && dimmed(await D.art('Rail Gun')), 'heavy tiles are not dimmed under NO HEAVIES');
   // The DESIGNER offers only weapons a player can be issued (1c83b745): the Energy Launcher
   // (UNPLAYABLE_IDS) is ALSO `hidden` now (2026-09-17), so it has no row for a stronger reason too.
@@ -892,12 +898,12 @@ await step('designer-controls 0: CUSTOMIZE FREE-FOR-ALL opens the designer at NO
   await shot(mc, 'designer-open'); await textAudit(mc, 'designer');
 });
 await step('DESIGNER: every primary control is ≥ 36 px tall (tap audit is a failure here, not a finding)', async () => { await tapAudit(mc, 'designer', true); });
-await step('designer-controls 1: template OPEN → 11 OF 13; heavies stay dimmed and the HEAVY chip reads PARTIAL (pickup_only overrides the tag rule)', async () => {
+await step('designer-controls 1: template OPEN → 11 OF 15; heavies stay dimmed and the HEAVY chip reads PARTIAL (pickup_only overrides the tag rule)', async () => {
   // 2026-09-17: rocket_launcher/rail_gun can never be "in the pool" (pickup_only), so under OPEN
   // (no exclude_tags at all) the HEAVY chip's own members read 0/2 allowed — "mixed", not fully on —
   // and the tiles stay dimmed even though nothing is explicitly excluding them by rule.
   await mc.click('button[title="Everything, players pick all three slots"]');
-  await until(async () => /11 OF 13/.test(await D.pSum()), 4000, 'OPEN → 11 of 13');
+  await until(async () => /11 OF 15/.test(await D.pSum()), 4000, 'OPEN → 11 of 15');
   expect(dimmed(await D.art('Rocket Launcher')), 'rocket launcher should stay dimmed under OPEN (pickup_only)');
   expect((await D.chip('HEAVY').getAttribute('aria-pressed')) === 'mixed', 'HEAVY chip should read PARTIAL (mixed) under OPEN, not on');
   expect((await mc.locator('button[title="Everything, players pick all three slots"][aria-pressed="true"]').count()) === 1, 'OPEN template not shown as selected');
@@ -913,23 +919,23 @@ await step('designer-controls 2: template SNIPERS → PRIMARY "EVERYONE GETS SNI
   await until(async () => /SNIPER RIFLE FOR EVERYONE/.test(await D.rail()) && /NO SLOT 2/.test(await D.rail()), 4000, 'rail follows the template');
   await shot(mc, 'designer-snipers');
 });
-await step('designer-controls 3: HEAVY chip off (from OPEN) → still 11 OF 13, chip flips PARTIAL → OFF (pickup_only already excluded both heavies)', async () => {
+await step('designer-controls 3: HEAVY chip off (from OPEN) → still 11 OF 15, chip flips PARTIAL → OFF (pickup_only already excluded both heavies)', async () => {
   // 2026-09-17: tapping the HEAVY chip from its OPEN "mixed" (0/2) reading flips it to an EXPLICIT
   // off (any state but fully off taps to off) — but the pool count does not move, because
   // rocket_launcher/rail_gun were already out of it via pickup_only, not the tag rule.
   await mc.click('button[title="Everything, players pick all three slots"]');
-  await until(async () => /11 OF 13/.test(await D.pSum()), 4000, 'OPEN again');
+  await until(async () => /11 OF 15/.test(await D.pSum()), 4000, 'OPEN again');
   expect((await D.chip('HEAVY').getAttribute('aria-pressed')) === 'mixed', 'HEAVY chip should start PARTIAL under OPEN');
   await D.chip('HEAVY').click();
   await until(async () => (await D.chip('HEAVY').getAttribute('aria-pressed')) === 'false', 4000, 'HEAVY chip → off');
-  expect(/11 OF 13/.test(await D.pSum()), 'pool count should not move — pickup_only already excluded both heavies: ' + await D.pSum());
+  expect(/11 OF 15/.test(await D.pSum()), 'pool count should not move — pickup_only already excluded both heavies: ' + await D.pSum());
   expect(dimmed(await D.art('Rocket Launcher')) && dimmed(await D.art('Rail Gun')), 'heavy tiles not dimmed after HEAVY off');
   expect(lit(await D.art('Sniper Rifle')) && lit(await D.art('SMG')), 'a non-heavy tile went dim');
   await shot(mc, 'designer-heavy-off');
 });
-await step('designer-controls 4: tap the Assault Rifle tile → 10 OF 13, that tile dimmed and labelled off', async () => {
+await step('designer-controls 4: tap the Assault Rifle tile → 10 OF 15, that tile dimmed and labelled off', async () => {
   await D.prim().locator('button[aria-label^="Assault Rifle"]').click();
-  await until(async () => /10 OF 13/.test(await D.pSum()), 4000, 'tile off → 10 of 13');
+  await until(async () => /10 OF 15/.test(await D.pSum()), 4000, 'tile off → 10 of 15');
   expect((await D.prim().locator('button[aria-label="Assault Rifle, off"]').count()) === 1, 'assault rifle tile not labelled off');
   expect(dimmed(await D.art('Assault Rifle')), 'assault rifle tile not dimmed');
   await shot(mc, 'designer-tile-off');
@@ -943,7 +949,7 @@ await step('designer-controls 5: tapping a pickup_only heavy tile ("allow throug
   // never visibly do anything may read as broken rather than as "this weapon is pickup-only".
   await D.prim().locator('button[aria-label="Rail Gun, off"]').click();
   await new Promise(r => setTimeout(r, 400));
-  expect(/10 OF 13/.test(await D.pSum()), 'pool count must not move (still 10 of 13, assault rifle stays off from step 4) — pickup_only overrides the per-id override: ' + await D.pSum());
+  expect(/10 OF 15/.test(await D.pSum()), 'pool count must not move (still 10 of 15, assault rifle stays off from step 4) — pickup_only overrides the per-id override: ' + await D.pSum());
   expect(dimmed(await D.art('Rail Gun')), 'rail gun tile should still read off (dimmed) — pickup_only, not the chip, excludes it');
   expect(dimmed(await D.art('Rocket Launcher')), 'the other heavy should stay dimmed too');
   await shot(mc, 'designer-allow-through-chip-is-a-no-op-for-pickup-only');
@@ -962,10 +968,13 @@ await step('designer-controls 7: slot 2 OFF → "OFF — ALT-FIRE DOES NOTHING",
   await until(async () => /SMG FOR EVERYONE · NO SLOT 2/.test(await D.rail()), 4000, 'summary rail follows');
   await shot(mc, 'designer-slot2-off');
 });
-await step('designer-controls 7b (A12/A14): slot 2 PLAYER → SIDEARMS chip → "SIDEARMS ONLY · 2 OF 2 PISTOLS", only usp/deagle allowed, WEAPONS chip off; SIDEARMS again is a no-op (slot 2 always admits one kind); WEAPONS → 11 OF 13', async () => {
+await step('designer-controls 7b (A12/A14): slot 2 PLAYER → SIDEARMS chip → "SIDEARMS ONLY · 2 OF 2 PISTOLS", only usp/deagle allowed, WEAPONS chip off; SIDEARMS again is a no-op (slot 2 always admits one kind); WEAPONS → 13 OF 15', async () => {
   // 2026-09-17 (arsenal review): glock is `hidden` now, so only 2 pistols (usp, deagle) are pickable.
+  // 2026-09-18 (merge): slot 2 reads 13 OF 15 where the PRIMARY reads 11 OF 15. The two non-lethal support
+  // weapons (Breacher, Haze) are barred from the primary slot only (weapon-design.md §7.4) — slot 2 takes
+  // them — so the two summaries are meant to disagree by exactly those two rows.
   await D.sec().locator('button:has-text("PLAYER")').click();
-  await until(async () => /11 OF 13 WEAPONS/.test(await D.sSum()), 4000, 'slot 2 back to PLAYER (11 of 13)');
+  await until(async () => /13 OF 15 WEAPONS/.test(await D.sSum()), 4000, 'slot 2 back to PLAYER (13 of 15)');
   const kind = (label) => D.sec().locator(`button:has-text("${label}")`).first();
   await kind('SIDEARMS').click();
   await until(async () => /SIDEARMS ONLY · 2 OF 2 PISTOLS/.test(await D.sSum()), 4000, 'SIDEARMS chip → sidearms only, got: ' + await D.sSum());
@@ -979,12 +988,12 @@ await step('designer-controls 7b (A12/A14): slot 2 PLAYER → SIDEARMS chip → 
   await sleep(400);
   expect(/SIDEARMS ONLY · 2 OF 2 PISTOLS/.test(await D.sSum()) && (await kind('SIDEARMS').getAttribute('aria-pressed')) === 'true', 'the last kind must stay on, got: ' + await D.sSum());
   await kind('WEAPONS').click();
-  await until(async () => /11 OF 13 WEAPONS/.test(await D.sSum()), 4000, 'WEAPONS on → 11 of 13');
+  await until(async () => /13 OF 15 WEAPONS/.test(await D.sSum()), 4000, 'WEAPONS on → 13 of 15');
   expect((await D.sec().locator('button[aria-label="USP-S, allowed"]').count()) === 1, 'the pistols are ordinary weapons under WEAPONS');
 });
-await step('designer-controls 8: base switch to TEAM DEATHMATCH resets the rules (11 OF 13, rail BASE TDM) and SAVE lands the card', async () => {
+await step('designer-controls 8: base switch to TEAM DEATHMATCH resets the rules (11 OF 15, rail BASE TDM) and SAVE lands the card', async () => {
   await mc.click('button[aria-pressed="false"]:has-text("TEAM DEATHMATCH")');
-  await until(async () => /TEAM DEATHMATCH/.test(await D.rail()) && /11 OF 13/.test(await D.pSum()), 4000, 'base → TDM, rules reset');
+  await until(async () => /TEAM DEATHMATCH/.test(await D.rail()) && /11 OF 15/.test(await D.pSum()), 4000, 'base → TDM, rules reset');
   // 2026-09-17: rocket_launcher is `pickup_only` — it stays dimmed on every reset, whatever the
   // base mode's rules are, so "rules reset" is proven by the count/rail above instead, and by a
   // non-heavy tile that a previous step's exclusion (assault_rifle, step 4) also un-dims here.
@@ -1074,24 +1083,25 @@ await step('compat-older-server: new UI renders GAMES / DESIGNER / KIT against a
   await pg.click('button[title="Everyone gets the sniper rifle, no secondary, no perks, no picking"]');   // templates are client-side: must work here too
   await until(async () => /EVERYONE GETS SNIPER RIFLE/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'template applies against a stale server');
   await pg.click('button[title="Everything, players pick all three slots"]');
-  // 2026-09-17 (arsenal review): 13 weapons visible (not 21); rocket_launcher/rail_gun are
-  // `pickup_only`, so OPEN already excludes them before the HEAVY chip's own rule applies.
-  await until(async () => /11 OF 13/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'OPEN → 11 of 13 (pool computed locally)');
+  // 2026-09-17 (arsenal review): 15 weapons visible (not 21); rocket_launcher/rail_gun are
+  // `pickup_only`, so OPEN already excludes them before the HEAVY chip's own rule applies, and Breacher
+  // and Haze are `lethal: false`, which bars them from the PRIMARY pool (weapon-design.md §7.4).
+  await until(async () => /11 OF 15/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'OPEN → 11 of 15 (pool computed locally)');
   // the rules must be LIVE with no server help: a chip dims its class, a tile tap switches one weapon (Tony, round 8)
   const prim = pg.locator('[aria-label="primary slot rules"]');
   await prim.locator('button:has-text("HEAVY")').first().click();
   // pickup_only already excluded rocket_launcher/rail_gun, so the count does not move — only the
   // chip's own state flips from PARTIAL (mixed) to explicit OFF.
   await until(async () => (await prim.locator('button:has-text("HEAVY")').first().getAttribute('aria-pressed')) === 'false', 4000, 'HEAVY chip → off against a stale server');
-  expect(/11 OF 13/.test(await pg.getByTestId('primary-summary').textContent()), 'pool count should not move: ' + await pg.getByTestId('primary-summary').textContent());
+  expect(/11 OF 15/.test(await pg.getByTestId('primary-summary').textContent()), 'pool count should not move: ' + await pg.getByTestId('primary-summary').textContent());
   expect((await prim.locator('button[aria-label="Rocket Launcher, off"]').count()) === 1, 'rocket launcher tile not shown as off');
   await prim.locator('button[aria-label^="Assault Rifle"]').click();
-  await until(async () => /10 OF 13/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'tile tap → 10 of 13 against a stale server');
+  await until(async () => /10 OF 15/.test(await pg.getByTestId('primary-summary').textContent()), 4000, 'tile tap → 10 of 15 against a stale server');
   // tapping a pickup_only heavy's own tile ("allow just this one") cannot bring it into the pool —
   // pickup_only overrides the per-id override the same way it overrides the tag rule.
   await prim.locator('button[aria-label="Rocket Launcher, off"]').click();
   await new Promise(r => setTimeout(r, 400));
-  expect(/10 OF 13/.test(await pg.getByTestId('primary-summary').textContent()), 'pickup_only heavy must not enter the pool via a tile tap: ' + await pg.getByTestId('primary-summary').textContent());
+  expect(/10 OF 15/.test(await pg.getByTestId('primary-summary').textContent()), 'pickup_only heavy must not enter the pool via a tile tap: ' + await pg.getByTestId('primary-summary').textContent());
   expect((await prim.locator('button[aria-label="Rocket Launcher, off"]').count()) === 1, 'rocket launcher tile should still read off');
   expect((await prim.locator('button[disabled]').count()) === 0, 'tiles disabled against a stale server');
   await backToGames(pg); await shelves(pg); await pg.click('button[aria-label="customize FREE-FOR-ALL"]'); await pg.waitForTimeout(500); await noCrash('DESIGNER (customize)');

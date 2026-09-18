@@ -2083,12 +2083,28 @@ await step('ready control: the inert STANDING BY button is marked aria-disabled,
 // ENERGY replace a reload prompt that would lie once the reserve is also empty. Drives the live engine
 // directly (`window.brx.engine`, the same handle `demo.js`'s own stage harness uses) so a real weapon's
 // real magazine size is on screen — the `live` stage's golden bundle only ever spawns an assault rifle. ----------
-const setAmmo = (pg, weaponId, slot, mag, reserve, ammo, heat = 0) => pg.evaluate(({ weaponId, slot, mag, reserve, ammo, heat }) => {
-  const e = window.brx.engine;
-  e.player.loadout.weapons[slot] = { weapon_id: weaponId };
-  e.frames.spawn = e.frames.spawn.map(f => f.startsWith(`$AMMO,${slot},`) ? `$AMMO,${slot},${mag},${reserve},1,*` : f);
-  e.feedFrame(`$ALCD,${ammo},100,${slot},${reserve},${heat},*`);
-}, { weaponId, slot, mag, reserve, ammo, heat });
+const setAmmo = async (pg, weaponId, slot, mag, reserve, ammo, heat = 0) => {
+  await pg.evaluate(({ weaponId, slot, mag, reserve }) => {
+    const e = window.brx.engine;
+    e.player.loadout.weapons[slot] = { weapon_id: weaponId };
+    e.frames.spawn = e.frames.spawn.map(f => f.startsWith(`$AMMO,${slot},`) ? `$AMMO,${slot},${mag},${reserve},1,*` : f);
+  }, { weaponId, slot, mag, reserve });
+  // F259 (2026-09-18): the node IGNORES an `$ALCD` that raises the magazine while it is still waiting for the
+  // gun to echo a magazine the node itself wrote (`_acctAmmo`'s echo window, ACC_ECHO_MS) — swapping the weapon
+  // above is one of the things that makes it write. A single injected frame can land inside that window and be
+  // dropped, and the step then asserts against the PREVIOUS state: two ammo steps read as a HUD bug that way
+  // (2026-09-18), because a swallowed frame looks exactly like a screen that refused to move. So feed until the
+  // engine reports the number back. A swallowed frame becomes a retry, and a state that never lands fails HERE,
+  // naming the state, instead of silently later as a wrong pixel. Polled slowly on purpose: each feed is a whole
+  // frame through the engine, and a tight rAF loop would put dozens of them through it per window.
+  await pg.waitForFunction(({ slot, ammo, reserve, heat }) => {
+    const e = window.brx.engine;
+    e.feedFrame(`$ALCD,${ammo},100,${slot},${reserve},${heat},*`);   // ALWAYS feed: a step can re-send the same magazine with a different reserve
+    const s = e.state();
+    return s.ammo === ammo && s.reserve === reserve;
+  }, { slot, ammo, reserve, heat }, { polling: 200, timeout: 5000 })
+    .catch(async () => { throw new Error(`setAmmo: the engine never took ${weaponId} ${ammo}/${mag} (reserve ${reserve}, heat ${heat}), it reads ${JSON.stringify(await pg.evaluate(() => { const s = window.brx.engine.state(); return { ammo: s.ammo, reserve: s.reserve }; }))}`); });
+};
 const gaugeState = pg => pg.evaluate(() => ({
   pips: document.querySelectorAll('#pips > i').length,
   lit: document.querySelectorAll('#pips > i:not(.spent)').length,
