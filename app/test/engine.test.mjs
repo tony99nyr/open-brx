@@ -5,7 +5,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS } from '../src/engine.js';
+import { Engine, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, frameCommand, deniedCommand } from '../src/engine.js';
+import * as W from '../src/transport/envelope.js';
 import { CONTROL_STATE } from '../src/control.js';   // the phone control point's advert bits (K1)
 import { Presence, encodeUuid } from '../src/beacon.js';   // the REAL advert path, for the clock-mismatch guard
 
@@ -5057,4 +5058,54 @@ test('A42: a re-delivered END is idempotent — no second teardown, no second hi
   assert.equal(h.eng.phase, 'kitted');
   assert.equal(h.writes.length, writes, 'the gun is not torn down a second time');
   assert.equal(h.facts.length, facts, 'and no second end-of-match fact goes out');
+});
+
+// ---------- transport-hardening.md §4: the node's gun-command deny list ----------
+// The V4_30/V4_31 firmware (LaserTagMods' drive, 2026-09-18) has commands that write persistent state,
+// re-pair or re-flash a radio, switch the IR word format, or BLOCK the main loop with the serial port unread
+// (`$DPLAY`: the likely screamer mechanism). `protocol.DENIED_COMMANDS` reaches the phone as the generated
+// `NODE_DENIED_COMMANDS`, and `_write` is the one choke point every gun write passes through.
+test('deny list: _write drops a denied frame, writes the rest, logs it loudly, and counts it', () => {
+  const h = harness().kit().config_();
+  const logs = []; h.eng.log = m => logs.push(String(m));
+  const before = h.writes.length;
+  h.eng._write(['$PLAY,U37,3,10,,,,,*', '$DPLAY,A10,4,*', '$FACTORY,*', '$!FSFORMAT,*', '$HLED,1,0,,,10,,*'], 'test');
+  const wrote = h.writes.slice(before);
+  assert.deepEqual(wrote, ['$PLAY,U37,3,10,,,,,*', '$HLED,1,0,,,10,,*'], 'only the allowed frames reach the gun');
+  assert.equal(h.eng.refused, 3);
+  assert.ok(logs.some(m => m.includes('REFUSED 3') && m.includes('$DPLAY') && m.includes('$FACTORY') && m.includes('$!FSFORMAT')), logs);
+  // a burst that is ALL denied writes nothing at all
+  h.eng._write(['$CDFU,*'], 'test');
+  assert.equal(h.writes.length, before + 2);
+  assert.equal(h.eng.refused, 4);
+});
+
+test('deny list: the generated set is the source, and the helpers read the command word only', () => {
+  assert.ok(W.NODE_DENIED_COMMANDS.has('DPLAY') && W.NODE_DENIED_COMMANDS.has('FACTORY') && W.NODE_DENIED_COMMANDS.has('CDFU'));
+  assert.equal(frameCommand('$DPLAY,A10,4,*'), 'DPLAY');
+  assert.equal(frameCommand('$dplay,A10,4,*'), 'DPLAY');
+  assert.equal(frameCommand('not a frame'), '');
+  assert.equal(deniedCommand('$PLAY,U37,3,10,,,,,*'), false, 'PLAY is not DPLAY: the match is on the whole word');
+  assert.equal(deniedCommand('$DPLAY,A10,4,*'), true);
+  assert.equal(deniedCommand('$^RESET,*'), true, 'gun<->radio control frames are never ours');
+  assert.equal(deniedCommand(''), false);
+  assert.equal(deniedCommand(null), false);
+});
+
+test('deny list: nothing a real bundle writes is denied (head, spawn, revive, end all go through untouched)', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  h.frame('$HIR,4,0,19,2,45,0,0,*'); h.frame('$HP,0,0,0,*');   // die
+  h.adv(9000); h.eng.tick();                                     // auto respawn
+  h.eng.onMcMessage({ kind: 'control', body: { cmd: 'end' } });
+  assert.equal(h.eng.refused || 0, 0, 'no compiled frame may trip the deny list');
+  assert.ok(h.writes.includes('$SPAWN,,*') && h.writes.includes('$CLEAR,*'));
+});
+
+test('F206: the spawn burst carries the $PSET from pset_pool BEFORE $SPAWN, and $TID right after it', () => {
+  const h = harness().kit().config_().echo().start(0); h.adv(10); h.eng.tick();
+  const i = h.writes.indexOf('$SPAWN,,*');
+  assert.ok(i > 0, 'spawned');
+  assert.equal(h.writes[i + 1], '$TID,1,*', 'the team is re-asserted after $SPAWN (one team byte, last writer wins)');
+  const pset = h.writes.slice(0, i).filter(f => f.startsWith('$PSET,'));
+  assert.ok(pset.length >= 1 && pset.every(f => f.split(',')[2] === '1'), 'every $PSET written carries the $TID team: ' + pset);
 });

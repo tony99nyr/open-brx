@@ -19,6 +19,12 @@ export const C = {
 };
 export const SFLASH = '$SFLASH,*';
 export const PLAYX = '$PLAYX,0,*';
+/** The command word of a `$…` frame, or '' -- `$DPLAY,A10,4,*` -> 'DPLAY'. A gun<->radio control frame
+ *  (`$!…`, `$^…`, `$&…`) keeps its prefix so it never matches a real command by accident. */
+export function frameCommand(f) { return typeof f === 'string' && f[0] === '$' ? f.slice(1).split(',')[0].toUpperCase() : ''; }
+/** True when the node must never write this frame (transport-hardening.md §4): the word is on the generated
+ *  deny list, or it is a gun<->radio module control frame. */
+export function deniedCommand(f) { const w = frameCommand(f); return !!w && (W.NODE_DENIED_COMMANDS.has(w) || '!^&'.includes(w[0])); }
 export const PROBE_VOLTS = ['$PHONE,*'];
 export const PROBE_FW = ['$STOP,*', '$PHONE,*', '$VERSION,*'];
 
@@ -440,8 +446,20 @@ export class Engine {
     this.phase = phase; this._changed();
   }
   _changed() { this._save(); try { this.onChange(this); } catch (_) { /* ignore */ } }
+  /** Every gun write goes through here, and the deny list is enforced HERE, not in the bundle: a frame whose
+   *  command word is in `NODE_DENIED_COMMANDS` (generated from `protocol.DENIED_COMMANDS`: persistent state,
+   *  pairing, DFU, the IR word-format switch, factory tests, and `$DPLAY`, which blocks the gun's main loop
+   *  with the serial port unread) is dropped and logged, whatever MC, a debug panel or a stale bundle says.
+   *  `docs/spec/transport-hardening.md` §4. */
   _write(frames, why) {
     if (!frames || !frames.length) return;
+    const denied = frames.filter(f => typeof f === 'string' && deniedCommand(f));
+    if (denied.length) {
+      this.refused = (this.refused || 0) + denied.length;
+      this.log(`write ${why}: REFUSED ${denied.length} frame(s) the node must never send: ${denied.map(f => f.split(',')[0]).join(' ')}`, 'le');
+      frames = frames.filter(f => !denied.includes(f));
+      if (!frames.length) return;
+    }
     this.log(`write ${why}: ${frames.length} frame(s)`, 'li');
     try { return this.writer(frames); } catch (e) { this.log(`write ${why} failed: ${e && e.message || e}`, 'le'); }
   }
