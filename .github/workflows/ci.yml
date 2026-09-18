@@ -178,7 +178,12 @@ jobs:
                 return 1
               fi
             done
-            if ! git rebase FETCH_HEAD; then
+            # `--onto FETCH_HEAD "$GITHUB_SHA"` replays ONLY the commits this job made, which is the shots
+            # commit and nothing else. A bare `git rebase FETCH_HEAD` would replay everything in
+            # FETCH_HEAD..HEAD, so if main were force-pushed or reset while the browser ran, this job
+            # would quietly re-land the dropped commits under the bot's name, and its own `[skip ci]`
+            # would stop anything re-testing them (polish review 2026-09-17).
+            if ! git rebase --onto FETCH_HEAD "$GITHUB_SHA"; then
               git rebase --abort || true
               echo "::error::The refreshed site/shots would not replay onto the tip of main, so something else changed site/shots. This job never force-pushes. $HOWTO"
               return 1
@@ -189,7 +194,9 @@ jobs:
           if git push origin HEAD:main; then
             exit 0
           fi
-          echo "The push was rejected: a commit landed between the check and the push. Syncing once more."
+          # Usually an overlapping commit. It can also be branch protection or a token without write, and
+          # the retry below then fails the same way, which is the right outcome: the job goes red.
+          echo "The push was rejected. Syncing once more and retrying; if this is not an overlapping commit, the retry fails too."
           sync_onto_main || exit 1
           if ! git push origin HEAD:main; then
             echo "::error::The refreshed site/shots would not push after one retry. This job never force-pushes. $HOWTO"
