@@ -52,6 +52,12 @@ for (const [label, n, floor] of [['visible', VISIBLE_WEAPONS, 6], ['primary pool
 const BASE_POOL = `${PRIMARY_ALLOWED} OF ${VISIBLE_WEAPONS}`;               // NO HEAVIES and OPEN both land here (primary)
 const AR_OFF_POOL = `${PRIMARY_ALLOWED - 1} OF ${VISIBLE_WEAPONS}`;         // one primary (Assault Rifle) tapped off
 const SECONDARY_WEAPONS_POOL = `${SECONDARY_ALLOWED} OF ${VISIBLE_WEAPONS} WEAPONS`;   // secondary slot, WEAPONS kind, OPEN rules
+/** A derived string is DATA, and data in a pattern position must be escaped, or the guard's meaning stops
+ *  being ours and becomes the catalogue's to change. Ship a weapon called `USP-S (Mk2)` or `Rail Gun [heavy]`
+ *  and an unescaped assertion does not fail: it quietly starts matching a pattern nobody wrote, which is the
+ *  same fault as a guard that reads text instead of behaviour. Returns `s` as a RegExp LITERAL. EVERY
+ *  `new RegExp(...)` built from catalogue-derived text in this file goes through here -- one helper, no copies. */
+const rxLit = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** A port from the environment, else a free one from the OS. Two runs in two worktrees must not share a port. */
 const freePort = () => new Promise((res, rej) => { const s = net.createServer(); s.unref(); s.on('error', rej); s.listen(0, () => { const { port } = s.address(); s.close(() => res(port)); }); });
 const envPort = async (name) => { const v = process.env[name]; if (v === undefined || v === '') return freePort(); const n = Number(v); if (!Number.isInteger(n) || n <= 0 || n > 65535) { console.error(`FATAL: ${name}=${v} is not a port`); process.exit(3); } return n; };
@@ -404,7 +410,7 @@ await step('weapon description renders in the hero panel', async () => {
   // whitespace, so it matches the rendered text however the panel wraps it
   const words = (smg.desc || '').trim().split(/\s+/).slice(0, 5);
   expect(words.length >= 4, `the SMG description is too short to assert on: ${smg.desc}`);
-  const probe = new RegExp(words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+'), 'i');
+  const probe = new RegExp(words.map(rxLit).join('\\s+'), 'i');
   await until(async () => (await mc.locator(`text=${probe}`).count()) > 0, 6000,
               `the SMG description did not render (looked for "${words.join(' ')}" from demo-catalog.js)`);
 });
@@ -507,7 +513,11 @@ await step('(b2) defect-2: a missing weapon photo in the phone rack shows a glyp
     await hudA.click('.lotab[data-arg="primary"]');
     const row = hudA.locator('.lrow[data-arg="weapon:smg"] .thumb');
     await until(async () => (await row.evaluate(el => getComputedStyle(el.querySelector('.wpic')).display)) === 'none', 6000, 'the broken <img> is hidden on the SMG row');
-    expect((await row.evaluate(el => getComputedStyle(el.querySelector('.wpicfb')).display)) === 'flex', 'the fallback glyph is not shown');
+    // Wait for the glyph too, do not assert it straight after the hide. `onerror` hides the <img> and
+    // shows the fallback in two separate style writes, so a synchronous assert here races the second
+    // one and fails intermittently with "the fallback glyph is not shown" while the UI is correct
+    // (seen 2026-09-18). The repo's rule: wait for the condition, never for the previous condition.
+    await until(async () => (await row.evaluate(el => getComputedStyle(el.querySelector('.wpicfb')).display)) === 'flex', 6000, 'the fallback glyph is not shown on the SMG row');
     expect((await row.locator('svg').count()) > 0, 'no fallback glyph rendered on the SMG row');
     // .lrow .thumb is a fixed 66×36 CSS box (index.html) — the frame itself is scaled to fit the
     // viewport (`_fitMcLinked`-style transform), so read the authored size, not a scaled bounding rect.
@@ -645,7 +655,7 @@ await step('(h3) copy "e2e test" → play the COPY → the copy\'s card is PLAYI
   expect((await mc.locator('div[role="button"][aria-label="play e2e test"]').first().getAttribute('aria-pressed')) !== 'true', 'the ORIGINAL is still marked PLAYING');
   // A LOADED game (47a87830) heads the tab as SAVED GAME // LOADED; the picker rail reads // PLAYING before a LOAD.
   const rail = await mc.locator('text=/SAVED GAME \\/\\/ (PLAYING|LOADED)/').first().locator('xpath=..').textContent();
-  expect(new RegExp(copy.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(rail), 'rail title is not the copy: ' + rail.slice(0, 80));
+  expect(new RegExp(rxLit(copy.name), 'i').test(rail), 'rail title is not the copy: ' + rail.slice(0, 80));
   await shot(mc, 'games-play-copy');
   for (const nm of [copy.name, 'e2e test']) {
     await mc.click(`button[aria-label="delete ${nm}"]`); await mc.click('button:has-text("CONFIRM DELETE")');
@@ -994,7 +1004,7 @@ await step(`designer-controls 0: CUSTOMIZE FREE-FOR-ALL opens the designer at NO
   await ensureMc();
   await mc.locator('nav button').nth(1).click();
   await shelves(); await mc.click('button[aria-label="customize FREE-FOR-ALL"]');
-  await until(async () => new RegExp(BASE_POOL).test(await D.pSum()), 6000, `FFA base starts at NO HEAVIES (${BASE_POOL})`);
+  await until(async () => new RegExp(rxLit(BASE_POOL)).test(await D.pSum()), 6000, `FFA base starts at NO HEAVIES (${BASE_POOL})`);
   expect(dimmed(await D.art('Rocket Launcher')) && dimmed(await D.art('Rail Gun')), 'heavy tiles are not dimmed under NO HEAVIES');
   // The DESIGNER offers only weapons a player can be issued (1c83b745): the Energy Launcher
   // (UNPLAYABLE_IDS) is ALSO `hidden` now (2026-09-17), so it has no row for a stronger reason too.
@@ -1010,7 +1020,7 @@ await step(`designer-controls 1: template OPEN → ${BASE_POOL}; heavies stay di
   // at all) the HEAVY chip's own members read 0/2 allowed — "mixed", not fully on — and the tiles
   // stay dimmed even though nothing is explicitly excluding them by rule.
   await mc.click('button[title="Everything, players pick all three slots"]');
-  await until(async () => new RegExp(BASE_POOL).test(await D.pSum()), 4000, `OPEN → ${BASE_POOL}`);
+  await until(async () => new RegExp(rxLit(BASE_POOL)).test(await D.pSum()), 4000, `OPEN → ${BASE_POOL}`);
   expect(dimmed(await D.art('Rocket Launcher')), 'rocket launcher should stay dimmed under OPEN (pickup_only)');
   expect((await D.chip('HEAVY').getAttribute('aria-pressed')) === 'mixed', 'HEAVY chip should read PARTIAL (mixed) under OPEN, not on');
   expect((await mc.locator('button[title="Everything, players pick all three slots"][aria-pressed="true"]').count()) === 1, 'OPEN template not shown as selected');
@@ -1031,18 +1041,18 @@ await step(`designer-controls 3: HEAVY chip off (from OPEN) → still ${BASE_POO
   // but fully off taps to off) — but the pool count does not move, because rocket_launcher/rail_gun
   // were already out of it via pickup_only, not the tag rule.
   await mc.click('button[title="Everything, players pick all three slots"]');
-  await until(async () => new RegExp(BASE_POOL).test(await D.pSum()), 4000, 'OPEN again');
+  await until(async () => new RegExp(rxLit(BASE_POOL)).test(await D.pSum()), 4000, 'OPEN again');
   expect((await D.chip('HEAVY').getAttribute('aria-pressed')) === 'mixed', 'HEAVY chip should start PARTIAL under OPEN');
   await D.chip('HEAVY').click();
   await until(async () => (await D.chip('HEAVY').getAttribute('aria-pressed')) === 'false', 4000, 'HEAVY chip → off');
-  expect(new RegExp(BASE_POOL).test(await D.pSum()), 'pool count should not move — pickup_only already excluded both heavies: ' + await D.pSum());
+  expect(new RegExp(rxLit(BASE_POOL)).test(await D.pSum()), 'pool count should not move — pickup_only already excluded both heavies: ' + await D.pSum());
   expect(dimmed(await D.art('Rocket Launcher')) && dimmed(await D.art('Rail Gun')), 'heavy tiles not dimmed after HEAVY off');
   expect(lit(await D.art('Sniper Rifle')) && lit(await D.art('SMG')), 'a non-heavy tile went dim');
   await shot(mc, 'designer-heavy-off');
 });
 await step(`designer-controls 4: tap the Assault Rifle tile → ${AR_OFF_POOL}, that tile dimmed and labelled off`, async () => {
   await D.prim().locator('button[aria-label^="Assault Rifle"]').click();
-  await until(async () => new RegExp(AR_OFF_POOL).test(await D.pSum()), 4000, `tile off → ${AR_OFF_POOL}`);
+  await until(async () => new RegExp(rxLit(AR_OFF_POOL)).test(await D.pSum()), 4000, `tile off → ${AR_OFF_POOL}`);
   expect((await D.prim().locator('button[aria-label="Assault Rifle, off"]').count()) === 1, 'assault rifle tile not labelled off');
   expect(dimmed(await D.art('Assault Rifle')), 'assault rifle tile not dimmed');
   await shot(mc, 'designer-tile-off');
@@ -1056,7 +1066,7 @@ await step('designer-controls 5: tapping a pickup_only heavy tile ("allow throug
   // anything may read as broken rather than as "this weapon is pickup-only".
   await D.prim().locator('button[aria-label="Rail Gun, off"]').click();
   await new Promise(r => setTimeout(r, 400));
-  expect(new RegExp(AR_OFF_POOL).test(await D.pSum()), `pool count must not move (still ${AR_OFF_POOL}, assault rifle stays off from step 4) — pickup_only overrides the per-id override: ` + await D.pSum());
+  expect(new RegExp(rxLit(AR_OFF_POOL)).test(await D.pSum()), `pool count must not move (still ${AR_OFF_POOL}, assault rifle stays off from step 4) — pickup_only overrides the per-id override: ` + await D.pSum());
   expect(dimmed(await D.art('Rail Gun')), 'rail gun tile should still read off (dimmed) — pickup_only, not the chip, excludes it');
   expect(dimmed(await D.art('Rocket Launcher')), 'the other heavy should stay dimmed too');
   await shot(mc, 'designer-allow-through-chip-is-a-no-op-for-pickup-only');
@@ -1081,10 +1091,10 @@ await step(`designer-controls 7b (A12/A14): slot 2 PLAYER → SIDEARMS chip → 
   // (computePool never checks it for the secondary slot), so its pool is bigger than the primary's —
   // SECONDARY_WEAPONS_POOL, not BASE_POOL.
   await D.sec().locator('button:has-text("PLAYER")').click();
-  await until(async () => new RegExp(SECONDARY_WEAPONS_POOL).test(await D.sSum()), 4000, `slot 2 back to PLAYER (${SECONDARY_WEAPONS_POOL})`);
+  await until(async () => new RegExp(rxLit(SECONDARY_WEAPONS_POOL)).test(await D.sSum()), 4000, `slot 2 back to PLAYER (${SECONDARY_WEAPONS_POOL})`);
   const kind = (label) => D.sec().locator(`button:has-text("${label}")`).first();
   await kind('SIDEARMS').click();
-  await until(async () => new RegExp(SIDEARM_POOL).test(await D.sSum()), 4000, `SIDEARMS chip → ${SIDEARM_POOL}, got: ` + await D.sSum());
+  await until(async () => new RegExp(rxLit(SIDEARM_POOL)).test(await D.sSum()), 4000, `SIDEARMS chip → ${SIDEARM_POOL}, got: ` + await D.sSum());
   expect((await kind('SIDEARMS').getAttribute('aria-pressed')) === 'true' && (await kind('WEAPONS').getAttribute('aria-pressed')) === 'false', 'SIDEARMS should be on and WEAPONS off (they are exclusive)');
   const allowed = (await D.sec().locator('button[aria-label$=", allowed"]').evaluateAll(bs => bs.map(b => b.getAttribute('aria-label')))).filter(l => !/ perk, allowed$/.test(l));   // perk tiles are allowed too — the check is about WEAPONS
   const wantPistols = [...SIDEARM_NAMES].sort().join(' | ');
@@ -1094,14 +1104,14 @@ await step(`designer-controls 7b (A12/A14): slot 2 PLAYER → SIDEARMS chip → 
   await shot(mc, 'designer-sidearms-only');
   await kind('SIDEARMS').click();                     // A14: perks left slot 2, so the last kind cannot be switched off
   await sleep(400);
-  expect(new RegExp(SIDEARM_POOL).test(await D.sSum()) && (await kind('SIDEARMS').getAttribute('aria-pressed')) === 'true', 'the last kind must stay on, got: ' + await D.sSum());
+  expect(new RegExp(rxLit(SIDEARM_POOL)).test(await D.sSum()) && (await kind('SIDEARMS').getAttribute('aria-pressed')) === 'true', 'the last kind must stay on, got: ' + await D.sSum());
   await kind('WEAPONS').click();
-  await until(async () => new RegExp(SECONDARY_WEAPONS_POOL).test(await D.sSum()), 4000, `WEAPONS on → ${SECONDARY_WEAPONS_POOL}`);
+  await until(async () => new RegExp(rxLit(SECONDARY_WEAPONS_POOL)).test(await D.sSum()), 4000, `WEAPONS on → ${SECONDARY_WEAPONS_POOL}`);
   expect((await D.sec().locator('button[aria-label="USP-S, allowed"]').count()) === 1, 'the pistols are ordinary weapons under WEAPONS');
 });
 await step(`designer-controls 8: base switch to TEAM DEATHMATCH resets the rules (${BASE_POOL}, rail BASE TDM) and SAVE lands the card`, async () => {
   await mc.click('button[aria-pressed="false"]:has-text("TEAM DEATHMATCH")');
-  await until(async () => /TEAM DEATHMATCH/.test(await D.rail()) && new RegExp(BASE_POOL).test(await D.pSum()), 4000, 'base → TDM, rules reset');
+  await until(async () => /TEAM DEATHMATCH/.test(await D.rail()) && new RegExp(rxLit(BASE_POOL)).test(await D.pSum()), 4000, 'base → TDM, rules reset');
   // rocket_launcher is `pickup_only` — it stays dimmed on every reset, whatever the base mode's rules
   // are, so "rules reset" is proven by the count/rail above instead, and by a non-heavy tile that a
   // previous step's exclusion (assault_rifle, step 4) also un-dims here.
@@ -1193,22 +1203,22 @@ await step('compat-older-server: new UI renders GAMES / DESIGNER / KIT against a
   await pg.click('button[title="Everything, players pick all three slots"]');
   // rocket_launcher/rail_gun are `pickup_only`, so OPEN already excludes them before the HEAVY chip's
   // own rule applies — see the BASE_POOL derivation at the top of this file.
-  await until(async () => new RegExp(BASE_POOL).test(await pg.getByTestId('primary-summary').textContent()), 4000, `OPEN → ${BASE_POOL} (pool computed locally)`);
+  await until(async () => new RegExp(rxLit(BASE_POOL)).test(await pg.getByTestId('primary-summary').textContent()), 4000, `OPEN → ${BASE_POOL} (pool computed locally)`);
   // the rules must be LIVE with no server help: a chip dims its class, a tile tap switches one weapon (Tony, round 8)
   const prim = pg.locator('[aria-label="primary slot rules"]');
   await prim.locator('button:has-text("HEAVY")').first().click();
   // pickup_only already excluded rocket_launcher/rail_gun, so the count does not move — only the
   // chip's own state flips from PARTIAL (mixed) to explicit OFF.
   await until(async () => (await prim.locator('button:has-text("HEAVY")').first().getAttribute('aria-pressed')) === 'false', 4000, 'HEAVY chip → off against a stale server');
-  expect(new RegExp(BASE_POOL).test(await pg.getByTestId('primary-summary').textContent()), 'pool count should not move: ' + await pg.getByTestId('primary-summary').textContent());
+  expect(new RegExp(rxLit(BASE_POOL)).test(await pg.getByTestId('primary-summary').textContent()), 'pool count should not move: ' + await pg.getByTestId('primary-summary').textContent());
   expect((await prim.locator('button[aria-label="Rocket Launcher, off"]').count()) === 1, 'rocket launcher tile not shown as off');
   await prim.locator('button[aria-label^="Assault Rifle"]').click();
-  await until(async () => new RegExp(AR_OFF_POOL).test(await pg.getByTestId('primary-summary').textContent()), 4000, `tile tap → ${AR_OFF_POOL} against a stale server`);
+  await until(async () => new RegExp(rxLit(AR_OFF_POOL)).test(await pg.getByTestId('primary-summary').textContent()), 4000, `tile tap → ${AR_OFF_POOL} against a stale server`);
   // tapping a pickup_only heavy's own tile ("allow just this one") cannot bring it into the pool —
   // pickup_only overrides the per-id override the same way it overrides the tag rule.
   await prim.locator('button[aria-label="Rocket Launcher, off"]').click();
   await new Promise(r => setTimeout(r, 400));
-  expect(new RegExp(AR_OFF_POOL).test(await pg.getByTestId('primary-summary').textContent()), 'pickup_only heavy must not enter the pool via a tile tap: ' + await pg.getByTestId('primary-summary').textContent());
+  expect(new RegExp(rxLit(AR_OFF_POOL)).test(await pg.getByTestId('primary-summary').textContent()), 'pickup_only heavy must not enter the pool via a tile tap: ' + await pg.getByTestId('primary-summary').textContent());
   expect((await prim.locator('button[aria-label="Rocket Launcher, off"]').count()) === 1, 'rocket launcher tile should still read off');
   expect((await prim.locator('button[disabled]').count()) === 0, 'tiles disabled against a stale server');
   await backToGames(pg); await shelves(pg); await pg.click('button[aria-label="customize FREE-FOR-ALL"]'); await pg.waitForTimeout(500); await noCrash('DESIGNER (customize)');
