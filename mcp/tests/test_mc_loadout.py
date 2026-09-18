@@ -374,47 +374,55 @@ def test_armour_piercing_is_priced_fairly_on_every_weapon_that_carries_it():
     an unarmoured target, which is the definition of a strict upgrade. Worked across the catalogue on
     2026-09-18, the shipped 0.4 multiplier left AP strictly better on 11 of 13 weapons.
 
-    The real rule is that Armour Piercing must be a TRADE, so for every weapon that carries an `ap_dmg`:
+    The real rule is that Armour Piercing must be a TRADE, so for every weapon that carries the pair:
 
       * SLOWER than the plain weapon against a standard 45+70 target, because AP still has to clear the
-        45 HP underneath and it pays for the bypass in damage; and
-      * FASTER than the plain weapon against an armoured 45+95 one, because that is the whole point.
+        45 HP underneath and it pays for the bypass; and
+      * FASTER than the plain weapon against an armoured 45+95 one, because that is the whole point;
+      * and its cycle is never FASTER than the weapon's own, because the perk is heavier rounds.
 
-    A multiplier cannot do this. Bypassing armour takes the effective pool from 115 to 45, and 45/115 is
-    0.39, so any multiplier near 0.4 leaves hits-to-kill unchanged and the perk costs nothing. Damage is
-    an integer too: at 8 damage the only options are 3 (free) and 2 (useless). Most weapons therefore
-    have NO fair price and carry no `ap_dmg`, and `_refuse_if_ap_ineligible` refuses them."""
+    It takes BOTH levers. A multiplier cannot do it, because bypassing armour takes the pool from 115 to
+    45 and 45/115 is 0.39, so anything near the old 0.4 left hits-to-kill unchanged. Damage alone cannot
+    do it either, because damage is an integer and the steps are too coarse: on an 8-damage weapon 3 is
+    free and 2 is useless. Dropping the CYCLE as well makes the trade continuous, which is why every
+    plain-damage weapon can now carry the perk instead of only two."""
     priced = [w for w in ROWS if w.get("ap_dmg")]
-    assert priced, "no weapon carries `ap_dmg`: delete this guard or the field"
+    assert priced, "no weapon carries an Armour Piercing price: delete this guard or the fields"
     for w in priced:
         wid = w["weapon_id"]
-        base = C.catalog.damage(wid)
-        plain_bare = C.catalog.hits_to_kill(wid, 115)      # 45 HP + 70 armour
-        plain_armoured = C.catalog.hits_to_kill(wid, 140)  # + Body Armor's 25
-        ap = -(-45 // int(w["ap_dmg"]))                    # AP faces the 45 HP alone
-        assert ap > plain_bare, (
-            f"{wid}: Armour Piercing kills a BARE target in {ap} hits against the plain weapon's "
-            f"{plain_bare} — that is a strict upgrade, not a counter-pick (ap_dmg {w['ap_dmg']}, base {base})")
-        assert ap < plain_armoured, (
-            f"{wid}: Armour Piercing needs {ap} hits against an ARMOURED target and the plain weapon "
-            f"needs {plain_armoured} — the perk buys nothing (ap_dmg {w['ap_dmg']}, base {base})")
+        assert w.get("ap_fire_ms"), f"{wid} has ap_dmg but no ap_fire_ms: the pair is not optional"
+        base, cyc = C.catalog.damage(wid), C.catalog.cycle_ms(wid)
+        ap_d, ap_c = int(w["ap_dmg"]), int(w["ap_fire_ms"])
+        assert ap_c >= cyc, f"{wid}: Armour Piercing fires FASTER ({ap_c} ms) than the plain weapon ({cyc} ms)"
+        # time to kill, in ms: (hits - 1) x cycle. AP faces the 45 HP alone; plain faces the whole pool.
+        plain_bare = (C.catalog.hits_to_kill(wid, 115) - 1) * cyc
+        plain_armoured = (C.catalog.hits_to_kill(wid, 140) - 1) * cyc
+        ap_ttk = (-(-45 // ap_d) - 1) * ap_c
+        assert ap_ttk > plain_bare, (
+            f"{wid}: Armour Piercing kills a BARE target in {ap_ttk} ms against the plain weapon's "
+            f"{plain_bare} ms — a strict upgrade, not a counter-pick ({ap_d} dmg at {ap_c} ms)")
+        assert ap_ttk < plain_armoured, (
+            f"{wid}: Armour Piercing needs {ap_ttk} ms against an ARMOURED target and the plain weapon "
+            f"needs {plain_armoured} ms — the perk buys nothing ({ap_d} dmg at {ap_c} ms)")
     # end to end through the compiled frame, not just the arithmetic
     b = C.compile(_cfg(), _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "armor_piercing"}), _TEAMS)
     f = [x for x in b["head"] if x.startswith("$WEAP,0")][0]
     ar = next(w for w in ROWS if w["weapon_id"] == "assault_rifle")
-    assert int(_tok(f, 5)) == ar["ap_dmg"], f
+    assert int(_tok(f, 5)) == ar["ap_dmg"] and int(_tok(f, 14)) == ar["ap_fire_ms"], f
 
 
 def test_armour_piercing_is_refused_on_a_weapon_with_no_fair_price():
-    """The other half of §7.7: a weapon that cannot be priced must not carry the perk at all. The SMG is
-    the clean example. Its plain damage is 8, so it kills a bare target in 15 hits and an armoured one in
-    18; Armour Piercing would need to land between those, and the only integers available are 3, which
-    gives exactly 15 and so costs nothing, and 2, which gives 23 and is useless. There is no number in
-    between, so the SMG carries no `ap_dmg` and the compiler refuses rather than shipping a free perk."""
-    smg = next(w for w in ROWS if w["weapon_id"] == "smg")
-    assert smg.get("ap_dmg") is None, "the SMG has gained an ap_dmg: re-check §7.7's arithmetic"
+    """The other half of §7.7: a weapon that cannot be priced must not carry the perk at all.
+
+    The Rocket Launcher is the clean example, and the reason is structural rather than arithmetic. It
+    deals 115, so it kills a standard 45+70 target in ONE hit, which is a time to kill of zero. There is
+    no window between "slower than plain against a bare target" and "faster than plain against an
+    armoured one" to aim at, because the first number cannot be beaten downwards. A one-shot weapon
+    cannot be sold a bypass: it already bypasses everything by killing outright."""
+    rocket = next(w for w in ROWS if w["weapon_id"] == "rocket_launcher")
+    assert rocket.get("ap_dmg") is None, "the Rocket Launcher has gained an Armour Piercing price"
     try:
-        C.compile(_cfg(), _player({"weapons": [{"weapon_id": "smg"}], "perk": "armor_piercing"}), _TEAMS)
+        C.compile(_cfg(), _player({"weapons": [{"weapon_id": "rocket_launcher"}], "perk": "armor_piercing"}), _TEAMS)
     except ValueError as e:
         assert "ARMOUR-PIERCING GUARD" in str(e) and "ap_dmg" in str(e), e
     else:
@@ -437,15 +445,13 @@ def test_armor_piercing_is_refused_on_a_charge_weapon_and_its_sir_row_is_bench_g
     # their stock cells key fn 36/37 (the CONFIRMED headset-multiplier rows, `_SIR_TABLE`), which the
     # same guard also refuses: a $SIR key swap onto plain fn 2 would silently drop that multiplier
     # too, another way "the damage key is already special" (S50's own phrase).
-    # 2026-09-18 (§7.7): the list shrank to TWO, and that is the fix rather than a regression. smg,
-    # shotgun and suppressor have NO fair `ap_dmg` -- their damage is such that the only integers
-    # available either leave hits-to-kill unchanged (the perk free) or make the weapon useless -- so the
-    # same guard refuses them. Every other weapon was already refused by the cell check above. Armour
-    # Piercing is therefore a two-weapon perk in the shipped arsenal, which is a DESIGN CONSEQUENCE of
-    # the 45 HP under the 70 armour: with only 45 to clear, the perk's damage has very little room.
-    for wid in ("assault_rifle", "energy_rifle"):
+    # 2026-09-18 (§7.7): every PLAIN-DAMAGE weapon can carry the perk, because the price is a damage AND
+    # a cycle. Damage alone could not do it: it is an integer, and on an 8-damage weapon 3 is free while
+    # 2 is useless. What is still refused is a weapon with no window to aim at, which a one-shot weapon
+    # has by definition, plus everything the cell check above already refuses.
+    for wid in ("assault_rifle", "energy_rifle", "smg", "shotgun", "suppressor"):
         C.compile(_cfg(), _player({"weapons": [{"weapon_id": wid}], "perk": "armor_piercing"}), _TEAMS)   # must not raise
-    for wid in ("smg", "shotgun", "suppressor"):
+    for wid in ("rocket_launcher",):
         try:
             C.compile(_cfg(), _player({"weapons": [{"weapon_id": wid}], "perk": "armor_piercing"}), _TEAMS)
         except ValueError as e:

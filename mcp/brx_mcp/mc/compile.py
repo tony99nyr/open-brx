@@ -981,7 +981,10 @@ class WeaponCatalog:
             # floored 1, or the "0 DAMAGE" validate() guard this exact case exists to catch can never
             # trip again).
             put("dmg", int(wire["dmg"]))
-        if wire.get("fire_ms") is not None:
+        fire_abs = (mods or {}).get("fire_abs")
+        if fire_abs is not None:
+            put("fire", int(fire_abs))         # Armour Piercing's own cycle (§7.7)
+        elif wire.get("fire_ms") is not None:
             put("fire", int(wire["fire_ms"]))
         mag, reserve, reload_ms = self._ammo(weapon_id, mods)
         put("mag", mag); put("clipstart", mag)                 # tok39 == tok16
@@ -1488,7 +1491,7 @@ class Compiler:
           also guards a future primary built the same way.
         """
         name = player.get("display") or player.get("player_id") or "this player"
-        if self.catalog._row(weapon_id).get("ap_dmg") is None:
+        if self.catalog._row(weapon_id).get("ap_dmg") is None or self.catalog._row(weapon_id).get("ap_fire_ms") is None:
             # 2026-09-18 (§7.7): most weapons have NO fair Armour Piercing damage, and that is
             # arithmetic rather than an oversight. Bypassing armour takes a standard target from a 115
             # pool to 45 HP, so the perk only costs something if its damage is well under 45/115 of the
@@ -1559,7 +1562,12 @@ class Compiler:
         armor_piercing = bool(fx.get("armor_piercing"))
         if armor_piercing:
             self._refuse_if_ap_ineligible(w0, player)
-            mods = {**mods, "dmg_abs": int(self.catalog._row(w0)["ap_dmg"])}
+            ap_row = self.catalog._row(w0)
+            # BOTH levers (§7.7). Damage alone cannot price the perk, because damage is an integer and
+            # the steps are too coarse: on an 8-damage weapon 3 is free and 2 is useless. Slowing the
+            # cycle as well makes the trade continuous, and it is what the perk should feel like anyway:
+            # heavier rounds, fewer of them, slower.
+            mods = {**mods, "dmg_abs": int(ap_row["ap_dmg"]), "fire_abs": int(ap_row["ap_fire_ms"])}
 
         # A15.1: roll the un-picked $PSET voice fields for THIS push; explicit picks always win
         voice, picks = player.get("voice", "male"), (player.get("voice_slots") or {})

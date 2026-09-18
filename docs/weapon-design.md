@@ -1318,39 +1318,52 @@ poison shooters must not double the clock, or a pair becomes an execution.
 ⚠️ It stays `hidden` until `spec/node.md` §3.17 is built. Enabled early it is simply a worse SMG, and
 `caution` on the row says so.
 
-### 7.7 Armour Piercing cannot be priced with a multiplier
+### 7.7 Armour Piercing takes two levers, not one
 
 The perk shipped at `_AP_DAMAGE_MULT = 0.4`, described as a 60% cut. Worked across the catalogue on
-2026-09-18, **that left Armour Piercing strictly better on 11 of 13 weapons**: same time to kill or
+2026-09-18, **that left Armour Piercing strictly better on 11 of 13 weapons**: the same time to kill or
 faster, and it ignores every protective layer. It was not a counter-pick, it was the correct pick.
 
-**The cause is arithmetic, not a typo.** Bypassing armour takes a standard target from a 115 pool down
-to 45 health, and **45/115 is 0.39**. Any multiplier near 0.4 therefore leaves hits-to-kill unchanged,
-which is a perk that costs nothing. The number chosen to look like a heavy penalty was almost exactly
-the number that makes the penalty vanish.
+**Two reasons, and both matter.**
 
-**Integer damage is the other half.** The fair value is the largest integer where the perk is slower
-than the plain weapon against a bare 45+70 target and faster against a 45+95 armoured one. For most
-weapons no such integer exists. The SMG deals 8: three damage gives 15 hits, exactly what its plain
-rounds need, so the perk is free; two gives 23, so it is useless. There is nothing in between.
+First, a multiplier cannot price this perk at all. Bypassing armour takes a standard target from a 115
+pool down to 45 health, and **45/115 is 0.39**. Any multiplier near 0.4 therefore leaves hits-to-kill
+unchanged, which is a perk that costs nothing. The number chosen to look like a heavy penalty was almost
+exactly the number that makes the penalty vanish.
 
-So Armour Piercing carries a **per-weapon `ap_dmg`**, and a weapon without one is refused
-(`_refuse_if_ap_ineligible`). Two guards hold it:
-`test_armour_piercing_is_priced_fairly_on_every_weapon_that_carries_it` walks every priced weapon and
-checks both ends of the trade, and `test_armour_piercing_is_refused_on_a_weapon_with_no_fair_price`
-proves the refusal. ⚠️ The test they replace **asserted the bug**: it required the perk to beat a plain
-rifle against a BARE target, which is the definition of a strict upgrade.
+Second, **damage alone cannot price it either, because damage is an integer.** On an 8-damage weapon the
+only choices are 3, which gives exactly the hits-to-kill its plain rounds already need and so is free,
+and 2, which is useless. There is nothing in between. Priced on damage alone the perk fitted **two**
+weapons in the whole arsenal.
 
-**Consequence worth a decision: it is a two-weapon perk.** In the shipped arsenal only the **Assault
-Rifle** (`ap_dmg` 3) and the **Energy Rifle** (3) can carry it, plus the hidden Stinger (5). Everything
-else is refused, mostly by the older rule that a weapon whose cell is already a headset-multiplier row
-(fn 36/37) must not be re-keyed, and the rest for having no fair price.
+**The fix is to drop the cycle as well** (Tony's suggestion, and it is the right one). That makes the
+trade continuous instead of stepping in huge jumps, so every plain-damage weapon can carry the perk. It
+is also what the perk should feel like: heavier rounds, fewer of them, slower. Armour Piercing changes
+what your gun IS rather than just weakening it.
 
-That is narrow, and it is a consequence of the health split rather than of the perk. **With only 45
-health under the armour there is very little room for the perk's damage to live in.** If Armour
-Piercing should be broadly available, the standard pool has to carry more health and less armour, for
-example 60 + 55 rather than 45 + 70, which widens the gap the perk has to price itself into. That is a
-game-feel decision, not a balance bug, and it is Tony's.
+| weapon | plain | with Armour Piercing | against a bare target |
+|---|---|---|---|
+| Assault Rifle | 9 at 100 ms | 7 at 225 ms | 0.15 s slower |
+| SMG | 8 at 95 ms | 5 at 184 ms | 0.14 s slower |
+| Shotgun | 45 at 800 ms | 15 at 1000 ms | 0.40 s slower |
+| Suppressor | 8 at 140 ms | 3 at 155 ms | 0.21 s slower |
+| Energy Rifle | 9 at 150 ms | 8 at 405 ms | 0.23 s slower |
+
+Each pair is chosen to land the time to kill in the **middle** of the window between plain-against-bare
+and plain-against-armoured, so the cost is felt rather than technical, and `ap_fire_ms` is never faster
+than the weapon's own cycle.
+
+**What is still refused.** A weapon whose cell is already a headset-multiplier row (fn 36/37) is refused
+by an older rule, because re-keying it would change what the weapon does rather than where its damage
+goes. A charge weapon is refused because its hits-to-kill is release-and-tap maths. And a **one-shot
+weapon has no window at all**: the Rocket Launcher kills a standard target in one hit, a time to kill of
+zero, and you cannot sell a bypass to a weapon that already kills outright.
+
+Two guards hold all of this: `test_armour_piercing_is_priced_fairly_on_every_weapon_that_carries_it`
+walks every priced weapon and checks both ends of the trade plus the cycle direction, and
+`test_armour_piercing_is_refused_on_a_weapon_with_no_fair_price` proves the refusal. ⚠️ The test they
+replace **asserted the bug**: it required the perk to beat a plain rifle against a BARE target, which is
+the definition of a strict upgrade.
 
 ### 7.6 The support weapons, and why they publish zeros
 
