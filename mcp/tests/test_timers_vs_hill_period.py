@@ -19,6 +19,7 @@ PERIOD_S = hb.BEACON_PERIOD_S
 
 # name -> why a 5 s emitter cannot keep it from firing (or why it is not a fuse at all)
 JUDGED = {
+    "SHIELD_REGEN_DELAY_S": "S29 (2026-09-18): the quiet a player must hold before shields refill. Reset ONLY by\n                             real damage -- `engine.js _onHp` resets `_shieldQuietAt` under `if (dmg > 0)`, and a\n                             hill beacon (`$HIR` tok2 = 15, the silent fn-28 row) moves no pool, so `dmg` is 0 and\n                             the beacon cannot hold the refill off. That mattered: standing on a point would\n                             otherwise mean never recharging",
     "OFFLINE_AFTER_MS": "node heartbeat age, fed by the phone's status cadence, not by any IR frame",
     "STALE_AFTER_MS": "same: a socket-liveness threshold on the status heartbeat",
     "SYNC_FRESH_MS": "clock-sync freshness on time_req/time_res, not on game frames",

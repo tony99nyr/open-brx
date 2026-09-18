@@ -9,6 +9,7 @@ stage on `time.monotonic` (SECONDS); every test below drives `self.now` by hand 
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 
 from brx_mcp.fake import FakeConnectionManager, FakeTagger
@@ -507,6 +508,139 @@ def mk_reload():
     clock = _Clock()
     st = GunStage(mgr, None, sleep=_nosleep, now=clock, voice_verdict_sink=lambda _r: None)
     return st, mgr, clock
+
+
+# ======================================================================================================
+# F259 -- the node's own magazine account, mirrored from engine.js `_acctLive` / `_acctPress` / `_acctAmmo`
+# ======================================================================================================
+
+def test_the_stun_restore_carries_the_nodes_own_magazine_account_not_the_last_alcd():
+    """F259 (bench 2026-09-18): every `$AMMO` the node writes decides what the player is left holding, and the
+    gun's `$ALCD` is always a little late -- the round has left by the time the frame lands. The phone's
+    accuracy writer restored the last count it had RECEIVED and so handed spent rounds back until the magazine
+    never emptied. The stage has no accuracy writer, but its STUN restore carries a count too, and it had the
+    same staleness in it.
+
+    CONTROL: the account tracks the gun exactly while nothing is in flight, and a press the gun never answers
+    expires rather than holding the account down for the rest of the life."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.config["stun"] = {"duration_s": 4}          # `stun_enabled` reads the live config, as engine.js does
+        assert st.stun_enabled
+        st.alcd(mag=20, reserve=200); await settle(st)
+        assert st._acct_live(0) == 20, "CONTROL: with nothing in flight the account is the gun's own number"
+        # the trigger press: the round is leaving NOW, and its $ALCD has not landed
+        st._inject_rx("$BUT,0,1,*"); await settle(st)
+        assert st._acct_live(0) == 19, "the press must book the round straight away -- it is the earliest evidence"
+        n = mark(mgr)
+        st._stun(); await settle(st)
+        assert "$AMMO,0,0,0,1,*" in since(mgr, n), "pre-condition: the stun must disarm slot 0"
+        clock.advance(st.stun_s + 0.1); st.poll(); await settle(st)
+        assert st.stunned is None, "pre-condition: the stun must have expired"
+        assert "$AMMO,0,19,200,1,*" in since(mgr, n), \
+            f"the restore handed back a round the player had already spent: {since(mgr, n)}"
+        # CONTROL: a press the gun never answers expires, so a mis-modelled press cannot hold the count down
+        # for the rest of the life. Two presses are outstanding here (the one above and this one), because no
+        # `$ALCD` has answered either -- the gun's last word is still 20.
+        st._inject_rx("$BUT,0,1,*"); await settle(st)
+        assert st._acct_live(0) == 18
+        clock.advance(st.TRIGGER_NO_FIRE_S + 0.1)
+        assert st._acct_live(0) == 20, "unanswered presses must expire; the gun's number wins"
+    asyncio.run(go())
+
+
+def test_the_account_takes_the_guns_number_whenever_nothing_is_in_flight():
+    """The gun always wins. The account exists to cover the gap between a round leaving and its `$ALCD`, never
+    to hold an opinion about the magazine: one frame outside the echo window re-seats it outright."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.alcd(mag=20, reserve=200); await settle(st)
+        st._shot_acct[0] = {"mag": 3, "fired": 2, "at": 0.0, "echo_until": 0.0, "echo_expect": None}
+        st.alcd(mag=18, reserve=200); await settle(st)
+        assert st._acct_live(0) == 18, "the account must take the gun's number, never argue with it"
+        assert st._acct_echoing(0) is False
+    asyncio.run(go())
+
+
+def test_the_echo_window_covers_both_answers_to_a_write_and_neither_reads_as_fire():
+    """F259 (bench 2026-09-18), the oscillation, mirrored. The node writes `$AMMO,0,6`; the gun answers
+    `$ALCD 32` (its `$WEAP` reset) and then `$ALCD 6` (the restore landing). Judging those one at a time --
+    refusing the rise, then taking the fall as a 26-round decrement -- is what fed the phone's recoil burst
+    counter and made its accuracy writer flap for nine seconds after the player stopped shooting.
+
+    CONTROL: a real round outside the window still costs the account one, and still reads as one round spent."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.alcd(mag=6, reserve=200); await settle(st)
+        assert st._acct_live(0) == 6
+        st._acct_wrote(0, 6)                       # the node writes $WEAP + $AMMO,0,6
+        st._last_spent = 0
+        st.alcd(mag=32, reserve=200); await settle(st)     # answer 1: the $WEAP reset, back to the compiled clip
+        assert st._acct_live(0) == 6, "the reset echo must not move the account"
+        assert st._last_spent == 0, "and must not read as rounds fired"
+        st.alcd(mag=6, reserve=200); await settle(st)      # answer 2: our own restore landing
+        assert st._acct_live(0) == 6, "the restore echo must not move the account either"
+        assert st._last_spent == 0, "the node read its OWN write back as 26 rounds fired -- that is the bench oscillation"
+        assert st._acct_echoing(0) is False, "the gun reporting the written number must close the window early"
+        st.alcd(mag=5, reserve=200); await settle(st)      # CONTROL: a real round
+        assert st._acct_live(0) == 5 and st._last_spent == 1
+    asyncio.run(go())
+
+
+def test_the_echo_window_expires_so_a_write_the_gun_never_answers_hands_the_slot_back():
+    """The window is a backstop, not a latch: a write the gun never confirms must not leave the node holding
+    an opinion about the magazine for the rest of the life."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.alcd(mag=6, reserve=200); await settle(st)
+        st._acct_wrote(0, 6)
+        clock.advance(st.ACC_ECHO_S + 0.01)
+        assert st._acct_echoing(0) is False
+        st.alcd(mag=30, reserve=200); await settle(st)
+        assert st._acct_live(0) == 30, "and the gun wins again"
+    asyncio.run(go())
+
+
+def test_a_press_the_gun_has_not_answered_is_outstanding_until_it_does_or_it_expires():
+    """engine.js gates its CLOCK-driven writes on this (`shotInFlight`): a write takes 30-90 ms to reach the
+    gun, so one sent while a round is on its way out would land after it and put the round back."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.alcd(mag=20, reserve=200); await settle(st)
+        assert st._acct_outstanding(0) is False
+        st._inject_rx("$BUT,0,1,*"); await settle(st)
+        assert st._acct_outstanding(0) is True, "a press the gun has not reported must read as a round in flight"
+        st.alcd(mag=19, reserve=200); await settle(st)
+        assert st._acct_outstanding(0) is False, "and the gun reporting it must clear that"
+        st._inject_rx("$BUT,0,1,*"); await settle(st)
+        assert st._acct_outstanding(0) is True
+        clock.advance(st.TRIGGER_NO_FIRE_S + 0.1)
+        assert st._acct_outstanding(0) is False, "a press the gun NEVER answers must expire, not latch"
+    asyncio.run(go())
+
+
+def test_a_press_the_stage_says_cannot_fire_is_never_booked():
+    """`_await_shot`'s stand-down table already models every press that produces no round. The account books a
+    round only where one is owed, so a dry trigger, a swap or a stun cannot walk the magazine down."""
+    async def go():
+        st, mgr, clock = mk_reload()
+        await st.connect(GUN); await st.arm(); await st.spawn(); await settle(st)
+        st.alcd(mag=10, reserve=200); await settle(st)
+        st.switching = {"at": st.now(), "from": 0}
+        st._inject_rx("$BUT,0,1,*"); await settle(st)
+        assert st._shot_acct[0]["fired"] == 0, "a press mid-swap produces no round, so it must not book one"
+        st.switching = None
+        st._inject_rx("$BUT,0,1,*"); await settle(st)
+        assert st._shot_acct[0]["fired"] == 1, "CONTROL: the same press with nothing in the way IS booked"
+        st._shot_acct[0] = {"mag": 0, "fired": 0, "at": 0.0, "echo_until": 0.0, "echo_expect": None}
+        st._inject_rx("$BUT,0,1,*"); await settle(st)
+        assert st._shot_acct[0]["fired"] == 0, "a dry trigger on an empty magazine must not book a round"
+    asyncio.run(go())
 
 
 def test_the_compiled_readout_carries_the_glance_length_2s_day_1s_night():
@@ -1231,8 +1365,16 @@ KNOWN_UNMIRRORED = {
     # a bench script exercise the state machine (step/recover/write/verify) in isolation, but that is a
     # new bench feature, not a straight port, and is left for the bench-parity backlog rather than
     # guessed at here.
-    "recoilEnabled", "_activeWeaponId", "_recoilArm", "_recoilStep", "_recoilTick", "_recoilFlush",
-    "_recoilVerify", "_recoilWrite", "_recoilObserve",
+    # F259 (2026-09-18) folded the ladder into two states and added `_recoilProfile`, which reads that shape
+    # off the SAME catalog row -- so it is unmirrored for the same reason as the rest of this group.
+    # ⚠ Its neighbour, the magazine account (`_acctLive` / `_acctWriting` / `_acctPress` / `_acctAmmo`), is
+    # NOT recoil and IS mirrored: the stage's own stun restore carries a magazine count and had the same
+    # staleness in it.
+    "recoilEnabled", "_activeWeaponId", "_recoilProfile", "_recoilArm", "_recoilStep", "_recoilTick",
+    "_recoilFlush", "_recoilVerify", "_recoilWrite", "_recoilObserve",
+    # `_headAccuracy` reads t21 off the compiled `$WEAP` so `_recoilArm` can tell whether the gun is already
+    # holding the weapon's crisp value. Only the accuracy writer asks that question, and the stage has none.
+    "_headAccuracy",
     # Merge 2026-09-17: `_holdAccuracyWrites` stands the accuracy writer down while a spawn, revive,
     # operator resync or stun write owns `$AMMO`. It exists only to gate the writer pinned just above,
     # so it has nothing to mirror: with no stage-side accuracy model there is nothing to hold.
@@ -1250,7 +1392,9 @@ KNOWN_UNMIRRORED = {
     # freshly compiled bundle -- the same pool-off-the-`$PSET` reading engine.js's `_headPool` does --
     # so both sides carry per-player overrides and the body_armor perk the same way. Mirrored in
     # substance, not in name; `_headPool` itself is inline in `recompile()`, not a separate method.
-    "maxHp", "maxArmor", "stunMs", "_headPool",
+    # S45: `maxShield` joins them -- `self.max_shield`, set in the same place from `mc.frames.head_shield()`
+    # (`$PSET` t5, the shield CEILING). Same reading, same source, a plain attribute rather than a getter.
+    "maxHp", "maxArmor", "maxShield", "stunMs", "_headPool",
     # match CLOCK: the stage has none. The operator drives spawn, revive and end by hand from the
     # bench script, which is why `startAt`/`tick`/`_endLocal` are pinned above; these are the config
     # readers that only a self-running clock would need.
@@ -1446,3 +1590,376 @@ def test_every_stand_down_name_used_is_a_name_the_table_declares():
     for call in py_calls:
         for name in _re.findall(r"""['"](\w+)['"]""", call):
             assert name in py_names, f"stage.py `_stand_down(({call.strip()}))` names `{name}`, which `_STAND_DOWN` does not declare"
+
+
+# ======================================================================================================
+# The RELOAD nag and SHIELDS ONLINE -- the two cues the NODE owes the player, mirrored from engine.js `_dryPull` / `_onHp`
+# ======================================================================================================
+
+def _nag_live(st, clock):
+    """Live, past spawn protection, with an EMPTY magazine and reserve still behind it."""
+    st._inject_rx("$LCD,45,70,0,0,30,90,*")
+    st._inject_rx("$ALCD,30,100,0,192,0,*")
+    st._inject_rx("$ALCD,0,100,0,192,0,*")
+
+
+def _pull(st, clock):
+    st._inject_rx("$BUT,0,1,*"); clock.advance(0.2); st.poll()
+    st._inject_rx("$BUT,0,0,*"); clock.advance(0.2); st.poll()
+
+
+def test_the_reload_nag_cadence_matches_the_phone():
+    """The stage predicts the phone, so the two must agree on the numbers, not only on the shape."""
+    js = _ENGINE_JS.read_text(encoding="utf-8")
+    assert f"const RELOAD_NAG_FIRST = {S.RELOAD_NAG_FIRST}, RELOAD_NAG_EVERY = {S.RELOAD_NAG_EVERY};" in js
+
+
+def test_the_fifth_dry_pull_says_reload_and_then_every_third():
+    """The RELOAD nag (Tony, bench 2026-09-18): pulls 1-4 of a dry spell are the player finding out; the 5th and every
+    3rd after it say RELOAD. CONTROL: the loaded gun above fires none of them, and a reload starts the
+    count over -- so a count that simply never resets, or one that nags on every pull, fails here."""
+    async def go():
+        st, mgr, clock = mk_gain()
+        await live(st)
+        nag = st.bundle["cues"]["reload_nag"]
+        _nag_live(st, clock)
+        n = mark(mgr)
+        for i in range(1, 5):
+            _pull(st, clock); await settle(st)
+            assert since(mgr, n).count(nag) == 0, f"pull {i} is silent"
+        _pull(st, clock); await settle(st)
+        assert since(mgr, n).count(nag) == 1, "the 5th pull speaks"
+        _pull(st, clock); _pull(st, clock); await settle(st)
+        assert since(mgr, n).count(nag) == 1, "pulls 6 and 7 are silent"
+        _pull(st, clock); await settle(st)
+        assert since(mgr, n).count(nag) == 2, "the 8th pull speaks"
+        # a reload starts the spell over
+        st._inject_rx("$ALCD,30,70,0,162,0,*"); st.poll()
+        assert st._dry_pulls == 0, "the magazine came back"
+        st._inject_rx("$ALCD,0,70,0,162,0,*"); st.poll()
+        for i in range(1, 5):
+            _pull(st, clock); await settle(st)
+            assert since(mgr, n).count(nag) == 2, f"pull {i} of the new spell is silent"
+        _pull(st, clock); await settle(st)
+        assert since(mgr, n).count(nag) == 3, "the 5th pull of the new spell speaks"
+    asyncio.run(go())
+
+
+def test_the_nag_is_silent_when_the_magazine_is_not_what_stopped_the_round():
+    """Every other reason a pull produced nothing -- a dry reserve, an overheat lockout, a stun -- says
+    RELOAD would be the wrong instruction. CONTROL: the same nine pulls with reserve and no lockout speak
+    three times, so an assertion of silence cannot pass by the pulls simply not landing."""
+    async def go():
+        st, mgr, clock = mk_gain()
+        await live(st)
+        nag = st.bundle["cues"]["reload_nag"]
+        # (a) a dry reserve: nothing to reload TO
+        st._inject_rx("$LCD,45,70,0,0,30,90,*")
+        st._inject_rx("$ALCD,30,100,0,0,0,*"); st._inject_rx("$ALCD,0,100,0,0,0,*")
+        n = mark(mgr)
+        for _ in range(9):
+            _pull(st, clock)
+        await settle(st)
+        assert since(mgr, n).count(nag) == 0, "no reserve, no nag"
+        # (b) overheated: the lockout is what stopped the round
+        st._inject_rx("$ALCD,0,100,0,192,99,*"); st.poll()
+        assert st._heat_blocks_fire(), "setup: the lockout is on"
+        st._dry_pulls = 0
+        n = mark(mgr)
+        for _ in range(9):
+            _pull(st, clock)
+        await settle(st)
+        assert since(mgr, n).count(nag) == 0, "an overheated gun is not told to reload"
+        assert st._dry_pulls == 0, "and nothing was counted"
+        # CONTROL: cooled, with reserve, the same nine pulls nag three times (5, 8, 11)
+        clock.advance(S.GunStage.HEAT_STALE_S + 1.0)
+        st._inject_rx("$ALCD,0,100,0,192,0,*"); st.poll()
+        n = mark(mgr)
+        for _ in range(11):
+            _pull(st, clock)
+        await settle(st)
+        assert since(mgr, n).count(nag) == 3, since(mgr, n).count(nag)
+    asyncio.run(go())
+
+
+def test_the_grant_that_fills_the_shield_says_shields_online_once():
+    """S45 (bench 2026-09-17 step 7): `$LIFE` grants refill the shield and the gun plays nothing for
+    it. The node says SHIELDS ONLINE on the grant that reaches the `$PSET` t5 ceiling -- and drops the
+    per-grant `shield_up` line on that frame, because the gun plays one clip at a time (F57's rule).
+    CONTROL: the grants on the way up still fire `shield_up`, and a spawn (shield always 0) fires neither."""
+    async def go():
+        st, mgr, clock = mk_gain()
+        await live(st)
+        online, up = st.bundle["cues"]["shield_online"], st.bundle["cues"]["shield_up"]
+        assert st.max_shield == 70, "setup: the compiled head arms a shield ceiling"
+        n = mark(mgr)
+        clock.advance(1.0)
+        st._on_rx("$HP,45,70,0,*"); await settle(st)                  # the empty shield a spawn leaves
+        assert online not in since(mgr, n) and up not in since(mgr, n), "a spawn is not a recharge"
+        clock.advance(1.0)
+        n = mark(mgr)
+        st._on_rx("$HP,45,70,40,*"); await settle(st)
+        assert since(mgr, n).count(up) == 1 and online not in since(mgr, n), "on the way up it is an ordinary grant"
+        clock.advance(1.0)
+        n = mark(mgr)
+        st._on_rx("$HP,45,70,70,*"); await settle(st)
+        assert since(mgr, n).count(online) == 1, "the grant that reached the ceiling speaks"
+        assert up not in since(mgr, n), "and not the per-grant line under it"
+        clock.advance(1.0)
+        n = mark(mgr)
+        st._on_rx("$HP,45,70,70,*"); await settle(st)
+        st._on_rx("$HP,45,70,70,*"); await settle(st)
+        assert online not in since(mgr, n), "the frames that merely report a full shield are silent"
+        # broken and recharged is its own piece of news
+        clock.advance(1.0)
+        st._on_rx("$HP,45,70,20,*"); await settle(st)
+        clock.advance(1.0)
+        n = mark(mgr)
+        st._on_rx("$HP,45,70,70,*"); await settle(st)
+        assert since(mgr, n).count(online) == 1, "the next refill speaks again"
+    asyncio.run(go())
+
+
+def test_a_game_with_no_shield_ceiling_grants_without_announcing_a_full_charge():
+    """`max_shield > 0` is the load-bearing half of the test: with no shield configured, `0 >= 0` would read
+    every grant as a completed charge. CONTROL: the same grant on a head that DOES arm a shield is still an
+    ordinary `shield_up` until it reaches the ceiling (above)."""
+    async def go():
+        st, mgr, clock = mk_gain()
+        await live(st)
+        st.max_shield = 0                                             # a head with no readable `$PSET` shield
+        online, up = st.bundle["cues"]["shield_online"], st.bundle["cues"]["shield_up"]
+        clock.advance(1.0)
+        st._on_rx("$HP,45,70,0,*"); await settle(st)
+        clock.advance(1.0)
+        n = mark(mgr)
+        st._on_rx("$HP,45,70,20,*"); await settle(st)
+        assert online not in since(mgr, n), "nothing to fill, nothing to announce"
+        assert since(mgr, n).count(up) == 1, "it is still a shield grant"
+    asyncio.run(go())
+
+
+# ======================================================================================================
+# S29 -- the shield RECHARGE, mirrored from engine.js `_shieldTick` / `_shieldLoopTick` / `_onHp`
+# ======================================================================================================
+
+def mk_shields(**profile):
+    """A stage whose game IS the shields preset (armour 0), so `shield_regen_on` is true and the bench can
+    rehearse a cycle. Without it nothing ever grants shield and the whole mechanic is unreachable."""
+    st, mgr, clock = mk_gain(**profile)
+    st.set_profile(shields=True)
+    return st, mgr, clock
+
+
+def shield_cues(st) -> dict[str, str]:
+    c = st.bundle["cues"]
+    return {k: c[k] for k in ("shield_down", "shield_charging", "shield_online", "shield_loop", "shield_up")}
+
+
+def grants(mgr, n) -> int:
+    return len([f for f in since(mgr, n) if f.startswith("$LIFE,")])
+
+
+async def shield_run(st, mgr, clock, seconds: float) -> None:
+    """Advance the clock at the stage server's own cadence. The FAKE GUN answers the `$LIFE` grants itself
+    (`fake.FakeTagger`'s `LIFE` handler, token 3: clamp the shield at the `$PSET` ceiling and self-emit `$HP`),
+    exactly as the hardware does -- so this drives the clock and nothing else."""
+    end = clock.t + seconds
+    while clock.t < end - 1e-9:
+        clock.advance(min(0.05, end - clock.t))
+        st.poll()
+        await settle(st)
+
+
+SHIELD_STEP = 10   # S.SHIELD_REGEN_STEP, spelled out so a change to it fails this file loudly
+SHIELD_LOOP_S_TEST = S.SHIELD_LOOP_S   # the heartbeat period the ordering test makes due by hand
+
+
+async def shielded(st, mgr, clock):
+    """Live in a shields game with the shield full, about to lose it."""
+    await live(st)
+    assert st.shield_regen_on, "setup: this game recharges shields"
+    clock.advance(1.0)
+    st._on_rx(f"$HP,30,0,{st.max_shield},*"); await settle(st)
+    assert st.shield == st.max_shield, "setup: charged"
+
+
+def test_the_recharge_constants_match_the_phone():
+    js = _ENGINE_JS.read_text(encoding="utf-8")
+    assert f"const SHIELD_REGEN_DELAY_MS = {int(S.SHIELD_REGEN_DELAY_S * 1000)};" in js
+    assert f"const SHIELD_REGEN_STEP = {S.SHIELD_REGEN_STEP};" in js
+    assert f"const SHIELD_REGEN_STEP_MS = {int(S.SHIELD_REGEN_STEP_S * 1000)};" in js
+    assert f"const SHIELD_REGEN_MAX_GRANTS_SLACK = {S.SHIELD_REGEN_MAX_GRANTS_SLACK};" in js
+    assert f"const SHIELD_LOOP_MS = {int(S.SHIELD_LOOP_S * 1000)};" in js
+    assert S.SHIELD_REGEN_STEP == SHIELD_STEP
+
+
+def test_break_heartbeat_refill_online_is_the_whole_cycle():
+    """S29 (Tony 2026-09-18, "shields also never recharged"): nothing granted shield, so no cue below could
+    be benched at all. CONTROL: the per-grant `shield_up` line fires for NO part of a refill -- twelve of them
+    over a 4 s refill would cut each other off -- and the heartbeat stops on the frame the refill starts."""
+    async def go():
+        st, mgr, clock = mk_shields()
+        await shielded(st, mgr, clock)
+        c = shield_cues(st)
+        n = mark(mgr)
+        clock.advance(1.0)
+        st._on_rx("$HP,30,0,0,*"); await settle(st)                  # the shield takes a hit all the way through
+        assert since(mgr, n).count(c["shield_down"]) == 1, "the break speaks"
+        assert c["shield_loop"] not in since(mgr, n), "the heartbeat does not land under the break cue"
+        await shield_run(st, mgr, clock, 2.1)
+        assert since(mgr, n).count(c["shield_loop"]) == 1, "one heartbeat, a clip-length after the break"
+        await shield_run(st, mgr, clock, 2.0)
+        assert since(mgr, n).count(c["shield_loop"]) == 2, "and it keeps time"
+        assert grants(mgr, n) == 0, "nothing granted before the delay is up"
+        await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S + 3.0)
+        stream = since(mgr, n)
+        assert stream.count(c["shield_charging"]) == 1, "the refill announces itself once"
+        after = stream[stream.index(c["shield_charging"]):]
+        assert c["shield_loop"] not in after, "the heartbeat stops the moment the recharge starts"
+        # EXACTLY the beats the timing predicts (SHIELD_LOOP_S into SHIELD_REGEN_DELAY_S), not "at least".
+        # `>=` let a heartbeat written in the SAME tick as `shield_charging` pass, because it lands just
+        # before it in the stream and the slice above cannot see it.
+        beats = int(S.SHIELD_REGEN_DELAY_S // S.SHIELD_LOOP_S)
+        assert stream.count(c["shield_loop"]) == beats, (stream.count(c["shield_loop"]), beats)
+        assert st.shield == st.max_shield, "the pool came back"
+        assert stream.count(c["shield_online"]) == 1, "and says so, once"
+        assert c["shield_up"] not in stream, "never the per-grant line"
+        assert grants(mgr, n) == st.max_shield // SHIELD_STEP, "exactly the grants a full pool needs"
+        n2 = mark(mgr)
+        await shield_run(st, mgr, clock, 4.0)
+        assert grants(mgr, n2) == 0 and c["shield_online"] not in since(mgr, n2), "and it stops once the gun says full"
+    asyncio.run(go())
+
+
+def test_damage_restarts_the_clock_and_abandons_a_refill_already_running():
+    """The shield comes back only when you break contact -- Callsign's own rule
+    (`DetectRecoverShieldCommand._lastHitTime`). CONTROL: the same wait with no hit in it does refill."""
+    async def go():
+        st, mgr, clock = mk_shields()
+        await shielded(st, mgr, clock)
+        c = shield_cues(st)
+        n = mark(mgr)
+        clock.advance(1.0)
+        st._on_rx("$HP,30,0,0,*"); await settle(st)
+        await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S - 1.0)
+        assert grants(mgr, n) == 0, "setup: nearly there"
+        st._on_rx("$HP,25,0,0,*"); await settle(st)                  # hit again
+        await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S - 1.0)
+        assert grants(mgr, n) == 0, "the hit put the whole delay back"
+        await shield_run(st, mgr, clock, 2.0)
+        assert grants(mgr, n) > 0, "and it starts once the new quiet window is served"
+        # a hit MID-refill abandons it, and the next refill announces itself again
+        n2 = mark(mgr)
+        st._on_rx(f"$HP,20,0,{max(0, st.shield - 20)},*"); await settle(st)
+        await shield_run(st, mgr, clock, 2.0)
+        assert grants(mgr, n2) == 0, "the refill stopped"
+        await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S + 3.0)
+        assert since(mgr, n2).count(c["shield_charging"]) == 1, "the next refill is its own piece of news"
+        assert st.shield == st.max_shield
+    asyncio.run(go())
+
+
+def test_an_ordinary_game_never_grants_and_a_dead_gun_is_not_refilled():
+    """The PRESET is the opt-in, not the ceiling: every compiled head arms a `$PSET` t5 of 70 whether the game
+    wants shields or not, so a mechanic keyed on the ceiling would refill every match ever played."""
+    async def go():
+        st, mgr, clock = mk_gain()                                   # 45 HP + 70 armour: not a shields game
+        await live(st)
+        assert st.max_shield == 70 and not st.shield_regen_on
+        n = mark(mgr)
+        clock.advance(1.0)
+        st._on_rx("$HP,45,70,0,*"); await settle(st)
+        await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S * 2)
+        assert grants(mgr, n) == 0, "no $LIFE in a game that never asked for shields"
+        # ...and in a shields game, a DEAD gun is not refilled either
+        st2, mgr2, clock2 = mk_shields()
+        await shielded(st2, mgr2, clock2)
+        c = shield_cues(st2)
+        clock2.advance(1.0)
+        st2._on_rx("$HP,30,0,0,*"); await settle(st2)
+        n2 = mark(mgr2)
+        st2._on_rx("$HP,0,0,0,*"); await settle(st2)
+        assert not st2.alive, "setup: dead"
+        await shield_run(st2, mgr2, clock2, S.SHIELD_REGEN_DELAY_S * 2)
+        assert grants(mgr2, n2) == 0, "nothing is granted to a dead gun"
+        # ...nor to a STUNNED one: it is disarmed, and a write there fights the stun restore
+        await st2.revive(); await settle(st2)
+        st2._on_rx("$HP,30,0,0,*"); await settle(st2)
+        st2.set_profile(stun=60)
+        st2._stun(); await settle(st2)
+        assert st2.stunned, "setup: stunned"
+        n_stun = mark(mgr2)
+        await shield_run(st2, mgr2, clock2, S.SHIELD_REGEN_DELAY_S * 2)
+        assert grants(mgr2, n_stun) == 0, "nothing is granted to a disarmed gun"
+        st2._stun_restore("test"); await settle(st2)
+        assert c["shield_loop"] not in since(mgr2, n2), "and the heartbeat stopped with the life"
+        # ...and a FRESH life reports shield 0 without ever having crossed it, which is not a break
+        await st2.revive(); await settle(st2)
+        n3 = mark(mgr2)
+        clock2.advance(1.0)
+        st2._on_rx("$HP,30,0,0,*"); await settle(st2)
+        assert c["shield_down"] not in since(mgr2, n3), "a shield that STARTS at 0 never crossed 0"
+        await shield_run(st2, mgr2, clock2, 2.5)
+        assert c["shield_loop"] not in since(mgr2, n3), "so a fresh life does not heartbeat" 
+    asyncio.run(go())
+
+
+def test_a_gun_that_never_reports_full_is_granted_at_a_capped_number_of_times():
+    """A refill drives off the gun's `$HP`, so a gun that never reports full would be written at forever.
+    CONTROL: the cap STICKS -- clearing the refill alone let the next tick start a fresh counter, so the cap
+    counted to ten and began again. A hit earns another go; silence does not."""
+    async def go():
+        st, mgr, clock = mk_shields()
+        await shielded(st, mgr, clock)
+        await settle(st)
+        n = mark(mgr)
+        clock.advance(1.0)
+        st._on_rx("$HP,30,0,0,*"); await settle(st)
+        # The gun's OWN ceiling is 0, so every grant lands and the pool still never reaches the 70 the head
+        # says it has. That is the cap's second case verbatim: the ceiling is not what the head said.
+        mgr.taggers[GUN].cfg_shield = 0
+        cap = math.ceil(st.max_shield / SHIELD_STEP) + S.SHIELD_REGEN_MAX_GRANTS_SLACK
+        await shield_run(st, mgr, clock, S.SHIELD_REGEN_DELAY_S + 20.0)
+        assert grants(mgr, n) == cap, f"a full pool of grants plus the slack, then it gives up ({cap})"
+        n2 = mark(mgr)
+        await shield_run(st, mgr, clock, 20.0)
+        assert grants(mgr, n2) == 0, "and it does not start again on its own"
+    asyncio.run(go())
+
+
+def test_no_heartbeat_is_written_in_the_same_tick_the_recharge_starts():
+    """The ordering inside `_shield_tick`, pinned on its own and deterministically: BOTH the heartbeat and the
+    refill are made due at the same instant, and `_shield_tick` is called once at it. The refill wins that
+    tick. Driving this through the clock cannot pin it -- with the default period a beat is never due at the
+    refill instant, and at any period the two land on adjacent 50 ms steps rather than the same one.
+
+    CONTROL: the second call, with only the heartbeat due, does write one -- so this cannot pass by the
+    heartbeat being broken outright."""
+    async def go():
+        st, mgr, clock = mk_shields()
+        await shielded(st, mgr, clock)
+        c = shield_cues(st)
+        clock.advance(1.0)
+        st._on_rx("$HP,30,0,0,*"); await settle(st)                # the shield breaks
+        assert st._shield_down, "setup: the shield is down"
+        now = st.now()
+        st._shield_quiet_at = now - S.SHIELD_REGEN_DELAY_S         # the refill is due NOW
+        st._shield_loop_at = now - SHIELD_LOOP_S_TEST              # ...and so is a heartbeat
+        n = mark(mgr)
+        st._shield_tick(now); await settle(st)
+        wrote = since(mgr, n)
+        assert c["shield_charging"] in wrote, "the refill starts"
+        assert c["shield_loop"] not in wrote, f"and the heartbeat does NOT go out under it: {wrote}"
+        # CONTROL: with the refill NOT due, the same moment does write a heartbeat
+        st2, mgr2, clock2 = mk_shields()
+        await shielded(st2, mgr2, clock2)
+        clock2.advance(1.0)
+        st2._on_rx("$HP,30,0,0,*"); await settle(st2)
+        now2 = st2.now()
+        st2._shield_loop_at = now2 - SHIELD_LOOP_S_TEST
+        n2 = mark(mgr2)
+        st2._shield_tick(now2); await settle(st2)
+        assert c["shield_loop"] in since(mgr2, n2), "control: a heartbeat alone is written"
+    asyncio.run(go())
+

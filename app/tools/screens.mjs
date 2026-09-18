@@ -1217,6 +1217,38 @@ for (const view of VIEWS) {
     must(r.teams.some(t => /REAPER/.test(t.players.join(' '))), 'this player is not in the team list');
     must(r.hold && /HELD/.test(r.hold), 'possession was pushed and is not shown: ' + r.hold);
   });
+  // Bench 2026-09-18 (Tony): on YOUR team's card the left edge carries the team colour, and the names sat
+  // hard against it -- twice over, at 9px of padding and then at 15px. What a person reads is not the padding
+  // number: it is the clear space between the INNER face of that coloured edge and the first glyph, and a
+  // 13px name in a ~17px line box needs its own line-height of it before the column stops looking pinned to
+  // a rule. The chip leans (skewX -12deg), so its bounding box juts further left than the padding and left
+  // the same edge ragged -- the chip and the list must share one left edge, not two.
+  await step(`${view.name} A24 result-win-team: the team card's contents clear the coloured left edge, on one left edge`, async () => {
+    const pg = await open(view, 'result-win-team');
+    const r = await pg.evaluate(() => {
+      const scale = parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1);
+      const card = document.querySelector('.result .rteam.mine'), cs = getComputedStyle(card), cr = card.getBoundingClientRect();
+      // the coloured edge is the border plus any inset rail painted behind it (box-shadow does not take space)
+      let rail = 0;
+      if (/inset/.test(cs.boxShadow || '')) {
+        const n = (cs.boxShadow.replace(/rgba?\([^)]*\)/g, '').match(/-?[\d.]+(?=px)/g) || []);
+        rail = Math.abs(parseFloat(n[0] || 0));
+      }
+      const lefts = {};
+      for (const [k, sel] of [['chip', '.tm'], ['held', '.thold'], ['header', '.tph span'], ['name', '.tp .pn']]) {
+        const e = card.querySelector(sel); lefts[k] = e ? (e.getBoundingClientRect().left - cr.left) / scale : null;
+      }
+      return { edge: parseFloat(cs.borderLeftWidth) + rail, lefts };
+    });
+    await pg.close();
+    const vals = Object.entries(r.lefts);
+    must(vals.every(([, v]) => v != null), 'a card part is missing: ' + JSON.stringify(r.lefts));
+    const CLEAR = 17, SUB = 0.5;   // one line-height of the 13px names; the frame's scale transform costs a sub-pixel
+    for (const [k, v] of vals) must(v - r.edge >= CLEAR - SUB,
+      `${k} sits ${v.toFixed(1)}px from the card edge, only ${(v - r.edge).toFixed(1)}px clear of the ${r.edge}px coloured edge -- a 13px name needs its own line-height: ${JSON.stringify(r.lefts)}`);
+    const spread = Math.max(...vals.map(([, v]) => v)) - Math.min(...vals.map(([, v]) => v));
+    must(spread <= 1.5, `the card's left edge is ragged by ${spread.toFixed(1)}px -- the leaning chip and the list must line up: ${JSON.stringify(r.lefts)}`);
+  });
   await step(`${view.name} A24 result: the TEAMS/PLAYERS toggle actually changes the screen`, async () => {
     const pg = await open(view, 'result-win-team');
     const seg = await pg.evaluate(() => Array.from(document.querySelectorAll('.result .rseg .sg')).map(b => ({ t: b.textContent.trim(), on: b.getAttribute('aria-pressed'), h: b.getBoundingClientRect().height / parseFloat(getComputedStyle(document.getElementById('frame')).transform.split(',')[3] || 1) })));
@@ -2388,6 +2420,56 @@ await step('energy reserve se: reserve 0 shows no pills at all (OUT OF ENERGY al
   await pg.screenshot({ path: `${OUT}/se-energy-reserve-zero.png` });
   await pg.close();
 });
+// ---------- Bench 2026-09-18 (Tony): "i like the amber pill for charge rifle", then: they still need polish.
+// A spare charge is an OBJECT, so the casing, the cap and the highlight belong to the canister and must
+// survive every fill level -- only the charge inside moves. Two things broke that. A part-full canister
+// dropped its glow and went translucent, so it read as a different material from the full ones beside it.
+// And the night skin painted the part-full canister at a HARD-CODED 50%: the very bug Tony reported for the
+// day skin ("they appeared to be half full after a reload") was still live behind `[data-env="night"]`. ----------
+for (const view of VIEWS) {
+  for (const night of [false, true]) {
+    await step(`${view.name} energy reserve ${night ? 'night' : 'day'}: a spare canister keeps its casing, cap and highlight at every fill, and only the charge moves`, async () => {
+      const pg = await open(view, 'live', night ? '&night' : '');
+      const read = async reserve => {
+        await setAmmo(pg, 'charge_rifle', 0, 40, reserve, 25); await pg.waitForTimeout(400);
+        return pg.evaluate(() => {
+          const pick = e => {
+            const cs = getComputedStyle(e), bef = getComputedStyle(e, '::before'), aft = getComputedStyle(e, '::after');
+            return { op: cs.opacity, bg: cs.backgroundImage, border: cs.borderLeftColor, bw: cs.borderLeftWidth,
+              cap: { c: bef.content, h: parseFloat(bef.height) || 0, w: parseFloat(bef.width) || 0 },
+              spec: { c: aft.content, h: parseFloat(aft.height) || 0, w: parseFloat(aft.width) || 0 } };
+          };
+          const cells = Array.from(document.querySelectorAll('#res .cell'));
+          return { full: cells.filter(e => !e.classList.contains('partial')).map(pick),
+                   part: cells.filter(e => e.classList.contains('partial')).map(pick) };
+        });
+      };
+      const low = await read(83);    // 2 full spares + 3 of a 40-round charge: the floor fill
+      const high = await read(118);  // 2 full spares + 38 of 40: almost a whole spare charge
+      await pg.screenshot({ path: `${OUT}/${view.name}-energy-canister-${night ? 'night' : 'day'}.png` });
+      const bad = await invariants(pg);   // three canisters plus their gaps must still fit the readout row
+      await pg.close();
+      must(bad.length === 0, bad.join(' ; '));
+      for (const [tag, r] of [['3 of 40', low], ['38 of 40', high]]) {
+        must(r.full.length === 2 && r.part.length === 1, `${tag}: expected 2 full canisters and 1 part-full: ${JSON.stringify({ full: r.full.length, part: r.part.length })}`);
+        const p = r.part[0], f = r.full[0];
+        must(p.op === '1', `${tag}: the part-full canister went translucent (opacity ${p.op}) -- it is the same object, just less charged`);
+        must(p.border === f.border && p.bw === f.bw, `${tag}: the casing changes with the fill (part ${p.bw} ${p.border} vs full ${f.bw} ${f.border})`);
+        for (const [who, c] of [['full', f], ['part-full', p]]) {
+          must(c.cap.c !== 'none' && c.cap.h >= 2 && c.cap.w >= 3, `${tag}: the ${who} canister has no cap across its top (::before ${JSON.stringify(c.cap)})`);
+          must(c.spec.c !== 'none' && c.spec.h >= 6 && c.spec.w >= 1, `${tag}: the ${who} canister has no highlight down its glass (::after ${JSON.stringify(c.spec)})`);
+        }
+        // Chromium drops the default 180deg from the computed value, so a vertical fill is "no angle at all"
+        // and a sideways one names its angle. Either way this is the paint, not the source.
+        must(/linear-gradient/.test(p.bg) && !/(90deg|270deg|to right|to left)/.test(p.bg),
+          `${tag}: the charge sweeps sideways like a bar segment instead of standing in the canister: ${p.bg.slice(0, 90)}`);
+      }
+      must(low.part[0].bg !== high.part[0].bg,
+        `3 of 40 and 38 of 40 paint the identical canister -- the fill is hard-coded, not the real fraction: ${low.part[0].bg.slice(0, 120)}`);
+      must(low.full[0].bg === high.full[0].bg, 'a FULL canister must not change when the reserve does');
+    });
+  }
+}
 await step('ammo reserve se: a bullet weapon still shows plain "/reserve" text, never pills', async () => {
   const pg = await open(VIEWS[1], 'live');
   await setAmmo(pg, 'burst_rifle', 0, 36, 216, 30); await pg.waitForTimeout(400);

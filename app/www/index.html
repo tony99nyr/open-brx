@@ -140,12 +140,17 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 /* Bench 2026-09-17: "25% /80" read as a percentage beside a round count on a weapon with no rounds. An
    energy weapon's `#res` now holds one pill per FULL spare cell, plus a dimmer half-filled pill for a part
    cell (hud.js `_resText`) — never digits. A bullet weapon is untouched: `#res` stays plain `/reserve` text. */
-.res .cells{display:flex;gap:3px}
-/* Bench 2026-09-18 (Tony): a spare cell reads as an energy canister, not a bar segment -- amber, rounded
-   ends, and a highlight down one side so it has a body. Amber also separates it from the cyan readout. */
-.res .cells .cell{width:9px;height:17px;border-radius:3px/4px;background:linear-gradient(90deg,color-mix(in srgb,var(--warn) 55%,#000) 0 22%,var(--warn) 22% 62%,color-mix(in srgb,var(--warn) 70%,#fff) 62% 78%,color-mix(in srgb,var(--warn) 45%,#000) 78% 100%);border:1px solid color-mix(in srgb,var(--warn) 70%,transparent);box-shadow:0 0 6px color-mix(in srgb,var(--warn) 40%,transparent)}
-.res .cells .cell::after{content:'';display:block;height:2px;margin:1px 2px 0;background:color-mix(in srgb,var(--warn) 80%,#fff);border-radius:2px}
-.res .cells .cell.partial{background:linear-gradient(90deg,var(--warn) 0 var(--fill,50%),transparent var(--fill,50%) 100%);box-shadow:none;opacity:.7}
+.res .cells{display:flex;gap:4px}   /* 4px, not 3: at 9px wide, three pills a hair apart read as one segmented bar */
+/* Bench 2026-09-18 (Tony), second pass: "i like the amber pill", then "it still needs polish". A spare
+   charge is an OBJECT, and an object does not change material when it empties. So the casing, the cap and
+   the highlight belong to `.cell` and never move; the only thing `.partial` changes is how far the charge
+   stands up inside it. Amber also keeps it clear of the cyan readout beside it.
+   The charge rises from the BASE (180deg), which is what separates a canister from the horizontal bar
+   above it; `--fill` defaults to 100%, so a full canister and a part-full one are the same rule. */
+.res .cells .cell{position:relative;overflow:hidden;width:9px;height:17px;border-radius:3px;border:1px solid color-mix(in srgb,var(--warn) 80%,transparent);background:linear-gradient(180deg,transparent 0 calc(100% - var(--fill,100%)),color-mix(in srgb,var(--warn) 90%,#000) calc(100% - var(--fill,100%)) 100%),#150d01;box-shadow:0 0 5px color-mix(in srgb,var(--warn) 35%,transparent)}
+.res .cells .cell::before{content:'';position:absolute;inset:0 0 auto 0;height:3px;background:color-mix(in srgb,var(--warn) 85%,#fff);border-bottom:1px solid rgba(0,0,0,.45)}   /* the cap: metal, so it stays lit on an almost empty canister */
+.res .cells .cell::after{content:'';position:absolute;left:1px;top:5px;bottom:2px;width:2px;border-radius:1px;background:linear-gradient(180deg,rgba(255,255,255,.42),rgba(255,255,255,.05))}   /* the highlight is on the glass, not on the charge */
+.res .cells .cell.partial{box-shadow:0 0 3px color-mix(in srgb,var(--warn) 20%,transparent)}   /* a dimmer glow, never a dimmer object */
 /* Bench 2026-09-17 (match 592e444eff): the build-up bar for a weapon that heats, shown only once heat > 0
    has been seen this life (hud.js `_heatBar`/`heatEverSeen`) — a weapon that never heats never draws one. */
 .heat{height:5px;width:140px;background:var(--plate2);border:1px solid var(--edge);margin-top:2px}
@@ -196,9 +201,13 @@ button,[data-act],[role="button"]{transition:scale 70ms ease-out,filter 70ms eas
 [data-env="night"] .pips .bar.ammobar,[data-env="night"] .pips .bar.energy{height:6px;width:140px;transform:none;border:0;padding:0;background:#120505}
 [data-env="night"] .pips .bar.ammobar>i,[data-env="night"] .pips .bar.energy>i{background:var(--num);box-shadow:none}
 [data-env="night"] .pips .bar.ammobar.warn>i,[data-env="night"] .pips .bar.energy.warn>i{background:var(--warn)}
-/* The reserve pills and the heat bar read the same dim palette as everything else at night — no glow bloom. */
-[data-env="night"] .res .cells .cell{background:var(--num);border-color:var(--num);box-shadow:none}
-[data-env="night"] .res .cells .cell.partial{background:linear-gradient(90deg,var(--num) 0 50%,transparent 50% 100%)}
+/* The reserve canisters and the heat bar read the same dim palette as everything else at night — no glow bloom.
+   Bench 2026-09-18: the old night rule painted a part-full canister at a HARD-CODED 50%, so 3 rounds and 39
+   looked identical — the day bug Tony reported, still live behind this selector. It reads `--fill` too now. */
+[data-env="night"] .res .cells .cell{background:linear-gradient(180deg,transparent 0 calc(100% - var(--fill,100%)),var(--num) calc(100% - var(--fill,100%)) 100%),#0d0303;border-color:var(--num);box-shadow:none}
+[data-env="night"] .res .cells .cell::before{background:var(--num);border-bottom-color:rgba(0,0,0,.6)}   /* the cap needs its dark seam at night too, or a full canister is just a red rectangle */
+[data-env="night"] .res .cells .cell::after{background:linear-gradient(180deg,rgba(255,255,255,.2),transparent)}
+[data-env="night"] .res .cells .cell.partial{box-shadow:none}
 [data-env="night"] .heat{border-color:var(--edge)}
 [data-env="night"] .heat>i{background:var(--num);box-shadow:none}
 [data-env="night"] .heat.hot>i{background:var(--num);box-shadow:none}
@@ -671,18 +680,21 @@ button.pill{font-family:inherit;cursor:pointer;min-height:44px;pointer-events:au
 .result .rwait .wl.dim{color:var(--mut);font-size:12px}
 /* --- TEAM view --- */
 .result .rteams{display:grid;gap:10px;height:100%;min-height:0}
-/* Bench 2026-09-18 (Tony): on YOUR team the left border is the team colour and the names sat hard
-   against it. The whole card's contents move in, so the chip, HELD, the PLAYER header and the names
-   all keep their alignment; indenting the list alone left the header hanging off the names. */
-.result .rteam{display:flex;flex-direction:column;gap:5px;min-height:0;border:1px solid var(--edge);background:var(--plate);padding:7px 10px 7px 14px}
-.result .rteam.mine{border-color:var(--team)}
-.result .rteam .tm{display:inline-block;align-self:flex-start;padding:2px 11px;font-family:var(--fd);font-weight:700;font-size:15px;letter-spacing:.14em;transform:skewX(-12deg);max-width:100%;overflow:hidden}
+/* Bench 2026-09-18 (Tony), third pass: on YOUR team the left edge is the team colour and the names sat hard
+   against it. 9px of padding did not fix it and nor did 15px, because distance was only half of it:
+   a 1px SATURATED line beside text reads as a collision at any small gap. So the left edge becomes a rail
+   (the 1px border plus a 3px inset shadow, which costs no layout) and the contents stand 17px clear of its
+   inner face -- one line-height of the 13px names, the point at which a column stops looking pinned to a rule.
+   Both cards take the same 20px so the two lists still line up with each other. */
+.result .rteam{display:flex;flex-direction:column;gap:5px;min-height:0;border:1px solid var(--edge);background:var(--plate);padding:7px 12px 7px 20px}
+.result .rteam.mine{border-color:var(--team);box-shadow:inset 3px 0 0 var(--team)}
+/* The chip leans (skewX -12deg), so its bounding box juts ~4px further left than the padding edge and left
+   the card with two left edges. The margin puts its leading corner back on the one the list uses. */
+.result .rteam .tm{display:inline-block;align-self:flex-start;margin-left:4px;padding:2px 11px;font-family:var(--fd);font-weight:700;font-size:15px;letter-spacing:.14em;transform:skewX(-12deg);max-width:calc(100% - 4px);overflow:hidden}   /* -4px: the margin must come out of the chip's own width, not out of the card's right gutter */
 .result .rteam .tm .unskew{display:inline-block;transform:skewX(12deg);white-space:nowrap}
 .result .rteam .tm b{font-size:21px;margin-left:5px}
 .result .thold{font-size:11px;letter-spacing:.18em;color:var(--mut);font-weight:600;white-space:nowrap}
 .result .thold b{color:var(--num);font-family:var(--fd);font-size:15px}
-/* Bench 2026-09-18 (Tony): on YOUR team's card the left border is the team colour, and the names sat
-   hard against it. Indent the whole column, header included, so the names still line up with PLAYER. */
 .result .tpl{flex:1 1 auto;min-height:0;overflow:hidden auto}
 .result .tph{display:flex;justify-content:space-between;gap:8px;font-size:11px;letter-spacing:.14em;color:var(--mut);font-weight:700;border-bottom:1px solid var(--edge);padding-bottom:3px;margin-bottom:2px;white-space:nowrap}
 .result .tp{display:flex;justify-content:space-between;gap:10px;font-size:13px;letter-spacing:.05em;padding:1px 0}

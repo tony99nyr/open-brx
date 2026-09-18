@@ -32,6 +32,10 @@ KNOWN_SAFE_COMMANDS = {
     "AMMO", "STOP", "PLAYX", "VOL", "HLED", "NAME", "VERSION", "HLOOP",
     "BLINK", "LED",   # headset LED requests, shapes found in the APK metadata + proven harmless on GAMMA 2026-09-04 (see brx-protocol.md)
     "SFLASH",
+    # S29/F109: the pool GRANT. Bench-proven twice -- hp and armour on 2026-09-09, shields on 2026-09-17
+    # (grants of 10/20/25/30 all land and the gun clamps at the `$PSET` ceiling). The node writes it every
+    # 300 ms during a shield recharge, and the bench needs to be able to send one by hand without a confirm.
+    "LIFE",
 }
 
 PANIC_SEQUENCE = ["$CLEAR,*", "$SP,99,*"]

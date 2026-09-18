@@ -36,6 +36,7 @@ _WEAP_FIELDS = 44
 
 _PSET_HP = 3
 _PSET_ARMOR = 4
+_PSET_SHIELD = 5
 
 _ALCD_MAG = 1
 _ALCD_SLOT = 3
@@ -88,6 +89,19 @@ def head_pool(head: list[str] | None) -> tuple[int, int] | None:
         return None
     hp, armor = _int(p, _PSET_HP), _int(p, _PSET_ARMOR)
     return None if hp is None or armor is None else (hp, armor)
+
+
+def head_shield(head: list[str] | None) -> int:
+    """The shield CEILING the head's `$PSET` arms (token 5), or 0.
+
+    A separate reader rather than a third element on `head_pool`, which six callers destructure as a
+    pair. Bench 2026-09-17 (step 7): t5 is the maximum, never a starting pool -- a gun spawns at shield
+    0 and `$LIFE` grants fill it, clamped there by the firmware. 0 means this game has no shield to
+    fill, which is what a missing or unreadable token should say too.
+    """
+    p = _find(head, "$PSET,")
+    shield = None if p is None else _int(p, _PSET_SHIELD)
+    return 0 if shield is None else shield
 
 
 def alcd_ammo(frame: str | None, slot: int = 0) -> tuple[int, int] | None:

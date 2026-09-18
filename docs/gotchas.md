@@ -596,6 +596,26 @@ proxy was never tested against the behaviour it stood in for.
 `$HIR` tok5 is the **raw magnitude**; applied damage depends on the **SENSOR** (bench 2026-09-11, F23): the gun body is always ×1, and only a **headset** hit on fn 36/37 scales, by `$GSET` t7 — **fn 36 = floor(magnitude × (1 + t7/200)), fn 37 = floor(magnitude × (1 + 2·t7/100))**. At the Callsign capture's t7=50 that reads ×1.25 / ×2 (the ×1.25 truncates, so 7 lands as 8), but Open BRX compiles **t7 = 0**, so no sensor scales and every hit lands at its raw magnitude: BRX players aim at the headset, which holds four of the five sensors, so a headset multiplier would only make the aim everybody already uses pay twice. The `$HIR` crit bit (tok6) read 0 on every measured hit and is a separate, unconfirmed axis.
 Anything that validates a weapon in isolation is blind to a whole class of bug.
 
+**The frame you send is not the frame the game sends, unless you got it from `resolve()`.** On 2026-09-18
+a bench run armed a Shotgun and a Plasma Sniper by hand, from the CAPTURED `$WEAP` in `weapons.json`, and
+reported the result as the shipped weapon. The capture prices those weapons at 45 and 25 with a second
+word of 70 and 80; Open BRX ships 20/20 and 25/10. The measurement was right and the arithmetic was
+right, and the conclusion ("a one-pull kill") was about Callsign's gun rather than ours. Print the real
+frame first and paste that:
+
+```
+cd mcp && python3 -c "
+import sys; sys.path.insert(0,'.')
+from brx_mcp.mc.compile import Compiler
+C=Compiler()
+print(C.catalog.resolve('shotgun', 0))"
+```
+
+`resolve(weapon_id, slot, mods, environment=...)` takes the perk mods and the venue too, so an
+armour-piercing or outdoor frame comes out of the same call instead of being rebuilt by hand. Same shape
+as the two traps below: a harness that exercises something adjacent to what ships proves nothing about
+what ships.
+
 **Capture the site screenshots AFTER you commit the UI change, never before.** `site/shots.mjs` stamps
 the manifest with `git rev-parse HEAD:app/src`, so a capture taken while the change is still uncommitted
 records the OLD hash, and the guard goes red the moment you commit. The order is: commit the UI, run

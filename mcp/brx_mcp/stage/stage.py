@@ -84,6 +84,7 @@ class Profile(TypedDict):
     voice_slots: dict[str, str]
     station_source: str | None
     stun: int | None
+    shields: bool
 
 
 class WalkStep(TypedDict):
@@ -145,6 +146,8 @@ def _set_profile_field(profile: Profile, key: str, value: object) -> None:
         profile["preset"] = value
     elif key == "night":
         profile["night"] = bool(value)
+    elif key == "shields":
+        profile["shields"] = bool(value)          # S29: the shields preset, so the bench can rehearse a recharge
     elif key == "tid":
         profile["tid"] = _int_value(value)
     elif key == "voice_slots":
@@ -167,6 +170,14 @@ PLAYX = "$PLAYX,0,*"           # engine.js PLAYX: stop whatever line the gun is 
 EVENT_MIN_GAP_S = 1.0          # engine.js EVENT_MIN_GAP_MS: never two LED bursts inside a second
 PAIN_GAP_S = 0.6               # engine.js PAIN_GAP_MS (A15.3): at most one pain grunt per 600 ms -- dropped, never queued
 LOW_HEALTH_HP = 15             # engine.js LOW_HEALTH_HP (A17.2): HP below which the once-per-life low-health alert fires
+RELOAD_NAG_FIRST, RELOAD_NAG_EVERY = 5, 3   # engine.js RELOAD_NAG_FIRST / RELOAD_NAG_EVERY (the RELOAD nag): say RELOAD on the 5th dry pull, then every 3rd
+# S29 the shield recharge (engine.js SHIELD_REGEN_*): quiet since the last damage, the `$LIFE` grant and its
+# cadence, the grant cap, and the period the shield-down heartbeat replays on. SECONDS here, ms on the phone.
+SHIELD_REGEN_DELAY_S = 6.5          # engine.js SHIELD_REGEN_DELAY_MS -- Callsign's own 6.2-6.6 s (capture 2026-09-18)
+SHIELD_REGEN_STEP = 10              # engine.js SHIELD_REGEN_STEP -- `$LIFE,0,0,10,*`
+SHIELD_REGEN_STEP_S = 0.3           # engine.js SHIELD_REGEN_STEP_MS -- 0 -> 120 in 4.1 s (bench 2026-09-17)
+SHIELD_REGEN_MAX_GRANTS_SLACK = 3   # engine.js SHIELD_REGEN_MAX_GRANTS_SLACK
+SHIELD_LOOP_S = 1.94                # engine.js SHIELD_LOOP_MS -- N74's own length, so a replay cannot stack
 MEDAL_GAP_S = 2.0              # engine.js MEDAL_GAP_MS
 READOUT_COALESCE_S = 0.3       # engine.js READOUT_COALESCE_MS (A16 §3.1): a repaint within this of the last WRITE only restarts the hold
 GUN_IN_PLAY = list(_pres.GUN_IN_PLAY)
@@ -372,6 +383,14 @@ def _ro_pools(bundle: FrameBundle) -> list:
     return ((bundle.get("gun") or {}).get("readout") or {}).get("pools") or []
 
 
+class _Ignore:
+    """F259 sentinel: `_acct_ammo` returning this means the frame is the node's own write coming back and
+    `_on_ammo` must book nothing from it. Distinct from None, which is a legitimate "no previous magazine"."""
+
+
+IGNORE = _Ignore()
+
+
 class GunStage:
     def __init__(self, mgr, bridge=None, *, compiler: Compiler | None = None,
                  sleep: Callable[[float], Awaitable[None]] | None = None, now: Callable[[], float] = time.monotonic,
@@ -397,7 +416,12 @@ class GunStage:
                                  "station_source": None,
                                         # F15: None = no stun in this game (the config's own `stun` stands if it has one);
                                         # 0 = `{}` (the 10 s default); 1..60 = `{duration_s}`
-                                 "stun": None}
+                                 "stun": None,
+                                        # S29: the SHIELDS shape (`compile.is_shields_preset`: the game's armour
+                                        # is 0, so the shield is the buffer and the node recharges it). Off by
+                                        # default; on, the bench can rehearse a break -> heartbeat -> refill cycle,
+                                        # which is otherwise unreachable because nothing else ever grants shield.
+                                 "shields": False}
         # 2026-09-07: `gun`/`headset` are DISPLAY-ONLY until the operator explicitly picks one via
         # set_profile(); an untouched selector tracks whatever the preset/config's own gun.in_play /
         # headset.in_play resolves to (recompile() syncs it there) instead of always re-patching this
@@ -419,6 +443,7 @@ class GunStage:
         self.shield = 0
         self.max_hp = 45
         self.max_armor = 70
+        self.max_shield = 0        # S45 (engine.js `maxShield`): the `$PSET` t5 ceiling, read back off the compiled head
         self.carrying: int | None = None
         self._active_role: tuple[str, int | None] | None = None   # A16 §3.3: the one held role (name, tid) currently on the headset
         self._hs_gen = 0
@@ -452,6 +477,15 @@ class GunStage:
         self._last_pool_at: float | None = None
         self._shot_due_at: float | None = None
         self._no_fire_pulls = 0
+        self._dry_pulls = 0                        # the RELOAD nag (engine.js `_dryPulls`): pulls into an empty magazine this dry spell
+        # S29 the shield recharge (engine.js `_shieldRegen` / `_shieldQuietAt` / `_shieldLoopAt` / `_shieldDown`):
+        # the refill in flight, the clock the delay runs from (a spawn, or the last damage), the last heartbeat,
+        # and whether the shield BROKE this life (a spawn starts at 0 without breaking and must not heartbeat).
+        self._shield_regen: dict | None = None
+        self._shield_quiet_at = 0.0
+        self._shield_loop_at = 0.0
+        self._shield_down = False
+        self._shield_gave_up = False
         self._last_sir_take: int | None = None     # engine.js `_lastSirTake`
         self._last_pain_at: float | None = None    # A15.3: the 600 ms pain gate (PAIN_GAP_S)
         self._last_hir_proto: int | None = None    # A15.3: the ir protocol of the last $HIR (melee = 13), read on the next $HP/$LCD
@@ -490,6 +524,8 @@ class GunStage:
         self.reserve: int | None = None
         self.active_slot = 0
         self._prev_ammo: dict[int, int] = {}       # per weapon slot ($ALCD token 3): last mag seen
+        self._shot_acct: dict[int, dict] = {}   # F259: per slot, the node's OWN magazine account -- see `_acct_live`
+        self._last_spent: int = 0       # F259: rounds the LAST $ALCD actually cost, off the account (`_acct_spent`)
         self._prev_reserve: dict[int, int] = {}    # per weapon slot: last reserve seen -- the stun restore needs the LIVE pair (F15/F87)
         self.heat_by_slot: dict[int, int] = {}     # per weapon slot ($ALCD token 5): last heat seen (engine.js `heatBySlot`)
         self._heat_at: dict[int, float] = {}       # per slot, `self.now()` of the last heat token (engine.js `_heatAt`)
@@ -558,7 +594,7 @@ class GunStage:
                 v = None if v in (None, "") else _int_value(v)
                 if v is not None and not 0 <= v <= 60:
                     raise ValueError("stun must be null (off), 0 (the 10 s default) or a duration 1..60 s (F15/A20)")
-            if k == "night":
+            if k in ("night", "shields"):
                 v = bool(v)
             if k == "tid":
                 v = _int_value(v)
@@ -744,6 +780,12 @@ class GunStage:
                 patch["headset"] = hs_patch
             base = getattr(self, "_local_pres", None) if not p["preset"] else None
             cfg["presentation"] = _pres.merge(base or cfg.get("presentation"), patch)
+        if p["shields"]:
+            # S45's shape, as far as it is expressible today: armour 0 (which is what `is_shields_preset` and
+            # `shield_regen_on` both key on) over Tony's small-HP pool. The 120 shield he chose is NOT
+            # reachable yet -- `compile._to_gc` writes a fixed `$PSET` t5 of 70 and no config field moves it --
+            # so the bench rehearses the CYCLE at 70, not the balance.
+            cfg["health"] = {"max_hp": 30, "max_armor": 0}
         station_source = p["station_source"]
         if station_source:
             cfg["station_source"] = station_source      # F102: the operator's override of the objective source
@@ -774,6 +816,9 @@ class GunStage:
         # today. Reading it back keeps the stage honest if a perk/override ever reaches this harness.
         pool = _mc_frames.head_pool(self.bundle.get("head"))
         self.max_hp, self.max_armor = pool if pool is not None else (int(cfg["health"]["max_hp"]), int(cfg["health"]["max_armor"]))
+        # S45: the shield CEILING, from the same head. There is no `cfg["health"]` fallback to take -- §2 Health
+        # carries hp and armour only -- so an unreadable head means 0: no ceiling, and nothing can reach it.
+        self.max_shield = _mc_frames.head_shield(self.bundle.get("head"))
         # an UNTOUCHED selector shows the truth: whatever the preset/config actually resolved to, not
         # a stale literal from before GUN_DEFAULT/HEADSET_DEFAULT last changed underneath it.
         eff = (cfg.get("presentation") or {})
@@ -1119,16 +1164,159 @@ class GunStage:
                 return name
         return None
 
+    # ---------- F259: the node's own magazine account (engine.js `_acctLive` and friends) ----------
+    # The gun's `$ALCD` is the truth about the magazine, but it is always a little late: the round has left
+    # by the time the frame lands. Every `$AMMO` the node writes carries a count, so a restore that uses the
+    # last `$ALCD` verbatim hands the gun back a round the player already spent. On the phone that made the
+    # magazine never empty (F259, bench 2026-09-18); here it is the STUN restore that carries the count.
+    # So the stage keeps the same account per slot: `{mag, fired, at, echo_until, echo_expect}`. `mag` is the
+    # magazine it accepts as true, `fired` is the rounds the trigger has asked for that no `$ALCD` has
+    # confirmed, and any restore should carry `mag - fired`.
+    #
+    # ⚠ THE ECHO WINDOW (bench 2026-09-18). When the node writes `$WEAP` + `$AMMO`, the gun answers with TWO
+    # frames: `$ALCD <clip>` (the `$WEAP` reset) and `$ALCD <n>` (the restore landing). The second is a
+    # decrement of `clip - n` -- 26 rounds on the gun Tony was holding -- and reading the raw frame delta
+    # books it as fire. On the phone that fed the recoil burst counter and made the writer flap for nine
+    # seconds after he stopped shooting. So from the instant the node writes a magazine until the gun
+    # confirms it (or ACC_ECHO_S passes), the NODE owns that slot and every `$ALCD` is bookkeeping. Outside
+    # that window the gun always wins.
+    ACC_ECHO_S = 0.4        # engine.js ACC_ECHO_MS
+
+    def _acct_live(self, slot: int, now: float | None = None) -> int | None:
+        """engine.js `_acctLive`: the magazine a write should restore for `slot`, or None before the gun's
+        first `$ALCD` of the life. A press the gun never answered expires after TRIGGER_NO_FIRE_S, the same
+        window `_no_fire_tick` calls a pull unanswered. PURE."""
+        a = self._shot_acct.get(slot)
+        if a is None:
+            return None
+        now = self.now() if now is None else now
+        fired = a["fired"] if a["at"] and now - a["at"] < self.TRIGGER_NO_FIRE_S else 0
+        return max(0, int(a["mag"] - fired))
+
+    def _acct_outstanding(self, slot: int, now: float | None = None) -> bool:
+        """engine.js `_acctOutstanding`: has the trigger asked for a round the gun has not reported yet?
+        Bounded by the same TRIGGER_NO_FIRE_S expiry `_acct_live` uses. PURE."""
+        a = self._shot_acct.get(slot)
+        if a is None or not a["fired"] or not a["at"]:
+            return False
+        now = self.now() if now is None else now
+        return now - a["at"] < self.TRIGGER_NO_FIRE_S
+
+    def _acct_echoing(self, slot: int, now: float | None = None) -> bool:
+        """engine.js `_acctEchoing`: is the node still waiting for the gun to echo a magazine IT wrote?
+        See the echo-window note above. PURE."""
+        a = self._shot_acct.get(slot)
+        if a is None or not a["echo_until"]:
+            return False
+        now = self.now() if now is None else now
+        return now < a["echo_until"]
+
+    def _acct_wrote(self, slot: int, mag: int, res: int | None = None) -> None:
+        """engine.js `_acctWrote`: the node has just written `$AMMO,<slot>,<mag>` and knows what the gun will
+        hold. Take the account there and open the echo window, so the gun's answers cannot read as fire."""
+        a = self._shot_acct.get(slot)
+        if a is None:
+            a = self._shot_acct[slot] = {"mag": mag, "fired": 0, "at": 0.0, "res": None, "echo_until": 0.0, "echo_expect": None}
+        a["mag"] = mag
+        a["fired"] = 0
+        a["at"] = 0.0
+        if res is not None:
+            a["res"] = res          # the `$WEAP` resets the RESERVE too, so the screen needs the node's number for that as well
+        a["echo_until"] = self.now() + self.ACC_ECHO_S
+        a["echo_expect"] = mag
+
+    def _publish_ammo(self, slot: int, mag: int | None, reserve: int | None) -> None:
+        """engine.js `_publishAmmo`: the magazine and reserve the HUD shows. Split out so the echo path can
+        publish the ACCOUNT while the gun is briefly reporting the magazine its own `$WEAP` reset gave it --
+        Tony, bench 2026-09-18: "it shoots up to 32 while shooting ... it syncs on trigger release"."""
+        if mag is None:
+            return
+        self.ammo = mag
+        if reserve is not None:
+            self.reserve = reserve
+
+    def _acct_spent(self, slot: int, before: int | None) -> None:
+        """engine.js `_acctSpent`: rounds that LEFT the gun -- the drop in the ACCOUNT's magazine across one
+        `$ALCD`, never the raw frame delta. The stage drives no recoil model (see KNOWN_UNMIRRORED), so this
+        has nothing to feed yet; it exists, and is tested, because the NUMBER is the thing the phone reads as
+        fire and a stage that computed it differently would predict a different gun."""
+        a = self._shot_acct.get(slot)
+        if a is None or before is None or slot != self.active_slot:
+            return
+        self._last_spent = max(0, before - int(a["mag"]))
+
+    def _acct_press(self) -> None:
+        """engine.js `_acctPress`: a trigger press that must produce a round (`_await_shot` has cleared every
+        reason it would not). Booked NOW, because the press is the earliest evidence a round is leaving.
+
+        ⚠ Deliberately books the round for the RESTORE only. On the phone this does NOT step recoil: a write
+        put on the wire before the gun had fired would take the round off a magazine the gun was about to
+        decrement itself, and charge the player twice (bench 2026-09-18)."""
+        a = self._shot_acct.get(self.active_slot)
+        if a is None:
+            return
+        a["fired"] = min(a["mag"], a["fired"] + 1)
+        a["at"] = self.now()
+
+    def _acct_ammo(self, slot: int, mag: int, prev: int | None) -> int | None | _Ignore:
+        """engine.js `_acctAmmo`: every `$ALCD` that reached `_on_ammo` feeds the account FIRST, before
+        anything else books from the frame. Returns the magazine `_on_ammo` should measure this frame
+        against, or IGNORE when the frame is the node's own write coming back and nothing may be booked.
+
+        Inside the echo window there are two cases: above what we wrote is the `$WEAP` reset (not news), and
+        at or below it is our `$AMMO` landing, which closes the window and measures from the number WE wrote.
+        A round that leaves INSIDE the window is not booked; see the engine.js note."""
+        a = self._shot_acct.get(slot)
+        if a is None:
+            self._shot_acct[slot] = {"mag": mag, "fired": 0, "at": 0.0, "res": None, "echo_until": 0.0, "echo_expect": None}
+            return prev                             # the first frame of a life seeds it
+        if self._acct_echoing(slot):
+            if mag > a["echo_expect"]:
+                return IGNORE
+            prev = int(a["mag"])                    # the restore has landed: measure from the number the node wrote
+        a["echo_until"] = 0.0
+        a["echo_expect"] = None
+        before = int(a["mag"])
+        d = prev - mag if prev is not None and mag < prev else 0
+        if d:
+            a["fired"] = max(0, a["fired"] - d)     # the gun has answered that many presses
+            if not a["fired"]:
+                a["at"] = 0.0
+        a["mag"] = mag                              # the gun wins, always
+        self._acct_spent(slot, before)
+        return prev
+
     def _await_shot(self) -> None:
         """engine.js `_awaitShot`: a trigger press the gun should answer with a shot. A press while one is due keeps the first."""
         if self._stand_down(("spawned", "ble", "alive", "switching", "reloading", "stunned", "heat")):
             return
-        seen = self._prev_ammo.get(self.active_slot)
+        # F259: the ACCOUNT, not the last `$ALCD` -- a press whose round is still in flight has already
+        # spent that round, and the gun's slower number would book a press an empty gun cannot answer.
+        seen = self._acct_live(self.active_slot)
         mag = seen if seen is not None else self._ammo_by_slot().get(self.active_slot)
         if not (mag and mag > 0):
+            self._dry_pull()
             return                               # an empty magazine dry-fires: no shot is owed
+        self._dry_pulls = 0                      # the RELOAD nag: a loaded pull ends the dry spell even if the gun never answers it
+        self._acct_press()   # F259: the earliest evidence a round is leaving -- the gun has not fired yet
         if self._shot_due_at is None:
             self._shot_due_at = self.now()
+
+    def _dry_pull(self) -> None:
+        """engine.js `_dryPull`: the RELOAD nag (Tony, bench 2026-09-18). Reached from `_await_shot` ONLY, below its stand-down
+        table, so overheat / a swap / a reload / a stun / being down have all returned already and the empty
+        magazine is the only thing left that can have stopped the round. Tony's cadence (bench 2026-09-18):
+        the 5th pull of one dry spell, then every 3rd after it. A dry reserve stays SILENT -- "Reload" said to
+        a player with nothing to reload to is a lie -- and a reserve the gun has never reported counts as
+        none, the same rule `reload()` uses to refuse a reload it cannot prove is possible."""
+        reserve = self._prev_reserve.get(self.active_slot, self.reserve)
+        if not (reserve and reserve > 0):
+            return
+        self._dry_pulls += 1
+        if self._dry_pulls < RELOAD_NAG_FIRST or (self._dry_pulls - RELOAD_NAG_FIRST) % RELOAD_NAG_EVERY != 0:
+            return
+        self._log(f"dry pull {self._dry_pulls} on an empty magazine with {reserve} in reserve: RELOAD", "info")
+        self._event_now("reload_nag")
 
     def _no_fire_tick(self, now: float) -> None:
         """engine.js `_noFireTick`: a press with no pool report TRIGGER_NO_FIRE_S later counts as unanswered."""
@@ -1193,7 +1381,7 @@ class GunStage:
         self._arm_pending = None                                 # F209: a head is fn 28 throughout
         self.spawned = False; self.alive = False; self.scream_this_life = None   # a fresh head: no scream written yet
         self._reset_hill()                                       # engine.js `_resetHill` on a new match: game 2 must not inherit game 1's point or its once-per-game warnings
-        self._prev_ammo = {}; self._prev_reserve = {}; self.active_slot = 0; self.reloading = None   # engine.js `_writeHead`
+        self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = {}; self.active_slot = 0; self.reloading = None   # engine.js `_writeHead`
         hs = self.bundle.get("headset") or {}
         if hs.get("pregame"):
             await self.write(hs["pregame"], "headset pregame")
@@ -1308,8 +1496,13 @@ class GunStage:
         self.spawned = True; self.alive = True
         self.hp = self.max_hp; self.armor = self.max_armor; self.shield = 0   # engine.js `_afterSpawn`/`_revive`: shield always starts at 0, not a max
         self._hurt_fired = False
-        self._shot_due_at = None; self._no_fire_pulls = 0                       # F208: a fresh life owes no shots
-        self._prev_ammo = {}; self._prev_reserve = {}; self.active_slot = 0    # engine.js: a spawn/revive puts the gun back on slot 0; both ammo maps reset (stun snapshot, polish 2026-09-11)
+        self._shot_due_at = None; self._no_fire_pulls = 0; self._dry_pulls = 0   # F208: a fresh life owes no shots; the RELOAD nag: and it starts loaded, so no dry spell is running
+        # S29 (engine.js): a fresh life starts at shield 0 without the shield having BROKEN, so no heartbeat
+        # and no refill in flight; the delay runs from here, so a life's first fill lands SHIELD_REGEN_DELAY_S
+        # in and never inside the spawn write.
+        self._shield_regen = None; self._shield_down = False; self._shield_loop_at = 0.0
+        self._shield_gave_up = False; self._shield_quiet_at = self.now()
+        self._prev_ammo = {}; self._prev_reserve = {}; self._shot_acct = {}; self.active_slot = 0    # engine.js: a spawn/revive puts the gun back on slot 0; both ammo maps reset (stun snapshot, polish 2026-09-11)
         self.heat_by_slot = {}; self._heat_at = {}                            # engine.js `_afterSpawn`/`_revive`: a fresh life starts cool
         # engine.js `_afterSpawn`/`_revive` clear all THREE: a takeover from the last life, the verdict it
         # left behind, and any button still down. Clearing only `reloading` left the previous life's
@@ -1658,9 +1851,89 @@ class GunStage:
         self._no_fire_tick(now)                  # F208 (engine.js tick())
         if self.stunned and now >= self.stunned["until"]:
             self._stun_restore("expired")        # F15: the stun timer -- restore the LIVE counts (engine.js tick())
+        self._shield_tick(now)                   # S29 (engine.js tick()): the recharge, and the heartbeat while the shield is gone
         self._stations_tick(now)                 # K1: the scanner's callback (an advertising station is heard again)
         self._hill_tick(now)
         return seen
+
+    @property
+    def shield_regen_on(self) -> bool:
+        """engine.js `shieldRegenOn` (S45): does THIS game recharge shields? The game's armour is 0, so the
+        shield IS the buffer -- a mirror of `compile.is_shields_preset`, reading the GAME's `health.max_armor`
+        and never a per-player override. It is the opt-in because every compiled head arms a `$PSET` t5 of 70
+        whether the game wants shields or not, so keying on the ceiling alone would refill every match."""
+        return int((self.config.get("health") or {}).get("max_armor") or 0) == 0 and self.max_shield > 0
+
+    def _shield_tick(self, now: float) -> None:
+        """engine.js `_shieldTick` (S29): the four moments of a recharge. The shield breaks (`shield_down`),
+        the heartbeat loops while it is gone, SHIELD_REGEN_DELAY_S of no damage starts a refill
+        (`shield_charging`, once), `$LIFE` grants land every SHIELD_REGEN_STEP_S until the gun says the pool is
+        full, and that frame says `shield_online`. Any damage restarts the clock (`_on_pools`)."""
+        if not self.shield_regen_on:
+            return
+        if self._stand_down(("spawned", "ble", "alive", "stunned")):
+            self._shield_regen = None
+            return
+        if self.shield >= self.max_shield:
+            self._shield_regen = None            # nothing to do; the charged edge is `_on_pools`'
+            return
+        # The heartbeat runs while the shield is gone and the refill is not due yet. Asked BEFORE the refill
+        # starts and answered here rather than at the top, because a heartbeat written in the same tick as
+        # `shield_charging` is exactly "it stops when the recharge starts", broken.
+        if self._shield_gave_up or now - self._shield_quiet_at < SHIELD_REGEN_DELAY_S:
+            if self._shield_down and not self._shield_regen:
+                self._shield_loop_tick(now)
+            return
+        if not self._shield_regen:
+            self._shield_regen = {"started_at": now, "next_at": now, "grants": 0}
+            self._log(f"shield recharge: {self.shield}/{self.max_shield} after "
+                      f"{now - self._shield_quiet_at:.1f}s without damage", "info")
+            self._event_now("shield_charging")
+        r = self._shield_regen
+        if now < r["next_at"]:
+            return
+        if r["grants"] >= math.ceil(self.max_shield / SHIELD_REGEN_STEP) + SHIELD_REGEN_MAX_GRANTS_SLACK:
+            # A full pool's worth of grants and the gun still does not report full: stop rather than write at
+            # it forever. Either the echoes are lost, or the ceiling is not what the head said.
+            # `_shield_gave_up` is what makes it STICK: clearing `_shield_regen` alone put the next tick
+            # back at the top with the delay long since served and a fresh counter, so the cap counted to ten
+            # and started again forever. A hit or a new life restamps the quiet clock and earns another go.
+            self._shield_regen = None
+            self._shield_gave_up = True
+            self._log(f"shield recharge gave up after {r['grants']} grants -- the gun still reports "
+                      f"{self.shield}/{self.max_shield}", "warn")
+            return
+        r["grants"] += 1
+        r["next_at"] = now + SHIELD_REGEN_STEP_S
+        self._spawn_task(self.write([f"$LIFE,0,0,{SHIELD_REGEN_STEP},*"], f"shield regen grant {r['grants']}", gap_ms=0))
+
+    def _shield_loop_tick(self, now: float) -> None:
+        """engine.js `_shieldLoopTick`: the heartbeat, replayed while the shield is down and the recharge has
+        not started. A LOOP the node drives, because the gun has no looping `$PLAY` -- the hill possession
+        tick's shape, and for the hill's reason: a clip relaunched faster than it runs stacks and drifts (F74).
+        The period is the clip's own length. `""` = the host turned the loop off."""
+        fr = (self.bundle.get("cues") or {}).get("shield_loop")
+        if not fr:
+            return
+        cue_ms = self.bundle.get("cue_ms") or {}
+        period = float(cue_ms["shield_loop"]) / 1000.0 if "shield_loop" in cue_ms else SHIELD_LOOP_S
+        if not period > 0:
+            return
+        if self._shield_loop_at and now - self._shield_loop_at < period:
+            return
+        self._shield_loop_at = now
+        self._spawn_task(self.write([fr], "shield down heartbeat", gap_ms=0))
+
+    def _shield_charged(self) -> None:
+        """engine.js `_shieldCharged`: the pool reached its ceiling, so the refill is over and the shield is no
+        longer down. The CUE is `_on_pools`' (`shield_online`) -- only the gun's own frame proves it is full."""
+        if self._shield_regen:
+            self._log(f"shield recharged to {self.max_shield} in "
+                      f"{self.now() - self._shield_regen['started_at']:.1f}s", "info")
+        self._shield_regen = None
+        self._shield_down = False
+        self._shield_loop_at = 0.0
+        self._shield_gave_up = False
 
     def _on_rx(self, raw: str) -> None:
         t = _toks(raw)
@@ -2129,9 +2402,24 @@ class GunStage:
         self.hp, self.armor, self.shield = hp, armor, shield
         cues = self.bundle.get("cues", {})
         hs = self.bundle.get("headset") or {}
+        # S29 (engine.js `_onHp`): damage RESTARTS the recharge clock and abandons a refill already running --
+        # the shield comes back only when you break contact. Stamped on the POOLS moving, not on the `$HIR`, so
+        # a hit whose word was lost or merged still counts.
+        if dmg > 0:
+            self._shield_quiet_at = self.now()
+            self._shield_regen = None
+            self._shield_gave_up = False
+        # S29 (Tony, by ear 2026-09-18): the shield BREAKING is its own cue. The edge is `>0 -> 0`, so a spawn
+        # (which starts at 0 and never crosses) cannot fire it, nor can a second frame repeating the 0.
+        if self.alive and self.spawned and self.max_shield > 0 and prev_shield > 0 and shield == 0:
+            self._shield_down = True
+            self._shield_loop_at = self.now()   # the heartbeat starts one period LATER, not under the break cue
+            self._log(f"shield depleted ({self.max_shield} gone) -- health is all that is left", "info")
+            self._event_now("shield_down")
         if hp == 0 and self.alive:
             self.alive = False
             self._arm_pending = None               # F209 (engine.js `_death`): never arm a dead gun
+            self._shield_regen = None; self._shield_down = False   # S29: a dead gun is not refilled, and the heartbeat stops with the life
             self.reloading = None; self.reload_outcome = None; self.held = {}; self.switching = None   # engine.js `_death`: the gun stops the reload when you drop; so does the HUD
             self._stun_restore("died")             # F15: death cancels the stun -- no restore write; the revive's own $AMMO re-arms the next life
             self._moment = ("down", self.now())    # engine.js `_death`: the rarer moment (gates a pool rise for RARE_GUARD_S)
@@ -2192,9 +2480,25 @@ class GunStage:
                     self._log(f"pool rise ({', '.join(f'{p} +{d}' for p, d in gains)}) in the same frame as {dmg} damage: the HIT wins, no gain event (F14)", "info")
             elif before > 0 and gains:
                 pool, amount = gains[0]
-                kind = "healed" if pool == "health" else "armour_up" if pool == "armor" else "shield_up"
-                self._log(f"pool rise: {kind} ({pool} +{amount}) -- the phone fires this event here", "info")
-                self._event_now(kind)
+                # S45 (engine.js `_onHp`): the grant that FILLS the shield says SHIELDS ONLINE instead of
+                # the per-grant `shield_up` line -- a refill is a dozen `$LIFE` grants 300 ms apart and the gun
+                # plays one clip at a time, so the two would cut each other off on the frame the news lands
+                # (F57's rule: two cues, one speaker, the rarer one wins). What makes it an EDGE is this branch,
+                # not a comparison of its own: it runs only when a pool actually ROSE, so a frame reporting a
+                # shield already at the ceiling is silent and a spawn (shield always 0) cannot fire it.
+                # `max_shield > 0` is the load-bearing half: with no shield configured, 0 >= 0 would read every
+                # grant as "full".
+                full = self.max_shield > 0 and shield >= self.max_shield
+                if pool == "shield" and full:
+                    self._shield_charged()
+                # S29: mid-recharge the grants are OURS and `shield_charging` already spoke for them, so they
+                # are silent -- twelve `shield_up` lines over a 4 s refill would cut each other off. A grant
+                # that is NOT our recharge (an IR pickup, a host grant) still says `shield_up`.
+                kind = ("healed" if pool == "health" else "armour_up" if pool == "armor"
+                        else "shield_online" if full else None if self._shield_regen else "shield_up")
+                if kind:
+                    self._log(f"pool rise: {kind} ({pool} +{amount}) -- the phone fires this event here", "info")
+                    self._event_now(kind)
         # A16 §3.1/§5 (readout) / A11.7 legacy (health bands): a hit does not clear a held paint, only
         # a real pool change writes a new one -- mirrors engine.js `_onHp`'s `if (hp > 0) this._gunPoolPaint(...)`,
         # called on ANY pool change (gains included), not only damage.
@@ -2323,7 +2627,16 @@ class GunStage:
         if self.stunned:
             self._log(f"$ALCD ignored while stunned (slot {slot} mag {mag})", "info")
             return
-        prev = self._prev_ammo.get(slot)
+        # F259 (bench 2026-09-18): the same shape as the stun guard above, and for the same reason. Inside
+        # the ECHO WINDOW this frame is the gun reading back the node's OWN `$WEAP` reset -- not a shot, not
+        # a reload, not resync proof, and not a magazine worth showing. Book NOTHING, leave `_prev_ammo`
+        # where it was so the next real frame measures from before the write, and put the ACCOUNT on screen.
+        seen = self._acct_ammo(slot, mag, self._prev_ammo.get(slot))
+        if isinstance(seen, _Ignore):
+            a = self._shot_acct.get(slot)
+            self._publish_ammo(slot, self._acct_live(slot), a["res"] if a else None)
+            return
+        prev = seen
         # F209 (engine.js `_onAmmo`): a round leaving slot 0 or 1 proves the gun can fire, so hit reception arms now
         if self._arm_pending is not None and slot in (0, 1) and prev is not None and mag < prev:
             self._arm_life("first shot")
@@ -2343,6 +2656,11 @@ class GunStage:
                 # `gained: 0, ok: false` -- the exact false verdict F123 exists to prevent. The shot is not
                 # part of what the reload achieved.
                 self._end_reload("fired")
+        # the RELOAD nag (engine.js `_onAmmo`): the magazine came back, so the dry spell is over and the RELOAD nag counts
+        # from one again. Keyed on the gun's own rising count rather than on `_end_reload`, because that is what
+        # "the player reloaded" means on the wire -- a shell-by-shell chain and a swap onto a loaded slot too.
+        if prev is not None and mag > prev:
+            self._dry_pulls = 0
         if self.switching and slot != self.switching["from"] and slot < 2:
             # slot 4 is MELEE and arrives on its own $ALCD -- it is not the swap we were waiting for.
             self.last_switch_s = round(self.now() - self.switching["at"], 2)
@@ -2350,10 +2668,9 @@ class GunStage:
             self._log(f"slot {slot} confirmed the swap {self.last_switch_s:g}s after ALT (incl. reaction)", "info")
         self._prev_ammo[slot] = mag
         self.active_slot = slot
-        self.ammo = mag
         if reserve is not None:
-            self.reserve = reserve
             self._prev_reserve[slot] = reserve
+        self._publish_ammo(slot, mag, reserve)
 
     def _on_button(self, bid: int | None, state: int | None) -> None:
         """Every `$BUT` edge, press AND release -- a faithful port of engine.js `_onButton` (F123).
@@ -2472,11 +2789,14 @@ class GunStage:
         return out
 
     def _live_ammo(self) -> dict[int, list[int | None]]:
-        """engine.js `_liveAmmo`: {slot: [mag, reserve]} the gun holds now -- the last `$ALCD`, else the spawn frame's."""
+        """engine.js `_liveAmmo`: {slot: [mag, reserve]} the gun holds now -- the node's magazine account
+        (F259), else the spawn frame's."""
         spawn = self._spawn_ammo()
         live: dict[int, list[int | None]] = {}
         for slot in spawn:
-            mag, res = self._prev_ammo.get(slot), self._prev_reserve.get(slot)
+            # F259: the node's own account, never the last `$ALCD` -- a round fired between that frame and this
+            # restore would otherwise be handed straight back when the stun lifts.
+            mag, res = self._acct_live(slot), self._prev_reserve.get(slot)
             live[slot] = [mag if mag is not None else spawn[slot][0], res if res is not None else spawn[slot][1]]
         return live
 
@@ -2966,6 +3286,17 @@ class GunStage:
             add("low_health", "LOW HEALTH (HP below 15, armour irrelevant)",
                 "sound: the hurt line · headset: Callsign's fast blink · " + ("gun body: pool readout shows the health band" if g and g.get("readout") else "gun body: YELLOW then RED bands" if g and g.get("in_play") == "health" else "gun: hit flash only"),
                 "ir", {"kind": "shot", "repeat": 1}, needs_ir=True)
+            if self.profile["shields"]:
+                # S29, and this is the step the next hardware pass is for: until the node drove `$LIFE`
+                # grants nothing ever refilled a shield, so none of these four cues could be heard at all.
+                # Shoot the shield off, then STOP SHOOTING and listen -- the wait is the mechanic.
+                add("shield_cycle", "SHIELD BREAK AND RECHARGE (shoot it off, then wait)",
+                    f"sound: the break cue, then the heartbeat every {SHIELD_LOOP_S:g}s while the shield is gone · "
+                    f"after {SHIELD_REGEN_DELAY_S:g}s with NO further hits the heartbeat stops and the charge cue plays, "
+                    f"then {SHIELD_REGEN_STEP}-point `$LIFE` grants every {SHIELD_REGEN_STEP_S:g}s refill the pool "
+                    f"({self.max_shield} in about {self.max_shield / SHIELD_REGEN_STEP * SHIELD_REGEN_STEP_S:.1f}s) and "
+                    "the ONLINE line plays at full. Any hit in the wait restarts the whole delay",
+                    "ir", {"kind": "shot", "repeat": max(1, math.ceil(self.max_shield / 20))}, needs_ir=True)
             add("death", "DEATH (emitter kills you)",
                 # §3.2 (2026-09-07 bench): the FIRMWARE flashes the headset's small LED brightly on its own
                 # while you're down -- we write nothing extra there beyond a belt-and-braces $HLOOP rearm.

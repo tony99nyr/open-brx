@@ -140,9 +140,16 @@ class FakeTagger:
             #      The old `min(cfg, hp + v)` had no lower bound and would go NEGATIVE on a drain.
             #   3. It SELF-EMITS `$HP` -- except when the write is lethal, where the frame shape
             #      SWAPS to `$LCD` and no `$HP` is sent at all (F64).
+            #   4. TOKEN 3 IS THE SHIELD, and it lands like the other two (bench 2026-09-17 step 7: grants of
+            #      10, 20, 25 and 30 all took, and 30 onto a 55 pool clamped at the `$PSET` ceiling of 70).
+            #      The fake used to parse hp and armour, drop the shield token on the floor, and then self-emit
+            #      an `$HP` carrying its unchanged `self.shield` -- so a node granting shield was told, on the
+            #      wire, that nothing happened. S29's recharge cannot be rehearsed against a gun like that,
+            #      which is the failure mode this handler's own comment warns about.
             clamp = lambda cur, cap, d: max(0, min(cap, cur + d))
             self.hp = clamp(self.hp, self.cfg_hp, _int(t[1] if len(t) > 1 else None) or 0)
             self.armor = clamp(self.armor, self.cfg_armor, _int(t[2] if len(t) > 2 else None) or 0)
+            self.shield = clamp(self.shield, self.cfg_shield, _int(t[3] if len(t) > 3 else None) or 0)
             if self.hp > 0:
                 self.alive = True
                 self._out.append(f"$HP,{self.hp},{self.armor},{self.shield},*")

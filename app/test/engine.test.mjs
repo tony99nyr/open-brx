@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { Engine, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES } from '../src/engine.js';
+import { Engine, handoverPool, PLAYX, TEAM_REPAINT_MS, ACC_WRITE_MIN_GAP_MS, ACC_VERIFY_GRACE_MS, ACC_HOLD_MS, ACC_ECHO_MS, RECOIL_SETTLE_MIN_MS, TRIGGER_NO_FIRE_MS, OVERHEAT_SHOWN_MS, OVERHEAT_CAP_MS, HEAT_STALE_MS, STAND_DOWN_NAMES } from '../src/engine.js';
 import { CONTROL_STATE } from '../src/control.js';   // the phone control point's advert bits (K1)
 import { Presence, encodeUuid } from '../src/beacon.js';   // the REAL advert path, for the clock-mismatch guard
 
@@ -2527,7 +2527,7 @@ test('F68: a life with NO hits at all still gets its team colour repainted, on a
   assert.equal(h.writes.filter(f => f === teamRest).length, 1, 'the repaint keeps firing every interval with no hits at all');
 });
 
-// ---------- S42: node-driven recoil (the accuracy ceiling/floor is ours, not the gun's) ----------
+// ---------- S42/F259: node-driven recoil (the accuracy ceiling/floor is ours, not the gun's) ----------
 // `armRecoil` mirrors `goLive`: a fresh life on a single-weapon catalog carrying the `recoil` block the
 // test wants, ending on the same $LCD baseline `goLive` uses (establishes `_prevAmmo[0]` at mag 36 with
 // nothing counted as a shot yet -- the first $ALCD of a life is a baseline, never a decrement).
@@ -2543,63 +2543,516 @@ function armRecoil(recoil, { recoilConfig } = {}) {
   // backstop clock, so every test below measures the writer itself and not the hold. The hold has its own
   // tests ("S42 x A44/A47/F15" further down).
   h.adv(ACC_HOLD_MS + 10); h.eng.tick(); h.eng._lastTeamRepaintAt = h.eng.now();
+  h.mag = 36;   // the magazine the FAKE gun below is holding, kept in step with the $ALCD frames the tests feed
   return h;
 }
-const RECOIL_PROFILE = { ceiling: 100, floor: 20, per_shot: 10, recover_ms: 150 };
+// F259: the ladder block the catalogue still ships, and the two-state shape `_recoilProfile` derives from
+// it -- crisp 100, degraded 20, degraded after 2 rounds (100 -> 20 at 40 a round), settle
+// RECOIL_SETTLE_MIN_MS (`recover_ms` 150 is far below that floor).
+const RECOIL_PROFILE = { ceiling: 100, floor: 20, per_shot: 40, recover_ms: 150 };
+const DEGRADE_AFTER = 2, SETTLE_MS = RECOIL_SETTLE_MIN_MS;
 
-test('S42: a shot steps live accuracy down; one $WEAP write pins BOTH t21 and t22 to it, with a same-breath $AMMO restore of the live counts', () => {
+const weaps = h => h.writes.filter(f => f.startsWith('$WEAP,0,'));
+const ammos = h => h.writes.filter(f => f.startsWith('$AMMO,0,'));
+/** Fire `n` rounds from slot 0, one $ALCD each, `gap` ms apart -- well inside `settleMs`, so the rounds
+ *  are ONE burst. Each frame reports the accuracy the gun was last told to hold, which is what a gun that
+ *  honoured the write would say. */
+function fire(h, n = DEGRADE_AFTER, { gap = 60, slot = 0 } = {}) {
+  for (let i = 0; i < n; i++) {
+    if (gap) h.adv(gap);
+    const r = h.eng._recoil;
+    const acc = r && r.lastWriteValue != null ? r.lastWriteValue : 100;
+    h.frame(`$ALCD,${--h.mag},${acc},${slot},215,0,*`);
+  }
+}
+/** The gun's own report that it took the accuracy write: the same magazine, at the written value.
+ *  `_recoilObserve` confirms a pending write off any $ALCD that names the slot, so this closes the verify
+ *  window and leaves the model idle -- which is what a guard test needs before it puts its guard on. */
+function ack(h, slot = 0) {
+  const r = h.eng._recoil;
+  if (r && r.lastWriteValue != null) h.frame(`$ALCD,${h.mag},${r.lastWriteValue},${slot},215,0,*`);
+}
+
+// ---------- F259: the gun resets its own magazine, and the magazine must still empty ----------
+
+/** The gun as the bench measured it, driven round by round on the test clock:
+ *   - a `$WEAP` re-push RESETS the magazine to the frame's clip (bench 2026-09-17);
+ *   - an `$AMMO` sets the magazine to whatever the node sent;
+ *   - a round leaves the moment the trigger cadence comes round, and its `$ALCD` reaches the node
+ *     `latency` ms LATER. That gap is the whole of F259: the node can write inside it, and a write that
+ *     restores the last count it RECEIVED hands the round back.
+ *  `press` drives the `$BUT,0,1` a semi-automatic weapon sends before each round; `press: false` is the
+ *  full-auto case, where the node has only the `$ALCD` stream to go on. `honours: false` is the F230 gun:
+ *  it APPLIES the write (magazine reset and all) but never reports the new live accuracy, so the node's
+ *  verify fails and a RETRY fires from the clock, mid-burst, rather than off an `$ALCD`.
+ *  Returns the gun. */
+function sustainedFire(h, { slot = 0, clip = 36, reserve = 215, rounds = 60, cadence = 100, latency = 40, step = 10, press = true, honours = true, writeLatency = 40, onSample = null } = {}) {
+  const gun = { mag: clip, reserve, resets: 0, fired: 0 };
+  let cursor = h.writes.length, inFlight = null, nextAt = h.eng.now();   // the head is already written; only what follows reaches this gun
+  // ⚠ F259: a write does not land instantly and the gun ANSWERS it. Each frame reaches the gun
+  // `writeLatency` ms later (the bench measured 30-90 ms) and sends its own `$ALCD` back, exactly as the
+  // hardware did on 2026-09-18: a `$WEAP` reset reports the clip, and the `$AMMO` beside it reports the
+  // restored count. The node sees the second as a decrement of `clip - n`. A simulator that applied the
+  // writes instantly AND silently -- as this one did until the bench caught it -- models a gun that does not
+  // exist, and passes while the real one oscillates.
+  // ⚠ The HUD re-renders on every frame off the gun (`_changed`), so the sampler must too. Sampling once a
+  // tick hid the leak entirely: the reset echo and the restore echo arrive together, so a raw value on
+  // screen was overwritten before the next tick ever looked at it -- and Tony saw it on the phone anyway.
+  const feed = (f) => { h.frame(f); if (onSample) onSample(); };
+  const queued = [];
+  const collect = () => {
+    for (; cursor < h.writes.length; cursor++) {
+      const f = h.writes[cursor];
+      if (f.startsWith(`$WEAP,${slot},`) || f.startsWith(`$AMMO,${slot},`)) queued.push({ at: h.eng.now() + writeLatency, frame: f });
+    }
+  };
+  const apply = () => {
+    while (queued.length && h.eng.now() >= queued[0].at) {
+      const f = queued.shift().frame;
+      if (f.startsWith('$WEAP,')) { gun.mag = clip; gun.resets++; }
+      else { const t = f.split(','); gun.mag = Math.max(0, +t[2] || 0); gun.reserve = +t[3] || 0; }
+      const r = h.eng._recoil;
+      feed(`$ALCD,${gun.mag},${honours && r && r.lastWriteValue != null ? r.lastWriteValue : 100},${slot},${gun.reserve},0,*`);
+      collect();
+    }
+  };
+  const drainEchoes = () => {};   // folded into `apply` now that a write has a landing time
+  if (onSample) onSample();   // the starting magazine, before a single round has left
+  for (let guard = 0; gun.fired < rounds && guard < rounds * (cadence / step) * 4; guard++) {
+    h.adv(step); collect(); apply();
+    if (inFlight && h.eng.now() >= inFlight.at) { feed(inFlight.frame); inFlight = null; collect(); apply(); }
+    if (!inFlight && h.eng.now() >= nextAt && gun.mag > 0) {
+      if (press) h.frame('$BUT,0,1,*');                  // the trigger press, which the node sees BEFORE the round leaves
+      gun.mag--; gun.fired++;
+      const r = h.eng._recoil;
+      const acc = honours && r && r.lastWriteValue != null ? r.lastWriteValue : 100;
+      inFlight = { at: h.eng.now() + latency, frame: `$ALCD,${gun.mag},${acc},${slot},${gun.reserve},0,*` };
+      nextAt = h.eng.now() + cadence;
+    }
+    h.eng.tick(); collect(); apply();
+    if (gun.mag <= 0 && !inFlight) break;
+  }
+  // Let everything still in the air arrive before the counts are read: the last round's own `$ALCD`, then
+  // any write it triggered, then that write's echoes. Ending the loop the instant the last round leaves was
+  // dropping a frame and made the engine look one round short.
+  for (let i = 0; i < 20; i++) {
+    h.adv(step);
+    if (inFlight && h.eng.now() >= inFlight.at) { feed(inFlight.frame); inFlight = null; }
+    collect(); apply(); h.eng.tick(); collect(); apply();
+  }
+  if (onSample) onSample();
+  return gun;
+}
+
+test('F259: the gun resets its magazine on every $WEAP -- a 36-round magazine must still run dry under sustained fire', () => {
+  // THE defect, and the shape nothing modelled before: `_recoilWrite` used to restore `_prevAmmo`, the last
+  // count the node happened to have RECEIVED. A round leaving inside that gap was handed straight back, so
+  // with a writer firing every 250-500 ms the magazine never emptied and the HUD's ammo meant nothing
+  // (Tony, bench 2026-09-18: "it was rendering 31/32 back and forth").
+  const h = armRecoil(RECOIL_PROFILE);
+  const gun = sustainedFire(h);
+  assert.ok(gun.resets > 0, 'pre-condition: the accuracy writer must actually have re-pushed $WEAP, or this test proves nothing');
+  assert.equal(gun.mag, 0, 'the magazine did not empty -- a write restored a round that had already left the gun');
+  assert.equal(gun.fired, 36, `the player must get exactly the magazine they were given: ${gun.fired} rounds left the gun`);
+  assert.equal(h.eng._acctLive(0), 0, 'and the node must agree the magazine is spent, or the HUD lies about it');
+});
+
+test('F259: a gun that never confirms an accuracy write (F230) costs at most a round PER CLOCK-DRIVEN WRITE, and still runs dry', () => {
+  // The dangerous write is the one the gun's own shot stream did NOT trigger. A verify retry fires
+  // ACC_VERIFY_GRACE_MS after the write it is judging, which is an arbitrary clock moment mid-burst.
+  //
+  // ⚠ THIS ONE CANNOT BE MADE PERFECT, and the number below is a measurement, not a target. A write takes
+  // 30-90 ms to reach the gun (bench 2026-09-17) and an assault rifle fires every 100 ms, so a write composed
+  // in an inter-round gap can still land AFTER the next round has left, and its `$AMMO` puts that round back.
+  // No ordering inside the node fixes that; only the node knowing the link's flight time would, and it does
+  // not. What IS bounded is how often it can happen: the degrade write is triggered by the `$ALCD` that
+  // crossed the threshold (nothing outstanding, a full fire interval of headroom), the `shotInFlight` guard
+  // keeps clock-driven writes off a round the trigger has already asked for, and the verify gives up for the
+  // life after two failures. So an F230 gun costs a handful of rounds a life, against a magazine that used to
+  // never empty at all.
+  const h = armRecoil(RECOIL_PROFILE);
+  const gun = sustainedFire(h, { honours: false, latency: 70 });
+  assert.ok(gun.resets > 1, 'pre-condition: the unconfirmed write must have been retried, so more than one $WEAP reset the magazine');
+  assert.equal(gun.mag, 0, 'the magazine must still run dry -- that is the F259 defect, and it must not come back');
+  assert.ok(gun.fired - 36 <= 3,
+    `an unconfirmed write may return at most one round per clock-driven write, and there are at most three a life ` +
+    `(degrade, retry, give-up): ${gun.fired} rounds left a 36-round magazine`);
+  assert.ok(gun.fired >= 36, `and it must never COST the player rounds either: ${gun.fired}`);
+  // CONTROL: the ordinary gun, which answers its writes, spends exactly the magazine (the test above).
+});
+
+test('F259: the same holds on FULL AUTO, where the node has only the $ALCD stream and no press per round', () => {
+  const h = armRecoil(RECOIL_PROFILE);
+  const gun = sustainedFire(h, { press: false });
+  assert.ok(gun.resets > 0, 'pre-condition: the writer must have re-pushed $WEAP');
+  assert.equal(gun.mag, 0, 'the magazine did not empty under full auto');
+});
+
+test('F259: FIVE PRESSES ON A RESETTING GUN -- one degrade, one recovery, and then SILENCE (the bench oscillation)', () => {
+  // Hardware, 2026-09-18. Tony fired five shots and the phone flapped for nine seconds afterwards, a
+  // crisp/degraded pair about every 1.25 s, with the magazine jumping "11 to 32 and back" on the HUD:
+  //     35031 crisp · 35326 degraded · 38780 crisp · 39050 degraded · 40027 crisp · 40300 degraded · ...
+  // The loop was ours. A `$WEAP` resets the gun to the compiled clip, the gun reports it, our `$AMMO`
+  // restore puts it back, and the gun reports THAT -- a decrement of `clip - n`, which the burst counter
+  // read as fire, so it crossed the threshold, wrote, reset, and round again. Nothing in this file modelled
+  // the gun ANSWERING a write, so every test passed while the real thing oscillated.
+  // The profile is the shipping assault rifle: crisp 100, degraded 70, three rounds.
+  const h = armRecoil({ ceiling: 100, floor: 70, per_shot: 10, recover_ms: 150 });
+  assert.equal(h.eng._recoil.afterShots, 3, 'pre-condition: the shipping AR degrades after three rounds');
+  const CLIP = 32, WRITE_MS = 40;               // the bench measured a write landing in 30-90 ms
+  const gun = { mag: 11, reserve: 215 };
+  let cursor = h.writes.length;
+  // ⚠ The HUD re-renders on every frame off the gun (`_changed`), so the sampler must too. Sampling once a
+  // tick hid the leak entirely: the reset echo and the restore echo arrive together, so a raw value on
+  // screen was overwritten before the next tick ever looked at it -- and Tony saw it on the phone anyway.
+  const feed = (f) => { h.frame(f); if (onSample) onSample(); };
+  const queued = [];
+  const collect = () => {                       // a write leaves the phone now and reaches the gun WRITE_MS later
+    for (; cursor < h.writes.length; cursor++) {
+      const f = h.writes[cursor];
+      if (f.startsWith('$WEAP,0,') || f.startsWith('$AMMO,0,')) queued.push({ at: h.eng.now() + WRITE_MS, frame: f });
+    }
+  };
+  const pump = () => {                          // the gun applies each write that has landed, and ANSWERS it
+    collect();
+    while (queued.length && h.eng.now() >= queued[0].at) {
+      const f = queued.shift().frame;
+      if (f.startsWith('$WEAP,0,')) gun.mag = CLIP;                                       // the re-push resets the magazine
+      else { const t = f.split(','); gun.mag = Math.max(0, +t[2] || 0); gun.reserve = +t[3] || 0; }
+      const r = h.eng._recoil;
+      h.frame(`$ALCD,${gun.mag},${r && r.lastWriteValue != null ? r.lastWriteValue : 100},0,${gun.reserve},0,*`);
+      collect();
+    }
+  };
+  const step = (ms) => { for (let t = 0; t < ms; t += 10) { h.adv(10); pump(); h.eng.tick(); pump(); } };
+  h.frame(`$ALCD,${gun.mag},100,0,${gun.reserve},0,*`); pump();   // the gun's opening word: 11 rounds
+  // That opening word is a 25-round drop from the harness's spawn magazine, which is a real burst as far as
+  // the node can tell (a run of lost frames looks the same). Re-arm so the five presses below are measured
+  // on their own, the way they would be at the start of a life.
+  h.eng._recoilArm('test: a fresh burst at 11 rounds');
+  h.writes.length = 0; cursor = 0;
+  for (let i = 0; i < 5; i++) {                 // five trigger pulls, 300 ms apart
+    step(300);
+    h.frame('$BUT,0,1,*'); pump();              // the press the node sees first
+    step(40);
+    gun.mag = Math.max(0, gun.mag - 1);         // the round leaves, and the gun reports it
+    const r = h.eng._recoil;
+    h.frame(`$ALCD,${gun.mag},${r && r.lastWriteValue != null ? r.lastWriteValue : 100},0,${gun.reserve},0,*`);
+    pump(); h.eng.tick(); pump();
+  }
+  assert.equal(weaps(h).length, 1, `five rounds must cost ONE degrade write: ${weaps(h).join(' | ')}`);
+  assert.equal(weaps(h)[0].split(',')[22], '70');
+  // Now the nine seconds Tony watched it flap in. Nothing is firing.
+  step(9000);
+  assert.equal(weaps(h).length, 2,
+    `the writer FLAPPED with the trigger idle -- exactly the bench trace: ${weaps(h).join(' | ')}`);
+  assert.equal(weaps(h)[1].split(',')[22], '100', 'the second write is the recovery, and there is no third');
+  assert.equal(gun.mag, 6, `the gun must hold the five rounds it actually fired, not a reset clip: ${gun.mag}`);
+  assert.equal(h.eng._acctLive(0), 6, 'and the node must agree -- Tony saw the HUD jump 11 to 32 and back');
+});
+
+test('F259: state().ammo NEVER RISES while the trigger is down -- the echo must not reach the screen', () => {
+  // Tony, bench 2026-09-18, with the account already correct: "it shoots up to 32 while shooting and it
+  // shoots up again once, it syncs on trigger release." While a write is in flight the gun briefly reports
+  // the magazine its own `$WEAP` reset gave it, and the HUD rendered that raw number. The node knew the true
+  // count the whole time -- `_shotAcct` read {mag: 26} while the screen flashed 32.
+  // This is the PLAYER-VISIBLE property, and none of the tests above assert it: they all read the value
+  // after everything has settled, which is exactly when the bug is invisible.
+  const h = armRecoil(RECOIL_PROFILE);
+  const seen = [];
+  const gun = sustainedFire(h, { rounds: 30, onSample: () => seen.push(h.eng.state().ammo) });
+  assert.ok(gun.resets > 0, 'pre-condition: the writer must have re-pushed $WEAP, or there is no echo to leak');
+  assert.ok(seen.length > 30, `the sampler must actually have run: ${seen.length} samples`);
+  const rose = seen.map((v, i) => (i && v > seen[i - 1] ? `${seen[i - 1]} -> ${v} (sample ${i})` : null)).filter(Boolean);
+  assert.deepEqual(rose, [], `the ammo on screen went UP while the player was shooting: ${rose.join(', ')}`);
+  assert.equal(seen[seen.length - 1], 36 - gun.fired, 'and it must end on the number the gun actually holds');
+  assert.equal(seen[0] - seen[seen.length - 1], gun.fired, 'having fallen by exactly the rounds that were fired');
+});
+
+test('F259: the echo is not evidence of anything else either -- no phantom shots, no try-out confirmation', () => {
+  // The same frame that flashed 32 on the screen was a 26-round decrement to everything else in `_onAmmo`.
+  // `this.shots` feeds the recap's accuracy, and a try-out arming confirms on "a fresh magazine at the new
+  // weapon's full clip" -- which is exactly what a `$WEAP` reset looks like.
+  const h = armRecoil(RECOIL_PROFILE);
+  const gun = sustainedFire(h, { rounds: 30 });
+  assert.ok(gun.resets > 0, 'pre-condition: the writer must have re-pushed $WEAP');
+  assert.equal(h.eng.shots, gun.fired,
+    `the shot counter disagrees with the gun: ${h.eng.shots} booked, ${gun.fired} rounds actually left`);
+  assert.equal(gun.mag, 36 - gun.fired, 'and the gun holds what it should');
+});
+
+// ---------- F259: one step, not a walk ----------
+
+test('F259: a sustained burst costs TWO $WEAP writes -- one down, one back -- not one per round', () => {
   const h = armRecoil(RECOIL_PROFILE);
   h.writes.length = 0;
-  h.frame('$ALCD,35,100,0,215,0,*');   // one shot, 36 -> 35
-  h.eng.tick();
-  const weap = h.writes.find(f => f.startsWith('$WEAP,0,'));
-  assert.ok(weap, 'no $WEAP write after the first shot');
-  const tok = weap.split(',');
-  assert.equal(tok[22], '90', 'ceiling token (t21) not pinned to the stepped value');
-  assert.equal(tok[23], '90', 'floor token (t22) not pinned to the stepped value — S42 pins BOTH, never separately');
-  const wi = h.writes.indexOf(weap);
-  assert.equal(h.writes[wi + 1], '$AMMO,0,35,215,1,*', 'the very next frame must be the $AMMO restore of the LIVE mag/reserve (bench 2026-09-17: a $WEAP re-push resets both)');
+  fire(h, 20, { gap: 100 });   // 20 rounds over 2 s, every one of which the old ladder would have stepped
+  assert.equal(weaps(h).length, 1, `a burst must cost ONE write on the way down, not one a round (got ${weaps(h).length})`);
+  assert.equal(weaps(h)[0].split(',')[22], '20', 'the mid-burst write drops accuracy to the DEGRADED value in one step');
+  assert.equal(weaps(h)[0].split(',')[23], '20', 'both tokens, never one -- S42 pins t21 and t22 together');
+  assert.equal(h.eng._recoil.state, 'degraded');
+  h.adv(SETTLE_MS + 10); h.eng.tick();
+  assert.equal(weaps(h).length, 2, 'the trigger going quiet must cost exactly one more write');
+  assert.equal(weaps(h)[1].split(',')[22], '100', 'and that write puts the weapon back to CRISP');
+  assert.equal(h.eng._recoil.state, 'crisp');
+  ack(h);                       // the gun confirms it, so the verify/retry loop is not what the next line measures
+  h.adv(SETTLE_MS * 3); h.eng.tick();
+  assert.equal(weaps(h).length, 2, 'a weapon already crisp and already quiet must never write again');
 });
 
-test('S42: one writer, latest state wins -- shots inside the write gap coalesce, and once verified the next write carries the LATEST value', () => {
-  // recover_ms is large here on purpose: the write gap this test waits out (ACC_WRITE_MIN_GAP_MS) must
-  // not itself be long enough to trigger a RECOVERY step, or the value this test is pinning would move
-  // for a second, unrelated reason. Recovery has its own dedicated test below.
-  const h = armRecoil({ ...RECOIL_PROFILE, recover_ms: 5000 });
+test('F259: the step lands DURING the burst -- recoil is not deferred until the trigger goes quiet', () => {
+  const h = armRecoil(RECOIL_PROFILE);
   h.writes.length = 0;
-  h.frame('$ALCD,35,100,0,215,0,*'); h.eng.tick();          // 36 -> 35: value 90, written
-  assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 1);
-  h.frame('$ALCD,33,100,0,213,0,*'); h.eng.tick();          // 35 -> 33: two more shots, value 70 -- inside the write gap
-  assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 1, 'still inside ACC_WRITE_MIN_GAP_MS -- no second write yet');
-  h.frame('$ALCD,33,90,0,213,0,*');                          // the gun confirms the FIRST write (acc 90) -- clears pendingWriteAt early
-  h.adv(ACC_WRITE_MIN_GAP_MS + 10); h.eng.tick();
-  const weaps = h.writes.filter(f => f.startsWith('$WEAP,0,'));
-  assert.equal(weaps.length, 2, 'confirmed + past the write gap -- exactly one more write');
-  assert.equal(weaps[1].split(',')[22], '70', 'the second write must carry the LATEST value (70), not the stale 90 it was holding when the gap opened');
+  fire(h, DEGRADE_AFTER - 1);
+  assert.equal(weaps(h).length, 0, `the first ${DEGRADE_AFTER - 1} round(s) of a burst must not cost a write`);
+  assert.equal(h.eng._recoil.state, 'crisp');
+  fire(h, 1);
+  assert.equal(weaps(h).length, 1, 'the threshold round must degrade the weapon there and then, with the trigger still down');
+  assert.equal(h.eng._recoil.value, 20);
 });
+
+test('F259: a burst that never reaches the threshold is forgotten -- two taps a minute apart are not one burst', () => {
+  const h = armRecoil(RECOIL_PROFILE);
+  h.writes.length = 0;
+  fire(h, DEGRADE_AFTER - 1);
+  h.adv(SETTLE_MS + 10); h.eng.tick();
+  assert.equal(h.eng._recoil.burst, 0, 'the settle clock must clear a burst that never crossed the threshold');
+  fire(h, DEGRADE_AFTER - 1);
+  assert.equal(weaps(h).length, 0, 'two short bursts, a settle apart, must not add up to one long one');
+});
+
+test('F259: a weapon with NO recoil block at all arms nothing -- absent means "never degrades", not "use a default"', () => {
+  // The catalogue is dropping the block entirely from the 17 of 25 weapons that do not degrade, rather than
+  // declaring a 100/100 ladder that says nothing. An absent block must read the same as a flat one.
+  const h = armRecoil(undefined);
+  assert.equal(h.eng._recoil, null, 'a weapon with no recoil block must not arm the accuracy model');
+  h.writes.length = 0;
+  fire(h, 20, { gap: 100 });
+  h.adv(SETTLE_MS + 10); h.eng.tick();
+  assert.equal(weaps(h).length, 0, 'and it must never write $WEAP for the whole life');
+  assert.equal(h.eng.shots, 20, 'the ordinary shot counter still works -- only the accuracy model is idle');
+});
+
+test('F259: a weapon whose accuracy cannot degrade arms nothing at all -- no state, no write, ever', () => {
+  // Most of the catalogue is flat (floor == ceiling). There is no second state for those, so there is
+  // nothing to write, and the model should not be standing by holding a profile it can never use.
+  const h = armRecoil({ ceiling: 100, floor: 100, per_shot: 0, recover_ms: 150 });
+  assert.equal(h.eng._recoil, null, 'a flat weapon must not arm the accuracy model');
+  h.writes.length = 0;
+  fire(h, 20, { gap: 100 });
+  h.adv(SETTLE_MS + 10); h.eng.tick();
+  assert.equal(weaps(h).length, 0, 'and it must never write $WEAP for the whole life');
+  assert.equal(h.eng.shots, 20, 'the ordinary shot counter still works -- only the accuracy model is idle');
+});
+
+test('F259: arming ASSERTS the crisp value when the compiled $WEAP does not already hold it', () => {
+  // compile.py never writes t21/t22: every captured frame ships 100/100 (native walk off, F230), so a
+  // catalogue that declares `crisp: 100` needs no write at arm time and gets none. The day the catalogue
+  // declares a different crisp value, the gun and this model would disagree for a whole burst before
+  // anything corrected it. Arming compares the two and writes only when they differ.
+  // `armRecoil` already ticks past the spawn hold, so the assertion write (if any) has gone out by the time
+  // it returns. The head itself carries one `$WEAP,0,`, so a silent arm leaves exactly that one on the wire.
+  const q = armRecoil(RECOIL_PROFILE);   // CONTROL: crisp 100, which IS what the compiled frame holds
+  assert.equal(weaps(q).length, 1,
+    `a weapon already at its crisp value must not spend a write saying so: ${weaps(q).join(' | ')}`);
+  const h = armRecoil({ ...RECOIL_PROFILE, crisp: 90, degraded: 20, after_shots: 2 });
+  assert.equal(h.eng._headAccuracy(0), 100, 'pre-condition: the compiled frame still holds 100');
+  assert.equal(h.eng._recoil.crisp, 90);
+  assert.equal(weaps(h).length, 2, 'a crisp value the gun is not holding must be asserted, with no shot needed');
+  assert.equal(weaps(h)[1].split(',')[22], '90');
+  assert.equal(weaps(h)[1].split(',')[23], '90', 'both tokens, as always');
+  assert.equal(h.eng._recoil.state, 'crisp', 'and the weapon is CRISP while it says so -- this is not a degrade');
+});
+
+test('F259: the two-state shape is derived from the ladder block the catalogue still ships', () => {
+  // `weapons.json` is owned elsewhere, so `_recoilProfile` reads the fields it WANTS and falls back to the
+  // ladder's own ends and length. An assault rifle (100 -> 70 at 10 a round) reads as 3 rounds.
+  const h = armRecoil(RECOIL_PROFILE);
+  const p = h.eng._recoilProfile({ ceiling: 100, floor: 70, per_shot: 10, recover_ms: 150 });
+  assert.deepEqual(p, { crisp: 100, degraded: 70, afterShots: 3, settleMs: RECOIL_SETTLE_MIN_MS });
+  // and the fields the catalogue should carry win outright when they are there
+  assert.deepEqual(h.eng._recoilProfile({ crisp: 90, degraded: 40, after_shots: 5, settle_ms: 900 }),
+    { crisp: 90, degraded: 40, afterShots: 5, settleMs: 900 });
+  assert.equal(h.eng._recoilProfile({ ceiling: 100, floor: 100, per_shot: 0, recover_ms: 0 }), null, 'a flat weapon has no profile');
+  assert.equal(h.eng._recoilProfile(null), null);
+});
+
+test('S42: the accuracy write is a TARGETED MUTATION of the compiled $WEAP -- only t21 and t22 move, every other token byte-identical', () => {
+  // Bench 2026-09-18: `$WEAP` t1 is `WeaponIRSource`, and on the Shotgun, the Plasma Sniper and the Rocket
+  // Launcher it is 2 -- every trigger pull ALSO fires a second word out of the shooter's own headset,
+  // configured by t12, t13 and t42. A writer that rebuilt the frame from the catalogue rather than mutating
+  // the one MC compiled would disarm that word silently: the weapon keeps firing, the player notices
+  // nothing, and three weapons quietly lose half their output.
+  // This diffs the WHOLE token vector rather than checking those three numbers, so the guard also covers
+  // whatever field is added to `$WEAP` next -- a field a list of token numbers would let slip straight past.
+  const ACC_T21 = 22, ACC_T22 = 23;   // doc-token convention: frame.split(',')[tokN + 1]
+  const h = armRecoil(RECOIL_PROFILE);
+  const movedTokens = (slot) => {
+    const base = (h.eng.frames.head || []).find(f => typeof f === 'string' && f.startsWith(`$WEAP,${slot},`));
+    assert.ok(base, `no compiled $WEAP for slot ${slot} -- nothing for this test to protect`);
+    h.eng.activeSlot = slot;
+    h.writes.length = 0;
+    h.eng._recoil.value = 20; h.eng._recoil.dirty = true;
+    h.eng._recoilWrite(h.eng.now());
+    const out = h.writes.find(f => f.startsWith(`$WEAP,${slot},`));
+    assert.ok(out, `the writer sent no $WEAP for slot ${slot}`);
+    const a = base.split(','), b = out.split(',');
+    assert.equal(b.length, a.length, `the write changed slot ${slot}'s TOKEN COUNT: ${out}`);
+    assert.equal(b[ACC_T21], '20'); assert.equal(b[ACC_T22], '20');
+    return a.map((tok, i) => (tok === b[i] ? -1 : i)).filter(i => i >= 0);
+  };
+  assert.deepEqual(movedTokens(0), [ACC_T21, ACC_T22], 'slot 0: a token other than the two accuracy tokens changed');
+  // Slot 1 of the golden bundle IS one of the t1 = 2 weapons (the shotgun): 45 tokens, with real t12, t13
+  // and t42 values. If the bundle ever stops being that, this test protects nothing and must be re-pointed.
+  const base1 = (h.eng.frames.head || []).find(f => typeof f === 'string' && f.startsWith('$WEAP,1,'));
+  const t1 = base1.split(',');
+  assert.equal(t1[2], '2', 'pre-condition: golden slot 1 must still be a WeaponIRSource 2 weapon (t1 = 2)');
+  assert.ok(t1.length > 43 && t1[13] !== '' && t1[14] !== '' && t1[43] !== '',
+    `pre-condition: golden slot 1 must still carry real t12/t13/t42 values: ${base1}`);
+  assert.deepEqual(movedTokens(1), [ACC_T21, ACC_T22],
+    'slot 1: the write moved a token other than the two accuracy tokens -- t12/t13/t42 carry the headset\'s second word');
+  // And pinned to the SHOTGUN's own measured numbers (t12 = 20, t13 and t42 = 100, wire-read 2026-09-18),
+  // spliced in by hand so this case survives the golden bundle changing which weapon sits in slot 1. A
+  // fixture with no second word -- an assault rifle -- would pass whether or not the writer carried these.
+  const shotgun = t1.slice();
+  shotgun[2] = '2'; shotgun[13] = '20'; shotgun[14] = '100'; shotgun[43] = '100';
+  h.eng.frames.head = h.eng.frames.head.map(f => (typeof f === 'string' && f.startsWith('$WEAP,1,') ? shotgun.join(',') : f));
+  const moved = movedTokens(1);
+  const out = h.writes.find(f => f.startsWith('$WEAP,1,')).split(',');
+  assert.deepEqual(moved, [ACC_T21, ACC_T22], 'the shotgun lost a token other than its accuracy pair');
+  assert.equal(out[2], '2', 't1 (WeaponIRSource) must survive: 2 is what fires the second word out of the headset');
+  assert.equal(out[13], '20'); assert.equal(out[14], '100'); assert.equal(out[43], '100');
+});
+
+// ---------- F259: the magazine account ----------
+
+test('F259: a CLOCK-DRIVEN write stands down while the trigger has asked for a round the gun has not reported', () => {
+  // A write takes 30-90 ms to reach the gun. One sent while a round is on its way out would land after that
+  // round had left, and its `$AMMO` would put it back. The degrade write is never affected -- it fires from
+  // the `$ALCD` that just answered the press -- so this only holds back the writes that pick their own moment.
+  const h = degraded();
+  h.frame('$BUT,0,1,*');                              // a round is leaving; the gun has not said so yet
+  assert.equal(h.eng._acctOutstanding(0), true);
+  h.adv(SETTLE_MS + 10); h.eng.tick();                // the recovery write is due
+  assert.equal(weaps(h).length, 0, 'a write went out with a round in flight -- its $AMMO would hand the round back');
+  h.frame(`$ALCD,${--h.mag},20,0,215,0,*`);           // the gun reports the round
+  assert.equal(h.eng._acctOutstanding(0), false);
+  h.eng.tick();
+  assert.equal(weaps(h).length, 1, 'and it goes out the moment the gun has caught up -- held, not lost');
+  assert.equal(ammos(h)[0], `$AMMO,0,${h.mag},215,1,*`, 'carrying the magazine the player is actually holding');
+});
+
+test('F259: the restore VALUE nets a press the gun has not answered -- the stun and resync writers read it too', () => {
+  // `_acctLive` is what `_liveAmmo` hands the stun snapshot and the operator resync, and neither of those
+  // consults the `shotInFlight` guard: they write when the game says to. So the value itself has to be right.
+  const h = armRecoil(RECOIL_PROFILE);
+  fire(h); ack(h);                     // the gun and the node both say 34
+  assert.equal(h.eng._acctLive(0), 34, 'pre-condition: the account tracks the gun');
+  h.frame('$BUT,0,1,*');               // the next round's trigger press -- the gun has not answered yet
+  assert.equal(h.eng._acctLive(0), 33, 'the press must book the round straight away: it is the earliest evidence one is leaving');
+  assert.deepEqual(h.eng._liveAmmo()[0], [33, 215], 'and every writer that restores a magazine must see that number');
+  h.frame('$ALCD,33,20,0,215,0,*');    // the gun catches up: the same round, not a second one
+  assert.equal(h.eng._acctLive(0), 33, 'the $ALCD must ANSWER the press, never be counted on top of it');
+});
+
+test('F259: the gun always wins -- an $ALCD with no write in flight re-seats the account on the gun\'s number', () => {
+  const h = armRecoil(RECOIL_PROFILE);
+  h.eng._shotAcct[0] = { mag: 12, fired: 0, at: 0 };   // a badly drifted account
+  h.frame('$ALCD,35,100,0,210,0,*');                              // the gun's own word, nothing in flight
+  assert.equal(h.eng._shotAcct[0].mag, 35, 'the account must take the gun\'s number, never argue with it');
+  h.frame('$BUT,0,1,*');
+  assert.equal(h.eng._acctLive(0), 34, 'pre-condition: the press books a round');
+  h.adv(TRIGGER_NO_FIRE_MS); h.eng.tick();
+  assert.equal(h.eng._acctLive(0), 35, 'a press the gun never answered must expire, not hold the account down for the life');
+  // CONTROL: inside the ECHO WINDOW the same frame is refused, because the node has just told the gun what
+  // to hold and every `$ALCD` until it confirms is the node's own write coming back.
+  h.eng._acctWrote(0, 35);
+  h.frame('$ALCD,36,100,0,215,0,*');
+  assert.equal(h.eng._shotAcct[0].mag, 35, 'a magazine that moved inside the echo window is the node\'s own write, not news');
+});
+
+test('F259: the echo window covers BOTH answers to a write -- the $WEAP reset AND the $AMMO restore', () => {
+  // The bench oscillation in one test. The node writes `$AMMO,0,6`; the gun answers `$ALCD 32` (its `$WEAP`
+  // reset) and then `$ALCD 6` (the restore landing). Judging those one at a time -- refusing the rise, then
+  // taking the fall as a 26-round decrement -- is exactly what fed the burst counter and made the writer
+  // flap. Neither frame may move the account, and neither may cost a round.
+  const h = armRecoil(RECOIL_PROFILE);
+  h.frame('$ALCD,6,100,0,215,0,*');           // the gun is down to 6; the account agrees
+  assert.equal(h.eng._acctLive(0), 6);
+  const burstBefore = h.eng._recoil.burst;
+  h.eng._acctWrote(0, 6);                     // the node writes $WEAP + $AMMO,0,6
+  h.frame('$ALCD,32,100,0,215,0,*');          // answer 1: the $WEAP reset, back up to the compiled clip
+  assert.equal(h.eng._acctLive(0), 6, 'the reset echo must not move the account');
+  h.frame('$ALCD,6,100,0,215,0,*');           // answer 2: our own restore landing
+  assert.equal(h.eng._acctLive(0), 6, 'the restore echo must not move the account either');
+  assert.equal(h.eng._recoil.burst, burstBefore,
+    'the node read its OWN write back as 26 rounds fired -- that is the bench oscillation (F259, 2026-09-18)');
+  // the confirming frame closes the window early, so the gun is back in charge within one round trip
+  assert.equal(h.eng._acctEchoing(0), false, 'the gun reporting the written number must close the window');
+  h.frame('$ALCD,5,100,0,215,0,*');           // a REAL round now
+  assert.equal(h.eng._acctLive(0), 5);
+  assert.equal(h.eng._recoil.burst, burstBefore + 1, 'and a real round must still cost the burst counter one');
+});
+
+test('F259: the echo window is not open for ever -- a write the gun never answers hands the slot back', () => {
+  const h = armRecoil(RECOIL_PROFILE);
+  h.frame('$ALCD,6,100,0,215,0,*');
+  h.eng._acctWrote(0, 6);
+  h.adv(ACC_ECHO_MS + 10);
+  assert.equal(h.eng._acctEchoing(0), false, 'the backstop deadline must expire');
+  h.frame('$ALCD,30,100,0,215,0,*');
+  assert.equal(h.eng._acctLive(0), 30, 'and the gun wins again');
+});
+
+test('F259: a press the model says cannot fire is never booked -- an empty magazine, a stun, a swap', () => {
+  const h = armRecoil(RECOIL_PROFILE);
+  h.eng._shotAcct[0] = { mag: 0, fired: 0, at: 0 };
+  h.frame('$BUT,0,1,*');
+  assert.equal(h.eng._shotAcct[0].fired, 0, 'a dry trigger on an empty magazine must not book a round');
+  h.eng._shotAcct[0] = { mag: 10, fired: 0, at: 0 };
+  h.eng.switching = { at: h.eng.now(), from: 0 };
+  h.frame('$BUT,0,1,*');
+  assert.equal(h.eng._shotAcct[0].fired, 0, 'a press mid-swap produces no round, so it must not book one');
+  h.eng.switching = null;
+  h.frame('$BUT,0,1,*');
+  assert.equal(h.eng._shotAcct[0].fired, 1, 'CONTROL: the same press with nothing in the way IS booked');
+});
+
+// ---------- S42: the writer's guards, unchanged by F259 ----------
+// Each one arms, fires a burst to DEGRADED, closes the verify window, then puts the guard on and lets the
+// trigger go quiet -- so the write under test is the recovery write, which is due and held.
+
+/** Arm, degrade, confirm, and clear the write log: the model is now idle at DEGRADED with a recovery write
+ *  one settle away. */
+function degraded(profile = RECOIL_PROFILE) {
+  const h = armRecoil(profile);
+  fire(h); ack(h);
+  assert.equal(h.eng._recoil.state, 'degraded', 'pre-condition: the burst must have degraded the weapon');
+  assert.equal(h.eng._recoil.pendingWriteAt, 0, 'pre-condition: the gun must have confirmed the write');
+  h.writes.length = 0;
+  return h;
+}
+/** Let the trigger go quiet so the recovery write is due, and tick. */
+function settle(h) { h.adv(SETTLE_MS + 10); h.eng.tick(); }
 
 test('S42: never between a reload-lever pull and the magazine refill', () => {
-  const h = armRecoil(RECOIL_PROFILE);
-  h.writes.length = 0;
-  h.frame('$ALCD,35,100,0,215,0,*');                         // a shot: value drops to 90, dirty
-  h.eng.reloading = { at: h.eng.now(), ms: 1400, slot: 0, from: 35, cap: 32, mag: 35 };   // simulate the lever pull directly -- isolates the guard from the reload takeover's own state machine
-  h.adv(ACC_WRITE_MIN_GAP_MS + 10); h.eng.tick();
-  assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 0, 'a write landed WHILE RELOADING -- the guard did not hold');
+  const h = degraded();
+  h.eng.reloading = { at: h.eng.now(), ms: 1400, slot: 0, from: 34, cap: 32, mag: 34 };   // simulate the lever pull directly -- isolates the guard from the reload takeover's own state machine
+  settle(h);
+  assert.equal(weaps(h).length, 0, 'a write landed WHILE RELOADING -- the guard did not hold');
   h.eng.reloading = null;                                    // the refill lands
   h.eng.tick();
-  assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 1, 'the write must go out once the reload is over -- the dirty value was not lost, only held');
+  assert.equal(weaps(h).length, 1, 'the write must go out once the reload is over -- the value was not lost, only held');
 });
 
 test('S42: never mid weapon-swap', () => {
-  const h = armRecoil(RECOIL_PROFILE);
-  h.writes.length = 0;
-  h.frame('$ALCD,35,100,0,215,0,*');
+  const h = degraded();
   h.eng.switching = { at: h.eng.now(), from: 0 };
-  h.adv(ACC_WRITE_MIN_GAP_MS + 10); h.eng.tick();
-  assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 0, 'a write landed WHILE SWAPPING -- the guard did not hold');
+  settle(h);
+  assert.equal(weaps(h).length, 0, 'a write landed WHILE SWAPPING -- the guard did not hold');
   h.eng.switching = null;
   h.eng.tick();
-  assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 1, 'the write must go out once the swap is over');
+  assert.equal(weaps(h).length, 1, 'the write must go out once the swap is over');
 });
 
 test('S42/F229: never during an overheat lockout -- the guard reads the gun\'s own heat from $ALCD token 5, not a flag of ours', () => {
@@ -2607,153 +3060,136 @@ test('S42/F229: never during an overheat lockout -- the guard reads the gun\'s o
   // code and the writer was free to write through a lockout. This test drives a real heat frame instead
   // of setting a flag, which is the only shape that can catch that mistake. Bench 2026-09-17 (F229): the
   // Energy Rifle stops firing at heat 99, does not cool on its own, and vents about 35 per lever pull.
-  const h = armRecoil(RECOIL_PROFILE);
-  h.writes.length = 0;
-  h.frame('$ALCD,35,100,0,215,99,*');                        // one shot, and the gun reports itself locked out
+  const h = degraded();
+  h.frame(`$ALCD,${h.mag},20,0,215,99,*`);                   // the gun reports itself locked out
   assert.equal(h.eng._heatBlocksFire(), true, 'heat 99 must read as an overheat lockout');
-  h.adv(ACC_WRITE_MIN_GAP_MS + 10); h.eng.tick();
-  assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 0, 'a write landed WHILE OVERHEATED -- the guard did not hold');
-  h.frame('$ALCD,35,100,0,215,64,*');                        // one lever pull vents about 35: 99 -> 64
+  settle(h);
+  assert.equal(weaps(h).length, 0, 'a write landed WHILE OVERHEATED -- the guard did not hold');
+  h.frame(`$ALCD,${h.mag},20,0,215,64,*`);                   // one lever pull vents about 35: 99 -> 64
   assert.equal(h.eng._heatBlocksFire(), false);
   h.eng.tick();
-  assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 1, 'the write must go out once the gun has vented -- the dirty value was held, not lost');
+  assert.equal(weaps(h).length, 1, 'the write must go out once the gun has vented -- the value was held, not lost');
 });
 
-test('S42: verify and retry -- a first mismatch retries once; a second gives up, restores the ceiling with live ammo, and stops driving this life', () => {
-  // recover_ms is large here too: this test waits out TWO full verify-grace windows, which a short
-  // recover_ms would otherwise fill with its own recovery steps, confusing "the retry re-sent the same
-  // value" with "the value climbed back up on its own".
-  const h = armRecoil({ ...RECOIL_PROFILE, recover_ms: 5000 });
+test('S42: verify and retry -- a first mismatch retries once; a second gives up, restores the crisp value with the accounted ammo, and stops driving this life', () => {
+  // `settle_ms` is huge here: this test waits out TWO full verify-grace windows, and a settle landing
+  // inside them would restore the crisp value for its own, unrelated reason.
+  const h = armRecoil({ ...RECOIL_PROFILE, settle_ms: 999999 });
   h.writes.length = 0;
-  h.frame('$ALCD,35,100,0,215,0,*'); h.eng.tick();           // written: 90
-  assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 1);
-  // the gun never answers with 90 -- every $ALCD in the grace window still reports the old ceiling
-  h.frame('$ALCD,35,100,0,215,0,*');                          // stale answer, no decrement -- lastSeenAcc stays 100
-  h.adv(ACC_VERIFY_GRACE_MS + 10); h.eng.tick();               // grace expires unconfirmed -> retry (re-sends 90)
-  const afterRetry = h.writes.filter(f => f.startsWith('$WEAP,0,'));
-  assert.equal(afterRetry.length, 2, 'the first mismatch must retry exactly once');
-  assert.equal(afterRetry[1].split(',')[22], '90', 'the retry re-sends the SAME value, not a fresh one');
-  // still no answer -- the retry also goes unconfirmed
-  h.adv(ACC_VERIFY_GRACE_MS + 10); h.eng.tick();
-  const afterGiveUp = h.writes.filter(f => f.startsWith('$WEAP,0,'));
-  assert.equal(afterGiveUp.length, 3, 'a second failure must write once more: the ceiling restore');
-  const restore = afterGiveUp[2].split(',');
-  assert.equal(restore[22], '100', 'the give-up write must restore the CEILING, not leave the gun on the failed value');
+  fire(h);                                                    // degraded: written 20
+  assert.equal(weaps(h).length, 1);
+  // the gun never answers with 20 -- every $ALCD in the grace window still reports the crisp value
+  h.frame(`$ALCD,${h.mag},100,0,215,0,*`);                    // stale answer, no decrement -- lastSeenAcc stays 100
+  h.adv(ACC_VERIFY_GRACE_MS + 10); h.eng.tick();              // grace expires unconfirmed -> retry (re-sends 20)
+  assert.equal(weaps(h).length, 2, 'the first mismatch must retry exactly once');
+  assert.equal(weaps(h)[1].split(',')[22], '20', 'the retry re-sends the SAME value, not a fresh one');
+  h.adv(ACC_VERIFY_GRACE_MS + 10); h.eng.tick();              // the retry also goes unconfirmed
+  assert.equal(weaps(h).length, 3, 'a second failure must write once more: the crisp restore');
+  const restore = weaps(h)[2].split(',');
+  assert.equal(restore[22], '100', 'the give-up write must restore the CRISP value, not leave the gun on the failed one');
   assert.equal(restore[23], '100');
+  assert.equal(h.eng._recoil.state, 'crisp');
   assert.ok(h.eng._recoil.disabled, 'the model must stop driving accuracy for the rest of this life');
   h.writes.length = 0;
-  h.frame('$ALCD,30,100,0,210,0,*');                          // more shots after giving up
+  fire(h, 10);                                                // more shots after giving up
   h.adv(ACC_WRITE_MIN_GAP_MS + 10); h.eng.tick();
-  assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 0, 'a disabled model must never write again this life');
+  assert.equal(weaps(h).length, 0, 'a disabled model must never write again this life');
 });
 
-test('S42: once the player stops, the live value climbs back toward the ceiling at recover_ms per step', () => {
-  const h = armRecoil(RECOIL_PROFILE);   // recover_ms 150, per_shot 10
-  h.frame('$ALCD,35,100,0,215,0,*'); h.eng.tick();   // one shot: value 90
-  assert.equal(h.eng._recoil.value, 90);
-  h.adv(RECOIL_PROFILE.recover_ms - 10); h.eng.tick();
-  assert.equal(h.eng._recoil.value, 90, 'too early for a recovery step');
-  h.adv(20); h.eng.tick();                            // crosses recover_ms since the shot
-  assert.equal(h.eng._recoil.value, 100, 'one recovery step must land once recover_ms has passed with nothing pending');
-  h.writes.length = 0;
-  h.adv(RECOIL_PROFILE.recover_ms + 10); h.eng.tick();
-  assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 0, 'already at the ceiling -- recovery must not write a no-op step');
-});
-
-test('S42: a respawn resets to the weapon\'s ceiling', () => {
-  // recover_ms is enormous here on purpose: the 9 s wait for the auto-respawn must not be long enough
-  // to let RECOVERY alone climb the value back to the ceiling (90 + one 10-point step already reaches
-  // it by coincidence) -- that would pass even if `_recoilArm('revive')` never ran. This isolates the
-  // respawn reset from the recovery mechanic, which has its own dedicated test above.
-  const h = armRecoil({ ...RECOIL_PROFILE, recover_ms: 999999999 });
-  h.frame('$ALCD,35,100,0,215,0,*'); h.eng.tick();
-  assert.equal(h.eng._recoil.value, 90, 'the shot did not step the tracked value down');
+test('S42/F259: a respawn resets the weapon to CRISP', () => {
+  // `settle_ms` is enormous on purpose: the 9 s wait for the auto-respawn must not be long enough for the
+  // SETTLE clock alone to put the weapon back to crisp -- that would pass even if `_recoilArm('revive')`
+  // never ran. Settling has its own dedicated test above.
+  const h = armRecoil({ ...RECOIL_PROFILE, settle_ms: 999999999 });
+  fire(h);
+  assert.equal(h.eng._recoil.state, 'degraded', 'the burst did not degrade the weapon');
   h.frame('$HIR,4,0,19,2,60,0,0,*'); h.frame('$HP,0,0,0,*');   // death (immediate, via _onHp)
   h.adv(9000); h.eng.tick();                                    // auto respawn (8 s delay in the harness config)
   assert.equal(h.eng.alive, true, 'the respawn must have actually happened for this test to mean anything');
-  assert.equal(h.eng._recoil.value, RECOIL_PROFILE.ceiling, 'a fresh life must start back at the ceiling, not wherever the last life left it (and not by recovery coincidence -- recover_ms is huge here)');
+  assert.equal(h.eng._recoil.state, 'crisp');
+  assert.equal(h.eng._recoil.value, RECOIL_PROFILE.ceiling, 'a fresh life must start back at the crisp value, not wherever the last life left it');
+  assert.equal(h.eng._recoil.burst, 0, 'and with no burst carried over from the life that ended');
 });
 
 test('S42: config.recoil === false turns the whole model off -- no arm, no write, shots still count normally', () => {
   const h = armRecoil(RECOIL_PROFILE, { recoilConfig: false });
   assert.equal(h.eng._recoil, null, 'recoil must not arm at all when the host has switched it off');
   h.writes.length = 0;
-  h.frame('$ALCD,35,100,0,215,0,*');
-  h.adv(ACC_WRITE_MIN_GAP_MS + 10); h.eng.tick();
-  assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 0, 'no accuracy write must ever appear while config.recoil is false');
-  assert.equal(h.eng.shots, 1, 'the ordinary shot counter must still work -- only the accuracy model is off');
+  fire(h, 10);
+  h.adv(SETTLE_MS + 10); h.eng.tick();
+  assert.equal(weaps(h).length, 0, 'no accuracy write must ever appear while config.recoil is false');
+  assert.equal(h.eng.shots, 10, 'the ordinary shot counter must still work -- only the accuracy model is off');
 });
 
 // ---------- S42 x A44/A47/F15 (merge 2026-09-17): the accuracy writer and the other $AMMO writers ----------
 // Recoil is the ONLY thing that re-pushes `$WEAP` during a life, and every write it makes carries an `$AMMO`
-// restore of the live counts. A spawn, a revive, an operator RESYNC GUN and a stun disarm/restore write
+// restore of the accounted magazine. A spawn, a revive, an operator RESYNC GUN and a stun disarm/restore write
 // `$AMMO` too. `_holdAccuracyWrites` stands the accuracy writer down for ACC_HOLD_MS after each of those, so
 // the two can never be in flight together.
 
-test('S42 x A44: the SPAWN write owns $AMMO -- no accuracy write lands inside the hold, and the held value is not lost', () => {
+test('S42 x A44: the SPAWN write owns $AMMO -- no accuracy write lands inside the hold, and the held state is not lost', () => {
   const h = harness();
   h.eng.onBleConnected({ name: 'GUN-A-3D4F', basename: 'GUN-A', tail: '3D4F' });
   h.eng.onMcMessage({ kind: 'assign', body: { player: h.player, team: h.team, roster: h.roster,
-    catalog: { weapons: [{ weapon_id: 'assault_rifle', name: 'Assault Rifle', clip: 32, reserve: 384, reload_s: 1.4, recoil: { ...RECOIL_PROFILE, recover_ms: 999999 } }], perks: [] } } });
+    catalog: { weapons: [{ weapon_id: 'assault_rifle', name: 'Assault Rifle', clip: 32, reserve: 384, reload_s: 1.4, recoil: { ...RECOIL_PROFILE, settle_ms: 999999 } }], perks: [] } } });
   h.config_().echo().start(0); h.adv(10); h.eng.tick(); h.frame('$LCD,45,70,0,0,36,216,*');
-  h.writes.length = 0;
-  // A shot in the first moments of a life: the model steps, but the spawn write still owns `$AMMO`.
-  // recover_ms is enormous so the stepped value cannot climb back on its own while the hold runs.
-  h.frame('$ALCD,35,100,0,215,0,*');
+  h.mag = 36; h.writes.length = 0;
+  // A burst in the first moments of a life: the model degrades, but the spawn write still owns `$AMMO`.
+  // `settle_ms` is enormous so the weapon cannot go crisp again on its own while the hold runs.
+  fire(h);
   h.adv(ACC_WRITE_MIN_GAP_MS + 10); h.eng.tick();
-  assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 0,
+  assert.equal(weaps(h).length, 0,
     'an accuracy write landed inside the spawn hold -- its $AMMO would put the previous counts back over the spawn write');
-  assert.equal(h.eng._recoil.value, 90, 'the hold must delay the WRITE, never the model');
+  assert.equal(h.eng._recoil.state, 'degraded', 'the hold must delay the WRITE, never the model');
   h.adv(ACC_HOLD_MS); h.eng.tick();
-  const weaps = h.writes.filter(f => f.startsWith('$WEAP,0,'));
-  assert.equal(weaps.length, 1, 'once the hold lifts the held value must go out exactly once');
-  assert.equal(weaps[0].split(',')[22], '90', 'and it must carry the value the shot stepped to, not the ceiling');
+  assert.equal(weaps(h).length, 1, 'once the hold lifts the held state must go out exactly once');
+  assert.equal(weaps(h)[0].split(',')[22], '20', 'and it must carry the degraded value, not the crisp one');
 });
 
 test('S42 x A47: an operator RESYNC GUN holds the accuracy writer, then the live value is re-asserted', () => {
-  const h = armRecoil({ ...RECOIL_PROFILE, recover_ms: 999999 });
-  h.frame('$ALCD,35,100,0,215,0,*'); h.eng.tick();        // value 90, written and pending
+  const h = armRecoil({ ...RECOIL_PROFILE, settle_ms: 999999 });
+  fire(h);                                               // degraded: written and pending
   h.writes.length = 0;
   h.eng.onMcMessage({ kind: 'control', body: { cmd: 'resync', player_id: 'p1', match_id: 'm1' } });
   assert.ok(h.facts.some(f => f.type === 'operator_result' && f.cmd === 'resync' && f.ok === true),
     'pre-condition: the operator resync must be accepted');
-  assert.ok(h.writes.some(f => f.startsWith('$AMMO,0,35,')), 'pre-condition: the resync re-sends the live counts');
+  assert.ok(h.writes.some(f => f.startsWith('$AMMO,0,34,')), 'pre-condition: the resync re-sends the accounted counts');
   h.writes.length = 0;
   h.adv(ACC_WRITE_MIN_GAP_MS + 10); h.eng.tick();
-  assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 0,
+  assert.equal(weaps(h).length, 0,
     'an accuracy write landed while the resync owned $AMMO -- the two would race on the same counts');
   h.adv(ACC_HOLD_MS); h.eng.tick();
-  const weaps = h.writes.filter(f => f.startsWith('$WEAP,0,'));
-  assert.equal(weaps.length, 1, 'the writer must re-assert the live value once the resync hold lifts');
-  assert.equal(weaps[0].split(',')[22], '90', 'and re-assert the value the model holds, not the ceiling');
+  assert.equal(weaps(h).length, 1, 'the writer must re-assert the live value once the resync hold lifts');
+  assert.equal(weaps(h)[0].split(',')[22], '20', 'and re-assert the state the model holds, not the crisp value');
 });
 
 test('S42 x F15: a stun disarms the gun, and no accuracy write may re-arm it', () => {
   const h = armRecoil(RECOIL_PROFILE);
-  h.frame('$ALCD,35,100,0,215,0,*'); h.eng.tick();
+  fire(h);
   h.eng.config.stun = { duration_s: 4 };   // `stunEnabled`/`stunMs` are getters off the config -- F15
   h.writes.length = 0;
   h.eng._stun();
   assert.ok(h.writes.some(f => f === '$AMMO,0,0,0,1,*'), 'pre-condition: the stun disarms slot 0');
   h.writes.length = 0;
-  h.frame('$ALCD,34,100,0,215,0,*');                       // even a frame arriving mid-stun must not open a write
+  h.frame('$ALCD,33,100,0,215,0,*');                       // even a frame arriving mid-stun must not open a write
   for (let i = 0; i < 6; i++) { h.adv(500); h.eng.tick(); }
-  assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 0,
+  assert.equal(weaps(h).length, 0,
     'an accuracy write landed DURING a stun -- its $AMMO restore would hand the player their magazine back');
 });
 
 test('S42 x pl4: no accuracy write during an overheat lockout, and the writer resumes once the gun cools', () => {
   const h = armRecoil(RECOIL_PROFILE);
   h.writes.length = 0;
-  h.frame('$ALCD,35,100,0,215,120,*');                     // one shot AND a heat reading past the lockout line
+  h.adv(60); h.frame(`$ALCD,${--h.mag},100,0,215,120,*`);   // a round AND a heat reading past the lockout line
+  h.adv(60); h.frame(`$ALCD,${--h.mag},100,0,215,120,*`);   // the threshold round, with the gun already locked out
   assert.equal(h.eng._heatBlocksFire(), true, 'pre-condition: the node must read the lockout');
   h.adv(ACC_HOLD_MS + ACC_WRITE_MIN_GAP_MS + 10); h.eng.tick();
-  assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 0,
+  assert.equal(weaps(h).length, 0,
     'an accuracy write landed during an overheat lockout -- a locked gun cannot fire, so the write is a $WEAP re-push for nothing');
-  h.frame('$ALCD,35,100,0,215,4,*');                       // vented/cooled: heat back under the line
+  h.frame(`$ALCD,${h.mag},100,0,215,4,*`);                 // vented/cooled: heat back under the line
   assert.equal(h.eng._heatBlocksFire(), false);
   h.adv(ACC_WRITE_MIN_GAP_MS + 10); h.eng.tick();
-  assert.equal(h.writes.filter(f => f.startsWith('$WEAP,0,')).length, 1, 'the held value must go out once the lockout clears');
+  assert.equal(weaps(h).length, 1, 'the held value must go out once the lockout clears');
 });
 
 test('F68 x A11.6: a deliberate headset paint owns the strip, and the periodic repaint is only a backstop', () => {
