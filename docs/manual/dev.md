@@ -507,7 +507,7 @@ Hits, health, HUD echoes, buttons and telemetry, plus the proof that the gun kee
 
 | tok | Field | Values | Notes |
 |---|---|---|---|
-| 1 | sensor that caught the IR | 0 headset **front** dome · 1 headset **back** dome · 4 gun body | Isolated with every other sensor covered. Trust for directional logic **only at field distance**. Point-blank floods every receiver, and the first to decode reports. |
+| 1 | sensor that caught the IR | 0 headset **front** dome · 1 headset **back** dome · 4 gun body | Isolated with every other sensor covered. Trust for directional logic **only at field distance**. Point-blank floods every receiver, and the first to decode reports. At 2 m the gun-body sensor still caught every headset shot (bench 2026-09-17), so cover the gun sensor for any sensor reading at the bench. |
 | 2 | shooter's IR protocol | 0 standard · 10 rocket · 13 melee … | = the shooter's `$WEAP` t3 / IR word B field. |
 | 3 | **shooter player id** | 0-63 | = the shooter's `$PSET` token 1. 32/32 hits both directions on two guns with distinct ids. |
 | 4 | **shooter team** | 0-3 | = the shooter's effective `$TID & 3`. |
