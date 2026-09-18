@@ -51,6 +51,12 @@ JUDGED = {
     "TERM_GRACE_S": "A28.1: terminate-then-kill grace for the cloudflared child; a process wait, not a game timer",
     "DNS_CAP_S": "F140: how long MC holds `starting` while the tunnel hostname does not resolve at Cloudflare; driven by DNS-over-HTTPS answers on the host, and nothing on the IR wire reaches it",
     "DOH_TIMEOUT_S": "F140: the socket timeout on one DNS-over-HTTPS query; an HTTP wait on the host, not a game timer",
+    "LOCKUP_AFTER_S": "bench-screamers-2026-09-19.md Phase C: the soak tool's own LOCK-UP threshold (no $PONG for "
+                      "10s). Not a game timer at all -- the soak instrument runs no objective/mode and never sees "
+                      "a hill beacon",
+    "RECONNECT_ANSWER_WINDOW_S": "the soak tool's post-reconnect $PONG wait; same as LOCKUP_AFTER_S, no hill/mode in play",
+    "_HIT_INTERVAL_S": "the soak tool's simulated per-hit cue cadence (an assumption, not a fuse); no hill/mode in play",
+    "_REVIVE_INTERVAL_S": "the soak tool's simulated revive cadence (the plan doc's own '3 minutes'); no hill/mode in play",
 }
 
 _CONST = re.compile(r"^\s*([A-Z_][A-Z0-9_]*_(S|MS))\s*(?::\s*[\w\[\], ]+)?\s*=\s*\(?\s*(-?\d[\d_.]*)", re.M)
