@@ -6,8 +6,8 @@ v4.32 has drifted from V4_30, and the later sessions shrink.
 
 | session | time | needs | sections |
 |---|---|---|---|
-| 1. Core | 85 min | two guns | §1 (F206, confirms the shipped fix), §21 (`$TMP`, the native modifier system), §2 (melee), §4 step 1, §5 (all of it, one session: each step starts from the one before), §13 step 1 |
-| 2. Levers | 75 min | two guns, the IR rig for §9 step 5 | §3, §4 step 2, §6, §7, §8, §9, §10, §12, §15, §18 |
+| 1. Core | 105 min | two guns | §1 (F206, confirms the shipped fix), §21 (`$TMP`, the native modifier system), §18 then §22 (the dead-gun probe), §2 (melee), §4 step 1, §5 (all of it, one session: each step starts from the one before), §13 step 1 |
+| 2. Levers | 75 min | two guns, the IR rig for §9 step 5 | §3, §4 step 2, §6, §7, §8, §9, §10, §12, §15 |
 | 3. Transport | see the screamers sheet | one gun, a laptop | §14 (now `bench-screamers-2026-09-19.md` Phase A) |
 | 4. IR rig | 90 min | two guns, the ESP32 IR rig | §11, §13 steps 2-3, §16, §17, §20 |
 | 5. Gap sweep | 90 min | two guns, the IR rig for two steps | §19 |
@@ -39,6 +39,7 @@ reaches `docs/manual/` only when it is CONFIRMED here.
 | 20 | Every other open item the triage of FOLLOWUPS against the new sources found untested | 19 |
 | 21 | Range tokens set the IR carrier frequency: 38000 - 125 x (100 - range) Hz on the gun, 140 Hz steps on the headset; indoor/outdoor sets power (V4_31) | 20 |
 | 22 | `$TMP` works over BLE: t4 accuracy, t9 magazine, t1-t3 pool maxima, t8 damage taken, each without a magazine reset (V4_30; fn 23 writes t4) | 21 |
+| 23 | A dead gun answers `$QUERY` with `$LCD` health 0 and ignores `$LIFE,0,0,0` (bench 2026-09-09; V4_30; the 2018 BC app) | 22 |
 
 Jay (LaserTagMods) shared his "Everything BRX" Drive on 2026-09-18. It holds the stock gun firmware image
 **V4_30**, the closest image we have to our v4.32. A disassembly of that image shows several commands we
@@ -505,6 +506,38 @@ leaves HP at 0 or below kills.
 Armor move to one short frame each, with no magazine reset, and the screamers sheet's recoil soak must measure the
 `$TMP` form instead. Anything that a `$WEAP` or `$PSET` clears needs a re-send after it. If `$TMP` does nothing, the
 current writers stay and F274's soak runs as written.
+
+## 22. Dead-gun probe (F264, 10 min, session 1)
+
+F264: a gun can die while the HUD still shows the player alive. The node needs positive evidence of a dead gun before
+it acts, so it never revives a healthy player whose magazine is simply empty. Two probes, sent to the SAME dead gun in
+the same minute:
+- `$QUERY,*`: it answers with a `$LCD` that carries the current pools (bench 2026-09-09), so it is positive evidence
+  either way.
+- `$LIFE,0,0,0,*`: a zero add that changes nothing. A live gun answers `$HP` (bench 2026-09-09). The V4_30 disassembly
+  shows a dead gun ignores `$LIFE` when token 1 is 0, so this probe reports by silence. The 2018 BC app polled with a
+  bare `$LIFE,*` after 5 s of gun silence.
+
+Run §18 (reply decodes, claim 19) in the same session first: the `$QUERY` token map is confirmed by shape only.
+
+1. Kill B (the recipe above). Log `$VOLTS` continuously from here to the end of the section.
+2. Send `$QUERY,*` to B. Record the full reply, or silence within 2 s.
+3. Send `$LIFE,0,0,0,*` to B. Record `$HP`, anything else, or silence within 2 s.
+4. Respawn B and repeat steps 2 and 3 on the live gun as the control.
+5. Listen for `$DD` from B at the moment of death (the §13 step 1 reading).
+
+Read the result against this table:
+
+| `$VOLTS` ticking | `$QUERY` reply | `$LIFE,0,0,0` reply | reading |
+|---|---|---|---|
+| yes | `$LCD` health 0 | silent | dead gun: the node can book the death |
+| yes | `$LCD` health above 0 | `$HP` | alive, stuck another way: do not revive |
+| yes | silent | silent | on the radio but answering nothing |
+| no | silent | silent | a link problem, not a gun problem |
+
+**Reading.** The most important single result is whether a dead gun answers `$QUERY` at all. If it does, the F264 cure
+acts on data. If it does not, the node falls back to inference, and the agreed rule is that it does nothing on its
+own and escalates to the operator. Do not build on `$DD` unless it comes from the gun itself.
 
 ## Close
 
