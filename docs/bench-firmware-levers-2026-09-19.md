@@ -698,3 +698,164 @@ Run steps 2 and 3 three times each (the screamers sheet's rule for a result that
    transport-hardening rows. Correct
    `protocol/brx-protocol.md` for each confirmed claim, and move it into `docs/manual/` only when it is CONFIRMED.
    Credit LaserTagMods (Jay).
+
+## 26. The recoil NUMBERS: is the shipped ladder good to play with? (65 min, run §21 FIRST)
+
+⚠ **Run §21 before this section.** §21 asks what writes accuracy. If `$TMP` t4 is the lever, and if it self-decays the
+way fn 23's accuracy penalty does, the recovery write leaves the ladder and `settle_ms` stops being a number we
+choose. Every step below still runs, but four of them change. "If §21 moves the mechanism", at the end of this
+section, says which.
+
+§21 tests the MECHANISM. The screamers sheet tests the ENDURANCE (A13, and Phase C's `recoil-oscillate` soak, which is
+F274's gate). This section tests neither. It asks the one question with no bench behind it: are the numbers the node
+ships today good to play with? Nobody has yet fired a magazine at them.
+
+**What ships today** (`spec/node.md` §3.15). Accuracy is CRISP, then DEGRADED once one burst reaches `after_shots`
+rounds, then HEAVY at `after_heavy`. `settle_ms` of quiet (600 ms) returns it to crisp in one step. Every row below is
+DERIVED, because `weapons.json` declares none of these fields (S54): `degraded` is the midpoint of the old ladder and
+`after_heavy` is twice `after_shots`. The last two columns are not in the spec. They come from the same catalogue, and
+they are the reason this section exists:
+
+| weapon | crisp / degraded / heavy | after_shots / after_heavy | magazine | ms a round | rounds at heavy |
+|---|---|---|---|---|---|
+| assault_rifle | 100 / 85 / 70 | 3 / 6 | 32 | 100 | 27 of 32 |
+| burst_rifle | 100 / 92 / 85 | 3 / 6 | 36 | 75 | 31 of 36 |
+| smg | 100 / 77 / 55 | 3 / 6 | 72 | 95 | 67 of 72 |
+| suppressor | 100 / 77 / 55 | 3 / 6 | 75 | 140 | 70 of 75 |
+| energy_rifle | 100 / 85 / 70 | 3 / 6 | 300 | 150 | 295 of 300 |
+| force_rifle | 100 / 80 / 60 | 4 / 8 | 36 | 100 | 29 of 36 |
+| stinger | 100 / 72 / 45 | 7 / 14 | 18 | 250 | 5 of 18 |
+| toxin_rifle | 100 / 82 / 65 | 4 / 8 | 30 | 110 | 23 of 30 |
+
+**Two judgements ship in that table, and neither has evidence (F268).** The first: three floors are PROPOSED at 60 and
+are not shipped. The SMG and the Suppressor derive 55 and the Stinger derives 45, on the reading that a weapon which
+lands 39 % of its rounds is removed from the fight rather than penalised. The second: `after_heavy` is twice
+`after_shots` on no evidence at all, only on an honest reading of what the two stages mean ("you are holding the
+trigger", then "you are still holding it").
+
+### Setup
+
+**A = shooter**, **B = victim**, as in "Roles and arming". Rest both guns on a fixed mount at close range with the
+victim's sensor exposed, so aim is not a variable in any run. Groups C, D and E need the phone running the node,
+armed by MC with the weapon under test, because the phone is what drives the ladder.
+
+Rules for this section, on top of the sheet's rules:
+
+1. Count rounds FIRED from `$ALCD` magazine decrements, never from trigger pulls: fire mode 14 can release two rounds
+   on one press.
+2. Count hits from B's `$HIR`, and read `$HIR` token 2 before you trust one.
+3. Start each group with its accuracy-100 control run. Throw the group away if the control does not land nearly every
+   round. The 2026-09-17 reading of 7 hits in 18 rounds came from the native WALK across a band of values, so it is
+   not a control for a pinned floor.
+4. Keep the mount, the distance and the battery pack the same for the whole section. A pack change moves the emitter.
+5. If the IR rig is on the bench, fire at the rig as well as at B for groups A and D. The rig reports the
+   magnitude-0 words, so it separates a firmware miss from a beam that missed the sensor. B alone cannot tell those
+   two apart.
+6. Record the value, not pass or fail. Every run gets rounds fired, hits, and the seconds it took.
+
+### Group A: what does an accuracy number buy? (18 min)
+
+Arm A with the bench AR. Pin accuracy the way the node does: push the AR `$WEAP` with t21 and t22 both set to the
+value, then restore the magazine with `$AMMO`, because a `$WEAP` push resets it.
+
+1. Control: pin 100. Fire 20 rounds at B and count `$HIR`. Expect 20. Do not go on until it reads 20.
+2. Pin 85, then 70, then 60, then 55, then 45. Fire 20 rounds at each value, twice at each.
+3. Write the pairs down as a curve: pinned accuracy against hits in 20.
+
+**Reading.** This is the exchange rate every floor trades in, and we have never measured it on our own guns. F268
+proposes raising three floors from 55 and 45 to 60, so read what those rows differ by. If 55 lands about half the
+rounds and 60 lands a little more, the premise that a 55 floor removes a weapon from the fight does not hold, and the
+floors stay where they are. If the curve falls away sharply below 60, the raise is right and the curve also says where
+the knee is, which no guess can.
+
+### Group B: what does a floor cost in kills? (10 min)
+
+A hit percentage is not a feeling. Time on target is.
+
+4. Re-arm B (100, 0, 0). With A pinned at 100, hold the trigger and record the rounds and the seconds it takes to kill
+   B. Twelve hits of 9 kill that pool. Respawn B and repeat three times.
+5. Repeat at 70, then at 55.
+
+**Reading.** Report each floor as rounds per kill and seconds per kill, against the 100 control. A floor that adds
+under a second to a kill penalises a player. A floor that needs more than half a magazine for one kill removes the
+weapon, which is exactly F268's claim, now with a number under it.
+
+### Group C: can the shooter tell the two rungs apart? (12 min, blind)
+
+This is the second judgement, and only Tony can answer it. He fires. A second person arms the profile, and he does not
+see which.
+
+6. Prepare two profiles on the AR: **L**, the shipped ladder, driven by the phone as it is in a match; and **F**, flat
+   crisp, the control.
+7. Fire eight magazines, trigger held, at B: four L and four F, in a shuffled order the shooter does not know. After
+   each magazine, and before anyone says which was armed, write down his answers. Did it degrade, yes or no? At about
+   which round did he first notice? Did he notice a SECOND change, and at about which round?
+8. Show him the order only after the eighth magazine.
+
+**Reading.** Record how many of the eight he called correctly, and his round numbers in his own words. Fewer than six
+correct means the ladder is not perceptible, and no number under it is worth tuning at a bench. A shooter who calls
+the first change every time but never a second means the two rungs are too close: either `after_heavy` sits too near
+`after_shots`, or 85 and 70 are too near each other to hear. The round numbers he names are the real answer to
+"is double the right ratio", because they say where he feels each step against the derived 3 and 6.
+
+### Group D: where do the rungs sit in a magazine? (6 min)
+
+9. Fire one full magazine, trigger held, on each of the AR (32 rounds), the SMG (72) and the Stinger (18). Log each
+   write with the round number that caused it, from the phone's log or from `$ALCD` token 2.
+
+**Reading.** Compare the round numbers with the table at the top of this section. On today's derivation the AR reaches
+heavy at round 6 of 32 and the SMG at round 6 of 72, so HEAVY is not the bottom of a ladder: it is what a held trigger
+feels like for the rest of the magazine. Only the Stinger spends most of its magazine above the floor. If that is
+wrong for play, the lever is `after_heavy` and the magazine it is measured against, not the floor value.
+
+### Group E: does the ladder pay for trigger discipline? (9 min)
+
+The ladder exists so that short bursts beat a held trigger. Nothing has measured whether they do.
+
+10. Three firing styles on the AR at the shipped ladder, against B re-armed (999, 0, 0). One magazine each, twice:
+    hold the trigger for the whole magazine; five rounds then release for 1 s, repeated; single shots at about one a
+    second.
+11. Record rounds fired, hits, and the seconds from the first round to the last. Work out hits a second for each style.
+
+**Reading.** If the held trigger still wins on hits a second, the floor is too kind to change anyone's behaviour. If
+single shots win by a wide margin, full auto is not worth firing and the floor is too harsh. `settle_ms` is what makes
+the middle style work, so note as well whether the 1 s gap was enough for the first rounds of the next burst to land.
+
+### Group F: Tony's own words (5 min)
+
+Write the answers into the log verbatim, after the runs and before anyone reads the numbers back:
+
+- Does a degraded weapon feel penalised, or broken?
+- Is 600 ms of quiet the right price for full accuracy: too generous, or too slow?
+- Should the second rung come later, bite harder, or go?
+
+### If §21 moves the mechanism
+
+- Groups A and B pin accuracy with one `$TMP` t4 write instead of a `$WEAP` push, so there is no magazine reset and no
+  `$AMMO` restore. The numbers themselves do not change: they are about the VALUE, not about the writer.
+- If t4 is additive (§21 step 4), send `$TMP,,,,0,*` before each pin in group A, or the values stack.
+- If t4 self-decays (§21 step 5), `settle_ms` is not ours to choose. Group E stops asking whether 600 ms is right and
+  starts measuring what the gun does: fire to heavy, stop, and read `$ALCD` token 2 every second until it returns.
+- If t4 self-decays, group C's second rung can also recover during a magazine, so read the rungs from `$ALCD` token 2
+  rather than from the node's log.
+- If a `$WEAP` clears t4 (§21 step 2), group D must re-pin after every weapon swap, and the node gets a free re-arm at
+  crisp on each swap.
+- If `$TMP` does nothing, every step above runs as written, on `$WEAP` t21 and t22.
+
+### What this bench cannot settle
+
+Every run here shoots a target that does not move, does not shoot back and does not take cover. The bench gives what a
+number buys in hits, in seconds and in kills, and whether a player can feel the two rungs at all. It cannot say
+whether a floor is fair in a game. Take that last part to the next playtest: log rounds per kill by weapon for each
+player, and ask each player which weapon felt broken. The bench numbers plus one playtest answer close F268. The bench
+alone does not.
+
+## Close
+
+1. Power-cycle both guns. Then re-arm with `$SIR,0,0,,1,0,0,1,,*` if they stay on the desk.
+2. Write one experiment-log entry with every table, including the null results and the control runs.
+3. Mark every row of the claim checklist in the log entry.
+4. Update the FOLLOWUPS rows: F206, K4, F65, K7, F121, P18/S16, F62, S50, F268 and the transport-hardening rows. Correct
+   `protocol/brx-protocol.md` for each confirmed claim, and move it into `docs/manual/` only when it is CONFIRMED.
+   Credit LaserTagMods (Jay).
+14:| 6. Recoil numbers | 65 min | two guns, a phone running the node, a static mount (the IR rig helps) | §23, and only after §21 |
