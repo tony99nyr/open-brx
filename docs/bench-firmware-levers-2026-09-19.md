@@ -447,7 +447,7 @@ t41 and t42 replace t2 and t13 only in indoor mode, and only when they are not 0
 **Reading.** If step 1 holds, range tuning becomes a frequency table calibrated against the receiver's band-pass, and
 values above the knee are not worth tuning.
 
-## 21. Recoil through `$TMP` token 4 (10 min, run it before any recoil soak)
+## 21. Recoil through `$TMP` token 4 (15 min, run it before any recoil soak)
 
 Today the recoil writer changes accuracy with a full `$WEAP` (about 101 bytes, 6 BLE packets). A `$WEAP` also resets
 the magazine, so an `$AMMO` restore must follow it, and that reset is the root of the F259 family (erased rounds,
@@ -460,14 +460,24 @@ driving it over BLE. If it works, one recoil state change becomes one short fram
 Arm A with the bench AR. Fire a few rounds so the magazine is not full, and note the magazine count.
 1. Send `$TMP,,,,-30,,,,,,,,*` (only token 4 set). Read `$ALCD`: did token 2 (accuracy) move? Did the magazine stay
    the same?
-2. Send `$TMP,,,,-60,,,,,,,,*`. Is the value absolute (accuracy reads 40) or additive (reads 10)?
-3. Wait 5 s without firing. Does accuracy stay, or walk back by itself?
-4. Fire 10 rounds. Does the modifier change the hit rate the way a lower t21/t22 does (the 2026-09-17 bench: 38/40
+2. **Does a `$WEAP` clear it?** With t4 at -30, push the bench AR `$WEAP` frame again, then read `$ALCD` token 2. If
+   accuracy returns to the ceiling, every weapon swap, arming write and re-push clears the modifier, and the writer
+   must re-send t4 after each one.
+3. **Smoke collision.** With t4 at -30, take one fn 23 hit (the smoke row, `$SIR,0,0,,23,0,0,1,,*` on A, fired by B)
+   and read the accuracy. Then send `$TMP,,,,-30,,,,,,,,*` again, as the recoil writer's next write would, and read it
+   again. They stack, the last writer wins (a recoil write cancels the smoke early, a bug we would introduce), or the
+   gun clamps. If the last writer wins, recoil on t4 must know about smoke, or use another token.
+4. Send `$TMP,,,,-60,,,,,,,,*`. Is the value absolute (accuracy reads 40) or additive (reads 10)?
+5. Wait 5 s without firing. Does accuracy stay, or walk back by itself?
+6. Fire 10 rounds. Does the modifier change the hit rate the way a lower t21/t22 does (the 2026-09-17 bench: 38/40
    hits at 90, 7/18 at 50-60)?
-5. Send `$TMP,,,,0,,,,,,,,*`. Does accuracy return to its ceiling?
-6. Kill A and respawn it. Does the modifier survive a death?
+7. Send `$TMP,,,,0,,,,,,,,*`. Does accuracy return to its ceiling?
+8. Kill A and respawn it. Does the modifier survive a death?
 
-**Reading.** If steps 1 and 5 work and the magazine never moves, recoil moves from `$WEAP` to `$TMP` token 4, and the
+Record the `$ALCD` token 2 VALUE at every step, not only pass or fail: it reads the gun's live accuracy, so if t4 adds
+to other effects the wire shows only the sum.
+
+**Reading.** If steps 1 and 7 work and the magazine never moves, recoil moves from `$WEAP` to `$TMP` token 4, and the
 screamers sheet's `recoil-oscillate` soak must measure the `$TMP` form instead. If `$TMP` does nothing, the `$WEAP`
 writer stays and F274's soak runs as written.
 
