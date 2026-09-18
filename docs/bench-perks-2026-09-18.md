@@ -49,7 +49,7 @@ at 9 means t6 does nothing, and the crit bit stays an emitter-only trick. Anythi
 **Why it matters:** a crit chance is the cleanest "variance instead of a flat buff" perk we could ship, and it would
 also give weapons a proc mechanism (a poison round on 15% of shots, for example).
 
-## 2. Is there a `$SIR` function that hits armour harder? (20 min)
+## 2. Is there a `$SIR` function that hits armour harder? ✅ ANSWERED 2026-09-18 (fn 20 strips armour only; fn 2 and fn 6 go straight to HP; `experiment-log/2026-09.md`, the perks bench entry item 5)
 
 Perks need a counter to Body Armor. Today the only anti-armour tool is a function that bypasses armour entirely
 (fn 2 and 6, straight to HP), which is too strong without a large damage cut. A function that damages ARMOUR harder, or
@@ -72,11 +72,14 @@ controls. Point the shooter's damage key at each in turn by changing the VICTIM'
 anti-armour primitive. A function that takes exactly 9 from whichever layer is outermost is plain damage. Nothing
 moving means the row is inert on this protocol, which is also an answer worth writing down.
 
-## 3. Does ONE fn-24 shot tick? ✅ ANSWERED 2026-09-18 (P18, closed) — THE NATIVE ROUTE IS DEAD
+## 3. Does ONE fn-24 shot tick? ✅ ANSWERED 2026-09-18 (P18, closed): no tick; the native route is UNSETTLED (levers §8)
 
-**NO.** A single fn-24 shot does no damage at all; it only manufactures a phantom hit every 5.07 s. So the node
-tick clock (`spec/node.md` §3.17) is the ONLY way to build poison, exactly as designed, and the proc it wanted
-arrived the same day from §1's crit result. Do not re-run. Original steps below, kept for method.
+**NO.** A single fn-24 shot does no damage at all; it only manufactures a phantom hit every 5.07 s. ⚠ **Corrected
+the same evening (`experiment-log/2026-09.md`, the drive entry §5):** the endless replay was the fuse re-injecting a
+protocol-9 word while `<9,3>` was itself fn 24. With `<9,3>` on fn 1, V4_30 predicts ONE delayed hit, so the native
+route is not dead: `bench-firmware-levers-2026-09-19.md` §8 re-times it. Build poison on the node tick clock
+(`spec/node.md` §3.17) until then; the proc it wanted arrived the same day from §1's crit result. Do not re-run this
+section. Original steps below, kept for method.
 
 Tony 2026-09-17: the catalogue has no damage-over-time weapon. `$SIR` **fn 24** may already be one.
 Bench 2026-09-11 saw a victim take 1 to 3 damage ticks, about 420 ms apart, about 4 s after the word,
@@ -105,7 +108,7 @@ question straight away: **can a tick land during spawn protection?** Take the hi
 pools through the protected window. A tick that arrives after a respawn is a different bug from a tick that
 arrives in a fight, and the playtest session owns that window.
 
-## 4. The Charge Rifle's tap cadence (5 min)
+## 4. The Charge Rifle's tap cadence ✅ ANSWERED 2026-09-18 (285 ms, not 500 ms; the perks bench entry item 7)
 
 The shipped model assumes **500 ms** between finishing taps, which is a placeholder, not a measurement. It sets the
 Charge Rifle's advertised time to kill.
@@ -117,7 +120,7 @@ Charge Rifle's advertised time to kill.
 If it is much faster than 500 ms, the Charge Rifle's kill is quicker than the catalogue claims and the number needs
 updating in `weapons.json` and `docs/weapon-design.md`.
 
-## 5. Does a stim-style write survive a reload? (5 min, gates the stim pack and Adrenaline)
+## 5. Does a stim-style write survive a reload? ✅ ANSWERED 2026-09-18 (yes: the write applies and the reload still completes; the perks bench entry item 6, S51)
 
 S42's writer refuses to write during a reload, because the one case the 2026-09-17 bench could not place was a write
 landing inside one. A stim pack has to revert on a timer, so it will meet that case.
@@ -155,7 +158,7 @@ t40 192`, so a stock player carries 192, and the catalogue's `reserve: 192` is e
 Do not change the wire before this count. Doubling t40 doubles what every player carries in every
 match, which is a balance decision, not a bug fix.
 
-## 7. Two items handed back by the playtest session (5 min, ears)
+## 7. Two items handed back by the playtest session ✅ ANSWERED 2026-09-18 (the Charge Rifle ships `D11`; the reload "timeout" was a tap, which does nothing on an energy weapon; the perks bench entry item 8, F246)
 
 1. **The Charge Rifle's overheat sound is wrong.** Its captured `t35` is `C19`, and Tony judged `C19` by ear on
    2026-09-17 as the sound a charge makes when you release it early, not an overheat. The Energy Rifle now uses `D11`

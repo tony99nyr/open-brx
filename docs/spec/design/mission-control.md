@@ -30,9 +30,8 @@ base and needs a dark theme, not a true blackout.
 
 **Real content, never lorem.** Handles a host would type: `REAPER`, `VIPER`, `NOMAD`, `GHOST`, `HAVOC`, `SABLE`.
 Gun names `GUN-A`, shown as `GUN-A-3D4F` (`<sticker>-<tail>`; real sticker ids never enter the repo). TDM
-defaults HP `45`, armor `70`, ammo `32 / 192` (the AR's captured Callsign numbers; **F253** is open on
-whether the shipped weapon reaches the gun at 192 or 96 spare rounds, so read this as Mission Control's own
-catalogue figure, not a settled in-game count). Modes: TDM, FFA, Infection, Last Man Standing,
+defaults HP `45`, armor `70`, ammo `32 / 192` (the AR's captured Callsign numbers; the gun carries the full 192 spare rounds
+after `$SPAWN`, bench 2026-09-18, **F255**, closed). Modes: TDM, FFA, Infection, Last Man Standing,
 Extraction. Player numbers `#1`–`#63`. Scoreboard columns: Player · Team · K · D · A · K/D · Acc% · Streak ·
 Medals. Recap honors: MVP, Most Kills, Best K/D, Sharpshooter, Survivor, First Blood, Multikill, Assistant.
 Timers and counts are tabular numerals; K/D and Acc% one decimal.

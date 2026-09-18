@@ -9,6 +9,11 @@ Ordered by close date. Evidence for every claim is in `docs/experiment-log/`.
 ---
 
 
+# Closed 2026-09-18: the FOLLOWUPS accuracy audit
+
+- 2026-09-18 **F194** `--advertise` is in the CLI flags table of `mcp/brx_mcp/mc/README.md` (commit 2d0abd5b, 2026-09-17).
+- 2026-09-18 **F246** The energy-weapon "reload timeout" was a lever TAP: a tap refills nothing on an energy weapon, and a HELD lever vents the heat and refills the cell 1.95 s after release (`experiment-log/2026-09.md`, the 2026-09-18 perks bench entry item 8; F229).
+
 # Closed 2026-09-18: the desk pass on FOLLOWUPS after the playtest merge
 
 A keyboard pass over the open rows against merged `main` (38bf662c). Each line names the evidence on `main`.
