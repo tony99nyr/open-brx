@@ -495,6 +495,24 @@ proves the GUN received it, not that the headset executed it.
 
 ---
 
+## Weapon bench method (2026-09-17)
+
+**"A step measuring the gun-body sensor at 2 m reads the headset instead."**
+**Cover the victim's gun sensor** for any step that reads damage or the sensor field at close range.
+Left uncovered, it catches headset shots at 2 m and reports sensor 4, not the gun-body sensor the step
+meant to read (F228).
+
+**"The shooter fires and the victim registers nothing, not even a `$HIR`."**
+**A victim needs the `$SIR` row for the shooter's damage key**, not just a generic row. Each weapon's
+IR word keys to its own `<protocol, function>` cell: the Charge Rifle keys to `<8,0>`, and without a
+matching row the victim ignores every one of its hits.
+
+**"A step needs to land inside a short window (a reload) and keeps missing it."**
+**The MCP tool loop takes about 3 s** from an event to the next write, sent one line at a time. Anything
+that must land inside a 2 s window needs a small timing script instead.
+
+---
+
 ## Capturing IR
 
 **"The IR LED isn't lighting — I checked with my phone camera."**

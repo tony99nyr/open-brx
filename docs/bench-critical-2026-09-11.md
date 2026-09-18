@@ -122,7 +122,7 @@ installed APK version does not matter and no `engine.js` fix is needed to take t
 
 Board A (**COM7**) about 3 ft in front of the muzzle, soft background behind it, grenade out of the room.
 
-### BC-A1 — does `$WEAP` t3 actually change the transmitted IR protocol? (15 min) 🔴 F91
+### BC-A1 — does `$WEAP` t3 actually change the transmitted IR protocol? (15 min) — ANSWERED, moot
 
 **ANSWERED 2026-09-11 (moot): this rung never ran.** F91, the reason it mattered, was retired the same night —
 the hill's chip damage turned out to be manufactured inside the gun by fn 24, not a wire-level `proto=0` word
@@ -208,7 +208,7 @@ through the colour cycle; release on **blue (HILL)**; white LED = locked. Power-
 blue boot flash. Leave it **neutral** (unshot). Stand it 3-6 ft from the gun with **board A facing the
 grenade**, so board A witnesses the grenade and not only the gun's own muzzle.
 
-### BC-B1 — is the hill's damage word continuous or conditional, and does dropping `<0,0>` stop it? (25 min) 🔴 F69 + F91
+### BC-B1 — is the hill's damage word continuous or conditional, and does dropping `<0,0>` stop it? (25 min) — ANSWERED
 
 **ANSWERED 2026-09-11: there is no damage word.** A receiver aimed at a live grenade recorded ZERO protocol-0
 words across two ~5-minute windows while the gun logged chip damage under the fn-24 beacon row; the damage is
@@ -263,7 +263,7 @@ window boundary so the gun-side counts split the same way the captures do.
 | **The reading nobody has written down** | friendly fire is **ON** in every arm here, so the polarity gate is lifted — **does the OWNER take the chip damage too** (window 1)? F69 only ever measured a non-owner. If the owner bleeds as well, then "FF on" (which F73 says a KotH mode wants, so it can read every beacon) chips **everyone** standing on the point, and F91 stops being an optimisation and becomes the only way to ship the mode. |
 | **Record either way** | the tradeoff: dropping `<0,0>` makes our guns **deaf to any native BRX gun**, which is fine for an all-hosted match and fatal for mixing hosted and native players in one game. |
 
-### BC-B2 — can a gun on protocol 7 still capture a hill? (10 min) 🔴 F91, and it can kill the plan
+### BC-B2 — can a gun on protocol 7 still capture a hill? (10 min) — ANSWERED, moot
 
 **ANSWERED 2026-09-11 (moot): this rung never ran.** F91 was retired the same night (BC-B1), so the plan it could
 have killed was never adopted and the question does not need settling. See `experiment-log/2026-09.md` →

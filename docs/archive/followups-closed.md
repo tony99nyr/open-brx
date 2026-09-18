@@ -280,4 +280,4 @@ polish loop (commits b7c095c4, 0003df1a, 16a8f72f, 3a02e263, 476d5b17, faa64843,
   survivor keeping about 0.3 s of the window is fine.
 - 2026-09-17 **F218** the charge-rifle match gave no false GUN NOT FIRING report, except during
   overheat lockout, which is now fixed. The swap-to-empty-slot half of the original check did not run
-  today; it continues as **F242**.
+  today; it continues as **F247**.

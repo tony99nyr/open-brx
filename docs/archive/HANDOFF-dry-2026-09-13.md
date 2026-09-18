@@ -1,0 +1,162 @@
+# Handoff: contract-DRY and typing execution — complete
+
+**Execution completed 2026-09-16.** This document is now the completed execution record for the generated contract,
+static typing, phone transport checking, and bench-stage pyright work. Nothing here blocks a match. The broader F42
+cleanup backlog remains in [`FOLLOWUPS.md`](FOLLOWUPS.md): runtime coverage (F42.4), module seams (F42.5), repeated
+logic (F42.6), and the two small interface/input items (F42.7). Self-contained: the implementation history can be
+checked without reading the 2026-09-12 session. The ids live in
+[`FOLLOWUPS.md`](FOLLOWUPS.md); the design record is [`spec/contracts.md`](spec/contracts.md) A33 and the archived
+working spec [`archive/spec-contract-dry-2026-09-12.md`](archive/spec-contract-dry-2026-09-12.md).
+
+## What is already DRY, so you do not redo it
+
+| Contract | One source | Generated into | Gate that fails on drift |
+|---|---|---|---|
+| Node↔MC wire tables: kinds, required fields, event types, size caps, timing constants, `ACCEPT_MIN` | `mcp/brx_mcp/mc/envelope.py` + `types.py` | `app/src/transport/contract.gen.js`, `app/src/transport/contract.gen.d.ts`, `webapp/mc/src/api/contract.gen.ts` | `mcp/tests/test_contract_generated.py` |
+| Shared shapes: every TypedDict and every `Literal` alias in `types.py`, comments carried as JSDoc | `mcp/brx_mcp/mc/types.py` | `webapp/mc/src/api/contract.gen.ts`, re-exported by `types.ts` | the same, plus `test_ui_contract.py` (types.ts may not re-declare one) |
+| Kind vocabulary against the spec | `docs/spec/contracts.md` §5 | none, compared | `test_contract_kinds.py` |
+| Weapon and mode catalogs in the two demos | `weapons.json`, `state.py MODES` | `webapp/mc/src/mock/data.ts`, `app/src/demo-catalog.js` | `test_ui_catalog_generated.py` |
+| Python type hints | `mcp/brx_mcp/` | none, checked | `test_pyright.py`, pyright 1.1.414 pinned in CI |
+| Console type hints | `webapp/mc/src` | none, checked | `npm run typecheck` (`tsc -b`) runs before vitest in CI |
+
+## The rules that keep it that way
+
+1. **Edit `types.py` or `envelope.py`, then run `python3 mcp/tools/gen_contract.py` from the repo root.** Never
+   hand-edit a `contract.gen.*` file. Forgetting to regenerate fails CI.
+2. **A new MC→node kind goes in three places at once:** `MC_KINDS` in `types.py`, a `REQUIRED` row in
+   `envelope.py`, and a row in `contracts.md` §5. The phone drops an unlisted kind silently; that exact bug shipped
+   three times (`alert`, `station_config`, `result`) before the generator existed.
+3. **A receiver that must accept a frame short of fields** gets an `ACCEPT_MIN` entry, never a hand edit on one
+   side. The generator refuses a key not in `MC_KINDS` or a field not in `REQUIRED`.
+4. **Fix the type or the code, never silence.** No `# type: ignore`, no `cast(Any, ...)`, no assert that only
+   exists to quiet the checker. On 2026-09-13 the package has no `# type: ignore` and no `cast(Any, ...)`, but four
+   narrowing `cast(...)` calls landed AFTER the gate, from a merge and the standby lane: pyright accepts a cast, so
+   the gate cannot stop them. Two relabel an empty default, one an untyped JSON row, and one in `policy.py` casts
+   around a field that is now declared (queue item below).
+5. **Retake the site shots AFTER committing** any change under `app/src` or `webapp/mc/src`, and
+   `contract.gen.ts` is under `webapp/mc/src`: `cd app && npm run build && cd ../site && npm run shots`. The
+   manifest records HEAD's tree hashes, so shots taken before the commit are stale the moment it lands.
+6. **The generator fails loudly on what it cannot map:** a `tuple`, a non-`str` `Literal` member, or an unknown
+   type raises with the class and field name. Do not work around it with a looser hint; the wire has no tuples.
+
+## The recipe for moving a hand-written console type into the generated contract
+
+This is the core of F42.9 and it needs no generator change.
+
+1. Add a TypedDict (or a `Literal` alias) to `mcp/brx_mcp/mc/types.py` that says exactly what the server sends:
+   `NotRequired[...]` for a key that can be absent, `X | None` for a key that is always present but may be null.
+   Read the producer to decide; do not copy the TS, which was hand-kept and has been wrong before.
+2. Annotate the producer to return it (`-> RecapView`, not `-> dict`), and build it as one literal where you can.
+   `test_pyright.py` then checks the producer honestly.
+3. `python3 mcp/tools/gen_contract.py`. The interface appears in `contract.gen.ts` with the Python comments.
+4. Delete the hand-written copy from `webapp/mc/src/api/types.ts` and add the name to its `export type { ... }`
+   re-export. `test_ui_contract.py` fails if you forget the delete.
+5. `cd webapp/mc && npm run typecheck && npm test`. Any error is either the old TS lying or the new TypedDict
+   lying; read the producer again to decide which.
+
+## The queue, in order
+
+Sizes and error counts were measured on 2026-09-13 against `origin/main`. XS is under an hour, S an afternoon,
+M a day, L several days. The order puts free and unblocking work first.
+
+### 1. F42.11: turn on `strict` for the console. Done 2026-09-15
+
+`webapp/mc/tsconfig.app.json` has `"strict": true`. The measured cost was zero errors; `tsc -b`
+and 514 console tests passed. This keeps every later item's TS honest.
+
+### 2. F134: close the `win_by` vocabulary. Done 2026-09-15
+
+`WinBy` in `types.py` is the closed scoring vocabulary. `parse_win_by` normalises missing or empty
+values to the mode default and rejects a typo at PUT, compile validation and Scorer construction.
+The generated console contract carries the union.
+
+### 3. F42.16: clear the residue the generated contract left behind. Done 2026-09-15
+
+The four `cast(...)` calls and five redundant console intersections are gone. Standby JSON rows are
+decoded and malformed rows are logged rather than asserted as `Player`. `PoolEmptyCode` now lives in
+`types.py`, with the policy classifier and console importing the generated vocabulary.
+
+### 4. F42.15: a `Protocol` for the session's compiler. Done 2026-09-15
+
+`Session.compiler` now uses `interfaces.Compiler`, which both real and fake adapters satisfy under
+pyright and the runtime conformance test. The fake accepts `plan`, publishes `dmg` stats, and has
+public `perk_effects`; the real compiler has the same public method. `Session` no longer hides a
+perk or catalog failure under a blanket exception. Real-only `hit_plan`, `voice_options` and
+`voice_preview` remain optional through guarded lookups.
+
+### 5. F42.9: generate the console's view types. Complete 2026-09-16
+
+About two dozen types in `webapp/mc/src/api/types.ts` were hand-written because the server builds them as untyped
+dicts. All five batches are done: the leaf, arsenal, live-row, node, station, tunnel, presentation, mode, recap,
+match-history and top-level state shapes now come from `types.py`,
+their producers are checked, and `API.md` names `RecapStationRow` and `VoiceList`. `PhaseRefusalBody` is the
+server's required 409 body; the UI's `PhaseRefusal = Partial<PhaseRefusalBody>` deliberately accepts other or
+older error bodies. The weapon view keeps `pool` and `ttk_ms` optional for older MC responses. `State.snapshot()`
+now composes named checked view producers rather than returning an unchecked aggregate.
+
+| Batch | Types | Producers | Size | Status |
+|---|---|---|---|---|
+| 1 | `Honor`, `RecapStationRow`, `StationAssignment`, `ModeParamSpec`, `PhaseRefusalBody`, `VoiceList`, `EndDeliveryView` | scorer, station and delivery views; `modes/params.py`; compiler voice options | S | Done 2026-09-15 |
+| 2 | `WeaponView`, `SavedGame`, `LiveRow` | `views.weapon_view`; `presets.py`; `Scorer.live_rows()` | S | Done 2026-09-15 |
+| 3 | `NodeView`, `StationView`, `LanPublic`, `Coverage`, `PresentationRow`, `PresentationView`, `ModeInfo` | `state.py _node_view`, `stations_view`, `modes()`; `presentation.py`; `tunnel.py` | M | Done 2026-09-16 |
+| 4 | `RecapView`, `LiveView`, `StartView`, `MatchHistoryRow` | composed from batches 1 to 3 | M | Done 2026-09-16 |
+| 5 | `State` | `state.py snapshot()`, decomposed into named checked view producers | L | Done 2026-09-16 |
+
+`ConfigView`, `LoadoutPoolReasons` and `PoolEmptyCode` are already aliases of generated types. `Api`, `FeedTag`
+and `FeedEntry` have no typed server producer and stay hand-written.
+
+### 6. F42.12: type-check the phone transport. Complete 2026-09-16
+
+`app/src/transport` is now checked with strict `allowJs` + `checkJs`, using the generated runtime tables and
+`contract.gen.d.ts`. The app CI job runs the checker before tests; the final typecheck is clean.
+
+The baseline was 116 errors over the five transport files:
+
+| File | Errors |
+|---|---|
+| `transport.js` | 78 |
+| `envelope.js` | 21 |
+| `ring.js` | 9 |
+| `clock.js` | 5 |
+| `contract.gen.js` | 0 |
+| `../build.js`, pulled in by an import | 3 |
+
+The intentional optional `env.seq` assignment and the constructor's defaulted options were captured in the
+boundary types rather than treated as runtime bugs.
+
+### 7. F42.14: bring the bench stage under the pyright gate. Complete 2026-09-16
+
+`mcp/brx_mcp/stage/` is now included in `mcp/pyproject.toml` and passes the pyright gate. Its JSON message
+boundary, internal profile/advert/station/hill/stun/walkthrough state, and shared config/player/bundle shapes are
+typed once, while the stage/phone mirror suite remains the behavioral guard.
+
+## Deliberately hand-kept, and pinned instead
+
+Not gaps. Each mirrors server data by hand because it is logic or a byte map, and a test fails when it drifts.
+
+- `webapp/mc/src/mock/policy.ts` `DEFAULT_POLICY` mirrors `policy.py`'s default:
+  `test_ui_contract.py::test_default_policy_matches_the_server_default`.
+- `app/src/beacon.js` `KIND` and `app/src/utility.js` `KIND_LABEL` mirror `STATION_KINDS`:
+  `app/test/contract.test.mjs`.
+- `DELIVERED` in `app/src/transport/transport.js` lists which MC kinds the phone engine handles. That is engine
+  behaviour, not contract, and its own parity test keeps it honest.
+
+## Working safely here, the lessons that cost time on 2026-09-12
+
+- **Every session shares one working tree and one git index.** Before editing a file another session has open,
+  ask it or wait for its commit.
+- **`git commit --only <file>` commits the WHOLE working copy of that file,** including another session's unstaged
+  hunks. It swept 139 lines of `types.py` into an unrelated version bump. Diff what `--only` is about to take.
+- **Never `git apply --3way`, `git stash` or `git checkout -- <file>` in the shared tree.** The first writes the
+  shared index; the other two destroy other sessions' work, and during someone else's merge they discard a side.
+- **Park co-owned edits in a worktree** (`git worktree add --detach`, then `git diff HEAD | git apply` to bring the
+  dirty state along) and apply them only once the owner has committed.
+- **When fanning out agents,** give each lane a disjoint file list, forbid git state changes and repo scripts in the
+  prompt, and route a cross-file fix to the file's owner rather than widening a lane.
+
+## Where the history is
+
+`docs/experiment-log/2026-09.md` has the 2026-09-12 design record and the 2026-09-15/16 execution entries,
+including the decisions, validation, and polish loops. The implementation commits are `1dfb99e` (generated
+contract), `41ed9ee` (pyright gate), `5a08789`/`e650e0fe`/`35a9cea` (typed contract views and stage), and
+`841bdc4` (phone transport checking).

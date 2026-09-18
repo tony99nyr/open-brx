@@ -1,9 +1,9 @@
 # Field process — Armory Setup & Muster
 
 The two recommended Open BRX operator processes, from "a box of identical taggers" to "a game running."
-Names are the **current naming** (Tony, 2026-08-25). Both lean on the existing `brx-mcp` CLI; steps are
-marked **[BUILT]** (tooling exists + verified where noted) or **[HW-CONFIRM]** (procedure believed correct
-but needs a hardware session — tracked in `FOLLOWUPS.md` under **System proofs**).
+Names are the **current naming** (Tony, 2026-08-25). Both lean on the existing `brx-mcp` CLI. This page is
+the procedure only; build state (what is confirmed on hardware versus still to check) lives in
+`FOLLOWUPS.md` under **System proofs**, not here.
 
 - **Armory Setup** — the **one-time, per-tagger** enrollment that builds a permanent
   gun ↔ headset ↔ BLE-MAC map (plus a physical label). Do it once per tagger (re-run only if you
@@ -33,8 +33,8 @@ indistinguishable stock guns. (Ref: exp-log 2026-08-24 armory correlation; `_enr
 ### Steps (per tagger)
 
 1. **Isolate.** Power **on only this tagger**; power all others **off**. Cable this tagger to the server
-   machine (USB "Programing Port", Teensy VID 16C0). **[BUILT]**
-2. **Enroll.** Run **`python -m brx_mcp enroll <GunName>`**. This one command: **[BUILT]**
+   machine (USB "Programing Port", Teensy VID 16C0).
+2. **Enroll.** Run **`python -m brx_mcp enroll <GunName>`**. This one command:
    - reads the device record over USB — including the **Serial / Head PIN** (= the paired headset's
      unique-ID sticker; USB-only, BLE can't read it) — and saves a raw backup to
      `~/.brx-mcp/device-backups/<serial>.txt` (**out of repo — holds the headset PIN**);
@@ -47,7 +47,7 @@ indistinguishable stock guns. (Ref: exp-log 2026-08-24 armory correlation; `_enr
 3. **Name the gun its sticker ID.** The gun's persistent **`$NAME`** should be the **hardware sticker /
    headset code** (not a player's vanity name) so the boot-time BLE advert comes back as
    `<StickerID>-<MACtail>` and the gun **self-identifies on every scan**. `enroll <GunName>` sets this;
-   or set/replace it later with **`python -m brx_mcp rename <address> <name>`**. **[BUILT]** — `$NAME`
+   or set/replace it later with **`python -m brx_mcp rename <address> <name>`**. `$NAME`
    **persists over BLE**, confirmed 2026-08-24 (advert refreshes on next power-cycle; re-scan to verify).
    - **Naming convention (Tony, current):** gun `$NAME` = the **hardware/headset sticker ID**. A player's
      **vanity gamertag is a separate Mission Control DISPLAY layer** — do **not** conflate the two. The
@@ -59,11 +59,10 @@ indistinguishable stock guns. (Ref: exp-log 2026-08-24 armory correlation; `_enr
    **sticker/label printer** and stick it on the **tagger** itself. Now the physical gun↔headset pairing
    is visible at a glance — you can grab a gun and its correct headset without guessing. This is a
    **recommended Open BRX practice** (Tony's) and complements the digital map (same headset PIN ↔ gun ↔
-   MAC). **[recommended practice — no tooling]**
+   MAC). No tooling for this step; it is a manual labelling task.
 5. **Power-cycle & confirm.** Power-cycle the gun (so the advert refreshes to `<name>-<MACtail>`), then run
    **`python -m brx_mcp armory`** to reconfirm — the row should flip to `MAP=ok` with the BLE address bound.
-   Repeat 1–5 for the next tagger. **[BUILT]** (the rename → re-enroll → map-update loop end to end is
-   still a **[HW-CONFIRM]** row under FOLLOWUPS System proofs.)
+   Repeat 1–5 for the next tagger.
 
 **Output of Armory Setup:** a permanent **gun ↔ headset ↔ MAC** table in `~/.brx-mcp/armory.json`
 (printable via `armory`), a self-identifying BLE advert per gun, and a physical sticker on each tagger.
@@ -95,15 +94,15 @@ objective modes — every tagger armed to its station **before** kickoff.
    alert, and there is **no per-kill headset frame** (decoded from captures 2026-09-01).
 
 1. **Roster from the armory.** Pick the guns for this match by their armory identity (sticker id / gun
-   name), confirm readiness (battery, headset linked, firmware) via `fleet` / `diagnose`. **[BUILT]** for
-   the diagnostics; the readiness dashboard UI is a Mission Control surface (B3, design prototype).
-2. **Assign teams / loadouts / mode.** Choose the mode and per-gun team/weapon. **[BUILT]** via
+   name), confirm readiness (battery, headset linked, firmware) via `fleet` / `diagnose`. The readiness
+   dashboard UI is a Mission Control surface (B3, design prototype).
+2. **Assign teams / loadouts / mode.** Choose the mode and per-gun team/weapon, via
    `python -m brx_mcp play <mode> <addr…> [k=v…]` (optionally `<addr>@<Gamertag>` for a display name).
 3. **Config-all-then-spawn barrier.** Config **all** guns fully **first**, *then* send `$SPAWN` to all
    back-to-back so they go live ~together (sequential config-then-spawn starts guns ~10 s apart). This
-   barrier is the engine's behaviour and was proven live on three guns on 2026-08-25 (B10). **[BUILT]**
+   barrier is the engine's behaviour and was proven live on three guns on 2026-08-25 (B10).
 4. **Stations** *(objective modes — respawn, powerup, extraction, bomb, control point).* A station is a
-   **spare phone running the app in utility mode**, and Mission Control arms it. **[BUILT]**
+   **spare phone running the app in utility mode**, and Mission Control arms it.
    - In **MUSTER → ITEMS**, every utility phone that has said hello appears as a row. Give it a **kind**, a
      **team** (a control point must be `ANY` — it starts neutral and is taken by presence), an **id** unique
      on the field, and a **bubble** in dBm (default −74, about 10 ft). Press **ASSIGN + ARM**.
@@ -140,18 +139,18 @@ every station assigned, armed and placed.
 
 ## Where the tooling lives
 
-| Step | Command | State |
-|---|---|---|
-| Read a cabled tagger's device record (headset PIN, voltages, PCB…) | `python -m brx_mcp usb-query [port]` | **[BUILT]**, verified 2026-08-24 |
-| Isolation-enroll a tagger (USB identity + BLE bind + optional rename) | `python -m brx_mcp enroll [GunName]` | **[BUILT]**; end-to-end bind **[HW-CONFIRM]** (System proofs) |
-| Rename a gun's persistent `$NAME` over BLE | `python -m brx_mcp rename <address> <name>` | **[BUILT]** ($NAME persists, confirmed) |
-| Print / reconfirm the armory map | `python -m brx_mcp armory` | **[BUILT]**; correlate loop **[HW-CONFIRM]** (System proofs) |
-| Config + start a game (config-all-then-spawn) | `python -m brx_mcp play <mode> <addr…> [k=v…]` | **[BUILT]**; live runs proven 2026-08-25 and 2026-08-30 |
-| Physical sticker label (headset code on the gun) | *(label printer — no tooling)* | recommended practice |
-| Station Arming (deliver station IR to each tagger) | *(on-device grenade + per-tagger IR; pre-game or grenade-button mid-game)* | arm + revive measured 2026-09-04 in native games; hosted games ignore it (B23); persistence **[HW-CONFIRM]** |
+| Step | Command |
+|---|---|
+| Read a cabled tagger's device record (headset PIN, voltages, PCB…) | `python -m brx_mcp usb-query [port]` |
+| Isolation-enroll a tagger (USB identity + BLE bind + optional rename) | `python -m brx_mcp enroll [GunName]` |
+| Rename a gun's persistent `$NAME` over BLE | `python -m brx_mcp rename <address> <name>` |
+| Print / reconfirm the armory map | `python -m brx_mcp armory` |
+| Config + start a game (config-all-then-spawn) | `python -m brx_mcp play <mode> <addr…> [k=v…]` |
+| Physical sticker label (headset code on the gun) | *(label printer — no tooling)* |
+| Station Arming (deliver station IR to each tagger) | *(on-device grenade + per-tagger IR; pre-game or grenade-button mid-game)* |
 
 ## See also
 - `reference/grenade.md` — grenade modes, on-grenade programming, Respawn Station mechanics + the timing reconciliation.
 - `mcp/brx_mcp/mc/API.md`, `docs/spec/design/mission-control.md` — the operator console (roster, readiness, gamertag display layer).
 - `FOLLOWUPS.md` — B10 (config-all-then-spawn barrier), B12 (host-vs-grenade respawn), B7/P2 (USB SETUP writes), B8 (grenade state display).
-- `FOLLOWUPS.md` → **System proofs** — the hardware items that still confirm Armory Setup, Muster, and Station-Arming persistence.
+- `FOLLOWUPS.md` → **System proofs** — what is confirmed on hardware and what still needs a bench session, for Armory Setup, Muster, and Station-Arming persistence.

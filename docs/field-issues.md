@@ -19,10 +19,11 @@ Evidence: committed at [`evidence/2026-09-13-session-3782dc77/`](evidence/2026-0
 carries the compiled heads MC pushed **and** six node-log uploads, which is why nine of the eleven were
 root-caused without a gun.
 
-- 🔍 **F206** team modes register nothing (116 shots, 0 hits in TDM). `$GSET` t1 `friendlyFire` is the only
-  variable across the three heads; **F49** at game scale. The critical one.
-- 🔍 **F207** the `GUN ECHO ≠ CONFIG` START refusal is a false positive on every gun — the gun's `$ALCD` reserve
-  mirrors `$WEAP` t40 and the check compares it to t17. Answers **F201**.
+- ✅ **F206** team modes register nothing (116 shots, 0 hits in TDM). `$GSET` t1 `friendlyFire` is the only
+  variable across the three heads; **F49** at game scale. The critical one. Closed 2026-09-16: resend `$TID`
+  after the last `$PSET` of any write.
+- ✅ **F207** the `GUN ECHO ≠ CONFIG` START refusal is a false positive on every gun — the gun's `$ALCD` reserve
+  mirrors `$WEAP` t40 and the check compares it to t17. Answers **F201**. Closed 2026-09-16.
 - 🔍 **F208** a gun can die with the HUD holding the player alive, for 105 s, with no operator resync.
 - 🔍 **F209** the respawn delay collapses to 0 in a burst; spawn protection does not hold post-respawn.
 - ✅ **Worked:** `$GSET` t2 stayed 0 in all three heads and **outdoor FFA registered at an indoor-comparable
@@ -33,7 +34,7 @@ root-caused without a gun.
 
 ## Session 3 — 2026-09-11 night, MacBook host, 1v1 on two taggers
 
-**The whole session is written up, issue by issue, in [`game-test-2026-09-11.md`](game-test-2026-09-11.md) — do not duplicate it here.**
+**The whole session is written up, issue by issue, in [`archive/game-test-2026-09-11.md`](archive/game-test-2026-09-11.md) — do not duplicate it here.**
 iPhone on that day's tree, Android on APK 0.1.8. 25 ids were filed (F110-F127 and S20-S26); their status lives
 in `FOLLOWUPS.md`, and the sheet holds the symptom, evidence, mechanism and fix for each.
 

@@ -130,9 +130,20 @@ python -m brx_mcp.mc                    # real node server; binds every interfac
 #          (a new operator token every launch; --token <fixed> to choose it; --no-auth on a trusted bench)
 ```
 
-Flags (`brx_mcp/mc/__main__.py`): `--host` (default `0.0.0.0`), `--port` (UI, default **8765**),
-`--ws-port` (nodes, default **8766**), `--fake-net` (no phones — dry run), `--token <t>` (fixed operator
-token), `--no-auth` (no token — trusted bench only).
+Flags (`brx_mcp/mc/__main__.py`; `--help` lists every one, including the dev/test-only flags left out here):
+`--host` (default `0.0.0.0`), `--port` (UI, default **8765**), `--ws-port` (nodes, default **8766**),
+`--fake-net` (no phones — dry run), `--token <t>` (fixed operator token), `--no-auth` (no token — trusted
+bench only).
+
+Field-relevant flags beyond the basics:
+- `--advertise <ip>` — put this address in the QR/mDNS instead of the one MC auto-detects. Needed on a WSL2
+  host: MC auto-detects WSL2's own NAT address, which no phone can reach; pass the Windows LAN address
+  instead (from `ipconfig`). See `wsl-dev-runbook.md` → *MC on this box* for the portproxy this still needs.
+- `--public-url <wss://…>` — a public node URL you already run (named tunnel, Tailscale Funnel, port
+  forward); MC hands it out but never starts or stops it.
+- `--tunnel` — expose the node socket (never the API) through a `cloudflared` quick tunnel at boot.
+- `--bench-volume [N]` — every `$VOL` MC compiles plays at N (default 65) instead of the venue volume.
+  Bench only, never a real game.
 
 **Operator token.** Every mutating console action (`POST/PUT/PATCH/DELETE /api/*`, and the live `/ui-ws`
 feed) needs the per-launch operator token; read-only GETs are open so a spectator can watch. Open the
