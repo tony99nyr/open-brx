@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync, mkdirSync, copyFileSync, writeFi
 import { homedir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { root, venvPython } from './lib/launcher.mjs';
 
 const home = process.env.BRX_MCP_HOME || join(homedir(), '.brx-mcp');
 const requested = process.argv[2];
@@ -29,7 +30,7 @@ if (existsSync(rawLog)) {
   writeFileSync(join(dir, 'diagnostics', 'mc.redacted.log'), redacted);
 }
 {
-  const diag = spawnSync(join(resolve(import.meta.dirname, '..'), '.venv', 'bin', 'python'), ['-m', 'brx_mcp.mc.diag', sqlite, '--json'], { env: { ...process.env, PYTHONPATH: join(resolve(import.meta.dirname, '..'), 'mcp') }, encoding: 'utf8' });
+  const diag = spawnSync(venvPython(), ['-m', 'brx_mcp.mc.diag', sqlite, '--json'], { env: { ...process.env, PYTHONPATH: join(root, 'mcp') }, encoding: 'utf8' });
   if (diag.status === 0) {
     const diagnostics = join(dir, 'diagnostics');
     mkdirSync(diagnostics, { recursive: true });

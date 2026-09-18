@@ -7,7 +7,7 @@ Last verified: 2026-09-18
   phones over Wi-Fi.
 - A laptop with a Bluetooth radio (Windows, macOS or Linux), for `brx-mcp` and for arming taggers at
   the bench. This can be the same laptop as Mission Control.
-- Git, to clone the repository.
+- Git, to clone the repository. No git? See *Without git* below.
 - One Android phone per player, for the Companion app. iOS builds from source.
 
 The start script below installs Node.js and Python for you if either is missing. Use the manual
@@ -15,40 +15,51 @@ path further down if you would rather install them yourself.
 
 ## Quick start
 
-From a clone of the repository:
-
 ```
 git clone https://github.com/tony99nyr/open-brx
 cd open-brx
 ./start.sh
 ```
 
-On Windows, run `start.cmd` instead (in PowerShell, `.\start.cmd`).
+On Windows, double-click `start.cmd` in the folder, or run `.\start.cmd` in PowerShell.
 
-The script does five things, in order:
+First, the script makes sure Node.js 20.11 or later is installed. If it is missing, the script offers
+to install it (Homebrew on a Mac, winget on Windows). Then it prints five numbered steps:
 
-1. Checks for Node.js 20.11 or later, and offers to install it (Homebrew on a Mac, winget on
-   Windows) if it is missing.
-2. Offers to `git pull` when GitHub has newer commits. It skips this when the clone has changes of
-   its own, or there is no internet.
-3. Finds Python 3.11 or later, or offers to install it the same way, then creates a `.venv` and
-   installs the Mission Control package into it.
-4. Installs and builds the Mission Control console, the web page you open in your browser.
-5. Asks once whether to install the optional `cloudflared` tool, for reaching phones over the
-   internet. The default answer is no, and it remembers your answer in `~/.brx-mcp/start.json`.
+1. It checks GitHub for a newer version and offers to update. It skips this when the folder has
+   changes of its own, or there is no internet.
+2. It finds Python 3.11 or later, or offers to install it the same way. Then it creates a `.venv`
+   folder and installs the Mission Control package into it.
+3. It installs and builds the Mission Control console, the web page you open in your browser.
+4. It asks once whether to install the optional `cloudflared` tool, for reaching phones over the
+   internet. The default answer is no. It remembers your answer in `~/.brx-mcp/start.json`.
+5. It starts Mission Control and opens it in your browser.
 
-It then starts Mission Control and opens its URL in your browser. Run the script again for every
-match: it skips every step it already did, and goes straight to starting Mission Control.
+Run the script again for every match. It skips every step it already did.
 
-On Debian or Ubuntu, install `python3-venv` first: `sudo apt install python3-venv`. Step 3 needs it
-to create the virtual environment.
+On Debian or Ubuntu, install `python3-venv` first: `sudo apt install python3-venv`. Step 2 needs it
+to create the `.venv` folder.
+
+### Without git
+
+On the [GitHub page](https://github.com/tony99nyr/open-brx), click the green **Code** button, then
+**Download ZIP**. Unzip it. On Windows, double-click `start.cmd` in the unzipped folder. On macOS or
+Linux, open a terminal in the unzipped folder and run:
+
+```
+sh start.sh
+```
+
+The script cannot update a download: to get a newer version, download it again. To install git instead, see
+[git-scm.com](https://git-scm.com/downloads).
 
 ### Useful flags
 
 - `--demo` runs a demo instead: 8 pretend players and phones, no taggers, nothing saved.
 - `--setup-only` sets everything up, then stops instead of starting Mission Control.
 - `--no-update` skips the GitHub update check.
-- `--yes` accepts the default answer to every question, for an unattended run.
+- `--yes` accepts the default answer to every question, for an unattended run. It never deletes a
+  broken `.venv` folder: it stops and asks you to delete it.
 - `--cloudflared` asks about `cloudflared` again, even if you said no before.
 - `--help` prints all the options.
 
@@ -107,8 +118,8 @@ For a no-hardware demo:
 `--demo` seeds a roster of players and taggers; `--fake-net` simulates the phone nodes in memory, so
 the demo needs no phones and no taggers.
 
-`pnpm mc` runs Mission Control the same way, once the setup above is done, without checking or
-redoing any of it.
+`pnpm mc` starts Mission Control once the setup above is done. It skips the update, install and
+`cloudflared` steps, but it still rebuilds an old console and checks that the ports are free.
 
 ### First contact with a tagger
 

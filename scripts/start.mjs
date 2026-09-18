@@ -22,7 +22,7 @@ const USAGE = `Usage: ./start.sh [options] [-- Mission Control options]     (Win
   --demo           run a demo: 8 pretend players and phones, no taggers, nothing saved
   --setup-only     set everything up, then stop instead of starting Mission Control
   --no-update      do not check GitHub for a newer version
-  --yes            accept the default answer to every question
+  --yes            accept the default answer to every question (it never deletes a broken .venv)
   --cloudflared    ask about cloudflared again, even if you said no before
   --help           show this help
 
@@ -67,10 +67,19 @@ async function ask(question, defaultYes) {
     return defaultYes;
   }
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    const answer = (await rl.question(`  ?   ${question} ${hint} `)).trim().toLowerCase();
-    return answer === '' ? defaultYes : answer.startsWith('y');
-  } finally { rl.close(); }
+  // null means Ctrl+C (readline's SIGINT) or Ctrl+D (the input closed) at the question.
+  const answer = await new Promise(resolveAnswer => {
+    rl.question(`  ?   ${question} ${hint} `).then(resolveAnswer, () => resolveAnswer(null));
+    rl.on('SIGINT', () => resolveAnswer(null));
+    rl.on('close', () => resolveAnswer(null));
+  });
+  rl.close();
+  if (answer === null) {
+    console.log('\nStopped. Nothing else was changed.');
+    process.exit(130);
+  }
+  const text = answer.trim().toLowerCase();
+  return text === '' ? defaultYes : text.startsWith('y');
 }
 function readPrefs() {
   try { return JSON.parse(readFileSync(prefsPath, 'utf8')); } catch (_) { return {}; }
@@ -103,20 +112,23 @@ async function update() {
   step('Checking for a newer version');
   if (process.env.OPEN_BRX_JUST_UPDATED) return ok('updated to the newest version');
   if (opt('--no-update')) return note('skipped (--no-update)');
-  if (!which('git') || !existsSync(join(root, '.git'))) return note('skipped: this folder is not a git clone');
+  if (!which('git') || !existsSync(join(root, '.git'))) return note('skipped: this folder is not a git clone. To update it, download it again from GitHub.');
   const upstream = capture('git', ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'], { stdio: ['ignore', 'pipe', 'ignore'] });
   if (!upstream) return note('skipped: this branch does not track a branch on GitHub');
-  const fetched = spawnSync('git', ['fetch', '--quiet'], { cwd: root, stdio: 'ignore', timeout: 30000 });
+  const fetched = spawnSync('git', ['fetch', '--quiet'], {
+    cwd: root, stdio: 'ignore', timeout: 30000, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND || 'ssh -o BatchMode=yes' },
+  });
   if (fetched.status !== 0) return note('skipped: could not reach GitHub (no internet?). Using the version you have.');
   const behind = Number(capture('git', ['rev-list', '--count', 'HEAD..@{u}']) || 0);
   const ahead = Number(capture('git', ['rev-list', '--count', '@{u}..HEAD']) || 0);
-  if (behind === 0) return ok(`up to date with ${upstream}`);
+  if (behind === 0) return ok('you have the newest version');
   const dirty = capture('git', ['status', '--porcelain', '--untracked-files=no']);
   if (dirty || ahead > 0) {
-    return note(`${behind} newer commit(s) on ${upstream}, but this clone has its own changes. Not updating: run \`git pull\` yourself.`);
+    return note(`a newer version is on GitHub (${upstream}), but this folder has its own changes. Not updating: run \`git pull\` yourself.`);
   }
-  if (!(await ask(`${behind} newer commit(s) on ${upstream}. Update now?`, true))) return note('kept the current version');
-  if (run('git', ['pull', '--ff-only', '--quiet']).status !== 0) {
+  if (!(await ask(`A newer version is on GitHub (${behind} change${behind === 1 ? '' : 's'}). Update now?`, true))) return note('kept the current version');
+  // Merge what the fetch above counted, not a second fetch's worth.
+  if (run('git', ['merge', '--ff-only', '--quiet', '@{u}']).status !== 0) {
     return note('the update failed. Continuing with the current version; run `git pull` to see why.');
   }
   // This script may itself have changed in the pull. Run the new copy for the remaining steps.
@@ -160,7 +172,8 @@ async function installPython(found) {
     }
   }
   const fix = process.platform === 'linux'
-    ? ['Install Python 3.11 or later with your package manager, e.g.:', '  sudo apt install python3 python3-venv     (Debian, Ubuntu)', '  sudo dnf install python3                  (Fedora)']
+    ? ['Install Python 3.11 or later with your package manager, e.g.:', '  sudo apt install python3 python3-venv     (Debian 12, Ubuntu 24.04)',
+      '  sudo apt install python3.11 python3.11-venv   (Ubuntu 22.04)', '  sudo dnf install python3                  (Fedora)']
     : ['Install Python 3.11 or later from https://www.python.org/downloads/', ...(isWindows ? ['Tick "Add python.exe to PATH" in the installer, then open a new terminal.'] : [])];
   stop(why, ...fix);
 }
@@ -169,8 +182,12 @@ async function python() {
   const venv = venvPython();
   let venvVersion = existsSync(venv) ? pythonVersion(venv) : null;
   if (existsSync(join(root, '.venv')) && !venvVersion?.ok) {
-    // A venv that cannot run (copied from another machine, or its Python was removed) or is too old.
-    note(venvVersion ? `.venv uses Python ${venvVersion.text}, which is too old: rebuilding it` : '.venv is broken: rebuilding it');
+    // A venv that cannot run (copied from another machine, made by the other OS in a shared folder, or its
+    // Python was removed) or is too old. It may be someone's working venv, so ask before deleting it.
+    const why = venvVersion ? `.venv uses Python ${venvVersion.text}, which is too old` : '.venv does not work on this computer';
+    if (!(await ask(`${why}. Delete it and make a new one?`, interactive))) {
+      stop(`${why}.`, 'Delete the .venv folder, or run the start script without --yes and answer yes.');
+    }
     rmSync(join(root, '.venv'), { recursive: true, force: true });
     venvVersion = null;
   }
@@ -271,7 +288,7 @@ function start() {
   // Ctrl+C reaches Mission Control directly (same console). Stay alive until it has shut down.
   process.on('SIGINT', () => {});
   process.on('SIGTERM', () => child.kill('SIGTERM'));
-  child.on('exit', code => process.exit(code ?? 0));
+  child.on('exit', code => process.exit(code ?? 1));
 }
 
 const [major, minor] = process.versions.node.split('.').map(Number);

@@ -19,7 +19,12 @@ export function which(name) {
     if (!dir) continue;
     for (const ext of exts) {
       const path = join(dir, name + ext);
-      try { if (statSync(path).isFile()) return path; } catch (_) { /* not here */ }
+      try {
+        if (statSync(path).isFile()) return path;
+      } catch (error) {
+        // Windows app aliases (winget.exe in WindowsApps\) exist but refuse stat with EACCES.
+        if (isWindows && error.code === 'EACCES') return path;
+      }
     }
   }
   return null;
@@ -43,7 +48,8 @@ export function uiStale() {
   const mc = join(root, 'webapp', 'mc');
   const index = join(mc, 'dist', 'index.html');
   if (!existsSync(index)) return true;
-  const inputs = ['src', 'public', 'index.html', 'vite.config.ts', 'package.json', 'package-lock.json']
+  const inputs = ['src', 'public', 'index.html', 'vite.config.ts', 'package.json', 'package-lock.json',
+    'tsconfig.json', 'tsconfig.app.json', 'tsconfig.node.json']
     .map(name => join(mc, name)).filter(path => existsSync(path));
   return Math.max(...inputs.map(newestMtime)) > statSync(index).mtimeMs;
 }

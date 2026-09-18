@@ -54,17 +54,15 @@ Clone the repository, then run one command from its root:
 start.cmd       # Windows: double-click it, or run it from a terminal
 ```
 
-The script checks for Node.js and Python, offers to install either one (Homebrew on macOS, winget on
-Windows, or it tells you the command on Linux) if missing, builds the Mission Control console, and asks
-a few yes/no questions along the way (update the clone, install the optional `cloudflared` tool for
-phones on mobile data). It then starts Mission Control and opens it in your browser. Run it again later
-and it starts straight away, since setup only repeats when something changed.
+The script installs what is missing, builds the Mission Control console, starts Mission Control and
+opens it in your browser. The second run starts straight away. [Install](docs/platform/install.md)
+describes each step, and what to do without git.
 
 No taggers on hand? `./start.sh --demo` runs a full demo match with 8 simulated players, no hardware
 needed. Run `./start.sh --help` for the rest of the options.
 
 Developers: after `./start.sh` has set the machine up, `pnpm mc` (or `node scripts/mc.mjs`) starts
-Mission Control directly, with no setup checks. `mcp/brx_mcp/mc/README.md` covers every flag and the
+Mission Control directly, without the update and install steps. `mcp/brx_mcp/mc/README.md` covers every flag and the
 manual setup path.
 
 ## brx-mcp CLI quickstart

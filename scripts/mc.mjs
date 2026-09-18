@@ -89,7 +89,8 @@ child = spawn(python, ['-m', 'brx_mcp.mc', '--evidence-dir', evidence, '-v', ...
   cwd: root, env: { ...process.env, PYTHONPATH: join(root, 'mcp'), PYTHONIOENCODING: 'utf-8', BRX_MC_LAUNCH_ID: launchId }, stdio: ['inherit', 'pipe', 'pipe']
 });
 let output = '';
-const capture = chunk => { const text = chunk.toString(); output += text; log.write(text.replace(/#tok=[^\s)]+/g, '#tok=[REDACTED]').replace(/operator token:\s+\S+/g, 'operator token: [REDACTED]')); process.stdout.write(text); };
+// Keep only the start-up output: it holds the URL. After that, a long -v match would grow it without limit.
+const capture = chunk => { const text = chunk.toString(); if (output.length < 1_000_000) output += text; log.write(text.replace(/#tok=[^\s)]+/g, '#tok=[REDACTED]').replace(/operator token:\s+\S+/g, 'operator token: [REDACTED]')); process.stdout.write(text); };
 child.stdout.on('data', capture);
 child.stderr.on('data', capture);
 child.on('error', error => fail(error.message));
