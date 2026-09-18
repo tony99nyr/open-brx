@@ -139,7 +139,7 @@ export const NO_FIRE_PULLS = 3;
  *  A blind revive is right for (1) and wrong for (2): it hands a live player a free life and loses the death.
  *  `$QUERY,*` separates them in one 8-byte frame. Its reply is a status array PLUS a `$LCD` carrying the gun's
  *  CURRENT pools and magazine (the array itself is the pool MAXIMA and is useless here -- protocol/brx-protocol.md,
- *  the `$QUERY` row). `$QUERY` is a KNOWN command (`mcp/brx_mcp/protocol.py`) and is not on the node's deny list. */
+ *  the `$QUERY` row). `$QUERY` is a KNOWN command (`mcp/brx_mcp/protocol.py`) and is not on the node's deny list.
  *  THE NODE NEVER REVIVES ON NO EVIDENCE. If nothing answers, the cure does NOTHING, says so in the status
  *  heartbeat so the operator's board can tell them to press FORCE RESPAWN, and logs the values. A blind revive
  *  would hand a free life to a player whose gun was merely empty with a stale belief behind it (Tony, 2026-09-18).
