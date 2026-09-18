@@ -588,6 +588,32 @@ def assert_arms_at_spawn(head: list[str], spawn: list[str]) -> None:
             + ", ".join(f"<{c[0]},{c[1]}>" for c in missing))
 
 
+def _bundle_frames(value) -> list[str]:
+    """Every `$…` string anywhere in a bundle (lists, dicts, nested), for whole-bundle guards."""
+    if isinstance(value, str):
+        return [value] if value.startswith("$") else []
+    if isinstance(value, dict):
+        return [f for v in value.values() for f in _bundle_frames(v)]
+    if isinstance(value, (list, tuple)):
+        return [f for v in value for f in _bundle_frames(v)]
+    return []
+
+
+def assert_no_denied_frames(bundle) -> None:
+    """No frame anywhere in a bundle may carry a command from `protocol.DENIED_COMMANDS`.
+
+    The node refuses these at its write path (`engine._write`, the stage's `write`), so a bundle that
+    carried one would fail SILENTLY on the phone: the frame dropped, the rest of the burst written, and
+    a log line nobody reads mid-match. Refuse it here, at compile time, where an operator sees it.
+    docs/spec/transport-hardening.md §4."""
+    from ..protocol import deny_reason
+    for f in _bundle_frames(bundle):
+        why = deny_reason(f)
+        if why:
+            raise ValueError(f"DENY-LIST GUARD: a compiled bundle carries a frame the node must never write "
+                             f"({why}). Frame: {f}")
+
+
 def assert_rearms_every_life(bundle) -> None:
     """F121: a REVIVE must put the real table back too. Raises if neither carrier does.
 
@@ -1828,6 +1854,7 @@ class Compiler:
         pe = self.perk_effects_resolved(config, player)
         if pe:
             bundle["perk_effects"] = pe
+        assert_no_denied_frames(bundle)   # transport-hardening.md §4: MC never even compiles a frame the node refuses
         return bundle
 
     def tutorial_frames(self, weapon: Weapon, environment: str) -> list[str]:
