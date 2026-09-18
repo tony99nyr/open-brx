@@ -6,8 +6,8 @@ behind every row is in [`experiment-log/`](experiment-log/) (grep the id or the 
 add rows here, one experiment-log entry, one HANDOFF banner. A fact goes to `protocol/` or `docs/manual/` in the
 same commit, or it gets a row here saying "promote X".
 
-**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D6 · E8 · F255 · G11 · H9 ·
-K9 · P19 · Q20 · R4 · S54.** (2026-09-18: **F254** taken: at what `t13` value does the headset word (t12) stop
+**Ids.** One capital letter + number. Never renumbered, never reused. **Next free: B32 · D6 · E8 · F261 · G11 · H9 ·
+K9 · P19 · Q20 · R4 · S54.** (2026-09-18: **F260** taken: the two-word weapons double-count HITS in the recap. F255-F259 belong to the fix/playtest-2026-09-13 branch. **F254** taken: at what `t13` value does the headset word (t12) stop
 arriving; filed alongside the t12/t13/t42 balance change.) (2026-09-17 night: **S52** taken, the missing Easy Reload hint on the HUD; the fix/playtest-2026-09-13 branch renumbered its own rows and has
 filed every F id below F253, so main resumes there.) (2026-09-17 night: **S51** taken, the cooldown perk family; F ids resume after the playtest branch, which renumbered its own rows and took the next block; ask that session before taking an F id until its merge reaches main.) (2026-09-17 evening: **S50** taken, the perk balance pass.) (2026-09-17 evening: **S49** taken, the portable IR receiver.) (2026-09-17 range test, garden/MacBook, step 3 of `bench-weapons-2026-09-17.md`: **F231-F234** and **S48** taken; **F170 closed** → archive; Q15's t41 half answered (null).) (2026-09-17 weapons bench, `bench-weapons-2026-09-17.md`: **F225-F230** and **S42-S47** taken; F217-F224 belong to the fix/playtest-2026-09-13 branch.) (2026-09-16 write-up of the 2026-09-13 evening playtest: **F206-F216** taken, all from
 [`game-test-2026-09-13.md`](game-test-2026-09-13.md); F201 is ANSWERED by F207 and F203 gained a second field sighting.)
@@ -1277,6 +1277,21 @@ receiver COM7, board B = emitter COM8; Windows COM ports are exclusive.
   a Shotgun's `t13` to a few values, fire at a victim at 5 m and at 25 m, and find where the 20 stops arriving.
   ⚠️ **Needs outdoor space**; Tony 2026-09-18: "i have to go outside for it tho. wont be today". Cross-ref
   F231, F71. `bench` + `space`.
+- **F260 🟠 THE THREE TWO-WORD WEAPONS REPORT ROUGHLY DOUBLE ACCURACY IN THE RECAP.** Found by review 2026-09-18.
+  The Shotgun, Plasma Sniper and Rocket Launcher carry `$WEAP` t1 = 2, so ONE trigger pull sends two IR words about
+  88 ms apart (measured, cap30). The victim's gun emits an `$HIR` for each, the node turns each into a `hit_taken`
+  fact, and `scoring.py` does `st.hits += 1` per fact. The denominator, `st.shots`, is the gun's OWN trigger-pull
+  count off the status heartbeat, which increments once. So a Shotgun landing every pull on one target publishes
+  **200% accuracy**. Damage is NOT affected: two real words, two real deductions, the health maths is right. This is
+  the shots-landed statistic alone, surfaced in the recap and in `Recap.tsx`. **The fix is not obvious and that is
+  why this is a row rather than a patch.** Deduping by (shooter, victim) inside a time window does not work on its
+  own: the window would have to exceed 88 ms, and the AR (100 ms), SMG (95 ms) and Burst Rifle (75 ms) can all land
+  two legitimate hits faster than that, so a blanket window would silently DELETE real hits from the weapons most
+  players carry. The sensor does not separate them either (both words landed on sensor 4 in cap30), and neither does
+  the magnitude once a weapon prices both words equally, as our Shotgun does at 20 and 20. The workable shape:
+  Mission Control compiled the loadout, so it knows which players carry a weapon declaring `wire.headset_dmg`, and
+  can collapse a PAIR into one landed shot for those players only. Failing safe matters more than being clever here:
+  over-reporting accuracy is ugly, deleting a real hit from an assault rifle is a wrong match result. `build`.
 - **F66 🟡 `$SIR` fn 23: one mechanism with two symptoms, or two effects?** The 2026-08-27 row called it an audio
   suppressor on the strength of `$ALCD` token 2 dropping 100 → 0. Token 2 is now bench-proven to be **live accuracy**
   (F46), so that number never evidenced the audio claim at all. Both observations stand on their own: the gun **was heard**
