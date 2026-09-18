@@ -261,31 +261,6 @@ reach nodes in coverage. `time_limit_s == null` (full-coverage venues only) mean
 node also fires its own `time_60/30/10` callouts and, in extraction, `raid_ending`/`raid_over` from this clock
 (A11.4). ⚠ The composed time-expiry flow has not been run on hardware (FOLLOWUPS).
 
-### 3.13 The match result (contracts A24) — pushed, never inferred
-
-The end of a match is two facts on the node. **"It ended"** is local (§3.9) or an `end`/`recall`. **"How it
-ended"** only ever comes from MC as a **`result`** envelope: `outcome` is already computed for THIS recipient
-(`win`/`lose`/`draw`/`undecided`), with the winner, every player's `ScoreRow`, team totals, honors and
-possession. The engine stores it as `state().result` (null until it arrives), folds `outcome`, `team_scores`,
-`best_streak`, `medals` and its own hill hold (`this.hold`) into the `onEnd` history entry, and accepts a
-`result` for the CURRENT `match_id` only (a stale one is logged and dropped). `welcome.node.result` hydrates it
-on a rejoin during recap. **Rule:** no code path on the node may write WIN or LOSE from the absence of a
-message — a `victory` cue that never came means "lost" and "out of coverage" identically. The FINAL RESULTS
-screen (§4.4) shows "RESULT PENDING" until the push, and "MC NOT REACHED — see Mission Control" once the
-settle window (30 s) passes with no MC link; it is mode-aware from `result.mode`/`win_by`, with a TEAM view
-(totals + each team's players) and a PLAYER view (the leaderboard), medals and best streak from the rows, and
-never hard-codes a cell set. `OK` leaves it (`ackEnd`); a `RESULTS` button on the MATCH COMPLETE screen and a
-`HISTORY` list (per session, from `localStorage['brx.history']`) reopen it.
-
-### 3.14 Background log sync (contracts A25) — game sync has priority
-
-`pull_log` is answered by the node only when **not ARMED and not LIVE** and **`ring.pending() === 0`** (no
-unacked fact in the store-and-forward ring, §5a). Otherwise the request is parked and retried on a 5 s → 60 s
-backoff until it can be served; a reconnect re-sends `log_offer` so MC asks again. The upload is the existing
-`log_offer` + `log_data` chunk stream (≤ 48 KB), one chunk in flight, the next only after the socket buffer
-drains, so a log never delays a fact. The phone keeps `uploadedThrough` (the log line count MC has) and a
-later pull sends only the tail. The debug panel's SHARE LOG stays as the manual route.
-
 ### 3.10 BLE reconnect — reconcile from persisted state, never guess (S7.1, contracts A6.8)
 
 **The node persists and restores combat state.** `_save`/`_load` carry `alive/hp/armor/shield/deadAt/killedBy`
@@ -378,7 +353,32 @@ The **source** is a catalog matter, not a node one: any `$WEAP` with t3 = 8 fire
 today, so under `config.stun` it stuns and deals no damage — `validate()` says so), or a proto-8 station. The native
 firmware stun is not relied on (2/5 singles, lasts until death).
 
-### 3.13 Node-driven recoil (the accuracy ceiling/floor is ours) — S42, F230
+### 3.13 The match result (contracts A24) — pushed, never inferred
+
+The end of a match is two facts on the node. **"It ended"** is local (§3.9) or an `end`/`recall`. **"How it
+ended"** only ever comes from MC as a **`result`** envelope: `outcome` is already computed for THIS recipient
+(`win`/`lose`/`draw`/`undecided`), with the winner, every player's `ScoreRow`, team totals, honors and
+possession. The engine stores it as `state().result` (null until it arrives), folds `outcome`, `team_scores`,
+`best_streak`, `medals` and its own hill hold (`this.hold`) into the `onEnd` history entry, and accepts a
+`result` for the CURRENT `match_id` only (a stale one is logged and dropped). `welcome.node.result` hydrates it
+on a rejoin during recap. **Rule:** no code path on the node may write WIN or LOSE from the absence of a
+message — a `victory` cue that never came means "lost" and "out of coverage" identically. The FINAL RESULTS
+screen (§4.4) shows "RESULT PENDING" until the push, and "MC NOT REACHED — see Mission Control" once the
+settle window (30 s) passes with no MC link; it is mode-aware from `result.mode`/`win_by`, with a TEAM view
+(totals + each team's players) and a PLAYER view (the leaderboard), medals and best streak from the rows, and
+never hard-codes a cell set. `OK` leaves it (`ackEnd`); a `RESULTS` button on the MATCH COMPLETE screen and a
+`HISTORY` list (per session, from `localStorage['brx.history']`) reopen it.
+
+### 3.14 Background log sync (contracts A25) — game sync has priority
+
+`pull_log` is answered by the node only when **not ARMED and not LIVE** and **`ring.pending() === 0`** (no
+unacked fact in the store-and-forward ring, §5a). Otherwise the request is parked and retried on a 5 s → 60 s
+backoff until it can be served; a reconnect re-sends `log_offer` so MC asks again. The upload is the existing
+`log_offer` + `log_data` chunk stream (≤ 48 KB), one chunk in flight, the next only after the socket buffer
+drains, so a log never delays a fact. The phone keeps `uploadedThrough` (the log line count MC has) and a
+later pull sends only the tail. The debug panel's SHARE LOG stays as the manual route.
+
+### 3.15 Node-driven recoil (the accuracy ceiling/floor is ours) — S42, F230
 
 F230 (bench 2026-09-17) found the native `t21`→`t22` accuracy walk works on only one of three guns, so it is not a
 usable balance lever. Every weapon ships `t21 == t22 == 100` (walk off) and the node drives the SAME two tokens
@@ -400,7 +400,18 @@ the per-weapon target; `resolve()` never reads it (`test_range_and_recoil_are_de
 the motion sensor before `_recoilStep` applies it; a future flinch module reads `this._recoil.value` (today's live
 accuracy) to decide how hard to jolt. Neither needs to touch the writer, the verify/retry loop, or `config.recoil`.
 
-### 3.15 Damage over time — the node holds the tick clock (S16, not built)
+### 3.16 F68: a miss the node cannot see still wipes the headset's team colour
+
+An accuracy-model miss (§3.13) sends **no `$HIR` and no `$HP`** (bench 2026-09-17) — the gun still plays its native
+near-miss flash on the headset and the flash still goes dark afterwards (F68, bench 2026-09-09), and the node has no
+frame to react to. The existing hit-driven repaint (`_onHp`, `dmg > 0`) cannot see this at all, so `tick()` now
+repaints the team colour (or the active role's colour) on a plain interval, `TEAM_REPAINT_MS` (5 s), whenever the
+player is alive and spawned — cheap on purpose: one `$HLED` write per interval, never a stream, and no different in
+kind from the `hit`/`role` repaints already on this path.
+
+---
+
+### 3.17 Damage over time — the node holds the tick clock (S16, not built)
 
 The gun has no damage-over-time function we can rely on (`weapon-design.md` §6.3b: fn 24's delayed ticks were
 measured only against a REPEATING source). The node builds it instead, because `$LIFE` takes negatives and a node
@@ -416,17 +427,6 @@ may write its own gun freely mid-match.
 | show it | the HUD shows the stack and counts it down, and the node plays the cue, because the gun plays nothing at all for a `$LIFE` write. The HUD half belongs to the `brx-hud` session |
 
 Out of Mission Control coverage this behaves identically: everything after the first hit is local to one phone.
-
-### 3.14 F68: a miss the node cannot see still wipes the headset's team colour
-
-An accuracy-model miss (§3.13) sends **no `$HIR` and no `$HP`** (bench 2026-09-17) — the gun still plays its native
-near-miss flash on the headset and the flash still goes dark afterwards (F68, bench 2026-09-09), and the node has no
-frame to react to. The existing hit-driven repaint (`_onHp`, `dmg > 0`) cannot see this at all, so `tick()` now
-repaints the team colour (or the active role's colour) on a plain interval, `TEAM_REPAINT_MS` (5 s), whenever the
-player is alive and spawned — cheap on purpose: one `$HLED` write per interval, never a stream, and no different in
-kind from the `hit`/`role` repaints already on this path.
-
----
 
 ## 4. The HUD — requirements and state mapping
 
@@ -574,7 +574,14 @@ doesn't regress it.
 
 ---
 
-## 10. Open questions (still open on 2026-09-06; closed ones are in git history)
+## 10. Open questions
+
+**There is no §9, on purpose.** The old §9, "Task breakdown", was retired in the 2026-09-06 docs
+consolidation (`f2051f55`). The numbering stays as it is because `contracts.md` and `weapon-design.md` both
+cite this section as `node.md §10-Q12`.
+
+These questions carry no ids. Anything that needs tracking gets a row in [`../FOLLOWUPS.md`](../FOLLOWUPS.md),
+which is where open work lives; closed questions are in git history.
 
 - **Q2 — the third pool on the wire (`$HIR` from a station).** With scanner respawn built over BLE adverts
   (utility.md §4), the remaining question is whether a grenade/IR station beacon (`$HIR` tok2 = 15) should also
