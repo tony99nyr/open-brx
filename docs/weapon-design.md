@@ -1118,21 +1118,29 @@ function needs per-player keys before it can ship beside the others. And a victi
 invisible at the weapon, so a weapon built on one reads as balanced in `weapons.json` and plays as
 something else entirely.
 
-### 6.3d ⚠️ The published reserve may be twice what a player carries (F253)
+### 6.3d ⚠️ This document's reserve columns are unproven (F253)
 
 `resolve()` writes the catalogue's `reserve` to **t17** and `reserve // 2` to **t40**, which keeps
 Battle Company's own captured invariant `t17 == 2 * t40`. F207 (field, 2026-09-13) proved the gun's
-reported reserve mirrors **t40**, on three weapons and six acknowledgements.
+reported reserve mirrors **t40**, on three weapons and six acknowledgements. So the Assault Rifle's
+catalogue `reserve: 192` reaches a gun as **t17 192 / t40 96**, and `spawn_ammo()` tells the phone
+**192** at spawn. Those two disagree by construction, whatever the gun turns out to spend, and one of
+them is wrong. That part is a display bug in MC, not a balance question.
 
-So every reserve number in this document, in `weapons.json`, in the Mission Control stats panel and on
-the phone HUD at spawn is the t17 figure, and the gun reports half of it. Until the bench counts what a
-gun actually spends (`bench-perks-2026-09-18.md` §6), **read every reserve column here as unproven**,
-and read the sustained and kills-per-kit columns that depend on it the same way. The site already
-publishes the halved figure, because the manual lane corrected it on 2026-09-17.
+**Scope.** The columns in doubt are the ones in THIS document: reserve, sustained fire, and anything
+per-kit, because they describe the weapon MC ships and they assume the catalogue number reaches the
+player intact. `docs/manual/` and the public site are NOT in doubt: they publish each weapon's own
+CAPTURED Callsign frame, which is a measured description of the stock gun (the Assault Rifle's capture
+is `t16 32 / t17 384 / t39 32 / t40 192`, so a Callsign player carries 192).
 
-Two fixes exist and they are not the same game. Writing the catalogue number to t40 **doubles what
-every player carries**, in every match, which is a balance decision. Halving what the HUD and the host
-are told leaves the balance exactly as it is and makes the reported number honest. Do not take either
+**One piece of evidence for intent, not a conclusion.** The catalogue's `reserve: 192` is exactly the
+capture's **t40**, the stock carry, not half of it. That reads as an author writing down what a player
+should carry, which the compile step then halved a second time. The count in
+`bench-perks-2026-09-18.md` §6 settles it, and nothing else should.
+
+Two fixes, and they are not the same game. Writing the catalogue number to t40 **doubles what every
+player carries** in every match, which is a balance decision. Halving what the HUD and the host are
+told leaves the balance exactly as it is and makes the reported number honest. Do not take either
 before the count.
 
 ### 6.4 What a weapon is now

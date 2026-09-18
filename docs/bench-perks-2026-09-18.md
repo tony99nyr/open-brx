@@ -133,11 +133,14 @@ is the number of rounds the player can really fire. Counting settles it, and not
 2. Fire the magazine dry, pull the lever, repeat until the gun refuses to refill.
 3. Count the FULL magazines the reserve paid for, and read the last `$ALCD` reserve.
 
-**Reading.** Six full refills (192 rounds) means t17 is the real carry and only the reported number is
-wrong. Three refills (96) means the gun spends t40, the player carries half of every published figure,
-and the catalogue's own copy is wrong too (the AR row claims "17 kills without resupply", which assumes
-192). Do not change the wire before this count: doubling t40 would double what every player carries in
-every game, which is a balance decision, not a bug fix.
+**Reading.** Six full refills (192 rounds) means the gun spends t17, and only MC's reporting is wrong.
+Three refills (96) means the gun spends t40 and an Open BRX player carries half of what the catalogue
+intends, which also makes the Assault Rifle row's "17 kills without resupply" wrong, since that assumes
+192. Worth knowing either way: Callsign's own captured frame gives the stock Assault Rifle `t17 384 /
+t40 192`, so a stock player carries 192, and the catalogue's `reserve: 192` is exactly that carry.
+
+Do not change the wire before this count. Doubling t40 doubles what every player carries in every
+match, which is a balance decision, not a bug fix.
 
 ## 7. Two items handed back by the playtest session (5 min, ears)
 
