@@ -36,6 +36,16 @@ Two guns (Tactix-E20D, Tactix-3D4F), then Tactix-E20D alone with the ESP32 IR ri
 - **Screamers A1/A2**: `$DPLAY` on a looping sound blocked the gun (no `$PONG`, no reply, no audio) and
   dropped the BLE link about 15 s in, but it recovered on reconnect with no power cycle needed this
   run: a partial screamer, not yet a proven full lock. `$DPLAY` stays on the never-send list either way.
+- **A dead gun still forwards a host `$IRTX` out through its headset** (a dying gun emits no IR of its
+  own), the headset loop fields on `$IRTX` work as read, and fn 34 registers on a dead gun. `$LIFE` set
+  mode fully revives a dead gun (fires, takes hits, keeps its magazine and any `$TMP` write), though the
+  headset death flash needs a separate `$HLED,,6,*` clear. **Untested against the F264 stall state
+  specifically**: reproduce that stall before trusting this as the cure.
+- **`$TMP` t5 (fire interval) CONFIRMED on a full-auto weapon** (scales the cycle by `(100+t5)/100`, exact
+  match to V4_31), but showed no effect on the Shotgun's shell-fed reload. **t7 (outgoing damage) and t4's
+  effect on the REAL hit rate are both CONFIRMED**: t4 at 50 landed 41% of rounds, matching the earlier
+  `$WEAP`-based reading, so the recoil writer can move fully onto one `$TMP` frame with no `$AMMO` restore.
+  This was the last test of tonight's sitting.
 
 ## Still open, unchanged by tonight
 
