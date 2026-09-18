@@ -1170,6 +1170,22 @@ KNOWN_UNMIRRORED = {
     "_headsetDeath", "_headsetDelayed", "_headsetFlash", "_headsetRest", "_reassertDeathBlink",
     # roles + stations
     "_carrier", "_setRole", "_respawnStation", "_stationRevivable", "setStations",
+    # S42 (2026-09-17): node-driven recoil. Every one of these reads `weaponRow(id).recoil` off the
+    # CATALOG (`_activeWeaponId` -> `this.catalog`) -- and `weaponRow`/`catalog` are already pinned
+    # above ("kitting / loadout browser -- HUD surface, no stage equivalent"): the bench configures a
+    # weapon's `$WEAP` frame directly, by hand, with no catalog or loadout behind it, so there is no
+    # per-weapon `recoil` profile for a stage-side model to read. A hand-fed profile parameter would let
+    # a bench script exercise the state machine (step/recover/write/verify) in isolation, but that is a
+    # new bench feature, not a straight port, and is left for the bench-parity backlog rather than
+    # guessed at here.
+    "recoilEnabled", "_activeWeaponId", "_recoilArm", "_recoilStep", "_recoilTick", "_recoilFlush",
+    "_recoilVerify", "_recoilWrite", "_recoilObserve",
+    # F68 (2026-09-17): the periodic team-colour repaint rides the SAME headset-paint machinery already
+    # pinned above ("LED readout internals: the stage models the READOUT, not each paint step" --
+    # `_headsetFlash`/`_headsetRest`) plus the role lookup (`_activeRole`/`_roleSeq`, behind the already-
+    # pinned `_setRole`). The bench has no equivalent "what should the headset be showing right now"
+    # question to answer on an interval.
+    "_teamRepaintTick",
     # ---- accessors (2026-09-12: newly VISIBLE to the scan, not newly unmirrored) ----
     # config values the stage resolves into plain attributes rather than same-named accessors:
     # `_apply_config` sets `self.max_hp` / `self.max_armor` from the same `health` block, and `stun_s`

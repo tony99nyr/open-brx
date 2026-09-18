@@ -461,3 +461,22 @@ def test_the_perk_that_moves_the_pool_changes_the_quoted_numbers():
     assert armoured == base + 50, (base, armoured)          # perks.json body_armor max_armor_add
     htk = lambda pool: next(v for v in weapon_views(CAT.all(), pool) if v["weapon_id"] == "assault_rifle")["htk"]
     assert htk(armoured) > htk(base), "body_armor must move HITS TO KILL"
+
+
+def test_recoil_is_declared_not_wired_by_the_compiler():
+    """S42 (2026-09-17): every weapon declares a `recoil` target profile
+    `{ceiling, floor, per_shot, recover_ms}`, and `resolve()` must never write t21/t22 from it. The
+    native accuracy walk is unreliable (F230: one gun of three decayed under sustained fire), so every
+    weapon ships t21 == t22 == 100 whatever its declared profile says. The ONLY thing that drives
+    recoil is `app/src/engine.js`'s accuracy writer at runtime, which pins both tokens to the live
+    value on every write. Wiring `recoil` into `resolve()` to "make it real" is the mistake this test
+    exists to catch: break it and it goes red."""
+    for w in ROWS:
+        wid = w["weapon_id"]
+        recoil = w.get("recoil")
+        assert isinstance(recoil, dict) and {"ceiling", "floor", "per_shot", "recover_ms"} <= set(recoil), wid
+        for env in (None, "indoor", "outdoor"):
+            p = (CAT.resolve(wid, 0).split(",") if env is None
+                 else CAT.resolve(wid, 0, environment=env).split(","))
+            assert p[WeaponCatalog._T["acc_ceiling"] + 1] == "100", f"{wid} @ {env!r}: t21 moved"
+            assert p[WeaponCatalog._T["acc_floor"] + 1] == "100", f"{wid} @ {env!r}: t22 moved"

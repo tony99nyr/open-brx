@@ -129,6 +129,8 @@ def weapon_view(w: Weapon, pool: int = DEFAULT_POOL) -> WeaponView:
         view["caution"] = caution                                      # A10: known live problem
     if w.get("pickup_only"):
         view["pickup_only"] = True                    # 2026-09-17: catalogue-visible, never in a loadout pool
+    if recoil := w.get("recoil"):
+        view["recoil"] = recoil                         # S42: the declared target profile -- the node's only source of it
     return view
 
 
