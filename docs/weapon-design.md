@@ -1105,7 +1105,7 @@ the one thing it waits on.
 
 | archetype | what the player does | mechanism | waits on |
 |---|---|---|---|
-| **Toxin Rifle** | tag someone and they keep losing health after you break contact | node tick clock on `$LIFE` negatives, keyed to the `$WEAP` t3 damage type echoed in `$HIR` token 2 (the enum already has 11 = gas) | §6.3b, S16: kill credit for a lethal tick, and a spec section |
+| **Toxin Rifle** | tag someone and they keep losing health after you break contact | node tick clock on `$LIFE` negatives, keyed to the `$WEAP` t3 damage type echoed in `$HIR` token 2 (the enum already has 11 = gas) | S16: the node behaviour is specified (`spec/node.md` §3.17); what is left is kill credit for a lethal tick, then the code |
 | **Medic gun** | heal a teammate by tagging them | `$SIR` fn 10, 9 or 14, by overflow flavour. The firmware enforces "allies only" by itself: a heal fired at an enemy is silently dropped | per-player `$SIR` keys, and a decision about whether a healer belongs in a team of eight |
 | **Flux beam** | one weapon that heals a friend and hurts an enemy, decided by who you point it at | ONE `$SIR` row: fn 16, 17, 20, 21 or 22 are dual-polarity. No host logic at all | the same per-player key work, plus a damage number that is fair in both directions |
 | **Jammer** | win a fight without taking any health | `$SIR` fn 23 silences the victim's gun and forces its live accuracy to zero for 6 to 8 s, while it keeps firing and emitting | F66: the silence was heard by ear and the number cited as proof was the accuracy field, so the mechanism is unconfirmed |

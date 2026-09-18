@@ -28,9 +28,9 @@ kill" and "on hit dealt" idea is therefore blocked, or degrades to a best-effort
 player for dying. A perk that recharges every 3 minutes of match time, and keeps its timer across a
 death, rewards staying alive instead.
 
-**Every perk pays for itself,** in one of three ways: a cost on another lever, a condition narrow
-enough that the perk is worth nothing in some fights, or a pick that buys information instead of
-power, and so never makes the carrier hit harder or live longer at all. The S50 analysis measured the old set and found
+**Every perk pays for itself.** There are three ways to pay. A perk takes a cost on another lever. Or
+it carries a condition narrow enough to be worth nothing in some fights. Or it buys information
+instead of power, so it never makes the carrier hit harder or live longer. The S50 analysis measured the old set and found
 Body Armor was a strict upgrade: +570 to +1500 ms of extra survival on every life, for free, while the
 convenience perks paid nothing at all on a life with no reload and no swap. A perk that is always on
 and never costs anything is not a choice.
@@ -51,7 +51,7 @@ ladder, and every pick has a named enemy.
 | **Quick Hands** | reload in half the time | magazine and reserve cut by 20% | Extended Mags, in a long fight |
 | **Extended Mags** | double magazine and reserve | weapon swap 30% slower | Quick Switch, at close range |
 | **Quick Switch** | draw your second weapon in half the time | 20 less armour | Body Armor, in a straight exchange |
-| **Motion Tracker** | nearby enemies appear on your HUD, no direction, refreshed every 3 s | the slot itself: you carry information instead of power | anyone who accepts being seen and shoots first |
+| **Motion Tracker** | nearby enemies appear on your HUD as a list, with no bearing and no range | the slot itself: you carry information instead of power | anyone who accepts being seen and shoots first |
 | **Second Wind** | once a life, the hit that would nearly finish you leaves you standing | the condition: it pays nothing in a fight you win, and nothing at all against a weapon that kills through it | a weapon that kills through it in one hit |
 
 **Why Armour Piercing at minus 60% and not minus 20%.** The S50 draft priced it at a 20% damage cut.
@@ -76,7 +76,17 @@ to the player's own gun, which the 2026-09-09 bench proved.
 
 **Motion Tracker is information, not power,** which is exactly why it belongs in the set: it is the
 only pick that changes how a player moves rather than how hard they hit. The phone already decodes
-every nearby phone's `{id, team, alive}` into `Presence`; only the utility role reads it today.
+every nearby phone's `{id, team, alive}` into `Presence` (`app/src/beacon.js`), and every player's
+phone already advertises that triple (`app/src/app.js:228`). Only the utility role reads it today.
+
+**Know what the tracker can actually see.** `Presence` is RSSI and nothing else: no bearing, no
+distance. The app builds it at a -74 dBm threshold with a 0.8 s dwell and a 4 s expiry
+(`app/src/app.js:162`, tuned on hardware for stations in 2026-09-04). So a contact appears about a
+second after someone comes inside the bubble and disappears about four seconds after they leave, and
+the player learns "someone is near", never where. Two things follow. The bubble was tuned for walking
+up to a station, not for a fight, so the threshold needs its own tuning pass before this ships. And if
+the tuned bubble turns out to be small, this perk is a trap pick next to +25 armour, so measure it
+before it goes in a player's kit.
 
 ## 3. The next wave, and what gates it
 
@@ -143,10 +153,13 @@ stations, because station adverts are already broadcast openly to every phone.
    match's config, so the data exists; the query does not. Worth adding once real sessions run.
 4. **`max_armor_add` going negative** (Quick Switch): `armed_armor()` caps at 255 and does not floor at
    0. One line, plus a bench check that `$PSET` accepts the result cleanly.
-5. **The preset-aware branch** §2 asks for: under the Shields preset, Body Armor must compile to shield
+5. **How big is the Motion Tracker's bubble?** The RSSI threshold was tuned for walking up to a
+   station, not for a fight. Measure it between two phones before the perk ships, and retune the
+   threshold and the dwell for players. If the bubble is small, the perk is a trap pick.
+6. **The preset-aware branch** §2 asks for: under the Shields preset, Body Armor must compile to shield
    rather than armour. `armed_armor()` is preset-blind today, so a Body Armor pick there takes the pool
    from 150 to 200 AND adds a drain step the preset was designed without. Tracked in S50, not built.
-6. **The catalogue still ships the old numbers.** `perks.json` reads `max_armor_add: 50` and copy that
+7. **The catalogue still ships the old numbers.** `perks.json` reads `max_armor_add: 50` and copy that
    promises "50 extra armor". Everything in §2 is decided and unbuilt, exactly like the Easy Reload
    move. Read the document as the target, and the file as what a gun gets today.
 
