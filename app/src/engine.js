@@ -143,7 +143,7 @@ export const NO_FIRE_PULLS = 3;
  *  heartbeat so the operator's board can tell them to press FORCE RESPAWN, and logs the values. A blind revive
  *  would hand a free life to a player whose gun was merely empty with a stale belief behind it (Tony, 2026-09-18).
  *
- *  ⚠ TWO PROBES, AND THEY ARE NOT INTERCHANGEABLE. Measured on hardware, R0BQT and R0BAT, v4.32, 2026-09-19:
+ *  ⚠ TWO PROBES, AND THEY ARE NOT INTERCHANGEABLE. Measured on hardware, two taggers, v4.32, 2026-09-19:
  *   - `$LIFE,0,0,0,*` adds nothing to any pool. It answers **immediately** with `$HP`, from a LIVE gun (its
  *     unchanged pools) AND from a DEAD one (`$HP,0,0,0`). Positive evidence in both states, short reply, no side
  *     effect. It is THE detector, and it needs no new code at all: `_onHp` already books the death from a zero.
