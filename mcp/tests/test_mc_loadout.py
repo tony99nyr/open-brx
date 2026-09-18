@@ -1534,3 +1534,30 @@ def test_round3_merge4_a_policy_fixed_to_an_unplayable_weapon_self_corrects_and_
         raise AssertionError("pushed a config fixed to a weapon this game does not offer at all")
     except ValueError as e:
         assert "energy_launcher" in str(e), e
+
+
+def test_a_thin_shield_only_game_warns_when_someone_carries_armour_piercing():
+    """§7.3, from the 2026-09-18 bench: armour piercing ignores the SHIELD as well as the armour. The
+    victim died with a full 120 shield and a full 70 armour standing, every shot taking 9 off health.
+
+    So in a shield-only game the shield buys nothing at all against that perk, and the whole fight is the
+    health underneath. At the 30 health the preset used to carry, Armour Piercing kills in 0.90 s against
+    a plain rifle's 1.60 s: a hard counter, not a trade. The preset moved to 45 for that reason, but
+    `is_shields_preset()` only reads "this game's base armour is zero" and a host sets the health freely,
+    so MC says it rather than shipping a game where one perk beats the entire defensive choice."""
+    thin = dict(_cfg(), health={"max_hp": 30, "max_armor": 0, "max_shield": 120})
+    ap = _player({"weapons": [{"weapon_id": "assault_rifle"}], "perk": "armor_piercing"})
+    warns = " ".join(C.validate(thin, [ap])["warnings"])
+    assert "shield-only" in warns and "IGNORES the shield" in warns and "30 HP" in warns, warns
+    # CONTROL 1: the same thin game with NOBODY carrying the perk is silent -- the shield is a real
+    # buffer against everything else, and warning about it would be noise.
+    plain = _player({"weapons": [{"weapon_id": "assault_rifle"}]})
+    assert "shield-only" not in " ".join(C.validate(thin, [plain])["warnings"])
+    # CONTROL 2: at the preset's own 45 health the warning is gone, which is what makes it actionable
+    # rather than a permanent grumble a host learns to ignore.
+    ok = dict(_cfg(), health={"max_hp": 45, "max_armor": 0, "max_shield": 105})
+    assert "shield-only" not in " ".join(C.validate(ok, [ap])["warnings"])
+    # CONTROL 3: an ARMOURED game says nothing however thin the health, because the armour is what the
+    # perk is sold against -- that is the trade working, not a problem.
+    armoured = dict(_cfg(), health={"max_hp": 30, "max_armor": 70, "max_shield": 0})
+    assert "shield-only" not in " ".join(C.validate(armoured, [ap])["warnings"])

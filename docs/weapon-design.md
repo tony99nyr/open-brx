@@ -1238,27 +1238,39 @@ is the exact failure the price exists to prevent.
 |---|---|---|---|
 | standard, 45 + 70 | **1.20 s** | 1.40 s | plain |
 | Body Armor, 45 + 95 | 1.50 s | **1.40 s** | AP, narrowly |
-| Shields preset, 30 + 120 | 1.60 s | see §7.3 | see §7.3 |
+| Shields preset, 45 + 105 | 1.60 s | 1.40 s | AP, and only because the preset moved to 45 health: see §7.3 |
 
 The first two rows are the whole point: **the armoured player beats the plain rifle, and the plain
 rifle beats the armour-piercing one.** Neither margin is large, which is what keeps the choice a
 preference rather than a solved problem.
 
-### 7.3 ⚠️ One measurement decides the third row
+### 7.3 Measured: armour piercing ignores the shield too, so the Shields preset moves to 45 health
 
-Armour piercing is proven to ignore **armour** (bench 2026-09-18: five hits killed through 70 armour,
-which never moved). Whether it also ignores a **shield** has never been measured. Our protocol notes
-claim it does, but that claim traces to a reading, not to a run. Both branches close the triangle:
+Bench 2026-09-18, the playtest session, two guns. Victim at **45 health / 70 armour / 120 shield** (the
+shield granted with `$LIFE,0,0,120` after spawn, because a spawn shield is always 0), its `<4,0>` row on
+fn 2, shooter keyed to that cell at magnitude 9. Five shots:
 
-- **If a shield absorbs AP**, nothing changes anywhere. AP takes **4.90 s** against the Shields preset,
-  so shields become the answer to armour piercing, and the host's preset and the player's weapon form
-  their own triangle: armour beats plain, AP beats armour, shields beat AP.
-- **If AP bypasses shields**, the Shields preset must move from 30 health to **45**, keeping the pool at
-  150 (45 + 105). AP is then a flat **1.40 s against everything**, which reads as "the gun that does not
-  care what you are wearing", and the defensive choice stops mattering against it.
+```
+$HP,36,70,120   $HP,27,70,120   $HP,18,70,120   $HP,9,70,120   $HP,0,70,120  (died)
+```
 
-**Prefer the first.** It needs no number changes and it gives the presets meaning against each other.
-Until it is measured, treat the Shields row as open and do not ship an AP weapon into a Shields game.
+Every shot took exactly 9 off **health**. The armour never moved from 70 and the shield never moved from
+120: **the victim died with a full shield and full armour standing.** So fn 2 does not drain the layers
+in order, it ignores both of them. The protocol note that said so was right, but it had been a reading
+rather than a run, and it is now a measurement.
+
+**The consequence, and it is the branch that costs us a number.** With only 30 health under the shield,
+bypassing the shield means bypassing almost everything: Armour Piercing would kill a Shields-preset
+player in **0.90 s** against a plain rifle's 1.60 s. That is not a triangle, it is a hard counter.
+
+**The Shields preset therefore carries 45 health, not 30**, keeping the pool at 150 (45 + 105). Armour
+Piercing then needs the same 1.40 s against it as against anyone else, which is the design in one line:
+**armour piercing does not care what you are wearing.** The plain rifle still beats it against a bare
+target and still loses to it against armour, so the triangle closes.
+
+⚠️ The preset is not a stored number: `is_shields_preset()` reads "this game's base armour is zero", and
+the host sets the health. So this is guidance the host can override, which is why `validate()` now warns
+when a shield-only game carries less health than an Armour Piercing weapon needs to face.
 
 ### 7.4 Placement: the slot is part of the balance
 

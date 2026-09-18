@@ -252,6 +252,12 @@ def play_volume(environment: str | None) -> int:
 _MAX_ARMOR_ADD: dict[str, int] = {"body_armor": 25, "quick_switch": -20}
 
 
+# §7.3: the health the Shields preset carries, and the floor the warning below measures against. It
+# was 30 until the 2026-09-18 bench proved armour piercing ignores a shield, which made the shield worth
+# nothing against that perk and left only the health underneath to fight through.
+_SHIELDS_MIN_HP = 45
+
+
 def is_shields_preset(config: GameConfig) -> bool:
     """S50 (docs/perk-design.md §2): true when this game's BASE health config carries zero armour,
     so a shield pool is the player's only non-HP buffer (the Shields preset -- 30 HP + 120 shield +
@@ -1465,7 +1471,6 @@ class Compiler:
         else:
             warnings.append("stun is on but no rostered weapon fires on cell <8,0> and MC arms no station for "
                             "it: nothing in this game can stun (the source is a $WEAP t3=8 slot or a proto-8 station)")
-
     @staticmethod
     def _rekey(frame: str, cell) -> str:
         """`$WEAP` with tok3/tok4 (the IR word's B and U fields) pointed at `cell`. Nothing else moves."""
@@ -2308,6 +2313,22 @@ class Compiler:
                             "the guaranteed end is time_limit_s (A4.8) — winner is provisional until recap")
 
         self._validate_stun(config, roster, errors, warnings)   # F15/A20 (own hunk: the stun's shape + its source)
+        # §7.3 (bench 2026-09-18): armour piercing ignores the SHIELD as well as the armour -- a victim
+        # died with a full 120 shield and full 70 armour standing. So in a shield-only game the shield
+        # buys NOTHING against it and the whole fight is the health underneath. At the 30 health the
+        # preset used to carry, that is a 0.90 s kill against a plain rifle's 1.60 s, which is a hard
+        # counter rather than a trade. The preset now carries 45, but a host sets the health freely
+        # (`is_shields_preset` only reads "base armour is zero"), so say it rather than silently
+        # shipping a game where one perk beats the entire defensive choice.
+        if is_shields_preset(config) and any(
+                (p.get("loadout") or {}).get("perk") == "armor_piercing" for p in roster):
+            hp = int((config.get("health") or {}).get("max_hp") or 0)
+            if hp and hp < _SHIELDS_MIN_HP:
+                warnings.append(
+                    f"this is a shield-only game ({hp} HP, no armour) and someone carries Armour "
+                    f"Piercing, which IGNORES the shield entirely (bench 2026-09-18): the whole fight is "
+                    f"the {hp} HP underneath, and the shield buys nothing against it. The Shields preset "
+                    f"carries {_SHIELDS_MIN_HP} HP for exactly this reason (weapon-design.md §7.3)")
         return {"ok": not errors, "errors": errors, "warnings": warnings}
 
     def weapon_catalog(self) -> list[Weapon]:

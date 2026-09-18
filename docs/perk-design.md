@@ -70,7 +70,7 @@ largest swing in the arsenal and lands on the weapon most players pick anyway. A
 extra hits on a fast weapon and one on a slow one: still felt, no longer decisive. Tony, 2026-09-17:
 "maybe 50 is too much armor and it should be 25".
 
-**Body Armor must be preset-aware.** Under the Shields preset (30 HP + 120 shield + **no** armour), the
+**Body Armor must be preset-aware.** Under the Shields preset (45 HP + 105 shield + **no** armour), the
 compiler adds `max_armor_add` on top of the preset's base armour and reintroduces a whole armour layer
 the preset was designed not to have. Under Shields, Body Armor grants **shield**, not armour. That is a
 branch in `armed_armor()`, and it is on the list below.
