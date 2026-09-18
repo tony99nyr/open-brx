@@ -33,6 +33,7 @@ including claims that were later retracted; the table first says which ones.
 | 2026-08-26 §6.1 | t15 is a constant 850 of unknown function | t15 is the weapon-swap delay in ms (2026-09-04) |
 | 2026-08-26 §6.1 | t19 = reloadType | Broken by the Plasma Sniper (shell reload, t19 = 0); t19 is unknown |
 | 2026-08-26 | t24 + t35 alone make a weapon overheat | Inert without t37/t38, which enable and parameterise the mechanism (same day) |
+| 2026-08-26 (the replacement above) | t37 and t38 are an enable-and-parameter pair for overheat | **Superseded 2026-09-17 (F229).** `t38` switches the mechanism on by itself: an Energy Rifle frame with only t38 = 150 added locked the trigger out at heat 99 after about 30 rounds. `t37` is not a heat token at all, it is the tap damage of a charge weapon (t37 = 30 made every tap land 30 while the full charge still landed t5). See `brx-protocol.md` §6 |
 | 2026-08-26 | `$SIR` damage is not friendly-fire gated under either `$GSET` t1 value | Friendly fire is firmware-enforced, both polarities (2026-08-27) |
 | 2026-08-27 | `$SIR` fn 23 is a weapon disable / the EMP | fn 23 is audio suppression: `$ALCD` token 2 drops to 0 and recovers over ~6–8 s while the gun keeps firing (same day) |
 | 2026-08-27 | fn 36 / fn 37 do nothing (24-cell ×1.0 matrix) | fn 36 = floor(magnitude × 1.25), fn 37 = magnitude × 2, 16 trials with fn 1 controls (2026-09-02); the ×1.0 run is outvoted, not explained |
@@ -518,7 +519,9 @@ Source: https://battlecompany.com/wp-content/uploads/2021/01/BRX_Manual_V7_FINAL
 - **Headset lockout:** disconnecting the headset after game start locks the gun until
   reconnected ("prevent cheating"); the gun shoots normally if no headset was connected
   at boot. Candidate explanation for guns refusing to fire — control for headset state.
-- Indoor/outdoor mode: hold ALT 3 s. Target mode (sighting): hold LEFT while powering on.
+- ~~Indoor/outdoor mode: hold ALT 3 s.~~ **Wrong, corrected 2026-09-16/17 (Tony).** You press ALT in
+  quick succession during the native configuration, at power-on. There is no ALT hold.
+  Target mode (sighting): hold LEFT while powering on.
 - Stock weapons (name, damage, ROF, accuracy, mag): M-4 24/545/96-91/30 ·
   SMG-X3 25/545/96-88/26 · MG-7 38/342/66-45/75 · SR-100 140/44/100-90/4 ·
   TAC-87 120-40/150/95-80/8. (M-4 damage 24 matches token 6 of the known-good

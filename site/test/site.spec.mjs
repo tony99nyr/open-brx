@@ -168,14 +168,14 @@ it('4a · the arsenal publishes CAPTURED wire values, never the rebalanced UI ba
   }
 
   // every published number equals its token in that weapon's own frame
-  const TOK = { dmg: 5, cycle_ms: 14, mag: 16, reserve: 17, reload_ms: 18, heat: 24, sound: 27 };
+  const TOK = { dmg: 5, cycle_ms: 14, mag: 16, reserve: 40, reload_ms: 18, heat: 24, sound: 27 };   // reserve is t40, the player's spare rounds (F207); t17 is twice it
   const drift = [];
   for (const r of rows) {
     const f = src.find(w => w.weapon_id === r.id).capture.frame.split(',');
     for (const [field, n] of Object.entries(TOK)) {
       const wire = f[n + 1];
       const got = r[field];
-      // t17 == 32768 is an unlimited flag, not a count
+      // 32768 is an unlimited flag, not a count
       const want = field === 'sound' ? wire
         : (field === 'reserve' && Number(wire) === 32768) ? 'unlimited' : Number(wire);
       if (String(got) !== String(want)) drift.push(`${r.name}.${field}: published ${got}, wire ${wire}`);

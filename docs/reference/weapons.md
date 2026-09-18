@@ -4,6 +4,10 @@ Every weapon selectable in the official Callsign app, captured over BLE while ar
 **named by the operator at capture time** (the wire carries no weapon name; token 27 is only a
 *sound* id, and two different weapons share `C03`).
 
+**This file is the captured Callsign wire, not the game we ship.** The numbers Open BRX actually sends live in
+`mcp/brx_mcp/mc/weapons.json`, and `docs/weapon-design.md` explains the balance behind them. Read this page for
+what Battle Company's app puts on the wire; read the catalogue for what a player gets.
+
 Field decode and the evidence behind it: `protocol/callsign-extract/protocol-classes.md`.
 Raw traces: `protocol/captures/raw/`. Regenerate the underlying table with
 `python -m brx_mcp.weapmap protocol/captures/raw/*.btsnoop`.

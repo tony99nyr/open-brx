@@ -12,14 +12,25 @@ receiver needs the laptop, not the Windows box. Read `gotchas.md` ("Before a ben
 
 ## 1. What is already known — do not re-derive it
 
-- **`$WEAP` token 41 `gunRangeIndoor`** reads **75 on all eighteen guns and 20 on melee**
-  (`manual/dev.md` t41 row). Melee at 20 is the encouraging part: 20 on a weapon that must
-  only reach arm's length is what a real range-percent should look like.
-- **There is one prior positive** (`weapon-design.md` §5 **U2**, 2026-08-26): **t41 = 100 killed at
-  max indoor distance**; the **t41 = 5 zeros were CONTAMINATED by rig degradation** and do not count
-  as a negative. So the direction is plausible and the job is a clean, controlled repeat.
-- **`$GSET` token 3 `gunLaserRegion`** (captured `1`) is the regional IR power limit — the second
-  lever, one token, two minutes. We hardcode `1` in `mc/compile.py` and `gameconfig.py`.
+> **Rewritten 2026-09-17.** The garden ladder (F231/F234) answered the range question outdoors, and it
+> moved the lever. This section used to open with t41 and with U2's "one prior positive"; both are
+> retracted below. Lever 1 is now `$WEAP` **t2**.
+
+- **Lever 1 is `$WEAP` token 2 `gunRangeOutdoor`**, the proven emitted-power control (bench 2026-09-17,
+  F231/F234, `manual/dev.md` t2 row). Every captured gun reads **100** and melee reads 90. Outdoors:
+  **t2 = 5 landed 0 hits from 38 shots**, muzzle on the dome included; **13 to 26** is a real
+  attenuation band; **about 31 to 100 is a flat shelf** at every distance a garden can pace. The whole
+  ladder was shot into a dome in direct sun with the light moving, so treat every low number as a
+  lower bound. **What this sheet must add is the INDOOR half**: whether a t2 in the 13-26 band gives a
+  usable short-range beam in a bouncy room. MC refuses to compile a value under 13.
+- **`$WEAP` token 41 `gunRangeIndoor` is a measured null. Do not sweep it.** Two slots differing only
+  in t41, 5 against 75, scored 27 of 27 and 55 of 57 from 3 m to about 200 ft in outdoor mode
+  (2026-09-17, F231). The **U2 "prior positive"** (`weapon-design.md` §5, 2026-08-26, t41 = 100 killed
+  at max indoor distance) was uncontrolled and is **retracted as evidence**: it never had a closing
+  control, and the t41 = 5 zeros beside it were rig degradation. t41 stays at its captured 75 and is
+  worth one confirmation rung indoors, not a ladder.
+- **`$GSET` token 3 `gunLaserRegion`** (captured `1`) is the regional IR power limit — lever 2, one
+  token, two minutes, still untested. We hardcode `1` in `mc/compile.py` and `gameconfig.py`.
 - **`$IRTX` and `$HFIRE` are dead ends.** They carry literal `iRPower` / `rangeIndoor` fields and
   produced **zero IR** on v4.32 across five shapes each, with a receiver control passing either side.
   Do not spend the session there.
@@ -71,11 +82,11 @@ FOLLOWUPS row, and the experiment moves back to Windows with a long USB extensio
 `decode_rate` is the gift here: it is a **graded** margin readout, not a pass/fail. It degrades before
 coverage does, so you can see the beam weaken without standing exactly on the cliff.
 
-**Find the margin before you sweep.** At point-blank, t41 = 5 and t41 = 100 will both read 100% and
+**Find the margin before you sweep.** At point-blank, t2 = 31 and t2 = 100 will both read 100% and
 you will learn nothing — that is the shape of a threshold measurement. So:
 
 1. Tape a mark, put the receiver on it, aimed and fixed.
-2. At **stock t41 = 75**, walk back until `decode_rate` sits around **50–80%**. That is the working
+2. At **stock t2 = 100**, walk back until `decode_rate` sits around **50–80%**. That is the working
    distance. Tape it. Every rung is fired from that mark, and **nothing about the geometry moves for
    the rest of the session.**
 3. If you run out of room before the margin appears, do not give up — **attenuate instead of
@@ -95,7 +106,7 @@ headset disagree, **the headset is primary** and the disagreement is itself the 
 ## 4. Pre-flight
 
 1. Power-cycle gun **and** headset (screamers after ~a day powered). Charge the gun — a sagging
-   battery is a power variable we cannot separate from t41.
+   battery is a power variable we cannot separate from t2.
 2. Kill stale `brx_mcp` processes at the OS level; a forgotten server holds a gun.
 3. `loopback.py` clean (§2.5), receiver taped and aimed, `unique_patterns` = 1 on a test burst.
 4. **Rest the gun.** Handheld aim wobble at 5 m swamps everything else in this experiment. Sandbag,
@@ -109,26 +120,30 @@ headset disagree, **the headset is primary** and the disagreement is itself the 
 
 ## 5. The ladder — one variable, 10 shots per rung, from the taped mark
 
-Only t41 changes. Same weapon (the bench AR), same distance, same rest, same aim point.
+Only **t2** changes (rewritten 2026-09-17: the old ladder swept t41, which the garden proved inert).
+Same weapon (the bench AR), same distance, same rest, same aim point.
 **After every `$WEAP` re-push, re-send `$AMMO`** — a re-push resets mag and reserve to the frame's
 baked-in values (U9).
 
-| # | t41 | why |
+| # | t2 | why |
 |---|---|---|
-| 1 | **75** | **opening control** = stock. Records the baseline detect%/decode% at the mark. |
-| 2 | **5** | **the extreme, tested second on purpose.** If 5 is indistinguishable from 75, no middle value will differ and the ladder stops here — that is an efficient null, and a null is an answer. |
-| 3 | **100** | does it go **up**? Cheap, and it repeats U2's one prior positive under control. |
-| 4–7 | **50 · 30 · 20 · 10** | only if rung 2 moved. Shape the curve: linear, stepped, or a cliff. **t41 = 20 is melee's value — predict arm's-length range.** That prediction landing is strong confirmation. |
-| 8 | **75** | **closing control.** It must reproduce rung 1. If it does not, the rig drifted and **every rung between them is void** — that is exactly what spoiled U2, so do not skip it. |
+| 1 | **100** | **opening control** = stock. Records the baseline detect%/decode% at the mark. |
+| 2 | **13** | **the bottom of the measured band, tested second on purpose.** Outdoors 13 gave 3 of 8 at 15 m on precise aim. If 13 is indistinguishable from 100 at this mark, the room is inside the shelf and the ladder stops here. |
+| 3 | **5** | **the measured floor.** Outdoors it landed nothing at any distance, muzzle on the dome included. If 5 still kills across the room, that is a big finding and the outdoor floor does not transfer indoors. |
+| 4–7 | **18 · 22 · 26 · 31** | only if rung 2 or 3 moved. Shape the curve through the transition band. Outdoors the groups stopped being monotonic below 26, so use **20 shots** a rung here, not 10. |
+| 8 | **100** | **closing control.** It must reproduce rung 1. If it does not, the rig drifted and **every rung between them is void** — that is exactly what spoiled U2, so do not skip it. |
+| 9 | **t41 = 5**, t2 back at 100 | one confirmation rung, not a ladder: indoors is the one place t41 has never been tested. One rung, then move on. |
 
-**Rung 9 (2 min, if anything moved):** re-push a new t41 **mid-life without respawning** and fire
-again. Does the gun read t41 at `$WEAP` time or at fire time? Decides whether a super-indoor preset
-can be switched during a match or only at arming.
+**Rung 10 (2 min, if anything moved):** re-push a new t2 **mid-life without respawning** and fire
+again. Does the gun read t2 at `$WEAP` time or at fire time? Decides whether a super-indoor preset
+can be switched during a match or only at arming. (A mid-life `$WEAP` write applies in 30-90 ms and
+resets mag, reserve and live accuracy: bench 2026-09-17.)
 
 ## 6. Lever 2 — `$GSET` token 3 `gunLaserRegion` (10 min, run regardless of the outcome above)
 
-Same mark, same rest, same everything, t41 back to stock 75. Sweep **`$GSET,0,0,<0|1|2>,0,1,0,50,1,*`**
-— that is token 3 = 0, then 1 (control, the captured value), then 2. 10 shots each, closing control at
+Same mark, same rest, same everything, t2 back to stock 100. Sweep **`$GSET,0,0,<0|1|2>,0,1,0,0,1,*`**
+— that is token 3 = 0, then 1 (control, the captured value), then 2. (Token 7 is 0, the value MC now
+compiles.) 10 shots each, closing control at
 1. Expect coarse steps, possibly only two. Even a null here is worth recording: it retires the one
 field in `$GSET` that is *named* like a power control.
 
@@ -148,7 +163,7 @@ field in `$GSET` that is *named* like a power control.
 
 ## 8. Stopping rule
 
-Stop the ladder if rung 2 (t41 = 5) is indistinguishable from rung 1 at the margin — run the closing
+Stop the ladder if rung 2 (t2 = 13) and rung 3 (t2 = 5) are both indistinguishable from rung 1 at the margin — run the closing
 control, then spend the time on §6 and on Q16 divergence (0/10/20/30/40/50° at 3 m), which is the
 physical route to the same goal. Stop and fix if the closing control does not reproduce the opening
 one. Do not pass 90 minutes; unfinished rungs become FOLLOWUPS rows as written.
@@ -166,23 +181,25 @@ one. Do not pass 90 minutes; unfinished rungs become FOLLOWUPS rows as written.
 
 1. **`experiment-log/2026-09.md`**: `### 2026-09-07 (bench, Mac) — SUPER INDOOR: <verdict in one line>`.
    Method (mac ports, hub yes/no, taped distance, how the margin was found, attenuator if any), the
-   control pair, **one table row per rung** (t41, shots, detected, decoded, decode%, headset flashes,
-   overflow), the closing control, and the verdict on U2 and Q15.
+   control pair, **one table row per rung** (t2, shots, detected, decoded, decode%, headset flashes,
+   overflow), the closing control, and the verdict on the indoor half of F231.
 2. **`FOLLOWUPS.md`**: strike or rewrite **Q15**, **§9 bench 2.1**, and **`weapon-design.md` §5 U2** —
-   they are three statements of the same open question and should close together. Note §9 2.1 says
-   "100 → 5 → 100" and Q15 says "75 → 30 → 20 → 10 → 75"; **this sheet supersedes both**, so make them
-   agree. If Q16 divergence data got taken, feed it to 2.4.
-3. **`HANDOFF.md`**: replace, do not stack. Also add the t41 row to `protocol/brx-protocol.md` (it is
-   currently in the "unknown or unverified" list at the end of §6) and, **only if confirmed**, promote
+   they are three statements of the same open question and should close together. All three are
+   written around t41, which 2026-09-17 answered as a null outdoors; **this sheet supersedes them**,
+   so make them agree on t2. If Q16 divergence data got taken, feed it to 2.4.
+3. **`HANDOFF.md`**: replace, do not stack. Update the t2 and t41 rows in `protocol/brx-protocol.md`
+   with the indoor numbers (both left that file's "unknown or unverified" list on 2026-09-17) and,
+   **only if confirmed**, promote
    the fact into `manual/operate.md` → *Indoor vs Outdoor Mode* per `manual/README.md`
    (**no em dashes in `manual/`**).
 
 ## 11. If it works — what gets built (do NOT build it at the bench)
 
 A third venue value beside `indoor` / `outdoor` — `indoor_tight` — resolved the way
-`compile.play_volume()` resolves volume, writing a lower t41 across every weapon in the compiled
-bundle. The plumbing is cheap: **t41 passes through byte-for-byte from the captured frames today**
-(only tokens named in each weapon's `wire` block are overwritten), so it is a new override token plus
-the `environment` enum in `spec/contracts.md`, `PUT /api/config` validation, and the MC venue picker.
-It touches **no weapon balance** — t41 is identical on all 18 guns and is deliberately not a stats bar
-in any UI. Bring the numbers home first; the build is a WSL session.
+`compile.play_volume()` resolves volume, writing a lower t2 across every weapon in the compiled
+bundle. **Most of the plumbing now exists**: `compile.gun_range_outdoor_pct()` already writes t2 from
+`wire.range_outdoor_pct` at an outdoor venue and refuses a value under 13 (F234). So the work is a
+third `environment` value in `spec/contracts.md`, `PUT /api/config` validation, the MC venue picker,
+and a decision on whether the indoor value is per-weapon or one venue-wide master. It touches **no
+weapon balance** — t2 is 100 on every captured gun and is deliberately not a stats bar in any UI.
+Bring the numbers home first; the build is a WSL session.
