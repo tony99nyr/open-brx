@@ -1215,6 +1215,33 @@ Written 2026-09-18, after the bench turned four `$SIR` functions from guesses in
 brief: "lets be thorough and balance and placement and rock paper scissor". This section is the answer,
 and every number in it comes from a `$HP` delta.
 
+### 7.0 ⚠️ Three weapons may emit a SECOND word we do not model
+
+Named 2026-09-18 from Battle Company's own weapon sheets (via the LaserTagMods material). **`t1` is
+`WeaponIRSource`**, and **2 means the shot leaves the gun laser AND the headset's high-power LED**.
+Exactly three stock weapons set it: the Shotgun, the Rocket Launcher and the Plasma Sniper. For those,
+**`t12` is the extra word's DAMAGE** and `t13`/`t42` are its outdoor/indoor reach.
+
+| weapon | `t5`, what we model | `t12`, what the headset word carries |
+|---|---|---|
+| Shotgun | 45 | **70** |
+| Rocket Launcher | 115 | **115** |
+| Plasma Sniper | 25 | **80** |
+
+**The Shotgun is the one that matters.** Its ladder position, 3 hits and 1.60 s, is computed from 45.
+If a headset sensor receives 70 instead, it kills in **2 hits**, and **four of the five sensors are on
+the headset**, so that would be the common case rather than the exception. §2.2's Shotgun row, the
+dominance check and the close-range band would all be describing a weapon that does not exist.
+
+⚠️ **This is a sourced claim, not a measurement**, and it is easy to settle: fire one shotgun shot at a
+covered gun sensor and read the `$HIR` magnitude, then one at an exposed headset and read it again. 45
+both times means `t12` is inert on this firmware and the ladder stands. 70 on the headset means the
+Shotgun has been a two-hit weapon all along and nobody noticed, because at a bench you shoot the gun
+body and in a game you shoot the person.
+
+Until it is measured, treat the Shotgun's numbers here as the GUN-BODY case, which is what every bench
+run to date has actually tested.
+
 ### 7.1 There are only four ways to take someone down
 
 | way | mechanism | what it is good against | what it is bad against |
