@@ -51,11 +51,11 @@
    "mag": 36,
    "reserve": 216,
    "reload_ms": 1700,
-   "dmg": 10,
+   "dmg": 9,
    "rof": 100,
    "rng": 75,
-   "htk": 11,
-   "ttk_ms": 1417,
+   "htk": 12,
+   "ttk_ms": 1558,
    "range_band": "mid",
    "range_target_m": "18-20 indoor / 40-45 outdoor (Q15)",
    "recoil": {
@@ -69,9 +69,10 @@
     "frame": "$WEAP,0,,100,0,3,9,0,,,,,,,,75,850,36,216,1700,0,9,100,100,275,0,,,R18,,,,D04,D03,D02,D18,,,,,36,108,75,*"
    },
    "wire": {
-    "dmg": 11,
+    "dmg": 10,
     "range_outdoor_pct": 70
    },
+   "crit_pct": 40,
    "verified": false,
    "captured": true,
    "tags": [
@@ -374,13 +375,13 @@
    "mag": 14,
    "reserve": 56,
    "reload_ms": 1400,
-   "dmg": 21,
+   "dmg": 18,
    "rof": 19,
    "rng": 75,
    "range_band": "long",
    "range_target_m": "full reach indoor / 60m+ outdoor (Q15, tagged sniper)",
-   "htk": 5,
-   "ttk_ms": 1600,
+   "htk": 6,
+   "ttk_ms": 2000,
    "recoil": {
     "ceiling": 100,
     "floor": 100,
@@ -392,10 +393,11 @@
     "frame": "$WEAP,1,,100,0,3,18,0,,,,,,,,360,850,14,56,1400,0,7,100,100,,0,,,S07,D20,D19,,D04,D03,D21,D18,,,,,14,28,75,*"
    },
    "wire": {
-    "dmg": 24,
+    "dmg": 21,
     "fire_ms": 400,
     "range_outdoor_pct": 85
    },
+   "crit_pct": 30,
    "overrides": {
     "t33": {
      "value": "D02",
@@ -1127,6 +1129,7 @@
     "fire_ms": 110,
     "range_outdoor_pct": 70
    },
+   "crit_pct": 15,
    "verified": false,
    "captured": false,
    "tags": [

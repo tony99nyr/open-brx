@@ -845,6 +845,8 @@ class WeaponCatalog:
             # dropping it here would leave the primary-slot exclusion dead: `loadout_pool()` calls
             # `weapon_catalog()`, which routes through THIS method, not the raw catalogue row.
             row["lethal"] = False
+        if w.get("crit_pct") is not None:   # F62 (2026-09-18): the declared t6 crit chance, 0-100.
+            row["crit_pct"] = int(w["crit_pct"])
         return row
 
     def all(self) -> list[Weapon]:
@@ -872,7 +874,7 @@ class WeaponCatalog:
     # 2026-09-17 garden test). "range_indoor" (t41, `gunRangeIndoor`) is kept only so a test can pin
     # it untouched -- do NOT write it from `gun_range_outdoor_pct` or any venue map; see the F234
     # comment block above `RANGE_OUTDOOR_FLOOR`.
-    _T = {"proto": 3, "subtype": 4, "dmg": 5, "headset_dmg": 12, "headset_range_outdoor": 13,
+    _T = {"proto": 3, "subtype": 4, "dmg": 5, "crit": 6, "headset_dmg": 12, "headset_range_outdoor": 13,
           "fire": 14, "swap": 15, "mag": 16,
           "reserve": 17, "reload": 18, "mode": 20, "acc_ceiling": 21, "acc_floor": 22, "burst": 23,
           "heat": 24, "snd_fire": 27, "snd_up": 28, "snd_down": 29, "rel1": 31, "rel2": 32, "rel3": 33,
@@ -956,6 +958,12 @@ class WeaponCatalog:
         declared `wire.headset_range_outdoor`/`_indoor` overwrites the captured cell, an undeclared one
         leaves it untouched, and neither ever raises: reach is not a damage number.
 
+        t6 (`primaryCritChance`, F62, closed 2026-09-18) is a straight percentage the GUN rolls itself
+        (a crit is the magnitude x1.5 truncated, `$HIR` token 6 reads 1 on it). A declared `crit_pct`
+        writes it; an absent one leaves the captured value untouched (0 on every stock frame) -- unlike
+        `headset_dmg`, an absent `crit_pct` is not a refusal, because a weapon that never crits is not a
+        balance hole (see the comment above the write).
+
         `environment` ("indoor"/"outdoor"/None) only reaches `gun_range_outdoor_pct`: outdoor scales
         t2 by the weapon's catalogue starting value, indoor and unset both keep the captured t2
         unchanged (indoor is untested, F231 open — never invent an indoor number).
@@ -1037,6 +1045,22 @@ class WeaponCatalog:
             # the price of 15). That is the identical unpriced-second-word hole this whole change exists
             # to close, so AP zeroes the second word and the pull is worth exactly what it costs.
             put("headset_dmg", 0 if dmg_abs is not None else int(headset_dmg))
+        # t6 (`primaryCritChance`, F62, closed 2026-09-18): the GUN rolls its own crit off this straight
+        # percentage, magnitude x1.5 truncated, and `$HIR` token 6 reads 1 on the proc (0 on a normal
+        # hit) so the victim's node can see it. This is NOT the same "declare it or we refuse" contract
+        # as `headset_dmg` above, though the two writes sit side by side and look alike. A captured t12
+        # left unpriced is a live balance hole -- the second word still fires and lands its raw captured
+        # magnitude, so an undeclared `wire.headset_dmg` is refused outright. A captured t6 left at 0 is
+        # not a hole: it is just a weapon that never crits, which every stock frame already is (every
+        # capture carries t6=0). So an ABSENT `crit_pct` is silently left exactly as the capture carries
+        # it, not refused -- only a DECLARED `crit_pct` writes the token, and only the three weapons that
+        # carry one pay for it in ammunition (weapon-design.md; the dominance model prices the buff).
+        crit_pct = w.get("crit_pct")
+        if crit_pct is not None:
+            crit_pct = int(crit_pct)
+            if not 0 <= crit_pct <= 100:
+                raise ValueError(f"{weapon_id}: crit_pct {crit_pct} must be 0-100")
+            put("crit", crit_pct)
         # t13 (`HeadsetRangeOutdoor`) / t42 (`HeadsetRangeIndoor`): the second word's OWN reach. Unlike
         # t12, an unwritten reach is not a safety hole -- reach is not a damage number, so a weapon with
         # a captured cell but no declared override just keeps whatever the capture carries, and this

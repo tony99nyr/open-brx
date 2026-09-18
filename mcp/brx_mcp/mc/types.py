@@ -541,6 +541,7 @@ class Weapon(TypedDict):
     pickup_only: NotRequired[bool]  # 2026-09-17: catalogue-visible but never in a player loadout pool (policy.py)
     recoil: NotRequired[Recoil]     # S42: the declared target accuracy profile (weapons.json `recoil`)
     lethal: NotRequired[bool]       # 2026-09-18, weapon-design.md §7.4: False = cannot kill; absent means true
+    crit_pct: NotRequired[int]      # F62 (2026-09-18): $WEAP t6 primaryCritChance, 0-100; absent = never crits
 
 
 class WeaponBars(TypedDict):
@@ -581,6 +582,7 @@ class WeaponView(TypedDict):
                                     # the server refuses one in slot 0 and both UIs mirror that, so the field has
                                     # to travel with the row or a console offers a pick that is refused at arming.
     recoil: NotRequired[Recoil]     # S42: the declared target accuracy profile -- the node's `weaponRow(id).recoil`
+    crit_pct: NotRequired[int]      # F62 (2026-09-18): $WEAP t6 primaryCritChance, 0-100; absent = never crits
 
 
 class SavedGame(TypedDict):

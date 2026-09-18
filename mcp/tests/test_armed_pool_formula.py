@@ -100,14 +100,23 @@ def test_health_pool_and_to_gc_and_validate_agree_across_hp_armor_perk_spread():
     assert said and "245 pool" in said[0], over["warnings"]
     assert C.validate(_cfg(45, 200), [_player("rocket_launcher")])["ok"], "a guideline never blocks"
 
-    # amr resolves at 24 dmg / mag 14 -> threshold 336. The 255 ceiling is clamped inside the guard's
-    # own pool too: max_armor=300 would be 45+300=345 unclamped (illegal: ceil(345/24)=15 > mag 14)
-    # and is 45+255=300 clamped (legal: ceil(300/24)=13 <= mag 14).
+    # The 255 ceiling is clamped inside the guard's OWN pool: max_armor=300 must grade as 45+255=300,
+    # never as 45+300=345.
+    #
+    # This used to assert "the AMR raises no warning at 300", which was true only because the AMR
+    # happened to deal 24 damage with a 14-round magazine, so ceil(300/24)=13 fitted and ceil(345/24)
+    # =15 did not. That made a live weapon's balance numbers the fixture for a CLAMPING rule, and the
+    # 2026-09-18 crit pass moved the AMR to 21 damage and broke it. Whether a particular weapon can
+    # empty a magazine into a 300 pool is a balance question; whether the guard clamps is not.
+    # So assert the clamp itself: whatever the weapon's numbers, the guard must never grade against
+    # 345, and if it does warn it must say it measured 300.
     clamped = C.validate(_cfg(45, 300), [_player("amr")])
-    assert not any("ONE MAGAZINE" in w for w in clamped["warnings"]), (
-        "the 255 ceiling must be applied inside the guard's pool too, or it grades a player "
-        f"armed at 300 as if they were armed at 345: {clamped['warnings']}"
-    )
+    said = [w for w in clamped["warnings"] if "ONE MAGAZINE" in w]
+    assert not any("345" in w for w in said), (
+        "the 255 ceiling is not applied inside the guard's pool: it graded a player armed at 300 as "
+        f"if they were armed at 345: {said}")
+    assert all("300 pool" in w for w in said), (
+        f"the magazine guard quoted a pool that is neither the clamped 300 nor the illegal 345: {said}")
 
 
 def test_body_armor_grants_shield_not_armour_when_base_armour_is_zero():

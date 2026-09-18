@@ -326,7 +326,7 @@ def test_resolve_changes_only_the_balance_tokens_of_the_captured_frame():
     rows = {w["weapon_id"]: w for w in json.loads(
         (pathlib.Path(__file__).resolve().parents[1] / "brx_mcp/mc/weapons.json").read_text())["weapons"]}
     T = WeaponCatalog._T
-    balance = {1, T["dmg"] + 1, T["headset_dmg"] + 1, T["headset_range_outdoor"] + 1,
+    balance = {1, T["dmg"] + 1, T["headset_dmg"] + 1, T["crit"] + 1, T["headset_range_outdoor"] + 1,
                T["headset_range_indoor"] + 1, T["fire"] + 1, T["mag"] + 1, T["clipstart"] + 1,
                T["reserve"] + 1, T["reserve_half"] + 1, T["reload"] + 1,
                T["swap"] + 1}                                   # tok15 = draw time: `wire.swap_ms` on the sidearms (bench 2026-09-04)
@@ -1012,10 +1012,14 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
     # word's OWN reach (t13/t42, F254), a genuine close-range bonus, not from a magazine buff bought
     # without believing the number. F254's bench (needs outdoor space, approved, not yet run) decides it.
     # Do not raise the Shotgun's `mag` and do not touch the AMR to clear this.
-    KNOWN_DOMINANCE = {
-        ("amr", "shotgun"): "blocked on F254: the Shotgun's close-range identity needs the headset "
-                            "word's own reach, which is unmeasured. Delete this entry when F254 lands.",
-    }
+    # ✅ EMPTY, AND THAT IS THE POINT (2026-09-18). It briefly held ("amr", "shotgun"): taking the
+    # Shotgun's t2 off F231's unstable band fixed its reliability and cost it the only thing that
+    # distinguished it from a slow rifle, so the AMR covered it on every axis. Rather than buy a lead
+    # with a magazine buff nobody believed in, the pair was named here alongside a self-expiry
+    # assertion. The AMR then went from 24 damage to 21 to pay for its own 30% crit chance, its
+    # hits-to-kill went 5 to 6, and it stopped dominating. The expiry assertion FAILED, exactly as
+    # built, and forced this entry out. An exemption that outlives its cause is how a guard rots.
+    KNOWN_DOMINANCE: dict[tuple[str, str], str] = {}
     allowed_seen = set()
     for fam, members in fams.items():
         for a in members:

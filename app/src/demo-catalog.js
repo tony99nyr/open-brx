@@ -14,10 +14,10 @@ export const DEMO_WEAPONS = [
     "reserve": 56,
     "reload_s": 1.4,
     "reload_ms": 1400,
-    "dmg": 21,
+    "dmg": 18,
     "rpm": 19,
     "rng": 75,
-    "dmg_per_hit": 24,
+    "dmg_per_hit": 21,
     "pool": 115,
     "verified": false,
     "tags": [
@@ -25,20 +25,21 @@ export const DEMO_WEAPONS = [
       "sniper"
     ],
     "role": "marksman",
-    "htk": 5,
-    "ttk_ms": 1600,
+    "htk": 6,
+    "ttk_ms": 2000,
     "recoil": {
       "ceiling": 100,
       "floor": 100,
       "per_shot": 0,
       "recover_ms": 0
     },
+    "crit_pct": 30,
     "ammo_total": 70,
     "bars": {
       "power": 56,
       "rof": 53,
       "ammo": 51,
-      "ttk": 52
+      "ttk": 27
     }
   },
   {
@@ -75,7 +76,7 @@ export const DEMO_WEAPONS = [
       "power": 38,
       "rof": 87,
       "ammo": 75,
-      "ttk": 92
+      "ttk": 93
     }
   },
   {
@@ -89,30 +90,31 @@ export const DEMO_WEAPONS = [
     "reserve": 216,
     "reload_s": 1.7,
     "reload_ms": 1700,
-    "dmg": 10,
+    "dmg": 9,
     "rpm": 100,
     "rng": 75,
-    "dmg_per_hit": 11,
+    "dmg_per_hit": 10,
     "pool": 115,
     "verified": false,
     "tags": [
       "assault"
     ],
     "role": "assault",
-    "htk": 11,
-    "ttk_ms": 1417,
+    "htk": 12,
+    "ttk_ms": 1558,
     "recoil": {
       "ceiling": 100,
       "floor": 85,
       "per_shot": 5,
       "recover_ms": 150
     },
+    "crit_pct": 40,
     "ammo_total": 252,
     "bars": {
       "power": 47,
       "rof": 100,
       "ammo": 82,
-      "ttk": 68
+      "ttk": 64
     }
   },
   {
@@ -188,7 +190,7 @@ export const DEMO_WEAPONS = [
       "power": 64,
       "rof": 47,
       "ammo": 45,
-      "ttk": 36
+      "ttk": 42
     }
   },
   {
@@ -226,7 +228,7 @@ export const DEMO_WEAPONS = [
       "power": 38,
       "rof": 67,
       "ammo": 100,
-      "ttk": 44
+      "ttk": 49
     }
   },
   {
@@ -265,7 +267,7 @@ export const DEMO_WEAPONS = [
       "power": 100,
       "rof": 27,
       "ammo": 20,
-      "ttk": 92
+      "ttk": 93
     }
   },
   {
@@ -341,7 +343,7 @@ export const DEMO_WEAPONS = [
       "power": 73,
       "rof": 40,
       "ammo": 32,
-      "ttk": 52
+      "ttk": 56
     }
   },
   {
@@ -378,7 +380,7 @@ export const DEMO_WEAPONS = [
       "power": 29,
       "rof": 93,
       "ammo": 88,
-      "ttk": 76
+      "ttk": 78
     }
   },
   {
@@ -455,7 +457,7 @@ export const DEMO_WEAPONS = [
       "power": 82,
       "rof": 20,
       "ammo": 26,
-      "ttk": 60
+      "ttk": 71
     }
   },
   {
@@ -493,7 +495,7 @@ export const DEMO_WEAPONS = [
       "power": 20,
       "rof": 80,
       "ammo": 69,
-      "ttk": 84
+      "ttk": 85
     }
   },
   {
@@ -530,7 +532,7 @@ export const DEMO_WEAPONS = [
       "power": 29,
       "rof": 73,
       "ammo": 94,
-      "ttk": 28
+      "ttk": 35
     }
   },
   {
@@ -568,7 +570,7 @@ export const DEMO_WEAPONS = [
       "power": 38,
       "rof": 60,
       "ammo": 63,
-      "ttk": 36
+      "ttk": 42
     }
   }
 ];

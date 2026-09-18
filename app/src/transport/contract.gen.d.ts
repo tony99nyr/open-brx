@@ -533,6 +533,8 @@ export interface Weapon {
   recoil?: Recoil;
   /** 2026-09-18, weapon-design.md §7.4: False = cannot kill; absent means true */
   lethal?: boolean;
+  /** F62 (2026-09-18): $WEAP t6 primaryCritChance, 0-100; absent = never crits */
+  crit_pct?: number;
 }
 
 export interface WeaponBars {
@@ -579,6 +581,8 @@ export interface WeaponView {
    *  to travel with the row or a console offers a pick that is refused at arming.
    *  S42: the declared target accuracy profile -- the node's `weaponRow(id).recoil` */
   recoil?: Recoil;
+  /** F62 (2026-09-18): $WEAP t6 primaryCritChance, 0-100; absent = never crits */
+  crit_pct?: number;
 }
 
 /** A sanitized whole-game preset stored on the Mission Control host. */

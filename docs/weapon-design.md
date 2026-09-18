@@ -200,9 +200,9 @@ sounds — and moves the numbers.
 | Sniper Rifle | marksman | 60 | 1500 | 2 | **1.50** | 40.0 | 31.2 | 4 | 24 | 1700 | 92% | — | dmg 80→60, cycle 300→1500 |
 | Shotgun | cqb | 20 | 800 | 3 | **1.60** | 25.0 | 23.1 | 6 | 24 | 400 | 12% | — | **2026-09-18**: dmg 45→20 (`wire.dmg`, the gun word); OUR chosen 20-damage headset word (`wire.headset_dmg`, t12) stacks unconditionally on top, 40 real per pull; the second word itself is measured (Callsign's own 70, cap30), the 20 is a balance number we picked (htk/TTK unchanged, 2 pulls short, 3 kills either way), but `dmg`/`dps`/`sust`/one-mag % here are the GUN WORD ALONE, not the real per-pull total. Magazine deliberately left at 6/24: the AMR now covers it on every axis, and rather than buy a lead with an unexamined number, `test_ttk_band_and_no_strictly_dominant_weapon` names the `(amr, shotgun)` pair in `KNOWN_DOMINANCE`. The suite is GREEN, not red, and the exemption fails the moment the pair stops dominating, so it cannot outlive F254; §7 |
 | Plasma Sniper | marksman | 25 | 400 | 4 | **1.20** | 62.5 | 41.7 | 10 | 80 | 2000 | 95% | 30 | dmg 80→25, cycle 225→400; **2026-09-18**: htk 5→4, TTK 1.60→1.20s (our chosen 10-damage headset word, `wire.headset_dmg`/t12, stacks unconditionally, 35 real per pull; ⚠️ this weapon has NEVER been captured -- cap30 fired only a Shotgun -- so its second word rests on a sourced t12=80 and nothing else); `dmg`/`dps`/`sust`/one-mag % here are the gun word alone, same caveat as the Shotgun; §7 |
-| AMR | support | 24 | 400 | 5 | **1.60** | 60.0 | 48.0 | 14 | 56 | 1400 | 100% | — | dmg 18→24, cycle 360→400 |
+| AMR | support | 21 | 400 | 6 | **2.00** | 52.5 | 42.0 | 14 | 56 | 1400 | 99% | — | dmg 18→24, cycle 360→400; **2026-09-18** (F62): dmg 24→21, htk 5→6, TTK 1.60→2.00s — 30% `crit_pct` (a crit is x1.5 truncated, so 21→31) pays for itself: average damage per hit holds at 24.15, but the published number is now the GUARANTEED five-hit-plus kill, six hits when unlucky. Mag/reserve untouched |
 | Force Rifle | assault | 10 | 100 +250 | 12 | **1.65** | 66.7 | 50.7 | 36 | 144 | 1700 | 100% | — | dmg 9→10 |
-| Burst Rifle | assault | 11 | 75 +275 | 11 | **1.42** | 77.6 | 58.2 | 36 | 216 | 1700 | 100% | — | **2026-09-17**: dmg 9→11 (`wire.dmg`) |
+| Burst Rifle | assault | 10 | 75 +275 | 12 | **1.56** | 70.6 | 52.9 | 36 | 216 | 1700 | 100% | — | **2026-09-17**: dmg 9→11 (`wire.dmg`); **2026-09-18** (F62): dmg 11→10, htk 11→12, TTK 1.42→1.56s — 40% `crit_pct` (a crit is x1.5 truncated, so 10→15) pays for itself: average damage per hit holds at 11.25, but the published number is now the guaranteed 4-pull kill; a 3-pull kill lands about 27% of the time. Mag/reserve untouched |
 | Stinger | cqb | 15 | 250 | 8 | **1.75** | 60.0 | 43.5 | 18 | 144 | 1700 | 99% | — | cycle 120→250, res 72→144 |
 | Bolt Rifle | assault | 13 | 225 | 9 | **1.80** | 57.8 | 38.7 | 18 | 180 | 2000 | 98% | — | **stock** |
 | SMG | cqb | 8 | 95 | 15 | **1.33** | 84.2 | 61.7 | 72 | 288 | 2500 | 100% | 5 | **2026-09-17**: cycle 140→95 (`wire.fire_ms`) |
@@ -470,8 +470,8 @@ Fastest cycle has the slowest reload and vice versa; nothing leads on both.
 | Sniper Rifle | 2 | **2** | 3 | 4 |
 | Shotgun | 3 | **3** | 4 | 5 |
 | Plasma Sniper | 3 | **4** | 5 | 6 |
-| AMR | 5 | **5** | 7 | 9 |
-| Burst Rifle | 10 | **11** | 14 | 19 |
+| AMR | 5 | **6** | 8 | 10 |
+| Burst Rifle | 10 | **12** | 15 | 20 |
 | Stinger | 7 | **8** | 10 | 14 |
 | Bolt Rifle | 8 | **9** | 12 | 16 |
 | Force Rifle | 10 | **12** | 15 | 20 |
