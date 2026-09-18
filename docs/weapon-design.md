@@ -398,7 +398,9 @@ gun: `wire.range_outdoor_pct` writes `t2` outdoors, and the node writes `t21`/`t
 - **`recoil: {ceiling, floor, per_shot, recover_ms}`** — the planned S42 node-driven profile (a harsh
   floor is a felt COST that offsets a fast TTK): SMG and Suppressor harshest (100/55, the sustained
   hoses), Assault Rifle and Energy Rifle medium (100/70), Burst Rifle mild and resetting between bursts
-  (100/85), everything semi-automatic or one-shot none (100/100, no recoil model needed — a Sniper
+  (100/85), everything semi-automatic or one-shot none (100/100, no recoil model needed — two HIDDEN rows are
+the exception and were never part of the ladder: `force_rifle` (100/60) and `stinger` (100/45), left as the
+arsenal cut found them — a Sniper
   Rifle's future cost is a stance penalty, not recoil, and does not exist yet either). `per_shot` and
   `recover_ms` reuse the S42 accuracy-walk bench numbers (2026-09-17: ~10 points per 0.15 s) as a
   starting assumption, not a recoil-specific measurement.
@@ -949,7 +951,7 @@ be half the `$SIR` key. Reverting it would have collapsed three distinct effect 
 Five levers that did not exist in the model above.
 
 **Armor-piercing — a real defensive-layer bypass.** Functions **2, 6** (and **17, 21** on their enemy
-side) hit HP directly: measured **HP 45 → 25 → 5 with armor untouched at 70** **[two-sided map]**. That turns armor from a flat +70 into
+side) hit HP directly: measured **HP 45 → 25 → 5 with armour untouched at 70** **[two-sided map]**. That turns armour from a flat +70 into
 something a weapon class can be built to ignore, and it makes the effective pool weapon-dependent:
 115 for a standard weapon, **45** for an AP one. An AP weapon wants a *lower* `t5` than its TTK
 suggests. Natural fits: the AMR (already `armor-piercing` in its `t3` semantics), the Rail Gun
@@ -1002,9 +1004,9 @@ than a number tweak:
 | **Armorer** | 9 / 12 / 16 / 19 | plate: healthy allies gain armor |
 | **Overshielder** | 14 / 21 | overshield: healthy allies gain a shield buffer that drains first |
 
-Plus **fn 13/15/20/22** (armor only), **fn 11** (shields only — the sole way shields enter the game),
+Plus **fn 13/15/20/22** (armour only), **fn 11** (shields only — the sole way shields enter the game),
 and **fn 18**, a further shields-only grant. (⚠️ An earlier draft called fn 18 a conversion costing
-4 HP; re-measured on a clean baseline it leaves **HP and armor untouched** — the apparent cost was a
+4 HP; re-measured on a clean baseline it leaves **HP and armour untouched** — the apparent cost was a
 shifted baseline.)
 
 **Status effects — one has an observable effect, and it is not a stun.** A whole family registers a `$HIR`
@@ -1042,7 +1044,7 @@ spend a session on:
   > deal damage on protocol 7**, having moved no pool on protocol 5. The DoT negative is unaffected —
   > none of them ticked — but do not read membership here as "inert".
 
-### 6.3b Damage over time — the axis the catalogue does not have (S16)
+### 6.3b Damage over time: the axis the catalogue does not have (S16)
 
 Tony, 2026-09-17: "we don't have any damage over time weapons, like a poison gun". Correct, and the
 mechanism for one has been unblocked since 2026-09-09. Nothing in the 22-weapon catalogue ticks.
@@ -1123,7 +1125,7 @@ The design space widened from one number to five independent choices:
 | choice | token / field | what it decides |
 |---|---|---|
 | magnitude | `$WEAP` `t5` | how much |
-| effect class | `$SIR` row function for `<t3,t4>` | damage / AP / multiplied / heal / armor / shield / status |
+| effect class | `$SIR` row function for `<t3,t4>` | damage / AP / multiplied / heal / armour / shield / status |
 | polarity | function (dual-polarity set) | whether allies and enemies get different outcomes |
 | crit | IR word **C** bit | ×1.5, per shot, ours to set |
 | fire behaviour | `$WEAP` `t20`, `t23`, `t24`, `t37`/`t38` | full-auto / single / burst / charge / overheat |

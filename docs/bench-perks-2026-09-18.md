@@ -1,7 +1,7 @@
 # Bench: crits, anti-armour, and the perk levers (2026-09-18)
 
-About 40 minutes, two guns at the desk, no rig. It answers the questions the perk rework (S50) rests on, plus
-the one that gates a poison weapon (S16). Every
+About 40 minutes, two guns at the desk, no rig. It answers the questions the perk rework (S50) rests on. It
+also answers the one that gates a poison weapon (S16). Every
 step follows the method rules learned on 2026-09-17: cover the victim's gun sensor at close range (F228), give the
 victim the `$SIR` row for the shooter's damage key, and expect about 3 s between a tool call and the gun.
 

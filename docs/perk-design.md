@@ -18,7 +18,9 @@ Five rules, each one learned rather than assumed.
 **It must survive a Mission Control blackout.** MC is a setup, start and recap tool. Players walk out
 of Wi-Fi range every match. A perk that stops working when the phone loses MC is a perk that stops
 working, so the effect lives either in the compiled bundle (written before the match) or in the node
-(the player's own phone, talking to the player's own gun).
+(the player's own phone, talking to the player's own gun). One carve-out is allowed, and it must be
+written on the perk: a pick whose EXTRA needs MC, but whose absence changes nothing else, may ship if
+we accept that it quietly does nothing out of coverage. Adrenaline Rush in §3 is the only one.
 
 **The gun never learns that it hit someone.** A shooter's node knows its own shots, its own hits taken
 and its own pools. It does not know that a shot landed, and it cannot see its own kills. Every "on
@@ -103,6 +105,19 @@ These are designed, not deferred for lack of interest. Each names the one thing 
 | **Overcharge Shield** | your shield returns faster | the Shields preset shipping |
 | **Adrenaline Rush** | a kill speeds you up for a few seconds | it needs MC to tell the node about the kill, so it is the one pick that quietly does nothing out of coverage. Ship it only if we accept that |
 | **EMP Resistance** | you recover from a stun faster than most | one new effect key and one new per-player bundle field, the same pattern the accessibility overrides already use |
+
+**A charge must announce itself.** This is the one rule the research sweep agreed on across thirty
+years of arena shooters. Quake's Quad Damage makes the holder glow and roar, Halo Infinite telegraphs
+every piece of equipment mid-use, and Quake Champions went further and warns the whole server before
+the Quad even spawns. The reason is the same every time: a timed advantage nobody can see reads as
+unfairness, and a visible one becomes a decision for everyone else on the field. We have the means
+already, on the player's own kit: `$HLED` and `$GLED` paint the headset and the gun, and the gun has
+2477 sounds. So every activated perk in §3 lights the carrier for as long as it runs. It is a cost, it
+is deliberate, and it is what makes the perk worth arguing about.
+
+**A powerup that is only ever good is a camping game.** The same sweep's clearest failure mode: id cut
+Quad Damage from x4 to x3, and Bungie reworked Armor Lock because invulnerability with no drain let a
+player simply wait out a fight. Any charge we ship should drain, end, or cost something while it runs.
 
 ## 4. The long tail: every other idea, and why it is where it is
 
