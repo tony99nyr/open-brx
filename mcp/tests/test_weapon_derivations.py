@@ -95,6 +95,51 @@ def test_t41_is_pinned_byte_for_byte_at_every_venue():
             "exactly as captured, indoor is unmeasured (F231 open) and must never be guessed")
 
 
+def test_t12_mirrors_the_compiled_t5_only_on_a_weapon_whose_capture_carries_it():
+    """2026-09-18 finding (Battle Company's own weapon sheets, via the LaserTagMods material, and
+    `protocol/brx-protocol.md`): t1 (`WeaponIRSource`) = 2 on exactly three stock weapons (shotgun,
+    plasma sniper, rocket launcher), and on those t12 (`ExtraHeadsetDamage`) is a SECOND word's
+    damage, fired from the shooter's own headset. Our balance pass reached t5 and left t12 at its
+    captured value, so a Plasma Sniper priced down to 25 (`wire.dmg`) still shipped an 80 sat in
+    t12 — if the firmware honours it, that is a kill worth more than three times the priced hit.
+
+    Whether the firmware honours t12 is UNMEASURED as of 2026-09-18 (a bench step is planned). This
+    test only pins that the COMPILED frame is internally consistent either way: t12 tracks whatever
+    t5 compiles to, and only on a weapon whose own capture already uses the second word — inventing
+    one on a weapon that has never carried it would break the same "emit the capture verbatim"
+    contract that keeps t41 untouched.
+
+    Break `Roster.resolve()`'s t12 write and watch this go red."""
+    bad = []
+    for w in ROWS:
+        wid = w["weapon_id"]
+        captured_t12 = _tok(wid, "headset_dmg")
+        compiled = CAT.resolve(wid, 0).split(",")
+        compiled_t5 = compiled[WeaponCatalog._T["dmg"] + 1]
+        compiled_t12 = compiled[WeaponCatalog._T["headset_dmg"] + 1]
+        if captured_t12.strip():
+            if compiled_t12 != compiled_t5:
+                bad.append(f"{wid}: t12 ({compiled_t12!r}) should mirror the compiled t5 ({compiled_t5!r})")
+        elif compiled_t12.strip():
+            bad.append(f"{wid}: t12 was invented ({compiled_t12!r}) on a weapon whose capture never used it")
+    assert not bad, "t12 drifted from t5, or was invented:\n  " + "\n  ".join(bad)
+
+
+def test_plasma_sniper_t12_follows_the_priced_damage_not_the_captured_one():
+    """The case that motivated the change: the Plasma Sniper's OWN capture carries t12=80, but
+    `wire.dmg` re-prices its t5 to 25 (§7.7's `ap_dmg` cut sits on the same precedence). t12 must
+    follow the priced 25, not the raw captured 80, or a headset hit throws more than three times the
+    priced gun-body hit."""
+    by_id = {w["weapon_id"]: w for w in ROWS}
+    raw = by_id["plasma_sniper"]["capture"]["frame"].split(",")
+    assert raw[WeaponCatalog._T["headset_dmg"] + 1] == "80", "capture.frame should still read 80 (sanity)"
+    frame = CAT.resolve("plasma_sniper", 0).split(",")
+    t5 = frame[WeaponCatalog._T["dmg"] + 1]
+    t12 = frame[WeaponCatalog._T["headset_dmg"] + 1]
+    assert t5 == "25", f"plasma_sniper: expected priced t5 25, frame has {t5}"
+    assert t12 == "25", f"plasma_sniper: expected t12 to mirror the priced 25, frame has {t12}"
+
+
 def test_gun_range_outdoor_pct_ships_the_catalogue_value_outdoors_only():
     """F234: t2 (`gunRangeOutdoor`) is the confirmed venue lever. Outdoor ships each weapon's
     catalogue starting value (`weapons.json` `wire.range_outdoor_pct`, docs/weapon-design.md §4.2);

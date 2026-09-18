@@ -307,9 +307,12 @@ def test_resolve_changes_only_the_balance_tokens_of_the_captured_frame():
     rows = {w["weapon_id"]: w for w in json.loads(
         (pathlib.Path(__file__).resolve().parents[1] / "brx_mcp/mc/weapons.json").read_text())["weapons"]}
     T = WeaponCatalog._T
-    balance = {1, T["dmg"] + 1, T["fire"] + 1, T["mag"] + 1, T["clipstart"] + 1,
+    balance = {1, T["dmg"] + 1, T["headset_dmg"] + 1, T["fire"] + 1, T["mag"] + 1, T["clipstart"] + 1,
                T["reserve"] + 1, T["reserve_half"] + 1, T["reload"] + 1,
                T["swap"] + 1}                                   # tok15 = draw time: `wire.swap_ms` on the sidearms (bench 2026-09-04)
+    # tok12 (t12, `ExtraHeadsetDamage`) joined the balance set 2026-09-18: on the three t1=2 weapons
+    # it now mirrors whatever damage t5 compiles to (see the comment above the write in
+    # `WeaponCatalog.resolve()`), so it moves off the capture exactly when t5 does.
     cat = WeaponCatalog()
     for wid, row in rows.items():
         allowed = balance | {int(k.lstrip("tT")) + 1 for k in (row.get("overrides") or {})}

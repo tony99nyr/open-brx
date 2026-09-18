@@ -868,10 +868,11 @@ class WeaponCatalog:
     # 2026-09-17 garden test). "range_indoor" (t41, `gunRangeIndoor`) is kept only so a test can pin
     # it untouched -- do NOT write it from `gun_range_outdoor_pct` or any venue map; see the F234
     # comment block above `RANGE_OUTDOOR_FLOOR`.
-    _T = {"proto": 3, "subtype": 4, "dmg": 5, "fire": 14, "swap": 15, "mag": 16, "reserve": 17, "reload": 18,
-          "mode": 20, "acc_ceiling": 21, "acc_floor": 22, "burst": 23, "heat": 24, "snd_fire": 27,
-          "snd_up": 28, "snd_down": 29, "rel1": 31, "rel2": 32, "rel3": 33, "noammo": 34, "tap": 37,
-          "clipstart": 39, "reserve_half": 40, "range_indoor": 41, "range_outdoor": 2}
+    _T = {"proto": 3, "subtype": 4, "dmg": 5, "headset_dmg": 12, "fire": 14, "swap": 15, "mag": 16,
+          "reserve": 17, "reload": 18, "mode": 20, "acc_ceiling": 21, "acc_floor": 22, "burst": 23,
+          "heat": 24, "snd_fire": 27, "snd_up": 28, "snd_down": 29, "rel1": 31, "rel2": 32, "rel3": 33,
+          "noammo": 34, "tap": 37, "clipstart": 39, "reserve_half": 40, "range_indoor": 41,
+          "range_outdoor": 2}
     # The ammo trio + its two mirrors. `resolve()` owns these — they carry the invariants — so an
     # `overrides` entry may not name one (see `_override_index`).
     _AMMO_TOKENS = frozenset({16, 17, 18, 39, 40})
@@ -941,7 +942,9 @@ class WeaponCatalog:
         preserving the two invariants every captured frame obeys: `tok39 == tok16` (clip start == max
         clip) and `tok17 == 2 * tok40`. **t41 is never written here** — it is left exactly as the
         capture carries it, because indoor range is unmeasured (F231 open) and t41 itself was proven
-        inert outdoors (Q15, 2026-09-17); see the F234 comment above `RANGE_OUTDOOR_FLOOR`.
+        inert outdoors (Q15, 2026-09-17); see the F234 comment above `RANGE_OUTDOOR_FLOOR`. t12
+        (`ExtraHeadsetDamage`) mirrors whatever value t5 ends up with, but ONLY on the three weapons
+        whose own capture already carries a t12 — see the comment above that write.
 
         `environment` ("indoor"/"outdoor"/None) only reaches `gun_range_outdoor_pct`: outdoor scales
         t2 by the weapon's catalogue starting value, indoor and unset both keep the captured t2
@@ -978,15 +981,33 @@ class WeaponCatalog:
         # 2026-09-18: Armour Piercing now passes an ABSOLUTE damage (`dmg_abs`, the weapon's own
         # `ap_dmg`) rather than a multiplier, because no multiplier prices the perk fairly: 45/115 is
         # 0.39, so anything near the old 0.4 left hits-to-kill unchanged and the perk free. §7.7.
+        # t12 (`ExtraHeadsetDamage`, protocol.md 2026-09-18): on exactly three stock weapons (shotgun,
+        # plasma sniper, rocket launcher) t1=2 sends a SECOND word out of the shooter's own headset, and
+        # t12 is that word's magnitude -- captured verbatim, like every other token `resolve()` doesn't
+        # own, so our balance pass reached t5 and left t12 at its captured value even after we cut the
+        # Plasma Sniper's t5 from 80 to 25. Whether this firmware actually honours t12 is UNMEASURED as
+        # of 2026-09-18 (a bench step is planned); writing it costs nothing if it is inert, and if it is
+        # live it closes a three-weapon balance hole (a 25-damage Plasma Sniper also throwing an 80).
+        # Compute the effective damage once, in the SAME precedence t5 already uses, and mirror it onto
+        # t12 -- but only on a weapon whose own capture already carries a t12 value: inventing one on a
+        # weapon we have never seen use the second word would break the same "emit the capture verbatim"
+        # contract that keeps t41 untouched.
+        had_headset_dmg = p[T["headset_dmg"] + 1].strip() != ""
         dmg_abs = (mods or {}).get("dmg_abs")
         if dmg_abs is not None:
-            put("dmg", max(1, int(dmg_abs)))
+            eff_dmg = max(1, int(dmg_abs))
+            put("dmg", eff_dmg)
         elif wire.get("dmg") is not None:
             # An explicit `wire.dmg` literal is written verbatim, 0 included: that is FIELD-4's own
             # fixture (a weapon whose catalog `dmg: 0` must compile to a gun that deals no damage, not a
             # floored 1, or the "0 DAMAGE" validate() guard this exact case exists to catch can never
             # trip again).
-            put("dmg", int(wire["dmg"]))
+            eff_dmg = int(wire["dmg"])
+            put("dmg", eff_dmg)
+        else:
+            eff_dmg = int(p[T["dmg"] + 1] or 0)   # captured value, unmoved -- still the number t5 carries
+        if had_headset_dmg:
+            put("headset_dmg", eff_dmg)
         fire_abs = (mods or {}).get("fire_abs")
         if fire_abs is not None:
             put("fire", int(fire_abs))         # Armour Piercing's own cycle (§7.7)
