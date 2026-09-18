@@ -596,6 +596,17 @@ proxy was never tested against the behaviour it stood in for.
 `$HIR` tok5 is the **raw magnitude**; applied damage depends on the **SENSOR** (bench 2026-09-11, F23): the gun body is always ×1, and only a **headset** hit on fn 36/37 scales, by `$GSET` t7 — **fn 36 = floor(magnitude × (1 + t7/200)), fn 37 = floor(magnitude × (1 + 2·t7/100))**. At the Callsign capture's t7=50 that reads ×1.25 / ×2 (the ×1.25 truncates, so 7 lands as 8), but Open BRX compiles **t7 = 0**, so no sensor scales and every hit lands at its raw magnitude: BRX players aim at the headset, which holds four of the five sensors, so a headset multiplier would only make the aim everybody already uses pay twice. The `$HIR` crit bit (tok6) read 0 on every measured hit and is a separate, unconfirmed axis.
 Anything that validates a weapon in isolation is blind to a whole class of bug.
 
+**A simulated gun that answers instantly is not a gun.** Twice on 2026-09-18 a test suite passed while the
+hardware misbehaved, and both times the harness was the liar. The recoil simulator applied the node's
+writes instantly and silently; the real gun RESETS its magazine on every `$WEAP` and answers with an
+`$ALCD` about 40 ms later, which is the whole bug. A harness for anything that writes to a gun must queue
+the write with a flight time and answer it the way the gun does, or it is testing a machine nobody owns.
+
+**Sample where the player looks, not where your loop runs.** The same lane's "the ammo never rises"
+assertion sampled once per tick and PASSED against the broken code, because the reset frame and the
+restore frame arrive together and the raw value was overwritten before the next tick looked. The HUD
+re-renders on every gun frame, so a player sees what a per-tick sampler cannot. Assert per frame.
+
 **The frame you send is not the frame the game sends, unless you got it from `resolve()`.** On 2026-09-18
 a bench run armed a Shotgun and a Plasma Sniper by hand, from the CAPTURED `$WEAP` in `weapons.json`, and
 reported the result as the shipped weapon. The capture prices those weapons at 45 and 25 with a second
