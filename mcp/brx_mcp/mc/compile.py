@@ -21,8 +21,8 @@ from .. import hitaudio as _ha
 from ..protocol import PANIC_SEQUENCE
 from .perks import PerkCatalog
 from .policy import SIDEARM_TAG          # F146: one vocabulary for "this is a backup weapon"
-from .types import (MAX_PLAYERS, OBJECTIVE_MODES, STATION_SOURCES, FrameBundle, GameConfig, PerkView,
-                    Player, Team, VoiceOption, Weapon, parse_win_by)
+from .types import (MAX_PLAYERS, OBJECTIVE_MODES, STATION_SOURCES, FrameBundle, GameConfig, PerkEffectsResolved,
+                    PerkView, Player, Team, ValuePair, VoiceOption, Weapon, parse_win_by)
 from . import presentation as _pres
 from .. import poolgauge as pg
 from .. import voices as _voices
@@ -242,21 +242,65 @@ def play_volume(environment: str | None) -> int:
     return VOL_BY_ENV.get((environment or "").strip().lower(), VOL_PLAY)
 
 
-def armed_armor(armor: int, fx: dict) -> int:
-    """$PSET armor after the body_armor perk's `max_armor_add`, capped at the 255 policy ceiling
-    (NOT a device limit -- $PSET pools store past 255 with no wrap, see the note in `_to_gc()`;
-    this is our own policy choice). One arithmetic, called wherever the armed armor is needed --
-    it drifted into three disagreeing copies once already (review 2026-09-01: a `body_armor`
-    player was armed at a 165 pool while a simpler, perk-blind version of the sum graded it at
-    115), so `_to_gc()`, `Compiler.validate()`, and `Session.health_pool()` all go through here."""
-    return min(255, int(armor) + int(fx.get("max_armor_add") or 0))
+# S50 (2026-09-17, perk balance pass; docs/perk-design.md §2): the flat armour grant/cost a
+# `max_armor_add` perk carries. Body Armor +25 (was +50 -- "maybe 50 is too much armor and it should
+# be 25", Tony 2026-09-17); Quick Switch -20 (its cost for Quick Switch's swap-speed grant). Kept as
+# a compiler-side table, keyed by perk_id, rather than trusting `perks.json`'s own `effects.
+# max_armor_add` at compile time: the two must obviously agree (perks.json is the wire-visible
+# documentation of the same number), but this is the one place the ARITHMETIC runs, matching every
+# other shared-formula table in this module (`_POOL_GRANT_PCT`'s S50-draft predecessor, `_SIR_*`).
+_MAX_ARMOR_ADD: dict[str, int] = {"body_armor": 25, "quick_switch": -20}
 
 
-def armed_pool(hp: int, armor: int, fx: dict) -> int:
+def is_shields_preset(config: GameConfig) -> bool:
+    """S50 (docs/perk-design.md §2): true when this game's BASE health config carries zero armour,
+    so a shield pool is the player's only non-HP buffer (the Shields preset -- 30 HP + 120 shield +
+    no armour). Reads the GAME's `health.max_armor`, never a per-player `overrides.max_armor` -- an
+    individually handicapped player (armoured down to 0 for that one player) must not flip this
+    branch for everyone else, or for themselves: the preset is a fact about the game's design, not
+    about one player's pool."""
+    return int((config.get("health") or {}).get("max_armor") or 0) == 0
+
+
+def armed_armor(armor: int, perk_id: str | None = None, shields: bool = False) -> int:
+    """$PSET armour after a `max_armor_add` perk's grant, capped at the 255 policy ceiling and
+    floored at 0 (NOT a device limit -- $PSET pools store past 255 with no wrap, see the note in
+    `_to_gc()`; both bounds are our own policy choice). The floor matters now that a cost perk
+    (Quick Switch, docs/perk-design.md §2) carries a NEGATIVE grant -- `armed_armor()` used to only
+    cap, never floor, before S50 (docs/perk-design.md §5.4).
+
+    One arithmetic, called wherever the armed armour is needed -- it drifted into three disagreeing
+    copies once already (review 2026-09-01: a `body_armor` player was armed at a 165 pool while a
+    simpler, perk-blind version of the sum graded it at 115), so `_to_gc()`, `Compiler.validate()`,
+    and `Session.health_pool()` all go through here.
+
+    `shields=True` (`is_shields_preset()`): the grant is redirected to `armed_shield()` instead --
+    adding an armour LAYER to a preset built with none would defeat its design (docs/perk-design.md
+    §2) -- so this returns `armor` (0, by construction of that branch) untouched."""
+    if shields:
+        return max(0, min(255, int(armor)))
+    grant = _MAX_ARMOR_ADD.get(perk_id or "", 0)
+    return max(0, min(255, int(armor) + grant))
+
+
+def armed_shield(shield: int, perk_id: str | None = None, shields: bool = False) -> int:
+    """$PSET shield after a `max_armor_add` perk's grant, ONLY when `shields` (`is_shields_preset()`)
+    -- the branch `armed_armor()` defers to. Same 255 cap / 0 floor as armour; outside a shields
+    preset this is the shield pool untouched (still clamped, for consistency, though nothing writes
+    it that high today)."""
+    if not shields:
+        return max(0, min(255, int(shield)))
+    grant = _MAX_ARMOR_ADD.get(perk_id or "", 0)
+    return max(0, min(255, int(shield) + grant))
+
+
+def armed_pool(hp: int, armor: int, perk_id: str | None = None, shields: bool = False) -> int:
     """hp + `armed_armor()` -- the total pool hits-to-kill math (KIT, ARSENAL, the mag>=htk gate in
-    `validate()`) is quoted against. `_to_gc()` needs hp and armor as separate `$PSET` fields, so
-    it calls `armed_armor()` directly instead of this."""
-    return int(hp) + armed_armor(armor, fx)
+    `validate()`) is quoted against. Deliberately excludes shield (docs/perk-design.md §2: shield
+    sits above this pool and is not counted in hits-to-kill -- shield was always "IR-only, inactive
+    until activated", never part of the published pool). `_to_gc()` needs hp and armor as separate
+    `$PSET` fields, so it calls `armed_armor()` directly instead of this."""
+    return int(hp) + armed_armor(armor, perk_id, shields)
 
 # ---- $SIR effect classes (bench-measured 2026-08-26; experiment-log "the COMPLETE two-sided $SIR
 # function map + crit multiplier + FF enforcement"). A weapon's <t3,t4> is the composite key into the
@@ -306,6 +350,45 @@ _SIR_GRANT = frozenset(range(9, 23))              # heals/armor/shields: a "dama
 # through to the final `elif` and is WARNED about, which is the guard this whole allow-list exists
 # to provide: nothing may key to fn 38 by accident and ship silently halved.
 _SIR_PLAIN_DAMAGE = frozenset({1, 3, 4, 5, 7, 29, 30, 33})   # 3 added 2026-08-29, see above; 38 removed 2026-09-17
+
+
+# S50 (2026-09-17, Armour Piercing perk; docs/perk-design.md §2): ONE permanent, GAME-WIDE cell,
+# always in `gameconfig._SIR_TABLE` (so it ships in every head, whoever compiles it, including a
+# late joiner's -- see `sir_table()`: stock rows are never removed). A (proto,sub) cell's function is
+# the SAME on every player's compiled table (the victim's table decides the effect, keyed by the
+# SHOOTER's `$WEAP` t3/t4 -- see `assert_sir_covers_weapons`), so this key means "armour piercing"
+# FOR THE WHOLE MATCH: two players can never give the same cell two different meanings. `(4,0)` is a
+# free cell (`hitaudio.FREE_CELLS`), reserved in `hitaudio.RESERVED_CELLS` so the A17 class-sound
+# rekey allocator never reassigns it. fn 2 is bench-proven (`_SIR_ARMOR_PIERCING` above) to bypass
+# armour AND shields, straight to HP.
+_AP_CELL: tuple[str, str] = ("4", "0")
+_AP_FN = 2
+# ~40% of normal (a 60% cut). The number is the point (docs/perk-design.md §2): against the standard
+# 45+70 pool, bypassing armour takes the effective pool from 115 to 45, a 61% reduction on its own --
+# so a SMALLER damage cut (the S50 draft's 20%) would leave Armour Piercing simply the best weapon in
+# the game. ~60% roughly cancels the bypass, so the perk reads as "about the same time to kill,
+# whatever they are wearing" rather than "faster than everyone".
+_AP_DAMAGE_MULT = 0.4
+
+
+def assert_armor_piercing_armed(head: list[str]) -> None:
+    """S50: refuses to arm a player carrying Armour Piercing if THIS compiled head's `$SIR` table
+    has no row for `_AP_CELL`. The mechanism lives in the VICTIM's `$SIR` table (every gun that
+    might be hit, not the shooter's own) -- a gun that never received this row ignores those shots
+    ENTIRELY and SILENTLY while both ends report healthy: the F11 failure (a gun with no `$SIR` row
+    for a cell eats every hit on it and says nothing), the same shape that let the Energy Launcher
+    ship for weeks keyed to a row landing 0 damage. An ERROR, not a warning: a weapon that cannot
+    hurt anyone must never reach a player. `assert_sir_covers_weapons` (the general F11 guard) would
+    also catch this once the primary is re-keyed onto `_AP_CELL` with no matching row -- this is the
+    same failure, named for what it means: the perk did not arm."""
+    cells = {c for c in _sir_cells([f for f in head if f.startswith("$SIR")]) if c != ("", "")}
+    if _AP_CELL not in cells:
+        raise ValueError(
+            f"S50 ARMOUR-PIERCING GUARD: this head's $SIR table has no row for <{_AP_CELL[0]},{_AP_CELL[1]}>, "
+            "the armour-piercing cell -- an Armour Piercing primary keyed to it would fire IR words every "
+            "gun on this cell silently ignores (the F11 failure: a gun with no matching $SIR row reports "
+            "healthy and eats the hit while dealing nothing). Refusing to arm rather than ship a weapon "
+            "that cannot hurt anyone.")
 
 
 def _sir_index(table) -> dict[tuple[str, str], int]:
@@ -861,8 +944,15 @@ class WeaponCatalog:
             p[T[key] + 1] = str(val)
 
         wire = w.get("wire") or {}
-        if wire.get("dmg") is not None:
-            put("dmg", int(wire["dmg"]))
+        # S50 (Armour Piercing perk): `dmg_mult` must be able to scale t5 even on a weapon with NO
+        # `wire.dmg` override -- every other `mods` knob only fires when its perk is present, but
+        # most weapons carry no `wire.dmg` at all, so the base to scale falls back to `damage()`
+        # (the number this catalogue already publishes as `dmg_hit`, wire.dmg if set else the
+        # captured frame's own t5 -- never the raw hardware capture ignoring an existing rebalance).
+        dmg_mult = float((mods or {}).get("dmg_mult") or 1)
+        if wire.get("dmg") is not None or dmg_mult != 1:
+            base_dmg = int(wire["dmg"]) if wire.get("dmg") is not None else self.damage(weapon_id)
+            put("dmg", max(1, int(round(base_dmg * dmg_mult))))
         if wire.get("fire_ms") is not None:
             put("fire", int(wire["fire_ms"]))
         mag, reserve, reload_ms = self._ammo(weapon_id, mods)
@@ -1086,6 +1176,26 @@ class Compiler:
         pid = ((player or {}).get("loadout") or {}).get("perk")
         return self.perks.effects(pid) if pid else {}
 
+    @staticmethod
+    def _perk_id(player: Player | None) -> str | None:
+        return ((player or {}).get("loadout") or {}).get("perk")
+
+    # S50: $PSET's shield token has no host-facing wire field (Health carries only max_hp/max_armor
+    # today; the Shields preset is a future config shape) -- this is the ONE default, read off
+    # gameconfig.GameConfig's own dataclass field so it can never drift from what an un-perked gun
+    # already ships (`shield: int = 70`).
+    _GC_SHIELD_DEFAULT: int = _GC.__dataclass_fields__["shield"].default
+
+    @staticmethod
+    def _base_health(config: GameConfig, player: Player | None) -> tuple[int, int]:
+        """(hp, armor) BEFORE any perk grant -- the game's `health` config with the per-player
+        `overrides` handicap applied (modes §1.1). Shared by `_to_gc()` and `perk_effects_resolved()`
+        so the compiled frame and the wire `perk_effects` report can never disagree about what
+        "before" means (the same drift `armed_armor()`'s own docstring warns about)."""
+        ov = ((player or {}).get("loadout", {}) or {}).get("overrides") or {}
+        h = config["health"]
+        return int(ov.get("max_hp", h["max_hp"])), int(ov.get("max_armor", h["max_armor"]))
+
     # -- helpers -----------------------------------------------------------
     def _to_gc(self, config: GameConfig, player: Player | None = None, blackout: bool = False) -> _GC:
         """Map the contracts §3 GameConfig (TypedDict) onto the gameconfig.py dataclass — only the
@@ -1099,8 +1209,10 @@ class Compiler:
         and the explicit `presentation.blackout` switch (`caller passes it in, resolved once from the
         profile so this stays a pure mapping)."""
         led = config.get("led") or {}
-        ov = ((player or {}).get("loadout", {}) or {}).get("overrides") or {}   # per-player HP/armor (modes §1.1)
-        fx = self.perk_effects(player)
+        ov = ((player or {}).get("loadout", {}) or {}).get("overrides") or {}   # per-player HP/armor/easy_reload (modes §1.1, S50)
+        pid = self._perk_id(player)
+        shields = is_shields_preset(config)
+        hp, armor_base = self._base_health(config, player)
         return _GC(
             mode=config["mode"],
             game_time_s=config["time_limit_s"] or 0,
@@ -1111,14 +1223,17 @@ class Compiler:
             outdoor=config["environment"] == "outdoor",
             leds=(led.get("mode", "team") != "off") and not blackout,
             friendly_fire=(config["mode"] == "ffa"),  # FFA needs the gun to register same-$TID hits
-            hp=int(ov.get("max_hp", config["health"]["max_hp"])),
-            # body_armor perk: +N on $PSET armor (loadout.md §2) — capped at the wire's 255
-            # NOTE: 255 is OUR POLICY CEILING, not a device limit. Bench 2026-08-27: $PSET
-            # pools are not 8-bit -- armor and HP store and decrement exactly to at least 1000,
-            # clamping at zero with no wrap (shield was never measured that far). Keep the cap,
-            # but do not "fix" it believing the hardware requires it.
-            armor=armed_armor(ov.get("max_armor", config["health"]["max_armor"]), fx),
-            alt_reload=bool(fx.get("alt_reload")),          # easy_reload perk: $BMAP,1,97
+            hp=hp,
+            # S50 (docs/perk-design.md §2): body_armor / quick_switch's `max_armor_add` (`_MAX_ARMOR_
+            # ADD`), capped at the wire's 255 and floored at 0 — NOTE: 255 is OUR POLICY CEILING, not
+            # a device limit. Bench 2026-08-27: $PSET pools are not 8-bit -- armor and HP store and
+            # decrement exactly to at least 1000, clamping at zero with no wrap (shield was never
+            # measured that far). Keep the cap, but do not "fix" it believing the hardware requires
+            # it. In a base-armour-0 game (`shields`) the grant compiles into SHIELD instead — see
+            # `armed_armor()`/`armed_shield()`.
+            armor=armed_armor(armor_base, pid, shields),
+            shield=armed_shield(self._GC_SHIELD_DEFAULT, pid, shields),
+            alt_reload=bool(ov.get("easy_reload")),          # S50: moved from the perk slot to the per-player override; $BMAP,1,97
         )
 
     @staticmethod
@@ -1134,6 +1249,51 @@ class Compiler:
         primary = w[0]["weapon_id"] if len(w) > 0 else "assault_rifle"
         secondary = w[1]["weapon_id"] if len(w) > 1 else None
         return primary, secondary
+
+    def perk_effects_resolved(self, config: GameConfig, player: Player | None) -> PerkEffectsResolved | None:
+        """S50 build 4 (docs/spec/loadout.md §1.2/§2, contracts wire `PerkEffectsResolved`): this
+        player's perk, resolved to the actual base→resolved numbers a compiled frame carries. `None`
+        when the player carries no perk; a field is present only when the perk actually moved it
+        (`perk_id` always present otherwise, for an icon).
+
+        Pure and cheap — catalog lookups only, no `$SIR`/voice rolls — so `State.snapshot()` can call
+        it for every player on every poll. `compile()` calls this SAME method rather than re-deriving
+        the numbers, so the node's `FrameBundle.perk_effects` and Mission Control's console can never
+        disagree (the exact drift `armed_armor()`'s own docstring warns about, one layer up)."""
+        pid = self._perk_id(player)
+        if not pid or player is None:
+            return None
+        fx = self.perk_effects(player)
+        w0, w1 = self._weapon_ids(player)
+        _hp, armor_base = self._base_health(config, player)
+        shields = is_shields_preset(config)
+        base_mag, base_reserve, base_reload = self.catalog._ammo(w0, None)
+        res_mag, res_reserve, res_reload = self.catalog._ammo(w0, fx)   # ammo/reload knobs act on the PRIMARY only
+        base_swap = max(self.catalog.swap_ms(w0, None), self.catalog.swap_ms(w1, None) if w1 else 0)
+        res_swap = max(self.catalog.swap_ms(w0, fx), self.catalog.swap_ms(w1, fx) if w1 else 0)   # the gun takes the larger of slots 0/1
+
+        def pair(base: int, resolved: int) -> ValuePair | None:
+            return {"base": int(base), "resolved": int(resolved)} if int(base) != int(resolved) else None
+
+        # Written key-by-key with a LITERAL name, not a runtime string (the same reason
+        # `PerkCatalog.view()` rebuilds `effects` field-by-field): a TypedDict's assignment can only
+        # be checked against a name pyright can see, never a variable.
+        pe: PerkEffectsResolved = {"perk_id": pid}
+        if (v := pair(base_mag, res_mag)) is not None:
+            pe["mag"] = v
+        if (v := pair(base_reserve, res_reserve)) is not None:
+            pe["reserve"] = v
+        if (v := pair(base_reload, res_reload)) is not None:
+            pe["reload_ms"] = v
+        if (v := pair(base_swap, res_swap)) is not None:
+            pe["swap_ms"] = v
+        # max_hp is never moved by any current perk — never populated, which is the correct "absent"
+        # per the wire contract, not an oversight.
+        if (v := pair(armor_base, armed_armor(armor_base, pid, shields))) is not None:
+            pe["max_armor"] = v
+        if (v := pair(self._GC_SHIELD_DEFAULT, armed_shield(self._GC_SHIELD_DEFAULT, pid, shields))) is not None:
+            pe["max_shield"] = v
+        return pe
 
     # -- Compiler Protocol -------------------------------------------------
     # ---- A17 hit audio ------------------------------------------------------ #
@@ -1272,6 +1432,40 @@ class Compiler:
             t[4], t[5] = cell[0], cell[1]
         return ",".join(t)
 
+    def _refuse_if_ap_ineligible(self, weapon_id: str, player: Player) -> None:
+        """S50: Armour Piercing may only key a PLAIN-DAMAGE primary. Refused, not silently skipped
+        (the task's own choice of the two options offered: "a weapon whose damage key is already
+        special must be refused or left alone" -- refusing matches this codebase's existing style,
+        `assert_*`/F82's "refusing to compile"), on two shapes:
+
+        * a CELL/CHARGE weapon (the Charge Rifle): its `hits_to_kill`/`rounds_to_kill` is
+          release+tap math, not a flat t5 cut (see `hits_to_kill()`), so a `dmg_mult` and a $SIR key
+          swap would silently change what the charge and taps do rather than just skip armour.
+        * a weapon whose OWN stock `$SIR` cell is already a grant/heal/status row
+          (`_SIR_GRANT`/`_SIR_NO_POOL`), never plain damage -- the hidden `med_kit`/`concussion`
+          `slot_frame` mechanism lives in the VICTIM's table the same way, on the secondary, so this
+          also guards a future primary built the same way.
+        """
+        name = player.get("display") or player.get("player_id") or "this player"
+        if self.catalog.rounds_per_charge(weapon_id) > 1:
+            raise ValueError(
+                f"S50 ARMOUR-PIERCING GUARD: refusing to compile {name}'s Armour Piercing primary "
+                f"{weapon_id!r} — it is a CHARGE weapon (rounds_per_charge > 1): its hits-to-kill is "
+                "release+tap math, not a flat damage cut, so a $SIR key swap would silently change "
+                "what its charge and taps do rather than just skip armour and shields. Armour "
+                "Piercing is refused on a charge weapon; pick a different primary.")
+        cell = self._weapon_cell(weapon_id)
+        if cell is None:
+            return                                # unknown id -- already reported elsewhere
+        fn = _sir_index(_SIR_TABLE).get(cell)
+        if fn is not None and fn not in _SIR_PLAIN_DAMAGE:
+            raise ValueError(
+                f"S50 ARMOUR-PIERCING GUARD: refusing to compile {name}'s Armour Piercing primary "
+                f"{weapon_id!r} — its stock $SIR cell <{cell[0]},{cell[1]}> is fn {fn}, not plain "
+                "damage (a grant/heal/status row): re-keying it would change what the weapon DOES, "
+                "not just where its damage goes. Armour Piercing is refused on a weapon whose damage "
+                "key is already special; pick a different primary.")
+
     def compile(self, config: GameConfig, player: Player, teams: list[Team], roll=None,
                 plan=None) -> FrameBundle:
         """`roll` (A15.1) = a `random.Random`: the `$PSET` voice fields a player did not pick explicitly are
@@ -1303,6 +1497,15 @@ class Compiler:
         fx = self.perk_effects(player)                    # ammo/reload knobs act on the PRIMARY only …
         mods = {k: fx[k] for k in ("ammo_mult", "reload_mult", "switch_mult") if fx.get(k)}
         swap_mods = {k: mods[k] for k in ("switch_mult",) if k in mods}   # … the swap delay must scale on EVERY slot (the gun takes the larger)
+        # S50 (Armour Piercing perk): PRIMARY ONLY. `_refuse_if_ap_ineligible` raises before anything
+        # is written for a weapon whose damage key is already special (a charge weapon, or a stock
+        # grant/heal/status cell); `dmg_mult` rides in `mods` so `resolve()` cuts t5, and the frame's
+        # tok3/tok4 are re-keyed onto `_AP_CELL` AFTER the class-sound `plan` rekey below, so Armour
+        # Piercing always wins regardless of `hit_audio_class`.
+        armor_piercing = bool(fx.get("armor_piercing"))
+        if armor_piercing:
+            self._refuse_if_ap_ineligible(w0, player)
+            mods = {**mods, "dmg_mult": _AP_DAMAGE_MULT}
 
         # A15.1: roll the un-picked $PSET voice fields for THIS push; explicit picks always win
         voice, picks = player.get("voice", "male"), (player.get("voice_slots") or {})
@@ -1328,7 +1531,8 @@ class Compiler:
                 # right after $GSET so a bench rung changes one thing next to the frame it copies.
                 *venue_mode_frames(_gset, env),
                 gc._pset(pnum, player.get("voice"), voice_slots),   # the voice pack is per-PLAYER (§PSET); A15 slot picks / A15.1 rolls
-                self._rekey(self.catalog.resolve(w0, 0, mods, environment=env), plan.cell_for(w0))]
+                self._rekey(self._rekey(self.catalog.resolve(w0, 0, mods, environment=env), plan.cell_for(w0)),
+                            _AP_CELL if armor_piercing else None)]
         if w1:
             head.append(self._rekey(self.catalog.resolve(w1, 1, swap_mods, environment=env), plan.cell_for(w1)))   # slot 1 only when a secondary exists (A10)
         head.append(self._rekey(self.catalog.resolve("melee", 4, swap_mods, environment=env), plan.cell_for("melee")))
@@ -1374,6 +1578,8 @@ class Compiler:
         assert_sir_covers_weapons(head)      # A17: no armed weapon may key a cell this head has no row for
         assert_sir_covers_objective(head, config["mode"])   # F79: no objective mode may ship with no way to hear its own beacon
         assert_spawn_protected(head)         # F121: and none of those rows may move a pool before go-live
+        if armor_piercing:
+            assert_armor_piercing_armed(head)   # S50: refuse to arm a weapon nobody's gun can register
 
         pmag, pres = self.catalog.spawn_ammo(w0, mods)
         ammo = [f"$AMMO,0,{pmag},{pres},1,*"]
@@ -1542,6 +1748,13 @@ class Compiler:
             if take:
                 bundle["team_flip_take"] = take
         assert_rearms_every_life(bundle)   # F121: whichever carrier is active, every life gets the real table back
+        # S50 build 4: {perk_id, mag/reserve/reload_ms/swap_ms/max_armor/max_shield: {base,resolved}},
+        # absent when this player carries no perk — persisted on the bundle (not a one-shot message)
+        # so a phone/console icon survives an app restart. `perk_effects_resolved()` is also what
+        # `State.snapshot()` reads for the console, so the two can never disagree.
+        pe = self.perk_effects_resolved(config, player)
+        if pe:
+            bundle["perk_effects"] = pe
         return bundle
 
     def tutorial_frames(self, weapon: Weapon, environment: str) -> list[str]:
@@ -1866,10 +2079,10 @@ class Compiler:
             if hp is None or armor is None:
                 continue                                     # no health model to check against
             # `armed_pool()` — the SAME arithmetic as `_to_gc()` and `Session.health_pool()`, the 255
-            # ceiling included — with NO perk effects: the base pool this game's health model sets. A
+            # ceiling included — with NO perk id: the base pool this game's health model sets. A
             # per-player OVERRIDE still moves it (that is the host's health model for that player,
             # not something the player strapped on).
-            pool = armed_pool(hp, armor, {})
+            pool = armed_pool(hp, armor)
             ws = (p.get("loadout", {}) or {}).get("weapons", []) or []
             for slot, w in enumerate(ws):
                 wid = (w or {}).get("weapon_id")
