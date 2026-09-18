@@ -385,14 +385,21 @@ nine of these eleven were root-caused without touching a gun.
   `fetchpriority="high"` on the hero image and an eager load for the first shot), CLS (every image already
   carries width/height), a11y score, and an OG-image check with a real unfurler. The gate covers landmarks,
   contrast, targets and fonts; it does not measure load. `build`.
-- **S16 ⬜ Damage over time, on the node** (unblocked by the 2026-09-09 bench). `$LIFE` takes negatives, so
+- **S16 🟠 Damage over time, on the node** (unblocked by the 2026-09-09 bench; raised to 🟠 2026-09-17, Tony: "we don't have any damage over time weapons, like a poison gun"). `$LIFE` takes negatives, so
   poison / burn / bleed / gas are buildable with no firmware change and no IR per tick: the gun registers the
   proc once (a status cell, fn 8/24-28/35 — `$SIR,9,3,,24` already ships), the node reads the protocol off `$HIR`
   and runs the tick clock itself. Three things the bench pinned that the design must respect: a negative is
   **per-pool with no spill**, so the node walks shield → armour → health itself; the pool **floors at 0**, so
   overkill is silent; and a lethal tick emits **no `$HP`**, so the node books it via the `$LCD` path (F64, which was filed wrong and corrected) but produces **no `hit_taken` fact and no attribution** — S16 must decide who gets credit for a lethal tick.
   Also needs: who gets the kill credit for a tick, whether a DoT survives a respawn, and what the HUD shows while
-  it ticks. Needs a spec section before code. `build`.
+  it ticks. **→ 2026-09-17: designed in `weapon-design.md` §6.3b** (the Toxin Rifle: half-damage direct, a small
+  tick, refresh instead of stack, and the first weapon that punishes turtling rather than out-damaging it; the
+  victim's node keys off the `$WEAP` t3 damage type echoed in `$HIR` token 2, and the stock enum already carries
+  11 = gas). ⚠️ The NATIVE route stays unproven: fn 24's 1-3 delayed ticks were measured against a REPEATING
+  beacon, and the 2026-08-26 single-shot sweep saw no ticks at all, so one word may give one tick.
+  `bench-perks-2026-09-18.md` §3 fires single fn-24, 25, 26 and 27 shots and counts them, and checks whether the
+  stock Energy Launcher row (`$SIR,9,3,,24`) has been ticking victims all along (P18). Still needs a spec section
+  before code. `build`.
 - **F62 🟡 `$WEAP` t6 `primaryCritChance` — can we emit crits?** The crit bit reads 0 on every stock weapon,
   "not dead, just never set", and t6 would be a per-shot firmware roll. Design already written in
   `archive/bench-weap-tokens-discovery-2026-09-04.md` §t6 (~10 min): t6 0 → 100 → 50 → 0 with `$GSET` t7=100 so a crit
