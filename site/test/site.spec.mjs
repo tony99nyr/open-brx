@@ -196,11 +196,11 @@ it('4a · the arsenal publishes CAPTURED wire values, never the rebalanced UI ba
 });
 
 it('4b · sound durations in the prose match the generated table cell for cell', async ({ request }) => {
-  // sound.md hand-lists ~31 notable ids with durations taken from the APP's Sounds.json, while the
+  // sounds.md hand-lists ~31 notable ids with durations taken from the APP's Sounds.json, while the
   // table below them is built from the real ON-GUN files. Seven disagreed, both visible at once.
   const rows = await (await request.get('/data/sounds.json')).json();
   const len = Object.fromEntries(rows.map(r => [r.id, r.len]));
-  const md = fs.readFileSync(path.resolve(WEB, '../docs/manual/sound.md'), 'utf8');
+  const md = fs.readFileSync(path.resolve(WEB, '../docs/manual/sounds.md'), 'utf8');
   const bad = [];
   let checked = 0;
   for (const line of md.split('\n')) {
@@ -234,7 +234,7 @@ it('4 · the weapons table loads rows and filters', async ({ page }) => {
 
 it('5 · the sound bank loads rows, filters, and pages', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.goto('/manual/sound/');
+  await page.goto('/manual/sounds/');
   const dt = page.locator('.dt[data-table="sounds"]');
   await expect(dt).toBeVisible();
   await expect(dt.locator('[data-count]')).toContainText('rows');
@@ -242,6 +242,42 @@ it('5 · the sound bank loads rows, filters, and pages', async ({ page }) => {
   await dt.locator('[data-more]').click();
   expect(await dt.locator('tbody tr').count()).toBeGreaterThan(first);
   expect(errors).toEqual([]);
+});
+
+it('5b · sound.md links to the sound bank where its table used to be', async ({ page, request }) => {
+  await page.goto('/manual/sound/');
+  const link = page.locator('a[href="/manual/sounds"]');
+  await expect(link).toBeVisible();
+  // the old page no longer carries the full table itself
+  await expect(page.locator('.dt[data-table="sounds"]')).toHaveCount(0);
+  expect((await request.get('/manual/sounds')).ok()).toBe(true);
+});
+
+it('5c · a community label is shown, marked unconfirmed, and searchable', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('/manual/sounds/');
+  const dt = page.locator('.dt[data-table="sounds"]');
+  await expect(dt).toBeVisible();
+  await expect(dt.locator('[data-count]')).toContainText('rows');
+
+  // A103 carries a NEW_LABEL community label with no meaning of our own: search finds it by the
+  // community label text alone, and the cell marks it as a community label, unconfirmed.
+  await dt.locator('[data-search]').fill('buble shield');
+  const row = dt.locator('tbody tr', { hasText: 'A103' });
+  await expect(row).toBeVisible();
+  await expect(row.locator('i.community')).toContainText('community label');
+  await expect(row.locator('i.community')).toContainText('unconfirmed');
+  await expect(row.locator('i.community')).toContainText('buble shield');
+  expect(errors).toEqual([]);
+});
+
+it('5d · a NOISE-flagged id shows the reported-broken flag', async ({ page }) => {
+  await page.goto('/manual/sounds/');
+  const dt = page.locator('.dt[data-table="sounds"]');
+  await dt.locator('[data-search]').fill('HM10');
+  const row = dt.locator('tbody tr', { hasText: 'HM10' });
+  await expect(row).toBeVisible();
+  await expect(row.locator('i.community')).toContainText('reported broken since v4.30, pending an ear check');
 });
 
 it('6 · a data table that cannot load says so instead of sitting empty', async ({ page }) => {

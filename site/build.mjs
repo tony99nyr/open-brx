@@ -45,6 +45,7 @@ const PAGES = [
   { file: 'manual/operate.md', slug: '/manual/operate', section: 'manual', nav: 'Operate', layout: 'doc' },
   { file: 'manual/gameplay.md', slug: '/manual/gameplay', section: 'manual', nav: 'Gameplay', layout: 'doc' },
   { file: 'manual/sound.md', slug: '/manual/sound', section: 'manual', nav: 'Sound', layout: 'doc' },
+  { file: 'manual/sounds.md', slug: '/manual/sounds', section: 'manual', nav: 'Sound bank', layout: 'doc' },
   { file: 'manual/fix.md', slug: '/manual/fix', section: 'manual', nav: 'Fix', layout: 'doc' },
   { file: 'manual/dev.md', slug: '/manual/dev', section: 'manual', nav: 'Developer', layout: 'doc' },
   { file: 'manual/credits.md', slug: '/credits', section: 'manual', nav: null, layout: 'doc' },
@@ -368,6 +369,8 @@ const footer = () => `<footer><p>Open BRX is independent and is not endorsed by 
 // ---- build -----------------------------------------------------------------------------------
 const weapons = buildWeapons(REPO);
 const sounds = buildSounds(REPO);
+// The note is generated from the same JSON the table reads, never hand-typed (docs/site/FORMAT.md).
+DATA_TABLES.sounds.note = `Every sound id on the gun. A meaning shown in italics is machine transcription nobody has confirmed by ear yet, so it can be wrong. A community label is a listener's guess from the LaserTagMods BRX Audio sheet, always marked unconfirmed: ${sounds.communityMeta.labelled} ids carry one, and ${sounds.communityMeta.noise} are flagged as reported broken since firmware v4.30, pending an ear check.`;
 
 const problems = [];
 const built = [];
