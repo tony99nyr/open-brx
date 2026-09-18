@@ -295,7 +295,21 @@ def main():
         write_md(out, a.md)
 
 
-def write_md(out, path):
+def community_suffix(e: dict) -> str:
+    """Inline community-label note for a table row, or '' if the id has none. NEW_LABEL is marked
+    prominently (our own description is only a machine guess there); DIFFERS shows both readings."""
+    label = e.get("community_label")
+    if not label:
+        return " (community: reported NOISE since v4.30)" if e.get("community_flag_noise") else ""
+    status = e.get("community_status")
+    if status == "new_label":
+        return f" · community label (NEW, unconfirmed): {label}"
+    if status == "differs":
+        return f" · community label (differs, unconfirmed): {label}"
+    return f" · community label (agrees, unconfirmed): {label}"
+
+
+def write_md(out, path, community_not_on_gun_count=None):
     voices = [e for e in out if e["kind"] == "voice"]
     fx = [e for e in out if e["kind"] == "fx"]
     L = []
@@ -309,7 +323,18 @@ def write_md(out, path):
              f"{sum(1 for e in out if e['on_gun'] and not e['in_app'])} on the gun but unknown to the app.")
     L.append("- Format on the gun: headerless raw PCM, signed 16-bit little-endian, mono, 44 100 Hz, one `<ID>.LTP` per id.")
     L.append("- Transcripts are Whisper's; a word-level slip is possible on a single line (e.g. \"Flight captured\" for "
-             "\"Flag captured\"). Where a family repeats a line three times (kill confirms), the majority reading is right.\n")
+             "\"Flag captured\"). Where a family repeats a line three times (kill confirms), the majority reading is right.")
+    n_new = sum(1 for e in out if e.get("community_status") == "new_label")
+    n_differs = sum(1 for e in out if e.get("community_status") == "differs")
+    n_agrees = sum(1 for e in out if e.get("community_status") == "agrees")
+    n_noise = sum(1 for e in out if e.get("community_flag_noise"))
+    if n_new or n_differs or n_agrees or n_noise:
+        not_on_gun = f", {community_not_on_gun_count} sheet ids not on our gun" if community_not_on_gun_count else ""
+        L.append(f"- **Community labels** (credit LaserTagMods' community-run BRX Audio sheet, shared by Jay): "
+                 f"{n_new} new, {n_agrees} agree with ours, {n_differs} differ, {n_noise} flagged NOISE since "
+                 f"firmware v4.30{not_on_gun}. Unconfirmed by us; see [Community labels](#community-labels) below.\n")
+    else:
+        L.append("")
     L.append("## Character voices — one 22-slot layout, every character\n")
     L.append("| slot | role | example (Heavy) |\n|---|---|---|")
     ex = {e["id"][-1]: e for e in voices if e["id"].startswith("V3") and len(e["id"]) == 3}
@@ -329,6 +354,7 @@ def write_md(out, path):
             words = (e["transcript"] or "").replace("|", "/")
             if len(words) > 70:
                 words = words[:67] + "..."
+            words += community_suffix(e)
             L.append(f"| {e['id']} | {e['duration_s']:.1f} | {e['category'][6:]} | {words} |")
     L.append("\n## Effects — by family\n")
     L.append("Shape words come from the descriptors: impact (hits hard, dies fast) · decaying · sustained (loop-like) · "
@@ -342,7 +368,8 @@ def write_md(out, path):
         L.append(f"\n### {fam} — {meaning} ({len(es)})\n")
         L.append("| id | s | shape |\n|---|---|---|")
         for e in es:
-            L.append(f"| {e['id']} | {e['duration_s']:.1f} | {e['description'].split('; ', 1)[-1]} |")
+            shape = e["description"].split("; ", 1)[-1] + community_suffix(e)
+            L.append(f"| {e['id']} | {e['duration_s']:.1f} | {shape} |")
     L.append("\n## App-listed ids that are NOT on the gun\n")
     L.append(", ".join(e["id"] for e in out if not e["on_gun"]))
     open(path, "w").write("\n".join(L) + "\n")
