@@ -37,8 +37,8 @@ The BRX runs games three ways. You can play from the gun's own menu, with no pho
 >
 > Two caveats apply to hits to kill and to Reserve.
 >
-> - Hits to kill assumes damage does not depend on which sensor is struck. One Callsign capture showed 18 damage per hit on the headset (sensor 0). The same capture showed 9 damage per hit on the gun body (sensor 4), on the same victim in the same life.
-> - Reserve is the frame's `t40` token: the rounds you actually carry. The frame also holds `t17`, which is always exactly twice `t40`. The gun counts `t40`, and its own ammo readout mirrors that count. This was proven on four weapons on 2026-09-16.
+> - Hits to kill assumes damage does not depend on which sensor is struck. The Head shots row further down answers why it does: `$GSET` t7 scales a headset hit, and Callsign ships t7 at 50. One Callsign capture showed 18 damage per hit on the headset (sensor 0). The same capture showed 9 damage per hit on the gun body (sensor 4), on the same victim in the same life.
+> - Reserve is the frame's `t40` token: the rounds a Callsign gun gives you. The frame also holds `t17`, which is always exactly twice `t40`. The gun counts `t40`, and its own ammo readout mirrors that count. This was proven on four weapons on 2026-09-16.
 
 The table below lists every weapon the Callsign app can hand you, with the numbers it actually sends. The search box does a plain text match across all nine columns, so type part of a weapon name, a role or a sound name to narrow the list.
 
@@ -118,7 +118,7 @@ Power, you must hold it to charge, and a tap does nothing. 115 dmg, 1.5 s charge
 
 ### Energy Launcher
 
-Power, full auto on the wire, but with a 1-round clip every shot is followed by a reload. 115 magnitude, 360 ms, 1/3, 1.4 s. Six spare rounds.
+Power, full auto on the wire, but with a 1-round clip every shot is followed by a reload. 115 magnitude, 360 ms, 1/3, 1.4 s. Three spare rounds.
 
 ### Ion Sniper
 

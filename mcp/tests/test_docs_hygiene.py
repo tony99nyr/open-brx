@@ -389,8 +389,13 @@ def test_the_closed_as_open_check_reads_both_open_glyph_families_and_both_orders
     claimed = _ids_shown_as_open(heading)
     assert claimed == ["F91"], f"a glyph AFTER the id in a heading must claim F91 and nothing else, got {claimed}"
     assert _ids_shown_as_open("### BC-A1 — a rung with no glyph, and no id") == [], "a heading with no open glyph claims nothing"
+    # All four combinations the name promises: both glyph families, in both orders.
     assert _ids_shown_as_open("- 🔍 **F208** a gun can die with the HUD holding the player alive") == ["F208"]
+    assert _ids_shown_as_open("- **F208 🔍** the same row, glyph after the id") == ["F208"]
+    assert _ids_shown_as_open("- 🔴 **F208** the older family, glyph first") == ["F208"]
+    assert _ids_shown_as_open("- **F208 🔴** the older family, glyph after the id") == ["F208"]
     assert _ids_shown_as_open("- ✅ **F206** closed 2026-09-16") == [], "✅ is not an open glyph"
+    assert _ids_shown_as_open("- **F206 ✅** closed 2026-09-16") == [], "✅ is not an open glyph in either order"
 
 
 # Prefixes FOLLOWUPS actually uses, MINUS H and U: `H43`/`U100` are on-gun sound ids and `U1..U10` is

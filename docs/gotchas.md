@@ -596,6 +596,18 @@ proxy was never tested against the behaviour it stood in for.
 `$HIR` tok5 is the **raw magnitude**; applied damage depends on the **SENSOR** (bench 2026-09-11, F23): the gun body is always ×1, and only a **headset** hit on fn 36/37 scales, by `$GSET` t7 — **fn 36 = floor(magnitude × (1 + t7/200)), fn 37 = floor(magnitude × (1 + 2·t7/100))**. At the Callsign capture's t7=50 that reads ×1.25 / ×2 (the ×1.25 truncates, so 7 lands as 8), but Open BRX compiles **t7 = 0**, so no sensor scales and every hit lands at its raw magnitude: BRX players aim at the headset, which holds four of the five sensors, so a headset multiplier would only make the aim everybody already uses pay twice. The `$HIR` crit bit (tok6) read 0 on every measured hit and is a separate, unconfirmed axis.
 Anything that validates a weapon in isolation is blind to a whole class of bug.
 
+**Capture the site screenshots AFTER you commit the UI change, never before.** `site/shots.mjs` stamps
+the manifest with `git rev-parse HEAD:app/src`, so a capture taken while the change is still uncommitted
+records the OLD hash, and the guard goes red the moment you commit. The order is: commit the UI, run
+`cd site && npm run shots`, commit `site/shots/`. Found 2026-09-18, after two captures in a row went
+stale on the commit that followed them. CI does it in the right order by construction, because it only
+ever captures at a committed sha.
+
+**Never write GitHub's skip keyword in a commit message, not even to explain it.** GitHub scans the whole
+message, so a commit that described the shots job's loop guard and quoted the token ran no CI at all: no
+red build, no queued run, only the Cloudflare check (2026-09-18). Say "the skip keyword" in prose and
+leave the literal token in the workflow file, where it is inert.
+
 **Break a guard in the file the code actually reads.** A screen-truth step for the perk picker went on
 passing after `mcp/brx_mcp/mc/perks.json` was edited, because the phone reads the GENERATED
 `app/src/demo-catalog.js`. A guard you "proved" by breaking the source of a generated file was never

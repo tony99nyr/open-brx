@@ -47,8 +47,8 @@ Main's ids came first, so this branch's thirteen verification rows moved from F2
 
 ## What tonight's desk pass changed
 
-A doc-rot review (four lanes) and a maintainability and DRY review (two lanes) were applied in nine
-commits. What matters for the bench:
+A doc-rot review (four lanes), a maintainability and DRY review (two lanes) and two polish rounds were
+applied and committed. What matters for the bench:
 
 - **The site published twice every weapon's spare rounds.** Reserve came from `$WEAP` t17; the player
   carries t40, which is half of it (F207). `site/lib/data.mjs`, its test and the manual's per-weapon

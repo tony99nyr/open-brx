@@ -166,7 +166,7 @@ is a strict win on every published axis. Deagle's reserve was raised (36 → 48)
 | **Deagle** (most dmg, slowest) | 26 / 480 / 7 / 48 | 1920 ms | ~2949 ms | ~65% | 32.7 | 11 |
 
 (`expected ttk` and `one-mag kill` as in §5, now binomial-exact for all three since every mag is
-small enough to sum directly. `sustained dps` and `kills/kit` are the two axes
+small enough to sum directly. ⚠ **F253:** every `reserve` and `kills/kit` figure here is the catalogue number. `compile.py` writes it to `t17` and writes half of it to `t40`, and F207 proved the gun counts `t40`, so a player may carry half of what this file assumes. The bench counts the refills before any of these columns can be trusted. `sustained dps` and `kills/kit` are the two axes
 `test_ttk_band_and_no_strictly_dominant_weapon` checks alongside TTK — `mag*dmg/(mag*fire_ms +
 reload_ms)` and `(mag+reserve)//htk`.)
 
@@ -185,7 +185,7 @@ table, not only among the three pistols.
 
 **Wire tokens changed** (`mcp/brx_mcp/mc/weapons.json`, `wire` block + top-level `mag`/`reserve`):
 
-| weapon | dmg (t5) | fire_ms (t14) | mag (t16/t39) | reserve (t17/t40) |
+| weapon | dmg (t5) | fire_ms (t14) | mag (t16/t39) | reserve (catalogue, written to t17) |
 |---|---|---|---|---|
 | USP | 13 → **9** | 200 → **160** | 12 → **20** | 72 → **120** |
 | Glock | 9 → **13** | 150 → **240** | 20 → **16** | 120 → **64** |
