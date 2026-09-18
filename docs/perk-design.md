@@ -28,8 +28,9 @@ kill" and "on hit dealt" idea is therefore blocked, or degrades to a best-effort
 player for dying. A perk that recharges every 3 minutes of match time, and keeps its timer across a
 death, rewards staying alive instead.
 
-**Every perk pays for itself,** in one of two ways: a cost on another lever, or a condition narrow
-enough that the perk is worth nothing in some fights. The S50 analysis measured the old set and found
+**Every perk pays for itself,** in one of three ways: a cost on another lever, a condition narrow
+enough that the perk is worth nothing in some fights, or a pick that buys information instead of
+power, and so never makes the carrier hit harder or live longer at all. The S50 analysis measured the old set and found
 Body Armor was a strict upgrade: +570 to +1500 ms of extra survival on every life, for free, while the
 convenience perks paid nothing at all on a life with no reload and no swap. A perk that is always on
 and never costs anything is not a choice.
@@ -142,6 +143,12 @@ stations, because station adverts are already broadcast openly to every phone.
    match's config, so the data exists; the query does not. Worth adding once real sessions run.
 4. **`max_armor_add` going negative** (Quick Switch): `armed_armor()` caps at 255 and does not floor at
    0. One line, plus a bench check that `$PSET` accepts the result cleanly.
+5. **The preset-aware branch** §2 asks for: under the Shields preset, Body Armor must compile to shield
+   rather than armour. `armed_armor()` is preset-blind today, so a Body Armor pick there takes the pool
+   from 150 to 200 AND adds a drain step the preset was designed without. Tracked in S50, not built.
+6. **The catalogue still ships the old numbers.** `perks.json` reads `max_armor_add: 50` and copy that
+   promises "50 extra armor". Everything in §2 is decided and unbuilt, exactly like the Easy Reload
+   move. Read the document as the target, and the file as what a gun gets today.
 
 ## 6. Appendix: the working inventory
 
@@ -187,6 +194,7 @@ sweep of 2026-09-17, which ran in a session scratchpad and is **not in the repo*
 | Stim Pack | Hold a button to patch yourself up over a few seconds. | Player holds an unused button (ids 3, 4, 5 are wired to press/release with no handler). Node fires a short run of `$LIFE,0,+n,0` grants to its own gun on a cooldown that runs on the match clock. | Cooldown runs on the match clock (about 3 minutes), survives death; grant is small enough not to match a full heal station. | report-10 §4 ("this is an unused lever"), report-04 (Titanfall Stim, healed-over-time half) |
 | Overclock | Hold a button to fire faster for a few seconds. | Node rewrites `$WEAP` t14 (fire interval) down for a duration, then reverts, following the S42 write discipline (30-90 ms apply, ammo restore, never mid-reload or mid-swap). | Match-clock cooldown; the write briefly resets the magazine unless timed carefully. | report-10 §10 ("any other `$WEAP` token... reachable by the same route"), report-05/06 (arcade Rapid Fire power-up) |
 | Silent Running | Hold a button to go quiet for a few seconds. | Node rewrites the loaded weapon's t25/t26 (or any captured token pair) mid-life for a duration, same S42 write mechanism, then reverts. Generalises to swapping several tokens at once (a lightweight "field modification"), since the node, not MC, is doing a raw `$WEAP` write, not a destructive MC config push. | Match-clock cooldown; must dodge the reload/swap window. | report-10 §10, report-03 (Titanfall Cloak, CoD Dead Silence) |
+| Bubble Shield | Trigger a short personal shield. | Shields preset only. The node grants a block of shield with `$LIFE,0,0,<n>`, starts a timer, and takes it back with a negative grant when it expires. The 2026-09-17 bench proved the grant, the clamp at the `$PSET` ceiling and the cue set. | A match-clock cooldown, and it does nothing outside the Shields preset. | S45 (shield bench 2026-09-17), §3 |
 | Disguise | Briefly show a different team's colours. | Node repaints its own `$GLED`/`$HLED` with another team's palette index for a duration. Hit resolution still runs on the real `$TID`, which is untouched, so this is cosmetic only. | Pure deception; teammates may misread the wearer too. | report-08 §7 (LED palette independent of `$TID`), report-11 (TF2 Spy Disguise) |
 
 ## C. Buildable today, needs both, survives an MC blackout

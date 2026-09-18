@@ -841,7 +841,8 @@ def test_ttk_band_and_no_strictly_dominant_weapon():
     cycle reintroducing the exact cross-weapon dominance the 2026-08-30 retune existed to avoid:
     dominance now runs within a FAMILY (`_weapon_family()`) instead of globally, because a fast
     automatic beating a Sniper Rifle on every axis here is not a bug -- it is the model's blind spot
-    (no range or recoil lever exists on the wire yet, F231/S42), not a balance failure. Reserve/"total
+    (the MODEL sees no range or recoil: range ships on `t2` and the node writes `t21`/`t22`, so neither
+    reaches the derived columns here, F231/S42), not a balance failure. Reserve/"total
     kills from a kit" is retired (a respawn refills it); "kills per clip" (`mag // rounds_to_kill`,
     deterministic -- felt every reload) and sustained DPS (a full-magazine dump plus one reload) take
     its place alongside ideal TTK and the probabilistic one-magazine kill chance.
