@@ -1189,6 +1189,35 @@ What it buys us, all with no firmware change:
 as a broken tagger. The node can detect it with no new wire support, because the accuracy token is
 already parsed for recoil: a `$HIR` that moves no pool plus live accuracy at 0. That is **S53**.
 
+### 6.3f Two axes the firmware has and we have never used
+
+Both from the 2026-09-18 V4_31 trace (LaserTagMods session). Traces, not bench proof, but both are
+concrete enough to design against.
+
+**A real alt-fire.** `$WEAP` tokens 7 to 11 are live: **t7 is a chance percentage, t8/t9 are the `$SIR`
+key that roll uses, t10 is its damage, t11 its crit chance**. They are empty on all 20 captured frames
+because no stock weapon uses them, not because the firmware ignores them. When the roll hits, the barrel
+word AND any headset word switch to the t8/t9 key. So "one shot in eight is a different kind of shot,
+answered by a different row of the victim's table" is buildable with no firmware change. That was listed
+as blocked in `perk-design.md` §4 and is not.
+
+Combined with the crit finding it gives a clean proc mechanism: `t7` decides how often, `t8/t9` decides
+what it is. A poison round on 15% of shots is exactly this shape.
+
+**Crit damage is one token, and it is not the one we thought.** `$PSET` **t6** is the crit damage
+multiplier: on a crit roll the shooter multiplies by `(100 + t6)/100`. We ship 50, which is the whole of
+the x1.5 we measured. The pair is:
+
+| token | what it is | who owns it |
+|---|---|---|
+| `$WEAP` t6 | crit CHANCE, a percentage of shots | the weapon |
+| `$PSET` t6 | crit DAMAGE, `(100 + t6)/100` | the player |
+
+⚠️ This also closes an old dead end. `$PSET` t6 was recorded as "unknown, 0 to 200 swept, no effect",
+and the reason is now obvious: every stock weapon ships `$WEAP` t6 = 0, so a crit never rolled and there
+was nothing for the multiplier to scale. **A crit-damage perk is one `$PSET` token**, and it is a
+per-player lever rather than a per-weapon one, which is exactly what a perk wants.
+
 ### 6.4 What a weapon is now
 
 The design space widened from one number to five independent choices:
@@ -1214,6 +1243,35 @@ fixed backdrop.
 Written 2026-09-18, after the bench turned four `$SIR` functions from guesses into measurements. Tony's
 brief: "lets be thorough and balance and placement and rock paper scissor". This section is the answer,
 and every number in it comes from a `$HP` delta.
+
+### 6.5 Range is a carrier frequency, so our range ladder is largely fiction
+
+⭐ **2026-09-18, V4_31 disassembly via the LaserTagMods session** (trace, not bench proof). The gun's IR
+carrier is **`38000 − 125 × (100 − range)` Hz**, and exactly 38 kHz at 100 or above. **Emitter power does
+not move with range at all**: the PWM duty is set by the indoor/outdoor level alone, about 20% and 38%.
+
+So a low `t2` does not shorten the beam. It **detunes the carrier out of the receiver's roughly 38 kHz
+band-pass**, and the "range" we have been tuning is really "how far out of tune is this shot". That
+explains both of our measurements exactly: `t2` = 5 is 26.1 kHz and landed 0 of 38 shots even muzzle to
+dome, and the knee we found near 31 is 29.4 kHz, the edge of the pass-band. **The knee belongs to the
+receiver, not the firmware.**
+
+⚠️ **What that does to the shipped ladder.** Converting our own values:
+
+| band | carrier | weapons | what it means |
+|---|---|---|---|
+| 32.4 to 38 kHz | inside the pass-band | Sniper 100, AMR and Charge 85, AR and Burst 70, Suppressor and Energy Rifle 55 | **seven weapons, all inside the receiver's window.** "Sniper 100 versus Suppressor 55" is probably not a difference a player can feel |
+| 28.25 to 29.25 kHz | on the knee | SMG, Breacher and Haze 30, Shotgun and the heavies 22 | **six weapons in the steep region**, where sunlight, angle and reflection dominate and behaviour is unstable |
+
+That is the worst of both: the long weapons are undifferentiated and the short ones are erratic. It also
+means **range may not be a usable balance axis in the direction we assumed** — you can make a weapon
+short by detuning it, but you cannot make a sniper reach further than an assault rifle, because both are
+already inside the window.
+
+**So calibration changes.** S49 was going to walk a portable receiver out and read metres per `t2` value.
+The right experiment is now to measure the **receiver's response curve in kHz**, once, and then pick each
+weapon's value from that curve. Values above the knee barely move, so the whole design question is which
+weapons sit below it and by how much.
 
 ### 7.0 ⚠️ Three weapons fire TWO words per trigger pull, and one of them is 70
 
