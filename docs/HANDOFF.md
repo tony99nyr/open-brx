@@ -50,9 +50,12 @@ Main's ids came first, so this branch's thirteen verification rows moved from F2
 A doc-rot review (four lanes), a maintainability and DRY review (two lanes) and two polish rounds were
 applied and committed. What matters for the bench:
 
-- **The site published twice every weapon's spare rounds.** Reserve came from `$WEAP` t17; the player
-  carries t40, which is half of it (F207). `site/lib/data.mjs`, its test and the manual's per-weapon
-  numbers are corrected.
+- 🔴 **The site published twice every weapon's spare rounds, and Mission Control still does.** Reserve
+  came from `$WEAP` t17; the player carries t40, which is half of it (F207). The site, its test and the
+  manual are corrected, and they describe the CAPTURED Callsign gun. **The shipped weapon is still
+  wrong and that is open as F253:** `compile.py` writes the catalogue's reserve to t17 and half of it to
+  t40, while `spawn_ammo()` tells the phone the full number, so the HUD opens a life claiming 192 spare
+  rounds on an assault rifle whose gun holds 96.
 - **One overheat reading, not two.** The merge brought a gun-wide `overheated()`; this branch keeps the
   per-slot `_heatBlocksFire()` with its staleness window, because a locked gun stops sending `$ALCD`.
   The HUD's bar and word now read the same field, so the bar can no longer sit hot for 19 s after the
@@ -69,9 +72,9 @@ applied and committed. What matters for the bench:
 
 ## Machine state right now
 
-MC **is running** on this box (pid 819545, ports 8765 and 8766) from the worktree's `mcp/`. It serves
-the branch's `webapp/mc/dist`, so rebuild that and restart MC **between matches only** before the
-verification bench. The start line is:
+MC runs on this box from the worktree's `mcp/`, on ports 8765 and 8766, and it serves the branch's
+`webapp/mc/dist`. Rebuild that and restart MC **between matches only** before the verification bench.
+Check whether it is up with `ss -ltn | grep 876`. The start line is:
 ```
 setsid nohup ../.venv/bin/python -m brx_mcp.mc --advertise 192.168.0.55 --bench-volume
 ```
@@ -88,22 +91,29 @@ not in the F11 state, but **re-arm it before real use**.
 
 ## Next actions, in order
 
-1. Run the verification bench against the new rows: **F235-F247** (operator menu, match resume, the
+1. **Merge `origin/main` first.** It carries the perk work, the poison weapon, node.md's renumbering and
+   the bench sheet's count step, and this branch's F253 row sends the bench to that step.
+2. **Count the spare rounds (F253, open).** Fire a magazine dry and refill until the gun refuses. Six
+   full magazines means the gun spends t17 and only Mission Control's reporting is wrong. Three means an
+   Open BRX player carries half of every catalogued reserve, and the balance copy is wrong too. Only the
+   site and the manual are corrected so far; the shipped weapon is not.
+3. Run the verification bench against the new rows: **F235-F247** (operator menu, match resume, the
    Pixel 5 BLE fix, the energy gauge, OVERHEAT, NIGHT OPS, the shot-ready cue, the results overlay,
    HARDWARE READY/backhaul, MARK ALL READY, the charge-rifle overheat sound, the energy-weapon reload
    timeout, and the swap-to-empty-slot no_fire check).
-2. Bench the merged recoil writer against spawn protection and the operator resync: the accuracy writer
+4. Bench the merged recoil writer against spawn protection and the operator resync: the accuracy writer
    stands down for `ACC_HOLD_MS` after any spawn, revive, resync or stun write (**F235**, **F247**).
-3. Re-run main's **F231** range ladder with the dome shaded, full 32-round mags, and the first two shots
+5. Re-run main's **F231** range ladder with the dome shaded, full 32-round mags, and the first two shots
    of every mag discarded (**F232**).
-4. Tony decides: **F220** (publish app 0.3.0 as a GitHub Release) and **F221** (the warning-audit page).
-5. Push the branch and open the PR.
+6. Tony decides: **F220** (publish app 0.3.0 as a GitHub Release) and **F221** (the warning-audit page).
+7. Push the branch and open the PR.
 
 ## Validation
 
-`npm run test:all -- --ui`: 16 of 18 jobs green. The two failures are expected on this branch: the
-published APK reads 0.2.1 against the app's 0.3.0 (**F220**, Tony decides), and the site shots go stale
-while the UI tree is dirty. Run the UI gate again after the next commit under `app/src`.
+`npm run test:all`: 5 of 6 jobs green, and the one failure is expected: the published APK reads 0.2.1
+against the app's 0.3.0 (**F220**, Tony decides). The site shots are captured against this branch's UI.
+⚠ Capture AFTER committing a UI change, never before: the manifest records HEAD's tree hash, so a
+capture taken on a dirty tree is stale the moment you commit (`docs/gotchas.md`).
 
 **Machine roles:** WSL runs the Python suites and no-hardware MC; Windows Python is for BLE instruments;
 the MacBook is the field target. Never modify stock firmware.
